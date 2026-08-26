@@ -1,0 +1,19 @@
+version: v2
+# Module roots: each directory contains api/v1/*.proto, so a cross-module
+# `import "api/v1/<name>.proto"` resolves across the workspace. This list is the
+# single source of truth for what gets generated (buf.gen.yaml declares no
+# inputs, so it generates the whole workspace). Add a line per new module.
+modules:
+  - path: internal/infra/health/proto
+deps:
+  - buf.build/googleapis/googleapis
+lint:
+  use:
+    - STANDARD
+  # Sources live at api/v1/ while the package is platform.<mod>.v1, so the file
+  # path intentionally does not mirror the package path.
+  except:
+    - PACKAGE_DIRECTORY_MATCH
+breaking:
+  use:
+    - FILE
