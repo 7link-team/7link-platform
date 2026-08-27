@@ -19,10 +19,10 @@ func Timing(next http.Handler) http.Handler {
 	})
 }
 
-// OK wraps data in a success envelope (code 0). Message carries the i18n key
-// "success"; LocalizeMessage resolves it to the request locale at serialize time.
+// OK wraps data in a success envelope (code 0). Message carries the respx
+// module's success key; LocalizeMessage resolves it at serialize time.
 func OK[T any](ctx context.Context, data T) *Body[T] {
-	return OKMessage(ctx, data, "success")
+	return OKMessage(ctx, data, messageKey("success"))
 }
 
 // OKMessage wraps data in a success envelope with a module-owned i18n key.
@@ -31,9 +31,9 @@ func OKMessage[T any](ctx context.Context, data T, message string) *Body[T] {
 }
 
 // List wraps data in a success envelope carrying pagination meta. Message carries
-// the i18n key "success" (see OK).
+// the respx module's success key (see OK).
 func List[T any](ctx context.Context, data T, page Page) *Body[T] {
-	return &Body[T]{Body: Envelope[T]{Message: "success", Meta: metaOf(ctx, &page), Data: data}}
+	return &Body[T]{Body: Envelope[T]{Message: messageKey("success"), Meta: metaOf(ctx, &page), Data: data}}
 }
 
 // metaOf builds response meta from the request start time stored by Timing. The

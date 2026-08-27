@@ -51,7 +51,10 @@ func New(providers ...CheckerProvider) *Service {
 func (s *Service) Check(ctx context.Context) CheckData {
 	data := CheckData{Status: StatusServing, Modules: make([]ModuleStatus, 0)}
 	for _, checker := range s.checkers() {
-		status := StatusServing
+		status := StatusUnknown
+		if checker.Check != nil {
+			status = StatusServing
+		}
 		if checker.Check != nil && checker.Check(ctx) != nil {
 			status = StatusNotServing
 			data.Status = StatusNotServing

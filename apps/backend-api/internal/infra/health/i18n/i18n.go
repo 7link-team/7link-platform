@@ -7,14 +7,15 @@ import (
 )
 
 const (
-	CheckCompleted     = "health_check_completed"
-	ReadinessSucceeded = "readiness_check_succeeded"
-	ReadinessFailed    = "readiness_check_failed"
+	Namespace          = "health"
+	CheckCompleted     = Namespace + ".check_completed"
+	ReadinessSucceeded = Namespace + ".readiness_succeeded"
+	ReadinessFailed    = Namespace + ".readiness_failed"
 )
 
 //go:embed locales/*.json
 var locales embed.FS
 
 func Register() error {
-	return platformi18n.RegisterFS(locales, "locales")
+	return platformi18n.RegisterFS(Namespace, locales, "locales")
 }

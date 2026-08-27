@@ -19,7 +19,7 @@ const (
 )
 
 func TestHTTPMiddlewareGeneratesAndReturnsTraceHeaders(t *testing.T) {
-	module := New("test", "1.0.0", WithIDGenerator(func() string { return generatedUUID }))
+	module := NewModule("test", "1.0.0", WithIDGenerator(func() string { return generatedUUID }))
 	t.Cleanup(func() { require.NoError(t, module.Deinitialize(context.Background())) })
 
 	var contextTraceID string
@@ -44,7 +44,7 @@ func TestHTTPMiddlewareContinuesIncomingTrace(t *testing.T) {
 		parentSpanID  = "bbbbbbbbbbbbbbbb"
 	)
 	var generated atomic.Int32
-	module := New("test", "1.0.0", WithIDGenerator(func() string {
+	module := NewModule("test", "1.0.0", WithIDGenerator(func() string {
 		generated.Add(1)
 		return generatedUUID
 	}))
@@ -65,7 +65,7 @@ func TestHTTPMiddlewareContinuesIncomingTrace(t *testing.T) {
 }
 
 func TestHTTPMiddlewareAcceptsUUIDTraceHeader(t *testing.T) {
-	module := New("test", "1.0.0")
+	module := NewModule("test", "1.0.0")
 	t.Cleanup(func() { require.NoError(t, module.Deinitialize(context.Background())) })
 
 	handler := module.HTTPMiddleware(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
@@ -81,7 +81,7 @@ func TestHTTPMiddlewareAcceptsUUIDTraceHeader(t *testing.T) {
 }
 
 func TestHTTPTransportPropagatesTraceHeaders(t *testing.T) {
-	module := New("test", "1.0.0", WithIDGenerator(func() string { return generatedUUID }))
+	module := NewModule("test", "1.0.0", WithIDGenerator(func() string { return generatedUUID }))
 	t.Cleanup(func() { require.NoError(t, module.Deinitialize(context.Background())) })
 
 	seen := make(chan http.Header, 1)

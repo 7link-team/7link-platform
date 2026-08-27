@@ -11,8 +11,13 @@ type AppConfig struct {
 
 	HttpServer HttpServer `mapstructure:"http_server" group:"http_server"`
 	GrpcServer GrpcServer `mapstructure:"grpc_server" group:"grpc_server"`
+	Migration  Migration  `mapstructure:"migration" group:"migration"`
 
 	Database map[string]Database `mapstructure:"database" group:"database" mapkey:"<dbkey>"`
+}
+
+type Migration struct {
+	Policy string `mapstructure:"policy" description:"migration policy: up-only | validate | ignore" default:"up-only" trim:"true" validate:"^(up-only|validate|ignore)$"`
 }
 
 type HttpServer struct {
@@ -26,8 +31,8 @@ type GrpcServer struct {
 }
 
 type Database struct {
-	Type string `mapstructure:"type" description:"database type: sqlite | mysql | postgres" default:"sqlite"`
-	Dsn  string `mapstructure:"dsn" description:"data source name" default:"sqlite:///sqlite.db"`
+	Type string `mapstructure:"type" description:"database type: sqlite | mysql | postgres"`
+	Dsn  string `mapstructure:"dsn" description:"data source name"`
 
 	Writable bool `mapstructure:"writable" description:"route write operations to this datasource" default:"true"`
 	Readable bool `mapstructure:"readable" description:"route read operations to this datasource" default:"true"`

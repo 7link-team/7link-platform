@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package platform.guid.v1;
+
+option go_package = "7link.com/platform/internal/infra/guid/proto/gen/go/guid/v1;guidv1";
+
+service GuidService {
+  rpc Next(NextRequest) returns (NextResponse);
+  rpc NextBatch(NextBatchRequest) returns (NextBatchResponse);
+}
+
+message NextRequest {}
+
+message NextResponse {
+  string id = 1;
+}
+
+message NextBatchRequest {
+  uint32 count = 1;
+}
+
+message NextBatchResponse {
+  repeated string ids = 1;
+}

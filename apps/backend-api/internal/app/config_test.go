@@ -8,6 +8,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestDatabaseRolesDefaultToReadWriteDuringParsing(t *testing.T) {
+	var parsed AppConfig
+	require.NoError(t, configx.New().Parse(&parsed, "--database.main.type=sqlite", "--database.main.dsn=:memory:"))
+	database := parsed.Database["main"]
+	assert.True(t, database.Writable)
+	assert.True(t, database.Readable)
+	assert.Equal(t, "up-only", parsed.Migration.Policy)
+}
+
 func TestServerAddressesRequireIPv4(t *testing.T) {
 	valid := AppConfig{
 		HttpServer: HttpServer{Address: "0.0.0.0"},

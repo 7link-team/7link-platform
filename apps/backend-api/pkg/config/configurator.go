@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -35,6 +36,7 @@ type Flagger struct {
 	configFile        *string
 	defaultConfig     []byte
 	defaultConfigType string
+	bindings          map[string]sFlag
 }
 
 // UseDefaultConfig installs a compiled-in base configuration. An explicit
@@ -130,7 +132,21 @@ func (f *Flagger) UseEnvKeyReplacer(replacer *strings.Replacer) {
 func (f *Flagger) BindEnv(in ...string) error { return f.GetViper().BindEnv(in...) }
 
 func (f *Flagger) Parse(o interface{}, args ...string) error {
+	if len(args) == 0 {
+		args = os.Args[1:]
+	}
+	if err := f.Bind(o, args...); err != nil {
+		return err
+	}
+	if err := f.GetFlags().Parse(args); err != nil {
+		return err
+	}
+	return f.Load(o)
+}
 
+// Bind registers config flags and environment bindings without parsing the
+// flag set. This allows command frameworks such as Cobra to own flag parsing.
+func (f *Flagger) Bind(o interface{}, args ...string) error {
 	if len(args) == 0 {
 		args = os.Args[1:]
 	}
@@ -188,10 +204,18 @@ func (f *Flagger) Parse(o interface{}, args ...string) error {
 			return err
 		}
 	}
+	f.bindings = m
+	return nil
+}
 
-	if err := flags.Parse(args); err != nil {
-		return err
+// Load reads config sources and unmarshals them after the configured flag set
+// has been parsed.
+func (f *Flagger) Load(o interface{}) error {
+	if f.bindings == nil {
+		return errors.New("configurator: flags are not bound")
 	}
+	flags := f.GetFlags()
+	vip := f.GetViper()
 	explicitConfig := f.configFile != nil && *f.configFile != ""
 	if f.configFile != nil && *f.configFile != "" {
 		vip.SetConfigFile(*f.configFile)
@@ -199,6 +223,7 @@ func (f *Flagger) Parse(o interface{}, args ...string) error {
 
 	vip.AddConfigPath("./")
 
+	var err error
 	if len(f.defaultConfig) > 0 {
 		vip.SetConfigType(f.defaultConfigType)
 		if err := vip.ReadConfig(bytes.NewReader(f.defaultConfig)); err != nil {
@@ -218,7 +243,7 @@ func (f *Flagger) Parse(o interface{}, args ...string) error {
 		return err
 	}
 
-	if err := f.unmarshal(o, m); err != nil {
+	if err := f.unmarshal(o, f.bindings); err != nil {
 		return err
 	}
 	return Process(o)

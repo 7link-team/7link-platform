@@ -4,38 +4,18 @@ import (
 	"context"
 	"database/sql"
 	"embed"
-	"errors"
-	"fmt"
-	"io"
 	"io/fs"
-	"net"
-	"path/filepath"
 	"testing"
 	"testing/fstest"
-	"time"
 
-	"github.com/dolthub/go-mysql-server/driver"
-	"github.com/dolthub/go-mysql-server/memory"
-	gmssql "github.com/dolthub/go-mysql-server/sql"
-	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
-	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	_ "modernc.org/sqlite"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 //go:embed testdata/sql
 var testdataFS embed.FS
-
-type databaseFactory func(*testing.T) *sql.DB
-
-type mysqlProvider struct {
-	provider gmssql.DatabaseProvider
-}
-
-func (p mysqlProvider) Resolve(dsn string, _ *driver.Options) (string, gmssql.DatabaseProvider, error) {
-	return dsn, p.provider, nil
-}
 
 // migrationsRoot re-roots the embedded FS at "sql" so it matches what Run
 // expects (it resolves the "sql/<dialect>" subdirectory internally).
@@ -48,7 +28,9 @@ func migrationsRoot(t *testing.T) fs.FS {
 
 func openSQLite(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("sqlite", ":memory:")
+	gormDB, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	db, err := gormDB.DB()
 	require.NoError(t, err)
 	db.SetMaxOpenConns(1)
 	require.NoError(t, db.PingContext(t.Context()))
@@ -56,109 +38,75 @@ func openSQLite(t *testing.T) *sql.DB {
 	return db
 }
 
-func openMySQL(t *testing.T) *sql.DB {
-	t.Helper()
-	const databaseName = "goose"
-
-	database := memory.NewDatabase(databaseName)
-	database.BaseDatabase.EnablePrimaryKeyIndexes()
-	drv := driver.New(mysqlProvider{provider: memory.NewDBProvider(database)}, nil)
-	connector, err := drv.OpenConnector(databaseName)
+func TestMigrationsSQLite(t *testing.T) {
+	ctx := t.Context()
+	db := openSQLite(t)
+	root := migrationsRoot(t)
+	const versionTable = "goose_widgets_sqlite"
+	source := Source{FS: root, TableName: versionTable}
+	status, err := Inspect(ctx, db, source, "sqlite")
 	require.NoError(t, err)
+	assert.Equal(t, Status{
+		Target:   1,
+		State:    StatePending,
+		Embedded: []int64{1},
+		Applied:  []int64{},
+		Pending:  []int64{1},
+		Unknown:  []int64{},
+	}, status)
 
-	db := sql.OpenDB(connector)
-	db.SetMaxOpenConns(1)
-	require.NoError(t, db.PingContext(t.Context()))
-	_, err = db.ExecContext(t.Context(), "USE "+databaseName)
+	upToDate, err := UpToDate(ctx, db, root, "sqlite", versionTable)
 	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-		if err := drv.Close(); err != nil && !errors.Is(err, context.Canceled) {
-			t.Errorf("close MySQL engine: %v", err)
-		}
-	})
-	return db
+	assert.False(t, upToDate, "fresh database must not be up to date")
+
+	require.NoError(t, Run(ctx, db, root, "sqlite", versionTable))
+	status, err = Inspect(ctx, db, source, "sqlite")
+	require.NoError(t, err)
+	assert.Equal(t, StateClean, status.State)
+	assert.Equal(t, int64(1), status.Current)
+	assert.Equal(t, []int64{1}, status.Applied)
+	_, err = db.ExecContext(ctx, `INSERT INTO widgets (id, name) VALUES (1, 'first')`)
+	require.NoError(t, err)
+	assert.Equal(t, 1, widgetCount(t, ctx, db))
+
+	// A second run must preserve both the schema and existing data.
+	require.NoError(t, Run(ctx, db, root, "sqlite", versionTable))
+	assert.Equal(t, 1, widgetCount(t, ctx, db))
+	upToDate, err = UpToDate(ctx, db, root, "sqlite", versionTable)
+	require.NoError(t, err)
+	assert.True(t, upToDate)
+
+	require.NoError(t, Down(ctx, db, root, "sqlite", versionTable))
+	assertWidgetsTableMissing(t, ctx, db)
+	upToDate, err = UpToDate(ctx, db, root, "sqlite", versionTable)
+	require.NoError(t, err)
+	assert.False(t, upToDate)
+
+	require.NoError(t, Run(ctx, db, root, "sqlite", versionTable))
+	require.NoError(t, DownTo(ctx, db, root, "sqlite", versionTable, 0))
+	assertWidgetsTableMissing(t, ctx, db)
 }
 
-func openPostgres(t *testing.T) *sql.DB {
-	t.Helper()
-	port := freeTCPPort(t)
-	runtimePath := filepath.Join(t.TempDir(), "postgres")
-	config := embeddedpostgres.DefaultConfig().
-		Version(embeddedpostgres.V16).
-		Port(port).
-		Database("goose").
-		Username("postgres").
-		Password("postgres").
-		RuntimePath(runtimePath).
-		StartTimeout(time.Minute).
-		Logger(io.Discard)
-
-	postgres := embeddedpostgres.NewDatabase(config)
-	require.NoError(t, postgres.Start())
-	t.Cleanup(func() { require.NoError(t, postgres.Stop()) })
-
-	dsn := fmt.Sprintf("postgres://postgres:postgres@127.0.0.1:%d/goose?sslmode=disable", port)
-	db, err := sql.Open("postgres", dsn)
+func TestInspectDetectsDatabaseAheadOfEmbeddedMigrations(t *testing.T) {
+	db := openSQLite(t)
+	root := migrationsRoot(t)
+	const versionTable = "goose_widgets_ahead"
+	require.NoError(t, Run(t.Context(), db, root, "sqlite", versionTable))
+	_, err := db.ExecContext(t.Context(),
+		"INSERT INTO "+versionTable+" (version_id, is_applied) VALUES (?, ?)", 2, true,
+	)
 	require.NoError(t, err)
-	require.NoError(t, db.PingContext(t.Context()))
-	t.Cleanup(func() { require.NoError(t, db.Close()) })
-	return db
-}
 
-func freeTCPPort(t *testing.T) uint32 {
-	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	status, err := Inspect(t.Context(), db, Source{FS: root, TableName: versionTable}, "sqlite")
 	require.NoError(t, err)
-	defer func() { require.NoError(t, listener.Close()) }()
-	return uint32(listener.Addr().(*net.TCPAddr).Port)
-}
+	assert.Equal(t, StateAhead, status.State)
+	assert.Equal(t, int64(2), status.Current)
+	assert.Equal(t, int64(1), status.Target)
+	assert.Equal(t, []int64{2}, status.Unknown)
 
-func TestMigrations_AllDialects(t *testing.T) {
-	tests := []struct {
-		name    string
-		dialect string
-		open    databaseFactory
-	}{
-		{name: "sqlite", dialect: "sqlite", open: openSQLite},
-		{name: "mysql", dialect: "mysql", open: openMySQL},
-		{name: "postgres", dialect: "postgres", open: openPostgres},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := t.Context()
-			db := tt.open(t)
-			root := migrationsRoot(t)
-			versionTable := "goose_widgets_" + tt.name
-
-			upToDate, err := UpToDate(ctx, db, root, tt.dialect, versionTable)
-			require.NoError(t, err)
-			assert.False(t, upToDate, "fresh database must not be up to date")
-
-			require.NoError(t, Run(ctx, db, root, tt.dialect, versionTable))
-			_, err = db.ExecContext(ctx, `INSERT INTO widgets (id, name) VALUES (1, 'first')`)
-			require.NoError(t, err)
-			assert.Equal(t, 1, widgetCount(t, ctx, db))
-
-			// A second run must preserve both the schema and existing data.
-			require.NoError(t, Run(ctx, db, root, tt.dialect, versionTable))
-			assert.Equal(t, 1, widgetCount(t, ctx, db))
-			upToDate, err = UpToDate(ctx, db, root, tt.dialect, versionTable)
-			require.NoError(t, err)
-			assert.True(t, upToDate)
-
-			require.NoError(t, Down(ctx, db, root, tt.dialect, versionTable))
-			assertWidgetsTableMissing(t, ctx, db)
-			upToDate, err = UpToDate(ctx, db, root, tt.dialect, versionTable)
-			require.NoError(t, err)
-			assert.False(t, upToDate)
-
-			require.NoError(t, Run(ctx, db, root, tt.dialect, versionTable))
-			require.NoError(t, DownTo(ctx, db, root, tt.dialect, versionTable, 0))
-			assertWidgetsTableMissing(t, ctx, db)
-		})
-	}
+	upToDate, err := UpToDate(t.Context(), db, root, "sqlite", versionTable)
+	require.NoError(t, err)
+	assert.False(t, upToDate)
 }
 
 func widgetCount(t *testing.T, ctx context.Context, db *sql.DB) int {

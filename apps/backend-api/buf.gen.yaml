@@ -6,9 +6,9 @@ version: v2
 managed:
   enabled: false
 plugins:
-  - local: protoc-gen-go
+  - local: [go, tool, -modfile=tools/go.mod, protoc-gen-go]
     out: .
     opt: module=7link.com/platform
-  - local: protoc-gen-go-grpc
+  - local: [go, tool, -modfile=tools/go.mod, protoc-gen-go-grpc]
     out: .
     opt: module=7link.com/platform

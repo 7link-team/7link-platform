@@ -9,8 +9,28 @@ import (
 )
 
 type (
-	Namer interface {
+	// Module is the minimum contract every application module must satisfy.
+	// Lifecycle and protocol capabilities remain optional interfaces below.
+	Module interface {
 		ModuleName() string
+	}
+
+	// Depender declares lifecycle dependencies. Dependencies must be registered
+	// before dependents so forward startup and reverse shutdown remain correct.
+	Depender interface {
+		ModuleDependencies() []string
+	}
+
+	// ServiceProvider contributes application-scoped services before module
+	// initialization. Register narrow contracts rather than concrete modules.
+	ServiceProvider interface {
+		ProvideServices(services *Services) error
+	}
+
+	// ServiceInjector resolves a module's required services after all providers
+	// have registered and before module initialization.
+	ServiceInjector interface {
+		InjectServices(services *Services) error
 	}
 
 	// Initializer runs setup logic after migration but before starting.

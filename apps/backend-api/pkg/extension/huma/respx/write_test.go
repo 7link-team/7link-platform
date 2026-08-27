@@ -20,7 +20,7 @@ func TestWriteError(t *testing.T) {
 		r := httptest.NewRequest(http.MethodGet, "/", nil)
 		r = r.WithContext(i18n.WithLocale(r.Context(), "zh-CN"))
 
-		WriteError(rr, r, http.StatusTooManyRequests, "too_many_requests", 3*time.Second)
+		WriteError(rr, r, http.StatusTooManyRequests, messageKey("too_many_requests"), 3*time.Second)
 
 		assert.Equal(t, http.StatusTooManyRequests, rr.Code)
 		assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
@@ -42,7 +42,7 @@ func TestWriteError(t *testing.T) {
 	t.Run("no retry-after header when zero", func(t *testing.T) {
 		rr := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/", nil)
-		WriteError(rr, r, http.StatusForbidden, "forbidden", 0)
+		WriteError(rr, r, http.StatusForbidden, messageKey("forbidden"), 0)
 
 		assert.Empty(t, rr.Header().Get("Retry-After"))
 		var env struct {

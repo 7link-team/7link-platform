@@ -6,8 +6,12 @@ import (
 	"log/slog"
 
 	"7link.com/platform/internal/infra/dlock"
+	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/internal/infra/health"
+	"7link.com/platform/internal/infra/wuid"
+	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
+	"7link.com/platform/pkg/extension/huma/respx"
 	"7link.com/platform/pkg/i18n"
 )
 
@@ -18,10 +22,36 @@ func (app *App) bootstrap(ctx context.Context) error {
 
 	app.mods = append(app.mods,
 		i18n.NewModule(i18n.Base),
+		respx.NewModule(),
 		health.NewModule(app.healthCheckers),
-		dlock.New(&app.Db),
+		dlock.NewModule(&app.Db),
+		wuid.NewModule(&app.Db),
+		guid.NewModule(),
 	)
 
+	if err := app.wireModules(); err != nil {
+		return fmt.Errorf("wire modules: %w", err)
+	}
+	if db := app.Db.Write(); db != nil {
+		reports, err := runModuleMigrations(ctx, db, app.mods, MigrationRequest{
+			Action: MigrationAction(app.config.Migration.Policy),
+		})
+		if err != nil {
+			return fmt.Errorf("reconcile migrations: %w", err)
+		}
+		if app.config.Migration.Policy == string(MigrationIgnore) {
+			for _, report := range reports {
+				if report.Status.State != goosex.StateClean {
+					slog.WarnContext(ctx, "migration state ignored",
+						"module", report.Module,
+						"current", report.Status.Current,
+						"target", report.Status.Target,
+						"state", report.Status.State,
+					)
+				}
+			}
+		}
+	}
 	if err := app.initializeModules(ctx); err != nil {
 		return fmt.Errorf("initialize modules: %w", err)
 	}
@@ -32,27 +62,27 @@ func (app *App) bootstrap(ctx context.Context) error {
 }
 
 func (app *App) initializeDatabase(ctx context.Context) {
-	datasources := make(map[string]gormx.Datasource, len(app.config.Database))
-	for name, database := range app.config.Database {
-		writable, readable := database.Writable, database.Readable
-		if !writable && !readable {
-			writable, readable = true, true
-		}
+	router, err := newDatasourceRouter(ctx, app.config)
+	app.Db = router
+	if err != nil {
+		slog.Error("one or more database datasources are unavailable", "error", err)
+	}
+}
+
+func newDatasourceRouter(ctx context.Context, config AppConfig) (gormx.DatasourceRouter, error) {
+	datasources := make(map[string]gormx.Datasource, len(config.Database))
+	for name, database := range config.Database {
 		datasources[name] = gormx.Datasource{
 			Type:            database.Type,
 			DSN:             database.Dsn,
-			Writable:        writable,
-			Readable:        readable,
+			Timezone:        config.Timezone,
+			Writable:        database.Writable,
+			Readable:        database.Readable,
 			MaxOpenConns:    database.MaxOpenConns,
 			MaxIdleConns:    database.MaxIdleConns,
 			ConnMaxLifetime: database.ConnMaxLifetime,
 			ConnMaxIdleTime: database.ConnMaxIdleTime,
 		}
 	}
-
-	router, err := gormx.NewDatasourceRouter(ctx, app.config.Debug, datasources)
-	app.Db = router
-	if err != nil {
-		slog.Error("one or more database datasources are unavailable", "error", err)
-	}
+	return gormx.NewDatasourceRouter(ctx, config.Debug, datasources)
 }

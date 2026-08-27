@@ -19,10 +19,13 @@ type HealthModule struct {
 	grpc    *healthgrpc.Server
 }
 
-func (*HealthModule) ModuleName() string { return "health" }
+func (*HealthModule) ModuleName() string { return healthi18n.Namespace }
+
+func (*HealthModule) ModuleDependencies() []string { return []string{"i18n"} }
 
 var (
 	_ module.Initializer   = (*HealthModule)(nil)
+	_ module.Depender      = (*HealthModule)(nil)
 	_ module.Starter       = (*HealthModule)(nil)
 	_ module.Stopper       = (*HealthModule)(nil)
 	_ module.Deinitializer = (*HealthModule)(nil)

@@ -12,7 +12,7 @@ import (
 
 var ErrDatabaseUnavailable = errors.New("dlock: writable database unavailable")
 
-// Module owns dlock migration, runtime access, and database health reporting.
+// Module owns the dlock migration source, runtime access, and health reporting.
 type Module struct {
 	db      gormx.Writer
 	options []Option
@@ -21,25 +21,11 @@ type Module struct {
 func (*Module) ModuleName() string { return "dlock" }
 
 var (
-	_ module.Initializer   = (*Module)(nil)
 	_ module.HealthChecker = (*Module)(nil)
 )
 
-func New(db gormx.Writer, options ...Option) *Module {
+func NewModule(db gormx.Writer, options ...Option) *Module {
 	return &Module{db: db, options: append([]Option(nil), options...)}
-}
-
-// Initialize migrates the lock table and creates the runtime locker. A missing
-// writer is reported through CheckHealth so the health server can still start.
-func (m *Module) Initialize(ctx context.Context) error {
-	db := m.writer()
-	if db == nil {
-		return nil
-	}
-	if err := Migrate(ctx, db); err != nil {
-		return fmt.Errorf("migrate: %w", err)
-	}
-	return nil
 }
 
 func (m *Module) CheckHealth(ctx context.Context) error {

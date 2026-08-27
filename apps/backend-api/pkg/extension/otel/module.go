@@ -40,7 +40,7 @@ type Module struct {
 
 func (*Module) ModuleName() string { return "telemetry" }
 
-func New(serviceName, serviceVersion string, options ...Option) *Module {
+func NewModule(serviceName, serviceVersion string, options ...Option) *Module {
 	config := config{idGenerator: defaultIDGenerator}
 	for _, option := range options {
 		option(&config)

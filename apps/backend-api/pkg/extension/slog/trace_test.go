@@ -15,7 +15,7 @@ import (
 
 func TestTraceHandlerAddsTraceAndSpanIDs(t *testing.T) {
 	const traceID = "123e4567e89b42d3a456426614174000"
-	module := otelx.New("test", "1.0.0", otelx.WithIDGenerator(func() string { return traceID }))
+	module := otelx.NewModule("test", "1.0.0", otelx.WithIDGenerator(func() string { return traceID }))
 	t.Cleanup(func() { require.NoError(t, module.Deinitialize(context.Background())) })
 
 	var output bytes.Buffer

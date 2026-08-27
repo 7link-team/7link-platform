@@ -58,13 +58,13 @@ func Err(ctx context.Context, code int, key string) error {
 
 // phraseKey normalizes huma's built-in English error summaries to i18n keys so
 // framework-generated errors (e.g. request validation) localize like the rest.
-// App code should pass i18n keys directly to huma.ErrorXxx / respx.Err rather
-// than rely on this map; only huma's own fixed phrases need normalizing here.
+// App code should pass fully qualified i18n keys directly to huma.ErrorXxx /
+// respx.Err; only huma's own fixed phrases need normalizing here.
 var phraseKey = map[string]string{
-	"validation failed":         "validation_failed",
-	"request body is required":  "request_body_required",
-	"request body read timeout": "request_body_timeout",
-	"cannot read request body":  "request_body_unreadable",
+	"validation failed":         messageKey("validation_failed"),
+	"request body is required":  messageKey("request_body_required"),
+	"request body read timeout": messageKey("request_body_timeout"),
+	"cannot read request body":  messageKey("request_body_unreadable"),
 }
 
 // Install replaces huma.NewError so every built-in error response (validation,
@@ -99,7 +99,7 @@ func normalizeSummary(message string) string {
 	const prefix = "request body is too large limit="
 	if strings.HasPrefix(message, prefix) {
 		limit := strings.TrimSuffix(strings.TrimPrefix(message, prefix), " bytes")
-		return "request_body_too_large" + argSep + limit
+		return validationMessage("request_body_too_large", limit)
 	}
 	return message
 }
@@ -125,42 +125,46 @@ func detailOf(errs []error) []errorDetail {
 }
 
 func validationMessage(key string, args ...string) string {
-	return key + argSep + strings.Join(args, argSep)
+	qualified := messageKey(key)
+	if len(args) == 0 {
+		return qualified
+	}
+	return qualified + argSep + strings.Join(args, argSep)
 }
 
 // Huma exposes its validation messages as variables. Replacing them with
 // stable keys keeps every framework-generated field error localizable without
 // parsing English text after validation has already run.
 func installValidationMessages() {
-	validation.MsgUnexpectedProperty = "validation_unexpected_property"
-	validation.MsgExpectedRFC3339DateTime = "validation_expected_rfc3339_datetime"
-	validation.MsgExpectedRFC1123DateTime = "validation_expected_rfc1123_datetime"
-	validation.MsgExpectedRFC3339Date = "validation_expected_rfc3339_date"
-	validation.MsgExpectedRFC3339Time = "validation_expected_rfc3339_time"
+	validation.MsgUnexpectedProperty = validationMessage("validation_unexpected_property")
+	validation.MsgExpectedRFC3339DateTime = validationMessage("validation_expected_rfc3339_datetime")
+	validation.MsgExpectedRFC1123DateTime = validationMessage("validation_expected_rfc1123_datetime")
+	validation.MsgExpectedRFC3339Date = validationMessage("validation_expected_rfc3339_date")
+	validation.MsgExpectedRFC3339Time = validationMessage("validation_expected_rfc3339_time")
 	validation.MsgExpectedRFC5322Email = validationMessage("validation_expected_email", "%v")
-	validation.MsgExpectedRFC5890Hostname = "validation_expected_hostname"
-	validation.MsgExpectedRFC2673IPv4 = "validation_expected_ipv4"
-	validation.MsgExpectedRFC2373IPv6 = "validation_expected_ipv6"
-	validation.MsgExpectedRFCIPAddr = "validation_expected_ip_address"
+	validation.MsgExpectedRFC5890Hostname = validationMessage("validation_expected_hostname")
+	validation.MsgExpectedRFC2673IPv4 = validationMessage("validation_expected_ipv4")
+	validation.MsgExpectedRFC2373IPv6 = validationMessage("validation_expected_ipv6")
+	validation.MsgExpectedRFCIPAddr = validationMessage("validation_expected_ip_address")
 	validation.MsgExpectedRFC3986URI = validationMessage("validation_expected_uri", "%v")
 	validation.MsgExpectedRFC4122UUID = validationMessage("validation_expected_uuid", "%v")
-	validation.MsgExpectedRFC6570URITemplate = "validation_expected_uri_template"
-	validation.MsgExpectedRFC6901JSONPointer = "validation_expected_json_pointer"
-	validation.MsgExpectedRFC6901RelativeJSONPointer = "validation_expected_relative_json_pointer"
+	validation.MsgExpectedRFC6570URITemplate = validationMessage("validation_expected_uri_template")
+	validation.MsgExpectedRFC6901JSONPointer = validationMessage("validation_expected_json_pointer")
+	validation.MsgExpectedRFC6901RelativeJSONPointer = validationMessage("validation_expected_relative_json_pointer")
 	validation.MsgExpectedRegexp = validationMessage("validation_expected_regex", "%v")
-	validation.MsgExpectedMatchAtLeastOneSchema = "validation_expected_schema_match"
-	validation.MsgExpectedMatchExactlyOneSchema = "validation_expected_single_schema_match"
-	validation.MsgExpectedNotMatchSchema = "validation_expected_schema_mismatch"
-	validation.MsgExpectedPropertyNameInObject = "validation_expected_property_name"
-	validation.MsgExpectedBoolean = "validation_expected_boolean"
+	validation.MsgExpectedMatchAtLeastOneSchema = validationMessage("validation_expected_schema_match")
+	validation.MsgExpectedMatchExactlyOneSchema = validationMessage("validation_expected_single_schema_match")
+	validation.MsgExpectedNotMatchSchema = validationMessage("validation_expected_schema_mismatch")
+	validation.MsgExpectedPropertyNameInObject = validationMessage("validation_expected_property_name")
+	validation.MsgExpectedBoolean = validationMessage("validation_expected_boolean")
 	validation.MsgExpectedDuration = validationMessage("validation_expected_duration", "%v")
-	validation.MsgExpectedNumber = "validation_expected_number"
-	validation.MsgExpectedInteger = "validation_expected_integer"
-	validation.MsgExpectedString = "validation_expected_string"
-	validation.MsgExpectedBase64String = "validation_expected_base64"
-	validation.MsgExpectedArray = "validation_expected_array"
-	validation.MsgExpectedObject = "validation_expected_object"
-	validation.MsgExpectedArrayItemsUnique = "validation_expected_unique_items"
+	validation.MsgExpectedNumber = validationMessage("validation_expected_number")
+	validation.MsgExpectedInteger = validationMessage("validation_expected_integer")
+	validation.MsgExpectedString = validationMessage("validation_expected_string")
+	validation.MsgExpectedBase64String = validationMessage("validation_expected_base64")
+	validation.MsgExpectedArray = validationMessage("validation_expected_array")
+	validation.MsgExpectedObject = validationMessage("validation_expected_object")
+	validation.MsgExpectedArrayItemsUnique = validationMessage("validation_expected_unique_items")
 	validation.MsgExpectedOneOf = validationMessage("validation_expected_one_of", "%s")
 	validation.MsgExpectedMinimumNumber = validationMessage("validation_expected_minimum_number", "%v")
 	validation.MsgExpectedExclusiveMinimumNumber = validationMessage("validation_expected_exclusive_minimum_number", "%v")

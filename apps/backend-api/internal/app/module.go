@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path"
 	"reflect"
 
 	healthservice "7link.com/platform/internal/infra/health/service"
@@ -14,6 +13,63 @@ import (
 	"google.golang.org/grpc"
 )
 
+// wireModules builds the application service graph before any module is
+// initialized. Providers are collected first so dependency resolution is not
+// coupled to module registration order.
+func (app *App) wireModules() error {
+	app.services = module.NewServices()
+	indices := make(map[string]int, len(app.mods))
+	for index, appModule := range app.mods {
+		if isNilModule(appModule) {
+			return errors.New("module: registered module is nil")
+		}
+		name := appModule.ModuleName()
+		if name == "" {
+			return fmt.Errorf("%T: module name is empty", appModule)
+		}
+		if _, exists := indices[name]; exists {
+			return fmt.Errorf("module: duplicate module name %q", name)
+		}
+		indices[name] = index
+		// A Deinitializer without an Initializer owns resources from construction
+		// time and must always be included in shutdown rollback.
+		if _, cleanup := appModule.(module.Deinitializer); cleanup {
+			if _, initialized := appModule.(module.Initializer); !initialized {
+				app.initialized = append(app.initialized, appModule)
+			}
+		}
+	}
+	for index, appModule := range app.mods {
+		if depender, ok := appModule.(module.Depender); ok {
+			for _, dependency := range depender.ModuleDependencies() {
+				dependencyIndex, exists := indices[dependency]
+				if !exists {
+					return fmt.Errorf("module %q requires unregistered module %q", appModule.ModuleName(), dependency)
+				}
+				if dependencyIndex >= index {
+					return fmt.Errorf("module %q must be registered after dependency %q", appModule.ModuleName(), dependency)
+				}
+			}
+		}
+		if provider, ok := appModule.(module.ServiceProvider); ok {
+			if err := provider.ProvideServices(app.services); err != nil {
+				return fmt.Errorf("%T provide services: %w", appModule, err)
+			}
+		}
+	}
+	if err := app.services.Seal(); err != nil {
+		return err
+	}
+	for _, appModule := range app.mods {
+		if injector, ok := appModule.(module.ServiceInjector); ok {
+			if err := injector.InjectServices(app.services); err != nil {
+				return fmt.Errorf("%T inject services: %w", appModule, err)
+			}
+		}
+	}
+	return nil
+}
+
 // initializeModules runs the Initialize phase, stopping at the first failure so the
 // app never starts against a half-initialized state.
 func (app *App) initializeModules(ctx context.Context) error {
@@ -22,6 +78,7 @@ func (app *App) initializeModules(ctx context.Context) error {
 			if err := x.Initialize(ctx); err != nil {
 				return fmt.Errorf("%T initialize: %w", m, err)
 			}
+			app.initialized = append(app.initialized, m)
 		}
 	}
 	return nil
@@ -34,6 +91,7 @@ func (app *App) startModules(ctx context.Context) error {
 			if err := x.Start(ctx); err != nil {
 				return fmt.Errorf("%T start: %w", m, err)
 			}
+			app.started = append(app.started, m)
 		}
 	}
 	return nil
@@ -56,7 +114,7 @@ func (app *App) checkHealth(ctx context.Context) error {
 func (app *App) healthCheckers() []healthservice.Checker {
 	checkers := make([]healthservice.Checker, 0, len(app.mods))
 	for _, appModule := range app.mods {
-		checker := healthservice.Checker{Name: moduleName(appModule)}
+		checker := healthservice.Checker{Name: appModule.ModuleName()}
 		if healthChecker, ok := appModule.(module.HealthChecker); ok {
 			checker.Check = healthChecker.CheckHealth
 		}
@@ -65,18 +123,12 @@ func (app *App) healthCheckers() []healthservice.Checker {
 	return checkers
 }
 
-func moduleName(value any) string {
-	if named, ok := value.(module.Namer); ok && named.ModuleName() != "" {
-		return named.ModuleName()
+func isNilModule(value module.Module) bool {
+	if value == nil {
+		return true
 	}
-	typeOf := reflect.TypeOf(value)
-	for typeOf.Kind() == reflect.Pointer {
-		typeOf = typeOf.Elem()
-	}
-	if name := path.Base(typeOf.PkgPath()); name != "." && name != "" {
-		return name
-	}
-	return typeOf.Name()
+	reflected := reflect.ValueOf(value)
+	return reflected.Kind() == reflect.Pointer && reflected.IsNil()
 }
 
 // stopModules runs the Stop phase in reverse registration order (so dependents
@@ -84,14 +136,15 @@ func moduleName(value any) string {
 // the first so one failing module can't strand the rest.
 func (app *App) stopModules(ctx context.Context) error {
 	var errs []error
-	for i := len(app.mods) - 1; i >= 0; i-- {
-		m := app.mods[i]
+	for i := len(app.started) - 1; i >= 0; i-- {
+		m := app.started[i]
 		if x, ok := m.(module.Stopper); ok {
 			if err := x.Stop(ctx); err != nil {
 				errs = append(errs, fmt.Errorf("%T stop: %w", m, err))
 			}
 		}
 	}
+	app.started = nil
 	return errors.Join(errs...)
 }
 
@@ -100,14 +153,15 @@ func (app *App) stopModules(ctx context.Context) error {
 // the first so one failing module can't strand the rest.
 func (app *App) deinitializeModules(ctx context.Context) error {
 	var errs []error
-	for i := len(app.mods) - 1; i >= 0; i-- {
-		m := app.mods[i]
+	for i := len(app.initialized) - 1; i >= 0; i-- {
+		m := app.initialized[i]
 		if x, ok := m.(module.Deinitializer); ok {
 			if err := x.Deinitialize(ctx); err != nil {
 				errs = append(errs, fmt.Errorf("%T deinitialize: %w", m, err))
 			}
 		}
 	}
+	app.initialized = nil
 	return errors.Join(errs...)
 }
 

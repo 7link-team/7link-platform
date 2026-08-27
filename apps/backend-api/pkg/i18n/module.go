@@ -2,8 +2,8 @@ package i18n
 
 import "context"
 
-// Module initializes the shared base locale bundle before domain modules
-// register their own translations.
+// Module initializes the empty application translation registry before owning
+// modules register their namespaced locale bundles.
 type Module struct {
 	fallback string
 }
@@ -15,5 +15,6 @@ func NewModule(fallback string) *Module {
 }
 
 func (m *Module) Initialize(context.Context) error {
-	return InitEmbedded(m.fallback)
+	defaultI18n = New(m.fallback)
+	return nil
 }

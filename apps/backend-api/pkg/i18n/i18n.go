@@ -14,18 +14,20 @@ import (
 
 // I18n manages translations.
 type I18n struct {
-	mu       sync.RWMutex
-	locale   string
-	fallback string
-	messages map[string]map[string]string // locale -> key -> message
+	mu                   sync.RWMutex
+	locale               string
+	fallback             string
+	messages             map[string]map[string]string // locale -> key -> message
+	registeredNamespaces map[string]struct{}
 }
 
 // New creates a new I18n instance.
 func New(fallback string) *I18n {
 	return &I18n{
-		fallback: fallback,
-		locale:   fallback,
-		messages: make(map[string]map[string]string),
+		fallback:             fallback,
+		locale:               fallback,
+		messages:             make(map[string]map[string]string),
+		registeredNamespaces: make(map[string]struct{}),
 	}
 }
 
@@ -190,43 +192,61 @@ func NewModuleI18nFS(fallback string, fsys fs.FS, dir string) *I18n {
 	return inst
 }
 
-// RegisterFS merges an embedded module locale bundle into the global
-// translator. Every supported locale must define the same non-empty keys as
-// en-US, and conflicting translations fail startup instead of being silently
-// overwritten.
-func RegisterFS(fsys fs.FS, dir string) error {
+// RegisterFS registers one embedded module locale bundle. JSON files contain
+// module-local keys; namespace is prepended as "namespace.key" so independently
+// owned bundles cannot collide. Every supported locale must define the same
+// non-empty keys as en-US, and a namespace can be registered only once.
+func RegisterFS(namespace string, fsys fs.FS, dir string) error {
 	if defaultI18n == nil {
 		return fmt.Errorf("register locales: i18n is not initialized")
 	}
+	if !validNamespace(namespace) {
+		return fmt.Errorf("register locales: invalid namespace %q", namespace)
+	}
 	bundle := New(Base)
 	if err := bundle.LoadFS(fsys, dir); err != nil {
-		return err
+		return fmt.Errorf("register locales %q: %w", namespace, err)
 	}
 	bundle.mu.RLock()
 	defer bundle.mu.RUnlock()
 	base := bundle.messages[Base]
 	if len(base) == 0 {
-		return fmt.Errorf("register locales: %s is missing or empty", Base)
+		return fmt.Errorf("register locales %q: %s is missing or empty", namespace, Base)
 	}
 	for _, locale := range Supported() {
 		messages := bundle.messages[locale.Code]
 		if len(messages) == 0 {
-			return fmt.Errorf("register locales: %s is missing or empty", locale.Code)
+			return fmt.Errorf("register locales %q: %s is missing or empty", namespace, locale.Code)
 		}
 		for key, value := range base {
-			if key == "" || value == "" || messages[key] == "" {
-				return fmt.Errorf("register locales: %s is missing key %q", locale.Code, key)
+			if !validLocalKey(key) {
+				return fmt.Errorf("register locales %q: invalid local key %q", namespace, key)
+			}
+			if value == "" || messages[key] == "" {
+				return fmt.Errorf("register locales %q: %s is missing key %q", namespace, locale.Code, key)
 			}
 		}
 		for key := range messages {
 			if base[key] == "" {
-				return fmt.Errorf("register locales: %s has key %q missing from %s", locale.Code, key, Base)
+				return fmt.Errorf("register locales %q: %s has key %q missing from %s", namespace, locale.Code, key, Base)
 			}
 		}
 	}
 
 	defaultI18n.mu.Lock()
 	defer defaultI18n.mu.Unlock()
+	if _, exists := defaultI18n.registeredNamespaces[namespace]; exists {
+		return fmt.Errorf("register locales: namespace %q is already registered", namespace)
+	}
+	for locale, messages := range bundle.messages {
+		target := defaultI18n.messages[locale]
+		for key := range messages {
+			qualified := namespace + "." + key
+			if _, exists := target[qualified]; exists {
+				return fmt.Errorf("register locales: key %q is already registered for %s", qualified, locale)
+			}
+		}
+	}
 	for locale, messages := range bundle.messages {
 		target := defaultI18n.messages[locale]
 		if target == nil {
@@ -234,40 +254,41 @@ func RegisterFS(fsys fs.FS, dir string) error {
 			defaultI18n.messages[locale] = target
 		}
 		for key, value := range messages {
-			if current, ok := target[key]; ok && current != value {
-				return fmt.Errorf("register locales: conflicting %s translation for %q", locale, key)
-			}
+			target[namespace+"."+key] = value
 		}
 	}
-	for locale, messages := range bundle.messages {
-		for key, value := range messages {
-			defaultI18n.messages[locale][key] = value
-		}
-	}
+	defaultI18n.registeredNamespaces[namespace] = struct{}{}
 	return nil
+}
+
+func validNamespace(namespace string) bool {
+	for index, character := range namespace {
+		if character >= 'a' && character <= 'z' {
+			continue
+		}
+		if index > 0 && ((character >= '0' && character <= '9') || character == '-') {
+			continue
+		}
+		return false
+	}
+	return namespace != ""
+}
+
+func validLocalKey(key string) bool {
+	for index, character := range key {
+		if character >= 'a' && character <= 'z' {
+			continue
+		}
+		if index > 0 && ((character >= '0' && character <= '9') || character == '_') {
+			continue
+		}
+		return false
+	}
+	return key != ""
 }
 
 // default global instance
 var defaultI18n *I18n
-
-// Init initializes the default global instance.
-func Init(fallback, localesDir string) error {
-	defaultI18n = New(fallback)
-	entries, err := os.ReadDir(localesDir)
-	if err != nil {
-		return fmt.Errorf("read locales dir: %w", err)
-	}
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
-			continue
-		}
-		locale := strings.TrimSuffix(entry.Name(), ".json")
-		if err := defaultI18n.Load(locale, localesDir); err != nil {
-			return fmt.Errorf("load locale %s: %w", locale, err)
-		}
-	}
-	return nil
-}
 
 // SetLocale sets the global locale.
 func SetLocale(locale string) {

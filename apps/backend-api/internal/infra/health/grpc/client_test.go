@@ -19,11 +19,11 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
-func TestServerAndClient(t *testing.T) {
-	require.NoError(t, i18n.InitEmbedded(i18n.Base))
+func TestClientCheckEndToEnd(t *testing.T) {
+	require.NoError(t, i18n.NewModule(i18n.Base).Initialize(t.Context()))
 	require.NoError(t, healthi18n.Register())
 	const traceID = "123e4567e89b42d3a456426614174000"
-	telemetry := otelx.New("health-test", "1.0.0", otelx.WithIDGenerator(func() string { return traceID }))
+	telemetry := otelx.NewModule("health-test", "1.0.0", otelx.WithIDGenerator(func() string { return traceID }))
 	t.Cleanup(func() { require.NoError(t, telemetry.Deinitialize(context.Background())) })
 
 	listener := bufconn.Listen(1024 * 1024)
@@ -57,7 +57,7 @@ func TestServerAndClient(t *testing.T) {
 	assert.Equal(t, 0, result.Code)
 	assert.Equal(t, "健康检查已完成。", result.Message)
 	assert.Equal(t, service.StatusServing, result.Data.Status)
-	assert.Equal(t, []service.ModuleStatus{{Name: "health", Status: service.StatusServing}}, result.Data.Modules)
+	assert.Equal(t, []service.ModuleStatus{{Name: "health", Status: service.StatusUnknown}}, result.Data.Modules)
 	assert.Equal(t, []string{"zh-CN"}, headers.Get("content-language"))
 	assert.Equal(t, []string{traceID}, headers.Get(strings.ToLower(otelx.TraceIDHeader)))
 	require.Len(t, headers.Get(otelx.TraceparentHeader), 1)

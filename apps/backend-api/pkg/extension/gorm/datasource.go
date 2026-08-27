@@ -2,6 +2,7 @@ package gormx
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,6 +11,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	mysqldriver "github.com/go-sql-driver/mysql"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/stdlib"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
@@ -21,6 +26,9 @@ import (
 type Datasource struct {
 	Type string
 	DSN  string
+	// Timezone configures driver decoding and every new database connection.
+	// Empty means UTC.
+	Timezone string
 
 	Writable bool
 	Readable bool
@@ -45,15 +53,41 @@ func (d Datasource) open(ctx context.Context, debug bool) (*gorm.DB, error) {
 	if dsn == "" {
 		return nil, errors.New("gormx: datasource DSN is required")
 	}
+	location, err := loadLocation(d.Timezone)
+	if err != nil {
+		return nil, fmt.Errorf("gormx: invalid datasource timezone %q: %w", d.Timezone, err)
+	}
 
-	var dialector gorm.Dialector
+	var (
+		dialector gorm.Dialector
+		ownedPool *sql.DB
+	)
 	switch dialect {
 	case "sqlite":
 		dialector = sqlite.Open(normalizeSQLiteDSN(dsn))
 	case "mysql":
+		dsn, err = mysqlDSNWithTimezone(dsn, location)
+		if err != nil {
+			return nil, fmt.Errorf("gormx: configure mysql timezone: %w", err)
+		}
 		dialector = mysql.Open(dsn)
 	case "postgres":
-		dialector = postgres.Open(dsn)
+		config, configErr := postgresConfigWithTimezone(dsn, location)
+		if configErr != nil {
+			return nil, fmt.Errorf("gormx: configure postgres timezone: %w", configErr)
+		}
+		ownedPool = stdlib.OpenDB(*config, stdlib.OptionAfterConnect(func(_ context.Context, conn *pgx.Conn) error {
+			conn.TypeMap().RegisterType(&pgtype.Type{
+				Name: "timestamp", OID: pgtype.TimestampOID,
+				Codec: &pgtype.TimestampCodec{ScanLocation: location},
+			})
+			conn.TypeMap().RegisterType(&pgtype.Type{
+				Name: "timestamptz", OID: pgtype.TimestamptzOID,
+				Codec: &pgtype.TimestamptzCodec{ScanLocation: location},
+			})
+			return nil
+		}))
+		dialector = postgres.New(postgres.Config{Conn: ownedPool})
 	}
 
 	logLevel := logger.Error
@@ -68,11 +102,17 @@ func (d Datasource) open(ctx context.Context, debug bool) (*gorm.DB, error) {
 		}),
 	})
 	if err != nil {
+		if ownedPool != nil {
+			_ = ownedPool.Close()
+		}
 		return nil, fmt.Errorf("gormx: open %s datasource: %w", dialect, err)
 	}
 
 	sqlDB, err := db.DB()
 	if err != nil {
+		if ownedPool != nil {
+			_ = ownedPool.Close()
+		}
 		return nil, fmt.Errorf("gormx: get %s connection pool: %w", dialect, err)
 	}
 	d.applyPool(sqlDB)
@@ -81,6 +121,41 @@ func (d Datasource) open(ctx context.Context, debug bool) (*gorm.DB, error) {
 		return nil, fmt.Errorf("gormx: ping %s datasource: %w", dialect, err)
 	}
 	return db, nil
+}
+
+func loadLocation(name string) (*time.Location, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = "UTC"
+	}
+	return time.LoadLocation(name)
+}
+
+func mysqlDSNWithTimezone(dsn string, location *time.Location) (string, error) {
+	config, err := mysqldriver.ParseDSN(dsn)
+	if err != nil {
+		return "", err
+	}
+	config.Loc = location
+	config.ParseTime = true
+	if config.Params == nil {
+		config.Params = make(map[string]string)
+	}
+	timezone := location.String()
+	if timezone == "UTC" {
+		timezone = "+00:00"
+	}
+	config.Params["time_zone"] = "'" + timezone + "'"
+	return config.FormatDSN(), nil
+}
+
+func postgresConfigWithTimezone(dsn string, location *time.Location) (*pgx.ConnConfig, error) {
+	config, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	config.RuntimeParams["timezone"] = location.String()
+	return config, nil
 }
 
 // NormalizeDialect returns the canonical GORM driver name.

@@ -1,0 +1,11 @@
+*
+
+!.claude
+!.claude/**
+
+!/apps
+!/apps/**
+
+
+!/.gitignore
+!/*.md

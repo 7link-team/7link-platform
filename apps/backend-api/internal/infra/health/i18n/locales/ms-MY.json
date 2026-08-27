@@ -1,5 +1,5 @@
 {
-  "health_check_completed": "Pemeriksaan kesihatan selesai.",
-  "readiness_check_succeeded": "Pemeriksaan kesediaan berjaya diselesaikan.",
-  "readiness_check_failed": "Perkhidmatan belum bersedia."
+  "check_completed": "Pemeriksaan kesihatan selesai.",
+  "readiness_succeeded": "Pemeriksaan kesediaan berjaya diselesaikan.",
+  "readiness_failed": "Perkhidmatan belum bersedia."
 }

@@ -25,7 +25,7 @@ func TestServiceCheckNotServing(t *testing.T) {
 	result := service.Check(t.Context())
 	assert.Equal(t, StatusNotServing, result.Status)
 	assert.Equal(t, []ModuleStatus{
-		{Name: "http", Status: StatusServing},
+		{Name: "http", Status: StatusUnknown},
 		{Name: "database", Status: StatusNotServing},
 	}, result.Modules)
 	assert.ErrorIs(t, service.CheckHealth(t.Context()), expected)

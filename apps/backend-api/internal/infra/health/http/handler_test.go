@@ -11,6 +11,7 @@ import (
 	healthi18n "7link.com/platform/internal/infra/health/i18n"
 	"7link.com/platform/internal/infra/health/service"
 	humax "7link.com/platform/pkg/extension/huma"
+	"7link.com/platform/pkg/extension/huma/respx"
 	"7link.com/platform/pkg/i18n"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -19,7 +20,8 @@ import (
 
 func newTestHandler(t *testing.T, services ...*service.Service) http.Handler {
 	t.Helper()
-	require.NoError(t, i18n.InitEmbedded(i18n.Base))
+	require.NoError(t, i18n.NewModule(i18n.Base).Initialize(t.Context()))
+	require.NoError(t, respx.NewModule().Initialize(t.Context()))
 	require.NoError(t, healthi18n.Register())
 	router := chi.NewRouter()
 	api := humax.New(router, "test", "1.0.0")
@@ -111,7 +113,7 @@ func TestReadinessHTTP(t *testing.T) {
 	assert.Equal(t, "Service is not ready.", body.Message)
 	assert.Equal(t, service.StatusNotServing, body.Data.Status)
 	assert.Equal(t, []service.ModuleStatus{
-		{Name: "http", Status: service.StatusServing},
+		{Name: "http", Status: service.StatusUnknown},
 		{Name: "database", Status: service.StatusNotServing},
 	}, body.Data.Modules)
 }

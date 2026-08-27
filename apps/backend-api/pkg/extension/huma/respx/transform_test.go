@@ -12,11 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// initI18n loads the global locale bundle so TContext can resolve keys. It is
-// idempotent, so tests may call it freely.
+// initI18n initializes the registry and registers the respx-owned bundle.
 func initI18n(t *testing.T) {
 	t.Helper()
-	require.NoError(t, i18n.InitEmbedded(i18n.Base))
+	require.NoError(t, i18n.NewModule(i18n.Base).Initialize(t.Context()))
+	require.NoError(t, NewModule().Initialize(t.Context()))
 }
 
 func localeCtx(locale string) context.Context {
@@ -27,14 +27,14 @@ func TestEnvelopeLocalize(t *testing.T) {
 	initI18n(t)
 
 	t.Run("translates key to zh-CN", func(t *testing.T) {
-		env := Envelope[string]{Message: "success", Data: "x"}
+		env := Envelope[string]{Message: messageKey("success"), Data: "x"}
 		got := env.localize(localeCtx("zh-CN")).(Envelope[string])
 		assert.Equal(t, "成功", got.Message)
 		assert.Equal(t, "x", got.Data)
 	})
 
 	t.Run("translates key to en-US", func(t *testing.T) {
-		env := Envelope[string]{Message: "success"}
+		env := Envelope[string]{Message: messageKey("success")}
 		got := env.localize(localeCtx("en-US")).(Envelope[string])
 		assert.Equal(t, "Success", got.Message)
 	})
@@ -46,9 +46,9 @@ func TestEnvelopeLocalize(t *testing.T) {
 	})
 
 	t.Run("does not mutate the source (value receiver)", func(t *testing.T) {
-		env := Envelope[string]{Message: "success"}
+		env := Envelope[string]{Message: messageKey("success")}
 		_ = env.localize(localeCtx("zh-CN"))
-		assert.Equal(t, "success", env.Message, "caller's envelope is untouched")
+		assert.Equal(t, messageKey("success"), env.Message, "caller's envelope is untouched")
 	})
 }
 
@@ -58,7 +58,7 @@ func TestErrorEnvelopeLocalize(t *testing.T) {
 
 	t.Run("translates summary and app-authored detail key", func(t *testing.T) {
 		e := huma.NewError(422, "validation failed",
-			&huma.ErrorDetail{Message: "invalid_ipv4", Location: "path.ip"}).(*errorEnvelope)
+			&huma.ErrorDetail{Message: messageKey("invalid_ipv4"), Location: "path.ip"}).(*errorEnvelope)
 		got := e.localize(localeCtx("zh-CN")).(*errorEnvelope)
 		assert.Equal(t, "请求数据校验失败，请修正以下字段: 字段 path.ip：不是合法的 IPv4 地址（应为 x.x.x.x）", got.Message)
 	})
@@ -71,14 +71,14 @@ func TestErrorEnvelopeLocalize(t *testing.T) {
 	})
 
 	t.Run("app summary key without detail", func(t *testing.T) {
-		e := huma.NewError(404, "geoip_not_found").(*errorEnvelope)
+		e := huma.NewError(404, "domain.not_found").(*errorEnvelope)
 		got := e.localize(localeCtx("en-US")).(*errorEnvelope)
-		assert.Equal(t, "No geolocation data was found for this IP address. Verify the address or try another provider.", got.Message)
+		assert.Equal(t, "domain.not_found", got.Message)
 	})
 
 	t.Run("idempotent — second pass is a no-op", func(t *testing.T) {
 		e := huma.NewError(422, "validation failed",
-			&huma.ErrorDetail{Message: "invalid_ipv4", Location: "path.ip"}).(*errorEnvelope)
+			&huma.ErrorDetail{Message: messageKey("invalid_ipv4"), Location: "path.ip"}).(*errorEnvelope)
 		once := e.localize(localeCtx("en-US")).(*errorEnvelope).Message
 		twice := e.localize(localeCtx("en-US")).(*errorEnvelope).Message
 		assert.Equal(t, "Request data validation failed; correct the following fields: Field path.ip: Not a valid IPv4 address (expected x.x.x.x)", once)
@@ -86,9 +86,9 @@ func TestErrorEnvelopeLocalize(t *testing.T) {
 	})
 
 	t.Run("drops arbitrary internal errors", func(t *testing.T) {
-		e := huma.NewError(503, "authorization_unavailable", assert.AnError).(*errorEnvelope)
+		e := huma.NewError(503, messageKey("internal_server_error"), assert.AnError).(*errorEnvelope)
 		got := e.localize(localeCtx("ms-MY")).(*errorEnvelope)
-		assert.Equal(t, "Kebenaran tidak dapat dinilai dengan selamat. Cuba lagi kemudian; hubungi pentadbir jika masalah berterusan.", got.Message)
+		assert.Equal(t, "Pelayan tidak dapat menyelesaikan permintaan. Cuba lagi kemudian; hubungi pentadbir jika masalah berterusan.", got.Message)
 		assert.NotContains(t, got.Message, assert.AnError.Error())
 	})
 }
@@ -97,7 +97,7 @@ func TestLocalizeBody(t *testing.T) {
 	initI18n(t)
 
 	t.Run("localizes an envelope", func(t *testing.T) {
-		got := localizeBody(localeCtx("zh-CN"), Envelope[int]{Message: "success", Data: 1})
+		got := localizeBody(localeCtx("zh-CN"), Envelope[int]{Message: messageKey("success"), Data: 1})
 		assert.Equal(t, "成功", got.(Envelope[int]).Message)
 	})
 

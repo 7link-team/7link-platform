@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# Go build and test output
+**/bin/
+*.test
+*.out
+coverage.html
+
+# Local SQLite databases
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*

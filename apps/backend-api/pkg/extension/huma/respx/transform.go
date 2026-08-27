@@ -38,10 +38,10 @@ func (e *errorEnvelope) localize(ctx context.Context) any {
 		for _, detail := range e.details {
 			localized := localizeToken(ctx, detail.message)
 			if localized == detail.message {
-				localized = i18n.TContext(ctx, "validation_invalid_value")
+				localized = i18n.TContext(ctx, messageKey("validation_invalid_value"))
 			}
 			if detail.location != "" {
-				localized = i18n.TContext(ctx, "validation_field", detail.location, localized)
+				localized = i18n.TContext(ctx, messageKey("validation_field"), detail.location, localized)
 			}
 			parts = append(parts, localized)
 		}
@@ -57,7 +57,7 @@ func localizeToken(ctx context.Context, token string) string {
 	} else if format, ok := strings.CutPrefix(token, "invalid date/time for format "); ok {
 		token = validationMessage("validation_expected_datetime_format", format)
 	} else if strings.HasPrefix(token, "invalid value:") {
-		token = "validation_invalid_value"
+		token = messageKey("validation_invalid_value")
 	}
 	parts := strings.Split(token, argSep)
 	message := i18n.TContext(ctx, parts[0])
@@ -72,13 +72,13 @@ func localizeToken(ctx context.Context, token string) string {
 }
 
 var frameworkDetailKey = map[string]string{
-	"invalid integer":        "validation_expected_integer",
-	"invalid float":          "validation_expected_number",
-	"invalid floating value": "validation_expected_number",
-	"invalid boolean":        "validation_expected_boolean",
-	"invalid url.URL value":  "validation_expected_uri",
-	"unparsable value":       "validation_invalid_value",
-	"unsupported type":       "validation_invalid_value",
+	"invalid integer":        messageKey("validation_expected_integer"),
+	"invalid float":          messageKey("validation_expected_number"),
+	"invalid floating value": messageKey("validation_expected_number"),
+	"invalid boolean":        messageKey("validation_expected_boolean"),
+	"invalid url.URL value":  messageKey("validation_expected_uri"),
+	"unparsable value":       messageKey("validation_invalid_value"),
+	"unsupported type":       messageKey("validation_invalid_value"),
 }
 
 // localizeBody localizes v when it is an envelope, otherwise returns it

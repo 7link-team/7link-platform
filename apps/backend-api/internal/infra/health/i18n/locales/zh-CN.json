@@ -1,5 +1,5 @@
 {
-  "health_check_completed": "健康检查已完成。",
-  "readiness_check_succeeded": "就绪检查成功完成。",
-  "readiness_check_failed": "服务尚未就绪。"
+  "check_completed": "健康检查已完成。",
+  "readiness_succeeded": "就绪检查成功完成。",
+  "readiness_failed": "服务尚未就绪。"
 }

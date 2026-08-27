@@ -5,10 +5,38 @@ import (
 	"database/sql"
 	"fmt"
 	"io/fs"
+	"slices"
 	"strings"
 
 	goosev3 "github.com/pressly/goose/v3"
+	"github.com/pressly/goose/v3/database"
 )
+
+type State string
+
+const (
+	StateClean    State = "clean"
+	StatePending  State = "pending"
+	StateAhead    State = "ahead"
+	StateDiverged State = "diverged"
+)
+
+// Source identifies one module-owned migration stream.
+type Source struct {
+	FS        fs.FS
+	TableName string
+}
+
+// Status compares every embedded migration version with every applied version.
+type Status struct {
+	Current  int64
+	Target   int64
+	State    State
+	Embedded []int64
+	Applied  []int64
+	Pending  []int64
+	Unknown  []int64
+}
 
 // ResolveDialect maps a dialect string to a goose dialect and the SQL
 // subdirectory holding that dialect's migrations.
@@ -29,7 +57,12 @@ func ResolveDialect(dialect string) (goosev3.Dialect, string, error) {
 // module-private goose version table. Global registry is disabled so multiple
 // modules can run independently in one process.
 func Run(ctx context.Context, db *sql.DB, fsys fs.FS, dialect, tableName string) error {
-	provider, err := newProvider(db, fsys, dialect, tableName)
+	return Up(ctx, db, Source{FS: fsys, TableName: tableName}, dialect)
+}
+
+// Up applies all pending migrations from source.
+func Up(ctx context.Context, db *sql.DB, source Source, dialect string) error {
+	provider, err := newProvider(db, source.FS, dialect, source.TableName)
 	if err != nil {
 		return err
 	}
@@ -54,7 +87,13 @@ func Down(ctx context.Context, db *sql.DB, fsys fs.FS, dialect, tableName string
 
 // DownTo rolls a module back to version. The target migration remains applied.
 func DownTo(ctx context.Context, db *sql.DB, fsys fs.FS, dialect, tableName string, version int64) error {
-	provider, err := newProvider(db, fsys, dialect, tableName)
+	return DownSourceTo(ctx, db, Source{FS: fsys, TableName: tableName}, dialect, version)
+}
+
+// DownSourceTo rolls source back to version. The caller must use an artifact
+// that still contains every migration above the requested target.
+func DownSourceTo(ctx context.Context, db *sql.DB, source Source, dialect string, version int64) error {
+	provider, err := newProvider(db, source.FS, dialect, source.TableName)
 	if err != nil {
 		return err
 	}
@@ -67,15 +106,86 @@ func DownTo(ctx context.Context, db *sql.DB, fsys fs.FS, dialect, tableName stri
 // UpToDate reports whether every migration in fsys has been applied to the
 // database. A database with no applied migrations reports false.
 func UpToDate(ctx context.Context, db *sql.DB, fsys fs.FS, dialect, tableName string) (bool, error) {
-	provider, err := newProvider(db, fsys, dialect, tableName)
-	if err != nil {
-		return false, err
-	}
-	pending, err := provider.HasPending(ctx)
+	status, err := Inspect(ctx, db, Source{FS: fsys, TableName: tableName}, dialect)
 	if err != nil {
 		return false, fmt.Errorf("goose: check migrations: %w", err)
 	}
-	return !pending, nil
+	return status.State == StateClean, nil
+}
+
+// Inspect compares the complete embedded and applied migration sets. Unknown
+// versions are applied database versions for which this artifact has no source.
+func Inspect(ctx context.Context, db *sql.DB, source Source, dialect string) (Status, error) {
+	provider, err := newProvider(db, source.FS, dialect, source.TableName)
+	if err != nil {
+		return Status{}, err
+	}
+	if _, err := provider.Status(ctx); err != nil {
+		return Status{}, fmt.Errorf("goose: inspect migrations: %w", err)
+	}
+
+	resolvedDialect, _, err := ResolveDialect(dialect)
+	if err != nil {
+		return Status{}, err
+	}
+	store, err := database.NewStore(database.Dialect(resolvedDialect), source.TableName)
+	if err != nil {
+		return Status{}, fmt.Errorf("goose: create migration store: %w", err)
+	}
+	dbMigrations, err := store.ListMigrations(ctx, db)
+	if err != nil {
+		return Status{}, fmt.Errorf("goose: list applied migrations: %w", err)
+	}
+
+	result := Status{
+		State:    StateClean,
+		Embedded: make([]int64, 0),
+		Applied:  make([]int64, 0),
+		Pending:  make([]int64, 0),
+		Unknown:  make([]int64, 0),
+	}
+	embedded := make(map[int64]struct{})
+	for _, migration := range provider.ListSources() {
+		version := migration.Version
+		embedded[version] = struct{}{}
+		result.Embedded = append(result.Embedded, version)
+		if version > result.Target {
+			result.Target = version
+		}
+	}
+	applied := make(map[int64]struct{})
+	for _, migration := range dbMigrations {
+		if migration.Version <= 0 || !migration.IsApplied {
+			continue
+		}
+		applied[migration.Version] = struct{}{}
+	}
+	for version := range applied {
+		result.Applied = append(result.Applied, version)
+		if version > result.Current {
+			result.Current = version
+		}
+		if _, exists := embedded[version]; !exists {
+			result.Unknown = append(result.Unknown, version)
+		}
+	}
+	for version := range embedded {
+		if _, exists := applied[version]; !exists {
+			result.Pending = append(result.Pending, version)
+		}
+	}
+	for _, versions := range [][]int64{result.Embedded, result.Applied, result.Pending, result.Unknown} {
+		slices.Sort(versions)
+	}
+	switch {
+	case len(result.Unknown) > 0 && (len(result.Pending) > 0 || result.Current <= result.Target):
+		result.State = StateDiverged
+	case len(result.Unknown) > 0:
+		result.State = StateAhead
+	case len(result.Pending) > 0:
+		result.State = StatePending
+	}
+	return result, nil
 }
 
 func newProvider(db *sql.DB, fsys fs.FS, dialect, tableName string) (*goosev3.Provider, error) {

@@ -1,5 +1,5 @@
 {
-  "health_check_completed": "Health check completed.",
-  "readiness_check_succeeded": "Readiness check completed successfully.",
-  "readiness_check_failed": "Service is not ready."
+  "check_completed": "Health check completed.",
+  "readiness_succeeded": "Readiness check completed successfully.",
+  "readiness_failed": "Service is not ready."
 }

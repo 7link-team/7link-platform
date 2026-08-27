@@ -16,7 +16,7 @@ func TestOK_SuccessEnvelope(t *testing.T) {
 	got := OK(context.Background(), "payload")
 
 	assert.Equal(t, 0, got.Body.Code)
-	assert.Equal(t, "success", got.Body.Message, "message carries the i18n key")
+	assert.Equal(t, messageKey("success"), got.Body.Message, "message carries the namespaced i18n key")
 	assert.Equal(t, "payload", got.Body.Data)
 	assert.Nil(t, got.Body.Meta.Page, "non-list response carries no page meta")
 	assert.False(t, got.Body.Meta.RequestAt.IsZero())
@@ -28,7 +28,7 @@ func TestList_CarriesPageMeta(t *testing.T) {
 	got := List(context.Background(), []int{1, 2, 3}, page)
 
 	assert.Equal(t, 0, got.Body.Code)
-	assert.Equal(t, "success", got.Body.Message)
+	assert.Equal(t, messageKey("success"), got.Body.Message)
 	require.NotNil(t, got.Body.Meta.Page)
 	assert.Equal(t, page, *got.Body.Meta.Page)
 	assert.Len(t, got.Body.Data, 3)
@@ -39,7 +39,7 @@ func TestInstall_NormalizesSummaryAndKeepsStructuredDetail(t *testing.T) {
 	Install()
 
 	err := huma.NewError(422, "validation failed", &huma.ErrorDetail{
-		Message:  "invalid_ipv4",
+		Message:  messageKey("invalid_ipv4"),
 		Location: "path.ip",
 		Value:    "abc",
 	})
@@ -48,8 +48,8 @@ func TestInstall_NormalizesSummaryAndKeepsStructuredDetail(t *testing.T) {
 	ee, ok := err.(*errorEnvelope)
 	require.True(t, ok)
 	assert.Equal(t, 422, ee.Code)
-	assert.Equal(t, "validation_failed", ee.Message)
-	assert.Equal(t, []errorDetail{{message: "invalid_ipv4", location: "path.ip"}}, ee.details)
+	assert.Equal(t, messageKey("validation_failed"), ee.Message)
+	assert.Equal(t, []errorDetail{{message: messageKey("invalid_ipv4"), location: "path.ip"}}, ee.details)
 	assert.Equal(t, time.UTC, ee.Meta.RequestAt.Location(), "RequestAt is UTC")
 
 	// Raw serialization keeps the {code,message,meta,data} shape; data is null.
@@ -62,7 +62,7 @@ func TestInstall_NormalizesSummaryAndKeepsStructuredDetail(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(raw, &env))
 	assert.Equal(t, 422, env.Code)
-	assert.Equal(t, "validation_failed", env.Message)
+	assert.Equal(t, messageKey("validation_failed"), env.Message)
 	assert.JSONEq(t, "null", string(env.Data), "data is null on error")
 }
 
@@ -71,15 +71,15 @@ func TestInstall_AppSummaryPassesThroughUnchanged(t *testing.T) {
 
 	// A non-huma summary (e.g. an app i18n key via huma.Error404NotFound) is not
 	// clobbered by any status mapping — it is carried verbatim for localization.
-	err := huma.NewError(404, "geoip_not_found")
+	err := huma.NewError(404, "domain.not_found")
 	ee, ok := err.(*errorEnvelope)
 	require.True(t, ok)
 	assert.Equal(t, 404, ee.Code)
-	assert.Equal(t, "geoip_not_found", ee.Message)
+	assert.Equal(t, "domain.not_found", ee.Message)
 }
 
 func TestErr_BusinessEnvelope(t *testing.T) {
-	e := Err(context.Background(), 100001, "insufficient_balance")
+	e := Err(context.Background(), 100001, "billing.insufficient_balance")
 
 	var se huma.StatusError
 	require.True(t, errors.As(e, &se))
@@ -88,8 +88,8 @@ func TestErr_BusinessEnvelope(t *testing.T) {
 	var ee *errorEnvelope
 	require.True(t, errors.As(e, &ee))
 	assert.Equal(t, 100001, ee.Code)
-	assert.Equal(t, "insufficient_balance", ee.Message, "message carries the i18n key")
-	assert.Equal(t, "insufficient_balance", ee.Error(), "Error() exposes the message")
+	assert.Equal(t, "billing.insufficient_balance", ee.Message, "message carries the i18n key")
+	assert.Equal(t, "billing.insufficient_balance", ee.Error(), "Error() exposes the message")
 	assert.Equal(t, time.UTC, ee.Meta.RequestAt.Location(), "RequestAt is UTC")
 }
 

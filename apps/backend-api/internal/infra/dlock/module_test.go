@@ -22,8 +22,7 @@ func (r *countingWriter) Write() *gorm.DB {
 }
 
 func TestModuleWithoutDatabaseReportsUnhealthy(t *testing.T) {
-	module := New(nil)
-	require.NoError(t, module.Initialize(t.Context()))
+	module := NewModule(nil)
 	assert.ErrorIs(t, module.CheckHealth(t.Context()), ErrDatabaseUnavailable)
 	_, err := module.TryLock(t.Context(), "missing")
 	assert.ErrorIs(t, err, ErrDatabaseUnavailable)
@@ -34,23 +33,23 @@ func TestModuleWithoutDatabaseReportsUnhealthy(t *testing.T) {
 func TestModuleInitializesAndProvidesLocks(t *testing.T) {
 	db := newDB(t)
 	router := &countingWriter{db: db}
-	module := New(router, WithTTL(DefaultTTL))
+	module := NewModule(router, WithTTL(DefaultTTL))
 
-	require.NoError(t, module.Initialize(t.Context()))
-	assert.Equal(t, int32(1), router.calls.Load())
+	require.NoError(t, Migrate(t.Context(), db))
+	assert.Zero(t, router.calls.Load())
 	require.NoError(t, module.CheckHealth(t.Context()))
-	assert.Equal(t, int32(2), router.calls.Load())
+	assert.Equal(t, int32(1), router.calls.Load())
 
 	lock, err := module.TryLock(t.Context(), "module")
 	require.NoError(t, err)
-	assert.Equal(t, int32(3), router.calls.Load())
+	assert.Equal(t, int32(2), router.calls.Load())
 	require.NoError(t, lock.Unlock(t.Context()))
 }
 
 func TestModuleReportsClosedDatabase(t *testing.T) {
 	db := newDB(t)
-	module := New(&gormx.DatasourceRouter{Writer: []*gorm.DB{db}})
-	require.NoError(t, module.Initialize(t.Context()))
+	module := NewModule(&gormx.DatasourceRouter{Writer: []*gorm.DB{db}})
+	require.NoError(t, Migrate(t.Context(), db))
 
 	sqlDB, err := db.DB()
 	require.NoError(t, err)

@@ -21,7 +21,7 @@ type countInput struct {
 	Count int `path:"count"`
 }
 
-// ipInput mirrors an app validator (like geoip) that returns an i18n key as its
+// ipInput mirrors a module validator that returns an i18n key as its
 // field-detail message, so the whole error message localizes.
 type ipInput struct {
 	IP string `path:"ip"`
@@ -29,14 +29,14 @@ type ipInput struct {
 
 func (i *ipInput) Resolve(_ huma.Context) []error {
 	if i.IP != "ok" {
-		return []error{&huma.ErrorDetail{Message: "invalid_ipv4", Location: "path.ip", Value: i.IP}}
+		return []error{&huma.ErrorDetail{Message: messageKey("invalid_ipv4"), Location: "path.ip", Value: i.IP}}
 	}
 	return nil
 }
 
 // newTestAPI builds a chi router wired exactly like the real server: Timing +
 // Locale middleware, the LocalizeMessage transformer, and Install for unified
-// errors. It registers a success, a business-error, and a validation route.
+// errors. It registers a success, a domain-error, and a validation route.
 func newTestAPI(t *testing.T) http.Handler {
 	t.Helper()
 	initI18n(t)
@@ -54,7 +54,7 @@ func newTestAPI(t *testing.T) http.Handler {
 		return OK(ctx, "pong"), nil
 	})
 	huma.Get(api, "/boom", func(ctx context.Context, _ *struct{}) (*Body[string], error) {
-		return nil, Err(ctx, 100001, "user_not_found")
+		return nil, Err(ctx, 100001, "domain.not_found")
 	})
 	huma.Get(api, "/n/{count}", func(ctx context.Context, in *countInput) (*Body[int], error) {
 		return OK(ctx, in.Count), nil
@@ -124,13 +124,13 @@ func TestIntegration_SuccessLocalized(t *testing.T) {
 	})
 }
 
-func TestIntegration_BusinessErrorLocalized(t *testing.T) {
+func TestIntegration_DomainErrorKeyPassesThrough(t *testing.T) {
 	h := newTestAPI(t)
 
 	status, env := do(t, h, "/boom", map[string]string{"Accept-Language": "zh-CN"})
 	assert.Equal(t, http.StatusBadRequest, status)
 	assert.Equal(t, 100001, env.Code)
-	assert.Equal(t, "未找到指定用户，请核对用户标识符和租户后重试。", env.Message)
+	assert.Equal(t, "domain.not_found", env.Message)
 	assert.JSONEq(t, "null", string(env.Data))
 }
 
@@ -147,8 +147,8 @@ func TestIntegration_ValidationErrorLocalized(t *testing.T) {
 	assert.Equal(t, "Pengesahan data permintaan gagal; betulkan medan berikut: Medan path.count: Integer diperlukan.", ms.Message)
 }
 
-// TestIntegration_AppValidationFullyLocalized reproduces the geoip scenario: an
-// app validator returning an i18n key as its detail — the whole message localizes.
+// TestIntegration_AppValidationFullyLocalized verifies a module validator can
+// return a generic validation key and localize the complete message.
 func TestIntegration_AppValidationFullyLocalized(t *testing.T) {
 	h := newTestAPI(t)
 

@@ -9,13 +9,51 @@ import (
 	"7link.com/platform/internal/infra/dlock"
 	"7link.com/platform/internal/infra/health"
 	healthservice "7link.com/platform/internal/infra/health/service"
+	"7link.com/platform/pkg/module"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 type healthModule struct{ err error }
 
+func (*healthModule) ModuleName() string                  { return "health-test" }
 func (m *healthModule) CheckHealth(context.Context) error { return m.err }
+
+type namedHealthModule struct {
+	name string
+	err  error
+}
+
+func (m *namedHealthModule) ModuleName() string                { return m.name }
+func (m *namedHealthModule) CheckHealth(context.Context) error { return m.err }
+
+type wiringService interface{ Ready() bool }
+
+type wiringProvider struct{}
+
+func (*wiringProvider) ModuleName() string { return "provider" }
+func (*wiringProvider) Ready() bool        { return true }
+
+func (provider *wiringProvider) ProvideServices(services *module.Services) error {
+	return module.Provide[wiringService](services, provider)
+}
+
+type wiringConsumer struct{ service wiringService }
+
+func (*wiringConsumer) ModuleName() string { return "consumer" }
+func (consumer *wiringConsumer) InjectServices(services *module.Services) error {
+	service, err := module.Resolve[wiringService](services)
+	consumer.service = service
+	return err
+}
+
+func TestWireModulesCollectsProvidersBeforeInjection(t *testing.T) {
+	consumer := &wiringConsumer{}
+	app := &App{mods: []module.Module{consumer, &wiringProvider{}}}
+	require.NoError(t, app.wireModules())
+	require.NotNil(t, consumer.service)
+	assert.True(t, consumer.service.Ready())
+}
 
 func TestInitializeDatabaseRoutesPrimaryAndReplica(t *testing.T) {
 	app := &App{config: AppConfig{Database: map[string]Database{
@@ -38,28 +76,12 @@ func TestInitializeDatabaseRoutesPrimaryAndReplica(t *testing.T) {
 	assert.NotSame(t, app.Db.Writer[0], app.Db.Reader[0])
 }
 
-func TestInitializeDatabaseDefaultsUnspecifiedRolesToReadWrite(t *testing.T) {
-	app := &App{config: AppConfig{Database: map[string]Database{
-		"primary": {
-			Type: "sqlite",
-			Dsn:  filepath.Join(t.TempDir(), "legacy.sqlite"),
-		},
-	}}}
-	app.initializeDatabase(t.Context())
-	t.Cleanup(func() { _ = app.Db.Close() })
-
-	require.Len(t, app.Db.Writer, 1)
-	require.Len(t, app.Db.Reader, 1)
-	assert.Same(t, app.Db.Writer[0], app.Db.Reader[0])
-}
-
 func TestCheckHealthJoinsModuleErrors(t *testing.T) {
 	first := errors.New("first unavailable")
 	second := errors.New("second unavailable")
-	app := &App{mods: []any{
-		&healthModule{err: first},
-		struct{}{},
-		&healthModule{err: second},
+	app := &App{mods: []module.Module{
+		&namedHealthModule{name: "first", err: first},
+		&namedHealthModule{name: "second", err: second},
 	}}
 
 	err := app.checkHealth(t.Context())
@@ -80,6 +102,7 @@ func TestBootstrapMigratesDatabaseAndBecomesHealthy(t *testing.T) {
 
 	require.NotNil(t, app.Db.Write())
 	assert.True(t, app.Db.Write().Migrator().HasTable("dlocks"))
+	assert.True(t, app.Db.Write().Migrator().HasTable("worker_ids"))
 	assert.NoError(t, app.checkHealth(t.Context()))
 }
 
@@ -101,9 +124,12 @@ func TestBootstrapWithoutWriterReportsUnhealthy(t *testing.T) {
 	assert.Equal(t, healthservice.CheckData{
 		Status: healthservice.StatusNotServing,
 		Modules: []healthservice.ModuleStatus{
-			{Name: "i18n", Status: healthservice.StatusServing},
-			{Name: "health", Status: healthservice.StatusServing},
+			{Name: "i18n", Status: healthservice.StatusUnknown},
+			{Name: "respx", Status: healthservice.StatusUnknown},
+			{Name: "health", Status: healthservice.StatusUnknown},
 			{Name: "dlock", Status: healthservice.StatusNotServing},
+			{Name: "wuid", Status: healthservice.StatusNotServing},
+			{Name: "guid", Status: healthservice.StatusNotServing},
 		},
 	}, healthModule.Service().Check(t.Context()))
 }

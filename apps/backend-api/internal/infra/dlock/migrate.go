@@ -12,6 +12,14 @@ import (
 //go:embed sql/sqlite sql/mysql sql/postgres
 var migrationsFS embed.FS
 
+func (*Module) MigrationSource() goosex.Source {
+	return migrationSource()
+}
+
+func migrationSource() goosex.Source {
+	return goosex.Source{FS: migrationsFS, TableName: "goose_dlock"}
+}
+
 // Migrate applies the lock schema using a module-private Goose version table.
 func Migrate(ctx context.Context, db *gorm.DB) error {
 	if db == nil {
@@ -21,7 +29,7 @@ func Migrate(ctx context.Context, db *gorm.DB) error {
 	if err != nil {
 		return fmt.Errorf("dlock: get sql database: %w", err)
 	}
-	return goosex.Run(ctx, sqlDB, migrationsFS, db.Dialector.Name(), "goose_dlock")
+	return goosex.Up(ctx, sqlDB, migrationSource(), db.Dialector.Name())
 }
 
 func MigrateDown(ctx context.Context, db *gorm.DB) error {
@@ -43,5 +51,5 @@ func MigrateDownTo(ctx context.Context, db *gorm.DB, version int64) error {
 	if err != nil {
 		return fmt.Errorf("dlock: get sql database: %w", err)
 	}
-	return goosex.DownTo(ctx, sqlDB, migrationsFS, db.Dialector.Name(), "goose_dlock", version)
+	return goosex.DownSourceTo(ctx, sqlDB, migrationSource(), db.Dialector.Name(), version)
 }

@@ -1,10 +1,16 @@
 package gormx
 
 import (
+	"bytes"
+	"context"
+	"log/slog"
 	"path/filepath"
 	"testing"
 	"time"
 
+	otelx "7link.com/platform/pkg/extension/otel"
+	slogx "7link.com/platform/pkg/extension/slog"
+	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,6 +32,38 @@ func TestDatasourceOpenSQLite(t *testing.T) {
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	require.NoError(t, sqlDB.PingContext(t.Context()))
 	assert.Equal(t, 7, sqlDB.Stats().MaxOpenConnections)
+}
+
+func TestDatasourceTimezoneConfiguration(t *testing.T) {
+	singapore, err := time.LoadLocation("Asia/Singapore")
+	require.NoError(t, err)
+
+	mysqlDSN, err := mysqlDSNWithTimezone("user:pass@tcp(localhost:3306)/app?parseTime=false", singapore)
+	require.NoError(t, err)
+	mysqlConfig, err := mysqldriver.ParseDSN(mysqlDSN)
+	require.NoError(t, err)
+	assert.True(t, mysqlConfig.ParseTime)
+	assert.Equal(t, singapore.String(), mysqlConfig.Loc.String())
+	assert.Equal(t, `'Asia/Singapore'`, mysqlConfig.Params["time_zone"])
+
+	postgresConfig, err := postgresConfigWithTimezone(
+		"postgres://user:pass@localhost:5432/app?timezone=America%2FNew_York",
+		singapore,
+	)
+	require.NoError(t, err)
+	assert.Equal(t, singapore.String(), postgresConfig.RuntimeParams["timezone"])
+}
+
+func TestDatasourceTimezoneDefaultsToUTCAndRejectsInvalidName(t *testing.T) {
+	location, err := loadLocation("")
+	require.NoError(t, err)
+	assert.Equal(t, time.UTC, location)
+
+	_, err = (Datasource{
+		Type: "sqlite", DSN: filepath.Join(t.TempDir(), "invalid.sqlite"),
+		Timezone: "Invalid/Timezone",
+	}).Open(t.Context())
+	assert.ErrorContains(t, err, "invalid datasource timezone")
 }
 
 func TestDatasourceValidation(t *testing.T) {
@@ -88,4 +126,31 @@ func TestDatasourceRouterKeepsHealthyConnections(t *testing.T) {
 	require.NotNil(t, router.Write())
 	require.NoError(t, router.Close())
 	assert.NoError(t, (&DatasourceRouter{}).Close())
+}
+
+func TestDatasourceSQLLogContainsTraceID(t *testing.T) {
+	const traceID = "123e4567e89b42d3a456426614174000"
+	module := otelx.NewModule("test", "1.0.0", otelx.WithIDGenerator(func() string { return traceID }))
+	t.Cleanup(func() { require.NoError(t, module.Deinitialize(context.Background())) })
+
+	previousLogger := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+	var output bytes.Buffer
+	slog.SetDefault(slog.New(slogx.NewTraceHandler(slog.NewJSONHandler(&output, nil))))
+
+	db, err := (Datasource{
+		Type: "sqlite",
+		DSN:  filepath.Join(t.TempDir(), "trace.sqlite"),
+	}).open(t.Context(), true)
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	ctx, span := module.Tracer("test").Start(t.Context(), "query")
+	require.NoError(t, db.WithContext(ctx).Exec("SELECT 1").Error)
+	span.End()
+
+	assert.Contains(t, output.String(), `"trace_id":"`+traceID+`"`)
+	assert.Contains(t, output.String(), `"sql":"SELECT 1"`)
 }
