@@ -26,15 +26,27 @@ func (s *Server) Register(registrar grpc.ServiceRegistrar) {
 
 func (s *Server) Check(ctx context.Context, _ *healthv1.CheckRequest) (*healthv1.CheckResponse, error) {
 	data := s.service.Check(ctx)
-	status := healthv1.CheckData_SERVING_STATUS_UNSPECIFIED
-	if data.Status == service.StatusServing {
-		status = healthv1.CheckData_SERVING_STATUS_SERVING
-	} else if data.Status == service.StatusNotServing {
-		status = healthv1.CheckData_SERVING_STATUS_NOT_SERVING
+	modules := make([]*healthv1.ModuleStatus, 0, len(data.Modules))
+	for _, module := range data.Modules {
+		modules = append(modules, &healthv1.ModuleStatus{
+			Name:   module.Name,
+			Status: servingStatus(module.Status),
+		})
 	}
 	return &healthv1.CheckResponse{
 		Code:    0,
-		Message: i18n.TContext(ctx, healthi18n.CheckSucceeded),
-		Data:    &healthv1.CheckData{Status: status},
+		Message: i18n.TContext(ctx, healthi18n.CheckCompleted),
+		Data:    &healthv1.CheckData{Status: servingStatus(data.Status), Modules: modules},
 	}, nil
+}
+
+func servingStatus(status service.Status) healthv1.CheckData_ServingStatus {
+	switch status {
+	case service.StatusServing:
+		return healthv1.CheckData_SERVING_STATUS_SERVING
+	case service.StatusNotServing:
+		return healthv1.CheckData_SERVING_STATUS_NOT_SERVING
+	default:
+		return healthv1.CheckData_SERVING_STATUS_UNSPECIFIED
+	}
 }

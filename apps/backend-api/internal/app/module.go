@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
+	"reflect"
 
+	healthservice "7link.com/platform/internal/infra/health/service"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"
@@ -39,14 +42,41 @@ func (app *App) startModules(ctx context.Context) error {
 // checkHealth runs the HealthCheck phase for all modules that implement HealthChecker.
 func (app *App) checkHealth(ctx context.Context) error {
 	var errs []error
-	for _, m := range app.mods {
-		if x, ok := m.(module.HealthChecker); ok {
-			if err := x.CheckHealth(ctx); err != nil {
-				errs = append(errs, fmt.Errorf("%T health: %w", m, err))
-			}
+	for _, checker := range app.healthCheckers() {
+		if checker.Check == nil {
+			continue
+		}
+		if err := checker.Check(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("%s health: %w", checker.Name, err))
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func (app *App) healthCheckers() []healthservice.Checker {
+	checkers := make([]healthservice.Checker, 0, len(app.mods))
+	for _, appModule := range app.mods {
+		checker := healthservice.Checker{Name: moduleName(appModule)}
+		if healthChecker, ok := appModule.(module.HealthChecker); ok {
+			checker.Check = healthChecker.CheckHealth
+		}
+		checkers = append(checkers, checker)
+	}
+	return checkers
+}
+
+func moduleName(value any) string {
+	if named, ok := value.(module.Namer); ok && named.ModuleName() != "" {
+		return named.ModuleName()
+	}
+	typeOf := reflect.TypeOf(value)
+	for typeOf.Kind() == reflect.Pointer {
+		typeOf = typeOf.Elem()
+	}
+	if name := path.Base(typeOf.PkgPath()); name != "." && name != "" {
+		return name
+	}
+	return typeOf.Name()
 }
 
 // stopModules runs the Stop phase in reverse registration order (so dependents

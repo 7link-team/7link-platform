@@ -169,6 +169,7 @@ func (x *CheckResponse) GetData() *CheckData {
 type CheckData struct {
 	state         protoimpl.MessageState  `protogen:"open.v1"`
 	Status        CheckData_ServingStatus `protobuf:"varint,1,opt,name=status,proto3,enum=platform.health.v1.CheckData_ServingStatus" json:"status,omitempty"`
+	Modules       []*ModuleStatus         `protobuf:"bytes,2,rep,name=modules,proto3" json:"modules,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -210,6 +211,65 @@ func (x *CheckData) GetStatus() CheckData_ServingStatus {
 	return CheckData_SERVING_STATUS_UNSPECIFIED
 }
 
+func (x *CheckData) GetModules() []*ModuleStatus {
+	if x != nil {
+		return x.Modules
+	}
+	return nil
+}
+
+type ModuleStatus struct {
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	Name          string                  `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Status        CheckData_ServingStatus `protobuf:"varint,2,opt,name=status,proto3,enum=platform.health.v1.CheckData_ServingStatus" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ModuleStatus) Reset() {
+	*x = ModuleStatus{}
+	mi := &file_api_v1_health_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ModuleStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ModuleStatus) ProtoMessage() {}
+
+func (x *ModuleStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_api_v1_health_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ModuleStatus.ProtoReflect.Descriptor instead.
+func (*ModuleStatus) Descriptor() ([]byte, []int) {
+	return file_api_v1_health_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ModuleStatus) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ModuleStatus) GetStatus() CheckData_ServingStatus {
+	if x != nil {
+		return x.Status
+	}
+	return CheckData_SERVING_STATUS_UNSPECIFIED
+}
+
 var File_api_v1_health_proto protoreflect.FileDescriptor
 
 const file_api_v1_health_proto_rawDesc = "" +
@@ -219,13 +279,17 @@ const file_api_v1_health_proto_rawDesc = "" +
 	"\rCheckResponse\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\x05R\x04code\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x121\n" +
-	"\x04data\x18\x03 \x01(\v2\x1d.platform.health.v1.CheckDataR\x04data\"\xbd\x01\n" +
+	"\x04data\x18\x03 \x01(\v2\x1d.platform.health.v1.CheckDataR\x04data\"\xf9\x01\n" +
 	"\tCheckData\x12C\n" +
-	"\x06status\x18\x01 \x01(\x0e2+.platform.health.v1.CheckData.ServingStatusR\x06status\"k\n" +
+	"\x06status\x18\x01 \x01(\x0e2+.platform.health.v1.CheckData.ServingStatusR\x06status\x12:\n" +
+	"\amodules\x18\x02 \x03(\v2 .platform.health.v1.ModuleStatusR\amodules\"k\n" +
 	"\rServingStatus\x12\x1e\n" +
 	"\x1aSERVING_STATUS_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16SERVING_STATUS_SERVING\x10\x01\x12\x1e\n" +
-	"\x1aSERVING_STATUS_NOT_SERVING\x10\x022]\n" +
+	"\x1aSERVING_STATUS_NOT_SERVING\x10\x02\"g\n" +
+	"\fModuleStatus\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12C\n" +
+	"\x06status\x18\x02 \x01(\x0e2+.platform.health.v1.CheckData.ServingStatusR\x06status2]\n" +
 	"\rHealthService\x12L\n" +
 	"\x05Check\x12 .platform.health.v1.CheckRequest\x1a!.platform.health.v1.CheckResponseBJZH7link.com/platform/internal/infra/health/proto/gen/go/health/v1;healthv1b\x06proto3"
 
@@ -242,23 +306,26 @@ func file_api_v1_health_proto_rawDescGZIP() []byte {
 }
 
 var file_api_v1_health_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_api_v1_health_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_api_v1_health_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_api_v1_health_proto_goTypes = []any{
 	(CheckData_ServingStatus)(0), // 0: platform.health.v1.CheckData.ServingStatus
 	(*CheckRequest)(nil),         // 1: platform.health.v1.CheckRequest
 	(*CheckResponse)(nil),        // 2: platform.health.v1.CheckResponse
 	(*CheckData)(nil),            // 3: platform.health.v1.CheckData
+	(*ModuleStatus)(nil),         // 4: platform.health.v1.ModuleStatus
 }
 var file_api_v1_health_proto_depIdxs = []int32{
 	3, // 0: platform.health.v1.CheckResponse.data:type_name -> platform.health.v1.CheckData
 	0, // 1: platform.health.v1.CheckData.status:type_name -> platform.health.v1.CheckData.ServingStatus
-	1, // 2: platform.health.v1.HealthService.Check:input_type -> platform.health.v1.CheckRequest
-	2, // 3: platform.health.v1.HealthService.Check:output_type -> platform.health.v1.CheckResponse
-	3, // [3:4] is the sub-list for method output_type
-	2, // [2:3] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	4, // 2: platform.health.v1.CheckData.modules:type_name -> platform.health.v1.ModuleStatus
+	0, // 3: platform.health.v1.ModuleStatus.status:type_name -> platform.health.v1.CheckData.ServingStatus
+	1, // 4: platform.health.v1.HealthService.Check:input_type -> platform.health.v1.CheckRequest
+	2, // 5: platform.health.v1.HealthService.Check:output_type -> platform.health.v1.CheckResponse
+	5, // [5:6] is the sub-list for method output_type
+	4, // [4:5] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_api_v1_health_proto_init() }
@@ -272,7 +339,7 @@ func file_api_v1_health_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_v1_health_proto_rawDesc), len(file_api_v1_health_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   3,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

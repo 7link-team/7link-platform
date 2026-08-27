@@ -24,4 +24,10 @@ message CheckData {
   }
 
   ServingStatus status = 1;
+  repeated ModuleStatus modules = 2;
+}
+
+message ModuleStatus {
+  string name = 1;
+  CheckData.ServingStatus status = 2;
 }

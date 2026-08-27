@@ -14,6 +14,9 @@ import (
 
 func (app *App) startHTTPServer() error {
 	router := chi.NewRouter()
+	if app.telemetry != nil {
+		router.Use(app.telemetry.HTTPMiddleware)
+	}
 	api := humax.New(router, app.config.Name, app.config.Version)
 	if err := app.registerHTTPModules(app.ctx, router, api); err != nil {
 		return err

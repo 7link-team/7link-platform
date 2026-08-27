@@ -15,6 +15,20 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+type traceContextKey struct{}
+
+type contextLogger struct {
+	logger.Interface
+	contexts chan context.Context
+}
+
+func (l *contextLogger) Trace(ctx context.Context, _ time.Time, _ func() (string, int64), _ error) {
+	select {
+	case l.contexts <- ctx:
+	default:
+	}
+}
+
 var databaseID atomic.Uint64
 
 func newDB(t *testing.T) *gorm.DB {
@@ -190,6 +204,26 @@ func TestAutoRefreshHoldsBeyondTTL(t *testing.T) {
 	replacement, err := locker.TryLock(ctx, "long")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = replacement.Unlock(context.Background()) })
+}
+
+func TestAutoRefreshPreservesRequestContext(t *testing.T) {
+	log := &contextLogger{Interface: logger.Discard, contexts: make(chan context.Context, 16)}
+	db := newDB(t).Session(&gorm.Session{Logger: log})
+	locker := NewLocker(db, WithTTL(90*time.Millisecond), WithAutoRefresh())
+	ctx := context.WithValue(t.Context(), traceContextKey{}, "trace-id")
+	lock, err := locker.TryLock(ctx, "context")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = lock.Unlock(context.Background()) })
+
+	for len(log.contexts) > 0 {
+		<-log.contexts
+	}
+	select {
+	case refreshCtx := <-log.contexts:
+		assert.Equal(t, "trace-id", refreshCtx.Value(traceContextKey{}))
+	case <-time.After(time.Second):
+		t.Fatal("auto-refresh SQL was not logged")
+	}
 }
 
 func TestAutoRefreshDetectsTakeover(t *testing.T) {

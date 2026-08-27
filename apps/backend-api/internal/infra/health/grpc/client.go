@@ -33,20 +33,32 @@ func (c *Client) Check(ctx context.Context, opts ...grpc.CallOption) (CheckRespo
 		return CheckResponse{}, err
 	}
 
-	status := service.StatusUnknown
+	data := service.CheckData{Status: service.StatusUnknown, Modules: make([]service.ModuleStatus, 0)}
 	if result.GetData() != nil {
-		switch result.GetData().GetStatus() {
-		case healthv1.CheckData_SERVING_STATUS_SERVING:
-			status = service.StatusServing
-		case healthv1.CheckData_SERVING_STATUS_NOT_SERVING:
-			status = service.StatusNotServing
+		data.Status = serviceStatus(result.GetData().GetStatus())
+		for _, module := range result.GetData().GetModules() {
+			data.Modules = append(data.Modules, service.ModuleStatus{
+				Name:   module.GetName(),
+				Status: serviceStatus(module.GetStatus()),
+			})
 		}
 	}
 	return CheckResponse{
 		Code:    int(result.GetCode()),
 		Message: result.GetMessage(),
-		Data:    service.CheckData{Status: status},
+		Data:    data,
 	}, nil
+}
+
+func serviceStatus(status healthv1.CheckData_ServingStatus) service.Status {
+	switch status {
+	case healthv1.CheckData_SERVING_STATUS_SERVING:
+		return service.StatusServing
+	case healthv1.CheckData_SERVING_STATUS_NOT_SERVING:
+		return service.StatusNotServing
+	default:
+		return service.StatusUnknown
+	}
 }
 
 func withLocale(ctx context.Context) context.Context {

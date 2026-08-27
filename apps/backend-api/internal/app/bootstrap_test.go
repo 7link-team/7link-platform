@@ -7,7 +7,8 @@ import (
 	"testing"
 
 	"7link.com/platform/internal/infra/dlock"
-	"7link.com/platform/pkg/i18n"
+	"7link.com/platform/internal/infra/health"
+	healthservice "7link.com/platform/internal/infra/health/service"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -67,7 +68,6 @@ func TestCheckHealthJoinsModuleErrors(t *testing.T) {
 }
 
 func TestBootstrapMigratesDatabaseAndBecomesHealthy(t *testing.T) {
-	require.NoError(t, i18n.InitEmbedded(i18n.Base))
 	app := &App{config: AppConfig{Database: map[string]Database{
 		"primary": {
 			Type:     "sqlite",
@@ -84,10 +84,27 @@ func TestBootstrapMigratesDatabaseAndBecomesHealthy(t *testing.T) {
 }
 
 func TestBootstrapWithoutWriterReportsUnhealthy(t *testing.T) {
-	require.NoError(t, i18n.InitEmbedded(i18n.Base))
 	app := &App{}
 	require.NoError(t, app.bootstrap(t.Context()))
 	t.Cleanup(func() { _ = app.shutdown() })
 
 	assert.ErrorIs(t, app.checkHealth(t.Context()), dlock.ErrDatabaseUnavailable)
+
+	var healthModule *health.HealthModule
+	for _, appModule := range app.mods {
+		if candidate, ok := appModule.(*health.HealthModule); ok {
+			healthModule = candidate
+			break
+		}
+	}
+	require.NotNil(t, healthModule)
+	assert.Equal(t, healthservice.CheckData{
+		Status: healthservice.StatusNotServing,
+		Modules: []healthservice.ModuleStatus{
+			{Name: "i18n", Status: healthservice.StatusServing},
+			{Name: "health", Status: healthservice.StatusServing},
+			{Name: "grpcui", Status: healthservice.StatusServing},
+			{Name: "dlock", Status: healthservice.StatusNotServing},
+		},
+	}, healthModule.Service().Check(t.Context()))
 }

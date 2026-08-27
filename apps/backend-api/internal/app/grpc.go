@@ -19,10 +19,20 @@ func (app *App) startGRPCServer() error {
 		return fmt.Errorf("grpc listen %s: %w", addr, err)
 	}
 
-	app.grpcServer = grpc.NewServer(
-		grpc.UnaryInterceptor(grpcx.LocaleUnaryInterceptor),
-		grpc.StreamInterceptor(grpcx.LocaleStreamInterceptor),
-	)
+	serverOptions := []grpc.ServerOption{}
+	if app.telemetry != nil {
+		serverOptions = append(serverOptions,
+			grpc.StatsHandler(app.telemetry.GRPCServerStatsHandler()),
+			grpc.ChainUnaryInterceptor(app.telemetry.UnaryServerInterceptor, grpcx.LocaleUnaryInterceptor),
+			grpc.ChainStreamInterceptor(app.telemetry.StreamServerInterceptor, grpcx.LocaleStreamInterceptor),
+		)
+	} else {
+		serverOptions = append(serverOptions,
+			grpc.UnaryInterceptor(grpcx.LocaleUnaryInterceptor),
+			grpc.StreamInterceptor(grpcx.LocaleStreamInterceptor),
+		)
+	}
+	app.grpcServer = grpc.NewServer(serverOptions...)
 	app.registerGRPCModules(app.grpcServer)
 	// Lets grpcurl/grpcui discover services without a local .proto copy.
 	reflection.Register(app.grpcServer)

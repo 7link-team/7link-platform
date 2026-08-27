@@ -9,6 +9,10 @@ import (
 )
 
 type (
+	Namer interface {
+		ModuleName() string
+	}
+
 	// Initializer runs setup logic after migration but before starting.
 	Initializer interface {
 		Initialize(ctx context.Context) error

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -61,7 +62,10 @@ func (d Datasource) open(ctx context.Context, debug bool) (*gorm.DB, error) {
 	}
 	db, err := gorm.Open(dialector, &gorm.Config{
 		DisableAutomaticPing: true,
-		Logger:               logger.Default.LogMode(logLevel),
+		Logger: logger.NewSlogLogger(slog.Default(), logger.Config{
+			SlowThreshold: 200 * time.Millisecond,
+			LogLevel:      logLevel,
+		}),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("gormx: open %s datasource: %w", dialect, err)

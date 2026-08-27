@@ -19,21 +19,25 @@ const Path = "/grpcui"
 // Module owns the embedded grpcui HTTP routes and its connection to the local
 // reflected gRPC server.
 type Module struct {
-	target string
-	conn   *grpc.ClientConn
+	target      string
+	dialOptions []grpc.DialOption
+	conn        *grpc.ClientConn
 }
+
+func (*Module) ModuleName() string { return "grpcui" }
 
 var (
 	_ module.HTTPRegistrar = (*Module)(nil)
 	_ module.Stopper       = (*Module)(nil)
 )
 
-func NewModule(target string) *Module {
-	return &Module{target: target}
+func NewModule(target string, dialOptions ...grpc.DialOption) *Module {
+	return &Module{target: target, dialOptions: append([]grpc.DialOption(nil), dialOptions...)}
 }
 
 func (m *Module) RegisterHTTP(ctx context.Context, router chi.Router, _ huma.API) error {
-	conn, err := grpc.NewClient(m.target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	dialOptions := append([]grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}, m.dialOptions...)
+	conn, err := grpc.NewClient(m.target, dialOptions...)
 	if err != nil {
 		return fmt.Errorf("create client: %w", err)
 	}

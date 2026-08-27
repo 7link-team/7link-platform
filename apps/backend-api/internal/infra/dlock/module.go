@@ -18,6 +18,8 @@ type Module struct {
 	options []Option
 }
 
+func (*Module) ModuleName() string { return "dlock" }
+
 var (
 	_ module.Initializer   = (*Module)(nil)
 	_ module.HealthChecker = (*Module)(nil)

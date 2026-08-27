@@ -108,14 +108,14 @@ func (lk *Lock) Owner() string { return lk.owner }
 // long-running work. Without auto-refresh, expiry is only observed by Refresh.
 func (lk *Lock) Alive() bool { return lk.alive.Load() }
 
-func (l *Locker) newLock(name, owner string) *Lock {
+func (l *Locker) newLock(ctx context.Context, name, owner string) *Lock {
 	lk := &Lock{locker: l, name: name, owner: owner}
 	lk.alive.Store(true)
 	lk.lastRenew.Store(nowMillis())
 	if l.autoRefresh {
-		ctx, cancel := context.WithCancel(context.Background())
+		refreshCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 		lk.cancel = cancel
-		lk.startRefresh(ctx)
+		lk.startRefresh(refreshCtx)
 	}
 	return lk
 }
@@ -131,7 +131,7 @@ func (l *Locker) TryLock(ctx context.Context, name string) (*Lock, error) {
 	if !ok {
 		return nil, ErrNotAcquired
 	}
-	return l.newLock(name, owner), nil
+	return l.newLock(ctx, name, owner), nil
 }
 
 // Lock retries with bounded exponential backoff until name is acquired or ctx
@@ -150,7 +150,7 @@ func (l *Locker) Lock(ctx context.Context, name string) (*Lock, error) {
 			return nil, err
 		}
 		if ok {
-			return l.newLock(name, owner), nil
+			return l.newLock(ctx, name, owner), nil
 		}
 
 		timer := time.NewTimer(backoff)

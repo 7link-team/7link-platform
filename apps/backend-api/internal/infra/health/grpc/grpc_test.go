@@ -3,11 +3,13 @@ package grpc
 import (
 	"context"
 	"net"
+	"strings"
 	"testing"
 
 	healthi18n "7link.com/platform/internal/infra/health/i18n"
 	"7link.com/platform/internal/infra/health/service"
 	grpcx "7link.com/platform/pkg/extension/grpc"
+	otelx "7link.com/platform/pkg/extension/otel"
 	"7link.com/platform/pkg/i18n"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,10 +22,18 @@ import (
 func TestServerAndClient(t *testing.T) {
 	require.NoError(t, i18n.InitEmbedded(i18n.Base))
 	require.NoError(t, healthi18n.Register())
+	const traceID = "123e4567e89b42d3a456426614174000"
+	telemetry := otelx.New("health-test", "1.0.0", otelx.WithIDGenerator(func() string { return traceID }))
+	t.Cleanup(func() { require.NoError(t, telemetry.Deinitialize(context.Background())) })
 
 	listener := bufconn.Listen(1024 * 1024)
-	server := grpcgo.NewServer(grpcgo.UnaryInterceptor(grpcx.LocaleUnaryInterceptor))
-	NewServer(service.New()).Register(server)
+	server := grpcgo.NewServer(
+		grpcgo.StatsHandler(telemetry.GRPCServerStatsHandler()),
+		grpcgo.ChainUnaryInterceptor(telemetry.UnaryServerInterceptor, grpcx.LocaleUnaryInterceptor),
+	)
+	NewServer(service.New(func() []service.Checker {
+		return []service.Checker{{Name: "health"}}
+	})).Register(server)
 	go func() {
 		_ = server.Serve(listener)
 	}()
@@ -35,6 +45,7 @@ func TestServerAndClient(t *testing.T) {
 		grpcgo.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return listener.Dial()
 		}),
+		grpcgo.WithStatsHandler(telemetry.GRPCClientStatsHandler()),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
@@ -44,7 +55,11 @@ func TestServerAndClient(t *testing.T) {
 	result, err := NewClient(conn).Check(ctx, grpcgo.Header(&headers))
 	require.NoError(t, err)
 	assert.Equal(t, 0, result.Code)
-	assert.Equal(t, "健康检查成功完成。", result.Message)
+	assert.Equal(t, "健康检查已完成。", result.Message)
 	assert.Equal(t, service.StatusServing, result.Data.Status)
+	assert.Equal(t, []service.ModuleStatus{{Name: "health", Status: service.StatusServing}}, result.Data.Modules)
 	assert.Equal(t, []string{"zh-CN"}, headers.Get("content-language"))
+	assert.Equal(t, []string{traceID}, headers.Get(strings.ToLower(otelx.TraceIDHeader)))
+	require.Len(t, headers.Get(otelx.TraceparentHeader), 1)
+	assert.Contains(t, headers.Get(otelx.TraceparentHeader)[0], traceID)
 }

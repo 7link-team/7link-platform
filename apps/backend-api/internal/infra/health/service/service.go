@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"fmt"
 )
 
 type Status string
@@ -13,35 +15,74 @@ const (
 )
 
 type CheckData struct {
-	Status Status `json:"status" enum:"UNKNOWN,SERVING,NOT_SERVING" doc:"Current service health status" example:"SERVING"`
+	Status  Status         `json:"status" enum:"UNKNOWN,SERVING,NOT_SERVING" doc:"Current service health status" example:"SERVING"`
+	Modules []ModuleStatus `json:"modules" doc:"Health status of each registered application module"`
 }
 
-// Service contains the health application use cases and has no HTTP or gRPC dependency.
-type Checker func(context.Context) error
+type ModuleStatus struct {
+	Name   string `json:"name" doc:"Application module name" example:"dlock"`
+	Status Status `json:"status" enum:"UNKNOWN,SERVING,NOT_SERVING" doc:"Current module health status" example:"SERVING"`
+}
+
+type CheckFunc func(context.Context) error
+
+type Checker struct {
+	Name  string
+	Check CheckFunc
+}
+
+type CheckerProvider func() []Checker
 
 type Service struct {
-	checker Checker
+	provider CheckerProvider
 }
 
-func New(checkers ...Checker) *Service {
-	var checker Checker
-	if len(checkers) > 0 {
-		checker = checkers[0]
+// New creates the health service. The provider is evaluated for every request
+// so modules registered during bootstrap are reflected in later checks.
+func New(providers ...CheckerProvider) *Service {
+	var provider CheckerProvider
+	if len(providers) > 0 {
+		provider = providers[0]
 	}
-	return &Service{checker: checker}
+	return &Service{provider: provider}
 }
 
 // Check can be called directly in-process; protocol adapters expose the same data.
 func (s *Service) Check(ctx context.Context) CheckData {
-	if s.CheckHealth(ctx) != nil {
-		return CheckData{Status: StatusNotServing}
+	data := CheckData{Status: StatusServing, Modules: make([]ModuleStatus, 0)}
+	for _, checker := range s.checkers() {
+		status := StatusServing
+		if checker.Check != nil && checker.Check(ctx) != nil {
+			status = StatusNotServing
+			data.Status = StatusNotServing
+		}
+		data.Modules = append(data.Modules, ModuleStatus{Name: checker.Name, Status: status})
 	}
-	return CheckData{Status: StatusServing}
+	return data
+}
+
+// Liveness reports only that the process can serve requests. It deliberately
+// excludes dependency checks so a database outage does not trigger restarts.
+func (*Service) Liveness() CheckData {
+	return CheckData{Status: StatusServing, Modules: make([]ModuleStatus, 0)}
 }
 
 func (s *Service) CheckHealth(ctx context.Context) error {
-	if s.checker != nil {
-		return s.checker(ctx)
+	var errs []error
+	for _, checker := range s.checkers() {
+		if checker.Check == nil {
+			continue
+		}
+		if err := checker.Check(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", checker.Name, err))
+		}
 	}
-	return nil
+	return errors.Join(errs...)
+}
+
+func (s *Service) checkers() []Checker {
+	if s.provider == nil {
+		return nil
+	}
+	return s.provider()
 }

@@ -19,6 +19,8 @@ type HealthModule struct {
 	grpc    *healthgrpc.Server
 }
 
+func (*HealthModule) ModuleName() string { return "health" }
+
 var (
 	_ module.Initializer   = (*HealthModule)(nil)
 	_ module.Starter       = (*HealthModule)(nil)
@@ -28,8 +30,8 @@ var (
 	_ module.GRPCRegistrar = (*HealthModule)(nil)
 )
 
-func NewModule(checkers ...service.Checker) *HealthModule {
-	svc := service.New(checkers...)
+func NewModule(providers ...service.CheckerProvider) *HealthModule {
+	svc := service.New(providers...)
 	return &HealthModule{
 		service: svc,
 		http:    healthhttp.New(svc),

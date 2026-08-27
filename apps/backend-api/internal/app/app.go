@@ -5,13 +5,15 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	configx "7link.com/platform/pkg/config"
 	gormx "7link.com/platform/pkg/extension/gorm"
-	"7link.com/platform/pkg/i18n"
+	otelx "7link.com/platform/pkg/extension/otel"
+	slogx "7link.com/platform/pkg/extension/slog"
 	"google.golang.org/grpc"
 )
 
@@ -37,6 +39,7 @@ type App struct {
 	// no reporter blocks if several fail at once.
 	serveErr chan error
 
+	telemetry  *otelx.Module
 	grpcServer *grpc.Server
 	httpServer *http.Server
 }
@@ -47,9 +50,9 @@ func (app *App) Run(config AppConfig) error {
 	}
 	app.config = config
 
-	if err := i18n.InitEmbedded(i18n.Base); err != nil {
-		return err
-	}
+	slog.SetDefault(slogx.NewText(os.Stdout, nil))
+	app.telemetry = otelx.New(config.Name, config.Version)
+	app.mods = append(app.mods, app.telemetry)
 
 	app.ctx, app.cancel = context.WithCancel(context.Background())
 	app.serveErr = make(chan error, 2)
