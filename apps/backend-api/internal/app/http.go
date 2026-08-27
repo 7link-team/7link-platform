@@ -26,17 +26,10 @@ func (app *App) startHTTPServer() error {
 	}
 
 	go func() {
-		slog.Info("http server listening", "addr", addr, "docs", docsURL(app.config.HttpServer.Address, app.config.HttpServer.Port))
+		slog.Info("http server listening", "addr", addr, "docs", app.config.HttpServer.Address+":"+strconv.Itoa(app.config.HttpServer.Port))
 		if err := app.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			app.serveErr <- fmt.Errorf("http serve: %w", err)
 		}
 	}()
 	return nil
-}
-
-func docsURL(address string, port int) string {
-	if address == "" || address == "0.0.0.0" || address == "::" {
-		address = "localhost"
-	}
-	return "http://" + net.JoinHostPort(address, strconv.Itoa(port)) + "/docs/"
 }
