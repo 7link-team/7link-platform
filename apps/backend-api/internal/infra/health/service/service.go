@@ -17,17 +17,31 @@ type CheckData struct {
 }
 
 // Service contains the health application use cases and has no HTTP or gRPC dependency.
-type Service struct{}
+type Checker func(context.Context) error
 
-func New() *Service {
-	return &Service{}
+type Service struct {
+	checker Checker
+}
+
+func New(checkers ...Checker) *Service {
+	var checker Checker
+	if len(checkers) > 0 {
+		checker = checkers[0]
+	}
+	return &Service{checker: checker}
 }
 
 // Check can be called directly in-process; protocol adapters expose the same data.
-func (s *Service) Check(context.Context) CheckData {
+func (s *Service) Check(ctx context.Context) CheckData {
+	if s.CheckHealth(ctx) != nil {
+		return CheckData{Status: StatusNotServing}
+	}
 	return CheckData{Status: StatusServing}
 }
 
-func (s *Service) CheckHealth(context.Context) error {
+func (s *Service) CheckHealth(ctx context.Context) error {
+	if s.checker != nil {
+		return s.checker(ctx)
+	}
 	return nil
 }

@@ -22,15 +22,14 @@ type HealthModule struct {
 var (
 	_ module.Initializer   = (*HealthModule)(nil)
 	_ module.Starter       = (*HealthModule)(nil)
-	_ module.HealthChecker = (*HealthModule)(nil)
 	_ module.Stopper       = (*HealthModule)(nil)
 	_ module.Deinitializer = (*HealthModule)(nil)
 	_ module.HTTPRegistrar = (*HealthModule)(nil)
 	_ module.GRPCRegistrar = (*HealthModule)(nil)
 )
 
-func NewModule() *HealthModule {
-	svc := service.New()
+func NewModule(checkers ...service.Checker) *HealthModule {
+	svc := service.New(checkers...)
 	return &HealthModule{
 		service: svc,
 		http:    healthhttp.New(svc),
@@ -58,10 +57,6 @@ func (h *HealthModule) RegisterHTTP(_ context.Context, _ chi.Router, api huma.AP
 
 func (h *HealthModule) RegisterGRPC(registrar grpc.ServiceRegistrar) {
 	h.grpc.Register(registrar)
-}
-
-func (h *HealthModule) CheckHealth(ctx context.Context) error {
-	return h.service.CheckHealth(ctx)
 }
 
 func (h *HealthModule) Stop(context.Context) error {

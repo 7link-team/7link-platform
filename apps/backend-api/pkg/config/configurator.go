@@ -6,6 +6,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/cast"
@@ -365,6 +366,19 @@ func parseFlags(m *map[string]sFlag, c interface{}, parent string, field *reflec
 }
 
 func bindFlags(flags *pflag.FlagSet, k string, v sFlag) error {
+	if v.Type == durationType {
+		value := time.Duration(v.Value.Int())
+		if value == 0 && v.Default != "" {
+			parsed, err := time.ParseDuration(v.Default)
+			if err != nil {
+				return fmt.Errorf("set duration flag %q default: %w", k, err)
+			}
+			value = parsed
+		}
+		flags.DurationP(k, v.Short, value, v.Desc)
+		return nil
+	}
+
 	switch v.Type.Kind() {
 	case reflect.Bool:
 		if !v.Value.IsZero() || v.Default == "" {

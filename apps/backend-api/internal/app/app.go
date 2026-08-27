@@ -9,9 +9,8 @@ import (
 	"syscall"
 	"time"
 
-	grpcuimodule "7link.com/platform/internal/infra/grpcui"
-	"7link.com/platform/internal/infra/health"
 	configx "7link.com/platform/pkg/config"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/i18n"
 	"google.golang.org/grpc"
 )
@@ -20,7 +19,8 @@ type App struct {
 	// config is the parsed configuration handed to Run.
 	config AppConfig
 
-	// Db DatasourceRouter
+	// Db owns the application's primary/replica GORM connection pools.
+	Db gormx.DatasourceRouter
 
 	// mods are the application modules, in registration order. Their lifecycle
 	// phases (migrate/start/register/stop) are driven by the phase runners.
@@ -53,17 +53,8 @@ func (app *App) Run(config AppConfig) error {
 
 	app.ctx, app.cancel = context.WithCancel(context.Background())
 	app.serveErr = make(chan error, 2)
-
-	app.mods = append(app.mods,
-		health.NewModule(),
-		grpcuimodule.NewModule(app.grpcDialTarget()),
-	)
-
-	if err := app.initializeModules(app.ctx); err != nil {
-		return err
-	}
-	if err := app.startModules(app.ctx); err != nil {
-		return err
+	if err := app.bootstrap(app.ctx); err != nil {
+		return errors.Join(err, app.shutdown())
 	}
 
 	if err := app.startGRPCServer(); err != nil {
@@ -115,6 +106,9 @@ func (app *App) shutdown() error {
 		errs = append(errs, err)
 	}
 	if err := app.deinitializeModules(shutdownCtx); err != nil {
+		errs = append(errs, err)
+	}
+	if err := app.Db.Close(); err != nil {
 		errs = append(errs, err)
 	}
 

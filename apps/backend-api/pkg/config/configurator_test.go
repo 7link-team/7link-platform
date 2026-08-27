@@ -130,15 +130,16 @@ func TestParseEmbeddedDefaultsAllowFileAndEnvironmentOverrides(t *testing.T) {
 }
 
 type flagTypeSample struct {
-	Enabled bool      `mapstructure:"enabled" default:"true"`
-	Count   int       `mapstructure:"count" default:"2"`
-	Size    uint      `mapstructure:"size" default:"3"`
-	Ratio   float64   `mapstructure:"ratio" default:"1.5"`
-	Names   []string  `mapstructure:"names"`
-	Counts  []int     `mapstructure:"counts"`
-	Ratios  []float64 `mapstructure:"ratios"`
-	Flags   []bool    `mapstructure:"flags"`
-	Sizes   []uint    `mapstructure:"sizes"`
+	Enabled bool          `mapstructure:"enabled" default:"true"`
+	Count   int           `mapstructure:"count" default:"2"`
+	Size    uint          `mapstructure:"size" default:"3"`
+	Ratio   float64       `mapstructure:"ratio" default:"1.5"`
+	Timeout time.Duration `mapstructure:"timeout" default:"5s"`
+	Names   []string      `mapstructure:"names"`
+	Counts  []int         `mapstructure:"counts"`
+	Ratios  []float64     `mapstructure:"ratios"`
+	Flags   []bool        `mapstructure:"flags"`
+	Sizes   []uint        `mapstructure:"sizes"`
 }
 
 func TestParseAllSupportedFlagTypes(t *testing.T) {
@@ -147,7 +148,7 @@ func TestParseAllSupportedFlagTypes(t *testing.T) {
 	flagger.UseFlags(flags)
 	var cfg flagTypeSample
 	require.NoError(t, flagger.Parse(&cfg,
-		"--enabled=false", "--count=7", "--size=8", "--ratio=2.5",
+		"--enabled=false", "--count=7", "--size=8", "--ratio=2.5", "--timeout=9s",
 		"--names=alpha,beta", "--counts=4,5", "--ratios=3.5,4.5", "--flags=true,false",
 		"--sizes=6,7",
 	))
@@ -155,6 +156,7 @@ func TestParseAllSupportedFlagTypes(t *testing.T) {
 	assert.Equal(t, 7, cfg.Count)
 	assert.Equal(t, uint(8), cfg.Size)
 	assert.Equal(t, 2.5, cfg.Ratio)
+	assert.Equal(t, 9*time.Second, cfg.Timeout)
 	assert.Equal(t, []string{"alpha", "beta"}, cfg.Names)
 	assert.Equal(t, []int{4, 5}, cfg.Counts)
 	assert.Equal(t, []float64{3.5, 4.5}, cfg.Ratios)
@@ -219,12 +221,19 @@ func TestFlagSchemaRejectsUnsupportedTypes(t *testing.T) {
 }
 
 func TestParsePreservesNonZeroStructValues(t *testing.T) {
-	cfg := flagTypeSample{Enabled: true, Count: 9, Size: 10, Ratio: 2.25}
+	cfg := flagTypeSample{Enabled: true, Count: 9, Size: 10, Ratio: 2.25, Timeout: 11 * time.Second}
 	require.NoError(t, New().Parse(&cfg, "--"))
 	assert.True(t, cfg.Enabled)
 	assert.Equal(t, 9, cfg.Count)
 	assert.Equal(t, uint(10), cfg.Size)
 	assert.Equal(t, 2.25, cfg.Ratio)
+	assert.Equal(t, 11*time.Second, cfg.Timeout)
+}
+
+func TestParseAppliesDurationFlagDefault(t *testing.T) {
+	var cfg runtimeConfigSample
+	require.NoError(t, New().Parse(&cfg, "--"))
+	assert.Equal(t, 5*time.Second, cfg.Timeout)
 }
 
 func TestParseReportsFlagAndDefaultConfigurationErrors(t *testing.T) {
