@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -160,9 +161,35 @@ func validateStruct(value reflect.Value, parent string) error {
 		if strings.EqualFold(field.Tag.Get("required"), "true") && isMissing(fieldValue) {
 			return fmt.Errorf("config: %s is required", path)
 		}
+		if err := validatePattern(fieldValue, path, field.Tag.Get("validate")); err != nil {
+			return err
+		}
 		if err := validateChildren(fieldValue, path); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func validatePattern(value reflect.Value, path, pattern string) error {
+	if pattern == "" || isMissing(value) {
+		return nil
+	}
+	for value.IsValid() && (value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface) {
+		value = value.Elem()
+	}
+	if value.Kind() != reflect.String {
+		return fmt.Errorf("config: %s validation requires a string, got %s", path, value.Kind())
+	}
+
+	compiled, err := regexp.Compile(pattern)
+	if err != nil {
+		return fmt.Errorf("config: %s has invalid validation pattern %q: %w", path, pattern, err)
+	}
+	text := value.String()
+	match := compiled.FindStringIndex(text)
+	if match == nil || match[0] != 0 || match[1] != len(text) {
+		return fmt.Errorf("config: %s does not match validation pattern", path)
 	}
 	return nil
 }

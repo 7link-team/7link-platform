@@ -180,7 +180,7 @@ func (l *Locker) acquire(ctx context.Context, name, owner string) (bool, error) 
 		Name: name,
 	}).Error
 	if err != nil {
-		return false, err
+		return false, errors.Join(ctx.Err(), err)
 	}
 
 	tx := db.Model(&lockRow{}).
@@ -191,7 +191,7 @@ func (l *Locker) acquire(ctx context.Context, name, owner string) (bool, error) 
 			"expires_at": gorm.Expr(l.nowExpr+" + ?", l.ttl.Milliseconds()),
 		})
 	if tx.Error != nil {
-		return false, tx.Error
+		return false, errors.Join(ctx.Err(), tx.Error)
 	}
 	return tx.RowsAffected == 1, nil
 }

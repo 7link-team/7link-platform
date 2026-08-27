@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net"
 	"strconv"
-	"strings"
 
 	grpcx "7link.com/platform/pkg/extension/grpc"
 	"google.golang.org/grpc"
@@ -34,7 +33,7 @@ func (app *App) startGRPCServer() error {
 	}
 	app.grpcServer = grpc.NewServer(serverOptions...)
 	app.registerGRPCModules(app.grpcServer)
-	// Lets grpcurl/grpcui discover services without a local .proto copy.
+	// Lets grpcurl discover services without a local .proto copy.
 	reflection.Register(app.grpcServer)
 
 	go func() {
@@ -44,15 +43,4 @@ func (app *App) startGRPCServer() error {
 		}
 	}()
 	return nil
-}
-
-func (app *App) grpcDialTarget() string {
-	host := strings.TrimSpace(app.config.GrpcServer.Address)
-	switch host {
-	case "", "0.0.0.0":
-		host = "127.0.0.1"
-	case "::", "[::]":
-		host = "::1"
-	}
-	return net.JoinHostPort(host, strconv.Itoa(app.config.GrpcServer.Port))
 }

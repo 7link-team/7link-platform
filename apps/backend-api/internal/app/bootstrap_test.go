@@ -103,7 +103,6 @@ func TestBootstrapWithoutWriterReportsUnhealthy(t *testing.T) {
 		Modules: []healthservice.ModuleStatus{
 			{Name: "i18n", Status: healthservice.StatusServing},
 			{Name: "health", Status: healthservice.StatusServing},
-			{Name: "grpcui", Status: healthservice.StatusServing},
 			{Name: "dlock", Status: healthservice.StatusNotServing},
 		},
 	}, healthModule.Service().Check(t.Context()))

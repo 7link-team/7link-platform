@@ -16,12 +16,12 @@ type AppConfig struct {
 }
 
 type HttpServer struct {
-	Address string `mapstructure:"address" description:"address" default:"0.0.0.0"`
+	Address string `mapstructure:"address" description:"listen IPv4 address" default:"0.0.0.0" trim:"true" required:"true" validate:"^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])[.]){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$"`
 	Port    int    `mapstructure:"port" description:"port" default:"8080"`
 }
 
 type GrpcServer struct {
-	Address string `mapstructure:"address" description:"address" default:"0.0.0.0"`
+	Address string `mapstructure:"address" description:"listen IPv4 address" default:"0.0.0.0" trim:"true" required:"true" validate:"^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])[.]){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$"`
 	Port    int    `mapstructure:"port" description:"port" default:"9090"`
 }
 

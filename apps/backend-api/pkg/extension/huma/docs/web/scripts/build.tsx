@@ -88,7 +88,6 @@ function Document({ page }: { page: (typeof pages)[number]["id"] }) {
           <nav className="resource-links" aria-label="API resources">
             <a href="/docs/openapi-json/" aria-current={page === "openapi-json" ? "page" : undefined}>JSON</a>
             <a href="/docs/openapi-yaml/" aria-current={page === "openapi-yaml" ? "page" : undefined}>YAML</a>
-            <a href="/grpcui/" target="_blank" rel="noopener noreferrer">gRPC UI</a>
           </nav>
         </header>
         <main id="renderer-root" className={`renderer renderer-${page}`} aria-live="polite">

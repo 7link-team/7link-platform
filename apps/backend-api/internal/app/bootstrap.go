@@ -6,11 +6,9 @@ import (
 	"log/slog"
 
 	"7link.com/platform/internal/infra/dlock"
-	grpcuimodule "7link.com/platform/internal/infra/grpcui"
 	"7link.com/platform/internal/infra/health"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/i18n"
-	"google.golang.org/grpc"
 )
 
 // bootstrap opens shared infrastructure, builds modules, injects their
@@ -18,14 +16,9 @@ import (
 func (app *App) bootstrap(ctx context.Context) error {
 	app.initializeDatabase(ctx)
 
-	grpcUIOptions := []grpc.DialOption{}
-	if app.telemetry != nil {
-		grpcUIOptions = append(grpcUIOptions, grpc.WithStatsHandler(app.telemetry.GRPCClientStatsHandler()))
-	}
 	app.mods = append(app.mods,
 		i18n.NewModule(i18n.Base),
 		health.NewModule(app.healthCheckers),
-		grpcuimodule.NewModule(app.grpcDialTarget(), grpcUIOptions...),
 		dlock.New(&app.Db),
 	)
 

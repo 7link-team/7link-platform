@@ -50,7 +50,7 @@ func TestGeneratedRendererPages(t *testing.T) {
 			body := response.Body.String()
 			assert.Contains(t, body, `data-renderer="`+renderer+`"`)
 			assert.Contains(t, body, `/docs/config.js`)
-			assert.Contains(t, body, `/grpcui/`)
+			assert.NotContains(t, body, `/grpcui/`)
 			assert.NotContains(t, body, "https://")
 			assert.Equal(t, "DENY", response.Header().Get("X-Frame-Options"))
 			assert.Equal(t, "no-cache", response.Header().Get("Cache-Control"))
@@ -80,11 +80,6 @@ func TestSpecViewerPagesOfferPrettyViewAndDownload(t *testing.T) {
 	assert.Contains(t, app, `Expand all`)
 	assert.Contains(t, app, `Collapse all`)
 	assert.Contains(t, app, `Download`)
-}
-
-func TestGRPCUIOpensInNewTab(t *testing.T) {
-	body := request(t, newDocsRouter(), "/docs/").Body.String()
-	assert.Contains(t, body, `href="/grpcui/" target="_blank" rel="noopener noreferrer"`)
 }
 
 func TestRuntimeConfigUsesApplicationValues(t *testing.T) {

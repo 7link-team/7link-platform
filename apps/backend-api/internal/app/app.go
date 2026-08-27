@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	configx "7link.com/platform/pkg/config"
 	gormx "7link.com/platform/pkg/extension/gorm"
@@ -84,41 +83,4 @@ func (app *App) awaitShutdown() error {
 	}
 
 	return errors.Join(startErr, app.shutdown())
-}
-
-func (app *App) shutdown() error {
-	if app.cancel != nil {
-		app.cancel()
-	}
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	var errs []error
-
-	if app.httpServer != nil {
-		if err := app.httpServer.Shutdown(shutdownCtx); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if app.grpcServer != nil {
-		app.grpcServer.GracefulStop()
-	}
-
-	if err := app.stopModules(shutdownCtx); err != nil {
-		errs = append(errs, err)
-	}
-	if err := app.deinitializeModules(shutdownCtx); err != nil {
-		errs = append(errs, err)
-	}
-	if err := app.Db.Close(); err != nil {
-		errs = append(errs, err)
-	}
-
-	if len(errs) > 0 {
-		return errors.Join(errs...)
-	}
-
-	slog.Info("shutdown complete")
-	return nil
 }
