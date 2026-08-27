@@ -1,5 +1,6 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { build } from "esbuild";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,13 +9,20 @@ const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outputRoot = resolve(webRoot, "../site");
 
 const renderers = [
-  { id: "scalar", label: "Scalar" },
   { id: "swagger", label: "Swagger UI" },
   { id: "redoc", label: "ReDoc" },
-  { id: "rapidoc", label: "RapiDoc" },
+  { id: "scalar", label: "Scalar" },
   { id: "stoplight", label: "Stoplight" },
+  { id: "rapidoc", label: "RapiDoc" },
   { id: "openapi-ui", label: "openapi-ui" }
 ] as const;
+
+const specPages = [
+  { id: "openapi-json", label: "OpenAPI JSON" },
+  { id: "openapi-yaml", label: "OpenAPI YAML" }
+] as const;
+
+const pages = [...renderers, ...specPages] as const;
 
 const assets: Array<[string, string, ((data: Buffer) => Buffer)?]> = [
   ["@scalar/api-reference/dist/browser/standalone.js", "scalar.js"],
@@ -30,7 +38,7 @@ const assets: Array<[string, string, ((data: Buffer) => Buffer)?]> = [
 
 await mkdir(join(outputRoot, "assets"), { recursive: true });
 await copySourceAsset("app.css");
-await copySourceAsset("app.js");
+await bundleApp();
 
 for (const [source, target, transform] of assets) {
   let data = await readFile(join(webRoot, "node_modules", source));
@@ -38,16 +46,16 @@ for (const [source, target, transform] of assets) {
   await writeIfChanged(join(outputRoot, "assets", target), data);
 }
 
-for (const renderer of renderers) {
-  const html = "<!doctype html>" + renderToStaticMarkup(<Document renderer={renderer.id} />);
-  await writeIfChanged(join(outputRoot, renderer.id, "index.html"), Buffer.from(html));
-  if (renderer.id === "scalar") {
+for (const page of pages) {
+  const html = "<!doctype html>" + renderToStaticMarkup(<Document page={page.id} />);
+  await writeIfChanged(join(outputRoot, page.id, "index.html"), Buffer.from(html));
+  if (page.id === "swagger") {
     await writeIfChanged(join(outputRoot, "index.html"), Buffer.from(html));
   }
 }
 
-function Document({ renderer }: { renderer: (typeof renderers)[number]["id"] }) {
-  const active = renderers.find((item) => item.id === renderer)!;
+function Document({ page }: { page: (typeof pages)[number]["id"] }) {
+  const active = pages.find((item) => item.id === page)!;
   return (
     <html lang="en">
       <head>
@@ -59,7 +67,7 @@ function Document({ renderer }: { renderer: (typeof renderers)[number]["id"] }) 
         <script src="/docs/config.js"></script>
         <script defer src="/docs/assets/app.js"></script>
       </head>
-      <body data-renderer={renderer}>
+      <body data-renderer={page}>
         <a className="skip-link" href="#renderer-root">Skip to API documentation</a>
         <header className="app-header">
           <a className="brand" href="/docs/" aria-label="API documentation home">
@@ -70,20 +78,20 @@ function Document({ renderer }: { renderer: (typeof renderers)[number]["id"] }) 
             {renderers.map((item) => (
               <a
                 key={item.id}
-                href={item.id === "scalar" ? "/docs/" : `/docs/${item.id}/`}
-                aria-current={item.id === renderer ? "page" : undefined}
+                href={`/docs/${item.id}/`}
+                aria-current={item.id === page ? "page" : undefined}
               >
                 {item.label}
               </a>
             ))}
           </nav>
           <nav className="resource-links" aria-label="API resources">
-            <a data-spec-json href="/openapi.json">JSON</a>
-            <a data-spec-yaml href="/openapi.yaml">YAML</a>
-            <a href="/grpcui/">gRPC UI</a>
+            <a href="/docs/openapi-json/" aria-current={page === "openapi-json" ? "page" : undefined}>JSON</a>
+            <a href="/docs/openapi-yaml/" aria-current={page === "openapi-yaml" ? "page" : undefined}>YAML</a>
+            <a href="/grpcui/" target="_blank" rel="noopener noreferrer">gRPC UI</a>
           </nav>
         </header>
-        <main id="renderer-root" className={`renderer renderer-${renderer}`} aria-live="polite">
+        <main id="renderer-root" className={`renderer renderer-${page}`} aria-live="polite">
           <div className="loading" role="status">Loading API definition...</div>
         </main>
       </body>
@@ -93,6 +101,18 @@ function Document({ renderer }: { renderer: (typeof renderers)[number]["id"] }) 
 
 async function copySourceAsset(name: string) {
   await writeIfChanged(join(outputRoot, "assets", name), await readFile(join(webRoot, "src", name)));
+}
+
+async function bundleApp() {
+  const result = await build({
+    entryPoints: [join(webRoot, "src/app.js")],
+    bundle: true,
+    format: "iife",
+    minify: true,
+    platform: "browser",
+    write: false
+  });
+  await writeIfChanged(join(outputRoot, "assets/app.js"), result.outputFiles[0].contents);
 }
 
 function localizeStoplight(data: Buffer) {

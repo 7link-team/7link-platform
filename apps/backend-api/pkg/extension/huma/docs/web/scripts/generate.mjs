@@ -7,13 +7,15 @@ const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packages = [
   "@scalar/api-reference",
   "@stoplight/elements",
+  "esbuild",
   "openapi-ui-dist",
   "rapidoc",
   "react",
   "react-dom",
   "redoc",
   "swagger-ui-dist",
-  "tsx"
+  "tsx",
+  "yaml"
 ];
 
 let packageJSON = await readJSON(join(webRoot, "package.json"));

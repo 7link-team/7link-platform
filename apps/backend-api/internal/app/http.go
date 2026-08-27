@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"strconv"
 
 	humax "7link.com/platform/pkg/extension/huma"
 	"github.com/go-chi/chi/v5"
@@ -17,17 +19,24 @@ func (app *App) startHTTPServer() error {
 		return err
 	}
 
-	addr := fmt.Sprintf("%s:%d", app.config.HttpServer.Address, app.config.HttpServer.Port)
+	addr := net.JoinHostPort(app.config.HttpServer.Address, strconv.Itoa(app.config.HttpServer.Port))
 	app.httpServer = &http.Server{
 		Addr:    addr,
 		Handler: router,
 	}
 
 	go func() {
-		slog.Info("http server listening", "addr", addr, "docs", "http://"+addr+"/docs")
+		slog.Info("http server listening", "addr", addr, "docs", docsURL(app.config.HttpServer.Address, app.config.HttpServer.Port))
 		if err := app.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			app.serveErr <- fmt.Errorf("http serve: %w", err)
 		}
 	}()
 	return nil
+}
+
+func docsURL(address string, port int) string {
+	if address == "" || address == "0.0.0.0" || address == "::" {
+		address = "localhost"
+	}
+	return "http://" + net.JoinHostPort(address, strconv.Itoa(port)) + "/docs/"
 }

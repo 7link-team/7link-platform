@@ -1,3 +1,5 @@
+import { parse as parseYAML } from "yaml";
+
 (function () {
   "use strict";
 
@@ -8,8 +10,6 @@
   document.querySelectorAll("[data-api-name]").forEach(function (element) {
     element.textContent = config.name;
   });
-  document.querySelector("[data-spec-json]").href = config.specJSON;
-  document.querySelector("[data-spec-yaml]").href = config.specYAML;
   document.title = config.name + " API - " + document.title.split(" - ")[0];
 
   render(renderer).catch(function (error) {
@@ -19,6 +19,11 @@
     message.setAttribute("role", "alert");
     message.textContent = "Documentation renderer failed to load.";
     root.appendChild(message);
+    var retry = document.createElement("a");
+    retry.className = "retry-link";
+    retry.href = window.location.href;
+    retry.textContent = "Reload";
+    root.appendChild(retry);
     console.error(error);
   });
 
@@ -79,9 +84,100 @@
         await loadScript("/docs/assets/openapi-ui.js");
         return;
       }
+      case "openapi-json":
+        await renderSpec("json", config.specJSON);
+        return;
+      case "openapi-yaml":
+        await renderSpec("yaml", config.specYAML);
+        return;
       default:
         throw new Error("Unknown documentation renderer: " + name);
     }
+  }
+
+  async function renderSpec(format, source) {
+    var response = await fetch(source, {
+      headers: { Accept: format === "json" ? "application/openapi+json" : "application/openapi+yaml" }
+    });
+    if (!response.ok) throw new Error("OpenAPI request failed: HTTP " + response.status);
+
+    var text = await response.text();
+    var spec = format === "json" ? JSON.parse(text) : parseYAML(text);
+
+    var viewer = document.createElement("section");
+    viewer.className = "spec-viewer";
+    var toolbar = document.createElement("header");
+    toolbar.className = "spec-toolbar";
+    var filename = document.createElement("strong");
+    filename.textContent = "openapi." + format;
+    var actions = document.createElement("div");
+    actions.className = "spec-actions";
+    var expand = actionButton("Expand all", function () {
+      viewer.querySelectorAll("details").forEach(function (item) { item.open = true; });
+    });
+    var collapse = actionButton("Collapse all", function () {
+      viewer.querySelectorAll("details").forEach(function (item) { item.open = false; });
+    });
+    var download = document.createElement("a");
+    download.className = "download-link";
+    download.href = source;
+    download.download = "openapi." + format;
+    download.textContent = "Download";
+    actions.append(expand, collapse, download);
+    toolbar.append(filename, actions);
+
+    var tree = document.createElement("div");
+    tree.className = "spec-tree";
+    appendTree(tree, spec, "OpenAPI", 0);
+    viewer.append(toolbar, tree);
+    root.appendChild(viewer);
+  }
+
+  function actionButton(label, action) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "tree-action";
+    button.textContent = label;
+    button.addEventListener("click", action);
+    return button;
+  }
+
+  function appendTree(parent, value, key, depth) {
+    if (value !== null && typeof value === "object") {
+      var entries = Object.entries(value);
+      var details = document.createElement("details");
+      details.open = depth < 2;
+      var summary = document.createElement("summary");
+      var name = document.createElement("span");
+      name.className = "tree-key";
+      name.textContent = key;
+      var count = document.createElement("span");
+      count.className = "tree-count";
+      count.textContent = Array.isArray(value)
+        ? "Array(" + entries.length + ")"
+        : "Object(" + entries.length + ")";
+      summary.append(name, count);
+      details.appendChild(summary);
+      var children = document.createElement("div");
+      children.className = "tree-children";
+      entries.forEach(function (entry) {
+        appendTree(children, entry[1], entry[0], depth + 1);
+      });
+      details.appendChild(children);
+      parent.appendChild(details);
+      return;
+    }
+
+    var row = document.createElement("div");
+    row.className = "tree-leaf";
+    var leafKey = document.createElement("span");
+    leafKey.className = "tree-key";
+    leafKey.textContent = key;
+    var leafValue = document.createElement("span");
+    leafValue.className = "tree-value tree-value-" + (value === null ? "null" : typeof value);
+    leafValue.textContent = typeof value === "string" ? JSON.stringify(value) : String(value);
+    row.append(leafKey, leafValue);
+    parent.appendChild(row);
   }
 
   function loadScript(source, type) {

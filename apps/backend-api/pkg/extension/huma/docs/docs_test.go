@@ -32,14 +32,16 @@ func newDocsRouter() http.Handler {
 func TestGeneratedRendererPages(t *testing.T) {
 	handler := newDocsRouter()
 	paths := map[string]string{
-		"/docs":            "scalar",
-		"/docs/":           "scalar",
-		"/docs/scalar":     "scalar",
-		"/docs/swagger":    "swagger",
-		"/docs/redoc":      "redoc",
-		"/docs/rapidoc":    "rapidoc",
-		"/docs/stoplight":  "stoplight",
-		"/docs/openapi-ui": "openapi-ui",
+		"/docs":              "swagger",
+		"/docs/":             "swagger",
+		"/docs/scalar":       "scalar",
+		"/docs/swagger":      "swagger",
+		"/docs/redoc":        "redoc",
+		"/docs/rapidoc":      "rapidoc",
+		"/docs/stoplight":    "stoplight",
+		"/docs/openapi-ui":   "openapi-ui",
+		"/docs/openapi-json": "openapi-json",
+		"/docs/openapi-yaml": "openapi-yaml",
 	}
 
 	for route, renderer := range paths {
@@ -54,6 +56,35 @@ func TestGeneratedRendererPages(t *testing.T) {
 			assert.Equal(t, "no-cache", response.Header().Get("Cache-Control"))
 		})
 	}
+}
+
+func TestRendererTabsFollowGitHubStarOrder(t *testing.T) {
+	body := request(t, newDocsRouter(), "/docs/").Body.String()
+	ordered := []string{"Swagger UI", "ReDoc", "Scalar", "Stoplight", "RapiDoc", "openapi-ui"}
+	previous := -1
+	for _, label := range ordered {
+		current := strings.Index(body, ">"+label+"<")
+		require.Greater(t, current, previous, label)
+		previous = current
+	}
+}
+
+func TestSpecViewerPagesOfferPrettyViewAndDownload(t *testing.T) {
+	handler := newDocsRouter()
+	for _, route := range []string{"/docs/openapi-json", "/docs/openapi-yaml"} {
+		body := request(t, handler, route).Body.String()
+		assert.Contains(t, body, `/docs/assets/app.js`)
+		assert.Contains(t, body, `aria-current="page"`)
+	}
+	app := request(t, handler, "/docs/assets/app.js").Body.String()
+	assert.Contains(t, app, `Expand all`)
+	assert.Contains(t, app, `Collapse all`)
+	assert.Contains(t, app, `Download`)
+}
+
+func TestGRPCUIOpensInNewTab(t *testing.T) {
+	body := request(t, newDocsRouter(), "/docs/").Body.String()
+	assert.Contains(t, body, `href="/grpcui/" target="_blank" rel="noopener noreferrer"`)
 }
 
 func TestRuntimeConfigUsesApplicationValues(t *testing.T) {
