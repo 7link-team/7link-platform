@@ -2,25 +2,26 @@ syntax = "proto3";
 
 package platform.health.v1;
 
-import "google/api/annotations.proto";
-
 option go_package = "7link.com/platform/internal/infra/health/proto/gen/go/health/v1;healthv1";
 
 service HealthService {
-  rpc Check(CheckRequest) returns (CheckResponse) {
-    option (google.api.http) = {
-      get: "/healthz"
-    };
-  }
+  rpc Check(CheckRequest) returns (CheckResponse);
 }
 
 message CheckRequest {}
 
 message CheckResponse {
+  int32 code = 1;
+  string message = 2;
+  CheckData data = 3;
+}
+
+message CheckData {
   enum ServingStatus {
-    UNKNOWN = 0;
-    SERVING = 1;
-    NOT_SERVING = 2;
+    SERVING_STATUS_UNSPECIFIED = 0;
+    SERVING_STATUS_SERVING = 1;
+    SERVING_STATUS_NOT_SERVING = 2;
   }
+
   ServingStatus status = 1;
 }

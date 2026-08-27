@@ -1,29 +1,26 @@
 package app
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 
-	"7link.com/platform/internal/infra/docs"
-	healthhttp "7link.com/platform/internal/infra/health/http"
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	humax "7link.com/platform/pkg/extension/huma"
+	"github.com/go-chi/chi/v5"
 )
 
-func (app *App) startHTTPServer(ctx context.Context) error {
-	gw := runtime.NewServeMux()
-	if err := healthhttp.RegisterGateway(ctx, gw, app.healthServer); err != nil {
-		return fmt.Errorf("register health gateway: %w", err)
+func (app *App) startHTTPServer() error {
+	router := chi.NewRouter()
+	api := humax.New(router, app.config.Name, app.config.Version)
+	if err := app.registerHTTPModules(app.ctx, router, api); err != nil {
+		return err
 	}
 
 	addr := fmt.Sprintf("%s:%d", app.config.HttpServer.Address, app.config.HttpServer.Port)
 	app.httpServer = &http.Server{
-		Addr: addr,
-		// docs owns /, /docs*, /openapi.json and passes everything else to the
-		// generated gateway routes.
-		Handler: docs.Handler(app.name, gw),
+		Addr:    addr,
+		Handler: router,
 	}
 
 	go func() {

@@ -217,7 +217,10 @@ func (f *Flagger) Parse(o interface{}, args ...string) error {
 		return err
 	}
 
-	return f.unmarshal(o, m)
+	if err := f.unmarshal(o, m); err != nil {
+		return err
+	}
+	return Process(o)
 }
 
 func (f *Flagger) unmarshal(o interface{}, flags map[string]sFlag) error {
@@ -225,6 +228,7 @@ func (f *Flagger) unmarshal(o interface{}, flags map[string]sFlag) error {
 	hook := mapstructure.ComposeDecodeHookFunc(
 		mapstructure.StringToTimeDurationHookFunc(),
 		mapstructure.StringToSliceHookFunc(","),
+		fieldTagDecodeHook,
 		func(f reflect.Type, t reflect.Type, data interface{}) (interface{}, error) {
 			if f.Kind() != reflect.Map {
 				return data, nil
@@ -239,27 +243,6 @@ func (f *Flagger) unmarshal(o interface{}, flags map[string]sFlag) error {
 							delete(data, key)
 						}
 					}
-				}
-			}
-			if t.Kind() != reflect.Struct {
-				return data, nil
-			}
-
-			for i := 0; i < t.NumField(); i++ {
-				field := t.Field(i)
-				mapstructureTag := field.Tag.Get("mapstructure")
-				if mapstructureTag == "" {
-					continue
-				}
-				defaultTag := field.Tag.Get("default")
-				if defaultTag == "" {
-					continue
-				}
-				if data, ok := data.(map[string]interface{}); ok {
-					if _, ok := data[mapstructureTag]; ok {
-						continue
-					}
-					data[mapstructureTag] = defaultTag
 				}
 			}
 			return data, nil

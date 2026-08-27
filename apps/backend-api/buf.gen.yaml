@@ -12,20 +12,3 @@ plugins:
   - local: protoc-gen-go-grpc
     out: .
     opt: module=7link.com/platform
-  - local: protoc-gen-grpc-gateway
-    out: .
-    opt: module=7link.com/platform
-  # OpenAPI has no go_package to key off, so it can't use module=. allow_merge
-  # folds every module's protos into one apidocs.swagger.json (a stable filename
-  # the docs package go:embeds, regardless of how many modules exist). It lands
-  # inside the docs package so the docs server can embed it.
-  - local: protoc-gen-openapiv2
-    out: internal/infra/docs/spec
-    opt:
-      - allow_merge=true
-      - merge_file_name=apidocs
-# NOTE: no `inputs:` on purpose. Listing inputs makes buf run each plugin once
-# per input, which makes allow_merge write apidocs.swagger.json once per module
-# and silently keep only the last one. With inputs omitted, the whole workspace
-# (every module in buf.yaml) is a single generation run, so the merge is correct.
-# Add new modules to buf.yaml only.

@@ -36,6 +36,35 @@ func TestLoadStrict_MissingFileErrors(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestLoadStrictAppliesTrimAndRequiredTags(t *testing.T) {
+	type taggedConfig struct {
+		Name string `mapstructure:"name" trim:"true" required:"true"`
+	}
+
+	path := writeTemp(t, "name: '  api  '\n")
+	var configured taggedConfig
+	require.NoError(t, LoadStrict(path, &configured))
+	assert.Equal(t, "api", configured.Name)
+
+	missingPath := writeTemp(t, "{}\n")
+	require.EqualError(t, LoadStrict(missingPath, &taggedConfig{}), "config: name is required")
+}
+
+func TestLoadStrictOrdersTrimDefaultAndRequired(t *testing.T) {
+	type taggedConfig struct {
+		Name    string `mapstructure:"name" trim:"true" default:"  fallback  " required:"true"`
+		Literal string `mapstructure:"literal" default:"fallback" required:"true"`
+		Enabled bool   `mapstructure:"enabled" default:"true"`
+	}
+
+	path := writeTemp(t, "name: '   '\nliteral: '   '\nenabled: false\n")
+	var config taggedConfig
+	require.NoError(t, LoadStrict(path, &config))
+	assert.Equal(t, "fallback", config.Name)
+	assert.Equal(t, "   ", config.Literal)
+	assert.False(t, config.Enabled)
+}
+
 func TestGenerateThenLoadStrict(t *testing.T) {
 	data, err := GenerateYAML(&genSample{})
 	require.NoError(t, err)

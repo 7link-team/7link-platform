@@ -6,6 +6,9 @@ import (
 	"fmt"
 
 	"7link.com/platform/pkg/module"
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/go-chi/chi/v5"
+	"google.golang.org/grpc"
 )
 
 // initializeModules runs the Initialize phase, stopping at the first failure so the
@@ -76,4 +79,23 @@ func (app *App) deinitializeModules(ctx context.Context) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func (app *App) registerHTTPModules(ctx context.Context, router chi.Router, api huma.API) error {
+	for _, m := range app.mods {
+		if x, ok := m.(module.HTTPRegistrar); ok {
+			if err := x.RegisterHTTP(ctx, router, api); err != nil {
+				return fmt.Errorf("%T register HTTP: %w", m, err)
+			}
+		}
+	}
+	return nil
+}
+
+func (app *App) registerGRPCModules(registrar grpc.ServiceRegistrar) {
+	for _, m := range app.mods {
+		if x, ok := m.(module.GRPCRegistrar); ok {
+			x.RegisterGRPC(registrar)
+		}
+	}
 }

@@ -5,8 +5,6 @@ version: v2
 # inputs, so it generates the whole workspace). Add a line per new module.
 modules:
   - path: internal/infra/health/proto
-deps:
-  - buf.build/googleapis/googleapis
 lint:
   use:
     - STANDARD

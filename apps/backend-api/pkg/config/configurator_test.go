@@ -90,6 +90,33 @@ func TestParseEnvironmentPrefixExactlyOnce(t *testing.T) {
 	assert.Equal(t, "configured", cfg.AppleName)
 }
 
+func TestParseAppliesTrimAndRequiredTags(t *testing.T) {
+	type taggedConfig struct {
+		Name string `mapstructure:"name" trim:"true" required:"true"`
+	}
+
+	var missing taggedConfig
+	require.EqualError(t, New().Parse(&missing, "--"), "config: name is required")
+
+	var configured taggedConfig
+	require.NoError(t, New().Parse(&configured, "--name", "  api  "))
+	assert.Equal(t, "api", configured.Name)
+}
+
+func TestParseOrdersTrimDefaultAndRequired(t *testing.T) {
+	type taggedConfig struct {
+		Name    string `mapstructure:"name" trim:"true" default:"  fallback  " required:"true"`
+		Literal string `mapstructure:"literal" default:"fallback" required:"true"`
+		Enabled bool   `mapstructure:"enabled" default:"true"`
+	}
+
+	var config taggedConfig
+	require.NoError(t, New().Parse(&config, "--name", "   ", "--literal", "   ", "--enabled=false"))
+	assert.Equal(t, "fallback", config.Name, "trimmed empty input falls back to a trimmed default")
+	assert.Equal(t, "   ", config.Literal, "fields without trim preserve whitespace before required")
+	assert.False(t, config.Enabled, "an explicit zero value takes precedence over its default")
+}
+
 func TestParseEmbeddedDefaultsAllowFileAndEnvironmentOverrides(t *testing.T) {
 	path := writeTemp(t, "name: from-file\ntimeout: 12s\n")
 	t.Setenv("TIMEOUT", "18s")

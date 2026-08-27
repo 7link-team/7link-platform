@@ -2,13 +2,34 @@ package http
 
 import (
 	"context"
+	stdhttp "net/http"
 
-	healthv1 "7link.com/platform/internal/infra/health/proto/gen/go/health/v1"
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	healthi18n "7link.com/platform/internal/infra/health/i18n"
+	"7link.com/platform/internal/infra/health/service"
+	"7link.com/platform/pkg/extension/huma/respx"
+	"github.com/danielgtaylor/huma/v2"
 )
 
-// RegisterGateway wires the health REST routes onto mux. It calls srv in-process
-// rather than dialing the gRPC port, since both servers live in this process.
-func RegisterGateway(ctx context.Context, mux *runtime.ServeMux, srv healthv1.HealthServiceServer) error {
-	return healthv1.RegisterHealthServiceHandlerServer(ctx, mux, srv)
+type Handler struct {
+	service *service.Service
+}
+
+type checkInput struct{}
+
+func New(service *service.Service) *Handler {
+	return &Handler{service: service}
+}
+
+func (h *Handler) Register(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "check-health",
+		Method:      stdhttp.MethodGet,
+		Path:        "/healthz",
+		Summary:     "Check service health",
+		Tags:        []string{"Health"},
+	}, h.check)
+}
+
+func (h *Handler) check(ctx context.Context, _ *checkInput) (*respx.Body[service.CheckData], error) {
+	return respx.OKMessage(ctx, h.service.Check(ctx), healthi18n.CheckSucceeded), nil
 }

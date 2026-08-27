@@ -7,7 +7,6 @@
 package healthv1
 
 import (
-	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -22,53 +21,53 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type CheckResponse_ServingStatus int32
+type CheckData_ServingStatus int32
 
 const (
-	CheckResponse_UNKNOWN     CheckResponse_ServingStatus = 0
-	CheckResponse_SERVING     CheckResponse_ServingStatus = 1
-	CheckResponse_NOT_SERVING CheckResponse_ServingStatus = 2
+	CheckData_SERVING_STATUS_UNSPECIFIED CheckData_ServingStatus = 0
+	CheckData_SERVING_STATUS_SERVING     CheckData_ServingStatus = 1
+	CheckData_SERVING_STATUS_NOT_SERVING CheckData_ServingStatus = 2
 )
 
-// Enum value maps for CheckResponse_ServingStatus.
+// Enum value maps for CheckData_ServingStatus.
 var (
-	CheckResponse_ServingStatus_name = map[int32]string{
-		0: "UNKNOWN",
-		1: "SERVING",
-		2: "NOT_SERVING",
+	CheckData_ServingStatus_name = map[int32]string{
+		0: "SERVING_STATUS_UNSPECIFIED",
+		1: "SERVING_STATUS_SERVING",
+		2: "SERVING_STATUS_NOT_SERVING",
 	}
-	CheckResponse_ServingStatus_value = map[string]int32{
-		"UNKNOWN":     0,
-		"SERVING":     1,
-		"NOT_SERVING": 2,
+	CheckData_ServingStatus_value = map[string]int32{
+		"SERVING_STATUS_UNSPECIFIED": 0,
+		"SERVING_STATUS_SERVING":     1,
+		"SERVING_STATUS_NOT_SERVING": 2,
 	}
 )
 
-func (x CheckResponse_ServingStatus) Enum() *CheckResponse_ServingStatus {
-	p := new(CheckResponse_ServingStatus)
+func (x CheckData_ServingStatus) Enum() *CheckData_ServingStatus {
+	p := new(CheckData_ServingStatus)
 	*p = x
 	return p
 }
 
-func (x CheckResponse_ServingStatus) String() string {
+func (x CheckData_ServingStatus) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (CheckResponse_ServingStatus) Descriptor() protoreflect.EnumDescriptor {
+func (CheckData_ServingStatus) Descriptor() protoreflect.EnumDescriptor {
 	return file_api_v1_health_proto_enumTypes[0].Descriptor()
 }
 
-func (CheckResponse_ServingStatus) Type() protoreflect.EnumType {
+func (CheckData_ServingStatus) Type() protoreflect.EnumType {
 	return &file_api_v1_health_proto_enumTypes[0]
 }
 
-func (x CheckResponse_ServingStatus) Number() protoreflect.EnumNumber {
+func (x CheckData_ServingStatus) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use CheckResponse_ServingStatus.Descriptor instead.
-func (CheckResponse_ServingStatus) EnumDescriptor() ([]byte, []int) {
-	return file_api_v1_health_proto_rawDescGZIP(), []int{1, 0}
+// Deprecated: Use CheckData_ServingStatus.Descriptor instead.
+func (CheckData_ServingStatus) EnumDescriptor() ([]byte, []int) {
+	return file_api_v1_health_proto_rawDescGZIP(), []int{2, 0}
 }
 
 type CheckRequest struct {
@@ -108,8 +107,10 @@ func (*CheckRequest) Descriptor() ([]byte, []int) {
 }
 
 type CheckResponse struct {
-	state         protoimpl.MessageState      `protogen:"open.v1"`
-	Status        CheckResponse_ServingStatus `protobuf:"varint,1,opt,name=status,proto3,enum=platform.health.v1.CheckResponse_ServingStatus" json:"status,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Code          int32                  `protobuf:"varint,1,opt,name=code,proto3" json:"code,omitempty"`
+	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	Data          *CheckData             `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -144,28 +145,89 @@ func (*CheckResponse) Descriptor() ([]byte, []int) {
 	return file_api_v1_health_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *CheckResponse) GetStatus() CheckResponse_ServingStatus {
+func (x *CheckResponse) GetCode() int32 {
+	if x != nil {
+		return x.Code
+	}
+	return 0
+}
+
+func (x *CheckResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *CheckResponse) GetData() *CheckData {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+type CheckData struct {
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	Status        CheckData_ServingStatus `protobuf:"varint,1,opt,name=status,proto3,enum=platform.health.v1.CheckData_ServingStatus" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckData) Reset() {
+	*x = CheckData{}
+	mi := &file_api_v1_health_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckData) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckData) ProtoMessage() {}
+
+func (x *CheckData) ProtoReflect() protoreflect.Message {
+	mi := &file_api_v1_health_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckData.ProtoReflect.Descriptor instead.
+func (*CheckData) Descriptor() ([]byte, []int) {
+	return file_api_v1_health_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *CheckData) GetStatus() CheckData_ServingStatus {
 	if x != nil {
 		return x.Status
 	}
-	return CheckResponse_UNKNOWN
+	return CheckData_SERVING_STATUS_UNSPECIFIED
 }
 
 var File_api_v1_health_proto protoreflect.FileDescriptor
 
 const file_api_v1_health_proto_rawDesc = "" +
 	"\n" +
-	"\x13api/v1/health.proto\x12\x12platform.health.v1\x1a\x1cgoogle/api/annotations.proto\"\x0e\n" +
-	"\fCheckRequest\"\x94\x01\n" +
-	"\rCheckResponse\x12G\n" +
-	"\x06status\x18\x01 \x01(\x0e2/.platform.health.v1.CheckResponse.ServingStatusR\x06status\":\n" +
-	"\rServingStatus\x12\v\n" +
-	"\aUNKNOWN\x10\x00\x12\v\n" +
-	"\aSERVING\x10\x01\x12\x0f\n" +
-	"\vNOT_SERVING\x10\x022o\n" +
-	"\rHealthService\x12^\n" +
-	"\x05Check\x12 .platform.health.v1.CheckRequest\x1a!.platform.health.v1.CheckResponse\"\x10\x82\xd3\xe4\x93\x02\n" +
-	"\x12\b/healthzBJZH7link.com/platform/internal/infra/health/proto/gen/go/health/v1;healthv1b\x06proto3"
+	"\x13api/v1/health.proto\x12\x12platform.health.v1\"\x0e\n" +
+	"\fCheckRequest\"p\n" +
+	"\rCheckResponse\x12\x12\n" +
+	"\x04code\x18\x01 \x01(\x05R\x04code\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x121\n" +
+	"\x04data\x18\x03 \x01(\v2\x1d.platform.health.v1.CheckDataR\x04data\"\xbd\x01\n" +
+	"\tCheckData\x12C\n" +
+	"\x06status\x18\x01 \x01(\x0e2+.platform.health.v1.CheckData.ServingStatusR\x06status\"k\n" +
+	"\rServingStatus\x12\x1e\n" +
+	"\x1aSERVING_STATUS_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16SERVING_STATUS_SERVING\x10\x01\x12\x1e\n" +
+	"\x1aSERVING_STATUS_NOT_SERVING\x10\x022]\n" +
+	"\rHealthService\x12L\n" +
+	"\x05Check\x12 .platform.health.v1.CheckRequest\x1a!.platform.health.v1.CheckResponseBJZH7link.com/platform/internal/infra/health/proto/gen/go/health/v1;healthv1b\x06proto3"
 
 var (
 	file_api_v1_health_proto_rawDescOnce sync.Once
@@ -180,21 +242,23 @@ func file_api_v1_health_proto_rawDescGZIP() []byte {
 }
 
 var file_api_v1_health_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_api_v1_health_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_api_v1_health_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_api_v1_health_proto_goTypes = []any{
-	(CheckResponse_ServingStatus)(0), // 0: platform.health.v1.CheckResponse.ServingStatus
-	(*CheckRequest)(nil),             // 1: platform.health.v1.CheckRequest
-	(*CheckResponse)(nil),            // 2: platform.health.v1.CheckResponse
+	(CheckData_ServingStatus)(0), // 0: platform.health.v1.CheckData.ServingStatus
+	(*CheckRequest)(nil),         // 1: platform.health.v1.CheckRequest
+	(*CheckResponse)(nil),        // 2: platform.health.v1.CheckResponse
+	(*CheckData)(nil),            // 3: platform.health.v1.CheckData
 }
 var file_api_v1_health_proto_depIdxs = []int32{
-	0, // 0: platform.health.v1.CheckResponse.status:type_name -> platform.health.v1.CheckResponse.ServingStatus
-	1, // 1: platform.health.v1.HealthService.Check:input_type -> platform.health.v1.CheckRequest
-	2, // 2: platform.health.v1.HealthService.Check:output_type -> platform.health.v1.CheckResponse
-	2, // [2:3] is the sub-list for method output_type
-	1, // [1:2] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	3, // 0: platform.health.v1.CheckResponse.data:type_name -> platform.health.v1.CheckData
+	0, // 1: platform.health.v1.CheckData.status:type_name -> platform.health.v1.CheckData.ServingStatus
+	1, // 2: platform.health.v1.HealthService.Check:input_type -> platform.health.v1.CheckRequest
+	2, // 3: platform.health.v1.HealthService.Check:output_type -> platform.health.v1.CheckResponse
+	3, // [3:4] is the sub-list for method output_type
+	2, // [2:3] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_api_v1_health_proto_init() }
@@ -208,7 +272,7 @@ func file_api_v1_health_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_v1_health_proto_rawDesc), len(file_api_v1_health_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   2,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

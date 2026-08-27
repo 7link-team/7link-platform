@@ -4,23 +4,26 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strconv"
+	"strings"
 
-	healthgrpc "7link.com/platform/internal/infra/health/grpc"
-	healthv1 "7link.com/platform/internal/infra/health/proto/gen/go/health/v1"
+	grpcx "7link.com/platform/pkg/extension/grpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
 
 func (app *App) startGRPCServer() error {
-	addr := fmt.Sprintf("%s:%d", app.config.GrpcServer.Address, app.config.GrpcServer.Port)
+	addr := net.JoinHostPort(app.config.GrpcServer.Address, strconv.Itoa(app.config.GrpcServer.Port))
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("grpc listen %s: %w", addr, err)
 	}
 
-	app.grpcServer = grpc.NewServer()
-	app.healthServer = healthgrpc.NewServer()
-	healthv1.RegisterHealthServiceServer(app.grpcServer, app.healthServer)
+	app.grpcServer = grpc.NewServer(
+		grpc.UnaryInterceptor(grpcx.LocaleUnaryInterceptor),
+		grpc.StreamInterceptor(grpcx.LocaleStreamInterceptor),
+	)
+	app.registerGRPCModules(app.grpcServer)
 	// Lets grpcurl/grpcui discover services without a local .proto copy.
 	reflection.Register(app.grpcServer)
 
@@ -31,4 +34,15 @@ func (app *App) startGRPCServer() error {
 		}
 	}()
 	return nil
+}
+
+func (app *App) grpcDialTarget() string {
+	host := strings.TrimSpace(app.config.GrpcServer.Address)
+	switch host {
+	case "", "0.0.0.0":
+		host = "127.0.0.1"
+	case "::", "[::]":
+		host = "::1"
+	}
+	return net.JoinHostPort(host, strconv.Itoa(app.config.GrpcServer.Port))
 }

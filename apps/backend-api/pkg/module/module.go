@@ -2,6 +2,10 @@ package module
 
 import (
 	"context"
+
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/go-chi/chi/v5"
+	"google.golang.org/grpc"
 )
 
 type (
@@ -26,5 +30,13 @@ type (
 
 	Deinitializer interface {
 		Deinitialize(ctx context.Context) error
+	}
+
+	HTTPRegistrar interface {
+		RegisterHTTP(ctx context.Context, router chi.Router, api huma.API) error
+	}
+
+	GRPCRegistrar interface {
+		RegisterGRPC(registrar grpc.ServiceRegistrar)
 	}
 )

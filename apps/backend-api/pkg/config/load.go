@@ -15,5 +15,15 @@ func LoadStrict(file string, o interface{}) error {
 	if err := v.ReadInConfig(); err != nil {
 		return err
 	}
-	return v.Unmarshal(o, func(dc *mapstructure.DecoderConfig) { dc.ErrorUnused = true })
+	if err := v.Unmarshal(o, func(dc *mapstructure.DecoderConfig) {
+		dc.ErrorUnused = true
+		dc.DecodeHook = mapstructure.ComposeDecodeHookFunc(
+			mapstructure.StringToTimeDurationHookFunc(),
+			mapstructure.StringToSliceHookFunc(","),
+			fieldTagDecodeHook,
+		)
+	}); err != nil {
+		return err
+	}
+	return Process(o)
 }

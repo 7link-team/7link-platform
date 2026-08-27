@@ -9,14 +9,14 @@ import (
 	"syscall"
 	"time"
 
+	grpcuimodule "7link.com/platform/internal/infra/grpcui"
 	"7link.com/platform/internal/infra/health"
-	healthgrpc "7link.com/platform/internal/infra/health/grpc"
+	configx "7link.com/platform/pkg/config"
+	"7link.com/platform/pkg/i18n"
 	"google.golang.org/grpc"
 )
 
 type App struct {
-	name string
-
 	// config is the parsed configuration handed to Run.
 	config AppConfig
 
@@ -37,18 +37,26 @@ type App struct {
 	// no reporter blocks if several fail at once.
 	serveErr chan error
 
-	grpcServer   *grpc.Server
-	httpServer   *http.Server
-	healthServer *healthgrpc.Server
+	grpcServer *grpc.Server
+	httpServer *http.Server
 }
 
 func (app *App) Run(config AppConfig) error {
+	if err := configx.Process(&config); err != nil {
+		return err
+	}
 	app.config = config
+
+	if err := i18n.InitEmbedded(i18n.Base); err != nil {
+		return err
+	}
+
 	app.ctx, app.cancel = context.WithCancel(context.Background())
 	app.serveErr = make(chan error, 2)
 
 	app.mods = append(app.mods,
 		health.NewModule(),
+		grpcuimodule.NewModule(app.grpcDialTarget()),
 	)
 
 	if err := app.initializeModules(app.ctx); err != nil {
@@ -59,10 +67,10 @@ func (app *App) Run(config AppConfig) error {
 	}
 
 	if err := app.startGRPCServer(); err != nil {
-		return err
+		return errors.Join(err, app.shutdown())
 	}
-	if err := app.startHTTPServer(app.ctx); err != nil {
-		return err
+	if err := app.startHTTPServer(); err != nil {
+		return errors.Join(err, app.shutdown())
 	}
 
 	return app.awaitShutdown()
@@ -104,6 +112,9 @@ func (app *App) shutdown() error {
 	}
 
 	if err := app.stopModules(shutdownCtx); err != nil {
+		errs = append(errs, err)
+	}
+	if err := app.deinitializeModules(shutdownCtx); err != nil {
 		errs = append(errs, err)
 	}
 
