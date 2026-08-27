@@ -25,9 +25,6 @@ func (server *grpcServer) Next(context.Context, *guidv1.NextRequest) (*guidv1.Ne
 
 func (server *grpcServer) NextBatch(_ context.Context, request *guidv1.NextBatchRequest) (*guidv1.NextBatchResponse, error) {
 	count := int(request.GetCount())
-	if count < 1 || count > maxBatch {
-		return nil, status.Errorf(codes.InvalidArgument, "count must be 1..%d", maxBatch)
-	}
 	ids := make([]string, 0, count)
 	for range count {
 		id, err := server.next()

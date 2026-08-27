@@ -6,6 +6,8 @@ version: v2
 modules:
   - path: internal/infra/health/proto
   - path: internal/infra/guid/proto
+deps:
+  - buf.build/bufbuild/protovalidate
 lint:
   use:
     - STANDARD

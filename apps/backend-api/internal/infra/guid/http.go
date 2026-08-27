@@ -9,10 +9,8 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-const maxBatch = 100
-
 type batchInput struct {
-	Count int `path:"count" minimum:"1" maximum:"100" doc:"number of IDs to generate"`
+	Count int `path:"count" minimum:"1" maximum:"10000" doc:"number of IDs to generate"`
 }
 
 func registerHTTP(api huma.API, next func() (int64, error)) {

@@ -22,13 +22,21 @@ func (app *App) startGRPCServer() error {
 	if app.telemetry != nil {
 		serverOptions = append(serverOptions,
 			grpc.StatsHandler(app.telemetry.GRPCServerStatsHandler()),
-			grpc.ChainUnaryInterceptor(app.telemetry.UnaryServerInterceptor, grpcx.LocaleUnaryInterceptor),
-			grpc.ChainStreamInterceptor(app.telemetry.StreamServerInterceptor, grpcx.LocaleStreamInterceptor),
+			grpc.ChainUnaryInterceptor(
+				app.telemetry.UnaryServerInterceptor,
+				grpcx.LocaleUnaryInterceptor,
+				grpcx.ValidationUnaryInterceptor,
+			),
+			grpc.ChainStreamInterceptor(
+				app.telemetry.StreamServerInterceptor,
+				grpcx.LocaleStreamInterceptor,
+				grpcx.ValidationStreamInterceptor,
+			),
 		)
 	} else {
 		serverOptions = append(serverOptions,
-			grpc.UnaryInterceptor(grpcx.LocaleUnaryInterceptor),
-			grpc.StreamInterceptor(grpcx.LocaleStreamInterceptor),
+			grpc.ChainUnaryInterceptor(grpcx.LocaleUnaryInterceptor, grpcx.ValidationUnaryInterceptor),
+			grpc.ChainStreamInterceptor(grpcx.LocaleStreamInterceptor, grpcx.ValidationStreamInterceptor),
 		)
 	}
 	app.grpcServer = grpc.NewServer(serverOptions...)

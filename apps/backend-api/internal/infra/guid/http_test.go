@@ -35,6 +35,12 @@ func TestHTTPEndpoints(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &batch))
 	assert.Equal(t, []string{"2", "3", "4"}, batch.Data)
+
+	response = api.Get("/guid/10000")
+	require.Equal(t, http.StatusOK, response.Code)
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &batch))
+	assert.Len(t, batch.Data, 10000)
+
 	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/guid/0").Code)
-	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/guid/101").Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/guid/10001").Code)
 }

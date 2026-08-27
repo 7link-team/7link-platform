@@ -28,6 +28,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type GuidServiceClient interface {
 	Next(ctx context.Context, in *NextRequest, opts ...grpc.CallOption) (*NextResponse, error)
+	// NextBatch returns count new IDs (1..10000).
 	NextBatch(ctx context.Context, in *NextBatchRequest, opts ...grpc.CallOption) (*NextBatchResponse, error)
 }
 
@@ -64,6 +65,7 @@ func (c *guidServiceClient) NextBatch(ctx context.Context, in *NextBatchRequest,
 // for forward compatibility.
 type GuidServiceServer interface {
 	Next(context.Context, *NextRequest) (*NextResponse, error)
+	// NextBatch returns count new IDs (1..10000).
 	NextBatch(context.Context, *NextBatchRequest) (*NextBatchResponse, error)
 	mustEmbedUnimplementedGuidServiceServer()
 }

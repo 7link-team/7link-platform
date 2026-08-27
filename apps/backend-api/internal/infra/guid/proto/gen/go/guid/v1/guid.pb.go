@@ -7,6 +7,7 @@
 package guidv1
 
 import (
+	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -193,12 +194,13 @@ var File_api_v1_guid_proto protoreflect.FileDescriptor
 
 const file_api_v1_guid_proto_rawDesc = "" +
 	"\n" +
-	"\x11api/v1/guid.proto\x12\x10platform.guid.v1\"\r\n" +
+	"\x11api/v1/guid.proto\x12\x10platform.guid.v1\x1a\x1bbuf/validate/validate.proto\"\r\n" +
 	"\vNextRequest\"\x1e\n" +
 	"\fNextResponse\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"(\n" +
-	"\x10NextBatchRequest\x12\x14\n" +
-	"\x05count\x18\x01 \x01(\rR\x05count\"%\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"4\n" +
+	"\x10NextBatchRequest\x12 \n" +
+	"\x05count\x18\x01 \x01(\rB\n" +
+	"\xbaH\a*\x05\x18\x90N(\x01R\x05count\"%\n" +
 	"\x11NextBatchResponse\x12\x10\n" +
 	"\x03ids\x18\x01 \x03(\tR\x03ids2\xaa\x01\n" +
 	"\vGuidService\x12E\n" +

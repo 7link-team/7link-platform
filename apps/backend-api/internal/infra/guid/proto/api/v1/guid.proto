@@ -2,10 +2,13 @@ syntax = "proto3";
 
 package platform.guid.v1;
 
+import "buf/validate/validate.proto";
+
 option go_package = "7link.com/platform/internal/infra/guid/proto/gen/go/guid/v1;guidv1";
 
 service GuidService {
   rpc Next(NextRequest) returns (NextResponse);
+  // NextBatch returns count new IDs (1..10000).
   rpc NextBatch(NextBatchRequest) returns (NextBatchResponse);
 }
 
@@ -16,7 +19,10 @@ message NextResponse {
 }
 
 message NextBatchRequest {
-  uint32 count = 1;
+  uint32 count = 1 [(buf.validate.field).uint32 = {
+    gte: 1
+    lte: 10000
+  }];
 }
 
 message NextBatchResponse {
