@@ -31,11 +31,8 @@ import { parse as parseYAML } from "yaml";
     root.innerHTML = "";
     switch (name) {
       case "scalar": {
-        var scalar = document.createElement("script");
-        scalar.id = "api-reference";
-        scalar.dataset.url = config.specJSON;
-        scalar.src = "/docs/assets/scalar.js";
-        root.appendChild(scalar);
+        await loadScript("/docs/assets/scalar.js");
+        window.Scalar.createApiReference(root, { url: config.specJSON });
         return;
       }
       case "swagger": {
