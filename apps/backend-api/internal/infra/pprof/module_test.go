@@ -1,4 +1,4 @@
-package app
+package pprof
 
 import (
 	"context"
@@ -22,37 +22,39 @@ import (
 func TestRegisterPprofServesStandardEndpoints(t *testing.T) {
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
-	registerPprof(router, api, "test service", true)
+	module := NewModule("test service")
+	assert.Equal(t, "pprof", module.ModuleName())
+	require.NoError(t, module.RegisterHTTP(t.Context(), router, api))
 
 	index := httptest.NewRecorder()
-	router.ServeHTTP(index, httptest.NewRequest(http.MethodGet, pprofPath+"/", nil))
+	router.ServeHTTP(index, httptest.NewRequest(http.MethodGet, Path+"/", nil))
 	assert.Equal(t, http.StatusOK, index.Code)
 	assert.Contains(t, index.Header().Get("Content-Type"), "text/html")
 	assert.Contains(t, index.Body.String(), "Types of profiles available")
 
 	goroutine := httptest.NewRecorder()
-	router.ServeHTTP(goroutine, httptest.NewRequest(http.MethodGet, pprofPath+"/goroutine?debug=1", nil))
+	router.ServeHTTP(goroutine, httptest.NewRequest(http.MethodGet, Path+"/goroutine?debug=1", nil))
 	assert.Equal(t, http.StatusOK, goroutine.Code)
 	assert.Contains(t, goroutine.Header().Get("Content-Type"), "text/plain")
 	assert.Contains(t, goroutine.Body.String(), "goroutine profile")
 
 	redirect := httptest.NewRecorder()
-	router.ServeHTTP(redirect, httptest.NewRequest(http.MethodGet, pprofPath, nil))
+	router.ServeHTTP(redirect, httptest.NewRequest(http.MethodGet, Path, nil))
 	assert.Equal(t, http.StatusMovedPermanently, redirect.Code)
-	assert.Equal(t, pprofPath+"/", redirect.Header().Get("Location"))
+	assert.Equal(t, Path+"/", redirect.Header().Get("Location"))
 
 	wrongMethod := httptest.NewRecorder()
-	router.ServeHTTP(wrongMethod, httptest.NewRequest(http.MethodPost, pprofPath+"/", nil))
+	router.ServeHTTP(wrongMethod, httptest.NewRequest(http.MethodPost, Path+"/", nil))
 	assert.Equal(t, http.StatusMethodNotAllowed, wrongMethod.Code)
 }
 
 func TestRegisterPprofServesEmbeddedWebUI(t *testing.T) {
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
-	registerPprof(router, api, "test service", true)
+	require.NoError(t, NewModule("test service").RegisterHTTP(t.Context(), router, api))
 
 	landing := httptest.NewRecorder()
-	router.ServeHTTP(landing, httptest.NewRequest(http.MethodGet, pprofUIPath+"/", nil))
+	router.ServeHTTP(landing, httptest.NewRequest(http.MethodGet, UIPath+"/", nil))
 	require.Equal(t, http.StatusOK, landing.Code)
 	assert.Contains(t, landing.Header().Get("Content-Type"), "text/html")
 	assert.Equal(t, "no-store", landing.Header().Get("Cache-Control"))
@@ -69,17 +71,17 @@ func TestRegisterPprofServesEmbeddedWebUI(t *testing.T) {
 	assert.Contains(t, landing.Body.String(), "CPU capture duration in seconds")
 
 	withoutCapture := httptest.NewRecorder()
-	router.ServeHTTP(withoutCapture, httptest.NewRequest(http.MethodGet, pprofUIPath+"/view/flamegraph", nil))
+	router.ServeHTTP(withoutCapture, httptest.NewRequest(http.MethodGet, UIPath+"/view/flamegraph", nil))
 	assert.Equal(t, http.StatusSeeOther, withoutCapture.Code)
-	assert.Equal(t, pprofUIPath+"/", withoutCapture.Header().Get("Location"))
+	assert.Equal(t, UIPath+"/", withoutCapture.Header().Get("Location"))
 
 	form := url.Values{"profile": {"heap"}}
 	capture := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, pprofUIPath+"/capture", strings.NewReader(form.Encode()))
+	request := httptest.NewRequest(http.MethodPost, UIPath+"/capture", strings.NewReader(form.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	router.ServeHTTP(capture, request)
 	require.Equal(t, http.StatusSeeOther, capture.Code, capture.Body.String())
-	assert.Equal(t, pprofUIPath+"/view/flamegraph", capture.Header().Get("Location"))
+	assert.Equal(t, UIPath+"/view/flamegraph", capture.Header().Get("Location"))
 
 	flamegraph := httptest.NewRecorder()
 	router.ServeHTTP(flamegraph, httptest.NewRequest(http.MethodGet, capture.Header().Get("Location"), nil))
@@ -90,13 +92,13 @@ func TestRegisterPprofServesEmbeddedWebUI(t *testing.T) {
 	assert.Contains(t, flamegraph.Body.String(), "Flame Graph")
 
 	current := httptest.NewRecorder()
-	router.ServeHTTP(current, httptest.NewRequest(http.MethodGet, pprofUIPath+"/", nil))
+	router.ServeHTTP(current, httptest.NewRequest(http.MethodGet, UIPath+"/", nil))
 	require.Equal(t, http.StatusOK, current.Code)
 	assert.Contains(t, current.Body.String(), `<strong class="snapshot-name">Heap</strong>`)
 	assert.Contains(t, current.Body.String(), `href="/debug/pprof/ui/view/flamegraph"`)
 
 	download := httptest.NewRecorder()
-	router.ServeHTTP(download, httptest.NewRequest(http.MethodGet, pprofUIPath+"/view/download", nil))
+	router.ServeHTTP(download, httptest.NewRequest(http.MethodGet, UIPath+"/view/download", nil))
 	require.Equal(t, http.StatusOK, download.Code)
 	assert.Equal(t, "application/vnd.google.protobuf+gzip", download.Header().Get("Content-Type"))
 }
@@ -189,24 +191,24 @@ func TestCaptureDuration(t *testing.T) {
 func TestRegisterPprofAddsOpenAPIOperations(t *testing.T) {
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
-	registerPprof(router, api, "test service", true)
+	require.NoError(t, NewModule("test service").RegisterHTTP(t.Context(), router, api))
 
 	paths := api.OpenAPI().Paths
 	for _, path := range []string{
-		pprofPath + "/",
-		pprofPath + "/cmdline",
-		pprofPath + "/profile",
-		pprofPath + "/symbol",
-		pprofPath + "/trace",
-		pprofPath + "/{profile}",
-		pprofUIPath + "/",
+		Path + "/",
+		Path + "/cmdline",
+		Path + "/profile",
+		Path + "/symbol",
+		Path + "/trace",
+		Path + "/{profile}",
+		UIPath + "/",
 	} {
 		require.Contains(t, paths, path)
 		require.NotNil(t, paths[path].Get)
 		assert.Contains(t, paths[path].Get.Tags, "PProf")
 	}
 
-	profile := paths[pprofPath+"/{profile}"].Get
+	profile := paths[Path+"/{profile}"].Get
 	require.Len(t, profile.Parameters, 4)
 	assert.Equal(t, "profile", profile.Parameters[0].Name)
 	assert.True(t, profile.Parameters[0].Required)
@@ -215,18 +217,4 @@ func TestRegisterPprofAddsOpenAPIOperations(t *testing.T) {
 
 	_, err := json.Marshal(api.OpenAPI())
 	require.NoError(t, err)
-}
-
-func TestRegisterPprofDoesNothingWhenDisabled(t *testing.T) {
-	router := chi.NewRouter()
-	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
-	registerPprof(router, api, "test service", false)
-
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, pprofPath+"/", nil))
-	assert.Equal(t, http.StatusNotFound, response.Code)
-
-	for path := range api.OpenAPI().Paths {
-		assert.NotContains(t, path, pprofPath)
-	}
 }

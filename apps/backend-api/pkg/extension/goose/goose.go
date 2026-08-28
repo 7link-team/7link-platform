@@ -29,13 +29,13 @@ type Source struct {
 
 // Status compares every embedded migration version with every applied version.
 type Status struct {
-	Current  int64
-	Target   int64
-	State    State
-	Embedded []int64
-	Applied  []int64
-	Pending  []int64
-	Unknown  []int64
+	Current  int64   `json:"current"`
+	Target   int64   `json:"target"`
+	State    State   `json:"state"`
+	Embedded []int64 `json:"embedded"`
+	Applied  []int64 `json:"applied"`
+	Pending  []int64 `json:"pending"`
+	Unknown  []int64 `json:"unknown"`
 }
 
 // ResolveDialect maps a dialect string to a goose dialect and the SQL

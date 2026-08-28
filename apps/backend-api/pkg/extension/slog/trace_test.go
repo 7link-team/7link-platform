@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"testing"
 
-	otelx "7link.com/platform/pkg/extension/otel"
+	telemetry "7link.com/platform/internal/infra/telemetry"
 	slogx "7link.com/platform/pkg/extension/slog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,7 +15,7 @@ import (
 
 func TestTraceHandlerAddsTraceAndSpanIDs(t *testing.T) {
 	const traceID = "123e4567e89b42d3a456426614174000"
-	module := otelx.NewModule("test", "1.0.0", otelx.WithIDGenerator(func() string { return traceID }))
+	module := telemetry.NewModule("test", "1.0.0", telemetry.WithIDGenerator(func() string { return traceID }))
 	t.Cleanup(func() { require.NoError(t, module.Deinitialize(context.Background())) })
 
 	var output bytes.Buffer
@@ -27,5 +27,5 @@ func TestTraceHandlerAddsTraceAndSpanIDs(t *testing.T) {
 	var record map[string]any
 	require.NoError(t, json.Unmarshal(output.Bytes(), &record))
 	assert.Equal(t, traceID, record["trace_id"])
-	assert.Equal(t, otelx.SpanID(ctx), record["span_id"])
+	assert.Equal(t, telemetry.SpanID(ctx), record["span_id"])
 }

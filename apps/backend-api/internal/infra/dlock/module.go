@@ -10,6 +10,8 @@ import (
 	"gorm.io/gorm"
 )
 
+const Name = "dlock"
+
 var ErrDatabaseUnavailable = errors.New("dlock: writable database unavailable")
 
 // Module owns the dlock migration source, runtime access, and health reporting.
@@ -18,7 +20,7 @@ type Module struct {
 	options []Option
 }
 
-func (*Module) ModuleName() string { return "dlock" }
+func (*Module) ModuleName() string { return Name }
 
 var (
 	_ module.HealthChecker = (*Module)(nil)

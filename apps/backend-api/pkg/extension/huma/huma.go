@@ -27,6 +27,14 @@ type Config struct {
 type LandingConfig struct {
 	Enabled         bool
 	AdvertiseHealth bool
+	Resources       []LandingResource
+}
+
+type LandingResource struct {
+	ID          string
+	Title       string
+	Description string
+	Href        string
 }
 
 // EndpointConfig independently controls route registration and landing-page
@@ -63,6 +71,15 @@ func New(router chi.Router, settings Config) huma.API {
 		config.OpenAPIPath = ""
 	}
 	config.Transformers = append(config.Transformers, respx.LocalizeMessage)
+	resources := make([]docs.Resource, len(settings.Landing.Resources))
+	for index, resource := range settings.Landing.Resources {
+		resources[index] = docs.Resource{
+			ID:          resource.ID,
+			Title:       resource.Title,
+			Description: resource.Description,
+			Href:        resource.Href,
+		}
+	}
 	config = docs.Register(router, config, docs.Options{
 		Name:             name,
 		LandingEnabled:   settings.Landing.Enabled,
@@ -70,6 +87,7 @@ func New(router chi.Router, settings Config) huma.API {
 		AdvertiseDocs:    settings.Docs.Advertise,
 		AdvertiseOpenAPI: settings.OpenAPI.Advertise,
 		AdvertiseHealth:  settings.Landing.AdvertiseHealth,
+		Resources:        resources,
 	})
 
 	respx.Install()

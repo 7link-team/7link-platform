@@ -6,9 +6,43 @@ import (
 	"testing"
 
 	"7link.com/platform/pkg/module"
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 )
+
+type registrarModule struct {
+	httpErr       error
+	httpCalled    bool
+	grpcCalled    bool
+	registeredCtx context.Context
+}
+
+func (*registrarModule) ModuleName() string { return "registrar" }
+
+func (m *registrarModule) RegisterHTTP(ctx context.Context, _ chi.Router, _ huma.API) error {
+	m.httpCalled = true
+	m.registeredCtx = ctx
+	return m.httpErr
+}
+
+func (m *registrarModule) RegisterGRPC(grpc.ServiceRegistrar) { m.grpcCalled = true }
+
+func TestModuleRegistration(t *testing.T) {
+	registrationErr := errors.New("registration failed")
+	registrar := &registrarModule{httpErr: registrationErr}
+	app := &App{mods: []module.Module{&namedModule{name: "plain"}, registrar}}
+
+	err := app.registerHTTPModules(t.Context(), chi.NewRouter(), nil)
+	assert.ErrorIs(t, err, registrationErr)
+	assert.True(t, registrar.httpCalled)
+	assert.Same(t, t.Context(), registrar.registeredCtx)
+
+	app.registerGRPCModules(grpc.NewServer())
+	assert.True(t, registrar.grpcCalled)
+}
 
 type lifecycleModule struct {
 	name       string

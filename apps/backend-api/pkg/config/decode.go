@@ -29,6 +29,16 @@ func fieldTagDecodeHook(_ reflect.Type, target reflect.Type, data any) (any, err
 		}
 
 		value, exists := values[name]
+		if !exists {
+			for key, candidate := range values {
+				if strings.EqualFold(strings.ReplaceAll(key, "-", "_"), strings.ReplaceAll(name, "-", "_")) {
+					value, exists = candidate, true
+					delete(values, key)
+					values[name] = candidate
+					break
+				}
+			}
+		}
 		trim := strings.EqualFold(field.Tag.Get("trim"), "true")
 		if exists && trim {
 			value = trimRawValue(value)

@@ -8,9 +8,9 @@ import (
 
 	healthi18n "7link.com/platform/internal/infra/health/i18n"
 	"7link.com/platform/internal/infra/health/service"
+	telemetry "7link.com/platform/internal/infra/telemetry"
 	grpcx "7link.com/platform/pkg/extension/grpc"
-	otelx "7link.com/platform/pkg/extension/otel"
-	"7link.com/platform/pkg/i18n"
+	platformi18n "7link.com/platform/pkg/i18n"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	grpcgo "google.golang.org/grpc"
@@ -20,16 +20,16 @@ import (
 )
 
 func TestClientCheckEndToEnd(t *testing.T) {
-	require.NoError(t, i18n.NewModule(i18n.Base).Initialize(t.Context()))
+	require.NoError(t, platformi18n.NewModule(platformi18n.Base).Initialize(t.Context()))
 	require.NoError(t, healthi18n.Register())
 	const traceID = "123e4567e89b42d3a456426614174000"
-	telemetry := otelx.NewModule("health-test", "1.0.0", otelx.WithIDGenerator(func() string { return traceID }))
-	t.Cleanup(func() { require.NoError(t, telemetry.Deinitialize(context.Background())) })
+	telemetryModule := telemetry.NewModule("health-test", "1.0.0", telemetry.WithIDGenerator(func() string { return traceID }))
+	t.Cleanup(func() { require.NoError(t, telemetryModule.Deinitialize(context.Background())) })
 
 	listener := bufconn.Listen(1024 * 1024)
 	server := grpcgo.NewServer(
-		grpcgo.StatsHandler(telemetry.GRPCServerStatsHandler()),
-		grpcgo.ChainUnaryInterceptor(telemetry.UnaryServerInterceptor, grpcx.LocaleUnaryInterceptor),
+		grpcgo.StatsHandler(telemetryModule.GRPCServerStatsHandler()),
+		grpcgo.ChainUnaryInterceptor(telemetryModule.UnaryServerInterceptor, grpcx.LocaleUnaryInterceptor),
 	)
 	NewServer(service.New(func() []service.Checker {
 		return []service.Checker{{Name: "health"}}
@@ -45,12 +45,12 @@ func TestClientCheckEndToEnd(t *testing.T) {
 		grpcgo.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return listener.Dial()
 		}),
-		grpcgo.WithStatsHandler(telemetry.GRPCClientStatsHandler()),
+		grpcgo.WithStatsHandler(telemetryModule.GRPCClientStatsHandler()),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 
-	ctx := i18n.WithLocale(t.Context(), "zh-CN")
+	ctx := platformi18n.WithLocale(t.Context(), "zh-CN")
 	var headers metadata.MD
 	result, err := NewClient(conn).Check(ctx, grpcgo.Header(&headers))
 	require.NoError(t, err)
@@ -59,7 +59,7 @@ func TestClientCheckEndToEnd(t *testing.T) {
 	assert.Equal(t, service.StatusServing, result.Data.Status)
 	assert.Equal(t, []service.ModuleStatus{{Name: "health", Status: service.StatusUnknown}}, result.Data.Modules)
 	assert.Equal(t, []string{"zh-CN"}, headers.Get("content-language"))
-	assert.Equal(t, []string{traceID}, headers.Get(strings.ToLower(otelx.TraceIDHeader)))
-	require.Len(t, headers.Get(otelx.TraceparentHeader), 1)
-	assert.Contains(t, headers.Get(otelx.TraceparentHeader)[0], traceID)
+	assert.Equal(t, []string{traceID}, headers.Get(strings.ToLower(telemetry.TraceIDHeader)))
+	require.Len(t, headers.Get(telemetry.TraceparentHeader), 1)
+	assert.Contains(t, headers.Get(telemetry.TraceparentHeader)[0], traceID)
 }

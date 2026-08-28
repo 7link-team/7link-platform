@@ -12,7 +12,7 @@ func TestModuleRegistersOnlyNamespacedMessages(t *testing.T) {
 	require.NoError(t, i18n.NewModule(i18n.Base).Initialize(t.Context()))
 
 	module := NewModule()
-	assert.Equal(t, namespace, module.ModuleName())
+	assert.Equal(t, Name, module.ModuleName())
 	assert.Equal(t, []string{"i18n"}, module.ModuleDependencies())
 	require.NoError(t, module.Initialize(t.Context()))
 

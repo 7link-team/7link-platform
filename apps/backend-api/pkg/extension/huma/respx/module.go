@@ -8,27 +8,25 @@ import (
 	"7link.com/platform/pkg/module"
 )
 
-const namespace = "respx"
+const Name = "respx"
 
 //go:embed locales/*.json
 var locales embed.FS
 
 type Module struct{}
 
-func (*Module) ModuleName() string { return namespace }
+func NewModule() *Module { return &Module{} }
 
-func (*Module) ModuleDependencies() []string { return []string{"i18n"} }
+func (*Module) ModuleName() string { return Name }
+
+func (*Module) ModuleDependencies() []string { return []string{i18n.Name} }
 
 func (*Module) Initialize(context.Context) error {
-	return i18n.RegisterFS(namespace, locales, "locales")
-}
-
-func NewModule() *Module {
-	return &Module{}
+	return i18n.RegisterFS(Name, locales, "locales")
 }
 
 func messageKey(local string) string {
-	return namespace + "." + local
+	return Name + "." + local
 }
 
 var (

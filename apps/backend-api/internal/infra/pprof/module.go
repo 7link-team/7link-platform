@@ -1,57 +1,77 @@
-package app
+// Package pprof provides runtime profiling endpoints and an embedded analysis UI.
+package pprof
 
 import (
+	"context"
 	"net/http"
-	"net/http/pprof"
+	stdpprof "net/http/pprof"
 
+	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"
 )
 
-const pprofPath = "/debug/pprof"
+const (
+	Name   = "pprof"
+	Path   = "/debug/pprof"
+	UIPath = Path + "/ui"
+)
 
-func registerPprof(router chi.Router, api huma.API, name string, enabled bool) {
-	if !enabled {
-		return
-	}
+// Module owns the standard runtime profiling endpoints and embedded analysis UI.
+type Module struct {
+	name string
+}
 
-	ui := newPprofUI(name)
-	router.Get(pprofPath, func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, pprofPath+"/", http.StatusMovedPermanently)
+var (
+	_ module.Module        = (*Module)(nil)
+	_ module.HTTPRegistrar = (*Module)(nil)
+)
+
+func NewModule(name string) *Module {
+	return &Module{name: name}
+}
+
+func (*Module) ModuleName() string { return Name }
+
+func (m *Module) RegisterHTTP(_ context.Context, router chi.Router, api huma.API) error {
+	ui := newPprofUI(m.name)
+	router.Get(Path, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, Path+"/", http.StatusMovedPermanently)
 	})
-	router.Get(pprofPath+"/", pprof.Index)
-	router.Get(pprofPath+"/cmdline", pprof.Cmdline)
-	router.Get(pprofPath+"/profile", pprof.Profile)
-	router.Get(pprofPath+"/symbol", pprof.Symbol)
-	router.Get(pprofPath+"/trace", pprof.Trace)
-	router.Get(pprofUIPath, func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, pprofUIPath+"/", http.StatusMovedPermanently)
+	router.Get(Path+"/", stdpprof.Index)
+	router.Get(Path+"/cmdline", stdpprof.Cmdline)
+	router.Get(Path+"/profile", stdpprof.Profile)
+	router.Get(Path+"/symbol", stdpprof.Symbol)
+	router.Get(Path+"/trace", stdpprof.Trace)
+	router.Get(UIPath, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, UIPath+"/", http.StatusMovedPermanently)
 	})
-	router.Handle(pprofUIPath+"/*", http.StripPrefix(pprofUIPath, ui))
-	router.Get(pprofPath+"/*", pprof.Index)
+	router.Handle(UIPath+"/*", http.StripPrefix(UIPath, ui))
+	router.Get(Path+"/*", stdpprof.Index)
 
 	registerPprofOpenAPI(api)
+	return nil
 }
 
 func registerPprofOpenAPI(api huma.API) {
 	for _, operation := range []*huma.Operation{
 		pprofOperation(
 			"get-pprof-index",
-			pprofPath+"/",
+			Path+"/",
 			"List runtime profiles",
 			"Returns the standard Go runtime profiling index.",
 			htmlResponse("Runtime profile index"),
 		),
 		pprofOperation(
 			"get-pprof-cmdline",
-			pprofPath+"/cmdline",
+			Path+"/cmdline",
 			"Get process command line",
 			"Returns the command line invocation with arguments separated by NUL bytes.",
 			textResponse("Process command line"),
 		),
 		pprofOperation(
 			"capture-pprof-cpu-profile",
-			pprofPath+"/profile",
+			Path+"/profile",
 			"Capture a CPU profile",
 			"Captures a pprof-formatted CPU profile. The default duration is 30 seconds.",
 			binaryResponse("CPU profile"),
@@ -59,14 +79,14 @@ func registerPprofOpenAPI(api huma.API) {
 		),
 		pprofOperation(
 			"resolve-pprof-symbols",
-			pprofPath+"/symbol",
+			Path+"/symbol",
 			"Resolve program counters",
 			"Returns function names for program counters supplied in the raw query string.",
 			textResponse("Resolved program counters"),
 		),
 		pprofOperation(
 			"capture-pprof-trace",
-			pprofPath+"/trace",
+			Path+"/trace",
 			"Capture an execution trace",
 			"Captures a Go execution trace. The default duration is 1 second.",
 			binaryResponse("Execution trace"),
@@ -74,7 +94,7 @@ func registerPprofOpenAPI(api huma.API) {
 		),
 		pprofOperation(
 			"get-pprof-runtime-profile",
-			pprofPath+"/{profile}",
+			Path+"/{profile}",
 			"Get a runtime profile",
 			"Returns a named runtime profile such as heap, goroutine, allocs, block, mutex, or threadcreate.",
 			profileResponse(),
@@ -101,7 +121,7 @@ func registerPprofOpenAPI(api huma.API) {
 		),
 		pprofOperation(
 			"open-pprof-web-ui",
-			pprofUIPath+"/",
+			UIPath+"/",
 			"Open runtime profile analysis",
 			"Opens the embedded Google pprof profile capture and analysis interface.",
 			htmlResponse("Runtime profile analysis interface"),

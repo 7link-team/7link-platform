@@ -4,17 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
-	"os"
 	"slices"
 
 	"7link.com/platform/internal/infra/dlock"
 	"7link.com/platform/internal/infra/wuid"
 	configx "7link.com/platform/pkg/config"
 	goosex "7link.com/platform/pkg/extension/goose"
-	slogx "7link.com/platform/pkg/extension/slog"
 	"7link.com/platform/pkg/module"
-	"7link.com/platform/pkg/timezone"
 	"gorm.io/gorm"
 )
 
@@ -42,8 +38,8 @@ type MigrationConfig struct {
 }
 
 type MigrationReport struct {
-	Module string
-	Status goosex.Status
+	Module string        `json:"module"`
+	Status goosex.Status `json:"status"`
 }
 
 type migrationSourceProvider interface {
@@ -62,10 +58,9 @@ func RunMigrations(ctx context.Context, config MigrationConfig) ([]MigrationRepo
 		Database: config.Database,
 	}
 	applyDebugDefaults(&appConfig)
-	if err := timezone.SetTimezone(config.Timezone); err != nil {
-		return nil, fmt.Errorf("initialize timezone %q: %w", config.Timezone, err)
+	if err := configureProcessRuntime(config.Timezone); err != nil {
+		return nil, err
 	}
-	slog.SetDefault(slogx.NewText(os.Stdout, nil))
 
 	router, openErr := newDatasourceRouter(ctx, appConfig)
 	defer func() { _ = router.Close() }()

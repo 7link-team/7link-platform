@@ -167,10 +167,39 @@ func TestBootstrapWithoutWriterReportsUnhealthy(t *testing.T) {
 		Modules: []healthservice.ModuleStatus{
 			{Name: "i18n", Status: healthservice.StatusUnknown},
 			{Name: "respx", Status: healthservice.StatusUnknown},
-			{Name: "health", Status: healthservice.StatusUnknown},
 			{Name: "dlock", Status: healthservice.StatusNotServing},
 			{Name: "wuid", Status: healthservice.StatusNotServing},
 			{Name: "guid", Status: healthservice.StatusNotServing},
+			{Name: "health", Status: healthservice.StatusServing},
 		},
 	}, healthModule.Service().Check(t.Context()))
+}
+
+func TestBootstrapAddsEnabledHTTPModules(t *testing.T) {
+	app := &App{config: AppConfig{
+		Pprof: Pprof{Enabled: true},
+		API: API{
+			Metrics:         APIMetrics{Enabled: true},
+			MigrationStatus: APIMigrationStatus{Enabled: true},
+			ConfigInspector: APIConfigInspector{Enabled: true},
+		},
+	}}
+	require.NoError(t, app.bootstrap(t.Context()))
+	t.Cleanup(func() { _ = app.shutdown() })
+
+	names := make([]string, len(app.mods))
+	for index, appModule := range app.mods {
+		names[index] = appModule.ModuleName()
+	}
+	assert.Equal(t, []string{
+		"i18n", "respx", "dlock", "wuid", "guid", "metrics", "pprof",
+		"migration-status", "config-inspector", "health",
+	}, names)
+	assert.NotNil(t, app.metrics)
+}
+
+func TestConfigureProcessRuntime(t *testing.T) {
+	require.NoError(t, configureProcessRuntime("UTC"))
+	assert.ErrorContains(t, configureProcessRuntime("Invalid/Timezone"), "initialize timezone")
+	require.NoError(t, configureProcessRuntime("UTC"))
 }

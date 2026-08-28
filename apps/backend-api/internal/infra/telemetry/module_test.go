@@ -1,4 +1,4 @@
-package otelx
+package telemetry
 
 import (
 	"context"
@@ -6,12 +6,34 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
+
+type recordingExporter struct {
+	mu       sync.Mutex
+	exported int
+	stopped  bool
+}
+
+func (e *recordingExporter) ExportSpans(_ context.Context, spans []sdktrace.ReadOnlySpan) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.exported += len(spans)
+	return nil
+}
+
+func (e *recordingExporter) Shutdown(context.Context) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.stopped = true
+	return nil
+}
 
 const (
 	generatedUUID = "123e4567-e89b-42d3-a456-426614174000"
@@ -104,4 +126,18 @@ func TestHTTPTransportPropagatesTraceHeaders(t *testing.T) {
 	headers := <-seen
 	assert.Equal(t, generatedHex, headers.Get(TraceIDHeader))
 	assert.Contains(t, headers.Get(TraceparentHeader), generatedHex)
+}
+
+func TestWithSpanExporterBatchesAndShutsDownExporter(t *testing.T) {
+	exporter := &recordingExporter{}
+	module := NewModule("test", "1.0.0", WithSpanExporter(nil), WithSpanExporter(exporter))
+	_, span := module.Tracer("test").Start(t.Context(), "exported")
+	span.End()
+	require.NoError(t, module.provider.ForceFlush(t.Context()))
+	require.NoError(t, module.Deinitialize(t.Context()))
+
+	exporter.mu.Lock()
+	defer exporter.mu.Unlock()
+	assert.Equal(t, 1, exporter.exported)
+	assert.True(t, exporter.stopped)
 }

@@ -11,8 +11,8 @@ import (
 	healthi18n "7link.com/platform/internal/infra/health/i18n"
 	"7link.com/platform/internal/infra/health/service"
 	humax "7link.com/platform/pkg/extension/huma"
-	"7link.com/platform/pkg/extension/huma/respx"
-	"7link.com/platform/pkg/i18n"
+	responsex "7link.com/platform/pkg/extension/huma/respx"
+	platformi18n "7link.com/platform/pkg/i18n"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,8 +20,8 @@ import (
 
 func newTestHandler(t *testing.T, services ...*service.Service) http.Handler {
 	t.Helper()
-	require.NoError(t, i18n.NewModule(i18n.Base).Initialize(t.Context()))
-	require.NoError(t, respx.NewModule().Initialize(t.Context()))
+	require.NoError(t, platformi18n.NewModule(platformi18n.Base).Initialize(t.Context()))
+	require.NoError(t, responsex.NewModule().Initialize(t.Context()))
 	require.NoError(t, healthi18n.Register())
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
@@ -40,7 +40,7 @@ func TestCheckHTTP(t *testing.T) {
 	handler.ServeHTTP(recorder, req)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
-	assert.Equal(t, i18n.Base, recorder.Header().Get("Content-Language"))
+	assert.Equal(t, platformi18n.Base, recorder.Header().Get("Content-Language"))
 	var body struct {
 		Code    int    `json:"code"`
 		Message string `json:"message"`

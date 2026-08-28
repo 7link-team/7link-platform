@@ -13,7 +13,6 @@ import (
 	"mime"
 	"net/http"
 	"path"
-	"strconv"
 	"strings"
 	"time"
 
@@ -197,6 +196,16 @@ type Options struct {
 	AdvertiseDocs    bool
 	AdvertiseOpenAPI bool
 	AdvertiseHealth  bool
+	Resources        []Resource
+}
+
+// Resource is an enabled operational endpoint advertised by the API landing
+// page. Registration remains owned by the endpoint's module.
+type Resource struct {
+	ID          string
+	Title       string
+	Description string
+	Href        string
 }
 
 type landingResource struct {
@@ -234,7 +243,7 @@ func Register(router chi.Router, config huma.Config, options Options) huma.Confi
 		landingHTML := indexHTML(landing)
 		router.Get("/", func(response http.ResponseWriter, request *http.Request) {
 			response.Header().Set("Cache-Control", "no-cache")
-			if !prefersHTML(request.Header.Get("Accept")) {
+			if !respx.PrefersHTML(request.Header.Get("Accept")) {
 				respx.WriteOK(response, request, landing)
 				return
 			}
@@ -258,7 +267,7 @@ func Register(router chi.Router, config huma.Config, options Options) huma.Confi
 }
 
 func landingResources(options Options, specJSON string) []landingResource {
-	resources := make([]landingResource, 0, 5)
+	resources := make([]landingResource, 0, 5+len(options.Resources))
 	if options.DocsEnabled && options.AdvertiseDocs {
 		resources = append(resources, landingResource{
 			ID:          "docs",
@@ -297,6 +306,9 @@ func landingResources(options Options, specJSON string) []landingResource {
 			},
 		)
 	}
+	for _, resource := range options.Resources {
+		resources = append(resources, landingResource(resource))
+	}
 	return resources
 }
 
@@ -314,28 +326,7 @@ func landingName(name string) string {
 }
 
 func prefersHTML(accept string) bool {
-	htmlQuality := -1.0
-	jsonQuality := 0.0
-	for _, value := range strings.Split(accept, ",") {
-		mediaType, parameters, err := mime.ParseMediaType(strings.TrimSpace(value))
-		if err != nil {
-			continue
-		}
-		quality := 1.0
-		if raw := parameters["q"]; raw != "" {
-			quality, err = strconv.ParseFloat(raw, 64)
-			if err != nil || quality < 0 || quality > 1 {
-				continue
-			}
-		}
-		switch {
-		case mediaType == "text/html" || mediaType == "application/xhtml+xml":
-			htmlQuality = max(htmlQuality, quality)
-		case mediaType == "application/json" || strings.HasSuffix(mediaType, "+json") || mediaType == "*/*":
-			jsonQuality = max(jsonQuality, quality)
-		}
-	}
-	return htmlQuality > 0 && htmlQuality >= jsonQuality
+	return respx.PrefersHTML(accept)
 }
 
 func configHandler(config runtimeConfig) http.HandlerFunc {

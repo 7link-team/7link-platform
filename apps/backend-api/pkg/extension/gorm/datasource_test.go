@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	otelx "7link.com/platform/pkg/extension/otel"
+	telemetry "7link.com/platform/internal/infra/telemetry"
 	slogx "7link.com/platform/pkg/extension/slog"
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
@@ -175,7 +175,7 @@ func TestDatasourceRouterHandlesUnusedAndNilDatasources(t *testing.T) {
 
 func TestDatasourceSQLLogContainsTraceID(t *testing.T) {
 	const traceID = "123e4567e89b42d3a456426614174000"
-	module := otelx.NewModule("test", "1.0.0", otelx.WithIDGenerator(func() string { return traceID }))
+	module := telemetry.NewModule("test", "1.0.0", telemetry.WithIDGenerator(func() string { return traceID }))
 	t.Cleanup(func() { require.NoError(t, module.Deinitialize(context.Background())) })
 
 	previousLogger := slog.Default()

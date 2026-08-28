@@ -4,15 +4,32 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 
+	"7link.com/platform/internal/infra/configinspector"
 	"7link.com/platform/internal/infra/dlock"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/internal/infra/health"
+	metrics "7link.com/platform/internal/infra/metrics"
+	"7link.com/platform/internal/infra/migrationstatus"
+	"7link.com/platform/internal/infra/pprof"
 	"7link.com/platform/internal/infra/wuid"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/extension/huma/respx"
+	slogx "7link.com/platform/pkg/extension/slog"
 	"7link.com/platform/pkg/i18n"
+	"7link.com/platform/pkg/timezone"
 )
+
+// configureProcessRuntime applies the process-wide settings shared by the
+// serve and standalone migration entry points.
+func configureProcessRuntime(timezoneName string) error {
+	if err := timezone.SetTimezone(timezoneName); err != nil {
+		return fmt.Errorf("initialize timezone %q: %w", timezoneName, err)
+	}
+	slog.SetDefault(slogx.NewText(os.Stdout, nil))
+	return nil
+}
 
 // bootstrap opens shared infrastructure, builds and wires modules, optionally
 // migrates them, and then runs their initialization and start phases.
@@ -22,10 +39,47 @@ func (app *App) bootstrap(ctx context.Context) error {
 	app.mods = append(app.mods,
 		i18n.NewModule(i18n.Base),
 		respx.NewModule(),
-		health.NewModule(app.healthCheckers),
 		dlock.NewModule(&app.Db),
 		wuid.NewModule(&app.Db),
 		guid.NewModule(),
+
+		// .. basic modules
+	)
+
+	if app.config.API.Metrics.Enabled {
+		app.metrics = metrics.NewModule()
+		app.mods = append(app.mods, app.metrics)
+	}
+	if app.config.Pprof.Enabled {
+		app.mods = append(app.mods, pprof.NewModule(app.config.Name))
+	}
+	if app.config.API.MigrationStatus.Enabled {
+		app.mods = append(app.mods, migrationstatus.NewModule(func(ctx context.Context) ([]migrationstatus.Report, error) {
+			reports, err := runModuleMigrations(ctx, app.Db.Write(), app.mods, MigrationConfig{
+				Action: MigrationStatus,
+				To:     -1,
+			})
+			result := make([]migrationstatus.Report, len(reports))
+			for index, report := range reports {
+				result[index] = migrationstatus.Report{Module: report.Module, Status: report.Status}
+			}
+			return result, err
+		}))
+	}
+	if app.config.API.ConfigInspector.Enabled {
+		inspector, err := configinspector.NewModule(app.config)
+		if err != nil {
+			return err
+		}
+		app.mods = append(app.mods, inspector)
+	}
+
+	// app.mods = append(app.mods,
+	// .. biz modules
+	// )
+	app.mods = append(app.mods,
+		health.NewModule(app.healthCheckers),
+		// .. completion modules
 	)
 
 	if err := app.wireModules(); err != nil {

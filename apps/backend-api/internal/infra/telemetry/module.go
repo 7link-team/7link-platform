@@ -1,9 +1,11 @@
-package otelx
+package telemetry
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
+	"7link.com/platform/pkg/module"
 	"github.com/felixge/httpsnoop"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -16,19 +18,40 @@ import (
 	"google.golang.org/grpc/stats"
 )
 
-type config struct {
+const Name = "telemetry"
+
+type moduleConfig struct {
 	idGenerator IDGenerator
+	exporters   []sdktrace.SpanExporter
+	settings    Config
 }
 
-type Option func(*config)
+type Option func(*moduleConfig)
 
 // WithIDGenerator overrides the UUID v4 generator used for new root traces.
 // The function must return a UUID or a 32-character hexadecimal trace ID.
 func WithIDGenerator(generate IDGenerator) Option {
-	return func(config *config) {
+	return func(config *moduleConfig) {
 		if generate != nil {
 			config.idGenerator = generate
 		}
+	}
+}
+
+// WithSpanExporter adds a batch processor for exported spans. A nil exporter
+// is ignored so callers can assemble optional telemetry without branching.
+func WithSpanExporter(exporter sdktrace.SpanExporter) Option {
+	return func(config *moduleConfig) {
+		if exporter != nil {
+			config.exporters = append(config.exporters, exporter)
+		}
+	}
+}
+
+// WithConfig applies exporter configuration owned by the telemetry module.
+func WithConfig(settings Config) Option {
+	return func(config *moduleConfig) {
+		config.settings = settings
 	}
 }
 
@@ -36,24 +59,35 @@ func WithIDGenerator(generate IDGenerator) Option {
 type Module struct {
 	provider   *sdktrace.TracerProvider
 	propagator propagation.TextMapPropagator
+	settings   Config
 }
 
-func (*Module) ModuleName() string { return "telemetry" }
+var (
+	_ module.Module        = (*Module)(nil)
+	_ module.Initializer   = (*Module)(nil)
+	_ module.Deinitializer = (*Module)(nil)
+)
+
+func (*Module) ModuleName() string { return Name }
 
 func NewModule(serviceName, serviceVersion string, options ...Option) *Module {
-	config := config{idGenerator: defaultIDGenerator}
+	config := moduleConfig{idGenerator: defaultIDGenerator}
 	for _, option := range options {
 		option(&config)
 	}
 
 	idGenerator := &traceIDGenerator{generate: config.idGenerator}
-	provider := sdktrace.NewTracerProvider(
+	providerOptions := []sdktrace.TracerProviderOption{
 		sdktrace.WithIDGenerator(idGenerator),
 		sdktrace.WithResource(resource.NewSchemaless(
 			semconv.ServiceName(serviceName),
 			semconv.ServiceVersion(serviceVersion),
 		)),
-	)
+	}
+	for _, exporter := range config.exporters {
+		providerOptions = append(providerOptions, sdktrace.WithBatcher(exporter))
+	}
+	provider := sdktrace.NewTracerProvider(providerOptions...)
 	propagator := propagation.NewCompositeTextMapPropagator(
 		propagation.TraceContext{},
 		traceIDPropagator{idGenerator: idGenerator},
@@ -62,7 +96,21 @@ func NewModule(serviceName, serviceVersion string, options ...Option) *Module {
 
 	otel.SetTracerProvider(provider)
 	otel.SetTextMapPropagator(propagator)
-	return &Module{provider: provider, propagator: propagator}
+	return &Module{provider: provider, propagator: propagator, settings: config.settings}
+}
+
+// Initialize registers optional exporters before protocol servers begin
+// accepting requests.
+func (m *Module) Initialize(ctx context.Context) error {
+	if !m.settings.OTLP.Enabled {
+		return nil
+	}
+	exporter, err := newOTLPExporter(ctx, m.settings.OTLP)
+	if err != nil {
+		return errors.Join(err, m.provider.Shutdown(ctx))
+	}
+	m.provider.RegisterSpanProcessor(sdktrace.NewBatchSpanProcessor(exporter))
+	return nil
 }
 
 func (m *Module) Deinitialize(ctx context.Context) error {

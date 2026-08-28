@@ -1,4 +1,4 @@
-package otelx
+package telemetry
 
 import (
 	"context"

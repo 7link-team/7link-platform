@@ -8,7 +8,7 @@ import (
 
 	"7link.com/platform/internal/infra/health/service"
 	humax "7link.com/platform/pkg/extension/huma"
-	"7link.com/platform/pkg/i18n"
+	platformi18n "7link.com/platform/pkg/i18n"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,13 +16,19 @@ import (
 )
 
 func TestHealthModuleLifecycleAndRegistration(t *testing.T) {
-	require.NoError(t, i18n.NewModule(i18n.Base).Initialize(t.Context()))
-	module := NewModule()
+	require.NoError(t, platformi18n.NewModule(platformi18n.Base).Initialize(t.Context()))
+	var module *HealthModule
+	module = NewModule(func() []service.Checker {
+		return []service.Checker{{Name: module.ModuleName(), Check: module.CheckHealth}}
+	})
 	assert.Equal(t, "health", module.ModuleName())
 	assert.Equal(t, []string{"i18n"}, module.ModuleDependencies())
 	require.NotNil(t, module.Service())
+	assert.ErrorIs(t, module.CheckHealth(t.Context()), ErrNotReady)
+	assert.Equal(t, service.StatusNotServing, module.Service().Check(t.Context()).Status)
 	require.NoError(t, module.Initialize(t.Context()))
 	require.NoError(t, module.Start(t.Context()))
+	assert.NoError(t, module.CheckHealth(t.Context()))
 
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("health-test", "1.0.0"))
@@ -45,5 +51,6 @@ func TestHealthModuleLifecycleAndRegistration(t *testing.T) {
 	assert.Contains(t, grpcServer.GetServiceInfo(), "platform.health.v1.HealthService")
 
 	require.NoError(t, module.Stop(t.Context()))
-	require.NoError(t, module.Deinitialize(t.Context()))
+	assert.ErrorIs(t, module.CheckHealth(t.Context()), ErrNotReady)
+	assert.Equal(t, service.StatusNotServing, module.Service().Check(t.Context()).Status)
 }

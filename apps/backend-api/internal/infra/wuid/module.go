@@ -13,6 +13,8 @@ import (
 
 var ErrUnavailable = errors.New("wuid: worker ID unavailable")
 
+const Name = "wuid"
+
 // Module owns the worker ID migration source, allocation, renewal, health, and release.
 type Module struct {
 	db      gormx.Writer
@@ -34,7 +36,7 @@ type Source interface {
 	Current() (Lease, error)
 }
 
-func (*Module) ModuleName() string { return "wuid" }
+func (*Module) ModuleName() string { return Name }
 
 var (
 	_ module.Starter         = (*Module)(nil)

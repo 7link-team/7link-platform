@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mitchellh/mapstructure"
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/cast"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -81,13 +81,21 @@ func (f *Flagger) GetViper() *viper.Viper {
 
 func (f *Flagger) UseFlags(fs *pflag.FlagSet) {
 	f.flags = fs
+	if fs != nil {
+		fs.SetNormalizeFunc(normalizeFlagName)
+	}
 }
 
 func (f *Flagger) GetFlags() *pflag.FlagSet {
 	if f.flags == nil {
 		f.flags = pflag.NewFlagSet(os.Args[0], pflag.ContinueOnError)
+		f.flags.SetNormalizeFunc(normalizeFlagName)
 	}
 	return f.flags
+}
+
+func normalizeFlagName(_ *pflag.FlagSet, name string) pflag.NormalizedName {
+	return pflag.NormalizedName(strings.ReplaceAll(name, "_", "-"))
 }
 
 func (f *Flagger) UseConfigFileArgDefault() {
@@ -274,7 +282,17 @@ func (f *Flagger) unmarshal(o interface{}, flags map[string]sFlag) error {
 			return data, nil
 		},
 	)
-	return f.GetViper().Unmarshal(o, viper.DecodeHook(hook))
+	return f.GetViper().Unmarshal(o,
+		viper.DecodeHook(hook),
+		viper.DecoderConfigOption(func(config *mapstructure.DecoderConfig) {
+			config.MatchName = func(mapKey, fieldName string) bool {
+				return strings.EqualFold(
+					strings.ReplaceAll(mapKey, "-", "_"),
+					strings.ReplaceAll(fieldName, "-", "_"),
+				)
+			}
+		}),
+	)
 }
 
 func parseFlagsMap(c interface{}, mapkey string) (map[string]sFlag, error) {
@@ -485,7 +503,10 @@ func isMapKey(l, r, mapkey string) bool {
 		if ls[i] == mapkey || rs[i] == mapkey {
 			continue
 		}
-		if ls[i] != rs[i] {
+		if !strings.EqualFold(
+			strings.ReplaceAll(ls[i], "-", "_"),
+			strings.ReplaceAll(rs[i], "-", "_"),
+		) {
 			return false
 		}
 	}

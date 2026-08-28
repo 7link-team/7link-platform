@@ -1,4 +1,4 @@
-package app
+package pprof
 
 import (
 	"bytes"
@@ -19,7 +19,6 @@ import (
 )
 
 const (
-	pprofUIPath        = pprofPath + "/ui"
 	defaultCPUSeconds  = 5
 	maximumCPUSeconds  = 30
 	pprofProfileSource = "runtime-profile"
@@ -399,7 +398,7 @@ func (ui *pprofUI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/capture" && r.Method == http.MethodPost:
 		ui.captureProfile(w, r)
 	case r.URL.Path == "/view":
-		http.Redirect(w, r, pprofUIPath+"/view/", http.StatusMovedPermanently)
+		http.Redirect(w, r, UIPath+"/view/", http.StatusMovedPermanently)
 	case strings.HasPrefix(r.URL.Path, "/view/"):
 		ui.serveProfile(w, r)
 	default:
@@ -466,7 +465,7 @@ func (ui *pprofUI) captureProfile(w http.ResponseWriter, r *http.Request) {
 	ui.mu.Lock()
 	ui.current = &pprofWebProfile{Label: pprofProfiles[name], handlers: handlers}
 	ui.mu.Unlock()
-	http.Redirect(w, r, pprofUIPath+"/view/flamegraph", http.StatusSeeOther)
+	http.Redirect(w, r, UIPath+"/view/flamegraph", http.StatusSeeOther)
 }
 
 func (ui *pprofUI) serveProfile(w http.ResponseWriter, r *http.Request) {
@@ -477,7 +476,7 @@ func (ui *pprofUI) serveProfile(w http.ResponseWriter, r *http.Request) {
 	current := ui.current
 	ui.mu.RUnlock()
 	if current == nil {
-		http.Redirect(w, r, pprofUIPath+"/", http.StatusSeeOther)
+		http.Redirect(w, r, UIPath+"/", http.StatusSeeOther)
 		return
 	}
 	handler := current.handlers[path]

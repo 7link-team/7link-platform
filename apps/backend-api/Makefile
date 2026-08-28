@@ -2,7 +2,10 @@ BUILD_PACKAGE := 7link.com/platform/cmd/7link-api/cmd
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 OUTPUT ?= bin/7link-api
 LDFLAGS := -X '$(BUILD_PACKAGE).buildVersion=$(VERSION)'
-DEV_ARGS ?= serve --debug --migrate --pprof.enabled
+DEV_ARGS ?= serve --debug --migrate --pprof.enabled \
+	--api.metrics.enabled --api.metrics.advertise \
+	--api.migration-status.enabled --api.migration-status.advertise \
+	--api.config-inspector.enabled --api.config-inspector.advertise
 COVERAGE_MIN ?= 90
 COVERAGE_PROFILE ?= coverage.out
 COVERAGE_RAW_PROFILE ?= coverage.raw.out

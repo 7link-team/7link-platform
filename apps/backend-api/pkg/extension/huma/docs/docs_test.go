@@ -221,6 +221,22 @@ func TestRegistrationAndAdvertisementAreIndependent(t *testing.T) {
 	assert.Equal(t, http.StatusOK, requestStatus(handler, "/docs/config.js"))
 }
 
+func TestLandingIncludesAdditionalOperationalResources(t *testing.T) {
+	options := defaultOptions()
+	options.Resources = []Resource{{
+		ID: "metrics", Title: "Prometheus metrics", Description: "Process metrics", Href: "/metrics",
+	}}
+	handler := newDocsRouter(options)
+
+	root := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.Header.Set("Accept", "text/html")
+	handler.ServeHTTP(root, request)
+	require.Equal(t, http.StatusOK, root.Code)
+	assert.Contains(t, root.Body.String(), `href="/metrics"`)
+	assert.Contains(t, root.Body.String(), "Prometheus metrics")
+}
+
 func TestDisabledLandingAndDocsAreNotMounted(t *testing.T) {
 	options := defaultOptions()
 	options.LandingEnabled = false

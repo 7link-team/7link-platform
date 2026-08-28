@@ -3,19 +3,16 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 	"os/signal"
 	"syscall"
 
+	metrics "7link.com/platform/internal/infra/metrics"
+	telemetry "7link.com/platform/internal/infra/telemetry"
 	configx "7link.com/platform/pkg/config"
 	gormx "7link.com/platform/pkg/extension/gorm"
-	otelx "7link.com/platform/pkg/extension/otel"
-	slogx "7link.com/platform/pkg/extension/slog"
 	"7link.com/platform/pkg/module"
-	"7link.com/platform/pkg/timezone"
 	"google.golang.org/grpc"
 )
 
@@ -47,7 +44,8 @@ type App struct {
 	// server sources so no reporter blocks if both fail at once.
 	serveErr chan error
 
-	telemetry  *otelx.Module
+	telemetry  *telemetry.Module
+	metrics    *metrics.Module
 	grpcServer *grpc.Server
 	httpServer *http.Server
 }
@@ -57,16 +55,15 @@ func (app *App) Run(config AppConfig) error {
 		return err
 	}
 	applyDebugDefaults(&config)
-	if err := timezone.SetTimezone(config.Timezone); err != nil {
-		return fmt.Errorf("initialize timezone %q: %w", config.Timezone, err)
+	if err := configureProcessRuntime(config.Timezone); err != nil {
+		return err
 	}
 	app.config = config
 
-	slog.SetDefault(slogx.NewText(os.Stdout, nil))
-	app.telemetry = otelx.NewModule(config.Name, config.Version)
+	app.ctx, app.cancel = context.WithCancel(context.Background())
+	app.telemetry = telemetry.NewModule(config.Name, config.Version, telemetry.WithConfig(config.Telemetry))
 	app.mods = append(app.mods, app.telemetry)
 
-	app.ctx, app.cancel = context.WithCancel(context.Background())
 	app.serveErr = make(chan error, 2)
 	if err := app.bootstrap(app.ctx); err != nil {
 		return errors.Join(err, app.shutdown())

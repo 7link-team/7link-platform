@@ -10,6 +10,7 @@ import (
 	guidi18n "7link.com/platform/internal/infra/guid/i18n"
 	guidv1 "7link.com/platform/internal/infra/guid/proto/gen/go/guid/v1"
 	"7link.com/platform/internal/infra/wuid"
+	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"
@@ -17,6 +18,8 @@ import (
 )
 
 var ErrUnavailable = errors.New("guid: generator unavailable")
+
+const Name = guidi18n.Namespace
 
 type Module struct {
 	source    wuid.Source
@@ -29,9 +32,9 @@ type Source interface {
 	Next() (int64, error)
 }
 
-func (*Module) ModuleName() string { return guidi18n.Namespace }
+func (*Module) ModuleName() string { return Name }
 
-func (*Module) ModuleDependencies() []string { return []string{"i18n", "wuid"} }
+func (*Module) ModuleDependencies() []string { return []string{platformi18n.Name, wuid.Name} }
 
 var (
 	_ module.Initializer     = (*Module)(nil)

@@ -2,33 +2,41 @@ package health
 
 import (
 	"context"
+	"errors"
+	"sync/atomic"
 
 	healthgrpc "7link.com/platform/internal/infra/health/grpc"
 	healthhttp "7link.com/platform/internal/infra/health/http"
 	healthi18n "7link.com/platform/internal/infra/health/i18n"
 	"7link.com/platform/internal/infra/health/service"
+	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"
 	"google.golang.org/grpc"
 )
 
+var ErrNotReady = errors.New("health: application is not ready")
+
+const Name = healthi18n.Namespace
+
 type HealthModule struct {
 	service *service.Service
 	http    *healthhttp.Handler
 	grpc    *healthgrpc.Server
+	ready   atomic.Bool
 }
 
-func (*HealthModule) ModuleName() string { return healthi18n.Namespace }
+func (*HealthModule) ModuleName() string { return Name }
 
-func (*HealthModule) ModuleDependencies() []string { return []string{"i18n"} }
+func (*HealthModule) ModuleDependencies() []string { return []string{platformi18n.Name} }
 
 var (
 	_ module.Initializer   = (*HealthModule)(nil)
 	_ module.Depender      = (*HealthModule)(nil)
 	_ module.Starter       = (*HealthModule)(nil)
+	_ module.HealthChecker = (*HealthModule)(nil)
 	_ module.Stopper       = (*HealthModule)(nil)
-	_ module.Deinitializer = (*HealthModule)(nil)
 	_ module.HTTPRegistrar = (*HealthModule)(nil)
 	_ module.GRPCRegistrar = (*HealthModule)(nil)
 )
@@ -52,6 +60,14 @@ func (h *HealthModule) Initialize(context.Context) error {
 }
 
 func (h *HealthModule) Start(context.Context) error {
+	h.ready.Store(true)
+	return nil
+}
+
+func (h *HealthModule) CheckHealth(context.Context) error {
+	if !h.ready.Load() {
+		return ErrNotReady
+	}
 	return nil
 }
 
@@ -65,9 +81,6 @@ func (h *HealthModule) RegisterGRPC(registrar grpc.ServiceRegistrar) {
 }
 
 func (h *HealthModule) Stop(context.Context) error {
-	return nil
-}
-
-func (h *HealthModule) Deinitialize(context.Context) error {
+	h.ready.Store(false)
 	return nil
 }

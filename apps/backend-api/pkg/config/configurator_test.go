@@ -90,6 +90,28 @@ func TestParseEnvironmentPrefixExactlyOnce(t *testing.T) {
 	assert.Equal(t, "configured", cfg.AppleName)
 }
 
+func TestFlagsUseKebabCaseAndAcceptLegacyUnderscores(t *testing.T) {
+	type nested struct {
+		AdvertiseHealth bool `mapstructure:"advertise_health"`
+	}
+	type config struct {
+		API struct {
+			MigrationStatus nested `mapstructure:"migration_status"`
+		} `mapstructure:"api"`
+	}
+
+	flagger := New()
+	var configured config
+	require.NoError(t, flagger.Parse(&configured, "--api.migration-status.advertise-health"))
+	assert.True(t, configured.API.MigrationStatus.AdvertiseHealth)
+	assert.NotNil(t, flagger.GetFlags().Lookup("api.migration-status.advertise-health"))
+	assert.Nil(t, flagger.GetFlags().Lookup("api.migration_status.advertise_health-no-such-flag"))
+
+	var legacy config
+	require.NoError(t, New().Parse(&legacy, "--api.migration_status.advertise_health"))
+	assert.True(t, legacy.API.MigrationStatus.AdvertiseHealth)
+}
+
 func TestParseAppliesTrimAndRequiredTags(t *testing.T) {
 	type taggedConfig struct {
 		Name string `mapstructure:"name" trim:"true" required:"true"`

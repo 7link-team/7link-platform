@@ -8,22 +8,32 @@ import (
 	"net/http"
 	"strconv"
 
+	"7link.com/platform/internal/infra/configinspector"
+	metrics "7link.com/platform/internal/infra/metrics"
+	"7link.com/platform/internal/infra/migrationstatus"
 	humax "7link.com/platform/pkg/extension/huma"
 	"github.com/go-chi/chi/v5"
 )
 
 func (app *App) startHTTPServer() error {
 	router := chi.NewRouter()
+	apiSettings := app.config.API
+	if apiSettings.Metrics.Enabled {
+		if app.metrics == nil {
+			return errors.New("http: prometheus module is unavailable")
+		}
+		router.Use(app.metrics.HTTPMiddleware)
+	}
 	if app.telemetry != nil {
 		router.Use(app.telemetry.HTTPMiddleware)
 	}
-	apiSettings := app.config.API
 	apiConfig := humax.Config{
 		Name:    app.config.Name,
 		Version: app.config.Version,
 		Landing: humax.LandingConfig{
 			Enabled:         apiSettings.Landing.Enabled,
 			AdvertiseHealth: apiSettings.Landing.AdvertiseHealth,
+			Resources:       landingResources(apiSettings),
 		},
 		Docs: humax.EndpointConfig{
 			Enabled:   apiSettings.Docs.Enabled,
@@ -38,8 +48,6 @@ func (app *App) startHTTPServer() error {
 	if err := app.registerHTTPModules(app.ctx, router, api); err != nil {
 		return err
 	}
-	registerPprof(router, api, app.config.Name, app.config.Pprof.Enabled)
-
 	addr := net.JoinHostPort(app.config.HttpServer.Address, strconv.Itoa(app.config.HttpServer.Port))
 	app.httpServer = &http.Server{
 		Addr:    addr,
@@ -52,10 +60,33 @@ func (app *App) startHTTPServer() error {
 			"landing", apiConfig.Landing.Enabled,
 			"docs", apiConfig.Docs.Enabled,
 			"openapi", apiConfig.OpenAPI.Enabled,
+			"metrics", apiSettings.Metrics.Enabled,
+			"migration_status", apiSettings.MigrationStatus.Enabled,
+			"config_inspector", apiSettings.ConfigInspector.Enabled,
 		)
 		if err := app.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			app.serveErr <- fmt.Errorf("http serve: %w", err)
 		}
 	}()
 	return nil
+}
+
+func landingResources(settings API) []humax.LandingResource {
+	resources := make([]humax.LandingResource, 0, 3)
+	if settings.Metrics.Enabled && settings.Metrics.Advertise {
+		resources = append(resources, humax.LandingResource{
+			ID: "metrics", Title: "Prometheus metrics", Description: "Process and HTTP server metrics", Href: metrics.Path,
+		})
+	}
+	if settings.MigrationStatus.Enabled && settings.MigrationStatus.Advertise {
+		resources = append(resources, humax.LandingResource{
+			ID: "migrations", Title: "Migration status", Description: "Embedded and applied database versions", Href: migrationstatus.Path,
+		})
+	}
+	if settings.ConfigInspector.Enabled && settings.ConfigInspector.Advertise {
+		resources = append(resources, humax.LandingResource{
+			ID: "config", Title: "Config inspector", Description: "Redacted effective configuration", Href: configinspector.Path,
+		})
+	}
+	return resources
 }
