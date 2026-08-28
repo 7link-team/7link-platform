@@ -2,6 +2,7 @@ package dlock
 
 import (
 	"context"
+	"database/sql"
 	"embed"
 	"fmt"
 
@@ -20,30 +21,31 @@ func migrationSource() goosex.Source {
 	return goosex.Source{FS: migrationsFS, TableName: "goose_dlock"}
 }
 
-// Migrate applies the lock schema using a module-private Goose version table.
 func Migrate(ctx context.Context, db *gorm.DB) error {
-	if db == nil {
-		return ErrDatabaseUnavailable
-	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		return fmt.Errorf("dlock: get sql database: %w", err)
-	}
-	return goosex.Up(ctx, sqlDB, migrationSource(), db.Dialector.Name())
+	return runMigration(ctx, db, goosex.Migrate)
+}
+
+func MigrateUp(ctx context.Context, db *gorm.DB) error {
+	return runMigration(ctx, db, goosex.MigrateUp)
+}
+
+func MigrateUpTo(ctx context.Context, db *gorm.DB, version int64) error {
+	return runMigrationTo(ctx, db, version, goosex.MigrateUpTo)
 }
 
 func MigrateDown(ctx context.Context, db *gorm.DB) error {
-	if db == nil {
-		return ErrDatabaseUnavailable
-	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		return fmt.Errorf("dlock: get sql database: %w", err)
-	}
-	return goosex.Down(ctx, sqlDB, migrationsFS, db.Dialector.Name(), "goose_dlock")
+	return runMigration(ctx, db, goosex.MigrateDown)
 }
 
 func MigrateDownTo(ctx context.Context, db *gorm.DB, version int64) error {
+	return runMigrationTo(ctx, db, version, goosex.MigrateDownTo)
+}
+
+type migrationOperation func(context.Context, *sql.DB, goosex.Source, string) error
+
+type migrationToOperation func(context.Context, *sql.DB, goosex.Source, string, int64) error
+
+func runMigration(ctx context.Context, db *gorm.DB, operation migrationOperation) error {
 	if db == nil {
 		return ErrDatabaseUnavailable
 	}
@@ -51,5 +53,16 @@ func MigrateDownTo(ctx context.Context, db *gorm.DB, version int64) error {
 	if err != nil {
 		return fmt.Errorf("dlock: get sql database: %w", err)
 	}
-	return goosex.DownSourceTo(ctx, sqlDB, migrationSource(), db.Dialector.Name(), version)
+	return operation(ctx, sqlDB, migrationSource(), db.Dialector.Name())
+}
+
+func runMigrationTo(ctx context.Context, db *gorm.DB, version int64, operation migrationToOperation) error {
+	if db == nil {
+		return ErrDatabaseUnavailable
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("dlock: get sql database: %w", err)
+	}
+	return operation(ctx, sqlDB, migrationSource(), db.Dialector.Name(), version)
 }

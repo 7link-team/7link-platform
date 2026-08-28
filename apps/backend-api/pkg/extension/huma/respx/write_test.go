@@ -52,3 +52,21 @@ func TestWriteError(t *testing.T) {
 		assert.Equal(t, "You do not have permission to perform this operation. Request access or use an authorized account.", env.Message, "unset locale falls back to base")
 	})
 }
+
+func TestWriteOK(t *testing.T) {
+	initI18n(t)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request = request.WithContext(i18n.WithLocale(request.Context(), "zh-CN"))
+
+	WriteOK(recorder, request, map[string]string{"docs": "/docs"})
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Equal(t, "application/json", recorder.Header().Get("Content-Type"))
+	var envelope Envelope[map[string]string]
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &envelope))
+	assert.Zero(t, envelope.Code)
+	assert.Equal(t, "成功", envelope.Message)
+	assert.Equal(t, "/docs", envelope.Data["docs"])
+	assert.False(t, envelope.Meta.RequestAt.IsZero())
+}

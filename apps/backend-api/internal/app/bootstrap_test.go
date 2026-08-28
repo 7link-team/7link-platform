@@ -14,11 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type healthModule struct{ err error }
-
-func (*healthModule) ModuleName() string                  { return "health-test" }
-func (m *healthModule) CheckHealth(context.Context) error { return m.err }
-
 type namedHealthModule struct {
 	name string
 	err  error
@@ -89,14 +84,60 @@ func TestCheckHealthJoinsModuleErrors(t *testing.T) {
 	assert.ErrorIs(t, err, second)
 }
 
-func TestBootstrapMigratesDatabaseAndBecomesHealthy(t *testing.T) {
-	app := &App{config: AppConfig{Database: map[string]Database{
+func TestBootstrapRequiresExplicitMigrations(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "bootstrap.sqlite")
+	app := &App{config: AppConfig{Timezone: "UTC", Database: map[string]Database{
 		"primary": {
 			Type:     "sqlite",
-			Dsn:      filepath.Join(t.TempDir(), "bootstrap.sqlite"),
+			Dsn:      databasePath,
 			Writable: true,
 		},
 	}}}
+	assert.ErrorContains(t, app.bootstrap(t.Context()), "no such table")
+	t.Cleanup(func() { _ = app.shutdown() })
+	assert.False(t, app.Db.Write().Migrator().HasTable("dlocks"))
+	assert.False(t, app.Db.Write().Migrator().HasTable("worker_ids"))
+}
+
+func TestBootstrapStartsAfterExplicitMigrations(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "bootstrap.sqlite")
+	database := map[string]Database{
+		"primary": {
+			Type:     "sqlite",
+			Dsn:      databasePath,
+			Writable: true,
+		},
+	}
+	_, err := RunMigrations(t.Context(), MigrationConfig{
+		Action:   MigrationUp,
+		Timezone: "UTC",
+		Database: database,
+	})
+	require.NoError(t, err)
+
+	app := &App{config: AppConfig{Timezone: "UTC", Database: database}}
+	require.NoError(t, app.bootstrap(t.Context()))
+	t.Cleanup(func() { _ = app.shutdown() })
+
+	require.NotNil(t, app.Db.Write())
+	assert.True(t, app.Db.Write().Migrator().HasTable("dlocks"))
+	assert.True(t, app.Db.Write().Migrator().HasTable("worker_ids"))
+	assert.NoError(t, app.checkHealth(t.Context()))
+}
+
+func TestBootstrapMigratesBeforeStartingWhenEnabled(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "bootstrap-auto.sqlite")
+	app := &App{config: AppConfig{
+		Migrate:  true,
+		Timezone: "UTC",
+		Database: map[string]Database{
+			"primary": {
+				Type:     "sqlite",
+				Dsn:      databasePath,
+				Writable: true,
+			},
+		},
+	}}
 	require.NoError(t, app.bootstrap(t.Context()))
 	t.Cleanup(func() { _ = app.shutdown() })
 

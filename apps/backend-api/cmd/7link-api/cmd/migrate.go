@@ -15,51 +15,60 @@ var (
 	migrateConfigurator = config.New()
 	migrateConfig       app.MigrationConfig
 	migrateConfigErr    error
-	migrateModule       string
-	migrateTarget       int64
 
 	// migrateCmd represents the migrate command.
 	migrateCmd = &cobra.Command{
-		Use:   "migrate <status|validate|up|down>",
+		Use:   "migrate",
 		Short: "Inspect or change database migration state",
-		Args:  cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
-		ValidArgs: []string{
-			string(app.MigrationStatus),
-			string(app.MigrationValidate),
-			"up",
-			string(app.MigrationDown),
+		Args:  cobra.NoArgs,
+		RunE: func(command *cobra.Command, _ []string) error {
+			return command.Help()
 		},
-		RunE: runMigrate,
 	}
+
+	migrateAutoCmd     = newMigrateActionCommand(app.MigrationAuto, "Reconcile to the embedded migration version")
+	migrateStatusCmd   = newMigrateActionCommand(app.MigrationStatus, "Show migration state")
+	migrateValidateCmd = newMigrateActionCommand(app.MigrationValidate, "Validate migration state")
+	migrateUpCmd       = newMigrateActionCommand(app.MigrationUp, "Apply all pending migrations")
+	migrateUpToCmd     = newMigrateActionCommand(app.MigrationUpTo, "Apply migrations through the target version")
+	migrateDownCmd     = newMigrateActionCommand(app.MigrationDown, "Roll back the latest migration")
+	migrateDownToCmd   = newMigrateActionCommand(app.MigrationDownTo, "Roll back to the target version")
 )
 
 func init() {
 	rootCmd.AddCommand(migrateCmd)
-	migrateConfigurator.UseFlags(migrateCmd.Flags())
+	migrateCmd.AddCommand(
+		migrateAutoCmd,
+		migrateStatusCmd,
+		migrateValidateCmd,
+		migrateUpCmd,
+		migrateUpToCmd,
+		migrateDownCmd,
+		migrateDownToCmd,
+	)
+	migrateConfigurator.UseFlags(migrateCmd.PersistentFlags())
 	migrateConfigurator.UseConfigFileArgDefault()
 	migrateConfigErr = migrateConfigurator.Bind(&migrateConfig, os.Args[1:]...)
-	migrateCmd.Flags().StringVar(&migrateModule, "module", "", "limit the operation to one module")
-	migrateCmd.Flags().Int64Var(&migrateTarget, "to", -1, "target migration version for down")
 }
 
-func runMigrate(command *cobra.Command, args []string) error {
-	if migrateConfigErr != nil {
-		return migrateConfigErr
+func newMigrateActionCommand(action app.MigrationAction, description string) *cobra.Command {
+	return &cobra.Command{
+		Use:   string(action),
+		Short: description,
+		Args:  cobra.NoArgs,
+		RunE: func(command *cobra.Command, _ []string) error {
+			if migrateConfigErr != nil {
+				return migrateConfigErr
+			}
+			if err := migrateConfigurator.Load(&migrateConfig); err != nil {
+				return err
+			}
+			migrateConfig.Action = action
+			reports, err := app.RunMigrations(command.Context(), migrateConfig)
+			writeMigrationReports(command.OutOrStdout(), reports)
+			return err
+		},
 	}
-	if err := migrateConfigurator.Load(&migrateConfig); err != nil {
-		return err
-	}
-	action := app.MigrationAction(args[0])
-	if action == "up" {
-		action = app.MigrationUpOnly
-	}
-	request := app.MigrationRequest{Action: action, Module: migrateModule}
-	if action == app.MigrationDown {
-		request.To = migrateTarget
-	}
-	reports, err := app.RunMigrations(command.Context(), migrateConfig, request)
-	writeMigrationReports(command.OutOrStdout(), reports)
-	return err
 }
 
 func writeMigrationReports(output io.Writer, reports []app.MigrationReport) {

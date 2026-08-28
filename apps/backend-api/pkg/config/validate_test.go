@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -138,4 +139,51 @@ func TestValidateRejectsInvalidPatternAndType(t *testing.T) {
 		Validate(invalidType{Count: 1}),
 		"config: count validation requires a string, got int",
 	)
+}
+
+func TestNormalizePropagatesNestedCollectionErrors(t *testing.T) {
+	type invalidChild struct {
+		Count int `mapstructure:"count" trim:"true"`
+	}
+
+	for _, value := range []any{
+		&struct {
+			Child invalidChild `mapstructure:"child"`
+		}{},
+		&struct {
+			Children map[string]invalidChild `mapstructure:"children"`
+		}{Children: map[string]invalidChild{"first": {}}},
+		&struct {
+			Children []invalidChild `mapstructure:"children"`
+		}{Children: []invalidChild{{}}},
+	} {
+		assert.ErrorContains(t, Normalize(value), "uses trim on unsupported type int")
+	}
+}
+
+func TestNormalizeAndValidateReflectionEdgeCases(t *testing.T) {
+	assert.Error(t, Process(nil))
+	value := 1
+	assert.ErrorContains(t, Normalize(&value), "pointer to a struct")
+	assert.NoError(t, trimValue(reflect.Value{}, "invalid"))
+	assert.ErrorContains(t, trimValue(reflect.ValueOf(" value "), "name"), "cannot be trimmed")
+
+	type pointerPattern struct {
+		Name *string `mapstructure:"name" validate:"^[a-z]+$"`
+	}
+	name := "valid"
+	require.NoError(t, Validate(pointerPattern{Name: &name}))
+	assert.True(t, isMissing(reflect.Value{}))
+}
+
+func TestValidateTraversesSlicesInOrder(t *testing.T) {
+	type child struct {
+		Name string `mapstructure:"name" required:"true"`
+	}
+	type sample struct {
+		Children []child `mapstructure:"children"`
+	}
+
+	err := Validate(sample{Children: []child{{Name: "first"}, {}}})
+	assert.EqualError(t, err, "config: children.1.name is required")
 }

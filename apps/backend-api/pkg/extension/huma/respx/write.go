@@ -10,6 +10,19 @@ import (
 	"7link.com/platform/pkg/i18n"
 )
 
+// WriteOK writes a localized success envelope directly to w. Use it from raw
+// chi handlers that intentionally sit outside huma operation registration.
+func WriteOK[T any](w http.ResponseWriter, r *http.Request, data T) {
+	body := OK(r.Context(), data).Body
+	key := messageKey("success")
+	body.Message = i18n.TContext(r.Context(), key)
+	if body.Message == key {
+		body.Message = "Success"
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(body)
+}
+
 // WriteError writes a localized {code,message,meta,data} error envelope directly
 // to w. Use it from chi middleware that runs before the huma stack — where
 // huma.NewError (patched by Install) is not in play — so those responses keep the

@@ -6,18 +6,20 @@ type AppConfig struct {
 	Name    string `mapstructure:"name" description:"application name" trim:"true"`
 	Version string `mapstructure:"version" description:"application version" trim:"true"`
 
-	Debug    bool   `mapstructure:"debug" short:"d" description:"debug mode" default:"false"`
+	Debug   bool  `mapstructure:"debug" short:"d" description:"debug mode" default:"false"`
+	Pprof   Pprof `mapstructure:"pprof" group:"pprof"`
+
 	Timezone string `mapstructure:"timezone" description:"timezone" default:"UTC"`
 
 	HttpServer HttpServer `mapstructure:"http_server" group:"http_server"`
 	GrpcServer GrpcServer `mapstructure:"grpc_server" group:"grpc_server"`
-	Migration  Migration  `mapstructure:"migration" group:"migration"`
 
+	Migrate  bool              `mapstructure:"migrate" description:"automatically migrate before starting services" default:"false"`
 	Database map[string]Database `mapstructure:"database" group:"database" mapkey:"<dbkey>"`
 }
 
-type Migration struct {
-	Policy string `mapstructure:"policy" description:"migration policy: up-only | validate | ignore" default:"up-only" trim:"true" validate:"^(up-only|validate|ignore)$"`
+type Pprof struct {
+	Enabled bool `mapstructure:"enabled" description:"enable runtime profiling endpoints" default:"false"`
 }
 
 type HttpServer struct {

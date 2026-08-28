@@ -13,6 +13,7 @@ import (
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestDatasourceOpenSQLite(t *testing.T) {
@@ -80,6 +81,36 @@ func TestDatasourceValidation(t *testing.T) {
 	}
 }
 
+func TestDatasourceDriverConfigurationErrors(t *testing.T) {
+	_, err := (Datasource{Type: "mysql", DSN: "not-a-dsn"}).Open(t.Context())
+	assert.ErrorContains(t, err, "configure mysql timezone")
+
+	_, err = (Datasource{Type: "postgres", DSN: "%"}).Open(t.Context())
+	assert.ErrorContains(t, err, "configure postgres timezone")
+}
+
+func TestDatasourcePingErrorsCloseConnectionPools(t *testing.T) {
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err := (Datasource{
+		Type: "sqlite",
+		DSN:  filepath.Join(t.TempDir(), "canceled.sqlite"),
+	}).Open(canceled)
+	assert.ErrorContains(t, err, "ping sqlite datasource")
+
+	_, err = (Datasource{
+		Type: "mysql",
+		DSN:  "user:pass@tcp(127.0.0.1:1)/app?timeout=100ms",
+	}).Open(t.Context())
+	assert.ErrorContains(t, err, "mysql datasource")
+
+	_, err = (Datasource{
+		Type: "postgres",
+		DSN:  "postgres://user:pass@127.0.0.1:1/app?connect_timeout=1",
+	}).Open(t.Context())
+	assert.ErrorContains(t, err, "ping postgres datasource")
+}
+
 func TestDatasourceRouterReadWriteFallbackAndClose(t *testing.T) {
 	router, err := NewDatasourceRouter(t.Context(), false, map[string]Datasource{
 		"primary": {
@@ -126,6 +157,20 @@ func TestDatasourceRouterKeepsHealthyConnections(t *testing.T) {
 	require.NotNil(t, router.Write())
 	require.NoError(t, router.Close())
 	assert.NoError(t, (&DatasourceRouter{}).Close())
+}
+
+func TestDatasourceRouterHandlesUnusedAndNilDatasources(t *testing.T) {
+	router, err := NewDatasourceRouter(t.Context(), false, map[string]Datasource{
+		"unused": {Type: "sqlite", DSN: filepath.Join(t.TempDir(), "unused.sqlite")},
+	})
+	require.NoError(t, err)
+	assert.Empty(t, router.Writer)
+	assert.Empty(t, router.Reader)
+	assert.Nil(t, router.Write())
+	assert.Nil(t, (*DatasourceRouter)(nil).Write())
+	assert.Nil(t, (*DatasourceRouter)(nil).Read())
+	require.NoError(t, (*DatasourceRouter)(nil).Close())
+	require.NoError(t, (&DatasourceRouter{Writer: []*gorm.DB{nil}}).Close())
 }
 
 func TestDatasourceSQLLogContainsTraceID(t *testing.T) {

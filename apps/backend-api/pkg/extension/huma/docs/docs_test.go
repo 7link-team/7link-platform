@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -124,17 +125,88 @@ func TestStoplightUsesEmbeddedMermaid(t *testing.T) {
 	assert.NotContains(t, body, "https://unpkg.com/mermaid")
 }
 
-func TestRootRedirectAndOrdinaryRouteProtection(t *testing.T) {
+func TestRootLandingAndOrdinaryRouteProtection(t *testing.T) {
 	handler := newDocsRouter()
 	root := httptest.NewRecorder()
-	handler.ServeHTTP(root, httptest.NewRequest(http.MethodGet, "/", nil))
-	assert.Equal(t, http.StatusTemporaryRedirect, root.Code)
-	assert.Equal(t, "/docs/", root.Header().Get("Location"))
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.Header.Set("Accept", "text/html")
+	handler.ServeHTTP(root, request)
+	assert.Equal(t, http.StatusOK, root.Code)
+	assert.Equal(t, "text/html; charset=utf-8", root.Header().Get("Content-Type"))
+	assert.Equal(t, "no-cache", root.Header().Get("Cache-Control"))
+	assert.Contains(t, root.Body.String(), "test service API")
+	assert.Contains(t, root.Body.String(), `href="/docs"`)
+	assert.Contains(t, root.Body.String(), `href="/schema.json"`)
+	assert.Contains(t, root.Body.String(), `href="/healthz"`)
+	assert.Contains(t, root.Body.String(), `href="/readyz"`)
+	assert.NotContains(t, root.Body.String(), "https://")
 
 	apiResponse := httptest.NewRecorder()
 	handler.ServeHTTP(apiResponse, httptest.NewRequest(http.MethodGet, "/api-test", nil))
 	assert.Equal(t, http.StatusNoContent, apiResponse.Code)
 	assert.Equal(t, "DENY", apiResponse.Header().Get("X-Frame-Options"))
+}
+
+func TestRootReturnsEnvelopeForAPIClients(t *testing.T) {
+	handler := newDocsRouter()
+	for _, accept := range []string{"", "*/*", "application/json"} {
+		t.Run(accept, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/", nil)
+			request.Header.Set("Accept", accept)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+
+			assert.Equal(t, http.StatusOK, response.Code)
+			assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
+			var envelope struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+				Meta    struct {
+					RequestAt string  `json:"request_at"`
+					ElapsedMS float64 `json:"elapsed_ms"`
+				} `json:"meta"`
+				Data landingData `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &envelope))
+			assert.Zero(t, envelope.Code)
+			assert.Equal(t, "Success", envelope.Message)
+			assert.NotEmpty(t, envelope.Meta.RequestAt)
+			assert.GreaterOrEqual(t, envelope.Meta.ElapsedMS, 0.0)
+			assert.Equal(t, landingData{
+				Name:      "test service",
+				Docs:      "/docs",
+				OpenAPI:   "/schema.json",
+				Liveness:  "/healthz",
+				Readiness: "/readyz",
+			}, envelope.Data)
+		})
+	}
+}
+
+func TestRootContentNegotiation(t *testing.T) {
+	tests := map[string]bool{
+		"text/html": true,
+		"text/html,application/xhtml+xml,*/*;q=0.8":        true,
+		"application/json,text/html;q=0.5":                 false,
+		"application/problem+json":                         false,
+		"text/html;q=0":                                    false,
+		"application/json;q=0.5,text/html;q=0.8":           true,
+		"application/json;q=0.8,application/xhtml+xml;q=1": true,
+	}
+	for accept, expected := range tests {
+		t.Run(accept, func(t *testing.T) {
+			assert.Equal(t, expected, prefersHTML(accept))
+		})
+	}
+}
+
+func TestLandingEscapesServiceNameAndUsesFallback(t *testing.T) {
+	escaped := string(indexHTML(`<script>alert("x")</script>`, "/schema.json"))
+	assert.NotContains(t, escaped, "<script>")
+	assert.Contains(t, escaped, "&lt;script&gt;")
+
+	fallback := string(indexHTML("  ", "/schema.json"))
+	assert.Contains(t, fallback, "<title>7link API</title>")
 }
 
 func request(t *testing.T, handler http.Handler, route string) *httptest.ResponseRecorder {

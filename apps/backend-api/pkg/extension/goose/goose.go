@@ -53,60 +53,173 @@ func ResolveDialect(dialect string) (goosev3.Dialect, string, error) {
 	}
 }
 
-// Run applies all pending migrations from fsys (rooted at sql/<dialect>) using a
-// module-private goose version table. Global registry is disabled so multiple
-// modules can run independently in one process.
-func Run(ctx context.Context, db *sql.DB, fsys fs.FS, dialect, tableName string) error {
-	return Up(ctx, db, Source{FS: fsys, TableName: tableName}, dialect)
+// Migrate moves the database to the highest embedded migration version. It is
+// idempotent when the embedded and applied version sets already match.
+func Migrate(ctx context.Context, db *sql.DB, source Source, dialect string) error {
+	status, err := Inspect(ctx, db, source, dialect)
+	if err != nil {
+		return err
+	}
+	switch {
+	case status.Current < status.Target:
+		return migrateUpTo(ctx, db, source, dialect, status, status.Target)
+	case status.Current > status.Target:
+		return migrateDownTo(ctx, db, source, dialect, status, status.Target)
+	case status.State == StateClean:
+		return nil
+	default:
+		return migrationStateError(status)
+	}
 }
 
-// Up applies all pending migrations from source.
-func Up(ctx context.Context, db *sql.DB, source Source, dialect string) error {
+// MigrateUp applies all pending embedded migrations.
+func MigrateUp(ctx context.Context, db *sql.DB, source Source, dialect string) error {
+	status, err := Inspect(ctx, db, source, dialect)
+	if err != nil {
+		return err
+	}
+	return migrateUpTo(ctx, db, source, dialect, status, status.Target)
+}
+
+// MigrateUpTo applies embedded migrations through version.
+func MigrateUpTo(ctx context.Context, db *sql.DB, source Source, dialect string, version int64) error {
+	status, err := Inspect(ctx, db, source, dialect)
+	if err != nil {
+		return err
+	}
+	return migrateUpTo(ctx, db, source, dialect, status, version)
+}
+
+func migrateUpTo(
+	ctx context.Context,
+	db *sql.DB,
+	source Source,
+	dialect string,
+	status Status,
+	version int64,
+) error {
+	if version < 0 {
+		return fmt.Errorf("goose: target version cannot be negative: %d", version)
+	}
+	if err := validateMigrationState(status); err != nil {
+		return err
+	}
+	if version > status.Target {
+		return fmt.Errorf("goose: up target %d exceeds embedded version %d", version, status.Target)
+	}
+	if version != 0 && !slices.Contains(status.Embedded, version) {
+		return fmt.Errorf("goose: up target %d is not embedded", version)
+	}
+	if version < status.Current {
+		return fmt.Errorf("goose: cannot migrate up from %d to lower version %d", status.Current, version)
+	}
+	if version == status.Current {
+		return nil
+	}
+
 	provider, err := newProvider(db, source.FS, dialect, source.TableName)
 	if err != nil {
 		return err
 	}
-
-	if _, err := provider.Up(ctx); err != nil {
-		return fmt.Errorf("goose: run migrations: %w", err)
+	if _, err := provider.UpTo(ctx, version); err != nil {
+		return fmt.Errorf("goose: migrate up to %d: %w", version, err)
 	}
 	return nil
 }
 
-// Down rolls back the most recently applied migration from one module.
-func Down(ctx context.Context, db *sql.DB, fsys fs.FS, dialect, tableName string) error {
-	provider, err := newProvider(db, fsys, dialect, tableName)
+// MigrateDown rolls back the most recently applied embedded migration.
+func MigrateDown(ctx context.Context, db *sql.DB, source Source, dialect string) error {
+	status, err := Inspect(ctx, db, source, dialect)
+	if err != nil {
+		return err
+	}
+	if err := validateMigrationState(status); err != nil {
+		return err
+	}
+	if status.Current == 0 {
+		return nil
+	}
+
+	provider, err := newProvider(db, source.FS, dialect, source.TableName)
 	if err != nil {
 		return err
 	}
 	if _, err := provider.Down(ctx); err != nil {
-		return fmt.Errorf("goose: rollback migration: %w", err)
+		return fmt.Errorf("goose: migrate down from %d: %w", status.Current, err)
 	}
 	return nil
 }
 
-// DownTo rolls a module back to version. The target migration remains applied.
-func DownTo(ctx context.Context, db *sql.DB, fsys fs.FS, dialect, tableName string, version int64) error {
-	return DownSourceTo(ctx, db, Source{FS: fsys, TableName: tableName}, dialect, version)
+// MigrateDownTo rolls embedded migrations back to version. The target
+// migration remains applied.
+func MigrateDownTo(ctx context.Context, db *sql.DB, source Source, dialect string, version int64) error {
+	status, err := Inspect(ctx, db, source, dialect)
+	if err != nil {
+		return err
+	}
+	return migrateDownTo(ctx, db, source, dialect, status, version)
 }
 
-// DownSourceTo rolls source back to version. The caller must use an artifact
-// that still contains every migration above the requested target.
-func DownSourceTo(ctx context.Context, db *sql.DB, source Source, dialect string, version int64) error {
+func migrateDownTo(
+	ctx context.Context,
+	db *sql.DB,
+	source Source,
+	dialect string,
+	status Status,
+	version int64,
+) error {
+	if version < 0 {
+		return fmt.Errorf("goose: target version cannot be negative: %d", version)
+	}
+	if err := validateMigrationState(status); err != nil {
+		return err
+	}
+	if version > status.Current {
+		return fmt.Errorf("goose: cannot migrate down from %d to higher version %d", status.Current, version)
+	}
+	if version == status.Current {
+		return nil
+	}
+	if version != 0 && !slices.Contains(status.Applied, version) {
+		return fmt.Errorf("goose: down target %d is not applied", version)
+	}
+
 	provider, err := newProvider(db, source.FS, dialect, source.TableName)
 	if err != nil {
 		return err
 	}
 	if _, err := provider.DownTo(ctx, version); err != nil {
-		return fmt.Errorf("goose: rollback migrations to %d: %w", version, err)
+		return fmt.Errorf("goose: migrate down to %d: %w", version, err)
 	}
 	return nil
 }
 
-// UpToDate reports whether every migration in fsys has been applied to the
-// database. A database with no applied migrations reports false.
-func UpToDate(ctx context.Context, db *sql.DB, fsys fs.FS, dialect, tableName string) (bool, error) {
-	status, err := Inspect(ctx, db, Source{FS: fsys, TableName: tableName}, dialect)
+func validateMigrationState(status Status) error {
+	if len(status.Unknown) > 0 {
+		return fmt.Errorf("goose: database contains migrations unavailable in embedded SQL: %v", status.Unknown)
+	}
+	for _, version := range status.Pending {
+		if version <= status.Current {
+			return migrationStateError(status)
+		}
+	}
+	return nil
+}
+
+func migrationStateError(status Status) error {
+	return fmt.Errorf(
+		"goose: embedded and applied migrations diverge (current=%d target=%d pending=%v unknown=%v)",
+		status.Current,
+		status.Target,
+		status.Pending,
+		status.Unknown,
+	)
+}
+
+// UpToDate reports whether every embedded migration has been applied. A
+// database with no applied migrations reports false.
+func UpToDate(ctx context.Context, db *sql.DB, source Source, dialect string) (bool, error) {
+	status, err := Inspect(ctx, db, source, dialect)
 	if err != nil {
 		return false, fmt.Errorf("goose: check migrations: %w", err)
 	}

@@ -9,14 +9,13 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/internal/infra/health"
 	"7link.com/platform/internal/infra/wuid"
-	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/extension/huma/respx"
 	"7link.com/platform/pkg/i18n"
 )
 
-// bootstrap opens shared infrastructure, builds modules, injects their
-// database dependencies, and runs their initialization and start phases.
+// bootstrap opens shared infrastructure, builds and wires modules, optionally
+// migrates them, and then runs their initialization and start phases.
 func (app *App) bootstrap(ctx context.Context) error {
 	app.initializeDatabase(ctx)
 
@@ -32,24 +31,11 @@ func (app *App) bootstrap(ctx context.Context) error {
 	if err := app.wireModules(); err != nil {
 		return fmt.Errorf("wire modules: %w", err)
 	}
-	if db := app.Db.Write(); db != nil {
-		reports, err := runModuleMigrations(ctx, db, app.mods, MigrationRequest{
-			Action: MigrationAction(app.config.Migration.Policy),
-		})
-		if err != nil {
-			return fmt.Errorf("reconcile migrations: %w", err)
-		}
-		if app.config.Migration.Policy == string(MigrationIgnore) {
-			for _, report := range reports {
-				if report.Status.State != goosex.StateClean {
-					slog.WarnContext(ctx, "migration state ignored",
-						"module", report.Module,
-						"current", report.Status.Current,
-						"target", report.Status.Target,
-						"state", report.Status.State,
-					)
-				}
-			}
+	if app.config.Migrate {
+		if _, err := runModuleMigrations(ctx, app.Db.Write(), app.mods, MigrationConfig{
+			Action: MigrationAuto,
+		}); err != nil {
+			return fmt.Errorf("migrate modules: %w", err)
 		}
 	}
 	if err := app.initializeModules(ctx); err != nil {

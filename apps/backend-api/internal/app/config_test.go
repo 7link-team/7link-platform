@@ -14,7 +14,26 @@ func TestDatabaseRolesDefaultToReadWriteDuringParsing(t *testing.T) {
 	database := parsed.Database["main"]
 	assert.True(t, database.Writable)
 	assert.True(t, database.Readable)
-	assert.Equal(t, "up-only", parsed.Migration.Policy)
+}
+
+func TestPprofDefaultsToDisabledAndCanBeEnabled(t *testing.T) {
+	var disabled AppConfig
+	require.NoError(t, configx.New().Parse(&disabled))
+	assert.False(t, disabled.Pprof.Enabled)
+
+	var enabled AppConfig
+	require.NoError(t, configx.New().Parse(&enabled, "--pprof.enabled"))
+	assert.True(t, enabled.Pprof.Enabled)
+}
+
+func TestServeMigrationDefaultsToDisabledAndCanBeEnabled(t *testing.T) {
+	var disabled AppConfig
+	require.NoError(t, configx.New().Parse(&disabled))
+	assert.False(t, disabled.Migrate)
+
+	var enabled AppConfig
+	require.NoError(t, configx.New().Parse(&enabled, "--migrate"))
+	assert.True(t, enabled.Migrate)
 }
 
 func TestServerAddressesRequireIPv4(t *testing.T) {

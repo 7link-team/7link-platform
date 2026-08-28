@@ -2,6 +2,8 @@ module 7link.com/platform/tests
 
 go 1.25.10
 
+toolchain go1.26.6
+
 require (
 	7link.com/platform v0.0.0
 	github.com/dolthub/go-mysql-server v0.20.0

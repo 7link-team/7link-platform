@@ -33,7 +33,13 @@ func TestMigrateCommandUsesSharedApplicationConfig(t *testing.T) {
 `, databasePath)
 	require.NoError(t, os.WriteFile(configPath, configData, 0o600))
 
-	output, err := executeCommand("migrate", "up", "--config", configPath)
+	output, err := executeCommand("migrate", "--config", filepath.Join(directory, "missing.yaml"))
+	require.NoError(t, err)
+	assert.Contains(t, output, "Available Commands:")
+	assert.Contains(t, output, "auto")
+	assert.NotContains(t, output, "MODULE\tCURRENT")
+
+	output, err = executeCommand("migrate", "auto", "--config", configPath)
 	require.NoError(t, err)
 	assert.Contains(t, output, "dlock")
 	assert.Contains(t, output, "wuid")
@@ -45,7 +51,7 @@ func TestMigrateCommandUsesSharedApplicationConfig(t *testing.T) {
 	assert.Contains(t, output, "clean")
 
 	output, err = executeCommand(
-		"migrate", "down", "--module=wuid", "--to=0", "--config", configPath,
+		"migrate", "down-to", "--module=wuid", "--to=0", "--config", configPath,
 	)
 	require.NoError(t, err)
 	assert.Contains(t, output, "wuid")

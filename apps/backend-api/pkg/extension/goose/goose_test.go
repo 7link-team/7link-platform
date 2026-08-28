@@ -3,8 +3,6 @@ package goosex
 import (
 	"context"
 	"database/sql"
-	"embed"
-	"io/fs"
 	"testing"
 	"testing/fstest"
 
@@ -14,16 +12,16 @@ import (
 	"gorm.io/gorm"
 )
 
-//go:embed testdata/sql
-var testdataFS embed.FS
+var testMigrations = fstest.MapFS{
+	"sql/sqlite/00001_widgets.sql": {Data: []byte(`-- +goose Up
+CREATE TABLE widgets (
+    id   INTEGER NOT NULL PRIMARY KEY,
+    name TEXT    NOT NULL
+);
 
-// migrationsRoot re-roots the embedded FS at "sql" so it matches what Run
-// expects (it resolves the "sql/<dialect>" subdirectory internally).
-func migrationsRoot(t *testing.T) fs.FS {
-	t.Helper()
-	root, err := fs.Sub(testdataFS, "testdata")
-	require.NoError(t, err)
-	return root
+-- +goose Down
+DROP TABLE widgets;
+`)},
 }
 
 func openSQLite(t *testing.T) *sql.DB {
@@ -41,7 +39,7 @@ func openSQLite(t *testing.T) *sql.DB {
 func TestMigrationsSQLite(t *testing.T) {
 	ctx := t.Context()
 	db := openSQLite(t)
-	root := migrationsRoot(t)
+	root := testMigrations
 	const versionTable = "goose_widgets_sqlite"
 	source := Source{FS: root, TableName: versionTable}
 	status, err := Inspect(ctx, db, source, "sqlite")
@@ -55,11 +53,11 @@ func TestMigrationsSQLite(t *testing.T) {
 		Unknown:  []int64{},
 	}, status)
 
-	upToDate, err := UpToDate(ctx, db, root, "sqlite", versionTable)
+	upToDate, err := UpToDate(ctx, db, source, "sqlite")
 	require.NoError(t, err)
 	assert.False(t, upToDate, "fresh database must not be up to date")
 
-	require.NoError(t, Run(ctx, db, root, "sqlite", versionTable))
+	require.NoError(t, Migrate(ctx, db, source, "sqlite"))
 	status, err = Inspect(ctx, db, source, "sqlite")
 	require.NoError(t, err)
 	assert.Equal(t, StateClean, status.State)
@@ -70,41 +68,50 @@ func TestMigrationsSQLite(t *testing.T) {
 	assert.Equal(t, 1, widgetCount(t, ctx, db))
 
 	// A second run must preserve both the schema and existing data.
-	require.NoError(t, Run(ctx, db, root, "sqlite", versionTable))
+	require.NoError(t, Migrate(ctx, db, source, "sqlite"))
 	assert.Equal(t, 1, widgetCount(t, ctx, db))
-	upToDate, err = UpToDate(ctx, db, root, "sqlite", versionTable)
+	upToDate, err = UpToDate(ctx, db, source, "sqlite")
 	require.NoError(t, err)
 	assert.True(t, upToDate)
 
-	require.NoError(t, Down(ctx, db, root, "sqlite", versionTable))
+	require.NoError(t, MigrateDown(ctx, db, source, "sqlite"))
 	assertWidgetsTableMissing(t, ctx, db)
-	upToDate, err = UpToDate(ctx, db, root, "sqlite", versionTable)
+	upToDate, err = UpToDate(ctx, db, source, "sqlite")
 	require.NoError(t, err)
 	assert.False(t, upToDate)
 
-	require.NoError(t, Run(ctx, db, root, "sqlite", versionTable))
-	require.NoError(t, DownTo(ctx, db, root, "sqlite", versionTable, 0))
+	require.NoError(t, MigrateUpTo(ctx, db, source, "sqlite", 1))
+	require.NoError(t, MigrateDownTo(ctx, db, source, "sqlite", 0))
+	require.NoError(t, MigrateDownTo(ctx, db, source, "sqlite", 0))
 	assertWidgetsTableMissing(t, ctx, db)
+
+	require.NoError(t, MigrateUp(ctx, db, source, "sqlite"))
+	assert.ErrorContains(t, MigrateUpTo(ctx, db, source, "sqlite", 0), "lower version")
+	assert.ErrorContains(t, MigrateUpTo(ctx, db, source, "sqlite", 2), "exceeds embedded")
+	assert.ErrorContains(t, MigrateDownTo(ctx, db, source, "sqlite", 2), "higher version")
+	assert.ErrorContains(t, MigrateDownTo(ctx, db, source, "sqlite", -1), "cannot be negative")
 }
 
 func TestInspectDetectsDatabaseAheadOfEmbeddedMigrations(t *testing.T) {
 	db := openSQLite(t)
-	root := migrationsRoot(t)
+	root := testMigrations
 	const versionTable = "goose_widgets_ahead"
-	require.NoError(t, Run(t.Context(), db, root, "sqlite", versionTable))
+	source := Source{FS: root, TableName: versionTable}
+	require.NoError(t, Migrate(t.Context(), db, source, "sqlite"))
 	_, err := db.ExecContext(t.Context(),
 		"INSERT INTO "+versionTable+" (version_id, is_applied) VALUES (?, ?)", 2, true,
 	)
 	require.NoError(t, err)
 
-	status, err := Inspect(t.Context(), db, Source{FS: root, TableName: versionTable}, "sqlite")
+	status, err := Inspect(t.Context(), db, source, "sqlite")
 	require.NoError(t, err)
 	assert.Equal(t, StateAhead, status.State)
 	assert.Equal(t, int64(2), status.Current)
 	assert.Equal(t, int64(1), status.Target)
 	assert.Equal(t, []int64{2}, status.Unknown)
+	assert.ErrorContains(t, Migrate(t.Context(), db, source, "sqlite"), "unavailable in embedded SQL")
 
-	upToDate, err := UpToDate(t.Context(), db, root, "sqlite", versionTable)
+	upToDate, err := UpToDate(t.Context(), db, source, "sqlite")
 	require.NoError(t, err)
 	assert.False(t, upToDate)
 }
@@ -122,8 +129,8 @@ func assertWidgetsTableMissing(t *testing.T, ctx context.Context, db *sql.DB) {
 	assert.Error(t, err)
 }
 
-func TestRun_UnsupportedDialect(t *testing.T) {
-	err := Run(t.Context(), nil, migrationsRoot(t), "oracle", "goose_bad_dialect")
+func TestMigrateRejectsUnsupportedDialect(t *testing.T) {
+	err := Migrate(t.Context(), nil, Source{FS: testMigrations, TableName: "goose_bad_dialect"}, "oracle")
 	assert.Error(t, err)
 }
 
@@ -140,13 +147,25 @@ func TestResolveDialect(t *testing.T) {
 func TestMigrationFailuresArePropagated(t *testing.T) {
 	db := openSQLite(t)
 	require.NoError(t, db.Close())
-	root := migrationsRoot(t)
+	root := testMigrations
 
-	assert.ErrorContains(t, Run(t.Context(), db, root, "sqlite", "goose_closed_run"), "run migrations")
-	assert.ErrorContains(t, Down(t.Context(), db, root, "sqlite", "goose_closed_down"), "rollback migration")
-	assert.ErrorContains(t, DownTo(t.Context(), db, root, "sqlite", "goose_closed_down_to", 0), "rollback migrations")
+	assert.Error(t, Migrate(t.Context(), db, Source{FS: root, TableName: "goose_closed_migrate"}, "sqlite"))
+	assert.Error(t, MigrateUp(t.Context(), db, Source{FS: root, TableName: "goose_closed_up"}, "sqlite"))
+	assert.Error(t, MigrateUpTo(t.Context(), db, Source{FS: root, TableName: "goose_closed_up_to"}, "sqlite", 1))
+	assert.Error(t, MigrateDown(t.Context(), db, Source{FS: root, TableName: "goose_closed_down"}, "sqlite"))
+	assert.Error(t, MigrateDownTo(t.Context(), db, Source{FS: root, TableName: "goose_closed_down_to"}, "sqlite", 0))
 
 	empty := fstest.MapFS{"unrelated.txt": {Data: []byte("value")}}
 	_, err := newProvider(db, empty, "sqlite", "goose_missing_fs")
 	assert.ErrorContains(t, err, "create provider")
+}
+
+func TestValidateMigrationStateRejectsDivergedHistory(t *testing.T) {
+	err := validateMigrationState(Status{
+		Current: 2,
+		Target:  2,
+		Pending: []int64{1},
+	})
+	assert.ErrorContains(t, err, "embedded and applied migrations diverge")
+	assert.NoError(t, validateMigrationState(Status{Current: 1, Target: 2, Pending: []int64{2}}))
 }
