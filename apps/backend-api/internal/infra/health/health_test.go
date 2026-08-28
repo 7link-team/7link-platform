@@ -25,7 +25,7 @@ func TestHealthModuleLifecycleAndRegistration(t *testing.T) {
 	require.NoError(t, module.Start(t.Context()))
 
 	router := chi.NewRouter()
-	api := humax.New(router, "health-test", "1.0.0")
+	api := humax.New(router, humax.DefaultConfig("health-test", "1.0.0"))
 	require.NoError(t, module.RegisterHTTP(t.Context(), router, api))
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/healthz", nil))

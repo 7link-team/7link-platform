@@ -24,7 +24,7 @@ func newTestHandler(t *testing.T, services ...*service.Service) http.Handler {
 	require.NoError(t, respx.NewModule().Initialize(t.Context()))
 	require.NoError(t, healthi18n.Register())
 	router := chi.NewRouter()
-	api := humax.New(router, "test", "1.0.0")
+	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
 	svc := service.New()
 	if len(services) > 0 {
 		svc = services[0]

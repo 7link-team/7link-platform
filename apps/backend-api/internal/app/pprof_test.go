@@ -21,7 +21,7 @@ import (
 
 func TestRegisterPprofServesStandardEndpoints(t *testing.T) {
 	router := chi.NewRouter()
-	api := humax.New(router, "test", "1.0.0")
+	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
 	registerPprof(router, api, "test service", true)
 
 	index := httptest.NewRecorder()
@@ -48,7 +48,7 @@ func TestRegisterPprofServesStandardEndpoints(t *testing.T) {
 
 func TestRegisterPprofServesEmbeddedWebUI(t *testing.T) {
 	router := chi.NewRouter()
-	api := humax.New(router, "test", "1.0.0")
+	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
 	registerPprof(router, api, "test service", true)
 
 	landing := httptest.NewRecorder()
@@ -188,7 +188,7 @@ func TestCaptureDuration(t *testing.T) {
 
 func TestRegisterPprofAddsOpenAPIOperations(t *testing.T) {
 	router := chi.NewRouter()
-	api := humax.New(router, "test", "1.0.0")
+	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
 	registerPprof(router, api, "test service", true)
 
 	paths := api.OpenAPI().Paths
@@ -219,7 +219,7 @@ func TestRegisterPprofAddsOpenAPIOperations(t *testing.T) {
 
 func TestRegisterPprofDoesNothingWhenDisabled(t *testing.T) {
 	router := chi.NewRouter()
-	api := humax.New(router, "test", "1.0.0")
+	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
 	registerPprof(router, api, "test service", false)
 
 	response := httptest.NewRecorder()

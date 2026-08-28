@@ -63,6 +63,7 @@ var landingTemplate = template.Must(template.New("api-landing").Parse(`<!doctype
       }
       main { width: min(608px, 100%); }
       header { margin-bottom: 28px; }
+      header:last-child { margin-bottom: 0; }
       h1 {
         margin: 0 0 6px;
         font-size: 1.5rem;
@@ -128,6 +129,7 @@ var landingTemplate = template.Must(template.New("api-landing").Parse(`<!doctype
       a:hover { border-color: var(--accent); background: var(--surface-hover); }
       a:hover::after { color: var(--accent); }
       a:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+      a:last-child:nth-child(odd) { grid-column: 1 / -1; }
       a strong { display: block; font-size: 0.9375rem; font-weight: 650; }
       a span { display: block; margin-top: 3px; color: var(--muted); font-size: 0.8125rem; }
       @media (max-width: 520px) {
@@ -159,27 +161,19 @@ var landingTemplate = template.Must(template.New("api-landing").Parse(`<!doctype
     <main>
       <header>
         <h1>{{.Name}} API</h1>
-        <p class="lead">Service endpoints and operational resources for developers and platform operators.</p>
-        <div class="status"><span class="status-dot" aria-hidden="true"></span>Service online</div>
+        <p class="lead">Service endpoint for developers and platform operators.</p>
+        <div class="status"><span class="status-dot" aria-hidden="true"></span>API endpoint available</div>
       </header>
+      {{if .Resources}}
       <nav aria-label="API resources">
-        <a href="/docs">
-          <strong>API reference</strong>
-          <span>Interactive documentation for every endpoint</span>
+        {{range .Resources}}
+        <a href="{{.Href}}">
+          <strong>{{.Title}}</strong>
+          <span>{{.Description}}</span>
         </a>
-        <a href="{{.SpecJSON}}">
-          <strong>OpenAPI specification</strong>
-          <span>Machine-readable API contract</span>
-        </a>
-        <a href="/healthz">
-          <strong>Liveness</strong>
-          <span>Service and module health</span>
-        </a>
-        <a href="/readyz">
-          <strong>Readiness</strong>
-          <span>Dependency readiness status</span>
-        </a>
+        {{end}}
       </nav>
+      {{end}}
     </main>
   </body>
 </html>
@@ -194,55 +188,122 @@ type runtimeConfig struct {
 	SpecYAML string `json:"specYAML"`
 }
 
+// Options controls which documentation resources are registered and which
+// registered resources are advertised on the API landing endpoint.
+type Options struct {
+	Name             string
+	LandingEnabled   bool
+	DocsEnabled      bool
+	AdvertiseDocs    bool
+	AdvertiseOpenAPI bool
+	AdvertiseHealth  bool
+}
+
+type landingResource struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Href        string `json:"href"`
+}
+
 type landingData struct {
-	Name      string `json:"name"`
-	Docs      string `json:"docs"`
-	OpenAPI   string `json:"openapi"`
-	Liveness  string `json:"liveness"`
-	Readiness string `json:"readiness"`
+	Name      string            `json:"name"`
+	Status    string            `json:"status"`
+	Resources []landingResource `json:"resources"`
 }
 
 // Register mounts the generated documentation site and disables Huma's
 // built-in documentation page. OpenAPI documents remain owned by Huma.
-func Register(router chi.Router, config huma.Config, name string) huma.Config {
+func Register(router chi.Router, config huma.Config, options Options) huma.Config {
 	config.DocsPath = ""
-	name = landingName(name)
+	name := landingName(options.Name)
+	specJSON := ""
+	specYAML := ""
+	if config.OpenAPIPath != "" {
+		specJSON = config.OpenAPIPath + ".json"
+		specYAML = config.OpenAPIPath + ".yaml"
+	}
+
+	resources := landingResources(options, specJSON)
+	landing := landingData{
+		Name:      name,
+		Status:    "available",
+		Resources: resources,
+	}
+	if options.LandingEnabled {
+		landingHTML := indexHTML(landing)
+		router.Get("/", func(response http.ResponseWriter, request *http.Request) {
+			response.Header().Set("Cache-Control", "no-cache")
+			if !prefersHTML(request.Header.Get("Accept")) {
+				respx.WriteOK(response, request, landing)
+				return
+			}
+			response.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = response.Write(landingHTML)
+		})
+	}
+
+	if !options.DocsEnabled {
+		return config
+	}
 	dist, err := fs.Sub(site, "site")
 	if err != nil {
 		panic(fmt.Errorf("open embedded docs site: %w", err))
 	}
-
-	runtime := runtimeConfig{
-		Name:     name,
-		SpecJSON: config.OpenAPIPath + ".json",
-		SpecYAML: config.OpenAPIPath + ".yaml",
-	}
-	landing := indexHTML(name, runtime.SpecJSON)
-	resources := landingData{
-		Name:      landingName(name),
-		Docs:      docsPath,
-		OpenAPI:   runtime.SpecJSON,
-		Liveness:  "/healthz",
-		Readiness: "/readyz",
-	}
-	router.Get("/", func(response http.ResponseWriter, request *http.Request) {
-		response.Header().Set("Cache-Control", "no-cache")
-		if !prefersHTML(request.Header.Get("Accept")) {
-			respx.WriteOK(response, request, resources)
-			return
-		}
-		response.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = response.Write(landing)
-	})
+	runtime := runtimeConfig{Name: name, SpecJSON: specJSON, SpecYAML: specYAML}
 	router.Get(docsPath+"/config.js", configHandler(runtime))
 	router.Get(docsPath, staticHandler(dist))
 	router.Get(docsPath+"/*", staticHandler(dist))
 	return config
 }
 
-func indexHTML(name, specJSON string) []byte {
+func landingResources(options Options, specJSON string) []landingResource {
+	resources := make([]landingResource, 0, 5)
+	if options.DocsEnabled && options.AdvertiseDocs {
+		resources = append(resources, landingResource{
+			ID:          "docs",
+			Title:       "API reference",
+			Description: "Interactive documentation for registered endpoints",
+			Href:        docsPath,
+		})
+	}
+	if specJSON != "" && options.AdvertiseOpenAPI {
+		resources = append(resources, landingResource{
+			ID:          "openapi",
+			Title:       "OpenAPI specification",
+			Description: "Machine-readable API contract",
+			Href:        specJSON,
+		})
+	}
+	if options.AdvertiseHealth {
+		resources = append(resources,
+			landingResource{
+				ID:          "liveness",
+				Title:       "Liveness",
+				Description: "Process liveness probe",
+				Href:        "/livez",
+			},
+			landingResource{
+				ID:          "health",
+				Title:       "Health",
+				Description: "Service and module health",
+				Href:        "/healthz",
+			},
+			landingResource{
+				ID:          "readiness",
+				Title:       "Readiness",
+				Description: "Dependency readiness status",
+				Href:        "/readyz",
+			},
+		)
+	}
+	return resources
+}
+
+func indexHTML(data landingData) []byte {
 	var output bytes.Buffer
-	if err := landingTemplate.Execute(&output, runtimeConfig{Name: landingName(name), SpecJSON: specJSON}); err != nil {
+	data.Name = landingName(data.Name)
+	if err := landingTemplate.Execute(&output, data); err != nil {
 		panic(fmt.Errorf("render API landing page: %w", err))
 	}
 	return output.Bytes()

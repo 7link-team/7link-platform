@@ -17,7 +17,24 @@ func (app *App) startHTTPServer() error {
 	if app.telemetry != nil {
 		router.Use(app.telemetry.HTTPMiddleware)
 	}
-	api := humax.New(router, app.config.Name, app.config.Version)
+	apiSettings := app.config.API
+	apiConfig := humax.Config{
+		Name:    app.config.Name,
+		Version: app.config.Version,
+		Landing: humax.LandingConfig{
+			Enabled:         apiSettings.Landing.Enabled,
+			AdvertiseHealth: apiSettings.Landing.AdvertiseHealth,
+		},
+		Docs: humax.EndpointConfig{
+			Enabled:   apiSettings.Docs.Enabled,
+			Advertise: apiSettings.Docs.Advertise,
+		},
+		OpenAPI: humax.EndpointConfig{
+			Enabled:   apiSettings.OpenAPI.Enabled,
+			Advertise: apiSettings.OpenAPI.Advertise,
+		},
+	}
+	api := humax.New(router, apiConfig)
 	if err := app.registerHTTPModules(app.ctx, router, api); err != nil {
 		return err
 	}
@@ -30,7 +47,12 @@ func (app *App) startHTTPServer() error {
 	}
 
 	go func() {
-		slog.Info("http server listening", "addr", addr, "docs", app.config.HttpServer.Address+":"+strconv.Itoa(app.config.HttpServer.Port))
+		slog.Info("http server listening",
+			"addr", addr,
+			"landing", apiConfig.Landing.Enabled,
+			"docs", apiConfig.Docs.Enabled,
+			"openapi", apiConfig.OpenAPI.Enabled,
+		)
 		if err := app.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			app.serveErr <- fmt.Errorf("http serve: %w", err)
 		}

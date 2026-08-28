@@ -26,6 +26,26 @@ func TestPprofDefaultsToDisabledAndCanBeEnabled(t *testing.T) {
 	assert.True(t, enabled.Pprof.Enabled)
 }
 
+func TestHTTPAPIResourceDefaultsAndOverrides(t *testing.T) {
+	var defaults AppConfig
+	require.NoError(t, configx.New().Parse(&defaults))
+	assert.True(t, defaults.API.Landing.Enabled)
+	assert.False(t, defaults.API.Landing.AdvertiseHealth)
+	assert.Equal(t, APIDocs{Enabled: true, Advertise: true}, defaults.API.Docs)
+	assert.Equal(t, APIOpenAPI{Enabled: true, Advertise: true}, defaults.API.OpenAPI)
+
+	var configured AppConfig
+	require.NoError(t, configx.New().Parse(&configured,
+		"--api.landing.enabled=false",
+		"--api.landing.advertise_health=true",
+		"--api.docs.advertise=false",
+		"--api.docs.enabled=false",
+	))
+	assert.False(t, configured.API.Landing.Enabled)
+	assert.True(t, configured.API.Landing.AdvertiseHealth)
+	assert.Equal(t, APIDocs{Enabled: false, Advertise: false}, configured.API.Docs)
+}
+
 func TestServeMigrationDefaultsToDisabledAndCanBeEnabled(t *testing.T) {
 	var disabled AppConfig
 	require.NoError(t, configx.New().Parse(&disabled))

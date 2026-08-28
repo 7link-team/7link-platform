@@ -6,15 +6,16 @@ type AppConfig struct {
 	Name    string `mapstructure:"name" description:"application name" trim:"true"`
 	Version string `mapstructure:"version" description:"application version" trim:"true"`
 
-	Debug   bool  `mapstructure:"debug" short:"d" description:"debug mode" default:"false"`
-	Pprof   Pprof `mapstructure:"pprof" group:"pprof"`
+	Debug bool  `mapstructure:"debug" short:"d" description:"debug mode" default:"false"`
+	Pprof Pprof `mapstructure:"pprof" group:"pprof"`
+	API   API   `mapstructure:"api" group:"api"`
 
 	Timezone string `mapstructure:"timezone" description:"timezone" default:"UTC"`
 
 	HttpServer HttpServer `mapstructure:"http_server" group:"http_server"`
 	GrpcServer GrpcServer `mapstructure:"grpc_server" group:"grpc_server"`
 
-	Migrate  bool              `mapstructure:"migrate" description:"automatically migrate before starting services" default:"false"`
+	Migrate  bool                `mapstructure:"migrate" description:"automatically migrate before starting services" default:"false"`
 	Database map[string]Database `mapstructure:"database" group:"database" mapkey:"<dbkey>"`
 }
 
@@ -25,6 +26,27 @@ type Pprof struct {
 type HttpServer struct {
 	Address string `mapstructure:"address" description:"listen IPv4 address" default:"0.0.0.0" trim:"true" required:"true" validate:"^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])[.]){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$"`
 	Port    int    `mapstructure:"port" description:"port" default:"8080"`
+}
+
+type API struct {
+	Landing APILanding `mapstructure:"landing" group:"landing"`
+	Docs    APIDocs    `mapstructure:"docs" group:"docs"`
+	OpenAPI APIOpenAPI `mapstructure:"openapi" group:"openapi"`
+}
+
+type APILanding struct {
+	Enabled         bool `mapstructure:"enabled" description:"enable the API root landing endpoint" default:"true"`
+	AdvertiseHealth bool `mapstructure:"advertise_health" description:"show liveness and readiness links on the API landing endpoint" default:"false"`
+}
+
+type APIDocs struct {
+	Enabled   bool `mapstructure:"enabled" description:"enable interactive API documentation and its assets" default:"true"`
+	Advertise bool `mapstructure:"advertise" description:"show the API documentation link on the API landing endpoint" default:"true"`
+}
+
+type APIOpenAPI struct {
+	Enabled   bool `mapstructure:"enabled" description:"enable OpenAPI JSON and YAML endpoints" default:"true"`
+	Advertise bool `mapstructure:"advertise" description:"show the OpenAPI specification link on the API landing endpoint" default:"true"`
 }
 
 type GrpcServer struct {

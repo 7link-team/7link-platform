@@ -13,7 +13,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newDocsRouter() http.Handler {
+func defaultOptions() Options {
+	return Options{
+		Name:             "test service",
+		LandingEnabled:   true,
+		DocsEnabled:      true,
+		AdvertiseDocs:    true,
+		AdvertiseOpenAPI: true,
+	}
+}
+
+func newDocsRouter(custom ...Options) http.Handler {
 	router := chi.NewRouter()
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -23,7 +33,11 @@ func newDocsRouter() http.Handler {
 	})
 	config := huma.DefaultConfig("test", "1.0.0")
 	config.OpenAPIPath = "/schema"
-	Register(router, config, "test service")
+	options := defaultOptions()
+	if len(custom) > 0 {
+		options = custom[0]
+	}
+	Register(router, config, options)
 	router.Get("/api-test", func(response http.ResponseWriter, _ *http.Request) {
 		response.WriteHeader(http.StatusNoContent)
 	})
@@ -137,8 +151,9 @@ func TestRootLandingAndOrdinaryRouteProtection(t *testing.T) {
 	assert.Contains(t, root.Body.String(), "test service API")
 	assert.Contains(t, root.Body.String(), `href="/docs"`)
 	assert.Contains(t, root.Body.String(), `href="/schema.json"`)
-	assert.Contains(t, root.Body.String(), `href="/healthz"`)
-	assert.Contains(t, root.Body.String(), `href="/readyz"`)
+	assert.NotContains(t, root.Body.String(), `href="/livez"`)
+	assert.NotContains(t, root.Body.String(), `href="/healthz"`)
+	assert.NotContains(t, root.Body.String(), `href="/readyz"`)
 	assert.NotContains(t, root.Body.String(), "https://")
 
 	apiResponse := httptest.NewRecorder()
@@ -173,14 +188,64 @@ func TestRootReturnsEnvelopeForAPIClients(t *testing.T) {
 			assert.NotEmpty(t, envelope.Meta.RequestAt)
 			assert.GreaterOrEqual(t, envelope.Meta.ElapsedMS, 0.0)
 			assert.Equal(t, landingData{
-				Name:      "test service",
-				Docs:      "/docs",
-				OpenAPI:   "/schema.json",
-				Liveness:  "/healthz",
-				Readiness: "/readyz",
+				Name:   "test service",
+				Status: "available",
+				Resources: []landingResource{
+					{ID: "docs", Title: "API reference", Description: "Interactive documentation for registered endpoints", Href: "/docs"},
+					{ID: "openapi", Title: "OpenAPI specification", Description: "Machine-readable API contract", Href: "/schema.json"},
+				},
 			}, envelope.Data)
 		})
 	}
+}
+
+func TestRegistrationAndAdvertisementAreIndependent(t *testing.T) {
+	options := defaultOptions()
+	options.AdvertiseDocs = false
+	options.AdvertiseOpenAPI = false
+	options.AdvertiseHealth = true
+	handler := newDocsRouter(options)
+
+	root := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.Header.Set("Accept", "text/html")
+	handler.ServeHTTP(root, request)
+	require.Equal(t, http.StatusOK, root.Code)
+	assert.NotContains(t, root.Body.String(), `href="/docs"`)
+	assert.NotContains(t, root.Body.String(), `href="/schema.json"`)
+	assert.Contains(t, root.Body.String(), `href="/livez"`)
+	assert.Contains(t, root.Body.String(), `href="/healthz"`)
+	assert.Contains(t, root.Body.String(), `href="/readyz"`)
+
+	assert.Equal(t, http.StatusOK, requestStatus(handler, "/docs"))
+	assert.Equal(t, http.StatusOK, requestStatus(handler, "/docs/config.js"))
+}
+
+func TestDisabledLandingAndDocsAreNotMounted(t *testing.T) {
+	options := defaultOptions()
+	options.LandingEnabled = false
+	options.DocsEnabled = false
+	handler := newDocsRouter(options)
+
+	assert.Equal(t, http.StatusNotFound, requestStatus(handler, "/"))
+	assert.Equal(t, http.StatusNotFound, requestStatus(handler, "/docs"))
+	assert.Equal(t, http.StatusNotFound, requestStatus(handler, "/docs/config.js"))
+	assert.Equal(t, http.StatusNoContent, requestStatus(handler, "/api-test"))
+}
+
+func TestLandingWithoutAdvertisedResourcesOmitsNavigation(t *testing.T) {
+	options := defaultOptions()
+	options.DocsEnabled = false
+	options.AdvertiseOpenAPI = false
+	handler := newDocsRouter(options)
+
+	root := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.Header.Set("Accept", "text/html")
+	handler.ServeHTTP(root, request)
+	require.Equal(t, http.StatusOK, root.Code)
+	assert.NotContains(t, root.Body.String(), "<nav")
+	assert.Contains(t, root.Body.String(), "API endpoint available")
 }
 
 func TestRootContentNegotiation(t *testing.T) {
@@ -201,14 +266,14 @@ func TestRootContentNegotiation(t *testing.T) {
 }
 
 func TestLandingEscapesAndTrimsServiceName(t *testing.T) {
-	escaped := string(indexHTML(`<script>alert("x")</script>`, "/schema.json"))
+	escaped := string(indexHTML(landingData{Name: `<script>alert("x")</script>`}))
 	assert.NotContains(t, escaped, "<script>")
 	assert.Contains(t, escaped, "&lt;script&gt;")
 
-	trimmed := string(indexHTML("  test service  ", "/schema.json"))
+	trimmed := string(indexHTML(landingData{Name: "  test service  "}))
 	assert.Contains(t, trimmed, "<title>test service API</title>")
 
-	empty := string(indexHTML("  ", "/schema.json"))
+	empty := string(indexHTML(landingData{Name: "  "}))
 	assert.Contains(t, empty, "<title> API</title>")
 }
 
@@ -218,4 +283,10 @@ func request(t *testing.T, handler http.Handler, route string) *httptest.Respons
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, route, nil))
 	require.Equal(t, http.StatusOK, recorder.Code, strings.TrimSpace(recorder.Body.String()))
 	return recorder
+}
+
+func requestStatus(handler http.Handler, route string) int {
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, route, nil))
+	return recorder.Code
 }

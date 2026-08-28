@@ -12,7 +12,7 @@ import (
 
 func TestNewConfiguresAPIAndSharedMiddleware(t *testing.T) {
 	router := chi.NewRouter()
-	api := New(router, "orders", "2.3.4")
+	api := New(router, DefaultConfig("orders", "2.3.4"))
 
 	assert.Equal(t, "orders API", api.OpenAPI().Info.Title)
 	assert.Equal(t, "2.3.4", api.OpenAPI().Info.Version)
@@ -36,6 +36,73 @@ func TestNewConfiguresAPIAndSharedMiddleware(t *testing.T) {
 }
 
 func TestNewTrimsServiceName(t *testing.T) {
-	api := New(chi.NewRouter(), "  orders  ", "dev")
+	api := New(chi.NewRouter(), DefaultConfig("  orders  ", "dev"))
 	assert.Equal(t, "orders API", api.OpenAPI().Info.Title)
+}
+
+func TestNewControlsLandingDocsAndOpenAPIRoutes(t *testing.T) {
+	tests := []struct {
+		name       string
+		configure  func(*Config)
+		rootStatus int
+		docsStatus int
+		specStatus int
+	}{
+		{
+			name: "landing disabled",
+			configure: func(config *Config) {
+				config.Landing.Enabled = false
+			},
+			rootStatus: http.StatusNotFound,
+			docsStatus: http.StatusOK,
+			specStatus: http.StatusOK,
+		},
+		{
+			name: "docs disabled",
+			configure: func(config *Config) {
+				config.Docs.Enabled = false
+			},
+			rootStatus: http.StatusOK,
+			docsStatus: http.StatusNotFound,
+			specStatus: http.StatusOK,
+		},
+		{
+			name: "openapi disabled",
+			configure: func(config *Config) {
+				config.OpenAPI.Enabled = false
+			},
+			rootStatus: http.StatusOK,
+			docsStatus: http.StatusOK,
+			specStatus: http.StatusNotFound,
+		},
+		{
+			name: "openapi and docs disabled",
+			configure: func(config *Config) {
+				config.Docs.Enabled = false
+				config.OpenAPI.Enabled = false
+			},
+			rootStatus: http.StatusOK,
+			docsStatus: http.StatusNotFound,
+			specStatus: http.StatusNotFound,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			router := chi.NewRouter()
+			config := DefaultConfig("orders", "dev")
+			test.configure(&config)
+			New(router, config)
+
+			assert.Equal(t, test.rootStatus, routeStatus(router, "/"))
+			assert.Equal(t, test.docsStatus, routeStatus(router, "/docs"))
+			assert.Equal(t, test.specStatus, routeStatus(router, OpenAPIPath+".json"))
+		})
+	}
+}
+
+func routeStatus(handler http.Handler, target string) int {
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, target, nil))
+	return response.Code
 }

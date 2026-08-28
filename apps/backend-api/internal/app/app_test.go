@@ -16,6 +16,7 @@ func TestRunRejectsInvalidConfigurationAndTimezone(t *testing.T) {
 	invalidTimezone := validTestAppConfig()
 	invalidTimezone.Timezone = "Invalid/Timezone"
 	assert.ErrorContains(t, (&App{}).Run(invalidTimezone), `initialize timezone "Invalid/Timezone"`)
+
 }
 
 func TestRunShutsDownWhenHTTPServerCannotBind(t *testing.T) {
@@ -34,9 +35,14 @@ func TestRunShutsDownWhenHTTPServerCannotBind(t *testing.T) {
 
 func validTestAppConfig() AppConfig {
 	return AppConfig{
-		Name:       "test-api",
-		Version:    "1.0.0",
-		Timezone:   "UTC",
+		Name:     "test-api",
+		Version:  "1.0.0",
+		Timezone: "UTC",
+		API: API{
+			Landing: APILanding{Enabled: true},
+			Docs:    APIDocs{Enabled: true, Advertise: true},
+			OpenAPI: APIOpenAPI{Enabled: true, Advertise: true},
+		},
 		HttpServer: HttpServer{Address: "127.0.0.1", Port: 8080},
 		GrpcServer: GrpcServer{Address: "127.0.0.1", Port: 9090},
 	}
