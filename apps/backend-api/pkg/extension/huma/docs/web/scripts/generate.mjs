@@ -69,7 +69,6 @@ runNPM(["run", "build", "--silent"]);
 async function latestVersion(name) {
   const endpoint = `https://registry.npmjs.org/${encodeURIComponent(name)}/latest`;
   const response = await fetch(endpoint, {
-    headers: { "user-agent": "7link-doc-assets/1.0" },
     signal: AbortSignal.timeout(30_000)
   });
   if (!response.ok) {

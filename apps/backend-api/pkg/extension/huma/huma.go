@@ -2,6 +2,8 @@
 package humax
 
 import (
+	"strings"
+
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
@@ -15,6 +17,7 @@ const OpenAPIPath = "/openapi"
 // New installs the shared router middleware, response contract, docs, and
 // OpenAPI configuration before any module registers operations.
 func New(router chi.Router, name, version string) huma.API {
+	name = strings.TrimSpace(name)
 	router.Use(respx.Timing)
 	router.Use(respx.Locale)
 

@@ -22,7 +22,7 @@ import (
 func TestRegisterPprofServesStandardEndpoints(t *testing.T) {
 	router := chi.NewRouter()
 	api := humax.New(router, "test", "1.0.0")
-	registerPprof(router, api, true)
+	registerPprof(router, api, "test service", true)
 
 	index := httptest.NewRecorder()
 	router.ServeHTTP(index, httptest.NewRequest(http.MethodGet, pprofPath+"/", nil))
@@ -49,7 +49,7 @@ func TestRegisterPprofServesStandardEndpoints(t *testing.T) {
 func TestRegisterPprofServesEmbeddedWebUI(t *testing.T) {
 	router := chi.NewRouter()
 	api := humax.New(router, "test", "1.0.0")
-	registerPprof(router, api, true)
+	registerPprof(router, api, "test service", true)
 
 	landing := httptest.NewRecorder()
 	router.ServeHTTP(landing, httptest.NewRequest(http.MethodGet, pprofUIPath+"/", nil))
@@ -57,14 +57,16 @@ func TestRegisterPprofServesEmbeddedWebUI(t *testing.T) {
 	assert.Contains(t, landing.Header().Get("Content-Type"), "text/html")
 	assert.Equal(t, "no-store", landing.Header().Get("Cache-Control"))
 	assert.Contains(t, landing.Body.String(), "Runtime profiles")
+	assert.Contains(t, landing.Body.String(), `<a class="brand" href="/">test service</a>`)
 	assert.Contains(t, landing.Body.String(), `action="/debug/pprof/ui/capture"`)
 	assert.Contains(t, landing.Body.String(), `type="hidden" name="profile" value="heap"`)
 	assert.Equal(t, len(pprofProfiles), strings.Count(landing.Body.String(), `<button class="capture-button"`))
 	assert.NotContains(t, landing.Body.String(), `type="radio"`)
 	assert.NotContains(t, landing.Body.String(), "<select")
-	assert.NotContains(t, landing.Body.String(), `type="number"`)
 	assert.NotContains(t, landing.Body.String(), "Duration")
-	assert.Contains(t, landing.Body.String(), `type="hidden" name="seconds" value="5"`)
+	assert.Equal(t, 1, strings.Count(landing.Body.String(), `name="seconds" type="number"`))
+	assert.Contains(t, landing.Body.String(), `min="1" max="30" value="5"`)
+	assert.Contains(t, landing.Body.String(), "CPU capture duration in seconds")
 
 	withoutCapture := httptest.NewRecorder()
 	router.ServeHTTP(withoutCapture, httptest.NewRequest(http.MethodGet, pprofUIPath+"/view/flamegraph", nil))
@@ -100,7 +102,7 @@ func TestRegisterPprofServesEmbeddedWebUI(t *testing.T) {
 }
 
 func TestPprofUIRejectsInvalidCapture(t *testing.T) {
-	ui := newPprofUI()
+	ui := newPprofUI("test service")
 	for name, form := range map[string]url.Values{
 		"profile": {"profile": {"unknown"}},
 		"seconds": {"profile": {"cpu"}, "seconds": {"31"}},
@@ -116,8 +118,27 @@ func TestPprofUIRejectsInvalidCapture(t *testing.T) {
 	}
 }
 
+func TestPprofUIUsesRequestedCPUDuration(t *testing.T) {
+	ui := newPprofUI("test service")
+	var capturedDuration time.Duration
+	ui.capture = func(_ context.Context, name string, duration time.Duration) (*profile.Profile, error) {
+		assert.Equal(t, "cpu", name)
+		capturedDuration = duration
+		return nil, errors.New("stop after duration check")
+	}
+
+	form := url.Values{"profile": {"cpu"}, "seconds": {"7"}}
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/capture", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	ui.ServeHTTP(response, request)
+
+	assert.Equal(t, http.StatusInternalServerError, response.Code)
+	assert.Equal(t, 7*time.Second, capturedDuration)
+}
+
 func TestPprofUIRejectsConcurrentCapture(t *testing.T) {
-	ui := newPprofUI()
+	ui := newPprofUI("test service")
 	started := make(chan struct{})
 	release := make(chan struct{})
 	ui.capture = func(context.Context, string, time.Duration) (*profile.Profile, error) {
@@ -168,7 +189,7 @@ func TestCaptureDuration(t *testing.T) {
 func TestRegisterPprofAddsOpenAPIOperations(t *testing.T) {
 	router := chi.NewRouter()
 	api := humax.New(router, "test", "1.0.0")
-	registerPprof(router, api, true)
+	registerPprof(router, api, "test service", true)
 
 	paths := api.OpenAPI().Paths
 	for _, path := range []string{
@@ -199,7 +220,7 @@ func TestRegisterPprofAddsOpenAPIOperations(t *testing.T) {
 func TestRegisterPprofDoesNothingWhenDisabled(t *testing.T) {
 	router := chi.NewRouter()
 	api := humax.New(router, "test", "1.0.0")
-	registerPprof(router, api, false)
+	registerPprof(router, api, "test service", false)
 
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, pprofPath+"/", nil))

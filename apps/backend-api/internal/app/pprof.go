@@ -10,12 +10,12 @@ import (
 
 const pprofPath = "/debug/pprof"
 
-func registerPprof(router chi.Router, api huma.API, enabled bool) {
+func registerPprof(router chi.Router, api huma.API, name string, enabled bool) {
 	if !enabled {
 		return
 	}
 
-	ui := newPprofUI()
+	ui := newPprofUI(name)
 	router.Get(pprofPath, func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, pprofPath+"/", http.StatusMovedPermanently)
 	})

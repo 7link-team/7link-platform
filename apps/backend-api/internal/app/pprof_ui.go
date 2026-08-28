@@ -194,6 +194,50 @@ var (
         font-size: 0.75rem;
         font-variant-numeric: tabular-nums;
       }
+      .duration-control {
+        position: relative;
+        display: block;
+        width: 104px;
+      }
+      .duration-control input {
+        width: 100%;
+        min-height: 44px;
+        padding: 8px 38px 8px 12px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--bg);
+        color: var(--text);
+        font: 600 0.8125rem/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-variant-numeric: tabular-nums;
+        transition: border-color 160ms ease, background-color 160ms ease;
+      }
+      .duration-control input:hover { border-color: var(--muted); }
+      .duration-control input:focus-visible {
+        border-color: var(--focus);
+        outline: 3px solid var(--focus);
+        outline-offset: 2px;
+      }
+      .duration-unit {
+        position: absolute;
+        top: 50%;
+        right: 12px;
+        color: var(--muted);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 0.75rem;
+        pointer-events: none;
+        transform: translateY(-50%);
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
       .capture-button {
         min-width: 100px;
         min-height: 44px;
@@ -252,7 +296,7 @@ var (
   <body>
     <header class="appbar">
       <div class="appbar-inner">
-        <a class="brand" href="/">7link</a>
+        <a class="brand" href="/">{{.Name}}</a>
         <span class="divider" aria-hidden="true"></span>
         <span class="product">Runtime profiler</span>
         <nav class="appnav" aria-label="Diagnostics navigation">
@@ -286,9 +330,16 @@ var (
           {{range .Profiles}}
           <form class="profile-row" method="post" action="/debug/pprof/ui/capture" data-capture-form role="listitem">
             <input type="hidden" name="profile" value="{{.Value}}">
-            {{if eq .Value "cpu"}}<input type="hidden" name="seconds" value="{{$.Seconds}}">{{end}}
             <span class="profile-name">{{.Label}}</span>
+            {{if eq .Value "cpu"}}
+            <label class="duration-control">
+              <span class="sr-only">CPU capture duration in seconds</span>
+              <input name="seconds" type="number" min="1" max="30" value="{{$.Seconds}}" inputmode="numeric">
+              <span class="duration-unit" aria-hidden="true">sec</span>
+            </label>
+            {{else}}
             <span class="collection">{{.Collection}}</span>
+            {{end}}
             <button class="capture-button" type="submit" data-submit data-command>Capture</button>
           </form>
           {{end}}
@@ -312,6 +363,7 @@ type pprofUI struct {
 	mu        sync.RWMutex
 	driverMu  sync.Mutex
 	captureMu sync.Mutex
+	name      string
 	current   *pprofWebProfile
 	capture   func(context.Context, string, time.Duration) (*profile.Profile, error)
 }
@@ -322,6 +374,7 @@ type pprofWebProfile struct {
 }
 
 type pprofLanding struct {
+	Name     string
 	Profiles []pprofProfileOption
 	Current  *pprofWebProfile
 	Seconds  int
@@ -334,8 +387,9 @@ type pprofProfileOption struct {
 	Collection string
 }
 
-func newPprofUI() *pprofUI {
-	return &pprofUI{capture: captureRuntimeProfile}
+func newPprofUI(name string) *pprofUI {
+	name = strings.TrimSpace(name)
+	return &pprofUI{name: name, capture: captureRuntimeProfile}
 }
 
 func (ui *pprofUI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -356,14 +410,10 @@ func (ui *pprofUI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (ui *pprofUI) serveLanding(w http.ResponseWriter, status int, message string) {
 	options := make([]pprofProfileOption, 0, len(pprofProfiles))
 	for _, value := range []string{"heap", "allocs", "goroutine", "cpu", "mutex", "block", "threadcreate"} {
-		collection := "Snapshot"
-		if value == "cpu" {
-			collection = fmt.Sprintf("%d sec", defaultCPUSeconds)
-		}
 		options = append(options, pprofProfileOption{
 			Value:      value,
 			Label:      pprofProfiles[value],
-			Collection: collection,
+			Collection: "Snapshot",
 		})
 	}
 	ui.mu.RLock()
@@ -373,6 +423,7 @@ func (ui *pprofUI) serveLanding(w http.ResponseWriter, status int, message strin
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	_ = pprofLandingTemplate.Execute(w, pprofLanding{
+		Name:     ui.name,
 		Profiles: options,
 		Current:  current,
 		Seconds:  defaultCPUSeconds,

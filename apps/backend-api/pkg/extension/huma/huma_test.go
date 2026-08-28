@@ -34,3 +34,8 @@ func TestNewConfiguresAPIAndSharedMiddleware(t *testing.T) {
 	router.ServeHTTP(spec, httptest.NewRequest(http.MethodGet, OpenAPIPath+".json", nil))
 	assert.Equal(t, http.StatusOK, spec.Code)
 }
+
+func TestNewTrimsServiceName(t *testing.T) {
+	api := New(chi.NewRouter(), "  orders  ", "dev")
+	assert.Equal(t, "orders API", api.OpenAPI().Info.Title)
+}

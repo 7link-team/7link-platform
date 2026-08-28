@@ -71,7 +71,7 @@ function Document({ page }: { page: (typeof pages)[number]["id"] }) {
         <a className="skip-link" href="#renderer-root">Skip to API documentation</a>
         <header className="app-header">
           <a className="brand" href="/docs/" aria-label="API documentation home">
-            <span className="brand-mark" aria-hidden="true">7</span>
+            <span className="brand-mark" data-api-mark aria-hidden="true" />
             <span><strong data-api-name>API</strong><small>Documentation</small></span>
           </a>
           <nav className="renderer-tabs" aria-label="Documentation renderer">

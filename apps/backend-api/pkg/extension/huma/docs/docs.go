@@ -206,6 +206,7 @@ type landingData struct {
 // built-in documentation page. OpenAPI documents remain owned by Huma.
 func Register(router chi.Router, config huma.Config, name string) huma.Config {
 	config.DocsPath = ""
+	name = landingName(name)
 	dist, err := fs.Sub(site, "site")
 	if err != nil {
 		panic(fmt.Errorf("open embedded docs site: %w", err))
@@ -248,10 +249,7 @@ func indexHTML(name, specJSON string) []byte {
 }
 
 func landingName(name string) string {
-	if name = strings.TrimSpace(name); name != "" {
-		return name
-	}
-	return "7link"
+	return strings.TrimSpace(name)
 }
 
 func prefersHTML(accept string) bool {

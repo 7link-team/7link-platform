@@ -4,13 +4,19 @@ import { parse as parseYAML } from "yaml";
   "use strict";
 
   var config = window.__DOCS_CONFIG__;
+  var serviceName = String(config.name || "").trim();
   var renderer = document.body.dataset.renderer;
   var root = document.getElementById("renderer-root");
 
-  document.querySelectorAll("[data-api-name]").forEach(function (element) {
-    element.textContent = config.name;
+  document.querySelectorAll("[data-api-mark]").forEach(function (element) {
+    var mark = Array.from(serviceName)[0];
+    if (mark) element.textContent = mark.toUpperCase();
   });
-  document.title = config.name + " API - " + document.title.split(" - ")[0];
+
+  document.querySelectorAll("[data-api-name]").forEach(function (element) {
+    element.textContent = serviceName;
+  });
+  document.title = serviceName + " API - " + document.title.split(" - ")[0];
 
   render(renderer).catch(function (error) {
     root.innerHTML = "";

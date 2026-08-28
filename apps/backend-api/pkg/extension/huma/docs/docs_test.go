@@ -200,13 +200,16 @@ func TestRootContentNegotiation(t *testing.T) {
 	}
 }
 
-func TestLandingEscapesServiceNameAndUsesFallback(t *testing.T) {
+func TestLandingEscapesAndTrimsServiceName(t *testing.T) {
 	escaped := string(indexHTML(`<script>alert("x")</script>`, "/schema.json"))
 	assert.NotContains(t, escaped, "<script>")
 	assert.Contains(t, escaped, "&lt;script&gt;")
 
-	fallback := string(indexHTML("  ", "/schema.json"))
-	assert.Contains(t, fallback, "<title>7link API</title>")
+	trimmed := string(indexHTML("  test service  ", "/schema.json"))
+	assert.Contains(t, trimmed, "<title>test service API</title>")
+
+	empty := string(indexHTML("  ", "/schema.json"))
+	assert.Contains(t, empty, "<title> API</title>")
 }
 
 func request(t *testing.T, handler http.Handler, route string) *httptest.ResponseRecorder {

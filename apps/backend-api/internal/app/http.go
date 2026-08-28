@@ -21,7 +21,7 @@ func (app *App) startHTTPServer() error {
 	if err := app.registerHTTPModules(app.ctx, router, api); err != nil {
 		return err
 	}
-	registerPprof(router, api, app.config.Pprof.Enabled)
+	registerPprof(router, api, app.config.Name, app.config.Pprof.Enabled)
 
 	addr := net.JoinHostPort(app.config.HttpServer.Address, strconv.Itoa(app.config.HttpServer.Port))
 	app.httpServer = &http.Server{
