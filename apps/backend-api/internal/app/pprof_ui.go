@@ -41,18 +41,22 @@ var (
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light dark">
-    <title>Runtime profiles</title>
+    <title>Runtime profiler</title>
     <style>
       :root {
         color-scheme: dark;
-        --bg: #101310;
-        --surface: #181c19;
-        --border: #303731;
-        --text: #f2f5f2;
-        --muted: #a9b3ab;
-        --accent: #65b98a;
-        --accent-strong: #79cca0;
-        --danger: #ff8a80;
+        --bg: #0f1210;
+        --bar: #131714;
+        --surface: #171b18;
+        --surface-hover: #1d231f;
+        --border: #2b332e;
+        --text: #edf2ee;
+        --muted: #98a49c;
+        --subtle: #7f8b83;
+        --accent: #69bf89;
+        --accent-hover: #82d09f;
+        --accent-ink: #09140d;
+        --danger: #ff9187;
         --focus: #78a9ff;
       }
       * { box-sizing: border-box; }
@@ -63,82 +67,93 @@ var (
         margin: 0;
         background: var(--bg);
         color: var(--text);
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         font-size: 16px;
         line-height: 1.5;
+        text-rendering: optimizeLegibility;
       }
-      main { width: min(720px, calc(100% - 40px)); margin: 0 auto; padding: 48px 0; }
-      header { display: flex; align-items: start; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
-      h1 { margin: 0 0 6px; font-size: 1.5rem; line-height: 1.25; letter-spacing: 0; }
-      p { margin: 0; color: var(--muted); }
-	  nav { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 0.875rem; }
-	  a { color: var(--accent-strong); text-underline-offset: 3px; }
-	  a:hover { color: var(--text); }
-	  nav a { display: inline-flex; min-height: 44px; align-items: center; }
-	  a:focus-visible, button:focus-visible, input:focus-visible {
-        outline: 3px solid var(--focus);
-        outline-offset: 3px;
+      a, button { touch-action: manipulation; }
+      a { color: inherit; }
+      a:focus-visible, button:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+      .appbar { border-bottom: 1px solid var(--border); background: var(--bar); }
+      .appbar-inner {
+        width: min(1080px, calc(100% - 40px));
+        min-height: 60px;
+        margin: 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 12px;
       }
-	  .tool { padding: 24px 0; border-block: 1px solid var(--border); }
-	  .profiles { display: grid; gap: 8px; }
-	  .profile-action { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
-	  .profile-action.cpu { grid-template-columns: minmax(0, 1fr) 152px; }
-	  .profile-button {
-		display: flex;
-		width: 100%;
-		min-height: 52px;
-		align-items: center;
-		justify-content: space-between;
-		gap: 16px;
-		padding: 10px 14px;
-		border: 1px solid var(--border);
-		border-radius: 4px;
-		background: var(--surface);
-		color: var(--text);
-		font: inherit;
-		font-weight: 700;
-		cursor: pointer;
-		transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
-	  }
-	  .profile-button:hover { border-color: var(--accent); }
-	  .profile-button:active { background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
-	  .profile-button:disabled { cursor: wait; opacity: 0.65; }
-	  .profile-command { color: var(--accent-strong); font-size: 0.75rem; text-transform: uppercase; }
-	  .duration { display: grid; gap: 4px; }
-	  .field-label { color: var(--muted); font-size: 0.75rem; font-weight: 700; }
-	  input[type="number"] {
-		width: 100%;
-		min-height: 46px;
-		padding: 10px 12px;
-		border: 1px solid var(--border);
-		border-radius: 4px;
-		background: var(--surface);
-		color: var(--text);
-		font: inherit;
-	  }
-	  input[type="number"]:hover:not(:disabled) { border-color: var(--accent); }
-	  input[type="number"]:disabled { cursor: not-allowed; }
-      .unit { position: relative; }
-      .unit input { padding-right: 40px; }
-      .unit span { position: absolute; right: 12px; bottom: 12px; color: var(--muted); font-size: 0.8125rem; }
-	  .current { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; color: var(--muted); font-size: 0.8125rem; }
-	  .open {
-		display: inline-flex;
-		min-height: 46px;
+      .brand {
+        display: inline-flex;
+        min-height: 44px;
+        align-items: center;
+        color: var(--text);
+        font-size: 0.9375rem;
+        font-weight: 700;
+        text-decoration: none;
+      }
+      .divider { width: 1px; height: 20px; background: var(--border); }
+      .product { color: var(--muted); font-size: 0.875rem; }
+      .appnav { display: flex; gap: 20px; margin-left: auto; }
+      .appnav a {
+        display: inline-flex;
+        min-height: 44px;
+        align-items: center;
+        color: var(--muted);
+        font-size: 0.8125rem;
+        text-underline-offset: 4px;
+      }
+      .appnav a:hover { color: var(--text); }
+      .shell {
+        width: min(1080px, calc(100% - 40px));
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: 240px minmax(0, 1fr);
+        gap: 40px;
+        padding: 40px 0 56px;
+      }
+      .sidebar { min-width: 0; padding-right: 32px; border-right: 1px solid var(--border); }
+      .state {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 32px;
+        color: var(--muted);
+        font-size: 0.8125rem;
+        font-weight: 600;
+      }
+      .state-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+      .section-label {
+        margin: 0 0 8px;
+        color: var(--subtle);
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+      .snapshot-name { display: block; margin-bottom: 12px; font-size: 1rem; font-weight: 650; }
+      .snapshot-empty { margin: 0; color: var(--muted); font-size: 0.875rem; }
+      .analysis-link {
+        display: inline-flex;
+        width: 100%;
+        min-height: 44px;
         align-items: center;
         justify-content: center;
-        padding: 10px 16px;
         border: 1px solid var(--accent);
         border-radius: 4px;
         background: var(--accent);
-        color: #0d1a12;
-        font: inherit;
+        color: var(--accent-ink);
+        font-size: 0.8125rem;
         font-weight: 700;
         text-decoration: none;
-		transition: background-color 160ms ease, border-color 160ms ease;
-	  }
-	  .open:hover { border-color: var(--accent-strong); background: var(--accent-strong); color: #0d1a12; }
-	  .current strong { color: var(--text); }
+        transition: background-color 160ms ease, border-color 160ms ease;
+      }
+      .analysis-link:hover { border-color: var(--accent-hover); background: var(--accent-hover); }
+      .retention { margin: 28px 0 0; color: var(--subtle); font-size: 0.75rem; }
+      .workspace { min-width: 0; }
+      .workspace-header { margin-bottom: 20px; }
+      h1 { margin: 0 0 4px; font-size: 1.5rem; font-weight: 650; line-height: 1.3; letter-spacing: 0; }
+      .workspace-header p { margin: 0; color: var(--muted); font-size: 0.875rem; }
       .error {
         margin-bottom: 16px;
         padding: 12px 14px;
@@ -147,25 +162,84 @@ var (
         color: var(--danger);
         font-size: 0.875rem;
       }
-      footer { margin-top: 20px; }
-	  @media (max-width: 620px) {
-		main { width: min(100% - 32px, 720px); padding: 32px 0; }
-		header { display: grid; }
-		.tool { padding: 20px 0; }
-		.profile-action.cpu { grid-template-columns: minmax(0, 1fr) 120px; }
-		.open { width: 100%; }
-		.current { align-items: stretch; flex-direction: column; }
+      .profile-table { overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+      .table-head, .profile-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 128px 112px;
+        align-items: center;
+        gap: 16px;
+      }
+      .table-head {
+        min-height: 40px;
+        padding: 0 12px 0 16px;
+        border-bottom: 1px solid var(--border);
+        color: var(--subtle);
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+      .table-head span:last-child { text-align: right; }
+      .profile-row {
+        min-height: 64px;
+        padding: 10px 12px 10px 16px;
+        border-bottom: 1px solid var(--border);
+        transition: background-color 160ms ease;
+      }
+      .profile-row:last-child { border-bottom: 0; }
+      .profile-row:hover { background: var(--surface-hover); }
+      .profile-name { min-width: 0; font-size: 0.9375rem; font-weight: 600; }
+      .collection {
+        color: var(--muted);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 0.75rem;
+        font-variant-numeric: tabular-nums;
+      }
+      .capture-button {
+        min-width: 100px;
+        min-height: 44px;
+        padding: 8px 14px;
+        border: 1px solid var(--accent);
+        border-radius: 4px;
+        background: transparent;
+        color: var(--accent-hover);
+        font: inherit;
+        font-size: 0.8125rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background-color 160ms ease, color 160ms ease, opacity 160ms ease;
+      }
+      .capture-button:hover { background: var(--accent); color: var(--accent-ink); }
+      .capture-button:active { background: var(--accent-hover); color: var(--accent-ink); }
+      .capture-button:disabled { cursor: wait; opacity: 0.55; }
+      @media (max-width: 760px) {
+        .appbar-inner, .shell { width: min(100% - 32px, 1080px); }
+        .appbar-inner { flex-wrap: wrap; padding: 8px 0; }
+        .appnav { width: 100%; margin-left: 0; border-top: 1px solid var(--border); }
+        .shell { grid-template-columns: 1fr; gap: 28px; padding-top: 28px; }
+        .sidebar { padding: 0 0 24px; border-right: 0; border-bottom: 1px solid var(--border); }
+        .state { margin-bottom: 20px; }
+        .analysis-link { width: auto; padding: 0 16px; }
+        .retention { margin-top: 16px; }
+        .table-head { display: none; }
+        .profile-row { grid-template-columns: minmax(0, 1fr) 112px; gap: 4px 12px; }
+        .profile-name { align-self: end; }
+        .collection { grid-column: 1; align-self: start; }
+        .capture-button { grid-column: 2; grid-row: 1 / span 2; }
       }
       @media (prefers-color-scheme: light) {
         :root {
           color-scheme: light;
-          --bg: #f3f6f4;
+          --bg: #f5f7f6;
+          --bar: #ffffff;
           --surface: #ffffff;
-          --border: #cdd8d1;
-          --text: #18201c;
-          --muted: #5d6962;
-          --accent: #248354;
-          --accent-strong: #146b42;
+          --surface-hover: #f7faf8;
+          --border: #d5ded8;
+          --text: #17201b;
+          --muted: #5e6a62;
+          --subtle: #68746c;
+          --accent: #258255;
+          --accent-hover: #146b42;
+          --accent-ink: #ffffff;
           --danger: #b42318;
           --focus: #1559c5;
         }
@@ -176,55 +250,58 @@ var (
     </style>
   </head>
   <body>
-    <main>
-      <header>
-        <div>
-          <h1>Runtime profiles</h1>
-          <p>Capture a runtime snapshot and inspect it with Google pprof.</p>
-        </div>
-        <nav aria-label="Diagnostics navigation">
-          <a href="/debug/pprof/">Endpoints</a>
+    <header class="appbar">
+      <div class="appbar-inner">
+        <a class="brand" href="/">7link</a>
+        <span class="divider" aria-hidden="true"></span>
+        <span class="product">Runtime profiler</span>
+        <nav class="appnav" aria-label="Diagnostics navigation">
+          <a href="/debug/pprof/">Raw endpoints</a>
           <a href="/docs">API docs</a>
         </nav>
-      </header>
-      {{if .Error}}<div class="error" role="alert">{{.Error}}</div>{{end}}
-	  <section class="tool" aria-label="Runtime profile capture">
-		{{if .Current}}
-		<div class="current">
-		  <span>Current <strong>{{.Current.Label}}</strong></span>
-		  <a class="open" href="/debug/pprof/ui/view/flamegraph">Open analysis</a>
-		</div>
-		{{end}}
-		<div class="profiles">
-		  {{range .Profiles}}
-		  <form class="profile-action{{if eq .Value "cpu"}} cpu{{end}}" method="post" action="/debug/pprof/ui/capture" data-capture-form>
-			<input type="hidden" name="profile" value="{{.Value}}">
-			<button class="profile-button" type="submit" data-submit>
-			  <span>{{.Label}}</span>
-			  <span class="profile-command" data-command>Capture</span>
-			</button>
-			{{if eq .Value "cpu"}}
-			<label class="duration" for="seconds">
-			  <span class="field-label">Duration</span>
-			  <span class="unit">
-				<input id="seconds" name="seconds" type="number" min="1" max="30" value="{{$.Seconds}}" inputmode="numeric">
-				<span aria-hidden="true">sec</span>
-			  </span>
-			</label>
-			{{end}}
-		  </form>
-		  {{end}}
-		</div>
-	  </section>
-      <footer><p>Only one snapshot is retained. A new capture replaces the current analysis.</p></footer>
+      </div>
+    </header>
+    <main class="shell">
+      <aside class="sidebar" aria-label="Profiler status">
+        <div class="state"><span class="state-dot" aria-hidden="true"></span>Profiling enabled</div>
+        <p class="section-label">Current snapshot</p>
+        {{if .Current}}
+        <strong class="snapshot-name">{{.Current.Label}}</strong>
+        <a class="analysis-link" href="/debug/pprof/ui/view/flamegraph">Open analysis</a>
+        {{else}}
+        <p class="snapshot-empty">No snapshot captured</p>
+        {{end}}
+        <p class="retention">New captures replace the current snapshot.</p>
+      </aside>
+      <section class="workspace" aria-labelledby="capture-title">
+        <header class="workspace-header">
+          <h1 id="capture-title">Capture profile</h1>
+          <p>Live process snapshots for Google pprof analysis.</p>
+        </header>
+        {{if .Error}}<div class="error" role="alert">{{.Error}}</div>{{end}}
+        <div class="profile-table" role="list" aria-label="Runtime profiles">
+          <div class="table-head" aria-hidden="true">
+            <span>Profile</span><span>Collection</span><span>Action</span>
+          </div>
+          {{range .Profiles}}
+          <form class="profile-row" method="post" action="/debug/pprof/ui/capture" data-capture-form role="listitem">
+            <input type="hidden" name="profile" value="{{.Value}}">
+            {{if eq .Value "cpu"}}<input type="hidden" name="seconds" value="{{$.Seconds}}">{{end}}
+            <span class="profile-name">{{.Label}}</span>
+            <span class="collection">{{.Collection}}</span>
+            <button class="capture-button" type="submit" data-submit data-command>Capture</button>
+          </form>
+          {{end}}
+        </div>
+      </section>
     </main>
-	<script>
-	  const forms = document.querySelectorAll('[data-capture-form]');
-	  const buttons = document.querySelectorAll('[data-submit]');
-	  forms.forEach((form) => form.addEventListener('submit', () => {
-		buttons.forEach((button) => { button.disabled = true; });
-		form.querySelector('[data-command]').textContent = 'Capturing...';
-	  }));
+    <script>
+      const forms = document.querySelectorAll('[data-capture-form]');
+      const buttons = document.querySelectorAll('[data-submit]');
+      forms.forEach((form) => form.addEventListener('submit', () => {
+        buttons.forEach((button) => { button.disabled = true; });
+        form.querySelector('[data-command]').textContent = 'Capturing...';
+      }));
     </script>
   </body>
 </html>
@@ -252,8 +329,9 @@ type pprofLanding struct {
 }
 
 type pprofProfileOption struct {
-	Value string
-	Label string
+	Value      string
+	Label      string
+	Collection string
 }
 
 func newPprofUI() *pprofUI {
@@ -278,9 +356,14 @@ func (ui *pprofUI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (ui *pprofUI) serveLanding(w http.ResponseWriter, status int, message string) {
 	options := make([]pprofProfileOption, 0, len(pprofProfiles))
 	for _, value := range []string{"heap", "allocs", "goroutine", "cpu", "mutex", "block", "threadcreate"} {
+		collection := "Snapshot"
+		if value == "cpu" {
+			collection = fmt.Sprintf("%d sec", defaultCPUSeconds)
+		}
 		options = append(options, pprofProfileOption{
-			Value: value,
-			Label: pprofProfiles[value],
+			Value:      value,
+			Label:      pprofProfiles[value],
+			Collection: collection,
 		})
 	}
 	ui.mu.RLock()

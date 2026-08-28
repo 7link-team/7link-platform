@@ -59,9 +59,12 @@ func TestRegisterPprofServesEmbeddedWebUI(t *testing.T) {
 	assert.Contains(t, landing.Body.String(), "Runtime profiles")
 	assert.Contains(t, landing.Body.String(), `action="/debug/pprof/ui/capture"`)
 	assert.Contains(t, landing.Body.String(), `type="hidden" name="profile" value="heap"`)
-	assert.Equal(t, len(pprofProfiles), strings.Count(landing.Body.String(), `<button class="profile-button"`))
+	assert.Equal(t, len(pprofProfiles), strings.Count(landing.Body.String(), `<button class="capture-button"`))
 	assert.NotContains(t, landing.Body.String(), `type="radio"`)
 	assert.NotContains(t, landing.Body.String(), "<select")
+	assert.NotContains(t, landing.Body.String(), `type="number"`)
+	assert.NotContains(t, landing.Body.String(), "Duration")
+	assert.Contains(t, landing.Body.String(), `type="hidden" name="seconds" value="5"`)
 
 	withoutCapture := httptest.NewRecorder()
 	router.ServeHTTP(withoutCapture, httptest.NewRequest(http.MethodGet, pprofUIPath+"/view/flamegraph", nil))
@@ -87,7 +90,7 @@ func TestRegisterPprofServesEmbeddedWebUI(t *testing.T) {
 	current := httptest.NewRecorder()
 	router.ServeHTTP(current, httptest.NewRequest(http.MethodGet, pprofUIPath+"/", nil))
 	require.Equal(t, http.StatusOK, current.Code)
-	assert.Contains(t, current.Body.String(), "Current <strong>Heap</strong>")
+	assert.Contains(t, current.Body.String(), `<strong class="snapshot-name">Heap</strong>`)
 	assert.Contains(t, current.Body.String(), `href="/debug/pprof/ui/view/flamegraph"`)
 
 	download := httptest.NewRecorder()
