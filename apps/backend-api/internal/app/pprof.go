@@ -15,6 +15,7 @@ func registerPprof(router chi.Router, api huma.API, enabled bool) {
 		return
 	}
 
+	ui := newPprofUI()
 	router.Get(pprofPath, func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, pprofPath+"/", http.StatusMovedPermanently)
 	})
@@ -23,6 +24,10 @@ func registerPprof(router chi.Router, api huma.API, enabled bool) {
 	router.Get(pprofPath+"/profile", pprof.Profile)
 	router.Get(pprofPath+"/symbol", pprof.Symbol)
 	router.Get(pprofPath+"/trace", pprof.Trace)
+	router.Get(pprofUIPath, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, pprofUIPath+"/", http.StatusMovedPermanently)
+	})
+	router.Handle(pprofUIPath+"/*", http.StripPrefix(pprofUIPath, ui))
 	router.Get(pprofPath+"/*", pprof.Index)
 
 	registerPprofOpenAPI(api)
@@ -93,6 +98,13 @@ func registerPprofOpenAPI(api huma.API) {
 				Schema:      &huma.Schema{Type: huma.TypeInteger, Minimum: float64Pointer(0)},
 			},
 			secondsParameter(huma.TypeInteger),
+		),
+		pprofOperation(
+			"open-pprof-web-ui",
+			pprofUIPath+"/",
+			"Open runtime profile analysis",
+			"Opens the embedded Google pprof profile capture and analysis interface.",
+			htmlResponse("Runtime profile analysis interface"),
 		),
 	} {
 		api.OpenAPI().AddOperation(operation)
