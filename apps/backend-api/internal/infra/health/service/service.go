@@ -27,8 +27,9 @@ type ModuleStatus struct {
 type CheckFunc func(context.Context) error
 
 type Checker struct {
-	Name  string
-	Check CheckFunc
+	Name     string
+	Check    CheckFunc
+	Optional bool
 }
 
 type CheckerProvider func() []Checker
@@ -57,7 +58,9 @@ func (s *Service) Check(ctx context.Context) CheckData {
 		}
 		if checker.Check != nil && checker.Check(ctx) != nil {
 			status = StatusNotServing
-			data.Status = StatusNotServing
+			if !checker.Optional {
+				data.Status = StatusNotServing
+			}
 		}
 		data.Modules = append(data.Modules, ModuleStatus{Name: checker.Name, Status: status})
 	}
@@ -73,7 +76,7 @@ func (*Service) Liveness() CheckData {
 func (s *Service) CheckHealth(ctx context.Context) error {
 	var errs []error
 	for _, checker := range s.checkers() {
-		if checker.Check == nil {
+		if checker.Check == nil || checker.Optional {
 			continue
 		}
 		if err := checker.Check(ctx); err != nil {

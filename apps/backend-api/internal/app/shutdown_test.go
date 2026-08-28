@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -77,4 +78,24 @@ func TestStopGRPCServerForcesStopAfterDeadline(t *testing.T) {
 	err := stopGRPCServer(ctx, server)
 	assert.ErrorIs(t, err, context.Canceled)
 	assert.True(t, server.forced)
+}
+
+func TestWaitForDrainHonorsDelayAndContext(t *testing.T) {
+	started := time.Now()
+	require.NoError(t, waitForDrain(t.Context(), 10*time.Millisecond))
+	assert.GreaterOrEqual(t, time.Since(started), 10*time.Millisecond)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	err := waitForDrain(ctx, time.Minute)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.NoError(t, waitForDrain(ctx, 0))
+}
+
+func TestShutdownSkipsDrainBeforeServersStart(t *testing.T) {
+	app := &App{config: AppConfig{
+		ShutdownTimeout: time.Nanosecond,
+		DrainDelay:      time.Minute,
+	}}
+	assert.NoError(t, app.shutdown())
 }

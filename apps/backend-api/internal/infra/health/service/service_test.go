@@ -30,3 +30,21 @@ func TestServiceCheckNotServing(t *testing.T) {
 	}, result.Modules)
 	assert.ErrorIs(t, service.CheckHealth(t.Context()), expected)
 }
+
+func TestOptionalCheckerIsReportedWithoutFailingReadiness(t *testing.T) {
+	expected := errors.New("replica unavailable")
+	service := New(func() []Checker {
+		return []Checker{
+			{Name: "database", Check: func(context.Context) error { return nil }},
+			{Name: "database.replica", Check: func(context.Context) error { return expected }, Optional: true},
+		}
+	})
+
+	result := service.Check(t.Context())
+	assert.Equal(t, StatusServing, result.Status)
+	assert.Equal(t, []ModuleStatus{
+		{Name: "database", Status: StatusServing},
+		{Name: "database.replica", Status: StatusNotServing},
+	}, result.Modules)
+	assert.NoError(t, service.CheckHealth(t.Context()))
+}

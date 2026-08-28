@@ -125,3 +125,55 @@ func TestServerAddressesRequireIPv4(t *testing.T) {
 	invalidGRPC.GrpcServer.Address = "::"
 	assert.EqualError(t, configx.Process(&invalidGRPC), "config: grpc_server.address does not match validation pattern")
 }
+
+func TestApplyRuntimeDefaults(t *testing.T) {
+	config := AppConfig{}
+	applyRuntimeDefaults(&config)
+	assert.Equal(t, defaultHTTPReadHeaderTimeout, config.HttpServer.ReadHeaderTimeout)
+	assert.Equal(t, defaultHTTPIdleTimeout, config.HttpServer.IdleTimeout)
+	assert.Equal(t, defaultHTTPMaxHeaderBytes, config.HttpServer.MaxHeaderBytes)
+	assert.Equal(t, defaultShutdownTimeout, config.ShutdownTimeout)
+	assert.Equal(t, defaultDrainDelay, config.DrainDelay)
+
+	explicit := AppConfig{
+		ShutdownTimeout: 20 * time.Second,
+		DrainDelay:      time.Second,
+		HttpServer: HttpServer{
+			ReadHeaderTimeout: time.Second,
+			IdleTimeout:       time.Minute,
+			MaxHeaderBytes:    4096,
+		},
+	}
+	applyRuntimeDefaults(&explicit)
+	assert.Equal(t, 20*time.Second, explicit.ShutdownTimeout)
+	assert.Equal(t, time.Second, explicit.DrainDelay)
+	assert.Equal(t, time.Second, explicit.HttpServer.ReadHeaderTimeout)
+	assert.Equal(t, time.Minute, explicit.HttpServer.IdleTimeout)
+	assert.Equal(t, 4096, explicit.HttpServer.MaxHeaderBytes)
+}
+
+func TestValidateRuntimeConfigRejectsNegativeValues(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*AppConfig)
+		want   string
+	}{
+		{name: "shutdown", mutate: func(c *AppConfig) { c.ShutdownTimeout = -time.Second }, want: "shutdown_timeout"},
+		{name: "drain", mutate: func(c *AppConfig) { c.DrainDelay = -time.Second }, want: "drain_delay"},
+		{name: "drain budget", mutate: func(c *AppConfig) {
+			c.ShutdownTimeout = time.Second
+			c.DrainDelay = time.Second
+		}, want: "less than shutdown_timeout"},
+		{name: "http headers", mutate: func(c *AppConfig) { c.HttpServer.MaxHeaderBytes = -1 }, want: "max_header_bytes"},
+		{name: "grpc receive", mutate: func(c *AppConfig) { c.GrpcServer.MaxRecvMessageBytes = -1 }, want: "message size"},
+		{name: "grpc keepalive", mutate: func(c *AppConfig) { c.GrpcServer.KeepaliveTime = -time.Second }, want: "keepalive_time"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			config := AppConfig{}
+			test.mutate(&config)
+			assert.ErrorContains(t, validateRuntimeConfig(config), test.want)
+		})
+	}
+	assert.NoError(t, validateRuntimeConfig(AppConfig{}))
+}

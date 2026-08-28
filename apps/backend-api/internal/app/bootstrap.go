@@ -45,20 +45,22 @@ func processConsoleColorsEnabled(debug bool) bool {
 // bootstrap opens shared infrastructure, builds and wires modules, optionally
 // migrates them, and then runs their initialization and start phases.
 func (app *App) bootstrap(ctx context.Context) error {
-	app.initializeDatabase(ctx)
+	if err := app.initializeDatabase(ctx); err != nil {
+		return err
+	}
 
 	app.mods = append(app.mods,
 		i18n.NewModule(i18n.Base),
 		respx.NewModule(),
-		dlock.NewModule(&app.Db),
-		wuid.NewModule(&app.Db),
+		dlock.NewModule(app.Db),
+		wuid.NewModule(app.Db),
 		guid.NewModule(),
 
 		// .. basic modules
 	)
 
 	if app.config.API.Metrics.Enabled {
-		app.metrics = metrics.NewModule()
+		app.metrics = metrics.NewModule(app.Db)
 		app.mods = append(app.mods, app.metrics)
 	}
 	if app.config.Pprof.Enabled {
@@ -112,15 +114,28 @@ func (app *App) bootstrap(ctx context.Context) error {
 	return nil
 }
 
-func (app *App) initializeDatabase(ctx context.Context) {
+func (app *App) initializeDatabase(ctx context.Context) error {
 	router, err := newDatasourceRouter(ctx, app.config)
 	app.Db = router
 	if err != nil {
+		if router == nil {
+			return fmt.Errorf("database configuration: %w", err)
+		}
+		configuredWriters := 0
+		for _, datasource := range app.config.Database {
+			if datasource.Writable {
+				configuredWriters++
+			}
+		}
+		if configuredWriters > 0 && !router.HasWriter() {
+			return fmt.Errorf("database: no configured writer is available: %w", err)
+		}
 		slog.Error("one or more database datasources are unavailable", "error", err)
 	}
+	return nil
 }
 
-func newDatasourceRouter(ctx context.Context, config AppConfig) (gormx.DatasourceRouter, error) {
+func newDatasourceRouter(ctx context.Context, config AppConfig) (*gormx.DatasourceRouter, error) {
 	datasources := make(map[string]gormx.Datasource, len(config.Database))
 	for name, database := range config.Database {
 		datasources[name] = gormx.Datasource{

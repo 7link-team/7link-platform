@@ -22,6 +22,7 @@ func TestApplyDebugDefaultsDoesNotChangeNormalOrExplicitConfig(t *testing.T) {
 	normal := AppConfig{}
 	applyDebugDefaults(&normal)
 	assert.Nil(t, normal.Database)
+	assert.False(t, normal.GrpcServer.Reflection)
 
 	explicit := AppConfig{Debug: true, Database: map[string]Database{
 		"main": {Type: "postgres", Dsn: "configured"},
@@ -30,4 +31,5 @@ func TestApplyDebugDefaultsDoesNotChangeNormalOrExplicitConfig(t *testing.T) {
 	assert.Equal(t, map[string]Database{
 		"main": {Type: "postgres", Dsn: "configured"},
 	}, explicit.Database)
+	assert.False(t, explicit.GrpcServer.Reflection)
 }

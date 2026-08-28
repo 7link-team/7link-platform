@@ -54,3 +54,10 @@ func TestHealthModuleLifecycleAndRegistration(t *testing.T) {
 	assert.ErrorIs(t, module.CheckHealth(t.Context()), ErrNotReady)
 	assert.Equal(t, service.StatusNotServing, module.Service().Check(t.Context()).Status)
 }
+
+func TestHealthModuleQuiesceDisablesReadiness(t *testing.T) {
+	module := NewModule()
+	require.NoError(t, module.Start(t.Context()))
+	require.NoError(t, module.Quiesce(t.Context()))
+	assert.ErrorIs(t, module.CheckHealth(t.Context()), ErrNotReady)
+}

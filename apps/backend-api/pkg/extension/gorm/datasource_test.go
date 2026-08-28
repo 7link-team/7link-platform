@@ -13,7 +13,6 @@ import (
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 )
 
 func TestDatasourceOpenSQLite(t *testing.T) {
@@ -125,10 +124,12 @@ func TestDatasourceRouterReadWriteFallbackAndClose(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	require.Len(t, router.Writer, 1)
-	require.Len(t, router.Reader, 1)
-	assert.Same(t, router.Writer[0], router.Write())
-	assert.Same(t, router.Reader[0], router.Read())
+	assert.True(t, router.HasWriter())
+	writer := router.Write()
+	reader := router.Read()
+	assert.NotNil(t, writer)
+	assert.NotNil(t, reader)
+	assert.NotSame(t, writer, reader)
 	require.NoError(t, router.Close())
 
 	fallback, err := NewDatasourceRouter(t.Context(), false, map[string]Datasource{
@@ -159,18 +160,94 @@ func TestDatasourceRouterKeepsHealthyConnections(t *testing.T) {
 	assert.NoError(t, (&DatasourceRouter{}).Close())
 }
 
-func TestDatasourceRouterHandlesUnusedAndNilDatasources(t *testing.T) {
+func TestDatasourceRouterRejectsUnusedDatasource(t *testing.T) {
 	router, err := NewDatasourceRouter(t.Context(), false, map[string]Datasource{
 		"unused": {Type: "sqlite", DSN: filepath.Join(t.TempDir(), "unused.sqlite")},
 	})
+	assert.Nil(t, router)
+	assert.ErrorContains(t, err, `datasource "unused" must be readable or writable`)
+
+	empty, err := NewDatasourceRouter(t.Context(), false, nil)
 	require.NoError(t, err)
-	assert.Empty(t, router.Writer)
-	assert.Empty(t, router.Reader)
-	assert.Nil(t, router.Write())
+	assert.False(t, empty.HasWriter())
+	assert.Nil(t, empty.Write())
 	assert.Nil(t, (*DatasourceRouter)(nil).Write())
 	assert.Nil(t, (*DatasourceRouter)(nil).Read())
+	assert.False(t, (*DatasourceRouter)(nil).HasWriter())
 	require.NoError(t, (*DatasourceRouter)(nil).Close())
-	require.NoError(t, (&DatasourceRouter{Writer: []*gorm.DB{nil}}).Close())
+	require.NoError(t, (&DatasourceRouter{nodes: []*datasourceNode{{name: "nil"}}}).Close())
+}
+
+func TestDatasourceRouterNamedHealthAndStats(t *testing.T) {
+	router, err := NewDatasourceRouter(t.Context(), false, map[string]Datasource{
+		"writer-broken": {Type: "oracle", DSN: "unused", Writable: true},
+		"writer-healthy": {
+			Type: "sqlite", DSN: filepath.Join(t.TempDir(), "writer.sqlite"),
+			Writable: true, MaxOpenConns: 7,
+		},
+		"reader": {
+			Type: "sqlite", DSN: filepath.Join(t.TempDir(), "reader.sqlite"),
+			Readable: true, MaxOpenConns: 3,
+		},
+	})
+	t.Cleanup(func() { _ = router.Close() })
+	require.ErrorContains(t, err, `database "writer-broken"`)
+
+	assert.Equal(t, []string{"reader", "writer-broken", "writer-healthy"}, router.DatasourceNames())
+	assert.True(t, router.HasWriter())
+	snapshot := router.Probe(t.Context())
+	assert.NoError(t, snapshot.RoutingError(), "a startup-failed node is not part of the routing set")
+	assert.Error(t, snapshot.DatasourceError("writer-broken"))
+	assert.ErrorContains(t, snapshot.DatasourceError("missing"), "is not configured")
+
+	stats := router.DatasourceStats()
+	require.Len(t, stats, 3)
+	assert.Equal(t, "reader", stats[0].Name)
+	assert.True(t, stats[0].Up)
+	assert.Equal(t, 3, stats[0].Pool.MaxOpenConnections)
+	assert.Equal(t, "writer-broken", stats[1].Name)
+	assert.False(t, stats[1].Up)
+	assert.Equal(t, "writer-healthy", stats[2].Name)
+	assert.True(t, stats[2].Up)
+	assert.Equal(t, 7, stats[2].Pool.MaxOpenConnections)
+}
+
+func TestDatasourceRouterProbeFailsWhenRoutedNodeBecomesUnhealthy(t *testing.T) {
+	router, err := NewDatasourceRouter(t.Context(), false, map[string]Datasource{
+		"writer-a": {Type: "sqlite", DSN: filepath.Join(t.TempDir(), "a.sqlite"), Writable: true},
+		"writer-b": {Type: "sqlite", DSN: filepath.Join(t.TempDir(), "b.sqlite"), Writable: true},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = router.Close() })
+
+	pool, err := router.nodes[0].db.DB()
+	require.NoError(t, err)
+	require.NoError(t, pool.Close())
+	snapshot := router.Probe(t.Context())
+	assert.ErrorContains(t, snapshot.RoutingError(), `routed datasource "writer-a" (writer) is unhealthy`)
+	assert.Error(t, snapshot.DatasourceError("writer-a"))
+	assert.NoError(t, snapshot.DatasourceError("writer-b"))
+}
+
+func TestDatasourceRouterRoundRobinStateIsPerRouter(t *testing.T) {
+	newRouter := func(prefix string) *DatasourceRouter {
+		router, err := NewDatasourceRouter(t.Context(), false, map[string]Datasource{
+			"a": {Type: "sqlite", DSN: filepath.Join(t.TempDir(), prefix+"-a.sqlite"), Writable: true},
+			"b": {Type: "sqlite", DSN: filepath.Join(t.TempDir(), prefix+"-b.sqlite"), Writable: true},
+		})
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = router.Close() })
+		return router
+	}
+
+	first := newRouter("first")
+	second := newRouter("second")
+	firstA, firstB := first.Write(), first.Write()
+	assert.NotSame(t, firstA, firstB)
+	assert.Same(t, firstA, first.Write())
+	secondA, secondB := second.Write(), second.Write()
+	assert.NotSame(t, secondA, secondB)
+	assert.Same(t, secondA, second.Write())
 }
 
 func TestDatasourceSQLLogContainsTraceID(t *testing.T) {

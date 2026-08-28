@@ -95,7 +95,7 @@ func TestMigrationStatusReturnsCleanJSON(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, routerDB.Close()) })
 	app.Db = routerDB
-	app.mods = []module.Module{dlock.NewModule(&app.Db), wuid.NewModule(&app.Db)}
+	app.mods = []module.Module{dlock.NewModule(app.Db), wuid.NewModule(app.Db)}
 	_, err = runModuleMigrations(t.Context(), app.Db.Write(), app.mods, MigrationConfig{Action: MigrationUp})
 	require.NoError(t, err)
 	app.mods = append(app.mods, migrationStatusModule(app))
@@ -140,7 +140,7 @@ func TestMigrationStatusReportsUnavailableDatabase(t *testing.T) {
 
 func TestMetricsRegistrationAndDisabledModuleRoutes(t *testing.T) {
 	enabled := &App{config: validTestAppConfig()}
-	enabled.metrics = metrics.NewModule()
+	enabled.metrics = metrics.NewModule(nil)
 	enabled.mods = append(enabled.mods, enabled.metrics)
 	router, api := moduleRouter(t, enabled)
 	response := httptest.NewRecorder()

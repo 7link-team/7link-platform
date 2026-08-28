@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/felixge/httpsnoop"
@@ -36,7 +37,7 @@ var (
 
 func (*Module) ModuleName() string { return Name }
 
-func NewModule() *Module {
+func NewModule(datasources *gormx.DatasourceRouter) *Module {
 	registry := prometheus.NewRegistry()
 	requests := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "http_server_requests_total",
@@ -59,11 +60,66 @@ func NewModule() *Module {
 		duration,
 		responseSize,
 	)
+	if datasources != nil {
+		registry.MustRegister(newDatasourceCollector(datasources))
+	}
 	return &Module{
 		registry:     registry,
 		requests:     requests,
 		duration:     duration,
 		responseSize: responseSize,
+	}
+}
+
+type datasourceCollector struct {
+	router *gormx.DatasourceRouter
+	up     *prometheus.Desc
+	max    *prometheus.Desc
+	open   *prometheus.Desc
+	inUse  *prometheus.Desc
+	idle   *prometheus.Desc
+	waits  *prometheus.Desc
+	wait   *prometheus.Desc
+}
+
+func newDatasourceCollector(router *gormx.DatasourceRouter) *datasourceCollector {
+	labels := []string{"datasource", "readable", "writable"}
+	return &datasourceCollector{
+		router: router,
+		up:     prometheus.NewDesc("database_datasource_up", "Whether the datasource passed its most recent health check.", labels, nil),
+		max:    prometheus.NewDesc("database_pool_max_open_connections", "Maximum number of open datasource connections.", labels, nil),
+		open:   prometheus.NewDesc("database_pool_open_connections", "Number of established datasource connections.", labels, nil),
+		inUse:  prometheus.NewDesc("database_pool_in_use_connections", "Number of datasource connections currently in use.", labels, nil),
+		idle:   prometheus.NewDesc("database_pool_idle_connections", "Number of idle datasource connections.", labels, nil),
+		waits:  prometheus.NewDesc("database_pool_wait_count_total", "Total waits for a datasource connection.", labels, nil),
+		wait:   prometheus.NewDesc("database_pool_wait_duration_seconds_total", "Total time blocked waiting for datasource connections.", labels, nil),
+	}
+}
+
+func (collector *datasourceCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- collector.up
+	ch <- collector.max
+	ch <- collector.open
+	ch <- collector.inUse
+	ch <- collector.idle
+	ch <- collector.waits
+	ch <- collector.wait
+}
+
+func (collector *datasourceCollector) Collect(ch chan<- prometheus.Metric) {
+	for _, stats := range collector.router.DatasourceStats() {
+		labels := []string{stats.Name, strconv.FormatBool(stats.Readable), strconv.FormatBool(stats.Writable)}
+		up := 0.0
+		if stats.Up {
+			up = 1
+		}
+		ch <- prometheus.MustNewConstMetric(collector.up, prometheus.GaugeValue, up, labels...)
+		ch <- prometheus.MustNewConstMetric(collector.max, prometheus.GaugeValue, float64(stats.Pool.MaxOpenConnections), labels...)
+		ch <- prometheus.MustNewConstMetric(collector.open, prometheus.GaugeValue, float64(stats.Pool.OpenConnections), labels...)
+		ch <- prometheus.MustNewConstMetric(collector.inUse, prometheus.GaugeValue, float64(stats.Pool.InUse), labels...)
+		ch <- prometheus.MustNewConstMetric(collector.idle, prometheus.GaugeValue, float64(stats.Pool.Idle), labels...)
+		ch <- prometheus.MustNewConstMetric(collector.waits, prometheus.CounterValue, float64(stats.Pool.WaitCount), labels...)
+		ch <- prometheus.MustNewConstMetric(collector.wait, prometheus.CounterValue, stats.Pool.WaitDuration.Seconds(), labels...)
 	}
 }
 

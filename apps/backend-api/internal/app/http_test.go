@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestStartHTTPServerReportsRegistrationAndServeErrors(t *testing.T) {
+func TestStartHTTPServerReportsRegistrationAndListenErrors(t *testing.T) {
 	registrationErr := errors.New("registration failed")
 	app := &App{
 		config: validTestAppConfig(),
@@ -26,17 +26,29 @@ func TestStartHTTPServerReportsRegistrationAndServeErrors(t *testing.T) {
 	app.mods = nil
 	app.config.HttpServer.Port = listener.Addr().(*net.TCPAddr).Port
 	app.serveErr = make(chan error, 1)
-	require.NoError(t, app.startHTTPServer())
-	select {
-	case err := <-app.serveErr:
-		assert.ErrorContains(t, err, "http serve")
-	case <-time.After(5 * time.Second):
-		t.Fatal("HTTP server did not report its bind error")
-	}
+	assert.ErrorContains(t, app.startHTTPServer(), "http listen")
 }
 
 func TestStartHTTPServerRequiresConfiguredMetricsModule(t *testing.T) {
 	app := &App{config: validTestAppConfig()}
 	app.config.API.Metrics.Enabled = true
 	assert.EqualError(t, app.startHTTPServer(), "http: prometheus module is unavailable")
+}
+
+func TestStartHTTPServerAppliesHardeningConfiguration(t *testing.T) {
+	app := &App{
+		config:   validTestAppConfig(),
+		ctx:      t.Context(),
+		serveErr: make(chan error, 1),
+	}
+	app.config.HttpServer.Port = 0
+	app.config.HttpServer.ReadHeaderTimeout = 3 * time.Second
+	app.config.HttpServer.IdleTimeout = 45 * time.Second
+	app.config.HttpServer.MaxHeaderBytes = 8192
+	require.NoError(t, app.startHTTPServer())
+	require.NotNil(t, app.httpServer)
+	assert.Equal(t, 3*time.Second, app.httpServer.ReadHeaderTimeout)
+	assert.Equal(t, 45*time.Second, app.httpServer.IdleTimeout)
+	assert.Equal(t, 8192, app.httpServer.MaxHeaderBytes)
+	require.NoError(t, app.httpServer.Shutdown(t.Context()))
 }

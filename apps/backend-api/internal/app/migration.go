@@ -71,7 +71,7 @@ func RunMigrations(ctx context.Context, config MigrationConfig) ([]MigrationRepo
 	if db == nil {
 		return nil, errors.New("migration: writable database is not configured")
 	}
-	modules := []module.Module{dlock.NewModule(&router), wuid.NewModule(&router)}
+	modules := []module.Module{dlock.NewModule(router), wuid.NewModule(router)}
 	return runModuleMigrations(ctx, db, modules, config)
 }
 

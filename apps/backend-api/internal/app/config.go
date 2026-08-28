@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"time"
 
 	telemetry "7link.com/platform/internal/infra/telemetry"
@@ -16,7 +17,9 @@ type AppConfig struct {
 	API       API              `mapstructure:"api" group:"api"`
 	Telemetry telemetry.Config `mapstructure:"telemetry" group:"telemetry"`
 
-	Timezone string `mapstructure:"timezone" description:"timezone" default:"UTC"`
+	Timezone        string        `mapstructure:"timezone" description:"timezone" default:"UTC"`
+	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout" description:"maximum time allowed for graceful shutdown" default:"30s"`
+	DrainDelay      time.Duration `mapstructure:"drain_delay" description:"delay after readiness is disabled before listeners stop" default:"5s"`
 
 	HttpServer HttpServer `mapstructure:"http_server" group:"http_server"`
 	GrpcServer GrpcServer `mapstructure:"grpc_server" group:"grpc_server"`
@@ -37,8 +40,11 @@ type Pprof struct {
 }
 
 type HttpServer struct {
-	Address string `mapstructure:"address" description:"listen IPv4 address" default:"0.0.0.0" trim:"true" required:"true" validate:"^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])[.]){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$"`
-	Port    int    `mapstructure:"port" description:"port" default:"8080"`
+	Address           string        `mapstructure:"address" description:"listen IPv4 address" default:"0.0.0.0" trim:"true" required:"true" validate:"^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])[.]){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$"`
+	Port              int           `mapstructure:"port" description:"port" default:"8080"`
+	ReadHeaderTimeout time.Duration `mapstructure:"read_header_timeout" description:"maximum time to read request headers" default:"5s"`
+	IdleTimeout       time.Duration `mapstructure:"idle_timeout" description:"maximum idle keep-alive connection time" default:"2m"`
+	MaxHeaderBytes    int           `mapstructure:"max_header_bytes" description:"maximum request header size in bytes" default:"1048576"`
 }
 
 type API struct {
@@ -81,8 +87,18 @@ type APIConfigInspector struct {
 }
 
 type GrpcServer struct {
-	Address string `mapstructure:"address" description:"listen IPv4 address" default:"0.0.0.0" trim:"true" required:"true" validate:"^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])[.]){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$"`
-	Port    int    `mapstructure:"port" description:"port" default:"9090"`
+	Address               string        `mapstructure:"address" description:"listen IPv4 address" default:"0.0.0.0" trim:"true" required:"true" validate:"^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])[.]){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$"`
+	Port                  int           `mapstructure:"port" description:"port" default:"9090"`
+	Reflection            bool          `mapstructure:"reflection" description:"enable gRPC server reflection" default:"false"`
+	MaxRecvMessageBytes   int           `mapstructure:"max_recv_message_bytes" description:"maximum received gRPC message size; zero uses the library default" default:"0"`
+	MaxSendMessageBytes   int           `mapstructure:"max_send_message_bytes" description:"maximum sent gRPC message size; zero uses the library default" default:"0"`
+	MaxConnectionIdle     time.Duration `mapstructure:"max_connection_idle" description:"maximum idle gRPC connection time; zero uses the library default" default:"0s"`
+	MaxConnectionAge      time.Duration `mapstructure:"max_connection_age" description:"maximum gRPC connection age; zero uses the library default" default:"0s"`
+	MaxConnectionAgeGrace time.Duration `mapstructure:"max_connection_age_grace" description:"grace period after maximum gRPC connection age" default:"0s"`
+	KeepaliveTime         time.Duration `mapstructure:"keepalive_time" description:"server keepalive ping interval; zero uses the library default" default:"0s"`
+	KeepaliveTimeout      time.Duration `mapstructure:"keepalive_timeout" description:"server keepalive ping timeout; zero uses the library default" default:"0s"`
+	KeepaliveMinTime      time.Duration `mapstructure:"keepalive_min_time" description:"minimum accepted client keepalive interval; zero uses the library default" default:"0s"`
+	PermitWithoutStream   bool          `mapstructure:"permit_without_stream" description:"allow client keepalive pings without active RPCs" default:"false"`
 }
 
 type Database struct {
@@ -96,4 +112,76 @@ type Database struct {
 	MaxIdleConns    int           `mapstructure:"max_idle_conns" description:"maximum idle database connections" default:"5"`
 	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime" description:"maximum connection lifetime" default:"30m"`
 	ConnMaxIdleTime time.Duration `mapstructure:"conn_max_idle_time" description:"maximum connection idle time" default:"5m"`
+}
+
+const (
+	defaultHTTPReadHeaderTimeout = 5 * time.Second
+	defaultHTTPIdleTimeout       = 2 * time.Minute
+	defaultHTTPMaxHeaderBytes    = 1 << 20
+	defaultShutdownTimeout       = 30 * time.Second
+	defaultDrainDelay            = 5 * time.Second
+)
+
+// applyRuntimeDefaults protects callers that construct AppConfig directly and
+// therefore do not receive tagged configuration defaults.
+func applyRuntimeDefaults(config *AppConfig) {
+	if config == nil {
+		return
+	}
+	if config.HttpServer.ReadHeaderTimeout == 0 {
+		config.HttpServer.ReadHeaderTimeout = defaultHTTPReadHeaderTimeout
+	}
+	if config.HttpServer.IdleTimeout == 0 {
+		config.HttpServer.IdleTimeout = defaultHTTPIdleTimeout
+	}
+	if config.HttpServer.MaxHeaderBytes == 0 {
+		config.HttpServer.MaxHeaderBytes = defaultHTTPMaxHeaderBytes
+	}
+	if config.ShutdownTimeout == 0 {
+		config.ShutdownTimeout = defaultShutdownTimeout
+	}
+	if config.DrainDelay == 0 {
+		config.DrainDelay = defaultDrainDelay
+	}
+}
+
+func validateRuntimeConfig(config AppConfig) error {
+	if config.ShutdownTimeout < 0 {
+		return fmt.Errorf("shutdown_timeout cannot be negative")
+	}
+	if config.DrainDelay < 0 {
+		return fmt.Errorf("drain_delay cannot be negative")
+	}
+	if config.ShutdownTimeout > 0 && config.DrainDelay >= config.ShutdownTimeout {
+		return fmt.Errorf("drain_delay must be less than shutdown_timeout")
+	}
+	if config.HttpServer.ReadHeaderTimeout < 0 {
+		return fmt.Errorf("http_server.read_header_timeout cannot be negative")
+	}
+	if config.HttpServer.IdleTimeout < 0 {
+		return fmt.Errorf("http_server.idle_timeout cannot be negative")
+	}
+	if config.HttpServer.MaxHeaderBytes < 0 {
+		return fmt.Errorf("http_server.max_header_bytes cannot be negative")
+	}
+	if config.GrpcServer.MaxRecvMessageBytes < 0 || config.GrpcServer.MaxSendMessageBytes < 0 {
+		return fmt.Errorf("gRPC message size limits cannot be negative")
+	}
+	grpcDurations := []struct {
+		name  string
+		value time.Duration
+	}{
+		{name: "max_connection_idle", value: config.GrpcServer.MaxConnectionIdle},
+		{name: "max_connection_age", value: config.GrpcServer.MaxConnectionAge},
+		{name: "max_connection_age_grace", value: config.GrpcServer.MaxConnectionAgeGrace},
+		{name: "keepalive_time", value: config.GrpcServer.KeepaliveTime},
+		{name: "keepalive_timeout", value: config.GrpcServer.KeepaliveTimeout},
+		{name: "keepalive_min_time", value: config.GrpcServer.KeepaliveMinTime},
+	}
+	for _, setting := range grpcDurations {
+		if setting.value < 0 {
+			return fmt.Errorf("grpc_server.%s cannot be negative", setting.name)
+		}
+	}
+	return nil
 }

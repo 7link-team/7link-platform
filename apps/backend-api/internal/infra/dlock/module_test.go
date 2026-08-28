@@ -5,7 +5,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	gormx "7link.com/platform/pkg/extension/gorm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -48,7 +47,7 @@ func TestModuleInitializesAndProvidesLocks(t *testing.T) {
 
 func TestModuleReportsClosedDatabase(t *testing.T) {
 	db := newDB(t)
-	module := NewModule(&gormx.DatasourceRouter{Writer: []*gorm.DB{db}})
+	module := NewModule(&countingWriter{db: db})
 	require.NoError(t, Migrate(t.Context(), db))
 
 	sqlDB, err := db.DB()

@@ -3,11 +3,14 @@ package wuid
 import (
 	"testing"
 
-	gormx "7link.com/platform/pkg/extension/gorm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+type testWriter struct{ db *gorm.DB }
+
+func (writer *testWriter) Write() *gorm.DB { return writer.db }
 
 func TestModuleWithoutDatabaseReportsUnhealthy(t *testing.T) {
 	t.Setenv(EnvKey, "")
@@ -31,7 +34,7 @@ func TestModuleStaticWorkerDoesNotRequireDatabase(t *testing.T) {
 func TestModuleOwnsMigrationAndReportsLeaseState(t *testing.T) {
 	t.Setenv(EnvKey, "")
 	db := newTestDB(t)
-	module := NewModule(&gormx.DatasourceRouter{Writer: []*gorm.DB{db}})
+	module := NewModule(&testWriter{db: db})
 	require.NoError(t, Migrate(t.Context(), db))
 	require.NoError(t, module.Start(t.Context()))
 	assert.NoError(t, module.CheckHealth(t.Context()))

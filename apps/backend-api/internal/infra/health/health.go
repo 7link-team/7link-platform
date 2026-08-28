@@ -36,6 +36,7 @@ var (
 	_ module.Depender      = (*HealthModule)(nil)
 	_ module.Starter       = (*HealthModule)(nil)
 	_ module.HealthChecker = (*HealthModule)(nil)
+	_ module.Quiescer      = (*HealthModule)(nil)
 	_ module.Stopper       = (*HealthModule)(nil)
 	_ module.HTTPRegistrar = (*HealthModule)(nil)
 	_ module.GRPCRegistrar = (*HealthModule)(nil)
@@ -81,6 +82,11 @@ func (h *HealthModule) RegisterGRPC(registrar grpc.ServiceRegistrar) {
 }
 
 func (h *HealthModule) Stop(context.Context) error {
+	h.ready.Store(false)
+	return nil
+}
+
+func (h *HealthModule) Quiesce(context.Context) error {
 	h.ready.Store(false)
 	return nil
 }

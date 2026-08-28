@@ -47,6 +47,11 @@ type (
 		CheckHealth(ctx context.Context) error
 	}
 
+	// Quiescer stops new work before protocol servers drain existing requests.
+	Quiescer interface {
+		Quiesce(ctx context.Context) error
+	}
+
 	// Stopper releases a module's resources on shutdown.
 	Stopper interface {
 		Stop(ctx context.Context) error

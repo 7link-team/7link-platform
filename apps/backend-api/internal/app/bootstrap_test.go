@@ -63,12 +63,52 @@ func TestInitializeDatabaseRoutesPrimaryAndReplica(t *testing.T) {
 			Readable: true,
 		},
 	}}}
-	app.initializeDatabase(t.Context())
+	require.NoError(t, app.initializeDatabase(t.Context()))
 	t.Cleanup(func() { _ = app.Db.Close() })
 
-	require.Len(t, app.Db.Writer, 1)
-	require.Len(t, app.Db.Reader, 1)
-	assert.NotSame(t, app.Db.Writer[0], app.Db.Reader[0])
+	assert.True(t, app.Db.HasWriter())
+	assert.NotSame(t, app.Db.Write(), app.Db.Read())
+}
+
+func TestInitializeDatabaseFailsWhenEveryConfiguredWriterFails(t *testing.T) {
+	app := &App{config: AppConfig{Database: map[string]Database{
+		"primary-a": {Type: "oracle", Dsn: "unused", Writable: true},
+		"primary-b": {Type: "oracle", Dsn: "unused", Writable: true},
+	}}}
+
+	err := app.initializeDatabase(t.Context())
+	assert.ErrorContains(t, err, "no configured writer is available")
+	assert.ErrorContains(t, err, `database "primary-a"`)
+	assert.ErrorContains(t, err, `database "primary-b"`)
+	assert.False(t, app.Db.HasWriter())
+}
+
+func TestInitializeDatabaseRejectsDatasourceWithoutRole(t *testing.T) {
+	app := &App{config: AppConfig{Database: map[string]Database{
+		"disabled": {Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "disabled.sqlite")},
+	}}}
+
+	err := app.initializeDatabase(t.Context())
+	assert.ErrorContains(t, err, `datasource "disabled" must be readable or writable`)
+	assert.Nil(t, app.Db)
+}
+
+func TestInitializeDatabaseKeepsHealthyWriterWhenAnotherFails(t *testing.T) {
+	app := &App{config: AppConfig{Database: map[string]Database{
+		"primary-broken": {Type: "oracle", Dsn: "unused", Writable: true},
+		"primary-healthy": {
+			Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "healthy.sqlite"), Writable: true,
+		},
+	}}}
+
+	require.NoError(t, app.initializeDatabase(t.Context()))
+	t.Cleanup(func() { _ = app.Db.Close() })
+	assert.True(t, app.Db.HasWriter())
+	assert.NotNil(t, app.Db.Write())
+	snapshot := app.Db.Probe(t.Context())
+	assert.NoError(t, snapshot.RoutingError())
+	assert.Error(t, snapshot.DatasourceError("primary-broken"))
+	assert.NoError(t, app.checkHealth(t.Context()))
 }
 
 func TestCheckHealthJoinsModuleErrors(t *testing.T) {

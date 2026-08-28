@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os/signal"
@@ -21,7 +22,7 @@ type App struct {
 	config AppConfig
 
 	// Db owns the application's primary/replica GORM connection pools.
-	Db gormx.DatasourceRouter
+	Db *gormx.DatasourceRouter
 
 	// mods are the application modules, in registration order. Their lifecycle
 	// phases (migrate/start/register/stop) are driven by the phase runners.
@@ -54,7 +55,11 @@ func (app *App) Run(config AppConfig) error {
 	if err := configx.Process(&config); err != nil {
 		return err
 	}
+	applyRuntimeDefaults(&config)
 	applyDebugDefaults(&config)
+	if err := validateRuntimeConfig(config); err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
 	if err := configureProcessRuntime(config.Timezone, config.Debug, config.Name); err != nil {
 		return err
 	}

@@ -3,6 +3,7 @@ package app
 import (
 	"net"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,14 +31,15 @@ func TestRunShutsDownWhenHTTPServerCannotBind(t *testing.T) {
 	config.GrpcServer.Port = 0
 
 	err = (&App{}).Run(config)
-	assert.ErrorContains(t, err, "http serve")
+	assert.ErrorContains(t, err, "http listen")
 }
 
 func validTestAppConfig() AppConfig {
 	return AppConfig{
-		Name:     "test-api",
-		Version:  "1.0.0",
-		Timezone: "UTC",
+		Name:       "test-api",
+		Version:    "1.0.0",
+		Timezone:   "UTC",
+		DrainDelay: time.Nanosecond,
 		API: API{
 			Landing: APILanding{Enabled: true},
 			Docs:    APIDocs{Enabled: true, Advertise: true},

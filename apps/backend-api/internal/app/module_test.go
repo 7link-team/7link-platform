@@ -3,8 +3,10 @@ package app
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"
@@ -44,6 +46,33 @@ func TestModuleRegistration(t *testing.T) {
 	assert.True(t, registrar.grpcCalled)
 }
 
+type countingDatasourceHealthProber struct {
+	calls atomic.Int32
+}
+
+func (*countingDatasourceHealthProber) DatasourceNames() []string {
+	return []string{"primary", "replica"}
+}
+
+func (prober *countingDatasourceHealthProber) Probe(context.Context) gormx.HealthSnapshot {
+	prober.calls.Add(1)
+	return gormx.HealthSnapshot{Datasources: []gormx.DatasourceHealth{
+		{Name: "primary"},
+		{Name: "replica", Err: assert.AnError},
+	}}
+}
+
+func TestDatasourceHealthCheckersShareOneProbeSnapshot(t *testing.T) {
+	prober := &countingDatasourceHealthProber{}
+	checkers := datasourceHealthCheckers(prober)
+	require.Len(t, checkers, 3)
+
+	assert.NoError(t, checkers[0].Check(t.Context()))
+	assert.NoError(t, checkers[1].Check(t.Context()))
+	assert.ErrorIs(t, checkers[2].Check(t.Context()), assert.AnError)
+	assert.Equal(t, int32(1), prober.calls.Load())
+}
+
 type lifecycleModule struct {
 	name       string
 	initialize error
@@ -67,6 +96,32 @@ func (m *lifecycleModule) Stop(context.Context) error {
 func (m *lifecycleModule) Deinitialize(context.Context) error {
 	*m.events = append(*m.events, "deinitialize:"+m.name)
 	return nil
+}
+
+type quiesceModule struct {
+	name   string
+	events *[]string
+	err    error
+}
+
+func (m *quiesceModule) ModuleName() string { return m.name }
+func (m *quiesceModule) Quiesce(context.Context) error {
+	*m.events = append(*m.events, "quiesce:"+m.name)
+	return m.err
+}
+
+func TestQuiesceRunsInReverseOrderAndJoinsErrors(t *testing.T) {
+	events := make([]string, 0)
+	firstErr := errors.New("first failed")
+	secondErr := errors.New("second failed")
+	first := &quiesceModule{name: "first", events: &events, err: firstErr}
+	second := &quiesceModule{name: "second", events: &events, err: secondErr}
+	app := &App{started: []module.Module{first, &namedModule{name: "plain"}, second}}
+
+	err := app.quiesceModules(t.Context())
+	assert.ErrorIs(t, err, firstErr)
+	assert.ErrorIs(t, err, secondErr)
+	assert.Equal(t, []string{"quiesce:second", "quiesce:first"}, events)
 }
 
 func TestLifecycleRollbackOnlyRunsCompletedPhases(t *testing.T) {

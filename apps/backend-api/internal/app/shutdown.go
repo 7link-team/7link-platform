@@ -19,14 +19,22 @@ type grpcStopper interface {
 }
 
 func (app *App) shutdown() error {
-	if app.cancel != nil {
-		app.cancel()
+	timeout := app.config.ShutdownTimeout
+	if timeout <= 0 {
+		timeout = defaultShutdownTimeout
 	}
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	var errs []error
+	if err := app.quiesceModules(shutdownCtx); err != nil {
+		errs = append(errs, err)
+	}
+	if app.httpServer != nil || app.grpcServer != nil {
+		if err := waitForDrain(shutdownCtx, app.config.DrainDelay); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	if app.httpServer != nil {
 		if err := stopHTTPServer(shutdownCtx, app.httpServer); err != nil {
 			errs = append(errs, err)
@@ -36,6 +44,9 @@ func (app *App) shutdown() error {
 		if err := stopGRPCServer(shutdownCtx, app.grpcServer); err != nil {
 			errs = append(errs, err)
 		}
+	}
+	if app.cancel != nil {
+		app.cancel()
 	}
 	if err := app.stopModules(shutdownCtx); err != nil {
 		errs = append(errs, err)
@@ -52,6 +63,20 @@ func (app *App) shutdown() error {
 	}
 	slog.Info("shutdown complete")
 	return nil
+}
+
+func waitForDrain(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("shutdown drain delay: %w", ctx.Err())
+	}
 }
 
 func stopHTTPServer(ctx context.Context, server httpStopper) error {

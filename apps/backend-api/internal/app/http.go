@@ -12,6 +12,7 @@ import (
 	metrics "7link.com/platform/internal/infra/metrics"
 	"7link.com/platform/internal/infra/migrationstatus"
 	humax "7link.com/platform/pkg/extension/huma"
+	"7link.com/platform/pkg/extension/huma/respx"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -27,6 +28,7 @@ func (app *App) startHTTPServer() error {
 	if app.telemetry != nil {
 		router.Use(app.telemetry.HTTPMiddleware)
 	}
+	router.Use(respx.Recovery)
 	apiConfig := humax.Config{
 		Name:    app.config.Name,
 		Version: app.config.Version,
@@ -49,9 +51,16 @@ func (app *App) startHTTPServer() error {
 		return err
 	}
 	addr := net.JoinHostPort(app.config.HttpServer.Address, strconv.Itoa(app.config.HttpServer.Port))
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("http listen %s: %w", addr, err)
+	}
 	app.httpServer = &http.Server{
-		Addr:    addr,
-		Handler: router,
+		Addr:              addr,
+		Handler:           router,
+		ReadHeaderTimeout: app.config.HttpServer.ReadHeaderTimeout,
+		IdleTimeout:       app.config.HttpServer.IdleTimeout,
+		MaxHeaderBytes:    app.config.HttpServer.MaxHeaderBytes,
 	}
 
 	go func() {
@@ -64,7 +73,7 @@ func (app *App) startHTTPServer() error {
 			"migration_status", apiSettings.MigrationStatus.Enabled,
 			"config_inspector", apiSettings.ConfigInspector.Enabled,
 		)
-		if err := app.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := app.httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			app.serveErr <- fmt.Errorf("http serve: %w", err)
 		}
 	}()
