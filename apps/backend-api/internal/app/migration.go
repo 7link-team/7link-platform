@@ -58,7 +58,7 @@ func RunMigrations(ctx context.Context, config MigrationConfig) ([]MigrationRepo
 		Database: config.Database,
 	}
 	applyDebugDefaults(&appConfig)
-	if err := configureProcessRuntime(config.Timezone); err != nil {
+	if err := configureProcessRuntime(config.Timezone, config.Debug, "migration"); err != nil {
 		return nil, err
 	}
 

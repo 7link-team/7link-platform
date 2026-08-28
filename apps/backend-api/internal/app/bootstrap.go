@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 
@@ -19,16 +20,26 @@ import (
 	slogx "7link.com/platform/pkg/extension/slog"
 	"7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/timezone"
+	"github.com/mattn/go-colorable"
+	"github.com/mattn/go-isatty"
 )
 
 // configureProcessRuntime applies the process-wide settings shared by the
 // serve and standalone migration entry points.
-func configureProcessRuntime(timezoneName string) error {
+func configureProcessRuntime(timezoneName string, debug bool, label string) error {
 	if err := timezone.SetTimezone(timezoneName); err != nil {
 		return fmt.Errorf("initialize timezone %q: %w", timezoneName, err)
 	}
-	slog.SetDefault(slogx.NewText(os.Stdout, nil))
+	slog.SetDefault(slogx.NewConsole(processConsoleWriter(), debug, label, nil))
 	return nil
+}
+
+func processConsoleWriter() io.Writer {
+	return colorable.NewColorable(os.Stdout)
+}
+
+func processConsoleColorsEnabled(debug bool) bool {
+	return debug || isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdout.Fd())
 }
 
 // bootstrap opens shared infrastructure, builds and wires modules, optionally

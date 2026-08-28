@@ -1,12 +1,13 @@
 module 7link.com/platform
 
-go 1.25.10
+go 1.26.2
 
 toolchain go1.26.6
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20260709200747-435963d16310.1
 	buf.build/go/protovalidate v1.3.0
+	github.com/arsham/figurine/v2 v2.1.1
 	github.com/danielgtaylor/huma/v2 v2.39.1
 	github.com/dop251/goja v0.0.0-20260822123354-58e940e0d230
 	github.com/felixge/httpsnoop v1.1.0
@@ -15,6 +16,9 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
+	github.com/lmittmann/tint v1.2.0
+	github.com/mattn/go-colorable v0.1.15
+	github.com/mattn/go-isatty v0.0.24
 	github.com/prometheus/client_golang v1.24.1
 	github.com/sony/sonyflake v1.3.0
 	github.com/spf13/cast v1.10.0
@@ -44,6 +48,7 @@ require (
 	cel.dev/expr v0.25.2 // indirect
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
+	github.com/arsham/rainbow/v2 v2.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

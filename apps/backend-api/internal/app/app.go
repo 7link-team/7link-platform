@@ -55,7 +55,11 @@ func (app *App) Run(config AppConfig) error {
 		return err
 	}
 	applyDebugDefaults(&config)
-	if err := configureProcessRuntime(config.Timezone); err != nil {
+	if err := configureProcessRuntime(config.Timezone, config.Debug, config.Name); err != nil {
+		return err
+	}
+	if err := writeBanner(processConsoleWriter(), config.Banner, config.Name, config.Version,
+		processConsoleColorsEnabled(config.Debug)); err != nil {
 		return err
 	}
 	app.config = config

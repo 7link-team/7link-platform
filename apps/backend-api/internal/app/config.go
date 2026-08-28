@@ -7,10 +7,11 @@ import (
 )
 
 type AppConfig struct {
-	Name    string `mapstructure:"name" description:"application name" trim:"true"`
+	Name    string `mapstructure:"name" description:"application name" trim:"true" default:"7link-api"`
 	Version string `mapstructure:"version" description:"application version" trim:"true"`
 
 	Debug     bool             `mapstructure:"debug" short:"d" description:"debug mode" default:"false"`
+	Banner    BannerConfig     `mapstructure:"banner" group:"banner"`
 	Pprof     Pprof            `mapstructure:"pprof" group:"pprof"`
 	API       API              `mapstructure:"api" group:"api"`
 	Telemetry telemetry.Config `mapstructure:"telemetry" group:"telemetry"`
@@ -22,6 +23,13 @@ type AppConfig struct {
 
 	Migrate  bool                `mapstructure:"migrate" description:"automatically migrate before starting services" default:"false"`
 	Database map[string]Database `mapstructure:"database" group:"database" mapkey:"<dbkey>"`
+}
+
+type BannerConfig struct {
+	Enabled bool   `mapstructure:"enabled" description:"print the startup banner" default:"true"`
+	Text    string `mapstructure:"text" description:"banner text; defaults to the application name" trim:"true"`
+	Type    string `mapstructure:"type" description:"Figurine font, for example: standard, slant, small, block, shadow, doom, starwars" trim:"true" default:"standard"`
+	Theme   string `mapstructure:"theme" description:"banner color theme: rainbow | spring | ocean | sunset | fire | plain" trim:"true" default:"rainbow" validate:"^(rainbow|spring|ocean|sunset|fire|plain)$"`
 }
 
 type Pprof struct {

@@ -199,7 +199,7 @@ func TestBootstrapAddsEnabledHTTPModules(t *testing.T) {
 }
 
 func TestConfigureProcessRuntime(t *testing.T) {
-	require.NoError(t, configureProcessRuntime("UTC"))
-	assert.ErrorContains(t, configureProcessRuntime("Invalid/Timezone"), "initialize timezone")
-	require.NoError(t, configureProcessRuntime("UTC"))
+	require.NoError(t, configureProcessRuntime("UTC", false, "test-api"))
+	assert.ErrorContains(t, configureProcessRuntime("Invalid/Timezone", false, "test-api"), "initialize timezone")
+	require.NoError(t, configureProcessRuntime("UTC", true, "test-api"))
 }

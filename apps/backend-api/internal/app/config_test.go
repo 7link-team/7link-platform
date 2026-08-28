@@ -28,6 +28,27 @@ func TestPprofDefaultsToDisabledAndCanBeEnabled(t *testing.T) {
 	assert.True(t, enabled.Pprof.Enabled)
 }
 
+func TestBannerDefaultsAndOverrides(t *testing.T) {
+	var defaults AppConfig
+	require.NoError(t, configx.New().Parse(&defaults))
+	assert.Equal(t, "7link-api", defaults.Name)
+	assert.Equal(t, BannerConfig{Enabled: true, Type: "standard", Theme: "rainbow"}, defaults.Banner)
+
+	var configured AppConfig
+	require.NoError(t, configx.New().Parse(&configured,
+		"--banner.enabled=false",
+		"--banner.text=SEVEN LINK",
+		"--banner.type=slant",
+		"--banner.theme=ocean",
+	))
+	assert.Equal(t, BannerConfig{
+		Enabled: false,
+		Text:    "SEVEN LINK",
+		Type:    "slant",
+		Theme:   "ocean",
+	}, configured.Banner)
+}
+
 func TestHTTPAPIResourceDefaultsAndOverrides(t *testing.T) {
 	var defaults AppConfig
 	require.NoError(t, configx.New().Parse(&defaults))
