@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"7link.com/platform/internal/infra/configinspector"
+	"7link.com/platform/internal/infra/databasemonitor"
 	metrics "7link.com/platform/internal/infra/metrics"
 	"7link.com/platform/internal/infra/migrationstatus"
 	humax "7link.com/platform/pkg/extension/huma"
@@ -72,6 +73,7 @@ func (app *App) startHTTPServer() error {
 			"metrics", apiSettings.Metrics.Enabled,
 			"migration_status", apiSettings.MigrationStatus.Enabled,
 			"config_inspector", apiSettings.ConfigInspector.Enabled,
+			"datasource_inspector", apiSettings.DatasourceInspector.Enabled,
 		)
 		if err := app.httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			app.serveErr <- fmt.Errorf("http serve: %w", err)
@@ -81,7 +83,7 @@ func (app *App) startHTTPServer() error {
 }
 
 func landingResources(settings API) []humax.LandingResource {
-	resources := make([]humax.LandingResource, 0, 3)
+	resources := make([]humax.LandingResource, 0, 4)
 	if settings.Metrics.Enabled && settings.Metrics.Advertise {
 		resources = append(resources, humax.LandingResource{
 			ID: "metrics", Title: "Prometheus metrics", Description: "Process and HTTP server metrics", Href: metrics.Path,
@@ -95,6 +97,11 @@ func landingResources(settings API) []humax.LandingResource {
 	if settings.ConfigInspector.Enabled && settings.ConfigInspector.Advertise {
 		resources = append(resources, humax.LandingResource{
 			ID: "config", Title: "Config inspector", Description: "Redacted effective configuration", Href: configinspector.Path,
+		})
+	}
+	if settings.DatasourceInspector.Enabled && settings.DatasourceInspector.Advertise {
+		resources = append(resources, humax.LandingResource{
+			ID: "datasources", Title: "Database console", Description: "Datasource, connection-pool, and SQL diagnostics", Href: databasemonitor.ConsolePath,
 		})
 	}
 	return resources

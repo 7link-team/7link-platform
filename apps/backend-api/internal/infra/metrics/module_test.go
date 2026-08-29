@@ -1,13 +1,16 @@
 package metrics
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"7link.com/platform/internal/infra/databasemonitor"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	humax "7link.com/platform/pkg/extension/huma"
 	"github.com/go-chi/chi/v5"
@@ -49,7 +52,8 @@ func TestHTTPMiddlewareExportsRouteMetricsWithoutRawURLs(t *testing.T) {
 	assert.Contains(t, text, "http_server_response_size_bytes")
 	assert.Contains(t, text, "go_goroutines")
 	assert.Contains(t, text, "process_cpu_seconds_total")
-	assert.False(t, strings.Contains(text, "123"))
+	assert.False(t, strings.Contains(text, "/widgets/123"))
+	assert.False(t, strings.Contains(text, "/missing/456"))
 	assert.False(t, strings.Contains(text, "secret"))
 	assert.Contains(t, api.OpenAPI().Paths, Path)
 	assert.Equal(t, []string{"Metrics"}, api.OpenAPI().Paths[Path].Get.Tags)
@@ -65,13 +69,39 @@ func TestDatasourceMetricsIncludeNamedPoolState(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = router.Close() })
 	assert.NoError(t, router.Probe(t.Context()).RoutingError())
+	monitor := databasemonitor.NewModule(router, databasemonitor.Config{
+		Interval: time.Hour, Timeout: time.Second, StaleAfter: 2 * time.Hour,
+	})
+	require.NoError(t, router.RegisterQueryObserver(monitor))
+	require.NoError(t, monitor.Start(t.Context()))
+	require.NoError(t, router.Write().Exec("SELECT 1").Error)
+	t.Cleanup(func() { require.NoError(t, monitor.Stop(context.Background())) })
 
 	response := httptest.NewRecorder()
-	NewModule(router).Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, Path, nil))
+	NewModule(router, monitor).Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, Path, nil))
 	body := response.Body.String()
 	labels := `datasource="primary",readable="true",writable="true"`
 	assert.Contains(t, body, `database_datasource_up{`+labels+`} 1`)
 	assert.Contains(t, body, `database_pool_max_open_connections{`+labels+`} 7`)
 	assert.Contains(t, body, `database_pool_open_connections{`+labels+`}`)
 	assert.Contains(t, body, `database_pool_wait_count_total{`+labels+`}`)
+	assert.Contains(t, body, `database_probe_duration_seconds{`+labels+`}`)
+	assert.Contains(t, body, `database_last_probe_timestamp_seconds{`+labels+`}`)
+	assert.Contains(t, body, `database_last_success_timestamp_seconds{`+labels+`}`)
+	assert.Contains(t, body, `database_consecutive_probe_failures{`+labels+`} 0`)
+	assert.Contains(t, body, `database_pool_max_idle_closed_total{`+labels+`}`)
+	assert.Contains(t, body, `database_pool_max_idle_time_closed_total{`+labels+`}`)
+	assert.Contains(t, body, `database_pool_max_lifetime_closed_total{`+labels+`}`)
+	assert.Contains(t, body, `database_sql_executions_total{datasource="primary",operation="SELECT"} 1`)
+	assert.Contains(t, body, `database_sql_successes_total{datasource="primary",operation="SELECT"} 1`)
+	assert.Contains(t, body, `database_sql_errors_total{datasource="primary",operation="SELECT"} 0`)
+	assert.Contains(t, body, `database_sql_duration_seconds_total{datasource="primary",operation="SELECT"}`)
+	assert.Contains(t, body, `database_sql_duration_seconds_bucket{datasource="primary",operation="SELECT",le="0.001"}`)
+	assert.Contains(t, body, `database_sql_duration_seconds_count{datasource="primary",operation="SELECT"} 1`)
+	assert.Contains(t, body, `database_sql_min_duration_seconds{datasource="primary",operation="SELECT"}`)
+	assert.Contains(t, body, `database_sql_max_duration_seconds{datasource="primary",operation="SELECT"}`)
+	assert.Contains(t, body, `database_sql_running{datasource="primary",operation="SELECT"} 0`)
+	assert.Contains(t, body, `database_sql_concurrent_max{datasource="primary",operation="SELECT"} 1`)
+	assert.Contains(t, body, `database_sql_rows_total{datasource="primary",operation="SELECT"}`)
+	assert.Contains(t, body, `database_sql_max_rows{datasource="primary",operation="SELECT"}`)
 }

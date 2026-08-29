@@ -196,6 +196,7 @@ func TestDatasourceRouterNamedHealthAndStats(t *testing.T) {
 	assert.Equal(t, []string{"reader", "writer-broken", "writer-healthy"}, router.DatasourceNames())
 	assert.True(t, router.HasWriter())
 	snapshot := router.Probe(t.Context())
+	assert.False(t, snapshot.CheckedAt.IsZero())
 	assert.NoError(t, snapshot.RoutingError(), "a startup-failed node is not part of the routing set")
 	assert.Error(t, snapshot.DatasourceError("writer-broken"))
 	assert.ErrorContains(t, snapshot.DatasourceError("missing"), "is not configured")

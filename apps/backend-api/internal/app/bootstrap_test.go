@@ -219,9 +219,10 @@ func TestBootstrapAddsEnabledHTTPModules(t *testing.T) {
 	app := &App{config: AppConfig{
 		Pprof: Pprof{Enabled: true},
 		API: API{
-			Metrics:         APIMetrics{Enabled: true},
-			MigrationStatus: APIMigrationStatus{Enabled: true},
-			ConfigInspector: APIConfigInspector{Enabled: true},
+			Metrics:             APIMetrics{Enabled: true},
+			MigrationStatus:     APIMigrationStatus{Enabled: true},
+			ConfigInspector:     APIConfigInspector{Enabled: true},
+			DatasourceInspector: APIDatasourceInspector{Enabled: true},
 		},
 	}}
 	require.NoError(t, app.bootstrap(t.Context()))
@@ -232,7 +233,7 @@ func TestBootstrapAddsEnabledHTTPModules(t *testing.T) {
 		names[index] = appModule.ModuleName()
 	}
 	assert.Equal(t, []string{
-		"i18n", "respx", "dlock", "wuid", "guid", "metrics", "pprof",
+		"database-monitor", "i18n", "respx", "dlock", "wuid", "guid", "metrics", "pprof",
 		"migration-status", "config-inspector", "health",
 	}, names)
 	assert.NotNil(t, app.metrics)

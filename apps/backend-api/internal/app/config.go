@@ -24,8 +24,9 @@ type AppConfig struct {
 	HttpServer HttpServer `mapstructure:"http_server" group:"http_server"`
 	GrpcServer GrpcServer `mapstructure:"grpc_server" group:"grpc_server"`
 
-	Migrate  bool                `mapstructure:"migrate" description:"automatically migrate before starting services" default:"false"`
-	Database map[string]Database `mapstructure:"database" group:"database" mapkey:"<dbkey>"`
+	Migrate           bool                `mapstructure:"migrate" description:"automatically migrate before starting services" default:"false"`
+	Database          map[string]Database `mapstructure:"database" group:"database" mapkey:"<dbkey>"`
+	DatasourceMonitor DatasourceMonitor   `mapstructure:"datasource_monitor" group:"datasource_monitor"`
 }
 
 type BannerConfig struct {
@@ -48,12 +49,13 @@ type HttpServer struct {
 }
 
 type API struct {
-	Landing         APILanding         `mapstructure:"landing" group:"landing"`
-	Docs            APIDocs            `mapstructure:"docs" group:"docs"`
-	OpenAPI         APIOpenAPI         `mapstructure:"openapi" group:"openapi"`
-	Metrics         APIMetrics         `mapstructure:"metrics" group:"metrics"`
-	MigrationStatus APIMigrationStatus `mapstructure:"migration_status" group:"migration_status"`
-	ConfigInspector APIConfigInspector `mapstructure:"config_inspector" group:"config_inspector"`
+	Landing             APILanding             `mapstructure:"landing" group:"landing"`
+	Docs                APIDocs                `mapstructure:"docs" group:"docs"`
+	OpenAPI             APIOpenAPI             `mapstructure:"openapi" group:"openapi"`
+	Metrics             APIMetrics             `mapstructure:"metrics" group:"metrics"`
+	MigrationStatus     APIMigrationStatus     `mapstructure:"migration_status" group:"migration_status"`
+	ConfigInspector     APIConfigInspector     `mapstructure:"config_inspector" group:"config_inspector"`
+	DatasourceInspector APIDatasourceInspector `mapstructure:"datasource_inspector" group:"datasource_inspector"`
 }
 
 type APILanding struct {
@@ -86,6 +88,20 @@ type APIConfigInspector struct {
 	Advertise bool `mapstructure:"advertise" description:"show the configuration inspector on the API landing endpoint" default:"false"`
 }
 
+type APIDatasourceInspector struct {
+	Enabled   bool `mapstructure:"enabled" description:"enable the read-only datasource diagnostics endpoint" default:"false"`
+	Advertise bool `mapstructure:"advertise" description:"show datasource diagnostics on the API landing endpoint" default:"false"`
+}
+
+type DatasourceMonitor struct {
+	Interval         time.Duration `mapstructure:"interval" description:"interval between datasource health probes" default:"10s"`
+	Timeout          time.Duration `mapstructure:"timeout" description:"maximum duration of one datasource health probe" default:"2s"`
+	StaleAfter       time.Duration `mapstructure:"stale_after" description:"maximum age of a datasource health snapshot" default:"30s"`
+	SQLCapacity      int           `mapstructure:"sql_capacity" description:"maximum number of SQL fingerprints retained in memory" default:"500"`
+	SlowCapacity     int           `mapstructure:"slow_capacity" description:"maximum number of slow SQL samples retained in memory" default:"200"`
+	SlowSQLThreshold time.Duration `mapstructure:"slow_sql_threshold" description:"minimum execution duration recorded as slow SQL" default:"200ms"`
+}
+
 type GrpcServer struct {
 	Address               string        `mapstructure:"address" description:"listen IPv4 address" default:"0.0.0.0" trim:"true" required:"true" validate:"^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])[.]){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$"`
 	Port                  int           `mapstructure:"port" description:"port" default:"9090"`
@@ -115,11 +131,17 @@ type Database struct {
 }
 
 const (
-	defaultHTTPReadHeaderTimeout = 5 * time.Second
-	defaultHTTPIdleTimeout       = 2 * time.Minute
-	defaultHTTPMaxHeaderBytes    = 1 << 20
-	defaultShutdownTimeout       = 30 * time.Second
-	defaultDrainDelay            = 5 * time.Second
+	defaultHTTPReadHeaderTimeout   = 5 * time.Second
+	defaultHTTPIdleTimeout         = 2 * time.Minute
+	defaultHTTPMaxHeaderBytes      = 1 << 20
+	defaultShutdownTimeout         = 30 * time.Second
+	defaultDrainDelay              = 5 * time.Second
+	defaultDatasourceProbeInterval = 10 * time.Second
+	defaultDatasourceProbeTimeout  = 2 * time.Second
+	defaultDatasourceStaleAfter    = 30 * time.Second
+	defaultDatasourceSQLCapacity   = 500
+	defaultDatasourceSlowCapacity  = 200
+	defaultSlowSQLThreshold        = 200 * time.Millisecond
 )
 
 // applyRuntimeDefaults protects callers that construct AppConfig directly and
@@ -143,6 +165,24 @@ func applyRuntimeDefaults(config *AppConfig) {
 	if config.DrainDelay == 0 {
 		config.DrainDelay = defaultDrainDelay
 	}
+	if config.DatasourceMonitor.Interval == 0 {
+		config.DatasourceMonitor.Interval = defaultDatasourceProbeInterval
+	}
+	if config.DatasourceMonitor.Timeout == 0 {
+		config.DatasourceMonitor.Timeout = defaultDatasourceProbeTimeout
+	}
+	if config.DatasourceMonitor.StaleAfter == 0 {
+		config.DatasourceMonitor.StaleAfter = defaultDatasourceStaleAfter
+	}
+	if config.DatasourceMonitor.SQLCapacity == 0 {
+		config.DatasourceMonitor.SQLCapacity = defaultDatasourceSQLCapacity
+	}
+	if config.DatasourceMonitor.SlowCapacity == 0 {
+		config.DatasourceMonitor.SlowCapacity = defaultDatasourceSlowCapacity
+	}
+	if config.DatasourceMonitor.SlowSQLThreshold == 0 {
+		config.DatasourceMonitor.SlowSQLThreshold = defaultSlowSQLThreshold
+	}
 }
 
 func validateRuntimeConfig(config AppConfig) error {
@@ -163,6 +203,28 @@ func validateRuntimeConfig(config AppConfig) error {
 	}
 	if config.HttpServer.MaxHeaderBytes < 0 {
 		return fmt.Errorf("http_server.max_header_bytes cannot be negative")
+	}
+	if config.DatasourceMonitor.Interval < 0 {
+		return fmt.Errorf("datasource_monitor.interval cannot be negative")
+	}
+	if config.DatasourceMonitor.Timeout < 0 {
+		return fmt.Errorf("datasource_monitor.timeout cannot be negative")
+	}
+	if config.DatasourceMonitor.StaleAfter < 0 {
+		return fmt.Errorf("datasource_monitor.stale_after cannot be negative")
+	}
+	if config.DatasourceMonitor.StaleAfter > 0 && config.DatasourceMonitor.Interval > 0 &&
+		config.DatasourceMonitor.StaleAfter <= config.DatasourceMonitor.Interval {
+		return fmt.Errorf("datasource_monitor.stale_after must be greater than interval")
+	}
+	if config.DatasourceMonitor.SQLCapacity < 0 {
+		return fmt.Errorf("datasource_monitor.sql_capacity cannot be negative")
+	}
+	if config.DatasourceMonitor.SlowCapacity < 0 {
+		return fmt.Errorf("datasource_monitor.slow_capacity cannot be negative")
+	}
+	if config.DatasourceMonitor.SlowSQLThreshold < 0 {
+		return fmt.Errorf("datasource_monitor.slow_sql_threshold cannot be negative")
 	}
 	if config.GrpcServer.MaxRecvMessageBytes < 0 || config.GrpcServer.MaxSendMessageBytes < 0 {
 		return fmt.Errorf("gRPC message size limits cannot be negative")

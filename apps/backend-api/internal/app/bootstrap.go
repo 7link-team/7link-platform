@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"7link.com/platform/internal/infra/configinspector"
+	"7link.com/platform/internal/infra/databasemonitor"
 	"7link.com/platform/internal/infra/dlock"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/internal/infra/health"
@@ -48,8 +49,23 @@ func (app *App) bootstrap(ctx context.Context) error {
 	if err := app.initializeDatabase(ctx); err != nil {
 		return err
 	}
+	app.databaseMonitor = databasemonitor.NewModule(app.Db, databasemonitor.Config{
+		Interval:      app.config.DatasourceMonitor.Interval,
+		Timeout:       app.config.DatasourceMonitor.Timeout,
+		StaleAfter:    app.config.DatasourceMonitor.StaleAfter,
+		ExposeHTTP:    app.config.API.DatasourceInspector.Enabled,
+		SQLCapacity:   app.config.DatasourceMonitor.SQLCapacity,
+		SlowCapacity:  app.config.DatasourceMonitor.SlowCapacity,
+		SlowThreshold: app.config.DatasourceMonitor.SlowSQLThreshold,
+	})
+	if app.config.API.DatasourceInspector.Enabled {
+		if err := app.Db.RegisterQueryObserver(app.databaseMonitor); err != nil {
+			return fmt.Errorf("register database query observer: %w", err)
+		}
+	}
 
 	app.mods = append(app.mods,
+		app.databaseMonitor,
 		i18n.NewModule(i18n.Base),
 		respx.NewModule(),
 		dlock.NewModule(app.Db),
@@ -60,7 +76,7 @@ func (app *App) bootstrap(ctx context.Context) error {
 	)
 
 	if app.config.API.Metrics.Enabled {
-		app.metrics = metrics.NewModule(app.Db)
+		app.metrics = metrics.NewModule(app.Db, app.databaseMonitor)
 		app.mods = append(app.mods, app.metrics)
 	}
 	if app.config.Pprof.Enabled {

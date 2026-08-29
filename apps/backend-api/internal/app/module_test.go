@@ -3,10 +3,9 @@ package app
 import (
 	"context"
 	"errors"
-	"sync/atomic"
 	"testing"
 
-	gormx "7link.com/platform/pkg/extension/gorm"
+	healthservice "7link.com/platform/internal/infra/health/service"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"
@@ -46,31 +45,19 @@ func TestModuleRegistration(t *testing.T) {
 	assert.True(t, registrar.grpcCalled)
 }
 
-type countingDatasourceHealthProber struct {
-	calls atomic.Int32
+type healthProviderModule struct{}
+
+func (*healthProviderModule) ModuleName() string { return "provider" }
+func (*healthProviderModule) HealthCheckers() []healthservice.Checker {
+	return []healthservice.Checker{{Name: "provided", Check: func(context.Context) error { return nil }}}
 }
 
-func (*countingDatasourceHealthProber) DatasourceNames() []string {
-	return []string{"primary", "replica"}
-}
-
-func (prober *countingDatasourceHealthProber) Probe(context.Context) gormx.HealthSnapshot {
-	prober.calls.Add(1)
-	return gormx.HealthSnapshot{Datasources: []gormx.DatasourceHealth{
-		{Name: "primary"},
-		{Name: "replica", Err: assert.AnError},
-	}}
-}
-
-func TestDatasourceHealthCheckersShareOneProbeSnapshot(t *testing.T) {
-	prober := &countingDatasourceHealthProber{}
-	checkers := datasourceHealthCheckers(prober)
-	require.Len(t, checkers, 3)
-
+func TestHealthCheckerProviderReplacesGenericModuleStatus(t *testing.T) {
+	app := &App{mods: []module.Module{&healthProviderModule{}}}
+	checkers := app.healthCheckers()
+	require.Len(t, checkers, 1)
+	assert.Equal(t, "provided", checkers[0].Name)
 	assert.NoError(t, checkers[0].Check(t.Context()))
-	assert.NoError(t, checkers[1].Check(t.Context()))
-	assert.ErrorIs(t, checkers[2].Check(t.Context()), assert.AnError)
-	assert.Equal(t, int32(1), prober.calls.Load())
 }
 
 type lifecycleModule struct {

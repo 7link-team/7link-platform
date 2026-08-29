@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"7link.com/platform/internal/infra/databasemonitor"
 	metrics "7link.com/platform/internal/infra/metrics"
 	telemetry "7link.com/platform/internal/infra/telemetry"
 	configx "7link.com/platform/pkg/config"
@@ -45,10 +46,11 @@ type App struct {
 	// server sources so no reporter blocks if both fail at once.
 	serveErr chan error
 
-	telemetry  *telemetry.Module
-	metrics    *metrics.Module
-	grpcServer *grpc.Server
-	httpServer *http.Server
+	telemetry       *telemetry.Module
+	databaseMonitor *databasemonitor.Module
+	metrics         *metrics.Module
+	grpcServer      *grpc.Server
+	httpServer      *http.Server
 }
 
 func (app *App) Run(config AppConfig) error {

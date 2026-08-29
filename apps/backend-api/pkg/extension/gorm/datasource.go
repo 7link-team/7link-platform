@@ -233,8 +233,9 @@ type datasourceNode struct {
 
 // DatasourceHealth is the result of probing one configured datasource.
 type DatasourceHealth struct {
-	Name string
-	Err  error
+	Name     string
+	Duration time.Duration
+	Err      error
 }
 
 // HealthSnapshot contains one internally consistent datasource probe result.
@@ -243,6 +244,8 @@ type DatasourceHealth struct {
 // making a usable routing set unhealthy.
 type HealthSnapshot struct {
 	Datasources []DatasourceHealth
+	CheckedAt   time.Time
+	Duration    time.Duration
 	routingErr  error
 }
 
@@ -377,6 +380,7 @@ func (r *DatasourceRouter) Probe(ctx context.Context) HealthSnapshot {
 	if r == nil {
 		return HealthSnapshot{}
 	}
+	started := time.Now()
 	snapshot := HealthSnapshot{Datasources: make([]DatasourceHealth, len(r.nodes))}
 
 	var wait sync.WaitGroup
@@ -385,11 +389,15 @@ func (r *DatasourceRouter) Probe(ctx context.Context) HealthSnapshot {
 		wait.Add(1)
 		go func(index int, node *datasourceNode) {
 			defer wait.Done()
+			started := time.Now()
 			err := node.probe(ctx)
+			snapshot.Datasources[index].Duration = time.Since(started)
 			snapshot.Datasources[index].Err = err
 		}(index, node)
 	}
 	wait.Wait()
+	snapshot.CheckedAt = time.Now().UTC()
+	snapshot.Duration = time.Since(started)
 
 	var routingErrs []error
 	for index, node := range r.nodes {

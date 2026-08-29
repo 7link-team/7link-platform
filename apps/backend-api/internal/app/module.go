@@ -5,10 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"sync"
 
 	healthservice "7link.com/platform/internal/infra/health/service"
-	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"
@@ -113,54 +111,22 @@ func (app *App) checkHealth(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
+type healthCheckerProvider interface {
+	HealthCheckers() []healthservice.Checker
+}
+
 func (app *App) healthCheckers() []healthservice.Checker {
-	checkers := make([]healthservice.Checker, 0, len(app.mods)+1)
-	checkers = append(checkers, datasourceHealthCheckers(app.Db)...)
+	checkers := make([]healthservice.Checker, 0, len(app.mods))
 	for _, appModule := range app.mods {
+		if provider, ok := appModule.(healthCheckerProvider); ok {
+			checkers = append(checkers, provider.HealthCheckers()...)
+			continue
+		}
 		checker := healthservice.Checker{Name: appModule.ModuleName()}
 		if healthChecker, ok := appModule.(module.HealthChecker); ok {
 			checker.Check = healthChecker.CheckHealth
 		}
 		checkers = append(checkers, checker)
-	}
-	return checkers
-}
-
-type datasourceHealthProber interface {
-	DatasourceNames() []string
-	Probe(context.Context) gormx.HealthSnapshot
-}
-
-func datasourceHealthCheckers(datasources datasourceHealthProber) []healthservice.Checker {
-	if datasources == nil {
-		return nil
-	}
-	names := datasources.DatasourceNames()
-	if len(names) == 0 {
-		return nil
-	}
-	checkers := make([]healthservice.Checker, 0, len(names)+1)
-	var once sync.Once
-	var snapshot gormx.HealthSnapshot
-	probe := func(ctx context.Context) gormx.HealthSnapshot {
-		once.Do(func() { snapshot = datasources.Probe(ctx) })
-		return snapshot
-	}
-	checkers = append(checkers, healthservice.Checker{
-		Name: "database",
-		Check: func(ctx context.Context) error {
-			return probe(ctx).RoutingError()
-		},
-	})
-	for _, datasourceName := range names {
-		name := datasourceName
-		checkers = append(checkers, healthservice.Checker{
-			Name: "database." + name,
-			Check: func(ctx context.Context) error {
-				return probe(ctx).DatasourceError(name)
-			},
-			Optional: true,
-		})
 	}
 	return checkers
 }

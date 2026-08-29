@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/infra/configinspector"
+	"7link.com/platform/internal/infra/databasemonitor"
 	"7link.com/platform/internal/infra/dlock"
 	"7link.com/platform/internal/infra/metrics"
 	"7link.com/platform/internal/infra/migrationstatus"
@@ -196,7 +197,7 @@ func TestMetricsRegistrationAndDisabledModuleRoutes(t *testing.T) {
 
 	disabled := &App{config: validTestAppConfig()}
 	disabledRouter, disabledAPI := moduleRouter(t, disabled)
-	for _, path := range []string{metrics.Path, pprof.Path, migrationstatus.Path, configinspector.Path} {
+	for _, path := range []string{metrics.Path, pprof.Path, migrationstatus.Path, configinspector.Path, databasemonitor.Path} {
 		response := httptest.NewRecorder()
 		disabledRouter.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 		assert.Equal(t, http.StatusNotFound, response.Code, path)
@@ -206,19 +207,22 @@ func TestMetricsRegistrationAndDisabledModuleRoutes(t *testing.T) {
 
 func TestLandingResourcesRequireEnabledAndAdvertised(t *testing.T) {
 	settings := API{
-		Metrics:         APIMetrics{Enabled: true, Advertise: true},
-		MigrationStatus: APIMigrationStatus{Enabled: true, Advertise: true},
-		ConfigInspector: APIConfigInspector{Enabled: true, Advertise: true},
+		Metrics:             APIMetrics{Enabled: true, Advertise: true},
+		MigrationStatus:     APIMigrationStatus{Enabled: true, Advertise: true},
+		ConfigInspector:     APIConfigInspector{Enabled: true, Advertise: true},
+		DatasourceInspector: APIDatasourceInspector{Enabled: true, Advertise: true},
 	}
 	resources := landingResources(settings)
-	require.Len(t, resources, 3)
+	require.Len(t, resources, 4)
 	assert.Equal(t, metrics.Path, resources[0].Href)
 	assert.Equal(t, migrationstatus.Path, resources[1].Href)
 	assert.Equal(t, configinspector.Path, resources[2].Href)
+	assert.Equal(t, databasemonitor.ConsolePath, resources[3].Href)
 
 	settings.Metrics.Enabled = false
 	settings.MigrationStatus.Advertise = false
 	settings.ConfigInspector.Enabled = false
+	settings.DatasourceInspector.Advertise = false
 	assert.Empty(t, landingResources(settings))
 }
 

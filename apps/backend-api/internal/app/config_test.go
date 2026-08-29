@@ -59,6 +59,11 @@ func TestHTTPAPIResourceDefaultsAndOverrides(t *testing.T) {
 	assert.Equal(t, APIMetrics{}, defaults.API.Metrics)
 	assert.Equal(t, APIMigrationStatus{}, defaults.API.MigrationStatus)
 	assert.Equal(t, APIConfigInspector{}, defaults.API.ConfigInspector)
+	assert.Equal(t, APIDatasourceInspector{}, defaults.API.DatasourceInspector)
+	assert.Equal(t, DatasourceMonitor{
+		Interval: 10 * time.Second, Timeout: 2 * time.Second, StaleAfter: 30 * time.Second,
+		SQLCapacity: 500, SlowCapacity: 200, SlowSQLThreshold: 200 * time.Millisecond,
+	}, defaults.DatasourceMonitor)
 
 	var configured AppConfig
 	require.NoError(t, configx.New().Parse(&configured,
@@ -134,6 +139,12 @@ func TestApplyRuntimeDefaults(t *testing.T) {
 	assert.Equal(t, defaultHTTPMaxHeaderBytes, config.HttpServer.MaxHeaderBytes)
 	assert.Equal(t, defaultShutdownTimeout, config.ShutdownTimeout)
 	assert.Equal(t, defaultDrainDelay, config.DrainDelay)
+	assert.Equal(t, defaultDatasourceProbeInterval, config.DatasourceMonitor.Interval)
+	assert.Equal(t, defaultDatasourceProbeTimeout, config.DatasourceMonitor.Timeout)
+	assert.Equal(t, defaultDatasourceStaleAfter, config.DatasourceMonitor.StaleAfter)
+	assert.Equal(t, defaultDatasourceSQLCapacity, config.DatasourceMonitor.SQLCapacity)
+	assert.Equal(t, defaultDatasourceSlowCapacity, config.DatasourceMonitor.SlowCapacity)
+	assert.Equal(t, defaultSlowSQLThreshold, config.DatasourceMonitor.SlowSQLThreshold)
 
 	explicit := AppConfig{
 		ShutdownTimeout: 20 * time.Second,
@@ -167,6 +178,16 @@ func TestValidateRuntimeConfigRejectsNegativeValues(t *testing.T) {
 		{name: "http headers", mutate: func(c *AppConfig) { c.HttpServer.MaxHeaderBytes = -1 }, want: "max_header_bytes"},
 		{name: "grpc receive", mutate: func(c *AppConfig) { c.GrpcServer.MaxRecvMessageBytes = -1 }, want: "message size"},
 		{name: "grpc keepalive", mutate: func(c *AppConfig) { c.GrpcServer.KeepaliveTime = -time.Second }, want: "keepalive_time"},
+		{name: "datasource interval", mutate: func(c *AppConfig) { c.DatasourceMonitor.Interval = -time.Second }, want: "datasource_monitor.interval"},
+		{name: "datasource timeout", mutate: func(c *AppConfig) { c.DatasourceMonitor.Timeout = -time.Second }, want: "datasource_monitor.timeout"},
+		{name: "datasource stale", mutate: func(c *AppConfig) { c.DatasourceMonitor.StaleAfter = -time.Second }, want: "datasource_monitor.stale_after"},
+		{name: "datasource SQL capacity", mutate: func(c *AppConfig) { c.DatasourceMonitor.SQLCapacity = -1 }, want: "sql_capacity"},
+		{name: "datasource slow capacity", mutate: func(c *AppConfig) { c.DatasourceMonitor.SlowCapacity = -1 }, want: "slow_capacity"},
+		{name: "datasource slow threshold", mutate: func(c *AppConfig) { c.DatasourceMonitor.SlowSQLThreshold = -time.Second }, want: "slow_sql_threshold"},
+		{name: "datasource stale interval", mutate: func(c *AppConfig) {
+			c.DatasourceMonitor.Interval = 10 * time.Second
+			c.DatasourceMonitor.StaleAfter = 10 * time.Second
+		}, want: "greater than interval"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
