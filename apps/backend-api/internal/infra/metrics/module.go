@@ -139,7 +139,7 @@ func (m *Module) RegisterHTTP(_ context.Context, router chi.Router, api huma.API
 		Path:        Path,
 		Summary:     "Collect Prometheus metrics",
 		Description: "Returns process, Go runtime, and HTTP server metrics in Prometheus exposition format.",
-		Tags:        []string{"Operations"},
+		Tags:        []string{"Metrics"},
 		Responses: map[string]*huma.Response{
 			"200": {
 				Description: "Prometheus metrics",

@@ -32,6 +32,7 @@ func TestModuleReturnsJSONAndRegistersOpenAPI(t *testing.T) {
 		assert.Contains(t, response.Body.String(), `"state":"pending"`)
 	}
 	assert.Contains(t, api.OpenAPI().Paths, Path)
+	assert.Equal(t, []string{"Diagnostics"}, api.OpenAPI().Paths[Path].Get.Tags)
 }
 
 func TestModuleHidesInspectionErrors(t *testing.T) {

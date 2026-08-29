@@ -57,7 +57,7 @@ func (m *Module) RegisterHTTP(_ context.Context, router chi.Router, api huma.API
 		Path:        Path,
 		Summary:     "Inspect database migrations",
 		Description: "Compares embedded and applied migration versions for every registered module.",
-		Tags:        []string{"Operations"},
+		Tags:        []string{"Diagnostics"},
 		Responses: map[string]*huma.Response{
 			"200": jsonResponse("Migration status"),
 			"503": jsonResponse("Migration status unavailable"),

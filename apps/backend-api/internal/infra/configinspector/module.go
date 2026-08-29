@@ -45,7 +45,7 @@ func (m *Module) RegisterHTTP(_ context.Context, router chi.Router, api huma.API
 		Path:        Path,
 		Summary:     "Inspect effective configuration",
 		Description: "Returns the effective application configuration with sensitive values redacted.",
-		Tags:        []string{"Operations"},
+		Tags:        []string{"Diagnostics"},
 		Responses: map[string]*huma.Response{
 			"200": {
 				Description: "Effective configuration",

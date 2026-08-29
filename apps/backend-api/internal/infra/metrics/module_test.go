@@ -52,6 +52,7 @@ func TestHTTPMiddlewareExportsRouteMetricsWithoutRawURLs(t *testing.T) {
 	assert.False(t, strings.Contains(text, "123"))
 	assert.False(t, strings.Contains(text, "secret"))
 	assert.Contains(t, api.OpenAPI().Paths, Path)
+	assert.Equal(t, []string{"Metrics"}, api.OpenAPI().Paths[Path].Get.Tags)
 }
 
 func TestDatasourceMetricsIncludeNamedPoolState(t *testing.T) {

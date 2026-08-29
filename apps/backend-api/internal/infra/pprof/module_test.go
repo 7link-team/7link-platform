@@ -205,7 +205,7 @@ func TestRegisterPprofAddsOpenAPIOperations(t *testing.T) {
 	} {
 		require.Contains(t, paths, path)
 		require.NotNil(t, paths[path].Get)
-		assert.Contains(t, paths[path].Get.Tags, "PProf")
+		assert.Equal(t, []string{"Diagnostics"}, paths[path].Get.Tags)
 	}
 
 	profile := paths[Path+"/{profile}"].Get
