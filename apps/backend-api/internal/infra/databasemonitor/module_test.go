@@ -130,8 +130,10 @@ func TestDatasourceDiagnosticsAreRedactedAndOptional(t *testing.T) {
 	router.ServeHTTP(console, httptest.NewRequest(http.MethodGet, ConsolePath, nil))
 	assert.Equal(t, http.StatusOK, console.Code)
 	assert.Contains(t, console.Body.String(), "Database Console")
-	assert.Contains(t, console.Body.String(), `class="tab active" data-view="sql"`)
-	assert.Contains(t, console.Body.String(), `data-view="operations"`)
+	assert.Contains(t, console.Body.String(), `data-view="pools">Connection Pools</button>`)
+	assert.Contains(t, console.Body.String(), `data-view="operations">SQL Operations</button>`)
+	assert.Contains(t, console.Body.String(), `class="tab active" data-view="sql">SQL Statistics</button>`)
+	assert.Contains(t, console.Body.String(), `data-view="slow">Slow SQL</button>`)
 	assert.Contains(t, console.Body.String(), `id="sql" class="view active"`)
 	assert.Contains(t, console.Header().Get("Content-Security-Policy"), "default-src 'self'")
 }
