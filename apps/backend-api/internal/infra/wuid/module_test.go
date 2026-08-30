@@ -14,7 +14,7 @@ func (writer *testWriter) Write() *gorm.DB { return writer.db }
 
 func TestModuleWithoutDatabaseReportsUnhealthy(t *testing.T) {
 	t.Setenv(EnvKey, "")
-	module := NewModule(nil)
+	module := newModule(nil)
 	require.NoError(t, module.Start(t.Context()))
 	assert.ErrorIs(t, module.CheckHealth(t.Context()), ErrUnavailable)
 	assert.NoError(t, module.Stop(t.Context()))
@@ -22,7 +22,7 @@ func TestModuleWithoutDatabaseReportsUnhealthy(t *testing.T) {
 
 func TestModuleStaticWorkerDoesNotRequireDatabase(t *testing.T) {
 	t.Setenv(EnvKey, "7")
-	module := NewModule(nil)
+	module := newModule(nil)
 	require.NoError(t, module.Start(t.Context()))
 	id, err := module.ID()
 	require.NoError(t, err)
@@ -34,7 +34,7 @@ func TestModuleStaticWorkerDoesNotRequireDatabase(t *testing.T) {
 func TestModuleOwnsMigrationAndReportsLeaseState(t *testing.T) {
 	t.Setenv(EnvKey, "")
 	db := newTestDB(t)
-	module := NewModule(&testWriter{db: db})
+	module := newModule(&testWriter{db: db})
 	require.NoError(t, Migrate(t.Context(), db))
 	require.NoError(t, module.Start(t.Context()))
 	assert.NoError(t, module.CheckHealth(t.Context()))

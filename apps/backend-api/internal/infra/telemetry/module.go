@@ -70,7 +70,9 @@ var (
 
 func (*Module) ModuleName() string { return Name }
 
-func NewModule(serviceName, serviceVersion string, options ...Option) *Module {
+// NewModule builds the telemetry module. The application identity (service
+// name/version) is taken from the shared runtime and becomes the OTel resource.
+func NewModule(rt module.Runtime, options ...Option) *Module {
 	config := moduleConfig{idGenerator: defaultIDGenerator}
 	for _, option := range options {
 		option(&config)
@@ -80,8 +82,8 @@ func NewModule(serviceName, serviceVersion string, options ...Option) *Module {
 	providerOptions := []sdktrace.TracerProviderOption{
 		sdktrace.WithIDGenerator(idGenerator),
 		sdktrace.WithResource(resource.NewSchemaless(
-			semconv.ServiceName(serviceName),
-			semconv.ServiceVersion(serviceVersion),
+			semconv.ServiceName(rt.Name),
+			semconv.ServiceVersion(rt.Version),
 		)),
 	}
 	for _, exporter := range config.exporters {

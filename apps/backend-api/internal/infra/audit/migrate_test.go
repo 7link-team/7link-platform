@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"7link.com/platform/pkg/module"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -14,7 +15,7 @@ func TestMigrationSource(t *testing.T) {
 	assert.NotNil(t, source.FS)
 
 	// The runtime module satisfies the application migration runner contract.
-	auditModule := NewModule("svc", "1", nil, Config{Enabled: true})
+	auditModule := NewModule(module.Runtime{Name: "svc", Version: "1"}, Config{Enabled: true})
 	assert.Equal(t, "audit", auditModule.ModuleName())
 	require.NotNil(t, auditModule.MigrationSource())
 	require.Equal(t, source.TableName, auditModule.MigrationSource().TableName)

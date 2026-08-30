@@ -66,7 +66,7 @@ func newFakeDatasource() *fakeDatasource {
 
 func TestModulePollsAndHealthCheckersShareSnapshot(t *testing.T) {
 	fake := newFakeDatasource()
-	module := NewModule(fake, Config{Interval: 5 * time.Millisecond, Timeout: time.Second, StaleAfter: time.Second})
+	module := newModule(fake, Config{Interval: 5 * time.Millisecond, Timeout: time.Second, StaleAfter: time.Second})
 	require.NoError(t, module.Start(t.Context()))
 	t.Cleanup(func() { require.NoError(t, module.Stop(context.Background())) })
 	require.Eventually(t, func() bool { return fake.callCount() >= 2 }, time.Second, time.Millisecond)
@@ -86,7 +86,7 @@ func TestModulePollsAndHealthCheckersShareSnapshot(t *testing.T) {
 }
 
 func TestModuleReportsStaleSnapshots(t *testing.T) {
-	module := NewModule(newFakeDatasource(), Config{StaleAfter: time.Second})
+	module := newModule(newFakeDatasource(), Config{StaleAfter: time.Second})
 	module.snapshot.Store(&Snapshot{CheckedAt: time.Now().Add(-2 * time.Second)})
 	assert.ErrorIs(t, module.snapshotError(module.Snapshot()), ErrSnapshotStale)
 	assert.Equal(t, statusStale, module.Report().Status)
@@ -94,13 +94,13 @@ func TestModuleReportsStaleSnapshots(t *testing.T) {
 
 func TestDatasourceDiagnosticsAreRedactedAndOptional(t *testing.T) {
 	fake := newFakeDatasource()
-	disabled := NewModule(fake, Config{})
+	disabled := newModule(fake, Config{})
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
 	require.NoError(t, disabled.RegisterHTTP(t.Context(), router, api))
 	assert.NotContains(t, api.OpenAPI().Paths, Path)
 
-	enabled := NewModule(fake, Config{ExposeHTTP: true})
+	enabled := newModule(fake, Config{ExposeHTTP: true})
 	require.NoError(t, enabled.Start(t.Context()))
 	t.Cleanup(func() { require.NoError(t, enabled.Stop(context.Background())) })
 	router = chi.NewRouter()
@@ -139,7 +139,7 @@ func TestDatasourceDiagnosticsAreRedactedAndOptional(t *testing.T) {
 }
 
 func TestSQLStatisticsAreBoundedAndDoNotRetainErrors(t *testing.T) {
-	module := NewModule(nil, Config{SQLCapacity: 2, SlowCapacity: 1, SlowThreshold: 10 * time.Millisecond})
+	module := newModule(nil, Config{SQLCapacity: 2, SlowCapacity: 1, SlowThreshold: 10 * time.Millisecond})
 	module.ObserveQuery(t.Context(), gormx.QueryEvent{
 		Datasource: "primary", Operation: "SELECT", Table: "widgets",
 		Statement: "SELECT * FROM widgets WHERE id = ?", StartedAt: time.Now().UTC(),
@@ -173,7 +173,7 @@ func TestSQLStatisticsAreBoundedAndDoNotRetainErrors(t *testing.T) {
 }
 
 func TestSQLReportIncludesDruidStyleExecutionStatistics(t *testing.T) {
-	module := NewModule(nil, Config{SQLCapacity: 10, SlowCapacity: 10, SlowThreshold: time.Millisecond})
+	module := newModule(nil, Config{SQLCapacity: 10, SlowCapacity: 10, SlowThreshold: time.Millisecond})
 	activity := gormx.QueryActivity{Datasource: "primary", Operation: "SELECT", StartedAt: time.Now().UTC()}
 	module.QueryStarted(t.Context(), activity)
 	module.QueryStarted(t.Context(), activity)

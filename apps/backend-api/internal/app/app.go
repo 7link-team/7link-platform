@@ -9,10 +9,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	audit "7link.com/platform/internal/infra/audit"
-	"7link.com/platform/internal/infra/databasemonitor"
-	metrics "7link.com/platform/internal/infra/metrics"
-	telemetry "7link.com/platform/internal/infra/telemetry"
 	configx "7link.com/platform/pkg/config"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/module"
@@ -26,19 +22,13 @@ type App struct {
 	// Db owns the application's primary/replica GORM connection pools.
 	Db *gormx.DatasourceRouter
 
-	// mods are the application modules, in registration order. Their lifecycle
-	// phases (migrate/start/register/stop) are driven by the phase runners.
-	mods []module.Module
-	// services contains application-scoped contracts provided and consumed by
-	// modules during the wiring phase.
-	services *module.Services
-	// initialized and started contain only modules that completed the matching
-	// lifecycle phase. Shutdown consumes them in reverse order.
-	initialized []module.Module
-	started     []module.Module
+	// modules is the lifecycle container for the application's modules.
+	// bootstrap registers the bill of materials; the registry owns activation,
+	// wiring, migration, initialization, start, and shutdown.
+	modules *module.Registry
 
 	// ctx is the application's root context; cancel tears down background workers
-	// (e.g. geoip database refresh) during shutdown. Set in Run.
+	// during shutdown. Set in Run.
 	ctx    context.Context
 	cancel context.CancelFunc
 
@@ -47,21 +37,18 @@ type App struct {
 	// server sources so no reporter blocks if both fail at once.
 	serveErr chan error
 
-	telemetry       *telemetry.Module
-	databaseMonitor *databasemonitor.Module
-	audit           *audit.Module
-	metrics         *metrics.Module
-	grpcServer      *grpc.Server
-	httpServer      *http.Server
+	grpcServer *grpc.Server
+	httpServer *http.Server
 }
 
-func (app *App) AddModule(mods ...module.Module) {
-	for _, mod := range mods {
-		if isNilModule(mod) {
-			continue
-		}
-		app.mods = append(app.mods, mod)
+// addModule declares modules for this run. Registration, activation, wiring, and
+// lifecycle phases are owned by the module lifecycle (app.modules); bootstrap
+// only lists the bill of materials.
+func (app *App) addModule(mods ...module.Module) error {
+	if app.modules == nil {
+		app.modules = module.NewRegistry()
 	}
+	return app.modules.Register(mods...)
 }
 
 func (app *App) Run(config AppConfig) error {

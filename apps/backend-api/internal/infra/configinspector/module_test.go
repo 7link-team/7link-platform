@@ -17,12 +17,12 @@ func TestModuleRedactsConfigurationAndRegistersOpenAPI(t *testing.T) {
 		Name   string `mapstructure:"name"`
 		Secret string `mapstructure:"secret" secret:"true"`
 	}
-	module, err := NewModule(sample{Name: "api", Secret: "private"})
-	require.NoError(t, err)
+	m := NewModule(sample{Name: "api", Secret: "private"}, Config{})
+	require.NoError(t, m.Initialize(t.Context()))
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
-	assert.Equal(t, "config-inspector", module.ModuleName())
-	require.NoError(t, module.RegisterHTTP(t.Context(), router, api))
+	assert.Equal(t, "config-inspector", m.ModuleName())
+	require.NoError(t, m.RegisterHTTP(t.Context(), router, api))
 
 	request := httptest.NewRequest(http.MethodGet, Path, nil)
 	request.Header.Set("Accept", "text/html")
@@ -37,6 +37,7 @@ func TestModuleRedactsConfigurationAndRegistersOpenAPI(t *testing.T) {
 }
 
 func TestNewModuleRejectsUnsupportedConfiguration(t *testing.T) {
-	_, err := NewModule(nil)
+	m := NewModule(nil, Config{})
+	err := m.Initialize(t.Context())
 	assert.ErrorContains(t, err, "create config inspector")
 }

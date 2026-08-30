@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"7link.com/platform/pkg/module"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -41,7 +42,7 @@ const (
 )
 
 func TestHTTPMiddlewareGeneratesAndReturnsTraceHeaders(t *testing.T) {
-	module := NewModule("test", "1.0.0", WithIDGenerator(func() string { return generatedUUID }))
+	module := NewModule(module.Runtime{Name: "test", Version: "1.0.0"}, WithIDGenerator(func() string { return generatedUUID }))
 	t.Cleanup(func() { require.NoError(t, module.Deinitialize(context.Background())) })
 
 	var contextTraceID string
@@ -66,7 +67,7 @@ func TestHTTPMiddlewareContinuesIncomingTrace(t *testing.T) {
 		parentSpanID  = "bbbbbbbbbbbbbbbb"
 	)
 	var generated atomic.Int32
-	module := NewModule("test", "1.0.0", WithIDGenerator(func() string {
+	module := NewModule(module.Runtime{Name: "test", Version: "1.0.0"}, WithIDGenerator(func() string {
 		generated.Add(1)
 		return generatedUUID
 	}))
@@ -87,7 +88,7 @@ func TestHTTPMiddlewareContinuesIncomingTrace(t *testing.T) {
 }
 
 func TestHTTPMiddlewareAcceptsUUIDTraceHeader(t *testing.T) {
-	module := NewModule("test", "1.0.0")
+	module := NewModule(module.Runtime{Name: "test", Version: "1.0.0"})
 	t.Cleanup(func() { require.NoError(t, module.Deinitialize(context.Background())) })
 
 	handler := module.HTTPMiddleware(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
@@ -103,7 +104,7 @@ func TestHTTPMiddlewareAcceptsUUIDTraceHeader(t *testing.T) {
 }
 
 func TestHTTPTransportPropagatesTraceHeaders(t *testing.T) {
-	module := NewModule("test", "1.0.0", WithIDGenerator(func() string { return generatedUUID }))
+	module := NewModule(module.Runtime{Name: "test", Version: "1.0.0"}, WithIDGenerator(func() string { return generatedUUID }))
 	t.Cleanup(func() { require.NoError(t, module.Deinitialize(context.Background())) })
 
 	seen := make(chan http.Header, 1)
@@ -130,7 +131,7 @@ func TestHTTPTransportPropagatesTraceHeaders(t *testing.T) {
 
 func TestWithSpanExporterBatchesAndShutsDownExporter(t *testing.T) {
 	exporter := &recordingExporter{}
-	module := NewModule("test", "1.0.0", WithSpanExporter(nil), WithSpanExporter(exporter))
+	module := NewModule(module.Runtime{Name: "test", Version: "1.0.0"}, WithSpanExporter(nil), WithSpanExporter(exporter))
 	_, span := module.Tracer("test").Start(t.Context(), "exported")
 	span.End()
 	require.NoError(t, module.provider.ForceFlush(t.Context()))

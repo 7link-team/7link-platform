@@ -17,7 +17,7 @@ import (
 	"7link.com/platform/internal/infra/configinspector"
 	"7link.com/platform/internal/infra/databasemonitor"
 	"7link.com/platform/internal/infra/dlock"
-	"7link.com/platform/internal/infra/metrics"
+	metrics "7link.com/platform/internal/infra/metrics"
 	"7link.com/platform/internal/infra/migrationstatus"
 	"7link.com/platform/internal/infra/pprof"
 	"7link.com/platform/internal/infra/wuid"
@@ -29,30 +29,42 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 )
+
+type registrarModule struct {
+	httpErr       error
+	httpCalled    bool
+	grpcCalled    bool
+	registeredCtx context.Context
+}
+
+func (*registrarModule) ModuleName() string { return "registrar" }
+
+func (m *registrarModule) RegisterHTTP(ctx context.Context, _ chi.Router, _ huma.API) error {
+	m.httpCalled = true
+	m.registeredCtx = ctx
+	return m.httpErr
+}
+
+func (m *registrarModule) RegisterGRPC(grpc.ServiceRegistrar) { m.grpcCalled = true }
 
 func TestStartHTTPServerReportsRegistrationAndListenErrors(t *testing.T) {
 	registrationErr := errors.New("registration failed")
 	app := &App{
-		config: validTestAppConfig(),
-		ctx:    t.Context(),
-		mods:   []module.Module{&registrarModule{httpErr: registrationErr}},
+		config:  validTestAppConfig(),
+		ctx:     t.Context(),
+		modules: wiredRegistry(t, &registrarModule{httpErr: registrationErr}),
 	}
 	assert.ErrorIs(t, app.startHTTPServer(), registrationErr)
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	defer listener.Close()
-	app.mods = nil
+	app.modules = wiredRegistry(t)
 	app.config.HttpServer.Port = listener.Addr().(*net.TCPAddr).Port
 	app.serveErr = make(chan error, 1)
 	assert.ErrorContains(t, app.startHTTPServer(), "http listen")
-}
-
-func TestStartHTTPServerRequiresConfiguredMetricsModule(t *testing.T) {
-	app := &App{config: validTestAppConfig()}
-	app.config.API.Metrics.Enabled = true
-	assert.EqualError(t, app.startHTTPServer(), "http: prometheus module is unavailable")
 }
 
 func TestStartHTTPServerAppliesHardeningConfiguration(t *testing.T) {
@@ -73,12 +85,28 @@ func TestStartHTTPServerAppliesHardeningConfiguration(t *testing.T) {
 	require.NoError(t, app.httpServer.Shutdown(t.Context()))
 }
 
+// wiredRegistry builds a Registry in the Started state so HTTP/gRPC registration
+// is legal.
+func wiredRegistry(t *testing.T, mods ...module.Module) *module.Registry {
+	t.Helper()
+	registry := module.NewRegistry()
+	require.NoError(t, registry.Register(mods...))
+	require.NoError(t, registry.Activate())
+	require.NoError(t, registry.Wire(func(*module.Services) error { return nil }))
+	require.NoError(t, registry.Initialize(t.Context()))
+	require.NoError(t, registry.Start(t.Context()))
+	return registry
+}
+
 func moduleRouter(t *testing.T, app *App) (*chi.Mux, huma.API) {
 	t.Helper()
 	router := chi.NewRouter()
-	if app.metrics != nil {
-		router.Use(app.metrics.HTTPMiddleware)
+	if app.modules != nil {
+		for _, middleware := range app.modules.HTTPMiddlewares() {
+			router.Use(middleware)
+		}
 	}
+	router.Use(respx.Recovery)
 	api := humax.New(router, humax.Config{
 		Name:    app.config.Name,
 		Version: app.config.Version,
@@ -86,7 +114,9 @@ func moduleRouter(t *testing.T, app *App) (*chi.Mux, huma.API) {
 		Docs:    humax.EndpointConfig{Enabled: false},
 		OpenAPI: humax.EndpointConfig{Enabled: true},
 	})
-	require.NoError(t, app.registerHTTPModules(t.Context(), router, api))
+	if app.modules != nil {
+		require.NoError(t, app.modules.RegisterHTTP(t.Context(), router, api))
+	}
 	return router, api
 }
 
@@ -99,9 +129,8 @@ func TestConfigInspectorReturnsRedactedJSON(t *testing.T) {
 	app.config.API.ConfigInspector.Enabled = true
 	app.config.Database = map[string]Database{"primary": {Type: "postgres", Dsn: dsn}}
 	app.config.Telemetry.OTLP.Headers = map[string]string{"authorization": header}
-	inspector, err := configinspector.NewModule(app.config)
-	require.NoError(t, err)
-	app.mods = append(app.mods, inspector)
+	inspector := configinspector.NewModule(app.config, configInspectorConfig(app.config))
+	app.modules = wiredRegistry(t, inspector)
 	router, api := moduleRouter(t, app)
 
 	jsonResponse := httptest.NewRecorder()
@@ -144,10 +173,22 @@ func TestMigrationStatusReturnsCleanJSON(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, routerDB.Close()) })
 	app.Db = routerDB
-	app.mods = []module.Module{dlock.NewModule(app.Db), wuid.NewModule(app.Db)}
-	_, err = runModuleMigrations(t.Context(), app.Db.Write(), app.mods, MigrationConfig{Action: MigrationUp})
+
+	rt := app.runtime()
+	app.modules = module.NewRegistry()
+	require.NoError(t, app.modules.Register(
+		dlock.NewModule(rt),
+		wuid.NewModule(rt),
+		migrationstatus.NewModule(migrationStatusConfig(app.config)),
+	))
+	_, err = runModuleMigrations(t.Context(), app.Db.Write(), app.modules.Modules(), MigrationConfig{Action: MigrationUp})
 	require.NoError(t, err)
-	app.mods = append(app.mods, migrationStatusModule(app))
+	require.NoError(t, app.modules.Activate())
+	require.NoError(t, app.modules.Wire(func(services *module.Services) error {
+		return module.Provide[migrationstatus.Inspector](services, app.migrationInspector)
+	}))
+	require.NoError(t, app.modules.Initialize(t.Context()))
+	require.NoError(t, app.modules.Start(t.Context()))
 	router, api := moduleRouter(t, app)
 
 	jsonResponse := httptest.NewRecorder()
@@ -169,7 +210,15 @@ func TestMigrationStatusReturnsCleanJSON(t *testing.T) {
 
 func TestMigrationStatusReportsUnavailableDatabase(t *testing.T) {
 	app := &App{config: validTestAppConfig()}
-	app.mods = append(app.mods, migrationStatusModule(app))
+	app.config.API.MigrationStatus.Enabled = true
+	app.modules = module.NewRegistry()
+	require.NoError(t, app.modules.Register(migrationstatus.NewModule(migrationStatusConfig(app.config))))
+	require.NoError(t, app.modules.Activate())
+	require.NoError(t, app.modules.Wire(func(services *module.Services) error {
+		return module.Provide[migrationstatus.Inspector](services, app.migrationInspector)
+	}))
+	require.NoError(t, app.modules.Initialize(t.Context()))
+	require.NoError(t, app.modules.Start(t.Context()))
 	router, _ := moduleRouter(t, app)
 
 	jsonResponse := httptest.NewRecorder()
@@ -189,8 +238,9 @@ func TestMigrationStatusReportsUnavailableDatabase(t *testing.T) {
 
 func TestMetricsRegistrationAndDisabledModuleRoutes(t *testing.T) {
 	enabled := &App{config: validTestAppConfig()}
-	enabled.metrics = metrics.NewModule(nil)
-	enabled.mods = append(enabled.mods, enabled.metrics)
+	enabled.config.API.Metrics.Enabled = true
+	metricsModule := metrics.NewModule(module.Runtime{}, metricsConfig(enabled.config))
+	enabled.modules = wiredRegistry(t, metricsModule)
 	router, api := moduleRouter(t, enabled)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, metrics.Path, nil))
@@ -199,6 +249,7 @@ func TestMetricsRegistrationAndDisabledModuleRoutes(t *testing.T) {
 	assert.Contains(t, api.OpenAPI().Paths, metrics.Path)
 
 	disabled := &App{config: validTestAppConfig()}
+	disabled.modules = wiredRegistry(t)
 	disabledRouter, disabledAPI := moduleRouter(t, disabled)
 	for _, path := range []string{metrics.Path, pprof.Path, migrationstatus.Path, configinspector.Path, databasemonitor.Path} {
 		response := httptest.NewRecorder()
@@ -229,20 +280,6 @@ func TestLandingResourcesRequireEnabledAndAdvertised(t *testing.T) {
 	assert.Empty(t, landingResources(settings))
 }
 
-func migrationStatusModule(app *App) *migrationstatus.Module {
-	return migrationstatus.NewModule(func(ctx context.Context) ([]migrationstatus.Report, error) {
-		reports, err := runModuleMigrations(ctx, app.Db.Write(), app.mods, MigrationConfig{
-			Action: MigrationStatus,
-			To:     -1,
-		})
-		result := make([]migrationstatus.Report, len(reports))
-		for index, report := range reports {
-			result[index] = migrationstatus.Report{Module: report.Module, Status: report.Status}
-		}
-		return result, err
-	})
-}
-
 // capturingAuditSink collects audit events for assertions without touching the
 // process log or the database.
 type capturingAuditSink struct {
@@ -266,19 +303,19 @@ func (sink *capturingAuditSink) snapshot() []audit.Event {
 func TestHTTPServerMountsAuditMiddleware(t *testing.T) {
 	sink := &capturingAuditSink{}
 	app := &App{config: validTestAppConfig(), ctx: t.Context()}
-	app.audit = audit.NewModule(app.config.Name, app.config.Version, nil,
+	auditModule := audit.NewModule(module.Runtime{Name: app.config.Name, Version: app.config.Version},
 		audit.Config{Enabled: true, QueueSize: 1024, BatchSize: 1, FlushInterval: time.Millisecond, MaxBodyBytes: 1024},
 		audit.WithSinks(sink))
-	require.NoError(t, app.audit.Start(t.Context()))
+	require.NoError(t, auditModule.Start(t.Context()))
 	t.Cleanup(func() {
 		stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		require.NoError(t, app.audit.Stop(stopCtx))
+		require.NoError(t, auditModule.Stop(stopCtx))
 	})
 
 	// Mirror the middleware chain startHTTPServer builds.
 	router := chi.NewRouter()
-	router.Use(app.audit.HTTPMiddleware)
+	router.Use(auditModule.HTTPMiddleware)
 	router.Post("/orders", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":null}`))
@@ -304,18 +341,18 @@ func TestHTTPServerMountsAuditMiddleware(t *testing.T) {
 func TestHTTPServerDoesNotAuditSkippedRoutes(t *testing.T) {
 	sink := &capturingAuditSink{}
 	app := &App{config: validTestAppConfig(), ctx: t.Context()}
-	app.audit = audit.NewModule(app.config.Name, app.config.Version, nil,
+	auditModule := audit.NewModule(module.Runtime{Name: app.config.Name, Version: app.config.Version},
 		audit.Config{Enabled: true, QueueSize: 1024, BatchSize: 1, FlushInterval: time.Millisecond, MaxBodyBytes: 1024},
 		audit.WithSinks(sink))
-	require.NoError(t, app.audit.Start(t.Context()))
+	require.NoError(t, auditModule.Start(t.Context()))
 	t.Cleanup(func() {
 		stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		require.NoError(t, app.audit.Stop(stopCtx))
+		require.NoError(t, auditModule.Stop(stopCtx))
 	})
 
 	router := chi.NewRouter()
-	router.Use(app.audit.HTTPMiddleware)
+	router.Use(auditModule.HTTPMiddleware)
 	router.Post("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/healthz", nil))
 	// Give the pipeline a moment; no event should appear for the skipped route.

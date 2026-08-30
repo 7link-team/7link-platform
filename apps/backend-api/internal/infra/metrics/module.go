@@ -24,22 +24,38 @@ const (
 	unmatchedRoute = "unmatched"
 )
 
+// Config controls the metrics module. Enabled is inherited from module.Config
+// and read by the lifecycle's Enabler.
+type Config struct {
+	module.Config
+}
+
 // Module owns an isolated registry and HTTP server metrics.
 type Module struct {
-	registry     *prometheus.Registry
-	requests     *prometheus.CounterVec
-	duration     *prometheus.HistogramVec
-	responseSize *prometheus.HistogramVec
+	cfg                 Config
+	registry            *prometheus.Registry
+	requests            *prometheus.CounterVec
+	duration            *prometheus.HistogramVec
+	responseSize        *prometheus.HistogramVec
+	datasourceCollector *datasourceCollector
 }
 
 var (
-	_ module.Module        = (*Module)(nil)
-	_ module.HTTPRegistrar = (*Module)(nil)
+	_ module.Module          = (*Module)(nil)
+	_ module.Enabler         = (*Module)(nil)
+	_ module.ServiceInjector = (*Module)(nil)
+	_ module.CollectorSink   = (*Module)(nil)
+	_ module.HTTPRegistrar   = (*Module)(nil)
 )
 
 func (*Module) ModuleName() string { return Name }
 
-func NewModule(datasources *gormx.DatasourceRouter, monitors ...*databasemonitor.Module) *Module {
+func (m *Module) Enabled() bool { return m.cfg.Enabled }
+
+// NewModule builds the metrics module. The datasource router is taken from the
+// shared runtime; the database monitor (health gauges + SQL metrics) is resolved
+// later via InjectServices and is lenient (pool metrics work without it).
+func NewModule(rt module.Runtime, cfg Config) *Module {
 	registry := prometheus.NewRegistry()
 	requests := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "http_server_requests_total",
@@ -62,19 +78,39 @@ func NewModule(datasources *gormx.DatasourceRouter, monitors ...*databasemonitor
 		duration,
 		responseSize,
 	)
-	if datasources != nil {
-		var monitor *databasemonitor.Module
-		if len(monitors) > 0 {
-			monitor = monitors[0]
-		}
-		registry.MustRegister(newDatasourceCollector(datasources, monitor))
-	}
-	return &Module{
+	module := &Module{
+		cfg:          cfg,
 		registry:     registry,
 		requests:     requests,
 		duration:     duration,
 		responseSize: responseSize,
 	}
+	var datasources *gormx.DatasourceRouter
+	if router, ok := rt.DB.(*gormx.DatasourceRouter); ok {
+		datasources = router
+	}
+	if datasources != nil {
+		collector := newDatasourceCollector(datasources, nil)
+		module.datasourceCollector = collector
+		registry.MustRegister(collector)
+	}
+	return module
+}
+
+// InjectServices resolves the database monitor contract. A missing monitor is
+// lenient: the datasource pool metrics still export without it.
+func (m *Module) InjectServices(services *module.Services) error {
+	monitor, err := module.Resolve[databasemonitor.Monitor](services)
+	if err != nil {
+		if errors.Is(err, module.ErrServiceMissing) {
+			return nil
+		}
+		return err
+	}
+	if m.datasourceCollector != nil {
+		m.datasourceCollector.setMonitor(monitor)
+	}
+	return nil
 }
 
 // RegisterCollector adds an application-owned collector (e.g. the audit
@@ -97,7 +133,7 @@ func (m *Module) RegisterCollector(collector prometheus.Collector) error {
 
 type datasourceCollector struct {
 	router             *gormx.DatasourceRouter
-	monitor            *databasemonitor.Module
+	monitor            databasemonitor.Monitor
 	up                 *prometheus.Desc
 	probeDuration      *prometheus.Desc
 	lastProbe          *prometheus.Desc
@@ -125,7 +161,7 @@ type datasourceCollector struct {
 	queryMaxRows       *prometheus.Desc
 }
 
-func newDatasourceCollector(router *gormx.DatasourceRouter, monitor *databasemonitor.Module) *datasourceCollector {
+func newDatasourceCollector(router *gormx.DatasourceRouter, monitor databasemonitor.Monitor) *datasourceCollector {
 	labels := []string{"datasource", "readable", "writable"}
 	return &datasourceCollector{
 		router: router, monitor: monitor,
@@ -155,6 +191,13 @@ func newDatasourceCollector(router *gormx.DatasourceRouter, monitor *databasemon
 		queryRows:          prometheus.NewDesc("database_sql_rows_total", "Total rows returned or affected by datasource and operation.", []string{"datasource", "operation"}, nil),
 		queryMaxRows:       prometheus.NewDesc("database_sql_max_rows", "Maximum rows returned or affected by one execution.", []string{"datasource", "operation"}, nil),
 	}
+}
+
+// setMonitor binds the database monitor after service injection. The collector
+// is registered at construction with a nil monitor; the monitor is resolved at
+// Wire time and can only enrich, never disable, the pool metrics.
+func (collector *datasourceCollector) setMonitor(monitor databasemonitor.Monitor) {
+	collector.monitor = monitor
 }
 
 func (collector *datasourceCollector) Describe(ch chan<- *prometheus.Desc) {

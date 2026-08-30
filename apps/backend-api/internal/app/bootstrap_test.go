@@ -23,34 +23,6 @@ type namedHealthModule struct {
 func (m *namedHealthModule) ModuleName() string                { return m.name }
 func (m *namedHealthModule) CheckHealth(context.Context) error { return m.err }
 
-type wiringService interface{ Ready() bool }
-
-type wiringProvider struct{}
-
-func (*wiringProvider) ModuleName() string { return "provider" }
-func (*wiringProvider) Ready() bool        { return true }
-
-func (provider *wiringProvider) ProvideServices(services *module.Services) error {
-	return module.Provide[wiringService](services, provider)
-}
-
-type wiringConsumer struct{ service wiringService }
-
-func (*wiringConsumer) ModuleName() string { return "consumer" }
-func (consumer *wiringConsumer) InjectServices(services *module.Services) error {
-	service, err := module.Resolve[wiringService](services)
-	consumer.service = service
-	return err
-}
-
-func TestWireModulesCollectsProvidersBeforeInjection(t *testing.T) {
-	consumer := &wiringConsumer{}
-	app := &App{mods: []module.Module{consumer, &wiringProvider{}}}
-	require.NoError(t, app.wireModules())
-	require.NotNil(t, consumer.service)
-	assert.True(t, consumer.service.Ready())
-}
-
 func TestInitializeDatabaseRoutesPrimaryAndReplica(t *testing.T) {
 	app := &App{config: AppConfig{Database: map[string]Database{
 		"primary": {
@@ -115,10 +87,10 @@ func TestInitializeDatabaseKeepsHealthyWriterWhenAnotherFails(t *testing.T) {
 func TestCheckHealthJoinsModuleErrors(t *testing.T) {
 	first := errors.New("first unavailable")
 	second := errors.New("second unavailable")
-	app := &App{mods: []module.Module{
+	app := &App{modules: registeredRegistry(
 		&namedHealthModule{name: "first", err: first},
 		&namedHealthModule{name: "second", err: second},
-	}}
+	)}
 
 	err := app.checkHealth(t.Context())
 	assert.ErrorIs(t, err, first)
@@ -195,14 +167,9 @@ func TestBootstrapWithoutWriterReportsUnhealthy(t *testing.T) {
 
 	assert.ErrorIs(t, app.checkHealth(t.Context()), dlock.ErrDatabaseUnavailable)
 
-	var healthModule *health.HealthModule
-	for _, appModule := range app.mods {
-		if candidate, ok := appModule.(*health.HealthModule); ok {
-			healthModule = candidate
-			break
-		}
-	}
-	require.NotNil(t, healthModule)
+	healthModule, ok := app.modules.ByName(health.Name)
+	require.True(t, ok)
+	module := healthModule.(*health.HealthModule)
 	assert.Equal(t, healthservice.CheckData{
 		Status: healthservice.StatusNotServing,
 		Modules: []healthservice.ModuleStatus{
@@ -215,7 +182,7 @@ func TestBootstrapWithoutWriterReportsUnhealthy(t *testing.T) {
 			{Name: "audit", Status: healthservice.StatusUnknown},
 			{Name: "health", Status: healthservice.StatusServing},
 		},
-	}, healthModule.Service().Check(t.Context()))
+	}, module.Service().Check(t.Context()))
 }
 
 func TestBootstrapAddsEnabledHTTPModules(t *testing.T) {
@@ -232,15 +199,16 @@ func TestBootstrapAddsEnabledHTTPModules(t *testing.T) {
 	require.NoError(t, app.bootstrap(t.Context()))
 	t.Cleanup(func() { _ = app.shutdown() })
 
-	names := make([]string, len(app.mods))
-	for index, appModule := range app.mods {
-		names[index] = appModule.ModuleName()
+	names := make([]string, 0)
+	for _, appModule := range app.modules.Modules() {
+		names = append(names, appModule.ModuleName())
 	}
 	assert.Equal(t, []string{
-		"pprof", "i18n", "respx", "dlock", "wuid", "guid", "telemetry", "audit", "database-monitor", "metrics",
-		"migration-status", "config-inspector", "health",
+		"i18n", "respx", "dlock", "wuid", "guid", "metrics", "telemetry", "audit",
+		"database-monitor", "migration-status", "config-inspector", "pprof", "health",
 	}, names)
-	assert.NotNil(t, app.metrics)
+	_, ok := app.modules.ByName("metrics")
+	assert.True(t, ok)
 }
 
 func TestBootstrapRegistersAuditRecorderWhenDisabled(t *testing.T) {
@@ -248,12 +216,14 @@ func TestBootstrapRegistersAuditRecorderWhenDisabled(t *testing.T) {
 	require.NoError(t, app.bootstrap(t.Context()))
 	t.Cleanup(func() { _ = app.shutdown() })
 
-	require.NotNil(t, app.audit)
-	recorder, err := module.Resolve[audit.Recorder](app.services)
+	recorder, err := module.Resolve[audit.Recorder](app.modules.Services())
 	require.NoError(t, err)
 	require.NotNil(t, recorder)
 	recorder.Record(t.Context(), audit.Event{Operation: "disabled"})
-	assert.NotNil(t, app.audit.Collector())
+
+	auditModule, ok := app.modules.ByName(audit.Name)
+	require.True(t, ok)
+	assert.NotNil(t, auditModule.(*audit.Module).Collector())
 }
 
 func TestConfigureProcessRuntime(t *testing.T) {

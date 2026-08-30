@@ -70,11 +70,16 @@ var (
 	_ module.Stopper         = (*Module)(nil)
 )
 
-// NewModule builds the audit module. db is the writable datasource; the gorm
-// sink is installed only when Config.Database.Enabled and a writer exist. The
-// slog sink is always installed.
-func NewModule(service, version string, db gormx.Writer, cfg Config, options ...ModuleOption) *Module {
+// NewModule builds the audit module. The service identity and writable
+// datasource are taken from the shared runtime; the gorm sink is installed only
+// when Config.Database.Enabled and a writer exist. The slog sink is always
+// installed.
+func NewModule(rt module.Runtime, cfg Config, options ...ModuleOption) *Module {
 	cfg = normalizeConfig(cfg)
+	var db gormx.Writer
+	if router, ok := rt.DB.(*gormx.DatasourceRouter); ok {
+		db = router
+	}
 	module := &Module{
 		cfg:        cfg,
 		redactor:   newRedactor(cfg.SensitiveFields),
@@ -94,7 +99,7 @@ func NewModule(service, version string, db gormx.Writer, cfg Config, options ...
 	}
 
 	instance := instanceID()
-	module.recorder = NewAsyncRecorder(service, version, instance, RecorderConfig{
+	module.recorder = NewAsyncRecorder(rt.Name, rt.Version, instance, RecorderConfig{
 		Enabled:       cfg.Enabled,
 		QueueSize:     cfg.QueueSize,
 		BatchSize:     cfg.BatchSize,

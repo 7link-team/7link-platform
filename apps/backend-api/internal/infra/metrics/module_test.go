@@ -13,13 +13,14 @@ import (
 	"7link.com/platform/internal/infra/databasemonitor"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	humax "7link.com/platform/pkg/extension/huma"
+	"7link.com/platform/pkg/module"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestHTTPMiddlewareExportsRouteMetricsWithoutRawURLs(t *testing.T) {
-	module := NewModule(nil)
+	module := NewModule(module.Runtime{}, Config{})
 	assert.Equal(t, "metrics", module.ModuleName())
 	router := chi.NewRouter()
 	router.Use(module.HTTPMiddleware)
@@ -69,7 +70,7 @@ func TestDatasourceMetricsIncludeNamedPoolState(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = router.Close() })
 	assert.NoError(t, router.Probe(t.Context()).RoutingError())
-	monitor := databasemonitor.NewModule(router, databasemonitor.Config{
+	monitor := databasemonitor.NewModule(module.Runtime{DB: router}, databasemonitor.Config{
 		Interval: time.Hour, Timeout: time.Second, StaleAfter: 2 * time.Hour,
 	})
 	require.NoError(t, router.RegisterQueryObserver(monitor))
@@ -77,8 +78,14 @@ func TestDatasourceMetricsIncludeNamedPoolState(t *testing.T) {
 	require.NoError(t, router.Write().Exec("SELECT 1").Error)
 	t.Cleanup(func() { require.NoError(t, monitor.Stop(context.Background())) })
 
+	m := NewModule(module.Runtime{DB: router}, Config{})
+	services := module.NewServices()
+	require.NoError(t, module.Provide[databasemonitor.Monitor](services, monitor))
+	require.NoError(t, services.Seal())
+	require.NoError(t, m.InjectServices(services))
+
 	response := httptest.NewRecorder()
-	NewModule(router, monitor).Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, Path, nil))
+	m.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, Path, nil))
 	body := response.Body.String()
 	labels := `datasource="primary",readable="true",writable="true"`
 	assert.Contains(t, body, `database_datasource_up{`+labels+`} 1`)

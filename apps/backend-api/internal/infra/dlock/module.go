@@ -26,7 +26,20 @@ var (
 	_ module.HealthChecker = (*Module)(nil)
 )
 
-func NewModule(db gormx.Writer, options ...Option) *Module {
+// NewModule builds the dlock module. The writable datasource is taken from the
+// shared runtime; a router without a writer leaves the module degraded (health
+// reports ErrDatabaseUnavailable) rather than failing construction.
+func NewModule(rt module.Runtime, options ...Option) *Module {
+	var db gormx.Writer
+	if router, ok := rt.DB.(*gormx.DatasourceRouter); ok {
+		db = router
+	}
+	return newModule(db, options...)
+}
+
+// newModule is the package-private construction seam used by tests that inject
+// a narrow writer fake.
+func newModule(db gormx.Writer, options ...Option) *Module {
 	return &Module{db: db, options: append([]Option(nil), options...)}
 }
 

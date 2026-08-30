@@ -2,14 +2,15 @@ package audit
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/module"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 )
 
 // newTestModule builds a module whose events are captured by a memory sink and
@@ -17,7 +18,7 @@ import (
 func newTestModule(t *testing.T, config Config) (*Module, *memorySink) {
 	t.Helper()
 	sink := &memorySink{}
-	module := NewModule("test-api", "1.0.0", nil, config, WithSinks(sink))
+	module := NewModule(module.Runtime{Name: "test-api", Version: "1.0.0"},config, WithSinks(sink))
 	module.Start(t.Context())
 	t.Cleanup(func() {
 		stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -29,7 +30,7 @@ func newTestModule(t *testing.T, config Config) (*Module, *memorySink) {
 
 func TestModuleLifecycleAndRecord(t *testing.T) {
 	sink := &memorySink{}
-	auditModule := NewModule("svc", "1.0.0", nil, httpModuleConfig(), WithSinks(sink))
+	auditModule := NewModule(module.Runtime{Name: "svc", Version: "1.0.0"},httpModuleConfig(), WithSinks(sink))
 	assert.Equal(t, "audit", auditModule.ModuleName())
 	require.NoError(t, auditModule.Start(t.Context()))
 	auditModule.Record(t.Context(), Event{Operation: "manual", Access: AccessWrite})
@@ -42,7 +43,7 @@ func TestModuleLifecycleAndRecord(t *testing.T) {
 
 func TestModuleProvideServices(t *testing.T) {
 	sink := &memorySink{}
-	auditModule := NewModule("svc", "1.0.0", nil, httpModuleConfig(), WithSinks(sink))
+	auditModule := NewModule(module.Runtime{Name: "svc", Version: "1.0.0"},httpModuleConfig(), WithSinks(sink))
 	services := module.NewServices()
 	require.NoError(t, auditModule.ProvideServices(services))
 	require.NoError(t, services.Seal())
@@ -52,7 +53,7 @@ func TestModuleProvideServices(t *testing.T) {
 }
 
 func TestDisabledModuleProvidesNoopRecorderWithoutDispatcher(t *testing.T) {
-	auditModule := NewModule("svc", "1.0.0", nil, Config{Enabled: false}, WithSinks(&memorySink{}))
+	auditModule := NewModule(module.Runtime{Name: "svc", Version: "1.0.0"},Config{Enabled: false}, WithSinks(&memorySink{}))
 	services := module.NewServices()
 	require.NoError(t, auditModule.ProvideServices(services))
 	require.NoError(t, services.Seal())
@@ -68,7 +69,7 @@ func TestDisabledModuleProvidesNoopRecorderWithoutDispatcher(t *testing.T) {
 
 func TestModuleRunConvenience(t *testing.T) {
 	sink := &memorySink{}
-	auditModule := NewModule("svc", "1.0.0", nil, httpModuleConfig(), WithSinks(sink))
+	auditModule := NewModule(module.Runtime{Name: "svc", Version: "1.0.0"},httpModuleConfig(), WithSinks(sink))
 	require.NoError(t, auditModule.Start(t.Context()))
 	defer func() { require.NoError(t, auditModule.Stop(t.Context())) }()
 
@@ -82,7 +83,7 @@ func TestModuleRunConvenience(t *testing.T) {
 
 func TestModuleCollectorExportsCounters(t *testing.T) {
 	sink := &memorySink{}
-	auditModule := NewModule("svc", "1.0.0", nil, httpModuleConfig(), WithSinks(sink))
+	auditModule := NewModule(module.Runtime{Name: "svc", Version: "1.0.0"},httpModuleConfig(), WithSinks(sink))
 	require.NoError(t, auditModule.Start(t.Context()))
 	defer func() { require.NoError(t, auditModule.Stop(t.Context())) }()
 
@@ -124,7 +125,7 @@ func TestModuleCollectorExportsCounters(t *testing.T) {
 
 func TestModuleNormalizesConfiguration(t *testing.T) {
 	sink := &memorySink{}
-	auditModule := NewModule("svc", "1", nil, Config{
+	auditModule := NewModule(module.Runtime{Name: "svc", Version: "1"},Config{
 		Enabled:      true,
 		MaxBodyBytes: -1,
 		QueueSize:    0,
@@ -139,21 +140,27 @@ func TestModuleNormalizesConfiguration(t *testing.T) {
 	assert.Empty(t, auditModule.cfg.SensitiveFields)
 
 	// A disabled config still builds a module.
-	disabled := NewModule("svc", "1", nil, Config{Enabled: false}, WithSinks(sink))
+	disabled := NewModule(module.Runtime{Name: "svc", Version: "1"},Config{Enabled: false}, WithSinks(sink))
 	assert.False(t, disabled.cfg.Enabled)
 }
 
 func TestModuleGormSinkEndToEnd(t *testing.T) {
-	db := openTestDB(t)
-	require.NoError(t, Migrate(t.Context(), db))
-	writer := writerFunc(func() *gorm.DB { return db })
+	router, err := gormx.NewDatasourceRouter(t.Context(), false, map[string]gormx.Datasource{
+		"primary": {
+			Type: "sqlite", DSN: filepath.Join(t.TempDir(), "audit.sqlite"),
+			Writable: true, Readable: true,
+		},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, router.Close()) })
+	require.NoError(t, Migrate(t.Context(), router.Write()))
 
 	config := httpModuleConfig()
 	config.Database = DatabaseConfig{Enabled: true}
 	// WithSink appends a memory sink while keeping the configured gorm sink, so
 	// the event must land in both.
 	sink := &memorySink{}
-	auditModule := NewModule("svc", "1", writer, config, WithSink(sink))
+	auditModule := NewModule(module.Runtime{Name: "svc", Version: "1", DB: router}, config, WithSink(sink))
 	require.NoError(t, auditModule.Start(t.Context()))
 	defer func() { require.NoError(t, auditModule.Stop(t.Context())) }()
 
@@ -161,7 +168,7 @@ func TestModuleGormSinkEndToEnd(t *testing.T) {
 	eventually(t, func() bool { return sink.count() == 1 })
 	eventually(t, func() bool {
 		var count int64
-		if err := db.Model(&OperationLog{}).Where("id = ?", int64(777)).Count(&count).Error; err != nil {
+		if err := router.Write().Model(&OperationLog{}).Where("id = ?", int64(777)).Count(&count).Error; err != nil {
 			return false
 		}
 		return count == 1
@@ -174,7 +181,7 @@ func TestModuleGormSinkSkippedWhenNoWriter(t *testing.T) {
 	sink := &memorySink{}
 	config := httpModuleConfig()
 	config.Database = DatabaseConfig{Enabled: true}
-	auditModule := NewModule("svc", "1", nil, config, WithSinks(sink))
+	auditModule := NewModule(module.Runtime{Name: "svc", Version: "1"},config, WithSinks(sink))
 	require.NoError(t, auditModule.Start(t.Context()))
 	defer func() { require.NoError(t, auditModule.Stop(t.Context())) }()
 	auditModule.Record(t.Context(), Event{Operation: "op"})
@@ -189,7 +196,3 @@ func TestMaxBodyBytesNegativeMeansUnlimitedCapture(t *testing.T) {
 	assert.Equal(t, `{"a":"b"}`, body)
 	assert.False(t, truncated)
 }
-
-type writerFunc func() *gorm.DB
-
-func (f writerFunc) Write() *gorm.DB { return f() }

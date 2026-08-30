@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"7link.com/platform/pkg/module"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -66,6 +65,9 @@ type shutdownLifecycleModule struct {
 }
 
 func (*shutdownLifecycleModule) ModuleName() string { return "shutdown-test" }
+func (module *shutdownLifecycleModule) Start(context.Context) error {
+	return nil
+}
 func (module *shutdownLifecycleModule) Quiesce(context.Context) error {
 	module.quiesced = true
 	return nil
@@ -139,7 +141,7 @@ func TestImmediateShutdownSkipsQuiesceButCleansUpModules(t *testing.T) {
 	lifecycle := &shutdownLifecycleModule{}
 	app := &App{
 		config:  AppConfig{Shutdown: ShutdownConfig{Graceful: false, Timeout: time.Second}},
-		started: []module.Module{lifecycle},
+		modules: wiredRegistry(t, lifecycle),
 	}
 	require.NoError(t, app.shutdown())
 	assert.False(t, lifecycle.quiesced)

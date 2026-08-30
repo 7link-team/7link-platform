@@ -21,7 +21,7 @@ func (r *countingWriter) Write() *gorm.DB {
 }
 
 func TestModuleWithoutDatabaseReportsUnhealthy(t *testing.T) {
-	module := NewModule(nil)
+	module := newModule(nil)
 	assert.ErrorIs(t, module.CheckHealth(t.Context()), ErrDatabaseUnavailable)
 	_, err := module.TryLock(t.Context(), "missing")
 	assert.ErrorIs(t, err, ErrDatabaseUnavailable)
@@ -32,7 +32,7 @@ func TestModuleWithoutDatabaseReportsUnhealthy(t *testing.T) {
 func TestModuleInitializesAndProvidesLocks(t *testing.T) {
 	db := newDB(t)
 	router := &countingWriter{db: db}
-	module := NewModule(router, WithTTL(DefaultTTL))
+	module := newModule(router, WithTTL(DefaultTTL))
 
 	require.NoError(t, Migrate(t.Context(), db))
 	assert.Zero(t, router.calls.Load())
@@ -47,7 +47,7 @@ func TestModuleInitializesAndProvidesLocks(t *testing.T) {
 
 func TestModuleReportsClosedDatabase(t *testing.T) {
 	db := newDB(t)
-	module := NewModule(&countingWriter{db: db})
+	module := newModule(&countingWriter{db: db})
 	require.NoError(t, Migrate(t.Context(), db))
 
 	sqlDB, err := db.DB()

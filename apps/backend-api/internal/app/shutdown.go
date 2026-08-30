@@ -28,8 +28,10 @@ func (app *App) shutdown() error {
 
 	var errs []error
 	if app.config.Shutdown.Graceful {
-		if err := app.quiesceModules(shutdownCtx); err != nil {
-			errs = append(errs, err)
+		if app.modules != nil {
+			if err := app.modules.Quiesce(shutdownCtx); err != nil {
+				errs = append(errs, err)
+			}
 		}
 		if app.httpServer != nil || app.grpcServer != nil {
 			if err := waitForDrain(shutdownCtx, app.config.Shutdown.DrainDelay); err != nil {
@@ -59,14 +61,18 @@ func (app *App) shutdown() error {
 	if app.cancel != nil {
 		app.cancel()
 	}
-	if err := app.stopModules(shutdownCtx); err != nil {
-		errs = append(errs, err)
+	if app.modules != nil {
+		if err := app.modules.Stop(shutdownCtx); err != nil {
+			errs = append(errs, err)
+		}
+		if err := app.modules.Deinitialize(shutdownCtx); err != nil {
+			errs = append(errs, err)
+		}
 	}
-	if err := app.deinitializeModules(shutdownCtx); err != nil {
-		errs = append(errs, err)
-	}
-	if err := app.Db.Close(); err != nil {
-		errs = append(errs, err)
+	if app.Db != nil {
+		if err := app.Db.Close(); err != nil {
+			errs = append(errs, err)
+		}
 	}
 
 	if len(errs) > 0 {

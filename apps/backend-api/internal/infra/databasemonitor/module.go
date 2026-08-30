@@ -101,13 +101,35 @@ type Module struct {
 }
 
 var (
-	_ module.Module        = (*Module)(nil)
-	_ module.Starter       = (*Module)(nil)
-	_ module.Stopper       = (*Module)(nil)
-	_ module.HTTPRegistrar = (*Module)(nil)
+	_ module.Module          = (*Module)(nil)
+	_ module.ServiceProvider = (*Module)(nil)
+	_ module.Initializer     = (*Module)(nil)
+	_ module.Starter         = (*Module)(nil)
+	_ module.Stopper         = (*Module)(nil)
+	_ module.HTTPRegistrar   = (*Module)(nil)
 )
 
-func NewModule(datasources datasource, config Config) *Module {
+// Monitor is the narrow contract consumed by the metrics module: the cached
+// datasource health snapshot, staleness check, and accumulated SQL statistics.
+type Monitor interface {
+	Snapshot() Snapshot
+	SnapshotStale(Snapshot) bool
+	QueryMetrics() []QueryMetric
+}
+
+// NewModule builds the database monitor. The datasource router is taken from the
+// shared runtime; without a router the module stays idle (Start no-ops).
+func NewModule(rt module.Runtime, config Config) *Module {
+	var datasources datasource
+	if router, ok := rt.DB.(*gormx.DatasourceRouter); ok {
+		datasources = router
+	}
+	return newModule(datasources, config)
+}
+
+// newModule is the package-private construction seam used by tests that inject a
+// fake datasource.
+func newModule(datasources datasource, config Config) *Module {
 	if config.Interval <= 0 {
 		config.Interval = defaultInterval
 	}
@@ -132,6 +154,35 @@ func NewModule(datasources datasource, config Config) *Module {
 		queryTotals:     make(map[queryMetricKey]*QueryMetric),
 		statisticsSince: time.Now().UTC(),
 	}
+}
+
+// ProvideServices exposes the monitor contract to dependent modules (metrics).
+func (m *Module) ProvideServices(services *module.Services) error {
+	return module.Provide[Monitor](services, m)
+}
+
+// Initialize registers the module as the datasource query observer when the
+// inspector is exposed. The capability is required: if the datasource router
+// does not support query observation while ExposeHTTP is true, startup fails
+// instead of silently disabling SQL observation.
+func (m *Module) Initialize(ctx context.Context) error {
+	if !m.config.ExposeHTTP {
+		return nil
+	}
+	if m.datasources == nil {
+		// No datasources to observe; the diagnostics degrade instead of failing.
+		return nil
+	}
+	registrar, ok := m.datasources.(interface {
+		RegisterQueryObserver(gormx.QueryObserver) error
+	})
+	if !ok {
+		return errors.New("database monitor: datasource does not support query observation")
+	}
+	if err := registrar.RegisterQueryObserver(m); err != nil {
+		return fmt.Errorf("register database query observer: %w", err)
+	}
+	return nil
 }
 
 func (*Module) ModuleName() string { return Name }

@@ -9,6 +9,7 @@ import (
 
 	goosex "7link.com/platform/pkg/extension/goose"
 	humax "7link.com/platform/pkg/extension/huma"
+	"7link.com/platform/pkg/module"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,9 +19,13 @@ func TestModuleReturnsJSONAndRegistersOpenAPI(t *testing.T) {
 	reports := []Report{{Module: "users", Status: goosex.Status{State: goosex.StatePending}}}
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
-	module := NewModule(func(context.Context) ([]Report, error) { return reports, nil })
-	assert.Equal(t, "migration-status", module.ModuleName())
-	require.NoError(t, module.RegisterHTTP(t.Context(), router, api))
+	m := NewModule(Config{})
+	services := module.NewServices()
+	require.NoError(t, module.Provide[Inspector](services, func(context.Context) ([]Report, error) { return reports, nil }))
+	require.NoError(t, services.Seal())
+	require.NoError(t, m.InjectServices(services))
+	assert.Equal(t, "migration-status", m.ModuleName())
+	require.NoError(t, m.RegisterHTTP(t.Context(), router, api))
 
 	for _, accept := range []string{"application/json", "text/html"} {
 		request := httptest.NewRequest(http.MethodGet, Path, nil)
@@ -38,15 +43,19 @@ func TestModuleReturnsJSONAndRegistersOpenAPI(t *testing.T) {
 func TestModuleHidesInspectionErrors(t *testing.T) {
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
-	module := NewModule(func(context.Context) ([]Report, error) {
+	m := NewModule(Config{})
+	services := module.NewServices()
+	require.NoError(t, module.Provide[Inspector](services, func(context.Context) ([]Report, error) {
 		return nil, errors.New("database secret")
-	})
-	require.NoError(t, module.RegisterHTTP(t.Context(), router, api))
+	}))
+	require.NoError(t, services.Seal())
+	require.NoError(t, m.InjectServices(services))
+	require.NoError(t, m.RegisterHTTP(t.Context(), router, api))
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, Path, nil))
 	assert.Equal(t, http.StatusServiceUnavailable, response.Code)
 	assert.NotContains(t, response.Body.String(), "database secret")
-	assert.EqualError(t, NewModule(nil).RegisterHTTP(t.Context(), chi.NewRouter(), nil),
+	assert.EqualError(t, NewModule(Config{}).RegisterHTTP(t.Context(), chi.NewRouter(), nil),
 		"register migration status: inspector is unavailable")
 }
 

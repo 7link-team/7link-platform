@@ -2,6 +2,7 @@ package module
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"
@@ -97,5 +98,51 @@ type (
 	PrometheusCollectorModule interface {
 		Module
 		Collector() prometheus.Collector
+	}
+
+	// Config is the base configuration inherited by conditional modules. It
+	// carries only the activation switch. Always-registered modules (audit,
+	// telemetry, database-monitor, health, ...) do NOT embed it and MUST NOT
+	// implement Enabler.
+	Config struct {
+		Enabled bool
+	}
+
+	// Enabler exposes the activation switch to the lifecycle. Pure capability
+	// interface (asserted against module.Module values, like Initializer or
+	// Starter), so it does not embed Module.
+	Enabler interface {
+		Enabled() bool
+	}
+
+	// HTTPMiddlewareModule contributes a server-wide HTTP middleware.
+	// Middlewares run in registration order: earlier module = outer middleware.
+	// respx.Recovery is always appended innermost by the HTTP server.
+	HTTPMiddlewareModule interface {
+		Module
+		HTTPMiddleware(next http.Handler) http.Handler
+	}
+
+	// CollectorSink accepts Prometheus collectors contributed by other modules.
+	// The metrics module implements it; the lifecycle aggregates every active
+	// PrometheusCollectorModule into every active CollectorSink after wiring.
+	CollectorSink interface {
+		Module
+		RegisterCollector(collector prometheus.Collector) error
+	}
+
+	// RawHTTPHandlerModule contributes raw, non-typed HTTP handlers (metrics
+	// text, pprof, HTML consoles). The HTTP server mounts them on its adapter
+	// router — the only place a router implementation appears.
+	RawHTTPHandlerModule interface {
+		Module
+		RawHTTPRoutes() []RawRoute
+	}
+
+	// RawRoute is one raw HTTP route contributed by a module.
+	RawRoute struct {
+		Method  string
+		Path    string
+		Handler http.Handler
 	}
 )

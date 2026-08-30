@@ -7,10 +7,23 @@ import (
 	"time"
 
 	audit "7link.com/platform/internal/infra/audit"
+	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/internal/infra/wuid"
+	"7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// auditDependencies returns the modules audit depends on transitively
+// (i18n <- guid <- wuid), so Activate's dependency validation passes.
+func auditDependencies(rt module.Runtime) []module.Module {
+	return []module.Module{
+		i18n.NewModule(i18n.Base),
+		wuid.NewModule(rt),
+		guid.NewModule(),
+	}
+}
 
 func TestStartGRPCServerRejectsOccupiedAddress(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -42,15 +55,17 @@ func TestStartGRPCServerMountsAuditInterceptor(t *testing.T) {
 		serveErr: make(chan error, 2),
 	}
 	app.config.GrpcServer.Port = 0
-	app.audit = audit.NewModule(app.config.Name, app.config.Version, nil, audit.Config{Enabled: true})
-	// The interceptor is collected from the module registry, so the module must
-	// actually be registered for the mounting path to execute.
-	app.mods = []module.Module{app.audit}
-	require.NoError(t, app.audit.Start(t.Context()))
+	rt := module.Runtime{Name: app.config.Name, Version: app.config.Version}
+	auditModule := audit.NewModule(rt, audit.Config{Enabled: true})
+	// The interceptor is collected from the module registry, so the module (and
+	// its transitive dependencies) must be registered and started for the
+	// mounting path to execute.
+	deps := auditDependencies(rt)
+	app.modules = wiredRegistry(t, append(deps, auditModule)...)
 	t.Cleanup(func() {
 		stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		require.NoError(t, app.audit.Stop(stopCtx))
+		require.NoError(t, app.modules.Stop(stopCtx))
 	})
 	require.NoError(t, app.startGRPCServer())
 	require.NotNil(t, app.grpcServer)
@@ -59,9 +74,11 @@ func TestStartGRPCServerMountsAuditInterceptor(t *testing.T) {
 
 func TestGRPCProtocolOptionsCollectsModuleInterceptors(t *testing.T) {
 	app := &App{ctx: t.Context()}
-	app.audit = audit.NewModule("test", "1", nil, audit.Config{Enabled: true})
-	app.mods = []module.Module{app.audit}
-	options := app.grpcProtocolOptions()
+	rt := module.Runtime{Name: "test", Version: "1"}
+	auditModule := audit.NewModule(rt, audit.Config{Enabled: true})
+	deps := auditDependencies(rt)
+	app.modules = registeredRegistry(append(deps, auditModule)...)
+	options := app.modules.GRPCProtocolOptions()
 	// The audit module contributes no stats handler but one unary and one stream
 	// chain; the platform interceptors (locale, recovery, validation) follow.
 	assert.Len(t, options, 2)

@@ -46,143 +46,69 @@ func processConsoleColorsEnabled(debug bool) bool {
 	return debug || isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdout.Fd())
 }
 
-// bootstrap opens shared infrastructure, builds and wires modules, optionally
-// migrates them, and then runs their initialization and start phases.
+// bootstrap opens shared infrastructure, declares the module bill of materials,
+// and drives the module lifecycle (activate -> wire -> collect metrics ->
+// migrate -> initialize -> start).
 func (app *App) bootstrap(ctx context.Context) error {
+	app.modules = module.NewRegistry()
 	if err := app.initializeDatabase(ctx); err != nil {
 		return err
 	}
-	app.databaseMonitor = databasemonitor.NewModule(app.Db, databasemonitor.Config{
-		Interval:      app.config.DatasourceMonitor.Interval,
-		Timeout:       app.config.DatasourceMonitor.Timeout,
-		StaleAfter:    app.config.DatasourceMonitor.StaleAfter,
-		ExposeHTTP:    app.config.API.DatasourceInspector.Enabled,
-		SQLCapacity:   app.config.DatasourceMonitor.SQLCapacity,
-		SlowCapacity:  app.config.DatasourceMonitor.SlowCapacity,
-		SlowThreshold: app.config.DatasourceMonitor.SlowSQLThreshold,
-	})
-	if app.config.API.DatasourceInspector.Enabled {
-		if err := app.Db.RegisterQueryObserver(app.databaseMonitor); err != nil {
-			return fmt.Errorf("register database query observer: %w", err)
-		}
-	}
-
-	// Always register the module so dependent modules can resolve Recorder even
-	// when automatic auditing is disabled. The disabled recorder is a no-op and
-	// does not start a dispatcher.
-	app.audit = audit.NewModule(app.config.Name, app.config.Version, app.Db, audit.Config{
-		Enabled:         app.config.Audit.Enabled,
-		Database:        audit.DatabaseConfig{Enabled: app.config.Audit.Database.Enabled},
-		RecordReads:     app.config.Audit.RecordReads,
-		RecordStreams:   app.config.Audit.RecordStreams,
-		MaxBodyBytes:    app.config.Audit.MaxBodyBytes,
-		SensitiveFields: app.config.Audit.SensitiveFields,
-		SkipRoutes:      app.config.Audit.SkipRoutes,
-		QueueSize:       app.config.Audit.QueueSize,
-		BatchSize:       app.config.Audit.BatchSize,
-		FlushInterval:   app.config.Audit.FlushInterval,
-		FlushTimeout:    app.config.Audit.FlushTimeout,
-		Overflow:        app.config.Audit.Overflow,
-	})
-
-	// Registration order follows dependency direction: i18n before respx,
-	// wuid before guid, guid before audit. databaseMonitor is a no-dependency
-	// query observer and sits after the core so shutdown releases it first.
-	if app.config.Pprof.Enabled {
-		app.AddModule(pprof.NewModule(app.config.Name))
-	}
-
-	app.AddModule(
+	rt := app.runtime()
+	if err := app.addModule(
 		i18n.NewModule(i18n.Base),
 		respx.NewModule(),
-
-		dlock.NewModule(app.Db),
-		wuid.NewModule(app.Db),
+		dlock.NewModule(rt),
+		wuid.NewModule(rt),
 		guid.NewModule(),
 
-		// .. basic modules
-	)
+		// metrics before telemetry/audit keeps its HTTP middleware outermost.
+		metrics.NewModule(rt, metricsConfig(app.config)),
+		telemetry.NewModule(rt, telemetry.WithConfig(telemetryConfig(app.config))),
+		audit.NewModule(rt, auditConfig(app.config)),
+		databasemonitor.NewModule(rt, datasourceMonitorConfig(app.config)),
 
-	// telemetry is always registered: local trace propagation and the X-Trace-ID
-	// response header stay available even when no exporter is configured — the
-	// OTLP exporter itself is gated inside telemetry.Initialize. It is registered
-	// before audit so protocol interceptors run inside telemetry's span context,
-	// matching the HTTP middleware order (telemetry outside audit).
-	app.telemetry = telemetry.NewModule(app.config.Name, app.config.Version, telemetry.WithConfig(telemetry.Config{
-		OTLP: telemetry.OTLPConfig{
-			Enabled:  app.config.Telemetry.OTLP.Enabled,
-			Protocol: app.config.Telemetry.OTLP.Protocol,
-			Endpoint: app.config.Telemetry.OTLP.Endpoint,
-			Insecure: app.config.Telemetry.OTLP.Insecure,
-			Headers:  app.config.Telemetry.OTLP.Headers,
-			Timeout:  app.config.Telemetry.OTLP.Timeout,
-		},
-	}))
-	app.AddModule(app.telemetry)
+		migrationstatus.NewModule(migrationStatusConfig(app.config)),
+		configinspector.NewModule(app.config, configInspectorConfig(app.config)),
+		pprof.NewModule(rt, pprofConfig(app.config)),
 
-	app.AddModule(
-		app.audit,
-		app.databaseMonitor,
-
-		// .. enhance modules
-	)
-
-	if app.config.API.Metrics.Enabled {
-		app.metrics = metrics.NewModule(app.Db, app.databaseMonitor)
-		app.AddModule(app.metrics)
-		for _, appModule := range app.mods {
-			collector, ok := appModule.(module.PrometheusCollectorModule)
-			if !ok {
-				continue
-			}
-			if err := app.metrics.RegisterCollector(collector.Collector()); err != nil {
-				return fmt.Errorf("register module metrics: %w", err)
-			}
-		}
+		health.NewModule(),
+	); err != nil {
+		return err
 	}
-	if app.config.API.MigrationStatus.Enabled {
-		app.AddModule(migrationstatus.NewModule(func(ctx context.Context) ([]migrationstatus.Report, error) {
-			reports, err := runModuleMigrations(ctx, app.Db.Write(), app.mods, MigrationConfig{
-				Action: MigrationStatus,
-				To:     -1,
-			})
-			result := make([]migrationstatus.Report, len(reports))
-			for index, report := range reports {
-				result[index] = migrationstatus.Report{Module: report.Module, Status: report.Status}
-			}
-			return result, err
-		}))
-	}
-	if app.config.API.ConfigInspector.Enabled {
-		inspector, err := configinspector.NewModule(app.config)
-		if err != nil {
-			return err
-		}
-		app.AddModule(inspector)
-	}
+	return app.lifecycle(ctx)
+}
 
-	// app.AddModule(app.mods,
-	// .. biz modules
-	// )
-	app.AddModule(
-		health.NewModule(app.healthCheckers),
-		// .. completion modules
-	)
+// runtime builds the immutable app-level environment shared by modules. It is the
+// only place app.config.* / app.Db are referenced during bootstrap.
+func (app *App) runtime() module.Runtime {
+	return module.Runtime{Name: app.config.Name, Version: app.config.Version, DB: app.Db}
+}
 
-	if err := app.wireModules(); err != nil {
+// lifecycle drives the module lifecycle from activation through start.
+func (app *App) lifecycle(ctx context.Context) error {
+	if err := app.modules.Activate(); err != nil {
+		return err
+	}
+	if err := app.modules.Wire(app.provideCrossCutting); err != nil {
 		return fmt.Errorf("wire modules: %w", err)
 	}
+	// Collector aggregation runs after Wire so the rollback list exists: a
+	// failure here cannot strand construction-owned module resources.
+	if err := app.collectMetrics(); err != nil {
+		return fmt.Errorf("collect module metrics: %w", err)
+	}
 	if app.config.Migrate {
-		if _, err := runModuleMigrations(ctx, app.Db.Write(), app.mods, MigrationConfig{
+		if _, err := runModuleMigrations(ctx, app.Db.Write(), app.modules.Modules(), MigrationConfig{
 			Action: MigrationAuto,
 		}); err != nil {
 			return fmt.Errorf("migrate modules: %w", err)
 		}
 	}
-	if err := app.initializeModules(ctx); err != nil {
+	if err := app.modules.Initialize(ctx); err != nil {
 		return fmt.Errorf("initialize modules: %w", err)
 	}
-	if err := app.startModules(ctx); err != nil {
+	if err := app.modules.Start(ctx); err != nil {
 		return fmt.Errorf("start modules: %w", err)
 	}
 	return nil

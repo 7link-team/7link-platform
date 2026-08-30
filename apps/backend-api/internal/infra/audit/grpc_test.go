@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/infra/telemetry"
+	"7link.com/platform/pkg/module"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -179,7 +180,7 @@ func (echoService) Echo(_ context.Context, request *structpb.Struct) (*structpb.
 // otelgrpc behavior changes.
 func TestGRPCAuditEventCarriesTraceIDs(t *testing.T) {
 	auditModule, sink := newTestModule(t, grpcModuleConfig())
-	telemetryModule := telemetry.NewModule("test-api", "1.0.0")
+	telemetryModule := telemetry.NewModule(module.Runtime{Name: "test-api", Version: "1.0.0"})
 	t.Cleanup(func() { _ = telemetryModule.Deinitialize(t.Context()) })
 
 	lis := bufconn.Listen(1024 * 1024)

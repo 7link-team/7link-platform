@@ -13,7 +13,7 @@ import (
 func TestModuleUsesWUIDModuleAndTracksLeaseState(t *testing.T) {
 	t.Setenv(wuid.EnvKey, "17")
 	require.NoError(t, platformi18n.NewModule(platformi18n.Base).Initialize(t.Context()))
-	workerIDModule := wuid.NewModule(nil)
+	workerIDModule := wuid.NewModule(module.Runtime{})
 	guidModule := NewModule()
 	services := module.NewServices()
 	require.NoError(t, workerIDModule.ProvideServices(services))

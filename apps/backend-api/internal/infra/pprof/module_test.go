@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/pkg/module"
 	humax "7link.com/platform/pkg/extension/huma"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/pprof/profile"
@@ -22,7 +23,7 @@ import (
 func TestRegisterPprofServesStandardEndpoints(t *testing.T) {
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
-	module := NewModule("test service")
+	module := NewModule(module.Runtime{Name: "test service"}, Config{})
 	assert.Equal(t, "pprof", module.ModuleName())
 	require.NoError(t, module.RegisterHTTP(t.Context(), router, api))
 
@@ -51,7 +52,7 @@ func TestRegisterPprofServesStandardEndpoints(t *testing.T) {
 func TestRegisterPprofServesEmbeddedWebUI(t *testing.T) {
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
-	require.NoError(t, NewModule("test service").RegisterHTTP(t.Context(), router, api))
+	require.NoError(t, NewModule(module.Runtime{Name: "test service"}, Config{}).RegisterHTTP(t.Context(), router, api))
 
 	landing := httptest.NewRecorder()
 	router.ServeHTTP(landing, httptest.NewRequest(http.MethodGet, UIPath+"/", nil))
@@ -191,7 +192,7 @@ func TestCaptureDuration(t *testing.T) {
 func TestRegisterPprofAddsOpenAPIOperations(t *testing.T) {
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
-	require.NoError(t, NewModule("test service").RegisterHTTP(t.Context(), router, api))
+	require.NoError(t, NewModule(module.Runtime{Name: "test service"}, Config{}).RegisterHTTP(t.Context(), router, api))
 
 	paths := api.OpenAPI().Paths
 	for _, path := range []string{

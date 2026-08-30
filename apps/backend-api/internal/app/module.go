@@ -4,94 +4,56 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 
+	"7link.com/platform/internal/infra/migrationstatus"
 	healthservice "7link.com/platform/internal/infra/health/service"
 	"7link.com/platform/pkg/module"
-	"github.com/danielgtaylor/huma/v2"
-	"github.com/go-chi/chi/v5"
-	"google.golang.org/grpc"
 )
 
-// wireModules builds the application service graph before any module is
-// initialized. Providers are collected first so dependency resolution is not
-// coupled to module registration order.
-func (app *App) wireModules() error {
-	app.services = module.NewServices()
-	indices := make(map[string]int, len(app.mods))
-	for index, appModule := range app.mods {
-		if isNilModule(appModule) {
-			return errors.New("module: registered module is nil")
-		}
-		name := appModule.ModuleName()
-		if name == "" {
-			return fmt.Errorf("%T: module name is empty", appModule)
-		}
-		if _, exists := indices[name]; exists {
-			return fmt.Errorf("module: duplicate module name %q", name)
-		}
-		indices[name] = index
-		// A Deinitializer without an Initializer owns resources from construction
-		// time and must always be included in shutdown rollback.
-		if _, cleanup := appModule.(module.Deinitializer); cleanup {
-			if _, initialized := appModule.(module.Initializer); !initialized {
-				app.initialized = append(app.initialized, appModule)
-			}
-		}
-	}
-	for index, appModule := range app.mods {
-		if depender, ok := appModule.(module.Depender); ok {
-			for _, dependency := range depender.ModuleDependencies() {
-				dependencyIndex, exists := indices[dependency]
-				if !exists {
-					return fmt.Errorf("module %q requires unregistered module %q", appModule.ModuleName(), dependency)
-				}
-				if dependencyIndex >= index {
-					return fmt.Errorf("module %q must be registered after dependency %q", appModule.ModuleName(), dependency)
-				}
-			}
-		}
-		if provider, ok := appModule.(module.ServiceProvider); ok {
-			if err := provider.ProvideServices(app.services); err != nil {
-				return fmt.Errorf("%T provide services: %w", appModule, err)
-			}
-		}
-	}
-	if err := app.services.Seal(); err != nil {
+// provideCrossCutting registers the app-scoped cross-module views consumed by
+// the health and migration-status modules. It runs inside Registry.Wire, after
+// module ServiceProviders but before the registry is sealed, and propagates every
+// error.
+func (app *App) provideCrossCutting(services *module.Services) error {
+	if err := module.Provide[healthservice.CheckerProvider](services, app.healthCheckers); err != nil {
 		return err
 	}
-	for _, appModule := range app.mods {
-		if injector, ok := appModule.(module.ServiceInjector); ok {
-			if err := injector.InjectServices(app.services); err != nil {
-				return fmt.Errorf("%T inject services: %w", appModule, err)
-			}
-		}
-	}
-	return nil
+	return module.Provide[migrationstatus.Inspector](services, app.migrationInspector)
 }
 
-// initializeModules runs the Initialize phase, stopping at the first failure so the
-// app never starts against a half-initialized state.
-func (app *App) initializeModules(ctx context.Context) error {
-	for _, m := range app.mods {
-		if x, ok := m.(module.Initializer); ok {
-			if err := x.Initialize(ctx); err != nil {
-				return fmt.Errorf("%T initialize: %w", m, err)
-			}
-			app.initialized = append(app.initialized, m)
-		}
+// migrationInspector aggregates the migration status of every active module. It
+// is provided as the migration-status module's inspector (lazy, evaluated per
+// request).
+func (app *App) migrationInspector(ctx context.Context) ([]migrationstatus.Report, error) {
+	reports, err := runModuleMigrations(ctx, app.Db.Write(), app.modules.Modules(), MigrationConfig{
+		Action: MigrationStatus,
+		To:     -1,
+	})
+	result := make([]migrationstatus.Report, len(reports))
+	for index, report := range reports {
+		result[index] = migrationstatus.Report{Module: report.Module, Status: report.Status}
 	}
-	return nil
+	return result, err
 }
 
-// startModules runs the Start phase, stopping at the first failure.
-func (app *App) startModules(ctx context.Context) error {
-	for _, m := range app.mods {
-		if x, ok := m.(module.Starter); ok {
-			if err := x.Start(ctx); err != nil {
-				return fmt.Errorf("%T start: %w", m, err)
+// collectMetrics aggregates every active PrometheusCollectorModule's collector
+// into every active CollectorSink (the metrics module). It runs after Wire, so
+// the active set is complete and registration order is irrelevant. Zero sinks is
+// a no-op; multiple sinks each receive every collector.
+func (app *App) collectMetrics() error {
+	for _, sink := range app.modules.Modules() {
+		collectorSink, ok := sink.(module.CollectorSink)
+		if !ok {
+			continue
+		}
+		for _, source := range app.modules.Modules() {
+			collectorModule, ok := source.(module.PrometheusCollectorModule)
+			if !ok {
+				continue
 			}
-			app.started = append(app.started, m)
+			if err := collectorSink.RegisterCollector(collectorModule.Collector()); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -115,9 +77,15 @@ type healthCheckerProvider interface {
 	HealthCheckers() []healthservice.Checker
 }
 
+// healthCheckers builds the health checkers from the active module set. Modules
+// that expose their own HealthCheckers replace the generic per-module status.
+// A zero-value App (no registry yet) reports no checkers.
 func (app *App) healthCheckers() []healthservice.Checker {
-	checkers := make([]healthservice.Checker, 0, len(app.mods))
-	for _, appModule := range app.mods {
+	if app.modules == nil {
+		return nil
+	}
+	checkers := make([]healthservice.Checker, 0)
+	for _, appModule := range app.modules.Modules() {
 		if provider, ok := appModule.(healthCheckerProvider); ok {
 			checkers = append(checkers, provider.HealthCheckers()...)
 			continue
@@ -129,80 +97,4 @@ func (app *App) healthCheckers() []healthservice.Checker {
 		checkers = append(checkers, checker)
 	}
 	return checkers
-}
-
-func isNilModule(value module.Module) bool {
-	if value == nil {
-		return true
-	}
-	reflected := reflect.ValueOf(value)
-	return reflected.Kind() == reflect.Pointer && reflected.IsNil()
-}
-
-// stopModules runs the Stop phase in reverse registration order (so dependents
-// stop before their dependencies), joining every error rather than bailing on
-// the first so one failing module can't strand the rest.
-func (app *App) stopModules(ctx context.Context) error {
-	var errs []error
-	for i := len(app.started) - 1; i >= 0; i-- {
-		m := app.started[i]
-		if x, ok := m.(module.Stopper); ok {
-			if err := x.Stop(ctx); err != nil {
-				errs = append(errs, fmt.Errorf("%T stop: %w", m, err))
-			}
-		}
-	}
-	app.started = nil
-	return errors.Join(errs...)
-}
-
-// quiesceModules disables new work in reverse dependency order while protocol
-// listeners remain available for readiness checks during the drain delay.
-func (app *App) quiesceModules(ctx context.Context) error {
-	var errs []error
-	for i := len(app.started) - 1; i >= 0; i-- {
-		m := app.started[i]
-		if x, ok := m.(module.Quiescer); ok {
-			if err := x.Quiesce(ctx); err != nil {
-				errs = append(errs, fmt.Errorf("%T quiesce: %w", m, err))
-			}
-		}
-	}
-	return errors.Join(errs...)
-}
-
-// deinitializeModules runs the Deinitialize phase in reverse registration order (so dependents
-// deinitialize before their dependencies), joining every error rather than bailing on
-// the first so one failing module can't strand the rest.
-func (app *App) deinitializeModules(ctx context.Context) error {
-	var errs []error
-	for i := len(app.initialized) - 1; i >= 0; i-- {
-		m := app.initialized[i]
-		if x, ok := m.(module.Deinitializer); ok {
-			if err := x.Deinitialize(ctx); err != nil {
-				errs = append(errs, fmt.Errorf("%T deinitialize: %w", m, err))
-			}
-		}
-	}
-	app.initialized = nil
-	return errors.Join(errs...)
-}
-
-func (app *App) registerHTTPModules(ctx context.Context, router chi.Router, api huma.API) error {
-	for _, m := range app.mods {
-		if x, ok := m.(module.HTTPRegistrar); ok {
-			if err := x.RegisterHTTP(ctx, router, api); err != nil {
-				return fmt.Errorf("%T register HTTP: %w", m, err)
-			}
-		}
-	}
-	return nil
-}
-
-func (app *App) registerGRPCModules(registrar grpc.ServiceRegistrar) {
-	for _, m := range app.mods {
-		if x, ok := m.(module.GRPCRegistrar); ok {
-			x.RegisterGRPC(registrar)
-		}
-	}
 }

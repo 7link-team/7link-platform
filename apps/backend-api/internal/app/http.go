@@ -19,20 +19,15 @@ import (
 
 func (app *App) startHTTPServer() error {
 	router := chi.NewRouter()
-	apiSettings := app.config.API
-	if apiSettings.Metrics.Enabled {
-		if app.metrics == nil {
-			return errors.New("http: prometheus module is unavailable")
+	// Server-wide middleware in registration order: metrics (outermost),
+	// telemetry, audit, then the recovery guard, then huma's timing/locale.
+	if app.modules != nil {
+		for _, middleware := range app.modules.HTTPMiddlewares() {
+			router.Use(middleware)
 		}
-		router.Use(app.metrics.HTTPMiddleware)
-	}
-	if app.telemetry != nil {
-		router.Use(app.telemetry.HTTPMiddleware)
-	}
-	if app.audit != nil {
-		router.Use(app.audit.HTTPMiddleware)
 	}
 	router.Use(respx.Recovery)
+	apiSettings := app.config.API
 	apiConfig := humax.Config{
 		Name:    app.config.Name,
 		Version: app.config.Version,
@@ -51,8 +46,10 @@ func (app *App) startHTTPServer() error {
 		},
 	}
 	api := humax.New(router, apiConfig)
-	if err := app.registerHTTPModules(app.ctx, router, api); err != nil {
-		return err
+	if app.modules != nil {
+		if err := app.modules.RegisterHTTP(app.ctx, router, api); err != nil {
+			return err
+		}
 	}
 	addr := net.JoinHostPort(app.config.HttpServer.Address, strconv.Itoa(app.config.HttpServer.Port))
 	listener, err := net.Listen("tcp", addr)

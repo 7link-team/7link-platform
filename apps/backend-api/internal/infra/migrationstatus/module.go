@@ -31,17 +31,38 @@ type response struct {
 	Modules []Report     `json:"modules"`
 }
 
+// Config controls the migration-status module. Enabled is inherited from
+// module.Config and read by the lifecycle's Enabler.
+type Config struct {
+	module.Config
+}
+
 type Module struct {
+	cfg     Config
 	inspect Inspector
 }
 
 var (
-	_ module.Module        = (*Module)(nil)
-	_ module.HTTPRegistrar = (*Module)(nil)
+	_ module.Module          = (*Module)(nil)
+	_ module.Enabler         = (*Module)(nil)
+	_ module.ServiceInjector = (*Module)(nil)
+	_ module.HTTPRegistrar   = (*Module)(nil)
 )
 
-func NewModule(inspect Inspector) *Module {
-	return &Module{inspect: inspect}
+func NewModule(cfg Config) *Module {
+	return &Module{cfg: cfg}
+}
+
+func (m *Module) Enabled() bool { return m.cfg.Enabled }
+
+// InjectServices resolves the migration inspector provided by the app runtime.
+func (m *Module) InjectServices(services *module.Services) error {
+	inspect, err := module.Resolve[Inspector](services)
+	if err != nil {
+		return err
+	}
+	m.inspect = inspect
+	return nil
 }
 
 func (*Module) ModuleName() string { return Name }

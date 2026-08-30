@@ -18,21 +18,41 @@ const (
 	Path = "/debug/config"
 )
 
+// Config controls the config inspector. Enabled is inherited from module.Config
+// and read by the lifecycle's Enabler.
+type Config struct {
+	module.Config
+}
+
 type Module struct {
+	value    any
+	cfg      Config
 	snapshot map[string]any
 }
 
 var (
 	_ module.Module        = (*Module)(nil)
+	_ module.Enabler       = (*Module)(nil)
+	_ module.Initializer   = (*Module)(nil)
 	_ module.HTTPRegistrar = (*Module)(nil)
 )
 
-func NewModule(value any) (*Module, error) {
-	snapshot, err := configx.Inspect(value)
+// NewModule builds the config inspector. The snapshot is deferred to Initialize
+// so construction never fails; an unsupported configuration still fails startup,
+// just in the Initialize phase.
+func NewModule(value any, cfg Config) *Module {
+	return &Module{value: value, cfg: cfg}
+}
+
+func (m *Module) Enabled() bool { return m.cfg.Enabled }
+
+func (m *Module) Initialize(context.Context) error {
+	snapshot, err := configx.Inspect(m.value)
 	if err != nil {
-		return nil, fmt.Errorf("create config inspector: %w", err)
+		return fmt.Errorf("create config inspector: %w", err)
 	}
-	return &Module{snapshot: snapshot}, nil
+	m.snapshot = snapshot
+	return nil
 }
 
 func (*Module) ModuleName() string { return Name }

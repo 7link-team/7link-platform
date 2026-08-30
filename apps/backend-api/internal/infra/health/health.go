@@ -32,23 +32,35 @@ func (*HealthModule) ModuleName() string { return Name }
 func (*HealthModule) ModuleDependencies() []string { return []string{platformi18n.Name} }
 
 var (
-	_ module.Initializer   = (*HealthModule)(nil)
-	_ module.Depender      = (*HealthModule)(nil)
-	_ module.Starter       = (*HealthModule)(nil)
-	_ module.HealthChecker = (*HealthModule)(nil)
-	_ module.Quiescer      = (*HealthModule)(nil)
-	_ module.Stopper       = (*HealthModule)(nil)
-	_ module.HTTPRegistrar = (*HealthModule)(nil)
-	_ module.GRPCRegistrar = (*HealthModule)(nil)
+	_ module.Initializer     = (*HealthModule)(nil)
+	_ module.Depender        = (*HealthModule)(nil)
+	_ module.Starter         = (*HealthModule)(nil)
+	_ module.HealthChecker   = (*HealthModule)(nil)
+	_ module.ServiceInjector = (*HealthModule)(nil)
+	_ module.Quiescer        = (*HealthModule)(nil)
+	_ module.Stopper         = (*HealthModule)(nil)
+	_ module.HTTPRegistrar   = (*HealthModule)(nil)
+	_ module.GRPCRegistrar   = (*HealthModule)(nil)
 )
 
-func NewModule(providers ...service.CheckerProvider) *HealthModule {
-	svc := service.New(providers...)
-	return &HealthModule{
-		service: svc,
-		http:    healthhttp.New(svc),
-		grpc:    healthgrpc.NewServer(svc),
+// NewModule builds the health module. The checker provider is resolved via
+// service injection; the module is not operational until InjectServices runs.
+func NewModule() *HealthModule {
+	return &HealthModule{}
+}
+
+// InjectServices resolves the app-wide checker provider (the lifecycle's
+// aggregated health checkers) and builds the service and protocol adapters.
+func (m *HealthModule) InjectServices(services *module.Services) error {
+	provider, err := module.Resolve[service.CheckerProvider](services)
+	if err != nil {
+		return err
 	}
+	svc := service.New(provider)
+	m.service = svc
+	m.http = healthhttp.New(svc)
+	m.grpc = healthgrpc.NewServer(svc)
+	return nil
 }
 
 // Service exposes the use cases for direct in-process calls.

@@ -11,6 +11,7 @@ import (
 	telemetry "7link.com/platform/internal/infra/telemetry"
 	grpcx "7link.com/platform/pkg/extension/grpc"
 	platformi18n "7link.com/platform/pkg/i18n"
+	"7link.com/platform/pkg/module"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	grpcgo "google.golang.org/grpc"
@@ -23,7 +24,7 @@ func TestClientCheckEndToEnd(t *testing.T) {
 	require.NoError(t, platformi18n.NewModule(platformi18n.Base).Initialize(t.Context()))
 	require.NoError(t, healthi18n.Register())
 	const traceID = "123e4567e89b42d3a456426614174000"
-	telemetryModule := telemetry.NewModule("health-test", "1.0.0", telemetry.WithIDGenerator(func() string { return traceID }))
+	telemetryModule := telemetry.NewModule(module.Runtime{Name: "health-test", Version: "1.0.0"}, telemetry.WithIDGenerator(func() string { return traceID }))
 	t.Cleanup(func() { require.NoError(t, telemetryModule.Deinitialize(context.Background())) })
 
 	listener := bufconn.Listen(1024 * 1024)

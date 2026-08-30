@@ -6,12 +6,9 @@ import (
 	"net"
 	"strconv"
 
-	grpcx "7link.com/platform/pkg/extension/grpc"
-	"7link.com/platform/pkg/module"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/reflection"
-	"google.golang.org/grpc/stats"
 )
 
 func (app *App) startGRPCServer() error {
@@ -22,9 +19,15 @@ func (app *App) startGRPCServer() error {
 	}
 
 	serverOptions := grpcServerOptions(app.config.GrpcServer)
-	serverOptions = append(serverOptions, app.grpcProtocolOptions()...)
+	if app.modules != nil {
+		serverOptions = append(serverOptions, app.modules.GRPCProtocolOptions()...)
+	}
 	app.grpcServer = grpc.NewServer(serverOptions...)
-	app.registerGRPCModules(app.grpcServer)
+	if app.modules != nil {
+		if err := app.modules.RegisterGRPC(app.grpcServer); err != nil {
+			return err
+		}
+	}
 	if app.config.GrpcServer.Reflection {
 		// Lets grpcurl discover services without a local .proto copy.
 		reflection.Register(app.grpcServer)
@@ -37,48 +40,6 @@ func (app *App) startGRPCServer() error {
 		}
 	}()
 	return nil
-}
-
-// grpcProtocolOptions assembles the server's protocol options from the module
-// registry. Protocol modules (telemetry, audit, ...) contribute their stats
-// handlers and interceptors through the module interfaces in registration order
-// (earlier module = outer interceptor); the platform interceptors (locale,
-// recovery, validation) always run innermost.
-func (app *App) grpcProtocolOptions() []grpc.ServerOption {
-	var stats []stats.Handler
-	var unary []grpc.UnaryServerInterceptor
-	var stream []grpc.StreamServerInterceptor
-	for _, appModule := range app.mods {
-		if statsModule, ok := appModule.(module.StatsHandlerModule); ok {
-			stats = append(stats, statsModule.GRPCServerStatsHandler())
-		}
-		if interceptor, ok := appModule.(module.UnaryInterceptorModule); ok {
-			unary = append(unary, interceptor.UnaryServerInterceptor)
-		}
-		if interceptor, ok := appModule.(module.StreamInterceptorModule); ok {
-			stream = append(stream, interceptor.StreamServerInterceptor)
-		}
-	}
-	unary = append(unary,
-		grpcx.LocaleUnaryInterceptor,
-		grpcx.RecoveryUnaryInterceptor,
-		grpcx.ValidationUnaryInterceptor,
-	)
-	stream = append(stream,
-		grpcx.LocaleStreamInterceptor,
-		grpcx.RecoveryStreamInterceptor,
-		grpcx.ValidationStreamInterceptor,
-	)
-
-	options := make([]grpc.ServerOption, 0, len(stats)+2)
-	for _, handler := range stats {
-		options = append(options, grpc.StatsHandler(handler))
-	}
-	options = append(options,
-		grpc.ChainUnaryInterceptor(unary...),
-		grpc.ChainStreamInterceptor(stream...),
-	)
-	return options
 }
 
 func grpcServerOptions(config GrpcServer) []grpc.ServerOption {

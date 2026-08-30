@@ -17,19 +17,31 @@ const (
 	UIPath = Path + "/ui"
 )
 
+// Config controls the pprof module. Enabled is inherited from module.Config and
+// read by the lifecycle's Enabler.
+type Config struct {
+	module.Config
+}
+
 // Module owns the standard runtime profiling endpoints and embedded analysis UI.
 type Module struct {
 	name string
+	cfg  Config
 }
 
 var (
 	_ module.Module        = (*Module)(nil)
+	_ module.Enabler       = (*Module)(nil)
 	_ module.HTTPRegistrar = (*Module)(nil)
 )
 
-func NewModule(name string) *Module {
-	return &Module{name: name}
+// NewModule builds the pprof module. The application name (UI title) is taken
+// from the shared runtime.
+func NewModule(rt module.Runtime, cfg Config) *Module {
+	return &Module{name: rt.Name, cfg: cfg}
 }
+
+func (m *Module) Enabled() bool { return m.cfg.Enabled }
 
 func (*Module) ModuleName() string { return Name }
 
