@@ -29,6 +29,9 @@ func (app *App) startHTTPServer() error {
 	if app.telemetry != nil {
 		router.Use(app.telemetry.HTTPMiddleware)
 	}
+	if app.audit != nil {
+		router.Use(app.audit.HTTPMiddleware)
+	}
 	router.Use(respx.Recovery)
 	apiConfig := humax.Config{
 		Name:    app.config.Name,

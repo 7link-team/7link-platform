@@ -36,10 +36,10 @@ func TestRunShutsDownWhenHTTPServerCannotBind(t *testing.T) {
 
 func validTestAppConfig() AppConfig {
 	return AppConfig{
-		Name:       "test-api",
-		Version:    "1.0.0",
-		Timezone:   "UTC",
-		DrainDelay: time.Nanosecond,
+		Name:     "test-api",
+		Version:  "1.0.0",
+		Timezone: "UTC",
+		Shutdown: ShutdownConfig{Graceful: true, DrainDelay: time.Nanosecond},
 		API: API{
 			Landing: APILanding{Enabled: true},
 			Docs:    APIDocs{Enabled: true, Advertise: true},
@@ -47,5 +47,7 @@ func validTestAppConfig() AppConfig {
 		},
 		HttpServer: HttpServer{Address: "127.0.0.1", Port: 8080},
 		GrpcServer: GrpcServer{Address: "127.0.0.1", Port: 9090},
+		// Audit defaults to enabled in production; reflect that in tests.
+		Audit: Audit{Enabled: true},
 	}
 }

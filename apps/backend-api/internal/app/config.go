@@ -3,23 +3,21 @@ package app
 import (
 	"fmt"
 	"time"
-
-	telemetry "7link.com/platform/internal/infra/telemetry"
 )
 
 type AppConfig struct {
 	Name    string `mapstructure:"name" description:"application name" trim:"true" default:"7link-api"`
 	Version string `mapstructure:"version" description:"application version" trim:"true"`
 
-	Debug     bool             `mapstructure:"debug" short:"d" description:"debug mode" default:"false"`
-	Banner    BannerConfig     `mapstructure:"banner" group:"banner"`
-	Pprof     Pprof            `mapstructure:"pprof" group:"pprof"`
-	API       API              `mapstructure:"api" group:"api"`
-	Telemetry telemetry.Config `mapstructure:"telemetry" group:"telemetry"`
+	Debug     bool           `mapstructure:"debug" short:"d" description:"debug mode" default:"false"`
+	Banner    BannerConfig   `mapstructure:"banner" group:"banner"`
+	Pprof     Pprof          `mapstructure:"pprof" group:"pprof"`
+	API       API            `mapstructure:"api" group:"api"`
+	Telemetry Telemetry      `mapstructure:"telemetry" group:"telemetry"`
+	Audit     Audit          `mapstructure:"audit" group:"audit"`
+	Shutdown  ShutdownConfig `mapstructure:"shutdown" group:"shutdown"`
 
-	Timezone        string        `mapstructure:"timezone" description:"timezone" default:"UTC"`
-	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout" description:"maximum time allowed for graceful shutdown" default:"30s"`
-	DrainDelay      time.Duration `mapstructure:"drain_delay" description:"delay after readiness is disabled before listeners stop" default:"5s"`
+	Timezone string `mapstructure:"timezone" description:"timezone" default:"UTC"`
 
 	HttpServer HttpServer `mapstructure:"http_server" group:"http_server"`
 	GrpcServer GrpcServer `mapstructure:"grpc_server" group:"grpc_server"`
@@ -38,6 +36,14 @@ type BannerConfig struct {
 
 type Pprof struct {
 	Enabled bool `mapstructure:"enabled" description:"enable runtime profiling endpoints" default:"false"`
+}
+
+// Shutdown controls how protocol servers and modules stop after a shutdown
+// signal or fatal serve error.
+type ShutdownConfig struct {
+	Graceful   bool          `mapstructure:"graceful" description:"gracefully drain protocol servers before shutdown" default:"true"`
+	Timeout    time.Duration `mapstructure:"timeout" description:"maximum time allowed for shutdown cleanup" default:"30s"`
+	DrainDelay time.Duration `mapstructure:"drain_delay" description:"delay after readiness is disabled before listeners stop" default:"5s"`
 }
 
 type HttpServer struct {
@@ -102,6 +108,44 @@ type DatasourceMonitor struct {
 	SlowSQLThreshold time.Duration `mapstructure:"slow_sql_threshold" description:"minimum execution duration recorded as slow SQL" default:"200ms"`
 }
 
+// Telemetry is the application-owned telemetry configuration. It stays inside
+// this package so AppConfig never depends on module packages; the telemetry
+// module's runtime configuration is derived from it at construction time.
+type Telemetry struct {
+	OTLP TelemetryOTLP `mapstructure:"otlp" group:"otlp"`
+}
+
+// TelemetryOTLP mirrors the telemetry module's OTLP exporter settings.
+type TelemetryOTLP struct {
+	Enabled  bool              `mapstructure:"enabled" description:"export traces to an OTLP collector" default:"false"`
+	Protocol string            `mapstructure:"protocol" description:"OTLP transport: grpc | http/protobuf" default:"grpc" trim:"true"`
+	Endpoint string            `mapstructure:"endpoint" description:"OTLP collector host and port" trim:"true"`
+	Insecure bool              `mapstructure:"insecure" description:"disable TLS for the OTLP connection" default:"false"`
+	Headers  map[string]string `mapstructure:"headers" group:"headers" mapkey:"<header>" description:"OTLP request headers" secret:"true"`
+	Timeout  time.Duration     `mapstructure:"timeout" description:"OTLP export timeout" default:"10s"`
+}
+
+// Audit is the application-owned operation audit configuration.
+type Audit struct {
+	Enabled         bool          `mapstructure:"enabled" description:"enable operation audit logging" default:"true"`
+	Database        AuditDatabase `mapstructure:"database" group:"database"`
+	RecordReads     bool          `mapstructure:"record_reads" description:"record read-only operations" default:"false"`
+	RecordStreams   bool          `mapstructure:"record_streams" description:"record WebSocket and SSE sessions" default:"true"`
+	MaxBodyBytes    int           `mapstructure:"max_body_bytes" description:"maximum captured request or response body size in bytes" default:"8192"`
+	SensitiveFields []string      `mapstructure:"sensitive_fields" description:"additional JSON field names to redact" default:"[]"`
+	SkipRoutes      []string      `mapstructure:"skip_routes" description:"additional request path prefixes excluded from auditing" default:"[]"`
+	QueueSize       int           `mapstructure:"queue_size" description:"audit event queue capacity" default:"4096"`
+	BatchSize       int           `mapstructure:"batch_size" description:"events per database write batch" default:"200"`
+	FlushInterval   time.Duration `mapstructure:"flush_interval" description:"maximum time between database flushes" default:"1s"`
+	FlushTimeout    time.Duration `mapstructure:"flush_timeout" description:"maximum time for one database flush" default:"5s"`
+	Overflow        string        `mapstructure:"overflow" description:"queue overflow behavior: drop | block" default:"drop"`
+}
+
+// AuditDatabase gates the database-backed audit sink.
+type AuditDatabase struct {
+	Enabled bool `mapstructure:"enabled" description:"persist audit events to the operation_logs table" default:"false"`
+}
+
 type GrpcServer struct {
 	Address               string        `mapstructure:"address" description:"listen IPv4 address" default:"0.0.0.0" trim:"true" required:"true" validate:"^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])[.]){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$"`
 	Port                  int           `mapstructure:"port" description:"port" default:"9090"`
@@ -159,11 +203,11 @@ func applyRuntimeDefaults(config *AppConfig) {
 	if config.HttpServer.MaxHeaderBytes == 0 {
 		config.HttpServer.MaxHeaderBytes = defaultHTTPMaxHeaderBytes
 	}
-	if config.ShutdownTimeout == 0 {
-		config.ShutdownTimeout = defaultShutdownTimeout
+	if config.Shutdown.Timeout == 0 {
+		config.Shutdown.Timeout = defaultShutdownTimeout
 	}
-	if config.DrainDelay == 0 {
-		config.DrainDelay = defaultDrainDelay
+	if config.Shutdown.DrainDelay == 0 {
+		config.Shutdown.DrainDelay = defaultDrainDelay
 	}
 	if config.DatasourceMonitor.Interval == 0 {
 		config.DatasourceMonitor.Interval = defaultDatasourceProbeInterval
@@ -186,14 +230,14 @@ func applyRuntimeDefaults(config *AppConfig) {
 }
 
 func validateRuntimeConfig(config AppConfig) error {
-	if config.ShutdownTimeout < 0 {
-		return fmt.Errorf("shutdown_timeout cannot be negative")
+	if config.Shutdown.Timeout < 0 {
+		return fmt.Errorf("shutdown.timeout cannot be negative")
 	}
-	if config.DrainDelay < 0 {
-		return fmt.Errorf("drain_delay cannot be negative")
+	if config.Shutdown.DrainDelay < 0 {
+		return fmt.Errorf("shutdown.drain_delay cannot be negative")
 	}
-	if config.ShutdownTimeout > 0 && config.DrainDelay >= config.ShutdownTimeout {
-		return fmt.Errorf("drain_delay must be less than shutdown_timeout")
+	if config.Shutdown.Graceful && config.Shutdown.Timeout > 0 && config.Shutdown.DrainDelay >= config.Shutdown.Timeout {
+		return fmt.Errorf("shutdown.drain_delay must be less than shutdown.timeout")
 	}
 	if config.HttpServer.ReadHeaderTimeout < 0 {
 		return fmt.Errorf("http_server.read_header_timeout cannot be negative")

@@ -19,7 +19,7 @@ type grpcStopper interface {
 }
 
 func (app *App) shutdown() error {
-	timeout := app.config.ShutdownTimeout
+	timeout := app.config.Shutdown.Timeout
 	if timeout <= 0 {
 		timeout = defaultShutdownTimeout
 	}
@@ -27,22 +27,33 @@ func (app *App) shutdown() error {
 	defer cancel()
 
 	var errs []error
-	if err := app.quiesceModules(shutdownCtx); err != nil {
-		errs = append(errs, err)
-	}
-	if app.httpServer != nil || app.grpcServer != nil {
-		if err := waitForDrain(shutdownCtx, app.config.DrainDelay); err != nil {
+	if app.config.Shutdown.Graceful {
+		if err := app.quiesceModules(shutdownCtx); err != nil {
 			errs = append(errs, err)
 		}
-	}
-	if app.httpServer != nil {
-		if err := stopHTTPServer(shutdownCtx, app.httpServer); err != nil {
-			errs = append(errs, err)
+		if app.httpServer != nil || app.grpcServer != nil {
+			if err := waitForDrain(shutdownCtx, app.config.Shutdown.DrainDelay); err != nil {
+				errs = append(errs, err)
+			}
 		}
-	}
-	if app.grpcServer != nil {
-		if err := stopGRPCServer(shutdownCtx, app.grpcServer); err != nil {
-			errs = append(errs, err)
+		if app.httpServer != nil {
+			if err := stopHTTPServer(shutdownCtx, app.httpServer); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		if app.grpcServer != nil {
+			if err := stopGRPCServer(shutdownCtx, app.grpcServer); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	} else {
+		if app.httpServer != nil {
+			if err := stopHTTPServerImmediately(app.httpServer); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		if app.grpcServer != nil {
+			stopGRPCServerImmediately(app.grpcServer)
 		}
 	}
 	if app.cancel != nil {
@@ -63,6 +74,17 @@ func (app *App) shutdown() error {
 	}
 	slog.Info("shutdown complete")
 	return nil
+}
+
+func stopHTTPServerImmediately(server httpStopper) error {
+	if err := server.Close(); err != nil {
+		return fmt.Errorf("http server immediate close: %w", err)
+	}
+	return nil
+}
+
+func stopGRPCServerImmediately(server grpcStopper) {
+	server.Stop()
 }
 
 func waitForDrain(ctx context.Context, delay time.Duration) error {

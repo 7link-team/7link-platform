@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	audit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/databasemonitor"
 	metrics "7link.com/platform/internal/infra/metrics"
 	telemetry "7link.com/platform/internal/infra/telemetry"
@@ -48,9 +49,19 @@ type App struct {
 
 	telemetry       *telemetry.Module
 	databaseMonitor *databasemonitor.Module
+	audit           *audit.Module
 	metrics         *metrics.Module
 	grpcServer      *grpc.Server
 	httpServer      *http.Server
+}
+
+func (app *App) AddModule(mods ...module.Module) {
+	for _, mod := range mods {
+		if isNilModule(mod) {
+			continue
+		}
+		app.mods = append(app.mods, mod)
+	}
 }
 
 func (app *App) Run(config AppConfig) error {
@@ -72,8 +83,6 @@ func (app *App) Run(config AppConfig) error {
 	app.config = config
 
 	app.ctx, app.cancel = context.WithCancel(context.Background())
-	app.telemetry = telemetry.NewModule(config.Name, config.Version, telemetry.WithConfig(config.Telemetry))
-	app.mods = append(app.mods, app.telemetry)
 
 	app.serveErr = make(chan error, 2)
 	if err := app.bootstrap(app.ctx); err != nil {
@@ -97,7 +106,11 @@ func (app *App) awaitShutdown() error {
 	var startErr error
 	select {
 	case <-ctx.Done():
-		slog.Info("shutdown signal received, gracefully stopping servers")
+		if app.config.Shutdown.Graceful {
+			slog.Info("shutdown signal received, gracefully stopping servers")
+		} else {
+			slog.Info("shutdown signal received, stopping servers immediately")
+		}
 	case err := <-app.serveErr:
 		slog.Error("server failed, shutting down", "error", err)
 		startErr = err

@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	telemetry "7link.com/platform/internal/infra/telemetry"
 	configx "7link.com/platform/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,6 +25,28 @@ func TestPprofDefaultsToDisabledAndCanBeEnabled(t *testing.T) {
 	var enabled AppConfig
 	require.NoError(t, configx.New().Parse(&enabled, "--pprof.enabled"))
 	assert.True(t, enabled.Pprof.Enabled)
+}
+
+func TestShutdownDefaultsAndOverrides(t *testing.T) {
+	var defaults AppConfig
+	require.NoError(t, configx.New().Parse(&defaults))
+	assert.Equal(t, ShutdownConfig{
+		Graceful:   true,
+		Timeout:    30 * time.Second,
+		DrainDelay: 5 * time.Second,
+	}, defaults.Shutdown)
+
+	var configured AppConfig
+	require.NoError(t, configx.New().Parse(&configured,
+		"--shutdown.graceful=false",
+		"--shutdown.timeout=3s",
+		"--shutdown.drain-delay=250ms",
+	))
+	assert.Equal(t, ShutdownConfig{
+		Graceful:   false,
+		Timeout:    3 * time.Second,
+		DrainDelay: 250 * time.Millisecond,
+	}, configured.Shutdown)
 }
 
 func TestBannerDefaultsAndOverrides(t *testing.T) {
@@ -80,7 +101,7 @@ func TestHTTPAPIResourceDefaultsAndOverrides(t *testing.T) {
 func TestOTLPDefaultsAndOverrides(t *testing.T) {
 	var defaults AppConfig
 	require.NoError(t, configx.New().Parse(&defaults))
-	assert.Equal(t, telemetry.OTLPConfig{
+	assert.Equal(t, TelemetryOTLP{
 		Protocol: "grpc",
 		Headers:  map[string]string{},
 		Timeout:  10 * time.Second,
@@ -95,7 +116,7 @@ func TestOTLPDefaultsAndOverrides(t *testing.T) {
 		"--telemetry.otlp.headers.authorization=secret",
 		"--telemetry.otlp.timeout=3s",
 	))
-	assert.Equal(t, telemetry.OTLPConfig{
+	assert.Equal(t, TelemetryOTLP{
 		Enabled:  true,
 		Protocol: "http/protobuf",
 		Endpoint: "collector:4318",
@@ -137,8 +158,8 @@ func TestApplyRuntimeDefaults(t *testing.T) {
 	assert.Equal(t, defaultHTTPReadHeaderTimeout, config.HttpServer.ReadHeaderTimeout)
 	assert.Equal(t, defaultHTTPIdleTimeout, config.HttpServer.IdleTimeout)
 	assert.Equal(t, defaultHTTPMaxHeaderBytes, config.HttpServer.MaxHeaderBytes)
-	assert.Equal(t, defaultShutdownTimeout, config.ShutdownTimeout)
-	assert.Equal(t, defaultDrainDelay, config.DrainDelay)
+	assert.Equal(t, defaultShutdownTimeout, config.Shutdown.Timeout)
+	assert.Equal(t, defaultDrainDelay, config.Shutdown.DrainDelay)
 	assert.Equal(t, defaultDatasourceProbeInterval, config.DatasourceMonitor.Interval)
 	assert.Equal(t, defaultDatasourceProbeTimeout, config.DatasourceMonitor.Timeout)
 	assert.Equal(t, defaultDatasourceStaleAfter, config.DatasourceMonitor.StaleAfter)
@@ -147,8 +168,11 @@ func TestApplyRuntimeDefaults(t *testing.T) {
 	assert.Equal(t, defaultSlowSQLThreshold, config.DatasourceMonitor.SlowSQLThreshold)
 
 	explicit := AppConfig{
-		ShutdownTimeout: 20 * time.Second,
-		DrainDelay:      time.Second,
+		Shutdown: ShutdownConfig{
+			Graceful:   false,
+			Timeout:    20 * time.Second,
+			DrainDelay: time.Second,
+		},
 		HttpServer: HttpServer{
 			ReadHeaderTimeout: time.Second,
 			IdleTimeout:       time.Minute,
@@ -156,8 +180,9 @@ func TestApplyRuntimeDefaults(t *testing.T) {
 		},
 	}
 	applyRuntimeDefaults(&explicit)
-	assert.Equal(t, 20*time.Second, explicit.ShutdownTimeout)
-	assert.Equal(t, time.Second, explicit.DrainDelay)
+	assert.False(t, explicit.Shutdown.Graceful)
+	assert.Equal(t, 20*time.Second, explicit.Shutdown.Timeout)
+	assert.Equal(t, time.Second, explicit.Shutdown.DrainDelay)
 	assert.Equal(t, time.Second, explicit.HttpServer.ReadHeaderTimeout)
 	assert.Equal(t, time.Minute, explicit.HttpServer.IdleTimeout)
 	assert.Equal(t, 4096, explicit.HttpServer.MaxHeaderBytes)
@@ -169,12 +194,13 @@ func TestValidateRuntimeConfigRejectsNegativeValues(t *testing.T) {
 		mutate func(*AppConfig)
 		want   string
 	}{
-		{name: "shutdown", mutate: func(c *AppConfig) { c.ShutdownTimeout = -time.Second }, want: "shutdown_timeout"},
-		{name: "drain", mutate: func(c *AppConfig) { c.DrainDelay = -time.Second }, want: "drain_delay"},
+		{name: "shutdown", mutate: func(c *AppConfig) { c.Shutdown.Timeout = -time.Second }, want: "shutdown.timeout"},
+		{name: "drain", mutate: func(c *AppConfig) { c.Shutdown.DrainDelay = -time.Second }, want: "shutdown.drain_delay"},
 		{name: "drain budget", mutate: func(c *AppConfig) {
-			c.ShutdownTimeout = time.Second
-			c.DrainDelay = time.Second
-		}, want: "less than shutdown_timeout"},
+			c.Shutdown.Graceful = true
+			c.Shutdown.Timeout = time.Second
+			c.Shutdown.DrainDelay = time.Second
+		}, want: "less than shutdown.timeout"},
 		{name: "http headers", mutate: func(c *AppConfig) { c.HttpServer.MaxHeaderBytes = -1 }, want: "max_header_bytes"},
 		{name: "grpc receive", mutate: func(c *AppConfig) { c.GrpcServer.MaxRecvMessageBytes = -1 }, want: "message size"},
 		{name: "grpc keepalive", mutate: func(c *AppConfig) { c.GrpcServer.KeepaliveTime = -time.Second }, want: "keepalive_time"},
@@ -196,5 +222,8 @@ func TestValidateRuntimeConfigRejectsNegativeValues(t *testing.T) {
 			assert.ErrorContains(t, validateRuntimeConfig(config), test.want)
 		})
 	}
+	assert.NoError(t, validateRuntimeConfig(AppConfig{Shutdown: ShutdownConfig{
+		Graceful: false, Timeout: time.Second, DrainDelay: time.Second,
+	}}), "drain budget is unused when graceful shutdown is disabled")
 	assert.NoError(t, validateRuntimeConfig(AppConfig{}))
 }

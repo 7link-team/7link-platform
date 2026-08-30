@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	audit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/dlock"
 	"7link.com/platform/internal/infra/health"
 	healthservice "7link.com/platform/internal/infra/health/service"
@@ -188,7 +189,7 @@ func TestBootstrapMigratesBeforeStartingWhenEnabled(t *testing.T) {
 }
 
 func TestBootstrapWithoutWriterReportsUnhealthy(t *testing.T) {
-	app := &App{}
+	app := &App{config: AppConfig{Audit: Audit{Enabled: true}}}
 	require.NoError(t, app.bootstrap(t.Context()))
 	t.Cleanup(func() { _ = app.shutdown() })
 
@@ -210,6 +211,8 @@ func TestBootstrapWithoutWriterReportsUnhealthy(t *testing.T) {
 			{Name: "dlock", Status: healthservice.StatusNotServing},
 			{Name: "wuid", Status: healthservice.StatusNotServing},
 			{Name: "guid", Status: healthservice.StatusNotServing},
+			{Name: "telemetry", Status: healthservice.StatusUnknown},
+			{Name: "audit", Status: healthservice.StatusUnknown},
 			{Name: "health", Status: healthservice.StatusServing},
 		},
 	}, healthModule.Service().Check(t.Context()))
@@ -218,6 +221,7 @@ func TestBootstrapWithoutWriterReportsUnhealthy(t *testing.T) {
 func TestBootstrapAddsEnabledHTTPModules(t *testing.T) {
 	app := &App{config: AppConfig{
 		Pprof: Pprof{Enabled: true},
+		Audit: Audit{Enabled: true},
 		API: API{
 			Metrics:             APIMetrics{Enabled: true},
 			MigrationStatus:     APIMigrationStatus{Enabled: true},
@@ -233,10 +237,23 @@ func TestBootstrapAddsEnabledHTTPModules(t *testing.T) {
 		names[index] = appModule.ModuleName()
 	}
 	assert.Equal(t, []string{
-		"database-monitor", "i18n", "respx", "dlock", "wuid", "guid", "metrics", "pprof",
+		"pprof", "i18n", "respx", "dlock", "wuid", "guid", "telemetry", "audit", "database-monitor", "metrics",
 		"migration-status", "config-inspector", "health",
 	}, names)
 	assert.NotNil(t, app.metrics)
+}
+
+func TestBootstrapRegistersAuditRecorderWhenDisabled(t *testing.T) {
+	app := &App{config: AppConfig{Audit: Audit{Enabled: false}}}
+	require.NoError(t, app.bootstrap(t.Context()))
+	t.Cleanup(func() { _ = app.shutdown() })
+
+	require.NotNil(t, app.audit)
+	recorder, err := module.Resolve[audit.Recorder](app.services)
+	require.NoError(t, err)
+	require.NotNil(t, recorder)
+	recorder.Record(t.Context(), audit.Event{Operation: "disabled"})
+	assert.NotNil(t, app.audit.Collector())
 }
 
 func TestConfigureProcessRuntime(t *testing.T) {

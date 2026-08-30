@@ -1,6 +1,6 @@
 module 7link.com/platform/tests
 
-go 1.25.10
+go 1.26.2
 
 toolchain go1.26.6
 

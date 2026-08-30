@@ -26,25 +26,25 @@ func TestRunMigrationsUpStatusValidateAndDown(t *testing.T) {
 
 	reports, err := RunMigrations(t.Context(), config)
 	require.NoError(t, err)
-	require.Len(t, reports, 2)
+	require.Len(t, reports, 3)
 	assert.Equal(t, goosex.StateClean, reports[0].Status.State)
 	assert.Equal(t, goosex.StateClean, reports[1].Status.State)
 
 	reports, err = RunMigrations(t.Context(), config)
 	require.NoError(t, err)
-	require.Len(t, reports, 2)
+	require.Len(t, reports, 3)
 	assert.Equal(t, goosex.StateClean, reports[0].Status.State)
 	assert.Equal(t, goosex.StateClean, reports[1].Status.State)
 
 	config.Action = MigrationStatus
 	reports, err = RunMigrations(t.Context(), config)
 	require.NoError(t, err)
-	require.Len(t, reports, 2)
+	require.Len(t, reports, 3)
 
 	config.Action = MigrationValidate
 	reports, err = RunMigrations(t.Context(), config)
 	require.NoError(t, err)
-	require.Len(t, reports, 2)
+	require.Len(t, reports, 3)
 
 	config.Action = MigrationDown
 	config.Module = "wuid"

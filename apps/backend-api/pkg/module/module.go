@@ -5,7 +5,9 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/stats"
 )
 
 type (
@@ -67,5 +69,33 @@ type (
 
 	GRPCRegistrar interface {
 		RegisterGRPC(registrar grpc.ServiceRegistrar)
+	}
+
+	// UnaryInterceptorModule contributes a gRPC unary server interceptor. The
+	// method signature is the interceptor itself, so a module's handler method
+	// satisfies the interface directly.
+	UnaryInterceptorModule interface {
+		Module
+		UnaryServerInterceptor(ctx context.Context, request any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error)
+	}
+
+	// StreamInterceptorModule contributes a gRPC stream server interceptor.
+	StreamInterceptorModule interface {
+		Module
+		StreamServerInterceptor(service any, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error
+	}
+
+	// StatsHandlerModule contributes a gRPC stats handler.
+	StatsHandlerModule interface {
+		Module
+		GRPCServerStatsHandler() stats.Handler
+	}
+
+	// PrometheusCollectorModule contributes a collector to the application
+	// metrics registry. The metrics module registers every module collector
+	// after its own collectors.
+	PrometheusCollectorModule interface {
+		Module
+		Collector() prometheus.Collector
 	}
 )

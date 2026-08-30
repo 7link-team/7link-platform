@@ -8,9 +8,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	audit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/configinspector"
 	"7link.com/platform/internal/infra/databasemonitor"
 	"7link.com/platform/internal/infra/dlock"
@@ -238,4 +241,84 @@ func migrationStatusModule(app *App) *migrationstatus.Module {
 		}
 		return result, err
 	})
+}
+
+// capturingAuditSink collects audit events for assertions without touching the
+// process log or the database.
+type capturingAuditSink struct {
+	mu     sync.Mutex
+	events []audit.Event
+}
+
+func (sink *capturingAuditSink) Write(_ context.Context, events []audit.Event) error {
+	sink.mu.Lock()
+	defer sink.mu.Unlock()
+	sink.events = append(sink.events, events...)
+	return nil
+}
+
+func (sink *capturingAuditSink) snapshot() []audit.Event {
+	sink.mu.Lock()
+	defer sink.mu.Unlock()
+	return append([]audit.Event(nil), sink.events...)
+}
+
+func TestHTTPServerMountsAuditMiddleware(t *testing.T) {
+	sink := &capturingAuditSink{}
+	app := &App{config: validTestAppConfig(), ctx: t.Context()}
+	app.audit = audit.NewModule(app.config.Name, app.config.Version, nil,
+		audit.Config{Enabled: true, QueueSize: 1024, BatchSize: 1, FlushInterval: time.Millisecond, MaxBodyBytes: 1024},
+		audit.WithSinks(sink))
+	require.NoError(t, app.audit.Start(t.Context()))
+	t.Cleanup(func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		require.NoError(t, app.audit.Stop(stopCtx))
+	})
+
+	// Mirror the middleware chain startHTTPServer builds.
+	router := chi.NewRouter()
+	router.Use(app.audit.HTTPMiddleware)
+	router.Post("/orders", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":null}`))
+	})
+
+	writeRequest := httptest.NewRequest(http.MethodPost, "/orders", strings.NewReader(`{"name":"a"}`))
+	writeRequest.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, writeRequest)
+	require.Equal(t, http.StatusOK, response.Code)
+
+	// A read request is not audited by default.
+	readResponse := httptest.NewRecorder()
+	router.ServeHTTP(readResponse, httptest.NewRequest(http.MethodGet, "/orders", nil))
+
+	require.Eventually(t, func() bool { return len(sink.snapshot()) == 1 }, time.Second, 10*time.Millisecond)
+	events := sink.snapshot()
+	assert.Equal(t, "POST /orders", events[0].Operation)
+	assert.Equal(t, audit.AccessWrite, events[0].Access)
+	assert.Equal(t, `{"name":"a"}`, events[0].Request.Body)
+}
+
+func TestHTTPServerDoesNotAuditSkippedRoutes(t *testing.T) {
+	sink := &capturingAuditSink{}
+	app := &App{config: validTestAppConfig(), ctx: t.Context()}
+	app.audit = audit.NewModule(app.config.Name, app.config.Version, nil,
+		audit.Config{Enabled: true, QueueSize: 1024, BatchSize: 1, FlushInterval: time.Millisecond, MaxBodyBytes: 1024},
+		audit.WithSinks(sink))
+	require.NoError(t, app.audit.Start(t.Context()))
+	t.Cleanup(func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		require.NoError(t, app.audit.Stop(stopCtx))
+	})
+
+	router := chi.NewRouter()
+	router.Use(app.audit.HTTPMiddleware)
+	router.Post("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/healthz", nil))
+	// Give the pipeline a moment; no event should appear for the skipped route.
+	time.Sleep(50 * time.Millisecond)
+	assert.Empty(t, sink.snapshot())
 }

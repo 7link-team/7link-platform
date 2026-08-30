@@ -3,6 +3,7 @@ package metrics
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -74,6 +75,24 @@ func NewModule(datasources *gormx.DatasourceRouter, monitors ...*databasemonitor
 		duration:     duration,
 		responseSize: responseSize,
 	}
+}
+
+// RegisterCollector adds an application-owned collector (e.g. the audit
+// pipeline counters) to the metrics registry. A duplicate registration is a
+// no-op, so the method is safe to call from bootstrap even if the collector was
+// already registered.
+func (m *Module) RegisterCollector(collector prometheus.Collector) error {
+	if m == nil || m.registry == nil || collector == nil {
+		return nil
+	}
+	if err := m.registry.Register(collector); err != nil {
+		var already prometheus.AlreadyRegisteredError
+		if errors.As(err, &already) {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 type datasourceCollector struct {

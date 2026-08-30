@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 
+	audit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/dlock"
 	"7link.com/platform/internal/infra/wuid"
 	configx "7link.com/platform/pkg/config"
@@ -71,7 +72,11 @@ func RunMigrations(ctx context.Context, config MigrationConfig) ([]MigrationRepo
 	if db == nil {
 		return nil, errors.New("migration: writable database is not configured")
 	}
-	modules := []module.Module{dlock.NewModule(router), wuid.NewModule(router)}
+	modules := []module.Module{
+		dlock.NewModule(router),
+		wuid.NewModule(router),
+		audit.NewModule("", "", router, audit.Config{}),
+	}
 	return runModuleMigrations(ctx, db, modules, config)
 }
 

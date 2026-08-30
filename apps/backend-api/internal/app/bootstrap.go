@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 
+	audit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/configinspector"
 	"7link.com/platform/internal/infra/databasemonitor"
 	"7link.com/platform/internal/infra/dlock"
@@ -15,11 +16,13 @@ import (
 	metrics "7link.com/platform/internal/infra/metrics"
 	"7link.com/platform/internal/infra/migrationstatus"
 	"7link.com/platform/internal/infra/pprof"
+	telemetry "7link.com/platform/internal/infra/telemetry"
 	"7link.com/platform/internal/infra/wuid"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/extension/huma/respx"
 	slogx "7link.com/platform/pkg/extension/slog"
 	"7link.com/platform/pkg/i18n"
+	"7link.com/platform/pkg/module"
 	"7link.com/platform/pkg/timezone"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
@@ -64,10 +67,35 @@ func (app *App) bootstrap(ctx context.Context) error {
 		}
 	}
 
-	app.mods = append(app.mods,
-		app.databaseMonitor,
+	// Always register the module so dependent modules can resolve Recorder even
+	// when automatic auditing is disabled. The disabled recorder is a no-op and
+	// does not start a dispatcher.
+	app.audit = audit.NewModule(app.config.Name, app.config.Version, app.Db, audit.Config{
+		Enabled:         app.config.Audit.Enabled,
+		Database:        audit.DatabaseConfig{Enabled: app.config.Audit.Database.Enabled},
+		RecordReads:     app.config.Audit.RecordReads,
+		RecordStreams:   app.config.Audit.RecordStreams,
+		MaxBodyBytes:    app.config.Audit.MaxBodyBytes,
+		SensitiveFields: app.config.Audit.SensitiveFields,
+		SkipRoutes:      app.config.Audit.SkipRoutes,
+		QueueSize:       app.config.Audit.QueueSize,
+		BatchSize:       app.config.Audit.BatchSize,
+		FlushInterval:   app.config.Audit.FlushInterval,
+		FlushTimeout:    app.config.Audit.FlushTimeout,
+		Overflow:        app.config.Audit.Overflow,
+	})
+
+	// Registration order follows dependency direction: i18n before respx,
+	// wuid before guid, guid before audit. databaseMonitor is a no-dependency
+	// query observer and sits after the core so shutdown releases it first.
+	if app.config.Pprof.Enabled {
+		app.AddModule(pprof.NewModule(app.config.Name))
+	}
+
+	app.AddModule(
 		i18n.NewModule(i18n.Base),
 		respx.NewModule(),
+
 		dlock.NewModule(app.Db),
 		wuid.NewModule(app.Db),
 		guid.NewModule(),
@@ -75,15 +103,45 @@ func (app *App) bootstrap(ctx context.Context) error {
 		// .. basic modules
 	)
 
+	// telemetry is always registered: local trace propagation and the X-Trace-ID
+	// response header stay available even when no exporter is configured — the
+	// OTLP exporter itself is gated inside telemetry.Initialize. It is registered
+	// before audit so protocol interceptors run inside telemetry's span context,
+	// matching the HTTP middleware order (telemetry outside audit).
+	app.telemetry = telemetry.NewModule(app.config.Name, app.config.Version, telemetry.WithConfig(telemetry.Config{
+		OTLP: telemetry.OTLPConfig{
+			Enabled:  app.config.Telemetry.OTLP.Enabled,
+			Protocol: app.config.Telemetry.OTLP.Protocol,
+			Endpoint: app.config.Telemetry.OTLP.Endpoint,
+			Insecure: app.config.Telemetry.OTLP.Insecure,
+			Headers:  app.config.Telemetry.OTLP.Headers,
+			Timeout:  app.config.Telemetry.OTLP.Timeout,
+		},
+	}))
+	app.AddModule(app.telemetry)
+
+	app.AddModule(
+		app.audit,
+		app.databaseMonitor,
+
+		// .. enhance modules
+	)
+
 	if app.config.API.Metrics.Enabled {
 		app.metrics = metrics.NewModule(app.Db, app.databaseMonitor)
-		app.mods = append(app.mods, app.metrics)
-	}
-	if app.config.Pprof.Enabled {
-		app.mods = append(app.mods, pprof.NewModule(app.config.Name))
+		app.AddModule(app.metrics)
+		for _, appModule := range app.mods {
+			collector, ok := appModule.(module.PrometheusCollectorModule)
+			if !ok {
+				continue
+			}
+			if err := app.metrics.RegisterCollector(collector.Collector()); err != nil {
+				return fmt.Errorf("register module metrics: %w", err)
+			}
+		}
 	}
 	if app.config.API.MigrationStatus.Enabled {
-		app.mods = append(app.mods, migrationstatus.NewModule(func(ctx context.Context) ([]migrationstatus.Report, error) {
+		app.AddModule(migrationstatus.NewModule(func(ctx context.Context) ([]migrationstatus.Report, error) {
 			reports, err := runModuleMigrations(ctx, app.Db.Write(), app.mods, MigrationConfig{
 				Action: MigrationStatus,
 				To:     -1,
@@ -100,13 +158,13 @@ func (app *App) bootstrap(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		app.mods = append(app.mods, inspector)
+		app.AddModule(inspector)
 	}
 
-	// app.mods = append(app.mods,
+	// app.AddModule(app.mods,
 	// .. biz modules
 	// )
-	app.mods = append(app.mods,
+	app.AddModule(
 		health.NewModule(app.healthCheckers),
 		// .. completion modules
 	)
