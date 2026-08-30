@@ -22,7 +22,10 @@ func TestModuleRedactsConfigurationAndRegistersOpenAPI(t *testing.T) {
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
 	assert.Equal(t, "config-inspector", m.ModuleName())
-	require.NoError(t, m.RegisterHTTP(t.Context(), router, api))
+	require.NoError(t, m.RegisterHTTP(t.Context(), api))
+	for _, route := range m.RawHTTPRoutes() {
+		route.Mount(router)
+	}
 
 	request := httptest.NewRequest(http.MethodGet, Path, nil)
 	request.Header.Set("Accept", "text/html")

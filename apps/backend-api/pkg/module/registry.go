@@ -9,7 +9,6 @@ import (
 
 	grpcx "7link.com/platform/pkg/extension/grpc"
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/go-chi/chi/v5"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/stats"
 )
@@ -214,9 +213,9 @@ func (r *Registry) Start(ctx context.Context) error {
 	return nil
 }
 
-// RegisterHTTP runs the HTTP registration phase. It requires Started so modules
-// are operational before routes are mounted.
-func (r *Registry) RegisterHTTP(ctx context.Context, router chi.Router, api huma.API) error {
+// RegisterHTTP runs the huma registration phase. It requires Started so modules
+// are operational before operations are registered.
+func (r *Registry) RegisterHTTP(ctx context.Context, api huma.API) error {
 	if r.phase < phaseStarted {
 		return fmt.Errorf("module: register http requires started modules")
 	}
@@ -225,7 +224,7 @@ func (r *Registry) RegisterHTTP(ctx context.Context, router chi.Router, api huma
 		if !ok {
 			continue
 		}
-		if err := registrar.RegisterHTTP(ctx, router, api); err != nil {
+		if err := registrar.RegisterHTTP(ctx, api); err != nil {
 			return fmt.Errorf("%T register HTTP: %w", e.module, err)
 		}
 	}

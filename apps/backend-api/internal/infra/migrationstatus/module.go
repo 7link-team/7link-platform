@@ -11,7 +11,6 @@ import (
 	"7link.com/platform/pkg/extension/huma/respx"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/go-chi/chi/v5"
 )
 
 const (
@@ -43,10 +42,11 @@ type Module struct {
 }
 
 var (
-	_ module.Module          = (*Module)(nil)
-	_ module.Enabler         = (*Module)(nil)
-	_ module.ServiceInjector = (*Module)(nil)
-	_ module.HTTPRegistrar   = (*Module)(nil)
+	_ module.Module              = (*Module)(nil)
+	_ module.Enabler             = (*Module)(nil)
+	_ module.ServiceInjector     = (*Module)(nil)
+	_ module.HTTPRegistrar       = (*Module)(nil)
+	_ module.RawHTTPHandlerModule = (*Module)(nil)
 )
 
 func NewModule(cfg Config) *Module {
@@ -67,11 +67,10 @@ func (m *Module) InjectServices(services *module.Services) error {
 
 func (*Module) ModuleName() string { return Name }
 
-func (m *Module) RegisterHTTP(_ context.Context, router chi.Router, api huma.API) error {
+func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	if m.inspect == nil {
 		return fmt.Errorf("register migration status: inspector is unavailable")
 	}
-	router.Get(Path, m.handle)
 	api.OpenAPI().AddOperation(&huma.Operation{
 		OperationID: "get-migration-status",
 		Method:      http.MethodGet,
@@ -85,6 +84,12 @@ func (m *Module) RegisterHTTP(_ context.Context, router chi.Router, api huma.API
 		},
 	})
 	return nil
+}
+
+// RawHTTPRoutes contributes the migration-status handler, mounted on the
+// server's router.
+func (m *Module) RawHTTPRoutes() []module.RawRoute {
+	return []module.RawRoute{{Method: http.MethodGet, Path: Path, Handler: http.HandlerFunc(m.handle)}}
 }
 
 func (m *Module) handle(writer http.ResponseWriter, request *http.Request) {

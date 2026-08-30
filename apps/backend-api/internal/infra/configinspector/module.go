@@ -10,7 +10,6 @@ import (
 	"7link.com/platform/pkg/extension/huma/respx"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/go-chi/chi/v5"
 )
 
 const (
@@ -31,10 +30,11 @@ type Module struct {
 }
 
 var (
-	_ module.Module        = (*Module)(nil)
-	_ module.Enabler       = (*Module)(nil)
-	_ module.Initializer   = (*Module)(nil)
-	_ module.HTTPRegistrar = (*Module)(nil)
+	_ module.Module              = (*Module)(nil)
+	_ module.Enabler             = (*Module)(nil)
+	_ module.Initializer         = (*Module)(nil)
+	_ module.HTTPRegistrar       = (*Module)(nil)
+	_ module.RawHTTPHandlerModule = (*Module)(nil)
 )
 
 // NewModule builds the config inspector. The snapshot is deferred to Initialize
@@ -57,8 +57,7 @@ func (m *Module) Initialize(context.Context) error {
 
 func (*Module) ModuleName() string { return Name }
 
-func (m *Module) RegisterHTTP(_ context.Context, router chi.Router, api huma.API) error {
-	router.Get(Path, m.handle)
+func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	api.OpenAPI().AddOperation(&huma.Operation{
 		OperationID: "get-effective-configuration",
 		Method:      http.MethodGet,
@@ -76,6 +75,12 @@ func (m *Module) RegisterHTTP(_ context.Context, router chi.Router, api huma.API
 		},
 	})
 	return nil
+}
+
+// RawHTTPRoutes contributes the config inspector handler, mounted on the
+// server's router.
+func (m *Module) RawHTTPRoutes() []module.RawRoute {
+	return []module.RawRoute{{Method: http.MethodGet, Path: Path, Handler: http.HandlerFunc(m.handle)}}
 }
 
 func (m *Module) handle(writer http.ResponseWriter, request *http.Request) {

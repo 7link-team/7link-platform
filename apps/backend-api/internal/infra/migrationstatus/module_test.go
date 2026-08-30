@@ -25,7 +25,10 @@ func TestModuleReturnsJSONAndRegistersOpenAPI(t *testing.T) {
 	require.NoError(t, services.Seal())
 	require.NoError(t, m.InjectServices(services))
 	assert.Equal(t, "migration-status", m.ModuleName())
-	require.NoError(t, m.RegisterHTTP(t.Context(), router, api))
+	require.NoError(t, m.RegisterHTTP(t.Context(), api))
+	for _, route := range m.RawHTTPRoutes() {
+		route.Mount(router)
+	}
 
 	for _, accept := range []string{"application/json", "text/html"} {
 		request := httptest.NewRequest(http.MethodGet, Path, nil)
@@ -50,12 +53,15 @@ func TestModuleHidesInspectionErrors(t *testing.T) {
 	}))
 	require.NoError(t, services.Seal())
 	require.NoError(t, m.InjectServices(services))
-	require.NoError(t, m.RegisterHTTP(t.Context(), router, api))
+	require.NoError(t, m.RegisterHTTP(t.Context(), api))
+	for _, route := range m.RawHTTPRoutes() {
+		route.Mount(router)
+	}
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, Path, nil))
 	assert.Equal(t, http.StatusServiceUnavailable, response.Code)
 	assert.NotContains(t, response.Body.String(), "database secret")
-	assert.EqualError(t, NewModule(Config{}).RegisterHTTP(t.Context(), chi.NewRouter(), nil),
+	assert.EqualError(t, NewModule(Config{}).RegisterHTTP(t.Context(), nil),
 		"register migration status: inspector is unavailable")
 }
 

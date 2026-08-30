@@ -41,11 +41,12 @@ type Module struct {
 }
 
 var (
-	_ module.Module          = (*Module)(nil)
-	_ module.Enabler         = (*Module)(nil)
-	_ module.ServiceInjector = (*Module)(nil)
-	_ module.CollectorSink   = (*Module)(nil)
-	_ module.HTTPRegistrar   = (*Module)(nil)
+	_ module.Module              = (*Module)(nil)
+	_ module.Enabler             = (*Module)(nil)
+	_ module.ServiceInjector     = (*Module)(nil)
+	_ module.CollectorSink       = (*Module)(nil)
+	_ module.HTTPRegistrar       = (*Module)(nil)
+	_ module.RawHTTPHandlerModule = (*Module)(nil)
 )
 
 func (*Module) ModuleName() string { return Name }
@@ -291,9 +292,9 @@ func (m *Module) Handler() http.Handler {
 	})
 }
 
-// RegisterHTTP mounts the scrape handler and describes it in the API contract.
-func (m *Module) RegisterHTTP(_ context.Context, router chi.Router, api huma.API) error {
-	router.Handle(Path, m.Handler())
+// RegisterHTTP describes the scrape endpoint in the API contract. The raw
+// Prometheus handler is contributed via RawHTTPRoutes and mounted by the server.
+func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	api.OpenAPI().AddOperation(&huma.Operation{
 		OperationID: "get-prometheus-metrics",
 		Method:      http.MethodGet,
@@ -311,6 +312,12 @@ func (m *Module) RegisterHTTP(_ context.Context, router chi.Router, api huma.API
 		},
 	})
 	return nil
+}
+
+// RawHTTPRoutes contributes the Prometheus scrape handler, mounted on the
+// server's router rather than routed through huma.
+func (m *Module) RawHTTPRoutes() []module.RawRoute {
+	return []module.RawRoute{{Method: http.MethodGet, Path: Path, Handler: m.Handler()}}
 }
 
 func (m *Module) HTTPMiddleware(next http.Handler) http.Handler {

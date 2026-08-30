@@ -41,7 +41,7 @@ type registrarModule struct {
 
 func (*registrarModule) ModuleName() string { return "registrar" }
 
-func (m *registrarModule) RegisterHTTP(ctx context.Context, _ chi.Router, _ huma.API) error {
+func (m *registrarModule) RegisterHTTP(ctx context.Context, _ huma.API) error {
 	m.httpCalled = true
 	m.registeredCtx = ctx
 	return m.httpErr
@@ -115,7 +115,10 @@ func moduleRouter(t *testing.T, app *App) (*chi.Mux, huma.API) {
 		OpenAPI: humax.EndpointConfig{Enabled: true},
 	})
 	if app.modules != nil {
-		require.NoError(t, app.modules.RegisterHTTP(t.Context(), router, api))
+		require.NoError(t, app.modules.RegisterHTTP(t.Context(), api))
+		for _, route := range app.modules.RawHTTPRoutes() {
+			route.Mount(router)
+		}
 	}
 	return router, api
 }

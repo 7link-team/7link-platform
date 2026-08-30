@@ -25,7 +25,10 @@ func TestRegisterPprofServesStandardEndpoints(t *testing.T) {
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
 	module := NewModule(module.Runtime{Name: "test service"}, Config{})
 	assert.Equal(t, "pprof", module.ModuleName())
-	require.NoError(t, module.RegisterHTTP(t.Context(), router, api))
+	require.NoError(t, module.RegisterHTTP(t.Context(), api))
+	for _, route := range module.RawHTTPRoutes() {
+		route.Mount(router)
+	}
 
 	index := httptest.NewRecorder()
 	router.ServeHTTP(index, httptest.NewRequest(http.MethodGet, Path+"/", nil))
@@ -52,7 +55,13 @@ func TestRegisterPprofServesStandardEndpoints(t *testing.T) {
 func TestRegisterPprofServesEmbeddedWebUI(t *testing.T) {
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
-	require.NoError(t, NewModule(module.Runtime{Name: "test service"}, Config{}).RegisterHTTP(t.Context(), router, api))
+	pprofModule := NewModule(module.Runtime{Name: "test service"}, Config{})
+	require.NoError(t, pprofModule.RegisterHTTP(t.Context(), api))
+	for _, route := range pprofModule.RawHTTPRoutes() {
+		// The embedded UI wildcard has an empty Method and is mounted for every
+		// verb (Mount -> router.Handle), so capture POSTs still work.
+		route.Mount(router)
+	}
 
 	landing := httptest.NewRecorder()
 	router.ServeHTTP(landing, httptest.NewRequest(http.MethodGet, UIPath+"/", nil))
@@ -192,7 +201,11 @@ func TestCaptureDuration(t *testing.T) {
 func TestRegisterPprofAddsOpenAPIOperations(t *testing.T) {
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
-	require.NoError(t, NewModule(module.Runtime{Name: "test service"}, Config{}).RegisterHTTP(t.Context(), router, api))
+	pprofModule := NewModule(module.Runtime{Name: "test service"}, Config{})
+	require.NoError(t, pprofModule.RegisterHTTP(t.Context(), api))
+	for _, route := range pprofModule.RawHTTPRoutes() {
+		route.Mount(router)
+	}
 
 	paths := api.OpenAPI().Paths
 	for _, path := range []string{

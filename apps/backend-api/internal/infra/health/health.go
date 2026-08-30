@@ -12,7 +12,6 @@ import (
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/go-chi/chi/v5"
 	"google.golang.org/grpc"
 )
 
@@ -84,7 +83,7 @@ func (h *HealthModule) CheckHealth(context.Context) error {
 	return nil
 }
 
-func (h *HealthModule) RegisterHTTP(_ context.Context, _ chi.Router, api huma.API) error {
+func (h *HealthModule) RegisterHTTP(_ context.Context, api huma.API) error {
 	h.http.Register(api)
 	return nil
 }

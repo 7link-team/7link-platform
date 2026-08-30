@@ -275,7 +275,7 @@ func TestRegisterHTTPRequiresStarted(t *testing.T) {
 	r := NewRegistry()
 	require.NoError(t, r.Register(&namedModule{name: "m"}))
 	require.NoError(t, r.Activate())
-	err := r.RegisterHTTP(t.Context(), nil, nil)
+	err := r.RegisterHTTP(t.Context(), nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "register http requires started modules")
 }

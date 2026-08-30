@@ -47,8 +47,11 @@ func (app *App) startHTTPServer() error {
 	}
 	api := humax.New(router, apiConfig)
 	if app.modules != nil {
-		if err := app.modules.RegisterHTTP(app.ctx, router, api); err != nil {
+		if err := app.modules.RegisterHTTP(app.ctx, api); err != nil {
 			return err
+		}
+		for _, route := range app.modules.RawHTTPRoutes() {
+			route.Mount(router)
 		}
 	}
 	addr := net.JoinHostPort(app.config.HttpServer.Address, strconv.Itoa(app.config.HttpServer.Port))

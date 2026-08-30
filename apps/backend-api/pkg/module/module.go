@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	goosex "7link.com/platform/pkg/extension/goose"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus"
@@ -64,8 +65,12 @@ type (
 		Deinitialize(ctx context.Context) error
 	}
 
+	// HTTPRegistrar registers typed operations through huma only. huma is
+	// adapter-agnostic (chi/gin/fiber/...), so modules never bind to a router
+	// implementation. Raw, non-typed handlers are contributed separately via
+	// RawHTTPHandlerModule and mounted by the HTTP server.
 	HTTPRegistrar interface {
-		RegisterHTTP(ctx context.Context, router chi.Router, api huma.API) error
+		RegisterHTTP(ctx context.Context, api huma.API) error
 	}
 
 	GRPCRegistrar interface {
@@ -139,10 +144,32 @@ type (
 		RawHTTPRoutes() []RawRoute
 	}
 
-	// RawRoute is one raw HTTP route contributed by a module.
+	// RawRoute is one raw HTTP route contributed by a module. An empty Method
+	// mounts the handler for every HTTP verb (chi router.Handle) — used by
+	// handlers that serve multiple methods, such as the pprof analysis UI,
+	// which also handles capture POSTs.
 	RawRoute struct {
 		Method  string
 		Path    string
 		Handler http.Handler
 	}
+
+	// MigrationSourceProvider exposes a module's embedded migration source so
+	// the migration runner and the migration-status inspector can discover it
+	// alongside the other module capabilities.
+	MigrationSourceProvider interface {
+		MigrationSource() goosex.Source
+	}
 )
+
+// Mount registers a RawRoute on a chi router. It is the single place the server
+// (and tests) turn a RawRoute into a mounted route: an empty Method mounts the
+// handler for every verb (router.Handle), so every-method routes such as the
+// pprof analysis UI work consistently.
+func (route RawRoute) Mount(router chi.Router) {
+	if route.Method == "" {
+		router.Handle(route.Path, route.Handler)
+		return
+	}
+	router.Method(route.Method, route.Path, route.Handler)
+}

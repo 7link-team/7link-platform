@@ -13,7 +13,6 @@ import (
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/go-chi/chi/v5"
 	"google.golang.org/grpc"
 )
 
@@ -115,7 +114,7 @@ func (m *Module) Stop(context.Context) error {
 	return nil
 }
 
-func (m *Module) RegisterHTTP(_ context.Context, _ chi.Router, api huma.API) error {
+func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	registerHTTP(api, m.Next)
 	return nil
 }

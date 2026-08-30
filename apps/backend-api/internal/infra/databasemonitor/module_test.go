@@ -97,7 +97,10 @@ func TestDatasourceDiagnosticsAreRedactedAndOptional(t *testing.T) {
 	disabled := newModule(fake, Config{})
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
-	require.NoError(t, disabled.RegisterHTTP(t.Context(), router, api))
+	require.NoError(t, disabled.RegisterHTTP(t.Context(), api))
+	for _, route := range disabled.RawHTTPRoutes() {
+		route.Mount(router)
+	}
 	assert.NotContains(t, api.OpenAPI().Paths, Path)
 
 	enabled := newModule(fake, Config{ExposeHTTP: true})
@@ -105,7 +108,10 @@ func TestDatasourceDiagnosticsAreRedactedAndOptional(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, enabled.Stop(context.Background())) })
 	router = chi.NewRouter()
 	api = humax.New(router, humax.DefaultConfig("test", "1.0.0"))
-	require.NoError(t, enabled.RegisterHTTP(t.Context(), router, api))
+	require.NoError(t, enabled.RegisterHTTP(t.Context(), api))
+	for _, route := range enabled.RawHTTPRoutes() {
+		route.Mount(router)
+	}
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, Path, nil))
 

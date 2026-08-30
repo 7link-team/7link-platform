@@ -16,7 +16,6 @@ import (
 	"7link.com/platform/pkg/extension/huma/respx"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/go-chi/chi/v5"
 )
 
 const (
@@ -101,12 +100,13 @@ type Module struct {
 }
 
 var (
-	_ module.Module          = (*Module)(nil)
-	_ module.ServiceProvider = (*Module)(nil)
-	_ module.Initializer     = (*Module)(nil)
-	_ module.Starter         = (*Module)(nil)
-	_ module.Stopper         = (*Module)(nil)
-	_ module.HTTPRegistrar   = (*Module)(nil)
+	_ module.Module              = (*Module)(nil)
+	_ module.ServiceProvider     = (*Module)(nil)
+	_ module.Initializer         = (*Module)(nil)
+	_ module.Starter             = (*Module)(nil)
+	_ module.Stopper             = (*Module)(nil)
+	_ module.HTTPRegistrar       = (*Module)(nil)
+	_ module.RawHTTPHandlerModule = (*Module)(nil)
 )
 
 // Monitor is the narrow contract consumed by the metrics module: the cached
@@ -341,16 +341,10 @@ func (m *Module) HealthCheckers() []healthservice.Checker {
 	return checkers
 }
 
-func (m *Module) RegisterHTTP(_ context.Context, router chi.Router, api huma.API) error {
+func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	if !m.config.ExposeHTTP {
 		return nil
 	}
-	router.Get(Path, m.handle)
-	router.Get(SQLPath, m.handleSQL)
-	router.Get(strings.TrimSuffix(ConsolePath, "/"), func(writer http.ResponseWriter, request *http.Request) {
-		http.Redirect(writer, request, ConsolePath, http.StatusMovedPermanently)
-	})
-	router.Get(ConsolePath, m.handleConsole)
 	for _, operation := range []*huma.Operation{{
 		OperationID: "get-datasource-diagnostics",
 		Method:      http.MethodGet,
@@ -385,6 +379,22 @@ func (m *Module) RegisterHTTP(_ context.Context, router chi.Router, api huma.API
 		api.OpenAPI().AddOperation(operation)
 	}
 	return nil
+}
+
+// RawHTTPRoutes contributes the diagnostics handlers and the embedded console,
+// mounted on the server's router when the inspector is exposed.
+func (m *Module) RawHTTPRoutes() []module.RawRoute {
+	if !m.config.ExposeHTTP {
+		return nil
+	}
+	return []module.RawRoute{
+		{Method: http.MethodGet, Path: Path, Handler: http.HandlerFunc(m.handle)},
+		{Method: http.MethodGet, Path: SQLPath, Handler: http.HandlerFunc(m.handleSQL)},
+		{Method: http.MethodGet, Path: strings.TrimSuffix(ConsolePath, "/"), Handler: http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			http.Redirect(writer, request, ConsolePath, http.StatusMovedPermanently)
+		})},
+		{Method: http.MethodGet, Path: ConsolePath, Handler: http.HandlerFunc(m.handleConsole)},
+	}
 }
 
 func (m *Module) handle(writer http.ResponseWriter, request *http.Request) {

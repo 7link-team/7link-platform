@@ -32,7 +32,10 @@ func TestHTTPMiddlewareExportsRouteMetricsWithoutRawURLs(t *testing.T) {
 		response.WriteHeader(http.StatusCreated)
 		_, _ = response.Write([]byte("created"))
 	})
-	require.NoError(t, module.RegisterHTTP(t.Context(), router, api))
+	require.NoError(t, module.RegisterHTTP(t.Context(), api))
+	for _, route := range module.RawHTTPRoutes() {
+		route.Mount(router)
+	}
 
 	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/widgets/123?token=secret", nil))
 	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/missing/456", nil))

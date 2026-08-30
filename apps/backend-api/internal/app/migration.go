@@ -43,9 +43,9 @@ type MigrationReport struct {
 	Status goosex.Status `json:"status"`
 }
 
-type migrationSourceProvider interface {
-	MigrationSource() goosex.Source
-}
+// migrationSourceProvider is satisfied by modules that own an embedded
+// migration source (see module.MigrationSourceProvider in pkg/module).
+type migrationSourceProvider = module.MigrationSourceProvider
 
 // RunMigrations executes one migration command without initializing or starting
 // application modules and always closes the temporary datasource router.

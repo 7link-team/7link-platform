@@ -8,7 +8,6 @@ import (
 
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/go-chi/chi/v5"
 )
 
 const (
@@ -30,9 +29,10 @@ type Module struct {
 }
 
 var (
-	_ module.Module        = (*Module)(nil)
-	_ module.Enabler       = (*Module)(nil)
-	_ module.HTTPRegistrar = (*Module)(nil)
+	_ module.Module              = (*Module)(nil)
+	_ module.Enabler             = (*Module)(nil)
+	_ module.HTTPRegistrar       = (*Module)(nil)
+	_ module.RawHTTPHandlerModule = (*Module)(nil)
 )
 
 // NewModule builds the pprof module. The application name (UI title) is taken
@@ -45,24 +45,32 @@ func (m *Module) Enabled() bool { return m.cfg.Enabled }
 
 func (*Module) ModuleName() string { return Name }
 
-func (m *Module) RegisterHTTP(_ context.Context, router chi.Router, api huma.API) error {
-	ui := newPprofUI(m.name)
-	router.Get(Path, func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, Path+"/", http.StatusMovedPermanently)
-	})
-	router.Get(Path+"/", stdpprof.Index)
-	router.Get(Path+"/cmdline", stdpprof.Cmdline)
-	router.Get(Path+"/profile", stdpprof.Profile)
-	router.Get(Path+"/symbol", stdpprof.Symbol)
-	router.Get(Path+"/trace", stdpprof.Trace)
-	router.Get(UIPath, func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, UIPath+"/", http.StatusMovedPermanently)
-	})
-	router.Handle(UIPath+"/*", http.StripPrefix(UIPath, ui))
-	router.Get(Path+"/*", stdpprof.Index)
-
+func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	registerPprofOpenAPI(api)
 	return nil
+}
+
+// RawHTTPRoutes contributes the runtime profiling handlers and the embedded
+// analysis UI, mounted on the server's router.
+func (m *Module) RawHTTPRoutes() []module.RawRoute {
+	ui := newPprofUI(m.name)
+	return []module.RawRoute{
+		{Method: http.MethodGet, Path: Path, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, Path+"/", http.StatusMovedPermanently)
+		})},
+		{Method: http.MethodGet, Path: Path + "/", Handler: http.HandlerFunc(stdpprof.Index)},
+		{Method: http.MethodGet, Path: Path + "/cmdline", Handler: http.HandlerFunc(stdpprof.Cmdline)},
+		{Method: http.MethodGet, Path: Path + "/profile", Handler: http.HandlerFunc(stdpprof.Profile)},
+		{Method: http.MethodGet, Path: Path + "/symbol", Handler: http.HandlerFunc(stdpprof.Symbol)},
+		{Method: http.MethodGet, Path: Path + "/trace", Handler: http.HandlerFunc(stdpprof.Trace)},
+		{Method: http.MethodGet, Path: UIPath, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, UIPath+"/", http.StatusMovedPermanently)
+		})},
+		// The analysis UI also handles capture POSTs, so it is mounted for every
+		// method (empty Method).
+		{Method: "", Path: UIPath + "/*", Handler: http.StripPrefix(UIPath, ui)},
+		{Method: http.MethodGet, Path: Path + "/*", Handler: http.HandlerFunc(stdpprof.Index)},
+	}
 }
 
 func registerPprofOpenAPI(api huma.API) {
