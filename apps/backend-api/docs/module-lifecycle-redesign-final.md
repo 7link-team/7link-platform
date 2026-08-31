@@ -179,7 +179,7 @@ func (app *App) composeModules() error {
         wuid.NewModule(rt),
         guid.NewModule(rt),
 
-        // metrics before telemetry/audit keeps its HTTP middleware outermost
+        // The HTTP adapter resolves the metrics observer and mounts it outermost.
         metrics.NewModule(rt, metricsConfig(app.config)),
         telemetry.NewModule(rt, telemetry.WithConfig(telemetryConfig(app.config))),
         audit.NewModule(rt, auditConfig(app.config)),
@@ -258,7 +258,9 @@ views (health checkers, migration inspector) — the collector view is gone.
 
 ### 3.6 HTTP transport decoupling (from review)
 
-Modules never see a router. chi appears only in the app's HTTP server.
+Modules never see a router. chi is confined to the selected HTTP adapter
+assembly (`internal/app` and the current Huma chi adapter); changing the HTTP
+engine does not change Module contracts or implementations.
 
 ```go
 type HTTPRegistrar interface {
@@ -277,10 +279,12 @@ type RawRoute struct {
 }
 ```
 
-HTTP server: `HTTPMiddlewares()` then `respx.Recovery` then mount `RawHTTPRoutes`.
-Middleware stays router-level (deliberate): huma middleware misses raw routes;
-router level covers everything. The middleware value is stdlib-portable; only the
-app-level mount is chi-bound.
+HTTP server: resolve the optional metrics `HTTPObserver`, install its
+adapter-owned middleware, apply `HTTPMiddlewares()`, then `respx.Recovery`, then
+mount `RawHTTPRoutes`. Middleware stays router-level (deliberate): huma
+middleware misses raw routes; router level covers everything. Module middleware
+values are stdlib-portable; route mounting and route-pattern extraction belong
+to the selected HTTP adapter.
 
 ## 4. Per-module changes
 
@@ -290,7 +294,7 @@ app-level mount is chi-bound.
 | telemetry | `NewModule(rt *appenv.Runtime, options ...Option)` | retains `rt` and config only; `Initialize` creates the OTel resource/provider and publishes globals; nil-safe/idempotent cleanup |
 | audit | `NewModule(rt *appenv.Runtime, cfg Config, options ...ModuleOption)` | retains `rt`; identity + routed database sink; always registered; never an `Enabler` |
 | databasemonitor | `NewModule(rt *appenv.Runtime, cfg Config)` | retains `rt`; database manager satisfies its `datasource` interface; observer registered in `Initialize` |
-| metrics | `NewModule(rt *appenv.Runtime, cfg Config)` | retains `rt`; builds Prometheus registry; database manager drives datasource collector |
+| metrics | `NewModule(rt *appenv.Runtime, cfg Config)` | retains `rt`; builds Prometheus registry; database manager drives datasource collector; provides an adapter-independent `HTTPObserver` |
 | migrationstatus | `NewModule(rt *appenv.Runtime, cfg Config)` | retains `rt`; `Enabler`; `InjectServices` resolves the migration inspector service |
 | configinspector | `NewModule(rt *appenv.Runtime, value any, cfg Config)` | retains `rt`; `Enabler`; snapshot built in `Initialize` (no constructor error) |
 | pprof | `NewModule(rt *appenv.Runtime, cfg Config)` | `Enabler`; `rt.Identity().Name()` used at route registration |
@@ -315,11 +319,11 @@ implementing `module.MigrationSourceProvider`. It exits through the normal
 |---|---|---|
 | B1 | Collector aggregation order-independent (post-Wire iteration) | Fixes the latent bug |
 | B2 | Observer registration in `Initialize` (post-migrate) | Migration SQL leaves `/debug/sql` / `database_sql_*` — **accepted** |
-| B3 | Middleware layering by registration order | Final order unchanged: metrics → telemetry → audit → recovery |
+| B3 | Adapter metrics middleware outside module middleware registration order | Final order unchanged: metrics → telemetry → audit → recovery |
 | B4 | Conditional modules self-declare `Enabled()` | Disabled modules absent from active set; health/middleware/collectors reflect it |
 | B5 | `App` concrete module fields removed | http.go/tests resolve via registry |
 | B6 | "prometheus module is unavailable" guard removed | Unreachable by construction |
-| B7 | Modules never receive a chi router | chi confined to the HTTP server |
+| B7 | Modules never receive or import a chi router | chi confined to the selected HTTP adapter assembly |
 | B8 | every application Module constructor receives the shared `rt` | one explicit App-lifetime environment is available throughout every Module lifecycle |
 
 ## 6. Test plan
@@ -350,8 +354,9 @@ failure rolls back cleanly.
 
 ### 6.3 Middleware & protocol order
 
-- `HTTPMiddlewares()` + `respx.Recovery` = [metrics, telemetry, audit, recovery],
-  asserted via header-probe handlers.
+- `mountHTTPMiddlewares` resolves the metrics observer, then composes Module
+  middleware and recovery = [metrics, telemetry, audit, recovery]. Route-pattern
+  labels and empty-method raw routes are asserted at the app adapter boundary.
 - gRPC: telemetry stats handler + audit interceptors + fake interceptor order;
   real RPC verifies multiple stats handlers compose.
 

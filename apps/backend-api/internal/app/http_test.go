@@ -102,12 +102,7 @@ func wiredRegistry(t *testing.T, mods ...module.Module) *module.Registry {
 func moduleRouter(t *testing.T, app *App) (*chi.Mux, huma.API) {
 	t.Helper()
 	router := chi.NewRouter()
-	if app.modules != nil {
-		for _, middleware := range app.modules.HTTPMiddlewares() {
-			router.Use(middleware)
-		}
-	}
-	router.Use(respx.Recovery)
+	require.NoError(t, app.mountHTTPMiddlewares(router))
 	api := humax.New(router, humax.Config{
 		Name:    app.config.Name,
 		Version: app.config.Version,
@@ -118,10 +113,25 @@ func moduleRouter(t *testing.T, app *App) (*chi.Mux, huma.API) {
 	if app.modules != nil {
 		require.NoError(t, app.modules.RegisterHTTP(t.Context(), api))
 		for _, route := range app.modules.RawHTTPRoutes() {
-			route.Mount(router)
+			mountRawRoute(router, route)
 		}
 	}
 	return router, api
+}
+
+type rawRouteModule struct{}
+
+func (*rawRouteModule) ModuleName() string { return "raw-route" }
+
+func (*rawRouteModule) RawHTTPRoutes() []module.RawRoute {
+	return []module.RawRoute{{
+		Method: http.MethodGet,
+		Path:   "/widgets/{id}",
+		Handler: http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+			response.WriteHeader(http.StatusCreated)
+			_, _ = response.Write([]byte("created"))
+		}),
+	}}
 }
 
 func TestConfigInspectorReturnsRedactedJSON(t *testing.T) {
@@ -246,12 +256,19 @@ func TestMetricsRegistrationAndDisabledModuleRoutes(t *testing.T) {
 	enabled := &App{config: validTestAppConfig()}
 	enabled.config.API.Metrics.Enabled = true
 	metricsModule := metrics.NewModule(appenv.NewRuntime(appenv.NewIdentity("", "")), metricsConfig(enabled.config))
-	enabled.modules = wiredRegistry(t, metricsModule)
+	enabled.modules = wiredRegistry(t, metricsModule, &rawRouteModule{})
 	router, api := moduleRouter(t, enabled)
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/widgets/123?token=secret", nil))
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/missing/456", nil))
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, metrics.Path, nil))
 	assert.Equal(t, http.StatusOK, response.Code)
 	assert.Contains(t, response.Body.String(), "go_goroutines")
+	assert.Contains(t, response.Body.String(), `http_server_requests_total{method="GET",route="/widgets/{id}",status="201"} 1`)
+	assert.Contains(t, response.Body.String(), `http_server_requests_total{method="GET",route="unmatched",status="404"} 1`)
+	assert.NotContains(t, response.Body.String(), "/widgets/123")
+	assert.NotContains(t, response.Body.String(), "/missing/456")
+	assert.NotContains(t, response.Body.String(), "secret")
 	assert.Contains(t, api.OpenAPI().Paths, metrics.Path)
 
 	disabled := &App{config: validTestAppConfig()}
@@ -263,6 +280,39 @@ func TestMetricsRegistrationAndDisabledModuleRoutes(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, response.Code, path)
 		assert.NotContains(t, disabledAPI.OpenAPI().Paths, path)
 	}
+}
+
+func TestMountRawRouteSupportsSpecificAndAllMethods(t *testing.T) {
+	router := chi.NewRouter()
+	mountRawRoute(router, module.RawRoute{
+		Method: http.MethodGet,
+		Path:   "/specific",
+		Handler: http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+			response.WriteHeader(http.StatusNoContent)
+		}),
+	})
+	mountRawRoute(router, module.RawRoute{
+		Path: "/all",
+		Handler: http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+			response.WriteHeader(http.StatusAccepted)
+		}),
+	})
+
+	get := httptest.NewRecorder()
+	router.ServeHTTP(get, httptest.NewRequest(http.MethodGet, "/specific", nil))
+	assert.Equal(t, http.StatusNoContent, get.Code)
+	postSpecific := httptest.NewRecorder()
+	router.ServeHTTP(postSpecific, httptest.NewRequest(http.MethodPost, "/specific", nil))
+	assert.Equal(t, http.StatusMethodNotAllowed, postSpecific.Code)
+	postAll := httptest.NewRecorder()
+	router.ServeHTTP(postAll, httptest.NewRequest(http.MethodPost, "/all", nil))
+	assert.Equal(t, http.StatusAccepted, postAll.Code)
+}
+
+func TestMountHTTPMiddlewaresRejectsUnwiredRegistry(t *testing.T) {
+	app := &App{modules: module.NewRegistry()}
+	err := app.mountHTTPMiddlewares(chi.NewRouter())
+	assert.ErrorContains(t, err, "resolve HTTP metrics observer")
 }
 
 func TestLandingResourcesRequireEnabledAndAdvertised(t *testing.T) {

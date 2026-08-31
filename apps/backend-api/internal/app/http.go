@@ -14,19 +14,16 @@ import (
 	"7link.com/platform/internal/infra/migrationstatus"
 	humax "7link.com/platform/pkg/extension/huma"
 	"7link.com/platform/pkg/extension/huma/respx"
+	"7link.com/platform/pkg/module"
+	"github.com/felixge/httpsnoop"
 	"github.com/go-chi/chi/v5"
 )
 
 func (app *App) startHTTPServer() error {
 	router := chi.NewRouter()
-	// Server-wide middleware in registration order: metrics (outermost),
-	// telemetry, audit, then the recovery guard, then huma's timing/locale.
-	if app.modules != nil {
-		for _, middleware := range app.modules.HTTPMiddlewares() {
-			router.Use(middleware)
-		}
+	if err := app.mountHTTPMiddlewares(router); err != nil {
+		return err
 	}
-	router.Use(respx.Recovery)
 	apiSettings := app.config.API
 	apiConfig := humax.Config{
 		Name:    app.config.Name,
@@ -51,7 +48,7 @@ func (app *App) startHTTPServer() error {
 			return err
 		}
 		for _, route := range app.modules.RawHTTPRoutes() {
-			route.Mount(router)
+			mountRawRoute(router, route)
 		}
 	}
 	addr := net.JoinHostPort(app.config.HttpServer.Address, strconv.Itoa(app.config.HttpServer.Port))
@@ -83,6 +80,50 @@ func (app *App) startHTTPServer() error {
 		}
 	}()
 	return nil
+}
+
+// mountHTTPMiddlewares adapts module-provided net/http middleware and the
+// metrics observation service to the selected chi server. Adapter-specific
+// route-pattern extraction stays here rather than leaking into Modules.
+func (app *App) mountHTTPMiddlewares(router chi.Router) error {
+	// Server-wide middleware order remains metrics (outermost), telemetry,
+	// audit, recovery, then huma's timing/locale middleware.
+	if app.modules != nil {
+		observer, err := module.Resolve[metrics.HTTPObserver](app.modules.Services())
+		if err == nil {
+			router.Use(httpMetricsMiddleware(observer))
+		} else if !errors.Is(err, module.ErrServiceMissing) {
+			return fmt.Errorf("resolve HTTP metrics observer: %w", err)
+		}
+		for _, middleware := range app.modules.HTTPMiddlewares() {
+			router.Use(middleware)
+		}
+	}
+	router.Use(respx.Recovery)
+	return nil
+}
+
+func httpMetricsMiddleware(observer metrics.HTTPObserver) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			captured := httpsnoop.CaptureMetrics(next, response, request)
+			observer.ObserveHTTP(
+				request.Method,
+				chi.RouteContext(request.Context()).RoutePattern(),
+				captured.Code,
+				captured.Duration,
+				captured.Written,
+			)
+		})
+	}
+}
+
+func mountRawRoute(router chi.Router, route module.RawRoute) {
+	if route.Method == "" {
+		router.Handle(route.Path, route.Handler)
+		return
+	}
+	router.Method(route.Method, route.Path, route.Handler)
 }
 
 func landingResources(settings API) []humax.LandingResource {

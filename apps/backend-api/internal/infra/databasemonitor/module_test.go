@@ -123,7 +123,7 @@ func TestDatasourceDiagnosticsAreRedactedAndOptional(t *testing.T) {
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
 	require.NoError(t, disabled.RegisterHTTP(t.Context(), api))
 	for _, route := range disabled.RawHTTPRoutes() {
-		route.Mount(router)
+		router.Method(route.Method, route.Path, route.Handler)
 	}
 	assert.NotContains(t, api.OpenAPI().Paths, Path)
 
@@ -134,7 +134,7 @@ func TestDatasourceDiagnosticsAreRedactedAndOptional(t *testing.T) {
 	api = humax.New(router, humax.DefaultConfig("test", "1.0.0"))
 	require.NoError(t, enabled.RegisterHTTP(t.Context(), api))
 	for _, route := range enabled.RawHTTPRoutes() {
-		route.Mount(router)
+		router.Method(route.Method, route.Path, route.Handler)
 	}
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, Path, nil))

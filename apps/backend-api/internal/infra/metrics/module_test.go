@@ -21,29 +21,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestHTTPMiddlewareExportsRouteMetricsWithoutRawURLs(t *testing.T) {
-	module := NewModule(appenv.NewRuntime(appenv.NewIdentity("", "")), Config{})
-	assert.Equal(t, "metrics", module.ModuleName())
+func TestHTTPObserverExportsRouteMetricsWithoutRawURLs(t *testing.T) {
+	m := NewModule(appenv.NewRuntime(appenv.NewIdentity("", "")), Config{})
+	assert.Equal(t, "metrics", m.ModuleName())
 	router := chi.NewRouter()
-	router.Use(module.HTTPMiddleware)
 	api := humax.New(router, humax.Config{
 		Name: "test", Landing: humax.LandingConfig{Enabled: false},
 		Docs: humax.EndpointConfig{Enabled: false}, OpenAPI: humax.EndpointConfig{Enabled: true},
 	})
-	router.Get("/widgets/{id}", func(response http.ResponseWriter, _ *http.Request) {
-		response.WriteHeader(http.StatusCreated)
-		_, _ = response.Write([]byte("created"))
-	})
-	require.NoError(t, module.RegisterHTTP(t.Context(), api))
-	for _, route := range module.RawHTTPRoutes() {
-		route.Mount(router)
-	}
-
-	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/widgets/123?token=secret", nil))
-	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/missing/456", nil))
+	require.NoError(t, m.RegisterHTTP(t.Context(), api))
+	routes := m.RawHTTPRoutes()
+	require.Len(t, routes, 1)
+	assert.Equal(t, http.MethodGet, routes[0].Method)
+	assert.Equal(t, Path, routes[0].Path)
+	m.ObserveHTTP(http.MethodGet, "/widgets/{id}", http.StatusCreated, 2*time.Millisecond, 7)
+	m.ObserveHTTP(http.MethodGet, "", http.StatusNotFound, time.Millisecond, 0)
 
 	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	routes[0].Handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, Path, nil))
 	result := response.Result()
 	defer result.Body.Close()
 	body, err := io.ReadAll(result.Body)
@@ -131,8 +126,15 @@ func TestModuleConfigurationAndCollectorRegistration(t *testing.T) {
 	require.NoError(t, m.RegisterCollector(counter), "duplicate collector registration is idempotent")
 
 	services := module.NewServices()
+	require.NoError(t, m.ProvideServices(services))
 	require.NoError(t, services.Seal())
-	require.NoError(t, m.InjectServices(services), "the optional database monitor may be absent")
+	observer, err := module.Resolve[HTTPObserver](services)
+	require.NoError(t, err)
+	assert.Same(t, m, observer)
+
+	emptyServices := module.NewServices()
+	require.NoError(t, emptyServices.Seal())
+	require.NoError(t, m.InjectServices(emptyServices), "the optional database monitor may be absent")
 
 	var nilModule *Module
 	require.NoError(t, nilModule.RegisterCollector(counter))

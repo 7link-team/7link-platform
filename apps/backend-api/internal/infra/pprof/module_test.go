@@ -15,6 +15,7 @@ import (
 
 	"7link.com/platform/pkg/appenv"
 	humax "7link.com/platform/pkg/extension/huma"
+	"7link.com/platform/pkg/module"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/pprof/profile"
 	"github.com/stretchr/testify/assert"
@@ -29,7 +30,7 @@ func TestRegisterPprofServesStandardEndpoints(t *testing.T) {
 	assert.False(t, module.Enabled())
 	require.NoError(t, module.RegisterHTTP(t.Context(), api))
 	for _, route := range module.RawHTTPRoutes() {
-		route.Mount(router)
+		mountTestRoute(router, route)
 	}
 
 	index := httptest.NewRecorder()
@@ -60,9 +61,7 @@ func TestRegisterPprofServesEmbeddedWebUI(t *testing.T) {
 	pprofModule := NewModule(appenv.NewRuntime(appenv.NewIdentity("test service", "")), Config{})
 	require.NoError(t, pprofModule.RegisterHTTP(t.Context(), api))
 	for _, route := range pprofModule.RawHTTPRoutes() {
-		// The embedded UI wildcard has an empty Method and is mounted for every
-		// verb (Mount -> router.Handle), so capture POSTs still work.
-		route.Mount(router)
+		mountTestRoute(router, route)
 	}
 
 	landing := httptest.NewRecorder()
@@ -205,9 +204,6 @@ func TestRegisterPprofAddsOpenAPIOperations(t *testing.T) {
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
 	pprofModule := NewModule(appenv.NewRuntime(appenv.NewIdentity("test service", "")), Config{})
 	require.NoError(t, pprofModule.RegisterHTTP(t.Context(), api))
-	for _, route := range pprofModule.RawHTTPRoutes() {
-		route.Mount(router)
-	}
 
 	paths := api.OpenAPI().Paths
 	for _, path := range []string{
@@ -233,6 +229,14 @@ func TestRegisterPprofAddsOpenAPIOperations(t *testing.T) {
 
 	_, err := json.Marshal(api.OpenAPI())
 	require.NoError(t, err)
+}
+
+func mountTestRoute(router chi.Router, route module.RawRoute) {
+	if route.Method == "" {
+		router.Handle(route.Path, route.Handler)
+		return
+	}
+	router.Method(route.Method, route.Path, route.Handler)
 }
 
 func TestPprofUIAuxiliaryRoutesAndDriverContracts(t *testing.T) {

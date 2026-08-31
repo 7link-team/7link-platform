@@ -132,7 +132,7 @@ func (app *App) composeModules() error {
         wuid.NewModule(rt),
         guid.NewModule(rt),
 
-        // metrics 在 telemetry/audit 之前注册 → 其 HTTP 中间件保持最外层
+        // HTTP adapter 解析 metrics observer，并将其挂载在最外层。
         metrics.NewModule(rt, metricsConfig(app.config)),
         telemetry.NewModule(rt, telemetry.WithConfig(telemetryConfig(app.config))),
         audit.NewModule(rt, auditConfig(app.config)),
@@ -207,7 +207,9 @@ func (app *App) collectMetrics() error {
 
 ### 3.6 HTTP 传输解耦（来自评审）
 
-模块永远不接触 router。chi 只出现在 app 的 HTTP 服务里。
+Module 永远不接触 router。chi 仅存在于当前选定的 HTTP adapter 组装层
+（`internal/app` 与当前 Huma chi adapter）；更换 HTTP 引擎不需要修改
+Module 契约或实现。
 
 ```go
 type HTTPRegistrar interface {
@@ -226,7 +228,11 @@ type RawRoute struct {
 }
 ```
 
-HTTP 服务：`HTTPMiddlewares()` → `respx.Recovery` → 挂载 `RawHTTPRoutes`。中间件保持 router 级（刻意）：huma 中间件会漏掉 raw 路由；router 级覆盖一切。中间件值 stdlib 可移植；只有 app 级挂载是 chi 绑定的。
+HTTP 服务：解析可选的 metrics `HTTPObserver` → 安装 adapter 自有 metrics
+middleware → `HTTPMiddlewares()` → `respx.Recovery` → 挂载
+`RawHTTPRoutes`。中间件保持 router 级（刻意）：huma 中间件会漏掉 raw
+路由；router 级覆盖一切。Module middleware 使用 stdlib，可跨 adapter；
+路由挂载和路由模板解析归当前 HTTP adapter 所有。
 
 ## 4. 逐模块改动
 
@@ -236,7 +242,7 @@ HTTP 服务：`HTTPMiddlewares()` → `respx.Recovery` → 挂载 `RawHTTPRoutes
 | telemetry | `NewModule(rt *appenv.Runtime, options ...Option)` | 仅持有 `rt` 和配置；`Initialize` 创建 OTel resource/provider 并发布全局状态；清理 nil-safe 且幂等 |
 | audit | `NewModule(rt *appenv.Runtime, cfg Config, options ...ModuleOption)` | 持有 `rt`；身份 + 动态路由数据库 sink；始终注册；绝不实现 `Enabler` |
 | databasemonitor | `NewModule(rt *appenv.Runtime, cfg Config)` | 持有 `rt`；数据库管理器满足 `datasource` 接口；observer 在 `Initialize` 注册 |
-| metrics | `NewModule(rt *appenv.Runtime, cfg Config)` | 持有 `rt`；构造 Prometheus registry；数据库管理器驱动 datasource collector |
+| metrics | `NewModule(rt *appenv.Runtime, cfg Config)` | 持有 `rt`；构造 Prometheus registry；数据库管理器驱动 datasource collector；提供 adapter 无关的 `HTTPObserver` |
 | migrationstatus | `NewModule(rt *appenv.Runtime, cfg Config)` | 持有 `rt`；`Enabler`；`InjectServices` 解析 migration inspector 服务 |
 | configinspector | `NewModule(rt *appenv.Runtime, value any, cfg Config)` | 持有 `rt`；`Enabler`；快照在 `Initialize` 构建（构造不再报错） |
 | pprof | `NewModule(rt *appenv.Runtime, cfg Config)` | `Enabler`；路由注册使用 `rt.Identity().Name()` |
@@ -253,11 +259,11 @@ HTTP 服务：`HTTPMiddlewares()` → `respx.Recovery` → 挂载 `RawHTTPRoutes
 |---|---|---|
 | B1 | Collector 聚合顺序无关（Wire 后遍历） | 修复潜在 bug |
 | B2 | observer 在 `Initialize`（migrate 后）注册 | 迁移 SQL 离开 `/debug/sql` / `database_sql_*` — **已接受** |
-| B3 | 中间件分层由注册顺序表达 | 最终顺序不变：metrics → telemetry → audit → recovery |
+| B3 | adapter metrics middleware 位于按注册顺序组成的 Module middleware 外层 | 最终顺序不变：metrics → telemetry → audit → recovery |
 | B4 | 条件模块自报 `Enabled()` | 禁用模块不在激活集；health/中间件/collector 反映激活集 |
 | B5 | 删除 `App` 具体模块字段 | http.go/测试经 registry 解析 |
 | B6 | 删除 "prometheus module is unavailable" 守卫 | 构造上不可达 |
-| B7 | 模块不再收到 chi router | chi 只限 HTTP 服务 |
+| B7 | Module 不再接收或导入 chi router | chi 仅限当前 HTTP adapter 组装层 |
 | B8 | 每个应用 Module 构造函数都接收共享 `rt` | 每个 Module lifecycle 都能访问同一个、边界明确的 App 生命周期环境 |
 
 ## 6. 测试计划
@@ -277,7 +283,9 @@ HTTP 服务：`HTTPMiddlewares()` → `respx.Recovery` → 挂载 `RawHTTPRoutes
 
 ### 6.3 中间件与协议顺序
 
-- `HTTPMiddlewares()` + `respx.Recovery` = [metrics, telemetry, audit, recovery]，用写 header 的探针断言。
+- `mountHTTPMiddlewares` 解析 metrics observer，再组合 Module middleware 与
+  recovery = [metrics, telemetry, audit, recovery]；路由模板 label 与空 Method
+  raw route 在 app adapter 边界验证。
 - gRPC：telemetry stats handler + audit 拦截器 + fake 拦截器顺序；真 RPC 验证多 stats handler 组合。
 
 ### 6.4 模块包测试迁移清单

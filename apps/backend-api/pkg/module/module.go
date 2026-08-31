@@ -6,7 +6,6 @@ import (
 
 	goosex "7link.com/platform/pkg/extension/goose"
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/stats"
@@ -144,10 +143,9 @@ type (
 		RawHTTPRoutes() []RawRoute
 	}
 
-	// RawRoute is one raw HTTP route contributed by a module. An empty Method
-	// mounts the handler for every HTTP verb (chi router.Handle) — used by
-	// handlers that serve multiple methods, such as the pprof analysis UI,
-	// which also handles capture POSTs.
+	// RawRoute is one adapter-independent raw HTTP route contributed by a module.
+	// An empty Method asks the selected HTTP server adapter to mount the handler
+	// for every HTTP verb, as required by handlers such as the pprof analysis UI.
 	RawRoute struct {
 		Method  string
 		Path    string
@@ -162,15 +160,3 @@ type (
 		MigrationSource() goosex.Source
 	}
 )
-
-// Mount registers a RawRoute on a chi router. It is the single place the server
-// (and tests) turn a RawRoute into a mounted route: an empty Method mounts the
-// handler for every verb (router.Handle), so every-method routes such as the
-// pprof analysis UI work consistently.
-func (route RawRoute) Mount(router chi.Router) {
-	if route.Method == "" {
-		router.Handle(route.Path, route.Handler)
-		return
-	}
-	router.Method(route.Method, route.Path, route.Handler)
-}

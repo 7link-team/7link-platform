@@ -6,14 +6,13 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"7link.com/platform/internal/infra/databasemonitor"
 	"7link.com/platform/pkg/appenv"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/felixge/httpsnoop"
-	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -31,6 +30,12 @@ type Config struct {
 	module.Config
 }
 
+// HTTPObserver records adapter-resolved HTTP request measurements. The HTTP
+// server owns route matching; the metrics module owns only metric state.
+type HTTPObserver interface {
+	ObserveHTTP(method, route string, status int, duration time.Duration, size int64)
+}
+
 // Module owns an isolated registry and HTTP server metrics.
 type Module struct {
 	runtime             *appenv.Runtime
@@ -45,6 +50,7 @@ type Module struct {
 var (
 	_ module.Module               = (*Module)(nil)
 	_ module.Enabler              = (*Module)(nil)
+	_ module.ServiceProvider      = (*Module)(nil)
 	_ module.ServiceInjector      = (*Module)(nil)
 	_ module.CollectorSink        = (*Module)(nil)
 	_ module.HTTPRegistrar        = (*Module)(nil)
@@ -54,6 +60,10 @@ var (
 func (*Module) ModuleName() string { return Name }
 
 func (m *Module) Enabled() bool { return m.cfg.Enabled }
+
+func (m *Module) ProvideServices(services *module.Services) error {
+	return module.Provide[HTTPObserver](services, m)
+}
 
 // NewModule builds the metrics module. The datasource router is taken from the
 // shared runtime; the database monitor (health gauges + SQL metrics) is resolved
@@ -320,16 +330,12 @@ func (m *Module) RawHTTPRoutes() []module.RawRoute {
 	return []module.RawRoute{{Method: http.MethodGet, Path: Path, Handler: m.Handler()}}
 }
 
-func (m *Module) HTTPMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		metrics := httpsnoop.CaptureMetrics(next, response, request)
-		route := chi.RouteContext(request.Context()).RoutePattern()
-		if route == "" {
-			route = unmatchedRoute
-		}
-		labels := []string{request.Method, route, strconv.Itoa(metrics.Code)}
-		m.requests.WithLabelValues(labels...).Inc()
-		m.duration.WithLabelValues(labels...).Observe(metrics.Duration.Seconds())
-		m.responseSize.WithLabelValues(labels...).Observe(float64(metrics.Written))
-	})
+func (m *Module) ObserveHTTP(method, route string, status int, duration time.Duration, size int64) {
+	if route == "" {
+		route = unmatchedRoute
+	}
+	labels := []string{method, route, strconv.Itoa(status)}
+	m.requests.WithLabelValues(labels...).Inc()
+	m.duration.WithLabelValues(labels...).Observe(duration.Seconds())
+	m.responseSize.WithLabelValues(labels...).Observe(float64(size))
 }

@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -108,16 +107,17 @@ func TestRegistryProtocolCapabilities(t *testing.T) {
 	assert.Equal(t, "protocol", recorder.Header().Get("X-Middleware"))
 
 	assert.Len(t, registry.GRPCProtocolOptions(), 3, "one stats handler plus unary and stream chains")
-	require.Len(t, registry.RawHTTPRoutes(), 2)
-	router := chi.NewRouter()
-	for _, route := range registry.RawHTTPRoutes() {
-		route.Mount(router)
-	}
+	routes := registry.RawHTTPRoutes()
+	require.Len(t, routes, 2)
+	assert.Equal(t, http.MethodGet, routes[0].Method)
+	assert.Equal(t, "/only-get", routes[0].Path)
+	assert.Empty(t, routes[1].Method)
+	assert.Equal(t, "/any", routes[1].Path)
 	getResponse := httptest.NewRecorder()
-	router.ServeHTTP(getResponse, httptest.NewRequest(http.MethodGet, "/only-get", nil))
+	routes[0].Handler.ServeHTTP(getResponse, httptest.NewRequest(http.MethodGet, "/only-get", nil))
 	assert.Equal(t, http.StatusNoContent, getResponse.Code)
 	postResponse := httptest.NewRecorder()
-	router.ServeHTTP(postResponse, httptest.NewRequest(http.MethodPost, "/any", nil))
+	routes[1].Handler.ServeHTTP(postResponse, httptest.NewRequest(http.MethodPost, "/any", nil))
 	assert.Equal(t, http.StatusAccepted, postResponse.Code)
 
 	require.NoError(t, registry.Stop(t.Context()))

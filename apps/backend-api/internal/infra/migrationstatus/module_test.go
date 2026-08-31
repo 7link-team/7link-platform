@@ -28,7 +28,7 @@ func TestModuleReturnsJSONAndRegistersOpenAPI(t *testing.T) {
 	assert.Equal(t, "migration-status", m.ModuleName())
 	require.NoError(t, m.RegisterHTTP(t.Context(), api))
 	for _, route := range m.RawHTTPRoutes() {
-		route.Mount(router)
+		router.Method(route.Method, route.Path, route.Handler)
 	}
 
 	for _, accept := range []string{"application/json", "text/html"} {
@@ -57,7 +57,7 @@ func TestModuleHidesInspectionErrors(t *testing.T) {
 	require.NoError(t, m.InjectServices(services))
 	require.NoError(t, m.RegisterHTTP(t.Context(), api))
 	for _, route := range m.RawHTTPRoutes() {
-		route.Mount(router)
+		router.Method(route.Method, route.Path, route.Handler)
 	}
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, Path, nil))

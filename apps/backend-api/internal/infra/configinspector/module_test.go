@@ -25,7 +25,7 @@ func TestModuleRedactsConfigurationAndRegistersOpenAPI(t *testing.T) {
 	assert.Equal(t, "config-inspector", m.ModuleName())
 	require.NoError(t, m.RegisterHTTP(t.Context(), api))
 	for _, route := range m.RawHTTPRoutes() {
-		route.Mount(router)
+		router.Method(route.Method, route.Path, route.Handler)
 	}
 
 	request := httptest.NewRequest(http.MethodGet, Path, nil)
