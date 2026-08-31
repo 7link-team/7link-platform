@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 
@@ -75,7 +76,10 @@ func (app *App) Run(config AppConfig) error {
 		return errors.Join(err, app.shutdown())
 	}
 
-	return app.awaitShutdown()
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(signals)
+	return app.awaitShutdown(signals)
 }
 
 // configureApplication applies the configuration and process-wide setup shared
@@ -92,17 +96,19 @@ func configureApplication(config *AppConfig) error {
 	return configureProcessRuntime(config.Timezone, config.Debug, config.Name)
 }
 
-func (app *App) awaitShutdown() error {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
+// awaitShutdown blocks until a shutdown signal or a fatal serve error arrives,
+// then shuts the application down. The signal source is injected: production
+// wires it to os/signal.Notify in Run, while tests deliver signal values into
+// the channel directly — Windows does not support process-level SIGTERM
+// delivery, so the channel keeps the shutdown logic platform-independent.
+func (app *App) awaitShutdown(signals <-chan os.Signal) error {
 	var startErr error
 	select {
-	case <-ctx.Done():
+	case signalValue := <-signals:
 		if app.config.Shutdown.Graceful {
-			slog.Info("shutdown signal received, gracefully stopping servers")
+			slog.Info("shutdown signal received, gracefully stopping servers", "signal", signalValue)
 		} else {
-			slog.Info("shutdown signal received, stopping servers immediately")
+			slog.Info("shutdown signal received, stopping servers immediately", "signal", signalValue)
 		}
 	case err := <-app.serveErr:
 		slog.Error("server failed, shutting down", "error", err)

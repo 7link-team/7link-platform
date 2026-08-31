@@ -55,24 +55,26 @@ func TestAwaitShutdownPropagatesServeFailureAndCleansUp(t *testing.T) {
 		serveErr: make(chan error, 1),
 	}
 	app.serveErr <- want
-	assert.ErrorIs(t, app.awaitShutdown(), want)
+	assert.ErrorIs(t, app.awaitShutdown(make(chan os.Signal)), want)
 }
 
-func TestAwaitShutdownHandlesProcessSignal(t *testing.T) {
+// TestAwaitShutdownHandlesSignal verifies the shutdown logic responds to a
+// signal value. The signal channel is injected rather than delivered by the OS,
+// because Windows does not support process-level SIGTERM delivery; production
+// wires the channel to os/signal.Notify in Run.
+func TestAwaitShutdownHandlesSignal(t *testing.T) {
 	for _, graceful := range []bool{true, false} {
 		t.Run(map[bool]string{true: "graceful", false: "immediate"}[graceful], func(t *testing.T) {
 			app := &App{
 				config:   AppConfig{Shutdown: ShutdownConfig{Graceful: graceful, Timeout: time.Second}},
 				serveErr: make(chan error),
 			}
+			signals := make(chan os.Signal, 1)
 			go func() {
 				time.Sleep(20 * time.Millisecond)
-				process, err := os.FindProcess(os.Getpid())
-				if err == nil {
-					_ = process.Signal(syscall.SIGTERM)
-				}
+				signals <- syscall.SIGTERM
 			}()
-			require.NoError(t, app.awaitShutdown())
+			require.NoError(t, app.awaitShutdown(signals))
 		})
 	}
 }
