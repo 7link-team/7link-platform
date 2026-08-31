@@ -83,7 +83,7 @@ func TestLifecycleReportsActivationCollectionInitializationAndStartFailures(t *t
 	t.Run("activate", func(t *testing.T) {
 		app := &App{modules: module.NewRegistry()}
 		require.NoError(t, app.modules.Register(&dependentAppModule{name: "dependent", dependency: "missing"}))
-		assert.ErrorContains(t, app.lifecycle(t.Context()), "requires unregistered module")
+		assert.ErrorContains(t, app.prepareModules(), "requires unregistered module")
 	})
 
 	t.Run("collect metrics", func(t *testing.T) {
@@ -93,13 +93,14 @@ func TestLifecycleReportsActivationCollectionInitializationAndStartFailures(t *t
 			&appCollectorModule{name: "source"},
 			&failingCollectorSink{name: "sink", err: want},
 		))
-		assert.ErrorIs(t, app.lifecycle(t.Context()), want)
+		assert.ErrorIs(t, app.prepareModules(), want)
 	})
 
 	t.Run("initialize", func(t *testing.T) {
 		want := errors.New("initialize failed")
 		app := &App{modules: module.NewRegistry()}
 		require.NoError(t, app.modules.Register(&failingLifecycleAppModule{name: "module", initErr: want}))
+		require.NoError(t, app.prepareModules())
 		assert.ErrorIs(t, app.lifecycle(t.Context()), want)
 	})
 
@@ -107,6 +108,7 @@ func TestLifecycleReportsActivationCollectionInitializationAndStartFailures(t *t
 		want := errors.New("start failed")
 		app := &App{modules: module.NewRegistry()}
 		require.NoError(t, app.modules.Register(&failingLifecycleAppModule{name: "module", startErr: want}))
+		require.NoError(t, app.prepareModules())
 		assert.ErrorIs(t, app.lifecycle(t.Context()), want)
 	})
 }
@@ -196,11 +198,9 @@ func TestBootstrapStartsAfterExplicitMigrations(t *testing.T) {
 			Writable: true,
 		},
 	}
-	_, err := RunMigrations(t.Context(), MigrationConfig{
-		Action:   MigrationUp,
-		Timezone: "UTC",
-		Database: database,
-	})
+	migrationConfig := migrationTestConfig(database)
+	migrationConfig.Action = MigrationUp
+	_, err := (&App{}).RunMigrations(t.Context(), migrationConfig)
 	require.NoError(t, err)
 
 	app := &App{config: AppConfig{Timezone: "UTC", Database: database}}

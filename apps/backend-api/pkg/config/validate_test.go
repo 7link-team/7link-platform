@@ -187,3 +187,19 @@ func TestValidateTraversesSlicesInOrder(t *testing.T) {
 	err := Validate(sample{Children: []child{{Name: "first"}, {}}})
 	assert.EqualError(t, err, "config: children.1.name is required")
 }
+
+func TestProcessFlattensSquashedNormalizationAndValidationPaths(t *testing.T) {
+	type Embedded struct {
+		Name string `mapstructure:"name" trim:"true" required:"true"`
+	}
+	type sample struct {
+		Embedded `mapstructure:",squash"`
+	}
+
+	valid := sample{Embedded: Embedded{Name: " api "}}
+	require.NoError(t, Process(&valid))
+	assert.Equal(t, "api", valid.Name)
+
+	missing := sample{Embedded: Embedded{Name: " "}}
+	assert.EqualError(t, Process(&missing), "config: name is required")
+}

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -73,4 +74,13 @@ func TestGenerateThenLoadStrict(t *testing.T) {
 	var cfg genSample
 	require.NoError(t, LoadStrict(p, &cfg), "a generated template must pass strict validation")
 	assert.Equal(t, "app", cfg.Name)
+}
+
+func TestLoadStrictFlattensSquashedConfig(t *testing.T) {
+	path := writeTemp(t, "name: strict\nmodule: audit\n")
+	var cfg squashedConfigSample
+	require.NoError(t, LoadStrict(path, &cfg))
+	assert.Equal(t, "strict", cfg.Name)
+	assert.Equal(t, 5*time.Second, cfg.Timeout)
+	assert.Equal(t, "audit", cfg.Module)
 }

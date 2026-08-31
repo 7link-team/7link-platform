@@ -189,12 +189,9 @@ func TestMigrationStatusReturnsCleanJSON(t *testing.T) {
 		wuid.NewModule(rt),
 		migrationstatus.NewModule(rt, migrationStatusConfig(app.config)),
 	))
-	_, err = runModuleMigrations(t.Context(), app.runtime.Database().Write(), app.modules.Modules(), MigrationConfig{Action: MigrationUp})
+	require.NoError(t, app.prepareModules())
+	_, err = app.migrateModules(t.Context(), MigrationRequest{Action: MigrationUp})
 	require.NoError(t, err)
-	require.NoError(t, app.modules.Activate())
-	require.NoError(t, app.modules.Wire(func(services *module.Services) error {
-		return module.Provide[migrationstatus.Inspector](services, app.migrationInspector)
-	}))
 	require.NoError(t, app.modules.Initialize(t.Context()))
 	require.NoError(t, app.modules.Start(t.Context()))
 	router, api := moduleRouter(t, app)

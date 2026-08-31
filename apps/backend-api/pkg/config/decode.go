@@ -5,6 +5,17 @@ import (
 	"strings"
 )
 
+func mapstructureField(field reflect.StructField) (name string, squash bool) {
+	parts := strings.Split(field.Tag.Get("mapstructure"), ",")
+	name = parts[0]
+	for _, option := range parts[1:] {
+		if strings.EqualFold(strings.TrimSpace(option), "squash") {
+			return name, true
+		}
+	}
+	return name, false
+}
+
 // fieldTagDecodeHook applies per-field transformations to raw configuration
 // data before mapstructure converts it to the destination type. For strings the
 // order is trim (when enabled), default, trim default, then required validation
@@ -23,8 +34,17 @@ func fieldTagDecodeHook(_ reflect.Type, target reflect.Type, data any) (any, err
 	}
 	for i := 0; i < target.NumField(); i++ {
 		field := target.Field(i)
-		name := strings.Split(field.Tag.Get("mapstructure"), ",")[0]
-		if name == "" || name == "-" {
+		name, squash := mapstructureField(field)
+		if !field.IsExported() || name == "-" {
+			continue
+		}
+		if squash {
+			if _, err := fieldTagDecodeHook(nil, field.Type, values); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if name == "" {
 			continue
 		}
 

@@ -12,98 +12,138 @@ import (
 )
 
 func TestRunMigrationsUpStatusValidateAndDown(t *testing.T) {
-	config := MigrationConfig{
-		Action:   MigrationUp,
-		Timezone: "UTC",
-		Database: map[string]Database{
-			"primary": {
-				Type:     "sqlite",
-				Dsn:      filepath.Join(t.TempDir(), "migrations.sqlite"),
-				Writable: true,
-			},
+	databasePath := filepath.Join(t.TempDir(), "migrations.sqlite")
+	config := migrationTestConfig(map[string]Database{
+		"primary": {
+			Type:     "sqlite",
+			Dsn:      databasePath,
+			Writable: true,
 		},
-	}
+	})
+	config.Action = MigrationUp
 
-	reports, err := RunMigrations(t.Context(), config)
+	reports, err := (&App{}).RunMigrations(t.Context(), config)
 	require.NoError(t, err)
 	require.Len(t, reports, 3)
+	assert.Equal(t, []string{"dlock", "wuid", "audit"}, migrationReportNames(reports))
 	assert.Equal(t, goosex.StateClean, reports[0].Status.State)
 	assert.Equal(t, goosex.StateClean, reports[1].Status.State)
 
-	reports, err = RunMigrations(t.Context(), config)
+	// The standalone command stops after migration. In particular, wuid must not
+	// enter Start and allocate a worker lease.
+	db, err := gorm.Open(sqlite.Open(databasePath))
+	require.NoError(t, err)
+	var workerCount int64
+	require.NoError(t, db.Table("worker_ids").Count(&workerCount).Error)
+	assert.Zero(t, workerCount)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	require.NoError(t, sqlDB.Close())
+
+	reports, err = (&App{}).RunMigrations(t.Context(), config)
 	require.NoError(t, err)
 	require.Len(t, reports, 3)
 	assert.Equal(t, goosex.StateClean, reports[0].Status.State)
 	assert.Equal(t, goosex.StateClean, reports[1].Status.State)
 
 	config.Action = MigrationStatus
-	reports, err = RunMigrations(t.Context(), config)
+	reports, err = (&App{}).RunMigrations(t.Context(), config)
 	require.NoError(t, err)
 	require.Len(t, reports, 3)
 
 	config.Action = MigrationValidate
-	reports, err = RunMigrations(t.Context(), config)
+	reports, err = (&App{}).RunMigrations(t.Context(), config)
 	require.NoError(t, err)
 	require.Len(t, reports, 3)
 
 	config.Action = MigrationDown
 	config.Module = "wuid"
-	reports, err = RunMigrations(t.Context(), config)
+	reports, err = (&App{}).RunMigrations(t.Context(), config)
 	require.NoError(t, err)
 	require.Len(t, reports, 1)
 	assert.Equal(t, goosex.StatePending, reports[0].Status.State)
 
-	reports, err = RunMigrations(t.Context(), config)
+	reports, err = (&App{}).RunMigrations(t.Context(), config)
 	require.NoError(t, err)
 	require.Len(t, reports, 1)
 	assert.Equal(t, goosex.StatePending, reports[0].Status.State)
 
 	config.Action = MigrationValidate
 	config.Module = ""
-	_, err = RunMigrations(t.Context(), config)
+	_, err = (&App{}).RunMigrations(t.Context(), config)
 	assert.ErrorContains(t, err, "wuid migration state is pending")
 
 	config.Action = MigrationUpTo
 	config.Module = "wuid"
 	config.To = 1
-	reports, err = RunMigrations(t.Context(), config)
+	reports, err = (&App{}).RunMigrations(t.Context(), config)
 	require.NoError(t, err)
 	require.Len(t, reports, 1)
 	assert.Equal(t, goosex.StateClean, reports[0].Status.State)
 
 	config.Action = MigrationDownTo
 	config.To = 0
-	reports, err = RunMigrations(t.Context(), config)
+	reports, err = (&App{}).RunMigrations(t.Context(), config)
 	require.NoError(t, err)
 	require.Len(t, reports, 1)
 	assert.Equal(t, goosex.StatePending, reports[0].Status.State)
 
 	config.Action = MigrationAuto
-	reports, err = RunMigrations(t.Context(), config)
+	reports, err = (&App{}).RunMigrations(t.Context(), config)
 	require.NoError(t, err)
 	require.Len(t, reports, 1)
 	assert.Equal(t, goosex.StateClean, reports[0].Status.State)
 }
 
+func migrationTestConfig(database map[string]Database) MigrationConfig {
+	config := validTestAppConfig()
+	config.Database = database
+	return MigrationConfig{AppConfig: config}
+}
+
+func migrationReportNames(reports []MigrationReport) []string {
+	names := make([]string, len(reports))
+	for index, report := range reports {
+		names[index] = report.Module
+	}
+	return names
+}
+
 func TestRunMigrationsRejectsUnknownModuleAndMissingWriter(t *testing.T) {
-	base := MigrationConfig{Action: MigrationStatus, Timezone: "UTC"}
-	_, err := RunMigrations(t.Context(), base)
+	base := migrationTestConfig(nil)
+	base.Action = MigrationStatus
+	_, err := (&App{}).RunMigrations(t.Context(), base)
 	assert.ErrorContains(t, err, "writable database is not configured")
 
-	config := MigrationConfig{
-		Action:   MigrationStatus,
-		Module:   "missing",
-		Timezone: "UTC",
-		Database: map[string]Database{
-			"primary": {Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "unknown.sqlite"), Writable: true},
-		},
-	}
-	_, err = RunMigrations(t.Context(), config)
+	config := migrationTestConfig(map[string]Database{
+		"primary": {Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "unknown.sqlite"), Writable: true},
+	})
+	config.Action = MigrationStatus
+	config.Module = "missing"
+	_, err = (&App{}).RunMigrations(t.Context(), config)
 	assert.ErrorContains(t, err, `module "missing" is not registered`)
 }
 
+func TestMigrateModulesRequiresRuntimeAndComposedModules(t *testing.T) {
+	_, err := (&App{}).migrateModules(t.Context(), MigrationRequest{Action: MigrationStatus})
+	assert.EqualError(t, err, "migration: writable database is not configured")
+
+	app := &App{config: AppConfig{Timezone: "UTC", Database: map[string]Database{
+		"primary": {
+			Type:     "sqlite",
+			Dsn:      filepath.Join(t.TempDir(), "composition.sqlite"),
+			Writable: true,
+		},
+	}}}
+	require.NoError(t, app.initializeRuntime(t.Context()))
+	t.Cleanup(func() { require.NoError(t, app.runtime.Close()) })
+
+	_, err = app.migrateModules(t.Context(), MigrationRequest{Action: MigrationStatus})
+	assert.EqualError(t, err, "migration: modules are not composed")
+}
+
 func TestRunModuleMigrationsValidatesRequests(t *testing.T) {
-	_, err := runModuleMigrations(t.Context(), nil, nil, MigrationConfig{})
+	_, err := executeModuleMigrations(t.Context(), nil, nil, MigrationRequest{})
 	assert.EqualError(t, err, "migration: writable database is unavailable")
 
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "validation.sqlite")))
@@ -115,33 +155,30 @@ func TestRunModuleMigrationsValidatesRequests(t *testing.T) {
 		}
 	})
 
-	_, err = runModuleMigrations(t.Context(), db, nil, MigrationConfig{Action: "sideways"})
+	_, err = executeModuleMigrations(t.Context(), db, nil, MigrationRequest{Action: "sideways"})
 	assert.EqualError(t, err, `migration: unsupported action "sideways"`)
-	_, err = runModuleMigrations(t.Context(), db, nil, MigrationConfig{Action: MigrationDown})
+	_, err = executeModuleMigrations(t.Context(), db, nil, MigrationRequest{Action: MigrationDown})
 	assert.EqualError(t, err, "migration: down requires a module")
-	_, err = runModuleMigrations(t.Context(), db, nil, MigrationConfig{Action: MigrationDownTo, Module: "wuid", To: -1})
+	_, err = executeModuleMigrations(t.Context(), db, nil, MigrationRequest{Action: MigrationDownTo, Module: "wuid", To: -1})
 	assert.EqualError(t, err, "migration: target version cannot be negative")
 }
 
 func TestRunMigrationsRejectsInvalidDownTargets(t *testing.T) {
-	config := MigrationConfig{
-		Action:   MigrationUp,
-		Module:   "wuid",
-		Timezone: "UTC",
-		Database: map[string]Database{
-			"primary": {
-				Type:     "sqlite",
-				Dsn:      filepath.Join(t.TempDir(), "down-target.sqlite"),
-				Writable: true,
-			},
+	config := migrationTestConfig(map[string]Database{
+		"primary": {
+			Type:     "sqlite",
+			Dsn:      filepath.Join(t.TempDir(), "down-target.sqlite"),
+			Writable: true,
 		},
-	}
-	reports, err := RunMigrations(t.Context(), config)
+	})
+	config.Action = MigrationUp
+	config.Module = "wuid"
+	reports, err := (&App{}).RunMigrations(t.Context(), config)
 	require.NoError(t, err)
 	require.Len(t, reports, 1)
 
 	config.Action = MigrationDownTo
 	config.To = reports[0].Status.Target + 1
-	_, err = RunMigrations(t.Context(), config)
+	_, err = (&App{}).RunMigrations(t.Context(), config)
 	assert.ErrorContains(t, err, "higher version")
 }

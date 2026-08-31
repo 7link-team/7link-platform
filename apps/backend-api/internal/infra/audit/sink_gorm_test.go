@@ -32,7 +32,7 @@ func openTestDB(t *testing.T) *gorm.DB {
 
 func TestGormSinkPersistsEvents(t *testing.T) {
 	db := openTestDB(t)
-	require.NoError(t, Migrate(t.Context(), db))
+	migrateTestDatabase(t, db)
 
 	sink := NewGormSink(db)
 	occurredAt := time.Now().UTC().Truncate(time.Millisecond)
@@ -124,7 +124,7 @@ func TestFromEventPreservesNonSnowflakeIDs(t *testing.T) {
 
 func TestGormSinkRejectsInvalidEventIDsWithoutWritingZeroPrimaryKey(t *testing.T) {
 	db := openTestDB(t)
-	require.NoError(t, Migrate(t.Context(), db))
+	migrateTestDatabase(t, db)
 	sink := NewGormSink(db)
 
 	err := sink.Write(t.Context(), []Event{{ID: "not-a-snowflake", Operation: "one"}, {ID: "", Operation: "two"}})
@@ -146,7 +146,7 @@ func (writer *countingGormWriter) Write() *gorm.DB {
 
 func TestRoutedGormSinkResolvesWriterForEveryBatch(t *testing.T) {
 	db := openTestDB(t)
-	require.NoError(t, Migrate(t.Context(), db))
+	migrateTestDatabase(t, db)
 	writer := &countingGormWriter{db: db}
 	sink := newRoutedGormSink(writer)
 	require.NoError(t, sink.Write(t.Context(), []Event{{ID: "9001", Operation: "first"}}))

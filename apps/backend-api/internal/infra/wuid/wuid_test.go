@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/infra/dlock"
+	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,8 +26,8 @@ func newTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	require.NoError(t, dlock.Migrate(t.Context(), db))
-	require.NoError(t, Migrate(t.Context(), db))
+	migrateTestSource(t, db, (&dlock.Module{}).MigrationSource())
+	migrateTestSource(t, db, (&Module{}).MigrationSource())
 	return db
 }
 
@@ -188,29 +189,21 @@ func TestWorkerReallocatesWhenLostWorkerIDIsStillLeased(t *testing.T) {
 	}
 }
 
-func TestMigrationLifecycle(t *testing.T) {
+func TestMigrationSourceCreatesSchema(t *testing.T) {
 	t.Setenv(EnvKey, "")
 	source := (&Module{}).MigrationSource()
 	assert.Equal(t, "goose_wuid", source.TableName)
 	assert.NotNil(t, source.FS)
 
 	db := newTestDB(t)
-	require.NoError(t, Migrate(t.Context(), db))
-	require.NoError(t, MigrateUp(t.Context(), db))
-	require.NoError(t, MigrateUpTo(t.Context(), db, 1))
-	require.NoError(t, MigrateDown(t.Context(), db))
-	require.NoError(t, MigrateDown(t.Context(), db))
-	require.NoError(t, Migrate(t.Context(), db))
-	require.NoError(t, MigrateDownTo(t.Context(), db, 0))
-	require.NoError(t, Migrate(t.Context(), db))
+	assert.True(t, db.Migrator().HasTable("worker_ids"))
 }
 
-func TestMigrationCommandsRequireDatabase(t *testing.T) {
-	assert.ErrorIs(t, Migrate(t.Context(), nil), ErrDatabaseUnavailable)
-	assert.ErrorIs(t, MigrateUp(t.Context(), nil), ErrDatabaseUnavailable)
-	assert.ErrorIs(t, MigrateUpTo(t.Context(), nil, 1), ErrDatabaseUnavailable)
-	assert.ErrorIs(t, MigrateDown(t.Context(), nil), ErrDatabaseUnavailable)
-	assert.ErrorIs(t, MigrateDownTo(t.Context(), nil, 0), ErrDatabaseUnavailable)
+func migrateTestSource(t *testing.T, db *gorm.DB, source goosex.Source) {
+	t.Helper()
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	require.NoError(t, goosex.Migrate(t.Context(), sqlDB, source, db.Dialector.Name()))
 }
 
 func TestOptionsComposeAndWorkerIntervals(t *testing.T) {

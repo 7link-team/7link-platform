@@ -26,9 +26,7 @@ var (
 			if err := serveConfigurator.Load(&serveConfig); err != nil {
 				return err
 			}
-			if serveConfig.Version == "" {
-				serveConfig.Version = buildVersion
-			}
+			applyBuildVersion(&serveConfig)
 			return (&app.App{}).Run(serveConfig)
 		},
 	}
@@ -39,4 +37,10 @@ func init() {
 	serveConfigurator.UseFlags(serveCmd.Flags())
 	serveConfigurator.UseConfigFileArgDefault()
 	serveConfigErr = serveConfigurator.Bind(&serveConfig, os.Args[1:]...)
+}
+
+func applyBuildVersion(config *app.AppConfig) {
+	if config.Version == "" {
+		config.Version = buildVersion
+	}
 }

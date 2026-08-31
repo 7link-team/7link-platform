@@ -6,7 +6,7 @@ import (
 )
 
 type AppConfig struct {
-	Name    string `mapstructure:"name" description:"application name" trim:"true" default:"7link-api"`
+	Name    string `mapstructure:"name" description:"application name" trim:"true" default:""`
 	Version string `mapstructure:"version" description:"application version" trim:"true"`
 
 	Debug     bool           `mapstructure:"debug" short:"d" description:"debug mode" default:"false"`

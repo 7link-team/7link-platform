@@ -186,7 +186,7 @@ func TestModuleGormSinkEndToEnd(t *testing.T) {
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, router.Close()) })
-	require.NoError(t, Migrate(t.Context(), router.Write()))
+	migrateTestDatabase(t, router.Write())
 
 	config := httpModuleConfig()
 	config.Database = DatabaseConfig{Enabled: true}

@@ -63,8 +63,9 @@ func newMigrateActionCommand(action app.MigrationAction, description string) *co
 			if err := migrateConfigurator.Load(&migrateConfig); err != nil {
 				return err
 			}
+			applyBuildVersion(&migrateConfig.AppConfig)
 			migrateConfig.Action = action
-			reports, err := app.RunMigrations(command.Context(), migrateConfig)
+			reports, err := (&app.App{}).RunMigrations(command.Context(), migrateConfig)
 			writeMigrationReports(command.OutOrStdout(), reports)
 			return err
 		},

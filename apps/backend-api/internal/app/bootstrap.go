@@ -52,12 +52,31 @@ func processConsoleColorsEnabled(debug bool) bool {
 // and drives the module lifecycle (activate -> wire -> collect metrics ->
 // migrate -> initialize -> start).
 func (app *App) bootstrap(ctx context.Context) error {
-	app.modules = module.NewRegistry()
+	if err := app.prepare(ctx); err != nil {
+		return err
+	}
+	return app.lifecycle(ctx)
+}
+
+// prepare builds the application Runtime and drives the shared Module lifecycle
+// prefix used by service startup and standalone commands.
+func (app *App) prepare(ctx context.Context) error {
 	if err := app.initializeRuntime(ctx); err != nil {
 		return err
 	}
+	if err := app.composeModules(); err != nil {
+		return err
+	}
+	return app.prepareModules()
+}
+
+// composeModules is the single application Module inventory used by every
+// execution mode. Commands decide how far to drive the lifecycle after this
+// composition step; they never maintain a second Module list.
+func (app *App) composeModules() error {
+	app.modules = module.NewRegistry()
 	rt := app.runtime
-	if err := app.addModule(
+	return app.addModule(
 		i18n.NewModule(rt, i18n.Base),
 		respx.NewModule(rt),
 		dlock.NewModule(rt),
@@ -75,27 +94,13 @@ func (app *App) bootstrap(ctx context.Context) error {
 		pprof.NewModule(rt, pprofConfig(app.config)),
 
 		health.NewModule(rt),
-	); err != nil {
-		return err
-	}
-	return app.lifecycle(ctx)
+	)
 }
 
-// lifecycle drives the module lifecycle from activation through start.
+// lifecycle drives the post-preparation phases through start.
 func (app *App) lifecycle(ctx context.Context) error {
-	if err := app.modules.Activate(); err != nil {
-		return err
-	}
-	if err := app.modules.Wire(app.provideCrossCutting); err != nil {
-		return fmt.Errorf("wire modules: %w", err)
-	}
-	// Collector aggregation runs after Wire so the rollback list exists: a
-	// failure here cannot strand construction-owned module resources.
-	if err := app.collectMetrics(); err != nil {
-		return fmt.Errorf("collect module metrics: %w", err)
-	}
 	if app.config.Migrate {
-		if _, err := runModuleMigrations(ctx, app.runtime.Database().Write(), app.modules.Modules(), MigrationConfig{
+		if _, err := app.migrateModules(ctx, MigrationRequest{
 			Action: MigrationAuto,
 		}); err != nil {
 			return fmt.Errorf("migrate modules: %w", err)
@@ -106,6 +111,24 @@ func (app *App) lifecycle(ctx context.Context) error {
 	}
 	if err := app.modules.Start(ctx); err != nil {
 		return fmt.Errorf("start modules: %w", err)
+	}
+	return nil
+}
+
+// prepareModules drives the lifecycle prefix shared by service startup and
+// standalone migration. Migration commands stop after this prefix and migration;
+// they never initialize or start runtime work.
+func (app *App) prepareModules() error {
+	if err := app.modules.Activate(); err != nil {
+		return err
+	}
+	if err := app.modules.Wire(app.provideCrossCutting); err != nil {
+		return fmt.Errorf("wire modules: %w", err)
+	}
+	// Collector aggregation runs after Wire so the rollback list exists: a
+	// failure here cannot strand construction-owned module resources.
+	if err := app.collectMetrics(); err != nil {
+		return fmt.Errorf("collect module metrics: %w", err)
 	}
 	return nil
 }

@@ -18,6 +18,17 @@ type runtimeConfigSample struct {
 	Timeout time.Duration `mapstructure:"timeout" default:"5s"`
 }
 
+type SquashedRuntimeConfigSample struct {
+	Name    string        `mapstructure:"name" default:"default"`
+	Timeout time.Duration `mapstructure:"timeout" default:"5s"`
+}
+
+type squashedConfigSample struct {
+	SquashedRuntimeConfigSample `mapstructure:",squash"`
+	Module                      string `mapstructure:"module"`
+	Ignored                     string `mapstructure:"-"`
+}
+
 func TestParseAppliesExplicitConfigFile(t *testing.T) {
 	path := writeTemp(t, "name: from-file\ntimeout: 12s\n")
 	flagger := New()
@@ -26,6 +37,20 @@ func TestParseAppliesExplicitConfigFile(t *testing.T) {
 	require.NoError(t, flagger.Parse(&cfg, "--config", path))
 	assert.Equal(t, "from-file", cfg.Name)
 	assert.Equal(t, 12*time.Second, cfg.Timeout)
+}
+
+func TestParseFlattensSquashedEmbeddedConfig(t *testing.T) {
+	path := writeTemp(t, "name: from-file\nmodule: audit\n")
+	flagger := New()
+	flagger.UseConfigFileArgDefault()
+	var cfg squashedConfigSample
+	require.NoError(t, flagger.Parse(&cfg, "--config", path, "--timeout=12s"))
+	assert.Equal(t, "from-file", cfg.Name)
+	assert.Equal(t, 12*time.Second, cfg.Timeout)
+	assert.Equal(t, "audit", cfg.Module)
+	assert.NotNil(t, flagger.GetFlags().Lookup("name"))
+	assert.Nil(t, flagger.GetFlags().Lookup("squashedruntimeconfigsample.name"))
+	assert.Nil(t, flagger.GetFlags().Lookup("-"))
 }
 
 func TestParseAppliesShortConfigFlag(t *testing.T) {

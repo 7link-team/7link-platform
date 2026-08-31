@@ -23,8 +23,8 @@ type App struct {
 	runtime *appenv.Runtime
 
 	// modules is the lifecycle container for the application's modules.
-	// bootstrap registers the bill of materials; the registry owns activation,
-	// wiring, migration, initialization, start, and shutdown.
+	// bootstrap registers the bill of materials; the registry owns module phase
+	// state while App orchestrates migration between wiring and initialization.
 	modules *module.Registry
 
 	// ctx is the application's root context; cancel tears down background workers
@@ -46,21 +46,13 @@ type App struct {
 // only lists the bill of materials.
 func (app *App) addModule(mods ...module.Module) error {
 	if app.modules == nil {
-		app.modules = module.NewRegistry()
+		return errors.New("module registry is not composed")
 	}
 	return app.modules.Register(mods...)
 }
 
 func (app *App) Run(config AppConfig) error {
-	if err := configx.Process(&config); err != nil {
-		return err
-	}
-	applyRuntimeDefaults(&config)
-	applyDebugDefaults(&config)
-	if err := validateRuntimeConfig(config); err != nil {
-		return fmt.Errorf("config: %w", err)
-	}
-	if err := configureProcessRuntime(config.Timezone, config.Debug, config.Name); err != nil {
+	if err := configureApplication(&config); err != nil {
 		return err
 	}
 	if err := writeBanner(processConsoleWriter(), config.Banner, config.Name, config.Version,
@@ -84,6 +76,20 @@ func (app *App) Run(config AppConfig) error {
 	}
 
 	return app.awaitShutdown()
+}
+
+// configureApplication applies the configuration and process-wide setup shared
+// by every application execution mode.
+func configureApplication(config *AppConfig) error {
+	if err := configx.Process(config); err != nil {
+		return err
+	}
+	applyRuntimeDefaults(config)
+	applyDebugDefaults(config)
+	if err := validateRuntimeConfig(*config); err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
+	return configureProcessRuntime(config.Timezone, config.Debug, config.Name)
 }
 
 func (app *App) awaitShutdown() error {

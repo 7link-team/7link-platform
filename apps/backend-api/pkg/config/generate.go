@@ -38,8 +38,8 @@ func structNode(t reflect.Type) (*yaml.Node, error) {
 	m := &yaml.Node{Kind: yaml.MappingNode}
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
-		name := field.Tag.Get("mapstructure")
-		if !field.IsExported() || name == "" || name == "-" {
+		name, squash := mapstructureField(field)
+		if !field.IsExported() || name == "-" || (name == "" && !squash) {
 			continue
 		}
 		if omitFromPublishedConfig(field) {
@@ -48,6 +48,13 @@ func structNode(t reflect.Type) (*yaml.Node, error) {
 		val, err := valueNode(field.Type, field.Tag)
 		if err != nil {
 			return nil, err
+		}
+		if squash {
+			if val.Kind != yaml.MappingNode {
+				return nil, fmt.Errorf("configurator: squashed field %s must be a struct", field.Name)
+			}
+			m.Content = append(m.Content, val.Content...)
+			continue
 		}
 		key := &yaml.Node{Kind: yaml.ScalarNode, Value: name}
 		// Attach the description to the value node so it renders as a trailing

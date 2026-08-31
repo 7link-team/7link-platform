@@ -1,6 +1,6 @@
 # Module Lifecycle Redesign — Final Design Document
 
-> Status: **final, approved for record** (codex-reviewed, no further development planned yet).
+> Status: **implemented; pending final human acceptance**.
 >
 > Provenance: v1 → 7-angle subagent review → v2 → codex CLI review #1 → services-injection
 > direction → user simplification decision → **shared appenv.Runtime design** → codex CLI review #2
@@ -157,12 +157,22 @@ failed state.
 
 ```go
 func (app *App) bootstrap(ctx context.Context) error {
-    app.modules = module.NewRegistry()
+    if err := app.prepare(ctx); err != nil { return err }
+    return app.lifecycle(ctx)
+}
+
+func (app *App) prepare(ctx context.Context) error {
     if err := app.initializeRuntime(ctx); err != nil {
         return err
     }
+    if err := app.composeModules(); err != nil { return err }
+    return app.prepareModules()
+}
+
+func (app *App) composeModules() error {
+    app.modules = module.NewRegistry()
     rt := app.runtime
-    if err := app.addModule(
+    return app.addModule(
         i18n.NewModule(rt, i18n.Base),
         respx.NewModule(rt),
         dlock.NewModule(rt),
@@ -180,10 +190,7 @@ func (app *App) bootstrap(ctx context.Context) error {
         pprof.NewModule(rt, pprofConfig(app.config)),
 
         health.NewModule(rt),
-    ); err != nil {
-        return err
-    }
-    return app.lifecycle(ctx)
+    )
 }
 
 func (app *App) initializeRuntime(ctx context.Context) error {
@@ -200,7 +207,7 @@ func (app *App) initializeRuntime(ctx context.Context) error {
 ### 3.5 `internal/app` — lifecycle
 
 ```go
-func (app *App) lifecycle(ctx context.Context) error {
+func (app *App) prepareModules() error {
     if err := app.modules.Activate(); err != nil { return err }
     if err := app.modules.Wire(app.provideCrossCutting); err != nil {
         return fmt.Errorf("wire modules: %w", err)
@@ -208,9 +215,13 @@ func (app *App) lifecycle(ctx context.Context) error {
     if err := app.collectMetrics(); err != nil {           // after Wire: rollback list exists
         return fmt.Errorf("collect module metrics: %w", err)
     }
+    return nil
+}
+
+func (app *App) lifecycle(ctx context.Context) error {
     if app.config.Migrate {
-        if _, err := runModuleMigrations(ctx, app.runtime.Database().Write(), app.modules,
-            MigrationConfig{Action: MigrationAuto}); err != nil {
+        if _, err := app.migrateModules(ctx,
+            MigrationRequest{Action: MigrationAuto}); err != nil {
             return fmt.Errorf("migrate modules: %w", err)
         }
     }
@@ -290,10 +301,13 @@ app-level mount is chi-bound.
 Runtime and pass it through the same constructors. Tests that directly consume
 telemetry instrumentation explicitly call `Initialize` before use.
 
-**Standalone migration (`internal/app/migration.go`).** `RunMigrations` builds
-`rt := appenv.NewRuntime(appenv.NewIdentity("", ""), appenv.WithDatabase(router))` and passes it to `dlock.NewModule(rt)`,
-`wuid.NewModule(rt)`, `audit.NewModule(rt, audit.Config{})`. `runModuleMigrations`
-consumes `registry.Modules()` (the active set).
+**Standalone migration (`internal/app/migration.go`).** `MigrationConfig`
+squashes the normal `AppConfig` together with a narrow `MigrationRequest`, so
+serve and migrate consume the same application identity, middleware settings,
+and datasource configuration. `RunMigrations` calls the same `App.prepare` as
+service startup, then `App.migrateModules`, which operates only on active Modules
+implementing `module.MigrationSourceProvider`. It exits through the normal
+`App.shutdown` path without entering `Initialize` or `Start`.
 
 ## 5. Behavioral notes
 
@@ -387,7 +401,7 @@ constructor object (see 7.3).
 |---|---|---|
 | R1 | Collector wiring must run after rollback list exists, not right after Activate | **Adopted** — `collectMetrics` after `Wire` (§3.5) |
 | R2 | telemetry's constructor side effects need early cleanup ownership | **Adopted** — Deinitializer pre-seed at `Register`, not `Wire` (§3.3) |
-| R3 | `migration.go` standalone construction must build a Runtime with the router | **Adopted** (§4) |
+| R3 | standalone migration must not maintain a second Router/Runtime/Registry/Module construction path | **Adopted** — both modes use `App.prepare` (§4) |
 | R4 | Preserve degraded no-writer behavior + lock with tests | **Adopted** (§6.4) |
 | R5 | Rewrite the doc (old injection spec contradicted the revision) | **Done** |
 | S1 | Cycle-free + concrete router serves all consumers — confirmed | Adopted |
@@ -396,7 +410,7 @@ constructor object (see 7.3).
 | S4 | Module tests need real SQLite routers or package-private seams | **Adopted** (§6.4) |
 | S5 | Collector test matrix | **Adopted** (§6.2) |
 | N1 | Compile-time assertions for router satisfying narrow contracts | Noted |
-| N2 | Don't pass `Runtime` to modules that don't need it | **Adopted** (§3.4) |
+| N2 | Omit `Runtime` from modules that do not currently use it | **Rejected by the uniform lifecycle decision** — every application Module retains the shared Runtime (§3.4, B8) |
 
 ## 8. Decisions
 

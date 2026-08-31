@@ -58,16 +58,24 @@ func normalizeStruct(value reflect.Value, parent string) error {
 	typ := value.Type()
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)
-		name := strings.Split(field.Tag.Get("mapstructure"), ",")[0]
-		if !field.IsExported() || name == "" || name == "-" {
+		name, squash := mapstructureField(field)
+		if !field.IsExported() || name == "-" || (name == "" && !squash) {
 			continue
 		}
 
-		path := name
-		if parent != "" {
+		path := parent
+		if !squash && parent != "" {
 			path = parent + "." + name
+		} else if !squash {
+			path = name
 		}
 		fieldValue := value.Field(i)
+		if squash {
+			if err := normalizeChildren(fieldValue, path); err != nil {
+				return err
+			}
+			continue
+		}
 		if strings.EqualFold(field.Tag.Get("trim"), "true") {
 			if err := trimValue(fieldValue, path); err != nil {
 				return err
@@ -148,16 +156,24 @@ func validateStruct(value reflect.Value, parent string) error {
 	typ := value.Type()
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)
-		name := strings.Split(field.Tag.Get("mapstructure"), ",")[0]
-		if !field.IsExported() || name == "" || name == "-" {
+		name, squash := mapstructureField(field)
+		if !field.IsExported() || name == "-" || (name == "" && !squash) {
 			continue
 		}
 
-		path := name
-		if parent != "" {
+		path := parent
+		if !squash && parent != "" {
 			path = parent + "." + name
+		} else if !squash {
+			path = name
 		}
 		fieldValue := value.Field(i)
+		if squash {
+			if err := validateChildren(fieldValue, path); err != nil {
+				return err
+			}
+			continue
+		}
 		if strings.EqualFold(field.Tag.Get("required"), "true") && isMissing(fieldValue) {
 			return fmt.Errorf("config: %s is required", path)
 		}

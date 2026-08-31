@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/pkg/module"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -77,10 +78,11 @@ func TestAwaitShutdownHandlesProcessSignal(t *testing.T) {
 }
 
 func TestAddModulePropagatesRegistryValidation(t *testing.T) {
-	app := &App{}
+	app := &App{modules: module.NewRegistry()}
 	first := &namedHealthModule{name: "same"}
 	require.NoError(t, app.addModule(first))
 	assert.ErrorContains(t, app.addModule(&namedHealthModule{name: "same"}), "duplicate module")
+	assert.EqualError(t, (&App{}).addModule(first), "module registry is not composed")
 }
 
 func validTestAppConfig() AppConfig {

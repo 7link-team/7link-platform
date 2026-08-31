@@ -35,8 +35,8 @@ func inspectStruct(value reflect.Value) (map[string]any, error) {
 	result := make(map[string]any, typ.NumField())
 	for index := 0; index < typ.NumField(); index++ {
 		field := typ.Field(index)
-		name := strings.Split(field.Tag.Get("mapstructure"), ",")[0]
-		if !field.IsExported() || name == "" || name == "-" ||
+		name, squash := mapstructureField(field)
+		if !field.IsExported() || name == "-" || (name == "" && !squash) ||
 			omitFromPublishedConfig(field) {
 			continue
 		}
@@ -52,6 +52,19 @@ func inspectStruct(value reflect.Value) (map[string]any, error) {
 		}
 		if err != nil {
 			return nil, fmt.Errorf("config: inspect %s: %w", name, err)
+		}
+		if squash {
+			if inspected == nil {
+				continue
+			}
+			fields, ok := inspected.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("config: inspect squashed field %s: expected a struct", field.Name)
+			}
+			for key, fieldValue := range fields {
+				result[key] = fieldValue
+			}
+			continue
 		}
 		result[name] = inspected
 	}

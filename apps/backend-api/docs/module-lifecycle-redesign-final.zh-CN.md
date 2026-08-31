@@ -1,6 +1,6 @@
 # Module Lifecycle 重构 — 最终设计文档（中文版）
 
-> 状态：**最终定稿**（已经 codex 评审，暂不开发）。
+> 状态：**已实现，等待最终人工验收**。
 >
 > 演进：v1 → 7 角度 subagent 评审 → v2 → codex CLI 评审 #1 → 服务注入方向 → 用户简化决策 →
 > **共享 appenv.Runtime 设计** → codex CLI 评审 #2（sound-with-changes，must-fix 已并入）。
@@ -110,12 +110,22 @@ func (r *Registry) ByName(name string) (Module, bool)
 
 ```go
 func (app *App) bootstrap(ctx context.Context) error {
-    app.modules = module.NewRegistry()
+    if err := app.prepare(ctx); err != nil { return err }
+    return app.lifecycle(ctx)
+}
+
+func (app *App) prepare(ctx context.Context) error {
     if err := app.initializeRuntime(ctx); err != nil {
         return err
     }
+    if err := app.composeModules(); err != nil { return err }
+    return app.prepareModules()
+}
+
+func (app *App) composeModules() error {
+    app.modules = module.NewRegistry()
     rt := app.runtime
-    if err := app.addModule(
+    return app.addModule(
         i18n.NewModule(rt, i18n.Base),
         respx.NewModule(rt),
         dlock.NewModule(rt),
@@ -133,10 +143,7 @@ func (app *App) bootstrap(ctx context.Context) error {
         pprof.NewModule(rt, pprofConfig(app.config)),
 
         health.NewModule(rt),
-    ); err != nil {
-        return err
-    }
-    return app.lifecycle(ctx)
+    )
 }
 
 func (app *App) initializeRuntime(ctx context.Context) error {
@@ -153,7 +160,7 @@ func (app *App) initializeRuntime(ctx context.Context) error {
 ### 3.5 `internal/app` — lifecycle
 
 ```go
-func (app *App) lifecycle(ctx context.Context) error {
+func (app *App) prepareModules() error {
     if err := app.modules.Activate(); err != nil { return err }
     if err := app.modules.Wire(app.provideCrossCutting); err != nil {
         return fmt.Errorf("wire modules: %w", err)
@@ -161,9 +168,13 @@ func (app *App) lifecycle(ctx context.Context) error {
     if err := app.collectMetrics(); err != nil {           // 在 Wire 之后：回滚表已建立
         return fmt.Errorf("collect module metrics: %w", err)
     }
+    return nil
+}
+
+func (app *App) lifecycle(ctx context.Context) error {
     if app.config.Migrate {
-        if _, err := runModuleMigrations(ctx, app.runtime.Database().Write(), app.modules,
-            MigrationConfig{Action: MigrationAuto}); err != nil {
+        if _, err := app.migrateModules(ctx,
+            MigrationRequest{Action: MigrationAuto}); err != nil {
             return fmt.Errorf("migrate modules: %w", err)
         }
     }
@@ -234,7 +245,7 @@ HTTP 服务：`HTTPMiddlewares()` → `respx.Recovery` → 挂载 `RawHTTPRoutes
 
 **外部调用点影响（机械改）。** Module 的直接测试构建测试 Runtime，并通过相同构造函数传入；直接使用 telemetry instrumentation 的测试会在使用前显式调用 `Initialize`。
 
-**独立迁移（`internal/app/migration.go`）。** `RunMigrations` 构建 `rt := appenv.NewRuntime(appenv.NewIdentity("", ""), appenv.WithDatabase(router))`，传给 `dlock.NewModule(rt)`、`wuid.NewModule(rt)`、`audit.NewModule(rt, audit.Config{})`。`runModuleMigrations` 吃 `registry.Modules()`（激活集）。
+**独立迁移（`internal/app/migration.go`）。** `MigrationConfig` 将正常的 `AppConfig` 与窄化的 `MigrationRequest` 扁平组合，因此 serve 与 migrate 使用相同的应用身份、模块设置和数据源配置。`RunMigrations` 调用与服务启动完全相同的 `App.prepare`，随后由 `App.migrateModules` 遍历激活集，只处理实现 `module.MigrationSourceProvider` 的 Module；独立命令最终走正常的 `App.shutdown`，不进入 `Initialize` 或 `Start`。
 
 ## 5. 行为变化
 
@@ -303,7 +314,7 @@ HTTP 服务：`HTTPMiddlewares()` → `respx.Recovery` → 挂载 `RawHTTPRoutes
 |---|---|---|
 | R1 | collector 接线须在回滚表建立后，而非紧接 Activate | **采纳**——`collectMetrics` 放 `Wire` 后（§3.5） |
 | R2 | telemetry 构造副作用需尽早的清理所有权 | **采纳**——Deinitializer 在 `Register` 即预置（§3.3） |
-| R3 | `migration.go` 独立构造须用 router 构建 Runtime | **采纳**（§4） |
+| R3 | 独立迁移不得维护第二套 Router/Runtime/Registry/Module 构造路径 | **采纳**——两种模式统一走 `App.prepare`（§4） |
 | R4 | 保留降级无 writer 行为 + 测试锁定 | **采纳**（§6.4） |
 | R5 | 重写文档（旧注入规格与修订矛盾） | **完成** |
 | S1 | 无循环 + 具体 router 覆盖全部消费者——确认 | 采纳 |
@@ -312,7 +323,7 @@ HTTP 服务：`HTTPMiddlewares()` → `respx.Recovery` → 挂载 `RawHTTPRoutes
 | S4 | 模块测试需真实 SQLite router 或包私有缝 | **采纳**（§6.4） |
 | S5 | Collector 测试矩阵 | **采纳**（§6.2） |
 | N1 | 为 router 满足窄契约加编译期断言 | 备注 |
-| N2 | 不需要 `Runtime` 的模块不传 | **采纳**（§3.4） |
+| N2 | 当前不用 `Runtime` 的模块可不传 | **被统一生命周期决策否决**——每个应用 Module 都持有共享 Runtime（§3.4、B8） |
 
 ## 8. 决策
 

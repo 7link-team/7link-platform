@@ -52,16 +52,18 @@ func TestShutdownDefaultsAndOverrides(t *testing.T) {
 func TestBannerDefaultsAndOverrides(t *testing.T) {
 	var defaults AppConfig
 	require.NoError(t, configx.New().Parse(&defaults))
-	assert.Equal(t, "7link-api", defaults.Name)
+	assert.Empty(t, defaults.Name)
 	assert.Equal(t, BannerConfig{Enabled: true, Type: "standard", Theme: "rainbow"}, defaults.Banner)
 
 	var configured AppConfig
 	require.NoError(t, configx.New().Parse(&configured,
+		"--name=test-api",
 		"--banner.enabled=false",
 		"--banner.text=SEVEN LINK",
 		"--banner.type=slant",
 		"--banner.theme=ocean",
 	))
+	assert.Equal(t, "test-api", configured.Name)
 	assert.Equal(t, BannerConfig{
 		Enabled: false,
 		Text:    "SEVEN LINK",

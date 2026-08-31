@@ -158,6 +158,7 @@ type (
 	// the migration runner and the migration-status inspector can discover it
 	// alongside the other module capabilities.
 	MigrationSourceProvider interface {
+		Module
 		MigrationSource() goosex.Source
 	}
 )

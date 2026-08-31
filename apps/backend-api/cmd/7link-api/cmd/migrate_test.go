@@ -24,7 +24,8 @@ func TestMigrateCommandUsesSharedApplicationConfig(t *testing.T) {
 	directory := t.TempDir()
 	configPath := filepath.Join(directory, "config.yaml")
 	databasePath := filepath.Join(directory, "cli.sqlite")
-	configData := fmt.Appendf(nil, `database:
+	configData := fmt.Appendf(nil, `name: migration-test
+database:
   main:
     type: sqlite
     dsn: %s
@@ -41,6 +42,8 @@ func TestMigrateCommandUsesSharedApplicationConfig(t *testing.T) {
 
 	output, err = executeCommand("migrate", "auto", "--config", configPath)
 	require.NoError(t, err)
+	assert.Equal(t, "migration-test", migrateConfig.Name)
+	assert.Equal(t, buildVersion, migrateConfig.Version)
 	assert.Contains(t, output, "dlock")
 	assert.Contains(t, output, "wuid")
 	assert.Contains(t, output, "clean")

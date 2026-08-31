@@ -308,10 +308,14 @@ func parseFlagsMap(c interface{}, mapkey string) (map[string]sFlag, error) {
 func parseFlags(m *map[string]sFlag, c interface{}, parent string, field *reflect.StructField, fieldValue *reflect.Value, mapkey string) error {
 	var name string
 	if field != nil {
-		mapstructure := field.Tag.Get("mapstructure")
-		if mapstructure != "" {
-			name = mapstructure
-		} else {
+		var squash bool
+		name, squash = mapstructureField(*field)
+		if name == "-" {
+			return nil
+		}
+		if squash {
+			name = ""
+		} else if name == "" {
 			name = strings.ToLower(field.Name)
 		}
 	}

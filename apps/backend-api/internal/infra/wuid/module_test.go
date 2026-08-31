@@ -24,8 +24,8 @@ func newModuleRuntime(t *testing.T) (*appenv.Runtime, *gorm.DB) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = router.Close() })
 	db := router.Write()
-	require.NoError(t, dlock.Migrate(t.Context(), db))
-	require.NoError(t, Migrate(t.Context(), db))
+	migrateTestSource(t, db, (&dlock.Module{}).MigrationSource())
+	migrateTestSource(t, db, (&Module{}).MigrationSource())
 	return appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0"), appenv.WithDatabase(router)), db
 }
 

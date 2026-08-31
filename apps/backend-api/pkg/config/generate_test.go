@@ -97,3 +97,26 @@ func TestGenerateYAML_RejectsUnsupportedMapElem(t *testing.T) {
 	_, err := GenerateYAML(&badMap{})
 	assert.Error(t, err, "an unsupported map element type is reported")
 }
+
+func TestGenerateYAML_FlattensSquashedStruct(t *testing.T) {
+	type Embedded struct {
+		Name string `mapstructure:"name" default:"api"`
+	}
+	type sample struct {
+		Embedded `mapstructure:",squash"`
+		Module   string `mapstructure:"module" default:"audit"`
+	}
+
+	data, err := GenerateYAML(&sample{})
+	require.NoError(t, err)
+	assert.Equal(t, "name: api\nmodule: audit\n", string(data))
+}
+
+func TestGenerateYAML_RejectsNonStructSquash(t *testing.T) {
+	type sample struct {
+		Value string `mapstructure:",squash"`
+	}
+
+	_, err := GenerateYAML(&sample{})
+	assert.EqualError(t, err, "configurator: squashed field Value must be a struct")
+}

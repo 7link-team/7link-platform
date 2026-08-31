@@ -119,3 +119,34 @@ func TestInspectPropagatesUnsupportedCollectionValues(t *testing.T) {
 	_, err = Inspect(invalidSlice{Values: []chan int{make(chan int)}})
 	assert.ErrorContains(t, err, "unsupported field type chan")
 }
+
+func TestInspectFlattensSquashedStruct(t *testing.T) {
+	type Embedded struct {
+		Name  string `mapstructure:"name"`
+		Token string `mapstructure:"token" secret:"true"`
+	}
+	type sample struct {
+		Embedded `mapstructure:",squash"`
+		Module   string `mapstructure:"module"`
+	}
+
+	actual, err := Inspect(sample{
+		Embedded: Embedded{Name: "api", Token: "secret"},
+		Module:   "audit",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{
+		"name":   "api",
+		"token":  RedactedValue,
+		"module": "audit",
+	}, actual)
+}
+
+func TestInspectRejectsNonStructSquash(t *testing.T) {
+	type sample struct {
+		Value string `mapstructure:",squash"`
+	}
+
+	_, err := Inspect(sample{Value: "value"})
+	assert.EqualError(t, err, "config: inspect squashed field Value: expected a struct")
+}

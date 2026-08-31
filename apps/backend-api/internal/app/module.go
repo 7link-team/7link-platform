@@ -28,11 +28,10 @@ func (app *App) migrationInspector(ctx context.Context) ([]migrationstatus.Repor
 	if app.runtime == nil || app.runtime.Database() == nil {
 		return nil, errors.New("migration: writable database is not configured")
 	}
-	writer := app.runtime.Database().Write()
-	if writer == nil {
+	if app.runtime.Database().Write() == nil {
 		return nil, errors.New("migration: writable database is not configured")
 	}
-	reports, err := runModuleMigrations(ctx, writer, app.modules.Modules(), MigrationConfig{
+	reports, err := app.migrateModules(ctx, MigrationRequest{
 		Action: MigrationStatus,
 		To:     -1,
 	})

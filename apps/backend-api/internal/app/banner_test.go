@@ -16,11 +16,11 @@ func TestWriteBannerRendersFigureAndRuntimeInfo(t *testing.T) {
 		Text:    "SEVEN",
 		Type:    "standard",
 		Theme:   "plain",
-	}, "7link-api", "1.2.3", false)
+	}, "test-api", "1.2.3", false)
 	require.NoError(t, err)
 
 	assert.NotContains(t, output.String(), "\x1b[")
-	assert.Contains(t, output.String(), "Application:  7link-api")
+	assert.Contains(t, output.String(), "Application:  test-api")
 	assert.Contains(t, output.String(), "Version:      1.2.3")
 	assert.Contains(t, output.String(), "Runtime:      "+runtime.Version())
 	assert.Contains(t, output.String(), "System:       "+runtime.GOOS+"/"+runtime.GOARCH)
@@ -34,7 +34,7 @@ func TestWriteBannerUsesConfiguredTheme(t *testing.T) {
 		Text:    "APP",
 		Type:    "small",
 		Theme:   "spring",
-	}, "7link-api", "dev", true))
+	}, "test-api", "dev", true))
 	assert.Contains(t, spring.String(), "\x1b[92m")
 
 	var rainbow bytes.Buffer
@@ -43,7 +43,7 @@ func TestWriteBannerUsesConfiguredTheme(t *testing.T) {
 		Text:    "APP",
 		Type:    "small",
 		Theme:   "rainbow",
-	}, "7link-api", "dev", true))
+	}, "test-api", "dev", true))
 	assert.Contains(t, rainbow.String(), "\x1b[38;5;")
 }
 
@@ -53,13 +53,13 @@ func TestWriteBannerDefaultsToFigurineGradient(t *testing.T) {
 		Enabled: true,
 		Text:    "APP",
 		Type:    "small",
-	}, "7link-api", "dev", true))
+	}, "test-api", "dev", true))
 	assert.Contains(t, output.String(), "\x1b[38;5;")
 }
 
 func TestWriteBannerCanBeDisabled(t *testing.T) {
 	var output bytes.Buffer
-	require.NoError(t, writeBanner(&output, BannerConfig{}, "7link-api", "dev", false))
+	require.NoError(t, writeBanner(&output, BannerConfig{}, "test-api", "dev", false))
 	assert.Empty(t, output.String())
 }
 
@@ -69,14 +69,14 @@ func TestWriteBannerRejectsInvalidInput(t *testing.T) {
 		Text:    "APP",
 		Type:    "missing-font",
 		Theme:   "plain",
-	}, "7link-api", "dev", false), `unknown type "missing-font"`)
+	}, "test-api", "dev", false), `unknown type "missing-font"`)
 
 	assert.EqualError(t, writeBanner(&bytes.Buffer{}, BannerConfig{
 		Enabled: true,
 		Text:    "APP\nBAD",
 		Type:    "standard",
 		Theme:   "plain",
-	}, "7link-api", "dev", false), "banner: text cannot contain control characters")
+	}, "test-api", "dev", false), "banner: text cannot contain control characters")
 }
 
 func TestANSIWriterStripsSequencesAcrossWrites(t *testing.T) {

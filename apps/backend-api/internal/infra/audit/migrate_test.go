@@ -1,16 +1,17 @@
 package audit
 
 import (
-	"context"
 	"testing"
 
 	"7link.com/platform/pkg/appenv"
+	goosex "7link.com/platform/pkg/extension/goose"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestMigrationSource(t *testing.T) {
-	source := migrationSource()
+	source := (&Module{}).MigrationSource()
 	assert.Equal(t, "goose_audit", source.TableName)
 	assert.NotNil(t, source.FS)
 
@@ -23,28 +24,20 @@ func TestMigrationSource(t *testing.T) {
 
 func TestMigrateCreatesTable(t *testing.T) {
 	db := openTestDB(t)
-	require.NoError(t, Migrate(t.Context(), db))
+	migrateTestDatabase(t, db)
 	require.True(t, db.Migrator().HasTable("operation_logs"))
 
 	// Migrating again is idempotent.
-	require.NoError(t, Migrate(t.Context(), db))
-}
-
-func TestMigrateUpAndDown(t *testing.T) {
-	db := openTestDB(t)
-	require.NoError(t, MigrateUp(t.Context(), db))
-	require.True(t, db.Migrator().HasTable("operation_logs"))
-	require.NoError(t, MigrateDown(t.Context(), db))
-	require.False(t, db.Migrator().HasTable("operation_logs"))
-}
-
-func TestMigrateRequiresWriter(t *testing.T) {
-	assert.ErrorIs(t, Migrate(t.Context(), nil), ErrDatabaseUnavailable)
-	assert.ErrorIs(t, MigrateUp(t.Context(), nil), ErrDatabaseUnavailable)
-	assert.ErrorIs(t, MigrateDown(t.Context(), nil), ErrDatabaseUnavailable)
+	migrateTestDatabase(t, db)
 }
 
 func TestOperationLogTableName(t *testing.T) {
 	assert.Equal(t, operationLogsTable, (OperationLog{}).TableName())
-	_ = context.Background()
+}
+
+func migrateTestDatabase(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	require.NoError(t, goosex.Migrate(t.Context(), sqlDB, (&Module{}).MigrationSource(), db.Dialector.Name()))
 }
