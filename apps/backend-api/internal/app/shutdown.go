@@ -69,8 +69,8 @@ func (app *App) shutdown() error {
 			errs = append(errs, err)
 		}
 	}
-	if app.Db != nil {
-		if err := app.Db.Close(); err != nil {
+	if app.runtime != nil {
+		if err := app.runtime.Close(); err != nil {
 			errs = append(errs, err)
 		}
 	}

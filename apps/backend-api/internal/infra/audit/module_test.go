@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/appenv"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/module"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,7 +20,7 @@ import (
 func newTestModule(t *testing.T, config Config) (*Module, *memorySink) {
 	t.Helper()
 	sink := &memorySink{}
-	module := NewModule(module.Runtime{Name: "test-api", Version: "1.0.0"},config, WithSinks(sink))
+	module := NewModule(appenv.NewRuntime(appenv.NewIdentity("test-api", "1.0.0")), config, WithSinks(sink))
 	module.Start(t.Context())
 	t.Cleanup(func() {
 		stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -30,7 +32,7 @@ func newTestModule(t *testing.T, config Config) (*Module, *memorySink) {
 
 func TestModuleLifecycleAndRecord(t *testing.T) {
 	sink := &memorySink{}
-	auditModule := NewModule(module.Runtime{Name: "svc", Version: "1.0.0"},httpModuleConfig(), WithSinks(sink))
+	auditModule := NewModule(appenv.NewRuntime(appenv.NewIdentity("svc", "1.0.0")), httpModuleConfig(), WithSinks(sink))
 	assert.Equal(t, "audit", auditModule.ModuleName())
 	require.NoError(t, auditModule.Start(t.Context()))
 	auditModule.Record(t.Context(), Event{Operation: "manual", Access: AccessWrite})
@@ -43,7 +45,7 @@ func TestModuleLifecycleAndRecord(t *testing.T) {
 
 func TestModuleProvideServices(t *testing.T) {
 	sink := &memorySink{}
-	auditModule := NewModule(module.Runtime{Name: "svc", Version: "1.0.0"},httpModuleConfig(), WithSinks(sink))
+	auditModule := NewModule(appenv.NewRuntime(appenv.NewIdentity("svc", "1.0.0")), httpModuleConfig(), WithSinks(sink))
 	services := module.NewServices()
 	require.NoError(t, auditModule.ProvideServices(services))
 	require.NoError(t, services.Seal())
@@ -52,8 +54,39 @@ func TestModuleProvideServices(t *testing.T) {
 	require.NotNil(t, resolved)
 }
 
+type fixedGUIDSource struct{ id int64 }
+
+func (source fixedGUIDSource) Next() (int64, error) { return source.id, nil }
+
+func TestModuleInjectsApplicationGUIDSource(t *testing.T) {
+	sink := &memorySink{}
+	auditModule := NewModule(appenv.NewRuntime(appenv.NewIdentity("svc", "")), httpModuleConfig(), WithSinks(sink))
+	assert.Equal(t, []string{guid.Name}, auditModule.ModuleDependencies())
+	services := module.NewServices()
+	require.NoError(t, module.Provide[guid.Source](services, fixedGUIDSource{id: 4242}))
+	require.NoError(t, services.Seal())
+	require.NoError(t, auditModule.InjectServices(services))
+	require.NoError(t, auditModule.Start(t.Context()))
+	defer func() { require.NoError(t, auditModule.Stop(context.Background())) }()
+	auditModule.Record(t.Context(), Event{Operation: "injected"})
+	eventually(t, func() bool { return sink.count() == 1 })
+	assert.Equal(t, "4242", sink.snapshot()[0].ID)
+}
+
+func TestModuleOptionOverridesIDGenerator(t *testing.T) {
+	sink := &memorySink{}
+	auditModule := NewModule(appenv.NewRuntime(appenv.NewIdentity("", "")), httpModuleConfig(), WithSinks(sink), WithIDGenerator(func() (int64, error) {
+		return 5150, nil
+	}))
+	require.NoError(t, auditModule.Start(t.Context()))
+	defer func() { require.NoError(t, auditModule.Stop(context.Background())) }()
+	auditModule.Record(t.Context(), Event{Operation: "option"})
+	eventually(t, func() bool { return sink.count() == 1 })
+	assert.Equal(t, "5150", sink.snapshot()[0].ID)
+}
+
 func TestDisabledModuleProvidesNoopRecorderWithoutDispatcher(t *testing.T) {
-	auditModule := NewModule(module.Runtime{Name: "svc", Version: "1.0.0"},Config{Enabled: false}, WithSinks(&memorySink{}))
+	auditModule := NewModule(appenv.NewRuntime(appenv.NewIdentity("svc", "1.0.0")), Config{Enabled: false}, WithSinks(&memorySink{}))
 	services := module.NewServices()
 	require.NoError(t, auditModule.ProvideServices(services))
 	require.NoError(t, services.Seal())
@@ -69,7 +102,7 @@ func TestDisabledModuleProvidesNoopRecorderWithoutDispatcher(t *testing.T) {
 
 func TestModuleRunConvenience(t *testing.T) {
 	sink := &memorySink{}
-	auditModule := NewModule(module.Runtime{Name: "svc", Version: "1.0.0"},httpModuleConfig(), WithSinks(sink))
+	auditModule := NewModule(appenv.NewRuntime(appenv.NewIdentity("svc", "1.0.0")), httpModuleConfig(), WithSinks(sink))
 	require.NoError(t, auditModule.Start(t.Context()))
 	defer func() { require.NoError(t, auditModule.Stop(t.Context())) }()
 
@@ -83,7 +116,7 @@ func TestModuleRunConvenience(t *testing.T) {
 
 func TestModuleCollectorExportsCounters(t *testing.T) {
 	sink := &memorySink{}
-	auditModule := NewModule(module.Runtime{Name: "svc", Version: "1.0.0"},httpModuleConfig(), WithSinks(sink))
+	auditModule := NewModule(appenv.NewRuntime(appenv.NewIdentity("svc", "1.0.0")), httpModuleConfig(), WithSinks(sink))
 	require.NoError(t, auditModule.Start(t.Context()))
 	defer func() { require.NoError(t, auditModule.Stop(t.Context())) }()
 
@@ -125,7 +158,7 @@ func TestModuleCollectorExportsCounters(t *testing.T) {
 
 func TestModuleNormalizesConfiguration(t *testing.T) {
 	sink := &memorySink{}
-	auditModule := NewModule(module.Runtime{Name: "svc", Version: "1"},Config{
+	auditModule := NewModule(appenv.NewRuntime(appenv.NewIdentity("svc", "1")), Config{
 		Enabled:      true,
 		MaxBodyBytes: -1,
 		QueueSize:    0,
@@ -140,7 +173,7 @@ func TestModuleNormalizesConfiguration(t *testing.T) {
 	assert.Empty(t, auditModule.cfg.SensitiveFields)
 
 	// A disabled config still builds a module.
-	disabled := NewModule(module.Runtime{Name: "svc", Version: "1"},Config{Enabled: false}, WithSinks(sink))
+	disabled := NewModule(appenv.NewRuntime(appenv.NewIdentity("svc", "1")), Config{Enabled: false}, WithSinks(sink))
 	assert.False(t, disabled.cfg.Enabled)
 }
 
@@ -160,7 +193,8 @@ func TestModuleGormSinkEndToEnd(t *testing.T) {
 	// WithSink appends a memory sink while keeping the configured gorm sink, so
 	// the event must land in both.
 	sink := &memorySink{}
-	auditModule := NewModule(module.Runtime{Name: "svc", Version: "1", DB: router}, config, WithSink(sink))
+	auditModule := NewModule(appenv.NewRuntime(appenv.NewIdentity("svc", "1"), appenv.WithDatabase(router)), config, WithSink(sink))
+	require.NoError(t, auditModule.Initialize(t.Context()))
 	require.NoError(t, auditModule.Start(t.Context()))
 	defer func() { require.NoError(t, auditModule.Stop(t.Context())) }()
 
@@ -175,17 +209,25 @@ func TestModuleGormSinkEndToEnd(t *testing.T) {
 	})
 }
 
-func TestModuleGormSinkSkippedWhenNoWriter(t *testing.T) {
-	// A nil writer with the database sink enabled must not panic; the slog sink
-	// remains and events still flush.
-	sink := &memorySink{}
+func TestModuleDatabaseSinkFailsInitializationWithoutWriter(t *testing.T) {
 	config := httpModuleConfig()
 	config.Database = DatabaseConfig{Enabled: true}
-	auditModule := NewModule(module.Runtime{Name: "svc", Version: "1"},config, WithSinks(sink))
-	require.NoError(t, auditModule.Start(t.Context()))
-	defer func() { require.NoError(t, auditModule.Stop(t.Context())) }()
-	auditModule.Record(t.Context(), Event{Operation: "op"})
-	eventually(t, func() bool { return sink.count() == 1 })
+	auditModule := NewModule(appenv.NewRuntime(appenv.NewIdentity("svc", "1")), config, WithSinks(&memorySink{}))
+	require.ErrorIs(t, auditModule.Initialize(t.Context()), ErrDatabaseSinkUnavailable)
+}
+
+func TestModuleDatabaseSinkFailsInitializationWithoutMigration(t *testing.T) {
+	router, err := gormx.NewDatasourceRouter(t.Context(), false, map[string]gormx.Datasource{
+		"primary": {Type: "sqlite", DSN: filepath.Join(t.TempDir(), "unmigrated.sqlite"), Writable: true},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, router.Close()) })
+	config := httpModuleConfig()
+	config.Database.Enabled = true
+	auditModule := NewModule(appenv.NewRuntime(appenv.NewIdentity("", ""), appenv.WithDatabase(router)), config)
+	err = auditModule.Initialize(t.Context())
+	require.ErrorIs(t, err, ErrDatabaseSinkUnavailable)
+	assert.ErrorContains(t, err, operationLogsTable)
 }
 
 func TestMaxBodyBytesNegativeMeansUnlimitedCapture(t *testing.T) {

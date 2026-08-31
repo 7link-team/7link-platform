@@ -24,8 +24,12 @@ type Config struct {
 	// skipped by default to avoid flooding the audit log.
 	RecordReads bool `mapstructure:"record_reads" description:"record read-only operations" default:"false"`
 	// RecordStreams records WebSocket and Server-Sent Event sessions. Sessions
-	// are logged once on establishment and once on close, never per message.
+	// are logged once as a terminal summary, never per message.
 	RecordStreams bool `mapstructure:"record_streams" description:"record WebSocket and SSE sessions" default:"true"`
+	// CaptureBodies opts into redacted JSON request and error-response bodies.
+	// It is disabled by default so enabling operation metadata does not
+	// automatically expand the application's sensitive-data footprint.
+	CaptureBodies bool `mapstructure:"capture_bodies" description:"capture redacted JSON request and error response bodies" default:"false"`
 	// MaxBodyBytes caps the captured request/response body size per direction.
 	MaxBodyBytes int `mapstructure:"max_body_bytes" description:"maximum captured request or response body size in bytes" default:"8192"`
 	// SensitiveFields adds JSON field names whose values are redacted in bodies.
@@ -58,6 +62,7 @@ func defaultConfig() Config {
 		Database:        DatabaseConfig{Enabled: false},
 		RecordReads:     false,
 		RecordStreams:   true,
+		CaptureBodies:   false,
 		MaxBodyBytes:    8192,
 		QueueSize:       4096,
 		BatchSize:       200,

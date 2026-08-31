@@ -12,8 +12,9 @@ import (
 )
 
 // UnaryServerInterceptor audits one unary gRPC call. The method name is
-// classified read/write by prefix; write calls capture their request message
-// (serialized with protojson, redacted, size-capped). On failure the gRPC
+// classified read/write by prefix. With capture_bodies enabled, write calls
+// capture their request message (serialized with protojson, redacted, and
+// size-capped). On failure the gRPC
 // status code and message are recorded; on success only the outcome, mirroring
 // the HTTP success-summary rule.
 //
@@ -43,18 +44,20 @@ func (m *Module) UnaryServerInterceptor(
 
 	if access == AccessWrite {
 		if message, ok := request.(proto.Message); ok {
-			// Check the encoded size before marshaling so an oversized request
-			// is never materialized in memory just to be truncated.
-			max := m.maxBodyBytes()
-			if size := proto.Size(message); max > 0 && size > max {
-				entry.reqSize = int64(size)
-				entry.reqLimited = true
-			} else if raw, err := protojson.Marshal(message); err == nil {
-				entry.reqSize = int64(len(raw))
-				if max > 0 && len(raw) > max {
+			entry.reqSize = int64(proto.Size(message))
+			if m.captureBodies() {
+				// Check the encoded size before marshaling so an oversized request
+				// is never materialized in memory just to be truncated.
+				max := m.maxBodyBytes()
+				if size := int(entry.reqSize); max > 0 && size > max {
 					entry.reqLimited = true
-				} else {
-					entry.reqBody = raw
+				} else if raw, err := protojson.Marshal(message); err == nil {
+					entry.reqSize = int64(len(raw))
+					if max > 0 && len(raw) > max {
+						entry.reqLimited = true
+					} else {
+						entry.reqBody = raw
+					}
 				}
 			}
 		}
@@ -142,7 +145,9 @@ func (m *Module) finalizeGRPC(ctx context.Context, entry *inflight, err error) {
 		event.Response = Payload{Omitted: OmittedSuccessSummary}
 	}
 
-	if entry.reqBody != nil {
+	if !m.captureBodies() && event.Access == AccessWrite {
+		event.Request = Payload{Size: entry.reqSize, Omitted: OmittedCaptureDisabled}
+	} else if entry.reqBody != nil {
 		body, truncated, redactErr := m.redactAndTruncate(entry.reqBody)
 		if redactErr != nil {
 			event.Request = Payload{Size: entry.reqSize, Omitted: OmittedInvalidJSON}

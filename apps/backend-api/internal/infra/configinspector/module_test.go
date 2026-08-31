@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"7link.com/platform/pkg/appenv"
 	configx "7link.com/platform/pkg/config"
 	humax "7link.com/platform/pkg/extension/huma"
 	"github.com/go-chi/chi/v5"
@@ -17,7 +18,7 @@ func TestModuleRedactsConfigurationAndRegistersOpenAPI(t *testing.T) {
 		Name   string `mapstructure:"name"`
 		Secret string `mapstructure:"secret" secret:"true"`
 	}
-	m := NewModule(sample{Name: "api", Secret: "private"}, Config{})
+	m := NewModule(appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0")), sample{Name: "api", Secret: "private"}, Config{})
 	require.NoError(t, m.Initialize(t.Context()))
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
@@ -40,7 +41,7 @@ func TestModuleRedactsConfigurationAndRegistersOpenAPI(t *testing.T) {
 }
 
 func TestNewModuleRejectsUnsupportedConfiguration(t *testing.T) {
-	m := NewModule(nil, Config{})
+	m := NewModule(appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0")), nil, Config{})
 	err := m.Initialize(t.Context())
 	assert.ErrorContains(t, err, "create config inspector")
 }

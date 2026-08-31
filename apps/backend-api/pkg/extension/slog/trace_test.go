@@ -11,15 +11,16 @@ import (
 	"testing"
 
 	telemetry "7link.com/platform/internal/infra/telemetry"
+	"7link.com/platform/pkg/appenv"
 	slogx "7link.com/platform/pkg/extension/slog"
-	"7link.com/platform/pkg/module"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestTraceHandlerAddsTraceAndSpanIDs(t *testing.T) {
 	const traceID = "123e4567e89b42d3a456426614174000"
-	module := telemetry.NewModule(module.Runtime{Name: "test", Version: "1.0.0"}, telemetry.WithIDGenerator(func() string { return traceID }))
+	module := telemetry.NewModule(appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0")), telemetry.WithIDGenerator(func() string { return traceID }))
+	require.NoError(t, module.Initialize(t.Context()))
 	t.Cleanup(func() { require.NoError(t, module.Deinitialize(context.Background())) })
 
 	var output bytes.Buffer

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -18,6 +19,7 @@ import (
 	"7link.com/platform/internal/infra/pprof"
 	telemetry "7link.com/platform/internal/infra/telemetry"
 	"7link.com/platform/internal/infra/wuid"
+	"7link.com/platform/pkg/appenv"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/extension/huma/respx"
 	slogx "7link.com/platform/pkg/extension/slog"
@@ -51,16 +53,16 @@ func processConsoleColorsEnabled(debug bool) bool {
 // migrate -> initialize -> start).
 func (app *App) bootstrap(ctx context.Context) error {
 	app.modules = module.NewRegistry()
-	if err := app.initializeDatabase(ctx); err != nil {
+	if err := app.initializeRuntime(ctx); err != nil {
 		return err
 	}
-	rt := app.runtime()
+	rt := app.runtime
 	if err := app.addModule(
-		i18n.NewModule(i18n.Base),
-		respx.NewModule(),
+		i18n.NewModule(rt, i18n.Base),
+		respx.NewModule(rt),
 		dlock.NewModule(rt),
 		wuid.NewModule(rt),
-		guid.NewModule(),
+		guid.NewModule(rt),
 
 		// metrics before telemetry/audit keeps its HTTP middleware outermost.
 		metrics.NewModule(rt, metricsConfig(app.config)),
@@ -68,21 +70,15 @@ func (app *App) bootstrap(ctx context.Context) error {
 		audit.NewModule(rt, auditConfig(app.config)),
 		databasemonitor.NewModule(rt, datasourceMonitorConfig(app.config)),
 
-		migrationstatus.NewModule(migrationStatusConfig(app.config)),
-		configinspector.NewModule(app.config, configInspectorConfig(app.config)),
+		migrationstatus.NewModule(rt, migrationStatusConfig(app.config)),
+		configinspector.NewModule(rt, app.config, configInspectorConfig(app.config)),
 		pprof.NewModule(rt, pprofConfig(app.config)),
 
-		health.NewModule(),
+		health.NewModule(rt),
 	); err != nil {
 		return err
 	}
 	return app.lifecycle(ctx)
-}
-
-// runtime builds the immutable app-level environment shared by modules. It is the
-// only place app.config.* / app.Db are referenced during bootstrap.
-func (app *App) runtime() module.Runtime {
-	return module.Runtime{Name: app.config.Name, Version: app.config.Version, DB: app.Db}
 }
 
 // lifecycle drives the module lifecycle from activation through start.
@@ -99,7 +95,7 @@ func (app *App) lifecycle(ctx context.Context) error {
 		return fmt.Errorf("collect module metrics: %w", err)
 	}
 	if app.config.Migrate {
-		if _, err := runModuleMigrations(ctx, app.Db.Write(), app.modules.Modules(), MigrationConfig{
+		if _, err := runModuleMigrations(ctx, app.runtime.Database().Write(), app.modules.Modules(), MigrationConfig{
 			Action: MigrationAuto,
 		}); err != nil {
 			return fmt.Errorf("migrate modules: %w", err)
@@ -114,9 +110,10 @@ func (app *App) lifecycle(ctx context.Context) error {
 	return nil
 }
 
-func (app *App) initializeDatabase(ctx context.Context) error {
+// initializeRuntime opens application-level infrastructure and publishes the
+// single immutable environment shared by modules.
+func (app *App) initializeRuntime(ctx context.Context) error {
 	router, err := newDatasourceRouter(ctx, app.config)
-	app.Db = router
 	if err != nil {
 		if router == nil {
 			return fmt.Errorf("database configuration: %w", err)
@@ -128,10 +125,15 @@ func (app *App) initializeDatabase(ctx context.Context) error {
 			}
 		}
 		if configuredWriters > 0 && !router.HasWriter() {
-			return fmt.Errorf("database: no configured writer is available: %w", err)
+			closeErr := router.Close()
+			return errors.Join(fmt.Errorf("database: no configured writer is available: %w", err), closeErr)
 		}
 		slog.Error("one or more database datasources are unavailable", "error", err)
 	}
+	app.runtime = appenv.NewRuntime(
+		appenv.NewIdentity(app.config.Name, app.config.Version),
+		appenv.WithDatabase(router),
+	)
 	return nil
 }
 

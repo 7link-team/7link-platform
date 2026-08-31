@@ -12,8 +12,9 @@ import (
 )
 
 func TestRecoveryWritesPlatformErrorEnvelope(t *testing.T) {
-	require.NoError(t, platformi18n.NewModule(platformi18n.Base).Initialize(t.Context()))
-	require.NoError(t, NewModule().Initialize(t.Context()))
+	rt := newTestRuntime()
+	require.NoError(t, platformi18n.NewModule(rt, platformi18n.Base).Initialize(t.Context()))
+	require.NoError(t, NewModule(rt).Initialize(t.Context()))
 	handler := Recovery(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		panic("failure")
 	}))

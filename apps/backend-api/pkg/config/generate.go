@@ -15,7 +15,8 @@ var durationType = reflect.TypeOf(time.Duration(0))
 // from `mapstructure` tags, values from `default` tags (else the type's zero
 // value), and `description` tags become line comments. Nested structs recurse; a
 // map emits one placeholder entry keyed by its (cleaned) `mapkey` token. Fields
-// tagged hidden:"true", unexported, or without a `mapstructure` tag are skipped.
+// tagged hidden:"true" or deprecated, unexported, or without a `mapstructure`
+// tag are skipped. Deprecated fields remain decodable for compatibility.
 // The output round-trips: decoding it back into o yields the documented defaults.
 func GenerateYAML(o interface{}) ([]byte, error) {
 	t := reflect.TypeOf(o)
@@ -41,7 +42,7 @@ func structNode(t reflect.Type) (*yaml.Node, error) {
 		if !field.IsExported() || name == "" || name == "-" {
 			continue
 		}
-		if strings.EqualFold(field.Tag.Get("hidden"), "true") {
+		if omitFromPublishedConfig(field) {
 			continue
 		}
 		val, err := valueNode(field.Type, field.Tag)
@@ -58,6 +59,14 @@ func structNode(t reflect.Type) (*yaml.Node, error) {
 		m.Content = append(m.Content, key, val)
 	}
 	return m, nil
+}
+
+// omitFromPublishedConfig hides internal fields and compatibility-only aliases
+// from newly generated templates and effective-config views. Deprecated fields
+// remain registered by Configurator and therefore continue to decode; callers
+// see their canonical replacements instead.
+func omitFromPublishedConfig(field reflect.StructField) bool {
+	return strings.EqualFold(field.Tag.Get("hidden"), "true") || field.Tag.Get("deprecated") != ""
 }
 
 // valueNode builds the value node for a field of type t with the given tags.

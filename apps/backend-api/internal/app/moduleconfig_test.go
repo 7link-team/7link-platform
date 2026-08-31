@@ -32,6 +32,7 @@ func TestAuditConfigMapsSettings(t *testing.T) {
 			Enabled:         true,
 			RecordReads:     true,
 			RecordStreams:   true,
+			CaptureBodies:   true,
 			MaxBodyBytes:    4096,
 			SensitiveFields: []string{"secret"},
 			SkipRoutes:      []string{"/healthz"},
@@ -45,6 +46,7 @@ func TestAuditConfigMapsSettings(t *testing.T) {
 	assert.True(t, config.Enabled)
 	assert.True(t, config.RecordReads)
 	assert.True(t, config.RecordStreams)
+	assert.True(t, config.CaptureBodies)
 	assert.Equal(t, 4096, config.MaxBodyBytes)
 	assert.Equal(t, []string{"secret"}, config.SensitiveFields)
 	assert.Equal(t, []string{"/healthz"}, config.SkipRoutes)

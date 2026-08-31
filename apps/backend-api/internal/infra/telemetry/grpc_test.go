@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"7link.com/platform/pkg/module"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -26,8 +25,7 @@ func (s *grpcTransportStream) SendHeader(header metadata.MD) error {
 func (*grpcTransportStream) SetTrailer(metadata.MD) error { return nil }
 
 func TestUnaryServerInterceptorReturnsTraceHeadersAndHandlerError(t *testing.T) {
-	module := NewModule(module.Runtime{Name: "test", Version: "1.0.0"}, WithIDGenerator(func() string { return generatedUUID }))
-	t.Cleanup(func() { require.NoError(t, module.Deinitialize(t.Context())) })
+	module := newInitializedModule(t, WithIDGenerator(func() string { return generatedUUID }))
 	ctx, span := module.Tracer("test").Start(t.Context(), "unary")
 	defer span.End()
 	transport := &grpcTransportStream{}
@@ -63,8 +61,7 @@ func (s *grpcTestServerStream) SetHeader(header metadata.MD) error {
 }
 
 func TestStreamServerInterceptorReturnsTraceHeaders(t *testing.T) {
-	module := NewModule(module.Runtime{Name: "test", Version: "1.0.0"}, WithIDGenerator(func() string { return generatedUUID }))
-	t.Cleanup(func() { require.NoError(t, module.Deinitialize(t.Context())) })
+	module := newInitializedModule(t, WithIDGenerator(func() string { return generatedUUID }))
 	ctx, span := module.Tracer("test").Start(t.Context(), "stream")
 	defer span.End()
 	stream := &grpcTestServerStream{ctx: ctx}
@@ -86,8 +83,7 @@ func TestStreamServerInterceptorReturnsTraceHeaders(t *testing.T) {
 }
 
 func TestSetGRPCTraceHeadersSkipsContextWithoutSpan(t *testing.T) {
-	module := NewModule(module.Runtime{Name: "test", Version: "1.0.0"})
-	t.Cleanup(func() { require.NoError(t, module.Deinitialize(t.Context())) })
+	module := newInitializedModule(t)
 	called := false
 	module.setGRPCTraceHeaders(t.Context(), func(metadata.MD) error {
 		called = true

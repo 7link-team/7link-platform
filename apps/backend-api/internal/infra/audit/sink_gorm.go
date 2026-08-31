@@ -3,16 +3,21 @@ package audit
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"maps"
 	"time"
 
 	"7link.com/platform/internal/infra/guid"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
 
 // operationLogsTable is the table backing the gorm sink. It must match the
 // goose migration in sql/{sqlite,mysql,postgres}/00001_operation_logs.sql.
 const operationLogsTable = "operation_logs"
+
+var ErrInvalidEventID = errors.New("audit: invalid database event ID")
 
 // OperationLog is the persisted form of an audit Event. Payloads are stored
 // flat so the table can be queried without JSON extraction.
@@ -77,7 +82,8 @@ func (OperationLog) TableName() string { return operationLogsTable }
 // GormSink persists audit events to the operation_logs table in batches wrapped
 // in a single transaction.
 type GormSink struct {
-	db *gorm.DB
+	db           *gorm.DB
+	writerSource gormx.Writer
 }
 
 // NewGormSink returns a sink writing to db. The caller owns the migration; the
@@ -86,22 +92,42 @@ func NewGormSink(db *gorm.DB) *GormSink {
 	return &GormSink{db: db}
 }
 
+// newRoutedGormSink retains the router capability and resolves a writer for
+// every batch. It avoids pinning audit persistence to whichever writer happened
+// to be selected during module construction.
+func newRoutedGormSink(writerSource gormx.Writer) *GormSink {
+	return &GormSink{writerSource: writerSource}
+}
+
 func (sink *GormSink) Write(ctx context.Context, events []Event) error {
-	if sink == nil || sink.db == nil || len(events) == 0 {
+	if sink == nil || len(events) == 0 {
+		return nil
+	}
+	db := sink.db
+	if sink.writerSource != nil {
+		db = sink.writerSource.Write()
+		if db == nil {
+			return ErrDatabaseSinkUnavailable
+		}
+	}
+	if db == nil {
 		return nil
 	}
 	rows := make([]OperationLog, len(events))
 	for index, event := range events {
+		if !isSnowflakeID(event.ID) {
+			return fmt.Errorf("%w %q at batch index %d", ErrInvalidEventID, event.ID, index)
+		}
 		rows[index] = fromEvent(event)
 	}
-	return sink.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return tx.Create(&rows).Error
 	})
 }
 
 // parseID converts a decimal-string snowflake ID to its guid.ID form. An empty
-// or unparsable value (which should not happen for platform business IDs) maps
-// to the zero ID; non-snowflake values are preserved verbatim by fromEvent.
+// or unparsable related-entity value maps to the zero ID. Event primary keys
+// are validated by GormSink.Write before this mapping is called.
 func parseID(value string) guid.ID {
 	id, _ := guid.Parse(value)
 	return id

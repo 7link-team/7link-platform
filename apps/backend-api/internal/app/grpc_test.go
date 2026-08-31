@@ -9,6 +9,7 @@ import (
 	audit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/internal/infra/wuid"
+	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"github.com/stretchr/testify/assert"
@@ -17,11 +18,11 @@ import (
 
 // auditDependencies returns the modules audit depends on transitively
 // (i18n <- guid <- wuid), so Activate's dependency validation passes.
-func auditDependencies(rt module.Runtime) []module.Module {
+func auditDependencies(rt *appenv.Runtime) []module.Module {
 	return []module.Module{
-		i18n.NewModule(i18n.Base),
+		i18n.NewModule(rt, i18n.Base),
 		wuid.NewModule(rt),
-		guid.NewModule(),
+		guid.NewModule(rt),
 	}
 }
 
@@ -55,7 +56,7 @@ func TestStartGRPCServerMountsAuditInterceptor(t *testing.T) {
 		serveErr: make(chan error, 2),
 	}
 	app.config.GrpcServer.Port = 0
-	rt := module.Runtime{Name: app.config.Name, Version: app.config.Version}
+	rt := appenv.NewRuntime(appenv.NewIdentity(app.config.Name, app.config.Version))
 	auditModule := audit.NewModule(rt, audit.Config{Enabled: true})
 	// The interceptor is collected from the module registry, so the module (and
 	// its transitive dependencies) must be registered and started for the
@@ -74,7 +75,7 @@ func TestStartGRPCServerMountsAuditInterceptor(t *testing.T) {
 
 func TestGRPCProtocolOptionsCollectsModuleInterceptors(t *testing.T) {
 	app := &App{ctx: t.Context()}
-	rt := module.Runtime{Name: "test", Version: "1"}
+	rt := appenv.NewRuntime(appenv.NewIdentity("test", "1"))
 	auditModule := audit.NewModule(rt, audit.Config{Enabled: true})
 	deps := auditDependencies(rt)
 	app.modules = registeredRegistry(append(deps, auditModule)...)

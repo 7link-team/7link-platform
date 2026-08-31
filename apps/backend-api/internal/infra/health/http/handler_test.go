@@ -10,6 +10,7 @@ import (
 
 	healthi18n "7link.com/platform/internal/infra/health/i18n"
 	"7link.com/platform/internal/infra/health/service"
+	"7link.com/platform/pkg/appenv"
 	humax "7link.com/platform/pkg/extension/huma"
 	responsex "7link.com/platform/pkg/extension/huma/respx"
 	platformi18n "7link.com/platform/pkg/i18n"
@@ -20,8 +21,9 @@ import (
 
 func newTestHandler(t *testing.T, services ...*service.Service) http.Handler {
 	t.Helper()
-	require.NoError(t, platformi18n.NewModule(platformi18n.Base).Initialize(t.Context()))
-	require.NoError(t, responsex.NewModule().Initialize(t.Context()))
+	rt := appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0"))
+	require.NoError(t, platformi18n.NewModule(rt, platformi18n.Base).Initialize(t.Context()))
+	require.NoError(t, responsex.NewModule(rt).Initialize(t.Context()))
 	require.NoError(t, healthi18n.Register())
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))

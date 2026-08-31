@@ -15,8 +15,9 @@ import (
 // initI18n initializes the registry and registers the respx-owned bundle.
 func initI18n(t *testing.T) {
 	t.Helper()
-	require.NoError(t, i18n.NewModule(i18n.Base).Initialize(t.Context()))
-	require.NoError(t, NewModule().Initialize(t.Context()))
+	rt := newTestRuntime()
+	require.NoError(t, i18n.NewModule(rt, i18n.Base).Initialize(t.Context()))
+	require.NoError(t, NewModule(rt).Initialize(t.Context()))
 }
 
 func localeCtx(locale string) context.Context {

@@ -11,6 +11,7 @@ import (
 	"7link.com/platform/internal/infra/health"
 	healthservice "7link.com/platform/internal/infra/health/service"
 	"7link.com/platform/pkg/module"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,10 +21,45 @@ type namedHealthModule struct {
 	err  error
 }
 
+type dependentAppModule struct {
+	name       string
+	dependency string
+}
+
+func (m *dependentAppModule) ModuleName() string { return m.name }
+func (m *dependentAppModule) ModuleDependencies() []string {
+	return []string{m.dependency}
+}
+
+type failingLifecycleAppModule struct {
+	name     string
+	initErr  error
+	startErr error
+}
+
+func (m *failingLifecycleAppModule) ModuleName() string               { return m.name }
+func (m *failingLifecycleAppModule) Initialize(context.Context) error { return m.initErr }
+func (m *failingLifecycleAppModule) Start(context.Context) error      { return m.startErr }
+
+type appCollectorModule struct{ name string }
+
+func (m *appCollectorModule) ModuleName() string { return m.name }
+func (*appCollectorModule) Collector() prometheus.Collector {
+	return prometheus.NewGauge(prometheus.GaugeOpts{Name: "app_lifecycle_test"})
+}
+
+type failingCollectorSink struct {
+	name string
+	err  error
+}
+
+func (m *failingCollectorSink) ModuleName() string                           { return m.name }
+func (m *failingCollectorSink) RegisterCollector(prometheus.Collector) error { return m.err }
+
 func (m *namedHealthModule) ModuleName() string                { return m.name }
 func (m *namedHealthModule) CheckHealth(context.Context) error { return m.err }
 
-func TestInitializeDatabaseRoutesPrimaryAndReplica(t *testing.T) {
+func TestInitializeRuntimeRoutesPrimaryAndReplica(t *testing.T) {
 	app := &App{config: AppConfig{Database: map[string]Database{
 		"primary": {
 			Type:     "sqlite",
@@ -36,37 +72,76 @@ func TestInitializeDatabaseRoutesPrimaryAndReplica(t *testing.T) {
 			Readable: true,
 		},
 	}}}
-	require.NoError(t, app.initializeDatabase(t.Context()))
-	t.Cleanup(func() { _ = app.Db.Close() })
+	require.NoError(t, app.initializeRuntime(t.Context()))
+	t.Cleanup(func() { _ = app.runtime.Close() })
 
-	assert.True(t, app.Db.HasWriter())
-	assert.NotSame(t, app.Db.Write(), app.Db.Read())
+	assert.True(t, app.runtime.Database().HasWriter())
+	assert.NotSame(t, app.runtime.Database().Write(), app.runtime.Database().Read())
 }
 
-func TestInitializeDatabaseFailsWhenEveryConfiguredWriterFails(t *testing.T) {
+func TestLifecycleReportsActivationCollectionInitializationAndStartFailures(t *testing.T) {
+	t.Run("activate", func(t *testing.T) {
+		app := &App{modules: module.NewRegistry()}
+		require.NoError(t, app.modules.Register(&dependentAppModule{name: "dependent", dependency: "missing"}))
+		assert.ErrorContains(t, app.lifecycle(t.Context()), "requires unregistered module")
+	})
+
+	t.Run("collect metrics", func(t *testing.T) {
+		want := errors.New("collector registration failed")
+		app := &App{modules: module.NewRegistry()}
+		require.NoError(t, app.modules.Register(
+			&appCollectorModule{name: "source"},
+			&failingCollectorSink{name: "sink", err: want},
+		))
+		assert.ErrorIs(t, app.lifecycle(t.Context()), want)
+	})
+
+	t.Run("initialize", func(t *testing.T) {
+		want := errors.New("initialize failed")
+		app := &App{modules: module.NewRegistry()}
+		require.NoError(t, app.modules.Register(&failingLifecycleAppModule{name: "module", initErr: want}))
+		assert.ErrorIs(t, app.lifecycle(t.Context()), want)
+	})
+
+	t.Run("start", func(t *testing.T) {
+		want := errors.New("start failed")
+		app := &App{modules: module.NewRegistry()}
+		require.NoError(t, app.modules.Register(&failingLifecycleAppModule{name: "module", startErr: want}))
+		assert.ErrorIs(t, app.lifecycle(t.Context()), want)
+	})
+}
+
+func TestInitializeRuntimeFailsWhenEveryConfiguredWriterFails(t *testing.T) {
 	app := &App{config: AppConfig{Database: map[string]Database{
 		"primary-a": {Type: "oracle", Dsn: "unused", Writable: true},
 		"primary-b": {Type: "oracle", Dsn: "unused", Writable: true},
 	}}}
 
-	err := app.initializeDatabase(t.Context())
+	err := app.initializeRuntime(t.Context())
 	assert.ErrorContains(t, err, "no configured writer is available")
 	assert.ErrorContains(t, err, `database "primary-a"`)
 	assert.ErrorContains(t, err, `database "primary-b"`)
-	assert.False(t, app.Db.HasWriter())
+	assert.Nil(t, app.runtime)
 }
 
-func TestInitializeDatabaseRejectsDatasourceWithoutRole(t *testing.T) {
+func TestInitializeRuntimeRejectsDatasourceWithoutRole(t *testing.T) {
 	app := &App{config: AppConfig{Database: map[string]Database{
 		"disabled": {Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "disabled.sqlite")},
 	}}}
 
-	err := app.initializeDatabase(t.Context())
+	err := app.initializeRuntime(t.Context())
 	assert.ErrorContains(t, err, `datasource "disabled" must be readable or writable`)
-	assert.Nil(t, app.Db)
+	assert.Nil(t, app.runtime)
 }
 
-func TestInitializeDatabaseKeepsHealthyWriterWhenAnotherFails(t *testing.T) {
+func TestBootstrapPropagatesDatabaseConfigurationFailure(t *testing.T) {
+	app := &App{config: AppConfig{Database: map[string]Database{
+		"disabled": {Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "disabled.sqlite")},
+	}}}
+	assert.ErrorContains(t, app.bootstrap(t.Context()), "must be readable or writable")
+}
+
+func TestInitializeRuntimeKeepsHealthyWriterWhenAnotherFails(t *testing.T) {
 	app := &App{config: AppConfig{Database: map[string]Database{
 		"primary-broken": {Type: "oracle", Dsn: "unused", Writable: true},
 		"primary-healthy": {
@@ -74,11 +149,11 @@ func TestInitializeDatabaseKeepsHealthyWriterWhenAnotherFails(t *testing.T) {
 		},
 	}}}
 
-	require.NoError(t, app.initializeDatabase(t.Context()))
-	t.Cleanup(func() { _ = app.Db.Close() })
-	assert.True(t, app.Db.HasWriter())
-	assert.NotNil(t, app.Db.Write())
-	snapshot := app.Db.Probe(t.Context())
+	require.NoError(t, app.initializeRuntime(t.Context()))
+	t.Cleanup(func() { _ = app.runtime.Close() })
+	assert.True(t, app.runtime.Database().HasWriter())
+	assert.NotNil(t, app.runtime.Database().Write())
+	snapshot := app.runtime.Database().Probe(t.Context())
 	assert.NoError(t, snapshot.RoutingError())
 	assert.Error(t, snapshot.DatasourceError("primary-broken"))
 	assert.NoError(t, app.checkHealth(t.Context()))
@@ -108,8 +183,8 @@ func TestBootstrapRequiresExplicitMigrations(t *testing.T) {
 	}}}
 	assert.ErrorContains(t, app.bootstrap(t.Context()), "no such table")
 	t.Cleanup(func() { _ = app.shutdown() })
-	assert.False(t, app.Db.Write().Migrator().HasTable("dlocks"))
-	assert.False(t, app.Db.Write().Migrator().HasTable("worker_ids"))
+	assert.False(t, app.runtime.Database().Write().Migrator().HasTable("dlocks"))
+	assert.False(t, app.runtime.Database().Write().Migrator().HasTable("worker_ids"))
 }
 
 func TestBootstrapStartsAfterExplicitMigrations(t *testing.T) {
@@ -132,9 +207,9 @@ func TestBootstrapStartsAfterExplicitMigrations(t *testing.T) {
 	require.NoError(t, app.bootstrap(t.Context()))
 	t.Cleanup(func() { _ = app.shutdown() })
 
-	require.NotNil(t, app.Db.Write())
-	assert.True(t, app.Db.Write().Migrator().HasTable("dlocks"))
-	assert.True(t, app.Db.Write().Migrator().HasTable("worker_ids"))
+	require.NotNil(t, app.runtime.Database().Write())
+	assert.True(t, app.runtime.Database().Write().Migrator().HasTable("dlocks"))
+	assert.True(t, app.runtime.Database().Write().Migrator().HasTable("worker_ids"))
 	assert.NoError(t, app.checkHealth(t.Context()))
 }
 
@@ -154,9 +229,9 @@ func TestBootstrapMigratesBeforeStartingWhenEnabled(t *testing.T) {
 	require.NoError(t, app.bootstrap(t.Context()))
 	t.Cleanup(func() { _ = app.shutdown() })
 
-	require.NotNil(t, app.Db.Write())
-	assert.True(t, app.Db.Write().Migrator().HasTable("dlocks"))
-	assert.True(t, app.Db.Write().Migrator().HasTable("worker_ids"))
+	require.NotNil(t, app.runtime.Database().Write())
+	assert.True(t, app.runtime.Database().Write().Migrator().HasTable("dlocks"))
+	assert.True(t, app.runtime.Database().Write().Migrator().HasTable("worker_ids"))
 	assert.NoError(t, app.checkHealth(t.Context()))
 }
 

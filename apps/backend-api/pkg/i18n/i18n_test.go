@@ -274,7 +274,7 @@ func TestNewModuleI18nFS(t *testing.T) {
 }
 
 func TestRegisterFSValidatesAndMergesModuleLocales(t *testing.T) {
-	require.NoError(t, NewModule(Base).Initialize(t.Context()))
+	require.NoError(t, NewModule(newTestRuntime(), Base).Initialize(t.Context()))
 	assert.ErrorContains(t, RegisterFS("test", fstest.MapFS{}, "missing"), "read locales fs dir")
 	for _, namespace := range []string{"", "Health", "health.i18n", "health_i18n"} {
 		assert.ErrorContains(t, RegisterFS(namespace, fstest.MapFS{}, "missing"), "invalid namespace")
@@ -340,7 +340,7 @@ func TestRegisterFSRequiresInitializedRegistry(t *testing.T) {
 }
 
 func TestRegisterFSIncludesAdditionalLocales(t *testing.T) {
-	require.NoError(t, NewModule(Base).Initialize(t.Context()))
+	require.NoError(t, NewModule(newTestRuntime(), Base).Initialize(t.Context()))
 	bundle := fstest.MapFS{
 		"locales/en-US.json": {Data: []byte(`{"success":"OK"}`)},
 		"locales/zh-CN.json": {Data: []byte(`{"success":"OK"}`)},
@@ -368,7 +368,7 @@ func TestNamespaceAndLocalKeyFormat(t *testing.T) {
 }
 
 func TestGlobalFunctions(t *testing.T) {
-	require.NoError(t, NewModule(Base).Initialize(t.Context()))
+	require.NoError(t, NewModule(newTestRuntime(), Base).Initialize(t.Context()))
 	bundle := fstest.MapFS{
 		"locales/en-US.json": {Data: []byte(`{"hello":"Hello"}`)},
 		"locales/zh-CN.json": {Data: []byte(`{"hello":"你好"}`)},

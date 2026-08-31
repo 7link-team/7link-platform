@@ -63,3 +63,11 @@ func TestGRPCEndpoints(t *testing.T) {
 	_, err = client.NextBatch(context.Background(), &guidv1.NextBatchRequest{Count: 10001})
 	assert.Equal(t, codes.InvalidArgument, status.Code(err))
 }
+
+func TestGRPCEndpointsHideGeneratorFailures(t *testing.T) {
+	server := &grpcServer{next: func() (int64, error) { return 0, assert.AnError }}
+	_, err := server.Next(t.Context(), &guidv1.NextRequest{})
+	assert.Equal(t, codes.Unavailable, status.Code(err))
+	_, err = server.NextBatch(t.Context(), &guidv1.NextBatchRequest{Count: 2})
+	assert.Equal(t, codes.Unavailable, status.Code(err))
+}

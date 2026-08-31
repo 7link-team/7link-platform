@@ -112,6 +112,19 @@ func TestFlagsUseKebabCaseAndAcceptLegacyUnderscores(t *testing.T) {
 	assert.True(t, legacy.API.MigrationStatus.AdvertiseHealth)
 }
 
+func TestDeprecatedFlagRemainsReadableButIsMarkedDeprecated(t *testing.T) {
+	type config struct {
+		Legacy time.Duration `mapstructure:"legacy_timeout" deprecated:"use timeout instead"`
+	}
+	flagger := New()
+	var cfg config
+	require.NoError(t, flagger.Parse(&cfg, "--legacy-timeout=7s"))
+	assert.Equal(t, 7*time.Second, cfg.Legacy)
+	flag := flagger.GetFlags().Lookup("legacy-timeout")
+	require.NotNil(t, flag)
+	assert.Equal(t, "use timeout instead", flag.Deprecated)
+}
+
 func TestParseAppliesTrimAndRequiredTags(t *testing.T) {
 	type taggedConfig struct {
 		Name string `mapstructure:"name" trim:"true" required:"true"`

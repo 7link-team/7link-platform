@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -119,4 +120,36 @@ func TestFromEventPreservesNonSnowflakeIDs(t *testing.T) {
 	assert.Contains(t, row.Metadata, `"raw_actor_id":"u1"`)
 	assert.Contains(t, row.Metadata, `"region":"cn"`)
 	assert.NotContains(t, row.Metadata, `raw_tenant_id`)
+}
+
+func TestGormSinkRejectsInvalidEventIDsWithoutWritingZeroPrimaryKey(t *testing.T) {
+	db := openTestDB(t)
+	require.NoError(t, Migrate(t.Context(), db))
+	sink := NewGormSink(db)
+
+	err := sink.Write(t.Context(), []Event{{ID: "not-a-snowflake", Operation: "one"}, {ID: "", Operation: "two"}})
+	require.ErrorIs(t, err, ErrInvalidEventID)
+	var count int64
+	require.NoError(t, db.Model(&OperationLog{}).Count(&count).Error)
+	assert.Zero(t, count)
+}
+
+type countingGormWriter struct {
+	db    *gorm.DB
+	calls atomic.Int32
+}
+
+func (writer *countingGormWriter) Write() *gorm.DB {
+	writer.calls.Add(1)
+	return writer.db
+}
+
+func TestRoutedGormSinkResolvesWriterForEveryBatch(t *testing.T) {
+	db := openTestDB(t)
+	require.NoError(t, Migrate(t.Context(), db))
+	writer := &countingGormWriter{db: db}
+	sink := newRoutedGormSink(writer)
+	require.NoError(t, sink.Write(t.Context(), []Event{{ID: "9001", Operation: "first"}}))
+	require.NoError(t, sink.Write(t.Context(), []Event{{ID: "9002", Operation: "second"}}))
+	assert.Equal(t, int32(2), writer.calls.Load())
 }

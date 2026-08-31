@@ -20,13 +20,14 @@ const (
 )
 
 type sFlag struct {
-	Key     string
-	Short   string
-	Desc    string
-	Type    reflect.Type
-	Value   reflect.Value
-	Default string
-	Mapkey  string
+	Key        string
+	Short      string
+	Desc       string
+	Deprecated string
+	Type       reflect.Type
+	Value      reflect.Value
+	Default    string
+	Mapkey     string
 }
 
 type Flagger struct {
@@ -343,13 +344,14 @@ func parseFlags(m *map[string]sFlag, c interface{}, parent string, field *reflec
 			return nil
 		}
 		(*m)[key] = sFlag{
-			Key:     key,
-			Default: field.Tag.Get("default"),
-			Short:   field.Tag.Get("short"),
-			Desc:    field.Tag.Get("description"),
-			Type:    field.Type,
-			Value:   *fieldValue,
-			Mapkey:  mapkey,
+			Key:        key,
+			Default:    field.Tag.Get("default"),
+			Short:      field.Tag.Get("short"),
+			Desc:       field.Tag.Get("description"),
+			Deprecated: field.Tag.Get("deprecated"),
+			Type:       field.Type,
+			Value:      *fieldValue,
+			Mapkey:     mapkey,
 		}
 		return nil
 	case reflect.Map:
@@ -419,7 +421,7 @@ func bindFlags(flags *pflag.FlagSet, k string, v sFlag) error {
 			value = parsed
 		}
 		flags.DurationP(k, v.Short, value, v.Desc)
-		return nil
+		return markFlagDeprecated(flags, k, v.Deprecated)
 	}
 
 	switch v.Type.Kind() {
@@ -472,7 +474,14 @@ func bindFlags(flags *pflag.FlagSet, k string, v sFlag) error {
 	default:
 		return fmt.Errorf("set cmd flag error: unsupport type : %+v", v.Type.Kind())
 	}
-	return nil
+	return markFlagDeprecated(flags, k, v.Deprecated)
+}
+
+func markFlagDeprecated(flags *pflag.FlagSet, name, message string) error {
+	if message == "" {
+		return nil
+	}
+	return flags.MarkDeprecated(name, message)
 }
 
 func findMapKey(arg string, m map[string]sFlag, mapkey string) *sFlag {

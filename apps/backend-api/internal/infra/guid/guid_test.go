@@ -54,3 +54,16 @@ func TestManagedGeneratorFollowsWorkerIDGeneration(t *testing.T) {
 	assert.Equal(t, uint64(2), generator.workerGeneration)
 	assert.NotSame(t, previous, generator.sonyflake)
 }
+
+func TestGeneratorNotReadyPaths(t *testing.T) {
+	var nilGenerator *Generator
+	assert.ErrorIs(t, nilGenerator.Ready(), ErrNotInitialized)
+	_, err := nilGenerator.Next()
+	assert.ErrorIs(t, err, ErrNotInitialized)
+	assert.Panics(t, func() { nilGenerator.MustNext() })
+
+	empty := &Generator{}
+	assert.ErrorIs(t, empty.Ready(), ErrNotInitialized)
+	_, err = empty.Next()
+	assert.ErrorIs(t, err, ErrNotInitialized)
+}

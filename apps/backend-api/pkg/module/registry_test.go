@@ -14,12 +14,12 @@ type namedModule struct{ name string }
 func (m *namedModule) ModuleName() string { return m.name }
 
 type lifecycleModule struct {
-	name        string
-	initialize  error
-	start       error
-	stop        error
+	name         string
+	initialize   error
+	start        error
+	stop         error
 	deinitialize error
-	events      *[]string
+	events       *[]string
 }
 
 func (m *lifecycleModule) ModuleName() string { return m.name }
@@ -163,6 +163,8 @@ func TestActivateRevalidatesDependenciesOnActiveSet(t *testing.T) {
 		err := r.Activate()
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), `module "dependent" requires unregistered module "dep"`)
+		assert.Equal(t, []string{"dep", "dependent"}, moduleNames(r.Modules()), "failed activation must preserve registered state")
+		assert.Equal(t, phaseRegistered, r.phase)
 	})
 	t.Run("dependent and dependency both disabled is fine", func(t *testing.T) {
 		r := newRegistered(
@@ -214,7 +216,7 @@ func TestLifecycleRollbackOnlyRunsCompletedPhases(t *testing.T) {
 	assert.Equal(t, []string{
 		"initialize:dependency", "initialize:failing", "initialize:not-started",
 		"start:dependency", "start:failing",
-		"stop:dependency",
+		"stop:failing", "stop:dependency",
 		"deinitialize:not-started", "deinitialize:failing", "deinitialize:dependency",
 	}, events)
 }
@@ -255,6 +257,8 @@ func TestQuiesceRunsInReverseOrderAndJoinsErrors(t *testing.T) {
 	assert.ErrorIs(t, err, firstErr)
 	assert.ErrorIs(t, err, secondErr)
 	assert.Equal(t, []string{"quiesce:second", "quiesce:first"}, events)
+	require.NoError(t, r.Quiesce(t.Context()))
+	assert.Equal(t, []string{"quiesce:second", "quiesce:first"}, events)
 }
 
 func TestStopAndDeinitializeAreIdempotentAndClearLists(t *testing.T) {
@@ -278,6 +282,7 @@ func TestRegisterHTTPRequiresStarted(t *testing.T) {
 	err := r.RegisterHTTP(t.Context(), nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "register http requires started modules")
+	require.NoError(t, r.Quiesce(t.Context()), "shutdown before Start has no runtime work to quiesce")
 }
 
 func TestModulesReturnsDefensiveCopy(t *testing.T) {

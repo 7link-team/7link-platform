@@ -2,10 +2,13 @@ package audit
 
 import (
 	"context"
+	"errors"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -68,7 +71,8 @@ func TestRecorderEnrichUsesProvidedValues(t *testing.T) {
 	})
 	eventually(t, func() bool { return sink.count() == 1 })
 	event := sink.snapshot()[0]
-	assert.Equal(t, "given-id", event.ID)
+	assert.True(t, isSnowflakeID(event.ID))
+	assert.Equal(t, "given-id", event.Metadata["raw_event_id"])
 	assert.Equal(t, "other", event.Service) // explicit wins
 	assert.Equal(t, KindJob, event.Entry)
 	assert.Equal(t, OutcomeFailure, event.Outcome)
@@ -224,4 +228,99 @@ func TestRecorderAssignsSnowflakeIDs(t *testing.T) {
 	require.NoError(t, err)
 	assert.Greater(t, parsed, int64(0))
 	assert.NotContains(t, id, "-")
+}
+
+func TestRecorderUsesUUIDFallbackWithoutDroppingEvent(t *testing.T) {
+	sink := &memorySink{}
+	config := recorderConfig()
+	config.IDGenerator = func() (int64, error) { return 0, errors.New("generator unavailable") }
+	recorder := NewAsyncRecorder("svc", "1", "inst", config, sink)
+	recorder.Start()
+	defer func() { assert.NoError(t, recorder.Stop(context.Background())) }()
+
+	recorder.Record(t.Context(), Event{ID: "external-id", Operation: "op"})
+	eventually(t, func() bool { return sink.count() == 1 })
+	event := sink.snapshot()[0]
+	_, err := uuid.Parse(event.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "external-id", event.Metadata["raw_event_id"])
+	assert.Zero(t, recorder.Stats().Dropped)
+}
+
+type cancelAwareSink struct {
+	started  chan struct{}
+	returned chan struct{}
+	once     sync.Once
+}
+
+func (sink *cancelAwareSink) Write(ctx context.Context, _ []Event) error {
+	sink.once.Do(func() { close(sink.started) })
+	<-ctx.Done()
+	close(sink.returned)
+	return ctx.Err()
+}
+
+func TestRecorderStopCancelsFlushAndReturnsStableResult(t *testing.T) {
+	sink := &cancelAwareSink{started: make(chan struct{}), returned: make(chan struct{})}
+	config := recorderConfig()
+	config.BatchSize = 1
+	config.FlushTimeout = time.Hour
+	recorder := NewAsyncRecorder("svc", "1", "inst", config, sink)
+	recorder.Start()
+	recorder.Record(t.Context(), Event{Operation: "op"})
+	select {
+	case <-sink.started:
+	case <-time.After(time.Second):
+		t.Fatal("sink did not start")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	firstErr := recorder.Stop(ctx)
+	require.ErrorIs(t, firstErr, context.DeadlineExceeded)
+	select {
+	case <-sink.returned:
+	default:
+		t.Fatal("Stop returned before the flush worker exited")
+	}
+	secondErr := recorder.Stop(context.Background())
+	assert.EqualError(t, secondErr, firstErr.Error())
+	assert.Zero(t, recorder.Stats().Queued)
+}
+
+func TestRecorderStopBeforeStartDrainsQueue(t *testing.T) {
+	sink := &memorySink{}
+	recorder := NewAsyncRecorder("svc", "1", "inst", recorderConfig(), sink)
+	recorder.Record(t.Context(), Event{Operation: "queued"})
+	require.NoError(t, recorder.Stop(context.Background()))
+	assert.Equal(t, 1, sink.count())
+	assert.Zero(t, recorder.Stats().Queued)
+}
+
+func TestRecorderConcurrentRecordAndStop(t *testing.T) {
+	recorder := NewAsyncRecorder("svc", "1", "inst", recorderConfig(), &memorySink{})
+	recorder.Start()
+	producerCtx, cancelProducers := context.WithCancel(context.Background())
+	var producers sync.WaitGroup
+	for range 4 {
+		producers.Add(1)
+		go func() {
+			defer producers.Done()
+			for {
+				select {
+				case <-producerCtx.Done():
+					return
+				default:
+					recorder.Record(producerCtx, Event{Operation: "concurrent"})
+				}
+			}
+		}()
+	}
+	time.Sleep(10 * time.Millisecond)
+	stopResult := make(chan error, 1)
+	go func() { stopResult <- recorder.Stop(context.Background()) }()
+	cancelProducers()
+	producers.Wait()
+	require.NoError(t, <-stopResult)
+	assert.Zero(t, recorder.Stats().Queued)
 }

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"7link.com/platform/pkg/appenv"
 	goosex "7link.com/platform/pkg/extension/goose"
 	"7link.com/platform/pkg/extension/huma/respx"
 	"7link.com/platform/pkg/module"
@@ -37,20 +38,21 @@ type Config struct {
 }
 
 type Module struct {
+	runtime *appenv.Runtime
 	cfg     Config
 	inspect Inspector
 }
 
 var (
-	_ module.Module              = (*Module)(nil)
-	_ module.Enabler             = (*Module)(nil)
-	_ module.ServiceInjector     = (*Module)(nil)
-	_ module.HTTPRegistrar       = (*Module)(nil)
+	_ module.Module               = (*Module)(nil)
+	_ module.Enabler              = (*Module)(nil)
+	_ module.ServiceInjector      = (*Module)(nil)
+	_ module.HTTPRegistrar        = (*Module)(nil)
 	_ module.RawHTTPHandlerModule = (*Module)(nil)
 )
 
-func NewModule(cfg Config) *Module {
-	return &Module{cfg: cfg}
+func NewModule(rt *appenv.Runtime, cfg Config) *Module {
+	return &Module{runtime: rt, cfg: cfg}
 }
 
 func (m *Module) Enabled() bool { return m.cfg.Enabled }

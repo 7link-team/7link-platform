@@ -3,12 +3,14 @@ package app
 import (
 	"context"
 	"errors"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 )
 
 type fakeHTTPStopper struct {
@@ -49,6 +51,10 @@ func TestStopHTTPServerImmediatelySkipsGracefulShutdown(t *testing.T) {
 	require.NoError(t, stopHTTPServerImmediately(server))
 	assert.False(t, server.shutdown)
 	assert.True(t, server.closed)
+
+	want := errors.New("close failed")
+	err := stopHTTPServerImmediately(&fakeHTTPStopper{closeErr: want})
+	assert.ErrorIs(t, err, want)
 }
 
 type fakeGRPCStopper struct {
@@ -146,4 +152,21 @@ func TestImmediateShutdownSkipsQuiesceButCleansUpModules(t *testing.T) {
 	require.NoError(t, app.shutdown())
 	assert.False(t, lifecycle.quiesced)
 	assert.True(t, lifecycle.stopped)
+}
+
+func TestGracefulShutdownQuiescesServersModulesAndCancelsRootContext(t *testing.T) {
+	lifecycle := &shutdownLifecycleModule{}
+	rootCtx, cancel := context.WithCancel(context.Background())
+	app := &App{
+		config:     AppConfig{Shutdown: ShutdownConfig{Graceful: true, Timeout: time.Second}},
+		modules:    wiredRegistry(t, lifecycle),
+		ctx:        rootCtx,
+		cancel:     cancel,
+		httpServer: &http.Server{},
+		grpcServer: grpc.NewServer(),
+	}
+	require.NoError(t, app.shutdown())
+	assert.True(t, lifecycle.quiesced)
+	assert.True(t, lifecycle.stopped)
+	assert.ErrorIs(t, rootCtx.Err(), context.Canceled)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 
+	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 )
@@ -13,9 +14,11 @@ const Name = "respx"
 //go:embed locales/*.json
 var locales embed.FS
 
-type Module struct{}
+type Module struct {
+	runtime *appenv.Runtime
+}
 
-func NewModule() *Module { return &Module{} }
+func NewModule(rt *appenv.Runtime) *Module { return &Module{runtime: rt} }
 
 func (*Module) ModuleName() string { return Name }
 

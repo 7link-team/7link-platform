@@ -35,6 +35,7 @@ func auditConfig(c AppConfig) audit.Config {
 		Database:        audit.DatabaseConfig{Enabled: c.Audit.Database.Enabled},
 		RecordReads:     c.Audit.RecordReads,
 		RecordStreams:   c.Audit.RecordStreams,
+		CaptureBodies:   c.Audit.CaptureBodies,
 		MaxBodyBytes:    c.Audit.MaxBodyBytes,
 		SensitiveFields: c.Audit.SensitiveFields,
 		SkipRoutes:      c.Audit.SkipRoutes,

@@ -1,16 +1,11 @@
 package gormx
 
 import (
-	"bytes"
 	"context"
-	"log/slog"
 	"path/filepath"
 	"testing"
 	"time"
 
-	telemetry "7link.com/platform/internal/infra/telemetry"
-	slogx "7link.com/platform/pkg/extension/slog"
-	"7link.com/platform/pkg/module"
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -250,31 +245,4 @@ func TestDatasourceRouterRoundRobinStateIsPerRouter(t *testing.T) {
 	secondA, secondB := second.Write(), second.Write()
 	assert.NotSame(t, secondA, secondB)
 	assert.Same(t, secondA, second.Write())
-}
-
-func TestDatasourceSQLLogContainsTraceID(t *testing.T) {
-	const traceID = "123e4567e89b42d3a456426614174000"
-	module := telemetry.NewModule(module.Runtime{Name: "test", Version: "1.0.0"}, telemetry.WithIDGenerator(func() string { return traceID }))
-	t.Cleanup(func() { require.NoError(t, module.Deinitialize(context.Background())) })
-
-	previousLogger := slog.Default()
-	t.Cleanup(func() { slog.SetDefault(previousLogger) })
-	var output bytes.Buffer
-	slog.SetDefault(slog.New(slogx.NewTraceHandler(slog.NewJSONHandler(&output, nil))))
-
-	db, err := (Datasource{
-		Type: "sqlite",
-		DSN:  filepath.Join(t.TempDir(), "trace.sqlite"),
-	}).open(t.Context(), true)
-	require.NoError(t, err)
-	sqlDB, err := db.DB()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = sqlDB.Close() })
-
-	ctx, span := module.Tracer("test").Start(t.Context(), "query")
-	require.NoError(t, db.WithContext(ctx).Exec("SELECT 1").Error)
-	span.End()
-
-	assert.Contains(t, output.String(), `"trace_id":"`+traceID+`"`)
-	assert.Contains(t, output.String(), `"sql":"SELECT 1"`)
 }

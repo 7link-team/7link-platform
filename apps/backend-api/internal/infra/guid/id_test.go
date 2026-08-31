@@ -55,3 +55,21 @@ func TestParseIDRequiresPositiveDecimal(t *testing.T) {
 		assert.Error(t, err)
 	}
 }
+
+func TestIDConvenienceMethodsAndEmptyValues(t *testing.T) {
+	encoded, err := ID(42).MarshalText()
+	require.NoError(t, err)
+	assert.Equal(t, "42", string(encoded))
+	assert.Equal(t, int64(42), ID(42).Int64())
+	assert.True(t, ID(0).Zero())
+	assert.False(t, ID(1).Zero())
+
+	for _, input := range []string{"", "null", `""`, `"  "`} {
+		id, err := Parse(input)
+		require.NoError(t, err)
+		assert.Zero(t, id)
+	}
+
+	var id ID
+	assert.Error(t, id.Scan("invalid"))
+}

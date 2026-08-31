@@ -1,7 +1,10 @@
 package audit
 
 import (
+	"bufio"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,6 +20,7 @@ func httpModuleConfig() Config {
 		Enabled:         true,
 		RecordReads:     false,
 		RecordStreams:   true,
+		CaptureBodies:   true,
 		MaxBodyBytes:    256,
 		QueueSize:       1024,
 		BatchSize:       1,
@@ -83,6 +87,30 @@ func TestHTTPMiddlewareRecordsWriteWithRedactedBody(t *testing.T) {
 	assert.Equal(t, "ok", event.Message)
 	assert.Equal(t, OmittedSuccessSummary, event.Response.Omitted)
 	assert.Empty(t, event.Response.Body)
+}
+
+func TestHTTPMiddlewareDoesNotCaptureBodiesByDefault(t *testing.T) {
+	config := httpModuleConfig()
+	config.CaptureBodies = false
+	module, sink := newTestModule(t, config)
+	request := httptest.NewRequest(http.MethodPost, "/orders", strings.NewReader(`{"password":"secret"}`))
+	request.Header.Set("Content-Type", "application/json")
+	runHTTP(t, module, request, func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		assert.Contains(t, string(body), "secret")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"private detail"}`))
+	})
+	eventually(t, func() bool { return sink.count() == 1 })
+	event := sink.snapshot()[0]
+	assert.Empty(t, event.Request.Body)
+	assert.Equal(t, int64(21), event.Request.Size)
+	assert.Equal(t, OmittedCaptureDisabled, event.Request.Omitted)
+	assert.Empty(t, event.Response.Body)
+	assert.Equal(t, int64(26), event.Response.Size)
+	assert.Equal(t, OmittedCaptureDisabled, event.Response.Omitted)
 }
 
 func TestHTTPMiddlewareAnnotatePromotesRead(t *testing.T) {
@@ -431,6 +459,55 @@ func TestResponseRecorderHijackErrorPath(t *testing.T) {
 	wrapped, _ := newResponseRecorder(httptest.NewRecorder(), 16)
 	_, ok := wrapped.(http.Hijacker)
 	assert.False(t, ok)
+}
+
+type hijackResponseWriter struct {
+	header    http.Header
+	hijackErr error
+	conn      net.Conn
+}
+
+func (writer *hijackResponseWriter) Header() http.Header {
+	if writer.header == nil {
+		writer.header = make(http.Header)
+	}
+	return writer.header
+}
+func (*hijackResponseWriter) Write(body []byte) (int, error) { return len(body), nil }
+func (*hijackResponseWriter) WriteHeader(int)                {}
+func (writer *hijackResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if writer.hijackErr != nil {
+		return nil, nil, writer.hijackErr
+	}
+	return writer.conn, bufio.NewReadWriter(bufio.NewReader(writer.conn), bufio.NewWriter(writer.conn)), nil
+}
+
+type flushHijackResponseWriter struct {
+	*hijackResponseWriter
+	flushed bool
+}
+
+func (writer *flushHijackResponseWriter) Flush() { writer.flushed = true }
+
+func TestResponseRecorderPreservesHijackAndCombinedOptionalInterfaces(t *testing.T) {
+	want := errors.New("hijack failed")
+	errorWriter := &hijackResponseWriter{hijackErr: want}
+	wrapped, recorder := newResponseRecorder(errorWriter, 16)
+	_, _, err := wrapped.(http.Hijacker).Hijack()
+	assert.ErrorIs(t, err, want)
+	assert.False(t, recorder.hijacked)
+
+	serverConn, clientConn := net.Pipe()
+	defer clientConn.Close()
+	combined := &flushHijackResponseWriter{hijackResponseWriter: &hijackResponseWriter{conn: serverConn}}
+	wrapped, recorder = newResponseRecorder(combined, 16)
+	wrapped.(http.Flusher).Flush()
+	assert.True(t, combined.flushed)
+	conn, _, err := wrapped.(http.Hijacker).Hijack()
+	require.NoError(t, err)
+	require.NoError(t, conn.Close())
+	assert.True(t, recorder.hijacked)
+	assert.Equal(t, http.StatusSwitchingProtocols, recorder.code)
 }
 
 func TestResponseRecorderTruncatesOversizedWrites(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"7link.com/platform/pkg/module"
+	"7link.com/platform/pkg/appenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -42,8 +42,7 @@ const (
 )
 
 func TestHTTPMiddlewareGeneratesAndReturnsTraceHeaders(t *testing.T) {
-	module := NewModule(module.Runtime{Name: "test", Version: "1.0.0"}, WithIDGenerator(func() string { return generatedUUID }))
-	t.Cleanup(func() { require.NoError(t, module.Deinitialize(context.Background())) })
+	module := newInitializedModule(t, WithIDGenerator(func() string { return generatedUUID }))
 
 	var contextTraceID string
 	handler := module.HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
@@ -67,11 +66,10 @@ func TestHTTPMiddlewareContinuesIncomingTrace(t *testing.T) {
 		parentSpanID  = "bbbbbbbbbbbbbbbb"
 	)
 	var generated atomic.Int32
-	module := NewModule(module.Runtime{Name: "test", Version: "1.0.0"}, WithIDGenerator(func() string {
+	module := newInitializedModule(t, WithIDGenerator(func() string {
 		generated.Add(1)
 		return generatedUUID
 	}))
-	t.Cleanup(func() { require.NoError(t, module.Deinitialize(context.Background())) })
 
 	handler := module.HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		assert.Equal(t, parentTraceID, TraceID(request.Context()))
@@ -88,8 +86,7 @@ func TestHTTPMiddlewareContinuesIncomingTrace(t *testing.T) {
 }
 
 func TestHTTPMiddlewareAcceptsUUIDTraceHeader(t *testing.T) {
-	module := NewModule(module.Runtime{Name: "test", Version: "1.0.0"})
-	t.Cleanup(func() { require.NoError(t, module.Deinitialize(context.Background())) })
+	module := newInitializedModule(t)
 
 	handler := module.HTTPMiddleware(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
 		assert.Equal(t, generatedHex, TraceID(request.Context()))
@@ -104,8 +101,7 @@ func TestHTTPMiddlewareAcceptsUUIDTraceHeader(t *testing.T) {
 }
 
 func TestHTTPTransportPropagatesTraceHeaders(t *testing.T) {
-	module := NewModule(module.Runtime{Name: "test", Version: "1.0.0"}, WithIDGenerator(func() string { return generatedUUID }))
-	t.Cleanup(func() { require.NoError(t, module.Deinitialize(context.Background())) })
+	module := newInitializedModule(t, WithIDGenerator(func() string { return generatedUUID }))
 
 	seen := make(chan http.Header, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
@@ -131,7 +127,7 @@ func TestHTTPTransportPropagatesTraceHeaders(t *testing.T) {
 
 func TestWithSpanExporterBatchesAndShutsDownExporter(t *testing.T) {
 	exporter := &recordingExporter{}
-	module := NewModule(module.Runtime{Name: "test", Version: "1.0.0"}, WithSpanExporter(nil), WithSpanExporter(exporter))
+	module := newInitializedModule(t, WithSpanExporter(nil), WithSpanExporter(exporter))
 	_, span := module.Tracer("test").Start(t.Context(), "exported")
 	span.End()
 	require.NoError(t, module.provider.ForceFlush(t.Context()))
@@ -141,4 +137,27 @@ func TestWithSpanExporterBatchesAndShutsDownExporter(t *testing.T) {
 	defer exporter.mu.Unlock()
 	assert.Equal(t, 1, exporter.exported)
 	assert.True(t, exporter.stopped)
+}
+
+func TestNewModuleDefersTelemetryStateUntilInitialize(t *testing.T) {
+	rt := appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0"))
+	module := NewModule(rt, nil)
+	assert.Same(t, rt, module.runtime)
+	assert.Nil(t, module.provider)
+	assert.Nil(t, module.propagator)
+
+	require.NoError(t, module.Deinitialize(t.Context()))
+	require.NoError(t, module.Initialize(t.Context()))
+	assert.NotNil(t, module.provider)
+	assert.NotNil(t, module.propagator)
+	require.NoError(t, module.Deinitialize(t.Context()))
+	require.NoError(t, module.Deinitialize(t.Context()))
+}
+
+func newInitializedModule(t *testing.T, options ...Option) *Module {
+	t.Helper()
+	module := NewModule(appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0")), options...)
+	require.NoError(t, module.Initialize(t.Context()))
+	t.Cleanup(func() { require.NoError(t, module.Deinitialize(context.Background())) })
+	return module
 }

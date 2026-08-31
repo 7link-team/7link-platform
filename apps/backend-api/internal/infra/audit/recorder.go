@@ -11,6 +11,7 @@ import (
 
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/internal/infra/telemetry"
+	"github.com/google/uuid"
 )
 
 // Recorder is the audit service contract exposed to the application. Any module
@@ -57,6 +58,10 @@ type AsyncRecorder struct {
 	// stopCh is closed by Stop so producers blocked in overflow-block mode can
 	// bail out instead of selecting on a channel that is about to close.
 	stopCh chan struct{}
+	// enqueueMu makes channel closure atomic with respect to producers. Stop
+	// closes stopCh first so a producer blocked on a full queue can release its
+	// read lock before the queue itself is closed.
+	enqueueMu sync.RWMutex
 
 	closed atomic.Bool
 
@@ -66,10 +71,13 @@ type AsyncRecorder struct {
 	success atomic.Uint64
 	sinkErr atomic.Uint64
 
-	startOnce sync.Once
-	stopOnce  sync.Once
-	wg        sync.WaitGroup
-	stopDone  chan struct{}
+	startOnce  sync.Once
+	stopOnce   sync.Once
+	runCtx     context.Context
+	runCancel  context.CancelFunc
+	workerDone chan struct{}
+	stopDone   chan struct{}
+	stopErr    error
 }
 
 // NewAsyncRecorder builds a recorder with one or more sinks. At least one sink
@@ -85,16 +93,20 @@ func NewAsyncRecorder(
 	config.BatchSize = clampPositive(config.BatchSize, 200)
 	config.FlushInterval = clampDuration(config.FlushInterval, time.Second)
 	config.FlushTimeout = clampDuration(config.FlushTimeout, 5*time.Second)
+	runCtx, runCancel := context.WithCancel(context.Background())
 	return &AsyncRecorder{
-		sinks:    multiSink(sinks),
-		cfg:      config,
-		service:  service,
-		version:  version,
-		instance: instance,
-		newID:    config.IDGenerator,
-		ch:       make(chan Event, config.QueueSize),
-		stopCh:   make(chan struct{}),
-		stopDone: make(chan struct{}),
+		sinks:      multiSink(sinks),
+		cfg:        config,
+		service:    service,
+		version:    version,
+		instance:   instance,
+		newID:      config.IDGenerator,
+		ch:         make(chan Event, config.QueueSize),
+		stopCh:     make(chan struct{}),
+		runCtx:     runCtx,
+		runCancel:  runCancel,
+		workerDone: make(chan struct{}),
+		stopDone:   make(chan struct{}),
 	}
 }
 
@@ -149,21 +161,22 @@ func clampDuration(value, fallback time.Duration) time.Duration {
 // Start launches the background dispatcher. It is safe to call once; the
 // dispatcher starts only on the first call.
 func (recorder *AsyncRecorder) Start() {
-	if recorder == nil || !recorder.cfg.Enabled {
+	if recorder == nil || !recorder.cfg.Enabled || recorder.closed.Load() {
 		return
 	}
+	recorder.startDispatcher()
+}
+
+func (recorder *AsyncRecorder) startDispatcher() {
 	recorder.startOnce.Do(func() {
-		recorder.wg.Add(1)
 		go recorder.run()
 	})
 }
 
-// Record enqueues an event. The event is assigned a platform snowflake ID (when
-// it does not already carry one) and enriched with identity defaults before
-// enqueue, so producers only need to fill the operation-specific fields. Events
-// that cannot be assigned an ID — the snowflake generator failed, which only
-// happens when the wuid-managed guid source is unavailable — are dropped and
-// counted, matching the platform rule that every table primary key is snowflake.
+// Record enqueues an event. A missing or invalid caller ID is replaced with a
+// platform snowflake and preserved as metadata.raw_event_id when supplied. If
+// the managed generator is temporarily unavailable, a UUID keeps non-database
+// sinks lossless; the BIGINT database sink rejects that event explicitly.
 func (recorder *AsyncRecorder) Record(ctx context.Context, event Event) {
 	if recorder == nil || !recorder.cfg.Enabled {
 		return
@@ -172,24 +185,37 @@ func (recorder *AsyncRecorder) Record(ctx context.Context, event Event) {
 		recorder.dropped.Add(1)
 		return
 	}
-	if event.ID == "" {
-		id, err := recorder.idGenerator()()
-		if err != nil {
-			recorder.dropped.Add(1)
-			slog.Warn("audit event dropped: id generation failed",
-				"error", err,
-				"dropped_total", recorder.dropped.Load(),
-			)
-			return
+	if !isSnowflakeID(event.ID) {
+		if event.ID != "" {
+			if event.Metadata == nil {
+				event.Metadata = make(map[string]string, 1)
+			}
+			event.Metadata["raw_event_id"] = event.ID
 		}
-		event.ID = strconv.FormatInt(id, 10)
+		id, err := recorder.idGenerator()()
+		if err != nil || id <= 0 {
+			event.ID = uuid.NewString()
+			slog.Warn("audit event using UUID fallback: snowflake generation failed",
+				"error", err,
+				"event_id", event.ID,
+			)
+		} else {
+			event.ID = strconv.FormatInt(id, 10)
+		}
 	}
 	recorder.enrich(ctx, &event)
 
-	if sent := recorder.trySend(ctx, event); sent {
-		recorder.queued.Add(1)
+	recorder.enqueueMu.RLock()
+	defer recorder.enqueueMu.RUnlock()
+	if recorder.closed.Load() {
+		recorder.dropped.Add(1)
 		return
 	}
+	recorder.queued.Add(1)
+	if sent := recorder.trySend(ctx, event); sent {
+		return
+	}
+	recorder.queued.Add(-1)
 	recorder.dropped.Add(1)
 	if recorder.cfg.OverflowBlock || recorder.dropped.Load()%1024 == 1 {
 		slog.Warn("audit event dropped",
@@ -199,15 +225,15 @@ func (recorder *AsyncRecorder) Record(ctx context.Context, event Event) {
 	}
 }
 
+func isSnowflakeID(value string) bool {
+	id, err := strconv.ParseInt(value, 10, 64)
+	return err == nil && id > 0 && strconv.FormatInt(id, 10) == value
+}
+
 // trySend places the event on the queue, returning false when the queue is full
 // (drop mode), the context is done, or shutdown has begun. A send racing a
-// shutdown channel close is caught by recovery and reported as dropped.
-func (recorder *AsyncRecorder) trySend(ctx context.Context, event Event) (sent bool) {
-	defer func() {
-		if recover() != nil {
-			sent = false
-		}
-	}()
+// shutdown has begun. Channel closure is synchronized by enqueueMu.
+func (recorder *AsyncRecorder) trySend(ctx context.Context, event Event) bool {
 	if recorder.cfg.OverflowBlock {
 		select {
 		case recorder.ch <- event:
@@ -270,35 +296,40 @@ func (recorder *AsyncRecorder) Stop(ctx context.Context) error {
 	if recorder == nil {
 		return nil
 	}
-	var stopErr error
 	recorder.stopOnce.Do(func() {
 		recorder.closed.Store(true)
-		close(recorder.ch)
 		close(recorder.stopCh)
-		done := make(chan struct{})
-		go func() {
-			recorder.wg.Wait()
-			close(done)
-		}()
-		select {
-		case <-done:
-		case <-ctx.Done():
-			stopErr = fmt.Errorf("audit drain: %w", ctx.Err())
+		if recorder.cfg.Enabled {
+			recorder.startDispatcher()
+			recorder.enqueueMu.Lock()
+			close(recorder.ch)
+			recorder.enqueueMu.Unlock()
+
+			if err := ctx.Err(); err != nil {
+				recorder.stopErr = fmt.Errorf("audit drain: %w", err)
+				recorder.runCancel()
+				<-recorder.workerDone
+			} else {
+				select {
+				case <-recorder.workerDone:
+				case <-ctx.Done():
+					recorder.stopErr = fmt.Errorf("audit drain: %w", ctx.Err())
+					recorder.runCancel()
+					<-recorder.workerDone
+				}
+			}
 		}
+		recorder.runCancel()
 		close(recorder.stopDone)
 	})
-	select {
-	case <-recorder.stopDone:
-		return stopErr
-	case <-ctx.Done():
-		return fmt.Errorf("audit drain: %w", ctx.Err())
-	}
+	<-recorder.stopDone
+	return recorder.stopErr
 }
 
 // run drains the queue and flushes batches. It exits when the queue is closed
 // after a final flush of whatever remains queued.
 func (recorder *AsyncRecorder) run() {
-	defer recorder.wg.Done()
+	defer close(recorder.workerDone)
 	batch := make([]Event, 0, recorder.cfg.BatchSize)
 	ticker := time.NewTicker(recorder.cfg.FlushInterval)
 	defer ticker.Stop()
@@ -307,7 +338,7 @@ func (recorder *AsyncRecorder) run() {
 		if len(batch) == 0 {
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), recorder.cfg.FlushTimeout)
+		ctx, cancel := context.WithTimeout(recorder.runCtx, recorder.cfg.FlushTimeout)
 		defer cancel()
 		result := recorder.sinks.write(ctx, batch)
 		recorder.sinkErr.Add(result.failures)

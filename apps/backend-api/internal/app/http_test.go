@@ -21,6 +21,7 @@ import (
 	"7link.com/platform/internal/infra/migrationstatus"
 	"7link.com/platform/internal/infra/pprof"
 	"7link.com/platform/internal/infra/wuid"
+	"7link.com/platform/pkg/appenv"
 	configx "7link.com/platform/pkg/config"
 	humax "7link.com/platform/pkg/extension/huma"
 	"7link.com/platform/pkg/extension/huma/respx"
@@ -132,7 +133,8 @@ func TestConfigInspectorReturnsRedactedJSON(t *testing.T) {
 	app.config.API.ConfigInspector.Enabled = true
 	app.config.Database = map[string]Database{"primary": {Type: "postgres", Dsn: dsn}}
 	app.config.Telemetry.OTLP.Headers = map[string]string{"authorization": header}
-	inspector := configinspector.NewModule(app.config, configInspectorConfig(app.config))
+	rt := appenv.NewRuntime(appenv.NewIdentity(app.config.Name, app.config.Version))
+	inspector := configinspector.NewModule(rt, app.config, configInspectorConfig(app.config))
 	app.modules = wiredRegistry(t, inspector)
 	router, api := moduleRouter(t, app)
 
@@ -175,16 +177,19 @@ func TestMigrationStatusReturnsCleanJSON(t *testing.T) {
 	routerDB, err := newDatasourceRouter(t.Context(), app.config)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, routerDB.Close()) })
-	app.Db = routerDB
+	app.runtime = appenv.NewRuntime(
+		appenv.NewIdentity(app.config.Name, app.config.Version),
+		appenv.WithDatabase(routerDB),
+	)
 
-	rt := app.runtime()
+	rt := app.runtime
 	app.modules = module.NewRegistry()
 	require.NoError(t, app.modules.Register(
 		dlock.NewModule(rt),
 		wuid.NewModule(rt),
-		migrationstatus.NewModule(migrationStatusConfig(app.config)),
+		migrationstatus.NewModule(rt, migrationStatusConfig(app.config)),
 	))
-	_, err = runModuleMigrations(t.Context(), app.Db.Write(), app.modules.Modules(), MigrationConfig{Action: MigrationUp})
+	_, err = runModuleMigrations(t.Context(), app.runtime.Database().Write(), app.modules.Modules(), MigrationConfig{Action: MigrationUp})
 	require.NoError(t, err)
 	require.NoError(t, app.modules.Activate())
 	require.NoError(t, app.modules.Wire(func(services *module.Services) error {
@@ -214,8 +219,9 @@ func TestMigrationStatusReturnsCleanJSON(t *testing.T) {
 func TestMigrationStatusReportsUnavailableDatabase(t *testing.T) {
 	app := &App{config: validTestAppConfig()}
 	app.config.API.MigrationStatus.Enabled = true
+	app.runtime = appenv.NewRuntime(appenv.NewIdentity(app.config.Name, app.config.Version))
 	app.modules = module.NewRegistry()
-	require.NoError(t, app.modules.Register(migrationstatus.NewModule(migrationStatusConfig(app.config))))
+	require.NoError(t, app.modules.Register(migrationstatus.NewModule(app.runtime, migrationStatusConfig(app.config))))
 	require.NoError(t, app.modules.Activate())
 	require.NoError(t, app.modules.Wire(func(services *module.Services) error {
 		return module.Provide[migrationstatus.Inspector](services, app.migrationInspector)
@@ -242,7 +248,7 @@ func TestMigrationStatusReportsUnavailableDatabase(t *testing.T) {
 func TestMetricsRegistrationAndDisabledModuleRoutes(t *testing.T) {
 	enabled := &App{config: validTestAppConfig()}
 	enabled.config.API.Metrics.Enabled = true
-	metricsModule := metrics.NewModule(module.Runtime{}, metricsConfig(enabled.config))
+	metricsModule := metrics.NewModule(appenv.NewRuntime(appenv.NewIdentity("", "")), metricsConfig(enabled.config))
 	enabled.modules = wiredRegistry(t, metricsModule)
 	router, api := moduleRouter(t, enabled)
 	response := httptest.NewRecorder()
@@ -306,8 +312,8 @@ func (sink *capturingAuditSink) snapshot() []audit.Event {
 func TestHTTPServerMountsAuditMiddleware(t *testing.T) {
 	sink := &capturingAuditSink{}
 	app := &App{config: validTestAppConfig(), ctx: t.Context()}
-	auditModule := audit.NewModule(module.Runtime{Name: app.config.Name, Version: app.config.Version},
-		audit.Config{Enabled: true, QueueSize: 1024, BatchSize: 1, FlushInterval: time.Millisecond, MaxBodyBytes: 1024},
+	auditModule := audit.NewModule(appenv.NewRuntime(appenv.NewIdentity(app.config.Name, app.config.Version)),
+		audit.Config{Enabled: true, CaptureBodies: true, QueueSize: 1024, BatchSize: 1, FlushInterval: time.Millisecond, MaxBodyBytes: 1024},
 		audit.WithSinks(sink))
 	require.NoError(t, auditModule.Start(t.Context()))
 	t.Cleanup(func() {
@@ -344,7 +350,7 @@ func TestHTTPServerMountsAuditMiddleware(t *testing.T) {
 func TestHTTPServerDoesNotAuditSkippedRoutes(t *testing.T) {
 	sink := &capturingAuditSink{}
 	app := &App{config: validTestAppConfig(), ctx: t.Context()}
-	auditModule := audit.NewModule(module.Runtime{Name: app.config.Name, Version: app.config.Version},
+	auditModule := audit.NewModule(appenv.NewRuntime(appenv.NewIdentity(app.config.Name, app.config.Version)),
 		audit.Config{Enabled: true, QueueSize: 1024, BatchSize: 1, FlushInterval: time.Millisecond, MaxBodyBytes: 1024},
 		audit.WithSinks(sink))
 	require.NoError(t, auditModule.Start(t.Context()))

@@ -23,6 +23,10 @@ const (
 	phaseWired
 	phaseInitialized
 	phaseStarted
+	phaseStartFailed
+	phaseQuiesced
+	phaseStopped
+	phaseDeinitialized
 )
 
 type entry struct {
@@ -100,20 +104,18 @@ func (r *Registry) Activate() error {
 	if r.phase != phaseRegistered {
 		return fmt.Errorf("module: activate requires registered modules")
 	}
-	active := r.entries[:0]
+	active := make([]*entry, 0, len(r.entries))
 	for _, e := range r.entries {
 		if enabler, ok := e.module.(Enabler); ok && !enabler.Enabled() {
 			continue
 		}
 		active = append(active, e)
 	}
-	r.entries = active
-
-	indices := make(map[string]int, len(r.entries))
-	for index, e := range r.entries {
+	indices := make(map[string]int, len(active))
+	for index, e := range active {
 		indices[e.module.ModuleName()] = index
 	}
-	for index, e := range r.entries {
+	for index, e := range active {
 		depender, ok := e.module.(Depender)
 		if !ok {
 			continue
@@ -128,6 +130,7 @@ func (r *Registry) Activate() error {
 			}
 		}
 	}
+	r.entries = active
 	r.phase = phaseActivated
 	return nil
 }
@@ -204,10 +207,13 @@ func (r *Registry) Start(ctx context.Context) error {
 		if !ok {
 			continue
 		}
+		// Start may acquire resources before returning an error. Add the module to
+		// the rollback set first so Stop gets a chance to release partial state.
+		r.started = append(r.started, e)
 		if err := starter.Start(ctx); err != nil {
+			r.phase = phaseStartFailed
 			return fmt.Errorf("%T start: %w", e.module, err)
 		}
-		r.started = append(r.started, e)
 	}
 	r.phase = phaseStarted
 	return nil
@@ -216,7 +222,7 @@ func (r *Registry) Start(ctx context.Context) error {
 // RegisterHTTP runs the huma registration phase. It requires Started so modules
 // are operational before operations are registered.
 func (r *Registry) RegisterHTTP(ctx context.Context, api huma.API) error {
-	if r.phase < phaseStarted {
+	if r.phase != phaseStarted {
 		return fmt.Errorf("module: register http requires started modules")
 	}
 	for _, e := range r.entries {
@@ -233,7 +239,7 @@ func (r *Registry) RegisterHTTP(ctx context.Context, api huma.API) error {
 
 // RegisterGRPC runs the gRPC registration phase.
 func (r *Registry) RegisterGRPC(registrar grpc.ServiceRegistrar) error {
-	if r.phase < phaseStarted {
+	if r.phase != phaseStarted {
 		return fmt.Errorf("module: register grpc requires started modules")
 	}
 	for _, e := range r.entries {
@@ -316,6 +322,14 @@ func (r *Registry) RawHTTPRoutes() []RawRoute {
 // Quiesce disables new work in reverse start order while protocol listeners
 // remain available for readiness checks during the drain delay.
 func (r *Registry) Quiesce(ctx context.Context) error {
+	if r.phase == phaseQuiesced || r.phase == phaseStopped || r.phase == phaseDeinitialized {
+		return nil
+	}
+	if r.phase != phaseStarted && r.phase != phaseStartFailed {
+		// Shutdown is deliberately callable after any failed lifecycle phase.
+		// Before Start there is no runtime work to quiesce.
+		return nil
+	}
 	var errs []error
 	for i := len(r.started) - 1; i >= 0; i-- {
 		e := r.started[i]
@@ -325,6 +339,7 @@ func (r *Registry) Quiesce(ctx context.Context) error {
 			}
 		}
 	}
+	r.phase = phaseQuiesced
 	return errors.Join(errs...)
 }
 
@@ -332,6 +347,9 @@ func (r *Registry) Quiesce(ctx context.Context) error {
 // failing module cannot strand the rest. It clears the started list so a second
 // shutdown is idempotent.
 func (r *Registry) Stop(ctx context.Context) error {
+	if r.phase == phaseStopped || r.phase == phaseDeinitialized {
+		return nil
+	}
 	var errs []error
 	for i := len(r.started) - 1; i >= 0; i-- {
 		e := r.started[i]
@@ -342,6 +360,7 @@ func (r *Registry) Stop(ctx context.Context) error {
 		}
 	}
 	r.started = nil
+	r.phase = phaseStopped
 	return errors.Join(errs...)
 }
 
@@ -351,6 +370,9 @@ func (r *Registry) Stop(ctx context.Context) error {
 // was pre-seeded at Register, and its Deinitialize must be nil-safe and
 // idempotent (it may run before Initialize).
 func (r *Registry) Deinitialize(ctx context.Context) error {
+	if r.phase == phaseDeinitialized {
+		return nil
+	}
 	var errs []error
 	for i := len(r.initialized) - 1; i >= 0; i-- {
 		e := r.initialized[i]
@@ -361,6 +383,7 @@ func (r *Registry) Deinitialize(ctx context.Context) error {
 		}
 	}
 	r.initialized = nil
+	r.phase = phaseDeinitialized
 	return errors.Join(errs...)
 }
 

@@ -63,6 +63,7 @@ type Omitted string
 
 const (
 	OmittedNone               Omitted = ""
+	OmittedCaptureDisabled    Omitted = "capture_disabled"
 	OmittedUnsupportedContent Omitted = "unsupported_content_type"
 	OmittedTooLarge           Omitted = "too_large"
 	OmittedInvalidJSON        Omitted = "invalid_json"

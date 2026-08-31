@@ -3,7 +3,7 @@
 > Status: **final, approved for record** (codex-reviewed, no further development planned yet).
 >
 > Provenance: v1 → 7-angle subagent review → v2 → codex CLI review #1 → services-injection
-> direction → user simplification decision → **module.Runtime design** → codex CLI review #2
+> direction → user simplification decision → **shared appenv.Runtime design** → codex CLI review #2
 > (sound-with-changes, must-fixes incorporated).
 >
 > Repo: `7link-platform` · App: `apps/backend-api` · Scope: `internal/app`, `pkg/module`, infra modules.
@@ -39,17 +39,17 @@ Principles:
 1. **Modules are autonomous.** Each module owns its state, its config, and its
    capabilities; it requests only what it needs. No module references another
    module instance at construction.
-2. **A shared environment object, not injection machinery.** App-level
-   infrastructure (identity, datasource) travels in one `module.Runtime` value
-   passed to constructors. No reflection, no service injection for
-   infrastructure, no dual constructors.
+2. **A shared environment object, not injection machinery.** The App creates one
+   `*appenv.Runtime` for its lifetime. Infrastructure modules retain that same
+   pointer; business/module services still use narrow `module.Services`
+   contracts. No reflection, infrastructure service locator, or dual constructors.
 3. **Aggregation is iteration.** Cross-cutting readers (metrics collectors, health
    checkers, migration) traverse the active module set — never cached at a point
    that predates the full registration.
 4. **Verify before running.** Dependency/name/duplicate errors surface at
    registration/activation, not mid-flight.
-5. **Zero-leak bootstrap.** `app.config.*` / `app.Db` appear in exactly one place
-   (building `Runtime`); the `addModule` list references only `rt` + per-module config.
+5. **One infrastructure owner.** `App.runtime` is the only application-level
+   infrastructure field; the `addModule` list references only `rt` + per-module config.
 6. **No new external dependency.** No DI framework, no code generation.
 7. **Preserve behavior.** Phase semantics, health output, middleware layering, the
    "audit always registered even when disabled" invariant, and degraded
@@ -57,34 +57,32 @@ Principles:
 
 ## 3. Design
 
-### 3.1 `pkg/module` — `Runtime` (shared environment, by value)
+### 3.1 `pkg/appenv` — `Runtime` (shared application environment)
 
-The app builds this once; modules that need it receive it as a constructor
-parameter and retain only the narrow capabilities they use.
+The App builds and owns one instance. Infrastructure modules that need it retain
+the same pointer. Manager references are private and cannot be replaced after
+construction; the managers themselves own live routing, health, reconnection,
+and pool state.
 
 ```go
-// Runtime is the immutable app-level environment shared by modules. Passed by
-// value; never mutated after construction.
+// Runtime owns stable application-lifetime manager references.
 type Runtime struct {
-    Name    string                  // app identity: telemetry / audit / pprof
-    Version string
-    DB      *gormx.DatasourceRouter // datasource router: dlock / wuid / audit / databasemonitor / metrics
-    // Redis, Cache, ... are added only when a real module needs one (YAGNI).
+    identity Identity
+    database *gormx.DatasourceRouter
 }
+
+type Identity struct { name, version string } // private; read through Name()/Version()
 ```
 
 `*gormx.DatasourceRouter` is the single DB type and serves every consumer:
 `Write()` (dlock/wuid/audit), `Probe`/`DatasourceStats`/`DatasourceNames`
 (databasemonitor), `DatasourceStats` (metrics), `RegisterQueryObserver`.
-Import is cycle-free (`pkg/extension/gorm` does not import `pkg/module`).
-
-> **Known tradeoff:** `pkg/module` becomes database-specific by importing the gorm
-> extension. A neutral `pkg/appenv` package would preserve the boundary but adds a
-> package for a 3-field struct; deferred unless `Runtime` grows.
->
-> Modules keep narrow interfaces internally (e.g. dlock stores a `gormx.Writer`),
-> so a concrete router in `Runtime` does not force them to depend on the full
-> router shape.
+`Runtime.Database()` exposes the stable router, not a selected `*gorm.DB`;
+dlock/wuid/audit call `Write()` at operation or batch time. Redis/MQ/ES are added
+as private manager references plus read-only accessors only when implemented.
+`Runtime.Close()` releases managers once in reverse construction order, so App
+shutdown does not grow per-manager branches. `Runtime` never contains module or
+business services.
 
 ### 3.2 `pkg/module` — base config + activation
 
@@ -144,12 +142,11 @@ a whole before appending. `Activate`: filters `!Enabled()`, then re-validates
 error strings preserved verbatim.
 
 **Rollback pre-seed at Register (codex must-fix).** Every module implementing
-`Deinitializer` is added to the rollback list the moment it is registered — a
-`Deinitialize` means the module owns resources from construction (telemetry
-creates its tracer provider and mutates OTel globals in `NewModule`). This closes
-the leak window for failures in `Register`/`Activate`/`Wire`/collector-wiring,
-before any phase list exists. Contract: **`Deinitialize` must be nil-safe and
-idempotent** (it may run before `Initialize`).
+`Deinitializer` is added to the rollback list the moment it is registered. This
+conservatively covers both construction-owned resources and resources acquired
+before a failing `Initialize` returns. Contract: **`Deinitialize` must be
+nil-safe and idempotent** (it may run before `Initialize`). Telemetry itself now
+creates its provider and mutates OTel globals only in `Initialize`.
 
 **State machine.** `Register → Activate → Wire → (Initialize → Start)* →
 RegisterHTTP/GRPC`; shutdown `Quiesce → Stop → Deinitialize`. Guards reject
@@ -161,16 +158,16 @@ failed state.
 ```go
 func (app *App) bootstrap(ctx context.Context) error {
     app.modules = module.NewRegistry()
-    if err := app.initializeDatabase(ctx); err != nil {
+    if err := app.initializeRuntime(ctx); err != nil {
         return err
     }
-    rt := app.runtime()   // the ONLY place app.config.* / app.Db appear
+    rt := app.runtime
     if err := app.addModule(
-        i18n.NewModule(i18n.Base),
-        respx.NewModule(),
+        i18n.NewModule(rt, i18n.Base),
+        respx.NewModule(rt),
         dlock.NewModule(rt),
         wuid.NewModule(rt),
-        guid.NewModule(),
+        guid.NewModule(rt),
 
         // metrics before telemetry/audit keeps its HTTP middleware outermost
         metrics.NewModule(rt, metricsConfig(app.config)),
@@ -178,19 +175,25 @@ func (app *App) bootstrap(ctx context.Context) error {
         audit.NewModule(rt, auditConfig(app.config)),
         databasemonitor.NewModule(rt, datasourceMonitorConfig(app.config)),
 
-        migrationstatus.NewModule(migrationStatusConfig(app.config)),
-        configinspector.NewModule(app.config, configInspectorConfig(app.config)),
+        migrationstatus.NewModule(rt, migrationStatusConfig(app.config)),
+        configinspector.NewModule(rt, app.config, configInspectorConfig(app.config)),
         pprof.NewModule(rt, pprofConfig(app.config)),
 
-        health.NewModule(),
+        health.NewModule(rt),
     ); err != nil {
         return err
     }
     return app.lifecycle(ctx)
 }
 
-func (app *App) runtime() module.Runtime {
-    return module.Runtime{Name: app.config.Name, Version: app.config.Version, DB: app.Db}
+func (app *App) initializeRuntime(ctx context.Context) error {
+    router, err := newDatasourceRouter(ctx, app.config)
+    // validate partial availability and close unusable routers ...
+    app.runtime = appenv.NewRuntime(
+        appenv.NewIdentity(app.config.Name, app.config.Version),
+        appenv.WithDatabase(router),
+    )
+    return nil
 }
 ```
 
@@ -206,7 +209,7 @@ func (app *App) lifecycle(ctx context.Context) error {
         return fmt.Errorf("collect module metrics: %w", err)
     }
     if app.config.Migrate {
-        if _, err := runModuleMigrations(ctx, app.Db.Write(), app.modules,
+        if _, err := runModuleMigrations(ctx, app.runtime.Database().Write(), app.modules,
             MigrationConfig{Action: MigrationAuto}); err != nil {
             return fmt.Errorf("migrate modules: %w", err)
         }
@@ -272,23 +275,23 @@ app-level mount is chi-bound.
 
 | Module | Constructor | Behavior |
 |---|---|---|
-| dlock / wuid | `NewModule(rt module.Runtime, options ...Option)` | stores narrow `gormx.Writer` from `rt.DB`; nil `Write()` → degraded (existing) |
-| telemetry | `NewModule(rt module.Runtime, options ...Option)` | `rt.Name/Version` → OTel resource; unchanged construction-time provider/globals; **rollback pre-seed guarantees cleanup** |
-| audit | `NewModule(rt module.Runtime, cfg Config, options ...ModuleOption)` | `rt.Name/Version/DB`; always registered; never an `Enabler` |
-| databasemonitor | `NewModule(rt module.Runtime, cfg Config)` | `rt.DB` satisfies its `datasource` interface; observer registered in `Initialize` via a **required** `queryObserverRegistrar` capability (fail, not silently skip, when `ExposeHTTP` and the router lacks it) |
-| metrics | `NewModule(rt module.Runtime, cfg Config)` | builds Prometheus registry at construction; implements `Enabler` + `CollectorSink`; `rt.DB` drives the datasource collector |
-| migrationstatus | `NewModule(cfg Config)` | `Enabler`; `InjectServices` resolves the migration inspector service |
-| configinspector | `NewModule(value any, cfg Config)` | `Enabler`; snapshot built in `Initialize` (no constructor error) |
-| pprof | `NewModule(rt module.Runtime, cfg Config)` | `Enabler`; `rt.Name` used at route registration |
-| health | `NewModule()` | `InjectServices` resolves `healthservice.CheckerProvider` |
-| i18n / respx / guid | unchanged | do not take `Runtime` |
+| dlock / wuid | `NewModule(rt *appenv.Runtime, options ...Option)` | retains `rt`; resolves `rt.Database().Write()` for each lock/worker lifecycle; nil writer → degraded |
+| telemetry | `NewModule(rt *appenv.Runtime, options ...Option)` | retains `rt` and config only; `Initialize` creates the OTel resource/provider and publishes globals; nil-safe/idempotent cleanup |
+| audit | `NewModule(rt *appenv.Runtime, cfg Config, options ...ModuleOption)` | retains `rt`; identity + routed database sink; always registered; never an `Enabler` |
+| databasemonitor | `NewModule(rt *appenv.Runtime, cfg Config)` | retains `rt`; database manager satisfies its `datasource` interface; observer registered in `Initialize` |
+| metrics | `NewModule(rt *appenv.Runtime, cfg Config)` | retains `rt`; builds Prometheus registry; database manager drives datasource collector |
+| migrationstatus | `NewModule(rt *appenv.Runtime, cfg Config)` | retains `rt`; `Enabler`; `InjectServices` resolves the migration inspector service |
+| configinspector | `NewModule(rt *appenv.Runtime, value any, cfg Config)` | retains `rt`; `Enabler`; snapshot built in `Initialize` (no constructor error) |
+| pprof | `NewModule(rt *appenv.Runtime, cfg Config)` | `Enabler`; `rt.Identity().Name()` used at route registration |
+| health | `NewModule(rt *appenv.Runtime)` | retains `rt`; `InjectServices` resolves `healthservice.CheckerProvider` |
+| i18n / respx / guid | `NewModule(rt *appenv.Runtime, ...)` | retain the same App Runtime for a uniform lifecycle contract; current behavior otherwise unchanged |
 
-**External call-site impact (mechanical).** The 4 telemetry constructions in other
-packages' tests change from `telemetry.NewModule("test", "1.0.0", ...)` to
-`telemetry.NewModule(module.Runtime{Name: "test", Version: "1.0.0"}, ...)`.
+**External call-site impact (mechanical).** Direct Module tests construct a test
+Runtime and pass it through the same constructors. Tests that directly consume
+telemetry instrumentation explicitly call `Initialize` before use.
 
 **Standalone migration (`internal/app/migration.go`).** `RunMigrations` builds
-`rt := module.Runtime{DB: router}` and passes it to `dlock.NewModule(rt)`,
+`rt := appenv.NewRuntime(appenv.NewIdentity("", ""), appenv.WithDatabase(router))` and passes it to `dlock.NewModule(rt)`,
 `wuid.NewModule(rt)`, `audit.NewModule(rt, audit.Config{})`. `runModuleMigrations`
 consumes `registry.Modules()` (the active set).
 
@@ -303,7 +306,7 @@ consumes `registry.Modules()` (the active set).
 | B5 | `App` concrete module fields removed | http.go/tests resolve via registry |
 | B6 | "prometheus module is unavailable" guard removed | Unreachable by construction |
 | B7 | Modules never receive a chi router | chi confined to the HTTP server |
-| B8 | `NewModule(name, version, db, ...)` → `NewModule(rt, ...)` | 4 external test call sites + module tests update mechanically |
+| B8 | every application Module constructor receives the shared `rt` | one explicit App-lifetime environment is available throughout every Module lifecycle |
 
 ## 6. Test plan
 
@@ -345,7 +348,7 @@ failure rolls back cleanly.
 | metrics | rewrite for `NewModule(rt, Config)` + `CollectorSink` |
 | migrationstatus / configinspector / pprof | new `Config` param; configinspector error moves to `Initialize` |
 | health | service built via `InjectServices` |
-| dlock / wuid / audit / databasemonitor | narrow fakes no longer satisfy concrete `rt.DB` — use real SQLite routers or package-private constructor seams; lock degraded no-writer (nil `Write()`) behavior |
+| dlock / wuid / audit / databasemonitor | dlock/wuid tests use a real `Runtime + SQLite router`; databasemonitor narrow fakes are assembled only in `_test.go`; lock degraded no-writer (nil `Write()`) behavior |
 | telemetry / audit | 4 external call sites updated mechanically; functional options preserved |
 
 ### 6.5 App-level invariants (updated, not weakened)
@@ -375,7 +378,7 @@ staged landing; `isNilModule` → pkg/module; `ByName → (Module, bool)`;
 Identified: `provideCrossCutting` error propagation, rollback must cover
 construction-owned state, `App.modules` init path, state-machine/rollback
 reconciliation. The services-injection direction was then **replaced** by the
-user's simplification decision: modules autonomous + `module.Runtime`
+user's simplification decision: modules autonomous + shared `*appenv.Runtime`
 constructor object (see 7.3).
 
 ### 7.3 codex review #2 (Runtime design) — sound-with-changes
@@ -384,12 +387,12 @@ constructor object (see 7.3).
 |---|---|---|
 | R1 | Collector wiring must run after rollback list exists, not right after Activate | **Adopted** — `collectMetrics` after `Wire` (§3.5) |
 | R2 | telemetry's constructor side effects need early cleanup ownership | **Adopted** — Deinitializer pre-seed at `Register`, not `Wire` (§3.3) |
-| R3 | `migration.go` standalone construction must build `Runtime{DB: router}` | **Adopted** (§4) |
+| R3 | `migration.go` standalone construction must build a Runtime with the router | **Adopted** (§4) |
 | R4 | Preserve degraded no-writer behavior + lock with tests | **Adopted** (§6.4) |
 | R5 | Rewrite the doc (old injection spec contradicted the revision) | **Done** |
 | S1 | Cycle-free + concrete router serves all consumers — confirmed | Adopted |
-| S2 | `pkg/appenv` neutral package vs `module.Runtime` DB coupling | **Deferred** — documented tradeoff (§3.1) |
-| S3 | Pass `Runtime` by value, immutable; modules retain narrow capabilities only | **Adopted** (§3.1) |
+| S2 | `pkg/appenv` neutral package vs `pkg/module` DB coupling | **Adopted** after the runtime became an application-lifetime manager container (§3.1) |
+| S3 | Share one stable Runtime pointer; manager references are private and read-only | **Adopted** (§3.1) |
 | S4 | Module tests need real SQLite routers or package-private seams | **Adopted** (§6.4) |
 | S5 | Collector test matrix | **Adopted** (§6.2) |
 | N1 | Compile-time assertions for router satisfying narrow contracts | Noted |
@@ -401,7 +404,7 @@ constructor object (see 7.3).
 - **Q1 (external call sites)**: mechanical migration of 4 test constructions; no dual constructors.
 - **Q2 (degraded no-writer)**: "service missing" = wiring error; "router present but
   `Write()==nil`" = runtime degraded (health NOT_SERVING), not a wiring failure.
-- **Runtime location**: `pkg/module.Runtime` (value, immutable); `pkg/appenv` deferred.
+- **Runtime location**: `pkg/appenv.Runtime`; App owns one pointer for its lifetime.
 - **gRPC stats handlers**: multiple supported (grpc-go appends/composes).
 - Remaining open: Services duplicate-key error provenance (add or drop promise).
 
@@ -414,7 +417,7 @@ constructor object (see 7.3).
    must be nil-safe/idempotent (telemetry verified).
 4. chi confinement changes raw-route expression (pprof wildcards, redirects) —
    port carefully, keep OpenAPI docs.
-5. `pkg/module` gains a gorm dependency — accepted, documented.
+5. Runtime becoming a module/business service locator — prevented by private manager fields and keeping module collaboration in `module.Services`.
 
 ## 10. Out of scope
 
@@ -431,7 +434,7 @@ constructor object (see 7.3).
   unexpressible, registry-wide aggregation unsolved, new dependency).
 - **Services-registry injection of DB/identity (AppIdentity service, DB-as-service,
   dual constructors):** designed and codex-reviewed, then **rejected** as heavier
-  than this codebase needs — `module.Runtime` gives the same zero-leak bootstrap
+  than this codebase needs — `*appenv.Runtime` gives the same zero-leak bootstrap
   with constructor-arg simplicity.
 - **Keep concrete `App` fields:** rejected (module-handle smell).
 - **Internal self-gating:** rejected (disabled modules would appear in health/middleware).
@@ -446,7 +449,7 @@ constructor object (see 7.3).
   pre-seed at Register), App delegates. Zero behavior change.
 - **Stage 2 — behavior fixes.** `Activate` (Enabled filter + active-set dep check),
   `collectMetrics` post-Wire (B1), state guards.
-- **Stage 3 — Runtime + per-module migration.** `module.Runtime`; constructors take
+- **Stage 3 — Runtime + per-module migration.** `*appenv.Runtime`; constructors take
   `rt`; conditional modules embed `module.Config{Enabled}` + `Enabler`;
   databasemonitor observer capability; health injector; `moduleconfig.go` +
   `moduleconfig_test.go` (B2/B4/B8).

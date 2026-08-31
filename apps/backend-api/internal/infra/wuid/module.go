@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 
-	gormx "7link.com/platform/pkg/extension/gorm"
+	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/module"
 	"gorm.io/gorm"
 )
@@ -17,7 +17,7 @@ const Name = "wuid"
 
 // Module owns the worker ID migration source, allocation, renewal, health, and release.
 type Module struct {
-	db      gormx.Writer
+	runtime *appenv.Runtime
 	options []Option
 
 	mu       sync.RWMutex
@@ -49,18 +49,8 @@ var (
 // NewModule builds the worker ID module. The writable datasource is taken from
 // the shared runtime; without a writer the module starts degraded instead of
 // failing construction.
-func NewModule(rt module.Runtime, options ...Option) *Module {
-	var db gormx.Writer
-	if router, ok := rt.DB.(*gormx.DatasourceRouter); ok {
-		db = router
-	}
-	return newModule(db, options...)
-}
-
-// newModule is the package-private construction seam used by tests that inject
-// a narrow writer fake.
-func newModule(db gormx.Writer, options ...Option) *Module {
-	return &Module{db: db, options: append([]Option(nil), options...)}
+func NewModule(rt *appenv.Runtime, options ...Option) *Module {
+	return &Module{runtime: rt, options: append([]Option(nil), options...)}
 }
 
 func (m *Module) ProvideServices(services *module.Services) error {
@@ -134,8 +124,8 @@ func (m *Module) notifyReacquired(uint16) {
 }
 
 func (m *Module) writer() *gorm.DB {
-	if m.db == nil {
+	if m.runtime == nil || m.runtime.Database() == nil {
 		return nil
 	}
-	return m.db.Write()
+	return m.runtime.Database().Write()
 }

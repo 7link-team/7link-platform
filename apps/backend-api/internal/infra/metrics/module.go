@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"7link.com/platform/internal/infra/databasemonitor"
+	"7link.com/platform/pkg/appenv"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
@@ -32,6 +33,7 @@ type Config struct {
 
 // Module owns an isolated registry and HTTP server metrics.
 type Module struct {
+	runtime             *appenv.Runtime
 	cfg                 Config
 	registry            *prometheus.Registry
 	requests            *prometheus.CounterVec
@@ -41,11 +43,11 @@ type Module struct {
 }
 
 var (
-	_ module.Module              = (*Module)(nil)
-	_ module.Enabler             = (*Module)(nil)
-	_ module.ServiceInjector     = (*Module)(nil)
-	_ module.CollectorSink       = (*Module)(nil)
-	_ module.HTTPRegistrar       = (*Module)(nil)
+	_ module.Module               = (*Module)(nil)
+	_ module.Enabler              = (*Module)(nil)
+	_ module.ServiceInjector      = (*Module)(nil)
+	_ module.CollectorSink        = (*Module)(nil)
+	_ module.HTTPRegistrar        = (*Module)(nil)
 	_ module.RawHTTPHandlerModule = (*Module)(nil)
 )
 
@@ -56,7 +58,7 @@ func (m *Module) Enabled() bool { return m.cfg.Enabled }
 // NewModule builds the metrics module. The datasource router is taken from the
 // shared runtime; the database monitor (health gauges + SQL metrics) is resolved
 // later via InjectServices and is lenient (pool metrics work without it).
-func NewModule(rt module.Runtime, cfg Config) *Module {
+func NewModule(rt *appenv.Runtime, cfg Config) *Module {
 	registry := prometheus.NewRegistry()
 	requests := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "http_server_requests_total",
@@ -80,16 +82,14 @@ func NewModule(rt module.Runtime, cfg Config) *Module {
 		responseSize,
 	)
 	module := &Module{
+		runtime:      rt,
 		cfg:          cfg,
 		registry:     registry,
 		requests:     requests,
 		duration:     duration,
 		responseSize: responseSize,
 	}
-	var datasources *gormx.DatasourceRouter
-	if router, ok := rt.DB.(*gormx.DatasourceRouter); ok {
-		datasources = router
-	}
+	datasources := rt.Database()
 	if datasources != nil {
 		collector := newDatasourceCollector(datasources, nil)
 		module.datasourceCollector = collector

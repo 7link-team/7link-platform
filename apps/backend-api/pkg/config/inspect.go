@@ -11,7 +11,8 @@ const RedactedValue = "[REDACTED]"
 
 // Inspect returns the effective configuration as mapstructure-shaped data.
 // Fields marked secret:"true" retain their shape while non-empty values are
-// replaced, and hidden fields are omitted.
+// replaced. Hidden and deprecated compatibility fields are omitted; callers see
+// the canonical replacement's effective value.
 func Inspect(value any) (map[string]any, error) {
 	reflected := reflect.ValueOf(value)
 	if !reflected.IsValid() {
@@ -35,7 +36,8 @@ func inspectStruct(value reflect.Value) (map[string]any, error) {
 	for index := 0; index < typ.NumField(); index++ {
 		field := typ.Field(index)
 		name := strings.Split(field.Tag.Get("mapstructure"), ",")[0]
-		if !field.IsExported() || name == "" || name == "-" || strings.EqualFold(field.Tag.Get("hidden"), "true") {
+		if !field.IsExported() || name == "" || name == "-" ||
+			omitFromPublishedConfig(field) {
 			continue
 		}
 

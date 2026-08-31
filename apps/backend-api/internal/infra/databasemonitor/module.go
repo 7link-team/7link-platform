@@ -12,6 +12,7 @@ import (
 	"time"
 
 	healthservice "7link.com/platform/internal/infra/health/service"
+	"7link.com/platform/pkg/appenv"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/extension/huma/respx"
 	"7link.com/platform/pkg/module"
@@ -82,6 +83,7 @@ func (snapshot Snapshot) DatasourceError(name string) error {
 }
 
 type Module struct {
+	runtime     *appenv.Runtime
 	datasources datasource
 	config      Config
 	snapshot    atomic.Pointer[Snapshot]
@@ -100,12 +102,12 @@ type Module struct {
 }
 
 var (
-	_ module.Module              = (*Module)(nil)
-	_ module.ServiceProvider     = (*Module)(nil)
-	_ module.Initializer         = (*Module)(nil)
-	_ module.Starter             = (*Module)(nil)
-	_ module.Stopper             = (*Module)(nil)
-	_ module.HTTPRegistrar       = (*Module)(nil)
+	_ module.Module               = (*Module)(nil)
+	_ module.ServiceProvider      = (*Module)(nil)
+	_ module.Initializer          = (*Module)(nil)
+	_ module.Starter              = (*Module)(nil)
+	_ module.Stopper              = (*Module)(nil)
+	_ module.HTTPRegistrar        = (*Module)(nil)
 	_ module.RawHTTPHandlerModule = (*Module)(nil)
 )
 
@@ -119,17 +121,17 @@ type Monitor interface {
 
 // NewModule builds the database monitor. The datasource router is taken from the
 // shared runtime; without a router the module stays idle (Start no-ops).
-func NewModule(rt module.Runtime, config Config) *Module {
-	var datasources datasource
-	if router, ok := rt.DB.(*gormx.DatasourceRouter); ok {
-		datasources = router
+func NewModule(rt *appenv.Runtime, config Config) *Module {
+	config = normalizeConfig(config)
+	return &Module{
+		runtime: rt, datasources: rt.Database(), config: config,
+		sqlStats:        make(map[string]*queryStat),
+		queryTotals:     make(map[queryMetricKey]*QueryMetric),
+		statisticsSince: time.Now().UTC(),
 	}
-	return newModule(datasources, config)
 }
 
-// newModule is the package-private construction seam used by tests that inject a
-// fake datasource.
-func newModule(datasources datasource, config Config) *Module {
+func normalizeConfig(config Config) Config {
 	if config.Interval <= 0 {
 		config.Interval = defaultInterval
 	}
@@ -148,12 +150,7 @@ func newModule(datasources datasource, config Config) *Module {
 	if config.SlowThreshold <= 0 {
 		config.SlowThreshold = 200 * time.Millisecond
 	}
-	return &Module{
-		datasources: datasources, config: config,
-		sqlStats:        make(map[string]*queryStat),
-		queryTotals:     make(map[queryMetricKey]*QueryMetric),
-		statisticsSince: time.Now().UTC(),
-	}
+	return config
 }
 
 // ProvideServices exposes the monitor contract to dependent modules (metrics).

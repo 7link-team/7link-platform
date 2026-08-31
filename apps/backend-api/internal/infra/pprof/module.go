@@ -6,6 +6,7 @@ import (
 	"net/http"
 	stdpprof "net/http/pprof"
 
+	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -24,21 +25,21 @@ type Config struct {
 
 // Module owns the standard runtime profiling endpoints and embedded analysis UI.
 type Module struct {
-	name string
-	cfg  Config
+	runtime *appenv.Runtime
+	cfg     Config
 }
 
 var (
-	_ module.Module              = (*Module)(nil)
-	_ module.Enabler             = (*Module)(nil)
-	_ module.HTTPRegistrar       = (*Module)(nil)
+	_ module.Module               = (*Module)(nil)
+	_ module.Enabler              = (*Module)(nil)
+	_ module.HTTPRegistrar        = (*Module)(nil)
 	_ module.RawHTTPHandlerModule = (*Module)(nil)
 )
 
 // NewModule builds the pprof module. The application name (UI title) is taken
 // from the shared runtime.
-func NewModule(rt module.Runtime, cfg Config) *Module {
-	return &Module{name: rt.Name, cfg: cfg}
+func NewModule(rt *appenv.Runtime, cfg Config) *Module {
+	return &Module{runtime: rt, cfg: cfg}
 }
 
 func (m *Module) Enabled() bool { return m.cfg.Enabled }
@@ -53,7 +54,7 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 // RawHTTPRoutes contributes the runtime profiling handlers and the embedded
 // analysis UI, mounted on the server's router.
 func (m *Module) RawHTTPRoutes() []module.RawRoute {
-	ui := newPprofUI(m.name)
+	ui := newPprofUI(m.runtime.Identity().Name())
 	return []module.RawRoute{
 		{Method: http.MethodGet, Path: Path, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, Path+"/", http.StatusMovedPermanently)

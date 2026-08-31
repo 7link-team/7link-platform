@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"7link.com/platform/pkg/module"
+	"7link.com/platform/pkg/appenv"
 	humax "7link.com/platform/pkg/extension/huma"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/pprof/profile"
@@ -23,8 +24,9 @@ import (
 func TestRegisterPprofServesStandardEndpoints(t *testing.T) {
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
-	module := NewModule(module.Runtime{Name: "test service"}, Config{})
+	module := NewModule(appenv.NewRuntime(appenv.NewIdentity("test service", "")), Config{})
 	assert.Equal(t, "pprof", module.ModuleName())
+	assert.False(t, module.Enabled())
 	require.NoError(t, module.RegisterHTTP(t.Context(), api))
 	for _, route := range module.RawHTTPRoutes() {
 		route.Mount(router)
@@ -55,7 +57,7 @@ func TestRegisterPprofServesStandardEndpoints(t *testing.T) {
 func TestRegisterPprofServesEmbeddedWebUI(t *testing.T) {
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
-	pprofModule := NewModule(module.Runtime{Name: "test service"}, Config{})
+	pprofModule := NewModule(appenv.NewRuntime(appenv.NewIdentity("test service", "")), Config{})
 	require.NoError(t, pprofModule.RegisterHTTP(t.Context(), api))
 	for _, route := range pprofModule.RawHTTPRoutes() {
 		// The embedded UI wildcard has an empty Method and is mounted for every
@@ -201,7 +203,7 @@ func TestCaptureDuration(t *testing.T) {
 func TestRegisterPprofAddsOpenAPIOperations(t *testing.T) {
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
-	pprofModule := NewModule(module.Runtime{Name: "test service"}, Config{})
+	pprofModule := NewModule(appenv.NewRuntime(appenv.NewIdentity("test service", "")), Config{})
 	require.NoError(t, pprofModule.RegisterHTTP(t.Context(), api))
 	for _, route := range pprofModule.RawHTTPRoutes() {
 		route.Mount(router)
@@ -231,4 +233,54 @@ func TestRegisterPprofAddsOpenAPIOperations(t *testing.T) {
 
 	_, err := json.Marshal(api.OpenAPI())
 	require.NoError(t, err)
+}
+
+func TestPprofUIAuxiliaryRoutesAndDriverContracts(t *testing.T) {
+	ui := newPprofUI(" test ")
+	assert.Equal(t, "test", ui.name)
+
+	redirect := httptest.NewRecorder()
+	ui.ServeHTTP(redirect, httptest.NewRequest(http.MethodGet, "/view", nil))
+	assert.Equal(t, http.StatusMovedPermanently, redirect.Code)
+
+	notFound := httptest.NewRecorder()
+	ui.ServeHTTP(notFound, httptest.NewRequest(http.MethodGet, "/missing", nil))
+	assert.Equal(t, http.StatusNotFound, notFound.Code)
+
+	ui.current = &pprofWebProfile{handlers: map[string]http.Handler{}}
+	missingView := httptest.NewRecorder()
+	ui.ServeHTTP(missingView, httptest.NewRequest(http.MethodGet, "/view/missing", nil))
+	assert.Equal(t, http.StatusNotFound, missingView.Code)
+
+	flags := &embeddedPprofFlags{}
+	assert.True(t, *flags.Bool("no_browser", false, ""))
+	assert.False(t, *flags.Bool("other", false, ""))
+	assert.Equal(t, 7, *flags.Int("", 7, ""))
+	assert.Equal(t, 1.5, *flags.Float64("", 1.5, ""))
+	assert.Equal(t, "localhost:0", *flags.String("http", "", ""))
+	assert.Equal(t, "value", *flags.String("other", "value", ""))
+	assert.Equal(t, "value", *(*flags.StringList("", "value", ""))[0])
+	assert.Empty(t, flags.ExtraUsage())
+	flags.AddExtraUsage("ignored")
+	assert.Equal(t, []string{pprofProfileSource}, flags.Parse(func() {}))
+
+	quiet := quietPprofUI{}
+	line, err := quiet.ReadLine("ignored")
+	assert.Empty(t, line)
+	assert.ErrorIs(t, err, io.EOF)
+	quiet.Print("ignored")
+	quiet.PrintErr("ignored")
+	assert.False(t, quiet.IsTerminal())
+	assert.False(t, quiet.WantBrowser())
+	quiet.SetAutoComplete(func(string) string { return "" })
+}
+
+func TestCaptureRuntimeProfileRejectsUnavailableAndCanceledCapture(t *testing.T) {
+	_, err := captureRuntimeProfile(t.Context(), "not-a-runtime-profile", 0)
+	assert.ErrorContains(t, err, "is unavailable")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err = captureRuntimeProfile(ctx, "cpu", time.Second)
+	assert.ErrorIs(t, err, context.Canceled)
 }

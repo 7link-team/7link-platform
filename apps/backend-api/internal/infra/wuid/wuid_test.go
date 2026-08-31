@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/infra/dlock"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
@@ -130,6 +131,7 @@ func TestWorkerUsesLeaseMarginForTransientRenewalFailures(t *testing.T) {
 	default:
 		t.Fatal("OnLost was not called after the safety margin elapsed")
 	}
+	assert.Equal(t, worker.retryInterval(), worker.step(canceled), "a failed reacquire retries without restoring liveness")
 }
 
 func TestWorkerReacquiresExpiredWorkerID(t *testing.T) {
@@ -209,4 +211,53 @@ func TestMigrationCommandsRequireDatabase(t *testing.T) {
 	assert.ErrorIs(t, MigrateUpTo(t.Context(), nil, 1), ErrDatabaseUnavailable)
 	assert.ErrorIs(t, MigrateDown(t.Context(), nil), ErrDatabaseUnavailable)
 	assert.ErrorIs(t, MigrateDownTo(t.Context(), nil, 0), ErrDatabaseUnavailable)
+}
+
+func TestOptionsComposeAndWorkerIntervals(t *testing.T) {
+	var lostCalls, reacquireCalls int
+	config := newConfig(
+		WithLease(0),
+		OnLost(nil),
+		OnLost(func(error) { lostCalls++ }),
+		OnLost(func(error) { lostCalls++ }),
+		OnReacquire(nil),
+		OnReacquire(func(uint16) { reacquireCalls++ }),
+		OnReacquire(func(uint16) { reacquireCalls++ }),
+	)
+	assert.Equal(t, DefaultLease, config.lease)
+	config.onLost(assert.AnError)
+	config.onReacquire(7)
+	assert.Equal(t, 2, lostCalls)
+	assert.Equal(t, 2, reacquireCalls)
+
+	short := &Worker{}
+	assert.Equal(t, time.Second, short.renewInterval())
+	assert.Equal(t, time.Second, short.retryInterval())
+	long := &Worker{lease: time.Hour}
+	assert.Equal(t, renewRetryInterval, long.retryInterval())
+}
+
+func TestStaticWorkerCloseIsIdempotent(t *testing.T) {
+	worker := newStatic(9)
+	require.NoError(t, worker.Close(t.Context()))
+	require.NoError(t, worker.Close(t.Context()))
+}
+
+func TestWorkerIDPoolExhaustion(t *testing.T) {
+	t.Setenv(EnvKey, "")
+	db := newTestDB(t)
+	require.NoError(t, db.Create(&workerRow{ID: MaxWorkerID, Token: "occupied", ExpiresAt: 1 << 62}).Error)
+	_, _, err := claimUnderLock(t.Context(), db, time.Hour, gormx.NowMillisExpr(db.Dialector.Name()))
+	assert.ErrorContains(t, err, "worker id pool exhausted")
+}
+
+func TestWorkerCloseReportsDatabaseFailure(t *testing.T) {
+	db := newTestDB(t)
+	worker := &Worker{db: db}
+	worker.id.Store(1)
+	worker.token.Store("token")
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	require.NoError(t, sqlDB.Close())
+	assert.Error(t, worker.Close(t.Context()))
 }

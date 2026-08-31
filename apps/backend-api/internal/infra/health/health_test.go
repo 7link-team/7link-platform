@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"7link.com/platform/internal/infra/health/service"
+	"7link.com/platform/pkg/appenv"
 	humax "7link.com/platform/pkg/extension/huma"
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
@@ -17,9 +18,10 @@ import (
 )
 
 func TestHealthModuleLifecycleAndRegistration(t *testing.T) {
-	require.NoError(t, platformi18n.NewModule(platformi18n.Base).Initialize(t.Context()))
+	rt := appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0"))
+	require.NoError(t, platformi18n.NewModule(rt, platformi18n.Base).Initialize(t.Context()))
 	var m *HealthModule
-	m = NewModule()
+	m = NewModule(rt)
 	services := module.NewServices()
 	require.NoError(t, module.Provide[service.CheckerProvider](services, func() []service.Checker {
 		return []service.Checker{{Name: m.ModuleName(), Check: m.CheckHealth}}
@@ -61,7 +63,7 @@ func TestHealthModuleLifecycleAndRegistration(t *testing.T) {
 }
 
 func TestHealthModuleQuiesceDisablesReadiness(t *testing.T) {
-	m := NewModule()
+	m := NewModule(appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0")))
 	require.NoError(t, m.Start(t.Context()))
 	require.NoError(t, m.Quiesce(t.Context()))
 	assert.ErrorIs(t, m.CheckHealth(t.Context()), ErrNotReady)

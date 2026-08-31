@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"7link.com/platform/pkg/appenv"
 	configx "7link.com/platform/pkg/config"
 	"7link.com/platform/pkg/extension/huma/respx"
 	"7link.com/platform/pkg/module"
@@ -24,24 +25,25 @@ type Config struct {
 }
 
 type Module struct {
+	runtime  *appenv.Runtime
 	value    any
 	cfg      Config
 	snapshot map[string]any
 }
 
 var (
-	_ module.Module              = (*Module)(nil)
-	_ module.Enabler             = (*Module)(nil)
-	_ module.Initializer         = (*Module)(nil)
-	_ module.HTTPRegistrar       = (*Module)(nil)
+	_ module.Module               = (*Module)(nil)
+	_ module.Enabler              = (*Module)(nil)
+	_ module.Initializer          = (*Module)(nil)
+	_ module.HTTPRegistrar        = (*Module)(nil)
 	_ module.RawHTTPHandlerModule = (*Module)(nil)
 )
 
 // NewModule builds the config inspector. The snapshot is deferred to Initialize
 // so construction never fails; an unsupported configuration still fails startup,
 // just in the Initialize phase.
-func NewModule(value any, cfg Config) *Module {
-	return &Module{value: value, cfg: cfg}
+func NewModule(rt *appenv.Runtime, value any, cfg Config) *Module {
+	return &Module{runtime: rt, value: value, cfg: cfg}
 }
 
 func (m *Module) Enabled() bool { return m.cfg.Enabled }

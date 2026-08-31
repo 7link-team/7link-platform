@@ -32,7 +32,7 @@ HTTP 与 gRPC 已自动接入；其它入口（定时任务、分布式任务、
 
 | 入口 | 位置 | 说明 |
 |---|---|---|
-| HTTP | `internal/app/http.go` | 写操作记录 JSON 请求体；成功只记结果标识，失败记完整错误体；WS/SSE 按会话记录 |
+| HTTP | `internal/app/http.go` | 写操作记录元数据；显式开启正文捕获后才记录脱敏 JSON；WS/SSE 按会话记录 |
 | gRPC | `internal/app/grpc.go` | unary + stream 拦截器；方法名前缀启发式读写分类 |
 
 跳过路由（不审计）：`/healthz /livez /readyz /metrics /debug /docs /openapi /`（可用
@@ -48,6 +48,7 @@ audit:
     enabled: false         # 落库；需先运行 goose 迁移（make dev 带 --migrate 自动执行）
   record_reads: false      # 是否记录读操作
   record_streams: true     # 是否记录 WS/SSE 会话
+  capture_bodies: false   # 是否捕获脱敏后的 JSON 正文；默认关闭
   max_body_bytes: 8192     # 请求/响应体单方向捕获上限（字节）
   sensitive_fields: []     # 额外需要脱敏的 JSON 字段名
   skip_routes: []          # 额外跳过的路径前缀
@@ -58,14 +59,13 @@ audit:
   overflow: drop           # drop | block
 ```
 
-> **默认开启提示**：`audit.enabled` 默认 `true`（"slog 常开"），因此升级后每个写请求的 JSON 请求体
-> 会按脱敏键集捕获到日志/DB。脱敏仅覆盖内置键集 + `sensitive_fields`；请求体里出现键集外的敏感字段
-> （如 `otp`/`pin`）会以明文入库。生产环境请把 PII/敏感字段列入 `sensitive_fields`，或按需关闭。
+> `audit.enabled` 默认 `true`，但只记录操作元数据；`capture_bodies` 默认 `false`。开启正文捕获前，
+> 应先确认数据分级与保留策略，并把内置集合以外的 PII/敏感字段加入 `sensitive_fields`。
 
-数据库 sink 不可用时自动降级到 slog，不阻塞主链路。事件 ID 使用平台雪花 ID
-（`guid.Source.Next()`，Sonyflake），与所有业务表主键一致（`operation_logs.id` 为 BIGINT）；
-worker ID 来自 `wuid` 数据库租约，因此数据库不可用时无法生成 ID，事件会被丢弃并计入
-`audit_events_dropped_total`——这是"业务表主键一律雪花 ID"约定的必然结果。
+显式配置 `audit.database.enabled=true` 时，启动阶段会验证 writer 和 `operation_logs` 表；不可用会
+启动失败，不会静默降级成只有 slog。事件 ID 优先使用平台雪花 ID（`guid.Source.Next()`，Sonyflake）；
+生成器暂时不可用时使用 UUID 兜底，保证 slog 事件不丢。BIGINT 数据库 sink 会明确拒绝 UUID，
+并增加 sink error 计数，绝不会把非法 ID 写成主键 0。
 Prometheus：`audit_events_flushed_total / dropped_total / failed_total`、
 `audit_queue_depth`、`audit_sink_errors_total`。
 
@@ -133,11 +133,11 @@ func (c *consumer) handle(ctx context.Context, msg Message) error {
 
 ## 记录规则
 
-- 请求体：仅写操作 + `Content-Type` 为 `application/json` 或 `*+json` + 未超 `max_body_bytes`。
+- 请求体：`capture_bodies=true` 时，仅写操作 + `Content-Type` 为 `application/json` 或 `*+json` + 未超 `max_body_bytes`。
   超限 → `request.omitted=too_large`，仍记录 size；声明为 JSON 但格式非法 → `invalid_json`；
   非 JSON → `unsupported_content_type`。超限或非法 JSON 均不保留正文，避免未脱敏内容落地。
   决定不捕获时**完全不读**请求体（文件上传/大流零开销）；捕获后用 `io.MultiReader` 还原。
-- 响应体：成功 → 仅 envelope 的 `code/message` + 从 `data.id` 提取的资源 ID
+- 响应体：`capture_bodies=true` 时，成功 → 仅 envelope 的 `code/message` + 从 `data.id` 提取的资源 ID
   （`response.omitted=success_summary`）；失败（≥400 / gRPC error）→ 未超限的合法 JSON 错误体会脱敏记录，
   超限或非法 JSON 错误体仅记录 size 与 omission 原因。
 - 脱敏：大小写不敏感的敏感键集合（password/token/secret/authorization/api_key/credit_card 等，

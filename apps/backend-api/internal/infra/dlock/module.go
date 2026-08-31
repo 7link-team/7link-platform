@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	gormx "7link.com/platform/pkg/extension/gorm"
+	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/module"
 	"gorm.io/gorm"
 )
@@ -16,7 +16,7 @@ var ErrDatabaseUnavailable = errors.New("dlock: writable database unavailable")
 
 // Module owns the dlock migration source, runtime access, and health reporting.
 type Module struct {
-	db      gormx.Writer
+	runtime *appenv.Runtime
 	options []Option
 }
 
@@ -29,18 +29,8 @@ var (
 // NewModule builds the dlock module. The writable datasource is taken from the
 // shared runtime; a router without a writer leaves the module degraded (health
 // reports ErrDatabaseUnavailable) rather than failing construction.
-func NewModule(rt module.Runtime, options ...Option) *Module {
-	var db gormx.Writer
-	if router, ok := rt.DB.(*gormx.DatasourceRouter); ok {
-		db = router
-	}
-	return newModule(db, options...)
-}
-
-// newModule is the package-private construction seam used by tests that inject
-// a narrow writer fake.
-func newModule(db gormx.Writer, options ...Option) *Module {
-	return &Module{db: db, options: append([]Option(nil), options...)}
+func NewModule(rt *appenv.Runtime, options ...Option) *Module {
+	return &Module{runtime: rt, options: append([]Option(nil), options...)}
 }
 
 func (m *Module) CheckHealth(ctx context.Context) error {
@@ -86,8 +76,8 @@ func (m *Module) Lock(ctx context.Context, name string) (*Lock, error) {
 }
 
 func (m *Module) writer() *gorm.DB {
-	if m.db == nil {
+	if m.runtime == nil || m.runtime.Database() == nil {
 		return nil
 	}
-	return m.db.Write()
+	return m.runtime.Database().Write()
 }

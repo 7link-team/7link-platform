@@ -10,6 +10,20 @@ DEV_ARGS ?= serve --debug --migrate --pprof.enabled --shutdown.graceful=false \
 COVERAGE_MIN ?= 90
 COVERAGE_PROFILE ?= coverage.out
 COVERAGE_RAW_PROFILE ?= coverage.raw.out
+MODULE_COVERAGE_PACKAGES := \
+	7link.com/platform/internal/infra/audit \
+	7link.com/platform/internal/infra/configinspector \
+	7link.com/platform/internal/infra/databasemonitor \
+	7link.com/platform/internal/infra/dlock \
+	7link.com/platform/internal/infra/guid \
+	7link.com/platform/internal/infra/health \
+	7link.com/platform/internal/infra/metrics \
+	7link.com/platform/internal/infra/migrationstatus \
+	7link.com/platform/internal/infra/pprof \
+	7link.com/platform/internal/infra/telemetry \
+	7link.com/platform/internal/infra/wuid \
+	7link.com/platform/pkg/extension/huma/respx \
+	7link.com/platform/pkg/i18n
 
 .PHONY: build dev test test-coverage test-integration test-all
 
@@ -33,6 +47,22 @@ test-coverage:
 		printf "total coverage: %.1f%% (minimum %.1f%%)\n", coverage, minimum; \
 		if (coverage + 0 < minimum + 0) exit 1; \
 	}'
+	@status=0; \
+	for package in $(MODULE_COVERAGE_PACKAGES); do \
+		coverage="$$(awk -v target="$$package" 'NR > 1 { \
+			file = $$1; sub(/:.*/, "", file); directory = file; sub(/\/[^\/]+$$/, "", directory); \
+			if (directory == target) { total += $$2; if ($$3 > 0) covered += $$2 } \
+		} END { if (total == 0) print "missing"; else printf "%.1f", covered * 100 / total }' "$(COVERAGE_RAW_PROFILE)")"; \
+		short="$${package#7link.com/platform/}"; \
+		if [ "$$coverage" = "missing" ]; then \
+			printf "module coverage: %-48s MISSING\n" "$$short"; status=1; continue; \
+		fi; \
+		if ! awk -v name="$$short" -v coverage="$$coverage" -v minimum="$(COVERAGE_MIN)" 'BEGIN { \
+			printf "module coverage: %-48s %.1f%% (minimum %.1f%%)\n", name, coverage, minimum; \
+			if (coverage + 0 < minimum + 0) exit 1; \
+		}'; then status=1; fi; \
+	done; \
+	exit $$status
 
 test-integration:
 	go -C tests test ./...

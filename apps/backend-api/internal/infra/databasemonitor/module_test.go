@@ -11,11 +11,14 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/pkg/appenv"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	humax "7link.com/platform/pkg/extension/huma"
+	"7link.com/platform/pkg/module"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 type fakeDatasource struct {
@@ -23,6 +26,17 @@ type fakeDatasource struct {
 	calls  int
 	health gormx.HealthSnapshot
 	stats  []gormx.DatasourceStats
+}
+
+type observerDatasource struct {
+	*fakeDatasource
+	err      error
+	observer gormx.QueryObserver
+}
+
+func (datasource *observerDatasource) RegisterQueryObserver(observer gormx.QueryObserver) error {
+	datasource.observer = observer
+	return datasource.err
 }
 
 func (fake *fakeDatasource) DatasourceNames() []string {
@@ -64,9 +78,19 @@ func newFakeDatasource() *fakeDatasource {
 	}
 }
 
+func newTestModule(datasources datasource, config Config) *Module {
+	config = normalizeConfig(config)
+	return &Module{
+		datasources: datasources, config: config,
+		sqlStats:        make(map[string]*queryStat),
+		queryTotals:     make(map[queryMetricKey]*QueryMetric),
+		statisticsSince: time.Now().UTC(),
+	}
+}
+
 func TestModulePollsAndHealthCheckersShareSnapshot(t *testing.T) {
 	fake := newFakeDatasource()
-	module := newModule(fake, Config{Interval: 5 * time.Millisecond, Timeout: time.Second, StaleAfter: time.Second})
+	module := newTestModule(fake, Config{Interval: 5 * time.Millisecond, Timeout: time.Second, StaleAfter: time.Second})
 	require.NoError(t, module.Start(t.Context()))
 	t.Cleanup(func() { require.NoError(t, module.Stop(context.Background())) })
 	require.Eventually(t, func() bool { return fake.callCount() >= 2 }, time.Second, time.Millisecond)
@@ -86,7 +110,7 @@ func TestModulePollsAndHealthCheckersShareSnapshot(t *testing.T) {
 }
 
 func TestModuleReportsStaleSnapshots(t *testing.T) {
-	module := newModule(newFakeDatasource(), Config{StaleAfter: time.Second})
+	module := newTestModule(newFakeDatasource(), Config{StaleAfter: time.Second})
 	module.snapshot.Store(&Snapshot{CheckedAt: time.Now().Add(-2 * time.Second)})
 	assert.ErrorIs(t, module.snapshotError(module.Snapshot()), ErrSnapshotStale)
 	assert.Equal(t, statusStale, module.Report().Status)
@@ -94,7 +118,7 @@ func TestModuleReportsStaleSnapshots(t *testing.T) {
 
 func TestDatasourceDiagnosticsAreRedactedAndOptional(t *testing.T) {
 	fake := newFakeDatasource()
-	disabled := newModule(fake, Config{})
+	disabled := newTestModule(fake, Config{})
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
 	require.NoError(t, disabled.RegisterHTTP(t.Context(), api))
@@ -103,7 +127,7 @@ func TestDatasourceDiagnosticsAreRedactedAndOptional(t *testing.T) {
 	}
 	assert.NotContains(t, api.OpenAPI().Paths, Path)
 
-	enabled := newModule(fake, Config{ExposeHTTP: true})
+	enabled := newTestModule(fake, Config{ExposeHTTP: true})
 	require.NoError(t, enabled.Start(t.Context()))
 	t.Cleanup(func() { require.NoError(t, enabled.Stop(context.Background())) })
 	router = chi.NewRouter()
@@ -145,7 +169,7 @@ func TestDatasourceDiagnosticsAreRedactedAndOptional(t *testing.T) {
 }
 
 func TestSQLStatisticsAreBoundedAndDoNotRetainErrors(t *testing.T) {
-	module := newModule(nil, Config{SQLCapacity: 2, SlowCapacity: 1, SlowThreshold: 10 * time.Millisecond})
+	module := newTestModule(nil, Config{SQLCapacity: 2, SlowCapacity: 1, SlowThreshold: 10 * time.Millisecond})
 	module.ObserveQuery(t.Context(), gormx.QueryEvent{
 		Datasource: "primary", Operation: "SELECT", Table: "widgets",
 		Statement: "SELECT * FROM widgets WHERE id = ?", StartedAt: time.Now().UTC(),
@@ -179,7 +203,7 @@ func TestSQLStatisticsAreBoundedAndDoNotRetainErrors(t *testing.T) {
 }
 
 func TestSQLReportIncludesDruidStyleExecutionStatistics(t *testing.T) {
-	module := newModule(nil, Config{SQLCapacity: 10, SlowCapacity: 10, SlowThreshold: time.Millisecond})
+	module := newTestModule(nil, Config{SQLCapacity: 10, SlowCapacity: 10, SlowThreshold: time.Millisecond})
 	activity := gormx.QueryActivity{Datasource: "primary", Operation: "SELECT", StartedAt: time.Now().UTC()}
 	module.QueryStarted(t.Context(), activity)
 	module.QueryStarted(t.Context(), activity)
@@ -232,4 +256,68 @@ func TestSQLReportIncludesDruidStyleExecutionStatistics(t *testing.T) {
 	assert.False(t, report.StatisticsSince.IsZero())
 	assert.Equal(t, 10, report.SlowCapacity)
 	assert.Equal(t, 1.0, report.SlowThresholdMS)
+}
+
+func TestModuleContractAndObserverRegistration(t *testing.T) {
+	rt := appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0"))
+	m := NewModule(rt, Config{})
+	assert.Same(t, rt, m.runtime)
+	assert.Equal(t, Name, m.ModuleName())
+	require.NoError(t, m.Initialize(t.Context()))
+	assert.False(t, m.SnapshotStale(Snapshot{CheckedAt: time.Now()}))
+	assert.True(t, m.SnapshotStale(Snapshot{}))
+
+	services := module.NewServices()
+	require.NoError(t, m.ProvideServices(services))
+	require.NoError(t, services.Seal())
+	resolved, err := module.Resolve[Monitor](services)
+	require.NoError(t, err)
+	assert.Same(t, m, resolved)
+
+	require.NoError(t, newTestModule(nil, Config{ExposeHTTP: true}).Initialize(t.Context()))
+	assert.ErrorContains(t, newTestModule(newFakeDatasource(), Config{ExposeHTTP: true}).Initialize(t.Context()), "does not support")
+
+	registrar := &observerDatasource{fakeDatasource: newFakeDatasource()}
+	registered := newTestModule(registrar, Config{ExposeHTTP: true})
+	require.NoError(t, registered.Initialize(t.Context()))
+	assert.Same(t, registered, registrar.observer)
+
+	registrar.err = assert.AnError
+	assert.ErrorIs(t, newTestModule(registrar, Config{ExposeHTTP: true}).Initialize(t.Context()), assert.AnError)
+}
+
+func TestDurationBucketsAndSQLHelpersCoverBoundaryClasses(t *testing.T) {
+	var buckets DurationBuckets
+	for _, duration := range []time.Duration{
+		time.Nanosecond,
+		time.Millisecond,
+		10 * time.Millisecond,
+		100 * time.Millisecond,
+		time.Second,
+		10 * time.Second,
+	} {
+		buckets.Observe(duration)
+	}
+	assert.Equal(t, map[float64]uint64{
+		0.001: 1,
+		0.01:  2,
+		0.1:   3,
+		1:     4,
+		10:    5,
+	}, buckets.CumulativeSeconds())
+
+	for err, want := range map[error]string{
+		nil:                        "",
+		context.Canceled:           "canceled",
+		gorm.ErrRecordNotFound:     "not_found",
+		gorm.ErrDuplicatedKey:      "duplicate_key",
+		gorm.ErrForeignKeyViolated: "foreign_key",
+		gorm.ErrInvalidTransaction: "invalid_transaction",
+		assert.AnError:             "database_error",
+	} {
+		assert.Equal(t, want, classifyQueryError(err))
+	}
+
+	assert.Equal(t, "abc", truncateSQL("abc", 3))
+	assert.Equal(t, "你", truncateSQL("你好", 4))
 }

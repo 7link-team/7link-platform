@@ -11,16 +11,18 @@ import (
 	"time"
 
 	"7link.com/platform/internal/infra/databasemonitor"
+	"7link.com/platform/pkg/appenv"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	humax "7link.com/platform/pkg/extension/huma"
 	"7link.com/platform/pkg/module"
 	"github.com/go-chi/chi/v5"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestHTTPMiddlewareExportsRouteMetricsWithoutRawURLs(t *testing.T) {
-	module := NewModule(module.Runtime{}, Config{})
+	module := NewModule(appenv.NewRuntime(appenv.NewIdentity("", "")), Config{})
 	assert.Equal(t, "metrics", module.ModuleName())
 	router := chi.NewRouter()
 	router.Use(module.HTTPMiddleware)
@@ -73,7 +75,8 @@ func TestDatasourceMetricsIncludeNamedPoolState(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = router.Close() })
 	assert.NoError(t, router.Probe(t.Context()).RoutingError())
-	monitor := databasemonitor.NewModule(module.Runtime{DB: router}, databasemonitor.Config{
+	runtime := appenv.NewRuntime(appenv.NewIdentity("", ""), appenv.WithDatabase(router))
+	monitor := databasemonitor.NewModule(runtime, databasemonitor.Config{
 		Interval: time.Hour, Timeout: time.Second, StaleAfter: 2 * time.Hour,
 	})
 	require.NoError(t, router.RegisterQueryObserver(monitor))
@@ -81,7 +84,7 @@ func TestDatasourceMetricsIncludeNamedPoolState(t *testing.T) {
 	require.NoError(t, router.Write().Exec("SELECT 1").Error)
 	t.Cleanup(func() { require.NoError(t, monitor.Stop(context.Background())) })
 
-	m := NewModule(module.Runtime{DB: router}, Config{})
+	m := NewModule(runtime, Config{})
 	services := module.NewServices()
 	require.NoError(t, module.Provide[databasemonitor.Monitor](services, monitor))
 	require.NoError(t, services.Seal())
@@ -114,4 +117,23 @@ func TestDatasourceMetricsIncludeNamedPoolState(t *testing.T) {
 	assert.Contains(t, body, `database_sql_concurrent_max{datasource="primary",operation="SELECT"} 1`)
 	assert.Contains(t, body, `database_sql_rows_total{datasource="primary",operation="SELECT"}`)
 	assert.Contains(t, body, `database_sql_max_rows{datasource="primary",operation="SELECT"}`)
+}
+
+func TestModuleConfigurationAndCollectorRegistration(t *testing.T) {
+	m := NewModule(appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0")), Config{
+		Config: module.Config{Enabled: true},
+	})
+	assert.True(t, m.Enabled())
+	require.NoError(t, m.RegisterCollector(nil))
+
+	counter := prometheus.NewCounter(prometheus.CounterOpts{Name: "module_registration_test_total"})
+	require.NoError(t, m.RegisterCollector(counter))
+	require.NoError(t, m.RegisterCollector(counter), "duplicate collector registration is idempotent")
+
+	services := module.NewServices()
+	require.NoError(t, services.Seal())
+	require.NoError(t, m.InjectServices(services), "the optional database monitor may be absent")
+
+	var nilModule *Module
+	require.NoError(t, nilModule.RegisterCollector(counter))
 }

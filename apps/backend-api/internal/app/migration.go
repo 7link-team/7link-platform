@@ -9,6 +9,7 @@ import (
 	audit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/dlock"
 	"7link.com/platform/internal/infra/wuid"
+	"7link.com/platform/pkg/appenv"
 	configx "7link.com/platform/pkg/config"
 	goosex "7link.com/platform/pkg/extension/goose"
 	"7link.com/platform/pkg/module"
@@ -72,7 +73,7 @@ func RunMigrations(ctx context.Context, config MigrationConfig) ([]MigrationRepo
 	if db == nil {
 		return nil, errors.New("migration: writable database is not configured")
 	}
-	rt := module.Runtime{DB: router}
+	rt := appenv.NewRuntime(appenv.NewIdentity("", ""), appenv.WithDatabase(router))
 	modules := []module.Module{
 		dlock.NewModule(rt),
 		wuid.NewModule(rt),

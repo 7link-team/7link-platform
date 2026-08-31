@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"7link.com/platform/pkg/appenv"
 	goosex "7link.com/platform/pkg/extension/goose"
 	humax "7link.com/platform/pkg/extension/huma"
 	"7link.com/platform/pkg/module"
@@ -19,7 +20,7 @@ func TestModuleReturnsJSONAndRegistersOpenAPI(t *testing.T) {
 	reports := []Report{{Module: "users", Status: goosex.Status{State: goosex.StatePending}}}
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
-	m := NewModule(Config{})
+	m := NewModule(appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0")), Config{})
 	services := module.NewServices()
 	require.NoError(t, module.Provide[Inspector](services, func(context.Context) ([]Report, error) { return reports, nil }))
 	require.NoError(t, services.Seal())
@@ -46,7 +47,8 @@ func TestModuleReturnsJSONAndRegistersOpenAPI(t *testing.T) {
 func TestModuleHidesInspectionErrors(t *testing.T) {
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
-	m := NewModule(Config{})
+	rt := appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0"))
+	m := NewModule(rt, Config{})
 	services := module.NewServices()
 	require.NoError(t, module.Provide[Inspector](services, func(context.Context) ([]Report, error) {
 		return nil, errors.New("database secret")
@@ -61,7 +63,7 @@ func TestModuleHidesInspectionErrors(t *testing.T) {
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, Path, nil))
 	assert.Equal(t, http.StatusServiceUnavailable, response.Code)
 	assert.NotContains(t, response.Body.String(), "database secret")
-	assert.EqualError(t, NewModule(Config{}).RegisterHTTP(t.Context(), nil),
+	assert.EqualError(t, NewModule(rt, Config{}).RegisterHTTP(t.Context(), nil),
 		"register migration status: inspector is unavailable")
 }
 

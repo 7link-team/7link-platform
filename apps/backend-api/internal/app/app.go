@@ -9,8 +9,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"7link.com/platform/pkg/appenv"
 	configx "7link.com/platform/pkg/config"
-	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/module"
 	"google.golang.org/grpc"
 )
@@ -19,8 +19,8 @@ type App struct {
 	// config is the parsed configuration handed to Run.
 	config AppConfig
 
-	// Db owns the application's primary/replica GORM connection pools.
-	Db *gormx.DatasourceRouter
+	// runtime is the single application-lifetime object shared by modules.
+	runtime *appenv.Runtime
 
 	// modules is the lifecycle container for the application's modules.
 	// bootstrap registers the bill of materials; the registry owns activation,

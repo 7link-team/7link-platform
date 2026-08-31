@@ -131,6 +131,7 @@ type Audit struct {
 	Database        AuditDatabase `mapstructure:"database" group:"database"`
 	RecordReads     bool          `mapstructure:"record_reads" description:"record read-only operations" default:"false"`
 	RecordStreams   bool          `mapstructure:"record_streams" description:"record WebSocket and SSE sessions" default:"true"`
+	CaptureBodies   bool          `mapstructure:"capture_bodies" description:"capture redacted JSON request and error response bodies" default:"false"`
 	MaxBodyBytes    int           `mapstructure:"max_body_bytes" description:"maximum captured request or response body size in bytes" default:"8192"`
 	SensitiveFields []string      `mapstructure:"sensitive_fields" description:"additional JSON field names to redact" default:"[]"`
 	SkipRoutes      []string      `mapstructure:"skip_routes" description:"additional request path prefixes excluded from auditing" default:"[]"`

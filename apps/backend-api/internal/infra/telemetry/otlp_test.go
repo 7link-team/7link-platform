@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"7link.com/platform/pkg/module"
+	"7link.com/platform/pkg/appenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -13,7 +13,7 @@ import (
 func TestNewOTLPModuleSupportsConfiguredTransports(t *testing.T) {
 	for _, protocol := range []string{OTLPProtocolGRPC, OTLPProtocolHTTP} {
 		t.Run(protocol, func(t *testing.T) {
-			module := NewModule(module.Runtime{Name: "test", Version: "1.0.0"}, WithConfig(Config{OTLP: OTLPConfig{
+			module := NewModule(appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0")), WithConfig(Config{OTLP: OTLPConfig{
 				Enabled:  true,
 				Protocol: protocol,
 				Endpoint: "127.0.0.1:4317",
@@ -28,18 +28,18 @@ func TestNewOTLPModuleSupportsConfiguredTransports(t *testing.T) {
 }
 
 func TestNewOTLPModuleRejectsUnknownProtocol(t *testing.T) {
-	module := NewModule(module.Runtime{Name: "test", Version: "1.0.0"}, WithConfig(Config{OTLP: OTLPConfig{Enabled: true, Protocol: "zipkin"}}))
+	module := NewModule(appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0")), WithConfig(Config{OTLP: OTLPConfig{Enabled: true, Protocol: "zipkin"}}))
 	err := module.Initialize(t.Context())
 	assert.EqualError(t, err, `otel: unsupported OTLP protocol "zipkin"`)
 	require.NoError(t, module.Deinitialize(t.Context()))
 }
 
 func TestOTLPValidationRunsOnlyWhenExporterIsEnabled(t *testing.T) {
-	disabled := NewModule(module.Runtime{Name: "test", Version: "1.0.0"}, WithConfig(Config{OTLP: OTLPConfig{Protocol: "invalid"}}))
+	disabled := NewModule(appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0")), WithConfig(Config{OTLP: OTLPConfig{Protocol: "invalid"}}))
 	require.NoError(t, disabled.Initialize(t.Context()))
 	require.NoError(t, disabled.Deinitialize(t.Context()))
 
-	enabled := NewModule(module.Runtime{Name: "test", Version: "1.0.0"}, WithConfig(Config{OTLP: OTLPConfig{
+	enabled := NewModule(appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0")), WithConfig(Config{OTLP: OTLPConfig{
 		Enabled: true, Protocol: OTLPProtocolGRPC, Timeout: -time.Second,
 	}}))
 	assert.EqualError(t, enabled.Initialize(t.Context()), "otel: OTLP timeout cannot be negative: -1s")

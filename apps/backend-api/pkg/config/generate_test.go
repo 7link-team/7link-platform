@@ -25,6 +25,7 @@ type genSample struct {
 	Sources    map[string]genInner `mapstructure:"sources" mapkey:"<srckey>"`
 	Tags       map[string]string   `mapstructure:"tags"` // scalar-valued map
 	Secret     string              `mapstructure:"secret" hidden:"true"`
+	Deprecated string              `mapstructure:"deprecated" deprecated:"use name"`
 	unexported int                 //nolint:unused
 	NoTag      string
 }
@@ -50,6 +51,7 @@ func TestGenerateYAML_OmitsHiddenAndUntagged(t *testing.T) {
 	require.NoError(t, err)
 	s := string(data)
 	assert.NotContains(t, s, "secret", "hidden fields are omitted")
+	assert.NotContains(t, s, "deprecated", "deprecated fields are omitted")
 	assert.NotContains(t, s, "NoTag", "fields without a mapstructure tag are omitted")
 }
 

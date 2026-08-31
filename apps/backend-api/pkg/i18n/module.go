@@ -1,17 +1,22 @@
 package i18n
 
-import "context"
+import (
+	"context"
+
+	"7link.com/platform/pkg/appenv"
+)
 
 const Name = "i18n"
 
 // Module initializes the empty application translation registry before owning
 // modules register their namespaced locale bundles.
 type Module struct {
+	runtime  *appenv.Runtime
 	fallback string
 }
 
-func NewModule(fallback string) *Module {
-	return &Module{fallback: fallback}
+func NewModule(rt *appenv.Runtime, fallback string) *Module {
+	return &Module{runtime: rt, fallback: fallback}
 }
 
 func (*Module) ModuleName() string { return Name }

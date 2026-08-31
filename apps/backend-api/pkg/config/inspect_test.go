@@ -20,6 +20,7 @@ func TestInspectUsesMapstructureShapeAndRedactsSecrets(t *testing.T) {
 		Timeout  time.Duration     `mapstructure:"timeout"`
 		Nested   nested            `mapstructure:"nested"`
 		Hidden   string            `mapstructure:"hidden" hidden:"true"`
+		Legacy   string            `mapstructure:"legacy" deprecated:"use name"`
 		Internal string            `mapstructure:"-"`
 	}
 
@@ -30,6 +31,7 @@ func TestInspectUsesMapstructureShapeAndRedactsSecrets(t *testing.T) {
 		Timeout: 10 * time.Second,
 		Nested:  nested{Enabled: true},
 		Hidden:  "hidden",
+		Legacy:  "legacy",
 	})
 	require.NoError(t, err)
 	assert.Equal(t, map[string]any{

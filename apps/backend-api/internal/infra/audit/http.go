@@ -13,9 +13,9 @@ import (
 )
 
 // HTTPMiddleware audits every non-skipped HTTP request. Read operations are
-// skipped unless record_reads is enabled; write operations capture their JSON
-// request body (redacted, size-capped) and, on failure, a safe error-response
-// body. Oversized or malformed JSON is omitted. WebSocket upgrades and
+// skipped unless record_reads is enabled. When capture_bodies is explicitly
+// enabled, write operations capture their JSON request body (redacted and
+// size-capped) and, on failure, a safe error-response body. WebSocket upgrades and
 // Server-Sent Events are audited as sessions
 // (established/closed) without per-message bodies.
 //
@@ -59,22 +59,26 @@ func (m *Module) HTTPMiddleware(next http.Handler) http.Handler {
 		}
 		ctx := withInflight(r.Context(), entry)
 		r = r.WithContext(ctx)
+		var requestCounter *countingReadCloser
 
 		// Request body capture: only for writes, never for streams, only for
 		// JSON content types. Bodies known to be oversized are left untouched;
 		// chunked bodies are probed and restored so the handler sees every byte.
-		if !requestStream && access == AccessWrite && isJSONContentType(r.Header.Get("Content-Type")) {
+		if m.captureBodies() && !requestStream && access == AccessWrite && isJSONContentType(r.Header.Get("Content-Type")) {
 			raw, size, limited := captureRequestBody(r, m.maxBodyBytes())
 			entry.reqBody = raw
 			entry.reqSize = size
 			entry.reqLimited = limited
+		} else if !m.captureBodies() && !requestStream && access == AccessWrite && r.Body != nil && r.Body != http.NoBody {
+			requestCounter = &countingReadCloser{ReadCloser: r.Body}
+			r.Body = requestCounter
 		}
 
 		// Request-declared streams do not capture response bodies. The wrapper
 		// still tracks status and preserves only the optional interfaces exposed
 		// by the underlying writer.
 		responseLimit := m.maxBodyBytes()
-		if requestStream {
+		if requestStream || !m.captureBodies() {
 			responseLimit = 0
 		}
 		wrapped, recorder := newResponseRecorder(w, responseLimit)
@@ -82,6 +86,9 @@ func (m *Module) HTTPMiddleware(next http.Handler) http.Handler {
 
 		started := time.Now()
 		next.ServeHTTP(w, r)
+		if requestCounter != nil {
+			entry.reqSize = requestCounter.size
+		}
 		entry.mu.Lock()
 		entry.event.DurationMS = float64(time.Since(started).Nanoseconds()) / 1e6
 		entry.mu.Unlock()
@@ -160,12 +167,26 @@ func (m *Module) finalizeHTTP(
 			event.Response = Payload{Size: recorder.size, Omitted: OmittedSuccessSummary}
 		}
 	} else if status >= 400 {
-		event.Response = Payload{Size: recorder.size}
+		omitted := OmittedNone
+		if !m.captureBodies() && recorder.size > 0 {
+			omitted = OmittedCaptureDisabled
+		}
+		event.Response = Payload{Size: recorder.size, Omitted: omitted}
 	} else {
 		event.Response = Payload{Size: recorder.size, Omitted: OmittedSuccessSummary}
 	}
 
-	if entry.reqLimited {
+	if !m.captureBodies() && event.Access == AccessWrite {
+		omitted := OmittedNone
+		if r.ContentLength != 0 {
+			omitted = OmittedCaptureDisabled
+		}
+		size := max(r.ContentLength, int64(0))
+		if r.ContentLength < 0 {
+			size = entry.reqSize
+		}
+		event.Request = Payload{Size: size, Omitted: omitted}
+	} else if entry.reqLimited {
 		event.Request = Payload{Size: entry.reqSize, Truncated: true, Omitted: OmittedTooLarge}
 	} else if entry.reqBody != nil {
 		if body, truncated, err := m.redactAndTruncate(entry.reqBody); err != nil {
@@ -233,6 +254,17 @@ func captureRequestBody(r *http.Request, max int) (raw []byte, size int64, limit
 type restoredRequestBody struct {
 	io.Reader
 	io.Closer
+}
+
+type countingReadCloser struct {
+	io.ReadCloser
+	size int64
+}
+
+func (body *countingReadCloser) Read(buffer []byte) (int, error) {
+	count, err := body.ReadCloser.Read(buffer)
+	body.size += int64(count)
+	return count, err
 }
 
 // responseRecorder captures the status, size, and (capped) body of a response

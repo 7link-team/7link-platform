@@ -3,22 +3,27 @@ package audit
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"strings"
 
 	"7link.com/platform/internal/infra/guid"
-	gormx "7link.com/platform/pkg/extension/gorm"
+	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/module"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 const Name = "audit"
 
+var ErrDatabaseSinkUnavailable = errors.New("audit: configured database sink is unavailable")
+
 // Module owns the audit pipeline and exposes it to the application service
 // registry. The module is always registered so dependent modules can resolve
 // the Recorder contract; Config.Enabled controls whether automatic capture and
 // persistence are active.
 type Module struct {
+	runtime    *appenv.Runtime
 	cfg        Config
 	recorder   *AsyncRecorder
 	redactor   *redactor
@@ -66,6 +71,7 @@ var (
 	_ module.Depender        = (*Module)(nil)
 	_ module.ServiceProvider = (*Module)(nil)
 	_ module.ServiceInjector = (*Module)(nil)
+	_ module.Initializer     = (*Module)(nil)
 	_ module.Starter         = (*Module)(nil)
 	_ module.Stopper         = (*Module)(nil)
 )
@@ -74,23 +80,18 @@ var (
 // datasource are taken from the shared runtime; the gorm sink is installed only
 // when Config.Database.Enabled and a writer exist. The slog sink is always
 // installed.
-func NewModule(rt module.Runtime, cfg Config, options ...ModuleOption) *Module {
+func NewModule(rt *appenv.Runtime, cfg Config, options ...ModuleOption) *Module {
 	cfg = normalizeConfig(cfg)
-	var db gormx.Writer
-	if router, ok := rt.DB.(*gormx.DatasourceRouter); ok {
-		db = router
-	}
 	module := &Module{
+		runtime:    rt,
 		cfg:        cfg,
 		redactor:   newRedactor(cfg.SensitiveFields),
 		skipRoutes: append([]string(nil), cfg.SkipRoutes...),
 	}
 
 	module.sinks = append(module.sinks, NewSlogSink())
-	if cfg.Database.Enabled && db != nil {
-		if gormDB := db.Write(); gormDB != nil {
-			module.sinks = append(module.sinks, NewGormSink(gormDB))
-		}
+	if cfg.Database.Enabled && rt.Database() != nil {
+		module.sinks = append(module.sinks, newRoutedGormSink(rt.Database()))
 	}
 	for _, option := range options {
 		if option != nil {
@@ -99,7 +100,8 @@ func NewModule(rt module.Runtime, cfg Config, options ...ModuleOption) *Module {
 	}
 
 	instance := instanceID()
-	module.recorder = NewAsyncRecorder(rt.Name, rt.Version, instance, RecorderConfig{
+	identity := rt.Identity()
+	module.recorder = NewAsyncRecorder(identity.Name(), identity.Version(), instance, RecorderConfig{
 		Enabled:       cfg.Enabled,
 		QueueSize:     cfg.QueueSize,
 		BatchSize:     cfg.BatchSize,
@@ -114,6 +116,26 @@ func NewModule(rt module.Runtime, cfg Config, options ...ModuleOption) *Module {
 func (*Module) ModuleName() string { return Name }
 
 func (*Module) ModuleDependencies() []string { return []string{guid.Name} }
+
+// Initialize validates an explicitly requested durable audit sink after
+// migrations have run. A configuration that promises database audit records
+// must not silently degrade to process logs.
+func (m *Module) Initialize(context.Context) error {
+	if !m.cfg.Enabled || !m.cfg.Database.Enabled {
+		return nil
+	}
+	if m.runtime == nil || m.runtime.Database() == nil {
+		return ErrDatabaseSinkUnavailable
+	}
+	db := m.runtime.Database().Write()
+	if db == nil {
+		return ErrDatabaseSinkUnavailable
+	}
+	if !db.Migrator().HasTable(&OperationLog{}) {
+		return fmt.Errorf("%w: table %s does not exist", ErrDatabaseSinkUnavailable, operationLogsTable)
+	}
+	return nil
+}
 
 // ProvideServices exposes the Recorder contract to dependent modules.
 func (m *Module) ProvideServices(services *module.Services) error {
@@ -165,6 +187,7 @@ func (m *Module) Collector() prometheus.Collector {
 func (m *Module) enabled() bool       { return m.cfg.Enabled }
 func (m *Module) recordReads() bool   { return m.cfg.RecordReads }
 func (m *Module) recordStreams() bool { return m.cfg.RecordStreams }
+func (m *Module) captureBodies() bool { return m.cfg.CaptureBodies }
 
 func (m *Module) maxBodyBytes() int {
 	if m.cfg.MaxBodyBytes < 0 {

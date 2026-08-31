@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"7link.com/platform/internal/infra/migrationstatus"
 	healthservice "7link.com/platform/internal/infra/health/service"
+	"7link.com/platform/internal/infra/migrationstatus"
 	"7link.com/platform/pkg/module"
 )
 
@@ -25,7 +25,14 @@ func (app *App) provideCrossCutting(services *module.Services) error {
 // is provided as the migration-status module's inspector (lazy, evaluated per
 // request).
 func (app *App) migrationInspector(ctx context.Context) ([]migrationstatus.Report, error) {
-	reports, err := runModuleMigrations(ctx, app.Db.Write(), app.modules.Modules(), MigrationConfig{
+	if app.runtime == nil || app.runtime.Database() == nil {
+		return nil, errors.New("migration: writable database is not configured")
+	}
+	writer := app.runtime.Database().Write()
+	if writer == nil {
+		return nil, errors.New("migration: writable database is not configured")
+	}
+	reports, err := runModuleMigrations(ctx, writer, app.modules.Modules(), MigrationConfig{
 		Action: MigrationStatus,
 		To:     -1,
 	})

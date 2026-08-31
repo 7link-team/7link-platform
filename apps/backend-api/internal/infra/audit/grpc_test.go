@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/infra/telemetry"
-	"7link.com/platform/pkg/module"
+	"7link.com/platform/pkg/appenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -22,6 +22,7 @@ import (
 func grpcModuleConfig() Config {
 	return Config{
 		Enabled:       true,
+		CaptureBodies: true,
 		BatchSize:     1,
 		FlushInterval: time.Millisecond,
 		FlushTimeout:  time.Second,
@@ -70,6 +71,22 @@ func TestUnaryServerInterceptorRecordsWrite(t *testing.T) {
 	assert.Contains(t, event.Request.Body, "[REDACTED]")
 	// Success response is summary-only for gRPC.
 	assert.Equal(t, OmittedSuccessSummary, event.Response.Omitted)
+}
+
+func TestUnaryServerInterceptorDoesNotCaptureBodyByDefault(t *testing.T) {
+	config := grpcModuleConfig()
+	config.CaptureBodies = false
+	module, sink := newTestModule(t, config)
+	info := &grpc.UnaryServerInfo{FullMethod: "/order.v1.OrderService/CreateOrder"}
+	_, err := module.UnaryServerInterceptor(t.Context(), newStructRequest(t), info, func(_ context.Context, _ any) (any, error) {
+		return newStructRequest(t), nil
+	})
+	require.NoError(t, err)
+	eventually(t, func() bool { return sink.count() == 1 })
+	event := sink.snapshot()[0]
+	assert.Empty(t, event.Request.Body)
+	assert.Greater(t, event.Request.Size, int64(0))
+	assert.Equal(t, OmittedCaptureDisabled, event.Request.Omitted)
 }
 
 func TestUnaryServerInterceptorRecordsFailure(t *testing.T) {
@@ -180,7 +197,8 @@ func (echoService) Echo(_ context.Context, request *structpb.Struct) (*structpb.
 // otelgrpc behavior changes.
 func TestGRPCAuditEventCarriesTraceIDs(t *testing.T) {
 	auditModule, sink := newTestModule(t, grpcModuleConfig())
-	telemetryModule := telemetry.NewModule(module.Runtime{Name: "test-api", Version: "1.0.0"})
+	telemetryModule := telemetry.NewModule(appenv.NewRuntime(appenv.NewIdentity("test-api", "1.0.0")))
+	require.NoError(t, telemetryModule.Initialize(t.Context()))
 	t.Cleanup(func() { _ = telemetryModule.Deinitialize(t.Context()) })
 
 	lis := bufconn.Listen(1024 * 1024)

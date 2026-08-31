@@ -1,7 +1,10 @@
 package app
 
 import (
+	"errors"
 	"net"
+	"os"
+	"syscall"
 	"testing"
 	"time"
 
@@ -32,6 +35,52 @@ func TestRunShutsDownWhenHTTPServerCannotBind(t *testing.T) {
 
 	err = (&App{}).Run(config)
 	assert.ErrorContains(t, err, "http listen")
+}
+
+func TestRunShutsDownWhenGRPCServerCannotBind(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+	config := validTestAppConfig()
+	config.GrpcServer.Port = listener.Addr().(*net.TCPAddr).Port
+	err = (&App{}).Run(config)
+	assert.ErrorContains(t, err, "grpc listen")
+}
+
+func TestAwaitShutdownPropagatesServeFailureAndCleansUp(t *testing.T) {
+	want := errors.New("serve failed")
+	app := &App{
+		config:   AppConfig{Shutdown: ShutdownConfig{Graceful: false, Timeout: time.Second}},
+		serveErr: make(chan error, 1),
+	}
+	app.serveErr <- want
+	assert.ErrorIs(t, app.awaitShutdown(), want)
+}
+
+func TestAwaitShutdownHandlesProcessSignal(t *testing.T) {
+	for _, graceful := range []bool{true, false} {
+		t.Run(map[bool]string{true: "graceful", false: "immediate"}[graceful], func(t *testing.T) {
+			app := &App{
+				config:   AppConfig{Shutdown: ShutdownConfig{Graceful: graceful, Timeout: time.Second}},
+				serveErr: make(chan error),
+			}
+			go func() {
+				time.Sleep(20 * time.Millisecond)
+				process, err := os.FindProcess(os.Getpid())
+				if err == nil {
+					_ = process.Signal(syscall.SIGTERM)
+				}
+			}()
+			require.NoError(t, app.awaitShutdown())
+		})
+	}
+}
+
+func TestAddModulePropagatesRegistryValidation(t *testing.T) {
+	app := &App{}
+	first := &namedHealthModule{name: "same"}
+	require.NoError(t, app.addModule(first))
+	assert.ErrorContains(t, app.addModule(&namedHealthModule{name: "same"}), "duplicate module")
 }
 
 func validTestAppConfig() AppConfig {

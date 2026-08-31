@@ -9,6 +9,7 @@ import (
 	healthhttp "7link.com/platform/internal/infra/health/http"
 	healthi18n "7link.com/platform/internal/infra/health/i18n"
 	"7link.com/platform/internal/infra/health/service"
+	"7link.com/platform/pkg/appenv"
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
@@ -20,6 +21,7 @@ var ErrNotReady = errors.New("health: application is not ready")
 const Name = healthi18n.Namespace
 
 type HealthModule struct {
+	runtime *appenv.Runtime
 	service *service.Service
 	http    *healthhttp.Handler
 	grpc    *healthgrpc.Server
@@ -44,8 +46,8 @@ var (
 
 // NewModule builds the health module. The checker provider is resolved via
 // service injection; the module is not operational until InjectServices runs.
-func NewModule() *HealthModule {
-	return &HealthModule{}
+func NewModule(rt *appenv.Runtime) *HealthModule {
+	return &HealthModule{runtime: rt}
 }
 
 // InjectServices resolves the app-wide checker provider (the lifecycle's

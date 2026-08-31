@@ -10,6 +10,7 @@ import (
 	guidi18n "7link.com/platform/internal/infra/guid/i18n"
 	guidv1 "7link.com/platform/internal/infra/guid/proto/gen/go/guid/v1"
 	"7link.com/platform/internal/infra/wuid"
+	"7link.com/platform/pkg/appenv"
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
@@ -21,6 +22,7 @@ var ErrUnavailable = errors.New("guid: generator unavailable")
 const Name = guidi18n.Namespace
 
 type Module struct {
+	runtime   *appenv.Runtime
 	source    wuid.Source
 	generator *Generator
 	active    atomic.Bool
@@ -47,8 +49,8 @@ var (
 	_ Source                 = (*Module)(nil)
 )
 
-func NewModule() *Module {
-	return &Module{}
+func NewModule(rt *appenv.Runtime) *Module {
+	return &Module{runtime: rt}
 }
 
 func (m *Module) ProvideServices(services *module.Services) error {

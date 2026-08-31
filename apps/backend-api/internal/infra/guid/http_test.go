@@ -44,3 +44,10 @@ func TestHTTPEndpoints(t *testing.T) {
 	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/guid/0").Code)
 	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/guid/10001").Code)
 }
+
+func TestHTTPEndpointsHideGeneratorFailures(t *testing.T) {
+	_, api := humatest.New(t)
+	registerHTTP(api, func() (int64, error) { return 0, assert.AnError })
+	assert.Equal(t, http.StatusServiceUnavailable, api.Get("/guid").Code)
+	assert.Equal(t, http.StatusServiceUnavailable, api.Get("/guid/2").Code)
+}
