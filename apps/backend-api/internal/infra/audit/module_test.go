@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/internal/infra/audit/model"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	gormx "7link.com/platform/pkg/extension/gorm"
@@ -227,7 +228,7 @@ func TestModuleDatabaseSinkFailsInitializationWithoutMigration(t *testing.T) {
 	auditModule := NewModule(appenv.NewRuntime(appenv.NewIdentity("", ""), appenv.WithDatabase(router)), config)
 	err = auditModule.Initialize(t.Context())
 	require.ErrorIs(t, err, ErrDatabaseSinkUnavailable)
-	assert.ErrorContains(t, err, operationLogsTable)
+	assert.ErrorContains(t, err, model.OperationLog{}.TableName())
 }
 
 func TestMaxBodyBytesNegativeMeansUnlimitedCapture(t *testing.T) {

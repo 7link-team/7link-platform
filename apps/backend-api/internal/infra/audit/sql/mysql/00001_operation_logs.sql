@@ -1,5 +1,5 @@
 -- +goose Up
-CREATE TABLE operation_logs (
+CREATE TABLE {{.Prefix}}operation_logs (
     id                 BIGINT       NOT NULL,
     occurred_at        DATETIME(3)  NOT NULL,
     duration_ms        DOUBLE,
@@ -49,4 +49,4 @@ CREATE TABLE operation_logs (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
 -- +goose Down
-DROP TABLE operation_logs;
+DROP TABLE {{.Prefix}}operation_logs;

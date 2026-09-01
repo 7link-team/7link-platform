@@ -8,95 +8,43 @@ import (
 	"maps"
 	"time"
 
+	"7link.com/platform/internal/infra/audit/model"
+	"7link.com/platform/internal/infra/audit/query"
 	"7link.com/platform/internal/infra/guid"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
 
-// operationLogsTable is the table backing the gorm sink. It must match the
-// goose migration in sql/{sqlite,mysql,postgres}/00001_operation_logs.sql.
-const operationLogsTable = "operation_logs"
-
 var ErrInvalidEventID = errors.New("audit: invalid database event ID")
 
-// OperationLog is the persisted form of an audit Event. Payloads are stored
-// flat so the table can be queried without JSON extraction.
-type OperationLog struct {
-	// ID is the platform snowflake ID (guid.ID), consistent with every business
-	// table primary key. Stored as BIGINT; the event's decimal-string form is
-	// parsed back into it by fromEvent.
-	ID         guid.ID   `gorm:"primaryKey" json:"id"`
-	OccurredAt time.Time `gorm:"not null" json:"occurred_at"`
-	DurationMS float64   `json:"duration_ms"`
-
-	Entry     string `gorm:"size:32;not null" json:"entry"`
-	Operation string `gorm:"size:255;not null" json:"operation"`
-	Access    string `gorm:"size:16;not null" json:"access"`
-	Action    string `gorm:"size:128" json:"action"`
-
-	ResourceType string  `gorm:"size:128" json:"resource_type"`
-	ResourceID   guid.ID `json:"resource_id"`
-
-	ActorID   guid.ID `json:"actor_id"`
-	ActorType string  `gorm:"size:32" json:"actor_type"`
-	ActorName string  `gorm:"size:255" json:"actor_name"`
-	TenantID  guid.ID `json:"tenant_id"`
-
-	ClientIP  string `gorm:"size:64" json:"client_ip"`
-	UserAgent string `gorm:"size:512" json:"user_agent"`
-	RequestID string `gorm:"size:128" json:"request_id"`
-	SessionID string `gorm:"size:128" json:"session_id"`
-	Host      string `gorm:"size:255" json:"host"`
-
-	TargetMethod string `gorm:"size:32" json:"target_method"`
-	TargetRoute  string `gorm:"size:512" json:"target_route"`
-
-	Outcome    string `gorm:"size:16;not null" json:"outcome"`
-	StatusCode int    `json:"status_code"`
-	Code       int    `json:"code"`
-	Message    string `gorm:"size:512" json:"message"`
-	Error      string `gorm:"type:text" json:"error"`
-
-	RequestBody      string `gorm:"type:text" json:"request_body"`
-	RequestSize      int64  `json:"request_size"`
-	RequestTruncated bool   `json:"request_truncated"`
-	RequestOmitted   string `gorm:"size:64" json:"request_omitted"`
-
-	ResponseBody      string `gorm:"type:text" json:"response_body"`
-	ResponseSize      int64  `json:"response_size"`
-	ResponseTruncated bool   `json:"response_truncated"`
-	ResponseOmitted   string `gorm:"size:64" json:"response_omitted"`
-
-	TraceID  string `gorm:"size:64" json:"trace_id"`
-	SpanID   string `gorm:"size:32" json:"span_id"`
-	Service  string `gorm:"size:128" json:"service"`
-	Version  string `gorm:"size:64" json:"version"`
-	Instance string `gorm:"size:128" json:"instance"`
-
-	Metadata  string    `gorm:"type:text" json:"metadata"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-func (OperationLog) TableName() string { return operationLogsTable }
+// OperationLog is the persisted form of an audit Event. It lives in the model
+// package so the generated query code can reference it; the alias keeps the
+// name audit code has always used.
+type OperationLog = model.OperationLog
 
 // GormSink persists audit events to the operation_logs table in batches wrapped
 // in a single transaction.
 type GormSink struct {
 	db           *gorm.DB
 	writerSource gormx.Writer
+
+	// prefix is the deployment's table prefix. OperationLog.TableName is a
+	// static method with no view of configuration, so the sink binds the
+	// generated query to the prefixed table on every batch instead.
+	prefix string
 }
 
 // NewGormSink returns a sink writing to db. The caller owns the migration; the
 // sink does not auto-migrate.
-func NewGormSink(db *gorm.DB) *GormSink {
-	return &GormSink{db: db}
+func NewGormSink(db *gorm.DB, prefix string) *GormSink {
+	return &GormSink{db: db, prefix: prefix}
 }
 
 // newRoutedGormSink retains the router capability and resolves a writer for
 // every batch. It avoids pinning audit persistence to whichever writer happened
 // to be selected during module construction.
-func newRoutedGormSink(writerSource gormx.Writer) *GormSink {
-	return &GormSink{writerSource: writerSource}
+func newRoutedGormSink(writerSource gormx.Writer, prefix string) *GormSink {
+	return &GormSink{writerSource: writerSource, prefix: prefix}
 }
 
 func (sink *GormSink) Write(ctx context.Context, events []Event) error {
@@ -121,8 +69,18 @@ func (sink *GormSink) Write(ctx context.Context, events []Event) error {
 		rows[index] = fromEvent(event)
 	}
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return tx.Create(&rows).Error
+		return query.Bind(tx, sink.prefix).WithContext(ctx).Create(rowPointers(rows)...)
 	})
+}
+
+// rowPointers adapts the batch to the generated Create signature, which takes
+// pointers so it can write back generated values.
+func rowPointers(rows []OperationLog) []*model.OperationLog {
+	pointers := make([]*model.OperationLog, len(rows))
+	for index := range rows {
+		pointers[index] = &rows[index]
+	}
+	return pointers
 }
 
 // parseID converts a decimal-string snowflake ID to its guid.ID form. An empty

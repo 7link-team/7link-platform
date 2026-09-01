@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/internal/infra/dlock/query"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
@@ -238,10 +239,11 @@ func TestAutoRefreshDetectsTakeover(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = lock.Unlock(context.Background()) })
 
-	tx := db.WithContext(t.Context()).Model(&lockRow{}).
-		Where("name = ?", "taken").
-		UpdateColumn("owner", "another-owner")
-	require.NoError(t, tx.Error)
+	locks := query.Use(db).LockRow
+	_, err = locks.WithContext(t.Context()).
+		Where(locks.Name.Eq("taken")).
+		UpdateSimple(locks.Owner.Value("another-owner"))
+	require.NoError(t, err)
 
 	select {
 	case err := <-lost:

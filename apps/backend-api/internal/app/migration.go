@@ -75,7 +75,7 @@ func (app *App) migrateModules(ctx context.Context, request MigrationRequest) ([
 	if app.modules == nil {
 		return nil, errors.New("migration: modules are not composed")
 	}
-	return executeModuleMigrations(ctx, app.runtime.Database().Write(), app.modules.Modules(), request)
+	return executeModuleMigrations(ctx, app.runtime.Database().Write(), app.modules.Modules(), request, app.runtime.TablePrefix())
 }
 
 func executeModuleMigrations(
@@ -83,6 +83,7 @@ func executeModuleMigrations(
 	db *gorm.DB,
 	modules []module.Module,
 	request MigrationRequest,
+	prefix string,
 ) ([]MigrationReport, error) {
 	if db == nil {
 		return nil, errors.New("migration: writable database is unavailable")
@@ -121,6 +122,9 @@ func executeModuleMigrations(
 		}
 		found = true
 		source := provider.MigrationSource()
+		// The prefix is an application-level schema property, so it is applied
+		// here rather than by each module: one injection point cannot drift.
+		source.Prefix = prefix
 		var status goosex.Status
 		var migrationErr error
 		switch action {

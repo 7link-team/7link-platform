@@ -1,5 +1,5 @@
 -- +goose Up
-CREATE TABLE worker_ids (
+CREATE TABLE {{.Prefix}}worker_ids (
     id         INT         NOT NULL PRIMARY KEY,
     token      VARCHAR(64) NOT NULL,
     expires_at BIGINT      NOT NULL,
@@ -13,4 +13,4 @@ CREATE TABLE worker_ids (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- +goose Down
-DROP TABLE worker_ids;
+DROP TABLE {{.Prefix}}worker_ids;

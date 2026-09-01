@@ -36,8 +36,9 @@ func (i Identity) Version() string { return i.version }
 // Runtime is intentionally not a registry for module or business services.
 // Those dependencies belong in module.Services as narrow interfaces.
 type Runtime struct {
-	identity Identity
-	database *gormx.DatasourceRouter
+	identity    Identity
+	database    *gormx.DatasourceRouter
+	tablePrefix string
 
 	closeOnce sync.Once
 	closeErr  error
@@ -69,6 +70,19 @@ func WithDatabase(database *gormx.DatasourceRouter) Option {
 			runtime.closers = append(runtime.closers, database.Close)
 		}
 	}
+}
+
+// WithTablePrefix installs the prefix prepended to every table this
+// application owns. It is an application-lifetime schema property, so it lives
+// beside the router rather than being threaded through each module's config.
+func WithTablePrefix(prefix string) Option {
+	return func(runtime *Runtime) { runtime.tablePrefix = prefix }
+}
+
+// TablePrefix returns the prefix every persisting module must prepend to its
+// table names. Empty means unprefixed.
+func (r *Runtime) TablePrefix() string {
+	return r.tablePrefix
 }
 
 // Identity returns an immutable copy of the application identity.

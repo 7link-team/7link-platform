@@ -20,6 +20,7 @@ import (
 	telemetry "7link.com/platform/internal/infra/telemetry"
 	"7link.com/platform/internal/infra/wuid"
 	"7link.com/platform/pkg/appenv"
+	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/extension/huma/respx"
 	slogx "7link.com/platform/pkg/extension/slog"
@@ -153,9 +154,13 @@ func (app *App) initializeRuntime(ctx context.Context) error {
 		}
 		slog.Error("one or more database datasources are unavailable", "error", err)
 	}
+	if err := goosex.ValidatePrefix(app.config.TablePrefix); err != nil {
+		return err
+	}
 	app.runtime = appenv.NewRuntime(
 		appenv.NewIdentity(app.config.Name, app.config.Version),
 		appenv.WithDatabase(router),
+		appenv.WithTablePrefix(app.config.TablePrefix),
 	)
 	return nil
 }

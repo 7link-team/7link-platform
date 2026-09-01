@@ -2,6 +2,8 @@
 // WUID environment variable or a renewable database lease.
 package wuid
 
+//go:generate go run ./dbgen
+
 import (
 	"context"
 	"errors"
@@ -12,7 +14,10 @@ import (
 	"time"
 
 	"7link.com/platform/internal/infra/dlock"
+	"7link.com/platform/internal/infra/wuid/model"
+	"7link.com/platform/internal/infra/wuid/query"
 	gormx "7link.com/platform/pkg/extension/gorm"
+	"gorm.io/gen/field"
 	"gorm.io/gorm"
 )
 
@@ -37,23 +42,9 @@ var (
 	processStarted         = time.Now()
 )
 
-type workerRow struct {
-	ID        int    `gorm:"column:id;primaryKey;autoIncrement:false"`
-	Token     string `gorm:"column:token;not null"`
-	ExpiresAt int64  `gorm:"column:expires_at;not null"`
-	OS        string `gorm:"column:os"`
-	Host      string `gorm:"column:host"`
-	IPv4Lan   string `gorm:"column:ipv4_lan"`
-	MAC       string `gorm:"column:mac"`
-	Disk      string `gorm:"column:disk"`
-	Container bool   `gorm:"column:container"`
-	KVM       bool   `gorm:"column:kvm"`
-}
-
-func (workerRow) TableName() string { return "worker_ids" }
-
 type config struct {
 	lease       time.Duration
+	tablePrefix string
 	onLost      func(error)
 	onReacquire func(uint16)
 }
@@ -66,6 +57,13 @@ func WithLease(lease time.Duration) Option {
 			config.lease = lease
 		}
 	}
+}
+
+// WithTablePrefix points this worker at a prefixed worker_ids table. It must
+// match the prefix the migrations ran with, so it comes from the shared runtime
+// rather than being set per call site.
+func WithTablePrefix(prefix string) Option {
+	return func(config *config) { config.tablePrefix = prefix }
 }
 
 func OnLost(callback func(error)) Option {
@@ -105,10 +103,11 @@ func newConfig(options ...Option) config {
 }
 
 type Worker struct {
-	db      *gorm.DB
-	nowExpr string
-	lease   time.Duration
-	static  bool
+	db          *gorm.DB
+	nowExpr     string
+	lease       time.Duration
+	tablePrefix string
+	static      bool
 
 	id    atomic.Int64
 	token atomic.Value
@@ -136,6 +135,12 @@ func (worker *Worker) Alive() bool { return worker.alive.Load() }
 // before its heartbeat starts, and a static worker never reaches the lease
 // statements; the comma-ok form keeps an unset token a no-match (and so a
 // clean errLeaseTakenOver) instead of a panic.
+// workers is the only place the worker_ids table is named for this worker, so
+// a prefixed deployment cannot end up half-applied.
+func (worker *Worker) workers() *query.WorkerRows {
+	return query.Bind(worker.db, worker.tablePrefix)
+}
+
 func (worker *Worker) leaseToken() string {
 	token, _ := worker.token.Load().(string)
 	return token
@@ -168,14 +173,15 @@ func allocate(ctx context.Context, db *gorm.DB, options ...Option) (*Worker, err
 	}
 	config := newConfig(options...)
 	nowExpr := gormx.NowMillisExpr(db.Dialector.Name())
-	id, token, err := claimUnderLock(ctx, db, config.lease, nowExpr)
+	id, token, err := claimUnderLock(ctx, db, config.lease, nowExpr, config.tablePrefix)
 	if err != nil {
 		return nil, err
 	}
 
 	worker := &Worker{
 		db: db, nowExpr: nowExpr, lease: config.lease,
-		onLost: config.onLost, onReacquire: config.onReacquire,
+		tablePrefix: config.tablePrefix,
+		onLost:      config.onLost, onReacquire: config.onReacquire,
 	}
 	worker.id.Store(int64(id))
 	worker.generation.Store(1)
@@ -194,20 +200,20 @@ func allocate(ctx context.Context, db *gorm.DB, options ...Option) (*Worker, err
 // refresh keeps a slow allocation alive past the short TTL, so the lease can be
 // bounded for crash recovery without risking expiry while it is legitimately
 // held.
-func allocLocker(db *gorm.DB) *dlock.Locker {
-	return dlock.NewLocker(db, dlock.WithTTL(allocLockTTL), dlock.WithAutoRefresh())
+func allocLocker(db *gorm.DB, prefix string) *dlock.Locker {
+	return dlock.NewLocker(db, dlock.WithTTL(allocLockTTL), dlock.WithAutoRefresh(), dlock.WithTablePrefix(prefix))
 }
 
-func claimUnderLock(ctx context.Context, db *gorm.DB, lease time.Duration, nowExpr string) (int, string, error) {
+func claimUnderLock(ctx context.Context, db *gorm.DB, lease time.Duration, nowExpr, prefix string) (int, string, error) {
 	token, err := newToken()
 	if err != nil {
 		return 0, "", fmt.Errorf("wuid: create lease token: %w", err)
 	}
-	lock, err := allocLocker(db).Lock(ctx, allocLockName)
+	lock, err := allocLocker(db, prefix).Lock(ctx, allocLockName)
 	if err != nil {
 		return 0, "", fmt.Errorf("wuid: acquire allocation lock: %w", err)
 	}
-	id, claimErr := claimID(ctx, db, token, collectSysinfo(), lease.Milliseconds(), nowExpr)
+	id, claimErr := claimID(ctx, db, token, collectSysinfo(), lease.Milliseconds(), nowExpr, prefix)
 	unlockErr := lock.Unlock(context.WithoutCancel(ctx))
 	if claimErr != nil {
 		return 0, "", errors.Join(claimErr, unlockErr)
@@ -218,51 +224,77 @@ func claimUnderLock(ctx context.Context, db *gorm.DB, lease time.Duration, nowEx
 	return id, token, nil
 }
 
-func claimID(ctx context.Context, db *gorm.DB, token string, info sysinfo, leaseMS int64, nowExpr string) (int, error) {
-	var expired workerRow
-	lookup := db.WithContext(ctx).
-		Where("expires_at < " + nowExpr).
-		Order("id ASC").
+func claimID(ctx context.Context, db *gorm.DB, token string, info sysinfo, leaseMS int64, nowExpr, prefix string) (int, error) {
+	workers := query.Bind(db, prefix)
+	// expired and deadline hold the only raw SQL left: the database clock is a
+	// function call, not a bindable value. The columns they compare and assign
+	// are the generated, compile-checked ones.
+	expiredNow := workers.ExpiresAt.LtCol(field.NewUnsafeFieldRaw(nowExpr))
+	deadline := field.NewUnsafeFieldRaw(nowExpr+" + ?", leaseMS)
+
+	reclaimable, err := workers.WithContext(ctx).
+		Where(expiredNow).
+		Order(workers.ID).
 		Limit(1).
-		Find(&expired)
-	if lookup.Error != nil {
-		return 0, lookup.Error
+		Find()
+	if err != nil {
+		return 0, err
 	}
-	if lookup.RowsAffected == 1 {
-		result := db.WithContext(ctx).Model(&workerRow{}).
-			Where("id = ?", expired.ID).
-			Where("expires_at < " + nowExpr).
-			Updates(workerValues(token, info, gorm.Expr(nowExpr+" + ?", leaseMS)))
-		if result.Error != nil {
-			return 0, result.Error
+	if len(reclaimable) == 1 {
+		id := reclaimable[0].ID
+		// Re-check expiry in the UPDATE: another allocator may have claimed this
+		// row between the read and the write.
+		info, err := workers.WithContext(ctx).
+			Where(workers.ID.Eq(id), expiredNow).
+			UpdateSimple(
+				workers.Token.Value(token),
+				workers.OS.Value(info.OS), workers.Host.Value(info.Host),
+				workers.IPv4Lan.Value(info.IPv4Lan), workers.MAC.Value(info.MAC),
+				workers.Disk.Value(info.Disk), workers.Container.Value(info.Container),
+				workers.KVM.Value(info.KVM),
+				workers.ExpiresAt.SetCol(deadline),
+			)
+		if err != nil {
+			return 0, err
 		}
-		if result.RowsAffected == 1 {
-			return expired.ID, nil
+		if info.RowsAffected == 1 {
+			return id, nil
 		}
 	}
 
-	var maxID int
-	if err := db.WithContext(ctx).Model(&workerRow{}).
-		Select("COALESCE(MAX(id), -1)").Scan(&maxID).Error; err != nil {
+	highest, err := workers.WithContext(ctx).Order(workers.ID.Desc()).Limit(1).Find()
+	if err != nil {
 		return 0, err
 	}
-	next := maxID + 1
+	next := 0
+	if len(highest) == 1 {
+		next = highest[0].ID + 1
+	}
 	if next > MaxWorkerID {
 		return 0, fmt.Errorf("wuid: worker id pool exhausted (max %d)", MaxWorkerID)
 	}
-	values := workerValues(token, info, gorm.Expr(nowExpr+" + ?", leaseMS))
-	values["id"] = next
-	if err := db.WithContext(ctx).Table((workerRow{}).TableName()).Create(values).Error; err != nil {
+	// The lease deadline is a database expression, so the row is inserted with a
+	// zero deadline and immediately given its real one. Both statements run
+	// under the allocation lock, so no other allocator can observe the gap.
+	row := workerRowFor(next, token, info)
+	if err := workers.WithContext(ctx).Create(row); err != nil {
+		return 0, err
+	}
+	if _, err := workers.WithContext(ctx).
+		Where(workers.ID.Eq(next), workers.Token.Eq(token)).
+		UpdateSimple(workers.ExpiresAt.SetCol(deadline)); err != nil {
 		return 0, err
 	}
 	return next, nil
 }
 
-func workerValues(token string, info sysinfo, expiresAt any) map[string]any {
-	return map[string]any{
-		"token": token, "expires_at": expiresAt,
-		"os": info.OS, "host": info.Host, "ipv4_lan": info.IPv4Lan,
-		"mac": info.MAC, "disk": info.Disk, "container": info.Container, "kvm": info.KVM,
+// workerRowFor builds the row for a freshly allocated ID. ExpiresAt is left at
+// zero and set by the following statement, which can name the database clock.
+func workerRowFor(id int, token string, info sysinfo) *model.WorkerRow {
+	return &model.WorkerRow{
+		ID: id, Token: token, OS: info.OS, Host: info.Host,
+		IPv4Lan: info.IPv4Lan, MAC: info.MAC, Disk: info.Disk,
+		Container: info.Container, KVM: info.KVM,
 	}
 }
 
@@ -328,21 +360,22 @@ func (worker *Worker) retryInterval() time.Duration {
 }
 
 func (worker *Worker) renew(ctx context.Context) error {
-	result := worker.db.WithContext(ctx).Model(&workerRow{}).
-		Where("id = ?", worker.ID()).
-		Where("token = ?", worker.leaseToken()).
-		UpdateColumn("expires_at", gorm.Expr(worker.nowExpr+" + ?", worker.lease.Milliseconds()))
-	if result.Error != nil {
-		return result.Error
+	workers := worker.workers()
+	info, err := workers.WithContext(ctx).
+		Where(workers.ID.Eq(int(worker.ID())), workers.Token.Eq(worker.leaseToken())).
+		UpdateSimple(workers.ExpiresAt.SetCol(
+			field.NewUnsafeFieldRaw(worker.nowExpr+" + ?", worker.lease.Milliseconds())))
+	if err != nil {
+		return err
 	}
-	if result.RowsAffected != 1 {
+	if info.RowsAffected != 1 {
 		return errLeaseTakenOver
 	}
 	return nil
 }
 
 func (worker *Worker) reacquire(ctx context.Context) error {
-	id, token, err := claimUnderLock(ctx, worker.db, worker.lease, worker.nowExpr)
+	id, token, err := claimUnderLock(ctx, worker.db, worker.lease, worker.nowExpr, worker.tablePrefix)
 	if err != nil {
 		return err
 	}
@@ -391,10 +424,11 @@ func (worker *Worker) Close(ctx context.Context) error {
 		worker.cancel()
 	}
 	worker.wg.Wait()
-	return worker.db.WithContext(ctx).Model(&workerRow{}).
-		Where("id = ?", worker.ID()).
-		Where("token = ?", worker.leaseToken()).
-		UpdateColumn("expires_at", int64(0)).Error
+	workers := worker.workers()
+	_, err := workers.WithContext(ctx).
+		Where(workers.ID.Eq(int(worker.ID())), workers.Token.Eq(worker.leaseToken())).
+		UpdateSimple(workers.ExpiresAt.Value(0))
+	return err
 }
 
 func monotonicMillis() int64 { return time.Since(processStarted).Milliseconds() }

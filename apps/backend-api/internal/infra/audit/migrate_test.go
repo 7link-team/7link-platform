@@ -3,6 +3,7 @@ package audit
 import (
 	"testing"
 
+	"7link.com/platform/internal/infra/audit/model"
 	"7link.com/platform/pkg/appenv"
 	goosex "7link.com/platform/pkg/extension/goose"
 	"github.com/stretchr/testify/assert"
@@ -32,7 +33,7 @@ func TestMigrateCreatesTable(t *testing.T) {
 }
 
 func TestOperationLogTableName(t *testing.T) {
-	assert.Equal(t, operationLogsTable, (OperationLog{}).TableName())
+	assert.Equal(t, model.OperationLog{}.TableName(), (OperationLog{}).TableName())
 }
 
 func migrateTestDatabase(t *testing.T, db *gorm.DB) {

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"7link.com/platform/internal/infra/dlock"
+	"7link.com/platform/internal/infra/wuid/model"
+	"7link.com/platform/internal/infra/wuid/query"
 	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"github.com/stretchr/testify/assert"
@@ -72,12 +74,16 @@ func TestWorkerRenewsLease(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = worker.Close(context.Background()) })
 
-	require.NoError(t, db.Model(&workerRow{}).
-		Where("id = ?", worker.ID()).UpdateColumn("expires_at", int64(0)).Error)
+	workers := query.Use(db).WorkerRow
+	_, err = workers.WithContext(t.Context()).
+		Where(workers.ID.Eq(int(worker.ID()))).
+		UpdateSimple(workers.ExpiresAt.Value(0))
+	require.NoError(t, err)
 	worker.step(t.Context())
 
-	var row workerRow
-	require.NoError(t, db.First(&row, "id = ?", worker.ID()).Error)
+	row, err := workers.WithContext(t.Context()).
+		Where(workers.ID.Eq(int(worker.ID()))).Take()
+	require.NoError(t, err)
 	assert.Positive(t, row.ExpiresAt)
 	assert.True(t, worker.Alive())
 }
@@ -90,8 +96,11 @@ func TestWorkerDeclaresLeaseLostAfterTakeover(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = worker.Close(context.Background()) })
 
-	require.NoError(t, db.Model(&workerRow{}).
-		Where("id = ?", worker.ID()).UpdateColumn("token", "replacement").Error)
+	workers := query.Use(db).WorkerRow
+	_, err = workers.WithContext(t.Context()).
+		Where(workers.ID.Eq(int(worker.ID()))).
+		UpdateSimple(workers.Token.Value("replacement"))
+	require.NoError(t, err)
 	worker.step(t.Context())
 
 	assert.False(t, worker.Alive())
@@ -144,9 +153,11 @@ func TestWorkerReacquiresExpiredWorkerID(t *testing.T) {
 	t.Cleanup(func() { _ = worker.Close(context.Background()) })
 	previousToken := worker.token.Load().(string)
 
-	require.NoError(t, db.Model(&workerRow{}).Where("id = ?", worker.ID()).Updates(map[string]any{
-		"token": "replacement", "expires_at": int64(0),
-	}).Error)
+	workers := query.Use(db).WorkerRow
+	_, err = workers.WithContext(t.Context()).
+		Where(workers.ID.Eq(int(worker.ID()))).
+		UpdateSimple(workers.Token.Value("replacement"), workers.ExpiresAt.Value(0))
+	require.NoError(t, err)
 	worker.step(t.Context())
 	require.False(t, worker.Alive())
 	worker.step(t.Context())
@@ -171,9 +182,11 @@ func TestWorkerReallocatesWhenLostWorkerIDIsStillLeased(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = worker.Close(context.Background()) })
 
-	require.NoError(t, db.Model(&workerRow{}).Where("id = ?", worker.ID()).Updates(map[string]any{
-		"token": "replacement", "expires_at": int64(1 << 62),
-	}).Error)
+	workers := query.Use(db).WorkerRow
+	_, err = workers.WithContext(t.Context()).
+		Where(workers.ID.Eq(int(worker.ID()))).
+		UpdateSimple(workers.Token.Value("replacement"), workers.ExpiresAt.Value(1<<62))
+	require.NoError(t, err)
 	worker.step(t.Context())
 	require.False(t, worker.Alive())
 	worker.step(t.Context())
@@ -239,8 +252,9 @@ func TestStaticWorkerCloseIsIdempotent(t *testing.T) {
 func TestWorkerIDPoolExhaustion(t *testing.T) {
 	t.Setenv(EnvKey, "")
 	db := newTestDB(t)
-	require.NoError(t, db.Create(&workerRow{ID: MaxWorkerID, Token: "occupied", ExpiresAt: 1 << 62}).Error)
-	_, _, err := claimUnderLock(t.Context(), db, time.Hour, gormx.NowMillisExpr(db.Dialector.Name()))
+	require.NoError(t, query.Use(db).WorkerRow.WithContext(t.Context()).
+		Create(&model.WorkerRow{ID: MaxWorkerID, Token: "occupied", ExpiresAt: 1 << 62}))
+	_, _, err := claimUnderLock(t.Context(), db, time.Hour, gormx.NowMillisExpr(db.Dialector.Name()), "")
 	assert.ErrorContains(t, err, "worker id pool exhausted")
 }
 
@@ -250,7 +264,7 @@ func TestAllocationLockLeaseIsIndependentOfWorkerLease(t *testing.T) {
 	// window must stay short and must not scale with the worker lease, which is
 	// an hour by default.
 	db := newTestDB(t)
-	lock, err := allocLocker(db).Lock(t.Context(), allocLockName)
+	lock, err := allocLocker(db, "").Lock(t.Context(), allocLockName)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = lock.Unlock(context.Background()) })
 

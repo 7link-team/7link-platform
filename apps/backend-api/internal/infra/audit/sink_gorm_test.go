@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/internal/infra/audit/model"
 	"7link.com/platform/internal/infra/guid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,7 +35,7 @@ func TestGormSinkPersistsEvents(t *testing.T) {
 	db := openTestDB(t)
 	migrateTestDatabase(t, db)
 
-	sink := NewGormSink(db)
+	sink := NewGormSink(db, "")
 	occurredAt := time.Now().UTC().Truncate(time.Millisecond)
 	event := Event{
 		ID:           "1001",
@@ -92,9 +93,9 @@ func TestGormSinkPersistsEvents(t *testing.T) {
 func TestGormSinkNilSinkAndEmptyBatch(t *testing.T) {
 	var sink *GormSink
 	require.NoError(t, sink.Write(t.Context(), []Event{{}}))
-	require.NoError(t, NewGormSink(nil).Write(t.Context(), []Event{{}}))
+	require.NoError(t, NewGormSink(nil, "").Write(t.Context(), []Event{{}}))
 	db := openTestDB(t)
-	require.NoError(t, NewGormSink(db).Write(t.Context(), nil))
+	require.NoError(t, NewGormSink(db, "").Write(t.Context(), nil))
 }
 
 func TestFromEventMetadataEncoding(t *testing.T) {
@@ -102,7 +103,7 @@ func TestFromEventMetadataEncoding(t *testing.T) {
 	assert.JSONEq(t, `{"a":"1"}`, row.Metadata)
 	row = fromEvent(Event{})
 	assert.Equal(t, "", row.Metadata)
-	assert.Equal(t, operationLogsTable, row.TableName())
+	assert.Equal(t, model.OperationLog{}.TableName(), row.TableName())
 }
 
 func TestFromEventPreservesNonSnowflakeIDs(t *testing.T) {
@@ -125,7 +126,7 @@ func TestFromEventPreservesNonSnowflakeIDs(t *testing.T) {
 func TestGormSinkRejectsInvalidEventIDsWithoutWritingZeroPrimaryKey(t *testing.T) {
 	db := openTestDB(t)
 	migrateTestDatabase(t, db)
-	sink := NewGormSink(db)
+	sink := NewGormSink(db, "")
 
 	err := sink.Write(t.Context(), []Event{{ID: "not-a-snowflake", Operation: "one"}, {ID: "", Operation: "two"}})
 	require.ErrorIs(t, err, ErrInvalidEventID)
@@ -148,7 +149,7 @@ func TestRoutedGormSinkResolvesWriterForEveryBatch(t *testing.T) {
 	db := openTestDB(t)
 	migrateTestDatabase(t, db)
 	writer := &countingGormWriter{db: db}
-	sink := newRoutedGormSink(writer)
+	sink := newRoutedGormSink(writer, "")
 	require.NoError(t, sink.Write(t.Context(), []Event{{ID: "9001", Operation: "first"}}))
 	require.NoError(t, sink.Write(t.Context(), []Event{{ID: "9002", Operation: "second"}}))
 	assert.Equal(t, int32(2), writer.calls.Load())

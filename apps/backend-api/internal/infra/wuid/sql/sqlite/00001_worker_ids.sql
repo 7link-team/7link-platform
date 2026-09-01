@@ -1,5 +1,5 @@
 -- +goose Up
-CREATE TABLE worker_ids (
+CREATE TABLE {{.Prefix}}worker_ids (
     id         INTEGER NOT NULL PRIMARY KEY,
     token      TEXT    NOT NULL,
     expires_at BIGINT  NOT NULL,
@@ -13,4 +13,4 @@ CREATE TABLE worker_ids (
 );
 
 -- +goose Down
-DROP TABLE worker_ids;
+DROP TABLE {{.Prefix}}worker_ids;

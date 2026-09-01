@@ -156,7 +156,7 @@ func TestMigrationFailuresArePropagated(t *testing.T) {
 	assert.Error(t, MigrateDownTo(t.Context(), db, Source{FS: root, TableName: "goose_closed_down_to"}, "sqlite", 0))
 
 	empty := fstest.MapFS{"unrelated.txt": {Data: []byte("value")}}
-	_, err := newProvider(db, empty, "sqlite", "goose_missing_fs")
+	_, err := newProvider(db, Source{FS: empty, TableName: "goose_missing_fs"}, "sqlite")
 	assert.ErrorContains(t, err, "create provider")
 }
 

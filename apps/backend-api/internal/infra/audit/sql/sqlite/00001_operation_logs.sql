@@ -1,5 +1,5 @@
 -- +goose Up
-CREATE TABLE operation_logs (
+CREATE TABLE {{.Prefix}}operation_logs (
     id                 INTEGER PRIMARY KEY,
     occurred_at        DATETIME NOT NULL,
     duration_ms        REAL,
@@ -42,11 +42,11 @@ CREATE TABLE operation_logs (
     created_at         DATETIME
 );
 
-CREATE INDEX idx_operation_logs_occurred_at ON operation_logs (occurred_at);
-CREATE INDEX idx_operation_logs_actor_time ON operation_logs (actor_id, occurred_at);
-CREATE INDEX idx_operation_logs_op_time    ON operation_logs (operation, occurred_at);
-CREATE INDEX idx_operation_logs_trace      ON operation_logs (trace_id);
-CREATE INDEX idx_operation_logs_resource   ON operation_logs (resource_type, resource_id, occurred_at);
+CREATE INDEX {{.Prefix}}idx_operation_logs_occurred_at ON {{.Prefix}}operation_logs (occurred_at);
+CREATE INDEX {{.Prefix}}idx_operation_logs_actor_time ON {{.Prefix}}operation_logs (actor_id, occurred_at);
+CREATE INDEX {{.Prefix}}idx_operation_logs_op_time    ON {{.Prefix}}operation_logs (operation, occurred_at);
+CREATE INDEX {{.Prefix}}idx_operation_logs_trace      ON {{.Prefix}}operation_logs (trace_id);
+CREATE INDEX {{.Prefix}}idx_operation_logs_resource   ON {{.Prefix}}operation_logs (resource_type, resource_id, occurred_at);
 
 -- +goose Down
-DROP TABLE operation_logs;
+DROP TABLE {{.Prefix}}operation_logs;

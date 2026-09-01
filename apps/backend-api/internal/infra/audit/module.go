@@ -1,6 +1,8 @@
 // Package audit provides a transport-independent operation log (see audit.go).
 package audit
 
+//go:generate go run ./dbgen
+
 import (
 	"context"
 	"errors"
@@ -8,6 +10,7 @@ import (
 	"os"
 	"strings"
 
+	"7link.com/platform/internal/infra/audit/model"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/module"
@@ -91,7 +94,7 @@ func NewModule(rt *appenv.Runtime, cfg Config, options ...ModuleOption) *Module 
 
 	module.sinks = append(module.sinks, NewSlogSink())
 	if cfg.Database.Enabled && rt.Database() != nil {
-		module.sinks = append(module.sinks, newRoutedGormSink(rt.Database()))
+		module.sinks = append(module.sinks, newRoutedGormSink(rt.Database(), rt.TablePrefix()))
 	}
 	for _, option := range options {
 		if option != nil {
@@ -131,8 +134,9 @@ func (m *Module) Initialize(context.Context) error {
 	if db == nil {
 		return ErrDatabaseSinkUnavailable
 	}
-	if !db.Migrator().HasTable(&OperationLog{}) {
-		return fmt.Errorf("%w: table %s does not exist", ErrDatabaseSinkUnavailable, operationLogsTable)
+	table := m.runtime.TablePrefix() + model.OperationLog{}.TableName()
+	if !db.Migrator().HasTable(table) {
+		return fmt.Errorf("%w: table %s does not exist", ErrDatabaseSinkUnavailable, table)
 	}
 	return nil
 }

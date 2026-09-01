@@ -60,6 +60,7 @@ func (m *Module) ProvideServices(services *module.Services) error {
 func (m *Module) Start(ctx context.Context) error {
 	options := []Option{OnLost(m.notifyLost), OnReacquire(m.notifyReacquired)}
 	options = append(options, m.options...)
+	options = append([]Option{WithTablePrefix(m.runtime.TablePrefix())}, options...)
 	worker, err := Open(ctx, m.writer(), options...)
 	if err != nil {
 		if errors.Is(err, ErrDatabaseUnavailable) {

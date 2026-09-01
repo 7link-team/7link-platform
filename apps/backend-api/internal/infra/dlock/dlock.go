@@ -4,6 +4,8 @@
 // owner, so a stale holder cannot release a lock acquired by another process.
 package dlock
 
+//go:generate go run ./dbgen
+
 import (
 	"context"
 	"crypto/rand"
@@ -13,7 +15,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"7link.com/platform/internal/infra/dlock/model"
+	"7link.com/platform/internal/infra/dlock/query"
 	gormx "7link.com/platform/pkg/extension/gorm"
+	"gorm.io/gen/field"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -27,17 +32,10 @@ var ErrMaxHoldExceeded = errors.New("dlock: max hold exceeded")
 // processStarted anchors elapsedMillis to a monotonic origin.
 var processStarted = time.Now()
 
-type lockRow struct {
-	Name      string `gorm:"column:name;primaryKey;size:191"`
-	Owner     string `gorm:"column:owner;not null"`
-	ExpiresAt int64  `gorm:"column:expires_at;not null"`
-}
-
-func (lockRow) TableName() string { return "dlocks" }
-
 // Locker acquires named distributed locks backed by database rows.
 type Locker struct {
 	db          *gorm.DB
+	tablePrefix string
 	nowExpr     string
 	ttl         time.Duration
 	autoRefresh bool
@@ -54,6 +52,13 @@ func WithTTL(ttl time.Duration) Option {
 			l.ttl = ttl
 		}
 	}
+}
+
+// WithTablePrefix points this locker at a prefixed dlocks table. It must match
+// the prefix the migrations ran with, so it comes from the shared runtime
+// rather than being set per call site.
+func WithTablePrefix(prefix string) Option {
+	return func(l *Locker) { l.tablePrefix = prefix }
 }
 
 // WithAutoRefresh renews held locks in the background until Unlock is called.
@@ -85,6 +90,24 @@ func NewLocker(db *gorm.DB, opts ...Option) *Locker {
 		opt(l)
 	}
 	return l
+}
+
+// locks is the only place the dlocks table is named, so a prefixed deployment
+// cannot be half-applied: every statement below is built from this handle.
+func (l *Locker) locks() *query.LockRows { return query.Bind(l.db, l.tablePrefix) }
+
+// expired is "the lease is past the database's current time". Only the clock
+// expression is raw SQL: it is a database function call, not a bindable value,
+// so no query builder can express it as a parameter. The column it compares is
+// the generated, compile-checked one.
+func (l *Locker) expired() field.Expr {
+	return l.locks().ExpiresAt.LtCol(field.NewUnsafeFieldRaw(l.nowExpr))
+}
+
+// deadline is "the database's current time plus one lease". The TTL is bound as
+// a parameter; only the clock expression is raw.
+func (l *Locker) deadline() field.Expr {
+	return field.NewUnsafeFieldRaw(l.nowExpr+" + ?", l.ttl.Milliseconds())
 }
 
 // Lock is a currently held distributed lock.
@@ -178,23 +201,23 @@ func (l *Locker) Lock(ctx context.Context, name string) (*Lock, error) {
 // acquire first creates an expired placeholder, then atomically claims it when
 // it is free, expired, or already owned by this retry loop.
 func (l *Locker) acquire(ctx context.Context, name, owner string) (bool, error) {
-	db := l.db.WithContext(ctx)
-	err := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&lockRow{
-		Name: name,
-	}).Error
+	locks := l.locks()
+	err := locks.WithContext(ctx).
+		Clauses(clause.OnConflict{DoNothing: true}).
+		Create(&model.LockRow{Name: name})
 	if err != nil {
 		return false, errors.Join(ctx.Err(), err)
 	}
 
-	tx := db.Model(&lockRow{}).
-		Where("name = ?", name).
-		Where("(expires_at < "+l.nowExpr+" OR owner = ?)", owner).
-		Updates(map[string]any{
-			"owner":      owner,
-			"expires_at": gorm.Expr(l.nowExpr+" + ?", l.ttl.Milliseconds()),
-		})
-	if tx.Error != nil {
-		return false, errors.Join(ctx.Err(), tx.Error)
+	info, err := locks.WithContext(ctx).
+		Where(locks.Name.Eq(name)).
+		Where(field.Or(l.expired(), locks.Owner.Eq(owner))).
+		UpdateSimple(
+			locks.Owner.Value(owner),
+			locks.ExpiresAt.SetCol(l.deadline()),
+		)
+	if err != nil {
+		return false, errors.Join(ctx.Err(), err)
 	}
 	// MySQL reports changed rows rather than matched rows unless the DSN sets
 	// clientFoundRows. Re-claiming a lock this owner already holds within the
@@ -203,19 +226,19 @@ func (l *Locker) acquire(ctx context.Context, name, owner string) (bool, error) 
 	// Lock retries after a 20ms backoff and succeeds on the next attempt, and
 	// TryLock reports ErrNotAcquired for a lock the caller already holds rather
 	// than handing out a second claim. Do not relax this to >= 0.
-	return tx.RowsAffected == 1, nil
+	return info.RowsAffected == 1, nil
 }
 
 // Refresh extends the lease if this Lock still owns it.
 func (lk *Lock) Refresh(ctx context.Context) error {
-	tx := lk.locker.db.WithContext(ctx).Model(&lockRow{}).
-		Where("name = ?", lk.name).
-		Where("owner = ?", lk.owner).
-		UpdateColumn("expires_at", gorm.Expr(lk.locker.nowExpr+" + ?", lk.locker.ttl.Milliseconds()))
-	if tx.Error != nil {
-		return tx.Error
+	locks := lk.locker.locks()
+	info, err := locks.WithContext(ctx).
+		Where(locks.Name.Eq(lk.name), locks.Owner.Eq(lk.owner)).
+		UpdateSimple(locks.ExpiresAt.SetCol(lk.locker.deadline()))
+	if err != nil {
+		return err
 	}
-	if tx.RowsAffected != 1 {
+	if info.RowsAffected != 1 {
 		return ErrNotAcquired
 	}
 	return nil
@@ -294,10 +317,11 @@ func (lk *Lock) Unlock(ctx context.Context) error {
 	}
 	lk.wg.Wait()
 
-	return lk.locker.db.WithContext(ctx).Model(&lockRow{}).
-		Where("name = ?", lk.name).
-		Where("owner = ?", lk.owner).
-		Updates(map[string]any{"owner": "", "expires_at": int64(0)}).Error
+	locks := lk.locker.locks()
+	_, err := locks.WithContext(ctx).
+		Where(locks.Name.Eq(lk.name), locks.Owner.Eq(lk.owner)).
+		UpdateSimple(locks.Owner.Value(""), locks.ExpiresAt.Value(0))
+	return err
 }
 
 // elapsedMillis measures against a process-local monotonic origin, never the

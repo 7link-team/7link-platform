@@ -143,7 +143,7 @@ func TestMigrateModulesRequiresRuntimeAndComposedModules(t *testing.T) {
 }
 
 func TestRunModuleMigrationsValidatesRequests(t *testing.T) {
-	_, err := executeModuleMigrations(t.Context(), nil, nil, MigrationRequest{})
+	_, err := executeModuleMigrations(t.Context(), nil, nil, MigrationRequest{}, "")
 	assert.EqualError(t, err, "migration: writable database is unavailable")
 
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "validation.sqlite")))
@@ -155,11 +155,11 @@ func TestRunModuleMigrationsValidatesRequests(t *testing.T) {
 		}
 	})
 
-	_, err = executeModuleMigrations(t.Context(), db, nil, MigrationRequest{Action: "sideways"})
+	_, err = executeModuleMigrations(t.Context(), db, nil, MigrationRequest{Action: "sideways"}, "")
 	assert.EqualError(t, err, `migration: unsupported action "sideways"`)
-	_, err = executeModuleMigrations(t.Context(), db, nil, MigrationRequest{Action: MigrationDown})
+	_, err = executeModuleMigrations(t.Context(), db, nil, MigrationRequest{Action: MigrationDown}, "")
 	assert.EqualError(t, err, "migration: down requires a module")
-	_, err = executeModuleMigrations(t.Context(), db, nil, MigrationRequest{Action: MigrationDownTo, Module: "wuid", To: -1})
+	_, err = executeModuleMigrations(t.Context(), db, nil, MigrationRequest{Action: MigrationDownTo, Module: "wuid", To: -1}, "")
 	assert.EqualError(t, err, "migration: target version cannot be negative")
 }
 

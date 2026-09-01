@@ -23,6 +23,7 @@ type AppConfig struct {
 	GrpcServer GrpcServer `mapstructure:"grpc_server" group:"grpc_server"`
 
 	Migrate           bool                `mapstructure:"migrate" description:"automatically migrate before starting services" default:"false"`
+	TablePrefix       string              `mapstructure:"table_prefix" description:"prefix prepended to every table this application owns" validate:"^$|^[a-z_][a-z0-9_]{0,20}$"`
 	Database          map[string]Database `mapstructure:"database" group:"database" mapkey:"<dbkey>"`
 	DatasourceMonitor DatasourceMonitor   `mapstructure:"datasource_monitor" group:"datasource_monitor"`
 }

@@ -62,6 +62,11 @@ issues:
     # Generated protobuf code is owned by buf, not by this lint config.
     - internal/infra/[a-z]+/proto/gen
     - pkg/extension/huma/docs/web
+  exclude-files:
+    # Generated query code is owned by gorm.io/gen, not by this lint config.
+    # Scoped to generated files so hand-written code in the same directory,
+    # such as each query package's table.go, is still checked.
+    - .*\.gen\.go$
   exclude-rules:
     # Test helpers legitimately ignore errors while arranging fixtures.
     - path: _test\.go

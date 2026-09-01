@@ -56,7 +56,10 @@ func (m *Module) Locker() *Locker {
 	if db == nil {
 		return nil
 	}
-	return NewLocker(db, m.options...)
+	// The runtime prefix goes first so an explicit WithTablePrefix option, if a
+	// caller ever passes one, still takes effect.
+	options := append([]Option{WithTablePrefix(m.runtime.TablePrefix())}, m.options...)
+	return NewLocker(db, options...)
 }
 
 func (m *Module) TryLock(ctx context.Context, name string) (*Lock, error) {
