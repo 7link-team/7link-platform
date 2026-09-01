@@ -44,8 +44,8 @@ type Capabilities struct {
 // closed sets; Min and Max for bounded numbers.
 type FilterCapability struct {
 	Field  string   `json:"field"`
-	Type   string   `json:"type" doc:"string | enum | int | time | id | bool"`
-	Ops    []string `json:"ops" doc:"operators this field accepts, in the form <op>:<value>"`
+	Type   string   `json:"type" doc:"string | enum | int | time | id"`
+	Ops    []string `json:"ops" doc:"operators this field accepts, in the form <op>:<value>. The value has the field's type, except for isNull, which always takes true or false"`
 	Values []string `json:"values,omitempty" doc:"the closed set of accepted values, for an enum"`
 	Min    *int     `json:"min,omitempty"`
 	Max    *int     `json:"max,omitempty"`
