@@ -19,6 +19,7 @@ import (
 	"7link.com/platform/internal/infra/pprof"
 	telemetry "7link.com/platform/internal/infra/telemetry"
 	"7link.com/platform/internal/infra/wuid"
+	"7link.com/platform/internal/todo"
 	"7link.com/platform/pkg/appenv"
 	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
@@ -93,6 +94,10 @@ func (app *App) composeModules() error {
 		migrationstatus.NewModule(rt, migrationStatusConfig(app.config)),
 		configinspector.NewModule(rt, app.config, configInspectorConfig(app.config)),
 		pprof.NewModule(rt, pprofConfig(app.config)),
+
+		// Business modules. They depend on the infrastructure above, so they are
+		// registered after it.
+		todo.NewModule(rt),
 
 		health.NewModule(rt),
 	)

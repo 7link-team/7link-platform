@@ -1,0 +1,135 @@
+package todo
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"testing"
+
+	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/appenv"
+	gormx "7link.com/platform/pkg/extension/gorm"
+	humax "7link.com/platform/pkg/extension/huma"
+	platformi18n "7link.com/platform/pkg/i18n"
+	"7link.com/platform/pkg/module"
+	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func newTestRuntime(t *testing.T) *appenv.Runtime {
+	t.Helper()
+	router, err := gormx.NewDatasourceRouter(t.Context(), false, map[string]gormx.Datasource{
+		"primary": {
+			Type: "sqlite", DSN: filepath.Join(t.TempDir(), "todo-module.sqlite"),
+			Writable: true, Readable: true,
+		},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = router.Close() })
+	rt := appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0"), appenv.WithDatabase(router))
+	initI18n(t, rt)
+	return rt
+}
+
+// initI18n starts the platform catalog this module registers into. The
+// lifecycle guarantees the ordering through ModuleDependencies; a test that
+// exercises Initialize directly has to reproduce it.
+func initI18n(t *testing.T, rt *appenv.Runtime) {
+	t.Helper()
+	require.NoError(t, platformi18n.NewModule(rt, platformi18n.Base).Initialize(t.Context()))
+}
+
+// resetI18n clears the catalog between module tests, since Initialize registers
+// the todo namespace and RegisterFS rejects a duplicate.
+
+func TestModuleIdentityAndDependencies(t *testing.T) {
+	m := NewModule(newTestRuntime(t))
+	assert.Equal(t, Name, m.ModuleName())
+	// The module reads messages through i18n and mints identifiers through guid,
+	// so both must start first.
+	assert.Equal(t, []string{platformi18n.Name, guid.Name}, m.ModuleDependencies())
+}
+
+// TestModuleInitializeRegistersLocales is the test that would have caught the
+// namespace-prefixed locale keys: the other unit tests never call Initialize,
+// so a catalog that fails to register only surfaced once the whole app booted.
+//
+// Initialize is not idempotent — RegisterFS rejects a duplicate namespace — and
+// it does not need to be: the lifecycle runs it exactly once per process.
+func TestModuleInitializeRegistersLocales(t *testing.T) {
+	m := NewModule(newTestRuntime(t))
+	require.NoError(t, m.InjectServices(servicesWith(t, &stubIDs{})))
+	require.NoError(t, m.Initialize(t.Context()))
+	require.NotNil(t, m.service, "Initialize must build the service")
+}
+
+func TestModuleHealthTracksDatasource(t *testing.T) {
+	withDB := NewModule(newTestRuntime(t))
+	require.NoError(t, withDB.InjectServices(servicesWith(t, &stubIDs{})))
+	require.NoError(t, withDB.Initialize(t.Context()))
+	assert.NoError(t, withDB.CheckHealth(t.Context()))
+
+	// A module that never initialized, or one without a writable datasource,
+	// reports unhealthy rather than failing at the first request.
+	assert.ErrorIs(t, NewModule(nil).CheckHealth(t.Context()), ErrUnavailable)
+
+	bare := appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0"))
+	initI18n(t, bare)
+	noDB := NewModule(bare)
+	require.NoError(t, noDB.InjectServices(servicesWith(t, &stubIDs{})))
+	require.NoError(t, noDB.Initialize(t.Context()))
+	assert.ErrorIs(t, noDB.CheckHealth(t.Context()), ErrUnavailable)
+}
+
+func TestModuleInjectServicesRequiresGUID(t *testing.T) {
+	services := module.NewServices()
+	require.NoError(t, services.Seal())
+	assert.Error(t, NewModule(newTestRuntime(t)).InjectServices(services),
+		"a missing identifier source must fail wiring, not surface at the first create")
+}
+
+func TestModuleRegisterHTTPRequiresInitialize(t *testing.T) {
+	router := chi.NewRouter()
+	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
+
+	uninitialized := NewModule(newTestRuntime(t))
+	assert.Error(t, uninitialized.RegisterHTTP(context.Background(), api),
+		"registering routes before Initialize must fail loudly")
+
+	ready := NewModule(newTestRuntime(t))
+	require.NoError(t, ready.InjectServices(servicesWith(t, &stubIDs{})))
+	require.NoError(t, ready.Initialize(t.Context()))
+	assert.NoError(t, ready.RegisterHTTP(context.Background(), api))
+}
+
+func TestModuleMigrationSourceIsSelfDescribing(t *testing.T) {
+	source := (&Module{}).MigrationSource()
+	assert.Equal(t, "goose_todo", source.TableName)
+	assert.NotNil(t, source.FS)
+	// The prefix is injected by the migration runner, not declared here.
+	assert.Empty(t, source.Prefix)
+}
+
+// servicesWith builds a sealed service registry offering an identifier source,
+// mirroring what the lifecycle hands a module during Wire.
+func servicesWith(t *testing.T, ids guid.Source) *module.Services {
+	t.Helper()
+	services := module.NewServices()
+	require.NoError(t, module.Provide(services, ids))
+	require.NoError(t, services.Seal())
+	return services
+}
+
+func TestModuleContributesTheRawQueryMiddleware(t *testing.T) {
+	// The list handler parses filters from the request's query rather than from
+	// declared fields, so the module must contribute the middleware that makes
+	// it reachable.
+	var reached bool
+	handler := NewModule(nil).HTTPMiddleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		reached = rawQueryFrom(r.Context()) != nil
+	}))
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/todos?a=eq:1", nil))
+	assert.True(t, reached)
+}

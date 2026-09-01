@@ -23,8 +23,10 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/internal/infra/pprof \
 	7link.com/platform/internal/infra/telemetry \
 	7link.com/platform/internal/infra/wuid \
+	7link.com/platform/internal/todo \
 	7link.com/platform/pkg/extension/huma/respx \
-	7link.com/platform/pkg/i18n
+	7link.com/platform/pkg/i18n \
+	7link.com/platform/pkg/query
 
 .PHONY: build ci dev fmt-check generate generate-docs lint test test-coverage test-integration test-all
 

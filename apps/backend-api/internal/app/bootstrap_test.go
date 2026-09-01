@@ -255,6 +255,7 @@ func TestBootstrapWithoutWriterReportsUnhealthy(t *testing.T) {
 			{Name: "guid", Status: healthservice.StatusNotServing},
 			{Name: "telemetry", Status: healthservice.StatusUnknown},
 			{Name: "audit", Status: healthservice.StatusUnknown},
+			{Name: "todo", Status: healthservice.StatusNotServing},
 			{Name: "health", Status: healthservice.StatusServing},
 		},
 	}, module.Service().Check(t.Context()))
@@ -280,7 +281,7 @@ func TestBootstrapAddsEnabledHTTPModules(t *testing.T) {
 	}
 	assert.Equal(t, []string{
 		"i18n", "respx", "dlock", "wuid", "guid", "metrics", "telemetry", "audit",
-		"database-monitor", "migration-status", "config-inspector", "pprof", "health",
+		"database-monitor", "migration-status", "config-inspector", "pprof", "todo", "health",
 	}, names)
 	_, ok := app.modules.ByName("metrics")
 	assert.True(t, ok)
