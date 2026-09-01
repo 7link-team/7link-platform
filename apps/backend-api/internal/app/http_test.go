@@ -391,7 +391,7 @@ func TestHTTPServerMountsAuditMiddleware(t *testing.T) {
 	events := sink.snapshot()
 	assert.Equal(t, "POST /orders", events[0].Operation)
 	assert.Equal(t, audit.AccessWrite, events[0].Access)
-	assert.Equal(t, `{"name":"a"}`, events[0].Request.Body)
+	assert.JSONEq(t, `{"name":"a"}`, events[0].Request.Body)
 }
 
 func TestHTTPServerDoesNotAuditSkippedRoutes(t *testing.T) {

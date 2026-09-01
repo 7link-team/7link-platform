@@ -447,8 +447,8 @@ func timePointer(value time.Time) *time.Time {
 	if value.IsZero() {
 		return nil
 	}
-	copy := value
-	return &copy
+	clone := value
+	return &clone
 }
 
 func (m *Module) QueryMetrics() []QueryMetric {

@@ -3,7 +3,6 @@ package respx
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"testing"
 	"time"
 
@@ -82,11 +81,11 @@ func TestErr_BusinessEnvelope(t *testing.T) {
 	e := Err(context.Background(), 100001, "billing.insufficient_balance")
 
 	var se huma.StatusError
-	require.True(t, errors.As(e, &se))
+	require.ErrorAs(t, e, &se)
 	assert.Equal(t, 400, se.GetStatus())
 
 	var ee *errorEnvelope
-	require.True(t, errors.As(e, &ee))
+	require.ErrorAs(t, e, &ee)
 	assert.Equal(t, 100001, ee.Code)
 	assert.Equal(t, "billing.insufficient_balance", ee.Message, "message carries the i18n key")
 	assert.Equal(t, "billing.insufficient_balance", ee.Error(), "Error() exposes the message")

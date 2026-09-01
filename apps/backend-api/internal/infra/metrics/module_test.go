@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -53,9 +52,9 @@ func TestHTTPObserverExportsRouteMetricsWithoutRawURLs(t *testing.T) {
 	assert.Contains(t, text, "http_server_response_size_bytes")
 	assert.Contains(t, text, "go_goroutines")
 	assert.Contains(t, text, "process_cpu_seconds_total")
-	assert.False(t, strings.Contains(text, "/widgets/123"))
-	assert.False(t, strings.Contains(text, "/missing/456"))
-	assert.False(t, strings.Contains(text, "secret"))
+	assert.NotContains(t, text, "/widgets/123")
+	assert.NotContains(t, text, "/missing/456")
+	assert.NotContains(t, text, "secret")
 	assert.Contains(t, api.OpenAPI().Paths, Path)
 	assert.Equal(t, []string{"Metrics"}, api.OpenAPI().Paths[Path].Get.Tags)
 }

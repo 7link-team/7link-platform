@@ -226,7 +226,7 @@ func TestRecorderAssignsSnowflakeIDs(t *testing.T) {
 	require.NotEmpty(t, id)
 	parsed, err := strconv.ParseInt(id, 10, 64)
 	require.NoError(t, err)
-	assert.Greater(t, parsed, int64(0))
+	assert.Positive(t, parsed)
 	assert.NotContains(t, id, "-")
 }
 

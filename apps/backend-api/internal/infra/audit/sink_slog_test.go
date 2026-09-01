@@ -51,9 +51,9 @@ func TestSlogSinkWritesFullEvent(t *testing.T) {
 	assert.Equal(t, "order.create", line["audit.action"])
 	assert.Equal(t, "u1", line["audit.actor_id"])
 	assert.Equal(t, "127.0.0.1", line["audit.client_ip"])
-	assert.Equal(t, float64(201), line["audit.status_code"])
+	assert.InDelta(t, float64(201), line["audit.status_code"], 1e-9)
 	assert.Equal(t, `{"a":1}`, line["audit.request_body"])
-	assert.Equal(t, `{"region":"cn"}`, line["audit.metadata"])
+	assert.JSONEq(t, `{"region":"cn"}`, line["audit.metadata"].(string))
 }
 
 func TestSlogSinkEmptyBatch(t *testing.T) {
@@ -68,5 +68,5 @@ func TestSlogSinkEmptyBatch(t *testing.T) {
 func TestEncodeMetadata(t *testing.T) {
 	assert.Equal(t, "", encodeMetadata(nil))
 	assert.Equal(t, "", encodeMetadata(map[string]string{}))
-	assert.Equal(t, `{"a":"1"}`, encodeMetadata(map[string]string{"a": "1"}))
+	assert.JSONEq(t, `{"a":"1"}`, encodeMetadata(map[string]string{"a": "1"}))
 }

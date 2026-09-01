@@ -26,7 +26,7 @@ type genSample struct {
 	Tags       map[string]string   `mapstructure:"tags"` // scalar-valued map
 	Secret     string              `mapstructure:"secret" hidden:"true"`
 	Deprecated string              `mapstructure:"deprecated" deprecated:"use name"`
-	unexported int                 //nolint:unused
+	unexported int
 	NoTag      string
 }
 

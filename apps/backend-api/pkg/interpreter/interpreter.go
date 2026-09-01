@@ -51,7 +51,7 @@ type ByteRuntime interface {
 	CallBytes(ctx context.Context, fn string, input []byte, maxOutput uint32) ([]byte, error)
 }
 
-// ErrUnsupported is returned by engines for operations they cannot fulfil, e.g. binding
+// ErrUnsupported is returned by engines for operations they cannot fulfill, e.g. binding
 // host functions into a Wasm runtime via the generic Bind API.
 var ErrUnsupported = errors.New("interpreter: unsupported operation for this engine")
 

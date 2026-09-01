@@ -43,7 +43,7 @@ func TestIDSQL(t *testing.T) {
 		assert.Equal(t, test.expected, id)
 	}
 	assert.Error(t, id.Scan(3.14))
-	assert.Equal(t, "string", string(ID(1).Schema(nil).Type))
+	assert.Equal(t, "string", ID(1).Schema(nil).Type)
 }
 
 func TestParseIDRequiresPositiveDecimal(t *testing.T) {

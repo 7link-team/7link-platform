@@ -85,7 +85,7 @@ func TestGormSinkPersistsEvents(t *testing.T) {
 	assert.Equal(t, int64(7), row.RequestSize)
 	assert.Equal(t, "success_summary", row.ResponseOmitted)
 	assert.Equal(t, "trace-1", row.TraceID)
-	assert.Equal(t, `{"region":"cn"}`, row.Metadata)
+	assert.JSONEq(t, `{"region":"cn"}`, row.Metadata)
 	assert.False(t, row.CreatedAt.IsZero())
 }
 
@@ -99,7 +99,7 @@ func TestGormSinkNilSinkAndEmptyBatch(t *testing.T) {
 
 func TestFromEventMetadataEncoding(t *testing.T) {
 	row := fromEvent(Event{Metadata: map[string]string{"a": "1"}})
-	assert.Equal(t, `{"a":"1"}`, row.Metadata)
+	assert.JSONEq(t, `{"a":"1"}`, row.Metadata)
 	row = fromEvent(Event{})
 	assert.Equal(t, "", row.Metadata)
 	assert.Equal(t, operationLogsTable, row.TableName())

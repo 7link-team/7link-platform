@@ -105,12 +105,12 @@ func normalizeChildren(value reflect.Value, path string) error {
 	case reflect.Map:
 		for _, key := range value.MapKeys() {
 			entry := value.MapIndex(key)
-			copy := reflect.New(entry.Type()).Elem()
-			copy.Set(entry)
-			if err := normalizeChildren(copy, path+"."+fmt.Sprint(key.Interface())); err != nil {
+			clone := reflect.New(entry.Type()).Elem()
+			clone.Set(entry)
+			if err := normalizeChildren(clone, path+"."+fmt.Sprint(key.Interface())); err != nil {
 				return err
 			}
-			value.SetMapIndex(key, copy)
+			value.SetMapIndex(key, clone)
 		}
 	case reflect.Slice, reflect.Array:
 		for i := 0; i < value.Len(); i++ {

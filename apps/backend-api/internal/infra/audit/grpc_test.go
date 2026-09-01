@@ -85,7 +85,7 @@ func TestUnaryServerInterceptorDoesNotCaptureBodyByDefault(t *testing.T) {
 	eventually(t, func() bool { return sink.count() == 1 })
 	event := sink.snapshot()[0]
 	assert.Empty(t, event.Request.Body)
-	assert.Greater(t, event.Request.Size, int64(0))
+	assert.Positive(t, event.Request.Size)
 	assert.Equal(t, OmittedCaptureDisabled, event.Request.Omitted)
 }
 
@@ -144,7 +144,7 @@ func TestUnaryServerInterceptorCapsOversizedRequest(t *testing.T) {
 	// The oversized request is never marshaled: no body, only the size.
 	assert.Empty(t, event.Request.Body)
 	assert.True(t, event.Request.Truncated)
-	assert.Greater(t, event.Request.Size, int64(0))
+	assert.Positive(t, event.Request.Size)
 }
 
 type fakeServerStream struct {

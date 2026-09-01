@@ -25,7 +25,7 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/pkg/extension/huma/respx \
 	7link.com/platform/pkg/i18n
 
-.PHONY: build dev test test-coverage test-integration test-all
+.PHONY: build dev lint test test-coverage test-integration test-all
 
 build:
 	mkdir -p $(dir $(OUTPUT))
@@ -33,6 +33,11 @@ build:
 
 dev:
 	go -C cmd/7link-api run . $(DEV_ARGS)
+
+# Config lives in .golangci.yml. The linter is pinned in tools/go.mod so every
+# developer resolves the same findings without a local install.
+lint:
+	go tool -modfile=tools/go.mod golangci-lint run ./...
 
 test:
 	go test ./...

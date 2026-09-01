@@ -20,8 +20,7 @@ import (
 func TestHealthModuleLifecycleAndRegistration(t *testing.T) {
 	rt := appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0"))
 	require.NoError(t, platformi18n.NewModule(rt, platformi18n.Base).Initialize(t.Context()))
-	var m *HealthModule
-	m = NewModule(rt)
+	m := NewModule(rt)
 	services := module.NewServices()
 	require.NoError(t, module.Provide[service.CheckerProvider](services, func() []service.Checker {
 		return []service.Checker{{Name: m.ModuleName(), Check: m.CheckHealth}}

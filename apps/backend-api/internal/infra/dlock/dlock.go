@@ -135,7 +135,7 @@ func (l *Locker) TryLock(ctx context.Context, name string) (*Lock, error) {
 }
 
 // Lock retries with bounded exponential backoff until name is acquired or ctx
-// is cancelled.
+// is canceled.
 func (l *Locker) Lock(ctx context.Context, name string) (*Lock, error) {
 	owner := newOwner()
 	const (

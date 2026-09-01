@@ -209,19 +209,19 @@ func (m *Module) finalizeHTTP(
 	m.record(ctx, &event)
 }
 
-// captureRequestBody captures a complete body only when it fits within max and
+// captureRequestBody captures a complete body only when it fits within limit and
 // restores all bytes for the handler. Known oversized bodies are not read at
-// all; chunked bodies are probed up to max+1 and omitted when oversized.
-func captureRequestBody(r *http.Request, max int) (raw []byte, size int64, limited bool) {
+// all; chunked bodies are probed up to limit+1 and omitted when oversized.
+func captureRequestBody(r *http.Request, limit int) (raw []byte, size int64, limited bool) {
 	if r.Body == nil || r.Body == http.NoBody {
 		return nil, 0, false
 	}
 	contentLength := r.ContentLength
-	if max > 0 && contentLength > int64(max) {
+	if limit > 0 && contentLength > int64(limit) {
 		return nil, contentLength, true
 	}
 	original := r.Body
-	if max <= 0 {
+	if limit <= 0 {
 		raw, _ = io.ReadAll(original)
 		r.Body = &restoredRequestBody{Reader: bytes.NewReader(raw), Closer: original}
 		if contentLength >= 0 {
@@ -229,7 +229,7 @@ func captureRequestBody(r *http.Request, max int) (raw []byte, size int64, limit
 		}
 		return raw, int64(len(raw)), false
 	}
-	reader := io.LimitReader(r.Body, int64(max)+1)
+	reader := io.LimitReader(r.Body, int64(limit)+1)
 	raw, _ = io.ReadAll(reader)
 
 	// Restore the bytes consumed by the probe followed by the unread remainder.
@@ -244,7 +244,7 @@ func captureRequestBody(r *http.Request, max int) (raw []byte, size int64, limit
 		return nil, 0, false
 	}
 	size = int64(len(raw))
-	limited = len(raw) > max
+	limited = len(raw) > limit
 	if limited {
 		return nil, size, true
 	}
@@ -281,8 +281,8 @@ type responseRecorder struct {
 	hijacked    bool
 }
 
-func newResponseRecorder(w http.ResponseWriter, max int) (http.ResponseWriter, *responseRecorder) {
-	recorder := &responseRecorder{ResponseWriter: w, max: max, code: http.StatusOK}
+func newResponseRecorder(w http.ResponseWriter, limit int) (http.ResponseWriter, *responseRecorder) {
+	recorder := &responseRecorder{ResponseWriter: w, max: limit, code: http.StatusOK}
 	flusher, canFlush := w.(http.Flusher)
 	hijacker, canHijack := w.(http.Hijacker)
 	switch {

@@ -3,7 +3,6 @@ package gormx
 import (
 	"context"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 
@@ -71,7 +70,7 @@ func TestDatasourceRouterObservesSanitizedSQLTemplates(t *testing.T) {
 		assert.NotContains(t, event.Statement, "private-value")
 		assert.NotContains(t, event.Statement, "raw-secret")
 		assert.NotContains(t, event.Statement, "123")
-		assert.False(t, strings.Contains(event.Statement, "--"))
+		assert.NotContains(t, event.Statement, "--")
 	}
 	assert.True(t, operations["INSERT"])
 	assert.True(t, operations["SELECT"])

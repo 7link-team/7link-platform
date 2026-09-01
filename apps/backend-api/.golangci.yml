@@ -1,0 +1,69 @@
+# golangci-lint configuration for apps/backend-api.
+# Run with: make lint
+run:
+  timeout: 5m
+  tests: true
+
+output:
+  sort-results: true
+
+linters:
+  disable-all: true
+  enable:
+    # Correctness — these catch real defects.
+    - errcheck # unchecked errors
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose # unclosed HTTP response bodies
+    - errorlint # %w / errors.Is misuse across the wrapped-error contract
+    - nilerr # returning nil after a non-nil error
+    - rowserrcheck # unchecked sql.Rows.Err
+    - sqlclosecheck # unclosed sql.Rows / sql.Stmt
+    - copyloopvar # stale loop-variable captures
+    - durationcheck # accidental time.Duration multiplication
+    - makezero # append to a non-zero-length make() slice
+    - testifylint # assert/require misuse that silently weakens a test
+
+    # Consistency — these keep the codebase uniform, not stylish.
+    - gosimple
+    - unconvert
+    - usestdlibvars
+    - misspell
+    - predeclared # shadowing builtins
+    - nolintlint # //nolint without an explanation
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+  errorlint:
+    asserts: false # type assertions on errors are handled by errcheck above
+  nolintlint:
+    require-explanation: true
+    require-specific: true
+    allow-unused: false
+  misspell:
+    # Go's own vocabulary is US English (context.Canceled, not Cancelled).
+    locale: US
+  testifylint:
+    disable:
+      # This codebase consistently uses assert for error assertions and lets the
+      # test continue to report every failed expectation in one run. Switching
+      # ~180 call sites to require is a style change, not a correctness fix.
+      - require-error
+
+issues:
+  # Report everything; the defaults hide whole classes of finding.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-use-default: false
+  exclude-dirs:
+    # Generated protobuf code is owned by buf, not by this lint config.
+    - internal/infra/[a-z]+/proto/gen
+    - pkg/extension/huma/docs/web
+  exclude-rules:
+    # Test helpers legitimately ignore errors while arranging fixtures.
+    - path: _test\.go
+      linters:
+        - errcheck

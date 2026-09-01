@@ -260,7 +260,7 @@ func TestPprofUIAuxiliaryRoutesAndDriverContracts(t *testing.T) {
 	assert.True(t, *flags.Bool("no_browser", false, ""))
 	assert.False(t, *flags.Bool("other", false, ""))
 	assert.Equal(t, 7, *flags.Int("", 7, ""))
-	assert.Equal(t, 1.5, *flags.Float64("", 1.5, ""))
+	assert.InDelta(t, 1.5, *flags.Float64("", 1.5, ""), 1e-9)
 	assert.Equal(t, "localhost:0", *flags.String("http", "", ""))
 	assert.Equal(t, "value", *flags.String("other", "value", ""))
 	assert.Equal(t, "value", *(*flags.StringList("", "value", ""))[0])

@@ -206,8 +206,8 @@ func (m *Module) redactAndTruncate(raw []byte) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	if max := m.maxBodyBytes(); max > 0 && len(redacted) > max {
-		return truncateString(redacted, max), true, nil
+	if limit := m.maxBodyBytes(); limit > 0 && len(redacted) > limit {
+		return truncateString(redacted, limit), true, nil
 	}
 	return redacted, false, nil
 }

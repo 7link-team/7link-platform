@@ -215,7 +215,7 @@ func TestParseAllSupportedFlagTypes(t *testing.T) {
 	assert.False(t, cfg.Enabled)
 	assert.Equal(t, 7, cfg.Count)
 	assert.Equal(t, uint(8), cfg.Size)
-	assert.Equal(t, 2.5, cfg.Ratio)
+	assert.InDelta(t, 2.5, cfg.Ratio, 1e-9)
 	assert.Equal(t, 9*time.Second, cfg.Timeout)
 	assert.Equal(t, []string{"alpha", "beta"}, cfg.Names)
 	assert.Equal(t, []int{4, 5}, cfg.Counts)
@@ -286,7 +286,7 @@ func TestParsePreservesNonZeroStructValues(t *testing.T) {
 	assert.True(t, cfg.Enabled)
 	assert.Equal(t, 9, cfg.Count)
 	assert.Equal(t, uint(10), cfg.Size)
-	assert.Equal(t, 2.25, cfg.Ratio)
+	assert.InDelta(t, 2.25, cfg.Ratio, 1e-9)
 	assert.Equal(t, 11*time.Second, cfg.Timeout)
 }
 

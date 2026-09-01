@@ -235,6 +235,6 @@ func TestMaxBodyBytesNegativeMeansUnlimitedCapture(t *testing.T) {
 	assert.Equal(t, 0, module.maxBodyBytes())
 	body, truncated, err := module.redactAndTruncate([]byte(`{"a":"b"}`))
 	require.NoError(t, err)
-	assert.Equal(t, `{"a":"b"}`, body)
+	assert.JSONEq(t, `{"a":"b"}`, body)
 	assert.False(t, truncated)
 }

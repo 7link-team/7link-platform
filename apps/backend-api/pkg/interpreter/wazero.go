@@ -44,7 +44,7 @@ func newWasmRuntime(wasmBytes []byte, memoryPages uint32) (Runtime, error) {
 		_ = rt.Close(ctx)
 		return nil, fmt.Errorf("interpreter/wasm: compile module: %w", err)
 	}
-	defer compiled.Close(ctx)
+	defer func() { _ = compiled.Close(ctx) }()
 	mod, err := rt.InstantiateModule(ctx, compiled, wazero.NewModuleConfig().WithStartFunctions())
 	if err != nil {
 		_ = rt.Close(ctx)

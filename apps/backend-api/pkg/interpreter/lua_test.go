@@ -106,7 +106,7 @@ func TestLua_EvalReturnsFloat(t *testing.T) {
 	defer rt.Close()
 	v, err := rt.Eval(context.Background(), "return 3.25")
 	require.NoError(t, err)
-	assert.Equal(t, 3.25, v)
+	assert.InDelta(t, 3.25, v, 1e-9)
 }
 
 // TestLua_EvalReturnsBoolAndString covers the bool/string branches of luaValueToGo.
@@ -193,6 +193,7 @@ func TestLuaConversionBoundaries(t *testing.T) {
 	float32Type := reflect.TypeOf(float32(0))
 	value, err := convertToType(reflect.TypeOf("1.25"), float32Type, "1.25")
 	require.NoError(t, err)
+	//nolint:testifylint // Asserts the converted type is float32, not just its value.
 	assert.Equal(t, float32(1.25), value.Interface())
 	_, err = convertToType(reflect.TypeOf(struct{}{}), float32Type, struct{}{})
 	assert.Error(t, err)
@@ -208,7 +209,7 @@ func TestLuaConversionBoundaries(t *testing.T) {
 	} {
 		converted, ok := toFloat64(input)
 		assert.True(t, ok)
-		assert.Equal(t, expected, converted)
+		assert.InDelta(t, expected, converted, 1e-9)
 	}
 	_, ok := toFloat64("not-a-number")
 	assert.False(t, ok)

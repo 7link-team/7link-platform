@@ -241,7 +241,7 @@ func Inspect(ctx context.Context, db *sql.DB, source Source, dialect string) (St
 	if err != nil {
 		return Status{}, err
 	}
-	store, err := database.NewStore(database.Dialect(resolvedDialect), source.TableName)
+	store, err := database.NewStore(resolvedDialect, source.TableName)
 	if err != nil {
 		return Status{}, fmt.Errorf("goose: create migration store: %w", err)
 	}

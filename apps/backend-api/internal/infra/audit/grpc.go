@@ -48,12 +48,12 @@ func (m *Module) UnaryServerInterceptor(
 			if m.captureBodies() {
 				// Check the encoded size before marshaling so an oversized request
 				// is never materialized in memory just to be truncated.
-				max := m.maxBodyBytes()
-				if size := int(entry.reqSize); max > 0 && size > max {
+				limit := m.maxBodyBytes()
+				if size := int(entry.reqSize); limit > 0 && size > limit {
 					entry.reqLimited = true
 				} else if raw, err := protojson.Marshal(message); err == nil {
 					entry.reqSize = int64(len(raw))
-					if max > 0 && len(raw) > max {
+					if limit > 0 && len(raw) > limit {
 						entry.reqLimited = true
 					} else {
 						entry.reqBody = raw

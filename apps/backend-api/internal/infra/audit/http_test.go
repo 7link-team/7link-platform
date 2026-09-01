@@ -65,7 +65,9 @@ func TestHTTPMiddlewareRecordsWriteWithRedactedBody(t *testing.T) {
 		// The handler must still see the full body.
 		body := make([]byte, 1024)
 		n, _ := r.Body.Read(body)
-		require.Contains(t, string(body[:n]), "hunter2")
+		// assert, not require: t.FailNow must only be called from the test
+		// goroutine, and this runs inside the handler.
+		assert.Contains(t, string(body[:n]), "hunter2")
 		Annotate(r.Context(), Action("order.create"))
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"id":"42"}}`))
@@ -97,8 +99,9 @@ func TestHTTPMiddlewareDoesNotCaptureBodiesByDefault(t *testing.T) {
 	request.Header.Set("Content-Type", "application/json")
 	runHTTP(t, module, request, func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
-		assert.Contains(t, string(body), "secret")
+		if assert.NoError(t, err) {
+			assert.Contains(t, string(body), "secret")
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(`{"error":"private detail"}`))
@@ -173,7 +176,7 @@ func TestHTTPMiddlewareCapsOversizedJSONBody(t *testing.T) {
 	runHTTP(t, module, request, func(w http.ResponseWriter, r *http.Request) {
 		// Handler still receives the whole body despite the audit cap.
 		all, _ := readAllBody(r)
-		assert.Equal(t, `{"name":"very-long-value"}`, all)
+		assert.JSONEq(t, `{"name":"very-long-value"}`, all)
 		w.WriteHeader(http.StatusCreated)
 	})
 	eventually(t, func() bool { return sink.count() == 1 })
@@ -292,9 +295,11 @@ func TestHTTPMiddlewareRecordsStreamSession(t *testing.T) {
 	sse.Header.Set("Accept", "text/event-stream")
 	runHTTP(t, module, sse, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		flusher, ok := w.(http.Flusher)
-		require.True(t, ok)
-		flusher.Flush()
+		// Guard on the assertion result: require would be unsafe here (handler
+		// goroutine), and an unguarded assert would fall through to a nil Flush.
+		if flusher, ok := w.(http.Flusher); assert.True(t, ok) {
+			flusher.Flush()
+		}
 	})
 	eventually(t, func() bool { return sink.count() == 2 })
 	events := sink.snapshot()
@@ -375,6 +380,7 @@ func TestProbeEnvelope(t *testing.T) {
 	// List envelope without a single id.
 	code, message, id = probeEnvelope([]byte(`{"code":0,"message":"ok","data":[]}`))
 	assert.Zero(t, code)
+	assert.Equal(t, "ok", message)
 	assert.Empty(t, id)
 }
 
