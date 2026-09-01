@@ -73,3 +73,47 @@ func TestIDConvenienceMethodsAndEmptyValues(t *testing.T) {
 	var id ID
 	assert.Error(t, id.Scan("invalid"))
 }
+
+// TestIDZeroRoundTripsThroughJSON guards the defect this type shipped with:
+// MarshalJSON emitted "0" for the zero value, which Parse then refused because
+// an ID must be positive. Any column holding an optional reference — an actor
+// no authentication middleware has supplied, an unset parent — produced JSON
+// the type could not read back.
+func TestIDZeroRoundTripsThroughJSON(t *testing.T) {
+	encoded, err := json.Marshal(ID(0))
+	require.NoError(t, err)
+	assert.JSONEq(t, "null", string(encoded), "the zero ID has no decimal form")
+
+	var decoded ID
+	require.NoError(t, json.Unmarshal(encoded, &decoded))
+	assert.True(t, decoded.Zero())
+}
+
+func TestIDRoundTripsPreservingPrecision(t *testing.T) {
+	// A snowflake exceeds 2^53, so it must never cross JSON as a number.
+	const snowflake = ID(2366488506482438144)
+	encoded, err := json.Marshal(snowflake)
+	require.NoError(t, err)
+	assert.Equal(t, `"2366488506482438144"`, string(encoded))
+
+	var decoded ID
+	require.NoError(t, json.Unmarshal(encoded, &decoded))
+	assert.Equal(t, snowflake, decoded)
+}
+
+func TestIDSchemaIsNullableString(t *testing.T) {
+	schema := ID(0).Schema(nil)
+	assert.Equal(t, "string", schema.Type, "numbers would lose snowflake precision in JavaScript")
+	assert.True(t, schema.Nullable, "the zero ID marshals as null, so the schema must allow it")
+}
+
+// TestIDInStructOmitsNothingWhenZero documents what a caller sees: a zero
+// reference is present and null, not absent, so "unknown" stays distinguishable
+// from "not requested".
+func TestIDInStructOmitsNothingWhenZero(t *testing.T) {
+	encoded, err := json.Marshal(struct {
+		Actor ID `json:"actor"`
+	}{})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"actor":null}`, string(encoded))
+}

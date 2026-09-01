@@ -14,7 +14,17 @@ import (
 // precision above 2^53. SQL storage remains BIGINT-compatible.
 type ID int64
 
+// MarshalJSON renders the ID as a decimal string, or as null when it is zero.
+//
+// Zero means "no identifier" — an unset optional reference, or an actor no
+// authentication middleware has supplied. Rendering it as "0" would emit a
+// value this type refuses to read back: Parse rejects non-positive input, while
+// it already accepts null as zero. null is therefore the representation that
+// round-trips.
 func (id ID) MarshalJSON() ([]byte, error) {
+	if id.Zero() {
+		return []byte("null"), nil
+	}
 	return []byte(`"` + id.String() + `"`), nil
 }
 
@@ -32,8 +42,22 @@ func (id *ID) UnmarshalText(value []byte) error {
 	return err
 }
 
+// Schema declares the ID as a nullable decimal string. The string form keeps
+// snowflake identifiers exact for JavaScript clients, whose numbers lose
+// precision above 2^53; nullable covers the zero value, which marshals as null.
+//
+// Do not declare a path or query parameter as ID. huma binds parameters by Go
+// kind, so it parses this int64 as a number and then validates that number
+// against this string schema, rejecting every value with 422. Declare such a
+// parameter as string and call Parse:
+//
+//	type input struct{ ID string `path:"id"` }
+//	id, err := guid.Parse(in.ID)
+//
+// Request and response bodies are unaffected: they go through encoding/json,
+// which uses MarshalJSON and UnmarshalJSON.
 func (ID) Schema(_ huma.Registry) *huma.Schema {
-	return &huma.Schema{Type: huma.TypeString, Pattern: `^[1-9][0-9]*$`}
+	return &huma.Schema{Type: huma.TypeString, Pattern: `^[1-9][0-9]*$`, Nullable: true}
 }
 
 func (id ID) Value() (driver.Value, error) { return int64(id), nil }
