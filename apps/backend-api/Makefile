@@ -25,11 +25,25 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/pkg/extension/huma/respx \
 	7link.com/platform/pkg/i18n
 
-.PHONY: build dev lint test test-coverage test-integration test-all
+.PHONY: build ci dev fmt-check lint test test-coverage test-integration test-all
 
 build:
 	mkdir -p $(dir $(OUTPUT))
 	go build -trimpath -ldflags "$(LDFLAGS)" -o $(OUTPUT) ./cmd/7link-api
+
+# Single entry point for a pipeline: every gate, in cheapest-first order, so a
+# formatting or lint failure reports before the slow database tests run. Fails
+# on the first gate that fails.
+ci: fmt-check lint test-coverage test-integration build
+
+# gofmt has no check mode; -l prints files that need formatting and exits 0, so
+# the emptiness of that list is the assertion.
+fmt-check:
+	@unformatted="$$(gofmt -l ./cmd ./internal ./pkg)"; \
+	if [ -n "$$unformatted" ]; then \
+		echo "gofmt required for:"; echo "$$unformatted"; exit 1; \
+	fi; \
+	echo "gofmt: clean"
 
 dev:
 	go -C cmd/7link-api run . $(DEV_ARGS)

@@ -24,6 +24,9 @@ var ErrNotAcquired = errors.New("dlock: not acquired")
 
 var ErrMaxHoldExceeded = errors.New("dlock: max hold exceeded")
 
+// processStarted anchors elapsedMillis to a monotonic origin.
+var processStarted = time.Now()
+
 type lockRow struct {
 	Name      string `gorm:"column:name;primaryKey;size:191"`
 	Owner     string `gorm:"column:owner;not null"`
@@ -111,7 +114,7 @@ func (lk *Lock) Alive() bool { return lk.alive.Load() }
 func (l *Locker) newLock(ctx context.Context, name, owner string) *Lock {
 	lk := &Lock{locker: l, name: name, owner: owner}
 	lk.alive.Store(true)
-	lk.lastRenew.Store(nowMillis())
+	lk.lastRenew.Store(elapsedMillis())
 	if l.autoRefresh {
 		refreshCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 		lk.cancel = cancel
@@ -193,6 +196,13 @@ func (l *Locker) acquire(ctx context.Context, name, owner string) (bool, error) 
 	if tx.Error != nil {
 		return false, errors.Join(ctx.Err(), tx.Error)
 	}
+	// MySQL reports changed rows rather than matched rows unless the DSN sets
+	// clientFoundRows. Re-claiming a lock this owner already holds within the
+	// same millisecond therefore writes an identical expires_at and reports
+	// zero. That reads as "not acquired", which is safe in both directions:
+	// Lock retries after a 20ms backoff and succeeds on the next attempt, and
+	// TryLock reports ErrNotAcquired for a lock the caller already holds rather
+	// than handing out a second claim. Do not relax this to >= 0.
 	return tx.RowsAffected == 1, nil
 }
 
@@ -245,14 +255,14 @@ func (lk *Lock) refreshTick(ctx context.Context, acquiredAt time.Time) bool {
 	err := lk.Refresh(ctx)
 	switch {
 	case err == nil:
-		lk.lastRenew.Store(nowMillis())
+		lk.lastRenew.Store(elapsedMillis())
 		return false
 	case errors.Is(err, ErrNotAcquired):
 		lk.declareLost(ErrNotAcquired)
 		return true
 	default:
 		margin := lk.locker.ttl / 3
-		if nowMillis()-lk.lastRenew.Load() >= (lk.locker.ttl - margin).Milliseconds() {
+		if elapsedMillis()-lk.lastRenew.Load() >= (lk.locker.ttl - margin).Milliseconds() {
 			lk.declareLost(err)
 			return true
 		}
@@ -290,7 +300,12 @@ func (lk *Lock) Unlock(ctx context.Context) error {
 		Updates(map[string]any{"owner": "", "expires_at": int64(0)}).Error
 }
 
-func nowMillis() int64 { return time.Now().UnixMilli() }
+// elapsedMillis measures against a process-local monotonic origin, never the
+// wall clock. It only ever feeds the renewal grace window, which is an elapsed
+// duration: an NTP step must not be able to shorten or extend how long this
+// holder believes it has gone without a successful renewal. The database clock
+// remains the sole authority on expires_at.
+func elapsedMillis() int64 { return time.Since(processStarted).Milliseconds() }
 
 func newOwner() string {
 	b := make([]byte, 12)

@@ -1,6 +1,21 @@
 // Package interpreter provides a unified runtime facade over multiple dynamic-language
 // engines. It is intentionally thin: each engine keeps its own semantics, but callers can
 // instantiate, bind values, evaluate scripts, and call functions through one interface.
+//
+// Status: this package has no callers in the application. It is groundwork for
+// the extension model in docs/PLUGIN_ARCHITECTURE.md, where wazero is the
+// intended foundation for untrusted dynamic plugins.
+//
+// None of these engines is a sandbox for untrusted code today. Goja, Lua, and
+// Yaegi only check ctx.Err() before they start: a script that enters an
+// infinite loop cannot be interrupted, and functions bound into a runtime carry
+// no capability authorization. Wazero is the only engine with real containment
+// (a memory-page limit and WithCloseOnContextDone), and even it still needs
+// manifest and ABI versioning, host-capability authorization, compilation
+// caching, per-request instance limits, and artifact signing before it can run
+// third-party code.
+//
+// Until that work exists, run only trusted, first-party scripts here.
 package interpreter
 
 import (
