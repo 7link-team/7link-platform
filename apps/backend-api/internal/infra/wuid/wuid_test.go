@@ -244,6 +244,27 @@ func TestWorkerIDPoolExhaustion(t *testing.T) {
 	assert.ErrorContains(t, err, "worker id pool exhausted")
 }
 
+func TestAllocationLockLeaseIsIndependentOfWorkerLease(t *testing.T) {
+	// A process that dies between acquiring the allocation lock and releasing it
+	// blocks every other process's allocation until the lease expires. That
+	// window must stay short and must not scale with the worker lease, which is
+	// an hour by default.
+	db := newTestDB(t)
+	lock, err := allocLocker(db).Lock(t.Context(), allocLockName)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = lock.Unlock(context.Background()) })
+
+	var expiresAt int64
+	require.NoError(t, db.Table("dlocks").
+		Where("name = ?", allocLockName).
+		Select("expires_at").Scan(&expiresAt).Error)
+
+	window := time.Until(time.UnixMilli(expiresAt))
+	assert.Positive(t, window)
+	assert.LessOrEqual(t, window, allocLockTTL)
+	assert.Less(t, window, DefaultLease)
+}
+
 func TestWorkerCloseReportsDatabaseFailure(t *testing.T) {
 	db := newTestDB(t)
 	worker := &Worker{db: db}

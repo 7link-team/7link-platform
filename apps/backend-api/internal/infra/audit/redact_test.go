@@ -32,6 +32,34 @@ func TestRedactJSONCaseInsensitiveAndExtraKeys(t *testing.T) {
 	require.Contains(t, out, "1")
 }
 
+func TestRedactJSONMatchesSeparatorVariants(t *testing.T) {
+	// The built-in keys are snake_case, but JSON APIs commonly spell the same
+	// fields in camelCase or kebab-case. Matching ignores word separators so a
+	// default key covers every spelling of the field it names.
+	redactor := newRedactor(nil)
+	out := requireRedactedJSON(t, redactor, []byte(`{
+		"accessToken": "at-leak",
+		"refresh-token": "rt-leak",
+		"clientSecret": "cs-leak",
+		"cardNumber": "4111111111111111",
+		"orderNumber": "keep-me"
+	}`))
+	require.NotContains(t, out, "at-leak")
+	require.NotContains(t, out, "rt-leak")
+	require.NotContains(t, out, "cs-leak")
+	require.NotContains(t, out, "4111111111111111")
+	require.Contains(t, out, "keep-me")
+}
+
+func TestRedactJSONConfiguredKeyMatchesOtherSpellings(t *testing.T) {
+	// A configured key is normalized the same way, so operators do not have to
+	// enumerate every spelling their API happens to use.
+	redactor := newRedactor([]string{"phone_number"})
+	out := requireRedactedJSON(t, redactor, []byte(`{"phoneNumber":"555","ok":1}`))
+	require.NotContains(t, out, "555")
+	require.Contains(t, out, `"ok":1`)
+}
+
 func TestRedactJSONMalformedReturnsNoBody(t *testing.T) {
 	redactor := newRedactor(nil)
 	out, err := redactor.RedactJSON([]byte(`{"password":"secret"`))
@@ -57,6 +85,7 @@ func TestRedactJSONPreservesNumberPrecision(t *testing.T) {
 func TestRedactJSONPreservesObjectKeyOrder(t *testing.T) {
 	redactor := newRedactor(nil)
 	out := requireRedactedJSON(t, redactor, []byte(`{"a":1,"password":"x","b":2}`))
+	//nolint:testifylint // Key order is the assertion here; JSONEq ignores it.
 	assert.Equal(t, `{"a":1,"password":"[REDACTED]","b":2}`, out)
 }
 

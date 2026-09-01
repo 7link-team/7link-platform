@@ -85,8 +85,11 @@ func (m *Module) Start(ctx context.Context) error {
 		}
 		return fmt.Errorf("initialize generator: %w", err)
 	}
+	// The lease is read only to label the readiness log, so a lookup failure
+	// must not fail startup — but it must not vanish silently either.
 	lease, err := m.source.Current()
 	if err != nil {
+		slog.WarnContext(ctx, "guid generator ready, worker ID unavailable for logging", "error", err)
 		return nil
 	}
 	slog.InfoContext(ctx, "guid generator ready", "worker_id", lease.WorkerID)

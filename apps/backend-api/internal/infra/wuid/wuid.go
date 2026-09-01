@@ -22,6 +22,13 @@ const (
 	renewRetryInterval = 5 * time.Second
 	EnvKey             = "WUID"
 	allocLockName      = "wuid:alloc"
+
+	// allocLockTTL bounds how long a process that dies mid-allocation blocks
+	// every other process from allocating a worker ID. It is deliberately
+	// independent of the worker lease: allocation is a few statements, so
+	// leasing the allocation lock for the worker lease would stall the whole
+	// fleet's startup for an hour after a single crash.
+	allocLockTTL = 15 * time.Second
 )
 
 var (
@@ -125,6 +132,15 @@ func (worker *Worker) ID() uint16 {
 
 func (worker *Worker) Alive() bool { return worker.alive.Load() }
 
+// leaseToken reads the current lease token. Every leased worker stores one
+// before its heartbeat starts, and a static worker never reaches the lease
+// statements; the comma-ok form keeps an unset token a no-match (and so a
+// clean errLeaseTakenOver) instead of a panic.
+func (worker *Worker) leaseToken() string {
+	token, _ := worker.token.Load().(string)
+	return token
+}
+
 // Generation changes whenever a leased worker reacquires a lease, including
 // when the numeric worker ID happens to be reused.
 func (worker *Worker) Generation() uint64 { return worker.generation.Load() }
@@ -174,12 +190,20 @@ func allocate(ctx context.Context, db *gorm.DB, options ...Option) (*Worker, err
 	return worker, nil
 }
 
+// allocLocker builds the locker that serializes worker-id allocation. Auto-
+// refresh keeps a slow allocation alive past the short TTL, so the lease can be
+// bounded for crash recovery without risking expiry while it is legitimately
+// held.
+func allocLocker(db *gorm.DB) *dlock.Locker {
+	return dlock.NewLocker(db, dlock.WithTTL(allocLockTTL), dlock.WithAutoRefresh())
+}
+
 func claimUnderLock(ctx context.Context, db *gorm.DB, lease time.Duration, nowExpr string) (int, string, error) {
 	token, err := newToken()
 	if err != nil {
 		return 0, "", fmt.Errorf("wuid: create lease token: %w", err)
 	}
-	lock, err := dlock.NewLocker(db, dlock.WithTTL(lease)).Lock(ctx, allocLockName)
+	lock, err := allocLocker(db).Lock(ctx, allocLockName)
 	if err != nil {
 		return 0, "", fmt.Errorf("wuid: acquire allocation lock: %w", err)
 	}
@@ -306,7 +330,7 @@ func (worker *Worker) retryInterval() time.Duration {
 func (worker *Worker) renew(ctx context.Context) error {
 	result := worker.db.WithContext(ctx).Model(&workerRow{}).
 		Where("id = ?", worker.ID()).
-		Where("token = ?", worker.token.Load().(string)).
+		Where("token = ?", worker.leaseToken()).
 		UpdateColumn("expires_at", gorm.Expr(worker.nowExpr+" + ?", worker.lease.Milliseconds()))
 	if result.Error != nil {
 		return result.Error
@@ -369,7 +393,7 @@ func (worker *Worker) Close(ctx context.Context) error {
 	worker.wg.Wait()
 	return worker.db.WithContext(ctx).Model(&workerRow{}).
 		Where("id = ?", worker.ID()).
-		Where("token = ?", worker.token.Load().(string)).
+		Where("token = ?", worker.leaseToken()).
 		UpdateColumn("expires_at", int64(0)).Error
 }
 

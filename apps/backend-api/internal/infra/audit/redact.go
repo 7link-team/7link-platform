@@ -15,7 +15,16 @@ var errUnexpectedToken = errors.New("audit: unexpected JSON token")
 
 // defaultSensitiveKeys are JSON field names whose values are replaced with
 // [REDACTED] when capturing request or response bodies. Keys are matched
-// case-insensitively after trimming.
+// through normalizeKey, so one snake_case entry here also covers the camelCase
+// and kebab-case spellings of the same field.
+//
+// The set is scoped to credentials and high-harm identifiers — values with no
+// audit worth and an unbounded leak cost. Contact PII (email, phone, name,
+// address) is deliberately absent: it is frequently the subject of the audited
+// change itself, so blanket redaction would erase the record's investigative
+// value. Deployments under a stricter regime add those field names through
+// Config.SensitiveFields. Erasure is irreversible in a log; a value that was
+// never captured cannot be recovered, so the default errs toward recording.
 var defaultSensitiveKeys = map[string]struct{}{
 	"password":          {},
 	"passwd":            {},
@@ -49,11 +58,10 @@ type redactor struct {
 func newRedactor(extra []string) *redactor {
 	keys := make(map[string]struct{}, len(defaultSensitiveKeys)+len(extra))
 	for key := range defaultSensitiveKeys {
-		keys[key] = struct{}{}
+		keys[normalizeKey(key)] = struct{}{}
 	}
 	for _, key := range extra {
-		key = strings.ToLower(strings.TrimSpace(key))
-		if key != "" {
+		if key = normalizeKey(key); key != "" {
 			keys[key] = struct{}{}
 		}
 	}
@@ -204,25 +212,38 @@ func writeScalar(out *bytes.Buffer, value any) error {
 }
 
 func isSensitiveKey(key string, sensitive map[string]struct{}) bool {
-	_, ok := sensitive[strings.ToLower(strings.TrimSpace(key))]
+	_, ok := sensitive[normalizeKey(key)]
 	return ok
+}
+
+// keySeparators strips the word separators that distinguish otherwise identical
+// field spellings. A Replacer is immutable and safe for concurrent use.
+var keySeparators = strings.NewReplacer("_", "", "-", "")
+
+// normalizeKey folds a field name to its comparison form: trimmed, lower-cased,
+// and stripped of word separators, so access_token, accessToken, Access-Token,
+// and ACCESSTOKEN all resolve to the same entry. Over-matching is the safe
+// direction here: a redacted field costs an audit detail, a missed one leaks a
+// credential.
+func normalizeKey(key string) string {
+	return keySeparators.Replace(strings.ToLower(strings.TrimSpace(key)))
 }
 
 // redactionMarker is the literal replacement for sensitive values.
 const redactionMarker = "[REDACTED]"
 
-// truncateString cuts s to at most max bytes. The cut is at a rune boundary so
+// truncateString cuts s to at most limit bytes. The cut is at a rune boundary so
 // the result is always valid UTF-8: bytes that would split a multi-byte rune
 // are dropped. The replacement character guards against any residual invalid
 // sequences in the source body.
-func truncateString(s string, max int) string {
-	if max <= 0 || len(s) <= max {
+func truncateString(s string, limit int) string {
+	if limit <= 0 || len(s) <= limit {
 		return s
 	}
 	if !utf8.ValidString(s) {
 		s = strings.ToValidUTF8(s, string(utf8.RuneError))
 	}
-	trimmed := s[:max]
+	trimmed := s[:limit]
 	for len(trimmed) > 0 && !utf8.ValidString(trimmed) {
 		trimmed = trimmed[:len(trimmed)-1]
 	}
