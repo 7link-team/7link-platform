@@ -26,6 +26,29 @@ type Meta struct {
 	RequestAt time.Time `json:"request_at" doc:"when the server received the request"`
 	ElapsedMS float64   `json:"elapsed_ms" doc:"server processing time in milliseconds (sub-millisecond precision)"`
 	Page      *Page     `json:"page,omitempty" doc:"pagination; present on list responses only"`
+	// Capabilities describes what a list endpoint accepts, so a client can build
+	// a filter and sort interface without hard-coding the contract. It is
+	// static per endpoint and therefore returned only on request, rather than
+	// repeated on every page.
+	Capabilities *Capabilities `json:"capabilities,omitempty" doc:"filter, sort and field contract; returned only when requested"`
+}
+
+// Capabilities is the machine-readable contract of a list endpoint.
+type Capabilities struct {
+	Filters    []FilterCapability `json:"filters" doc:"filterable parameters and the operators each accepts"`
+	Sortable   []string           `json:"sortable" doc:"keys accepted by the sort parameter"`
+	Selectable []string           `json:"selectable" doc:"columns the fields parameter may name"`
+}
+
+// FilterCapability describes one filterable parameter. Values is populated for
+// closed sets; Min and Max for bounded numbers.
+type FilterCapability struct {
+	Field  string   `json:"field"`
+	Type   string   `json:"type" doc:"string | enum | int | time | id | bool"`
+	Ops    []string `json:"ops" doc:"operators this field accepts, in the form <op>:<value>"`
+	Values []string `json:"values,omitempty" doc:"the closed set of accepted values, for an enum"`
+	Min    *int     `json:"min,omitempty"`
+	Max    *int     `json:"max,omitempty"`
 }
 
 // Page describes a slice of a larger collection.
