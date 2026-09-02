@@ -108,6 +108,43 @@ func (f *Fields) Parse(values url.Values) ([]field.Expr, error) {
 					Message: "unsupported operator; accepts " + strings.Join(opNames(declared.ops), ", "),
 				}
 			}
+			// An operator that compares against a value needs one. Every kind got
+			// this wrong differently: like: built LIKE '%%' and matched every
+			// row, in: built an empty list and matched none, and eq: on an
+			// identifier could reach "= NULL" through a parse function that
+			// reads "" as no identifier. None of those were designed.
+			//
+			// The reserved parameters do tolerate an empty value — q, sort and
+			// fields each have a documented no-op for it — but they carry no
+			// operator, so an empty one is unambiguously "no search term". A
+			// filter states an operator, which is a client declaring it wants a
+			// comparison; leaving out the comparand is a malformed statement,
+			// not a blank input. A blank input is the parameter being absent,
+			// which is what the message says.
+			//
+			// The switch operators — isNull, isEmpty — are exempt: their own
+			// builders reject an empty value with a better message than this
+			// generic one, because for them the value is true or false rather
+			// than something to compare against.
+			if !op.takesNoValue() && value == "" {
+				return nil, Error{
+					Field:   name,
+					Message: "operator " + string(op) + " needs a value; omit the parameter to leave this field unfiltered",
+				}
+			}
+			// A list operator needs at least one member once the value is split.
+			// The check above is not enough because the split does its own
+			// normalization: it trims each entry and drops the blanks, so
+			// "in:,,," and "in:   " arrive here non-empty and leave as an empty
+			// list. An empty IN () matches nothing while still looking like a
+			// filter, which is the failure this rule exists to prevent — it is
+			// only reached after normalization rather than before.
+			if op.takesList() && len(splitList(value)) == 0 {
+				return nil, Error{
+					Field:   name,
+					Message: "operator " + string(op) + " needs at least one value",
+				}
+			}
 			// The same operator twice on one field is a client error, not a
 			// last-one-wins merge: silently keeping the last is how an injected
 			// duplicate overrides a legitimate filter unnoticed.

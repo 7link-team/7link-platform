@@ -245,3 +245,52 @@ func TestDescribeMatchesWhatParseAccepts(t *testing.T) {
 		}
 	}
 }
+
+// TestEmptyFilterValueIsRejectedButReservedNamesAreNot separates the two empty
+// values. A reserved parameter carries no operator, so an empty one is
+// unambiguously "no search term" and stays a no-op; a filter that names an
+// operator and omits the comparand is malformed.
+func TestEmptyFilterValueIsRejectedButReservedNamesAreNot(t *testing.T) {
+	fields := everyOperator().Reserve("q", "sort")
+
+	exprs, err := fields.Parse(url.Values{"q": {""}, "sort": {""}})
+	require.NoError(t, err)
+	assert.Empty(t, exprs)
+
+	_, err = fields.Parse(url.Values{"text": {"like:"}})
+	assert.ErrorContains(t, err, "omit the parameter")
+}
+
+// TestEveryAdvertisedOperatorIsImplemented is the invariant the descriptor
+// exists for: a UI built from Describe must not offer an operator Parse then
+// refuses. TestDescribeMatchesWhatParseAccepts only checks that the operator
+// names are non-empty, which is how Nullable could advertise isNull on a kind
+// whose builder had no branch for it.
+//
+// A value error is expected and ignored — "true" is not a timestamp — but
+// "is not supported" means the declaration and the builder disagree.
+func TestEveryAdvertisedOperatorIsImplemented(t *testing.T) {
+	declarations := map[string]*Fields{
+		"testFields":    testFields(),
+		"everyOperator": everyOperator(),
+		"switchOps": New(
+			String("text", field.NewString("t", "text")).Ops(Eq, Like).Nullable().Empty(),
+			Enum("choice", field.NewString("t", "choice"), []string{"a"}).Ops(Eq).Nullable().Empty(),
+			Int("number", field.NewInt("t", "number")).Ops(Eq).Nullable(),
+			Time("moment", field.NewTime("t", "moment")).Ops(Eq).Nullable(),
+			ID("ref", field.NewField("t", "ref"), func(string) (driver.Valuer, error) {
+				return nil, nil
+			}).Ops(Eq).Nullable(),
+		),
+	}
+	for name, fields := range declarations {
+		for _, filter := range fields.Describe().Filters {
+			for _, op := range filter.Ops {
+				if _, err := fields.Parse(url.Values{filter.Field: {op + ":true"}}); err != nil {
+					assert.NotContains(t, err.Error(), "is not supported",
+						"%s: %s advertises %s", name, filter.Field, op)
+				}
+			}
+		}
+	}
+}

@@ -116,3 +116,113 @@ func TestNullableOnlyAddsTheOperator(t *testing.T) {
 	assert.True(t, nullable.allows(IsNull))
 	assert.True(t, nullable.allows(Gte), "the declared operators survive")
 }
+
+// TestOperatorsRequireAValue covers the filter that silently does nothing:
+// like: with no comparand builds LIKE '%%' and matches every row, and in:
+// builds an empty list that matches none.
+func TestOperatorsRequireAValue(t *testing.T) {
+	for _, raw := range []string{"like:", "eq:", "in:", "notEq:"} {
+		_, err := everyOperator().Parse(url.Values{"text": {raw}})
+		assert.ErrorContains(t, err, "needs a value", "text=%s", raw)
+	}
+}
+
+// TestIntRangeAppliesToListMembers guards the bound the descriptor advertises.
+// Rejecting an out-of-range value for eq while accepting it inside in: would
+// make the documented range untrue for half the operators.
+func TestIntRangeAppliesToListMembers(t *testing.T) {
+	fields := New(Int("number", field.NewInt("t", "number")).Ops(Eq, In).Range(1, 5))
+
+	_, err := fields.Parse(url.Values{"number": {"in:2,99"}})
+	assert.ErrorContains(t, err, "must be between 1 and 5")
+
+	_, err = fields.Parse(url.Values{"number": {"in:2,4"}})
+	assert.NoError(t, err)
+}
+
+// TestNullableIsHonouredByEveryKind ties Nullable to the builders. A field that
+// advertises isNull in its descriptor and then rejects it at parse time is a
+// contract the client cannot use.
+func TestNullableIsHonouredByEveryKind(t *testing.T) {
+	fields := New(
+		String("text", field.NewString("t", "text")).Ops(Eq).Nullable(),
+		Enum("choice", field.NewString("t", "choice"), []string{"a"}).Ops(Eq).Nullable(),
+		Int("number", field.NewInt("t", "number")).Ops(Eq).Nullable(),
+		Time("moment", field.NewTime("t", "moment")).Ops(Eq).Nullable(),
+		ID("ref", field.NewField("t", "ref"), func(raw string) (driver.Valuer, error) {
+			return nil, nil
+		}).Ops(Eq).Nullable(),
+	)
+	for _, name := range []string{"text", "choice", "number", "moment", "ref"} {
+		for _, value := range []string{"isNull:true", "isNull:false"} {
+			exprs, err := fields.Parse(url.Values{name: {value}})
+			require.NoError(t, err, "%s=%s", name, value)
+			assert.Len(t, exprs, 1)
+		}
+		_, err := fields.Parse(url.Values{name: {"isNull:maybe"}})
+		assert.ErrorContains(t, err, "must be true or false", name)
+	}
+}
+
+// TestEmptyIsHonouredByTextFields covers the operator that exists because an
+// empty value can no longer be smuggled in as a comparand.
+func TestEmptyIsHonouredByTextFields(t *testing.T) {
+	fields := New(
+		String("text", field.NewString("t", "text")).Ops(Eq).Empty(),
+		Enum("choice", field.NewString("t", "choice"), []string{"a"}).Ops(Eq).Empty(),
+	)
+	for _, name := range []string{"text", "choice"} {
+		for _, value := range []string{"isEmpty:true", "isEmpty:false"} {
+			exprs, err := fields.Parse(url.Values{name: {value}})
+			require.NoError(t, err, "%s=%s", name, value)
+			assert.Len(t, exprs, 1)
+		}
+		_, err := fields.Parse(url.Values{name: {"isEmpty:maybe"}})
+		assert.ErrorContains(t, err, "must be true or false", name)
+	}
+}
+
+// TestEmptyRefusesNonTextFields keeps the declaration honest at wiring time. A
+// number, a timestamp and an identifier have no empty distinct from null, so
+// offering isEmpty on one would advertise an operator the field must reject.
+func TestEmptyRefusesNonTextFields(t *testing.T) {
+	assert.Panics(t, func() { Int("number", field.NewInt("t", "number")).Empty() })
+	assert.Panics(t, func() { Time("moment", field.NewTime("t", "moment")).Empty() })
+	assert.Panics(t, func() {
+		ID("ref", field.NewField("t", "ref"), func(string) (driver.Valuer, error) { return nil, nil }).Empty()
+	})
+}
+
+// TestEmptyIsDescribedToClients ties the operator to the descriptor a filter UI
+// is built from.
+func TestEmptyIsDescribedToClients(t *testing.T) {
+	described := New(String("text", field.NewString("t", "text")).Ops(Eq).Empty()).Describe()
+	require.Len(t, described.Filters, 1)
+	assert.Contains(t, described.Filters[0].Ops, string(IsEmpty))
+}
+
+// TestValuesThatNormalizeToNothingAreRejected covers the ordering the plain
+// empty-value rule cannot see. splitList trims and drops blank entries, and
+// EscapeLike removes wildcards, so a value that is non-empty when it is checked
+// can still be empty by the time it reaches SQL — an empty IN () that matches
+// nothing, or a LIKE '%%' that matches everything.
+func TestValuesThatNormalizeToNothingAreRejected(t *testing.T) {
+	fields := everyOperator()
+
+	for _, raw := range []string{"in:,,,", "in:   ", "in: , ", "notIn:,"} {
+		_, err := fields.Parse(url.Values{"text": {raw}})
+		assert.ErrorContains(t, err, "needs at least one value", "text=%s", raw)
+	}
+	for _, raw := range []string{"like:%", "like:___", "like:%_%", `like:\`} {
+		_, err := fields.Parse(url.Values{"text": {raw}})
+		assert.ErrorContains(t, err, "other than wildcards", "text=%s", raw)
+	}
+
+	// The surrounding forms still work: a list with one usable member, and a
+	// pattern that carries a wildcard alongside real text.
+	for _, raw := range []string{"in:a,,b", "in: a ", "like:a%b"} {
+		exprs, err := fields.Parse(url.Values{"text": {raw}})
+		require.NoError(t, err, "text=%s", raw)
+		assert.Len(t, exprs, 1)
+	}
+}

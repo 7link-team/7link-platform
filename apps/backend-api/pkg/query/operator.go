@@ -18,16 +18,17 @@ import "strings"
 type Op string
 
 const (
-	Eq     Op = "eq"
-	NotEq  Op = "notEq"
-	In     Op = "in"
-	NotIn  Op = "notIn"
-	Like   Op = "like"
-	Gte    Op = "gte"
-	Lte    Op = "lte"
-	Gt     Op = "gt"
-	Lt     Op = "lt"
-	IsNull Op = "isNull"
+	Eq      Op = "eq"
+	NotEq   Op = "notEq"
+	In      Op = "in"
+	NotIn   Op = "notIn"
+	Like    Op = "like"
+	Gte     Op = "gte"
+	Lte     Op = "lte"
+	Gt      Op = "gt"
+	Lt      Op = "lt"
+	IsNull  Op = "isNull"
+	IsEmpty Op = "isEmpty"
 )
 
 // listOps take a comma-separated value; every other operator takes one value
@@ -36,8 +37,10 @@ const (
 func (o Op) takesList() bool { return o == In || o == NotIn }
 
 // takesNoValue marks operators whose value is a boolean switch rather than a
-// comparand.
-func (o Op) takesNoValue() bool { return o == IsNull }
+// comparand. They still carry true or false, so that one parameter can ask for
+// either side of the test; what they do not carry is something to compare
+// against, which is why the empty-value rule does not apply to them.
+func (o Op) takesNoValue() bool { return o == IsNull || o == IsEmpty }
 
 // MaxValueLength caps one filter value. An unbounded value would reach LIKE
 // patterns and logs alike; the limit is generous for real input and small
