@@ -39,7 +39,7 @@ pkg/appenv/          Runtime: the application-lifetime manager container
 pkg/config/          layered configuration, generation, and inspection
 pkg/extension/       thin adapters over huma, gorm, grpc, goose, slog
 pkg/interpreter/     script and WASM engines; not yet wired into the app
-tests/               integration tests (separate module, real database engines)
+tests/               integration tests (separate module, embedded/test engines)
 tools/               pinned build tooling (separate module)
 ```
 
@@ -85,17 +85,18 @@ Run `make dev` with `--help` for the full flag list.
 ```sh
 make test              # unit tests
 make test-coverage     # unit tests + coverage gates
-make test-integration  # integration tests against real database engines
+make test-integration  # integration tests against embedded/test engines
 make test-all          # unit + integration
 make lint              # golangci-lint, pinned in tools/go.mod
 ```
 
-`make test-coverage` enforces 90% overall and 90% for each infrastructure
-module individually; it fails the build below either threshold.
+`make test-coverage` enforces 90% overall and 90% for every package listed in
+`MODULE_COVERAGE_PACKAGES`; it fails the build below either threshold.
 
-`make test-integration` runs the `tests/` module, which starts a real embedded
-PostgreSQL and an in-process MySQL-protocol engine, so migrations are exercised
-against actual databases rather than mocks.
+`make test-integration` runs the `tests/` module against an embedded PostgreSQL
+16 server, file-backed SQLite, and the in-process `go-mysql-server` compatibility
+engine. The latter is not MySQL 8 and does not replace the separately pinned
+real-MySQL gate.
 
 ## Code generation
 
