@@ -89,4 +89,4 @@ Windows TCP 连通 PASS。
 ## Last Checkpoint
 2026-09-02 · 计划 v8 冻结 `internal/iam/<module>`、9 个自治 SQL source 与 provider-owned
 根包接口；200 条 REST baseline 保持不变。`make iam-preflight`、工具测试、`make ci`、
-`git diff --check` 均 PASS，待提交推送。
+`git diff --check` 均 PASS；迁移准备提交 `d6254f9` 已推送至 `origin/main`。
