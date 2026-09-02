@@ -12,6 +12,7 @@ import (
 	"7link.com/platform/internal/todo/query"
 	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/extension/huma/respx"
+	platformquery "7link.com/platform/pkg/query"
 	"gorm.io/gen"
 	"gorm.io/gen/field"
 	"gorm.io/gorm"
@@ -54,6 +55,19 @@ func (s *service) scope(ctx context.Context, includeDeleted bool) (query.ITodoRo
 		q = q.Where(todos.DeletedAt.IsNull())
 	}
 	return q, todos, nil
+}
+
+// contract returns the filter declaration for description alone. It builds no
+// statement, but the generated column set cannot be constructed without a
+// datasource, so this reports ErrUnavailable like every other task operation
+// when there is none. Route registration treats that as "nothing to document"
+// rather than as a failure.
+func (s *service) contract() (*platformquery.Fields, error) {
+	db := s.writer()
+	if db == nil {
+		return nil, ErrUnavailable
+	}
+	return filters(query.Bind(db, s.runtime.TablePrefix())), nil
 }
 
 // actor is the acting principal, taken from the identity contract audit already
@@ -298,7 +312,9 @@ func (s *service) List(ctx context.Context, in ListInput) (Page, error) {
 		return Page{}, err
 	}
 	if term := strings.TrimSpace(in.Q); term != "" {
-		where = append(where, searchTerm(todos, term))
+		if match := searchTerm(todos, term); match != nil {
+			where = append(where, match)
+		}
 	}
 	order, err := contract.Ordering(in.Sort, maxSortKeys, todos.ID.Desc())
 	if err != nil {

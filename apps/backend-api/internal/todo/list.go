@@ -25,7 +25,11 @@ var transportParams = []string{"q", "deleted", "sort", "fields", "offset", "limi
 func filters(cols *query.Todos) *platformquery.Fields {
 	return platformquery.New(
 		platformquery.String("title", cols.Title).Ops(platformquery.Eq, platformquery.Like),
-		platformquery.String("description", cols.Description).Ops(platformquery.Like),
+		// description is the one column whose empty value is both reachable and
+		// meaningful: it is NOT NULL and defaults to "", so "no description" is
+		// an ordinary state rather than a missing row. Like alone cannot ask for
+		// it — a pattern of nothing is rejected — so isEmpty is the only way.
+		platformquery.String("description", cols.Description).Ops(platformquery.Like).Empty(),
 		platformquery.Enum("status", cols.Status, StatusStrings()).
 			Ops(platformquery.Eq, platformquery.NotEq, platformquery.In),
 		platformquery.Int("priority", cols.Priority).
@@ -70,8 +74,19 @@ func parseActorID(raw string) (driver.Valuer, error) {
 // searchTerm builds the cross-field match behind the q parameter. It is not a
 // field filter — there is no field to name and no operator to choose — so it
 // stays a plain parameter rather than acquiring an operator prefix.
+//
+// It returns nil for a term that escaping empties out. EscapeLike removes the
+// wildcards, so a q of nothing but them survives the caller's blank check and
+// then builds LIKE '%%' on both columns — a full scan that ORs to every row.
+// Dropping the predicate returns that same set without asking the database to
+// prove it. Unlike a filter this is not an error: q is a search box, and a
+// search for nothing is the blank search the caller already handles.
 func searchTerm(cols *query.Todos, term string) field.Expr {
-	pattern := "%" + platformquery.EscapeLike(term) + "%"
+	escaped := platformquery.EscapeLike(term)
+	if escaped == "" {
+		return nil
+	}
+	pattern := "%" + escaped + "%"
 	return field.Or(cols.Title.Like(pattern), cols.Description.Like(pattern))
 }
 

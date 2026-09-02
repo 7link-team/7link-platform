@@ -82,10 +82,23 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	if m.service == nil {
 		return fmt.Errorf("register todo: service is unavailable")
 	}
+	// The filter parameters are documented from the same declaration that parses
+	// them: they are read from the raw query rather than bound to struct fields,
+	// so nothing else would put them in the generated document.
+	//
+	// Building that declaration needs the generated column set, which needs a
+	// datasource. Without one every task route already answers "unavailable", so
+	// the routes are still registered — there is simply nothing to document the
+	// filters from, and failing registration would turn a dead module into a
+	// dead server.
+	var filterParams []*huma.Param
+	if contract, err := m.service.contract(); err == nil {
+		filterParams = contract.Parameters()
+	}
 	// The transfer routes are registered first: their paths are static where the
 	// task routes take a parameter, and a static segment must not be captured as
 	// an identifier.
-	registerTransferHTTP(api, m.service)
-	registerHTTP(api, m.service)
+	registerTransferHTTP(api, m.service, filterParams)
+	registerHTTP(api, m.service, filterParams)
 	return nil
 }

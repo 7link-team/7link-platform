@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/todo/model"
+	"7link.com/platform/internal/todo/query"
 	platformquery "7link.com/platform/pkg/query"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -311,4 +312,43 @@ func TestTimeRangesExcludeTheUpperBoundWhenAsked(t *testing.T) {
 	// in the sub-second gap is lost, which is the defect the strict bound fixes.
 	assert.ElementsMatch(t, []string{"on the lower bound"},
 		rang("gte:"+iso(september), "lte:"+iso(october.Add(-time.Second))))
+}
+
+// TestSearchTermDropsAWildcardOnlyQuery covers the same normalization order the
+// filter layer enforces. EscapeLike removes the wildcards, so a q of nothing but
+// them would build LIKE '%%' on both columns — a full scan that matches every
+// row anyway. The result set is unchanged; the pointless predicate is not built.
+func TestSearchTermDropsAWildcardOnlyQuery(t *testing.T) {
+	_, db := newTestService(t, "")
+	cols := query.Bind(db, "")
+	for _, term := range []string{"%", "___", `\`, "%_%"} {
+		assert.Nil(t, searchTerm(cols, term), "q=%s", term)
+	}
+	assert.NotNil(t, searchTerm(cols, "task"))
+	assert.NotNil(t, searchTerm(cols, "a%b"))
+}
+
+// TestFilterDescriptionIsEmpty runs the operator against a real database, so
+// the predicate is verified as SQL rather than as a built expression.
+func TestFilterDescriptionIsEmpty(t *testing.T) {
+	svc, _ := newTestService(t, "")
+	seed(t, svc,
+		Draft{Title: "documented", Description: "why", Status: StatusOpen, Priority: 3},
+		Draft{Title: "bare", Status: StatusOpen, Priority: 3},
+	)
+
+	titles := func(filter string) []string {
+		page, err := svc.List(t.Context(), ListInput{
+			Limit: 10, RawQuery: url.Values{"description": {filter}},
+		})
+		require.NoError(t, err)
+		out := make([]string, 0, len(page.Rows))
+		for _, row := range page.Rows {
+			out = append(out, row.Title)
+		}
+		return out
+	}
+
+	assert.Equal(t, []string{"bare"}, titles("isEmpty:true"))
+	assert.Equal(t, []string{"documented"}, titles("isEmpty:false"))
 }

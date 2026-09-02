@@ -30,8 +30,11 @@ func newTestAPI(t *testing.T) humatest.TestAPI {
 	// filter parameters never reach the handler and every list is unfiltered.
 	router.Use(RawQueryMiddleware)
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
-	registerTransferHTTP(api, svc)
-	registerHTTP(api, svc)
+	contract, err := svc.contract()
+	require.NoError(t, err)
+	filterParams := contract.Parameters()
+	registerTransferHTTP(api, svc, filterParams)
+	registerHTTP(api, svc, filterParams)
 	return humatest.Wrap(t, api)
 }
 
@@ -424,10 +427,11 @@ func TestExportRoundTripsThroughImport(t *testing.T) {
 // the list contract together.
 //
 // The filters are parsed from the raw query, so the contract rejects any
-// parameter it does not recognize — which means every parameter huma itself
-// declares must also be reserved, or the endpoint rejects a parameter its own
-// documentation advertises. Nothing in the type system connects the struct tags
-// to the Reserve list, so it is asserted here.
+// parameter it does not recognize — which means every parameter huma declares
+// must also be one the contract accepts, or the endpoint rejects a parameter
+// its own documentation advertises. A parameter is accepted either because the
+// transport reserves it or because it is a declared filter. Nothing in the type
+// system connects the struct tags to either list, so it is asserted here.
 //
 // This caught a field tagged `query:"-"`. A parameter tag is a literal name to
 // huma, not a skip sentinel, so that declared a parameter named "-" that showed
@@ -435,13 +439,22 @@ func TestExportRoundTripsThroughImport(t *testing.T) {
 func TestEveryDeclaredQueryParameterIsReservedByTheContract(t *testing.T) {
 	api := newTestAPI(t)
 
-	reserved := map[string]bool{}
+	accepted := map[string]bool{}
 	for _, name := range transportParams {
-		reserved[name] = true
+		accepted[name] = true
 	}
 	// Declared by the transfer endpoints, which do not go through the filter
 	// contract but share the same struct in the export case.
-	reserved["sample"] = true
+	accepted["sample"] = true
+	// The filter parameters are documented from the query contract, so they are
+	// accepted as filters rather than reserved. Both halves are read from the
+	// same declaration the endpoint parses with.
+	svc, _ := newTestService(t, "")
+	contract, err := svc.contract()
+	require.NoError(t, err)
+	for _, filter := range contract.Describe().Filters {
+		accepted[filter.Field] = true
+	}
 
 	for path, item := range api.OpenAPI().Paths {
 		for method, op := range map[string]*huma.Operation{
@@ -455,9 +468,10 @@ func TestEveryDeclaredQueryParameterIsReservedByTheContract(t *testing.T) {
 				if param.In != "query" {
 					continue
 				}
-				assert.True(t, reserved[param.Name],
-					"%s %s declares query parameter %q, which the contract does not reserve; "+
-						"the endpoint would reject its own documented parameter",
+				assert.True(t, accepted[param.Name],
+					"%s %s declares query parameter %q, which the contract neither reserves "+
+						"nor declares as a filter; the endpoint would reject its own "+
+						"documented parameter",
 					method, path, param.Name)
 			}
 		}
@@ -474,4 +488,48 @@ func TestListAcceptsAnEmptyQueryString(t *testing.T) {
 		resp := api.Get("/todos" + raw)
 		assert.Equal(t, http.StatusOK, resp.Code, "GET /todos%s: %s", raw, resp.Body.String())
 	}
+}
+
+// TestListDeclaresItsFilterParameters covers the half of the contract huma
+// cannot see. The filters are parsed from the raw query rather than bound to
+// struct fields, so without an explicit declaration they are absent from the
+// generated document and from every client built from it.
+func TestListDeclaresItsFilterParameters(t *testing.T) {
+	api := newTestAPI(t)
+
+	for _, path := range []string{"/todos", "/todos/export"} {
+		operation := api.OpenAPI().Paths[path].Get
+		require.NotNil(t, operation, path)
+		declared := map[string]bool{}
+		for _, param := range operation.Parameters {
+			declared[param.Name] = true
+		}
+		for _, name := range []string{"title", "status", "priority", "due_at", "created_by"} {
+			assert.True(t, declared[name], "%s does not document filter %q", path, name)
+		}
+	}
+}
+
+// TestWildcardOnlySearchStillReturnsEverything pins the half of the wildcard
+// rule that must not change. Dropping the predicate is an optimization, not a
+// filter: q=% matched every row when it built LIKE '%%', and it still does.
+func TestWildcardOnlySearchStillReturnsEverything(t *testing.T) {
+	api := newTestAPI(t)
+	createTask(t, api, "first")
+	createTask(t, api, "second")
+
+	titles := func(path string) []string {
+		resp := api.Get(path)
+		require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+		var page respx.Envelope[[]View]
+		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &page))
+		out := make([]string, 0, len(page.Data))
+		for _, view := range page.Data {
+			require.NotNil(t, view.Title)
+			out = append(out, *view.Title)
+		}
+		return out
+	}
+	assert.Equal(t, titles("/todos"), titles("/todos?q=%25"),
+		"a search for nothing must return the same page as no search")
 }

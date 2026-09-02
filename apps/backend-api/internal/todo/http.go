@@ -55,9 +55,14 @@ var allFields = func() map[string]bool {
 func viewOf(row *model.TodoRow) View { return viewOfSelected(row, allFields) }
 
 // viewOfSelected renders only the columns the caller asked for. An unselected
-// column stays a nil pointer and is omitted, so "not requested" is visibly
-// different from "present but null", which is what an unknown actor or an
-// unset due date look like.
+// column stays a nil pointer and is omitted.
+//
+// The two empty columns are not written the same way, and the difference is
+// deliberate. An identifier is a value on the row, so a selected one is always
+// present and a zero renders as null — an actor no authentication middleware
+// has supplied. A nullable timestamp is already a pointer, so an empty one is
+// indistinguishable from an unselected one and drops out of the response; that
+// is the shape a cleared due date has, and it is asserted as such.
 func viewOfSelected(row *model.TodoRow, rendered map[string]bool) View {
 	view := View{ID: row.ID}
 	if rendered["title"] {
@@ -247,7 +252,7 @@ func taskResponse(ctx context.Context, row *model.TodoRow) *taskBody {
 	return &taskBody{ETag: etag(row.Version), Body: respx.OK(ctx, viewOf(row)).Body}
 }
 
-func registerHTTP(api huma.API, svc *service) {
+func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param) {
 	huma.Register(api, huma.Operation{
 		OperationID:   "create-todo",
 		Method:        http.MethodPost,
@@ -274,7 +279,8 @@ func registerHTTP(api huma.API, svc *service) {
 		Summary:     "List tasks",
 		Description: "Filters are AND-combined. Sorting accepts up to three keys; the identifier is " +
 			"always appended so paging stays stable when sort values tie.",
-		Tags: []string{"Todo"},
+		Tags:       []string{"Todo"},
+		Parameters: filterParams,
 	}, func(ctx context.Context, in *ListInput) (*respx.Body[[]View], error) {
 		in.RawQuery = rawQueryFrom(ctx)
 		page, err := svc.List(ctx, *in)
@@ -505,7 +511,7 @@ func parseFormat(raw string) (Format, error) {
 	return format, nil
 }
 
-func registerTransferHTTP(api huma.API, svc *service) {
+func registerTransferHTTP(api huma.API, svc *service, filterParams []*huma.Param) {
 	huma.Register(api, huma.Operation{
 		OperationID: "download-todo-import-template",
 		Method:      http.MethodGet,
@@ -533,7 +539,8 @@ func registerTransferHTTP(api huma.API, svc *service) {
 		Summary:     "Export tasks",
 		Description: "Accepts every list filter. The result is not paginated but is capped; a filter " +
 			"matching more rows is rejected rather than silently truncated.",
-		Tags: []string{"Todo"},
+		Tags:       []string{"Todo"},
+		Parameters: filterParams,
 	}, func(ctx context.Context, in *ExportRequest) (*huma.StreamResponse, error) {
 		format, err := parseFormat(in.Format)
 		if err != nil {
