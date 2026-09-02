@@ -36,6 +36,8 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/internal/infra/wuid \
 	7link.com/platform/internal/iam/core \
 	7link.com/platform/internal/todo \
+	7link.com/platform/pkg/extension/authn \
+	7link.com/platform/pkg/extension/authz \
 	7link.com/platform/pkg/extension/policyx \
 	7link.com/platform/pkg/extension/huma/respx \
 	7link.com/platform/pkg/i18n \

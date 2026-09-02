@@ -3,6 +3,7 @@ package authn
 import (
 	"context"
 	"crypto"
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/internal/infra/guid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -133,14 +135,119 @@ func TestValidateClaims(t *testing.T) {
 func TestContextHelpers(t *testing.T) {
 	_, ok := SubjectFromContext(context.Background())
 	assert.False(t, ok)
+	assert.Zero(t, TenantIDFromContext(context.Background()))
+	assert.Zero(t, EntityIDFromContext(context.Background()))
+	assert.Zero(t, PrincipalIDFromContext(context.Background()))
 
-	ctx := WithClaims(context.Background(), &Claims{Subject: "u1"})
+	ctx := WithClaims(context.Background(), &Claims{
+		Subject:     "u1",
+		TenantID:    guid.ID(11),
+		EntityID:    guid.ID(12),
+		PrincipalID: guid.ID(13),
+	})
 	claims, ok := FromContext(ctx)
 	require.True(t, ok)
 	assert.Equal(t, "u1", claims.Subject)
 	subject, ok := SubjectFromContext(ctx)
 	require.True(t, ok)
 	assert.Equal(t, "u1", subject)
+	assert.Equal(t, guid.ID(11), TenantIDFromContext(ctx))
+	assert.Equal(t, guid.ID(12), EntityIDFromContext(ctx))
+	assert.Equal(t, guid.ID(13), PrincipalIDFromContext(ctx))
+}
+
+func TestJWKPublicKeysAndSignatureAlgorithms(t *testing.T) {
+	rsaKey := newTestKey(t)
+	parsedRSA, err := (&jwk{
+		Kid: rsaKey.kid,
+		Kty: "RSA",
+		N:   base64.RawURLEncoding.EncodeToString(rsaKey.private.PublicKey.N.Bytes()),
+		E:   base64.RawURLEncoding.EncodeToString(bigEndian(rsaKey.private.PublicKey.E)),
+	}).publicKey()
+	require.NoError(t, err)
+	assert.Equal(t, &rsaKey.private.PublicKey, parsedRSA)
+
+	message := []byte("signed message")
+	hash := sha256.Sum256(message)
+	rsaSignature, err := rsa.SignPKCS1v15(rand.Reader, rsaKey.private, crypto.SHA256, hash[:])
+	require.NoError(t, err)
+	assert.NoError(t, verifySignature("RS256", parsedRSA, message, rsaSignature))
+	assert.Error(t, verifySignature("RS256", parsedRSA, message, append([]byte(nil), rsaSignature[:len(rsaSignature)-1]...)))
+
+	edPublic, edPrivate, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	parsedEd, err := (&jwk{
+		Kid: "ed25519-key",
+		Kty: "OKP",
+		Crv: "Ed25519",
+		X:   base64.RawURLEncoding.EncodeToString(edPublic),
+	}).publicKey()
+	require.NoError(t, err)
+	assert.Equal(t, edPublic, parsedEd)
+
+	edSignature := ed25519.Sign(edPrivate, message)
+	assert.NoError(t, verifySignature("EdDSA", parsedEd, message, edSignature))
+	assert.ErrorIs(t, verifySignature("EdDSA", parsedEd, []byte("tampered"), edSignature), ErrInvalidToken)
+	assert.ErrorIs(t, verifySignature("EdDSA", parsedRSA, message, edSignature), ErrInvalidToken)
+
+	_, err = (&jwk{Kid: "bad-curve", Kty: "OKP", Crv: "X25519", X: base64.RawURLEncoding.EncodeToString(edPublic)}).publicKey()
+	assert.Error(t, err)
+	_, err = (&jwk{Kid: "bad-encoding", Kty: "OKP", Crv: "Ed25519", X: "!"}).publicKey()
+	assert.Error(t, err)
+	_, err = (&jwk{Kid: "bad-length", Kty: "OKP", Crv: "Ed25519", X: base64.RawURLEncoding.EncodeToString([]byte("short"))}).publicKey()
+	assert.Error(t, err)
+}
+
+func TestIdentityClaims(t *testing.T) {
+	raw := map[string]any{
+		"iss":                "issuer",
+		"sub":                "subject",
+		"subject_type":       SubjectTypePrincipal,
+		"aud":                []any{"api", "web"},
+		"exp":                float64(time.Now().Add(time.Hour).Unix()),
+		"tenant_id":          "11",
+		"entity_id":          "12",
+		"principal_id":       "13",
+		"organization_id":    "external-org",
+		"credential_version": float64(7),
+		"auth_time":          float64(1_700_000_000),
+		"acr":                float64(2),
+		"amr":                []any{"pwd", "totp", 3},
+		"client_id":          "client",
+		"network_zone":       "office",
+		"email_verified":     true,
+	}
+	claims, err := parseClaims(raw)
+	require.NoError(t, err)
+	assert.Equal(t, guid.ID(11), claims.TenantID)
+	assert.Equal(t, guid.ID(12), claims.EntityID)
+	assert.Equal(t, guid.ID(13), claims.PrincipalID)
+	assert.Equal(t, int64(7), claims.CredentialVersion)
+	assert.Equal(t, 2, claims.ACR)
+	assert.Equal(t, []string{"pwd", "totp"}, claims.AMR)
+	assert.Equal(t, []string{"api", "web"}, claims.Audience)
+	assert.Equal(t, "external-org", claims.OrganizationID)
+	assert.Equal(t, "client", claims.ClientID)
+	assert.Equal(t, "office", claims.NetworkZone)
+	assert.True(t, claims.EmailVerified)
+
+	for _, field := range []string{"tenant_id", "entity_id", "principal_id"} {
+		invalid := make(map[string]any, len(raw))
+		for key, value := range raw {
+			invalid[key] = value
+		}
+		invalid[field] = "not-an-id"
+		_, parseErr := parseClaims(invalid)
+		assert.ErrorIs(t, parseErr, ErrInvalidToken, field)
+	}
+
+	assert.Zero(t, func() guid.ID {
+		id, claimErr := guidClaim(nil)
+		require.NoError(t, claimErr)
+		return id
+	}())
+	_, err = guidClaim(float64(11))
+	assert.ErrorIs(t, err, ErrInvalidToken)
 }
 
 func TestVerifierErrorBranches(t *testing.T) {
