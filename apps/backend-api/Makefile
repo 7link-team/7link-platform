@@ -11,6 +11,17 @@ DEV_ARGS ?= serve --debug --migrate --pprof.enabled --shutdown.graceful=false \
 COVERAGE_MIN ?= 90
 COVERAGE_PROFILE ?= coverage.out
 COVERAGE_RAW_PROFILE ?= coverage.raw.out
+-include .temp/iam-env.mk
+
+IAM_SOURCE_ROOT ?=
+DOCKER_CMD ?= docker
+DOCKER_TEST_HOST ?= 127.0.0.1
+MYSQL8_IMAGE ?= mysql:8.4@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb
+ifeq ($(OS),Windows_NT)
+MKDIR_OUTPUT = powershell.exe -NoProfile -NonInteractive -Command "New-Item -ItemType Directory -Force -Path '$(dir $(OUTPUT))' | Out-Null"
+else
+MKDIR_OUTPUT = mkdir -p $(dir $(OUTPUT))
+endif
 MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/internal/infra/audit \
 	7link.com/platform/internal/infra/configinspector \
@@ -28,10 +39,10 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/pkg/i18n \
 	7link.com/platform/pkg/query
 
-.PHONY: build ci dev fmt-check generate generate-docs lint test test-coverage test-integration test-all
+.PHONY: build ci dev fmt-check generate generate-docs iam-preflight lint test test-coverage test-integration test-all
 
 build:
-	mkdir -p $(dir $(OUTPUT))
+	$(MKDIR_OUTPUT)
 	go build -trimpath -ldflags "$(LDFLAGS)" -o $(OUTPUT) ./cmd/7link-api
 
 # Regenerate everything derived from a declared source: protobuf from .proto,
@@ -46,6 +57,11 @@ generate:
 # dependencies, so it is kept out of `generate` and run deliberately.
 generate-docs:
 	go generate ./pkg/extension/huma/docs/...
+
+# Resolve and verify the machine-local source checkout and Docker transport.
+# The generated .temp/iam-env.mk contains paths only; it never stores credentials.
+iam-preflight:
+	go -C tools run ./iam-preflight --target .. --fix --bootstrap-docker
 
 # Single entry point for a pipeline: every gate, in cheapest-first order, so a
 # formatting or lint failure reports before the slow database tests run. Fails

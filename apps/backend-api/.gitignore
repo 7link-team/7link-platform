@@ -12,3 +12,6 @@ coverage.html
 *.db-*
 *.sqlite
 *.sqlite-*
+
+# Machine-local IAM migration environment
+.temp/iam-env.mk

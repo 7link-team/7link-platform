@@ -1,0 +1,6 @@
+*.go text eol=lf
+Makefile text eol=lf
+*.md text eol=lf
+*.sh text eol=lf
+*.sql text eol=lf
+.gitignore text eol=lf

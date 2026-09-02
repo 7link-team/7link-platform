@@ -80,7 +80,7 @@ IAM 与 organization 之间存在双向外键，跨流无法形成可执行 DAG�
 IAM 域全量迁移 Phase 1–9。
 
 **Status**
-已确认。
+已被 D10 取代。外键环只能证明需要更细的迁移执行里程碑，不能证明应剥离模块 SQL 所有权。
 
 ---
 
@@ -126,3 +126,164 @@ IAM schema R9'' 与实体更新服务。
 
 **Status**
 已确认。
+
+---
+
+## D6 — IAM 迁移只支持已确认的 Mac/Windows 两机拓扑
+
+**Decision**
+迁移环境由 `make iam-preflight` 自动解析。Mac 使用
+`/Volumes/Macintosh/Projects/chaosplus/chaosplus/apps/server` 与本机 Docker；Windows
+使用 `D:\Projects\Chaosplus\chaosplus-api\apps\server`，无本机 Docker 时通过专用 SSH key
+驱动 `root@10.0.0.100` 的 Docker。源基线固定为 `apps/server` tree
+`201052baddd745d1c2727cf29bbc3c68253a1af0`；MySQL 固定为
+`mysql:8.4@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb`。
+
+**Reason**
+用户明确只在原 Mac 与当前 Windows 两台设备间轮换。单机路径、Docker Desktop 路径和
+`localhost` 容器假设在换机后均失效；自动预检可在继续实现前发现源漂移、CRLF、Docker
+transport 与三方言表集合问题。
+
+**Alternatives Considered**
+1. 要求两台机器手工维护同一路径与 Docker Desktop —— 容易再次产生陈旧状态。
+2. 把 SSH 密码写入脚本 —— 不可接受；专用 key 只保存在机器 `~/.ssh`。
+3. 支持任意第三台机器 —— 当前无需求，使用 `IAM_SOURCE_ROOT` 等覆盖项已足够应急。
+
+**Tradeoffs**
+Windows 依赖局域网主机 `10.0.0.100` 可达；Mac 的预检与完整门禁仍需回到该设备后实跑一次。
+源 `apps/server` 发生任何变更时必须显式复审并更新 tree，不能静默迁入新版本。
+
+**Scope**
+IAM 迁移的本机预检、MySQL 8 门禁与换机恢复，不改变生产部署拓扑。
+
+**Status**
+已确认（用户明确限定两台设备并要求自动检测处理）。
+
+---
+
+## D7 — IAM 迁移不新增动态菜单多语言表
+
+**Decision**
+本次保持固定 source tree 的 63 张表，不新增 `iam_menu_translations`，`iam_menus.label`
+继续保持源系统的单值语义。编译期系统消息仍使用现有 `pkg/i18n`，不把它扩展为租户动态
+内容翻译系统。
+
+**Reason**
+用户要求全量迁移原有功能。源库只有 `iam_menus.label`，目标也不存在动态菜单翻译模型、
+回退规则或管理 API；新增第 64 张表会引入新产品行为，不属于兼容迁移。
+
+**Tradeoffs**
+迁移后动态菜单仍只能保存一个 label。未来若产品明确需要多语言菜单，必须单独设计 locale
+唯一键、默认语言、回退规则、CRUD/API 兼容与存量填充，不能混入本次迁移。
+
+**Scope**
+IAM schema 表集合、菜单 model/repository/API 与 Phase 1 baseline。
+
+**Status**
+已确认（按“迁移现有功能、不静默新增产品功能”的范围约束关闭）。
+
+---
+
+## D8 — IAM 目标采用 bounded context + 私有 capability 两级结构（已废弃）
+
+**Decision**
+9 个 IAM 一级模块继续作为 `pkg/module` bounded context；每个模块内部按业务能力分入
+`internal/<capability>`，并把 gorm adapter、Huma adapter、跨能力 workflow 分别放入
+模块私有的 `internal/store`、`internal/httpapi`、可选 `internal/workflow`。模块根只
+负责生命周期、依赖注入和协议注册。跨模块协作只允许使用按提供方领域分组的
+`pkg/port/{id,authz,audit,iam,authn,identity,organization}`，不直接导入对方实现。
+
+**Reason**
+源库的一级分模块清楚，但 IAM 等模块内部仍把领域、bun 仓储、REST 和装配放在同一个 Go
+package。原样平移只会得到更整齐的大包，不能满足“迁入后结构更清晰”。两级结构保留业务
+边界，同时通过 Go nested `internal` 和自动架构测试形成可执行约束。
+
+**Constraints**
+- capability 不依赖 gorm、Huma、`pkg/module` 或 adapter。
+- repository port 由消费 capability 声明，store 负责 domain/model 转换。
+- httpapi 不直接访问 gorm/query/model。
+- sibling capability 不直接互相导入；必要的原子流程由 module-local workflow 和消费侧
+  声明的 transaction view 协调，store 提供同一事务绑定的 repository 实现，不暴露 gorm DB。
+- port DTO 不引用业务模块内部的 domain/model 类型，避免从中立端口反向泄漏实现。
+- 不把 capability 注册成独立模块，不拆 schema flow，不为目录整齐制造单函数包。
+
+**Tradeoffs**
+相对源库会增加 package 数量和 domain/model 映射代码；代价换取编译期依赖方向、可单测领域
+逻辑和更小的变更半径。小模块只拆有独立不变量的能力，避免过度分层。
+
+**Scope**
+Phase 2–8 的 9 个业务模块、覆盖率登记与 `tests/architecture`；不改变 63 表单一迁移流、
+REST 基线或业务行为。
+
+**Status**
+已被 D9 取代。该方案只改 IAM 域为 Ports-and-Adapters，会让仓库同时存在两套模块架构；
+用户明确要求若采用该架构必须全项目统一改造，而不是局部引入。
+
+---
+
+## D9 — IAM 迁移沿用项目原生模块，直接按 feature 子包组织
+
+**Decision**
+不在本次 IAM 迁移中引入 Ports-and-Adapters、中央 `pkg/port`/`internal/port` 或
+`internal/<capability>` 嵌套层。9 个业务模块继续使用现有 `pkg/module` 生命周期、
+`model/query/dbgen/i18n` 和 `ProvideServices/InjectServices` 模式；大模块直接按 feature
+分包，例如 `internal/iam/{access,authorization,resourcegraph,administration}`。
+
+每个 feature 包按需要使用 `domain.go`、`service.go`、`repository.go`、`http.go`。
+跨模块契约沿用 `guid.Source`、`audit.Recorder` 模式，由 provider root 稳定导出，消费者
+只导入 provider root，不导入 feature、model、query 或 concrete service。
+
+**Reason**
+当前项目已经有一致且经过测试的模块结构。只给 IAM 域增加 ports/adapters 会形成第二套
+架构，增加理解和维护成本。另一方面，IAM 源模块规模远大于现有 todo，全部放根包也不够
+清晰；直接 feature 子包在不改变项目架构哲学的前提下缩小 package 责任。
+
+**Constraints**
+- `internal/app` 是唯一总装配位置。
+- 所有真实模块依赖必须同时写入 `ModuleDependencies()`。
+- 跨模块只能导入 provider root contract。
+- repository 文件负责 gorm/model/query；HTTP 文件负责 Huma；模块根只负责生命周期和汇总。
+- feature 不是独立 `pkg/module`，不拥有 migration flow。
+- 若未来采用 Ports-and-Adapters，必须另立全项目 ADR、迁移顺序与统一门禁。
+
+**Tradeoffs**
+IAM 域模块会比现有小模块多一层 feature package，但不会引入 adapter/port 抽象体系。
+feature 间原子流程仍需模块内 workflow 明确协调，不能靠任意 sibling import。
+
+**Scope**
+Phase 0 的跨模块契约位置、Phase 2–8 目录结构、依赖门禁与覆盖率登记；不改变 63 表、
+REST 基线和业务行为。
+
+**Status**
+已被 D10 取代。用户否决按 feature 再拆包，要求 9 个原模块统一归入 IAM 域目录并保持模块自治。
+
+---
+
+## D10 — IAM 域目录下 9 个自治模块，各自拥有 SQL
+
+**Decision**
+`internal/iam/` 只作领域命名空间，不含 Go 文件、生命周期或集中迁移。其下固定为
+`core`、`authn`、`identity`、`oauth`、`organization`、`audit`、`governance`、
+`provisioning`、`federation` 9 个自治 `pkg/module`；`core.ModuleName()` 仍为 `iam`。
+每个模块按 `internal/todo` 使用扁平根包与 `model/query/dbgen/i18n`，拥有自己读写表的
+`migrate.go`、三方言 SQL 和版本表。跨模块契约直接由 provider 根包声明，不设中央 port。
+
+源 `modules/iam/sql` 混放的 36 表按实际职责拆为 core 13、authn 13、identity 3、oauth 4、
+audit 3；organization 14、governance 4、provisioning 5、federation 4 保持原职责，总计 63。
+跨模块 FK 仍由拥有子表的模块维护；基础表和 constraints 作为迁移里程碑构成 DAG，解决
+iam↔organization 环，不能以环为理由集中 SQL。
+
+**Reason**
+`internal/todo` 已确立模块同时拥有生命周期、模型、查询与 migration source。集中 schema、
+局部 Ports-and-Adapters 或 direct feature 分包都会制造第二套结构，削弱模块自治并偏离用户
+确认的 IAM 域边界。
+
+**Tradeoffs**
+需要为现有迁移器增加可选 milestone 编排，并把源 iam SQL 按真实写入模块拆分；换取目录、
+Go 包、数据模型、SQL 与版本状态的一致所有权。
+
+**Scope**
+IAM 全量迁移的目录、接口、表归属、Phase 1 迁移编排及 Phase 2–9 实现。
+
+**Status**
+已确认（用户明确要求 `internal/iam/{...}`、模块 SQL 自治并取消公共 port 包）。
