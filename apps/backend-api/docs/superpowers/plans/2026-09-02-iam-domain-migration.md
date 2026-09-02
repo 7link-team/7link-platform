@@ -323,11 +323,11 @@ func TestMigrationUsesSingleWriteHandle(t *testing.T) { /* 统计 Write() 调用
 
 #### Task 0.2: policyx(拆两层)
 
-`authz/register.go:13` import `policyx`,故 policyx 先建;`policyx/policy.go` import bun,故拆为「condition/member_rule(纯逻辑)」+「revision store(gorm)」。
+`authz/register.go:13` import `policyx`,故 policyx 先建;源 `policyx/policy.go` import bun 且直接写 core 自有表，故拆为 `pkg/extension/policyx` 的 condition/member_rule 纯逻辑与 `internal/iam/core` 的 GORM revision store。
 
-- [ ] **Step 1:** 移植零依赖的 `condition.go`/`member_rule.go`
-- [ ] **Step 2:** revision store 改 gorm。**构造函数须接收 prefix**(`NewRevisionStore(prefix)`),源实现是硬编码表名;**`Lock` 是源语义的关键方法,与 `Bump`/`Current` 一并迁移**
-- [ ] **Step 3:** 并发递增不丢更新的测试 → 登记覆盖率 → 提交
+- [x] **Step 1:** 移植零依赖的 `condition.go`/`member_rule.go`
+- [x] **Step 2:** revision store 改 gorm。**构造函数须接收 prefix**(`NewRevisionStore(prefix)`),源实现是硬编码表名;**`Lock` 是源语义的关键方法,与 `Bump`/`Current` 一并迁移**
+- [x] **Step 3:** 并发递增不丢更新的测试 → 登记覆盖率 → 提交
 
 #### Task 0.3: authz(依赖 0.2)
 
