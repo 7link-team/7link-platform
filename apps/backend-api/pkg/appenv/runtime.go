@@ -6,6 +6,7 @@ import (
 	"errors"
 	"sync"
 
+	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
 )
 
@@ -75,8 +76,19 @@ func WithDatabase(database *gormx.DatasourceRouter) Option {
 // WithTablePrefix installs the prefix prepended to every table this
 // application owns. It is an application-lifetime schema property, so it lives
 // beside the router rather than being threaded through each module's config.
+//
+// An invalid prefix panics. The value is concatenated into DDL and into every
+// table name a module binds, and it cannot be bound as a parameter; validating
+// it here means no Runtime can carry one the migrations would reject, whoever
+// installs it. A configured prefix is already rejected with a clean error
+// before this point, so reaching the panic means a programming error.
 func WithTablePrefix(prefix string) Option {
-	return func(runtime *Runtime) { runtime.tablePrefix = prefix }
+	return func(runtime *Runtime) {
+		if err := goosex.ValidatePrefix(prefix); err != nil {
+			panic(err)
+		}
+		runtime.tablePrefix = prefix
+	}
 }
 
 // TablePrefix returns the prefix every persisting module must prepend to its

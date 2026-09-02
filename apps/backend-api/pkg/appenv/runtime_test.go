@@ -28,3 +28,16 @@ func TestIdentityExposesNoMutableFields(t *testing.T) {
 	assert.Equal(t, "api", runtime.Identity().Name())
 	assert.Nil(t, runtime.Database())
 }
+
+// TestWithTablePrefixRejectsAnInvalidPrefix guards the value that reaches DDL.
+// A prefix names a SQL identifier and cannot be bound as a parameter, so a
+// Runtime must never carry one the migrations would reject.
+func TestWithTablePrefixRejectsAnInvalidPrefix(t *testing.T) {
+	assert.Panics(t, func() {
+		appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0"), appenv.WithTablePrefix("Bad-Prefix"))
+	})
+	assert.NotPanics(t, func() {
+		appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0"), appenv.WithTablePrefix("sl_"))
+		appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0"), appenv.WithTablePrefix(""))
+	})
+}
