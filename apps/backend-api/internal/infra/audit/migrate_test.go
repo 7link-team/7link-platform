@@ -67,18 +67,22 @@ func TestAppendOnlyMigrationDownAndUp(t *testing.T) {
 	assert.Error(t, db.Exec(`DELETE FROM operation_logs WHERE id = ?`, 1).Error)
 }
 
-func TestMySQLAppendOnlyMigrationClearsEveryTriggerBeforeCreate(t *testing.T) {
+func TestMySQLAppendOnlyMigrationIsRetrySafeForEveryTrigger(t *testing.T) {
 	raw, err := migrationsFS.ReadFile("sql/mysql/00002_operation_logs_append_only.sql")
 	require.NoError(t, err)
 	migration := string(raw)
+	up, down, found := strings.Cut(migration, "-- +goose Down")
+	require.True(t, found)
 	created := regexp.MustCompile(`(?m)^CREATE TRIGGER \{\{\.Prefix\}\}(\S+)$`).FindAllStringSubmatch(migration, -1)
 	require.NotEmpty(t, created)
 	for _, match := range created {
 		name := match[1]
-		dropAt := strings.Index(migration, "DROP TRIGGER IF EXISTS {{.Prefix}}"+name+";")
-		createAt := strings.Index(migration, "CREATE TRIGGER {{.Prefix}}"+name)
+		drop := "DROP TRIGGER IF EXISTS {{.Prefix}}" + name + ";"
+		dropAt := strings.Index(up, drop)
+		createAt := strings.Index(up, "CREATE TRIGGER {{.Prefix}}"+name)
 		assert.GreaterOrEqual(t, dropAt, 0, "trigger %s must be cleared for retry", name)
 		assert.Less(t, dropAt, createAt, "trigger %s must be cleared before creation", name)
+		assert.Contains(t, down, drop, "partially committed down migrations must be retryable")
 	}
 }
 

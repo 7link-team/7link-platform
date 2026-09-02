@@ -339,10 +339,10 @@ func TestMigrationUsesSingleWriteHandle(t *testing.T) { /* 统计 Write() 调用
 
 > **webauthnx 是 v2 的遗漏**:204 行生产代码,`authn/web.go:25` 直接依赖。
 
-- [ ] **Step 1:** 移植 `webauthnx`(204)、`secretx`(51)、`passwordx`(80)
-- [ ] **Step 2:** `DomainEvent` 与 `Appender` 直接在 `internal/iam/audit` 根包声明，与现有 `internal/infra/audit.Recorder` 明确区分；此阶段只冻结契约，链式实现放 Phase 6
-- [ ] **Step 3:** 给目标库 `operation_logs` 补三方言 append-only(审计 F4),并在注释写明:触发器拦不住 `TRUNCATE`、高权限账号可禁用触发器,**完整保证还需业务账号最小权限**——不在代码里假装已解决
-- [ ] **Step 4:** 登记覆盖率 → 提交
+- [x] **Step 1:** 移植 `webauthnx`(204)、`secretx`(51)、`passwordx`(80)
+- [x] **Step 2:** `DomainEvent` 与 `Appender` 直接在 `internal/iam/audit` 根包声明，与现有 `internal/infra/audit.Recorder` 明确区分；此阶段只冻结契约，链式实现放 Phase 6
+- [x] **Step 3:** 给目标库 `operation_logs` 补三方言 append-only(审计 F4),并在注释写明:触发器拦不住 `TRUNCATE`、高权限账号可禁用触发器,**完整保证还需业务账号最小权限**——不在代码里假装已解决
+- [x] **Step 4:** 登记覆盖率 → 提交
 
 #### Task 0.5: 冻结端口图 + 第三方依赖评审
 

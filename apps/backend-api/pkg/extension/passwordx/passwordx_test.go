@@ -1,8 +1,10 @@
 package passwordx
 
 import (
+	"errors"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,6 +36,8 @@ func TestVerifyAcceptsSourceGoldenHash(t *testing.T) {
 func TestRejectsInvalidInput(t *testing.T) {
 	_, err := Hash("")
 	assert.Error(t, err)
+	_, err = hash("password", iotest.ErrReader(errors.New("random source failed")))
+	assert.ErrorContains(t, err, "generate password salt")
 	_, err = Verify("bad", "password")
 	assert.ErrorIs(t, err, ErrInvalidHash)
 }
@@ -42,6 +46,11 @@ func TestVerifyRejectsMalformedArgon2Parameters(t *testing.T) {
 	validSalt := "MTIzNDU2Nzg5MGFiY2RlZg"
 	validHash := "MTIzNDU2Nzg5MGFiY2RlZjEyMzQ1Njc4OTBhYmNkZWY"
 	for _, encoded := range []string{
+		strings.Repeat("A", encodedHashLength),
+		encodedPrefix + strings.Repeat("A", encodedHashLength-len(encodedPrefix)),
+		encodedPrefix + strings.Repeat("A", len(validSalt)-1) + "$" + validHash + "A",
+		encodedPrefix + strings.Repeat("!", len(validSalt)) + "$" + validHash,
+		encodedPrefix + validSalt + "$" + strings.Repeat("!", len(validHash)),
 		"$argon2id$v=19$broken$" + validSalt + "$" + validHash,
 		"$argon2id$v=19$m=abc,t=2,p=1$" + validSalt + "$" + validHash,
 		"$argon2id$v=19$m=19456,t=2,x=1$" + validSalt + "$" + validHash,
@@ -59,4 +68,15 @@ func TestVerifyRejectsMalformedArgon2Parameters(t *testing.T) {
 		_, err := Verify(encoded, "password")
 		assert.ErrorIs(t, err, ErrInvalidHash, encoded)
 	}
+}
+
+func TestVerifyRejectsOversizedHashWithoutDelimiterScaledAllocation(t *testing.T) {
+	oversized := strings.Repeat("$", 4096)
+	allocations := testing.AllocsPerRun(10, func() {
+		_, err := Verify(oversized, "password")
+		if !errors.Is(err, ErrInvalidHash) {
+			panic("oversized hash was not rejected")
+		}
+	})
+	assert.Zero(t, allocations)
 }

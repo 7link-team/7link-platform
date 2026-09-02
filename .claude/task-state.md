@@ -12,7 +12,7 @@ PostgreSQL、MySQL、SQLite 真实迁移与 `make ci` 门禁。
 IMPLEMENTATION
 
 ## Current Step
-Phase 0 / Task 0.4：迁移 webauthnx、secretx、passwordx，冻结审计契约并补 operation_logs append-only。
+Phase 0 / Task 0.5：冻结 13 项跨模块能力契约并完成第三方依赖/引入时机评审。
 
 ## Overall Progress
 - [x] 深度分析与迁移方案 v8
@@ -24,7 +24,7 @@ Phase 0 / Task 0.4：迁移 webauthnx、secretx、passwordx，冻结审计契约
 - [ ] Phase 9 集成与验收
 
 ## Active Work
-Task 0.P/0.0/0.1/0.2/0.3 已实现并通过 Windows 完整门禁；迁移计划已升级为 v8，
+Task 0.P/0.0/0.1/0.2/0.3/0.4 已实现并通过 Windows 完整门禁；迁移计划已升级为 v8，
 `internal/iam/` 作为域命名空间，9 个子模块各自拥有业务、model/query 与 SQL，取消集中 schema
 和 feature 分包。
 
@@ -54,6 +54,10 @@ Task 0.P/0.0/0.1/0.2/0.3 已实现并通过 Windows 完整门禁；迁移计划�
   tenant/platform/entity 窄接口，不新增第十个 IAM 模块或中央 port 包；两包已登记覆盖率。
 - Task 0.3 deep-review 按类修复 JWKS 刷新竞态/放大/轮换恢复、受限远端响应、认证错误与 CSRF
   语义漂移、OpenAPI 认证和 selector 契约；类级测试均完成反向变异验证与复审。
+- Task 0.4：移植 `webauthnx`、`secretx`、`passwordx`，在 `internal/iam/audit` 根包冻结
+  `DomainEvent`/`Appender`，并为三方言 `operation_logs` 增加 append-only 迁移。
+- Task 0.4 deep-review 修复 Argon2 PHC 超长输入分配、Linux FIFO 替换阻塞和 MySQL 半回滚
+  重试问题；聚焦竞态/变异、真实 Linux、MySQL 8.4 恢复矩阵及依赖漏洞复审均通过。
 - 计划 v5 已冻结 9 模块 source manifest、目标 model/query/dbgen、bun→gorm 注意项、端口、
   tenant 负例和逐模块门禁；不再把 `internal/iam` 拆成三个半成品阶段。
 - 从固定 source tree 展开 200 条 REST 三元组，文档与源代码集合对账 200/200、无缺失、
@@ -82,23 +86,24 @@ Task 0.P/0.0/0.1/0.2/0.3 已实现并通过 Windows 完整门禁；迁移计划�
 ## Known Issues / Risks
 - 多写者 routing mode 与读副本接线仍是独立架构决策，不在 Task 0.0 中扩大范围。
 - Mac 上的 `make iam-preflight` 与 `make ci` 尚未在本轮实跑；回到 Mac 后先完成该检查。
+- MySQL append-only 半回滚恢复矩阵已在真实 MySQL 8.4 手工验证，但默认 `make ci` 仍使用
+  内存 MySQL；真实引擎 DDL 隐式提交场景尚未形成持续集成门禁。
 - 本任务约 6 万行，必须按 Phase 分批实现、验证和留档。
 
 ## Verification
-Build: PASS（Task 0.3 Windows `make ci` build）
-Tests: PASS（Task 0.3 authn/authz `-race -count=10` + 完整 `make ci`）
-Lint: PASS（Task 0.3 固定版本 golangci-lint / `make ci`）
-Coverage: PASS（总体 91.2%，authn 96.5%，authz 94.6%，19/19 受控包 ≥90%）
+Build: PASS（Task 0.4 Windows `make ci` build + Linux CGO-disabled cross-compile）
+Tests: PASS（Task 0.4 聚焦 `-race -count=10` + 完整 `make ci`）
+Lint: PASS（Task 0.4 固定版本 golangci-lint / `make ci`）
+Coverage: PASS（总体 91.4%，passwordx 100.0%，secretx 94.9%，webauthnx 97.5%，23/23 受控包 ≥90%）
 Integration: PASS（`tests/goose`）
 Other verification: `git diff --check` PASS；source tree/三方言 63 表 PASS；REST baseline 与
 源代码集合相等（200/200）PASS；远端 Docker 26.1.5 PASS；MySQL 8.4.11 启动、查询、
-Windows TCP 连通 PASS。
+Windows TCP 连通及 append-only Up/Down 部分状态恢复矩阵 PASS；Linux FIFO 真实文件系统测试 PASS。
 
 ## Next Action
-进入 Task 0.4：移植 webauthnx、secretx、passwordx；在 `internal/iam/audit` 根包冻结
-`DomainEvent`/`Appender`，并给 operation_logs 补三方言 append-only 约束。
+进入 Task 0.5：按 provider 根包所有权冻结 13 项跨模块能力契约，完成依赖选择与引入时机决策，
+增加编译期契约夹具并通过阶段门禁。
 
 ## Last Checkpoint
-2026-09-02 · IAM 分支 Task 0.3 authn/authz 扩展已落地；deep-review、JWKS/认证/OpenAPI 类级
-反向变异、`-race -count=10` 与完整 `make ci` PASS（总覆盖率 91.2%，authn 96.5%，authz
-94.6%，19/19 受控包达标）。下一步 Task 0.4。
+2026-09-02 · IAM 分支 Task 0.4 已落地；deep-review/deep-audit 复审、聚焦反向变异、真实 Linux/MySQL、
+`-race -count=10` 与完整 `make ci` PASS（总覆盖率 91.4%，23/23 受控包达标）。下一步 Task 0.5。

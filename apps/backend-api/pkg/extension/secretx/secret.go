@@ -23,10 +23,6 @@ type secretFile interface {
 	Stat() (fs.FileInfo, error)
 }
 
-func openFile(path string) (secretFile, error) {
-	return os.Open(path)
-}
-
 func resolve(
 	name string,
 	value string,

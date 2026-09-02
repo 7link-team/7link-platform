@@ -22,5 +22,5 @@ END;
 -- +goose StatementEnd
 
 -- +goose Down
-DROP TRIGGER {{.Prefix}}trg_operation_logs_no_delete;
-DROP TRIGGER {{.Prefix}}trg_operation_logs_no_update;
+DROP TRIGGER IF EXISTS {{.Prefix}}trg_operation_logs_no_delete;
+DROP TRIGGER IF EXISTS {{.Prefix}}trg_operation_logs_no_update;

@@ -111,6 +111,10 @@ func TestPrefixedModuleQueriesOnMySQLAndPostgres(t *testing.T) {
 
 				auditSource := (&audit.Module{}).MigrationSource()
 				auditSource.Prefix = queryPrefix
+				if tt.dialect == "mysql" {
+					_, err := sqlDB.Exec("DROP TRIGGER " + queryPrefix + "trg_operation_logs_no_delete")
+					require.NoError(t, err)
+				}
 				require.NoError(t, goosex.MigrateDown(ctx, sqlDB, auditSource, tt.dialect))
 				require.NoError(t, gormDB.Table(table).Where("id = ?", operationLogID).
 					UpdateColumn("operation", "after-down").Error)
