@@ -34,7 +34,16 @@ func (id *ID) UnmarshalJSON(value []byte) error {
 	return err
 }
 
-func (id ID) MarshalText() ([]byte, error) { return []byte(id.String()), nil }
+// MarshalText renders the ID for the text paths — map keys, XML, form encoding
+// — and is empty when the ID is zero. It matches MarshalJSON rather than
+// String: "0" is a value Parse refuses to read back, so emitting it would give
+// the text form a representation that cannot round-trip. Empty parses as zero.
+func (id ID) MarshalText() ([]byte, error) {
+	if id.Zero() {
+		return nil, nil
+	}
+	return []byte(id.String()), nil
+}
 
 func (id *ID) UnmarshalText(value []byte) error {
 	parsed, err := Parse(string(value))

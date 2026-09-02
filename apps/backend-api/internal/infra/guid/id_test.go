@@ -117,3 +117,22 @@ func TestIDInStructOmitsNothingWhenZero(t *testing.T) {
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"actor":null}`, string(encoded))
 }
+
+// TestZeroIDRoundTripsThroughText covers the text paths — map keys, XML, form
+// encoding — which use MarshalText rather than MarshalJSON. Rendering the zero
+// as "0" would emit a value Parse refuses to read back.
+func TestZeroIDRoundTripsThroughText(t *testing.T) {
+	encoded, err := ID(0).MarshalText()
+	require.NoError(t, err)
+	assert.Empty(t, string(encoded))
+
+	var decoded ID
+	require.NoError(t, decoded.UnmarshalText(encoded))
+	assert.True(t, decoded.Zero())
+
+	encoded, err = ID(42).MarshalText()
+	require.NoError(t, err)
+	assert.Equal(t, "42", string(encoded))
+	require.NoError(t, decoded.UnmarshalText(encoded))
+	assert.Equal(t, ID(42), decoded)
+}
