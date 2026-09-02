@@ -69,13 +69,17 @@ func (app *App) RunMigrations(ctx context.Context, config MigrationConfig) (repo
 // Module Registry. Runtime database ownership and Module discovery never enter
 // through a second command-specific path.
 func (app *App) migrateModules(ctx context.Context, request MigrationRequest) ([]MigrationReport, error) {
-	if app.runtime == nil || app.runtime.Database() == nil || app.runtime.Database().Write() == nil {
+	if app.runtime == nil || app.runtime.Database() == nil {
+		return nil, errors.New("migration: writable database is not configured")
+	}
+	db := app.runtime.Database().Write()
+	if db == nil {
 		return nil, errors.New("migration: writable database is not configured")
 	}
 	if app.modules == nil {
 		return nil, errors.New("migration: modules are not composed")
 	}
-	return executeModuleMigrations(ctx, app.runtime.Database().Write(), app.modules.Modules(), request, app.runtime.TablePrefix())
+	return executeModuleMigrations(ctx, db, app.modules.Modules(), request, app.runtime.TablePrefix())
 }
 
 func executeModuleMigrations(

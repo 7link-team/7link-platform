@@ -124,6 +124,58 @@ func TestRunMigrationsRejectsUnknownModuleAndMissingWriter(t *testing.T) {
 	assert.ErrorContains(t, err, `module "missing" is not registered`)
 }
 
+func TestRunMigrationsUsesSingleWriteHandle(t *testing.T) {
+	firstPath := filepath.Join(t.TempDir(), "writer-a.sqlite")
+	secondPath := filepath.Join(t.TempDir(), "writer-b.sqlite")
+	config := migrationTestConfig(map[string]Database{
+		"writer-a": {Type: "sqlite", Dsn: firstPath, Writable: true},
+		"writer-b": {Type: "sqlite", Dsn: secondPath, Writable: true},
+	})
+	config.Action = MigrationUp
+
+	_, err := (&App{}).RunMigrations(t.Context(), config)
+	require.NoError(t, err)
+
+	first, err := gorm.Open(sqlite.Open(firstPath))
+	require.NoError(t, err)
+	second, err := gorm.Open(sqlite.Open(secondPath))
+	require.NoError(t, err)
+	for _, db := range []*gorm.DB{first, second} {
+		sqlDB, sqlErr := db.DB()
+		require.NoError(t, sqlErr)
+		t.Cleanup(func() { _ = sqlDB.Close() })
+	}
+
+	assert.True(t, first.Migrator().HasTable("dlocks"), "the first selected writer must execute the migration")
+	assert.False(t, second.Migrator().HasTable("dlocks"), "one migration must not advance to another writer")
+}
+
+func TestMigrationInspectorDoesNotAdvanceTheWriteHandleBeforeInspection(t *testing.T) {
+	firstPath := filepath.Join(t.TempDir(), "writer-a.sqlite")
+	secondPath := filepath.Join(t.TempDir(), "writer-b.sqlite")
+	seed := migrationTestConfig(map[string]Database{
+		"writer-a": {Type: "sqlite", Dsn: firstPath, Writable: true},
+	})
+	seed.Action = MigrationUp
+	_, err := (&App{}).RunMigrations(t.Context(), seed)
+	require.NoError(t, err)
+
+	config := migrationTestConfig(map[string]Database{
+		"writer-a": {Type: "sqlite", Dsn: firstPath, Writable: true},
+		"writer-b": {Type: "sqlite", Dsn: secondPath, Writable: true},
+	})
+	app := &App{config: config.AppConfig}
+	require.NoError(t, app.prepare(t.Context()))
+	t.Cleanup(func() { _ = app.shutdown() })
+
+	reports, err := app.migrationInspector(t.Context())
+	require.NoError(t, err)
+	require.Len(t, reports, 4)
+	for _, report := range reports {
+		assert.Equal(t, goosex.StateClean, report.Status.State, report.Module)
+	}
+}
+
 func TestMigrateModulesRequiresRuntimeAndComposedModules(t *testing.T) {
 	_, err := (&App{}).migrateModules(t.Context(), MigrationRequest{Action: MigrationStatus})
 	assert.EqualError(t, err, "migration: writable database is not configured")

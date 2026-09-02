@@ -2,6 +2,7 @@ package gormx
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
@@ -28,6 +29,93 @@ func TestDatasourceOpenSQLite(t *testing.T) {
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	require.NoError(t, sqlDB.PingContext(t.Context()))
 	assert.Equal(t, 7, sqlDB.Stats().MaxOpenConnections)
+}
+
+func TestDatasourceOpenSQLiteEnforcesForeignKeysOnEveryConnection(t *testing.T) {
+	db, err := (Datasource{
+		Type:         "sqlite",
+		DSN:          filepath.Join(t.TempDir(), "foreign-keys.sqlite"),
+		MaxOpenConns: 3,
+	}).Open(t.Context())
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	connections := make([]*sql.Conn, 0, 3)
+	for range 3 {
+		connection, connErr := sqlDB.Conn(t.Context())
+		require.NoError(t, connErr)
+		connections = append(connections, connection)
+		t.Cleanup(func() { _ = connection.Close() })
+	}
+	for _, connection := range connections {
+		var enabled int
+		require.NoError(t, connection.QueryRowContext(t.Context(), "PRAGMA foreign_keys").Scan(&enabled))
+		assert.Equal(t, 1, enabled)
+	}
+
+	require.NoError(t, connections[0].Close())
+	require.NoError(t, db.Exec("CREATE TABLE parents (id INTEGER PRIMARY KEY)").Error)
+	require.NoError(t, db.Exec("CREATE TABLE children (parent_id INTEGER NOT NULL REFERENCES parents(id))").Error)
+	assert.ErrorContains(t, db.Exec("INSERT INTO children (parent_id) VALUES (404)").Error, "FOREIGN KEY constraint failed")
+}
+
+func TestDatasourceOpenSQLiteRejectsDisabledForeignKeys(t *testing.T) {
+	for _, parameter := range []string{
+		"_foreign_keys=0", "_foreign_keys=no", "_foreign_keys=false", "_foreign_keys=off",
+		"_fk=0", "_fk=no", "_fk=false", "_fk=off",
+	} {
+		t.Run(parameter, func(t *testing.T) {
+			db, err := (Datasource{
+				Type: "sqlite",
+				DSN:  filepath.Join(t.TempDir(), "disabled.sqlite") + "?" + parameter,
+			}).Open(t.Context())
+			if db != nil {
+				sqlDB, sqlErr := db.DB()
+				if sqlErr == nil {
+					_ = sqlDB.Close()
+				}
+			}
+			assert.ErrorContains(t, err, "foreign keys cannot be disabled")
+		})
+	}
+}
+
+func TestDatasourceOpenSQLiteAcceptsEnabledForeignKeyAliases(t *testing.T) {
+	for _, parameter := range []string{"_foreign_keys=yes", "_fk=true"} {
+		t.Run(parameter, func(t *testing.T) {
+			db, err := (Datasource{
+				Type: "sqlite",
+				DSN:  filepath.Join(t.TempDir(), "enabled.sqlite") + "?_busy_timeout=1000&" + parameter,
+			}).Open(t.Context())
+			require.NoError(t, err)
+			sqlDB, err := db.DB()
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = sqlDB.Close() })
+
+			var enabled int
+			require.NoError(t, sqlDB.QueryRowContext(t.Context(), "PRAGMA foreign_keys").Scan(&enabled))
+			assert.Equal(t, 1, enabled)
+		})
+	}
+}
+
+func TestDatasourceOpenSQLiteRejectsInvalidForeignKeyParameters(t *testing.T) {
+	for _, query := range []string{
+		"_foreign_keys=invalid",
+		"_fk=",
+		"_foreign_keys=on&_fk=off",
+		"_foreign_keys=%zz",
+	} {
+		t.Run(query, func(t *testing.T) {
+			_, err := (Datasource{
+				Type: "sqlite",
+				DSN:  filepath.Join(t.TempDir(), "invalid.sqlite") + "?" + query,
+			}).Open(t.Context())
+			assert.ErrorContains(t, err, "configure sqlite datasource")
+		})
+	}
 }
 
 func TestDatasourceTimezoneConfiguration(t *testing.T) {

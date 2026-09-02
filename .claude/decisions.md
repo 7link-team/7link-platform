@@ -60,3 +60,69 @@ CI 强制的前提下，版本漂移是唯一的实际风险：不同开发者�
 
 **Status**
 已确认（用户授权代为决定）。
+
+---
+
+## D3 — IAM schema 使用单一迁移流，目标为空库
+
+**Decision**
+IAM 域 9 个模块的 63 张表统一由 `internal/iamschema` 迁移流拥有；不按 Go 模块拆分
+schema 流。目标数据库为全新空库，不实施存量数据 ETL。
+
+**Reason**
+IAM 与 organization 之间存在双向外键，跨流无法形成可执行 DAG；单一迁移流保留
+全部数据库约束且无需改变现有迁移执行器。用户已确认目标无存量迁移要求。
+
+**Tradeoffs**
+不能单独 down 某个 IAM 子模块；表归属改由 `OWNERSHIP.md` 和集合相等测试维护。
+
+**Scope**
+IAM 域全量迁移 Phase 1–9。
+
+**Status**
+已确认。
+
+---
+
+## D4 — IAM 文本比较按语义分类
+
+**Decision**
+业务名称唯一键统一存储 `strings.ToLower(strings.TrimSpace(value))` 生成的 `name_key`，
+不折叠重音；枚举、协议标识符、哈希/令牌、WebAuthn handle 使用 binary collation。
+菜单 `label` 不参与唯一约束，不由 collation 承担国际化。
+
+**Reason**
+源库已有四类 `name_key` 使用同一规范。MySQL 的 `utf8mb4_unicode_ci` 会把大小写不同
+的协议/安全标识符视为相等，也会令 CHECK 接受大小写变体；PostgreSQL 与 SQLite 默认
+行为不同。分类处理可使三方言一致，并修复 WebAuthn handle 的身份匹配风险。
+
+**Tradeoffs**
+角色名等业务名称在 PostgreSQL 上从大小写敏感改为不敏感；这是用户确认的预期语义。
+动态菜单多语言仍需独立产品决策。
+
+**Scope**
+IAM schema R16 及对应写入路径。
+
+**Status**
+已确认。
+
+---
+
+## D5 — IAM entity type 在建立关系后不可变
+
+**Decision**
+关系表使用包含 `resource_type` 的复合外键，保持源库 `ON DELETE RESTRICT`；实体一旦
+被关系引用便不可修改 type。
+
+**Reason**
+源库 `iam/entity.go:273-281` 已明确执行该业务规则。数据库复合外键不是新增限制，
+而是关闭应用层“先查关系数、再更新”之间的 TOCTOU 窗口。
+
+**Tradeoffs**
+未来若产品需要修改已引用实体的 type，必须显式设计关系迁移，不能依赖隐式级联。
+
+**Scope**
+IAM schema R9'' 与实体更新服务。
+
+**Status**
+已确认。

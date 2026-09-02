@@ -25,10 +25,7 @@ func (app *App) provideCrossCutting(services *module.Services) error {
 // is provided as the migration-status module's inspector (lazy, evaluated per
 // request).
 func (app *App) migrationInspector(ctx context.Context) ([]migrationstatus.Report, error) {
-	if app.runtime == nil || app.runtime.Database() == nil {
-		return nil, errors.New("migration: writable database is not configured")
-	}
-	if app.runtime.Database().Write() == nil {
+	if app.runtime == nil || app.runtime.Database() == nil || !app.runtime.Database().HasWriter() {
 		return nil, errors.New("migration: writable database is not configured")
 	}
 	reports, err := app.migrateModules(ctx, MigrationRequest{

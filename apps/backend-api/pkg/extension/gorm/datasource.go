@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -65,7 +66,11 @@ func (d Datasource) open(ctx context.Context, debug bool) (*gorm.DB, error) {
 	)
 	switch dialect {
 	case "sqlite":
-		dialector = sqlite.Open(normalizeSQLiteDSN(dsn))
+		dsn, err = normalizeSQLiteDSN(dsn)
+		if err != nil {
+			return nil, fmt.Errorf("gormx: configure sqlite datasource: %w", err)
+		}
+		dialector = sqlite.Open(dsn)
 	case "mysql":
 		dsn, err = mysqlDSNWithTimezone(dsn, location)
 		if err != nil {
@@ -173,8 +178,35 @@ func NormalizeDialect(value string) (string, error) {
 	}
 }
 
-func normalizeSQLiteDSN(dsn string) string {
-	return strings.TrimPrefix(dsn, "sqlite://")
+func normalizeSQLiteDSN(dsn string) (string, error) {
+	dsn = strings.TrimPrefix(dsn, "sqlite://")
+	filename, rawQuery, _ := strings.Cut(dsn, "?")
+	params, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return "", fmt.Errorf("parse DSN parameters: %w", err)
+	}
+
+	foreignKeyConfigured := false
+	for _, key := range []string{"_foreign_keys", "_fk"} {
+		values, ok := params[key]
+		if !ok {
+			continue
+		}
+		foreignKeyConfigured = true
+		for _, value := range values {
+			switch strings.ToLower(value) {
+			case "1", "yes", "true", "on":
+			case "0", "no", "false", "off":
+				return "", fmt.Errorf("foreign keys cannot be disabled with %s=%q", key, value)
+			default:
+				return "", fmt.Errorf("invalid %s value %q: expected 1, yes, true, or on", key, value)
+			}
+		}
+	}
+	if !foreignKeyConfigured {
+		params.Set("_foreign_keys", "on")
+	}
+	return filename + "?" + params.Encode(), nil
 }
 
 func (d Datasource) applyPool(db interface {
