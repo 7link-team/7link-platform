@@ -287,3 +287,48 @@ IAM 全量迁移的目录、接口、表归属、Phase 1 迁移编排及 Phase 2
 
 **Status**
 已确认（用户明确要求 `internal/iam/{...}`、模块 SQL 自治并取消公共 port 包）。
+
+---
+
+## D11 — IAM 第三方依赖按源行为选型并即时引入
+
+**Decision**
+按固定源树的 `go.mod` 与生产 import 图保留以下完整模块路径和职责；除已落地的 WebAuthn 外，
+只在对应实现任务开始时加入目标 `go.mod`：
+
+| 类别 | 选定模块与源版本 | 引入时机 | 结论 |
+|---|---|---|---|
+| WebAuthn | `github.com/go-webauthn/webauthn v0.17.4` | Task 0.4（已引入） | `webauthnx` 与 passkey 的协议/凭据实现；迁移期间不升到 v0.18.0 |
+| TOTP | `github.com/pquerna/otp v1.5.0` | Task 3 authn | TOTP/HOTP 唯一实现 |
+| SAML | `github.com/beevik/etree v1.6.0`；`github.com/crewjam/saml v0.5.1`；`github.com/mattermost/xml-roundtrip-validator v0.1.0`；`github.com/russellhaering/goxmldsig v1.6.0` | Task 7 federation | 分别承担 XML、SAML 协议、XML 圆返攻击校验与 XML 签名，不是重复实现 |
+| SCIM filter | `github.com/scim2/filter-parser/v2 v2.3.1` | Task 7 provisioning | SCIM filter/patch 语法解析唯一实现 |
+| 文本验证码 | `github.com/mojocn/base64Captcha v1.3.8` | Task 3 authn | digit/string/math captcha 与嵌入字体 |
+| 滑块/点选验证码 | `github.com/wenlng/go-captcha/v2 v2.0.5` | Task 3 authn | slide/click captcha；生产代码复用 `base64Captcha` 字体，不能删除前者或后者而保持源功能 |
+| 审计对象存储 | `github.com/minio/minio-go/v7 v7.2.1` | Task 6 audit | WORM anchor 对象存储客户端 |
+| Redis client | `github.com/redis/go-redis/v9 v9.21.0` | Task 8/9 composition 评审 | 仅由源 app 组合根创建，IAM 模块不直接依赖 |
+| Redis rate limit | `github.com/go-redis/redis_rate/v10 v10.0.1` | Task 8/9 composition 评审 | 源 `ratex` 的全局 HTTP middleware；与 Redis client 是上下层关系而非替代关系 |
+
+截至 2026-09-02 的 `go list -m ...@latest` 显示：TOTP、crewjam/saml、XML 圆返校验、SCIM、
+两套验证码和 redis_rate 已是源版本；WebAuthn、etree、goxmldsig、MinIO 与 go-redis 有更新版本。
+为先证明行为等价，迁移任务固定源版本；任何升级另做兼容性与安全评审，不混入模块移植。
+
+**Reason**
+Phase 0 的目标是冻结选择和引入时机，不是预装未来依赖。完整 import 图证明 SAML 四库与两套
+验证码库分别覆盖不同职责；贸然删库会缩减用户要求的全量功能。Redis 只出现在源 app/ratex，
+提前塞进任一 IAM 自治模块会制造错误所有权。即时引入还能避免未使用的传递依赖污染主模块。
+
+**Alternatives Considered**
+1. Phase 0 一次性加入全部依赖 —— 在实现到达前没有调用图或测试证明，增加无用依赖。
+2. 只留一套验证码库 —— 会丢失文本或滑块/点选能力，并破坏现有字体复用。
+3. 迁移时直接采用所有 latest —— 把依赖升级与 bun→gorm/模块迁移混在一起，无法隔离兼容回归。
+4. 把 Redis 注入 authn/audit —— 源 IAM 模块没有该依赖，所有权属于组合根与全局 middleware。
+
+**Tradeoffs**
+源版本可能不是最新版本；先保持行为等价，后续升级需要单独门禁。Redis 是否进入最终目标仍须
+在 Task 8/9 根据全局 rate-limit 配置兼容范围决定，但不得据此缩减 IAM 模块功能。
+
+**Scope**
+Task 0.5 的依赖冻结，以及 Task 3/6/7/8/9 的依赖引入顺序。
+
+**Status**
+已确认；依赖路径、源版本、直接 import 与引入任务均已复核。
