@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -452,34 +453,32 @@ func TestJWKSURLValueCachesDiscovery(t *testing.T) {
 
 func TestConcurrentKeyMissesShareOneRefresh(t *testing.T) {
 	key := newTestKey(t)
-	var requests atomic.Int32
-	requestStarted := make(chan struct{})
-	releaseResponse := make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		if requests.Add(1) == 1 {
-			close(requestStarted)
-		}
-		<-releaseResponse
-		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []any{key.jwk()}})
-	}))
-	t.Cleanup(srv.Close)
-
-	verifier, err := NewVerifier(Config{Enabled: true, Issuer: "https://issuer.example", JWKSURL: srv.URL})
+	body, err := json.Marshal(map[string]any{"keys": []any{key.jwk()}})
 	require.NoError(t, err)
 	const callers = 20
+	var requests atomic.Int32
+	var entered atomic.Int32
+	allEntered := make(chan struct{})
+	verifier, err := NewVerifier(Config{Enabled: true, Issuer: "https://issuer.example", JWKSURL: "https://issuer.example/keys"})
+	require.NoError(t, err)
+	verifier.client = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requests.Add(1)
+		<-allEntered
+		return jsonResponse(request, body), nil
+	})}
 	start := make(chan struct{})
 	errorsByCaller := make(chan error, callers)
 	for range callers {
 		go func() {
 			<-start
+			if entered.Add(1) == callers {
+				close(allEntered)
+			}
 			_, keyErr := verifier.key(t.Context(), key.kid)
 			errorsByCaller <- keyErr
 		}()
 	}
 	close(start)
-	<-requestStarted
-	time.Sleep(50 * time.Millisecond)
-	close(releaseResponse)
 	for range callers {
 		require.NoError(t, <-errorsByCaller)
 	}
@@ -497,44 +496,45 @@ func TestUnknownKidsAreGloballyRefreshLimited(t *testing.T) {
 
 	verifier, err := NewVerifier(Config{Enabled: true, Issuer: "https://issuer.example", JWKSURL: srv.URL})
 	require.NoError(t, err)
+	now := time.Date(2026, time.September, 2, 12, 0, 0, 0, time.UTC)
+	verifier.now = func() time.Time { return now }
 	_, err = verifier.key(t.Context(), "random-1")
 	assert.ErrorIs(t, err, ErrUnknownKey)
 	_, err = verifier.key(t.Context(), "random-2")
 	assert.ErrorIs(t, err, ErrUnknownKey)
 	assert.Equal(t, int32(1), requests.Load(), "changing an unknown kid must not bypass the refresh limit")
+
+	now = now.Add(minimumJWKSRefreshInterval)
+	_, err = verifier.key(t.Context(), "random-3")
+	assert.ErrorIs(t, err, ErrUnknownKey)
+	assert.Equal(t, int32(2), requests.Load(), "refresh must resume when the cooldown expires")
 }
 
 func TestRefreshesNeverOverlap(t *testing.T) {
 	key := newTestKey(t)
-	var requests atomic.Int32
-	var inFlight atomic.Int32
-	var maximum atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		requests.Add(1)
-		current := inFlight.Add(1)
-		for current > maximum.Load() && !maximum.CompareAndSwap(maximum.Load(), current) {
-		}
-		time.Sleep(40 * time.Millisecond)
-		inFlight.Add(-1)
-		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []any{key.jwk()}})
-	}))
-	t.Cleanup(srv.Close)
-
-	verifier, err := NewVerifier(Config{Enabled: true, Issuer: "https://issuer.example", JWKSURL: srv.URL})
+	body, err := json.Marshal(map[string]any{"keys": []any{key.jwk()}})
 	require.NoError(t, err)
-	start := make(chan struct{})
-	results := make(chan error, 2)
-	for range 2 {
-		go func() {
-			<-start
-			results <- verifier.refreshKeys(t.Context())
-		}()
+	requestStarted := make(chan struct{})
+	releaseResponse := make(chan struct{})
+	verifier, err := NewVerifier(Config{Enabled: true, Issuer: "https://issuer.example", JWKSURL: "https://issuer.example/keys"})
+	require.NoError(t, err)
+	verifier.client = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		close(requestStarted)
+		<-releaseResponse
+		return jsonResponse(request, body), nil
+	})}
+	result := make(chan error, 1)
+	go func() {
+		result <- verifier.refreshKeys(t.Context())
+	}()
+	<-requestStarted
+	lockWasFree := verifier.refreshMu.TryLock()
+	if lockWasFree {
+		verifier.refreshMu.Unlock()
 	}
-	close(start)
-	require.NoError(t, <-results)
-	require.NoError(t, <-results)
-	assert.Equal(t, int32(2), requests.Load())
-	assert.Equal(t, int32(1), maximum.Load(), "an older response must never race a newer cache replacement")
+	assert.False(t, lockWasFree, "the refresh coordinator must stay held through cache replacement")
+	close(releaseResponse)
+	require.NoError(t, <-result)
 }
 
 func TestVerifyRecoversWhenIssuerReusesKeyID(t *testing.T) {
@@ -555,11 +555,33 @@ func TestVerifyRecoversWhenIssuerReusesKeyID(t *testing.T) {
 	require.NoError(t, err)
 
 	current.Store(&newKey)
-	verifier.refreshMu.Lock()
-	verifier.lastRefreshAttempt = time.Time{}
-	verifier.refreshMu.Unlock()
 	_, err = verifier.Verify(t.Context(), newKey.sign(t, claims))
 	require.NoError(t, err, "a signature failure on a cached kid must retry after refreshing keys")
+}
+
+func TestSignatureFailuresAcrossCachedKidsShareRefreshCooldown(t *testing.T) {
+	first := newTestKey(t)
+	second := newTestKey(t)
+	second.kid = "kid2"
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []any{first.jwk(), second.jwk()}})
+	}))
+	t.Cleanup(srv.Close)
+	verifier, err := NewVerifier(Config{Enabled: true, Issuer: "https://issuer.example", JWKSURL: srv.URL})
+	require.NoError(t, err)
+	require.NoError(t, verifier.refreshKeys(t.Context()))
+
+	invalidToken := func(kid string) string {
+		header := mustJSONPart(t, map[string]any{"alg": "RS256", "kid": kid})
+		return header + ".e30." + base64.RawURLEncoding.EncodeToString([]byte("invalid signature"))
+	}
+	_, err = verifier.Verify(t.Context(), invalidToken(first.kid))
+	assert.Error(t, err)
+	_, err = verifier.Verify(t.Context(), invalidToken(second.kid))
+	assert.Error(t, err)
+	assert.Equal(t, int32(2), requests.Load(), "one forced refresh updates every cached kid")
 }
 
 func TestRefreshRediscoversMovedJWKSEndpoint(t *testing.T) {
@@ -643,14 +665,16 @@ func TestRemoteMetadataResourceLimits(t *testing.T) {
 	})
 
 	t.Run("error body drain", func(t *testing.T) {
-		body := strings.NewReader("error response")
+		body := strings.NewReader(strings.Repeat("x", maxErrorResponseDrainBytes+1))
 		drainErrorResponse(body)
-		assert.Zero(t, body.Len())
+		assert.Equal(t, 1, body.Len(), "error response draining must remain bounded")
 	})
 }
 
 func TestVerificationClassifiesMetadataFailureAsUnavailable(t *testing.T) {
+	var requests atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 	}))
 	t.Cleanup(srv.Close)
@@ -660,6 +684,68 @@ func TestVerificationClassifiesMetadataFailureAsUnavailable(t *testing.T) {
 	claims := mustJSONPart(t, map[string]any{"iss": "https://issuer.example", "sub": "u1", "exp": time.Now().Add(time.Hour).Unix()})
 	_, err = verifier.Verify(t.Context(), header+"."+claims+".c2ln")
 	assert.ErrorIs(t, err, ErrUnavailable)
+	header = mustJSONPart(t, map[string]any{"alg": "RS256", "kid": "another-new-key"})
+	_, err = verifier.Verify(t.Context(), header+"."+claims+".c2ln")
+	assert.ErrorIs(t, err, ErrUnavailable, "the refresh cooldown must preserve dependency failure classification")
+	assert.Equal(t, int32(1), requests.Load())
+}
+
+func TestCanceledRefreshDoesNotThrottleHealthyRequest(t *testing.T) {
+	key := newTestKey(t)
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []any{key.jwk()}})
+	}))
+	t.Cleanup(srv.Close)
+	verifier, err := NewVerifier(Config{Enabled: true, Issuer: "https://issuer.example", JWKSURL: srv.URL})
+	require.NoError(t, err)
+
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err = verifier.key(canceled, key.kid)
+	assert.ErrorIs(t, err, ErrUnavailable)
+	_, err = verifier.key(t.Context(), key.kid)
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), requests.Load(), "one caller's canceled context must not create a shared cooldown")
+}
+
+func TestCanceledSignatureRefreshPreservesSharedBackoff(t *testing.T) {
+	key := newTestKey(t)
+	other := newTestKey(t)
+	other.kid = key.kid
+	var requests atomic.Int32
+	var unavailable atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		if unavailable.Load() {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []any{key.jwk()}})
+	}))
+	t.Cleanup(srv.Close)
+	verifier, err := NewVerifier(Config{Enabled: true, Issuer: "https://issuer.example", JWKSURL: srv.URL})
+	require.NoError(t, err)
+	now := time.Date(2026, time.September, 2, 12, 0, 0, 0, time.UTC)
+	verifier.now = func() time.Time { return now }
+	_, err = verifier.key(t.Context(), key.kid)
+	require.NoError(t, err)
+
+	now = now.Add(minimumJWKSRefreshInterval)
+	unavailable.Store(true)
+	_, err = verifier.key(t.Context(), "missing")
+	assert.ErrorIs(t, err, ErrUnavailable)
+	assert.Equal(t, int32(2), requests.Load())
+
+	claims := map[string]any{"iss": "https://issuer.example", "sub": "u1", "exp": now.Add(time.Hour).Unix()}
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err = verifier.Verify(canceled, other.sign(t, claims))
+	assert.ErrorIs(t, err, ErrUnavailable)
+	_, err = verifier.key(t.Context(), "another-missing")
+	assert.ErrorIs(t, err, ErrUnavailable)
+	assert.Equal(t, int32(2), requests.Load(), "a canceled forced refresh must not erase an existing dependency backoff")
 }
 
 func TestUnsupportedAlgorithmDoesNotFetchKeys(t *testing.T) {
@@ -727,4 +813,19 @@ func bigEndian(n int) []byte {
 
 func issuerURL(r *http.Request) string {
 	return "http://" + r.Host
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
+func jsonResponse(request *http.Request, body []byte) *http.Response {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(string(body))),
+		Request:    request,
+	}
 }

@@ -18,10 +18,18 @@ import (
 type routeOutput struct{ Body string }
 
 type fakeVerifier struct {
-	claims  *authn.Claims
-	err     error
-	csrfErr error
-	cookie  string
+	claims    *authn.Claims
+	err       error
+	csrfErr   error
+	cookie    string
+	csrfCalls []csrfValidationCall
+}
+
+type csrfValidationCall struct {
+	method        string
+	origin        string
+	cookie        string
+	authorization string
 }
 
 func (verifier *fakeVerifier) Authenticate(context.Context, string, string) (*authn.Claims, error) {
@@ -31,7 +39,10 @@ func (verifier *fakeVerifier) Authenticate(context.Context, string, string) (*au
 	return verifier.claims, nil
 }
 
-func (verifier *fakeVerifier) ValidateCSRF(string, string, string, string) error {
+func (verifier *fakeVerifier) ValidateCSRF(method, origin, cookie, authorization string) error {
+	verifier.csrfCalls = append(verifier.csrfCalls, csrfValidationCall{
+		method: method, origin: origin, cookie: cookie, authorization: authorization,
+	})
 	return verifier.csrfErr
 }
 
@@ -140,9 +151,12 @@ func TestRegistrarDeclarationsCoverEveryRouteClass(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, api.Get("/workflow-stream").Code)
 
 	assertSelectorSchema(t, api.OpenAPI().Paths["/stores"].Get, authz.TenantHeader, "header")
+	assertSelectorSchema(t, api.OpenAPI().Paths["/workflows"].Get, authz.TenantHeader, "header")
 	assertSelectorSchema(t, api.OpenAPI().Paths["/workflows"].Get, authz.EntityHeader, "header")
 	assertSelectorSchema(t, api.OpenAPI().Paths["/workflow-stream"].Get, authz.TenantQuery, "query")
 	assertSelectorSchema(t, api.OpenAPI().Paths["/workflow-stream"].Get, authz.EntityQuery, "query")
+	assert.False(t, hasSelector(api.OpenAPI().Paths["/workflow-stream"].Get, authz.TenantHeader, "header"))
+	assert.False(t, hasSelector(api.OpenAPI().Paths["/workflow-stream"].Get, authz.EntityHeader, "header"))
 }
 
 func TestRegistrarRejectsInvalidConstructionAndDeclarations(t *testing.T) {
@@ -248,9 +262,17 @@ func TestTenantMemberAndAuthenticatedMiddleware(t *testing.T) {
 	assert.Equal(t, http.StatusServiceUnavailable, unavailableAPI.Get("/me").Code)
 
 	_, csrfAPI := humatest.New(t)
-	csrf := authz.NewRegistrar(testRegistry(), &fakeVerifier{claims: validClaims(), csrfErr: assert.AnError, cookie: "session"}, &fakeChecker{allowed: true}, &fakeMembership{active: true})
+	csrfVerifier := &fakeVerifier{claims: validClaims(), csrfErr: assert.AnError, cookie: "session"}
+	csrf := authz.NewRegistrar(testRegistry(), csrfVerifier, &fakeChecker{allowed: true}, &fakeMembership{active: true})
 	authz.RegisterAuthenticated(csrf, csrfAPI, huma.Operation{OperationID: "profile-update", Method: http.MethodPost, Path: "/profile"}, okRoute)
-	assert.Equal(t, http.StatusForbidden, csrfAPI.Post("/profile").Code)
+	assert.Equal(t, http.StatusForbidden, csrfAPI.Post("/profile",
+		"Origin: https://evil.example",
+		"Cookie: session=value",
+		"Authorization: Bearer token",
+	).Code)
+	assert.Equal(t, []csrfValidationCall{{
+		method: http.MethodPost, origin: "https://evil.example", cookie: "session=value", authorization: "Bearer token",
+	}}, csrfVerifier.csrfCalls)
 }
 
 func TestPermissionCheckerReceivesExactScope(t *testing.T) {
@@ -275,12 +297,12 @@ func TestOpenAPISecurityMatchesAuthenticatorCapabilities(t *testing.T) {
 	_, bearerAPI := humatest.New(t)
 	bearerRegistrar := authz.NewRegistrar(testRegistry(), bareVerifier, &fakeChecker{allowed: true}, &fakeMembership{active: true})
 	authz.RegisterAuthenticated(bearerRegistrar, bearerAPI, huma.Operation{OperationID: "bearer-only", Method: http.MethodGet, Path: "/bearer"}, okRoute)
-	assert.Equal(t, authz.BearerSecurity(), bearerAPI.OpenAPI().Paths["/bearer"].Get.Security)
+	assert.Equal(t, []map[string][]string{{authz.BearerScheme: {}}}, bearerAPI.OpenAPI().Paths["/bearer"].Get.Security)
 
 	_, sessionAPI := humatest.New(t)
 	sessionRegistrar := authz.NewRegistrar(testRegistry(), validVerifier(), &fakeChecker{allowed: true}, &fakeMembership{active: true})
 	authz.RegisterAuthenticated(sessionRegistrar, sessionAPI, huma.Operation{OperationID: "browser", Method: http.MethodGet, Path: "/browser"}, okRoute)
-	assert.Equal(t, authz.UserSecurity(), sessionAPI.OpenAPI().Paths["/browser"].Get.Security)
+	assert.Equal(t, []map[string][]string{{authz.BearerScheme: {}}, {authz.SessionScheme: {}}}, sessionAPI.OpenAPI().Paths["/browser"].Get.Security)
 	assert.Equal(t, "session", sessionAPI.OpenAPI().Components.SecuritySchemes[authz.SessionScheme].Name)
 }
 
@@ -388,7 +410,9 @@ func assertSelectorSchema(t *testing.T, operation *huma.Operation, name, locatio
 	t.Helper()
 	for _, parameter := range operation.Parameters {
 		if parameter.Name == name && parameter.In == location {
+			assert.True(t, parameter.Required)
 			require.NotNil(t, parameter.Schema)
+			assert.Equal(t, huma.TypeString, parameter.Schema.Type)
 			assert.Equal(t, `^[1-9][0-9]*$`, parameter.Schema.Pattern)
 			require.NotNil(t, parameter.Schema.MaxLength)
 			assert.Equal(t, 19, *parameter.Schema.MaxLength)
@@ -396,4 +420,13 @@ func assertSelectorSchema(t *testing.T, operation *huma.Operation, name, locatio
 		}
 	}
 	t.Fatalf("missing %s selector %s", location, name)
+}
+
+func hasSelector(operation *huma.Operation, name, location string) bool {
+	for _, parameter := range operation.Parameters {
+		if parameter.Name == name && parameter.In == location {
+			return true
+		}
+	}
+	return false
 }

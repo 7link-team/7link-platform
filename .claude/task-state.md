@@ -12,7 +12,7 @@ PostgreSQL、MySQL、SQLite 真实迁移与 `make ci` 门禁。
 IMPLEMENTATION
 
 ## Current Step
-Phase 0 / Task 0.3：迁移 authz 与核心 authn context/bearer/verifier。
+Phase 0 / Task 0.4：迁移 webauthnx、secretx、passwordx，冻结审计契约并补 operation_logs append-only。
 
 ## Overall Progress
 - [x] 深度分析与迁移方案 v8
@@ -24,8 +24,9 @@ Phase 0 / Task 0.3：迁移 authz 与核心 authn context/bearer/verifier。
 - [ ] Phase 9 集成与验收
 
 ## Active Work
-Task 0.P/0.0/0.1/0.2 已实现并通过 Windows 完整门禁；迁移计划已升级为 v8，`internal/iam/`
-作为域命名空间，9 个子模块各自拥有业务、model/query 与 SQL，取消集中 schema 和 feature 分包。
+Task 0.P/0.0/0.1/0.2/0.3 已实现并通过 Windows 完整门禁；迁移计划已升级为 v8，
+`internal/iam/` 作为域命名空间，9 个子模块各自拥有业务、model/query 与 SQL，取消集中 schema
+和 feature 分包。
 
 ## Completed Work
 - 已从任务记录与实际仓库恢复断点；工作树在本轮开始时干净。
@@ -49,6 +50,10 @@ Task 0.P/0.0/0.1/0.2 已实现并通过 Windows 完整门禁；迁移计划已�
   不丢更新与双事务锁测试均已通过反向变异验证。
 - Task 0.2 deep-review 发现并修复真实时间列冲突、模块所有权、错误文案、canonical 字节契约
   和锁测试缺口；复审无剩余发现。缺失非资源认证事实的否定语义按源明确兼容契约保持不变。
+- Task 0.3：在 `pkg/extension/authn` 与 `pkg/extension/authz` 移植 8 个源文件；Registrar 使用消费侧
+  tenant/platform/entity 窄接口，不新增第十个 IAM 模块或中央 port 包；两包已登记覆盖率。
+- Task 0.3 deep-review 按类修复 JWKS 刷新竞态/放大/轮换恢复、受限远端响应、认证错误与 CSRF
+  语义漂移、OpenAPI 认证和 selector 契约；类级测试均完成反向变异验证与复审。
 - 计划 v5 已冻结 9 模块 source manifest、目标 model/query/dbgen、bun→gorm 注意项、端口、
   tenant 负例和逐模块门禁；不再把 `internal/iam` 拆成三个半成品阶段。
 - 从固定 source tree 展开 200 条 REST 三元组，文档与源代码集合对账 200/200、无缺失、
@@ -80,20 +85,20 @@ Task 0.P/0.0/0.1/0.2 已实现并通过 Windows 完整门禁；迁移计划已�
 - 本任务约 6 万行，必须按 Phase 分批实现、验证和留档。
 
 ## Verification
-Build: PASS（Task 0.2 Windows `make ci` build）
-Tests: PASS（`go -C tools test ./iam-preflight` + Task 0.2 `make ci` + policyx `-race`）
-Lint: PASS（Task 0.2 `make ci`）
-Coverage: PASS（总体 90.8%，core 97.4%，policyx 91.2%，17/17 受控包 ≥90%）
+Build: PASS（Task 0.3 Windows `make ci` build）
+Tests: PASS（Task 0.3 authn/authz `-race -count=10` + 完整 `make ci`）
+Lint: PASS（Task 0.3 固定版本 golangci-lint / `make ci`）
+Coverage: PASS（总体 91.2%，authn 96.5%，authz 94.6%，19/19 受控包 ≥90%）
 Integration: PASS（`tests/goose`）
 Other verification: `git diff --check` PASS；source tree/三方言 63 表 PASS；REST baseline 与
 源代码集合相等（200/200）PASS；远端 Docker 26.1.5 PASS；MySQL 8.4.11 启动、查询、
 Windows TCP 连通 PASS。
 
 ## Next Action
-提交 Task 0.2；随后进入 Task 0.3，迁移 authz 与核心 authn 文件，冻结包含
-tenant/platform/entity 三类判定的消费侧 checker。
+进入 Task 0.4：移植 webauthnx、secretx、passwordx；在 `internal/iam/audit` 根包冻结
+`DomainEvent`/`Appender`，并给 operation_logs 补三方言 append-only 约束。
 
 ## Last Checkpoint
-2026-09-02 · IAM 分支已快进到 `1a14c4b`，Windows `make iam-preflight` PASS。Task 0.2
-policyx 纯逻辑与 core revision store 已落地，聚焦 `-race`、两类变异验证和 deep-review
-复审 PASS；完整 `make ci` PASS（总覆盖率 90.8%，core 97.4%，policyx 91.2%，17/17 包达标）。
+2026-09-02 · IAM 分支 Task 0.3 authn/authz 扩展已落地；deep-review、JWKS/认证/OpenAPI 类级
+反向变异、`-race -count=10` 与完整 `make ci` PASS（总覆盖率 91.2%，authn 96.5%，authz
+94.6%，19/19 受控包达标）。下一步 Task 0.4。

@@ -331,9 +331,9 @@ func TestMigrationUsesSingleWriteHandle(t *testing.T) { /* 统计 Write() 调用
 
 #### Task 0.3: authz(依赖 0.2)
 
-- [ ] **Step 1:** 复制 `authz/{catalog,decision,gate,register}.go` + `authn/{verifier,bearer,context,model}.go`(**8 个文件,v1 漏了 verifier.go**)
-- [ ] **Step 2:** Registrar 的协作者改为 authz 消费侧窄接口,**含 tenant / platform / entity 三类判定**(`register.go:34`)；Phase 2 的 IAM 实现该接口，避免 authz 反向依赖尚未完成的 IAM 模块
-- [ ] **Step 3:** 登记覆盖率 → 提交
+- [x] **Step 1:** 复制 `authz/{catalog,decision,gate,register}.go` + `authn/{verifier,bearer,context,model}.go`(**8 个文件,v1 漏了 verifier.go**)
+- [x] **Step 2:** Registrar 的协作者改为 authz 消费侧窄接口,**含 tenant / platform / entity 三类判定**(`register.go:34`)；Phase 2 的 IAM 实现该接口，避免 authz 反向依赖尚未完成的 IAM 模块
+- [x] **Step 3:** 登记覆盖率 → 提交
 
 #### Task 0.4: webauthnx + secretx + passwordx + 审计端口
 

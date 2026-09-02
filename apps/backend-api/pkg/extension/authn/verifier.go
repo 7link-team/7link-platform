@@ -206,13 +206,16 @@ type Assurance struct {
 type Verifier struct {
 	cfg    Config
 	client *http.Client
+	now    func() time.Time
 
 	mu      sync.RWMutex
 	jwksURL string
 	keys    map[string]crypto.PublicKey
 
-	refreshMu          sync.Mutex
-	lastRefreshAttempt time.Time
+	refreshMu            sync.Mutex
+	lastRefreshAttempt   time.Time
+	lastRefreshErr       error
+	lastSignatureRefresh time.Time
 }
 
 func NewVerifier(cfg Config) (*Verifier, error) {
@@ -232,6 +235,7 @@ func NewVerifier(cfg Config) (*Verifier, error) {
 	return &Verifier{
 		cfg:    cfg,
 		client: &http.Client{Timeout: cfg.HTTPTimeout},
+		now:    time.Now,
 		keys:   map[string]crypto.PublicKey{},
 	}, nil
 }
@@ -307,7 +311,7 @@ func (v *Verifier) Verify(ctx context.Context, token string) (*Claims, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := v.validate(claims, time.Now()); err != nil {
+	if err := v.validate(claims, v.now()); err != nil {
 		return nil, err
 	}
 	return claims, nil
@@ -355,17 +359,41 @@ func (v *Verifier) refreshKey(ctx context.Context, kid string, force bool) (cryp
 			return key, nil
 		}
 	}
-	now := time.Now()
-	if !v.lastRefreshAttempt.IsZero() && now.Sub(v.lastRefreshAttempt) < minimumJWKSRefreshInterval {
-		if key, ok := v.cachedKey(kid); ok {
-			return key, nil
+	now := v.now()
+	previousRefreshAttempt := v.lastRefreshAttempt
+	previousRefreshErr := v.lastRefreshErr
+	previousSignatureRefresh := v.lastSignatureRefresh
+	if force {
+		if !v.lastSignatureRefresh.IsZero() && now.Sub(v.lastSignatureRefresh) < minimumJWKSRefreshInterval {
+			if v.lastRefreshErr != nil {
+				return nil, errors.Join(ErrUnavailable, v.lastRefreshErr)
+			}
+			if key, ok := v.cachedKey(kid); ok {
+				return key, nil
+			}
+			return nil, ErrUnknownKey
+		}
+		v.lastSignatureRefresh = now
+	} else if !v.lastRefreshAttempt.IsZero() && now.Sub(v.lastRefreshAttempt) < minimumJWKSRefreshInterval {
+		if v.lastRefreshErr != nil {
+			return nil, errors.Join(ErrUnavailable, v.lastRefreshErr)
 		}
 		return nil, ErrUnknownKey
 	}
 	v.lastRefreshAttempt = now
 	if err := v.refreshKeysLocked(ctx); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			v.lastRefreshAttempt = previousRefreshAttempt
+			v.lastRefreshErr = previousRefreshErr
+			if force {
+				v.lastSignatureRefresh = previousSignatureRefresh
+			}
+			return nil, errors.Join(ErrUnavailable, err)
+		}
+		v.lastRefreshErr = err
 		return nil, errors.Join(ErrUnavailable, err)
 	}
+	v.lastRefreshErr = nil
 	if key, ok := v.cachedKey(kid); ok {
 		return key, nil
 	}
@@ -375,8 +403,17 @@ func (v *Verifier) refreshKey(ctx context.Context, kid string, force bool) (cryp
 func (v *Verifier) refreshKeys(ctx context.Context) error {
 	v.refreshMu.Lock()
 	defer v.refreshMu.Unlock()
-	v.lastRefreshAttempt = time.Now()
-	return v.refreshKeysLocked(ctx)
+	previousRefreshAttempt := v.lastRefreshAttempt
+	previousRefreshErr := v.lastRefreshErr
+	v.lastRefreshAttempt = v.now()
+	err := v.refreshKeysLocked(ctx)
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		v.lastRefreshAttempt = previousRefreshAttempt
+		v.lastRefreshErr = previousRefreshErr
+	} else {
+		v.lastRefreshErr = err
+	}
+	return err
 }
 
 func (v *Verifier) refreshKeysLocked(ctx context.Context) error {
