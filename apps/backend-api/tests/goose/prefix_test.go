@@ -94,14 +94,33 @@ func TestPrefixedModuleQueriesOnMySQLAndPostgres(t *testing.T) {
 
 			t.Run("audit", func(t *testing.T) {
 				sink := audit.NewGormSink(gormDB, queryPrefix)
+				const operationLogID = "2366488506482438144"
 				require.NoError(t, sink.Write(ctx, []audit.Event{{
-					ID:         "2366488506482438144",
+					ID:         operationLogID,
 					OccurredAt: time.Now(),
 					Entry:      audit.KindHTTP,
 					Operation:  "POST /orders",
 					Access:     audit.AccessWrite,
 					Outcome:    audit.OutcomeSuccess,
 				}}))
+
+				table := queryPrefix + "operation_logs"
+				assert.Error(t, gormDB.Table(table).Where("id = ?", operationLogID).
+					UpdateColumn("operation", "changed").Error)
+				assert.Error(t, gormDB.Table(table).Where("id = ?", operationLogID).Delete(nil).Error)
+
+				auditSource := (&audit.Module{}).MigrationSource()
+				auditSource.Prefix = queryPrefix
+				require.NoError(t, goosex.MigrateDown(ctx, sqlDB, auditSource, tt.dialect))
+				require.NoError(t, gormDB.Table(table).Where("id = ?", operationLogID).
+					UpdateColumn("operation", "after-down").Error)
+				require.NoError(t, goosex.MigrateUp(ctx, sqlDB, auditSource, tt.dialect))
+				assert.Error(t, gormDB.Table(table).Where("id = ?", operationLogID).
+					UpdateColumn("operation", "after-up").Error)
+				assert.Error(t, gormDB.Table(table).Where("id = ?", operationLogID).Delete(nil).Error)
+				var count int64
+				require.NoError(t, gormDB.Table(table).Where("id = ?", operationLogID).Count(&count).Error)
+				assert.Equal(t, int64(1), count)
 			})
 
 			t.Run("unprefixed access fails", func(t *testing.T) {

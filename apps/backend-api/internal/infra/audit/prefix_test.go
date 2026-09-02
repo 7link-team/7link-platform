@@ -49,6 +49,15 @@ func TestMigrationPrefixesTablesAndIndexes(t *testing.T) {
 	for _, name := range indexes {
 		assert.Contains(t, name, testPrefix, "index %q must be prefixed", name)
 	}
+
+	var triggers []string
+	require.NoError(t, db.Raw(
+		`SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name`,
+	).Scan(&triggers).Error)
+	assert.ElementsMatch(t, []string{
+		testPrefix + "trg_operation_logs_no_delete",
+		testPrefix + "trg_operation_logs_no_update",
+	}, triggers)
 }
 
 func TestGormSinkWritesToPrefixedTable(t *testing.T) {

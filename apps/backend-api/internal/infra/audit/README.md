@@ -151,4 +151,8 @@ func (c *consumer) handle(ctx context.Context, msg Message) error {
 ## 迁移
 
 `sql/{sqlite,mysql,postgres}/00001_operation_logs.sql`，goose 版本表 `goose_audit`。
+
+`00002_operation_logs_append_only.sql` 通过三方言触发器拒绝 `UPDATE` 和 `DELETE`。该保护不拦截
+`TRUNCATE`，高权限数据库账号也可以禁用或删除触发器；完整的 append-only 保证仍要求生产
+业务账号遵循最小权限，不授予 `TRUNCATE` 或触发器管理权限。
 独立执行：`go -C cmd/7link-api run . migrate up --module audit`（或 `--migrate` 随服务启动自动执行）。
