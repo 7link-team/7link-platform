@@ -270,7 +270,16 @@ func parseImport(ctx context.Context, table grid, limits Limits) ([]Draft, []Row
 	}
 
 	body := table[1:]
-	if limits.MaxRows > 0 && len(body) > limits.MaxRows {
+	// Blank rows are skipped below, so they must not count against the limit
+	// either: re-saving a sheet appends trailing empties, and rejecting a file
+	// for rows that import nothing would be a limit the caller cannot see.
+	filled := 0
+	for _, record := range body {
+		if !blank(record) {
+			filled++
+		}
+	}
+	if limits.MaxRows > 0 && filled > limits.MaxRows {
 		return nil, nil, huma.Error422UnprocessableEntity(
 			platformi18n.TContext(ctx, todoi18n.ImportTooManyRows))
 	}

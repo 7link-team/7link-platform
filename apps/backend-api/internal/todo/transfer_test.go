@@ -189,6 +189,23 @@ func TestImportEnforcesRowLimit(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestImportRowLimitIgnoresBlankRows keeps the limit measured in the same unit
+// the caller thinks in. Blank rows import nothing, and re-saving a sheet appends
+// them, so counting them would reject a file for rows that carry no data.
+func TestImportRowLimitIgnoresBlankRows(t *testing.T) {
+	table := grid{{"title"}}
+	for range 3 {
+		table = append(table, []string{"task"})
+	}
+	for range 4 {
+		table = append(table, []string{"   "})
+	}
+	drafts, rowErrors, err := parseImport(localeContext("en-US"), table, Limits{MaxRows: 3})
+	require.NoError(t, err)
+	require.Empty(t, rowErrors)
+	require.Len(t, drafts, 3)
+}
+
 func TestImportAllWritesAtomically(t *testing.T) {
 	svc, _ := newTestService(t, "")
 	imported, err := svc.ImportAll(t.Context(), []Draft{
