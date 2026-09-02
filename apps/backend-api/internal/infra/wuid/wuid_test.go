@@ -289,3 +289,28 @@ func TestWorkerCloseReportsDatabaseFailure(t *testing.T) {
 	require.NoError(t, sqlDB.Close())
 	assert.Error(t, worker.Close(t.Context()))
 }
+
+// TestClaimIDRejectsAnAllocationReclaimedBeforeItsLease covers the gap between
+// the INSERT and the UPDATE that gives a freshly allocated row its deadline.
+// A row with a zero deadline reads as expired, so a lapsed allocation lock lets
+// another allocator take the ID. The token in the UPDATE is what detects it.
+func TestClaimIDRejectsAnAllocationReclaimedBeforeItsLease(t *testing.T) {
+	db := newTestDB(t)
+	nowExpr := gormx.NowMillisExpr(db.Dialector.Name())
+
+	// Stand in for the competing allocator: the moment the row exists with a
+	// zero deadline, take it over the way a reclaim would.
+	require.NoError(t, db.Callback().Create().After("gorm:create").
+		Register("test:steal", func(tx *gorm.DB) {
+			if tx.Statement.Table != (model.WorkerRow{}).TableName() {
+				return
+			}
+			tx.Session(&gorm.Session{NewDB: true, SkipHooks: true}).
+				Table(tx.Statement.Table).
+				Where("expires_at = 0").
+				Updates(map[string]any{"token": "someone-else", "expires_at": 1 << 40})
+		}))
+
+	_, err := claimID(t.Context(), db, "mine", collectSysinfo(), time.Minute.Milliseconds(), nowExpr, "")
+	assert.ErrorIs(t, err, errAllocationReclaimed)
+}

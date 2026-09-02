@@ -39,6 +39,7 @@ const (
 var (
 	ErrDatabaseUnavailable = errors.New("wuid: writable database unavailable")
 	errLeaseTakenOver      = errors.New("wuid: lease taken over")
+	errAllocationReclaimed = errors.New("wuid: allocation reclaimed before its lease was set")
 	processStarted         = time.Now()
 )
 
@@ -274,16 +275,27 @@ func claimID(ctx context.Context, db *gorm.DB, token string, info sysinfo, lease
 		return 0, fmt.Errorf("wuid: worker id pool exhausted (max %d)", MaxWorkerID)
 	}
 	// The lease deadline is a database expression, so the row is inserted with a
-	// zero deadline and immediately given its real one. Both statements run
-	// under the allocation lock, so no other allocator can observe the gap.
+	// zero deadline and immediately given its real one. A zero deadline reads as
+	// expired, so the gap between the two statements is only safe while the
+	// allocation lock is held — and a lock is a lease, not a guarantee. The
+	// token in the UPDATE is what makes the pair verifiable after the fact.
 	row := workerRowFor(next, token, info)
 	if err := workers.WithContext(ctx).Create(row); err != nil {
 		return 0, err
 	}
-	if _, err := workers.WithContext(ctx).
+	leased, err := workers.WithContext(ctx).
 		Where(workers.ID.Eq(next), workers.Token.Eq(token)).
-		UpdateSimple(workers.ExpiresAt.SetCol(deadline)); err != nil {
+		UpdateSimple(workers.ExpiresAt.SetCol(deadline))
+	if err != nil {
 		return 0, err
+	}
+	// Zero rows means the row inserted a moment ago no longer carries this
+	// token: the allocation lock lapsed and another allocator reclaimed the ID
+	// while its deadline was still zero. Returning it anyway would hand the same
+	// worker ID to two processes, which is the one outcome this package exists
+	// to prevent.
+	if leased.RowsAffected != 1 {
+		return 0, errAllocationReclaimed
 	}
 	return next, nil
 }
