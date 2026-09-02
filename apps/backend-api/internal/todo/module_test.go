@@ -1,7 +1,9 @@
 package todo
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -102,6 +104,44 @@ func TestModuleRegisterHTTPRequiresInitialize(t *testing.T) {
 	require.NoError(t, ready.InjectServices(servicesWith(t, &stubIDs{})))
 	require.NoError(t, ready.Initialize(t.Context()))
 	assert.NoError(t, ready.RegisterHTTP(context.Background(), api))
+}
+
+// TestRegisterHTTPWithoutADatasourceWarnsAndStillRegisters pins the one place
+// this module degrades instead of failing.
+//
+// Registration runs once per process, so a boot without a writable datasource
+// decides the API document for the rest of that process's life: the filter
+// parameters are built from the generated column set, which needs a datasource
+// to construct. Failing here would turn a module every route already reports as
+// unavailable into a server that will not start, so the routes register anyway
+// — but a degradation nobody can see is the kind that reaches production, which
+// is why the warning is asserted alongside the success.
+func TestRegisterHTTPWithoutADatasourceWarnsAndStillRegisters(t *testing.T) {
+	var logged bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	bare := appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0"))
+	initI18n(t, bare)
+	noDB := NewModule(bare)
+	require.NoError(t, noDB.InjectServices(servicesWith(t, &stubIDs{})))
+	require.NoError(t, noDB.Initialize(t.Context()))
+
+	router := chi.NewRouter()
+	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
+	require.NoError(t, noDB.RegisterHTTP(context.Background(), api),
+		"a module with no datasource must still register its routes")
+
+	assert.Contains(t, logged.String(), "todo filters are missing from the API document",
+		"the degraded document must be reported, not silently served")
+
+	// The routes exist; only their documentation is thin.
+	operation := api.OpenAPI().Paths[basePath].Get
+	require.NotNil(t, operation)
+	for _, param := range operation.Parameters {
+		assert.NotEqual(t, "status", param.Name, "no filter should be documented without a contract")
+	}
 }
 
 func TestModuleMigrationSourceIsSelfDescribing(t *testing.T) {

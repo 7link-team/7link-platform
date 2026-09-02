@@ -3,6 +3,7 @@ package todo
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"7link.com/platform/internal/infra/guid"
@@ -78,7 +79,7 @@ func (m *Module) CheckHealth(context.Context) error {
 	return nil
 }
 
-func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
+func (m *Module) RegisterHTTP(ctx context.Context, api huma.API) error {
 	if m.service == nil {
 		return fmt.Errorf("register todo: service is unavailable")
 	}
@@ -94,6 +95,16 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	var filterParams []*huma.Param
 	if contract, err := m.service.contract(); err == nil {
 		filterParams = contract.Parameters()
+	} else {
+		// Registration runs once, so this boot decides the document for the life
+		// of the process: a start without a writable datasource serves an
+		// OpenAPI with no filter parameters until the process is replaced. That
+		// is still better than failing here, which would turn a module every
+		// route already reports as unavailable into a server that will not
+		// start — but it must not be the silent kind of degradation, or the
+		// first sign of it is a generated client that cannot filter.
+		slog.WarnContext(ctx, "todo filters are missing from the API document",
+			"reason", err, "remedy", "restart once a writable datasource is reachable")
 	}
 	// The transfer routes are registered first: their paths are static where the
 	// task routes take a parameter, and a static segment must not be captured as
