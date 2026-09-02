@@ -18,13 +18,16 @@ type AuthorizationEvaluator interface {
 	ExplainResource(ctx context.Context, tenantID, entityID guid.ID, resourceType string, resourceID guid.ID, permission string, principalID guid.ID) (authz.Explanation, error)
 }
 
-// ActiveMemberChecker verifies membership through a caller-owned transaction.
+// ActiveMemberChecker verifies membership either independently or through a
+// caller-owned transaction.
 type ActiveMemberChecker interface {
+	IsMemberActive(context.Context, guid.ID, guid.ID) (bool, error)
 	IsMemberActiveOn(context.Context, *gorm.DB, guid.ID, guid.ID) (bool, error)
 }
 
 // AdministratorGuard protects mutations that could remove a tenant's last
-// administrator. The returned verifier must run before the transaction commits.
+// durable administrator. The returned verifier must run before the transaction
+// commits.
 type AdministratorGuard interface {
 	Protect(context.Context, *gorm.DB, guid.ID) (func() error, error)
 }

@@ -12,21 +12,21 @@ PostgreSQL、MySQL、SQLite 真实迁移与 `make ci` 门禁。
 IMPLEMENTATION
 
 ## Current Step
-Phase 0 / Task 0.5：冻结 13 项跨模块能力契约并完成第三方依赖/引入时机评审。
+Phase 1 / Task 1.0：提取 `tests/internal/testdb` 三引擎测试数据库 helper。
 
 ## Overall Progress
 - [x] 深度分析与迁移方案 v8
 - [x] 两轮独立评审问题回收并修订方案
 - [x] 两机环境 / Docker / collation / entity type 决策闭环
-- [ ] Phase 0 前置修复、扩展包、端口图与依赖评审
+- [x] Phase 0 前置修复、扩展包、端口图与依赖评审
 - [ ] Phase 1 九个模块自治迁移源、里程碑 DAG 与三引擎验证
 - [ ] Phase 2–8 Go 模块迁移
 - [ ] Phase 9 集成与验收
 
 ## Active Work
-Task 0.P/0.0/0.1/0.2/0.3/0.4 已实现并通过 Windows 完整门禁；迁移计划已升级为 v8，
+Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5 已实现并通过 Windows 完整门禁；迁移计划已升级为 v8，
 `internal/iam/` 作为域命名空间，9 个子模块各自拥有业务、model/query 与 SQL，取消集中 schema
-和 feature 分包。
+和 feature 分包。下一步进入 Phase 1 的三引擎迁移基础设施。
 
 ## Completed Work
 - 已从任务记录与实际仓库恢复断点；工作树在本轮开始时干净。
@@ -58,6 +58,10 @@ Task 0.P/0.0/0.1/0.2/0.3/0.4 已实现并通过 Windows 完整门禁；迁移计
   `DomainEvent`/`Appender`，并为三方言 `operation_logs` 增加 append-only 迁移。
 - Task 0.4 deep-review 修复 Argon2 PHC 超长输入分配、Linux FIFO 替换阻塞和 MySQL 半回滚
   重试问题；聚焦竞态/变异、真实 Linux、MySQL 8.4 恢复矩阵及依赖漏洞复审均通过。
+- Task 0.5：按 provider 根包冻结 13 项跨模块能力，完整记录 TOTP/SAML/SCIM/验证码/MinIO/Redis
+  的源版本、职责与即时引入时机；未引入中央 port/schema 或第二套依赖注入模式。
+- Task 0.5 deep-review 修复源方法遗漏、接口删除漏检、能力所有权/alias 漏检、DTO 字段与 JSON tag
+  漂移、`MembershipRule` Base64 序列化及不准确 GoDoc；类级门禁完成反向变异验证，复审无新发现。
 - 计划 v5 已冻结 9 模块 source manifest、目标 model/query/dbgen、bun→gorm 注意项、端口、
   tenant 负例和逐模块门禁；不再把 `internal/iam` 拆成三个半成品阶段。
 - 从固定 source tree 展开 200 条 REST 三元组，文档与源代码集合对账 200/200、无缺失、
@@ -80,7 +84,7 @@ Task 0.P/0.0/0.1/0.2/0.3/0.4 已实现并通过 Windows 完整门禁；迁移计
 - 三方言 DDL 全部前缀化、真实时间类型、无 0 哨兵、FK/guid 使用 BIGINT。
 - 每个新增受控模块覆盖率 ≥90%，阶段结束 `make ci` 必须通过。
 - 不迁移存量数据；不缩减现有 IAM 域功能。
-- 当前执行环境不自行启动子代理；按依赖顺序直接执行并分阶段 checkpoint。
+- 实现按依赖顺序推进；阶段评审按 deep-review 使用隔离只读 subagent，并由主执行者亲自证伪。
 - 每次换机或恢复任务先运行 `make iam-preflight`；后续只消费生成的路径与 Docker transport。
 
 ## Known Issues / Risks
@@ -91,19 +95,20 @@ Task 0.P/0.0/0.1/0.2/0.3/0.4 已实现并通过 Windows 完整门禁；迁移计
 - 本任务约 6 万行，必须按 Phase 分批实现、验证和留档。
 
 ## Verification
-Build: PASS（Task 0.4 Windows `make ci` build + Linux CGO-disabled cross-compile）
-Tests: PASS（Task 0.4 聚焦 `-race -count=10` + 完整 `make ci`）
-Lint: PASS（Task 0.4 固定版本 golangci-lint / `make ci`）
-Coverage: PASS（总体 91.4%，passwordx 100.0%，secretx 94.9%，webauthnx 97.5%，23/23 受控包 ≥90%）
+Build: PASS（Task 0.5 Windows `make ci` build；Task 0.4 Linux CGO-disabled cross-compile）
+Tests: PASS（Task 0.5 契约聚焦 `-race` + 完整 `make ci`）
+Lint: PASS（Task 0.5 固定版本 golangci-lint / `make ci`）
+Coverage: PASS（总体 91.4%，organization 100.0%，24/24 受控包 ≥90%）
 Integration: PASS（`tests/goose`）
 Other verification: `git diff --check` PASS；source tree/三方言 63 表 PASS；REST baseline 与
 源代码集合相等（200/200）PASS；远端 Docker 26.1.5 PASS；MySQL 8.4.11 启动、查询、
 Windows TCP 连通及 append-only Up/Down 部分状态恢复矩阵 PASS；Linux FIFO 真实文件系统测试 PASS。
 
 ## Next Action
-进入 Task 0.5：按 provider 根包所有权冻结 13 项跨模块能力契约，完成依赖选择与引入时机决策，
-增加编译期契约夹具并通过阶段门禁。
+进入 Task 1.0：从现有集成测试提取 `OpenPostgres`/`OpenMySQL`/`OpenSQLite` 到
+`tests/internal/testdb`，不把重型测试依赖引入主模块。
 
 ## Last Checkpoint
-2026-09-02 · IAM 分支 Task 0.4 已落地；deep-review/deep-audit 复审、聚焦反向变异、真实 Linux/MySQL、
-`-race -count=10` 与完整 `make ci` PASS（总覆盖率 91.4%，23/23 受控包达标）。下一步 Task 0.5。
+2026-09-02 · IAM 分支 Phase 0 / Task 0.5 已落地；13 项能力契约、依赖决策、AST 所有权门禁、
+DTO/JSON 全称断言与反向变异均通过复审；`-race`、固定 lint、完整 `make ci` PASS（总覆盖率 91.4%，
+24/24 受控包达标）。下一步 Phase 1 / Task 1.0。

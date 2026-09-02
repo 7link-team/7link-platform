@@ -346,12 +346,12 @@ func TestMigrationUsesSingleWriteHandle(t *testing.T) { /* 统计 Write() 调用
 
 #### Task 0.5: 冻结端口图 + 第三方依赖评审
 
-- [ ] **Step 1:** 按 §2.2 冻结 13 个能力接口：复用 `guid.Source`；authz 专用 checker 放消费侧 authz 包；其余直接由 `internal/iam/<provider>` 模块根声明。Phase 0 只创建必要的模块根与编译期 fixture，**后续不得新增接口而不回头修订本计划**
-- [ ] **Step 2:** 先从源 `go.mod` 与 import 图列出完整模块路径，再评审候选依赖类别（WebAuthn/TOTP/SAML/SCIM filter/验证码/对象存储/Redis），去掉功能重复项并产出 `.claude/decisions.md`；禁止用“十个”“四件套”之类不可复核的简称代替清单
+- [x] **Step 1:** 按 §2.2 冻结 13 个能力接口：复用 `guid.Source`；authz 专用 checker 放消费侧 authz 包；其余直接由 `internal/iam/<provider>` 模块根声明。Phase 0 只创建必要的模块根与编译期 fixture，**后续不得新增接口而不回头修订本计划**
+- [x] **Step 2:** 先从源 `go.mod` 与 import 图列出完整模块路径，再评审候选依赖类别（WebAuthn/TOTP/SAML/SCIM filter/验证码/对象存储/Redis），去掉功能重复项并产出 `.claude/decisions.md`；禁止用“十个”“四件套”之类不可复核的简称代替清单
 
 > **范围澄清**(撤销 v2 的措辞):依赖评审只决定**引入时机与选型**(如两个功能重叠的验证码库至少砍一个),**不决定是否实现**。用户要求"全量全功能到位",SAML/SCIM 必须有生产实现与可用路由,不接受长期 `Enabled: false`。
 
-- [ ] **Step 3:** `make ci` → 提交
+- [x] **Step 3:** `make ci` → 提交
 
 ### Phase 1 — 模块自治迁移源与里程碑编排
 

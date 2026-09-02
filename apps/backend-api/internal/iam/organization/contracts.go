@@ -11,8 +11,21 @@ import (
 	"gorm.io/gorm"
 )
 
-// MembershipRule is the canonical dynamic-group predicate.
+// MembershipRule is the JSON representation of a dynamic-group predicate.
 type MembershipRule json.RawMessage
+
+func (rule MembershipRule) MarshalJSON() ([]byte, error) {
+	return json.RawMessage(rule).MarshalJSON()
+}
+
+func (rule *MembershipRule) UnmarshalJSON(data []byte) error {
+	var raw json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*rule = MembershipRule(raw)
+	return nil
+}
 
 // Group is the stable organization representation shared with provisioning.
 type Group struct {

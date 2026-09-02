@@ -9,7 +9,8 @@ import (
 	authnext "7link.com/platform/pkg/extension/authn"
 )
 
-// InvitationCredentials creates and verifies tenant invitation credentials.
+// InvitationCredentials issues tenant invitation tokens and derives their
+// digests. The organization module compares digests when accepting a token.
 type InvitationCredentials interface {
 	IssueInvitationToken(guid.ID) (string, string, error)
 	InvitationTokenDigest(string) (string, error)
@@ -32,4 +33,6 @@ type WebService interface {
 	Logout(context.Context, string) string
 	ResolveReturnURL(string) (string, error)
 	SessionCookie(string) string
+	SessionCookieName() string
+	ValidateCSRF(method, origin, cookieHeader, authorization string) error
 }
