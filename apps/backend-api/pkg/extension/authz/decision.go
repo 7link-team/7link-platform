@@ -10,8 +10,8 @@ type ResourceRef struct {
 }
 
 // DataConstraint is the parameter-only result business repositories consume
-// when filtering tenant-owned rows. Empty slices are intentional: callers can
-// serialize and inspect the contract without null handling.
+// when filtering tenant-owned rows. Producers returning it over JSON initialize
+// empty slices so clients do not need to treat null as a second empty value.
 type DataConstraint struct {
 	AllowAll      bool          `json:"allow_all"`
 	OwnerIDs      []string      `json:"owner_ids"`

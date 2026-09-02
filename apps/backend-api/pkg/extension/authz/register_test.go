@@ -38,19 +38,45 @@ func (verifier *fakeVerifier) ValidateCSRF(string, string, string, string) error
 func (verifier *fakeVerifier) SessionCookieName() string { return verifier.cookie }
 
 type fakeChecker struct {
-	allowed bool
-	err     error
+	allowed       bool
+	err           error
+	tenantCalls   []tenantPermissionCall
+	platformCalls []platformPermissionCall
+	entityCalls   []entityPermissionCall
 }
 
-func (checker *fakeChecker) Check(context.Context, guid.ID, string, guid.ID) (bool, error) {
+type tenantPermissionCall struct {
+	tenantID   guid.ID
+	permission string
+	subject    guid.ID
+}
+
+type platformPermissionCall struct {
+	permission string
+	subject    guid.ID
+}
+
+type entityPermissionCall struct {
+	tenantID   guid.ID
+	entityID   guid.ID
+	permission string
+	subject    guid.ID
+}
+
+func (checker *fakeChecker) Check(_ context.Context, tenantID guid.ID, permission string, subject guid.ID) (bool, error) {
+	checker.tenantCalls = append(checker.tenantCalls, tenantPermissionCall{tenantID: tenantID, permission: permission, subject: subject})
 	return checker.allowed, checker.err
 }
 
-func (checker *fakeChecker) CheckPlatform(context.Context, string, guid.ID) (bool, error) {
+func (checker *fakeChecker) CheckPlatform(_ context.Context, permission string, subject guid.ID) (bool, error) {
+	checker.platformCalls = append(checker.platformCalls, platformPermissionCall{permission: permission, subject: subject})
 	return checker.allowed, checker.err
 }
 
-func (checker *fakeChecker) CheckEntity(context.Context, guid.ID, guid.ID, string, guid.ID) (bool, error) {
+func (checker *fakeChecker) CheckEntity(_ context.Context, tenantID, entityID guid.ID, permission string, subject guid.ID) (bool, error) {
+	checker.entityCalls = append(checker.entityCalls, entityPermissionCall{
+		tenantID: tenantID, entityID: entityID, permission: permission, subject: subject,
+	})
 	return checker.allowed, checker.err
 }
 
@@ -112,6 +138,11 @@ func TestRegistrarDeclarationsCoverEveryRouteClass(t *testing.T) {
 	assert.Len(t, authz.BearerSecurity(), 1)
 	assert.Len(t, authz.ClientSecurity(), 1)
 	assert.Equal(t, http.StatusNoContent, api.Get("/workflow-stream").Code)
+
+	assertSelectorSchema(t, api.OpenAPI().Paths["/stores"].Get, authz.TenantHeader, "header")
+	assertSelectorSchema(t, api.OpenAPI().Paths["/workflows"].Get, authz.EntityHeader, "header")
+	assertSelectorSchema(t, api.OpenAPI().Paths["/workflow-stream"].Get, authz.TenantQuery, "query")
+	assertSelectorSchema(t, api.OpenAPI().Paths["/workflow-stream"].Get, authz.EntityQuery, "query")
 }
 
 func TestRegistrarRejectsInvalidConstructionAndDeclarations(t *testing.T) {
@@ -210,6 +241,47 @@ func TestTenantMemberAndAuthenticatedMiddleware(t *testing.T) {
 	bad := authz.NewRegistrar(testRegistry(), &fakeVerifier{err: authn.ErrInvalidToken}, &fakeChecker{allowed: true}, &fakeMembership{active: true})
 	authz.RegisterAuthenticated(bad, rejected, huma.Operation{OperationID: "me", Method: http.MethodGet, Path: "/me"}, okRoute)
 	assert.Equal(t, http.StatusUnauthorized, rejected.Get("/me").Code)
+
+	_, unavailableAPI := humatest.New(t)
+	unavailable := authz.NewRegistrar(testRegistry(), &fakeVerifier{err: authn.ErrUnavailable}, &fakeChecker{allowed: true}, &fakeMembership{active: true})
+	authz.RegisterAuthenticated(unavailable, unavailableAPI, huma.Operation{OperationID: "me", Method: http.MethodGet, Path: "/me"}, okRoute)
+	assert.Equal(t, http.StatusServiceUnavailable, unavailableAPI.Get("/me").Code)
+
+	_, csrfAPI := humatest.New(t)
+	csrf := authz.NewRegistrar(testRegistry(), &fakeVerifier{claims: validClaims(), csrfErr: assert.AnError, cookie: "session"}, &fakeChecker{allowed: true}, &fakeMembership{active: true})
+	authz.RegisterAuthenticated(csrf, csrfAPI, huma.Operation{OperationID: "profile-update", Method: http.MethodPost, Path: "/profile"}, okRoute)
+	assert.Equal(t, http.StatusForbidden, csrfAPI.Post("/profile").Code)
+}
+
+func TestPermissionCheckerReceivesExactScope(t *testing.T) {
+	checker := &fakeChecker{allowed: true}
+	_, api := humatest.New(t)
+	registrar := authz.NewRegistrar(testRegistry(), validVerifier(), checker, &fakeMembership{active: true})
+	authz.Register(registrar, api, huma.Operation{OperationID: "store", Method: http.MethodGet, Path: "/store"}, authz.Guard{Resource: "store", Verb: "view"}, okRoute)
+	authz.RegisterEntity(registrar, api, huma.Operation{OperationID: "workflow", Method: http.MethodGet, Path: "/workflow"}, authz.Guard{Resource: "workflow", Verb: "view"}, okRoute)
+	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "tenants", Method: http.MethodGet, Path: "/tenants"}, authz.Guard{Resource: "tenant", Verb: "view"}, okRoute)
+
+	assert.Equal(t, http.StatusOK, api.Get("/store", authz.TenantHeader+": 11").Code)
+	assert.Equal(t, http.StatusOK, api.Get("/workflow", authz.TenantHeader+": 11", authz.EntityHeader+": 21").Code)
+	assert.Equal(t, http.StatusOK, api.Get("/tenants").Code)
+	assert.Equal(t, []tenantPermissionCall{{tenantID: 11, permission: "store_view", subject: 31}}, checker.tenantCalls)
+	assert.Equal(t, []entityPermissionCall{{tenantID: 11, entityID: 21, permission: "workflow_view", subject: 31}}, checker.entityCalls)
+	assert.Equal(t, []platformPermissionCall{{permission: "tenant_view", subject: 31}}, checker.platformCalls)
+}
+
+func TestOpenAPISecurityMatchesAuthenticatorCapabilities(t *testing.T) {
+	bareVerifier, err := authn.NewVerifier(authn.Config{Enabled: true, Issuer: "https://issuer.example"})
+	require.NoError(t, err)
+	_, bearerAPI := humatest.New(t)
+	bearerRegistrar := authz.NewRegistrar(testRegistry(), bareVerifier, &fakeChecker{allowed: true}, &fakeMembership{active: true})
+	authz.RegisterAuthenticated(bearerRegistrar, bearerAPI, huma.Operation{OperationID: "bearer-only", Method: http.MethodGet, Path: "/bearer"}, okRoute)
+	assert.Equal(t, authz.BearerSecurity(), bearerAPI.OpenAPI().Paths["/bearer"].Get.Security)
+
+	_, sessionAPI := humatest.New(t)
+	sessionRegistrar := authz.NewRegistrar(testRegistry(), validVerifier(), &fakeChecker{allowed: true}, &fakeMembership{active: true})
+	authz.RegisterAuthenticated(sessionRegistrar, sessionAPI, huma.Operation{OperationID: "browser", Method: http.MethodGet, Path: "/browser"}, okRoute)
+	assert.Equal(t, authz.UserSecurity(), sessionAPI.OpenAPI().Paths["/browser"].Get.Security)
+	assert.Equal(t, "session", sessionAPI.OpenAPI().Components.SecuritySchemes[authz.SessionScheme].Name)
 }
 
 func TestEntityAndPlatformAuthorizationMiddleware(t *testing.T) {
@@ -310,4 +382,18 @@ func validClaims() *authn.Claims {
 
 func validVerifier() *fakeVerifier {
 	return &fakeVerifier{claims: validClaims(), cookie: "session"}
+}
+
+func assertSelectorSchema(t *testing.T, operation *huma.Operation, name, location string) {
+	t.Helper()
+	for _, parameter := range operation.Parameters {
+		if parameter.Name == name && parameter.In == location {
+			require.NotNil(t, parameter.Schema)
+			assert.Equal(t, `^[1-9][0-9]*$`, parameter.Schema.Pattern)
+			require.NotNil(t, parameter.Schema.MaxLength)
+			assert.Equal(t, 19, *parameter.Schema.MaxLength)
+			return
+		}
+	}
+	t.Fatalf("missing %s selector %s", location, name)
 }

@@ -10,7 +10,7 @@ import (
 )
 
 // ValidateOperations enforces the route declaration contract. Every HTTP
-// operation must carry a valid Guard or an explicit Public marker.
+// operation must declare a Guard, Public, authenticated-member, or authenticated-only class.
 func ValidateOperations(api huma.API, registry *Registry) error {
 	if api == nil || registry == nil {
 		return fmt.Errorf("authz operation validation requires api and registry")

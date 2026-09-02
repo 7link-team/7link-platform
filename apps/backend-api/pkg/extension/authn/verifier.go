@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"strings"
@@ -21,8 +22,13 @@ import (
 )
 
 const (
-	defaultHTTPTimeout = 5 * time.Second
-	defaultClockSkew   = 30 * time.Second
+	defaultHTTPTimeout         = 5 * time.Second
+	defaultClockSkew           = 30 * time.Second
+	minimumJWKSRefreshInterval = 5 * time.Second
+	maxDiscoveryResponseBytes  = 64 << 10
+	maxJWKSResponseBytes       = 1 << 20
+	maxJWKSKeys                = 100
+	maxErrorResponseDrainBytes = 64 << 10
 
 	SubjectTypePrincipal      = "principal"
 	SubjectTypeOAuthClient    = "oauth_client"
@@ -204,6 +210,9 @@ type Verifier struct {
 	mu      sync.RWMutex
 	jwksURL string
 	keys    map[string]crypto.PublicKey
+
+	refreshMu          sync.Mutex
+	lastRefreshAttempt time.Time
 }
 
 func NewVerifier(cfg Config) (*Verifier, error) {
@@ -262,10 +271,13 @@ func (v *Verifier) Verify(ctx context.Context, token string) (*Claims, error) {
 		Typ string `json:"typ"`
 	}
 	if err := decodeJSON(parts[0], &header); err != nil {
-		return nil, fmt.Errorf("%w: header: %v", ErrInvalidToken, err)
+		return nil, fmt.Errorf("%w: header: %w", ErrInvalidToken, err)
 	}
 	if header.Kid == "" || header.Alg == "" {
 		return nil, ErrInvalidToken
+	}
+	if !supportedAlgorithm(header.Alg) {
+		return nil, fmt.Errorf("%w: unsupported alg %s", ErrInvalidToken, header.Alg)
 	}
 
 	key, err := v.key(ctx, header.Kid)
@@ -278,12 +290,18 @@ func (v *Verifier) Verify(ctx context.Context, token string) (*Claims, error) {
 		return nil, fmt.Errorf("%w: signature encoding", ErrInvalidToken)
 	}
 	if err := verifySignature(header.Alg, key, []byte(signed), sig); err != nil {
-		return nil, err
+		key, refreshErr := v.refreshKey(ctx, header.Kid, true)
+		if refreshErr != nil {
+			return nil, refreshErr
+		}
+		if retryErr := verifySignature(header.Alg, key, []byte(signed), sig); retryErr != nil {
+			return nil, retryErr
+		}
 	}
 
 	var raw map[string]any
 	if err := decodeJSON(parts[1], &raw); err != nil {
-		return nil, fmt.Errorf("%w: claims: %v", ErrInvalidToken, err)
+		return nil, fmt.Errorf("%w: claims: %w", ErrInvalidToken, err)
 	}
 	claims, err := parseClaims(raw)
 	if err != nil {
@@ -315,59 +333,115 @@ func (v *Verifier) validate(claims *Claims, now time.Time) error {
 }
 
 func (v *Verifier) key(ctx context.Context, kid string) (crypto.PublicKey, error) {
+	if key, ok := v.cachedKey(kid); ok {
+		return key, nil
+	}
+	return v.refreshKey(ctx, kid, false)
+}
+
+func (v *Verifier) cachedKey(kid string) (crypto.PublicKey, bool) {
 	v.mu.RLock()
 	key, ok := v.keys[kid]
 	v.mu.RUnlock()
-	if ok {
-		return key, nil
+	return key, ok
+}
+
+func (v *Verifier) refreshKey(ctx context.Context, kid string, force bool) (crypto.PublicKey, error) {
+	v.refreshMu.Lock()
+	defer v.refreshMu.Unlock()
+
+	if !force {
+		if key, ok := v.cachedKey(kid); ok {
+			return key, nil
+		}
 	}
-	if err := v.refreshKeys(ctx); err != nil {
-		return nil, err
-	}
-	v.mu.RLock()
-	key, ok = v.keys[kid]
-	v.mu.RUnlock()
-	if !ok {
+	now := time.Now()
+	if !v.lastRefreshAttempt.IsZero() && now.Sub(v.lastRefreshAttempt) < minimumJWKSRefreshInterval {
+		if key, ok := v.cachedKey(kid); ok {
+			return key, nil
+		}
 		return nil, ErrUnknownKey
 	}
-	return key, nil
+	v.lastRefreshAttempt = now
+	if err := v.refreshKeysLocked(ctx); err != nil {
+		return nil, errors.Join(ErrUnavailable, err)
+	}
+	if key, ok := v.cachedKey(kid); ok {
+		return key, nil
+	}
+	return nil, ErrUnknownKey
 }
 
 func (v *Verifier) refreshKeys(ctx context.Context) error {
+	v.refreshMu.Lock()
+	defer v.refreshMu.Unlock()
+	v.lastRefreshAttempt = time.Now()
+	return v.refreshKeysLocked(ctx)
+}
+
+func (v *Verifier) refreshKeysLocked(ctx context.Context) error {
 	jwksURL, err := v.jwksURLValue(ctx)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, jwksURL, nil)
+	keys, err := v.fetchKeys(ctx, jwksURL)
+	if err != nil && v.cfg.JWKSURL == "" {
+		v.invalidateDiscoveredJWKSURL(jwksURL)
+		rediscoveredURL, discoveryErr := v.jwksURLValue(ctx)
+		if discoveryErr != nil {
+			return errors.Join(err, discoveryErr)
+		}
+		keys, err = v.fetchKeys(ctx, rediscoveredURL)
+	}
 	if err != nil {
 		return err
-	}
-	resp, err := v.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("fetch jwks: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode/100 != 2 {
-		return fmt.Errorf("fetch jwks: status %d", resp.StatusCode)
-	}
-	var set struct {
-		Keys []jwk `json:"keys"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&set); err != nil {
-		return fmt.Errorf("decode jwks: %w", err)
-	}
-	keys := make(map[string]crypto.PublicKey, len(set.Keys))
-	for _, k := range set.Keys {
-		key, err := k.publicKey()
-		if err != nil {
-			return err
-		}
-		keys[k.Kid] = key
 	}
 	v.mu.Lock()
 	v.keys = keys
 	v.mu.Unlock()
 	return nil
+}
+
+func (v *Verifier) fetchKeys(ctx context.Context, jwksURL string) (map[string]crypto.PublicKey, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, jwksURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := v.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch jwks: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode/100 != 2 {
+		drainErrorResponse(resp.Body)
+		return nil, fmt.Errorf("fetch jwks: status %d", resp.StatusCode)
+	}
+	var set struct {
+		Keys []jwk `json:"keys"`
+	}
+	if err := decodeLimitedJSON(resp.Body, maxJWKSResponseBytes, &set); err != nil {
+		return nil, fmt.Errorf("decode jwks: %w", err)
+	}
+	if len(set.Keys) > maxJWKSKeys {
+		return nil, fmt.Errorf("decode jwks: key count %d exceeds limit %d", len(set.Keys), maxJWKSKeys)
+	}
+	keys := make(map[string]crypto.PublicKey, len(set.Keys))
+	for _, k := range set.Keys {
+		key, err := k.publicKey()
+		if err != nil {
+			return nil, err
+		}
+		keys[k.Kid] = key
+	}
+	return keys, nil
+}
+
+func (v *Verifier) invalidateDiscoveredJWKSURL(url string) {
+	v.mu.Lock()
+	if v.jwksURL == url {
+		v.jwksURL = ""
+	}
+	v.mu.Unlock()
 }
 
 func (v *Verifier) jwksURLValue(ctx context.Context) (string, error) {
@@ -388,14 +462,15 @@ func (v *Verifier) jwksURLValue(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("discover oidc: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode/100 != 2 {
+		drainErrorResponse(resp.Body)
 		return "", fmt.Errorf("discover oidc: status %d", resp.StatusCode)
 	}
 	var doc struct {
 		JWKSURI string `json:"jwks_uri"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
+	if err := decodeLimitedJSON(resp.Body, maxDiscoveryResponseBytes, &doc); err != nil {
 		return "", fmt.Errorf("decode oidc discovery: %w", err)
 	}
 	if doc.JWKSURI == "" {
@@ -469,6 +544,25 @@ func verifySignature(alg string, key crypto.PublicKey, signed, sig []byte) error
 	default:
 		return fmt.Errorf("%w: unsupported alg %s", ErrInvalidToken, alg)
 	}
+}
+
+func supportedAlgorithm(alg string) bool {
+	return alg == "RS256" || alg == "EdDSA"
+}
+
+func decodeLimitedJSON(reader io.Reader, limit int64, dst any) error {
+	data, err := io.ReadAll(io.LimitReader(reader, limit+1))
+	if err != nil {
+		return err
+	}
+	if int64(len(data)) > limit {
+		return fmt.Errorf("response exceeds %d bytes", limit)
+	}
+	return json.Unmarshal(data, dst)
+}
+
+func drainErrorResponse(reader io.Reader) {
+	_, _ = io.Copy(io.Discard, io.LimitReader(reader, maxErrorResponseDrainBytes))
 }
 
 func parseClaims(raw map[string]any) (*Claims, error) {

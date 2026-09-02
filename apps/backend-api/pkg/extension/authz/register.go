@@ -29,6 +29,8 @@ const (
 	SessionScheme            = "sessionCookie"
 	ClientBasicScheme        = "clientBasic"
 	defaultCookieName        = "cp_session"
+	guidTextPattern          = `^[1-9][0-9]*$`
+	guidTextMaxLength        = 19
 )
 
 // PermissionChecker is the narrow local authorization capability needed on the request path.
@@ -119,7 +121,7 @@ func RegisterEntity[I, O any](r *Registrar, api huma.API, op huma.Operation, gua
 	r.prepare(api, &op, guard)
 	op.Parameters = append(op.Parameters, &huma.Param{
 		Name: EntityHeader, In: "header", Description: "Authorized entity resource boundary", Required: true,
-		Schema: &huma.Schema{Type: huma.TypeString, Pattern: `^[1-9][0-9]*$`},
+		Schema: &huma.Schema{Type: huma.TypeString, Pattern: guidTextPattern, MaxLength: intPointer(guidTextMaxLength)},
 	})
 	if r.verifier != nil {
 		// Replace the tenant-only guard installed by prepare with the entity guard.
@@ -144,8 +146,8 @@ func RegisterEntityAdapter(r *Registrar, api huma.API, op huma.Operation, guard 
 	r.prepare(api, &op, guard)
 	op.Parameters = removeOperationParameter(op.Parameters, TenantHeader, "header")
 	op.Parameters = append(op.Parameters,
-		&huma.Param{Name: TenantQuery, In: "query", Description: "Tenant authorization selector", Required: true, Schema: &huma.Schema{Type: huma.TypeString, Pattern: `^[1-9][0-9]*$`}},
-		&huma.Param{Name: EntityQuery, In: "query", Description: "Entity authorization selector", Required: true, Schema: &huma.Schema{Type: huma.TypeString, Pattern: `^[1-9][0-9]*$`}},
+		&huma.Param{Name: TenantQuery, In: "query", Description: "Tenant authorization selector", Required: true, Schema: &huma.Schema{Type: huma.TypeString, Pattern: guidTextPattern, MaxLength: intPointer(guidTextMaxLength)}},
+		&huma.Param{Name: EntityQuery, In: "query", Description: "Entity authorization selector", Required: true, Schema: &huma.Schema{Type: huma.TypeString, Pattern: guidTextPattern, MaxLength: intPointer(guidTextMaxLength)}},
 	)
 	if r.verifier != nil {
 		op.Middlewares[len(op.Middlewares)-1] = r.entityMiddlewareFor(api, guard, func(ctx huma.Context) (string, string) {
@@ -203,10 +205,8 @@ func RegisterAuthenticated[I, O any](r *Registrar, api huma.API, op huma.Operati
 // tenant selector or membership.
 func (r *Registrar) authenticatedOnly(api huma.API) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
-		claims, err := r.verifier.Authenticate(ctx.Context(), ctx.Header("Authorization"), ctx.Header("Cookie"))
-		if err != nil {
-			slog.Debug("authn token rejected", "operation", ctx.Operation().OperationID, "err", err)
-			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "unauthorized")
+		claims, ok := r.authenticate(api, ctx)
+		if !ok {
 			return
 		}
 		trusted := policyx.WithTrustedContext(ctx.Context(), policyx.TrustedContext{
@@ -278,18 +278,22 @@ func (r *Registrar) prepare(api huma.API, op *huma.Operation, guard Guard) {
 func (r *Registrar) prepareAuthenticated(api huma.API, op *huma.Operation, tenantScoped bool) {
 	op.Errors = appendUniqueStatus(op.Errors, http.StatusUnauthorized, http.StatusForbidden, http.StatusServiceUnavailable)
 	cookieName := defaultCookieName
+	op.Security = BearerSecurity()
+	if r.verifier == nil {
+		op.Security = UserSecurity()
+	}
 	if provider, ok := r.verifier.(sessionCookieNamer); ok && provider.SessionCookieName() != "" {
 		cookieName = provider.SessionCookieName()
+		op.Security = UserSecurity()
 	}
 	EnsureSecuritySchemes(api, cookieName)
-	op.Security = UserSecurity()
 	if tenantScoped {
 		op.Parameters = append(op.Parameters, &huma.Param{
 			Name:        TenantHeader,
 			In:          "header",
 			Description: "Tenant authorization boundary",
 			Required:    true,
-			Schema:      &huma.Schema{Type: huma.TypeString, MaxLength: intPointer(128)},
+			Schema:      &huma.Schema{Type: huma.TypeString, Pattern: guidTextPattern, MaxLength: intPointer(guidTextMaxLength)},
 		})
 	}
 }
@@ -305,8 +309,8 @@ func EnsureSecuritySchemes(api huma.API, cookieName string) {
 	components.SecuritySchemes[ClientBasicScheme] = &huma.SecurityScheme{Type: "http", Scheme: "basic"}
 }
 
-// UserSecurity documents the two equivalent authentication mechanisms accepted
-// by first-party management endpoints.
+// UserSecurity documents endpoints whose authenticator accepts either a bearer
+// token or the configured browser session cookie.
 func UserSecurity() []map[string][]string {
 	return []map[string][]string{{BearerScheme: {}}, {SessionScheme: {}}}
 }
@@ -321,22 +325,30 @@ func ClientSecurity() []map[string][]string {
 
 func intPointer(value int) *int { return &value }
 
+func (r *Registrar) authenticate(api huma.API, ctx huma.Context) (*authn.Claims, bool) {
+	if validator, ok := r.verifier.(csrfValidator); ok {
+		if err := validator.ValidateCSRF(ctx.Method(), ctx.Header("Origin"), ctx.Header("Cookie"), ctx.Header("Authorization")); err != nil {
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "csrf_rejected")
+			return nil, false
+		}
+	}
+	claims, err := r.verifier.Authenticate(ctx.Context(), ctx.Header("Authorization"), ctx.Header("Cookie"))
+	if err == nil {
+		return claims, true
+	}
+	slog.Debug("authn token rejected", "operation", ctx.Operation().OperationID, "err", err)
+	if errors.Is(err, authn.ErrUnavailable) {
+		_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "authentication_unavailable")
+		return nil, false
+	}
+	_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "unauthorized")
+	return nil, false
+}
+
 func (r *Registrar) middleware(api huma.API, guard *Guard) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
-		if validator, ok := r.verifier.(csrfValidator); ok {
-			if err := validator.ValidateCSRF(ctx.Method(), ctx.Header("Origin"), ctx.Header("Cookie"), ctx.Header("Authorization")); err != nil {
-				_ = huma.WriteErr(api, ctx, http.StatusForbidden, "csrf_rejected")
-				return
-			}
-		}
-		claims, err := r.verifier.Authenticate(ctx.Context(), ctx.Header("Authorization"), ctx.Header("Cookie"))
-		if err != nil {
-			slog.Debug("authn token rejected", "operation", ctx.Operation().OperationID, "err", err)
-			if errors.Is(err, authn.ErrUnavailable) {
-				_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "authentication_unavailable")
-				return
-			}
-			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "unauthorized")
+		claims, ok := r.authenticate(api, ctx)
+		if !ok {
 			return
 		}
 		trusted := policyx.TrustedContext{
@@ -383,21 +395,11 @@ func (r *Registrar) entityMiddleware(api huma.API, guard Guard) func(huma.Contex
 
 func (r *Registrar) entityMiddlewareFor(api huma.API, guard Guard, selectors func(huma.Context) (string, string)) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
-		if validator, ok := r.verifier.(csrfValidator); ok {
-			if err := validator.ValidateCSRF(ctx.Method(), ctx.Header("Origin"), ctx.Header("Cookie"), ctx.Header("Authorization")); err != nil {
-				_ = huma.WriteErr(api, ctx, http.StatusForbidden, "csrf_rejected")
-				return
-			}
-		}
-		claims, err := r.verifier.Authenticate(ctx.Context(), ctx.Header("Authorization"), ctx.Header("Cookie"))
-		if err != nil {
-			if errors.Is(err, authn.ErrUnavailable) {
-				_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "authentication_unavailable")
-				return
-			}
-			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "unauthorized")
+		claims, ok := r.authenticate(api, ctx)
+		if !ok {
 			return
 		}
+		var err error
 		tenantText, entityText := selectors(ctx)
 		tenantID, tenantErr := guid.Parse(tenantText)
 		entityID, entityErr := guid.Parse(entityText)
@@ -414,6 +416,7 @@ func (r *Registrar) entityMiddlewareFor(api huma.API, guard Guard, selectors fun
 		})
 		active, err := r.members.IsMemberActive(requestContext, tenantID, principalID)
 		if err != nil {
+			slog.Error("entity membership check failed", "operation", ctx.Operation().OperationID, "tenant", tenantID, "entity", entityID, "err", err)
 			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "authorization_unavailable")
 			return
 		}
@@ -421,9 +424,15 @@ func (r *Registrar) entityMiddlewareFor(api huma.API, guard Guard, selectors fun
 			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "inactive_tenant_membership")
 			return
 		}
-		checker := r.checker.(EntityPermissionChecker)
+		checker, ok := r.checker.(EntityPermissionChecker)
+		if !ok {
+			slog.Error("entity permission checker unavailable", "operation", ctx.Operation().OperationID)
+			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "authorization_unavailable")
+			return
+		}
 		allowed, err := checker.CheckEntity(requestContext, tenantID, entityID, guard.Code(), principalID)
 		if err != nil {
+			slog.Error("entity authz check failed", "operation", ctx.Operation().OperationID, "tenant", tenantID, "entity", entityID, "permission", guard.Code(), "err", err)
 			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "authorization_unavailable")
 			return
 		}
@@ -452,19 +461,8 @@ func removeOperationParameter(parameters []*huma.Param, name, location string) [
 
 func (r *Registrar) platformMiddleware(api huma.API, guard Guard) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
-		if validator, ok := r.verifier.(csrfValidator); ok {
-			if err := validator.ValidateCSRF(ctx.Method(), ctx.Header("Origin"), ctx.Header("Cookie"), ctx.Header("Authorization")); err != nil {
-				_ = huma.WriteErr(api, ctx, http.StatusForbidden, "csrf_rejected")
-				return
-			}
-		}
-		claims, err := r.verifier.Authenticate(ctx.Context(), ctx.Header("Authorization"), ctx.Header("Cookie"))
-		if err != nil {
-			if errors.Is(err, authn.ErrUnavailable) {
-				_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "authentication_unavailable")
-				return
-			}
-			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "unauthorized")
+		claims, ok := r.authenticate(api, ctx)
+		if !ok {
 			return
 		}
 		requestContext := policyx.WithTrustedContext(ctx.Context(), policyx.TrustedContext{
