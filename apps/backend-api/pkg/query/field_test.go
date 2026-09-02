@@ -226,3 +226,76 @@ func TestValuesThatNormalizeToNothingAreRejected(t *testing.T) {
 		assert.Len(t, exprs, 1)
 	}
 }
+
+// TestIdentifierParseMustProduceAValue covers the parse function this package
+// cannot see inside. A module's parser may read "" or "null" as "no
+// identifier" and return a nil value with a nil error, and a nil comparand is
+// not "no rows": gorm renders Eq(nil) as IS NULL and Neq(nil) as IS NOT NULL,
+// so on a non-nullable column one silently matches nothing and the other
+// silently matches everything.
+func TestIdentifierParseMustProduceAValue(t *testing.T) {
+	fields := New(ID("ref", field.NewField("t", "ref"), func(raw string) (driver.Valuer, error) {
+		if raw == "7" {
+			return idValue(7), nil
+		}
+		return nil, nil // "not an identifier", reported as neither value nor error
+	}).Ops(Eq, NotEq, In, NotIn))
+
+	for _, raw := range []string{"eq:0", "eq:null", "notEq:null", "in:null", "in:7,null", "notIn:0"} {
+		_, err := fields.Parse(url.Values{"ref": {raw}})
+		assert.ErrorContains(t, err, "identifier", "ref=%s", raw)
+	}
+	exprs, err := fields.Parse(url.Values{"ref": {"eq:7"}})
+	require.NoError(t, err)
+	assert.Len(t, exprs, 1)
+}
+
+// TestAnUnimplementedOperatorIsRejectedNotSubstituted is the companion to
+// TestEveryAdvertisedOperatorIsImplemented, in the other direction. Enum and ID
+// used to end their single-value path with a bare "return Eq", so an operator
+// with no case became equality — answering a question the caller did not ask,
+// which is worse than refusing. Every builder falls through to unsupported.
+func TestAnUnimplementedOperatorIsRejectedNotSubstituted(t *testing.T) {
+	identifiers := func(string) (driver.Valuer, error) { return idValue(1), nil }
+	for name, probe := range map[string]struct {
+		fields *Fields
+		param  string
+		value  string
+	}{
+		"string": {New(String("text", field.NewString("t", "text")).Ops(Gt)), "text", "gt:x"},
+		"enum":   {New(Enum("choice", field.NewString("t", "choice"), []string{"a"}).Ops(Gt)), "choice", "gt:a"},
+		"int":    {New(Int("num", field.NewInt("t", "num")).Ops(Like)), "num", "like:1"},
+		"time":   {New(Time("moment", field.NewTime("t", "moment")).Ops(Like)), "moment", "like:2026-01-02"},
+		"id":     {New(ID("ref", field.NewField("t", "ref"), identifiers).Ops(Gt)), "ref", "gt:1"},
+	} {
+		_, err := probe.fields.Parse(url.Values{probe.param: {probe.value}})
+		assert.ErrorContains(t, err, "is not supported", "%s: %s", name, probe.value)
+	}
+}
+
+// TestListOperatorsAreNotInterchangeable guards a silent inversion: Int and ID
+// routed every list operator through In, so a field declaring notIn returned
+// exactly the rows it was asked to exclude.
+//
+// The values are pairs because gorm folds a one-element list into = or <>,
+// which is correct but hides which operator produced it.
+func TestListOperatorsAreNotInterchangeable(t *testing.T) {
+	identifiers := func(raw string) (driver.Valuer, error) { return idValue(1), nil }
+	for name, probe := range map[string]struct {
+		fields *Fields
+		param  string
+		list   string
+	}{
+		"int":    {New(Int("num", field.NewInt("t", "num")).Ops(In, NotIn)), "num", "1,2"},
+		"id":     {New(ID("ref", field.NewField("t", "ref"), identifiers).Ops(In, NotIn)), "ref", "1,2"},
+		"string": {New(String("text", field.NewString("t", "text")).Ops(In, NotIn)), "text", "x,y"},
+		"enum": {New(Enum("choice", field.NewString("t", "choice"), []string{"a", "b"}).
+			Ops(In, NotIn)), "choice", "a,b"},
+	} {
+		in := sqlOf(t, probe.fields, probe.param, "in:"+probe.list)
+		notIn := sqlOf(t, probe.fields, probe.param, "notIn:"+probe.list)
+		assert.NotEqual(t, in, notIn, "%s: in and notIn build the same predicate", name)
+		assert.Contains(t, notIn, "NOT IN", "%s: notIn did not build NOT IN", name)
+		assert.NotContains(t, in, "NOT IN", "%s: in built an exclusion", name)
+	}
+}

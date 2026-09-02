@@ -37,6 +37,13 @@ type Field struct {
 	// timestamp or an identifier, "no value" is null and isNull already says it.
 	text bool
 
+	// nulls records whether Nullable was declared, which the negative operators
+	// need in order to be complete. It is shared through a pointer for the same
+	// reason intBounds is: a builder closure is created in the constructor,
+	// before Nullable can have been called, so it has to read the declaration
+	// rather than capture it.
+	nulls *declaredNulls
+
 	// build turns one already-validated operator and value into a predicate.
 	build func(op Op, raw string) (field.Expr, error)
 }
@@ -78,19 +85,20 @@ func (f Field) Range(minimum, maximum int) Field {
 
 // String declares a free-text field.
 func String(name string, column field.String) Field {
-	f := Field{name: name, kind: KindString, ops: []Op{Eq, NotEq, Like}, text: true}
+	nulls := &declaredNulls{}
+	f := Field{name: name, kind: KindString, ops: []Op{Eq, NotEq, Like}, text: true, nulls: nulls}
 	f.build = func(op Op, raw string) (field.Expr, error) {
 		if op == IsNull {
 			return nullExpr(column, raw)
 		}
 		if op == IsEmpty {
-			return emptyExpr(column, raw)
+			return emptyExpr(column, raw, nulls)
 		}
 		switch op {
 		case Eq:
 			return column.Eq(raw), nil
 		case NotEq:
-			return column.Neq(raw), nil
+			return admitNulls(column, column.Neq(raw), nulls), nil
 		case Like:
 			// EscapeLike normalizes too, by removing the wildcards, so a pattern
 			// of nothing but wildcards arrives non-empty and leaves empty —
@@ -104,7 +112,7 @@ func String(name string, column field.String) Field {
 		case In:
 			return column.In(splitList(raw)...), nil
 		case NotIn:
-			return column.NotIn(splitList(raw)...), nil
+			return admitNulls(column, column.NotIn(splitList(raw)...), nulls), nil
 		}
 		return nil, unsupported(name, op)
 	}
@@ -114,7 +122,8 @@ func String(name string, column field.String) Field {
 // Enum declares a field whose values come from a closed set. A value outside
 // the set is rejected before it reaches the database.
 func Enum(name string, column field.String, values []string) Field {
-	f := Field{name: name, kind: KindEnum, ops: []Op{Eq, NotEq, In, NotIn}, values: values, text: true}
+	nulls := &declaredNulls{}
+	f := Field{name: name, kind: KindEnum, ops: []Op{Eq, NotEq, In, NotIn}, values: values, text: true, nulls: nulls}
 	member := func(candidate string) error {
 		for _, value := range values {
 			if candidate == value {
@@ -130,7 +139,7 @@ func Enum(name string, column field.String, values []string) Field {
 		// An empty value is never an enum member, so isEmpty is the only way to
 		// ask for one — member() would reject eq: "" before it reached SQL.
 		if op == IsEmpty {
-			return emptyExpr(column, raw)
+			return emptyExpr(column, raw, nulls)
 		}
 		if op.takesList() {
 			parts := splitList(raw)
@@ -142,15 +151,18 @@ func Enum(name string, column field.String, values []string) Field {
 			if op == In {
 				return column.In(parts...), nil
 			}
-			return column.NotIn(parts...), nil
+			return admitNulls(column, column.NotIn(parts...), nulls), nil
 		}
 		if err := member(raw); err != nil {
 			return nil, err
 		}
-		if op == NotEq {
-			return column.Neq(raw), nil
+		switch op {
+		case Eq:
+			return column.Eq(raw), nil
+		case NotEq:
+			return admitNulls(column, column.Neq(raw), nulls), nil
 		}
-		return column.Eq(raw), nil
+		return nil, unsupported(name, op)
 	}
 	return f
 }
@@ -163,7 +175,8 @@ func Enum(name string, column field.String, values []string) Field {
 // was ever called — that is, none.
 func Int(name string, column field.Int) Field {
 	bounds := &intBounds{}
-	f := Field{name: name, kind: KindInt, ops: []Op{Eq, NotEq, Gt, Gte, Lt, Lte, In}, bounds: bounds}
+	nulls := &declaredNulls{}
+	f := Field{name: name, kind: KindInt, ops: []Op{Eq, NotEq, Gt, Gte, Lt, Lte, In}, bounds: bounds, nulls: nulls}
 	// inRange is applied to every parsed value, list members included. The
 	// descriptor advertises the bounds, so a list that skipped them would accept
 	// values the same field rejects one at a time.
@@ -189,6 +202,9 @@ func Int(name string, column field.Int) Field {
 				}
 				values = append(values, parsed)
 			}
+			if op == NotIn {
+				return admitNulls(column, column.NotIn(values...), nulls), nil
+			}
 			return column.In(values...), nil
 		}
 		parsed, err := strconv.Atoi(raw)
@@ -202,7 +218,7 @@ func Int(name string, column field.Int) Field {
 		case Eq:
 			return column.Eq(parsed), nil
 		case NotEq:
-			return column.Neq(parsed), nil
+			return admitNulls(column, column.Neq(parsed), nulls), nil
 		case Gt:
 			return column.Gt(parsed), nil
 		case Gte:
@@ -223,7 +239,7 @@ var TimeLayouts = []string{time.RFC3339, "2006-01-02 15:04:05", "2006-01-02"}
 
 // Time declares a timestamp field.
 func Time(name string, column field.Time) Field {
-	f := Field{name: name, kind: KindTime, ops: []Op{Gt, Gte, Lt, Lte, Eq}}
+	f := Field{name: name, kind: KindTime, ops: []Op{Gt, Gte, Lt, Lte, Eq}, nulls: &declaredNulls{}}
 	f.build = func(op Op, raw string) (field.Expr, error) {
 		if op == IsNull {
 			return nullExpr(column, raw)
@@ -252,7 +268,18 @@ func Time(name string, column field.Time) Field {
 // ID declares an identifier field. Parse converts the wire form, which is a
 // decimal string so large identifiers survive JavaScript clients.
 func ID(name string, column field.Field, parse func(string) (driver.Valuer, error)) Field {
-	f := Field{name: name, kind: KindID, ops: []Op{Eq, NotEq, In}}
+	nulls := &declaredNulls{}
+	f := Field{name: name, kind: KindID, ops: []Op{Eq, NotEq, In}, nulls: nulls}
+	// The parse function belongs to the calling module, so this cannot assume it
+	// reports every value it refuses as an error: one that reads "" or "null" as
+	// "no identifier" returns a nil value and a nil error. A nil comparand does
+	// not become "no rows" — gorm renders Eq(nil) as IS NULL and Neq(nil) as IS
+	// NOT NULL — so on a non-nullable column one silently matches nothing and
+	// the other silently matches everything. Neither is a filter.
+	usable := func(raw string) (driver.Valuer, bool) {
+		parsed, err := parse(raw)
+		return parsed, err == nil && parsed != nil
+	}
 	f.build = func(op Op, raw string) (field.Expr, error) {
 		if op == IsNull {
 			return nullExpr(column, raw)
@@ -260,38 +287,74 @@ func ID(name string, column field.Field, parse func(string) (driver.Valuer, erro
 		if op.takesList() {
 			var values []driver.Valuer
 			for _, part := range splitList(raw) {
-				parsed, err := parse(part)
-				if err != nil {
+				parsed, ok := usable(part)
+				if !ok {
 					return nil, fmt.Errorf("must be identifiers")
 				}
 				values = append(values, parsed)
 			}
+			if op == NotIn {
+				return admitNulls(column, column.NotIn(values...), nulls), nil
+			}
 			return column.In(values...), nil
 		}
-		parsed, err := parse(raw)
-		if err != nil {
+		parsed, ok := usable(raw)
+		if !ok {
 			return nil, fmt.Errorf("must be an identifier")
 		}
-		if op == NotEq {
-			return column.Neq(parsed), nil
+		switch op {
+		case Eq:
+			return column.Eq(parsed), nil
+		case NotEq:
+			return admitNulls(column, column.Neq(parsed), nulls), nil
 		}
-		return column.Eq(parsed), nil
+		return nil, unsupported(name, op)
 	}
 	return f
 }
 
-// Nullable adds the IsNull operator, for a column the schema permits to be
-// empty. Every field kind honours it: a contract that advertises an operator
-// and then rejects it at parse time is worse than one that never offered it.
+// declaredNulls records whether Nullable was called, shared between a field and
+// the closure that builds its predicates.
+type declaredNulls struct{ yes bool }
+
+// Nullable declares that the column may be null. It adds the IsNull operator —
+// every field kind honors it, because a contract that advertises an operator
+// and then rejects it at parse time is worse than one that never offered it —
+// and it changes what the negative operators mean, which is the part that
+// cannot be inferred from the column type.
 func (f Field) Nullable() Field {
+	if f.nulls != nil {
+		f.nulls.yes = true
+	}
 	return f.Ops(append(append([]Op{}, f.ops...), IsNull)...)
 }
 
-// Empty adds the IsEmpty operator, for a text column that is not null but may
-// hold "". It panics on any other kind: a number, a timestamp or an identifier
+// admitNulls completes a negative predicate over a column that may be null.
+//
+// SQL compares NULL to nothing: `col <> 'x'` and `col NOT IN (...)` are both
+// UNKNOWN for a null row, so it drops out of the negative answer as well as the
+// positive one. A caller asking for everything that is not urgent would
+// silently lose the rows that are not anything, and the two halves of the
+// question would not add up to the table.
+//
+// Only a field that declared Nullable gets the extra clause. On a NOT NULL
+// column it can never be true, and it is the kind of dead disjunct that costs
+// an index scan.
+func admitNulls(column nullComparable, predicate field.Expr, nulls *declaredNulls) field.Expr {
+	if nulls == nil || !nulls.yes {
+		return predicate
+	}
+	return field.Or(predicate, column.IsNull())
+}
+
+// Empty adds the IsEmpty operator, for a text column that may hold the empty
+// string. It panics on any other kind: a number, a timestamp or an identifier
 // has no empty distinct from null, and advertising an operator the field would
 // then reject at parse time is a contract no client can use. Failing here makes
 // that a wiring error the process cannot start with.
+//
+// It composes with Nullable. On a column that is both, a null counts as empty,
+// which is what emptyExpr explains.
 //
 // The test is exact: a column holding only whitespace is not empty. Trimming
 // would make isEmpty:true and isEmpty:false disagree with what eq: matches.
@@ -302,35 +365,36 @@ func (f Field) Empty() Field {
 	return f.Ops(append(append([]Op{}, f.ops...), IsEmpty)...)
 }
 
-// emptiable is the comparison a text column offers. Only the string-valued
-// generated types satisfy it, so the type system, not a kind check, is what
-// keeps IsEmpty off a number or a timestamp.
-type emptiable interface {
-	Eq(string) field.Expr
-	Neq(string) field.Expr
-}
-
-func emptyExpr(column emptiable, raw string) (field.Expr, error) {
+// emptyExpr builds the IsEmpty predicate. It takes the concrete string column
+// rather than an interface: only a text column has an empty value at all, and
+// the parameter type is what keeps IsEmpty off a number or a timestamp.
+//
+// The two halves treat null differently on purpose. A null column has no text,
+// so it belongs in "empty" — and `col <> ”` already excludes it from "has
+// text" without any help, because that comparison is UNKNOWN. Admitting nulls
+// on one side and not the other is exactly what makes the two answers add up
+// to the whole table.
+func emptyExpr(column field.String, raw string, nulls *declaredNulls) (field.Expr, error) {
 	switch raw {
 	case "true":
-		return column.Eq(""), nil
+		return admitNulls(column, column.Eq(""), nulls), nil
 	case "false":
 		return column.Neq(""), nil
 	}
 	return nil, fmt.Errorf("must be true or false")
 }
 
-// nullable is the null comparison every generated column type offers. gorm's
-// field types all embed the same expression, so one interface covers them and
-// IsNull does not have to be reimplemented per kind.
-type nullable interface {
+// nullComparable is the null comparison every generated column type offers.
+// gorm's field types all embed the same expression, so one interface covers
+// them and IsNull does not have to be reimplemented per kind.
+type nullComparable interface {
 	IsNull() field.Expr
 	IsNotNull() field.Expr
 }
 
 // nullExpr builds the IsNull predicate. It takes true or false rather than no
 // value at all, so one parameter can ask for either side of the comparison.
-func nullExpr(column nullable, raw string) (field.Expr, error) {
+func nullExpr(column nullComparable, raw string) (field.Expr, error) {
 	switch raw {
 	case "true":
 		return column.IsNull(), nil
