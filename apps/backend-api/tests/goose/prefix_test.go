@@ -9,6 +9,7 @@ import (
 	"7link.com/platform/internal/infra/dlock"
 	"7link.com/platform/internal/infra/wuid"
 	goosex "7link.com/platform/pkg/extension/goose"
+	"7link.com/platform/tests/internal/testdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	mysqldriver "gorm.io/driver/mysql"
@@ -52,8 +53,8 @@ func TestPrefixedModuleQueriesOnMySQLAndPostgres(t *testing.T) {
 		dialect string
 		open    databaseFactory
 	}{
-		{name: "mysql", dialect: "mysql", open: openMySQL},
-		{name: "postgres", dialect: "postgres", open: openPostgres},
+		{name: "mysql", dialect: "mysql", open: testdb.OpenMySQL},
+		{name: "postgres", dialect: "postgres", open: testdb.OpenPostgres},
 	}
 
 	for _, tt := range tests {

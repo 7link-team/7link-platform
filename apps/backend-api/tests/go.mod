@@ -9,6 +9,7 @@ require (
 	github.com/dolthub/go-mysql-server v0.20.0
 	github.com/fergusstrange/embedded-postgres v1.34.0
 	github.com/lib/pq v1.12.3
+	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/stretchr/testify v1.12.1
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/driver/postgres v1.6.2
@@ -44,7 +45,6 @@ require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/lestrrat-go/strftime v1.0.4 // indirect
-	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pkg/errors v0.9.1 // indirect

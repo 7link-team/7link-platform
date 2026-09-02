@@ -12,7 +12,7 @@ PostgreSQL、MySQL、SQLite 真实迁移与 `make ci` 门禁。
 IMPLEMENTATION
 
 ## Current Step
-Phase 1 / Task 1.0：提取 `tests/internal/testdb` 三引擎测试数据库 helper。
+Phase 1 / Task 1.1：建立现有 4 个 migration module 的真实三引擎验证套件。
 
 ## Overall Progress
 - [x] 深度分析与迁移方案 v8
@@ -24,9 +24,9 @@ Phase 1 / Task 1.0：提取 `tests/internal/testdb` 三引擎测试数据库 hel
 - [ ] Phase 9 集成与验收
 
 ## Active Work
-Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5 已实现并通过 Windows 完整门禁；迁移计划已升级为 v8，
+Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5 与 Task 1.0 已实现并通过 Windows 完整门禁；迁移计划为 v8，
 `internal/iam/` 作为域命名空间，9 个子模块各自拥有业务、model/query 与 SQL，取消集中 schema
-和 feature 分包。下一步进入 Phase 1 的三引擎迁移基础设施。
+和 feature 分包。下一步扩展真实三引擎迁移验证套件。
 
 ## Completed Work
 - 已从任务记录与实际仓库恢复断点；工作树在本轮开始时干净。
@@ -62,6 +62,10 @@ Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5 已实现并通过 Windows 完整门禁；迁�
   的源版本、职责与即时引入时机；未引入中央 port/schema 或第二套依赖注入模式。
 - Task 0.5 deep-review 修复源方法遗漏、接口删除漏检、能力所有权/alias 漏检、DTO 字段与 JSON tag
   漂移、`MembershipRule` Base64 序列化及不准确 GoDoc；类级门禁完成反向变异验证，复审无新发现。
+- Task 1.0：将 `OpenPostgres`/`OpenMySQL`/`OpenSQLite` 提取到测试模块的 `internal/testdb`；重型
+  embedded 引擎未进入主模块，SQLite DSN 对三条并行连接启用外键，初始化失败路径立即登记 cleanup。
+- Task 1.0 deep-review 修复 PostgreSQL 空闲端口 TOCTOU 的有限重试、过宽错误分类和测试失败时
+  借出连接泄漏；SQLite DSN 与端口分类不变量完成反向变异验证，复审无新发现。
 - 计划 v5 已冻结 9 模块 source manifest、目标 model/query/dbgen、bun→gorm 注意项、端口、
   tenant 负例和逐模块门禁；不再把 `internal/iam` 拆成三个半成品阶段。
 - 从固定 source tree 展开 200 条 REST 三元组，文档与源代码集合对账 200/200、无缺失、
@@ -95,20 +99,20 @@ Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5 已实现并通过 Windows 完整门禁；迁�
 - 本任务约 6 万行，必须按 Phase 分批实现、验证和留档。
 
 ## Verification
-Build: PASS（Task 0.5 Windows `make ci` build；Task 0.4 Linux CGO-disabled cross-compile）
-Tests: PASS（Task 0.5 契约聚焦 `-race` + 完整 `make ci`）
-Lint: PASS（Task 0.5 固定版本 golangci-lint / `make ci`）
+Build: PASS（Task 1.0 Windows `make ci` build；Task 0.4 Linux CGO-disabled cross-compile）
+Tests: PASS（Task 1.0 三引擎 helper/Goose 冷跑 + 完整 `make ci`）
+Lint: PASS（Task 1.0 固定版本 golangci-lint / `make ci`）
 Coverage: PASS（总体 91.4%，organization 100.0%，24/24 受控包 ≥90%）
-Integration: PASS（`tests/goose`）
+Integration: PASS（`tests/goose`、`tests/internal/testdb`）
 Other verification: `git diff --check` PASS；source tree/三方言 63 表 PASS；REST baseline 与
 源代码集合相等（200/200）PASS；远端 Docker 26.1.5 PASS；MySQL 8.4.11 启动、查询、
 Windows TCP 连通及 append-only Up/Down 部分状态恢复矩阵 PASS；Linux FIFO 真实文件系统测试 PASS。
 
 ## Next Action
-进入 Task 1.0：从现有集成测试提取 `OpenPostgres`/`OpenMySQL`/`OpenSQLite` 到
-`tests/internal/testdb`，不把重型测试依赖引入主模块。
+进入 Task 1.1：用共享 testdb helper 参数化验证现有 todo/dlock/wuid/audit migration source 在
+SQLite、PostgreSQL、MySQL 上的 up、幂等、down 对称、前缀和标识符长度行为。
 
 ## Last Checkpoint
-2026-09-02 · IAM 分支 Phase 0 / Task 0.5 已落地；13 项能力契约、依赖决策、AST 所有权门禁、
-DTO/JSON 全称断言与反向变异均通过复审；`-race`、固定 lint、完整 `make ci` PASS（总覆盖率 91.4%，
-24/24 受控包达标）。下一步 Phase 1 / Task 1.0。
+2026-09-02 · IAM 分支 Task 1.0 已落地；三引擎 helper 位于独立 tests module，资源失败路径、
+PostgreSQL 端口竞争和 SQLite 多连接外键均完成复审与反向变异；固定 lint、完整 `make ci` PASS
+（总覆盖率 91.4%，24/24 受控包达标）。下一步 Task 1.1。

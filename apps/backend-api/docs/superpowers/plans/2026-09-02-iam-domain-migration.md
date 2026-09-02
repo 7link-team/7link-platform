@@ -359,7 +359,7 @@ func TestMigrationUsesSingleWriteHandle(t *testing.T) { /* 统计 Write() 调用
 
 > **v2 把它放主模块是错的**:`embedded-postgres`/`go-mysql-server` 只在 `tests/go.mod`。
 
-- [ ] 提取 `OpenPostgres`/`OpenMySQL`/`OpenSQLite` 到 `tests/internal/testdb`;主模块单测保留轻量 SQLite helper。`tests/go.mod:96` 的 replace **已存在**,无需改动
+- [x] 提取 `OpenPostgres`/`OpenMySQL`/`OpenSQLite` 到 `tests/internal/testdb`;主模块单测保留轻量 SQLite helper。`tests/go.mod:96` 的 replace **已存在**,无需改动
 
 #### Task 1.1: 真迁移三引擎验证套件(审计 F1)
 
