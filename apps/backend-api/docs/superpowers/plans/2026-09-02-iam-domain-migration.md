@@ -386,8 +386,8 @@ func TestMigrationUsesSingleWriteHandle(t *testing.T) { /* 统计 Write() 调用
 
 > MySQL DDL 隐式提交，单文件中途失败会留下半套 schema 而 goose 版本未推进。每个文件一张主表及紧密从属表，文件头注明事务策略；创建 `docs/runbook-migration-recovery.md`。
 
-- [ ] **Step 1:** 从源 SQL 与 9 个模块的真实写入路径建立精确表名清单；断言各模块三方言集合相等、9 模块集合互斥、合并后恰为 63 表（13+13+3+4+3+14+4+5+4）；禁止维护第二份集中 ownership 文件。
-- [ ] **Step 2:** 各模块逐表套 R1–R16。**每条改写标注源文件:行号(R15)**。范例:
+- [x] **Step 1:** 从源 SQL 与 9 个模块的真实写入路径建立精确表名清单；断言各模块三方言集合相等、9 模块集合互斥、合并后恰为 63 表（13+13+3+4+3+14+4+5+4）；禁止维护第二份集中 ownership 文件。
+- [x] **Step 2:** 各模块逐表套 R1–R16。**每条改写标注源文件:行号(R15)**。范例:
 
 ```sql
 -- 源: iam/sql/postgres/00001_iam_authorization.sql:2-11
@@ -418,10 +418,10 @@ CREATE TABLE {{.Prefix}}iam_roles (
 
 `iam_entities`(R5''):可空 `parent_id` + 自引用 FK + PG/SQLite 双部分唯一索引;MySQL 生成列 `COALESCE(parent_id,0)` **并加 `CHECK (id > 0)`**。
 
-- [ ] **Step 3:** 将所有跨模块 FK 从 CREATE TABLE 移到子表所属模块的 constraints migration；声明 §2.1 的 milestone 依赖，保持 13 条约束和原 DELETE 语义。
-- [ ] **Step 4:** 移植三方言 append-only 触发器；9 个 `MigrationSource()` 使用 §2.1 的独立版本表名，不自行加前缀。
-- [ ] **Step 5:** 接入 Task 1.1/1.2 套件，三引擎执行 up → validate → reverse down → up，断言 63 表与 9 个版本表。
-- [ ] **Step 6:** 提交。
+- [x] **Step 3:** 将所有跨模块 FK 从 CREATE TABLE 移到子表所属模块的 constraints migration；声明 §2.1 的 milestone 依赖，保持 13 条约束和原 DELETE 语义。
+- [x] **Step 4:** 移植三方言 append-only 触发器；9 个 `MigrationSource()` 使用 §2.1 的独立版本表名，不自行加前缀。
+- [x] **Step 5:** 接入 Task 1.1/1.2 套件，三引擎执行 up → validate → reverse down → up，断言 63 表与 9 个版本表。
+- [x] **Step 6:** 提交。
 
 #### Task 1.4: 真实 MySQL 8 门禁 + baseline 冻结
 

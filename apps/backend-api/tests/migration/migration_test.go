@@ -10,6 +10,7 @@ import (
 
 	iamaudit "7link.com/platform/internal/iam/audit"
 	iamcore "7link.com/platform/internal/iam/core"
+	"7link.com/platform/internal/iam/federation"
 	"7link.com/platform/internal/iam/governance"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/organization"
@@ -74,6 +75,7 @@ func TestMigrationIdentifiersFitEngineLimitsAtMaximumPrefix(t *testing.T) {
 		{name: "organization", table: "iam_tenants", target: 8, source: (&organization.Module{}).MigrationSource()},
 		{name: "governance", table: "iam_access_requests", target: 3, source: (&governance.Module{}).MigrationSource()},
 		{name: "provisioning", table: "iam_scim_directories", target: 3, source: (&provisioning.Module{}).MigrationSource()},
+		{name: "federation", table: "iam_identity_providers", target: 3, source: (&federation.Module{}).MigrationSource()},
 	}...)
 	for _, module := range identifierModules {
 		for _, engine := range []databaseEngine{
