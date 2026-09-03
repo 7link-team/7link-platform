@@ -1,6 +1,6 @@
 ---
 name: deep-review
-description: 多视角深度代码评审,一路做到项目 CI 绿。以当前改动为入口,按改动内容自动派发相关视角(并发与正确性、SQL 与 NULL 语义、契约兼容、架构耦合、复用、安全、性能、依赖健康、可测性、可观测、产品闭环、命名与注释、跨平台),每条发现必须带可复现证据才准进报告,然后归类、全仓扫同类实例、按类修复、补全称断言的不变量测试、跑项目自己的 CI。Use this whenever the user asks to review code or verify someone else's review findings — 评审、审查、code review、看看这次改动有没有问题、提交前检查、这些问题是真的吗 — and proactively before committing or pushing non-trivial changes. It reports 真/假/误诊 with evidence instead of restating claims. 全仓架构审计请用 deep-audit。
+description: 多视角深度代码评审,一路做到项目 CI 绿。以当前改动为入口,按改动内容自动派发相关视角(并发与正确性、SQL 与 NULL 语义、Swagger/OpenAPI 接口规范与契约兼容、架构耦合、复用、安全、性能、依赖健康、可测性、可观测、产品闭环、命名与注释、跨平台),每条发现必须带可复现证据才准进报告,然后归类、全仓扫同类实例、按类修复、补全称断言的不变量测试、跑项目自己的 CI。Use this whenever the user asks to review code or verify someone else's review findings — 评审、审查、code review、看看这次改动有没有问题、提交前检查、这些问题是真的吗 — and proactively before committing or pushing non-trivial changes. It reports 真/假/误诊 with evidence instead of restating claims. 全仓架构审计请用 deep-audit。
 ---
 
 # 深度评审
@@ -50,6 +50,9 @@ description: 多视角深度代码评审,一路做到项目 CI 绿。以当前�
 
 拿到 diff 后读 `references/perspectives.md`,按每个视角的**触发条件**判断该派谁。默认模式只派触发的;`all` 模式全派。
 
+只要范围内存在 HTTP 路由、handler、请求/响应类型、接口注解、OpenAPI 生成器或规范文件改动，
+**必须**同时读 `references/openapi.md` 并派出“Swagger/OpenAPI 接口规范”视角；不能因为 CI 能生成文档就跳过接口设计评审。
+
 在报告里列出**派了谁、跳过了谁、为什么跳过** —— 让用户能看出覆盖面,而不是猜。
 
 ### 阶段 2 — 并行扫描
@@ -91,6 +94,16 @@ subagent 会报错东西。这次不是走过场:
 每条为真的发现,往上抽一层问:**这是哪一类缺陷?** 然后拿这个类去全仓扫其它实例。
 
 做法见 `references/method.md` 的"归类与扫类"。
+
+### Swagger/OpenAPI 接口门禁
+
+当评审范围触发 HTTP/OpenAPI 视角时，按 `references/openapi.md` 执行。必须生成或获取**实际最终规范**，
+对全部受影响 operation 建立 method/path/operationId/参数/请求体/响应/security 清单，并与运行时路由和同类接口对照。
+至少明确回答：路径风格是否统一且表达资源关系，参数位置、命名、类型、required/default/nullable 是否合理，
+HTTP 方法与状态码是否符合语义，分页/过滤/排序/错误响应是否复用统一契约，以及是否产生破坏性变更。
+
+只读注解或 handler 不算完成；生成规范与运行时不一致时，必须用真实请求或路由注册结果确认哪一侧错误。
+报告中的每条接口发现都要给出 `METHOD /path`、对应规范位置、违反的项目约定或通行标准及实际影响。
 
 ### 阶段 5 — 报告,等确认
 
