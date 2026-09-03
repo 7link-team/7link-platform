@@ -12,7 +12,7 @@ PostgreSQL、MySQL、SQLite 真实迁移与 `make ci` 门禁。
 IMPLEMENTATION
 
 ## Current Step
-Phase 2 / Task 2.2：迁移 `internal/iam/core` repositories 与事务语义。
+Phase 2 / Task 2.3：迁移 `internal/iam/core` 领域服务、授权判定与校验语义。
 
 ## Overall Progress
 - [x] 深度分析与迁移方案 v8
@@ -28,7 +28,7 @@ Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5、Task 1.0/1.1/1.2 已实现；迁移计划为 
 `internal/iam/` 作为域命名空间，9 个子模块各自拥有业务、model/query 与 SQL，取消集中 schema
 和 feature 分包。Task 1.3 已完成 identity、authn、oauth、audit、core、organization、governance、provisioning、
 federation 九个自治迁移源（63/63 表）；Task 1.4 已完成真实 MySQL 8 门禁、静态对账与 baseline 冻结，
-当前进入 core Go 功能迁移。
+当前进入 core Go 功能迁移。Task 2.2 repositories 与事务语义已完成，准备迁移领域服务。
 
 Task 2.1 已完成：13 张 core 表均已有 module-owned model、gorm-gen query 与统一前缀绑定；三引擎
 model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entities.parent_key` 是唯一显式方言例外。
@@ -126,6 +126,13 @@ model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entitie
   `Lock` 向 NOT NULL `updated_at` 插入 NULL 的模型/DDL 漂移。
 - 三引擎 model ↔ DDL 契约逐表比较完整列集合与 NULL 性；`Menu.Route` 指针反向变异准确失败后已恢复。
   Task 2.1 deep-review、core 全包测试、生成、格式和 golangci-lint 均通过，无剩余发现。
+- Task 2.2：core 的 role/permission/member/menu/entity/relationship/platform administrator/data scope/
+  directory binding/dynamic group/temporary grant repositories 已按前缀安全 GORM 迁移；tenant 查询、更新、删除与
+  grant 均携带 tenant ID，nullable time/route/parent 保持数据库 NULL 语义。
+- Task 2.2：mutation、policy revision 与 audit append 固定同一 writer 和事务；启用 GORM 错误翻译，唯一键/FK
+  冲突使用稳定 sentinel；最后 tenant 管理员使用 revision 行锁，最后 platform 管理员删除/降级先锁定完整管理员集合。
+- Task 2.2 deep-review 发现并修复两个事务并发删除不同 full platform admin 后可能同时提交的竞态；重叠事务测试
+  证明第二个删除必须等待且最终失败，移除锁的反向变异按预期失败。其余架构、tenant/NULL、安全和跨平台视角无发现。
 
 ## Important Decisions
 - 目标为全量、全功能迁移；SAML/SCIM 不允许长期 Disabled。
@@ -164,11 +171,11 @@ Windows TCP 连通及非 root 用户全量双前缀迁移 PASS；schema lock 135
 门禁成功/失败路径远端容器清理 PASS；Linux FIFO 真实文件系统测试 PASS。
 
 ## Next Action
-执行 Task 2.2：按 source manifest 将 `repository*.go`、`transaction.go` 及关联存储逻辑改写为前缀安全
-GORM/gorm-gen，逐项保留 tenant 条件、事务句柄、行锁、upsert、唯一冲突和 `RowsAffected` 语义。
+执行 Task 2.3：按 source manifest 迁移 `authorization.go`、`authorizer.go`、service、entity/relationship
+validation、data-scope service 等领域逻辑，复用 core 根包已冻结的窄接口，不新增 feature/port 中转包。
 
 ## Last Checkpoint
-2026-09-02 · IAM 分支 Task 2.1 完成检查点：core 的 13 个 model、gorm-gen query、统一前缀表集与
-三引擎 model ↔ DDL 契约已完成；修复 `RevisionStore.Lock` 首次写入违反正式 NOT NULL DDL 的缺陷。
-`go test ./internal/iam/core/...`、三引擎定向契约、格式、golangci-lint 和 NULL 反向变异均通过。
-下一步执行 Task 2.2 repository 与事务迁移。
+2026-09-02 · IAM 分支 Task 2.2 完成检查点：core repositories、tenant 隔离、NULL/time、错误翻译及
+mutation/revision/audit 同事务已完成；并发 platform administrator 删除通过数据库锁串行化。
+`go generate ./internal/iam/core`、定向测试、`-race`、格式、golangci-lint 与锁移除反向变异均已验证。
+下一步执行 Task 2.3。

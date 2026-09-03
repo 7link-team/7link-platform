@@ -10,6 +10,7 @@ import (
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestDatasourceOpenSQLite(t *testing.T) {
@@ -58,7 +59,7 @@ func TestDatasourceOpenSQLiteEnforcesForeignKeysOnEveryConnection(t *testing.T) 
 	require.NoError(t, connections[0].Close())
 	require.NoError(t, db.Exec("CREATE TABLE parents (id INTEGER PRIMARY KEY)").Error)
 	require.NoError(t, db.Exec("CREATE TABLE children (parent_id INTEGER NOT NULL REFERENCES parents(id))").Error)
-	assert.ErrorContains(t, db.Exec("INSERT INTO children (parent_id) VALUES (404)").Error, "FOREIGN KEY constraint failed")
+	assert.ErrorIs(t, db.Exec("INSERT INTO children (parent_id) VALUES (404)").Error, gorm.ErrForeignKeyViolated)
 }
 
 func TestDatasourceOpenSQLiteRejectsDisabledForeignKeys(t *testing.T) {
