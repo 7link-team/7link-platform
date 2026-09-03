@@ -4,13 +4,40 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"7link.com/platform/internal/iam/core/model"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/authz"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+const platformAuditTenant guid.ID = 0
+
+type platformAdministratorRow struct {
+	PrincipalID    guid.ID   `gorm:"column:principal_id"`
+	RecordKind     string    `gorm:"column:record_kind"`
+	PermissionCode string    `gorm:"column:permission_code"`
+	CreatedAt      time.Time `gorm:"column:created_at"`
+}
+
+// PlatformPermissionCodes returns declared platform permission codes in stable
+// order.
+func PlatformPermissionCodes(registry *authz.Registry) []string {
+	codes := make([]string, 0, 8)
+	if registry == nil {
+		return codes
+	}
+	for _, action := range registry.All() {
+		if action.Scope == "platform" {
+			codes = append(codes, action.Code)
+		}
+	}
+	sort.Strings(codes)
+	return codes
+}
 
 func validatePlatformPrincipal(principalID guid.ID) (guid.ID, error) {
 	if principalID.Zero() {
@@ -19,52 +46,58 @@ func validatePlatformPrincipal(principalID guid.ID) (guid.ID, error) {
 	return principalID, nil
 }
 
+// ListPlatformAdministrators returns full and restricted platform
+// administrators from one database statement snapshot.
 func (r *Repository) ListPlatformAdministrators(ctx context.Context) ([]PlatformAdministrator, error) {
-	tables, _, err := r.tables()
+	return r.listPlatformAdministrators(ctx, nil)
+}
+
+func (r *Repository) listPlatformAdministrators(
+	ctx context.Context,
+	principalID *guid.ID,
+) ([]PlatformAdministrator, error) {
+	tables, db, err := r.tables()
 	if err != nil {
 		return nil, err
 	}
-	administratorRows, err := tables.PlatformAdministrators.WithContext(ctx).
-		Order(tables.PlatformAdministrators.PrincipalID).Find()
+	where, arguments := "", []any{}
+	if principalID != nil {
+		where = " WHERE principal_id = ?"
+		arguments = append(arguments, *principalID, *principalID)
+	}
+	rows := make([]platformAdministratorRow, 0)
+	err = db.WithContext(ctx).Raw(
+		"SELECT principal_id, 'full' AS record_kind, '' AS permission_code, created_at FROM "+
+			tables.PlatformAdministrators.TableName()+where+
+			" UNION ALL SELECT principal_id, 'grant' AS record_kind, permission_code, created_at FROM "+
+			tables.PlatformGrants.TableName()+where+
+			" ORDER BY principal_id ASC, record_kind DESC, permission_code ASC",
+		arguments...,
+	).Scan(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("list platform administrators: %w", err)
 	}
-	grantRows, err := tables.PlatformGrants.WithContext(ctx).
-		Order(tables.PlatformGrants.PrincipalID, tables.PlatformGrants.PermissionCode).Find()
-	if err != nil {
-		return nil, fmt.Errorf("list platform grants: %w", err)
-	}
 
-	byPrincipal := make(map[guid.ID]*PlatformAdministrator, len(administratorRows)+len(grantRows))
-	for _, row := range administratorRows {
-		byPrincipal[row.PrincipalID] = &PlatformAdministrator{
-			PrincipalID: row.PrincipalID, FullAdministrator: true,
-			Permissions: []string{}, CreatedAt: row.CreatedAt.UTC(),
-		}
-	}
-	for _, row := range grantRows {
-		administrator := byPrincipal[row.PrincipalID]
-		if administrator == nil {
-			administrator = &PlatformAdministrator{
+	result := make([]PlatformAdministrator, 0, len(rows))
+	for _, row := range rows {
+		if len(result) == 0 || result[len(result)-1].PrincipalID != row.PrincipalID {
+			result = append(result, PlatformAdministrator{
 				PrincipalID: row.PrincipalID, Permissions: []string{}, CreatedAt: row.CreatedAt.UTC(),
-			}
-			byPrincipal[row.PrincipalID] = administrator
+			})
 		}
-		administrator.Permissions = append(administrator.Permissions, row.PermissionCode)
-	}
-
-	principalIDs := make([]guid.ID, 0, len(byPrincipal))
-	for principalID := range byPrincipal {
-		principalIDs = append(principalIDs, principalID)
-	}
-	sort.Slice(principalIDs, func(left, right int) bool { return principalIDs[left] < principalIDs[right] })
-	result := make([]PlatformAdministrator, len(principalIDs))
-	for index, principalID := range principalIDs {
-		result[index] = *byPrincipal[principalID]
+		administrator := &result[len(result)-1]
+		if row.RecordKind == "full" {
+			administrator.FullAdministrator = true
+			administrator.CreatedAt = row.CreatedAt.UTC()
+		} else {
+			administrator.Permissions = append(administrator.Permissions, row.PermissionCode)
+		}
 	}
 	return result, nil
 }
 
+// GetPlatformAdministrator returns one full or restricted platform
+// administrator.
 func (r *Repository) GetPlatformAdministrator(
 	ctx context.Context,
 	principalID guid.ID,
@@ -73,18 +106,18 @@ func (r *Repository) GetPlatformAdministrator(
 	if err != nil {
 		return PlatformAdministrator{}, err
 	}
-	administrators, err := r.ListPlatformAdministrators(ctx)
+	administrators, err := r.listPlatformAdministrators(ctx, &principalID)
 	if err != nil {
 		return PlatformAdministrator{}, err
 	}
-	for _, administrator := range administrators {
-		if administrator.PrincipalID == principalID {
-			return administrator, nil
-		}
+	if len(administrators) == 1 {
+		return administrators[0], nil
 	}
 	return PlatformAdministrator{}, ErrPlatformAdministratorNotFound
 }
 
+// SetPlatformAdministrator atomically replaces one principal's full or
+// restricted platform grants.
 func (r *Repository) SetPlatformAdministrator(
 	ctx context.Context,
 	principalID guid.ID,
@@ -147,6 +180,8 @@ func (r *Repository) SetPlatformAdministrator(
 	return administrator, err
 }
 
+// DeletePlatformAdministrator revokes all platform access while preserving at
+// least one full administrator.
 func (r *Repository) DeletePlatformAdministrator(ctx context.Context, principalID guid.ID) (bool, error) {
 	principalID, err := validatePlatformPrincipal(principalID)
 	if err != nil {
@@ -206,6 +241,8 @@ func (r *Repository) lockPlatformAdministratorMutations(ctx context.Context) err
 	return nil
 }
 
+// CountFullPlatformAdministrators returns the durable full-administrator
+// count.
 func (r *Repository) CountFullPlatformAdministrators(ctx context.Context) (int, error) {
 	tables, _, err := r.tables()
 	if err != nil {
@@ -227,4 +264,105 @@ func (r *Repository) assertPlatformAdministratorRemains(ctx context.Context) err
 		return ErrLastPlatformAdministrator
 	}
 	return nil
+}
+
+// PlatformPermissionCatalog returns all declared platform permissions in
+// stable code order.
+func (s *Service) PlatformPermissionCatalog(context.Context) []authz.Action {
+	actions := make([]authz.Action, 0, 8)
+	for _, action := range s.registry.All() {
+		if action.Scope == "platform" {
+			actions = append(actions, action)
+		}
+	}
+	sort.Slice(actions, func(i, j int) bool { return actions[i].Code < actions[j].Code })
+	return actions
+}
+
+// ListPlatformAdministrators returns every full and restricted platform
+// administrator.
+func (s *Service) ListPlatformAdministrators(ctx context.Context) ([]PlatformAdministrator, error) {
+	return s.repo.ListPlatformAdministrators(ctx)
+}
+
+// SetPlatformAdministrator validates and atomically replaces a principal's
+// platform access.
+func (s *Service) SetPlatformAdministrator(
+	ctx context.Context,
+	principalID guid.ID,
+	full bool,
+	permissions []string,
+) (PlatformAdministrator, error) {
+	principalID, err := validatePlatformPrincipal(principalID)
+	if err != nil {
+		return PlatformAdministrator{}, err
+	}
+	normalized, err := s.normalizePlatformPermissions(full, permissions)
+	if err != nil {
+		return PlatformAdministrator{}, err
+	}
+	record := newAuditRecord(ctx, platformAuditTenant, "platform_administrator_updated", "principal", principalID)
+	record.PolicyChanged = true
+	record.Detail["full_administrator"] = full
+	record.Detail["permissions"] = normalized
+	var administrator PlatformAdministrator
+	err = s.writes.Run(ctx, record, func(repo *Repository) error {
+		administrator, err = repo.SetPlatformAdministrator(ctx, principalID, full, normalized)
+		return err
+	})
+	return administrator, err
+}
+
+// DeletePlatformAdministrator revokes a principal's platform access while
+// preserving the last full administrator.
+func (s *Service) DeletePlatformAdministrator(ctx context.Context, principalID guid.ID) (bool, error) {
+	principalID, err := validatePlatformPrincipal(principalID)
+	if err != nil {
+		return false, err
+	}
+	record := newAuditRecord(ctx, platformAuditTenant, "platform_administrator_revoked", "principal", principalID)
+	record.PolicyChanged = true
+	var changed bool
+	err = s.writes.Run(ctx, record, func(repo *Repository) error {
+		changed, err = repo.DeletePlatformAdministrator(ctx, principalID)
+		if err != nil {
+			return err
+		}
+		record.Detail["changed"] = changed
+		if !changed {
+			return ErrPlatformAdministratorNotFound
+		}
+		return nil
+	})
+	return changed, err
+}
+
+func (s *Service) normalizePlatformPermissions(full bool, permissions []string) ([]string, error) {
+	if full {
+		if len(permissions) > 0 {
+			return nil, fmt.Errorf("%w: a full platform administrator does not accept explicit permissions", ErrInvalidArgument)
+		}
+		return []string{}, nil
+	}
+	if len(permissions) == 0 {
+		return nil, fmt.Errorf("%w: a restricted platform administrator requires at least one permission", ErrInvalidArgument)
+	}
+	seen := map[string]bool{}
+	normalized := make([]string, 0, len(permissions))
+	for _, code := range permissions {
+		code = strings.TrimSpace(code)
+		action, ok := s.registry.Find(code)
+		if !ok {
+			return nil, fmt.Errorf("%w: %s", ErrPermissionNotFound, code)
+		}
+		if action.Scope != "platform" {
+			return nil, fmt.Errorf("%w: %s", ErrPlatformPermissionScope, code)
+		}
+		if !seen[code] {
+			seen[code] = true
+			normalized = append(normalized, code)
+		}
+	}
+	sort.Strings(normalized)
+	return normalized, nil
 }

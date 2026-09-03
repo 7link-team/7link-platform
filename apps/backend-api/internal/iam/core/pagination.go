@@ -22,6 +22,8 @@ func normalizePage(offset, limit int) (int, int) {
 	return offset, limit
 }
 
+// ListEntitiesPage returns a stable tenant entity page and the total number of
+// tenant entities before pagination.
 func (r *Repository) ListEntitiesPage(
 	ctx context.Context,
 	tenantID guid.ID,
@@ -61,6 +63,8 @@ func (r *Repository) ListEntitiesPage(
 	return entities, total, nil
 }
 
+// ListRolesPage returns a stable tenant role page and the total number of
+// tenant roles before pagination.
 func (r *Repository) ListRolesPage(
 	ctx context.Context,
 	tenantID guid.ID,
@@ -94,4 +98,30 @@ func (r *Repository) ListRolesPage(
 		roles[index] = roleFromRow(row)
 	}
 	return roles, total, nil
+}
+
+// ListEntitiesPage validates tenant scope and returns one entity page with its
+// unfiltered tenant total.
+func (s *Service) ListEntitiesPage(
+	ctx context.Context,
+	tenantID guid.ID,
+	offset, limit int,
+) ([]Entity, int64, error) {
+	if err := validateTenant(tenantID); err != nil {
+		return nil, 0, err
+	}
+	return s.repo.ListEntitiesPage(ctx, tenantID, offset, limit)
+}
+
+// ListRolesPage validates tenant scope and returns one role page with its
+// unfiltered tenant total.
+func (s *Service) ListRolesPage(
+	ctx context.Context,
+	tenantID guid.ID,
+	offset, limit int,
+) ([]Role, int64, error) {
+	if err := validateTenant(tenantID); err != nil {
+		return nil, 0, err
+	}
+	return s.repo.ListRolesPage(ctx, tenantID, offset, limit)
 }

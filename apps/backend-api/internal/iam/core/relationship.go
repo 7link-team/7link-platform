@@ -5,13 +5,38 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"7link.com/platform/internal/iam/core/model"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/authz"
+	"7link.com/platform/pkg/extension/policyx"
 	"gorm.io/gorm"
 )
 
+const (
+	maxRelationshipDepth   = 16
+	relationshipQueryBatch = 200
+)
+
+type relationshipNode struct {
+	Type     string
+	ID       guid.ID
+	Relation string
+}
+
+type relationshipGrant struct {
+	EntityID     guid.ID
+	ResourceType string
+	ResourceID   guid.ID
+	Relation     string
+	Path         []authz.RelationshipStep
+}
+
+// ListRelationships returns tenant entity relationships or, when EntityID is
+// set, business-resource relationships owned by that entity.
 func (r *Repository) ListRelationships(
 	ctx context.Context,
 	tenantID guid.ID,
@@ -75,6 +100,8 @@ func (r *Repository) ListRelationships(
 	return result, nil
 }
 
+// PutRelationship idempotently creates or replaces one entity or business
+// resource relationship.
 func (r *Repository) PutRelationship(
 	ctx context.Context,
 	relationship Relationship,
@@ -182,6 +209,7 @@ func (r *Repository) putResourceRelationship(
 	return resourceRelationshipFromRow(&row), true, nil
 }
 
+// DeleteRelationship removes one exact tenant relationship tuple.
 func (r *Repository) DeleteRelationship(ctx context.Context, relationship Relationship) (bool, error) {
 	tables, db, err := r.tables()
 	if err != nil {
@@ -229,6 +257,519 @@ func (r *Repository) entityRelationshipCount(ctx context.Context, tenantID, enti
 		return 0, fmt.Errorf("count entity resource relationships: %w", err)
 	}
 	return int(entityCount + resourceCount), nil
+}
+
+// ListRelationships validates the tenant filter and returns matching
+// relationships.
+func (s *Service) ListRelationships(
+	ctx context.Context,
+	tenantID guid.ID,
+	filter RelationshipFilter,
+) ([]Relationship, error) {
+	filter.ResourceType = strings.TrimSpace(filter.ResourceType)
+	if err := validateTenant(tenantID); err != nil ||
+		(filter.ResourceType != "" && !validEntityType(filter.ResourceType)) {
+		return nil, fmt.Errorf("%w: invalid relationship filter", ErrInvalidArgument)
+	}
+	return s.repo.ListRelationships(ctx, tenantID, filter)
+}
+
+// PutRelationship validates relationship facts, conditions, windows, and
+// graph depth before an atomic audited upsert.
+func (s *Service) PutRelationship(
+	ctx context.Context,
+	relationship Relationship,
+) (Relationship, bool, error) {
+	normalizeRelationship(&relationship)
+	condition, err := policyx.CanonicalCondition(relationship.Condition)
+	if err != nil {
+		return Relationship{}, false, fmt.Errorf("%w: %w", ErrInvalidRelationshipCondition, err)
+	}
+	relationship.Condition = condition
+	if err := validateRelationshipShape(relationship); err != nil {
+		return Relationship{}, false, err
+	}
+	if err := validateRelationshipWindow(relationship, s.repo.now().UTC()); err != nil {
+		return Relationship{}, false, err
+	}
+	if !relationship.EntityID.Zero() && !s.resourceRelationDeclared(relationship.ResourceType, relationship.Relation) {
+		return Relationship{}, false, fmt.Errorf("%w: resource type does not declare this relation", ErrInvalidRelationship)
+	}
+	targetType := "entity"
+	if !relationship.EntityID.Zero() {
+		targetType = relationship.ResourceType
+	}
+	record := newAuditRecord(ctx, relationship.TenantID, "relationship_put", targetType, relationship.ResourceID)
+	record.Detail["subject_type"], record.Detail["subject_id"] = relationship.SubjectType, relationship.SubjectID
+	record.Detail["subject_relation"], record.Detail["relation"] = relationship.SubjectRelation, relationship.Relation
+	record.Detail["resource_type"] = relationship.ResourceType
+	if !relationship.EntityID.Zero() {
+		record.Detail["entity_id"] = relationship.EntityID
+	}
+	if relationship.StartsAt != nil {
+		record.Detail["starts_at"] = relationship.StartsAt.Format(time.RFC3339Nano)
+	}
+	if relationship.EndsAt != nil {
+		record.Detail["ends_at"] = relationship.EndsAt.Format(time.RFC3339Nano)
+	}
+	if len(relationship.Condition) > 0 {
+		record.Detail["condition"] = relationship.Condition
+	}
+	var changed bool
+	err = s.writes.Run(ctx, record, func(repo *Repository) error {
+		if err := repo.revisions.Lock(ctx, repo.writer(), relationship.TenantID); err != nil {
+			return err
+		}
+		if err := validateRelationshipFacts(ctx, repo, relationship); err != nil {
+			return err
+		}
+		if relationship.EntityID.Zero() {
+			if err := repo.validateRelationshipAddition(ctx, relationship); err != nil {
+				return err
+			}
+		}
+		relationship.CreatedAt = repo.now().UTC()
+		var err error
+		relationship, changed, err = repo.PutRelationship(ctx, relationship)
+		if err != nil || !changed {
+			record.SkipAudit = !changed
+			return err
+		}
+		record.PolicyChanged = true
+		return nil
+	})
+	return relationship, changed, err
+}
+
+// DeleteRelationship validates and removes one exact relationship tuple.
+func (s *Service) DeleteRelationship(ctx context.Context, relationship Relationship) (bool, error) {
+	normalizeRelationship(&relationship)
+	if err := validateRelationshipShape(relationship); err != nil {
+		return false, err
+	}
+	targetType := "entity"
+	if !relationship.EntityID.Zero() {
+		targetType = relationship.ResourceType
+	}
+	record := newAuditRecord(ctx, relationship.TenantID, "relationship_deleted", targetType, relationship.ResourceID)
+	record.Detail["subject_type"], record.Detail["subject_id"] = relationship.SubjectType, relationship.SubjectID
+	record.Detail["subject_relation"], record.Detail["relation"] = relationship.SubjectRelation, relationship.Relation
+	record.Detail["resource_type"] = relationship.ResourceType
+	if !relationship.EntityID.Zero() {
+		record.Detail["entity_id"] = relationship.EntityID
+	}
+	var changed bool
+	err := s.writes.Run(ctx, record, func(repo *Repository) error {
+		var err error
+		changed, err = repo.DeleteRelationship(ctx, relationship)
+		record.PolicyChanged, record.SkipAudit = changed, !changed
+		return err
+	})
+	return changed, err
+}
+
+func normalizeRelationship(relationship *Relationship) {
+	if relationship == nil {
+		return
+	}
+	relationship.SubjectType = strings.TrimSpace(relationship.SubjectType)
+	relationship.SubjectRelation = strings.TrimSpace(relationship.SubjectRelation)
+	relationship.Relation = strings.TrimSpace(relationship.Relation)
+	relationship.ResourceType = strings.TrimSpace(relationship.ResourceType)
+	relationship.StartsAt = normalizeRelationshipTime(relationship.StartsAt)
+	relationship.EndsAt = normalizeRelationshipTime(relationship.EndsAt)
+}
+
+func normalizeRelationshipTime(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	normalized := value.UTC().Truncate(time.Millisecond)
+	return &normalized
+}
+
+func validateRelationshipWindow(relationship Relationship, now time.Time) error {
+	if (relationship.StartsAt != nil && relationship.StartsAt.IsZero()) ||
+		(relationship.EndsAt != nil && relationship.EndsAt.IsZero()) ||
+		(relationship.StartsAt != nil && relationship.EndsAt != nil && !relationship.EndsAt.After(*relationship.StartsAt)) ||
+		(relationship.EndsAt != nil && !relationship.EndsAt.After(now)) {
+		return fmt.Errorf("%w: use a future end time after the optional start time", ErrInvalidRelationshipWindow)
+	}
+	return nil
+}
+
+func validateRelationshipShape(relationship Relationship) error {
+	if validateTenant(relationship.TenantID) != nil || relationship.SubjectID.Zero() ||
+		!validEntityType(relationship.ResourceType) || relationship.ResourceID.Zero() || !validRelation(relationship.Relation) {
+		return fmt.Errorf("%w: invalid subject, relation, or resource", ErrInvalidRelationship)
+	}
+	switch relationship.SubjectType {
+	case "principal":
+		if relationship.SubjectRelation != "" {
+			return fmt.Errorf("%w: principal subjects cannot specify a subject relation", ErrInvalidRelationship)
+		}
+	case "group", "position":
+		if relationship.SubjectRelation != "member" {
+			return fmt.Errorf("%w: group and position subjects require the member relation", ErrInvalidRelationship)
+		}
+	case "entity":
+		if !validRelation(relationship.SubjectRelation) {
+			return fmt.Errorf("%w: entity subjects require owner, editor, or viewer", ErrInvalidRelationship)
+		}
+	default:
+		return fmt.Errorf("%w: unknown subject type", ErrInvalidRelationship)
+	}
+	return nil
+}
+
+func validateRelationshipFacts(ctx context.Context, repo *Repository, relationship Relationship) error {
+	resourceID := relationship.ResourceID
+	if !relationship.EntityID.Zero() {
+		resourceID = relationship.EntityID
+	}
+	resource, err := repo.GetEntity(ctx, relationship.TenantID, resourceID)
+	if err != nil {
+		return err
+	}
+	if relationship.EntityID.Zero() && resource.Type != relationship.ResourceType {
+		return fmt.Errorf("%w: resource type does not match the entity", ErrInvalidRelationship)
+	}
+	if resource.Status != EntityActive {
+		return ErrRelationshipResourceInactive
+	}
+	switch relationship.SubjectType {
+	case "principal":
+		member, err := repo.GetMember(ctx, relationship.TenantID, relationship.SubjectID)
+		if err != nil {
+			if errors.Is(err, ErrMemberNotFound) {
+				return ErrRelationshipSubjectMissing
+			}
+			return err
+		}
+		if member.Status != MemberActive {
+			return ErrRelationshipSubjectInactive
+		}
+	case "entity":
+		entity, err := repo.GetEntity(ctx, relationship.TenantID, relationship.SubjectID)
+		if err != nil {
+			if errors.Is(err, ErrEntityNotFound) {
+				return ErrRelationshipSubjectMissing
+			}
+			return err
+		}
+		if entity.Status != EntityActive {
+			return ErrRelationshipSubjectInactive
+		}
+	default:
+		status, err := repo.directoryAssigneeStatus(
+			ctx, relationship.TenantID, DirectoryAssigneeType(relationship.SubjectType), relationship.SubjectID,
+		)
+		if errors.Is(err, ErrDirectoryAssigneeNotFound) {
+			return ErrRelationshipSubjectMissing
+		}
+		if err != nil {
+			return fmt.Errorf("get relationship subject: %w", err)
+		}
+		if status != "active" {
+			return ErrRelationshipSubjectInactive
+		}
+	}
+	return nil
+}
+
+func (s *Service) resourceRelationDeclared(resourceType, relation string) bool {
+	for _, action := range s.registry.All() {
+		index := sort.SearchStrings(action.AllowedRelations, relation)
+		if action.Resource == resourceType && index < len(action.AllowedRelations) &&
+			action.AllowedRelations[index] == relation {
+			return true
+		}
+	}
+	return false
+}
+
+type relationshipWalkSummary struct {
+	MaxDepth      int `gorm:"column:max_depth"`
+	ReachesSource int `gorm:"column:reaches_source"`
+}
+
+func (r *Repository) validateRelationshipAddition(ctx context.Context, relationship Relationship) error {
+	tables, db, err := r.tables()
+	if err != nil {
+		return err
+	}
+	var count int64
+	err = db.WithContext(ctx).Table(tables.Relationships.TableName()).Where(
+		"tenant_id = ? AND subject_type = ? AND subject_id = ? AND subject_relation = ? AND relation = ? AND resource_type = ? AND resource_id = ?",
+		relationship.TenantID, relationship.SubjectType, relationship.SubjectID,
+		relationship.SubjectRelation, relationship.Relation, relationship.ResourceType, relationship.ResourceID,
+	).Count(&count).Error
+	if err != nil {
+		return fmt.Errorf("check IAM relationship topology: %w", err)
+	}
+	if count > 0 {
+		return nil
+	}
+
+	source := relationshipNode{
+		Type: relationship.SubjectType, ID: relationship.SubjectID, Relation: relationship.SubjectRelation,
+	}
+	target := relationshipNode{Type: "entity", ID: relationship.ResourceID, Relation: relationship.Relation}
+	table := tables.Relationships.TableName()
+	var downstream relationshipWalkSummary
+	err = db.WithContext(ctx).Raw(`
+WITH RECURSIVE walk(node_type, node_id, node_relation, depth) AS (
+    SELECT ? AS node_type, ? AS node_id, ? AS node_relation, 0 AS depth
+    UNION
+    SELECT 'entity', rel.resource_id, rel.relation, walk.depth + 1
+    FROM `+table+` AS rel
+    JOIN walk ON rel.subject_type = walk.node_type
+             AND rel.subject_id = walk.node_id
+             AND rel.subject_relation = walk.node_relation
+    WHERE rel.tenant_id = ? AND walk.depth < ?
+)
+SELECT COALESCE(MAX(depth), 0) AS max_depth,
+       COALESCE(MAX(CASE WHEN node_type = ? AND node_id = ? AND node_relation = ? THEN 1 ELSE 0 END), 0) AS reaches_source
+FROM walk`,
+		target.Type, target.ID, target.Relation, relationship.TenantID, maxRelationshipDepth,
+		source.Type, source.ID, source.Relation,
+	).Scan(&downstream).Error
+	if err != nil {
+		return fmt.Errorf("walk IAM relationship descendants: %w", err)
+	}
+	if downstream.ReachesSource != 0 {
+		return ErrRelationshipHierarchy
+	}
+
+	var upstream relationshipWalkSummary
+	err = db.WithContext(ctx).Raw(`
+WITH RECURSIVE walk(node_type, node_id, node_relation, depth) AS (
+    SELECT ? AS node_type, ? AS node_id, ? AS node_relation, 0 AS depth
+    UNION
+    SELECT rel.subject_type, rel.subject_id, rel.subject_relation, walk.depth + 1
+    FROM `+table+` AS rel
+    JOIN walk ON walk.node_type = 'entity'
+             AND rel.resource_id = walk.node_id
+             AND rel.relation = walk.node_relation
+    WHERE rel.tenant_id = ? AND walk.depth < ?
+)
+SELECT COALESCE(MAX(depth), 0) AS max_depth, 0 AS reaches_source
+FROM walk`,
+		source.Type, source.ID, source.Relation, relationship.TenantID, maxRelationshipDepth,
+	).Scan(&upstream).Error
+	if err != nil {
+		return fmt.Errorf("walk IAM relationship ancestors: %w", err)
+	}
+	if upstream.MaxDepth+1+downstream.MaxDepth > maxRelationshipDepth {
+		return ErrRelationshipHierarchy
+	}
+	return nil
+}
+
+func (a *Authorizer) loadRelationshipGrants(
+	ctx context.Context,
+	tenantID, subject guid.ID,
+	trusted policyx.TrustedContext,
+) ([]relationshipGrant, error) {
+	now := trusted.Time.UTC().Truncate(time.Millisecond)
+	frontier, err := a.relationshipRoots(ctx, tenantID, subject, now)
+	if err != nil {
+		return nil, err
+	}
+	visited := make(map[relationshipNode]bool, len(frontier))
+	paths := make(map[relationshipNode][]authz.RelationshipStep)
+	for _, node := range frontier {
+		visited[node] = true
+	}
+	grants := make([]relationshipGrant, 0)
+	for depth := 0; depth < maxRelationshipDepth && len(frontier) > 0; depth++ {
+		resourceRows, err := listActiveResourceRelationshipsBySubjects(
+			ctx, a.db, a.prefix, tenantID, frontier, now,
+		)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range resourceRows {
+			matches, err := relationshipConditionMatches(row.ConditionJSON, trusted)
+			if err != nil {
+				return nil, err
+			}
+			if !matches {
+				continue
+			}
+			source := relationshipNode{Type: row.SubjectType, ID: row.SubjectID, Relation: row.SubjectRelation}
+			path := append([]authz.RelationshipStep(nil), paths[source]...)
+			path = append(path, authz.RelationshipStep{
+				EntityID: row.EntityID.String(), SubjectType: row.SubjectType,
+				SubjectID: row.SubjectID.String(), SubjectRelation: row.SubjectRelation,
+				Relation: row.Relation, ResourceType: row.ResourceType,
+				ResourceID: row.ResourceID.String(), Condition: relationshipCondition(row.ConditionJSON),
+			})
+			grants = append(grants, relationshipGrant{
+				EntityID: row.EntityID, ResourceType: row.ResourceType,
+				ResourceID: row.ResourceID, Relation: row.Relation, Path: path,
+			})
+		}
+		rows, err := listActiveRelationshipsBySubjects(ctx, a.db, a.prefix, tenantID, frontier, now)
+		if err != nil {
+			return nil, err
+		}
+		next := make([]relationshipNode, 0, len(rows))
+		for _, row := range rows {
+			matches, err := relationshipConditionMatches(row.ConditionJSON, trusted)
+			if err != nil {
+				return nil, err
+			}
+			if !matches {
+				continue
+			}
+			source := relationshipNode{Type: row.SubjectType, ID: row.SubjectID, Relation: row.SubjectRelation}
+			target := relationshipNode{Type: "entity", ID: row.ResourceID, Relation: row.Relation}
+			if visited[target] {
+				continue
+			}
+			path := append([]authz.RelationshipStep(nil), paths[source]...)
+			path = append(path, authz.RelationshipStep{
+				SubjectType: row.SubjectType, SubjectID: row.SubjectID.String(),
+				SubjectRelation: row.SubjectRelation, Relation: row.Relation,
+				ResourceType: row.ResourceType, ResourceID: row.ResourceID.String(),
+				Condition: relationshipCondition(row.ConditionJSON),
+			})
+			visited[target], paths[target] = true, path
+			grants = append(grants, relationshipGrant{
+				ResourceType: row.ResourceType, ResourceID: row.ResourceID, Relation: row.Relation, Path: path,
+			})
+			next = append(next, target)
+		}
+		frontier = next
+	}
+	return grants, nil
+}
+
+func (a *Authorizer) relationshipRoots(
+	ctx context.Context,
+	tenantID, subject guid.ID,
+	now time.Time,
+) ([]relationshipNode, error) {
+	roots := []relationshipNode{{Type: "principal", ID: subject}}
+	groups := make([]guid.ID, 0)
+	err := a.db.WithContext(ctx).Table(a.table("iam_group_members")+" AS gm").
+		Select("gm.group_id").
+		Joins("JOIN "+a.table("iam_groups")+" AS g ON g.tenant_id = gm.tenant_id AND g.id = gm.group_id AND g.status = 'active' AND g.group_type = 'static'").
+		Where("gm.tenant_id = ? AND gm.principal_id = ?", tenantID, subject).
+		Where("(gm.starts_at IS NULL OR gm.starts_at <= ?) AND (gm.ends_at IS NULL OR gm.ends_at > ?)", now, now).
+		Order("gm.group_id ASC").Pluck("gm.group_id", &groups).Error
+	if err != nil {
+		return nil, fmt.Errorf("list relationship groups: %w", err)
+	}
+	for _, id := range groups {
+		roots = append(roots, relationshipNode{Type: "group", ID: id, Relation: "member"})
+	}
+	dynamicGroups, err := matchingDynamicGroupIDs(ctx, a.db, a.prefix, tenantID, subject)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range dynamicGroups {
+		roots = append(roots, relationshipNode{Type: "group", ID: id, Relation: "member"})
+	}
+	positions := make([]guid.ID, 0)
+	err = a.db.WithContext(ctx).Table(a.table("iam_position_members")+" AS pm").
+		Select("pm.position_id").
+		Joins("JOIN "+a.table("iam_positions")+" AS p ON p.tenant_id = pm.tenant_id AND p.id = pm.position_id AND p.status = 'active'").
+		Where("pm.tenant_id = ? AND pm.principal_id = ?", tenantID, subject).
+		Where("(pm.starts_at IS NULL OR pm.starts_at <= ?) AND (pm.ends_at IS NULL OR pm.ends_at > ?)", now, now).
+		Order("pm.position_id ASC").Pluck("pm.position_id", &positions).Error
+	if err != nil {
+		return nil, fmt.Errorf("list relationship positions: %w", err)
+	}
+	for _, id := range positions {
+		roots = append(roots, relationshipNode{Type: "position", ID: id, Relation: "member"})
+	}
+	return roots, nil
+}
+
+func listActiveRelationshipsBySubjects(
+	ctx context.Context,
+	db *gorm.DB,
+	prefix string,
+	tenantID guid.ID,
+	subjects []relationshipNode,
+	now time.Time,
+) ([]*model.Relationship, error) {
+	rows := make([]*model.Relationship, 0)
+	for start := 0; start < len(subjects); start += relationshipQueryBatch {
+		end := min(start+relationshipQueryBatch, len(subjects))
+		conditions := make([]string, 0, end-start)
+		arguments := make([]any, 0, (end-start)*3)
+		for _, subject := range subjects[start:end] {
+			conditions = append(conditions, "(rel.subject_type = ? AND rel.subject_id = ? AND rel.subject_relation = ?)")
+			arguments = append(arguments, subject.Type, subject.ID, subject.Relation)
+		}
+		batch := make([]*model.Relationship, 0)
+		err := db.WithContext(ctx).Table(prefix+"iam_relationships AS rel").Select("rel.*").
+			Joins("JOIN "+prefix+"iam_entities AS resource ON resource.tenant_id = rel.tenant_id AND resource.id = rel.resource_id AND resource.type = rel.resource_type AND resource.status = 'active'").
+			Where("rel.tenant_id = ? AND (rel.starts_at IS NULL OR rel.starts_at <= ?) AND (rel.ends_at IS NULL OR rel.ends_at > ?)", tenantID, now, now).
+			Where("("+strings.Join(conditions, " OR ")+")", arguments...).
+			Order("rel.resource_type ASC, rel.resource_id ASC, rel.relation ASC, rel.subject_type ASC, rel.subject_id ASC").
+			Find(&batch).Error
+		if err != nil {
+			return nil, fmt.Errorf("traverse IAM relationships: %w", err)
+		}
+		rows = append(rows, batch...)
+	}
+	return rows, nil
+}
+
+func listActiveResourceRelationshipsBySubjects(
+	ctx context.Context,
+	db *gorm.DB,
+	prefix string,
+	tenantID guid.ID,
+	subjects []relationshipNode,
+	now time.Time,
+) ([]*model.ResourceRelationship, error) {
+	rows := make([]*model.ResourceRelationship, 0)
+	for start := 0; start < len(subjects); start += relationshipQueryBatch {
+		end := min(start+relationshipQueryBatch, len(subjects))
+		conditions := make([]string, 0, end-start)
+		arguments := make([]any, 0, (end-start)*3)
+		for _, subject := range subjects[start:end] {
+			conditions = append(conditions, "(rel.subject_type = ? AND rel.subject_id = ? AND rel.subject_relation = ?)")
+			arguments = append(arguments, subject.Type, subject.ID, subject.Relation)
+		}
+		batch := make([]*model.ResourceRelationship, 0)
+		err := db.WithContext(ctx).Table(prefix+"iam_resource_relationships AS rel").Select("rel.*").
+			Joins("JOIN "+prefix+"iam_entities AS entity ON entity.tenant_id = rel.tenant_id AND entity.id = rel.entity_id AND entity.status = 'active'").
+			Where("rel.tenant_id = ? AND (rel.starts_at IS NULL OR rel.starts_at <= ?) AND (rel.ends_at IS NULL OR rel.ends_at > ?)", tenantID, now, now).
+			Where("("+strings.Join(conditions, " OR ")+")", arguments...).
+			Order("rel.entity_id ASC, rel.resource_type ASC, rel.resource_id ASC, rel.relation ASC, rel.subject_type ASC, rel.subject_id ASC").
+			Find(&batch).Error
+		if err != nil {
+			return nil, fmt.Errorf("traverse IAM resource relationships: %w", err)
+		}
+		rows = append(rows, batch...)
+	}
+	return rows, nil
+}
+
+func relationshipConditionMatches(value string, trusted policyx.TrustedContext) (bool, error) {
+	matched, err := policyx.EvaluateCondition(relationshipCondition(value), trusted)
+	if err != nil {
+		return false, fmt.Errorf("evaluate relationship condition: %w", err)
+	}
+	return matched, nil
+}
+
+func validRelation(value string) bool {
+	return value == "owner" || value == "editor" || value == "viewer"
+}
+
+func relationshipAllowed(action authz.Action, grant relationshipGrant) bool {
+	if action.Resource != "entity" && action.Resource != grant.ResourceType {
+		return false
+	}
+	index := sort.SearchStrings(action.AllowedRelations, grant.Relation)
+	return index < len(action.AllowedRelations) && action.AllowedRelations[index] == grant.Relation
 }
 
 func relationshipToRow(relationship Relationship) model.Relationship {
