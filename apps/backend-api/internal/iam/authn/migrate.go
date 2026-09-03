@@ -11,9 +11,6 @@ import (
 
 const Name = "authn"
 
-// Module owns authentication credentials, sessions, factors, and challenges.
-type Module struct{}
-
 func (*Module) ModuleName() string { return Name }
 
 //go:embed sql

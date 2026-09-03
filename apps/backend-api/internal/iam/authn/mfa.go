@@ -119,7 +119,7 @@ func (s *Service) BeginTOTPEnrollment(
 	ctx context.Context,
 	authorization, cookieHeader, currentPassword string,
 ) (authnext.MFAEnrollment, error) {
-	claims, err := s.Authenticate(ctx, authorization, cookieHeader)
+	claims, err := s.authenticateMFAEnrollment(ctx, authorization, cookieHeader)
 	if err != nil {
 		return authnext.MFAEnrollment{}, err
 	}
@@ -165,12 +165,13 @@ func (s *Service) ConfirmTOTPEnrollment(
 	ctx context.Context,
 	authorization, cookieHeader, code string,
 ) (authnext.MFAConfirmation, error) {
-	claims, err := s.Authenticate(ctx, authorization, cookieHeader)
+	claims, err := s.authenticateMFAEnrollment(ctx, authorization, cookieHeader)
 	if err != nil {
 		return authnext.MFAConfirmation{}, err
 	}
 	now := s.now().UTC()
 	var recoveryCodes []string
+	sessionRevoked := false
 	err = s.repo.runInTx(ctx, func(repository *Repository) error {
 		enrollment, err := repository.activeMFAEnrollmentForUpdate(ctx, claims.PrincipalID, now)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -201,9 +202,17 @@ func (s *Service) ConfirmTOTPEnrollment(
 		if err := repository.deleteMFAEnrollment(ctx, claims.PrincipalID); err != nil {
 			return err
 		}
-		if err := repository.revokeOtherAuthentication(
-			ctx, claims.PrincipalID, currentSessionHash(cookieHeader, s.web.CookieName), now,
-		); err != nil {
+		currentHash := currentSessionHash(cookieHeader, s.web.CookieName)
+		if claims.ACR == 0 {
+			changed, err := repository.revokeSessionByHash(ctx, currentHash, now)
+			if err != nil {
+				return err
+			}
+			if !changed {
+				return ErrInvalidSession
+			}
+			sessionRevoked = true
+		} else if err := repository.revokeOtherAuthentication(ctx, claims.PrincipalID, currentHash, now); err != nil {
 			return err
 		}
 		return repository.appendAudit(ctx, securityAudit(claims.PrincipalID, "mfa_enabled", "success"))
@@ -211,7 +220,17 @@ func (s *Service) ConfirmTOTPEnrollment(
 	if err != nil {
 		return authnext.MFAConfirmation{}, fmt.Errorf("confirm TOTP enrollment: %w", err)
 	}
-	return authnext.MFAConfirmation{RecoveryCodes: recoveryCodes}, nil
+	return authnext.MFAConfirmation{RecoveryCodes: recoveryCodes, SessionRevoked: sessionRevoked}, nil
+}
+
+func (s *Service) authenticateMFAEnrollment(
+	ctx context.Context,
+	authorization, cookieHeader string,
+) (*authnext.Claims, error) {
+	if strings.TrimSpace(authorization) != "" {
+		return s.Authenticate(ctx, authorization, cookieHeader)
+	}
+	return s.authenticateBrowserSession(ctx, cookieHeader, true)
 }
 
 func (s *Service) VerifyLoginMFA(

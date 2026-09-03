@@ -79,17 +79,8 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	if m == nil || m.service == nil || m.registrar == nil {
 		return fmt.Errorf("register iam: service is unavailable")
 	}
-	RegisterREST(api, m.service, m.registrar)
+	RegisterHTTP(api, m.service, m.registrar)
 	return nil
-}
-
-// RegisterREST preserves the source module's direct registration surface for
-// focused tests while the application lifecycle uses RegisterHTTP.
-func (m *Module) RegisterREST(api huma.API) {
-	if m == nil || m.service == nil || m.registrar == nil {
-		panic("register iam: service is unavailable")
-	}
-	RegisterREST(api, m.service, m.registrar)
 }
 
 var (

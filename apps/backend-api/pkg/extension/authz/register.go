@@ -80,6 +80,15 @@ func NewRegistrar(registry *Registry, verifier TokenVerifier, checker Permission
 	return &Registrar{registry: registry, verifier: verifier, checker: checker, members: members}
 }
 
+// NewAuthenticationOnlyRegistrar builds a registrar for authenticated routes
+// that do not perform tenant, entity, or platform authorization.
+func NewAuthenticationOnlyRegistrar(verifier TokenVerifier) *Registrar {
+	if verifier == nil {
+		panic("authz authentication-only registrar requires verifier")
+	}
+	return &Registrar{verifier: verifier}
+}
+
 // NewDeclarationOnlyRegistrar creates a registrar that records Guard metadata
 // without attaching enforcement. It is intentionally explicit and is only for
 // tests and static route validation.
@@ -249,7 +258,7 @@ func RegisterPlatform[I, O any](r *Registrar, api huma.API, op huma.Operation, g
 // authorization Guard gateway. It may still perform authentication in its handler.
 func RegisterPublic[I, O any](api huma.API, op huma.Operation, handler func(context.Context, *I) (*O, error)) {
 	Public(&op)
-	EnsureSecuritySchemes(api, defaultCookieName)
+	ensureDefaultSecuritySchemes(api)
 	huma.Register(api, op, handler)
 }
 
@@ -306,6 +315,18 @@ func EnsureSecuritySchemes(api huma.API, cookieName string) {
 	}
 	components.SecuritySchemes[BearerScheme] = &huma.SecurityScheme{Type: "http", Scheme: "bearer", BearerFormat: "JWT"}
 	components.SecuritySchemes[SessionScheme] = &huma.SecurityScheme{Type: "apiKey", In: "cookie", Name: cookieName}
+	components.SecuritySchemes[ClientBasicScheme] = &huma.SecurityScheme{Type: "http", Scheme: "basic"}
+}
+
+func ensureDefaultSecuritySchemes(api huma.API) {
+	components := api.OpenAPI().Components
+	if components.SecuritySchemes == nil {
+		components.SecuritySchemes = map[string]*huma.SecurityScheme{}
+	}
+	components.SecuritySchemes[BearerScheme] = &huma.SecurityScheme{Type: "http", Scheme: "bearer", BearerFormat: "JWT"}
+	if _, exists := components.SecuritySchemes[SessionScheme]; !exists {
+		components.SecuritySchemes[SessionScheme] = &huma.SecurityScheme{Type: "apiKey", In: "cookie", Name: defaultCookieName}
+	}
 	components.SecuritySchemes[ClientBasicScheme] = &huma.SecurityScheme{Type: "http", Scheme: "basic"}
 }
 

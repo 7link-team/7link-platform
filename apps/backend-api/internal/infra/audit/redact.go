@@ -27,6 +27,8 @@ var errUnexpectedToken = errors.New("audit: unexpected JSON token")
 // never captured cannot be recovered, so the default errs toward recording.
 var defaultSensitiveKeys = map[string]struct{}{
 	"password":          {},
+	"current_password":  {},
+	"new_password":      {},
 	"passwd":            {},
 	"pwd":               {},
 	"secret":            {},

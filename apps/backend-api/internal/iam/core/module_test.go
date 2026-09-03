@@ -83,10 +83,9 @@ func TestModuleDefensiveLifecycleBranches(t *testing.T) {
 	assert.ErrorIs(t, module.CheckHealth(t.Context()), ErrUnavailable)
 	_, api := humatest.New(t)
 	assert.Error(t, module.RegisterHTTP(t.Context(), api))
-	assert.Panics(t, func() { module.RegisterREST(api) })
 
 	module = NewDeclarationOnlyModule(authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()))
-	module.RegisterREST(api)
+	require.NoError(t, module.RegisterHTTP(t.Context(), api))
 	assert.Len(t, operationManifest(api.OpenAPI()), 51)
 }
 

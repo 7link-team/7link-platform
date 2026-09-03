@@ -35,6 +35,8 @@ var (
 	ErrCSRF            = errors.New("cross-site request rejected")
 )
 
+const mfaEnrollmentSessionMethod = "mfa_enrollment"
+
 // RegistrationPrincipalCreator creates a pending principal and credential on
 // the transaction owned by the registration workflow.
 type RegistrationPrincipalCreator func(
@@ -332,6 +334,14 @@ func (s *Service) Authenticate(
 		}
 		return claims, nil
 	}
+	return s.authenticateBrowserSession(ctx, cookieHeader, false)
+}
+
+func (s *Service) authenticateBrowserSession(
+	ctx context.Context,
+	cookieHeader string,
+	allowMFAEnrollment bool,
+) (*authnext.Claims, error) {
 	if !s.Enabled() || s.repo == nil {
 		return nil, authnext.ErrMissingBearer
 	}
@@ -346,6 +356,10 @@ func (s *Service) Authenticate(
 			return nil, ErrInvalidSession
 		}
 		return nil, fmt.Errorf("%w: load session: %w", authnext.ErrUnavailable, err)
+	}
+	enrollmentSession := session.ACR == 0 && slices.Contains(strings.Fields(session.AMR), mfaEnrollmentSessionMethod)
+	if session.ACR < 1 && !(allowMFAEnrollment && enrollmentSession) {
+		return nil, ErrInvalidSession
 	}
 	nextExpiry := now.Add(s.web.IdleTTL)
 	if nextExpiry.After(session.AbsoluteExpiresAt) {
@@ -407,16 +421,21 @@ func (s *Service) BeginLogin(
 	if err := s.repo.resetLoginFailures(ctx, principal.ID, now); err != nil {
 		return authnext.LoginResult{}, fmt.Errorf("reset login failures: %w", err)
 	}
-	if s.cfg.MFAPolicy.RequireMFA && credential.TOTPSecret == "" && !credential.MFARequired {
-		if err := s.repo.requireMFA(ctx, principal.ID, now); err != nil {
-			return authnext.LoginResult{}, fmt.Errorf("enforce MFA policy: %w", err)
+	if credential.TOTPSecret == "" && (s.cfg.MFAPolicy.RequireMFA || credential.MFARequired) {
+		token, err := s.insertSession(ctx, s.repo, principal.ID, now, authnext.Assurance{
+			AuthTime: now, Level: 0, Methods: []string{"pwd", mfaEnrollmentSessionMethod},
+		})
+		if err != nil {
+			return authnext.LoginResult{}, err
 		}
-		credential.MFARequired = true
+		expiresAt := now.Add(min(s.web.IdleTTL, s.web.SessionTTL)).UTC()
+		s.audit(ctx, principal.ID, "login_password", "success")
+		return authnext.LoginResult{
+			Status: "mfa_enrollment_required", ReturnURL: resolvedReturnURL, SessionID: token,
+			ExpiresAt: &expiresAt, Methods: []string{"totp"},
+		}, nil
 	}
 	if credential.MFARequired {
-		if credential.TOTPSecret == "" {
-			return authnext.LoginResult{}, authnext.ErrAdditionalVerification
-		}
 		result, err := s.createLoginChallenge(ctx, principal.ID, resolvedReturnURL, now)
 		if err != nil {
 			return authnext.LoginResult{}, err
@@ -442,7 +461,7 @@ func (s *Service) Login(
 	if err != nil {
 		return "", "", err
 	}
-	if result.Status == "mfa_required" {
+	if result.Status != "authenticated" {
 		return "", result.ReturnURL, authnext.ErrAdditionalVerification
 	}
 	return result.SessionID, result.ReturnURL, nil

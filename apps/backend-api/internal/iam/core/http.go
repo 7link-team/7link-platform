@@ -390,10 +390,10 @@ type authorizationExplanationInput struct {
 	}
 }
 
-// RegisterREST mounts IAM discovery endpoints for the management UI.
-func RegisterREST(a huma.API, svc *Service, registrar *authz.Registrar) {
-	registerRelationshipREST(a, svc, registrar)
-	registerPlatformREST(a, svc, registrar)
+// RegisterHTTP registers all core IAM HTTP operations.
+func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
+	registerRelationshipHTTP(a, svc, registrar)
+	registerPlatformHTTP(a, svc, registrar)
 	authz.Register(registrar, a, huma.Operation{
 		OperationID: "iam-permission-catalog",
 		Method:      http.MethodGet,

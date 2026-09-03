@@ -306,6 +306,26 @@ func TestOpenAPISecurityMatchesAuthenticatorCapabilities(t *testing.T) {
 	assert.Equal(t, "session", sessionAPI.OpenAPI().Components.SecuritySchemes[authz.SessionScheme].Name)
 }
 
+func TestPublicRegistrationPreservesConfiguredSessionCookieScheme(t *testing.T) {
+	_, api := humatest.New(t)
+	authz.EnsureSecuritySchemes(api, "configured_session")
+	authz.RegisterPublic(api, huma.Operation{
+		OperationID: "public", Method: http.MethodGet, Path: "/public",
+	}, okRoute)
+	assert.Equal(t, "configured_session", api.OpenAPI().Components.SecuritySchemes[authz.SessionScheme].Name)
+}
+
+func TestAuthenticationOnlyRegistrarUsesVerifierContract(t *testing.T) {
+	assert.Panics(t, func() { authz.NewAuthenticationOnlyRegistrar(nil) })
+	_, api := humatest.New(t)
+	registrar := authz.NewAuthenticationOnlyRegistrar(validVerifier())
+	authz.RegisterAuthenticated(registrar, api, huma.Operation{
+		OperationID: "profile", Method: http.MethodGet, Path: "/profile",
+	}, okRoute)
+	assert.Equal(t, http.StatusOK, api.Get("/profile", "Cookie: session=value").Code)
+	assert.Equal(t, "session", api.OpenAPI().Components.SecuritySchemes[authz.SessionScheme].Name)
+}
+
 func TestEntityAndPlatformAuthorizationMiddleware(t *testing.T) {
 	t.Run("entity", func(t *testing.T) {
 		_, api := humatest.New(t)

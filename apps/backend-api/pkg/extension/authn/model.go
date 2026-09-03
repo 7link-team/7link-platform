@@ -32,9 +32,10 @@ var (
 )
 
 // LoginResult is a discriminated browser login result. A password-valid MFA
-// account receives a challenge but no session cookie until VerifyLoginMFA.
+// account receives a challenge but no session cookie until VerifyLoginMFA. A
+// principal who must first enroll MFA receives a restricted enrollment cookie.
 type LoginResult struct {
-	Status      string     `json:"status"`
+	Status      string     `json:"status" enum:"authenticated,mfa_required,mfa_enrollment_required"`
 	ReturnURL   string     `json:"return_url"`
 	ChallengeID string     `json:"challenge_id,omitempty"`
 	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
@@ -71,7 +72,8 @@ type MFAEnrollment struct {
 }
 
 type MFAConfirmation struct {
-	RecoveryCodes []string `json:"recovery_codes"`
+	RecoveryCodes  []string `json:"recovery_codes"`
+	SessionRevoked bool     `json:"-"`
 }
 
 type StepUpOptions struct {

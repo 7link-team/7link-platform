@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRESTIDParsingRejectsUnusableIdentifiers(t *testing.T) {
+func TestHTTPIDParsingRejectsUnusableIdentifiers(t *testing.T) {
 	id, err := requireID(" 42 ")
 	require.NoError(t, err)
 	assert.Equal(t, guid.ID(42), id)
@@ -37,7 +37,7 @@ func TestRESTIDParsingRejectsUnusableIdentifiers(t *testing.T) {
 	assertHTTPError(t, err, http.StatusUnprocessableEntity, "respx.invalid_id")
 }
 
-func TestRESTReferenceParsingRejectsEachInvalidComponent(t *testing.T) {
+func TestHTTPReferenceParsingRejectsEachInvalidComponent(t *testing.T) {
 	for _, test := range []struct {
 		name string
 		call func() error
@@ -73,7 +73,7 @@ func TestRESTReferenceParsingRejectsEachInvalidComponent(t *testing.T) {
 	}
 }
 
-func TestRESTRelationshipParsingPreservesOptionalFields(t *testing.T) {
+func TestHTTPRelationshipParsingPreservesOptionalFields(t *testing.T) {
 	startsAt := time.Date(2026, time.September, 3, 8, 0, 0, 0, time.UTC)
 	endsAt := startsAt.Add(time.Hour)
 	fields := relationshipFields{
@@ -109,7 +109,7 @@ func TestRESTRelationshipParsingPreservesOptionalFields(t *testing.T) {
 	}
 }
 
-func TestRESTErrorMapsEveryDomainError(t *testing.T) {
+func TestHTTPErrorMapsEveryDomainError(t *testing.T) {
 	for _, test := range []struct {
 		err     error
 		status  int
@@ -162,7 +162,7 @@ func TestRESTErrorMapsEveryDomainError(t *testing.T) {
 	assertHTTPError(t, apiError("test", errors.New("unknown")), http.StatusInternalServerError, "respx.internal_server_error")
 }
 
-func TestPlatformRESTErrorMapsEveryDomainError(t *testing.T) {
+func TestPlatformHTTPErrorMapsEveryDomainError(t *testing.T) {
 	for _, test := range []struct {
 		err     error
 		status  int
@@ -177,7 +177,7 @@ func TestPlatformRESTErrorMapsEveryDomainError(t *testing.T) {
 	}
 }
 
-func TestRESTProjectionAndPaginationPreserveWireSemantics(t *testing.T) {
+func TestHTTPProjectionAndPaginationPreserveWireSemantics(t *testing.T) {
 	now := time.Date(2026, time.September, 3, 9, 0, 0, 0, time.UTC)
 	binding := entityBindingFromDomain(EntityRoleBinding{EntityID: 1, RoleID: 2, PrincipalID: 3, ExpiresAt: now})
 	require.NotNil(t, binding.ExpiresAt)

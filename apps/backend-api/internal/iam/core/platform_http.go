@@ -34,7 +34,7 @@ type platformPrincipalInput struct {
 	PrincipalID string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
-func registerPlatformREST(a huma.API, svc *Service, registrar *authz.Registrar) {
+func registerPlatformHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	authz.RegisterPlatform(registrar, a, huma.Operation{
 		OperationID: "iam-platform-permission-catalog", Method: http.MethodGet, Path: "/iam/platform-permission-catalog",
 		Summary: "List declared platform permissions", Tags: []string{"iam"},

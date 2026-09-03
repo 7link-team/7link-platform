@@ -332,3 +332,30 @@ Task 0.5 的依赖冻结，以及 Task 3/6/7/8/9 的依赖引入顺序。
 
 **Status**
 已确认；依赖路径、源版本、直接 import 与引入任务均已复核。
+
+---
+
+## D12 — HTTP 文件命名与 RESTful 目标契约
+
+**Decision**
+IAM 各模块的 HTTP 传输文件和注册入口统一使用 `http.go` / `RegisterHTTP`；不使用
+`rest.go` / `RegisterREST`。RESTful 作为接口设计标准：优先复数资源、名词化路径、HTTP method
+表达 CRUD、统一路径参数和状态码。源服务 200 条 operation 只作为功能完整性基线，每个模块通过
+显式 source→target 映射冻结目标 OpenAPI 契约，不要求复制源 RPC 风格 URL。
+
+源 IAM 没有 gRPC proto/service 契约，本次迁移不创建占位 `grpc.go` 或虚构 gRPC API。未来只有在
+出现真实内部调用契约时，才以 `grpc.go` / `RegisterGRPC` 与 HTTP 并列实现。
+
+**Reason**
+`http` 准确描述传输协议，也能与 `grpc` 对称；RESTful 则属于 HTTP API 的资源建模规范，二者不是
+互斥命名。逐条映射同时保留全量迁移的可追溯性，并允许目标接口纠正源服务的动作式路径。
+
+**Tradeoffs**
+目标 URL、method 和 OperationID 可能与未发布的源接口不同，因此不能再用源三元组直接做集合相等；
+必须维护 source→target 映射及目标契约测试。当前新项目 authn 尚未发布，不保留旧路径别名。
+
+**Scope**
+IAM Phase 2–9 的 HTTP 文件、OpenAPI 契约和验收门禁；不新增 IAM gRPC 功能。
+
+**Status**
+已确认（用户明确要求 HTTP 命名并尽可能按 RESTful 标准设计）。

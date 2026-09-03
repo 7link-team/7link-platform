@@ -41,12 +41,16 @@ func TestRedactJSONMatchesSeparatorVariants(t *testing.T) {
 		"accessToken": "at-leak",
 		"refresh-token": "rt-leak",
 		"clientSecret": "cs-leak",
+		"currentPassword": "old-password-leak",
+		"new-password": "new-password-leak",
 		"cardNumber": "4111111111111111",
 		"orderNumber": "keep-me"
 	}`))
 	require.NotContains(t, out, "at-leak")
 	require.NotContains(t, out, "rt-leak")
 	require.NotContains(t, out, "cs-leak")
+	require.NotContains(t, out, "old-password-leak")
+	require.NotContains(t, out, "new-password-leak")
 	require.NotContains(t, out, "4111111111111111")
 	require.Contains(t, out, "keep-me")
 }
