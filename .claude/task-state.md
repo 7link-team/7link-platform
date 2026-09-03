@@ -12,7 +12,7 @@ PostgreSQL、MySQL、SQLite 真实迁移与 `make ci` 门禁。
 IMPLEMENTATION
 
 ## Current Step
-Phase 1 / Task 1.1：建立现有 4 个 migration module 的真实三引擎验证套件。
+Phase 1 / Task 1.3：建立 9 个自治 IAM 模块的三方言 migration source 与 63 表契约。
 
 ## Overall Progress
 - [x] 深度分析与迁移方案 v8
@@ -24,9 +24,9 @@ Phase 1 / Task 1.1：建立现有 4 个 migration module 的真实三引擎验�
 - [ ] Phase 9 集成与验收
 
 ## Active Work
-Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5 与 Task 1.0 已实现并通过 Windows 完整门禁；迁移计划为 v8，
+Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5、Task 1.0/1.1/1.2 已实现；迁移计划为 v8，
 `internal/iam/` 作为域命名空间，9 个子模块各自拥有业务、model/query 与 SQL，取消集中 schema
-和 feature 分包。下一步扩展真实三引擎迁移验证套件。
+和 feature 分包。当前从固定源 SQL 建立 9 个模块的精确表所有权与自治迁移源。
 
 ## Completed Work
 - 已从任务记录与实际仓库恢复断点；工作树在本轮开始时干净。
@@ -66,6 +66,14 @@ Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5 与 Task 1.0 已实现并通过 Windows 完整�
   embedded 引擎未进入主模块，SQLite DSN 对三条并行连接启用外键，初始化失败路径立即登记 cleanup。
 - Task 1.0 deep-review 修复 PostgreSQL 空闲端口 TOCTOU 的有限重试、过宽错误分类和测试失败时
   借出连接泄漏；SQLite DSN 与端口分类不变量完成反向变异验证，复审无新发现。
+- Task 1.1：参数化验证 todo/dlock/wuid/audit 在 SQLite、go-mysql-server、嵌入式 PostgreSQL
+  上的 up/幂等/down/up、`sl_` 与 21 字符最大前缀、无裸表/双前缀和标识符长度；README 已明确
+  go-mysql-server 不替代真实 MySQL 8 门禁。聚焦三引擎测试通过，提交 `d50bca4` 已推送。
+- Task 1.2：新增可选 `MigrationMilestoneProvider`，应用迁移器按稳定 DAG 拓扑执行 up、按反向
+  拓扑执行 down，并拒绝仍有已开始依赖节点的指定模块回滚；普通 migration source 行为不变。
+- Task 1.2 状态门禁同时校验节点唯一/依赖存在/无环/版本递增、里程碑与 embedded source 对齐、
+  Goose history 未分叉，以及所有已开始节点的跨 source 依赖已完成；状态报告按模块聚合并显示
+  最后完整 milestone。三引擎 A↔B FK 套件及三类反向变异通过。
 - 计划 v5 已冻结 9 模块 source manifest、目标 model/query/dbgen、bun→gorm 注意项、端口、
   tenant 负例和逐模块门禁；不再把 `internal/iam` 拆成三个半成品阶段。
 - 从固定 source tree 展开 200 条 REST 三元组，文档与源代码集合对账 200/200、无缺失、
@@ -99,20 +107,20 @@ Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5 与 Task 1.0 已实现并通过 Windows 完整�
 - 本任务约 6 万行，必须按 Phase 分批实现、验证和留档。
 
 ## Verification
-Build: PASS（Task 1.0 Windows `make ci` build；Task 0.4 Linux CGO-disabled cross-compile）
-Tests: PASS（Task 1.0 三引擎 helper/Goose 冷跑 + 完整 `make ci`）
-Lint: PASS（Task 1.0 固定版本 golangci-lint / `make ci`）
-Coverage: PASS（总体 91.4%，organization 100.0%，24/24 受控包 ≥90%）
-Integration: PASS（`tests/goose`、`tests/internal/testdb`）
+Build: PASS（Task 1.2 Windows `make ci` build；Task 0.4 Linux CGO-disabled cross-compile）
+Tests: PASS（Task 1.2 主模块全量 + 独立 tests module + 完整 `make ci`）
+Lint: PASS（Task 1.2 固定版本 golangci-lint / `make ci`，0 findings）
+Coverage: PASS（Task 1.2 总体 91.3%，全部受控包 ≥90%）
+Integration: PASS（`tests/goose`、`tests/internal/testdb`、`tests/migration`；Task 1.2 A↔B FK 三引擎）
 Other verification: `git diff --check` PASS；source tree/三方言 63 表 PASS；REST baseline 与
 源代码集合相等（200/200）PASS；远端 Docker 26.1.5 PASS；MySQL 8.4.11 启动、查询、
 Windows TCP 连通及 append-only Up/Down 部分状态恢复矩阵 PASS；Linux FIFO 真实文件系统测试 PASS。
 
 ## Next Action
-进入 Task 1.1：用共享 testdb helper 参数化验证现有 todo/dlock/wuid/audit migration source 在
-SQLite、PostgreSQL、MySQL 上的 up、幂等、down 对称、前缀和标识符长度行为。
+进入 Task 1.3：从固定 source tree 的三方言 SQL 和真实写入路径建立 9 模块精确表集合，随后逐模块
+创建自治 `migrate.go` 与 `sql/{postgres,mysql,sqlite}`，接入 milestone DAG 和三引擎生命周期套件。
 
 ## Last Checkpoint
-2026-09-02 · IAM 分支 Task 1.0 已落地；三引擎 helper 位于独立 tests module，资源失败路径、
-PostgreSQL 端口竞争和 SQLite 多连接外键均完成复审与反向变异；固定 lint、完整 `make ci` PASS
-（总覆盖率 91.4%，24/24 受控包达标）。下一步 Task 1.1。
+2026-09-02 · IAM 分支 Task 1.2 已实现并通过完整 `make ci`：通用 milestone DAG、跨 source
+状态不变量、依赖安全 down、模块聚合状态和三引擎双向 FK 均有测试；三类关键门禁完成反向变异。
+下一步 Task 1.3 的 9 个自治 migration source 与 63 表。

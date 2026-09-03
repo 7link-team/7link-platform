@@ -160,12 +160,12 @@ func TestMigrationFailuresArePropagated(t *testing.T) {
 	assert.ErrorContains(t, err, "create provider")
 }
 
-func TestValidateMigrationStateRejectsDivergedHistory(t *testing.T) {
-	err := validateMigrationState(Status{
+func TestValidateStatusRejectsDivergedHistory(t *testing.T) {
+	err := ValidateStatus(Status{
 		Current: 2,
 		Target:  2,
 		Pending: []int64{1},
 	})
 	assert.ErrorContains(t, err, "embedded and applied migrations diverge")
-	assert.NoError(t, validateMigrationState(Status{Current: 1, Target: 2, Pending: []int64{2}}))
+	assert.NoError(t, ValidateStatus(Status{Current: 1, Target: 2, Pending: []int64{2}}))
 }

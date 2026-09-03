@@ -159,4 +159,30 @@ type (
 		Module
 		MigrationSource() goosex.Source
 	}
+
+	// MigrationMilestoneRef identifies a dependency on a named migration
+	// milestone in the application module set.
+	MigrationMilestoneRef struct {
+		Module string
+		Name   string
+	}
+
+	// MigrationMilestone maps a stable name to the last migration version in
+	// one independently schedulable section of a module-owned source.
+	MigrationMilestone struct {
+		Name         string
+		Version      int64
+		Dependencies []MigrationMilestoneRef
+	}
+
+	// MigrationMilestoneProvider optionally divides a module-owned migration
+	// source into dependency-aware sections. Declarations must use strictly
+	// increasing versions and the final version must equal the source target;
+	// each declaration implicitly depends on the preceding declaration in the
+	// same source. Modules without this capability continue to migrate their
+	// complete source in one operation.
+	MigrationMilestoneProvider interface {
+		MigrationSourceProvider
+		MigrationMilestones() []MigrationMilestone
+	}
 )

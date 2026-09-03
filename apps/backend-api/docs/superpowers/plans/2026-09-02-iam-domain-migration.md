@@ -365,20 +365,20 @@ func TestMigrationUsesSingleWriteHandle(t *testing.T) { /* 统计 Write() 调用
 
 > **顺序修正**:先用现有 4 个 migration module 建立三引擎套件，再扩展里程碑执行器，最后加入 9 个 IAM 域 migration source；每个提交点必须可编译。
 
-- [ ] **Step 1:** 建参数化套件,首批覆盖 `todo`/`dlock`/`wuid`/`audit` × 三引擎(**这四个模块的迁移从未在 PG/MySQL 上跑过**),含幂等与 up/down 对称
-- [ ] **Step 2:** 前缀测试——**只设 `Prefix`**,不要手工给 `TableName` 加前缀(`Source.versionTable()` 已经加了);断言 `sl_<表>` 存在、`<表>` 不存在、`sl_sl_*` 不存在
-- [ ] **Step 3:** 标识符长度测试(前缀上限 21 字符 + 长约束名可能越过 PG 63 字节 / MySQL 64 字符)
-- [ ] **Step 4:** 修正 `README.md` Testing 节的失实措辞(缺陷 E),说明实际覆盖范围与 go-mysql-server ≠ MySQL 8
-- [ ] **Step 5:** 跑通并提交(**此提交点可编译**)
+- [x] **Step 1:** 建参数化套件,首批覆盖 `todo`/`dlock`/`wuid`/`audit` × 三引擎(**这四个模块的迁移从未在 PG/MySQL 上跑过**),含幂等与 up/down 对称
+- [x] **Step 2:** 前缀测试——**只设 `Prefix`**,不要手工给 `TableName` 加前缀(`Source.versionTable()` 已经加了);断言 `sl_<表>` 存在、`<表>` 不存在、`sl_sl_*` 不存在
+- [x] **Step 3:** 标识符长度测试(前缀上限 21 字符 + 长约束名可能越过 PG 63 字节 / MySQL 64 字符)
+- [x] **Step 4:** 修正 `README.md` Testing 节的失实措辞(缺陷 E),说明实际覆盖范围与 go-mysql-server ≠ MySQL 8
+- [x] **Step 5:** 跑通并提交(**此提交点可编译**)
 
 #### Task 1.2: 迁移里程碑执行器
 
 **Files:** `pkg/module/module.go`、`internal/app/migration.go` 及测试；不新增 schema package。
 
-- [ ] **Step 1:** 用失败测试锁定 `MigrationMilestoneProvider` 的 DAG 校验：节点唯一、依赖存在、无环、同一 source 版本只前进；未实现该接口的模块保持当前一次执行到底的行为。
-- [ ] **Step 2:** up 按里程碑拓扑执行 `goosex.MigrateUpTo`，down 按反向拓扑；指定模块 down 遇到已应用依赖者时拒绝并列出节点，不隐式级联。
-- [ ] **Step 3:** 真实 SQLite/PostgreSQL/MySQL 套件构造 A↔B FK，证明 `A.base → B.base → A.constraints/B.constraints` 可执行，任意少跑 base 都失败；迁移状态报告仍按模块聚合且能显示当前 milestone。
-- [ ] **Step 4:** `make ci` 后提交；该执行器必须是通用可选能力，不写 IAM 模块名硬编码。
+- [x] **Step 1:** 用失败测试锁定 `MigrationMilestoneProvider` 的 DAG 校验：节点唯一、依赖存在、无环、同一 source 版本只前进；未实现该接口的模块保持当前一次执行到底的行为。
+- [x] **Step 2:** up 按里程碑拓扑执行 `goosex.MigrateUpTo`，down 按反向拓扑；指定模块 down 遇到已应用依赖者时拒绝并列出节点，不隐式级联。
+- [x] **Step 3:** 真实 SQLite/PostgreSQL/MySQL 套件构造 A↔B FK，证明 `A.base → B.base → A.constraints/B.constraints` 可执行，任意少跑 base 都失败；迁移状态报告仍按模块聚合且能显示当前 milestone。
+- [x] **Step 4:** `make ci` 后提交；该执行器必须是通用可选能力，不写 IAM 模块名硬编码。
 
 #### Task 1.3: 9 个模块迁移源、63 表
 

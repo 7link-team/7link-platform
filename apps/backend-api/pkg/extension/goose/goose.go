@@ -111,7 +111,7 @@ func migrateUpTo(
 	if version < 0 {
 		return fmt.Errorf("goose: target version cannot be negative: %d", version)
 	}
-	if err := validateMigrationState(status); err != nil {
+	if err := ValidateStatus(status); err != nil {
 		return err
 	}
 	if version > status.Target {
@@ -143,7 +143,7 @@ func MigrateDown(ctx context.Context, db *sql.DB, source Source, dialect string)
 	if err != nil {
 		return err
 	}
-	if err := validateMigrationState(status); err != nil {
+	if err := ValidateStatus(status); err != nil {
 		return err
 	}
 	if status.Current == 0 {
@@ -181,7 +181,7 @@ func migrateDownTo(
 	if version < 0 {
 		return fmt.Errorf("goose: target version cannot be negative: %d", version)
 	}
-	if err := validateMigrationState(status); err != nil {
+	if err := ValidateStatus(status); err != nil {
 		return err
 	}
 	if version > status.Current {
@@ -204,7 +204,9 @@ func migrateDownTo(
 	return nil
 }
 
-func validateMigrationState(status Status) error {
+// ValidateStatus rejects applied versions that are unavailable in the embedded
+// source and histories with unapplied versions below the current version.
+func ValidateStatus(status Status) error {
 	if len(status.Unknown) > 0 {
 		return fmt.Errorf("goose: database contains migrations unavailable in embedded SQL: %v", status.Unknown)
 	}
