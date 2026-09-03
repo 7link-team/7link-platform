@@ -26,8 +26,8 @@ Phase 1 / Task 1.3：建立 9 个自治 IAM 模块的三方言 migration source 
 ## Active Work
 Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5、Task 1.0/1.1/1.2 已实现；迁移计划为 v8，
 `internal/iam/` 作为域命名空间，9 个子模块各自拥有业务、model/query 与 SQL，取消集中 schema
-和 feature 分包。Task 1.3 已完成 identity、authn、oauth、audit、core、organization、governance 七个自治迁移源（54/63 表）；
-63 表所有权集合已闭合，当前继续语义重写 provisioning/federation。
+和 feature 分包。Task 1.3 已完成 identity、authn、oauth、audit、core、organization、governance、provisioning
+八个自治迁移源（59/63 表）；63 表所有权集合已闭合，当前继续语义重写 federation。
 
 ## Completed Work
 - 已从任务记录与实际仓库恢复断点；工作树在本轮开始时干净。
@@ -102,6 +102,10 @@ Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5、Task 1.0/1.1/1.2 已实现；迁移计划为 
 - Task 1.3 governance：三方言 4 表、3 个迁移版本完成；请求原因保留 500 字节限制，状态、决策及
   7 类 grant type 使用 binary enum，缺省决策/撤销时间保持 NULL；tenant FK 与子表级联约束归入
   governance constraints，并通过普通/`sl_` 前缀的三引擎 up/幂等/down/up、依赖拒绝和最大标识符验证。
+- Task 1.3 provisioning：三方言 5 表、3 个迁移版本完成；8 类时间列改为真实时间，credential
+  过期/使用/撤销与资源删除保持 NULL 未发生语义；SCIM 枚举、哈希、密文和外部标识符使用 binary
+  collation，名称/外部标识符落实源码字节上限。2 条 tenant FK 归入 provisioning constraints；
+  普通/`sl_` 前缀的三引擎数据保留 down/up、依赖拒绝、级联、大小写和最大标识符验证通过。
 
 ## Important Decisions
 - 目标为全量、全功能迁移；SAML/SCIM 不允许长期 Disabled。
@@ -133,16 +137,17 @@ Lint: PASS（Task 1.2 固定版本 golangci-lint / `make ci`，0 findings）
 Coverage: PASS（Task 1.2 总体 91.3%，全部受控包 ≥90%）
 Integration: PASS（`tests/goose`、`tests/internal/testdb`、完整 `tests/migration`；Task 1.2 A↔B FK；
 Task 1.3 identity→authn DAG、audit append-only/retention、core R5''/R9''/R16、
-organization→core、oauth→organization 与 governance→organization 三引擎双前缀生命周期）
+organization→core、oauth→organization、governance→organization 与 provisioning→organization
+三引擎双前缀生命周期）
 Other verification: `git diff --check` PASS；source tree/三方言 63 表 PASS；REST baseline 与
 源代码集合相等（200/200）PASS；远端 Docker 26.1.5 PASS；MySQL 8.4.11 启动、查询、
 Windows TCP 连通及 append-only Up/Down 部分状态恢复矩阵 PASS；Linux FIFO 真实文件系统测试 PASS。
 
 ## Next Action
-继续 Task 1.3：语义重写 provisioning 的 5 张表，落实真实时间、NULL、binary enum、CHECK、
-跨模块约束与三引擎生命周期，再推进 federation。
+继续 Task 1.3：语义重写 federation 的 4 张表，落实真实时间、NULL、binary enum/协议标识符、
+CHECK、identity 跨模块约束与三引擎生命周期，完成 63/63 表后进入 Task 1.4 真 MySQL 8 门禁。
 
 ## Last Checkpoint
-2026-09-02 · IAM 分支 Task 1.3 阶段检查点：identity/authn/oauth/audit/core/organization/governance
-七个自治 migration source 的 54/63 表已完成语义改写；完整 migration 测试、63 表所有权、最大前缀及
-organization/core/oauth/governance 三引擎 DAG 门禁通过。下一步重写 provisioning。
+2026-09-02 · IAM 分支 Task 1.3 阶段检查点：除 federation 外的八个自治 migration source 已完成
+59/63 表语义改写；完整 migration 测试、63 表所有权、最大前缀及 provisioning 三引擎数据保留 DAG
+门禁通过。下一步重写 federation，随后执行真实 MySQL 8 门禁并冻结 schema baseline。
