@@ -48,7 +48,7 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/pkg/i18n \
 	7link.com/platform/pkg/query
 
-.PHONY: build ci dev fmt-check generate generate-docs iam-preflight lint test test-coverage test-integration test-all
+.PHONY: build ci dev fmt-check generate generate-docs iam-preflight lint test test-coverage test-integration test-all test-mysql8 test-mysql8-run
 
 build:
 	$(MKDIR_OUTPUT)
@@ -71,6 +71,15 @@ generate-docs:
 # The generated .temp/iam-env.mk contains paths only; it never stores credentials.
 iam-preflight:
 	go -C tools run ./iam-preflight --target .. --fix --bootstrap-docker
+
+# Re-enter make after preflight so the generated machine-local transport is
+# loaded even when .temp/iam-env.mk did not exist when this process started.
+test-mysql8: iam-preflight
+	@"$(MAKE)" --no-print-directory test-mysql8-run
+
+test-mysql8-run:
+	bash scripts/test-mysql8.sh "$(DOCKER_TEST_HOST)" "$(MYSQL8_IMAGE)" $(DOCKER_CMD)
+	go -C tools run ./iam-schema-lock --target ..
 
 # Single entry point for a pipeline: every gate, in cheapest-first order, so a
 # formatting or lint failure reports before the slow database tests run. Fails

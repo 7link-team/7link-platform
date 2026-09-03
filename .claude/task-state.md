@@ -12,22 +12,23 @@ PostgreSQL、MySQL、SQLite 真实迁移与 `make ci` 门禁。
 IMPLEMENTATION
 
 ## Current Step
-Phase 1 / Task 1.4：建立真实 MySQL 8 门禁并冻结 63 表 schema baseline。
+Phase 2 / Task 2：完整迁移 `internal/iam/core` Go 功能。
 
 ## Overall Progress
 - [x] 深度分析与迁移方案 v8
 - [x] 两轮独立评审问题回收并修订方案
 - [x] 两机环境 / Docker / collation / entity type 决策闭环
 - [x] Phase 0 前置修复、扩展包、端口图与依赖评审
-- [ ] Phase 1 九个模块自治迁移源、里程碑 DAG 与三引擎验证
+- [x] Phase 1 九个模块自治迁移源、里程碑 DAG 与三引擎验证
 - [ ] Phase 2–8 Go 模块迁移
 - [ ] Phase 9 集成与验收
 
 ## Active Work
 Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5、Task 1.0/1.1/1.2 已实现；迁移计划为 v8，
 `internal/iam/` 作为域命名空间，9 个子模块各自拥有业务、model/query 与 SQL，取消集中 schema
-和 feature 分包。Task 1.3 已完成 identity、authn、oauth、audit、core、organization、governance、provisioning
-九个自治迁移源（63/63 表）；63 表所有权集合已闭合，当前进入真实 MySQL 8 门禁与 baseline 冻结。
+和 feature 分包。Task 1.3 已完成 identity、authn、oauth、audit、core、organization、governance、provisioning、
+federation 九个自治迁移源（63/63 表）；Task 1.4 已完成真实 MySQL 8 门禁、静态对账与 baseline 冻结，
+当前进入 core Go 功能迁移。
 
 ## Completed Work
 - 已从任务记录与实际仓库恢复断点；工作树在本轮开始时干净。
@@ -111,6 +112,12 @@ Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5、Task 1.0/1.1/1.2 已实现；迁移计划为 
   provider/link/SP/key 的源码字节上限。link 的 provider FK 加强为 tenant 复合约束，principal FK 归入
   federation constraints；普通/`sl_` 前缀的三引擎 `2→3→2→3` 数据保留、依赖拒绝、级联、DAG
   回滚和最大标识符验证通过。九个模块 migration source 现已达到 63/63 表。
+- Task 1.4：新增 `make test-mysql8`，自动消费本机或 SSH Docker transport；固定 MySQL 8.4 digest、
+  `sql_mode` 与非 root trigger 创建前提，使用随机凭据/端口、唯一容器标签及可验证清理。普通与 `sl_`
+  前缀均完成 9 流 up/validate/down/up、R16、R9''、federation 与 append-only 契约验证。
+- `schema.lock` 冻结 135 个已发布 migration 文件；静态补充门禁对账 63 张 IAM 表、27 条跨模块 FK、
+  三方言文件集合、对象前缀、时间类型与禁止改写/插入历史版本规则。Task 1.4 deep-review 修复固定 root
+  凭据和静默清理失败后无剩余发现；Swagger/OpenAPI 对本次纯迁移门禁改动不适用。
 
 ## Important Decisions
 - 目标为全量、全功能迁移；SAML/SCIM 不允许长期 Disabled。
@@ -131,29 +138,29 @@ Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5、Task 1.0/1.1/1.2 已实现；迁移计划为 
 ## Known Issues / Risks
 - 多写者 routing mode 与读副本接线仍是独立架构决策，不在 Task 0.0 中扩大范围。
 - Mac 上的 `make iam-preflight` 与 `make ci` 尚未在本轮实跑；回到 Mac 后先完成该检查。
-- MySQL append-only 半回滚恢复矩阵已在真实 MySQL 8.4 手工验证，但默认 `make ci` 仍使用
-  内存 MySQL；真实引擎 DDL 隐式提交场景尚未形成持续集成门禁。
+- `make ci` 默认仍使用内存 MySQL；真实 MySQL DDL 门禁由独立的 `make test-mysql8` 执行，最终验收必须两者都跑。
 - 本任务约 6 万行，必须按 Phase 分批实现、验证和留档。
 
 ## Verification
 Build: PASS（Task 1.2 Windows `make ci` build；Task 0.4 Linux CGO-disabled cross-compile）
 Tests: PASS（Task 1.2 主模块全量 + 独立 tests module + 完整 `make ci`）
-Lint: PASS（Task 1.2 固定版本 golangci-lint / `make ci`，0 findings）
+Lint: PASS（Task 1.4 固定版本 golangci-lint，0 findings）
 Coverage: PASS（Task 1.2 总体 91.3%，全部受控包 ≥90%）
 Integration: PASS（`tests/goose`、`tests/internal/testdb`、完整 `tests/migration`；Task 1.2 A↔B FK；
 Task 1.3 identity→authn DAG、audit append-only/retention、core R5''/R9''/R16、
 organization→core、oauth→organization、governance→organization 与 provisioning→organization
-及 federation→identity 三引擎双前缀生命周期）
+及 federation→identity 三引擎双前缀生命周期；Task 1.4 全套 `tests` module 133.453s）
 Other verification: `git diff --check` PASS；source tree/三方言 63 表 PASS；REST baseline 与
 源代码集合相等（200/200）PASS；远端 Docker 26.1.5 PASS；MySQL 8.4.11 启动、查询、
-Windows TCP 连通及 append-only Up/Down 部分状态恢复矩阵 PASS；Linux FIFO 真实文件系统测试 PASS。
+Windows TCP 连通及非 root 用户全量双前缀迁移 PASS；schema lock 135 文件、63 表、27 跨模块 FK PASS；
+门禁成功/失败路径远端容器清理 PASS；Linux FIFO 真实文件系统测试 PASS。
 
 ## Next Action
-执行 Task 1.4：新增 `make test-mysql8`，通过自动探测的 Docker transport 在真实 MySQL 8.4 上运行
-63 表迁移与 R16/R9'' 契约，补静态对账后冻结 `schema.lock`。
+执行 Task 2：先按 source manifest 建立 `internal/iam/core` 的 model/query/dbgen 与双向 schema 契约，
+再按源文件职责迁移 repository、domain/service、HTTP/module 和负向隔离测试。
 
 ## Last Checkpoint
-2026-09-02 · IAM 分支 Task 1.3 完成检查点：九个自治 migration source 已完成 63/63 表语义改写；
-最终 `go test ./migration -count=1` 在 SQLite、go-mysql-server、PostgreSQL 全量通过（130.784s），
-federation 最大标识符与 tenant 复合外键测试完成反向变异验证。下一步执行真实 MySQL 8 门禁并冻结
-schema baseline。
+2026-09-02 · IAM 分支 Task 1.4 完成检查点：`make test-mysql8` 在 SSH Docker 的 MySQL 8.4.11 上以
+非 root 用户完成 9 个自治 migration source、63/63 表、普通/`sl_` 前缀全生命周期及关键契约验证；
+`schema.lock` 冻结 135 个已发布文件并对账 27 条跨模块 FK。工具测试、完整 tests module（133.453s）、
+格式、lint、diff 检查及远端容器清理均通过。下一步进入 Task 2 core Go 功能迁移。

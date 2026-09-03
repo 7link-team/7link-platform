@@ -8,6 +8,7 @@ require (
 	7link.com/platform v0.0.0
 	github.com/dolthub/go-mysql-server v0.20.0
 	github.com/fergusstrange/embedded-postgres v1.34.0
+	github.com/go-sql-driver/mysql v1.10.0
 	github.com/lib/pq v1.12.3
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/stretchr/testify v1.12.1
@@ -38,7 +39,6 @@ require (
 	github.com/go-chi/chi/v5 v5.3.1 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-sql-driver/mysql v1.10.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/google/cel-go v0.30.0 // indirect
 	github.com/google/pprof v0.0.0-20260802141513-ef3492d7dac3 // indirect

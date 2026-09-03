@@ -162,7 +162,7 @@ A3 明细:`iam_role_bindings.role_id`(VARCHAR32→BIGINT)、`iam_sessions.princi
 
 ### 2.1 模块 SQL 自治与迁移里程碑
 
-**依据(实测)**:56 条外键中 13 条跨模块,分布为
+**源库边界依据(实测)**:按源库 5 个 migration source 计算，56 条外键中 13 条跨 source，分布为
 
 ```
 organization -> iam            7
@@ -170,6 +170,18 @@ iam          -> organization   1     ← 与上一行构成双向环
 provisioning -> organization   2
 governance   -> organization   2
 federation   -> iam            1
+```
+
+目标按 9 个自治模块重新划分后，原 `modules/iam/sql` 内部关系也成为跨模块 FK，最终为 **27 条**：
+
+```
+authn       -> identity        11
+oauth       -> identity         3
+oauth       -> organization     1
+organization -> core            7
+governance  -> organization     2
+provisioning -> organization    2
+federation  -> identity         1
 ```
 
 `core` 与 `organization` 在 schema 层**互相引用**。环说明当前执行器“按注册顺序把每个 source 一次跑到底”的粒度不足，但不改变 SQL 所有权。目标按实际写入职责形成 9 个 migration source：
@@ -418,7 +430,7 @@ CREATE TABLE {{.Prefix}}iam_roles (
 
 `iam_entities`(R5''):可空 `parent_id` + 自引用 FK + PG/SQLite 双部分唯一索引;MySQL 生成列 `COALESCE(parent_id,0)` **并加 `CHECK (id > 0)`**。
 
-- [x] **Step 3:** 将所有跨模块 FK 从 CREATE TABLE 移到子表所属模块的 constraints migration；声明 §2.1 的 milestone 依赖，保持 13 条约束和原 DELETE 语义。
+- [x] **Step 3:** 将所有跨模块 FK 从 CREATE TABLE 移到子表所属模块的 constraints migration；声明 §2.1 的 milestone 依赖，保持目标 9 模块边界下的 27 条约束和原 DELETE 语义。
 - [x] **Step 4:** 移植三方言 append-only 触发器；9 个 `MigrationSource()` 使用 §2.1 的独立版本表名，不自行加前缀。
 - [x] **Step 5:** 接入 Task 1.1/1.2 套件，三引擎执行 up → validate → reverse down → up，断言 63 表与 9 个版本表。
 - [x] **Step 6:** 提交。
@@ -427,10 +439,10 @@ CREATE TABLE {{.Prefix}}iam_roles (
 
 > **门禁强化**(codex C5):v2 允许 docker 不可用时只记 Known Issue 就冻结 baseline,等于把未验证的 MySQL schema 永久钉死。
 
-- [ ] **Step 1:** `make test-mysql8`——固定镜像 digest 与 `sql_mode`，所有容器命令使用 `$(DOCKER_CMD)`；连接地址使用 `$(DOCKER_TEST_HOST)`。用唯一 label + `trap` 保证只清理本次容器、healthcheck 等就绪、随机远端端口、`-count=1`，禁止假设容器端口位于 localhost
-- [ ] **Step 2:** **硬门禁**:真实 MySQL 8 通过 **且** R16 collation 策略、R9'' 的 `type` 不可变约定均已决策,才允许生成 `schema.lock`
-- [ ] **Step 3:** 静态对账(正则,**声明为真引擎验证的补充而非替代**;先剥注释再匹配)
-- [ ] **Step 4:** 冻结后已发布迁移文件不得改写,只允许追加
+- [x] **Step 1:** `make test-mysql8`——固定镜像 digest、`sql_mode` 与非 root trigger 创建前提，所有容器命令使用 `$(DOCKER_CMD)`；连接地址使用 `$(DOCKER_TEST_HOST)`。用唯一 label + `trap` 保证只清理本次容器、healthcheck 等就绪、随机远端端口、`-count=1`，禁止假设容器端口位于 localhost
+- [x] **Step 2:** **硬门禁**:真实 MySQL 8 通过 **且** R16 collation 策略、R9'' 的 `type` 不可变约定均已决策,才允许生成 `schema.lock`
+- [x] **Step 3:** 静态对账(正则,**声明为真引擎验证的补充而非替代**;先剥注释再匹配)
+- [x] **Step 4:** 冻结后已发布迁移文件不得改写,只允许追加
 
 ### Phase 2–8 — Go 代码移植
 
