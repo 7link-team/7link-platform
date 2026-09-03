@@ -10,6 +10,7 @@ import (
 
 	iamaudit "7link.com/platform/internal/iam/audit"
 	iamcore "7link.com/platform/internal/iam/core"
+	"7link.com/platform/internal/iam/governance"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/organization"
 	infraaudit "7link.com/platform/internal/infra/audit"
@@ -68,12 +69,10 @@ func TestMigrationIdentifiersFitEngineLimitsAtMaximumPrefix(t *testing.T) {
 	require.NoError(t, goosex.ValidatePrefix(maximumPrefix))
 	require.Error(t, goosex.ValidatePrefix(maximumPrefix+"x"))
 
-	identifierModules := append(moduleMigrations(), moduleMigration{
-		name:   "organization",
-		table:  "iam_tenants",
-		target: 8,
-		source: (&organization.Module{}).MigrationSource(),
-	})
+	identifierModules := append(moduleMigrations(), []moduleMigration{
+		{name: "organization", table: "iam_tenants", target: 8, source: (&organization.Module{}).MigrationSource()},
+		{name: "governance", table: "iam_access_requests", target: 3, source: (&governance.Module{}).MigrationSource()},
+	}...)
 	for _, module := range identifierModules {
 		for _, engine := range []databaseEngine{
 			{name: "mysql", dialect: "mysql", identifierLimit: 64},

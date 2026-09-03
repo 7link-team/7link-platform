@@ -26,8 +26,8 @@ Phase 1 / Task 1.3：建立 9 个自治 IAM 模块的三方言 migration source 
 ## Active Work
 Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5、Task 1.0/1.1/1.2 已实现；迁移计划为 v8，
 `internal/iam/` 作为域命名空间，9 个子模块各自拥有业务、model/query 与 SQL，取消集中 schema
-和 feature 分包。Task 1.3 已完成 identity、authn、oauth、audit、core、organization 六个自治迁移源（50/63 表）；
-63 表所有权集合已闭合，当前语义重写 governance/provisioning/federation。
+和 feature 分包。Task 1.3 已完成 identity、authn、oauth、audit、core、organization、governance 七个自治迁移源（54/63 表）；
+63 表所有权集合已闭合，当前继续语义重写 provisioning/federation。
 
 ## Completed Work
 - 已从任务记录与实际仓库恢复断点；工作树在本轮开始时干净。
@@ -99,6 +99,9 @@ Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5、Task 1.0/1.1/1.2 已实现；迁移计划为 
   岗位规范化 code、静态/动态组、成员 NULL 时间窗、邀请可空状态及 1024/4096 字节限制已对齐。
   7 条指向 core 的 FK 归入 organization constraints；OAuth tenant FK 与 identity/core/organization
   一并通过无序注册的里程碑 DAG、孤儿拒绝、CASCADE/RESTRICT 和有数据 down/up 生命周期验证。
+- Task 1.3 governance：三方言 4 表、3 个迁移版本完成；请求原因保留 500 字节限制，状态、决策及
+  7 类 grant type 使用 binary enum，缺省决策/撤销时间保持 NULL；tenant FK 与子表级联约束归入
+  governance constraints，并通过普通/`sl_` 前缀的三引擎 up/幂等/down/up、依赖拒绝和最大标识符验证。
 
 ## Important Decisions
 - 目标为全量、全功能迁移；SAML/SCIM 不允许长期 Disabled。
@@ -130,16 +133,16 @@ Lint: PASS（Task 1.2 固定版本 golangci-lint / `make ci`，0 findings）
 Coverage: PASS（Task 1.2 总体 91.3%，全部受控包 ≥90%）
 Integration: PASS（`tests/goose`、`tests/internal/testdb`、完整 `tests/migration`；Task 1.2 A↔B FK；
 Task 1.3 identity→authn DAG、audit append-only/retention、core R5''/R9''/R16、
-organization→core 与 oauth→organization 三引擎双前缀生命周期）
+organization→core、oauth→organization 与 governance→organization 三引擎双前缀生命周期）
 Other verification: `git diff --check` PASS；source tree/三方言 63 表 PASS；REST baseline 与
 源代码集合相等（200/200）PASS；远端 Docker 26.1.5 PASS；MySQL 8.4.11 启动、查询、
 Windows TCP 连通及 append-only Up/Down 部分状态恢复矩阵 PASS；Linux FIFO 真实文件系统测试 PASS。
 
 ## Next Action
-继续 Task 1.3：语义重写 governance 的 4 张表，落实真实时间、NULL、binary enum、CHECK、
-organization/core 跨模块约束与三引擎生命周期，再推进 provisioning 和 federation。
+继续 Task 1.3：语义重写 provisioning 的 5 张表，落实真实时间、NULL、binary enum、CHECK、
+跨模块约束与三引擎生命周期，再推进 federation。
 
 ## Last Checkpoint
-2026-09-02 · IAM 分支 Task 1.3 阶段检查点：identity/authn/oauth/audit/core/organization 六个自治
-migration source 的 50/63 表已完成语义改写；完整 migration 测试、63 表所有权、最大前缀及
-organization/core/oauth 三引擎 DAG 门禁通过。下一步重写 governance。
+2026-09-02 · IAM 分支 Task 1.3 阶段检查点：identity/authn/oauth/audit/core/organization/governance
+七个自治 migration source 的 54/63 表已完成语义改写；完整 migration 测试、63 表所有权、最大前缀及
+organization/core/oauth/governance 三引擎 DAG 门禁通过。下一步重写 provisioning。
