@@ -1,5 +1,3 @@
-// Package core owns IAM policy state and the tenant revision used to detect
-// concurrent policy changes.
 package core
 
 import (
@@ -8,18 +6,12 @@ import (
 	"fmt"
 	"time"
 
+	"7link.com/platform/internal/iam/core/model"
+	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/goose"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
-
-const policyRevisionTable = "iam_policy_revisions"
-
-type policyRevision struct {
-	TenantID  int64      `gorm:"column:tenant_id;primaryKey"`
-	Revision  int64      `gorm:"column:revision"`
-	UpdatedAt *time.Time `gorm:"column:updated_at"`
-}
 
 // RevisionStore operates on the core module's IAM policy revision table. The
 // prefix must be the same deployment prefix used by the module migration.
@@ -33,16 +25,16 @@ func NewRevisionStore(prefix string) (*RevisionStore, error) {
 	if err := goosex.ValidatePrefix(prefix); err != nil {
 		return nil, err
 	}
-	return &RevisionStore{table: prefix + policyRevisionTable}, nil
+	return &RevisionStore{table: prefix + model.PolicyRevision{}.TableName()}, nil
 }
 
 // Current returns the tenant's revision, or zero when no policy mutation has
 // created a revision row yet.
-func (store *RevisionStore) Current(ctx context.Context, db *gorm.DB, tenantID int64) (int64, error) {
+func (store *RevisionStore) Current(ctx context.Context, db *gorm.DB, tenantID guid.ID) (int64, error) {
 	if err := store.validate(db, tenantID); err != nil {
 		return 0, fmt.Errorf("invalid policy revision query: %w", err)
 	}
-	var row policyRevision
+	var row model.PolicyRevision
 	err := db.WithContext(ctx).Table(store.table).
 		Select("revision").Where("tenant_id = ?", tenantID).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -57,12 +49,15 @@ func (store *RevisionStore) Current(ctx context.Context, db *gorm.DB, tenantID i
 // Lock serializes policy mutations for one tenant without advancing its
 // revision. The caller must pass a transaction when the lock must cover more
 // than this method call.
-func (store *RevisionStore) Lock(ctx context.Context, db *gorm.DB, tenantID int64) error {
+func (store *RevisionStore) Lock(ctx context.Context, db *gorm.DB, tenantID guid.ID) error {
 	if err := store.validate(db, tenantID); err != nil {
 		return fmt.Errorf("invalid policy revision lock: %w", err)
 	}
 	database := db.WithContext(ctx).Table(store.table)
-	row := policyRevision{TenantID: tenantID}
+	row := model.PolicyRevision{
+		TenantID:  tenantID,
+		UpdatedAt: time.Now().UTC().Truncate(time.Millisecond),
+	}
 	if err := database.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error; err != nil {
 		return fmt.Errorf("lock IAM policy revision: ensure row: %w", err)
 	}
@@ -75,7 +70,7 @@ func (store *RevisionStore) Lock(ctx context.Context, db *gorm.DB, tenantID int6
 
 // Bump atomically increments the tenant revision and records updatedAt. A
 // single upsert prevents concurrent writers from losing increments.
-func (store *RevisionStore) Bump(ctx context.Context, db *gorm.DB, tenantID int64, updatedAt time.Time) error {
+func (store *RevisionStore) Bump(ctx context.Context, db *gorm.DB, tenantID guid.ID, updatedAt time.Time) error {
 	if err := store.validate(db, tenantID); err != nil {
 		return fmt.Errorf("invalid policy revision bump: %w", err)
 	}
@@ -83,7 +78,7 @@ func (store *RevisionStore) Bump(ctx context.Context, db *gorm.DB, tenantID int6
 		return errors.New("invalid policy revision bump: updated time is required")
 	}
 	updatedAt = updatedAt.UTC().Truncate(time.Millisecond)
-	row := policyRevision{TenantID: tenantID, Revision: 1, UpdatedAt: &updatedAt}
+	row := model.PolicyRevision{TenantID: tenantID, Revision: 1, UpdatedAt: updatedAt}
 	err := db.WithContext(ctx).Table(store.table).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "tenant_id"}},
 		DoUpdates: clause.Assignments(map[string]any{
@@ -97,7 +92,7 @@ func (store *RevisionStore) Bump(ctx context.Context, db *gorm.DB, tenantID int6
 	return nil
 }
 
-func (store *RevisionStore) validate(db *gorm.DB, tenantID int64) error {
+func (store *RevisionStore) validate(db *gorm.DB, tenantID guid.ID) error {
 	if store == nil {
 		return errors.New("store is nil")
 	}

@@ -20,7 +20,7 @@ func TestRevisionStoreLifecycleUsesPrefixedTable(t *testing.T) {
 	require.NoError(t, db.Exec(`CREATE TABLE sl_iam_policy_revisions (
 		tenant_id INTEGER PRIMARY KEY,
 		revision BIGINT NOT NULL,
-		updated_at DATETIME NULL
+		updated_at DATETIME NOT NULL
 	)`).Error)
 
 	store, err := NewRevisionStore("sl_")
@@ -65,7 +65,7 @@ func TestRevisionStoreConcurrentBumpsDoNotLoseUpdates(t *testing.T) {
 	require.NoError(t, db.Exec(`CREATE TABLE iam_policy_revisions (
 		tenant_id INTEGER PRIMARY KEY,
 		revision BIGINT NOT NULL,
-		updated_at DATETIME NULL
+		updated_at DATETIME NOT NULL
 	)`).Error)
 	store, err := NewRevisionStore("")
 	require.NoError(t, err)
@@ -99,7 +99,7 @@ func TestRevisionStoreLockSerializesTenantMutations(t *testing.T) {
 	require.NoError(t, db.Exec(`CREATE TABLE iam_policy_revisions (
 		tenant_id INTEGER PRIMARY KEY,
 		revision BIGINT NOT NULL,
-		updated_at DATETIME NULL
+		updated_at DATETIME NOT NULL
 	)`).Error)
 	store, err := NewRevisionStore("")
 	require.NoError(t, err)

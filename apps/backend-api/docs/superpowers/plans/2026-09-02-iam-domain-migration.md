@@ -465,7 +465,7 @@ CREATE TABLE {{.Prefix}}iam_roles (
 - Tests: `administrator_test.go`, `authorization_test.go`, `authorizer_test.go`, `data_scope_test.go`, `directory_binding_test.go`, `dynamic_group_test.go`, `entity_test.go`, `escalation_test.go`, `i18n_test.go`, `module_test.go`, `pagination_test.go`, `platform_rest_test.go`, `platform_test.go`, `relationship_test.go`, `repository_test.go`, `rest_test.go`, `review_grant_test.go`, `service_admin_test.go`, `service_test.go`, `temporary_grant_test.go`, `transaction_test.go`。
 - Phase 1 only: `migrate.go`, `migrate_test.go`, `sql/{postgres,mysql,sqlite}/`。
 
-- [ ] **2.1 Model/query/dbgen:** 在 `internal/iam/core/{model,query,dbgen}` 为本模块 13 表建立模型与生成查询；复合 FK、nullable time、binary/name_key 语义写入契约测试。
+- [x] **2.1 Model/query/dbgen:** 在 `internal/iam/core/{model,query,dbgen}` 为本模块 13 表建立模型与生成查询；复合 FK、nullable time、binary/name_key 语义写入契约测试。
 - [ ] **2.2 Repositories:** 将 `repository*.go`、`transaction.go` 与 raw SQL 按源文件职责迁入 `internal/iam/core` 同级文件并改为前缀安全 gorm；覆盖角色/权限/成员/菜单/平台管理员/实体/关系/临时授权的 tenant 条件。
 - [ ] **2.3 Domain/services:** 在 core 根包同级业务文件中移植全部领域与用例；直接声明并提供 checker/guard/store 窄接口，不创建 feature 或 contract 中转包。
 - [ ] **2.4 HTTP/module:** 根包 HTTP 文件注册 51 条 IAM 路由；`module.go` 保留 `NewDeclarationOnlyModule`，Phase 8 才接入 app composition root。
