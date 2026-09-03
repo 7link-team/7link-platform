@@ -9,9 +9,6 @@ import (
 
 const Name = "iam"
 
-// Module owns IAM authorization, membership, menu, entity, and relationship data.
-type Module struct{}
-
 func (*Module) ModuleName() string { return Name }
 
 //go:embed sql

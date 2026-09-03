@@ -468,9 +468,9 @@ CREATE TABLE {{.Prefix}}iam_roles (
 - [x] **2.1 Model/query/dbgen:** 在 `internal/iam/core/{model,query,dbgen}` 为本模块 13 表建立模型与生成查询；复合 FK、nullable time、binary/name_key 语义写入契约测试。
 - [x] **2.2 Repositories:** 将 `repository*.go`、`transaction.go` 与 raw SQL 按源文件职责迁入 `internal/iam/core` 同级文件并改为前缀安全 gorm；覆盖角色/权限/成员/菜单/平台管理员/实体/关系/临时授权的 tenant 条件。
 - [x] **2.3 Domain/services:** 在 core 根包同级业务文件中移植全部领域与用例；直接声明并提供 checker/guard/store 窄接口，不创建 feature 或 contract 中转包。
-- [ ] **2.4 HTTP/module:** 根包 HTTP 文件注册 51 条 IAM 路由；`module.go` 保留 `NewDeclarationOnlyModule`，Phase 8 才接入 app composition root。
-- [ ] **2.5 Negatives/tests:** tenant A 对 tenant B 的 role/member/menu/entity/relationship ID 执行 get/list/update/delete/grant 必须返回 not-found/空集合且 B 行不变；platform 管理接口无 platform principal 必须拒绝；并发删除最后管理员只能一个成功。
-- [ ] **2.6 Gate:** 登记 `7link.com/platform/internal/iam/core`，运行 `go generate ./internal/iam/core`、模块定向测试和 `make ci`。
+- [x] **2.4 HTTP/module:** 根包 HTTP 文件注册 51 条 IAM 路由；`module.go` 保留 `NewDeclarationOnlyModule`，Phase 8 才接入 app composition root。
+- [x] **2.5 Negatives/tests:** tenant A 对 tenant B 的 role/member/menu/entity/relationship ID 执行 get/list/update/delete/grant 必须返回 not-found/空集合且 B 行不变；platform 管理接口无 platform principal 必须拒绝；并发删除最后管理员只能一个成功。
+- [x] **2.6 Gate:** 登记 `7link.com/platform/internal/iam/core`，运行 `go generate ./internal/iam/core`、模块定向测试和 `make ci`。
 
 #### Task 3: 迁移 `authn` 与 `identity`
 

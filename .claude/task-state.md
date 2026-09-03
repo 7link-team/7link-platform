@@ -12,7 +12,7 @@ PostgreSQL、MySQL、SQLite 真实迁移与 `make ci` 门禁。
 IMPLEMENTATION
 
 ## Current Step
-Phase 2 / Task 2.4：迁移 `internal/iam/core` HTTP 路由、请求响应契约与 module 装配。
+Phase 3 / Task 3.1：迁移 `internal/iam/authn` 数据模型、生成查询与仓储。
 
 ## Overall Progress
 - [x] 深度分析与迁移方案 v8
@@ -20,7 +20,8 @@ Phase 2 / Task 2.4：迁移 `internal/iam/core` HTTP 路由、请求响应契约
 - [x] 两机环境 / Docker / collation / entity type 决策闭环
 - [x] Phase 0 前置修复、扩展包、端口图与依赖评审
 - [x] Phase 1 九个模块自治迁移源、里程碑 DAG 与三引擎验证
-- [ ] Phase 2–8 Go 模块迁移
+- [x] Phase 2 core Go 模块迁移
+- [ ] Phase 3–8 其余 Go 模块迁移与装配
 - [ ] Phase 9 集成与验收
 
 ## Active Work
@@ -28,7 +29,7 @@ Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5、Task 1.0/1.1/1.2 已实现；迁移计划为 
 `internal/iam/` 作为域命名空间，9 个子模块各自拥有业务、model/query 与 SQL，取消集中 schema
 和 feature 分包。Task 1.3 已完成 identity、authn、oauth、audit、core、organization、governance、provisioning、
 federation 九个自治迁移源（63/63 表）；Task 1.4 已完成真实 MySQL 8 门禁、静态对账与 baseline 冻结。
-Task 2.3 core 领域服务、授权判定与校验语义已完成，当前进入 HTTP/module 迁移。
+Task 2.4–2.6 已完成 core HTTP/module、负例与阶段门禁，当前进入 authn 数据与仓储迁移。
 
 Task 2.1 已完成：13 张 core 表均已有 module-owned model、gorm-gen query 与统一前缀绑定；三引擎
 model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entities.parent_key` 是唯一显式方言例外。
@@ -144,6 +145,13 @@ model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entitie
   增量与闭环失败无脏写门禁；对应反向变异均准确失败。当前批次无 HTTP/OpenAPI 改动，Swagger 评审不适用。
 - Task 2.3 最终 `make ci` 暴露 audit/organization 已登记覆盖包的迁移 module 方法缺少包内契约测试；
   补齐 module name、embedded source、milestone 版本/依赖全称断言后两包均为 100.0%，反向变异准确失败。
+- Task 2.4–2.6：core 根包已迁入 module 生命周期、i18n 与 51 条冻结 HTTP 路由；实际 OpenAPI 的
+  `OperationID|METHOD|PATH` 与冻结基线 51/51 完全相等，且与固定源树的注册类型及 resource/verb guard
+  逐条一致。tenant A/B 的 role/member/menu/entity/relationship 跨租户读写负例、platform guard、完整
+  CRUD/授权流程、数据库关闭后的全路由错误 envelope、全部领域 sentinel 映射均有行为测试。
+- Task 2.4–2.6 deep-review 修复一项 `testifylint` 断言形式；Swagger 门禁确认路径/参数/ID schema、
+  PATCH 可清空 ID、relationship DELETE 必填 tuple、统一错误 schema 和兼容性均无剩余发现。
+  `go generate` 幂等、core race、core 90.0%、全仓 `make ci`、真实 MySQL 8.4 与 schema lock 均通过。
 
 ## Important Decisions
 - 目标为全量、全功能迁移；SAML/SCIM 不允许长期 Disabled。
@@ -168,25 +176,26 @@ model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entitie
 - 本任务约 6 万行，必须按 Phase 分批实现、验证和留档。
 
 ## Verification
-Build: PASS（Task 2.3 Windows `make ci` build；Task 0.4 Linux CGO-disabled cross-compile）
-Tests: PASS（Task 2.3 core `-race`；完整 `make ci`；独立 `tests/migration` 163.194s；真实 MySQL 8.4）
-Lint: PASS（Task 2.3 `make ci` 全仓 golangci-lint，0 findings）
+Build: PASS（Task 2.4–2.6 Windows `make ci` build；Task 0.4 Linux CGO-disabled cross-compile）
+Tests: PASS（Task 2.4–2.6 core `-race`；完整 `make ci`；`tests/migration` 154.820s；真实 MySQL 8.4）
+Lint: PASS（Task 2.4–2.6 `make ci` 全仓 golangci-lint，0 findings）
 Coverage: PASS（总计 90.5%；core 90.0%；audit/organization 100.0%；全部登记包 ≥90%）
 Integration: PASS（`tests/goose`、`tests/internal/testdb`、完整 `tests/migration`；Task 1.2 A↔B FK；
 Task 1.3 identity→authn DAG、audit append-only/retention、core R5''/R9''/R16、
 organization→core、oauth→organization、governance→organization 与 provisioning→organization
 及 federation→identity 三引擎双前缀生命周期；Task 2.3 core `11→10→11` 索引生命周期、
 PostgreSQL 16/MySQL 8.4 relationship/revision 行为）
-Other verification: `git diff --check` PASS；source tree/三方言 63 表 PASS；REST baseline 与
+Other verification: `git diff --check` PASS；source tree/三方言 63 表 PASS；core 实际 OpenAPI 与
+冻结集合相等（51/51），且注册类型/resource/verb guard 与固定源逐条相等；全域 REST baseline 与
 源代码集合相等（200/200）PASS；远端 Docker 26.1.5 PASS；MySQL 8.4.11 启动、查询、
 Windows TCP 连通及非 root 用户全量双前缀迁移 PASS；schema lock 138 文件、63 表、27 跨模块 FK PASS；
 门禁成功/失败路径远端容器清理 PASS；Linux FIFO 真实文件系统测试 PASS。
 
 ## Next Action
-执行 Task 2.4：按 source manifest 迁移 core 根包 HTTP 文件和 module 装配，注册冻结基线中的 51 条 IAM 路由；
-生成实际 OpenAPI，与 runtime routes 对账并按 deep-review 的 Swagger/OpenAPI 规范检查路径、参数和公共契约。
+执行 Task 3.1：按 authn source manifest 建立 13 张认证表的 model/query/dbgen 与前缀安全仓储，逐项保留
+一次性消费、轮换、撤销和事务语义；先完成 model ↔ 三方言 DDL 契约，再迁移 repository 行为。
 
 ## Last Checkpoint
-2026-09-02 · IAM 分支 Task 2.3 完成检查点：core 领域服务、授权判定、关系递归、三方言反向遍历索引、
-PostgreSQL revision upsert 与跨真实引擎行为门禁已完成。core race/90.0% coverage/lint、完整 migration、
-真实 MySQL 8.4、schema lock 138 文件及 7 项反向变异/失败前置验证已完成。下一步执行 Task 2.4 HTTP/module。
+2026-09-03 · IAM 分支 Task 2 完成检查点：core 的 model/query、仓储、领域服务、module/i18n 与 51 条
+HTTP 路由已完整迁移。core race/90.0% coverage、OpenAPI 与源 guard 对账、完整 `make ci`、真实 MySQL 8.4
+及 schema lock 138 文件均通过。下一步执行 Task 3.1 authn data/repositories。
