@@ -8,8 +8,10 @@ import (
 	"sort"
 	"testing"
 
+	iamaudit "7link.com/platform/internal/iam/audit"
+	iamcore "7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
-	"7link.com/platform/internal/infra/audit"
+	infraaudit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/dlock"
 	"7link.com/platform/internal/infra/wuid"
 	"7link.com/platform/internal/todo"
@@ -110,7 +112,7 @@ func moduleMigrations() []moduleMigration {
 			table:   "operation_logs",
 			target:  2,
 			seedSQL: `INSERT INTO operation_logs (id, occurred_at, entry, operation, access, outcome) VALUES (1, '2026-09-02 00:00:00', 'http', 'POST /tests', 'write', 'success')`,
-			source:  (&audit.Module{}).MigrationSource(),
+			source:  (&infraaudit.Module{}).MigrationSource(),
 		},
 		{
 			name:    "identity",
@@ -118,6 +120,20 @@ func moduleMigrations() []moduleMigration {
 			target:  2,
 			seedSQL: `INSERT INTO iam_principals (id, login_name, display_name, status, created_at, updated_at) VALUES (1, 'first', 'First', 'active', '2026-09-02 00:00:00', '2026-09-02 00:00:00')`,
 			source:  (&identity.Module{}).MigrationSource(),
+		},
+		{
+			name:    "iam-audit",
+			table:   "iam_audit_events",
+			target:  2,
+			seedSQL: `INSERT INTO iam_audit_events (id, tenant_id, event_type, outcome, detail, created_at, sequence, event_hash) VALUES (1, 0, 'platform_event', 'success', '{}', '2026-09-02 00:00:00', 1, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')`,
+			source:  (&iamaudit.Module{}).MigrationSource(),
+		},
+		{
+			name:    "iam-core",
+			table:   "iam_roles",
+			target:  10,
+			seedSQL: `INSERT INTO iam_roles (tenant_id, id, name, name_key, created_at, updated_at) VALUES (1, 1, 'First', 'first', '2026-09-02 00:00:00', '2026-09-02 00:00:00')`,
+			source:  (&iamcore.Module{}).MigrationSource(),
 		},
 	}
 }

@@ -26,8 +26,8 @@ Phase 1 / Task 1.3：建立 9 个自治 IAM 模块的三方言 migration source 
 ## Active Work
 Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5、Task 1.0/1.1/1.2 已实现；迁移计划为 v8，
 `internal/iam/` 作为域命名空间，9 个子模块各自拥有业务、model/query 与 SQL，取消集中 schema
-和 feature 分包。Task 1.3 已完成 identity、authn、oauth 三个自治迁移源（20/63 表）；当前继续按
-依赖顺序实现 audit、core，并语义重写 organization/governance/provisioning/federation。
+和 feature 分包。Task 1.3 已完成 identity、authn、oauth、audit、core 五个自治迁移源（36/63 表）；
+63 表所有权集合已闭合，当前语义重写 organization/governance/provisioning/federation。
 
 ## Completed Work
 - 已从任务记录与实际仓库恢复断点；工作树在本轮开始时干净。
@@ -90,7 +90,11 @@ Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5、Task 1.0/1.1/1.2 已实现；迁移计划为 
 - Task 1.3 oauth：三方言 4 表、5 个迁移里程碑完成；保留源 FK 契约并加强 consent 的 tenant/client
   一致性。完整跨模块 DAG 测试等待 organization 语义迁移完成后接入。
 - IAM 所有权契约已改为逐模块精确表名集合；identity/authn/oauth 的 20 表契约通过，完整 63 表门禁
-  按预期仍因 core 与 audit 尚无 SQL 而保持红灯。
+  已在 audit/core 完成后转绿，9 个模块的三方言集合相等、互斥且并集恰为 63 表。
+- Task 1.3 audit：三方言 3 表、2 个迁移版本完成；平台 tenant 0、NULL 可选主体/目标、真实时间、
+  链序列/哈希唯一性、retention 范围和前缀化 append-only 触发器均通过双前缀三引擎验证。
+- Task 1.3 core：三方言 13 表、10 个迁移版本完成；角色/实体 name_key、菜单 NULL route、实体根/子
+  同级唯一、MySQL 安全 parent key、type 复合外键、RESTRICT、NULL 时间窗与 CHECK 通过三引擎验证。
 
 ## Important Decisions
 - 目标为全量、全功能迁移；SAML/SCIM 不允许长期 Disabled。
@@ -120,17 +124,17 @@ Build: PASS（Task 1.2 Windows `make ci` build；Task 0.4 Linux CGO-disabled cro
 Tests: PASS（Task 1.2 主模块全量 + 独立 tests module + 完整 `make ci`）
 Lint: PASS（Task 1.2 固定版本 golangci-lint / `make ci`，0 findings）
 Coverage: PASS（Task 1.2 总体 91.3%，全部受控包 ≥90%）
-Integration: PASS（`tests/goose`、`tests/internal/testdb`、`tests/migration`；Task 1.2 A↔B FK 三引擎；
-Task 1.3 identity→authn 三引擎 DAG 生命周期）
+Integration: PASS（`tests/goose`、`tests/internal/testdb`、完整 `tests/migration`；Task 1.2 A↔B FK；
+Task 1.3 identity→authn DAG、audit append-only/retention、core R5''/R9''/R16 三引擎双前缀生命周期）
 Other verification: `git diff --check` PASS；source tree/三方言 63 表 PASS；REST baseline 与
 源代码集合相等（200/200）PASS；远端 Docker 26.1.5 PASS；MySQL 8.4.11 启动、查询、
 Windows TCP 连通及 append-only Up/Down 部分状态恢复矩阵 PASS；Linux FIFO 真实文件系统测试 PASS。
 
 ## Next Action
-继续 Task 1.3：实现 audit 三方言 3 表与 append-only trigger，接入三引擎生命周期测试；随后实现
-core 13 表及 constraints 里程碑，再语义重写其余四个已机械复制的模块。
+继续 Task 1.3：从 organization 开始语义重写四个已机械复制的模块，先把 14 表的真实时间、NULL、
+name_key、CHECK/外键与 7 条 core 跨模块约束改写完成，再接入 core↔organization DAG 生命周期。
 
 ## Last Checkpoint
-2026-09-02 · IAM 分支 Task 1.3 阶段检查点：identity/authn/oauth 三个自治 migration source 的
-20/63 表已实现；包测试与 identity→authn 三引擎 DAG 生命周期通过。完整所有权门禁仍待 core/audit，
-OAuth 完整 DAG 仍待 organization；下一步实现 audit。
+2026-09-02 · IAM 分支 Task 1.3 阶段检查点：identity/authn/oauth/audit/core 五个自治 migration
+source 的 36/63 表已完成语义改写；完整 migration 测试与 63 表/9 source 所有权门禁通过。
+下一步重写 organization，并验证 core↔organization 与 oauth→organization 里程碑 DAG。
