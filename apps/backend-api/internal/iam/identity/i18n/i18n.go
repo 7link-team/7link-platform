@@ -1,0 +1,31 @@
+// Package identityi18n publishes the identity module's locale bundle.
+package identityi18n
+
+import (
+	"embed"
+
+	platformi18n "7link.com/platform/pkg/i18n"
+)
+
+const (
+	Namespace = "identity"
+
+	PrincipalNotFound                = Namespace + ".principal_not_found"
+	LoginNameExists                  = Namespace + ".login_name_exists"
+	InvalidPrincipal                 = Namespace + ".invalid_principal"
+	LastTenantAdministrator          = Namespace + ".last_tenant_administrator"
+	IdentityUnavailable              = Namespace + ".identity_unavailable"
+	ServiceAccountNotFound           = Namespace + ".service_account_not_found"
+	ServiceAccountCredentialNotFound = Namespace + ".service_account_credential_not_found"
+	ServiceAccountVersionConflict    = Namespace + ".service_account_version_conflict"
+	ServiceAccountCredentialLimit    = Namespace + ".service_account_credential_limit"
+	InvalidServiceAccount            = Namespace + ".invalid_service_account"
+)
+
+//go:embed locales/*.json
+var locales embed.FS
+
+// Register publishes the identity locale bundle under its module namespace.
+func Register() error {
+	return platformi18n.RegisterFS(Namespace, locales, "locales")
+}

@@ -12,8 +12,7 @@ PostgreSQL、MySQL、SQLite 真实迁移与 `make ci` 门禁。
 IMPLEMENTATION
 
 ## Current Step
-Phase 3 / Task 3.6：identity 业务与测试（Task 3.5）已完成并通过 `make ci`，下一步冻结并实现 14 条
-identity RESTful HTTP 契约。
+Phase 4 / Task 4.1：Phase 3（authn + identity）已全部完成并通过 `make ci`，下一步开始迁移 oauth。
 
 ## Overall Progress
 - [x] 深度分析与迁移方案 v9
@@ -22,7 +21,8 @@ identity RESTful HTTP 契约。
 - [x] Phase 0 前置修复、扩展包、端口图与依赖评审
 - [x] Phase 1 九个模块自治迁移源、里程碑 DAG 与三引擎验证
 - [x] Phase 2 core Go 模块迁移
-- [ ] Phase 3–8 其余 Go 模块迁移与装配
+- [x] Phase 3 authn 与 identity Go 模块迁移
+- [ ] Phase 4–8 oauth/organization/audit/governance/provisioning/federation 迁移与装配
 - [ ] Phase 9 集成与验收
 
 ## Active Work
@@ -202,6 +202,16 @@ model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entitie
 - identity 生产代码 import core 后，`internal/iam/core` 的包内测试不能再 import identity（Go 禁止测试
   形成环）。core 测试改用原始 DDL 建 `iam_principals`，真实 schema 仍由 `tests/migration` 验证。
 
+- Task 3.6–3.8：identity 根包新增 `http.go`/`module.go` 与 `i18n` 包；14 条 operation 与计划批准的
+  目标契约集合相等，`identity-disable/restore-principal` 落为 `PUT`/`DELETE /iam/principals/{id}/suspension`
+  子资源。principal 管理路由保留源语义的 `platform_administer` 租户内权限（非 RegisterPlatform），
+  创建类 operation 与 core 一致返回 201，删除/撤销改用具名响应体而非源的裸 map。
+- Task 3.7 负例：HTTP 层证明 tenant B 对 A 的 principal/service account/credential 的
+  读、改、挂起、恢复、替换、删除、撤销全部 404 且 A 行不变；缺少 `platform_administer` 时
+  PATCH/PUT/DELETE suspension 一律 403 且状态不变；版本冲突 409、非法 ID 422。
+- Task 3.8 门禁：identity 90.6%、authn 90.3%、`-race` 通过、golangci-lint 0 findings、
+  `go generate` 零 diff、全仓 `make ci` 总覆盖率 90.2% 全绿。
+
 ## Important Decisions
 - 目标为全量、全功能迁移；SAML/SCIM 不允许长期 Disabled。
 - `internal/iam/` 只作命名空间；core/authn/identity/oauth/organization/audit/governance/
@@ -229,10 +239,10 @@ model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entitie
 - 本任务约 6 万行，必须按 Phase 分批实现、验证和留档。
 
 ## Verification
-Build: PASS（Task 3.5 Windows `make ci` build）
-Tests: PASS（Task 3.5 identity `-race` 5.037s；完整 `make ci`；`tests/migration` 151.801s）
-Lint: PASS（Task 3.5 `make ci` golangci-lint，0 findings）
-Coverage: PASS（本轮完整 CI 总计 90.2%；identity 90.9%；authn 90.3%；core 90.0%；全部登记包 ≥90%）
+Build: PASS（Task 3.8 Windows `make ci` build）
+Tests: PASS（identity `-race` 9.067s；完整 `make ci`；`tests/migration` 153.257s）
+Lint: PASS（Task 3.8 `make ci` golangci-lint，0 findings）
+Coverage: PASS（完整 CI 总计 90.2%；identity 90.6%；authn 90.3%；core 90.0%；全部登记包 ≥90%）
 Integration: PASS（`tests/goose`、`tests/internal/testdb`、完整 `tests/migration`；Task 1.2 A↔B FK；
 Task 1.3 identity→authn DAG、audit append-only/retention、core R5''/R9''/R16、
 organization→core、oauth→organization、governance→organization 与 provisioning→organization
@@ -245,11 +255,11 @@ Windows TCP 连通及非 root 用户全量双前缀迁移 PASS；schema lock 147
 门禁成功/失败路径远端容器清理 PASS；Linux FIFO 真实文件系统测试 PASS。
 
 ## Next Action
-执行 Task 3.6：先在计划中冻结 identity 的 14 条 source→target 映射（已列出，需逐条复核 platform guard
-归属），再实现根包 `http.go`/`module.go`/i18n，稳定导出 `IdentityProvisioner`，解析 core guard、
-`guid.Source` 与 audit Appender；随后 Task 3.7 负例、Task 3.8 双包门禁。
+执行 Task 4.1：按 source manifest 对账 `modules/oauth` 的 symbol，在 `internal/iam/oauth` 建立
+`model/query/dbgen` 与 protocol/client administration 行为（授权码、refresh token、secret rotation
+保持一次性与事务语义）；HTTP 12 条目标契约在 Task 4.2 实现前逐条冻结。
 
 ## Last Checkpoint
-2026-09-03 · IAM 分支 Task 3.5 检查点：identity 业务迁移与五个对应测试文件完成，identity 已登记
-`MODULE_COVERAGE_PACKAGES`；修复 gorm 条件误用、gorm 语句复用错误串联与 core 包内测试的 import 环。
-identity 覆盖率 90.9%、`-race` 通过、全仓 `make ci` 全绿。下一步执行 Task 3.6 identity HTTP。
+2026-09-03 · IAM 分支 Phase 3 完成检查点：authn 30 条 + identity 14 条 RESTful operation 全部落地，
+identity 业务/HTTP/module/i18n 与七个对应测试文件完成，租户隔离与 platform_administer 负例通过。
+identity 90.6%、authn 90.3%、`-race` 通过、全仓 `make ci` 全绿。下一步进入 Phase 4 oauth（Task 4.1）。

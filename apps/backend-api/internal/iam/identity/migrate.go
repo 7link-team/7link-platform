@@ -11,9 +11,6 @@ import (
 
 const Name = "identity"
 
-// Module owns principals, service accounts, and service-account credentials.
-type Module struct{}
-
 func (*Module) ModuleName() string { return Name }
 
 //go:embed sql

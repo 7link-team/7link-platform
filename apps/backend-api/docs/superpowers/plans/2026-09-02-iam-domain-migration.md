@@ -497,9 +497,9 @@ CREATE TABLE {{.Prefix}}iam_roles (
 - Tests: `i18n_test.go`, `module_test.go`, `provisioning_test.go`, `rest_test.go`, `service_account_test.go`, `service_test.go`。
 
 - [x] **3.5 identity module:** 在 `internal/iam/identity` 根包按源文件移植 principal/service account 行为，在 `model/query/dbgen` 为 3 张表生成查询；复用 `core.AdministratorGuard`，不复制规则。
-- [ ] **3.6 identity contracts/HTTP:** 根包注册 14 条路由并稳定导出 `IdentityProvisioner`，解析 core guard、`guid.Source` 与 audit Appender。
-- [ ] **3.7 identity negatives/tests:** 全局 principal 路由必须经过 platform guard；tenant A 的 provisioning/invitation 调用不能把 principal 绑定到 tenant B，也不能绕过最后管理员保护。
-- [ ] **3.8 Gate:** 登记 authn/identity 两包，分别运行 generate 与定向测试；两包均 ≥90% 后运行 `make ci`。
+- [x] **3.6 identity contracts/HTTP:** 根包注册 14 条路由并稳定导出 `IdentityProvisioner`，解析 core guard、`guid.Source` 与 audit Appender。
+- [x] **3.7 identity negatives/tests:** 全局 principal 路由必须经过 platform guard；tenant A 的 provisioning/invitation 调用不能把 principal 绑定到 tenant B，也不能绕过最后管理员保护。
+- [x] **3.8 Gate:** 登记 authn/identity 两包，分别运行 generate 与定向测试；两包均 ≥90% 后运行 `make ci`。
 
 #### Task 4: 迁移 `oauth`
 
