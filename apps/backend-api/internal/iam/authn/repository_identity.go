@@ -2,13 +2,17 @@ package authn
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+var errAmbiguousRecoveryPrincipal = errors.New("ambiguous password recovery principal")
 
 type principalCredentialState struct {
 	Status            string
@@ -116,16 +120,26 @@ func (r *Repository) findRecoveryPrincipal(ctx context.Context, identifier strin
 	if err != nil {
 		return nil, err
 	}
-	var row identity.Principal
-	identifier = strings.ToLower(identifier)
-	err = db.WithContext(ctx).Table(r.table(principalTableName)).
+	identifier = strings.ToLower(strings.TrimSpace(identifier))
+	principalTable := r.table(principalTableName)
+	serviceAccountTable := r.table(serviceAccountTableName)
+	var rows []*identity.Principal
+	err = db.WithContext(ctx).Table(principalTable+" AS principal").
 		Where("status = ? AND email_verified = ?", "active", true).
-		Where("LOWER(login_name) = ? OR LOWER(email) = ?", identifier, identifier).
-		Take(&row).Error
+		Where("LOWER(principal.login_name) = ? OR LOWER(principal.email) = ?", identifier, identifier).
+		Where("NOT EXISTS (?)", db.Table(serviceAccountTable+" AS service_account").
+			Select("1").Where("service_account.principal_id = principal.id")).
+		Limit(2).Find(&rows).Error
 	if err != nil {
 		return nil, err
 	}
-	return &row, nil
+	if len(rows) == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	if len(rows) != 1 {
+		return nil, errAmbiguousRecoveryPrincipal
+	}
+	return rows[0], nil
 }
 
 func (r *Repository) lockPrincipal(ctx context.Context, principalID guid.ID) (*identity.Principal, error) {

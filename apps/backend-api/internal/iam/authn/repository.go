@@ -21,6 +21,7 @@ type Repository struct {
 	ids     guid.Source
 	audit   audit.Appender
 	db      *gorm.DB
+	inTx    bool
 }
 
 func NewRepository(runtime *appenv.Runtime, ids guid.Source, appender audit.Appender) *Repository {
@@ -60,9 +61,10 @@ func (r *Repository) tables() (*query.Tables, *gorm.DB, error) {
 	return query.Bind(db, r.prefix()), db, nil
 }
 
-func (r *Repository) withDB(db *gorm.DB) *Repository {
+func (r *Repository) withDB(db *gorm.DB, inTx bool) *Repository {
 	transactional := *r
 	transactional.db = db
+	transactional.inTx = inTx
 	return &transactional
 }
 
@@ -77,14 +79,14 @@ func (r *Repository) pinWriter() (*Repository, error) {
 	if db == nil {
 		return nil, errRepositoryUnavailable
 	}
-	return r.withDB(db), nil
+	return r.withDB(db, false), nil
 }
 
 func (r *Repository) runInTx(ctx context.Context, fn func(*Repository) error) error {
 	if r == nil || fn == nil {
 		return errors.New("invalid authentication transaction")
 	}
-	if r.db != nil {
+	if r.inTx {
 		return fn(r)
 	}
 	db := r.writer()
@@ -92,7 +94,7 @@ func (r *Repository) runInTx(ctx context.Context, fn func(*Repository) error) er
 		return errRepositoryUnavailable
 	}
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return fn(r.withDB(tx))
+		return fn(r.withDB(tx, true))
 	})
 }
 

@@ -44,6 +44,7 @@ func TestIAMMigrationsOnRealMySQL8(t *testing.T) {
 		t.Run(prefixTestName(prefix), func(t *testing.T) {
 			assertRealMySQLUp(t, gormDB, modules, prefix)
 			assertRealMySQLSchemaSet(t, db, prefix)
+			verifyOAuthQueryIndexLifecycle(t, db, "mysql", prefix)
 			verifyCoreServiceBehavior(t, "mysql", dsn, prefix)
 			if prefix == "" {
 				verifyCoreRoleContracts(t, db, prefix)

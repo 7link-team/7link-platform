@@ -1,6 +1,7 @@
 package authn
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -97,11 +98,17 @@ func TestRepositoryNotificationOutboxClaimAndTransitions(t *testing.T) {
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []guid.ID{1, 3, 4}, ids)
 
+	claims := make(chan *model.NotificationOutbox, 8)
 	assertSingleWinner(t, func() (bool, error) {
-		return harness.repository.claimNotification(t.Context(), 1, now)
+		row, changed, err := harness.repository.claimNotification(t.Context(), 1, now)
+		if changed {
+			claims <- row
+		}
+		return changed, err
 	})
-	claimed, err := harness.repository.getNotification(t.Context(), 1)
-	require.NoError(t, err)
+	close(claims)
+	claimed := <-claims
+	require.NotNil(t, claimed)
 	assert.Equal(t, "delivering", claimed.Status)
 	assert.Equal(t, 1, claimed.Attempts)
 	changed, err := harness.repository.markNotificationSent(t.Context(), 1, claimed.Attempts, now.Add(time.Minute))
@@ -111,32 +118,65 @@ func TestRepositoryNotificationOutboxClaimAndTransitions(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, changed)
 
-	claimedOK, err := harness.repository.claimNotification(t.Context(), 3, now)
+	claimed, claimedOK, err := harness.repository.claimNotification(t.Context(), 3, now)
 	require.NoError(t, err)
 	assert.True(t, claimedOK)
+	require.NotNil(t, claimed)
 	changed, err = harness.repository.markNotificationFailed(
-		t.Context(), 3, 1, "pending", "temporary failure", now.Add(time.Minute), now,
+		t.Context(), 3, claimed.Attempts, "pending", "temporary failure", now.Add(time.Minute), now,
 	)
 	require.NoError(t, err)
 	assert.True(t, changed)
-	failed, err := harness.repository.getNotification(t.Context(), 3)
-	require.NoError(t, err)
+	var failed model.NotificationOutbox
+	require.NoError(t, harness.db.Table("sl_iam_notification_outbox").Where("id = ?", 3).Take(&failed).Error)
 	assert.Equal(t, "pending", failed.Status)
 	assert.Equal(t, "temporary failure", failed.LastError)
 	assert.Nil(t, failed.LockedAt)
 
-	claimedOK, err = harness.repository.claimNotification(t.Context(), 3, now.Add(2*time.Minute))
+	reclaimed, claimedOK, err := harness.repository.claimNotification(t.Context(), 3, now.Add(2*time.Minute))
 	require.NoError(t, err)
 	assert.True(t, claimedOK)
-	reclaimed, err := harness.repository.getNotification(t.Context(), 3)
-	require.NoError(t, err)
+	require.NotNil(t, reclaimed)
 	assert.Equal(t, 2, reclaimed.Attempts)
-	changed, err = harness.repository.markNotificationSent(t.Context(), 3, 1, now.Add(3*time.Minute))
+	changed, err = harness.repository.markNotificationFailed(
+		t.Context(), 3, claimed.Attempts, "pending", "stale failure", now.Add(4*time.Minute), now.Add(3*time.Minute),
+	)
+	require.NoError(t, err)
+	assert.False(t, changed, "an old delivery attempt cannot fail a newer lease")
+	changed, err = harness.repository.markNotificationSent(t.Context(), 3, claimed.Attempts, now.Add(3*time.Minute))
 	require.NoError(t, err)
 	assert.False(t, changed, "an old delivery attempt cannot complete a newer lease")
 	changed, err = harness.repository.markNotificationSent(t.Context(), 3, reclaimed.Attempts, now.Add(3*time.Minute))
 	require.NoError(t, err)
 	assert.True(t, changed)
+}
+
+func TestRepositoryNotificationClaimRollsBackWhenClaimedRowCannotBeRead(t *testing.T) {
+	harness := newAuthnRepositoryHarness(t, "sl_")
+	now := repositoryTestNow
+	require.NoError(t, harness.repository.enqueueNotification(t.Context(), &model.NotificationOutbox{
+		ID: 1, Kind: "email", Recipient: "a@example.test", PayloadCiphertext: "a",
+		Status: "pending", AvailableAt: now, CreatedAt: now, UpdatedAt: now,
+	}))
+
+	readErr := errors.New("claimed row read failed")
+	const callbackName = "test:fail_notification_claim_read"
+	require.NoError(t, harness.db.Callback().Query().Before("gorm:query").Register(callbackName, func(db *gorm.DB) {
+		if db.Statement.Table == "sl_iam_notification_outbox" {
+			db.AddError(readErr)
+		}
+	}))
+	claimed, changed, err := harness.repository.claimNotification(t.Context(), 1, now)
+	assert.ErrorIs(t, err, readErr)
+	assert.Nil(t, claimed)
+	assert.False(t, changed)
+	require.NoError(t, harness.db.Callback().Query().Remove(callbackName))
+
+	var stored model.NotificationOutbox
+	require.NoError(t, harness.db.Table("sl_iam_notification_outbox").Where("id = ?", 1).Take(&stored).Error)
+	assert.Equal(t, "pending", stored.Status)
+	assert.Zero(t, stored.Attempts)
+	assert.Nil(t, stored.LockedAt)
 }
 
 func timePointer(value time.Time) *time.Time { return &value }

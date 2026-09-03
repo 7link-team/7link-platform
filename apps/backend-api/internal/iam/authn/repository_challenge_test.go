@@ -1,6 +1,7 @@
 package authn
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -125,26 +126,64 @@ func TestRepositoryExpiredChallengesCannotFailOrConsume(t *testing.T) {
 	assert.Nil(t, consumedAt)
 }
 
-func TestRepositoryReplaceMFAEnrollmentRollsBackDeleteWhenInsertFails(t *testing.T) {
-	harness := newAuthnRepositoryHarness(t, "sl_")
-	harness.seedPrincipal(t, 1, "alice")
-	now := repositoryTestNow
-	require.NoError(t, harness.repository.replaceMFAEnrollment(t.Context(), &model.MFAEnrollment{
-		PrincipalID: 1, SecretCiphertext: "original", CreatedAt: now, ExpiresAt: now.Add(time.Hour),
-	}))
-	require.NoError(t, harness.db.Exec(`
-		CREATE TRIGGER sl_deny_mfa_enrollment_insert
-		BEFORE INSERT ON sl_iam_mfa_enrollments
-		BEGIN SELECT RAISE(ABORT, 'enrollment insert denied'); END
-	`).Error)
+func TestRepositoryReplacementTransactionsRollBackForEveryWriterClone(t *testing.T) {
+	for _, pinWriter := range []bool{false, true} {
+		t.Run(fmt.Sprintf("pinned=%t", pinWriter), func(t *testing.T) {
+			harness := newAuthnRepositoryHarness(t, "sl_")
+			harness.seedPrincipal(t, 1, "alice")
+			now := repositoryTestNow
+			require.NoError(t, harness.repository.replaceMFAEnrollment(t.Context(), &model.MFAEnrollment{
+				PrincipalID: 1, SecretCiphertext: "original", CreatedAt: now, ExpiresAt: now.Add(time.Hour),
+			}))
+			require.NoError(t, harness.db.Exec(`
+				CREATE TRIGGER sl_deny_mfa_enrollment_insert
+				BEFORE INSERT ON sl_iam_mfa_enrollments
+				BEGIN SELECT RAISE(ABORT, 'enrollment insert denied'); END
+			`).Error)
+			repository := harness.repository
+			if pinWriter {
+				var err error
+				repository, err = repository.pinWriter()
+				require.NoError(t, err)
+			}
 
-	err := harness.repository.replaceMFAEnrollment(t.Context(), &model.MFAEnrollment{
-		PrincipalID: 1, SecretCiphertext: "replacement", CreatedAt: now, ExpiresAt: now.Add(2 * time.Hour),
-	})
-	assert.ErrorContains(t, err, "enrollment insert denied")
-	stored, err := harness.repository.activeMFAEnrollment(t.Context(), 1, now)
-	require.NoError(t, err)
-	assert.Equal(t, "original", stored.SecretCiphertext)
+			err := repository.replaceMFAEnrollment(t.Context(), &model.MFAEnrollment{
+				PrincipalID: 1, SecretCiphertext: "replacement", CreatedAt: now, ExpiresAt: now.Add(2 * time.Hour),
+			})
+			assert.ErrorContains(t, err, "enrollment insert denied")
+			stored, err := harness.repository.activeMFAEnrollment(t.Context(), 1, now)
+			require.NoError(t, err)
+			assert.Equal(t, "original", stored.SecretCiphertext)
+		})
+	}
+}
+
+func TestRepositoryRecoveryCodeReplacementRejectsEveryForeignOwner(t *testing.T) {
+	for name, rows := range map[string][]*model.RecoveryCode{
+		"foreign first": {{PrincipalID: 2, CodeHash: "foreign-first", CreatedAt: repositoryTestNow}},
+		"foreign later": {
+			{PrincipalID: 1, CodeHash: "valid", CreatedAt: repositoryTestNow},
+			{PrincipalID: 2, CodeHash: "foreign-later", CreatedAt: repositoryTestNow},
+		},
+		"nil row": {nil},
+	} {
+		t.Run(name, func(t *testing.T) {
+			harness := newAuthnRepositoryHarness(t, "sl_")
+			harness.seedPrincipal(t, 1, "alice")
+			harness.seedPrincipal(t, 2, "bob")
+			require.NoError(t, harness.repository.replaceRecoveryCodes(t.Context(), 1, []*model.RecoveryCode{
+				{PrincipalID: 1, CodeHash: "original", CreatedAt: repositoryTestNow},
+			}))
+			err := harness.repository.replaceRecoveryCodes(t.Context(), 1, rows)
+			assert.ErrorIs(t, err, errRecoveryCodePrincipalMismatch)
+			count, countErr := harness.repository.countAvailableRecoveryCodes(t.Context(), 1)
+			require.NoError(t, countErr)
+			assert.Equal(t, int64(1), count)
+			count, countErr = harness.repository.countAvailableRecoveryCodes(t.Context(), 2)
+			require.NoError(t, countErr)
+			assert.Zero(t, count)
+		})
+	}
 }
 
 func TestRepositoryPurgeMFAStateRollsBackEveryTableOnFailure(t *testing.T) {

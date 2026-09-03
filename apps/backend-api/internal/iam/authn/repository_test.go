@@ -130,9 +130,10 @@ func TestModuleMigrationContract(t *testing.T) {
 	module := &Module{}
 	assert.Equal(t, Name, module.ModuleName())
 	assert.Equal(t, "goose_authn", module.MigrationSource().TableName)
-	assert.Equal(t, []string{"base", "constraints"}, []string{
+	assert.Equal(t, []string{"base", "constraints", "indexes"}, []string{
 		module.MigrationMilestones()[0].Name,
 		module.MigrationMilestones()[1].Name,
+		module.MigrationMilestones()[2].Name,
 	})
 }
 
@@ -274,8 +275,10 @@ func TestRepositoryMethodsFailClosedWithoutWriter(t *testing.T) {
 		"enqueue notification":      func() error { return repository.enqueueNotification(t.Context(), &model.NotificationOutbox{}) },
 		"reset stale notifications": func() error { return repository.resetStaleNotifications(t.Context(), now) },
 		"pending notifications":     func() error { _, err := repository.pendingNotificationIDs(t.Context(), now, 20); return err },
-		"claim notification":        func() error { _, err := repository.claimNotification(t.Context(), principalID, now); return err },
-		"get notification":          func() error { _, err := repository.getNotification(t.Context(), principalID); return err },
+		"claim notification": func() error {
+			_, _, err := repository.claimNotification(t.Context(), principalID, now)
+			return err
+		},
 		"mark notification sent": func() error {
 			_, err := repository.markNotificationSent(t.Context(), principalID, 1, now)
 			return err

@@ -78,16 +78,32 @@ func assertOrganizationUp(t *testing.T, db *gorm.DB, modules []module.Module, pr
 	assert.Equal(t, "base", milestones[iamcore.Name])
 	assert.Equal(t, "base", milestones[identity.Name])
 	assert.Equal(t, "constraints", milestones[organization.Name])
-	assert.Equal(t, "constraints", milestones[oauth.Name])
+	assert.Equal(t, "indexes", milestones[oauth.Name])
 }
 
 func verifyOrganizationContracts(t *testing.T, db *sql.DB, dialect, prefix string) {
 	t.Helper()
+	verifyOAuthQueryIndexLifecycle(t, db, dialect, prefix)
 	seedOrganizationParents(t, db, prefix)
 	verifyDepartmentContracts(t, db, dialect, prefix)
 	verifyPositionAndGroupContracts(t, db, prefix)
 	verifyOrganizationCrossModuleConstraints(t, db, prefix)
 	verifyInvitationAndOAuthContracts(t, db, prefix)
+}
+
+func verifyOAuthQueryIndexLifecycle(t *testing.T, db *sql.DB, dialect, prefix string) {
+	t.Helper()
+	source := (&oauth.Module{}).MigrationSource()
+	source.Prefix = prefix
+	index := prefix + "idx_iam_refresh_principal_active"
+	want := []string{"principal_id", "revoked_at"}
+	for range 2 {
+		assert.Equal(t, want, coreIndexColumns(t, db, prefix+"iam_refresh_tokens", index, dialect))
+		require.NoError(t, goosex.MigrateDownTo(t.Context(), db, source, dialect, 5))
+		assert.Empty(t, coreIndexColumns(t, db, prefix+"iam_refresh_tokens", index, dialect))
+		require.NoError(t, goosex.MigrateUpTo(t.Context(), db, source, dialect, 6))
+	}
+	assert.Equal(t, want, coreIndexColumns(t, db, prefix+"iam_refresh_tokens", index, dialect))
 }
 
 func seedOrganizationParents(t *testing.T, db *sql.DB, prefix string) {

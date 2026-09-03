@@ -38,6 +38,8 @@ func TestRepositoryIdentityReadsRespectIdentityOwnershipAndPrefix(t *testing.T) 
 	assert.Equal(t, guid.ID(1), principal.ID)
 	_, err = harness.repository.findLoginPrincipal(t.Context(), "worker")
 	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	_, err = harness.repository.findRecoveryPrincipal(t.Context(), "WORKER@EXAMPLE.TEST")
+	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
 
 	principal, err = harness.repository.getPrincipal(t.Context(), 1)
 	require.NoError(t, err)
@@ -85,6 +87,25 @@ func TestRepositoryIdentityReadsRespectIdentityOwnershipAndPrefix(t *testing.T) 
 		Updates(map[string]any{"activation_required": true}).Error)
 	_, _, err = harness.repository.activePrincipalClaims(t.Context(), 3)
 	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+}
+
+func TestRepositoryRecoveryIdentifierMustResolveOneHumanPrincipal(t *testing.T) {
+	harness := newAuthnRepositoryHarness(t, "sl_")
+	harness.seedPrincipal(t, 1, "alice")
+	harness.seedPrincipal(t, 2, "bob")
+	require.NoError(t, harness.db.Table("sl_iam_principals").Where("id = ?", 1).
+		Update("email", "Alice@Example.Test").Error)
+
+	principal, err := harness.repository.findRecoveryPrincipal(t.Context(), "ALICE@EXAMPLE.TEST")
+	require.NoError(t, err)
+	assert.Equal(t, guid.ID(1), principal.ID)
+
+	require.NoError(t, harness.db.Table("sl_iam_principals").Where("id = ?", 2).
+		Update("email", "alice@example.test").Error)
+
+	principal, err = harness.repository.findRecoveryPrincipal(t.Context(), "ALICE@EXAMPLE.TEST")
+	assert.ErrorIs(t, err, errAmbiguousRecoveryPrincipal)
+	assert.Nil(t, principal)
 }
 
 func TestRepositoryConcurrentLoginFailuresDoNotLoseAttempts(t *testing.T) {

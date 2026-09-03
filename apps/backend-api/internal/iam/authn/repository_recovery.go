@@ -109,29 +109,36 @@ func (r *Repository) pendingNotificationIDs(ctx context.Context, now time.Time, 
 	return ids, nil
 }
 
-func (r *Repository) claimNotification(ctx context.Context, id guid.ID, now time.Time) (bool, error) {
-	tables, db, err := r.tables()
+func (r *Repository) claimNotification(
+	ctx context.Context,
+	id guid.ID,
+	now time.Time,
+) (*model.NotificationOutbox, bool, error) {
+	var claimed *model.NotificationOutbox
+	err := r.runInTx(ctx, func(repository *Repository) error {
+		tables, db, err := repository.tables()
+		if err != nil {
+			return err
+		}
+		result := db.WithContext(ctx).Table(tables.NotificationOutbox.TableName()).
+			Where("id = ? AND status = ? AND available_at <= ?", id, "pending", now).
+			Updates(map[string]any{
+				"status":     "delivering",
+				"locked_at":  now,
+				"attempts":   gorm.Expr("attempts + 1"),
+				"updated_at": now,
+			})
+		if result.Error != nil || result.RowsAffected == 0 {
+			return result.Error
+		}
+		claimed, err = tables.NotificationOutbox.WithContext(ctx).
+			Where(tables.NotificationOutbox.ID.Eq(id)).Take()
+		return err
+	})
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
-	result := db.WithContext(ctx).Table(tables.NotificationOutbox.TableName()).
-		Where("id = ? AND status = ? AND available_at <= ?", id, "pending", now).
-		Updates(map[string]any{
-			"status":     "delivering",
-			"locked_at":  now,
-			"attempts":   gorm.Expr("attempts + 1"),
-			"updated_at": now,
-		})
-	return result.RowsAffected == 1, result.Error
-}
-
-func (r *Repository) getNotification(ctx context.Context, id guid.ID) (*model.NotificationOutbox, error) {
-	tables, _, err := r.tables()
-	if err != nil {
-		return nil, err
-	}
-	return tables.NotificationOutbox.WithContext(ctx).
-		Where(tables.NotificationOutbox.ID.Eq(id)).Take()
+	return claimed, claimed != nil, nil
 }
 
 func (r *Repository) markNotificationSent(ctx context.Context, id guid.ID, attempt int, now time.Time) (bool, error) {

@@ -12,7 +12,7 @@ PostgreSQL、MySQL、SQLite 真实迁移与 `make ci` 门禁。
 IMPLEMENTATION
 
 ## Current Step
-Phase 3 / Task 3.1：authn 13 表 model/query 已完成，正在迁移事务型数据访问。
+Phase 3 / Task 3.2：authn 数据与仓储已完成，开始按源 basename 迁移认证行为。
 
 ## Overall Progress
 - [x] 深度分析与迁移方案 v8
@@ -29,9 +29,8 @@ Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5、Task 1.0/1.1/1.2 已实现；迁移计划为 
 `internal/iam/` 作为域命名空间，9 个子模块各自拥有业务、model/query 与 SQL，取消集中 schema
 和 feature 分包。Task 1.3 已完成 identity、authn、oauth、audit、core、organization、governance、provisioning、
 federation 九个自治迁移源（63/63 表）；Task 1.4 已完成真实 MySQL 8 门禁、静态对账与 baseline 冻结。
-Task 2.4–2.6 已完成 core HTTP/module、负例与阶段门禁，当前进入 authn 数据与仓储迁移。
-authn 13 张自治表的 model/query/dbgen 与三引擎列/NULL/时间契约已完成；Task 3.1 剩余工作是把
-源工作流中分散的 Bun 数据访问按原文件职责改写为前缀安全 GORM。
+Task 2.4–2.6 已完成 core HTTP/module、负例与阶段门禁；Task 3.1 已完成 authn 13 张自治表的
+model/query/dbgen、三引擎列/NULL/时间契约及前缀安全 GORM 仓储，当前进入 Task 3.2 authn 行为迁移。
 identity 3 张自治表的 model/query/dbgen 也已提前完成，供 authn 读取由 identity 拥有的 principal 与
 service-account 状态，避免跨模块重复定义持久化模型；identity 业务迁移仍留在 Task 3.5–3.7。
 
@@ -159,6 +158,16 @@ model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entitie
 - Task 3.1 model/query：authn 13 张表全部建立 module-owned `model/query/dbgen`；所有 nullable 时间与
   nullable passkey principal 使用指针，所有时间列使用 `time.Time`。三引擎 model ↔ DDL 全称契约、
   前缀绑定、生成幂等、包 race 及全仓 golangci-lint 已通过。
+- Task 3.1 repositories：按认证职责保留 credential/session/MFA/passkey/recovery/verification/step-up
+  仓储文件，迁入锁定、CAS 单次消费、session 轮换、跨 session/refresh-token 撤销与 outbox fencing；
+  pinned writer 与 active transaction 显式区分，replacement/purge 失败可完整回滚。
+- Task 3.1 deep-review：修复 outbox 领取后借用新 attempt、pinned writer 跳过事务、recovery code
+  跨 principal 写入、service account 进入密码找回、歧义 identifier 任取一人及 binary collation 下
+  大小写恢复查询失配；集合/并发测试覆盖旧 attempt 成功/失败回写与 claim 读取失败回滚，反向变异均能
+  抓住对应缺陷。本批无 HTTP/OpenAPI 改动，Swagger 评审不适用。
+- Task 3.1 索引门禁：authn v10 增加 verification code 前导索引，oauth v6 增加 principal-wide revoke
+  索引；MySQL 用单条 ALTER 双向交换 FK 支持索引，plain/prefixed 连续两轮 v6↔v5 均通过真实 8.4.11。
+  schema lock 从 138 扩展到 144 个文件，仍为 63 表、27 条跨模块 FK。
 - Task 3.5 model/query 前置：identity 3 张表建立 module-owned `model/query/dbgen`，三引擎列/NULL/时间
   全称契约、前缀绑定、包 race、生成与全仓 golangci-lint 已通过；尚未迁移 identity 业务和 HTTP。
 
@@ -185,26 +194,26 @@ model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entitie
 - 本任务约 6 万行，必须按 Phase 分批实现、验证和留档。
 
 ## Verification
-Build: PASS（Task 2.4–2.6 Windows `make ci` build；Task 0.4 Linux CGO-disabled cross-compile）
-Tests: PASS（Task 2.4–2.6 core `-race`；完整 `make ci`；`tests/migration` 154.820s；真实 MySQL 8.4）
-Lint: PASS（Task 2.4–2.6 `make ci` 全仓 golangci-lint，0 findings）
-Coverage: PASS（总计 90.5%；core 90.0%；audit/organization 100.0%；全部登记包 ≥90%）
+Build: PASS（Task 3.1 Windows `make ci` build；Task 0.4 Linux CGO-disabled cross-compile）
+Tests: PASS（Task 3.1 authn `-race`；完整 `make ci`；`tests/migration` 169.638s；真实 MySQL 8.4.11）
+Lint: PASS（Task 3.1 `make lint` 与 `make ci` 全仓 golangci-lint，0 findings）
+Coverage: PASS（总计 90.2%；authn 91.7%；core 90.0%；全部登记包 ≥90%）
 Integration: PASS（`tests/goose`、`tests/internal/testdb`、完整 `tests/migration`；Task 1.2 A↔B FK；
 Task 1.3 identity→authn DAG、audit append-only/retention、core R5''/R9''/R16、
 organization→core、oauth→organization、governance→organization 与 provisioning→organization
-及 federation→identity 三引擎双前缀生命周期；Task 2.3 core `11→10→11` 索引生命周期、
-PostgreSQL 16/MySQL 8.4 relationship/revision 行为）
+及 federation→identity 三引擎双前缀生命周期；Task 2.3 core `11→10→11`、Task 3.1 authn
+`10→9→10` 与 oauth 连续两轮 `6→5→6` 索引生命周期；PostgreSQL 16/MySQL 8.4 relationship/revision 行为）
 Other verification: `git diff --check` PASS；source tree/三方言 63 表 PASS；core 实际 OpenAPI 与
 冻结集合相等（51/51），且注册类型/resource/verb guard 与固定源逐条相等；全域 REST baseline 与
 源代码集合相等（200/200）PASS；远端 Docker 26.1.5 PASS；MySQL 8.4.11 启动、查询、
-Windows TCP 连通及非 root 用户全量双前缀迁移 PASS；schema lock 138 文件、63 表、27 跨模块 FK PASS；
+Windows TCP 连通及非 root 用户全量双前缀迁移 PASS；schema lock 144 文件、63 表、27 跨模块 FK PASS；
 门禁成功/失败路径远端容器清理 PASS；Linux FIFO 真实文件系统测试 PASS。
 
 ## Next Action
-执行 Task 3.1：按 authn source manifest 建立 13 张认证表的 model/query/dbgen 与前缀安全仓储，逐项保留
-一次性消费、轮换、撤销和事务语义；先完成 model ↔ 三方言 DDL 契约，再迁移 repository 行为。
+执行 Task 3.2：按 authn source manifest 与原 basename 迁移 captcha、口令、TOTP、WebAuthn、注册、
+登录、验证和找回行为，复用已完成仓储与扩展包，不提前混入 Task 3.3 HTTP/module。
 
 ## Last Checkpoint
-2026-09-03 · IAM 分支 Task 2 完成检查点：core 的 model/query、仓储、领域服务、module/i18n 与 51 条
-HTTP 路由已完整迁移。core race/90.0% coverage、OpenAPI 与源 guard 对账、完整 `make ci`、真实 MySQL 8.4
-及 schema lock 138 文件均通过。下一步执行 Task 3.1 authn data/repositories。
+2026-09-03 · IAM 分支 Task 3.1 完成检查点：authn 13 表 model/query/dbgen 与事务型仓储已迁移；
+authn race/91.7% coverage、完整 `make ci`、真实 MySQL 8.4.11 双前缀重复迁移及 schema lock 144 文件
+均通过，deep-review 无剩余 finding。下一步执行 Task 3.2 authn behavior。

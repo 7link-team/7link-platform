@@ -33,6 +33,7 @@ func (*Module) MigrationMilestones() []module.MigrationMilestone {
 				{Module: "organization", Name: "base"},
 			},
 		},
+		{Name: "indexes", Version: 6},
 	}
 }
 

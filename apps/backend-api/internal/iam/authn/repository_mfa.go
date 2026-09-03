@@ -2,12 +2,15 @@ package authn
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"7link.com/platform/internal/iam/authn/model"
 	"7link.com/platform/internal/infra/guid"
 	"gorm.io/gen/field"
 )
+
+var errRecoveryCodePrincipalMismatch = errors.New("recovery code principal does not match replacement owner")
 
 func (r *Repository) replaceMFAEnrollment(ctx context.Context, row *model.MFAEnrollment) error {
 	return r.runInTx(ctx, func(repository *Repository) error {
@@ -59,6 +62,11 @@ func (r *Repository) countAvailableRecoveryCodes(ctx context.Context, principalI
 }
 
 func (r *Repository) replaceRecoveryCodes(ctx context.Context, principalID guid.ID, rows []*model.RecoveryCode) error {
+	for _, row := range rows {
+		if row == nil || row.PrincipalID != principalID {
+			return errRecoveryCodePrincipalMismatch
+		}
+	}
 	return r.runInTx(ctx, func(repository *Repository) error {
 		if _, err := repository.lockPrincipal(ctx, principalID); err != nil {
 			return err
