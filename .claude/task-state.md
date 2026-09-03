@@ -32,6 +32,8 @@ federation 九个自治迁移源（63/63 表）；Task 1.4 已完成真实 MySQL
 Task 2.4–2.6 已完成 core HTTP/module、负例与阶段门禁，当前进入 authn 数据与仓储迁移。
 authn 13 张自治表的 model/query/dbgen 与三引擎列/NULL/时间契约已完成；Task 3.1 剩余工作是把
 源工作流中分散的 Bun 数据访问按原文件职责改写为前缀安全 GORM。
+identity 3 张自治表的 model/query/dbgen 也已提前完成，供 authn 读取由 identity 拥有的 principal 与
+service-account 状态，避免跨模块重复定义持久化模型；identity 业务迁移仍留在 Task 3.5–3.7。
 
 Task 2.1 已完成：13 张 core 表均已有 module-owned model、gorm-gen query 与统一前缀绑定；三引擎
 model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entities.parent_key` 是唯一显式方言例外。
@@ -157,6 +159,8 @@ model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entitie
 - Task 3.1 model/query：authn 13 张表全部建立 module-owned `model/query/dbgen`；所有 nullable 时间与
   nullable passkey principal 使用指针，所有时间列使用 `time.Time`。三引擎 model ↔ DDL 全称契约、
   前缀绑定、生成幂等、包 race 及全仓 golangci-lint 已通过。
+- Task 3.5 model/query 前置：identity 3 张表建立 module-owned `model/query/dbgen`，三引擎列/NULL/时间
+  全称契约、前缀绑定、包 race、生成与全仓 golangci-lint 已通过；尚未迁移 identity 业务和 HTTP。
 
 ## Important Decisions
 - 目标为全量、全功能迁移；SAML/SCIM 不允许长期 Disabled。

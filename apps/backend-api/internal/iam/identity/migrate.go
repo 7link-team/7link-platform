@@ -1,5 +1,7 @@
 package identity
 
+//go:generate go run ./dbgen
+
 import (
 	"embed"
 
