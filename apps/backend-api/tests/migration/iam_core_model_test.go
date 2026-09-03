@@ -16,7 +16,7 @@ import (
 	"gorm.io/gorm/schema"
 )
 
-type coreTableModel interface {
+type tableModel interface {
 	TableName() string
 }
 
@@ -26,7 +26,7 @@ type databaseColumn struct {
 }
 
 func TestIAMCoreModelsMatchMigratedSchemas(t *testing.T) {
-	models := []coreTableModel{
+	models := []tableModel{
 		model.Role{}, model.RolePermission{}, model.RoleMember{}, model.TenantMember{},
 		model.Menu{}, model.Entity{}, model.RoleBinding{}, model.PolicyRevision{},
 		model.PlatformAdministrator{}, model.Relationship{}, model.ResourceRelationship{},
@@ -47,14 +47,14 @@ func TestIAMCoreModelsMatchMigratedSchemas(t *testing.T) {
 
 			for _, persisted := range models {
 				t.Run(persisted.TableName(), func(t *testing.T) {
-					assertCoreModelMatchesTable(t, db, engine.dialect, persisted)
+					assertModelMatchesTable(t, db, engine.dialect, persisted)
 				})
 			}
 		})
 	}
 }
 
-func assertCoreModelMatchesTable(t *testing.T, db *sql.DB, dialect string, persisted coreTableModel) {
+func assertModelMatchesTable(t *testing.T, db *sql.DB, dialect string, persisted tableModel) {
 	t.Helper()
 
 	parsed, err := schema.Parse(persisted, &sync.Map{}, schema.NamingStrategy{})

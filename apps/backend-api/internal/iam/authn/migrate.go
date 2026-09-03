@@ -1,5 +1,7 @@
 package authn
 
+//go:generate go run ./dbgen
+
 import (
 	"embed"
 

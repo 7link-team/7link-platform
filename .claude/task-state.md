@@ -12,7 +12,7 @@ PostgreSQL、MySQL、SQLite 真实迁移与 `make ci` 门禁。
 IMPLEMENTATION
 
 ## Current Step
-Phase 3 / Task 3.1：迁移 `internal/iam/authn` 数据模型、生成查询与仓储。
+Phase 3 / Task 3.1：authn 13 表 model/query 已完成，正在迁移事务型数据访问。
 
 ## Overall Progress
 - [x] 深度分析与迁移方案 v8
@@ -30,6 +30,8 @@ Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5、Task 1.0/1.1/1.2 已实现；迁移计划为 
 和 feature 分包。Task 1.3 已完成 identity、authn、oauth、audit、core、organization、governance、provisioning、
 federation 九个自治迁移源（63/63 表）；Task 1.4 已完成真实 MySQL 8 门禁、静态对账与 baseline 冻结。
 Task 2.4–2.6 已完成 core HTTP/module、负例与阶段门禁，当前进入 authn 数据与仓储迁移。
+authn 13 张自治表的 model/query/dbgen 与三引擎列/NULL/时间契约已完成；Task 3.1 剩余工作是把
+源工作流中分散的 Bun 数据访问按原文件职责改写为前缀安全 GORM。
 
 Task 2.1 已完成：13 张 core 表均已有 module-owned model、gorm-gen query 与统一前缀绑定；三引擎
 model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entities.parent_key` 是唯一显式方言例外。
@@ -152,6 +154,9 @@ model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entitie
 - Task 2.4–2.6 deep-review 修复一项 `testifylint` 断言形式；Swagger 门禁确认路径/参数/ID schema、
   PATCH 可清空 ID、relationship DELETE 必填 tuple、统一错误 schema 和兼容性均无剩余发现。
   `go generate` 幂等、core race、core 90.0%、全仓 `make ci`、真实 MySQL 8.4 与 schema lock 均通过。
+- Task 3.1 model/query：authn 13 张表全部建立 module-owned `model/query/dbgen`；所有 nullable 时间与
+  nullable passkey principal 使用指针，所有时间列使用 `time.Time`。三引擎 model ↔ DDL 全称契约、
+  前缀绑定、生成幂等、包 race 及全仓 golangci-lint 已通过。
 
 ## Important Decisions
 - 目标为全量、全功能迁移；SAML/SCIM 不允许长期 Disabled。
