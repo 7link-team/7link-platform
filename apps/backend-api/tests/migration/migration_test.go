@@ -8,6 +8,7 @@ import (
 	"sort"
 	"testing"
 
+	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/dlock"
 	"7link.com/platform/internal/infra/wuid"
@@ -110,6 +111,13 @@ func moduleMigrations() []moduleMigration {
 			target:  2,
 			seedSQL: `INSERT INTO operation_logs (id, occurred_at, entry, operation, access, outcome) VALUES (1, '2026-09-02 00:00:00', 'http', 'POST /tests', 'write', 'success')`,
 			source:  (&audit.Module{}).MigrationSource(),
+		},
+		{
+			name:    "identity",
+			table:   "iam_principals",
+			target:  2,
+			seedSQL: `INSERT INTO iam_principals (id, login_name, display_name, status, created_at, updated_at) VALUES (1, 'first', 'First', 'active', '2026-09-02 00:00:00', '2026-09-02 00:00:00')`,
+			source:  (&identity.Module{}).MigrationSource(),
 		},
 	}
 }

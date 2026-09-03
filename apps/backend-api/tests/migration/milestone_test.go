@@ -2,10 +2,13 @@ package migration_test
 
 import (
 	"database/sql"
+	"fmt"
 	"testing"
 	"testing/fstest"
 
 	"7link.com/platform/internal/app"
+	"7link.com/platform/internal/iam/authn"
+	"7link.com/platform/internal/iam/identity"
 	goosex "7link.com/platform/pkg/extension/goose"
 	"7link.com/platform/pkg/module"
 	"7link.com/platform/tests/internal/testdb"
@@ -16,6 +19,107 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+func TestIAMIdentityAuthnMigrationsAcrossEngines(t *testing.T) {
+	engines := []databaseEngine{
+		{name: "sqlite", dialect: "sqlite", open: testdb.OpenSQLite},
+		{name: "mysql", dialect: "mysql", open: testdb.OpenMySQL},
+		{name: "postgres", dialect: "postgres", open: testdb.OpenPostgres},
+	}
+	for _, engine := range engines {
+		t.Run(engine.name, func(t *testing.T) {
+			for _, prefix := range []string{"", deploymentPrefix} {
+				t.Run(prefixTestName(prefix), func(t *testing.T) {
+					db := engine.open(t)
+					gormDB := openMilestoneGORM(t, db, engine.dialect)
+					modules := []module.Module{&identity.Module{}, &authn.Module{}}
+
+					reports, err := app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{
+						Action: app.MigrationUp,
+					}, prefix)
+					require.NoError(t, err)
+					require.Len(t, reports, 2)
+					assert.Equal(t, "base", reports[0].Milestone)
+					assert.Equal(t, "constraints", reports[1].Milestone)
+					assertTableExists(t, db, engine.dialect, prefix+"iam_principals", true)
+					assertTableExists(t, db, engine.dialect, prefix+"iam_credentials", true)
+					assertTableExists(t, db, engine.dialect, prefix+"goose_identity", true)
+					assertTableExists(t, db, engine.dialect, prefix+"goose_authn", true)
+
+					now := "2026-09-02 00:00:00"
+					credentials := prefix + "iam_credentials"
+					principals := prefix + "iam_principals"
+					_, err = db.ExecContext(t.Context(), fmt.Sprintf(
+						"INSERT INTO %s (principal_id, password_hash, password_changed_at, updated_at) VALUES (999, 'hash', '%s', '%s')",
+						credentials, now, now,
+					))
+					assert.Error(t, err, "authn constraints must reject an unknown identity principal")
+					require.NoError(t, execIAMIdentitySeed(t, db, principals, credentials, now))
+					require.NoError(t, execIAMDeletePrincipal(t, db, principals))
+					assert.Zero(t, tableRowCount(t, db, credentials), "principal deletion must cascade to credentials")
+
+					_, err = app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{
+						Action: app.MigrationDownTo,
+						Module: identity.Name,
+						To:     0,
+					}, prefix)
+					assert.ErrorContains(t, err, `cannot roll back migration milestone "identity.base"`)
+					assert.ErrorContains(t, err, `"authn.constraints"`)
+
+					_, err = app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{
+						Action: app.MigrationDownTo,
+						Module: authn.Name,
+						To:     0,
+					}, prefix)
+					require.NoError(t, err)
+					_, err = app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{
+						Action: app.MigrationDownTo,
+						Module: identity.Name,
+						To:     0,
+					}, prefix)
+					require.NoError(t, err)
+					assertTableExists(t, db, engine.dialect, prefix+"iam_credentials", false)
+					assertTableExists(t, db, engine.dialect, prefix+"iam_principals", false)
+
+					_, err = app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{
+						Action: app.MigrationUp,
+					}, prefix)
+					require.NoError(t, err)
+					assertTableExists(t, db, engine.dialect, prefix+"iam_credentials", true)
+					assertTableExists(t, db, engine.dialect, prefix+"iam_principals", true)
+				})
+			}
+		})
+	}
+}
+
+func prefixTestName(prefix string) string {
+	if prefix == "" {
+		return "plain"
+	}
+	return "prefixed"
+}
+
+func execIAMIdentitySeed(t *testing.T, db *sql.DB, principals, credentials, now string) error {
+	t.Helper()
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf(
+		"INSERT INTO %s (id, login_name, display_name, status, created_at, updated_at) VALUES (1, 'first', 'First', 'active', '%s', '%s')",
+		principals, now, now,
+	)); err != nil {
+		return err
+	}
+	_, err := db.ExecContext(t.Context(), fmt.Sprintf(
+		"INSERT INTO %s (principal_id, password_hash, password_changed_at, updated_at) VALUES (1, 'hash', '%s', '%s')",
+		credentials, now, now,
+	))
+	return err
+}
+
+func execIAMDeletePrincipal(t *testing.T, db *sql.DB, principals string) error {
+	t.Helper()
+	_, err := db.ExecContext(t.Context(), "DELETE FROM "+principals+" WHERE id = 1")
+	return err
+}
 
 type integrationMilestoneModule struct {
 	name       string
