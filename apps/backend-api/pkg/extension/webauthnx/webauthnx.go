@@ -87,6 +87,21 @@ type Credential struct {
 	AAGUID            []byte
 }
 
+// MarkCloneWarning returns credential data with the authenticator clone flag
+// set. The flag is monotonic security state and must survive concurrent logins.
+func MarkCloneWarning(data []byte) ([]byte, error) {
+	var credential webauthn.Credential
+	if err := json.Unmarshal(data, &credential); err != nil {
+		return nil, ErrInvalidCredential
+	}
+	credential.Authenticator.CloneWarning = true
+	marked, err := json.Marshal(&credential)
+	if err != nil {
+		return nil, ErrInvalidCredential
+	}
+	return marked, nil
+}
+
 func New(cfg Config) (*Adapter, error) {
 	if cfg.AttestationPreference == "" {
 		cfg.AttestationPreference = AttestationNone

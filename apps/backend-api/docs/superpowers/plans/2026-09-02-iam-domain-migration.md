@@ -480,7 +480,7 @@ CREATE TABLE {{.Prefix}}iam_roles (
 - Tests: `captcha_test.go`, `i18n_test.go`, `invitation_test.go`, `mfa_test.go`, `module_test.go`, `passkey_test.go`, `recovery_test.go`, `registration_test.go`, `rest_test.go`, `stepup_test.go`, `verification_test.go`, `web_test.go`。
 
 - [x] **3.1 authn data/repositories:** 在 `internal/iam/authn/{model,query,dbgen}` 为 13 张认证表生成查询；根包 repository 文件保留锁定、一次性消费、轮换与撤销事务。
-- [ ] **3.2 authn behavior:** 在 authn 根包按源 basename 移植 captcha、口令、TOTP、WebAuthn、注册、登录、验证和找回；只有文件职责过大且有实际独立边界时再单独评审分包。
+- [x] **3.2 authn behavior:** 在 authn 根包按源 basename 移植 captcha、口令、TOTP、WebAuthn、注册、登录、验证和找回；只有文件职责过大且有实际独立边界时再单独评审分包。
 - [ ] **3.3 authn module/contracts:** 根包 HTTP 文件合计注册 30 条路由；稳定导出 `InvitationCredentials`/`WebService`，解析 `guid.Source` 与 `internal/iam/audit.Appender`。
 - [ ] **3.4 authn negatives/tests:** principal A 不得读、改名、删除或撤销 principal B 的 session/passkey；MFA、recovery、verification token 必须单次消费且并发只能一次成功；租户邀请凭据不得跨 tenant 使用。
 

@@ -41,6 +41,7 @@ type EmailVerificationToken struct {
 	ExpiresAt   time.Time  `gorm:"column:expires_at;not null"`
 	ConsumedAt  *time.Time `gorm:"column:consumed_at"`
 	Code        string     `gorm:"column:code;type:text;not null"`
+	Attempts    int        `gorm:"column:attempts;not null"`
 }
 
 func (EmailVerificationToken) TableName() string { return "iam_email_verification_tokens" }

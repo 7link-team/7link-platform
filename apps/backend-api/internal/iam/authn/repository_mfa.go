@@ -40,6 +40,17 @@ func (r *Repository) activeMFAEnrollment(ctx context.Context, principalID guid.I
 	).Take()
 }
 
+func (r *Repository) activeMFAEnrollmentForUpdate(
+	ctx context.Context,
+	principalID guid.ID,
+	now time.Time,
+) (*model.MFAEnrollment, error) {
+	if _, err := r.lockPrincipal(ctx, principalID); err != nil {
+		return nil, err
+	}
+	return r.activeMFAEnrollment(ctx, principalID, now)
+}
+
 func (r *Repository) deleteMFAEnrollment(ctx context.Context, principalID guid.ID) error {
 	tables, _, err := r.tables()
 	if err != nil {

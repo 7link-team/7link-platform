@@ -44,14 +44,16 @@ func TestRepositoryRecoveryAndVerificationTokensAreSingleUse(t *testing.T) {
 	byHMAC, err := harness.repository.activeEmailVerificationByHMAC(t.Context(), "verification", now)
 	require.NoError(t, err)
 	assert.Equal(t, "123456", byHMAC.Code)
-	byCode, err := harness.repository.activeEmailVerificationByCode(t.Context(), "123456", now)
+	byCode, err := harness.repository.activeEmailVerificationByEmailAndCode(
+		t.Context(), "alice@example.test", "123456", maxCodeAttempts, now,
+	)
 	require.NoError(t, err)
 	assert.Equal(t, "verification", byCode.TokenHMAC)
 	latest, err := harness.repository.latestEmailVerificationTime(t.Context(), 1)
 	require.NoError(t, err)
 	assert.Equal(t, now, *latest)
 	assertSingleWinner(t, func() (bool, error) {
-		return harness.repository.consumeEmailVerification(t.Context(), "verification", now)
+		return harness.repository.consumeEmailVerification(t.Context(), "verification", 0, now)
 	})
 
 	second := &model.EmailVerificationToken{
@@ -71,14 +73,37 @@ func TestRepositoryEmailVerificationCodeCollisionFailsClosed(t *testing.T) {
 	now := repositoryTestNow
 	for _, row := range []*model.EmailVerificationToken{
 		{TokenHMAC: "alice-token", PrincipalID: 1, Email: "alice@example.test", Code: "123456", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
-		{TokenHMAC: "bob-token", PrincipalID: 2, Email: "bob@example.test", Code: "123456", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+		{TokenHMAC: "bob-token", PrincipalID: 2, Email: "alice@example.test", Code: "123456", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
 	} {
 		require.NoError(t, harness.repository.createEmailVerification(t.Context(), row))
 	}
 
-	row, err := harness.repository.activeEmailVerificationByCode(t.Context(), "123456", now)
+	row, err := harness.repository.activeEmailVerificationByEmailAndCode(
+		t.Context(), "alice@example.test", "123456", maxCodeAttempts, now,
+	)
 	assert.ErrorIs(t, err, errAmbiguousEmailVerificationCode)
 	assert.Nil(t, row)
+	require.NoError(t, harness.repository.recordEmailVerificationAttempt(
+		t.Context(), "alice@example.test", maxCodeAttempts, now,
+	))
+	for _, token := range []string{"alice-token", "bob-token"} {
+		verification, loadErr := harness.repository.activeEmailVerificationByHMAC(t.Context(), token, now)
+		require.NoError(t, loadErr)
+		assert.Equal(t, 1, verification.Attempts)
+	}
+	locked := &model.EmailVerificationToken{
+		TokenHMAC: "locked-token", PrincipalID: 1, Email: "locked@example.test", Code: "654321",
+		Attempts: maxCodeAttempts, CreatedAt: now, ExpiresAt: now.Add(time.Hour),
+	}
+	require.NoError(t, harness.repository.createEmailVerification(t.Context(), locked))
+	consumed, err := harness.repository.consumeEmailVerification(
+		t.Context(), locked.TokenHMAC, maxCodeAttempts, now,
+	)
+	require.NoError(t, err)
+	assert.False(t, consumed, "code consumption must honor the durable attempt limit")
+	consumed, err = harness.repository.consumeEmailVerification(t.Context(), locked.TokenHMAC, 0, now)
+	require.NoError(t, err)
+	assert.True(t, consumed, "the high-entropy link token remains independently usable")
 }
 
 func TestRepositoryNotificationOutboxClaimAndTransitions(t *testing.T) {

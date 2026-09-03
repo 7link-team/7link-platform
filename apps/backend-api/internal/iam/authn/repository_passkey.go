@@ -69,6 +69,7 @@ func (r *Repository) updatePasskeyCounter(
 	ctx context.Context,
 	idHash string,
 	expectedSignCount, signCount uint32,
+	expectedCredentialCiphertext string,
 	credentialCiphertext string,
 	now time.Time,
 ) (bool, error) {
@@ -79,6 +80,7 @@ func (r *Repository) updatePasskeyCounter(
 	result, err := tables.Passkeys.WithContext(ctx).Where(
 		tables.Passkeys.IDHash.Eq(idHash),
 		tables.Passkeys.SignCount.Eq(expectedSignCount),
+		tables.Passkeys.CredentialCiphertext.Eq(expectedCredentialCiphertext),
 	).UpdateSimple(
 		tables.Passkeys.CredentialCiphertext.Value(credentialCiphertext),
 		tables.Passkeys.SignCount.Value(signCount),
@@ -88,20 +90,44 @@ func (r *Repository) updatePasskeyCounter(
 	return result.RowsAffected == 1, err
 }
 
+func (r *Repository) lockPasskey(
+	ctx context.Context,
+	principalID guid.ID,
+	idHash string,
+) (*model.Passkey, error) {
+	tables, db, err := r.tables()
+	if err != nil {
+		return nil, err
+	}
+	var row model.Passkey
+	lookup := db.WithContext(ctx).Table(tables.Passkeys.TableName()).
+		Where("id_hash = ? AND principal_id = ?", idHash, principalID)
+	if db.Dialector.Name() != "sqlite" {
+		lookup = lookup.Clauses(clause.Locking{Strength: "UPDATE"})
+	}
+	if err := lookup.Take(&row).Error; err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
 func (r *Repository) storePasskeyCloneWarning(
 	ctx context.Context,
-	idHash, credentialCiphertext string,
+	idHash, expectedCredentialCiphertext, credentialCiphertext string,
 	now time.Time,
-) error {
+) (bool, error) {
 	tables, _, err := r.tables()
 	if err != nil {
-		return err
+		return false, err
 	}
-	_, err = tables.Passkeys.WithContext(ctx).Where(tables.Passkeys.IDHash.Eq(idHash)).UpdateSimple(
+	result, err := tables.Passkeys.WithContext(ctx).Where(
+		tables.Passkeys.IDHash.Eq(idHash),
+		tables.Passkeys.CredentialCiphertext.Eq(expectedCredentialCiphertext),
+	).UpdateSimple(
 		tables.Passkeys.CredentialCiphertext.Value(credentialCiphertext),
 		tables.Passkeys.UpdatedAt.Value(now),
 	)
-	return err
+	return result.RowsAffected == 1, err
 }
 
 func (r *Repository) renamePasskey(

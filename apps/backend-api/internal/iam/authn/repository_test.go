@@ -130,10 +130,11 @@ func TestModuleMigrationContract(t *testing.T) {
 	module := &Module{}
 	assert.Equal(t, Name, module.ModuleName())
 	assert.Equal(t, "goose_authn", module.MigrationSource().TableName)
-	assert.Equal(t, []string{"base", "constraints", "indexes"}, []string{
+	assert.Equal(t, []string{"base", "constraints", "indexes", "verification-attempts"}, []string{
 		module.MigrationMilestones()[0].Name,
 		module.MigrationMilestones()[1].Name,
 		module.MigrationMilestones()[2].Name,
+		module.MigrationMilestones()[3].Name,
 	})
 }
 
@@ -225,6 +226,10 @@ func TestRepositoryMethodsFailClosedWithoutWriter(t *testing.T) {
 		},
 		"replace MFA enrollment": func() error { return repository.replaceMFAEnrollment(t.Context(), &model.MFAEnrollment{}) },
 		"active MFA enrollment":  func() error { _, err := repository.activeMFAEnrollment(t.Context(), principalID, now); return err },
+		"active MFA enrollment for update": func() error {
+			_, err := repository.activeMFAEnrollmentForUpdate(t.Context(), principalID, now)
+			return err
+		},
 		"delete MFA enrollment":  func() error { return repository.deleteMFAEnrollment(t.Context(), principalID) },
 		"count recovery codes":   func() error { _, err := repository.countAvailableRecoveryCodes(t.Context(), principalID); return err },
 		"replace recovery codes": func() error { return repository.replaceRecoveryCodes(t.Context(), principalID, nil) },
@@ -241,11 +246,18 @@ func TestRepositoryMethodsFailClosedWithoutWriter(t *testing.T) {
 		"count passkeys":        func() error { _, err := repository.countPasskeys(t.Context(), principalID); return err },
 		"create passkey":        func() error { _, err := repository.createPasskey(t.Context(), &model.Passkey{}, 1); return err },
 		"get passkey":           func() error { _, err := repository.getPasskey(t.Context(), "passkey"); return err },
-		"update passkey": func() error {
-			_, err := repository.updatePasskeyCounter(t.Context(), "passkey", 0, 1, "cipher", now)
+		"lock passkey": func() error {
+			_, err := repository.lockPasskey(t.Context(), principalID, "passkey")
 			return err
 		},
-		"store clone warning": func() error { return repository.storePasskeyCloneWarning(t.Context(), "passkey", "cipher", now) },
+		"update passkey": func() error {
+			_, err := repository.updatePasskeyCounter(t.Context(), "passkey", 0, 1, "old", "cipher", now)
+			return err
+		},
+		"store clone warning": func() error {
+			_, err := repository.storePasskeyCloneWarning(t.Context(), "passkey", "old", "cipher", now)
+			return err
+		},
 		"rename passkey": func() error {
 			_, _, err := repository.renamePasskey(t.Context(), principalID, "passkey", "name", now)
 			return err
@@ -296,11 +308,20 @@ func TestRepositoryMethodsFailClosedWithoutWriter(t *testing.T) {
 			_, err := repository.activeEmailVerificationByHMAC(t.Context(), "token", now)
 			return err
 		},
-		"email verification by code": func() error { _, err := repository.activeEmailVerificationByCode(t.Context(), "code", now); return err },
-		"consume email verification": func() error { _, err := repository.consumeEmailVerification(t.Context(), "token", now); return err },
-		"latest verification":        func() error { _, err := repository.latestEmailVerificationTime(t.Context(), principalID); return err },
-		"create step-up":             func() error { return repository.createStepUpChallenge(t.Context(), &model.StepUpChallenge{}, now) },
-		"get step-up":                func() error { _, err := repository.getStepUpChallenge(t.Context(), "challenge"); return err },
+		"email verification by code": func() error {
+			_, err := repository.activeEmailVerificationByEmailAndCode(t.Context(), "email", "code", 5, now)
+			return err
+		},
+		"record email verification attempt": func() error {
+			return repository.recordEmailVerificationAttempt(t.Context(), "email", 5, now)
+		},
+		"consume email verification": func() error {
+			_, err := repository.consumeEmailVerification(t.Context(), "token", 5, now)
+			return err
+		},
+		"latest verification": func() error { _, err := repository.latestEmailVerificationTime(t.Context(), principalID); return err },
+		"create step-up":      func() error { return repository.createStepUpChallenge(t.Context(), &model.StepUpChallenge{}, now) },
+		"get step-up":         func() error { _, err := repository.getStepUpChallenge(t.Context(), "challenge"); return err },
 		"fail step-up": func() error {
 			_, err := repository.failStepUpChallenge(t.Context(), "challenge", 0, 1, now)
 			return err

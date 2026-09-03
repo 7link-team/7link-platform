@@ -140,7 +140,7 @@ type PasskeyConfig struct {
 	MaxCredentials            int           `mapstructure:"max_credentials" description:"maximum active passkeys per principal" default:"10"`
 	AttestationPreference     string        `mapstructure:"attestation_preference" description:"WebAuthn attestation conveyance: none, indirect, direct, or enterprise" default:"none"`
 	AllowedAttestationFormats []string      `mapstructure:"allowed_attestation_formats" description:"accepted attestation statement formats; empty allows every format"`
-	AllowedAAGUIDs            []string      `mapstructure:"allowed_aaguid" description:"accepted authenticator AAGUID hex values; empty allows every authenticator"`
+	AllowedAAGUIDs            []string      `mapstructure:"allowed_aaguid" description:"accepted 16-byte authenticator AAGUID hex values; empty allows every authenticator"`
 }
 
 // WebConfig enables database-backed opaque browser sessions.

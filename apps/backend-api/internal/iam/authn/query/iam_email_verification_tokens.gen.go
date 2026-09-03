@@ -35,6 +35,7 @@ func newEmailVerificationToken(db *gorm.DB, opts ...gen.DOOption) emailVerificat
 	_emailVerificationToken.ExpiresAt = field.NewTime(tableName, "expires_at")
 	_emailVerificationToken.ConsumedAt = field.NewTime(tableName, "consumed_at")
 	_emailVerificationToken.Code = field.NewString(tableName, "code")
+	_emailVerificationToken.Attempts = field.NewInt(tableName, "attempts")
 
 	_emailVerificationToken.fillFieldMap()
 
@@ -52,6 +53,7 @@ type emailVerificationToken struct {
 	ExpiresAt   field.Time
 	ConsumedAt  field.Time
 	Code        field.String
+	Attempts    field.Int
 
 	fieldMap map[string]field.Expr
 }
@@ -75,6 +77,7 @@ func (e *emailVerificationToken) updateTableName(table string) *emailVerificatio
 	e.ExpiresAt = field.NewTime(table, "expires_at")
 	e.ConsumedAt = field.NewTime(table, "consumed_at")
 	e.Code = field.NewString(table, "code")
+	e.Attempts = field.NewInt(table, "attempts")
 
 	e.fillFieldMap()
 
@@ -103,7 +106,7 @@ func (e *emailVerificationToken) GetFieldByName(fieldName string) (field.OrderEx
 }
 
 func (e *emailVerificationToken) fillFieldMap() {
-	e.fieldMap = make(map[string]field.Expr, 7)
+	e.fieldMap = make(map[string]field.Expr, 8)
 	e.fieldMap["token_hmac"] = e.TokenHMAC
 	e.fieldMap["principal_id"] = e.PrincipalID
 	e.fieldMap["email"] = e.Email
@@ -111,6 +114,7 @@ func (e *emailVerificationToken) fillFieldMap() {
 	e.fieldMap["expires_at"] = e.ExpiresAt
 	e.fieldMap["consumed_at"] = e.ConsumedAt
 	e.fieldMap["code"] = e.Code
+	e.fieldMap["attempts"] = e.Attempts
 }
 
 func (e emailVerificationToken) clone(db *gorm.DB) emailVerificationToken {

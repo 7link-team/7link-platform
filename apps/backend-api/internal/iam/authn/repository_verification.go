@@ -64,9 +64,11 @@ func (r *Repository) activeEmailVerificationByHMAC(
 	).Take()
 }
 
-func (r *Repository) activeEmailVerificationByCode(
+func (r *Repository) activeEmailVerificationByEmailAndCode(
 	ctx context.Context,
+	email string,
 	code string,
+	maxAttempts int,
 	now time.Time,
 ) (*model.EmailVerificationToken, error) {
 	tables, _, err := r.tables()
@@ -74,7 +76,9 @@ func (r *Repository) activeEmailVerificationByCode(
 		return nil, err
 	}
 	rows, err := tables.EmailVerificationTokens.WithContext(ctx).Where(
+		tables.EmailVerificationTokens.Email.Eq(email),
 		tables.EmailVerificationTokens.Code.Eq(code),
+		tables.EmailVerificationTokens.Attempts.Lt(maxAttempts),
 		tables.EmailVerificationTokens.ConsumedAt.IsNull(),
 		tables.EmailVerificationTokens.ExpiresAt.Gt(now),
 	).Limit(2).Find()
@@ -90,16 +94,40 @@ func (r *Repository) activeEmailVerificationByCode(
 	return rows[0], nil
 }
 
-func (r *Repository) consumeEmailVerification(ctx context.Context, tokenHMAC string, now time.Time) (bool, error) {
+func (r *Repository) recordEmailVerificationAttempt(
+	ctx context.Context,
+	email string,
+	maxAttempts int,
+	now time.Time,
+) error {
+	tables, db, err := r.tables()
+	if err != nil {
+		return err
+	}
+	return db.WithContext(ctx).Table(tables.EmailVerificationTokens.TableName()).Where(
+		"email = ? AND consumed_at IS NULL AND expires_at > ? AND attempts < ?", email, now, maxAttempts,
+	).UpdateColumn("attempts", gorm.Expr("attempts + 1")).Error
+}
+
+func (r *Repository) consumeEmailVerification(
+	ctx context.Context,
+	tokenHMAC string,
+	maxAttempts int,
+	now time.Time,
+) (bool, error) {
 	tables, _, err := r.tables()
 	if err != nil {
 		return false, err
 	}
-	result, err := tables.EmailVerificationTokens.WithContext(ctx).Where(
+	statement := tables.EmailVerificationTokens.WithContext(ctx).Where(
 		tables.EmailVerificationTokens.TokenHMAC.Eq(tokenHMAC),
 		tables.EmailVerificationTokens.ConsumedAt.IsNull(),
 		tables.EmailVerificationTokens.ExpiresAt.Gt(now),
-	).UpdateSimple(tables.EmailVerificationTokens.ConsumedAt.Value(now))
+	)
+	if maxAttempts > 0 {
+		statement = statement.Where(tables.EmailVerificationTokens.Attempts.Lt(maxAttempts))
+	}
+	result, err := statement.UpdateSimple(tables.EmailVerificationTokens.ConsumedAt.Value(now))
 	return result.RowsAffected == 1, err
 }
 

@@ -170,6 +170,12 @@ func TestStoredUserCredentialAndSessionEncoding(t *testing.T) {
 	var roundTrip webauthn.Credential
 	require.NoError(t, json.Unmarshal(encoded.Data, &roundTrip))
 	assert.Equal(t, stored.PublicKey, roundTrip.PublicKey)
+	marked, err := MarkCloneWarning(data)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(marked, &roundTrip))
+	assert.True(t, roundTrip.Authenticator.CloneWarning)
+	_, err = MarkCloneWarning([]byte(`not-json`))
+	assert.ErrorIs(t, err, ErrInvalidCredential)
 
 	expires := time.Now().Add(time.Minute).UTC().Truncate(time.Nanosecond)
 	sessionData, err := json.Marshal(webauthn.SessionData{

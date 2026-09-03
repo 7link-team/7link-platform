@@ -49,7 +49,7 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/pkg/i18n \
 	7link.com/platform/pkg/query
 
-.PHONY: build ci dev fmt-check generate generate-docs iam-preflight lint test test-coverage test-integration test-all test-mysql8 test-mysql8-run
+.PHONY: build ci dev fmt-check generate generate-docs golangci iam-preflight lint test test-coverage test-integration test-all test-mysql8 test-mysql8-run
 
 build:
 	$(MKDIR_OUTPUT)
@@ -103,6 +103,8 @@ dev:
 # developer resolves the same findings without a local install.
 lint:
 	go tool -modfile=tools/go.mod golangci-lint run ./...
+
+golangci: lint
 
 test:
 	go test ./...

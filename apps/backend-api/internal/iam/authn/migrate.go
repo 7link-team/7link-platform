@@ -34,6 +34,7 @@ func (*Module) MigrationMilestones() []module.MigrationMilestone {
 			},
 		},
 		{Name: "indexes", Version: 10},
+		{Name: "verification-attempts", Version: 11},
 	}
 }
 

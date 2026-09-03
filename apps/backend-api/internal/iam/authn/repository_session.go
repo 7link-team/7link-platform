@@ -79,6 +79,18 @@ func (r *Repository) revokeSession(ctx context.Context, principalID guid.ID, idH
 	return result.RowsAffected == 1, err
 }
 
+func (r *Repository) revokeSessionByHash(ctx context.Context, idHash string, now time.Time) (bool, error) {
+	tables, _, err := r.tables()
+	if err != nil {
+		return false, err
+	}
+	result, err := tables.Sessions.WithContext(ctx).Where(
+		tables.Sessions.IDHash.Eq(idHash),
+		tables.Sessions.RevokedAt.IsNull(),
+	).UpdateSimple(tables.Sessions.RevokedAt.Value(now))
+	return result.RowsAffected == 1, err
+}
+
 func (r *Repository) revokeSessions(
 	ctx context.Context,
 	principalID guid.ID,

@@ -258,13 +258,21 @@ func TestRepositoryPasskeysArePrincipalScopedAndCountersAreCAS(t *testing.T) {
 	_, err = harness.repository.getPasskey(t.Context(), "passkey")
 	require.NoError(t, err)
 
-	updated, err := harness.repository.updatePasskeyCounter(t.Context(), "passkey", 0, 1, "new-cipher", now.Add(time.Minute))
+	updated, err := harness.repository.updatePasskeyCounter(
+		t.Context(), "passkey", 0, 1, "cipher", "new-cipher", now.Add(time.Minute),
+	)
 	require.NoError(t, err)
 	assert.True(t, updated)
-	updated, err = harness.repository.updatePasskeyCounter(t.Context(), "passkey", 0, 2, "stale", now.Add(2*time.Minute))
+	updated, err = harness.repository.updatePasskeyCounter(
+		t.Context(), "passkey", 0, 2, "cipher", "stale", now.Add(2*time.Minute),
+	)
 	require.NoError(t, err)
 	assert.False(t, updated)
-	require.NoError(t, harness.repository.storePasskeyCloneWarning(t.Context(), "passkey", "warning", now.Add(3*time.Minute)))
+	updated, err = harness.repository.storePasskeyCloneWarning(
+		t.Context(), "passkey", "new-cipher", "warning", now.Add(3*time.Minute),
+	)
+	require.NoError(t, err)
+	assert.True(t, updated)
 	renamed, changed, err := harness.repository.renamePasskey(t.Context(), 2, "passkey", "Stolen", now)
 	require.NoError(t, err)
 	assert.False(t, changed)

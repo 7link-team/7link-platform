@@ -40,7 +40,7 @@ func TestIAMIdentityAuthnMigrationsAcrossEngines(t *testing.T) {
 					require.NoError(t, err)
 					require.Len(t, reports, 2)
 					assert.Equal(t, "base", reports[0].Milestone)
-					assert.Equal(t, "indexes", reports[1].Milestone)
+					assert.Equal(t, "verification-attempts", reports[1].Milestone)
 					assertTableExists(t, db, engine.dialect, prefix+"iam_principals", true)
 					assertTableExists(t, db, engine.dialect, prefix+"iam_credentials", true)
 					assertTableExists(t, db, engine.dialect, prefix+"goose_identity", true)
@@ -105,6 +105,12 @@ func verifyAuthnQueryIndexLifecycle(t *testing.T, db *sql.DB, dialect, prefix st
 	assert.Empty(t, coreIndexColumns(t, db, prefix+"iam_email_verification_tokens", index, dialect))
 	require.NoError(t, goosex.MigrateUpTo(t.Context(), db, source, dialect, 10))
 	assert.Equal(t, want, coreIndexColumns(t, db, prefix+"iam_email_verification_tokens", index, dialect))
+	require.NoError(t, goosex.MigrateUpTo(t.Context(), db, source, dialect, 11))
+	assert.Contains(t, readDatabaseColumns(t, db, dialect, prefix+"iam_email_verification_tokens"), "attempts")
+	require.NoError(t, goosex.MigrateDownTo(t.Context(), db, source, dialect, 10))
+	assert.NotContains(t, readDatabaseColumns(t, db, dialect, prefix+"iam_email_verification_tokens"), "attempts")
+	require.NoError(t, goosex.MigrateUpTo(t.Context(), db, source, dialect, 11))
+	assert.Contains(t, readDatabaseColumns(t, db, dialect, prefix+"iam_email_verification_tokens"), "attempts")
 }
 
 func prefixTestName(prefix string) string {

@@ -66,6 +66,10 @@
       "sha256": "5a7d4141d0f5db6c913f74203dae0ae27a7ede93a9450a2499907f57c222d0df"
     },
     {
+      "path": "authn/sql/mysql/00011_email_verification_attempts.sql",
+      "sha256": "ad88a3af3a9fe2637e3d824f4b589b61f99c2b21633c4d68c5b3184818e7ae54"
+    },
+    {
       "path": "authn/sql/postgres/00001_credentials.sql",
       "sha256": "6205f24b9ee17a83d86bab761386e461a2e2150fb154131aacd498fb216c14b0"
     },
@@ -106,6 +110,10 @@
       "sha256": "eae8ab9d83f7d22aeb240a74e58d9cfcc82006cf29b7d0214a3b34c0c06b81b8"
     },
     {
+      "path": "authn/sql/postgres/00011_email_verification_attempts.sql",
+      "sha256": "14fa7dfad2860e8d64210e4bb9da44d1e45c53d39c9d6027046b3203e0bfa0a2"
+    },
+    {
       "path": "authn/sql/sqlite/00001_credentials.sql",
       "sha256": "33756998bd13bafdd590831b996036473cadfd0dc57605dfa04b00b6321493e4"
     },
@@ -144,6 +152,10 @@
     {
       "path": "authn/sql/sqlite/00010_verification_code_index.sql",
       "sha256": "eae8ab9d83f7d22aeb240a74e58d9cfcc82006cf29b7d0214a3b34c0c06b81b8"
+    },
+    {
+      "path": "authn/sql/sqlite/00011_email_verification_attempts.sql",
+      "sha256": "110bfe40ee725b128153b8f4821138a899f5e5e1f1456f5c267830468242a2e8"
     },
     {
       "path": "core/sql/mysql/00001_authorization.sql",

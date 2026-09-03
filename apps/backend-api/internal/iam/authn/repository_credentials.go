@@ -134,7 +134,7 @@ func (r *Repository) enableMFA(
 		return false, err
 	}
 	result, err := tables.Credentials.WithContext(ctx).
-		Where(tables.Credentials.PrincipalID.Eq(principalID), tables.Credentials.MFARequired.Is(false)).
+		Where(tables.Credentials.PrincipalID.Eq(principalID), tables.Credentials.TOTPSecret.Eq("")).
 		UpdateSimple(
 			tables.Credentials.TOTPSecret.Value(secretCiphertext),
 			tables.Credentials.MFARequired.Value(true),
