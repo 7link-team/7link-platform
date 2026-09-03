@@ -236,4 +236,4 @@ provider-root 契约，再实现 service/repository；HTTP 目标契约在 Task 
 ## Last Checkpoint
 2026-09-03 · IAM 分支 Task 3.3–3.4 检查点：authn module、30 条 RESTful HTTP/OpenAPI、principal
 隔离和并发单次消费完成；authn race 与 90.3% coverage 通过。计划升级 v9 并记录 D12；下一步重跑
-完整 CI 已通过；下一步提交推送本检查点，随后执行 Task 3.5 identity。
+完整 CI 已通过，Task 3.3–3.4 已提交并推送为 `3d7bd62`；下一步执行 Task 3.5 identity。
