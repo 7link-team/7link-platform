@@ -1,0 +1,38 @@
+-- Source: internal/modules/organization/sql/mysql/00006_iam_data_scopes.sql:1-37
+-- +goose Up
+CREATE TABLE {{.Prefix}}iam_member_departments (
+    tenant_id BIGINT NOT NULL,
+    principal_id BIGINT NOT NULL,
+    department_id BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    PRIMARY KEY (tenant_id, principal_id),
+    KEY {{.Prefix}}idx_iam_member_departments_department (tenant_id, department_id, principal_id),
+    CONSTRAINT {{.Prefix}}fk_iam_member_departments_member FOREIGN KEY (tenant_id, principal_id) REFERENCES {{.Prefix}}iam_tenant_members (tenant_id, principal_id) ON DELETE CASCADE,
+    CONSTRAINT {{.Prefix}}fk_iam_member_departments_department FOREIGN KEY (tenant_id, department_id) REFERENCES {{.Prefix}}iam_departments (tenant_id, id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE {{.Prefix}}iam_role_data_scopes (
+    tenant_id BIGINT NOT NULL,
+    role_id BIGINT NOT NULL,
+    scope_type VARCHAR(32) NOT NULL,
+    updated_at BIGINT NOT NULL,
+    PRIMARY KEY (tenant_id, role_id),
+    CONSTRAINT {{.Prefix}}chk_iam_role_data_scopes_type CHECK (scope_type IN ('all', 'self', 'department', 'department_and_descendants', 'selected_departments')),
+    CONSTRAINT {{.Prefix}}fk_iam_role_data_scopes_role FOREIGN KEY (tenant_id, role_id) REFERENCES {{.Prefix}}iam_roles (tenant_id, id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE {{.Prefix}}iam_role_scope_departments (
+    tenant_id BIGINT NOT NULL,
+    role_id BIGINT NOT NULL,
+    department_id BIGINT NOT NULL,
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY (tenant_id, role_id, department_id),
+    KEY {{.Prefix}}idx_iam_role_scope_departments_department (tenant_id, department_id, role_id),
+    CONSTRAINT {{.Prefix}}fk_iam_role_scope_departments_scope FOREIGN KEY (tenant_id, role_id) REFERENCES {{.Prefix}}iam_role_data_scopes (tenant_id, role_id) ON DELETE CASCADE,
+    CONSTRAINT {{.Prefix}}fk_iam_role_scope_departments_department FOREIGN KEY (tenant_id, department_id) REFERENCES {{.Prefix}}iam_departments (tenant_id, id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- +goose Down
+DROP TABLE IF EXISTS {{.Prefix}}iam_role_scope_departments;
+DROP TABLE IF EXISTS {{.Prefix}}iam_role_data_scopes;
+DROP TABLE IF EXISTS {{.Prefix}}iam_member_departments;
