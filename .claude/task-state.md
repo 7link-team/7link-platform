@@ -26,8 +26,8 @@ Phase 1 / Task 1.3：建立 9 个自治 IAM 模块的三方言 migration source 
 ## Active Work
 Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5、Task 1.0/1.1/1.2 已实现；迁移计划为 v8，
 `internal/iam/` 作为域命名空间，9 个子模块各自拥有业务、model/query 与 SQL，取消集中 schema
-和 feature 分包。Task 1.3 已完成 identity、authn、oauth、audit、core 五个自治迁移源（36/63 表）；
-63 表所有权集合已闭合，当前语义重写 organization/governance/provisioning/federation。
+和 feature 分包。Task 1.3 已完成 identity、authn、oauth、audit、core、organization 六个自治迁移源（50/63 表）；
+63 表所有权集合已闭合，当前语义重写 governance/provisioning/federation。
 
 ## Completed Work
 - 已从任务记录与实际仓库恢复断点；工作树在本轮开始时干净。
@@ -95,6 +95,10 @@ Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5、Task 1.0/1.1/1.2 已实现；迁移计划为 
   链序列/哈希唯一性、retention 范围和前缀化 append-only 触发器均通过双前缀三引擎验证。
 - Task 1.3 core：三方言 13 表、10 个迁移版本完成；角色/实体 name_key、菜单 NULL route、实体根/子
   同级唯一、MySQL 安全 parent key、type 复合外键、RESTRICT、NULL 时间窗与 CHECK 通过三引擎验证。
+- Task 1.3 organization：三方言 14 表、8 个迁移版本完成；部门可空 parent/self-FK 与根/子唯一、
+  岗位规范化 code、静态/动态组、成员 NULL 时间窗、邀请可空状态及 1024/4096 字节限制已对齐。
+  7 条指向 core 的 FK 归入 organization constraints；OAuth tenant FK 与 identity/core/organization
+  一并通过无序注册的里程碑 DAG、孤儿拒绝、CASCADE/RESTRICT 和有数据 down/up 生命周期验证。
 
 ## Important Decisions
 - 目标为全量、全功能迁移；SAML/SCIM 不允许长期 Disabled。
@@ -125,16 +129,17 @@ Tests: PASS（Task 1.2 主模块全量 + 独立 tests module + 完整 `make ci`�
 Lint: PASS（Task 1.2 固定版本 golangci-lint / `make ci`，0 findings）
 Coverage: PASS（Task 1.2 总体 91.3%，全部受控包 ≥90%）
 Integration: PASS（`tests/goose`、`tests/internal/testdb`、完整 `tests/migration`；Task 1.2 A↔B FK；
-Task 1.3 identity→authn DAG、audit append-only/retention、core R5''/R9''/R16 三引擎双前缀生命周期）
+Task 1.3 identity→authn DAG、audit append-only/retention、core R5''/R9''/R16、
+organization→core 与 oauth→organization 三引擎双前缀生命周期）
 Other verification: `git diff --check` PASS；source tree/三方言 63 表 PASS；REST baseline 与
 源代码集合相等（200/200）PASS；远端 Docker 26.1.5 PASS；MySQL 8.4.11 启动、查询、
 Windows TCP 连通及 append-only Up/Down 部分状态恢复矩阵 PASS；Linux FIFO 真实文件系统测试 PASS。
 
 ## Next Action
-继续 Task 1.3：从 organization 开始语义重写四个已机械复制的模块，先把 14 表的真实时间、NULL、
-name_key、CHECK/外键与 7 条 core 跨模块约束改写完成，再接入 core↔organization DAG 生命周期。
+继续 Task 1.3：语义重写 governance 的 4 张表，落实真实时间、NULL、binary enum、CHECK、
+organization/core 跨模块约束与三引擎生命周期，再推进 provisioning 和 federation。
 
 ## Last Checkpoint
-2026-09-02 · IAM 分支 Task 1.3 阶段检查点：identity/authn/oauth/audit/core 五个自治 migration
-source 的 36/63 表已完成语义改写；完整 migration 测试与 63 表/9 source 所有权门禁通过。
-下一步重写 organization，并验证 core↔organization 与 oauth→organization 里程碑 DAG。
+2026-09-02 · IAM 分支 Task 1.3 阶段检查点：identity/authn/oauth/audit/core/organization 六个自治
+migration source 的 50/63 表已完成语义改写；完整 migration 测试、63 表所有权、最大前缀及
+organization/core/oauth 三引擎 DAG 门禁通过。下一步重写 governance。
