@@ -101,6 +101,25 @@ func TestCorePureValidationAndDecisionBranches(t *testing.T) {
 	assert.ErrorContains(t, err, "evaluate scoped role permission condition")
 }
 
+func TestRelationshipTraversalExpressionsMatchDatabaseDialects(t *testing.T) {
+	tests := []struct {
+		dialect                                        string
+		textParameter, entityLiteral, integerParameter string
+	}{
+		{"sqlite", "CAST(? AS TEXT)", "CAST('entity' AS TEXT)", "CAST(? AS BIGINT)"},
+		{"mysql", "CAST(? AS CHAR(16))", "CAST('entity' AS CHAR(16))", "CAST(? AS SIGNED)"},
+		{"postgres", `CAST(? AS VARCHAR(16)) COLLATE "C"`, `CAST('entity' AS VARCHAR(16)) COLLATE "C"`, "CAST(? AS BIGINT)"},
+	}
+	for _, test := range tests {
+		t.Run(test.dialect, func(t *testing.T) {
+			textParameter, entityLiteral, integerParameter := relationshipTraversalExpressions(test.dialect)
+			assert.Equal(t, test.textParameter, textParameter)
+			assert.Equal(t, test.entityLiteral, entityLiteral)
+			assert.Equal(t, test.integerParameter, integerParameter)
+		})
+	}
+}
+
 func TestRepositoryPinnedTransactionAndIDGeneratorBranches(t *testing.T) {
 	harness := newRepositoryHarness(t, "sl_")
 	pinned := harness.repository.withDB(harness.db)

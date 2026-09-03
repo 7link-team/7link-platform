@@ -22,7 +22,7 @@ func (*Module) MigrationSource() goosex.Source {
 }
 
 func (*Module) MigrationMilestones() []module.MigrationMilestone {
-	return []module.MigrationMilestone{{Name: "base", Version: 10}}
+	return []module.MigrationMilestone{{Name: "base", Version: 11}}
 }
 
 var (

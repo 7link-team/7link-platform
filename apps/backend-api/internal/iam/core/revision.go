@@ -82,7 +82,9 @@ func (store *RevisionStore) Bump(ctx context.Context, db *gorm.DB, tenantID guid
 	err := db.WithContext(ctx).Table(store.table).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "tenant_id"}},
 		DoUpdates: clause.Assignments(map[string]any{
-			"revision":   gorm.Expr("revision + 1"),
+			"revision": gorm.Expr(
+				"? + 1", clause.Column{Table: store.table, Name: "revision"},
+			),
 			"updated_at": updatedAt,
 		}),
 	}).Create(&row).Error

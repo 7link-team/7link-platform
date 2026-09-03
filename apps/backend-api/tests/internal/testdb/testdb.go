@@ -59,6 +59,14 @@ func OpenMySQL(t *testing.T) *sql.DB {
 // OpenPostgres starts an isolated embedded PostgreSQL 16 instance.
 func OpenPostgres(t *testing.T) *sql.DB {
 	t.Helper()
+	db, _ := OpenPostgresWithDSN(t)
+	return db
+}
+
+// OpenPostgresWithDSN starts an isolated embedded PostgreSQL 16 instance and
+// returns both its pool and connection string for tests that open another ORM pool.
+func OpenPostgresWithDSN(t *testing.T) (*sql.DB, string) {
+	t.Helper()
 
 	const maxStartAttempts = 3
 	runtimeRoot := t.TempDir()
@@ -91,7 +99,7 @@ func OpenPostgres(t *testing.T) *sql.DB {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	require.NoError(t, db.PingContext(t.Context()))
-	return db
+	return db, dsn
 }
 
 // OpenSQLite opens an isolated file-backed SQLite database with foreign keys

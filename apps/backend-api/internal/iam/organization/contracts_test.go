@@ -3,6 +3,7 @@ package organization
 import (
 	"context"
 	"encoding/json"
+	"io/fs"
 	"reflect"
 	"testing"
 	"time"
@@ -99,6 +100,25 @@ func TestMembershipRuleRejectsInvalidJSON(t *testing.T) {
 
 	var rule MembershipRule
 	require.Error(t, rule.UnmarshalJSON([]byte("{")))
+}
+
+func TestModuleMigrationContract(t *testing.T) {
+	module := &Module{}
+	require.Equal(t, Name, module.ModuleName())
+	source := module.MigrationSource()
+	require.Equal(t, "goose_organization", source.TableName)
+	files, err := fs.ReadDir(source.FS, "sql/postgres")
+	require.NoError(t, err)
+	require.Len(t, files, 8)
+	milestones := module.MigrationMilestones()
+	require.Len(t, milestones, 2)
+	require.Equal(t, "base", milestones[0].Name)
+	require.Equal(t, int64(7), milestones[0].Version)
+	require.Equal(t, "constraints", milestones[1].Name)
+	require.Equal(t, int64(8), milestones[1].Version)
+	require.Len(t, milestones[1].Dependencies, 1)
+	require.Equal(t, "iam", milestones[1].Dependencies[0].Module)
+	require.Equal(t, "base", milestones[1].Dependencies[0].Name)
 }
 
 func consumeGroupFields(value Group) {

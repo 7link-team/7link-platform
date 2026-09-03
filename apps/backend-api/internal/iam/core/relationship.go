@@ -516,12 +516,16 @@ func (r *Repository) validateRelationshipAddition(ctx context.Context, relations
 	}
 	target := relationshipNode{Type: "entity", ID: relationship.ResourceID, Relation: relationship.Relation}
 	table := tables.Relationships.TableName()
+	textParameter, entityLiteral, integerParameter := relationshipTraversalExpressions(db.Dialector.Name())
 	var downstream relationshipWalkSummary
 	err = db.WithContext(ctx).Raw(`
 WITH RECURSIVE walk(node_type, node_id, node_relation, depth) AS (
-    SELECT ? AS node_type, ? AS node_id, ? AS node_relation, 0 AS depth
+    SELECT `+textParameter+` AS node_type,
+           `+integerParameter+` AS node_id,
+           `+textParameter+` AS node_relation,
+           0 AS depth
     UNION
-    SELECT 'entity', rel.resource_id, rel.relation, walk.depth + 1
+    SELECT `+entityLiteral+`, rel.resource_id, rel.relation, walk.depth + 1
     FROM `+table+` AS rel
     JOIN walk ON rel.subject_type = walk.node_type
              AND rel.subject_id = walk.node_id
@@ -529,7 +533,7 @@ WITH RECURSIVE walk(node_type, node_id, node_relation, depth) AS (
     WHERE rel.tenant_id = ? AND walk.depth < ?
 )
 SELECT COALESCE(MAX(depth), 0) AS max_depth,
-       COALESCE(MAX(CASE WHEN node_type = ? AND node_id = ? AND node_relation = ? THEN 1 ELSE 0 END), 0) AS reaches_source
+       COALESCE(MAX(CASE WHEN node_type = ? AND node_id = `+integerParameter+` AND node_relation = ? THEN 1 ELSE 0 END), 0) AS reaches_source
 FROM walk`,
 		target.Type, target.ID, target.Relation, relationship.TenantID, maxRelationshipDepth,
 		source.Type, source.ID, source.Relation,
@@ -544,7 +548,10 @@ FROM walk`,
 	var upstream relationshipWalkSummary
 	err = db.WithContext(ctx).Raw(`
 WITH RECURSIVE walk(node_type, node_id, node_relation, depth) AS (
-    SELECT ? AS node_type, ? AS node_id, ? AS node_relation, 0 AS depth
+    SELECT `+textParameter+` AS node_type,
+           `+integerParameter+` AS node_id,
+           `+textParameter+` AS node_relation,
+           0 AS depth
     UNION
     SELECT rel.subject_type, rel.subject_id, rel.subject_relation, walk.depth + 1
     FROM `+table+` AS rel
@@ -564,6 +571,20 @@ FROM walk`,
 		return ErrRelationshipHierarchy
 	}
 	return nil
+}
+
+func relationshipTraversalExpressions(dialect string) (textParameter, entityLiteral, integerParameter string) {
+	textParameter, entityLiteral = "CAST(? AS TEXT)", "CAST('entity' AS TEXT)"
+	integerParameter = "CAST(? AS BIGINT)"
+	switch dialect {
+	case "mysql":
+		textParameter, entityLiteral = "CAST(? AS CHAR(16))", "CAST('entity' AS CHAR(16))"
+		integerParameter = "CAST(? AS SIGNED)"
+	case "postgres":
+		textParameter = `CAST(? AS VARCHAR(16)) COLLATE "C"`
+		entityLiteral = `CAST('entity' AS VARCHAR(16)) COLLATE "C"`
+	}
+	return textParameter, entityLiteral, integerParameter
 }
 
 func (a *Authorizer) loadRelationshipGrants(

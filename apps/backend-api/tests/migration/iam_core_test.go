@@ -1,18 +1,33 @@
 package migration_test
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	iamaudit "7link.com/platform/internal/iam/audit"
 	iamcore "7link.com/platform/internal/iam/core"
+	"7link.com/platform/internal/iam/identity"
+	"7link.com/platform/internal/iam/organization"
+	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/appenv"
+	"7link.com/platform/pkg/extension/authz"
 	goosex "7link.com/platform/pkg/extension/goose"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/tests/internal/testdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 const coreTestTime = "2026-09-02 00:00:00"
+
+type relationshipTestIDSource struct{ next atomic.Int64 }
+
+func (source *relationshipTestIDSource) Next() (int64, error) { return source.next.Add(1), nil }
 
 func TestIAMCoreMigrationsAcrossEngines(t *testing.T) {
 	engines := []databaseEngine{
@@ -33,10 +48,178 @@ func TestIAMCoreMigrationsAcrossEngines(t *testing.T) {
 					verifyCoreMenuContracts(t, db, prefix)
 					verifyCoreEntityContracts(t, db, prefix, engine.dialect)
 					verifyCoreBindingAndGrantContracts(t, db, prefix)
+					verifyCoreRelationshipTraversalIndex(t, db, prefix, engine.dialect)
+					verifyCoreRelationshipTraversalMigrationLifecycle(t, db, source, prefix, engine.dialect)
 				})
 			}
 		})
 	}
+}
+
+func TestIAMCoreServiceBehaviorOnPostgres(t *testing.T) {
+	db, dsn := testdb.OpenPostgresWithDSN(t)
+	for _, prefix := range []string{"", deploymentPrefix} {
+		t.Run(prefixTestName(prefix), func(t *testing.T) {
+			for _, provider := range []interface{ MigrationSource() goosex.Source }{
+				&identity.Module{}, &iamcore.Module{}, &organization.Module{},
+			} {
+				source := provider.MigrationSource()
+				source.Prefix = prefix
+				require.NoError(t, goosex.Migrate(t.Context(), db, source, "postgres"))
+			}
+			verifyCoreServiceBehavior(t, "postgres", dsn, prefix)
+		})
+	}
+}
+
+func verifyCoreServiceBehavior(t *testing.T, datasourceType, dsn, prefix string) {
+	t.Helper()
+	router, err := gormx.NewDatasourceRouter(t.Context(), false, map[string]gormx.Datasource{
+		"primary": {Type: datasourceType, DSN: dsn, Writable: true, Readable: true},
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, router.Close()) }()
+	runtime := appenv.NewRuntime(
+		appenv.NewIdentity("iam-core-service-test", "1.0.0"),
+		appenv.WithDatabase(router),
+		appenv.WithTablePrefix(prefix),
+	)
+	ids := &relationshipTestIDSource{}
+	ids.next.Store(91_000)
+	repository := iamcore.NewRepository(runtime, ids)
+	authorizer := iamcore.NewAuthorizer(runtime)
+	service := iamcore.NewService(
+		authz.DefaultRegistry(), repository, authorizer,
+		func(context.Context, *gorm.DB, iamaudit.DomainEvent) error { return nil },
+	)
+
+	now := time.Date(2026, 9, 2, 12, 0, 0, 123_000_000, time.UTC)
+	tenantID, principalID := guid.ID(90_001), guid.ID(90_002)
+	db := router.Write()
+	require.NoError(t, db.Exec(
+		"INSERT INTO "+prefix+"iam_tenants (id, slug, name, status, version, created_at, updated_at) VALUES (?, ?, ?, 'active', 1, ?, ?)",
+		tenantID, "relationship-traversal-tenant", "Relationship Traversal Tenant", now, now,
+	).Error)
+	require.NoError(t, db.Exec(
+		"INSERT INTO "+prefix+"iam_principals (id, login_name, display_name, status, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?)",
+		principalID, "relationship-traversal-principal", "Relationship Traversal Principal", now, now,
+	).Error)
+	_, err = service.PutTenantMember(
+		t.Context(), tenantID, principalID, "Relationship Member", "relationship@example.test", 0, iamcore.MemberActive,
+	)
+	require.NoError(t, err)
+	first, err := service.CreateEntity(t.Context(), iamcore.Entity{
+		TenantID: tenantID, Type: "store", Name: "First", Status: iamcore.EntityActive,
+	})
+	require.NoError(t, err)
+	second, err := service.CreateEntity(t.Context(), iamcore.Entity{
+		TenantID: tenantID, Type: "store", Name: "Second", Status: iamcore.EntityActive,
+	})
+	require.NoError(t, err)
+
+	_, changed, err := service.PutRelationship(t.Context(), iamcore.Relationship{
+		TenantID: tenantID, SubjectType: "principal", SubjectID: principalID,
+		Relation: "owner", ResourceType: "store", ResourceID: first.ID,
+	})
+	require.NoError(t, err)
+	assert.True(t, changed)
+	_, changed, err = service.PutRelationship(t.Context(), iamcore.Relationship{
+		TenantID: tenantID, SubjectType: "entity", SubjectID: first.ID, SubjectRelation: "owner",
+		Relation: "viewer", ResourceType: "store", ResourceID: second.ID,
+	})
+	require.NoError(t, err)
+	assert.True(t, changed)
+	var relationshipsBefore int64
+	require.NoError(t, db.Table(prefix+"iam_relationships").Count(&relationshipsBefore).Error)
+	_, _, err = service.PutRelationship(t.Context(), iamcore.Relationship{
+		TenantID: tenantID, SubjectType: "entity", SubjectID: second.ID, SubjectRelation: "viewer",
+		Relation: "owner", ResourceType: "store", ResourceID: first.ID,
+	})
+	assert.ErrorIs(t, err, iamcore.ErrRelationshipHierarchy)
+	var relationshipsAfter int64
+	require.NoError(t, db.Table(prefix+"iam_relationships").Count(&relationshipsAfter).Error)
+	assert.Equal(t, relationshipsBefore, relationshipsAfter)
+
+	revisions, err := iamcore.NewRevisionStore(prefix)
+	require.NoError(t, err)
+	current, err := revisions.Current(t.Context(), db, tenantID)
+	require.NoError(t, err)
+	require.Positive(t, current)
+	require.NoError(t, revisions.Bump(t.Context(), db, tenantID, now.Add(time.Second)))
+	require.NoError(t, revisions.Bump(t.Context(), db, tenantID, now.Add(2*time.Second)))
+	advanced, err := revisions.Current(t.Context(), db, tenantID)
+	require.NoError(t, err)
+	assert.Equal(t, current+2, advanced)
+}
+
+func verifyCoreRelationshipTraversalIndex(t *testing.T, db *sql.DB, prefix, dialect string) {
+	t.Helper()
+	columns := coreIndexColumns(t, db, prefix+"iam_relationships", prefix+"idx_iam_relationships_reverse", dialect)
+	assert.Equal(t, []string{"tenant_id", "resource_id", "relation"}, columns)
+}
+
+func verifyCoreRelationshipTraversalMigrationLifecycle(
+	t *testing.T,
+	db *sql.DB,
+	source goosex.Source,
+	prefix, dialect string,
+) {
+	t.Helper()
+	require.NoError(t, goosex.MigrateDownTo(t.Context(), db, source, dialect, 10))
+	assert.Empty(t, coreIndexColumns(
+		t, db, prefix+"iam_relationships", prefix+"idx_iam_relationships_reverse", dialect,
+	))
+	assert.Equal(t, []string{"tenant_id", "resource_type", "resource_id", "relation"}, coreIndexColumns(
+		t, db, prefix+"iam_relationships", prefix+"idx_iam_relationships_resource", dialect,
+	))
+	require.NoError(t, goosex.MigrateUpTo(t.Context(), db, source, dialect, 11))
+	verifyCoreRelationshipTraversalIndex(t, db, prefix, dialect)
+}
+
+func coreIndexColumns(t *testing.T, db *sql.DB, table, index, dialect string) []string {
+	t.Helper()
+	var query string
+	var args []any
+	switch dialect {
+	case "postgres":
+		query = `
+SELECT attribute.attname
+FROM pg_index AS definition
+JOIN pg_class AS index_class ON index_class.oid = definition.indexrelid
+JOIN pg_class AS table_class ON table_class.oid = definition.indrelid
+JOIN pg_namespace AS namespace ON namespace.oid = table_class.relnamespace
+JOIN LATERAL unnest(definition.indkey) WITH ORDINALITY AS key(attnum, position) ON TRUE
+JOIN pg_attribute AS attribute
+  ON attribute.attrelid = table_class.oid AND attribute.attnum = key.attnum
+WHERE namespace.nspname = current_schema()
+  AND table_class.relname = $1
+  AND index_class.relname = $2
+  AND key.position <= definition.indnkeyatts
+ORDER BY key.position`
+		args = []any{table, index}
+	case "mysql":
+		query = `
+SELECT column_name
+FROM information_schema.statistics
+WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?
+ORDER BY seq_in_index`
+		args = []any{table, index}
+	default:
+		query = `SELECT name FROM pragma_index_info(?) ORDER BY seqno`
+		args = []any{index}
+	}
+
+	rows, err := db.QueryContext(t.Context(), query, args...)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, rows.Close()) }()
+	var columns []string
+	for rows.Next() {
+		var column string
+		require.NoError(t, rows.Scan(&column))
+		columns = append(columns, column)
+	}
+	require.NoError(t, rows.Err())
+	return columns
 }
 
 func verifyCoreRoleContracts(t *testing.T, db *sql.DB, prefix string) {

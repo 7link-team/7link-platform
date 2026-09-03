@@ -174,6 +174,10 @@
       "sha256": "c6760a03e32ee12cc2f10834ca6758ac6863197831dad5955d565183b2f1c937"
     },
     {
+      "path": "core/sql/mysql/00011_relationship_traversal.sql",
+      "sha256": "ea17d994629bf854479380cf969e12a31bcb6ca331caebfdb53ef7e30f669170"
+    },
+    {
       "path": "core/sql/postgres/00001_authorization.sql",
       "sha256": "efe61ce3ba534aa7756b638c754f39669e6ab9ebb0725f82acc0beb10cb2e2d2"
     },
@@ -214,6 +218,10 @@
       "sha256": "360655a89e676f33ff869f007656187a4fa63887856e2d1945cb380f9946bbae"
     },
     {
+      "path": "core/sql/postgres/00011_relationship_traversal.sql",
+      "sha256": "32ac62be417b8f2272c368e7657b10c24e05c313d092a7934f39bd49ff954dbe"
+    },
+    {
       "path": "core/sql/sqlite/00001_authorization.sql",
       "sha256": "bfbb1d550ddf6754f801350ed0629c9fe5f97804690d4a045246662f6ab13bd8"
     },
@@ -252,6 +260,10 @@
     {
       "path": "core/sql/sqlite/00010_platform_grants.sql",
       "sha256": "4443131b0a61b72367348425597c9c60ecd074d492fce42307e1fcac6fd7832b"
+    },
+    {
+      "path": "core/sql/sqlite/00011_relationship_traversal.sql",
+      "sha256": "32ac62be417b8f2272c368e7657b10c24e05c313d092a7934f39bd49ff954dbe"
     },
     {
       "path": "federation/sql/mysql/00001_identity_providers.sql",

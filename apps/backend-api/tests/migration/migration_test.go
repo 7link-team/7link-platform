@@ -141,7 +141,7 @@ func moduleMigrations() []moduleMigration {
 		{
 			name:    "iam-core",
 			table:   "iam_roles",
-			target:  10,
+			target:  11,
 			seedSQL: `INSERT INTO iam_roles (tenant_id, id, name, name_key, created_at, updated_at) VALUES (1, 1, 'First', 'first', '2026-09-02 00:00:00', '2026-09-02 00:00:00')`,
 			source:  (&iamcore.Module{}).MigrationSource(),
 		},

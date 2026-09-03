@@ -2,11 +2,13 @@ package audit
 
 import (
 	"context"
+	"io/fs"
 	"testing"
 
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authn"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
@@ -26,4 +28,18 @@ func TestNewDomainEventUsesVerifiedPrincipal(t *testing.T) {
 	assert.Equal(t, guid.ID(9), event.PrincipalID)
 	assert.Equal(t, guid.ID(3), event.TenantID)
 	assert.Equal(t, guid.ID(4), event.TargetID)
+}
+
+func TestModuleMigrationContract(t *testing.T) {
+	module := &Module{}
+	assert.Equal(t, Name, module.ModuleName())
+	source := module.MigrationSource()
+	assert.Equal(t, "goose_audit_domain", source.TableName)
+	files, err := fs.ReadDir(source.FS, "sql/postgres")
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+	milestones := module.MigrationMilestones()
+	require.Len(t, milestones, 1)
+	assert.Equal(t, "base", milestones[0].Name)
+	assert.Equal(t, int64(2), milestones[0].Version)
 }

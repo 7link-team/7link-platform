@@ -12,7 +12,7 @@ PostgreSQL、MySQL、SQLite 真实迁移与 `make ci` 门禁。
 IMPLEMENTATION
 
 ## Current Step
-Phase 2 / Task 2.3：迁移 `internal/iam/core` 领域服务、授权判定与校验语义。
+Phase 2 / Task 2.4：迁移 `internal/iam/core` HTTP 路由、请求响应契约与 module 装配。
 
 ## Overall Progress
 - [x] 深度分析与迁移方案 v8
@@ -27,8 +27,8 @@ Phase 2 / Task 2.3：迁移 `internal/iam/core` 领域服务、授权判定与�
 Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5、Task 1.0/1.1/1.2 已实现；迁移计划为 v8，
 `internal/iam/` 作为域命名空间，9 个子模块各自拥有业务、model/query 与 SQL，取消集中 schema
 和 feature 分包。Task 1.3 已完成 identity、authn、oauth、audit、core、organization、governance、provisioning、
-federation 九个自治迁移源（63/63 表）；Task 1.4 已完成真实 MySQL 8 门禁、静态对账与 baseline 冻结，
-当前进入 core Go 功能迁移。Task 2.2 repositories 与事务语义已完成，准备迁移领域服务。
+federation 九个自治迁移源（63/63 表）；Task 1.4 已完成真实 MySQL 8 门禁、静态对账与 baseline 冻结。
+Task 2.3 core 领域服务、授权判定与校验语义已完成，当前进入 HTTP/module 迁移。
 
 Task 2.1 已完成：13 张 core 表均已有 module-owned model、gorm-gen query 与统一前缀绑定；三引擎
 model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entities.parent_key` 是唯一显式方言例外。
@@ -133,6 +133,17 @@ model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entitie
   冲突使用稳定 sentinel；最后 tenant 管理员使用 revision 行锁，最后 platform 管理员删除/降级先锁定完整管理员集合。
 - Task 2.2 deep-review 发现并修复两个事务并发删除不同 full platform admin 后可能同时提交的竞态；重叠事务测试
   证明第二个删除必须等待且最终失败，移除锁的反向变异按预期失败。其余架构、tenant/NULL、安全和跨平台视角无发现。
+- Task 2.3：core 根包已迁入授权声明/判定、角色与权限、成员/菜单、平台管理员、实体/关系、数据范围、
+  目录绑定、动态组与临时授权领域服务；沿用 provider 根包窄契约，未新增 feature/port 中转包。
+- Task 2.3：PostgreSQL revision upsert 改用表限定列；关系递归 CTE 按 SQLite/MySQL/PostgreSQL 显式固定
+  text/integer 类型与 PostgreSQL `C` collation，真实 PostgreSQL 16 和 MySQL 8.4 双前缀均通过两级关系写入与闭环拒绝。
+- Task 2.3：追加三方言 `00011_relationship_traversal.sql`，为反向遍历建立
+  `(tenant_id, resource_id, relation)` 索引；`11→10→11` 精确验证新索引消失/恢复且旧索引不受影响，
+  schema lock 从 135 扩展到 138 个文件。core 覆盖率 90.0%，race、lint、完整 migration 与真实 MySQL 门禁通过。
+- Task 2.3 deep-review 修复迁移目标版本、PostgreSQL key/include 区分、单版本 down/up、跨真实引擎 revision
+  增量与闭环失败无脏写门禁；对应反向变异均准确失败。当前批次无 HTTP/OpenAPI 改动，Swagger 评审不适用。
+- Task 2.3 最终 `make ci` 暴露 audit/organization 已登记覆盖包的迁移 module 方法缺少包内契约测试；
+  补齐 module name、embedded source、milestone 版本/依赖全称断言后两包均为 100.0%，反向变异准确失败。
 
 ## Important Decisions
 - 目标为全量、全功能迁移；SAML/SCIM 不允许长期 Disabled。
@@ -157,25 +168,25 @@ model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entitie
 - 本任务约 6 万行，必须按 Phase 分批实现、验证和留档。
 
 ## Verification
-Build: PASS（Task 1.2 Windows `make ci` build；Task 0.4 Linux CGO-disabled cross-compile）
-Tests: PASS（Task 1.2 主模块全量 + 独立 tests module + 完整 `make ci`）
-Lint: PASS（Task 1.4 固定版本 golangci-lint，0 findings）
-Coverage: PASS（Task 1.2 总体 91.3%，全部受控包 ≥90%）
+Build: PASS（Task 2.3 Windows `make ci` build；Task 0.4 Linux CGO-disabled cross-compile）
+Tests: PASS（Task 2.3 core `-race`；完整 `make ci`；独立 `tests/migration` 163.194s；真实 MySQL 8.4）
+Lint: PASS（Task 2.3 `make ci` 全仓 golangci-lint，0 findings）
+Coverage: PASS（总计 90.5%；core 90.0%；audit/organization 100.0%；全部登记包 ≥90%）
 Integration: PASS（`tests/goose`、`tests/internal/testdb`、完整 `tests/migration`；Task 1.2 A↔B FK；
 Task 1.3 identity→authn DAG、audit append-only/retention、core R5''/R9''/R16、
 organization→core、oauth→organization、governance→organization 与 provisioning→organization
-及 federation→identity 三引擎双前缀生命周期；Task 1.4 全套 `tests` module 133.453s）
+及 federation→identity 三引擎双前缀生命周期；Task 2.3 core `11→10→11` 索引生命周期、
+PostgreSQL 16/MySQL 8.4 relationship/revision 行为）
 Other verification: `git diff --check` PASS；source tree/三方言 63 表 PASS；REST baseline 与
 源代码集合相等（200/200）PASS；远端 Docker 26.1.5 PASS；MySQL 8.4.11 启动、查询、
-Windows TCP 连通及非 root 用户全量双前缀迁移 PASS；schema lock 135 文件、63 表、27 跨模块 FK PASS；
+Windows TCP 连通及非 root 用户全量双前缀迁移 PASS；schema lock 138 文件、63 表、27 跨模块 FK PASS；
 门禁成功/失败路径远端容器清理 PASS；Linux FIFO 真实文件系统测试 PASS。
 
 ## Next Action
-执行 Task 2.3：按 source manifest 迁移 `authorization.go`、`authorizer.go`、service、entity/relationship
-validation、data-scope service 等领域逻辑，复用 core 根包已冻结的窄接口，不新增 feature/port 中转包。
+执行 Task 2.4：按 source manifest 迁移 core 根包 HTTP 文件和 module 装配，注册冻结基线中的 51 条 IAM 路由；
+生成实际 OpenAPI，与 runtime routes 对账并按 deep-review 的 Swagger/OpenAPI 规范检查路径、参数和公共契约。
 
 ## Last Checkpoint
-2026-09-02 · IAM 分支 Task 2.2 完成检查点：core repositories、tenant 隔离、NULL/time、错误翻译及
-mutation/revision/audit 同事务已完成；并发 platform administrator 删除通过数据库锁串行化。
-`go generate ./internal/iam/core`、定向测试、`-race`、格式、golangci-lint 与锁移除反向变异均已验证。
-下一步执行 Task 2.3。
+2026-09-02 · IAM 分支 Task 2.3 完成检查点：core 领域服务、授权判定、关系递归、三方言反向遍历索引、
+PostgreSQL revision upsert 与跨真实引擎行为门禁已完成。core race/90.0% coverage/lint、完整 migration、
+真实 MySQL 8.4、schema lock 138 文件及 7 项反向变异/失败前置验证已完成。下一步执行 Task 2.4 HTTP/module。
