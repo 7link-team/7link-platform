@@ -17,7 +17,7 @@
 ### v8 → v9 统一 HTTP 命名并采用 RESTful 目标契约
 
 - 传输层文件和注册入口统一命名为 `http.go` / `RegisterHTTP`，与可能存在的 `grpc.go` / `RegisterGRPC` 对称；RESTful 是 HTTP 接口的设计约束，不再作为文件名。
-- 固定源树提取的 200 条 operation 继续作为功能完整性事实，但不再要求目标原样复制 RPC 风格 path、method 或 OperationID。每个模块实现 HTTP 前必须冻结逐条 source→target 映射，保证功能不漏项。
+- 固定源树提取的 208 条 operation 继续作为功能完整性事实，但不再要求目标原样复制 RPC 风格 path、method 或 OperationID。每个模块实现 HTTP 前必须冻结逐条 source→target 映射，保证功能不漏项。
 - 目标契约优先使用复数资源、HTTP method 表达 CRUD、名词化子资源和统一 ID 参数；OpenAPI 门禁比较批准后的目标契约，并继续校验参数、schema、状态码、安全声明与运行时路由。
 - authn 30 条映射已在本计划冻结。源 IAM 没有 gRPC service/proto 契约，因此本次不虚构 IAM gRPC；未来出现真实内部调用需求时再以独立契约增加 `grpc.go`。
 
@@ -45,7 +45,7 @@
 
 - Phase 2–8 不再用四步摘要代替实现计划；9 个模块均冻结 source manifest、目标 model/query/dbgen、bun→gorm 风险、领域行为、端口注册/解析、跨租户负例与逐模块 `make ci` 门禁。
 - 取消把同一个 `internal/iam` 包拆成 Phase 2/4/8 三个半成品的安排：Phase 2 一次迁完可独立测试的完整 IAM 包，Phase 8 只负责 composition root 与跨模块收口。
-- 从固定 source tree 展开动态注册与 SAML 常量，冻结 **200 条** `OperationID|METHOD|PATH`；OperationID 200/200 唯一，Phase 8/9 必须做集合完全相等测试。
+- 从固定 source tree 展开所有生产 Go 文件中的 operation、动态注册与 SAML 常量，冻结 **208 条** `OperationID|METHOD|PATH`；OperationID 208/208 唯一，Phase 8/9 必须做集合完全相等测试。
 - 关闭菜单多语言未决项：本次只迁现有功能，保持 63 表，不新增 `iam_menu_translations`（D7）。
 - 重新按当前源树统计 Go 文件：9 模块生产 28,176 行、测试 22,054 行；扩展包 2,823 行，总生产约 30,999 行。
 
@@ -462,7 +462,7 @@ CREATE TABLE {{.Prefix}}iam_roles (
 - [ ] 时间列逐列从整数改为 `time.Time`/`*time.Time`；`> now` 改 `After(now)`，原 `0` 的“永不过期/尚未发生/已经过期”语义逐列移植，禁止批量替换。
 - [ ] 仓储公开方法逐项标注 scope：tenant-scoped 方法必须显式接收 tenant ID 并同时约束查询、更新和删除；platform/global 方法必须由 platform guard 保护，不伪造 tenant 参数。
 - [ ] 每个自治模块创建时立即加入 `MODULE_COVERAGE_PACKAGES`；`model/query/dbgen` 只能按生成包规则显式排除。源测试按“业务/service/repository/http/module/i18n/并发事务”建立行为对照表；架构测试和所有手写模块覆盖率 ≥90% 后运行 `make ci`。
-- [ ] 源服务的 **200 条** operation 是功能完整性基线，不是目标 URL 模板。每个模块在实现 HTTP 前必须冻结一对一 source→target 映射；不得遗漏、合并或凭空增加能力。目标以批准后的 `OperationID|METHOD|PATH` 集合验收，并校验 RESTful 资源命名、method、参数、schema、状态码、安全声明和运行时路由。
+- [ ] 源服务的 **208 条** operation 是功能完整性基线，不是目标 URL 模板。每个模块在实现 HTTP 前必须冻结一对一 source→target 映射；不得遗漏、合并或凭空增加能力。目标以批准后的 `OperationID|METHOD|PATH` 集合验收，并校验 RESTful 资源命名、method、参数、schema、状态码、安全声明和运行时路由。
 
 #### Task 2: 完整迁移 `iam`
 
@@ -496,8 +496,8 @@ CREATE TABLE {{.Prefix}}iam_roles (
 - Production: `i18n.go`, `module.go`, `provisioning.go`, `rest.go`, `service.go`, `service_account.go`, `i18n/locales/{en-US,ms-MY,zh-CN}.json`。
 - Tests: `i18n_test.go`, `module_test.go`, `provisioning_test.go`, `rest_test.go`, `service_account_test.go`, `service_test.go`。
 
-- [ ] **3.5 identity module:** 在 `internal/iam/identity` 根包按源文件移植 principal/service account 行为，在 `model/query/dbgen` 为 3 张表生成查询；复用 `core.AdministratorGuard`，不复制规则。
-- [ ] **3.6 identity contracts/HTTP:** 根包注册 6 条路由并稳定导出 `IdentityProvisioner`，解析 core guard、`guid.Source` 与 audit Appender。
+- [x] **3.5 identity module:** 在 `internal/iam/identity` 根包按源文件移植 principal/service account 行为，在 `model/query/dbgen` 为 3 张表生成查询；复用 `core.AdministratorGuard`，不复制规则。
+- [ ] **3.6 identity contracts/HTTP:** 根包注册 14 条路由并稳定导出 `IdentityProvisioner`，解析 core guard、`guid.Source` 与 audit Appender。
 - [ ] **3.7 identity negatives/tests:** 全局 principal 路由必须经过 platform guard；tenant A 的 provisioning/invitation 调用不能把 principal 绑定到 tenant B，也不能绕过最后管理员保护。
 - [ ] **3.8 Gate:** 登记 authn/identity 两包，分别运行 generate 与定向测试；两包均 ≥90% 后运行 `make ci`。
 
@@ -574,14 +574,14 @@ CREATE TABLE {{.Prefix}}iam_roles (
 - [ ] **8.1 声明模式:** 在 `internal/app` 先装配 authz declaration registry；只对 iam/organization/audit/governance/provisioning/federation 调用 declaration-only 构造器。authn/identity/oauth 不伪造该 API。
 - [ ] **8.2 运行模式:** 用 `pkg/module.Services` 按 §2.2 注册/解析 provider-owned/consumer-owned 窄接口；启动测试逐一删除提供方并断言错误明确包含缺失契约和消费模块。
 - [ ] **8.3 注册顺序:** audit → iam → authn → identity → organization → oauth → provisioning → governance → federation，并用 `ModuleDependencies` 固化生命周期拓扑；`Registry.Wire` 仍按“全部 provider → seal → 全部 injector”解析接口，不通过包级全局变量或 concrete type 绕开 registry。
-- [ ] **8.4 HTTP 契约集合:** 启动真实 Huma API，提取 OpenAPI operations，与各模块批准后的目标 `OperationID|METHOD|PATH` 做集合相等；再用 source→target 映射证明源 200 项功能逐条有且仅有一个目标 operation。额外、缺失、重复或未映射任一即失败。
+- [ ] **8.4 HTTP 契约集合:** 启动真实 Huma API，提取 OpenAPI operations，与各模块批准后的目标 `OperationID|METHOD|PATH` 做集合相等；再用 source→target 映射证明源 208 项功能逐条有且仅有一个目标 operation。额外、缺失、重复或未映射任一即失败。
 - [ ] **8.5 跨模块 tenant negatives:** 用 tenant A/B 固定夹具覆盖邀请建 principal、group provision、SCIM、federation callback、governance revoke、IAM authorization 和 audit trace；断言请求、数据库副作用和审计事件都不跨 tenant。
 - [ ] **8.6 架构边界:** `tests/architecture` 用 `go list -json` + Go AST 断言 9 个模块均位于 `internal/iam/`、各自拥有 model/query/SQL、依赖进入 `ModuleDependencies`、跨模块不导入 model/query/concrete service、无中央 schema/port 包；加入违规 fixture 证明门禁有效。
 - [ ] **8.7 Gate:** `make generate` 零 diff，9 个手写模块覆盖率均 ≥90%，`make ci` 全绿后进入 Phase 9。
 
 #### 冻结源 HTTP operation 基线（source tree `201052baddd745d1c2727cf29bbc3c68253a1af0`）
 
-提取规则覆盖所有源 `*rest.go`/`registration.go` 的字面量、`itemOperation`、governance 循环注册，并展开 SAML path 常量。总计 200 条且 OperationID 200/200 唯一。该集合只证明源能力范围；目标不得直接与其做路径集合相等，而要通过逐模块 source→target 映射验证完整性，再与批准后的目标 OpenAPI 契约做集合相等。
+提取规则覆盖所有源生产 Go 文件中的 operation、`itemOperation`、governance 循环注册，并展开 SAML path 常量。旧规则只扫描 `*rest.go`/`registration.go`，曾漏掉 `identity/service_account.go` 的 8 条 operation；修正后总计 208 条且 OperationID 208/208 唯一。该集合只证明源能力范围；目标不得直接与其做路径集合相等，而要通过逐模块 source→target 映射验证完整性，再与批准后的目标 OpenAPI 契约做集合相等。
 
 **iam（51）**
 
@@ -703,7 +703,7 @@ CREATE TABLE {{.Prefix}}iam_roles (
     authn-start-password-recovery => authn-create-password-recovery-request|POST|/authn/password-recovery-requests
     authn-verify-login-mfa => authn-create-session-verification|POST|/authn/session-verifications
 
-**identity（6）**
+**identity（14）**
 
     identity-create-principal|POST|/iam/principals
     identity-disable-principal|POST|/iam/principals/{id}/disable
@@ -711,6 +711,31 @@ CREATE TABLE {{.Prefix}}iam_roles (
     identity-list-principals|GET|/iam/principals
     identity-restore-principal|POST|/iam/principals/{id}/restore
     identity-update-principal|PATCH|/iam/principals/{id}
+    identity-list-service-accounts|GET|/iam/service-accounts
+    identity-create-service-account|POST|/iam/service-accounts
+    identity-get-service-account|GET|/iam/service-accounts/{id}
+    identity-replace-service-account|PUT|/iam/service-accounts/{id}
+    identity-delete-service-account|DELETE|/iam/service-accounts/{id}
+    identity-list-service-account-credentials|GET|/iam/service-accounts/{id}/credentials
+    identity-create-service-account-credential|POST|/iam/service-accounts/{id}/credentials
+    identity-revoke-service-account-credential|DELETE|/iam/service-accounts/{id}/credentials/{credential_id}
+
+**identity 已批准目标 HTTP 契约（source OperationID → target 三元组）**
+
+    identity-create-principal => identity-create-principal|POST|/iam/principals
+    identity-disable-principal => identity-create-principal-suspension|PUT|/iam/principals/{id}/suspension
+    identity-get-principal => identity-get-principal|GET|/iam/principals/{id}
+    identity-list-principals => identity-list-principals|GET|/iam/principals
+    identity-restore-principal => identity-delete-principal-suspension|DELETE|/iam/principals/{id}/suspension
+    identity-update-principal => identity-update-principal|PATCH|/iam/principals/{id}
+    identity-list-service-accounts => identity-list-service-accounts|GET|/iam/service-accounts
+    identity-create-service-account => identity-create-service-account|POST|/iam/service-accounts
+    identity-get-service-account => identity-get-service-account|GET|/iam/service-accounts/{id}
+    identity-replace-service-account => identity-replace-service-account|PUT|/iam/service-accounts/{id}
+    identity-delete-service-account => identity-delete-service-account|DELETE|/iam/service-accounts/{id}
+    identity-list-service-account-credentials => identity-list-service-account-credentials|GET|/iam/service-accounts/{id}/credentials
+    identity-create-service-account-credential => identity-create-service-account-credential|POST|/iam/service-accounts/{id}/credentials
+    identity-revoke-service-account-credential => identity-delete-service-account-credential|DELETE|/iam/service-accounts/{id}/credentials/{credential_id}
 
 **oauth（12）**
 
@@ -848,7 +873,7 @@ CREATE TABLE {{.Prefix}}iam_roles (
 - [ ] **9.1 三引擎生命周期:** PostgreSQL/MySQL/SQLite 分别在全新空库和 `sl_` 前缀下执行建租户 → principal → 部门/组/岗位 → 角色/权限 → 成员绑定 → authorization check/explain → OAuth → SCIM → federation → governance → audit；每步验证数据库副作用和审计事件。
 - [ ] **9.2 迁移状态:** 三引擎分别执行 up → status → reverse down → up；`/migration-status` 必须显示现有 4 条加 IAM 域 9 条共 **13 条** flow clean，9 个模块表集合互斥且并集恰为 63。
 - [ ] **9.3 架构边界:** `tests/architecture` 对实际 package graph 通过；确认 `internal/iam/` 只作命名空间、9 个自治模块各自拥有业务/model/query/SQL、依赖均在 `ModuleDependencies` 声明、跨模块未导入 model/query/concrete service。
-- [ ] **9.4 HTTP 契约集合:** 从运行中 OpenAPI 提取三元组，断言与各模块批准后的目标集合完全相等、OperationID 全局唯一；断言 source→target 映射覆盖源 **200/200** 且一一对应；另断言所有非公开 operation 都带正确 tenant/platform/entity guard，不能只检查 `/docs` 页面可见。
+- [ ] **9.4 HTTP 契约集合:** 从运行中 OpenAPI 提取三元组，断言与各模块批准后的目标集合完全相等、OperationID 全局唯一；断言 source→target 映射覆盖源 **208/208** 且一一对应；另断言所有非公开 operation 都带正确 tenant/platform/entity guard，不能只检查 `/docs` 页面可见。
 - [ ] **9.5 隔离与并发:** 执行 Task 2–8 的 tenant A/B 负例总矩阵；对授权判定、token 单次消费、最后管理员、SCIM ETag、governance 终态和 audit append 做并发门禁，使用 `-race` 跑不依赖真数据库的部分。
 - [ ] **9.6 性能基线:** 授权判定、会话查找、SCIM bulk、审计 append 四条热路径保存 PostgreSQL/MySQL `EXPLAIN` 与 benchmark；不得出现无 tenant 前导条件的全表扫描，阈值按同机重复样本冻结。
 - [ ] **9.7 最终门禁:** `make generate` 零 diff、`make ci` 全绿、`make test-mysql8` 真 MySQL 通过；`make dev` 后 `/healthz` 绿。更新 README Testing、`.claude/task-state.md` 与 `decisions.md`，逐项勾完本计划才可宣布迁移完成。

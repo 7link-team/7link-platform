@@ -340,7 +340,7 @@ Task 0.5 的依赖冻结，以及 Task 3/6/7/8/9 的依赖引入顺序。
 **Decision**
 IAM 各模块的 HTTP 传输文件和注册入口统一使用 `http.go` / `RegisterHTTP`；不使用
 `rest.go` / `RegisterREST`。RESTful 作为接口设计标准：优先复数资源、名词化路径、HTTP method
-表达 CRUD、统一路径参数和状态码。源服务 200 条 operation 只作为功能完整性基线，每个模块通过
+表达 CRUD、统一路径参数和状态码。源服务 208 条 operation 只作为功能完整性基线，每个模块通过
 显式 source→target 映射冻结目标 OpenAPI 契约，不要求复制源 RPC 风格 URL。
 
 源 IAM 没有 gRPC proto/service 契约，本次迁移不创建占位 `grpc.go` 或虚构 gRPC API。未来只有在

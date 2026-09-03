@@ -12,7 +12,8 @@ PostgreSQL、MySQL、SQLite 真实迁移与 `make ci` 门禁。
 IMPLEMENTATION
 
 ## Current Step
-Phase 3 / Task 3.5：authn Task 3.1–3.4 已完成，开始迁移 identity 业务模块。
+Phase 3 / Task 3.6：identity 业务与测试（Task 3.5）已完成并通过 `make ci`，下一步冻结并实现 14 条
+identity RESTful HTTP 契约。
 
 ## Overall Progress
 - [x] 深度分析与迁移方案 v9
@@ -25,14 +26,14 @@ Phase 3 / Task 3.5：authn Task 3.1–3.4 已完成，开始迁移 identity 业�
 - [ ] Phase 9 集成与验收
 
 ## Active Work
-Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5、Task 1.0/1.1/1.2 已实现；迁移计划为 v8，
+Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5、Task 1.0/1.1/1.2 已实现；迁移计划为 v9，
 `internal/iam/` 作为域命名空间，9 个子模块各自拥有业务、model/query 与 SQL，取消集中 schema
 和 feature 分包。Task 1.3 已完成 identity、authn、oauth、audit、core、organization、governance、provisioning、
 federation 九个自治迁移源（63/63 表）；Task 1.4 已完成真实 MySQL 8 门禁、静态对账与 baseline 冻结。
 Task 2.4–2.6 已完成 core HTTP/module、负例与阶段门禁；Task 3.1 已完成 authn 13 张自治表的
 model/query/dbgen、三引擎列/NULL/时间契约及前缀安全 GORM 仓储，Task 3.2 已完成认证行为迁移，
 Task 3.3–3.4 已完成 module/contracts、30 条 RESTful HTTP operation、OpenAPI 与安全负例；
-当前进入 Task 3.5 identity 业务迁移。
+Task 3.5 已完成 identity principal/service-account/provisioning 业务与全部行为测试。
 identity 3 张自治表的 model/query/dbgen 也已提前完成，供 authn 读取由 identity 拥有的 principal 与
 service-account 状态，避免跨模块重复定义持久化模型；identity 业务迁移仍留在 Task 3.5–3.7。
 
@@ -87,7 +88,7 @@ model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entitie
   最后完整 milestone。三引擎 A↔B FK 套件及三类反向变异通过。
 - 计划 v5 已冻结 9 模块 source manifest、目标 model/query/dbgen、bun→gorm 注意项、端口、
   tenant 负例和逐模块门禁；不再把 `internal/iam` 拆成三个半成品阶段。
-- 从固定 source tree 展开 200 条 REST 三元组，文档与源代码集合对账 200/200、无缺失、
+- 从固定 source tree 展开 208 条 HTTP operation，文档与源代码集合对账 208/208、无缺失、
   无额外、OperationID 全局唯一。
 - 计划 v6 的局部 Ports-and-Adapters 与 v7 direct-feature 方案均已废弃；v8 按 `CLAUDE.md`
   和 `internal/todo` 固定 9 个 IAM 域自治模块，跨模块契约直接归 provider 根包。
@@ -187,6 +188,20 @@ model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entitie
   MFA/recovery/verification/passkey/step-up 的 CAS 单次消费已有 8 路并发 winner 测试。authn `-race`
   与 90.3% 覆盖率通过。邀请 tenant 绑定属于 organization acceptance，保留在 Task 5.4。
 
+- Task 3.5：identity 根包已迁入 principal、service account、provisioning 与仓储；复用
+  `core.AdministratorGuard` 与 `core.RevisionStore`，未复制最后管理员规则，未新增 feature/port 包。
+  源 `service.go`/`service_account.go`/`provisioning.go` 的全部 type/function/method 已逐条映射，
+  HTTP input 类型与 `RegisterServiceAccountREST` 按计划留到 Task 3.6。
+- Task 3.5 测试：新增 `migrate_test.go`、`repository_test.go`、`service_test.go`、
+  `service_account_test.go`、`provisioning_test.go`（与源文件一一对应）。覆盖租户隔离负例、
+  最后管理员 guard 回滚、CAS 版本冲突、凭据上限与撤销幂等、跨模块表失败路径。
+  identity 覆盖率 90.9%，`-race` 通过，全仓 `make ci` 总覆盖率 90.2% 全绿。
+- Task 3.5 修复两个自查缺陷：`countActiveServiceAccountCredentials` 误用 `field.Expr.Or`（改用项目既有
+  `field.Or`），`principalByLoginOrEmail` 复用同一 `*gorm.DB` 导致登录未命中错误串到邮箱查询
+  （改为每次新建语句）；后者由新增测试直接抓到。`replaceServiceAccount` 的死参数 `displayName` 已删除。
+- identity 生产代码 import core 后，`internal/iam/core` 的包内测试不能再 import identity（Go 禁止测试
+  形成环）。core 测试改用原始 DDL 建 `iam_principals`，真实 schema 仍由 `tests/migration` 验证。
+
 ## Important Decisions
 - 目标为全量、全功能迁移；SAML/SCIM 不允许长期 Disabled。
 - `internal/iam/` 只作命名空间；core/authn/identity/oauth/organization/audit/governance/
@@ -195,7 +210,7 @@ model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entitie
 - 动态菜单多语言不属于本次迁移；保持 63 表，不新增第 64 张表（D7）。
 - 不局部引入 Ports-and-Adapters，不设中央 port/schema，不按 feature 机械拆包（D10 取代 D3/D9）。
 - 只支持已确认的原 Mac 与当前 Windows 两机拓扑；源 tree 变化必须先复审。
-- 传输文件统一 `http.go`/`RegisterHTTP`，接口按 RESTful 标准设计；源 200 条 operation 通过逐模块
+- 传输文件统一 `http.go`/`RegisterHTTP`，接口按 RESTful 标准设计；源 208 条 operation 通过逐模块
   source→target 映射保证完整性，不再要求目标复制源 RPC 路径；源无 IAM gRPC，当前不虚构（D12）。
 
 ## Confirmed Constraints
@@ -214,10 +229,10 @@ model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entitie
 - 本任务约 6 万行，必须按 Phase 分批实现、验证和留档。
 
 ## Verification
-Build: PASS（Task 3.2 Windows `make ci` build；Task 0.4 Linux CGO-disabled cross-compile）
-Tests: PASS（Task 3.4 authn `-race` 37.279s；Task 3.2 完整 `make ci`；`tests/migration` 170.873s；真实 MySQL 8.4.11）
-Lint: PASS（Task 3.3 本轮 `make ci` golangci-lint；Task 3.2 完整 `make ci`，0 findings）
-Coverage: PASS（本轮完整 CI 总计 90.2%；authn 90.4%；core 90.0%；全部登记包 ≥90%）
+Build: PASS（Task 3.5 Windows `make ci` build）
+Tests: PASS（Task 3.5 identity `-race` 5.037s；完整 `make ci`；`tests/migration` 151.801s）
+Lint: PASS（Task 3.5 `make ci` golangci-lint，0 findings）
+Coverage: PASS（本轮完整 CI 总计 90.2%；identity 90.9%；authn 90.3%；core 90.0%；全部登记包 ≥90%）
 Integration: PASS（`tests/goose`、`tests/internal/testdb`、完整 `tests/migration`；Task 1.2 A↔B FK；
 Task 1.3 identity→authn DAG、audit append-only/retention、core R5''/R9''/R16、
 organization→core、oauth→organization、governance→organization 与 provisioning→organization
@@ -225,15 +240,16 @@ organization→core、oauth→organization、governance→organization 与 provi
 `11→10→11` 与 oauth 连续两轮 `6→5→6` 索引生命周期；PostgreSQL 16/MySQL 8.4 relationship/revision 行为）
 Other verification: `git diff --check` PASS；source tree/三方言 63 表 PASS；core 实际 OpenAPI 51/51；
 authn 实际 OpenAPI 与批准目标契约相等（30/30），源 authn→目标映射 30/30；全域源 HTTP operation
-baseline 与源代码集合相等（200/200）PASS；远端 Docker 26.1.5 PASS；MySQL 8.4.11 启动、查询、
+baseline 已纠正为 208（旧提取漏扫 `identity/service_account.go` 的 8 条）；远端 Docker 26.1.5 PASS；MySQL 8.4.11 启动、查询、
 Windows TCP 连通及非 root 用户全量双前缀迁移 PASS；schema lock 147 文件、63 表、27 跨模块 FK PASS；
 门禁成功/失败路径远端容器清理 PASS；Linux FIFO 真实文件系统测试 PASS。
 
 ## Next Action
-执行 Task 3.5 identity 业务迁移：先按 source manifest 对账 symbol 与可复用的 authn/core
-provider-root 契约，再实现 service/repository；HTTP 目标契约在 Task 3.6 前单独冻结 RESTful 映射。
+执行 Task 3.6：先在计划中冻结 identity 的 14 条 source→target 映射（已列出，需逐条复核 platform guard
+归属），再实现根包 `http.go`/`module.go`/i18n，稳定导出 `IdentityProvisioner`，解析 core guard、
+`guid.Source` 与 audit Appender；随后 Task 3.7 负例、Task 3.8 双包门禁。
 
 ## Last Checkpoint
-2026-09-03 · IAM 分支 Task 3.3–3.4 检查点：authn module、30 条 RESTful HTTP/OpenAPI、principal
-隔离和并发单次消费完成；authn race 与 90.3% coverage 通过。计划升级 v9 并记录 D12；下一步重跑
-完整 CI 已通过，Task 3.3–3.4 已提交并推送为 `3d7bd62`；下一步执行 Task 3.5 identity。
+2026-09-03 · IAM 分支 Task 3.5 检查点：identity 业务迁移与五个对应测试文件完成，identity 已登记
+`MODULE_COVERAGE_PACKAGES`；修复 gorm 条件误用、gorm 语句复用错误串联与 core 包内测试的 import 环。
+identity 覆盖率 90.9%、`-race` 通过、全仓 `make ci` 全绿。下一步执行 Task 3.6 identity HTTP。

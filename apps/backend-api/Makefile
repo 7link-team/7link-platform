@@ -37,6 +37,7 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/internal/iam/audit \
 	7link.com/platform/internal/iam/authn \
 	7link.com/platform/internal/iam/core \
+	7link.com/platform/internal/iam/identity \
 	7link.com/platform/internal/iam/organization \
 	7link.com/platform/internal/todo \
 	7link.com/platform/pkg/extension/authn \
