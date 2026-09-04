@@ -8,6 +8,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path"
@@ -104,6 +105,102 @@ func TestIAMBusinessSourceClassification(t *testing.T) {
 			assert.Equal(t, testCase.want, hasIAMBusinessSource(testCase.files))
 		})
 	}
+}
+
+// TestGoTestFileNamesMatchProductionFiles keeps tests traceable to the
+// production file whose behavior they exercise. Dedicated black-box test
+// packages are exempt because they intentionally have no production Go files.
+func TestGoTestFileNamesMatchProductionFiles(t *testing.T) {
+	root := backendRoot(t)
+	violations, err := testFileNamingViolations(root)
+	require.NoError(t, err)
+	assert.Empty(t, violations,
+		"a test must be named xx_test.go or xx_subxx_test.go for an existing xx.go in the same directory")
+}
+
+func TestTestFileMatchesProductionPrefix(t *testing.T) {
+	production := []string{"service", "service_account", "http"}
+	for _, testCase := range []struct {
+		name string
+		stem string
+		want bool
+	}{
+		{name: "exact", stem: "service", want: true},
+		{name: "qualified", stem: "service_failure", want: true},
+		{name: "longer exact", stem: "service_account", want: true},
+		{name: "longer qualified", stem: "service_account_http", want: true},
+		{name: "partial word", stem: "services"},
+		{name: "missing source", stem: "repository"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Equal(t, testCase.want, testFileMatchesProductionPrefix(testCase.stem, production))
+		})
+	}
+}
+
+func testFileNamingViolations(root string) ([]string, error) {
+	type directoryFiles struct {
+		production []string
+		tests      []string
+	}
+	directories := map[string]*directoryFiles{}
+	err := filepath.WalkDir(root, func(filename string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			if filename != root && (strings.HasPrefix(entry.Name(), ".") || entry.Name() == "vendor") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(entry.Name()) != ".go" {
+			return nil
+		}
+		directory := filepath.Dir(filename)
+		files := directories[directory]
+		if files == nil {
+			files = &directoryFiles{}
+			directories[directory] = files
+		}
+		stem := strings.TrimSuffix(entry.Name(), ".go")
+		if strings.HasSuffix(stem, "_test") {
+			files.tests = append(files.tests, strings.TrimSuffix(stem, "_test"))
+		} else {
+			files.production = append(files.production, stem)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	violations := make([]string, 0)
+	for directory, files := range directories {
+		if len(files.production) == 0 {
+			continue
+		}
+		for _, testStem := range files.tests {
+			if !testFileMatchesProductionPrefix(testStem, files.production) {
+				relative, relativeErr := filepath.Rel(root, filepath.Join(directory, testStem+"_test.go"))
+				if relativeErr != nil {
+					return nil, relativeErr
+				}
+				violations = append(violations, filepath.ToSlash(relative))
+			}
+		}
+	}
+	sort.Strings(violations)
+	return violations, nil
+}
+
+func testFileMatchesProductionPrefix(testStem string, production []string) bool {
+	for _, productionStem := range production {
+		if testStem == productionStem || strings.HasPrefix(testStem, productionStem+"_") {
+			return true
+		}
+	}
+	return false
 }
 
 func validateIAMArchitecture(root string, packages []listedPackage) []architectureViolation {

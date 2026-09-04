@@ -18,6 +18,15 @@ import (
 	"gorm.io/gorm"
 )
 
+func enabledModuleConfig() Config {
+	return Config{Config: module.Config{Enabled: true}}
+}
+
+func TestModuleActivationComesFromConfig(t *testing.T) {
+	assert.False(t, (&Module{}).Enabled())
+	assert.True(t, (&Module{config: enabledModuleConfig()}).Enabled())
+}
+
 type governanceAdministratorGuard struct{}
 
 func (governanceAdministratorGuard) Protect(context.Context, *gorm.DB, guid.ID) (func() error, error) {
@@ -44,9 +53,9 @@ func governanceServices(t *testing.T, h *governanceHarness) *module.Services {
 func TestGovernanceModuleConstructionAndDeclarationOnly(t *testing.T) {
 	runtime := appenv.NewRuntime(appenv.NewIdentity("governance-test", "1"))
 	registrar := governanceRuntimeRegistrar()
-	assert.Panics(t, func() { NewModule(nil, registrar) })
-	assert.Panics(t, func() { NewModule(runtime, nil) })
-	assert.Panics(t, func() { NewModule(runtime, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry())) })
+	assert.Panics(t, func() { NewModule(nil, registrar, Config{}) })
+	assert.Panics(t, func() { NewModule(runtime, nil, Config{}) })
+	assert.Panics(t, func() { NewModule(runtime, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()), Config{}) })
 	assert.Panics(t, func() { NewDeclarationOnlyModule(nil) })
 	assert.Panics(t, func() { NewDeclarationOnlyModule(authz.NewAuthenticationOnlyRegistrar(governanceHTTPVerifier{})) })
 
@@ -64,7 +73,7 @@ func TestGovernanceModuleConstructionAndDeclarationOnly(t *testing.T) {
 
 func TestGovernanceModuleRuntimeLifecycle(t *testing.T) {
 	h := newGovernanceHarness(t, "sl_")
-	instance := NewModule(h.runtime, governanceRuntimeRegistrar())
+	instance := NewModule(h.runtime, governanceRuntimeRegistrar(), enabledModuleConfig())
 	assert.ErrorIs(t, instance.CheckHealth(t.Context()), ErrUnavailable)
 	_, api := humatest.New(t)
 	assert.ErrorContains(t, instance.RegisterHTTP(t.Context(), api), "service is unavailable")
@@ -78,7 +87,7 @@ func TestGovernanceModuleRuntimeLifecycle(t *testing.T) {
 }
 
 func TestGovernanceModuleReportsMissingDependenciesAndInvalidState(t *testing.T) {
-	instance := NewModule(appenv.NewRuntime(appenv.NewIdentity("governance-test", "1")), governanceRuntimeRegistrar())
+	instance := NewModule(appenv.NewRuntime(appenv.NewIdentity("governance-test", "1")), governanceRuntimeRegistrar(), enabledModuleConfig())
 	services := module.NewServices()
 	require.NoError(t, services.Seal())
 	assert.ErrorContains(t, instance.InjectServices(services), "id generator")

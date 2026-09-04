@@ -1,113 +1,77 @@
 # Task State
 
 ## Task
-IAM 域全量迁移：chaosplus `apps/server` → 7link-platform `apps/backend-api`
+IAM 产品完整性深度审计、初始化方案、测试命名治理与模块自治修正。
 
 ## Objective
-按 `apps/backend-api/docs/superpowers/plans/2026-09-02-iam-domain-migration.md` 将 9 个 IAM 域模块与
-63 张表全功能迁入 gorm/gorm-gen/goosex/pkg-module 架构，修复源 SQL 缺陷，并通过
-PostgreSQL、MySQL、SQLite 真实迁移与 `make ci` 门禁。
+在已完成固定源树迁移等价的基础上，区分迁移完成度与可部署 IAM 产品完整度；补充安全初始化方案，
+审计 HTTP/gRPC、接口/数据/菜单/字段权限及 9 个 IAM 模块，并落实测试命名和 module activation 治理。
 
 ## Current Phase
 ACCEPTANCE
 
 ## Current Step
-Phase 9 / Task 9.7 已完成：Mac 实机预检、完整 CI、真实 MySQL 8.4、生成零 diff 与 live health 均通过。
+本轮深度审计、初始化方案、测试命名治理与 IAM module 自治修正已完成并通过最终验收；Phase 10 产品能力等待实施。
 
 ## Overall Progress
-- [x] 深度分析、方案 v9 与两轮独立评审收口
-- [x] Phase 0 前置修复、扩展包（policyx/authn/authz/webauthnx/secretx/passwordx）、13 项跨模块能力冻结
-- [x] Phase 1 九模块自治迁移源（63 表）、里程碑 DAG、三引擎与真实 MySQL 8.4 门禁、`schema.lock` 冻结
-- [x] Phase 2 core / Phase 3 authn+identity / Phase 4 oauth / Phase 5 organization / Phase 6 audit
-- [x] Phase 7 governance / provisioning / federation
-- [x] Phase 8 应用装配、OpenAPI、跨模块负例矩阵、架构门禁
-- [x] Phase 9 集成与验收
+- [x] 恢复仓库事实、固定源树与既有三引擎/208 HTTP 验收证据
+- [x] 深审平台/租户自举、HTTP/gRPC、接口/数据/菜单/字段权限和产品生命周期
+- [x] 设计平台 bootstrap 与 tenant owner bootstrap 的三引擎验收方案
+- [x] 重命名历史违规测试，并增加同目录 production stem 架构门禁
+- [x] 删除 composition root 的 IAM/federation 条件 append，改为 9 模块自行 `Enabled()`
+- [x] 完成相关回归和生成零 diff 验证
+- [x] 完成 staged diff 审阅和本轮最终验收
 
 ## Active Work
-迁移实现与最终验收已完成，无进行中的实现工作。执行模式 Direct（上层约束禁止未授权子代理）。
+无进行中的代码修改。后续按 Phase 10 优先处理平台/租户 bootstrap；不得触碰或提交 `.claude/skills/**`。
 
 ## Completed Work
-按阶段结论记录；逐任务执行过程见 Git 历史与 `.claude/decisions.md`。
-
-- **模块与表**：9 个自治模块各自拥有 model/query/dbgen、三方言 SQL、迁移版本表与跨模块 FK，无中央
-  port/schema 包。表归属 core 13、authn 13、identity 3、oauth 4、audit 3、organization 14、governance 4、
-  provisioning 5、federation 4 = 63 表；三方言集合相等、互斥，并集恰为 63。
-- **HTTP**：208 条 operation 全部落地并与固定源树逐条对账（core 51、authn 30、identity 14、oauth 12、
-  organization 32、audit 8、governance 14、provisioning 30、federation 17），OperationID 全局唯一，
-  实际 Huma OpenAPI 与各模块冻结 manifest 相等。
-- **装配**：`internal/app` 已接入 authz registrar、IAM 配置映射、冻结的 9 模块运行时顺序与 6 模块声明顺序；
-  core 提供 `ActiveMemberChecker`/`AdministratorGuard`/`RoleGrantStore`，跨模块契约只经 provider 根包。
-- **不变量冻结**：`schema.lock` 冻结 147 个 migration 文件 / 63 张 IAM 表 / 27 条跨模块 FK，
-  禁止改写或插入历史版本。
-- **工具链**：`make iam-preflight`（两机源路径与 Docker transport 解析、63 表核对、产出 `.temp/iam-env.mk`）、
-  `make test-mysql8`（真实 MySQL 8.4，固定 image digest 与 `sql_mode`）、`make test-performance`（冻结
-  EXPLAIN 与时延阈值）、`tests/architecture` 全称门禁、`tests/lifecycle` 与 `tests/migration` 三引擎双前缀矩阵。
-- **Phase 9**：9.1 生命周期矩阵、9.2 migration-status 与 ownership 对账、9.3 架构门禁强化、
-  9.6 真实数据库性能契约均已通过；9.7 Windows 与 Mac 最终门禁均已完成。
-- **Mac 并发修复**：最终 CI 发现 SQLite deferred transaction 在 SCIM ETag 与 session rotation 并发下
-  可能返回 `SQLITE_BUSY_SNAPSHOT`。SQLite DSN 现默认 `_txlock=immediate`，显式配置仍保留；两个原失败
-  用例各连续 20 轮通过，相关 gorm/provisioning/authn 全包 race 通过。
+- 固定源功能迁移等价仍成立：9 模块、63 表、208 HTTP operation，SQLite/PostgreSQL/MySQL 迁移与既有 CI 已通过。
+- 发现 Critical：生产无首个平台管理员入口；`EnsureBootstrapPrincipal` 仅测试使用且不写 platform administrator。
+- 发现 Critical：创建 tenant 不创建首个 member/Administrator role/grant，tenant membership guard 导致后续 API 死锁。
+- 权限结论：接口 middleware 执行链存在；principal 管理 guard 语义不可达；数据约束无业务消费者；菜单判定有实现但无默认行；字段权限完全缺失。
+- HTTP 208 条迁移契约完整；IAM 无 gRPC，固定源也无，双协议属于新增产品需求。
+- 迁移计划升至 v10，加入双层 bootstrap、安全输入、事务/并发/readiness 和三引擎测试矩阵，以及 Phase 10 产品缺口。
+- 20 个历史测试文件按 `xx.go` / `xx_subxx_test.go` 规则重命名，`tests/architecture` 自动扫描全 backend。
+- composition root 现在总是登记 9 个 IAM runtime module；每个条件模块持有专属 Config 并按 `module.Enabler` 自行激活，非法依赖组合由 registry fail fast。
+- 移除 IAM 构造器中的可变 `activation ...module.Config` 和裸 `enabled bool`；按 infra 约定由模块 Config 嵌入 `module.Config`，federation 根据自身 OIDC/SAML 配置决定激活。
 
 ## Remaining Work
-无。
+1. 实现已明确方案的 Phase 10.1 平台管理员 bootstrap 与 10.2 tenant owner bootstrap。
+2. 确认 principal 权限所有权和字段权限模型后实施 10.3–10.5。
+3. 排期 consent/archive/lifecycle/key rotation；仅在产品要求双协议时设计 IAM gRPC。
 
 ## Important Decisions
-- 目标为全量、全功能迁移；SAML/SCIM 不允许长期 Disabled。
-- `internal/iam/` 只作命名空间；core/authn/identity/oauth/organization/audit/governance/
-  provisioning/federation 是 9 个自治模块，各自拥有 SQL、版本表和跨模块 FK（D10）。
-- 多写者是现有正式契约；Task 0.0 只修同一次迁移的 writer 句柄漂移，不禁用多写者。
-- 动态菜单多语言不属于本次迁移；保持 63 表，不新增第 64 张表（D7）。
-- 不局部引入 Ports-and-Adapters，不设中央 port/schema，不按 feature 机械拆包（D10 取代 D3/D9）。
-- 只支持已确认的原 Mac 与当前 Windows 两机拓扑；源 tree 变化必须先复审（D6）。
-- 传输文件统一 `http.go`/`RegisterHTTP`，接口按 RESTful 标准设计；208 条 operation 通过逐模块
-  source→target 映射保证完整性，不要求复制源 RPC 路径；源无 IAM gRPC，当前不虚构（D12）。
-- Federation replay 使用 bounded fail-closed TTL registry，不新增表、不复用会按 nonce 无界增长的
-  distributed-lock rows；跨 replica 一次性消费为明确部署限制。
-- SQLite 使用驱动默认 5 秒 busy timeout，并在未显式配置时采用 `BEGIN IMMEDIATE`，避免读后升级写事务
-  产生不可等待的 snapshot contention（D14）。
+- migration 只拥有 schema，不写固定账号、默认密码或环境相关秘密。
+- 平台 bootstrap 必须显式、create-only、跨 authn/core/audit 原子化；密码仅 file/stdin。
+- tenant 创建必须原子创建 owner member、Administrator role、`tenant_administer` grant、role member 和 15 个默认菜单。
+- permission catalog 是代码声明，不做数据库 seed；其他租户业务对象不做全局 seed。
+- 固定源无 IAM gRPC；除非产品明确要求双协议，不创建占位 proto/service。
+- 字段权限和 principal 权限所有权属于新增产品语义，本轮只记录方案，不静默扩 schema 或改 API。
+- composition root 只登记 inventory；activation 属于 module，依赖有效性属于 registry。
 
 ## Confirmed Constraints
-- 三方言 DDL 全部前缀化、真实时间类型、无 0 哨兵、FK/guid 使用 BIGINT。
-- 每个新增受控模块覆盖率 ≥90%，阶段结束 `make ci` 必须通过。
-- 不迁移存量数据；不缩减现有 IAM 域功能。
-- 实现按依赖顺序推进；阶段评审用隔离只读 subagent，并由主执行者亲自证伪。
-- 每次换机或恢复任务先运行 `make iam-preflight`，后续只消费其生成的路径与 Docker transport。
-- MySQL `iam_entities.parent_key`（generated column）是唯一显式方言例外，parity helper 中显式 allowlist。
-- Go 禁止测试成环：`internal/iam/core` 包内测试不得 import identity/organization，core 测试直接用真实
-  SQL/DDL 建表，完整 schema 由 `tests/migration` 验证。
+- 不修改或提交 `.claude/skills/**`；当前该目录存在用户自己的未跟踪内容。
+- 保留已提交的 `make dev` IAM 开启与开发密钥生成方案。
+- 用户要求最终“除了 skill 全部提交”；提交前必须逐文件暂存，禁止 `git add .` / `git add -A`。
 
 ## Known Issues / Risks
-- 验证码依赖的传递模块 `github.com/golang/freetype` 已归档；当前无 `govulncheck` 可达漏洞，等价迁移阶段
-  保留，迁移完成后单独评估验证码/字体栈替换。
-- Federation replay registry 为进程内状态，跨 replica 需计划外的 shared nonce capability 或 schema 变更，
-  当前不得静默增加。
-- 多写者 routing mode 与读副本接线仍是独立架构决策，不在本任务范围内。
+- IAM 产品 readiness 未完成，空库即使 schema 正常也没有可运营管理员。
+- principal update/suspend/resume 的 `platform_administer` tenant guard 目前普通 tenant admin 与非成员 platform admin 均不可达。
+- `DataConstraint` 只可计算/解释，尚未在业务 repository 强制执行；字段权限完全未实现。
+- OAuth 交互式 consent、audit archive worker、principal 删除/匿名化、渐进 key rotation 尚未闭环。
+- Federation replay registry 为进程内状态，多 replica 不保证一次性消费。
+- IAM graph 仍沿用兼容配置 `authn.enabled` 作为基础模块共同激活值；是否拆成独立 `iam.enabled` 是后续配置兼容决策。
 
 ## Verification
-Build: PASS（Mac 最终 `make ci` production build）
-Tests: PASS（9 个 IAM root 包与 `internal/app` focused/`-race`；Mac 完整 tests module，含 lifecycle、migration、
-architecture、performance 矩阵；最终代码版 migration 496.939s，fresh performance 97.230s）
-Lint: PASS（`go vet ./...` 与 pinned golangci-lint，0 findings；`make fmt-check` PASS）
-Coverage: PASS（总计 90.0%；audit 93.7、oauth 91.6、federation 91.2、provisioning 90.9、identity 90.6、
-authn 90.3、governance 90.2、core 90.0、organization 90.0）
-Integration: PASS（三引擎 × 双前缀 up/幂等/down/up、跨模块 FK DAG、append-only、索引生命周期；
-真实 PostgreSQL 16.9 与 MySQL 8.4.11）
-Contract: PASS（实际 OpenAPI 208/208 与冻结 manifest 相等；`schema.lock` 147 files / 63 tables /
-27 cross-module FKs；`make generate` 工作树 fingerprint 零变化）
-Real MySQL: PASS（Mac `make test-mysql8`：preflight、真实 8.4 迁移、四路径 performance、schema lock 全绿）
-Runtime: PASS（Mac `make dev` 监听 8080/9090，`GET /healthz` HTTP 200 且 `SERVING`，interrupt 后
-`shutdown complete`，两端口均释放）
-Other: PASS（Mac `make iam-preflight` source commit/tree 与三方言 63 表通过；`make generate` 无生成 diff；
-工作区与 `main...HEAD` 的 `git diff --check` 均通过）
+Build: PASS（`make ci` production build）
+Tests: PASS（自治最终实现后的 `go test ./...`、9 个 IAM/app 定向包、独立 architecture；此前 `make ci` 总覆盖率 90.0%，9 个 IAM root package 均 ≥90%）
+Lint: PASS（自治最终实现后的 `make fmt-check lint`；此前完整 `make ci`）
+Integration: PASS（本轮三引擎 migration 503.785s；真实 Docker MySQL 8.4 migration/performance/schema lock）
+Other: PASS（`make generate` 零生成 diff；`git diff --check`；schema lock 147 files / 63 tables / 27 FKs）
 
 ## Next Action
-IAM 迁移已完成验收。提交前区分本次 SQLite/验收收口与工作区中用户已有的 `CLAUDE.md`、
-`docs/todo-module-design.md` 修改，避免盲目暂存。
+按 Phase 10.1/10.2 实施安全自举；在修改权限 schema/API 前先确认 Phase 10.3/10.5 的产品语义。
 
 ## Last Checkpoint
-2026-09-04 · MAC FINAL ACCEPTANCE / COMPLETE：`make iam-preflight` PASS（source commit
-`8c034d3efa603c7fd327a658bd405252397caf24`、tree `201052baddd745d1c2727cf29bbc3c68253a1af0`、
-Docker 29.7.2）。初次 CI 暴露 provisioning SQLite lock，第二次暴露同根因的 authn lock；将共享 SQLite
-默认事务改为 immediate 后，定向 20 轮、全包 race 与第三次完整 `make ci` 均 PASS。随后当前代码的
-`make generate`、真实 `make test-mysql8`、live `/healthz`、shutdown/端口释放与 diff/tidy 门禁全部通过；
-空 `_txlock` 边界收紧后，最终代码版完整 `make ci` 再次 PASS（migration 496.939s）。
+2026-09-04 · IAM PRODUCT AUDIT / ACCEPTED：专属 Config + Enabler 已替代 composition-root gate；全仓测试、architecture、fmt、lint 及既有完整 CI/三引擎验证均 PASS。

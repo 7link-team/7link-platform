@@ -109,12 +109,10 @@ func (app *App) composeModules() error {
 		pprof.NewModule(rt, pprofConfig(app.config)),
 	}
 
-	// The IAM runtime is enabled as one capability graph. Keeping the gate at
-	// the composition root prevents active dependents from outliving a disabled
-	// authentication provider.
-	if app.config.Authn.Enabled {
-		modules = append(modules, app.composeIAMRuntimeModules()...)
-	}
+	// Modules own activation through module.Enabler. The composition root only
+	// declares the complete inventory; Registry.Activate validates the remaining
+	// dependency graph after disabled modules have removed themselves.
+	modules = append(modules, app.composeIAMRuntimeModules()...)
 
 	modules = append(modules,
 		todo.NewModule(rt),
@@ -149,20 +147,18 @@ func (app *App) composeIAMRuntimeModules() []module.Module {
 	authorizer := core.NewAuthorizerWithRegistry(rt, registry)
 	registrar := authz.NewRegistrar(registry, authnModule, authorizer, core.NewMembershipChecker(rt))
 	app.authzRegistrar = registrar
-	identityModule = identity.NewModule(rt, registrar)
+	identityModule = identity.NewModule(rt, registrar, iamIdentityConfig(app.config))
 
 	modules := []module.Module{
 		iamaudit.NewModule(rt, registrar, iamAuditConfig(app.config)),
-		core.NewModule(rt, registrar, authorizer),
+		core.NewModule(rt, registrar, authorizer, iamCoreConfig(app.config)),
 		authnModule,
 		identityModule,
-		organization.NewModule(rt, registrar),
-		oauth.NewModule(rt, registrar),
+		organization.NewModule(rt, registrar, iamOrganizationConfig(app.config)),
+		oauth.NewModule(rt, registrar, iamOAuthConfig(app.config)),
 		provisioning.NewModule(rt, registrar, iamProvisioningConfig(app.config)),
-		governance.NewModule(rt, registrar),
-	}
-	if app.config.Federation.Enabled || app.config.Federation.SAML.Enabled {
-		modules = append(modules, federation.NewModule(rt, registrar, iamFederationConfig(app.config)))
+		governance.NewModule(rt, registrar, iamGovernanceConfig(app.config)),
+		federation.NewModule(rt, registrar, iamFederationConfig(app.config)),
 	}
 	return modules
 }

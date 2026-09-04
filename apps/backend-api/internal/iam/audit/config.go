@@ -1,8 +1,11 @@
 package audit
 
+import "7link.com/platform/pkg/module"
+
 // Config configures IAM domain audit anchoring. This is distinct from the
 // application operation-audit configuration used by internal/infra/audit.
 type Config struct {
+	module.Config
 	Anchor AnchorConfig `mapstructure:"anchor" group:"anchor"`
 }
 

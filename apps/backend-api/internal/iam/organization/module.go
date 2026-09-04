@@ -25,7 +25,12 @@ var ErrUnavailable = errors.New("organization service unavailable")
 
 // Module owns organization services, HTTP operations, locale behavior, and
 // the GroupProvisioner capability consumed by provisioning.
+type Config struct {
+	module.Config
+}
+
 type Module struct {
+	config          Config
 	service         *Service
 	tenants         *TenantService
 	positions       *PositionService
@@ -44,11 +49,11 @@ type Module struct {
 
 // NewModule builds a runnable organization module. Shared capabilities are
 // resolved during module wiring.
-func NewModule(runtime *appenv.Runtime, registrar *authz.Registrar) *Module {
+func NewModule(runtime *appenv.Runtime, registrar *authz.Registrar, config Config) *Module {
 	if runtime == nil || registrar == nil || registrar.Registry() == nil || registrar.IsDeclarationOnly() {
 		panic("organization module requires runtime and authz registrar")
 	}
-	return &Module{runtime: runtime, registrar: registrar}
+	return &Module{runtime: runtime, registrar: registrar, config: config}
 }
 
 // NewDeclarationOnlyModule builds the route-declaration form used to validate
@@ -57,8 +62,10 @@ func NewDeclarationOnlyModule(registrar *authz.Registrar) *Module {
 	if registrar == nil || registrar.Registry() == nil || !registrar.IsDeclarationOnly() {
 		panic("organization declaration module requires a declaration-only authz registrar")
 	}
-	return &Module{registrar: registrar, declarationOnly: true}
+	return &Module{registrar: registrar, config: Config{Config: module.Config{Enabled: true}}, declarationOnly: true}
 }
+
+func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
 
 func (*Module) ModuleName() string { return Name }
 
@@ -185,6 +192,7 @@ func (m *Module) ListMembers(ctx context.Context, tenantID, id guid.ID) ([]Group
 
 var (
 	_ module.Module          = (*Module)(nil)
+	_ module.Enabler         = (*Module)(nil)
 	_ module.Depender        = (*Module)(nil)
 	_ module.ServiceProvider = (*Module)(nil)
 	_ module.ServiceInjector = (*Module)(nil)

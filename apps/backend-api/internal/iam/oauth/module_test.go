@@ -17,6 +17,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func enabledModuleConfig() Config {
+	return Config{Config: module.Config{Enabled: true}}
+}
+
+func TestModuleActivationComesFromConfig(t *testing.T) {
+	assert.False(t, (&Module{}).Enabled())
+	assert.True(t, (&Module{config: enabledModuleConfig()}).Enabled())
+}
+
 type oauthPermissionChecker struct{}
 
 func (oauthPermissionChecker) Check(context.Context, guid.ID, string, guid.ID) (bool, error) {
@@ -51,15 +60,15 @@ func oauthTestRegistrar(web authz.TokenVerifier) *authz.Registrar {
 func TestOAuthModuleRequiresConstructionCollaborators(t *testing.T) {
 	runtime := appenv.NewRuntime(appenv.NewIdentity("oauth-test", "1"))
 	registrar := oauthTestRegistrar(newOAuthWebFixture())
-	assert.Panics(t, func() { NewModule(nil, registrar) })
-	assert.Panics(t, func() { NewModule(runtime, nil) })
-	assert.Panics(t, func() { NewModule(runtime, authz.NewAuthenticationOnlyRegistrar(newOAuthWebFixture())) })
-	assert.Panics(t, func() { NewModule(runtime, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry())) })
+	assert.Panics(t, func() { NewModule(nil, registrar, Config{}) })
+	assert.Panics(t, func() { NewModule(runtime, nil, Config{}) })
+	assert.Panics(t, func() { NewModule(runtime, authz.NewAuthenticationOnlyRegistrar(newOAuthWebFixture()), Config{}) })
+	assert.Panics(t, func() { NewModule(runtime, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()), Config{}) })
 }
 
 func TestOAuthModuleDependenciesAndReadinessBeforeInitialize(t *testing.T) {
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
-	instance := NewModule(appenv.NewRuntime(appenv.NewIdentity("oauth-test", "1")), oauthTestRegistrar(newOAuthWebFixture()))
+	instance := NewModule(appenv.NewRuntime(appenv.NewIdentity("oauth-test", "1")), oauthTestRegistrar(newOAuthWebFixture()), enabledModuleConfig())
 	assert.Equal(t, Name, instance.ModuleName())
 	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, authn.Name}, instance.ModuleDependencies())
 	assert.ErrorIs(t, instance.CheckHealth(t.Context()), ErrUnavailable)
@@ -70,7 +79,7 @@ func TestOAuthModuleDependenciesAndReadinessBeforeInitialize(t *testing.T) {
 
 func TestOAuthModuleResolvesDependenciesAndRegistersContract(t *testing.T) {
 	harness := newOAuthHarness(t, "sl_")
-	instance := NewModule(harness.runtime, oauthTestRegistrar(harness.web))
+	instance := NewModule(harness.runtime, oauthTestRegistrar(harness.web), enabledModuleConfig())
 	registry := module.NewRegistry()
 	require.NoError(t, registry.Register(
 		platformi18n.NewModule(nil, platformi18n.Base),
@@ -99,6 +108,7 @@ func TestOAuthModuleReportsMissingWiring(t *testing.T) {
 	instance := NewModule(
 		appenv.NewRuntime(appenv.NewIdentity("oauth-test", "1")),
 		oauthTestRegistrar(newOAuthWebFixture()),
+		enabledModuleConfig(),
 	)
 	services := module.NewServices()
 	require.NoError(t, services.Seal())

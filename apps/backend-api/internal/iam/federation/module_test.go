@@ -59,6 +59,12 @@ func TestFederationModuleDeclarationAndExactOperationManifest(t *testing.T) {
 	assert.Len(t, declaration.MigrationMilestones(), 2)
 }
 
+func TestFederationModuleActivationComesFromItsProtocolConfig(t *testing.T) {
+	assert.False(t, (&Module{}).Enabled())
+	assert.True(t, (&Module{config: Config{Config: platformmodule.Config{Enabled: true}}}).Enabled())
+	assert.True(t, (&Module{config: Config{SAML: SAMLConfig{Enabled: true}}}).Enabled())
+}
+
 func TestFederationSAMLBrowserOpenAPIContract(t *testing.T) {
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
 	respx.Install()

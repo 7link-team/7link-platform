@@ -21,6 +21,15 @@ import (
 	"gorm.io/gorm"
 )
 
+func enabledModuleConfig() Config {
+	return Config{Config: module.Config{Enabled: true}}
+}
+
+func TestModuleActivationComesFromConfig(t *testing.T) {
+	assert.False(t, (&Module{}).Enabled())
+	assert.True(t, (&Module{config: enabledModuleConfig()}).Enabled())
+}
+
 type organizationTokenVerifier struct{}
 
 func (organizationTokenVerifier) Authenticate(context.Context, string, string) (*authnext.Claims, error) {
@@ -57,10 +66,12 @@ func organizationTestRegistrar(members authz.MembershipChecker) *authz.Registrar
 func TestOrganizationModuleConstructionAndDeclarationOnly(t *testing.T) {
 	runtime := appenv.NewRuntime(appenv.NewIdentity("organization-test", "1"))
 	registrar := organizationTestRegistrar(&organizationMemberChecker{})
-	assert.Panics(t, func() { NewModule(nil, registrar) })
-	assert.Panics(t, func() { NewModule(runtime, nil) })
-	assert.Panics(t, func() { NewModule(runtime, authz.NewAuthenticationOnlyRegistrar(organizationTokenVerifier{})) })
-	assert.Panics(t, func() { NewModule(runtime, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry())) })
+	assert.Panics(t, func() { NewModule(nil, registrar, Config{}) })
+	assert.Panics(t, func() { NewModule(runtime, nil, Config{}) })
+	assert.Panics(t, func() {
+		NewModule(runtime, authz.NewAuthenticationOnlyRegistrar(organizationTokenVerifier{}), Config{})
+	})
+	assert.Panics(t, func() { NewModule(runtime, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()), Config{}) })
 	assert.Panics(t, func() { NewDeclarationOnlyModule(nil) })
 	assert.Panics(t, func() { NewDeclarationOnlyModule(registrar) })
 
@@ -81,7 +92,7 @@ func TestOrganizationModuleResolvesServicesAndProvidesGroupProvisioner(t *testin
 	creator := identity.InvitationPrincipalCreator(func(context.Context, *gorm.DB, guid.ID, string, string, string, string) (guid.ID, error) {
 		return 900, nil
 	})
-	instance := NewModule(h.runtime, organizationTestRegistrar(members))
+	instance := NewModule(h.runtime, organizationTestRegistrar(members), enabledModuleConfig())
 	assert.Equal(t, []string{
 		platformi18n.Name, guid.Name, audit.Name, core.Name, authn.Name, identity.Name,
 	}, instance.ModuleDependencies())
@@ -175,7 +186,7 @@ func TestOrganizationModuleReportsMissingWiring(t *testing.T) {
 			require.NoError(t, provide(services))
 		}
 		require.NoError(t, services.Seal())
-		instance := NewModule(runtime, organizationTestRegistrar(members))
+		instance := NewModule(runtime, organizationTestRegistrar(members), enabledModuleConfig())
 		assert.ErrorContains(t, instance.InjectServices(services), message)
 	}
 }

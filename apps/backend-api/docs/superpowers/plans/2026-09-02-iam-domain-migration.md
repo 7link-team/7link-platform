@@ -1,4 +1,4 @@
-# IAM 域全量迁移实施计划 v9
+# IAM 域全量迁移实施计划 v10
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -8,11 +8,22 @@
 
 **Tech Stack:** Go 1.26 · gorm v1.31 + gorm/gen v0.3.29 · goose v3.27 · huma v2.39 · PostgreSQL / MySQL / SQLite
 
-**Spec:** 本文件自带规格(§1–§3)。事实来源由 `make iam-preflight` 自动解析并校验，不再依赖单机绝对路径或缺失的临时汇总文件。源基线为 chaosplus `apps/server` tree `201052baddd745d1c2727cf29bbc3c68253a1af0`（当前提交 `cf5ff45bd293d1792e06b752cf18f0aac77a1edd`）；预检直接从三方言正式 SQL 计算并断言同一组 63 张表。
+**Spec:** 本文件自带规格(§1–§3)。事实来源由 `make iam-preflight` 自动解析并校验，不再依赖单机绝对路径或缺失的临时汇总文件。源基线为 chaosplus `apps/server` tree `201052baddd745d1c2727cf29bbc3c68253a1af0`（当前提交 `8c034d3efa603c7fd327a658bd405252397caf24`）；预检直接从三方言正式 SQL 计算并断言同一组 63 张表。
+
+> **2026-09-04 产品完整性复审结论：**固定源树的迁移等价性、63 表、208 条 HTTP operation 和三引擎门禁已经完成；但“迁移完成”不等于“可从空库投入运营”。首个平台管理员和新租户首个管理员均无法通过生产入口建立，数据权限尚无业务查询消费者，字段权限完全缺失。Phase 10 完成前，IAM 的状态是**源功能迁移完成、产品化闭环未完成**，不得再表述为“Remaining Work 无”。
 
 ---
 
 ## 版本沿革
+
+### v9 → v10 产品完整性复审与初始化方案
+
+- 区分“固定源树迁移等价”与“可部署 IAM 产品完整性”；前者已通过，后者仍有 Phase 10 待办。
+- 新增两层初始化：显式、create-only 的平台管理员 bootstrap，以及租户创建事务内的 owner/Administrator role/权限/菜单 bootstrap。migration 继续只负责 schema，不写固定账号或明文秘密。
+- HTTP 208 条目标契约仍完整；源项目没有 IAM gRPC，故迁移不缺 gRPC。若产品要求 IAM 双协议，则须先新增 proto/兼容/鉴权契约，不能把现有应用 gRPC 端口误当 IAM gRPC 已实现。
+- 权限复审发现：接口 guard 执行链完整，但 principal 管理错误混用 platform action 作为 tenant guard；数据权限只完成计算与解释、未进入业务 repository；菜单权限缺默认租户数据；字段权限没有数据模型和执行链。
+- 增加全仓测试文件命名门禁：`xx_test.go` 或 `xx_subxx_test.go` 的 `xx` 必须对应同目录真实生产 `xx.go`；纯黑盒测试目录豁免。
+- 修复 IAM composition root 的集中开关：9 个 runtime module 始终登记，由各自 `module.Enabler` 决定激活；registry 在裁剪后校验 `ModuleDependencies()`。federation 开启而 IAM 基础依赖关闭时明确启动失败，不再被 app 层 `if` 静默忽略。
 
 ### v8 → v9 统一 HTTP 命名并采用 RESTful 目标契约
 
@@ -280,11 +291,54 @@ v2 把 organization 放在 identity/authn 之前,与此相反。v3 按上述顺�
 **项目原生依赖规则（由 `tests/architecture` 检查）**：
 
 1. `internal/app` 是唯一可以构造多个 concrete module 并完成总装配的位置；`internal/iam/` 不增加域级 composition root。
+   Composition root 必须登记完整 module inventory，不得按业务开关手工 append/omit；条件模块按 `infra` 既有模式实现 `module.Enabler`，由 `Registry.Activate()` 统一裁剪并复核依赖。
 2. 模块 A 可导入依赖模块 B 的根包接口，但不得调用 B 的构造器，也不得导入 `B/model`、`B/query`、`B/dbgen` 或 concrete service；依赖同时写入 `ModuleDependencies()`。
 3. 模块根可以包含本模块业务、仓储和 HTTP，不强制“根只装配”，也不按 `domain/service/repository/http` 机械拆 package。
 4. `model` 只表达持久化行，`query` 只放生成物，`dbgen` 只放生成命令；模块公开接口不得泄漏 model/query 类型。
 5. 模块拥有自己表的 DDL、迁移版本表和跨模块外键；本域 9 个模块都有实际表，不存在空 migration source。
 6. 9 个手写模块包分别登记覆盖率 ≥90%；model/query/dbgen 走 schema 契约、生成零 diff 与编译门禁。
+
+### 2.5 初始化数据与安全自举方案（v10）
+
+初始化分为“平台一次性自举”和“每租户创建时自举”，二者都不是 schema migration。权限 catalog 来自 `authz.DefaultActions()`，不需要复制到数据库；部门、用户组、岗位、普通角色、OAuth client、IdP 等属于租户业务数据，也不做全局 seed。
+
+#### 2.5.1 平台管理员 bootstrap
+
+**入口：**增加显式运维命令 `7link-api iam bootstrap-platform-admin`。命令复用正式配置、datasource、ID generator、password hashing 和 audit 能力，要求 IAM migrations 为 clean；不启动 HTTP/gRPC server，不在 `serve`、`make dev` 或 migration 中隐式执行。
+
+**秘密输入：**login/display name/email 可用 flags；password 只允许 `--password-file` 或 stdin，禁止命令行明文参数、固定默认密码和写入版本库。命令不得打印密码/hash；文件权限不安全时拒绝执行。生产编排应从 Secret volume/secret manager 挂载一次性文件。
+
+**一个事务内写入：**
+
+1. 获取现有 `dlock` 能力上的固定锁 `iam/bootstrap/platform-admin`，随后在事务内再次检查状态，保证 SQLite/MySQL/PostgreSQL 并发执行只有一个胜者。
+2. 断言不存在其他 full/restricted platform administrator；请求 login 若已属于非目标 principal 或缺失完整 credential，fail closed。
+3. 创建 active principal、password credential，以及 `iam_platform_administrators` full administrator 行。
+4. 写 tenant `0` 的 `platform_administrator_bootstrapped` 审计事件；任一步失败整体回滚。
+5. 默认 **create-only**：同一 login 已经是 full administrator 时报告 already bootstrapped，但不更新 profile、不重置密码、不撤销 session。密码轮换必须走独立、审计化的 reset 流程。
+
+现有 `authn.EnsureBootstrapPrincipal` 只能写 principal/credential，而且会 reconcile profile/password/security state，只适合测试夹具，不能直接作为生产 bootstrap 契约。生产实现应复用其校验/hash 基础能力，但把跨 authn/core/audit 的原子编排放在 composition boundary，并提供接受同一 `*gorm.DB` 的窄能力，遵守 D10 的模块所有权。
+
+**运行门禁：**readiness 增加可配置的 `iam.require_platform_administrator`（生产默认 true，migration/恢复工具可关闭）。启用时，IAM 已开启但不存在任何 full/restricted platform administrator 应为 `NOT_SERVING`，避免空库仍显示可用。命令退出码必须区分 created、already bootstrapped、conflict、schema not ready 和 transient failure。
+
+#### 2.5.2 新租户 owner bootstrap
+
+`organization-create-tenant` 必须接收或从已认证 actor 明确得到 `owner_principal_id`，并在创建 `iam_tenants` 的**同一个数据库事务**中完成：
+
+1. 校验 owner principal active，创建 active `iam_tenant_members`。
+2. 创建租户内置 `Administrator` role，授予 `tenant_administer`，将 owner 加入该 role。
+3. 为 `core.DefaultMenus()` 的 15 项分配 ID 并写入 `iam_menus`；这些是租户默认导航元数据，不是全局权限 catalog。
+4. 只 bump 一次 policy revision，写包含 owner/role/menu 数量的 `tenant_bootstrapped` 审计事件。
+5. 任一步失败回滚 tenant 本身，禁止产生“存在租户但无人可管理”的半成品。
+
+模块边界采用现有能力注入模式：core 提供一个可绑定调用者事务的 `TenantBootstrapper` 窄能力，organization 在自己的 tenant transaction 中调用；不得由 organization 直接写 core 表，也不得在 HTTP handler 中串联多个独立事务。为已经存在但零成员的租户提供单独的 create-only repair 命令，且仅允许在没有任何 member/role grant 时运行。
+
+#### 2.5.3 初始化验收矩阵
+
+- SQLite、真实 MySQL 8.4、PostgreSQL 16：fresh migrate → platform bootstrap → 登录 → create tenant → owner 访问 tenant 管理 API。
+- 平台命令并发两次只有一个 created；同参重跑不改密码；异参、已有管理员、login 冲突全部 fail closed。
+- tenant bootstrap 任一插入/audit 失败时 tenant/member/role/grant/menu 全部为零；并发 slug 冲突只有一个完整 tenant。
+- 断言 full platform administrator 可管理平台，tenant owner 可管理本 tenant，但二者不会因此获得另一层未授予的身份。
+- 默认菜单恰为 15 条、permission code 全在 catalog 中，`EffectiveMenus()` 对 owner 返回完整树，对普通成员按权限过滤。
 
 ---
 
@@ -301,6 +355,7 @@ Phase 6  audit(链式追加/完整性验证)
 Phase 7  governance + provisioning + federation
 Phase 8  9 模块 composition root、端口解析与跨模块负例收口
 Phase 9  跨模块验收 + 性能 + 文档
+Phase 10 产品化闭环：安全自举 + 权限执行 + 生命周期缺口
 ```
 
 ### Phase 0
@@ -878,11 +933,49 @@ CREATE TABLE {{.Prefix}}iam_roles (
 - [x] **9.6 性能基线:** 授权判定、会话查找、SCIM bulk、审计 append 四条热路径保存 PostgreSQL/MySQL `EXPLAIN` 与 benchmark；不得出现无 tenant 前导条件的全表扫描，阈值按同机重复样本冻结。
 - [x] **9.7 最终门禁:** `make generate` 零 diff、`make ci` 全绿、`make test-mysql8` 真 MySQL 通过；`make dev` 后 `/healthz` 绿。更新 README Testing、`.claude/task-state.md` 与 `decisions.md`，逐项勾完本计划才可宣布迁移完成。
 
+### Phase 10 — 产品完整性复审后的未完成工作
+
+#### 已验证现状
+
+| 能力 | 结论 | 证据与边界 |
+|---|---|---|
+| HTTP | **迁移契约完整** | 9 模块共 208 条 operation，实际 OpenAPI、source→target mapping、guard 分类均有集合门禁；这证明路由不漏项，不证明每个 guard 的产品语义正确 |
+| gRPC | **IAM 未实现；迁移不缺失** | IAM 9 模块无 proto、`GRPCRegistrar` 或 gRPC service；固定源树同样没有 IAM gRPC。应用自身仍有 health 等 gRPC 服务 |
+| 接口权限 | **执行链完整，存在语义缺陷** | public/authenticated/member/tenant/entity/platform middleware 均实际执行；但 principal update/suspend/resume 把 `platform_administer` 注册为 tenant guard |
+| 数据权限 | **计算完成，执行未闭环** | `Authorizer.Constraint()` 可产出 AllowAll/resource/department/ancestor/deny；生产业务 repository 无消费者，IAM 生产路由也没有 `RegisterEntity` 调用 |
+| 菜单权限 | **判定完整，初始化缺失** | `EffectiveMenus()` 读取持久化菜单并批量鉴权、未知 permission fail closed、保留有可见子项的容器；但新租户未写 `DefaultMenus()`，结果为空 |
+| 字段权限 | **未实现** | 没有 schema、catalog、管理 API、repository projection、masking 或 response serialization filter |
+| IAM 源迁移 | **已完成** | 9 模块、63 表、208 HTTP、三方言 migration/隔离/并发/性能门禁均通过 |
+| IAM 产品闭环 | **未完成** | 缺平台/租户安全自举，另有 consent、archive、principal lifecycle、secret rotation 等产品缺口 |
+
+#### Critical / High
+
+- [ ] **10.1 平台管理员安全自举（Critical）：**实现 §2.5.1。当前生产 CLI 只有 `serve`/`migrate`；`EnsureBootstrapPrincipal` 无生产调用者且不写 `iam_platform_administrators`。平台管理员管理 API 自身受 `platform_administer` 保护，空库无法建立第一个管理员。
+- [ ] **10.2 新租户 owner 自举（Critical）：**实现 §2.5.2。当前 `TenantService.Create` 只写 tenant、policy revision、audit；所有 tenant route 先要求 active membership，故新租户无法经现有 HTTP 建立第一个成员/管理员。
+- [ ] **10.3 修正 principal 管理权限语义（High，需产品确认）：**`identity-update-principal`、suspend、resume 当前使用 tenant 注册器 + `platform_administer`。tenant role 不能授予 platform permission；full platform admin 又会先被 tenant membership middleware 拒绝。确认 principal 的所有权后，选择真正 platform route、`user_update`，或新增专用 tenant permission；同时让 `authz.Register` 拒绝 platform-scope action，防止再次误注册。
+- [ ] **10.4 数据权限端到端执行（High）：**为真实业务资源 repository/list/get/update/delete 接入 `DataConstraint`，并对 entity-scoped route 使用 `RegisterEntity`；覆盖 tenant A/B、owner/department/ancestor/explicit deny、分页 count 与导出路径。只暴露 constraint/explain API 不算完成。
+- [ ] **10.5 字段权限设计与实现（High，新增产品能力）：**先确认主体/角色继承、read/write 分离、deny precedence、mask 规则、OpenAPI 表达和审计策略，再设计 schema/catalog/API/cache revision，并在读取 projection/序列化和写入 validation 两端强制执行。不得只做前端隐藏。
+
+#### Medium
+
+- [ ] **10.6 OAuth 交互式 consent：**当前 `prompt=consent` 产生 `ErrConsentRequired` 后映射为通用 `invalid_request`，且默认 prompt 会直接 upsert consent。补 consent challenge/approve/deny/revoke API 或页面、短期一次性状态、防 CSRF 与审计。
+- [ ] **10.7 Audit archive 生命周期：**当前 retention 只保存 policy 并统计 `archive_ready_events`；补实际 archive/export worker、对象校验、重试、删除/保留边界和可观测状态。
+- [ ] **10.8 Principal 数据生命周期：**普通 principal 有 create/update/suspend/resume，但没有删除、匿名化或法定保留流程；需先确认审计与外键保留语义。
+- [ ] **10.9 Secret/key rotation：**authn/federation/provisioning 多处仍是单 key 配置或一次性替换；设计 key ID/keyring、双读单写窗口、回滚和旧 key 清退。Federation replay registry 仍为进程内状态，多副本一次性消费另行设计 shared nonce capability。
+- [ ] **10.10 IAM gRPC 产品决策：**只有明确要求 HTTP/gRPC 双协议时才新增 proto/service；必须先冻结 API surface、auth metadata、错误码、版本兼容和 208 HTTP 能力的映射范围。未决定前不得创建占位服务。
+- [ ] **10.11 最终产品门禁：**完成已批准的 10.1–10.10 后重跑 SQLite/MySQL/PostgreSQL 初始化与权限矩阵、OpenAPI、race、`make generate`、`make ci`、真实 MySQL 及 live readiness。
+
+#### 已完成的工程治理
+
+- [x] **测试文件命名：**全仓生产目录只允许 `xx_test.go` 或 `xx_subxx_test.go`，其中 `xx.go` 必须真实存在于同目录；已重命名历史违规文件，并由 `tests/architecture` 自动门禁。纯黑盒测试目录因没有 production Go file 而豁免。
+- [x] **模块自治激活：**删除 `internal/app` 对整个 IAM graph 和 federation 的手工条件 append；9 个 runtime module 无条件登记并各自实现 `module.Enabler`，禁用依赖与启用消费者的非法组合由 `Registry.Activate()` fail fast。
+
 ---
 
 ## 四、未决事项
 
-1. **多写者拓扑** —— Task 0.0 只修迁移双取句柄。是否引入显式 routing mode / 逻辑 writer group 来防止误配仍需单独决策。审计 F3 的“`Read()` 零消费者”已不再成立：core membership checker 已使用读路由，datasource 注释也已与当前行为一致；是否把更多业务查询接到副本仍属于后续架构范围。
+1. **Phase 10 产品决策** —— principal 管理的 tenant/platform 所有权、字段权限模型、principal 删除/匿名化、IAM 是否提供 gRPC，均需产品确认后实施；不能以“源项目也没有”为由宣称完整，也不能在迁移等价任务中静默决定。
+2. **多写者拓扑** —— Task 0.0 只修迁移双取句柄。是否引入显式 routing mode / 逻辑 writer group 来防止误配仍需单独决策。审计 F3 的“`Read()` 零消费者”已不再成立：core membership checker 已使用读路由，datasource 注释也已与当前行为一致；是否把更多业务查询接到副本仍属于后续架构范围。
 
 **已解除/已确认:** 动态菜单多语言不属于“迁移现有功能”，保持 63 表且不新增 `iam_menu_translations`（D7）；Docker 不再绑定单机：Mac 使用本机 daemon，Windows 使用 `10.0.0.100` 的 Debian Docker 26.1.5，具体 transport 由预检生成；R16 按上表四类规则执行；R9'' 的 `type` 不可变不是新增业务限制，源库 `iam/entity.go:273-281` 已在存在关系时拒绝修改，复合外键用于关闭应用层检查的 TOCTOU 窗口。
 

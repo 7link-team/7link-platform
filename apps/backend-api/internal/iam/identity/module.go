@@ -24,8 +24,13 @@ var ErrUnavailable = errors.New("identity service unavailable")
 // Module owns principals, service accounts, their HTTP operations, locale
 // bundle, and migration source. It provides the identity capabilities SCIM,
 // federation, and invitation acceptance depend on.
+type Config struct {
+	module.Config
+}
+
 type Module struct {
 	*Service
+	config         Config
 	runtime        *appenv.Runtime
 	registrar      *authz.Registrar
 	administrators core.AdministratorGuard
@@ -40,12 +45,15 @@ type Module struct {
 func NewModule(
 	runtime *appenv.Runtime,
 	registrar *authz.Registrar,
+	config Config,
 ) *Module {
 	if runtime == nil || registrar == nil || registrar.Registry() == nil || registrar.IsDeclarationOnly() {
 		panic("identity module requires runtime and authz registrar")
 	}
-	return &Module{runtime: runtime, registrar: registrar}
+	return &Module{runtime: runtime, registrar: registrar, config: config}
 }
+
+func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
 
 func (*Module) ModuleDependencies() []string {
 	return []string{platformi18n.Name, guid.Name, audit.Name, core.Name}
@@ -123,6 +131,7 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 
 var (
 	_ module.Module          = (*Module)(nil)
+	_ module.Enabler         = (*Module)(nil)
 	_ module.Depender        = (*Module)(nil)
 	_ module.ServiceProvider = (*Module)(nil)
 	_ module.ServiceInjector = (*Module)(nil)

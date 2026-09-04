@@ -39,8 +39,10 @@ func NewDeclarationOnlyModule(registrar *authz.Registrar) *Module {
 	if registrar == nil || registrar.Registry() == nil || !registrar.IsDeclarationOnly() {
 		panic("audit declaration module requires a declaration-only authz registrar")
 	}
-	return &Module{registrar: registrar, declarationOnly: true}
+	return &Module{registrar: registrar, config: Config{Config: module.Config{Enabled: true}}, declarationOnly: true}
 }
+
+func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
 
 func (*Module) ModuleName() string { return Name }
 
@@ -135,6 +137,7 @@ func (m *Module) appendDomain(ctx context.Context, db *gorm.DB, event DomainEven
 
 var (
 	_ module.Module          = (*Module)(nil)
+	_ module.Enabler         = (*Module)(nil)
 	_ module.Depender        = (*Module)(nil)
 	_ module.ServiceProvider = (*Module)(nil)
 	_ module.ServiceInjector = (*Module)(nil)

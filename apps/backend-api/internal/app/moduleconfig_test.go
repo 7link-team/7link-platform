@@ -121,6 +121,7 @@ func TestIAMModuleConfigsMapEverySetting(t *testing.T) {
 	}
 
 	assert.Equal(t, authnext.Config(config.Authn), iamAuthnConfig(config))
+	assert.True(t, iamAuditConfig(config).Enabled)
 	assert.Equal(t, config.IAMAudit.Anchor.Enabled, iamAuditConfig(config).Anchor.Enabled)
 	assert.Equal(t, config.IAMAudit.Anchor.Endpoint, iamAuditConfig(config).Anchor.Endpoint)
 	assert.Equal(t, config.IAMAudit.Anchor.Bucket, iamAuditConfig(config).Anchor.Bucket)
@@ -130,6 +131,7 @@ func TestIAMModuleConfigsMapEverySetting(t *testing.T) {
 	assert.Equal(t, config.IAMAudit.Anchor.RetentionDays, iamAuditConfig(config).Anchor.RetentionDays)
 	assert.Equal(t, config.IAMAudit.Anchor.SigningKey, iamAuditConfig(config).Anchor.SigningKey)
 	assert.Equal(t, config.Provisioning.EncryptionKey, iamProvisioningConfig(config).EncryptionKey)
+	assert.True(t, iamProvisioningConfig(config).Enabled)
 	assert.Equal(t, config.Provisioning.EncryptionKeyFile, iamProvisioningConfig(config).EncryptionKeyFile)
 	assert.Equal(t, config.Provisioning.HTTPTimeout, iamProvisioningConfig(config).HTTPTimeout)
 	assert.Equal(t, config.Provisioning.SyncInterval, iamProvisioningConfig(config).SyncInterval)
@@ -145,4 +147,9 @@ func TestIAMModuleConfigsMapEverySetting(t *testing.T) {
 	assert.Equal(t, config.Federation.SAML.LoginPath, iamFederationConfig(config).SAML.LoginPath)
 	assert.Equal(t, config.Federation.SAML.ValidDuration, iamFederationConfig(config).SAML.ValidDuration)
 	assert.Equal(t, config.Federation.SAML.MaxIssueDelay, iamFederationConfig(config).SAML.MaxIssueDelay)
+	assert.True(t, iamCoreConfig(config).Enabled)
+	assert.True(t, iamIdentityConfig(config).Enabled)
+	assert.True(t, iamOrganizationConfig(config).Enabled)
+	assert.True(t, iamOAuthConfig(config).Enabled)
+	assert.True(t, iamGovernanceConfig(config).Enabled)
 }

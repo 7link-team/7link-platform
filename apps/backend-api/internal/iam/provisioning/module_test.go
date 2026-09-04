@@ -48,6 +48,11 @@ func TestProvisioningModuleConstructionAndDeclarationOnly(t *testing.T) {
 	assert.Len(t, declaration.MigrationMilestones(), 2)
 }
 
+func TestProvisioningModuleActivationComesFromConfig(t *testing.T) {
+	assert.False(t, (&Module{}).Enabled())
+	assert.True(t, (&Module{config: Config{Config: platformmodule.Config{Enabled: true}}}).Enabled())
+}
+
 func TestProvisioningModuleDependencyResolutionAndLifecycle(t *testing.T) {
 	env := newProvisioningEnvironment(t)
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))

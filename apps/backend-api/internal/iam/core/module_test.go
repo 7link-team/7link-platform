@@ -18,6 +18,15 @@ import (
 	"gorm.io/gorm"
 )
 
+func enabledModuleConfig() Config {
+	return Config{Config: module.Config{Enabled: true}}
+}
+
+func TestModuleActivationComesFromConfig(t *testing.T) {
+	assert.False(t, (&Module{}).Enabled())
+	assert.True(t, (&Module{config: enabledModuleConfig()}).Enabled())
+}
+
 func TestModuleIdentityDependenciesAndReadiness(t *testing.T) {
 	module := &Module{}
 	assert.Equal(t, Name, module.ModuleName())
@@ -66,18 +75,18 @@ func TestRuntimeModuleRequiresEveryDependency(t *testing.T) {
 	)
 	validChecker := httpAuthorizationEvaluator{}
 	for _, build := range []func(){
-		func() { NewModule(nil, validRegistrar, validChecker) },
-		func() { NewModule(validRuntime, nil, validChecker) },
-		func() { NewModule(validRuntime, &authz.Registrar{}, validChecker) },
+		func() { NewModule(nil, validRegistrar, validChecker, Config{}) },
+		func() { NewModule(validRuntime, nil, validChecker, Config{}) },
+		func() { NewModule(validRuntime, &authz.Registrar{}, validChecker, Config{}) },
 		func() {
-			NewModule(validRuntime, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()), validChecker)
+			NewModule(validRuntime, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()), validChecker, Config{})
 		},
-		func() { NewModule(validRuntime, validRegistrar, nil) },
+		func() { NewModule(validRuntime, validRegistrar, nil, Config{}) },
 	} {
 		assert.Panics(t, build)
 	}
 
-	instance := NewModule(validRuntime, validRegistrar, validChecker)
+	instance := NewModule(validRuntime, validRegistrar, validChecker, enabledModuleConfig())
 	services := module.NewServices()
 	require.NoError(t, services.Seal())
 	assert.ErrorContains(t, instance.InjectServices(services), "resolve IAM id generator")

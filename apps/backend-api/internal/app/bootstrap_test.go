@@ -343,6 +343,47 @@ func TestIAMCompositionUsesFrozenRuntimeAndDeclarationInventories(t *testing.T) 
 	}, declarationNames)
 }
 
+func TestIAMCompositionDelegatesActivationToModules(t *testing.T) {
+	app := &App{config: AppConfig{Database: map[string]Database{"primary": {
+		Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "iam-disabled.sqlite"), Writable: true, Readable: true,
+	}}}}
+	require.NoError(t, app.initializeRuntime(t.Context()))
+	t.Cleanup(func() { _ = app.runtime.Close() })
+	require.NoError(t, app.composeModules())
+
+	for _, name := range []string{
+		iamaudit.Name, core.Name, iamauthn.Name, identity.Name, organization.Name,
+		"oauth", "provisioning", governance.Name, federation.Name,
+	} {
+		_, registered := app.modules.ByName(name)
+		assert.True(t, registered, "%s must be registered before activation", name)
+	}
+
+	require.NoError(t, app.modules.Activate())
+	for _, name := range []string{
+		iamaudit.Name, core.Name, iamauthn.Name, identity.Name, organization.Name,
+		"oauth", "provisioning", governance.Name, federation.Name,
+	} {
+		_, active := app.modules.ByName(name)
+		assert.False(t, active, "%s must own its disabled activation state", name)
+	}
+}
+
+func TestIAMCompositionRejectsEnabledDependentWithDisabledDependencies(t *testing.T) {
+	app := &App{config: AppConfig{
+		Federation: IAMFederation{Enabled: true},
+		Database: map[string]Database{"primary": {
+			Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "iam-invalid-activation.sqlite"), Writable: true,
+		}},
+	}}
+	require.NoError(t, app.initializeRuntime(t.Context()))
+	t.Cleanup(func() { _ = app.runtime.Close() })
+	require.NoError(t, app.composeModules())
+
+	err := app.modules.Activate()
+	assert.ErrorContains(t, err, `module "federation" requires unregistered module "iam-audit"`)
+}
+
 func TestIAMCompositionReportsEveryMissingBusinessProvider(t *testing.T) {
 	tests := []struct {
 		provider string

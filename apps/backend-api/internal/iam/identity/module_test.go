@@ -18,6 +18,15 @@ import (
 	"gorm.io/gorm"
 )
 
+func enabledModuleConfig() Config {
+	return Config{Config: module.Config{Enabled: true}}
+}
+
+func TestModuleActivationComesFromConfig(t *testing.T) {
+	assert.False(t, (&Module{}).Enabled())
+	assert.True(t, (&Module{config: enabledModuleConfig()}).Enabled())
+}
+
 type identityDependencyProvider struct {
 	name    string
 	provide func(*module.Services) error
@@ -43,12 +52,12 @@ func TestModuleRequiresItsConstructionCollaborators(t *testing.T) {
 
 	runtime := appenv.NewRuntime(appenv.NewIdentity("identity-test", "1"))
 	registrar := identityTestRegistrar()
-	assert.Panics(t, func() { NewModule(nil, registrar) })
-	assert.Panics(t, func() { NewModule(runtime, nil) })
+	assert.Panics(t, func() { NewModule(nil, registrar, Config{}) })
+	assert.Panics(t, func() { NewModule(runtime, nil, Config{}) })
 	assert.Panics(t, func() {
-		NewModule(runtime, authz.NewAuthenticationOnlyRegistrar(identityTokenVerifier{}))
+		NewModule(runtime, authz.NewAuthenticationOnlyRegistrar(identityTokenVerifier{}), Config{})
 	})
-	assert.Panics(t, func() { NewModule(runtime, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry())) })
+	assert.Panics(t, func() { NewModule(runtime, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()), Config{}) })
 }
 
 func TestModuleIdentityDependenciesAndReadinessBeforeInitialize(t *testing.T) {
@@ -57,6 +66,7 @@ func TestModuleIdentityDependenciesAndReadinessBeforeInitialize(t *testing.T) {
 	instance := NewModule(
 		appenv.NewRuntime(appenv.NewIdentity("identity-test", "1")),
 		identityTestRegistrar(),
+		enabledModuleConfig(),
 	)
 	assert.Equal(t, Name, instance.ModuleName())
 	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, core.Name}, instance.ModuleDependencies())
@@ -69,7 +79,7 @@ func TestModuleIdentityDependenciesAndReadinessBeforeInitialize(t *testing.T) {
 
 func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
 	harness := newIdentityHarness(t, "sl_")
-	instance := NewModule(harness.runtime, identityTestRegistrar())
+	instance := NewModule(harness.runtime, identityTestRegistrar(), enabledModuleConfig())
 
 	registry := module.NewRegistry()
 	require.NoError(t, registry.Register(
@@ -132,6 +142,7 @@ func TestModuleReportsMissingWiring(t *testing.T) {
 	instance := NewModule(
 		appenv.NewRuntime(appenv.NewIdentity("identity-test", "1")),
 		identityTestRegistrar(),
+		enabledModuleConfig(),
 	)
 
 	services := module.NewServices()

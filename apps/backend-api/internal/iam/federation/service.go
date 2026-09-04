@@ -24,6 +24,7 @@ import (
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/secretx"
+	"7link.com/platform/pkg/module"
 	saml "github.com/crewjam/saml"
 	"gorm.io/gorm"
 )
@@ -32,7 +33,7 @@ import (
 // upstream client secrets and login state cookies; resolve it from a secret
 // manager via encryption_key_file in production.
 type Config struct {
-	Enabled           bool          `mapstructure:"enabled" description:"enable inbound OIDC identity provider federation" default:"false"`
+	module.Config
 	EncryptionKey     string        `mapstructure:"encryption_key" description:"base64 32-byte key protecting provider client secrets and login state; prefer encryption_key_file" default:""`
 	EncryptionKeyFile string        `mapstructure:"encryption_key_file" description:"file containing the base64 32-byte federation encryption key" default:""`
 	HTTPTimeout       time.Duration `mapstructure:"http_timeout" description:"upstream discovery, JWKS, and token endpoint timeout" default:"10s"`

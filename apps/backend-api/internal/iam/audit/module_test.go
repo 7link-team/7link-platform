@@ -56,7 +56,7 @@ func TestAuditModuleConstructionAndDeclarationOnly(t *testing.T) {
 func TestAuditModuleLifecycleProvidesStableAppender(t *testing.T) {
 	h := newAuditHarness(t, "sl_")
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
-	instance := NewModule(h.runtime, auditRuntimeRegistrar(), Config{})
+	instance := NewModule(h.runtime, auditRuntimeRegistrar(), Config{Config: module.Config{Enabled: true}})
 	assert.ErrorIs(t, instance.CheckHealth(t.Context()), ErrUnavailable)
 	_, api := humatest.New(t)
 	assert.ErrorContains(t, instance.RegisterHTTP(t.Context(), api), "service is unavailable")
@@ -87,6 +87,11 @@ func TestAuditModuleLifecycleProvidesStableAppender(t *testing.T) {
 	_, api = humatest.New(t)
 	require.NoError(t, instance.RegisterHTTP(t.Context(), api))
 	assert.Len(t, auditOperationManifest(api.OpenAPI()), 8)
+}
+
+func TestAuditModuleActivationComesFromConfig(t *testing.T) {
+	assert.False(t, (&Module{}).Enabled())
+	assert.True(t, (&Module{config: Config{Config: module.Config{Enabled: true}}}).Enabled())
 }
 
 func TestAuditModuleReportsMissingAndInvalidStartupDependencies(t *testing.T) {

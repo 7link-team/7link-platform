@@ -22,8 +22,13 @@ var ErrUnavailable = errors.New("OAuth service unavailable")
 
 // Module owns OAuth protocol persistence, client administration, HTTP, and
 // locale behavior.
+type Config struct {
+	module.Config
+}
+
 type Module struct {
 	*Service
+	config    Config
 	runtime   *appenv.Runtime
 	registrar *authz.Registrar
 	authn     authn.WebService
@@ -33,12 +38,14 @@ type Module struct {
 
 // NewModule builds the OAuth module. Shared business and infrastructure
 // services are resolved during module wiring.
-func NewModule(runtime *appenv.Runtime, registrar *authz.Registrar) *Module {
+func NewModule(runtime *appenv.Runtime, registrar *authz.Registrar, config Config) *Module {
 	if runtime == nil || registrar == nil || registrar.Registry() == nil || registrar.IsDeclarationOnly() {
 		panic("OAuth module requires runtime and authz registrar")
 	}
-	return &Module{runtime: runtime, registrar: registrar}
+	return &Module{runtime: runtime, registrar: registrar, config: config}
 }
+
+func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
 
 func (*Module) ModuleName() string { return Name }
 
@@ -93,6 +100,7 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 
 var (
 	_ module.Module          = (*Module)(nil)
+	_ module.Enabler         = (*Module)(nil)
 	_ module.Depender        = (*Module)(nil)
 	_ module.ServiceInjector = (*Module)(nil)
 	_ module.Initializer     = (*Module)(nil)

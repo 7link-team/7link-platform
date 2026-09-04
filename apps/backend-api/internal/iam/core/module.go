@@ -18,7 +18,12 @@ import (
 
 // Module owns core IAM authorization, membership, menu, entity, relationship,
 // HTTP, locale, and migration behavior.
+type Config struct {
+	module.Config
+}
+
 type Module struct {
+	config          Config
 	runtime         *appenv.Runtime
 	service         *Service
 	registrar       *authz.Registrar
@@ -37,11 +42,13 @@ func NewModule(
 	runtime *appenv.Runtime,
 	registrar *authz.Registrar,
 	checker AuthorizationEvaluator,
+	config Config,
 ) *Module {
 	if runtime == nil || registrar == nil || registrar.Registry() == nil || registrar.IsDeclarationOnly() || checker == nil {
 		panic("iam module requires runtime, authz registrar, and authorizer")
 	}
 	module := &Module{
+		config:  config,
 		runtime: runtime, registrar: registrar, checker: checker,
 		members: NewMembershipChecker(runtime), administrators: NewAdministratorGuard(runtime),
 	}
@@ -56,9 +63,11 @@ func NewDeclarationOnlyModule(registrar *authz.Registrar) *Module {
 	}
 	return &Module{
 		service: newDeclarationService(registrar.Registry()), registrar: registrar,
-		declarationOnly: true,
+		config: Config{Config: module.Config{Enabled: true}}, declarationOnly: true,
 	}
 }
+
+func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
 
 func (*Module) ModuleDependencies() []string {
 	return []string{platformi18n.Name, guid.Name, audit.Name}
@@ -170,6 +179,7 @@ func (m *Module) roleGrantStore() RoleGrantStore {
 
 var (
 	_ module.Module          = (*Module)(nil)
+	_ module.Enabler         = (*Module)(nil)
 	_ module.Depender        = (*Module)(nil)
 	_ module.ServiceProvider = (*Module)(nil)
 	_ module.ServiceInjector = (*Module)(nil)

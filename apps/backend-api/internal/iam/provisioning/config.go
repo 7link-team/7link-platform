@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"7link.com/platform/pkg/extension/secretx"
+	"7link.com/platform/pkg/module"
 )
 
 // Config controls outbound SCIM provisioning. The encryption key protects the
@@ -13,6 +14,7 @@ import (
 // encryption_key_file in production. An unset key disables outbound
 // provisioning (target creation and pushes fail with a clear error).
 type Config struct {
+	module.Config
 	EncryptionKey     string        `mapstructure:"encryption_key" description:"base64 32-byte key encrypting outbound SCIM target bearer tokens; prefer encryption_key_file" default:""`
 	EncryptionKeyFile string        `mapstructure:"encryption_key_file" description:"file containing the base64 32-byte provisioning encryption key" default:""`
 	HTTPTimeout       time.Duration `mapstructure:"http_timeout" description:"outbound SCIM request timeout" default:"10s"`

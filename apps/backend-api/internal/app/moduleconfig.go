@@ -2,7 +2,12 @@ package app
 
 import (
 	iamaudit "7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/federation"
+	"7link.com/platform/internal/iam/governance"
+	"7link.com/platform/internal/iam/identity"
+	"7link.com/platform/internal/iam/oauth"
+	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/iam/provisioning"
 	audit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/configinspector"
@@ -84,7 +89,7 @@ func iamAuthnConfig(c AppConfig) authnext.Config {
 }
 
 func iamAuditConfig(c AppConfig) iamaudit.Config {
-	return iamaudit.Config{Anchor: iamaudit.AnchorConfig{
+	return iamaudit.Config{Config: iamActivationConfig(c), Anchor: iamaudit.AnchorConfig{
 		Enabled: c.IAMAudit.Anchor.Enabled, Endpoint: c.IAMAudit.Anchor.Endpoint,
 		Bucket: c.IAMAudit.Anchor.Bucket, Region: c.IAMAudit.Anchor.Region,
 		AccessKey: c.IAMAudit.Anchor.AccessKey, SecretKey: c.IAMAudit.Anchor.SecretKey,
@@ -92,16 +97,37 @@ func iamAuditConfig(c AppConfig) iamaudit.Config {
 	}}
 }
 
+func iamCoreConfig(c AppConfig) core.Config {
+	return core.Config{Config: iamActivationConfig(c)}
+}
+
+func iamIdentityConfig(c AppConfig) identity.Config {
+	return identity.Config{Config: iamActivationConfig(c)}
+}
+
+func iamOrganizationConfig(c AppConfig) organization.Config {
+	return organization.Config{Config: iamActivationConfig(c)}
+}
+
+func iamOAuthConfig(c AppConfig) oauth.Config {
+	return oauth.Config{Config: iamActivationConfig(c)}
+}
+
 func iamProvisioningConfig(c AppConfig) provisioning.Config {
 	return provisioning.Config{
+		Config:        iamActivationConfig(c),
 		EncryptionKey: c.Provisioning.EncryptionKey, EncryptionKeyFile: c.Provisioning.EncryptionKeyFile,
 		HTTPTimeout: c.Provisioning.HTTPTimeout, SyncInterval: c.Provisioning.SyncInterval,
 	}
 }
 
+func iamGovernanceConfig(c AppConfig) governance.Config {
+	return governance.Config{Config: iamActivationConfig(c)}
+}
+
 func iamFederationConfig(c AppConfig) federation.Config {
 	return federation.Config{
-		Enabled: c.Federation.Enabled, EncryptionKey: c.Federation.EncryptionKey,
+		Config: module.Config{Enabled: c.Federation.Enabled}, EncryptionKey: c.Federation.EncryptionKey,
 		EncryptionKeyFile: c.Federation.EncryptionKeyFile, HTTPTimeout: c.Federation.HTTPTimeout,
 		ClockSkew: c.Federation.ClockSkew, StateTTL: c.Federation.StateTTL,
 		SAML: federation.SAMLConfig{
@@ -110,4 +136,8 @@ func iamFederationConfig(c AppConfig) federation.Config {
 			ValidDuration: c.Federation.SAML.ValidDuration, MaxIssueDelay: c.Federation.SAML.MaxIssueDelay,
 		},
 	}
+}
+
+func iamActivationConfig(c AppConfig) module.Config {
+	return module.Config{Enabled: c.Authn.Enabled}
 }
