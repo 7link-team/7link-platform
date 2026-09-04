@@ -9,7 +9,6 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/extension/authz"
-	"7link.com/platform/pkg/extension/huma/respx"
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -42,6 +41,7 @@ func governanceRuntimeRegistrar() *authz.Registrar {
 func governanceServices(t *testing.T, h *governanceHarness) *module.Services {
 	t.Helper()
 	services := module.NewServices()
+	require.NoError(t, module.Provide[*authz.Registrar](services, governanceRuntimeRegistrar()))
 	require.NoError(t, module.Provide[guid.Source](services, newGovernanceTestIDs(7000)))
 	require.NoError(t, module.Provide[audit.Appender](services, h.appendAudit))
 	require.NoError(t, module.Provide[core.RoleGrantStore](services, h.grantStore()))
@@ -50,33 +50,21 @@ func governanceServices(t *testing.T, h *governanceHarness) *module.Services {
 	return services
 }
 
-func TestGovernanceModuleConstructionAndDeclarationOnly(t *testing.T) {
+func TestGovernanceModuleConstructionAndReadiness(t *testing.T) {
 	runtime := appenv.NewRuntime(appenv.NewIdentity("governance-test", "1"))
-	registrar := governanceRuntimeRegistrar()
-	assert.Panics(t, func() { NewModule(nil, registrar, Config{}) })
-	assert.Panics(t, func() { NewModule(runtime, nil, Config{}) })
-	assert.Panics(t, func() { NewModule(runtime, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()), Config{}) })
-	assert.Panics(t, func() { NewDeclarationOnlyModule(nil) })
-	assert.Panics(t, func() { NewDeclarationOnlyModule(authz.NewAuthenticationOnlyRegistrar(governanceHTTPVerifier{})) })
-
-	declaration := NewDeclarationOnlyModule(authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()))
-	assert.Equal(t, Name, declaration.ModuleName())
-	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, core.Name}, declaration.ModuleDependencies())
-	require.NoError(t, declaration.CheckHealth(t.Context()))
-	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
-	require.NoError(t, declaration.Initialize(t.Context()))
-	respx.Install()
-	_, api := humatest.New(t)
-	require.NoError(t, declaration.RegisterHTTP(t.Context(), api))
-	assert.Len(t, governanceOperationManifest(api.OpenAPI()), 14)
+	assert.Panics(t, func() { NewModule(nil, Config{}) })
+	instance := NewModule(runtime, Config{})
+	assert.Equal(t, Name, instance.ModuleName())
+	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, core.Name}, instance.ModuleDependencies())
+	assert.ErrorIs(t, instance.CheckHealth(t.Context()), ErrUnavailable)
 }
 
 func TestGovernanceModuleRuntimeLifecycle(t *testing.T) {
 	h := newGovernanceHarness(t, "sl_")
-	instance := NewModule(h.runtime, governanceRuntimeRegistrar(), enabledModuleConfig())
+	instance := NewModule(h.runtime, enabledModuleConfig())
 	assert.ErrorIs(t, instance.CheckHealth(t.Context()), ErrUnavailable)
 	_, api := humatest.New(t)
-	assert.ErrorContains(t, instance.RegisterHTTP(t.Context(), api), "service is unavailable")
+	assert.ErrorContains(t, instance.RegisterHTTP(t.Context(), api), "module is unavailable")
 	require.NoError(t, instance.InjectServices(governanceServices(t, h)))
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
 	require.NoError(t, instance.Initialize(t.Context()))
@@ -87,24 +75,27 @@ func TestGovernanceModuleRuntimeLifecycle(t *testing.T) {
 }
 
 func TestGovernanceModuleReportsMissingDependenciesAndInvalidState(t *testing.T) {
-	instance := NewModule(appenv.NewRuntime(appenv.NewIdentity("governance-test", "1")), governanceRuntimeRegistrar(), enabledModuleConfig())
+	instance := NewModule(appenv.NewRuntime(appenv.NewIdentity("governance-test", "1")), enabledModuleConfig())
 	services := module.NewServices()
 	require.NoError(t, services.Seal())
-	assert.ErrorContains(t, instance.InjectServices(services), "id generator")
+	assert.ErrorContains(t, instance.InjectServices(services), "authorization registrar")
 
 	h := newGovernanceHarness(t, "")
 	services = module.NewServices()
+	require.NoError(t, module.Provide[*authz.Registrar](services, governanceRuntimeRegistrar()))
 	require.NoError(t, module.Provide[guid.Source](services, newGovernanceTestIDs(1)))
 	require.NoError(t, services.Seal())
 	assert.ErrorContains(t, instance.InjectServices(services), "audit appender")
 
 	services = module.NewServices()
+	require.NoError(t, module.Provide[*authz.Registrar](services, governanceRuntimeRegistrar()))
 	require.NoError(t, module.Provide[guid.Source](services, newGovernanceTestIDs(1)))
 	require.NoError(t, module.Provide[audit.Appender](services, h.appendAudit))
 	require.NoError(t, services.Seal())
 	assert.ErrorContains(t, instance.InjectServices(services), "role grant store")
 
 	services = module.NewServices()
+	require.NoError(t, module.Provide[*authz.Registrar](services, governanceRuntimeRegistrar()))
 	require.NoError(t, module.Provide[guid.Source](services, newGovernanceTestIDs(1)))
 	require.NoError(t, module.Provide[audit.Appender](services, h.appendAudit))
 	require.NoError(t, module.Provide[core.RoleGrantStore](services, h.grantStore()))

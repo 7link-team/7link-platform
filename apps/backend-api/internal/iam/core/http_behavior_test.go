@@ -129,12 +129,15 @@ func newHTTPIAMHarness(t *testing.T, platformAllowed bool) httpIAMHarness {
 		httpMembershipChecker{},
 	)
 	appender := func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil }
-	module := NewModule(database.runtime, registrar, httpAuthorizationEvaluator{}, enabledModuleConfig())
+	module := NewModule(database.runtime, enabledModuleConfig())
 	services := modulepkg.NewServices()
 	require.NoError(t, modulepkg.Provide[guid.Source](services, database.repository.ids))
 	require.NoError(t, modulepkg.Provide[audit.Appender](services, appender))
+	require.NoError(t, modulepkg.Provide[authz.TokenVerifier](services, httpTokenVerifier{principalID: actorID}))
 	require.NoError(t, services.Seal())
 	require.NoError(t, module.InjectServices(services))
+	module.registrar = registrar
+	module.service.checker = httpAuthorizationEvaluator{}
 	_, err := module.service.PutTenantMember(t.Context(), 1, actorID, "Operator", "operator@example.test", 0, MemberActive)
 	require.NoError(t, err)
 

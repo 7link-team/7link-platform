@@ -7,7 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"time"
 
 	iamaudit "7link.com/platform/internal/iam/audit"
 	iamauthn "7link.com/platform/internal/iam/authn"
@@ -31,8 +30,6 @@ import (
 	"7link.com/platform/internal/infra/wuid"
 	"7link.com/platform/internal/todo"
 	"7link.com/platform/pkg/appenv"
-	authnext "7link.com/platform/pkg/extension/authn"
-	"7link.com/platform/pkg/extension/authz"
 	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/extension/huma/respx"
@@ -42,7 +39,6 @@ import (
 	"7link.com/platform/pkg/timezone"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
-	"gorm.io/gorm"
 )
 
 // configureProcessRuntime applies the process-wide settings shared by the
@@ -121,60 +117,21 @@ func (app *App) composeModules() error {
 	return app.addModule(modules...)
 }
 
-// composeIAMRuntimeModules constructs the IAM graph once and returns it in the
-// lifecycle order frozen by the migration plan.
+// composeIAMRuntimeModules declares the IAM inventory in lifecycle order.
+// Modules construct their own state and connect cross-module capabilities
+// exclusively through module.Services during Wire.
 func (app *App) composeIAMRuntimeModules() []module.Module {
 	rt := app.runtime
-	registry := authz.DefaultRegistry()
-
-	var identityModule *identity.Module
-	authnModule := iamauthn.NewModule(rt, iamAuthnConfig(app.config), iamauthn.WithRegistrationPrincipalCreator(
-		func(ctx context.Context, db *gorm.DB, email, passwordHash, displayName string, now time.Time, ids guid.Source) (guid.ID, error) {
-			if identityModule == nil || identityModule.Service == nil {
-				return 0, authnext.ErrUnavailable
-			}
-			id, err := identityModule.CreatePendingPrincipal(ctx, db, email, passwordHash, displayName, now, ids)
-			switch {
-			case errors.Is(err, identity.ErrLoginConflict):
-				return 0, authnext.ErrRegistrationConflict
-			case errors.Is(err, identity.ErrInvalid):
-				return 0, authnext.ErrInvalidRegistration
-			default:
-				return id, err
-			}
-		},
-	))
-	authorizer := core.NewAuthorizerWithRegistry(rt, registry)
-	registrar := authz.NewRegistrar(registry, authnModule, authorizer, core.NewMembershipChecker(rt))
-	app.authzRegistrar = registrar
-	identityModule = identity.NewModule(rt, registrar, iamIdentityConfig(app.config))
-
-	modules := []module.Module{
-		iamaudit.NewModule(rt, registrar, iamAuditConfig(app.config)),
-		core.NewModule(rt, registrar, authorizer, iamCoreConfig(app.config)),
-		authnModule,
-		identityModule,
-		organization.NewModule(rt, registrar, iamOrganizationConfig(app.config)),
-		oauth.NewModule(rt, registrar, iamOAuthConfig(app.config)),
-		provisioning.NewModule(rt, registrar, iamProvisioningConfig(app.config)),
-		governance.NewModule(rt, registrar, iamGovernanceConfig(app.config)),
-		federation.NewModule(rt, registrar, iamFederationConfig(app.config)),
-	}
-	return modules
-}
-
-// composeIAMDeclarationModules builds only the six declaration-capable source
-// modules. Authn, identity, and OAuth deliberately have no synthetic
-// declaration constructors.
-func composeIAMDeclarationModules() []module.Module {
-	registrar := authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry())
 	return []module.Module{
-		iamaudit.NewDeclarationOnlyModule(registrar),
-		core.NewDeclarationOnlyModule(registrar),
-		organization.NewDeclarationOnlyModule(registrar),
-		provisioning.NewDeclarationOnlyModule(registrar),
-		governance.NewDeclarationOnlyModule(registrar),
-		federation.NewDeclarationOnlyModule(registrar),
+		iamaudit.NewModule(rt, iamAuditConfig(app.config)),
+		core.NewModule(rt, iamCoreConfig(app.config)),
+		iamauthn.NewModule(rt, iamAuthnConfig(app.config)),
+		identity.NewModule(rt, iamIdentityConfig(app.config)),
+		organization.NewModule(rt, iamOrganizationConfig(app.config)),
+		oauth.NewModule(rt, iamOAuthConfig(app.config)),
+		provisioning.NewModule(rt, iamProvisioningConfig(app.config)),
+		governance.NewModule(rt, iamGovernanceConfig(app.config)),
+		federation.NewModule(rt, iamFederationConfig(app.config)),
 	}
 }
 

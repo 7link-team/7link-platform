@@ -4,6 +4,14 @@ Mandatory rules for AI-assisted work on this project: how tasks are understood, 
 
 **Goal:** Deliver exactly the requested solution — Correctness + Requirement Fidelity + State Continuity + Controlled Scope + Engineering Quality + Real Verification. Optimize for this, not for lines of code, agent count, or number of "improvements."
 
+## -1. Load Acknowledgement
+
+**MUST** start every response with this line, verbatim, before anything else:
+
+`✅ CLAUDE.md loaded 🎉`
+
+The bracketed token exists only in this file — it is the proof of load. No token, no load.
+
 ## 0. Normative Language & Priority
 
 - **MUST/REQUIRED** — mandatory, no exceptions unless the user explicitly changes the rule.

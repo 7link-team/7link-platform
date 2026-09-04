@@ -29,43 +29,31 @@ func (provider *auditDependencyProvider) ProvideServices(services *module.Servic
 	return provider.provide(services)
 }
 
-func TestAuditModuleConstructionAndDeclarationOnly(t *testing.T) {
+func TestAuditModuleConstructionAndReadiness(t *testing.T) {
 	runtime := appenv.NewRuntime(appenv.NewIdentity("audit-test", "1"))
-	registrar := auditRuntimeRegistrar()
-	assert.Panics(t, func() { NewModule(nil, registrar, Config{}) })
-	assert.Panics(t, func() { NewModule(runtime, nil, Config{}) })
-	assert.Panics(t, func() { NewModule(runtime, authz.NewAuthenticationOnlyRegistrar(auditTokenVerifier{}), Config{}) })
-	assert.Panics(t, func() { NewModule(runtime, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()), Config{}) })
-	assert.Panics(t, func() { NewDeclarationOnlyModule(nil) })
-
-	declaration := NewDeclarationOnlyModule(authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()))
-	assert.Equal(t, Name, declaration.ModuleName())
-	assert.Equal(t, []string{platformi18n.Name, guid.Name}, declaration.ModuleDependencies())
-	require.NoError(t, declaration.CheckHealth(t.Context()))
-	services := module.NewServices()
-	require.NoError(t, declaration.ProvideServices(services))
-	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
-	require.NoError(t, declaration.Initialize(t.Context()))
-	require.NoError(t, declaration.Start(t.Context()))
-	respx.Install()
-	_, api := humatest.New(t)
-	require.NoError(t, declaration.RegisterHTTP(t.Context(), api))
-	assert.Len(t, auditOperationManifest(api.OpenAPI()), 8)
+	assert.Panics(t, func() { NewModule(nil, Config{}) })
+	instance := NewModule(runtime, Config{})
+	assert.Equal(t, Name, instance.ModuleName())
+	assert.Equal(t, []string{platformi18n.Name, guid.Name}, instance.ModuleDependencies())
+	assert.ErrorIs(t, instance.CheckHealth(t.Context()), ErrUnavailable)
 }
 
 func TestAuditModuleLifecycleProvidesStableAppender(t *testing.T) {
 	h := newAuditHarness(t, "sl_")
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
-	instance := NewModule(h.runtime, auditRuntimeRegistrar(), Config{Config: module.Config{Enabled: true}})
+	instance := NewModule(h.runtime, Config{Config: module.Config{Enabled: true}})
 	assert.ErrorIs(t, instance.CheckHealth(t.Context()), ErrUnavailable)
 	_, api := humatest.New(t)
-	assert.ErrorContains(t, instance.RegisterHTTP(t.Context(), api), "service is unavailable")
+	assert.ErrorContains(t, instance.RegisterHTTP(t.Context(), api), "module is unavailable")
 
 	registry := module.NewRegistry()
 	require.NoError(t, registry.Register(
 		platformi18n.NewModule(nil, platformi18n.Base),
 		respx.NewModule(nil),
 		&auditDependencyProvider{name: guid.Name, provide: func(services *module.Services) error {
+			if err := module.Provide[*authz.Registrar](services, auditRuntimeRegistrar()); err != nil {
+				return err
+			}
 			return module.Provide[guid.Source](services, newAuditTestIDs(9000))
 		}},
 		instance,
@@ -97,12 +85,11 @@ func TestAuditModuleActivationComesFromConfig(t *testing.T) {
 func TestAuditModuleReportsMissingAndInvalidStartupDependencies(t *testing.T) {
 	instance := NewModule(
 		appenv.NewRuntime(appenv.NewIdentity("audit-test", "1")),
-		auditRuntimeRegistrar(),
 		Config{},
 	)
 	services := module.NewServices()
 	require.NoError(t, services.Seal())
-	assert.ErrorContains(t, instance.InjectServices(services), "id generator")
+	assert.ErrorContains(t, instance.InjectServices(services), "authorization registrar")
 	provided := module.NewServices()
 	require.NoError(t, instance.ProvideServices(provided))
 	assert.ErrorContains(t, instance.ProvideServices(provided), "provide audit appender")
@@ -115,6 +102,7 @@ func TestAuditModuleReportsMissingAndInvalidStartupDependencies(t *testing.T) {
 	assert.ErrorContains(t, unavailable.RegisterHTTP(t.Context(), api), "module is unavailable")
 
 	services = module.NewServices()
+	require.NoError(t, module.Provide[*authz.Registrar](services, auditRuntimeRegistrar()))
 	require.NoError(t, module.Provide[guid.Source](services, newAuditTestIDs(1)))
 	require.NoError(t, services.Seal())
 	require.NoError(t, instance.InjectServices(services))
@@ -123,20 +111,22 @@ func TestAuditModuleReportsMissingAndInvalidStartupDependencies(t *testing.T) {
 
 	h := newAuditHarness(t, "")
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
-	badAnchor := NewModule(h.runtime, auditRuntimeRegistrar(), Config{
+	badAnchor := NewModule(h.runtime, Config{
 		Anchor: AnchorConfig{Enabled: true},
 	})
+	badAnchor.registrar = auditRuntimeRegistrar()
 	badAnchor.ids = newAuditTestIDs(1)
 	require.NoError(t, badAnchor.Initialize(t.Context()))
 	assert.ErrorContains(t, badAnchor.Start(t.Context()), "anchor configuration")
 
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
-	badSigner := NewModule(h.runtime, auditRuntimeRegistrar(), Config{
+	badSigner := NewModule(h.runtime, Config{
 		Anchor: AnchorConfig{
 			Enabled: true, Endpoint: "127.0.0.1:9000", Bucket: "anchors",
 			AccessKey: "access", SecretKey: "secret", RetentionDays: 30, SigningKey: "bad",
 		},
 	})
+	badSigner.registrar = auditRuntimeRegistrar()
 	badSigner.ids = newAuditTestIDs(1)
 	require.NoError(t, badSigner.Initialize(t.Context()))
 	assert.ErrorContains(t, badSigner.Start(t.Context()), "signing key")
@@ -172,7 +162,8 @@ func TestAuditModuleStartsAnchoredAndSignedService(t *testing.T) {
 		SigningKey: base64.StdEncoding.EncodeToString(seed),
 	}}
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
-	instance := NewModule(h.runtime, auditRuntimeRegistrar(), config)
+	instance := NewModule(h.runtime, config)
+	instance.registrar = auditRuntimeRegistrar()
 	instance.ids = newAuditTestIDs(13000)
 	require.NoError(t, instance.Initialize(t.Context()))
 	require.NoError(t, instance.Start(t.Context()))

@@ -38,11 +38,11 @@ type Module struct {
 
 // NewModule builds the OAuth module. Shared business and infrastructure
 // services are resolved during module wiring.
-func NewModule(runtime *appenv.Runtime, registrar *authz.Registrar, config Config) *Module {
-	if runtime == nil || registrar == nil || registrar.Registry() == nil || registrar.IsDeclarationOnly() {
-		panic("OAuth module requires runtime and authz registrar")
+func NewModule(runtime *appenv.Runtime, config Config) *Module {
+	if runtime == nil {
+		panic("OAuth module requires runtime")
 	}
-	return &Module{runtime: runtime, registrar: registrar, config: config}
+	return &Module{runtime: runtime, config: config}
 }
 
 func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
@@ -54,6 +54,10 @@ func (*Module) ModuleDependencies() []string {
 }
 
 func (m *Module) InjectServices(services *module.Services) error {
+	registrar, err := module.Resolve[*authz.Registrar](services)
+	if err != nil {
+		return fmt.Errorf("resolve OAuth authorization registrar: %w", err)
+	}
 	authenticator, err := module.Resolve[authn.WebService](services)
 	if err != nil {
 		return fmt.Errorf("resolve OAuth authentication service: %w", err)
@@ -66,6 +70,7 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve OAuth audit appender: %w", err)
 	}
+	m.registrar = registrar
 	m.authn = authenticator
 	m.ids = ids
 	m.appender = appender

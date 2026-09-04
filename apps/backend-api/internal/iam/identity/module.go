@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/core"
@@ -38,19 +39,24 @@ type Module struct {
 	appender       audit.Appender
 }
 
-// NewModule builds the identity module from its runtime and authorization
-// registrar. Shared capabilities are resolved during module wiring. The source
-// module has no declaration-only constructor, so this module is not given one
-// either.
-func NewModule(
-	runtime *appenv.Runtime,
-	registrar *authz.Registrar,
-	config Config,
-) *Module {
-	if runtime == nil || registrar == nil || registrar.Registry() == nil || registrar.IsDeclarationOnly() {
-		panic("identity module requires runtime and authz registrar")
+// RegistrationPrincipalCreator creates a pending principal and its credential
+// inside the caller-owned authentication registration transaction.
+type RegistrationPrincipalCreator func(
+	context.Context,
+	*gorm.DB,
+	string,
+	string,
+	string,
+	time.Time,
+) (guid.ID, error)
+
+// NewModule builds the identity module from construction-owned inputs. Shared
+// capabilities are resolved during module wiring.
+func NewModule(runtime *appenv.Runtime, config Config) *Module {
+	if runtime == nil {
+		panic("identity module requires runtime")
 	}
-	return &Module{runtime: runtime, registrar: registrar, config: config}
+	return &Module{runtime: runtime, config: config}
 }
 
 func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
@@ -79,10 +85,28 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[InvitationPrincipalCreator](services, creator); err != nil {
 		return fmt.Errorf("provide identity invitation principal creator: %w", err)
 	}
+	registrationCreator := RegistrationPrincipalCreator(func(
+		ctx context.Context,
+		db *gorm.DB,
+		email, passwordHash, displayName string,
+		now time.Time,
+	) (guid.ID, error) {
+		if m == nil || m.Service == nil {
+			return 0, ErrUnavailable
+		}
+		return m.Service.CreatePendingPrincipal(ctx, db, email, passwordHash, displayName, now, m.ids)
+	})
+	if err := module.Provide[RegistrationPrincipalCreator](services, registrationCreator); err != nil {
+		return fmt.Errorf("provide identity registration principal creator: %w", err)
+	}
 	return nil
 }
 
 func (m *Module) InjectServices(services *module.Services) error {
+	registrar, err := module.Resolve[*authz.Registrar](services)
+	if err != nil {
+		return fmt.Errorf("resolve identity authorization registrar: %w", err)
+	}
 	ids, err := module.Resolve[guid.Source](services)
 	if err != nil {
 		return fmt.Errorf("resolve identity id generator: %w", err)
@@ -95,6 +119,7 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve identity administrator guard: %w", err)
 	}
+	m.registrar = registrar
 	m.ids = ids
 	m.appender = appender
 	m.administrators = administrators

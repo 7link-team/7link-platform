@@ -20,29 +20,21 @@ import (
 var ErrUnavailable = errors.New("federation service unavailable")
 
 type Module struct {
-	service         *Service
-	runtime         *appenv.Runtime
-	registrar       *authz.Registrar
-	config          Config
-	ids             guid.Source
-	appender        audit.Appender
-	identities      identity.IdentityProvisioner
-	authn           authn.WebService
-	declarationOnly bool
+	service    *Service
+	runtime    *appenv.Runtime
+	registrar  *authz.Registrar
+	config     Config
+	ids        guid.Source
+	appender   audit.Appender
+	identities identity.IdentityProvisioner
+	authn      authn.WebService
 }
 
-func NewModule(runtime *appenv.Runtime, registrar *authz.Registrar, config Config) *Module {
-	if runtime == nil || registrar == nil || registrar.Registry() == nil || registrar.IsDeclarationOnly() {
-		panic("federation module requires runtime and authz registrar")
+func NewModule(runtime *appenv.Runtime, config Config) *Module {
+	if runtime == nil {
+		panic("federation module requires runtime")
 	}
-	return &Module{runtime: runtime, registrar: registrar, config: config}
-}
-
-func NewDeclarationOnlyModule(registrar *authz.Registrar) *Module {
-	if registrar == nil || registrar.Registry() == nil || !registrar.IsDeclarationOnly() {
-		panic("federation declaration module requires a declaration-only authz registrar")
-	}
-	return &Module{registrar: registrar, config: Config{Config: module.Config{Enabled: true}}, declarationOnly: true}
+	return &Module{runtime: runtime, config: config}
 }
 
 func (m *Module) Enabled() bool {
@@ -54,6 +46,10 @@ func (*Module) ModuleDependencies() []string {
 }
 
 func (m *Module) InjectServices(services *module.Services) error {
+	registrar, err := module.Resolve[*authz.Registrar](services)
+	if err != nil {
+		return fmt.Errorf("resolve federation authorization registrar: %w", err)
+	}
 	ids, err := module.Resolve[guid.Source](services)
 	if err != nil {
 		return fmt.Errorf("resolve federation id generator: %w", err)
@@ -70,7 +66,7 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve federation authentication service: %w", err)
 	}
-	m.ids, m.appender, m.identities, m.authn = ids, appender, identities, authenticator
+	m.registrar, m.ids, m.appender, m.identities, m.authn = registrar, ids, appender, identities, authenticator
 	return nil
 }
 
@@ -80,9 +76,6 @@ func (m *Module) Initialize(context.Context) error {
 	}
 	if err := federationi18n.Register(); err != nil {
 		return fmt.Errorf("register federation i18n: %w", err)
-	}
-	if m.declarationOnly {
-		return nil
 	}
 	if m.runtime == nil || m.runtime.Database() == nil || m.runtime.Database().Write() == nil ||
 		m.registrar == nil || m.ids == nil || m.appender == nil || m.identities == nil || m.authn == nil {
@@ -97,7 +90,7 @@ func (m *Module) Initialize(context.Context) error {
 }
 
 func (m *Module) Start(ctx context.Context) error {
-	if m == nil || m.declarationOnly {
+	if m == nil {
 		return nil
 	}
 	if m.service == nil {
@@ -107,9 +100,6 @@ func (m *Module) Start(ctx context.Context) error {
 }
 
 func (m *Module) CheckHealth(context.Context) error {
-	if m != nil && m.declarationOnly {
-		return nil
-	}
 	if m == nil || m.service == nil || m.service.repo == nil || m.service.repo.writer() == nil {
 		return ErrUnavailable
 	}
@@ -120,7 +110,7 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	if m == nil || m.registrar == nil {
 		return errors.New("register federation: module is unavailable")
 	}
-	if !m.declarationOnly && m.service == nil {
+	if m.service == nil {
 		return errors.New("register federation: service is unavailable")
 	}
 	RegisterHTTP(api, m.service, m.registrar)

@@ -11,7 +11,6 @@ import (
 	federationi18n "7link.com/platform/internal/iam/federation/i18n"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
-	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
 	platformi18n "7link.com/platform/pkg/i18n"
@@ -41,19 +40,15 @@ func RegisterSAMLREST(api huma.API, service *Service, registrar *authz.Registrar
 	registerSAMLBrowserHTTP(api, service)
 }
 
-func TestFederationModuleDeclarationAndExactOperationManifest(t *testing.T) {
-	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
-	respx.Install()
-	registrar := authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry())
-	declaration := NewDeclarationOnlyModule(registrar)
+func TestFederationRuntimeModuleExactOperationManifest(t *testing.T) {
+	declaration := federationRuntimeModule(t)
 	assert.Equal(t, Name, declaration.ModuleName())
 	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, identity.Name, authn.Name}, declaration.ModuleDependencies())
-	require.NoError(t, declaration.Initialize(t.Context()))
 	require.NoError(t, declaration.Start(t.Context()))
 	require.NoError(t, declaration.CheckHealth(t.Context()))
 	_, api := humatest.New(t)
 	require.NoError(t, declaration.RegisterHTTP(t.Context(), api))
-	require.NoError(t, authz.ValidateOperations(api, registrar.Registry()))
+	require.NoError(t, authz.ValidateOperations(api, declaration.registrar.Registry()))
 	assert.Equal(t, approvedFederationOperations(), federationOperationManifest(api.OpenAPI()))
 	assert.Equal(t, "goose_federation", declaration.MigrationSource().TableName)
 	assert.Len(t, declaration.MigrationMilestones(), 2)
@@ -66,10 +61,8 @@ func TestFederationModuleActivationComesFromItsProtocolConfig(t *testing.T) {
 }
 
 func TestFederationSAMLBrowserOpenAPIContract(t *testing.T) {
-	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
 	respx.Install()
-	declaration := NewDeclarationOnlyModule(authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()))
-	require.NoError(t, declaration.Initialize(t.Context()))
+	declaration := federationRuntimeModule(t)
 	_, api := humatest.New(t)
 	require.NoError(t, declaration.RegisterHTTP(t.Context(), api))
 	spec := api.OpenAPI()
@@ -125,16 +118,17 @@ func TestFederationModuleDependencyResolutionAndLifecycle(t *testing.T) {
 	env := newFederationEnvironment(t, "")
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
 	config := Config{EncryptionKey: base64.RawStdEncoding.EncodeToString(env.key)}
-	instance := NewModule(env.runtime, federationRuntimeRegistrar(env.web), config)
+	instance := NewModule(env.runtime, config)
 	assert.ErrorIs(t, instance.CheckHealth(t.Context()), ErrUnavailable)
 	_, api := humatest.New(t)
-	assert.ErrorContains(t, instance.RegisterHTTP(t.Context(), api), "service is unavailable")
+	assert.ErrorContains(t, instance.RegisterHTTP(t.Context(), api), "module is unavailable")
 
 	empty := platformmodule.NewServices()
 	require.NoError(t, empty.Seal())
-	assert.ErrorContains(t, instance.InjectServices(empty), "id generator")
+	assert.ErrorContains(t, instance.InjectServices(empty), "authorization registrar")
 
 	services := platformmodule.NewServices()
+	require.NoError(t, platformmodule.Provide[*authz.Registrar](services, federationRuntimeRegistrar(env.web)))
 	require.NoError(t, platformmodule.Provide[guid.Source](services, env.ids))
 	appender := audit.Appender(func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil })
 	require.NoError(t, platformmodule.Provide[audit.Appender](services, appender))
@@ -154,15 +148,12 @@ func TestFederationModuleRejectsMissingDependenciesAndInvalidState(t *testing.T)
 	env := newFederationEnvironment(t, "")
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
 	registrar := federationRuntimeRegistrar(env.web)
-	runtime := appenv.NewRuntime(appenv.NewIdentity("federation-test", "1"))
-	assert.Panics(t, func() { NewModule(nil, registrar, Config{}) })
-	assert.Panics(t, func() { NewModule(runtime, nil, Config{}) })
-	assert.Panics(t, func() { NewModule(runtime, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()), Config{}) })
-	assert.Panics(t, func() { NewDeclarationOnlyModule(nil) })
+	assert.Panics(t, func() { NewModule(nil, Config{}) })
 
-	newInstance := func() *Module { return NewModule(env.runtime, registrar, Config{}) }
+	newInstance := func() *Module { return NewModule(env.runtime, Config{}) }
 	servicesWith := func(include int) *platformmodule.Services {
 		services := platformmodule.NewServices()
+		require.NoError(t, platformmodule.Provide[*authz.Registrar](services, registrar))
 		if include > 0 {
 			require.NoError(t, platformmodule.Provide[guid.Source](services, env.ids))
 		}
@@ -188,9 +179,27 @@ func TestFederationModuleRejectsMissingDependenciesAndInvalidState(t *testing.T)
 	assert.ErrorContains(t, nilModule.RegisterHTTP(t.Context(), api), "module is unavailable")
 	assert.ErrorIs(t, (&Module{}).Start(t.Context()), ErrUnavailable)
 	badKey := newInstance()
+	badKey.registrar = registrar
 	badKey.ids, badKey.appender, badKey.identities, badKey.authn = env.ids, func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil }, env.identity, env.web
 	badKey.config.EncryptionKey = "short"
 	assert.ErrorContains(t, badKey.Initialize(t.Context()), "encryption key")
+}
+
+func federationRuntimeModule(t *testing.T) *Module {
+	t.Helper()
+	env := newFederationEnvironment(t, "openapi_")
+	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
+	instance := NewModule(env.runtime, Config{EncryptionKey: base64.RawStdEncoding.EncodeToString(env.key)})
+	services := platformmodule.NewServices()
+	require.NoError(t, platformmodule.Provide[*authz.Registrar](services, federationRuntimeRegistrar(env.web)))
+	require.NoError(t, platformmodule.Provide[guid.Source](services, env.ids))
+	require.NoError(t, platformmodule.Provide[audit.Appender](services, func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil }))
+	require.NoError(t, platformmodule.Provide[identity.IdentityProvisioner](services, env.identity))
+	require.NoError(t, platformmodule.Provide[authn.WebService](services, env.web))
+	require.NoError(t, services.Seal())
+	require.NoError(t, instance.InjectServices(services))
+	require.NoError(t, instance.Initialize(t.Context()))
+	return instance
 }
 
 func approvedFederationOperations() map[string]string {

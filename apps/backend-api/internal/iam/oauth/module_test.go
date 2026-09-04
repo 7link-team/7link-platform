@@ -57,18 +57,13 @@ func oauthTestRegistrar(web authz.TokenVerifier) *authz.Registrar {
 	return authz.NewRegistrar(authz.DefaultRegistry(), web, oauthPermissionChecker{}, oauthMembershipChecker{})
 }
 
-func TestOAuthModuleRequiresConstructionCollaborators(t *testing.T) {
-	runtime := appenv.NewRuntime(appenv.NewIdentity("oauth-test", "1"))
-	registrar := oauthTestRegistrar(newOAuthWebFixture())
-	assert.Panics(t, func() { NewModule(nil, registrar, Config{}) })
-	assert.Panics(t, func() { NewModule(runtime, nil, Config{}) })
-	assert.Panics(t, func() { NewModule(runtime, authz.NewAuthenticationOnlyRegistrar(newOAuthWebFixture()), Config{}) })
-	assert.Panics(t, func() { NewModule(runtime, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()), Config{}) })
+func TestOAuthModuleRequiresRuntimeAtConstruction(t *testing.T) {
+	assert.Panics(t, func() { NewModule(nil, Config{}) })
 }
 
 func TestOAuthModuleDependenciesAndReadinessBeforeInitialize(t *testing.T) {
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
-	instance := NewModule(appenv.NewRuntime(appenv.NewIdentity("oauth-test", "1")), oauthTestRegistrar(newOAuthWebFixture()), enabledModuleConfig())
+	instance := NewModule(appenv.NewRuntime(appenv.NewIdentity("oauth-test", "1")), enabledModuleConfig())
 	assert.Equal(t, Name, instance.ModuleName())
 	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, authn.Name}, instance.ModuleDependencies())
 	assert.ErrorIs(t, instance.CheckHealth(t.Context()), ErrUnavailable)
@@ -79,7 +74,7 @@ func TestOAuthModuleDependenciesAndReadinessBeforeInitialize(t *testing.T) {
 
 func TestOAuthModuleResolvesDependenciesAndRegistersContract(t *testing.T) {
 	harness := newOAuthHarness(t, "sl_")
-	instance := NewModule(harness.runtime, oauthTestRegistrar(harness.web), enabledModuleConfig())
+	instance := NewModule(harness.runtime, enabledModuleConfig())
 	registry := module.NewRegistry()
 	require.NoError(t, registry.Register(
 		platformi18n.NewModule(nil, platformi18n.Base),
@@ -91,6 +86,9 @@ func TestOAuthModuleResolvesDependenciesAndRegistersContract(t *testing.T) {
 			return module.Provide[audit.Appender](services, harness.repo.appender)
 		}},
 		&oauthDependencyProvider{name: authn.Name, provide: func(services *module.Services) error {
+			if err := module.Provide[*authz.Registrar](services, oauthTestRegistrar(harness.web)); err != nil {
+				return err
+			}
 			return module.Provide[authn.WebService](services, harness.web)
 		}},
 		instance,
@@ -107,19 +105,20 @@ func TestOAuthModuleResolvesDependenciesAndRegistersContract(t *testing.T) {
 func TestOAuthModuleReportsMissingWiring(t *testing.T) {
 	instance := NewModule(
 		appenv.NewRuntime(appenv.NewIdentity("oauth-test", "1")),
-		oauthTestRegistrar(newOAuthWebFixture()),
 		enabledModuleConfig(),
 	)
 	services := module.NewServices()
 	require.NoError(t, services.Seal())
-	assert.ErrorContains(t, instance.InjectServices(services), "authentication service")
+	assert.ErrorContains(t, instance.InjectServices(services), "authorization registrar")
 
 	services = module.NewServices()
+	require.NoError(t, module.Provide[*authz.Registrar](services, oauthTestRegistrar(newOAuthWebFixture())))
 	require.NoError(t, module.Provide[authn.WebService](services, newOAuthWebFixture()))
 	require.NoError(t, services.Seal())
 	assert.ErrorContains(t, instance.InjectServices(services), "id generator")
 
 	services = module.NewServices()
+	require.NoError(t, module.Provide[*authz.Registrar](services, oauthTestRegistrar(newOAuthWebFixture())))
 	require.NoError(t, module.Provide[authn.WebService](services, newOAuthWebFixture()))
 	require.NoError(t, module.Provide[guid.Source](services, newOAuthTestIDs(1)))
 	require.NoError(t, services.Seal())

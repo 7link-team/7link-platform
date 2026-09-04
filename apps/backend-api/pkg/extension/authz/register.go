@@ -64,10 +64,12 @@ type sessionCookieNamer interface {
 // Registrar binds route declarations, OpenAPI metadata, authentication, and
 // local authorization from one call site.
 type Registrar struct {
-	registry *Registry
-	verifier TokenVerifier
-	checker  PermissionChecker
-	members  MembershipChecker
+	registry        *Registry
+	verifier        TokenVerifier
+	checker         PermissionChecker
+	members         MembershipChecker
+	bound           bool
+	declarationOnly bool
 }
 
 func NewRegistrar(registry *Registry, verifier TokenVerifier, checker PermissionChecker, members MembershipChecker) *Registrar {
@@ -77,7 +79,35 @@ func NewRegistrar(registry *Registry, verifier TokenVerifier, checker Permission
 	if verifier == nil || checker == nil || members == nil {
 		panic("authz registrar requires verifier, permission checker, and membership checker")
 	}
-	return &Registrar{registry: registry, verifier: verifier, checker: checker, members: members}
+	return &Registrar{registry: registry, verifier: verifier, checker: checker, members: members, bound: true}
+}
+
+// NewUnboundRegistrar builds the stable registrar published by a module during
+// the provider phase. Bind must complete during service injection, before
+// protocol registration can expose any guarded operation.
+func NewUnboundRegistrar(registry *Registry) *Registrar {
+	if registry == nil {
+		panic("authz registrar requires a registry")
+	}
+	return &Registrar{registry: registry}
+}
+
+// Bind completes an unbound registrar exactly once. Wiring is
+// single-threaded and finishes before HTTP registration, so runtime requests
+// only observe fully bound collaborators and all optional verifier capabilities.
+func (r *Registrar) Bind(verifier TokenVerifier, checker PermissionChecker, members MembershipChecker) error {
+	if r == nil {
+		return errors.New("authz registrar is nil")
+	}
+	if verifier == nil || checker == nil || members == nil {
+		return errors.New("authz registrar verifier, permission checker, and membership checker are required")
+	}
+	if r.bound {
+		return errors.New("authz registrar is already bound")
+	}
+	r.verifier, r.checker, r.members = verifier, checker, members
+	r.bound = true
+	return nil
 }
 
 // NewAuthenticationOnlyRegistrar builds a registrar for authenticated routes
@@ -86,7 +116,7 @@ func NewAuthenticationOnlyRegistrar(verifier TokenVerifier) *Registrar {
 	if verifier == nil {
 		panic("authz authentication-only registrar requires verifier")
 	}
-	return &Registrar{verifier: verifier}
+	return &Registrar{verifier: verifier, bound: true}
 }
 
 // NewDeclarationOnlyRegistrar creates a registrar that records Guard metadata
@@ -96,7 +126,7 @@ func NewDeclarationOnlyRegistrar(registry *Registry) *Registrar {
 	if registry == nil {
 		panic("authz declaration registrar requires a registry")
 	}
-	return &Registrar{registry: registry}
+	return &Registrar{registry: registry, declarationOnly: true}
 }
 
 func (r *Registrar) Registry() *Registry {
@@ -104,7 +134,7 @@ func (r *Registrar) Registry() *Registry {
 }
 
 func (r *Registrar) IsDeclarationOnly() bool {
-	return r.verifier == nil && r.checker == nil
+	return r != nil && r.declarationOnly
 }
 
 // Register declares and registers one guarded Huma operation.
@@ -263,6 +293,9 @@ func RegisterPublic[I, O any](api huma.API, op huma.Operation, handler func(cont
 }
 
 func (r *Registrar) prepare(api huma.API, op *huma.Operation, guard Guard) {
+	if !r.declarationOnly && (!r.bound || r.checker == nil || r.members == nil) {
+		panic("authz registrar is not bound")
+	}
 	if op.OperationID == "" {
 		panic("guarded operation requires operation id")
 	}
@@ -285,6 +318,9 @@ func (r *Registrar) prepare(api huma.API, op *huma.Operation, guard Guard) {
 }
 
 func (r *Registrar) prepareAuthenticated(api huma.API, op *huma.Operation, tenantScoped bool) {
+	if !r.declarationOnly && (!r.bound || r.verifier == nil) {
+		panic("authz registrar is not bound")
+	}
 	op.Errors = appendUniqueStatus(op.Errors, http.StatusUnauthorized, http.StatusForbidden, http.StatusServiceUnavailable)
 	cookieName := defaultCookieName
 	op.Security = BearerSecurity()

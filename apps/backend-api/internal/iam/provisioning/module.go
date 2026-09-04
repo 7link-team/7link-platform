@@ -23,32 +23,24 @@ import (
 var ErrUnavailable = errors.New("provisioning service unavailable")
 
 type Module struct {
-	service         *Service
-	runtime         *appenv.Runtime
-	registrar       *authz.Registrar
-	config          Config
-	ids             guid.Source
-	appender        audit.Appender
-	identities      identity.IdentityProvisioner
-	groups          organization.GroupProvisioner
-	declarationOnly bool
-	syncCancel      context.CancelFunc
-	syncDone        chan struct{}
-	syncMu          sync.Mutex
+	service    *Service
+	runtime    *appenv.Runtime
+	registrar  *authz.Registrar
+	config     Config
+	ids        guid.Source
+	appender   audit.Appender
+	identities identity.IdentityProvisioner
+	groups     organization.GroupProvisioner
+	syncCancel context.CancelFunc
+	syncDone   chan struct{}
+	syncMu     sync.Mutex
 }
 
-func NewModule(runtime *appenv.Runtime, registrar *authz.Registrar, config Config) *Module {
-	if runtime == nil || registrar == nil || registrar.Registry() == nil || registrar.IsDeclarationOnly() {
-		panic("provisioning module requires runtime and authz registrar")
+func NewModule(runtime *appenv.Runtime, config Config) *Module {
+	if runtime == nil {
+		panic("provisioning module requires runtime")
 	}
-	return &Module{runtime: runtime, registrar: registrar, config: config}
-}
-
-func NewDeclarationOnlyModule(registrar *authz.Registrar) *Module {
-	if registrar == nil || registrar.Registry() == nil || !registrar.IsDeclarationOnly() {
-		panic("provisioning declaration module requires a declaration-only authz registrar")
-	}
-	return &Module{registrar: registrar, config: Config{Config: module.Config{Enabled: true}}, declarationOnly: true}
+	return &Module{runtime: runtime, config: config}
 }
 
 func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
@@ -58,6 +50,10 @@ func (*Module) ModuleDependencies() []string {
 }
 
 func (m *Module) InjectServices(services *module.Services) error {
+	registrar, err := module.Resolve[*authz.Registrar](services)
+	if err != nil {
+		return fmt.Errorf("resolve provisioning authorization registrar: %w", err)
+	}
 	ids, err := module.Resolve[guid.Source](services)
 	if err != nil {
 		return fmt.Errorf("resolve provisioning id generator: %w", err)
@@ -74,7 +70,7 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve provisioning group provisioner: %w", err)
 	}
-	m.ids, m.appender, m.identities, m.groups = ids, appender, identities, groups
+	m.registrar, m.ids, m.appender, m.identities, m.groups = registrar, ids, appender, identities, groups
 	return nil
 }
 
@@ -84,9 +80,6 @@ func (m *Module) Initialize(context.Context) error {
 	}
 	if err := provisioningi18n.Register(); err != nil {
 		return fmt.Errorf("register provisioning i18n: %w", err)
-	}
-	if m.declarationOnly {
-		return nil
 	}
 	if m.runtime == nil || m.runtime.Database() == nil || m.runtime.Database().Write() == nil ||
 		m.registrar == nil || m.ids == nil || m.appender == nil || m.identities == nil || m.groups == nil {
@@ -101,7 +94,7 @@ func (m *Module) Initialize(context.Context) error {
 }
 
 func (m *Module) Start(ctx context.Context) error {
-	if m == nil || m.declarationOnly || m.config.SyncInterval <= 0 {
+	if m == nil || m.config.SyncInterval <= 0 {
 		return nil
 	}
 	if m.service == nil {
@@ -189,9 +182,6 @@ func (m *Module) reconcileAll(ctx context.Context) {
 }
 
 func (m *Module) CheckHealth(context.Context) error {
-	if m != nil && m.declarationOnly {
-		return nil
-	}
 	if m == nil || m.service == nil || m.service.repo == nil || m.service.repo.writer() == nil {
 		return ErrUnavailable
 	}
@@ -202,7 +192,7 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	if m == nil || m.registrar == nil {
 		return errors.New("register provisioning: module is unavailable")
 	}
-	if !m.declarationOnly && m.service == nil {
+	if m.service == nil {
 		return errors.New("register provisioning: service is unavailable")
 	}
 	RegisterHTTP(api, m.service, m.registrar)

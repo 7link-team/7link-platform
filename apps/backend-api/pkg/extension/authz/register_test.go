@@ -176,6 +176,7 @@ func TestRegistrarRejectsInvalidConstructionAndDeclarations(t *testing.T) {
 
 	assert.Panics(t, func() { authz.NewRegistrar(nil, verifier, checker, membership) })
 	assert.Panics(t, func() { authz.NewRegistrar(registry, nil, checker, membership) })
+	assert.Panics(t, func() { authz.NewUnboundRegistrar(nil) })
 	assert.Panics(t, func() { authz.NewDeclarationOnlyRegistrar(nil) })
 	assert.Panics(t, func() {
 		_, api := humatest.New(t)
@@ -214,6 +215,25 @@ func TestRegistrarRejectsInvalidConstructionAndDeclarations(t *testing.T) {
 		_, api := humatest.New(t)
 		authz.RegisterEntityAdapter(nil, api, huma.Operation{}, authz.Guard{}, func(huma.Context) {})
 	})
+}
+
+func TestUnboundRegistrarBindsVerifierExactlyOnce(t *testing.T) {
+	registrar := authz.NewUnboundRegistrar(testRegistry())
+	verifier := validVerifier()
+	checker := &fakeChecker{allowed: true}
+	membership := &fakeMembership{active: true}
+
+	assert.False(t, registrar.IsDeclarationOnly())
+	assert.Panics(t, func() {
+		_, api := humatest.New(t)
+		authz.RegisterAuthenticated(registrar, api, huma.Operation{
+			OperationID: "unbound", Method: http.MethodGet, Path: "/unbound",
+		}, okRoute)
+	})
+	assert.ErrorContains(t, (*authz.Registrar)(nil).Bind(verifier, checker, membership), "registrar is nil")
+	assert.ErrorContains(t, registrar.Bind(nil, checker, membership), "are required")
+	require.NoError(t, registrar.Bind(verifier, checker, membership))
+	assert.ErrorContains(t, registrar.Bind(verifier, checker, membership), "already bound")
 }
 
 func TestTenantAuthorizationMiddleware(t *testing.T) {

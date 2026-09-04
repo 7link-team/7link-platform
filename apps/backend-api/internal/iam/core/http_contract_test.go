@@ -1,7 +1,6 @@
 package core
 
 import (
-	"context"
 	"net/http"
 	"regexp"
 	"sort"
@@ -9,9 +8,7 @@ import (
 	"testing"
 
 	"7link.com/platform/pkg/extension/authz"
-	"7link.com/platform/pkg/extension/huma/respx"
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -71,11 +68,7 @@ iam-effective-menus|GET|/iam/me/menus`
 
 func declarationAPI(t *testing.T) huma.API {
 	t.Helper()
-	respx.Install()
-	_, api := humatest.New(t)
-	module := NewDeclarationOnlyModule(authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()))
-	require.NoError(t, module.RegisterHTTP(context.Background(), api))
-	return api
+	return newHTTPIAMHarness(t, true).api
 }
 
 func TestCoreRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {

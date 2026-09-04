@@ -15,6 +15,7 @@ import (
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	humax "7link.com/platform/pkg/extension/huma"
+	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/go-chi/chi/v5"
@@ -113,6 +114,8 @@ func TestComposedIAMOpenAPIHasExactMappedOperationSet(t *testing.T) {
 
 	api := humax.New(chi.NewRouter(), humax.Config{Name: app.config.Name, Version: app.config.Version})
 	require.NoError(t, app.modules.RegisterHTTP(t.Context(), api))
+	registrar, err := module.Resolve[*authz.Registrar](app.modules.Services())
+	require.NoError(t, err)
 
 	mappings := loadIAMHTTPMappings(t)
 	require.Len(t, mappings, iamHTTPMappingCount)
@@ -152,7 +155,7 @@ func TestComposedIAMOpenAPIHasExactMappedOperationSet(t *testing.T) {
 			authorization, err := iamAuthorizationOf(operation)
 			require.NoError(t, err, location)
 			if authorization.permission != "" {
-				_, declared := app.authzRegistrar.Registry().Find(authorization.permission)
+				_, declared := registrar.Registry().Find(authorization.permission)
 				require.True(t, declared, "%s uses undeclared permission %q", location, authorization.permission)
 			}
 			actualAuthorizations[operation.OperationID] = authorization

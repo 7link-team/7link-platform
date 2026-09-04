@@ -23,48 +23,33 @@ type Config struct {
 }
 
 type Module struct {
-	config          Config
-	runtime         *appenv.Runtime
-	service         *Service
-	registrar       *authz.Registrar
-	checker         AuthorizationEvaluator
-	members         *MembershipChecker
-	administrators  AdministratorGuard
-	grants          RoleGrantStore
-	ids             guid.Source
-	appender        audit.Appender
-	declarationOnly bool
+	config         Config
+	runtime        *appenv.Runtime
+	service        *Service
+	registrar      *authz.Registrar
+	checker        AuthorizationEvaluator
+	members        *MembershipChecker
+	administrators AdministratorGuard
+	grants         RoleGrantStore
+	ids            guid.Source
+	appender       audit.Appender
 }
 
-// NewModule builds a runnable core IAM module. Cross-module construction stays
-// in internal/app; this module only composes its own repository and service.
-func NewModule(
-	runtime *appenv.Runtime,
-	registrar *authz.Registrar,
-	checker AuthorizationEvaluator,
-	config Config,
-) *Module {
-	if runtime == nil || registrar == nil || registrar.Registry() == nil || registrar.IsDeclarationOnly() || checker == nil {
-		panic("iam module requires runtime, authz registrar, and authorizer")
+// NewModule builds the core IAM module and its stable authorization gateway.
+// Runtime collaborators are connected later through module.Services.
+func NewModule(runtime *appenv.Runtime, config Config) *Module {
+	if runtime == nil {
+		panic("iam module requires runtime")
 	}
-	module := &Module{
-		config:  config,
-		runtime: runtime, registrar: registrar, checker: checker,
-		members: NewMembershipChecker(runtime), administrators: NewAdministratorGuard(runtime),
+	registry := authz.DefaultRegistry()
+	instance := &Module{
+		config:         config,
+		runtime:        runtime,
+		registrar:      authz.NewUnboundRegistrar(registry),
+		members:        NewMembershipChecker(runtime),
+		administrators: NewAdministratorGuard(runtime),
 	}
-	return module
-}
-
-// NewDeclarationOnlyModule builds the route-declaration form used to assemble
-// and validate the complete OpenAPI document without runtime dependencies.
-func NewDeclarationOnlyModule(registrar *authz.Registrar) *Module {
-	if registrar == nil || registrar.Registry() == nil || !registrar.IsDeclarationOnly() {
-		panic("iam declaration module requires a declaration-only authz registrar")
-	}
-	return &Module{
-		service: newDeclarationService(registrar.Registry()), registrar: registrar,
-		config: Config{Config: module.Config{Enabled: true}}, declarationOnly: true,
-	}
+	return instance
 }
 
 func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
@@ -74,9 +59,6 @@ func (*Module) ModuleDependencies() []string {
 }
 
 func (m *Module) ProvideServices(services *module.Services) error {
-	if m != nil && m.declarationOnly {
-		return nil
-	}
 	if err := module.Provide[ActiveMemberChecker](services, ActiveMemberChecker(m.members)); err != nil {
 		return fmt.Errorf("provide IAM active member checker: %w", err)
 	}
@@ -85,6 +67,9 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	}
 	if err := module.Provide[RoleGrantStore](services, m.roleGrantStore()); err != nil {
 		return fmt.Errorf("provide IAM role grant store: %w", err)
+	}
+	if err := module.Provide[*authz.Registrar](services, m.registrar); err != nil {
+		return fmt.Errorf("provide authorization registrar: %w", err)
 	}
 	return nil
 }
@@ -98,8 +83,17 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve IAM audit appender: %w", err)
 	}
+	verifier, err := module.Resolve[authz.TokenVerifier](services)
+	if err != nil {
+		return fmt.Errorf("resolve authentication verifier: %w", err)
+	}
 	m.ids, m.appender = ids, appender
 	repository := NewRepository(m.runtime, ids)
+	authorizer := NewAuthorizerWithRegistry(m.runtime, m.registrar.Registry())
+	m.checker = authorizer
+	if err := m.registrar.Bind(verifier, authorizer, m.members); err != nil {
+		return fmt.Errorf("bind authorization registrar: %w", err)
+	}
 	m.service = NewService(m.registrar.Registry(), repository, m.checker, appender)
 	m.service.administrators = m.administrators
 	m.grants = NewRoleGrantStore(repository, m.administrators)
@@ -110,16 +104,13 @@ func (m *Module) Initialize(context.Context) error {
 	if err := corei18n.Register(); err != nil {
 		return fmt.Errorf("register iam i18n: %w", err)
 	}
-	if m == nil || (!m.declarationOnly && (m.service == nil || m.ids == nil || m.appender == nil)) {
+	if m == nil || m.service == nil || m.ids == nil || m.appender == nil {
 		return fmt.Errorf("initialize IAM: id generator and audit appender are required")
 	}
 	return nil
 }
 
 func (m *Module) CheckHealth(context.Context) error {
-	if m != nil && m.declarationOnly {
-		return nil
-	}
 	if m == nil || m.service == nil || m.service.repo == nil || m.service.repo.writer() == nil {
 		return ErrUnavailable
 	}

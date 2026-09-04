@@ -60,10 +60,6 @@ func NewService(
 	}
 }
 
-func newDeclarationService(registry *authz.Registry) *Service {
-	return &Service{registry: registry}
-}
-
 // PermissionCatalog returns all declared non-platform permissions in stable
 // code order.
 func (s *Service) PermissionCatalog(context.Context) []authz.Action {

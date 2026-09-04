@@ -11,7 +11,7 @@ IAM 产品完整性深度审计、初始化方案、测试命名治理与模块�
 ACCEPTANCE
 
 ## Current Step
-本轮深度审计、初始化方案、测试命名治理与 IAM module 自治修正已完成并通过最终验收；Phase 10 产品能力等待实施。
+IAM lifecycle 自治实现、最终 diff/staging 审阅、全量回归和非 skill 提交均已完成。
 
 ## Overall Progress
 - [x] 恢复仓库事实、固定源树与既有三引擎/208 HTTP 验收证据
@@ -21,9 +21,13 @@ ACCEPTANCE
 - [x] 删除 composition root 的 IAM/federation 条件 append，改为 9 模块自行 `Enabled()`
 - [x] 完成相关回归和生成零 diff 验证
 - [x] 完成 staged diff 审阅和本轮最终验收
+- [x] Core 自治持有 Registry/Authorizer/MembershipChecker/Registrar，并通过 Services 发布稳定网关
+- [x] authn/identity 通过窄能力连接注册流程，App 不再捕获模块实例
+- [x] 九个 IAM 构造器统一为 `NewModule(*appenv.Runtime, Config)`
+- [x] 删除六个 declaration-only 模块构造器、状态分支和 App 声明图
+- [x] 增加生命周期自治 architecture 门禁并完成全量回归
 
-## Active Work
-无进行中的代码修改。后续按 Phase 10 优先处理平台/租户 bootstrap；不得触碰或提交 `.claude/skills/**`。
+Core 将拥有并提供 authorization registrar；authn/identity 及其余 IAM 模块通过 `module.Services` 连接。不得修改 `.claude/skills/**`。
 
 ## Completed Work
 - 固定源功能迁移等价仍成立：9 模块、63 表、208 HTTP operation，SQLite/PostgreSQL/MySQL 迁移与既有 CI 已通过。
@@ -35,11 +39,14 @@ ACCEPTANCE
 - 20 个历史测试文件按 `xx.go` / `xx_subxx_test.go` 规则重命名，`tests/architecture` 自动扫描全 backend。
 - composition root 现在总是登记 9 个 IAM runtime module；每个条件模块持有专属 Config 并按 `module.Enabler` 自行激活，非法依赖组合由 registry fail fast。
 - 移除 IAM 构造器中的可变 `activation ...module.Config` 和裸 `enabled bool`；按 infra 约定由模块 Config 嵌入 `module.Config`，federation 根据自身 OIDC/SAML 配置决定激活。
+- App 的 IAM composition 现在只声明 9 个模块的 Runtime + Config BOM，不再构造或保留 authorization graph。
+- Core 在 Provide 阶段发布未绑定 Registrar，在 Inject 阶段一次性绑定 authn TokenVerifier、领域 Authorizer 和 MembershipChecker；未绑定 Registrar 禁止注册受保护路由。
+- Identity 发布稳定 RegistrationPrincipalCreator；authn 解析并映射领域错误，保留原注册 API 错误语义及 verifier 的 CSRF/cookie 可选能力。
+- 所有 IAM runtime 构造器统一为 `NewModule(runtime, config)`；生产代码不存在 declaration-only module/service 分支。
+- module lifecycle 文档补充稳定 provider-phase capability 与 lifecycle dependency 的区别，architecture 门禁限定允许的稳定能力类型。
 
 ## Remaining Work
-1. 实现已明确方案的 Phase 10.1 平台管理员 bootstrap 与 10.2 tenant owner bootstrap。
-2. 确认 principal 权限所有权和字段权限模型后实施 10.3–10.5。
-3. 排期 consent/archive/lifecycle/key rotation；仅在产品要求双协议时设计 IAM gRPC。
+本轮无剩余工作。Phase 10.1 平台管理员 bootstrap 与 10.2 tenant owner bootstrap 作为后续独立任务；不属于本轮 module lifecycle 实施范围。
 
 ## Important Decisions
 - migration 只拥有 schema，不写固定账号、默认密码或环境相关秘密。
@@ -49,6 +56,8 @@ ACCEPTANCE
 - 固定源无 IAM gRPC；除非产品明确要求双协议，不创建占位 proto/service。
 - 字段权限和 principal 权限所有权属于新增产品语义，本轮只记录方案，不静默扩 schema 或改 API。
 - composition root 只登记 inventory；activation 属于 module，依赖有效性属于 registry。
+- Core 是 authorization catalog/evaluator/membership/registrar 的领域所有者；Registrar 在 Wire 阶段一次性绑定真实 TokenVerifier。
+- 不新增无领域职责的 gateway module，不把 IAM service 塞入 `appenv.Runtime`，不使用运行时 service locator。
 
 ## Confirmed Constraints
 - 不修改或提交 `.claude/skills/**`；当前该目录存在用户自己的未跟踪内容。
@@ -65,13 +74,12 @@ ACCEPTANCE
 
 ## Verification
 Build: PASS（`make ci` production build）
-Tests: PASS（自治最终实现后的 `go test ./...`、9 个 IAM/app 定向包、独立 architecture；此前 `make ci` 总覆盖率 90.0%，9 个 IAM root package 均 ≥90%）
-Lint: PASS（自治最终实现后的 `make fmt-check lint`；此前完整 `make ci`）
+Tests: PASS（最终复跑 `go test ./...`、独立 `go -C tests test ./architecture`；此前 `make ci` 总覆盖率 90.0%，9 个 IAM root package 均 ≥90%）
+Lint: PASS（最终复跑 `make fmt-check lint`、`go -C tools test ./iam-schema-lock`；此前完整 `make ci`）
 Integration: PASS（本轮三引擎 migration 503.785s；真实 Docker MySQL 8.4 migration/performance/schema lock）
 Other: PASS（`make generate` 零生成 diff；`git diff --check`；schema lock 147 files / 63 tables / 27 FKs）
 
-## Next Action
-按 Phase 10.1/10.2 实施安全自举；在修改权限 schema/API 前先确认 Phase 10.3/10.5 的产品语义。
+后续按独立任务实施 Phase 10 bootstrap；当前仅保留用户的 `.claude/skills/backend-module/SKILL.md` 工作区修改。
 
 ## Last Checkpoint
-2026-09-04 · IAM PRODUCT AUDIT / ACCEPTED：专属 Config + Enabler 已替代 composition-root gate；全仓测试、architecture、fmt、lint 及既有完整 CI/三引擎验证均 PASS。
+2026-09-04 · IAM LIFECYCLE ALIGNMENT / ACCEPTANCE：九模块自治、稳定能力 wiring、单构造路径和 architecture 门禁完成；最终全仓测试、独立架构测试、schema-lock、fmt/lint 全部通过；非 skill 改动已提交。

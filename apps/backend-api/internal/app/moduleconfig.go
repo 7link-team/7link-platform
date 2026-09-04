@@ -2,6 +2,7 @@ package app
 
 import (
 	iamaudit "7link.com/platform/internal/iam/audit"
+	iamauthn "7link.com/platform/internal/iam/authn"
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/federation"
 	"7link.com/platform/internal/iam/governance"
@@ -84,8 +85,11 @@ func pprofConfig(c AppConfig) pprof.Config {
 	return pprof.Config{Config: module.Config{Enabled: c.Pprof.Enabled}}
 }
 
-func iamAuthnConfig(c AppConfig) authnext.Config {
-	return authnext.Config(c.Authn)
+func iamAuthnConfig(c AppConfig) iamauthn.Config {
+	return iamauthn.Config{
+		Config:  iamActivationConfig(c),
+		Service: authnext.Config(c.Authn),
+	}
 }
 
 func iamAuditConfig(c AppConfig) iamaudit.Config {

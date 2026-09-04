@@ -36,8 +36,14 @@ var (
 	createTriggerRE  = regexp.MustCompile(`(?i)\bCREATE\s+TRIGGER\s+([^\s;(]+)`)
 	inlineKeyRE      = regexp.MustCompile(`(?im)^\s*(?:UNIQUE\s+)?KEY\s+([^\s(]+)`)
 	timeColumnRE     = regexp.MustCompile(`(?im)^\s*([a-z][a-z0-9_]*(?:_at|_time|_before|_after))\s+([a-z]+(?:\([0-9]+\))?)[^,\n]*`)
-	emptyBigIntRE    = regexp.MustCompile(`(?i)\bBIGINT\b[^,\n]*\bDEFAULT\s*(?:\(\s*)?''`)
-	sha256RE         = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	// timeTypeRE keys on the declared type instead of the column name, and is not
+	// anchored to the start of a line. timeColumnRE above misses two things a
+	// probe confirmed: a time column whose name ends in something other than the
+	// four known suffixes (locked_until), and any column added by ALTER TABLE ...
+	// ADD COLUMN, because that declaration does not begin a line.
+	timeTypeRE    = regexp.MustCompile(`(?i)\b([a-z][a-z0-9_]*)\s+(TIMESTAMPTZ|TIMESTAMP|DATETIME)\s*(\(\s*[0-9]+\s*\))?`)
+	emptyBigIntRE = regexp.MustCompile(`(?i)\bBIGINT\b[^,\n]*\bDEFAULT\s*(?:\(\s*)?''`)
+	sha256RE      = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
 
 type migrationFile struct {
@@ -76,6 +82,7 @@ func main() {
 	fatalIf(err)
 	summary, err := validateStatic(files)
 	fatalIf(err)
+	fatalIf(validateNoMySQLTimestamp(filepath.Join(root, "internal")))
 
 	lockPath := filepath.Join(root, "tests", "migration", "schema.lock")
 	if *write {
@@ -175,6 +182,13 @@ func validateStatic(files []migrationFile) (staticSummary, error) {
 				return staticSummary{}, fmt.Errorf("%s: MySQL time column %s uses a zero sentinel", file.path, match[1])
 			}
 		}
+		for _, match := range timeTypeRE.FindAllStringSubmatch(contents, -1) {
+			declared := strings.ToUpper(match[2] + strings.ReplaceAll(match[3], " ", ""))
+			if !strings.EqualFold(declared, expectedTimeType) {
+				return staticSummary{}, fmt.Errorf("%s: %s column %s is declared %s instead of %s",
+					file.path, file.dialect, match[1], declared, expectedTimeType)
+			}
+		}
 		if file.dialect != "mysql" {
 			continue
 		}
@@ -216,6 +230,42 @@ func validateStatic(files []migrationFile) (staticSummary, error) {
 		return staticSummary{}, fmt.Errorf("MySQL cross-module foreign-key count is %d, expected %d", crossModuleFKs, expectedCrossModuleFKs)
 	}
 	return staticSummary{files: len(files), tables: len(owners), crossModuleFKs: crossModuleFKs}, nil
+}
+
+// validateNoMySQLTimestamp rejects MySQL TIMESTAMP columns in every module, not
+// only the IAM tree the rest of this tool reconciles. MySQL caps TIMESTAMP at
+// 2038-01-19, so such a column behaves normally for current dates and then
+// refuses a long expiry, a contract end date, or a 9999-12-31 never-expires
+// sentinel. DATETIME reaches 9999 and matches what the PostgreSQL side stores.
+//
+// Only this one rule is applied repository-wide: the exact-type reconciliation
+// above stays IAM-scoped because published non-IAM migrations legitimately
+// declare TIMESTAMPTZ without a precision, and rewriting a published migration
+// is prohibited.
+func validateNoMySQLTimestamp(internalRoot string) error {
+	return filepath.WalkDir(internalRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil || entry.IsDir() || filepath.Ext(path) != ".sql" {
+			return walkErr
+		}
+		if filepath.Base(filepath.Dir(path)) != "mysql" {
+			return nil
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		contents, err := stripSQLComments(strings.ReplaceAll(string(raw), "\r\n", "\n"))
+		if err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		for _, match := range timeTypeRE.FindAllStringSubmatch(contents, -1) {
+			if strings.EqualFold(match[2], "TIMESTAMP") {
+				return fmt.Errorf("%s: MySQL column %s uses TIMESTAMP, which stops at 2038-01-19; use DATETIME",
+					path, match[1])
+			}
+		}
+		return nil
+	})
 }
 
 func validateFileSets(files []migrationFile) error {

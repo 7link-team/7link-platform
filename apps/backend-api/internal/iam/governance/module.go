@@ -23,29 +23,21 @@ type Config struct {
 }
 
 type Module struct {
-	config          Config
-	service         *Service
-	runtime         *appenv.Runtime
-	registrar       *authz.Registrar
-	ids             guid.Source
-	appender        audit.Appender
-	grants          core.RoleGrantStore
-	administrators  core.AdministratorGuard
-	declarationOnly bool
+	config         Config
+	service        *Service
+	runtime        *appenv.Runtime
+	registrar      *authz.Registrar
+	ids            guid.Source
+	appender       audit.Appender
+	grants         core.RoleGrantStore
+	administrators core.AdministratorGuard
 }
 
-func NewModule(runtime *appenv.Runtime, registrar *authz.Registrar, config Config) *Module {
-	if runtime == nil || registrar == nil || registrar.Registry() == nil || registrar.IsDeclarationOnly() {
-		panic("governance module requires runtime and authz registrar")
+func NewModule(runtime *appenv.Runtime, config Config) *Module {
+	if runtime == nil {
+		panic("governance module requires runtime")
 	}
-	return &Module{runtime: runtime, registrar: registrar, config: config}
-}
-
-func NewDeclarationOnlyModule(registrar *authz.Registrar) *Module {
-	if registrar == nil || registrar.Registry() == nil || !registrar.IsDeclarationOnly() {
-		panic("governance declaration module requires a declaration-only authz registrar")
-	}
-	return &Module{registrar: registrar, config: Config{Config: module.Config{Enabled: true}}, declarationOnly: true}
+	return &Module{runtime: runtime, config: config}
 }
 
 func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
@@ -55,6 +47,10 @@ func (*Module) ModuleDependencies() []string {
 }
 
 func (m *Module) InjectServices(services *module.Services) error {
+	registrar, err := module.Resolve[*authz.Registrar](services)
+	if err != nil {
+		return fmt.Errorf("resolve governance authorization registrar: %w", err)
+	}
 	ids, err := module.Resolve[guid.Source](services)
 	if err != nil {
 		return fmt.Errorf("resolve governance id generator: %w", err)
@@ -71,7 +67,7 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve governance administrator guard: %w", err)
 	}
-	m.ids, m.appender, m.grants, m.administrators = ids, appender, grants, administrators
+	m.registrar, m.ids, m.appender, m.grants, m.administrators = registrar, ids, appender, grants, administrators
 	return nil
 }
 
@@ -81,9 +77,6 @@ func (m *Module) Initialize(context.Context) error {
 	}
 	if m == nil {
 		return errors.New("initialize governance: module is required")
-	}
-	if m.declarationOnly {
-		return nil
 	}
 	if m.runtime == nil || m.registrar == nil || m.ids == nil || m.appender == nil || m.administrators == nil ||
 		m.grants.Grant == nil || m.grants.Revoke == nil || m.grants.RemovePermanent == nil ||
@@ -95,9 +88,6 @@ func (m *Module) Initialize(context.Context) error {
 }
 
 func (m *Module) CheckHealth(context.Context) error {
-	if m != nil && m.declarationOnly {
-		return nil
-	}
 	if m == nil || m.service == nil || m.service.repo == nil || m.service.repo.writer() == nil {
 		return ErrUnavailable
 	}
@@ -108,7 +98,7 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	if m == nil || m.registrar == nil {
 		return errors.New("register governance: module is unavailable")
 	}
-	if !m.declarationOnly && m.service == nil {
+	if m.service == nil {
 		return errors.New("register governance: service is unavailable")
 	}
 	RegisterHTTP(api, m.service, m.registrar)

@@ -63,25 +63,12 @@ func organizationTestRegistrar(members authz.MembershipChecker) *authz.Registrar
 	)
 }
 
-func TestOrganizationModuleConstructionAndDeclarationOnly(t *testing.T) {
+func TestOrganizationModuleConstructionAndReadiness(t *testing.T) {
 	runtime := appenv.NewRuntime(appenv.NewIdentity("organization-test", "1"))
-	registrar := organizationTestRegistrar(&organizationMemberChecker{})
-	assert.Panics(t, func() { NewModule(nil, registrar, Config{}) })
-	assert.Panics(t, func() { NewModule(runtime, nil, Config{}) })
-	assert.Panics(t, func() {
-		NewModule(runtime, authz.NewAuthenticationOnlyRegistrar(organizationTokenVerifier{}), Config{})
-	})
-	assert.Panics(t, func() { NewModule(runtime, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()), Config{}) })
-	assert.Panics(t, func() { NewDeclarationOnlyModule(nil) })
-	assert.Panics(t, func() { NewDeclarationOnlyModule(registrar) })
-
-	declaration := NewDeclarationOnlyModule(authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()))
-	assert.Equal(t, Name, declaration.ModuleName())
-	require.NoError(t, declaration.CheckHealth(t.Context()))
-	respx.Install()
-	_, api := humatest.New(t)
-	require.NoError(t, declaration.RegisterHTTP(t.Context(), api))
-	assert.Len(t, organizationOperationManifest(api.OpenAPI()), 32)
+	assert.Panics(t, func() { NewModule(nil, Config{}) })
+	instance := NewModule(runtime, Config{})
+	assert.Equal(t, Name, instance.ModuleName())
+	assert.ErrorIs(t, instance.CheckHealth(t.Context()), ErrUnavailable)
 }
 
 func TestOrganizationModuleResolvesServicesAndProvidesGroupProvisioner(t *testing.T) {
@@ -92,13 +79,13 @@ func TestOrganizationModuleResolvesServicesAndProvidesGroupProvisioner(t *testin
 	creator := identity.InvitationPrincipalCreator(func(context.Context, *gorm.DB, guid.ID, string, string, string, string) (guid.ID, error) {
 		return 900, nil
 	})
-	instance := NewModule(h.runtime, organizationTestRegistrar(members), enabledModuleConfig())
+	instance := NewModule(h.runtime, enabledModuleConfig())
 	assert.Equal(t, []string{
 		platformi18n.Name, guid.Name, audit.Name, core.Name, authn.Name, identity.Name,
 	}, instance.ModuleDependencies())
 	assert.ErrorIs(t, instance.CheckHealth(t.Context()), ErrUnavailable)
 	_, api := humatest.New(t)
-	assert.ErrorContains(t, instance.RegisterHTTP(t.Context(), api), "services are unavailable")
+	assert.ErrorContains(t, instance.RegisterHTTP(t.Context(), api), "module is unavailable")
 
 	registry := module.NewRegistry()
 	require.NoError(t, registry.Register(
@@ -111,6 +98,9 @@ func TestOrganizationModuleResolvesServicesAndProvidesGroupProvisioner(t *testin
 			return module.Provide[audit.Appender](services, h.appender)
 		}},
 		&organizationDependencyProvider{name: core.Name, provide: func(services *module.Services) error {
+			if err := module.Provide[*authz.Registrar](services, organizationTestRegistrar(members)); err != nil {
+				return err
+			}
 			if err := module.Provide[core.ActiveMemberChecker](services, members); err != nil {
 				return err
 			}
@@ -160,6 +150,9 @@ func TestOrganizationModuleReportsMissingWiring(t *testing.T) {
 	})
 	providers := []func(*module.Services) error{
 		func(services *module.Services) error {
+			return module.Provide[*authz.Registrar](services, organizationTestRegistrar(members))
+		},
+		func(services *module.Services) error {
 			return module.Provide[core.ActiveMemberChecker](services, members)
 		},
 		func(services *module.Services) error { return module.Provide[core.AdministratorGuard](services, guard) },
@@ -177,7 +170,7 @@ func TestOrganizationModuleReportsMissingWiring(t *testing.T) {
 		},
 	}
 	expected := []string{
-		"active member checker", "administrator guard", "invitation credentials",
+		"authorization registrar", "active member checker", "administrator guard", "invitation credentials",
 		"invitation principal creator", "id generator", "audit appender",
 	}
 	for count, message := range expected {
@@ -186,7 +179,7 @@ func TestOrganizationModuleReportsMissingWiring(t *testing.T) {
 			require.NoError(t, provide(services))
 		}
 		require.NoError(t, services.Seal())
-		instance := NewModule(runtime, organizationTestRegistrar(members), enabledModuleConfig())
+		instance := NewModule(runtime, enabledModuleConfig())
 		assert.ErrorContains(t, instance.InjectServices(services), message)
 	}
 }
@@ -205,7 +198,7 @@ func TestOrganizationModuleProvisionerUnavailableBeforeInitialize(t *testing.T) 
 	assert.ErrorIs(t, err, ErrUnavailable)
 	assert.Error(t, instance.RegisterHTTP(t.Context(), nil))
 
-	declaration := NewDeclarationOnlyModule(authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()))
+	declaration := NewModule(appenv.NewRuntime(appenv.NewIdentity("organization-test", "1")), enabledModuleConfig())
 	services := module.NewServices()
 	require.NoError(t, declaration.ProvideServices(services))
 	assert.Error(t, declaration.ProvideServices(services))

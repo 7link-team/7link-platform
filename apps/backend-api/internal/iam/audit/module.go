@@ -20,26 +20,18 @@ var ErrUnavailable = errors.New("audit service unavailable")
 // Module owns the IAM append-only audit chain, retention policy, anchoring,
 // HTTP operations, and the Appender capability consumed by other IAM modules.
 type Module struct {
-	service         *Service
-	runtime         *appenv.Runtime
-	registrar       *authz.Registrar
-	config          Config
-	ids             guid.Source
-	declarationOnly bool
+	service   *Service
+	runtime   *appenv.Runtime
+	registrar *authz.Registrar
+	config    Config
+	ids       guid.Source
 }
 
-func NewModule(runtime *appenv.Runtime, registrar *authz.Registrar, config Config) *Module {
-	if runtime == nil || registrar == nil || registrar.Registry() == nil || registrar.IsDeclarationOnly() {
-		panic("audit module requires runtime and authz registrar")
+func NewModule(runtime *appenv.Runtime, config Config) *Module {
+	if runtime == nil {
+		panic("audit module requires runtime")
 	}
-	return &Module{runtime: runtime, registrar: registrar, config: config}
-}
-
-func NewDeclarationOnlyModule(registrar *authz.Registrar) *Module {
-	if registrar == nil || registrar.Registry() == nil || !registrar.IsDeclarationOnly() {
-		panic("audit declaration module requires a declaration-only authz registrar")
-	}
-	return &Module{registrar: registrar, config: Config{Config: module.Config{Enabled: true}}, declarationOnly: true}
+	return &Module{runtime: runtime, config: config}
 }
 
 func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
@@ -49,9 +41,6 @@ func (*Module) ModuleName() string { return Name }
 func (*Module) ModuleDependencies() []string { return []string{platformi18n.Name, guid.Name} }
 
 func (m *Module) ProvideServices(services *module.Services) error {
-	if m != nil && m.declarationOnly {
-		return nil
-	}
 	if err := module.Provide[Appender](services, Appender(m.appendDomain)); err != nil {
 		return fmt.Errorf("provide audit appender: %w", err)
 	}
@@ -59,11 +48,15 @@ func (m *Module) ProvideServices(services *module.Services) error {
 }
 
 func (m *Module) InjectServices(services *module.Services) error {
+	registrar, err := module.Resolve[*authz.Registrar](services)
+	if err != nil {
+		return fmt.Errorf("resolve audit authorization registrar: %w", err)
+	}
 	ids, err := module.Resolve[guid.Source](services)
 	if err != nil {
 		return fmt.Errorf("resolve audit id generator: %w", err)
 	}
-	m.ids = ids
+	m.registrar, m.ids = registrar, ids
 	return nil
 }
 
@@ -74,9 +67,6 @@ func (m *Module) Initialize(context.Context) error {
 	if m == nil {
 		return errors.New("initialize audit: module is required")
 	}
-	if m.declarationOnly {
-		return nil
-	}
 	if m.runtime == nil || m.runtime.Database() == nil || m.runtime.Database().Write() == nil || m.registrar == nil || m.ids == nil {
 		return errors.New("initialize audit: runtime database, authz registrar, and id generator are required")
 	}
@@ -85,7 +75,7 @@ func (m *Module) Initialize(context.Context) error {
 }
 
 func (m *Module) Start(context.Context) error {
-	if m == nil || m.declarationOnly || !m.config.Anchor.Enabled {
+	if m == nil || !m.config.Anchor.Enabled {
 		return nil
 	}
 	if m.service == nil {
@@ -108,9 +98,6 @@ func (m *Module) Start(context.Context) error {
 }
 
 func (m *Module) CheckHealth(context.Context) error {
-	if m != nil && m.declarationOnly {
-		return nil
-	}
 	if m == nil || m.service == nil || m.service.repo == nil || m.service.repo.writer() == nil {
 		return ErrUnavailable
 	}
@@ -121,7 +108,7 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	if m == nil || m.registrar == nil {
 		return errors.New("register audit: module is unavailable")
 	}
-	if !m.declarationOnly && m.service == nil {
+	if m.service == nil {
 		return errors.New("register audit: service is unavailable")
 	}
 	RegisterHTTP(api, m.service, m.registrar)

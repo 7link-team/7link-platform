@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/iam/authn"
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
 	organizationi18n "7link.com/platform/internal/iam/organization/i18n"
@@ -19,6 +21,7 @@ import (
 	humax "7link.com/platform/pkg/extension/huma"
 	"7link.com/platform/pkg/extension/huma/respx"
 	platformi18n "7link.com/platform/pkg/i18n"
+	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/go-chi/chi/v5"
@@ -96,9 +99,26 @@ var organizationGuards = map[string]string{
 
 func organizationDeclarationAPI(t *testing.T) huma.API {
 	t.Helper()
+	h := newOrganizationHarness(t, "openapi_")
+	members := &organizationMemberChecker{prefix: h.prefix}
+	creator := identity.InvitationPrincipalCreator(func(context.Context, *gorm.DB, guid.ID, string, string, string, string) (guid.ID, error) {
+		return 900, nil
+	})
+	instance := NewModule(h.runtime, enabledModuleConfig())
+	services := module.NewServices()
+	require.NoError(t, module.Provide[*authz.Registrar](services, organizationTestRegistrar(members)))
+	require.NoError(t, module.Provide[core.ActiveMemberChecker](services, members))
+	require.NoError(t, module.Provide[core.AdministratorGuard](services, &organizationAdministratorGuard{}))
+	require.NoError(t, module.Provide[authn.InvitationCredentials](services, &invitationCredentialFixture{}))
+	require.NoError(t, module.Provide[identity.InvitationPrincipalCreator](services, creator))
+	require.NoError(t, module.Provide[guid.Source](services, newOrganizationTestIDs(9000)))
+	require.NoError(t, module.Provide[audit.Appender](services, h.appender))
+	require.NoError(t, services.Seal())
+	require.NoError(t, instance.InjectServices(services))
+	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
+	require.NoError(t, instance.Initialize(t.Context()))
 	respx.Install()
 	_, api := humatest.New(t)
-	instance := NewDeclarationOnlyModule(authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()))
 	require.NoError(t, instance.RegisterHTTP(t.Context(), api))
 	return api
 }

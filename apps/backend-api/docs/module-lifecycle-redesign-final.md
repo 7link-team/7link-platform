@@ -153,6 +153,16 @@ RegisterHTTP/GRPC`; shutdown `Quiesce → Stop → Deinitialize`. Guards reject
 out-of-order calls; `Stop`/`Deinitialize` are idempotent and legal from every
 failed state.
 
+**Dependency semantics.** `ModuleDependencies` declares lifecycle ordering: a
+consumer that needs a provider initialized or started first must name it. A
+stable provider-phase capability may be published in `ProvideServices`, filled
+once in `InjectServices`, and used only after every module is initialized; that
+capability does not impose lifecycle order. This narrow exception supports
+graphs such as IAM audit/core and authn/identity/core without inventing a
+dependency cycle. Such gateways must reject use before binding, bind exactly
+once during `Wire`, and have an architecture test that prevents composition-root
+assembly.
+
 ### 3.4 `internal/app` — bootstrap as a bill of materials
 
 ```go

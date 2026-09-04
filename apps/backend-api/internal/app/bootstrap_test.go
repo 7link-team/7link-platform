@@ -309,7 +309,7 @@ func TestBootstrapRegistersAuditRecorderWhenDisabled(t *testing.T) {
 	assert.NotNil(t, auditModule.(*audit.Module).Collector())
 }
 
-func TestIAMCompositionUsesFrozenRuntimeAndDeclarationInventories(t *testing.T) {
+func TestIAMCompositionUsesFrozenRuntimeInventory(t *testing.T) {
 	app := &App{config: AppConfig{
 		Authn:      IAMAuthn{Enabled: true},
 		Federation: IAMFederation{Enabled: true},
@@ -332,15 +332,6 @@ func TestIAMCompositionUsesFrozenRuntimeAndDeclarationInventories(t *testing.T) 
 		"oauth", "provisioning", governance.Name, federation.Name,
 	})
 	assertIAMOrder(t, names)
-
-	declarations := composeIAMDeclarationModules()
-	declarationNames := make([]string, len(declarations))
-	for index, current := range declarations {
-		declarationNames[index] = current.ModuleName()
-	}
-	assert.Equal(t, []string{
-		iamaudit.Name, core.Name, organization.Name, "provisioning", governance.Name, federation.Name,
-	}, declarationNames)
 }
 
 func TestIAMCompositionDelegatesActivationToModules(t *testing.T) {
@@ -390,9 +381,9 @@ func TestIAMCompositionReportsEveryMissingBusinessProvider(t *testing.T) {
 		want     string
 	}{
 		{iamaudit.Name, "resolve IAM audit appender"},
-		{core.Name, "resolve identity administrator guard"},
-		{iamauthn.Name, "resolve organization invitation credentials"},
-		{identity.Name, "resolve organization invitation principal creator"},
+		{core.Name, "resolve audit authorization registrar"},
+		{iamauthn.Name, "resolve authentication verifier"},
+		{identity.Name, "resolve authn registration principal creator"},
 		{organization.Name, "resolve provisioning group provisioner"},
 	}
 	for _, test := range tests {

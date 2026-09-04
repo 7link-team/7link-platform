@@ -44,25 +44,15 @@ type Module struct {
 	createPrincipal identity.InvitationPrincipalCreator
 	ids             guid.Source
 	appender        audit.Appender
-	declarationOnly bool
 }
 
 // NewModule builds a runnable organization module. Shared capabilities are
 // resolved during module wiring.
-func NewModule(runtime *appenv.Runtime, registrar *authz.Registrar, config Config) *Module {
-	if runtime == nil || registrar == nil || registrar.Registry() == nil || registrar.IsDeclarationOnly() {
-		panic("organization module requires runtime and authz registrar")
+func NewModule(runtime *appenv.Runtime, config Config) *Module {
+	if runtime == nil {
+		panic("organization module requires runtime")
 	}
-	return &Module{runtime: runtime, registrar: registrar, config: config}
-}
-
-// NewDeclarationOnlyModule builds the route-declaration form used to validate
-// the complete OpenAPI document without runtime dependencies.
-func NewDeclarationOnlyModule(registrar *authz.Registrar) *Module {
-	if registrar == nil || registrar.Registry() == nil || !registrar.IsDeclarationOnly() {
-		panic("organization declaration module requires a declaration-only authz registrar")
-	}
-	return &Module{registrar: registrar, config: Config{Config: module.Config{Enabled: true}}, declarationOnly: true}
+	return &Module{runtime: runtime, config: config}
 }
 
 func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
@@ -81,6 +71,10 @@ func (m *Module) ProvideServices(services *module.Services) error {
 }
 
 func (m *Module) InjectServices(services *module.Services) error {
+	registrar, err := module.Resolve[*authz.Registrar](services)
+	if err != nil {
+		return fmt.Errorf("resolve organization authorization registrar: %w", err)
+	}
 	members, err := module.Resolve[core.ActiveMemberChecker](services)
 	if err != nil {
 		return fmt.Errorf("resolve organization active member checker: %w", err)
@@ -105,6 +99,7 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve organization audit appender: %w", err)
 	}
+	m.registrar = registrar
 	m.members, m.administrators = members, administrators
 	m.credentials, m.createPrincipal = credentials, createPrincipal
 	m.ids, m.appender = ids, appender
@@ -117,9 +112,6 @@ func (m *Module) Initialize(context.Context) error {
 	}
 	if m == nil {
 		return errors.New("initialize organization: module is required")
-	}
-	if m.declarationOnly {
-		return nil
 	}
 	if m.runtime == nil || m.registrar == nil || m.members == nil || m.administrators == nil ||
 		m.credentials == nil || m.createPrincipal == nil || m.ids == nil || m.appender == nil {
@@ -134,9 +126,6 @@ func (m *Module) Initialize(context.Context) error {
 }
 
 func (m *Module) CheckHealth(context.Context) error {
-	if m != nil && m.declarationOnly {
-		return nil
-	}
 	if m == nil || m.service == nil || m.service.repo == nil || m.service.repo.writer() == nil ||
 		m.tenants == nil || m.positions == nil || m.groups == nil || m.invitations == nil {
 		return ErrUnavailable
@@ -148,7 +137,7 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	if m == nil || m.registrar == nil {
 		return errors.New("register organization: module is unavailable")
 	}
-	if !m.declarationOnly && (m.service == nil || m.tenants == nil || m.positions == nil || m.groups == nil || m.invitations == nil) {
+	if m.service == nil || m.tenants == nil || m.positions == nil || m.groups == nil || m.invitations == nil {
 		return errors.New("register organization: services are unavailable")
 	}
 	RegisterHTTP(api, m.service, m.tenants, m.positions, m.groups, m.invitations, m.registrar)

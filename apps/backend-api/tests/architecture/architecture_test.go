@@ -107,6 +107,65 @@ func TestIAMBusinessSourceClassification(t *testing.T) {
 	}
 }
 
+// TestIAMModulesOwnTheirLifecycleWiring prevents the composition root from
+// drifting back into constructing IAM collaborators or maintaining a second
+// declaration-only module graph.
+func TestIAMModulesOwnTheirLifecycleWiring(t *testing.T) {
+	root := backendRoot(t)
+	for _, moduleName := range iamModules {
+		filename := filepath.Join(root, "internal", "iam", moduleName, "module.go")
+		parsed, err := parser.ParseFile(token.NewFileSet(), filename, nil, parser.SkipObjectResolution)
+		require.NoError(t, err)
+
+		var constructor *ast.FuncDecl
+		for _, declaration := range parsed.Decls {
+			function, ok := declaration.(*ast.FuncDecl)
+			if !ok {
+				continue
+			}
+			assert.NotEqual(t, "NewDeclarationOnlyModule", function.Name.Name, "%s must have one runtime construction path", moduleName)
+			if function.Name.Name == "NewModule" {
+				constructor = function
+			}
+		}
+		require.NotNil(t, constructor, "%s must expose NewModule", moduleName)
+		require.Len(t, constructor.Type.Params.List, 2, "%s NewModule accepts only runtime and config", moduleName)
+		assert.True(t, isRuntimeParameter(constructor.Type.Params.List[0].Type), "%s NewModule first parameter must be *appenv.Runtime", moduleName)
+		config, ok := constructor.Type.Params.List[1].Type.(*ast.Ident)
+		assert.True(t, ok && config.Name == "Config", "%s NewModule second parameter must be Config", moduleName)
+
+		source, err := os.ReadFile(filename)
+		require.NoError(t, err)
+		assert.NotContains(t, string(source), "declarationOnly", "%s must not keep a synthetic lifecycle branch", moduleName)
+	}
+
+	appSource, err := os.ReadFile(filepath.Join(root, "internal", "app", "app.go"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(appSource), "authzRegistrar", "App must not retain IAM authorization state")
+
+	bootstrapSource, err := os.ReadFile(filepath.Join(root, "internal", "app", "bootstrap.go"))
+	require.NoError(t, err)
+	for _, forbidden := range []string{
+		"composeIAMDeclarationModules", "authz.NewRegistrar", "authz.NewUnboundRegistrar",
+		"core.NewAuthorizer", "core.NewMembershipChecker", "WithRegistrationPrincipalCreator",
+	} {
+		assert.NotContains(t, string(bootstrapSource), forbidden, "composition root must only declare the IAM inventory")
+	}
+}
+
+func isRuntimeParameter(expression ast.Expr) bool {
+	pointer, ok := expression.(*ast.StarExpr)
+	if !ok {
+		return false
+	}
+	selector, ok := pointer.X.(*ast.SelectorExpr)
+	if !ok || selector.Sel.Name != "Runtime" {
+		return false
+	}
+	qualifier, ok := selector.X.(*ast.Ident)
+	return ok && qualifier.Name == "appenv"
+}
+
 // TestGoTestFileNamesMatchProductionFiles keeps tests traceable to the
 // production file whose behavior they exercise. Dedicated black-box test
 // packages are exempt because they intentionally have no production Go files.
@@ -453,6 +512,9 @@ func inspectCall(call *ast.CallExpr, aliases map[string]string, owner, importPat
 	}
 	if imported, found := importedPath(selector, aliases); found && imported == "7link.com/platform/pkg/module" && selector.Sel.Name == "Resolve" {
 		for _, argument := range typeArguments {
+			if isStableWiringCapability(argument, aliases) {
+				continue
+			}
 			dependency, found := importedTypePath(argument, aliases)
 			if !found {
 				continue
@@ -469,6 +531,30 @@ func inspectCall(call *ast.CallExpr, aliases map[string]string, owner, importPat
 			Rule: "cross-module-constructor", File: filename,
 			Message: fmt.Sprintf("%s calls %s.%s outside internal/app", owner, target, selector.Sel.Name),
 		})
+	}
+}
+
+func isStableWiringCapability(expression ast.Expr, aliases map[string]string) bool {
+	for {
+		switch current := expression.(type) {
+		case *ast.ParenExpr:
+			expression = current.X
+		case *ast.StarExpr:
+			expression = current.X
+		default:
+			selector, ok := expression.(*ast.SelectorExpr)
+			if !ok {
+				return false
+			}
+			importPath, ok := importedPath(selector, aliases)
+			if !ok {
+				return false
+			}
+			if importPath == "7link.com/platform/pkg/extension/authz" {
+				return selector.Sel.Name == "Registrar" || selector.Sel.Name == "TokenVerifier"
+			}
+			return importPath == iamImportPrefix+"/identity" && selector.Sel.Name == "RegistrationPrincipalCreator"
+		}
 	}
 }
 

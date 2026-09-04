@@ -13,7 +13,6 @@ import (
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
-	"7link.com/platform/pkg/extension/huma/respx"
 	platformi18n "7link.com/platform/pkg/i18n"
 	platformmodule "7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -21,31 +20,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestProvisioningModuleConstructionAndDeclarationOnly(t *testing.T) {
+func TestProvisioningModuleConstructionAndMetadata(t *testing.T) {
 	runtime := appenv.NewRuntime(appenv.NewIdentity("provisioning-test", "1"))
-	registrar := provisioningRuntimeRegistrar()
-	assert.Panics(t, func() { NewModule(nil, registrar, Config{}) })
-	assert.Panics(t, func() { NewModule(runtime, nil, Config{}) })
-	assert.Panics(t, func() {
-		NewModule(runtime, authz.NewAuthenticationOnlyRegistrar(provisioningTokenVerifier{}), Config{})
-	})
-	assert.Panics(t, func() { NewModule(runtime, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()), Config{}) })
-	assert.Panics(t, func() { NewDeclarationOnlyModule(nil) })
-
-	declaration := NewDeclarationOnlyModule(authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()))
-	assert.Equal(t, Name, declaration.ModuleName())
-	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, identity.Name, organization.Name}, declaration.ModuleDependencies())
-	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
-	require.NoError(t, declaration.Initialize(t.Context()))
-	require.NoError(t, declaration.Start(t.Context()))
-	require.NoError(t, declaration.Stop(t.Context()))
-	require.NoError(t, declaration.CheckHealth(t.Context()))
-	respx.Install()
-	_, api := humatest.New(t)
-	require.NoError(t, declaration.RegisterHTTP(t.Context(), api))
-	assert.Len(t, provisioningOperationManifest(api.OpenAPI()), 30)
-	assert.Equal(t, "goose_provisioning", declaration.MigrationSource().TableName)
-	assert.Len(t, declaration.MigrationMilestones(), 2)
+	assert.Panics(t, func() { NewModule(nil, Config{}) })
+	instance := NewModule(runtime, Config{})
+	assert.Equal(t, Name, instance.ModuleName())
+	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, identity.Name, organization.Name}, instance.ModuleDependencies())
+	assert.Equal(t, "goose_provisioning", instance.MigrationSource().TableName)
+	assert.Len(t, instance.MigrationMilestones(), 2)
 }
 
 func TestProvisioningModuleActivationComesFromConfig(t *testing.T) {
@@ -57,16 +39,17 @@ func TestProvisioningModuleDependencyResolutionAndLifecycle(t *testing.T) {
 	env := newProvisioningEnvironment(t)
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
 	config := Config{EncryptionKey: base64.RawStdEncoding.EncodeToString(testProvisioningKey())}
-	instance := NewModule(env.runtime, provisioningRuntimeRegistrar(), config)
+	instance := NewModule(env.runtime, config)
 	assert.ErrorIs(t, instance.CheckHealth(t.Context()), ErrUnavailable)
 	_, api := humatest.New(t)
-	assert.ErrorContains(t, instance.RegisterHTTP(t.Context(), api), "service is unavailable")
+	assert.ErrorContains(t, instance.RegisterHTTP(t.Context(), api), "module is unavailable")
 
 	empty := platformmodule.NewServices()
 	require.NoError(t, empty.Seal())
-	assert.ErrorContains(t, instance.InjectServices(empty), "id generator")
+	assert.ErrorContains(t, instance.InjectServices(empty), "authorization registrar")
 
 	services := platformmodule.NewServices()
+	require.NoError(t, platformmodule.Provide[*authz.Registrar](services, provisioningRuntimeRegistrar()))
 	require.NoError(t, platformmodule.Provide[guid.Source](services, env.service.ids))
 	require.NoError(t, platformmodule.Provide[audit.Appender](services, env.service.appender))
 	require.NoError(t, platformmodule.Provide[identity.IdentityProvisioner](services, env.service.identity))
@@ -92,10 +75,11 @@ func TestProvisioningModuleDependencyResolutionAndLifecycle(t *testing.T) {
 func TestProvisioningModuleReportsMissingDependenciesAndInitializationErrors(t *testing.T) {
 	env := newProvisioningEnvironment(t)
 	newInstance := func() *Module {
-		return NewModule(env.runtime, provisioningRuntimeRegistrar(), Config{})
+		return NewModule(env.runtime, Config{})
 	}
 	servicesWith := func(values ...any) *platformmodule.Services {
 		services := platformmodule.NewServices()
+		require.NoError(t, platformmodule.Provide[*authz.Registrar](services, provisioningRuntimeRegistrar()))
 		for _, value := range values {
 			switch typed := value.(type) {
 			case guid.Source:
@@ -118,6 +102,7 @@ func TestProvisioningModuleReportsMissingDependenciesAndInitializationErrors(t *
 	assert.ErrorContains(t, missing.Initialize(t.Context()), "runtime database, authz registrar")
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
 	badKey := newInstance()
+	badKey.registrar = provisioningRuntimeRegistrar()
 	badKey.ids, badKey.appender, badKey.identities, badKey.groups = env.service.ids, env.service.appender, env.service.identity, env.service.groups
 	badKey.config.EncryptionKey = "short"
 	assert.ErrorContains(t, badKey.Initialize(t.Context()), "encryption key")
@@ -140,7 +125,8 @@ func TestProvisioningModuleSyncLoopReconcilesActiveTenants(t *testing.T) {
 	require.NoError(t, err)
 	before := provider.count()
 
-	instance := NewModule(env.runtime, provisioningRuntimeRegistrar(), Config{SyncInterval: 5 * time.Millisecond})
+	instance := NewModule(env.runtime, Config{SyncInterval: 5 * time.Millisecond})
+	instance.registrar = provisioningRuntimeRegistrar()
 	instance.ids, instance.appender, instance.identities, instance.groups = env.service.ids, env.service.appender, env.service.identity, env.service.groups
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
 	instance.config.EncryptionKey = base64.RawStdEncoding.EncodeToString(testProvisioningKey())

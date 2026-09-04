@@ -7,7 +7,6 @@ import (
 
 	healthservice "7link.com/platform/internal/infra/health/service"
 	"7link.com/platform/internal/infra/migrationstatus"
-	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/module"
 )
 
@@ -16,11 +15,6 @@ import (
 // module ServiceProviders but before the registry is sealed, and propagates every
 // error.
 func (app *App) provideCrossCutting(services *module.Services) error {
-	if app.authzRegistrar != nil {
-		if err := module.Provide[*authz.Registrar](services, app.authzRegistrar); err != nil {
-			return fmt.Errorf("provide authorization registrar: %w", err)
-		}
-	}
 	if err := module.Provide[healthservice.CheckerProvider](services, app.healthCheckers); err != nil {
 		return err
 	}

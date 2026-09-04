@@ -120,7 +120,8 @@ func TestIAMModuleConfigsMapEverySetting(t *testing.T) {
 		},
 	}
 
-	assert.Equal(t, authnext.Config(config.Authn), iamAuthnConfig(config))
+	assert.Equal(t, authnext.Config(config.Authn), iamAuthnConfig(config).Service)
+	assert.True(t, iamAuthnConfig(config).Enabled)
 	assert.True(t, iamAuditConfig(config).Enabled)
 	assert.Equal(t, config.IAMAudit.Anchor.Enabled, iamAuditConfig(config).Anchor.Enabled)
 	assert.Equal(t, config.IAMAudit.Anchor.Endpoint, iamAuditConfig(config).Anchor.Endpoint)

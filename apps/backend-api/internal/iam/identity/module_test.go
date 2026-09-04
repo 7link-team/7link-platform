@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"testing"
+	"time"
 
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/core"
@@ -47,17 +48,10 @@ func identityTestRegistrar() *authz.Registrar {
 	)
 }
 
-func TestModuleRequiresItsConstructionCollaborators(t *testing.T) {
+func TestModuleRequiresRuntimeAtConstruction(t *testing.T) {
 	t.Parallel()
 
-	runtime := appenv.NewRuntime(appenv.NewIdentity("identity-test", "1"))
-	registrar := identityTestRegistrar()
-	assert.Panics(t, func() { NewModule(nil, registrar, Config{}) })
-	assert.Panics(t, func() { NewModule(runtime, nil, Config{}) })
-	assert.Panics(t, func() {
-		NewModule(runtime, authz.NewAuthenticationOnlyRegistrar(identityTokenVerifier{}), Config{})
-	})
-	assert.Panics(t, func() { NewModule(runtime, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()), Config{}) })
+	assert.Panics(t, func() { NewModule(nil, Config{}) })
 }
 
 func TestModuleIdentityDependenciesAndReadinessBeforeInitialize(t *testing.T) {
@@ -65,7 +59,6 @@ func TestModuleIdentityDependenciesAndReadinessBeforeInitialize(t *testing.T) {
 
 	instance := NewModule(
 		appenv.NewRuntime(appenv.NewIdentity("identity-test", "1")),
-		identityTestRegistrar(),
 		enabledModuleConfig(),
 	)
 	assert.Equal(t, Name, instance.ModuleName())
@@ -79,7 +72,7 @@ func TestModuleIdentityDependenciesAndReadinessBeforeInitialize(t *testing.T) {
 
 func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
 	harness := newIdentityHarness(t, "sl_")
-	instance := NewModule(harness.runtime, identityTestRegistrar(), enabledModuleConfig())
+	instance := NewModule(harness.runtime, enabledModuleConfig())
 
 	registry := module.NewRegistry()
 	require.NoError(t, registry.Register(
@@ -94,6 +87,9 @@ func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
 			))
 		}},
 		&identityDependencyProvider{name: core.Name, provide: func(services *module.Services) error {
+			if err := module.Provide[*authz.Registrar](services, identityTestRegistrar()); err != nil {
+				return err
+			}
 			return module.Provide[core.AdministratorGuard](services, harness.guard)
 		}},
 		instance,
@@ -109,10 +105,14 @@ func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
 	assert.Same(t, instance, provisioner)
 	creator, err := module.Resolve[InvitationPrincipalCreator](registry.Services())
 	require.NoError(t, err)
+	registrationCreator, err := module.Resolve[RegistrationPrincipalCreator](registry.Services())
+	require.NoError(t, err)
 
 	// The invitation capability resolves the service per call, so it reports the
 	// module as unavailable before Initialize instead of panicking.
 	_, err = creator(t.Context(), harness.db, 7, "alice", testPassword, "Alice", "alice@example.test")
+	assert.ErrorIs(t, err, ErrUnavailable)
+	_, err = registrationCreator(t.Context(), harness.db, "pending@example.test", "hash", "Pending", time.Now())
 	assert.ErrorIs(t, err, ErrUnavailable)
 
 	require.NoError(t, registry.Initialize(t.Context()))
@@ -121,6 +121,9 @@ func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
 	invited, err := creator(t.Context(), harness.db, 7, "alice", testPassword, "Alice", "alice@example.test")
 	require.NoError(t, err)
 	assert.Equal(t, "alice", harness.principal(t, invited).LoginName)
+	pending, err := registrationCreator(t.Context(), harness.db, "pending@example.test", "hash", "Pending", time.Now())
+	require.NoError(t, err)
+	assert.Equal(t, "pending@example.test", harness.principal(t, pending).LoginName)
 
 	principal, err := provisioner.CreateProvisionedTo(t.Context(), harness.db, 7, provisionedInput("scim.user"))
 	require.NoError(t, err)
@@ -141,20 +144,21 @@ func TestModuleReportsMissingWiring(t *testing.T) {
 
 	instance := NewModule(
 		appenv.NewRuntime(appenv.NewIdentity("identity-test", "1")),
-		identityTestRegistrar(),
 		enabledModuleConfig(),
 	)
 
 	services := module.NewServices()
 	require.NoError(t, services.Seal())
-	assert.ErrorContains(t, instance.InjectServices(services), "resolve identity id generator")
+	assert.ErrorContains(t, instance.InjectServices(services), "resolve identity authorization registrar")
 
 	services = module.NewServices()
+	require.NoError(t, module.Provide[*authz.Registrar](services, identityTestRegistrar()))
 	require.NoError(t, module.Provide[guid.Source](services, newIdentityTestIDs(1)))
 	require.NoError(t, services.Seal())
 	assert.ErrorContains(t, instance.InjectServices(services), "resolve identity audit appender")
 
 	services = module.NewServices()
+	require.NoError(t, module.Provide[*authz.Registrar](services, identityTestRegistrar()))
 	require.NoError(t, module.Provide[guid.Source](services, newIdentityTestIDs(1)))
 	require.NoError(t, module.Provide[audit.Appender](services, audit.Appender(
 		func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil },

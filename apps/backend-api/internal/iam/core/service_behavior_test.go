@@ -655,7 +655,6 @@ func TestServiceCatalogsAndConstructors(t *testing.T) {
 	require.Len(t, menuCatalog, 1)
 	assert.NotEmpty(t, menuCatalog[0].Children)
 	assert.NotEmpty(t, DefaultMenus())
-	assert.NotNil(t, newDeclarationService(harness.service.registry))
 
 	assert.Panics(t, func() {
 		NewService(nil, harness.repository, harness.authorizer, func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil })
