@@ -135,8 +135,14 @@ func Bind(db *gorm.DB, prefix string) *Todos {
 
 **MySQL `TIMESTAMP` 的上限是 2038-01-19。** 它对当前日期完全正常,所以写错了能过全部门禁 ——
 直到有人存一个长期有效期、合同到期日,或用 `9999-12-31` 当"永不过期"哨兵。
-`DATETIME` 到 9999 年,和 PostgreSQL 侧对得上。**目前没有任何门禁校验列类型,靠的是一致性;
-新增时间列时自己对一遍这张表。** 时间统一 UTC,可空时间用 NULL 表示"未发生",不要用零值当哨兵。
+`DATETIME` 到 9999 年,和 PostgreSQL 侧对得上。
+
+**门禁在 `tools/iam-schema-lock`**,由 `make test-mysql8` 调用(纯静态扫描,不需要数据库):
+`internal/iam` 下逐列校验精确类型,**全仓**禁止 MySQL `TIMESTAMP`。
+非 IAM 模块只受后一条约束 —— 已发布的 todo/audit 迁移在 PG 侧用的是无精度 `TIMESTAMPTZ`,
+而改写已发布迁移是禁止的,所以精确类型这条不追溯。**新模块请直接按上表写。**
+
+时间统一 UTC,可空时间用 NULL 表示"未发生",不要用零值当哨兵(时间列的零值哨兵也会被门禁拒绝)。
 
 **改了 model 必须 `make generate`,且工作树要回到零差异** —— 生成物漂移是门禁项。
 
