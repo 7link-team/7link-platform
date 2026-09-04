@@ -16,3 +16,4 @@ coverage.html
 # Machine-local IAM migration environment
 .temp/iam-env.mk
 .temp/*.cover
+.temp/dev-secrets/

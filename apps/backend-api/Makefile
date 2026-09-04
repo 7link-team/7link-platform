@@ -2,12 +2,24 @@ BUILD_PACKAGE := 7link.com/platform/cmd/7link-api/cmd
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 OUTPUT ?= bin/7link-api
 LDFLAGS := -X '$(BUILD_PACKAGE).buildVersion=$(VERSION)'
+DEV_IAM_ISSUER ?= http://127.0.0.1:8080
+DEV_SECRET_DIR ?= $(abspath .temp/dev-secrets)
+DEV_AUTHN_SIGNING_KEY_FILE ?= $(DEV_SECRET_DIR)/authn-signing-key
+DEV_AUTHN_MFA_KEY_FILE ?= $(DEV_SECRET_DIR)/authn-mfa-key
+DEV_FEDERATION_KEY_FILE ?= $(DEV_SECRET_DIR)/federation-key
 DEV_ARGS ?= serve --debug --migrate --pprof.enabled --shutdown.graceful=false \
 	--api.metrics.enabled --api.metrics.advertise \
 	--table_prefix sl_ \
 	--api.migration-status.enabled --api.migration-status.advertise \
 	--api.config-inspector.enabled --api.config-inspector.advertise \
-	--api.datasource-inspector.enabled --api.datasource-inspector.advertise
+	--api.datasource-inspector.enabled --api.datasource-inspector.advertise \
+	--authn.enabled --authn.issuer $(DEV_IAM_ISSUER) \
+	--authn.signing-key-file $(DEV_AUTHN_SIGNING_KEY_FILE) \
+	--authn.web.enabled --authn.web.post-login-url $(DEV_IAM_ISSUER)/ \
+	--authn.web.allowed-return-urls $(DEV_IAM_ISSUER)/ \
+	--authn.web.allowed-origins $(DEV_IAM_ISSUER) --authn.web.cookie-secure=false \
+	--authn.mfa.encryption-key-file $(DEV_AUTHN_MFA_KEY_FILE) \
+	--federation.enabled --federation.encryption-key-file $(DEV_FEDERATION_KEY_FILE)
 COVERAGE_MIN ?= 90
 COVERAGE_PROFILE ?= coverage.out
 COVERAGE_RAW_PROFILE ?= coverage.raw.out
@@ -101,7 +113,10 @@ fmt-check:
 	fi; \
 	echo "gofmt: clean"
 
-dev:
+$(DEV_AUTHN_SIGNING_KEY_FILE) $(DEV_AUTHN_MFA_KEY_FILE) $(DEV_FEDERATION_KEY_FILE):
+	@umask 077; mkdir -p "$(DEV_SECRET_DIR)"; openssl rand -base64 32 > "$@"
+
+dev: $(DEV_AUTHN_SIGNING_KEY_FILE) $(DEV_AUTHN_MFA_KEY_FILE) $(DEV_FEDERATION_KEY_FILE)
 	go -C cmd/7link-api run . $(DEV_ARGS)
 
 # Config lives in .golangci.yml. The linter is pinned in tools/go.mod so every
