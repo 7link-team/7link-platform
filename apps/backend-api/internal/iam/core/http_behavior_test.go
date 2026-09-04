@@ -18,6 +18,7 @@ import (
 	humax "7link.com/platform/pkg/extension/huma"
 	"7link.com/platform/pkg/extension/huma/respx"
 	platformi18n "7link.com/platform/pkg/i18n"
+	modulepkg "7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -128,7 +129,12 @@ func newHTTPIAMHarness(t *testing.T, platformAllowed bool) httpIAMHarness {
 		httpMembershipChecker{},
 	)
 	appender := func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil }
-	module := NewModule(database.runtime, registrar, httpAuthorizationEvaluator{}, appender, database.repository.ids)
+	module := NewModule(database.runtime, registrar, httpAuthorizationEvaluator{})
+	services := modulepkg.NewServices()
+	require.NoError(t, modulepkg.Provide[guid.Source](services, database.repository.ids))
+	require.NoError(t, modulepkg.Provide[audit.Appender](services, appender))
+	require.NoError(t, services.Seal())
+	require.NoError(t, module.InjectServices(services))
 	_, err := module.service.PutTenantMember(t.Context(), 1, actorID, "Operator", "operator@example.test", 0, MemberActive)
 	require.NoError(t, err)
 

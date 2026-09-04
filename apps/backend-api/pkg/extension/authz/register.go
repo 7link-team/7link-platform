@@ -563,6 +563,26 @@ func IsTenantMemberOperation(op *huma.Operation) bool {
 	return isTenantMember(op)
 }
 
+// IsAuthenticatedOperation reports whether an operation requires an
+// authenticated principal without binding a tenant.
+func IsAuthenticatedOperation(op *huma.Operation) bool {
+	if op == nil || op.Metadata == nil {
+		return false
+	}
+	return isAuthenticated(op)
+}
+
+// IsPublicOperation reports whether an operation intentionally bypasses the
+// authorization Guard gateway.
+func IsPublicOperation(op *huma.Operation) bool {
+	return isPublic(op)
+}
+
+// OperationGuard reports the permission declared for a guarded operation.
+func OperationGuard(op *huma.Operation) (string, bool) {
+	return guardOf(op)
+}
+
 // IsPlatformOperation reports whether an operation uses platform authorization.
 func IsPlatformOperation(op *huma.Operation) bool {
 	if op == nil || op.Metadata == nil {

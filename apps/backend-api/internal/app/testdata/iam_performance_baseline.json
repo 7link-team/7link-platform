@@ -1,0 +1,2483 @@
+{
+  "schema_version": 1,
+  "workload": {
+    "tenants": 64,
+    "members_per_tenant": 64,
+    "roles_per_tenant": 16,
+    "sessions": 4096,
+    "resources_per_tenant": 64,
+    "audit_events_per_tenant": 64,
+    "scim_bulk_operations": 25
+  },
+  "engines": {
+    "mysql": {
+      "database_version": "8.4.11",
+      "go_version": "go1.26.7",
+      "host": "windows/amd64",
+      "captured_at": "2026-09-04T05:01:38Z",
+      "plans": [
+        {
+          "path": "audit_append",
+          "sql_template": "INSERT INTO `iam_audit_events` (`id`,`tenant_id`,`principal_id`,`event_type`,`target_type`,`target_id`,`outcome`,`ip_address`,`user_agent`,`detail`,`created_at`,`sequence`,`previous_hash`,`event_hash`) VALUES (?,?,NULL,?,?,NULL,?,?,?,?,?,?,?,?)",
+          "fingerprint": "1822e108f50bf1513b7b50e96889f2a8866947815f439540018d5d62463ecc29",
+          "plan": {
+            "query_block": {
+              "select_id": 1,
+              "table": {
+                "insert": true,
+                "table_name": "iam_audit_events",
+                "access_type": "ALL"
+              }
+            }
+          }
+        },
+        {
+          "path": "audit_append",
+          "sql_template": "SELECT * FROM `iam_audit_heads` WHERE tenant_id = ? AND `iam_audit_heads`.`tenant_id` = ? LIMIT ? FOR UPDATE",
+          "fingerprint": "39161b6d63544e933a60b71d880661d1c41bc3c661df747c30aadee5f7e734bc",
+          "plan": {
+            "query_block": {
+              "select_id": 1,
+              "cost_info": {
+                "query_cost": "1.00"
+              },
+              "table": {
+                "table_name": "iam_audit_heads",
+                "access_type": "const",
+                "possible_keys": [
+                  "PRIMARY"
+                ],
+                "key": "PRIMARY",
+                "used_key_parts": [
+                  "tenant_id"
+                ],
+                "key_length": "8",
+                "ref": [
+                  "const"
+                ],
+                "rows_examined_per_scan": 1,
+                "rows_produced_per_join": 1,
+                "filtered": "100.00",
+                "cost_info": {
+                  "read_cost": "0.00",
+                  "eval_cost": "0.10",
+                  "prefix_cost": "0.00",
+                  "data_read_per_join": "288"
+                },
+                "used_columns": [
+                  "tenant_id",
+                  "sequence",
+                  "event_hash",
+                  "updated_at"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "path": "audit_append",
+          "sql_template": "UPDATE `iam_audit_heads` SET `event_hash`=?,`sequence`=?,`updated_at`=? WHERE tenant_id = ? AND sequence = ?",
+          "fingerprint": "405953d3a51b67bfa0075fa4edffa6eec472ab0596468714d7aa47f4ab991e59",
+          "plan": {
+            "query_block": {
+              "select_id": 1,
+              "table": {
+                "update": true,
+                "table_name": "iam_audit_heads",
+                "access_type": "range",
+                "possible_keys": [
+                  "PRIMARY"
+                ],
+                "key": "PRIMARY",
+                "used_key_parts": [
+                  "tenant_id"
+                ],
+                "key_length": "8",
+                "ref": [
+                  "const"
+                ],
+                "rows_examined_per_scan": 1,
+                "filtered": "100.00",
+                "attached_condition": "((`sevenlink_iam_test`.`iam_audit_heads`.`sequence` = 2) and (`sevenlink_iam_test`.`iam_audit_heads`.`tenant_id` = 91001))"
+              }
+            }
+          }
+        },
+        {
+          "path": "audit_append",
+          "sql_template": "INSERT INTO `iam_audit_heads` (`tenant_id`,`sequence`,`event_hash`,`updated_at`) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE `tenant_id`=`tenant_id`",
+          "fingerprint": "b7024c96bcd06c3cf287be975ec9328efeceafdb79679b94471561521dc5c878",
+          "plan": {
+            "query_block": {
+              "select_id": 1,
+              "table": {
+                "insert": true,
+                "table_name": "iam_audit_heads",
+                "access_type": "ALL"
+              }
+            }
+          }
+        },
+        {
+          "path": "authorization",
+          "sql_template": "SELECT g.id, g.rule_json, tm.principal_id AS subject, tm.email, COALESCE(md.department_id, ?) AS department_id, tm.status FROM iam_groups AS g JOIN iam_tenant_members AS tm ON tm.tenant_id = g.tenant_id AND tm.principal_id = ? AND tm.status = ? LEFT JOIN iam_member_departments AS md ON md.tenant_id = tm.tenant_id AND md.principal_id = tm.principal_id WHERE g.tenant_id = ? AND g.group_type = ? AND g.status = ? ORDER BY g.id ASC",
+          "fingerprint": "3643493c4b3931957c8ea44f0c5bd66615705aa0d551447ca4dc4de695e12c9e",
+          "plan": {
+            "query_block": {
+              "select_id": 1,
+              "cost_info": {
+                "query_cost": "0.35"
+              },
+              "ordering_operation": {
+                "using_filesort": false,
+                "nested_loop": [
+                  {
+                    "table": {
+                      "table_name": "tm",
+                      "access_type": "const",
+                      "possible_keys": [
+                        "PRIMARY",
+                        "idx_iam_tenant_members_status"
+                      ],
+                      "key": "PRIMARY",
+                      "used_key_parts": [
+                        "tenant_id",
+                        "principal_id"
+                      ],
+                      "key_length": "16",
+                      "ref": [
+                        "const",
+                        "const"
+                      ],
+                      "rows_examined_per_scan": 1,
+                      "rows_produced_per_join": 1,
+                      "filtered": "100.00",
+                      "cost_info": {
+                        "read_cost": "0.00",
+                        "eval_cost": "0.10",
+                        "prefix_cost": "0.00",
+                        "data_read_per_join": "1K"
+                      },
+                      "used_columns": [
+                        "tenant_id",
+                        "principal_id",
+                        "email",
+                        "status"
+                      ]
+                    }
+                  },
+                  {
+                    "table": {
+                      "table_name": "md",
+                      "access_type": "const",
+                      "possible_keys": [
+                        "PRIMARY",
+                        "idx_iam_member_departments_department"
+                      ],
+                      "key": "PRIMARY",
+                      "used_key_parts": [
+                        "tenant_id",
+                        "principal_id"
+                      ],
+                      "key_length": "16",
+                      "ref": [
+                        "const",
+                        "const"
+                      ],
+                      "rows_examined_per_scan": 0,
+                      "rows_produced_per_join": 1,
+                      "filtered": "0.00",
+                      "unique_row_not_found": true,
+                      "cost_info": {
+                        "read_cost": "0.00",
+                        "eval_cost": "0.10",
+                        "prefix_cost": "0.00",
+                        "data_read_per_join": "40"
+                      },
+                      "used_columns": [
+                        "tenant_id",
+                        "principal_id",
+                        "department_id"
+                      ]
+                    }
+                  },
+                  {
+                    "table": {
+                      "table_name": "g",
+                      "access_type": "ref",
+                      "possible_keys": [
+                        "PRIMARY",
+                        "uq_iam_groups_name",
+                        "idx_iam_groups_order",
+                        "idx_iam_groups_dynamic"
+                      ],
+                      "key": "PRIMARY",
+                      "used_key_parts": [
+                        "tenant_id"
+                      ],
+                      "key_length": "8",
+                      "ref": [
+                        "const"
+                      ],
+                      "rows_examined_per_scan": 1,
+                      "rows_produced_per_join": 1,
+                      "filtered": "100.00",
+                      "cost_info": {
+                        "read_cost": "0.25",
+                        "eval_cost": "0.10",
+                        "prefix_cost": "0.35",
+                        "data_read_per_join": "1K"
+                      },
+                      "used_columns": [
+                        "tenant_id",
+                        "id",
+                        "group_type",
+                        "rule_json",
+                        "status"
+                      ],
+                      "attached_condition": "((`sevenlink_iam_test`.`g`.`status` = 'active') and (`sevenlink_iam_test`.`g`.`group_type` = 'dynamic'))"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "path": "authorization",
+          "sql_template": "SELECT count(*) FROM iam_principals AS p WHERE (p.id = ? AND p.status = ?) AND ((EXISTS (SELECT ? FROM iam_platform_administrators AS pa WHERE pa.principal_id = p.id) OR EXISTS (SELECT ? FROM iam_platform_grants AS pg WHERE pg.principal_id = p.id AND pg.permission_code = ?)))",
+          "fingerprint": "441a864a0288bfa2b601665067251b8b9d2522f1fa0cf5a848a6526f308324ff",
+          "plan": {
+            "query_block": {
+              "select_id": 1,
+              "cost_info": {
+                "query_cost": "1.00"
+              },
+              "table": {
+                "table_name": "p",
+                "access_type": "const",
+                "possible_keys": [
+                  "PRIMARY"
+                ],
+                "key": "PRIMARY",
+                "used_key_parts": [
+                  "id"
+                ],
+                "key_length": "8",
+                "ref": [
+                  "const"
+                ],
+                "rows_examined_per_scan": 1,
+                "rows_produced_per_join": 1,
+                "filtered": "100.00",
+                "cost_info": {
+                  "read_cost": "0.00",
+                  "eval_cost": "0.10",
+                  "prefix_cost": "0.00",
+                  "data_read_per_join": "2K"
+                },
+                "used_columns": [
+                  "id",
+                  "status"
+                ]
+              },
+              "optimized_away_subqueries": [
+                {
+                  "dependent": true,
+                  "cacheable": false,
+                  "query_block": {
+                    "select_id": 3,
+                    "message": "no matching row in const table"
+                  }
+                },
+                {
+                  "dependent": true,
+                  "cacheable": false,
+                  "query_block": {
+                    "select_id": 2,
+                    "cost_info": {
+                      "query_cost": "1.00"
+                    },
+                    "table": {
+                      "table_name": "pa",
+                      "access_type": "const",
+                      "possible_keys": [
+                        "PRIMARY"
+                      ],
+                      "key": "PRIMARY",
+                      "used_key_parts": [
+                        "principal_id"
+                      ],
+                      "key_length": "8",
+                      "ref": [
+                        "const"
+                      ],
+                      "rows_examined_per_scan": 1,
+                      "rows_produced_per_join": 1,
+                      "filtered": "100.00",
+                      "using_index": true,
+                      "cost_info": {
+                        "read_cost": "0.00",
+                        "eval_cost": "0.10",
+                        "prefix_cost": "0.00",
+                        "data_read_per_join": "24"
+                      },
+                      "used_columns": [
+                        "principal_id"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "path": "authorization",
+          "sql_template": "SELECT t.status, COUNT(tm.principal_id) AS member_count FROM iam_tenants AS t LEFT JOIN iam_tenant_members AS tm ON tm.tenant_id = t.id AND tm.principal_id = ? AND tm.status = ? WHERE t.id = ? GROUP BY `t`.`status` LIMIT ?",
+          "fingerprint": "7ccc85f7c6d6de1c62a305ab3cf8b380d8815c5256404a8184c351e4870ab82b",
+          "plan": {
+            "query_block": {
+              "select_id": 1,
+              "cost_info": {
+                "query_cost": "1.00"
+              },
+              "grouping_operation": {
+                "using_filesort": false,
+                "nested_loop": [
+                  {
+                    "table": {
+                      "table_name": "t",
+                      "access_type": "const",
+                      "possible_keys": [
+                        "PRIMARY"
+                      ],
+                      "key": "PRIMARY",
+                      "used_key_parts": [
+                        "id"
+                      ],
+                      "key_length": "8",
+                      "ref": [
+                        "const"
+                      ],
+                      "rows_examined_per_scan": 1,
+                      "rows_produced_per_join": 1,
+                      "filtered": "100.00",
+                      "cost_info": {
+                        "read_cost": "0.00",
+                        "eval_cost": "0.10",
+                        "prefix_cost": "0.00",
+                        "data_read_per_join": "864"
+                      },
+                      "used_columns": [
+                        "id",
+                        "status"
+                      ]
+                    }
+                  },
+                  {
+                    "table": {
+                      "table_name": "tm",
+                      "access_type": "const",
+                      "possible_keys": [
+                        "PRIMARY",
+                        "idx_iam_tenant_members_status"
+                      ],
+                      "key": "PRIMARY",
+                      "used_key_parts": [
+                        "tenant_id",
+                        "principal_id"
+                      ],
+                      "key_length": "16",
+                      "ref": [
+                        "const",
+                        "const"
+                      ],
+                      "rows_examined_per_scan": 1,
+                      "rows_produced_per_join": 1,
+                      "filtered": "100.00",
+                      "cost_info": {
+                        "read_cost": "0.00",
+                        "eval_cost": "0.10",
+                        "prefix_cost": "0.00",
+                        "data_read_per_join": "1K"
+                      },
+                      "used_columns": [
+                        "tenant_id",
+                        "principal_id",
+                        "status"
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "path": "authorization",
+          "sql_template": "WITH effective_roles(role_id, source_type, source_id) AS ( SELECT m.role_id, ?, m.principal_id FROM iam_role_members m JOIN iam_tenant_members tm ON tm.tenant_id = m.tenant_id AND tm.principal_id = m.principal_id AND tm.status = ? WHERE m.tenant_id = ? AND m.principal_id = ? UNION SELECT grants.role_id, ?, grants.id FROM iam_temporary_role_grants grants JOIN iam_tenant_members tm ON tm.tenant_id = grants.tenant_id AND tm.principal_id = grants.principal_id AND tm.status = ? WHERE grants.tenant_id = ? AND grants.principal_id = ? AND grants.starts_at \u003c= ? AND grants.ends_at \u003e ? UNION SELECT b.role_id, ?, b.group_id FROM iam_group_role_bindings b JOIN iam_groups g ON g.tenant_id = b.tenant_id AND g.id = b.group_id AND g.status = ? AND g.group_type = ? JOIN iam_group_members gm ON gm.tenant_id = b.tenant_id AND gm.group_id = b.group_id JOIN iam_tenant_members tm ON tm.tenant_id = gm.tenant_id AND tm.principal_id = gm.principal_id AND tm.status = ? WHERE b.tenant_id = ? AND gm.principal_id = ? AND (gm.starts_at IS NULL OR gm.starts_at \u003c= ?) AND (gm.ends_at IS NULL OR gm.ends_at \u003e ?) UNION SELECT b.role_id, ?, b.position_id FROM iam_position_role_bindings b JOIN iam_positions pos ON pos.tenant_id = b.tenant_id AND pos.id = b.position_id AND pos.status = ? JOIN iam_position_members pm ON pm.tenant_id = b.tenant_id AND pm.position_id = b.position_id JOIN iam_tenant_members tm ON tm.tenant_id = pm.tenant_id AND tm.principal_id = pm.principal_id AND tm.status = ? WHERE b.tenant_id = ? AND pm.principal_id = ? AND (pm.starts_at IS NULL OR pm.starts_at \u003c= ?) AND (pm.ends_at IS NULL OR pm.ends_at \u003e ?) ) SELECT DISTINCT rp.permission_code, er.role_id, er.source_type, er.source_id, COALESCE(ds.scope_type, ?) AS data_scope, rp.condition_json FROM iam_role_permissions rp JOIN effective_roles er ON er.role_id = rp.role_id LEFT JOIN iam_role_data_scopes ds ON ds.tenant_id = rp.tenant_id AND ds.role_id = rp.role_id WHERE rp.tenant_id = ? AND rp.permission_code IN (?,?,?)",
+          "fingerprint": "d4dbecfb3b9a589bfeb80e635baa8b09ab9c125df656a5273cb4a1533c22e43b",
+          "plan": {
+            "query_block": {
+              "select_id": 1,
+              "cost_info": {
+                "query_cost": "0.66"
+              },
+              "duplicates_removal": {
+                "using_temporary_table": true,
+                "using_filesort": false,
+                "nested_loop": [
+                  {
+                    "table": {
+                      "table_name": "rp",
+                      "access_type": "ref",
+                      "possible_keys": [
+                        "PRIMARY"
+                      ],
+                      "key": "PRIMARY",
+                      "used_key_parts": [
+                        "tenant_id"
+                      ],
+                      "key_length": "8",
+                      "ref": [
+                        "const"
+                      ],
+                      "rows_examined_per_scan": 1,
+                      "rows_produced_per_join": 0,
+                      "filtered": "30.00",
+                      "cost_info": {
+                        "read_cost": "0.25",
+                        "eval_cost": "0.03",
+                        "prefix_cost": "0.35",
+                        "data_read_per_join": "165"
+                      },
+                      "used_columns": [
+                        "tenant_id",
+                        "role_id",
+                        "permission_code",
+                        "condition_json"
+                      ],
+                      "attached_condition": "(`sevenlink_iam_test`.`rp`.`permission_code` in ('entity_view','menu_view','tenant_administer'))"
+                    }
+                  },
+                  {
+                    "table": {
+                      "table_name": "ds",
+                      "access_type": "eq_ref",
+                      "possible_keys": [
+                        "PRIMARY"
+                      ],
+                      "key": "PRIMARY",
+                      "used_key_parts": [
+                        "tenant_id",
+                        "role_id"
+                      ],
+                      "key_length": "16",
+                      "ref": [
+                        "const",
+                        "sevenlink_iam_test.rp.role_id"
+                      ],
+                      "rows_examined_per_scan": 1,
+                      "rows_produced_per_join": 0,
+                      "filtered": "100.00",
+                      "cost_info": {
+                        "read_cost": "0.08",
+                        "eval_cost": "0.03",
+                        "prefix_cost": "0.46",
+                        "data_read_per_join": "48"
+                      },
+                      "used_columns": [
+                        "tenant_id",
+                        "role_id",
+                        "scope_type"
+                      ]
+                    }
+                  },
+                  {
+                    "table": {
+                      "table_name": "er",
+                      "access_type": "ref",
+                      "possible_keys": [
+                        "\u003cauto_key1\u003e"
+                      ],
+                      "key": "\u003cauto_key1\u003e",
+                      "used_key_parts": [
+                        "role_id"
+                      ],
+                      "key_length": "8",
+                      "ref": [
+                        "sevenlink_iam_test.rp.role_id"
+                      ],
+                      "rows_examined_per_scan": 2,
+                      "rows_produced_per_join": 0,
+                      "filtered": "100.00",
+                      "cost_info": {
+                        "read_cost": "0.15",
+                        "eval_cost": "0.06",
+                        "prefix_cost": "0.67",
+                        "data_read_per_join": "48"
+                      },
+                      "used_columns": [
+                        "role_id",
+                        "source_type",
+                        "source_id"
+                      ],
+                      "materialized_from_subquery": {
+                        "using_temporary_table": true,
+                        "dependent": false,
+                        "cacheable": true,
+                        "query_block": {
+                          "union_result": {
+                            "using_temporary_table": true,
+                            "select_id": 6,
+                            "table_name": "\u003cunion2,3,4,5\u003e",
+                            "access_type": "ALL",
+                            "query_specifications": [
+                              {
+                                "dependent": false,
+                                "cacheable": true,
+                                "query_block": {
+                                  "select_id": 2,
+                                  "cost_info": {
+                                    "query_cost": "0.35"
+                                  },
+                                  "nested_loop": [
+                                    {
+                                      "table": {
+                                        "table_name": "tm",
+                                        "access_type": "const",
+                                        "possible_keys": [
+                                          "PRIMARY",
+                                          "idx_iam_tenant_members_status"
+                                        ],
+                                        "key": "PRIMARY",
+                                        "used_key_parts": [
+                                          "tenant_id",
+                                          "principal_id"
+                                        ],
+                                        "key_length": "16",
+                                        "ref": [
+                                          "const",
+                                          "const"
+                                        ],
+                                        "rows_examined_per_scan": 1,
+                                        "rows_produced_per_join": 1,
+                                        "filtered": "100.00",
+                                        "cost_info": {
+                                          "read_cost": "0.00",
+                                          "eval_cost": "0.10",
+                                          "prefix_cost": "0.00",
+                                          "data_read_per_join": "1K"
+                                        },
+                                        "used_columns": [
+                                          "tenant_id",
+                                          "principal_id",
+                                          "status"
+                                        ]
+                                      }
+                                    },
+                                    {
+                                      "table": {
+                                        "table_name": "m",
+                                        "access_type": "ref",
+                                        "possible_keys": [
+                                          "PRIMARY"
+                                        ],
+                                        "key": "PRIMARY",
+                                        "used_key_parts": [
+                                          "tenant_id"
+                                        ],
+                                        "key_length": "8",
+                                        "ref": [
+                                          "const"
+                                        ],
+                                        "rows_examined_per_scan": 1,
+                                        "rows_produced_per_join": 0,
+                                        "filtered": "10.00",
+                                        "using_index": true,
+                                        "cost_info": {
+                                          "read_cost": "0.25",
+                                          "eval_cost": "0.01",
+                                          "prefix_cost": "0.35",
+                                          "data_read_per_join": "4"
+                                        },
+                                        "used_columns": [
+                                          "tenant_id",
+                                          "role_id",
+                                          "principal_id"
+                                        ],
+                                        "attached_condition": "(`sevenlink_iam_test`.`m`.`principal_id` = 35689276951756800)"
+                                      }
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "dependent": false,
+                                "cacheable": true,
+                                "query_block": {
+                                  "select_id": 3,
+                                  "cost_info": {
+                                    "query_cost": "0.35"
+                                  },
+                                  "nested_loop": [
+                                    {
+                                      "table": {
+                                        "table_name": "tm",
+                                        "access_type": "const",
+                                        "possible_keys": [
+                                          "PRIMARY",
+                                          "idx_iam_tenant_members_status"
+                                        ],
+                                        "key": "PRIMARY",
+                                        "used_key_parts": [
+                                          "tenant_id",
+                                          "principal_id"
+                                        ],
+                                        "key_length": "16",
+                                        "ref": [
+                                          "const",
+                                          "const"
+                                        ],
+                                        "rows_examined_per_scan": 1,
+                                        "rows_produced_per_join": 1,
+                                        "filtered": "100.00",
+                                        "cost_info": {
+                                          "read_cost": "0.00",
+                                          "eval_cost": "0.10",
+                                          "prefix_cost": "0.00",
+                                          "data_read_per_join": "1K"
+                                        },
+                                        "used_columns": [
+                                          "tenant_id",
+                                          "principal_id",
+                                          "status"
+                                        ]
+                                      }
+                                    },
+                                    {
+                                      "table": {
+                                        "table_name": "grants",
+                                        "access_type": "ref",
+                                        "possible_keys": [
+                                          "PRIMARY",
+                                          "uq_iam_temporary_role_grants_source",
+                                          "fk_iam_temporary_role_grants_role",
+                                          "idx_iam_temporary_role_grants_principal"
+                                        ],
+                                        "key": "PRIMARY",
+                                        "used_key_parts": [
+                                          "tenant_id"
+                                        ],
+                                        "key_length": "8",
+                                        "ref": [
+                                          "const"
+                                        ],
+                                        "rows_examined_per_scan": 1,
+                                        "rows_produced_per_join": 1,
+                                        "filtered": "100.00",
+                                        "cost_info": {
+                                          "read_cost": "0.25",
+                                          "eval_cost": "0.10",
+                                          "prefix_cost": "0.35",
+                                          "data_read_per_join": "200"
+                                        },
+                                        "used_columns": [
+                                          "tenant_id",
+                                          "id",
+                                          "role_id",
+                                          "principal_id",
+                                          "starts_at",
+                                          "ends_at"
+                                        ],
+                                        "attached_condition": "((`sevenlink_iam_test`.`grants`.`principal_id` = 35689276951756800) and (`sevenlink_iam_test`.`grants`.`starts_at` \u003c= TIMESTAMP'2026-09-04 05:01:07.394') and (`sevenlink_iam_test`.`grants`.`ends_at` \u003e TIMESTAMP'2026-09-04 05:01:07.394'))"
+                                      }
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "dependent": false,
+                                "cacheable": true,
+                                "query_block": {
+                                  "select_id": 4,
+                                  "cost_info": {
+                                    "query_cost": "1.05"
+                                  },
+                                  "nested_loop": [
+                                    {
+                                      "table": {
+                                        "table_name": "tm",
+                                        "access_type": "const",
+                                        "possible_keys": [
+                                          "PRIMARY",
+                                          "idx_iam_tenant_members_status"
+                                        ],
+                                        "key": "PRIMARY",
+                                        "used_key_parts": [
+                                          "tenant_id",
+                                          "principal_id"
+                                        ],
+                                        "key_length": "16",
+                                        "ref": [
+                                          "const",
+                                          "const"
+                                        ],
+                                        "rows_examined_per_scan": 1,
+                                        "rows_produced_per_join": 1,
+                                        "filtered": "100.00",
+                                        "cost_info": {
+                                          "read_cost": "0.00",
+                                          "eval_cost": "0.10",
+                                          "prefix_cost": "0.00",
+                                          "data_read_per_join": "1K"
+                                        },
+                                        "used_columns": [
+                                          "tenant_id",
+                                          "principal_id",
+                                          "status"
+                                        ]
+                                      }
+                                    },
+                                    {
+                                      "table": {
+                                        "table_name": "b",
+                                        "access_type": "ref",
+                                        "possible_keys": [
+                                          "PRIMARY",
+                                          "idx_iam_group_role_bindings_group"
+                                        ],
+                                        "key": "PRIMARY",
+                                        "used_key_parts": [
+                                          "tenant_id"
+                                        ],
+                                        "key_length": "8",
+                                        "ref": [
+                                          "const"
+                                        ],
+                                        "rows_examined_per_scan": 1,
+                                        "rows_produced_per_join": 1,
+                                        "filtered": "100.00",
+                                        "using_index": true,
+                                        "cost_info": {
+                                          "read_cost": "0.25",
+                                          "eval_cost": "0.10",
+                                          "prefix_cost": "0.35",
+                                          "data_read_per_join": "40"
+                                        },
+                                        "used_columns": [
+                                          "tenant_id",
+                                          "role_id",
+                                          "group_id"
+                                        ]
+                                      }
+                                    },
+                                    {
+                                      "table": {
+                                        "table_name": "g",
+                                        "access_type": "eq_ref",
+                                        "possible_keys": [
+                                          "PRIMARY",
+                                          "uq_iam_groups_name",
+                                          "idx_iam_groups_order",
+                                          "idx_iam_groups_dynamic"
+                                        ],
+                                        "key": "PRIMARY",
+                                        "used_key_parts": [
+                                          "tenant_id",
+                                          "id"
+                                        ],
+                                        "key_length": "16",
+                                        "ref": [
+                                          "const",
+                                          "sevenlink_iam_test.b.group_id"
+                                        ],
+                                        "rows_examined_per_scan": 1,
+                                        "rows_produced_per_join": 1,
+                                        "filtered": "100.00",
+                                        "cost_info": {
+                                          "read_cost": "0.25",
+                                          "eval_cost": "0.10",
+                                          "prefix_cost": "0.70",
+                                          "data_read_per_join": "1K"
+                                        },
+                                        "used_columns": [
+                                          "tenant_id",
+                                          "id",
+                                          "group_type",
+                                          "status"
+                                        ],
+                                        "attached_condition": "((`sevenlink_iam_test`.`g`.`group_type` = 'static') and (`sevenlink_iam_test`.`g`.`status` = 'active'))"
+                                      }
+                                    },
+                                    {
+                                      "table": {
+                                        "table_name": "gm",
+                                        "access_type": "eq_ref",
+                                        "possible_keys": [
+                                          "PRIMARY",
+                                          "idx_iam_group_members_principal"
+                                        ],
+                                        "key": "PRIMARY",
+                                        "used_key_parts": [
+                                          "tenant_id",
+                                          "group_id",
+                                          "principal_id"
+                                        ],
+                                        "key_length": "24",
+                                        "ref": [
+                                          "const",
+                                          "sevenlink_iam_test.b.group_id",
+                                          "const"
+                                        ],
+                                        "rows_examined_per_scan": 1,
+                                        "rows_produced_per_join": 1,
+                                        "filtered": "100.00",
+                                        "cost_info": {
+                                          "read_cost": "0.25",
+                                          "eval_cost": "0.10",
+                                          "prefix_cost": "1.05",
+                                          "data_read_per_join": "56"
+                                        },
+                                        "used_columns": [
+                                          "tenant_id",
+                                          "group_id",
+                                          "principal_id",
+                                          "starts_at",
+                                          "ends_at"
+                                        ],
+                                        "attached_condition": "(((`sevenlink_iam_test`.`gm`.`starts_at` is null) or (`sevenlink_iam_test`.`gm`.`starts_at` \u003c= TIMESTAMP'2026-09-04 05:01:07.394')) and ((`sevenlink_iam_test`.`gm`.`ends_at` is null) or (`sevenlink_iam_test`.`gm`.`ends_at` \u003e TIMESTAMP'2026-09-04 05:01:07.394')))"
+                                      }
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "dependent": false,
+                                "cacheable": true,
+                                "query_block": {
+                                  "select_id": 5,
+                                  "cost_info": {
+                                    "query_cost": "1.05"
+                                  },
+                                  "nested_loop": [
+                                    {
+                                      "table": {
+                                        "table_name": "tm",
+                                        "access_type": "const",
+                                        "possible_keys": [
+                                          "PRIMARY",
+                                          "idx_iam_tenant_members_status"
+                                        ],
+                                        "key": "PRIMARY",
+                                        "used_key_parts": [
+                                          "tenant_id",
+                                          "principal_id"
+                                        ],
+                                        "key_length": "16",
+                                        "ref": [
+                                          "const",
+                                          "const"
+                                        ],
+                                        "rows_examined_per_scan": 1,
+                                        "rows_produced_per_join": 1,
+                                        "filtered": "100.00",
+                                        "cost_info": {
+                                          "read_cost": "0.00",
+                                          "eval_cost": "0.10",
+                                          "prefix_cost": "0.00",
+                                          "data_read_per_join": "1K"
+                                        },
+                                        "used_columns": [
+                                          "tenant_id",
+                                          "principal_id",
+                                          "status"
+                                        ]
+                                      }
+                                    },
+                                    {
+                                      "table": {
+                                        "table_name": "b",
+                                        "access_type": "ref",
+                                        "possible_keys": [
+                                          "PRIMARY",
+                                          "idx_iam_position_role_bindings_position"
+                                        ],
+                                        "key": "PRIMARY",
+                                        "used_key_parts": [
+                                          "tenant_id"
+                                        ],
+                                        "key_length": "8",
+                                        "ref": [
+                                          "const"
+                                        ],
+                                        "rows_examined_per_scan": 1,
+                                        "rows_produced_per_join": 1,
+                                        "filtered": "100.00",
+                                        "using_index": true,
+                                        "cost_info": {
+                                          "read_cost": "0.25",
+                                          "eval_cost": "0.10",
+                                          "prefix_cost": "0.35",
+                                          "data_read_per_join": "40"
+                                        },
+                                        "used_columns": [
+                                          "tenant_id",
+                                          "role_id",
+                                          "position_id"
+                                        ]
+                                      }
+                                    },
+                                    {
+                                      "table": {
+                                        "table_name": "pos",
+                                        "access_type": "eq_ref",
+                                        "possible_keys": [
+                                          "PRIMARY",
+                                          "uq_iam_positions_code",
+                                          "idx_iam_positions_order"
+                                        ],
+                                        "key": "PRIMARY",
+                                        "used_key_parts": [
+                                          "tenant_id",
+                                          "id"
+                                        ],
+                                        "key_length": "16",
+                                        "ref": [
+                                          "const",
+                                          "sevenlink_iam_test.b.position_id"
+                                        ],
+                                        "rows_examined_per_scan": 1,
+                                        "rows_produced_per_join": 1,
+                                        "filtered": "100.00",
+                                        "cost_info": {
+                                          "read_cost": "0.25",
+                                          "eval_cost": "0.10",
+                                          "prefix_cost": "0.70",
+                                          "data_read_per_join": "880"
+                                        },
+                                        "used_columns": [
+                                          "tenant_id",
+                                          "id",
+                                          "status"
+                                        ],
+                                        "attached_condition": "(`sevenlink_iam_test`.`pos`.`status` = 'active')"
+                                      }
+                                    },
+                                    {
+                                      "table": {
+                                        "table_name": "pm",
+                                        "access_type": "eq_ref",
+                                        "possible_keys": [
+                                          "PRIMARY",
+                                          "idx_iam_position_members_principal"
+                                        ],
+                                        "key": "PRIMARY",
+                                        "used_key_parts": [
+                                          "tenant_id",
+                                          "position_id",
+                                          "principal_id"
+                                        ],
+                                        "key_length": "24",
+                                        "ref": [
+                                          "const",
+                                          "sevenlink_iam_test.b.position_id",
+                                          "const"
+                                        ],
+                                        "rows_examined_per_scan": 1,
+                                        "rows_produced_per_join": 1,
+                                        "filtered": "100.00",
+                                        "cost_info": {
+                                          "read_cost": "0.25",
+                                          "eval_cost": "0.10",
+                                          "prefix_cost": "1.05",
+                                          "data_read_per_join": "56"
+                                        },
+                                        "used_columns": [
+                                          "tenant_id",
+                                          "position_id",
+                                          "principal_id",
+                                          "starts_at",
+                                          "ends_at"
+                                        ],
+                                        "attached_condition": "(((`sevenlink_iam_test`.`pm`.`starts_at` is null) or (`sevenlink_iam_test`.`pm`.`starts_at` \u003c= TIMESTAMP'2026-09-04 05:01:07.394')) and ((`sevenlink_iam_test`.`pm`.`ends_at` is null) or (`sevenlink_iam_test`.`pm`.`ends_at` \u003e TIMESTAMP'2026-09-04 05:01:07.394')))"
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "path": "scim_bulk",
+          "sql_template": "SELECT resource.*, principal.login_name, principal.email, principal.display_name, principal.status AS principal_status, member.status AS membership_status FROM iam_scim_resources AS resource JOIN iam_scim_directories AS directory ON directory.id = resource.directory_id JOIN iam_principals AS principal ON principal.id = resource.resource_id JOIN iam_tenant_members AS member ON member.tenant_id = directory.tenant_id AND member.principal_id = resource.resource_id WHERE (resource.directory_id = ? AND resource.resource_type = ?) AND resource.deleted_at IS NULL AND resource.resource_id = ? LIMIT ?",
+          "fingerprint": "8d8aefe07a27011dd3999145d98d8f0285319a9879c8a32b6e8b93977c10adc7",
+          "plan": {
+            "query_block": {
+              "select_id": 1,
+              "message": "no matching row in const table"
+            }
+          }
+        },
+        {
+          "path": "session_lookup",
+          "sql_template": "SELECT principal.id, principal.login_name, principal.email, principal.email_verified, principal.activation_required, principal.display_name, principal.status, principal.created_at, principal.updated_at, COALESCE(credential.credential_version, ?) AS credential_version FROM iam_principals AS principal LEFT JOIN iam_credentials AS credential ON credential.principal_id = principal.id WHERE principal.id = ? AND principal.status = ? AND principal.activation_required = false LIMIT ?",
+          "fingerprint": "241ff31314f1b2ba6c8a384706d6b6a0e396675c24b00c4857553f57637ccdea",
+          "plan": {
+            "query_block": {
+              "select_id": 1,
+              "cost_info": {
+                "query_cost": "1.00"
+              },
+              "nested_loop": [
+                {
+                  "table": {
+                    "table_name": "principal",
+                    "access_type": "const",
+                    "possible_keys": [
+                      "PRIMARY"
+                    ],
+                    "key": "PRIMARY",
+                    "used_key_parts": [
+                      "id"
+                    ],
+                    "key_length": "8",
+                    "ref": [
+                      "const"
+                    ],
+                    "rows_examined_per_scan": 1,
+                    "rows_produced_per_join": 1,
+                    "filtered": "100.00",
+                    "cost_info": {
+                      "read_cost": "0.00",
+                      "eval_cost": "0.10",
+                      "prefix_cost": "0.00",
+                      "data_read_per_join": "2K"
+                    },
+                    "used_columns": [
+                      "id",
+                      "login_name",
+                      "email",
+                      "display_name",
+                      "status",
+                      "email_verified",
+                      "activation_required",
+                      "created_at",
+                      "updated_at"
+                    ]
+                  }
+                },
+                {
+                  "table": {
+                    "table_name": "credential",
+                    "access_type": "const",
+                    "possible_keys": [
+                      "PRIMARY"
+                    ],
+                    "key": "PRIMARY",
+                    "used_key_parts": [
+                      "principal_id"
+                    ],
+                    "key_length": "8",
+                    "ref": [
+                      "const"
+                    ],
+                    "rows_examined_per_scan": 1,
+                    "rows_produced_per_join": 1,
+                    "filtered": "100.00",
+                    "cost_info": {
+                      "read_cost": "0.00",
+                      "eval_cost": "0.10",
+                      "prefix_cost": "0.00",
+                      "data_read_per_join": "80"
+                    },
+                    "used_columns": [
+                      "principal_id",
+                      "credential_version"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "path": "session_lookup",
+          "sql_template": "SELECT * FROM `iam_sessions` WHERE `iam_sessions`.`id_hash` = ? AND `iam_sessions`.`revoked_at` IS NULL AND `iam_sessions`.`expires_at` \u003e ? AND `iam_sessions`.`absolute_expires_at` \u003e ? LIMIT ?",
+          "fingerprint": "6e343379464185649ef2c874e520b1fa79e0d214750dcc53ddd7130938659b7f",
+          "plan": {
+            "query_block": {
+              "select_id": 1,
+              "cost_info": {
+                "query_cost": "1.00"
+              },
+              "table": {
+                "table_name": "iam_sessions",
+                "access_type": "const",
+                "possible_keys": [
+                  "PRIMARY"
+                ],
+                "key": "PRIMARY",
+                "used_key_parts": [
+                  "id_hash"
+                ],
+                "key_length": "256",
+                "ref": [
+                  "const"
+                ],
+                "rows_examined_per_scan": 1,
+                "rows_produced_per_join": 1,
+                "filtered": "100.00",
+                "cost_info": {
+                  "read_cost": "0.00",
+                  "eval_cost": "0.10",
+                  "prefix_cost": "0.00",
+                  "data_read_per_join": "2K"
+                },
+                "used_columns": [
+                  "id_hash",
+                  "principal_id",
+                  "created_at",
+                  "auth_time",
+                  "acr",
+                  "amr",
+                  "last_seen_at",
+                  "expires_at",
+                  "absolute_expires_at",
+                  "revoked_at",
+                  "ip_address",
+                  "user_agent"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "path": "session_lookup",
+          "sql_template": "UPDATE `iam_sessions` SET `expires_at`=CASE WHEN absolute_expires_at \u003c ? THEN absolute_expires_at ELSE ? END,`last_seen_at`=? WHERE (id_hash = ? AND revoked_at IS NULL) AND (expires_at \u003e ? AND absolute_expires_at \u003e ? AND last_seen_at \u003c= ?)",
+          "fingerprint": "7321cbc0147a74dfe7cae51ac47dec8f59d739f35912141634ed2fc1bcd0452c",
+          "plan": {
+            "query_block": {
+              "select_id": 1,
+              "table": {
+                "update": true,
+                "table_name": "iam_sessions",
+                "access_type": "range",
+                "possible_keys": [
+                  "PRIMARY"
+                ],
+                "key": "PRIMARY",
+                "used_key_parts": [
+                  "id_hash"
+                ],
+                "key_length": "256",
+                "ref": [
+                  "const"
+                ],
+                "rows_examined_per_scan": 1,
+                "filtered": "100.00",
+                "attached_condition": "((`sevenlink_iam_test`.`iam_sessions`.`id_hash` = 'f6c7dfbf0e2350efaf63de08e2a8e2fdbd98606866c43d3c1f5014a22305965f') and (`sevenlink_iam_test`.`iam_sessions`.`revoked_at` is null) and (`sevenlink_iam_test`.`iam_sessions`.`expires_at` \u003e TIMESTAMP'2026-09-04 05:01:07.398') and (`sevenlink_iam_test`.`iam_sessions`.`absolute_expires_at` \u003e TIMESTAMP'2026-09-04 05:01:07.398') and (`sevenlink_iam_test`.`iam_sessions`.`last_seen_at` \u003c= TIMESTAMP'2026-09-04 05:01:07.398'))"
+              }
+            }
+          }
+        }
+      ],
+      "benchmarks": {
+        "audit_append": {
+          "samples_ns_per_op": [
+            3057906,
+            3571059,
+            3259072,
+            3044724,
+            3121222
+          ],
+          "samples_bytes_per_op": [
+            57190,
+            57206,
+            57246,
+            57230,
+            57202
+          ],
+          "samples_allocs_per_op": [
+            538,
+            539,
+            539,
+            539,
+            539
+          ],
+          "median_ns_per_op": 3121222,
+          "threshold_ns_per_op": 11000000
+        },
+        "authorization": {
+          "samples_ns_per_op": [
+            2232356,
+            2213210,
+            2147910,
+            2063309,
+            1982968
+          ],
+          "samples_bytes_per_op": [
+            53926,
+            53986,
+            54217,
+            54088,
+            54161
+          ],
+          "samples_allocs_per_op": [
+            523,
+            523,
+            523,
+            523,
+            523
+          ],
+          "median_ns_per_op": 2147910,
+          "threshold_ns_per_op": 7000000
+        },
+        "scim_bulk_25": {
+          "samples_ns_per_op": [
+            50774696,
+            51263681,
+            48039850,
+            50894536,
+            48244979
+          ],
+          "samples_bytes_per_op": [
+            532374,
+            539098,
+            532534,
+            533549,
+            538509
+          ],
+          "samples_allocs_per_op": [
+            4961,
+            4961,
+            4959,
+            4958,
+            4961
+          ],
+          "median_ns_per_op": 50774696,
+          "threshold_ns_per_op": 154000000
+        },
+        "session_lookup": {
+          "samples_ns_per_op": [
+            3129316,
+            2975158,
+            3141603,
+            3211284,
+            3199320
+          ],
+          "samples_bytes_per_op": [
+            314599,
+            313963,
+            314427,
+            314420,
+            313902
+          ],
+          "samples_allocs_per_op": [
+            2295,
+            2294,
+            2294,
+            2295,
+            2294
+          ],
+          "median_ns_per_op": 3141603,
+          "threshold_ns_per_op": 10000000
+        }
+      }
+    },
+    "postgres": {
+      "database_version": "16.9",
+      "go_version": "go1.26.7",
+      "host": "windows/amd64",
+      "captured_at": "2026-09-04T05:00:16Z",
+      "plans": [
+        {
+          "path": "audit_append",
+          "sql_template": "UPDATE \"iam_audit_heads\" SET \"event_hash\"=?,\"sequence\"=?,\"updated_at\"=? WHERE tenant_id = ? AND sequence = ?",
+          "fingerprint": "66dddcea9b8d7e40d4b1e09e0d5ea87d0799022acce35aec47265105b47676e6",
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "ModifyTable",
+                "Operation": "Update",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Relation Name": "iam_audit_heads",
+                "Alias": "iam_audit_heads",
+                "Startup Cost": 0.00,
+                "Total Cost": 2.99,
+                "Plan Rows": 0,
+                "Plan Width": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Seq Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Relation Name": "iam_audit_heads",
+                    "Alias": "iam_audit_heads",
+                    "Startup Cost": 0.00,
+                    "Total Cost": 2.99,
+                    "Plan Rows": 1,
+                    "Plan Width": 282,
+                    "Filter": "((tenant_id = 91001) AND (sequence = 2))"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "path": "audit_append",
+          "sql_template": "SELECT * FROM \"iam_audit_heads\" WHERE tenant_id = ? AND \"iam_audit_heads\".\"tenant_id\" = ? LIMIT ? FOR UPDATE",
+          "fingerprint": "c9d190d7828f31f768fb283844f84910c3a47190177483d13d762c5dc964d0ab",
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 0.00,
+                "Total Cost": 2.83,
+                "Plan Rows": 1,
+                "Plan Width": 95,
+                "Plans": [
+                  {
+                    "Node Type": "LockRows",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 0.00,
+                    "Total Cost": 2.83,
+                    "Plan Rows": 1,
+                    "Plan Width": 95,
+                    "Plans": [
+                      {
+                        "Node Type": "Seq Scan",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Relation Name": "iam_audit_heads",
+                        "Alias": "iam_audit_heads",
+                        "Startup Cost": 0.00,
+                        "Total Cost": 2.83,
+                        "Plan Rows": 1,
+                        "Plan Width": 95,
+                        "Filter": "(tenant_id = 91001)"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "path": "audit_append",
+          "sql_template": "INSERT INTO \"iam_audit_heads\" (\"tenant_id\",\"sequence\",\"event_hash\",\"updated_at\") VALUES (?,?,?,?) ON CONFLICT DO NOTHING",
+          "fingerprint": "daf05d889b702960e592fb1d1cba1b00c45616ccbdc4b8dca7e0219e654e6427",
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "ModifyTable",
+                "Operation": "Insert",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Relation Name": "iam_audit_heads",
+                "Alias": "iam_audit_heads",
+                "Startup Cost": 0.00,
+                "Total Cost": 0.01,
+                "Plan Rows": 0,
+                "Plan Width": 0,
+                "Conflict Resolution": "NOTHING",
+                "Plans": [
+                  {
+                    "Node Type": "Result",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 0.00,
+                    "Total Cost": 0.01,
+                    "Plan Rows": 1,
+                    "Plan Width": 284
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "path": "audit_append",
+          "sql_template": "INSERT INTO \"iam_audit_events\" (\"id\",\"tenant_id\",\"principal_id\",\"event_type\",\"target_type\",\"target_id\",\"outcome\",\"ip_address\",\"user_agent\",\"detail\",\"created_at\",\"sequence\",\"previous_hash\",\"event_hash\") VALUES (?,?,NULL,?,?,NULL,?,?,?,?,?,?,?,?)",
+          "fingerprint": "eeb46bf5da516322d9a871adcdb9ad4a617e6312527de2553586489aff847f03",
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "ModifyTable",
+                "Operation": "Insert",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Relation Name": "iam_audit_events",
+                "Alias": "iam_audit_events",
+                "Startup Cost": 0.00,
+                "Total Cost": 0.01,
+                "Plan Rows": 0,
+                "Plan Width": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Result",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 0.00,
+                    "Total Cost": 0.01,
+                    "Plan Rows": 1,
+                    "Plan Width": 1604
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "path": "authorization",
+          "sql_template": "SELECT t.status, COUNT(tm.principal_id) AS member_count FROM iam_tenants AS t LEFT JOIN iam_tenant_members AS tm ON tm.tenant_id = t.id AND tm.principal_id = ? AND tm.status = ? WHERE t.id = ? GROUP BY \"t\".\"status\" LIMIT ?",
+          "fingerprint": "1ad1bc387eaf3ad0c0814f0f4be6b3e715cf57ce3cd7a6728f6f1f91ed977842",
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 10.15,
+                "Total Cost": 10.17,
+                "Plan Rows": 1,
+                "Plan Width": 15,
+                "Plans": [
+                  {
+                    "Node Type": "Aggregate",
+                    "Strategy": "Sorted",
+                    "Partial Mode": "Simple",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 10.15,
+                    "Total Cost": 10.17,
+                    "Plan Rows": 1,
+                    "Plan Width": 15,
+                    "Group Key": [
+                      "t.status"
+                    ],
+                    "Plans": [
+                      {
+                        "Node Type": "Sort",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Startup Cost": 10.15,
+                        "Total Cost": 10.16,
+                        "Plan Rows": 1,
+                        "Plan Width": 15,
+                        "Sort Key": [
+                          "t.status COLLATE \"C\""
+                        ],
+                        "Plans": [
+                          {
+                            "Node Type": "Nested Loop",
+                            "Parent Relationship": "Outer",
+                            "Parallel Aware": false,
+                            "Async Capable": false,
+                            "Join Type": "Left",
+                            "Startup Cost": 0.28,
+                            "Total Cost": 10.14,
+                            "Plan Rows": 1,
+                            "Plan Width": 15,
+                            "Inner Unique": true,
+                            "Plans": [
+                              {
+                                "Node Type": "Seq Scan",
+                                "Parent Relationship": "Outer",
+                                "Parallel Aware": false,
+                                "Async Capable": false,
+                                "Relation Name": "iam_tenants",
+                                "Alias": "t",
+                                "Startup Cost": 0.00,
+                                "Total Cost": 1.83,
+                                "Plan Rows": 1,
+                                "Plan Width": 15,
+                                "Filter": "(id = 91001)"
+                              },
+                              {
+                                "Node Type": "Index Only Scan",
+                                "Parent Relationship": "Inner",
+                                "Parallel Aware": false,
+                                "Async Capable": false,
+                                "Scan Direction": "Forward",
+                                "Index Name": "idx_iam_tenant_members_status",
+                                "Relation Name": "iam_tenant_members",
+                                "Alias": "tm",
+                                "Startup Cost": 0.28,
+                                "Total Cost": 8.30,
+                                "Plan Rows": 1,
+                                "Plan Width": 16,
+                                "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text) AND (principal_id = '35689146357907456'::bigint))"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "path": "authorization",
+          "sql_template": "SELECT g.id, g.rule_json, tm.principal_id AS subject, tm.email, COALESCE(md.department_id, ?) AS department_id, tm.status FROM iam_groups AS g JOIN iam_tenant_members AS tm ON tm.tenant_id = g.tenant_id AND tm.principal_id = ? AND tm.status = ? LEFT JOIN iam_member_departments AS md ON md.tenant_id = tm.tenant_id AND md.principal_id = tm.principal_id WHERE g.tenant_id = ? AND g.group_type = ? AND g.status = ? ORDER BY g.id ASC",
+          "fingerprint": "3643493c4b3931957c8ea44f0c5bd66615705aa0d551447ca4dc4de695e12c9e",
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Sort",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 8.33,
+                "Total Cost": 8.34,
+                "Plan Rows": 1,
+                "Plan Width": 88,
+                "Sort Key": [
+                  "g.id"
+                ],
+                "Plans": [
+                  {
+                    "Node Type": "Nested Loop",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Join Type": "Left",
+                    "Startup Cost": 0.28,
+                    "Total Cost": 8.32,
+                    "Plan Rows": 1,
+                    "Plan Width": 88,
+                    "Inner Unique": true,
+                    "Plans": [
+                      {
+                        "Node Type": "Nested Loop",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Join Type": "Inner",
+                        "Startup Cost": 0.28,
+                        "Total Cost": 8.31,
+                        "Plan Rows": 1,
+                        "Plan Width": 88,
+                        "Inner Unique": false,
+                        "Plans": [
+                          {
+                            "Node Type": "Seq Scan",
+                            "Parent Relationship": "Outer",
+                            "Parallel Aware": false,
+                            "Async Capable": false,
+                            "Relation Name": "iam_groups",
+                            "Alias": "g",
+                            "Startup Cost": 0.00,
+                            "Total Cost": 0.00,
+                            "Plan Rows": 1,
+                            "Plan Width": 48,
+                            "Filter": "((tenant_id = 91001) AND ((status)::text = 'active'::text COLLATE \"C\") AND ((group_type)::text = 'dynamic'::text))"
+                          },
+                          {
+                            "Node Type": "Index Scan",
+                            "Parent Relationship": "Inner",
+                            "Parallel Aware": false,
+                            "Async Capable": false,
+                            "Scan Direction": "Forward",
+                            "Index Name": "idx_iam_tenant_members_status",
+                            "Relation Name": "iam_tenant_members",
+                            "Alias": "tm",
+                            "Startup Cost": 0.28,
+                            "Total Cost": 8.30,
+                            "Plan Rows": 1,
+                            "Plan Width": 48,
+                            "Index Cond": "((tenant_id = 91001) AND ((status)::text = 'active'::text COLLATE \"C\") AND (principal_id = '35689146357907456'::bigint))"
+                          }
+                        ]
+                      },
+                      {
+                        "Node Type": "Seq Scan",
+                        "Parent Relationship": "Inner",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Relation Name": "iam_member_departments",
+                        "Alias": "md",
+                        "Startup Cost": 0.00,
+                        "Total Cost": 0.00,
+                        "Plan Rows": 1,
+                        "Plan Width": 24,
+                        "Filter": "((tenant_id = 91001) AND (principal_id = '35689146357907456'::bigint))"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "path": "authorization",
+          "sql_template": "SELECT count(*) FROM iam_principals AS p WHERE (p.id = ? AND p.status = ?) AND ((EXISTS (SELECT ? FROM iam_platform_administrators AS pa WHERE pa.principal_id = p.id) OR EXISTS (SELECT ? FROM iam_platform_grants AS pg WHERE pg.principal_id = p.id AND pg.permission_code = ?)))",
+          "fingerprint": "441a864a0288bfa2b601665067251b8b9d2522f1fa0cf5a848a6526f308324ff",
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Aggregate",
+                "Strategy": "Plain",
+                "Partial Mode": "Simple",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 9.33,
+                "Total Cost": 9.34,
+                "Plan Rows": 1,
+                "Plan Width": 8,
+                "Plans": [
+                  {
+                    "Node Type": "Index Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Scan Direction": "Forward",
+                    "Index Name": "iam_principals_pkey",
+                    "Relation Name": "iam_principals",
+                    "Alias": "p",
+                    "Startup Cost": 0.28,
+                    "Total Cost": 9.33,
+                    "Plan Rows": 1,
+                    "Plan Width": 0,
+                    "Index Cond": "(id = '35689146357907456'::bigint)",
+                    "Filter": "(((status)::text = 'active'::text) AND ((hashed SubPlan 2) OR (SubPlan 3)))",
+                    "Plans": [
+                      {
+                        "Node Type": "Seq Scan",
+                        "Parent Relationship": "SubPlan",
+                        "Subplan Name": "SubPlan 2",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Relation Name": "iam_platform_administrators",
+                        "Alias": "pa",
+                        "Startup Cost": 0.00,
+                        "Total Cost": 1.02,
+                        "Plan Rows": 2,
+                        "Plan Width": 8
+                      },
+                      {
+                        "Node Type": "Seq Scan",
+                        "Parent Relationship": "SubPlan",
+                        "Subplan Name": "SubPlan 3",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Relation Name": "iam_platform_grants",
+                        "Alias": "pg",
+                        "Startup Cost": 0.00,
+                        "Total Cost": 0.00,
+                        "Plan Rows": 1,
+                        "Plan Width": 0,
+                        "Filter": "((principal_id = p.id) AND ((permission_code)::text = 'platform_administer'::text))"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "path": "authorization",
+          "sql_template": "WITH effective_roles(role_id, source_type, source_id) AS ( SELECT m.role_id, ?, m.principal_id FROM iam_role_members m JOIN iam_tenant_members tm ON tm.tenant_id = m.tenant_id AND tm.principal_id = m.principal_id AND tm.status = ? WHERE m.tenant_id = ? AND m.principal_id = ? UNION SELECT grants.role_id, ?, grants.id FROM iam_temporary_role_grants grants JOIN iam_tenant_members tm ON tm.tenant_id = grants.tenant_id AND tm.principal_id = grants.principal_id AND tm.status = ? WHERE grants.tenant_id = ? AND grants.principal_id = ? AND grants.starts_at \u003c= ? AND grants.ends_at \u003e ? UNION SELECT b.role_id, ?, b.group_id FROM iam_group_role_bindings b JOIN iam_groups g ON g.tenant_id = b.tenant_id AND g.id = b.group_id AND g.status = ? AND g.group_type = ? JOIN iam_group_members gm ON gm.tenant_id = b.tenant_id AND gm.group_id = b.group_id JOIN iam_tenant_members tm ON tm.tenant_id = gm.tenant_id AND tm.principal_id = gm.principal_id AND tm.status = ? WHERE b.tenant_id = ? AND gm.principal_id = ? AND (gm.starts_at IS NULL OR gm.starts_at \u003c= ?) AND (gm.ends_at IS NULL OR gm.ends_at \u003e ?) UNION SELECT b.role_id, ?, b.position_id FROM iam_position_role_bindings b JOIN iam_positions pos ON pos.tenant_id = b.tenant_id AND pos.id = b.position_id AND pos.status = ? JOIN iam_position_members pm ON pm.tenant_id = b.tenant_id AND pm.position_id = b.position_id JOIN iam_tenant_members tm ON tm.tenant_id = pm.tenant_id AND tm.principal_id = pm.principal_id AND tm.status = ? WHERE b.tenant_id = ? AND pm.principal_id = ? AND (pm.starts_at IS NULL OR pm.starts_at \u003c= ?) AND (pm.ends_at IS NULL OR pm.ends_at \u003e ?) ) SELECT DISTINCT rp.permission_code, er.role_id, er.source_type, er.source_id, COALESCE(ds.scope_type, ?) AS data_scope, rp.condition_json FROM iam_role_permissions rp JOIN effective_roles er ON er.role_id = rp.role_id LEFT JOIN iam_role_data_scopes ds ON ds.tenant_id = rp.tenant_id AND ds.role_id = rp.role_id WHERE rp.tenant_id = ? AND rp.permission_code IN (?,?,?)",
+          "fingerprint": "d4dbecfb3b9a589bfeb80e635baa8b09ab9c125df656a5273cb4a1533c22e43b",
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Unique",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 45.56,
+                "Total Cost": 45.58,
+                "Plan Rows": 1,
+                "Plan Width": 93,
+                "Plans": [
+                  {
+                    "Node Type": "Sort",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 45.56,
+                    "Total Cost": 45.57,
+                    "Plan Rows": 1,
+                    "Plan Width": 93,
+                    "Sort Key": [
+                      "rp.permission_code COLLATE \"C\"",
+                      "m.role_id",
+                      "('role_member'::text)",
+                      "m.principal_id",
+                      "(COALESCE(ds.scope_type, 'all'::character varying)) COLLATE \"C\"",
+                      "rp.condition_json"
+                    ],
+                    "Plans": [
+                      {
+                        "Node Type": "Nested Loop",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Join Type": "Left",
+                        "Startup Cost": 39.68,
+                        "Total Cost": 45.55,
+                        "Plan Rows": 1,
+                        "Plan Width": 93,
+                        "Inner Unique": true,
+                        "Join Filter": "(ds.role_id = rp.role_id)",
+                        "Plans": [
+                          {
+                            "Node Type": "Nested Loop",
+                            "Parent Relationship": "Outer",
+                            "Parallel Aware": false,
+                            "Async Capable": false,
+                            "Join Type": "Inner",
+                            "Startup Cost": 39.68,
+                            "Total Cost": 45.54,
+                            "Plan Rows": 1,
+                            "Plan Width": 77,
+                            "Inner Unique": false,
+                            "Join Filter": "(rp.role_id = m.role_id)",
+                            "Plans": [
+                              {
+                                "Node Type": "Index Scan",
+                                "Parent Relationship": "Outer",
+                                "Parallel Aware": false,
+                                "Async Capable": false,
+                                "Scan Direction": "Forward",
+                                "Index Name": "iam_role_permissions_pkey",
+                                "Relation Name": "iam_role_permissions",
+                                "Alias": "rp",
+                                "Startup Cost": 0.28,
+                                "Total Cost": 6.05,
+                                "Plan Rows": 1,
+                                "Plan Width": 29,
+                                "Index Cond": "(tenant_id = 91001)",
+                                "Filter": "((permission_code)::text = ANY ('{entity_view,menu_view,tenant_administer}'::text[]))"
+                              },
+                              {
+                                "Node Type": "Aggregate",
+                                "Strategy": "Hashed",
+                                "Partial Mode": "Simple",
+                                "Parent Relationship": "Inner",
+                                "Parallel Aware": false,
+                                "Async Capable": false,
+                                "Startup Cost": 39.41,
+                                "Total Cost": 39.45,
+                                "Plan Rows": 4,
+                                "Plan Width": 48,
+                                "Group Key": [
+                                  "m.role_id",
+                                  "('role_member'::text)",
+                                  "m.principal_id"
+                                ],
+                                "Planned Partitions": 0,
+                                "Plans": [
+                                  {
+                                    "Node Type": "Append",
+                                    "Parent Relationship": "Outer",
+                                    "Parallel Aware": false,
+                                    "Async Capable": false,
+                                    "Startup Cost": 0.56,
+                                    "Total Cost": 39.38,
+                                    "Plan Rows": 4,
+                                    "Plan Width": 48,
+                                    "Subplans Removed": 0,
+                                    "Plans": [
+                                      {
+                                        "Node Type": "Nested Loop",
+                                        "Parent Relationship": "Member",
+                                        "Parallel Aware": false,
+                                        "Async Capable": false,
+                                        "Join Type": "Inner",
+                                        "Startup Cost": 0.56,
+                                        "Total Cost": 14.36,
+                                        "Plan Rows": 1,
+                                        "Plan Width": 48,
+                                        "Inner Unique": false,
+                                        "Plans": [
+                                          {
+                                            "Node Type": "Index Only Scan",
+                                            "Parent Relationship": "Outer",
+                                            "Parallel Aware": false,
+                                            "Async Capable": false,
+                                            "Scan Direction": "Forward",
+                                            "Index Name": "iam_role_members_pkey",
+                                            "Relation Name": "iam_role_members",
+                                            "Alias": "m",
+                                            "Startup Cost": 0.28,
+                                            "Total Cost": 6.04,
+                                            "Plan Rows": 1,
+                                            "Plan Width": 24,
+                                            "Index Cond": "((tenant_id = 91001) AND (principal_id = '35689146357907456'::bigint))"
+                                          },
+                                          {
+                                            "Node Type": "Index Only Scan",
+                                            "Parent Relationship": "Inner",
+                                            "Parallel Aware": false,
+                                            "Async Capable": false,
+                                            "Scan Direction": "Forward",
+                                            "Index Name": "idx_iam_tenant_members_status",
+                                            "Relation Name": "iam_tenant_members",
+                                            "Alias": "tm",
+                                            "Startup Cost": 0.28,
+                                            "Total Cost": 8.30,
+                                            "Plan Rows": 1,
+                                            "Plan Width": 16,
+                                            "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text) AND (principal_id = '35689146357907456'::bigint))"
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "Node Type": "Nested Loop",
+                                        "Parent Relationship": "Member",
+                                        "Parallel Aware": false,
+                                        "Async Capable": false,
+                                        "Join Type": "Inner",
+                                        "Startup Cost": 0.28,
+                                        "Total Cost": 8.31,
+                                        "Plan Rows": 1,
+                                        "Plan Width": 48,
+                                        "Inner Unique": false,
+                                        "Plans": [
+                                          {
+                                            "Node Type": "Seq Scan",
+                                            "Parent Relationship": "Outer",
+                                            "Parallel Aware": false,
+                                            "Async Capable": false,
+                                            "Relation Name": "iam_temporary_role_grants",
+                                            "Alias": "grants",
+                                            "Startup Cost": 0.00,
+                                            "Total Cost": 0.00,
+                                            "Plan Rows": 1,
+                                            "Plan Width": 32,
+                                            "Filter": "((starts_at \u003c= '2026-09-04 04:59:49.368+00'::timestamp with time zone) AND (ends_at \u003e '2026-09-04 04:59:49.368+00'::timestamp with time zone) AND (tenant_id = 91001) AND (principal_id = '35689146357907456'::bigint))"
+                                          },
+                                          {
+                                            "Node Type": "Index Only Scan",
+                                            "Parent Relationship": "Inner",
+                                            "Parallel Aware": false,
+                                            "Async Capable": false,
+                                            "Scan Direction": "Forward",
+                                            "Index Name": "idx_iam_tenant_members_status",
+                                            "Relation Name": "iam_tenant_members",
+                                            "Alias": "tm_1",
+                                            "Startup Cost": 0.28,
+                                            "Total Cost": 8.30,
+                                            "Plan Rows": 1,
+                                            "Plan Width": 16,
+                                            "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text) AND (principal_id = '35689146357907456'::bigint))"
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "Node Type": "Nested Loop",
+                                        "Parent Relationship": "Member",
+                                        "Parallel Aware": false,
+                                        "Async Capable": false,
+                                        "Join Type": "Inner",
+                                        "Startup Cost": 0.28,
+                                        "Total Cost": 8.34,
+                                        "Plan Rows": 1,
+                                        "Plan Width": 48,
+                                        "Inner Unique": false,
+                                        "Plans": [
+                                          {
+                                            "Node Type": "Nested Loop",
+                                            "Parent Relationship": "Outer",
+                                            "Parallel Aware": false,
+                                            "Async Capable": false,
+                                            "Join Type": "Inner",
+                                            "Startup Cost": 0.00,
+                                            "Total Cost": 0.03,
+                                            "Plan Rows": 1,
+                                            "Plan Width": 32,
+                                            "Inner Unique": true,
+                                            "Join Filter": "(g.id = gm.group_id)",
+                                            "Plans": [
+                                              {
+                                                "Node Type": "Nested Loop",
+                                                "Parent Relationship": "Outer",
+                                                "Parallel Aware": false,
+                                                "Async Capable": false,
+                                                "Join Type": "Inner",
+                                                "Startup Cost": 0.00,
+                                                "Total Cost": 0.01,
+                                                "Plan Rows": 1,
+                                                "Plan Width": 32,
+                                                "Inner Unique": true,
+                                                "Join Filter": "(b.group_id = g.id)",
+                                                "Plans": [
+                                                  {
+                                                    "Node Type": "Seq Scan",
+                                                    "Parent Relationship": "Outer",
+                                                    "Parallel Aware": false,
+                                                    "Async Capable": false,
+                                                    "Relation Name": "iam_group_role_bindings",
+                                                    "Alias": "b",
+                                                    "Startup Cost": 0.00,
+                                                    "Total Cost": 0.00,
+                                                    "Plan Rows": 1,
+                                                    "Plan Width": 24,
+                                                    "Filter": "(tenant_id = 91001)"
+                                                  },
+                                                  {
+                                                    "Node Type": "Seq Scan",
+                                                    "Parent Relationship": "Inner",
+                                                    "Parallel Aware": false,
+                                                    "Async Capable": false,
+                                                    "Relation Name": "iam_groups",
+                                                    "Alias": "g",
+                                                    "Startup Cost": 0.00,
+                                                    "Total Cost": 0.00,
+                                                    "Plan Rows": 1,
+                                                    "Plan Width": 16,
+                                                    "Filter": "((tenant_id = 91001) AND ((status)::text = 'active'::text COLLATE \"C\") AND ((group_type)::text = 'static'::text))"
+                                                  }
+                                                ]
+                                              },
+                                              {
+                                                "Node Type": "Seq Scan",
+                                                "Parent Relationship": "Inner",
+                                                "Parallel Aware": false,
+                                                "Async Capable": false,
+                                                "Relation Name": "iam_group_members",
+                                                "Alias": "gm",
+                                                "Startup Cost": 0.00,
+                                                "Total Cost": 0.00,
+                                                "Plan Rows": 1,
+                                                "Plan Width": 24,
+                                                "Filter": "(((starts_at IS NULL) OR (starts_at \u003c= '2026-09-04 04:59:49.368+00'::timestamp with time zone)) AND ((ends_at IS NULL) OR (ends_at \u003e '2026-09-04 04:59:49.368+00'::timestamp with time zone)) AND (tenant_id = 91001) AND (principal_id = '35689146357907456'::bigint))"
+                                              }
+                                            ]
+                                          },
+                                          {
+                                            "Node Type": "Index Only Scan",
+                                            "Parent Relationship": "Inner",
+                                            "Parallel Aware": false,
+                                            "Async Capable": false,
+                                            "Scan Direction": "Forward",
+                                            "Index Name": "idx_iam_tenant_members_status",
+                                            "Relation Name": "iam_tenant_members",
+                                            "Alias": "tm_2",
+                                            "Startup Cost": 0.28,
+                                            "Total Cost": 8.30,
+                                            "Plan Rows": 1,
+                                            "Plan Width": 16,
+                                            "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text COLLATE \"C\") AND (principal_id = '35689146357907456'::bigint))"
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "Node Type": "Nested Loop",
+                                        "Parent Relationship": "Member",
+                                        "Parallel Aware": false,
+                                        "Async Capable": false,
+                                        "Join Type": "Inner",
+                                        "Startup Cost": 0.28,
+                                        "Total Cost": 8.34,
+                                        "Plan Rows": 1,
+                                        "Plan Width": 48,
+                                        "Inner Unique": false,
+                                        "Plans": [
+                                          {
+                                            "Node Type": "Nested Loop",
+                                            "Parent Relationship": "Outer",
+                                            "Parallel Aware": false,
+                                            "Async Capable": false,
+                                            "Join Type": "Inner",
+                                            "Startup Cost": 0.00,
+                                            "Total Cost": 0.03,
+                                            "Plan Rows": 1,
+                                            "Plan Width": 32,
+                                            "Inner Unique": true,
+                                            "Join Filter": "(pos.id = pm.position_id)",
+                                            "Plans": [
+                                              {
+                                                "Node Type": "Nested Loop",
+                                                "Parent Relationship": "Outer",
+                                                "Parallel Aware": false,
+                                                "Async Capable": false,
+                                                "Join Type": "Inner",
+                                                "Startup Cost": 0.00,
+                                                "Total Cost": 0.01,
+                                                "Plan Rows": 1,
+                                                "Plan Width": 32,
+                                                "Inner Unique": true,
+                                                "Join Filter": "(b_1.position_id = pos.id)",
+                                                "Plans": [
+                                                  {
+                                                    "Node Type": "Seq Scan",
+                                                    "Parent Relationship": "Outer",
+                                                    "Parallel Aware": false,
+                                                    "Async Capable": false,
+                                                    "Relation Name": "iam_position_role_bindings",
+                                                    "Alias": "b_1",
+                                                    "Startup Cost": 0.00,
+                                                    "Total Cost": 0.00,
+                                                    "Plan Rows": 1,
+                                                    "Plan Width": 24,
+                                                    "Filter": "(tenant_id = 91001)"
+                                                  },
+                                                  {
+                                                    "Node Type": "Seq Scan",
+                                                    "Parent Relationship": "Inner",
+                                                    "Parallel Aware": false,
+                                                    "Async Capable": false,
+                                                    "Relation Name": "iam_positions",
+                                                    "Alias": "pos",
+                                                    "Startup Cost": 0.00,
+                                                    "Total Cost": 0.00,
+                                                    "Plan Rows": 1,
+                                                    "Plan Width": 16,
+                                                    "Filter": "((tenant_id = 91001) AND ((status)::text = 'active'::text COLLATE \"C\"))"
+                                                  }
+                                                ]
+                                              },
+                                              {
+                                                "Node Type": "Seq Scan",
+                                                "Parent Relationship": "Inner",
+                                                "Parallel Aware": false,
+                                                "Async Capable": false,
+                                                "Relation Name": "iam_position_members",
+                                                "Alias": "pm",
+                                                "Startup Cost": 0.00,
+                                                "Total Cost": 0.00,
+                                                "Plan Rows": 1,
+                                                "Plan Width": 24,
+                                                "Filter": "(((starts_at IS NULL) OR (starts_at \u003c= '2026-09-04 04:59:49.368+00'::timestamp with time zone)) AND ((ends_at IS NULL) OR (ends_at \u003e '2026-09-04 04:59:49.368+00'::timestamp with time zone)) AND (tenant_id = 91001) AND (principal_id = '35689146357907456'::bigint))"
+                                              }
+                                            ]
+                                          },
+                                          {
+                                            "Node Type": "Index Only Scan",
+                                            "Parent Relationship": "Inner",
+                                            "Parallel Aware": false,
+                                            "Async Capable": false,
+                                            "Scan Direction": "Forward",
+                                            "Index Name": "idx_iam_tenant_members_status",
+                                            "Relation Name": "iam_tenant_members",
+                                            "Alias": "tm_3",
+                                            "Startup Cost": 0.28,
+                                            "Total Cost": 8.30,
+                                            "Plan Rows": 1,
+                                            "Plan Width": 16,
+                                            "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text COLLATE \"C\") AND (principal_id = '35689146357907456'::bigint))"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "Node Type": "Seq Scan",
+                            "Parent Relationship": "Inner",
+                            "Parallel Aware": false,
+                            "Async Capable": false,
+                            "Relation Name": "iam_role_data_scopes",
+                            "Alias": "ds",
+                            "Startup Cost": 0.00,
+                            "Total Cost": 0.00,
+                            "Plan Rows": 1,
+                            "Plan Width": 98,
+                            "Filter": "(tenant_id = 91001)"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "path": "scim_bulk",
+          "sql_template": "SELECT resource.*, principal.login_name, principal.email, principal.display_name, principal.status AS principal_status, member.status AS membership_status FROM iam_scim_resources AS resource JOIN iam_scim_directories AS directory ON directory.id = resource.directory_id JOIN iam_principals AS principal ON principal.id = resource.resource_id JOIN iam_tenant_members AS member ON member.tenant_id = directory.tenant_id AND member.principal_id = resource.resource_id WHERE (resource.directory_id = ? AND resource.resource_type = ?) AND resource.deleted_at IS NULL AND resource.resource_id = ? LIMIT ?",
+          "fingerprint": "8d8aefe07a27011dd3999145d98d8f0285319a9879c8a32b6e8b93977c10adc7",
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 0.84,
+                "Total Cost": 32.49,
+                "Plan Rows": 1,
+                "Plan Width": 128,
+                "Plans": [
+                  {
+                    "Node Type": "Nested Loop",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Join Type": "Inner",
+                    "Startup Cost": 0.84,
+                    "Total Cost": 32.49,
+                    "Plan Rows": 1,
+                    "Plan Width": 128,
+                    "Inner Unique": true,
+                    "Plans": [
+                      {
+                        "Node Type": "Nested Loop",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Join Type": "Inner",
+                        "Startup Cost": 0.56,
+                        "Total Cost": 16.17,
+                        "Plan Rows": 1,
+                        "Plan Width": 129,
+                        "Inner Unique": false,
+                        "Plans": [
+                          {
+                            "Node Type": "Nested Loop",
+                            "Parent Relationship": "Outer",
+                            "Parallel Aware": false,
+                            "Async Capable": false,
+                            "Join Type": "Inner",
+                            "Startup Cost": 0.28,
+                            "Total Cost": 7.86,
+                            "Plan Rows": 1,
+                            "Plan Width": 74,
+                            "Inner Unique": false,
+                            "Plans": [
+                              {
+                                "Node Type": "Index Scan",
+                                "Parent Relationship": "Outer",
+                                "Parallel Aware": false,
+                                "Async Capable": false,
+                                "Scan Direction": "Forward",
+                                "Index Name": "uq_iam_scim_resources_external",
+                                "Relation Name": "iam_scim_resources",
+                                "Alias": "resource",
+                                "Startup Cost": 0.28,
+                                "Total Cost": 6.05,
+                                "Plan Rows": 1,
+                                "Plan Width": 66,
+                                "Index Cond": "((directory_id = '35689147112882176'::bigint) AND ((resource_type)::text = 'User'::text))",
+                                "Filter": "((deleted_at IS NULL) AND (resource_id = '8900000000000001'::bigint))"
+                              },
+                              {
+                                "Node Type": "Seq Scan",
+                                "Parent Relationship": "Inner",
+                                "Parallel Aware": false,
+                                "Async Capable": false,
+                                "Relation Name": "iam_scim_directories",
+                                "Alias": "directory",
+                                "Startup Cost": 0.00,
+                                "Total Cost": 1.80,
+                                "Plan Rows": 1,
+                                "Plan Width": 16,
+                                "Filter": "(id = '35689147112882176'::bigint)"
+                              }
+                            ]
+                          },
+                          {
+                            "Node Type": "Index Scan",
+                            "Parent Relationship": "Inner",
+                            "Parallel Aware": false,
+                            "Async Capable": false,
+                            "Scan Direction": "Forward",
+                            "Index Name": "iam_principals_pkey",
+                            "Relation Name": "iam_principals",
+                            "Alias": "principal",
+                            "Startup Cost": 0.28,
+                            "Total Cost": 8.30,
+                            "Plan Rows": 1,
+                            "Plan Width": 63,
+                            "Index Cond": "(id = '8900000000000001'::bigint)"
+                          }
+                        ]
+                      },
+                      {
+                        "Node Type": "Index Scan",
+                        "Parent Relationship": "Inner",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Scan Direction": "Forward",
+                        "Index Name": "iam_tenant_members_pkey",
+                        "Relation Name": "iam_tenant_members",
+                        "Alias": "member",
+                        "Startup Cost": 0.28,
+                        "Total Cost": 8.30,
+                        "Plan Rows": 1,
+                        "Plan Width": 23,
+                        "Index Cond": "((tenant_id = directory.tenant_id) AND (principal_id = '8900000000000001'::bigint))"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "path": "session_lookup",
+          "sql_template": "SELECT principal.id, principal.login_name, principal.email, principal.email_verified, principal.activation_required, principal.display_name, principal.status, principal.created_at, principal.updated_at, COALESCE(credential.credential_version, ?) AS credential_version FROM iam_principals AS principal LEFT JOIN iam_credentials AS credential ON credential.principal_id = principal.id WHERE principal.id = ? AND principal.status = ? AND principal.activation_required = false LIMIT ?",
+          "fingerprint": "241ff31314f1b2ba6c8a384706d6b6a0e396675c24b00c4857553f57637ccdea",
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 0.28,
+                "Total Cost": 9.35,
+                "Plan Rows": 1,
+                "Plan Width": 89,
+                "Plans": [
+                  {
+                    "Node Type": "Nested Loop",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Join Type": "Left",
+                    "Startup Cost": 0.28,
+                    "Total Cost": 9.35,
+                    "Plan Rows": 1,
+                    "Plan Width": 89,
+                    "Inner Unique": true,
+                    "Plans": [
+                      {
+                        "Node Type": "Index Scan",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Scan Direction": "Forward",
+                        "Index Name": "iam_principals_pkey",
+                        "Relation Name": "iam_principals",
+                        "Alias": "principal",
+                        "Startup Cost": 0.28,
+                        "Total Cost": 8.30,
+                        "Plan Rows": 1,
+                        "Plan Width": 81,
+                        "Index Cond": "(id = '35689146357907456'::bigint)",
+                        "Filter": "((NOT activation_required) AND ((status)::text = 'active'::text))"
+                      },
+                      {
+                        "Node Type": "Seq Scan",
+                        "Parent Relationship": "Inner",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Relation Name": "iam_credentials",
+                        "Alias": "credential",
+                        "Startup Cost": 0.00,
+                        "Total Cost": 1.04,
+                        "Plan Rows": 1,
+                        "Plan Width": 16,
+                        "Filter": "(principal_id = '35689146357907456'::bigint)"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "path": "session_lookup",
+          "sql_template": "SELECT * FROM \"iam_sessions\" WHERE \"iam_sessions\".\"id_hash\" = ? AND \"iam_sessions\".\"revoked_at\" IS NULL AND \"iam_sessions\".\"expires_at\" \u003e ? AND \"iam_sessions\".\"absolute_expires_at\" \u003e ? LIMIT ?",
+          "fingerprint": "7f1475753d8236205b311a08541d61f22bd42b5677ea9ed0214767800300b8de",
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 0.28,
+                "Total Cost": 8.30,
+                "Plan Rows": 1,
+                "Plan Width": 131,
+                "Plans": [
+                  {
+                    "Node Type": "Index Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Scan Direction": "Forward",
+                    "Index Name": "iam_sessions_pkey",
+                    "Relation Name": "iam_sessions",
+                    "Alias": "iam_sessions",
+                    "Startup Cost": 0.28,
+                    "Total Cost": 8.30,
+                    "Plan Rows": 1,
+                    "Plan Width": 131,
+                    "Index Cond": "(id_hash = 'ecfce3e51de31a4d818815422816be3415e8aed7c972ab888d9730fff6d2a2b2'::bpchar)",
+                    "Filter": "((revoked_at IS NULL) AND (expires_at \u003e '2026-09-04 04:59:49.372+00'::timestamp with time zone) AND (absolute_expires_at \u003e '2026-09-04 04:59:49.372+00'::timestamp with time zone))"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "path": "session_lookup",
+          "sql_template": "UPDATE \"iam_sessions\" SET \"expires_at\"=CASE WHEN absolute_expires_at \u003c ? THEN absolute_expires_at ELSE ? END,\"last_seen_at\"=? WHERE (id_hash = ? AND revoked_at IS NULL) AND (expires_at \u003e ? AND absolute_expires_at \u003e ? AND last_seen_at \u003c= ?)",
+          "fingerprint": "d03e6b50a64c3ec3101426fb5b83d44a82de7eacac4ce3ef5f4b6c963fb26dc2",
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "ModifyTable",
+                "Operation": "Update",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Relation Name": "iam_sessions",
+                "Alias": "iam_sessions",
+                "Startup Cost": 0.28,
+                "Total Cost": 8.31,
+                "Plan Rows": 0,
+                "Plan Width": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Index Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Scan Direction": "Forward",
+                    "Index Name": "iam_sessions_pkey",
+                    "Relation Name": "iam_sessions",
+                    "Alias": "iam_sessions",
+                    "Startup Cost": 0.28,
+                    "Total Cost": 8.31,
+                    "Plan Rows": 1,
+                    "Plan Width": 22,
+                    "Index Cond": "(id_hash = 'ecfce3e51de31a4d818815422816be3415e8aed7c972ab888d9730fff6d2a2b2'::bpchar)",
+                    "Filter": "((revoked_at IS NULL) AND (expires_at \u003e '2026-09-04 04:59:49.372+00'::timestamp with time zone) AND (absolute_expires_at \u003e '2026-09-04 04:59:49.372+00'::timestamp with time zone) AND (last_seen_at \u003c= '2026-09-04 04:59:49.372+00'::timestamp with time zone))"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "benchmarks": {
+        "audit_append": {
+          "samples_ns_per_op": [
+            308131,
+            302371,
+            309438,
+            305306,
+            312572
+          ],
+          "samples_bytes_per_op": [
+            57441,
+            57435,
+            57441,
+            57443,
+            57443
+          ],
+          "samples_allocs_per_op": [
+            551,
+            551,
+            551,
+            551,
+            551
+          ],
+          "median_ns_per_op": 308131,
+          "threshold_ns_per_op": 1000000
+        },
+        "authorization": {
+          "samples_ns_per_op": [
+            263932,
+            256488,
+            258304,
+            258463,
+            256436
+          ],
+          "samples_bytes_per_op": [
+            67843,
+            67682,
+            67727,
+            67787,
+            67764
+          ],
+          "samples_allocs_per_op": [
+            539,
+            539,
+            539,
+            539,
+            539
+          ],
+          "median_ns_per_op": 258304,
+          "threshold_ns_per_op": 800000
+        },
+        "scim_bulk_25": {
+          "samples_ns_per_op": [
+            2538767,
+            2553897,
+            2633175,
+            2562225,
+            2623545
+          ],
+          "samples_bytes_per_op": [
+            559589,
+            560535,
+            560211,
+            560884,
+            560707
+          ],
+          "samples_allocs_per_op": [
+            5592,
+            5592,
+            5591,
+            5592,
+            5592
+          ],
+          "median_ns_per_op": 2562225,
+          "threshold_ns_per_op": 8000000
+        },
+        "session_lookup": {
+          "samples_ns_per_op": [
+            381342,
+            384035,
+            381370,
+            378342,
+            378153
+          ],
+          "samples_bytes_per_op": [
+            314968,
+            314986,
+            315193,
+            314910,
+            315103
+          ],
+          "samples_allocs_per_op": [
+            2334,
+            2334,
+            2334,
+            2334,
+            2334
+          ],
+          "median_ns_per_op": 381342,
+          "threshold_ns_per_op": 2000000
+        }
+      }
+    }
+  }
+}

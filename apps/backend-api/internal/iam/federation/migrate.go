@@ -1,6 +1,8 @@
 // Package federation owns external identity providers, identity links, and SAML data.
 package federation
 
+//go:generate go run ./dbgen
+
 import (
 	"embed"
 
@@ -9,9 +11,6 @@ import (
 )
 
 const Name = "federation"
-
-// Module owns OIDC and SAML federation persistence.
-type Module struct{}
 
 func (*Module) ModuleName() string { return Name }
 

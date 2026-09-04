@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/extension/authz"
@@ -42,13 +43,12 @@ func TestModuleRequiresItsConstructionCollaborators(t *testing.T) {
 
 	runtime := appenv.NewRuntime(appenv.NewIdentity("identity-test", "1"))
 	registrar := identityTestRegistrar()
-	guard := &stubAdministratorGuard{}
-	assert.Panics(t, func() { NewModule(nil, registrar, guard) })
-	assert.Panics(t, func() { NewModule(runtime, nil, guard) })
-	assert.Panics(t, func() { NewModule(runtime, registrar, nil) })
+	assert.Panics(t, func() { NewModule(nil, registrar) })
+	assert.Panics(t, func() { NewModule(runtime, nil) })
 	assert.Panics(t, func() {
-		NewModule(runtime, authz.NewAuthenticationOnlyRegistrar(identityTokenVerifier{}), guard)
+		NewModule(runtime, authz.NewAuthenticationOnlyRegistrar(identityTokenVerifier{}))
 	})
+	assert.Panics(t, func() { NewModule(runtime, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry())) })
 }
 
 func TestModuleIdentityDependenciesAndReadinessBeforeInitialize(t *testing.T) {
@@ -57,10 +57,9 @@ func TestModuleIdentityDependenciesAndReadinessBeforeInitialize(t *testing.T) {
 	instance := NewModule(
 		appenv.NewRuntime(appenv.NewIdentity("identity-test", "1")),
 		identityTestRegistrar(),
-		&stubAdministratorGuard{},
 	)
 	assert.Equal(t, Name, instance.ModuleName())
-	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name}, instance.ModuleDependencies())
+	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, core.Name}, instance.ModuleDependencies())
 	assert.ErrorIs(t, instance.CheckHealth(t.Context()), ErrUnavailable)
 
 	_, api := humatest.New(t)
@@ -70,7 +69,7 @@ func TestModuleIdentityDependenciesAndReadinessBeforeInitialize(t *testing.T) {
 
 func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
 	harness := newIdentityHarness(t, "sl_")
-	instance := NewModule(harness.runtime, identityTestRegistrar(), harness.guard)
+	instance := NewModule(harness.runtime, identityTestRegistrar())
 
 	registry := module.NewRegistry()
 	require.NoError(t, registry.Register(
@@ -83,6 +82,9 @@ func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
 			return module.Provide[audit.Appender](services, audit.Appender(
 				func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil },
 			))
+		}},
+		&identityDependencyProvider{name: core.Name, provide: func(services *module.Services) error {
+			return module.Provide[core.AdministratorGuard](services, harness.guard)
 		}},
 		instance,
 	))
@@ -130,7 +132,6 @@ func TestModuleReportsMissingWiring(t *testing.T) {
 	instance := NewModule(
 		appenv.NewRuntime(appenv.NewIdentity("identity-test", "1")),
 		identityTestRegistrar(),
-		&stubAdministratorGuard{},
 	)
 
 	services := module.NewServices()
@@ -141,6 +142,14 @@ func TestModuleReportsMissingWiring(t *testing.T) {
 	require.NoError(t, module.Provide[guid.Source](services, newIdentityTestIDs(1)))
 	require.NoError(t, services.Seal())
 	assert.ErrorContains(t, instance.InjectServices(services), "resolve identity audit appender")
+
+	services = module.NewServices()
+	require.NoError(t, module.Provide[guid.Source](services, newIdentityTestIDs(1)))
+	require.NoError(t, module.Provide[audit.Appender](services, audit.Appender(
+		func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil },
+	)))
+	require.NoError(t, services.Seal())
+	assert.ErrorContains(t, instance.InjectServices(services), "resolve identity administrator guard")
 
 	providers := module.NewServices()
 	require.NoError(t, instance.ProvideServices(providers))

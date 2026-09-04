@@ -1,5 +1,7 @@
 package organization
 
+//go:generate go run ./dbgen
+
 import (
 	"embed"
 
@@ -8,11 +10,6 @@ import (
 )
 
 const Name = "organization"
-
-// Module owns tenants, departments, positions, groups, and invitations.
-type Module struct{}
-
-func (*Module) ModuleName() string { return Name }
 
 //go:embed sql
 var migrationsFS embed.FS

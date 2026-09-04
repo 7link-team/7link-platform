@@ -2,12 +2,13 @@ package core
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	goosex "7link.com/platform/pkg/extension/goose"
@@ -67,16 +68,16 @@ func initializeRepositoryDatabase(t *testing.T, dsn, prefix string) {
 	require.NoError(t, err)
 	sources := []goosex.Source{
 		(&Module{}).MigrationSource(),
-		(&organization.Module{}).MigrationSource(),
+		organizationTestMigrationSource(t),
 	}
 	for _, source := range sources {
 		source.Prefix = prefix
 		require.NoError(t, goosex.Migrate(t.Context(), sqlDB, source, db.Dialector.Name()))
 	}
-	// The identity module owns iam_principals and imports this package for the
-	// administrator guard, so its migration source cannot be reached from an
-	// in-package test. Core reads principals through a raw table name and holds
-	// no constraint against it; the real schema is verified in tests/migration.
+	// Identity owns iam_principals and imports core for the administrator guard,
+	// so its migration source cannot be reached from an in-package core test.
+	// Core reads principals through a raw table name and holds no constraint
+	// against it; the real schema is verified in tests/migration.
 	require.NoError(t, db.Exec(
 		"CREATE TABLE "+prefix+"iam_principals ("+
 			"id BIGINT NOT NULL PRIMARY KEY, login_name TEXT NOT NULL, email TEXT NOT NULL DEFAULT '', "+
@@ -86,6 +87,15 @@ func initializeRepositoryDatabase(t *testing.T, dsn, prefix string) {
 			"CONSTRAINT "+prefix+"uq_iam_principals_login UNIQUE (login_name))",
 	).Error)
 	require.NoError(t, sqlDB.Close())
+}
+
+func organizationTestMigrationSource(t *testing.T) goosex.Source {
+	t.Helper()
+	// Importing the organization root here would cycle through its core capabilities.
+	_, filename, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	organizationRoot := filepath.Join(filepath.Dir(filename), "..", "organization")
+	return goosex.Source{FS: os.DirFS(organizationRoot), TableName: "goose_organization"}
 }
 
 func seedTenantAndPrincipal(t *testing.T, db *gorm.DB, prefix string, tenantID, principalID guid.ID) {

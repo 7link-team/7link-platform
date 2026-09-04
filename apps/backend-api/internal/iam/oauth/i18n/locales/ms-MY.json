@@ -1,0 +1,11 @@
+{
+  "invalid_client_configuration": "Kelayakan atau konfigurasi klien OAuth tidak sah. Betulkan konfigurasi klien dan cuba lagi.",
+  "client_not_found": "Klien OAuth yang diminta tidak ditemui dalam penyewa ini. Semak pengecam klien dan penyewa, kemudian cuba lagi.",
+  "invalid_request": "Permintaan OAuth kehilangan parameter wajib atau mengandungi nilai yang tidak sah. Betulkan permintaan dan mulakan semula aliran.",
+  "invalid_grant": "Geran kebenaran tidak sah, telah tamat tempoh, dibatalkan atau tidak sepadan dengan klien. Mulakan aliran kebenaran baharu.",
+  "invalid_client": "Pengesahan klien OAuth gagal. Semak pengecam dan kelayakan klien, kemudian cuba lagi.",
+  "invalid_token": "Token akses tidak sah, telah tamat tempoh atau dibatalkan. Dapatkan token baharu sebelum mencuba lagi.",
+  "insufficient_scope": "Token akses tidak mempunyai skop openid. Minta skop yang diperlukan dan cuba lagi.",
+  "unsupported_token_type": "Titik akhir ini hanya membatalkan token muat semula. Gunakan token_type_hint=refresh_token.",
+  "server_error": "Pelayan kebenaran tidak dapat menyelesaikan permintaan. Cuba lagi kemudian; hubungi pentadbir jika masalah berterusan."
+}

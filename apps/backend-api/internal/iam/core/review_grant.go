@@ -16,13 +16,61 @@ func NewRoleGrantStore(repository *Repository, guard AdministratorGuard) RoleGra
 	if repository == nil || guard == nil {
 		panic("IAM role grant store requires repository and administrator guard")
 	}
+	removeGroup := repository.removeDirectoryMembershipOn("group")
+	removePosition := repository.removeDirectoryMembershipOn("position")
 	return RoleGrantStore{
 		Grant:                    repository.grantTemporaryRoleOn,
 		Revoke:                   repository.revokeTemporaryRoleOn,
 		RemovePermanent:          repository.removePermanentRoleOn(guard),
-		RemoveGroupMembership:    repository.removeDirectoryMembershipOn("group"),
-		RemovePositionMembership: repository.removeDirectoryMembershipOn("position"),
-		RemoveEntityRoleBinding:  repository.deleteEntityRoleBindingOn,
+		RemoveGroupMembership:    protectDirectoryRemoval(guard, removeGroup),
+		RemovePositionMembership: protectDirectoryRemoval(guard, removePosition),
+		RemoveEntityRoleBinding:  protectEntityRoleRemoval(guard, repository.deleteEntityRoleBindingOn),
+	}
+}
+
+func protectDirectoryRemoval(
+	guard AdministratorGuard,
+	remove func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID) (bool, error),
+) func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID) (bool, error) {
+	return func(ctx context.Context, db *gorm.DB, tenantID, directoryID, principalID guid.ID) (bool, error) {
+		if db == nil || tenantID.Zero() || directoryID.Zero() || principalID.Zero() {
+			return false, fmt.Errorf("remove directory membership: %w", ErrInvalidArgument)
+		}
+		verify, err := guard.Protect(ctx, db, tenantID)
+		if err != nil {
+			return false, err
+		}
+		changed, err := remove(ctx, db, tenantID, directoryID, principalID)
+		if err != nil || !changed {
+			return changed, err
+		}
+		if err := verify(); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+}
+
+func protectEntityRoleRemoval(
+	guard AdministratorGuard,
+	remove func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, guid.ID) (bool, error),
+) func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, guid.ID) (bool, error) {
+	return func(ctx context.Context, db *gorm.DB, tenantID, entityID, roleID, principalID guid.ID) (bool, error) {
+		if db == nil || tenantID.Zero() || entityID.Zero() || roleID.Zero() || principalID.Zero() {
+			return false, fmt.Errorf("remove entity role binding: %w", ErrInvalidArgument)
+		}
+		verify, err := guard.Protect(ctx, db, tenantID)
+		if err != nil {
+			return false, err
+		}
+		changed, err := remove(ctx, db, tenantID, entityID, roleID, principalID)
+		if err != nil || !changed {
+			return changed, err
+		}
+		if err := verify(); err != nil {
+			return false, err
+		}
+		return true, nil
 	}
 }
 

@@ -6,7 +6,15 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
+
+type gormProbe struct {
+	ID     int64 `gorm:"primaryKey"`
+	Status string
+}
 
 func TestOpenSQLiteEnablesForeignKeys(t *testing.T) {
 	db := OpenSQLite(t)
@@ -39,6 +47,40 @@ CREATE TABLE children (
 
 	_, err = db.ExecContext(t.Context(), `INSERT INTO children (id, parent_id) VALUES (1, 404)`)
 	require.Error(t, err)
+}
+
+func TestOpenMySQLWithDSNAllowsAnotherPool(t *testing.T) {
+	db, dsn := OpenMySQLWithDSN(t)
+	require.NoError(t, db.PingContext(t.Context()))
+
+	other, err := sql.Open("mysql", dsn)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, other.Close()) })
+	require.NoError(t, other.PingContext(t.Context()))
+	_, err = other.ExecContext(t.Context(), "CREATE TABLE tcp_probe (id BIGINT PRIMARY KEY)")
+	require.NoError(t, err)
+	_, err = db.ExecContext(t.Context(), "INSERT INTO tcp_probe (id) VALUES (1)")
+	require.NoError(t, err)
+	var count int
+	require.NoError(t, other.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM tcp_probe").Scan(&count))
+	require.Equal(t, 1, count)
+
+	gormDB, err := gorm.Open(mysql.New(mysql.Config{
+		Conn: other, SkipInitializeWithVersion: true,
+	}), &gorm.Config{DisableAutomaticPing: true})
+	require.NoError(t, err)
+	require.NoError(t, gormDB.Exec("CREATE TABLE gorm_probe (id BIGINT PRIMARY KEY, status VARCHAR(16) NOT NULL)").Error)
+	require.NoError(t, gormDB.Transaction(func(tx *gorm.DB) error {
+		result := tx.Table("gorm_probe").Clauses(clause.OnConflict{DoNothing: true}).Create(&gormProbe{
+			ID: 1, Status: "active",
+		})
+		require.NoError(t, result.Error)
+		require.Equal(t, int64(1), result.RowsAffected)
+		var status string
+		require.NoError(t, tx.Table("gorm_probe").Select("status").Where("id = ?", 1).Scan(&status).Error)
+		require.Equal(t, "active", status)
+		return nil
+	}))
 }
 
 func TestPostgresPortConflictClassification(t *testing.T) {

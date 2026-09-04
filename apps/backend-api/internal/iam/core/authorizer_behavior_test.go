@@ -1,8 +1,10 @@
 package core
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,6 +13,79 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestAuthorizerConcurrentTenantDecisionsRemainIsolated(t *testing.T) {
+	harness := newCoreServiceHarness(t)
+	tenantA, tenantB := guid.ID(1), guid.ID(2)
+	principalA, principalB := guid.ID(11), guid.ID(22)
+	harness.seedMember(t, tenantA, principalA, MemberActive)
+	harness.seedMember(t, tenantB, principalB, MemberActive)
+	_, err := harness.service.PutTenantMember(
+		t.Context(), tenantA, principalB, "Principal B", "principal-b@example.test", 0, MemberActive,
+	)
+	require.NoError(t, err)
+	_, err = harness.service.PutTenantMember(
+		t.Context(), tenantB, principalA, "Principal A", "principal-a@example.test", 0, MemberActive,
+	)
+	require.NoError(t, err)
+
+	roleA, err := harness.service.CreateRole(t.Context(), tenantA, "Tenant A reader", "")
+	require.NoError(t, err)
+	_, err = harness.service.GrantPermission(t.Context(), tenantA, roleA.ID, "role_view")
+	require.NoError(t, err)
+	_, err = harness.service.AddMember(t.Context(), tenantA, roleA.ID, principalA)
+	require.NoError(t, err)
+
+	roleB, err := harness.service.CreateRole(t.Context(), tenantB, "Tenant B reader", "")
+	require.NoError(t, err)
+	_, err = harness.service.GrantPermission(t.Context(), tenantB, roleB.ID, "menu_view")
+	require.NoError(t, err)
+	_, err = harness.service.AddMember(t.Context(), tenantB, roleB.ID, principalB)
+	require.NoError(t, err)
+
+	cases := []struct {
+		tenant     guid.ID
+		principal  guid.ID
+		permission string
+		allowed    bool
+	}{
+		{tenant: tenantA, principal: principalA, permission: "role_view", allowed: true},
+		{tenant: tenantA, principal: principalB, permission: "role_view", allowed: false},
+		{tenant: tenantB, principal: principalB, permission: "menu_view", allowed: true},
+		{tenant: tenantB, principal: principalA, permission: "menu_view", allowed: false},
+	}
+	type result struct {
+		caseIndex int
+		allowed   bool
+		err       error
+	}
+	const workers = 32
+	start := make(chan struct{})
+	results := make(chan result, workers)
+	var wait sync.WaitGroup
+	for worker := range workers {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			caseIndex := worker % len(cases)
+			test := cases[caseIndex]
+			allowed, checkErr := harness.authorizer.Check(
+				context.Background(), test.tenant, test.permission, test.principal,
+			)
+			results <- result{caseIndex: caseIndex, allowed: allowed, err: checkErr}
+		}()
+	}
+	close(start)
+	wait.Wait()
+	close(results)
+	for result := range results {
+		test := cases[result.caseIndex]
+		name := fmt.Sprintf("tenant=%s principal=%s permission=%s", test.tenant, test.principal, test.permission)
+		require.NoError(t, result.err, name)
+		assert.Equal(t, test.allowed, result.allowed, name)
+	}
+}
 
 func TestAuthorizerEntityInheritanceExplicitDenyAndInspection(t *testing.T) {
 	harness := newCoreServiceHarness(t)

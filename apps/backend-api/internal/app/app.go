@@ -12,6 +12,7 @@ import (
 
 	"7link.com/platform/pkg/appenv"
 	configx "7link.com/platform/pkg/config"
+	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/module"
 	"google.golang.org/grpc"
 )
@@ -27,6 +28,10 @@ type App struct {
 	// bootstrap registers the bill of materials; the registry owns module phase
 	// state while App orchestrates migration between wiring and initialization.
 	modules *module.Registry
+
+	// authzRegistrar is the runtime guard registrar shared by every IAM module.
+	// Declaration-only composition uses a separate local registrar.
+	authzRegistrar *authz.Registrar
 
 	// ctx is the application's root context; cancel tears down background workers
 	// during shutdown. Set in Run.

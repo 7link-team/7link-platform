@@ -37,8 +37,12 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/internal/iam/audit \
 	7link.com/platform/internal/iam/authn \
 	7link.com/platform/internal/iam/core \
+	7link.com/platform/internal/iam/federation \
+	7link.com/platform/internal/iam/governance \
 	7link.com/platform/internal/iam/identity \
+	7link.com/platform/internal/iam/oauth \
 	7link.com/platform/internal/iam/organization \
+	7link.com/platform/internal/iam/provisioning \
 	7link.com/platform/internal/todo \
 	7link.com/platform/pkg/extension/authn \
 	7link.com/platform/pkg/extension/authz \
@@ -50,7 +54,7 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/pkg/i18n \
 	7link.com/platform/pkg/query
 
-.PHONY: build ci dev fmt-check generate generate-docs golangci iam-preflight lint test test-coverage test-integration test-all test-mysql8 test-mysql8-run
+.PHONY: build ci dev fmt-check generate generate-docs golangci iam-preflight lint test test-coverage test-integration test-performance test-all test-mysql8 test-mysql8-run
 
 build:
 	$(MKDIR_OUTPUT)
@@ -139,5 +143,8 @@ test-coverage:
 
 test-integration:
 	go -C tests test ./...
+
+test-performance:
+	go -C tests test ./performance -count=1 -v
 
 test-all: test test-integration

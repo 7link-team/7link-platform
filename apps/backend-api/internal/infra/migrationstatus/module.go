@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	Name = "migration-status"
-	Path = "/debug/migrations"
+	Name       = "migration-status"
+	Path       = "/migration-status"
+	LegacyPath = "/debug/migrations"
 )
 
 type Report struct {
@@ -73,25 +74,23 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	if m.inspect == nil {
 		return fmt.Errorf("register migration status: inspector is unavailable")
 	}
-	api.OpenAPI().AddOperation(&huma.Operation{
-		OperationID: "get-migration-status",
-		Method:      http.MethodGet,
-		Path:        Path,
-		Summary:     "Inspect database migrations",
-		Description: "Compares embedded and applied migration versions for every registered module.",
-		Tags:        []string{"Diagnostics"},
-		Responses: map[string]*huma.Response{
-			"200": jsonResponse("Migration status"),
-			"503": jsonResponse("Migration status unavailable"),
-		},
-	})
+	for _, operation := range []*huma.Operation{
+		migrationStatusOperation(Path, "get-migration-status", false),
+		migrationStatusOperation(LegacyPath, "get-legacy-migration-status", true),
+	} {
+		api.OpenAPI().AddOperation(operation)
+	}
 	return nil
 }
 
 // RawHTTPRoutes contributes the migration-status handler, mounted on the
 // server's router.
 func (m *Module) RawHTTPRoutes() []module.RawRoute {
-	return []module.RawRoute{{Method: http.MethodGet, Path: Path, Handler: http.HandlerFunc(m.handle)}}
+	handler := http.HandlerFunc(m.handle)
+	return []module.RawRoute{
+		{Method: http.MethodGet, Path: Path, Handler: handler},
+		{Method: http.MethodGet, Path: LegacyPath, Handler: handler},
+	}
 }
 
 func (m *Module) handle(writer http.ResponseWriter, request *http.Request) {
@@ -116,6 +115,22 @@ func overallState(reports []Report) goosex.State {
 		}
 	}
 	return state
+}
+
+func migrationStatusOperation(path, operationID string, deprecated bool) *huma.Operation {
+	return &huma.Operation{
+		OperationID: operationID,
+		Method:      http.MethodGet,
+		Path:        path,
+		Summary:     "Inspect database migrations",
+		Description: "Compares embedded and applied migration versions for every registered module.",
+		Tags:        []string{"Diagnostics"},
+		Deprecated:  deprecated,
+		Responses: map[string]*huma.Response{
+			"200": jsonResponse("Migration status"),
+			"503": jsonResponse("Migration status unavailable"),
+		},
+	}
 }
 
 func jsonResponse(description string) *huma.Response {

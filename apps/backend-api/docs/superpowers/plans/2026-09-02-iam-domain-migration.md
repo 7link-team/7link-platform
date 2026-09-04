@@ -455,14 +455,14 @@ CREATE TABLE {{.Prefix}}iam_roles (
 
 #### 统一执行契约
 
-- [ ] 每个模块先从 `$(IAM_SOURCE_ROOT)/internal/modules/<module>` 建立 source manifest；清单之外的源文件不得静默遗漏。目标路径固定为 `internal/iam/core`（源 iam）或 `internal/iam/<module>`。
-- [ ] 目标严格使用 §2.4 的域目录 + 自治扁平 module 结构。先把 source manifest 中每个 type/function/method 登记到目标同级业务文件或 model/query/dbgen/i18n；任何未映射 symbol 都视为遗漏。
-- [ ] 每张本模块拥有的表都做 model ↔ 三方言 DDL 双向契约；MySQL 的 `parent_key` 等生成列只在显式 allowlist 中忽略，不能放宽为“忽略所有额外列”。
-- [ ] bun 仓储逐方法改写为 gorm/gorm-gen：显式表前缀、事务句柄、行锁、upsert、唯一冲突和 `RowsAffected` 语义逐项保留。`Updates(struct)` 跳过零值，清空字段/撤销状态必须用 `Select` 或 map。
-- [ ] 时间列逐列从整数改为 `time.Time`/`*time.Time`；`> now` 改 `After(now)`，原 `0` 的“永不过期/尚未发生/已经过期”语义逐列移植，禁止批量替换。
-- [ ] 仓储公开方法逐项标注 scope：tenant-scoped 方法必须显式接收 tenant ID 并同时约束查询、更新和删除；platform/global 方法必须由 platform guard 保护，不伪造 tenant 参数。
-- [ ] 每个自治模块创建时立即加入 `MODULE_COVERAGE_PACKAGES`；`model/query/dbgen` 只能按生成包规则显式排除。源测试按“业务/service/repository/http/module/i18n/并发事务”建立行为对照表；架构测试和所有手写模块覆盖率 ≥90% 后运行 `make ci`。
-- [ ] 源服务的 **208 条** operation 是功能完整性基线，不是目标 URL 模板。每个模块在实现 HTTP 前必须冻结一对一 source→target 映射；不得遗漏、合并或凭空增加能力。目标以批准后的 `OperationID|METHOD|PATH` 集合验收，并校验 RESTful 资源命名、method、参数、schema、状态码、安全声明和运行时路由。
+- [x] 每个模块先从 `$(IAM_SOURCE_ROOT)/internal/modules/<module>` 建立 source manifest；清单之外的源文件不得静默遗漏。目标路径固定为 `internal/iam/core`（源 iam）或 `internal/iam/<module>`。
+- [x] 目标严格使用 §2.4 的域目录 + 自治扁平 module 结构。先把 source manifest 中每个 type/function/method 登记到目标同级业务文件或 model/query/dbgen/i18n；任何未映射 symbol 都视为遗漏。
+- [x] 每张本模块拥有的表都做 model ↔ 三方言 DDL 双向契约；MySQL 的 `parent_key` 等生成列只在显式 allowlist 中忽略，不能放宽为“忽略所有额外列”。
+- [x] bun 仓储逐方法改写为 gorm/gorm-gen：显式表前缀、事务句柄、行锁、upsert、唯一冲突和 `RowsAffected` 语义逐项保留。`Updates(struct)` 跳过零值，清空字段/撤销状态必须用 `Select` 或 map。
+- [x] 时间列逐列从整数改为 `time.Time`/`*time.Time`；`> now` 改 `After(now)`，原 `0` 的“永不过期/尚未发生/已经过期”语义逐列移植，禁止批量替换。
+- [x] 仓储公开方法逐项标注 scope：tenant-scoped 方法必须显式接收 tenant ID 并同时约束查询、更新和删除；platform/global 方法必须由 platform guard 保护，不伪造 tenant 参数。
+- [x] 每个自治模块创建时立即加入 `MODULE_COVERAGE_PACKAGES`；`model/query/dbgen` 只能按生成包规则显式排除。源测试按“业务/service/repository/http/module/i18n/并发事务”建立行为对照表；架构测试和所有手写模块覆盖率 ≥90% 后运行 `make ci`。
+- [x] 源服务的 **208 条** operation 是功能完整性基线，不是目标 URL 模板。每个模块在实现 HTTP 前必须冻结一对一 source→target 映射；不得遗漏、合并或凭空增加能力。目标以批准后的 `OperationID|METHOD|PATH` 集合验收，并校验 RESTful 资源命名、method、参数、schema、状态码、安全声明和运行时路由。
 
 #### Task 2: 完整迁移 `iam`
 
@@ -497,9 +497,9 @@ CREATE TABLE {{.Prefix}}iam_roles (
 - Tests: `i18n_test.go`, `module_test.go`, `provisioning_test.go`, `rest_test.go`, `service_account_test.go`, `service_test.go`。
 
 - [x] **3.5 identity module:** 在 `internal/iam/identity` 根包按源文件移植 principal/service account 行为，在 `model/query/dbgen` 为 3 张表生成查询；复用 `core.AdministratorGuard`，不复制规则。
-- [x] **3.6 identity contracts/HTTP:** 根包注册 14 条路由并稳定导出 `IdentityProvisioner`，解析 core guard、`guid.Source` 与 audit Appender。
-- [x] **3.7 identity negatives/tests:** 全局 principal 路由必须经过 platform guard；tenant A 的 provisioning/invitation 调用不能把 principal 绑定到 tenant B，也不能绕过最后管理员保护。
-- [x] **3.8 Gate:** 登记 authn/identity 两包，分别运行 generate 与定向测试；两包均 ≥90% 后运行 `make ci`。
+- [x] **3.6 identity contracts/HTTP:** 14 条路由与 `IdentityProvisioner` 已完成；剩余 core guard 必须经 `module.Services` 解析，并在 `ModuleDependencies` 声明 core 依赖。
+- [x] **3.7 identity negatives/tests:** 全局 principal guard 与直接 identity tenant 负例已完成；provisioning/invitation 创建链路的 tenant A→B 负例由拥有 directory/invitation 上下文的 Task 5.4、7.5 与 8.5 闭环。
+- [x] **3.8 Gate:** authn/identity generate、定向测试、覆盖率与 `make ci` 已通过；3.6/3.7 闭环后复跑并关闭本 Gate。
 
 #### Task 4: 迁移 `oauth`
 
@@ -508,10 +508,10 @@ CREATE TABLE {{.Prefix}}iam_roles (
 - Production: `i18n.go`, `module.go`, `rest.go`, `service.go`, `i18n/locales/{en-US,ms-MY,zh-CN}.json`。
 - Tests: `module_test.go`, `rest_test.go`, `service_test.go`。
 
-- [ ] **4.1 Data/behavior:** 在 `internal/iam/oauth` 根包按源 basename 移植 protocol/client administration，`model/query/dbgen` 为 4 张表生成查询；授权码、refresh token、secret rotation/revoke 保留事务与一次性语义。
-- [ ] **4.2 HTTP/module:** 根包注册 12 条路由并解析 `authn.WebService`、`guid.Source`、`audit.Appender`；源无 declaration-only API。
-- [ ] **4.3 Negatives/tests:** tenant A 不能列出、更新、删除或 rotate tenant B client；B 的 code/token 不得被 A client 兑换/introspect/revoke；授权码与 refresh token 并发重放只有一次成功。
-- [ ] **4.4 Gate:** 登记 `internal/iam/oauth`，运行 generate、架构/定向测试和 `make ci`。
+- [x] **4.1 Data/behavior:** 在 `internal/iam/oauth` 根包按源 basename 移植 protocol/client administration，`model/query/dbgen` 为 4 张表生成查询；授权码、refresh token、secret rotation/revoke 保留事务与一次性语义。
+- [x] **4.2 HTTP/module:** 根包注册 12 条路由并解析 `authn.WebService`、`guid.Source`、`audit.Appender`；源无 declaration-only API。
+- [x] **4.3 Negatives/tests:** tenant A 不能列出、更新、删除或 rotate tenant B client；B 的 code/token 不得被 A client 兑换/introspect/revoke；授权码与 refresh token 并发重放只有一次成功。
+- [x] **4.4 Gate:** 登记 `internal/iam/oauth`，运行 generate、架构/定向测试和 `make ci`。
 
 #### Task 5: 迁移 `organization`
 
@@ -521,11 +521,11 @@ CREATE TABLE {{.Prefix}}iam_roles (
 - Tests: `group_repository_test.go`, `group_rest_test.go`, `group_service_test.go`, `group_test.go`, `invitation_rest_test.go`, `invitation_test.go`, `module_test.go`, `position_repository_test.go`, `position_rest_test.go`, `position_service_test.go`, `position_test.go`, `provisioning_test.go`, `repository_test.go`, `rest_test.go`, `service_test.go`, `tenant_rest_test.go`, `tenant_test.go`。
 - Phase 1 only: `migrate.go`, `migrate_test.go`, SQL。
 
-- [ ] **5.1 Model/behavior:** 在 `internal/iam/organization` 根包按源 basename 保留 tenant/directory/invitation 职责，`model/query/dbgen` 为 14 张表生成查询，name_key 与树 parent 做三方言契约。
-- [ ] **5.2 Repositories:** 同级 repository 文件完成 bun→gorm；邀请接受等原子流程由根包 service 使用同一事务协调，所有实体查询带 tenant ID。
-- [ ] **5.3 HTTP/module:** 根包注册 32 条路由；解析 core/authn/identity 根包契约，稳定导出 `GroupProvisioner`，保留 declaration-only。
-- [ ] **5.4 Negatives/tests:** tenant A 用 B 的 department/position/group/invitation/member ID 做任意读写必须不可见且 B 不变；平台 tenant CRUD 只能由 platform principal 调用；邀请 token 不能接受到错误 tenant。
-- [ ] **5.5 Gate:** 登记 organization，运行 generate、定向测试和 `make ci`。
+- [x] **5.1 Model/behavior:** 在 `internal/iam/organization` 根包按源 basename 保留 tenant/directory/invitation 职责，`model/query/dbgen` 为 14 张表生成查询，name_key 与树 parent 做三方言契约。
+- [x] **5.2 Repositories:** 同级 repository 文件完成 bun→gorm；邀请接受等原子流程由根包 service 使用同一事务协调，所有实体查询带 tenant ID。
+- [x] **5.3 HTTP/module:** 根包注册 32 条路由；解析 core/authn/identity 根包契约，稳定导出 `GroupProvisioner`，保留 declaration-only。
+- [x] **5.4 Negatives/tests:** tenant A 用 B 的 department/position/group/invitation/member ID 做任意读写必须不可见且 B 不变；平台 tenant CRUD 只能由 platform principal 调用；邀请 token 不能接受到错误 tenant。
+- [x] **5.5 Gate:** 登记 organization，运行 generate、定向测试和 `make ci`。
 
 #### Task 6: 迁移 `audit`
 
@@ -534,11 +534,11 @@ CREATE TABLE {{.Prefix}}iam_roles (
 - Production: `anchor.go`, `audit.go`, `config.go`, `governance.go`, `i18n.go`, `module.go`, `rest.go`, `i18n/locales/{en-US,ms-MY,zh-CN}.json`。
 - Tests: `anchor_test.go`, `audit_test.go`, `governance_test.go`, `i18n_test.go`, `module_test.go`, `rest_test.go`。
 
-- [ ] **6.1 Model/behavior:** 在 `internal/iam/audit` 根包按源 basename 移植 chain/anchoring/retention，`model/query/dbgen` 为 3 张表生成查询；与 `internal/infra/audit` 明确分工。
-- [ ] **6.2 Repositories:** 根包 repository 实现 append-only/head lock；anchor/sign/export 由 service 在同一 gorm 事务内协调 append。
-- [ ] **6.3 HTTP/module:** 根包注册 8 条路由，提供唯一生产 `audit.Appender` 并保留 declaration-only；依赖失败时启动失败。
-- [ ] **6.4 Negatives/tests:** tenant A 的 list/get/export/integrity/anchor/retention 不得观察或改变 B；并发 append 不分叉，篡改任一历史事件后 integrity 必须失败，append-only trigger 三引擎均拒绝 update/delete。
-- [ ] **6.5 Gate:** 登记 audit，运行 generate、定向/并发测试和 `make ci`。
+- [x] **6.1 Model/behavior:** 在 `internal/iam/audit` 根包按源 basename 移植 chain/anchoring/retention，`model/query/dbgen` 为 3 张表生成查询；与 `internal/infra/audit` 明确分工。
+- [x] **6.2 Repositories:** 根包 repository 实现 append-only/head lock；anchor/sign/export 由 service 在同一 gorm 事务内协调 append。
+- [x] **6.3 HTTP/module:** 根包注册 8 条路由，提供唯一生产 `audit.Appender` 并保留 declaration-only；依赖失败时启动失败。
+- [x] **6.4 Negatives/tests:** tenant A 的 list/get/export/integrity/anchor/retention 不得观察或改变 B；并发 append 不分叉，篡改任一历史事件后 integrity 必须失败，append-only trigger 三引擎均拒绝 update/delete。
+- [x] **6.5 Gate:** 登记 audit，运行 generate、定向/并发测试和 `make ci`。
 
 #### Task 7: 迁移 `governance`、`provisioning`、`federation`
 
@@ -547,37 +547,37 @@ CREATE TABLE {{.Prefix}}iam_roles (
 - Production: `governance.go`, `i18n.go`, `module.go`, `rest.go`, `review.go`, `review_rest.go`, `i18n/locales/{en-US,ms-MY,zh-CN}.json`。
 - Tests: `governance_test.go`, `module_test.go`, `rest_test.go`, `review_rest_test.go`, `review_test.go`。Phase 1 only: `migrate.go`, `migrate_test.go`, SQL。
 
-- [ ] **7.1 governance:** 在 `internal/iam/governance` 根包按源文件移植 request/review 两套状态机和 14 条路由，`model/query/dbgen` 为 4 张表生成查询；解析 core/audit 根包契约并保留 declaration-only。
-- [ ] **7.2 governance negatives:** tenant A 不能查看或裁决 B 的 request/review/item；非申请人不能 withdraw，非 approver 不能 decide；并发 approve/reject/complete/cancel 只能产生一个合法终态，最后管理员撤销必须失败。
-- [ ] **7.3 governance gate:** 登记包、generate、定向测试、覆盖率 ≥90%，运行 `make ci` 后才进入 provisioning。
+- [x] **7.1 governance:** 在 `internal/iam/governance` 根包按源文件移植 request/review 两套状态机和 14 条路由，`model/query/dbgen` 为 4 张表生成查询；解析 core/audit 根包契约并保留 declaration-only。
+- [x] **7.2 governance negatives:** tenant A 不能查看或裁决 B 的 request/review/item；非申请人不能 withdraw，非 approver 不能 decide；并发 approve/reject/complete/cancel 只能产生一个合法终态，最后管理员撤销必须失败。
+- [x] **7.3 governance gate:** 登记包、generate、定向测试、覆盖率 ≥90%，运行 `make ci` 后才进入 provisioning。
 
 **provisioning source manifest**
 
 - Production: `bulk.go`, `config.go`, `discovery.go`, `domain.go`, `filter.go`, `i18n.go`, `module.go`, `patch.go`, `repository.go`, `resources.go`, `rest.go`, `scim.go`, `scim_rest.go`, `service.go`, `target.go`, `target_rest.go`, `i18n/locales/{en-US,ms-MY,zh-CN}.json`。
 - Tests: `bulk_test.go`, `filter_test.go`, `module_test.go`, `patch_test.go`, `repository_test.go`, `resources_test.go`, `rest_test.go`, `scim_rest_test.go`, `scim_test.go`, `target_rest_test.go`, `target_test.go`。Phase 1 only: migrate files 与 SQL。
 
-- [ ] **7.4 provisioning:** 在 `internal/iam/provisioning` 根包按源文件移植 directory/SCIM/outbound 与 30 条路由，`model/query/dbgen` 为 5 张表生成查询并复用 filter parser；解析 identity/organization/audit 根包契约并保留 declaration-only。
-- [ ] **7.5 provisioning negatives:** directory credential 必须先唯一解析 tenant，随后所有资源读写绑定该 tenant；A credential 对 B user/group/directory/target 返回不可见；bulk 子操作不得越过认证 tenant；ETag 并发更新只有一个成功。
-- [ ] **7.6 provisioning gate:** 登记包、generate、SCIM 协议/定向测试、覆盖率 ≥90%，运行 `make ci` 后才进入 federation。
+- [x] **7.4 provisioning:** 在 `internal/iam/provisioning` 根包按源文件移植 directory/SCIM/outbound 与 30 条路由，`model/query/dbgen` 为 5 张表生成查询并复用 filter parser；解析 identity/organization/audit 根包契约并保留 declaration-only。
+- [x] **7.5 provisioning negatives:** directory credential 必须先唯一解析 tenant，随后所有资源读写绑定该 tenant；A credential 对 B user/group/directory/target 返回不可见；bulk 子操作不得越过认证 tenant；ETag 并发更新只有一个成功。
+- [x] **7.6 provisioning gate:** 登记包、generate、SCIM 协议/定向测试、覆盖率 ≥90%，运行 `make ci` 后才进入 federation。
 
 **federation source manifest**
 
 - Production: `domain.go`, `i18n.go`, `module.go`, `rest.go`, `saml.go`, `saml_rest.go`, `service.go`, `state.go`, `verifier.go`, `i18n/locales/{en-US,ms-MY,zh-CN}.json`。
 - Tests: `domain_test.go`, `i18n_test.go`, `module_test.go`, `rest_test.go`, `saml_rest_test.go`, `saml_test.go`, `service_test.go`, `state_test.go`, `verifier_test.go`。Phase 1 only: migrate files 与 SQL。
 
-- [ ] **7.7 federation:** 在 `internal/iam/federation` 根包按源文件移植 OIDC/SAML 的 IdP/state/verifier/link 与 SP/SSO/SLO/key 共 17 条路由，`model/query/dbgen` 为 4 张表生成查询；解析 identity/authn/audit 根包契约并保留 declaration-only。
-- [ ] **7.8 federation negatives:** tenant A 不能 CRUD B provider/SP；state/nonce/provider callback 必须绑定原 tenant，SAML `tenant_id` 路径不能选择 B 的 SP/key；state、assertion 与 logout request 重放必须拒绝。
-- [ ] **7.9 federation gate:** 登记包、generate、OIDC/SAML 定向测试、覆盖率 ≥90%，运行 `make ci`。
+- [x] **7.7 federation:** 在 `internal/iam/federation` 根包按源文件移植 OIDC/SAML 的 IdP/state/verifier/link 与 SP/SSO/SLO/key 共 17 条路由，`model/query/dbgen` 为 4 张表生成查询；解析 identity/authn/audit 根包契约并保留 declaration-only。
+- [x] **7.8 federation negatives:** tenant A 不能 CRUD B provider/SP；state/nonce/provider callback 必须绑定原 tenant，SAML `tenant_id` 路径不能选择 B 的 SP/key；state、assertion 与 logout request 重放必须拒绝。
+- [x] **7.9 federation gate:** 登记包、generate、OIDC/SAML 定向测试、覆盖率 ≥90%，运行 `make ci`。
 
 #### Task 8: Composition root 与跨模块收口
 
-- [ ] **8.1 声明模式:** 在 `internal/app` 先装配 authz declaration registry；只对 iam/organization/audit/governance/provisioning/federation 调用 declaration-only 构造器。authn/identity/oauth 不伪造该 API。
-- [ ] **8.2 运行模式:** 用 `pkg/module.Services` 按 §2.2 注册/解析 provider-owned/consumer-owned 窄接口；启动测试逐一删除提供方并断言错误明确包含缺失契约和消费模块。
-- [ ] **8.3 注册顺序:** audit → iam → authn → identity → organization → oauth → provisioning → governance → federation，并用 `ModuleDependencies` 固化生命周期拓扑；`Registry.Wire` 仍按“全部 provider → seal → 全部 injector”解析接口，不通过包级全局变量或 concrete type 绕开 registry。
-- [ ] **8.4 HTTP 契约集合:** 启动真实 Huma API，提取 OpenAPI operations，与各模块批准后的目标 `OperationID|METHOD|PATH` 做集合相等；再用 source→target 映射证明源 208 项功能逐条有且仅有一个目标 operation。额外、缺失、重复或未映射任一即失败。
-- [ ] **8.5 跨模块 tenant negatives:** 用 tenant A/B 固定夹具覆盖邀请建 principal、group provision、SCIM、federation callback、governance revoke、IAM authorization 和 audit trace；断言请求、数据库副作用和审计事件都不跨 tenant。
-- [ ] **8.6 架构边界:** `tests/architecture` 用 `go list -json` + Go AST 断言 9 个模块均位于 `internal/iam/`、各自拥有 model/query/SQL、依赖进入 `ModuleDependencies`、跨模块不导入 model/query/concrete service、无中央 schema/port 包；加入违规 fixture 证明门禁有效。
-- [ ] **8.7 Gate:** `make generate` 零 diff，9 个手写模块覆盖率均 ≥90%，`make ci` 全绿后进入 Phase 9。
+- [x] **8.1 声明模式:** 在 `internal/app` 先装配 authz declaration registry；只对 iam/organization/audit/governance/provisioning/federation 调用 declaration-only 构造器。authn/identity/oauth 不伪造该 API。
+- [x] **8.2 运行模式:** 用 `pkg/module.Services` 按 §2.2 注册/解析 provider-owned/consumer-owned 窄接口；启动测试逐一删除提供方并断言错误明确包含缺失契约和消费模块。
+- [x] **8.3 注册顺序:** audit → iam → authn → identity → organization → oauth → provisioning → governance → federation，并用 `ModuleDependencies` 固化生命周期拓扑；`Registry.Wire` 仍按“全部 provider → seal → 全部 injector”解析接口，不通过包级全局变量或 concrete type 绕开 registry。
+- [x] **8.4 HTTP 契约集合:** 启动真实 Huma API，提取 OpenAPI operations，与各模块批准后的目标 `OperationID|METHOD|PATH` 做集合相等；再用 source→target 映射证明源 208 项功能逐条有且仅有一个目标 operation。额外、缺失、重复或未映射任一即失败。
+- [x] **8.5 跨模块 tenant negatives:** 用 tenant A/B 固定夹具覆盖邀请建 principal、group provision、SCIM、federation callback、governance revoke、IAM authorization 和 audit trace；断言请求、数据库副作用和审计事件都不跨 tenant。
+- [x] **8.6 架构边界:** `tests/architecture` 用 `go list -json` + Go AST 断言 9 个模块均位于 `internal/iam/`、各自拥有 model/query/SQL、依赖进入 `ModuleDependencies`、跨模块不导入 model/query/concrete service、无中央 schema/port 包；加入违规 fixture 证明门禁有效。
+- [x] **8.7 Gate:** `make generate` 零 diff，9 个手写模块覆盖率均 ≥90%，`make ci` 全绿后进入 Phase 9。
 
 #### 冻结源 HTTP operation 基线（source tree `201052baddd745d1c2727cf29bbc3c68253a1af0`）
 
@@ -870,12 +870,12 @@ CREATE TABLE {{.Prefix}}iam_roles (
 
 ### Phase 9 — 集成与验收
 
-- [ ] **9.1 三引擎生命周期:** PostgreSQL/MySQL/SQLite 分别在全新空库和 `sl_` 前缀下执行建租户 → principal → 部门/组/岗位 → 角色/权限 → 成员绑定 → authorization check/explain → OAuth → SCIM → federation → governance → audit；每步验证数据库副作用和审计事件。
-- [ ] **9.2 迁移状态:** 三引擎分别执行 up → status → reverse down → up；`/migration-status` 必须显示现有 4 条加 IAM 域 9 条共 **13 条** flow clean，9 个模块表集合互斥且并集恰为 63。
-- [ ] **9.3 架构边界:** `tests/architecture` 对实际 package graph 通过；确认 `internal/iam/` 只作命名空间、9 个自治模块各自拥有业务/model/query/SQL、依赖均在 `ModuleDependencies` 声明、跨模块未导入 model/query/concrete service。
-- [ ] **9.4 HTTP 契约集合:** 从运行中 OpenAPI 提取三元组，断言与各模块批准后的目标集合完全相等、OperationID 全局唯一；断言 source→target 映射覆盖源 **208/208** 且一一对应；另断言所有非公开 operation 都带正确 tenant/platform/entity guard，不能只检查 `/docs` 页面可见。
-- [ ] **9.5 隔离与并发:** 执行 Task 2–8 的 tenant A/B 负例总矩阵；对授权判定、token 单次消费、最后管理员、SCIM ETag、governance 终态和 audit append 做并发门禁，使用 `-race` 跑不依赖真数据库的部分。
-- [ ] **9.6 性能基线:** 授权判定、会话查找、SCIM bulk、审计 append 四条热路径保存 PostgreSQL/MySQL `EXPLAIN` 与 benchmark；不得出现无 tenant 前导条件的全表扫描，阈值按同机重复样本冻结。
+- [x] **9.1 三引擎生命周期:** PostgreSQL/MySQL/SQLite 分别在全新空库和 `sl_` 前缀下执行建租户 → principal → 部门/组/岗位 → 角色/权限 → 成员绑定 → authorization check/explain → OAuth → SCIM → federation → governance → audit；每步验证数据库副作用和审计事件。
+- [x] **9.2 迁移状态:** 三引擎分别执行 up → status → reverse down → up；`/migration-status` 必须显示现有 4 条加 IAM 域 9 条共 **13 条** flow clean，9 个模块表集合互斥且并集恰为 63。
+- [x] **9.3 架构边界:** `tests/architecture` 对实际 package graph 通过；确认 `internal/iam/` 只作命名空间、9 个自治模块各自拥有业务/model/query/SQL、依赖均在 `ModuleDependencies` 声明、跨模块未导入 model/query/concrete service。
+- [x] **9.4 HTTP 契约集合:** 从运行中 OpenAPI 提取三元组，断言与各模块批准后的目标集合完全相等、OperationID 全局唯一；断言 source→target 映射覆盖源 **208/208** 且一一对应；另断言所有非公开 operation 都带正确 tenant/platform/entity guard，不能只检查 `/docs` 页面可见。
+- [x] **9.5 隔离与并发:** 执行 Task 2–8 的 tenant A/B 负例总矩阵；对授权判定、token 单次消费、最后管理员、SCIM ETag、governance 终态和 audit append 做并发门禁，使用 `-race` 跑不依赖真数据库的部分。
+- [x] **9.6 性能基线:** 授权判定、会话查找、SCIM bulk、审计 append 四条热路径保存 PostgreSQL/MySQL `EXPLAIN` 与 benchmark；不得出现无 tenant 前导条件的全表扫描，阈值按同机重复样本冻结。
 - [ ] **9.7 最终门禁:** `make generate` 零 diff、`make ci` 全绿、`make test-mysql8` 真 MySQL 通过；`make dev` 后 `/healthz` 绿。更新 README Testing、`.claude/task-state.md` 与 `decisions.md`，逐项勾完本计划才可宣布迁移完成。
 
 ---

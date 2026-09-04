@@ -51,6 +51,54 @@ func TestAdministratorGuardRollsBackLastDurableAdministratorRemoval(t *testing.T
 	assert.Equal(t, []guid.ID{22}, members, "the last administrator delete must roll back")
 }
 
+func TestRoleGrantStoreRollsBackLastDirectoryAdministratorRemoval(t *testing.T) {
+	tests := []struct {
+		name         string
+		assigneeType DirectoryAssigneeType
+		directoryID  guid.ID
+		memberTable  string
+		idColumn     string
+	}{
+		{name: "group", assigneeType: DirectoryAssigneeGroup, directoryID: 200, memberTable: "iam_group_members", idColumn: "group_id"},
+		{name: "position", assigneeType: DirectoryAssigneePosition, directoryID: 300, memberTable: "iam_position_members", idColumn: "position_id"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			harness := newRepositoryHarness(t, "sl_")
+			repository := harness.repository
+			seedTenantAndPrincipal(t, harness.db, "sl_", 1, 11)
+			seedDirectoryFixtures(t, harness, 1)
+			_, err := repository.PutMember(t.Context(), TenantMember{
+				TenantID: 1, PrincipalID: 11, DisplayName: "Administrator", Email: "admin@example.test", Status: MemberActive,
+			})
+			require.NoError(t, err)
+			role, err := repository.CreateRole(t.Context(), 1, "Administrators", "")
+			require.NoError(t, err)
+			_, err = repository.GrantPermission(t.Context(), 1, role.ID, "tenant_administer")
+			require.NoError(t, err)
+			changed, err := repository.ChangeDirectoryBinding(t.Context(), 1, role.ID, test.assigneeType, test.directoryID, true)
+			require.NoError(t, err)
+			assert.True(t, changed)
+			require.NoError(t, harness.db.Exec(
+				"INSERT INTO sl_"+test.memberTable+" (tenant_id, "+test.idColumn+", principal_id, created_at, updated_at) VALUES (1, ?, 11, ?, ?)",
+				test.directoryID, repositoryTestTime, repositoryTestTime,
+			).Error)
+
+			store := NewRoleGrantStore(repository, NewAdministratorGuard(harness.runtime))
+			err = repository.runInTx(t.Context(), func(repo *Repository) error {
+				if test.assigneeType == DirectoryAssigneeGroup {
+					_, err := store.RemoveGroupMembership(t.Context(), repo.writer(), 1, test.directoryID, 11)
+					return err
+				}
+				_, err := store.RemovePositionMembership(t.Context(), repo.writer(), 1, test.directoryID, 11)
+				return err
+			})
+			assert.ErrorIs(t, err, ErrLastTenantAdministrator)
+			assert.Equal(t, int64(1), testTableCount(t, harness.db, "sl_"+test.memberTable), "refused removal must roll back")
+		})
+	}
+}
+
 func TestPlatformAdministratorRepositoryPreservesLastFullAdministrator(t *testing.T) {
 	harness := newRepositoryHarness(t, "sl_")
 	repository := harness.repository

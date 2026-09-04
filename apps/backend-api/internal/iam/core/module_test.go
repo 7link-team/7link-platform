@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"testing"
+	"time"
 
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/infra/guid"
@@ -10,6 +11,7 @@ import (
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
 	platformi18n "7link.com/platform/pkg/i18n"
+	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,7 +21,7 @@ import (
 func TestModuleIdentityDependenciesAndReadiness(t *testing.T) {
 	module := &Module{}
 	assert.Equal(t, Name, module.ModuleName())
-	assert.Equal(t, []string{platformi18n.Name, guid.Name}, module.ModuleDependencies())
+	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name}, module.ModuleDependencies())
 	assert.ErrorIs(t, module.CheckHealth(t.Context()), ErrUnavailable)
 
 	_, api := humatest.New(t)
@@ -30,7 +32,7 @@ func TestModuleInitializeRegistersIAMLocales(t *testing.T) {
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
 	require.NoError(t, respx.NewModule(nil).Initialize(t.Context()))
 
-	module := &Module{}
+	module := &Module{declarationOnly: true}
 	require.NoError(t, module.Initialize(t.Context()))
 	assert.ErrorContains(t, module.Initialize(t.Context()), "register iam i18n")
 }
@@ -63,19 +65,95 @@ func TestRuntimeModuleRequiresEveryDependency(t *testing.T) {
 		httpRouteAuthorizer{platformAllowed: true}, httpMembershipChecker{},
 	)
 	validChecker := httpAuthorizationEvaluator{}
-	validAppender := audit.Appender(func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil })
-	validIDs := guid.Source(branchIDSource{id: 1})
-
 	for _, build := range []func(){
-		func() { NewModule(nil, validRegistrar, validChecker, validAppender, validIDs) },
-		func() { NewModule(validRuntime, nil, validChecker, validAppender, validIDs) },
-		func() { NewModule(validRuntime, &authz.Registrar{}, validChecker, validAppender, validIDs) },
-		func() { NewModule(validRuntime, validRegistrar, nil, validAppender, validIDs) },
-		func() { NewModule(validRuntime, validRegistrar, validChecker, nil, validIDs) },
-		func() { NewModule(validRuntime, validRegistrar, validChecker, validAppender, nil) },
+		func() { NewModule(nil, validRegistrar, validChecker) },
+		func() { NewModule(validRuntime, nil, validChecker) },
+		func() { NewModule(validRuntime, &authz.Registrar{}, validChecker) },
+		func() {
+			NewModule(validRuntime, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()), validChecker)
+		},
+		func() { NewModule(validRuntime, validRegistrar, nil) },
 	} {
 		assert.Panics(t, build)
 	}
+
+	instance := NewModule(validRuntime, validRegistrar, validChecker)
+	services := module.NewServices()
+	require.NoError(t, services.Seal())
+	assert.ErrorContains(t, instance.InjectServices(services), "resolve IAM id generator")
+
+	services = module.NewServices()
+	require.NoError(t, module.Provide[guid.Source](services, branchIDSource{id: 1}))
+	require.NoError(t, services.Seal())
+	assert.ErrorContains(t, instance.InjectServices(services), "resolve IAM audit appender")
+
+	providers := module.NewServices()
+	require.NoError(t, instance.ProvideServices(providers))
+	assert.ErrorContains(t, instance.ProvideServices(providers), "provide IAM active member checker")
+}
+
+func TestRoleGrantStoreProviderLateBindsInjectedCallbacks(t *testing.T) {
+	instance := &Module{}
+	store := instance.roleGrantStore()
+	ctx := t.Context()
+	now := time.Now()
+
+	assert.ErrorIs(t, store.Grant(ctx, nil, 1, 2, 3, 4, 5, now, now.Add(time.Hour)), ErrUnavailable)
+	for _, remove := range []func() (bool, error){
+		func() (bool, error) { return store.Revoke(ctx, nil, 1, 2) },
+		func() (bool, error) { return store.RemovePermanent(ctx, nil, 1, 2, 3, now) },
+		func() (bool, error) { return store.RemoveGroupMembership(ctx, nil, 1, 2, 3) },
+		func() (bool, error) { return store.RemovePositionMembership(ctx, nil, 1, 2, 3) },
+		func() (bool, error) { return store.RemoveEntityRoleBinding(ctx, nil, 1, 2, 3, 4) },
+	} {
+		changed, err := remove()
+		assert.False(t, changed)
+		assert.ErrorIs(t, err, ErrUnavailable)
+	}
+
+	grantCalls := 0
+	removeCalls := 0
+	instance.grants = RoleGrantStore{
+		Grant: func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, guid.ID, guid.ID, time.Time, time.Time) error {
+			grantCalls++
+			return nil
+		},
+		Revoke: func(context.Context, *gorm.DB, guid.ID, guid.ID) (bool, error) {
+			removeCalls++
+			return true, nil
+		},
+		RemovePermanent: func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, time.Time) (bool, error) {
+			removeCalls++
+			return true, nil
+		},
+		RemoveGroupMembership: func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID) (bool, error) {
+			removeCalls++
+			return true, nil
+		},
+		RemovePositionMembership: func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID) (bool, error) {
+			removeCalls++
+			return true, nil
+		},
+		RemoveEntityRoleBinding: func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, guid.ID) (bool, error) {
+			removeCalls++
+			return true, nil
+		},
+	}
+
+	require.NoError(t, store.Grant(ctx, nil, 1, 2, 3, 4, 5, now, now.Add(time.Hour)))
+	for _, remove := range []func() (bool, error){
+		func() (bool, error) { return store.Revoke(ctx, nil, 1, 2) },
+		func() (bool, error) { return store.RemovePermanent(ctx, nil, 1, 2, 3, now) },
+		func() (bool, error) { return store.RemoveGroupMembership(ctx, nil, 1, 2, 3) },
+		func() (bool, error) { return store.RemovePositionMembership(ctx, nil, 1, 2, 3) },
+		func() (bool, error) { return store.RemoveEntityRoleBinding(ctx, nil, 1, 2, 3, 4) },
+	} {
+		changed, err := remove()
+		require.NoError(t, err)
+		assert.True(t, changed)
+	}
+	assert.Equal(t, 1, grantCalls)
+	assert.Equal(t, 5, removeCalls)
 }
 
 func TestModuleDefensiveLifecycleBranches(t *testing.T) {

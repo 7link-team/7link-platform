@@ -1,0 +1,236 @@
+package federation
+
+import (
+	"context"
+	"encoding/base64"
+	"strings"
+	"testing"
+
+	"7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/iam/authn"
+	federationi18n "7link.com/platform/internal/iam/federation/i18n"
+	"7link.com/platform/internal/iam/identity"
+	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/appenv"
+	"7link.com/platform/pkg/extension/authz"
+	"7link.com/platform/pkg/extension/huma/respx"
+	platformi18n "7link.com/platform/pkg/i18n"
+	platformmodule "7link.com/platform/pkg/module"
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/humatest"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
+)
+
+func testID(value string) guid.ID     { return federationID(value) }
+func wireID(value string) string      { return testID(value).String() }
+func parseGUID(value string) guid.ID  { id, _ := guid.Parse(value); return id }
+func guidString(value guid.ID) string { return value.String() }
+
+func RegisterI18n() error { return federationi18n.Register() }
+func RegisterAdminREST(api huma.API, service *Service, registrar *authz.Registrar) {
+	registerAdminHTTP(api, service, registrar)
+}
+func RegisterSAMLAdminREST(api huma.API, service *Service, registrar *authz.Registrar) {
+	registerSAMLAdminHTTP(api, service, registrar)
+}
+func RegisterBrowserREST(api huma.API, service *Service) { registerBrowserHTTP(api, service) }
+func RegisterSAMLREST(api huma.API, service *Service, registrar *authz.Registrar) {
+	registerSAMLAdminHTTP(api, service, registrar)
+	registerSAMLBrowserHTTP(api, service)
+}
+
+func TestFederationModuleDeclarationAndExactOperationManifest(t *testing.T) {
+	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
+	respx.Install()
+	registrar := authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry())
+	declaration := NewDeclarationOnlyModule(registrar)
+	assert.Equal(t, Name, declaration.ModuleName())
+	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, identity.Name, authn.Name}, declaration.ModuleDependencies())
+	require.NoError(t, declaration.Initialize(t.Context()))
+	require.NoError(t, declaration.Start(t.Context()))
+	require.NoError(t, declaration.CheckHealth(t.Context()))
+	_, api := humatest.New(t)
+	require.NoError(t, declaration.RegisterHTTP(t.Context(), api))
+	require.NoError(t, authz.ValidateOperations(api, registrar.Registry()))
+	assert.Equal(t, approvedFederationOperations(), federationOperationManifest(api.OpenAPI()))
+	assert.Equal(t, "goose_federation", declaration.MigrationSource().TableName)
+	assert.Len(t, declaration.MigrationMilestones(), 2)
+}
+
+func TestFederationSAMLBrowserOpenAPIContract(t *testing.T) {
+	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
+	respx.Install()
+	declaration := NewDeclarationOnlyModule(authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()))
+	require.NoError(t, declaration.Initialize(t.Context()))
+	_, api := humatest.New(t)
+	require.NoError(t, declaration.RegisterHTTP(t.Context(), api))
+	spec := api.OpenAPI()
+
+	for path, expected := range map[string][]string{
+		"/federation/{provider_id}/callback": {"SAMLResponse", "RelayState"},
+		samlSSORoute:                         {"SAMLRequest", "RelayState"},
+		samlSLORoute:                         {"SAMLRequest", "RelayState"},
+	} {
+		operation := spec.Paths[path].Post
+		require.NotNil(t, operation.RequestBody, path)
+		assert.True(t, operation.RequestBody.Required, path)
+		media := operation.RequestBody.Content["application/x-www-form-urlencoded"]
+		require.NotNil(t, media, path)
+		schema := media.Schema
+		if schema.Ref != "" {
+			schema = spec.Components.Schemas.SchemaFromRef(schema.Ref)
+		}
+		require.NotNil(t, schema, path)
+		properties := make([]string, 0, len(schema.Properties))
+		for name := range schema.Properties {
+			properties = append(properties, name)
+		}
+		assert.ElementsMatch(t, expected, properties, path)
+		assert.Contains(t, schema.Required, expected[0], path)
+	}
+
+	for _, operation := range []*huma.Operation{
+		spec.Paths[samlSSORoute].Get, spec.Paths[samlSSORoute].Post,
+	} {
+		assert.Contains(t, operation.Responses["200"].Content, "text/html")
+		assert.Contains(t, operation.Responses, "302")
+	}
+	for _, operation := range []*huma.Operation{
+		spec.Paths[samlSLORoute].Get, spec.Paths[samlSLORoute].Post,
+	} {
+		assert.Contains(t, operation.Responses["200"].Content, "text/html")
+		assert.Contains(t, operation.Responses["200"].Content, "text/plain")
+	}
+	metadata := spec.Paths[samlMetadataRoute].Get
+	assert.Contains(t, metadata.Responses["200"].Content, "application/samlmetadata+xml")
+	for _, operation := range []*huma.Operation{
+		spec.Paths[samlSSORoute].Get, spec.Paths[samlSSORoute].Post,
+		spec.Paths[samlSLORoute].Get, spec.Paths[samlSLORoute].Post, metadata,
+	} {
+		for _, status := range []string{"400", "422", "500", "503"} {
+			assert.Contains(t, operation.Responses, status, operation.OperationID)
+		}
+	}
+}
+
+func TestFederationModuleDependencyResolutionAndLifecycle(t *testing.T) {
+	env := newFederationEnvironment(t, "")
+	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
+	config := Config{EncryptionKey: base64.RawStdEncoding.EncodeToString(env.key)}
+	instance := NewModule(env.runtime, federationRuntimeRegistrar(env.web), config)
+	assert.ErrorIs(t, instance.CheckHealth(t.Context()), ErrUnavailable)
+	_, api := humatest.New(t)
+	assert.ErrorContains(t, instance.RegisterHTTP(t.Context(), api), "service is unavailable")
+
+	empty := platformmodule.NewServices()
+	require.NoError(t, empty.Seal())
+	assert.ErrorContains(t, instance.InjectServices(empty), "id generator")
+
+	services := platformmodule.NewServices()
+	require.NoError(t, platformmodule.Provide[guid.Source](services, env.ids))
+	appender := audit.Appender(func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil })
+	require.NoError(t, platformmodule.Provide[audit.Appender](services, appender))
+	require.NoError(t, platformmodule.Provide[identity.IdentityProvisioner](services, env.identity))
+	require.NoError(t, platformmodule.Provide[authn.WebService](services, env.web))
+	require.NoError(t, services.Seal())
+	require.NoError(t, instance.InjectServices(services))
+	require.NoError(t, instance.Initialize(t.Context()))
+	require.NoError(t, instance.Start(t.Context()))
+	require.NoError(t, instance.CheckHealth(t.Context()))
+	_, api = humatest.New(t)
+	require.NoError(t, instance.RegisterHTTP(t.Context(), api))
+	assert.Equal(t, approvedFederationOperations(), federationOperationManifest(api.OpenAPI()))
+}
+
+func TestFederationModuleRejectsMissingDependenciesAndInvalidState(t *testing.T) {
+	env := newFederationEnvironment(t, "")
+	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
+	registrar := federationRuntimeRegistrar(env.web)
+	runtime := appenv.NewRuntime(appenv.NewIdentity("federation-test", "1"))
+	assert.Panics(t, func() { NewModule(nil, registrar, Config{}) })
+	assert.Panics(t, func() { NewModule(runtime, nil, Config{}) })
+	assert.Panics(t, func() { NewModule(runtime, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()), Config{}) })
+	assert.Panics(t, func() { NewDeclarationOnlyModule(nil) })
+
+	newInstance := func() *Module { return NewModule(env.runtime, registrar, Config{}) }
+	servicesWith := func(include int) *platformmodule.Services {
+		services := platformmodule.NewServices()
+		if include > 0 {
+			require.NoError(t, platformmodule.Provide[guid.Source](services, env.ids))
+		}
+		if include > 1 {
+			require.NoError(t, platformmodule.Provide[audit.Appender](services, audit.Appender(func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil })))
+		}
+		if include > 2 {
+			require.NoError(t, platformmodule.Provide[identity.IdentityProvisioner](services, env.identity))
+		}
+		if include > 3 {
+			require.NoError(t, platformmodule.Provide[authn.WebService](services, env.web))
+		}
+		require.NoError(t, services.Seal())
+		return services
+	}
+	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(1)), "audit appender")
+	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(2)), "identity provisioner")
+	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(3)), "authentication service")
+
+	var nilModule *Module
+	assert.ErrorContains(t, nilModule.Initialize(t.Context()), "module is required")
+	_, api := humatest.New(t)
+	assert.ErrorContains(t, nilModule.RegisterHTTP(t.Context(), api), "module is unavailable")
+	assert.ErrorIs(t, (&Module{}).Start(t.Context()), ErrUnavailable)
+	badKey := newInstance()
+	badKey.ids, badKey.appender, badKey.identities, badKey.authn = env.ids, func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil }, env.identity, env.web
+	badKey.config.EncryptionKey = "short"
+	assert.ErrorContains(t, badKey.Initialize(t.Context()), "encryption key")
+}
+
+func approvedFederationOperations() map[string]string {
+	return map[string]string{
+		"federation-callback-login": "GET /federation/{provider_id}/callback", "federation-callback-saml-login": "POST /federation/{provider_id}/callback",
+		"federation-create-identity-provider": "POST /iam/identity-providers", "federation-create-saml-service-provider": "POST /iam/saml/service-providers",
+		"federation-delete-identity-provider": "DELETE /iam/identity-providers/{provider_id}", "federation-delete-saml-service-provider": "DELETE /iam/saml/service-providers/{sp_id}",
+		"federation-list-identity-providers": "GET /iam/identity-providers", "federation-list-saml-service-providers": "GET /iam/saml/service-providers",
+		"federation-rotate-saml-signing-key": "POST /iam/saml/signing-key/rotate", "federation-saml-metadata": "GET /federation/saml/{tenant_id}/metadata",
+		"federation-saml-slo": "GET /federation/saml/{tenant_id}/slo", "federation-saml-slo-post": "POST /federation/saml/{tenant_id}/slo",
+		"federation-saml-sso": "GET /federation/saml/{tenant_id}/sso", "federation-saml-sso-post": "POST /federation/saml/{tenant_id}/sso",
+		"federation-start-login": "GET /federation/{provider_id}/start", "federation-update-identity-provider": "PUT /iam/identity-providers/{provider_id}",
+		"federation-update-saml-service-provider": "PUT /iam/saml/service-providers/{sp_id}",
+	}
+}
+
+func federationOperationManifest(document *huma.OpenAPI) map[string]string {
+	manifest := map[string]string{}
+	for path, item := range document.Paths {
+		for method, operation := range map[string]*huma.Operation{"GET": item.Get, "POST": item.Post, "PUT": item.Put, "DELETE": item.Delete} {
+			if operation != nil && strings.HasPrefix(operation.OperationID, "federation-") {
+				manifest[operation.OperationID] = method + " " + path
+			}
+		}
+	}
+	return manifest
+}
+
+type federationPermissionChecker struct{}
+
+func (federationPermissionChecker) Check(context.Context, guid.ID, string, guid.ID) (bool, error) {
+	return true, nil
+}
+
+func (federationPermissionChecker) CheckPlatform(context.Context, string, guid.ID) (bool, error) {
+	return true, nil
+}
+
+type federationMembershipChecker struct{}
+
+func (federationMembershipChecker) IsMemberActive(context.Context, guid.ID, guid.ID) (bool, error) {
+	return true, nil
+}
+
+func federationRuntimeRegistrar(verifier authz.TokenVerifier) *authz.Registrar {
+	return authz.NewRegistrar(
+		authz.DefaultRegistry(), verifier, federationPermissionChecker{}, federationMembershipChecker{},
+	)
+}

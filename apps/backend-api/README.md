@@ -1,8 +1,9 @@
 # Backend API
 
-Go service that hosts the platform's HTTP and gRPC APIs. Business domains are
-not implemented yet; what exists today is the module runtime and the
-infrastructure modules every domain will build on.
+Go service that hosts the platform's HTTP and gRPC APIs. It includes the module
+runtime, shared infrastructure modules, and nine IAM domain modules covering
+authorization, authentication, identity, OAuth, organization, audit,
+governance, provisioning, and federation.
 
 ## Stack
 
@@ -33,7 +34,7 @@ make build   # version-stamped binary at bin/7link-api
 cmd/7link-api/       CLI entrypoint: serve and migrate commands
 internal/app/        composition root: runtime, module registry, HTTP/gRPC servers
 internal/infra/      infrastructure modules (see below)
-internal/iam/        reserved for identity and access; not implemented
+internal/iam/        namespace for nine autonomous identity and access modules
 pkg/module/          the Module contract and lifecycle registry
 pkg/appenv/          Runtime: the application-lifetime manager container
 pkg/config/          layered configuration, generation, and inspection
@@ -86,8 +87,11 @@ Run `make dev` with `--help` for the full flag list.
 make test              # unit tests
 make test-coverage     # unit tests + coverage gates
 make test-integration  # integration tests against embedded/test engines
+make test-performance  # uncached IAM hot-path plans/benchmarks on PostgreSQL 16
+make test-mysql8       # IAM migrations and hot paths on pinned real MySQL 8.4
 make test-all          # unit + integration
 make lint              # golangci-lint, pinned in tools/go.mod
+make ci                # format, lint, coverage, integration, and production build
 ```
 
 `make test-coverage` enforces 90% overall and 90% for every package listed in
@@ -97,6 +101,12 @@ make lint              # golangci-lint, pinned in tools/go.mod
 16 server, file-backed SQLite, and the in-process `go-mysql-server` compatibility
 engine. The latter is not MySQL 8 and does not replace the separately pinned
 real-MySQL gate.
+
+`make test-performance` captures PostgreSQL JSON `EXPLAIN` plans and benchmark
+samples for IAM authorization, session lookup, SCIM bulk, and audit append. The
+checked-in PostgreSQL/MySQL baseline always enforces SQL fingerprints and rejects
+unscoped or critical full scans. Set `IAM_PERFORMANCE_ENFORCE_THRESHOLDS=1` when
+rerunning on the baseline machine to enforce its frozen latency thresholds.
 
 ## Code generation
 

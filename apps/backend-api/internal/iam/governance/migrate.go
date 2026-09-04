@@ -1,6 +1,8 @@
 // Package governance owns access requests and access reviews.
 package governance
 
+//go:generate go run ./dbgen
+
 import (
 	"embed"
 
@@ -9,9 +11,6 @@ import (
 )
 
 const Name = "governance"
-
-// Module owns access-request and access-review persistence.
-type Module struct{}
 
 func (*Module) ModuleName() string { return Name }
 

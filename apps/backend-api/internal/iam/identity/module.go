@@ -33,23 +33,22 @@ type Module struct {
 	appender       audit.Appender
 }
 
-// NewModule builds the identity module from its runtime, authorization
-// registrar, and the core administrator guard. ID generation and audit append
-// are resolved during module wiring. The source module has no declaration-only
-// constructor, so this module is not given one either.
+// NewModule builds the identity module from its runtime and authorization
+// registrar. Shared capabilities are resolved during module wiring. The source
+// module has no declaration-only constructor, so this module is not given one
+// either.
 func NewModule(
 	runtime *appenv.Runtime,
 	registrar *authz.Registrar,
-	administrators core.AdministratorGuard,
 ) *Module {
-	if runtime == nil || registrar == nil || registrar.Registry() == nil || administrators == nil {
-		panic("identity module requires runtime, authz registrar, and administrator guard")
+	if runtime == nil || registrar == nil || registrar.Registry() == nil || registrar.IsDeclarationOnly() {
+		panic("identity module requires runtime and authz registrar")
 	}
-	return &Module{runtime: runtime, registrar: registrar, administrators: administrators}
+	return &Module{runtime: runtime, registrar: registrar}
 }
 
 func (*Module) ModuleDependencies() []string {
-	return []string{platformi18n.Name, guid.Name, audit.Name}
+	return []string{platformi18n.Name, guid.Name, audit.Name, core.Name}
 }
 
 func (m *Module) ProvideServices(services *module.Services) error {
@@ -84,8 +83,13 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve identity audit appender: %w", err)
 	}
+	administrators, err := module.Resolve[core.AdministratorGuard](services)
+	if err != nil {
+		return fmt.Errorf("resolve identity administrator guard: %w", err)
+	}
 	m.ids = ids
 	m.appender = appender
+	m.administrators = administrators
 	return nil
 }
 

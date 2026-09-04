@@ -76,6 +76,11 @@ func assertModelMatchesTable(t *testing.T, db *sql.DB, dialect string, persisted
 		require.True(t, ok, "the entity generated-column allowlist must remain explicit")
 		delete(actual, "parent_key")
 	}
+	if dialect == "mysql" && persisted.TableName() == "iam_departments" {
+		_, ok := actual["parent_key"]
+		require.True(t, ok, "the department generated-column allowlist must remain explicit")
+		delete(actual, "parent_key")
+	}
 	assert.Equal(t, expected, actual, persisted.TableName())
 }
 

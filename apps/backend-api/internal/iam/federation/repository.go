@@ -1,0 +1,351 @@
+package federation
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"7link.com/platform/internal/iam/federation/model"
+	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/appenv"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+)
+
+type providerRow = model.Provider
+type identityLinkRow = model.IdentityLink
+type samlSPRow = model.SAMLServiceProvider
+type samlKeyRow = model.SAMLIDPKey
+
+var errRepositoryUnavailable = errors.New("federation repository unavailable")
+
+type Repository struct {
+	runtime *appenv.Runtime
+	db      *gorm.DB
+	inTx    bool
+}
+
+func NewRepository(runtime *appenv.Runtime) *Repository {
+	if runtime == nil {
+		panic("federation repository requires runtime")
+	}
+	return &Repository{runtime: runtime}
+}
+
+func (r *Repository) writer() *gorm.DB {
+	if r == nil {
+		return nil
+	}
+	if r.db != nil {
+		return r.db
+	}
+	if r.runtime == nil || r.runtime.Database() == nil {
+		return nil
+	}
+	return r.runtime.Database().Write()
+}
+
+func (r *Repository) prefix() string {
+	if r == nil || r.runtime == nil {
+		return ""
+	}
+	return r.runtime.TablePrefix()
+}
+
+func (r *Repository) table(name string) string { return r.prefix() + name }
+
+func (r *Repository) withDB(db *gorm.DB, inTx bool) *Repository {
+	clone := *r
+	clone.db, clone.inTx = db, inTx
+	return &clone
+}
+
+func (r *Repository) pinWriter() (*Repository, error) {
+	if r == nil {
+		return nil, errRepositoryUnavailable
+	}
+	if r.db != nil {
+		return r, nil
+	}
+	db := r.writer()
+	if db == nil {
+		return nil, errRepositoryUnavailable
+	}
+	return r.withDB(db, false), nil
+}
+
+func (r *Repository) runInTx(ctx context.Context, fn func(*Repository) error) error {
+	if r == nil || fn == nil {
+		return errors.New("invalid federation transaction")
+	}
+	if r.inTx {
+		return fn(r)
+	}
+	pinned, err := r.pinWriter()
+	if err != nil {
+		return err
+	}
+	return pinned.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return fn(pinned.withDB(tx, true))
+	})
+}
+
+func (r *Repository) listProviders(ctx context.Context, tenantID guid.ID) ([]providerRow, error) {
+	rows := make([]providerRow, 0)
+	err := r.writer().WithContext(ctx).Table(r.table(model.Provider{}.TableName())).
+		Where("tenant_id = ?", tenantID).Order("name ASC, id ASC").Find(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("list identity providers: %w", err)
+	}
+	return rows, nil
+}
+
+func (r *Repository) getProvider(ctx context.Context, tenantID, id guid.ID) (providerRow, error) {
+	var row providerRow
+	err := r.writer().WithContext(ctx).Table(r.table(model.Provider{}.TableName())).
+		Where("tenant_id = ? AND id = ?", tenantID, id).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return row, ErrProviderNotFound
+	}
+	if err != nil {
+		return row, fmt.Errorf("get identity provider: %w", err)
+	}
+	return row, nil
+}
+
+func (r *Repository) getProviderByID(ctx context.Context, id guid.ID) (providerRow, error) {
+	var row providerRow
+	err := r.writer().WithContext(ctx).Table(r.table(model.Provider{}.TableName())).Where("id = ?", id).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return row, ErrProviderNotFound
+	}
+	if err != nil {
+		return row, fmt.Errorf("get identity provider: %w", err)
+	}
+	return row, nil
+}
+
+func (r *Repository) insertProvider(ctx context.Context, row *providerRow) error {
+	err := r.writer().WithContext(ctx).Table(r.table(model.Provider{}.TableName())).Create(row).Error
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return ErrProviderIssuerExists
+	}
+	if err != nil {
+		return fmt.Errorf("create identity provider: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) updateProvider(ctx context.Context, row *providerRow) error {
+	result := r.writer().WithContext(ctx).Table(r.table(model.Provider{}.TableName())).
+		Where("tenant_id = ? AND id = ?", row.TenantID, row.ID).
+		Select("name", "provider_type", "issuer", "client_id", "client_secret_ciphertext", "scopes", "auto_provision", "default_role_id", "status", "updated_at").Updates(row)
+	if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
+		return ErrProviderIssuerExists
+	}
+	if result.Error != nil {
+		return fmt.Errorf("update identity provider: %w", result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return ErrProviderNotFound
+	}
+	return nil
+}
+
+func (r *Repository) deleteProvider(ctx context.Context, tenantID, id guid.ID) error {
+	result := r.writer().WithContext(ctx).Table(r.table(model.Provider{}.TableName())).
+		Where("tenant_id = ? AND id = ?", tenantID, id).Delete(&providerRow{})
+	if result.Error != nil {
+		return fmt.Errorf("delete identity provider: %w", result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return ErrProviderNotFound
+	}
+	return nil
+}
+
+func (r *Repository) identityLink(ctx context.Context, providerID, tenantID guid.ID, subject string) (identityLinkRow, error) {
+	var row identityLinkRow
+	err := r.writer().WithContext(ctx).Table(r.table(model.IdentityLink{}.TableName())).
+		Where("provider_id = ? AND tenant_id = ? AND external_subject = ?", providerID, tenantID, subject).Take(&row).Error
+	return row, err
+}
+
+func (r *Repository) insertIdentityLink(ctx context.Context, row *identityLinkRow) error {
+	if err := r.writer().WithContext(ctx).Table(r.table(model.IdentityLink{}.TableName())).Create(row).Error; err != nil {
+		return fmt.Errorf("insert identity link: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) touchIdentityLink(ctx context.Context, providerID, tenantID guid.ID, subject string, now time.Time) error {
+	result := r.writer().WithContext(ctx).Table(r.table(model.IdentityLink{}.TableName())).
+		Where("provider_id = ? AND tenant_id = ? AND external_subject = ?", providerID, tenantID, subject).
+		Updates(map[string]any{"last_login_at": now, "updated_at": now})
+	if result.Error != nil {
+		return fmt.Errorf("update identity link login: %w", result.Error)
+	}
+	if result.RowsAffected == 1 {
+		return nil
+	}
+	var count int64
+	if err := r.writer().WithContext(ctx).Table(r.table(model.IdentityLink{}.TableName())).
+		Where("provider_id = ? AND tenant_id = ? AND external_subject = ?", providerID, tenantID, subject).
+		Count(&count).Error; err != nil {
+		return fmt.Errorf("verify identity link login update: %w", err)
+	}
+	if count != 1 {
+		return ErrPrincipalInactive
+	}
+	return nil
+}
+
+func (r *Repository) roleExists(ctx context.Context, tenantID, roleID guid.ID) (bool, error) {
+	var count int64
+	err := r.writer().WithContext(ctx).Table(r.table("iam_roles")).Where("tenant_id = ? AND id = ?", tenantID, roleID).Count(&count).Error
+	if err != nil {
+		return false, fmt.Errorf("validate default role: %w", err)
+	}
+	return count == 1, nil
+}
+
+func (r *Repository) grantDefaultRole(ctx context.Context, tenantID, roleID, principalID guid.ID, now time.Time) (bool, error) {
+	exists, err := r.roleExists(ctx, tenantID, roleID)
+	if err != nil || !exists {
+		return false, err
+	}
+	member := map[string]any{"tenant_id": tenantID, "role_id": roleID, "principal_id": principalID, "created_at": now}
+	if err := r.writer().WithContext(ctx).Table(r.table("iam_role_members")).Create(member).Error; err != nil {
+		return false, fmt.Errorf("grant federation default role: %w", err)
+	}
+	revision := map[string]any{"tenant_id": tenantID, "revision": int64(1), "updated_at": now}
+	err = r.writer().WithContext(ctx).Table(r.table("iam_policy_revisions")).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "tenant_id"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"revision":   gorm.Expr("? + 1", clause.Column{Table: r.table("iam_policy_revisions"), Name: "revision"}),
+			"updated_at": now,
+		}),
+	}).Create(revision).Error
+	if err != nil {
+		return false, fmt.Errorf("advance IAM policy revision: %w", err)
+	}
+	return true, nil
+}
+
+func (r *Repository) verifyPrincipalAndMember(ctx context.Context, tenantID, principalID guid.ID) error {
+	var status string
+	err := r.writer().WithContext(ctx).Table(r.table("iam_principals")).Select("status").Where("id = ?", principalID).Scan(&status).Error
+	if err != nil {
+		return err
+	}
+	if status != "active" {
+		return ErrPrincipalInactive
+	}
+	status = ""
+	err = r.writer().WithContext(ctx).Table(r.table("iam_tenant_members")).Select("status").
+		Where("tenant_id = ? AND principal_id = ?", tenantID, principalID).Scan(&status).Error
+	if err != nil {
+		return err
+	}
+	if status != "active" {
+		return ErrPrincipalInactive
+	}
+	return nil
+}
+
+func (r *Repository) listSAMLServiceProviders(ctx context.Context, tenantID guid.ID) ([]samlSPRow, error) {
+	rows := make([]samlSPRow, 0)
+	err := r.writer().WithContext(ctx).Table(r.table(model.SAMLServiceProvider{}.TableName())).
+		Where("tenant_id = ?", tenantID).Order("name ASC, id ASC").Find(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("list SAML service providers: %w", err)
+	}
+	return rows, nil
+}
+
+func (r *Repository) getSAMLServiceProvider(ctx context.Context, tenantID, id guid.ID) (samlSPRow, error) {
+	var row samlSPRow
+	err := r.writer().WithContext(ctx).Table(r.table(model.SAMLServiceProvider{}.TableName())).
+		Where("tenant_id = ? AND id = ?", tenantID, id).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return row, ErrSAMLSPNotFound
+	}
+	if err != nil {
+		return row, fmt.Errorf("load SAML service provider: %w", err)
+	}
+	return row, nil
+}
+
+func (r *Repository) activeSAMLServiceProvider(ctx context.Context, tenantID guid.ID, entityID string) (samlSPRow, error) {
+	var row samlSPRow
+	err := r.writer().WithContext(ctx).Table(r.table(model.SAMLServiceProvider{}.TableName())).
+		Where("tenant_id = ? AND entity_id = ? AND status = ?", tenantID, entityID, samlSPStatusActive).Take(&row).Error
+	return row, err
+}
+
+func (r *Repository) insertSAMLServiceProvider(ctx context.Context, row *samlSPRow) error {
+	err := r.writer().WithContext(ctx).Table(r.table(model.SAMLServiceProvider{}.TableName())).Create(row).Error
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return ErrSAMLSPEntityIDExists
+	}
+	if err != nil {
+		return fmt.Errorf("create SAML service provider: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) updateSAMLServiceProvider(ctx context.Context, row *samlSPRow) error {
+	result := r.writer().WithContext(ctx).Table(r.table(model.SAMLServiceProvider{}.TableName())).
+		Where("tenant_id = ? AND id = ?", row.TenantID, row.ID).
+		Select("name", "entity_id", "metadata_xml", "status", "updated_at").Updates(row)
+	if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
+		return ErrSAMLSPEntityIDExists
+	}
+	if result.Error != nil {
+		return fmt.Errorf("update SAML service provider: %w", result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return ErrSAMLSPNotFound
+	}
+	return nil
+}
+
+func (r *Repository) deleteSAMLServiceProvider(ctx context.Context, tenantID, id guid.ID) error {
+	result := r.writer().WithContext(ctx).Table(r.table(model.SAMLServiceProvider{}.TableName())).
+		Where("tenant_id = ? AND id = ?", tenantID, id).Delete(&samlSPRow{})
+	if result.Error != nil {
+		return fmt.Errorf("delete SAML service provider: %w", result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return ErrSAMLSPNotFound
+	}
+	return nil
+}
+
+func (r *Repository) latestSAMLKey(ctx context.Context) (samlKeyRow, error) {
+	var row samlKeyRow
+	err := r.writer().WithContext(ctx).Table(r.table(model.SAMLIDPKey{}.TableName())).
+		Where("rotated_at IS NULL").Take(&row).Error
+	return row, err
+}
+
+func (r *Repository) insertSAMLKey(ctx context.Context, row *samlKeyRow) error {
+	if err := r.writer().WithContext(ctx).Table(r.table(model.SAMLIDPKey{}.TableName())).Create(row).Error; err != nil {
+		return fmt.Errorf("persist SAML signing key: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) rotateSAMLKeys(ctx context.Context, row *samlKeyRow, now time.Time) error {
+	return r.runInTx(ctx, func(tx *Repository) error {
+		if err := tx.insertSAMLKey(ctx, row); err != nil {
+			return fmt.Errorf("persist rotated SAML signing key: %w", err)
+		}
+		if err := tx.writer().WithContext(ctx).Table(tx.table(model.SAMLIDPKey{}.TableName())).
+			Where("key_id <> ? AND rotated_at IS NULL", row.KeyID).Update("rotated_at", now).Error; err != nil {
+			return fmt.Errorf("retire SAML signing keys: %w", err)
+		}
+		return nil
+	})
+}

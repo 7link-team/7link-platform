@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	authnext "7link.com/platform/pkg/extension/authn"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -93,4 +94,55 @@ func TestConditionalModuleConfigsMapEnabled(t *testing.T) {
 	assert.False(t, migrationStatusConfig(AppConfig{}).Enabled)
 	assert.False(t, configInspectorConfig(AppConfig{}).Enabled)
 	assert.False(t, pprofConfig(AppConfig{}).Enabled)
+}
+
+func TestIAMModuleConfigsMapEverySetting(t *testing.T) {
+	config := AppConfig{
+		Authn: IAMAuthn(authnext.Config{
+			Enabled: true, Issuer: "https://issuer.example", Audience: []string{"api"},
+			AccessTokenTTL: 9 * time.Minute,
+		}),
+		IAMAudit: IAMAudit{Anchor: IAMAuditAnchor{
+			Enabled: true, Endpoint: "https://objects.example", Bucket: "anchors", Region: "us-test-1",
+			AccessKey: "access", SecretKey: "secret", RetentionDays: 90, SigningKey: "signing",
+		}},
+		Provisioning: IAMProvisioning{
+			EncryptionKey: "key", EncryptionKeyFile: "key-file", HTTPTimeout: 12 * time.Second,
+			SyncInterval: time.Minute,
+		},
+		Federation: IAMFederation{
+			Enabled: true, EncryptionKey: "federation-key", EncryptionKeyFile: "federation-key-file",
+			HTTPTimeout: 13 * time.Second, ClockSkew: 14 * time.Second, StateTTL: 15 * time.Minute,
+			SAML: IAMFederationSAML{
+				Enabled: true, SigningKeyFile: "saml-key", CertificateFile: "saml-cert", LoginPath: "/sign-in",
+				ValidDuration: 16 * time.Minute, MaxIssueDelay: 17 * time.Minute,
+			},
+		},
+	}
+
+	assert.Equal(t, authnext.Config(config.Authn), iamAuthnConfig(config))
+	assert.Equal(t, config.IAMAudit.Anchor.Enabled, iamAuditConfig(config).Anchor.Enabled)
+	assert.Equal(t, config.IAMAudit.Anchor.Endpoint, iamAuditConfig(config).Anchor.Endpoint)
+	assert.Equal(t, config.IAMAudit.Anchor.Bucket, iamAuditConfig(config).Anchor.Bucket)
+	assert.Equal(t, config.IAMAudit.Anchor.Region, iamAuditConfig(config).Anchor.Region)
+	assert.Equal(t, config.IAMAudit.Anchor.AccessKey, iamAuditConfig(config).Anchor.AccessKey)
+	assert.Equal(t, config.IAMAudit.Anchor.SecretKey, iamAuditConfig(config).Anchor.SecretKey)
+	assert.Equal(t, config.IAMAudit.Anchor.RetentionDays, iamAuditConfig(config).Anchor.RetentionDays)
+	assert.Equal(t, config.IAMAudit.Anchor.SigningKey, iamAuditConfig(config).Anchor.SigningKey)
+	assert.Equal(t, config.Provisioning.EncryptionKey, iamProvisioningConfig(config).EncryptionKey)
+	assert.Equal(t, config.Provisioning.EncryptionKeyFile, iamProvisioningConfig(config).EncryptionKeyFile)
+	assert.Equal(t, config.Provisioning.HTTPTimeout, iamProvisioningConfig(config).HTTPTimeout)
+	assert.Equal(t, config.Provisioning.SyncInterval, iamProvisioningConfig(config).SyncInterval)
+	assert.Equal(t, config.Federation.Enabled, iamFederationConfig(config).Enabled)
+	assert.Equal(t, config.Federation.EncryptionKey, iamFederationConfig(config).EncryptionKey)
+	assert.Equal(t, config.Federation.EncryptionKeyFile, iamFederationConfig(config).EncryptionKeyFile)
+	assert.Equal(t, config.Federation.HTTPTimeout, iamFederationConfig(config).HTTPTimeout)
+	assert.Equal(t, config.Federation.ClockSkew, iamFederationConfig(config).ClockSkew)
+	assert.Equal(t, config.Federation.StateTTL, iamFederationConfig(config).StateTTL)
+	assert.Equal(t, config.Federation.SAML.Enabled, iamFederationConfig(config).SAML.Enabled)
+	assert.Equal(t, config.Federation.SAML.SigningKeyFile, iamFederationConfig(config).SAML.SigningKeyFile)
+	assert.Equal(t, config.Federation.SAML.CertificateFile, iamFederationConfig(config).SAML.CertificateFile)
+	assert.Equal(t, config.Federation.SAML.LoginPath, iamFederationConfig(config).SAML.LoginPath)
+	assert.Equal(t, config.Federation.SAML.ValidDuration, iamFederationConfig(config).SAML.ValidDuration)
+	assert.Equal(t, config.Federation.SAML.MaxIssueDelay, iamFederationConfig(config).SAML.MaxIssueDelay)
 }

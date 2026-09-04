@@ -80,6 +80,11 @@ func TestRoleGrantStoreRemovesExactScopedAssignments(t *testing.T) {
 		return err
 	}))
 	require.NoError(t, repository.runInTx(t.Context(), func(repo *Repository) error {
+		changed, err := store.RemoveGroupMembership(t.Context(), repo.writer(), 1, 200, 11)
+		assert.False(t, changed)
+		return err
+	}))
+	require.NoError(t, repository.runInTx(t.Context(), func(repo *Repository) error {
 		changed, err := store.RemovePositionMembership(t.Context(), repo.writer(), 1, 300, 11)
 		assert.True(t, changed)
 		return err
@@ -87,6 +92,11 @@ func TestRoleGrantStoreRemovesExactScopedAssignments(t *testing.T) {
 	require.NoError(t, repository.runInTx(t.Context(), func(repo *Repository) error {
 		changed, err := store.RemoveEntityRoleBinding(t.Context(), repo.writer(), 1, entity.ID, role.ID, 11)
 		assert.True(t, changed)
+		return err
+	}))
+	require.NoError(t, repository.runInTx(t.Context(), func(repo *Repository) error {
+		changed, err := store.RemoveEntityRoleBinding(t.Context(), repo.writer(), 1, entity.ID, role.ID, 11)
+		assert.False(t, changed)
 		return err
 	}))
 	assert.Equal(t, int64(0), testTableCount(t, harness.db, "sl_iam_group_members"))

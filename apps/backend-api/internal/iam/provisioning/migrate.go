@@ -1,4 +1,6 @@
 // Package provisioning owns inbound and outbound SCIM persistence.
+//
+//go:generate go run ./dbgen
 package provisioning
 
 import (
@@ -9,9 +11,6 @@ import (
 )
 
 const Name = "provisioning"
-
-// Module owns SCIM directories, credentials, resources, and outbound targets.
-type Module struct{}
 
 func (*Module) ModuleName() string { return Name }
 

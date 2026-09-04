@@ -1,6 +1,8 @@
 // Package oauth owns OAuth clients, authorization codes, consents, and refresh tokens.
 package oauth
 
+//go:generate go run ./dbgen
+
 import (
 	"embed"
 
@@ -9,11 +11,6 @@ import (
 )
 
 const Name = "oauth"
-
-// Module owns OAuth protocol persistence and client administration.
-type Module struct{}
-
-func (*Module) ModuleName() string { return Name }
 
 //go:embed sql
 var migrationsFS embed.FS

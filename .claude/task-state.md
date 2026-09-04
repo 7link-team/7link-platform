@@ -9,10 +9,10 @@ IAM 域全量迁移：chaosplus `apps/server` → 7link-platform `apps/backend-a
 PostgreSQL、MySQL、SQLite 真实迁移与 `make ci` 门禁。
 
 ## Current Phase
-IMPLEMENTATION
+BLOCKED
 
 ## Current Step
-Phase 4 / Task 4.1：Phase 3（authn + identity）已全部完成并通过 `make ci`，下一步开始迁移 oauth。
+Phase 9 / Task 9.7：Windows 上全部最终门禁与文档收口已通过；等待原 Mac 执行计划 Task 0.P Step 4 后才能勾选 9.7 并宣布迁移完成。
 
 ## Overall Progress
 - [x] 深度分析与迁移方案 v9
@@ -22,10 +22,32 @@ Phase 4 / Task 4.1：Phase 3（authn + identity）已全部完成并通过 `make
 - [x] Phase 1 九个模块自治迁移源、里程碑 DAG 与三引擎验证
 - [x] Phase 2 core Go 模块迁移
 - [x] Phase 3 authn 与 identity Go 模块迁移
-- [ ] Phase 4–8 oauth/organization/audit/governance/provisioning/federation 迁移与装配
+- [x] Phase 4 oauth Go 模块迁移
+- [x] Phase 5 organization Go 模块迁移
+- [x] Phase 6 audit Go 模块迁移
+- [x] Phase 7 governance/provisioning/federation 迁移
+- [x] Phase 8 应用装配、OpenAPI、跨模块负例与架构门禁
 - [ ] Phase 9 集成与验收
 
 ## Active Work
+Task 9.7 的 Windows 可执行项已完成：`make generate` 保持完整工作树指纹不变，最终 `make ci`、真 MySQL 8.4 migration/performance/schema-lock 门禁通过，`make dev` 的 `/healthz` 返回 HTTP 200 / `SERVING` 后干净关闭；README Testing 与 D13 性能门禁决策已更新。统一执行契约八项均有既有 source manifest、schema/behavior/tenant/OpenAPI/coverage 证据并已勾选。唯一剩余项是 Task 0.P Step 4：必须回到原 Mac 实跑 `make iam-preflight` 与 `make ci`；计划明确禁止用 Windows 结果替代，因此 9.7 与 Phase 9 暂不勾选。执行模式 Direct：当前上层约束禁止未授权子代理。
+
+Phase 8 已完成：`internal/app` 已接入 authz registrar、IAM 配置映射、冻结的 9 模块运行时顺序与 6 模块声明顺序；core 提供 `ActiveMemberChecker`、`AdministratorGuard`、`RoleGrantStore`，identity 经 registry 解析 guard。缺失 provider 启动测试与顺序测试已加入。OAuth revoke/404 与 Federation SAML form/response OpenAPI 缺口已修复。组合应用测试实际执行 SQLite migration、wire/initialize/start，再经生产 Huma factory 注册所有模块，断言 208/208 target 集合、source 双射与全局 OperationID 唯一。真实组合 HTTP tenant A/B 矩阵使用 identity principal、JWT、持久化 platform admin 与 SCIM credential，验证 invitation、group provision、SCIM、federation callback、governance revoke、IAM authorization、audit trace 均不跨 tenant。`tests/architecture` 以 `go list -json` 和 Go AST 检查精确九模块目录、模块自有 model/query/dbgen/三方言 SQL、禁止中央 port/schema、禁止跨模块 persistence/concrete/constructor 使用、`module.Resolve` 依赖声明及根包导出持久化类型泄漏；违规 fixture 对五类规则均能触发。Task 8.7 首次 coverage 运行发现 core 89.5%/总计 89.9%，补充 `RoleGrantStore` provider late-binding 生命周期回归后官方 gate 达到 core 90.0%/总计 90.0%；tenant 集成 fixture 的 HTTP response 在 request 边界立即读取并关闭，bodyclose lint PASS。
+
+Task 7.1–7.3 已验收：四表 `model/query/dbgen`、统一前缀绑定、request/review 状态机、14 条 HTTP、
+provider 根契约解析、declaration-only、tenant/actor/终态并发/last-admin 负例均已完成。
+所有 standalone mutation 只拥有一个 writer transaction，状态 CAS、core mutation、last-admin verifier、
+policy revision 与 audit append 共用该 transaction。governance root coverage 90.2%，已登记 Makefile coverage gate；
+focused tests/race/vet/lint、generator、三引擎 migration/model 与最终 `make ci` 均 PASS。
+Tasks 7.4-7.6 已验收：provisioning 五表 `model/query/dbgen`、统一前缀绑定、directory credential、
+SCIM users/groups/bulk/patch/filter/discovery、outbound target 与冻结 30 条 HTTP operation 已完成；
+identity/organization/audit provider 契约通过 `module.Services` 解析并保留 declaration-only。
+credential→directory→tenant 唯一绑定、A→B 不可见、bulk tenant 隔离、ETag 并发单胜者、事务回滚、
+outbound 同资源串行与 lock registry 回收均有验证。最终 focused/full gates 与 deep-review/deep-audit PASS，
+provisioning root coverage 90.9%；未修改 Phase 8 composition root。
+
+Tasks 7.7-7.9 federation 已验收：四表 `model/query/dbgen`、prefix-safe repository、OIDC discovery/JWKS/PKCE/state/verifier/JIT link、SAML IdP/SP/SSO/SLO/metadata/key rotation、module/i18n 与批准的 17 条 operation 全部完成。模块只解析 `guid.Source`、`audit.Appender`、`identity.IdentityProvisioner`、`authn.WebService`，保留 declaration-only，未修改 composition root。tenant/provider/SP/path/state/assertion/logout replay、事务回滚、数据库失败、并发单胜者及 fail-closed capacity 均有负例；replay registry 仍为进程内状态，跨 replica 不共享是明确部署限制。
+
 Task 0.P/0.0/0.1/0.2/0.3/0.4/0.5、Task 1.0/1.1/1.2 已实现；迁移计划为 v9，
 `internal/iam/` 作为域命名空间，9 个子模块各自拥有业务、model/query 与 SQL，取消集中 schema
 和 feature 分包。Task 1.3 已完成 identity、authn、oauth、audit、core、organization、governance、provisioning、
@@ -36,6 +58,24 @@ Task 3.3–3.4 已完成 module/contracts、30 条 RESTful HTTP operation、Open
 Task 3.5 已完成 identity principal/service-account/provisioning 业务与全部行为测试。
 identity 3 张自治表的 model/query/dbgen 也已提前完成，供 authn 读取由 identity 拥有的 principal 与
 service-account 状态，避免跨模块重复定义持久化模型；identity 业务迁移仍留在 Task 3.5–3.7。
+Task 4.1 已完成 OAuth 四表 model/query/dbgen、前缀安全 repository、protocol/client administration
+service、事务审计、授权码与 refresh token CAS、tenant/client 隔离和三引擎最终 schema 契约。
+Task 4.2 已完成 OAuth module lifecycle/services 注入、三 locale namespaced i18n、12 条冻结 HTTP operation、
+实际 OpenAPI 契约与 protocol/management 行为；无 declaration-only constructor，未提前修改 app composition。
+Task 4.3 已补齐并独立验证 tenant/client/code/token 跨界负例、失败尝试不消费目标凭据、refresh family
+撤销隔离，以及 authorization code/refresh token 并发重放与 CAS loser 撤销 successor family。
+Task 4.4 已完成 generate 幂等、架构/模块检查、race、lint、覆盖率与两轮完整 `make ci` 门禁。
+Task 5.1 已完成 organization 14 张表的 module-owned model/query/dbgen、统一前缀绑定，以及 department、
+position、group、tenant、invitation 的输入归一化与稳定 DTO/错误契约；MySQL `parent_key` 保持显式方言例外。
+Task 5.2 已完成 department hierarchy、position/group member、tenant lifecycle 与 invitation state machine 的
+prefix-safe GORM repositories/services；所有 tenant-owned lookup/mutation 带 tenant ID，audit/revision/closure/member/
+identity invitation acceptance 使用同一 transaction 或 caller-owned writer。
+Task 5.3–5.4 已完成 caller-owned `GroupProvisioner`、module.Services 六项能力解析、declaration-only、三 locale
+namespaced i18n 与冻结 32 条 HTTP operation；平台 tenant CRUD、tenant A/B directory/member/invitation/token
+隔离以及 guard/audit/storage 失败回滚均有行为测试。
+Task 5.5 已完成 generate 字节稳定、focused race/vet/lint、三引擎双前缀 migration/model parity 与完整
+`make ci`；organization root coverage 1767/1963 = 90.015%。core repository test harness 改为直接读取真实
+organization SQL，消除 organization 导入 core 后出现的 test-only import cycle。
 
 Task 2.1 已完成：13 张 core 表均已有 module-owned model、gorm-gen query 与统一前缀绑定；三引擎
 model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entities.parent_key` 是唯一显式方言例外。
@@ -211,6 +251,82 @@ model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entitie
   PATCH/PUT/DELETE suspension 一律 403 且状态不变；版本冲突 409、非法 ID 422。
 - Task 3.8 门禁：identity 90.6%、authn 90.3%、`-race` 通过、golangci-lint 0 findings、
   `go generate` 零 diff、全仓 `make ci` 总覆盖率 90.2% 全绿。
+- Task 4.1：OAuth 四表 GORM model、gorm-gen query/dbgen、统一前缀绑定与 repository/service 已完成；
+  client mutation+audit、consent+code+audit、code consume+refresh insert、refresh CAS+successor、client
+  delete+refresh revoke 均固定同一 writer/transaction。授权码与 refresh token 为 CAS 单次消费，CAS loser
+  事务性撤销完整 family；client CRUD、token exchange/revoke/introspection 均绑定 client/tenant。
+- Task 4.1 deep-review 修复并验证四类缺陷：MySQL `BIGINT` 对 `22junk` 的宽松强制转换（所有 client ID
+  在 SQL 前解析为 `guid.ID`）、RFC 7636 verifier/challenge 长度与字符集、revoke 跨 client/存储错误测试缺口、
+  SQLite v5 重建后 model parity 与有数据 `v4→v6` 保留缺口。五类反向变异均使目标测试失败后已恢复。
+- Task 4.1 门禁：OAuth `-race`、focused lint/vet、generate 字节零变化、root coverage 91.0%、最终三引擎
+  model↔DDL、SQLite 有数据升级、`make ci`（总覆盖率 90.2%、migration 152.478s）和真实 MySQL 8.4
+  全量迁移全部通过；schema lock 仍为 147 files / 63 IAM tables / 27 cross-module FKs。
+- Task 4.2：`Module` 经 `module.Services` 解析 `authn.WebService`、`guid.Source` 与 `audit.Appender`，依赖
+  i18n/guid/audit/authn；initialize/health/RegisterHTTP 及缺失 wiring 均有测试。OAuth i18n 使用 `oauth.*`
+  全限定 key 并完整覆盖 en-US/ms-MY/zh-CN；management 复用 authz/respx，protocol 保持 form body 与
+  `{error,error_description}`。实际 Huma OpenAPI 与冻结 manifest 12/12 完全相等。
+- Task 4.2 deep-review 修复三类行为缺陷：authorize 的 Huma 前置验证改为保留 schema、handler 内返回 OAuth
+  error；repository outage 不再被 service 折叠为 invalid client/grant；introspection `sub` 使用 protocol
+  subject 而非仅 principal ID。`prompt=consent` 不引用缺失路由，userinfo 强制 principal + openid。
+- Task 4.2 门禁：focused race/vet/lint PASS，OAuth root coverage 91.4%（完整 CI 91.5%）；四项反向变异
+  均使目标测试失败后恢复。`make ci` PASS（总覆盖率 90.2%、migration 152.818s、build PASS）；真实
+  MySQL 8.4 PASS，schema lock 147 files / 63 IAM tables / 27 cross-module FKs。
+- Task 4.3：service/HTTP acceptance matrix 完整覆盖 tenant A 不可管理 tenant B client、A client 不可兑换 B 的
+  authorization code/refresh token、失败跨 client 尝试不消费 B 凭据、跨 client revoke 不改变 B token family、
+  introspection 同时绑定 client ID 与 tenant claim；authorization code 与 refresh token 并发重放均仅一次成功，
+  CAS loser 会撤销 winner 的 successor family。
+- Task 4.3–4.4 deep-review：OAuth runtime/OpenAPI、命名注释、可测试性及 tenant/client/concurrency matrix
+  独立复审均无剩余发现；client/code/token 绑定、两类 CAS、family revocation、introspection tenant 绑定及
+  HTTP/OpenAPI 精确契约的反向变异均使目标测试失败，且变异已全部恢复、无备份文件残留。
+- Task 4.4 门禁：`go generate ./internal/iam/oauth` 字节零变化，冻结 capability-owner、module/OpenAPI、
+  focused vet/lint 与 `go test -count=1 -race ./internal/iam/oauth/...` PASS；focused OAuth coverage 91.6%。
+  最终 `make ci` PASS（总覆盖率 90.2%、OAuth 91.6%、migration 与 production build PASS）。
+- Task 5.1：14 个 GORM persisted model 与实际三引擎 DDL 的列、NULL、时间类型逐表相等；统一 query.Bind
+  对 plain/prefixed 14 张表全覆盖。department/group `name_key`、root/child parent 唯一性和同 tenant parent FK
+  继续由 PostgreSQL/MySQL/SQLite migration contract 验证；MySQL generated `parent_key` 在共享 parity helper
+  中显式 allowlist。根包 normalization tests、`-race` 与 generate 字节稳定 PASS；当前 root coverage 77.6%，
+  尚未达到 5.5 的 ≥90% 最终门禁，将由 5.2–5.4 repository/service/HTTP 测试补齐。
+- Task 5.2：真实 prefixed SQLite migration 上完成 department closure create/move/delete、tenant A/B 不可见、
+  group/position member active check 与 portable upsert、dynamic group rule、tenant member listing/soft-delete/bootstrap、
+  invitation create/resend/revoke/accept、跨 tenant binding 拒绝、tamper 拒绝、accepted 幂等及 audit failure 全回滚。
+  focused root/subpackage tests、`-race`、`go vet` 与 golangci-lint PASS；Task 5.3–5.5 的 HTTP/module、完整负例矩阵、
+  覆盖率和最终 `make ci` 门禁也已完成。
+- Task 6.1–6.2：audit 三表 model/query/dbgen、统一前缀绑定、caller-owned `audit.Appender`、append-only hash chain、
+  head lock、snapshot export、retention/governance、S3-compatible Object Lock anchor 与 Ed25519 root signing 已完成；
+  standalone mutation 固定同一 writer transaction，跨模块 appender 直接使用调用方传入的 `*gorm.DB`。
+- Task 6.3–6.4：唯一生产 `audit.Appender` provider、declaration-only、namespaced i18n 与冻结 8 条 HTTP operation
+  已完成；tenant A/B list/get/export/integrity/anchor/retention 隔离、并发 append 不分叉、历史篡改检测、
+  三引擎 append-only trigger、依赖/存储失败和真实 MinIO COMPLIANCE retention/version/delete refusal 均有验证。
+- Task 6.5 门禁：generator 字节稳定，focused tests/race/vet/lint、三引擎双前缀 migration/model parity、
+  双模块 `go mod verify` 与最终 `make ci` PASS；audit root coverage 93.6%，全仓 coverage 90.1%。
+- Task 7.1–7.2：governance 四表 model/query/dbgen、request/review 状态机、七类 grant snapshot 与全部可变
+  revoke、统一前缀 repository、caller-owned transaction、provider/declaration-only、namespaced i18n 和冻结
+  14 条 HTTP operation 已完成；tenant/actor/human-principal、rollback、CAS 并发与 nullable time/ID 均有验证。
+- Task 7.3 门禁：generator 字节稳定，focused tests/race/vet/lint、三引擎 migration/model、双模块
+  `go mod verify`、当前工作区 `git diff --check` 与最终 `make ci` PASS；governance root coverage 90.2%，
+  全仓 coverage 90.0%。验收复审发现并修复 RoleGrantStore 对 group/position/entity review removal 缺少
+  AdministratorGuard 的源行为差异；首次复跑 core coverage 89.9% 后补齐幂等回归路径，最终 core 90.0%。
+- Tasks 7.4-7.6：provisioning 五表 model/query/dbgen、prefix-safe repository、directory credential、
+  SCIM users/groups/bulk/patch/filter/discovery、outbound target、module/i18n 与 30 条 HTTP operation 已完成；
+  tenant/directory/bulk/ETag/rollback/outbound concurrency 负例已覆盖。generator、focused tests/race/vet/lint、
+  双模块 verify、完整 migration、coverage、`make ci` 与真实 MySQL 8.4 门禁全部 PASS；root coverage 90.9%。
+- Task 9.1：新增可跨子进程使用的 MySQL TCP testdb helper、数据库/前缀可配置的生产 app 组合夹具与
+  `tests/lifecycle` 六案例矩阵；完整业务链逐阶段断言持久化与 audit 行为。矩阵在最终 audit hash 修复后
+  PostgreSQL/MySQL/SQLite 的 plain/`sl_` 全部 PASS（40.83s）。生命周期执行发现并修复 MySQL OAuth
+  保留字 alias、MySQL unchanged-update `RowsAffected` 语义和 PostgreSQL `CHAR(64)` 空 hash padding；
+  三项均有聚焦回归。完整 tests module、相关 root packages/race、双模块 vet/tidy、lint/fmt/diff 均 PASS。
+- Task 9.2：migration-status 主路径改为 `/migration-status`，保留 deprecated `/debug/migrations`；两条路由
+  共用 handler 并均登记 OpenAPI。生产 composition 白盒测试对精确 13 条 flow 执行 up/status/reverse
+  down-to 0/up，并断言 clean/pending 版本集合；外层 PostgreSQL/MySQL/SQLite plain/`sl_` 六案例矩阵对账
+  九个 IAM migration source 互斥 ownership、并集 63 及数据库实际 IAM 表精确相等。
+- Task 9.3：强化 `tests/architecture` 的全称门禁：九模块 root 必须有独立业务生产源码；所有导入 provider
+  的 `module.Resolve` 必须由 root `Module.ModuleDependencies` 的 return expression 声明，覆盖 IAM 与 infra；
+  同名 package function、方法体未返回引用、跨模块 model/query/dbgen、concrete type/constructor 与公开 storage
+  type 泄漏均由实际 graph 或 fixture 检查。生产 IAM 模块与注册顺序无改动。
+- Task 9.6：新增生产组合的外部数据库性能契约与 PostgreSQL coordinator，真实调用 authorization、session、
+  SCIM bulk 25 和 audit append；冻结 PostgreSQL 16.9/MySQL 8.4.11 共 24 份 JSON `EXPLAIN`、规范化 SQL
+  fingerprint、每路径 5 份 benchmark/alloc/bytes 与 3x 最大样本阈值。结构门禁拒绝无作用域全表扫描并对
+  关键已填充表强制索引访问；同机时延由显式环境开关执行。`make test-performance` 与真 MySQL 门禁已接线。
 
 ## Important Decisions
 - 目标为全量、全功能迁移；SAML/SCIM 不允许长期 Disabled。
@@ -222,6 +338,8 @@ model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entitie
 - 只支持已确认的原 Mac 与当前 Windows 两机拓扑；源 tree 变化必须先复审。
 - 传输文件统一 `http.go`/`RegisterHTTP`，接口按 RESTful 标准设计；源 208 条 operation 通过逐模块
   source→target 映射保证完整性，不再要求目标复制源 RPC 路径；源无 IAM gRPC，当前不虚构（D12）。
+- Federation replay 在不增加表的约束下使用 bounded fail-closed TTL registry；不复用会按 nonce 无界增长的
+  distributed-lock rows。跨 replica 的一次性消费不在现有能力图内，保留为明确部署限制。
 
 ## Confirmed Constraints
 - 三方言 DDL 全部前缀化、真实时间类型、无 0 哨兵、FK/guid 使用 BIGINT。
@@ -231,35 +349,46 @@ model ↔ DDL 列集合和 NULL 契约已形成全称测试，MySQL `iam_entitie
 - 每次换机或恢复任务先运行 `make iam-preflight`；后续只消费生成的路径与 Docker transport。
 
 ## Known Issues / Risks
+- `git diff --check` 对当前 OAuth 工作区 PASS，但 `git diff --check main...HEAD` 会因已提交的 identity 三个
+  locale JSON 使用 CRLF 报 trailing whitespace；不得继续把分支级检查记录为 PASS。
 - 多写者 routing mode 与读副本接线仍是独立架构决策，不在 Task 0.0 中扩大范围。
 - Mac 上的 `make iam-preflight` 与 `make ci` 尚未在本轮实跑；回到 Mac 后先完成该检查。
 - `make ci` 默认仍使用内存 MySQL；真实 MySQL DDL 门禁由独立的 `make test-mysql8` 执行，最终验收必须两者都跑。
 - 验证码直接依赖的共同传递模块 `github.com/golang/freetype` 已归档；当前无 `govulncheck` 可达漏洞，
   且两项验证码能力均依赖它。等价迁移阶段保留，迁移完成后单独评估验证码/字体栈替换。
 - 本任务约 6 万行，必须按 Phase 分批实现、验证和留档。
+- Federation replay registry 为进程内状态；单进程和同一 replica 重放可拒绝，跨 replica 需要现有计划外的
+  shared nonce capability 或 schema 变更，当前不得静默增加。
 
 ## Verification
-Build: PASS（Task 3.8 Windows `make ci` build）
-Tests: PASS（identity `-race` 9.067s；完整 `make ci`；`tests/migration` 153.257s）
-Lint: PASS（Task 3.8 `make ci` golangci-lint，0 findings）
-Coverage: PASS（完整 CI 总计 90.2%；identity 90.6%；authn 90.3%；core 90.0%；全部登记包 ≥90%）
+Build: PASS（Phase 8 Windows `make ci` production build）
+Tests: PASS（9 个 IAM root 包与 `internal/app` focused/race PASS；Task 8.5 真实组合 tenant A/B PASS；Task 8.6 architecture 真实 graph/违规 fixture PASS；完整 tests module PASS）
+Lint: PASS（`go vet ./...` 与 pinned golangci-lint/`make ci`，0 findings）
+Coverage: PASS（完整 coverage 总计 90.0%；audit 93.6%、authn 90.3%、core 90.0%、federation 91.4%、governance 90.2%、identity 90.6%、oauth 91.6%、organization 90.0%、provisioning 90.9%）
 Integration: PASS（`tests/goose`、`tests/internal/testdb`、完整 `tests/migration`；Task 1.2 A↔B FK；
 Task 1.3 identity→authn DAG、audit append-only/retention、core R5''/R9''/R16、
 organization→core、oauth→organization、governance→organization 与 provisioning→organization
 及 federation→identity 三引擎双前缀生命周期；Task 2.3 core `11→10→11`、Task 3.2 authn
 `11→10→11` 与 oauth 连续两轮 `6→5→6` 索引生命周期；PostgreSQL 16/MySQL 8.4 relationship/revision 行为）
-Other verification: `git diff --check` PASS；source tree/三方言 63 表 PASS；core 实际 OpenAPI 51/51；
+Other verification: Phase 8 `make generate` 工作区指纹零变化、root/tests 两个 Go module `go mod verify` PASS、当前工作区
+`git diff --check` PASS、`main...HEAD` 因 identity locale CRLF FAIL；audit 实际 OpenAPI 8/8、OAuth 实际
+OpenAPI 12/12 且 schema/security/guard PASS；source tree/三方言 63 表 PASS；core 实际 OpenAPI 51/51；
 authn 实际 OpenAPI 与批准目标契约相等（30/30），源 authn→目标映射 30/30；全域源 HTTP operation
 baseline 已纠正为 208（旧提取漏扫 `identity/service_account.go` 的 8 条）；远端 Docker 26.1.5 PASS；MySQL 8.4.11 启动、查询、
 Windows TCP 连通及非 root 用户全量双前缀迁移 PASS；schema lock 147 文件、63 表、27 跨模块 FK PASS；
 门禁成功/失败路径远端容器清理 PASS；Linux FIFO 真实文件系统测试 PASS。
+Provisioning acceptance verification: tests/race/vet/golangci-lint PASS；root coverage 90.9%；generator 字节稳定；双 Go module verify PASS；30/30 OpenAPI operation 与 SCIM security/parameters/request-response media/success status PASS；完整 migration、`make test-coverage`、`make ci` 与真实 MySQL 8.4 PASS。MySQL 首次 Docker Hub pull 遇到 transient EOF，未改代码重试后通过；schema lock 保持 147 files / 63 IAM tables / 27 cross-module FKs。最终 deep-review/deep-audit 与当前工作区 `git diff --check` PASS；确认未修改 composition root。
+Federation acceptance verification: generator SHA-256 前后不变；focused tests、`-race`、vet、golangci-lint PASS；root coverage 91.4%，完整 coverage 90.0%；主模块 `go mod tidy -diff` clean，双 Go module verify/tidy、完整 migration、最终 `make ci` 与真实 MySQL 8.4 PASS；实际 OpenAPI 17/17；三 locale JSON/BOM 检查 PASS；schema lock 保持 147 files / 63 IAM tables / 27 cross-module FKs。补充 `AuthnRequestsSigned=true` 注册拒绝回归，错误类别与信息均验证；provider tenant boundary、SAML browser registration、replay duplicate claim 三项 mutation 均使目标测试失败，恢复后 focused tests/race/lint PASS；MySQL 首次 Docker Hub pull 遇到 transient EOF，未改代码重试后通过；未修改 composition root。
+Task 9.1 verification: `go test ./lifecycle -run '^TestIAMLifecycleAcrossEnginesAndPrefixes$' -count=1` PASS，六案例均在最终 audit hash 修复后通过；完整 tests module `go test ./... -count=1` PASS；相关 root packages、audit/federation/oauth race、双模块 vet/tidy、`make lint`、`make fmt-check` 与工作区 `git diff --check` PASS。MySQL lifecycle 使用 go-mysql-server TCP dialect harness，不冒充真实 MySQL 8.4；真实 MySQL 终门禁仍属于 Task 9.7。
+Task 9.1 final CI: `make ci` PASS；gofmt/lint PASS，总覆盖率 90.0%，完整 tests module PASS（lifecycle 43.725s、migration 184.562s），production build PASS。
+Task 9.2 verification: focused root packages PASS；六案例 `TestIAMMigrationStatusAcrossEnginesAndPrefixes` PASS（45.41s）；完整 tests module PASS（lifecycle 43.289s、migration 226.907s）；双模块 `go vet ./...` 与 `go mod tidy -diff`、`make fmt-check`、工作区 `git diff --check` 均 PASS。额外 bare IAM table mutation 被精确识别为第 64 表；reverse order 删除 `dlock` mutation 因该 flow 保持 clean 而按预期失败，恢复后 prefixed SQLite PASS。
+Task 9.2 final CI: `make ci` PASS；gofmt/lint PASS，总覆盖率 90.0%，migration-status 93.3%，完整 tests migration 210.155s，production build PASS。
+Task 9.3 verification: `go test ./architecture -count=1 -v`、`go vet ./architecture`、tests `go mod tidy -diff` 与工作区 `git diff --check` PASS；实际 `go list` graph 精确九个 IAM root 且 namespace 无 Go 文件。business-source 恒真、Resolve 记录停用、同名函数冒充 receiver、方法体引用但未 return 四项 mutation 均使目标测试按预期失败，恢复后 focused architecture PASS（1.622s）。首次 CI 遇到一次 authn SQLite `database is locked`，目标 HTTP test 连续 10 次复跑全过；随后两次完整 `make ci` 均 PASS，最终 architecture 2.660s、总覆盖率 90.0%、production build PASS。
+Task 9.6 verification: `go test ./internal/app -count=1` 与 `go -C tests test ./performance -count=1 -v` PASS；PostgreSQL fresh medians authorization 277527ns、session 424381ns、SCIM bulk 2690495ns、audit append 350425ns，均低于冻结阈值。双模块 vet、gofmt、静态 baseline/parser tests 与工作区 `git diff --check` PASS。tenant predicate 与 session PK 两项 mutation 均使真实性能契约按预期失败，恢复后 PostgreSQL enforced 与真 MySQL 8.4 enforced PASS。Task 9.6 最终 `make ci` PASS；总覆盖率 90.0%，完整 tests module/performance 与 production build PASS。
+Task 9.7 Windows verification: `make generate` 前后完整工作树 fingerprint `3990f894c5ed42b2ca8f7166f5f86a225ecbeabc` 不变；随后最终 `make ci` PASS（lint、总覆盖率 90.0%、全部模块 ≥90%、完整 tests module、production build）。`make test-mysql8` PASS：source tree/preflight、真实 MySQL 8.4 migration、四路径 performance、schema lock 147 files / 63 tables / 27 cross-module FKs 全绿。`make dev` 监听 8080/9090，`GET http://127.0.0.1:8080/healthz` 返回 HTTP 200 且整体 `SERVING`，interrupt 后 shutdown complete 且 8080 无 listener。README Testing 与 D13 已更新；双模块 `go mod tidy -diff` 和工作区 `git diff --check` PASS。未验证项仅为计划明确要求的原 Mac `make iam-preflight` + `make ci`。
 
 ## Next Action
-执行 Task 4.1：按 source manifest 对账 `modules/oauth` 的 symbol，在 `internal/iam/oauth` 建立
-`model/query/dbgen` 与 protocol/client administration 行为（授权码、refresh token、secret rotation
-保持一次性与事务语义）；HTTP 12 条目标契约在 Task 4.2 实现前逐条冻结。
+回到计划指定的原 Mac，执行 `make iam-preflight` 与 `make ci` 并记录结果；两者 PASS 后勾选 Task 0.P Step 4、Task 9.7 与 Phase 9，完成最终接受复审。
 
 ## Last Checkpoint
-2026-09-03 · IAM 分支 Phase 3 完成检查点：authn 30 条 + identity 14 条 RESTful operation 全部落地，
-identity 业务/HTTP/module/i18n 与七个对应测试文件完成，租户隔离与 platform_administer 负例通过。
-identity 90.6%、authn 90.3%、`-race` 通过、全仓 `make ci` 全绿。下一步进入 Phase 4 oauth（Task 4.1）。
+2026-09-03 · PRE-PUSH WINDOWS CHECKPOINT / BLOCKED：deep-review 类扫描已收口，删除 4 个已被真实三方言迁移替代的 SQL placeholder，修正 README 对 IAM 未实现的过期描述，并清理未跟踪 coverage、bin、本地数据库与 `.temp` 产物。修复后的完整 `make ci` 再次 PASS：gofmt/lint、总覆盖率 90.0%、全部受控模块 >=90%、完整 tests module（migration 215.745s）与 production build 均通过。此前 `make generate`、真实 MySQL 8.4、live health、README/decision/state 与 diff/tidy 门禁继续有效；因 Task 0.P Step 4 明确要求 Mac 实机结果且禁止 Windows 替代，9.7 与 Phase 9 保持未勾选，等待 Mac 两条命令。

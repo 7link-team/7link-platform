@@ -3,19 +3,25 @@ package app
 import (
 	"fmt"
 	"time"
+
+	authnext "7link.com/platform/pkg/extension/authn"
 )
 
 type AppConfig struct {
 	Name    string `mapstructure:"name" description:"application name" trim:"true" default:""`
 	Version string `mapstructure:"version" description:"application version" trim:"true"`
 
-	Debug     bool           `mapstructure:"debug" short:"d" description:"debug mode" default:"false"`
-	Banner    BannerConfig   `mapstructure:"banner" group:"banner"`
-	Pprof     Pprof          `mapstructure:"pprof" group:"pprof"`
-	API       API            `mapstructure:"api" group:"api"`
-	Telemetry Telemetry      `mapstructure:"telemetry" group:"telemetry"`
-	Audit     Audit          `mapstructure:"audit" group:"audit"`
-	Shutdown  ShutdownConfig `mapstructure:"shutdown" group:"shutdown"`
+	Debug        bool            `mapstructure:"debug" short:"d" description:"debug mode" default:"false"`
+	Banner       BannerConfig    `mapstructure:"banner" group:"banner"`
+	Pprof        Pprof           `mapstructure:"pprof" group:"pprof"`
+	API          API             `mapstructure:"api" group:"api"`
+	Telemetry    Telemetry       `mapstructure:"telemetry" group:"telemetry"`
+	Audit        Audit           `mapstructure:"audit" group:"audit"`
+	Authn        IAMAuthn        `mapstructure:"authn" group:"authn"`
+	IAMAudit     IAMAudit        `mapstructure:"iam_audit" group:"iam_audit"`
+	Provisioning IAMProvisioning `mapstructure:"provisioning" group:"provisioning"`
+	Federation   IAMFederation   `mapstructure:"federation" group:"federation"`
+	Shutdown     ShutdownConfig  `mapstructure:"shutdown" group:"shutdown"`
 
 	Timezone string `mapstructure:"timezone" description:"timezone" default:"UTC"`
 
@@ -26,6 +32,54 @@ type AppConfig struct {
 	TablePrefix       string              `mapstructure:"table_prefix" description:"prefix prepended to every table this application owns" validate:"^$|^[a-z_][a-z0-9_]{0,20}$"`
 	Database          map[string]Database `mapstructure:"database" group:"database" mapkey:"<dbkey>"`
 	DatasourceMonitor DatasourceMonitor   `mapstructure:"datasource_monitor" group:"datasource_monitor"`
+}
+
+// IAMAuthn is the application-owned configuration surface for the shared
+// authentication extension. A distinct type keeps AppConfig ownership here
+// while preserving the extension's complete field and validation contract.
+type IAMAuthn authnext.Config
+
+// IAMAudit configures the IAM domain audit chain. It is intentionally separate
+// from Audit, which controls transport-level operation logging.
+type IAMAudit struct {
+	Anchor IAMAuditAnchor `mapstructure:"anchor" group:"anchor"`
+}
+
+type IAMAuditAnchor struct {
+	Enabled       bool   `mapstructure:"enabled" description:"anchor verified IAM audit heads in an external object-lock store" default:"false"`
+	Endpoint      string `mapstructure:"endpoint" description:"S3-compatible audit anchor endpoint" default:""`
+	Bucket        string `mapstructure:"bucket" description:"bucket holding IAM audit anchors" default:"audit-anchors"`
+	Region        string `mapstructure:"region" description:"audit anchor signing region" default:""`
+	AccessKey     string `mapstructure:"access_key" description:"S3 audit anchor access key" default:""`
+	SecretKey     string `mapstructure:"secret_key" description:"S3 audit anchor secret key" default:"" secret:"true"`
+	RetentionDays int    `mapstructure:"retention_days" description:"audit anchor object-lock retention in days" default:"365"`
+	SigningKey    string `mapstructure:"signing_key" description:"base64 Ed25519 seed signing IAM audit roots" default:"" secret:"true"`
+}
+
+type IAMProvisioning struct {
+	EncryptionKey     string        `mapstructure:"encryption_key" description:"base64 key encrypting outbound SCIM credentials" default:"" secret:"true"`
+	EncryptionKeyFile string        `mapstructure:"encryption_key_file" description:"file containing the outbound SCIM encryption key" default:""`
+	HTTPTimeout       time.Duration `mapstructure:"http_timeout" description:"outbound SCIM request timeout" default:"10s"`
+	SyncInterval      time.Duration `mapstructure:"sync_interval" description:"outbound SCIM reconciliation interval; zero disables it" default:"0"`
+}
+
+type IAMFederation struct {
+	Enabled           bool              `mapstructure:"enabled" description:"enable inbound identity-provider federation" default:"false"`
+	EncryptionKey     string            `mapstructure:"encryption_key" description:"base64 key protecting federation secrets and state" default:"" secret:"true"`
+	EncryptionKeyFile string            `mapstructure:"encryption_key_file" description:"file containing the federation encryption key" default:""`
+	HTTPTimeout       time.Duration     `mapstructure:"http_timeout" description:"federation upstream HTTP timeout" default:"10s"`
+	ClockSkew         time.Duration     `mapstructure:"clock_skew" description:"allowed upstream token clock skew" default:"30s"`
+	StateTTL          time.Duration     `mapstructure:"state_ttl" description:"federation login state lifetime" default:"10m"`
+	SAML              IAMFederationSAML `mapstructure:"saml" group:"saml"`
+}
+
+type IAMFederationSAML struct {
+	Enabled         bool          `mapstructure:"enabled" description:"enable the SAML identity provider" default:"false"`
+	SigningKeyFile  string        `mapstructure:"signing_key_file" description:"PEM RSA private key used to sign SAML assertions" default:""`
+	CertificateFile string        `mapstructure:"certificate_file" description:"PEM certificate matching the SAML signing key" default:""`
+	LoginPath       string        `mapstructure:"login_path" description:"browser login path for unauthenticated SAML requests" default:"/login"`
+	ValidDuration   time.Duration `mapstructure:"valid_duration" description:"SAML assertion and metadata validity window" default:"5m"`
+	MaxIssueDelay   time.Duration `mapstructure:"max_issue_delay" description:"maximum accepted SAML request age" default:"5m"`
 }
 
 type BannerConfig struct {

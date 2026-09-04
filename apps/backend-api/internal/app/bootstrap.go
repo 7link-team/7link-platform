@@ -7,7 +7,17 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"time"
 
+	iamaudit "7link.com/platform/internal/iam/audit"
+	iamauthn "7link.com/platform/internal/iam/authn"
+	"7link.com/platform/internal/iam/core"
+	"7link.com/platform/internal/iam/federation"
+	"7link.com/platform/internal/iam/governance"
+	"7link.com/platform/internal/iam/identity"
+	"7link.com/platform/internal/iam/oauth"
+	"7link.com/platform/internal/iam/organization"
+	"7link.com/platform/internal/iam/provisioning"
 	audit "7link.com/platform/internal/infra/audit"
 	"7link.com/platform/internal/infra/configinspector"
 	"7link.com/platform/internal/infra/databasemonitor"
@@ -21,6 +31,8 @@ import (
 	"7link.com/platform/internal/infra/wuid"
 	"7link.com/platform/internal/todo"
 	"7link.com/platform/pkg/appenv"
+	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/authz"
 	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/extension/huma/respx"
@@ -30,6 +42,7 @@ import (
 	"7link.com/platform/pkg/timezone"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
+	"gorm.io/gorm"
 )
 
 // configureProcessRuntime applies the process-wide settings shared by the
@@ -78,7 +91,7 @@ func (app *App) prepare(ctx context.Context) error {
 func (app *App) composeModules() error {
 	app.modules = module.NewRegistry()
 	rt := app.runtime
-	return app.addModule(
+	modules := []module.Module{
 		i18n.NewModule(rt, i18n.Base),
 		respx.NewModule(rt),
 		dlock.NewModule(rt),
@@ -94,13 +107,79 @@ func (app *App) composeModules() error {
 		migrationstatus.NewModule(rt, migrationStatusConfig(app.config)),
 		configinspector.NewModule(rt, app.config, configInspectorConfig(app.config)),
 		pprof.NewModule(rt, pprofConfig(app.config)),
+	}
 
-		// Business modules. They depend on the infrastructure above, so they are
-		// registered after it.
+	// The IAM runtime is enabled as one capability graph. Keeping the gate at
+	// the composition root prevents active dependents from outliving a disabled
+	// authentication provider.
+	if app.config.Authn.Enabled {
+		modules = append(modules, app.composeIAMRuntimeModules()...)
+	}
+
+	modules = append(modules,
 		todo.NewModule(rt),
-
 		health.NewModule(rt),
 	)
+	return app.addModule(modules...)
+}
+
+// composeIAMRuntimeModules constructs the IAM graph once and returns it in the
+// lifecycle order frozen by the migration plan.
+func (app *App) composeIAMRuntimeModules() []module.Module {
+	rt := app.runtime
+	registry := authz.DefaultRegistry()
+
+	var identityModule *identity.Module
+	authnModule := iamauthn.NewModule(rt, iamAuthnConfig(app.config), iamauthn.WithRegistrationPrincipalCreator(
+		func(ctx context.Context, db *gorm.DB, email, passwordHash, displayName string, now time.Time, ids guid.Source) (guid.ID, error) {
+			if identityModule == nil || identityModule.Service == nil {
+				return 0, authnext.ErrUnavailable
+			}
+			id, err := identityModule.CreatePendingPrincipal(ctx, db, email, passwordHash, displayName, now, ids)
+			switch {
+			case errors.Is(err, identity.ErrLoginConflict):
+				return 0, authnext.ErrRegistrationConflict
+			case errors.Is(err, identity.ErrInvalid):
+				return 0, authnext.ErrInvalidRegistration
+			default:
+				return id, err
+			}
+		},
+	))
+	authorizer := core.NewAuthorizerWithRegistry(rt, registry)
+	registrar := authz.NewRegistrar(registry, authnModule, authorizer, core.NewMembershipChecker(rt))
+	app.authzRegistrar = registrar
+	identityModule = identity.NewModule(rt, registrar)
+
+	modules := []module.Module{
+		iamaudit.NewModule(rt, registrar, iamAuditConfig(app.config)),
+		core.NewModule(rt, registrar, authorizer),
+		authnModule,
+		identityModule,
+		organization.NewModule(rt, registrar),
+		oauth.NewModule(rt, registrar),
+		provisioning.NewModule(rt, registrar, iamProvisioningConfig(app.config)),
+		governance.NewModule(rt, registrar),
+	}
+	if app.config.Federation.Enabled || app.config.Federation.SAML.Enabled {
+		modules = append(modules, federation.NewModule(rt, registrar, iamFederationConfig(app.config)))
+	}
+	return modules
+}
+
+// composeIAMDeclarationModules builds only the six declaration-capable source
+// modules. Authn, identity, and OAuth deliberately have no synthetic
+// declaration constructors.
+func composeIAMDeclarationModules() []module.Module {
+	registrar := authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry())
+	return []module.Module{
+		iamaudit.NewDeclarationOnlyModule(registrar),
+		core.NewDeclarationOnlyModule(registrar),
+		organization.NewDeclarationOnlyModule(registrar),
+		provisioning.NewDeclarationOnlyModule(registrar),
+		governance.NewDeclarationOnlyModule(registrar),
+		federation.NewDeclarationOnlyModule(registrar),
+	}
 }
 
 // lifecycle drives the post-preparation phases through start.

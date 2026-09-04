@@ -1,5 +1,7 @@
 package audit
 
+//go:generate go run ./dbgen
+
 import (
 	"embed"
 
@@ -7,12 +9,9 @@ import (
 	"7link.com/platform/pkg/module"
 )
 
-const Name = "audit"
-
-// Module owns the IAM append-only audit chain and retention policy.
-type Module struct{}
-
-func (*Module) ModuleName() string { return Name }
+// Name is distinct from internal/infra/audit's operation-audit lifecycle
+// module. Both are registered in the application composition root.
+const Name = "iam-audit"
 
 //go:embed sql
 var migrationsFS embed.FS

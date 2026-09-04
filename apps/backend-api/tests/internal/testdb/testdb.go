@@ -14,10 +14,13 @@ import (
 	"testing"
 	"time"
 
+	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/driver"
 	"github.com/dolthub/go-mysql-server/memory"
+	"github.com/dolthub/go-mysql-server/server"
 	gmssql "github.com/dolthub/go-mysql-server/sql"
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
+	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/require"
@@ -54,6 +57,50 @@ func OpenMySQL(t *testing.T) *sql.DB {
 	_, err = db.ExecContext(t.Context(), "USE "+databaseName)
 	require.NoError(t, err)
 	return db
+}
+
+// OpenMySQLWithDSN starts an in-process go-mysql-server engine on a TCP
+// listener and returns both its pool and a connection string usable by child
+// processes. It exercises the MySQL dialect but is not a substitute for the
+// real MySQL 8 gate.
+func OpenMySQLWithDSN(t *testing.T) (*sql.DB, string) {
+	t.Helper()
+
+	const databaseName = "integration"
+	database := memory.NewDatabase(databaseName)
+	database.BaseDatabase.EnablePrimaryKeyIndexes()
+	provider := memory.NewDBProvider(database)
+	engine := sqle.NewDefault(provider)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	mysqlServer, err := server.NewServer(
+		server.Config{Listener: listener}, engine, gmssql.NewContext,
+		memory.NewSessionBuilder(provider), nil,
+	)
+	require.NoError(t, err)
+	serverErrors := make(chan error, 1)
+	go func() { serverErrors <- mysqlServer.Start() }()
+
+	dsn := fmt.Sprintf("root@tcp(%s)/%s?multiStatements=true", listener.Addr(), databaseName)
+	db, err := sql.Open("mysql", dsn)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		return db.PingContext(t.Context()) == nil
+	}, 5*time.Second, 10*time.Millisecond)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+		require.NoError(t, mysqlServer.Close())
+		select {
+		case startErr := <-serverErrors:
+			if startErr != nil && !errors.Is(startErr, net.ErrClosed) {
+				t.Errorf("serve MySQL: %v", startErr)
+			}
+		case <-time.After(time.Second):
+			t.Error("MySQL server did not stop")
+		}
+		engine.Close()
+	})
+	return db, dsn
 }
 
 // OpenPostgres starts an isolated embedded PostgreSQL 16 instance.

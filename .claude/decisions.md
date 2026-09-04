@@ -359,3 +359,30 @@ IAM Phase 2–9 的 HTTP 文件、OpenAPI 契约和验收门禁；不新增 IAM 
 
 **Status**
 已确认（用户明确要求 HTTP 命名并尽可能按 RESTful 标准设计）。
+
+---
+
+## D13 — IAM 性能基线分离可移植计划门禁与同机时延门禁
+
+**Decision**
+四条 IAM 热路径使用生产组合和代表性多租户基数捕获实际 GORM SQL，对 PostgreSQL 16 与真 MySQL 8.4
+保存 JSON `EXPLAIN`、规范化 SQL fingerprint 和 5 份 Go benchmark 样本。默认门禁始终验证 SQL 集合、
+fingerprint 与计划结构，拒绝缺少 tenant/directory/全局唯一键约束的全表扫描，并对授权、session 与 SCIM
+关键已填充表强制索引访问。绝对时延阈值取同机 5 份样本最大值的 3 倍并向上取整，只在
+`IAM_PERFORMANCE_ENFORCE_THRESHOLDS=1` 时执行；基线更新必须显式设置 `IAM_PERFORMANCE_UPDATE=1`。
+
+**Reason**
+SQL 与访问计划回归可跨开发机稳定判断；绝对时延会受 CPU、虚拟化和远程 Docker 网络影响，尤其当前
+MySQL 8.4 经 SSH Docker transport 暴露 TCP。把结构正确性设为默认硬门禁、把时延限定为同机显式门禁，
+既持续捕获 tenant 条件或关键索引丢失，又避免把机器差异误报为代码回归。
+
+**Tradeoffs**
+跨机器默认运行不会因纯时延退化失败，发布机需要显式启用时延门禁。原始 plan 会随数据库版本变化，
+引擎升级时必须复审并重新生成对应基线，不能仅接受 artifact diff。
+
+**Scope**
+Phase 9 的 authorization、browser session、SCIM bulk 25 和 audit append 性能验收；不改变生产查询、
+索引或运行时配置。
+
+**Status**
+已确认并由 PostgreSQL 16.9/MySQL 8.4.11 双引擎基线验证。

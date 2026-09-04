@@ -1,0 +1,192 @@
+package governance
+
+import (
+	"context"
+	"fmt"
+	"strconv"
+	"time"
+
+	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/policyx"
+)
+
+func (r *Repository) listReviewableGrants(ctx context.Context, tenantID guid.ID, now time.Time) ([]reviewableGrantRow, error) {
+	p := r.prefix()
+	rows := make([]reviewableGrantRow, 0)
+	queries := []struct {
+		sql  string
+		args []any
+	}{
+		{sql: `
+SELECT members.principal_id, tenant_members.display_name AS principal_name,
+       roles.id AS role_id, roles.name AS role_name, 'permanent' AS grant_type, NULL AS grant_id,
+       members.created_at AS grant_created_at, NULL AS grant_expires_at
+FROM ` + p + `iam_role_members AS members
+JOIN ` + p + `iam_roles AS roles ON roles.tenant_id = members.tenant_id AND roles.id = members.role_id
+JOIN ` + p + `iam_tenant_members AS tenant_members
+  ON tenant_members.tenant_id = members.tenant_id AND tenant_members.principal_id = members.principal_id AND tenant_members.status = 'active'
+WHERE members.tenant_id = ?`, args: []any{tenantID}},
+		{sql: `
+SELECT grants.principal_id, tenant_members.display_name AS principal_name,
+       roles.id AS role_id, roles.name AS role_name, 'temporary' AS grant_type, grants.id AS grant_id,
+       grants.created_at AS grant_created_at, grants.ends_at AS grant_expires_at
+FROM ` + p + `iam_temporary_role_grants AS grants
+JOIN ` + p + `iam_roles AS roles ON roles.tenant_id = grants.tenant_id AND roles.id = grants.role_id
+JOIN ` + p + `iam_tenant_members AS tenant_members
+  ON tenant_members.tenant_id = grants.tenant_id AND tenant_members.principal_id = grants.principal_id AND tenant_members.status = 'active'
+WHERE grants.tenant_id = ? AND grants.starts_at <= ? AND grants.ends_at > ?`, args: []any{tenantID, now, now}},
+		{sql: `
+SELECT gm.principal_id, tm.display_name AS principal_name,
+       roles.id AS role_id, roles.name AS role_name, 'group' AS grant_type, b.group_id AS grant_id,
+       gm.created_at AS grant_created_at, gm.ends_at AS grant_expires_at
+FROM ` + p + `iam_group_role_bindings AS b
+JOIN ` + p + `iam_groups AS g ON g.tenant_id = b.tenant_id AND g.id = b.group_id AND g.status = 'active' AND g.group_type = 'static'
+JOIN ` + p + `iam_group_members AS gm ON gm.tenant_id = b.tenant_id AND gm.group_id = b.group_id
+JOIN ` + p + `iam_roles AS roles ON roles.tenant_id = b.tenant_id AND roles.id = b.role_id
+JOIN ` + p + `iam_tenant_members AS tm ON tm.tenant_id = gm.tenant_id AND tm.principal_id = gm.principal_id AND tm.status = 'active'
+WHERE b.tenant_id = ? AND (gm.starts_at IS NULL OR gm.starts_at <= ?) AND (gm.ends_at IS NULL OR gm.ends_at > ?)`, args: []any{tenantID, now, now}},
+		{sql: `
+SELECT pm.principal_id, tm.display_name AS principal_name,
+       roles.id AS role_id, roles.name AS role_name, 'position' AS grant_type, b.position_id AS grant_id,
+       pm.created_at AS grant_created_at, pm.ends_at AS grant_expires_at
+FROM ` + p + `iam_position_role_bindings AS b
+JOIN ` + p + `iam_positions AS positions ON positions.tenant_id = b.tenant_id AND positions.id = b.position_id AND positions.status = 'active'
+JOIN ` + p + `iam_position_members AS pm ON pm.tenant_id = b.tenant_id AND pm.position_id = b.position_id
+JOIN ` + p + `iam_roles AS roles ON roles.tenant_id = b.tenant_id AND roles.id = b.role_id
+JOIN ` + p + `iam_tenant_members AS tm ON tm.tenant_id = pm.tenant_id AND tm.principal_id = pm.principal_id AND tm.status = 'active'
+WHERE b.tenant_id = ? AND (pm.starts_at IS NULL OR pm.starts_at <= ?) AND (pm.ends_at IS NULL OR pm.ends_at > ?)`, args: []any{tenantID, now, now}},
+		{sql: `
+SELECT bindings.principal_id, tm.display_name AS principal_name,
+       roles.id AS role_id, roles.name AS role_name, 'entity' AS grant_type, bindings.scope_id AS grant_id,
+       bindings.created_at AS grant_created_at, bindings.expires_at AS grant_expires_at
+FROM ` + p + `iam_role_bindings AS bindings
+JOIN ` + p + `iam_entities AS entities ON entities.tenant_id = bindings.tenant_id AND entities.id = bindings.scope_id AND entities.status = 'active'
+JOIN ` + p + `iam_roles AS roles ON roles.tenant_id = bindings.tenant_id AND roles.id = bindings.role_id
+JOIN ` + p + `iam_tenant_members AS tm ON tm.tenant_id = bindings.tenant_id AND tm.principal_id = bindings.principal_id AND tm.status = 'active'
+WHERE bindings.tenant_id = ? AND bindings.scope_type = 'entity' AND (bindings.expires_at IS NULL OR bindings.expires_at > ?)`, args: []any{tenantID, now}},
+	}
+	for _, query := range queries {
+		var grantRows []reviewableGrantRow
+		if err := r.writer().WithContext(ctx).Raw(query.sql, query.args...).Scan(&grantRows).Error; err != nil {
+			return nil, fmt.Errorf("list reviewable role grants: %w", err)
+		}
+		rows = append(rows, grantRows...)
+	}
+	dynamic, err := r.listDynamicGroupGrants(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	relationships, err := r.listRelationshipGrants(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	rows = append(rows, dynamic...)
+	rows = append(rows, relationships...)
+	return rows, nil
+}
+
+type dynamicGroupReviewRow struct {
+	GroupID       guid.ID   `gorm:"column:group_id"`
+	RuleJSON      string    `gorm:"column:rule_json"`
+	Subject       guid.ID   `gorm:"column:subject"`
+	PrincipalName string    `gorm:"column:principal_name"`
+	Email         string    `gorm:"column:email"`
+	DepartmentID  *guid.ID  `gorm:"column:department_id"`
+	Status        string    `gorm:"column:status"`
+	RoleID        guid.ID   `gorm:"column:role_id"`
+	RoleName      string    `gorm:"column:role_name"`
+	CreatedAt     time.Time `gorm:"column:created_at"`
+}
+
+func (r *Repository) listDynamicGroupGrants(ctx context.Context, tenantID guid.ID) ([]reviewableGrantRow, error) {
+	p := r.prefix()
+	rows := make([]dynamicGroupReviewRow, 0)
+	query := `SELECT groups.id AS group_id, groups.rule_json, members.principal_id AS subject,
+members.display_name AS principal_name, members.email, departments.department_id, members.status,
+bindings.role_id, roles.name AS role_name, bindings.created_at
+FROM ` + p + `iam_groups AS groups
+JOIN ` + p + `iam_group_role_bindings AS bindings ON bindings.tenant_id = groups.tenant_id AND bindings.group_id = groups.id
+JOIN ` + p + `iam_roles AS roles ON roles.tenant_id = bindings.tenant_id AND roles.id = bindings.role_id
+JOIN ` + p + `iam_tenant_members AS members ON members.tenant_id = groups.tenant_id AND members.status = 'active'
+LEFT JOIN ` + p + `iam_member_departments AS departments ON departments.tenant_id = members.tenant_id AND departments.principal_id = members.principal_id
+WHERE groups.tenant_id = ? AND groups.group_type = 'dynamic' AND groups.status = 'active'
+ORDER BY groups.id, members.principal_id, bindings.role_id`
+	if err := r.writer().WithContext(ctx).Raw(query, tenantID).Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("list dynamic group review candidates: %w", err)
+	}
+	grants := make([]reviewableGrantRow, 0, len(rows))
+	for _, row := range rows {
+		departmentID := ""
+		if row.DepartmentID != nil {
+			departmentID = row.DepartmentID.String()
+		}
+		matched, err := policyx.EvaluateMemberRule([]byte(row.RuleJSON), policyx.MemberFacts{
+			Subject: row.Subject.String(), Email: row.Email, DepartmentID: departmentID, Status: row.Status,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("evaluate dynamic group %q rule: %w", row.GroupID, err)
+		}
+		if !matched {
+			continue
+		}
+		groupID := row.GroupID
+		grants = append(grants, reviewableGrantRow{
+			PrincipalID: row.Subject, PrincipalName: row.PrincipalName,
+			RoleID: row.RoleID, RoleName: row.RoleName, GrantType: ReviewGrantDynamicGroup,
+			GrantID: &groupID, GrantCreatedAt: row.CreatedAt,
+		})
+	}
+	return grants, nil
+}
+
+type relationshipReviewRow struct {
+	PrincipalID    guid.ID   `gorm:"column:principal_id"`
+	PrincipalName  string    `gorm:"column:principal_name"`
+	Relation       string    `gorm:"column:relation"`
+	ResourceType   string    `gorm:"column:resource_type"`
+	ResourceID     guid.ID   `gorm:"column:resource_id"`
+	GrantID        guid.ID   `gorm:"column:grant_id"`
+	GrantCreatedAt time.Time `gorm:"column:grant_created_at"`
+	EntityName     string    `gorm:"column:entity_name"`
+}
+
+func (r *Repository) listRelationshipGrants(ctx context.Context, tenantID guid.ID) ([]reviewableGrantRow, error) {
+	p := r.prefix()
+	rows := make([]relationshipReviewRow, 0)
+	graphQuery := `SELECT relationships.subject_id AS principal_id, members.display_name AS principal_name,
+relationships.relation, entities.type AS resource_type, relationships.resource_id,
+relationships.resource_id AS grant_id, relationships.created_at AS grant_created_at, entities.name AS entity_name
+FROM ` + p + `iam_relationships AS relationships
+JOIN ` + p + `iam_entities AS entities ON entities.tenant_id = relationships.tenant_id AND entities.id = relationships.resource_id AND entities.status = 'active'
+JOIN ` + p + `iam_tenant_members AS members ON members.tenant_id = relationships.tenant_id AND members.principal_id = relationships.subject_id AND members.status = 'active'
+WHERE relationships.tenant_id = ? AND relationships.subject_type = 'principal'`
+	if err := r.writer().WithContext(ctx).Raw(graphQuery, tenantID).Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("list graph relationship grants: %w", err)
+	}
+	resourceRows := make([]relationshipReviewRow, 0)
+	resourceQuery := `SELECT relationships.subject_id AS principal_id, members.display_name AS principal_name,
+relationships.relation, relationships.resource_type, relationships.resource_id,
+relationships.entity_id AS grant_id, relationships.created_at AS grant_created_at, '' AS entity_name
+FROM ` + p + `iam_resource_relationships AS relationships
+JOIN ` + p + `iam_entities AS entities ON entities.tenant_id = relationships.tenant_id AND entities.id = relationships.entity_id AND entities.status = 'active'
+JOIN ` + p + `iam_tenant_members AS members ON members.tenant_id = relationships.tenant_id AND members.principal_id = relationships.subject_id AND members.status = 'active'
+WHERE relationships.tenant_id = ? AND relationships.subject_type = 'principal'`
+	if err := r.writer().WithContext(ctx).Raw(resourceQuery, tenantID).Scan(&resourceRows).Error; err != nil {
+		return nil, fmt.Errorf("list resource relationship grants: %w", err)
+	}
+	rows = append(rows, resourceRows...)
+	grants := make([]reviewableGrantRow, 0, len(rows))
+	for _, row := range rows {
+		resource := row.EntityName
+		if resource == "" {
+			resource = strconv.FormatInt(int64(row.ResourceID), 10)
+		}
+		grantID := row.GrantID
+		grants = append(grants, reviewableGrantRow{
+			PrincipalID: row.PrincipalID, PrincipalName: row.PrincipalName,
+			RoleName:  row.Relation + " of " + row.ResourceType + " " + resource,
+			GrantType: ReviewGrantRelationship, GrantID: &grantID, GrantCreatedAt: row.GrantCreatedAt,
+		})
+	}
+	return grants, nil
+}
