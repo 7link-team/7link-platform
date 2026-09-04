@@ -96,7 +96,7 @@ Phase 0 构建顺序、SQLite 外键未启用、版本表双前缀、`{{.Prefix}
 - "未设置"一律 `NULL`,**禁止哨兵 0**(生成列内部的派生哨兵除外,见 R5'')。
 - 表名保留 `iam_` 前缀(最终 `sl_iam_roles`)。
 - gorm 分层同 `internal/todo`:`model/` + `query/` + `dbgen/` + 包根 `//go:generate go run ./dbgen`。
-- 不得为通过 lint 或覆盖率而弱化断言(CLAUDE.md §33)。
+- 不得为通过 lint 或覆盖率而弱化断言(CLAUDE.md §10)。
 
 ---
 
@@ -310,7 +310,7 @@ Phase 9  跨模块验收 + 性能 + 文档
 - [x] **Step 1:** 新增 `make iam-preflight`，按 OS 自动解析源目录，固定并验证 `apps/server` tree，拒绝源目录未提交修改，并从正式 SQL 断言 PostgreSQL/MySQL/SQLite 各 63 张表且集合相等。
 - [x] **Step 2:** Windows 自动处理 `core.autocrlf=true` 导致的纯 CRLF 检出；只转换 Git 报告为 `i/lf w/crlf` 的 Go 文件。仓库用 `.gitattributes` 固定 Go/Makefile/shell/SQL 为 LF。
 - [x] **Step 3:** Docker 优先本机，Windows 自动回退到 `root@10.0.0.100`；专用 key 只放 `~/.ssh/iam-docker-10.0.0.100`，`.temp/iam-env.mk` 只记录命令与路径。远端 Docker 缺失时允许在已确认主机指纹后安装 Debian `docker.io`。
-- [ ] **Step 4:** 在 Mac 上实际运行一次 `make iam-preflight` 与 `make ci`，记录结果；Windows 验证不能代替 Mac 验证。
+- [x] **Step 4:** 在 Mac 上实际运行一次 `make iam-preflight` 与 `make ci`，记录结果；Windows 验证不能代替 Mac 验证。
 
 #### Task 0.0: 修复迁移双取写句柄(审计 F2 的可修部分)
 
@@ -876,13 +876,13 @@ CREATE TABLE {{.Prefix}}iam_roles (
 - [x] **9.4 HTTP 契约集合:** 从运行中 OpenAPI 提取三元组，断言与各模块批准后的目标集合完全相等、OperationID 全局唯一；断言 source→target 映射覆盖源 **208/208** 且一一对应；另断言所有非公开 operation 都带正确 tenant/platform/entity guard，不能只检查 `/docs` 页面可见。
 - [x] **9.5 隔离与并发:** 执行 Task 2–8 的 tenant A/B 负例总矩阵；对授权判定、token 单次消费、最后管理员、SCIM ETag、governance 终态和 audit append 做并发门禁，使用 `-race` 跑不依赖真数据库的部分。
 - [x] **9.6 性能基线:** 授权判定、会话查找、SCIM bulk、审计 append 四条热路径保存 PostgreSQL/MySQL `EXPLAIN` 与 benchmark；不得出现无 tenant 前导条件的全表扫描，阈值按同机重复样本冻结。
-- [ ] **9.7 最终门禁:** `make generate` 零 diff、`make ci` 全绿、`make test-mysql8` 真 MySQL 通过；`make dev` 后 `/healthz` 绿。更新 README Testing、`.claude/task-state.md` 与 `decisions.md`，逐项勾完本计划才可宣布迁移完成。
+- [x] **9.7 最终门禁:** `make generate` 零 diff、`make ci` 全绿、`make test-mysql8` 真 MySQL 通过；`make dev` 后 `/healthz` 绿。更新 README Testing、`.claude/task-state.md` 与 `decisions.md`，逐项勾完本计划才可宣布迁移完成。
 
 ---
 
 ## 四、未决事项
 
-1. **多写者拓扑** —— Task 0.0 只修迁移双取句柄。是否引入显式 routing mode / 逻辑 writer group 来防止误配,以及审计 F3(`Read()` 零消费者、业务读全走主库)是否借此接线,均需单独决策。至少应先修 `datasource.go:200` 的失实注释。
+1. **多写者拓扑** —— Task 0.0 只修迁移双取句柄。是否引入显式 routing mode / 逻辑 writer group 来防止误配仍需单独决策。审计 F3 的“`Read()` 零消费者”已不再成立：core membership checker 已使用读路由，datasource 注释也已与当前行为一致；是否把更多业务查询接到副本仍属于后续架构范围。
 
 **已解除/已确认:** 动态菜单多语言不属于“迁移现有功能”，保持 63 表且不新增 `iam_menu_translations`（D7）；Docker 不再绑定单机：Mac 使用本机 daemon，Windows 使用 `10.0.0.100` 的 Debian Docker 26.1.5，具体 transport 由预检生成；R16 按上表四类规则执行；R9'' 的 `type` 不可变不是新增业务限制，源库 `iam/entity.go:273-281` 已在存在关系时拒绝修改，复合外键用于关闭应用层检查的 TOCTOU 窗口。
 

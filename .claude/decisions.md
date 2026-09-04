@@ -386,3 +386,34 @@ Phase 9 的 authorization、browser session、SCIM bulk 25 和 audit append 性�
 
 **Status**
 已确认并由 PostgreSQL 16.9/MySQL 8.4.11 双引擎基线验证。
+
+---
+
+## D14 — SQLite 默认事务使用 `BEGIN IMMEDIATE`
+
+**Decision**
+`normalizeSQLiteDSN` 在调用者未显式设置 `_txlock` 时注入 `_txlock=immediate`。调用者的显式配置保持
+不变；busy timeout 继续使用 `mattn/go-sqlite3` 的 5 秒默认值或调用者提供的值。PostgreSQL 与 MySQL
+配置不受影响。
+
+**Reason**
+Mac 最终 CI 在 SCIM ETag 更新和认证 session rotation 两条并发 CAS 路径上稳定暴露
+`SQLITE_BUSY_SNAPSHOT`。deferred transaction 先读后升级为写事务时，即使配置 busy timeout，也不能在
+另一个 writer 已提交后继续使用旧 snapshot。`BEGIN IMMEDIATE` 在事务开始时取得写入资格，使 SQLite
+的单 writer 约束在业务读取前确定，失败方随后能观察新版本并走既有 CAS 冲突语义。
+
+**Alternatives Considered**
+1. 只给 provisioning 增加事务重试 —— authn 随后出现同一问题，且会在各模块复制驱动错误处理。
+2. 只修改并发测试 DSN —— 会掩盖默认生产配置的相同行为。
+3. 强制覆盖调用者显式 `_txlock` —— 不必要地取消 SQLite 驱动已有的可配置能力。
+
+**Tradeoffs**
+SQLite 写事务会更早串行化，长事务可能让后续 writer 更早等待；SQLite 本身同一时刻只允许一个 writer，
+因此这改变的是锁获取时机而不是写并发上限。显式选择其他事务模式的部署需自行处理相应 contention。
+
+**Scope**
+共享 GORM SQLite datasource 配置，以及依赖其事务语义的 IAM 并发 CAS 路径。
+
+**Status**
+已确认；datasource 配置测试、SCIM ETag 与 session rotation 各 20 轮并发回归、相关全包 `-race`、
+完整 `make ci`、真实 MySQL 8.4 与 live health 均通过。

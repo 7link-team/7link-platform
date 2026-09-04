@@ -207,6 +207,9 @@ func normalizeSQLiteDSN(dsn string) (string, error) {
 	if !foreignKeyConfigured {
 		params.Set("_foreign_keys", "on")
 	}
+	if params.Get("_txlock") == "" {
+		params.Set("_txlock", "immediate")
+	}
 	return filename + "?" + params.Encode(), nil
 }
 

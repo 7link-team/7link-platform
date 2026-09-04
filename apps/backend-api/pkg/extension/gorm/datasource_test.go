@@ -3,7 +3,9 @@ package gormx
 import (
 	"context"
 	"database/sql"
+	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -98,6 +100,29 @@ func TestDatasourceOpenSQLiteAcceptsEnabledForeignKeyAliases(t *testing.T) {
 			var enabled int
 			require.NoError(t, sqlDB.QueryRowContext(t.Context(), "PRAGMA foreign_keys").Scan(&enabled))
 			assert.Equal(t, 1, enabled)
+		})
+	}
+}
+
+func TestNormalizeSQLiteDSNDefaultsImmediateTransactions(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		dsn    string
+		wanted string
+	}{
+		{name: "default", dsn: "sqlite://database.sqlite", wanted: "immediate"},
+		{name: "empty", dsn: "database.sqlite?_txlock=", wanted: "immediate"},
+		{name: "explicit", dsn: "database.sqlite?_txlock=exclusive", wanted: "exclusive"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dsn, err := normalizeSQLiteDSN(test.dsn)
+			require.NoError(t, err)
+			_, rawQuery, found := strings.Cut(dsn, "?")
+			require.True(t, found)
+			params, err := url.ParseQuery(rawQuery)
+			require.NoError(t, err)
+			assert.Equal(t, test.wanted, params.Get("_txlock"))
+			assert.Equal(t, "on", params.Get("_foreign_keys"))
 		})
 	}
 }
