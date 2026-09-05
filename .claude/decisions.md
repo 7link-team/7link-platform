@@ -547,3 +547,42 @@ codegen 引入一个生成步骤和生成物指纹门禁的维护成本，换取
 
 **Status**
 已决定并在 #sevenlink-platform-win 公示（2026-09-05）。10.4 已获用户明确确认。
+
+---
+
+## D18 — 控制台的租户来自会话，不存在编译期兜底租户
+
+**Decision**
+`getTenant()` 删除硬编的 `"platform"` 兜底，改为三段来源：操作员在控制台里选的（存
+localStorage）→ 部署配置的 `VITE_DEFAULT_TENANT` → 空。登录成功后
+`adoptSessionTenant(session)` 从 `session.organization_id` 采纳一次，**只填空值**，
+操作员已经选过的不覆盖。租户为空时 `X-Tenant-Id` **整个头不发**，而不是发空串。
+
+**Reason**
+一次构建产物会部署到任意多个部署实例，构建期不可能知道某个部署有哪些租户——任何编译
+进去的租户 slug 都是猜测，且是会静默生效的猜测：请求带着一个不存在或不该访问的租户
+发出去，报错发生在服务端，读起来像权限问题而不是配置问题。会话本身携带了权威答案
+（`organization_id`），从会话取是 Keycloak/Okta 一类控制台的通行做法。
+
+发空串与不发头是两件不同的事：`X-Tenant-Id: ` 在服务端读起来是「租户名叫空字符串」，
+是一个真实的选择；不发头才是「本次请求没有租户维度」。前者会把配置缺失伪装成数据不存在。
+
+**Alternatives Considered**
+1. 保留 `"platform"` 兜底 —— 违反 CLAUDE.md §4「不硬编品牌/部署相关字符串」，且如上
+   会把配置缺失变成难以归因的运行期错误。
+2. 未解析出租户时阻塞所有请求 —— 过严：登录、注册、会话建立这些请求本来就没有租户维度。
+3. 每次登录都用会话租户覆盖本地选择 —— 会把操作员刚切过去的租户在下次刷新时弹回来。
+
+**Tradeoffs**
+`X-Tenant-Id` 里带的是 **id** 不是 slug（`tenants/page.tsx` 存的是 `tenant.id`），所以
+能对上的是 `session.organization_id`，老的 `"platform"` slug 本来就对不上——这条同时修掉
+了一个一直没被触发的错值。采纳路径有类型与单测覆盖（含「未解析出租户时不发头」一例），
+但没有浏览器审计覆盖：13 个审计都显式传租户。留作已知缺口。
+
+**Scope**
+`apps/frontend-web-admin/apps/iam`：`src/lib/iam-api.ts`、`src/components/auth-provider.tsx`、
+`src/lib/iam-api.test.ts`。提交 `022e5b7`。
+
+**Status**
+已决定并执行（2026-09-05）。依据用户当日指示「按标准的、通用的、大家共识的做法」自行
+判定，未逐条等确认；已在 #sevenlink-platform-win 说明，用户可否决。
