@@ -1,0 +1,4 @@
+# Generated from the service OpenAPI document; regenerating it would undo any
+# formatting applied here. `prettier` resolves this file from the directory it
+# runs in, which is this package — the workspace-root ignore file is not read.
+src/lib/api-schema.ts
