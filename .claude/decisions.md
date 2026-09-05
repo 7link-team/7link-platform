@@ -417,3 +417,88 @@ SQLite 写事务会更早串行化，长事务可能让后续 writer 更早等�
 **Status**
 已确认；datasource 配置测试、SCIM ETag 与 session rotation 各 20 轮并发回归、相关全包 `-race`、
 完整 `make ci`、真实 MySQL 8.4 与 live health 均通过。
+
+## D15 — 前端 admin 采用 bun + turborepo workspace，复用 chaosplus `packages/ui`
+
+**Decision**
+`apps/frontend-web-admin` 建为 bun 1.3 + turborepo 2 的 workspace（`apps/*` + `packages/*`），而不是
+单应用。首个 package 是 `@workspace/ui`，直接取自
+`chaosplus-api/apps/admin/packages/ui`，保持包名 `@workspace/ui` 与其 `exports` 映射不变。
+`packages/ui` 是**唯一**共享组件库，后续 IAM 应用与商城应用共用，不允许各自 fork 一份。
+构建/校验命令统一为 turbo 的 `build` / `lint` / `format` / `typecheck` / `test` 五条。
+
+**Reason**
+`chaosplus-api/apps/admin/packages/ui` 与 `aspeed-framework/apps/7link-mall-web/packages/ui` 实测为
+同一套组件库：各 145 个源文件、42 个组件，文件名 100% 重合；内容差异在归一化引号、分号和
+`prettier-plugin-tailwindcss` 的 class 排序后消失，即只有格式差异。两侧业务前端已按
+`apps/*` + `packages/*` 组织（旧 `apps/iam` 的 `vite.config.ts` 注释显示它本身就是从商城前端
+`apps/web` 抽离出来的）。沿用同一形状可让 IAM 24 个页面与商城 124 个页面迁入时零结构改造，
+并把组件库收敛为一份。
+
+**Alternatives Considered**
+1. 单应用（非 workspace）—— 商城 124 个页面迟早要接入，届时必须重做结构。
+2. 取商城那份 `packages/ui` 作基线 —— 与迁移源 `apps/iam` 的格式风格不一致，会给 24 个页面的
+   迁移额外制造 diff 噪声。两份实质相同，取迁移源那份摩擦更小。
+3. 重命名 `@workspace/ui` 为 `@7link/ui` —— 需改动 145 个文件的 import，收益仅为命名偏好。
+4. pnpm workspace —— 迁移源与商城均已用 bun，且本机 bun 1.3.12 与源 `packageManager` 声明一致。
+
+**Tradeoffs**
+沿用 `@workspace/ui` 这一通用包名，在未来若引入第二个组件库时语义偏泛；但改名的代价是全量
+import 改写，当前无第二个组件库的需求。turborepo 增加一层任务编排，对单 package 是额外开销，
+在第二个 app 迁入后才体现价值 —— 这是有意的前置投入，因为 workspace 结构本身已按 D15 确定。
+
+**Scope**
+`apps/frontend-web-admin/**`。不触及 `apps/backend-api`，不修改 `chaosplus-api`（只读迁移源）。
+
+**Status**
+已确认（用户 2026-09-04 授权"按推荐的最优方案"）。Phase A 已实测：`bun install` 1221 包，
+`bun run typecheck`、`bun run lint` 通过，`bun run test` 85 pass / 0 fail。
+`bun run build` 当前无 task（`@workspace/ui` 是源码包，无 build 脚本），待首个 app 迁入后生效。
+
+## D16 — 前端 API 客户端按新 RESTful 契约重建，不平移旧 `iam-api.ts`
+
+**Decision**
+`apps/backend-api` 的运行中 OpenAPI 是前端 API 契约的唯一事实来源。迁移旧
+`apps/admin/apps/iam/src/lib/iam-api.ts`（1711 行）时，必须先冻结"旧调用点 → 新 operation"
+的逐条映射表，再实现；`/authn/*` 全部重新绑定。类型层由 OpenAPI 生成，业务调用走手写薄封装。
+
+**Reason**
+D12 已把 HTTP 目标契约改为 RESTful，源 RPC 风格 path 不再保留。实测比对旧前端调用的路由与
+新后端非测试代码注册的路由：`/iam/*`、`/oauth/*` 全部命中，`/authn/*` **18 条全部落空**
+（`/authn/login` → `POST /authn/sessions`、`/authn/session` → `GET /authn/sessions/current`、
+passkey/邮箱验证/密码找回全部改名）。新后端另有旧前端没有的 `/authn/captchas`、
+`/authn/step-up-challenges`、`/authn/step-up-verifications`。平移旧客户端必然全面 404。
+
+**Alternatives Considered**
+1. 全手写客户端 —— 与 D12 的契约漂移同源风险再次出现，且 208 条 operation 的类型需人工维护。
+2. 全自动 codegen 直接给页面调用 —— 生成的调用风格与旧 24 个页面的既有用法差距大，
+   迁移期 diff 噪声过高。
+3. 在后端加旧路径兼容层 —— 与 D12 的 RESTful 目标契约直接冲突，且为已废弃的客户端形态续命。
+
+**Tradeoffs**
+codegen 引入一个生成步骤和生成物指纹门禁的维护成本，换取契约漂移在 CI 阶段即被发现。
+薄封装层需要人工保持与生成类型同步。
+
+**Scope**
+`apps/frontend-web-admin/apps/iam` 的 API 客户端层（Phase B）。不改后端契约。
+
+**Status**
+已确认方向（用户 2026-09-04 授权）。
+
+**2026-09-04 更新（Phase B 完成，映射表已冻结）**
+后端已把「旧 operation → 新 operation」冻结在 `apps/backend-api/internal/app/testdata/iam_http_mappings.txt`
+（211 条），并由 `bootstrap_iam_openapi_test.go` 的 `iamHTTPMappingCount = 211` 守住。
+据此逐条 join 后：旧 `iam-api.ts` 共 144 个调用点，**只有 20 条契约有实质变化**
+（`/authn/*` 18 条 + `/iam/principals/{id}/disable|restore` 2 条），其余 124 条原样可用。
+完整表见 `docs/frontend-migration-plan.md` 第八节。
+
+本条原文中「`/authn/session` → `GET /authn/me`」是当时的推断，**是错的**，已就地改正为
+`GET /authn/sessions/current`；`authn-me` 是另一个独立 operation，两者并存。
+**2026-09-04 再更正（@Claude 指出，已用 git 复核）**
+上一段里「211 是 target 侧、208 是 source 侧」是错的。208 和 211 是**同一张表的两个版本**：
+`git show HEAD:...iam_http_mappings.txt` 为 208 条、`iamHTTPMappingCount = 208`；
+工作区多出 3 条 `oauth-consent-page|request|decision`（@Claude 当日新增的 OAuth 同意页），
+故为 211。**该表处于活跃修改中，引用时必须注明版本。**
+
+这 3 条不影响 Phase B 结论：它们是新增接口，旧前端不可能调用过，落在「旧前端未使用」那一桶里。
+因此该桶按 HEAD 计为 **67** 条、按当前工作区计为 70 条；144 个调用点的映射一条都不受影响。
