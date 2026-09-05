@@ -1,4 +1,4 @@
-# Module Lifecycle 重构 — 最终设计文档（中文版）
+# Module Lifecycle 重构 — 最终设计文档
 
 > 状态：**已实现，等待最终人工验收**。
 >
@@ -105,6 +105,8 @@ func (r *Registry) ByName(name string) (Module, bool)
 **注册即预置回滚（codex must-fix）。** 每个实现 `Deinitializer` 的模块，在**注册那一刻**就进入回滚表，保守覆盖构造期持有的资源，以及 `Initialize` 返回失败前已经取得的资源。契约：**`Deinitialize` 必须 nil-safe 且幂等**（可能先于 `Initialize` 运行）。telemetry 本身现在只在 `Initialize` 创建 provider 并改动 OTel 全局。
 
 **状态机。** `Register → Activate → Wire → (Initialize → Start)* → RegisterHTTP/GRPC`；关闭 `Quiesce → Stop → Deinitialize`。守卫拒绝乱序调用；`Stop`/`Deinitialize` 幂等且从每个失败状态都合法。
+
+**依赖语义。** `ModuleDependencies` 声明的是生命周期顺序：消费者若要求提供方先 `Initialize` 或先 `Start`，就必须点名。稳定的 provider 阶段能力可以在 `ProvideServices` 发布、在 `InjectServices` 一次性填充，并且只在所有模块初始化完成之后使用；该能力**不施加**生命周期顺序。这条窄例外用于支撑 IAM 的 audit/core、authn/identity/core 这类图，无需臆造依赖环。此类网关必须在绑定前拒绝使用、在 `Wire` 阶段恰好绑定一次，并有 architecture 测试阻止它在 composition root 被组装。
 
 ### 3.4 `internal/app` — bootstrap 作为物料清单
 

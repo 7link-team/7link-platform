@@ -54,7 +54,7 @@ modules; the registry owns activation, wiring, migration, and ordering.
 
 Phases run `Register → Activate → Wire → Initialize → Start`, and shut down in
 reverse as `Quiesce → Stop → Deinitialize`. See
-`docs/module-lifecycle-redesign-final.md` for the design and its rationale.
+`docs/module-lifecycle-redesign.md` for the design and its rationale.
 
 ### Infrastructure modules
 

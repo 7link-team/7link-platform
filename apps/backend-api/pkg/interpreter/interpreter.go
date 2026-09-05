@@ -3,8 +3,8 @@
 // instantiate, bind values, evaluate scripts, and call functions through one interface.
 //
 // Status: this package has no callers in the application. It is groundwork for
-// the extension model in docs/PLUGIN_ARCHITECTURE.md, where wazero is the
-// intended foundation for untrusted dynamic plugins.
+// a future plugin extension model, where wazero is the intended foundation for
+// untrusted dynamic plugins.
 //
 // None of these engines is a sandbox for untrusted code today. Goja, Lua, and
 // Yaegi only check ctx.Err() before they start: a script that enters an
