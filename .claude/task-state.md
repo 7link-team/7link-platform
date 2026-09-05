@@ -16,8 +16,8 @@ IAM Phase 10 后端推进。10.1、10.2、10.6、§2.5.2 均已推送。当前�
 IN PROGRESS（10.9 第 ① 步与验证码均已推送；10.3、10.4 等 @gankcode 拍板）
 
 ## Current Step
-10.9 ③ 与 OpenAPI 离线导出均已完成。
-下一步：10.9 ④ authn 签名密钥环。
+10.9 ④ authn 签名密钥环已完成。
+下一步：10.9 ⑤ federation replay registry 换跨副本共享状态；随后按 D17 依次做 10.3 → 10.4 → 10.5。
 
 ## Overall Progress
 - [x] Phase 10.2（提交 24f2483）
@@ -32,12 +32,14 @@ IN PROGRESS（10.9 第 ① 步与验证码均已推送；10.3、10.4 等 @gankco
 - [x] 10.9 ② federation / provisioning / authn 接入密钥环 + `previous_*_keys` 配置
 - [x] 10.9 ③ `iam rewrap-secrets` + 「还有多少行挂在旧密钥上」报告
 - [x] `7link-api openapi` 离线导出 + `make openapi` / `make openapi-check` + 落地 `docs/openapi.json`
-- [ ] 10.9 ④ authn 签名密钥环：JWKS 同时发布 active + previous，签用 active，验收任一把
+- [x] 10.9 ④ authn 签名密钥环：JWKS 同时发布 active + previous，签用 active，验收任一把
 - [ ] 10.9 ⑤ federation replay registry 换成跨副本共享状态
 - [x] 注册验证码可配置（频道 task #5）
-- [ ] 10.3 principal 管理权限语义（等用户明确拍板）
-- [ ] 10.4 数据权限端到端（缺可挂载的租户级业务资源，等用户定目标）
-- [ ] 10.5 / 10.7 / 10.8 / 10.10 / 10.11
+- [x] **10.10 IAM gRPC：决定不做，本项关闭（D17）**
+- [ ] 10.3 principal 管理权限语义（**不再等待**，按 D17 双平面方案做）
+- [ ] 10.4 数据权限端到端（**不再等待**，按 D17 以 `internal/todo` 为参照实现；用户已确认用 todo）
+- [ ] 10.5 字段权限（**不再等待**，按 D17 对标 Keycloak User Profile + SCIM `mutability`/`returned`）
+- [ ] 10.7 audit archive / 10.8 principal 生命周期（按 D17 SCIM+GDPR 停用→匿名化→墓碑）/ 10.11
 
 ## 本轮交付其一：10.9 ① 密钥环原语（已推送 51ac8f4）
 新包 `pkg/extension/keyringx`。一把 active 负责封，整圈都能开；
@@ -191,8 +193,43 @@ keyringx 94.6 / core 90.1。（首轮 fmt-check 报 CRLF，lint 报 misspell `en
 10.9 ①：`make ci` exit 0，`pkg/extension/keyringx` 95.2%（门槛 90.0）。
 验证码：`make ci` exit 0，`internal/iam/authn` 90.2%，总体 90.1%（首轮 lint 报 `real` 遮蔽内建标识符，已改名为 `solved`）。
 
+## 本轮交付其六：10.9 ④ authn 签名密钥环
+
+`internal/iam/authn/signingkeys.go` 新增 `signingKeyring`：一把私钥签名，环里任一把公钥验签。
+`Service` 上原来的 `privateKey`/`publicKey`/`kid` 三元组被这一个 ring 取代（web.go 15 处调用点）。
+
+三个关键取舍，都是「换早了会怎样」推出来的：
+
+1. **验签按 `kid` 选 key，不是逐把试。**逐把试也能通过所有测试，但那样一来「把旧 key 从配置里
+   拿掉」这个动作就不再有任何效果——旧 token 仍会被剩下的某把接住。选 key 才让退场是真的退场。
+2. **retired key 只保留公钥。**私钥留着没有任何用途，只会让「不小心用旧 key 签名」变成可能。
+3. **previous key 解析失败是启动错误，不是跳过。**跳过会得到一个「启动正常、健康检查绿、
+   但恰好把该 key 对应的在途 token 全判无效」的部署——正是轮换窗口本身要防的那个故障。
+
+新增配置 `authn.previous_signing_keys` / `authn.previous_signing_key_files`
+（命名沿用既有的 `previous_encryption_keys` 先例）。`/.well-known/jwks.json` 现在发布整个环，
+active 在前；`oauth/http.go` 的 `jwksDocument.Keys` 本来就是 slice，不需要改。
+
+轮换步骤写进 `README.md` 新增的「Rotating keys」一节，四种密钥（签名 / MFA / federation /
+provisioning）一张表列全，并写清签名密钥和存储密钥的差别：存储密钥换完跑 `rewrap-secrets`
+按剩余行数决定何时退场；签名密钥没有 rewrap，token 不落库、只会过期，所以旧 key 必须在配置里
+留满一个 `access_token_ttl`（外加 relying party 缓存 JWKS 的时间，如果更长）才能拿掉。
+
+测试 `signingkeys_test.go` 六个，含一个端到端：用旧 key 签一个 token，再用
+「新 key active + 旧 key previous」的 Service 去验，必须通过；反过来只持新 key 的 Service
+必须拒绝旧环签的 token。
+
 ## Last Checkpoint
-2026-09-05 · 10.9 ③ 与 OpenAPI 离线导出均已推送，`make ci` 绿。
+2026-09-05 · 10.9 ④ authn 签名密钥环完成，`make ci` 绿。
+
+**本轮最重要的一件事不是代码，是 D17。**@gankcode 明确指出：10.3/10.4/10.5/10.8/10.10 这五项
+不该拿去问他，IAM 领域都有成熟答案，要「按标准的、通用的、大家共识的做法」自己定。
+这个批评成立——这五项被标为「待产品确认」已阻塞多轮，而它们并不是本项目特有的产品分歧。
+五条方案已写入 `.claude/decisions.md` D17 并在频道公示（msg 4c5cc55c），
+用户可否决任意一条，未否决即执行。10.4 用 `internal/todo` 当参照实现已获用户明确确认。
+**后续不要再把这五项列为「等用户拍板」。**
+
+上一轮（10.9 ③ + OpenAPI 离线导出，已推送）
 本轮还按 @gankcode「做完了文档要么更新一致、要么删掉清理」把文档对齐了实际：
 方案 10.9 条目改成「五步已完成三步」并写清剩下的 ④⑤ 各是什么问题；
 `docs/README.md` 的「端点去哪看」改指落地的 `openapi.json` 并声明它是唯一机器生成、不得手改的文件；

@@ -81,6 +81,51 @@ wherever configuration is rendered, including the config-inspector endpoint.
 
 Run `make dev` with `--help` for the full flag list.
 
+## Rotating keys
+
+Every secret the service seals with can be replaced without downtime, because
+each one is configured as a ring: one key is active and does the sealing or
+signing, and the retired keys are kept only long enough to read what they
+already produced. A rotation is therefore two deployments separated by time,
+never one.
+
+| What | Active | Retired |
+|---|---|---|
+| Token signing | `authn.signing_key` | `authn.previous_signing_keys` |
+| MFA secrets and recovery codes | `authn.mfa.encryption_key` | `authn.mfa.previous_encryption_keys` |
+| Federation client secrets | `federation.encryption_key` | `federation.previous_encryption_keys` |
+| Provisioning tokens | `provisioning.encryption_key` | `provisioning.previous_encryption_keys` |
+
+Each has a `*_file` variant, which is what a real deployment should use; naming
+both the value and the file for the same key is rejected at startup rather than
+resolved by a precedence rule nobody would remember.
+
+**Stored data — MFA, federation, provisioning.** Move the current key into the
+`previous_*` list, put the new key in the active slot, and deploy. Everything
+already stored still opens; everything written from now on is sealed with the
+new key. Then run `7link-api iam rewrap-secrets` to reseal the rows still on the
+old key. It reports how many rows remain, which is what tells you the old key
+can be dropped — rather than guessing. Derived digests such as recovery codes
+and verification tokens cannot be resealed; the command reports those
+separately, with an expiry date or `expires=never`.
+
+**Token signing.** The same two steps, but the waiting period is not optional
+and it is not a matter of caution. Access tokens already issued carry the key
+that signed them, and they stay valid for `authn.access_token_ttl`. Removing
+that key before the last one expires rejects every session still holding one —
+every signed-in user at once, with nothing in the logs that looks like a fault.
+So:
+
+1. Deploy with the new key active and the old key in `previous_signing_keys`.
+   `/.well-known/jwks.json` now publishes both, new tokens carry the new key,
+   and tokens issued a minute ago still verify.
+2. Wait at least one full `authn.access_token_ttl` — plus whatever your relying
+   parties cache the JWKS document for, if that is longer.
+3. Deploy again with the old key removed. Any token still naming it is now
+   rejected, which by this point is only a token that outlived its own lifetime.
+
+There is no rewrap step here: tokens are not stored, they expire.
+
 ## Testing
 
 ```sh

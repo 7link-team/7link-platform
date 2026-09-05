@@ -56,9 +56,7 @@ type Service struct {
 	cfg                 authnext.Config
 	web                 authnext.WebConfig
 	repo                *Repository
-	privateKey          ed25519.PrivateKey
-	publicKey           ed25519.PublicKey
-	kid                 string
+	signingKeys         *signingKeyring
 	mfaKeys             *keyringx.Keyring
 	returnURLs          returnURLAllowlist
 	captcha             *captchaOffering
@@ -258,22 +256,11 @@ func NewWebService(cfg authnext.Config, repository *Repository, options ...WebOp
 	if err := service.configureRegistration(); err != nil {
 		return nil, err
 	}
-	encodedSigningKey, err := secretx.Resolve("authn.signing_key", cfg.SigningKey, cfg.SigningKeyFile, 4096)
+	signingKeys, err := resolveSigningKeyring(cfg)
 	if err != nil {
 		return nil, err
 	}
-	key, err := parseSigningKey(encodedSigningKey)
-	if err != nil {
-		return nil, err
-	}
-	service.privateKey = key
-	publicKey, ok := key.Public().(ed25519.PublicKey)
-	if !ok {
-		return nil, errors.New("authentication signing key has an invalid public key")
-	}
-	service.publicKey = publicKey
-	sum := sha256.Sum256(service.publicKey)
-	service.kid = hex.EncodeToString(sum[:8])
+	service.signingKeys = signingKeys
 	return service, nil
 }
 
@@ -803,7 +790,7 @@ func (s *Service) issueSubjectToken(
 	emailVerified bool,
 	assurance authnext.Assurance,
 ) (string, int64, error) {
-	if s == nil || !s.cfg.Enabled || len(s.privateKey) != ed25519.PrivateKeySize {
+	if s == nil || !s.cfg.Enabled || !s.signingKeys.usable() {
 		return "", 0, authnext.ErrDisabled
 	}
 	if subject == "" {
@@ -885,7 +872,7 @@ func (s *Service) IssueTenantIDTokenWithAssurance(
 	tenantID, clientID, nonce string,
 	assurance authnext.Assurance,
 ) (string, error) {
-	if s == nil || !s.cfg.Enabled || len(s.privateKey) != ed25519.PrivateKeySize {
+	if s == nil || !s.cfg.Enabled || !s.signingKeys.usable() {
 		return "", authnext.ErrDisabled
 	}
 	claims, err := s.claims(ctx, principalID)
@@ -943,21 +930,25 @@ func (s *Service) enrich(ctx context.Context, payload map[string]any, claimConte
 	return nil
 }
 
+// JWKS publishes every key a caller may still meet in a token, not just the one
+// signing now. A relying party that fetched this document has to be able to
+// verify tokens issued before the current key existed, and to already know the
+// next key before anything is signed with it.
 func (s *Service) JWKS() map[string]any {
-	if s == nil || len(s.publicKey) != ed25519.PublicKeySize {
+	if s == nil {
 		return map[string]any{"keys": []map[string]any{}}
 	}
-	return map[string]any{"keys": []map[string]any{{
-		"kty": "OKP", "crv": "Ed25519", "use": "sig", "alg": "EdDSA", "kid": s.kid,
-		"x": base64.RawURLEncoding.EncodeToString(s.publicKey),
-	}}}
+	return s.signingKeys.jwks()
 }
 
 func (s *Service) sign(payload map[string]any) (string, error) {
-	if s == nil || len(s.privateKey) != ed25519.PrivateKeySize {
+	if s == nil || !s.signingKeys.usable() {
 		return "", authnext.ErrDisabled
 	}
-	header, err := json.Marshal(map[string]string{"alg": "EdDSA", "kid": s.kid, "typ": "JWT"})
+	// Only the active key ever signs. A retired key is kept to read what it
+	// already sealed, never to seal anything more.
+	header, err := json.Marshal(
+		map[string]string{"alg": "EdDSA", "kid": s.signingKeys.activeID(), "typ": "JWT"})
 	if err != nil {
 		return "", err
 	}
@@ -966,12 +957,12 @@ func (s *Service) sign(payload map[string]any) (string, error) {
 		return "", err
 	}
 	signed := base64.RawURLEncoding.EncodeToString(header) + "." + base64.RawURLEncoding.EncodeToString(body)
-	signature := ed25519.Sign(s.privateKey, []byte(signed))
+	signature := ed25519.Sign(s.signingKeys.private, []byte(signed))
 	return signed + "." + base64.RawURLEncoding.EncodeToString(signature), nil
 }
 
 func (s *Service) verifyAccessToken(authorization string) (*authnext.Claims, error) {
-	if s == nil || len(s.publicKey) != ed25519.PublicKeySize {
+	if s == nil || !s.signingKeys.usable() {
 		return nil, authnext.ErrInvalidToken
 	}
 	parts := strings.Fields(authorization)
@@ -990,11 +981,12 @@ func (s *Service) verifyAccessToken(authorization string) (*authnext.Claims, err
 		Algorithm string `json:"alg"`
 		KeyID     string `json:"kid"`
 	}
-	if json.Unmarshal(headerData, &header) != nil || header.Algorithm != "EdDSA" || header.KeyID != s.kid {
+	if json.Unmarshal(headerData, &header) != nil || header.Algorithm != "EdDSA" {
 		return nil, authnext.ErrInvalidToken
 	}
 	signature, err := base64.RawURLEncoding.DecodeString(segments[2])
-	verified := err == nil && ed25519.Verify(s.publicKey, []byte(segments[0]+"."+segments[1]), signature)
+	verified := err == nil &&
+		s.signingKeys.verify(header.KeyID, []byte(segments[0]+"."+segments[1]), signature)
 	if subtle.ConstantTimeCompare([]byte{boolByte(verified)}, []byte{1}) != 1 {
 		return nil, authnext.ErrInvalidToken
 	}

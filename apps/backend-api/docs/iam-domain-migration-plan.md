@@ -954,18 +954,18 @@ CREATE TABLE {{.Prefix}}iam_roles (
 
 - [x] **10.1 平台管理员安全自举（Critical）：**实现 §2.5.1。当前生产 CLI 只有 `serve`/`migrate`；`EnsureBootstrapPrincipal` 无生产调用者且不写 `iam_platform_administrators`。平台管理员管理 API 自身受 `platform_administer` 保护，空库无法建立第一个管理员。
 - [x] **10.2 新租户 owner 自举（Critical）：**实现 §2.5.2。当前 `TenantService.Create` 只写 tenant、policy revision、audit；所有 tenant route 先要求 active membership，故新租户无法经现有 HTTP 建立第一个成员/管理员。
-- [ ] **10.3 修正 principal 管理权限语义（High，需产品确认）：**`identity-update-principal`、suspend、resume 当前使用 tenant 注册器 + `platform_administer`。tenant role 不能授予 platform permission；full platform admin 又会先被 tenant membership middleware 拒绝。确认 principal 的所有权后，选择真正 platform route、`user_update`，或新增专用 tenant permission；同时让 `authz.Register` 拒绝 platform-scope action，防止再次误注册。
-- [ ] **10.4 数据权限端到端执行（High）：**为真实业务资源 repository/list/get/update/delete 接入 `DataConstraint`，并对 entity-scoped route 使用 `RegisterEntity`；覆盖 tenant A/B、owner/department/ancestor/explicit deny、分页 count 与导出路径。只暴露 constraint/explain API 不算完成。
-- [ ] **10.5 字段权限设计与实现（High，新增产品能力）：**先确认主体/角色继承、read/write 分离、deny precedence、mask 规则、OpenAPI 表达和审计策略，再设计 schema/catalog/API/cache revision，并在读取 projection/序列化和写入 validation 两端强制执行。不得只做前端隐藏。
+- [ ] **10.3 修正 principal 管理权限语义（High，方案已定见 D17）：**`identity-update-principal`、suspend、resume 当前使用 tenant 注册器 + `platform_administer`。tenant role 不能授予 platform permission；full platform admin 又会先被 tenant membership middleware 拒绝。按 D17：仿 Keycloak realm 模型分两个平面——六条全局 operation 移到真正的 platform route 挂 `platform_administer`，租户管理员另有租户内 principal 更新权限；同时让 `authz.Register` 拒绝 platform-scope action，防止再次误注册。
+- [ ] **10.4 数据权限端到端执行（High，方案已定见 D17）：**以 `internal/todo` 为参照实现（用户 2026-09-05 确认），为其 repository/list/get/update/delete 接入 `DataConstraint`，并对 entity-scoped route 使用 `RegisterEntity`；过滤下沉到查询层，不放在 controller；覆盖 tenant A/B、owner/department/ancestor/explicit deny、分页 count 与导出路径。只暴露 constraint/explain API 不算完成。
+- [ ] **10.5 字段权限设计与实现（High，方案已定见 D17）：**对标 Keycloak 声明式 User Profile 的每字段 `view`/`edit` 角色授权与 SCIM 2.0 的 `mutability`/`returned`；据此确定主体/角色继承、read/write 分离、deny precedence、mask 规则、OpenAPI 表达和审计策略，再设计 schema/catalog/API/cache revision，并在读取 projection/序列化和写入 validation 两端强制执行。不得只做前端隐藏。
 
 #### Medium
 
 - [x] **10.6 OAuth 交互式 consent：**当前 `prompt=consent` 产生 `ErrConsentRequired` 后映射为通用 `invalid_request`，且默认 prompt 会直接 upsert consent。补 consent challenge/approve/deny/revoke API 或页面、短期一次性状态、防 CSRF 与审计。
 - [ ] **10.7 Audit archive 生命周期：**当前 retention 只保存 policy 并统计 `archive_ready_events`；补实际 archive/export worker、对象校验、重试、删除/保留边界和可观测状态。
-- [ ] **10.8 Principal 数据生命周期：**普通 principal 有 create/update/suspend/resume，但没有删除、匿名化或法定保留流程；需先确认审计与外键保留语义。
-- [ ] **10.9 Secret/key rotation（进行中，五步已完成三步）：**① 密钥环原语 `pkg/extension/keyringx`：信封记录是哪把密钥封的，一把在封、一圈都能开。② authn / federation / provisioning 三个模块接入密钥环，新增 `previous_*_keys` 配置。③ `iam rewrap-secrets` 把仍挂在旧密钥上的行重新封一遍，并报告「还剩多少行挂在旧密钥上」，让「可以把旧密钥拿掉了」有依据而不是靠猜；派生摘要（recovery code、验证令牌）无法重封，按各自是否会过期分别报 `expires=never` 或一个日期，不会给出读起来像许可的日期。剩余两步：④ authn 签名密钥环——JWKS 同时发布 active 与 previous，签用 active、验收任一把，旧 key 在一个 token TTL 之后才退场（换签名密钥会影响所有在途 token 的验签路径，需要这个双读窗口）。⑤ federation replay registry 目前是进程内 map，多副本部署下同一个 nonce 每个副本各花一次，重放保护实际上是关的，需换成跨副本共享状态。
-- [ ] **10.10 IAM gRPC 产品决策：**只有明确要求 HTTP/gRPC 双协议时才新增 proto/service；必须先冻结 API surface、auth metadata、错误码、版本兼容和 208 HTTP 能力的映射范围。未决定前不得创建占位服务。
-- [ ] **10.11 最终产品门禁：**完成已批准的 10.1–10.10 后重跑 SQLite/MySQL/PostgreSQL 初始化与权限矩阵、OpenAPI、race、`make generate`、`make ci`、真实 MySQL 及 live readiness。
+- [ ] **10.8 Principal 数据生命周期（方案已定见 D17）：**普通 principal 有 create/update/suspend/resume，但没有删除、匿名化或法定保留流程。按 SCIM + GDPR 通行组合：停用（`active=false`）→ 匿名化 PII → 保留主体行作墓碑，审计永不硬删，外键与审计链因此始终成立。
+- [ ] **10.9 Secret/key rotation（进行中，五步已完成四步）：**① 密钥环原语 `pkg/extension/keyringx`：信封记录是哪把密钥封的，一把在封、一圈都能开。② authn / federation / provisioning 三个模块接入密钥环，新增 `previous_*_keys` 配置。③ `iam rewrap-secrets` 把仍挂在旧密钥上的行重新封一遍，并报告「还剩多少行挂在旧密钥上」，让「可以把旧密钥拿掉了」有依据而不是靠猜；派生摘要（recovery code、验证令牌）无法重封，按各自是否会过期分别报 `expires=never` 或一个日期，不会给出读起来像许可的日期。④ authn 签名密钥环：`signingKeyring` 一把签、一圈验，`/.well-known/jwks.json` 同时发布 active 与 previous，验签按 token header 里的 `kid` 选key（不是逐把试——逐把试会让「把旧 key 从配置里拿掉」这个动作失效）；新增 `authn.previous_signing_keys` / `_files`；轮换步骤写进 `README.md` 的「Rotating keys」。旧 key 必须在配置里留满一个 `access_token_ttl` 才能退场，否则所有在途 token 一次性失效。剩余一步：⑤ federation replay registry 目前是进程内 map，多副本部署下同一个 nonce 每个副本各花一次，重放保护实际上是关的，需换成跨副本共享状态。
+- [x] **10.10 IAM gRPC 产品决策：不做（见 D17）。**主流 IAM 产品面是 REST + OIDC/OAuth2/SCIM，本项目已具备。无明确消费方、surface 未冻结就新增 proto/service 等于维护两份 API。本项关闭；若将来确有 HTTP/gRPC 双协议需求，须先冻结 API surface、auth metadata、错误码、版本兼容与 208 HTTP 能力的映射范围，再重开。
+- [ ] **10.11 最终产品门禁：**完成 10.1–10.9（10.10 已关闭）后重跑 SQLite/MySQL/PostgreSQL 初始化与权限矩阵、OpenAPI、race、`make generate`、`make ci`、真实 MySQL 及 live readiness。
 
 #### 已完成的工程治理
 
@@ -977,7 +977,7 @@ CREATE TABLE {{.Prefix}}iam_roles (
 
 ## 四、未决事项
 
-1. **Phase 10 产品决策** —— principal 管理的 tenant/platform 所有权、字段权限模型、principal 删除/匿名化、IAM 是否提供 gRPC，均需产品确认后实施；不能以“源项目也没有”为由宣称完整，也不能在迁移等价任务中静默决定。
+1. ~~**Phase 10 产品决策**~~ —— **已于 2026-09-05 按 D17 定案并公示**：principal 管理的 tenant/platform 所有权、数据权限落地载体、字段权限模型、principal 删除/匿名化、IAM 是否提供 gRPC，五条均按主流 IAM 通行做法决定，不再逐条等待确认。仍不得以“源项目也没有”为由宣称完整；实施时逐条对照规范与参考实现核对。
 2. **多写者拓扑** —— Task 0.0 只修迁移双取句柄。是否引入显式 routing mode / 逻辑 writer group 来防止误配仍需单独决策。审计 F3 的“`Read()` 零消费者”已不再成立：core membership checker 已使用读路由，datasource 注释也已与当前行为一致；是否把更多业务查询接到副本仍属于后续架构范围。
 
 **已解除/已确认:** 动态菜单多语言不属于“迁移现有功能”，保持 63 表且不新增 `iam_menu_translations`（D7）；Docker 不再绑定单机：Mac 使用本机 daemon，Windows 使用 `10.0.0.100` 的 Debian Docker 26.1.5，具体 transport 由预检生成；R16 按上表四类规则执行；R9'' 的 `type` 不可变不是新增业务限制，源库 `iam/entity.go:273-281` 已在存在关系时拒绝修改，复合外键用于关闭应用层检查的 TOCTOU 窗口。

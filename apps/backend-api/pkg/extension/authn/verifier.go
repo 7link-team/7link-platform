@@ -53,24 +53,31 @@ var (
 
 // Config describes the local issuer and optional upstream JWT verification.
 type Config struct {
-	Enabled           bool                    `mapstructure:"enabled" description:"enable local identity and authentication" default:"false"`
-	Issuer            string                  `mapstructure:"issuer" description:"canonical local OAuth/OIDC issuer URL"`
-	Audience          []string                `mapstructure:"audience" description:"accepted JWT audience values; empty skips audience check"`
-	JWKSURL           string                  `mapstructure:"jwks_url" description:"optional upstream JWKS URL for federation adapters"`
-	HTTPTimeout       time.Duration           `mapstructure:"http_timeout" description:"upstream discovery/JWKS HTTP timeout" default:"5s"`
-	ClockSkew         time.Duration           `mapstructure:"clock_skew" description:"allowed token clock skew" default:"30s"`
-	SigningKey        string                  `mapstructure:"signing_key" description:"base64 Ed25519 seed; prefer signing_key_file" default:"" secret:"true"`
-	SigningKeyFile    string                  `mapstructure:"signing_key_file" description:"file containing the base64 Ed25519 seed" default:""`
-	AccessTokenTTL    time.Duration           `mapstructure:"access_token_ttl" description:"local OAuth access token lifetime" default:"15m"`
-	Web               WebConfig               `mapstructure:"web" group:"web"`
-	Password          PasswordConfig          `mapstructure:"password" group:"password"`
-	MFAPolicy         MFAPolicy               `mapstructure:"mfa_policy" group:"mfa_policy"`
-	MFA               MFAConfig               `mapstructure:"mfa" group:"mfa"`
-	Passkey           PasskeyConfig           `mapstructure:"passkey" group:"passkey"`
-	Notification      NotificationConfig      `mapstructure:"notification" group:"notification"`
-	Recovery          RecoveryConfig          `mapstructure:"recovery" group:"recovery"`
-	EmailVerification EmailVerificationConfig `mapstructure:"email_verification" group:"email_verification"`
-	Registration      RegistrationConfig      `mapstructure:"registration" group:"registration"`
+	Enabled        bool          `mapstructure:"enabled" description:"enable local identity and authentication" default:"false"`
+	Issuer         string        `mapstructure:"issuer" description:"canonical local OAuth/OIDC issuer URL"`
+	Audience       []string      `mapstructure:"audience" description:"accepted JWT audience values; empty skips audience check"`
+	JWKSURL        string        `mapstructure:"jwks_url" description:"optional upstream JWKS URL for federation adapters"`
+	HTTPTimeout    time.Duration `mapstructure:"http_timeout" description:"upstream discovery/JWKS HTTP timeout" default:"5s"`
+	ClockSkew      time.Duration `mapstructure:"clock_skew" description:"allowed token clock skew" default:"30s"`
+	SigningKey     string        `mapstructure:"signing_key" description:"base64 Ed25519 seed; prefer signing_key_file" default:"" secret:"true"`
+	SigningKeyFile string        `mapstructure:"signing_key_file" description:"file containing the base64 Ed25519 seed" default:""`
+	// The previous signing keys verify tokens that were issued before the
+	// current key took over. They never sign anything. A rotation that dropped
+	// the old key in the same step would reject every token still in flight, so
+	// the old key stays listed here until one access token lifetime has passed
+	// and nothing carrying it can still be presented.
+	PreviousSigningKeys     []string                `mapstructure:"previous_signing_keys" description:"retired base64 Ed25519 seeds that still verify unexpired tokens; prefer previous_signing_key_files" secret:"true"`
+	PreviousSigningKeyFiles []string                `mapstructure:"previous_signing_key_files" description:"files containing retired base64 Ed25519 seeds"`
+	AccessTokenTTL          time.Duration           `mapstructure:"access_token_ttl" description:"local OAuth access token lifetime" default:"15m"`
+	Web                     WebConfig               `mapstructure:"web" group:"web"`
+	Password                PasswordConfig          `mapstructure:"password" group:"password"`
+	MFAPolicy               MFAPolicy               `mapstructure:"mfa_policy" group:"mfa_policy"`
+	MFA                     MFAConfig               `mapstructure:"mfa" group:"mfa"`
+	Passkey                 PasskeyConfig           `mapstructure:"passkey" group:"passkey"`
+	Notification            NotificationConfig      `mapstructure:"notification" group:"notification"`
+	Recovery                RecoveryConfig          `mapstructure:"recovery" group:"recovery"`
+	EmailVerification       EmailVerificationConfig `mapstructure:"email_verification" group:"email_verification"`
+	Registration            RegistrationConfig      `mapstructure:"registration" group:"registration"`
 }
 
 // RegistrationConfig enables email-verified self-service global principals.
