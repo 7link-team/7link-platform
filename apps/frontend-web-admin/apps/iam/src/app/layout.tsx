@@ -17,6 +17,7 @@ import {
   type EffectiveMenu,
   type Tenant,
 } from "../lib/iam-api"
+import { appName } from "../lib/branding"
 
 export default function AppLayout() {
   const { session, status } = useAuth()
@@ -101,12 +102,12 @@ export default function AppLayout() {
           </Sheet>
           <div
             className="flex min-w-0 items-center gap-2 font-semibold"
-            aria-label="Chaosplus IAM"
+            aria-label={appName}
           >
             <span className="grid size-8 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
               <ShieldCheck className="size-4" />
             </span>
-            <span className="hidden truncate sm:inline">Chaosplus IAM</span>
+            <span className="hidden truncate sm:inline">{appName}</span>
           </div>
           <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
             <div className="flex h-9 min-w-0 items-center gap-2 rounded-md border border-input px-2">

@@ -6,6 +6,7 @@ import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 import { ApiError, iamApi } from "../../lib/iam-api"
+import { appName, copyrightLine } from "../../lib/branding"
 
 export default function RecoverPage() {
   const location = useLocation()
@@ -56,7 +57,7 @@ export default function RecoverPage() {
                 <ShieldCheck className="size-4" />
               </span>
               <span className="text-sm font-medium text-muted-foreground">
-                Chaosplus IAM
+                {appName}
               </span>
             </div>
             <h1 className="text-xl font-semibold tracking-tight">
@@ -94,7 +95,7 @@ export default function RecoverPage() {
           </Button>
         </div>
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          Chaosplus · © 2026
+          {copyrightLine()}
         </p>
       </main>
     </div>

@@ -6,6 +6,7 @@ import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 import { ApiError, iamApi } from "../../lib/iam-api"
+import { appName, copyrightLine } from "../../lib/branding"
 
 export default function RegisterPage() {
   const [busy, setBusy] = useState(false)
@@ -51,7 +52,7 @@ export default function RegisterPage() {
                 <ShieldCheck className="size-4" />
               </span>
               <span className="text-sm font-medium text-muted-foreground">
-                Chaosplus IAM
+                {appName}
               </span>
             </div>
             <h1 className="text-xl font-semibold tracking-tight">创建账号</h1>
@@ -126,7 +127,7 @@ export default function RegisterPage() {
           </Button>
         </div>
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          Chaosplus · © 2026
+          {copyrightLine()}
         </p>
       </main>
     </div>

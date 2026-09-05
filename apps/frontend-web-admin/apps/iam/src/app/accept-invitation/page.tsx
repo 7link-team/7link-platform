@@ -6,6 +6,7 @@ import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 import { ApiError, iamApi, type InvitationAcceptance } from "../../lib/iam-api"
+import { appName, copyrightLine } from "../../lib/branding"
 
 export default function AcceptInvitationPage() {
   const [token] = useState(() => {
@@ -61,7 +62,7 @@ export default function AcceptInvitationPage() {
                 <MailCheck className="size-4" />
               </span>
               <span className="text-sm font-medium text-muted-foreground">
-                Chaosplus IAM
+                {appName}
               </span>
             </div>
             <h1 className="text-xl font-semibold">接受成员邀请</h1>
@@ -141,7 +142,7 @@ export default function AcceptInvitationPage() {
           </Button>
         </div>
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          Chaosplus · © 2026
+          {copyrightLine()}
         </p>
       </main>
     </div>

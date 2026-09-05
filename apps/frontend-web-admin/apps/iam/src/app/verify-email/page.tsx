@@ -10,6 +10,7 @@ import { Link } from "react-router"
 import { Button } from "@workspace/ui/components/button"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 import { ApiError, iamApi } from "../../lib/iam-api"
+import { appName, copyrightLine } from "../../lib/branding"
 
 type VerificationState = "pending" | "success" | "invalid" | "unavailable"
 
@@ -51,7 +52,7 @@ export default function VerifyEmailPage() {
                 <MailCheck className="size-4" />
               </span>
               <span className="text-sm font-medium text-muted-foreground">
-                Chaosplus IAM
+                {appName}
               </span>
             </div>
             <h1 className="text-xl font-semibold">验证邮箱</h1>
@@ -69,7 +70,7 @@ export default function VerifyEmailPage() {
           )}
         </div>
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          Chaosplus · © 2026
+          {copyrightLine()}
         </p>
       </main>
     </div>

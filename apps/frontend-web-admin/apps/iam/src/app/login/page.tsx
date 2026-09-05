@@ -10,6 +10,7 @@ import {
   type AuthnCapabilities,
   type LoginResult,
 } from "../../lib/iam-api"
+import { appName, copyrightLine } from "../../lib/branding"
 import { useAuth } from "../../components/auth"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 
@@ -122,7 +123,7 @@ export default function LoginPage() {
           )}
         </div>
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          Chaosplus · © 2026
+          {copyrightLine()}
         </p>
       </main>
     </div>
@@ -137,7 +138,7 @@ function BrandHeader({ mfa = false }: { mfa?: boolean }) {
           <ShieldCheck className="size-4" />
         </span>
         <span className="text-sm font-medium text-muted-foreground">
-          Chaosplus IAM
+          {appName}
         </span>
       </div>
       <h1 id="login-title" className="text-xl font-semibold tracking-tight">

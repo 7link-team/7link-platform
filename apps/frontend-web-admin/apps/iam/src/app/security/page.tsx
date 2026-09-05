@@ -39,6 +39,7 @@ import {
   type Passkey,
   type Session,
 } from "../../lib/iam-api"
+import { appName } from "../../lib/branding"
 import { createPasskeyCredential } from "../../lib/webauthn"
 
 type MfaDialog =
@@ -851,7 +852,7 @@ function EnrollmentForm({
         <div className="mx-auto grid size-44 place-items-center rounded-md border bg-white p-3">
           <QRCodeSVG
             value={enrollment.provisioning_uri}
-            title="Chaosplus TOTP 配置二维码"
+            title={`${appName} TOTP 配置二维码`}
             size={152}
             level="M"
           />
