@@ -10,6 +10,7 @@
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "typecheck": "tsc -b --pretty false",
     "test": "bun test src",
+    "generate:api-types": "bun scripts/generate-api-types.mjs",
     "audit:departments": "bun scripts/department-browser-audit.mjs",
     "audit:positions": "bun scripts/position-browser-audit.mjs",
     "audit:groups": "bun scripts/group-browser-audit.mjs",
@@ -46,6 +47,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17",
+    "openapi-typescript": "^7.13.0",
     "typescript": "~6",
     "typescript-eslint": "^8",
     "vite": "^8"
