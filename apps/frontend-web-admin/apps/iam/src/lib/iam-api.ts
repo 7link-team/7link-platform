@@ -10,6 +10,11 @@ export interface Envelope<T> {
 export interface Session {
   subject: string
   issuer: string
+  /** Authentication context class: how strongly the subject was verified. */
+  acr: number
+  /** Authentication methods that produced the session, when the service says. */
+  amr?: string[]
+  auth_time?: string
   preferred_username?: string
   email?: string
   email_verified: boolean
@@ -87,6 +92,7 @@ export interface Passkey {
 export interface Principal {
   id: string
   login_name: string
+  activation_required: boolean
   email?: string
   email_verified: boolean
   display_name: string
@@ -614,10 +620,13 @@ export interface EffectiveMenu {
 export type OAuthGrantType =
   "authorization_code" | "refresh_token" | "client_credentials"
 
+export type OAuthConsentMode = "implicit" | "explicit"
+
 export interface OAuthClient {
   id: string
   tenant_id: string
   name: string
+  consent_mode: OAuthConsentMode
   redirect_uris: string[]
   grant_types: OAuthGrantType[]
   scopes: string[]

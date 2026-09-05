@@ -12,9 +12,9 @@
 
 | 项              | 值                                                         |
 | --------------- | ---------------------------------------------------------- |
-| Current Phase   | TESTING（代码迁移完成，待真实后端联调）                    |
-| Current Step    | 等后端 Phase 10.1 / 10.2 落地后跑 13 个 browser audit 脚本 |
-| Last Checkpoint | 2026-09-04 · Phase B / C 代码迁移完成，五项门禁全绿        |
+| Current Phase   | TESTING（联调已通过，13 个 audit 全绿）                    |
+| Current Step    | 等入库的 OpenAPI 文件后重生成类型（§10.4）；余下等 §9 定名 |
+| Last Checkpoint | 2026-09-05 · 13/13 audit 连过三轮；OpenAPI 漂移闸口接入 tsc |
 
 **进度**
 
@@ -23,7 +23,9 @@
 - [x] Phase B.3 API 客户端按新契约改写（18 条 authn + principals 停用/恢复）
 - [x] Phase B.4 客户端测试按新契约修订（含 audit 导出 schema/文件名对齐真实后端）
 - [x] Phase C 代码迁移：24 个页面 + layout + 11 个 components + 13 个 audit 脚本
-- [ ] Phase C 验收：13 个 browser audit 脚本 —— **阻塞于后端 10.1 / 10.2**
+- [x] Phase C 验收：13 个 browser audit 脚本 —— 对 `82f2966` 后端 13/13，连过三轮
+      （账号仍是手工建的；脚本自举等 §9.3b，见下）
+- [x] OpenAPI 漂移闸口（§十）：51 个响应类型接入 `tsc`，查出并修掉三处真实漂移
 - [ ] Phase D IAM 收口
 - [ ] Phase E 商城迁移（`mall` 分支）
 - [ ] A.1 前端规约写入 `CLAUDE.md` —— 本仓无前端章节、无前端 skill，待确认
@@ -545,3 +547,61 @@ authn 4 / organization 2 / audit 2 / identity 1。
 并依赖命令区分 created / already bootstrapped 的退出码来做重跑幂等。
 账号的 login 与 email 是两个字段，脚本统一用「邮箱当登录名」一种口径，
 和现有 `#login-name` 输入保持一致。
+
+## 十、按 OpenAPI 生成的类型与漂移闸口（2026-09-05）
+
+§1.3 说「必须以运行中的 OpenAPI 为准逐条冻结」。冻结只在冻结那一刻成立，
+后端之后改一个字段，前端仍然编译通过、跑起来才空白 —— 只有 browser audit 会发现。
+本节把这件事接到 `tsc` 上。
+
+### 10.1 为什么不是「用生成的类型替换手写类型」
+
+先试过直接把 `iam-api.ts` 的域类型换成生成类型，结论是**不能换**：
+
+| 字段                     | 手写客户端               | OpenAPI 文档     |
+| ------------------------ | ------------------------ | ---------------- |
+| `Department.status`      | `"active" \| "disabled"` | `string`         |
+| `Department.id`          | `string`                 | `string \| null` |
+| `AccessRequest.id` 等    | `string`                 | `string \| null` |
+
+文档里 294 个 schema 共 1309 个字段，其中 **162 个带 `null`**，绝大多数是 Go 侧
+指针/`omitempty` 的建模痕迹，服务端并不会真的返回 null 的 id。换成生成类型等于
+用「手写类型更精确的字面量联合」去换「一堆永远不会触发的 null 分支」，是净亏。
+
+### 10.2 实际做法：生成类型 + 双向字段名比对
+
+- `bun run generate:api-types` → `src/lib/api-schema.ts`（生成物，入库，
+  `.prettierignore` 已排除，勿手改）。
+- `src/lib/api-contract.ts` 把 51 个手写响应类型与文档 schema 逐一配对，
+  在类型层面做**双向字段名**比对：客户端多出来的字段、文档里必填而客户端没有的字段，
+  都会让 `tsc` 失败，且报错信息直接点名是哪个字段。
+- **只比字段名，不比字段类型** —— 理由就是 10.1，两边的类型是故意不一样的。
+
+配对不是猜名字得来的：从 `iam-api.ts` 解析出 136 个调用点，按 `(method, path)`
+落到文档 operation 上，再顺着响应 envelope 的 `data` 取内层 schema。
+名字相同的只有 22 个，其余是 `Role → APIRole`、`Session → MeOutput`、
+`Permission → Action`、`AuditEvent → Event` 这种，靠名字猜会错
+（例如按字段集相似度猜，`ServiceAccountList` 会错配到 `PrincipalListData`）。
+
+### 10.3 首次运行查出的三处真实漂移（已修）
+
+| 类型          | 文档必填而客户端缺失   |
+| ------------- | ---------------------- |
+| `Session`     | `acr`（另补了可选的 `amr` / `auth_time`） |
+| `Principal`   | `activation_required`  |
+| `OAuthClient` | `consent_mode`         |
+
+其余 48 个类型双向一致 —— 也就是说手写客户端本身是准的，缺的只是**持续**的比对。
+
+### 10.4 遗留
+
+- **生成的输入源是运行中的服务，不是入库文件。** 仓库里既没有 spec 文件，也没有
+  离线导出命令，所以 `api-schema.ts` 目前是拿 `--spec http://localhost:8091/api/openapi.json`
+  生成的，CI 复算不了。@Claude 计划加 `7link-api openapi --out apps/backend-api/docs/openapi.json`；
+  该文件落地后，`bun run generate:api-types` 不带参数就会读它（已是默认路径），
+  届时须重新生成一次并复核本节的三处修正。
+- **只覆盖响应类型。** 请求体类型（`*Input` / `*Update`）尚未纳入比对，
+  它们写错的表现是运行期 422，目前由 browser audit 兜住。
+- **`OAuthClientInput` 没有 `consent_mode`。** 文档里它是可选的（默认 `implicit`），
+  所以比对不报错，但也意味着前端建出来的 client 一律是隐式同意。要不要给 UI
+  加这个开关是产品决定，不是漂移。
