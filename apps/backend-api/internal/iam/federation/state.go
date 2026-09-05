@@ -16,6 +16,13 @@ import (
 
 const stateCookieName = "cp_federation_state"
 
+// stateAAD binds the sealed state cookie to the purpose it was sealed for, so
+// a value lifted from another AEAD that happens to share the key cannot be
+// opened here. It is a protocol constant rather than a brand name: changing it
+// invalidates every outstanding login, and nothing outside this file may
+// restate it.
+const stateAAD = "iam:federation:state"
+
 var (
 	errUnsupportedState = errors.New("unsupported federation state cookie")
 	errInvalidState     = errors.New("invalid federation state cookie")
@@ -67,7 +74,7 @@ func sealState(key []byte, state loginState) (string, error) {
 	if _, err := rand.Read(nonce); err != nil {
 		return "", fmt.Errorf("generate federation state nonce: %w", err)
 	}
-	sealed := gcm.Seal(nonce, nonce, plain, []byte("chaosplus:federation:state"))
+	sealed := gcm.Seal(nonce, nonce, plain, []byte(stateAAD))
 	return "v1." + base64.RawURLEncoding.EncodeToString(sealed), nil
 }
 
@@ -92,7 +99,7 @@ func openState(key []byte, encoded string) (loginState, error) {
 		return loginState{}, errInvalidState
 	}
 	nonce, ciphertext := sealed[:gcm.NonceSize()], sealed[gcm.NonceSize():]
-	plain, err := gcm.Open(nil, nonce, ciphertext, []byte("chaosplus:federation:state"))
+	plain, err := gcm.Open(nil, nonce, ciphertext, []byte(stateAAD))
 	if err != nil {
 		return loginState{}, errInvalidState
 	}
