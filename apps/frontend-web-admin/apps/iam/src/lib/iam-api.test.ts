@@ -1751,4 +1751,25 @@ describe("IAM API client", () => {
     for (const request of requests)
       expect(request.headers.get("x-tenant-id")).toBe("tenant-audit")
   })
+
+  it("omits the tenant header while no tenant is resolved", async () => {
+    const requests: RecordedRequest[] = []
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        requests.push({
+          method: request.method,
+          path: new URL(request.url).pathname,
+          headers: request.headers,
+          body: await request.text(),
+        })
+        return Response.json({ code: 0, message: "ok", data: [] })
+      },
+    })
+    const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "")
+    await client.roles()
+    // Sending an empty header would scope the request to a tenant named "",
+    // which reads as a real choice to the service; leaving it off does not.
+    expect(requests[0]?.headers.has("x-tenant-id")).toBe(false)
+  })
 })

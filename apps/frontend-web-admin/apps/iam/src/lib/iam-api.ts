@@ -795,14 +795,31 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The tenant whose data the console is currently showing.
+ *
+ * A build cannot know which tenants a deployment has, so there is no compiled-in
+ * fallback slug: the value is either one the operator picked, one the deployment
+ * configured, or one adopted from the session (see `adoptSessionTenant`). Empty
+ * means "not resolved yet" and the tenant header is then left off the request
+ * rather than sent with a guess.
+ */
 export function getTenant(): string {
-  return (
-    (typeof localStorage === "undefined"
-      ? undefined
-      : localStorage.getItem(tenantKey)) ??
-    import.meta.env.VITE_DEFAULT_TENANT ??
-    "platform"
-  )
+  const stored =
+    typeof localStorage === "undefined" ? null : localStorage.getItem(tenantKey)
+  return stored ?? import.meta.env.VITE_DEFAULT_TENANT ?? ""
+}
+
+/**
+ * Adopt the tenant the service says this session belongs to.
+ *
+ * Called when a session is established, so that a first login lands on the
+ * tenant the account actually belongs to instead of on a guess. A choice the
+ * operator already made wins — this only fills an empty selection.
+ */
+export function adoptSessionTenant(session: Pick<Session, "organization_id">) {
+  if (!session.organization_id || getTenant()) return
+  setTenant(session.organization_id)
 }
 
 export function setTenant(value: string): void {
@@ -830,7 +847,8 @@ async function requestEnvelopeWithBase<T>(
   tenant = true
 ): Promise<Envelope<T>> {
   const headers = new Headers(init.headers)
-  if (tenant) headers.set("X-Tenant-Id", tenantID())
+  const scope = tenant ? tenantID() : ""
+  if (scope) headers.set("X-Tenant-Id", scope)
   if (init.body) headers.set("Content-Type", "application/json")
   const response = await fetch(`${apiBase}${path}`, {
     ...init,
@@ -846,6 +864,11 @@ async function requestEnvelopeWithBase<T>(
   return body
 }
 
+/** The tenant header, omitted entirely while no tenant is resolved. */
+function tenantHeader(scope: string): Record<string, string> {
+  return scope ? { "X-Tenant-Id": scope } : {}
+}
+
 async function requestAuditExportWithBase(
   apiBase: string,
   tenantID: () => string,
@@ -854,7 +877,7 @@ async function requestAuditExportWithBase(
   const response = await fetch(
     `${apiBase}/iam/audit-events/export${query ? `?${query}` : ""}`,
     {
-      headers: { "X-Tenant-Id": tenantID() },
+      headers: tenantHeader(tenantID()),
       credentials: "include",
     }
   )

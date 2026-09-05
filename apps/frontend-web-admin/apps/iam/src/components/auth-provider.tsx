@@ -5,7 +5,12 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { iamApi, type LoginResult, type Session } from "../lib/iam-api"
+import {
+  adoptSessionTenant,
+  iamApi,
+  type LoginResult,
+  type Session,
+} from "../lib/iam-api"
 import { getPasskeyCredential } from "../lib/webauthn"
 import { AuthContext, type AuthStatus } from "./auth"
 
@@ -15,7 +20,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      setSession(await iamApi.session())
+      const next = await iamApi.session()
+      adoptSessionTenant(next)
+      setSession(next)
       setStatus("authenticated")
     } catch {
       setSession(null)
@@ -28,6 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void iamApi.session().then(
       (next) => {
         if (!active) return
+        adoptSessionTenant(next)
         setSession(next)
         setStatus("authenticated")
       },
