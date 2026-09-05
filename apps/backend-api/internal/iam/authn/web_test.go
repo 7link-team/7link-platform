@@ -632,7 +632,7 @@ func TestWebServiceDefaultsAndConfigurationBoundaries(t *testing.T) {
 	assert.Equal(t, 30*time.Second, service.cfg.ClockSkew)
 	assert.Equal(t, 5, service.cfg.Password.MaxFailedAttempts)
 	assert.Equal(t, 15*time.Minute, service.cfg.Password.LockDuration)
-	assert.Equal(t, "sl_session", service.SessionCookieName())
+	assert.Equal(t, authnext.DefaultSessionCookieName, service.SessionCookieName())
 	assert.Equal(t, 8*time.Hour, service.web.SessionTTL)
 	assert.Equal(t, 30*time.Minute, service.web.IdleTTL)
 	assert.Equal(t, 10, service.cfg.MFA.RecoveryCodes)

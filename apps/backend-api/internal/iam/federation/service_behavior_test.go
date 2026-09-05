@@ -228,7 +228,7 @@ func (w *federationWeb) Logout(_ context.Context, cookieHeader string) string {
 }
 
 func (*federationWeb) CookieSecure() bool        { return true }
-func (*federationWeb) SessionCookieName() string { return "sl_session" }
+func (*federationWeb) SessionCookieName() string { return "custom_session" }
 func (w *federationWeb) SessionCookie(token string) string {
 	return (&http.Cookie{Name: w.SessionCookieName(), Value: token, Path: "/", HttpOnly: true, Secure: true}).String()
 }

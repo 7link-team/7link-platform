@@ -335,6 +335,45 @@ func TestOpenAPISecurityMatchesAuthenticatorCapabilities(t *testing.T) {
 	assert.Equal(t, "session", sessionAPI.OpenAPI().Components.SecuritySchemes[authz.SessionScheme].Name)
 }
 
+// TestRegistrarPublishesTheCookieItActuallyReads is the regression that closes
+// the gap between the request path and the API document. A public operation
+// cannot resolve the configured cookie name on its own, so a document written
+// only from public registrations used to advertise the compiled-in default
+// while the request path read the configured name, and anybody integrating
+// from the document sent a cookie the server ignores.
+func TestRegistrarPublishesTheCookieItActuallyReads(t *testing.T) {
+	configured := authz.NewRegistrar(
+		testRegistry(), &fakeVerifier{claims: validClaims(), cookie: "configured_session"},
+		&fakeChecker{allowed: true}, &fakeMembership{active: true},
+	)
+	assert.Equal(t, "configured_session", configured.SessionCookieName())
+
+	_, api := humatest.New(t)
+	authz.EnsureSecuritySchemes(api, configured.SessionCookieName())
+	authz.RegisterPublic(api, huma.Operation{
+		OperationID: "session-reading-public", Method: http.MethodGet, Path: "/authorize",
+		Security: []map[string][]string{{authz.SessionScheme: {}}},
+	}, okRoute)
+	assert.Equal(t, "configured_session", api.OpenAPI().Components.SecuritySchemes[authz.SessionScheme].Name)
+}
+
+// TestRegistrarFallsBackToTheSharedDefault covers the only case where the
+// default is the honest answer: nothing is bound that runs browser sessions.
+// It reads the constant rather than a literal so the fallback cannot drift away
+// from the configuration default again.
+func TestRegistrarFallsBackToTheSharedDefault(t *testing.T) {
+	bare, err := authn.NewVerifier(authn.Config{Enabled: true, Issuer: "https://issuer.example"})
+	require.NoError(t, err)
+	registrar := authz.NewRegistrar(testRegistry(), bare, &fakeChecker{allowed: true}, &fakeMembership{active: true})
+	assert.Equal(t, authn.DefaultSessionCookieName, registrar.SessionCookieName())
+
+	empty := authz.NewRegistrar(
+		testRegistry(), &fakeVerifier{claims: validClaims()},
+		&fakeChecker{allowed: true}, &fakeMembership{active: true},
+	)
+	assert.Equal(t, authn.DefaultSessionCookieName, empty.SessionCookieName())
+}
+
 func TestPublicRegistrationPreservesConfiguredSessionCookieScheme(t *testing.T) {
 	_, api := humatest.New(t)
 	authz.EnsureSecuritySchemes(api, "configured_session")

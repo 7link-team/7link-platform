@@ -143,6 +143,13 @@ type PasskeyConfig struct {
 	AllowedAAGUIDs            []string      `mapstructure:"allowed_aaguid" description:"accepted 16-byte authenticator AAGUID hex values; empty allows every authenticator"`
 }
 
+// DefaultSessionCookieName is the browser session cookie name a deployment
+// gets when it configures none. It is named for what it holds rather than
+// for whoever runs the deployment, so one build serves them all. It is
+// exported because the OpenAPI document has to advertise the same name the
+// request path reads, and those two live in different packages.
+const DefaultSessionCookieName = "session"
+
 // WebConfig enables database-backed opaque browser sessions.
 type WebConfig struct {
 	Enabled           bool          `mapstructure:"enabled" description:"enable browser OIDC BFF" default:"false"`
@@ -150,7 +157,7 @@ type WebConfig struct {
 	PostLogoutURL     string        `mapstructure:"post_logout_url" description:"frontend URL after logout"`
 	AllowedReturnURLs []string      `mapstructure:"allowed_return_urls" description:"exact frontend return URL allowlist"`
 	AllowedOrigins    []string      `mapstructure:"allowed_origins" description:"origins allowed for cookie-authenticated writes"`
-	CookieName        string        `mapstructure:"cookie_name" description:"opaque session cookie name" default:"cp_session"`
+	CookieName        string        `mapstructure:"cookie_name" description:"opaque session cookie name" default:"session"`
 	CookieSecure      bool          `mapstructure:"cookie_secure" description:"require HTTPS for session cookies" default:"true"`
 	SessionTTL        time.Duration `mapstructure:"session_ttl" description:"absolute browser session lifetime" default:"8h"`
 	IdleTTL           time.Duration `mapstructure:"idle_ttl" description:"browser session inactivity lifetime" default:"30m"`

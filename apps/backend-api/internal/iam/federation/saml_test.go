@@ -994,7 +994,7 @@ func spLoginMetadata(t *testing.T, tsp *samlTestSP, entityID, acsURL string) str
 }
 
 // TestSAMLServiceProviderLoginFlow exercises the full SP-initiated login round
-// trip against the chaosplus SAML IdP acting as the upstream identity provider:
+// trip against a SAML IdP acting as the upstream identity provider:
 // StartSAMLLogin builds a signed redirect AuthnRequest, the IdP answers with a
 // signed assertion, and CompleteSAMLLogin verifies it and provisions the user.
 func TestSAMLServiceProviderLoginFlow(t *testing.T) {
@@ -1041,7 +1041,7 @@ func TestSAMLServiceProviderLoginFlow(t *testing.T) {
 	// Complete the flow with the state cookie and the signed response.
 	stateValue, err := cookieValue(stateCookie, stateCookieName)
 	require.NoError(t, err)
-	sessionToken, returnURL, err := env.service.CompleteSAMLLogin(t.Context(), provider.ID, samlResponse, "cp_federation_state="+stateValue, callback)
+	sessionToken, returnURL, err := env.service.CompleteSAMLLogin(t.Context(), provider.ID, samlResponse, "federation_state="+stateValue, callback)
 	require.NoError(t, err)
 	assert.Equal(t, "https://app.example/", returnURL)
 	require.NotEmpty(t, sessionToken)
@@ -1098,7 +1098,7 @@ func TestSAMLServiceProviderLoginDenials(t *testing.T) {
 	require.NotEmpty(t, redirectURL)
 	stateValue, err := cookieValue(stateCookie, stateCookieName)
 	require.NoError(t, err)
-	_, _, err = env.service.CompleteSAMLLogin(t.Context(), samlProvider.ID, "bm90LWEtc2FtbC1yZXNwb25zZQ", "cp_federation_state="+stateValue, cb)
+	_, _, err = env.service.CompleteSAMLLogin(t.Context(), samlProvider.ID, "bm90LWEtc2FtbC1yZXNwb25zZQ", "federation_state="+stateValue, cb)
 	assert.ErrorIs(t, err, ErrSAMLResponse)
 
 	// A missing state cookie is rejected like the OIDC flow.

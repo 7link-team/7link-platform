@@ -833,7 +833,7 @@ func newAuthenticationService(t *testing.T) (*gorm.DB, *Service, string) {
 		MFA:     authnext.MFAConfig{EncryptionKey: base64.RawStdEncoding.EncodeToString(seed)},
 		Passkey: authnext.PasskeyConfig{Enabled: true, RPID: "app.example", DisplayName: "SevenLink", Origins: []string{"https://app.example"}},
 		Web: authnext.WebConfig{
-			Enabled: true, CookieName: "sl_session", SessionTTL: time.Hour, IdleTTL: 10 * time.Minute,
+			Enabled: true, CookieName: "custom_session", SessionTTL: time.Hour, IdleTTL: 10 * time.Minute,
 			PostLoginURL: "https://app.example/", PostLogoutURL: "https://app.example/login",
 			AllowedReturnURLs: []string{"https://app.example/"}, AllowedOrigins: []string{"https://app.example"},
 		},
@@ -867,7 +867,7 @@ func newRecoveryAuthenticationService(t *testing.T, notificationURL string, regi
 		Registration:      authnext.RegistrationConfig{Enabled: registrationEnabled},
 		Notification:      authnext.NotificationConfig{URL: notificationURL, PollInterval: 10 * time.Millisecond, RequestTimeout: time.Second, MaxAttempts: 3},
 		Web: authnext.WebConfig{
-			Enabled: true, CookieName: "sl_session", SessionTTL: time.Hour, IdleTTL: 10 * time.Minute,
+			Enabled: true, CookieName: "custom_session", SessionTTL: time.Hour, IdleTTL: 10 * time.Minute,
 			PostLoginURL: "https://app.example/", PostLogoutURL: "https://app.example/login",
 			AllowedReturnURLs: []string{"https://app.example/"}, AllowedOrigins: []string{"https://app.example"},
 		},

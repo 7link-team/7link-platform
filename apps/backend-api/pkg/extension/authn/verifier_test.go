@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -828,4 +829,18 @@ func jsonResponse(request *http.Request, body []byte) *http.Response {
 		Body:       io.NopCloser(strings.NewReader(string(body))),
 		Request:    request,
 	}
+}
+
+// TestSessionCookieDefaultHasOneSource pins the configuration default to the
+// exported constant. They used to be two independent literals in two packages,
+// which is exactly how the request path and the published API document came to
+// name different cookies.
+func TestSessionCookieDefaultHasOneSource(t *testing.T) {
+	field, found := reflect.TypeOf(WebConfig{}).FieldByName("CookieName")
+	require.True(t, found)
+	assert.Equal(t, DefaultSessionCookieName, field.Tag.Get("default"),
+		"the struct tag default and the exported constant must be the same name")
+
+	assert.NotContains(t, DefaultSessionCookieName, "_",
+		"a bare noun names what the cookie holds; a prefix would name a deployment")
 }

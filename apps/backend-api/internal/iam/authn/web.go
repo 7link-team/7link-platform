@@ -133,7 +133,7 @@ func NewWebService(cfg authnext.Config, repository *Repository, options ...WebOp
 		service.cfg.Password.LockDuration = 15 * time.Minute
 	}
 	if service.web.CookieName == "" {
-		service.web.CookieName = "sl_session"
+		service.web.CookieName = authnext.DefaultSessionCookieName
 	}
 	if service.web.SessionTTL <= 0 {
 		service.web.SessionTTL = 8 * time.Hour

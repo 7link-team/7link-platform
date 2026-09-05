@@ -58,7 +58,7 @@ func newTestIDP(t *testing.T) *testIDP {
 	t.Helper()
 	_, key, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
-	idp := &testIDP{key: key, kid: "test-key", codes: map[string]testIDPCode{}, clientID: "chaosplus-app"}
+	idp := &testIDP{key: key, kid: "test-key", codes: map[string]testIDPCode{}, clientID: "upstream-app"}
 	idp.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, wellKnownPath):

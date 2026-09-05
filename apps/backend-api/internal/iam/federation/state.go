@@ -14,7 +14,10 @@ import (
 	"time"
 )
 
-const stateCookieName = "cp_federation_state"
+// stateCookieName names the cookie by what it holds. A deployment name has
+// no place in it: the same build serves every deployment, and a browser that
+// still carries the old name simply starts a new login.
+const stateCookieName = "federation_state"
 
 // stateAAD binds the sealed state cookie to the purpose it was sealed for, so
 // a value lifted from another AEAD that happens to share the key cannot be

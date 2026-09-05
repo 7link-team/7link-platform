@@ -25,6 +25,7 @@ import (
 	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/iam/provisioning"
 	"7link.com/platform/internal/infra/guid"
+	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -259,7 +260,7 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 
 		response = f.request(t, http.MethodGet, "/federation/"+provider.ID.String()+"/start?return_url="+url.QueryEscape("https://app.example.test/home"), 0, "", nil, nil)
 		requireStatus(t, http.StatusFound, response)
-		stateCookie := requireCookie(t, response.Cookies, "cp_federation_state")
+		stateCookie := requireCookie(t, response.Cookies, "federation_state")
 		authorize, err := idp.server.Client().Get(response.Header.Get("Location"))
 		require.NoError(t, err)
 		defer authorize.Body.Close()
@@ -275,7 +276,7 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 		})
 		requireStatus(t, http.StatusFound, response)
 		assert.Equal(t, "https://app.example.test/home", response.Header.Get("Location"))
-		require.NotNil(t, requireCookie(t, response.Cookies, "sl_session"))
+		require.NotNil(t, requireCookie(t, response.Cookies, authnext.DefaultSessionCookieName))
 		assert.Equal(t, int64(1), f.count(t, "iam_identity_links", "tenant_id = ? AND provider_id = ? AND external_subject = ?", tenant.ID, provider.ID, "lifecycle-external-user"))
 		var federatedPrincipalID guid.ID
 		require.NoError(t, f.db.Table(f.table("iam_identity_links")).Select("principal_id").

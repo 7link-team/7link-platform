@@ -84,7 +84,7 @@ type IdentityLink struct {
 }
 
 // SAMLServiceProvider is a tenant-registered downstream application that
-// consumes SAML assertions from the Chaosplus identity provider. Its metadata
+// consumes SAML assertions from this identity provider. Its metadata
 // document is the source of truth for entity ID, assertion consumer, and
 // single-logout endpoints.
 type SAMLServiceProvider struct {

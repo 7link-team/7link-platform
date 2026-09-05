@@ -28,7 +28,6 @@ const (
 	BearerScheme             = "bearerAuth"
 	SessionScheme            = "sessionCookie"
 	ClientBasicScheme        = "clientBasic"
-	defaultCookieName        = "cp_session"
 	guidTextPattern          = `^[1-9][0-9]*$`
 	guidTextMaxLength        = 19
 )
@@ -322,16 +321,14 @@ func (r *Registrar) prepareAuthenticated(api huma.API, op *huma.Operation, tenan
 		panic("authz registrar is not bound")
 	}
 	op.Errors = appendUniqueStatus(op.Errors, http.StatusUnauthorized, http.StatusForbidden, http.StatusServiceUnavailable)
-	cookieName := defaultCookieName
 	op.Security = BearerSecurity()
 	if r.verifier == nil {
 		op.Security = UserSecurity()
 	}
 	if provider, ok := r.verifier.(sessionCookieNamer); ok && provider.SessionCookieName() != "" {
-		cookieName = provider.SessionCookieName()
 		op.Security = UserSecurity()
 	}
-	EnsureSecuritySchemes(api, cookieName)
+	EnsureSecuritySchemes(api, r.SessionCookieName())
 	if tenantScoped {
 		op.Parameters = append(op.Parameters, &huma.Param{
 			Name:        TenantHeader,
@@ -341,6 +338,19 @@ func (r *Registrar) prepareAuthenticated(api huma.API, op *huma.Operation, tenan
 			Schema:      &huma.Schema{Type: huma.TypeString, Pattern: guidTextPattern, MaxLength: intPointer(guidTextMaxLength)},
 		})
 	}
+}
+
+// SessionCookieName reports the browser session cookie this registrar
+// authenticator actually reads. It falls back to the package default only
+// when no authenticator is bound or the bound one runs no browser sessions,
+// which is also the only case where the default is the honest answer.
+func (r *Registrar) SessionCookieName() string {
+	if r != nil {
+		if provider, ok := r.verifier.(sessionCookieNamer); ok && provider.SessionCookieName() != "" {
+			return provider.SessionCookieName()
+		}
+	}
+	return authn.DefaultSessionCookieName
 }
 
 // EnsureSecuritySchemes declares the authentication mechanisms used across the API.
@@ -361,7 +371,7 @@ func ensureDefaultSecuritySchemes(api huma.API) {
 	}
 	components.SecuritySchemes[BearerScheme] = &huma.SecurityScheme{Type: "http", Scheme: "bearer", BearerFormat: "JWT"}
 	if _, exists := components.SecuritySchemes[SessionScheme]; !exists {
-		components.SecuritySchemes[SessionScheme] = &huma.SecurityScheme{Type: "apiKey", In: "cookie", Name: defaultCookieName}
+		components.SecuritySchemes[SessionScheme] = &huma.SecurityScheme{Type: "apiKey", In: "cookie", Name: authn.DefaultSessionCookieName}
 	}
 	components.SecuritySchemes[ClientBasicScheme] = &huma.SecurityScheme{Type: "http", Scheme: "basic"}
 }

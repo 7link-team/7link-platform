@@ -239,6 +239,12 @@ type clientDeleteData struct {
 // RegisterHTTP publishes the OAuth/OIDC protocol and tenant client-management
 // operations.
 func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
+	// GET /oauth/authorize is a public operation that nevertheless reads the
+	// browser session cookie, so it is the one route whose documented cookie
+	// name cannot be resolved from its own registration. Declaring the scheme
+	// here, from the bound authenticator, keeps the published name equal to the
+	// one the request path reads no matter which module registers first.
+	authz.EnsureSecuritySchemes(api, registrar.SessionCookieName())
 	registerProtocolHTTP(api, service)
 	registerConsentHTTP(api, service)
 	registerClientHTTP(api, service, registrar)
