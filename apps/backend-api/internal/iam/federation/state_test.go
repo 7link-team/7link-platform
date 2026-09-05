@@ -1,12 +1,19 @@
 package federation
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"7link.com/platform/pkg/extension/keyringx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,6 +24,38 @@ func testKey() []byte {
 		key[i] = byte(i + 1)
 	}
 	return key
+}
+
+func testKeyring(t *testing.T, keys ...[]byte) *keyringx.Keyring {
+	t.Helper()
+	if len(keys) == 0 {
+		keys = [][]byte{testKey()}
+	}
+	return newFederationTestKeyring(t, keys[0], keys[1:]...)
+}
+
+// sealStateTheWayTheOldCodeDid reproduces, byte for byte, what this module
+// wrote before the key ring existed. It is here so that a change to the
+// derivation shows up as a failing test rather than as a deployment whose
+// stored values and in-flight cookies have all silently stopped opening.
+func sealStateTheWayTheOldCodeDid(t *testing.T, key []byte, state loginState) string {
+	t.Helper()
+	plain, err := json.Marshal(state)
+	require.NoError(t, err)
+
+	mac := hmac.New(sha256.New, key)
+	_, err = mac.Write([]byte("federation:key:state"))
+	require.NoError(t, err)
+
+	block, err := aes.NewCipher(mac.Sum(nil))
+	require.NoError(t, err)
+	gcm, err := cipher.NewGCM(block)
+	require.NoError(t, err)
+	nonce := make([]byte, gcm.NonceSize())
+	_, err = rand.Read(nonce)
+	require.NoError(t, err)
+
+	return "v1." + base64.RawURLEncoding.EncodeToString(gcm.Seal(nonce, nonce, plain, []byte(stateAAD)))
 }
 
 func TestLoginStateSealOpenRoundTrip(t *testing.T) {
@@ -30,35 +69,74 @@ func TestLoginStateSealOpenRoundTrip(t *testing.T) {
 	assert.NotEmpty(t, state.CodeVerifier)
 	assert.Equal(t, now.Add(10*time.Minute).Unix(), state.ExpiresAt)
 
-	sealed, err := sealState(key, state)
+	keys := testKeyring(t, key)
+	sealed, err := sealState(keys, state)
 	require.NoError(t, err)
-	assert.True(t, strings.HasPrefix(sealed, "v1."))
+	assert.True(t, strings.HasPrefix(sealed, "v2."+keys.ActiveID()+"."))
 
-	opened, err := openState(key, sealed)
+	opened, err := openState(keys, sealed)
 	require.NoError(t, err)
 	assert.Equal(t, state, opened)
 }
 
-func TestLoginStateTamperAndWrongKeyRejected(t *testing.T) {
+// TestALoginStateWrittenBeforeTheKeyRingStillOpens is the compatibility this
+// change is only safe because of: a browser holding a cookie issued by the
+// previous build finishes its login rather than being told to start again.
+func TestALoginStateWrittenBeforeTheKeyRingStillOpens(t *testing.T) {
 	key := testKey()
+	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	state, err := newLoginState("provider-1", "tenant-1", "https://app.example/", 10*time.Minute, now)
+	require.NoError(t, err)
+
+	opened, err := openState(testKeyring(t, key), sealStateTheWayTheOldCodeDid(t, key, state))
+	require.NoError(t, err)
+	assert.Equal(t, state, opened)
+}
+
+// TestALoginStateSealedByARetiredKeyStillOpens covers the window a rotation
+// leaves open: cookies handed out minutes before the key changed.
+func TestALoginStateSealedByARetiredKeyStillOpens(t *testing.T) {
+	retired, replacement := testKey(), []byte("fedcba9876543210fedcba9876543210")
 	state, err := newLoginState("provider-1", "tenant-1", "https://app.example/", time.Minute, time.Now())
 	require.NoError(t, err)
-	sealed, err := sealState(key, state)
+
+	sealed, err := sealState(testKeyring(t, retired), state)
+	require.NoError(t, err)
+
+	opened, err := openState(testKeyring(t, replacement, retired), sealed)
+	require.NoError(t, err)
+	assert.Equal(t, state, opened)
+
+	// Once the retired key leaves the ring the cookie is simply invalid. State
+	// lives for minutes, so starting the login again is the whole remedy.
+	_, err = openState(testKeyring(t, replacement), sealed)
+	assert.ErrorIs(t, err, errInvalidState)
+}
+
+func TestLoginStateTamperAndWrongKeyRejected(t *testing.T) {
+	key := testKey()
+	keys := testKeyring(t, key)
+	state, err := newLoginState("provider-1", "tenant-1", "https://app.example/", time.Minute, time.Now())
+	require.NoError(t, err)
+	sealed, err := sealState(keys, state)
 	require.NoError(t, err)
 
 	tampered := sealed[:len(sealed)-3] + "AAA"
-	_, err = openState(key, tampered)
+	_, err = openState(keys, tampered)
 	assert.ErrorIs(t, err, errInvalidState)
 
 	wrong := append([]byte(nil), key...)
 	wrong[0] ^= 0xff
-	_, err = openState(wrong, sealed)
+	_, err = openState(testKeyring(t, wrong), sealed)
 	assert.ErrorIs(t, err, errInvalidState)
 
-	_, err = openState(key, "v2."+strings.TrimPrefix(sealed, "v1."))
+	_, err = openState(keys, "v3."+sealed)
 	assert.ErrorIs(t, err, errUnsupportedState)
 
-	_, err = openState(key, "v1.not-base64!!!")
+	_, err = openState(keys, "no-version-at-all")
+	assert.ErrorIs(t, err, errUnsupportedState)
+
+	_, err = openState(keys, "v1.not-base64!!!")
 	assert.ErrorIs(t, err, errInvalidState)
 }
 
@@ -90,12 +168,12 @@ func TestStateCookies(t *testing.T) {
 }
 
 func TestLoginStateOpenRejectsInvalidPayloads(t *testing.T) {
-	key := testKey()
-	_, err := openState(key, "v1.AA")
+	keys := testKeyring(t)
+	_, err := openState(keys, "v1.AA")
 	assert.ErrorIs(t, err, errInvalidState)
 
-	state, err := sealState(key, loginState{ProviderID: "p", ReturnURL: "https://app.example/", ExpiresAt: time.Now().Add(time.Minute).Unix()})
+	state, err := sealState(keys, loginState{ProviderID: "p", ReturnURL: "https://app.example/", ExpiresAt: time.Now().Add(time.Minute).Unix()})
 	require.NoError(t, err)
-	_, err = openState(key, state)
+	_, err = openState(keys, state)
 	assert.ErrorIs(t, err, errInvalidState)
 }

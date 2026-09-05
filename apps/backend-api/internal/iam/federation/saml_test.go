@@ -1256,7 +1256,7 @@ func TestSAMLAssertionReplayIsRejectedIndependentlyOfState(t *testing.T) {
 	samlResponse := extractSAMLResponse(t, samlReadBody(t, response))
 	stateValue, err := cookieValue(stateCookie, stateCookieName)
 	require.NoError(t, err)
-	state, err := openState(env.key, stateValue)
+	state, err := openState(env.keys, stateValue)
 	require.NoError(t, err)
 
 	_, _, err = env.service.CompleteSAMLLogin(t.Context(), provider.ID, samlResponse, stateCookieName+"="+stateValue, callback)

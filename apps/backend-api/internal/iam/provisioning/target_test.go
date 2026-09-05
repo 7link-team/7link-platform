@@ -407,25 +407,30 @@ func TestBuildRemoteResourcePropagatesProviderFailures(t *testing.T) {
 }
 
 func TestTargetEncryptionConfigAndCipherErrors(t *testing.T) {
-	key, err := ParseEncryptionKey("")
-	require.NoError(t, err)
-	assert.Nil(t, key)
-	_, err = ParseEncryptionKey("too-short")
-	assert.Error(t, err)
 	encoded := base64.RawStdEncoding.EncodeToString(testProvisioningKey())
-	key, err = ParseEncryptionKey(encoded)
+	expected := newProvisioningTestKeyring(t, testProvisioningKey()).ActiveID()
+
+	// No key configured is not a failure: it is how a deployment that pushes to
+	// no SCIM target leaves outbound provisioning switched off.
+	ring, err := ResolveKeyring(Config{})
 	require.NoError(t, err)
-	assert.Equal(t, testProvisioningKey(), key)
+	assert.Nil(t, ring)
+
+	_, err = ResolveKeyring(Config{EncryptionKey: "too-short"})
+	assert.Error(t, err)
+	ring, err = ResolveKeyring(Config{EncryptionKey: encoded})
+	require.NoError(t, err)
+	assert.Equal(t, expected, ring.ActiveID())
 
 	dir := t.TempDir()
 	keyFile := filepath.Join(dir, "provisioning.key")
 	require.NoError(t, os.WriteFile(keyFile, []byte(encoded+"\n"), 0o600))
-	resolved, err := ResolveEncryptionKey(Config{EncryptionKeyFile: keyFile})
+	ring, err = ResolveKeyring(Config{EncryptionKeyFile: keyFile})
 	require.NoError(t, err)
-	assert.Equal(t, key, resolved)
-	_, err = ResolveEncryptionKey(Config{EncryptionKey: encoded, EncryptionKeyFile: keyFile})
+	assert.Equal(t, expected, ring.ActiveID())
+	_, err = ResolveKeyring(Config{EncryptionKey: encoded, EncryptionKeyFile: keyFile})
 	assert.Error(t, err)
-	_, err = ResolveEncryptionKey(Config{EncryptionKeyFile: filepath.Join(dir, "missing.key")})
+	_, err = ResolveKeyring(Config{EncryptionKeyFile: filepath.Join(dir, "missing.key")})
 	assert.Error(t, err)
 
 	env := newProvisioningEnvironment(t)
@@ -436,4 +441,74 @@ func TestTargetEncryptionConfigAndCipherErrors(t *testing.T) {
 	assert.False(t, validTargetURL("https://user:pass@example.test"))
 	assert.False(t, validTargetURL("https://example.test/#fragment"))
 	assert.Equal(t, strings.Repeat("x", 500)+"...", trimRemoteDetail([]byte(strings.Repeat("x", 501))))
+}
+
+// TestProvisioningResolvesTheKeysARotationLeavesBehind covers the configuration
+// a deployment sits in for as long as a rotation takes: one key sealing, one or
+// more still opening what they sealed earlier.
+func TestProvisioningResolvesTheKeysARotationLeavesBehind(t *testing.T) {
+	active := base64.RawStdEncoding.EncodeToString(testProvisioningKey())
+	retired := []byte("fedcba9876543210fedcba9876543210")
+	retiredEncoded := base64.RawStdEncoding.EncodeToString(retired)
+
+	retiredFile := filepath.Join(t.TempDir(), "provisioning.previous.key")
+	require.NoError(t, os.WriteFile(retiredFile, []byte(retiredEncoded+"\n"), 0o600))
+
+	ring, err := ResolveKeyring(Config{EncryptionKey: active, PreviousEncryptionKeyFiles: []string{retiredFile}})
+	require.NoError(t, err)
+	assert.Equal(t, newProvisioningTestKeyring(t, testProvisioningKey(), retired).IDs(), ring.IDs())
+
+	// Retired keys with no active key is a rotation someone got halfway
+	// through. Silently disabling outbound provisioning is not what they were
+	// trying to do, so it is refused instead of ignored.
+	_, err = ResolveKeyring(Config{PreviousEncryptionKeys: []string{retiredEncoded}})
+	assert.Error(t, err)
+
+	// Naming one key twice is how an operator convinces themselves they have
+	// rotated when they have not, so it is refused rather than deduplicated.
+	_, err = ResolveKeyring(Config{EncryptionKey: active, PreviousEncryptionKeys: []string{active}})
+	assert.Error(t, err)
+	_, err = ResolveKeyring(Config{
+		EncryptionKey:              active,
+		PreviousEncryptionKeys:     []string{retiredEncoded},
+		PreviousEncryptionKeyFiles: []string{retiredFile},
+	})
+	assert.Error(t, err)
+}
+
+// TestProvisioningOpensWhatARetiredKeySealed is the point of the ring: a
+// deployment that replaces its provisioning key must not lose the bearer tokens
+// the replaced key protected, because it cannot reissue them on its own.
+func TestProvisioningOpensWhatARetiredKeySealed(t *testing.T) {
+	env := newProvisioningEnvironment(t)
+	_, server := newSCIMProviderEndpoint(t, http.StatusOK, `{}`)
+	target, err := env.service.CreateTarget(t.Context(), testID("tenant-a"), "Rotating", server.URL, "not-a-real-bearer-token")
+	require.NoError(t, err)
+	targetID := parseGUID(target.Target.ID)
+
+	var row model.Target
+	require.NoError(t, env.db.Table(env.prefix+"iam_scim_targets").Where("id = ?", target.Target.ID).First(&row).Error)
+	require.NotEmpty(t, row.BearerTokenCiphertext)
+
+	replacement := []byte("fedcba9876543210fedcba9876543210")
+	env.service.keys = newProvisioningTestKeyring(t, replacement, testProvisioningKey())
+
+	token, err := env.service.decryptToken(targetID, row.BearerTokenCiphertext)
+	require.NoError(t, err)
+	assert.Equal(t, "not-a-real-bearer-token", token)
+
+	// What the ring seals now records the active key, so rewrapping a stored
+	// token is a read and a write rather than a migration somebody hand-writes.
+	assert.True(t, env.service.keys.NeedsRewrap(row.BearerTokenCiphertext))
+	resealed, err := env.service.encryptToken(targetID, token)
+	require.NoError(t, err)
+	assert.False(t, env.service.keys.NeedsRewrap(resealed))
+
+	// Once the retired key leaves the ring the stored token stops opening, and
+	// it says so distinctly: the remedy is to put the key back, not to ask an
+	// operator for a bearer token they may no longer have.
+	env.service.keys = newProvisioningTestKeyring(t, replacement)
+	_, err = env.service.decryptToken(targetID, row.BearerTokenCiphertext)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no longer holds")
 }

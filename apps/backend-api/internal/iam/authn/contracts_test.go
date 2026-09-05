@@ -20,7 +20,7 @@ func (*webServiceFixture) IssueInvitationToken(guid.ID) (string, string, error) 
 	return "", "", nil
 }
 
-func (*webServiceFixture) InvitationTokenDigest(string) (string, error) { return "", nil }
+func (*webServiceFixture) InvitationTokenMatches(string, string) bool { return false }
 
 func (*webServiceFixture) Authenticate(context.Context, string, string) (*authnext.Claims, error) {
 	return nil, nil
@@ -70,7 +70,7 @@ func TestContractConsumersUseEveryMethod(t *testing.T) {
 
 func consumeInvitationCredentials(credentials InvitationCredentials) {
 	_, _, _ = credentials.IssueInvitationToken(0)
-	_, _ = credentials.InvitationTokenDigest("")
+	_ = credentials.InvitationTokenMatches("", "")
 }
 
 func consumeWebService(service WebService) {

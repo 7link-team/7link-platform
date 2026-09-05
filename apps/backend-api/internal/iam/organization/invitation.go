@@ -2,7 +2,6 @@ package organization
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
 	"fmt"
 	"net/mail"
@@ -242,15 +241,11 @@ func (s *InvitationService) Accept(ctx context.Context, input AcceptInvitation) 
 	if err != nil || input.LoginName == "" || len(input.LoginName) > 200 || len(input.Password) < 12 || len(input.Password) > 1024 || len(input.DisplayName) > 128 {
 		return InvitationAcceptance{}, ErrInvitationCredential
 	}
-	digest, err := s.credentials.InvitationTokenDigest(input.Token)
-	if err != nil {
-		return InvitationAcceptance{}, ErrInvitationCredential
-	}
 	now := organizationTime(s.now())
 	var accepted InvitationAcceptance
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
 		row, err := getInvitationByID(ctx, repo, id)
-		if err != nil || subtle.ConstantTimeCompare([]byte(row.TokenHMAC), []byte(digest)) != 1 {
+		if err != nil || !s.credentials.InvitationTokenMatches(input.Token, row.TokenHMAC) {
 			return ErrInvitationCredential
 		}
 		if err := repo.revisions.Lock(ctx, repo.writer(), row.TenantID); err != nil {
@@ -288,7 +283,7 @@ func (s *InvitationService) Accept(ctx context.Context, input AcceptInvitation) 
 				return fmt.Errorf("assign invitation role: %w", err)
 			}
 		}
-		result := repo.writer().WithContext(ctx).Table(repo.table(row.TableName())).Where("tenant_id = ? AND id = ? AND status = ? AND token_hmac = ? AND expires_at > ?", row.TenantID, row.ID, InvitationPending, digest, now).
+		result := repo.writer().WithContext(ctx).Table(repo.table(row.TableName())).Where("tenant_id = ? AND id = ? AND status = ? AND token_hmac = ? AND expires_at > ?", row.TenantID, row.ID, InvitationPending, row.TokenHMAC, now).
 			Updates(map[string]any{"status": InvitationAccepted, "accepted_by": principalID, "accepted_at": now, "updated_at": now})
 		if result.Error != nil {
 			return result.Error

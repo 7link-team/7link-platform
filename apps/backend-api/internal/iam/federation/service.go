@@ -2,12 +2,8 @@ package federation
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"errors"
@@ -23,6 +19,7 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/keyringx"
 	"7link.com/platform/pkg/extension/secretx"
 	"7link.com/platform/pkg/module"
 	saml "github.com/crewjam/saml"
@@ -34,15 +31,25 @@ import (
 // manager via encryption_key_file in production.
 type Config struct {
 	module.Config
-	EncryptionKey     string        `mapstructure:"encryption_key" description:"base64 32-byte key protecting provider client secrets and login state; prefer encryption_key_file" default:""`
-	EncryptionKeyFile string        `mapstructure:"encryption_key_file" description:"file containing the base64 32-byte federation encryption key" default:""`
-	HTTPTimeout       time.Duration `mapstructure:"http_timeout" description:"upstream discovery, JWKS, and token endpoint timeout" default:"10s"`
-	ClockSkew         time.Duration `mapstructure:"clock_skew" description:"allowed ID token clock skew" default:"30s"`
-	StateTTL          time.Duration `mapstructure:"state_ttl" description:"login state cookie lifetime" default:"10m"`
-	SAML              SAMLConfig    `mapstructure:"saml" group:"saml"`
+	EncryptionKey     string `mapstructure:"encryption_key" description:"base64 32-byte key protecting provider client secrets and login state; prefer encryption_key_file" default:"" secret:"true"`
+	EncryptionKeyFile string `mapstructure:"encryption_key_file" description:"file containing the base64 32-byte federation encryption key" default:""`
+	// The previous keys open what the key before this one sealed. They are a
+	// list rather than a single value so a deployment is not forced to finish
+	// one rotation before it can start the next, and they never seal anything.
+	PreviousEncryptionKeys     []string      `mapstructure:"previous_encryption_keys" description:"retired base64 32-byte federation keys that still open stored values; prefer previous_encryption_key_files" secret:"true"`
+	PreviousEncryptionKeyFiles []string      `mapstructure:"previous_encryption_key_files" description:"files containing retired base64 32-byte federation keys"`
+	HTTPTimeout                time.Duration `mapstructure:"http_timeout" description:"upstream discovery, JWKS, and token endpoint timeout" default:"10s"`
+	ClockSkew                  time.Duration `mapstructure:"clock_skew" description:"allowed ID token clock skew" default:"30s"`
+	StateTTL                   time.Duration `mapstructure:"state_ttl" description:"login state cookie lifetime" default:"10m"`
+	SAML                       SAMLConfig    `mapstructure:"saml" group:"saml"`
 }
 
 const federationCipherVersion = "v1"
+
+// federationKeyDomain separates this module's derived subkeys from every other
+// module's. It is the literal prefix the derivation already used before the key
+// ring existed, so everything stored under the old code keeps opening.
+const federationKeyDomain = "federation:key:"
 
 // LoginStart is the result of beginning a browser login: where to redirect and
 // the state cookie the browser must send back.
@@ -64,7 +71,7 @@ type Service struct {
 	identities identity.IdentityProvisioner
 	authn      authnextWebService
 	nextID     func() (guid.ID, error)
-	key        []byte
+	keys       *keyringx.Keyring
 	oidc       *oidcClient
 	stateTTL   time.Duration
 	now        func() time.Time
@@ -95,33 +102,50 @@ type authnextWebService interface {
 	SessionCookieName() string
 }
 
-// ParseEncryptionKey decodes the federation encryption key from the accepted
-// base64 variants; it must decode to exactly 32 bytes.
-func ParseEncryptionKey(encoded string) ([]byte, error) {
-	encoded = strings.TrimSpace(encoded)
-	if encoded == "" {
-		return nil, errors.New("federation encryption key is required when federation is enabled")
-	}
-	for _, decoder := range []*base64.Encoding{base64.RawStdEncoding, base64.StdEncoding, base64.RawURLEncoding, base64.URLEncoding} {
-		key, err := decoder.DecodeString(encoded)
-		if err == nil && len(key) == 32 {
-			return key, nil
-		}
-	}
-	return nil, errors.New("federation encryption key must be base64-encoded 32 bytes")
-}
-
-// ResolveEncryptionKey loads and validates the configured federation key so
-// startup fails fast instead of surfacing a runtime secret error.
-func ResolveEncryptionKey(cfg Config) ([]byte, error) {
-	encoded, err := secretx.Resolve("federation.encryption_key", cfg.EncryptionKey, cfg.EncryptionKeyFile, 4096)
+// ResolveKeyring loads the configured federation keys so startup fails fast
+// instead of surfacing a runtime secret error. The first key seals; every key
+// opens, which is what lets a deployment replace one without losing what the
+// replaced key protected.
+func ResolveKeyring(cfg Config) (*keyringx.Keyring, error) {
+	active, err := secretx.Resolve("federation.encryption_key", cfg.EncryptionKey, cfg.EncryptionKeyFile, 4096)
 	if err != nil {
 		return nil, err
 	}
-	return ParseEncryptionKey(encoded)
+	if strings.TrimSpace(active) == "" {
+		return nil, errors.New("federation encryption key is required when federation is enabled")
+	}
+	previous, err := secretx.ResolveList(
+		"federation.previous_encryption_keys",
+		cfg.PreviousEncryptionKeys, cfg.PreviousEncryptionKeyFiles, 4096,
+	)
+	if err != nil {
+		return nil, err
+	}
+	keys, err := keyringx.New(federationKeyDomain, active, previous...)
+	if err != nil {
+		return nil, fmt.Errorf("federation encryption key: %w", err)
+	}
+	return keys, nil
 }
 
-func NewService(runtime *appenv.Runtime, appender audit.Appender, identities identity.IdentityProvisioner, authn authnextWebService, cfg Config, key []byte, ids guid.Source) *Service {
+// openError translates a key ring failure into the vocabulary of the value that
+// failed to open. The unknown-key case stays separate from the rest because its
+// fix differs in kind: the retired key goes back into the configuration, and
+// nothing has been lost.
+func openError(what string, err error) error {
+	switch {
+	case errors.Is(err, keyringx.ErrUnsupportedEnvelope):
+		return fmt.Errorf("unsupported %s ciphertext", what)
+	case errors.Is(err, keyringx.ErrInvalidEnvelope):
+		return fmt.Errorf("invalid %s ciphertext", what)
+	case errors.Is(err, keyringx.ErrUnknownKey):
+		return fmt.Errorf("%s was sealed with a key this deployment no longer holds", what)
+	default:
+		return fmt.Errorf("decrypt %s", what)
+	}
+}
+
+func NewService(runtime *appenv.Runtime, appender audit.Appender, identities identity.IdentityProvisioner, authn authnextWebService, cfg Config, keys *keyringx.Keyring, ids guid.Source) *Service {
 	if runtime == nil || appender == nil || identities == nil || authn == nil || ids == nil {
 		panic("federation service requires database, audit appender, identity provisioner, authentication service, and id generator")
 	}
@@ -139,7 +163,7 @@ func NewService(runtime *appenv.Runtime, appender audit.Appender, identities ide
 	}
 	return &Service{
 		repo: NewRepository(runtime), audit: appender, identities: identities, authn: authn,
-		key: key, stateTTL: stateTTL, now: time.Now,
+		keys: keys, stateTTL: stateTTL, now: time.Now,
 		nextID: func() (guid.ID, error) {
 			id, err := ids.Next()
 			return guid.ID(id), err
@@ -264,7 +288,7 @@ func (s *Service) StartLogin(ctx context.Context, providerID guid.ID, returnURL,
 	if err != nil {
 		return LoginStart{}, err
 	}
-	sealed, err := sealState(s.key, state)
+	sealed, err := sealState(s.keys, state)
 	if err != nil {
 		return LoginStart{}, err
 	}
@@ -305,7 +329,7 @@ func (s *Service) CompleteLogin(ctx context.Context, providerID guid.ID, code, s
 	if err != nil {
 		return LoginComplete{}, ErrOIDCState
 	}
-	sealedState, err := openState(s.key, stateValue)
+	sealedState, err := openState(s.keys, stateValue)
 	if err != nil {
 		return LoginComplete{}, ErrOIDCState
 	}
@@ -380,7 +404,7 @@ func (s *Service) StartSAMLLogin(ctx context.Context, providerID guid.ID, return
 		ProviderID: provider.ID.String(), TenantID: provider.TenantID.String(), Nonce: "id-" + nonce, CodeVerifier: verifier,
 		ReturnURL: resolvedReturnURL, ExpiresAt: now.Add(s.stateTTL).Unix(),
 	}
-	sealed, err := sealState(s.key, state)
+	sealed, err := sealState(s.keys, state)
 	if err != nil {
 		return "", "", err
 	}
@@ -425,7 +449,7 @@ func (s *Service) CompleteSAMLLogin(ctx context.Context, providerID guid.ID, sam
 	if err != nil {
 		return "", "", ErrOIDCState
 	}
-	sealedState, err := openState(s.key, stateValue)
+	sealedState, err := openState(s.keys, stateValue)
 	if err != nil {
 		return "", "", ErrOIDCState
 	}
@@ -600,47 +624,24 @@ func (s *Service) getProviderByID(ctx context.Context, id guid.ID) (providerRow,
 	return s.repo.getProviderByID(ctx, id)
 }
 
+// providerSecretAAD binds a sealed client secret to the provider row it belongs
+// to, so a ciphertext copied into another row stops opening.
+func providerSecretAAD(providerID guid.ID) []byte {
+	return []byte("federation:secret\x00" + providerID.String())
+}
+
 func (s *Service) encryptSecret(providerID guid.ID, secret string) (string, error) {
-	block, err := aes.NewCipher(purposeKey(s.key, "client-secret"))
+	sealed, err := s.keys.Seal("client-secret", providerSecretAAD(providerID), []byte(secret))
 	if err != nil {
-		return "", fmt.Errorf("create federation cipher: %w", err)
+		return "", fmt.Errorf("seal federation client secret: %w", err)
 	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", fmt.Errorf("create federation AEAD: %w", err)
-	}
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		return "", fmt.Errorf("generate federation nonce: %w", err)
-	}
-	sealed := gcm.Seal(nonce, nonce, []byte(secret), []byte("federation:secret\x00"+providerID.String()))
-	return federationCipherVersion + "." + base64.RawURLEncoding.EncodeToString(sealed), nil
+	return sealed, nil
 }
 
 func (s *Service) decryptSecret(providerID guid.ID, encoded string) (string, error) {
-	version, payload, ok := strings.Cut(encoded, ".")
-	if !ok || version != federationCipherVersion || payload == "" {
-		return "", errors.New("unsupported federation client secret ciphertext")
-	}
-	sealed, err := base64.RawURLEncoding.DecodeString(payload)
+	plain, err := s.keys.Open("client-secret", providerSecretAAD(providerID), encoded)
 	if err != nil {
-		return "", errors.New("invalid federation client secret ciphertext")
-	}
-	block, err := aes.NewCipher(purposeKey(s.key, "client-secret"))
-	if err != nil {
-		return "", fmt.Errorf("create federation cipher: %w", err)
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", fmt.Errorf("create federation AEAD: %w", err)
-	}
-	if len(sealed) < gcm.NonceSize() {
-		return "", errors.New("invalid federation client secret ciphertext")
-	}
-	nonce, ciphertext := sealed[:gcm.NonceSize()], sealed[gcm.NonceSize():]
-	plain, err := gcm.Open(nil, nonce, ciphertext, []byte("federation:secret\x00"+providerID.String()))
-	if err != nil {
-		return "", errors.New("decrypt federation client secret")
+		return "", openError("federation client secret", err)
 	}
 	return string(plain), nil
 }
@@ -699,14 +700,6 @@ func normalizeScopes(value string) string {
 		return ""
 	}
 	return strings.Join(result, " ")
-}
-
-// purposeKey derives a domain-separated key so one federation encryption key
-// never encrypts two different kinds of payload with the same key material.
-func purposeKey(key []byte, purpose string) []byte {
-	mac := hmac.New(sha256.New, key)
-	_, _ = mac.Write([]byte("federation:key:" + purpose))
-	return mac.Sum(nil)
 }
 
 func randomToken(size int) (string, error) {

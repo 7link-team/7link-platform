@@ -97,14 +97,20 @@ func (r *Repository) replaceRecoveryCodes(ctx context.Context, principalID guid.
 	})
 }
 
-func (r *Repository) consumeRecoveryCode(ctx context.Context, principalID guid.ID, codeHash string, now time.Time) (bool, error) {
+// consumeRecoveryCode marks the first unused code matching any of the supplied
+// hashes. The caller supplies one hash per key the ring holds, so a code stored
+// under a since-retired key is still consumable.
+func (r *Repository) consumeRecoveryCode(ctx context.Context, principalID guid.ID, codeHashes []string, now time.Time) (bool, error) {
 	tables, _, err := r.tables()
 	if err != nil {
 		return false, err
 	}
+	if len(codeHashes) == 0 {
+		return false, nil
+	}
 	result, err := tables.RecoveryCodes.WithContext(ctx).Where(
 		tables.RecoveryCodes.PrincipalID.Eq(principalID),
-		tables.RecoveryCodes.CodeHash.Eq(codeHash),
+		tables.RecoveryCodes.CodeHash.In(codeHashes...),
 		tables.RecoveryCodes.UsedAt.IsNull(),
 	).UpdateSimple(tables.RecoveryCodes.UsedAt.Value(now))
 	return result.RowsAffected == 1, err

@@ -1,14 +1,9 @@
 package provisioning
 
 import (
+	"7link.com/platform/pkg/extension/keyringx"
 	"bytes"
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/hmac"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,9 +22,6 @@ import (
 )
 
 const (
-	// provisioningCipherVersion versions the SCIM target bearer-token envelope.
-	provisioningCipherVersion = "v1"
-
 	// TargetActive and TargetDisabled are the outbound SCIM target states.
 	TargetActive   = DirectoryActive
 	TargetDisabled = DirectoryDisabled
@@ -103,7 +95,7 @@ func (s *Service) CreateTarget(ctx context.Context, tenantID guid.ID, name, base
 	if tenantID.Zero() || name == "" || len(name) > 128 || bearerToken == "" || len(bearerToken) > 4096 || !validTargetURL(baseURL) {
 		return TargetSecret{}, ErrInvalidTarget
 	}
-	if len(s.key) == 0 {
+	if s.keys == nil {
 		return TargetSecret{}, ErrTargetKeyMissing
 	}
 	id, err := s.nextID()
@@ -156,7 +148,7 @@ func (s *Service) ReplaceTarget(ctx context.Context, tenantID, id guid.ID, name,
 		updated = current
 		updated.Name, updated.NameKey, updated.BaseURL, updated.Status = name, strings.ToLower(name), baseURL, status
 		if bearerToken != "" {
-			if len(s.key) == 0 {
+			if s.keys == nil {
 				return ErrTargetKeyMissing
 			}
 			updated.BearerTokenCiphertext, err = s.encryptToken(id, bearerToken)
@@ -220,7 +212,7 @@ func (s *Service) PushResource(ctx context.Context, tenantID, targetID guid.ID, 
 	if target.Status != TargetActive {
 		return PushResult{}, ErrTargetDisabled
 	}
-	if len(s.key) == 0 {
+	if s.keys == nil {
 		return PushResult{}, ErrTargetKeyMissing
 	}
 	bearer, err := s.decryptToken(targetID, target.BearerTokenCiphertext)
@@ -299,7 +291,7 @@ func (s *Service) DeprovisionResource(ctx context.Context, tenantID, targetID gu
 	if target.Status != TargetActive {
 		return ErrTargetDisabled
 	}
-	if len(s.key) == 0 {
+	if s.keys == nil {
 		return ErrTargetKeyMissing
 	}
 	mapping, err := s.repo.getTargetResource(ctx, targetID, resourceType, resourceID)
@@ -419,57 +411,37 @@ func (s *Service) buildRemoteResource(ctx context.Context, tenantID, targetID gu
 	return remoteResource{}, ErrInvalidTarget
 }
 
+// targetTokenAAD binds a sealed bearer token to the target row it belongs to,
+// so a ciphertext copied into another row stops opening.
+func targetTokenAAD(targetID guid.ID) []byte {
+	return []byte("provisioning:secret\x00" + targetID.String())
+}
+
 func (s *Service) encryptToken(targetID guid.ID, token string) (string, error) {
-	block, err := aes.NewCipher(purposeKey(s.key, "scim-target-bearer"))
+	sealed, err := s.keys.Seal("scim-target-bearer", targetTokenAAD(targetID), []byte(token))
 	if err != nil {
-		return "", fmt.Errorf("create provisioning cipher: %w", err)
+		return "", fmt.Errorf("seal provisioning token: %w", err)
 	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", fmt.Errorf("create provisioning AEAD: %w", err)
-	}
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		return "", fmt.Errorf("generate provisioning nonce: %w", err)
-	}
-	sealed := gcm.Seal(nonce, nonce, []byte(token), []byte("provisioning:secret\x00"+targetID.String()))
-	return provisioningCipherVersion + "." + base64.RawURLEncoding.EncodeToString(sealed), nil
+	return sealed, nil
 }
 
 func (s *Service) decryptToken(targetID guid.ID, encoded string) (string, error) {
-	version, payload, ok := strings.Cut(encoded, ".")
-	if !ok || version != provisioningCipherVersion || payload == "" {
+	plain, err := s.keys.Open("scim-target-bearer", targetTokenAAD(targetID), encoded)
+	switch {
+	case err == nil:
+		return string(plain), nil
+	case errors.Is(err, keyringx.ErrUnsupportedEnvelope):
 		return "", errors.New("unsupported provisioning ciphertext")
-	}
-	sealed, err := base64.RawURLEncoding.DecodeString(payload)
-	if err != nil {
+	case errors.Is(err, keyringx.ErrInvalidEnvelope):
 		return "", errors.New("invalid provisioning ciphertext")
-	}
-	block, err := aes.NewCipher(purposeKey(s.key, "scim-target-bearer"))
-	if err != nil {
-		return "", fmt.Errorf("create provisioning cipher: %w", err)
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", fmt.Errorf("create provisioning AEAD: %w", err)
-	}
-	if len(sealed) < gcm.NonceSize() {
-		return "", errors.New("invalid provisioning ciphertext")
-	}
-	nonce, ciphertext := sealed[:gcm.NonceSize()], sealed[gcm.NonceSize():]
-	plain, err := gcm.Open(nil, nonce, ciphertext, []byte("provisioning:secret\x00"+targetID.String()))
-	if err != nil {
+	case errors.Is(err, keyringx.ErrUnknownKey):
+		// Distinct from a failed decrypt because the remedy is different: the
+		// retired key goes back into the configuration and the target works
+		// again, rather than an operator re-entering a token they may not have.
+		return "", errors.New("provisioning token was sealed with a key this deployment no longer holds")
+	default:
 		return "", errors.New("decrypt provisioning token")
 	}
-	return string(plain), nil
-}
-
-// purposeKey derives a domain-separated key so one provisioning encryption key
-// never encrypts two different kinds of payload with the same key material.
-func purposeKey(key []byte, purpose string) []byte {
-	mac := hmac.New(sha256.New, key)
-	_, _ = mac.Write([]byte("provisioning:key:" + purpose))
-	return mac.Sum(nil)
 }
 
 func targetFromRow(row targetRow) Target {

@@ -116,7 +116,7 @@ func TestEmailVerificationHookFailureRollsBackCompletion(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, principal.EmailVerified)
 	_, err = harness.repository.activeEmailVerificationByHMAC(
-		t.Context(), service.emailVerificationHMAC(token), service.now(),
+		t.Context(), service.emailVerificationHMACs(token), service.now(),
 	)
 	require.NoError(t, err, "hook failure must leave the verification credential retryable")
 
@@ -142,7 +142,7 @@ func TestEmailVerificationTokenIsSnapshotBoundAndAuditAtomic(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, principal.EmailVerified)
 	_, err = harness.repository.activeEmailVerificationByHMAC(
-		t.Context(), service.emailVerificationHMAC(token), service.now(),
+		t.Context(), service.emailVerificationHMACs(token), service.now(),
 	)
 	require.NoError(t, err, "audit failure must roll back token consumption")
 
@@ -184,7 +184,7 @@ func TestEmailVerificationCodeAttemptsAreCredentialBoundAndPersisted(t *testing.
 		), authnext.ErrInvalidEmailVerification)
 	}
 	verification, err := harness.repository.activeEmailVerificationByHMAC(
-		t.Context(), service.emailVerificationHMAC(token), service.now(),
+		t.Context(), service.emailVerificationHMACs(token), service.now(),
 	)
 	require.NoError(t, err)
 	assert.Equal(t, maxCodeAttempts, verification.Attempts)
@@ -268,7 +268,7 @@ func TestEmailVerificationAuthenticationAndStorageFailures(t *testing.T) {
 		require.NoError(t, harness.db.Exec("DROP TABLE iam_notification_outbox").Error)
 		assert.ErrorContains(t, service.BeginEmailVerification(t.Context(), "", cookie), "begin email verification")
 		_, err = harness.repository.activeEmailVerificationByHMAC(
-			t.Context(), service.emailVerificationHMAC(original), service.now(),
+			t.Context(), service.emailVerificationHMACs(original), service.now(),
 		)
 		require.NoError(t, err, "failed replacement must retain the prior credential")
 	})

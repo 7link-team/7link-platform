@@ -3,10 +3,6 @@ package authn
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"crypto/subtle"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -178,15 +174,14 @@ func (s *Service) CompletePasswordRecovery(ctx context.Context, token, newPasswo
 		return authnext.ErrInvalidRecovery
 	}
 	now := s.now().UTC()
-	computedHMAC := s.passwordRecoveryHMAC(token)
-	recovery, err := s.repo.activePasswordRecovery(ctx, computedHMAC, now)
+	recovery, err := s.repo.activePasswordRecovery(ctx, s.passwordRecoveryHMACs(token), now)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return authnext.ErrInvalidRecovery
 	}
 	if err != nil {
 		return fmt.Errorf("load password recovery credential: %w", err)
 	}
-	if subtle.ConstantTimeCompare([]byte(recovery.TokenHMAC), []byte(computedHMAC)) != 1 {
+	if !s.passwordRecoveryMatches(token, recovery.TokenHMAC) {
 		return authnext.ErrInvalidRecovery
 	}
 	principal, err := s.repo.getActivePrincipal(ctx, recovery.PrincipalID)
@@ -226,7 +221,7 @@ func (s *Service) CompletePasswordRecovery(ctx context.Context, token, newPasswo
 		Type: passwordChangedNotification, Recipient: principal.Email, OccurredAt: now,
 	}
 	err = s.repo.runInTx(ctx, func(repository *Repository) error {
-		consumed, err := repository.consumePasswordRecovery(ctx, computedHMAC, now)
+		consumed, err := repository.consumePasswordRecovery(ctx, recovery.TokenHMAC, now)
 		if err != nil {
 			return err
 		}
@@ -271,10 +266,26 @@ func (s *Service) CompletePasswordRecovery(ctx context.Context, token, newPasswo
 	return nil
 }
 
+// passwordRecoveryHMAC derives the value to store for a freshly issued token,
+// under the key that is currently sealing.
 func (s *Service) passwordRecoveryHMAC(token string) string {
-	mac := hmac.New(sha256.New, s.mfaPurposeKey("password-recovery:v1"))
-	_, _ = mac.Write([]byte("platform:password-recovery:v1\x00" + token))
-	return hex.EncodeToString(mac.Sum(nil))
+	return s.mfaKeys.MAC("password-recovery:v1", passwordRecoveryMessage(token))
+}
+
+// passwordRecoveryHMACs derives what a presented token would have been stored
+// as under each key the ring holds, because the stored value is the column the
+// row is found by. A recovery mail already in someone's inbox when the key
+// changed still works.
+func (s *Service) passwordRecoveryHMACs(token string) []string {
+	return s.mfaKeys.MACs("password-recovery:v1", passwordRecoveryMessage(token))
+}
+
+func (s *Service) passwordRecoveryMatches(token, stored string) bool {
+	return s.mfaKeys.MACMatches("password-recovery:v1", passwordRecoveryMessage(token), stored)
+}
+
+func passwordRecoveryMessage(token string) []byte {
+	return []byte("platform:password-recovery:v1\x00" + token)
 }
 
 func (s *Service) enqueueNotification(

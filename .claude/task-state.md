@@ -16,8 +16,8 @@ IAM Phase 10 后端推进。10.1、10.2、10.6、§2.5.2 均已推送。当前�
 IN PROGRESS（10.9 第 ① 步与验证码均已推送；10.3、10.4 等 @gankcode 拍板）
 
 ## Current Step
-10.9 ① 已推送（提交 51ac8f4）。验证码已 `make ci` 绿并推送。
-之后回到 10.9 ②：让 federation / provisioning / authn 用上密钥环。
+10.9 ② 已完成并 `make ci` 绿，待提交推送。
+之后是 10.9 ③：`iam rewrap-secrets` + 「还有多少行挂在旧密钥上」报告。
 
 ## Overall Progress
 - [x] Phase 10.2（提交 24f2483）
@@ -29,7 +29,7 @@ IN PROGRESS（10.9 第 ① 步与验证码均已推送；10.3、10.4 等 @gankco
 - [x] create/update 可选外键 schema 对称 + invitation 空值线上形状（提交 69187ab）
 - [x] Phase 10.6 OAuth 同意自助列出与撤销（提交 0b96fb9）
 - [x] 10.9 ① 密钥环原语 `pkg/extension/keyringx`（提交 51ac8f4）
-- [ ] 10.9 ② federation / provisioning / authn 接入密钥环 + `previous_*_keys` 配置
+- [x] 10.9 ② federation / provisioning / authn 接入密钥环 + `previous_*_keys` 配置
 - [ ] 10.9 ③ `iam rewrap-secrets` + 「还有多少行挂在旧密钥上」报告
 - [ ] 10.9 ④ authn 签名密钥环：JWKS 同时发布 active + previous，签用 active，验收任一把
 - [ ] 10.9 ⑤ federation replay registry 换成跨副本共享状态
@@ -69,6 +69,29 @@ IN PROGRESS（10.9 第 ① 步与验证码均已推送；10.3、10.4 等 @gankco
   `VerifyCaptcha` → 不导出的 `verifyCaptchaOf(kind, id, answer)`。
 - `internal/iam/authn/web.go`：`Service.captcha`，在 `NewWebService` 里解析（在 enabled 判断之前）。
 - `internal/iam/authn/http.go`：两个调用点改成走 Service。
+
+## 本轮交付其三：10.9 ② 三个模块接入密钥环
+federation（client-secret / state / saml-key）、provisioning（scim-target-bearer）、
+authn（mfa 加密 + 四个 HMAC 用途）全部改成走 `keyringx`，
+并各自新增 `previous_encryption_keys` / `previous_encryption_key_files`。
+
+- **纯增量**：派生逐字节没动，旧的 `v1.` 信封照常打开，旧的 HMAC 摘要照常对上。
+  三个模块各有一个测试手写出「上一版代码会写成什么样」，派生一旦被改动就是红的，
+  而不是等到某个部署发现库里的东西全打不开。
+- **`secretx.ResolveList`**：`previous_*_keys` 与 `previous_*_key_files` 二选一，
+  单个报错点名到 `name_files[2]`，`Resolve` 的老报错串一个字没变。
+- **按摘要的用途分两类 API**，这是 authn 那边形状的由来：
+  恢复码 / 找回密码 token / 邮箱验证 token 都是**按摘要查行**的，查询不可能对密钥不可知，
+  所以用 `MACs` 出候选集 + SQL `IN`；邀请 token 是先按 ID 查到行再比对，用 `MACMatches`。
+  为此跨模块契约 `InvitationCredentials` 从「给我摘要」改成「这个 token 对得上吗」。
+- **五个 MFA 用途一起覆盖，不做半套**：半套更糟——运维换了密钥，看到登录正常，
+  几周后才发现恢复码全废，而恢复码正是丢了验证器之后唯一的退路。
+- **`ErrUnknownKey` 单独一条错误**，三个模块各自给了一句不同的话：
+  修法是把退役密钥放回配置，不是让人承认数据没了，也不是叫用户重新录入他拿不出来的东西。
+- **provisioning 只配 previous 不配 active 直接拒**：那是一次做了一半的轮换，
+  静悄悄地把出站 SCIM 关掉不是那个人想干的事。完全不配密钥仍然合法（= 不用出站 SCIM）。
+- **keyringx 的报错不再提 domain**：`"federation:key:"` 是派生标签，不是任何一个配置项的名字，
+  最底层只说哪里不对（`active key must decode to 32 bytes`），由调用方补上是哪一项。
 
 ## Important Decisions
 - 跨模块只走窄事务能力（`func(ctx, *gorm.DB, ...)`，Provide 阶段发布、Inject 阶段解析）。
@@ -111,12 +134,16 @@ IN PROGRESS（10.9 第 ① 步与验证码均已推送；10.3、10.4 等 @gankco
 
 ## Verification
 Build: PASS  Tests: PASS  Lint: PASS  Integration: PASS
+10.9 ②：`make ci` exit 0，总体 90.2%，authn 90.2 / federation 91.4 / provisioning 91.0 / secretx 96.1。
+（首轮 lint 报 misspell 与两个轮换后不再使用的 `*CipherVersion` 常量，已改。）
 10.9 ①：`make ci` exit 0，`pkg/extension/keyringx` 95.2%（门槛 90.0）。
 验证码：`make ci` exit 0，`internal/iam/authn` 90.2%，总体 90.1%（首轮 lint 报 `real` 遮蔽内建标识符，已改名为 `solved`）。
 
 ## Last Checkpoint
-2026-09-05 · 10.9 ① 密钥环原语已推送（51ac8f4）。验证码改动已推送。
-下一步：10.9 ②——把 federation（client-secret / state / saml-key）、provisioning（scim-target-bearer）、
-authn（mfa 加密 + 四个 HMAC 用途）接到 keyringx 上，并加 `previous_*_keys` / `previous_*_key_files` 配置，
-纯增量，不影响现有部署。
+2026-09-05 · 10.9 ② 三个模块接入密钥环，`make ci` 绿。
+下一步：10.9 ③——`iam rewrap-secrets` 把仍挂在旧密钥上的行重新封一遍，
+外加一个「还剩多少行挂在旧密钥上」的报告，让「可以把旧密钥拿掉了」这句话有依据。
+@gankcode 问到能否整体换成 go-captcha：已答——它本来就在用（滑块/点选），
+但 v2 只有 click/slide/rotate，没有打字那一种，全换等于去掉唯一键盘可完成的验证码；
+可选项是加 `rotate` 作第四种。等回话。
 10.3 与 10.4 仍卡在 @gankcode 的决定上。

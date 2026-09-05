@@ -81,11 +81,11 @@ func (m *Module) Initialize(context.Context) error {
 		m.registrar == nil || m.ids == nil || m.appender == nil || m.identities == nil || m.authn == nil {
 		return errors.New("initialize federation: runtime database, authz registrar, id generator, audit appender, identity provisioner, and authentication service are required")
 	}
-	key, err := ResolveEncryptionKey(m.config)
+	keys, err := ResolveKeyring(m.config)
 	if err != nil {
 		return fmt.Errorf("resolve federation encryption key: %w", err)
 	}
-	m.service = NewService(m.runtime, m.appender, m.identities, m.authn, m.config, key, m.ids)
+	m.service = NewService(m.runtime, m.appender, m.identities, m.authn, m.config, keys, m.ids)
 	return nil
 }
 

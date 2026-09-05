@@ -14,6 +14,7 @@ import (
 	identitymodel "7link.com/platform/internal/iam/identity/model"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/keyringx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -33,6 +34,20 @@ func localAuthnConfig() authnext.Config {
 		},
 		MFA: authnext.MFAConfig{EncryptionKey: key},
 	}
+}
+
+// newMFATestKeyring wraps raw key material the way the module does, so a test
+// that seals through the ring and a test that reads a stored row are talking
+// about the same key.
+func newMFATestKeyring(t *testing.T, active []byte, previous ...[]byte) *keyringx.Keyring {
+	t.Helper()
+	encoded := make([]string, 0, len(previous))
+	for _, key := range previous {
+		encoded = append(encoded, base64.RawStdEncoding.EncodeToString(key))
+	}
+	ring, err := keyringx.New(mfaKeyDomain, base64.RawStdEncoding.EncodeToString(active), encoded...)
+	require.NoError(t, err)
+	return ring
 }
 
 func newLocalService(t *testing.T) (*Service, *authnRepositoryHarness) {
@@ -72,7 +87,13 @@ func TestNewWebServiceConfiguration(t *testing.T) {
 	config = localAuthnConfig()
 	config.MFA.EncryptionKey = "invalid"
 	_, err = NewWebService(config, harness.repository)
-	assert.ErrorContains(t, err, "base64-encoded 32 bytes")
+	assert.ErrorContains(t, err, "authn MFA encryption key")
+	assert.ErrorContains(t, err, "must decode to 32 bytes")
+
+	config = localAuthnConfig()
+	config.MFA.EncryptionKey = "not base64 at all !!"
+	_, err = NewWebService(config, harness.repository)
+	assert.ErrorContains(t, err, "must be base64-encoded")
 }
 
 func TestBootstrapLoginSessionAndBearerLifecycle(t *testing.T) {

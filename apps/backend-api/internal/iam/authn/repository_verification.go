@@ -48,17 +48,23 @@ func (r *Repository) consumeEmailVerifications(ctx context.Context, principalID 
 	return err
 }
 
+// activeEmailVerificationByHMAC finds the outstanding token matching any of the
+// supplied authenticators. The caller supplies one per key the ring holds, so a
+// verification link sent before a key rotation still resolves.
 func (r *Repository) activeEmailVerificationByHMAC(
 	ctx context.Context,
-	tokenHMAC string,
+	tokenHMACs []string,
 	now time.Time,
 ) (*model.EmailVerificationToken, error) {
 	tables, _, err := r.tables()
 	if err != nil {
 		return nil, err
 	}
+	if len(tokenHMACs) == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
 	return tables.EmailVerificationTokens.WithContext(ctx).Where(
-		tables.EmailVerificationTokens.TokenHMAC.Eq(tokenHMAC),
+		tables.EmailVerificationTokens.TokenHMAC.In(tokenHMACs...),
 		tables.EmailVerificationTokens.ConsumedAt.IsNull(),
 		tables.EmailVerificationTokens.ExpiresAt.Gt(now),
 	).Take()

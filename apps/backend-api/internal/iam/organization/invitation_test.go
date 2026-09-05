@@ -3,6 +3,7 @@ package organization
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -63,6 +64,11 @@ func (*invitationCredentialFixture) InvitationTokenDigest(token string) (string,
 	return hex.EncodeToString(sum[:]), nil
 }
 
+func (fixture *invitationCredentialFixture) InvitationTokenMatches(token, digest string) bool {
+	expected, err := fixture.InvitationTokenDigest(token)
+	return err == nil && subtle.ConstantTimeCompare([]byte(expected), []byte(digest)) == 1
+}
+
 type invitationCredentialFailure struct {
 	base      invitationCredentialFixture
 	issueErr  error
@@ -81,6 +87,13 @@ func (fixture *invitationCredentialFailure) InvitationTokenDigest(token string) 
 		return "", fixture.digestErr
 	}
 	return fixture.base.InvitationTokenDigest(token)
+}
+
+func (fixture *invitationCredentialFailure) InvitationTokenMatches(token, digest string) bool {
+	if fixture.digestErr != nil {
+		return false
+	}
+	return fixture.base.InvitationTokenMatches(token, digest)
 }
 
 func (h *organizationHarness) seedTenant(t *testing.T, tenantID guid.ID, status string) {

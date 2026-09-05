@@ -1,16 +1,13 @@
 package federation
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
+	"7link.com/platform/pkg/extension/keyringx"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -58,51 +55,29 @@ func newLoginState(providerID, tenantID, returnURL string, ttl time.Duration, no
 	}, nil
 }
 
-// sealState encrypts and authenticates the login state with the federation
-// key. The sealed value is safe to store in a browser cookie.
-func sealState(key []byte, state loginState) (string, error) {
+// sealState encrypts and authenticates the login state under the federation key
+// ring. The sealed value is safe to store in a browser cookie.
+func sealState(keys *keyringx.Keyring, state loginState) (string, error) {
 	plain, err := json.Marshal(state)
 	if err != nil {
 		return "", fmt.Errorf("encode federation state: %w", err)
 	}
-	block, err := aes.NewCipher(purposeKey(key, "state"))
+	sealed, err := keys.Seal("state", []byte(stateAAD), plain)
 	if err != nil {
-		return "", fmt.Errorf("create federation state cipher: %w", err)
+		return "", fmt.Errorf("seal federation state: %w", err)
 	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", fmt.Errorf("create federation state AEAD: %w", err)
-	}
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		return "", fmt.Errorf("generate federation state nonce: %w", err)
-	}
-	sealed := gcm.Seal(nonce, nonce, plain, []byte(stateAAD))
-	return "v1." + base64.RawURLEncoding.EncodeToString(sealed), nil
+	return sealed, nil
 }
 
-func openState(key []byte, encoded string) (loginState, error) {
-	version, payload, ok := strings.Cut(encoded, ".")
-	if !ok || version != "v1" {
+// openState reads a state cookie under any key the ring holds. A cookie sealed
+// by a key that has since left the ring is reported as invalid rather than as a
+// missing key: state lives for minutes, so the answer is to start the login
+// again, and there is nothing for an operator to go and restore.
+func openState(keys *keyringx.Keyring, encoded string) (loginState, error) {
+	plain, err := keys.Open("state", []byte(stateAAD), encoded)
+	if errors.Is(err, keyringx.ErrUnsupportedEnvelope) {
 		return loginState{}, errUnsupportedState
 	}
-	sealed, err := base64.RawURLEncoding.DecodeString(payload)
-	if err != nil {
-		return loginState{}, errInvalidState
-	}
-	block, err := aes.NewCipher(purposeKey(key, "state"))
-	if err != nil {
-		return loginState{}, errInvalidState
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return loginState{}, errInvalidState
-	}
-	if len(sealed) < gcm.NonceSize() {
-		return loginState{}, errInvalidState
-	}
-	nonce, ciphertext := sealed[:gcm.NonceSize()], sealed[gcm.NonceSize():]
-	plain, err := gcm.Open(nil, nonce, ciphertext, []byte(stateAAD))
 	if err != nil {
 		return loginState{}, errInvalidState
 	}

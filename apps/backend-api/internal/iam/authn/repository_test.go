@@ -234,7 +234,7 @@ func TestRepositoryMethodsFailClosedWithoutWriter(t *testing.T) {
 		"count recovery codes":   func() error { _, err := repository.countAvailableRecoveryCodes(t.Context(), principalID); return err },
 		"replace recovery codes": func() error { return repository.replaceRecoveryCodes(t.Context(), principalID, nil) },
 		"consume recovery code": func() error {
-			_, err := repository.consumeRecoveryCode(t.Context(), principalID, "code", now)
+			_, err := repository.consumeRecoveryCode(t.Context(), principalID, []string{"code"}, now)
 			return err
 		},
 		"create MFA challenge":  func() error { return repository.createMFAChallenge(t.Context(), &model.MFAChallenge{}, now) },
@@ -281,7 +281,10 @@ func TestRepositoryMethodsFailClosedWithoutWriter(t *testing.T) {
 		"create password recovery": func() error {
 			return repository.createPasswordRecovery(t.Context(), &model.PasswordRecoveryToken{}, now)
 		},
-		"active password recovery":  func() error { _, err := repository.activePasswordRecovery(t.Context(), "token", now); return err },
+		"active password recovery": func() error {
+			_, err := repository.activePasswordRecovery(t.Context(), []string{"token"}, now)
+			return err
+		},
 		"consume password recovery": func() error { _, err := repository.consumePasswordRecovery(t.Context(), "token", now); return err },
 		"consume recoveries":        func() error { return repository.consumePasswordRecoveries(t.Context(), principalID, now) },
 		"enqueue notification":      func() error { return repository.enqueueNotification(t.Context(), &model.NotificationOutbox{}) },
@@ -305,7 +308,7 @@ func TestRepositoryMethodsFailClosedWithoutWriter(t *testing.T) {
 		"create email verification":   func() error { return repository.createEmailVerification(t.Context(), &model.EmailVerificationToken{}) },
 		"consume email verifications": func() error { return repository.consumeEmailVerifications(t.Context(), principalID, now) },
 		"email verification by HMAC": func() error {
-			_, err := repository.activeEmailVerificationByHMAC(t.Context(), "token", now)
+			_, err := repository.activeEmailVerificationByHMAC(t.Context(), []string{"token"}, now)
 			return err
 		},
 		"email verification by code": func() error {

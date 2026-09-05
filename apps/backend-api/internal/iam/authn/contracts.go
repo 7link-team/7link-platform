@@ -9,11 +9,13 @@ import (
 	authnext "7link.com/platform/pkg/extension/authn"
 )
 
-// InvitationCredentials issues tenant invitation tokens and derives their
-// digests. The organization module compares digests when accepting a token.
+// InvitationCredentials issues tenant invitation tokens and recognizes them
+// again. The organization module asks whether a presented token produces the
+// digest it stored, rather than deriving one itself, so that a token issued
+// before a key rotation is still recognized afterwards.
 type InvitationCredentials interface {
 	IssueInvitationToken(guid.ID) (string, string, error)
-	InvitationTokenDigest(string) (string, error)
+	InvitationTokenMatches(token, digest string) bool
 }
 
 // WebService is the authentication workflow consumed by OAuth and federation.

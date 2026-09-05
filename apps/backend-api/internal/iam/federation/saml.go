@@ -1,11 +1,10 @@
 package federation
 
 import (
+	"7link.com/platform/pkg/extension/keyringx"
 	"bytes"
 	"compress/flate"
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -217,53 +216,36 @@ type SAMLKeyInfo struct {
 }
 
 func (s *Service) encryptSAMLKey(pemData string) (string, error) {
-	if len(s.key) == 0 {
+	if s.keys == nil {
 		return "", errors.New("federation encryption key is required to seal the SAML signing key")
 	}
-	block, err := aes.NewCipher(purposeKey(s.key, "saml-key"))
+	sealed, err := s.keys.Seal("saml-key", nil, []byte(pemData))
 	if err != nil {
-		return "", fmt.Errorf("create SAML key cipher: %w", err)
+		return "", fmt.Errorf("seal SAML signing key: %w", err)
 	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", fmt.Errorf("create SAML key AEAD: %w", err)
-	}
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		return "", fmt.Errorf("generate SAML key nonce: %w", err)
-	}
-	sealed := gcm.Seal(nonce, nonce, []byte(pemData), nil)
-	return federationCipherVersion + "." + base64.RawURLEncoding.EncodeToString(sealed), nil
+	return sealed, nil
 }
 
 func (s *Service) decryptSAMLKey(encoded string) (string, error) {
-	if len(s.key) == 0 {
+	if s.keys == nil {
 		return "", errors.New("federation encryption key is required to open the SAML signing key")
 	}
-	version, payload, ok := strings.Cut(encoded, ".")
-	if !ok || version != federationCipherVersion || payload == "" {
+	plain, err := s.keys.Open("saml-key", nil, encoded)
+	switch {
+	case err == nil:
+		return string(plain), nil
+	case errors.Is(err, keyringx.ErrUnsupportedEnvelope):
 		return "", errors.New("unsupported SAML key ciphertext")
-	}
-	sealed, err := base64.RawURLEncoding.DecodeString(payload)
-	if err != nil {
+	case errors.Is(err, keyringx.ErrInvalidEnvelope):
 		return "", errors.New("invalid SAML key ciphertext")
-	}
-	block, err := aes.NewCipher(purposeKey(s.key, "saml-key"))
-	if err != nil {
-		return "", err
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-	if len(sealed) < gcm.NonceSize() {
-		return "", errors.New("SAML key ciphertext is too short")
-	}
-	plain, err := gcm.Open(nil, sealed[:gcm.NonceSize()], sealed[gcm.NonceSize():], nil)
-	if err != nil {
+	case errors.Is(err, keyringx.ErrUnknownKey):
+		// The stored IdP signing key is the one federation value a deployment
+		// cannot simply reissue without every service provider re-consuming
+		// metadata, so this says what to do rather than that it failed.
+		return "", errors.New("SAML key was sealed with a key this deployment no longer holds")
+	default:
 		return "", errors.New("SAML key ciphertext failed authentication")
 	}
-	return string(plain), nil
 }
 
 func generateSAMLKeyPair() (*rsa.PrivateKey, *x509.Certificate, error) {

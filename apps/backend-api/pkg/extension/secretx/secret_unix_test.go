@@ -20,7 +20,7 @@ func TestResolveDoesNotBlockWhenRegularPathIsReplacedByFIFO(t *testing.T) {
 
 	result := make(chan error, 1)
 	go func() {
-		_, err := resolve("test", "", path, 100, func(path string) (fs.FileInfo, error) {
+		_, err := resolve("test", "test_file", "", path, 100, func(path string) (fs.FileInfo, error) {
 			info, err := os.Stat(path)
 			if err != nil {
 				return nil, err

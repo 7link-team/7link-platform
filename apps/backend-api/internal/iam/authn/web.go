@@ -21,6 +21,7 @@ import (
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/keyringx"
 	"7link.com/platform/pkg/extension/passwordx"
 	"7link.com/platform/pkg/extension/secretx"
 	"7link.com/platform/pkg/extension/webauthnx"
@@ -58,7 +59,7 @@ type Service struct {
 	privateKey          ed25519.PrivateKey
 	publicKey           ed25519.PublicKey
 	kid                 string
-	mfaKey              []byte
+	mfaKeys             *keyringx.Keyring
 	returnURLs          returnURLAllowlist
 	captcha             *captchaOffering
 	passkeys            *webauthnx.Adapter
@@ -214,19 +215,11 @@ func NewWebService(cfg authnext.Config, repository *Repository, options ...WebOp
 		return nil, errors.New("authn passkey configuration exceeds security limits")
 	}
 	if service.web.Enabled {
-		encodedMFAKey, err := secretx.Resolve(
-			"authn.mfa.encryption_key",
-			service.cfg.MFA.EncryptionKey,
-			service.cfg.MFA.EncryptionKeyFile,
-			4096,
-		)
+		keys, err := resolveMFAKeyring(service.cfg.MFA)
 		if err != nil {
 			return nil, err
 		}
-		service.mfaKey, err = parseMFAKey(encodedMFAKey)
-		if err != nil {
-			return nil, err
-		}
+		service.mfaKeys = keys
 	}
 	if service.cfg.Passkey.Enabled {
 		for _, origin := range service.cfg.Passkey.Origins {
@@ -1244,20 +1237,36 @@ func EnsureBootstrapPrincipal(
 	return principalID, nil
 }
 
-func parseMFAKey(encoded string) ([]byte, error) {
-	encoded = strings.TrimSpace(encoded)
-	if encoded == "" {
+// mfaKeyDomain separates this module's derived subkeys from every other
+// module's. It is the literal prefix the derivation already used before the key
+// ring existed, so every stored TOTP secret, recovery code, and outstanding
+// token keeps working across the change.
+const mfaKeyDomain = "platform:mfa:key:"
+
+// resolveMFAKeyring loads the MFA keys so startup fails fast instead of
+// surfacing a runtime secret error. The first key seals and derives; every key
+// opens and is recognized, which is what lets a deployment replace one without
+// invalidating the recovery codes its users are holding.
+func resolveMFAKeyring(cfg authnext.MFAConfig) (*keyringx.Keyring, error) {
+	active, err := secretx.Resolve("authn.mfa.encryption_key", cfg.EncryptionKey, cfg.EncryptionKeyFile, 4096)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(active) == "" {
 		return nil, errors.New("authn MFA encryption key is required when browser authentication is enabled")
 	}
-	for _, decoder := range []*base64.Encoding{
-		base64.RawStdEncoding, base64.StdEncoding, base64.RawURLEncoding, base64.URLEncoding,
-	} {
-		key, err := decoder.DecodeString(encoded)
-		if err == nil && len(key) == 32 {
-			return key, nil
-		}
+	previous, err := secretx.ResolveList(
+		"authn.mfa.previous_encryption_keys",
+		cfg.PreviousEncryptionKeys, cfg.PreviousEncryptionKeyFiles, 4096,
+	)
+	if err != nil {
+		return nil, err
 	}
-	return nil, errors.New("authn MFA encryption key must be base64-encoded 32 bytes")
+	keys, err := keyringx.New(mfaKeyDomain, active, previous...)
+	if err != nil {
+		return nil, fmt.Errorf("authn MFA encryption key: %w", err)
+	}
+	return keys, nil
 }
 
 func parseSigningKey(encoded string) (ed25519.PrivateKey, error) {

@@ -137,8 +137,16 @@ func TestMFAEncryptionBindsPrincipalAndPurpose(t *testing.T) {
 
 	_, err = service.decryptMFASecret(102, ciphertext)
 	assert.ErrorIs(t, err, errDecryptAuthenticationPayload)
-	_, err = service.decryptMFASecret(101, "v2.invalid")
+	_, err = service.decryptMFASecret(101, "v3.invalid")
 	assert.ErrorIs(t, err, errUnsupportedAuthnCiphertext)
+
+	// A stored secret naming a key the ring no longer holds is reported apart
+	// from a failed decrypt, because putting the key back recovers it.
+	sealedByRetired, err := service.encryptMFASecret(101, "secret")
+	require.NoError(t, err)
+	service.mfaKeys = newMFATestKeyring(t, []byte("fedcba9876543210fedcba9876543210"))
+	_, err = service.decryptMFASecret(101, sealedByRetired)
+	assert.ErrorIs(t, err, errRetiredAuthnKey)
 }
 
 func TestTOTPRFC6238Compatibility(t *testing.T) {

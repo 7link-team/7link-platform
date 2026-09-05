@@ -144,7 +144,7 @@ func TestPasswordRecoveryAuditFailureRollsBackSecurityMutation(t *testing.T) {
 	assert.Equal(t, before.PasswordHash, after.PasswordHash)
 	assert.Equal(t, before.CredentialVersion, after.CredentialVersion)
 	recovery, err := harness.repository.activePasswordRecovery(
-		t.Context(), service.passwordRecoveryHMAC(token), service.now(),
+		t.Context(), service.passwordRecoveryHMACs(token), service.now(),
 	)
 	require.NoError(t, err)
 	assert.Nil(t, recovery.ConsumedAt)

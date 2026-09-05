@@ -95,7 +95,7 @@ func New(domain, active string, previous ...string) (*Keyring, error) {
 		// value is the secret. An operator who listed the active key again
 		// believes they have rotated and have not.
 		if _, held := ring.find(key.id); held {
-			return nil, fmt.Errorf("%s previous key %d repeats a key the ring already holds", domain, index+1)
+			return nil, fmt.Errorf("previous key %d repeats a key the ring already holds", index+1)
 		}
 		ring.keys = append(ring.keys, key)
 	}
@@ -125,7 +125,7 @@ func (r *Keyring) Seal(purpose string, associatedData, plain []byte) (string, er
 	}
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
-		return "", fmt.Errorf("generate %s nonce: %w", r.domain, err)
+		return "", fmt.Errorf("generate keyring nonce: %w", err)
 	}
 	sealed := gcm.Seal(nonce, nonce, plain, associatedData)
 	return sealedVersion + "." + active.id + "." + base64.RawURLEncoding.EncodeToString(sealed), nil
@@ -269,11 +269,11 @@ func (r *Keyring) open(key ringKey, purpose string, associatedData []byte, paylo
 func (r *Keyring) aead(key ringKey, purpose string) (cipher.AEAD, error) {
 	block, err := aes.NewCipher(r.subkey(key, purpose))
 	if err != nil {
-		return nil, fmt.Errorf("create %s cipher: %w", r.domain, err)
+		return nil, fmt.Errorf("create keyring cipher: %w", err)
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, fmt.Errorf("create %s AEAD: %w", r.domain, err)
+		return nil, fmt.Errorf("create keyring AEAD: %w", err)
 	}
 	return gcm, nil
 }
@@ -325,7 +325,9 @@ var keyEncodings = []*base64.Encoding{
 }
 
 // decodeKey reads one configured key. name is a position rather than a value,
-// because saying which key is wrong must not say what it was.
+// because saying which key is wrong must not say what it was. The message names
+// no configuration key either: the caller knows what its keys are called and
+// wraps accordingly, and the derivation domain is not a name anyone configured.
 func decodeKey(domain, name, encoded string) ([]byte, error) {
 	encoded = strings.TrimSpace(encoded)
 	decodedLength, readable := 0, false
@@ -343,7 +345,7 @@ func decodeKey(domain, name, encoded string) ([]byte, error) {
 	// between a key that was truncated in transit and one that was never
 	// base64 to begin with, and those have different fixes.
 	if readable {
-		return nil, fmt.Errorf("%s %s must decode to %d bytes, got %d", domain, name, KeySize, decodedLength)
+		return nil, fmt.Errorf("%s must decode to %d bytes, got %d", name, KeySize, decodedLength)
 	}
-	return nil, fmt.Errorf("%s %s must be base64-encoded", domain, name)
+	return nil, fmt.Errorf("%s must be base64-encoded", name)
 }

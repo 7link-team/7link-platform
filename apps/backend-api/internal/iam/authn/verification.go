@@ -2,12 +2,8 @@ package authn
 
 import (
 	"context"
-	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -122,23 +118,21 @@ func (s *Service) CompleteEmailVerification(ctx context.Context, token, email, c
 	}
 	now := s.now().UTC()
 	var verification *model.EmailVerificationToken
-	var computedHMAC string
 	attemptLimit := 0
 	switch {
 	case token != "":
 		if !strings.HasPrefix(token, emailVerificationTokenPrefix) || len(token) > 128 {
 			return authnext.ErrInvalidEmailVerification
 		}
-		computedHMAC = s.emailVerificationHMAC(token)
 		var err error
-		verification, err = s.repo.activeEmailVerificationByHMAC(ctx, computedHMAC, now)
+		verification, err = s.repo.activeEmailVerificationByHMAC(ctx, s.emailVerificationHMACs(token), now)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return authnext.ErrInvalidEmailVerification
 		}
 		if err != nil {
 			return fmt.Errorf("load email verification credential: %w", err)
 		}
-		if subtle.ConstantTimeCompare([]byte(verification.TokenHMAC), []byte(computedHMAC)) != 1 {
+		if !s.emailVerificationMatches(token, verification.TokenHMAC) {
 			return authnext.ErrInvalidEmailVerification
 		}
 	case code != "":
@@ -201,8 +195,24 @@ func (s *Service) CompleteEmailVerification(ctx context.Context, token, email, c
 	return nil
 }
 
+// emailVerificationHMAC derives the value to store for a freshly issued token,
+// under the key that is currently sealing.
 func (s *Service) emailVerificationHMAC(token string) string {
-	mac := hmac.New(sha256.New, s.mfaPurposeKey("email-verification:v1"))
-	_, _ = mac.Write([]byte("platform:email-verification:v1\x00" + token))
-	return hex.EncodeToString(mac.Sum(nil))
+	return s.mfaKeys.MAC("email-verification:v1", emailVerificationMessage(token))
+}
+
+// emailVerificationHMACs derives what a presented token would have been stored
+// as under each key the ring holds, because the stored value is the column the
+// row is found by. A verification link already in someone's inbox when the key
+// changed still works.
+func (s *Service) emailVerificationHMACs(token string) []string {
+	return s.mfaKeys.MACs("email-verification:v1", emailVerificationMessage(token))
+}
+
+func (s *Service) emailVerificationMatches(token, stored string) bool {
+	return s.mfaKeys.MACMatches("email-verification:v1", emailVerificationMessage(token), stored)
+}
+
+func emailVerificationMessage(token string) []byte {
+	return []byte("platform:email-verification:v1\x00" + token)
 }

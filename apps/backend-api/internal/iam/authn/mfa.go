@@ -2,14 +2,8 @@ package authn
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base32"
-	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -19,6 +13,7 @@ import (
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/keyringx"
 	"7link.com/platform/pkg/extension/passwordx"
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/hotp"
@@ -26,10 +21,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const (
-	mfaCipherVersion = "v1"
-	totpPeriod       = int64(30)
-)
+const totpPeriod = int64(30)
 
 var (
 	ErrInvalidMFA                   = authnext.ErrInvalidMFA
@@ -40,6 +32,9 @@ var (
 	errUnsupportedAuthnCiphertext   = errors.New("unsupported authentication ciphertext")
 	errInvalidAuthnCiphertext       = errors.New("invalid authentication ciphertext")
 	errDecryptAuthenticationPayload = errors.New("decrypt authentication data")
+	errRetiredAuthnKey              = errors.New(
+		"authentication data was sealed with a key this deployment no longer holds",
+	)
 )
 
 func (s *Service) encryptMFASecret(principalID guid.ID, secret string) (string, error) {
@@ -47,20 +42,11 @@ func (s *Service) encryptMFASecret(principalID guid.ID, secret string) (string, 
 }
 
 func (s *Service) encryptAuthnData(purpose, associatedData string, plain []byte) (string, error) {
-	block, err := aes.NewCipher(s.mfaPurposeKey("encryption:" + purpose))
+	sealed, err := s.mfaKeys.Seal("encryption:"+purpose, []byte(associatedData), plain)
 	if err != nil {
-		return "", fmt.Errorf("create authentication cipher: %w", err)
+		return "", fmt.Errorf("seal authentication data: %w", err)
 	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", fmt.Errorf("create authentication AEAD: %w", err)
-	}
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		return "", fmt.Errorf("generate authentication nonce: %w", err)
-	}
-	sealed := gcm.Seal(nonce, nonce, plain, []byte(associatedData))
-	return mfaCipherVersion + "." + base64.RawURLEncoding.EncodeToString(sealed), nil
+	return sealed, nil
 }
 
 func (s *Service) decryptMFASecret(principalID guid.ID, encoded string) (string, error) {
@@ -69,28 +55,22 @@ func (s *Service) decryptMFASecret(principalID guid.ID, encoded string) (string,
 }
 
 func (s *Service) decryptAuthnData(purpose, associatedData, encoded string) ([]byte, error) {
-	version, payload, ok := strings.Cut(encoded, ".")
-	if !ok || version != mfaCipherVersion {
+	plain, err := s.mfaKeys.Open("encryption:"+purpose, []byte(associatedData), encoded)
+	switch {
+	case err == nil:
+		return plain, nil
+	case errors.Is(err, keyringx.ErrUnsupportedEnvelope):
 		return nil, errUnsupportedAuthnCiphertext
-	}
-	sealed, err := base64.RawURLEncoding.DecodeString(payload)
-	if err != nil {
+	case errors.Is(err, keyringx.ErrInvalidEnvelope):
 		return nil, errInvalidAuthnCiphertext
-	}
-	block, err := aes.NewCipher(s.mfaPurposeKey("encryption:" + purpose))
-	if err != nil {
-		return nil, fmt.Errorf("create authentication cipher: %w", err)
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil || len(sealed) < gcm.NonceSize() {
-		return nil, errInvalidAuthnCiphertext
-	}
-	nonce, ciphertext := sealed[:gcm.NonceSize()], sealed[gcm.NonceSize():]
-	plain, err := gcm.Open(nil, nonce, ciphertext, []byte(associatedData))
-	if err != nil {
+	case errors.Is(err, keyringx.ErrUnknownKey):
+		// Kept apart from a failed decrypt because the remedy differs in kind:
+		// the retired key goes back into the configuration and the account
+		// works again, rather than a user re-enrolling something they cannot.
+		return nil, errRetiredAuthnKey
+	default:
 		return nil, errDecryptAuthenticationPayload
 	}
-	return plain, nil
 }
 
 func (s *Service) MFAStatus(
@@ -454,7 +434,7 @@ func (s *Service) consumeFactor(
 		return false, nil
 	}
 	return repository.consumeRecoveryCode(
-		ctx, credential.PrincipalID, s.recoveryCodeHash(normalized), now,
+		ctx, credential.PrincipalID, s.recoveryCodeHashes(normalized), now,
 	)
 }
 
@@ -517,10 +497,24 @@ func normalizeRecoveryCode(code string) string {
 	return strings.ToUpper(strings.NewReplacer("-", "", " ", "").Replace(strings.TrimSpace(code)))
 }
 
+// recoveryCodeHash derives the value to store for a freshly issued code, under
+// the key that is currently sealing.
 func (s *Service) recoveryCodeHash(code string) string {
-	mac := hmac.New(sha256.New, s.mfaPurposeKey("recovery:v1"))
-	_, _ = mac.Write([]byte("platform:mfa:recovery:v1\x00" + code))
-	return hex.EncodeToString(mac.Sum(nil))
+	return s.mfaKeys.MAC("recovery:v1", recoveryCodeMessage(code))
+}
+
+// recoveryCodeHashes derives what a presented code would have been stored as
+// under each key the ring holds. Recovery codes are looked up by their stored
+// value rather than compared against a row already in hand, and a lookup cannot
+// be key-agnostic, so every candidate goes into the query. These codes are the
+// one credential a user falls back on after losing their authenticator, so a
+// rotation must not quietly turn them all into nonsense.
+func (s *Service) recoveryCodeHashes(code string) []string {
+	return s.mfaKeys.MACs("recovery:v1", recoveryCodeMessage(code))
+}
+
+func recoveryCodeMessage(code string) []byte {
+	return []byte("platform:mfa:recovery:v1\x00" + code)
 }
 
 func (s *Service) ensureRecoveryCooldownExpired(ctx context.Context, principalID guid.ID) error {

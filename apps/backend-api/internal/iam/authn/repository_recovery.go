@@ -29,17 +29,23 @@ func (r *Repository) createPasswordRecovery(ctx context.Context, row *model.Pass
 	})
 }
 
+// activePasswordRecovery finds the outstanding token matching any of the
+// supplied authenticators. The caller supplies one per key the ring holds, so a
+// recovery mail sent before a key rotation still resolves.
 func (r *Repository) activePasswordRecovery(
 	ctx context.Context,
-	tokenHMAC string,
+	tokenHMACs []string,
 	now time.Time,
 ) (*model.PasswordRecoveryToken, error) {
 	tables, _, err := r.tables()
 	if err != nil {
 		return nil, err
 	}
+	if len(tokenHMACs) == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
 	return tables.PasswordRecoveryTokens.WithContext(ctx).Where(
-		tables.PasswordRecoveryTokens.TokenHMAC.Eq(tokenHMAC),
+		tables.PasswordRecoveryTokens.TokenHMAC.In(tokenHMACs...),
 		tables.PasswordRecoveryTokens.ConsumedAt.IsNull(),
 		tables.PasswordRecoveryTokens.ExpiresAt.Gt(now),
 	).Take()

@@ -182,13 +182,19 @@ type WebConfig struct {
 
 // MFAConfig controls trusted storage and short-lived state for local MFA.
 type MFAConfig struct {
-	Issuer            string        `mapstructure:"issuer" description:"TOTP issuer shown by authenticator applications; defaults to the configured app name" default:""`
-	EncryptionKey     string        `mapstructure:"encryption_key" description:"base64 32-byte AES key; prefer encryption_key_file" default:"" secret:"true"`
-	EncryptionKeyFile string        `mapstructure:"encryption_key_file" description:"file containing the base64 32-byte MFA encryption key" default:""`
-	EnrollmentTTL     time.Duration `mapstructure:"enrollment_ttl" description:"lifetime of an unconfirmed TOTP enrollment" default:"10m"`
-	ChallengeTTL      time.Duration `mapstructure:"challenge_ttl" description:"lifetime of a password-verified MFA login challenge" default:"5m"`
-	RecoveryCodes     int           `mapstructure:"recovery_codes" description:"one-time recovery codes issued after enrollment" default:"10"`
-	MaxAttempts       int           `mapstructure:"max_attempts" description:"failed codes allowed per login challenge" default:"5"`
+	Issuer            string `mapstructure:"issuer" description:"TOTP issuer shown by authenticator applications; defaults to the configured app name" default:""`
+	EncryptionKey     string `mapstructure:"encryption_key" description:"base64 32-byte AES key; prefer encryption_key_file" default:"" secret:"true"`
+	EncryptionKeyFile string `mapstructure:"encryption_key_file" description:"file containing the base64 32-byte MFA encryption key" default:""`
+	// The previous keys open what the key before this one sealed and still
+	// recognize the authenticators it derived. They never seal anything, so
+	// listing one costs a deployment nothing beyond taking it out again once
+	// nothing depends on it.
+	PreviousEncryptionKeys     []string      `mapstructure:"previous_encryption_keys" description:"retired base64 32-byte MFA keys that still open stored secrets and recovery codes; prefer previous_encryption_key_files" secret:"true"`
+	PreviousEncryptionKeyFiles []string      `mapstructure:"previous_encryption_key_files" description:"files containing retired base64 32-byte MFA keys"`
+	EnrollmentTTL              time.Duration `mapstructure:"enrollment_ttl" description:"lifetime of an unconfirmed TOTP enrollment" default:"10m"`
+	ChallengeTTL               time.Duration `mapstructure:"challenge_ttl" description:"lifetime of a password-verified MFA login challenge" default:"5m"`
+	RecoveryCodes              int           `mapstructure:"recovery_codes" description:"one-time recovery codes issued after enrollment" default:"10"`
+	MaxAttempts                int           `mapstructure:"max_attempts" description:"failed codes allowed per login challenge" default:"5"`
 }
 
 // Claims contains the identity fields required by authentication and guards.

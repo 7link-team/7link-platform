@@ -168,7 +168,7 @@ func TestFederationBrowserLoginHTTPFlow(t *testing.T) {
 	require.NotNil(t, stateCookie)
 	require.NoError(t, response.Body.Close())
 
-	state, err := openState(env.key, stateCookie.Value)
+	state, err := openState(env.keys, stateCookie.Value)
 	require.NoError(t, err)
 	assert.Equal(t, "https://app.example/", state.ReturnURL)
 

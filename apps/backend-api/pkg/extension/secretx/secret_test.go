@@ -79,21 +79,21 @@ func TestResolvePropagatesOpenedFileFailures(t *testing.T) {
 	require.NoError(t, err)
 
 	statFailure := &failingFile{statErr: errors.New("stat failed")}
-	_, err = resolve("test", "", path, 100, os.Stat, func(string) (secretFile, error) {
+	_, err = resolve("test", "test_file", "", path, 100, os.Stat, func(string) (secretFile, error) {
 		return statFailure, nil
 	})
 	assert.ErrorContains(t, err, "stat test_file")
 	assert.True(t, statFailure.wasClosed)
 
 	readFailure := &failingFile{info: info, readErr: errors.New("read failed")}
-	_, err = resolve("test", "", path, 100, os.Stat, func(string) (secretFile, error) {
+	_, err = resolve("test", "test_file", "", path, 100, os.Stat, func(string) (secretFile, error) {
 		return readFailure, nil
 	})
 	assert.ErrorContains(t, err, "read test_file")
 	assert.True(t, readFailure.wasClosed)
 
 	closeFailure := &failingFile{info: info, data: []byte("secret"), closeErr: errors.New("close failed")}
-	resolved, err := resolve("test", "", path, 100, os.Stat, func(string) (secretFile, error) {
+	resolved, err := resolve("test", "test_file", "", path, 100, os.Stat, func(string) (secretFile, error) {
 		return closeFailure, nil
 	})
 	assert.Empty(t, resolved)
@@ -109,7 +109,7 @@ func TestResolveRejectsNonRegularFileBeforeOpenAndAfterReplacement(t *testing.T)
 	nonRegular := modeFileInfo{FileInfo: info, mode: fs.ModeNamedPipe}
 
 	opened := false
-	_, err = resolve("test", "", path, 100, func(string) (fs.FileInfo, error) {
+	_, err = resolve("test", "test_file", "", path, 100, func(string) (fs.FileInfo, error) {
 		return nonRegular, nil
 	}, func(string) (secretFile, error) {
 		opened = true
@@ -119,7 +119,7 @@ func TestResolveRejectsNonRegularFileBeforeOpenAndAfterReplacement(t *testing.T)
 	assert.False(t, opened, "FIFO and device paths must be rejected before a blocking open")
 
 	replaced := &failingFile{info: nonRegular}
-	_, err = resolve("test", "", path, 100, os.Stat, func(string) (secretFile, error) {
+	_, err = resolve("test", "test_file", "", path, 100, os.Stat, func(string) (secretFile, error) {
 		return replaced, nil
 	})
 	assert.ErrorContains(t, err, "not a regular file")
@@ -131,4 +131,63 @@ func mustResolve(t *testing.T, value, path string) string {
 	resolved, err := Resolve("test", value, path, 100)
 	require.NoError(t, err)
 	return resolved
+}
+
+func TestResolveListTakesTheValuesThemselves(t *testing.T) {
+	resolved, err := ResolveList("test", []string{"first", "second"}, nil, 100)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"first", "second"}, resolved)
+
+	empty, err := ResolveList("test", nil, nil, 100)
+	require.NoError(t, err)
+	assert.Empty(t, empty)
+}
+
+func TestResolveListReadsEachFileInOrder(t *testing.T) {
+	dir := t.TempDir()
+	paths := make([]string, 0, 2)
+	for _, secret := range []string{"older", "oldest"} {
+		path := filepath.Join(dir, secret)
+		require.NoError(t, os.WriteFile(path, []byte(secret+"\n"), 0o600))
+		paths = append(paths, path)
+	}
+
+	resolved, err := ResolveList("test", nil, paths, 100)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"older", "oldest"}, resolved)
+}
+
+// TestResolveListRefusesHalfOfEachSource keeps a list from being assembled out
+// of both sources, where the order it ends up in is not the order either half
+// was written in.
+func TestResolveListRefusesHalfOfEachSource(t *testing.T) {
+	_, err := ResolveList("test", []string{"inline"}, []string{"/nowhere"}, 100)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "test and test_files are mutually exclusive")
+}
+
+// TestResolveListSkipsAPlaceholderPath covers the entry a configuration
+// template leaves behind, which asks for nothing and should not fail a start.
+func TestResolveListSkipsAPlaceholderPath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "secret")
+	require.NoError(t, os.WriteFile(path, []byte("kept"), 0o600))
+
+	resolved, err := ResolveList("test", nil, []string{"", "   ", path}, 100)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"kept"}, resolved)
+}
+
+// TestResolveListSaysWhichEntryItCouldNotRead reports the position rather than
+// the contents, which is the part an operator can act on and the part that is
+// safe to print.
+func TestResolveListSaysWhichEntryItCouldNotRead(t *testing.T) {
+	dir := t.TempDir()
+	readable := filepath.Join(dir, "secret")
+	require.NoError(t, os.WriteFile(readable, []byte("kept"), 0o600))
+
+	_, err := ResolveList("test", nil, []string{readable, filepath.Join(dir, "absent")}, 100)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "read test_files[2]")
+	assert.NotContains(t, err.Error(), "kept")
 }

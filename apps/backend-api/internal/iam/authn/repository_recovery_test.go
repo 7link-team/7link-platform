@@ -20,9 +20,9 @@ func TestRepositoryRecoveryAndVerificationTokensAreSingleUse(t *testing.T) {
 	require.NoError(t, harness.repository.createPasswordRecovery(t.Context(), old, now))
 	current := &model.PasswordRecoveryToken{TokenHMAC: "current", PrincipalID: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
 	require.NoError(t, harness.repository.createPasswordRecovery(t.Context(), current, now))
-	_, err := harness.repository.activePasswordRecovery(t.Context(), "old", now)
+	_, err := harness.repository.activePasswordRecovery(t.Context(), []string{"old"}, now)
 	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
-	loaded, err := harness.repository.activePasswordRecovery(t.Context(), "current", now)
+	loaded, err := harness.repository.activePasswordRecovery(t.Context(), []string{"current"}, now)
 	require.NoError(t, err)
 	assert.Equal(t, "current", loaded.TokenHMAC)
 	assertSingleWinner(t, func() (bool, error) {
@@ -33,7 +33,7 @@ func TestRepositoryRecoveryAndVerificationTokensAreSingleUse(t *testing.T) {
 		TokenHMAC: "all", PrincipalID: 1, CreatedAt: now, ExpiresAt: now.Add(time.Hour),
 	}, now))
 	require.NoError(t, harness.repository.consumePasswordRecoveries(t.Context(), 1, now))
-	_, err = harness.repository.activePasswordRecovery(t.Context(), "all", now)
+	_, err = harness.repository.activePasswordRecovery(t.Context(), []string{"all"}, now)
 	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
 
 	verification := &model.EmailVerificationToken{
@@ -41,7 +41,7 @@ func TestRepositoryRecoveryAndVerificationTokensAreSingleUse(t *testing.T) {
 		CreatedAt: now, ExpiresAt: now.Add(time.Hour),
 	}
 	require.NoError(t, harness.repository.replaceEmailVerification(t.Context(), verification, now))
-	byHMAC, err := harness.repository.activeEmailVerificationByHMAC(t.Context(), "verification", now)
+	byHMAC, err := harness.repository.activeEmailVerificationByHMAC(t.Context(), []string{"verification"}, now)
 	require.NoError(t, err)
 	assert.Equal(t, "123456", byHMAC.Code)
 	byCode, err := harness.repository.activeEmailVerificationByEmailAndCode(
@@ -62,7 +62,7 @@ func TestRepositoryRecoveryAndVerificationTokensAreSingleUse(t *testing.T) {
 	}
 	require.NoError(t, harness.repository.createEmailVerification(t.Context(), second))
 	require.NoError(t, harness.repository.consumeEmailVerifications(t.Context(), 1, now.Add(2*time.Minute)))
-	_, err = harness.repository.activeEmailVerificationByHMAC(t.Context(), "second", now)
+	_, err = harness.repository.activeEmailVerificationByHMAC(t.Context(), []string{"second"}, now)
 	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
 }
 
@@ -87,7 +87,7 @@ func TestRepositoryEmailVerificationCodeCollisionFailsClosed(t *testing.T) {
 		t.Context(), "alice@example.test", maxCodeAttempts, now,
 	))
 	for _, token := range []string{"alice-token", "bob-token"} {
-		verification, loadErr := harness.repository.activeEmailVerificationByHMAC(t.Context(), token, now)
+		verification, loadErr := harness.repository.activeEmailVerificationByHMAC(t.Context(), []string{token}, now)
 		require.NoError(t, loadErr)
 		assert.Equal(t, 1, verification.Attempts)
 	}

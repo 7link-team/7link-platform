@@ -37,10 +37,10 @@ func TestRepositoryMFAStateAndSingleUseFactors(t *testing.T) {
 	count, err := harness.repository.countAvailableRecoveryCodes(t.Context(), 1)
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), count)
-	consumed, err := harness.repository.consumeRecoveryCode(t.Context(), 1, "a", now)
+	consumed, err := harness.repository.consumeRecoveryCode(t.Context(), 1, []string{"a"}, now)
 	require.NoError(t, err)
 	assert.True(t, consumed)
-	consumed, err = harness.repository.consumeRecoveryCode(t.Context(), 1, "a", now)
+	consumed, err = harness.repository.consumeRecoveryCode(t.Context(), 1, []string{"a"}, now)
 	require.NoError(t, err)
 	assert.False(t, consumed)
 

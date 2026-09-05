@@ -1,9 +1,6 @@
 package authn
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"strings"
 
@@ -13,7 +10,7 @@ import (
 const invitationTokenPrefix = "inv1_"
 
 func (s *Service) IssueInvitationToken(id guid.ID) (string, string, error) {
-	if s == nil || len(s.mfaKey) == 0 || id.Zero() {
+	if s == nil || s.mfaKeys == nil || id.Zero() {
 		return "", "", fmt.Errorf("invalid invitation credential request")
 	}
 	secret, err := randomToken(32)
@@ -25,21 +22,35 @@ func (s *Service) IssueInvitationToken(id guid.ID) (string, string, error) {
 	return token, digest, err
 }
 
+// InvitationTokenDigest derives the digest to store for a freshly issued
+// token, under the key that is currently sealing.
 func (s *Service) InvitationTokenDigest(token string) (string, error) {
-	if s == nil || len(s.mfaKey) == 0 || !strings.HasPrefix(token, invitationTokenPrefix) || len(token) > 256 {
-		return "", fmt.Errorf("invalid invitation credential")
+	message, err := invitationTokenMessage(s, token)
+	if err != nil {
+		return "", err
+	}
+	return s.mfaKeys.MAC("invitation:v1", message), nil
+}
+
+// InvitationTokenMatches reports whether a presented token produces the stored
+// digest under any key the ring holds. Acceptance asks this rather than
+// recomputing one digest, so an invitation issued before a key rotation is
+// still accepted instead of silently reading as forged.
+func (s *Service) InvitationTokenMatches(token, digest string) bool {
+	message, err := invitationTokenMessage(s, token)
+	if err != nil {
+		return false
+	}
+	return s.mfaKeys.MACMatches("invitation:v1", message, digest)
+}
+
+func invitationTokenMessage(s *Service, token string) ([]byte, error) {
+	if s == nil || s.mfaKeys == nil || !strings.HasPrefix(token, invitationTokenPrefix) || len(token) > 256 {
+		return nil, fmt.Errorf("invalid invitation credential")
 	}
 	parts := strings.SplitN(strings.TrimPrefix(token, invitationTokenPrefix), ".", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", fmt.Errorf("invalid invitation credential")
+		return nil, fmt.Errorf("invalid invitation credential")
 	}
-	mac := hmac.New(sha256.New, s.mfaPurposeKey("invitation:v1"))
-	_, _ = mac.Write([]byte("platform:invitation:v1\x00" + token))
-	return hex.EncodeToString(mac.Sum(nil)), nil
-}
-
-func (s *Service) mfaPurposeKey(purpose string) []byte {
-	mac := hmac.New(sha256.New, s.mfaKey)
-	_, _ = mac.Write([]byte("platform:mfa:key:" + purpose))
-	return mac.Sum(nil)
+	return []byte("platform:invitation:v1\x00" + token), nil
 }

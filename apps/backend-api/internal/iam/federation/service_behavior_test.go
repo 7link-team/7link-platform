@@ -1,6 +1,7 @@
 package federation
 
 import (
+	"7link.com/platform/pkg/extension/keyringx"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -259,6 +260,7 @@ type federationEnvironment struct {
 	identity *federationIdentity
 	ids      *federationTestIDs
 	key      []byte
+	keys     *keyringx.Keyring
 	prefix   string
 	idp      *testIDP
 	auditErr error
@@ -280,6 +282,7 @@ func newFederationEnvironment(t *testing.T, prefixes ...string) *federationEnvir
 	runtime := appenv.NewRuntime(appenv.NewIdentity("federation-test", "1"), appenv.WithDatabase(router), appenv.WithTablePrefix(prefix))
 	env := &federationEnvironment{db: router.Write(), runtime: runtime, prefix: prefix, ids: newFederationTestIDs(1000), key: []byte("0123456789abcdef0123456789abcdef"), web: newFederationWeb()}
 	env.migrate(t)
+	env.keys = newFederationTestKeyring(t, env.key)
 	env.identity = &federationIdentity{ids: env.ids, prefix: prefix, web: env.web}
 	appender := audit.Appender(func(_ context.Context, _ *gorm.DB, event audit.DomainEvent) error {
 		if env.auditErr != nil {
@@ -288,7 +291,7 @@ func newFederationEnvironment(t *testing.T, prefixes ...string) *federationEnvir
 		env.events = append(env.events, event)
 		return nil
 	})
-	env.service = NewService(runtime, appender, env.identity, env.web, Config{HTTPTimeout: 5 * time.Second, ClockSkew: 30 * time.Second, StateTTL: 10 * time.Minute}, env.key, env.ids)
+	env.service = NewService(runtime, appender, env.identity, env.web, Config{HTTPTimeout: 5 * time.Second, ClockSkew: 30 * time.Second, StateTTL: 10 * time.Minute}, env.keys, env.ids)
 	env.service.now = func() time.Time { return federationTestNow }
 	env.idp = newTestIDP(t)
 	return env
@@ -339,7 +342,7 @@ func (e *federationEnvironment) startOIDC(t *testing.T, provider Provider) (Logi
 	require.NoError(t, err)
 	stateValue, err := cookieValue(start.StateCookie, stateCookieName)
 	require.NoError(t, err)
-	state, err := openState(e.key, stateValue)
+	state, err := openState(e.keys, stateValue)
 	require.NoError(t, err)
 	return start, state, callback
 }
@@ -431,7 +434,7 @@ func TestFederationOIDCFailureRollsBackIdentityAndTenantBinding(t *testing.T) {
 	cookie, err := cookieValue(start.StateCookie, stateCookieName)
 	require.NoError(t, err)
 	state.ProviderID = providerB.ID.String()
-	tamperedBinding, err := sealState(env.key, state)
+	tamperedBinding, err := sealState(env.keys, state)
 	require.NoError(t, err)
 	_, err = env.service.CompleteLogin(t.Context(), providerB.ID, "code", state.Nonce, stateCookieName+"="+tamperedBinding, env.idp.issuer+callbackURL(providerB.ID))
 	assert.ErrorIs(t, err, ErrOIDCState)
@@ -476,27 +479,113 @@ func TestFederationProviderValidationAndSecretFailures(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// newFederationTestKeyring wraps raw key material the way the module does, so a
+// test that seals through the ring and a test that reads a stored value are
+// talking about the same key.
+func newFederationTestKeyring(t *testing.T, active []byte, previous ...[]byte) *keyringx.Keyring {
+	t.Helper()
+	encoded := make([]string, 0, len(previous))
+	for _, key := range previous {
+		encoded = append(encoded, base64.RawStdEncoding.EncodeToString(key))
+	}
+	ring, err := keyringx.New(federationKeyDomain, base64.RawStdEncoding.EncodeToString(active), encoded...)
+	require.NoError(t, err)
+	return ring
+}
+
 func TestFederationEncryptionKeyResolution(t *testing.T) {
 	key := []byte("0123456789abcdef0123456789abcdef")
-	_, err := ParseEncryptionKey("")
+	expected := newFederationTestKeyring(t, key).ActiveID()
+
+	_, err := ResolveKeyring(Config{})
 	assert.Error(t, err)
-	for _, encoded := range []string{base64.RawStdEncoding.EncodeToString(key), base64.URLEncoding.EncodeToString(key)} {
-		actual, err := ParseEncryptionKey(encoded)
-		require.NoError(t, err)
-		assert.Equal(t, key, actual)
-	}
-	_, err = ParseEncryptionKey("bad")
+	_, err = ResolveKeyring(Config{EncryptionKey: "bad"})
 	assert.Error(t, err)
-	_, err = ResolveEncryptionKey(Config{})
-	assert.Error(t, err)
+
 	file := filepath.Join(t.TempDir(), "federation.key")
 	require.NoError(t, osWriteFile(file, []byte(base64.RawStdEncoding.EncodeToString(key))))
-	actual, err := ResolveEncryptionKey(Config{EncryptionKeyFile: file})
+	ring, err := ResolveKeyring(Config{EncryptionKeyFile: file})
 	require.NoError(t, err)
-	assert.Equal(t, key, actual)
-	actual, err = ResolveEncryptionKey(Config{EncryptionKey: base64.RawStdEncoding.EncodeToString(key)})
+	assert.Equal(t, expected, ring.ActiveID())
+
+	ring, err = ResolveKeyring(Config{EncryptionKey: base64.URLEncoding.EncodeToString(key)})
 	require.NoError(t, err)
-	assert.Equal(t, key, actual)
+	assert.Equal(t, expected, ring.ActiveID())
+}
+
+// TestFederationResolvesTheKeysARotationLeavesBehind covers the configuration a
+// deployment is in for as long as a rotation takes: one key sealing, one or
+// more still opening.
+func TestFederationResolvesTheKeysARotationLeavesBehind(t *testing.T) {
+	active := []byte("0123456789abcdef0123456789abcdef")
+	retired := []byte("fedcba9876543210fedcba9876543210")
+
+	dir := t.TempDir()
+	retiredFile := filepath.Join(dir, "federation.previous.key")
+	require.NoError(t, osWriteFile(retiredFile, []byte(base64.RawStdEncoding.EncodeToString(retired))))
+
+	ring, err := ResolveKeyring(Config{
+		EncryptionKey:              base64.RawStdEncoding.EncodeToString(active),
+		PreviousEncryptionKeyFiles: []string{retiredFile},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, newFederationTestKeyring(t, active, retired).IDs(), ring.IDs())
+
+	// Naming the same key twice is how an operator convinces themselves they
+	// have rotated when they have not, so it is refused rather than deduplicated.
+	_, err = ResolveKeyring(Config{
+		EncryptionKey:          base64.RawStdEncoding.EncodeToString(active),
+		PreviousEncryptionKeys: []string{base64.RawStdEncoding.EncodeToString(active)},
+	})
+	require.Error(t, err)
+
+	_, err = ResolveKeyring(Config{
+		EncryptionKey:              base64.RawStdEncoding.EncodeToString(active),
+		PreviousEncryptionKeys:     []string{base64.RawStdEncoding.EncodeToString(retired)},
+		PreviousEncryptionKeyFiles: []string{retiredFile},
+	})
+	require.Error(t, err)
+}
+
+// TestFederationOpensWhatARetiredKeySealed is the whole point of the ring: a
+// deployment that replaces its federation key must not lose the client secrets
+// the replaced key protected.
+func TestFederationOpensWhatARetiredKeySealed(t *testing.T) {
+	env := newFederationEnvironment(t, "")
+	provider := env.createProvider(t, federationID("tenant-a"), env.providerInput("OIDC", env.idp.issuer))
+
+	row, err := env.service.repo.getProviderByID(t.Context(), provider.ID)
+	require.NoError(t, err)
+	sealedByRetired := row.ClientSecretCiphertext
+	require.NotEmpty(t, sealedByRetired)
+
+	replacement := []byte("fedcba9876543210fedcba9876543210")
+	env.service.keys = newFederationTestKeyring(t, replacement, env.key)
+
+	secret, err := env.service.decryptSecret(provider.ID, sealedByRetired)
+	require.NoError(t, err)
+	assert.Equal(t, "client-secret", secret)
+
+	// What the new ring seals records the new key, so rewrapping is a read and
+	// a write rather than a migration somebody has to hand-write.
+	assert.True(t, env.service.keys.NeedsRewrap(sealedByRetired))
+	resealed, err := env.service.encryptSecret(provider.ID, secret)
+	require.NoError(t, err)
+	assert.False(t, env.service.keys.NeedsRewrap(resealed))
+}
+
+// TestFederationSaysWhenAKeyIsSimplyMissing keeps the one recoverable failure
+// from being reported as data loss: the fix is to put the retired key back.
+func TestFederationSaysWhenAKeyIsSimplyMissing(t *testing.T) {
+	env := newFederationEnvironment(t, "")
+	provider := env.createProvider(t, federationID("tenant-a"), env.providerInput("OIDC", env.idp.issuer))
+	sealed, err := env.service.encryptSecret(provider.ID, "client-secret")
+	require.NoError(t, err)
+
+	env.service.keys = newFederationTestKeyring(t, []byte("fedcba9876543210fedcba9876543210"))
+	_, err = env.service.decryptSecret(provider.ID, sealed)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no longer holds")
 }
 
 func osWriteFile(path string, data []byte) error {
@@ -657,20 +746,20 @@ func TestFederationLoginStateProviderAndSecretDenials(t *testing.T) {
 	provider := env.createProvider(t, tenant, env.providerInput("State", env.idp.issuer+"/state"))
 	_, state, callback := env.startOIDC(t, provider)
 	state.ExpiresAt = env.service.now().Add(-time.Minute).Unix()
-	stale, err := sealState(env.key, state)
+	stale, err := sealState(env.keys, state)
 	require.NoError(t, err)
 	_, err = env.service.CompleteLogin(t.Context(), provider.ID, "code", state.Nonce, stateCookieName+"="+stale, callback)
 	assert.ErrorIs(t, err, ErrOIDCState)
 
 	state.ExpiresAt = env.service.now().Add(time.Minute).Unix()
 	state.ProviderID = testID("other").String()
-	wrongProvider, err := sealState(env.key, state)
+	wrongProvider, err := sealState(env.keys, state)
 	require.NoError(t, err)
 	_, err = env.service.CompleteLogin(t.Context(), provider.ID, "code", state.Nonce, stateCookieName+"="+wrongProvider, callback)
 	assert.ErrorIs(t, err, ErrOIDCState)
 	state.ProviderID = provider.ID.String()
 	state.TenantID = testID("tenant-b").String()
-	wrongTenant, err := sealState(env.key, state)
+	wrongTenant, err := sealState(env.keys, state)
 	require.NoError(t, err)
 	_, err = env.service.CompleteLogin(t.Context(), provider.ID, "code", state.Nonce, stateCookieName+"="+wrongTenant, callback)
 	assert.ErrorIs(t, err, ErrOIDCState)
@@ -707,11 +796,11 @@ func TestFederationHelpersAndConstructorGuards(t *testing.T) {
 	assert.Error(t, err)
 
 	config := Config{}
-	assert.Panics(t, func() { NewService(nil, env.service.audit, env.identity, env.web, config, env.key, env.ids) })
-	assert.Panics(t, func() { NewService(env.runtime, nil, env.identity, env.web, config, env.key, env.ids) })
-	assert.Panics(t, func() { NewService(env.runtime, env.service.audit, nil, env.web, config, env.key, env.ids) })
-	assert.Panics(t, func() { NewService(env.runtime, env.service.audit, env.identity, nil, config, env.key, env.ids) })
-	assert.Panics(t, func() { NewService(env.runtime, env.service.audit, env.identity, env.web, config, env.key, nil) })
+	assert.Panics(t, func() { NewService(nil, env.service.audit, env.identity, env.web, config, env.keys, env.ids) })
+	assert.Panics(t, func() { NewService(env.runtime, nil, env.identity, env.web, config, env.keys, env.ids) })
+	assert.Panics(t, func() { NewService(env.runtime, env.service.audit, nil, env.web, config, env.keys, env.ids) })
+	assert.Panics(t, func() { NewService(env.runtime, env.service.audit, env.identity, nil, config, env.keys, env.ids) })
+	assert.Panics(t, func() { NewService(env.runtime, env.service.audit, env.identity, env.web, config, env.keys, nil) })
 }
 
 func TestFederationServiceRejectsInvalidIDsAndGeneratorFailures(t *testing.T) {

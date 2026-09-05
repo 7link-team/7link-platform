@@ -1,6 +1,7 @@
 package provisioning
 
 import (
+	"7link.com/platform/pkg/extension/keyringx"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -29,7 +30,7 @@ type Service struct {
 	ids      guid.Source
 	identity identity.IdentityProvisioner
 	groups   organization.GroupProvisioner
-	key      []byte
+	keys     *keyringx.Keyring
 	http     *http.Client
 	now      func() time.Time
 
@@ -42,7 +43,7 @@ type pushLock struct {
 	refs int
 }
 
-func NewService(runtime *appenv.Runtime, appender audit.Appender, ids guid.Source, identities identity.IdentityProvisioner, groups organization.GroupProvisioner, cfg Config, key []byte) *Service {
+func NewService(runtime *appenv.Runtime, appender audit.Appender, ids guid.Source, identities identity.IdentityProvisioner, groups organization.GroupProvisioner, cfg Config, keys *keyringx.Keyring) *Service {
 	if runtime == nil || runtime.Database() == nil || runtime.Database().Write() == nil || appender == nil || ids == nil || identities == nil || groups == nil {
 		panic("provisioning service requires runtime database, audit appender, id generator, identity provisioner, and group provisioner")
 	}
@@ -52,7 +53,7 @@ func NewService(runtime *appenv.Runtime, appender audit.Appender, ids guid.Sourc
 	}
 	return &Service{
 		runtime: runtime, repo: NewRepository(runtime), appender: appender, ids: ids,
-		identity: identities, groups: groups, key: append([]byte(nil), key...),
+		identity: identities, groups: groups, keys: keys,
 		http: &http.Client{Timeout: timeout}, now: time.Now, pushLocks: make(map[string]*pushLock),
 	}
 }

@@ -2,6 +2,7 @@ package provisioning
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"hash/fnv"
@@ -20,6 +21,7 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	gormx "7link.com/platform/pkg/extension/gorm"
+	"7link.com/platform/pkg/extension/keyringx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -290,6 +292,7 @@ type provisioningEnvironment struct {
 	db       *gorm.DB
 	runtime  *appenv.Runtime
 	service  *Service
+	keys     *keyringx.Keyring
 	auth     AuthContext
 	token    string
 	prefix   string
@@ -326,7 +329,8 @@ func newProvisioningEnvironmentWithPrefix(t *testing.T, prefix string) *provisio
 		row := testAudit{TenantID: event.TenantID, EventType: event.EventType, TargetType: event.TargetType, TargetID: event.TargetID}
 		return db.WithContext(ctx).Table(prefix + "iam_audit_events").Create(&row).Error
 	})
-	env.service = NewService(runtime, appender, ids, identities, groups, Config{}, testProvisioningKey())
+	env.keys = newProvisioningTestKeyring(t, testProvisioningKey())
+	env.service = NewService(runtime, appender, ids, identities, groups, Config{}, env.keys)
 	env.service.now = func() time.Time { return provisioningTestNow }
 	directory, err := env.service.CreateDirectory(t.Context(), testID("tenant-a"), "Primary IdP")
 	require.NoError(t, err)
@@ -361,6 +365,20 @@ func (env *provisioningEnvironment) migrate(t *testing.T) {
 func prefixName(prefix, name string) string { return prefix + name }
 
 func testProvisioningKey() []byte { return []byte("0123456789abcdef0123456789abcdef") }
+
+// newProvisioningTestKeyring wraps raw key material the way the module does, so
+// a test that seals through the ring and a test that reads a stored row are
+// talking about the same key.
+func newProvisioningTestKeyring(t *testing.T, active []byte, previous ...[]byte) *keyringx.Keyring {
+	t.Helper()
+	encoded := make([]string, 0, len(previous))
+	for _, key := range previous {
+		encoded = append(encoded, base64.RawStdEncoding.EncodeToString(key))
+	}
+	ring, err := keyringx.New(provisioningKeyDomain, base64.RawStdEncoding.EncodeToString(active), encoded...)
+	require.NoError(t, err)
+	return ring
+}
 
 func activeUserInput(externalID, userName, email string) UserInput {
 	active := true

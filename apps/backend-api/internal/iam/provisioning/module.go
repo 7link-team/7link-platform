@@ -85,11 +85,11 @@ func (m *Module) Initialize(context.Context) error {
 		m.registrar == nil || m.ids == nil || m.appender == nil || m.identities == nil || m.groups == nil {
 		return errors.New("initialize provisioning: runtime database, authz registrar, id generator, audit appender, identity provisioner, and group provisioner are required")
 	}
-	key, err := ResolveEncryptionKey(m.config)
+	keys, err := ResolveKeyring(m.config)
 	if err != nil {
 		return fmt.Errorf("resolve provisioning encryption key: %w", err)
 	}
-	m.service = NewService(m.runtime, m.appender, m.ids, m.identities, m.groups, m.config, key)
+	m.service = NewService(m.runtime, m.appender, m.ids, m.identities, m.groups, m.config, keys)
 	return nil
 }
 
