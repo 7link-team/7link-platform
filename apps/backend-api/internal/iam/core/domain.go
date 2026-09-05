@@ -48,6 +48,7 @@ var (
 	ErrPlatformPermissionScope        = errors.New("permission is not a platform permission")
 	ErrPlatformAdministratorNotFound  = errors.New("platform administrator not found")
 	ErrLastPlatformAdministrator      = errors.New("cannot remove the last platform administrator")
+	ErrPlatformAdministratorRequired  = errors.New("no platform administrator exists")
 	ErrPrivilegeEscalation            = errors.New("cannot grant a permission the actor does not hold")
 	ErrUnavailable                    = errors.New("iam service unavailable")
 )

@@ -102,7 +102,10 @@ func iamAuditConfig(c AppConfig) iamaudit.Config {
 }
 
 func iamCoreConfig(c AppConfig) core.Config {
-	return core.Config{Config: iamActivationConfig(c)}
+	return core.Config{
+		Config:                       iamActivationConfig(c),
+		RequirePlatformAdministrator: c.IAM.RequirePlatformAdministrator,
+	}
 }
 
 func iamIdentityConfig(c AppConfig) identity.Config {

@@ -42,3 +42,12 @@ type RoleGrantStore struct {
 	RemovePositionMembership func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID) (bool, error)
 	RemoveEntityRoleBinding  func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, guid.ID) (bool, error)
 }
+
+// PlatformAdministratorStore is the narrow platform-administrator capability
+// the composition boundary binds to its own bootstrap transaction. Reading and
+// granting share that transaction so a concurrent bootstrap cannot slip a
+// second administrator in between the check and the write.
+type PlatformAdministratorStore struct {
+	List      func(context.Context, *gorm.DB) ([]PlatformAdministrator, error)
+	GrantFull func(context.Context, *gorm.DB, guid.ID) (bool, error)
+}

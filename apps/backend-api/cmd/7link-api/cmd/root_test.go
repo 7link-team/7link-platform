@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -24,4 +26,33 @@ func TestRootCommandOnlyOwnsTopLevelRouting(t *testing.T) {
 	assert.Same(t, migrateCmd, migrateDownToCmd.Parent())
 	assert.NotNil(t, serveCmd.Flags().Lookup("config"))
 	assert.NotNil(t, serveCmd.Flags().Lookup("migrate"))
+}
+
+// TestExitCodeDefaultsToOrdinaryFailure keeps the status contract narrow: only
+// a command that deliberately asked for a distinct status gets one, and success
+// is never accidentally reported as a failure.
+func TestExitCodeDefaultsToOrdinaryFailure(t *testing.T) {
+	assert.NoError(t, withExitCode(exitFailure, nil), "a nil error stays nil so callers can wrap unconditionally")
+	assert.Equal(t, 0, exitCode(nil))
+	assert.Equal(t, exitFailure, exitCode(errors.New("boom")))
+}
+
+// TestExitCodeSurvivesWrappingAndKeepsTheUnderlyingError proves the tag travels
+// out through RunE, where cobra reports the message and only the status is
+// still ours to carry.
+func TestExitCodeSurvivesWrappingAndKeepsTheUnderlyingError(t *testing.T) {
+	cause := errors.New("conflicting administrator")
+	tagged := withExitCode(exitConflict, cause)
+
+	assert.Equal(t, cause.Error(), tagged.Error(), "the operator reads the cause, not the status")
+	assert.ErrorIs(t, tagged, cause)
+	assert.Equal(t, exitConflict, exitCode(tagged))
+	assert.Equal(t, exitConflict, exitCode(fmt.Errorf("bootstrap: %w", tagged)))
+}
+
+// TestExitCodeTakesTheOutermostRequestedStatus pins which status wins when a
+// command tags an error a second time.
+func TestExitCodeTakesTheOutermostRequestedStatus(t *testing.T) {
+	inner := withExitCode(exitTransient, errors.New("boom"))
+	assert.Equal(t, exitConflict, exitCode(withExitCode(exitConflict, inner)))
 }

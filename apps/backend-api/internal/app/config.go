@@ -18,6 +18,7 @@ type AppConfig struct {
 	Telemetry    Telemetry       `mapstructure:"telemetry" group:"telemetry"`
 	Audit        Audit           `mapstructure:"audit" group:"audit"`
 	Authn        IAMAuthn        `mapstructure:"authn" group:"authn"`
+	IAM          IAMCore         `mapstructure:"iam" group:"iam"`
 	IAMAudit     IAMAudit        `mapstructure:"iam_audit" group:"iam_audit"`
 	Provisioning IAMProvisioning `mapstructure:"provisioning" group:"provisioning"`
 	Federation   IAMFederation   `mapstructure:"federation" group:"federation"`
@@ -39,6 +40,15 @@ type AppConfig struct {
 // authentication extension. A distinct type keeps AppConfig ownership here
 // while preserving the extension's complete field and validation contract.
 type IAMAuthn authnext.Config
+
+// IAMCore configures platform-wide IAM policy that belongs to no single IAM
+// sub-domain.
+type IAMCore struct {
+	// RequirePlatformAdministrator defaults to true because a freshly migrated
+	// database can serve no platform operation at all. Recovery and migration
+	// tooling can turn it off to reach an otherwise unreachable deployment.
+	RequirePlatformAdministrator bool `mapstructure:"require_platform_administrator" description:"report IAM unready until a platform administrator exists" default:"true"`
+}
 
 // IAMAudit configures the IAM domain audit chain. It is intentionally separate
 // from Audit, which controls transport-level operation logging.

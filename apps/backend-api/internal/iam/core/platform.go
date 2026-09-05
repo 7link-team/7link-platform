@@ -366,3 +366,50 @@ func (s *Service) normalizePlatformPermissions(full bool, permissions []string) 
 	sort.Strings(normalized)
 	return normalized, nil
 }
+
+// ListPlatformAdministratorsOn reads full and restricted platform
+// administrators through the caller's transaction. The bootstrap command needs
+// the check and the following grant to observe one snapshot, so it cannot use
+// the connection-picking read above.
+func (r *Repository) ListPlatformAdministratorsOn(
+	ctx context.Context,
+	db *gorm.DB,
+) ([]PlatformAdministrator, error) {
+	if r == nil || db == nil {
+		return nil, ErrUnavailable
+	}
+	return r.withDB(db).listPlatformAdministrators(ctx, nil)
+}
+
+// GrantFullPlatformAdministratorOn inserts one full administrator row through
+// the caller's transaction and reports whether it created it. Reporting rather
+// than failing on a duplicate is what keeps bootstrap create-only: a rerun
+// says "already bootstrapped" instead of rewriting the row.
+func (r *Repository) GrantFullPlatformAdministratorOn(
+	ctx context.Context,
+	db *gorm.DB,
+	principalID guid.ID,
+) (bool, error) {
+	principalID, err := validatePlatformPrincipal(principalID)
+	if err != nil {
+		return false, err
+	}
+	if r == nil || db == nil {
+		return false, ErrUnavailable
+	}
+	repo := r.withDB(db)
+	tables, database, err := repo.tables()
+	if err != nil {
+		return false, err
+	}
+	row := model.PlatformAdministrator{
+		PrincipalID: principalID,
+		CreatedAt:   repo.now().UTC().Truncate(time.Millisecond),
+	}
+	result := database.WithContext(ctx).Table(tables.PlatformAdministrators.TableName()).
+		Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
+	if result.Error != nil {
+		return false, fmt.Errorf("grant platform administrator: %w", result.Error)
+	}
+	return result.RowsAffected > 0, nil
+}

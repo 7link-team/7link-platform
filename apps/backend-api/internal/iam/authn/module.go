@@ -64,7 +64,38 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[authz.TokenVerifier](services, m); err != nil {
 		return fmt.Errorf("provide authn token verifier: %w", err)
 	}
+	if err := module.Provide[BootstrapCredentialStore](services, m.bootstrapCredentialStore()); err != nil {
+		return fmt.Errorf("provide authn bootstrap credential store: %w", err)
+	}
 	return nil
+}
+
+// bootstrapCredentialStore is provided before injection, so each closure builds
+// its repository at call time from collaborators Wire has since supplied. The
+// platform bootstrap runs before Initialize, so it cannot go through Service.
+func (m *Module) bootstrapCredentialStore() BootstrapCredentialStore {
+	repository := func() (*Repository, error) {
+		if m == nil || m.runtime == nil || m.ids == nil || m.appender == nil {
+			return nil, authnext.ErrUnavailable
+		}
+		return NewRepository(m.runtime, m.ids, m.appender), nil
+	}
+	return BootstrapCredentialStore{
+		Exists: func(ctx context.Context, db *gorm.DB, principalID guid.ID) (bool, error) {
+			repo, err := repository()
+			if err != nil {
+				return false, err
+			}
+			return repo.HasCredentialOn(ctx, db, principalID)
+		},
+		Create: func(ctx context.Context, db *gorm.DB, principalID guid.ID, password string, now time.Time) error {
+			repo, err := repository()
+			if err != nil {
+				return err
+			}
+			return repo.CreateBootstrapCredentialOn(ctx, db, principalID, password, now)
+		},
+	}
 }
 
 func (m *Module) InjectServices(services *module.Services) error {

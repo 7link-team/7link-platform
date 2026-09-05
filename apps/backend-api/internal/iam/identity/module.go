@@ -99,7 +99,38 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[RegistrationPrincipalCreator](services, registrationCreator); err != nil {
 		return fmt.Errorf("provide identity registration principal creator: %w", err)
 	}
+	if err := module.Provide[BootstrapPrincipalStore](services, m.bootstrapPrincipalStore()); err != nil {
+		return fmt.Errorf("provide identity bootstrap principal store: %w", err)
+	}
 	return nil
+}
+
+// bootstrapPrincipalStore is provided before injection, so each closure builds
+// its repository at call time from collaborators Wire has since supplied. The
+// platform bootstrap runs before Initialize, so it cannot go through Service.
+func (m *Module) bootstrapPrincipalStore() BootstrapPrincipalStore {
+	repository := func() (*Repository, error) {
+		if m == nil || m.runtime == nil || m.ids == nil || m.appender == nil {
+			return nil, ErrUnavailable
+		}
+		return NewRepository(m.runtime, m.ids, m.appender), nil
+	}
+	return BootstrapPrincipalStore{
+		Find: func(ctx context.Context, db *gorm.DB, loginName string) (Principal, bool, error) {
+			repo, err := repository()
+			if err != nil {
+				return Principal{}, false, err
+			}
+			return repo.FindPrincipalByLoginOn(ctx, db, loginName)
+		},
+		Create: func(ctx context.Context, db *gorm.DB, input BootstrapPrincipalInput, now time.Time) (guid.ID, error) {
+			repo, err := repository()
+			if err != nil {
+				return 0, err
+			}
+			return repo.CreateBootstrapPrincipalOn(ctx, db, input, now)
+		},
+	}
 }
 
 func (m *Module) InjectServices(services *module.Services) error {

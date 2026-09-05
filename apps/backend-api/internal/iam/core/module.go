@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"7link.com/platform/internal/iam/audit"
@@ -20,12 +21,19 @@ import (
 // HTTP, locale, and migration behavior.
 type Config struct {
 	module.Config
+
+	// RequirePlatformAdministrator makes readiness fail until the platform has
+	// at least one administrator. A freshly migrated database can serve no
+	// platform operation, so reporting it ready would hand operators a green
+	// probe for an unusable deployment.
+	RequirePlatformAdministrator bool
 }
 
 type Module struct {
 	config         Config
 	runtime        *appenv.Runtime
 	service        *Service
+	repository     *Repository
 	registrar      *authz.Registrar
 	checker        AuthorizationEvaluator
 	members        *MembershipChecker
@@ -33,6 +41,11 @@ type Module struct {
 	grants         RoleGrantStore
 	ids            guid.Source
 	appender       audit.Appender
+
+	// administratorPresent latches the readiness gate. The last-administrator
+	// guard means the count never returns to zero, so once it is satisfied the
+	// probe stops paying for a union query on every request.
+	administratorPresent atomic.Bool
 }
 
 // NewModule builds the core IAM module and its stable authorization gateway.
@@ -68,6 +81,9 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[RoleGrantStore](services, m.roleGrantStore()); err != nil {
 		return fmt.Errorf("provide IAM role grant store: %w", err)
 	}
+	if err := module.Provide[PlatformAdministratorStore](services, m.platformAdministratorStore()); err != nil {
+		return fmt.Errorf("provide IAM platform administrator store: %w", err)
+	}
 	if err := module.Provide[*authz.Registrar](services, m.registrar); err != nil {
 		return fmt.Errorf("provide authorization registrar: %w", err)
 	}
@@ -96,6 +112,7 @@ func (m *Module) InjectServices(services *module.Services) error {
 	}
 	m.service = NewService(m.registrar.Registry(), repository, m.checker, appender)
 	m.service.administrators = m.administrators
+	m.repository = repository
 	m.grants = NewRoleGrantStore(repository, m.administrators)
 	return nil
 }
@@ -110,10 +127,21 @@ func (m *Module) Initialize(context.Context) error {
 	return nil
 }
 
-func (m *Module) CheckHealth(context.Context) error {
+func (m *Module) CheckHealth(ctx context.Context) error {
 	if m == nil || m.service == nil || m.service.repo == nil || m.service.repo.writer() == nil {
 		return ErrUnavailable
 	}
+	if !m.config.RequirePlatformAdministrator || m.administratorPresent.Load() {
+		return nil
+	}
+	administrators, err := m.service.repo.ListPlatformAdministrators(ctx)
+	if err != nil {
+		return err
+	}
+	if len(administrators) == 0 {
+		return ErrPlatformAdministratorRequired
+	}
+	m.administratorPresent.Store(true)
 	return nil
 }
 
@@ -123,6 +151,25 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	}
 	RegisterHTTP(api, m.service, m.registrar)
 	return nil
+}
+
+// platformAdministratorStore is provided before injection, so each closure
+// resolves the real repository at call time after Wire has completed.
+func (m *Module) platformAdministratorStore() PlatformAdministratorStore {
+	return PlatformAdministratorStore{
+		List: func(ctx context.Context, db *gorm.DB) ([]PlatformAdministrator, error) {
+			if m == nil || m.repository == nil {
+				return nil, ErrUnavailable
+			}
+			return m.repository.ListPlatformAdministratorsOn(ctx, db)
+		},
+		GrantFull: func(ctx context.Context, db *gorm.DB, principalID guid.ID) (bool, error) {
+			if m == nil || m.repository == nil {
+				return false, ErrUnavailable
+			}
+			return m.repository.GrantFullPlatformAdministratorOn(ctx, db, principalID)
+		},
+	}
 }
 
 // roleGrantStore is provided before injection, so each closure resolves the
