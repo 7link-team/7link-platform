@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/pkg/appenv"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -46,4 +47,40 @@ func TestNormalizeConfigDisabledLeavesValues(t *testing.T) {
 	config := normalizeConfig(Config{Enabled: false, QueueSize: 7})
 	assert.False(t, config.Enabled)
 	assert.Equal(t, 7, config.QueueSize)
+}
+
+// TestNormalizeConfigCanonicalizesOverflow pins the written-back form. The
+// recorder compares the value exactly, so an accepted-but-unnormalized string
+// such as " BLOCK " would silently fall back to dropping events.
+func TestNormalizeConfigCanonicalizesOverflow(t *testing.T) {
+	cases := []struct {
+		name     string
+		overflow string
+		expected string
+	}{
+		{name: "canonical block", overflow: "block", expected: overflowBlock},
+		{name: "padded uppercase block", overflow: " BLOCK ", expected: overflowBlock},
+		{name: "mixed case block", overflow: "Block", expected: overflowBlock},
+		{name: "padded drop", overflow: "\tdrop\n", expected: overflowDrop},
+		{name: "unknown mode", overflow: "weird", expected: overflowDrop},
+		{name: "empty", overflow: "", expected: overflowDrop},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			config := normalizeConfig(Config{Enabled: true, Overflow: testCase.overflow})
+			assert.Equal(t, testCase.expected, config.Overflow)
+		})
+	}
+}
+
+// TestModuleSelectsBlockingOverflowForPaddedValue proves the normalization
+// reaches the recorder rather than stopping at the config struct.
+func TestModuleSelectsBlockingOverflowForPaddedValue(t *testing.T) {
+	sink := &memorySink{}
+	auditModule := NewModule(appenv.NewRuntime(appenv.NewIdentity("svc", "1")), Config{
+		Enabled:  true,
+		Overflow: " BLOCK ",
+	}, WithSinks(sink))
+	assert.Equal(t, overflowBlock, auditModule.cfg.Overflow)
+	assert.True(t, auditModule.recorder.cfg.OverflowBlock)
 }

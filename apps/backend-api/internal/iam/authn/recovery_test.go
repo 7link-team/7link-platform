@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -368,4 +369,54 @@ func TestNotificationPermanentFailureClassification(t *testing.T) {
 func contextWithTimeout(t *testing.T, timeout time.Duration) (context.Context, context.CancelFunc) {
 	t.Helper()
 	return context.WithTimeout(t.Context(), timeout)
+}
+
+// TestNotificationDeliveryFailuresAreLoggedAndBatchContinues pins the two
+// properties of the delivery loop: a per-notification failure is observable
+// rather than silently swallowed, and it does not abandon the rest of the batch.
+func TestNotificationDeliveryFailuresAreLoggedAndBatchContinues(t *testing.T) {
+	service, harness, recorder := newRecoveryService(t)
+	bootstrapLocalPrincipal(t, harness, "alice", "correct horse battery staple")
+	bootstrapLocalPrincipal(t, harness, "bob", "correct horse battery staple")
+
+	var output bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	recorder.mu.Lock()
+	recorder.status = http.StatusServiceUnavailable
+	recorder.mu.Unlock()
+	require.NoError(t, service.BeginPasswordRecovery(t.Context(), "alice"))
+	require.NoError(t, service.BeginPasswordRecovery(t.Context(), "bob"))
+
+	require.NoError(t, service.deliverPendingNotifications(t.Context()))
+
+	recorder.mu.Lock()
+	attempts := len(recorder.payloads)
+	recorder.mu.Unlock()
+	assert.Equal(t, 2, attempts, "a failed notification must not abandon the rest of the batch")
+
+	logged := output.String()
+	assert.Contains(t, logged, "authn notification delivery failed")
+	assert.Contains(t, logged, "notification_id")
+	assert.Equal(t, 2, strings.Count(logged, "authn notification delivery failed"))
+}
+
+// TestNotificationDeliveryStopsOnCancelledContext keeps cancellation shutting
+// the batch down promptly instead of logging one warning per queued row.
+func TestNotificationDeliveryStopsOnCancelledContext(t *testing.T) {
+	service, harness, recorder := newRecoveryService(t)
+	bootstrapLocalPrincipal(t, harness, "alice", "correct horse battery staple")
+	bootstrapLocalPrincipal(t, harness, "bob", "correct horse battery staple")
+	require.NoError(t, service.BeginPasswordRecovery(t.Context(), "alice"))
+	require.NoError(t, service.BeginPasswordRecovery(t.Context(), "bob"))
+
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	assert.ErrorIs(t, service.deliverPendingNotifications(canceled), context.Canceled)
+
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	assert.Empty(t, recorder.payloads)
 }

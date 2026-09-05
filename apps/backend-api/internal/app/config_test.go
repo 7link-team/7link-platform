@@ -1,6 +1,10 @@
 package app
 
 import (
+	"encoding/json"
+	"reflect"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -228,4 +232,102 @@ func TestValidateRuntimeConfigRejectsNegativeValues(t *testing.T) {
 		Graceful: false, Timeout: time.Second, DrainDelay: time.Second,
 	}}), "drain budget is unused when graceful shutdown is disabled")
 	assert.NoError(t, validateRuntimeConfig(AppConfig{}))
+}
+
+// secretNamePattern matches configuration field names that carry credential
+// material. Fields whose name ends in File hold a path to the material rather
+// than the material itself, so they stay readable.
+var secretNamePattern = regexp.MustCompile(`(?i)(key|secret|password|token|credential)`)
+
+// secretTagExemptions lists credential-shaped names that are deliberately
+// published. An S3 access key is an identifier paired with the redacted secret
+// key, matching the convention used by object-store SDKs.
+var secretTagExemptions = map[string]struct{}{
+	"AppConfig.IAMAudit.Anchor.AccessKey": {},
+}
+
+// TestCredentialFieldsAreMarkedSecret keeps /debug/config from echoing key
+// material: every credential-shaped string reachable from AppConfig must carry
+// secret:"true" so configx.Inspect redacts it.
+func TestCredentialFieldsAreMarkedSecret(t *testing.T) {
+	visited := make(map[reflect.Type]bool)
+
+	var walk func(typ reflect.Type, path string)
+	walk = func(typ reflect.Type, path string) {
+		for typ.Kind() == reflect.Pointer || typ.Kind() == reflect.Slice ||
+			typ.Kind() == reflect.Array || typ.Kind() == reflect.Map {
+			typ = typ.Elem()
+		}
+		if typ.Kind() != reflect.Struct || visited[typ] {
+			return
+		}
+		visited[typ] = true
+
+		for index := 0; index < typ.NumField(); index++ {
+			field := typ.Field(index)
+			if !field.IsExported() {
+				continue
+			}
+			fieldPath := path + "." + field.Name
+			_, exempt := secretTagExemptions[fieldPath]
+			if field.Type.Kind() == reflect.String &&
+				!strings.HasSuffix(field.Name, "File") &&
+				!exempt &&
+				secretNamePattern.MatchString(field.Name) {
+				assert.Equal(t, "true", field.Tag.Get("secret"),
+					"%s holds credential material and must be tagged secret:\"true\"", fieldPath)
+			}
+			walk(field.Type, fieldPath)
+		}
+	}
+
+	walk(reflect.TypeOf(AppConfig{}), "AppConfig")
+}
+
+// TestInspectRedactsAuthnKeyMaterial pins the observable effect: the signing
+// seed and the MFA encryption key never reach the published configuration.
+func TestInspectRedactsAuthnKeyMaterial(t *testing.T) {
+	const (
+		signingSeed   = "dGVzdC1zaWduaW5nLXNlZWQtbm90LXJlYWw="
+		encryptionKey = "dGVzdC1lbmNyeXB0aW9uLWtleS1ub3QtcmVhbA=="
+	)
+
+	var parsed AppConfig
+	require.NoError(t, configx.New().Parse(&parsed,
+		"--authn.signing_key="+signingSeed,
+		"--authn.mfa.encryption_key="+encryptionKey,
+	))
+	require.Equal(t, signingSeed, parsed.Authn.SigningKey)
+	require.Equal(t, encryptionKey, parsed.Authn.MFA.EncryptionKey)
+
+	inspected, err := configx.Inspect(parsed)
+	require.NoError(t, err)
+
+	authn, ok := inspected["authn"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, configx.RedactedValue, authn["signing_key"])
+
+	mfa, ok := authn["mfa"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, configx.RedactedValue, mfa["encryption_key"])
+
+	rendered, err := json.Marshal(inspected)
+	require.NoError(t, err)
+	assert.NotContains(t, string(rendered), signingSeed)
+	assert.NotContains(t, string(rendered), encryptionKey)
+}
+
+// TestAuditOverflowIsTrimmedAndValidated stops a typo or a stray space from
+// silently degrading a blocking audit queue into a dropping one.
+func TestAuditOverflowIsTrimmedAndValidated(t *testing.T) {
+	var defaults AppConfig
+	require.NoError(t, configx.New().Parse(&defaults))
+	assert.Equal(t, "drop", defaults.Audit.Overflow)
+
+	var padded AppConfig
+	require.NoError(t, configx.New().Parse(&padded, "--audit.overflow= block "))
+	assert.Equal(t, "block", padded.Audit.Overflow)
+
+	var invalid AppConfig
+	require.Error(t, configx.New().Parse(&invalid, "--audit.overflow=weird"))
 }

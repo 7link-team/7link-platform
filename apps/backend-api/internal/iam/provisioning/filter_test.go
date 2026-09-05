@@ -97,3 +97,30 @@ func TestMemberFilterAndDialectHelpers(t *testing.T) {
 	_, _, err = compileComparison(filterTarget{expression: "active", boolean: true}, scimfilter.GT, true, "sqlite")
 	assert.ErrorIs(t, err, ErrInvalidFilter)
 }
+
+// TestSCIMSubstringOperatorsRejectEmptyValues stops a caller from turning a
+// scoped SCIM query into an unfiltered listing: an empty substring matches
+// every row under co and sw, and SUBSTR(column, -0) is dialect-defined for ew.
+func TestSCIMSubstringOperatorsRejectEmptyValues(t *testing.T) {
+	target := filterTarget{expression: "principal.login_name"}
+	for _, operator := range []scimfilter.CompareOperator{scimfilter.CO, scimfilter.SW, scimfilter.EW} {
+		for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
+			_, _, err := compileComparison(target, operator, "", dialect)
+			assert.ErrorIs(t, err, ErrInvalidFilter, "%s on %s", operator, dialect)
+		}
+	}
+
+	// Exact and ordering comparisons keep accepting the empty string: matching
+	// a stored empty value is a legitimate query, not a bypass.
+	condition, args, err := compileComparison(target, scimfilter.EQ, "", "sqlite")
+	require.NoError(t, err)
+	assert.Equal(t, "LOWER(principal.login_name) = ?", condition)
+	assert.Equal(t, []any{""}, args)
+
+	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{DryRun: true})
+	require.NoError(t, err)
+	for _, filter := range []string{`userName co ""`, `userName sw ""`, `userName ew ""`} {
+		_, err := applySCIMFilter(db.Table("iam_scim_resources AS resource"), filter, ResourceUser, "sqlite", "")
+		assert.ErrorIs(t, err, ErrInvalidFilter, filter)
+	}
+}

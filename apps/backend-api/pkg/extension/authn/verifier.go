@@ -59,7 +59,7 @@ type Config struct {
 	JWKSURL           string                  `mapstructure:"jwks_url" description:"optional upstream JWKS URL for federation adapters"`
 	HTTPTimeout       time.Duration           `mapstructure:"http_timeout" description:"upstream discovery/JWKS HTTP timeout" default:"5s"`
 	ClockSkew         time.Duration           `mapstructure:"clock_skew" description:"allowed token clock skew" default:"30s"`
-	SigningKey        string                  `mapstructure:"signing_key" description:"base64 Ed25519 seed; prefer signing_key_file" default:""`
+	SigningKey        string                  `mapstructure:"signing_key" description:"base64 Ed25519 seed; prefer signing_key_file" default:"" secret:"true"`
 	SigningKeyFile    string                  `mapstructure:"signing_key_file" description:"file containing the base64 Ed25519 seed" default:""`
 	AccessTokenTTL    time.Duration           `mapstructure:"access_token_ttl" description:"local OAuth access token lifetime" default:"15m"`
 	Web               WebConfig               `mapstructure:"web" group:"web"`
@@ -159,7 +159,7 @@ type WebConfig struct {
 // MFAConfig controls trusted storage and short-lived state for local MFA.
 type MFAConfig struct {
 	Issuer            string        `mapstructure:"issuer" description:"TOTP issuer shown by authenticator applications; defaults to the configured app name" default:""`
-	EncryptionKey     string        `mapstructure:"encryption_key" description:"base64 32-byte AES key; prefer encryption_key_file" default:""`
+	EncryptionKey     string        `mapstructure:"encryption_key" description:"base64 32-byte AES key; prefer encryption_key_file" default:"" secret:"true"`
 	EncryptionKeyFile string        `mapstructure:"encryption_key_file" description:"file containing the base64 32-byte MFA encryption key" default:""`
 	EnrollmentTTL     time.Duration `mapstructure:"enrollment_ttl" description:"lifetime of an unconfirmed TOTP enrollment" default:"10m"`
 	ChallengeTTL      time.Duration `mapstructure:"challenge_ttl" description:"lifetime of a password-verified MFA login challenge" default:"5m"`

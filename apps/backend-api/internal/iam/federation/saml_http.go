@@ -251,7 +251,7 @@ func samlFormRequestBody[T any](api huma.API) *huma.RequestBody {
 }
 
 func samlProtocolResponses(api huma.API, success map[string]*huma.MediaType, redirect bool) map[string]*huma.Response {
-	errorSchema := huma.SchemaFromType(api.OpenAPI().Components.Schemas, reflect.TypeFor[huma.ErrorModel]())
+	errorSchema := errorResponseSchema(api.OpenAPI().Components.Schemas)
 	responses := map[string]*huma.Response{
 		"200": {Description: http.StatusText(http.StatusOK), Content: success},
 		"400": {Description: http.StatusText(http.StatusBadRequest), Content: map[string]*huma.MediaType{"application/json": {Schema: errorSchema}}},

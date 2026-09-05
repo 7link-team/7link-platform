@@ -240,7 +240,7 @@ func browserResponses(schemas huma.Registry) map[string]*huma.Response {
 			"Set-Cookie": {Name: "Set-Cookie", In: "header", Schema: &huma.Schema{Type: huma.TypeString}},
 		},
 	}
-	errorSchema := huma.SchemaFromType(schemas, reflect.TypeFor[huma.ErrorModel]())
+	errorSchema := errorResponseSchema(schemas)
 	return map[string]*huma.Response{
 		"302": redirect,
 		"400": {Description: "Bad request", Content: map[string]*huma.MediaType{"application/json": {Schema: errorSchema}}},
@@ -250,6 +250,23 @@ func browserResponses(schemas huma.Registry) map[string]*huma.Response {
 		"422": {Description: "Invalid identifier", Content: map[string]*huma.MediaType{"application/json": {Schema: errorSchema}}},
 		"500": {Description: "Federation unavailable", Content: map[string]*huma.MediaType{"application/json": {Schema: errorSchema}}},
 	}
+}
+
+// errorResponseSchema resolves the error component the same way huma's own
+// operation registration does: from the concrete type huma.NewError returns.
+// The application installs a custom error envelope over that constructor before
+// any route registers, so deriving the type here keeps these hand-written
+// responses pointing at the same $ref as every huma.Register-generated one.
+func errorResponseSchema(registry huma.Registry) *huma.Schema {
+	errorType := reflect.TypeOf(huma.NewError(0, ""))
+	for errorType.Kind() == reflect.Pointer {
+		errorType = errorType.Elem()
+	}
+	hint := errorType.Name()
+	if hint == "" {
+		hint = "Error"
+	}
+	return registry.Schema(errorType, true, hint)
 }
 
 func writeFederationError(api huma.API, ctx huma.Context, err error) {

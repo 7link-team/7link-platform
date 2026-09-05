@@ -371,8 +371,13 @@ func (s *Service) deliverPendingNotifications(ctx context.Context) error {
 		return fmt.Errorf("list pending notifications: %w", err)
 	}
 	for _, id := range ids {
-		if err := s.deliverNotification(ctx, id); err != nil && ctx.Err() != nil {
-			return ctx.Err()
+		if err := s.deliverNotification(ctx, id); err != nil {
+			// A canceled context ends the batch; anything else is specific to
+			// one notification, so record it and keep draining the queue.
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			slog.WarnContext(ctx, "authn notification delivery failed", "notification_id", id, "error", err)
 		}
 	}
 	return nil

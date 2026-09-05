@@ -194,7 +194,7 @@ type Audit struct {
 	BatchSize       int           `mapstructure:"batch_size" description:"events per database write batch" default:"200"`
 	FlushInterval   time.Duration `mapstructure:"flush_interval" description:"maximum time between database flushes" default:"1s"`
 	FlushTimeout    time.Duration `mapstructure:"flush_timeout" description:"maximum time for one database flush" default:"5s"`
-	Overflow        string        `mapstructure:"overflow" description:"queue overflow behavior: drop | block" default:"drop"`
+	Overflow        string        `mapstructure:"overflow" description:"queue overflow behavior: drop | block" default:"drop" trim:"true" validate:"^(drop|block)$"`
 }
 
 // AuditDatabase gates the database-backed audit sink.

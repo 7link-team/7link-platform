@@ -170,6 +170,14 @@ func compileComparison(target filterTarget, operator scimfilter.CompareOperator,
 	if !ok {
 		return "", nil, ErrInvalidFilter
 	}
+	switch operator {
+	case scimfilter.CO, scimfilter.SW, scimfilter.EW:
+		// An empty substring matches every row, and SUBSTR(column, -0) is
+		// dialect-defined, so the substring operators require a value.
+		if text == "" {
+			return "", nil, ErrInvalidFilter
+		}
+	}
 	if target.timestamp {
 		parsed, err := time.Parse(time.RFC3339, text)
 		if err != nil || operator == scimfilter.CO || operator == scimfilter.SW || operator == scimfilter.EW {
