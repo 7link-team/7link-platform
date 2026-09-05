@@ -1,13 +1,15 @@
 const port = Number(process.argv[2] ?? 9333)
-const baseURL = process.argv[3] ?? "http://127.0.0.1:8091"
+const baseURL = process.argv[3] ?? "http://localhost:8091"
 const password = process.env.IAM_BROWSER_PASSWORD
 const adminLogin = process.env.IAM_BROWSER_LOGIN ?? "admin@example.test"
+const tenantID = process.env.IAM_BROWSER_TENANT
 const screenshotRoot = new URL(
   "../../../../../.local/screenshots/",
   import.meta.url
 )
 
 if (!password) throw new Error("IAM_BROWSER_PASSWORD is required")
+if (!tenantID) throw new Error("IAM_BROWSER_TENANT is required")
 
 const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then(
   (response) => response.json()
@@ -146,7 +148,7 @@ async function submit(selector) {
 
 async function api(path, method = "GET", body, authorization = "") {
   const result = await evaluate(`
-    const headers = { "Content-Type": "application/json", "X-Tenant-Id": "platform" };
+    const headers = { "Content-Type": "application/json", "X-Tenant-Id": ${JSON.stringify(tenantID)} };
     if (${JSON.stringify(authorization)}) headers.Authorization = ${JSON.stringify(authorization)};
     const response = await fetch(${JSON.stringify(`/api${path}`)}, {
       method: ${JSON.stringify(method)},
@@ -209,7 +211,9 @@ await navigate("/iam/service-accounts")
 await waitFor(
   `location.pathname === "/login" && document.querySelector("#login-name")`
 )
-await evaluate(`localStorage.setItem("iam.tenant", "platform")`)
+await evaluate(
+  `localStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)})`
+)
 await setInput("#login-name", adminLogin)
 await setInput("#password", password)
 await submit("form")
@@ -238,7 +242,7 @@ const role = await api("/iam/roles", "POST", {
   name: `Service Account Audit ${suffix}`,
   description: "Browser acceptance role",
 })
-if (role.status !== 200)
+if (role.status !== 201)
   throw new Error(`role create failed: ${JSON.stringify(role)}`)
 const roleID = role.body.data.id
 for (const path of [
@@ -262,7 +266,8 @@ const secret = await evaluate(`
   const inputs = [...document.querySelectorAll('[role="dialog"] input')];
   return { clientID: inputs[0].value, clientSecret: inputs[1].value };
 `)
-if (!secret.clientID.startsWith("sac_") || !secret.clientSecret)
+// Client IDs are snowflake IDs, not a prefixed opaque string.
+if (!/^[1-9][0-9]*$/.test(secret.clientID) || !secret.clientSecret)
   throw new Error("one-time client credential was not rendered")
 
 const token = await evaluate(`
@@ -350,7 +355,10 @@ const unexpectedResponses = responses.filter(
   (response) =>
     response.status >= 400 &&
     response !== expectedUnauthorized &&
-    !(response.status === 401 && response.url.endsWith("/api/authn/session"))
+    !(
+      response.status === 401 &&
+      response.url.endsWith("/api/authn/sessions/current")
+    )
 )
 const unexpectedFailures = failures.filter(
   (failure) => !failure.canceled && failure.error !== "net::ERR_ABORTED"

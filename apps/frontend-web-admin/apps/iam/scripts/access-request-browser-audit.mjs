@@ -1,13 +1,15 @@
 const port = Number(process.argv[2] ?? 9333)
-const baseURL = process.argv[3] ?? "http://127.0.0.1:8091"
+const baseURL = process.argv[3] ?? "http://localhost:8091"
 const password = process.env.IAM_BROWSER_PASSWORD
 const adminLogin = process.env.IAM_BROWSER_LOGIN ?? "admin@example.test"
+const tenantID = process.env.IAM_BROWSER_TENANT
 const screenshotRoot = new URL(
   "../../../../../.local/screenshots/",
   import.meta.url
 )
 
 if (!password) throw new Error("IAM_BROWSER_PASSWORD is required")
+if (!tenantID) throw new Error("IAM_BROWSER_TENANT is required")
 
 const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then(
   (response) => response.json()
@@ -150,7 +152,7 @@ async function api(path, options = {}) {
   const result = await evaluate(`
     const response = await fetch(${JSON.stringify(`/api${path}`)}, {
       credentials: "include",
-      headers: { "Content-Type": "application/json", "X-Tenant-Id": "platform" },
+      headers: { "Content-Type": "application/json", "X-Tenant-Id": ${JSON.stringify(tenantID)} },
       ...${JSON.stringify(options)},
     });
     const payload = await response.json();
@@ -168,7 +170,9 @@ async function login(loginName, loginPassword) {
   await waitFor(
     `location.pathname === "/login" && document.querySelector("#login-name")`
   )
-  await evaluate(`localStorage.setItem("iam.tenant", "platform")`)
+  await evaluate(
+    `localStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)})`
+  )
   await setControl("#login-name", loginName)
   await setControl("#password", loginPassword)
   await submit("form")
@@ -177,7 +181,7 @@ async function login(loginName, loginPassword) {
 
 async function logout() {
   const status = await evaluate(`
-	  const response = await fetch("/api/authn/logout", { method: "POST", credentials: "include" });
+	  const response = await fetch("/api/authn/sessions/current", { method: "DELETE", credentials: "include" });
 	  return response.status;
 	`)
   if (status < 200 || status >= 300) throw new Error(`logout failed: ${status}`)
@@ -357,7 +361,10 @@ for (const expected of ["GET", "POST"])
 const unexpectedResponses = responses.filter(
   (response) =>
     response.status >= 400 &&
-    !(response.status === 401 && response.url.endsWith("/api/authn/session")) &&
+    !(
+      response.status === 401 &&
+      response.url.endsWith("/api/authn/sessions/current")
+    ) &&
     !(
       response.status === 403 &&
       response.url.includes("/api/iam/tenants?include_deleted=false")

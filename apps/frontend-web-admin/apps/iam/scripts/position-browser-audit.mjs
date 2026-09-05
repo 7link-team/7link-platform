@@ -2,6 +2,7 @@ const port = Number(process.argv[2] ?? 9333)
 const baseURL = process.argv[3] ?? "http://localhost:8091"
 const password = process.env.IAM_BROWSER_PASSWORD
 const adminLogin = process.env.IAM_BROWSER_LOGIN ?? "admin@example.test"
+const tenantID = process.env.IAM_BROWSER_TENANT
 const directoryKind = process.env.IAM_DIRECTORY_KIND ?? "position"
 const directory = {
   position: {
@@ -27,6 +28,7 @@ const screenshotRoot = new URL(
 )
 
 if (!password) throw new Error("IAM_BROWSER_PASSWORD is required")
+if (!tenantID) throw new Error("IAM_BROWSER_TENANT is required")
 if (!directory) throw new Error(`unsupported directory kind: ${directoryKind}`)
 
 const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then(
@@ -220,7 +222,7 @@ async function api(path, options = {}) {
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
-        "X-Tenant-Id": localStorage.getItem("iam.tenant") || "platform",
+        "X-Tenant-Id": localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)},
       },
       ...${JSON.stringify(options)},
     });
@@ -658,7 +660,10 @@ if (expectedConflicts.length !== 2)
 const unexpectedStatuses = responses.filter(
   (response) =>
     response.status >= 400 &&
-    !(response.status === 401 && response.url.endsWith("/api/authn/session")) &&
+    !(
+      response.status === 401 &&
+      response.url.endsWith("/api/authn/sessions/current")
+    ) &&
     !expectedConflicts.includes(response)
 )
 const unexpectedFailures = failedRequests.filter(

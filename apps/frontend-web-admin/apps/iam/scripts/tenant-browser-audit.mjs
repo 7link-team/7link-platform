@@ -1,13 +1,15 @@
 const port = Number(process.argv[2] ?? 9333)
-const baseURL = process.argv[3] ?? "http://127.0.0.1:8091"
+const baseURL = process.argv[3] ?? "http://localhost:8091"
 const password = process.env.IAM_BROWSER_PASSWORD
 const adminLogin = process.env.IAM_BROWSER_LOGIN ?? "admin@example.test"
+const tenantID = process.env.IAM_BROWSER_TENANT
 const screenshotRoot = new URL(
   "../../../../../.local/screenshots/",
   import.meta.url
 )
 
 if (!password) throw new Error("IAM_BROWSER_PASSWORD is required")
+if (!tenantID) throw new Error("IAM_BROWSER_TENANT is required")
 
 const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then(
   (response) => response.json()
@@ -136,14 +138,40 @@ async function clickText(text, root = "document") {
 
 async function selectOption(selector, label) {
   await click(selector)
-  await waitFor(`document.querySelector('[role="option"]')`)
+  // Waiting for any option is not enough: the list can render in passes and the
+  // one we want may not be in the first of them.
+  await waitFor(
+    `[...document.querySelectorAll('[role="option"]')].some((item) => item.textContent.includes(${JSON.stringify(label)}))`
+  )
+  // The popover is positioned asynchronously, so sample until the option stops
+  // moving and actually hit-tests at the point we are about to click. The budget
+  // is wall clock rather than a frame count, because animation frames stop
+  // arriving on a window the compositor considers hidden and a frame budget
+  // silently becomes a much shorter one.
   const point = await evaluate(`
-    const option = [...document.querySelectorAll('[role="option"]')].find(
-      (item) => item.textContent.includes(${JSON.stringify(label)})
-    );
-    if (!(option instanceof HTMLElement)) throw new Error("option not found");
-    const rect = option.getBoundingClientRect();
-    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    let previous = null;
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const option = [...document.querySelectorAll('[role="option"]')].find(
+        (item) => item.textContent.includes(${JSON.stringify(label)})
+      );
+      if (option instanceof HTMLElement) {
+        // The list scrolls, and every run adds another owner to it, so the one
+        // we want is eventually outside the visible box. Its rect still reads
+        // fine there, but nothing hit-tests at those coordinates.
+        option.scrollIntoView({ block: "nearest" });
+        const rect = option.getBoundingClientRect();
+        const point = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+        const hit = rect.width > 0 && rect.height > 0
+          ? document.elementFromPoint(point.x, point.y)
+          : null;
+        if (previous && previous.x === point.x && previous.y === point.y && hit && option.contains(hit))
+          return point;
+        previous = point;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 32));
+    }
+    throw new Error("option not found or never settled: " + ${JSON.stringify(label)});
   `)
   for (const type of ["mousePressed", "mouseReleased"])
     await command("Input.dispatchMouseEvent", {
@@ -173,7 +201,7 @@ async function login(loginName, loginPassword) {
   await waitFor(`location.pathname === "/iam/tenants"`, 20000)
 }
 
-async function api(path, init = {}, tenant = "platform") {
+async function api(path, init = {}, tenant = tenantID) {
   return evaluate(`
     const headers = { "Content-Type": "application/json" };
     if (${JSON.stringify(tenant)} !== "") headers["X-Tenant-Id"] = ${JSON.stringify(tenant)};
@@ -245,7 +273,7 @@ await waitFor(
 )
 
 const administrator = (await api("/iam/roles")).find(
-  (role) => role.name === "System Administrator"
+  (role) => role.name === "Administrator"
 )
 if (!administrator) throw new Error("built-in administrator role was not found")
 const previousOperators = await api(
@@ -261,8 +289,8 @@ for (const principal of previousOperators.items) {
     method: "PATCH",
     body: JSON.stringify({ status: "disabled" }),
   })
-  await api(`/iam/principals/${encodeURIComponent(principal.id)}/disable`, {
-    method: "POST",
+  await api(`/iam/principals/${encodeURIComponent(principal.id)}/suspension`, {
+    method: "PUT",
   })
 }
 
@@ -292,7 +320,19 @@ await api(
   }
 )
 
-await api("/authn/logout", { method: "POST" }, "")
+// Tenant creation requires an owner principal picked in the dialog, so seed one
+// before the tenants page loads its principal list.
+const ownerLogin = `acceptance-tenant-owner-${suffix}`
+await api("/iam/principals", {
+  method: "POST",
+  body: JSON.stringify({
+    login_name: ownerLogin,
+    password: operatorPassword,
+    display_name: `Tenant Owner ${suffix}`,
+  }),
+})
+
+await api("/authn/sessions/current", { method: "DELETE" }, "")
 await command("Network.clearBrowserCookies")
 await navigate("/iam/tenants")
 await login(operatorLogin, operatorPassword)
@@ -304,7 +344,7 @@ if (
 )
   throw new Error("tenant administrator can see platform navigation")
 
-await api("/authn/logout", { method: "POST" }, "")
+await api("/authn/sessions/current", { method: "DELETE" }, "")
 await command("Network.clearBrowserCookies")
 await navigate("/iam/tenants")
 await login(adminLogin, password)
@@ -319,6 +359,7 @@ await clickText("创建租户")
 await waitFor(`document.querySelector("#tenant-form")`)
 await setInput("#tenant-name", name)
 await setInput("#tenant-slug", slug)
+await selectOption("#tenant-owner", ownerLogin)
 await submit("tenant-form")
 await waitFor(`!document.querySelector("#tenant-form")`)
 await waitFor(rowExpression(name))
@@ -359,7 +400,7 @@ await waitFor(
   `location.pathname === "/" && localStorage.getItem("iam.tenant") === ${JSON.stringify(tenant.id)}`
 )
 await evaluate(`
-  localStorage.setItem("iam.tenant", "platform");
+  localStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)});
   window.dispatchEvent(new Event("tenant-change"));
 `)
 await navigate("/iam/tenants")
@@ -385,8 +426,8 @@ await api(`/iam/members/${encodeURIComponent(operator.id)}`, {
   method: "PATCH",
   body: JSON.stringify({ status: "disabled" }),
 })
-await api(`/iam/principals/${encodeURIComponent(operator.id)}/disable`, {
-  method: "POST",
+await api(`/iam/principals/${encodeURIComponent(operator.id)}/suspension`, {
+  method: "PUT",
 })
 
 const tenantRequests = requests.filter((request) =>

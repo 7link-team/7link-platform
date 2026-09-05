@@ -1,13 +1,15 @@
 const port = Number(process.argv[2] ?? 9333)
-const baseURL = process.argv[3] ?? "http://127.0.0.1:8091"
+const baseURL = process.argv[3] ?? "http://localhost:8091"
 const password = process.env.IAM_BROWSER_PASSWORD
 const adminLogin = process.env.IAM_BROWSER_LOGIN ?? "admin@example.test"
+const tenantID = process.env.IAM_BROWSER_TENANT
 const screenshotRoot = new URL(
   "../../../../../.local/screenshots/",
   import.meta.url
 )
 
 if (!password) throw new Error("IAM_BROWSER_PASSWORD is required")
+if (!tenantID) throw new Error("IAM_BROWSER_TENANT is required")
 
 const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then(
   (response) => response.json()
@@ -191,7 +193,7 @@ async function entities() {
   return evaluate(`
     const response = await fetch("/api/iam/entities", {
       credentials: "include",
-      headers: { "X-Tenant-Id": localStorage.getItem("iam.tenant") || "platform" },
+      headers: { "X-Tenant-Id": localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)} },
     });
     if (!response.ok) throw new Error("entity list failed: " + response.status);
     return (await response.json()).data;
@@ -200,23 +202,27 @@ async function entities() {
 
 async function cleanupArtifacts() {
   await evaluate(`
-    const tenant = localStorage.getItem("iam.tenant") || "platform";
+    const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
     const headers = { "X-Tenant-Id": tenant };
     const list = await fetch("/api/iam/entities", { credentials: "include", headers });
     if (!list.ok) throw new Error("artifact list failed: " + list.status);
     const all = (await list.json()).data;
     const artifacts = all.filter((item) => /^Acceptance-(Company|Store)-[a-z0-9]+/.test(item.name));
     const artifactIDs = new Set(artifacts.map((item) => item.id));
-    const relationshipList = await fetch("/api/iam/relationships", { credentials: "include", headers });
-    if (relationshipList.ok) {
-      for (const relationship of (await relationshipList.json()).data) {
-        if (!artifactIDs.has(relationship.entity_id) && !artifactIDs.has(relationship.resource_id) && !(relationship.subject_type === "entity" && artifactIDs.has(relationship.subject_id))) continue;
-        const query = new URLSearchParams();
-        for (const key of ["entity_id", "subject_type", "subject_id", "subject_relation", "relation", "resource_type", "resource_id"])
-          if (relationship[key]) query.set(key, relationship[key]);
-        const removed = await fetch("/api/iam/relationships?" + query, { method: "DELETE", credentials: "include", headers });
-        if (!removed.ok) throw new Error("relationship cleanup failed: " + removed.status);
-      }
+    // Relationships scoped to an entity live in a separate table and are only
+    // returned when the entity is named in the filter, so ask for each one.
+    const relationships = [];
+    for (const query of ["", ...artifacts.map((item) => "?entity_id=" + encodeURIComponent(item.id))]) {
+      const listed = await fetch("/api/iam/relationships" + query, { credentials: "include", headers });
+      if (listed.ok) relationships.push(...(await listed.json()).data);
+    }
+    for (const relationship of relationships) {
+      if (!artifactIDs.has(relationship.entity_id) && !artifactIDs.has(relationship.resource_id) && !(relationship.subject_type === "entity" && artifactIDs.has(relationship.subject_id))) continue;
+      const query = new URLSearchParams();
+      for (const key of ["entity_id", "subject_type", "subject_id", "subject_relation", "relation", "resource_type", "resource_id"])
+        if (relationship[key]) query.set(key, relationship[key]);
+      const removed = await fetch("/api/iam/relationships?" + query, { method: "DELETE", credentials: "include", headers });
+      if (!removed.ok && removed.status !== 404) throw new Error("relationship cleanup failed: " + removed.status);
     }
     const byID = new Map(all.map((item) => [item.id, item]));
     const depth = (item) => {
@@ -238,6 +244,14 @@ async function cleanupArtifacts() {
       const removed = await fetch("/api/iam/entities/" + encodeURIComponent(item.id), { method: "DELETE", credentials: "include", headers });
       if (!removed.ok && removed.status !== 404)
         throw new Error("artifact cleanup failed: " + removed.status);
+    }
+    const roles = await fetch("/api/iam/roles", { credentials: "include", headers });
+    if (roles.ok) {
+      for (const role of (await roles.json()).data.filter((item) => item.name.startsWith("Acceptance Store Viewer "))) {
+        for (const code of ((await (await fetch("/api/iam/roles/" + encodeURIComponent(role.id) + "/permissions", { credentials: "include", headers })).json()).data ?? []))
+          await fetch("/api/iam/roles/" + encodeURIComponent(role.id) + "/permissions/" + encodeURIComponent(code), { method: "DELETE", credentials: "include", headers });
+        await fetch("/api/iam/roles/" + encodeURIComponent(role.id), { method: "DELETE", credentials: "include", headers });
+      }
     }
   `)
   await navigate(`/iam/entities?audit=${Date.now()}`)
@@ -292,9 +306,10 @@ const suffix = Date.now().toString(36)
 const rootName = `Acceptance-Company-${suffix}`
 const childName = `Acceptance-Store-${suffix}`
 const updatedName = `${childName}-Updated`
-const businessResourceID = `acceptance-store-resource-${suffix}`
+// Business resource IDs are snowflake-shaped: ^[1-9][0-9]*$, at most 19 digits.
+const businessResourceID = `${Date.now()}${Math.floor(Math.random() * 1000)}`
 
-await navigate("/iam/entities")
+await command("Page.navigate", { url: new URL("/iam/entities", baseURL).href })
 await waitFor(
   `location.pathname === "/login" && document.querySelector("#login-name")`
 )
@@ -396,6 +411,30 @@ await evaluate(`
 `)
 await waitFor(`!document.querySelector("#entity-relationship-form")`)
 
+// An explicit deny only surfaces in the explanation when the denied role
+// carries the permission being inspected, so seed one that grants store_view
+// before the binding dialog loads its role list.
+const denyRoleName = `Acceptance Store Viewer ${suffix}`
+await evaluate(`
+  const headers = {
+    "X-Tenant-Id": localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)},
+    "Content-Type": "application/json",
+  };
+  const created = await fetch("/api/iam/roles", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({ name: ${JSON.stringify(denyRoleName)}, description: "Acceptance deny fixture" }),
+  });
+  if (!created.ok) throw new Error("deny role create failed: " + created.status);
+  const role = (await created.json()).data;
+  const granted = await fetch("/api/iam/roles/" + encodeURIComponent(role.id) + "/permissions/store_view", {
+    method: "PUT",
+    credentials: "include",
+    headers,
+  });
+  if (!granted.ok) throw new Error("deny role grant failed: " + granted.status);
+`)
 await clickRowAction(updatedName, "角色绑定")
 await waitFor(`document.querySelector("#entity-binding-form")`)
 await selectOption("#relationship-subject-type", "实体")
@@ -411,7 +450,7 @@ await waitFor(
   `document.querySelector('[role="dialog"]')?.textContent.includes(${JSON.stringify(businessResourceID)})`
 )
 const businessResourceCheck = await evaluate(`
-  const headers = { "X-Tenant-Id": localStorage.getItem("iam.tenant") || "platform" };
+  const headers = { "X-Tenant-Id": localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)} };
   const members = await fetch("/api/iam/members", { credentials: "include", headers });
   if (!members.ok) throw new Error("member list failed: " + members.status);
   const principal = (await members.json()).data.find((item) => item.status === "active")?.subject;
@@ -437,7 +476,7 @@ if (
     `business resource check failed: ${JSON.stringify(businessResourceCheck)}`
   )
 const localizedWindowErrors = await evaluate(`
-  const baseHeaders = { "X-Tenant-Id": localStorage.getItem("iam.tenant") || "platform" };
+  const baseHeaders = { "X-Tenant-Id": localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)} };
   const members = await fetch("/api/iam/members", { credentials: "include", headers: baseHeaders });
   if (!members.ok) throw new Error("member list failed: " + members.status);
   const principal = (await members.json()).data.find((item) => item.status === "active")?.subject;
@@ -483,7 +522,7 @@ if (expectedWindowStatuses.length !== 3)
     `expected three localized window failures, got ${expectedWindowStatuses.length}`
   )
 const localizedConditionErrors = await evaluate(`
-  const baseHeaders = { "X-Tenant-Id": localStorage.getItem("iam.tenant") || "platform" };
+  const baseHeaders = { "X-Tenant-Id": localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)} };
   const members = await fetch("/api/iam/members", { credentials: "include", headers: baseHeaders });
   if (!members.ok) throw new Error("member list failed: " + members.status);
   const principal = (await members.json()).data.find((item) => item.status === "active")?.subject;
@@ -533,6 +572,7 @@ if (expectedConditionStatuses.length !== 3)
   throw new Error(
     `expected three localized condition failures, got ${expectedConditionStatuses.length}`
   )
+await selectOption("#entity-binding-role", denyRoleName)
 await selectOption("#entity-binding-effect", "拒绝")
 await setInput(
   "#entity-binding-expiry",
@@ -723,7 +763,7 @@ if (state.some((item) => item.id === root.id || item.id === child.id))
 const auditEvents = await evaluate(`
   const response = await fetch("/api/iam/audit-events?target_id=${encodeURIComponent(child.id)}&limit=100", {
     credentials: "include",
-    headers: { "X-Tenant-Id": localStorage.getItem("iam.tenant") || "platform" },
+    headers: { "X-Tenant-Id": localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)} },
   });
   if (!response.ok) throw new Error("audit list failed: " + response.status);
   return (await response.json()).data.map((event) => event.event_type);
@@ -753,7 +793,10 @@ if (expectedConflicts.length !== 2)
 const unexpectedStatuses = responses.filter(
   (response) =>
     response.status >= 400 &&
-    !(response.status === 401 && response.url.endsWith("/api/authn/session")) &&
+    !(
+      response.status === 401 &&
+      response.url.endsWith("/api/authn/sessions/current")
+    ) &&
     !expectedWindowStatuses.includes(response) &&
     !expectedConditionStatuses.includes(response) &&
     !expectedConflicts.includes(response)

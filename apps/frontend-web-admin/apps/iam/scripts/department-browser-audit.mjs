@@ -2,12 +2,14 @@ const port = Number(process.argv[2] ?? 9333)
 const baseURL = process.argv[3] ?? "http://localhost:8091"
 const password = process.env.IAM_BROWSER_PASSWORD
 const adminLogin = process.env.IAM_BROWSER_LOGIN ?? "admin@example.test"
+const tenantID = process.env.IAM_BROWSER_TENANT
 const screenshotRoot = new URL(
   "../../../../../.local/screenshots/",
   import.meta.url
 )
 
 if (!password) throw new Error("IAM_BROWSER_PASSWORD is required")
+if (!tenantID) throw new Error("IAM_BROWSER_TENANT is required")
 
 const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then(
   (response) => response.json()
@@ -230,7 +232,7 @@ async function departments() {
   return evaluate(`
     const response = await fetch("/api/iam/departments", {
       credentials: "include",
-      headers: { "X-Tenant-Id": localStorage.getItem("iam.tenant") || "platform" },
+      headers: { "X-Tenant-Id": localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)} },
     });
     if (!response.ok) throw new Error("department list failed: " + response.status);
     return (await response.json()).data;
@@ -239,7 +241,7 @@ async function departments() {
 
 async function cleanupArtifacts() {
   await evaluate(`
-    const tenant = localStorage.getItem("iam.tenant") || "platform";
+    const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
     const headers = { "X-Tenant-Id": tenant };
     const response = await fetch("/api/iam/departments", { credentials: "include", headers });
     if (!response.ok) throw new Error("artifact list failed: " + response.status);
@@ -403,7 +405,7 @@ const audit = await evaluate(`
   const query = new URLSearchParams({ target_id: ${JSON.stringify(childRecord.id)}, limit: "100" });
   const response = await fetch("/api/iam/audit-events?" + query, {
     credentials: "include",
-    headers: { "X-Tenant-Id": localStorage.getItem("iam.tenant") || "platform" },
+    headers: { "X-Tenant-Id": localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)} },
   });
   if (!response.ok) throw new Error("audit list failed: " + response.status);
   return (await response.json()).data;
@@ -429,7 +431,10 @@ if (expectedConflicts.length !== 1)
 const unexpectedStatuses = responses.filter(
   (response) =>
     response.status >= 400 &&
-    !(response.status === 401 && response.url.endsWith("/api/authn/session")) &&
+    !(
+      response.status === 401 &&
+      response.url.endsWith("/api/authn/sessions/current")
+    ) &&
     !expectedConflicts.includes(response)
 )
 const unexpectedFailures = failedRequests.filter(

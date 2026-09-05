@@ -147,6 +147,8 @@ await Promise.all([
   command("WebAuthn.enable"),
 ])
 await command("Network.clearBrowserCookies")
+// WebAuthn refuses to run on a page that does not have focus.
+await command("Page.bringToFront")
 const authenticator = await command("WebAuthn.addVirtualAuthenticator", {
   options: {
     protocol: "ctap2",
@@ -183,9 +185,18 @@ await submit("#passkey-register-form")
 await waitFor(`document.body.textContent.includes("通行密钥已添加")`, 20000)
 await waitFor(`document.body.textContent.includes("Chrome platform key")`)
 
-await evaluate(
-  `document.querySelector('button[aria-label^="重命名通行密钥"]')?.click()`
-)
+// A modal marks the rest of the page inert, so clicking the rename button while
+// the register dialog is still on its way out does nothing at all and the wait
+// below ends up blaming the rename dialog for never opening.
+await waitFor(`!document.querySelector('#passkey-register-form')`, 20000)
+// The list also re-renders after the key is added, so the button can still be
+// missing here. Optional chaining would swallow that just as quietly.
+await waitFor(`document.querySelector('button[aria-label^="重命名通行密钥"]')`)
+await evaluate(`
+  const rename = document.querySelector('button[aria-label^="重命名通行密钥"]');
+  if (!(rename instanceof HTMLElement)) throw new Error("rename button not found");
+  rename.click();
+`)
 await waitFor(`document.querySelector("#passkey-rename-form-name")`)
 await setInput("#passkey-rename-form-name", "Primary passkey")
 await submit("#passkey-rename-form")
@@ -202,7 +213,7 @@ await command("Emulation.setDeviceMetricsOverride", {
 })
 
 await evaluate(`
-  await fetch("/api/authn/logout", { method: "POST", credentials: "include" });
+  await fetch("/api/authn/sessions/current", { method: "DELETE", credentials: "include" });
   location.assign("/login");
 `)
 await waitFor(
@@ -211,7 +222,7 @@ await waitFor(
 await clickText("使用通行密钥")
 await waitFor(`location.pathname === "/"`, 20000)
 const authenticated = await evaluate(`
-  const response = await fetch("/api/authn/session", { credentials: "include" });
+  const response = await fetch("/api/authn/sessions/current", { credentials: "include" });
   return response.ok;
 `)
 if (!authenticated)
@@ -229,7 +240,7 @@ await waitFor(`document.body.textContent.includes("通行密钥已删除")`)
 await waitFor(`!document.body.textContent.includes("Primary passkey")`)
 
 await evaluate(`
-  await fetch("/api/authn/logout", { method: "POST", credentials: "include" });
+  await fetch("/api/authn/sessions/current", { method: "DELETE", credentials: "include" });
   location.assign("/login");
 `)
 await waitFor(

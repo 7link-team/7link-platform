@@ -2,14 +2,16 @@ import { Database } from "bun:sqlite"
 import { fileURLToPath } from "node:url"
 
 const port = Number(process.argv[2] ?? 9333)
-const baseURL = process.argv[3] ?? "http://127.0.0.1:8091"
+const baseURL = process.argv[3] ?? "http://localhost:8091"
 const notificationFile = new URL(
   "../../../../../.local/notification-last.json",
   import.meta.url
 )
-const databaseFile = fileURLToPath(
-  new URL("../../../../../.local/iam-smoke.db", import.meta.url)
-)
+// The identity service keeps its database wherever it was started from, which
+// is not something this repository can know, so let the caller name it.
+const databaseFile =
+  process.env.IAM_DATABASE_FILE ??
+  fileURLToPath(new URL("../../../../../.local/iam-smoke.db", import.meta.url))
 const screenshotRoot = new URL(
   "../../../../../.local/screenshots/",
   import.meta.url
@@ -197,6 +199,35 @@ await setInput("#registration-email", email)
 await setInput("#registration-name", `Registration ${suffix}`)
 await setInput("#registration-password", password)
 await setInput("#registration-confirm", password)
+
+// The character challenge is unreadable to a script, so this run expects the
+// deployment to be configured with a universal captcha answer and to be given
+// the same string here. A deployment that leaves it unset has no universal
+// answer at all, which is what makes this safe to keep in the repository.
+const captchaAnswer =
+  process.env.IAM_CAPTCHA_TEST_ANSWER ?? "acceptance-captcha-answer"
+await waitFor(`document.querySelector("#registration-captcha")`, 20000)
+await waitFor(
+  `document.querySelector("#registration-captcha ~ button img")`,
+  20000
+)
+
+// A wrong answer must say so; it used to be reported as an invalid email or
+// password, which sends the user off fixing fields that were already correct.
+await setInput("#registration-captcha", `${captchaAnswer}-wrong`)
+await submit()
+await waitFor(`document.body.innerText.includes("验证码不正确")`, 20000)
+if (await evaluate(`return document.body.innerText.includes("至少 12 个字符")`))
+  throw new Error(
+    "A rejected captcha was reported as an invalid email or password"
+  )
+
+// Every challenge is single use, so the retry has to wait for a fresh image.
+await waitFor(
+  `document.querySelector("#registration-captcha ~ button img")`,
+  20000
+)
+await setInput("#registration-captcha", captchaAnswer)
 await submit()
 await waitFor(`document.body.innerText.includes("请检查邮箱")`, 20000)
 
@@ -226,7 +257,7 @@ const principal = database
   .query(
     `SELECT p.email_verified, p.activation_required, COUNT(tm.tenant_id) AS memberships
      FROM iam_principals p
-     LEFT JOIN iam_tenant_members tm ON tm.user_subject = p.id
+     LEFT JOIN iam_tenant_members tm ON tm.principal_id = p.id
      WHERE p.email = ?
      GROUP BY p.id, p.email_verified, p.activation_required`
   )
@@ -250,16 +281,34 @@ await waitFor(
   `document.querySelector("h1")?.textContent.includes("身份控制面")`
 )
 
-const unexpectedResponses = responses.filter(
-  (response) =>
-    response.status >= 400 &&
-    !(response.status === 401 && response.url.endsWith("/api/authn/session")) &&
-    !(
-      response.status === 403 &&
-      (response.url.includes("/api/iam/me/menus") ||
-        response.url.includes("/api/iam/tenants"))
-    )
-)
+// The run deliberately submits one wrong captcha, so exactly one rejected
+// registration belongs here; a second one would be a real regression.
+let allowedRejectedRegistrations = 1
+const unexpectedResponses = responses.filter((response) => {
+  if (response.status < 400) return false
+  if (
+    response.status === 401 &&
+    response.url.endsWith("/api/authn/sessions/current")
+  )
+    return false
+  if (
+    response.status === 403 &&
+    (response.url.includes("/api/iam/me/menus") ||
+      response.url.includes("/api/iam/tenants"))
+  )
+    return false
+  if (
+    response.status === 422 &&
+    response.url.endsWith("/api/authn/registrations") &&
+    allowedRejectedRegistrations > 0
+  ) {
+    allowedRejectedRegistrations -= 1
+    return false
+  }
+  return true
+})
+if (allowedRejectedRegistrations !== 0)
+  throw new Error("The wrong captcha was accepted instead of being rejected")
 const unexpectedFailures = failures.filter(
   (failure) => !failure.canceled && failure.error !== "net::ERR_ABORTED"
 )
