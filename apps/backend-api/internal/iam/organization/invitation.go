@@ -49,10 +49,13 @@ type Invitation struct {
 	RoleIDs      []guid.ID `json:"role_ids"`
 	ExpiresAt    time.Time `json:"expires_at"`
 	AcceptedBy   guid.ID   `json:"accepted_by,omitempty"`
-	AcceptedAt   time.Time `json:"accepted_at,omitempty"`
-	RevokedAt    time.Time `json:"revoked_at,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	// The two outcome timestamps are pointers because omitempty does not reach
+	// inside a time.Time: a pending invitation would otherwise report that it
+	// was accepted in year one, which a client formatting the field will show.
+	AcceptedAt *time.Time `json:"accepted_at,omitempty"`
+	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 type InvitationAcceptance struct {
 	InvitationID    guid.ID `json:"invitation_id"`
@@ -444,6 +447,25 @@ func listInvitations(ctx context.Context, repo *Repository, rows []model.Invitat
 	return items, nil
 }
 
+// copyRoleIDs detaches the roles from the slice the caller owns and keeps the
+// result non-nil. An invitation with no roles has to serialize as an empty
+// array: a client that reads the length of role_ids should not have to treat
+// null as a second spelling of empty.
+func copyRoleIDs(roleIDs []guid.ID) []guid.ID {
+	roles := make([]guid.ID, 0, len(roleIDs))
+	return append(roles, roleIDs...)
+}
+
+// invitationTime detaches a stored timestamp from the row so a later reuse of
+// that row cannot change an invitation already handed to a caller.
+func invitationTime(stored *time.Time) *time.Time {
+	if stored == nil {
+		return nil
+	}
+	moment := *stored
+	return &moment
+}
+
 func invitationFromRow(row *model.Invitation, roleIDs []guid.ID, now time.Time) Invitation {
 	status := row.Status
 	if status == InvitationPending && !row.ExpiresAt.After(now) {
@@ -451,14 +473,9 @@ func invitationFromRow(row *model.Invitation, roleIDs []guid.ID, now time.Time) 
 	}
 	item := Invitation{
 		ID: row.ID, TenantID: row.TenantID, Email: row.Email, Status: status,
-		DepartmentID: optionalID(row.DepartmentID), RoleIDs: append([]guid.ID(nil), roleIDs...),
+		DepartmentID: optionalID(row.DepartmentID), RoleIDs: copyRoleIDs(roleIDs),
 		ExpiresAt: row.ExpiresAt, AcceptedBy: optionalID(row.AcceptedBy), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
-	if row.AcceptedAt != nil {
-		item.AcceptedAt = *row.AcceptedAt
-	}
-	if row.RevokedAt != nil {
-		item.RevokedAt = *row.RevokedAt
-	}
+	item.AcceptedAt, item.RevokedAt = invitationTime(row.AcceptedAt), invitationTime(row.RevokedAt)
 	return item
 }

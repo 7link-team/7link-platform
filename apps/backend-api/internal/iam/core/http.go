@@ -277,7 +277,7 @@ type createTenantMemberInput struct {
 		Subject      string       `json:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 		DisplayName  string       `json:"display_name" minLength:"1" maxLength:"128"`
 		Email        string       `json:"email,omitempty" maxLength:"320"`
-		DepartmentID string       `json:"department_id,omitempty" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+		DepartmentID string       `json:"department_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19" doc:"positive department ID; omitted or empty leaves the member unassigned"`
 		Status       MemberStatus `json:"status,omitempty" enum:"active,disabled" default:"active"`
 	}
 }
@@ -288,7 +288,7 @@ type updateTenantMemberInput struct {
 	Body     struct {
 		DisplayName  *string       `json:"display_name,omitempty" minLength:"1" maxLength:"128"`
 		Email        *string       `json:"email,omitempty" maxLength:"320"`
-		DepartmentID *string       `json:"department_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19" doc:"positive department ID, or an empty string to clear the assignment"`
+		DepartmentID *string       `json:"department_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19" doc:"positive department ID, or an empty string to clear the assignment; omitted leaves it unchanged"`
 		Status       *MemberStatus `json:"status,omitempty" enum:"active,disabled"`
 	}
 }
@@ -301,7 +301,7 @@ type menuInput struct {
 type createMenuInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	Body     struct {
-		ParentID       string     `json:"parent_id,omitempty" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+		ParentID       string     `json:"parent_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19" doc:"positive parent menu ID; omitted or empty makes this a root menu"`
 		Label          string     `json:"label" minLength:"1" maxLength:"128"`
 		Route          string     `json:"route,omitempty" maxLength:"512"`
 		Icon           string     `json:"icon,omitempty" maxLength:"64"`
@@ -315,7 +315,7 @@ type updateMenuInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	MenuID   string `path:"menu_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
-		ParentID       *string     `json:"parent_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19" doc:"positive parent menu ID, or an empty string to make this a root menu"`
+		ParentID       *string     `json:"parent_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19" doc:"positive parent menu ID, or an empty string to move this menu to the root; omitted leaves it where it is"`
 		Label          *string     `json:"label,omitempty" minLength:"1" maxLength:"128"`
 		Route          *string     `json:"route,omitempty" maxLength:"512"`
 		Icon           *string     `json:"icon,omitempty" maxLength:"64"`
@@ -333,7 +333,7 @@ type entityInput struct {
 type createEntityInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	Body     struct {
-		ParentID string         `json:"parent_id,omitempty" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+		ParentID string         `json:"parent_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19" doc:"positive parent entity ID; omitted or empty makes this a root entity"`
 		Type     string         `json:"type" minLength:"1" maxLength:"64"`
 		Name     string         `json:"name" minLength:"1" maxLength:"200"`
 		Status   EntityStatus   `json:"status,omitempty" enum:"active,disabled" default:"active"`
@@ -345,7 +345,7 @@ type updateEntityInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	EntityID string `path:"entity_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
-		ParentID *string         `json:"parent_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19" doc:"positive parent entity ID, or an empty string to make this a root entity"`
+		ParentID *string         `json:"parent_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19" doc:"positive parent entity ID, or an empty string to move this entity to the root; omitted leaves it where it is"`
 		Type     *string         `json:"type,omitempty" minLength:"1" maxLength:"64"`
 		Name     *string         `json:"name,omitempty" minLength:"1" maxLength:"200"`
 		Status   *EntityStatus   `json:"status,omitempty" enum:"active,disabled"`

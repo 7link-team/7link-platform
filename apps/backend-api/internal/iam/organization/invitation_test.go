@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -146,6 +147,7 @@ func TestInvitationLifecycleTenantBindingsAndAcceptance(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, InvitationAccepted, items[0].Status)
+	require.NotNil(t, items[0].AcceptedAt)
 	assert.False(t, items[0].AcceptedAt.IsZero())
 
 	var departmentID guid.ID
@@ -156,6 +158,37 @@ func TestInvitationLifecycleTenantBindingsAndAcceptance(t *testing.T) {
 	assert.EqualValues(t, 1, roleCount)
 	_, err = service.Accept(t.Context(), AcceptInvitation{Token: token + "tampered", LoginName: "other", Password: "correct horse battery staple"})
 	assert.ErrorIs(t, err, ErrInvitationCredential)
+}
+
+// TestAPendingInvitationSerializesIntoWhatAClientCanRender pins the wire shape
+// rather than the Go values. A nil slice marshals to null and a zero time.Time
+// marshals to year one, so the plainest invitation there is -- no roles, not yet
+// accepted -- is the one a client is most likely to crash on or misrender.
+func TestAPendingInvitationSerializesIntoWhatAClientCanRender(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	h.seedTenant(t, 1, TenantActive)
+	var principalCalls atomic.Int64
+	service := newInvitationService(t, h, &invitationCredentialFixture{}, &principalCalls)
+
+	created, _, err := service.Create(t.Context(), 1, CreateInvitation{Email: "user@example.com"})
+	require.NoError(t, err)
+	listed, err := service.List(t.Context(), 1)
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+
+	for name, invitation := range map[string]Invitation{"the created invitation": created, "the listed invitation": listed[0]} {
+		t.Run(name, func(t *testing.T) {
+			assert.NotNil(t, invitation.RoleIDs)
+			assert.Empty(t, invitation.RoleIDs)
+			assert.Nil(t, invitation.AcceptedAt)
+			assert.Nil(t, invitation.RevokedAt)
+			encoded, err := json.Marshal(invitation)
+			require.NoError(t, err)
+			assert.Contains(t, string(encoded), `"role_ids":[]`)
+			assert.NotContains(t, string(encoded), "accepted_at")
+			assert.NotContains(t, string(encoded), "revoked_at")
+		})
+	}
 }
 
 func TestInvitationResendRevocationAndRollback(t *testing.T) {
@@ -236,6 +269,7 @@ func TestInvitationExpiryBindingAndStateFailures(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, InvitationRevoked, items[0].Status)
+	require.NotNil(t, items[0].RevokedAt)
 	assert.False(t, items[0].RevokedAt.IsZero())
 	_, _, err = service.Resend(t.Context(), 1, pending.ID, time.Hour)
 	assert.ErrorIs(t, err, ErrInvitationState)

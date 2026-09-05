@@ -423,6 +423,41 @@ func TestIAMManagementHTTPFlowAndTenantIsolation(t *testing.T) {
 	assert.Equal(t, http.StatusOK, harness.api.Delete("/iam/roles/"+role.ID, "Authorization: Bearer test", headerA).Code)
 }
 
+// TestCreatingARootAcceptsTheClearedFormFieldTheUpdateAccepts covers the shape a
+// client actually sends. A form offering "no parent" as a cleared select posts
+// an empty string, and the update already reads that as the root, so a create
+// that rejects it makes the first node of a tree the one node the console
+// cannot produce.
+func TestCreatingARootAcceptsTheClearedFormFieldTheUpdateAccepts(t *testing.T) {
+	harness := newHTTPIAMHarness(t, true)
+	header := tenantHeader(1)
+	seedHTTPPrincipal(t, harness.repositoryHarness, 13)
+
+	for name, test := range map[string]struct {
+		path string
+		body map[string]any
+	}{
+		"a root menu": {path: "/iam/menus", body: map[string]any{
+			"parent_id": "", "label": "Members", "route": "/members",
+		}},
+		"a root entity": {path: "/iam/entities", body: map[string]any{
+			"parent_id": "", "type": "company", "name": "Root company",
+		}},
+		"a member in no department": {path: "/iam/members", body: map[string]any{
+			"department_id": "", "subject": "13", "display_name": "Third member",
+		}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			response := harness.api.Post(test.path, "Authorization: Bearer test", header, test.body)
+			require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
+			// The cleared field means the same as an omitted one, so nothing in
+			// the response may claim a parent the caller did not name.
+			assert.NotContains(t, response.Body.String(), `"parent_id":"0"`)
+			assert.NotContains(t, response.Body.String(), `"department_id":"0"`)
+		})
+	}
+}
+
 func TestPlatformRoutesRejectPrincipalWithoutPlatformGrant(t *testing.T) {
 	harness := newHTTPIAMHarness(t, false)
 	for _, response := range []*httptest.ResponseRecorder{

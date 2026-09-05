@@ -163,26 +163,42 @@ func TestCoreOpenAPIRelationshipTupleAndPatchContracts(t *testing.T) {
 	assert.False(t, parameters["query\x00entity_id"].Required)
 	assert.False(t, parameters["query\x00subject_relation"].Required)
 
+	// A create and the update that follows it name the same optional reference,
+	// so they have to accept the same values for it. A form that offers "no
+	// parent" as a cleared select sends an empty string either way, and a create
+	// that rejects what the update accepts turns that into a 422 nobody reading
+	// the two schemas side by side would predict.
 	for _, test := range []struct {
-		path     string
-		property string
+		collection string
+		resource   string
+		property   string
 	}{
-		{path: "/iam/menus/{menu_id}", property: "parent_id"},
-		{path: "/iam/entities/{entity_id}", property: "parent_id"},
-		{path: "/iam/members/{subject}", property: "department_id"},
+		{collection: "/iam/menus", resource: "/iam/menus/{menu_id}", property: "parent_id"},
+		{collection: "/iam/entities", resource: "/iam/entities/{entity_id}", property: "parent_id"},
+		{collection: "/iam/members", resource: "/iam/members/{subject}", property: "department_id"},
 	} {
-		operation := spec.Paths[test.path].Patch
-		require.NotNil(t, operation, test.path)
-		schema := operation.RequestBody.Content["application/json"].Schema
-		if schema.Ref != "" {
-			schema = spec.Components.Schemas.SchemaFromRef(schema.Ref)
-		}
-		property := schema.Properties[test.property]
-		if assert.NotNil(t, property, test.path+" "+test.property) {
-			assert.Equal(t, `^([1-9][0-9]*)?$`, property.Pattern)
-			assert.Contains(t, property.Description, "empty string")
-		}
+		create := requestProperty(t, spec, spec.Paths[test.collection].Post, test.property)
+		update := requestProperty(t, spec, spec.Paths[test.resource].Patch, test.property)
+		assert.Equal(t, `^([1-9][0-9]*)?$`, create.Pattern, test.collection+" "+test.property)
+		assert.Equal(t, create.Pattern, update.Pattern, test.resource+" "+test.property)
+		assert.NotEmpty(t, create.Description, test.collection+" "+test.property,
+			"an optional reference has to say what omitting it means")
+		assert.Contains(t, update.Description, "empty string", test.resource+" "+test.property)
 	}
+}
+
+// requestProperty reads one property out of an operation JSON request body,
+// following the component reference huma emits for a named body schema.
+func requestProperty(t *testing.T, spec *huma.OpenAPI, operation *huma.Operation, name string) *huma.Schema {
+	t.Helper()
+	require.NotNil(t, operation)
+	schema := operation.RequestBody.Content["application/json"].Schema
+	if schema.Ref != "" {
+		schema = spec.Components.Schemas.SchemaFromRef(schema.Ref)
+	}
+	property := schema.Properties[name]
+	require.NotNil(t, property, name)
+	return property
 }
 
 func TestCoreOpenAPIUsesOneErrorEnvelopeAndDeclaresDomainStatuses(t *testing.T) {
