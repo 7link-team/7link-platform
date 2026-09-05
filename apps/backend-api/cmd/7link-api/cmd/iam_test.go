@@ -154,23 +154,26 @@ func TestBootstrapExitCodeNamesADistinctOperatorResponse(t *testing.T) {
 		err  error
 		want int
 	}{
-		"conflicting administrator": {app.ErrPlatformAdminConflict, exitConflict},
-		"schema not migrated":       {app.ErrPlatformAdminSchemaNotReady, exitSchemaNotReady},
-		"transient unavailability":  {app.ErrPlatformAdminUnavailable, exitTransient},
-		"anything else":             {errors.New("boom"), exitFailure},
+		"administrator not bootstrapped": {app.ErrPlatformAdminNotBootstrapped, exitNotBootstrapped},
+		"conflicting administrator":      {app.ErrPlatformAdminConflict, exitConflict},
+		"schema not migrated":            {app.ErrPlatformAdminSchemaNotReady, exitSchemaNotReady},
+		"transient unavailability":       {app.ErrPlatformAdminUnavailable, exitTransient},
+		"anything else":                  {errors.New("boom"), exitFailure},
 		"wrapped conflict": {
 			fmt.Errorf("bootstrap: %w", app.ErrPlatformAdminConflict), exitConflict,
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, testCase.want, bootstrapExitCode(testCase.err))
-			assert.Equal(t, testCase.want, exitCode(withExitCode(bootstrapExitCode(testCase.err), testCase.err)),
+			assert.Equal(t, testCase.want, platformAdminExitCode(testCase.err))
+			assert.Equal(t, testCase.want, exitCode(withExitCode(platformAdminExitCode(testCase.err), testCase.err)),
 				"the status must survive the trip out through RunE")
 		})
 	}
 
 	assert.NotEqual(t, exitAlreadyBootstrapped, exitConflict)
 	assert.NotEqual(t, exitSchemaNotReady, exitTransient)
+	assert.NotEqual(t, exitNotBootstrapped, exitConflict,
+		"bootstrap first and fix the state are different next steps")
 }
 
 // TestWriteBootstrapReportCarriesNoSecretMaterial guards the one place the
@@ -285,4 +288,5 @@ func TestIamCommandWithoutASubcommandShowsItsHelp(t *testing.T) {
 	output, err := executeCommand("iam")
 	require.NoError(t, err)
 	assert.Contains(t, output, "bootstrap-platform-admin")
+	assert.Contains(t, output, "reset-admin-password")
 }

@@ -95,6 +95,13 @@ func (m *Module) bootstrapCredentialStore() BootstrapCredentialStore {
 			}
 			return repo.CreateBootstrapCredentialOn(ctx, db, principalID, password, now)
 		},
+		Reset: func(ctx context.Context, db *gorm.DB, principalID guid.ID, password string, now time.Time) (bool, error) {
+			repo, err := repository()
+			if err != nil {
+				return false, err
+			}
+			return repo.ResetBootstrapCredentialOn(ctx, db, principalID, password, now)
+		},
 	}
 }
 

@@ -185,6 +185,8 @@ type stubBootstrapStores struct {
 	listErr        error
 	credential     bool
 	credentialErr  error
+	resetReplaced  bool
+	resetErr       error
 	createdID      guid.ID
 	createErr      error
 	credCreateErr  error
@@ -212,6 +214,9 @@ func (stub *stubBootstrapStores) stores(db *gorm.DB) platformAdminStores {
 			},
 			Create: func(context.Context, *gorm.DB, guid.ID, string, time.Time) error {
 				return stub.credCreateErr
+			},
+			Reset: func(context.Context, *gorm.DB, guid.ID, string, time.Time) (bool, error) {
+				return stub.resetReplaced, stub.resetErr
 			},
 		},
 		administs: core.PlatformAdministratorStore{

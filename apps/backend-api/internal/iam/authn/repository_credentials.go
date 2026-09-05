@@ -199,6 +199,38 @@ func (r *Repository) updatePassword(
 	return result.RowsAffected == 1, result.Error
 }
 
+// resetPassword replaces a credential without presenting the value it
+// replaces. The ordinary change flow guards on the old hash so two concurrent
+// changes cannot overwrite each other silently; an operator running a
+// break-glass reset has no old value to present, and the point of the reset is
+// that whatever is stored no longer counts.
+//
+// The version bump is what makes this a recovery rather than a convenience:
+// every session and refresh token issued against the old credential stops
+// verifying. Clearing the lockout is what makes the new password usable when a
+// locked account was the reason for the reset.
+func (r *Repository) resetPassword(
+	ctx context.Context,
+	principalID guid.ID,
+	newHash string,
+	now time.Time,
+) (bool, error) {
+	tables, db, err := r.tables()
+	if err != nil {
+		return false, err
+	}
+	result := db.WithContext(ctx).Table(tables.Credentials.TableName()).
+		Where("principal_id = ?", principalID).Updates(map[string]any{
+		"password_hash":       newHash,
+		"password_changed_at": now,
+		"updated_at":          now,
+		"failed_attempts":     0,
+		"locked_until":        nil,
+		"credential_version":  gorm.Expr("credential_version + 1"),
+	})
+	return result.RowsAffected == 1, result.Error
+}
+
 func (r *Repository) recoveryCooldown(ctx context.Context, principalID guid.ID) (*time.Time, error) {
 	credential, err := r.getCredential(ctx, principalID)
 	if err != nil {
@@ -239,6 +271,11 @@ func (r *Repository) appendPasswordHistory(
 		ID: id, PrincipalID: principalID, PasswordHash: passwordHash, CreatedAt: now,
 	})
 }
+
+// passwordHistoryDepth is how many superseded hashes a principal keeps. Every
+// flow that replaces a password trims to the same depth, so the reuse rule does
+// not depend on which flow the password was replaced through.
+const passwordHistoryDepth = 5
 
 func (r *Repository) trimPasswordHistory(ctx context.Context, principalID guid.ID, keep int) error {
 	tables, db, err := r.tables()

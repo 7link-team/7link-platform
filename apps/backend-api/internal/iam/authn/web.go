@@ -618,7 +618,7 @@ func (s *Service) ChangePassword(
 		if err := repository.appendPasswordHistory(ctx, claims.PrincipalID, credential.PasswordHash, now); err != nil {
 			return err
 		}
-		if err := repository.trimPasswordHistory(ctx, claims.PrincipalID, 5); err != nil {
+		if err := repository.trimPasswordHistory(ctx, claims.PrincipalID, passwordHistoryDepth); err != nil {
 			return err
 		}
 		changed, err := repository.updatePassword(

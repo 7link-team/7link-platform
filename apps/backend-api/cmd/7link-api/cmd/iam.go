@@ -21,6 +21,7 @@ const (
 	exitConflict            = 4
 	exitSchemaNotReady      = 5
 	exitTransient           = 6
+	exitNotBootstrapped     = 7
 )
 
 // maxPasswordFileSize bounds what the command will read as a password. A
@@ -58,11 +59,31 @@ var (
 		Args: cobra.NoArgs,
 		RunE: runBootstrapPlatformAdmin,
 	}
+
+	// resetAdminPasswordCmd replaces the platform administrator password from
+	// the server itself. It is the only recovery path for the one account no
+	// in-band flow can rescue, so it deliberately accepts a different kind of
+	// proof: not a password or a mailbox, but the ability to run a command
+	// where the service runs.
+	resetAdminPasswordCmd = &cobra.Command{
+		Use:   "reset-admin-password",
+		Short: "Replace the platform administrator password",
+		Long: "Replace the platform administrator password without the old one.\n\n" +
+			"The password is never accepted as a command-line argument. Supply it with\n" +
+			"--password-file, whose file must not be readable by group or other, or on\n" +
+			"standard input.\n\n" +
+			"The reset acts only on the login that holds full platform administration,\n" +
+			"and only while that principal is active. It clears any lockout, ends every\n" +
+			"session and recovery link the old password could still reach, and records\n" +
+			"an audit event. It does not change multi-factor enrolment.",
+		Args: cobra.NoArgs,
+		RunE: runResetAdminPassword,
+	}
 )
 
 func init() {
 	rootCmd.AddCommand(iamCmd)
-	iamCmd.AddCommand(bootstrapPlatformAdminCmd)
+	iamCmd.AddCommand(bootstrapPlatformAdminCmd, resetAdminPasswordCmd)
 	platformAdminConfigurator.UseFlags(iamCmd.PersistentFlags())
 	platformAdminConfigurator.UseConfigFileArgDefault()
 	platformAdminConfigErr = platformAdminConfigurator.Bind(&platformAdminConfig, os.Args[1:]...)
@@ -82,7 +103,7 @@ func runBootstrapPlatformAdmin(command *cobra.Command, _ []string) error {
 	}
 	report, err := (&app.App{}).RunPlatformAdminBootstrap(command.Context(), platformAdminConfig, password)
 	if err != nil {
-		return withExitCode(bootstrapExitCode(err), err)
+		return withExitCode(platformAdminExitCode(err), err)
 	}
 	writeBootstrapReport(command.OutOrStdout(), report)
 	if report.Outcome == app.PlatformAdminAlreadyBootstrapped {
@@ -94,14 +115,46 @@ func runBootstrapPlatformAdmin(command *cobra.Command, _ []string) error {
 	return nil
 }
 
+func runResetAdminPassword(command *cobra.Command, _ []string) error {
+	if platformAdminConfigErr != nil {
+		return platformAdminConfigErr
+	}
+	if err := platformAdminConfigurator.Load(&platformAdminConfig); err != nil {
+		return err
+	}
+	applyBuildVersion(&platformAdminConfig.AppConfig)
+	password, err := readBootstrapPassword(command, platformAdminConfig.PasswordFile)
+	if err != nil {
+		return err
+	}
+	// The IAM command group carries one flag set, the way the migrate group
+	// does. The reset takes only the two settings it acts on, so a display name
+	// or an email left over from a bootstrap run cannot be read as something
+	// this command would change.
+	report, err := (&app.App{}).RunPlatformAdminPasswordReset(command.Context(), app.PlatformAdminResetConfig{
+		AppConfig: platformAdminConfig.AppConfig,
+		PlatformAdminResetRequest: app.PlatformAdminResetRequest{
+			Login:        platformAdminConfig.Login,
+			PasswordFile: platformAdminConfig.PasswordFile,
+		},
+	}, password)
+	if err != nil {
+		return withExitCode(platformAdminExitCode(err), err)
+	}
+	writeBootstrapReport(command.OutOrStdout(), report)
+	return nil
+}
+
 // errAlreadyBootstrapped carries the already-bootstrapped status out of RunE.
 // It is not a failure; the report on standard output is the real answer.
 var errAlreadyBootstrapped = errors.New("platform administrator already bootstrapped")
 
-// bootstrapExitCode maps a bootstrap failure onto the status that tells an
-// operator what to do next: fix the state, run migrations, or retry.
-func bootstrapExitCode(err error) int {
+// platformAdminExitCode maps a failure onto the status that tells an operator
+// what to do next: bootstrap first, fix the state, run migrations, or retry.
+func platformAdminExitCode(err error) int {
 	switch {
+	case errors.Is(err, app.ErrPlatformAdminNotBootstrapped):
+		return exitNotBootstrapped
 	case errors.Is(err, app.ErrPlatformAdminConflict):
 		return exitConflict
 	case errors.Is(err, app.ErrPlatformAdminSchemaNotReady):

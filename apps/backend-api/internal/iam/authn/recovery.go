@@ -236,7 +236,7 @@ func (s *Service) CompletePasswordRecovery(ctx context.Context, token, newPasswo
 		if err := repository.appendPasswordHistory(ctx, recovery.PrincipalID, credential.PasswordHash, now); err != nil {
 			return err
 		}
-		if err := repository.trimPasswordHistory(ctx, recovery.PrincipalID, 5); err != nil {
+		if err := repository.trimPasswordHistory(ctx, recovery.PrincipalID, passwordHistoryDepth); err != nil {
 			return err
 		}
 		cooldownUntil := now.Add(s.cfg.Recovery.Cooldown)

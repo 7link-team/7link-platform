@@ -125,32 +125,40 @@ func (app *App) RunPlatformAdminBootstrap(
 	defer func() {
 		resultErr = errors.Join(resultErr, app.shutdown())
 	}()
-	if err := app.prepare(ctx); err != nil {
-		return PlatformAdminReport{}, fmt.Errorf("prepare bootstrap application: %w", err)
-	}
-	// A dirty or unmigrated schema would surface as an opaque "no such table";
-	// checking first turns it into its own outcome with its own exit status.
-	if _, err := app.migrateModules(ctx, MigrationRequest{Action: MigrationValidate}); err != nil {
-		return PlatformAdminReport{}, errors.Join(ErrPlatformAdminSchemaNotReady, err)
-	}
-	// The bootstrap writes through the same ID generator, password hashing, and
-	// audit chain the running service uses, and the ID generator only leases a
-	// worker after the module lifecycle starts. Driving the lifecycle is what
-	// makes "the same as production" true rather than approximately true. No
-	// listener opens: the HTTP and gRPC servers are started by Run, not here.
-	if err := app.modules.Initialize(ctx); err != nil {
-		return PlatformAdminReport{}, fmt.Errorf("initialize bootstrap modules: %w", err)
-	}
-	if err := app.modules.Start(ctx); err != nil {
-		return PlatformAdminReport{}, fmt.Errorf("start bootstrap modules: %w", err)
-	}
-	stores, err := app.platformAdminStores()
+	stores, err := app.startForPlatformAdministration(ctx)
 	if err != nil {
 		return PlatformAdminReport{}, err
 	}
 	return stores.bootstrap(ctx, identity.BootstrapPrincipalInput{
 		LoginName: login, DisplayName: config.DisplayName, Email: config.Email,
 	}, password)
+}
+
+// startForPlatformAdministration brings up exactly as much of the application
+// as an out-of-band administrative command needs, and no more. The caller has
+// already applied its configuration and armed its own shutdown, because a
+// failure here still has to release what prepare took.
+func (app *App) startForPlatformAdministration(ctx context.Context) (platformAdminStores, error) {
+	if err := app.prepare(ctx); err != nil {
+		return platformAdminStores{}, fmt.Errorf("prepare administrative application: %w", err)
+	}
+	// A dirty or unmigrated schema would surface as an opaque "no such table";
+	// checking first turns it into its own outcome with its own exit status.
+	if _, err := app.migrateModules(ctx, MigrationRequest{Action: MigrationValidate}); err != nil {
+		return platformAdminStores{}, errors.Join(ErrPlatformAdminSchemaNotReady, err)
+	}
+	// These commands write through the same ID generator, password hashing, and
+	// audit chain the running service uses, and the ID generator only leases a
+	// worker after the module lifecycle starts. Driving the lifecycle is what
+	// makes "the same as production" true rather than approximately true. No
+	// listener opens: the HTTP and gRPC servers are started by Run, not here.
+	if err := app.modules.Initialize(ctx); err != nil {
+		return platformAdminStores{}, fmt.Errorf("initialize administrative modules: %w", err)
+	}
+	if err := app.modules.Start(ctx); err != nil {
+		return platformAdminStores{}, fmt.Errorf("start administrative modules: %w", err)
+	}
+	return app.platformAdminStores()
 }
 
 // platformAdminStores resolves the published bootstrap capabilities. Resolving
