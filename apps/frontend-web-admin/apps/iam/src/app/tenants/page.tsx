@@ -28,6 +28,7 @@ import { PageHeader } from "../../components/page-header"
 import {
   iamApi,
   setTenant,
+  type Principal,
   type Tenant,
   type TenantUpdate,
 } from "../../lib/iam-api"
@@ -45,6 +46,8 @@ export default function TenantsPage() {
   const [editing, setEditing] = useState<Tenant | null>(null)
   const [deleting, setDeleting] = useState<Tenant | null>(null)
   const [status, setStatus] = useState<TenantUpdate["status"]>("active")
+  const [principals, setPrincipals] = useState<Principal[]>([])
+  const [ownerID, setOwnerID] = useState("")
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
@@ -66,7 +69,14 @@ export default function TenantsPage() {
   const openCreate = () => {
     setEditing(null)
     setStatus("active")
+    setOwnerID("")
     setOpen(true)
+    iamApi
+      .principals()
+      .then((list) =>
+        setPrincipals(list.items.filter((item) => item.status === "active"))
+      )
+      .catch((cause: Error) => setError(cause.message))
   }
 
   const openEdit = (tenant: Tenant) => {
@@ -91,6 +101,7 @@ export default function TenantsPage() {
         await iamApi.createTenant({
           slug: String(data.get("slug")),
           name: String(data.get("name")),
+          owner_principal_id: ownerID,
         })
       }
       setOpen(false)
@@ -305,6 +316,24 @@ export default function TenantsPage() {
                 required={!editing}
               />
             </div>
+            {!editing && (
+              <div className="grid gap-2">
+                <Label htmlFor="tenant-owner">管理员</Label>
+                <SimpleSelect
+                  id="tenant-owner"
+                  options={principals.map((principal) => ({
+                    value: principal.id,
+                    label: `${principal.display_name}（${principal.login_name}）`,
+                  }))}
+                  value={ownerID}
+                  onValueChange={setOwnerID}
+                  placeholder="选择租户管理员"
+                />
+                <p className="text-xs text-muted-foreground">
+                  租户与它的管理员一并创建：新租户落库时这名管理员已经可以管理它。
+                </p>
+              </div>
+            )}
             {editing && (
               <div className="grid gap-2">
                 <Label htmlFor="tenant-status">状态</Label>
@@ -323,7 +352,11 @@ export default function TenantsPage() {
             <Button variant="outline" onClick={() => setOpen(false)}>
               取消
             </Button>
-            <Button type="submit" form="tenant-form" disabled={busy}>
+            <Button
+              type="submit"
+              form="tenant-form"
+              disabled={busy || (!editing && !ownerID)}
+            >
               {busy ? "保存中" : editing ? "保存" : "创建"}
             </Button>
           </DialogFooter>

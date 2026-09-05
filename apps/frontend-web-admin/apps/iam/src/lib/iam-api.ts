@@ -178,6 +178,8 @@ export interface Tenant {
 export interface TenantInput {
   slug: string
   name: string
+  /** Required: a tenant is created together with the principal who will administer it. */
+  owner_principal_id: string
 }
 
 export interface TenantUpdate {

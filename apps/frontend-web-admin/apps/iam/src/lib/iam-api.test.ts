@@ -995,7 +995,11 @@ describe("Chaosplus IAM API client", () => {
     )
 
     await client.tenants(true)
-    await client.createTenant({ slug: "acme", name: "Acme" })
+    await client.createTenant({
+      slug: "acme",
+      name: "Acme",
+      owner_principal_id: "principal-1",
+    })
     await client.updateTenant("tenant/a", {
       name: "Acme Global",
       status: "suspended",
@@ -1015,6 +1019,7 @@ describe("Chaosplus IAM API client", () => {
     expect(JSON.parse(requests[1]?.body ?? "{}")).toEqual({
       slug: "acme",
       name: "Acme",
+      owner_principal_id: "principal-1",
     })
     expect(JSON.parse(requests[2]?.body ?? "{}")).toEqual({
       name: "Acme Global",
@@ -1742,4 +1747,4 @@ describe("Chaosplus IAM API client", () => {
     for (const request of requests)
       expect(request.headers.get("x-tenant-id")).toBe("tenant-audit")
   })
-})
+})
