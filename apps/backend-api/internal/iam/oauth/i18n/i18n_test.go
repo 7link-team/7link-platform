@@ -14,7 +14,7 @@ import (
 var declaredKeys = []string{
 	InvalidClientConfiguration, ClientNotFound, InvalidRequest, InvalidGrant,
 	InvalidClient, InvalidToken, InsufficientScope, UnsupportedTokenType, ServerError,
-	ConsentRequired, ConsentTitle, ConsentPrompt, ConsentAllow, ConsentDeny,
+	ConsentRequired, ConsentNotFound, ConsentTitle, ConsentPrompt, ConsentAllow, ConsentDeny,
 	ScopeKey("openid"), ScopeKey("profile"), ScopeKey("email"), ScopeKey("offline_access"),
 }
 

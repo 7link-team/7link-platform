@@ -265,6 +265,79 @@ func (r *Repository) upsertConsent(ctx context.Context, row *model.Consent) erro
 	return nil
 }
 
+// grantedConsent is one standing consent joined to the client it names. A list
+// somebody is meant to act on has to identify the application, and the client
+// row is the only place its name lives.
+type grantedConsent struct {
+	ClientID   guid.ID   `gorm:"column:client_id"`
+	TenantID   guid.ID   `gorm:"column:tenant_id"`
+	ClientName string    `gorm:"column:client_name"`
+	Scope      string    `gorm:"column:scope"`
+	CreatedAt  time.Time `gorm:"column:created_at"`
+	LastUsedAt time.Time `gorm:"column:last_used_at"`
+}
+
+func (r *Repository) consentsForPrincipal(ctx context.Context, principalID guid.ID) ([]grantedConsent, error) {
+	tables, db, err := r.tables()
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]grantedConsent, 0)
+	err = db.WithContext(ctx).Table(tables.Consents.TableName()+" AS consent").
+		Select("consent.client_id AS client_id, consent.tenant_id AS tenant_id, consent.scope AS scope, "+
+			"consent.created_at AS created_at, consent.last_used_at AS last_used_at, "+
+			"client.name AS client_name").
+		Joins("JOIN "+tables.Clients.TableName()+" AS client ON client.id = consent.client_id").
+		Where("consent.principal_id = ?", principalID).
+		Order("consent.last_used_at DESC, consent.client_id ASC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("list OAuth consents: %w", err)
+	}
+	return rows, nil
+}
+
+func (r *Repository) deleteConsent(ctx context.Context, principalID, clientID guid.ID) error {
+	tables, db, err := r.tables()
+	if err != nil {
+		return err
+	}
+	result := db.WithContext(ctx).Table(tables.Consents.TableName()).
+		Where("principal_id = ? AND client_id = ?", principalID, clientID).Delete(&model.Consent{})
+	if result.Error != nil {
+		return fmt.Errorf("delete OAuth consent: %w", result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return ErrInvalidRequest
+	}
+	return nil
+}
+
+// revokeGrantedTokens withdraws everything one consent has already handed out:
+// the refresh tokens issued under it, and the authorization codes still waiting
+// to be exchanged. A code issued seconds before the revocation becomes a live
+// refresh token the moment it is redeemed, so leaving those alone would let the
+// grant reappear on its own a minute after somebody took it back.
+func (r *Repository) revokeGrantedTokens(ctx context.Context, principalID, clientID guid.ID, now time.Time) error {
+	tables, db, err := r.tables()
+	if err != nil {
+		return err
+	}
+	result := db.WithContext(ctx).Table(tables.RefreshTokens.TableName()).
+		Where("principal_id = ? AND client_id = ? AND revoked_at IS NULL", principalID, clientID).
+		Update("revoked_at", now)
+	if result.Error != nil {
+		return fmt.Errorf("revoke OAuth consent refresh tokens: %w", result.Error)
+	}
+	result = db.WithContext(ctx).Table(tables.AuthorizationCodes.TableName()).
+		Where("principal_id = ? AND client_id = ? AND consumed_at IS NULL", principalID, clientID).
+		Update("consumed_at", now)
+	if result.Error != nil {
+		return fmt.Errorf("revoke OAuth consent authorization codes: %w", result.Error)
+	}
+	return nil
+}
+
 func (r *Repository) insertConsentRequest(ctx context.Context, row *model.ConsentRequest) error {
 	tables, db, err := r.tables()
 	if err != nil {

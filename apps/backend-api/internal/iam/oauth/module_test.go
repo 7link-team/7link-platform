@@ -100,7 +100,7 @@ func TestOAuthModuleResolvesDependenciesAndRegistersContract(t *testing.T) {
 	require.NoError(t, instance.CheckHealth(t.Context()))
 	_, api := humatest.New(t)
 	require.NoError(t, instance.RegisterHTTP(t.Context(), api))
-	assert.Len(t, oauthOperationManifest(api.OpenAPI()), 15)
+	assert.Len(t, oauthOperationManifest(api.OpenAPI()), 17)
 }
 
 func TestOAuthModuleReportsMissingWiring(t *testing.T) {

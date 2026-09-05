@@ -9,6 +9,7 @@
   "unsupported_token_type": "This endpoint revokes refresh tokens only. Use token_type_hint=refresh_token.",
   "server_error": "The authorization server could not complete the request. Retry later; contact an administrator if the problem continues.",
   "consent_required": "The user has not consented to the requested scopes and this request cannot prompt for consent. Start the flow again without prompt=none, or grant consent first.",
+  "consent_not_found": "You have not authorized this application, or the authorization has already been withdrawn. Reload the list of authorized applications to see the current state.",
   "consent_title": "Authorize %s",
   "consent_prompt": "This application is asking for access to your account. Review what it will be able to do before you decide.",
   "consent_allow": "Allow",

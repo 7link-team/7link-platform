@@ -792,7 +792,7 @@ CREATE TABLE {{.Prefix}}iam_roles (
     identity-create-service-account-credential => identity-create-service-account-credential|POST|/iam/service-accounts/{id}/credentials
     identity-revoke-service-account-credential => identity-delete-service-account-credential|DELETE|/iam/service-accounts/{id}/credentials/{credential_id}
 
-**oauth（12）**
+**oauth（14）**
 
     oauth-authorize|GET|/oauth/authorize
     oauth-create-client|POST|/iam/oauth-clients
@@ -801,7 +801,9 @@ CREATE TABLE {{.Prefix}}iam_roles (
     oauth-introspect|POST|/oauth/introspect
     oauth-jwks|GET|/.well-known/jwks.json
     oauth-list-clients|GET|/iam/oauth-clients
+    oauth-list-consents|GET|/iam/me/oauth-consents
     oauth-revoke|POST|/oauth/revoke
+    oauth-revoke-consent|DELETE|/iam/me/oauth-consents/{client_id}
     oauth-rotate-client-secret|POST|/iam/oauth-clients/{id}/rotate-secret
     oauth-token|POST|/oauth/token
     oauth-update-client|PUT|/iam/oauth-clients/{id}
@@ -950,15 +952,15 @@ CREATE TABLE {{.Prefix}}iam_roles (
 
 #### Critical / High
 
-- [ ] **10.1 平台管理员安全自举（Critical）：**实现 §2.5.1。当前生产 CLI 只有 `serve`/`migrate`；`EnsureBootstrapPrincipal` 无生产调用者且不写 `iam_platform_administrators`。平台管理员管理 API 自身受 `platform_administer` 保护，空库无法建立第一个管理员。
-- [ ] **10.2 新租户 owner 自举（Critical）：**实现 §2.5.2。当前 `TenantService.Create` 只写 tenant、policy revision、audit；所有 tenant route 先要求 active membership，故新租户无法经现有 HTTP 建立第一个成员/管理员。
+- [x] **10.1 平台管理员安全自举（Critical）：**实现 §2.5.1。当前生产 CLI 只有 `serve`/`migrate`；`EnsureBootstrapPrincipal` 无生产调用者且不写 `iam_platform_administrators`。平台管理员管理 API 自身受 `platform_administer` 保护，空库无法建立第一个管理员。
+- [x] **10.2 新租户 owner 自举（Critical）：**实现 §2.5.2。当前 `TenantService.Create` 只写 tenant、policy revision、audit；所有 tenant route 先要求 active membership，故新租户无法经现有 HTTP 建立第一个成员/管理员。
 - [ ] **10.3 修正 principal 管理权限语义（High，需产品确认）：**`identity-update-principal`、suspend、resume 当前使用 tenant 注册器 + `platform_administer`。tenant role 不能授予 platform permission；full platform admin 又会先被 tenant membership middleware 拒绝。确认 principal 的所有权后，选择真正 platform route、`user_update`，或新增专用 tenant permission；同时让 `authz.Register` 拒绝 platform-scope action，防止再次误注册。
 - [ ] **10.4 数据权限端到端执行（High）：**为真实业务资源 repository/list/get/update/delete 接入 `DataConstraint`，并对 entity-scoped route 使用 `RegisterEntity`；覆盖 tenant A/B、owner/department/ancestor/explicit deny、分页 count 与导出路径。只暴露 constraint/explain API 不算完成。
 - [ ] **10.5 字段权限设计与实现（High，新增产品能力）：**先确认主体/角色继承、read/write 分离、deny precedence、mask 规则、OpenAPI 表达和审计策略，再设计 schema/catalog/API/cache revision，并在读取 projection/序列化和写入 validation 两端强制执行。不得只做前端隐藏。
 
 #### Medium
 
-- [ ] **10.6 OAuth 交互式 consent：**当前 `prompt=consent` 产生 `ErrConsentRequired` 后映射为通用 `invalid_request`，且默认 prompt 会直接 upsert consent。补 consent challenge/approve/deny/revoke API 或页面、短期一次性状态、防 CSRF 与审计。
+- [x] **10.6 OAuth 交互式 consent：**当前 `prompt=consent` 产生 `ErrConsentRequired` 后映射为通用 `invalid_request`，且默认 prompt 会直接 upsert consent。补 consent challenge/approve/deny/revoke API 或页面、短期一次性状态、防 CSRF 与审计。
 - [ ] **10.7 Audit archive 生命周期：**当前 retention 只保存 policy 并统计 `archive_ready_events`；补实际 archive/export worker、对象校验、重试、删除/保留边界和可观测状态。
 - [ ] **10.8 Principal 数据生命周期：**普通 principal 有 create/update/suspend/resume，但没有删除、匿名化或法定保留流程；需先确认审计与外键保留语义。
 - [ ] **10.9 Secret/key rotation：**authn/federation/provisioning 多处仍是单 key 配置或一次性替换；设计 key ID/keyring、双读单写窗口、回滚和旧 key 清退。Federation replay registry 仍为进程内状态，多副本一次性消费另行设计 shared nonce capability。

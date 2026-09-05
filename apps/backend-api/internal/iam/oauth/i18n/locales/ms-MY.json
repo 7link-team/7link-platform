@@ -9,6 +9,7 @@
   "unsupported_token_type": "Titik akhir ini hanya membatalkan token muat semula. Gunakan token_type_hint=refresh_token.",
   "server_error": "Pelayan kebenaran tidak dapat menyelesaikan permintaan. Cuba lagi kemudian; hubungi pentadbir jika masalah berterusan.",
   "consent_required": "Pengguna belum memberikan persetujuan untuk skop yang diminta dan permintaan ini tidak boleh meminta persetujuan. Mulakan aliran semula tanpa prompt=none, atau berikan persetujuan terlebih dahulu.",
+  "consent_not_found": "Anda belum membenarkan aplikasi ini, atau kebenaran itu telah pun ditarik balik. Muat semula senarai aplikasi yang dibenarkan untuk melihat keadaan semasa.",
   "consent_title": "Benarkan %s",
   "consent_prompt": "Aplikasi ini meminta akses kepada akaun anda. Semak apa yang boleh dilakukannya sebelum anda membuat keputusan.",
   "consent_allow": "Benarkan",

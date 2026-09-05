@@ -232,6 +232,14 @@ type clientSecretData struct {
 	ClientSecret string `json:"client_secret"`
 }
 
+type consentRevokeInput struct {
+	ClientID string `path:"client_id" maxLength:"19" pattern:"^[1-9][0-9]*$"`
+}
+
+type consentRevokeData struct {
+	Revoked bool `json:"revoked"`
+}
+
 type clientDeleteData struct {
 	Deleted bool `json:"deleted"`
 }
@@ -248,6 +256,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	registerProtocolHTTP(api, service)
 	registerConsentHTTP(api, service)
 	registerClientHTTP(api, service, registrar)
+	registerGrantHTTP(api, service, registrar)
 }
 
 // registerConsentHTTP publishes the consent screen and the endpoint that
@@ -574,6 +583,69 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 		}
 		return respx.OK(ctx, clientDeleteData{Deleted: true}), nil
 	})
+}
+
+// registerGrantHTTP publishes the standing authorizations a person holds and
+// the way to take one back. Both are self-service: they name no tenant, because
+// a grant belongs to the principal who gave it rather than to any one tenant,
+// and no tenant permission stands between somebody and their own consent.
+func registerGrantHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
+	authz.RegisterAuthenticated(registrar, api, huma.Operation{
+		OperationID: "oauth-list-consents", Method: http.MethodGet, Path: "/iam/me/oauth-consents",
+		Summary: "List the applications the caller has authorized", Tags: []string{"oauth"},
+		Errors: []int{http.StatusUnauthorized, http.StatusInternalServerError},
+	}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]GrantedConsent], error) {
+		principalID, err := callingPrincipal(ctx)
+		if err != nil {
+			return nil, err
+		}
+		consents, err := service.ListConsents(ctx, principalID)
+		if err != nil {
+			return nil, oauthConsentError(err)
+		}
+		return respx.OK(ctx, consents), nil
+	})
+	authz.RegisterAuthenticated(registrar, api, huma.Operation{
+		OperationID: "oauth-revoke-consent", Method: http.MethodDelete,
+		Path: "/iam/me/oauth-consents/{client_id}", Tags: []string{"oauth"},
+		Summary: "Withdraw the caller's authorization of one application",
+		Errors:  []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusInternalServerError},
+	}, func(ctx context.Context, in *consentRevokeInput) (*respx.Body[consentRevokeData], error) {
+		principalID, err := callingPrincipal(ctx)
+		if err != nil {
+			return nil, err
+		}
+		clientID, err := parseOAuthID(in.ClientID)
+		if err != nil {
+			return nil, err
+		}
+		if err := service.RevokeConsent(ctx, principalID, clientID); err != nil {
+			return nil, oauthConsentError(err)
+		}
+		return respx.OK(ctx, consentRevokeData{Revoked: true}), nil
+	})
+}
+
+// callingPrincipal reads the subject a self-service operation acts for. Taking
+// it from the request instead would turn "revoke my consent" into "revoke
+// anyone's consent", so the token is the only source there can be.
+func callingPrincipal(ctx context.Context) (guid.ID, error) {
+	claims, ok := authnext.FromContext(ctx)
+	if !ok || claims == nil || claims.PrincipalID.Zero() {
+		return 0, huma.Error401Unauthorized(oauthi18n.InvalidToken)
+	}
+	return claims.PrincipalID, nil
+}
+
+// oauthConsentError reports a grant the caller does not hold as absent. There is
+// nothing to leak by being specific -- a caller can only ever address their own
+// consents here -- but a revocation that finds nothing to revoke is a mistyped
+// client, not a server fault.
+func oauthConsentError(err error) error {
+	if errors.Is(err, ErrInvalidRequest) {
+		return huma.Error404NotFound(oauthi18n.ConsentNotFound)
+	}
+	return huma.Error500InternalServerError(oauthi18n.ServerError)
 }
 
 func parseOAuthID(value string) (guid.ID, error) {

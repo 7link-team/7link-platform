@@ -298,6 +298,74 @@ func (s *Service) DeleteClient(ctx context.Context, tenantID, id guid.ID) error 
 	})
 }
 
+// GrantedConsent is one standing authorization as its subject sees it: which
+// application holds it, what that application may do, and when it last did.
+type GrantedConsent struct {
+	ClientID   string    `json:"client_id"`
+	TenantID   string    `json:"tenant_id"`
+	ClientName string    `json:"client_name"`
+	Scopes     []string  `json:"scopes"`
+	GrantedAt  time.Time `json:"granted_at"`
+	LastUsedAt time.Time `json:"last_used_at"`
+}
+
+// ListConsents returns every application the principal has authorized. It is
+// deliberately not scoped to a tenant: a consent belongs to the person who gave
+// it rather than to whichever tenant they are looking at, and a screen that
+// showed only one tenant's grants would let the rest survive precisely because
+// their subject never saw them.
+func (s *Service) ListConsents(ctx context.Context, principalID guid.ID) ([]GrantedConsent, error) {
+	if principalID.Zero() {
+		return nil, ErrInvalidRequest
+	}
+	repo, err := s.repo.pinWriter()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := repo.consentsForPrincipal(ctx, principalID)
+	if err != nil {
+		return nil, err
+	}
+	consents := make([]GrantedConsent, len(rows))
+	for index, row := range rows {
+		consents[index] = GrantedConsent{
+			ClientID: row.ClientID.String(), TenantID: row.TenantID.String(), ClientName: row.ClientName,
+			Scopes: strings.Fields(row.Scope), GrantedAt: row.CreatedAt, LastUsedAt: row.LastUsedAt,
+		}
+	}
+	return consents, nil
+}
+
+// RevokeConsent withdraws one standing authorization on its subject's own
+// behalf. Everything the grant already produced goes with it in the same
+// transaction, so a revocation that returns success has actually ended the
+// application's access rather than only stopped it being renewed.
+func (s *Service) RevokeConsent(ctx context.Context, principalID, clientID guid.ID) error {
+	if principalID.Zero() || clientID.Zero() {
+		return ErrInvalidRequest
+	}
+	return s.repo.runInTx(ctx, func(repo *Repository) error {
+		row, err := repo.consent(ctx, clientID, principalID)
+		if err != nil {
+			return err
+		}
+		if row == nil {
+			return ErrInvalidRequest
+		}
+		if err := repo.revokeGrantedTokens(ctx, principalID, clientID, oauthTime(s.now())); err != nil {
+			return err
+		}
+		if err := repo.deleteConsent(ctx, principalID, clientID); err != nil {
+			return err
+		}
+		// The scopes are recorded because the row is about to be gone: without
+		// them the trail says access was withdrawn but not which access.
+		event := audit.NewDomainEvent(ctx, row.TenantID, "oauth_consent_revoked", "oauth_consent", clientID)
+		event.Detail["scopes"] = strings.Fields(row.Scope)
+		return repo.appendAudit(ctx, event)
+	})
+}
+
 // ErrConsentRequired signals that the authorization flow needs interactive
 // consent before issuing a code.
 type ErrConsentRequired struct{}

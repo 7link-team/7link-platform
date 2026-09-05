@@ -313,7 +313,13 @@ func TestRepositoryMethodsFailClosedWithoutWriter(t *testing.T) {
 		"active member":         func() error { _, err := repo.activeMember(t.Context(), 1, 2); return err },
 		"consent":               func() error { _, err := repo.consent(t.Context(), 2, 3); return err },
 		"upsert consent":        func() error { return repo.upsertConsent(t.Context(), consent) },
-		"insert code":           func() error { return repo.insertAuthorizationCode(t.Context(), code) },
+		"list consents": func() error {
+			_, err := repo.consentsForPrincipal(t.Context(), 2)
+			return err
+		},
+		"delete consent": func() error { return repo.deleteConsent(t.Context(), 2, 3) },
+		"revoke granted": func() error { return repo.revokeGrantedTokens(t.Context(), 2, 3, now) },
+		"insert code":    func() error { return repo.insertAuthorizationCode(t.Context(), code) },
 		"read code": func() error {
 			_, err := repo.authorizationCode(t.Context(), "hash", 2)
 			return err
@@ -433,6 +439,7 @@ func TestRepositoryPropagatesStorageFailures(t *testing.T) {
 			t.Context(), "hash", "family", oauthTestNow, &model.RefreshToken{},
 		))
 		assert.Error(t, harness.repo.revokeRefreshFamily(t.Context(), "family", oauthTestNow))
+		assert.Error(t, harness.repo.revokeGrantedTokens(t.Context(), 9, 8, oauthTestNow))
 	})
 
 	t.Run("consent table", func(t *testing.T) {
@@ -441,6 +448,9 @@ func TestRepositoryPropagatesStorageFailures(t *testing.T) {
 		_, err := harness.repo.consent(t.Context(), 8, 9)
 		assert.Error(t, err)
 		assert.Error(t, harness.repo.upsertConsent(t.Context(), &model.Consent{}))
+		_, err = harness.repo.consentsForPrincipal(t.Context(), 9)
+		assert.Error(t, err)
+		assert.Error(t, harness.repo.deleteConsent(t.Context(), 9, 8))
 	})
 
 	t.Run("authorization code table", func(t *testing.T) {
@@ -450,6 +460,9 @@ func TestRepositoryPropagatesStorageFailures(t *testing.T) {
 		_, err := harness.repo.authorizationCode(t.Context(), "hash", 8)
 		assert.Error(t, err)
 		assert.Error(t, harness.repo.consumeAuthorizationCode(t.Context(), "hash", oauthTestNow, nil))
+		// The refresh half succeeds and the code half fails, which is the only
+		// way to reach the second error return in a revocation.
+		assert.Error(t, harness.repo.revokeGrantedTokens(t.Context(), 9, 8, oauthTestNow))
 	})
 
 	t.Run("service account credential table", func(t *testing.T) {

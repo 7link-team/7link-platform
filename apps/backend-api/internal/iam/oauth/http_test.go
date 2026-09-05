@@ -38,6 +38,8 @@ oauth-discovery|GET|/.well-known/openid-configuration
 oauth-introspect|POST|/oauth/introspect
 oauth-jwks|GET|/.well-known/jwks.json
 oauth-list-clients|GET|/iam/oauth-clients
+oauth-list-consents|GET|/iam/me/oauth-consents
+oauth-revoke-consent|DELETE|/iam/me/oauth-consents/{client_id}
 oauth-revoke|POST|/oauth/revoke
 oauth-rotate-client-secret|POST|/iam/oauth-clients/{id}/rotate-secret
 oauth-token|POST|/oauth/token
@@ -165,8 +167,70 @@ func TestOAuthRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 15)
+	require.Len(t, got, 17)
 	require.NoError(t, authz.ValidateOperations(harness.api, authz.DefaultRegistry()))
+}
+
+// TestConsentSelfServiceRoutesActOnlyForTheirCaller is the HTTP half of the
+// self-service contract. The route names no subject, so the token is the only
+// thing that can decide whose grants these are -- and an unauthenticated caller
+// must not reach the handler at all.
+func TestConsentSelfServiceRoutesActOnlyForTheirCaller(t *testing.T) {
+	harness := newOAuthHTTPHarness(t)
+	client := createBrowserClient(t, harness.oauthHarness)
+	_, err := exchangeCode(t, harness.oauthHarness, client, authorizeCode(t, harness.oauthHarness, client))
+	require.NoError(t, err)
+	caller := map[string]string{"Authorization": "Bearer admin"}
+
+	// No tenant header anywhere: a person's grants are not a tenant's business,
+	// and requiring one would hide the grants they most need to see.
+	response := harness.request(http.MethodGet, "/iam/me/oauth-consents", "", nil, caller)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	listed := decodeOAuthEnvelope[[]GrantedConsent](t, response).Data
+	require.Len(t, listed, 1)
+	assert.Equal(t, client.ID, listed[0].ClientID)
+	assert.Equal(t, "Browser", listed[0].ClientName)
+
+	for name, target := range map[string]string{
+		"listing":    "/iam/me/oauth-consents",
+		"revocation": "/iam/me/oauth-consents/" + client.ID,
+	} {
+		t.Run("an anonymous caller is refused before "+name, func(t *testing.T) {
+			method := http.MethodGet
+			if strings.Contains(target, client.ID) {
+				method = http.MethodDelete
+			}
+			refused := harness.request(method, target, "", nil, nil)
+			assert.Equal(t, http.StatusUnauthorized, refused.Code, refused.Body.String())
+		})
+	}
+
+	revoked := harness.request(http.MethodDelete, "/iam/me/oauth-consents/"+client.ID, "", nil, caller)
+	require.Equal(t, http.StatusOK, revoked.Code, revoked.Body.String())
+	assert.True(t, decodeOAuthEnvelope[consentRevokeData](t, revoked).Data.Revoked)
+
+	// The second one is what a double-click produces, and 404 is the honest
+	// answer: there is no grant by that name any more.
+	again := harness.request(http.MethodDelete, "/iam/me/oauth-consents/"+client.ID, "", nil, caller)
+	assert.Equal(t, http.StatusNotFound, again.Code, again.Body.String())
+
+	empty := harness.request(http.MethodGet, "/iam/me/oauth-consents", "", nil, caller)
+	require.Equal(t, http.StatusOK, empty.Code, empty.Body.String())
+	assert.Contains(t, empty.Body.String(), `"data":[]`,
+		"a caller with no grants reads an empty array, not null")
+}
+
+// TestConsentRevocationRefusesAnIdentifierThatIsNotOne keeps a malformed client
+// out of the query rather than letting it arrive as a zero.
+func TestConsentRevocationRefusesAnIdentifierThatIsNotOne(t *testing.T) {
+	harness := newOAuthHTTPHarness(t)
+	caller := map[string]string{"Authorization": "Bearer admin"}
+	for name, id := range map[string]string{"a zero": "0", "a word": "latest", "a negative": "-1"} {
+		t.Run(name, func(t *testing.T) {
+			response := harness.request(http.MethodDelete, "/iam/me/oauth-consents/"+id, "", nil, caller)
+			assert.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+		})
+	}
 }
 
 func TestOAuthOpenAPISecurityGuardsParametersAndForms(t *testing.T) {
@@ -861,6 +925,31 @@ func TestOAuthHTTPDatabaseFailuresUseCorrectResponseContracts(t *testing.T) {
 		body := decodeOAuthEnvelope[any](t, response)
 		assert.Equal(t, http.StatusInternalServerError, body.Code)
 		assert.NotEqual(t, oauthi18n.ServerError, body.Message)
+	})
+
+	// A self-service route reports its own failure as a server fault. Reporting
+	// it as "you have no such grant" would tell somebody their access was
+	// already gone when the truth is that nobody could look.
+	t.Run("consent self-service", func(t *testing.T) {
+		harness := newOAuthHTTPHarness(t)
+		client := createBrowserClient(t, harness.oauthHarness)
+		require.NoError(t, harness.db.Exec("DROP TABLE "+harness.table("iam_oauth_consents")).Error)
+		caller := map[string]string{"Authorization": "Bearer admin"}
+		for name, request := range map[string]struct {
+			method string
+			target string
+		}{
+			"listing":    {method: http.MethodGet, target: "/iam/me/oauth-consents"},
+			"revocation": {method: http.MethodDelete, target: "/iam/me/oauth-consents/" + client.ID},
+		} {
+			t.Run(name, func(t *testing.T) {
+				response := harness.request(request.method, request.target, "", nil, caller)
+				require.Equal(t, http.StatusInternalServerError, response.Code, response.Body.String())
+				body := decodeOAuthEnvelope[any](t, response)
+				assert.Equal(t, http.StatusInternalServerError, body.Code)
+				assert.NotEqual(t, oauthi18n.ServerError, body.Message, "the message has to be translated")
+			})
+		}
 	})
 }
 

@@ -720,6 +720,113 @@ func TestAuthorizationRejectsUnknownPromptValues(t *testing.T) {
 	assert.Equal(t, int64(1), harness.count(t, "iam_oauth_consents"))
 }
 
+// TestRevokingAConsentEndsTheAccessItAlreadyGranted is the whole point of the
+// operation. Deleting the consent row alone would only stop the application
+// being granted access again: the refresh token it already holds keeps working,
+// so somebody who just clicked "revoke" would stay signed in to it for as long
+// as that token rotates.
+func TestRevokingAConsentEndsTheAccessItAlreadyGranted(t *testing.T) {
+	harness := newOAuthHarness(t, "sl_")
+	client := createBrowserClient(t, harness)
+	clientID, err := guid.Parse(client.ID)
+	require.NoError(t, err)
+	tokens, err := exchangeCode(t, harness, client, authorizeCode(t, harness, client))
+	require.NoError(t, err)
+	require.NotEmpty(t, tokens.RefreshToken)
+
+	listed, err := harness.service.ListConsents(t.Context(), 101)
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	assert.Equal(t, client.ID, listed[0].ClientID)
+	assert.Equal(t, "7", listed[0].TenantID)
+	assert.Equal(t, "Browser", listed[0].ClientName, "a list somebody acts on has to name the application")
+	assert.Equal(t, []string{"openid", "profile"}, listed[0].Scopes)
+	assert.Equal(t, oauthTestNow, listed[0].GrantedAt.UTC())
+
+	require.NoError(t, harness.service.RevokeConsent(t.Context(), 101, clientID))
+
+	assert.Zero(t, harness.count(t, "iam_oauth_consents"))
+	_, err = harness.service.Token(t.Context(), url.Values{
+		"grant_type": {"refresh_token"}, "client_id": {client.ID}, "refresh_token": {tokens.RefreshToken},
+	}, "")
+	assert.ErrorIs(t, err, ErrInvalidRequest, "the token the revoked grant issued must stop working")
+	assert.Contains(t, harness.eventTypes(t), "oauth_consent_revoked")
+}
+
+// TestRevokingAConsentKillsACodeThatWasAlreadyIssued closes the window between
+// an authorization and its exchange. A code handed out seconds before the
+// revocation is a fresh refresh token the moment it is redeemed, so ignoring it
+// would let the grant come back on its own a minute after somebody ended it.
+func TestRevokingAConsentKillsACodeThatWasAlreadyIssued(t *testing.T) {
+	harness := newOAuthHarness(t, "")
+	client := createBrowserClient(t, harness)
+	clientID, err := guid.Parse(client.ID)
+	require.NoError(t, err)
+	code := authorizeCode(t, harness, client)
+
+	require.NoError(t, harness.service.RevokeConsent(t.Context(), 101, clientID))
+
+	_, err = exchangeCode(t, harness, client, code)
+	assert.ErrorIs(t, err, ErrInvalidRequest, "a code outliving its consent would restore the grant")
+}
+
+// TestConsentListingAndRevocationStayWithTheirOwnSubject keeps a self-service
+// operation self-service. The principal is the only thing that scopes it, so a
+// mistake here is one person ending or reading somebody else's grants.
+func TestConsentListingAndRevocationStayWithTheirOwnSubject(t *testing.T) {
+	harness := newOAuthHarness(t, "")
+	client := createBrowserClient(t, harness)
+	clientID, err := guid.Parse(client.ID)
+	require.NoError(t, err)
+	_, err = exchangeCode(t, harness, client, authorizeCode(t, harness, client))
+	require.NoError(t, err)
+
+	stranger, err := harness.service.ListConsents(t.Context(), 102)
+	require.NoError(t, err)
+	assert.NotNil(t, stranger, "an empty list has to serialize as an array, not as null")
+	assert.Empty(t, stranger)
+	assert.ErrorIs(t, harness.service.RevokeConsent(t.Context(), 102, clientID), ErrInvalidRequest)
+	assert.EqualValues(t, 1, harness.count(t, "iam_oauth_consents"), "the owner's grant survives")
+
+	// A grant that is already gone reads the same as one that never existed, so
+	// a double click reports a mistyped client rather than a server fault.
+	require.NoError(t, harness.service.RevokeConsent(t.Context(), 101, clientID))
+	assert.ErrorIs(t, harness.service.RevokeConsent(t.Context(), 101, clientID), ErrInvalidRequest)
+}
+
+// TestConsentSelfServiceRefusesAnUnnamedSubjectOrApplication keeps a zero ID
+// from reaching a query where it would match a row rather than nothing.
+func TestConsentSelfServiceRefusesAnUnnamedSubjectOrApplication(t *testing.T) {
+	harness := newOAuthHarness(t, "")
+	_, err := harness.service.ListConsents(t.Context(), 0)
+	assert.ErrorIs(t, err, ErrInvalidRequest)
+	assert.ErrorIs(t, harness.service.RevokeConsent(t.Context(), 0, 1001), ErrInvalidRequest)
+	assert.ErrorIs(t, harness.service.RevokeConsent(t.Context(), 101, 0), ErrInvalidRequest)
+}
+
+// TestARevocationThatCannotBeAuditedChangesNothing keeps the trail and the
+// effect in one transaction. A revocation nobody can prove happened is worse
+// than one that failed, because the subject was told it worked.
+func TestARevocationThatCannotBeAuditedChangesNothing(t *testing.T) {
+	harness := newOAuthHarness(t, "")
+	client := createBrowserClient(t, harness)
+	clientID, err := guid.Parse(client.ID)
+	require.NoError(t, err)
+	tokens, err := exchangeCode(t, harness, client, authorizeCode(t, harness, client))
+	require.NoError(t, err)
+
+	harness.auditErr = errors.New("audit sink down")
+	require.Error(t, harness.service.RevokeConsent(t.Context(), 101, clientID))
+	harness.auditErr = nil
+
+	assert.EqualValues(t, 1, harness.count(t, "iam_oauth_consents"))
+	rotated, err := harness.service.Token(t.Context(), url.Values{
+		"grant_type": {"refresh_token"}, "client_id": {client.ID}, "refresh_token": {tokens.RefreshToken},
+	}, "")
+	require.NoError(t, err, "a rolled back revocation must not have revoked the token")
+	assert.NotEmpty(t, rotated.RefreshToken)
+}
+
 func TestConsentModeDecidesWhetherAuthorizationGrantsImplicitly(t *testing.T) {
 	harness := newOAuthHarness(t, "")
 	implicitClient := createBrowserClient(t, harness)

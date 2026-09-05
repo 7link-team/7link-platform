@@ -9,6 +9,7 @@
   "unsupported_token_type": "此端点仅撤销 refresh token，请使用 token_type_hint=refresh_token。",
   "server_error": "授权服务器无法完成该请求，请稍后重试；若问题持续，请联系管理员。",
   "consent_required": "用户尚未对所请求的授权范围授予同意，且当前请求无法弹出同意界面。请去掉 prompt=none 重新发起流程，或先完成授权同意。",
+  "consent_not_found": "您尚未授权该应用，或该授权已被撤销。请重新加载已授权应用列表以查看当前状态。",
   "consent_title": "授权 %s",
   "consent_prompt": "该应用请求访问你的账户。请先确认它将获得的权限，再做决定。",
   "consent_allow": "允许",

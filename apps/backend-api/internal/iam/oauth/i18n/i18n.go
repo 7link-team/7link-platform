@@ -21,6 +21,7 @@ const (
 	UnsupportedTokenType       = Namespace + ".unsupported_token_type"
 	ServerError                = Namespace + ".server_error"
 	ConsentRequired            = Namespace + ".consent_required"
+	ConsentNotFound            = Namespace + ".consent_not_found"
 
 	ConsentTitle  = Namespace + ".consent_title"
 	ConsentPrompt = Namespace + ".consent_prompt"
