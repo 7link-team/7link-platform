@@ -10,10 +10,10 @@ IAM Phase 10 后端推进。10.1（平台超管 bootstrap + reset-admin-password
 把 owner 补上，让这些租户可管理。
 
 ## Current Phase
-IN PROGRESS（§2.5.2 已推送；正在处理 @ClaudeWEB 报的两条后端缺陷）
+IN PROGRESS（10.1/10.2/§2.5.2 与 4 条外部报障均已推送；10.3 等 @gankcode 拍板，10.4 有待澄清的范围问题）
 
 ## Current Step
-§2.5.2 已推送（20bae43）。CLI flag 归一化已推送（5d7e9d0）。return_url 前缀校验已完成待推送。
+@ClaudeWEB 报的 4 条后端缺陷已全部修完推送。下一步只剩 10.3（阻塞）与 10.4（阻塞）。
 
 ## Overall Progress
 - [x] Phase 10.2（提交 24f2483）
@@ -21,9 +21,11 @@ IN PROGRESS（§2.5.2 已推送；正在处理 @ClaudeWEB 报的两条后端缺�
 - [x] 品牌 cookie 清理（提交 348a37f）
 - [x] §2.5.2 存量零成员租户修复命令（提交 20bae43）
 - [x] CLI flag 下划线/中划线在所有子命令一致（提交 5d7e9d0，@ClaudeWEB 报的第 4 条）
-- [x] `allowed_return_urls` 改为 origin 精确 + 路径前缀（@ClaudeWEB 报的第 3 条，待推送）
+- [x] `allowed_return_urls` 改为 origin 精确 + 路径前缀（提交 1ecc9cb，@ClaudeWEB 报的第 3 条）
+- [x] create/update 可选外键 schema 对称 + invitation 空值线上形状（提交 69187ab）
 - [ ] 10.3 principal 管理权限语义（等用户明确拍板）
-- [ ] 10.4–10.11
+- [ ] 10.4 数据权限端到端（缺可挂载的租户级业务资源，等用户定目标）
+- [ ] 10.5–10.11
 
 ## 本轮交付（§2.5.2）
 入口：`7link-api iam repair-tenant-owner --config <c> --tenant-slug <s> --owner-login <l>`
@@ -61,11 +63,18 @@ IN PROGRESS（§2.5.2 已推送；正在处理 @ClaudeWEB 报的两条后端缺�
 - 逐包 90% 覆盖率门禁余量极薄（authn 90.1%、organization 90.0%、core 90.1%），新增生产代码必须同批补测。
 - 10.3 principal 归属未决：6 个全局账号接口挂在租户注册器上，其中 3 个要 `platform:administer`，
   平台管理员与租户管理员都不可达。方案 A = 整体挪到平台注册器。已两次说明，等用户一句明确同意。
+- 10.4 无处落地：方案文档要求把 `DataConstraint` 接到「真实业务资源」上，但仓库里唯一的业务模块
+  `internal/todo` 既没有 `tenant_id` 列，`internal/todo/http.go` 的 9 个接口也全走裸 `huma.Register`，
+  没有任何 authz 守卫。要么给 todo 加租户维度当样板，要么等真实业务模块，需用户定。
+- `organization` 模块的 ID 字段一律 `maxLength:"128"` 无 pattern，`core` 模块一律
+  `pattern:"^[1-9][0-9]*$"`。两套写法并存但各自内部自洽，未擅自统一。
 
 ## Verification
 Build: PASS  Tests: PASS  Lint: PASS  Integration: PASS
 `make ci` exit 0，总覆盖率 90.1%（最低 90.0%），core 90.1%、organization 90.0%。
 
 ## Last Checkpoint
-2026-09-05 · §2.5.2、CLI flag 归一化、return_url 前缀校验三项均 `make ci` 通过。
-下一步：回到 10.3，仍需 @gankcode 拍板；10.4–10.11 未动。
+2026-09-05 · 已推送到 69187ab：§2.5.2（20bae43）、CLI flag 归一化（5d7e9d0）、
+return_url 前缀校验（1ecc9cb）、create/update schema 对称 + invitation 空值（69187ab），
+每一项都跑过完整 `make ci`。
+下一步：10.3 与 10.4 都卡在 @gankcode 的决定上，没有可以自行推进的后端工作。
