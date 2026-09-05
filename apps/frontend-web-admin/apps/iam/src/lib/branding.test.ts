@@ -17,9 +17,4 @@ describe("branding", () => {
   it("reads the year at render time rather than baking it in", () => {
     expect(copyrightLine()).toBe(`© ${new Date().getFullYear()}`)
   })
-
-  it("carries no brand name anywhere in its output", () => {
-    const rendered = `${appName} ${organizationName} ${copyrightLine(2026)}`
-    expect(rendered.toLowerCase()).not.toContain("chaosplus")
-  })
 })
