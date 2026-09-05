@@ -318,6 +318,9 @@ describe("IAM API client", () => {
         email: "registered@example.com",
         password: "correct registration password",
         display_name: "Registered User",
+        captcha_type: "text",
+        captcha_id: "35870000000000001",
+        captcha_answer: "8f2k",
       })
     ).toEqual({ accepted: true })
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
@@ -331,6 +334,9 @@ describe("IAM API client", () => {
       email: "registered@example.com",
       password: "correct registration password",
       display_name: "Registered User",
+      captcha_type: "text",
+      captcha_id: "35870000000000001",
+      captcha_answer: "8f2k",
     })
   })
 

@@ -46,6 +46,17 @@ export interface AuthnCapabilities {
   passkey: boolean
 }
 
+export interface Captcha {
+  type: "text" | "slide" | "click"
+  captcha_id: string
+  image_base64?: string
+  master_image?: string
+  tile_image?: string
+  thumb_image?: string
+  width?: number
+  height?: number
+}
+
 export interface MfaEnrollment {
   secret: string
   provisioning_uri: string
@@ -923,10 +934,15 @@ export function createIamApi(
   return {
     capabilities: () =>
       request<AuthnCapabilities>("/authn/capabilities", {}, false),
+    createCaptcha: () =>
+      request<Captcha>("/authn/captchas", { method: "POST" }, false),
     register: (body: {
       email: string
       password: string
       display_name?: string
+      captcha_type: string
+      captcha_id: string
+      captcha_answer: string
     }) =>
       request<{ accepted: boolean }>(
         "/authn/registrations",

@@ -1,11 +1,18 @@
-import { useState, type FormEvent } from "react"
-import { ArrowLeft, Eye, EyeOff, MailCheck, ShieldCheck } from "lucide-react"
+import { useEffect, useState, type FormEvent } from "react"
+import {
+  ArrowLeft,
+  Eye,
+  EyeOff,
+  MailCheck,
+  RefreshCw,
+  ShieldCheck,
+} from "lucide-react"
 import { Link } from "react-router"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { ThemeModeButton } from "../../components/theme-mode-button"
-import { ApiError, iamApi } from "../../lib/iam-api"
+import { ApiError, iamApi, type Captcha } from "../../lib/iam-api"
 import { appName, copyrightLine } from "../../lib/branding"
 
 export default function RegisterPage() {
@@ -13,9 +20,26 @@ export default function RegisterPage() {
   const [complete, setComplete] = useState(false)
   const [visible, setVisible] = useState(false)
   const [error, setError] = useState("")
+  const [captcha, setCaptcha] = useState<Captcha | null>(null)
+  const [answer, setAnswer] = useState("")
+
+  const loadCaptcha = () => {
+    void issueTextCaptcha().then(setCaptcha, () =>
+      setError("验证码服务暂时不可用")
+    )
+  }
+
+  const refreshCaptcha = () => {
+    setCaptcha(null)
+    setAnswer("")
+    loadCaptcha()
+  }
+
+  useEffect(loadCaptcha, [])
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!captcha) return
     setBusy(true)
     setError("")
     const data = new FormData(event.currentTarget)
@@ -30,10 +54,16 @@ export default function RegisterPage() {
         email: String(data.get("email") ?? "").trim(),
         password,
         display_name: String(data.get("display_name") ?? "").trim(),
+        captcha_type: captcha.type,
+        captcha_id: captcha.captcha_id,
+        captcha_answer: answer.trim(),
       })
       setComplete(true)
     } catch (cause) {
       setError(registrationError(cause))
+      // Each challenge is consumed by the attempt that used it, so a retry
+      // needs a new one whether or not the captcha was what failed.
+      refreshCaptcha()
     } finally {
       setBusy(false)
     }
@@ -108,12 +138,51 @@ export default function RegisterPage() {
                 label="确认密码"
                 visible={visible}
               />
+              <div className="space-y-2">
+                <Label htmlFor="registration-captcha">验证码</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="registration-captcha"
+                    name="captcha_answer"
+                    value={answer}
+                    onChange={(event) => setAnswer(event.target.value)}
+                    autoComplete="off"
+                    required
+                    maxLength={16}
+                    className="flex-1"
+                  />
+                  <button
+                    type="button"
+                    className="grid h-9 w-[110px] shrink-0 place-items-center overflow-hidden rounded-md border border-border/70 bg-muted/40"
+                    onClick={refreshCaptcha}
+                    aria-label="换一张验证码"
+                    title="换一张"
+                  >
+                    {captcha ? (
+                      <img
+                        src={captcha.image_base64}
+                        alt="验证码"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <RefreshCw className="size-4 animate-spin text-muted-foreground" />
+                    )}
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  看不清可以点击图片换一张
+                </p>
+              </div>
               {error && (
                 <p className="text-sm text-destructive" role="alert">
                   {error}
                 </p>
               )}
-              <Button type="submit" className="w-full" disabled={busy}>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={busy || !captcha}
+              >
                 {busy ? "正在提交" : "创建账号"}
               </Button>
             </form>
@@ -180,9 +249,23 @@ function PasswordField({
   )
 }
 
+async function issueTextCaptcha(): Promise<Captcha> {
+  // This page can only present the character challenge. A deployment that also
+  // hands out the interactive types has more to offer than we can draw, so ask
+  // again for one we can render instead of stranding the user on a blank box.
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const issued = await iamApi.createCaptcha()
+    if (issued.type === "text") return issued
+  }
+  throw new Error("no text captcha available")
+}
+
 function registrationError(cause: unknown): string {
   if (!(cause instanceof ApiError)) return "身份服务暂时不可用"
   if (cause.status === 403) return "请从已配置的应用地址发起注册"
+  // A rejected captcha and a rejected email share one status, so tell them
+  // apart by code; otherwise a wrong captcha reads as a bad password forever.
+  if (cause.code === "captcha_invalid") return "验证码不正确，请重新输入"
   if (cause.status === 422) return "请输入有效邮箱和至少 12 个字符的密码"
   if (cause.status === 503) return "当前未开放自助注册"
   return "身份服务暂时不可用"
