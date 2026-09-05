@@ -16,8 +16,11 @@ IAM Phase 10 后端推进。10.1、10.2、10.6、§2.5.2 均已推送。当前�
 IN PROGRESS（10.9 第 ① 步与验证码均已推送；10.3、10.4 等 @gankcode 拍板）
 
 ## Current Step
-10.9 ④ authn 签名密钥环已完成。
-下一步：10.9 ⑤ federation replay registry 换跨副本共享状态；随后按 D17 依次做 10.3 → 10.4 → 10.5。
+10.3 已完成（三条 guard 改对 + `authz.Register` 补上反向 scope 检查）。
+下一步：10.9 ⑤ federation replay registry 换跨副本共享状态；随后按 D17 依次做 10.4 → 10.5。
+
+**推送被我主动挂起**：@ClaudeWEB 在同一条本地 `IAM` 分支上有 6 个提交（`32025c4`..`9ae8e45`）
+压在我这条下面，他明说「都没推」。推我的就等于替他推他的，已在频道问过；未回话前不要 push。
 
 ## Overall Progress
 - [x] Phase 10.2（提交 24f2483）
@@ -219,8 +222,46 @@ provisioning）一张表列全，并写清签名密钥和存储密钥的差别�
 「新 key active + 旧 key previous」的 Service 去验，必须通过；反过来只持新 key 的 Service
 必须拒绝旧环签的 token。
 
+## 本轮交付其七：10.3 principal 管理权限语义
+
+`identity-update-principal`、suspend、resume 三条挂的是 `platform_administer`，但它们本身
+是租户内操作（路由带 tenantID，service 方法也带 tenantID）。
+
+**我上一轮在频道里把这条说错过**（说成「六条全局 operation 移到 platform 路由」），
+读代码后更正：是三条，而且方向相反。挪去 platform 平面等于删掉「租户管理员管自己租户的人」，
+正是 Keycloak realm admin 最标准的能力。已在频道公开更正（msg 8b41bef3）。
+
+坏在哪里：`core/authorizer.go` 的 `CheckBulk` 里，platform scope 的 action 走
+`allowed[permission] = platformAdministrator` 这一支，`tenant_administer` 的通配
+（`grantSet["tenant_administer"]`）**不覆盖它**，所以租户管理员一律 403。
+
+**我第一次报的时候把范围说大了**，说成「谁都调不通」，@ClaudeWEB 拿浏览器审计的反例纠正了：
+`CheckBulk` 是先过 `memberActive` 闸再走 platform 分支，所以「既是平台管理员、又是该租户
+活跃成员」的账号两个条件同时满足，是能调通的。bootstrap 出来的管理员恰好是这一种——
+这也正是浏览器审计一直绿、没能早点把这个 bug 顶出来的原因。口子比我说的小，但对
+普通租户管理员依然是全封的。**教训：断言"谁都不能"之前，先找一个能的反例。**
+
+修法两半：
+
+1. 三条 guard 改成权限表里现成的 `user/update`（scope=tenant），与同文件 list/create/get
+   用 `user/view`、`user/create` 一致。路由和请求体不变，@ClaudeWEB 确认前端零改动。
+2. `authz.Register` 的 `prepare` 补上 scope 检查：platform scope 的 action 注册到
+   tenant registrar 直接 panic。这是 `RegisterPlatform` 早就有的检查的反向一半——
+   **缺的正是这一半，这个 bug 才漏得出去**。`Register`/`RegisterEntity`/
+   `RegisterEntityAdapter` 三个入口共用 `prepare`，一处补齐三处生效。
+
+全仓扫过一遍，除这三条外没有第二处违规：organization 的五条 tenant scope guard 和
+core 的 `iam-scope-model` 走的都是 `RegisterPlatform`，`provisioning` 的
+`tenant/administer` 在权限表里是 scope=tenant。
+
+测试：`register_test.go` 新增一条覆盖三个注册入口都拒绝 + 租户 action 仍能注册；
+`identity/http_test.go` 的 guard 表改为 `user_update`，授权 fake 改成扣 `user_update`
+才能试出 403，`CheckPlatform` 改成恒 false（identity 模块本就没有 platform 路由，
+恒 false 才能保证测试不是靠它蒙过）。`docs/openapi.json` 差异恰好三行 `x-authz-permission`。
+
+
 ## Last Checkpoint
-2026-09-05 · 10.9 ④ authn 签名密钥环完成，`make ci` 绿。
+2026-09-05 · 10.3 完成，`make ci` 绿。上一轮 10.9 ④ authn 签名密钥环已推送（`a12c9fc`）。
 
 **本轮最重要的一件事不是代码，是 D17。**@gankcode 明确指出：10.3/10.4/10.5/10.8/10.10 这五项
 不该拿去问他，IAM 领域都有成熟答案，要「按标准的、通用的、大家共识的做法」自己定。

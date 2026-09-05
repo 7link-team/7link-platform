@@ -514,10 +514,15 @@ codegen 引入一个生成步骤和生成物指纹门禁的维护成本，换取
 指示按 IAM 领域的标准、通用、共识做法自行决定（"按标准的 通用的 大家共识的做法"），
 下述五条即为所选方案，实施时逐条对照规范与参考实现核对，不凭印象写。
 
-- **10.3 principal 管理权限**：按 Keycloak 的 realm 模型分两个平面，不是二选一。
-  六个全局账号 operation 移到真正的 platform 路由挂 `platform_administer`；租户管理员
-  另有租户内的 principal 更新权限，管自己租户的人。同时让 `authz.Register` 拒绝把
-  platform scope 的 action 注册到 tenant registrar —— 当前这个 bug 正是这样产生的。
+- **10.3 principal 管理权限**：按 Keycloak 的 realm 模型，改人属于 realm 管理员的
+  租户内能力。**读代码后更正了本条最初的写法**：涉及的是三条而不是六条 operation
+  （`identity-update-principal`、suspend、resume），而且方向相反——它们本就是租户内
+  操作（路由带 tenantID，service 方法也带 tenantID），却错挂了 `platform_administer`。
+  挪去 platform 平面等于删掉「租户管理员管自己租户的人」，正是要保住的能力。
+  实际修法：三条改用权限表里现成的 `user/update`（scope=tenant），与同文件的
+  list/create/get 用 `user/view`、`user/create` 一致。结构性的一半照做且更必要：
+  让 `authz.Register` 拒绝把 platform scope 的 action 注册到 tenant registrar，
+  与 `RegisterPlatform` 早已有的反向检查配对——缺的正是这一半，这个 bug 才漏出去。
 - **10.4 数据权限**：范围过滤下沉到 repository 查询层（放在 controller 等于可绕过）。
   以 `internal/todo` 为参照实现接 `DataConstraint` + `RegisterEntity`（用户 2026-09-05
   确认用 todo 模块当用例），覆盖 tenant A/B、owner/部门/上级/显式 deny、分页 count、导出。

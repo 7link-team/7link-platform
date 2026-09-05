@@ -943,7 +943,7 @@ CREATE TABLE {{.Prefix}}iam_roles (
 |---|---|---|
 | HTTP | **迁移契约完整** | 9 模块共 208 条 operation，实际 OpenAPI、source→target mapping、guard 分类均有集合门禁；这证明路由不漏项，不证明每个 guard 的产品语义正确 |
 | gRPC | **IAM 未实现；迁移不缺失** | IAM 9 模块无 proto、`GRPCRegistrar` 或 gRPC service；固定源树同样没有 IAM gRPC。应用自身仍有 health 等 gRPC 服务 |
-| 接口权限 | **执行链完整，存在语义缺陷** | public/authenticated/member/tenant/entity/platform middleware 均实际执行；但 principal update/suspend/resume 把 `platform_administer` 注册为 tenant guard |
+| 接口权限 | **执行链完整** | public/authenticated/member/tenant/entity/platform middleware 均实际执行；principal update/suspend/resume 曾把 `platform_administer` 注册为 tenant guard，10.3 已改为 `user_update`，并让这类误注册在启动期 panic |
 | 数据权限 | **计算完成，执行未闭环** | `Authorizer.Constraint()` 可产出 AllowAll/resource/department/ancestor/deny；生产业务 repository 无消费者，IAM 生产路由也没有 `RegisterEntity` 调用 |
 | 菜单权限 | **判定完整，初始化缺失** | `EffectiveMenus()` 读取持久化菜单并批量鉴权、未知 permission fail closed、保留有可见子项的容器；但新租户未写 `DefaultMenus()`，结果为空 |
 | 字段权限 | **未实现** | 没有 schema、catalog、管理 API、repository projection、masking 或 response serialization filter |
@@ -954,7 +954,7 @@ CREATE TABLE {{.Prefix}}iam_roles (
 
 - [x] **10.1 平台管理员安全自举（Critical）：**实现 §2.5.1。当前生产 CLI 只有 `serve`/`migrate`；`EnsureBootstrapPrincipal` 无生产调用者且不写 `iam_platform_administrators`。平台管理员管理 API 自身受 `platform_administer` 保护，空库无法建立第一个管理员。
 - [x] **10.2 新租户 owner 自举（Critical）：**实现 §2.5.2。当前 `TenantService.Create` 只写 tenant、policy revision、audit；所有 tenant route 先要求 active membership，故新租户无法经现有 HTTP 建立第一个成员/管理员。
-- [ ] **10.3 修正 principal 管理权限语义（High，方案已定见 D17）：**`identity-update-principal`、suspend、resume 当前使用 tenant 注册器 + `platform_administer`。tenant role 不能授予 platform permission；full platform admin 又会先被 tenant membership middleware 拒绝。按 D17：仿 Keycloak realm 模型分两个平面——六条全局 operation 移到真正的 platform route 挂 `platform_administer`，租户管理员另有租户内 principal 更新权限；同时让 `authz.Register` 拒绝 platform-scope action，防止再次误注册。
+- [x] **10.3 修正 principal 管理权限语义（High，见 D17）：**`identity-update-principal`、suspend、resume 三条使用 tenant 注册器却挂 `platform_administer`。`CheckBulk` 对 platform scope 的 action 只认平台管理员身份，`tenant_administer` 通配不覆盖它，所以租户管理员在自己租户里改人、停用、恢复一律 403。能调通的只剩一种账号：**既是平台管理员、又是该租户活跃成员**——`CheckBulk` 先过 `memberActive` 闸，再走 `allowed = platformAdministrator` 那一支，两个条件同时满足才放行。bootstrap 出来的管理员恰好是这一种，所以浏览器审计一直是绿的，这个口子才一直没被发现（@ClaudeWEB 提供反例）。按 Keycloak realm 模型，这本就是 realm 管理员的租户内能力，改用权限表里现成的 `user/update`（scope=tenant），与同文件 list/create/get 的 `user/view`、`user/create` 一致；路由与请求体不变，前端零改动。同时给 `authz.Register`/`RegisterEntity`/`RegisterEntityAdapter` 补上 `RegisterPlatform` 早有的反向检查：platform scope 的 action 注册到 tenant registrar 直接 panic，这类错误从此在启动期暴露。
 - [ ] **10.4 数据权限端到端执行（High，方案已定见 D17）：**以 `internal/todo` 为参照实现（用户 2026-09-05 确认），为其 repository/list/get/update/delete 接入 `DataConstraint`，并对 entity-scoped route 使用 `RegisterEntity`；过滤下沉到查询层，不放在 controller；覆盖 tenant A/B、owner/department/ancestor/explicit deny、分页 count 与导出路径。只暴露 constraint/explain API 不算完成。
 - [ ] **10.5 字段权限设计与实现（High，方案已定见 D17）：**对标 Keycloak 声明式 User Profile 的每字段 `view`/`edit` 角色授权与 SCIM 2.0 的 `mutability`/`returned`；据此确定主体/角色继承、read/write 分离、deny precedence、mask 规则、OpenAPI 表达和审计策略，再设计 schema/catalog/API/cache revision，并在读取 projection/序列化和写入 validation 两端强制执行。不得只做前端隐藏。
 

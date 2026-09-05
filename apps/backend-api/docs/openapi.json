@@ -23772,7 +23772,7 @@
         "tags": [
           "identity"
         ],
-        "x-authz-permission": "platform_administer"
+        "x-authz-permission": "user_update"
       }
     },
     "/iam/principals/{id}/suspension": {
@@ -23894,7 +23894,7 @@
         "tags": [
           "identity"
         ],
-        "x-authz-permission": "platform_administer"
+        "x-authz-permission": "user_update"
       },
       "put": {
         "operationId": "identity-create-principal-suspension",
@@ -24014,7 +24014,7 @@
         "tags": [
           "identity"
         ],
-        "x-authz-permission": "platform_administer"
+        "x-authz-permission": "user_update"
       }
     },
     "/iam/relationships": {

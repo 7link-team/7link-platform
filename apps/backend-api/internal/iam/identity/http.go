@@ -211,7 +211,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Summary:     "Update a local principal profile",
 		Tags:        []string{"identity"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
-	}, authz.Guard{Resource: "platform", Verb: "administer"},
+	}, authz.Guard{Resource: "user", Verb: "update"},
 		func(ctx context.Context, in *principalUpdateInput) (*respx.Body[Principal], error) {
 			tenantID, id, err := principalRef(in.TenantID, in.ID)
 			if err != nil {
@@ -231,7 +231,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Summary:     "Suspend a principal and revoke its sessions and refresh tokens",
 		Tags:        []string{"identity"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict},
-	}, authz.Guard{Resource: "platform", Verb: "administer"},
+	}, authz.Guard{Resource: "user", Verb: "update"},
 		func(ctx context.Context, in *principalIDInput) (*respx.Body[Principal], error) {
 			tenantID, id, err := principalRef(in.TenantID, in.ID)
 			if err != nil {
@@ -251,7 +251,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Summary:     "Lift a principal suspension",
 		Tags:        []string{"identity"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict},
-	}, authz.Guard{Resource: "platform", Verb: "administer"},
+	}, authz.Guard{Resource: "user", Verb: "update"},
 		func(ctx context.Context, in *principalIDInput) (*respx.Body[Principal], error) {
 			tenantID, id, err := principalRef(in.TenantID, in.ID)
 			if err != nil {

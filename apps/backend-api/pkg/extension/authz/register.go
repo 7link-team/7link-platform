@@ -298,8 +298,19 @@ func (r *Registrar) prepare(api huma.API, op *huma.Operation, guard Guard) {
 	if op.OperationID == "" {
 		panic("guarded operation requires operation id")
 	}
-	if _, ok := r.registry.Find(guard.Code()); !ok {
+	action, ok := r.registry.Find(guard.Code())
+	if !ok {
 		panic("guarded operation uses unknown permission: " + guard.Code())
+	}
+	// The mirror of the check RegisterPlatform already makes. A platform-scope
+	// action guarding a tenant route is not a stricter route; it is a different
+	// one. The middleware here authorizes inside the caller's tenant, so the
+	// permission is looked for in tenant grants -- where a platform-only action
+	// is never granted. The route then answers only to whoever happens to hold
+	// it, and the tenant administrator loses an operation on their own tenant
+	// while the declaration still reads as if it were guarded correctly.
+	if action.Scope == "platform" {
+		panic("tenant operation uses platform permission: " + guard.Code())
 	}
 	if op.Metadata == nil {
 		op.Metadata = map[string]any{}

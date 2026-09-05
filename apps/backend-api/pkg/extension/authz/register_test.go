@@ -217,6 +217,49 @@ func TestRegistrarRejectsInvalidConstructionAndDeclarations(t *testing.T) {
 	})
 }
 
+// TestTenantRegistrationRefusesAPlatformPermission is the mirror of the check
+// RegisterPlatform has always made, and it exists because the missing half let
+// three tenant routes ship guarded by platform_administer.
+//
+// The failure is quiet, which is why a startup panic is the right place to
+// catch it. The tenant middleware looks the permission up in the caller's
+// tenant grants, and a platform-scope action is never among them, so the route
+// stops answering the tenant administrator it belongs to -- while the
+// declaration still reads as though it were guarded, only more strictly.
+func TestTenantRegistrationRefusesAPlatformPermission(t *testing.T) {
+	registry := testRegistry()
+	platform := authz.Guard{Resource: "tenant", Verb: "view"}
+	tenant := authz.Guard{Resource: "store", Verb: "view"}
+
+	operation := func(id string) huma.Operation {
+		return huma.Operation{OperationID: id, Method: http.MethodGet, Path: "/" + id}
+	}
+
+	assert.PanicsWithValue(t, "tenant operation uses platform permission: tenant_view", func() {
+		_, api := humatest.New(t)
+		authz.Register(authz.NewDeclarationOnlyRegistrar(registry), api, operation("tenant-route"), platform, okRoute)
+	}, "the message has to name the offending code, or the operator is left to find it by reading every route")
+
+	assert.Panics(t, func() {
+		_, api := humatest.New(t)
+		registrar := authz.NewRegistrar(registry, &fakeVerifier{}, &fakeChecker{}, &fakeMembership{})
+		authz.RegisterEntity(registrar, api, operation("entity-route"), platform, okRoute)
+	}, "an entity route authorizes inside a tenant too, so it inherits the same rule")
+
+	assert.Panics(t, func() {
+		_, api := humatest.New(t)
+		registrar := authz.NewRegistrar(registry, &fakeVerifier{}, &fakeChecker{}, &fakeMembership{})
+		authz.RegisterEntityAdapter(registrar, api, operation("adapter-route"), platform, func(huma.Context) {})
+	}, "the raw-transport variant may not be the way around the rule")
+
+	// The check may only reject the scope mismatch. A tenant action on a tenant
+	// route is the ordinary case and has to keep registering.
+	assert.NotPanics(t, func() {
+		_, api := humatest.New(t)
+		authz.Register(authz.NewDeclarationOnlyRegistrar(registry), api, operation("store-route"), tenant, okRoute)
+	})
+}
+
 func TestUnboundRegistrarBindsVerifierExactlyOnce(t *testing.T) {
 	registrar := authz.NewUnboundRegistrar(testRegistry())
 	verifier := validVerifier()

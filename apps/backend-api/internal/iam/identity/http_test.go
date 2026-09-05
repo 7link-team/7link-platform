@@ -43,16 +43,19 @@ identity-list-service-account-credentials|GET|/iam/service-accounts/{id}/credent
 identity-create-service-account-credential|POST|/iam/service-accounts/{id}/credentials
 identity-delete-service-account-credential|DELETE|/iam/service-accounts/{id}/credentials/{credential_id}`
 
-// identityGuards is the permission code each operation must carry. Principal
-// profile and suspension changes stay platform-guarded exactly as the source
-// module required.
+// identityGuards is the permission code each operation must carry. Editing a
+// profile and suspending or restoring an account are changes to a user inside
+// one tenant, so they carry user_update alongside the reads and creates -- the
+// capability a tenant administrator has over their own tenant everywhere IAM
+// is deployed. They were declared platform_administer until 10.3, which put
+// them out of reach of the only role that should hold them.
 var identityGuards = map[string]string{
 	"identity-list-principals":                   "user_view",
 	"identity-create-principal":                  "user_create",
 	"identity-get-principal":                     "user_view",
-	"identity-update-principal":                  "platform_administer",
-	"identity-create-principal-suspension":       "platform_administer",
-	"identity-delete-principal-suspension":       "platform_administer",
+	"identity-update-principal":                  "user_update",
+	"identity-create-principal-suspension":       "user_update",
+	"identity-delete-principal-suspension":       "user_update",
 	"identity-list-service-accounts":             "service_account_view",
 	"identity-create-service-account":            "service_account_create",
 	"identity-get-service-account":               "service_account_view",
@@ -70,10 +73,11 @@ func (verifier identityTokenVerifier) Authenticate(context.Context, string, stri
 }
 
 // identityRouteAuthorizer answers the tenant permission check each guarded
-// operation performs. Principal administration is guarded by the
-// platform_administer permission inside the tenant, exactly as the source
-// module required, so withholding that one code exercises the guard.
-type identityRouteAuthorizer struct{ administerAllowed bool }
+// operation performs. Withholding user_update alone exercises the guard on the
+// three principal-administration routes while leaving the reads answerable, so
+// a denial that came from the guard can be told apart from one that came from
+// the route being unreachable at all.
+type identityRouteAuthorizer struct{ userUpdateAllowed bool }
 
 func (authorizer identityRouteAuthorizer) Check(
 	_ context.Context,
@@ -81,14 +85,17 @@ func (authorizer identityRouteAuthorizer) Check(
 	permission string,
 	_ guid.ID,
 ) (bool, error) {
-	if permission == "platform_administer" {
-		return authorizer.administerAllowed, nil
+	if permission == "user_update" {
+		return authorizer.userUpdateAllowed, nil
 	}
 	return true, nil
 }
 
+// CheckPlatform denies unconditionally: no route this module registers is
+// platform-scoped, so a test that only passes because this returned true would
+// be reporting on a route that should not exist here.
 func (authorizer identityRouteAuthorizer) CheckPlatform(context.Context, string, guid.ID) (bool, error) {
-	return authorizer.administerAllowed, nil
+	return false, nil
 }
 
 type identityMembershipChecker struct{}
@@ -115,7 +122,7 @@ type identityHTTPHarness struct {
 	api humatest.TestAPI
 }
 
-func newIdentityHTTPHarness(t *testing.T, administerAllowed bool) identityHTTPHarness {
+func newIdentityHTTPHarness(t *testing.T, userUpdateAllowed bool) identityHTTPHarness {
 	t.Helper()
 	require.NoError(t, initializeIdentityLocales())
 	harness := newIdentityHarness(t, "sl_")
@@ -125,7 +132,7 @@ func newIdentityHTTPHarness(t *testing.T, administerAllowed bool) identityHTTPHa
 	registrar := authz.NewRegistrar(
 		authz.DefaultRegistry(),
 		identityTokenVerifier{principalID: 11},
-		identityRouteAuthorizer{administerAllowed: administerAllowed},
+		identityRouteAuthorizer{userUpdateAllowed: userUpdateAllowed},
 		identityMembershipChecker{},
 	)
 	router := chi.NewRouter()
@@ -334,7 +341,12 @@ func TestIdentityPrincipalHTTPRejectsConflictsAndInvalidInput(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, harness.api.Get("/iam/principals/999999", auth, header).Code)
 }
 
-func TestIdentityPrincipalAdministrationRequiresPlatformAdministerPermission(t *testing.T) {
+// TestIdentityPrincipalAdministrationRequiresTenantUserUpdatePermission checks
+// the guard from both sides. A tenant administrator who may read users but not
+// change them is refused all three write routes, and the principal is left as
+// it was -- so a passing guard is not the only thing standing between a
+// refused request and a changed record.
+func TestIdentityPrincipalAdministrationRequiresTenantUserUpdatePermission(t *testing.T) {
 	harness := newIdentityHTTPHarness(t, false)
 	header, auth := identityTenantHeader(7), "Authorization: Bearer test"
 
@@ -344,7 +356,7 @@ func TestIdentityPrincipalAdministrationRequiresPlatformAdministerPermission(t *
 	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
 	id := decodeIdentityEnvelope[Principal](t, created).Data.ID
 
-	// Tenant-scoped reads stay available; platform administration does not.
+	// Reads stay available; the three writes do not.
 	assert.Equal(t, http.StatusOK, harness.api.Get("/iam/principals/"+id.String(), auth, header).Code)
 	for _, response := range []*httptest.ResponseRecorder{
 		harness.api.Patch("/iam/principals/"+id.String(), auth, header, map[string]any{"display_name": "Nope"}),

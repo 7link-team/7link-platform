@@ -43,7 +43,7 @@ func identityTestRegistrar() *authz.Registrar {
 	return authz.NewRegistrar(
 		authz.DefaultRegistry(),
 		identityTokenVerifier{principalID: 11},
-		identityRouteAuthorizer{administerAllowed: true},
+		identityRouteAuthorizer{userUpdateAllowed: true},
 		identityMembershipChecker{},
 	)
 }
