@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"7link.com/platform/internal/iam/audit"
@@ -99,7 +100,7 @@ func TestOAuthModuleResolvesDependenciesAndRegistersContract(t *testing.T) {
 	require.NoError(t, instance.CheckHealth(t.Context()))
 	_, api := humatest.New(t)
 	require.NoError(t, instance.RegisterHTTP(t.Context(), api))
-	assert.Len(t, oauthOperationManifest(api.OpenAPI()), 12)
+	assert.Len(t, oauthOperationManifest(api.OpenAPI()), 15)
 }
 
 func TestOAuthModuleReportsMissingWiring(t *testing.T) {
@@ -123,4 +124,21 @@ func TestOAuthModuleReportsMissingWiring(t *testing.T) {
 	require.NoError(t, module.Provide[guid.Source](services, newOAuthTestIDs(1)))
 	require.NoError(t, services.Seal())
 	assert.ErrorContains(t, instance.InjectServices(services), "audit appender")
+}
+
+// TestOAuthModuleRefusesToStartWithAnUnusableConsentScreen keeps a bad template
+// path a startup failure. Discovering it lazily would turn a deployment typo
+// into a 500 on the first person who tries to log in.
+func TestOAuthModuleRefusesToStartWithAnUnusableConsentScreen(t *testing.T) {
+	harness := newOAuthHarness(t, "sl_")
+	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
+	instance := NewModule(harness.runtime, Config{
+		Config:  module.Config{Enabled: true},
+		Consent: ConsentConfig{TemplateFile: filepath.Join(t.TempDir(), "absent.html")},
+	})
+	instance.registrar = oauthTestRegistrar(harness.web)
+	instance.authn = harness.web
+	instance.ids = newOAuthTestIDs(7100)
+	instance.appender = harness.repo.appender
+	assert.ErrorContains(t, instance.Initialize(t.Context()), "initialize OAuth consent screen")
 }

@@ -104,6 +104,38 @@ type introspectionDocument struct {
 type userInfoOutput struct{ Body userInfoDocument }
 type introspectOutput struct{ Body introspectionDocument }
 
+type consentInput struct {
+	Challenge string `query:"consent_challenge" required:"true" minLength:"43" maxLength:"43"`
+	Cookie    string `header:"Cookie" hidden:"true"`
+}
+
+// consentDecisionInput carries the decision as a form post so the built-in
+// screen is a plain HTML form with no script of its own. Origin and Cookie are
+// what authn.ValidateCSRF needs: the decision is a cookie-authenticated state
+// change, which is exactly the shape CSRF targets.
+type consentDecisionInput struct {
+	Origin        string `header:"Origin" hidden:"true"`
+	Cookie        string `header:"Cookie" hidden:"true"`
+	Authorization string `header:"Authorization" hidden:"true"`
+	RawBody       []byte `contentType:"application/x-www-form-urlencoded"`
+}
+
+type consentForm struct {
+	Challenge string `json:"consent_challenge" minLength:"43" maxLength:"43"`
+	Decision  string `json:"decision" enum:"allow,deny"`
+}
+
+// consentPageOutput writes the rendered screen verbatim; huma copies a []byte
+// body straight to the wire instead of encoding it.
+type consentPageOutput struct {
+	Status       int    `status:""`
+	ContentType  string `header:"Content-Type"`
+	CacheControl string `header:"Cache-Control"`
+	Body         []byte
+}
+
+type consentRequestOutput struct{ Body ConsentRequest }
+
 type tokenForm struct {
 	GrantType    string `json:"grant_type" enum:"authorization_code,refresh_token,client_credentials"`
 	ClientID     string `json:"client_id,omitempty" maxLength:"19" pattern:"^[1-9][0-9]*$"`
@@ -168,6 +200,7 @@ type clientCreateInput struct {
 		GrantTypes   []oauthGrantType   `json:"grant_types" minItems:"1" maxItems:"3"`
 		Scopes       []oauthScope       `json:"scopes" minItems:"1" maxItems:"128"`
 		PublicClient bool               `json:"public_client"`
+		ConsentMode  ConsentMode        `json:"consent_mode,omitempty" enum:"implicit,explicit" default:"implicit"`
 	}
 }
 
@@ -185,6 +218,7 @@ type clientUpdateInput struct {
 		GrantTypes   []oauthGrantType   `json:"grant_types" minItems:"1" maxItems:"3"`
 		Scopes       []oauthScope       `json:"scopes" minItems:"1" maxItems:"128"`
 		PublicClient bool               `json:"public_client"`
+		ConsentMode  ConsentMode        `json:"consent_mode,omitempty" enum:"implicit,explicit" default:"implicit"`
 		Status       string             `json:"status" enum:"active,disabled"`
 	}
 }
@@ -206,7 +240,99 @@ type clientDeleteData struct {
 // operations.
 func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	registerProtocolHTTP(api, service)
+	registerConsentHTTP(api, service)
 	registerClientHTTP(api, service, registrar)
+}
+
+// registerConsentHTTP publishes the consent screen and the endpoint that
+// records its answer. Both stay registered even when an operator points the
+// consent path at their own application: that application renders from
+// GET /oauth/consent/request and posts its answer back here, so the decision
+// is always recorded by the authorization server.
+func registerConsentHTTP(api huma.API, service *Service) {
+	consentPath := service.ConsentPath()
+	authz.RegisterPublic(api, huma.Operation{
+		OperationID: "oauth-consent-page", Method: http.MethodGet, Path: defaultConsentPath,
+		Summary:  "Render the consent screen for a parked authorization request",
+		Security: []map[string][]string{{authz.SessionScheme: {}}}, Tags: []string{"oauth"},
+	}, func(ctx context.Context, in *consentInput) (*consentPageOutput, error) {
+		page, err := service.RenderConsent(ctx, in.Cookie, in.Challenge)
+		if err != nil {
+			return nil, consentError(ctx, err)
+		}
+		return &consentPageOutput{
+			Status: http.StatusOK, ContentType: "text/html; charset=utf-8",
+			// The screen names a client and a set of scopes for one subject,
+			// so it must not be reused from a cache by anyone else.
+			CacheControl: "no-store", Body: page,
+		}, nil
+	})
+	documentConsentPage(api)
+	authz.RegisterPublic(api, huma.Operation{
+		OperationID: "oauth-consent-request", Method: http.MethodGet, Path: defaultConsentPath + "/request",
+		Summary:  "Read a parked authorization request for an external consent screen",
+		Security: []map[string][]string{{authz.SessionScheme: {}}}, Tags: []string{"oauth"},
+	}, func(ctx context.Context, in *consentInput) (*consentRequestOutput, error) {
+		request, err := service.PendingConsent(ctx, in.Cookie, in.Challenge)
+		if err != nil {
+			return nil, consentError(ctx, err)
+		}
+		return &consentRequestOutput{Body: request}, nil
+	})
+	documentOAuthErrors(api, api.OpenAPI().Paths[defaultConsentPath+"/request"].Get,
+		http.StatusBadRequest, http.StatusUnauthorized, http.StatusInternalServerError)
+	authz.RegisterPublic(api, huma.Operation{
+		OperationID: "oauth-consent-decision", Method: http.MethodPost, Path: defaultConsentPath,
+		Summary: "Record a consent decision and return to the client", DefaultStatus: http.StatusFound,
+		Security: []map[string][]string{{authz.SessionScheme: {}}}, Tags: []string{"oauth"}, SkipValidateParams: true,
+	}, func(ctx context.Context, in *consentDecisionInput) (*redirectOutput, error) {
+		if err := service.authn.ValidateCSRF(http.MethodPost, in.Origin, in.Cookie, in.Authorization); err != nil {
+			return nil, oauthError(ctx, http.StatusForbidden, "invalid_request")
+		}
+		form, err := url.ParseQuery(string(in.RawBody))
+		if err != nil {
+			return nil, oauthError(ctx, http.StatusBadRequest, "invalid_request")
+		}
+		decision := form.Get("decision")
+		if decision != "allow" && decision != "deny" {
+			return nil, oauthError(ctx, http.StatusBadRequest, "invalid_request")
+		}
+		location, err := service.ResolveConsent(ctx, in.Cookie, form.Get("consent_challenge"), decision == "allow")
+		if err != nil {
+			return nil, consentError(ctx, err)
+		}
+		return &redirectOutput{Status: http.StatusFound, Location: location}, nil
+	})
+	documentOAuthForm[consentForm](api, defaultConsentPath)
+	documentOAuthErrors(api, api.OpenAPI().Paths[defaultConsentPath].Post, http.StatusForbidden)
+	if consentPath != defaultConsentPath {
+		// The built-in screen is still reachable, but the authorization
+		// endpoint no longer sends anyone to it, so say so in the document
+		// rather than letting the description quietly lie.
+		api.OpenAPI().Paths[defaultConsentPath].Get.Description =
+			"Superseded by the configured consent screen at " + consentPath + "."
+	}
+}
+
+// consentError keeps a failed consent lookup indistinguishable from a failed
+// authentication. Telling the two apart would let a caller probe which
+// challenges exist.
+func consentError(ctx context.Context, err error) error {
+	if errors.Is(err, ErrInvalidRequest) || errors.Is(err, authnext.ErrInvalidCredentials) {
+		return oauthError(ctx, http.StatusBadRequest, "invalid_request")
+	}
+	return oauthError(ctx, http.StatusInternalServerError, "server_error")
+}
+
+// documentConsentPage replaces the generated JSON response with the HTML the
+// screen actually returns.
+func documentConsentPage(api huma.API) {
+	operation := api.OpenAPI().Paths[defaultConsentPath].Get
+	operation.Responses["200"] = &huma.Response{
+		Description: "Consent screen",
+		Content:     map[string]*huma.MediaType{"text/html": {Schema: &huma.Schema{Type: huma.TypeString}}},
+	}
+	documentOAuthErrors(api, operation, http.StatusBadRequest, http.StatusUnauthorized, http.StatusInternalServerError)
 }
 
 func registerProtocolHTTP(api huma.API, service *Service) {
@@ -253,7 +379,12 @@ func registerProtocolHTTP(api huma.API, service *Service) {
 			in.CodeChallenge, in.CodeChallengeMethod, in.Nonce, in.Prompt,
 		)
 		if err != nil {
-			if errors.Is(err, ErrInvalidRequest) || errors.Is(err, authnext.ErrInvalidCredentials) || isConsentRequired(err) {
+			// OIDC Core 3.1.2.6 names consent_required for a request that
+			// needs consent the server cannot collect here.
+			if isConsentRequired(err) {
+				return nil, oauthError(ctx, http.StatusBadRequest, "consent_required")
+			}
+			if errors.Is(err, ErrInvalidRequest) || errors.Is(err, authnext.ErrInvalidCredentials) {
 				return nil, oauthError(ctx, http.StatusBadRequest, "invalid_request")
 			}
 			return nil, oauthError(ctx, http.StatusInternalServerError, "server_error")
@@ -384,7 +515,7 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 		client, secret, err := service.CreateClient(
 			ctx, tenantID, in.Body.Name, oauthInputStrings(in.Body.RedirectURIs),
 			oauthInputStrings(in.Body.GrantTypes), oauthInputStrings(in.Body.Scopes),
-			in.Body.PublicClient,
+			in.Body.PublicClient, in.Body.ConsentMode,
 		)
 		if err != nil {
 			return nil, oauthClientError(err, false)
@@ -402,7 +533,7 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 		client, err := service.UpdateClient(
 			ctx, tenantID, id, in.Body.Name, oauthInputStrings(in.Body.RedirectURIs),
 			oauthInputStrings(in.Body.GrantTypes), oauthInputStrings(in.Body.Scopes),
-			in.Body.PublicClient, in.Body.Status,
+			in.Body.PublicClient, in.Body.ConsentMode, in.Body.Status,
 		)
 		if err != nil {
 			return nil, oauthClientError(err, false)
@@ -525,6 +656,7 @@ func oauthError(ctx context.Context, status int, code string) error {
 		"insufficient_scope":     oauthi18n.InsufficientScope,
 		"unsupported_token_type": oauthi18n.UnsupportedTokenType,
 		"server_error":           oauthi18n.ServerError,
+		"consent_required":       oauthi18n.ConsentRequired,
 	}[code]
 	return &protocolError{
 		Status: status, Code: code, Description: platformi18n.TContext(ctx, key),

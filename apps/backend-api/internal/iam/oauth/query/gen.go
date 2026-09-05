@@ -20,6 +20,7 @@ var (
 	AuthorizationCode *authorizationCode
 	Client            *client
 	Consent           *consent
+	ConsentRequest    *consentRequest
 	RefreshToken      *refreshToken
 )
 
@@ -28,6 +29,7 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	AuthorizationCode = &Q.AuthorizationCode
 	Client = &Q.Client
 	Consent = &Q.Consent
+	ConsentRequest = &Q.ConsentRequest
 	RefreshToken = &Q.RefreshToken
 }
 
@@ -37,6 +39,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		AuthorizationCode: newAuthorizationCode(db, opts...),
 		Client:            newClient(db, opts...),
 		Consent:           newConsent(db, opts...),
+		ConsentRequest:    newConsentRequest(db, opts...),
 		RefreshToken:      newRefreshToken(db, opts...),
 	}
 }
@@ -47,6 +50,7 @@ type Query struct {
 	AuthorizationCode authorizationCode
 	Client            client
 	Consent           consent
+	ConsentRequest    consentRequest
 	RefreshToken      refreshToken
 }
 
@@ -60,6 +64,7 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		AuthorizationCode: q.AuthorizationCode.clone(db),
 		Client:            q.Client.clone(db),
 		Consent:           q.Consent.clone(db),
+		ConsentRequest:    q.ConsentRequest.clone(db),
 		RefreshToken:      q.RefreshToken.clone(db),
 	}
 }
@@ -78,6 +83,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		AuthorizationCode: q.AuthorizationCode.replaceDB(db),
 		Client:            q.Client.replaceDB(db),
 		Consent:           q.Consent.replaceDB(db),
+		ConsentRequest:    q.ConsentRequest.replaceDB(db),
 		RefreshToken:      q.RefreshToken.replaceDB(db),
 	}
 }
@@ -86,6 +92,7 @@ type queryCtx struct {
 	AuthorizationCode IAuthorizationCodeDo
 	Client            IClientDo
 	Consent           IConsentDo
+	ConsentRequest    IConsentRequestDo
 	RefreshToken      IRefreshTokenDo
 }
 
@@ -94,6 +101,7 @@ func (q *Query) WithContext(ctx context.Context) *queryCtx {
 		AuthorizationCode: q.AuthorizationCode.WithContext(ctx),
 		Client:            q.Client.WithContext(ctx),
 		Consent:           q.Consent.WithContext(ctx),
+		ConsentRequest:    q.ConsentRequest.WithContext(ctx),
 		RefreshToken:      q.RefreshToken.WithContext(ctx),
 	}
 }

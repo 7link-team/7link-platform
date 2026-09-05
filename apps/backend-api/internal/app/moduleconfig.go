@@ -114,7 +114,9 @@ func iamOrganizationConfig(c AppConfig) organization.Config {
 }
 
 func iamOAuthConfig(c AppConfig) oauth.Config {
-	return oauth.Config{Config: iamActivationConfig(c)}
+	return oauth.Config{Config: iamActivationConfig(c), Consent: oauth.ConsentConfig{
+		Path: c.OAuth.Consent.Path, TemplateFile: c.OAuth.Consent.TemplateFile, TTL: c.OAuth.Consent.TTL,
+	}}
 }
 
 func iamProvisioningConfig(c AppConfig) provisioning.Config {

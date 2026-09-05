@@ -121,7 +121,7 @@ func assertRealMySQLDown(t *testing.T, sqlDB *sql.DB, db *gorm.DB, modules []mod
 
 func assertRealMySQLSchemaSet(t *testing.T, db *sql.DB, prefix string) {
 	t.Helper()
-	expectedTables := make([]string, 0, 63)
+	expectedTables := make([]string, 0, 64)
 	expectedVersions := make([]string, 0, 9)
 	for _, contract := range iamMigrationContracts() {
 		for _, table := range contract.tables {

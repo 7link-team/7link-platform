@@ -7,5 +7,14 @@
   "invalid_token": "The access token is invalid, expired, or revoked. Obtain a new token before retrying.",
   "insufficient_scope": "The access token does not include the openid scope. Request the required scope and try again.",
   "unsupported_token_type": "This endpoint revokes refresh tokens only. Use token_type_hint=refresh_token.",
-  "server_error": "The authorization server could not complete the request. Retry later; contact an administrator if the problem continues."
+  "server_error": "The authorization server could not complete the request. Retry later; contact an administrator if the problem continues.",
+  "consent_required": "The user has not consented to the requested scopes and this request cannot prompt for consent. Start the flow again without prompt=none, or grant consent first.",
+  "consent_title": "Authorize %s",
+  "consent_prompt": "This application is asking for access to your account. Review what it will be able to do before you decide.",
+  "consent_allow": "Allow",
+  "consent_deny": "Deny",
+  "scope_openid": "Confirm who you are",
+  "scope_profile": "Read your basic profile",
+  "scope_email": "Read your email address",
+  "scope_offline_access": "Stay signed in when you are away"
 }

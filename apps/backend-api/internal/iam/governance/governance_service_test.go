@@ -538,3 +538,35 @@ func TestAccessRequestConcurrentDecisionsHaveOneTerminalWinner(t *testing.T) {
 	assert.Contains(t, []string{StatusApproved, StatusRejected}, items[0].Status)
 	assert.Equal(t, int64(2), h.count(t, "governance_audit", "tenant_id = ?", 1))
 }
+
+// TestAccessRequestCreationSurfacesStorageFailuresAtEachLookup drops one table
+// at a time so every precondition Create checks is exercised on its failure
+// path. A storage fault must be reported, never mistaken for "not a member",
+// "no such role", or "already granted" — each of those would silently change
+// the answer a requester gets.
+func TestAccessRequestCreationSurfacesStorageFailuresAtEachLookup(t *testing.T) {
+	h := newGovernanceHarness(t, "sl_")
+	h.seedTenant(t, 1)
+	h.seedMember(t, 1, 10, "Requester")
+	h.seedRole(t, 1, 20, "Operator")
+	input := CreateAccessRequest{
+		RoleID: 20, Reason: "temporary operations access", AccessExpiresAt: governanceTestNow.Add(24 * time.Hour),
+	}
+
+	for _, broken := range []struct {
+		table   string
+		message string
+	}{
+		{table: "iam_role_members", message: "check existing role grant"},
+		{table: "iam_roles", message: "get requestable role"},
+		{table: "iam_tenant_members", message: "check access requester membership"},
+	} {
+		require.NoError(t, h.db.Exec("DROP TABLE "+h.table(broken.table)).Error)
+		_, err := h.service.Create(t.Context(), 1, 10, input)
+		require.Error(t, err, broken.table)
+		assert.ErrorContains(t, err, broken.message)
+		assert.NotErrorIs(t, err, ErrRequesterInactive, broken.table)
+		assert.NotErrorIs(t, err, ErrRoleNotFound, broken.table)
+		assert.NotErrorIs(t, err, ErrAlreadyGranted, broken.table)
+	}
+}

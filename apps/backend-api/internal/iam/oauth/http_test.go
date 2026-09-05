@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	oauthi18n "7link.com/platform/internal/iam/oauth/i18n"
 	"7link.com/platform/internal/infra/guid"
@@ -28,6 +29,9 @@ import (
 
 const oauthRouteManifest = `
 oauth-authorize|GET|/oauth/authorize
+oauth-consent-decision|POST|/oauth/consent
+oauth-consent-page|GET|/oauth/consent
+oauth-consent-request|GET|/oauth/consent/request
 oauth-create-client|POST|/iam/oauth-clients
 oauth-delete-client|DELETE|/iam/oauth-clients/{id}
 oauth-discovery|GET|/.well-known/openid-configuration
@@ -121,7 +125,7 @@ func oauthPathOperations(item *huma.PathItem) map[string]*huma.Operation {
 }
 
 func oauthOperationManifest(spec *huma.OpenAPI) []string {
-	manifest := make([]string, 0, 12)
+	manifest := make([]string, 0, 15)
 	for path, item := range spec.Paths {
 		for method, operation := range oauthPathOperations(item) {
 			if operation != nil {
@@ -161,7 +165,7 @@ func TestOAuthRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 12)
+	require.Len(t, got, 15)
 	require.NoError(t, authz.ValidateOperations(harness.api, authz.DefaultRegistry()))
 }
 
@@ -446,7 +450,7 @@ func TestOAuthAuthorizationCodeHTTPLifecycle(t *testing.T) {
 func TestOAuthIntrospectionAndProtocolErrors(t *testing.T) {
 	harness := newOAuthHTTPHarness(t)
 	client, secret, err := harness.service.CreateClient(
-		t.Context(), 7, "Worker", nil, []string{"client_credentials"}, []string{"jobs.read"}, false,
+		t.Context(), 7, "Worker", nil, []string{"client_credentials"}, []string{"jobs.read"}, false, ConsentImplicit,
 	)
 	require.NoError(t, err)
 	basic := "Basic " + base64.StdEncoding.EncodeToString([]byte(client.ID+":"+secret))
@@ -525,7 +529,7 @@ func TestOAuthUserInfoRequiresPrincipalAccessTokenWithOpenIDScope(t *testing.T) 
 func TestOAuthProtocolRequiresTokenAndRejectsUnsupportedRevocationHint(t *testing.T) {
 	harness := newOAuthHTTPHarness(t)
 	client, secret, err := harness.service.CreateClient(
-		t.Context(), 7, "Worker", nil, []string{"client_credentials"}, []string{"jobs.read"}, false,
+		t.Context(), 7, "Worker", nil, []string{"client_credentials"}, []string{"jobs.read"}, false, ConsentImplicit,
 	)
 	require.NoError(t, err)
 	basic := map[string]string{
@@ -545,7 +549,7 @@ func TestOAuthProtocolRequiresTokenAndRejectsUnsupportedRevocationHint(t *testin
 	assert.Equal(t, "unsupported_token_type", decodeProtocolError(t, response).Code)
 }
 
-func TestOAuthPromptConsentNeverReferencesMissingRoute(t *testing.T) {
+func TestOAuthPromptDirectsTheBrowserToTheConsentScreen(t *testing.T) {
 	harness := newOAuthHTTPHarness(t)
 	client := createBrowserClient(t, harness.oauthHarness)
 	query := url.Values{
@@ -554,11 +558,201 @@ func TestOAuthPromptConsentNeverReferencesMissingRoute(t *testing.T) {
 		"prompt": {"consent"},
 	}
 	response := harness.request(http.MethodGet, "/oauth/authorize?"+query.Encode(), "", nil, map[string]string{"Cookie": "session"})
-	require.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
-	assert.Empty(t, response.Header().Get("Location"))
-	assert.Equal(t, "invalid_request", decodeProtocolError(t, response).Code)
-	assert.NotContains(t, response.Body.String(), "/oauth/consent")
-	assert.Nil(t, harness.api.OpenAPI().Paths["/oauth/consent"])
+	require.Equal(t, http.StatusFound, response.Code, response.Body.String())
+	location, err := url.Parse(response.Header().Get("Location"))
+	require.NoError(t, err)
+	assert.Equal(t, "/oauth/consent", location.Path)
+	challenge := location.Query().Get("consent_challenge")
+	assert.Len(t, challenge, 43)
+	// The challenge travels in the redirect but is stored only as a hash, so
+	// reading the table cannot reproduce the value the browser holds.
+	var stored string
+	require.NoError(t, harness.db.Table(harness.table("iam_oauth_consent_requests")).
+		Pluck("challenge_hash", &stored).Error)
+	assert.NotEqual(t, challenge, stored)
+
+	// prompt=none forbids interaction, so it still reports the OIDC error code
+	// instead of redirecting to a screen nobody asked to see.
+	query.Set("prompt", "none")
+	silent := harness.request(http.MethodGet, "/oauth/authorize?"+query.Encode(), "", nil, map[string]string{"Cookie": "session"})
+	require.Equal(t, http.StatusBadRequest, silent.Code, silent.Body.String())
+	assert.Empty(t, silent.Header().Get("Location"))
+	assert.Equal(t, "consent_required", decodeProtocolError(t, silent).Code)
+
+	// A well-formed request that the service still rejects keeps reporting
+	// invalid_request, so adding the screen did not widen consent_required.
+	query.Del("prompt")
+	query.Set("client_id", "1234567890123456789")
+	unknown := harness.request(http.MethodGet, "/oauth/authorize?"+query.Encode(), "", nil, map[string]string{"Cookie": "session"})
+	require.Equal(t, http.StatusBadRequest, unknown.Code, unknown.Body.String())
+	assert.Equal(t, "invalid_request", decodeProtocolError(t, unknown).Code)
+}
+
+// startConsentOverHTTP runs an authorization that needs consent and returns the
+// challenge the browser would carry to the screen.
+func startConsentOverHTTP(t *testing.T, harness oauthHTTPHarness, client Client) string {
+	t.Helper()
+	query := url.Values{
+		"client_id": {client.ID}, "redirect_uri": {client.RedirectURIs[0]}, "response_type": {"code"},
+		"scope": {"openid profile"}, "code_challenge": {oauthChallenge()}, "code_challenge_method": {"S256"},
+		"state": {"xyz"}, "prompt": {"consent"},
+	}
+	response := harness.request(http.MethodGet, "/oauth/authorize?"+query.Encode(), "", nil, map[string]string{"Cookie": "session"})
+	require.Equal(t, http.StatusFound, response.Code, response.Body.String())
+	location, err := url.Parse(response.Header().Get("Location"))
+	require.NoError(t, err)
+	return location.Query().Get("consent_challenge")
+}
+
+func TestConsentScreenRendersTheRequestAndGrantsOnApproval(t *testing.T) {
+	harness := newOAuthHTTPHarness(t)
+	client := createBrowserClient(t, harness.oauthHarness)
+	challenge := startConsentOverHTTP(t, harness, client)
+
+	page := harness.request(http.MethodGet, "/oauth/consent?consent_challenge="+challenge, "", nil,
+		map[string]string{"Cookie": "session"})
+	require.Equal(t, http.StatusOK, page.Code, page.Body.String())
+	assert.Contains(t, page.Header().Get("Content-Type"), "text/html")
+	// The screen names one subject and one client, so a shared cache must not
+	// be allowed to hand it to anyone else.
+	assert.Equal(t, "no-store", page.Header().Get("Cache-Control"))
+	body := page.Body.String()
+	assert.Contains(t, body, "Browser")
+	assert.Contains(t, body, challenge)
+	assert.Contains(t, body, "Confirm who you are", "a translated scope is explained, not just named")
+	assert.Contains(t, body, "Read your basic profile")
+
+	// The same request is also readable as JSON, which is what a consent
+	// application hosted by the operator renders from.
+	document := harness.request(http.MethodGet, "/oauth/consent/request?consent_challenge="+challenge, "", nil,
+		map[string]string{"Cookie": "session"})
+	require.Equal(t, http.StatusOK, document.Code, document.Body.String())
+	var request ConsentRequest
+	require.NoError(t, json.Unmarshal(document.Body.Bytes(), &request), document.Body.String())
+	assert.Equal(t, challenge, request.Challenge)
+	assert.Equal(t, "Browser", request.ClientName)
+	assert.Equal(t, []string{"openid", "profile"}, request.Scopes)
+
+	decision := harness.form(http.MethodPost, "/oauth/consent", url.Values{
+		"consent_challenge": {challenge}, "decision": {"allow"},
+	}, map[string]string{"Cookie": "session"})
+	require.Equal(t, http.StatusFound, decision.Code, decision.Body.String())
+	redirect, err := url.Parse(decision.Header().Get("Location"))
+	require.NoError(t, err)
+	assert.Equal(t, "https://app.example/callback", redirect.Scheme+"://"+redirect.Host+redirect.Path)
+	assert.NotEmpty(t, redirect.Query().Get("code"))
+	assert.Equal(t, "xyz", redirect.Query().Get("state"), "state must survive the detour through the screen")
+	assert.Equal(t, int64(1), harness.count(t, "iam_oauth_consents"))
+	assert.Equal(t, int64(1), harness.count(t, "iam_oauth_codes"))
+
+	// The challenge is single-use: replaying the approval must not mint a
+	// second authorization code for the same parked request.
+	replay := harness.form(http.MethodPost, "/oauth/consent", url.Values{
+		"consent_challenge": {challenge}, "decision": {"allow"},
+	}, map[string]string{"Cookie": "session"})
+	require.Equal(t, http.StatusBadRequest, replay.Code, replay.Body.String())
+	assert.Equal(t, "invalid_request", decodeProtocolError(t, replay).Code)
+	assert.Equal(t, int64(1), harness.count(t, "iam_oauth_codes"))
+}
+
+func TestConsentDenialReturnsAccessDeniedToTheClient(t *testing.T) {
+	harness := newOAuthHTTPHarness(t)
+	client := createBrowserClient(t, harness.oauthHarness)
+	challenge := startConsentOverHTTP(t, harness, client)
+
+	decision := harness.form(http.MethodPost, "/oauth/consent", url.Values{
+		"consent_challenge": {challenge}, "decision": {"deny"},
+	}, map[string]string{"Cookie": "session"})
+	require.Equal(t, http.StatusFound, decision.Code, decision.Body.String())
+	redirect, err := url.Parse(decision.Header().Get("Location"))
+	require.NoError(t, err)
+	// RFC 6749 4.1.2.1: a refusal is reported to the client at its redirect
+	// URI, not left as an error page the client never learns about.
+	assert.Equal(t, "access_denied", redirect.Query().Get("error"))
+	assert.Equal(t, "xyz", redirect.Query().Get("state"))
+	assert.Empty(t, redirect.Query().Get("code"))
+	assert.Zero(t, harness.count(t, "iam_oauth_consents"))
+	assert.Zero(t, harness.count(t, "iam_oauth_codes"))
+	assert.Equal(t, []string{"oauth_client_created", "oauth_consent_denied"}, harness.eventTypes(t))
+}
+
+func TestConsentChallengeIsRefusedOutsideItsOwnSessionAndLifetime(t *testing.T) {
+	harness := newOAuthHTTPHarness(t)
+	client := createBrowserClient(t, harness.oauthHarness)
+	challenge := startConsentOverHTTP(t, harness, client)
+
+	for _, refused := range []struct {
+		name      string
+		challenge string
+		headers   map[string]string
+		status    int
+	}{
+		{name: "no session", challenge: challenge, headers: map[string]string{}, status: http.StatusBadRequest},
+		{
+			name: "unknown session", challenge: challenge,
+			headers: map[string]string{"Cookie": "other"}, status: http.StatusBadRequest,
+		},
+		{
+			name: "unknown challenge", challenge: strings.Repeat("z", 43),
+			headers: map[string]string{"Cookie": "session"}, status: http.StatusBadRequest,
+		},
+		// A wrong-length value never reaches the service: the declared schema
+		// rejects it, which is why it reports a validation failure instead.
+		{
+			name: "malformed challenge", challenge: "short",
+			headers: map[string]string{"Cookie": "session"}, status: http.StatusUnprocessableEntity,
+		},
+	} {
+		page := harness.request(http.MethodGet, "/oauth/consent?consent_challenge="+refused.challenge, "", nil, refused.headers)
+		assert.Equal(t, refused.status, page.Code, "%s: %s", refused.name, page.Body.String())
+	}
+
+	// A challenge belongs to the subject who started it. Another signed-in
+	// subject holding the same value must not be able to answer for them.
+	harness.web.setPrincipal(202)
+	other := harness.request(http.MethodGet, "/oauth/consent?consent_challenge="+challenge, "", nil,
+		map[string]string{"Cookie": "session"})
+	assert.Equal(t, http.StatusBadRequest, other.Code, other.Body.String())
+	harness.web.setPrincipal(101)
+
+	// An expired request is refused even by the subject who started it.
+	require.NoError(t, harness.db.Table(harness.table("iam_oauth_consent_requests")).
+		Where("1 = 1").Update("expires_at", oauthTestNow.Add(-time.Minute)).Error)
+	expired := harness.form(http.MethodPost, "/oauth/consent", url.Values{
+		"consent_challenge": {challenge}, "decision": {"allow"},
+	}, map[string]string{"Cookie": "session"})
+	require.Equal(t, http.StatusBadRequest, expired.Code, expired.Body.String())
+	assert.Zero(t, harness.count(t, "iam_oauth_codes"))
+}
+
+func TestConsentDecisionRejectsUnknownAnswersAndFailedCSRF(t *testing.T) {
+	harness := newOAuthHTTPHarness(t)
+	client := createBrowserClient(t, harness.oauthHarness)
+	challenge := startConsentOverHTTP(t, harness, client)
+
+	for _, decision := range []string{"", "Allow", "maybe"} {
+		response := harness.form(http.MethodPost, "/oauth/consent", url.Values{
+			"consent_challenge": {challenge}, "decision": {decision},
+		}, map[string]string{"Cookie": "session"})
+		require.Equal(t, http.StatusBadRequest, response.Code, "decision=%q: %s", decision, response.Body.String())
+	}
+	assert.Zero(t, harness.count(t, "iam_oauth_codes"))
+
+	// The decision is a cookie-authenticated state change, which is exactly
+	// what CSRF targets, so a cross-origin post must be refused.
+	harness.web.setCSRF(assert.AnError)
+	blocked := harness.form(http.MethodPost, "/oauth/consent", url.Values{
+		"consent_challenge": {challenge}, "decision": {"allow"},
+	}, map[string]string{"Cookie": "session", "Origin": "https://evil.example"})
+	require.Equal(t, http.StatusForbidden, blocked.Code, blocked.Body.String())
+	harness.web.setCSRF(nil)
+
+	// Refusing that post must leave the request answerable rather than
+	// consuming the challenge on the way out.
+	allowed := harness.form(http.MethodPost, "/oauth/consent", url.Values{
+		"consent_challenge": {challenge}, "decision": {"allow"},
+	}, map[string]string{"Cookie": "session"})
+	require.Equal(t, http.StatusFound, allowed.Code, allowed.Body.String())
 }
 
 func TestOAuthClientManagementHTTPLifecycleAndTenantIsolation(t *testing.T) {
@@ -684,5 +878,72 @@ func TestOAuthProtocolRejectsMalformedFormEncoding(t *testing.T) {
 		)
 		require.Equal(t, http.StatusBadRequest, response.Code, "%s: %s", endpoint, response.Body.String())
 		assert.Equal(t, "invalid_request", decodeProtocolError(t, response).Code)
+	}
+}
+
+func TestConsentModeDefaultsToImplicitOverHTTP(t *testing.T) {
+	harness := newOAuthHTTPHarness(t)
+	headers := managementHeaders(7)
+
+	// Omitting the field must keep the pre-existing behavior. The service
+	// rejects an unset mode, so this also pins that the schema default is
+	// actually applied rather than leaving the Go zero value.
+	created := harness.json(http.MethodPost, "/iam/oauth-clients", map[string]any{
+		"name": "Worker", "grant_types": []string{"client_credentials"},
+		"scopes": []string{"jobs.read"}, "public_client": false,
+	}, headers)
+	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
+	assert.Equal(t, ConsentImplicit, decodeOAuthEnvelope[clientCreateData](t, created).Data.Client.ConsentMode)
+
+	explicit := harness.json(http.MethodPost, "/iam/oauth-clients", map[string]any{
+		"name": "Third Party", "grant_types": []string{"client_credentials"},
+		"scopes": []string{"jobs.read"}, "public_client": false, "consent_mode": "explicit",
+	}, headers)
+	require.Equal(t, http.StatusCreated, explicit.Code, explicit.Body.String())
+	explicitID := decodeOAuthEnvelope[clientCreateData](t, explicit).Data.Client.ID
+	assert.Equal(t, ConsentExplicit, decodeOAuthEnvelope[clientCreateData](t, explicit).Data.Client.ConsentMode)
+
+	// An unknown value is refused by the schema, so a typo cannot silently
+	// land a client in the permissive mode.
+	rejected := harness.json(http.MethodPost, "/iam/oauth-clients", map[string]any{
+		"name": "Typo", "grant_types": []string{"client_credentials"},
+		"scopes": []string{"jobs.read"}, "public_client": false, "consent_mode": "trusted",
+	}, headers)
+	assert.Equal(t, http.StatusUnprocessableEntity, rejected.Code, rejected.Body.String())
+
+	// PUT replaces the whole client, and the update body carries the same
+	// default, so omitting the mode resets an explicit client to implicit.
+	// That is consistent with public_client and status, but it means a caller
+	// that does not round-trip the field relaxes the client; pinned here so
+	// the behavior is a decision rather than an accident.
+	replaced := harness.json(http.MethodPut, "/iam/oauth-clients/"+explicitID, map[string]any{
+		"name": "Third Party", "grant_types": []string{"client_credentials"},
+		"scopes": []string{"jobs.read"}, "public_client": false, "status": "active",
+	}, headers)
+	require.Equal(t, http.StatusOK, replaced.Code, replaced.Body.String())
+	assert.Equal(t, ConsentImplicit, decodeOAuthEnvelope[Client](t, replaced).Data.ConsentMode)
+}
+
+// TestConsentEndpointsReportStorageFaultsAsServerErrors keeps a broken
+// database distinguishable from a bad challenge. Reporting a fault as
+// invalid_request would tell an operator the request was rejected when in
+// fact nothing was ever read.
+func TestConsentEndpointsReportStorageFaultsAsServerErrors(t *testing.T) {
+	harness := newOAuthHTTPHarness(t)
+	client := createBrowserClient(t, harness.oauthHarness)
+	challenge := startConsentOverHTTP(t, harness, client)
+	require.NoError(t, harness.db.Exec("DROP TABLE "+harness.table("iam_oauth_consent_requests")).Error)
+
+	for _, response := range []*httptest.ResponseRecorder{
+		harness.request(http.MethodGet, "/oauth/consent?consent_challenge="+challenge, "", nil,
+			map[string]string{"Cookie": "session"}),
+		harness.request(http.MethodGet, "/oauth/consent/request?consent_challenge="+challenge, "", nil,
+			map[string]string{"Cookie": "session"}),
+		harness.form(http.MethodPost, "/oauth/consent", url.Values{
+			"consent_challenge": {challenge}, "decision": {"allow"},
+		}, map[string]string{"Cookie": "session"}),
+	} {
+		require.Equal(t, http.StatusInternalServerError, response.Code, response.Body.String())
+		assert.Equal(t, "server_error", decodeProtocolError(t, response).Code)
 	}
 }

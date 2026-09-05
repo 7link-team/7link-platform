@@ -35,9 +35,41 @@ var errServiceAccountCredentialMissing = errors.New("service account credential 
 
 // Service coordinates OAuth protocol and client-administration workflows.
 type Service struct {
-	repo  *Repository
-	authn authn.WebService
-	now   func() time.Time
+	repo        *Repository
+	authn       authn.WebService
+	consent     ConsentConfig
+	consentPage *consentRenderer
+	now         func() time.Time
+}
+
+const (
+	defaultConsentPath = "/oauth/consent"
+	defaultConsentTTL  = 10 * time.Minute
+)
+
+// ConsentConfig locates and shapes the consent screen. Zero values fall back
+// to the built-in screen, so a caller with no opinion still gets a working
+// flow.
+type ConsentConfig struct {
+	// Path is where the authorization endpoint sends a browser that has to
+	// consent. Pointing it at an application hosted elsewhere replaces the
+	// built-in screen; that application posts the decision back to
+	// POST /oauth/consent, which stays registered either way.
+	Path string
+	// TemplateFile replaces the built-in screen's HTML template.
+	TemplateFile string
+	// TTL bounds how long a parked authorization request stays answerable.
+	TTL time.Duration
+}
+
+func (c ConsentConfig) normalized() ConsentConfig {
+	if strings.TrimSpace(c.Path) == "" {
+		c.Path = defaultConsentPath
+	}
+	if c.TTL <= 0 {
+		c.TTL = defaultConsentTTL
+	}
+	return c
 }
 
 func NewService(
@@ -45,12 +77,14 @@ func NewService(
 	authenticator authn.WebService,
 	ids guid.Source,
 	appender audit.Appender,
+	consent ConsentConfig,
 ) *Service {
 	if runtime == nil || authenticator == nil || ids == nil || appender == nil {
 		panic("OAuth service requires runtime, authentication, id generator, and audit appender")
 	}
 	return &Service{
-		repo: NewRepository(runtime, ids, appender), authn: authenticator, now: time.Now,
+		repo: NewRepository(runtime, ids, appender), authn: authenticator,
+		consent: consent.normalized(), consentPage: &consentRenderer{}, now: time.Now,
 	}
 }
 
@@ -63,15 +97,39 @@ type TokenResponse struct {
 	Scope        string `json:"scope,omitempty"`
 }
 
+// ConsentMode selects how the authorization endpoint obtains consent for a
+// client. It is a named type rather than a second bool so that it cannot be
+// transposed with the neighboring public-client flag at a call site: getting
+// those two the wrong way round would be a silent security change.
+type ConsentMode string
+
+const (
+	// ConsentImplicit lets the authorization endpoint record consent on the
+	// subject's behalf, which is what every client did before this flag
+	// existed. It stays the default because the server hosts no consent
+	// screen; see ConsentExplicit.
+	ConsentImplicit ConsentMode = "implicit"
+	// ConsentExplicit requires a consent record that already covers the
+	// requested scope. Until a consent screen exists there is nothing that can
+	// create the first such record, so an explicit client's authorization
+	// requests are refused with consent_required.
+	ConsentExplicit ConsentMode = "explicit"
+)
+
+func (mode ConsentMode) valid() bool {
+	return mode == ConsentImplicit || mode == ConsentExplicit
+}
+
 type Client struct {
-	ID           string   `json:"id"`
-	TenantID     string   `json:"tenant_id"`
-	Name         string   `json:"name"`
-	RedirectURIs []string `json:"redirect_uris"`
-	GrantTypes   []string `json:"grant_types"`
-	Scopes       []string `json:"scopes"`
-	PublicClient bool     `json:"public_client"`
-	Status       string   `json:"status"`
+	ID           string      `json:"id"`
+	TenantID     string      `json:"tenant_id"`
+	Name         string      `json:"name"`
+	RedirectURIs []string    `json:"redirect_uris"`
+	GrantTypes   []string    `json:"grant_types"`
+	Scopes       []string    `json:"scopes"`
+	PublicClient bool        `json:"public_client"`
+	ConsentMode  ConsentMode `json:"consent_mode"`
+	Status       string      `json:"status"`
 }
 
 func (s *Service) CreateClient(
@@ -80,8 +138,9 @@ func (s *Service) CreateClient(
 	name string,
 	redirects, grants, scopes []string,
 	public bool,
+	consentMode ConsentMode,
 ) (Client, string, error) {
-	if err := validateClient(tenantID, name, redirects, grants, scopes, public); err != nil {
+	if err := validateClient(tenantID, name, redirects, grants, scopes, public, consentMode); err != nil {
 		return Client{}, "", err
 	}
 	id, err := s.repo.nextID()
@@ -107,11 +166,13 @@ func (s *Service) CreateClient(
 	row := model.Client{
 		ID: id, TenantID: tenantID, SecretHash: secretHash, Name: strings.TrimSpace(name),
 		RedirectURIs: string(redirectJSON), GrantTypes: strings.Join(grants, ","),
-		Scopes: strings.Join(scopes, " "), PublicClient: public, Status: "active",
+		Scopes: strings.Join(scopes, " "), PublicClient: public,
+		ConsentMode: string(consentMode), Status: "active",
 		CreatedAt: now, UpdatedAt: now,
 	}
 	event := audit.NewDomainEvent(ctx, tenantID, "oauth_client_created", "oauth_client", id)
 	event.Detail["public_client"] = public
+	event.Detail["consent_mode"] = string(consentMode)
 	event.Detail["grant_types"] = grants
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
 		if err := repo.insertClient(ctx, &row); err != nil {
@@ -150,12 +211,13 @@ func (s *Service) UpdateClient(
 	name string,
 	redirects, grants, scopes []string,
 	public bool,
+	consentMode ConsentMode,
 	status string,
 ) (Client, error) {
 	if id.Zero() || status != "active" && status != "disabled" {
 		return Client{}, ErrInvalidRequest
 	}
-	if err := validateClient(tenantID, name, redirects, grants, scopes, public); err != nil {
+	if err := validateClient(tenantID, name, redirects, grants, scopes, public, consentMode); err != nil {
 		return Client{}, err
 	}
 	redirectJSON, err := json.Marshal(redirects)
@@ -165,7 +227,8 @@ func (s *Service) UpdateClient(
 	updates := map[string]any{
 		"name": strings.TrimSpace(name), "redirect_uris": string(redirectJSON),
 		"grant_types": strings.Join(grants, ","), "scopes": strings.Join(scopes, " "),
-		"public_client": public, "status": status, "updated_at": oauthTime(s.now()),
+		"public_client": public, "consent_mode": string(consentMode),
+		"status": status, "updated_at": oauthTime(s.now()),
 	}
 	// A secret must never become usable again after a client was public. The
 	// rotate endpoint is the only operation that establishes a new secret.
@@ -174,6 +237,7 @@ func (s *Service) UpdateClient(
 	}
 	event := audit.NewDomainEvent(ctx, tenantID, "oauth_client_updated", "oauth_client", id)
 	event.Detail["public_client"] = public
+	event.Detail["consent_mode"] = string(consentMode)
 	event.Detail["grant_types"] = grants
 	event.Detail["status"] = status
 	var row *model.Client
@@ -272,14 +336,231 @@ func (s *Service) Authorize(
 	if err != nil {
 		return "", fmt.Errorf("check OAuth consent: %w", err)
 	}
-	if consent == nil || !containsAllWords(consent.Scope, scope) {
-		switch prompt {
-		case "none":
-			return "", ErrInvalidRequest
-		case "consent":
+	// Three inputs decide what happens next: whether a stored consent already
+	// covers the scope, whether the client may skip the screen, and what the
+	// request asked for.
+	satisfied := consent != nil && containsAllWords(consent.Scope, scope)
+	switch prompt {
+	case "none":
+		// prompt=none forbids any interaction, so an unmet consent is
+		// reported instead of collected (OIDC Core 3.1.2.6).
+		if !satisfied {
 			return "", &ErrConsentRequired{}
 		}
+	case "consent":
+		// prompt=consent asks for the screen even when a stored consent would
+		// have covered the scope, and it overrides a client's permission to
+		// skip it. That override is the only reason the parameter exists.
+		return s.startConsent(ctx, repo, client, claims.PrincipalID, redirectURI, scope, state, challenge, nonce)
+	case "":
+		if !satisfied && ConsentMode(client.ConsentMode) != ConsentImplicit {
+			return s.startConsent(ctx, repo, client, claims.PrincipalID, redirectURI, scope, state, challenge, nonce)
+		}
+	default:
+		// An unrecognized prompt is invalid_request rather than a value that
+		// silently inherits the permissive path.
+		return "", ErrInvalidRequest
 	}
+	return s.issueAuthorizationCode(
+		ctx, repo, claims, client, redirectURI, scope, state, challenge, nonce,
+	)
+}
+
+// startConsent parks the authorization request and sends the browser to the
+// consent screen. The challenge in the redirect is the only handle on that
+// row, and only its hash is stored, so possessing the redirect is what proves
+// the browser is answering this particular request.
+func (s *Service) startConsent(
+	ctx context.Context,
+	repo *Repository,
+	client *model.Client,
+	principalID guid.ID,
+	redirectURI, scope, state, challenge, nonce string,
+) (string, error) {
+	value, err := secureToken(32)
+	if err != nil {
+		return "", err
+	}
+	now := oauthTime(s.now())
+	row := model.ConsentRequest{
+		ChallengeHash: hashToken(value), ClientID: client.ID, PrincipalID: principalID,
+		RedirectURI: redirectURI, Scope: normalizeWords(scope), State: state,
+		CodeChallenge: challenge, Nonce: nonce,
+		CreatedAt: now, ExpiresAt: now.Add(s.consentTTL()),
+	}
+	if err := repo.insertConsentRequest(ctx, &row); err != nil {
+		return "", err
+	}
+	return s.consentLocation(value)
+}
+
+// ConsentRequest is what a consent screen needs to render one parked
+// authorization request.
+type ConsentRequest struct {
+	Challenge  string    `json:"challenge"`
+	ClientID   string    `json:"client_id"`
+	ClientName string    `json:"client_name"`
+	Scopes     []string  `json:"scopes"`
+	ExpiresAt  time.Time `json:"expires_at"`
+}
+
+// PendingConsent reads one parked authorization request for rendering. It
+// never reveals anything the caller's own session did not start.
+func (s *Service) PendingConsent(ctx context.Context, cookieHeader, challenge string) (ConsentRequest, error) {
+	repo, err := s.repo.pinWriter()
+	if err != nil {
+		return ConsentRequest{}, err
+	}
+	row, client, _, err := s.loadPendingConsent(ctx, repo, cookieHeader, challenge)
+	if err != nil {
+		return ConsentRequest{}, err
+	}
+	return ConsentRequest{
+		Challenge: challenge, ClientID: client.ID.String(), ClientName: client.Name,
+		Scopes: strings.Fields(row.Scope), ExpiresAt: row.ExpiresAt,
+	}, nil
+}
+
+// ResolveConsent records the subject's decision and returns where the browser
+// goes next: back to the client with a code, or with access_denied.
+func (s *Service) ResolveConsent(
+	ctx context.Context,
+	cookieHeader, challenge string,
+	approved bool,
+) (string, error) {
+	repo, err := s.repo.pinWriter()
+	if err != nil {
+		return "", err
+	}
+	row, client, claims, err := s.loadPendingConsent(ctx, repo, cookieHeader, challenge)
+	if err != nil {
+		return "", err
+	}
+	location := ""
+	err = repo.runInTx(ctx, func(tx *Repository) error {
+		// Burning the challenge first means a replayed decision loses the
+		// compare-and-set rather than minting a second authorization code.
+		if resolveErr := tx.resolveConsentRequest(ctx, hashToken(challenge), oauthTime(s.now())); resolveErr != nil {
+			return resolveErr
+		}
+		if !approved {
+			event := audit.NewDomainEvent(ctx, client.TenantID, "oauth_consent_denied", "oauth_client", client.ID)
+			event.Detail["scope"] = row.Scope
+			if auditErr := tx.appendAudit(ctx, event); auditErr != nil {
+				return auditErr
+			}
+			var deniedErr error
+			location, deniedErr = deniedConsentLocation(row.RedirectURI, row.State)
+			return deniedErr
+		}
+		var issueErr error
+		location, issueErr = s.issueAuthorizationCode(
+			ctx, tx, claims, client, row.RedirectURI, row.Scope, row.State, row.CodeChallenge, row.Nonce,
+		)
+		return issueErr
+	})
+	if err != nil {
+		return "", err
+	}
+	return location, nil
+}
+
+// loadPendingConsent resolves a challenge to its parked request, its client,
+// and the claims of the session answering it. Every guard here is
+// load-bearing: the answering subject must be the one who started the request,
+// and the request must still be open and unexpired.
+func (s *Service) loadPendingConsent(
+	ctx context.Context,
+	repo *Repository,
+	cookieHeader, challenge string,
+) (*model.ConsentRequest, *model.Client, *authnext.Claims, error) {
+	claims, err := s.authn.Authenticate(ctx, "", cookieHeader)
+	if err != nil {
+		return nil, nil, nil, authnext.ErrInvalidCredentials
+	}
+	if !validConsentChallenge(challenge) {
+		return nil, nil, nil, ErrInvalidRequest
+	}
+	row, err := repo.consentRequest(ctx, hashToken(challenge))
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if row.PrincipalID != claims.PrincipalID || row.ResolvedAt != nil ||
+		!row.ExpiresAt.After(oauthTime(s.now())) {
+		return nil, nil, nil, ErrInvalidRequest
+	}
+	client, err := repo.activeClient(ctx, row.ClientID)
+	if err != nil {
+		return nil, nil, nil, ErrInvalidRequest
+	}
+	// The client may have been narrowed while the subject was deciding, so the
+	// parked request is re-checked against the client as it stands now.
+	if !containsWord(client.GrantTypes, "authorization_code") ||
+		!allowedRedirect(client.RedirectURIs, row.RedirectURI) ||
+		!allowedScopes(client.Scopes, row.Scope) {
+		return nil, nil, nil, ErrInvalidRequest
+	}
+	if active, activeErr := repo.activeMember(ctx, client.TenantID, claims.PrincipalID); activeErr != nil || !active {
+		return nil, nil, nil, ErrInvalidRequest
+	}
+	return row, client, claims, nil
+}
+
+func (s *Service) consentTTL() time.Duration { return s.consent.TTL }
+
+// ConsentPath reports where the authorization endpoint sends a browser that
+// has to consent, so the HTTP layer can tell whether the built-in screen is
+// still the one being served.
+func (s *Service) ConsentPath() string { return s.consent.Path }
+
+func (s *Service) consentLocation(challenge string) (string, error) {
+	target, err := url.Parse(s.consent.Path)
+	if err != nil {
+		return "", ErrInvalidRequest
+	}
+	query := target.Query()
+	query.Set("consent_challenge", challenge)
+	target.RawQuery = query.Encode()
+	return target.String(), nil
+}
+
+// deniedConsentLocation reports a refusal to the client the way RFC 6749
+// 4.1.2.1 requires, instead of leaving the browser on an error page.
+func deniedConsentLocation(redirectURI, state string) (string, error) {
+	target, err := url.Parse(redirectURI)
+	if err != nil {
+		return "", ErrInvalidRequest
+	}
+	query := target.Query()
+	query.Set("error", "access_denied")
+	if state != "" {
+		query.Set("state", state)
+	}
+	target.RawQuery = query.Encode()
+	return target.String(), nil
+}
+
+// validConsentChallenge matches what secureToken(32) produces, so a malformed
+// value is refused before it ever reaches a database lookup.
+func validConsentChallenge(value string) bool {
+	if len(value) != 43 {
+		return false
+	}
+	for _, r := range value {
+		if !(r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Service) issueAuthorizationCode(
+	ctx context.Context,
+	repo *Repository,
+	claims *authnext.Claims,
+	client *model.Client,
+	redirectURI, scope, state, challenge, nonce string,
+) (string, error) {
 	target, err := url.Parse(redirectURI)
 	if err != nil {
 		return "", ErrInvalidRequest
@@ -645,8 +926,12 @@ func validateClient(
 	name string,
 	redirects, grants, scopes []string,
 	public bool,
+	consentMode ConsentMode,
 ) error {
 	if tenantID.Zero() || strings.TrimSpace(name) == "" || len(name) > 128 || len(grants) == 0 || len(scopes) == 0 {
+		return ErrInvalidRequest
+	}
+	if !consentMode.valid() {
 		return ErrInvalidRequest
 	}
 	allowedGrants := []string{"authorization_code", "refresh_token", "client_credentials"}
@@ -678,7 +963,8 @@ func clientFromRow(row *model.Client) Client {
 	return Client{
 		ID: row.ID.String(), TenantID: row.TenantID.String(), Name: row.Name,
 		RedirectURIs: redirects, GrantTypes: strings.Fields(strings.ReplaceAll(row.GrantTypes, ",", " ")),
-		Scopes: strings.Fields(row.Scopes), PublicClient: row.PublicClient, Status: row.Status,
+		Scopes: strings.Fields(row.Scopes), PublicClient: row.PublicClient,
+		ConsentMode: ConsentMode(row.ConsentMode), Status: row.Status,
 	}
 }
 

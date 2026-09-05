@@ -36,6 +36,7 @@ func newClient(db *gorm.DB, opts ...gen.DOOption) client {
 	_client.GrantTypes = field.NewString(tableName, "grant_types")
 	_client.Scopes = field.NewString(tableName, "scopes")
 	_client.PublicClient = field.NewBool(tableName, "public_client")
+	_client.ConsentMode = field.NewString(tableName, "consent_mode")
 	_client.Status = field.NewString(tableName, "status")
 	_client.CreatedAt = field.NewTime(tableName, "created_at")
 	_client.UpdatedAt = field.NewTime(tableName, "updated_at")
@@ -57,6 +58,7 @@ type client struct {
 	GrantTypes   field.String
 	Scopes       field.String
 	PublicClient field.Bool
+	ConsentMode  field.String
 	Status       field.String
 	CreatedAt    field.Time
 	UpdatedAt    field.Time
@@ -84,6 +86,7 @@ func (c *client) updateTableName(table string) *client {
 	c.GrantTypes = field.NewString(table, "grant_types")
 	c.Scopes = field.NewString(table, "scopes")
 	c.PublicClient = field.NewBool(table, "public_client")
+	c.ConsentMode = field.NewString(table, "consent_mode")
 	c.Status = field.NewString(table, "status")
 	c.CreatedAt = field.NewTime(table, "created_at")
 	c.UpdatedAt = field.NewTime(table, "updated_at")
@@ -111,7 +114,7 @@ func (c *client) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (c *client) fillFieldMap() {
-	c.fieldMap = make(map[string]field.Expr, 11)
+	c.fieldMap = make(map[string]field.Expr, 12)
 	c.fieldMap["id"] = c.ID
 	c.fieldMap["tenant_id"] = c.TenantID
 	c.fieldMap["secret_hash"] = c.SecretHash
@@ -120,6 +123,7 @@ func (c *client) fillFieldMap() {
 	c.fieldMap["grant_types"] = c.GrantTypes
 	c.fieldMap["scopes"] = c.Scopes
 	c.fieldMap["public_client"] = c.PublicClient
+	c.fieldMap["consent_mode"] = c.ConsentMode
 	c.fieldMap["status"] = c.Status
 	c.fieldMap["created_at"] = c.CreatedAt
 	c.fieldMap["updated_at"] = c.UpdatedAt

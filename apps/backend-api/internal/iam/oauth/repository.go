@@ -265,6 +265,53 @@ func (r *Repository) upsertConsent(ctx context.Context, row *model.Consent) erro
 	return nil
 }
 
+func (r *Repository) insertConsentRequest(ctx context.Context, row *model.ConsentRequest) error {
+	tables, db, err := r.tables()
+	if err != nil {
+		return err
+	}
+	if err := db.WithContext(ctx).Table(tables.ConsentRequests.TableName()).Create(row).Error; err != nil {
+		return fmt.Errorf("store consent request: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) consentRequest(ctx context.Context, challengeHash string) (*model.ConsentRequest, error) {
+	tables, db, err := r.tables()
+	if err != nil {
+		return nil, err
+	}
+	var row model.ConsentRequest
+	err = db.WithContext(ctx).Table(tables.ConsentRequests.TableName()).
+		Where("challenge_hash = ?", challengeHash).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrInvalidRequest
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read consent request: %w", err)
+	}
+	return &row, nil
+}
+
+// resolveConsentRequest marks one pending request answered. The unresolved
+// predicate is the whole point: it makes a challenge single-use, so a replayed
+// decision cannot mint a second authorization code.
+func (r *Repository) resolveConsentRequest(ctx context.Context, challengeHash string, now time.Time) error {
+	tables, db, err := r.tables()
+	if err != nil {
+		return err
+	}
+	result := db.WithContext(ctx).Table(tables.ConsentRequests.TableName()).
+		Where("challenge_hash = ? AND resolved_at IS NULL", challengeHash).Update("resolved_at", now)
+	if result.Error != nil {
+		return fmt.Errorf("resolve consent request: %w", result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return ErrInvalidRequest
+	}
+	return nil
+}
+
 func (r *Repository) insertAuthorizationCode(ctx context.Context, row *model.AuthorizationCode) error {
 	tables, db, err := r.tables()
 	if err != nil {

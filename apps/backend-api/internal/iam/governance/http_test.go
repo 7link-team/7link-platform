@@ -318,3 +318,50 @@ func TestGovernanceHTTPRejectsInvalidReferencesAndUnauthorizedApprovers(t *testi
 	response = deniedAPI.Post("/iam/access-reviews/1/items/1/decide", "Authorization: Bearer 10", goodTenant, map[string]any{"decision": "keep"})
 	assert.Equal(t, http.StatusForbidden, response.Code)
 }
+
+// TestGovernanceHTTPReportsStorageFaultsOnEveryOperation drops the tables the
+// service reads from and then walks every route. A broken database has to come
+// back as 500 from all of them: if one handler let a storage fault fall through
+// as 404 or 409 instead, a caller would retry against a "missing" record that
+// actually exists.
+func TestGovernanceHTTPReportsStorageFaultsOnEveryOperation(t *testing.T) {
+	h, api := newGovernanceHTTPHarness(t)
+	tenant := authz.TenantHeader + ": 1"
+	requester := "Authorization: Bearer 10"
+	reviewer := "Authorization: Bearer 12"
+	future := governanceTestNow.Add(24 * time.Hour).Format(time.RFC3339Nano)
+	for _, name := range []string{
+		"iam_access_requests", "iam_approval_steps", "iam_access_reviews", "iam_access_review_items",
+		"iam_roles", "iam_role_members", "iam_tenant_members", "iam_temporary_role_grants",
+	} {
+		require.NoError(t, h.db.Exec("DROP TABLE "+h.table(name)).Error, name)
+	}
+
+	for _, broken := range []struct {
+		name     string
+		response *httptest.ResponseRecorder
+	}{
+		{"requestable roles", api.Get("/iam/requestable-roles", requester, tenant)},
+		{"create request", api.Post("/iam/access-requests", requester, tenant, map[string]any{
+			"role_id": "20", "reason": "temporary operations access", "access_expires_at": future,
+		})},
+		{"my requests", api.Get("/iam/my/access-requests", requester, tenant)},
+		{"list requests", api.Get("/iam/access-requests", reviewer, tenant)},
+		{"approve", api.Post("/iam/access-requests/1001/approve", reviewer, tenant, map[string]any{"note": "ok"})},
+		{"reject", api.Post("/iam/access-requests/1001/reject", reviewer, tenant, map[string]any{"note": "no"})},
+		{"revoke", api.Post("/iam/access-requests/1001/revoke", reviewer, tenant, map[string]any{"reason": "done"})},
+		{"withdraw", api.Post("/iam/access-requests/1001/withdraw", requester, tenant, map[string]any{"reason": "changed"})},
+		{"list reviews", api.Get("/iam/access-reviews", reviewer, tenant)},
+		{"create review", api.Post("/iam/access-reviews", requester, tenant, map[string]any{
+			"name": "Quarterly access review", "due_at": future,
+		})},
+		{"get review", api.Get("/iam/access-reviews/1001", reviewer, tenant)},
+		{"decide item", api.Post("/iam/access-reviews/1001/items/1002/decide", reviewer, tenant, map[string]any{
+			"decision": "keep", "note": "certified",
+		})},
+		{"complete review", api.Post("/iam/access-reviews/1001/complete", reviewer, tenant)},
+		{"cancel review", api.Post("/iam/access-reviews/1001/cancel", reviewer, tenant)},
+	} {
+		assert.Equal(t, http.StatusInternalServerError, broken.response.Code, "%s: %s", broken.name, broken.response.Body.String())
+	}
+}

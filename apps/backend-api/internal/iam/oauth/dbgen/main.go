@@ -11,6 +11,7 @@ func main() {
 		model.Client{},
 		model.AuthorizationCode{},
 		model.Consent{},
+		model.ConsentRequest{},
 		model.RefreshToken{},
 	)
 }

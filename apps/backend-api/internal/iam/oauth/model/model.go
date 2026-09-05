@@ -16,6 +16,7 @@ type Client struct {
 	GrantTypes   string    `gorm:"column:grant_types;type:text;not null"`
 	Scopes       string    `gorm:"column:scopes;type:text;not null"`
 	PublicClient bool      `gorm:"column:public_client;not null"`
+	ConsentMode  string    `gorm:"column:consent_mode;size:16;not null"`
 	Status       string    `gorm:"column:status;size:16;not null"`
 	CreatedAt    time.Time `gorm:"column:created_at;not null"`
 	UpdatedAt    time.Time `gorm:"column:updated_at;not null"`
@@ -51,6 +52,25 @@ type Consent struct {
 }
 
 func (Consent) TableName() string { return "iam_oauth_consents" }
+
+// ConsentRequest is one authorization request parked while its subject decides
+// on the consent screen. It is addressed by the hash of the opaque challenge
+// value carried in the redirect, so the value itself is never stored.
+type ConsentRequest struct {
+	ChallengeHash string     `gorm:"column:challenge_hash;size:64;primaryKey"`
+	ClientID      guid.ID    `gorm:"column:client_id;not null"`
+	PrincipalID   guid.ID    `gorm:"column:principal_id;not null"`
+	RedirectURI   string     `gorm:"column:redirect_uri;type:text;not null"`
+	Scope         string     `gorm:"column:scope;type:text;not null"`
+	State         string     `gorm:"column:state;type:text;not null"`
+	CodeChallenge string     `gorm:"column:code_challenge;size:128;not null"`
+	Nonce         string     `gorm:"column:nonce;size:256;not null"`
+	CreatedAt     time.Time  `gorm:"column:created_at;not null"`
+	ExpiresAt     time.Time  `gorm:"column:expires_at;not null"`
+	ResolvedAt    *time.Time `gorm:"column:resolved_at"`
+}
+
+func (ConsentRequest) TableName() string { return "iam_oauth_consent_requests" }
 
 type RefreshToken struct {
 	IDHash      string     `gorm:"column:id_hash;size:64;primaryKey"`

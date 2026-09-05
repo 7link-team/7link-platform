@@ -31,6 +31,7 @@ func (*Module) MigrationMilestones() []module.MigrationMilestone {
 			},
 		},
 		{Name: "indexes", Version: 6},
+		{Name: "consent", Version: 8},
 	}
 }
 

@@ -21,6 +21,7 @@ type AppConfig struct {
 	IAMAudit     IAMAudit        `mapstructure:"iam_audit" group:"iam_audit"`
 	Provisioning IAMProvisioning `mapstructure:"provisioning" group:"provisioning"`
 	Federation   IAMFederation   `mapstructure:"federation" group:"federation"`
+	OAuth        IAMOAuth        `mapstructure:"oauth" group:"oauth"`
 	Shutdown     ShutdownConfig  `mapstructure:"shutdown" group:"shutdown"`
 
 	Timezone string `mapstructure:"timezone" description:"timezone" default:"UTC"`
@@ -61,6 +62,19 @@ type IAMProvisioning struct {
 	EncryptionKeyFile string        `mapstructure:"encryption_key_file" description:"file containing the outbound SCIM encryption key" default:""`
 	HTTPTimeout       time.Duration `mapstructure:"http_timeout" description:"outbound SCIM request timeout" default:"10s"`
 	SyncInterval      time.Duration `mapstructure:"sync_interval" description:"outbound SCIM reconciliation interval; zero disables it" default:"0"`
+}
+
+// IAMOAuth configures the parts of the OAuth authorization server an operator
+// can move: where the consent screen lives and how long an unanswered request
+// stays open.
+type IAMOAuth struct {
+	Consent IAMOAuthConsent `mapstructure:"consent" group:"consent"`
+}
+
+type IAMOAuthConsent struct {
+	Path         string        `mapstructure:"path" description:"path the authorization endpoint sends a browser to for consent; point it at your own screen to replace the built-in one" trim:"true" default:"/oauth/consent" validate:"^/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*$"`
+	TemplateFile string        `mapstructure:"template_file" description:"HTML template replacing the built-in consent screen" trim:"true" default:""`
+	TTL          time.Duration `mapstructure:"ttl" description:"how long an authorization request stays answerable on the consent screen" default:"10m"`
 }
 
 type IAMFederation struct {

@@ -32,7 +32,7 @@ func createBrowserClient(t *testing.T, harness *oauthHarness) Client {
 	t.Helper()
 	client, _, err := harness.service.CreateClient(
 		t.Context(), 7, "Browser", []string{"https://app.example/callback"},
-		[]string{"authorization_code", "refresh_token"}, []string{"openid", "profile"}, true,
+		[]string{"authorization_code", "refresh_token"}, []string{"openid", "profile"}, true, ConsentImplicit,
 	)
 	require.NoError(t, err)
 	return client
@@ -63,16 +63,16 @@ func exchangeCode(t *testing.T, harness *oauthHarness, client Client, code strin
 
 func TestNewOAuthServiceRequiresDependencies(t *testing.T) {
 	harness := newOAuthHarness(t, "")
-	assert.Panics(t, func() { NewService(nil, harness.web, newOAuthTestIDs(0), harness.repo.appender) })
-	assert.Panics(t, func() { NewService(harness.runtime, nil, newOAuthTestIDs(0), harness.repo.appender) })
-	assert.Panics(t, func() { NewService(harness.runtime, harness.web, nil, harness.repo.appender) })
-	assert.Panics(t, func() { NewService(harness.runtime, harness.web, newOAuthTestIDs(0), nil) })
+	assert.Panics(t, func() { NewService(nil, harness.web, newOAuthTestIDs(0), harness.repo.appender, ConsentConfig{}) })
+	assert.Panics(t, func() { NewService(harness.runtime, nil, newOAuthTestIDs(0), harness.repo.appender, ConsentConfig{}) })
+	assert.Panics(t, func() { NewService(harness.runtime, harness.web, nil, harness.repo.appender, ConsentConfig{}) })
+	assert.Panics(t, func() { NewService(harness.runtime, harness.web, newOAuthTestIDs(0), nil, ConsentConfig{}) })
 }
 
 func TestClientManagementIsTenantScopedAndAudited(t *testing.T) {
 	harness := newOAuthHarness(t, "sl_")
 	client, secret, err := harness.service.CreateClient(
-		t.Context(), 7, "Worker", nil, []string{"client_credentials"}, []string{"jobs.read", "jobs.write"}, false,
+		t.Context(), 7, "Worker", nil, []string{"client_credentials"}, []string{"jobs.read", "jobs.write"}, false, ConsentImplicit,
 	)
 	require.NoError(t, err)
 	assert.NotEmpty(t, secret)
@@ -84,7 +84,7 @@ func TestClientManagementIsTenantScopedAndAudited(t *testing.T) {
 	id, err := guid.Parse(client.ID)
 	require.NoError(t, err)
 	_, err = harness.service.UpdateClient(
-		t.Context(), 8, id, "Other", nil, []string{"client_credentials"}, []string{"jobs.read"}, false, "active",
+		t.Context(), 8, id, "Other", nil, []string{"client_credentials"}, []string{"jobs.read"}, false, ConsentImplicit, "active",
 	)
 	assert.ErrorIs(t, err, ErrInvalidRequest)
 	_, err = harness.service.RotateClientSecret(t.Context(), 8, id)
@@ -99,7 +99,7 @@ func TestClientManagementIsTenantScopedAndAudited(t *testing.T) {
 
 	updated, err := harness.service.UpdateClient(
 		t.Context(), 7, id, "Worker Public", []string{"https://app.example/callback"},
-		[]string{"authorization_code"}, []string{"openid"}, true, "active",
+		[]string{"authorization_code"}, []string{"openid"}, true, ConsentImplicit, "active",
 	)
 	require.NoError(t, err)
 	assert.True(t, updated.PublicClient)
@@ -110,7 +110,7 @@ func TestClientManagementIsTenantScopedAndAudited(t *testing.T) {
 
 	_, err = harness.service.UpdateClient(
 		t.Context(), 7, id, "Worker Again", nil,
-		[]string{"client_credentials"}, []string{"jobs.read"}, false, "active",
+		[]string{"client_credentials"}, []string{"jobs.read"}, false, ConsentImplicit, "active",
 	)
 	require.NoError(t, err)
 	_, err = harness.service.Token(t.Context(), url.Values{
@@ -138,7 +138,7 @@ func TestClientWritesRollBackWhenAuditFails(t *testing.T) {
 	harness := newOAuthHarness(t, "sl_")
 	harness.auditErr = errors.New("audit unavailable")
 	_, _, err := harness.service.CreateClient(
-		t.Context(), 7, "Worker", nil, []string{"client_credentials"}, []string{"jobs.read"}, false,
+		t.Context(), 7, "Worker", nil, []string{"client_credentials"}, []string{"jobs.read"}, false, ConsentImplicit,
 	)
 	assert.ErrorContains(t, err, "audit unavailable")
 	assert.Zero(t, harness.count(t, "iam_oauth_clients"))
@@ -148,7 +148,7 @@ func TestClientWritesRollBackWhenAuditFails(t *testing.T) {
 func TestClientMutationsRollBackWithAudit(t *testing.T) {
 	harness := newOAuthHarness(t, "sl_")
 	client, secret, err := harness.service.CreateClient(
-		t.Context(), 7, "Worker", nil, []string{"client_credentials"}, []string{"jobs.read"}, false,
+		t.Context(), 7, "Worker", nil, []string{"client_credentials"}, []string{"jobs.read"}, false, ConsentImplicit,
 	)
 	require.NoError(t, err)
 	id, err := guid.Parse(client.ID)
@@ -161,7 +161,7 @@ func TestClientMutationsRollBackWithAudit(t *testing.T) {
 	harness.auditErr = errors.New("audit unavailable")
 
 	_, err = harness.service.UpdateClient(
-		t.Context(), 7, id, "Changed", nil, []string{"client_credentials"}, []string{"jobs.read"}, false, "active",
+		t.Context(), 7, id, "Changed", nil, []string{"client_credentials"}, []string{"jobs.read"}, false, ConsentImplicit, "active",
 	)
 	assert.ErrorContains(t, err, "audit unavailable")
 	clients, err := harness.service.ListClients(t.Context(), 7)
@@ -235,7 +235,7 @@ func TestClientCannotExchangeAnotherClientsCodeOrRefreshToken(t *testing.T) {
 	}).Error)
 	clientB, _, err := harness.service.CreateClient(
 		t.Context(), 8, "Tenant B Browser", clientA.RedirectURIs,
-		[]string{"authorization_code", "refresh_token"}, []string{"openid", "profile"}, true,
+		[]string{"authorization_code", "refresh_token"}, []string{"openid", "profile"}, true, ConsentImplicit,
 	)
 	require.NoError(t, err)
 
@@ -278,14 +278,18 @@ func TestAuthorizationPromptAndMembershipFailures(t *testing.T) {
 		t.Context(), "session", client.ID, client.RedirectURIs[0], "code", "openid",
 		"", oauthChallenge(), "S256", "", "none",
 	)
-	assert.ErrorIs(t, err, ErrInvalidRequest)
-	_, err = harness.service.Authorize(
+	var silent *ErrConsentRequired
+	assert.ErrorAs(t, err, &silent)
+	// prompt=consent asks for the screen, so it parks the request instead of
+	// either granting or failing.
+	location, err := harness.service.Authorize(
 		t.Context(), "session", client.ID, client.RedirectURIs[0], "code", "openid",
 		"", oauthChallenge(), "S256", "", "consent",
 	)
-	var consent *ErrConsentRequired
-	assert.ErrorAs(t, err, &consent)
-	assert.Zero(t, harness.count(t, "iam_oauth_consents"))
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(location, defaultConsentPath+"?"), location)
+	assert.Zero(t, harness.count(t, "iam_oauth_consents"),
+		"parking a request must not record consent before the subject answers")
 
 	require.NoError(t, harness.db.Table("iam_tenant_members").Where("tenant_id = ? AND principal_id = ?", 7, 101).
 		Update("status", "disabled").Error)
@@ -398,15 +402,15 @@ func assertSingleOAuthWinner(t *testing.T, errs []error) {
 func TestIntrospectionIsBoundToTenantAndClient(t *testing.T) {
 	harness := newOAuthHarness(t, "sl_")
 	clientA, secretA, err := harness.service.CreateClient(
-		t.Context(), 7, "A", nil, []string{"client_credentials"}, []string{"introspect"}, false,
+		t.Context(), 7, "A", nil, []string{"client_credentials"}, []string{"introspect"}, false, ConsentImplicit,
 	)
 	require.NoError(t, err)
 	clientB, _, err := harness.service.CreateClient(
-		t.Context(), 8, "B", nil, []string{"client_credentials"}, []string{"introspect"}, false,
+		t.Context(), 8, "B", nil, []string{"client_credentials"}, []string{"introspect"}, false, ConsentImplicit,
 	)
 	require.NoError(t, err)
 	clientC, _, err := harness.service.CreateClient(
-		t.Context(), 7, "C", nil, []string{"client_credentials"}, []string{"introspect"}, false,
+		t.Context(), 7, "C", nil, []string{"client_credentials"}, []string{"introspect"}, false, ConsentImplicit,
 	)
 	require.NoError(t, err)
 	tokenA, _, err := harness.web.issueToken(&authnext.Claims{
@@ -496,7 +500,7 @@ func TestRevokeIsClientScopedAndPropagatesStorageFailures(t *testing.T) {
 	require.NoError(t, err)
 	other, _, err := harness.service.CreateClient(
 		t.Context(), 8, "Other", []string{"https://other.example/callback"},
-		[]string{"authorization_code", "refresh_token"}, []string{"openid"}, true,
+		[]string{"authorization_code", "refresh_token"}, []string{"openid"}, true, ConsentImplicit,
 	)
 	require.NoError(t, err)
 	otherID, err := guid.Parse(other.ID)
@@ -545,24 +549,32 @@ func TestOAuthValidationAndProtocolRejectionPaths(t *testing.T) {
 		grants    []string
 		scopes    []string
 		public    bool
+		consent   ConsentMode
 	}{
-		{0, "client", nil, []string{"client_credentials"}, validScopes, false},
-		{7, " ", nil, []string{"client_credentials"}, validScopes, false},
-		{7, strings.Repeat("x", 129), nil, []string{"client_credentials"}, validScopes, false},
-		{7, "client", nil, []string{"password"}, validScopes, false},
-		{7, "client", nil, []string{"client_credentials"}, validScopes, true},
-		{7, "client", nil, []string{"authorization_code"}, validScopes, true},
-		{7, "client", []string{"file:///tmp/callback"}, []string{"authorization_code"}, validScopes, true},
-		{7, "client", []string{"https://app.example/callback#fragment"}, []string{"authorization_code"}, validScopes, true},
-		{7, "client", validRedirect, []string{"authorization_code"}, []string{"two words"}, true},
+		{0, "client", nil, []string{"client_credentials"}, validScopes, false, ConsentImplicit},
+		{7, " ", nil, []string{"client_credentials"}, validScopes, false, ConsentImplicit},
+		{7, strings.Repeat("x", 129), nil, []string{"client_credentials"}, validScopes, false, ConsentImplicit},
+		{7, "client", nil, []string{"password"}, validScopes, false, ConsentImplicit},
+		{7, "client", nil, []string{"client_credentials"}, validScopes, true, ConsentImplicit},
+		{7, "client", nil, []string{"authorization_code"}, validScopes, true, ConsentImplicit},
+		{7, "client", []string{"file:///tmp/callback"}, []string{"authorization_code"}, validScopes, true, ConsentImplicit},
+		{7, "client", []string{"https://app.example/callback#fragment"}, []string{"authorization_code"}, validScopes, true, ConsentImplicit},
+		{7, "client", validRedirect, []string{"authorization_code"}, []string{"two words"}, true, ConsentImplicit},
+		// An unset or unknown consent mode must not fall through to the
+		// implicit grant: the column is what decides whether the
+		// authorization endpoint may consent on the subject's behalf.
+		{7, "client", validRedirect, []string{"authorization_code"}, validScopes, true, ""},
+		{7, "client", validRedirect, []string{"authorization_code"}, validScopes, true, "Implicit"},
+		{7, "client", validRedirect, []string{"authorization_code"}, validScopes, true, "trusted"},
 	}
 	for _, testCase := range cases {
 		assert.ErrorIs(t, validateClient(
 			testCase.tenant, testCase.name, testCase.redirects,
-			testCase.grants, testCase.scopes, testCase.public,
+			testCase.grants, testCase.scopes, testCase.public, testCase.consent,
 		), ErrInvalidRequest)
 	}
-	assert.NoError(t, validateClient(7, "client", validRedirect, []string{"authorization_code"}, validScopes, true))
+	assert.NoError(t, validateClient(7, "client", validRedirect, []string{"authorization_code"}, validScopes, true, ConsentImplicit))
+	assert.NoError(t, validateClient(7, "client", validRedirect, []string{"authorization_code"}, validScopes, true, ConsentExplicit))
 	assert.Equal(t, "email openid profile", normalizeWords(" profile openid email profile "))
 	assert.False(t, allowedRedirect("not-json", validRedirect[0]))
 	assert.True(t, allowedScopes("openid profile", "openid"))
@@ -583,7 +595,7 @@ func TestOAuthValidationAndProtocolRejectionPaths(t *testing.T) {
 	client := createBrowserClient(t, harness)
 	_, err = harness.service.ListClients(t.Context(), 0)
 	assert.ErrorIs(t, err, ErrInvalidRequest)
-	_, err = harness.service.UpdateClient(t.Context(), 7, 0, "x", nil, []string{"client_credentials"}, validScopes, false, "active")
+	_, err = harness.service.UpdateClient(t.Context(), 7, 0, "x", nil, []string{"client_credentials"}, validScopes, false, ConsentImplicit, "active")
 	assert.ErrorIs(t, err, ErrInvalidRequest)
 	_, err = harness.service.RotateClientSecret(t.Context(), 0, 0)
 	assert.ErrorIs(t, err, ErrInvalidRequest)
@@ -615,7 +627,7 @@ func TestOAuthValidationAndProtocolRejectionPaths(t *testing.T) {
 func TestOAuthIssueAndDatabaseFailuresPropagate(t *testing.T) {
 	harness := newOAuthHarness(t, "")
 	client, secret, err := harness.service.CreateClient(
-		t.Context(), 7, "Worker", nil, []string{"client_credentials"}, []string{"jobs.read"}, false,
+		t.Context(), 7, "Worker", nil, []string{"client_credentials"}, []string{"jobs.read"}, false, ConsentImplicit,
 	)
 	require.NoError(t, err)
 	harness.web.issue = errors.New("signing failed")
@@ -629,7 +641,7 @@ func TestOAuthIssueAndDatabaseFailuresPropagate(t *testing.T) {
 	_, err = harness.service.ListClients(t.Context(), 7)
 	assert.Error(t, err)
 	_, _, err = harness.service.CreateClient(
-		t.Context(), 7, "Broken", nil, []string{"client_credentials"}, []string{"jobs.read"}, false,
+		t.Context(), 7, "Broken", nil, []string{"client_credentials"}, []string{"jobs.read"}, false, ConsentImplicit,
 	)
 	assert.Error(t, err)
 }
@@ -638,7 +650,7 @@ func TestCreateClientIDFailureDoesNotWrite(t *testing.T) {
 	harness := newOAuthHarness(t, "")
 	harness.repo.ids = oauthFailingIDs{}
 	_, _, err := harness.service.CreateClient(
-		t.Context(), 7, "Worker", nil, []string{"client_credentials"}, []string{"jobs.read"}, false,
+		t.Context(), 7, "Worker", nil, []string{"client_credentials"}, []string{"jobs.read"}, false, ConsentImplicit,
 	)
 	assert.EqualError(t, err, "ID source down")
 	assert.Zero(t, harness.count(t, "iam_oauth_clients"))
@@ -674,4 +686,193 @@ func TestExpiredRefreshTokenIsRejected(t *testing.T) {
 		"grant_type": {"refresh_token"}, "client_id": {client.ID}, "refresh_token": {"expired"},
 	}, "")
 	assert.ErrorIs(t, err, ErrInvalidRequest)
+}
+
+// TestAuthorizationRejectsUnknownPromptValues pins the switch as closed: the
+// three documented prompt values keep their behavior, and anything else fails
+// closed instead of inheriting the implicit grant taken by an absent prompt.
+// The HTTP layer already restricts prompt to the documented set, so this guards
+// a future value added there.
+func TestAuthorizationRejectsUnknownPromptValues(t *testing.T) {
+	harness := newOAuthHarness(t, "")
+	client := createBrowserClient(t, harness)
+
+	for _, prompt := range []string{"login", "select_account", "Consent", "none consent", " "} {
+		_, err := harness.service.Authorize(
+			t.Context(), "session", client.ID, client.RedirectURIs[0], "code", "openid",
+			"", oauthChallenge(), "S256", "", prompt,
+		)
+		assert.ErrorIs(t, err, ErrInvalidRequest, "prompt=%q must not grant consent implicitly", prompt)
+	}
+	assert.Zero(t, harness.count(t, "iam_oauth_consents"),
+		"a rejected authorization must not record consent")
+	assert.Zero(t, harness.count(t, "iam_oauth_consent_requests"),
+		"a rejected authorization must not park a request either")
+
+	// An absent prompt still grants without the screen for a client whose
+	// consent mode is implicit.
+	redirect, err := harness.service.Authorize(
+		t.Context(), "session", client.ID, client.RedirectURIs[0], "code", "openid",
+		"", oauthChallenge(), "S256", "", "",
+	)
+	require.NoError(t, err)
+	assert.NotEmpty(t, redirect)
+	assert.Equal(t, int64(1), harness.count(t, "iam_oauth_consents"))
+}
+
+func TestConsentModeDecidesWhetherAuthorizationGrantsImplicitly(t *testing.T) {
+	harness := newOAuthHarness(t, "")
+	implicitClient := createBrowserClient(t, harness)
+	explicitClient, _, err := harness.service.CreateClient(
+		t.Context(), 7, "Third Party", []string{"https://third.example/callback"},
+		[]string{"authorization_code", "refresh_token"}, []string{"openid", "profile"}, true, ConsentExplicit,
+	)
+	require.NoError(t, err)
+	assert.Equal(t, ConsentExplicit, explicitClient.ConsentMode)
+	assert.Equal(t, ConsentImplicit, implicitClient.ConsentMode)
+
+	// The explicit client has no stored consent covering the scope, so the
+	// request is parked for the screen rather than granted.
+	location, err := harness.service.Authorize(
+		t.Context(), "session", explicitClient.ID, explicitClient.RedirectURIs[0], "code", "openid",
+		"", oauthChallenge(), "S256", "", "",
+	)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(location, defaultConsentPath+"?"), location)
+	assert.Equal(t, int64(1), harness.count(t, "iam_oauth_consent_requests"))
+	assert.Zero(t, harness.count(t, "iam_oauth_consents"),
+		"a parked authorization must not record consent")
+
+	// The implicit client is unaffected: it still consents on the subject's
+	// behalf, which is what every client did before the column existed.
+	redirect, err := harness.service.Authorize(
+		t.Context(), "session", implicitClient.ID, implicitClient.RedirectURIs[0], "code", "openid",
+		"", oauthChallenge(), "S256", "", "",
+	)
+	require.NoError(t, err)
+	assert.NotEmpty(t, redirect)
+	assert.Equal(t, int64(1), harness.count(t, "iam_oauth_consents"))
+}
+
+func TestConsentModeSurvivesUpdateAndIsAudited(t *testing.T) {
+	harness := newOAuthHarness(t, "")
+	client := createBrowserClient(t, harness)
+	id, err := guid.Parse(client.ID)
+	require.NoError(t, err)
+
+	updated, err := harness.service.UpdateClient(
+		t.Context(), 7, id, "Browser", client.RedirectURIs,
+		[]string{"authorization_code"}, []string{"openid"}, true, ConsentExplicit, "active",
+	)
+	require.NoError(t, err)
+	assert.Equal(t, ConsentExplicit, updated.ConsentMode)
+
+	// The stored column is what Authorize reads, so the update must reach the
+	// row rather than only the returned value.
+	listed, err := harness.service.ListClients(t.Context(), 7)
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	assert.Equal(t, ConsentExplicit, listed[0].ConsentMode)
+
+	location, err := harness.service.Authorize(
+		t.Context(), "session", client.ID, client.RedirectURIs[0], "code", "openid",
+		"", oauthChallenge(), "S256", "", "",
+	)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(location, defaultConsentPath+"?"), location)
+
+	assert.Equal(t, []string{"oauth_client_created", "oauth_client_updated"}, harness.eventTypes(t))
+}
+
+// TestConsentParkingAndResolutionFailAtomically checks the two places a
+// consent detour can fail on storage: parking the request, and recording the
+// refusal. Neither may half-commit — a lost audit record for a refusal would
+// leave a decision nobody can account for.
+func TestConsentParkingAndResolutionFailAtomically(t *testing.T) {
+	harness := newOAuthHarness(t, "sl_")
+	client := createBrowserClient(t, harness)
+	authorize := func() (string, error) {
+		return harness.service.Authorize(
+			t.Context(), "session", client.ID, client.RedirectURIs[0], "code", "openid",
+			"state-1", oauthChallenge(), "S256", "", "consent",
+		)
+	}
+
+	location, err := authorize()
+	require.NoError(t, err)
+	parsed, err := url.Parse(location)
+	require.NoError(t, err)
+	challenge := parsed.Query().Get("consent_challenge")
+	require.NotEmpty(t, challenge)
+
+	// A refusal that cannot be audited must not burn the challenge, or the
+	// subject would be left with a request they can no longer answer.
+	harness.auditErr = errors.New("audit unavailable")
+	_, err = harness.service.ResolveConsent(t.Context(), "session", challenge, false)
+	require.Error(t, err)
+	assert.Equal(t, int64(1), harness.count(t, "iam_oauth_consent_requests"))
+	var resolved sql.NullTime
+	require.NoError(t, harness.db.Table(harness.table("iam_oauth_consent_requests")).
+		Pluck("resolved_at", &resolved).Error)
+	assert.False(t, resolved.Valid, "a failed decision must leave the request answerable")
+
+	harness.auditErr = nil
+	denied, err := harness.service.ResolveConsent(t.Context(), "session", challenge, false)
+	require.NoError(t, err)
+	assert.Contains(t, denied, "error=access_denied")
+
+	// Parking is the other failure point: without somewhere to record the
+	// request, authorization must fail rather than fall back to granting.
+	require.NoError(t, harness.db.Exec("DROP TABLE "+harness.table("iam_oauth_consent_requests")).Error)
+	_, err = authorize()
+	require.Error(t, err)
+	assert.Zero(t, harness.count(t, "iam_oauth_codes"))
+}
+
+// TestParkedConsentIsRecheckedAgainstTheClientAsItStandsNow covers the window
+// between parking a request and answering it: the client, the subject's
+// membership, and the storage backing the request can all change while the
+// screen is on someone's display.
+func TestParkedConsentIsRecheckedAgainstTheClientAsItStandsNow(t *testing.T) {
+	harness := newOAuthHarness(t, "sl_")
+	client := createBrowserClient(t, harness)
+	park := func(t *testing.T) string {
+		t.Helper()
+		location, err := harness.service.Authorize(
+			t.Context(), "session", client.ID, client.RedirectURIs[0], "code", "openid",
+			"", oauthChallenge(), "S256", "", "consent",
+		)
+		require.NoError(t, err)
+		parsed, err := url.Parse(location)
+		require.NoError(t, err)
+		return parsed.Query().Get("consent_challenge")
+	}
+	clients := harness.db.Table(harness.table("iam_oauth_clients"))
+
+	// A client narrowed to scopes it no longer holds must not be granted the
+	// wider scope the subject is looking at.
+	narrowed := park(t)
+	require.NoError(t, clients.Where("1 = 1").Update("scopes", "jobs.read").Error)
+	_, err := harness.service.ResolveConsent(t.Context(), "session", narrowed, true)
+	assert.ErrorIs(t, err, ErrInvalidRequest)
+	require.NoError(t, clients.Where("1 = 1").Update("scopes", "openid profile").Error)
+
+	// Neither may a subject whose membership ended while they were deciding.
+	ended := park(t)
+	members := harness.db.Table(harness.table("iam_tenant_members")).
+		Where("tenant_id = ? AND principal_id = ?", 7, 101)
+	require.NoError(t, members.Update("status", "disabled").Error)
+	_, err = harness.service.ResolveConsent(t.Context(), "session", ended, true)
+	assert.ErrorIs(t, err, ErrInvalidRequest)
+	require.NoError(t, members.Update("status", "active").Error)
+
+	assert.Zero(t, harness.count(t, "iam_oauth_codes"))
+
+	// A storage fault reading the parked request is reported as such rather
+	// than folded into the uniform "bad challenge" answer.
+	live := park(t)
+	require.NoError(t, harness.db.Exec("DROP TABLE "+harness.table("iam_oauth_consent_requests")).Error)
+	_, err = harness.service.PendingConsent(t.Context(), "session", live)
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrInvalidRequest)
 }

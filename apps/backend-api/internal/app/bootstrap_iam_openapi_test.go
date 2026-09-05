@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const iamHTTPMappingCount = 208
+const iamHTTPMappingCount = 211
 
 type iamHTTPMapping struct {
 	sourceOperation string

@@ -24,6 +24,9 @@ var ErrUnavailable = errors.New("OAuth service unavailable")
 // locale behavior.
 type Config struct {
 	module.Config
+	// Consent locates the consent screen and bounds how long a parked
+	// authorization request stays answerable.
+	Consent ConsentConfig
 }
 
 type Module struct {
@@ -84,7 +87,12 @@ func (m *Module) Initialize(context.Context) error {
 	if m == nil || m.runtime == nil || m.registrar == nil || m.authn == nil || m.ids == nil || m.appender == nil {
 		return errors.New("initialize OAuth: runtime, authz registrar, authentication, id generator, and audit appender are required")
 	}
-	m.Service = NewService(m.runtime, m.authn, m.ids, m.appender)
+	m.Service = NewService(m.runtime, m.authn, m.ids, m.appender, m.config.Consent)
+	// Parse the consent screen now: a misconfigured template file should stop
+	// the process here rather than surface as a 500 on someone's first login.
+	if _, err := m.Service.consentTemplate(); err != nil {
+		return fmt.Errorf("initialize OAuth consent screen: %w", err)
+	}
 	return nil
 }
 

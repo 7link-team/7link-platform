@@ -413,3 +413,37 @@ func TestAccessReviewReadFailuresAreReported(t *testing.T) {
 		assert.ErrorContains(t, err, "list access review items")
 	})
 }
+
+// TestGovernanceRecordLookupsReportStorageFaults keeps a broken table
+// distinguishable from a missing row. Collapsing the two would answer
+// "not found" for a request, review, or item that may well exist.
+func TestGovernanceRecordLookupsReportStorageFaults(t *testing.T) {
+	t.Run("access request", func(t *testing.T) {
+		h := newGovernanceHarness(t, "")
+		require.NoError(t, h.db.Migrator().DropTable(h.table("iam_access_requests")))
+		_, err := h.service.Approve(t.Context(), 1, 5, 11, "note")
+		assert.ErrorContains(t, err, "get access request")
+		assert.NotErrorIs(t, err, ErrNotFound)
+	})
+
+	t.Run("review", func(t *testing.T) {
+		h := newGovernanceHarness(t, "")
+		require.NoError(t, h.db.Migrator().DropTable(h.table("iam_access_reviews")))
+		_, err := h.service.DecideReviewItem(t.Context(), 1, 5, 6, 12, ReviewDecisionKeep, "note")
+		assert.ErrorContains(t, err, "get access review")
+		assert.NotErrorIs(t, err, ErrReviewNotFound)
+	})
+
+	t.Run("review item", func(t *testing.T) {
+		h := newGovernanceHarness(t, "")
+		seedReviewableGrants(t, h)
+		review, err := h.service.CreateReview(t.Context(), 1, 10, CreateAccessReview{
+			Name: "Quarterly access review", DueAt: governanceTestNow.Add(24 * time.Hour),
+		})
+		require.NoError(t, err)
+		require.NoError(t, h.db.Migrator().DropTable(h.table("iam_access_review_items")))
+		_, err = h.service.DecideReviewItem(t.Context(), 1, review.ID, 6, 12, ReviewDecisionKeep, "note")
+		assert.ErrorContains(t, err, "get access review item")
+		assert.NotErrorIs(t, err, ErrReviewItemNotFound)
+	})
+}

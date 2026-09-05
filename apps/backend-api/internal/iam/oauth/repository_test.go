@@ -44,6 +44,7 @@ type oauthWebFixture struct {
 	session *authnext.Claims
 	tokens  map[string]*authnext.Claims
 	issue   error
+	csrf    error
 }
 
 func newOAuthWebFixture() *oauthWebFixture {
@@ -147,8 +148,23 @@ func (*oauthWebFixture) Logout(context.Context, string) string         { return 
 func (*oauthWebFixture) ResolveReturnURL(value string) (string, error) { return value, nil }
 func (*oauthWebFixture) SessionCookie(value string) string             { return value }
 func (*oauthWebFixture) SessionCookieName() string                     { return "session" }
-func (*oauthWebFixture) ValidateCSRF(string, string, string, string) error {
-	return nil
+func (web *oauthWebFixture) setCSRF(err error) {
+	web.mu.Lock()
+	defer web.mu.Unlock()
+	web.csrf = err
+}
+
+func (web *oauthWebFixture) setPrincipal(id guid.ID) {
+	web.mu.Lock()
+	defer web.mu.Unlock()
+	web.session.PrincipalID = id
+	web.session.Subject = id.String()
+}
+
+func (web *oauthWebFixture) ValidateCSRF(string, string, string, string) error {
+	web.mu.Lock()
+	defer web.mu.Unlock()
+	return web.csrf
 }
 func (*oauthWebFixture) CreateSession(context.Context, guid.ID, time.Time, authnext.Assurance) (string, error) {
 	return "session", nil
@@ -191,7 +207,7 @@ func newOAuthHarness(t *testing.T, prefix string) *oauthHarness {
 			"event_type": event.EventType, "target_id": event.TargetID,
 		}).Error
 	})
-	harness.service = NewService(harness.runtime, harness.web, newOAuthTestIDs(1000), appender)
+	harness.service = NewService(harness.runtime, harness.web, newOAuthTestIDs(1000), appender, ConsentConfig{})
 	harness.service.now = func() time.Time { return oauthTestNow }
 	harness.repo = harness.service.repo
 	return harness
@@ -348,7 +364,8 @@ func TestOAuthModelRowsRoundTripNullableTimes(t *testing.T) {
 	harness := newOAuthHarness(t, "sl_")
 	client := model.Client{
 		ID: 22, TenantID: 7, Name: "Browser", RedirectURIs: "[]", GrantTypes: "refresh_token",
-		Scopes: "openid", PublicClient: true, Status: "active", CreatedAt: oauthTestNow, UpdatedAt: oauthTestNow,
+		Scopes: "openid", PublicClient: true, ConsentMode: string(ConsentImplicit),
+		Status: "active", CreatedAt: oauthTestNow, UpdatedAt: oauthTestNow,
 	}
 	require.NoError(t, harness.db.Table(harness.table(client.TableName())).Create(&client).Error)
 	row := model.RefreshToken{

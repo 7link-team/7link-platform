@@ -14,6 +14,8 @@ import (
 var declaredKeys = []string{
 	InvalidClientConfiguration, ClientNotFound, InvalidRequest, InvalidGrant,
 	InvalidClient, InvalidToken, InsufficientScope, UnsupportedTokenType, ServerError,
+	ConsentRequired, ConsentTitle, ConsentPrompt, ConsentAllow, ConsentDeny,
+	ScopeKey("openid"), ScopeKey("profile"), ScopeKey("email"), ScopeKey("offline_access"),
 }
 
 func TestRegisterPublishesEveryOAuthLocale(t *testing.T) {
@@ -26,6 +28,16 @@ func TestRegisterPublishesEveryOAuthLocale(t *testing.T) {
 		}
 	}
 	assert.Error(t, Register(), "a module locale namespace is registered exactly once")
+}
+
+func TestScopeKeyOnlyEverAddressesAScopeMessage(t *testing.T) {
+	assert.Equal(t, Namespace+".scope_offline_access", ScopeKey("offline_access"))
+	assert.Equal(t, Namespace+".scope_openid", ScopeKey("OpenID"))
+	// A scope is client configuration, so it can carry anything. Everything
+	// outside the message-key alphabet collapses to an underscore, which keeps
+	// a hostile scope from addressing a message other than its own.
+	assert.Equal(t, Namespace+".scope_a_b_c", ScopeKey("a.b-c"))
+	assert.Equal(t, Namespace+".scope_", ScopeKey(""))
 }
 
 func TestEveryLocaleCarriesExactlyTheDeclaredKeys(t *testing.T) {

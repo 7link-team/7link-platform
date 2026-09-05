@@ -27,6 +27,7 @@ func TestModuleMigrationContract(t *testing.T) {
 		assert.Equal(t, []string{
 			"00001_clients.sql", "00002_codes.sql", "00003_consents.sql",
 			"00004_refresh_tokens.sql", "00005_constraints.sql", "00006_refresh_principal_index.sql",
+			"00007_client_consent_mode.sql", "00008_consent_requests.sql",
 		}, names, dialect)
 	}
 }
@@ -34,12 +35,12 @@ func TestModuleMigrationContract(t *testing.T) {
 func TestModuleMigrationMilestones(t *testing.T) {
 	t.Parallel()
 	milestones := (&Module{}).MigrationMilestones()
-	require.Len(t, milestones, 3)
-	assert.Equal(t, []string{"base", "constraints", "indexes"}, []string{
-		milestones[0].Name, milestones[1].Name, milestones[2].Name,
+	require.Len(t, milestones, 4)
+	assert.Equal(t, []string{"base", "constraints", "indexes", "consent"}, []string{
+		milestones[0].Name, milestones[1].Name, milestones[2].Name, milestones[3].Name,
 	})
-	assert.Equal(t, []int64{4, 5, 6}, []int64{
-		milestones[0].Version, milestones[1].Version, milestones[2].Version,
+	assert.Equal(t, []int64{4, 5, 6, 8}, []int64{
+		milestones[0].Version, milestones[1].Version, milestones[2].Version, milestones[3].Version,
 	})
 	assert.ElementsMatch(t, []module.MigrationMilestoneRef{
 		{Module: "identity", Name: "base"}, {Module: "organization", Name: "base"},
