@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"7link.com/platform/pkg/config"
 	"github.com/spf13/cobra"
 )
 
@@ -18,6 +19,17 @@ var rootCmd = &cobra.Command{
 	Use:          filepath.Base(os.Args[0]),
 	Short:        "API service",
 	SilenceUsage: true,
+}
+
+func init() {
+	// Every command reads its settings through the same configurator, which
+	// accepts either separator in a flag name. That only held for commands
+	// carrying their settings on their own flag set: cobra merges a group
+	// persistent flags into each subcommand without the normalizer the group
+	// installed, so the same spelling worked on serve and was an unknown flag
+	// on migrate and iam. Installing it here covers the whole tree, including
+	// subcommands added after this runs.
+	rootCmd.SetGlobalNormalizationFunc(config.NormalizeFlagName)
 }
 
 // exitCodeError carries the process status a command wants alongside its error.
