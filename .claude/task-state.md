@@ -10,16 +10,18 @@ IAM Phase 10 后端推进。10.1（平台超管 bootstrap + reset-admin-password
 把 owner 补上，让这些租户可管理。
 
 ## Current Phase
-DONE（待提交推送）
+IN PROGRESS（§2.5.2 已推送；正在处理 @ClaudeWEB 报的两条后端缺陷）
 
 ## Current Step
-§2.5.2 实现与测试全部完成，`make ci` 通过。下一步：显式 pathspec 提交并推送。
+§2.5.2 已推送（20bae43）。CLI flag 归一化已推送（5d7e9d0）。return_url 前缀校验已完成待推送。
 
 ## Overall Progress
 - [x] Phase 10.2（提交 24f2483）
 - [x] Phase 10.1（提交 d253c5e）：`iam bootstrap-platform-admin` + `iam reset-admin-password`
 - [x] 品牌 cookie 清理（提交 348a37f）
-- [x] §2.5.2 存量零成员租户修复命令（本轮，待提交）
+- [x] §2.5.2 存量零成员租户修复命令（提交 20bae43）
+- [x] CLI flag 下划线/中划线在所有子命令一致（提交 5d7e9d0，@ClaudeWEB 报的第 4 条）
+- [x] `allowed_return_urls` 改为 origin 精确 + 路径前缀（@ClaudeWEB 报的第 3 条，待推送）
 - [ ] 10.3 principal 管理权限语义（等用户明确拍板）
 - [ ] 10.4–10.11
 
@@ -65,4 +67,5 @@ Build: PASS  Tests: PASS  Lint: PASS  Integration: PASS
 `make ci` exit 0，总覆盖率 90.1%（最低 90.0%），core 90.1%、organization 90.0%。
 
 ## Last Checkpoint
-2026-09-05 · §2.5.2 完成且 `make ci` 通过，正在提交推送。之后回到 10.3，仍需用户拍板。
+2026-09-05 · §2.5.2、CLI flag 归一化、return_url 前缀校验三项均 `make ci` 通过。
+下一步：回到 10.3，仍需 @gankcode 拍板；10.4–10.11 未动。

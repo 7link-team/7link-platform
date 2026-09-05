@@ -67,8 +67,18 @@ func TestAuthenticationHTTPFlow(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, api.Post("/authn/sessions", map[string]any{
 		"login_name": "alice", "password": "wrong password",
 	}, "Origin: https://app.example").Code)
+	// The allowlist admits an origin at or below a path, so the login page may
+	// send somebody back to wherever they were heading without every route
+	// being enumerated in deployment configuration.
+	assert.Equal(t, http.StatusOK, api.Post("/authn/sessions", map[string]any{
+		"login_name": "alice", "password": "correct horse battery staple",
+		"return_url": "https://app.example/tenants/42/members?page=2",
+	}, "Origin: https://app.example").Code)
+	// The origin is still matched exactly, which is the half that makes this an
+	// open-redirect guard rather than a formality.
 	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/authn/sessions", map[string]any{
-		"login_name": "alice", "password": "correct horse battery staple", "return_url": "https://app.example/not-allowed",
+		"login_name": "alice", "password": "correct horse battery staple",
+		"return_url": "https://app.example.evil.test/home",
 	}, "Origin: https://app.example").Code)
 	assert.Equal(t, http.StatusForbidden, api.Post("/authn/sessions", map[string]any{
 		"login_name": "alice", "password": "correct horse battery staple",

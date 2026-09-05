@@ -155,7 +155,7 @@ type WebConfig struct {
 	Enabled           bool          `mapstructure:"enabled" description:"enable browser OIDC BFF" default:"false"`
 	PostLoginURL      string        `mapstructure:"post_login_url" description:"default frontend URL after login"`
 	PostLogoutURL     string        `mapstructure:"post_logout_url" description:"frontend URL after logout"`
-	AllowedReturnURLs []string      `mapstructure:"allowed_return_urls" description:"exact frontend return URL allowlist"`
+	AllowedReturnURLs []string      `mapstructure:"allowed_return_urls" description:"frontend return URL allowlist; each entry admits its exact origin at or below its path"`
 	AllowedOrigins    []string      `mapstructure:"allowed_origins" description:"origins allowed for cookie-authenticated writes"`
 	CookieName        string        `mapstructure:"cookie_name" description:"opaque session cookie name" default:"session"`
 	CookieSecure      bool          `mapstructure:"cookie_secure" description:"require HTTPS for session cookies" default:"true"`

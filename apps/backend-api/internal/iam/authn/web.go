@@ -59,6 +59,7 @@ type Service struct {
 	publicKey           ed25519.PublicKey
 	kid                 string
 	mfaKey              []byte
+	returnURLs          returnURLAllowlist
 	passkeys            *webauthnx.Adapter
 	now                 func() time.Time
 	enricher            claimEnricher
@@ -144,10 +145,14 @@ func NewWebService(cfg authnext.Config, repository *Repository, options ...WebOp
 	if service.web.IdleTTL > service.web.SessionTTL {
 		service.web.IdleTTL = service.web.SessionTTL
 	}
+	returnURLs, err := parseReturnURLAllowlist(service.web.AllowedReturnURLs)
+	if err != nil {
+		return nil, err
+	}
+	service.returnURLs = returnURLs
 	service.web.PostLoginURL = strings.TrimSpace(service.web.PostLoginURL)
-	if service.web.Enabled && (service.web.PostLoginURL == "" ||
-		!slices.Contains(service.web.AllowedReturnURLs, service.web.PostLoginURL)) {
-		return nil, errors.New("authn web post_login_url must be present in allowed_return_urls")
+	if service.web.Enabled && (service.web.PostLoginURL == "" || !returnURLs.allows(service.web.PostLoginURL)) {
+		return nil, errors.New("authn web post_login_url must be allowed by allowed_return_urls")
 	}
 	if service.cfg.MFA.Issuer == "" {
 		service.cfg.MFA.Issuer = "Identity Platform"
@@ -298,7 +303,7 @@ func (s *Service) ResolveReturnURL(returnURL string) (string, error) {
 	if returnURL == "" {
 		returnURL = s.web.PostLoginURL
 	}
-	if !slices.Contains(s.web.AllowedReturnURLs, returnURL) {
+	if !s.returnURLs.allows(returnURL) {
 		return "", authnext.ErrReturnURL
 	}
 	return returnURL, nil

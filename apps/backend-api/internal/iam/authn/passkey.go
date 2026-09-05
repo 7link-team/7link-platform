@@ -208,7 +208,7 @@ func (s *Service) BeginPasskeyLogin(
 	if returnURL == "" {
 		returnURL = s.web.PostLoginURL
 	}
-	if !slices.Contains(s.web.AllowedReturnURLs, returnURL) {
+	if !s.returnURLs.allows(returnURL) {
 		return authnext.PasskeyOptions{}, authnext.ErrReturnURL
 	}
 	now := s.now().UTC()
