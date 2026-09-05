@@ -1,11 +1,13 @@
 import { createBrowserRouter, Navigate, Outlet } from "react-router"
 import { AuthProvider } from "./components/auth-provider"
 import { PendingRoute } from "./components/pending-route"
+import { RouteError } from "./components/route-error"
 
 export const router = createBrowserRouter([
   {
     element: <Outlet />,
     hydrateFallbackElement: <PendingRoute />,
+    errorElement: <RouteError />,
     children: [
       {
         path: "/register",
