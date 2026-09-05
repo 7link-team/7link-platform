@@ -76,7 +76,24 @@ type Config struct {
 // RegistrationConfig enables email-verified self-service global principals.
 // Tenant membership is deliberately granted only through invitations.
 type RegistrationConfig struct {
-	Enabled bool `mapstructure:"enabled" description:"enable email-verified self-service registration" default:"false"`
+	Enabled bool                      `mapstructure:"enabled" description:"enable email-verified self-service registration" default:"false"`
+	Captcha RegistrationCaptchaConfig `mapstructure:"captcha" group:"captcha"`
+}
+
+// RegistrationCaptchaConfig is which challenge registration presents and, for
+// an environment that has to be driven by a script, what it will accept instead
+// of one being solved.
+type RegistrationCaptchaConfig struct {
+	// Kinds is a set rather than one value so a deployment can change what it
+	// presents without a code change, and so the harder challenges stay
+	// available to a deployment that wants them without being the default.
+	Kinds []string `mapstructure:"kinds" description:"registration captcha kinds, picked at random per challenge: text, slide, click; empty offers text only"`
+	// TestAnswer is the mechanism Cloudflare Turnstile calls a testing key:
+	// the challenge still renders and behaves normally, only its outcome is
+	// known ahead of time. It is a configured value rather than a constant in
+	// the source so that no string in this repository is a bypass everywhere it
+	// was left switched on.
+	TestAnswer string `mapstructure:"test_answer" description:"literal answer accepted for any registration captcha so an automated check can register; must be empty in any deployment real people use" default:"" secret:"true"`
 }
 
 type Capabilities struct {

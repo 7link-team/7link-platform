@@ -378,7 +378,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Summary: "Issue a graphic captcha for registration", Tags: []string{"authn"},
 		Errors: []int{http.StatusInternalServerError},
 	}, func(ctx context.Context, _ *captchaInput) (*respx.Body[captchaOutput], error) {
-		out, err := issueCaptcha()
+		out, err := web.IssueCaptcha()
 		if err != nil {
 			return nil, huma.Error500InternalServerError("captcha_unavailable")
 		}
@@ -392,7 +392,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		if err := web.ValidateLoginOrigin(in.Origin); err != nil {
 			return nil, huma.Error403Forbidden("registration_request_rejected")
 		}
-		if !VerifyCaptcha(in.Body.CaptchaType, in.Body.CaptchaID, in.Body.CaptchaAnswer) {
+		if !web.VerifyCaptcha(in.Body.CaptchaType, in.Body.CaptchaID, in.Body.CaptchaAnswer) {
 			return nil, huma.Error422UnprocessableEntity("captcha_invalid")
 		}
 		if err := web.Register(ctx, in.Body.Email, in.Body.Password, in.Body.DisplayName); err != nil {

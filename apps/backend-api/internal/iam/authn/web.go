@@ -60,6 +60,7 @@ type Service struct {
 	kid                 string
 	mfaKey              []byte
 	returnURLs          returnURLAllowlist
+	captcha             *captchaOffering
 	passkeys            *webauthnx.Adapter
 	now                 func() time.Time
 	enricher            claimEnricher
@@ -108,6 +109,15 @@ func NewWebService(cfg authnext.Config, repository *Repository, options ...WebOp
 			option(service)
 		}
 	}
+	// The captcha offering is read before the enabled check so a deployment
+	// that misconfigures it is told at startup either way. A challenge kind
+	// nobody can spell is a typo whenever it is discovered, and discovering it
+	// at somebody's first attempt to register discovers it through them.
+	captcha, err := parseCaptchaOffering(cfg.Registration.Captcha)
+	if err != nil {
+		return nil, err
+	}
+	service.captcha = captcha
 	if !cfg.Enabled {
 		return service, nil
 	}

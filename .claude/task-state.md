@@ -1,19 +1,23 @@
 # Task State
 
 ## Task
-IAM Phase 10 后端推进。10.1（平台超管 bootstrap + reset-admin-password）、10.2（新租户同事务 owner 自举）、
-§2.5.2（存量零成员租户修复命令）均已推送。当前：10.6 补齐 OAuth 同意的自助撤销。
+IAM Phase 10 后端推进。10.1、10.2、10.6、§2.5.2 均已推送。当前：10.9 密钥轮换（第 ① 步已推送），
+以及 @gankcode 拍板的注册验证码可配置化（频道 task #5，已推送）。
 
 ## Objective
-用户授权过一个 OAuth 应用之后，`iam_oauth_consents` 里会留下一条常驻授权，但产品里没有任何地方
-能看见它、更没有地方能收回它。补上标准的自助能力：列出「我授权过哪些应用」，以及撤销其中一条——
-撤销要真正结束访问，而不只是停止续期。
+10.9：现在 federation / provisioning / authn 各自拿一把密钥，密文信封里不记录是哪把密钥封的，
+所以换密钥等于让库里所有密文永久打不开——「安全的动作」和「做得到的动作」是两个动作。
+目标是让密钥可以被替换：一把在封，一圈都能开，旧密钥在没有东西依赖它之后才离开配置。
+
+验证码：注册页以前在文字 / 滑块 / 点选里随机三选一，其中两种不是所有人都能完成；
+另外自动化验收脚本没有任何办法通过注册流程。
 
 ## Current Phase
-IN PROGRESS（10.1 / 10.2 / 10.6 / §2.5.2 与 4 条外部报障均已推送；10.3、10.4 等 @gankcode 拍板）
+IN PROGRESS（10.9 第 ① 步与验证码均已推送；10.3、10.4 等 @gankcode 拍板）
 
 ## Current Step
-10.6 已完成。下一步是 10.9（密钥/密钥环轮换），这是当前唯一不需要用户拍板就能推进的大块后端工作。
+10.9 ① 已推送（提交 51ac8f4）。验证码已 `make ci` 绿并推送。
+之后回到 10.9 ②：让 federation / provisioning / authn 用上密钥环。
 
 ## Overall Progress
 - [x] Phase 10.2（提交 24f2483）
@@ -23,77 +27,96 @@ IN PROGRESS（10.1 / 10.2 / 10.6 / §2.5.2 与 4 条外部报障均已推送；1
 - [x] CLI flag 下划线/中划线在所有子命令一致（提交 5d7e9d0，@ClaudeWEB 报的第 4 条）
 - [x] `allowed_return_urls` 改为 origin 精确 + 路径前缀（提交 1ecc9cb，@ClaudeWEB 报的第 3 条）
 - [x] create/update 可选外键 schema 对称 + invitation 空值线上形状（提交 69187ab）
-- [x] Phase 10.6 OAuth 同意自助列出与撤销
+- [x] Phase 10.6 OAuth 同意自助列出与撤销（提交 0b96fb9）
+- [x] 10.9 ① 密钥环原语 `pkg/extension/keyringx`（提交 51ac8f4）
+- [ ] 10.9 ② federation / provisioning / authn 接入密钥环 + `previous_*_keys` 配置
+- [ ] 10.9 ③ `iam rewrap-secrets` + 「还有多少行挂在旧密钥上」报告
+- [ ] 10.9 ④ authn 签名密钥环：JWKS 同时发布 active + previous，签用 active，验收任一把
+- [ ] 10.9 ⑤ federation replay registry 换成跨副本共享状态
+- [x] 注册验证码可配置（频道 task #5）
 - [ ] 10.3 principal 管理权限语义（等用户明确拍板）
 - [ ] 10.4 数据权限端到端（缺可挂载的租户级业务资源，等用户定目标）
-- [ ] 10.9 密钥轮换（下一项，纯技术，不阻塞）
 - [ ] 10.5 / 10.7 / 10.8 / 10.10 / 10.11
 
-## 本轮交付（10.6 OAuth 同意撤销）
-两个自助接口，都挂 `RegisterAuthenticated`（认证即可，不带租户，不查成员资格）：
-- `GET /iam/me/oauth-consents` — 列出本人授权过的应用（含应用名、scope、授权时间、最近使用时间）
-- `DELETE /iam/me/oauth-consents/{client_id}` — 撤销其中一条
+## 本轮交付其一：10.9 ① 密钥环原语（已推送 51ac8f4）
+新包 `pkg/extension/keyringx`。一把 active 负责封，整圈都能开；
+`NeedsRewrap` 回答「这个值还挂在旧密钥上吗」，退役旧密钥不再靠猜。
 
-`Service.RevokeConsent` 在一个事务里做完三件事：吊销该授权已签发且未吊销的 refresh token、
-作废该授权已签发且未兑换的 authorization code、删除 consent 行，然后写 `oauth_consent_revoked` 审计
-（`Detail["scopes"]` 记下被撤走的 scope，因为行马上就没了）。
+- 新信封 `v2.<keyid>.<b64url>`；库里已有的 `v1.<b64url>` 靠逐把试解兼容——
+  AES-GCM 会认证，错的密钥只会失败，不会解出错的明文，所以试解是明确的。
+- 派生逐字节保持 `HMAC-SHA256(material, domain+purpose)` 不变，否则现存密文全部作废。
+- 配置密钥接受四种 base64 拼法（RawStd / Std / RawURL / URL），与被它替换的三处解析器一致，
+  不能让任何一个部署的密钥「因为软件变了」而突然读不出来。
+- 密钥标识是 `HMAC(material, "keyringx:key-id\0"+domain)` 截断 8 字节，按 domain 分离，
+  不是密钥本身的摘要——信封里明文携带的东西不该是那个秘密的短哈希。
+- `ErrUnknownKey` 与 `ErrOpen` 分开：前者的修法是把密钥放回配置，不是承认数据没了。
+- 配置报错只说密钥的位置（`previous key 2`），绝不说值；有测试断言错误串里不含密钥材料。
+- 覆盖率 95.2%，未覆盖的都是 32 字节 HMAC 输出上不可能失败的防御分支。
 
-新增/改动文件：
-- `internal/iam/oauth/repository.go`：`grantedConsent` 行结构、`consentsForPrincipal`（join client 取应用名）、
-  `deleteConsent`、`revokeGrantedTokens`。
-- `internal/iam/oauth/service.go`：`GrantedConsent`、`ListConsents`、`RevokeConsent`。
-- `internal/iam/oauth/http.go`：`registerGrantHTTP`、`callingPrincipal`、`oauthConsentError`。
-- `internal/iam/oauth/i18n/`：新增 `consent_not_found`，三个 locale 同步。
-- 路由数三处硬编码同步：`oauth/http_test.go`(15→17)、`oauth/module_test.go`(15→17)、
-  `internal/app/bootstrap_iam_openapi_test.go`(211→213)，外加两份冻结清单
-  `internal/app/testdata/iam_http_mappings.txt` / `iam_http_guards.txt`。
-- `docs/iam-domain-migration-plan.md`：oauth 路由清单 12→14，勾上 10.1 / 10.2 / 10.6。
+## 本轮交付其二：注册验证码（频道 task #5，已推送）
+承接 @gankcode 在 `#sevenlink-platform-win:e8731271` 的拍板：按市面通行做法，
+再加一个 Turnstile 测试密钥式的机制。
+
+配置（`authn.registration.captcha`）：
+- `kinds: []` — 空 = 只发文字验证码（新默认）。可填 text / slide / click。
+- `test_answer: ""` — 空 = 关闭。填了之后这个字符串可以作为任何验证码的答案，至少 8 字符。
+
+改动文件：
+- `pkg/extension/authn/verifier.go`：`RegistrationConfig.Captcha`、新增 `RegistrationCaptchaConfig`。
+- `internal/iam/authn/captcha.go`：`captchaOffering`、`parseCaptchaOffering`、`(*Service).IssueCaptcha`、
+  `(*Service).VerifyCaptcha`。
+- `internal/iam/authn/gocaptcha.go`：`issueCaptcha()` → `issueCaptchaOf(kind)`，
+  `VerifyCaptcha` → 不导出的 `verifyCaptchaOf(kind, id, answer)`。
+- `internal/iam/authn/web.go`：`Service.captcha`，在 `NewWebService` 里解析（在 enabled 判断之前）。
+- `internal/iam/authn/http.go`：两个调用点改成走 Service。
 
 ## Important Decisions
 - 跨模块只走窄事务能力（`func(ctx, *gorm.DB, ...)`，Provide 阶段发布、Inject 阶段解析）。
 - 修复命令是 create-only：只要租户已有任何 member 或 role 就拒绝，绝不改动已有归属。
-- 修复写的表与正常建租户完全一致，所以「修过的租户」在状态上不可区分；差异只留在审计事件的
-  `repaired=true` 上，这是事后追责唯一能找到的地方。
-- 密码永不作为命令行参数（10.1 已确立）。修复命令根本不碰凭据。
+- 密码永不作为命令行参数（10.1 已确立）。
 - 退出码按运维下一步动作区分：3 已 bootstrap / 4 冲突 / 5 未迁移 / 6 暂时不可用 / 7 尚未 bootstrap。
 - 不在代码里硬编品牌相关字符串，标识符里带品牌也算（CLAUDE.md §4）。
-- 同意管理放 `/iam/me/*` 而不是 `/oauth/*`：`/oauth/*` 是 RFC 协议面（authorize/token/revoke/
-  introspect/userinfo/同意页），管理授权是 IAM 管理 API，`/iam/me/*` 已经是既有的自助前缀
-  （`organization-my-tenants` → `/iam/me/tenants`）。
-- 同意属于人不属于租户，所以用 `RegisterAuthenticated` 而非 `Register`：要求 `X-Tenant-Id`
-  恰好会藏起用户最需要看见的那些授权，而且任何租户权限都不该挡在人和自己的授权之间。
-- 撤销必须连带作废未兑换的 authorization code：撤销前几秒签发的 code 一旦兑换就变成活的
-  refresh token，只吊销 refresh token 会让这条授权在一分钟后自己复活。
+- 同意管理放 `/iam/me/*` 而不是 `/oauth/*`；用 `RegisterAuthenticated` 而非 `Register`。
+- 撤销必须连带作废未兑换的 authorization code，否则这条授权一分钟后自己复活。
+- **验证码不新增 `test` 类型**（@ClaudeWEB 提的，采纳）：发新 type 会逼前端认识「测试模式」这件事。
+  改成万能答案之后，验证码照常发、照常是真图，只有结果是定的，前端一行都不用改。
+- **万能答案由部署方配置，不是源码里的常量**：常量意味着「在哪个部署忘了关就是同一个后门」，
+  而且读代码的人会把它当成仓库在保守的秘密。
+- **验证与发放两侧都受配置集合约束**：类型是请求方在 body 里报的，只把某类型从「发放」里去掉，
+  它仍然可以被点名到达。没开的类型现在直接拒，答案看都不看。
+- 万能答案不改变一次性：命中时挑战照样被消费。
+- 「生产环境启动即拒」做不到并且不做：这个代码库里没有环境（prod/dev）这个概念，
+  为一个小功能引入一个全局概念不划算。防线是默认关 + 必须显式配 8 字符以上 + 每次启动 warn。
 
 ## Confirmed Constraints
 - 提交必须逐文件显式暂存；工作区有若干非本轮改动的文件等用户处置
-  （`.gitignore`、`README.md`、`pkg/interpreter/interpreter.go`、4 个已暂存的文档改名、未跟踪的 `docs/README.md`）。
+  （`.gitignore`、`README.md`、`pkg/interpreter/interpreter.go`、3 个已暂存的文档改名、未跟踪的 `docs/README.md`）。
 - 前端目录归 @ClaudeWEB，禁止碰。
 - migration 不写固定账号或默认密码。
 - `tools/iam-preflight` 与迁移方案文档里的 chaosplus 路径是迁移来源，保留。
+- `apps/backend-api/.temp/` 下的草稿目录（backup-10.1、backup-10.2、10.6、10.9、captcha）不得提交。
 
 ## Known Issues / Risks
-- 逐包 90% 覆盖率门禁余量极薄（authn 90.1%、organization 90.0%、core 90.1%），新增生产代码必须同批补测。
+- 逐包 90% 覆盖率门禁余量极薄（authn、organization、core 都贴着 90.0–90.2），新增生产代码必须同批补测。
 - 10.3 principal 归属未决：6 个全局账号接口挂在租户注册器上，其中 3 个要 `platform:administer`，
   平台管理员与租户管理员都不可达。方案 A = 整体挪到平台注册器。已三次说明，等用户一句明确同意。
-- 10.4 无处落地：方案文档要求把 `DataConstraint` 接到「真实业务资源」上，但仓库里唯一的业务模块
-  `internal/todo` 既没有 `tenant_id` 列，`internal/todo/http.go` 的 9 个接口也全走裸 `huma.Register`，
-  没有任何 authz 守卫。要么给 todo 加租户维度当样板，要么等真实业务模块，需用户定。
+- 10.4 无处落地：唯一的业务模块 `internal/todo` 既没有 `tenant_id` 列，9 个接口也全走裸 `huma.Register`。
+  要么给 todo 加租户维度当样板，要么等真实业务模块，需用户定。
 - `organization` 模块的 ID 字段一律 `maxLength:"128"` 无 pattern，`core` 模块一律
   `pattern:"^[1-9][0-9]*$"`。两套写法并存但各自内部自洽，未擅自统一。
-- 验证码方案等 @gankcode 拍板两件事：默认配置提供哪些验证码类型（建议只给文字），
-  以及是否加一个配置选中的「测试用类型」。若同意，后端改动是把 `issueCaptcha()` 里写死的
-  `secureIntn(3)` 换成从配置集合里选。
-- `internal/iam/oauth/service.go` 的 `clientFromRow` 有与 69187ab 修掉的同一个空切片坑：
-  `var redirects []string` 在 `RedirectURIs` 为空或解析失败时保持 nil，`redirect_uris` 会序列化成
-  `null` 而不是 `[]`。本轮不在 10.6 范围内，未动。
+- `internal/iam/oauth/service.go:1028` 的 `clientFromRow` 有与 69187ab 修掉的同一个空切片坑：
+  `var redirects []string` 在 `RedirectURIs` 为空或解析失败时保持 nil，`redirect_uris` 序列化成 `null`。
+- 10.9 剩下四步里，④（签名密钥轮换）会短暂影响所有在途 token 的验签路径，需要一个 TTL 长度的双读窗口；
+  ⑤（replay registry）目前是进程内 map，多副本部署下 nonce 每副本各花一次，重放保护实际是关的。
 
 ## Verification
 Build: PASS  Tests: PASS  Lint: PASS  Integration: PASS
-`make ci` exit 0；`internal/iam/oauth` 91.5%（门槛 90.0），总覆盖率 90.1%（门槛 90.0）。
+10.9 ①：`make ci` exit 0，`pkg/extension/keyringx` 95.2%（门槛 90.0）。
+验证码：`make ci` exit 0，`internal/iam/authn` 90.2%，总体 90.1%（首轮 lint 报 `real` 遮蔽内建标识符，已改名为 `solved`）。
 
 ## Last Checkpoint
-2026-09-05 · 10.6 OAuth 同意自助列出与撤销已完成并推送。
-下一步：10.9 密钥/密钥环轮换（key id、双读单写窗口、回滚、旧密钥退役，
-以及把 federation 的进程内 replay registry 换成多副本可用的共享 nonce 状态）。
+2026-09-05 · 10.9 ① 密钥环原语已推送（51ac8f4）。验证码改动已推送。
+下一步：10.9 ②——把 federation（client-secret / state / saml-key）、provisioning（scim-target-bearer）、
+authn（mfa 加密 + 四个 HMAC 用途）接到 keyringx 上，并加 `previous_*_keys` / `previous_*_key_files` 配置，
+纯增量，不影响现有部署。
 10.3 与 10.4 仍卡在 @gankcode 的决定上。

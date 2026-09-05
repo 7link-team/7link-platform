@@ -180,15 +180,18 @@ type captchaOutput struct {
 	Height      int    `json:"height,omitempty"`
 }
 
-func issueCaptcha() (*captchaOutput, error) {
-	switch secureIntn(3) {
-	case 0:
+// issueCaptchaOf builds one challenge of the requested kind. The kind is chosen
+// by the deployment's offering rather than here, so which challenges exist and
+// which a deployment presents stay separate questions.
+func issueCaptchaOf(kind captchaKind) (*captchaOutput, error) {
+	switch kind {
+	case captchaText:
 		id, encoded, _, err := imageCaptcha.Generate()
 		if err != nil {
 			return nil, err
 		}
 		return &captchaOutput{Type: string(captchaText), CaptchaID: id, ImageBase64: encoded}, nil
-	case 1:
+	case captchaSlide:
 		builder := slide.NewBuilder(slide.WithImageSize(option.Size{Width: slideW, Height: slideH}))
 		builder.SetResources(
 			slide.WithGraphImages([]*slide.GraphImage{slideGraph}),
@@ -217,7 +220,7 @@ func issueCaptcha() (*captchaOutput, error) {
 			MasterImage: master, TileImage: tile,
 			Width: slideW, Height: slideH,
 		}, nil
-	default:
+	case captchaClick:
 		builder := click.NewBuilder()
 		builder.SetResources(
 			click.WithBackgrounds(clickBackgrounds),
@@ -256,15 +259,21 @@ func issueCaptcha() (*captchaOutput, error) {
 			MasterImage: master, ThumbImage: thumb,
 			Width: slideW, Height: slideH,
 		}, nil
+	default:
+		// Unreachable through the offering, which admits nothing else. Kept as
+		// an error rather than a panic so adding a kind and forgetting to build
+		// it fails one request instead of the process.
+		return nil, fmt.Errorf("unknown captcha kind %q", string(kind))
 	}
 }
 
-// VerifyCaptcha validates and consumes one challenge.
-func VerifyCaptcha(kind, id, answer string) bool {
+// verifyCaptchaOf validates and consumes one challenge. Whether the deployment
+// offers this kind at all is decided by the offering before this is reached.
+func verifyCaptchaOf(kind captchaKind, id, answer string) bool {
 	if id == "" || answer == "" {
 		return false
 	}
-	switch captchaKind(kind) {
+	switch kind {
 	case captchaText:
 		return imageCaptcha.Verify(id, answer, true)
 	case captchaSlide:
