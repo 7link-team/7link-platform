@@ -948,7 +948,7 @@ describe("IAM API client", () => {
     await client.resendInvitation("invitation/a", 24)
     await client.revokeInvitation("invitation/a")
     await client.acceptInvitation({
-      token: "cpi1_invitation/a.secret",
+      token: "inv1_invitation/a.secret",
       login_name: "invited",
       password: "correct horse battery staple",
       display_name: "Invited User",
