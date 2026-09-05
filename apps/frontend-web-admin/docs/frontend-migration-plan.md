@@ -13,8 +13,8 @@
 | 项              | 值                                                         |
 | --------------- | ---------------------------------------------------------- |
 | Current Phase   | TESTING（联调已通过，13 个 audit 全绿）                    |
-| Current Step    | 等入库的 OpenAPI 文件后重生成类型（§10.4）；余下等 §9 定名 |
-| Last Checkpoint | 2026-09-05 · 13/13 audit 连过三轮；OpenAPI 漂移闸口接入 tsc |
+| Current Step    | 等入库的 OpenAPI 文件后重生成类型（§10.4）                  |
+| Last Checkpoint | 2026-09-05 · §9 品牌清理复核 0 命中；四道门禁全绿           |
 
 **进度**
 
@@ -26,6 +26,8 @@
 - [x] Phase C 验收：13 个 browser audit 脚本 —— 对 `82f2966` 后端 13/13，连过三轮
       （账号仍是手工建的；脚本自举等 §9.3b，见下）
 - [x] OpenAPI 漂移闸口（§十）：51 个响应类型接入 `tsc`，查出并修掉三处真实漂移
+- [x] §9 品牌字样清理：展示文案收进 `lib/branding`（配置驱动），命名约定项全部中性化
+- [ ] §9.3b 审计脚本自举管理员账号 —— 等后端 10.1 的 bootstrap 命令，与命名无关
 - [ ] Phase D IAM 收口
 - [ ] Phase E 商城迁移（`mall` 分支）
 - [ ] A.1 前端规约写入 `CLAUDE.md` —— 本仓无前端章节、无前端 skill，待确认
@@ -440,6 +442,28 @@ authn 4 / organization 2 / audit 2 / identity 1。
 
 ## 九、品牌字样清理清单
 
+> ### ✅ 2026-09-05 本节已执行完毕（提交 `25a0297`），不阻塞任何人
+>
+> ⑴ 的 11 处展示文案已全部改为读 `src/lib/branding.ts`：`VITE_APP_NAME` 给控制台名、
+> `VITE_ORG_NAME` 给页脚组织名，两个都可以不配，缺省是中性的 `IAM` 和只有年份的版权行。
+> `document.title` 同样由 `main.tsx` 从配置写入。页脚年份改成渲染时读取（原先是字面量 `2026`，
+> 跨年后的构建会静默显示错误年份）。
+>
+> ⑵ / 9.2 / 9.3a 的命名约定项也已全部中性化并于 2026-09-05 逐条复核：
+> `iam.tenant`、下载兜底 `audit-export.ndjson`、`recovery-codes.txt`、
+> `oauth-client-${clientID}.txt`、默认 scope `iam-api`、夹具 `otpauth://totp/IAM:user`、
+> `describe("IAM API client")`、脚本的 `IAM_*` 环境变量名 / `admin@example.test` /
+> `.local/iam-smoke.db` / `Audit-*-2026!` 口令。
+>
+> **复核方式**：`apps/frontend-web-admin` 全仓 `grep -i chaosplus` 与
+> `grep -iE '7link|sevenlink'`（排除 `node_modules` 与生成物 `api-schema.ts`）——
+> 除本文档自身外 **0 命中**。四道门禁全绿：typecheck / lint / test 38 pass / build。
+>
+> **本节只剩 9.3b（脚本自举管理员账号）**，它等的是后端 10.1 的
+> `iam bootstrap-platform-admin` 命令，跟「叫什么名字」没有关系。
+>
+> 下面保留原始清单与更正记录，作为这次返工的过程留档。
+
 > ### ⚠️ 2026-09-05 方案已更正 —— 本节原方案是错的
 >
 > **原方案：「等 @gankcode 定名，然后把 `chaosplus` 全局替换成新名字」。**
@@ -468,8 +492,9 @@ authn 4 / organization 2 / audit 2 / identity 1。
 > 规模实测（2026-09-05）：前端 `chaosplus` 85 处，后端 Go 11 处（其中真正要紧的是上面 2 处）。
 
 盘点范围：`apps/frontend-web-admin/apps/iam` 的 `src/` 与 `scripts/`。
-注意：`index.html` 的 `<title>` 迁移时已写成 **7link IAM** —— 按更正后的方案，
-**这一处同样属于要清掉的硬编码**，不是"命名先例"。
+注意：`index.html` 的 `<title>` 迁移时曾写成 **7link IAM** —— 按更正后的方案，
+**这一处同样属于要清掉的硬编码**，不是"命名先例"。**已清**：静态 `<title>` 现为中性 `IAM`，
+运行时由 `main.tsx` 按配置覆盖。
 
 ### ⑴ 真品牌：纯展示文案 —— 收进配置源，组件里不留字面量
 
@@ -526,7 +551,7 @@ authn 4 / organization 2 / audit 2 / identity 1。
 
 改名不阻塞，**脚本自备账号这件事仍然阻塞**，区分清楚：
 
-- **改名（把 fixture 提成变量、换成新域名）** —— 现在就能做，只等 @gankcode 定名。
+- **改名（把 fixture 换成中性值）** —— ✅ 已完成，不依赖任何人定名。
 - **让脚本自己把管理员建出来** —— 还做不了。命令 `7link-api iam bootstrap-platform-admin`
   只存在于后端计划 §2.5.1（`docs/iam-domain-migration-plan.md:307`），
   **代码里搜 `bootstrap-platform-admin` / `BootstrapPlatformAdmin` 是 0 命中**，尚未实现。
@@ -540,8 +565,8 @@ authn 4 / organization 2 / audit 2 / identity 1。
 
 ### 9.4 执行方式
 
-定名后执行，分四次提交：9.1 纯文案 / 9.2 有行为影响 / 9.3a 脚本 fixture 改名 /
-9.3b 脚本自举步骤。每次跑全量门禁。前三批不依赖后端，只有 9.3b 等 10.1。
+9.1 纯文案 / 9.2 有行为影响 / 9.3a 脚本 fixture 改名 —— **均已完成**，每批跑过全量门禁。
+剩 9.3b 脚本自举步骤，等后端 10.1。
 
 9.3b 落地时按 §2.5.1 的约定写：密码走 `--password-file`（不用命令行明文），
 并依赖命令区分 created / already bootstrapped 的退出码来做重跑幂等。
