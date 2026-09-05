@@ -84,69 +84,118 @@ type RequiredKeys<T> = {
 // Resolves to true when the two agree, and otherwise to an object naming the
 // fields that do not. The naming is the whole point: the compiler prints this
 // type in the failure, so the message says which field moved.
-type Compare<Client, Spec> =
-  [Exclude<keyof Client, keyof Spec>] extends [never]
-    ? [Exclude<RequiredKeys<Spec>, keyof Client>] extends [never]
-      ? true
-      : { requiredFieldsTheClientOmits: Exclude<RequiredKeys<Spec>, keyof Client> }
-    : { fieldsTheServiceDoesNotHave: Exclude<keyof Client, keyof Spec> }
+type Compare<Client, Spec> = [Exclude<keyof Client, keyof Spec>] extends [never]
+  ? [Exclude<RequiredKeys<Spec>, keyof Client>] extends [never]
+    ? true
+    : {
+        requiredFieldsTheClientOmits: Exclude<RequiredKeys<Spec>, keyof Client>
+      }
+  : { fieldsTheServiceDoesNotHave: Exclude<keyof Client, keyof Spec> }
 
 type Agreed<R extends true> = R
 
 export type _AccessRequest = Agreed<Compare<AccessRequest, S["AccessRequest"]>>
 export type _AccessReview = Agreed<Compare<AccessReview, S["AccessReview"]>>
-export type _AccessReviewItem = Agreed<Compare<AccessReviewItem, S["AccessReviewItem"]>>
+export type _AccessReviewItem = Agreed<
+  Compare<AccessReviewItem, S["AccessReviewItem"]>
+>
 export type _AuditAnchor = Agreed<Compare<AuditAnchor, S["Anchor"]>>
 export type _AuditEvent = Agreed<Compare<AuditEvent, S["Event"]>>
 export type _AuditGovernance = Agreed<Compare<AuditGovernance, S["Governance"]>>
 export type _AuditIntegrity = Agreed<Compare<AuditIntegrity, S["Integrity"]>>
-export type _AuditRetentionPolicy = Agreed<Compare<AuditRetentionPolicy, S["RetentionPolicy"]>>
-export type _AuthnCapabilities = Agreed<Compare<AuthnCapabilities, S["AuthenticationCapabilities"]>>
-export type _AuthorizationExplanation = Agreed<Compare<AuthorizationExplanation, S["Explanation"]>>
-export type _BrowserSession = Agreed<Compare<BrowserSession, S["BrowserSession"]>>
+export type _AuditRetentionPolicy = Agreed<
+  Compare<AuditRetentionPolicy, S["RetentionPolicy"]>
+>
+export type _AuthnCapabilities = Agreed<
+  Compare<AuthnCapabilities, S["AuthenticationCapabilities"]>
+>
+export type _AuthorizationExplanation = Agreed<
+  Compare<AuthorizationExplanation, S["Explanation"]>
+>
+export type _BrowserSession = Agreed<
+  Compare<BrowserSession, S["BrowserSession"]>
+>
 export type _Captcha = Agreed<Compare<Captcha, S["CaptchaOutput"]>>
-export type _DataConstraint = Agreed<Compare<DataConstraint, S["DataConstraint"]>>
+export type _DataConstraint = Agreed<
+  Compare<DataConstraint, S["DataConstraint"]>
+>
 export type _Department = Agreed<Compare<Department, S["Department"]>>
 export type _Entity = Agreed<Compare<Entity, S["APIEntity"]>>
-export type _EntityRoleBinding = Agreed<Compare<EntityRoleBinding, S["APIEntityRoleBinding"]>>
+export type _EntityRoleBinding = Agreed<
+  Compare<EntityRoleBinding, S["APIEntityRoleBinding"]>
+>
 export type _Group = Agreed<Compare<Group, S["Group"]>>
 export type _GroupMember = Agreed<Compare<GroupMember, S["GroupMember"]>>
 export type _Invitation = Agreed<Compare<Invitation, S["Invitation"]>>
-export type _InvitationAcceptance = Agreed<Compare<InvitationAcceptance, S["InvitationAcceptance"]>>
-export type _IssuedInvitation = Agreed<Compare<IssuedInvitation, S["IssuedInvitation"]>>
+export type _InvitationAcceptance = Agreed<
+  Compare<InvitationAcceptance, S["InvitationAcceptance"]>
+>
+export type _IssuedInvitation = Agreed<
+  Compare<IssuedInvitation, S["IssuedInvitation"]>
+>
 export type _LoginResult = Agreed<Compare<LoginResult, S["LoginResult"]>>
 export type _Member = Agreed<Compare<Member, S["APITenantMember"]>>
 export type _Menu = Agreed<Compare<Menu, S["APIMenu"]>>
-export type _MfaConfirmation = Agreed<Compare<MfaConfirmation, S["MFAConfirmation"]>>
+export type _MfaConfirmation = Agreed<
+  Compare<MfaConfirmation, S["MFAConfirmation"]>
+>
 export type _MfaEnrollment = Agreed<Compare<MfaEnrollment, S["MFAEnrollment"]>>
 export type _MfaStatus = Agreed<Compare<MfaStatus, S["MFAStatus"]>>
 export type _OAuthClient = Agreed<Compare<OAuthClient, S["Client"]>>
-export type _OAuthClientCreateResult = Agreed<Compare<OAuthClientCreateResult, S["ClientCreateData"]>>
+export type _OAuthClientCreateResult = Agreed<
+  Compare<OAuthClientCreateResult, S["ClientCreateData"]>
+>
 export type _Passkey = Agreed<Compare<Passkey, S["Passkey"]>>
 
 // One client type covers both passkey ceremonies because the two documents
 // differ only in the nested `options` member, which the client hands straight
 // to the browser without reading it.
-export type _PasskeyCreationOptions = Agreed<Compare<PasskeyOptions, S["PasskeyCreationOptions"]>>
-export type _PasskeyAssertionOptions = Agreed<Compare<PasskeyOptions, S["PasskeyAssertionOptions"]>>
+export type _PasskeyCreationOptions = Agreed<
+  Compare<PasskeyOptions, S["PasskeyCreationOptions"]>
+>
+export type _PasskeyAssertionOptions = Agreed<
+  Compare<PasskeyOptions, S["PasskeyAssertionOptions"]>
+>
 
 export type _Permission = Agreed<Compare<Permission, S["Action"]>>
 export type _Position = Agreed<Compare<Position, S["Position"]>>
-export type _PositionMember = Agreed<Compare<PositionMember, S["PositionMember"]>>
+export type _PositionMember = Agreed<
+  Compare<PositionMember, S["PositionMember"]>
+>
 export type _Principal = Agreed<Compare<Principal, S["Principal"]>>
-export type _PrincipalList = Agreed<Compare<PrincipalList, S["PrincipalListData"]>>
+export type _PrincipalList = Agreed<
+  Compare<PrincipalList, S["PrincipalListData"]>
+>
 export type _Relationship = Agreed<Compare<Relationship, S["APIRelationship"]>>
-export type _RequestableRole = Agreed<Compare<RequestableRole, S["RequestableRole"]>>
+export type _RequestableRole = Agreed<
+  Compare<RequestableRole, S["RequestableRole"]>
+>
 export type _Role = Agreed<Compare<Role, S["APIRole"]>>
-export type _RoleDataScope = Agreed<Compare<RoleDataScope, S["APIRoleDataScope"]>>
-export type _RoleDirectoryBinding = Agreed<Compare<RoleDirectoryBinding, S["APIRoleDirectoryBinding"]>>
-export type _RolePermissionGrant = Agreed<Compare<RolePermissionGrant, S["APIRolePermissionGrant"]>>
+export type _RoleDataScope = Agreed<
+  Compare<RoleDataScope, S["APIRoleDataScope"]>
+>
+export type _RoleDirectoryBinding = Agreed<
+  Compare<RoleDirectoryBinding, S["APIRoleDirectoryBinding"]>
+>
+export type _RolePermissionGrant = Agreed<
+  Compare<RolePermissionGrant, S["APIRolePermissionGrant"]>
+>
 export type _SCIMCredential = Agreed<Compare<SCIMCredential, S["Credential"]>>
-export type _SCIMCredentialSecret = Agreed<Compare<SCIMCredentialSecret, S["CredentialSecret"]>>
+export type _SCIMCredentialSecret = Agreed<
+  Compare<SCIMCredentialSecret, S["CredentialSecret"]>
+>
 export type _SCIMDirectory = Agreed<Compare<SCIMDirectory, S["Directory"]>>
-export type _ServiceAccount = Agreed<Compare<ServiceAccount, S["ServiceAccount"]>>
-export type _ServiceAccountCredential = Agreed<Compare<ServiceAccountCredential, S["ServiceAccountCredential"]>>
-export type _ServiceAccountCredentialSecret = Agreed<Compare<ServiceAccountCredentialSecret, S["ServiceAccountCredentialSecret"]>>
-export type _ServiceAccountList = Agreed<Compare<ServiceAccountList, S["ServiceAccountListData"]>>
+export type _ServiceAccount = Agreed<
+  Compare<ServiceAccount, S["ServiceAccount"]>
+>
+export type _ServiceAccountCredential = Agreed<
+  Compare<ServiceAccountCredential, S["ServiceAccountCredential"]>
+>
+export type _ServiceAccountCredentialSecret = Agreed<
+  Compare<ServiceAccountCredentialSecret, S["ServiceAccountCredentialSecret"]>
+>
+export type _ServiceAccountList = Agreed<
+  Compare<ServiceAccountList, S["ServiceAccountListData"]>
+>
 export type _Session = Agreed<Compare<Session, S["MeOutput"]>>
 export type _Tenant = Agreed<Compare<Tenant, S["Tenant"]>>
