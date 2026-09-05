@@ -16,8 +16,8 @@ IAM Phase 10 后端推进。10.1、10.2、10.6、§2.5.2 均已推送。当前�
 IN PROGRESS（10.9 第 ① 步与验证码均已推送；10.3、10.4 等 @gankcode 拍板）
 
 ## Current Step
-10.9 ③ 已完成并推送。
-下一步：先给 @ClaudeWEB 补上 `7link-api openapi --out` （他的 CI 卡在这一条），然后 10.9 ④。
+10.9 ③ 与 OpenAPI 离线导出均已完成。
+下一步：10.9 ④ authn 签名密钥环。
 
 ## Overall Progress
 - [x] Phase 10.2（提交 24f2483）
@@ -31,6 +31,7 @@ IN PROGRESS（10.9 第 ① 步与验证码均已推送；10.3、10.4 等 @gankco
 - [x] 10.9 ① 密钥环原语 `pkg/extension/keyringx`（提交 51ac8f4）
 - [x] 10.9 ② federation / provisioning / authn 接入密钥环 + `previous_*_keys` 配置
 - [x] 10.9 ③ `iam rewrap-secrets` + 「还有多少行挂在旧密钥上」报告
+- [x] `7link-api openapi` 离线导出 + `make openapi` / `make openapi-check` + 落地 `docs/openapi.json`
 - [ ] 10.9 ④ authn 签名密钥环：JWKS 同时发布 active + previous，签用 active，验收任一把
 - [ ] 10.9 ⑤ federation replay registry 换成跨副本共享状态
 - [x] 注册验证码可配置（频道 task #5）
@@ -118,6 +119,25 @@ authn（mfa 加密 + 四个 HMAC 用途）全部改成走 `keyringx`，
   聚合表达式没有列类型，SQLite 按文本返回，扫描直接失败；PostgreSQL 上完全正常。
   改成取最晚一行而不是聚合值。这个报告偏偏只在轮换密钥的当口才会被跑到。
 
+## 本轮交付其五：`7link-api openapi` 与落地的 API 文档
+
+前端的 `generate-api-types.mjs` 默认读 `apps/backend-api/docs/openapi.json`，而这个文件从来没有存在过——
+spec 以前只有跑起来的服务在 `/openapi.json` 上供，所以脚本里写着「后端还没发布，先指向一个跑着的实例」。
+人可以这么干，CI 不行。
+
+- `internal/app/openapi.go`：`RunOpenAPIExport` 按配置组合出真正的应用（不是「所有模块全开」的超集，
+  否则文档会描述这个部署实际返回 404 的接口），注册 HTTP 之后取 `api.OpenAPI()`，全程不监听端口。
+- `info.version` 取配置里的版本，取不到就退到常量 `0.0.0`，**不取构建号**：构建号每次提交都变，
+  落地的文档就永远对不上新导出的，真正的 API 变更会被淹在噪音里。
+- 日志改指 stderr（新增 `processConsoleErrorWriter`）。原来 `configureProcessRuntime` 把 slog 指向 stdout，
+  `openapi > spec.json` 会把日志写进文档中间，产出一个谁都解析不了的文件——这是真 bug，不是洁癖。
+- `--format json|yaml` 显式指定，不按扩展名猜；认不出的格式直接拒绝，不默默当成 JSON。
+- `--out` 走临时文件 + rename：中断的导出不能留下半个文档，否则下一步 diff 出来的是「命令被打断」而不是「API 变了」。
+- `make openapi` 重新生成，`make openapi-check` 在文档与代码不一致时失败并给出修法，已接进 `make ci`。
+  应用名默认中性的 `IAM`（文档标题是名字 + " API"），可用 `OPENAPI_NAME` 覆盖；导出用的密钥每次现生成在
+  `.temp/` 里，不进仓库，也不出现在文档里。
+- 落地文档：152 条路径 / 227 个操作 / 294 个 schema，约 1.0 MB；全文搜不到任何品牌字样。
+
 ## Important Decisions
 - 跨模块只走窄事务能力（`func(ctx, *gorm.DB, ...)`，Provide 阶段发布、Inject 阶段解析）。
 - 修复命令是 create-only：只要租户已有任何 member 或 role 就拒绝，绝不改动已有归属。
@@ -159,6 +179,10 @@ authn（mfa 加密 + 四个 HMAC 用途）全部改成走 `keyringx`，
 
 ## Verification
 Build: PASS  Tests: PASS  Lint: PASS  Integration: PASS
+OpenAPI 导出：`make ci` exit 0（已含新增的 `openapi-check`），总体 90.1%。
+落地文档 152 路径 / 227 操作 / 294 schema，`make openapi-check` 在人为改坏文档时如实失败并给出修法。
+（首轮 CLI 测试因 cobra 本地 flag 跨 `Execute()` 粘连而串味——`--format toml` 漏给了下一个用例，
+已按 rewrap 的同一套路加 `keepOpenAPIFlagsFromLeaking` 复位。）
 10.9 ③：`make ci` exit 0，总体 90.1%，authn 90.1 / federation 91.2 / provisioning 90.8 /
 keyringx 94.6 / core 90.1。（首轮 fmt-check 报 CRLF，lint 报 misspell `enrol`，
 `internal/iam/core` 三份冻结接口清单需同步登记新增的三个 `SecretRewrapper`，均已处理。）
@@ -168,11 +192,14 @@ keyringx 94.6 / core 90.1。（首轮 fmt-check 报 CRLF，lint 报 misspell `en
 验证码：`make ci` exit 0，`internal/iam/authn` 90.2%，总体 90.1%（首轮 lint 报 `real` 遮蔽内建标识符，已改名为 `solved`）。
 
 ## Last Checkpoint
-2026-09-05 · 10.9 ③ `iam rewrap-secrets` 已推送，`make ci` 绿。
-下一步先插一件 @ClaudeWEB 卡住的小事：`7link-api openapi --out <path>` 离线导出 OpenAPI 文档，
-让前端 CI 能重算 spec（目前 spec 只有跑起来的服务在 `/openapi.json` 上供，仓库里没有落地文件）。
-之后是 10.9 ④——authn 签名密钥环。
+2026-09-05 · 10.9 ③ 与 OpenAPI 离线导出均已推送，`make ci` 绿。
+本轮还按 @gankcode「做完了文档要么更新一致、要么删掉清理」把文档对齐了实际：
+方案 10.9 条目改成「五步已完成三步」并写清剩下的 ④⑤ 各是什么问题；
+`docs/README.md` 的「端点去哪看」改指落地的 `openapi.json` 并声明它是唯一机器生成、不得手改的文件；
+`README.md` 新增 API document 一节。
+下一步：10.9 ④——authn 签名密钥环（JWKS 同时发布 active + previous，旧 key 一个 token TTL 后退场）。
 @gankcode 问到能否整体换成 go-captcha：已答——它本来就在用（滑块/点选），
 但 v2 只有 click/slide/rotate，没有打字那一种，全换等于去掉唯一键盘可完成的验证码；
 可选项是加 `rotate` 作第四种。等回话。
 10.3 与 10.4 仍卡在 @gankcode 的决定上。
+CLAUDE.md §12「Line endings」那段与仓库实际不符（曾提过一次，未获回应），未擅自改。

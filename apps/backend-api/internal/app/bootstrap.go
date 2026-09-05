@@ -55,6 +55,13 @@ func processConsoleWriter() io.Writer {
 	return colorable.NewColorable(os.Stdout)
 }
 
+// processConsoleErrorWriter is where diagnostics go for a command whose output
+// is a document rather than a report. Standard output has to carry only the
+// document, or redirecting it produces a file with log lines in the middle.
+func processConsoleErrorWriter() io.Writer {
+	return colorable.NewColorable(os.Stderr)
+}
+
 func processConsoleColorsEnabled(debug bool) bool {
 	return debug || isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdout.Fd())
 }

@@ -7,7 +7,7 @@
 | 想知道 | 去哪看 |
 |---|---|
 | 目录结构、怎么跑、怎么测、怎么生成代码 | `../README.md` |
-| 端点、字段、状态码 | 运行时 OpenAPI（`/openapi`、`/docs`） |
+| 端点、字段、状态码 | [openapi.json](openapi.json)，或运行时的 `/openapi`、`/docs` |
 | 表结构 | 各模块 `sql/{postgres,mysql,sqlite}/*.sql` |
 | 行为细节 | 测试 |
 | 当前任务进行到哪、下一步做什么 | `../../../.claude/task-state.md` |
@@ -27,3 +27,4 @@
 - 文件名 kebab-case，不带版本号或 `-final` 之类的状态后缀；状态写在文档头部。
 - 中文。单一版本，不做双语——双语必然漂移。
 - 只写"为什么"和"否决了什么"。实现细节会漂移，留在代码、测试和 OpenAPI 里。
+- `openapi.json` 是这一层唯一的例外，也是唯一由机器生成的文件：**不要手改**。用 `make openapi` 重新生成并提交；`make openapi-check` 会在它与代码不一致时让 `make ci` 失败。它落在仓库里，是因为客户端类型生成和兼容性检查都在服务启动之前运行，那时候 `/openapi` 还没人在供。

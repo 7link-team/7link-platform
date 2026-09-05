@@ -91,7 +91,7 @@ make test-performance  # uncached IAM hot-path plans/benchmarks on PostgreSQL 16
 make test-mysql8       # IAM migrations and hot paths on pinned real MySQL 8.4
 make test-all          # unit + integration
 make lint              # golangci-lint, pinned in tools/go.mod
-make ci                # format, lint, coverage, integration, and production build
+make ci                # format, lint, coverage, integration, build, and the API document check
 ```
 
 `make test-coverage` enforces 90% overall and 90% for every package listed in
@@ -107,6 +107,31 @@ samples for IAM authorization, session lookup, SCIM bulk, and audit append. The
 checked-in PostgreSQL/MySQL baseline always enforces SQL fingerprints and rejects
 unscoped or critical full scans. Set `IAM_PERFORMANCE_ENFORCE_THRESHOLDS=1` when
 rerunning on the baseline machine to enforce its frozen latency thresholds.
+
+## API document
+
+`docs/openapi.json` is the published description of this API. It is generated,
+not written, and committed rather than only served, because the things that
+need it run before the service does: client type generation, a compatibility
+check, the review of an API change.
+
+```sh
+make openapi        # regenerate docs/openapi.json -- commit the result
+make openapi-check  # fail when the committed document no longer matches the code
+```
+
+The export composes the application as configured rather than a fixed
+"everything on" superset, so a deployment that runs fewer modules produces a
+smaller document; nothing binds a port. `OPENAPI_NAME` sets the application
+name the title is built from and defaults to something neutral, so the
+committed document carries no product name. The version comes from the
+configuration and never from the build stamp: a stamp would change on every
+commit, so a committed document could never match a fresh export and a real
+API change would be buried in the noise.
+
+`7link-api openapi` is also a command in its own right. With no `--out` it
+writes to standard output, so it pipes; `--format yaml` selects the other
+serialization.
 
 ## Code generation
 

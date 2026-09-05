@@ -20,6 +20,49 @@ DEV_ARGS ?= serve --debug --migrate --pprof.enabled --shutdown.graceful=false \
 	--authn.web.allowed-origins $(DEV_IAM_ISSUER) --authn.web.cookie-secure=false \
 	--authn.mfa.encryption-key-file $(DEV_AUTHN_MFA_KEY_FILE) \
 	--federation.enabled --federation.encryption-key-file $(DEV_FEDERATION_KEY_FILE)
+
+# The published API document, and the settings that decide what is in it.
+#
+# The document is generated rather than written, and committed rather than
+# served, because everything that needs it runs before the service does: the
+# client type generator, a compatibility check, the review of an API change.
+# Regenerate with `make openapi` and commit the result; `make openapi-check`
+# fails when the committed document no longer matches the code.
+#
+# The name is a setting rather than a constant, because the deployment identity
+# belongs to whoever deploys. The default is neutral so the committed document
+# carries no product name; the document's title is this name plus " API".
+#
+# Debug-only surfaces (pprof, the inspectors, metrics) are deliberately left
+# off: publishing them would describe a deployment nobody actually runs.
+#
+# The keys exist because the modules refuse to compose without them. They are
+# generated fresh into .temp on every run, they never leave this machine, and
+# none of them appears in the document -- the document describes shapes, not
+# state, which is also why two runs produce the same bytes.
+OPENAPI_OUTPUT ?= docs/openapi.json
+OPENAPI_NAME ?= IAM
+OPENAPI_ISSUER ?= https://iam.invalid
+OPENAPI_WORK_DIR ?= $(abspath .temp/openapi)
+OPENAPI_SECRET_DIR ?= $(OPENAPI_WORK_DIR)/secrets
+OPENAPI_SIGNING_KEY_FILE := $(OPENAPI_SECRET_DIR)/signing-key
+OPENAPI_MFA_KEY_FILE := $(OPENAPI_SECRET_DIR)/mfa-key
+OPENAPI_FEDERATION_KEY_FILE := $(OPENAPI_SECRET_DIR)/federation-key
+OPENAPI_KEY_FILES := $(OPENAPI_SIGNING_KEY_FILE) $(OPENAPI_MFA_KEY_FILE) $(OPENAPI_FEDERATION_KEY_FILE)
+# A throwaway schema. The export composes the real application, and composition
+# expects its tables to be there; nothing is read from this database and nothing
+# survives the run.
+OPENAPI_ARGS = openapi --name "$(OPENAPI_NAME)" --migrate \
+	--database.main.type sqlite \
+	--database.main.dsn "$(OPENAPI_WORK_DIR)/openapi.sqlite" \
+	--authn.enabled --authn.issuer $(OPENAPI_ISSUER) \
+	--authn.signing-key-file $(OPENAPI_SIGNING_KEY_FILE) \
+	--authn.mfa.encryption-key-file $(OPENAPI_MFA_KEY_FILE) \
+	--authn.web.enabled --authn.web.post-login-url $(OPENAPI_ISSUER)/ \
+	--authn.web.allowed-return-urls $(OPENAPI_ISSUER)/ \
+	--authn.web.allowed-origins $(OPENAPI_ISSUER) \
+	--federation.enabled \
+	--federation.encryption-key-file $(OPENAPI_FEDERATION_KEY_FILE)
 COVERAGE_MIN ?= 90
 COVERAGE_PROFILE ?= coverage.out
 COVERAGE_RAW_PROFILE ?= coverage.raw.out
@@ -67,7 +110,7 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/pkg/i18n \
 	7link.com/platform/pkg/query
 
-.PHONY: build ci dev fmt-check generate generate-docs golangci iam-preflight lint test test-coverage test-integration test-performance test-all test-mysql8 test-mysql8-run
+.PHONY: build ci dev fmt-check generate generate-docs golangci iam-preflight lint openapi openapi-check test test-coverage test-integration test-performance test-all test-mysql8 test-mysql8-run
 
 build:
 	$(MKDIR_OUTPUT)
@@ -103,7 +146,7 @@ test-mysql8-run:
 # Single entry point for a pipeline: every gate, in cheapest-first order, so a
 # formatting or lint failure reports before the slow database tests run. Fails
 # on the first gate that fails.
-ci: fmt-check lint test-coverage test-integration build
+ci: fmt-check lint test-coverage test-integration build openapi-check
 
 # gofmt has no check mode; -l prints files that need formatting and exits 0, so
 # the emptiness of that list is the assertion.
@@ -119,6 +162,29 @@ $(DEV_AUTHN_SIGNING_KEY_FILE) $(DEV_AUTHN_MFA_KEY_FILE) $(DEV_FEDERATION_KEY_FIL
 
 dev: $(DEV_AUTHN_SIGNING_KEY_FILE) $(DEV_AUTHN_MFA_KEY_FILE) $(DEV_FEDERATION_KEY_FILE)
 	go -C cmd/7link-api run . $(DEV_ARGS)
+
+# Regenerate the published API document. Commit the result: the frontend
+# type generator reads the committed file, so a change to the API is only
+# visible to a client once this has run.
+openapi: $(OPENAPI_KEY_FILES)
+	go -C cmd/7link-api run . $(OPENAPI_ARGS) --out "$(abspath $(OPENAPI_OUTPUT))"
+
+# Fail when the committed document no longer describes the code. Without
+# this, an API change lands green and the mismatch is found later by whoever
+# generated a client from the stale document -- a long way from the change
+# that caused it. The fix is always the same, so the failure says so.
+openapi-check: $(OPENAPI_KEY_FILES)
+	@go -C cmd/7link-api run . $(OPENAPI_ARGS) \
+		--out "$(OPENAPI_WORK_DIR)/openapi.expected.json" >/dev/null
+	@if ! diff -q "$(OPENAPI_OUTPUT)" "$(OPENAPI_WORK_DIR)/openapi.expected.json" >/dev/null 2>&1; then \
+		echo "$(OPENAPI_OUTPUT) does not match the code; run 'make openapi' and commit the result"; \
+		diff -u "$(OPENAPI_OUTPUT)" "$(OPENAPI_WORK_DIR)/openapi.expected.json" | head -40; \
+		exit 1; \
+	fi; \
+	echo "openapi: matches $(OPENAPI_OUTPUT)"
+
+$(OPENAPI_KEY_FILES):
+	@umask 077; mkdir -p "$(OPENAPI_SECRET_DIR)"; openssl rand -base64 32 > "$@"
 
 # Config lives in .golangci.yml. The linter is pinned in tools/go.mod so every
 # developer resolves the same findings without a local install.

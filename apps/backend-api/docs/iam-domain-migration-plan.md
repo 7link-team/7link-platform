@@ -963,13 +963,14 @@ CREATE TABLE {{.Prefix}}iam_roles (
 - [x] **10.6 OAuth 交互式 consent：**当前 `prompt=consent` 产生 `ErrConsentRequired` 后映射为通用 `invalid_request`，且默认 prompt 会直接 upsert consent。补 consent challenge/approve/deny/revoke API 或页面、短期一次性状态、防 CSRF 与审计。
 - [ ] **10.7 Audit archive 生命周期：**当前 retention 只保存 policy 并统计 `archive_ready_events`；补实际 archive/export worker、对象校验、重试、删除/保留边界和可观测状态。
 - [ ] **10.8 Principal 数据生命周期：**普通 principal 有 create/update/suspend/resume，但没有删除、匿名化或法定保留流程；需先确认审计与外键保留语义。
-- [ ] **10.9 Secret/key rotation：**authn/federation/provisioning 多处仍是单 key 配置或一次性替换；设计 key ID/keyring、双读单写窗口、回滚和旧 key 清退。Federation replay registry 仍为进程内状态，多副本一次性消费另行设计 shared nonce capability。
+- [ ] **10.9 Secret/key rotation（进行中，五步已完成三步）：**① 密钥环原语 `pkg/extension/keyringx`：信封记录是哪把密钥封的，一把在封、一圈都能开。② authn / federation / provisioning 三个模块接入密钥环，新增 `previous_*_keys` 配置。③ `iam rewrap-secrets` 把仍挂在旧密钥上的行重新封一遍，并报告「还剩多少行挂在旧密钥上」，让「可以把旧密钥拿掉了」有依据而不是靠猜；派生摘要（recovery code、验证令牌）无法重封，按各自是否会过期分别报 `expires=never` 或一个日期，不会给出读起来像许可的日期。剩余两步：④ authn 签名密钥环——JWKS 同时发布 active 与 previous，签用 active、验收任一把，旧 key 在一个 token TTL 之后才退场（换签名密钥会影响所有在途 token 的验签路径，需要这个双读窗口）。⑤ federation replay registry 目前是进程内 map，多副本部署下同一个 nonce 每个副本各花一次，重放保护实际上是关的，需换成跨副本共享状态。
 - [ ] **10.10 IAM gRPC 产品决策：**只有明确要求 HTTP/gRPC 双协议时才新增 proto/service；必须先冻结 API surface、auth metadata、错误码、版本兼容和 208 HTTP 能力的映射范围。未决定前不得创建占位服务。
 - [ ] **10.11 最终产品门禁：**完成已批准的 10.1–10.10 后重跑 SQLite/MySQL/PostgreSQL 初始化与权限矩阵、OpenAPI、race、`make generate`、`make ci`、真实 MySQL 及 live readiness。
 
 #### 已完成的工程治理
 
 - [x] **测试文件命名：**全仓生产目录只允许 `xx_test.go` 或 `xx_subxx_test.go`，其中 `xx.go` 必须真实存在于同目录；已重命名历史违规文件，并由 `tests/architecture` 自动门禁。纯黑盒测试目录因没有 production Go file 而豁免。
+- [x] **API 文档发布：**`7link-api openapi` 不启动服务就导出本部署的 OpenAPI 文档；`make openapi` 生成 `docs/openapi.json`，`make openapi-check` 在文档与代码不一致时让 `make ci` 失败。文档以前只有跑起来的服务在 `/openapi.json` 上供，而需要它的东西——客户端类型生成、兼容性检查、一次 API 变更的评审——全都在服务启动之前运行。导出按配置组合真实应用（不是「全模块打开」的超集），`info.version` 取配置不取构建号，两次导出字节一致，因此可以作为 diff 基准。
 - [x] **模块自治激活：**删除 `internal/app` 对整个 IAM graph 和 federation 的手工条件 append；9 个 runtime module 无条件登记并各自实现 `module.Enabler`，禁用依赖与启用消费者的非法组合由 `Registry.Activate()` fail fast。
 
 ---
