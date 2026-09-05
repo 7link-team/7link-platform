@@ -29,7 +29,11 @@ import {
 } from "@workspace/ui/components/table"
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
-import { iamApi, type AuditAnchor, type AuditGovernance } from "../../lib/iam-api"
+import {
+  iamApi,
+  type AuditAnchor,
+  type AuditGovernance,
+} from "../../lib/iam-api"
 
 export default function AuditGovernancePage() {
   const [governance, setGovernance] = useState<AuditGovernance | null>(null)
@@ -139,7 +143,11 @@ export default function AuditGovernancePage() {
               onClick={() => void signRoot()}
               disabled={busy || integrity?.valid !== true}
             >
-              {busy ? <LoaderCircle className="animate-spin" /> : <Fingerprint />}
+              {busy ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <Fingerprint />
+              )}
               签名当前根
             </Button>
           </div>
@@ -178,7 +186,9 @@ export default function AuditGovernancePage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>配置保留策略</DialogTitle>
-            <DialogDescription>设置事件的最小保留期与归档就绪期，归档不会删除事件。</DialogDescription>
+            <DialogDescription>
+              设置事件的最小保留期与归档就绪期，归档不会删除事件。
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={(event) => void saveRetention(event)}>
             <div className="grid gap-4">

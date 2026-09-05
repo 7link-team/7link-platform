@@ -1616,9 +1616,7 @@ describe("IAM API client", () => {
     })
     const download = await client.auditExport("event_type=oauth_client_created")
     expect(download.filename).toBe("audit-20260801T150000Z.ndjson")
-    expect(await download.blob.text()).toContain(
-      '"schema":"audit-export.v1"'
-    )
+    expect(await download.blob.text()).toContain('"schema":"audit-export.v1"')
     expect(requests.map(({ path }) => path)).toEqual([
       "/iam/audit-events?event_type=oauth_client_created",
       "/iam/audit-events/event-1",
@@ -1747,4 +1745,4 @@ describe("IAM API client", () => {
     for (const request of requests)
       expect(request.headers.get("x-tenant-id")).toBe("tenant-audit")
   })
-})
+})

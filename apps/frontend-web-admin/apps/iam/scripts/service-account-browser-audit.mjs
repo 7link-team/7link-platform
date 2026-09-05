@@ -230,13 +230,16 @@ await setInput("#service-account-login", loginName)
 await setInput("#service-account-display", displayName)
 await submit("#service-account-form")
 await waitFor(rowExpression(displayName))
-const accountID = await evaluate(`return ${rowExpression(displayName)}.querySelector("code").textContent.trim()`)
+const accountID = await evaluate(
+  `return ${rowExpression(displayName)}.querySelector("code").textContent.trim()`
+)
 
 const role = await api("/iam/roles", "POST", {
   name: `Service Account Audit ${suffix}`,
   description: "Browser acceptance role",
 })
-if (role.status !== 200) throw new Error(`role create failed: ${JSON.stringify(role)}`)
+if (role.status !== 200)
+  throw new Error(`role create failed: ${JSON.stringify(role)}`)
 const roleID = role.body.data.id
 for (const path of [
   `/iam/roles/${encodeURIComponent(roleID)}/permissions/service_account_view`,
@@ -252,7 +255,9 @@ await waitFor(`document.querySelector("#service-credential-form")`)
 await setInput("#service-credential-name", credentialName)
 await setInput("#service-credential-scopes", "iam-api")
 await submit("#service-credential-form")
-await waitFor(`document.querySelector('[role="dialog"]')?.textContent.includes("客户端密钥仅显示一次")`)
+await waitFor(
+  `document.querySelector('[role="dialog"]')?.textContent.includes("客户端密钥仅显示一次")`
+)
 const secret = await evaluate(`
   const inputs = [...document.querySelectorAll('[role="dialog"] input')];
   return { clientID: inputs[0].value, clientSecret: inputs[1].value };
@@ -287,10 +292,14 @@ if (authorized.status !== 200)
 
 await clickText("完成")
 await clickLabel(`管理 ${displayName} 的凭据`)
-await waitFor(`document.body.innerText.includes(${JSON.stringify(credentialName)})`)
+await waitFor(
+  `document.body.innerText.includes(${JSON.stringify(credentialName)})`
+)
 await clickLabel(`撤销 ${credentialName}`)
 await clickText("确认")
-await waitFor(`document.querySelector('[role="dialog"]')?.textContent.includes("已撤销")`)
+await waitFor(
+  `document.querySelector('[role="dialog"]')?.textContent.includes("已撤销")`
+)
 const revoked = await api(
   "/iam/service-accounts",
   "GET",
@@ -324,7 +333,10 @@ await command("Emulation.setDeviceMetricsOverride", {
 await clickLabel(`删除 ${displayName}`)
 await clickText("确认")
 await waitFor(`!${rowExpression(displayName)}`)
-const deletedRole = await api(`/iam/roles/${encodeURIComponent(roleID)}`, "DELETE")
+const deletedRole = await api(
+  `/iam/roles/${encodeURIComponent(roleID)}`,
+  "DELETE"
+)
 if (deletedRole.status !== 200)
   throw new Error(`role cleanup failed: ${JSON.stringify(deletedRole)}`)
 
@@ -349,7 +361,9 @@ if (consoleErrors.length)
 if (unexpectedFailures.length)
   throw new Error(`failed requests: ${JSON.stringify(unexpectedFailures)}`)
 if (unexpectedResponses.length)
-  throw new Error(`unexpected responses: ${JSON.stringify(unexpectedResponses)}`)
+  throw new Error(
+    `unexpected responses: ${JSON.stringify(unexpectedResponses)}`
+  )
 
 console.log(
   JSON.stringify({

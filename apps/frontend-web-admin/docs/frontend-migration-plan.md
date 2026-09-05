@@ -10,11 +10,11 @@
 
 ## 零、当前状态（task state · 前端线）
 
-| 项 | 值 |
-|---|---|
-| Current Phase | TESTING（代码迁移完成，待真实后端联调） |
-| Current Step | 等后端 Phase 10.1 / 10.2 落地后跑 13 个 browser audit 脚本 |
-| Last Checkpoint | 2026-09-04 · Phase B / C 代码迁移完成，五项门禁全绿 |
+| 项              | 值                                                         |
+| --------------- | ---------------------------------------------------------- |
+| Current Phase   | TESTING（代码迁移完成，待真实后端联调）                    |
+| Current Step    | 等后端 Phase 10.1 / 10.2 落地后跑 13 个 browser audit 脚本 |
+| Last Checkpoint | 2026-09-04 · Phase B / C 代码迁移完成，五项门禁全绿        |
 
 **进度**
 
@@ -30,14 +30,14 @@
 
 **Verification（2026-09-04 实测，清缓存后复跑）**
 
-| 命令 | 结果 |
-|---|---|
-| `bun run typecheck` | PASS（2 packages，`tsc -b`） |
-| `bun run lint` | PASS（2 packages，eslint 0 error） |
-| `bun run test` | **119 pass / 0 fail**（ui 85 + iam 34，12 文件） |
-| `bun run build` | PASS（vite 8，24 页面全部按路由代码分割） |
-| `git add -n apps/frontend-web-admin` | 240 文件，无 `node_modules` / `dist` / `.turbo` / `tsbuildinfo` |
-| `bun run dev`（8091） | 起得来；`index.html` / `main.tsx` / `router.tsx` / `layout.tsx` 与 **23 个页面模块全部 HTTP 200**（vite 逐个转换通过）；`/api` 代理已接通（无后端时返回 502） |
+| 命令                                 | 结果                                                                                                                                                          |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun run typecheck`                  | PASS（2 packages，`tsc -b`）                                                                                                                                  |
+| `bun run lint`                       | PASS（2 packages，eslint 0 error）                                                                                                                            |
+| `bun run test`                       | **119 pass / 0 fail**（ui 85 + iam 34，12 文件）                                                                                                              |
+| `bun run build`                      | PASS（vite 8，24 页面全部按路由代码分割）                                                                                                                     |
+| `git add -n apps/frontend-web-admin` | 240 文件，无 `node_modules` / `dist` / `.turbo` / `tsbuildinfo`                                                                                               |
+| `bun run dev`（8091）                | 起得来；`index.html` / `main.tsx` / `router.tsx` / `layout.tsx` 与 **23 个页面模块全部 HTTP 200**（vite 逐个转换通过）；`/api` 代理已接通（无后端时返回 502） |
 
 > 已知遗留警告（迁移源自带，未改）：`vite.config.ts:14` 用了 `__dirname`，
 > 未来 Vite 默认 `configLoader: 'native'` 后需改成 `import.meta.dirname`。当前不影响运行。
@@ -71,6 +71,7 @@
 2. **后端 Phase 10.1 / 10.2 —— 归 @Claude（gankcode 2026-09-04 裁决）。**
    @Claude 已确认菜单初始化不是独立项，而是 10.2 建租户事务的第 3 步，会一起解决。
    未落地前，页面代码全部就位但登录与侧边栏无法联调。
+
 - 商城 9 个重叠模块归属未裁决（Q6），不裁决则 Phase E 返工。
 - 过期克隆 `aspeed-framework/7link-platform` 是否删除待授权（Q7）。
 
@@ -91,12 +92,12 @@
 
 ### 1.1 四个代码库的位置与角色
 
-| 代码库 | 路径 | 角色 | 实测状态 |
-|---|---|---|---|
-| 旧后端 | `D:\Projects\Chaosplus\chaosplus-api\apps\server` | IAM 域的迁移源 | Go，`internal/modules/{audit,authn,federation,governance,iam,identity,oauth,organization,provisioning}` |
-| 旧前端 | `D:\Projects\Chaosplus\chaosplus-api\apps\admin` | **本次迁移源** | Bun + Turborepo；`apps/iam`（业务）+ `packages/ui`（组件库） |
-| 目标 | `D:\Projects\SevenLink\mos\7link-platform` | **当前工作项目** | 分支 `IAM`，`apps/backend-api` 已完成 IAM 后端迁移；`apps/frontend-web-admin` **是空目录** |
-| 商城 | `D:\Projects\SevenLink\mos\aspeed-framework\apps` | 最终迁移目标 | `7link-mall-api`（Go，46 模块 ~10.1 万行生产代码）+ `7link-mall-web`（~1.9 万行 TS） |
+| 代码库 | 路径                                              | 角色             | 实测状态                                                                                                |
+| ------ | ------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------- |
+| 旧后端 | `D:\Projects\Chaosplus\chaosplus-api\apps\server` | IAM 域的迁移源   | Go，`internal/modules/{audit,authn,federation,governance,iam,identity,oauth,organization,provisioning}` |
+| 旧前端 | `D:\Projects\Chaosplus\chaosplus-api\apps\admin`  | **本次迁移源**   | Bun + Turborepo；`apps/iam`（业务）+ `packages/ui`（组件库）                                            |
+| 目标   | `D:\Projects\SevenLink\mos\7link-platform`        | **当前工作项目** | 分支 `IAM`，`apps/backend-api` 已完成 IAM 后端迁移；`apps/frontend-web-admin` **是空目录**              |
+| 商城   | `D:\Projects\SevenLink\mos\aspeed-framework\apps` | 最终迁移目标     | `7link-mall-api`（Go，46 模块 ~10.1 万行生产代码）+ `7link-mall-web`（~1.9 万行 TS）                    |
 
 ### 1.2 旧前端 IAM 应用的规模
 
@@ -118,26 +119,26 @@
 - `/iam/*` 与 `/oauth/*`：**全部命中**，契约兼容
 - `/authn/*`：**18 条全部落空**，无一命中
 
-| 旧前端调用 | 新后端对应 |
-|---|---|
-| `POST /authn/login` | `POST /authn/sessions` |
-| `POST /authn/login/mfa` | `POST /authn/session-verifications` |
-| `POST /authn/logout` | `DELETE /authn/sessions/current` |
-| `POST /authn/logout-all` | `DELETE /authn/sessions` |
-| `GET /authn/session` | `GET /authn/me` |
-| `POST /authn/register` | `POST /authn/registrations` |
-| `POST /authn/mfa/totp/enroll` | `POST /authn/mfa/totp-enrollments` |
-| `POST /authn/mfa/totp/confirm` | `POST /authn/mfa/totp`（推测，需逐条核） |
-| `POST /authn/mfa/recovery-codes/regenerate` | `POST /authn/mfa/recovery-codes` |
-| `POST /authn/passkey/login/options` | `POST /authn/passkey-session-challenges` |
-| `POST /authn/passkey/login/verify` | `POST /authn/passkey-session-verifications` |
+| 旧前端调用                                  | 新后端对应                                    |
+| ------------------------------------------- | --------------------------------------------- |
+| `POST /authn/login`                         | `POST /authn/sessions`                        |
+| `POST /authn/login/mfa`                     | `POST /authn/session-verifications`           |
+| `POST /authn/logout`                        | `DELETE /authn/sessions/current`              |
+| `POST /authn/logout-all`                    | `DELETE /authn/sessions`                      |
+| `GET /authn/session`                        | `GET /authn/me`                               |
+| `POST /authn/register`                      | `POST /authn/registrations`                   |
+| `POST /authn/mfa/totp/enroll`               | `POST /authn/mfa/totp-enrollments`            |
+| `POST /authn/mfa/totp/confirm`              | `POST /authn/mfa/totp`（推测，需逐条核）      |
+| `POST /authn/mfa/recovery-codes/regenerate` | `POST /authn/mfa/recovery-codes`              |
+| `POST /authn/passkey/login/options`         | `POST /authn/passkey-session-challenges`      |
+| `POST /authn/passkey/login/verify`          | `POST /authn/passkey-session-verifications`   |
 | `POST /authn/passkeys/registration/options` | `POST /authn/passkey-registration-challenges` |
-| `POST /authn/passkeys/registration/verify` | `POST /authn/passkeys` |
-| `POST /authn/email/verification/start` | `POST /authn/email-verification-requests` |
-| `POST /authn/email/verification/complete` | `POST /authn/email-verifications` |
-| `POST /authn/password/recovery/start` | `POST /authn/password-recovery-requests` |
-| `POST /authn/password/recovery/complete` | `POST /authn/password-recoveries` |
-| `POST /authn/password/change` | `PUT /authn/password`（推测，需逐条核） |
+| `POST /authn/passkeys/registration/verify`  | `POST /authn/passkeys`                        |
+| `POST /authn/email/verification/start`      | `POST /authn/email-verification-requests`     |
+| `POST /authn/email/verification/complete`   | `POST /authn/email-verifications`             |
+| `POST /authn/password/recovery/start`       | `POST /authn/password-recovery-requests`      |
+| `POST /authn/password/recovery/complete`    | `POST /authn/password-recoveries`             |
+| `POST /authn/password/change`               | `PUT /authn/password`（推测，需逐条核）       |
 
 新后端另有旧前端**没有**的能力：`/authn/captchas`、`/authn/step-up-challenges`、`/authn/step-up-verifications`。
 
@@ -167,11 +168,11 @@
 
 `7link-mall-web/apps/web`：约 1.9 万行，按路由分组：
 
-| 分组 | 页面数 | 说明 |
-|---|---|---|
-| `mch` | 86 | 商户端，`[scope]/[scopeId]` 动态作用域 |
-| `sys` | 29 | 平台系统管理（含 users / menus / dicts / audit-log / settings —— 与 IAM 重叠） |
-| `ops` | 9 | 运营端（tenants / plans） |
+| 分组  | 页面数 | 说明                                                                           |
+| ----- | ------ | ------------------------------------------------------------------------------ |
+| `mch` | 86     | 商户端，`[scope]/[scopeId]` 动态作用域                                         |
+| `sys` | 29     | 平台系统管理（含 users / menus / dicts / audit-log / settings —— 与 IAM 重叠） |
+| `ops` | 9      | 运营端（tenants / plans）                                                      |
 
 ---
 
@@ -222,23 +223,23 @@
 ### Phase A —— 前端骨架与规约（无业务代码）—— **已完成（2026-09-04）**
 
 - [x] A.2 `apps/frontend-web-admin` workspace 骨架：`package.json`（bun 1.3.12 / workspaces
-  `apps/*` + `packages/*`）、`turbo.json`（5 条 task）、`tsconfig.json`、`.prettierrc`、
-  `.prettierignore`、`.gitignore`
+      `apps/*` + `packages/*`）、`turbo.json`（5 条 task）、`tsconfig.json`、`.prettierrc`、
+      `.prettierignore`、`.gitignore`
 - [x] A.3 迁入 `packages/ui`：160 个文件，包名与 `exports` 保持 `@workspace/ui` 不变，**未做任何
-  功能或格式改动**（保持与迁移源逐字一致，避免给后续 24 个页面的迁移制造 diff 噪声）
+      功能或格式改动**（保持与迁移源逐字一致，避免给后续 24 个页面的迁移制造 diff 噪声）
 - [x] A.4 校验命令：`build` / `lint` / `format` / `typecheck` / `test` 五条经 turbo 统一编排
 - [ ] A.1 前端规约写入 `CLAUDE.md` —— **未做，待确认**（见 §五 遗留项）
 
 **实测验收证据：**
 
-| 命令 | 结果 |
-|---|---|
-| `bun install` | 1221 packages installed |
-| `bun run typecheck` | PASS（`tsc --noEmit`，1 package） |
-| `bun run lint` | PASS（eslint，0 error） |
-| `bun run test` | **85 pass / 0 fail**，157 expect calls，6 文件 |
-| `bun run build` | 无 task —— `@workspace/ui` 是源码包，无 build 脚本；首个 app 迁入后生效 |
-| `git add -n` | 167 个文件待跟踪，无 `node_modules` / `.turbo` / `dist` 混入 |
+| 命令                | 结果                                                                    |
+| ------------------- | ----------------------------------------------------------------------- |
+| `bun install`       | 1221 packages installed                                                 |
+| `bun run typecheck` | PASS（`tsc --noEmit`，1 package）                                       |
+| `bun run lint`      | PASS（eslint，0 error）                                                 |
+| `bun run test`      | **85 pass / 0 fail**，157 expect calls，6 文件                          |
+| `bun run build`     | 无 task —— `@workspace/ui` 是源码包，无 build 脚本；首个 app 迁入后生效 |
+| `git add -n`        | 167 个文件待跟踪，无 `node_modules` / `.turbo` / `dist` 混入            |
 
 > **踩到的坑（已处理）：** 仓库根 `.gitignore` 是白名单式（`*` 全忽略后 `!/apps/**` 反选），
 > 因此 `apps/**` 下的 `node_modules` **不会**被默认忽略。已在 `apps/frontend-web-admin/.gitignore`
@@ -247,20 +248,20 @@
 ### Phase B —— API 客户端层重建（本阶段的核心工作量）
 
 - [x] B.1 ~~从运行中的 backend-api 导出 OpenAPI~~ —— **不需要**。后端已把映射冻结在
-  `internal/app/testdata/iam_http_mappings.txt`（HEAD 208 条 / 工作区 211 条，见 §八版本注意），
-  并由 `bootstrap_iam_openapi_test.go` 的 `iamHTTPMappingCount` 守住。直接用该表，
-  比起服务导出更权威且可复算。
+      `internal/app/testdata/iam_http_mappings.txt`（HEAD 208 条 / 工作区 211 条，见 §八版本注意），
+      并由 `bootstrap_iam_openapi_test.go` 的 `iamHTTPMappingCount` 守住。直接用该表，
+      比起服务导出更权威且可复算。
 - [x] B.2 映射表已冻结，见 §八。144 个调用点 100% 解析，0 悬空，0 推测项。
-  实质变化 20 条（`/authn/*` 18 + `/iam/principals` 2），其余 124 条原样可用。
+      实质变化 20 条（`/authn/*` 18 + `/iam/principals` 2），其余 124 条原样可用。
 - [x] B.3 已重写：18 条 authn 路径 + `disablePrincipal`/`restorePrincipal` 改为 suspension
-  子资源的 `PUT`/`DELETE`。函数名与响应类型保持不变，调用方零改动。
+      子资源的 `PUT`/`DELETE`。函数名与响应类型保持不变，调用方零改动。
 - [x] B.4 测试已按新契约修订（9 处断言 + stub 服务器的分发逻辑；原先靠
-  `path.includes("confirm"|"enroll")` 猜路径，新契约下会误判，改成 method+path 精确匹配）。
-  另修正 audit 导出的 schema/文件名断言 —— 旧断言写的是 `chaosplus.audit-export.v1`，
-  7link 后端实际发 `audit-export.v1`。
+      `path.includes("confirm"|"enroll")` 猜路径，新契约下会误判，改成 method+path 精确匹配）。
+      另修正 audit 导出的 schema/文件名断言 —— 旧断言写的是 `chaosplus.audit-export.v1`，
+      7link 后端实际发 `audit-export.v1`。
 - [ ] B.5 OpenAPI codegen（D16）—— **建议不做**。路由映射已由冻结表解决；类型侧当前手写
-  且 `tsc` 全绿，引入 codegen 会带来生成步骤与指纹门禁的长期维护成本，收益不明确。
-  留待 Phase D 复盘时定。
+      且 `tsc` 全绿，引入 codegen 会带来生成步骤与指纹门禁的长期维护成本，收益不明确。
+      留待 Phase D 复盘时定。
 - 验收：**已达成** —— 映射表覆盖 100% 调用点；改写后重新提取 142 个调用点与后端 operation
   集合求差，140 条机器命中 + 2 条人工核对，零落空；`bun run test` 119 pass / 0 fail。
 
@@ -268,15 +269,15 @@
 
 按依赖与风险从低到高分批，每批独立可验收：
 
-| 批次 | 内容 | 页面数 |
-|---|---|---|
-| C.1 | 骨架：`layout` / `router` / `auth-provider` / `app-sidebar` / `theme` / `page-header` | — |
-| C.2 | 认证入口：`login` `register` `recover` `verify-email` `accept-invitation` | 5 |
-| C.3 | 组织：`tenants` `departments` `positions` `groups` `principals` | 5 |
-| C.4 | 授权：`roles` `entities` `menus` | 3 |
-| C.5 | 治理：`access-requests` `access-reviews` `audit-events` `audit-governance` | 4 |
-| C.6 | 集成：`oauth-clients` `service-accounts` `scim-directories` `invitations` | 4 |
-| C.7 | 其余：`security` `dashboard` | 2 |
+| 批次 | 内容                                                                                  | 页面数 |
+| ---- | ------------------------------------------------------------------------------------- | ------ |
+| C.1  | 骨架：`layout` / `router` / `auth-provider` / `app-sidebar` / `theme` / `page-header` | —      |
+| C.2  | 认证入口：`login` `register` `recover` `verify-email` `accept-invitation`             | 5      |
+| C.3  | 组织：`tenants` `departments` `positions` `groups` `principals`                       | 5      |
+| C.4  | 授权：`roles` `entities` `menus`                                                      | 3      |
+| C.5  | 治理：`access-requests` `access-reviews` `audit-events` `audit-governance`            | 4      |
+| C.6  | 集成：`oauth-clients` `service-accounts` `scim-directories` `invitations`             | 4      |
+| C.7  | 其余：`security` `dashboard`                                                          | 2      |
 
 **实际执行（2026-09-04）：代码迁移未分批。** Phase B 证明契约漂移只有 20 条且全部收在
 `lib/iam-api.ts` 一个文件里，页面本身是纯复制、不接触 HTTP 契约，分 7 批复制只增加仪式、
@@ -315,15 +316,15 @@
 > 要求标准、通用、优雅、易维护。已落为 `.claude/decisions.md` 的 **D15**（workspace + UI 库）
 > 与 **D16**（API 客户端按新契约重建）。
 
-| # | 决策 | 裁决结果 | 状态 |
-|---|---|---|---|
-| Q1 | Phase 10.1/10.2 谁来做、什么时候做 | 后端优先补齐，与 Phase A/B 并行 | **仍需指派执行人** |
-| Q2 | `frontend-web-admin` 是 workspace 还是单应用 | workspace（bun + turborepo） | 已定 → D15，Phase A 已实施 |
-| Q3 | API 客户端手写还是 OpenAPI codegen | codegen 生成类型 + 手写薄封装 | 已定 → D16，未实施 |
-| Q4 | UI 库基线取哪一份 | 取 chaosplus 版 | 已定 → D15，Phase A 已实施 |
-| Q5 | Docker 基准主机 | **`10.0.0.100`**（与仓库 `.claude/decisions.md` D6 一致） | 已定 |
-| Q6 | 商城 9 个重叠模块的归属（E.0） | 未定 | Phase E 启动前必须先定 |
-| Q7 | `aspeed-framework/7link-platform` 过期克隆如何处置 | 未定 | 建议删除或标记；删除属破坏性操作，需明确授权 |
+| #   | 决策                                               | 裁决结果                                                  | 状态                                         |
+| --- | -------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------- |
+| Q1  | Phase 10.1/10.2 谁来做、什么时候做                 | 后端优先补齐，与 Phase A/B 并行                           | **仍需指派执行人**                           |
+| Q2  | `frontend-web-admin` 是 workspace 还是单应用       | workspace（bun + turborepo）                              | 已定 → D15，Phase A 已实施                   |
+| Q3  | API 客户端手写还是 OpenAPI codegen                 | codegen 生成类型 + 手写薄封装                             | 已定 → D16，未实施                           |
+| Q4  | UI 库基线取哪一份                                  | 取 chaosplus 版                                           | 已定 → D15，Phase A 已实施                   |
+| Q5  | Docker 基准主机                                    | **`10.0.0.100`**（与仓库 `.claude/decisions.md` D6 一致） | 已定                                         |
+| Q6  | 商城 9 个重叠模块的归属（E.0）                     | 未定                                                      | Phase E 启动前必须先定                       |
+| Q7  | `aspeed-framework/7link-platform` 过期克隆如何处置 | 未定                                                      | 建议删除或标记；删除属破坏性操作，需明确授权 |
 
 ### 仍然阻塞的两项
 
@@ -375,53 +376,53 @@
 
 ### B.2 结论
 
-| 项 | 数 |
-|---|---|
-| 旧 `iam-api.ts` 调用点 | 144 |
-| 其中 **契约有实质变化**（method 或路径结构变了） | **20** |
-| 其中原样可用 | 124 |
-| 涉及的 source operation（去重） | 141 |
-| 后端 operation 中旧前端没用到的 | 67（HEAD）/ 70（工作区） |
+| 项                                               | 数                       |
+| ------------------------------------------------ | ------------------------ |
+| 旧 `iam-api.ts` 调用点                           | 144                      |
+| 其中 **契约有实质变化**（method 或路径结构变了） | **20**                   |
+| 其中原样可用                                     | 124                      |
+| 涉及的 source operation（去重）                  | 141                      |
+| 后端 operation 中旧前端没用到的                  | 67（HEAD）/ 70（工作区） |
 
 ### B.3 需要改的 20 条（这就是 Phase B 的全部改动面）
 
-| 旧 method | 旧 path | 新 method | 新 path |
-|---|---|---|---|
-| POST | `/authn/register` | POST | `/authn/registrations` |
-| GET | `/authn/session` | GET | `/authn/sessions/current` |
-| POST | `/authn/login` | POST | `/authn/sessions` |
-| POST | `/authn/login/mfa` | POST | `/authn/session-verifications` |
-| POST | `/authn/logout` | DELETE | `/authn/sessions/current` |
-| POST | `/authn/logout-all` | DELETE | `/authn/sessions` |
-| POST | `/authn/password/change` | PATCH | `/authn/password` |
-| POST | `/authn/password/recovery/start` | POST | `/authn/password-recovery-requests` |
-| POST | `/authn/password/recovery/complete` | POST | `/authn/password-recoveries` |
-| POST | `/authn/email/verification/start` | POST | `/authn/email-verification-requests` |
-| POST | `/authn/email/verification/complete` | POST | `/authn/email-verifications` |
-| POST | `/authn/mfa/totp/enroll` | POST | `/authn/mfa/totp-enrollments` |
-| POST | `/authn/mfa/totp/confirm` | POST | `/authn/mfa/totp` |
-| POST | `/authn/mfa/recovery-codes/regenerate` | PUT | `/authn/mfa/recovery-codes` |
-| POST | `/authn/passkeys/registration/options` | POST | `/authn/passkey-registration-challenges` |
-| POST | `/authn/passkeys/registration/verify` | POST | `/authn/passkeys` |
-| POST | `/authn/passkey/login/options` | POST | `/authn/passkey-session-challenges` |
-| POST | `/authn/passkey/login/verify` | POST | `/authn/passkey-session-verifications` |
-| POST | `/iam/principals/{id}/disable` | PUT | `/iam/principals/{id}/suspension` |
-| POST | `/iam/principals/{id}/restore` | DELETE | `/iam/principals/{id}/suspension` |
+| 旧 method | 旧 path                                | 新 method | 新 path                                  |
+| --------- | -------------------------------------- | --------- | ---------------------------------------- |
+| POST      | `/authn/register`                      | POST      | `/authn/registrations`                   |
+| GET       | `/authn/session`                       | GET       | `/authn/sessions/current`                |
+| POST      | `/authn/login`                         | POST      | `/authn/sessions`                        |
+| POST      | `/authn/login/mfa`                     | POST      | `/authn/session-verifications`           |
+| POST      | `/authn/logout`                        | DELETE    | `/authn/sessions/current`                |
+| POST      | `/authn/logout-all`                    | DELETE    | `/authn/sessions`                        |
+| POST      | `/authn/password/change`               | PATCH     | `/authn/password`                        |
+| POST      | `/authn/password/recovery/start`       | POST      | `/authn/password-recovery-requests`      |
+| POST      | `/authn/password/recovery/complete`    | POST      | `/authn/password-recoveries`             |
+| POST      | `/authn/email/verification/start`      | POST      | `/authn/email-verification-requests`     |
+| POST      | `/authn/email/verification/complete`   | POST      | `/authn/email-verifications`             |
+| POST      | `/authn/mfa/totp/enroll`               | POST      | `/authn/mfa/totp-enrollments`            |
+| POST      | `/authn/mfa/totp/confirm`              | POST      | `/authn/mfa/totp`                        |
+| POST      | `/authn/mfa/recovery-codes/regenerate` | PUT       | `/authn/mfa/recovery-codes`              |
+| POST      | `/authn/passkeys/registration/options` | POST      | `/authn/passkey-registration-challenges` |
+| POST      | `/authn/passkeys/registration/verify`  | POST      | `/authn/passkeys`                        |
+| POST      | `/authn/passkey/login/options`         | POST      | `/authn/passkey-session-challenges`      |
+| POST      | `/authn/passkey/login/verify`          | POST      | `/authn/passkey-session-verifications`   |
+| POST      | `/iam/principals/{id}/disable`         | PUT       | `/iam/principals/{id}/suspension`        |
+| POST      | `/iam/principals/{id}/restore`         | DELETE    | `/iam/principals/{id}/suspension`        |
 
 `/authn/*` 18 条 + `/iam/principals/*` 2 条。除此之外 **没有第三处漂移**——
 这一条是本阶段最重要的结论：契约漂移是**局部**的，不是全面重写。
 
 ### B.4 语义变化（不只是改路径，调用方也要跟着改）
 
-| 变化 | 影响 |
-|---|---|
-| `POST /authn/logout` → `DELETE /authn/sessions/current` | 动词变了，body 要去掉 |
-| `POST /authn/logout-all` → `DELETE /authn/sessions` | 同上 |
-| `POST /authn/password/change` → `PATCH /authn/password` | 是 PATCH，不是 PUT |
-| `POST /authn/mfa/recovery-codes/regenerate` → `PUT /authn/mfa/recovery-codes` | 幂等语义，重试策略可以放宽 |
-| `POST /iam/principals/{id}/disable` → `PUT .../suspension` | disable/restore 合成一个子资源的 PUT/DELETE |
-| `POST /iam/principals/{id}/restore` → `DELETE .../suspension` | 同上，两个函数要重写成一对 |
-| `GET /authn/session` → `GET /authn/sessions/current` | **不是 `/authn/me`**；`authn-me` 是另一个独立 operation，两者都还在 |
+| 变化                                                                          | 影响                                                                |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `POST /authn/logout` → `DELETE /authn/sessions/current`                       | 动词变了，body 要去掉                                               |
+| `POST /authn/logout-all` → `DELETE /authn/sessions`                           | 同上                                                                |
+| `POST /authn/password/change` → `PATCH /authn/password`                       | 是 PATCH，不是 PUT                                                  |
+| `POST /authn/mfa/recovery-codes/regenerate` → `PUT /authn/mfa/recovery-codes` | 幂等语义，重试策略可以放宽                                          |
+| `POST /iam/principals/{id}/disable` → `PUT .../suspension`                    | disable/restore 合成一个子资源的 PUT/DELETE                         |
+| `POST /iam/principals/{id}/restore` → `DELETE .../suspension`                 | 同上，两个函数要重写成一对                                          |
+| `GET /authn/session` → `GET /authn/sessions/current`                          | **不是 `/authn/me`**；`authn-me` 是另一个独立 operation，两者都还在 |
 
 ### B.5 未被旧前端使用的 operation
 
@@ -438,11 +439,13 @@ authn 4 / organization 2 / audit 2 / identity 1。
 ## 九、品牌字样清理清单
 
 > ### ⚠️ 2026-09-05 方案已更正 —— 本节原方案是错的
+>
 > **原方案：「等 @gankcode 定名，然后把 `chaosplus` 全局替换成新名字」。**
 > gankcode 指出（msg `fb11a840`）：那还是硬编码，只是换了个字符串；他的规则是
 > **代码里不许硬编品牌相关的东西**。他是对的，我已在 msg `76a8ff5b` 认下并撤回原方案。
 >
 > **更正后的方案：代码里一个品牌字面量都不留，产品名从配置来。**
+>
 > - 好处：他哪天叫它什么，改一个环境变量即可，不动代码、不用等任何人拍板。
 > - **「等定名」这个阻塞点已撤销** —— 本节不再依赖任何人的决定。
 >
@@ -471,20 +474,21 @@ authn 4 / organization 2 / audit 2 / identity 1。
 **做法**：建一个单一来源（`VITE_APP_NAME` 环境变量 + 中性默认值，或一个
 `src/config/branding.ts` 常量模块），下表所有位置改为引用它。**不需要任何人定名即可执行。**
 
-| 文件 | 行 | 内容 |
-|---|---|---|
-| `src/app/layout.tsx` | 104, 109 | `aria-label` / 侧边栏标题 `Chaosplus IAM` |
-| `src/app/login/page.tsx` | 140 / 125 | `Chaosplus IAM` / 页脚 `Chaosplus · © 2026` |
-| `src/app/register/page.tsx` | 54 / 129 | 同上 |
-| `src/app/recover/page.tsx` | 59 / 97 | 同上 |
-| `src/app/verify-email/page.tsx` | 54 / 72 | 同上 |
-| `src/app/accept-invitation/page.tsx` | 64 / 144 | 同上 |
-| `src/app/security/page.tsx` | 854 | 二维码 `title="Chaosplus TOTP 配置二维码"` |
-| `src/lib/iam-api.test.ts` | 16 | `describe("Chaosplus IAM API client")` |
+| 文件                                 | 行        | 内容                                        |
+| ------------------------------------ | --------- | ------------------------------------------- |
+| `src/app/layout.tsx`                 | 104, 109  | `aria-label` / 侧边栏标题 `Chaosplus IAM`   |
+| `src/app/login/page.tsx`             | 140 / 125 | `Chaosplus IAM` / 页脚 `Chaosplus · © 2026` |
+| `src/app/register/page.tsx`          | 54 / 129  | 同上                                        |
+| `src/app/recover/page.tsx`           | 59 / 97   | 同上                                        |
+| `src/app/verify-email/page.tsx`      | 54 / 72   | 同上                                        |
+| `src/app/accept-invitation/page.tsx` | 64 / 144  | 同上                                        |
+| `src/app/security/page.tsx`          | 854       | 二维码 `title="Chaosplus TOTP 配置二维码"`  |
+| `src/lib/iam-api.test.ts`            | 16        | `describe("Chaosplus IAM API client")`      |
 
 ### ⑵ 不是品牌，是命名约定 / 契约对齐（我原先归错类）
 
 下面这些**跟"叫什么名字"无关**，是工程约定和后端契约问题，我自己就能定：
+
 - `chaosplus.tenant`（localStorage 键）→ 存储命名空间，换中性 `iam.` 前缀。
 - 下载文件名兜底 `chaosplus-audit.ndjson` → **跟后端实际发的对齐**（后端是 `audit-*.ndjson`、
   schema `audit-export.v1`）。这是契约对齐。
@@ -497,24 +501,24 @@ authn 4 / organization 2 / audit 2 / identity 1。
 
 ### 9.2（原表）有行为影响 —— 改动前必须逐条确认
 
-| 位置 | 值 | 为什么有风险 |
-|---|---|---|
-| `src/lib/iam-api.ts:727` | `localStorage` 键 `chaosplus.tenant` | 改了会丢已登录用户的租户选择；且 13 个 audit 脚本硬编码同一个键，必须同步改 |
-| `src/lib/iam-api.ts:910` | 下载兜底文件名 `chaosplus-audit.ndjson` | 仅兜底；后端正常会给 `audit-*.ndjson` |
-| `src/app/security/page.tsx:897` | `chaosplus-recovery-codes.txt` | 纯客户端生成的下载名 |
-| `src/app/oauth-clients/page.tsx:742` | `chaosplus-oauth-${clientID}.txt` | 同上 |
-| `src/app/service-accounts/page.tsx:78` | 默认 scope `chaosplus-api` | **后端 scope 校验可能认这个字面量**，改名前要跟后端对齐 |
-| `src/lib/iam-api.test.ts:376` | `otpauth://totp/Chaosplus:user` | 只是测试夹具。**真正的 TOTP issuer 由后端生成**，前端改这里不影响验证器 App 的显示名；要改 issuer 得改后端。 |
+| 位置                                   | 值                                      | 为什么有风险                                                                                                 |
+| -------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `src/lib/iam-api.ts:727`               | `localStorage` 键 `chaosplus.tenant`    | 改了会丢已登录用户的租户选择；且 13 个 audit 脚本硬编码同一个键，必须同步改                                  |
+| `src/lib/iam-api.ts:910`               | 下载兜底文件名 `chaosplus-audit.ndjson` | 仅兜底；后端正常会给 `audit-*.ndjson`                                                                        |
+| `src/app/security/page.tsx:897`        | `chaosplus-recovery-codes.txt`          | 纯客户端生成的下载名                                                                                         |
+| `src/app/oauth-clients/page.tsx:742`   | `chaosplus-oauth-${clientID}.txt`       | 同上                                                                                                         |
+| `src/app/service-accounts/page.tsx:78` | 默认 scope `chaosplus-api`              | **后端 scope 校验可能认这个字面量**，改名前要跟后端对齐                                                      |
+| `src/lib/iam-api.test.ts:376`          | `otpauth://totp/Chaosplus:user`         | 只是测试夹具。**真正的 TOTP issuer 由后端生成**，前端改这里不影响验证器 App 的显示名；要改 issuer 得改后端。 |
 
 ### 9.3 审计脚本的账号 fixture —— 已由 @Claude 澄清（2026-09-04）
 
-| 位置 | 值 | 说明 |
-|---|---|---|
-| 13 个 `scripts/*-browser-audit.mjs` | 登录账号 `admin@chaosplus.local` | **我原先的判断（「必须等于后端创建的账号」）方向反了。** @Claude 澄清：10.1 按设计**永远不会有** bootstrap 账号常量 —— 后端计划 §2.5.1 规定 login/display-name/email 全是无默认值的运维参数，且禁止固定默认口令。所以这个值是**脚本自己的 fixture**，改名不受后端约束。 |
-| 同上 | 环境变量 `CHAOSPLUS_BROWSER_PASSWORD` | 脚本自己的输入契约，改名安全，但 13 个文件要一起改 |
-| `scripts/position-browser-audit.mjs:4`、`group-browser-audit.mjs:1` | `CHAOSPLUS_DIRECTORY_KIND` | 同上 |
-| `scripts/registration-browser-audit.mjs:11` | `.local/chaosplus-smoke.db` | 冒烟库路径，仅本地 |
-| 若干脚本内联口令 | `Chaosplus-Access-Approver-2026!` 等 | 脚本自建测试账号用的口令字面量，随脚本自洽，改不改都行 |
+| 位置                                                                | 值                                    | 说明                                                                                                                                                                                                                                                                    |
+| ------------------------------------------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 13 个 `scripts/*-browser-audit.mjs`                                 | 登录账号 `admin@chaosplus.local`      | **我原先的判断（「必须等于后端创建的账号」）方向反了。** @Claude 澄清：10.1 按设计**永远不会有** bootstrap 账号常量 —— 后端计划 §2.5.1 规定 login/display-name/email 全是无默认值的运维参数，且禁止固定默认口令。所以这个值是**脚本自己的 fixture**，改名不受后端约束。 |
+| 同上                                                                | 环境变量 `CHAOSPLUS_BROWSER_PASSWORD` | 脚本自己的输入契约，改名安全，但 13 个文件要一起改                                                                                                                                                                                                                      |
+| `scripts/position-browser-audit.mjs:4`、`group-browser-audit.mjs:1` | `CHAOSPLUS_DIRECTORY_KIND`            | 同上                                                                                                                                                                                                                                                                    |
+| `scripts/registration-browser-audit.mjs:11`                         | `.local/chaosplus-smoke.db`           | 冒烟库路径，仅本地                                                                                                                                                                                                                                                      |
+| 若干脚本内联口令                                                    | `Chaosplus-Access-Approver-2026!` 等  | 脚本自建测试账号用的口令字面量，随脚本自洽，改不改都行                                                                                                                                                                                                                  |
 
 ### 9.3.1 但「改名」和「脚本能跑」是两件事
 

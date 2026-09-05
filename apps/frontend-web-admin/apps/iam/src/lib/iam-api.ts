@@ -1699,8 +1699,7 @@ export function createIamApi(
     auditIntegrity: () => request<AuditIntegrity>("/iam/audit-integrity"),
     auditExport: (query = "") =>
       requestAuditExportWithBase(apiBase, tenantID, query),
-    auditGovernance: () =>
-      request<AuditGovernance>("/iam/audit/governance"),
+    auditGovernance: () => request<AuditGovernance>("/iam/audit/governance"),
     setAuditRetention: (
       body: Pick<AuditRetentionPolicy, "min_days" | "archive_after_days">
     ) =>

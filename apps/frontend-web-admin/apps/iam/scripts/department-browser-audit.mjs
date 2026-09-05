@@ -257,7 +257,9 @@ async function cleanupArtifacts() {
   `)
   await command("Page.reload", { ignoreCache: true })
   await waitFor(`document.readyState === "complete"`)
-  await waitFor(`document.querySelector("h1") && document.querySelector("tbody")`)
+  await waitFor(
+    `document.querySelector("h1") && document.querySelector("tbody")`
+  )
 }
 
 async function screenshot(name, width, height) {
@@ -276,7 +278,9 @@ async function screenshot(name, width, height) {
     };
   `)
   if (layout.horizontalOverflow)
-    throw new Error(`Horizontal overflow at ${width}px: ${layout.scrollWidth}px`)
+    throw new Error(
+      `Horizontal overflow at ${width}px: ${layout.scrollWidth}px`
+    )
   const image = await command("Page.captureScreenshot", {
     format: "png",
     fromSurface: true,
@@ -309,7 +313,9 @@ const child = `Platform-Team-${suffix}`
 const renamedChild = `Platform-Engineering-${suffix}`
 
 await navigate("/iam/departments")
-await waitFor(`location.pathname === "/login" && document.querySelector("#login-name")`)
+await waitFor(
+  `location.pathname === "/login" && document.querySelector("#login-name")`
+)
 await setInput("#login-name", adminLogin)
 await setInput("#password", password)
 await evaluate(`
@@ -373,7 +379,11 @@ if (
 )
   throw new Error("moved department state is incorrect")
 
-const desktopLayout = await screenshot("admin-departments-desktop.png", 1440, 1000)
+const desktopLayout = await screenshot(
+  "admin-departments-desktop.png",
+  1440,
+  1000
+)
 const mobileLayout = await screenshot("admin-departments-mobile.png", 390, 844)
 await command("Emulation.setDeviceMetricsOverride", {
   width: 1440,
@@ -419,15 +429,11 @@ if (expectedConflicts.length !== 1)
 const unexpectedStatuses = responses.filter(
   (response) =>
     response.status >= 400 &&
-    !(
-      response.status === 401 &&
-      response.url.endsWith("/api/authn/session")
-    ) &&
+    !(response.status === 401 && response.url.endsWith("/api/authn/session")) &&
     !expectedConflicts.includes(response)
 )
 const unexpectedFailures = failedRequests.filter(
-  (request) =>
-    !request.canceled && request.error !== "net::ERR_ABORTED"
+  (request) => !request.canceled && request.error !== "net::ERR_ABORTED"
 )
 socket.close()
 
@@ -436,7 +442,9 @@ if (consoleErrors.length)
 if (unexpectedFailures.length)
   throw new Error(`failed requests: ${JSON.stringify(unexpectedFailures)}`)
 if (unexpectedStatuses.length)
-  throw new Error(`unexpected HTTP statuses: ${JSON.stringify(unexpectedStatuses)}`)
+  throw new Error(
+    `unexpected HTTP statuses: ${JSON.stringify(unexpectedStatuses)}`
+  )
 
 console.log(
   JSON.stringify({
