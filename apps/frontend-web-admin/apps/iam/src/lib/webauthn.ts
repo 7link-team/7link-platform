@@ -24,6 +24,12 @@ export async function createPasskeyCredential(
       attestationObject: encodeBase64URL(response.attestationObject),
       clientDataJSON: encodeBase64URL(response.clientDataJSON),
       transports: response.getTransports(),
+      // WebAuthn Level 3 registration responses carry the parsed authenticator
+      // data and public key alongside the attestation object; servers rely on
+      // them, so send the full shape rather than the two raw blobs.
+      authenticatorData: encodeBase64URL(response.getAuthenticatorData()),
+      publicKey: encodeOptionalBase64URL(response.getPublicKey()),
+      publicKeyAlgorithm: response.getPublicKeyAlgorithm(),
     },
   }
 }
@@ -57,6 +63,11 @@ export async function getPasskeyCredential(
         : null,
     },
   }
+}
+
+function encodeOptionalBase64URL(value: ArrayBuffer | null): string {
+  // getPublicKey() returns null when the browser cannot export the key format.
+  return value ? encodeBase64URL(value) : ""
 }
 
 export function encodeBase64URL(value: ArrayBuffer): string {
