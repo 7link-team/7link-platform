@@ -81,4 +81,10 @@ type TenantBootstrapper struct {
 	// is what keeps the repair path create-only: a tenant somebody already
 	// administers must never be handed a second owner by a recovery command.
 	IsUnclaimed func(context.Context, *gorm.DB, guid.ID) (bool, error)
+	// BumpRevision advances the tenant policy revision. A bootstrap grants a
+	// role and a membership, so anything caching this tenant answers has to be
+	// told they changed. Tenant creation bumps once through its own repository
+	// because it has other reasons to; a caller outside organization has none,
+	// and this is the only way core lets it say so.
+	BumpRevision func(context.Context, *gorm.DB, guid.ID, time.Time) error
 }

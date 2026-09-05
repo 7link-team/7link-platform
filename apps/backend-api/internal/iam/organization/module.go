@@ -69,6 +69,9 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[GroupProvisioner](services, m); err != nil {
 		return fmt.Errorf("provide organization group provisioner: %w", err)
 	}
+	if err := module.Provide[TenantLookup](services, m.tenantLookup()); err != nil {
+		return fmt.Errorf("provide organization tenant lookup: %w", err)
+	}
 	return nil
 }
 

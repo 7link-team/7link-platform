@@ -213,6 +213,10 @@ func TestTenantBootstrapperReportsUnavailableBeforeWiring(t *testing.T) {
 
 			_, err = capability.IsUnclaimed(t.Context(), harness.db, 1)
 			assert.ErrorIs(t, err, ErrUnavailable)
+
+			assert.ErrorIs(t,
+				capability.BumpRevision(t.Context(), harness.db, 1, repositoryTestTime),
+				ErrUnavailable)
 		})
 	}
 }
@@ -239,4 +243,79 @@ func TestTenantBootstrapperDelegatesToTheWiredRepository(t *testing.T) {
 	unclaimed, err = capability.IsUnclaimed(t.Context(), harness.db, tenantID)
 	require.NoError(t, err)
 	assert.False(t, unclaimed)
+
+	// The caller bumps the revision in the same transaction as the grant, so
+	// the capability has to reach the same store the authorizer reads.
+	require.NoError(t, capability.BumpRevision(t.Context(), harness.db, tenantID, repositoryTestTime))
+	revision, err := harness.repository.revisions.Current(t.Context(), harness.db, tenantID)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, revision)
+}
+
+// TestBumpPolicyRevisionTellsCachesTheAnswerChanged covers the third write the
+// repair performs. Granting a membership and a role changes what the authorizer
+// must answer, and a cache still holding the previous answer would leave the
+// repaired owner locked out of the tenant they were just given.
+func TestBumpPolicyRevisionTellsCachesTheAnswerChanged(t *testing.T) {
+	const prefix = "tenantbootrevision_"
+	harness := newRepositoryHarness(t, prefix)
+	const tenantID guid.ID = 6700
+
+	before, err := harness.repository.revisions.Current(t.Context(), harness.db, tenantID)
+	require.NoError(t, err)
+	require.Zero(t, before, "a tenant nobody has administered yet has no revision to invalidate")
+
+	require.NoError(t, harness.repository.BumpPolicyRevisionOn(
+		t.Context(), harness.db, tenantID, repositoryTestTime,
+	))
+
+	after, err := harness.repository.revisions.Current(t.Context(), harness.db, tenantID)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, after)
+}
+
+// TestBumpPolicyRevisionRollsBackWithTheCallersTransaction keeps the
+// invalidation honest. A revision that survived a rolled-back repair would tell
+// every cache to re-read a grant that was never written.
+func TestBumpPolicyRevisionRollsBackWithTheCallersTransaction(t *testing.T) {
+	const prefix = "tenantbootrevroll_"
+	harness := newRepositoryHarness(t, prefix)
+	const tenantID guid.ID = 6800
+
+	err := harness.db.Transaction(func(tx *gorm.DB) error {
+		require.NoError(t, harness.repository.BumpPolicyRevisionOn(t.Context(), tx, tenantID, repositoryTestTime))
+		return assert.AnError
+	})
+	require.ErrorIs(t, err, assert.AnError)
+
+	current, err := harness.repository.revisions.Current(t.Context(), harness.db, tenantID)
+	require.NoError(t, err)
+	assert.Zero(t, current)
+}
+
+// TestBumpPolicyRevisionRefusesWhatItCannotInvalidate keeps a caller from
+// reading a silent no-op as a completed invalidation.
+func TestBumpPolicyRevisionRefusesWhatItCannotInvalidate(t *testing.T) {
+	const prefix = "tenantbootrevbad_"
+	harness := newRepositoryHarness(t, prefix)
+
+	assert.ErrorIs(t,
+		harness.repository.BumpPolicyRevisionOn(t.Context(), harness.db, 0, repositoryTestTime),
+		ErrInvalidArgument)
+
+	var absent *Repository
+	assert.ErrorIs(t,
+		absent.BumpPolicyRevisionOn(t.Context(), harness.db, 1, repositoryTestTime),
+		ErrUnavailable)
+	assert.ErrorIs(t,
+		harness.repository.BumpPolicyRevisionOn(t.Context(), nil, 1, repositoryTestTime),
+		ErrUnavailable)
+	assert.ErrorIs(t,
+		(&Repository{}).BumpPolicyRevisionOn(t.Context(), harness.db, 1, repositoryTestTime),
+		ErrUnavailable)
+
+	require.NoError(t, harness.db.Exec("DROP TABLE "+prefix+"iam_policy_revisions").Error)
+	assert.Error(t,
+		harness.repository.BumpPolicyRevisionOn(t.Context(), harness.db, 1, repositoryTestTime),
+		"an unwritable revision table must not read as an invalidated cache")
 }

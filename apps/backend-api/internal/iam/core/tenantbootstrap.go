@@ -209,6 +209,28 @@ func (r *Repository) TenantIsUnclaimedOn(
 	return true, nil
 }
 
+// BumpPolicyRevisionOn advances a tenant policy revision through the caller
+// transaction. Repairing a tenant grants a role and a membership, so a cache
+// that answered "this principal may do nothing here" a moment ago has to be
+// told the answer changed, in the same commit that changed it.
+func (r *Repository) BumpPolicyRevisionOn(
+	ctx context.Context,
+	db *gorm.DB,
+	tenantID guid.ID,
+	now time.Time,
+) error {
+	if r == nil || db == nil || r.revisions == nil {
+		return ErrUnavailable
+	}
+	if tenantID.Zero() {
+		return fmt.Errorf("%w: tenant is required", ErrInvalidArgument)
+	}
+	if err := r.revisions.Bump(ctx, db, tenantID, now); err != nil {
+		return fmt.Errorf("bump IAM policy revision: %w", err)
+	}
+	return nil
+}
+
 func normalizeTenantBootstrap(input TenantBootstrapInput) (TenantBootstrapInput, error) {
 	if input.TenantID.Zero() {
 		return TenantBootstrapInput{}, fmt.Errorf("%w: tenant is required", ErrInvalidArgument)
@@ -251,6 +273,12 @@ func (m *Module) tenantBootstrapper() TenantBootstrapper {
 				return false, ErrUnavailable
 			}
 			return m.repository.TenantIsUnclaimedOn(ctx, db, tenantID)
+		},
+		BumpRevision: func(ctx context.Context, db *gorm.DB, tenantID guid.ID, now time.Time) error {
+			if m == nil || m.repository == nil {
+				return ErrUnavailable
+			}
+			return m.repository.BumpPolicyRevisionOn(ctx, db, tenantID, now)
 		},
 	}
 }

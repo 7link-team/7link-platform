@@ -29,9 +29,19 @@ const (
 // memory.
 const maxPasswordFileSize = 4096
 
+// iamConfig is the single flag set the IAM command group carries, the way the
+// migrate group does. Every subcommand below builds its own request from it and
+// takes only the settings it acts on, so a value left over from another
+// subcommand cannot be read as something this one would change.
+type iamConfig struct {
+	app.AppConfig            `mapstructure:",squash"`
+	app.PlatformAdminRequest `mapstructure:",squash"`
+	app.TenantRepairRequest  `mapstructure:",squash"`
+}
+
 var (
 	platformAdminConfigurator = config.New()
-	platformAdminConfig       app.PlatformAdminConfig
+	platformAdminConfig       iamConfig
 	platformAdminConfigErr    error
 
 	// iamCmd groups the IAM operations that run without a server.
@@ -79,11 +89,31 @@ var (
 		Args: cobra.NoArgs,
 		RunE: runResetAdminPassword,
 	}
+
+	// repairTenantOwnerCmd installs the first owner on a tenant that has none.
+	// Tenants created before tenant creation and owner bootstrap became one
+	// transaction can hold no member and no role, and every tenant route
+	// requires an active membership: such a tenant is unreachable from inside
+	// the product, so it can only be repaired from outside it.
+	repairTenantOwnerCmd = &cobra.Command{
+		Use:   "repair-tenant-owner",
+		Short: "Install the first owner on a tenant that has none",
+		Long: "Install the first owner on a tenant that has none.\n\n" +
+			"The command is create-only. It refuses any tenant that already has a\n" +
+			"member or a role, so it can never hand a second owner to a tenant\n" +
+			"somebody already administers, and it refuses a deleted tenant or an\n" +
+			"inactive principal.\n\n" +
+			"On success it writes the owner membership, the tenant Administrator role\n" +
+			"and its grant, and the default menus, exactly as tenant creation does,\n" +
+			"and records an audit event marking the tenant as repaired.",
+		Args: cobra.NoArgs,
+		RunE: runRepairTenantOwner,
+	}
 )
 
 func init() {
 	rootCmd.AddCommand(iamCmd)
-	iamCmd.AddCommand(bootstrapPlatformAdminCmd, resetAdminPasswordCmd)
+	iamCmd.AddCommand(bootstrapPlatformAdminCmd, resetAdminPasswordCmd, repairTenantOwnerCmd)
 	platformAdminConfigurator.UseFlags(iamCmd.PersistentFlags())
 	platformAdminConfigurator.UseConfigFileArgDefault()
 	platformAdminConfigErr = platformAdminConfigurator.Bind(&platformAdminConfig, os.Args[1:]...)
@@ -101,7 +131,10 @@ func runBootstrapPlatformAdmin(command *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	report, err := (&app.App{}).RunPlatformAdminBootstrap(command.Context(), platformAdminConfig, password)
+	report, err := (&app.App{}).RunPlatformAdminBootstrap(command.Context(), app.PlatformAdminConfig{
+		AppConfig:            platformAdminConfig.AppConfig,
+		PlatformAdminRequest: platformAdminConfig.PlatformAdminRequest,
+	}, password)
 	if err != nil {
 		return withExitCode(platformAdminExitCode(err), err)
 	}
@@ -127,10 +160,9 @@ func runResetAdminPassword(command *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	// The IAM command group carries one flag set, the way the migrate group
-	// does. The reset takes only the two settings it acts on, so a display name
-	// or an email left over from a bootstrap run cannot be read as something
-	// this command would change.
+	// The reset takes only the two settings it acts on, so a display name or an
+	// email left over from a bootstrap run cannot be read as something this
+	// command would change.
 	report, err := (&app.App{}).RunPlatformAdminPasswordReset(command.Context(), app.PlatformAdminResetConfig{
 		AppConfig: platformAdminConfig.AppConfig,
 		PlatformAdminResetRequest: app.PlatformAdminResetRequest{
@@ -142,6 +174,25 @@ func runResetAdminPassword(command *cobra.Command, _ []string) error {
 		return withExitCode(platformAdminExitCode(err), err)
 	}
 	writeBootstrapReport(command.OutOrStdout(), report)
+	return nil
+}
+
+func runRepairTenantOwner(command *cobra.Command, _ []string) error {
+	if platformAdminConfigErr != nil {
+		return platformAdminConfigErr
+	}
+	if err := platformAdminConfigurator.Load(&platformAdminConfig); err != nil {
+		return err
+	}
+	applyBuildVersion(&platformAdminConfig.AppConfig)
+	report, err := (&app.App{}).RunTenantOwnerRepair(command.Context(), app.TenantRepairConfig{
+		AppConfig:           platformAdminConfig.AppConfig,
+		TenantRepairRequest: platformAdminConfig.TenantRepairRequest,
+	})
+	if err != nil {
+		return withExitCode(platformAdminExitCode(err), err)
+	}
+	writeTenantRepairReport(command.OutOrStdout(), report)
 	return nil
 }
 
@@ -161,6 +212,10 @@ func platformAdminExitCode(err error) int {
 		return exitSchemaNotReady
 	case errors.Is(err, app.ErrPlatformAdminUnavailable):
 		return exitTransient
+	case errors.Is(err, app.ErrTenantRepairNotFound):
+		return exitNotBootstrapped
+	case errors.Is(err, app.ErrTenantRepairConflict):
+		return exitConflict
 	default:
 		return exitFailure
 	}
@@ -171,6 +226,16 @@ func writeBootstrapReport(output io.Writer, report app.PlatformAdminReport) {
 	// the credential store.
 	_, _ = fmt.Fprintf(output, "outcome: %s\nprincipal_id: %d\nlogin: %s\n",
 		report.Outcome, report.PrincipalID, report.Login)
+}
+
+// writeTenantRepairReport names what an operator has to check next: the tenant
+// they meant, and the person who can now sign in and administer it.
+func writeTenantRepairReport(output io.Writer, report app.TenantRepairReport) {
+	_, _ = fmt.Fprintf(output,
+		"outcome: %s\ntenant_id: %d\ntenant_slug: %s\nowner_principal_id: %d\nowner_login: %s\n"+
+			"administrator_role_id: %d\npermission_count: %d\nmenu_count: %d\n",
+		report.Outcome, report.TenantID, report.TenantSlug, report.OwnerPrincipalID, report.OwnerLogin,
+		report.AdministratorRoleID, report.PermissionCount, report.MenuCount)
 }
 
 // readBootstrapPassword takes the password from a file or standard input. Both
