@@ -739,7 +739,7 @@ function SecretDialog({
     )
     const anchor = document.createElement("a")
     anchor.href = url
-    anchor.download = `chaosplus-oauth-${value.clientID}.txt`
+    anchor.download = `oauth-client-${value.clientID}.txt`
     anchor.click()
     URL.revokeObjectURL(url)
   }

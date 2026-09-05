@@ -158,7 +158,7 @@
   },
   "showcase": {
     "title": "Pustaka Komponen",
-    "description": "Layari contoh interaktif sistem reka bentuk Chaosplus. Tukar bahasa, tema, dan warna dari sudut kanan atas.",
+    "description": "Layari contoh interaktif sistem reka bentuk. Tukar bahasa, tema, dan warna dari sudut kanan atas.",
     "categories": {
       "forms": "Borang",
       "data": "Data",
@@ -298,6 +298,7 @@
         "guest": "Tetamu",
         "project": "Projek",
         "projectPlaceholder": "Pilih projek",
+        "designSystem": "Sistem Reka Bentuk",
         "adminPortal": "Portal Admin",
         "documentation": "Dokumentasi"
       },

@@ -40,7 +40,7 @@ export function TopNav({
             <div className="text-lg font-semibold">{brand}</div>
           ) : (
             <Link href="/" className="text-lg font-semibold">
-              Chaosplus
+              {t("home")}
             </Link>
           )}
           <nav

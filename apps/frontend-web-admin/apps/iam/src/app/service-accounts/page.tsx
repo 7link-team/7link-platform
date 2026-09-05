@@ -75,7 +75,7 @@ const emptyAccount: AccountDraft = {
 
 const emptyCredential: CredentialDraft = {
   name: "",
-  scopes: "chaosplus-api",
+  scopes: "iam-api",
   expiresAt: "",
 }
 

@@ -895,7 +895,7 @@ function RecoveryCodes({
     )
     const anchor = document.createElement("a")
     anchor.href = url
-    anchor.download = "chaosplus-recovery-codes.txt"
+    anchor.download = "recovery-codes.txt"
     anchor.click()
     URL.revokeObjectURL(url)
   }

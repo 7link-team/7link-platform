@@ -726,7 +726,7 @@ export interface AuditGovernance {
   anchored_events: number
 }
 
-const tenantKey = "chaosplus.tenant"
+const tenantKey = "iam.tenant"
 const baseUrl = (import.meta.env.VITE_API_URL ?? "/api").replace(/\/$/, "")
 const clientErrorMessages = {
   "en-US": {
@@ -909,7 +909,7 @@ function auditExportFilename(disposition: string | null): string {
   const candidate = disposition?.match(/filename="([^"]+)"/i)?.[1]
   return candidate && /^[a-zA-Z0-9._-]+$/.test(candidate)
     ? candidate
-    : "chaosplus-audit.ndjson"
+    : "audit-export.ndjson"
 }
 
 export function createIamApi(

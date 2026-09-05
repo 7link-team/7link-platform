@@ -158,7 +158,7 @@
   },
   "showcase": {
     "title": "Component Library",
-    "description": "Browse interactive examples of the Chaosplus design system. Switch language, theme, and colors from the top-right corner.",
+    "description": "Browse interactive examples of the design system. Switch language, theme, and colors from the top-right corner.",
     "categories": {
       "forms": "Forms",
       "data": "Data",
@@ -298,6 +298,7 @@
         "guest": "Guest",
         "project": "Project",
         "projectPlaceholder": "Choose a project",
+        "designSystem": "Design System",
         "adminPortal": "Admin Portal",
         "documentation": "Documentation"
       },

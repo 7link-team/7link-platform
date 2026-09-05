@@ -1,12 +1,13 @@
 const port = Number(process.argv[2] ?? 9333)
 const baseURL = process.argv[3] ?? "http://127.0.0.1:8091"
-const password = process.env.CHAOSPLUS_BROWSER_PASSWORD
+const password = process.env.IAM_BROWSER_PASSWORD
+const adminLogin = process.env.IAM_BROWSER_LOGIN ?? "admin@example.test"
 const screenshotRoot = new URL(
   "../../../../../.local/screenshots/",
   import.meta.url
 )
 
-if (!password) throw new Error("CHAOSPLUS_BROWSER_PASSWORD is required")
+if (!password) throw new Error("IAM_BROWSER_PASSWORD is required")
 
 const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then(
   (response) => response.json()
@@ -238,7 +239,7 @@ await command("Emulation.setDeviceMetricsOverride", {
   mobile: false,
 })
 await navigate("/iam/tenants")
-await login("admin@chaosplus.local", password)
+await login(adminLogin, password)
 await waitFor(
   `document.querySelector('a[href="/iam/tenants"]') && document.querySelector("tbody")`
 )
@@ -267,7 +268,7 @@ for (const principal of previousOperators.items) {
 
 const suffix = Date.now().toString(36)
 const operatorLogin = `acceptance-tenant-admin-${suffix}`
-const operatorPassword = "Chaosplus-Acceptance-2026!"
+const operatorPassword = "Audit-Acceptance-2026!"
 const operator = await api("/iam/principals", {
   method: "POST",
   body: JSON.stringify({
@@ -306,7 +307,7 @@ if (
 await api("/authn/logout", { method: "POST" }, "")
 await command("Network.clearBrowserCookies")
 await navigate("/iam/tenants")
-await login("admin@chaosplus.local", password)
+await login(adminLogin, password)
 await waitFor(
   `document.querySelector('a[href="/iam/tenants"]') && document.querySelector("tbody")`
 )
@@ -355,10 +356,10 @@ await command("Emulation.setDeviceMetricsOverride", {
 
 await clickRowAction(updatedName, "进入租户")
 await waitFor(
-  `location.pathname === "/" && localStorage.getItem("chaosplus.tenant") === ${JSON.stringify(tenant.id)}`
+  `location.pathname === "/" && localStorage.getItem("iam.tenant") === ${JSON.stringify(tenant.id)}`
 )
 await evaluate(`
-  localStorage.setItem("chaosplus.tenant", "platform");
+  localStorage.setItem("iam.tenant", "platform");
   window.dispatchEvent(new Event("tenant-change"));
 `)
 await navigate("/iam/tenants")

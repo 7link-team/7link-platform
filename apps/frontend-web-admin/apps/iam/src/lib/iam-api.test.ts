@@ -13,7 +13,7 @@ interface RecordedRequest {
   body: string
 }
 
-describe("Chaosplus IAM API client", () => {
+describe("IAM API client", () => {
   let server: ReturnType<typeof Bun.serve> | undefined
   afterEach(() => server?.stop(true))
 
@@ -373,7 +373,7 @@ describe("Chaosplus IAM API client", () => {
               : path === "/authn/mfa/totp-enrollments"
                 ? {
                     secret: "JBSWY3DPEHPK3PXP",
-                    provisioning_uri: "otpauth://totp/Chaosplus:user",
+                    provisioning_uri: "otpauth://totp/IAM:user",
                     expires_at: "2026-08-01T00:10:00Z",
                   }
                 : path === "/authn/session-verifications"

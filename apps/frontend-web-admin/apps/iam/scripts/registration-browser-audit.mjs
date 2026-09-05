@@ -8,7 +8,7 @@ const notificationFile = new URL(
   import.meta.url
 )
 const databaseFile = fileURLToPath(
-  new URL("../../../../../.local/chaosplus-smoke.db", import.meta.url)
+  new URL("../../../../../.local/iam-smoke.db", import.meta.url)
 )
 const screenshotRoot = new URL(
   "../../../../../.local/screenshots/",

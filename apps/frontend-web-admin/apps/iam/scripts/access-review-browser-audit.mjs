@@ -1,12 +1,13 @@
 const port = Number(process.argv[2] ?? 9333)
 const baseURL = process.argv[3] ?? "http://127.0.0.1:8091"
-const password = process.env.CHAOSPLUS_BROWSER_PASSWORD
+const password = process.env.IAM_BROWSER_PASSWORD
+const adminLogin = process.env.IAM_BROWSER_LOGIN ?? "admin@example.test"
 const screenshotRoot = new URL(
   "../../../../../.local/screenshots/",
   import.meta.url
 )
 
-if (!password) throw new Error("CHAOSPLUS_BROWSER_PASSWORD is required")
+if (!password) throw new Error("IAM_BROWSER_PASSWORD is required")
 
 const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then(
   (response) => response.json()
@@ -167,7 +168,7 @@ async function login(loginName, loginPassword) {
   await waitFor(
     `location.pathname === "/login" && document.querySelector("#login-name")`
   )
-  await evaluate(`localStorage.setItem("chaosplus.tenant", "platform")`)
+  await evaluate(`localStorage.setItem("iam.tenant", "platform")`)
   await setControl("#login-name", loginName)
   await setControl("#password", loginPassword)
   await submit("form")
@@ -244,9 +245,9 @@ const suffix = Date.now().toString(36)
 const campaignName = `Acceptance Review ${suffix}`
 const reviewerLogin = `access-reviewer-${suffix}`
 const reviewerEmail = `${reviewerLogin}@example.test`
-const reviewerPassword = "Chaosplus-Access-Reviewer-2026!"
+const reviewerPassword = "Audit-Access-Reviewer-2026!"
 
-await login("admin@chaosplus.local", password)
+await login(adminLogin, password)
 const session = await api("/authn/session")
 const tenantRoles = await api("/iam/roles")
 let administratorRole
@@ -278,7 +279,7 @@ const acceptance = await api("/iam/invitations/accept", {
     display_name: `Access Reviewer ${suffix}`,
   }),
 })
-await login("admin@chaosplus.local", password)
+await login(adminLogin, password)
 
 await navigate("/iam/access-reviews")
 await waitFor(`document.querySelector("h1")?.textContent.includes("访问复核")`)
@@ -327,7 +328,7 @@ const layouts = [
 ]
 
 await logout()
-await login("admin@chaosplus.local", password)
+await login(adminLogin, password)
 await api(
   `/iam/roles/${encodeURIComponent(administratorRole.id)}/members/${encodeURIComponent(acceptance.principal_id)}`,
   { method: "DELETE" }

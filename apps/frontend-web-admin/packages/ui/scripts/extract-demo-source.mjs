@@ -19,7 +19,9 @@ const files = readdirSync(demosDir)
 const entries = {}
 for (const file of files) {
   const id = file.replace(/\.tsx$/, "")
-  const raw = readFileSync(join(demosDir, file), "utf8").replace(/\s+$/, "") + "\n"
+  const text = readFileSync(join(demosDir, file), "utf8")
+  // 展示用源码统一成 LF，避免把某台机器 checkout 的 CRLF 烘进产物。
+  const raw = text.replace(/\r\n/g, "\n").replace(/\s+$/, "") + "\n"
   entries[id] = raw
 }
 

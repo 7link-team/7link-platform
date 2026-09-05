@@ -1,12 +1,13 @@
 const port = Number(process.argv[2] ?? 9333)
 const baseURL = process.argv[3] ?? "http://127.0.0.1:8091"
-const password = process.env.CHAOSPLUS_BROWSER_PASSWORD
+const password = process.env.IAM_BROWSER_PASSWORD
+const adminLogin = process.env.IAM_BROWSER_LOGIN ?? "admin@example.test"
 const screenshotRoot = new URL(
   "../../../../../.local/screenshots/",
   import.meta.url
 )
 
-if (!password) throw new Error("CHAOSPLUS_BROWSER_PASSWORD is required")
+if (!password) throw new Error("IAM_BROWSER_PASSWORD is required")
 
 const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then(
   (response) => response.json()
@@ -190,7 +191,7 @@ async function entities() {
   return evaluate(`
     const response = await fetch("/api/iam/entities", {
       credentials: "include",
-      headers: { "X-Tenant-Id": localStorage.getItem("chaosplus.tenant") || "platform" },
+      headers: { "X-Tenant-Id": localStorage.getItem("iam.tenant") || "platform" },
     });
     if (!response.ok) throw new Error("entity list failed: " + response.status);
     return (await response.json()).data;
@@ -199,7 +200,7 @@ async function entities() {
 
 async function cleanupArtifacts() {
   await evaluate(`
-    const tenant = localStorage.getItem("chaosplus.tenant") || "platform";
+    const tenant = localStorage.getItem("iam.tenant") || "platform";
     const headers = { "X-Tenant-Id": tenant };
     const list = await fetch("/api/iam/entities", { credentials: "include", headers });
     if (!list.ok) throw new Error("artifact list failed: " + list.status);
@@ -297,7 +298,7 @@ await navigate("/iam/entities")
 await waitFor(
   `location.pathname === "/login" && document.querySelector("#login-name")`
 )
-await setInput("#login-name", "admin@chaosplus.local")
+await setInput("#login-name", adminLogin)
 await setInput("#password", password)
 await evaluate(`
   const form = document.querySelector("form");
@@ -410,7 +411,7 @@ await waitFor(
   `document.querySelector('[role="dialog"]')?.textContent.includes(${JSON.stringify(businessResourceID)})`
 )
 const businessResourceCheck = await evaluate(`
-  const headers = { "X-Tenant-Id": localStorage.getItem("chaosplus.tenant") || "platform" };
+  const headers = { "X-Tenant-Id": localStorage.getItem("iam.tenant") || "platform" };
   const members = await fetch("/api/iam/members", { credentials: "include", headers });
   if (!members.ok) throw new Error("member list failed: " + members.status);
   const principal = (await members.json()).data.find((item) => item.status === "active")?.subject;
@@ -436,7 +437,7 @@ if (
     `business resource check failed: ${JSON.stringify(businessResourceCheck)}`
   )
 const localizedWindowErrors = await evaluate(`
-  const baseHeaders = { "X-Tenant-Id": localStorage.getItem("chaosplus.tenant") || "platform" };
+  const baseHeaders = { "X-Tenant-Id": localStorage.getItem("iam.tenant") || "platform" };
   const members = await fetch("/api/iam/members", { credentials: "include", headers: baseHeaders });
   if (!members.ok) throw new Error("member list failed: " + members.status);
   const principal = (await members.json()).data.find((item) => item.status === "active")?.subject;
@@ -482,7 +483,7 @@ if (expectedWindowStatuses.length !== 3)
     `expected three localized window failures, got ${expectedWindowStatuses.length}`
   )
 const localizedConditionErrors = await evaluate(`
-  const baseHeaders = { "X-Tenant-Id": localStorage.getItem("chaosplus.tenant") || "platform" };
+  const baseHeaders = { "X-Tenant-Id": localStorage.getItem("iam.tenant") || "platform" };
   const members = await fetch("/api/iam/members", { credentials: "include", headers: baseHeaders });
   if (!members.ok) throw new Error("member list failed: " + members.status);
   const principal = (await members.json()).data.find((item) => item.status === "active")?.subject;
@@ -722,7 +723,7 @@ if (state.some((item) => item.id === root.id || item.id === child.id))
 const auditEvents = await evaluate(`
   const response = await fetch("/api/iam/audit-events?target_id=${encodeURIComponent(child.id)}&limit=100", {
     credentials: "include",
-    headers: { "X-Tenant-Id": localStorage.getItem("chaosplus.tenant") || "platform" },
+    headers: { "X-Tenant-Id": localStorage.getItem("iam.tenant") || "platform" },
   });
   if (!response.ok) throw new Error("audit list failed: " + response.status);
   return (await response.json()).data.map((event) => event.event_type);

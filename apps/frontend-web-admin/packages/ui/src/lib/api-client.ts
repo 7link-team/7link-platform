@@ -1,5 +1,5 @@
 /**
- * Framework-agnostic API client for Chaosplus services.
+ * Framework-agnostic API client for platform services.
  *
  * Mirrors the legacy admin's `boot/axios` + `getQueryString`: it speaks the backend's
  * "simple" query syntax (`filter[field]=op:value`, `sort[field]=ASC`, `offset`, `limit`),

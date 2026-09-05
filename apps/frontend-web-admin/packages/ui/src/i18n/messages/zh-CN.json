@@ -158,7 +158,7 @@
   },
   "showcase": {
     "title": "组件库",
-    "description": "浏览 Chaosplus 设计系统的交互示例。可从右上角切换语言、主题与颜色。",
+    "description": "浏览设计系统的交互示例。可从右上角切换语言、主题与颜色。",
     "categories": {
       "forms": "表单",
       "data": "数据",
@@ -298,6 +298,7 @@
         "guest": "游客",
         "project": "项目",
         "projectPlaceholder": "选择项目",
+        "designSystem": "设计系统",
         "adminPortal": "管理后台",
         "documentation": "文档"
       },

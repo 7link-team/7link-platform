@@ -8,7 +8,7 @@ export function CodeDemo() {
   return \`Hello, \${name}!\`
 }
 
-console.log(greet("Chaosplus"))`
+console.log(greet("world"))`
 
   return (
     <div className="space-y-8">

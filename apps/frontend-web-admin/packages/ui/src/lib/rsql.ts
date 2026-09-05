@@ -1,5 +1,5 @@
 /**
- * RSQL serialization for Chaosplus-compatible query endpoints.
+ * RSQL serialization for query endpoints that accept RSQL filters.
  *
  * The backend's list endpoints accept TWO filter dialects: the "simple" syntax
  * (`filter[field]=op:value`) and full RSQL (`filter=<expr>`). This module produces the

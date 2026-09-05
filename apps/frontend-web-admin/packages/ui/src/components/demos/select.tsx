@@ -19,7 +19,7 @@ export function SelectDemo() {
     { value: "guest", label: t("guest") },
   ]
   const projectItems = [
-    { value: "chaosplus", label: "Chaosplus" },
+    { value: "design-system", label: t("designSystem") },
     { value: "portal", label: t("adminPortal") },
     { value: "docs", label: t("documentation") },
   ]

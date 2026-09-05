@@ -1,7 +1,8 @@
 const port = Number(process.argv[2] ?? 9333)
 const baseURL = process.argv[3] ?? "http://localhost:8091"
-const password = process.env.CHAOSPLUS_BROWSER_PASSWORD
-const directoryKind = process.env.CHAOSPLUS_DIRECTORY_KIND ?? "position"
+const password = process.env.IAM_BROWSER_PASSWORD
+const adminLogin = process.env.IAM_BROWSER_LOGIN ?? "admin@example.test"
+const directoryKind = process.env.IAM_DIRECTORY_KIND ?? "position"
 const directory = {
   position: {
     collectionPath: "/iam/positions",
@@ -25,7 +26,7 @@ const screenshotRoot = new URL(
   import.meta.url
 )
 
-if (!password) throw new Error("CHAOSPLUS_BROWSER_PASSWORD is required")
+if (!password) throw new Error("IAM_BROWSER_PASSWORD is required")
 if (!directory) throw new Error(`unsupported directory kind: ${directoryKind}`)
 
 const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then(
@@ -219,7 +220,7 @@ async function api(path, options = {}) {
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
-        "X-Tenant-Id": localStorage.getItem("chaosplus.tenant") || "platform",
+        "X-Tenant-Id": localStorage.getItem("iam.tenant") || "platform",
       },
       ...${JSON.stringify(options)},
     });
@@ -328,7 +329,7 @@ await navigate(directory.collectionPath)
 await waitFor(
   `location.pathname === "/login" && document.querySelector("#login-name")`
 )
-await setInput("#login-name", "admin@chaosplus.local")
+await setInput("#login-name", adminLogin)
 await setInput("#password", password)
 await evaluate(`
   const form = document.querySelector("form");
