@@ -490,7 +490,7 @@ codegen 引入一个生成步骤和生成物指纹门禁的维护成本，换取
 （211 条），并由 `bootstrap_iam_openapi_test.go` 的 `iamHTTPMappingCount = 211` 守住。
 据此逐条 join 后：旧 `iam-api.ts` 共 144 个调用点，**只有 20 条契约有实质变化**
 （`/authn/*` 18 条 + `/iam/principals/{id}/disable|restore` 2 条），其余 124 条原样可用。
-完整表见 `docs/frontend-migration-plan.md` 第八节。
+完整表见 `apps/frontend-web-admin/docs/frontend-migration-plan.md` 第八节。
 
 本条原文中「`/authn/session` → `GET /authn/me`」是当时的推断，**是错的**，已就地改正为
 `GET /authn/sessions/current`；`authn-me` 是另一个独立 operation，两者并存。

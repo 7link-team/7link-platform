@@ -77,6 +77,8 @@ Non-trivial work requires a design first: what changes, why, where; what already
 
 **Dependencies.** Before adding one: check whether the project or an existing dependency already provides it; consider whether it's simple enough to implement directly; weigh maintenance and operational cost; confirm it's in scope. Convenience alone is not a reason.
 
+**Deployment identity is configuration, not code.** A product name, organization, logo, domain, or contact address describes a deployment, not the software. Never hardcode one into source, tests, fixtures, or generated output — read it from configuration and fall back to neutral wording, not to whichever brand happened to be first. The rule extends to identifiers that merely embed a brand (storage keys, downloaded filenames, environment variables, scopes): name them for what they hold, so the same build serves any deployment.
+
 ## 5. Complexity and Abstraction Discipline
 
 **No abstraction explosion.** No interfaces with a single implementation absent real architectural need, no factories for trivial construction, no managers for simple logic, no wrappers around simple APIs, no generic frameworks for one use case, no config systems for fixed behavior, no extra DI/service/adapter layers without a real problem to solve. "Enterprise-grade" is not a reason.
@@ -225,3 +227,11 @@ Only PASS is eligible for delivery. If any important item is false, do not claim
 ```
 
 If something couldn't be tested or verified, state it explicitly — don't hide limitations.
+
+## 12. Repository Conventions
+
+**Workspace layout.** `apps/backend-api` is Go. `apps/frontend-web-admin` is a bun + Turborepo workspace (`apps/*` for deployables, `packages/*` for shared code). Run frontend checks from `apps/frontend-web-admin` — `bun run typecheck`, `bun run lint`, `bun run test` fan out to every package. Invoking `tsc` directly from the wrong directory emits `.js` beside the sources and pollutes the tree; if that happens, delete the output before staging.
+
+**Line endings.** Each area declares its own `.gitattributes` (`text eol=lf`) and `core.autocrlf` is `false`. `apps/frontend-web-admin` has no such file yet, so it is checked out and committed as CRLF. Until that is resolved, be aware that `sed -i`, `awk`, and `cat >` silently rewrite a file to LF and turn a three-line change into a whole-file diff. After any such edit, restore the endings and confirm the diff is the size you expect before staging.
+
+**Generated files.** Anything marked AUTO-GENERATED is derived output. Change the generator or its input and regenerate; never hand-edit the result. A generator must produce the same bytes on every machine — normalize platform-dependent input rather than copying it through.
