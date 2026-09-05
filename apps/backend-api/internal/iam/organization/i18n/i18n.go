@@ -42,6 +42,8 @@ const (
 	TenantSlugExists            = Namespace + ".tenant_slug_exists"
 	TenantVersionConflict       = Namespace + ".tenant_version_conflict"
 	InvalidTenant               = Namespace + ".invalid_tenant"
+	TenantOwnerNotFound         = Namespace + ".tenant_owner_not_found"
+	TenantOwnerInactive         = Namespace + ".tenant_owner_inactive"
 	InvitationNotFound          = Namespace + ".invitation_not_found"
 	InvalidInvitationCredential = Namespace + ".invalid_invitation_credential"
 	InvitationExpired           = Namespace + ".invitation_expired"

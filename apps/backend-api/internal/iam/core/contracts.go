@@ -51,3 +51,34 @@ type PlatformAdministratorStore struct {
 	List      func(context.Context, *gorm.DB) ([]PlatformAdministrator, error)
 	GrantFull func(context.Context, *gorm.DB, guid.ID) (bool, error)
 }
+
+// TenantBootstrapInput describes the first administrator a new tenant needs in
+// order to be reachable at all. Every tenant route requires an active
+// membership, so a tenant created without one can be administered by nobody.
+type TenantBootstrapInput struct {
+	TenantID    guid.ID
+	OwnerID     guid.ID
+	DisplayName string
+	Email       string
+}
+
+// TenantBootstrapResult reports what the bootstrap wrote, so the caller can
+// name the counts in its audit event rather than asserting them from memory.
+type TenantBootstrapResult struct {
+	AdministratorRoleID guid.ID
+	PermissionCount     int
+	MenuCount           int
+}
+
+// TenantBootstrapper is the narrow tenant-bootstrap capability core publishes
+// for the module that owns tenants. Organization runs it inside the same
+// transaction that inserts the tenant row, so a tenant and the first principal
+// able to administer it commit together or not at all. Organization must never
+// write these tables itself.
+type TenantBootstrapper struct {
+	Bootstrap func(context.Context, *gorm.DB, TenantBootstrapInput, time.Time) (TenantBootstrapResult, error)
+	// IsUnclaimed reports whether a tenant still has no member and no role. It
+	// is what keeps the repair path create-only: a tenant somebody already
+	// administers must never be handed a second owner by a recovery command.
+	IsUnclaimed func(context.Context, *gorm.DB, guid.ID) (bool, error)
+}

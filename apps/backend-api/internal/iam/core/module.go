@@ -84,6 +84,9 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[PlatformAdministratorStore](services, m.platformAdministratorStore()); err != nil {
 		return fmt.Errorf("provide IAM platform administrator store: %w", err)
 	}
+	if err := module.Provide[TenantBootstrapper](services, m.tenantBootstrapper()); err != nil {
+		return fmt.Errorf("provide IAM tenant bootstrapper: %w", err)
+	}
 	if err := module.Provide[*authz.Registrar](services, m.registrar); err != nil {
 		return fmt.Errorf("provide authorization registrar: %w", err)
 	}

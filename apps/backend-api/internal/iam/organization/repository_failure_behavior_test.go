@@ -94,7 +94,10 @@ func TestOrganizationRepositoryStateAndConstructorFailures(t *testing.T) {
 	assert.Panics(t, func() {
 		NewPositionService(h.runtime, h.appender, nil, &organizationAdministratorGuard{}, newOrganizationTestIDs(1))
 	})
-	assert.Panics(t, func() { NewTenantService(h.runtime, nil, newOrganizationTestIDs(1)) })
+	assert.Panics(t, func() {
+		NewTenantService(h.runtime, nil, newOrganizationTestIDs(1),
+			newTenantBootstrapStub().capability(), newTenantOwnerStub().capability())
+	})
 	assert.Panics(t, func() {
 		NewInvitationService(h.runtime, h.appender, newOrganizationTestIDs(1), nil, func(context.Context, *gorm.DB, guid.ID, string, string, string, string) (guid.ID, error) {
 			return 1, nil
@@ -147,7 +150,7 @@ func TestOrganizationServicesSurfaceClosedDatabase(t *testing.T) {
 	guard := &organizationAdministratorGuard{}
 	groups := NewGroupService(h.runtime, h.appender, memberChecker, guard, newOrganizationTestIDs(10))
 	positions := NewPositionService(h.runtime, h.appender, memberChecker, guard, newOrganizationTestIDs(20))
-	tenants := NewTenantService(h.runtime, h.appender, newOrganizationTestIDs(30))
+	tenants, _, _ := newTenantServiceForTest(h, newOrganizationTestIDs(30))
 	invitations := NewInvitationService(
 		h.runtime, h.appender, newOrganizationTestIDs(40), &invitationCredentialFixture{},
 		func(context.Context, *gorm.DB, guid.ID, string, string, string, string) (guid.ID, error) {
@@ -177,7 +180,7 @@ func TestOrganizationServicesSurfaceClosedDatabase(t *testing.T) {
 	assert.Error(t, err)
 	_, err = tenants.Get(t.Context(), 1)
 	assert.Error(t, err)
-	_, err = tenants.Create(t.Context(), CreateTenant{Slug: "tenant", Name: "Tenant"})
+	_, err = tenants.Create(t.Context(), newTenantForTest("tenant", "Tenant"))
 	assert.Error(t, err)
 	assert.Error(t, tenants.Delete(t.Context(), 1, 1))
 	_, err = invitations.List(t.Context(), 1)

@@ -31,6 +31,8 @@
   "tenant_slug_exists": "已存在使用该标识的租户，请选择其他租户标识。",
   "tenant_version_conflict": "租户已被其他请求修改，请刷新后重试。",
   "invalid_tenant": "租户数据无效，请检查标识、名称、状态和版本。",
+  "tenant_owner_not_found": "指定的租户所有者不存在，请提供已存在的主体标识。",
+  "tenant_owner_inactive": "指定的租户所有者未启用，请先启用该主体再让其管理租户。",
   "invitation_not_found": "当前租户中不存在指定邀请，请刷新邀请列表后选择现有邀请。",
   "invalid_invitation_credential": "邀请凭据无效、已撤销或已被新凭据替换，请使用最新邀请链接或联系管理员重新发送。",
   "invitation_expired": "邀请已过期，请联系租户管理员重新发送。",

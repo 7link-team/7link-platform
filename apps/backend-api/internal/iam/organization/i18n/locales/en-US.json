@@ -31,6 +31,8 @@
   "tenant_slug_exists": "A tenant with this slug already exists. Choose a different tenant slug.",
   "tenant_version_conflict": "The tenant was changed by another request. Reload it and try again.",
   "invalid_tenant": "The tenant data is invalid. Check its slug, name, status, and version.",
+  "tenant_owner_not_found": "The tenant owner principal does not exist. Provide an existing principal identifier.",
+  "tenant_owner_inactive": "The tenant owner principal is not active. Activate it before it can administer a tenant.",
   "invitation_not_found": "The invitation was not found in this tenant. Refresh the invitation list and choose an existing invitation.",
   "invalid_invitation_credential": "The invitation credential is invalid, revoked, or already replaced. Use the latest invitation link or ask an administrator to resend it.",
   "invitation_expired": "The invitation has expired. Ask a tenant administrator to resend it.",

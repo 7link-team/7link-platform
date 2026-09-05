@@ -11,13 +11,13 @@ import (
 
 func TestTenantNormalization(t *testing.T) {
 	t.Parallel()
-	input, err := normalizeTenantCreate(CreateTenant{Slug: " Acme-West ", Name: " Acme West "})
+	input, err := normalizeTenantCreate(CreateTenant{Slug: " Acme-West ", Name: " Acme West ", OwnerPrincipalID: organizationTestOwnerID})
 	require.NoError(t, err)
 	assert.Equal(t, "acme-west", input.Slug)
 	assert.Equal(t, "Acme West", input.Name)
 	for _, input := range []CreateTenant{
 		{}, {Slug: "Bad Slug", Name: "Name"}, {Slug: "ab", Name: "Name"},
-		{Slug: strings.Repeat("a", 64), Name: "Name"}, {Slug: "valid", Name: "bad\nname"},
+		{Slug: strings.Repeat("a", 64), Name: "Name"}, {Slug: "valid", Name: "Name"}, {Slug: "valid", Name: "bad\nname"},
 	} {
 		_, err := normalizeTenantCreate(input)
 		assert.ErrorIs(t, err, ErrInvalidTenant)
@@ -43,14 +43,14 @@ func TestTenantNormalization(t *testing.T) {
 
 func TestTenantLifecycleMemberListingAndRollback(t *testing.T) {
 	h := newOrganizationHarness(t, "sl_")
-	service := NewTenantService(h.runtime, h.appender, newOrganizationTestIDs(500))
+	service, _, _ := newTenantServiceForTest(h, newOrganizationTestIDs(500))
 	service.now = func() time.Time { return organizationTestNow }
-	tenant, err := service.Create(t.Context(), CreateTenant{Slug: "acme", Name: "Acme"})
+	tenant, err := service.Create(t.Context(), newTenantForTest("acme", "Acme"))
 	require.NoError(t, err)
 	assert.Equal(t, TenantActive, tenant.Status)
-	_, err = service.Create(t.Context(), CreateTenant{Slug: "acme", Name: "Duplicate"})
+	_, err = service.Create(t.Context(), newTenantForTest("acme", "Duplicate"))
 	assert.ErrorIs(t, err, ErrTenantSlugConflict)
-	second, err := service.Create(t.Context(), CreateTenant{Slug: "beta", Name: "Beta"})
+	second, err := service.Create(t.Context(), newTenantForTest("beta", "Beta"))
 	require.NoError(t, err)
 	items, err := service.List(t.Context(), false)
 	require.NoError(t, err)
@@ -84,7 +84,7 @@ func TestTenantLifecycleMemberListingAndRollback(t *testing.T) {
 	assert.Equal(t, TenantDeleted, deleted.Status)
 
 	h.auditErr = assert.AnError
-	_, err = service.Create(t.Context(), CreateTenant{Slug: "rollback", Name: "Rollback"})
+	_, err = service.Create(t.Context(), newTenantForTest("rollback", "Rollback"))
 	assert.ErrorIs(t, err, assert.AnError)
 	var count int64
 	require.NoError(t, h.db.Table(h.table("iam_tenants")).Where("slug = ?", "rollback").Count(&count).Error)
@@ -103,9 +103,9 @@ func TestEnsureTenantIsIdempotent(t *testing.T) {
 
 func TestTenantMutationFailuresRollbackAndDeletedRowsRemainQueryable(t *testing.T) {
 	h := newOrganizationHarness(t, "")
-	service := NewTenantService(h.runtime, h.appender, newOrganizationTestIDs(1600))
+	service, _, _ := newTenantServiceForTest(h, newOrganizationTestIDs(1600))
 	service.now = func() time.Time { return organizationTestNow }
-	tenant, err := service.Create(t.Context(), CreateTenant{Slug: "rollback", Name: "Original"})
+	tenant, err := service.Create(t.Context(), newTenantForTest("rollback", "Original"))
 	require.NoError(t, err)
 
 	h.auditErr = assert.AnError

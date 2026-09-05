@@ -21,7 +21,8 @@ var declaredKeys = []string{
 	PositionCodeExists, PositionVersionConflict, PositionHasMembers,
 	PositionRoleBound, PositionRelationshipBound, PositionMemberInactive,
 	InvalidPosition, TenantNotFound, TenantSlugExists, TenantVersionConflict,
-	InvalidTenant, InvitationNotFound, InvalidInvitationCredential,
+	InvalidTenant, TenantOwnerNotFound, TenantOwnerInactive,
+	InvitationNotFound, InvalidInvitationCredential,
 	InvitationExpired, InvitationStateConflict, InvitationLoginNameExists,
 	InvitationBindingNotFound, InvitationBindingInactive, InvalidInvitation,
 }

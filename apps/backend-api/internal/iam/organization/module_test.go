@@ -104,13 +104,19 @@ func TestOrganizationModuleResolvesServicesAndProvidesGroupProvisioner(t *testin
 			if err := module.Provide[core.ActiveMemberChecker](services, members); err != nil {
 				return err
 			}
-			return module.Provide[core.AdministratorGuard](services, guard)
+			if err := module.Provide[core.AdministratorGuard](services, guard); err != nil {
+				return err
+			}
+			return module.Provide[core.TenantBootstrapper](services, newTenantBootstrapStub().capability())
 		}},
 		&organizationDependencyProvider{name: authn.Name, provide: func(services *module.Services) error {
 			return module.Provide[authn.InvitationCredentials](services, credentials)
 		}},
 		&organizationDependencyProvider{name: identity.Name, provide: func(services *module.Services) error {
-			return module.Provide[identity.InvitationPrincipalCreator](services, creator)
+			if err := module.Provide[identity.InvitationPrincipalCreator](services, creator); err != nil {
+				return err
+			}
+			return module.Provide[identity.TenantOwnerLookup](services, newTenantOwnerStub().capability())
 		}},
 		instance,
 	))

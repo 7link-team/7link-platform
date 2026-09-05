@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/iam/core"
+	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/organization/model"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
@@ -22,6 +24,10 @@ const (
 	TenantActive    = "active"
 	TenantSuspended = "suspended"
 	TenantDeleted   = "deleted"
+
+	// tenantOwnerActiveStatus is the principal status identity reports for an
+	// account that may sign in. Only such a principal may be handed a tenant.
+	tenantOwnerActiveStatus = "active"
 )
 
 var (
@@ -29,7 +35,12 @@ var (
 	ErrTenantSlugConflict    = errors.New("tenant slug already exists")
 	ErrTenantVersionConflict = errors.New("tenant version conflict")
 	ErrInvalidTenant         = errors.New("invalid tenant")
-	tenantSlugPattern        = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?$`)
+	// ErrTenantOwnerNotFound and ErrTenantOwnerInactive keep tenant creation
+	// create-or-nothing: a tenant whose named owner cannot administer it would
+	// commit as a shell no HTTP call could ever reach.
+	ErrTenantOwnerNotFound = errors.New("tenant owner principal not found")
+	ErrTenantOwnerInactive = errors.New("tenant owner principal is not active")
+	tenantSlugPattern      = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?$`)
 )
 
 type Tenant struct {
@@ -44,6 +55,10 @@ type Tenant struct {
 type CreateTenant struct {
 	Slug string
 	Name string
+	// OwnerPrincipalID is the principal that becomes the tenant's first
+	// administrator. It is required: every tenant route demands an active
+	// membership, so a tenant created without an owner is unreachable.
+	OwnerPrincipalID guid.ID
 }
 type UpdateTenant struct {
 	Name    *string
@@ -52,15 +67,33 @@ type UpdateTenant struct {
 }
 
 type TenantService struct {
-	repo *Repository
-	now  func() time.Time
+	repo      *Repository
+	now       func() time.Time
+	bootstrap core.TenantBootstrapper
+	owners    identity.TenantOwnerLookup
 }
 
-func NewTenantService(runtime *appenv.Runtime, appender audit.Appender, ids guid.Source) *TenantService {
+// NewTenantService builds the tenant service. The bootstrapper and owner
+// lookup are required rather than optional: without them Create could only
+// produce tenants nobody can administer, which is the defect this service
+// exists to prevent.
+func NewTenantService(
+	runtime *appenv.Runtime,
+	appender audit.Appender,
+	ids guid.Source,
+	bootstrap core.TenantBootstrapper,
+	owners identity.TenantOwnerLookup,
+) *TenantService {
 	if runtime == nil || appender == nil || ids == nil {
 		panic("tenant service requires runtime, audit appender, and id generator")
 	}
-	return &TenantService{repo: NewRepository(runtime, ids, appender), now: time.Now}
+	if bootstrap.Bootstrap == nil || bootstrap.IsUnclaimed == nil || owners == nil {
+		panic("tenant service requires the tenant bootstrapper and owner lookup")
+	}
+	return &TenantService{
+		repo: NewRepository(runtime, ids, appender), now: time.Now,
+		bootstrap: bootstrap, owners: owners,
+	}
 }
 
 // EnsureTenant idempotently creates the configured bootstrap tenant.
@@ -155,17 +188,46 @@ func (s *TenantService) Create(ctx context.Context, input CreateTenant) (Tenant,
 	event := audit.NewDomainEvent(ctx, 0, "tenant_created", "tenant", id)
 	event.Detail["slug"] = input.Slug
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
-		err := repo.writer().WithContext(ctx).Table(repo.table(row.TableName())).Create(&row).Error
+		database := repo.writer().WithContext(ctx)
+		err := database.Table(repo.table(row.TableName())).Create(&row).Error
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			return ErrTenantSlugConflict
 		}
 		if err != nil {
 			return fmt.Errorf("insert tenant: %w", err)
 		}
+		// The owner is resolved inside the transaction that inserts the
+		// tenant, so a principal suspended between request and commit cannot
+		// still end up administering it.
+		owner, found, err := s.owners(ctx, repo.writer(), input.OwnerPrincipalID)
+		if err != nil {
+			return fmt.Errorf("resolve tenant owner: %w", err)
+		}
+		if !found {
+			return ErrTenantOwnerNotFound
+		}
+		if owner.Status != tenantOwnerActiveStatus {
+			return ErrTenantOwnerInactive
+		}
+		result, err := s.bootstrap.Bootstrap(ctx, repo.writer(), core.TenantBootstrapInput{
+			TenantID: id, OwnerID: owner.ID,
+			DisplayName: owner.DisplayName, Email: owner.Email,
+		}, now)
+		if err != nil {
+			return fmt.Errorf("bootstrap tenant: %w", err)
+		}
 		if err := repo.bumpPolicyRevision(ctx, id, now); err != nil {
 			return err
 		}
-		return repo.appendAudit(ctx, event)
+		if err := repo.appendAudit(ctx, event); err != nil {
+			return err
+		}
+		bootstrapped := audit.NewDomainEvent(ctx, id, "tenant_bootstrapped", "tenant", id)
+		bootstrapped.Detail["owner_principal_id"] = owner.ID.String()
+		bootstrapped.Detail["administrator_role_id"] = result.AdministratorRoleID.String()
+		bootstrapped.Detail["permission_count"] = result.PermissionCount
+		bootstrapped.Detail["menu_count"] = result.MenuCount
+		return repo.appendAudit(ctx, bootstrapped)
 	})
 	if err != nil {
 		return Tenant{}, fmt.Errorf("create tenant: %w", err)
@@ -276,6 +338,9 @@ func tenantFromRow(row *model.Tenant) Tenant {
 func normalizeTenantCreate(input CreateTenant) (CreateTenant, error) {
 	input.Slug, input.Name = strings.ToLower(strings.TrimSpace(input.Slug)), strings.TrimSpace(input.Name)
 	if !validTenantSlug(input.Slug) || !validTenantName(input.Name) {
+		return CreateTenant{}, ErrInvalidTenant
+	}
+	if input.OwnerPrincipalID.Zero() {
 		return CreateTenant{}, ErrInvalidTenant
 	}
 	return input, nil

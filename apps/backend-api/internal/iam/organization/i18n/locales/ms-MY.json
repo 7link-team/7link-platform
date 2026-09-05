@@ -31,6 +31,8 @@
   "tenant_slug_exists": "Penyewa dengan slug ini telah wujud. Pilih slug penyewa lain.",
   "tenant_version_conflict": "Penyewa telah diubah oleh permintaan lain. Muat semula dan cuba lagi.",
   "invalid_tenant": "Data penyewa tidak sah. Semak slug, nama, status dan versi.",
+  "tenant_owner_not_found": "Prinsipal pemilik penyewa tidak wujud. Berikan pengecam prinsipal yang sedia ada.",
+  "tenant_owner_inactive": "Prinsipal pemilik penyewa tidak aktif. Aktifkannya sebelum ia boleh mentadbir penyewa.",
   "invitation_not_found": "Jemputan tidak ditemui dalam penyewa ini. Muat semula senarai dan pilih jemputan yang wujud.",
   "invalid_invitation_credential": "Kelayakan jemputan tidak sah, telah dibatalkan atau digantikan. Gunakan pautan terkini atau minta pentadbir menghantarnya semula.",
   "invitation_expired": "Jemputan telah tamat tempoh. Minta pentadbir penyewa menghantarnya semula.",

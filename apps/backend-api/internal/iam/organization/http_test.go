@@ -111,6 +111,8 @@ func organizationDeclarationAPI(t *testing.T) huma.API {
 	require.NoError(t, module.Provide[core.AdministratorGuard](services, &organizationAdministratorGuard{}))
 	require.NoError(t, module.Provide[authn.InvitationCredentials](services, &invitationCredentialFixture{}))
 	require.NoError(t, module.Provide[identity.InvitationPrincipalCreator](services, creator))
+	require.NoError(t, module.Provide[core.TenantBootstrapper](services, newTenantBootstrapStub().capability()))
+	require.NoError(t, module.Provide[identity.TenantOwnerLookup](services, newTenantOwnerStub().capability()))
 	require.NoError(t, module.Provide[guid.Source](services, newOrganizationTestIDs(9000)))
 	require.NoError(t, module.Provide[audit.Appender](services, h.appender))
 	require.NoError(t, services.Seal())
@@ -298,7 +300,7 @@ func newOrganizationHTTPHarness(t *testing.T) organizationHTTPHarness {
 	members := &organizationMemberChecker{prefix: h.prefix}
 	guard := &organizationAdministratorGuard{}
 	departments := h.service
-	tenants := NewTenantService(h.runtime, h.appender, newOrganizationTestIDs(1000))
+	tenants, _, _ := newTenantServiceForTest(h, newOrganizationTestIDs(1000))
 	positions := NewPositionService(h.runtime, h.appender, members, guard, newOrganizationTestIDs(300))
 	groups := NewGroupService(h.runtime, h.appender, members, guard, newOrganizationTestIDs(400))
 	credentials := &invitationCredentialFixture{}
@@ -381,7 +383,10 @@ func TestOrganizationHTTPLifecycleExercisesEveryOperation(t *testing.T) {
 	assert.Equal(t, http.StatusOK, h.api.Delete("/iam/groups/401?version=2", auth, tenant).Code)
 
 	assert.Equal(t, http.StatusOK, h.api.Get("/iam/me/tenants", auth).Code)
-	createdTenant := h.api.Post("/iam/tenants", auth, map[string]any{"slug": "new-tenant", "name": "New Tenant"})
+	createdTenant := h.api.Post("/iam/tenants", auth, map[string]any{
+		"slug": "new-tenant", "name": "New Tenant",
+		"owner_principal_id": organizationTestOwnerID.String(),
+	})
 	assert.Equal(t, http.StatusCreated, createdTenant.Code, createdTenant.Body.String())
 	assert.Equal(t, http.StatusOK, h.api.Get("/iam/tenants", auth).Code)
 	assert.Equal(t, http.StatusOK, h.api.Get("/iam/tenants/1001", auth).Code)
@@ -417,7 +422,7 @@ func TestTenantAdministrationRequiresPlatformPermission(t *testing.T) {
 	h := newOrganizationHarness(t, "sl_")
 	h.seedTenant(t, 2, TenantActive)
 	h.seedMember(t, 2, 1, "Caller")
-	service := NewTenantService(h.runtime, h.appender, newOrganizationTestIDs(1500))
+	service, _, _ := newTenantServiceForTest(h, newOrganizationTestIDs(1500))
 	registrar := authz.NewRegistrar(
 		authz.DefaultRegistry(), organizationHTTPTokenVerifier{},
 		organizationDenyPlatformChecker{}, organizationHTTPMembershipChecker{},

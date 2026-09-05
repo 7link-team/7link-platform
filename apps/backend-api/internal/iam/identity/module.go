@@ -102,6 +102,9 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[BootstrapPrincipalStore](services, m.bootstrapPrincipalStore()); err != nil {
 		return fmt.Errorf("provide identity bootstrap principal store: %w", err)
 	}
+	if err := module.Provide[TenantOwnerLookup](services, m.tenantOwnerLookup()); err != nil {
+		return fmt.Errorf("provide identity tenant owner lookup: %w", err)
+	}
 	return nil
 }
 

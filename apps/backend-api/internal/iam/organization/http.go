@@ -128,6 +128,9 @@ type createTenantInput struct {
 	Body struct {
 		Slug string `json:"slug" minLength:"3" maxLength:"63" pattern:"^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?$"`
 		Name string `json:"name" minLength:"1" maxLength:"128"`
+		// OwnerPrincipalID is required: a tenant is created together with the
+		// first principal able to administer it, or not at all.
+		OwnerPrincipalID string `json:"owner_principal_id" minLength:"1" maxLength:"128"`
 	}
 }
 
@@ -698,7 +701,13 @@ func registerTenantHTTP(api huma.API, service *TenantService, registrar *authz.R
 		Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "tenant", Verb: "create"},
 		func(ctx context.Context, in *createTenantInput) (*respx.Body[Tenant], error) {
-			item, err := service.Create(ctx, CreateTenant{Slug: in.Body.Slug, Name: in.Body.Name})
+			owner, err := parseOrganizationID(in.Body.OwnerPrincipalID)
+			if err != nil {
+				return nil, err
+			}
+			item, err := service.Create(ctx, CreateTenant{
+				Slug: in.Body.Slug, Name: in.Body.Name, OwnerPrincipalID: owner,
+			})
 			if err != nil {
 				return nil, tenantError(err)
 			}
@@ -946,6 +955,10 @@ func tenantError(err error) error {
 		return huma.Error409Conflict(organizationi18n.TenantVersionConflict)
 	case errors.Is(err, ErrInvalidTenant):
 		return huma.Error422UnprocessableEntity(organizationi18n.InvalidTenant)
+	case errors.Is(err, ErrTenantOwnerNotFound):
+		return huma.Error422UnprocessableEntity(organizationi18n.TenantOwnerNotFound)
+	case errors.Is(err, ErrTenantOwnerInactive):
+		return huma.Error422UnprocessableEntity(organizationi18n.TenantOwnerInactive)
 	default:
 		return huma.Error500InternalServerError(organizationi18n.Unavailable)
 	}

@@ -44,6 +44,8 @@ type Module struct {
 	createPrincipal identity.InvitationPrincipalCreator
 	ids             guid.Source
 	appender        audit.Appender
+	bootstrap       core.TenantBootstrapper
+	owners          identity.TenantOwnerLookup
 }
 
 // NewModule builds a runnable organization module. Shared capabilities are
@@ -99,7 +101,16 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve organization audit appender: %w", err)
 	}
+	bootstrap, err := module.Resolve[core.TenantBootstrapper](services)
+	if err != nil {
+		return fmt.Errorf("resolve organization tenant bootstrapper: %w", err)
+	}
+	owners, err := module.Resolve[identity.TenantOwnerLookup](services)
+	if err != nil {
+		return fmt.Errorf("resolve organization tenant owner lookup: %w", err)
+	}
 	m.registrar = registrar
+	m.bootstrap, m.owners = bootstrap, owners
 	m.members, m.administrators = members, administrators
 	m.credentials, m.createPrincipal = credentials, createPrincipal
 	m.ids, m.appender = ids, appender
@@ -118,7 +129,7 @@ func (m *Module) Initialize(context.Context) error {
 		return errors.New("initialize organization: runtime, authz registrar, member checker, administrator guard, invitation credentials, principal creator, id generator, and audit appender are required")
 	}
 	m.service = NewService(m.runtime, m.appender, m.ids)
-	m.tenants = NewTenantService(m.runtime, m.appender, m.ids)
+	m.tenants = NewTenantService(m.runtime, m.appender, m.ids, m.bootstrap, m.owners)
 	m.positions = NewPositionService(m.runtime, m.appender, m.members, m.administrators, m.ids)
 	m.groups = NewGroupService(m.runtime, m.appender, m.members, m.administrators, m.ids)
 	m.invitations = NewInvitationService(m.runtime, m.appender, m.ids, m.credentials, m.createPrincipal)
