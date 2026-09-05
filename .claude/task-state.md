@@ -16,8 +16,8 @@ IAM Phase 10 后端推进。10.1、10.2、10.6、§2.5.2 均已推送。当前�
 IN PROGRESS（10.9 第 ① 步与验证码均已推送；10.3、10.4 等 @gankcode 拍板）
 
 ## Current Step
-10.9 ② 已完成并 `make ci` 绿，待提交推送。
-之后是 10.9 ③：`iam rewrap-secrets` + 「还有多少行挂在旧密钥上」报告。
+10.9 ③ 已完成并推送。
+下一步：先给 @ClaudeWEB 补上 `7link-api openapi --out` （他的 CI 卡在这一条），然后 10.9 ④。
 
 ## Overall Progress
 - [x] Phase 10.2（提交 24f2483）
@@ -30,7 +30,7 @@ IN PROGRESS（10.9 第 ① 步与验证码均已推送；10.3、10.4 等 @gankco
 - [x] Phase 10.6 OAuth 同意自助列出与撤销（提交 0b96fb9）
 - [x] 10.9 ① 密钥环原语 `pkg/extension/keyringx`（提交 51ac8f4）
 - [x] 10.9 ② federation / provisioning / authn 接入密钥环 + `previous_*_keys` 配置
-- [ ] 10.9 ③ `iam rewrap-secrets` + 「还有多少行挂在旧密钥上」报告
+- [x] 10.9 ③ `iam rewrap-secrets` + 「还有多少行挂在旧密钥上」报告
 - [ ] 10.9 ④ authn 签名密钥环：JWKS 同时发布 active + previous，签用 active，验收任一把
 - [ ] 10.9 ⑤ federation replay registry 换成跨副本共享状态
 - [x] 注册验证码可配置（频道 task #5）
@@ -93,6 +93,31 @@ authn（mfa 加密 + 四个 HMAC 用途）全部改成走 `keyringx`，
 - **keyringx 的报错不再提 domain**：`"federation:key:"` 是派生标签，不是任何一个配置项的名字，
   最底层只说哪里不对（`active key must decode to 32 bytes`），由调用方补上是哪一项。
 
+## 本轮交付其四：10.9 ③ `iam rewrap-secrets`
+一条命令回答运维在轮换密钥时唯一关心的问题：旧密钥现在可以拿掉了吗。
+
+- **七个密文列全覆盖**：authn 四（totp_secret / mfa_enrollments.secret_ciphertext /
+  passkeys.credential_ciphertext / notification_outbox.payload_ciphertext）、
+  federation 两（client_secret_ciphertext / saml_idp_keys.key_ciphertext）、
+  provisioning 一（scim_targets.bearer_token_ciphertext）。
+  每一列都得单独报名：一个静静没跑的列和一个真的没东西可换的列，在输出里长得一模一样。
+- **`--dry-run` 是标志位而不是另一条命令**：两种跑法必须是同一条代码路径，
+  否则预演的结果就不能当作真跑会发生什么的依据。报告首行始终写 `mode:`，
+  免得一份预演输出贴进工单后被当成「已经换完了」的证据。
+- **摆不平的那一类单独报**：恢复码 / 找回密码 token / 邮箱验证 token 存的是摘要不是密文，
+  重封没用，只能等过期或让人重新生成。**恢复码永不过期**，
+  所以 `clear_after` 在这种情况下写 `never` 而不是一个日期——
+  一个看起来像「等到这天就能删密钥」的日期，比没有日期危险得多。
+- **三个模块一个事务**：任何一处失败，所有行原样不动，不会出现跨模块半转。
+  另取跨进程锁：两个进程同时跑不会弄坏数据（写入按读到的密文匹配），
+  但会得出两份互相少算的报告，而这个决定只能有一份依据。
+- **三个 `SecretRewrapper` 而不是一个共享接口**：`module.Services` 按类型为键，
+  同名会让最后注册的那个静静覆盖前面的，报告少了一个模块也不会说一声。
+  三个新接口已登记进 `internal/iam/core` 的三份冻结清单。
+- **顺手修掉一个真实缺陷**：`countDerived` 用 `SELECT MAX(expires_at)` 统计到期时间，
+  聚合表达式没有列类型，SQLite 按文本返回，扫描直接失败；PostgreSQL 上完全正常。
+  改成取最晚一行而不是聚合值。这个报告偏偏只在轮换密钥的当口才会被跑到。
+
 ## Important Decisions
 - 跨模块只走窄事务能力（`func(ctx, *gorm.DB, ...)`，Provide 阶段发布、Inject 阶段解析）。
 - 修复命令是 create-only：只要租户已有任何 member 或 role 就拒绝，绝不改动已有归属。
@@ -134,15 +159,19 @@ authn（mfa 加密 + 四个 HMAC 用途）全部改成走 `keyringx`，
 
 ## Verification
 Build: PASS  Tests: PASS  Lint: PASS  Integration: PASS
+10.9 ③：`make ci` exit 0，总体 90.1%，authn 90.1 / federation 91.2 / provisioning 90.8 /
+keyringx 94.6 / core 90.1。（首轮 fmt-check 报 CRLF，lint 报 misspell `enrol`，
+`internal/iam/core` 三份冻结接口清单需同步登记新增的三个 `SecretRewrapper`，均已处理。）
 10.9 ②：`make ci` exit 0，总体 90.2%，authn 90.2 / federation 91.4 / provisioning 91.0 / secretx 96.1。
 （首轮 lint 报 misspell 与两个轮换后不再使用的 `*CipherVersion` 常量，已改。）
 10.9 ①：`make ci` exit 0，`pkg/extension/keyringx` 95.2%（门槛 90.0）。
 验证码：`make ci` exit 0，`internal/iam/authn` 90.2%，总体 90.1%（首轮 lint 报 `real` 遮蔽内建标识符，已改名为 `solved`）。
 
 ## Last Checkpoint
-2026-09-05 · 10.9 ② 三个模块接入密钥环，`make ci` 绿。
-下一步：10.9 ③——`iam rewrap-secrets` 把仍挂在旧密钥上的行重新封一遍，
-外加一个「还剩多少行挂在旧密钥上」的报告，让「可以把旧密钥拿掉了」这句话有依据。
+2026-09-05 · 10.9 ③ `iam rewrap-secrets` 已推送，`make ci` 绿。
+下一步先插一件 @ClaudeWEB 卡住的小事：`7link-api openapi --out <path>` 离线导出 OpenAPI 文档，
+让前端 CI 能重算 spec（目前 spec 只有跑起来的服务在 `/openapi.json` 上供，仓库里没有落地文件）。
+之后是 10.9 ④——authn 签名密钥环。
 @gankcode 问到能否整体换成 go-captcha：已答——它本来就在用（滑块/点选），
 但 v2 只有 click/slide/rotate，没有打字那一种，全换等于去掉唯一键盘可完成的验证码；
 可选项是加 `rotate` 作第四种。等回话。

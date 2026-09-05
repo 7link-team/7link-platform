@@ -67,6 +67,9 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[BootstrapCredentialStore](services, m.bootstrapCredentialStore()); err != nil {
 		return fmt.Errorf("provide authn bootstrap credential store: %w", err)
 	}
+	if err := module.Provide[SecretRewrapper](services, m); err != nil {
+		return fmt.Errorf("provide authn secret rewrapper: %w", err)
+	}
 	return nil
 }
 

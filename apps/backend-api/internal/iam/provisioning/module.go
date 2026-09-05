@@ -49,6 +49,16 @@ func (*Module) ModuleDependencies() []string {
 	return []string{platformi18n.Name, guid.Name, audit.Name, identity.Name, organization.Name}
 }
 
+// ProvideServices publishes the module itself, so the capability resolves the
+// service at call time. The service only exists after Initialize, and the
+// provider phase runs before that.
+func (m *Module) ProvideServices(services *module.Services) error {
+	if err := module.Provide[SecretRewrapper](services, m); err != nil {
+		return fmt.Errorf("provide provisioning secret rewrapper: %w", err)
+	}
+	return nil
+}
+
 func (m *Module) InjectServices(services *module.Services) error {
 	registrar, err := module.Resolve[*authz.Registrar](services)
 	if err != nil {
@@ -203,6 +213,7 @@ var (
 	_ module.Module          = (*Module)(nil)
 	_ module.Enabler         = (*Module)(nil)
 	_ module.Depender        = (*Module)(nil)
+	_ module.ServiceProvider = (*Module)(nil)
 	_ module.ServiceInjector = (*Module)(nil)
 	_ module.Initializer     = (*Module)(nil)
 	_ module.Starter         = (*Module)(nil)

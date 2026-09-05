@@ -16,8 +16,10 @@ import (
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/authn"
 	"7link.com/platform/internal/iam/core"
+	"7link.com/platform/internal/iam/federation"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/organization"
+	"7link.com/platform/internal/iam/provisioning"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authz"
 	"github.com/stretchr/testify/assert"
@@ -47,9 +49,16 @@ func TestFrozenIAMCapabilitiesHaveCanonicalOwners(t *testing.T) {
 		{"identity.IdentityProvisioner", reflect.TypeFor[identity.IdentityProvisioner](), "7link.com/platform/internal/iam/identity"},
 		{"organization.GroupProvisioner", reflect.TypeFor[organization.GroupProvisioner](), "7link.com/platform/internal/iam/organization"},
 		{"authn.WebService", reflect.TypeFor[authn.WebService](), "7link.com/platform/internal/iam/authn"},
+		// Three separate rewrap keys rather than one shared interface: the
+		// registry is keyed by type, so a single name would let whichever module
+		// registered last silently replace the others, and the rotation report
+		// would come back missing a module without saying anything was missing.
+		{"authn.SecretRewrapper", reflect.TypeFor[authn.SecretRewrapper](), "7link.com/platform/internal/iam/authn"},
+		{"federation.SecretRewrapper", reflect.TypeFor[federation.SecretRewrapper](), "7link.com/platform/internal/iam/federation"},
+		{"provisioning.SecretRewrapper", reflect.TypeFor[provisioning.SecretRewrapper](), "7link.com/platform/internal/iam/provisioning"},
 	}
 
-	require.Len(t, capabilities, 13)
+	require.Len(t, capabilities, 16)
 	seen := make(map[reflect.Type]struct{}, len(capabilities))
 	for _, capability := range capabilities {
 		require.NotNil(t, capability.typ)
@@ -78,12 +87,15 @@ func TestIAMRootExportedInterfacesMatchFrozenSet(t *testing.T) {
 	sort.Strings(actual)
 	expected := []string{
 		"authn.InvitationCredentials",
+		"authn.SecretRewrapper",
 		"authn.WebService",
 		"core.ActiveMemberChecker",
 		"core.AdministratorGuard",
 		"core.AuthorizationEvaluator",
+		"federation.SecretRewrapper",
 		"identity.IdentityProvisioner",
 		"organization.GroupProvisioner",
+		"provisioning.SecretRewrapper",
 	}
 	assert.Equal(t, expected, actual)
 }
@@ -94,6 +106,9 @@ func TestIAMCapabilitiesAreDeclaredByTheirProviderRoots(t *testing.T) {
 	expected := map[string]string{
 		"audit.Appender":                      "func",
 		"authn.InvitationCredentials":         "interface",
+		"authn.SecretRewrapper":               "interface",
+		"federation.SecretRewrapper":          "interface",
+		"provisioning.SecretRewrapper":        "interface",
 		"authn.WebService":                    "interface",
 		"core.ActiveMemberChecker":            "interface",
 		"core.AdministratorGuard":             "interface",

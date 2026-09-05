@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"time"
 
 	"7link.com/platform/internal/app"
 	"7link.com/platform/pkg/config"
@@ -37,6 +38,7 @@ type iamConfig struct {
 	app.AppConfig            `mapstructure:",squash"`
 	app.PlatformAdminRequest `mapstructure:",squash"`
 	app.TenantRepairRequest  `mapstructure:",squash"`
+	app.RewrapSecretsRequest `mapstructure:",squash"`
 }
 
 var (
@@ -109,11 +111,36 @@ var (
 		Args: cobra.NoArgs,
 		RunE: runRepairTenantOwner,
 	}
+
+	// rewrapSecretsCmd finishes a key rotation. Adding a replacement key and
+	// leaving the old one listed is safe but unfinished: every stored secret
+	// still opens, and nobody can say which rows would break if the old key came
+	// out. This command converts those rows, and reports on the ones it cannot
+	// convert, so that taking the key out is a decision with evidence behind it.
+	rewrapSecretsCmd = &cobra.Command{
+		Use:   "rewrap-secrets",
+		Short: "Reseal stored secrets under the active key and report what still needs a retired one",
+		Long: "Reseal stored secrets under the active key.\n\n" +
+			"Every value a retired key sealed is opened and sealed again under the key\n" +
+			"the deployment seals with now. Each write matches the ciphertext it read,\n" +
+			"so a secret somebody changes while the command runs is left alone rather\n" +
+			"than overwritten, and counted as skipped.\n\n" +
+			"Use --dry-run first. It reports the same counts and writes nothing.\n\n" +
+			"The report also names the stores no rewrap can convert. Recovery codes,\n" +
+			"recovery links and verification links are one-way digests of secrets this\n" +
+			"deployment does not keep, so they can only be waited out or reissued. The\n" +
+			"retired key stays load-bearing while any of them is still live, which is\n" +
+			"why a run that reseals everything can still answer no.",
+		Args: cobra.NoArgs,
+		RunE: runRewrapSecrets,
+	}
 )
 
 func init() {
 	rootCmd.AddCommand(iamCmd)
-	iamCmd.AddCommand(bootstrapPlatformAdminCmd, resetAdminPasswordCmd, repairTenantOwnerCmd)
+	iamCmd.AddCommand(
+		bootstrapPlatformAdminCmd, resetAdminPasswordCmd, repairTenantOwnerCmd, rewrapSecretsCmd,
+	)
 	platformAdminConfigurator.UseFlags(iamCmd.PersistentFlags())
 	platformAdminConfigurator.UseConfigFileArgDefault()
 	platformAdminConfigErr = platformAdminConfigurator.Bind(&platformAdminConfig, os.Args[1:]...)
@@ -196,6 +223,25 @@ func runRepairTenantOwner(command *cobra.Command, _ []string) error {
 	return nil
 }
 
+func runRewrapSecrets(command *cobra.Command, _ []string) error {
+	if platformAdminConfigErr != nil {
+		return platformAdminConfigErr
+	}
+	if err := platformAdminConfigurator.Load(&platformAdminConfig); err != nil {
+		return err
+	}
+	applyBuildVersion(&platformAdminConfig.AppConfig)
+	report, err := (&app.App{}).RunSecretRewrap(command.Context(), app.RewrapSecretsConfig{
+		AppConfig:            platformAdminConfig.AppConfig,
+		RewrapSecretsRequest: platformAdminConfig.RewrapSecretsRequest,
+	})
+	if err != nil {
+		return withExitCode(platformAdminExitCode(err), err)
+	}
+	writeSecretRewrapReport(command.OutOrStdout(), report)
+	return nil
+}
+
 // errAlreadyBootstrapped carries the already-bootstrapped status out of RunE.
 // It is not a failure; the report on standard output is the real answer.
 var errAlreadyBootstrapped = errors.New("platform administrator already bootstrapped")
@@ -216,6 +262,8 @@ func platformAdminExitCode(err error) int {
 		return exitNotBootstrapped
 	case errors.Is(err, app.ErrTenantRepairConflict):
 		return exitConflict
+	case errors.Is(err, app.ErrSecretRewrapUnavailable):
+		return exitTransient
 	default:
 		return exitFailure
 	}
@@ -236,6 +284,62 @@ func writeTenantRepairReport(output io.Writer, report app.TenantRepairReport) {
 			"administrator_role_id: %d\npermission_count: %d\nmenu_count: %d\n",
 		report.Outcome, report.TenantID, report.TenantSlug, report.OwnerPrincipalID, report.OwnerLogin,
 		report.AdministratorRoleID, report.PermissionCount, report.MenuCount)
+}
+
+// writeSecretRewrapReport separates the three things an operator conflates at
+// their peril: what this run converted, what still depends on a retired key,
+// and whether waiting will ever clear the remainder.
+func writeSecretRewrapReport(output io.Writer, report app.SecretRewrapReport) {
+	mode := "rewrap"
+	if report.DryRun {
+		// Naming the mode in the report keeps a survey pasted into a ticket from
+		// later being read as proof that a rewrap ran.
+		mode = "survey"
+	}
+	_, _ = fmt.Fprintf(output,
+		"mode: %s\nrewrapped: %d\npending: %d\nunreadable: %d\noutstanding: %d\n"+
+			"retired_keys_still_needed: %t\n",
+		mode, report.Rewrapped, report.Pending, report.Unreadable, report.Outstanding,
+		report.RetiredKeysStillNeeded)
+	writeSecretRewrapClearAfter(output, report)
+	for _, moduleReport := range report.Modules {
+		for _, sealed := range moduleReport.Sealed {
+			_, _ = fmt.Fprintf(output,
+				"sealed: %s %s total=%d current=%d retired=%d legacy=%d unreadable=%d"+
+					" rewrapped=%d skipped=%d\n",
+				moduleReport.Module, sealed.Store, sealed.Total, sealed.Current, sealed.Retired,
+				sealed.Legacy, sealed.Unreadable, sealed.Rewrapped, sealed.Skipped)
+		}
+		for _, derived := range moduleReport.Derived {
+			_, _ = fmt.Fprintf(output, "derived: %s %s outstanding=%d expires=%s reissue=%s\n",
+				moduleReport.Module, derived.Store, derived.Outstanding,
+				derivedExpiry(derived.Until), derived.Reissue)
+		}
+	}
+}
+
+// writeSecretRewrapClearAfter prints a date only when one exists. Nothing at
+// all is better than a placeholder: an operator reading "clear_after: unknown"
+// hears a scheduling problem, when the finding is that no schedule applies.
+func writeSecretRewrapClearAfter(output io.Writer, report app.SecretRewrapReport) {
+	switch {
+	case report.Outstanding == 0:
+		return
+	case report.ClearAfter.IsZero():
+		_, _ = fmt.Fprintln(output,
+			"clear_after: never (a derived store below has no expiry; it has to be reissued)")
+	default:
+		_, _ = fmt.Fprintf(output, "clear_after: %s\n", report.ClearAfter.Format(time.RFC3339))
+	}
+}
+
+// derivedExpiry names the absence of an expiry rather than leaving the field
+// blank, because a blank reads as "not computed" when it means "not ever".
+func derivedExpiry(until time.Time) string {
+	if until.IsZero() {
+		return "never"
+	}
+	return until.Format(time.RFC3339)
 }
 
 // readBootstrapPassword takes the password from a file or standard input. Both

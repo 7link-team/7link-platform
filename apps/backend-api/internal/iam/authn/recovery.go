@@ -39,6 +39,12 @@ type notificationPayload struct {
 	ExpiresAt       time.Time `json:"expires_at,omitempty"`
 }
 
+// notificationCipher labels the sealed outbox payload. It is a constant rather
+// than a literal at each call site because a rewrap has to name the same label
+// to open what this path sealed, and a typo there would report every queued
+// notification as unreadable instead of failing.
+const notificationCipher = "notification:v1"
+
 func (s *Service) configureNotification() error {
 	if !s.NotificationEnabled() {
 		return nil
@@ -302,7 +308,7 @@ func (s *Service) enqueueNotification(
 	if err != nil {
 		return fmt.Errorf("encode notification: %w", err)
 	}
-	ciphertext, err := s.encryptAuthnData("notification:v1", id.String(), encoded)
+	ciphertext, err := s.encryptAuthnData(notificationCipher, id.String(), encoded)
 	if err != nil {
 		return err
 	}
@@ -400,7 +406,7 @@ func (s *Service) deliverNotification(ctx context.Context, id guid.ID) error {
 	if err != nil || !claimed {
 		return err
 	}
-	payload, err := s.decryptAuthnData("notification:v1", row.ID.String(), row.PayloadCiphertext)
+	payload, err := s.decryptAuthnData(notificationCipher, row.ID.String(), row.PayloadCiphertext)
 	if err == nil {
 		err = s.postNotification(ctx, row.ID, payload)
 	}

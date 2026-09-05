@@ -37,8 +37,14 @@ var (
 	)
 )
 
+// mfaSecretCipher labels the sealed authenticator secret. It is a constant
+// rather than a literal at each call site because a rewrap has to name the same
+// label to open what this path sealed, and a typo there would report every
+// stored secret as unreadable instead of failing.
+const mfaSecretCipher = "v1"
+
 func (s *Service) encryptMFASecret(principalID guid.ID, secret string) (string, error) {
-	return s.encryptAuthnData("v1", principalID.String(), []byte(secret))
+	return s.encryptAuthnData(mfaSecretCipher, principalID.String(), []byte(secret))
 }
 
 func (s *Service) encryptAuthnData(purpose, associatedData string, plain []byte) (string, error) {
@@ -50,7 +56,7 @@ func (s *Service) encryptAuthnData(purpose, associatedData string, plain []byte)
 }
 
 func (s *Service) decryptMFASecret(principalID guid.ID, encoded string) (string, error) {
-	plain, err := s.decryptAuthnData("v1", principalID.String(), encoded)
+	plain, err := s.decryptAuthnData(mfaSecretCipher, principalID.String(), encoded)
 	return string(plain), err
 }
 
