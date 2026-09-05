@@ -28,6 +28,11 @@ let sequence = 0
 const pending = new Map()
 const requestByID = new Map()
 const responses = []
+// The run signs in and out four times, and a page that is still mounted keeps
+// fetching across the gap. A protected endpoint answering 401 with no session is
+// correct, so the run records when it is signed out rather than naming the few
+// URLs that happened to lose the race on the day this was written.
+let signedOut = true
 const failures = []
 const consoleErrors = []
 
@@ -52,6 +57,7 @@ socket.addEventListener("message", (event) => {
       method: request?.method ?? "GET",
       url: message.params.response.url,
       status: message.params.response.status,
+      signedOut,
     })
   }
   if (message.method === "Network.loadingFailed") {
@@ -177,9 +183,11 @@ async function login(loginName, loginPassword) {
   await setControl("#password", loginPassword)
   await submit("form")
   await waitFor(`location.pathname === "/"`, 20000)
+  signedOut = false
 }
 
 async function logout() {
+  signedOut = true
   const status = await evaluate(`
     const response = await fetch("/api/authn/sessions/current", { method: "DELETE", credentials: "include" });
     return response.status;
@@ -352,10 +360,7 @@ for (const expected of ["GET", "POST"])
 const unexpectedResponses = responses.filter(
   (response) =>
     response.status >= 400 &&
-    !(
-      response.status === 401 &&
-      response.url.endsWith("/api/authn/sessions/current")
-    ) &&
+    !(response.status === 401 && response.signedOut) &&
     !(
       response.status === 403 &&
       response.url.includes("/api/iam/tenants?include_deleted=false")

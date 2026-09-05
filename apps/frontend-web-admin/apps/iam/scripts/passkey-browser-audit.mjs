@@ -187,8 +187,10 @@ await waitFor(`document.body.textContent.includes("Chrome platform key")`)
 
 // A modal marks the rest of the page inert, so clicking the rename button while
 // the register dialog is still on its way out does nothing at all and the wait
-// below ends up blaming the rename dialog for never opening.
-await waitFor(`!document.querySelector('#passkey-register-form')`, 20000)
+// below ends up blaming the rename dialog for never opening. The form element is
+// removed a beat before the inert attribute is dropped, so waiting for the form
+// to go leaves that gap wide open; wait for the page to take clicks again.
+await waitFor(`!document.querySelector("[inert]")`, 20000)
 // The list also re-renders after the key is added, so the button can still be
 // missing here. Optional chaining would swallow that just as quietly.
 await waitFor(`document.querySelector('button[aria-label^="重命名通行密钥"]')`)
