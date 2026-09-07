@@ -40,6 +40,15 @@ func TestIAMCoreMigrationsAcrossEngines(t *testing.T) {
 			for _, prefix := range []string{"", deploymentPrefix} {
 				t.Run(prefixTestName(prefix), func(t *testing.T) {
 					db := engine.open(t)
+					// Rolling core below principal-erasure (v13) runs a guard that probes
+					// identity's tombstone trigger, so identity's lifecycle milestone must be
+					// present -- the dependency core.MigrationMilestones already declares.
+					// MigrateDownTo is the low-level primitive and does not enforce that
+					// graph; only app.ExecuteModuleMigrations does, so compose it here.
+					identitySource := (&identity.Module{}).MigrationSource()
+					identitySource.Prefix = prefix
+					require.NoError(t, goosex.Migrate(t.Context(), db, identitySource, engine.dialect))
+
 					source := (&iamcore.Module{}).MigrationSource()
 					source.Prefix = prefix
 					require.NoError(t, goosex.Migrate(t.Context(), db, source, engine.dialect))

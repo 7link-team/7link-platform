@@ -80,7 +80,7 @@ func assertIAMDatabaseTableOwnership(t *testing.T, db *sql.DB, dialect, prefix s
 			expected = append(expected, prefix+table)
 		}
 	}
-	require.Len(t, owners, 67)
+	require.Len(t, owners, 68)
 	sort.Strings(expected)
 	assert.Equal(t, expected, readIAMDatabaseTables(t, db, dialect))
 }

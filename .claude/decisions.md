@@ -755,3 +755,149 @@ localStorage）→ 部署配置的 `VITE_DEFAULT_TENANT` → 空。登录成功�
 **Status**
 已决定并执行（2026-09-05）。依据用户当日指示「按标准的、通用的、大家共识的做法」自行
 判定，未逐条等确认；已在 #sevenlink-platform-win 说明，用户可否决。
+
+## D22 — 本轮交付范围锁定为 P0 + 门禁转绿，分四批推进
+
+**Decision**
+以 `apps/backend-api/docs/iam-production-readiness-audit-2026-09-07.md` 为权威清单，本轮
+只关 P0-1..P0-5 并让发布门禁转绿，**不含 P1/P2**。执行分四批，批内并行、批间由主 agent
+集成并跑门禁：批 0 修红线基线（gofmt、tests 子模块 lint、integration migration）；
+批 1 关 P0 安全与生命周期（SSRF policy、SCIM 删除责任链、lifecycle API→OpenAPI→前端类型
+→UI、七 owner 填充数据与并发验收）；批 2 补覆盖率行为测试；批 3 串行跑全量门禁、冻结
+195 个迁移的 schema.lock、真实 MySQL/race/generate、UAT 环境与恢复演练。
+
+**Reason**
+当前门禁基线为红（gofmt、覆盖率 89.9%、integration 六种引擎组合全失败并 10 分钟超时）。
+在红基线上累积 12-20 工程日的改动再统一验证，失败原因会互相纠缠，定位成本超过并行收益。
+且存在硬顺序依赖：lifecycle API → OpenAPI 重新生成 → 前端类型 → UI → 浏览器验收；
+所有迁移定稿 → 三引擎 upgrade/down/up 与真实 MySQL 通过 → 才能冻结 schema.lock，
+冻早需重冻。`docs/openapi.json`、前端生成类型、`schema.lock`、`internal/iam/*/sql/`、
+`tests/migration/*` 是多任务共同写入点，无序并行的合并成本高于串行。
+
+**Alternatives Considered**
+1. 一次性全部并行、最后统一测试（用户初始设想）—— 因上述共同写入点冲突与红基线纠缠而否决，
+   已向用户说明并获认可。
+2. 全部主 agent 串行 —— 最稳但最慢，未采用。
+3. 范围扩到 P0+P1（20-30 工程日）或 P0+P1+P2 —— 用户明确选择 P0-only。
+
+**Tradeoffs**
+P1 的分布式登录限流、captcha 高可用、OIDC `prompt=none`/`azp` 协议合规、最小权限 UX、
+移动端与 a11y **本轮不修**，属已知缺口。其中 OIDC 协议合规若对外声称标准 OIDC Provider
+则须在 conformance 前补上；登录限流缺失意味着上线前必须由 ingress/网关承担，否则存在
+用户名喷洒与恶意锁定风险。这两条须在交付说明中显式列为遗留项，不得默认已解决。
+
+**Scope**
+全 IAM 分支。审计报告为权威清单，`task-state.md` 记录批次进度。
+
+**Status**
+已决定（2026-09-07，用户确认）。批 0 进行中。
+
+## D23 — SCIM target 删除默认 fail closed，另提供显式 deprovision 操作
+
+**Decision**
+target 存在 live remote mapping 时**禁止删除**（fail closed）；同时提供一个显式的
+「删除并 deprovision」操作：持久化 deprovision 任务，在远端账号删除成功、或形成受治理的
+例外记录之前，不销毁 bearer 凭据、mapping 与审计证据。两条路径都不得让 principal 擦除的
+远端映射前置检查被静默绕过。
+
+**Reason**
+现状是硬删 target、数据库级联删除 mapping，而 `internal/iam/provisioning/lifecycle.go:26`
+的擦除前置检查只看仍存在的 live mapping。删掉 target 后 bearer token 与 remote ID 一起消失，
+远端账号和 PII 仍然存在，本地匿名化却会放行——这是一条可绕过的擦除责任链，属 P0。
+只做禁止删除能立刻堵住绕过但把清理负担全部推给操作员；只做 deprovision job 则在任务失败、
+远端不可达时仍需要一个 fail-closed 兜底。两者互补，缺一都留口子。
+
+**Alternatives Considered**
+1. 仅「有 live mapping 即禁止删除」—— 改动最小（1 天内），但大目录逐个手工 deprovision
+   不可运营。
+2. 仅「持久化 deprovision job」（3-5 天）—— 任务失败/远端不可达时若无 fail-closed 兜底，
+   绕过口子仍在。
+3. 保持现状并仅在 UI 提示「远端资源不会被删除」—— 提示不构成技术强制，已否决。
+
+**Tradeoffs**
+成本约等于方案 2 加半天。deprovision job 需要任务持久化、重试与例外治理面，是本轮新增的
+运维语义；例外记录必须可审计，否则等于把绕过合法化。
+
+**Scope**
+`internal/iam/provisioning/`（target.go、service.go、repository.go、lifecycle.go、
+sql/ 迁移）、`apps/frontend-web-admin/apps/iam/src/app/scim-directories/targets.tsx`。
+需补 live mapping + 擦除绕过的负向测试。
+
+**Status**
+已决定（2026-09-07，用户确认）。属批 1，未开始。
+
+## D24 — 允许引入 Redis 承载共享限流与 captcha，但属 P1，本轮不实施
+
+**Decision**
+用户批准为登录限流与 captcha 高可用引入 Redis。但这两项属 P1，不在 D22 锁定的本轮范围内，
+因此**本轮不实施**，决策先行记录，待 P1 迭代直接采用。
+
+**Reason**
+仓库现无 Redis、无缓存层、无限流设施。captcha 当前是进程内状态
+（`internal/iam/authn/captcha.go:19` 的 `DefaultMemStore`、`gocaptcha.go:81` 的包级 map），
+多副本下 issue 与 verify 落到不同副本会随机失败；登录失败只更新账号锁定状态，无 IP/设备/
+全局限流。共享存储是正解，用户已批准该依赖，无需再次确认。
+
+**Alternatives Considered**
+1. 照 `internal/infra/dlock` 的「数据库行 + owner token + TTL 租约」模式做 DB 支撑的共享
+   限流与 captcha one-shot store —— 零新依赖、三引擎通用，但登录路径上的高频写会打到
+   主库。用户选择了 Redis，本条作为备选保留。
+2. 记为部署前置约束（网关限流 + sticky session）—— 把正确性押在部署配置上，未采用。
+
+**Tradeoffs**
+Redis 让生产部署多一个必须高可用的有状态组件，运维成本上升；须同时定义 Redis 不可用时的
+降级语义（限流 fail open 还是 fail closed、captcha 是否阻断注册），否则会引入新的可用性
+单点。这个降级语义在实施 P1 前仍需确认。
+
+**Scope**
+`internal/iam/authn/`（captcha.go、gocaptcha.go、web.go、http.go），新增共享存储设施。
+本轮零改动。
+
+**Status**
+已批准，未实施（2026-09-07）。排入 P1 迭代。
+
+## D25 — 模块的独立回滚只在自身 milestone 依赖闭包内有定义
+
+**Decision**
+一个模块的 down 迁移**允许**引用它已声明依赖的模块所拥有的表。因此「独立回滚」的契约是：
+把模块回滚到某个 milestone 以下，要求该 milestone 声明的依赖当时在场。core 回滚到
+`principal-erasure`(v13) 以下需要 identity 的 `lifecycle`(v4) 在场，这正是
+`internal/iam/core/migrate.go:25` 已经声明的内容。生产回滚走
+`app.ExecuteModuleMigrations` 的协调 reverse-DAG 路径，本就遵守该图。
+`tests/migration` 中直接调用 `goosex.MigrateDownTo` 的 fixture 必须按依赖闭包组合模块，
+不得只迁移单个模块的 source 就跨过带依赖的 milestone 回滚。
+
+**Reason**
+`core/sql/*/00013_principal_erasure_guards.sql` 的 down 段首句
+`UPDATE iam_principal_lifecycles SET version = version WHERE anonymized_at IS NOT NULL`
+不是笔误，是**探针**：identity 的 `trg_iam_lifecycle_tombstone_update` 在
+`OLD.anonymized_at IS NOT NULL` 时 RAISE(ABORT)，于是只要存在任何已提交的不可逆匿名化，
+这条 no-op 更新就会中止回滚；没有则匹配零行放行。它实现的是「擦除已发生后不允许再摘掉
+保护」这一安全属性，属 P0 关注范围。identity 自己的 `00004_tombstone_guards.sql:41` down
+段用的是完全相同的写法，是项目既有约定而非孤例。
+
+`TestIAMCoreMigrationsAcrossEngines` 在六种 engine×prefix 组合下全部失败，根因是
+`tests/migration/iam_core_test.go:43` 只取 `(&iamcore.Module{}).MigrationSource()` 单模块
+迁移，随后 `verifyCoreFieldPolicyContracts` 调 `MigrateDownTo(..., 11)` 跨过 v13，
+此时 `iam_principal_lifecycles` 从未被建出。这是 fixture 与已声明依赖不一致，不是实现缺陷。
+
+**Alternatives Considered**
+1. 让 core 的 down 守卫容忍 lifecycles 表缺失（条件化/忽略错误）—— 会把一个 P0 安全守卫
+   改成在表不存在时静默放行，等于用削弱实现去迁就测试，CLAUDE.md §10 明确禁止。
+2. 禁止任何跨模块 down 引用，把守卫改到 identity 单侧 —— identity 无法知道 core 何时摘掉
+   自己的触发器，保护会出现时间窗；且要推翻 `migrate.go` 里已声明并被协调路径使用的依赖图。
+3. 保持 fixture 单模块、仅回滚到 v13 而不到 v11 —— 会丢掉 field policy 表 drop/recreate
+   的既有断言覆盖。
+
+**Tradeoffs**
+测试 fixture 变重：涉及 v13 以下回滚的用例必须先迁 identity。代价是每个组合多迁一个模块的
+迁移，换取安全守卫不被削弱。另需明确：`goosex.MigrateDownTo` 是低层原语，不做依赖检查；
+依赖检查在 `app.ExecuteModuleMigrations`。这个分层差异须在 fixture 注释中写清，否则下一个
+人会重犯同样的错。
+
+**Scope**
+`tests/migration/iam_core_test.go`。`internal/iam/core/sql/` 与
+`internal/iam/identity/sql/` **不改**。
+
+**Status**
+已决定（2026-09-07）。属批 0，待子 agent 的超时排查返回后与其它 fixture 修复一并落地。

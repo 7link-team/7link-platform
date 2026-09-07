@@ -319,7 +319,7 @@ func (s *Service) enqueueNotification(
 	now := s.now().UTC()
 	row := model.NotificationOutbox{
 		PrincipalID: &principalID,
-		ID: id, Kind: payload.Type, Recipient: payload.Recipient, PayloadCiphertext: ciphertext,
+		ID:          id, Kind: payload.Type, Recipient: payload.Recipient, PayloadCiphertext: ciphertext,
 		Status: "pending", AvailableAt: now, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := repository.enqueueNotification(ctx, &row); err != nil {

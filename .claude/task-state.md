@@ -1,5 +1,110 @@
 # Task State
 
+## Current Delivery Run (2026-09-07)
+
+## Current Phase          IMPLEMENTATION
+## Current Step           批 0 — 修复红线基线（gofmt/tests lint 已绿，migration fixture 待落地）
+
+**范围锁定**：只关审计的 P0-1..P0-5 + 门禁转绿，不含 P1/P2。见 D22。
+权威清单是 `apps/backend-api/docs/iam-production-readiness-audit-2026-09-07.md`。
+
+### 批次计划（D22）
+- 批 0：gofmt、tests 子模块 lint、integration migration 四处失败。
+- 批 1：SSRF 出站 policy；SCIM 删除责任链（D23）；lifecycle API→OpenAPI→前端类型→UI；
+  七 owner 填充数据与并发验收。
+- 批 2：覆盖率行为测试补齐。
+- 批 3（串行）：全量门禁、冻结 195 迁移的 schema.lock、真实 MySQL/race/generate、
+  UAT 环境、备份恢复与 rollback 演练。
+
+### 批 0 进度
+- [x] `internal/iam/authn/recovery.go` gofmt 对齐。`gofmt -l ./cmd ./internal ./pkg ./tests` 空。
+- [x] tests 子模块 lint 3 项：`testdb.go:101` 未检查 `engine.Close()`（改 `require.NoError`）、
+      `testdb.go:178` 未检查类型断言（改 comma-ok + `require.True`）、
+      `iam_core_model_test.go:23` 未使用的 `databaseColumn`（确认为真死代码后删除——
+      同样的 name+nullable 信息由 `map[string]bool` 承载，`assert.Equal` 已同时比较列名集合
+      与可空性，无断言丢失）。`cd tests && golangci-lint run ./...` 退出 0。
+- [ ] migration fixture 三处过期断言：`iam_federation_test.go:107` 应为 `principal-erasure`
+      （federation 顶点是 v5 不是 replay v4）；`milestone_test.go:42/43` 应为
+      `lifecycle`/`principal-erasure`。已核实是擦除迁移合法新增后 fixture 未跟上，非回归。
+- [ ] `milestone_test.go:67` 回滚错误文本断言：**不得**照实现输出反填，需先确认正确期望。
+- [ ] `iam_core_test.go` 按 D25 组合 identity+core 依赖闭包。
+- [x] migration fixture 三处过期断言已改（federation→`principal-erasure`、identity→`lifecycle`、
+      authn→`principal-erasure`）。
+- [x] `milestone_test.go` 回滚错误文本：按 `sortMilestoneKeys`/`formatMilestoneKeys` 推出正确
+      格式（单数→复数、并列两个 identity milestone），并**新增** `"authn.principal-erasure"`
+      断言——加强而非反填。
+- [x] `iam_core_test.go` 按 D25 先迁 identity（74 行降到 11、190 行降到 10 都跨 v13）。
+- [x] **真实缺陷**：`internal/app/migration_iam_status_integration_test.go:180`
+      `iamMigrationReverseOrder()` 把 identity 排在 core 之前，而 core 的
+      `principal-erasure`(v13) 依赖 `identity.lifecycle`，守卫正确拒绝孤儿依赖。
+      该函数仅测试使用（定义 180、调用 57），**生产路径无此缺陷**。
+      按完整依赖图核对，其余顺序全部正确，仅此一处错位。
+      判定：这份硬编码顺序是**刻意的金丝雀**（独立于依赖图声明期望），改成拓扑排序会让
+      测试自证并失去保护，故更新清单而非替换机制。
+- [x] **真实缺陷**：`status_integration_test.go` 的 `require.Len(t, owners, 67)` 应为 68。
+      `c7a02b1` 加了 4 张表（field_policies / principal_lifecycles / audit_archive_jobs /
+      federation_replay_claims）却把冻结总数从 64 改成 67，少加 1。68 由 64+4 推出。
+- [x] **自身回归已修**：`testdb.go:101` 改 `require.NoError` 过严——`t.Context()` 在 cleanup
+      前已取消，`engine.Close()` 返回 `context canceled`，且 cleanup 内不应 FailNow。
+      改为容忍 `context.Canceled`、其余 `t.Errorf`，与上方 `net.ErrClosed` 处理一致。
+
+### 批 0 追加发现（审计低估）
+审计称 integration 只有 3 处过期 fixture。实际展开为 **17 处失败点**，散布在
+governance/organization/provisioning/oauth/core/module 多个文件。归为三个根因，全部源自
+`c7a02b1` 加入 `principal-erasure` 后 fixture 未跟上：
+1. 顶点 milestone 断言过期 8 处（`field_policies`/`constraints`/`consent`/`service_accounts`
+   → `principal-erasure`），逐一对照各模块 `migrate.go` 声明的顶点后修改。
+2. `governanceMigrationModules()` 缺 identity → `requires unknown milestone
+   "identity.lifecycle"`。兄弟测试 organization/provisioning 本就包含 identity，补齐一致。
+3. 回滚顺序 identity 排在 core 前，另发现一处 `verifyProvisioningRollbackGraph:235`。
+另：`migration_test.go` 的三条路径（prefixed / maximumPrefix / 未加前缀的 verifyLifecycle）
+都做全量 up 再降到 0，跨 core v13 需要 identity。为此给 `moduleMigration` 增加
+`dependencies []goosex.Source` 字段并抽出 `migrateDependencies` helper 复用。
+`iam-core` 的 `target: 12` → 13（core 最高迁移为 `00013_principal_erasure_guards`，
+`status.Target` 必为 13；语义已用 identity=4、iam-audit=3 交叉验证）。
+
+**自我纠错两处**：(a) 我新增的 `"authn.principal-erasure"` dependent 断言是错的——
+`verifyAuthnQueryIndexLifecycle` 结束时 authn 停在 v11，v13 未应用，守卫正确未列出；已撤销，
+未去改动正确的实现。(b) `require.NoError(t, engine.Close())` 在 cleanup 中过严，已改为容忍
+`context.Canceled`、其余 `t.Errorf`。
+
+**取证**：governance/organization/provisioning 那批失败，经 `git stash` 全部改动后重跑
+同一子用例仍然失败，确认为既有问题而非本轮引入。
+
+### 验证结果
+`go test ./migration -count=1` → **ok 7link.com/platform/tests/migration 230.387s，零 FAIL**。
+
+### 超时问题：已定论——当前 HEAD 不复现
+实跑 `make test-integration`（原命令、原默认超时，未加 `-timeout` 覆盖）：6 个包全部 ok，
+migration 包在多包并行下 **252.394s**，远低于 Go 默认 600s，零 timeout/panic 标记。
+主 agent 先前倾向「超时为真」的判断**是错的**。无法断言审计当时有误（可能机器负载或冷缓存
+不同），但当前代码在真实门禁命令下不触发超时。
+**遗留风险**：252s 对 600s 仅约 2.4 倍余量，负载更重的 CI 机器仍可能逼近。记入批 3
+发布流水线风险，本轮不处理。
+
+## 批 0 —— 已完成（2026-09-07）
+门禁实测：fmt-check PASS / 主模块 lint PASS / tests 子模块 lint PASS(exit 0) /
+test-integration PASS(6 包全 ok) / build PASS / openapi-check PASS(matches docs/openapi.json)。
+**覆盖率仍为 FAIL 89.9%**，按 D22 属批 2，批 0 未涉及——「门禁全绿」尚未达成。
+改动 12 个源文件（+1 决策 +1 状态），仅 1 个非测试文件（`recovery.go` 纯格式化）；
+生产行为零改动。`bin/` 为 gitignore 覆盖，工作区无多余产物。未提交。
+
+## Next Action
+批 1 涉及生产代码与架构性变更（统一出站 transport、SCIM deprovision 任务持久化、
+platform-only lifecycle API/UI），按 CLAUDE.md §3 须先出设计并获确认，再动手。
+
+## Verification
+Build: NOT_RUN（本轮改动后）/ 主模块 lint: NOT_RUN / tests lint: PASS /
+gofmt: PASS / integration: FAIL（migration 包，待修）/ 覆盖率: FAIL 89.9%
+
+## Next Action
+等子 agent 的超时排查结论返回（其间不得改 `tests/migration/*`，会打断它的编译）。
+返回后按序落地：三处过期 milestone 断言 → 确认回滚错误文本的正确期望 → 按 D25 改
+`iam_core_test.go` → 重跑 `make test-integration` → 全绿后进批 1。
+
+## Last Checkpoint        2026-09-07 批 0 lint/format 已绿，migration 待修
+
+
 ## Deep Audit Checkpoint (2026-09-07)
 
 Current branch remains **NOT READY** for production. The authoritative audit is

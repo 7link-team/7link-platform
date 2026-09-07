@@ -45,6 +45,10 @@ type moduleMigration struct {
 	target  int64
 	seedSQL string
 	source  goosex.Source
+	// Sources this module's own down migrations read from. Rolling core below
+	// principal-erasure probes identity's tombstone trigger, so identity must be
+	// migrated first -- the dependency core.MigrationMilestones declares.
+	dependencies []goosex.Source
 }
 
 func TestModuleMigrationsAcrossEngines(t *testing.T) {
@@ -172,11 +176,12 @@ func moduleMigrations() []moduleMigration {
 			source:  (&iamaudit.Module{}).MigrationSource(),
 		},
 		{
-			name:    "iam-core",
-			table:   "iam_roles",
-			target:  12,
-			seedSQL: `INSERT INTO iam_roles (tenant_id, id, name, name_key, created_at, updated_at) VALUES (1, 1, 'First', 'first', '2026-09-02 00:00:00', '2026-09-02 00:00:00')`,
-			source:  (&iamcore.Module{}).MigrationSource(),
+			name:         "iam-core",
+			table:        "iam_roles",
+			target:       13,
+			seedSQL:      `INSERT INTO iam_roles (tenant_id, id, name, name_key, created_at, updated_at) VALUES (1, 1, 'First', 'first', '2026-09-02 00:00:00', '2026-09-02 00:00:00')`,
+			source:       (&iamcore.Module{}).MigrationSource(),
+			dependencies: []goosex.Source{(&identity.Module{}).MigrationSource()},
 		},
 	}
 }
@@ -186,6 +191,7 @@ func verifyPrefixedMigration(t *testing.T, db *sql.DB, engine databaseEngine, mo
 
 	source := module.source
 	source.Prefix = deploymentPrefix
+	migrateDependencies(t, db, engine, module, deploymentPrefix)
 	require.NoError(t, goosex.Migrate(t.Context(), db, source, engine.dialect))
 	require.NoError(t, goosex.Migrate(t.Context(), db, source, engine.dialect))
 	assertTableExists(t, db, engine.dialect, deploymentPrefix+module.table, true)
@@ -199,11 +205,20 @@ func verifyPrefixedMigration(t *testing.T, db *sql.DB, engine databaseEngine, mo
 	assertTableExists(t, db, engine.dialect, deploymentPrefix+source.TableName, true)
 }
 
+func migrateDependencies(t *testing.T, db *sql.DB, engine databaseEngine, module moduleMigration, prefix string) {
+	t.Helper()
+	for _, dependency := range module.dependencies {
+		dependency.Prefix = prefix
+		require.NoError(t, goosex.Migrate(t.Context(), db, dependency, engine.dialect))
+	}
+}
+
 func verifyMaximumPrefixMigration(t *testing.T, db *sql.DB, engine databaseEngine, module moduleMigration) {
 	t.Helper()
 
 	source := module.source
 	source.Prefix = maximumPrefix
+	migrateDependencies(t, db, engine, module, maximumPrefix)
 	require.NoError(t, goosex.Migrate(t.Context(), db, source, engine.dialect))
 	assertTableExists(t, db, engine.dialect, maximumPrefix+module.table, true)
 	assertTableExists(t, db, engine.dialect, maximumPrefix+source.TableName, true)
@@ -221,6 +236,7 @@ func verifyLifecycle(t *testing.T, db *sql.DB, engine databaseEngine, module mod
 	assert.Equal(t, module.target, status.Target)
 	assertTableExists(t, db, engine.dialect, module.table, false)
 
+	migrateDependencies(t, db, engine, module, "")
 	require.NoError(t, goosex.Migrate(t.Context(), db, module.source, engine.dialect))
 	assertCleanAtTarget(t, db, engine, module)
 	assertTableExists(t, db, engine.dialect, module.table, true)

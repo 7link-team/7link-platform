@@ -101,10 +101,10 @@ func assertProvisioningUp(t *testing.T, db *gorm.DB, modules []module.Module, pr
 		milestones[report.Module] = report.Milestone
 		assert.Equal(t, goosex.StateClean, report.Status.State)
 	}
-	assert.Equal(t, "field_policies", milestones[iamcore.Name])
-	assert.Equal(t, "constraints", milestones[organization.Name])
+	assert.Equal(t, "principal-erasure", milestones[iamcore.Name])
+	assert.Equal(t, "principal-erasure", milestones[organization.Name])
 	assert.Equal(t, "lifecycle", milestones[identity.Name])
-	assert.Equal(t, "service_accounts", milestones[provisioning.Name])
+	assert.Equal(t, "principal-erasure", milestones[provisioning.Name])
 }
 
 func verifyProvisioningContracts(t *testing.T, db *sql.DB, prefix string) {
@@ -232,7 +232,7 @@ func verifyProvisioningRollbackGraph(
 	}, prefix)
 	assert.ErrorContains(t, err, `"provisioning.service_accounts"`)
 
-	for _, name := range []string{provisioning.Name, organization.Name, identity.Name, iamcore.Name} {
+	for _, name := range []string{provisioning.Name, organization.Name, iamcore.Name, identity.Name} {
 		_, err = app.ExecuteModuleMigrations(t.Context(), db, modules, app.MigrationRequest{
 			Action: app.MigrationDownTo, Module: name, To: 0,
 		}, prefix)

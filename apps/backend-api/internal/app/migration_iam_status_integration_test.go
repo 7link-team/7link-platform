@@ -180,7 +180,7 @@ func iamMigrationFlowNames() []string {
 func iamMigrationReverseOrder() []string {
 	return []string{
 		federation.Name, iamauthn.Name, oauth.Name, governance.Name, provisioning.Name,
-		organization.Name, identity.Name, core.Name, iamaudit.Name,
+		organization.Name, core.Name, identity.Name, iamaudit.Name,
 		todo.Name, infraaudit.Name, wuid.Name, dlock.Name,
 	}
 }

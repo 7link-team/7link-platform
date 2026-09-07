@@ -39,8 +39,8 @@ func TestIAMIdentityAuthnMigrationsAcrossEngines(t *testing.T) {
 					}, prefix)
 					require.NoError(t, err)
 					require.Len(t, reports, 2)
-					assert.Equal(t, "base", reports[0].Milestone)
-					assert.Equal(t, "verification-attempts", reports[1].Milestone)
+					assert.Equal(t, "lifecycle", reports[0].Milestone)
+					assert.Equal(t, "principal-erasure", reports[1].Milestone)
 					assertTableExists(t, db, engine.dialect, prefix+"iam_principals", true)
 					assertTableExists(t, db, engine.dialect, prefix+"iam_credentials", true)
 					assertTableExists(t, db, engine.dialect, prefix+"goose_identity", true)
@@ -64,7 +64,7 @@ func TestIAMIdentityAuthnMigrationsAcrossEngines(t *testing.T) {
 						Module: identity.Name,
 						To:     0,
 					}, prefix)
-					assert.ErrorContains(t, err, `cannot roll back migration milestone "identity.base"`)
+					assert.ErrorContains(t, err, `cannot roll back migration milestones "identity.base", "identity.lifecycle"`)
 					assert.ErrorContains(t, err, `"authn.constraints"`)
 
 					_, err = app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{

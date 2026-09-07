@@ -9,6 +9,7 @@ import (
 	"7link.com/platform/internal/app"
 	iamcore "7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/governance"
+	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/organization"
 	goosex "7link.com/platform/pkg/extension/goose"
 	"7link.com/platform/pkg/module"
@@ -46,7 +47,7 @@ func TestIAMGovernanceMigrationsAcrossEngines(t *testing.T) {
 
 func governanceMigrationModules() []module.Module {
 	// Deliberately not dependency ordered: the milestone graph owns ordering.
-	return []module.Module{&governance.Module{}, &organization.Module{}, &iamcore.Module{}}
+	return []module.Module{&governance.Module{}, &organization.Module{}, &iamcore.Module{}, &identity.Module{}}
 }
 
 func verifyGovernanceBaseNeedsOrganization(t *testing.T, db *sql.DB, dialect, prefix string) {
@@ -74,9 +75,9 @@ func assertGovernanceUp(t *testing.T, db *gorm.DB, modules []module.Module, pref
 		milestones[report.Module] = report.Milestone
 		assert.Equal(t, goosex.StateClean, report.Status.State)
 	}
-	assert.Equal(t, "field_policies", milestones[iamcore.Name])
-	assert.Equal(t, "constraints", milestones[organization.Name])
-	assert.Equal(t, "constraints", milestones[governance.Name])
+	assert.Equal(t, "principal-erasure", milestones[iamcore.Name])
+	assert.Equal(t, "principal-erasure", milestones[organization.Name])
+	assert.Equal(t, "principal-erasure", milestones[governance.Name])
 }
 
 func verifyGovernanceContracts(t *testing.T, db *sql.DB, prefix string) {

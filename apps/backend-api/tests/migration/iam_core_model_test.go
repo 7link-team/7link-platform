@@ -20,11 +20,6 @@ type tableModel interface {
 	TableName() string
 }
 
-type databaseColumn struct {
-	name     string
-	nullable bool
-}
-
 func TestIAMCoreModelsMatchMigratedSchemas(t *testing.T) {
 	models := []tableModel{
 		model.Role{}, model.RolePermission{}, model.RoleMember{}, model.TenantMember{},

@@ -98,7 +98,9 @@ func OpenMySQLWithDSN(t *testing.T) (*sql.DB, string) {
 		case <-time.After(time.Second):
 			t.Error("MySQL server did not stop")
 		}
-		engine.Close()
+		if closeErr := engine.Close(); closeErr != nil && !errors.Is(closeErr, context.Canceled) {
+			t.Errorf("close MySQL engine: %v", closeErr)
+		}
 	})
 	return db, dsn
 }
@@ -175,5 +177,7 @@ func freeTCPPort(t *testing.T) uint32 {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	defer func() { require.NoError(t, listener.Close()) }()
-	return uint32(listener.Addr().(*net.TCPAddr).Port)
+	addr, ok := listener.Addr().(*net.TCPAddr)
+	require.True(t, ok, "listener address is not TCP")
+	return uint32(addr.Port)
 }
