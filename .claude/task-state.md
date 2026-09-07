@@ -1,5 +1,31 @@
 # Task State
 
+## Deep Audit Checkpoint (2026-09-07)
+
+Current branch remains **NOT READY** for production. The authoritative audit is
+`apps/backend-api/docs/iam-production-readiness-audit-2026-09-07.md`.
+
+New production blockers found beyond the 2026-09-06 handoff:
+
+1. Tenant-configurable OIDC issuer and SCIM target requests lack an SSRF-safe
+   transport/address policy.
+2. Deleting a SCIM target cascades its remote mappings without deprovisioning the
+   remote account, allowing the principal-erasure remote-mapping check to be bypassed.
+3. Current verification is red: committed `gofmt` drift, backend coverage 89.9%
+   below 90%, integration migration rollback/version fixtures fail and time out,
+   and the independent tests module has three lint findings.
+
+Frontend typecheck/lint, 45 IAM + 85 shared UI tests, production build, backend
+main-module lint/build/OpenAPI check and the 171-entry published schema-lock check
+PASS. The source tree has 195 migration files, so 24 newer migrations remain
+unfrozen. Race, real MySQL 8.4, generation stability, lifecycle browsers and
+backup/restore/rollback acceptance were not rerun on current HEAD.
+
+Next action order: close outbound SSRF and SCIM deletion/erasure accountability;
+finish platform-only principal lifecycle HTTP/UI and populated/concurrency tests;
+repair migration/format/coverage/tests-lint gates; then run the complete release
+matrix, freeze migrations, and perform reproducible UAT plus recovery rehearsals.
+
 ## Remaining Work / Handoff (2026-09-06)
 
 Current implementation snapshot: `c7a02b1`, pushed to `origin/IAM` at the user's
