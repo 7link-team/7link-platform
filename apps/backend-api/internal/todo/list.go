@@ -101,7 +101,7 @@ type ListInput struct {
 	Q       string `query:"q" maxLength:"128" doc:"matches title or description"`
 	Deleted bool   `query:"deleted" doc:"include soft-deleted tasks"`
 	Fields  string `query:"fields" doc:"comma-separated subset of columns to return"`
-	Sort    string `query:"sort" default:"-created_at" doc:"comma-separated keys; - prefixes a descending key"`
+	Sort    string `query:"sort" doc:"comma-separated keys; - prefixes a descending key"`
 	Offset  int    `query:"offset" minimum:"0"`
 	Limit   int    `query:"limit" default:"20" minimum:"1" maximum:"100"`
 	Meta    string `query:"meta" enum:"capabilities" doc:"request the filter and sort contract alongside the page"`

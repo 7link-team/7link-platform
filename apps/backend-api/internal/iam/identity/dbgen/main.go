@@ -9,6 +9,7 @@ import (
 func main() {
 	gengorm.Generate(
 		model.Principal{},
+		model.PrincipalLifecycle{},
 		model.ServiceAccount{},
 		model.ServiceAccountCredential{},
 	)

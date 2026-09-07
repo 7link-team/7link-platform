@@ -15,7 +15,7 @@ import (
 func TestProvisioningRewrapMovesStoredTokensOntoTheActiveKey(t *testing.T) {
 	env := newProvisioningEnvironment(t)
 	target, err := env.service.CreateTarget(
-		t.Context(), testID("tenant-a"), "Rewrapping", "https://example.test/scim", "not-a-real-bearer-token",
+		t.Context(), testID("tenant-a"), "Rewrapping", "https://example.test/scim", "not-a-real-bearer-token", nil,
 	)
 	require.NoError(t, err)
 	targetID := parseGUID(target.Target.ID)

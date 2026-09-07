@@ -232,17 +232,56 @@ func (a *Authorizer) Constraint(
 	if err != nil {
 		return authz.DataConstraint{}, err
 	}
+	return compileDataConstraint(a.registry, snapshot, permission), nil
+}
+
+// EntityConstraint compiles row filters for one active entity without granting
+// whole-entity access to self/department-only roles. The state and grants come
+// from the same revision-checked snapshot, including explicit entity denials.
+func (a *Authorizer) EntityConstraint(ctx context.Context, tenantID, entityID guid.ID, permission string, subject guid.ID) (authz.DataConstraint, error) {
+	pinned, err := a.pinWriter()
+	if err != nil {
+		return authz.DataConstraint{}, err
+	}
+	if pinned != a {
+		return pinned.EntityConstraint(ctx, tenantID, entityID, permission, subject)
+	}
+	if err := validateEntityAuthorizationRequest(tenantID, entityID, permission, subject); err != nil {
+		return authz.DataConstraint{}, err
+	}
+	action, known := a.registry.Find(permission)
+	if !known || !action.DataScoped || action.Scope == "platform" {
+		return compileDataConstraint(a.registry, authorizationSnapshot{}, permission), nil
+	}
+	snapshot, err := a.snapshot(ctx, tenantID, entityID, permission, subject, true, policyx.TrustedFromContext(ctx, a.now()))
+	if err != nil {
+		return authz.DataConstraint{}, err
+	}
+	if !contains(snapshot.entityIDs, entityID) {
+		return compileDataConstraint(a.registry, authorizationSnapshot{revision: snapshot.revision}, permission), nil
+	}
+	constraint := compileDataConstraint(a.registry, snapshot, permission)
+	if len(constraint.DeniedIDs) > 0 {
+		constraint.AllowAll = false
+		constraint.ResourceIDs = []string{}
+		constraint.OwnerIDs = []string{}
+		constraint.DepartmentIDs = []string{}
+	}
+	return constraint, nil
+}
+
+func compileDataConstraint(registry *authz.Registry, snapshot authorizationSnapshot, permission string) authz.DataConstraint {
 	constraint := authz.DataConstraint{
 		OwnerIDs: []string{}, ResourceIDs: []string{}, DepartmentIDs: []string{},
 		Ancestors: []authz.ResourceRef{}, DeniedIDs: []string{}, Revision: snapshot.revision,
 	}
 	if !snapshot.memberActive {
-		return constraint, nil
+		return constraint
 	}
 	constraint.OwnerIDs = guidStrings(snapshot.ownerIDs)
 	constraint.DepartmentIDs = guidStrings(snapshot.departmentIDs)
 	tenantRequested, tenantAdmin := tenantCapabilities(snapshot.tenantGrants, permission)
-	action, _ := a.registry.Find(permission)
+	action, _ := registry.Find(permission)
 	relationshipsByEntity := allowedRelationshipsByEntity(action, snapshot.relationshipGrants)
 	constraint.AllowAll = tenantRequested || tenantAdmin
 	ancestorSet := map[guid.ID]bool{}
@@ -268,7 +307,7 @@ func (a *Authorizer) Constraint(
 			constraint.DeniedIDs = append(constraint.DeniedIDs, entityID.String())
 		}
 	}
-	return constraint, nil
+	return constraint
 }
 
 // ExplainEntity returns the effective authorization decision for one entity.
@@ -527,45 +566,8 @@ func (a *Authorizer) loadTenantGrants(
 	now := trusted.Time.UTC().Truncate(time.Millisecond)
 	p := a.prefix
 	grants := make([]tenantGrant, 0)
-	err := a.db.WithContext(ctx).Raw(`
-WITH effective_roles(role_id, source_type, source_id) AS (
-    SELECT m.role_id, 'role_member', m.principal_id
-    FROM `+p+`iam_role_members m
-    JOIN `+p+`iam_tenant_members tm
-      ON tm.tenant_id = m.tenant_id AND tm.principal_id = m.principal_id AND tm.status = ?
-    WHERE m.tenant_id = ? AND m.principal_id = ?
-    UNION
-    SELECT grants.role_id, 'temporary_role', grants.id
-    FROM `+p+`iam_temporary_role_grants grants
-    JOIN `+p+`iam_tenant_members tm
-      ON tm.tenant_id = grants.tenant_id AND tm.principal_id = grants.principal_id AND tm.status = ?
-    WHERE grants.tenant_id = ? AND grants.principal_id = ?
-      AND grants.starts_at <= ? AND grants.ends_at > ?
-    UNION
-    SELECT b.role_id, 'group', b.group_id
-    FROM `+p+`iam_group_role_bindings b
-    JOIN `+p+`iam_groups g
-      ON g.tenant_id = b.tenant_id AND g.id = b.group_id AND g.status = 'active' AND g.group_type = 'static'
-    JOIN `+p+`iam_group_members gm
-      ON gm.tenant_id = b.tenant_id AND gm.group_id = b.group_id
-    JOIN `+p+`iam_tenant_members tm
-      ON tm.tenant_id = gm.tenant_id AND tm.principal_id = gm.principal_id AND tm.status = ?
-    WHERE b.tenant_id = ? AND gm.principal_id = ?
-      AND (gm.starts_at IS NULL OR gm.starts_at <= ?)
-      AND (gm.ends_at IS NULL OR gm.ends_at > ?)
-    UNION
-    SELECT b.role_id, 'position', b.position_id
-    FROM `+p+`iam_position_role_bindings b
-    JOIN `+p+`iam_positions pos
-      ON pos.tenant_id = b.tenant_id AND pos.id = b.position_id AND pos.status = 'active'
-    JOIN `+p+`iam_position_members pm
-      ON pm.tenant_id = b.tenant_id AND pm.position_id = b.position_id
-    JOIN `+p+`iam_tenant_members tm
-      ON tm.tenant_id = pm.tenant_id AND tm.principal_id = pm.principal_id AND tm.status = ?
-    WHERE b.tenant_id = ? AND pm.principal_id = ?
-      AND (pm.starts_at IS NULL OR pm.starts_at <= ?)
-      AND (pm.ends_at IS NULL OR pm.ends_at > ?)
-)
+	cte, args := effectiveRolesCTE(p, tenantID, subject, now)
+	err := a.db.WithContext(ctx).Raw(cte+`
 SELECT DISTINCT rp.permission_code, er.role_id, er.source_type, er.source_id,
        COALESCE(ds.scope_type, 'all') AS data_scope, rp.condition_json
 FROM `+p+`iam_role_permissions rp
@@ -573,11 +575,7 @@ JOIN effective_roles er ON er.role_id = rp.role_id
 LEFT JOIN `+p+`iam_role_data_scopes ds
   ON ds.tenant_id = rp.tenant_id AND ds.role_id = rp.role_id
 WHERE rp.tenant_id = ? AND rp.permission_code IN ?`,
-		MemberActive, tenantID, subject,
-		MemberActive, tenantID, subject, now, now,
-		MemberActive, tenantID, subject, now, now,
-		MemberActive, tenantID, subject, now, now,
-		tenantID, requested,
+		append(args, tenantID, requested)...,
 	).Scan(&grants).Error
 	if err != nil {
 		return nil, fmt.Errorf("evaluate tenant permissions: %w", err)
@@ -601,6 +599,55 @@ WHERE rp.tenant_id = ? AND rp.permission_code IN ?`,
 		grants = append(grants, dynamicGrants...)
 	}
 	return matchingTenantGrants(grants, trusted)
+}
+
+// Effective role membership is shared by endpoint grants and field policies.
+// Field restrictions also apply to assigned roles with no endpoint grants.
+func effectiveRolesCTE(p string, tenantID, subject guid.ID, now time.Time) (string, []any) {
+	return `
+WITH effective_roles(role_id, source_type, source_id) AS (
+    SELECT m.role_id, 'role_member', m.principal_id
+    FROM ` + p + `iam_role_members m
+    JOIN ` + p + `iam_tenant_members tm
+      ON tm.tenant_id = m.tenant_id AND tm.principal_id = m.principal_id AND tm.status = ?
+    WHERE m.tenant_id = ? AND m.principal_id = ?
+    UNION
+    SELECT grants.role_id, 'temporary_role', grants.id
+    FROM ` + p + `iam_temporary_role_grants grants
+    JOIN ` + p + `iam_tenant_members tm
+      ON tm.tenant_id = grants.tenant_id AND tm.principal_id = grants.principal_id AND tm.status = ?
+    WHERE grants.tenant_id = ? AND grants.principal_id = ?
+      AND grants.starts_at <= ? AND grants.ends_at > ?
+    UNION
+    SELECT b.role_id, 'group', b.group_id
+    FROM ` + p + `iam_group_role_bindings b
+    JOIN ` + p + `iam_groups g
+      ON g.tenant_id = b.tenant_id AND g.id = b.group_id AND g.status = 'active' AND g.group_type = 'static'
+    JOIN ` + p + `iam_group_members gm
+      ON gm.tenant_id = b.tenant_id AND gm.group_id = b.group_id
+    JOIN ` + p + `iam_tenant_members tm
+      ON tm.tenant_id = gm.tenant_id AND tm.principal_id = gm.principal_id AND tm.status = ?
+    WHERE b.tenant_id = ? AND gm.principal_id = ?
+      AND (gm.starts_at IS NULL OR gm.starts_at <= ?)
+      AND (gm.ends_at IS NULL OR gm.ends_at > ?)
+    UNION
+    SELECT b.role_id, 'position', b.position_id
+    FROM ` + p + `iam_position_role_bindings b
+    JOIN ` + p + `iam_positions pos
+      ON pos.tenant_id = b.tenant_id AND pos.id = b.position_id AND pos.status = 'active'
+    JOIN ` + p + `iam_position_members pm
+      ON pm.tenant_id = b.tenant_id AND pm.position_id = b.position_id
+    JOIN ` + p + `iam_tenant_members tm
+      ON tm.tenant_id = pm.tenant_id AND tm.principal_id = pm.principal_id AND tm.status = ?
+    WHERE b.tenant_id = ? AND pm.principal_id = ?
+      AND (pm.starts_at IS NULL OR pm.starts_at <= ?)
+      AND (pm.ends_at IS NULL OR pm.ends_at > ?)
+)`, []any{
+			MemberActive, tenantID, subject,
+			MemberActive, tenantID, subject, now, now,
+			MemberActive, tenantID, subject, now, now,
+			MemberActive, tenantID, subject, now, now,
+		}
 }
 
 func (a *Authorizer) loadDataScopeFacts(

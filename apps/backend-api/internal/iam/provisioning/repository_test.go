@@ -28,10 +28,10 @@ func TestProvisioningRepositoryConstraintsAndCAS(t *testing.T) {
 
 	credentials, err := repo.listCredentials(t.Context(), env.auth.DirectoryID)
 	require.NoError(t, err)
-	authRow, err := repo.credentialForAuth(t.Context(), credentials[0].ID)
+	authRow, err := repo.credentialForAuth(t.Context(), credentials[0].ID, 0, 0)
 	require.NoError(t, err)
 	assert.Equal(t, env.auth.TenantID, authRow.TenantID)
-	_, err = repo.credentialForAuth(t.Context(), testID("missing"))
+	_, err = repo.credentialForAuth(t.Context(), testID("missing"), 0, 0)
 	assert.ErrorIs(t, err, ErrUnauthorized)
 
 	user, err := env.service.CreateUser(t.Context(), env.auth, activeUserInput("repo-user", "repo-user", "repo@example.test"))
@@ -45,7 +45,7 @@ func TestProvisioningRepositoryConstraintsAndCAS(t *testing.T) {
 	resource.Version++
 	assert.ErrorIs(t, repo.updateResource(t.Context(), &resource, 99), ErrResourceVersion)
 
-	target, err := env.service.CreateTarget(t.Context(), env.auth.TenantID, "Repository", "https://example.test/scim", "secret")
+	target, err := env.service.CreateTarget(t.Context(), env.auth.TenantID, "Repository", "https://example.test/scim", "secret", nil)
 	require.NoError(t, err)
 	targetRow, err := repo.getTarget(t.Context(), env.auth.TenantID, parseGUID(target.Target.ID))
 	require.NoError(t, err)
@@ -122,7 +122,7 @@ func TestProvisioningRepositorySurfacesStorageFailures(t *testing.T) {
 		assert.Error(t, repo.insertCredential(t.Context(), &credentialRow{ID: 1}))
 		_, err = repo.revokeCredential(t.Context(), 1, 1, provisioningTestNow)
 		assert.Error(t, err)
-		_, err = repo.credentialForAuth(t.Context(), 1)
+		_, err = repo.credentialForAuth(t.Context(), 1, 0, 0)
 		assert.Error(t, err)
 		assert.Error(t, repo.touchCredential(t.Context(), 1, provisioningTestNow))
 	})

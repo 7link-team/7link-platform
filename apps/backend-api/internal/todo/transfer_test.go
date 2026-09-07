@@ -208,7 +208,7 @@ func TestImportRowLimitIgnoresBlankRows(t *testing.T) {
 
 func TestImportAllWritesAtomically(t *testing.T) {
 	svc, _ := newTestService(t, "")
-	imported, err := svc.ImportAll(t.Context(), []Draft{
+	imported, err := svc.ImportAll(todoContext(t), []Draft{
 		{Title: "one", Status: StatusOpen, Priority: 3},
 		{Title: "two", Status: StatusDone, Priority: 1},
 	})
@@ -330,10 +330,10 @@ func TestImportAcceptsExportedTimeFormat(t *testing.T) {
 
 func TestImportAllReportsUnavailableDatasource(t *testing.T) {
 	svc := closedService(t)
-	_, err := svc.ImportAll(t.Context(), []Draft{{Title: "task", Status: StatusOpen, Priority: 3}})
+	_, err := svc.ImportAll(todoContext(t), []Draft{{Title: "task", Status: StatusOpen, Priority: 3}})
 	assert.Error(t, err)
 
-	empty, err := svc.ImportAll(t.Context(), nil)
+	empty, err := svc.ImportAll(todoContext(t), nil)
 	require.NoError(t, err, "an empty import is a no-op, not a failure")
 	assert.Zero(t, empty)
 }

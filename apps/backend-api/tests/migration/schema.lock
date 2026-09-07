@@ -10,6 +10,10 @@
       "sha256": "1662ff094acf4cd52379cf580f3e401b729ff4399fbd10959bafc4f922465e0d"
     },
     {
+      "path": "audit/sql/mysql/00003_archive_jobs.sql",
+      "sha256": "f69e39bce2b496c10ce419406b8a59f16b6e2ca317c3375ba6079bd149991570"
+    },
+    {
       "path": "audit/sql/postgres/00001_audit_chain.sql",
       "sha256": "ecaf3e53f6c5c6a8f11fef85bd5fa7d8e8806d959c3df4c4fa4e45c179b1a732"
     },
@@ -18,12 +22,20 @@
       "sha256": "3533fb2eedd2c11723ba1e2b2470392b6f6b2be8cf1e0cff65277acbc794c213"
     },
     {
+      "path": "audit/sql/postgres/00003_archive_jobs.sql",
+      "sha256": "105147a306d97f90c589c7a69872128924edcab2da2bf2e6e1f24552bde02531"
+    },
+    {
       "path": "audit/sql/sqlite/00001_audit_chain.sql",
       "sha256": "b92ffcbb4f07c79090b5a9253f23d9a8818b1c4f51f3cd9f77b42f2c876e5348"
     },
     {
       "path": "audit/sql/sqlite/00002_retention_policies.sql",
       "sha256": "29e9d0136aec6324e7c89c5dc2de022e019b5cce37b09de81b0fdaae71d7e1ea"
+    },
+    {
+      "path": "audit/sql/sqlite/00003_archive_jobs.sql",
+      "sha256": "54fc6c188ea362d64ca750a48d2bf689e30ed1285b0c4cf12362ad693e506276"
     },
     {
       "path": "authn/sql/mysql/00001_credentials.sql",
@@ -202,6 +214,10 @@
       "sha256": "ea17d994629bf854479380cf969e12a31bcb6ca331caebfdb53ef7e30f669170"
     },
     {
+      "path": "core/sql/mysql/00012_field_policies.sql",
+      "sha256": "da95f8ea4b237e09e5b8be2a969ddd10049138df851205e48a4efa231f872407"
+    },
+    {
       "path": "core/sql/postgres/00001_authorization.sql",
       "sha256": "efe61ce3ba534aa7756b638c754f39669e6ab9ebb0725f82acc0beb10cb2e2d2"
     },
@@ -244,6 +260,10 @@
     {
       "path": "core/sql/postgres/00011_relationship_traversal.sql",
       "sha256": "32ac62be417b8f2272c368e7657b10c24e05c313d092a7934f39bd49ff954dbe"
+    },
+    {
+      "path": "core/sql/postgres/00012_field_policies.sql",
+      "sha256": "f364e7d9e999db92001334e444e3d17fce353a64b9da27ed461190687af41ea8"
     },
     {
       "path": "core/sql/sqlite/00001_authorization.sql",
@@ -290,6 +310,10 @@
       "sha256": "32ac62be417b8f2272c368e7657b10c24e05c313d092a7934f39bd49ff954dbe"
     },
     {
+      "path": "core/sql/sqlite/00012_field_policies.sql",
+      "sha256": "b19dddfb9915d7b2940322478ac049258ec17735aa834827ac2c016d8b0a892d"
+    },
+    {
       "path": "federation/sql/mysql/00001_identity_providers.sql",
       "sha256": "ca22404502288da9d163600a3f97ba7f5ae7344dce2b390ee378546c6e3ed571"
     },
@@ -300,6 +324,10 @@
     {
       "path": "federation/sql/mysql/00003_constraints.sql",
       "sha256": "c9713548754f285bb8cd181da383c41e7a9267e530c87396c93ae7e5cbe144d7"
+    },
+    {
+      "path": "federation/sql/mysql/00004_replay_claims.sql",
+      "sha256": "8a38d52cadda5333656eaf871a747842ae93382e748032501c964bf84eecc3b4"
     },
     {
       "path": "federation/sql/postgres/00001_identity_providers.sql",
@@ -314,6 +342,10 @@
       "sha256": "881f973ddefa99f713b1688e39bdee3c5a5351f1dff0b28efc8b196d5d6c57f0"
     },
     {
+      "path": "federation/sql/postgres/00004_replay_claims.sql",
+      "sha256": "1275aeaf466d39cbfce90336de3631bee82467ab1128cfc47125f665757c6d92"
+    },
+    {
       "path": "federation/sql/sqlite/00001_identity_providers.sql",
       "sha256": "72b43e38161919cffe70adf54d6ef787c146e879423619415b01efb876d25cb7"
     },
@@ -324,6 +356,10 @@
     {
       "path": "federation/sql/sqlite/00003_constraints.sql",
       "sha256": "08f80f1a44eb0ec1ee6e8ad3f1029b1549e4905e784137eccd21a440a0519ad1"
+    },
+    {
+      "path": "federation/sql/sqlite/00004_replay_claims.sql",
+      "sha256": "abaf8d29be3ee5ee51634bc82ecbbc69a471c14dfd7b6181920f73f8280aadc8"
     },
     {
       "path": "governance/sql/mysql/00001_access_requests.sql",
@@ -370,6 +406,14 @@
       "sha256": "122920247db4e916848760abdba72207e87e4117c46bbdec08743b41ff93b0af"
     },
     {
+      "path": "identity/sql/mysql/00003_principal_lifecycles.sql",
+      "sha256": "193aadd16a30f4424e0d9df0bdd2c5eaa031b8dd28211e85d7e1d6795108a40c"
+    },
+    {
+      "path": "identity/sql/mysql/00004_tombstone_guards.sql",
+      "sha256": "6234c6ba1a0717725ae65e5f2802b9d23c759e00834ce015d836fb4e257dfd77"
+    },
+    {
       "path": "identity/sql/postgres/00001_principals.sql",
       "sha256": "681b58026ec749496bda38be27ff89ada9522958d4d268ee9be1c9118be0c4a1"
     },
@@ -378,12 +422,28 @@
       "sha256": "ba35bfa2e41bcad10c14669130ca76b9b30b35118424f69fc574491d0790c427"
     },
     {
+      "path": "identity/sql/postgres/00003_principal_lifecycles.sql",
+      "sha256": "202d870a3c91d8232965924ca3d75afe25801cdfc3ce57ef11c7dae6f9f98b56"
+    },
+    {
+      "path": "identity/sql/postgres/00004_tombstone_guards.sql",
+      "sha256": "f3d51553625d3f3929be60f05aafa46d360b1198a4ec2c699ee3ba18721673dc"
+    },
+    {
       "path": "identity/sql/sqlite/00001_principals.sql",
       "sha256": "df18e34520cb0c7213a974b2286a05c569cab060ccd4deb732d6be5c2e7d0f31"
     },
     {
       "path": "identity/sql/sqlite/00002_service_accounts.sql",
       "sha256": "36155117a33ca8afea48399199181bedb0824c811afae7e7cf3693e1ea3db85c"
+    },
+    {
+      "path": "identity/sql/sqlite/00003_principal_lifecycles.sql",
+      "sha256": "02335ee10b9e83a0f9accad769f6adb5e03c7f0b1fd96c67b0c5665991bcc294"
+    },
+    {
+      "path": "identity/sql/sqlite/00004_tombstone_guards.sql",
+      "sha256": "4dcde79d0184a1b54adc4a25e1a240cb112ab1611e5ef56016f5c143e5aadc9a"
     },
     {
       "path": "oauth/sql/mysql/00001_clients.sql",
@@ -410,6 +470,14 @@
       "sha256": "c8c97f07e72f05ff1286683e972bb3a97d054aac5dc6fbfe5a67aed17f321103"
     },
     {
+      "path": "oauth/sql/mysql/00007_client_consent_mode.sql",
+      "sha256": "beddad14d32c5b705073b6529402f70b96e8d0e499c83b16aaf19cb9afdb258e"
+    },
+    {
+      "path": "oauth/sql/mysql/00008_consent_requests.sql",
+      "sha256": "a4ffe9e594fb898bedb8b4e1f6940ac97a9ac639e12fa46bb6f9229ef2a36abd"
+    },
+    {
       "path": "oauth/sql/postgres/00001_clients.sql",
       "sha256": "d3769573359bbfbd1fa1dbae0dc181f8cfe1661e06a6343fe1dd5bc68a9aadae"
     },
@@ -434,6 +502,14 @@
       "sha256": "d4cc378fad6803a1f0794dbaac032f15485bc1f6980663579468c8c6ec008626"
     },
     {
+      "path": "oauth/sql/postgres/00007_client_consent_mode.sql",
+      "sha256": "c6eb8a7bd73d7f7ec8242f6707ab0e829c7ed4b3af50ae73359cc497b08ce3ea"
+    },
+    {
+      "path": "oauth/sql/postgres/00008_consent_requests.sql",
+      "sha256": "4b5ba6f2da06b20cffbec1e63036464806f30fd29da89fd26373eedd6f507ef3"
+    },
+    {
       "path": "oauth/sql/sqlite/00001_clients.sql",
       "sha256": "574b42bd8059861fb1e849bd7354b4732bd5774def52ae97aa14b246ccb8cb1e"
     },
@@ -456,6 +532,14 @@
     {
       "path": "oauth/sql/sqlite/00006_refresh_principal_index.sql",
       "sha256": "d4cc378fad6803a1f0794dbaac032f15485bc1f6980663579468c8c6ec008626"
+    },
+    {
+      "path": "oauth/sql/sqlite/00007_client_consent_mode.sql",
+      "sha256": "0b70d3e5c3f899a74c0876c75126a6024bb67ece347f559dddc3ddf76e946b78"
+    },
+    {
+      "path": "oauth/sql/sqlite/00008_consent_requests.sql",
+      "sha256": "495d4b4bb3fab777e109d58620930924b945931af96f2ee0a6691c9ba6aabc05"
     },
     {
       "path": "organization/sql/mysql/00001_departments.sql",
@@ -566,6 +650,10 @@
       "sha256": "25afc48ef9f8acc7cc736ac53bfb2709a4ff3e4162dd80a311ba9b8142875e27"
     },
     {
+      "path": "provisioning/sql/mysql/00004_service_accounts.sql",
+      "sha256": "db926170c6cf9f6e5db33335f344ed964d3f89e560a61464a86cb2d134eecfd8"
+    },
+    {
       "path": "provisioning/sql/postgres/00001_scim.sql",
       "sha256": "b4da32be6dba9421a9822e89cf7a9788d40a00a58fbdd809c701cff432a44403"
     },
@@ -578,6 +666,10 @@
       "sha256": "fe7735d33d107123469456aeec9dacdeb3a67c39d8e54c4447ea223c8cf0b699"
     },
     {
+      "path": "provisioning/sql/postgres/00004_service_accounts.sql",
+      "sha256": "f54e2b6e536c03265484c9c92b7732b1d8f1b95529df5e12c649e85296835478"
+    },
+    {
       "path": "provisioning/sql/sqlite/00001_scim.sql",
       "sha256": "397c8331188744f0f51467878f6530cb0fe97190c4e5d498386024658e006a40"
     },
@@ -588,6 +680,10 @@
     {
       "path": "provisioning/sql/sqlite/00003_constraints.sql",
       "sha256": "36deddf3109faac756dc74f21596d9890ef2dae7d5f83b269ae41c28130dd887"
+    },
+    {
+      "path": "provisioning/sql/sqlite/00004_service_accounts.sql",
+      "sha256": "3a2ea051c138d22f3493f01fe4a0aff015aa30c4425be330aae645f862a46dd6"
     }
   ]
 }

@@ -62,7 +62,13 @@ func TestManualResponsesShareTheInstalledErrorSchema(t *testing.T) {
 			checked++
 		}
 	}
-	assert.Equal(t, 10, checked, "every documented federation error response must be covered")
+	assert.Equal(t, 11, checked, "every documented federation error response must be covered")
+	for source, responses := range manual {
+		response, ok := responses["503"]
+		require.True(t, ok, "%s must document an unavailable replay store", source)
+		require.Contains(t, response.Content, "application/json")
+		assert.Equal(t, expectedRef, response.Content["application/json"].Schema.Ref)
+	}
 }
 
 // TestErrorResponseSchemaFollowsNewError proves the schema is derived from the

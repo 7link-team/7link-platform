@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"github.com/danielgtaylor/huma/v2"
@@ -52,7 +53,7 @@ func TestAuthenticationHTTPFlow(t *testing.T) {
 	session := api.Get("/authn/sessions/current", "Cookie: "+cookie)
 	assert.Equal(t, http.StatusOK, session.Code, session.Body.String())
 	assert.Contains(t, session.Body.String(), principalID)
-	assert.Contains(t, session.Body.String(), `"email_verified":true`)
+	assert.NotContains(t, session.Body.String(), `"email_verified"`, "an unscoped session cannot expose tenant-controlled profile fields")
 
 	accessToken, _, err := web.IssueAccessToken(context.Background(), parseGUID(principalID), "api", "openid")
 	require.NoError(t, err)
@@ -94,6 +95,83 @@ func TestAuthenticationHTTPFlow(t *testing.T) {
 	assert.Contains(t, enrollmentLogin.Body.String(), `"status":"mfa_enrollment_required"`)
 	assert.NotEmpty(t, enrollmentLogin.Header().Get("Set-Cookie"))
 	assert.Equal(t, http.StatusUnauthorized, api.Get("/authn/me", "Authorization: Bearer invalid").Code)
+}
+
+func TestSessionHTTPTenantResolutionAndImmediateRevocation(t *testing.T) {
+	db, web, principalID := newAuthenticationService(t)
+	web.fields = profileCheckerFunc(allowProfileFields)
+	_, api := humatest.New(t)
+	RegisterHTTP(api, web, web)
+	login := api.Post("/authn/sessions", map[string]any{
+		"login_name": "alice", "password": "correct horse battery staple",
+	}, "Origin: https://app.example")
+	require.Equal(t, http.StatusOK, login.Code, login.Body.String())
+	cookie := "Cookie: " + strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
+	check := func(tenant string, code int, expected string) {
+		t.Helper()
+		for _, path := range []string{"/authn/me", "/authn/sessions/current"} {
+			headers := []any{cookie}
+			if tenant != "" {
+				headers = append(headers, "X-Tenant-Id: "+tenant)
+			}
+			response := api.Get(path, headers...)
+			require.Equal(t, code, response.Code, response.Body.String())
+			if code == http.StatusOK {
+				var body struct {
+					Data meOutput `json:"data"`
+				}
+				require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+				assert.Equal(t, expected, body.Data.OrganizationID)
+				assert.Equal(t, principalID, body.Data.Subject)
+			}
+		}
+	}
+	check("", http.StatusOK, "")
+	require.NoError(t, db.Exec("INSERT INTO iam_tenants (id,status) VALUES (101,'active'),(102,'active'),(103,'disabled')").Error)
+	require.NoError(t, db.Exec("INSERT INTO iam_tenant_members (tenant_id,principal_id,status) VALUES (101,?,'active'),(103,?,'active')", principalID, principalID).Error)
+	check("", http.StatusOK, "101")
+	check("101", http.StatusOK, "101")
+	check("102", http.StatusForbidden, "")
+	check("103", http.StatusForbidden, "")
+	check("999", http.StatusForbidden, "")
+	check("invalid", http.StatusUnprocessableEntity, "")
+	check("0", http.StatusUnprocessableEntity, "")
+	require.NoError(t, db.Exec("INSERT INTO iam_tenant_members (tenant_id,principal_id,status) VALUES (102,?,'active')", principalID).Error)
+	check("", http.StatusOK, "")
+	check("102", http.StatusOK, "102")
+	check("", http.StatusOK, "") // An explicit request never changes another tab's session.
+	require.NoError(t, db.Exec("UPDATE iam_tenant_members SET status = 'disabled' WHERE tenant_id = 102").Error)
+	check("102", http.StatusForbidden, "")
+	check("", http.StatusOK, "101")
+	require.NoError(t, db.Exec("UPDATE iam_tenants SET status = 'disabled' WHERE id = 101").Error)
+	check("101", http.StatusForbidden, "")
+	check("", http.StatusOK, "")
+	web.memberTenant = nil
+	check("", http.StatusServiceUnavailable, "")
+	web.memberTenant = func(context.Context, guid.ID, guid.ID) (guid.ID, error) {
+		return 0, errors.New("membership store unavailable")
+	}
+	check("101", http.StatusServiceUnavailable, "")
+}
+
+func TestSessionTenantCannotRewriteSignedTokenOrMutateVerifierClaims(t *testing.T) {
+	claims := &authnext.Claims{PrincipalID: 11, OrganizationID: "101"}
+	web := &Service{memberTenant: func(context.Context, guid.ID, guid.ID) (guid.ID, error) {
+		return 102, nil
+	}}
+	resolved, err := sessionTenant(t.Context(), web, &meInput{Authorization: "Bearer token", TenantID: "101"}, claims)
+	require.NoError(t, err)
+	assert.Same(t, claims, resolved)
+	_, err = sessionTenant(t.Context(), web, &meInput{Authorization: "Bearer token", TenantID: "102"}, claims)
+	require.Error(t, err)
+	resolved, err = sessionTenant(t.Context(), web, &meInput{}, claims)
+	require.NoError(t, err)
+	assert.Equal(t, "102", resolved.OrganizationID)
+	assert.Equal(t, guid.ID(102), resolved.TenantID)
+	assert.Equal(t, "101", claims.OrganizationID)
+	assert.Zero(t, claims.TenantID)
+	_, err = sessionTenant(t.Context(), nil, &meInput{}, claims)
+	require.Error(t, err)
 }
 
 func TestRequiredMFAEnrollmentHTTPFlowDoesNotLockOutPrincipal(t *testing.T) {
@@ -307,6 +385,9 @@ func TestEmailVerificationHTTPFlow(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	db, web, principalID := newRecoveryAuthenticationService(t, server.URL)
+	web.fields = profileCheckerFunc(allowProfileFields)
+	require.NoError(t, db.Exec("INSERT INTO iam_tenants (id,status) VALUES (101,'active')").Error)
+	require.NoError(t, db.Exec("INSERT INTO iam_tenant_members (tenant_id,principal_id,status) VALUES (101,?,'active')", principalID).Error)
 	err := db.WithContext(t.Context()).Table("iam_principals").
 		Where("id = ?", principalID).Update("email_verified", false).Error
 	require.NoError(t, err)
@@ -847,7 +928,7 @@ func newAuthenticationService(t *testing.T) (*gorm.DB, *Service, string) {
 			PostLoginURL: "https://app.example/", PostLogoutURL: "https://app.example/login",
 			AllowedReturnURLs: []string{"https://app.example/"}, AllowedOrigins: []string{"https://app.example"},
 		},
-	}, harness.repository)
+	}, harness.repository, WithMemberTenantResolver(core.NewMembershipChecker(harness.runtime).ResolveTenant))
 	require.NoError(t, err)
 	principalID, err := EnsureBootstrapPrincipal(context.Background(), harness.repository, BootstrapPrincipal{
 		LoginName: "alice", Password: "correct horse battery staple", DisplayName: "Alice", Email: "alice@example.com",
@@ -864,7 +945,7 @@ func newRecoveryAuthenticationService(t *testing.T, notificationURL string, regi
 		seed[index] = byte(index + 1)
 	}
 	registrationEnabled := len(registration) > 0 && registration[0]
-	options := []WebOption{}
+	options := []WebOption{WithMemberTenantResolver(core.NewMembershipChecker(harness.runtime).ResolveTenant)}
 	if registrationEnabled {
 		options = append(options, WithRegistrationPrincipalCreator(registrationCreatorForHarness(harness)))
 	}

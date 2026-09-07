@@ -80,7 +80,10 @@ func headerRow(ctx context.Context, cols []column) []string {
 // asked for. The sample doubles as format documentation, which is more use to
 // an operator than a paragraph describing the date layout.
 func templateGrid(ctx context.Context, withSample bool) grid {
-	cols := importableColumns()
+	return templateGridColumns(ctx, withSample, importableColumns())
+}
+
+func templateGridColumns(ctx context.Context, withSample bool, cols []column) grid {
 	out := grid{headerRow(ctx, cols)}
 	if withSample {
 		row := make([]string, len(cols))
@@ -294,9 +297,12 @@ func parseImport(ctx context.Context, table grid, limits Limits) ([]Draft, []Row
 		if blank(record) {
 			continue
 		}
-		draft := Draft{Status: StatusOpen, Priority: DefaultPriority}
+		draft := Draft{Status: StatusOpen, Priority: DefaultPriority, provided: []string{}}
 		for _, c := range importableColumns() {
 			position, present := positions[c.key]
+			if present {
+				draft.provided = append(draft.provided, c.key)
+			}
 			raw := ""
 			if present && position < len(record) {
 				raw = record[position]

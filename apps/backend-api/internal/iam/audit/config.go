@@ -1,12 +1,25 @@
 package audit
 
-import "7link.com/platform/pkg/module"
+import (
+	"time"
 
-// Config configures IAM domain audit anchoring. This is distinct from the
+	"7link.com/platform/pkg/module"
+)
+
+// Config configures IAM domain audit anchoring and archiving. It is distinct from the
 // application operation-audit configuration used by internal/infra/audit.
 type Config struct {
 	module.Config
-	Anchor AnchorConfig `mapstructure:"anchor" group:"anchor"`
+	Anchor  AnchorConfig  `mapstructure:"anchor" group:"anchor"`
+	Archive ArchiveConfig `mapstructure:"archive" group:"archive"`
+}
+
+// ArchiveConfig uses the anchor S3 endpoint, credentials and object-lock bucket;
+// archive objects have a separate prefix and do not require anchor.Enabled.
+type ArchiveConfig struct {
+	Enabled  bool          `mapstructure:"enabled" description:"execute durable audit archives using the anchor S3 configuration; never delete source events" default:"false"`
+	Interval time.Duration `mapstructure:"interval" description:"interval between archive sweeps; at least one second" default:"1m"`
+	Timeout  time.Duration `mapstructure:"timeout" description:"maximum duration per archive attempt; one second to one hour" default:"4m"`
 }
 
 type AnchorConfig struct {
@@ -21,5 +34,5 @@ type AnchorConfig struct {
 }
 
 func (c AnchorConfig) valid() bool {
-	return c.Endpoint != "" && c.Bucket != "" && c.AccessKey != "" && c.SecretKey != "" && c.RetentionDays > 0
+	return c.Endpoint != "" && c.Bucket != "" && c.AccessKey != "" && c.SecretKey != "" && c.RetentionDays > 0 && c.RetentionDays <= maxRetentionDays
 }

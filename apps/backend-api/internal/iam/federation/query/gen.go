@@ -19,6 +19,7 @@ var (
 	Q                   = new(Query)
 	IdentityLink        *identityLink
 	Provider            *provider
+	ReplayClaim         *replayClaim
 	SAMLIDPKey          *sAMLIDPKey
 	SAMLServiceProvider *sAMLServiceProvider
 )
@@ -27,6 +28,7 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	*Q = *Use(db, opts...)
 	IdentityLink = &Q.IdentityLink
 	Provider = &Q.Provider
+	ReplayClaim = &Q.ReplayClaim
 	SAMLIDPKey = &Q.SAMLIDPKey
 	SAMLServiceProvider = &Q.SAMLServiceProvider
 }
@@ -36,6 +38,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		db:                  db,
 		IdentityLink:        newIdentityLink(db, opts...),
 		Provider:            newProvider(db, opts...),
+		ReplayClaim:         newReplayClaim(db, opts...),
 		SAMLIDPKey:          newSAMLIDPKey(db, opts...),
 		SAMLServiceProvider: newSAMLServiceProvider(db, opts...),
 	}
@@ -46,6 +49,7 @@ type Query struct {
 
 	IdentityLink        identityLink
 	Provider            provider
+	ReplayClaim         replayClaim
 	SAMLIDPKey          sAMLIDPKey
 	SAMLServiceProvider sAMLServiceProvider
 }
@@ -59,6 +63,7 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		db:                  db,
 		IdentityLink:        q.IdentityLink.clone(db),
 		Provider:            q.Provider.clone(db),
+		ReplayClaim:         q.ReplayClaim.clone(db),
 		SAMLIDPKey:          q.SAMLIDPKey.clone(db),
 		SAMLServiceProvider: q.SAMLServiceProvider.clone(db),
 	}
@@ -77,6 +82,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		db:                  db,
 		IdentityLink:        q.IdentityLink.replaceDB(db),
 		Provider:            q.Provider.replaceDB(db),
+		ReplayClaim:         q.ReplayClaim.replaceDB(db),
 		SAMLIDPKey:          q.SAMLIDPKey.replaceDB(db),
 		SAMLServiceProvider: q.SAMLServiceProvider.replaceDB(db),
 	}
@@ -85,6 +91,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 type queryCtx struct {
 	IdentityLink        IIdentityLinkDo
 	Provider            IProviderDo
+	ReplayClaim         IReplayClaimDo
 	SAMLIDPKey          ISAMLIDPKeyDo
 	SAMLServiceProvider ISAMLServiceProviderDo
 }
@@ -93,6 +100,7 @@ func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
 		IdentityLink:        q.IdentityLink.WithContext(ctx),
 		Provider:            q.Provider.WithContext(ctx),
+		ReplayClaim:         q.ReplayClaim.WithContext(ctx),
 		SAMLIDPKey:          q.SAMLIDPKey.WithContext(ctx),
 		SAMLServiceProvider: q.SAMLServiceProvider.WithContext(ctx),
 	}

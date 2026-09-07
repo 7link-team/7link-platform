@@ -44,6 +44,7 @@ func TestIAMCoreMigrationsAcrossEngines(t *testing.T) {
 					source.Prefix = prefix
 					require.NoError(t, goosex.Migrate(t.Context(), db, source, engine.dialect))
 
+					verifyCoreFieldPolicyContracts(t, db, source, prefix, engine.dialect)
 					verifyCoreRoleContracts(t, db, prefix)
 					verifyCoreMenuContracts(t, db, prefix)
 					verifyCoreEntityContracts(t, db, prefix, engine.dialect)
@@ -54,6 +55,27 @@ func TestIAMCoreMigrationsAcrossEngines(t *testing.T) {
 			}
 		})
 	}
+}
+
+func verifyCoreFieldPolicyContracts(t *testing.T, db *sql.DB, source goosex.Source, prefix, dialect string) {
+	t.Helper()
+	table := prefix + "iam_field_policies"
+	insert := func(tenant, version int64, field string) error {
+		_, err := db.Exec(fmt.Sprintf("INSERT INTO %s (tenant_id, resource, field_name, policy_json, version, updated_at) VALUES (%d, 'todo', '%s', '{}', %d, '%s')", table, tenant, field, version, coreTestTime))
+		return err
+	}
+	require.NoError(t, insert(1, 1, "title"))
+	require.NoError(t, insert(2, 1, "title"), "same field in another tenant is independent")
+	assert.Error(t, insert(1, 2, "title"), "policy key is tenant/resource/field")
+	assert.Error(t, insert(0, 1, "description"))
+	assert.Error(t, insert(-1, 1, "description"))
+	assert.Error(t, insert(1, 0, "description"))
+	assert.Error(t, insert(1, -1, "description"))
+	require.NoError(t, goosex.MigrateDownTo(t.Context(), db, source, dialect, 11))
+	assertTableExists(t, db, dialect, table, false)
+	require.NoError(t, goosex.Migrate(t.Context(), db, source, dialect))
+	assertTableExists(t, db, dialect, table, true)
+	assert.Zero(t, tableRowCount(t, db, table))
 }
 
 func TestIAMCoreServiceBehaviorOnPostgres(t *testing.T) {

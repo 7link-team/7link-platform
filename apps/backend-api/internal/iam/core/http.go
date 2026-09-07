@@ -112,7 +112,7 @@ func menuRef(in *menuInput) (guid.ID, guid.ID, error) {
 type APITenantMember struct {
 	TenantID     string       `json:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Subject      string       `json:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
-	DisplayName  string       `json:"display_name"`
+	DisplayName  string       `json:"display_name,omitempty"`
 	Email        string       `json:"email,omitempty"`
 	DepartmentID string       `json:"department_id,omitempty" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Status       MemberStatus `json:"status"`
@@ -272,6 +272,7 @@ type tenantMemberInput struct {
 }
 
 type createTenantMemberInput struct {
+	RawBody  []byte
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	Body     struct {
 		Subject      string       `json:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
@@ -283,6 +284,7 @@ type createTenantMemberInput struct {
 }
 
 type updateTenantMemberInput struct {
+	RawBody  []byte
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	Subject  string `path:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
@@ -392,6 +394,7 @@ type authorizationExplanationInput struct {
 
 // RegisterHTTP registers all core IAM HTTP operations.
 func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
+	registerFieldPolicyHTTP(a, svc, registrar)
 	registerRelationshipHTTP(a, svc, registrar)
 	registerPlatformHTTP(a, svc, registrar)
 	authz.Register(registrar, a, huma.Operation{
@@ -928,11 +931,25 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		if err != nil {
 			return nil, err
 		}
+		fields, err := svc.profileConstraint(ctx, tenantID)
+		if err == nil {
+			err = fields.RequireRead("display_name") // The repository orders by display name.
+		}
+		if err == nil && strings.TrimSpace(in.Search) != "" {
+			err = fields.RequireRead("display_name", "email")
+		}
+		if err != nil {
+			return nil, apiError("read member fields", err)
+		}
 		members, total, err := svc.ListTenantMembers(ctx, tenantID, MemberFilter{Search: in.Search, Status: in.Status, Offset: in.Offset, Limit: in.Limit})
 		if err != nil {
 			return nil, apiError("list tenant members", err)
 		}
-		return respx.List(ctx, membersFromDomain(members), respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(members), Total: total}), nil
+		views := make([]APITenantMember, len(members))
+		for i, member := range members {
+			views[i] = memberProfileView(member, fields)
+		}
+		return respx.List(ctx, views, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(members), Total: total}), nil
 	})
 	authz.Register(registrar, a, huma.Operation{OperationID: "iam-create-tenant-member", Method: http.MethodPost, Path: "/iam/members", Summary: "Bind an existing principal to a tenant", Tags: []string{"iam"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity}}, authz.Guard{Resource: "user", Verb: "create"}, func(ctx context.Context, in *createTenantMemberInput) (*respx.Body[APITenantMember], error) {
 		tenantID, err := requireID(in.TenantID)
@@ -947,16 +964,27 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		if err != nil {
 			return nil, err
 		}
+		fields, err := svc.profileConstraint(ctx, tenantID)
+		if err == nil {
+			err = requireMemberProfileWrites(in.RawBody, fields, true)
+		}
+		if err != nil {
+			return nil, apiError("write member fields", err)
+		}
 		member, err := svc.PutTenantMember(ctx, tenantID, subject, in.Body.DisplayName, in.Body.Email, departmentID, in.Body.Status)
 		if err != nil {
 			return nil, apiError("create tenant member", err)
 		}
-		return respx.OK(ctx, memberFromDomain(member)), nil
+		return respx.OK(ctx, memberProfileView(member, fields)), nil
 	})
 	authz.Register(registrar, a, huma.Operation{OperationID: "iam-get-tenant-member", Method: http.MethodGet, Path: "/iam/members/{subject}", Summary: "Get a tenant membership", Tags: []string{"iam"}, Errors: []int{http.StatusNotFound}}, authz.Guard{Resource: "user", Verb: "view"}, func(ctx context.Context, in *tenantMemberInput) (*respx.Body[APITenantMember], error) {
 		tenantID, subject, err := tenantMemberRef(in)
 		if err != nil {
 			return nil, err
+		}
+		fields, err := svc.profileConstraint(ctx, tenantID)
+		if err != nil {
+			return nil, apiError("read member fields", err)
 		}
 		member, err := svc.GetTenantMember(ctx, tenantID, subject)
 		if err != nil {
@@ -966,7 +994,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		if err != nil {
 			return nil, apiError("list tenant member roles", err)
 		}
-		out := memberFromDomain(member)
+		out := memberProfileView(member, fields)
 		out.RoleIDs = guidStrings(roles)
 		return respx.OK(ctx, out), nil
 	})
@@ -978,6 +1006,13 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		subject, err := requireID(in.Subject)
 		if err != nil {
 			return nil, err
+		}
+		fields, err := svc.profileConstraint(ctx, tenantID)
+		if err == nil {
+			err = requireMemberProfileWrites(in.RawBody, fields, false)
+		}
+		if err != nil {
+			return nil, apiError("write member fields", err)
 		}
 		member, err := svc.GetTenantMember(ctx, tenantID, subject)
 		if err != nil {
@@ -1003,7 +1038,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		if err != nil {
 			return nil, apiError("update tenant member", err)
 		}
-		return respx.OK(ctx, memberFromDomain(member)), nil
+		return respx.OK(ctx, memberProfileView(member, fields)), nil
 	})
 	authz.Register(registrar, a, huma.Operation{OperationID: "iam-list-tenant-member-roles", Method: http.MethodGet, Path: "/iam/members/{subject}/roles", Summary: "List role assignments for a tenant member", Tags: []string{"iam"}, Errors: []int{http.StatusNotFound}}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *tenantMemberInput) (*respx.Body[[]string], error) {
 		tenantID, subject, err := tenantMemberRef(in)
@@ -1210,13 +1245,6 @@ func roleDataScopeFromDomain(scope RoleDataScope) APIRoleDataScope {
 	return out
 }
 
-func membersFromDomain(members []TenantMember) []APITenantMember {
-	out := make([]APITenantMember, 0, len(members))
-	for _, member := range members {
-		out = append(out, memberFromDomain(member))
-	}
-	return out
-}
 func menuFromDomain(menu Menu) APIMenu {
 	return APIMenu{ID: menu.ID.String(), TenantID: menu.TenantID.String(), ParentID: optionalIDString(menu.ParentID), Label: menu.Label, Route: menu.Route, Icon: menu.Icon, SortOrder: menu.SortOrder, PermissionCode: menu.PermissionCode, Status: menu.Status, CreatedAt: menu.CreatedAt, UpdatedAt: menu.UpdatedAt}
 }
@@ -1230,6 +1258,8 @@ func menusFromDomain(menus []Menu) []APIMenu {
 
 func apiError(operation string, err error) error {
 	switch {
+	case errors.Is(err, ErrFieldPolicyConflict):
+		return huma.Error409Conflict(corei18n.ResourceConflict)
 	case errors.Is(err, ErrRoleNotFound):
 		return huma.Error404NotFound(corei18n.ResourceNotFound)
 	case errors.Is(err, ErrRoleNameConflict):
@@ -1296,7 +1326,9 @@ func apiError(operation string, err error) error {
 		return huma.Error404NotFound(corei18n.RolePermissionNotGranted)
 	case errors.Is(err, ErrInvalidRolePermissionCondition):
 		return huma.Error422UnprocessableEntity(corei18n.InvalidRolePermissionCondition)
-	case errors.Is(err, ErrPrivilegeEscalation):
+	case errors.Is(err, authz.ErrFieldsUnavailable):
+		return huma.Error503ServiceUnavailable("respx.service_unavailable")
+	case errors.Is(err, ErrPrivilegeEscalation), errors.Is(err, authz.ErrFieldDenied):
 		return huma.Error403Forbidden(corei18n.PrivilegeEscalationDenied)
 	case errors.Is(err, ErrInvalidArgument):
 		return huma.Error422UnprocessableEntity(corei18n.InvalidRequest)

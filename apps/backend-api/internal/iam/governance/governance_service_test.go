@@ -404,7 +404,7 @@ func TestGovernanceRepositoriesAndServicesFailClosed(t *testing.T) {
 
 	assert.Equal(t, Name, (&Module{}).ModuleName())
 	assert.NotNil(t, (&Module{}).MigrationSource().FS)
-	assert.Len(t, (&Module{}).MigrationMilestones(), 2)
+	assert.Len(t, (&Module{}).MigrationMilestones(), 3)
 }
 
 func TestAccessRequestReadFailuresAreReported(t *testing.T) {

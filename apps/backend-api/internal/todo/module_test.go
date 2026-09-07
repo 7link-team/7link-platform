@@ -9,8 +9,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	"7link.com/platform/pkg/extension/authz"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	humax "7link.com/platform/pkg/extension/huma"
 	platformi18n "7link.com/platform/pkg/i18n"
@@ -19,6 +21,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func enabledTodoConfig() Config { return Config{Config: module.Config{Enabled: true}} }
 
 func newTestRuntime(t *testing.T) *appenv.Runtime {
 	t.Helper()
@@ -47,11 +51,13 @@ func initI18n(t *testing.T, rt *appenv.Runtime) {
 // the todo namespace and RegisterFS rejects a duplicate.
 
 func TestModuleIdentityAndDependencies(t *testing.T) {
-	m := NewModule(newTestRuntime(t))
+	m := NewModule(newTestRuntime(t), enabledTodoConfig())
 	assert.Equal(t, Name, m.ModuleName())
 	// The module reads messages through i18n and mints identifiers through guid,
 	// so both must start first.
-	assert.Equal(t, []string{platformi18n.Name, guid.Name}, m.ModuleDependencies())
+	assert.Equal(t, []string{platformi18n.Name, guid.Name, core.Name}, m.ModuleDependencies())
+	assert.True(t, m.Enabled())
+	assert.False(t, NewModule(nil, Config{}).Enabled())
 }
 
 // TestModuleInitializeRegistersLocales is the test that would have caught the
@@ -61,25 +67,25 @@ func TestModuleIdentityAndDependencies(t *testing.T) {
 // Initialize is not idempotent — RegisterFS rejects a duplicate namespace — and
 // it does not need to be: the lifecycle runs it exactly once per process.
 func TestModuleInitializeRegistersLocales(t *testing.T) {
-	m := NewModule(newTestRuntime(t))
+	m := NewModule(newTestRuntime(t), enabledTodoConfig())
 	require.NoError(t, m.InjectServices(servicesWith(t, &stubIDs{})))
 	require.NoError(t, m.Initialize(t.Context()))
 	require.NotNil(t, m.service, "Initialize must build the service")
 }
 
 func TestModuleHealthTracksDatasource(t *testing.T) {
-	withDB := NewModule(newTestRuntime(t))
+	withDB := NewModule(newTestRuntime(t), enabledTodoConfig())
 	require.NoError(t, withDB.InjectServices(servicesWith(t, &stubIDs{})))
 	require.NoError(t, withDB.Initialize(t.Context()))
 	assert.NoError(t, withDB.CheckHealth(t.Context()))
 
 	// A module that never initialized, or one without a writable datasource,
 	// reports unhealthy rather than failing at the first request.
-	assert.ErrorIs(t, NewModule(nil).CheckHealth(t.Context()), ErrUnavailable)
+	assert.ErrorIs(t, NewModule(nil, enabledTodoConfig()).CheckHealth(t.Context()), ErrUnavailable)
 
 	bare := appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0"))
 	initI18n(t, bare)
-	noDB := NewModule(bare)
+	noDB := NewModule(bare, enabledTodoConfig())
 	require.NoError(t, noDB.InjectServices(servicesWith(t, &stubIDs{})))
 	require.NoError(t, noDB.Initialize(t.Context()))
 	assert.ErrorIs(t, noDB.CheckHealth(t.Context()), ErrUnavailable)
@@ -88,7 +94,7 @@ func TestModuleHealthTracksDatasource(t *testing.T) {
 func TestModuleInjectServicesRequiresGUID(t *testing.T) {
 	services := module.NewServices()
 	require.NoError(t, services.Seal())
-	assert.Error(t, NewModule(newTestRuntime(t)).InjectServices(services),
+	assert.Error(t, NewModule(newTestRuntime(t), enabledTodoConfig()).InjectServices(services),
 		"a missing identifier source must fail wiring, not surface at the first create")
 }
 
@@ -96,11 +102,11 @@ func TestModuleRegisterHTTPRequiresInitialize(t *testing.T) {
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
 
-	uninitialized := NewModule(newTestRuntime(t))
+	uninitialized := NewModule(newTestRuntime(t), enabledTodoConfig())
 	assert.Error(t, uninitialized.RegisterHTTP(context.Background(), api),
 		"registering routes before Initialize must fail loudly")
 
-	ready := NewModule(newTestRuntime(t))
+	ready := NewModule(newTestRuntime(t), enabledTodoConfig())
 	require.NoError(t, ready.InjectServices(servicesWith(t, &stubIDs{})))
 	require.NoError(t, ready.Initialize(t.Context()))
 	assert.NoError(t, ready.RegisterHTTP(context.Background(), api))
@@ -124,7 +130,7 @@ func TestRegisterHTTPWithoutADatasourceWarnsAndStillRegisters(t *testing.T) {
 
 	bare := appenv.NewRuntime(appenv.NewIdentity("test", "1.0.0"))
 	initI18n(t, bare)
-	noDB := NewModule(bare)
+	noDB := NewModule(bare, enabledTodoConfig())
 	require.NoError(t, noDB.InjectServices(servicesWith(t, &stubIDs{})))
 	require.NoError(t, noDB.Initialize(t.Context()))
 
@@ -158,6 +164,10 @@ func servicesWith(t *testing.T, ids guid.Source) *module.Services {
 	t.Helper()
 	services := module.NewServices()
 	require.NoError(t, module.Provide(services, ids))
+	policy := &todoPolicy{}
+	require.NoError(t, module.Provide[core.AuthorizationEvaluator](services, policy))
+	require.NoError(t, module.Provide[core.MemberDepartmentReader](services, policy))
+	require.NoError(t, module.Provide[*authz.Registrar](services, todoRegistrar(policy)))
 	require.NoError(t, services.Seal())
 	return services
 }
@@ -167,7 +177,7 @@ func TestModuleContributesTheRawQueryMiddleware(t *testing.T) {
 	// declared fields, so the module must contribute the middleware that makes
 	// it reachable.
 	var reached bool
-	handler := NewModule(nil).HTTPMiddleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+	handler := NewModule(nil, enabledTodoConfig()).HTTPMiddleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		reached = rawQueryFrom(r.Context()) != nil
 	}))
 	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/todos?a=eq:1", nil))

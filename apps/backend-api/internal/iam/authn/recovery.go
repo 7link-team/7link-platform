@@ -152,7 +152,7 @@ func (s *Service) BeginPasswordRecovery(ctx context.Context, identifier string) 
 		if err := repository.createPasswordRecovery(ctx, &recovery, now); err != nil {
 			return err
 		}
-		return s.enqueueNotification(ctx, repository, notification)
+		return s.enqueueNotification(ctx, repository, principal.ID, notification)
 	})
 	if err != nil {
 		return fmt.Errorf("store password recovery request: %w", err)
@@ -254,7 +254,7 @@ func (s *Service) CompletePasswordRecovery(ctx context.Context, token, newPasswo
 			return err
 		}
 		if principal.Email != "" {
-			if err := s.enqueueNotification(ctx, repository, notification); err != nil {
+			if err := s.enqueueNotification(ctx, repository, principal.ID, notification); err != nil {
 				return err
 			}
 		}
@@ -297,8 +297,12 @@ func passwordRecoveryMessage(token string) []byte {
 func (s *Service) enqueueNotification(
 	ctx context.Context,
 	repository *Repository,
+	principalID guid.ID,
 	payload notificationPayload,
 ) error {
+	if principalID <= 0 {
+		return errors.New("notification requires a principal")
+	}
 	id, err := repository.nextID()
 	if err != nil {
 		return err
@@ -314,6 +318,7 @@ func (s *Service) enqueueNotification(
 	}
 	now := s.now().UTC()
 	row := model.NotificationOutbox{
+		PrincipalID: &principalID,
 		ID: id, Kind: payload.Type, Recipient: payload.Recipient, PayloadCiphertext: ciphertext,
 		Status: "pending", AvailableAt: now, CreatedAt: now, UpdatedAt: now,
 	}

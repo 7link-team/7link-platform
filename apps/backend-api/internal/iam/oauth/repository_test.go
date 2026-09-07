@@ -4,13 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/iam/authn"
 	"7link.com/platform/internal/iam/oauth/model"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
@@ -39,12 +42,14 @@ type oauthFailingIDs struct{}
 func (oauthFailingIDs) Next() (int64, error) { return 0, errors.New("ID source down") }
 
 type oauthWebFixture struct {
-	mu      sync.Mutex
-	next    int
-	session *authnext.Claims
-	tokens  map[string]*authnext.Claims
-	issue   error
-	csrf    error
+	mu           sync.Mutex
+	next         int
+	session      *authnext.Claims
+	tokens       map[string]*authnext.Claims
+	issue        error
+	csrf         error
+	profileError error
+	profileScope string
 }
 
 func newOAuthWebFixture() *oauthWebFixture {
@@ -106,15 +111,30 @@ func (web *oauthWebFixture) IssueTenantAccessTokenWithAssurance(
 func (web *oauthWebFixture) IssueTenantIDTokenWithAssurance(
 	_ context.Context,
 	principalID guid.ID,
-	tenantID, clientID, _ string,
+	tenantID, clientID, _, scope string,
 	assurance authnext.Assurance,
 ) (string, error) {
 	token, _, err := web.issueToken(&authnext.Claims{
 		Subject: principalID.String(), PrincipalID: principalID, OrganizationID: tenantID,
 		ClientID: clientID, AuthTime: assurance.AuthTime, ACR: assurance.Level,
 		AMR: assurance.Methods, SubjectType: authnext.SubjectTypePrincipal,
+		Raw: map[string]any{"scope": scope},
 	})
 	return token, err
+}
+
+func (web *oauthWebFixture) ProjectProfile(_ context.Context, claims *authnext.Claims, scope string) (authn.ProfileClaims, error) {
+	web.mu.Lock()
+	defer web.mu.Unlock()
+	web.profileScope = scope
+	view := authn.ProfileClaims{}
+	if containsWord(scope, "profile") {
+		view.PreferredUsername = &claims.PreferredUsername
+	}
+	if containsWord(scope, "email") {
+		view.Email, view.EmailVerified = &claims.Email, &claims.EmailVerified
+	}
+	return view, web.profileError
 }
 
 func (web *oauthWebFixture) IssueTenantOAuthClientToken(
@@ -217,24 +237,27 @@ func initializeOAuthDatabase(t *testing.T, dsn, prefix string) {
 	t.Helper()
 	db, err := (gormx.Datasource{Type: "sqlite", DSN: dsn, Writable: true}).Open(t.Context())
 	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, sqlDB.Close()) }()
+	_, filename, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	identitySource := goosex.Source{FS: os.DirFS(filepath.Join(filepath.Dir(filename), "..", "identity")), TableName: "goose_identity", Prefix: prefix}
+	require.NoError(t, goosex.Migrate(t.Context(), sqlDB, identitySource, db.Dialector.Name()))
 	statements := []string{
-		"CREATE TABLE " + prefix + "iam_principals (id BIGINT PRIMARY KEY, login_name TEXT NOT NULL, status TEXT NOT NULL)",
 		"CREATE TABLE " + prefix + "iam_tenants (id BIGINT PRIMARY KEY, status TEXT NOT NULL)",
 		"CREATE TABLE " + prefix + "iam_tenant_members (tenant_id BIGINT NOT NULL, principal_id BIGINT NOT NULL, status TEXT NOT NULL, PRIMARY KEY (tenant_id, principal_id))",
-		"CREATE TABLE " + prefix + "iam_service_accounts (principal_id BIGINT PRIMARY KEY, owner_tenant_id BIGINT NOT NULL, status TEXT NOT NULL, expires_at DATETIME NULL, token_version BIGINT NOT NULL)",
-		"CREATE TABLE " + prefix + "iam_service_account_credentials (id BIGINT PRIMARY KEY, principal_id BIGINT NOT NULL, secret_hash TEXT NOT NULL, scopes TEXT NOT NULL, expires_at DATETIME NULL, last_used_at DATETIME NULL, revoked_at DATETIME NULL)",
 		"CREATE TABLE " + prefix + "oauth_test_audits (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id BIGINT NOT NULL, principal_id BIGINT NOT NULL, event_type TEXT NOT NULL, target_id BIGINT NOT NULL)",
 	}
 	for _, statement := range statements {
 		require.NoError(t, db.Exec(statement).Error)
 	}
-	sqlDB, err := db.DB()
-	require.NoError(t, err)
 	source := (&Module{}).MigrationSource()
 	source.Prefix = prefix
 	require.NoError(t, goosex.Migrate(t.Context(), sqlDB, source, db.Dialector.Name()))
 	require.NoError(t, db.Table(prefix+"iam_principals").Create(map[string]any{
 		"id": 101, "login_name": "alice", "status": "active",
+		"display_name": "Alice", "created_at": oauthTestNow, "updated_at": oauthTestNow,
 	}).Error)
 	require.NoError(t, db.Table(prefix+"iam_tenants").Create(map[string]any{
 		"id": 7, "status": "active",
@@ -242,7 +265,6 @@ func initializeOAuthDatabase(t *testing.T, dsn, prefix string) {
 	require.NoError(t, db.Table(prefix+"iam_tenant_members").Create(map[string]any{
 		"tenant_id": 7, "principal_id": 101, "status": "active",
 	}).Error)
-	require.NoError(t, sqlDB.Close())
 }
 
 func (h *oauthHarness) table(name string) string { return h.prefix + name }

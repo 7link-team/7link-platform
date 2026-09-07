@@ -42,11 +42,14 @@ func TestFrozenIAMCapabilitiesHaveCanonicalOwners(t *testing.T) {
 		{"core.AuthorizationEvaluator", reflect.TypeFor[core.AuthorizationEvaluator](), "7link.com/platform/internal/iam/core"},
 		{"authz.PermissionChecker", reflect.TypeFor[authz.PermissionChecker](), "7link.com/platform/pkg/extension/authz"},
 		{"core.ActiveMemberChecker", reflect.TypeFor[core.ActiveMemberChecker](), "7link.com/platform/internal/iam/core"},
+		{"core.MemberDepartmentReader", reflect.TypeFor[core.MemberDepartmentReader](), "7link.com/platform/internal/iam/core"},
+		{"core.MemberTenantResolver", reflect.TypeFor[core.MemberTenantResolver](), "7link.com/platform/internal/iam/core"},
 		{"core.AdministratorGuard", reflect.TypeFor[core.AdministratorGuard](), "7link.com/platform/internal/iam/core"},
 		{"authn.InvitationCredentials", reflect.TypeFor[authn.InvitationCredentials](), "7link.com/platform/internal/iam/authn"},
 		{"identity.InvitationPrincipalCreator", reflect.TypeFor[identity.InvitationPrincipalCreator](), "7link.com/platform/internal/iam/identity"},
 		{"core.RoleGrantStore", reflect.TypeFor[core.RoleGrantStore](), "7link.com/platform/internal/iam/core"},
 		{"identity.IdentityProvisioner", reflect.TypeFor[identity.IdentityProvisioner](), "7link.com/platform/internal/iam/identity"},
+		{"identity.ServiceAccountValidator", reflect.TypeFor[identity.ServiceAccountValidator](), "7link.com/platform/internal/iam/identity"},
 		{"organization.GroupProvisioner", reflect.TypeFor[organization.GroupProvisioner](), "7link.com/platform/internal/iam/organization"},
 		{"authn.WebService", reflect.TypeFor[authn.WebService](), "7link.com/platform/internal/iam/authn"},
 		// Three separate rewrap keys rather than one shared interface: the
@@ -58,7 +61,7 @@ func TestFrozenIAMCapabilitiesHaveCanonicalOwners(t *testing.T) {
 		{"provisioning.SecretRewrapper", reflect.TypeFor[provisioning.SecretRewrapper](), "7link.com/platform/internal/iam/provisioning"},
 	}
 
-	require.Len(t, capabilities, 16)
+	require.Len(t, capabilities, 19)
 	seen := make(map[reflect.Type]struct{}, len(capabilities))
 	for _, capability := range capabilities {
 		require.NotNil(t, capability.typ)
@@ -92,6 +95,7 @@ func TestIAMRootExportedInterfacesMatchFrozenSet(t *testing.T) {
 		"core.ActiveMemberChecker",
 		"core.AdministratorGuard",
 		"core.AuthorizationEvaluator",
+		"core.MemberDepartmentReader",
 		"federation.SecretRewrapper",
 		"identity.IdentityProvisioner",
 		"organization.GroupProvisioner",
@@ -111,11 +115,14 @@ func TestIAMCapabilitiesAreDeclaredByTheirProviderRoots(t *testing.T) {
 		"provisioning.SecretRewrapper":        "interface",
 		"authn.WebService":                    "interface",
 		"core.ActiveMemberChecker":            "interface",
+		"core.MemberDepartmentReader":         "interface",
+		"core.MemberTenantResolver":           "func",
 		"core.AdministratorGuard":             "interface",
 		"core.AuthorizationEvaluator":         "interface",
 		"core.RoleGrantStore":                 "struct",
 		"identity.IdentityProvisioner":        "interface",
 		"identity.InvitationPrincipalCreator": "func",
+		"identity.ServiceAccountValidator":    "func",
 		"organization.GroupProvisioner":       "interface",
 	}
 	declarations := readIAMRootDeclarations(t)

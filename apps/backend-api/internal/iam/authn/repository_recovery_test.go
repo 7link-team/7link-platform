@@ -116,6 +116,8 @@ func TestRepositoryNotificationOutboxClaimAndTransitions(t *testing.T) {
 		{ID: 4, Kind: "email", Recipient: "d@example.test", PayloadCiphertext: "d", Status: "delivering", AvailableAt: now, CreatedAt: now, UpdatedAt: now},
 	}
 	for _, row := range rows {
+		harness.seedPrincipal(t, row.ID, "notification-"+row.ID.String())
+		row.PrincipalID = &row.ID
 		require.NoError(t, harness.repository.enqueueNotification(t.Context(), row))
 	}
 	require.NoError(t, harness.repository.resetStaleNotifications(t.Context(), now.Add(-time.Minute)))
@@ -178,9 +180,11 @@ func TestRepositoryNotificationOutboxClaimAndTransitions(t *testing.T) {
 
 func TestRepositoryNotificationClaimRollsBackWhenClaimedRowCannotBeRead(t *testing.T) {
 	harness := newAuthnRepositoryHarness(t, "sl_")
+	harness.seedPrincipal(t, 1, "alice")
 	now := repositoryTestNow
 	require.NoError(t, harness.repository.enqueueNotification(t.Context(), &model.NotificationOutbox{
-		ID: 1, Kind: "email", Recipient: "a@example.test", PayloadCiphertext: "a",
+		PrincipalID: new(guid.ID(1)),
+		ID:          1, Kind: "email", Recipient: "a@example.test", PayloadCiphertext: "a",
 		Status: "pending", AvailableAt: now, CreatedAt: now, UpdatedAt: now,
 	}))
 

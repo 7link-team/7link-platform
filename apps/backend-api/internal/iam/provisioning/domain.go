@@ -41,13 +41,14 @@ var (
 )
 
 type Directory struct {
-	ID        guid.ID   `json:"id"`
-	TenantID  guid.ID   `json:"tenant_id"`
-	Name      string    `json:"name"`
-	Status    string    `json:"status"`
-	Version   int64     `json:"version"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ServiceAccountID *guid.ID  `json:"service_account_id,omitempty"`
+	ID               guid.ID   `json:"id"`
+	TenantID         guid.ID   `json:"tenant_id"`
+	Name             string    `json:"name"`
+	Status           string    `json:"status"`
+	Version          int64     `json:"version"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 type Credential struct {
@@ -66,6 +67,7 @@ type CredentialSecret struct {
 }
 
 type AuthContext struct {
+	PrincipalID  guid.ID
 	TenantID     guid.ID
 	DirectoryID  guid.ID
 	CredentialID guid.ID

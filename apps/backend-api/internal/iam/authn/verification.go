@@ -91,7 +91,7 @@ func (s *Service) BeginEmailVerification(
 		if err := repository.replaceEmailVerification(ctx, &row, now); err != nil {
 			return err
 		}
-		if err := s.enqueueNotification(ctx, repository, notificationPayload{
+		if err := s.enqueueNotification(ctx, repository, principal.ID, notificationPayload{
 			Type: emailVerificationNotification, Recipient: principal.Email,
 			VerificationURL: verificationURL, Code: code, OccurredAt: now, ExpiresAt: expiresAt,
 		}); err != nil {

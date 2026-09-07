@@ -68,8 +68,8 @@ type AnchorStore struct {
 	prefix    string
 	region    string
 	retention time.Duration
-	ensure    sync.Once
-	ensureErr error
+	ensureMu  sync.Mutex
+	ready     bool
 }
 
 func NewAnchorStore(cfg AnchorConfig) (*AnchorStore, error) {
@@ -112,23 +112,29 @@ func anchorStoreError(err error) error {
 }
 
 func (s *AnchorStore) ensureBucket(ctx context.Context) error {
-	s.ensure.Do(func() {
-		exists, err := s.client.BucketExists(ctx, s.bucket)
-		if err != nil {
-			s.ensureErr = fmt.Errorf("check anchor bucket: %w", err)
-			return
-		}
-		if !exists {
-			if err := s.client.MakeBucket(ctx, s.bucket, minio.MakeBucketOptions{Region: s.region, ObjectLocking: true}); err != nil {
-				s.ensureErr = fmt.Errorf("create anchor bucket %q: %w", s.bucket, err)
-				return
+	s.ensureMu.Lock()
+	defer s.ensureMu.Unlock()
+	if s.ready {
+		return nil
+	}
+	exists, err := s.client.BucketExists(ctx, s.bucket)
+	if err != nil {
+		return fmt.Errorf("check anchor bucket: %w", err)
+	}
+	if !exists {
+		if err := s.client.MakeBucket(ctx, s.bucket, minio.MakeBucketOptions{Region: s.region, ObjectLocking: true}); err != nil {
+			// Another replica may have created the bucket after our HEAD.
+			code := minio.ToErrorResponse(err).Code
+			if code != "BucketAlreadyOwnedByYou" && code != "BucketAlreadyExists" {
+				return fmt.Errorf("create anchor bucket %q: %w", s.bucket, err)
 			}
 		}
-		if err := s.probeObjectLock(ctx); err != nil {
-			s.ensureErr = err
-		}
-	})
-	return s.ensureErr
+	}
+	if err := s.probeObjectLock(ctx); err != nil {
+		return err
+	}
+	s.ready = true
+	return nil
 }
 
 func (s *AnchorStore) probeObjectLock(ctx context.Context) error {

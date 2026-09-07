@@ -19,7 +19,12 @@ func (*Module) MigrationSource() goosex.Source {
 }
 
 func (*Module) MigrationMilestones() []module.MigrationMilestone {
-	return []module.MigrationMilestone{{Name: "base", Version: 11}}
+	return []module.MigrationMilestone{
+		{Name: "base", Version: 11},
+		{Name: "field_policies", Version: 12},
+		{Name: "principal-erasure", Version: 13,
+			Dependencies: []module.MigrationMilestoneRef{{Module: "identity", Name: "lifecycle"}}},
+	}
 }
 
 var (

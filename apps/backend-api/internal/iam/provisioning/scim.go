@@ -18,6 +18,7 @@ import (
 	"7link.com/platform/internal/iam/organization"
 	provisioningi18n "7link.com/platform/internal/iam/provisioning/i18n"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/authz"
 	platformi18n "7link.com/platform/pkg/i18n"
 )
 
@@ -54,14 +55,35 @@ type UserInput struct {
 	DisplayName string      `json:"displayName,omitempty"`
 	Active      *bool       `json:"active,omitempty"`
 	Emails      []UserEmail `json:"emails,omitempty"`
+	provided    map[string]bool
+}
+
+// UnmarshalJSON retains explicit attribute presence, including null, while
+// preserving the strict decoder's rejection of unsupported attributes.
+func (input *UserInput) UnmarshalJSON(data []byte) error {
+	type plain UserInput
+	var decoded plain
+	if err := strictDecode(data, &decoded); err != nil {
+		return err
+	}
+	var attributes map[string]json.RawMessage
+	if json.Unmarshal(data, &attributes) != nil || attributes == nil {
+		return ErrInvalidSCIM
+	}
+	decoded.provided = make(map[string]bool, len(attributes))
+	for name := range attributes {
+		decoded.provided[strings.ToLower(name)] = true
+	}
+	*input = UserInput(decoded)
+	return nil
 }
 
 type UserResource struct {
 	Schemas     []string     `json:"schemas"`
 	ID          string       `json:"id"`
 	ExternalID  string       `json:"externalId,omitempty"`
-	UserName    string       `json:"userName"`
-	Name        UserName     `json:"name,omitempty"`
+	UserName    string       `json:"userName,omitempty"`
+	Name        *UserName    `json:"name,omitempty"`
 	DisplayName string       `json:"displayName,omitempty"`
 	Active      bool         `json:"active"`
 	Emails      []UserEmail  `json:"emails,omitempty"`
@@ -165,6 +187,12 @@ func newSCIMError(ctx context.Context, status int, scimType, key string) *SCIMEr
 }
 
 func mapSCIMError(ctx context.Context, err error) *SCIMError {
+	if errors.Is(err, authz.ErrFieldDenied) {
+		return newSCIMError(ctx, http.StatusForbidden, "", "scim_operation_failed")
+	}
+	if errors.Is(err, authz.ErrFieldsUnavailable) {
+		return newSCIMError(ctx, http.StatusServiceUnavailable, "", "provisioning_unavailable")
+	}
 	if errors.Is(err, identity.ErrLoginConflict) || errors.Is(err, organization.ErrGroupNameConflict) {
 		return newSCIMError(ctx, http.StatusConflict, "uniqueness", "scim_uniqueness_conflict")
 	}

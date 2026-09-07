@@ -28,6 +28,7 @@ func newDirectory(db *gorm.DB, opts ...gen.DOOption) directory {
 
 	tableName := _directory.directoryDo.TableName()
 	_directory.ALL = field.NewAsterisk(tableName)
+	_directory.ServiceAccountID = field.NewField(tableName, "service_account_id")
 	_directory.ID = field.NewField(tableName, "id")
 	_directory.TenantID = field.NewField(tableName, "tenant_id")
 	_directory.Name = field.NewString(tableName, "name")
@@ -45,15 +46,16 @@ func newDirectory(db *gorm.DB, opts ...gen.DOOption) directory {
 type directory struct {
 	directoryDo directoryDo
 
-	ALL       field.Asterisk
-	ID        field.Field
-	TenantID  field.Field
-	Name      field.String
-	NameKey   field.String
-	Status    field.String
-	Version   field.Int64
-	CreatedAt field.Time
-	UpdatedAt field.Time
+	ALL              field.Asterisk
+	ServiceAccountID field.Field
+	ID               field.Field
+	TenantID         field.Field
+	Name             field.String
+	NameKey          field.String
+	Status           field.String
+	Version          field.Int64
+	CreatedAt        field.Time
+	UpdatedAt        field.Time
 
 	fieldMap map[string]field.Expr
 }
@@ -70,6 +72,7 @@ func (d directory) As(alias string) *directory {
 
 func (d *directory) updateTableName(table string) *directory {
 	d.ALL = field.NewAsterisk(table)
+	d.ServiceAccountID = field.NewField(table, "service_account_id")
 	d.ID = field.NewField(table, "id")
 	d.TenantID = field.NewField(table, "tenant_id")
 	d.Name = field.NewString(table, "name")
@@ -104,7 +107,8 @@ func (d *directory) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (d *directory) fillFieldMap() {
-	d.fieldMap = make(map[string]field.Expr, 8)
+	d.fieldMap = make(map[string]field.Expr, 9)
+	d.fieldMap["service_account_id"] = d.ServiceAccountID
 	d.fieldMap["id"] = d.ID
 	d.fieldMap["tenant_id"] = d.TenantID
 	d.fieldMap["name"] = d.Name

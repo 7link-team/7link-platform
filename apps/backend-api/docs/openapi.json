@@ -406,7 +406,6 @@
         "required": [
           "tenant_id",
           "subject",
-          "display_name",
           "status",
           "created_at",
           "updated_at"
@@ -853,6 +852,165 @@
           "enabled",
           "signed",
           "valid"
+        ],
+        "type": "object"
+      },
+      "ArchiveJob": {
+        "additionalProperties": false,
+        "properties": {
+          "after_sequence": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "attempts": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "error_code": {
+            "type": "string"
+          },
+          "head_sequence": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "next_attempt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "object": {
+            "$ref": "#/components/schemas/ArchiveObject"
+          },
+          "retain_until": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "after_sequence",
+          "head_sequence",
+          "state",
+          "attempts",
+          "next_attempt",
+          "retain_until",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "ArchiveObject": {
+        "additionalProperties": false,
+        "properties": {
+          "bucket": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "retain_until": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "version_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bucket",
+          "key",
+          "version_id",
+          "sha256",
+          "size",
+          "retain_until"
+        ],
+        "type": "object"
+      },
+      "ArchiveStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "archived_events": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "completed_jobs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "eligible_events": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "failed_jobs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "pending_events": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/RetentionPolicy"
+          },
+          "queued_jobs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "running_jobs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "total_events": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "policy",
+          "total_events",
+          "eligible_events",
+          "archived_events",
+          "pending_events",
+          "queued_jobs",
+          "running_jobs",
+          "failed_jobs",
+          "completed_jobs"
         ],
         "type": "object"
       },
@@ -2486,6 +2644,10 @@
           "name": {
             "type": "string"
           },
+          "service_account_id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": "string"
+          },
           "status": {
             "type": "string"
           },
@@ -2523,6 +2685,13 @@
             "maxLength": 128,
             "minLength": 1,
             "type": "string"
+          },
+          "service_account_id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -2537,6 +2706,13 @@
             "maxLength": 128,
             "minLength": 1,
             "type": "string"
+          },
+          "service_account_id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "status": {
             "enum": [
@@ -2980,6 +3156,93 @@
           },
           "data": {
             "$ref": "#/components/schemas/Anchor",
+            "description": "response payload; null on error"
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
+      "EnvelopeArchiveJob": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ArchiveJob",
+            "description": "response payload; null on error"
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
+      "EnvelopeArchiveObject": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ArchiveObject",
+            "description": "response payload; null on error"
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
+      "EnvelopeArchiveStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ArchiveStatus",
             "description": "response payload; null on error"
           },
           "message": {
@@ -3444,6 +3707,35 @@
           },
           "data": {
             "$ref": "#/components/schemas/Explanation",
+            "description": "response payload; null on error"
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
+      "EnvelopeFieldConstraint": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/FieldConstraint",
             "description": "response payload; null on error"
           },
           "message": {
@@ -4084,6 +4376,41 @@
         ],
         "type": "object"
       },
+      "EnvelopeListArchiveJob": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "description": "response payload; null on error",
+            "items": {
+              "$ref": "#/components/schemas/ArchiveJob"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
       "EnvelopeListBrowserSession": {
         "additionalProperties": false,
         "properties": {
@@ -4294,6 +4621,41 @@
         ],
         "type": "object"
       },
+      "EnvelopeListField": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "description": "response payload; null on error",
+            "items": {
+              "$ref": "#/components/schemas/Field"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
       "EnvelopeListGrantedConsent": {
         "additionalProperties": false,
         "properties": {
@@ -4450,6 +4812,41 @@
             "description": "response payload; null on error",
             "items": {
               "$ref": "#/components/schemas/Invitation"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
+      "EnvelopeListManagedFieldPolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "description": "response payload; null on error",
+            "items": {
+              "$ref": "#/components/schemas/ManagedFieldPolicy"
             },
             "type": [
               "array",
@@ -5108,6 +5505,35 @@
         ],
         "type": "object"
       },
+      "EnvelopeManagedFieldPolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ManagedFieldPolicy",
+            "description": "response payload; null on error"
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
       "EnvelopeMapStringBool": {
         "additionalProperties": false,
         "properties": {
@@ -5372,7 +5798,7 @@
         ],
         "type": "object"
       },
-      "EnvelopePrincipal": {
+      "EnvelopePrincipalListData": {
         "additionalProperties": false,
         "properties": {
           "code": {
@@ -5381,7 +5807,7 @@
             "type": "integer"
           },
           "data": {
-            "$ref": "#/components/schemas/Principal",
+            "$ref": "#/components/schemas/PrincipalListData",
             "description": "response payload; null on error"
           },
           "message": {
@@ -5401,7 +5827,7 @@
         ],
         "type": "object"
       },
-      "EnvelopePrincipalListData": {
+      "EnvelopePrincipalView": {
         "additionalProperties": false,
         "properties": {
           "code": {
@@ -5410,7 +5836,7 @@
             "type": "integer"
           },
           "data": {
-            "$ref": "#/components/schemas/PrincipalListData",
+            "$ref": "#/components/schemas/PrincipalView",
             "description": "response payload; null on error"
           },
           "message": {
@@ -6053,6 +6479,183 @@
           "reason",
           "revision",
           "matches"
+        ],
+        "type": "object"
+      },
+      "Field": {
+        "additionalProperties": false,
+        "properties": {
+          "configurable": {
+            "type": "boolean"
+          },
+          "maskable": {
+            "type": "boolean"
+          },
+          "mutability": {
+            "enum": [
+              "readOnly",
+              "readWrite",
+              "immutable",
+              "writeOnly"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "returned": {
+            "enum": [
+              "always",
+              "never",
+              "default",
+              "request"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource",
+          "name",
+          "mutability",
+          "returned",
+          "maskable",
+          "configurable"
+        ],
+        "type": "object"
+      },
+      "FieldAccess": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_roles": {
+            "items": {
+              "pattern": "^[1-9][0-9]*$",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "maxItems": 64,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "default": {
+            "enum": [
+              "allow",
+              "deny"
+            ],
+            "type": "string"
+          },
+          "deny_roles": {
+            "items": {
+              "pattern": "^[1-9][0-9]*$",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "maxItems": 64,
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "default",
+          "allow_roles",
+          "deny_roles"
+        ],
+        "type": "object"
+      },
+      "FieldConstraint": {
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FieldDecision"
+            },
+            "type": "object"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "fields"
+        ],
+        "type": "object"
+      },
+      "FieldDecision": {
+        "additionalProperties": false,
+        "properties": {
+          "create": {
+            "type": "boolean"
+          },
+          "read": {
+            "enum": [
+              "allow",
+              "omit",
+              "redact"
+            ],
+            "type": "string"
+          },
+          "update": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "read",
+          "create",
+          "update"
+        ],
+        "type": "object"
+      },
+      "FieldPolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "mask": {
+            "enum": [
+              "omit",
+              "redact"
+            ],
+            "type": "string"
+          },
+          "read": {
+            "$ref": "#/components/schemas/FieldAccess"
+          },
+          "write": {
+            "$ref": "#/components/schemas/FieldAccess"
+          }
+        },
+        "required": [
+          "read",
+          "write",
+          "mask"
+        ],
+        "type": "object"
+      },
+      "FieldPolicyInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "policy": {
+            "$ref": "#/components/schemas/FieldPolicy"
+          },
+          "version": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "policy"
         ],
         "type": "object"
       },
@@ -6826,6 +7429,31 @@
         ],
         "type": "object"
       },
+      "ManagedFieldPolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/FieldPolicy"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resource",
+          "field",
+          "version",
+          "policy"
+        ],
+        "type": "object"
+      },
       "MeOutput": {
         "additionalProperties": false,
         "properties": {
@@ -6868,7 +7496,6 @@
         "required": [
           "subject",
           "issuer",
-          "email_verified",
           "acr"
         ],
         "type": "object"
@@ -7511,7 +8138,73 @@
         ],
         "type": "object"
       },
-      "Principal": {
+      "PrincipalCreateInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "email": {
+            "maxLength": 320,
+            "type": "string"
+          },
+          "login_name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 1024,
+            "minLength": 12,
+            "type": "string"
+          }
+        },
+        "required": [
+          "login_name",
+          "password"
+        ],
+        "type": "object"
+      },
+      "PrincipalListData": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PrincipalView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "type": "object"
+      },
+      "PrincipalUpdateInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "email": {
+            "maxLength": 320,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PrincipalView": {
         "additionalProperties": false,
         "properties": {
           "activation_required": {
@@ -7550,80 +8243,11 @@
         },
         "required": [
           "id",
-          "login_name",
-          "email_verified",
           "activation_required",
-          "display_name",
           "status",
           "created_at",
           "updated_at"
         ],
-        "type": "object"
-      },
-      "PrincipalCreateInputBody": {
-        "additionalProperties": false,
-        "properties": {
-          "display_name": {
-            "maxLength": 128,
-            "type": "string"
-          },
-          "email": {
-            "maxLength": 320,
-            "type": "string"
-          },
-          "login_name": {
-            "maxLength": 200,
-            "minLength": 1,
-            "type": "string"
-          },
-          "password": {
-            "maxLength": 1024,
-            "minLength": 12,
-            "type": "string"
-          }
-        },
-        "required": [
-          "login_name",
-          "password"
-        ],
-        "type": "object"
-      },
-      "PrincipalListData": {
-        "additionalProperties": false,
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/Principal"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "total": {
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "items",
-          "total"
-        ],
-        "type": "object"
-      },
-      "PrincipalUpdateInputBody": {
-        "additionalProperties": false,
-        "properties": {
-          "display_name": {
-            "maxLength": 128,
-            "minLength": 1,
-            "type": "string"
-          },
-          "email": {
-            "maxLength": 320,
-            "type": "string"
-          }
-        },
         "type": "object"
       },
       "Provider": {
@@ -8973,6 +9597,10 @@
           "name": {
             "type": "string"
           },
+          "service_account_id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": "string"
+          },
           "status": {
             "type": "string"
           },
@@ -9017,6 +9645,13 @@
             "maxLength": 128,
             "minLength": 1,
             "type": "string"
+          },
+          "service_account_id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -9065,6 +9700,13 @@
             "maxLength": 128,
             "minLength": 1,
             "type": "string"
+          },
+          "service_account_id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "status": {
             "enum": [
@@ -9550,10 +10192,7 @@
           }
         },
         "required": [
-          "sub",
-          "preferred_username",
-          "email",
-          "email_verified"
+          "sub"
         ],
         "type": "object"
       },
@@ -9612,7 +10251,6 @@
         "required": [
           "schemas",
           "id",
-          "userName",
           "active",
           "meta"
         ],
@@ -10048,6 +10686,16 @@
     "/authn/me": {
       "get": {
         "operationId": "authn-me",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -11948,6 +12596,16 @@
       },
       "get": {
         "operationId": "authn-get-current-session",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -12907,6 +13565,16 @@
               }
             },
             "description": "Federation unavailable"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Federation storage unavailable"
           }
         },
         "summary": "Complete the OIDC authorization code flow and set the browser session",
@@ -13031,6 +13699,16 @@
               }
             },
             "description": "Federation unavailable"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Federation storage unavailable"
           }
         },
         "summary": "Complete the SAML SP-initiated assertion flow and set the browser session",
@@ -13142,6 +13820,16 @@
               }
             },
             "description": "Federation unavailable"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Federation storage unavailable"
           }
         },
         "summary": "Start an OIDC login for a tenant identity provider",
@@ -15440,6 +16128,734 @@
         "x-authz-permission": "audit_event_view"
       }
     },
+    "/iam/audit/archive-status": {
+      "get": {
+        "operationId": "audit-archive-status",
+        "parameters": [
+          {
+            "description": "Tenant authorization boundary",
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeArchiveStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Read audit archive execution status",
+        "tags": [
+          "audit"
+        ],
+        "x-authz-permission": "audit_event_view"
+      }
+    },
+    "/iam/audit/archives": {
+      "get": {
+        "operationId": "audit-list-archives",
+        "parameters": [
+          {
+            "description": "Tenant authorization boundary",
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "format": "int64",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeListArchiveJob"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List durable audit archive jobs",
+        "tags": [
+          "audit"
+        ],
+        "x-authz-permission": "audit_event_view"
+      },
+      "post": {
+        "operationId": "audit-request-archive",
+        "parameters": [
+          {
+            "description": "Tenant authorization boundary",
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeArchiveJob"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Queue the next eligible audit archive segment",
+        "tags": [
+          "audit"
+        ],
+        "x-authz-permission": "audit_event_export"
+      }
+    },
+    "/iam/audit/archives/{id}/download": {
+      "get": {
+        "operationId": "audit-download-archive",
+        "parameters": [
+          {
+            "description": "Tenant authorization boundary",
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "contentMediaType": "application/octet-stream",
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "A newline-delimited JSON audit snapshot ending with a completion record"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Download the verified immutable audit archive version",
+        "tags": [
+          "audit"
+        ],
+        "x-authz-permission": "audit_event_export"
+      }
+    },
+    "/iam/audit/archives/{id}/retry": {
+      "post": {
+        "operationId": "audit-retry-archive",
+        "parameters": [
+          {
+            "description": "Tenant authorization boundary",
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeArchiveJob"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Queue a failed or expired audit archive job for retry",
+        "tags": [
+          "audit"
+        ],
+        "x-authz-permission": "audit_event_export"
+      }
+    },
+    "/iam/audit/archives/{id}/verify": {
+      "post": {
+        "operationId": "audit-verify-archive",
+        "parameters": [
+          {
+            "description": "Tenant authorization boundary",
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeArchiveObject"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Verify the archived object version, content and retention",
+        "tags": [
+          "audit"
+        ],
+        "x-authz-permission": "audit_event_view"
+      }
+    },
     "/iam/audit/governance": {
       "get": {
         "operationId": "audit-get-governance",
@@ -17651,6 +19067,599 @@
           "iam"
         ],
         "x-authz-permission": "entity_manage_binding"
+      }
+    },
+    "/iam/field-catalog": {
+      "get": {
+        "operationId": "iam-field-catalog",
+        "parameters": [
+          {
+            "description": "Tenant authorization boundary",
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "resource",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "entity_id",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeListField"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List declared field capabilities",
+        "tags": [
+          "iam"
+        ],
+        "x-authz-permission": "field_policy_view"
+      }
+    },
+    "/iam/field-policies": {
+      "get": {
+        "operationId": "iam-list-field-policies",
+        "parameters": [
+          {
+            "description": "Tenant authorization boundary",
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "resource",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "entity_id",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeListManagedFieldPolicy"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List tenant field policies",
+        "tags": [
+          "iam"
+        ],
+        "x-authz-permission": "field_policy_view"
+      }
+    },
+    "/iam/field-policies/{resource}/{field}": {
+      "delete": {
+        "operationId": "iam-delete-field-policy",
+        "parameters": [
+          {
+            "description": "Tenant authorization boundary",
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "resource",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "field",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeMutationResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Restore a field's declared default policy",
+        "tags": [
+          "iam"
+        ],
+        "x-authz-permission": "field_policy_update"
+      },
+      "put": {
+        "operationId": "iam-set-field-policy",
+        "parameters": [
+          {
+            "description": "Tenant authorization boundary",
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "resource",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "field",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FieldPolicyInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeManagedFieldPolicy"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Set a tenant field policy",
+        "tags": [
+          "iam"
+        ],
+        "x-authz-permission": "field_policy_update"
+      }
+    },
+    "/iam/fields/effective": {
+      "get": {
+        "operationId": "iam-effective-fields",
+        "parameters": [
+          {
+            "description": "Tenant authorization boundary",
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "resource",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "entity_id",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeFieldConstraint"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get own effective field capabilities",
+        "tags": [
+          "iam"
+        ]
       }
     },
     "/iam/groups": {
@@ -20128,6 +22137,13 @@
               "schema": {
                 "$ref": "#/components/schemas/CreateTenantMemberInputBody"
               }
+            },
+            "application/octet-stream": {
+              "schema": {
+                "contentMediaType": "application/octet-stream",
+                "format": "binary",
+                "type": "string"
+              }
             }
           },
           "required": true
@@ -20371,6 +22387,13 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/UpdateTenantMemberInputBody"
+              }
+            },
+            "application/octet-stream": {
+              "schema": {
+                "contentMediaType": "application/octet-stream",
+                "format": "binary",
+                "type": "string"
               }
             }
           },
@@ -23442,6 +25465,13 @@
               "schema": {
                 "$ref": "#/components/schemas/PrincipalCreateInputBody"
               }
+            },
+            "application/octet-stream": {
+              "schema": {
+                "contentMediaType": "application/octet-stream",
+                "format": "binary",
+                "type": "string"
+              }
             }
           },
           "required": true
@@ -23451,7 +25481,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EnvelopePrincipal"
+                  "$ref": "#/components/schemas/EnvelopePrincipalView"
                 }
               }
             },
@@ -23563,7 +25593,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EnvelopePrincipal"
+                  "$ref": "#/components/schemas/EnvelopePrincipalView"
                 }
               }
             },
@@ -23674,6 +25704,13 @@
               "schema": {
                 "$ref": "#/components/schemas/PrincipalUpdateInputBody"
               }
+            },
+            "application/octet-stream": {
+              "schema": {
+                "contentMediaType": "application/octet-stream",
+                "format": "binary",
+                "type": "string"
+              }
             }
           },
           "required": true
@@ -23683,7 +25720,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EnvelopePrincipal"
+                  "$ref": "#/components/schemas/EnvelopePrincipalView"
                 }
               }
             },
@@ -23805,7 +25842,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EnvelopePrincipal"
+                  "$ref": "#/components/schemas/EnvelopePrincipalView"
                 }
               }
             },
@@ -23925,7 +25962,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EnvelopePrincipal"
+                  "$ref": "#/components/schemas/EnvelopePrincipalView"
                 }
               }
             },
@@ -31494,6 +33531,28 @@
             },
             "description": "Forbidden"
           },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "error_description": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
           "default": {
             "content": {
               "application/json": {
@@ -31514,6 +33573,836 @@
         "tags": [
           "oauth"
         ]
+      }
+    },
+    "/platform/iam/audit/archive-status": {
+      "get": {
+        "operationId": "audit-platform-archive-status",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeArchiveStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Platform: Read audit archive execution status",
+        "tags": [
+          "audit"
+        ],
+        "x-authz-permission": "platform_administer"
+      }
+    },
+    "/platform/iam/audit/archives": {
+      "get": {
+        "operationId": "audit-platform-list-archives",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "format": "int64",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeListArchiveJob"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Platform: List durable audit archive jobs",
+        "tags": [
+          "audit"
+        ],
+        "x-authz-permission": "platform_administer"
+      },
+      "post": {
+        "operationId": "audit-platform-request-archive",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeArchiveJob"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Platform: Queue the next eligible audit archive segment",
+        "tags": [
+          "audit"
+        ],
+        "x-authz-permission": "platform_administer"
+      }
+    },
+    "/platform/iam/audit/archives/{id}/download": {
+      "get": {
+        "operationId": "audit-platform-download-archive",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "contentMediaType": "application/octet-stream",
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "A newline-delimited JSON audit snapshot ending with a completion record"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Platform: Download the verified immutable audit archive version",
+        "tags": [
+          "audit"
+        ],
+        "x-authz-permission": "platform_administer"
+      }
+    },
+    "/platform/iam/audit/archives/{id}/retry": {
+      "post": {
+        "operationId": "audit-platform-retry-archive",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeArchiveJob"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Platform: Queue a failed or expired audit archive job for retry",
+        "tags": [
+          "audit"
+        ],
+        "x-authz-permission": "platform_administer"
+      }
+    },
+    "/platform/iam/audit/archives/{id}/verify": {
+      "post": {
+        "operationId": "audit-platform-verify-archive",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeArchiveObject"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Platform: Verify the archived object version, content and retention",
+        "tags": [
+          "audit"
+        ],
+        "x-authz-permission": "platform_administer"
+      }
+    },
+    "/platform/iam/audit/retention": {
+      "put": {
+        "operationId": "audit-platform-set-retention",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetentionInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeRetentionPolicy"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Platform: Configure platform audit retention policy",
+        "tags": [
+          "audit"
+        ],
+        "x-authz-permission": "platform_administer"
       }
     },
     "/readyz": {
@@ -31707,6 +34596,42 @@
             },
             "description": "SCIM error"
           },
+          "403": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
           "404": {
             "content": {
               "application/scim+json": {
@@ -31852,6 +34777,42 @@
             "description": "SCIM error"
           },
           "500": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
+          "503": {
             "content": {
               "application/scim+json": {
                 "schema": {
@@ -32049,6 +35010,42 @@
             },
             "description": "SCIM error"
           },
+          "403": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
           "404": {
             "content": {
               "application/scim+json": {
@@ -32194,6 +35191,42 @@
             "description": "SCIM error"
           },
           "500": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
+          "503": {
             "content": {
               "application/scim+json": {
                 "schema": {
@@ -32406,6 +35439,42 @@
             },
             "description": "SCIM error"
           },
+          "403": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
           "404": {
             "content": {
               "application/scim+json": {
@@ -32551,6 +35620,42 @@
             "description": "SCIM error"
           },
           "500": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
+          "503": {
             "content": {
               "application/scim+json": {
                 "schema": {
@@ -32688,6 +35793,42 @@
             },
             "description": "SCIM error"
           },
+          "403": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
           "404": {
             "content": {
               "application/scim+json": {
@@ -32833,6 +35974,42 @@
             "description": "SCIM error"
           },
           "500": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
+          "503": {
             "content": {
               "application/scim+json": {
                 "schema": {
@@ -33015,6 +36192,42 @@
             },
             "description": "SCIM error"
           },
+          "403": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
           "404": {
             "content": {
               "application/scim+json": {
@@ -33160,6 +36373,42 @@
             "description": "SCIM error"
           },
           "500": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
+          "503": {
             "content": {
               "application/scim+json": {
                 "schema": {
@@ -33377,6 +36626,42 @@
             },
             "description": "SCIM error"
           },
+          "403": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
           "404": {
             "content": {
               "application/scim+json": {
@@ -33522,6 +36807,42 @@
             "description": "SCIM error"
           },
           "500": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
+          "503": {
             "content": {
               "application/scim+json": {
                 "schema": {
@@ -33745,6 +37066,42 @@
             },
             "description": "SCIM error"
           },
+          "403": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
           "404": {
             "content": {
               "application/scim+json": {
@@ -33890,6 +37247,42 @@
             "description": "SCIM error"
           },
           "500": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
+          "503": {
             "content": {
               "application/scim+json": {
                 "schema": {
@@ -34063,6 +37456,42 @@
             },
             "description": "SCIM error"
           },
+          "403": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
           "404": {
             "content": {
               "application/scim+json": {
@@ -34208,6 +37637,42 @@
             "description": "SCIM error"
           },
           "500": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
+          "503": {
             "content": {
               "application/scim+json": {
                 "schema": {
@@ -34391,6 +37856,42 @@
             },
             "description": "SCIM error"
           },
+          "403": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
           "404": {
             "content": {
               "application/scim+json": {
@@ -34536,6 +38037,42 @@
             "description": "SCIM error"
           },
           "500": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
+          "503": {
             "content": {
               "application/scim+json": {
                 "schema": {
@@ -34705,6 +38242,42 @@
             },
             "description": "SCIM error"
           },
+          "403": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
           "404": {
             "content": {
               "application/scim+json": {
@@ -34850,6 +38423,42 @@
             "description": "SCIM error"
           },
           "500": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
+          "503": {
             "content": {
               "application/scim+json": {
                 "schema": {
@@ -35027,6 +38636,42 @@
             },
             "description": "SCIM error"
           },
+          "403": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
           "404": {
             "content": {
               "application/scim+json": {
@@ -35172,6 +38817,42 @@
             "description": "SCIM error"
           },
           "500": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
+          "503": {
             "content": {
               "application/scim+json": {
                 "schema": {
@@ -35340,6 +39021,42 @@
             },
             "description": "SCIM error"
           },
+          "403": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
           "404": {
             "content": {
               "application/scim+json": {
@@ -35485,6 +39202,42 @@
             "description": "SCIM error"
           },
           "500": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
+          "503": {
             "content": {
               "application/scim+json": {
                 "schema": {
@@ -35678,6 +39431,42 @@
             },
             "description": "SCIM error"
           },
+          "403": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
           "404": {
             "content": {
               "application/scim+json": {
@@ -35823,6 +39612,42 @@
             "description": "SCIM error"
           },
           "500": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
+          "503": {
             "content": {
               "application/scim+json": {
                 "schema": {
@@ -35971,7 +39796,6 @@
                   "required": [
                     "schemas",
                     "id",
-                    "userName",
                     "active",
                     "meta"
                   ],
@@ -36018,6 +39842,42 @@
             "description": "SCIM error"
           },
           "401": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
+          "403": {
             "content": {
               "application/scim+json": {
                 "schema": {
@@ -36198,6 +40058,42 @@
             "description": "SCIM error"
           },
           "500": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
+          "503": {
             "content": {
               "application/scim+json": {
                 "schema": {
@@ -36335,6 +40231,42 @@
             },
             "description": "SCIM error"
           },
+          "403": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
           "404": {
             "content": {
               "application/scim+json": {
@@ -36480,6 +40412,42 @@
             "description": "SCIM error"
           },
           "500": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
+          "503": {
             "content": {
               "application/scim+json": {
                 "schema": {
@@ -36589,7 +40557,6 @@
                   "required": [
                     "schemas",
                     "id",
-                    "userName",
                     "active",
                     "meta"
                   ],
@@ -36636,6 +40603,42 @@
             "description": "SCIM error"
           },
           "401": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
+          "403": {
             "content": {
               "application/scim+json": {
                 "schema": {
@@ -36816,6 +40819,42 @@
             "description": "SCIM error"
           },
           "500": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
+          "503": {
             "content": {
               "application/scim+json": {
                 "schema": {
@@ -36960,7 +40999,6 @@
                   "required": [
                     "schemas",
                     "id",
-                    "userName",
                     "active",
                     "meta"
                   ],
@@ -37007,6 +41045,42 @@
             "description": "SCIM error"
           },
           "401": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
+          "403": {
             "content": {
               "application/scim+json": {
                 "schema": {
@@ -37187,6 +41261,42 @@
             "description": "SCIM error"
           },
           "500": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
+          "503": {
             "content": {
               "application/scim+json": {
                 "schema": {
@@ -37346,7 +41456,6 @@
                   "required": [
                     "schemas",
                     "id",
-                    "userName",
                     "active",
                     "meta"
                   ],
@@ -37393,6 +41502,42 @@
             "description": "SCIM error"
           },
           "401": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
+          },
+          "403": {
             "content": {
               "application/scim+json": {
                 "schema": {
@@ -37607,6 +41752,42 @@
               }
             },
             "description": "SCIM error"
+          },
+          "503": {
+            "content": {
+              "application/scim+json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "schemas": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "scimType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemas",
+                    "status",
+                    "detail"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SCIM error"
           }
         },
         "security": [
@@ -37725,6 +41906,28 @@
             }
           },
           {
+            "description": "Tenant authorization boundary",
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Authorized entity resource boundary",
+            "in": "header",
+            "name": "X-Entity-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
             "description": "matches title or description",
             "explode": false,
             "in": "query",
@@ -37761,7 +41964,6 @@
             "in": "query",
             "name": "sort",
             "schema": {
-              "default": "-created_at",
               "description": "comma-separated keys; - prefixes a descending key",
               "type": "string"
             }
@@ -37813,7 +42015,7 @@
             },
             "description": "OK"
           },
-          "default": {
+          "401": {
             "content": {
               "application/json": {
                 "schema": {
@@ -37821,21 +42023,102 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "List tasks",
         "tags": [
           "Todo"
-        ]
+        ],
+        "x-authz-data-filter": true,
+        "x-authz-permission": "todo_view"
       },
       "post": {
         "operationId": "create-todo",
+        "parameters": [
+          {
+            "description": "Tenant authorization boundary",
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Authorized entity resource boundary",
+            "in": "header",
+            "name": "X-Entity-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/CreateInputBody"
+              }
+            },
+            "application/octet-stream": {
+              "schema": {
+                "contentMediaType": "application/octet-stream",
+                "format": "binary",
+                "type": "string"
               }
             }
           },
@@ -37859,7 +42142,7 @@
               }
             }
           },
-          "default": {
+          "401": {
             "content": {
               "application/json": {
                 "schema": {
@@ -37867,13 +42150,63 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Create a task",
         "tags": [
           "Todo"
-        ]
+        ],
+        "x-authz-data-filter": true,
+        "x-authz-permission": "todo_create"
       }
     },
     "/todos/export": {
@@ -37981,6 +42314,28 @@
             }
           },
           {
+            "description": "Tenant authorization boundary",
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Authorized entity resource boundary",
+            "in": "header",
+            "name": "X-Entity-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
             "description": "matches title or description",
             "explode": false,
             "in": "query",
@@ -38017,7 +42372,6 @@
             "in": "query",
             "name": "sort",
             "schema": {
-              "default": "-created_at",
               "description": "comma-separated keys; - prefixes a descending key",
               "type": "string"
             }
@@ -38075,7 +42429,7 @@
           "200": {
             "description": "OK"
           },
-          "default": {
+          "401": {
             "content": {
               "application/json": {
                 "schema": {
@@ -38083,13 +42437,63 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Export tasks",
         "tags": [
           "Todo"
-        ]
+        ],
+        "x-authz-data-filter": true,
+        "x-authz-permission": "todo_export"
       }
     },
     "/todos/import": {
@@ -38097,6 +42501,28 @@
         "description": "Every row is validated first. If any row is invalid nothing is written and each problem is reported, so a corrected file can be re-uploaded whole without duplicating rows.",
         "operationId": "import-todos",
         "parameters": [
+          {
+            "description": "Tenant authorization boundary",
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Authorized entity resource boundary",
+            "in": "header",
+            "name": "X-Entity-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
           {
             "explode": false,
             "in": "query",
@@ -38147,7 +42573,7 @@
             },
             "description": "OK"
           },
-          "default": {
+          "401": {
             "content": {
               "application/json": {
                 "schema": {
@@ -38155,13 +42581,63 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Import tasks",
         "tags": [
           "Todo"
-        ]
+        ],
+        "x-authz-data-filter": true,
+        "x-authz-permission": "todo_import"
       }
     },
     "/todos/import-template": {
@@ -38169,6 +42645,28 @@
         "description": "Headers follow the request locale, and the importer accepts a template filled in under any supported locale.",
         "operationId": "download-todo-import-template",
         "parameters": [
+          {
+            "description": "Tenant authorization boundary",
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Authorized entity resource boundary",
+            "in": "header",
+            "name": "X-Entity-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
           {
             "explode": false,
             "in": "query",
@@ -38197,7 +42695,7 @@
           "200": {
             "description": "OK"
           },
-          "default": {
+          "401": {
             "content": {
               "application/json": {
                 "schema": {
@@ -38205,13 +42703,63 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Download the import template",
         "tags": [
           "Todo"
-        ]
+        ],
+        "x-authz-data-filter": true,
+        "x-authz-permission": "todo_import"
       }
     },
     "/todos/{id}": {
@@ -38219,6 +42767,28 @@
         "description": "Soft delete. Requires If-Match: deleting a stale view loses an update just as writing one does.",
         "operationId": "delete-todo",
         "parameters": [
+          {
+            "description": "Tenant authorization boundary",
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Authorized entity resource boundary",
+            "in": "header",
+            "name": "X-Entity-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
           {
             "description": "task identifier",
             "in": "path",
@@ -38243,7 +42813,7 @@
           "204": {
             "description": "No Content"
           },
-          "default": {
+          "401": {
             "content": {
               "application/json": {
                 "schema": {
@@ -38251,17 +42821,89 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Delete a task",
         "tags": [
           "Todo"
-        ]
+        ],
+        "x-authz-data-filter": true,
+        "x-authz-permission": "todo_delete"
       },
       "get": {
         "operationId": "get-todo",
         "parameters": [
+          {
+            "description": "Tenant authorization boundary",
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Authorized entity resource boundary",
+            "in": "header",
+            "name": "X-Entity-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
           {
             "description": "task identifier",
             "in": "path",
@@ -38291,7 +42933,7 @@
               }
             }
           },
-          "default": {
+          "401": {
             "content": {
               "application/json": {
                 "schema": {
@@ -38299,18 +42941,90 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Read a task",
         "tags": [
           "Todo"
-        ]
+        ],
+        "x-authz-data-filter": true,
+        "x-authz-permission": "todo_view"
       },
       "patch": {
         "description": "Requires If-Match carrying the version last read, so a concurrent write cannot be lost.",
         "operationId": "update-todo",
         "parameters": [
+          {
+            "description": "Tenant authorization boundary",
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Authorized entity resource boundary",
+            "in": "header",
+            "name": "X-Entity-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
           {
             "description": "task identifier",
             "in": "path",
@@ -38337,6 +43051,13 @@
               "schema": {
                 "$ref": "#/components/schemas/PatchInputBody"
               }
+            },
+            "application/octet-stream": {
+              "schema": {
+                "contentMediaType": "application/octet-stream",
+                "format": "binary",
+                "type": "string"
+              }
             }
           },
           "required": true
@@ -38359,7 +43080,7 @@
               }
             }
           },
-          "default": {
+          "401": {
             "content": {
               "application/json": {
                 "schema": {
@@ -38367,13 +43088,63 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Update a task",
         "tags": [
           "Todo"
-        ]
+        ],
+        "x-authz-data-filter": true,
+        "x-authz-permission": "todo_update"
       }
     },
     "/todos/{id}/restore": {
@@ -38381,6 +43152,28 @@
         "description": "Requires If-Match, so a task cannot be restored from its identifier alone.",
         "operationId": "restore-todo",
         "parameters": [
+          {
+            "description": "Tenant authorization boundary",
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Authorized entity resource boundary",
+            "in": "header",
+            "name": "X-Entity-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
           {
             "description": "task identifier",
             "in": "path",
@@ -38419,7 +43212,7 @@
               }
             }
           },
-          "default": {
+          "401": {
             "content": {
               "application/json": {
                 "schema": {
@@ -38427,13 +43220,63 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Restore a deleted task",
         "tags": [
           "Todo"
-        ]
+        ],
+        "x-authz-data-filter": true,
+        "x-authz-permission": "todo_update"
       }
     }
   }

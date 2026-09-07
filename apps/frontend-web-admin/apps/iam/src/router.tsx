@@ -113,6 +113,13 @@ export const router = createBrowserRouter([
                 }),
               },
               {
+                path: "/iam/field-policies",
+                lazy: async () => ({
+                  Component: (await import("./app/field-policies/page"))
+                    .default,
+                }),
+              },
+              {
                 path: "/iam/access-requests",
                 lazy: async () => ({
                   Component: (await import("./app/access-requests/page"))

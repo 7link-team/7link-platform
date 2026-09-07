@@ -35,8 +35,10 @@ type Module struct {
 	runtime        *appenv.Runtime
 	registrar      *authz.Registrar
 	administrators core.AdministratorGuard
+	fields         authz.FieldPermissionChecker
 	ids            guid.Source
 	appender       audit.Appender
+	anonymizer     PrincipalAnonymizer
 }
 
 // RegistrationPrincipalCreator creates a pending principal and its credential
@@ -68,6 +70,15 @@ func (*Module) ModuleDependencies() []string {
 func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[IdentityProvisioner](services, m); err != nil {
 		return fmt.Errorf("provide identity provisioner: %w", err)
+	}
+	validateAccount := ServiceAccountValidator(func(ctx context.Context, db *gorm.DB, tenantID, principalID guid.ID, now time.Time) (bool, error) {
+		if m == nil || m.Service == nil {
+			return false, ErrUnavailable
+		}
+		return m.Service.ValidateServiceAccount(ctx, db, tenantID, principalID, now)
+	})
+	if err := module.Provide[ServiceAccountValidator](services, validateAccount); err != nil {
+		return fmt.Errorf("provide service account validator: %w", err)
 	}
 	// The service exists only after Initialize, so the invitation capability is
 	// a closure that resolves it per call instead of a method value bound now.
@@ -153,10 +164,20 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve identity administrator guard: %w", err)
 	}
+	fields, err := module.Resolve[core.AuthorizationEvaluator](services)
+	if err != nil {
+		return fmt.Errorf("resolve identity field permissions: %w", err)
+	}
+	m.fields = fields
 	m.registrar = registrar
 	m.ids = ids
 	m.appender = appender
 	m.administrators = administrators
+	anonymizer, err := module.Resolve[PrincipalAnonymizer](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return fmt.Errorf("resolve principal anonymizer: %w", err)
+	}
+	m.anonymizer = anonymizer
 	return nil
 }
 
@@ -170,6 +191,8 @@ func (m *Module) Initialize(context.Context) error {
 		)
 	}
 	m.Service = NewService(m.runtime, m.appender, m.administrators, m.ids)
+	m.Service.fields = m.fields
+	m.Service.anonymizer = m.anonymizer
 	return nil
 }
 

@@ -98,7 +98,7 @@
                 ],
                 "rows_examined_per_scan": 1,
                 "filtered": "100.00",
-                "attached_condition": "((`sevenlink_iam_test`.`iam_audit_heads`.`sequence` = 2) and (`sevenlink_iam_test`.`iam_audit_heads`.`tenant_id` = 91001))"
+                "attached_condition": "((`sevenlink_iam_test`.`iam_audit_heads`.`sequence` = 4) and (`sevenlink_iam_test`.`iam_audit_heads`.`tenant_id` = 91001))"
               }
             }
           }
@@ -607,7 +607,7 @@
                                           "role_id",
                                           "principal_id"
                                         ],
-                                        "attached_condition": "(`sevenlink_iam_test`.`m`.`principal_id` = 35689276951756800)"
+                                        "attached_condition": "(`sevenlink_iam_test`.`m`.`principal_id` = 35991048232632320)"
                                       }
                                     }
                                   ]
@@ -691,7 +691,7 @@
                                           "starts_at",
                                           "ends_at"
                                         ],
-                                        "attached_condition": "((`sevenlink_iam_test`.`grants`.`principal_id` = 35689276951756800) and (`sevenlink_iam_test`.`grants`.`starts_at` \u003c= TIMESTAMP'2026-09-04 05:01:07.394') and (`sevenlink_iam_test`.`grants`.`ends_at` \u003e TIMESTAMP'2026-09-04 05:01:07.394'))"
+                                        "attached_condition": "((`sevenlink_iam_test`.`grants`.`principal_id` = 35991048232632320) and (`sevenlink_iam_test`.`grants`.`starts_at` \u003c= TIMESTAMP'2026-09-06 06:58:57.268') and (`sevenlink_iam_test`.`grants`.`ends_at` \u003e TIMESTAMP'2026-09-06 06:58:57.268'))"
                                       }
                                     }
                                   ]
@@ -847,7 +847,7 @@
                                           "starts_at",
                                           "ends_at"
                                         ],
-                                        "attached_condition": "(((`sevenlink_iam_test`.`gm`.`starts_at` is null) or (`sevenlink_iam_test`.`gm`.`starts_at` \u003c= TIMESTAMP'2026-09-04 05:01:07.394')) and ((`sevenlink_iam_test`.`gm`.`ends_at` is null) or (`sevenlink_iam_test`.`gm`.`ends_at` \u003e TIMESTAMP'2026-09-04 05:01:07.394')))"
+                                        "attached_condition": "(((`sevenlink_iam_test`.`gm`.`starts_at` is null) or (`sevenlink_iam_test`.`gm`.`starts_at` \u003c= TIMESTAMP'2026-09-06 06:58:57.268')) and ((`sevenlink_iam_test`.`gm`.`ends_at` is null) or (`sevenlink_iam_test`.`gm`.`ends_at` \u003e TIMESTAMP'2026-09-06 06:58:57.268')))"
                                       }
                                     }
                                   ]
@@ -1001,7 +1001,7 @@
                                           "starts_at",
                                           "ends_at"
                                         ],
-                                        "attached_condition": "(((`sevenlink_iam_test`.`pm`.`starts_at` is null) or (`sevenlink_iam_test`.`pm`.`starts_at` \u003c= TIMESTAMP'2026-09-04 05:01:07.394')) and ((`sevenlink_iam_test`.`pm`.`ends_at` is null) or (`sevenlink_iam_test`.`pm`.`ends_at` \u003e TIMESTAMP'2026-09-04 05:01:07.394')))"
+                                        "attached_condition": "(((`sevenlink_iam_test`.`pm`.`starts_at` is null) or (`sevenlink_iam_test`.`pm`.`starts_at` \u003c= TIMESTAMP'2026-09-06 06:58:57.268')) and ((`sevenlink_iam_test`.`pm`.`ends_at` is null) or (`sevenlink_iam_test`.`pm`.`ends_at` \u003e TIMESTAMP'2026-09-06 06:58:57.268')))"
                                       }
                                     }
                                   ]
@@ -1015,6 +1015,266 @@
                   }
                 ]
               }
+            }
+          }
+        },
+        {
+          "path": "scim_bulk",
+          "sql_template": "SELECT count(*) FROM iam_service_accounts AS service_account JOIN iam_principals AS principal ON principal.id = service_account.principal_id JOIN iam_tenant_members AS member ON member.principal_id = principal.id AND member.tenant_id = service_account.owner_tenant_id JOIN iam_tenants AS tenant ON tenant.id = service_account.owner_tenant_id WHERE (service_account.owner_tenant_id = ? AND service_account.principal_id = ?) AND (service_account.status = ? AND service_account.deleted_at IS NULL AND (service_account.expires_at IS NULL OR service_account.expires_at \u003e ?)) AND (principal.status = ? AND principal.activation_required = false AND member.status = ? AND tenant.status = ?)",
+          "fingerprint": "0ceb3178593321a3d26a00bca918b96de745b0aa3399ff62c9c7bef5becfb4b9",
+          "plan": {
+            "query_block": {
+              "select_id": 1,
+              "cost_info": {
+                "query_cost": "1.00"
+              },
+              "nested_loop": [
+                {
+                  "table": {
+                    "table_name": "service_account",
+                    "access_type": "const",
+                    "possible_keys": [
+                      "PRIMARY",
+                      "idx_iam_service_accounts_tenant"
+                    ],
+                    "key": "PRIMARY",
+                    "used_key_parts": [
+                      "principal_id"
+                    ],
+                    "key_length": "8",
+                    "ref": [
+                      "const"
+                    ],
+                    "rows_examined_per_scan": 1,
+                    "rows_produced_per_join": 1,
+                    "filtered": "100.00",
+                    "cost_info": {
+                      "read_cost": "0.00",
+                      "eval_cost": "0.10",
+                      "prefix_cost": "0.00",
+                      "data_read_per_join": "144"
+                    },
+                    "used_columns": [
+                      "principal_id",
+                      "owner_tenant_id",
+                      "status",
+                      "expires_at",
+                      "deleted_at"
+                    ]
+                  }
+                },
+                {
+                  "table": {
+                    "table_name": "principal",
+                    "access_type": "const",
+                    "possible_keys": [
+                      "PRIMARY"
+                    ],
+                    "key": "PRIMARY",
+                    "used_key_parts": [
+                      "id"
+                    ],
+                    "key_length": "8",
+                    "ref": [
+                      "const"
+                    ],
+                    "rows_examined_per_scan": 1,
+                    "rows_produced_per_join": 1,
+                    "filtered": "100.00",
+                    "cost_info": {
+                      "read_cost": "0.00",
+                      "eval_cost": "0.10",
+                      "prefix_cost": "0.00",
+                      "data_read_per_join": "2K"
+                    },
+                    "used_columns": [
+                      "id",
+                      "status",
+                      "activation_required"
+                    ]
+                  }
+                },
+                {
+                  "table": {
+                    "table_name": "member",
+                    "access_type": "const",
+                    "possible_keys": [
+                      "PRIMARY",
+                      "idx_iam_tenant_members_status"
+                    ],
+                    "key": "PRIMARY",
+                    "used_key_parts": [
+                      "tenant_id",
+                      "principal_id"
+                    ],
+                    "key_length": "16",
+                    "ref": [
+                      "const",
+                      "const"
+                    ],
+                    "rows_examined_per_scan": 1,
+                    "rows_produced_per_join": 1,
+                    "filtered": "100.00",
+                    "cost_info": {
+                      "read_cost": "0.00",
+                      "eval_cost": "0.10",
+                      "prefix_cost": "0.00",
+                      "data_read_per_join": "1K"
+                    },
+                    "used_columns": [
+                      "tenant_id",
+                      "principal_id",
+                      "status"
+                    ]
+                  }
+                },
+                {
+                  "table": {
+                    "table_name": "tenant",
+                    "access_type": "const",
+                    "possible_keys": [
+                      "PRIMARY"
+                    ],
+                    "key": "PRIMARY",
+                    "used_key_parts": [
+                      "id"
+                    ],
+                    "key_length": "8",
+                    "ref": [
+                      "const"
+                    ],
+                    "rows_examined_per_scan": 1,
+                    "rows_produced_per_join": 1,
+                    "filtered": "100.00",
+                    "cost_info": {
+                      "read_cost": "0.00",
+                      "eval_cost": "0.10",
+                      "prefix_cost": "0.00",
+                      "data_read_per_join": "864"
+                    },
+                    "used_columns": [
+                      "id",
+                      "status"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "path": "scim_bulk",
+          "sql_template": "SELECT credential.*, directory.tenant_id AS tenant_id, directory.status AS directory_status, tenant.status AS tenant_status, COALESCE(directory.service_account_id, ?) AS service_account_id FROM iam_scim_credentials AS credential JOIN iam_scim_directories AS directory ON directory.id = credential.directory_id JOIN iam_tenants AS tenant ON tenant.id = directory.tenant_id WHERE credential.id = ? AND (tenant.id = ? AND directory.tenant_id = ?) AND (directory.id = ? AND credential.directory_id = ?) LIMIT ?",
+          "fingerprint": "59f22f485e16b98deb7867fca9930d5d2bb928ccb551ec0cca752e161da30fb8",
+          "plan": {
+            "query_block": {
+              "select_id": 1,
+              "cost_info": {
+                "query_cost": "1.00"
+              },
+              "nested_loop": [
+                {
+                  "table": {
+                    "table_name": "credential",
+                    "access_type": "const",
+                    "possible_keys": [
+                      "PRIMARY",
+                      "idx_iam_scim_credentials_directory"
+                    ],
+                    "key": "PRIMARY",
+                    "used_key_parts": [
+                      "id"
+                    ],
+                    "key_length": "8",
+                    "ref": [
+                      "const"
+                    ],
+                    "rows_examined_per_scan": 1,
+                    "rows_produced_per_join": 1,
+                    "filtered": "100.00",
+                    "cost_info": {
+                      "read_cost": "0.00",
+                      "eval_cost": "0.10",
+                      "prefix_cost": "0.00",
+                      "data_read_per_join": "576"
+                    },
+                    "used_columns": [
+                      "id",
+                      "directory_id",
+                      "name",
+                      "token_hash",
+                      "expires_at",
+                      "last_used_at",
+                      "revoked_at",
+                      "created_at"
+                    ]
+                  }
+                },
+                {
+                  "table": {
+                    "table_name": "directory",
+                    "access_type": "const",
+                    "possible_keys": [
+                      "PRIMARY",
+                      "uq_iam_scim_directories_name",
+                      "idx_iam_scim_directories_tenant"
+                    ],
+                    "key": "PRIMARY",
+                    "used_key_parts": [
+                      "id"
+                    ],
+                    "key_length": "8",
+                    "ref": [
+                      "const"
+                    ],
+                    "rows_examined_per_scan": 1,
+                    "rows_produced_per_join": 1,
+                    "filtered": "100.00",
+                    "cost_info": {
+                      "read_cost": "0.00",
+                      "eval_cost": "0.10",
+                      "prefix_cost": "0.00",
+                      "data_read_per_join": "1K"
+                    },
+                    "used_columns": [
+                      "id",
+                      "tenant_id",
+                      "status",
+                      "service_account_id"
+                    ]
+                  }
+                },
+                {
+                  "table": {
+                    "table_name": "tenant",
+                    "access_type": "const",
+                    "possible_keys": [
+                      "PRIMARY"
+                    ],
+                    "key": "PRIMARY",
+                    "used_key_parts": [
+                      "id"
+                    ],
+                    "key_length": "8",
+                    "ref": [
+                      "const"
+                    ],
+                    "rows_examined_per_scan": 1,
+                    "rows_produced_per_join": 1,
+                    "filtered": "100.00",
+                    "cost_info": {
+                      "read_cost": "0.00",
+                      "eval_cost": "0.10",
+                      "prefix_cost": "0.00",
+                      "data_read_per_join": "864"
+                    },
+                    "used_columns": [
+                      "id",
+                      "status"
+                    ]
+                  }
+                }
+              ]
             }
           }
         },
@@ -1186,7 +1446,7 @@
                 ],
                 "rows_examined_per_scan": 1,
                 "filtered": "100.00",
-                "attached_condition": "((`sevenlink_iam_test`.`iam_sessions`.`id_hash` = 'f6c7dfbf0e2350efaf63de08e2a8e2fdbd98606866c43d3c1f5014a22305965f') and (`sevenlink_iam_test`.`iam_sessions`.`revoked_at` is null) and (`sevenlink_iam_test`.`iam_sessions`.`expires_at` \u003e TIMESTAMP'2026-09-04 05:01:07.398') and (`sevenlink_iam_test`.`iam_sessions`.`absolute_expires_at` \u003e TIMESTAMP'2026-09-04 05:01:07.398') and (`sevenlink_iam_test`.`iam_sessions`.`last_seen_at` \u003c= TIMESTAMP'2026-09-04 05:01:07.398'))"
+                "attached_condition": "((`sevenlink_iam_test`.`iam_sessions`.`id_hash` = '77aea2702a43afc5b306d3c55c0283d531d8c98604166486e97f0adf84dfc0b7') and (`sevenlink_iam_test`.`iam_sessions`.`revoked_at` is null) and (`sevenlink_iam_test`.`iam_sessions`.`expires_at` \u003e TIMESTAMP'2026-09-06 06:58:57.27') and (`sevenlink_iam_test`.`iam_sessions`.`absolute_expires_at` \u003e TIMESTAMP'2026-09-06 06:58:57.27') and (`sevenlink_iam_test`.`iam_sessions`.`last_seen_at` \u003c= TIMESTAMP'2026-09-06 06:58:57.27'))"
               }
             }
           }
@@ -1330,7 +1590,7 @@
                     "Total Cost": 2.99,
                     "Plan Rows": 1,
                     "Plan Width": 282,
-                    "Filter": "((tenant_id = 91001) AND (sequence = 2))"
+                    "Filter": "((tenant_id = 91001) AND (sequence = 4))"
                   }
                 ]
               }
@@ -1530,7 +1790,7 @@
                                 "Total Cost": 8.30,
                                 "Plan Rows": 1,
                                 "Plan Width": 16,
-                                "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text) AND (principal_id = '35689146357907456'::bigint))"
+                                "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text) AND (principal_id = '35991476202635264'::bigint))"
                               }
                             ]
                           }
@@ -1611,7 +1871,7 @@
                             "Total Cost": 8.30,
                             "Plan Rows": 1,
                             "Plan Width": 48,
-                            "Index Cond": "((tenant_id = 91001) AND ((status)::text = 'active'::text COLLATE \"C\") AND (principal_id = '35689146357907456'::bigint))"
+                            "Index Cond": "((tenant_id = 91001) AND ((status)::text = 'active'::text COLLATE \"C\") AND (principal_id = '35991476202635264'::bigint))"
                           }
                         ]
                       },
@@ -1626,7 +1886,7 @@
                         "Total Cost": 0.00,
                         "Plan Rows": 1,
                         "Plan Width": 24,
-                        "Filter": "((tenant_id = 91001) AND (principal_id = '35689146357907456'::bigint))"
+                        "Filter": "((tenant_id = 91001) AND (principal_id = '35991476202635264'::bigint))"
                       }
                     ]
                   }
@@ -1665,7 +1925,7 @@
                     "Total Cost": 9.33,
                     "Plan Rows": 1,
                     "Plan Width": 0,
-                    "Index Cond": "(id = '35689146357907456'::bigint)",
+                    "Index Cond": "(id = '35991476202635264'::bigint)",
                     "Filter": "(((status)::text = 'active'::text) AND ((hashed SubPlan 2) OR (SubPlan 3)))",
                     "Plans": [
                       {
@@ -1831,7 +2091,7 @@
                                             "Total Cost": 6.04,
                                             "Plan Rows": 1,
                                             "Plan Width": 24,
-                                            "Index Cond": "((tenant_id = 91001) AND (principal_id = '35689146357907456'::bigint))"
+                                            "Index Cond": "((tenant_id = 91001) AND (principal_id = '35991476202635264'::bigint))"
                                           },
                                           {
                                             "Node Type": "Index Only Scan",
@@ -1846,7 +2106,7 @@
                                             "Total Cost": 8.30,
                                             "Plan Rows": 1,
                                             "Plan Width": 16,
-                                            "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text) AND (principal_id = '35689146357907456'::bigint))"
+                                            "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text) AND (principal_id = '35991476202635264'::bigint))"
                                           }
                                         ]
                                       },
@@ -1873,7 +2133,7 @@
                                             "Total Cost": 0.00,
                                             "Plan Rows": 1,
                                             "Plan Width": 32,
-                                            "Filter": "((starts_at \u003c= '2026-09-04 04:59:49.368+00'::timestamp with time zone) AND (ends_at \u003e '2026-09-04 04:59:49.368+00'::timestamp with time zone) AND (tenant_id = 91001) AND (principal_id = '35689146357907456'::bigint))"
+                                            "Filter": "((starts_at \u003c= '2026-09-06 07:03:12.064+00'::timestamp with time zone) AND (ends_at \u003e '2026-09-06 07:03:12.064+00'::timestamp with time zone) AND (tenant_id = 91001) AND (principal_id = '35991476202635264'::bigint))"
                                           },
                                           {
                                             "Node Type": "Index Only Scan",
@@ -1888,7 +2148,7 @@
                                             "Total Cost": 8.30,
                                             "Plan Rows": 1,
                                             "Plan Width": 16,
-                                            "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text) AND (principal_id = '35689146357907456'::bigint))"
+                                            "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text) AND (principal_id = '35991476202635264'::bigint))"
                                           }
                                         ]
                                       },
@@ -1969,7 +2229,7 @@
                                                 "Total Cost": 0.00,
                                                 "Plan Rows": 1,
                                                 "Plan Width": 24,
-                                                "Filter": "(((starts_at IS NULL) OR (starts_at \u003c= '2026-09-04 04:59:49.368+00'::timestamp with time zone)) AND ((ends_at IS NULL) OR (ends_at \u003e '2026-09-04 04:59:49.368+00'::timestamp with time zone)) AND (tenant_id = 91001) AND (principal_id = '35689146357907456'::bigint))"
+                                                "Filter": "(((starts_at IS NULL) OR (starts_at \u003c= '2026-09-06 07:03:12.064+00'::timestamp with time zone)) AND ((ends_at IS NULL) OR (ends_at \u003e '2026-09-06 07:03:12.064+00'::timestamp with time zone)) AND (tenant_id = 91001) AND (principal_id = '35991476202635264'::bigint))"
                                               }
                                             ]
                                           },
@@ -1986,7 +2246,7 @@
                                             "Total Cost": 8.30,
                                             "Plan Rows": 1,
                                             "Plan Width": 16,
-                                            "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text COLLATE \"C\") AND (principal_id = '35689146357907456'::bigint))"
+                                            "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text COLLATE \"C\") AND (principal_id = '35991476202635264'::bigint))"
                                           }
                                         ]
                                       },
@@ -2067,7 +2327,7 @@
                                                 "Total Cost": 0.00,
                                                 "Plan Rows": 1,
                                                 "Plan Width": 24,
-                                                "Filter": "(((starts_at IS NULL) OR (starts_at \u003c= '2026-09-04 04:59:49.368+00'::timestamp with time zone)) AND ((ends_at IS NULL) OR (ends_at \u003e '2026-09-04 04:59:49.368+00'::timestamp with time zone)) AND (tenant_id = 91001) AND (principal_id = '35689146357907456'::bigint))"
+                                                "Filter": "(((starts_at IS NULL) OR (starts_at \u003c= '2026-09-06 07:03:12.064+00'::timestamp with time zone)) AND ((ends_at IS NULL) OR (ends_at \u003e '2026-09-06 07:03:12.064+00'::timestamp with time zone)) AND (tenant_id = 91001) AND (principal_id = '35991476202635264'::bigint))"
                                               }
                                             ]
                                           },
@@ -2084,7 +2344,7 @@
                                             "Total Cost": 8.30,
                                             "Plan Rows": 1,
                                             "Plan Width": 16,
-                                            "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text COLLATE \"C\") AND (principal_id = '35689146357907456'::bigint))"
+                                            "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text COLLATE \"C\") AND (principal_id = '35991476202635264'::bigint))"
                                           }
                                         ]
                                       }
@@ -2108,6 +2368,214 @@
                             "Filter": "(tenant_id = 91001)"
                           }
                         ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "path": "scim_bulk",
+          "sql_template": "SELECT count(*) FROM iam_service_accounts AS service_account JOIN iam_principals AS principal ON principal.id = service_account.principal_id JOIN iam_tenant_members AS member ON member.principal_id = principal.id AND member.tenant_id = service_account.owner_tenant_id JOIN iam_tenants AS tenant ON tenant.id = service_account.owner_tenant_id WHERE (service_account.owner_tenant_id = ? AND service_account.principal_id = ?) AND (service_account.status = ? AND service_account.deleted_at IS NULL AND (service_account.expires_at IS NULL OR service_account.expires_at \u003e ?)) AND (principal.status = ? AND principal.activation_required = false AND member.status = ? AND tenant.status = ?)",
+          "fingerprint": "0ceb3178593321a3d26a00bca918b96de745b0aa3399ff62c9c7bef5becfb4b9",
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Aggregate",
+                "Strategy": "Plain",
+                "Partial Mode": "Simple",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 20.55,
+                "Total Cost": 20.56,
+                "Plan Rows": 1,
+                "Plan Width": 8,
+                "Plans": [
+                  {
+                    "Node Type": "Nested Loop",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Join Type": "Inner",
+                    "Startup Cost": 0.56,
+                    "Total Cost": 20.55,
+                    "Plan Rows": 1,
+                    "Plan Width": 0,
+                    "Inner Unique": false,
+                    "Plans": [
+                      {
+                        "Node Type": "Nested Loop",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Join Type": "Inner",
+                        "Startup Cost": 0.56,
+                        "Total Cost": 18.55,
+                        "Plan Rows": 1,
+                        "Plan Width": 8,
+                        "Inner Unique": false,
+                        "Plans": [
+                          {
+                            "Node Type": "Nested Loop",
+                            "Parent Relationship": "Outer",
+                            "Parallel Aware": false,
+                            "Async Capable": false,
+                            "Join Type": "Inner",
+                            "Startup Cost": 0.28,
+                            "Total Cost": 10.23,
+                            "Plan Rows": 1,
+                            "Plan Width": 16,
+                            "Inner Unique": false,
+                            "Plans": [
+                              {
+                                "Node Type": "Seq Scan",
+                                "Parent Relationship": "Outer",
+                                "Parallel Aware": false,
+                                "Async Capable": false,
+                                "Relation Name": "iam_service_accounts",
+                                "Alias": "service_account",
+                                "Startup Cost": 0.00,
+                                "Total Cost": 1.92,
+                                "Plan Rows": 1,
+                                "Plan Width": 16,
+                                "Filter": "((deleted_at IS NULL) AND ((expires_at IS NULL) OR (expires_at \u003e '2026-09-06 07:03:12.067+00'::timestamp with time zone)) AND (principal_id = '35991477007941632'::bigint) AND (owner_tenant_id = 91001) AND ((status)::text = 'active'::text COLLATE \"C\"))"
+                              },
+                              {
+                                "Node Type": "Index Scan",
+                                "Parent Relationship": "Inner",
+                                "Parallel Aware": false,
+                                "Async Capable": false,
+                                "Scan Direction": "Forward",
+                                "Index Name": "iam_principals_pkey",
+                                "Relation Name": "iam_principals",
+                                "Alias": "principal",
+                                "Startup Cost": 0.28,
+                                "Total Cost": 8.30,
+                                "Plan Rows": 1,
+                                "Plan Width": 8,
+                                "Index Cond": "(id = '35991477007941632'::bigint)",
+                                "Filter": "((NOT activation_required) AND ((status)::text = 'active'::text COLLATE \"C\"))"
+                              }
+                            ]
+                          },
+                          {
+                            "Node Type": "Index Only Scan",
+                            "Parent Relationship": "Inner",
+                            "Parallel Aware": false,
+                            "Async Capable": false,
+                            "Scan Direction": "Forward",
+                            "Index Name": "idx_iam_tenant_members_status",
+                            "Relation Name": "iam_tenant_members",
+                            "Alias": "member",
+                            "Startup Cost": 0.28,
+                            "Total Cost": 8.30,
+                            "Plan Rows": 1,
+                            "Plan Width": 16,
+                            "Index Cond": "((tenant_id = 91001) AND (status = 'active'::text COLLATE \"C\") AND (principal_id = '35991477007941632'::bigint))"
+                          }
+                        ]
+                      },
+                      {
+                        "Node Type": "Seq Scan",
+                        "Parent Relationship": "Inner",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Relation Name": "iam_tenants",
+                        "Alias": "tenant",
+                        "Startup Cost": 0.00,
+                        "Total Cost": 1.99,
+                        "Plan Rows": 1,
+                        "Plan Width": 8,
+                        "Filter": "((id = 91001) AND ((status)::text = 'active'::text COLLATE \"C\"))"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "path": "scim_bulk",
+          "sql_template": "SELECT credential.*, directory.tenant_id AS tenant_id, directory.status AS directory_status, tenant.status AS tenant_status, COALESCE(directory.service_account_id, ?) AS service_account_id FROM iam_scim_credentials AS credential JOIN iam_scim_directories AS directory ON directory.id = credential.directory_id JOIN iam_tenants AS tenant ON tenant.id = directory.tenant_id WHERE credential.id = ? AND (tenant.id = ? AND directory.tenant_id = ?) AND (directory.id = ? AND credential.directory_id = ?) LIMIT ?",
+          "fingerprint": "59f22f485e16b98deb7867fca9930d5d2bb928ccb551ec0cca752e161da30fb8",
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 0.00,
+                "Total Cost": 5.12,
+                "Plan Rows": 1,
+                "Plan Width": 384,
+                "Plans": [
+                  {
+                    "Node Type": "Nested Loop",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Join Type": "Inner",
+                    "Startup Cost": 0.00,
+                    "Total Cost": 5.12,
+                    "Plan Rows": 1,
+                    "Plan Width": 384,
+                    "Inner Unique": false,
+                    "Plans": [
+                      {
+                        "Node Type": "Nested Loop",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Join Type": "Inner",
+                        "Startup Cost": 0.00,
+                        "Total Cost": 3.28,
+                        "Plan Rows": 1,
+                        "Plan Width": 377,
+                        "Inner Unique": false,
+                        "Plans": [
+                          {
+                            "Node Type": "Seq Scan",
+                            "Parent Relationship": "Outer",
+                            "Parallel Aware": false,
+                            "Async Capable": false,
+                            "Relation Name": "iam_scim_credentials",
+                            "Alias": "credential",
+                            "Startup Cost": 0.00,
+                            "Total Cost": 1.31,
+                            "Plan Rows": 1,
+                            "Plan Width": 354,
+                            "Filter": "((directory_id = '35991477008072704'::bigint) AND (id = '35991477024718848'::bigint))"
+                          },
+                          {
+                            "Node Type": "Seq Scan",
+                            "Parent Relationship": "Inner",
+                            "Parallel Aware": false,
+                            "Async Capable": false,
+                            "Relation Name": "iam_scim_directories",
+                            "Alias": "directory",
+                            "Startup Cost": 0.00,
+                            "Total Cost": 1.96,
+                            "Plan Rows": 1,
+                            "Plan Width": 31,
+                            "Filter": "((id = '35991477008072704'::bigint) AND (tenant_id = 91001))"
+                          }
+                        ]
+                      },
+                      {
+                        "Node Type": "Seq Scan",
+                        "Parent Relationship": "Inner",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Relation Name": "iam_tenants",
+                        "Alias": "tenant",
+                        "Startup Cost": 0.00,
+                        "Total Cost": 1.83,
+                        "Plan Rows": 1,
+                        "Plan Width": 15,
+                        "Filter": "(id = 91001)"
                       }
                     ]
                   }
@@ -2180,7 +2648,7 @@
                                 "Total Cost": 6.05,
                                 "Plan Rows": 1,
                                 "Plan Width": 66,
-                                "Index Cond": "((directory_id = '35689147112882176'::bigint) AND ((resource_type)::text = 'User'::text))",
+                                "Index Cond": "((directory_id = '35991477008072704'::bigint) AND ((resource_type)::text = 'User'::text))",
                                 "Filter": "((deleted_at IS NULL) AND (resource_id = '8900000000000001'::bigint))"
                               },
                               {
@@ -2194,7 +2662,7 @@
                                 "Total Cost": 1.80,
                                 "Plan Rows": 1,
                                 "Plan Width": 16,
-                                "Filter": "(id = '35689147112882176'::bigint)"
+                                "Filter": "(id = '35991477008072704'::bigint)"
                               }
                             ]
                           },
@@ -2277,7 +2745,7 @@
                         "Total Cost": 8.30,
                         "Plan Rows": 1,
                         "Plan Width": 81,
-                        "Index Cond": "(id = '35689146357907456'::bigint)",
+                        "Index Cond": "(id = '35991476202635264'::bigint)",
                         "Filter": "((NOT activation_required) AND ((status)::text = 'active'::text))"
                       },
                       {
@@ -2291,7 +2759,7 @@
                         "Total Cost": 1.04,
                         "Plan Rows": 1,
                         "Plan Width": 16,
-                        "Filter": "(principal_id = '35689146357907456'::bigint)"
+                        "Filter": "(principal_id = '35991476202635264'::bigint)"
                       }
                     ]
                   }
@@ -2328,8 +2796,8 @@
                     "Total Cost": 8.30,
                     "Plan Rows": 1,
                     "Plan Width": 131,
-                    "Index Cond": "(id_hash = 'ecfce3e51de31a4d818815422816be3415e8aed7c972ab888d9730fff6d2a2b2'::bpchar)",
-                    "Filter": "((revoked_at IS NULL) AND (expires_at \u003e '2026-09-04 04:59:49.372+00'::timestamp with time zone) AND (absolute_expires_at \u003e '2026-09-04 04:59:49.372+00'::timestamp with time zone))"
+                    "Index Cond": "(id_hash = '2aa04ff525a4dc4511a60f9277f89a223ee0271334d384a8ed50ee8d0136b963'::bpchar)",
+                    "Filter": "((revoked_at IS NULL) AND (expires_at \u003e '2026-09-06 07:03:12.066+00'::timestamp with time zone) AND (absolute_expires_at \u003e '2026-09-06 07:03:12.066+00'::timestamp with time zone))"
                   }
                 ]
               }
@@ -2367,8 +2835,8 @@
                     "Total Cost": 8.31,
                     "Plan Rows": 1,
                     "Plan Width": 22,
-                    "Index Cond": "(id_hash = 'ecfce3e51de31a4d818815422816be3415e8aed7c972ab888d9730fff6d2a2b2'::bpchar)",
-                    "Filter": "((revoked_at IS NULL) AND (expires_at \u003e '2026-09-04 04:59:49.372+00'::timestamp with time zone) AND (absolute_expires_at \u003e '2026-09-04 04:59:49.372+00'::timestamp with time zone) AND (last_seen_at \u003c= '2026-09-04 04:59:49.372+00'::timestamp with time zone))"
+                    "Index Cond": "(id_hash = '2aa04ff525a4dc4511a60f9277f89a223ee0271334d384a8ed50ee8d0136b963'::bpchar)",
+                    "Filter": "((revoked_at IS NULL) AND (expires_at \u003e '2026-09-06 07:03:12.066+00'::timestamp with time zone) AND (absolute_expires_at \u003e '2026-09-06 07:03:12.066+00'::timestamp with time zone) AND (last_seen_at \u003c= '2026-09-06 07:03:12.066+00'::timestamp with time zone))"
                   }
                 ]
               }

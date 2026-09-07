@@ -28,6 +28,7 @@ func newNotificationOutbox(db *gorm.DB, opts ...gen.DOOption) notificationOutbox
 
 	tableName := _notificationOutbox.notificationOutboxDo.TableName()
 	_notificationOutbox.ALL = field.NewAsterisk(tableName)
+	_notificationOutbox.PrincipalID = field.NewField(tableName, "principal_id")
 	_notificationOutbox.ID = field.NewField(tableName, "id")
 	_notificationOutbox.Kind = field.NewString(tableName, "kind")
 	_notificationOutbox.Recipient = field.NewString(tableName, "recipient")
@@ -50,6 +51,7 @@ type notificationOutbox struct {
 	notificationOutboxDo notificationOutboxDo
 
 	ALL               field.Asterisk
+	PrincipalID       field.Field
 	ID                field.Field
 	Kind              field.String
 	Recipient         field.String
@@ -78,6 +80,7 @@ func (n notificationOutbox) As(alias string) *notificationOutbox {
 
 func (n *notificationOutbox) updateTableName(table string) *notificationOutbox {
 	n.ALL = field.NewAsterisk(table)
+	n.PrincipalID = field.NewField(table, "principal_id")
 	n.ID = field.NewField(table, "id")
 	n.Kind = field.NewString(table, "kind")
 	n.Recipient = field.NewString(table, "recipient")
@@ -118,7 +121,8 @@ func (n *notificationOutbox) GetFieldByName(fieldName string) (field.OrderExpr, 
 }
 
 func (n *notificationOutbox) fillFieldMap() {
-	n.fieldMap = make(map[string]field.Expr, 12)
+	n.fieldMap = make(map[string]field.Expr, 13)
+	n.fieldMap["principal_id"] = n.PrincipalID
 	n.fieldMap["id"] = n.ID
 	n.fieldMap["kind"] = n.Kind
 	n.fieldMap["recipient"] = n.Recipient

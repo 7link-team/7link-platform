@@ -2,16 +2,19 @@ package core
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	"7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -51,7 +54,7 @@ func TestModuleInitializeRegistersIAMLocales(t *testing.T) {
 
 func TestRuntimeModuleRegistersAllRoutes(t *testing.T) {
 	harness := newHTTPIAMHarness(t, true)
-	assert.Len(t, operationManifest(harness.api.OpenAPI()), 51)
+	assert.Len(t, operationManifest(harness.api.OpenAPI()), 56)
 	require.NoError(t, authz.ValidateOperations(harness.api, harness.module.registrar.Registry()))
 }
 
@@ -144,6 +147,83 @@ func TestRoleGrantStoreProviderLateBindsInjectedCallbacks(t *testing.T) {
 	assert.Equal(t, 5, removeCalls)
 }
 
+func TestModulePublishesTheSameLiveAuthorizationEvaluator(t *testing.T) {
+	harness := newCoreServiceHarness(t)
+	tenantID, principalID := guid.ID(1), guid.ID(11)
+	harness.seedMember(t, tenantID, principalID, MemberActive)
+	role, err := harness.service.CreateRole(t.Context(), tenantID, "Self reader", "")
+	require.NoError(t, err)
+	_, err = harness.service.GrantPermission(t.Context(), tenantID, role.ID, "user_view")
+	require.NoError(t, err)
+	_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, principalID)
+	require.NoError(t, err)
+	_, _, err = harness.service.SetRoleDataScope(t.Context(), tenantID, role.ID, DataScopeSelf, nil)
+	require.NoError(t, err)
+	entity, err := harness.service.CreateEntity(t.Context(), Entity{TenantID: tenantID, Type: "store", Name: "Entity"})
+	require.NoError(t, err)
+
+	instance := NewModule(harness.runtime, enabledModuleConfig())
+	services := module.NewServices()
+	require.NoError(t, instance.ProvideServices(services))
+	require.NoError(t, module.Provide[guid.Source](services, harness.repository.ids))
+	require.NoError(t, module.Provide[audit.Appender](services, func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil }))
+	require.NoError(t, module.Provide[authz.TokenVerifier](services, httpTokenVerifier{principalID: principalID}))
+	require.NoError(t, services.Seal())
+	evaluator, err := module.Resolve[AuthorizationEvaluator](services)
+	require.NoError(t, err)
+	_, err = evaluator.Constraint(t.Context(), tenantID, "user_view", principalID)
+	require.ErrorIs(t, err, ErrUnavailable, "unwired evaluation must fail closed")
+	_, err = evaluator.EntityConstraint(t.Context(), tenantID, entity.ID, "user_view", principalID)
+	require.ErrorIs(t, err, ErrUnavailable)
+	require.NoError(t, instance.InjectServices(services))
+	require.Same(t, evaluator, instance.checker)
+	require.Same(t, evaluator, instance.service.checker, "HTTP and business consumers must share one evaluator")
+	constraint, err := evaluator.Constraint(t.Context(), tenantID, "user_view", principalID)
+	require.NoError(t, err)
+	assert.False(t, constraint.AllowAll)
+	assert.Equal(t, []string{principalID.String()}, constraint.OwnerIDs)
+	_, api := humatest.New(t)
+	type output struct{ Body authz.DataConstraint }
+	handlerCalls := 0
+	handler := func(ctx context.Context, _ *struct{}) (*output, error) {
+		handlerCalls++
+		claims, ok := authn.FromContext(ctx)
+		require.True(t, ok)
+		assert.Equal(t, tenantID, claims.TenantID)
+		assert.Equal(t, entity.ID, claims.EntityID)
+		assert.Equal(t, principalID, claims.PrincipalID)
+		filtered, evaluateErr := evaluator.EntityConstraint(ctx, claims.TenantID, claims.EntityID, "user_view", claims.PrincipalID)
+		return &output{Body: filtered}, evaluateErr
+	}
+	authz.RegisterEntity(instance.registrar, api, huma.Operation{OperationID: "filtered", Method: http.MethodGet, Path: "/filtered"}, authz.Guard{Resource: "user", Verb: "view", FilterData: true}, handler)
+	authz.RegisterEntity(instance.registrar, api, huma.Operation{OperationID: "whole", Method: http.MethodGet, Path: "/whole"}, authz.Guard{Resource: "user", Verb: "view"}, handler)
+	headers := []any{authz.TenantHeader + ": " + tenantID.String(), authz.EntityHeader + ": " + entity.ID.String()}
+	response := api.Get("/filtered", headers...)
+	assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Contains(t, response.Body.String(), `"owner_ids":["11"]`)
+	assert.Equal(t, http.StatusForbidden, api.Get("/whole", headers...).Code)
+	assert.Equal(t, http.StatusForbidden, api.Get("/filtered", authz.TenantHeader+": 2", authz.EntityHeader+": "+entity.ID.String()).Code)
+	assert.Equal(t, http.StatusForbidden, api.Get("/filtered", authz.TenantHeader+": 1", authz.EntityHeader+": 999").Code)
+	assert.Equal(t, 1, handlerCalls)
+	_, err = harness.service.RevokePermission(t.Context(), tenantID, role.ID, "user_view")
+	require.NoError(t, err)
+	constraint, err = evaluator.Constraint(t.Context(), tenantID, "user_view", principalID)
+	require.NoError(t, err)
+	assert.False(t, constraint.AllowAll)
+	assert.Empty(t, constraint.OwnerIDs, "a consumer must observe revocation without being rewired")
+	assert.Equal(t, http.StatusForbidden, api.Get("/filtered", headers...).Code)
+	assert.Equal(t, 1, handlerCalls, "revoked requests never enter the handler")
+}
+
+func TestModuleReportsDuplicateAuthorizationEvaluator(t *testing.T) {
+	instance := NewModule(&appenv.Runtime{}, enabledModuleConfig())
+	services := module.NewServices()
+	require.NoError(t, module.Provide[AuthorizationEvaluator](services, instance.checker))
+	err := instance.ProvideServices(services)
+	assert.ErrorIs(t, err, module.ErrServiceDuplicate)
+	assert.ErrorContains(t, err, "provide IAM authorization evaluator")
+}
+
 func TestModuleDefensiveLifecycleBranches(t *testing.T) {
 	var module *Module
 	assert.ErrorIs(t, module.CheckHealth(t.Context()), ErrUnavailable)
@@ -156,5 +236,9 @@ func TestModuleMigrationSourceRemainsSelfDescribing(t *testing.T) {
 	assert.Equal(t, "goose_iam", source.TableName)
 	assert.NotNil(t, source.FS)
 	assert.Empty(t, source.Prefix)
-	assert.Equal(t, int64(11), (&Module{}).MigrationMilestones()[0].Version)
+	assert.Equal(t, []module.MigrationMilestone{
+		{Name: "base", Version: 11},
+		{Name: "field_policies", Version: 12},
+		{Name: "principal-erasure", Version: 13, Dependencies: []module.MigrationMilestoneRef{{Module: "identity", Name: "lifecycle"}}},
+	}, (&Module{}).MigrationMilestones())
 }

@@ -224,7 +224,7 @@ test-coverage:
 	exit $$status
 
 test-integration:
-	go -C tests test ./...
+	go -C tests test ./... -count=1
 
 test-performance:
 	go -C tests test ./performance -count=1 -v

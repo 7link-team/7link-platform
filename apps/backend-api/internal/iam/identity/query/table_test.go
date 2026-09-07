@@ -19,10 +19,11 @@ func TestBindAppliesPrefixToEveryIdentityTable(t *testing.T) {
 	plain, prefixed := Bind(db, ""), Bind(db, "sl_")
 	actual := map[string][2]string{
 		"principals":                  {plain.Principals.TableName(), prefixed.Principals.TableName()},
+		"principal_lifecycles":        {plain.PrincipalLifecycles.TableName(), prefixed.PrincipalLifecycles.TableName()},
 		"service_accounts":            {plain.ServiceAccounts.TableName(), prefixed.ServiceAccounts.TableName()},
 		"service_account_credentials": {plain.ServiceAccountCredentials.TableName(), prefixed.ServiceAccountCredentials.TableName()},
 	}
-	require.Len(t, actual, 3)
+	require.Len(t, actual, 4)
 	for name, pair := range actual {
 		assert.Equal(t, "sl_"+pair[0], pair[1], name)
 	}

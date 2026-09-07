@@ -48,7 +48,14 @@ func (s *Service) GetRetentionPolicy(ctx context.Context, tenantID guid.ID) (Ret
 }
 
 func (s *Service) SetRetentionPolicy(ctx context.Context, tenantID guid.ID, minDays, archiveAfterDays int) (RetentionPolicy, error) {
-	if tenantID.Zero() || minDays < 1 || minDays > maxRetentionDays || archiveAfterDays < minDays || archiveAfterDays > maxRetentionDays {
+	if tenantID <= 0 {
+		return RetentionPolicy{}, ErrRetentionInvalid
+	}
+	return s.setRetentionPolicy(ctx, tenantID, minDays, archiveAfterDays)
+}
+
+func (s *Service) setRetentionPolicy(ctx context.Context, tenantID guid.ID, minDays, archiveAfterDays int) (RetentionPolicy, error) {
+	if tenantID < 0 || minDays < 1 || minDays > maxRetentionDays || archiveAfterDays < minDays || archiveAfterDays > maxRetentionDays {
 		return RetentionPolicy{}, ErrRetentionInvalid
 	}
 	if s == nil || s.repo == nil || s.now == nil {

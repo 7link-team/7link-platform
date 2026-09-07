@@ -1,4 +1,10 @@
 {
+  "archive_not_found": "The archive job was not found in this scope.",
+  "archive_disabled": "Audit archiving is disabled in this deployment.",
+  "archive_empty": "No contiguous audit events have reached the archive threshold.",
+  "archive_busy": "The archive job is running, awaiting retry, or not in the required state. Refresh its status.",
+  "archive_integrity": "The archive version, content or retention verification failed. Do not rely on this archive.",
+  "archive_unavailable": "The archive object store is unavailable. Retry later.",
   "invalid_audit_time": "The audit time range is invalid. Use RFC 3339 timestamps and ensure the end is after the start.",
   "audit_event_not_found": "The requested audit event was not found in this tenant. Verify the event identifier and tenant, then try again.",
   "invalid_audit_query": "The audit query is invalid. Check the tenant, filters, and pagination values.",

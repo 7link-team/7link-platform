@@ -79,6 +79,14 @@ func (verifier identityTokenVerifier) Authenticate(context.Context, string, stri
 // the route being unreachable at all.
 type identityRouteAuthorizer struct{ userUpdateAllowed bool }
 
+func (identityRouteAuthorizer) FieldConstraint(context.Context, guid.ID, guid.ID, string, guid.ID) (authz.FieldConstraint, error) {
+	fields := map[string]authz.FieldDecision{}
+	for _, field := range authz.ProfileFields() {
+		fields[field.Name] = authz.DecideField(field, nil, nil)
+	}
+	return authz.FieldConstraint{Fields: fields}, nil
+}
+
 func (authorizer identityRouteAuthorizer) Check(
 	_ context.Context,
 	_ guid.ID,
@@ -126,6 +134,7 @@ func newIdentityHTTPHarness(t *testing.T, userUpdateAllowed bool) identityHTTPHa
 	t.Helper()
 	require.NoError(t, initializeIdentityLocales())
 	harness := newIdentityHarness(t, "sl_")
+	harness.service.fields = identityRouteAuthorizer{userUpdateAllowed: userUpdateAllowed}
 	harness.seedTenant(t, 7, "active")
 	harness.seedTenant(t, 8, "active")
 

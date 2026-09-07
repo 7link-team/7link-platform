@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react"
 import {
   CheckCircle2,
   Copy,
@@ -6,8 +12,16 @@ import {
   KeyRound,
   Pencil,
   Plus,
+  RefreshCw,
   Trash2,
 } from "lucide-react"
+import { useSearchParams } from "react-router"
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "@workspace/ui/components/tabs"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button, buttonVariants } from "@workspace/ui/components/button"
 import {
@@ -38,16 +52,21 @@ import {
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import {
+  ApiError,
   clientErrorMessage,
-  iamApi,
+  createIamApi,
+  getTenant,
   type SCIMCredential,
   type SCIMCredentialSecret,
   type SCIMDirectory,
+  type ServiceAccount,
 } from "../../lib/iam-api"
+import { SCIMTargets } from "./targets"
 
 interface DirectoryDraft {
   name: string
   enabled: boolean
+  serviceAccountId: string
 }
 
 interface CredentialDraft {
@@ -55,16 +74,61 @@ interface CredentialDraft {
   expiresAt: string
 }
 
-const emptyDirectory: DirectoryDraft = { name: "", enabled: true }
+const emptyDirectory: DirectoryDraft = {
+  name: "",
+  enabled: true,
+  serviceAccountId: "",
+}
 const emptyCredential: CredentialDraft = { name: "", expiresAt: "" }
 
 export default function SCIMDirectoriesPage() {
+  const [tenant, setTenantValue] = useState(getTenant)
+  const [params, setParams] = useSearchParams()
+  const view = params.get("view") === "targets" ? "targets" : "directories"
+  useEffect(() => {
+    const sync = () => setTenantValue(getTenant())
+    window.addEventListener("tenant-change", sync)
+    return () => window.removeEventListener("tenant-change", sync)
+  }, [])
+  return (
+    <Tabs
+      value={view}
+      onValueChange={(value) => {
+        const next = new URLSearchParams(params)
+        if (value === "targets") next.set("view", "targets")
+        else next.delete("view")
+        setParams(next)
+      }}
+    >
+      <TabsList variant="line" className="mb-4" aria-label="SCIM 同步方向">
+        <TabsTrigger variant="line" value="directories">
+          入站目录
+        </TabsTrigger>
+        <TabsTrigger variant="line" value="targets">
+          出站目标
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="directories">
+        {view === "directories" && (
+          <TenantSCIMDirectories key={tenant} tenant={tenant} />
+        )}
+      </TabsContent>
+      <TabsContent value="targets">
+        {view === "targets" && <SCIMTargets key={tenant} tenant={tenant} />}
+      </TabsContent>
+    </Tabs>
+  )
+}
+
+function TenantSCIMDirectories({ tenant }: { tenant: string }) {
+  const api = useMemo(() => createIamApi(undefined, () => tenant), [tenant])
   const [directories, setDirectories] = useState<SCIMDirectory[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
   const [editing, setEditing] = useState<SCIMDirectory | null | undefined>()
+  const [directoryConflict, setDirectoryConflict] = useState(false)
   const [directoryDraft, setDirectoryDraft] =
     useState<DirectoryDraft>(emptyDirectory)
   const [credentialDirectory, setCredentialDirectory] =
@@ -78,12 +142,12 @@ export default function SCIMDirectoriesPage() {
   const [endpoint] = useState(() => scimEndpoint())
 
   const refresh = useCallback(async () => {
-    setDirectories(await iamApi.scimDirectories())
-  }, [])
+    setDirectories(await api.scimDirectories())
+  }, [api])
 
   useEffect(() => {
     let active = true
-    void iamApi
+    void api
       .scimDirectories()
       .then(
         (items) => active && setDirectories(items),
@@ -93,21 +157,41 @@ export default function SCIMDirectoriesPage() {
     return () => {
       active = false
     }
-  }, [])
+  }, [api])
 
   const openCreate = () => {
     setError("")
+    setDirectoryConflict(false)
     setDirectoryDraft({ ...emptyDirectory })
     setEditing(null)
   }
 
   const openEdit = (directory: SCIMDirectory) => {
     setError("")
+    setDirectoryConflict(false)
     setDirectoryDraft({
       name: directory.name,
       enabled: directory.status === "active",
+      serviceAccountId: directory.service_account_id ?? "",
     })
     setEditing(directory)
+  }
+
+  const reloadDirectory = async () => {
+    if (!editing) return
+    setBusy(true)
+    setError("")
+    try {
+      const items = await api.scimDirectories()
+      setDirectories(items)
+      const current = items.find((item) => item.id === editing.id)
+      if (current) openEdit(current)
+      else setEditing(undefined)
+    } catch (cause) {
+      setError((cause as Error).message)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const saveDirectory = async (event: FormEvent<HTMLFormElement>) => {
@@ -117,19 +201,25 @@ export default function SCIMDirectoriesPage() {
     setNotice("")
     try {
       if (editing) {
-        await iamApi.updateSCIMDirectory(editing.id, {
+        await api.updateSCIMDirectory(editing.id, {
           name: directoryDraft.name.trim(),
           status: directoryDraft.enabled ? "active" : "disabled",
           version: editing.version,
+          service_account_id: directoryDraft.serviceAccountId.trim() || null,
         })
         setNotice("SCIM 目录已更新")
       } else {
-        await iamApi.createSCIMDirectory({ name: directoryDraft.name.trim() })
+        await api.createSCIMDirectory({
+          name: directoryDraft.name.trim(),
+          service_account_id: directoryDraft.serviceAccountId.trim() || null,
+        })
         setNotice("SCIM 目录已创建")
       }
       setEditing(undefined)
       await refresh()
     } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 409 && editing)
+        setDirectoryConflict(true)
       setError((cause as Error).message)
     } finally {
       setBusy(false)
@@ -143,7 +233,7 @@ export default function SCIMDirectoriesPage() {
     setCredentialsLoading(true)
     setError("")
     try {
-      setCredentials(await iamApi.scimCredentials(directory.id))
+      setCredentials(await api.scimCredentials(directory.id))
     } catch (cause) {
       setError((cause as Error).message)
     } finally {
@@ -157,7 +247,7 @@ export default function SCIMDirectoriesPage() {
     setBusy(true)
     setError("")
     try {
-      const result = await iamApi.createSCIMCredential(credentialDirectory.id, {
+      const result = await api.createSCIMCredential(credentialDirectory.id, {
         name: credentialDraft.name.trim(),
         expires_at: isoDateTime(credentialDraft.expiresAt),
       })
@@ -175,8 +265,8 @@ export default function SCIMDirectoriesPage() {
     setBusy(true)
     setError("")
     try {
-      await iamApi.revokeSCIMCredential(credentialDirectory.id, revoking.id)
-      setCredentials(await iamApi.scimCredentials(credentialDirectory.id))
+      await api.revokeSCIMCredential(credentialDirectory.id, revoking.id)
+      setCredentials(await api.scimCredentials(credentialDirectory.id))
       setRevoking(null)
       setNotice("SCIM 凭据已撤销")
     } catch (cause) {
@@ -322,6 +412,10 @@ export default function SCIMDirectoriesPage() {
       </section>
 
       <DirectoryEditor
+        api={api}
+        error={error}
+        conflict={directoryConflict}
+        onReload={() => void reloadDirectory()}
         open={editing !== undefined}
         directory={editing ?? null}
         draft={directoryDraft}
@@ -393,6 +487,10 @@ function DirectoryActions({
 }
 
 function DirectoryEditor({
+  api,
+  error,
+  conflict,
+  onReload,
   open,
   directory,
   draft,
@@ -401,6 +499,10 @@ function DirectoryEditor({
   onClose,
   onSubmit,
 }: {
+  api: ReturnType<typeof createIamApi>
+  error: string
+  conflict: boolean
+  onReload: () => void
   open: boolean
   directory: SCIMDirectory | null
   draft: DirectoryDraft
@@ -409,9 +511,40 @@ function DirectoryEditor({
   onClose: () => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
 }) {
+  const [accounts, setAccounts] = useState<ServiceAccount[]>([])
+  const [accountError, setAccountError] = useState("")
+  useEffect(() => {
+    if (!open) return
+    let active = true
+    const timer = window.setTimeout(() => {
+      void api.serviceAccounts(draft.serviceAccountId).then(
+        ({ items }) => {
+          if (!active) return
+          setAccounts(
+            items.filter(
+              (account) =>
+                account.status === "active" &&
+                (!account.expires_at ||
+                  Date.parse(account.expires_at) > Date.now())
+            )
+          )
+          setAccountError("")
+        },
+        (cause: Error) => {
+          if (!active) return
+          setAccounts([])
+          setAccountError(cause.message)
+        }
+      )
+    }, 200)
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [api, open, draft.serviceAccountId])
   return (
     <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
-      <DialogContent>
+      <DialogContent className="grid max-h-[calc(100svh-2rem)] w-[calc(100vw-2rem)] gap-5 overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {directory ? "编辑 SCIM 目录" : "创建 SCIM 目录"}
@@ -425,6 +558,7 @@ function DirectoryEditor({
           className="grid gap-5"
           onSubmit={onSubmit}
         >
+          {error && <Alert>{error}</Alert>}
           <div className="grid gap-2">
             <Label htmlFor="scim-directory-name">目录名称</Label>
             <Input
@@ -438,6 +572,30 @@ function DirectoryEditor({
               maxLength={128}
               autoFocus
             />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="scim-directory-service-account">服务账号</Label>
+            <Input
+              id="scim-directory-service-account"
+              list="scim-service-account-options"
+              value={draft.serviceAccountId}
+              onChange={(event) =>
+                onDraft({ ...draft, serviceAccountId: event.target.value })
+              }
+              pattern="[1-9][0-9]*"
+              maxLength={64}
+              placeholder="未绑定"
+              autoComplete="off"
+              disabled={busy}
+            />
+            <datalist id="scim-service-account-options">
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.display_name || account.login_name}
+                </option>
+              ))}
+            </datalist>
+            {accountError && <Alert>{accountError}</Alert>}
           </div>
           {directory && (
             <div className="flex min-h-16 items-center justify-between gap-3 rounded-md border px-3">
@@ -455,13 +613,20 @@ function DirectoryEditor({
             </div>
           )}
         </form>
-        <DialogFooter>
+        <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onClose} disabled={busy}>
             取消
           </Button>
-          <Button type="submit" form="scim-directory-form" disabled={busy}>
-            {busy ? "正在保存" : "保存"}
-          </Button>
+          {conflict ? (
+            <Button onClick={onReload} disabled={busy}>
+              <RefreshCw />
+              重新加载
+            </Button>
+          ) : (
+            <Button type="submit" form="scim-directory-form" disabled={busy}>
+              {busy ? "正在保存" : "保存"}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

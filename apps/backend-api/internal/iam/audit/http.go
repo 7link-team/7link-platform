@@ -60,6 +60,8 @@ type retentionInput struct {
 }
 
 func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
+	registerArchiveHTTP(api, service, registrar, false)
+	registerArchiveHTTP(api, service, registrar, true)
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "audit-list-events", Method: http.MethodGet, Path: "/iam/audit-events",
 		Summary: "List tenant audit events", Tags: []string{"audit"},
@@ -273,6 +275,20 @@ func exportOperation() huma.Operation {
 
 func auditAPIError(err error) error {
 	switch {
+	case errors.Is(err, ErrArchiveNotFound):
+		return huma.Error404NotFound(auditi18n.ArchiveNotFound)
+	case errors.Is(err, ErrArchiveInvalid):
+		return huma.Error422UnprocessableEntity(auditi18n.InvalidQuery)
+	case errors.Is(err, ErrArchiveDisabled):
+		return huma.Error503ServiceUnavailable(auditi18n.ArchiveDisabled)
+	case errors.Is(err, ErrArchiveEmpty):
+		return huma.Error422UnprocessableEntity(auditi18n.ArchiveEmpty)
+	case errors.Is(err, ErrArchiveBusy):
+		return huma.Error409Conflict(auditi18n.ArchiveBusy)
+	case errors.Is(err, ErrArchiveIntegrity):
+		return huma.Error409Conflict(auditi18n.ArchiveIntegrity)
+	case errors.Is(err, ErrArchiveUnavailable):
+		return huma.Error503ServiceUnavailable(auditi18n.ArchiveUnavailable)
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		return huma.Error404NotFound(auditi18n.EventNotFound)
 	case errors.Is(err, ErrInvalidEvent), errors.Is(err, ErrInvalidFilter):

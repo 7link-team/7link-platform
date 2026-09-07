@@ -3,10 +3,9 @@ import { fileURLToPath } from "node:url"
 
 const port = Number(process.argv[2] ?? 9333)
 const baseURL = process.argv[3] ?? "http://localhost:8091"
-const notificationFile = new URL(
-  "../../../../../.local/notification-last.json",
-  import.meta.url
-)
+const notificationFile =
+  process.env.IAM_NOTIFICATION_FILE ??
+  new URL("../../../../../.local/notification-last.json", import.meta.url)
 // The identity service keeps its database wherever it was started from, which
 // is not something this repository can know, so let the caller name it.
 const databaseFile =
@@ -295,6 +294,13 @@ const unexpectedResponses = responses.filter((response) => {
     response.status === 403 &&
     (response.url.includes("/api/iam/me/menus") ||
       response.url.includes("/api/iam/tenants"))
+  )
+    return false
+  // A newly registered global principal has no tenant field-policy access.
+  if (
+    response.method === "GET" &&
+    response.status === 403 &&
+    response.url.endsWith("/api/iam/field-catalog")
   )
     return false
   if (

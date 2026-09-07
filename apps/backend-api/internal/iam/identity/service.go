@@ -13,6 +13,7 @@ import (
 	"7link.com/platform/internal/iam/identity/model"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/passwordx"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -40,6 +41,8 @@ type tenantMemberRecord struct {
 type Service struct {
 	repo           *Repository
 	administrators core.AdministratorGuard
+	fields         authz.FieldPermissionChecker
+	anonymizer     PrincipalAnonymizer
 	now            func() time.Time
 }
 

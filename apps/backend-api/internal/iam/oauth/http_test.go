@@ -371,7 +371,7 @@ func TestOAuthOpenAPISuccessSchemasAreTyped(t *testing.T) {
 		"userinfo": {
 			spec.Paths["/oauth/userinfo"].Get,
 			splitCSV("sub,preferred_username,email,email_verified"),
-			splitCSV("sub,preferred_username,email,email_verified"),
+			[]string{"sub"},
 		},
 	}
 	for name, testCase := range cases {
@@ -491,6 +491,7 @@ func TestOAuthAuthorizationCodeHTTPLifecycle(t *testing.T) {
 	require.NotEmpty(t, tokens.AccessToken)
 	require.NotEmpty(t, tokens.RefreshToken)
 	require.NotEmpty(t, tokens.IDToken)
+	assert.Equal(t, "openid profile", harness.web.tokens[tokens.IDToken].Raw["scope"], "ID token issuance receives the consented scope")
 
 	userinfo := harness.request(http.MethodGet, "/oauth/userinfo", "", nil, map[string]string{"Authorization": "Bearer " + tokens.AccessToken})
 	require.Equal(t, http.StatusOK, userinfo.Code, userinfo.Body.String())
@@ -588,6 +589,44 @@ func TestOAuthUserInfoRequiresPrincipalAccessTokenWithOpenIDScope(t *testing.T) 
 	noOpenID := harness.request(http.MethodGet, "/oauth/userinfo", "", nil, map[string]string{"Authorization": "Bearer no-openid"})
 	require.Equal(t, http.StatusForbidden, noOpenID.Code, noOpenID.Body.String())
 	assert.Equal(t, "insufficient_scope", decodeProtocolError(t, noOpenID).Code)
+}
+
+func TestOAuthUserInfoProjectsOnlyConsentedFieldsAndReportsPolicyFailures(t *testing.T) {
+	harness := newOAuthHTTPHarness(t)
+	for _, scope := range []string{"openid", "openid profile", "openid email", "openid profile email"} {
+		harness.web.tokens["profile-test"] = &authnext.Claims{
+			Subject: "101", PrincipalID: 101, OrganizationID: "7", SubjectType: authnext.SubjectTypePrincipal,
+			PreferredUsername: "alice", Email: "alice@example.test", EmailVerified: true,
+			Raw: map[string]any{"scope": scope},
+		}
+		response := harness.request(http.MethodGet, "/oauth/userinfo", "", nil, map[string]string{"Authorization": "Bearer profile-test"})
+		require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+		var document map[string]any
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &document))
+		assert.Equal(t, "101", document["sub"])
+		_, username := document["preferred_username"]
+		_, email := document["email"]
+		_, verified := document["email_verified"]
+		assert.Equal(t, containsWord(scope, "profile"), username)
+		assert.Equal(t, containsWord(scope, "email"), email)
+		assert.Equal(t, email, verified)
+		assert.Equal(t, scope, harness.web.profileScope)
+	}
+	for _, failure := range []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{authz.ErrFieldDenied, http.StatusForbidden, "access_denied"},
+		{authz.ErrFieldsUnavailable, http.StatusServiceUnavailable, "server_error"},
+		{authnext.ErrInvalidSession, http.StatusUnauthorized, "invalid_token"},
+	} {
+		harness.web.profileError = failure.err
+		response := harness.request(http.MethodGet, "/oauth/userinfo", "", nil, map[string]string{"Authorization": "Bearer profile-test"})
+		require.Equal(t, failure.status, response.Code, response.Body.String())
+		assert.Equal(t, failure.code, decodeProtocolError(t, response).Code)
+		assert.NotContains(t, response.Body.String(), "alice@example.test")
+	}
 }
 
 func TestOAuthProtocolRequiresTokenAndRejectsUnsupportedRevocationHint(t *testing.T) {

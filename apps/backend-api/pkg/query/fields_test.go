@@ -96,6 +96,22 @@ func TestReservedParametersAreNotFilters(t *testing.T) {
 	require.NoError(t, err, "transport parameters are consumed elsewhere")
 }
 
+func TestReadableContractRestrictsWithoutMutatingOriginal(t *testing.T) {
+	original := testFields()
+	restricted := original.Readable(map[string]bool{"id": true, "status": true, "priority": true})
+	_, err := restricted.Parse(url.Values{"title": {"eq:secret"}})
+	require.Error(t, err)
+	_, err = original.Parse(url.Values{"title": {"eq:secret"}})
+	require.NoError(t, err)
+	_, err = restricted.Parse(url.Values{"status": {"eq:open"}, "limit": {"1"}})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"priority"}, restricted.SortableNames())
+	assert.Equal(t, []string{"id", "status"}, restricted.SelectableNames())
+	restricted.Reserve("extra")
+	_, err = original.Parse(url.Values{"extra": {"ignored"}})
+	require.Error(t, err)
+}
+
 func TestOperatorMustBeAllowedForTheField(t *testing.T) {
 	// A status is never greater than another status.
 	_, err := parse(t, "status=gte:open")

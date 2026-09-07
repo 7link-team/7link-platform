@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/organization"
 	provisioningi18n "7link.com/platform/internal/iam/provisioning/i18n"
@@ -30,6 +31,8 @@ type Module struct {
 	ids        guid.Source
 	appender   audit.Appender
 	identities identity.IdentityProvisioner
+	actors     identity.ServiceAccountValidator
+	fields     authz.FieldPermissionChecker
 	groups     organization.GroupProvisioner
 	syncCancel context.CancelFunc
 	syncDone   chan struct{}
@@ -46,7 +49,7 @@ func NewModule(runtime *appenv.Runtime, config Config) *Module {
 func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
 
 func (*Module) ModuleDependencies() []string {
-	return []string{platformi18n.Name, guid.Name, audit.Name, identity.Name, organization.Name}
+	return []string{platformi18n.Name, guid.Name, audit.Name, identity.Name, organization.Name, core.Name}
 }
 
 // ProvideServices publishes the module itself, so the capability resolves the
@@ -80,7 +83,17 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve provisioning group provisioner: %w", err)
 	}
+	actors, err := module.Resolve[identity.ServiceAccountValidator](services)
+	if err != nil {
+		return fmt.Errorf("resolve provisioning service account validator: %w", err)
+	}
 	m.registrar, m.ids, m.appender, m.identities, m.groups = registrar, ids, appender, identities, groups
+	m.actors = actors
+	fields, err := module.Resolve[core.AuthorizationEvaluator](services)
+	if err != nil {
+		return fmt.Errorf("resolve provisioning field evaluator: %w", err)
+	}
+	m.fields = fields
 	return nil
 }
 
@@ -92,14 +105,14 @@ func (m *Module) Initialize(context.Context) error {
 		return fmt.Errorf("register provisioning i18n: %w", err)
 	}
 	if m.runtime == nil || m.runtime.Database() == nil || m.runtime.Database().Write() == nil ||
-		m.registrar == nil || m.ids == nil || m.appender == nil || m.identities == nil || m.groups == nil {
-		return errors.New("initialize provisioning: runtime database, authz registrar, id generator, audit appender, identity provisioner, and group provisioner are required")
+		m.registrar == nil || m.ids == nil || m.appender == nil || m.identities == nil || m.groups == nil || m.actors == nil {
+		return errors.New("initialize provisioning: runtime database, authz registrar, id generator, audit appender, identity provisioner, group provisioner, and service account validator are required")
 	}
 	keys, err := ResolveKeyring(m.config)
 	if err != nil {
 		return fmt.Errorf("resolve provisioning encryption key: %w", err)
 	}
-	m.service = NewService(m.runtime, m.appender, m.ids, m.identities, m.groups, m.config, keys)
+	m.service = NewService(m.runtime, m.appender, m.ids, m.identities, m.groups, m.actors, m.fields, m.config, keys)
 	return nil
 }
 

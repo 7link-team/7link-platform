@@ -18,6 +18,7 @@ import (
 var (
 	Q                        = new(Query)
 	Principal                *principal
+	PrincipalLifecycle       *principalLifecycle
 	ServiceAccount           *serviceAccount
 	ServiceAccountCredential *serviceAccountCredential
 )
@@ -25,6 +26,7 @@ var (
 func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	*Q = *Use(db, opts...)
 	Principal = &Q.Principal
+	PrincipalLifecycle = &Q.PrincipalLifecycle
 	ServiceAccount = &Q.ServiceAccount
 	ServiceAccountCredential = &Q.ServiceAccountCredential
 }
@@ -33,6 +35,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
 		db:                       db,
 		Principal:                newPrincipal(db, opts...),
+		PrincipalLifecycle:       newPrincipalLifecycle(db, opts...),
 		ServiceAccount:           newServiceAccount(db, opts...),
 		ServiceAccountCredential: newServiceAccountCredential(db, opts...),
 	}
@@ -42,6 +45,7 @@ type Query struct {
 	db *gorm.DB
 
 	Principal                principal
+	PrincipalLifecycle       principalLifecycle
 	ServiceAccount           serviceAccount
 	ServiceAccountCredential serviceAccountCredential
 }
@@ -54,6 +58,7 @@ func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
 		db:                       db,
 		Principal:                q.Principal.clone(db),
+		PrincipalLifecycle:       q.PrincipalLifecycle.clone(db),
 		ServiceAccount:           q.ServiceAccount.clone(db),
 		ServiceAccountCredential: q.ServiceAccountCredential.clone(db),
 	}
@@ -71,6 +76,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
 		db:                       db,
 		Principal:                q.Principal.replaceDB(db),
+		PrincipalLifecycle:       q.PrincipalLifecycle.replaceDB(db),
 		ServiceAccount:           q.ServiceAccount.replaceDB(db),
 		ServiceAccountCredential: q.ServiceAccountCredential.replaceDB(db),
 	}
@@ -78,6 +84,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 
 type queryCtx struct {
 	Principal                IPrincipalDo
+	PrincipalLifecycle       IPrincipalLifecycleDo
 	ServiceAccount           IServiceAccountDo
 	ServiceAccountCredential IServiceAccountCredentialDo
 }
@@ -85,6 +92,7 @@ type queryCtx struct {
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
 		Principal:                q.Principal.WithContext(ctx),
+		PrincipalLifecycle:       q.PrincipalLifecycle.WithContext(ctx),
 		ServiceAccount:           q.ServiceAccount.WithContext(ctx),
 		ServiceAccountCredential: q.ServiceAccountCredential.WithContext(ctx),
 	}

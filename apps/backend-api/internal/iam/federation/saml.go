@@ -447,7 +447,12 @@ func (s *Service) ServeSAMLSLO(api huma.API, ctx huma.Context, tenantID guid.ID)
 		writeSAMLError(api, ctx, http.StatusBadRequest, federationi18n.SAMLInvalidRequest)
 		return
 	}
-	if logout.IssueInstant.Add(s.samlCfg.MaxIssueDelay).Before(time.Now().UTC()) {
+	now := s.now().UTC()
+	expiresAt := logout.IssueInstant.Add(s.samlCfg.MaxIssueDelay)
+	if logout.NotOnOrAfter != nil && logout.NotOnOrAfter.Before(expiresAt) {
+		expiresAt = *logout.NotOnOrAfter
+	}
+	if logout.IssueInstant.After(now.Add(s.clockSkew)) || !expiresAt.After(now) {
 		writeSAMLError(api, ctx, http.StatusBadRequest, federationi18n.SAMLInvalidRequest)
 		return
 	}
@@ -475,8 +480,16 @@ func (s *Service) ServeSAMLSLO(api huma.API, ctx huma.Context, tenantID guid.ID)
 		writeSAMLError(api, ctx, http.StatusBadRequest, federationi18n.SAMLInvalidRequest)
 		return
 	}
-	now := s.now().UTC()
-	if logout.ID == "" || !s.replays.claim("logout:"+tenantID.String()+":"+logout.ID, logout.IssueInstant.Add(s.samlCfg.MaxIssueDelay), now) {
+	if logout.ID == "" {
+		writeSAMLError(api, ctx, http.StatusBadRequest, federationi18n.SAMLInvalidRequest)
+		return
+	}
+	claimed, err := s.replays.claim(ctx.Context(), "logout:"+tenantID.String()+":"+logout.Issuer.Value+"\x00"+logout.ID, expiresAt, now)
+	if err != nil {
+		writeSAMLError(api, ctx, http.StatusServiceUnavailable, federationi18n.SAMLUnavailable)
+		return
+	}
+	if !claimed {
 		writeSAMLError(api, ctx, http.StatusBadRequest, federationi18n.SAMLInvalidRequest)
 		return
 	}

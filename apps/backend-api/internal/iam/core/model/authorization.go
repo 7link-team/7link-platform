@@ -29,6 +29,19 @@ type RolePermission struct {
 
 func (RolePermission) TableName() string { return "iam_role_permissions" }
 
+// FieldPolicy stores a canonical declaration; the tenant revision covers its
+// role dependencies and Version protects concurrent policy editors.
+type FieldPolicy struct {
+	TenantID   guid.ID   `gorm:"column:tenant_id;primaryKey;autoIncrement:false"`
+	Resource   string    `gorm:"column:resource;primaryKey;size:64"`
+	Field      string    `gorm:"column:field_name;primaryKey;size:64"`
+	PolicyJSON string    `gorm:"column:policy_json;type:text;not null"`
+	Version    int64     `gorm:"column:version;not null"`
+	UpdatedAt  time.Time `gorm:"column:updated_at;not null;autoUpdateTime:false"`
+}
+
+func (FieldPolicy) TableName() string { return "iam_field_policies" }
+
 type RoleMember struct {
 	TenantID    guid.ID   `gorm:"column:tenant_id;primaryKey;autoIncrement:false"`
 	RoleID      guid.ID   `gorm:"column:role_id;primaryKey;autoIncrement:false"`

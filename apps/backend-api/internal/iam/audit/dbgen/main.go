@@ -7,5 +7,5 @@ import (
 )
 
 func main() {
-	gengorm.Generate(model.Event{}, model.Head{}, model.RetentionPolicy{})
+	gengorm.Generate(model.Event{}, model.Head{}, model.RetentionPolicy{}, model.ArchiveJob{})
 }

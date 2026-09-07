@@ -44,14 +44,15 @@ var (
 
 // Target is an outbound SCIM endpoint managed per tenant.
 type Target struct {
-	ID        string    `json:"id"`
-	TenantID  string    `json:"tenant_id"`
-	Name      string    `json:"name"`
-	BaseURL   string    `json:"base_url"`
-	Status    string    `json:"status"`
-	Version   int64     `json:"version"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ServiceAccountID *guid.ID  `json:"service_account_id,omitempty"`
+	ID               string    `json:"id"`
+	TenantID         string    `json:"tenant_id"`
+	Name             string    `json:"name"`
+	BaseURL          string    `json:"base_url"`
+	Status           string    `json:"status"`
+	Version          int64     `json:"version"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // TargetSecret wraps a target with its bearer token, shown once on creation.
@@ -90,7 +91,7 @@ func (s *Service) ListTargets(ctx context.Context, tenantID guid.ID) ([]Target, 
 	return result, nil
 }
 
-func (s *Service) CreateTarget(ctx context.Context, tenantID guid.ID, name, baseURL, bearerToken string) (TargetSecret, error) {
+func (s *Service) CreateTarget(ctx context.Context, tenantID guid.ID, name, baseURL, bearerToken string, serviceAccountID *guid.ID) (TargetSecret, error) {
 	name, baseURL, bearerToken = strings.TrimSpace(name), strings.TrimSpace(baseURL), strings.TrimSpace(bearerToken)
 	if tenantID.Zero() || name == "" || len(name) > 128 || bearerToken == "" || len(bearerToken) > 4096 || !validTargetURL(baseURL) {
 		return TargetSecret{}, ErrInvalidTarget
@@ -108,8 +109,13 @@ func (s *Service) CreateTarget(ctx context.Context, tenantID guid.ID, name, base
 	}
 	now := s.now().UTC().Truncate(time.Millisecond)
 	row := targetRow{ID: id, TenantID: tenantID, Name: name, NameKey: strings.ToLower(name), BaseURL: baseURL, BearerTokenCiphertext: ciphertext, Status: TargetActive, Version: 1, CreatedAt: now, UpdatedAt: now}
+	row.ServiceAccountID = serviceAccountID
 	event := audit.NewDomainEvent(ctx, tenantID, "scim_target_created", "scim_target", id)
+	event.Detail["service_account_id"] = actorID(serviceAccountID)
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
+		if err := s.requireServiceAccount(ctx, repo, tenantID, serviceAccountID); err != nil {
+			return errors.Join(ErrInvalidTarget, err)
+		}
 		var active int64
 		err := repo.writer().WithContext(ctx).Table(repo.table("iam_tenants")).
 			Where("id = ? AND status = 'active'", tenantID).Count(&active).Error
@@ -130,7 +136,7 @@ func (s *Service) CreateTarget(ctx context.Context, tenantID guid.ID, name, base
 	return TargetSecret{Target: targetFromRow(row), BearerToken: bearerToken}, nil
 }
 
-func (s *Service) ReplaceTarget(ctx context.Context, tenantID, id guid.ID, name, baseURL, status, bearerToken string, version int64) (Target, error) {
+func (s *Service) ReplaceTarget(ctx context.Context, tenantID, id guid.ID, name, baseURL, status, bearerToken string, version int64, serviceAccountID *guid.ID) (Target, error) {
 	name, baseURL, status, bearerToken = strings.TrimSpace(name), strings.TrimSpace(baseURL), strings.TrimSpace(status), strings.TrimSpace(bearerToken)
 	if tenantID.Zero() || id.Zero() || name == "" || len(name) > 128 || !validTargetURL(baseURL) || len(bearerToken) > 4096 || version < 1 || (status != TargetActive && status != TargetDisabled) {
 		return Target{}, ErrInvalidTarget
@@ -146,6 +152,12 @@ func (s *Service) ReplaceTarget(ctx context.Context, tenantID, id guid.ID, name,
 			return ErrTargetVersion
 		}
 		updated = current
+		updated.ServiceAccountID = serviceAccountID
+		if actorID(updated.ServiceAccountID) != actorID(current.ServiceAccountID) {
+			if err := s.requireServiceAccount(ctx, repo, tenantID, serviceAccountID); err != nil {
+				return errors.Join(ErrInvalidTarget, err)
+			}
+		}
 		updated.Name, updated.NameKey, updated.BaseURL, updated.Status = name, strings.ToLower(name), baseURL, status
 		if bearerToken != "" {
 			if s.keys == nil {
@@ -156,7 +168,7 @@ func (s *Service) ReplaceTarget(ctx context.Context, tenantID, id guid.ID, name,
 				return err
 			}
 		}
-		if updated.Name == current.Name && updated.BaseURL == current.BaseURL && updated.Status == current.Status && bearerToken == "" {
+		if updated.Name == current.Name && updated.BaseURL == current.BaseURL && updated.Status == current.Status && bearerToken == "" && actorID(updated.ServiceAccountID) == actorID(current.ServiceAccountID) {
 			return nil
 		}
 		updated.Version, updated.UpdatedAt = current.Version+1, now
@@ -167,6 +179,7 @@ func (s *Service) ReplaceTarget(ctx context.Context, tenantID, id guid.ID, name,
 		event.Detail["name_changed"] = updated.Name != current.Name
 		event.Detail["status_changed"] = updated.Status != current.Status
 		event.Detail["token_rotated"] = bearerToken != ""
+		event.Detail["service_account_id"] = actorID(updated.ServiceAccountID)
 		return s.appender(ctx, repo.writer(), event)
 	})
 	if err != nil {
@@ -212,6 +225,12 @@ func (s *Service) PushResource(ctx context.Context, tenantID, targetID guid.ID, 
 	if target.Status != TargetActive {
 		return PushResult{}, ErrTargetDisabled
 	}
+	if target.ServiceAccountID == nil {
+		return PushResult{}, ErrUnauthorized
+	}
+	if err := s.requireServiceAccount(ctx, s.repo, tenantID, target.ServiceAccountID); err != nil {
+		return PushResult{}, err
+	}
 	if s.keys == nil {
 		return PushResult{}, ErrTargetKeyMissing
 	}
@@ -219,7 +238,7 @@ func (s *Service) PushResource(ctx context.Context, tenantID, targetID guid.ID, 
 	if err != nil {
 		return PushResult{}, err
 	}
-	payload, err := s.buildRemoteResource(ctx, tenantID, targetID, resourceType, resourceID)
+	payload, err := s.buildRemoteResource(ctx, tenantID, targetID, resourceType, resourceID, actorID(target.ServiceAccountID))
 	if err != nil {
 		return PushResult{}, err
 	}
@@ -267,6 +286,10 @@ func (s *Service) PushResource(ctx context.Context, tenantID, targetID guid.ID, 
 		event := audit.NewDomainEvent(ctx, tenantID, "scim_target_pushed", "scim_"+strings.ToLower(resourceType), resourceID)
 		event.Detail["target_id"] = targetID
 		event.Detail["external_id"] = remoteID
+		event.Detail["service_account_id"] = actorID(target.ServiceAccountID)
+		if event.PrincipalID == 0 {
+			event.PrincipalID = actorID(target.ServiceAccountID)
+		}
 		return s.appender(ctx, repo.writer(), event)
 	})
 	if err != nil {
@@ -290,6 +313,12 @@ func (s *Service) DeprovisionResource(ctx context.Context, tenantID, targetID gu
 	}
 	if target.Status != TargetActive {
 		return ErrTargetDisabled
+	}
+	if target.ServiceAccountID == nil {
+		return ErrUnauthorized
+	}
+	if err := s.requireServiceAccount(ctx, s.repo, tenantID, target.ServiceAccountID); err != nil {
+		return err
 	}
 	if s.keys == nil {
 		return ErrTargetKeyMissing
@@ -336,7 +365,13 @@ func (s *Service) DeprovisionResource(ctx context.Context, tenantID, targetID gu
 		if err := repo.markTargetResourceDeleted(ctx, targetID, resourceType, resourceID, now); err != nil {
 			return err
 		}
-		return s.appender(ctx, repo.writer(), audit.NewDomainEvent(ctx, tenantID, "scim_target_deprovisioned", "scim_"+strings.ToLower(resourceType), resourceID))
+		event := audit.NewDomainEvent(ctx, tenantID, "scim_target_deprovisioned", "scim_"+strings.ToLower(resourceType), resourceID)
+		event.Detail["target_id"] = targetID
+		event.Detail["service_account_id"] = actorID(target.ServiceAccountID)
+		if event.PrincipalID == 0 {
+			event.PrincipalID = actorID(target.ServiceAccountID)
+		}
+		return s.appender(ctx, repo.writer(), event)
 	})
 	if err != nil {
 		return fmt.Errorf("record SCIM deprovision: %w", err)
@@ -344,7 +379,7 @@ func (s *Service) DeprovisionResource(ctx context.Context, tenantID, targetID gu
 	return nil
 }
 
-func (s *Service) buildRemoteResource(ctx context.Context, tenantID, targetID guid.ID, resourceType string, resourceID guid.ID) (remoteResource, error) {
+func (s *Service) buildRemoteResource(ctx context.Context, tenantID, targetID guid.ID, resourceType string, resourceID, actor guid.ID) (remoteResource, error) {
 	externalID := resourceID.String()
 	if mapping, err := s.repo.getTargetResource(ctx, targetID, resourceType, resourceID); err == nil && mapping.ExternalID != "" {
 		externalID = mapping.ExternalID
@@ -353,6 +388,15 @@ func (s *Service) buildRemoteResource(ctx context.Context, tenantID, targetID gu
 	}
 	switch resourceType {
 	case ResourceUser:
+		fields, err := s.profileConstraint(ctx, tenantID, actor)
+		if err != nil {
+			return remoteResource{}, err
+		}
+		// SCIM replacement requires a real userName, not an omitted or masked
+		// identifier that could overwrite another remote identity.
+		if err := fields.RequireRead("login_name"); err != nil {
+			return remoteResource{}, err
+		}
 		principal, err := s.identity.Get(ctx, tenantID, resourceID)
 		if err != nil {
 			if errors.Is(err, identity.ErrNotFound) {
@@ -372,7 +416,7 @@ func (s *Service) buildRemoteResource(ctx context.Context, tenantID, targetID gu
 		if principal.Email != "" {
 			user.Emails = []UserEmail{{Value: principal.Email, Type: "work", Primary: true}}
 		}
-		return remoteResource{externalID: externalID, resource: user}, nil
+		return remoteResource{externalID: externalID, resource: projectUser(user, fields)}, nil
 	case ResourceGroup:
 		group, err := s.groups.Get(ctx, tenantID, resourceID)
 		if err != nil {
@@ -445,7 +489,7 @@ func (s *Service) decryptToken(targetID guid.ID, encoded string) (string, error)
 }
 
 func targetFromRow(row targetRow) Target {
-	return Target{ID: row.ID.String(), TenantID: row.TenantID.String(), Name: row.Name, BaseURL: row.BaseURL, Status: row.Status, Version: row.Version, CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC()}
+	return Target{ID: row.ID.String(), TenantID: row.TenantID.String(), Name: row.Name, BaseURL: row.BaseURL, Status: row.Status, Version: row.Version, CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC(), ServiceAccountID: row.ServiceAccountID}
 }
 
 func validTargetURL(raw string) bool {
@@ -491,6 +535,12 @@ func (s *Service) SyncTarget(ctx context.Context, tenantID, targetID guid.ID) (i
 	}
 	if target.Status != TargetActive {
 		return 0, ErrTargetDisabled
+	}
+	if target.ServiceAccountID == nil {
+		return 0, ErrUnauthorized
+	}
+	if err := s.requireServiceAccount(ctx, s.repo, tenantID, target.ServiceAccountID); err != nil {
+		return 0, err
 	}
 	mappings, err := s.repo.listTargetResources(ctx, targetID)
 	if err != nil {

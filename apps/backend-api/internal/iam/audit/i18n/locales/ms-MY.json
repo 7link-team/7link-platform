@@ -1,4 +1,10 @@
 {
+  "archive_not_found": "Tugas arkib tidak ditemui dalam skop ini.",
+  "archive_disabled": "Pengarkiban audit tidak didayakan pada pemasangan ini.",
+  "archive_empty": "Tiada peristiwa audit berturutan yang mencapai ambang arkib.",
+  "archive_busy": "Tugas arkib sedang berjalan, menunggu percubaan semula atau tidak dalam keadaan yang diperlukan. Muat semula status.",
+  "archive_integrity": "Pengesahan versi, kandungan atau pengekalan arkib gagal. Jangan bergantung pada arkib ini.",
+  "archive_unavailable": "Storan objek arkib tidak tersedia. Cuba lagi kemudian.",
   "invalid_audit_time": "Julat masa audit tidak sah. Gunakan cap masa RFC 3339 dan pastikan masa tamat selepas masa mula.",
   "audit_event_not_found": "Peristiwa audit yang diminta tidak ditemui dalam penyewa ini. Semak pengecam peristiwa dan penyewa, kemudian cuba lagi.",
   "invalid_audit_query": "Pertanyaan audit tidak sah. Semak penyewa, penapis dan nilai penomboran halaman.",

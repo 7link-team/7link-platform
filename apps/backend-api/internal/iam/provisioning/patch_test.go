@@ -2,11 +2,71 @@ package provisioning
 
 import (
 	"encoding/json"
+	"errors"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestUserPatchWithoutETagPreservesConcurrentDisjointChanges(t *testing.T) {
+	for _, prefix := range []string{"", "patch_"} {
+		t.Run("prefix_"+prefix, func(t *testing.T) {
+			env := newProvisioningEnvironmentWithPrefix(t, prefix)
+			user, err := env.service.CreateUser(t.Context(), env.auth, activeUserInput("patch-concurrent", "patch-concurrent", "original@example.test"))
+			require.NoError(t, err)
+			for range 12 {
+				input := activeUserInput("patch-concurrent", "patch-concurrent", "original@example.test")
+				input.DisplayName = "Original"
+				_, err := env.service.ReplaceUser(t.Context(), env.auth, parseGUID(user.ID), input, 0)
+				require.NoError(t, err)
+				start, results := make(chan struct{}), make(chan error, 2)
+				var workers sync.WaitGroup
+				for _, operation := range []PatchOperation{
+					{Op: "replace", Path: "displayName", Value: json.RawMessage(`"Changed"`)},
+					{Op: "replace", Path: "emails", Value: json.RawMessage(`[{"value":"changed@example.test","primary":true}]`)},
+				} {
+					workers.Add(1)
+					go func(operation PatchOperation) {
+						defer workers.Done()
+						<-start
+						_, err := env.service.PatchUser(t.Context(), env.auth, parseGUID(user.ID), PatchRequest{Schemas: []string{PatchSchema}, Operations: []PatchOperation{operation}}, 0)
+						results <- err
+					}(operation)
+				}
+				close(start)
+				workers.Wait()
+				close(results)
+				for err := range results {
+					require.NoError(t, err)
+				}
+				current, err := env.service.GetUser(t.Context(), env.auth, parseGUID(user.ID))
+				require.NoError(t, err)
+				assert.Equal(t, "Changed", current.DisplayName)
+				require.Len(t, current.Emails, 1)
+				assert.Equal(t, "changed@example.test", current.Emails[0].Value)
+				assert.Equal(t, user.UserName, current.UserName)
+			}
+		})
+	}
+}
+
+func TestUserPatchVersionFailureAndAuditFailureDoNotMutateIdentity(t *testing.T) {
+	env := newProvisioningEnvironment(t)
+	user, err := env.service.CreateUser(t.Context(), env.auth, activeUserInput("patch-rollback", "patch-rollback", "original@example.test"))
+	require.NoError(t, err)
+	patch := PatchRequest{Schemas: []string{PatchSchema}, Operations: []PatchOperation{{Op: "replace", Path: "displayName", Value: json.RawMessage(`"Changed"`)}}}
+	_, err = env.service.PatchUser(t.Context(), env.auth, parseGUID(user.ID), patch, 2)
+	assert.ErrorIs(t, err, ErrResourceVersion)
+	env.auditErr = errors.New("audit storage unavailable")
+	_, err = env.service.PatchUser(t.Context(), env.auth, parseGUID(user.ID), patch, 1)
+	assert.ErrorIs(t, err, env.auditErr)
+	env.auditErr = nil
+	current, err := env.service.GetUser(t.Context(), env.auth, parseGUID(user.ID))
+	require.NoError(t, err)
+	assert.Equal(t, user, current)
+}
 
 func TestUserPatchValidationAndApplication(t *testing.T) {
 	active := true

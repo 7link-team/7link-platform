@@ -54,7 +54,8 @@ type directoryIDInput struct {
 type directoryCreateInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	Body     struct {
-		Name string `json:"name" minLength:"1" maxLength:"128"`
+		Name             string   `json:"name" minLength:"1" maxLength:"128"`
+		ServiceAccountID *guid.ID `json:"service_account_id,omitempty" nullable:"true"`
 	}
 }
 
@@ -62,9 +63,10 @@ type directoryReplaceInput struct {
 	TenantID    string `header:"X-Tenant-Id" maxLength:"128"`
 	DirectoryID string `path:"directory_id" maxLength:"128"`
 	Body        struct {
-		Name    string `json:"name" minLength:"1" maxLength:"128"`
-		Status  string `json:"status" enum:"active,disabled"`
-		Version int64  `json:"version" minimum:"1"`
+		Name             string   `json:"name" minLength:"1" maxLength:"128"`
+		Status           string   `json:"status" enum:"active,disabled"`
+		Version          int64    `json:"version" minimum:"1"`
+		ServiceAccountID *guid.ID `json:"service_account_id,omitempty" nullable:"true"`
 	}
 }
 
@@ -101,7 +103,7 @@ func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registra
 		if err != nil {
 			return nil, err
 		}
-		item, err := service.CreateDirectory(ctx, tenantID, in.Body.Name)
+		item, err := service.CreateDirectory(ctx, tenantID, in.Body.Name, in.Body.ServiceAccountID)
 		if err != nil {
 			return nil, provisioningError(err)
 		}
@@ -116,7 +118,7 @@ func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registra
 		if err != nil {
 			return nil, err
 		}
-		item, err := service.ReplaceDirectory(ctx, tenantID, directoryID, in.Body.Name, in.Body.Status, in.Body.Version)
+		item, err := service.ReplaceDirectory(ctx, tenantID, directoryID, in.Body.Name, in.Body.Status, in.Body.Version, in.Body.ServiceAccountID)
 		if err != nil {
 			return nil, provisioningError(err)
 		}
@@ -173,6 +175,12 @@ func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registra
 }
 
 func provisioningError(err error) error {
+	if errors.Is(err, authz.ErrFieldDenied) {
+		return huma.Error403Forbidden("forbidden")
+	}
+	if errors.Is(err, authz.ErrFieldsUnavailable) {
+		return huma.Error503ServiceUnavailable("provisioning_unavailable")
+	}
 	switch {
 	case errors.Is(err, ErrInvalidDirectory):
 		return huma.Error422UnprocessableEntity(provisioningi18n.InvalidDirectory)
@@ -198,6 +206,8 @@ func provisioningError(err error) error {
 		return huma.Error422UnprocessableEntity(provisioningi18n.TargetKeyMissing)
 	case errors.Is(err, ErrTargetDisabled):
 		return huma.Error409Conflict(provisioningi18n.TargetDisabled)
+	case errors.Is(err, ErrUnauthorized):
+		return huma.Error409Conflict(provisioningi18n.TargetServiceAccountInactive)
 	case errors.Is(err, ErrDeprovisionMissing):
 		return huma.Error404NotFound(provisioningi18n.TargetResourceNotMapped)
 	case errors.Is(err, ErrResourceMissing):
@@ -566,7 +576,7 @@ func registerSCIM(api huma.API, op huma.Operation, request, response reflect.Typ
 		op.Responses[status] = scimOpenAPIResponse("SCIM response", huma.SchemaFromType(api.OpenAPI().Components.Schemas, response))
 	}
 	errorSchema := huma.SchemaFromType(api.OpenAPI().Components.Schemas, reflect.TypeFor[SCIMError]())
-	for _, status := range []string{"400", "401", "404", "409", "412", "413", "500"} {
+	for _, status := range []string{"400", "401", "403", "404", "409", "412", "413", "500", "503"} {
 		op.Responses[status] = scimOpenAPIResponse("SCIM error", errorSchema)
 	}
 	api.OpenAPI().AddOperation(&op)
@@ -677,9 +687,10 @@ type targetIDInput struct {
 type targetCreateInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	Body     struct {
-		Name        string `json:"name" minLength:"1" maxLength:"128"`
-		BaseURL     string `json:"base_url" minLength:"1" maxLength:"1024"`
-		BearerToken string `json:"bearer_token" minLength:"1" maxLength:"4096"`
+		Name             string   `json:"name" minLength:"1" maxLength:"128"`
+		BaseURL          string   `json:"base_url" minLength:"1" maxLength:"1024"`
+		BearerToken      string   `json:"bearer_token" minLength:"1" maxLength:"4096"`
+		ServiceAccountID *guid.ID `json:"service_account_id,omitempty" nullable:"true"`
 	}
 }
 
@@ -687,11 +698,12 @@ type targetReplaceInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	TargetID string `path:"target_id" maxLength:"128"`
 	Body     struct {
-		Name        string `json:"name" minLength:"1" maxLength:"128"`
-		BaseURL     string `json:"base_url" minLength:"1" maxLength:"1024"`
-		Status      string `json:"status" enum:"active,disabled"`
-		Version     int64  `json:"version" minimum:"1"`
-		BearerToken string `json:"bearer_token,omitempty" maxLength:"4096" doc:"Optional new bearer token; empty keeps the existing one."`
+		Name             string   `json:"name" minLength:"1" maxLength:"128"`
+		BaseURL          string   `json:"base_url" minLength:"1" maxLength:"1024"`
+		Status           string   `json:"status" enum:"active,disabled"`
+		Version          int64    `json:"version" minimum:"1"`
+		BearerToken      string   `json:"bearer_token,omitempty" maxLength:"4096" doc:"Optional new bearer token; empty keeps the existing one."`
+		ServiceAccountID *guid.ID `json:"service_account_id,omitempty" nullable:"true"`
 	}
 }
 
@@ -724,7 +736,7 @@ func registerTargetHTTP(api huma.API, service *Service, registrar *authz.Registr
 		if err != nil {
 			return nil, err
 		}
-		item, err := service.CreateTarget(ctx, tenantID, in.Body.Name, in.Body.BaseURL, in.Body.BearerToken)
+		item, err := service.CreateTarget(ctx, tenantID, in.Body.Name, in.Body.BaseURL, in.Body.BearerToken, in.Body.ServiceAccountID)
 		if err != nil {
 			return nil, provisioningError(err)
 		}
@@ -739,7 +751,7 @@ func registerTargetHTTP(api huma.API, service *Service, registrar *authz.Registr
 		if err != nil {
 			return nil, err
 		}
-		item, err := service.ReplaceTarget(ctx, tenantID, targetID, in.Body.Name, in.Body.BaseURL, in.Body.Status, in.Body.BearerToken, in.Body.Version)
+		item, err := service.ReplaceTarget(ctx, tenantID, targetID, in.Body.Name, in.Body.BaseURL, in.Body.Status, in.Body.BearerToken, in.Body.Version, in.Body.ServiceAccountID)
 		if err != nil {
 			return nil, provisioningError(err)
 		}

@@ -29,17 +29,43 @@ audit-get-governance|GET|/iam/audit/governance
 audit-list-events|GET|/iam/audit-events
 audit-set-retention|PUT|/iam/audit/retention
 audit-sign-root|POST|/iam/audit/roots/sign
-audit-verify-integrity|GET|/iam/audit-integrity`
+audit-verify-integrity|GET|/iam/audit-integrity
+audit-archive-status|GET|/iam/audit/archive-status
+audit-list-archives|GET|/iam/audit/archives
+audit-request-archive|POST|/iam/audit/archives
+audit-retry-archive|POST|/iam/audit/archives/{id}/retry
+audit-verify-archive|POST|/iam/audit/archives/{id}/verify
+audit-download-archive|GET|/iam/audit/archives/{id}/download
+audit-platform-archive-status|GET|/platform/iam/audit/archive-status
+audit-platform-list-archives|GET|/platform/iam/audit/archives
+audit-platform-request-archive|POST|/platform/iam/audit/archives
+audit-platform-retry-archive|POST|/platform/iam/audit/archives/{id}/retry
+audit-platform-verify-archive|POST|/platform/iam/audit/archives/{id}/verify
+audit-platform-download-archive|GET|/platform/iam/audit/archives/{id}/download
+audit-platform-set-retention|PUT|/platform/iam/audit/retention`
 
 var auditGuards = map[string]string{
-	"audit-anchor-current":   "audit_event_anchor",
-	"audit-export-events":    "audit_event_export",
-	"audit-get-event":        "audit_event_view",
-	"audit-get-governance":   "audit_event_view",
-	"audit-list-events":      "audit_event_view",
-	"audit-set-retention":    "audit_event_manage",
-	"audit-sign-root":        "audit_event_manage",
-	"audit-verify-integrity": "audit_event_view",
+	"audit-anchor-current":            "audit_event_anchor",
+	"audit-export-events":             "audit_event_export",
+	"audit-get-event":                 "audit_event_view",
+	"audit-get-governance":            "audit_event_view",
+	"audit-list-events":               "audit_event_view",
+	"audit-set-retention":             "audit_event_manage",
+	"audit-sign-root":                 "audit_event_manage",
+	"audit-verify-integrity":          "audit_event_view",
+	"audit-archive-status":            "audit_event_view",
+	"audit-list-archives":             "audit_event_view",
+	"audit-request-archive":           "audit_event_export",
+	"audit-retry-archive":             "audit_event_export",
+	"audit-verify-archive":            "audit_event_view",
+	"audit-download-archive":          "audit_event_export",
+	"audit-platform-archive-status":   "platform_administer",
+	"audit-platform-list-archives":    "platform_administer",
+	"audit-platform-request-archive":  "platform_administer",
+	"audit-platform-retry-archive":    "platform_administer",
+	"audit-platform-verify-archive":   "platform_administer",
+	"audit-platform-download-archive": "platform_administer",
+	"audit-platform-set-retention":    "platform_administer",
 }
 
 func auditPathOperations(item *huma.PathItem) map[string]*huma.Operation {
@@ -53,7 +79,7 @@ func auditPathOperations(item *huma.PathItem) map[string]*huma.Operation {
 }
 
 func auditOperationManifest(spec *huma.OpenAPI) []string {
-	manifest := make([]string, 0, 8)
+	manifest := make([]string, 0, 21)
 	for path, item := range spec.Paths {
 		for method, operation := range auditPathOperations(item) {
 			if operation != nil {
@@ -78,7 +104,7 @@ func TestAuditRouteManifestAndOpenAPIContract(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 8)
+	require.Len(t, got, 21)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 
 	for path, item := range api.OpenAPI().Paths {
@@ -224,6 +250,13 @@ func TestAuditAPIErrorMappingsAndFilterHelpers(t *testing.T) {
 		{ErrAnchorUnavailable, 503, auditi18n.AnchorUnavailable},
 		{ErrRetentionInvalid, 422, auditi18n.RetentionInvalid},
 		{ErrRootSigningDisabled, 422, auditi18n.RootSigningDisabled},
+		{ErrArchiveDisabled, 503, auditi18n.ArchiveDisabled},
+		{ErrArchiveEmpty, 422, auditi18n.ArchiveEmpty},
+		{ErrArchiveNotFound, 404, auditi18n.ArchiveNotFound},
+		{ErrArchiveBusy, 409, auditi18n.ArchiveBusy},
+		{ErrArchiveInvalid, 422, auditi18n.InvalidQuery},
+		{ErrArchiveIntegrity, 409, auditi18n.ArchiveIntegrity},
+		{ErrArchiveUnavailable, 503, auditi18n.ArchiveUnavailable},
 		{errors.New("storage"), 500, auditi18n.Unavailable},
 	}
 	for _, test := range tests {

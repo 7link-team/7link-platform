@@ -1,5 +1,6 @@
 {
   "not_found": "任务不存在",
+  "forbidden": "无权访问任务",
   "deleted": "任务已删除",
   "not_deleted": "任务未被删除",
   "version_conflict": "任务已被他人修改",

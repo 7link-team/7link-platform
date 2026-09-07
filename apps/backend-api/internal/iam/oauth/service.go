@@ -793,7 +793,7 @@ func (s *Service) authorizationCode(
 	}
 	if containsWord(row.Scope, "openid") {
 		response.IDToken, err = s.authn.IssueTenantIDTokenWithAssurance(
-			ctx, row.PrincipalID, client.TenantID.String(), client.ID.String(), row.Nonce, assurance,
+			ctx, row.PrincipalID, client.TenantID.String(), client.ID.String(), row.Nonce, row.Scope, assurance,
 		)
 		if err != nil {
 			return TokenResponse{}, err

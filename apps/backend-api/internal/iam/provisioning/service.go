@@ -17,6 +17,7 @@ import (
 	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/passwordx"
 	"gorm.io/gorm"
 )
@@ -29,6 +30,8 @@ type Service struct {
 	appender audit.Appender
 	ids      guid.Source
 	identity identity.IdentityProvisioner
+	actors   identity.ServiceAccountValidator
+	fields   authz.FieldPermissionChecker
 	groups   organization.GroupProvisioner
 	keys     *keyringx.Keyring
 	http     *http.Client
@@ -43,7 +46,7 @@ type pushLock struct {
 	refs int
 }
 
-func NewService(runtime *appenv.Runtime, appender audit.Appender, ids guid.Source, identities identity.IdentityProvisioner, groups organization.GroupProvisioner, cfg Config, keys *keyringx.Keyring) *Service {
+func NewService(runtime *appenv.Runtime, appender audit.Appender, ids guid.Source, identities identity.IdentityProvisioner, groups organization.GroupProvisioner, actors identity.ServiceAccountValidator, fields authz.FieldPermissionChecker, cfg Config, keys *keyringx.Keyring) *Service {
 	if runtime == nil || runtime.Database() == nil || runtime.Database().Write() == nil || appender == nil || ids == nil || identities == nil || groups == nil {
 		panic("provisioning service requires runtime database, audit appender, id generator, identity provisioner, and group provisioner")
 	}
@@ -53,7 +56,7 @@ func NewService(runtime *appenv.Runtime, appender audit.Appender, ids guid.Sourc
 	}
 	return &Service{
 		runtime: runtime, repo: NewRepository(runtime), appender: appender, ids: ids,
-		identity: identities, groups: groups, keys: keys,
+		identity: identities, groups: groups, actors: actors, fields: fields, keys: keys,
 		http: &http.Client{Timeout: timeout}, now: time.Now, pushLocks: make(map[string]*pushLock),
 	}
 }
@@ -106,7 +109,7 @@ func (s *Service) ListDirectories(ctx context.Context, tenantID guid.ID) ([]Dire
 	return result, nil
 }
 
-func (s *Service) CreateDirectory(ctx context.Context, tenantID guid.ID, name string) (Directory, error) {
+func (s *Service) CreateDirectory(ctx context.Context, tenantID guid.ID, name string, serviceAccountID *guid.ID) (Directory, error) {
 	name = strings.TrimSpace(name)
 	if tenantID.Zero() || name == "" || len(name) > 128 {
 		return Directory{}, ErrInvalidDirectory
@@ -117,7 +120,11 @@ func (s *Service) CreateDirectory(ctx context.Context, tenantID guid.ID, name st
 	}
 	now := s.now().UTC().Truncate(time.Millisecond)
 	row := directoryRow{ID: id, TenantID: tenantID, Name: name, NameKey: strings.ToLower(name), Status: DirectoryActive, Version: 1, CreatedAt: now, UpdatedAt: now}
+	row.ServiceAccountID = serviceAccountID
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
+		if err := s.requireServiceAccount(ctx, repo, tenantID, serviceAccountID); err != nil {
+			return errors.Join(ErrInvalidDirectory, err)
+		}
 		var active int64
 		err := repo.writer().WithContext(ctx).Table(repo.table("iam_tenants")).
 			Where("id = ? AND status = 'active'", tenantID).Count(&active).Error
@@ -130,7 +137,9 @@ func (s *Service) CreateDirectory(ctx context.Context, tenantID guid.ID, name st
 		if err := repo.insertDirectory(ctx, &row); err != nil {
 			return err
 		}
-		return s.appender(ctx, repo.writer(), audit.NewDomainEvent(ctx, tenantID, "scim_directory_created", "scim_directory", id))
+		event := audit.NewDomainEvent(ctx, tenantID, "scim_directory_created", "scim_directory", id)
+		event.Detail["service_account_id"] = actorID(serviceAccountID)
+		return s.appender(ctx, repo.writer(), event)
 	})
 	if err != nil {
 		return Directory{}, fmt.Errorf("create SCIM directory: %w", err)
@@ -138,7 +147,7 @@ func (s *Service) CreateDirectory(ctx context.Context, tenantID guid.ID, name st
 	return directoryFromRow(row), nil
 }
 
-func (s *Service) ReplaceDirectory(ctx context.Context, tenantID, id guid.ID, name, status string, version int64) (Directory, error) {
+func (s *Service) ReplaceDirectory(ctx context.Context, tenantID, id guid.ID, name, status string, version int64, serviceAccountID *guid.ID) (Directory, error) {
 	name, status = strings.TrimSpace(name), strings.TrimSpace(status)
 	if tenantID.Zero() || id.Zero() || name == "" || len(name) > 128 || version < 1 || status != DirectoryActive && status != DirectoryDisabled {
 		return Directory{}, ErrInvalidDirectory
@@ -154,8 +163,15 @@ func (s *Service) ReplaceDirectory(ctx context.Context, tenantID, id guid.ID, na
 			return ErrDirectoryVersion
 		}
 		updated = current
+		updated.ServiceAccountID = serviceAccountID
 		updated.Name, updated.NameKey, updated.Status = name, strings.ToLower(name), status
-		if updated.Name == current.Name && updated.Status == current.Status {
+		actorChanged := actorID(updated.ServiceAccountID) != actorID(current.ServiceAccountID)
+		if actorChanged {
+			if err := s.requireServiceAccount(ctx, repo, tenantID, serviceAccountID); err != nil {
+				return errors.Join(ErrInvalidDirectory, err)
+			}
+		}
+		if updated.Name == current.Name && updated.Status == current.Status && !actorChanged {
 			return nil
 		}
 		updated.Version, updated.UpdatedAt = current.Version+1, now
@@ -165,6 +181,7 @@ func (s *Service) ReplaceDirectory(ctx context.Context, tenantID, id guid.ID, na
 		event := audit.NewDomainEvent(ctx, tenantID, "scim_directory_updated", "scim_directory", id)
 		event.Detail["name_changed"] = updated.Name != current.Name
 		event.Detail["status_changed"] = updated.Status != current.Status
+		event.Detail["service_account_id"] = actorID(updated.ServiceAccountID)
 		return s.appender(ctx, repo.writer(), event)
 	})
 	if err != nil {
@@ -277,13 +294,18 @@ func (s *Service) Authenticate(ctx context.Context, authorization string) (AuthC
 	if err != nil {
 		return AuthContext{}, ErrUnauthorized
 	}
-	row, err := s.repo.credentialForAuth(ctx, credentialID)
+	row, err := s.repo.credentialForAuth(ctx, credentialID, 0, 0)
 	if err != nil {
 		return AuthContext{}, err
 	}
 	now := s.now().UTC().Truncate(time.Millisecond)
-	if row.DirectoryStatus != DirectoryActive || row.RevokedAt != nil || row.ExpiresAt != nil && !row.ExpiresAt.After(now) {
+	if !row.active(now) || row.PrincipalID <= 0 {
 		return AuthContext{}, ErrUnauthorized
+	}
+	if row.PrincipalID > 0 {
+		if err := s.requireServiceAccount(ctx, s.repo, row.TenantID, &row.PrincipalID); err != nil {
+			return AuthContext{}, err
+		}
 	}
 	valid, err := passwordx.Verify(row.TokenHash, secret)
 	if err != nil || !valid {
@@ -292,11 +314,22 @@ func (s *Service) Authenticate(ctx context.Context, authorization string) (AuthC
 	if err := s.repo.touchCredential(ctx, credentialID, now); err != nil {
 		return AuthContext{}, fmt.Errorf("record SCIM credential use: %w", err)
 	}
-	return AuthContext{TenantID: row.TenantID, DirectoryID: row.DirectoryID, CredentialID: row.ID}, nil
+	return AuthContext{TenantID: row.TenantID, DirectoryID: row.DirectoryID, CredentialID: row.ID, PrincipalID: row.PrincipalID}, nil
 }
 
 func directoryFromRow(row directoryRow) Directory {
-	return Directory{ID: row.ID, TenantID: row.TenantID, Name: row.Name, Status: row.Status, Version: row.Version, CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC()}
+	return Directory{ID: row.ID, TenantID: row.TenantID, Name: row.Name, Status: row.Status, Version: row.Version, CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC(), ServiceAccountID: row.ServiceAccountID}
+}
+
+func actorID(id *guid.ID) guid.ID {
+	if id == nil {
+		return 0
+	}
+	return *id
+}
+
+func (s *Service) requireServiceAccount(ctx context.Context, repo *Repository, tenantID guid.ID, id *guid.ID) error {
+	return repo.requireServiceAccount(ctx, tenantID, id, s.now(), s.actors)
 }
 
 func credentialFromRow(row credentialRow) Credential {
@@ -337,6 +370,9 @@ func serviceErrorKind(err error) error {
 
 func (s *Service) appendResourceAudit(ctx context.Context, db *gorm.DB, auth AuthContext, eventType, resourceType string, resourceID guid.ID) error {
 	event := audit.NewDomainEvent(ctx, auth.TenantID, eventType, "scim_"+strings.ToLower(resourceType), resourceID)
+	if auth.PrincipalID > 0 {
+		event.PrincipalID = auth.PrincipalID
+	}
 	event.Detail["directory_id"] = auth.DirectoryID
 	event.Detail["credential_id"] = auth.CredentialID
 	return s.appender(ctx, db, event)

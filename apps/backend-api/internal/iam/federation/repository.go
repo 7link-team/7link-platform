@@ -2,6 +2,8 @@ package federation
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -9,6 +11,7 @@ import (
 	"7link.com/platform/internal/iam/federation/model"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -19,6 +22,55 @@ type samlSPRow = model.SAMLServiceProvider
 type samlKeyRow = model.SAMLIDPKey
 
 var errRepositoryUnavailable = errors.New("federation repository unavailable")
+
+func (r *Repository) claimReplay(ctx context.Context, key string, expiresAt, now time.Time) (bool, error) {
+	repo, err := r.pinWriter()
+	if err != nil {
+		return false, fmt.Errorf("%w: %w", errReplayUnavailable, err)
+	}
+	// Hash protocol input so identifiers are bounded and byte-exact on all
+	// database collations, including MySQL's trailing-space comparisons.
+	digest := sha256.Sum256([]byte(key))
+	storedExpiry := expiresAt.UTC().Truncate(time.Millisecond)
+	if storedExpiry.Before(expiresAt) {
+		storedExpiry = storedExpiry.Add(time.Millisecond)
+	}
+	row := model.ReplayClaim{ClaimKey: hex.EncodeToString(digest[:]), ExpiresAt: storedExpiry, CreatedAt: now.UTC()}
+	err = repo.db.WithContext(ctx).Table(repo.table(row.TableName())).Create(&row).Error
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("%w: record claim: %w", errReplayUnavailable, err)
+	}
+	// Check after the committed insert: a paused request may insert after a
+	// sweep removed an expired claim. A shared clock rejects that late winner.
+	millis, err := repo.replayNow(ctx)
+	if err != nil {
+		return false, fmt.Errorf("%w: read clock: %w", errReplayUnavailable, err)
+	}
+	return expiresAt.UnixMilli() > millis+1, nil
+}
+
+func (r *Repository) replayNow(ctx context.Context) (int64, error) {
+	var millis int64
+	err := r.db.WithContext(ctx).Raw("SELECT " + gormx.NowMillisExpr(r.db.Dialector.Name())).Scan(&millis).Error
+	return millis, err
+}
+
+func (r *Repository) sweepReplayClaims(ctx context.Context) error {
+	repo, err := r.pinWriter()
+	if err != nil {
+		return err
+	}
+	millis, err := repo.replayNow(ctx)
+	if err != nil {
+		return err
+	}
+	// A one-millisecond margin covers the SQL clock expression's rounding.
+	return repo.db.WithContext(ctx).Table(repo.table(model.ReplayClaim{}.TableName())).
+		Where("expires_at <= ?", time.UnixMilli(millis-1).UTC()).Delete(&model.ReplayClaim{}).Error
+}
 
 type Repository struct {
 	runtime *appenv.Runtime

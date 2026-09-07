@@ -262,10 +262,11 @@ func TestBootstrapWithoutWriterReportsUnhealthy(t *testing.T) {
 			{Name: "guid", Status: healthservice.StatusNotServing},
 			{Name: "telemetry", Status: healthservice.StatusUnknown},
 			{Name: "audit", Status: healthservice.StatusUnknown},
-			{Name: "todo", Status: healthservice.StatusNotServing},
 			{Name: "health", Status: healthservice.StatusServing},
 		},
 	}, module.Service().Check(t.Context()))
+	_, todoEnabled := app.modules.ByName("todo")
+	assert.False(t, todoEnabled, "tasks must not be exposed without IAM")
 }
 
 func TestBootstrapAddsEnabledHTTPModules(t *testing.T) {
@@ -288,7 +289,7 @@ func TestBootstrapAddsEnabledHTTPModules(t *testing.T) {
 	}
 	assert.Equal(t, []string{
 		"i18n", "respx", "dlock", "wuid", "guid", "metrics", "telemetry", "audit",
-		"database-monitor", "migration-status", "config-inspector", "pprof", "todo", "health",
+		"database-monitor", "migration-status", "config-inspector", "pprof", "health",
 	}, names)
 	_, ok := app.modules.ByName("metrics")
 	assert.True(t, ok)

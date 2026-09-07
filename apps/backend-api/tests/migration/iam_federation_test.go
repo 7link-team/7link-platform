@@ -103,12 +103,24 @@ func assertFederationUp(t *testing.T, db *gorm.DB, modules []module.Module, pref
 		milestones[report.Module] = report.Milestone
 		assert.Equal(t, goosex.StateClean, report.Status.State)
 	}
-	assert.Equal(t, "base", milestones[identity.Name])
-	assert.Equal(t, "constraints", milestones[federation.Name])
+	assert.Equal(t, "lifecycle", milestones[identity.Name])
+	assert.Equal(t, "replay", milestones[federation.Name])
 }
 
 func verifyFederationContracts(t *testing.T, db *sql.DB, prefix string) {
 	t.Helper()
+	claims := prefix + "iam_federation_replay_claims"
+	for _, key := range []string{"id-A", "id-a"} {
+		query := fmt.Sprintf("INSERT INTO %s (claim_key, expires_at, created_at) VALUES ('%s', '%s', '%s')", claims, key, federationTestTime, federationTestTime)
+		_, err := db.ExecContext(t.Context(), query)
+		require.NoError(t, err)
+		_, err = db.ExecContext(t.Context(), query)
+		require.Error(t, err, "replayed protocol identifiers must violate the primary key")
+	}
+	for _, key := range []string{"", strings.Repeat("a", 256)} {
+		_, err := db.ExecContext(t.Context(), fmt.Sprintf("INSERT INTO %s (claim_key, expires_at, created_at) VALUES ('%s', '%s', '%s')", claims, key, federationTestTime, federationTestTime))
+		require.Error(t, err, "invalid claim keys must be rejected by the schema")
+	}
 	for id, login := range map[int]string{100: "subject-upper", 101: "subject-lower", 102: "subject-long"} {
 		seedFederationPrincipal(t, db, prefix, id, login)
 	}
@@ -197,6 +209,7 @@ func verifyFederationRollbackGraph(
 		require.NoError(t, err, "roll back %s on %s", name, dialect)
 	}
 	assertTableExists(t, sqlDB, dialect, prefix+"iam_identity_providers", false)
+	assertTableExists(t, sqlDB, dialect, prefix+"iam_federation_replay_claims", false)
 	assertFederationUp(t, db, modules, prefix)
 }
 

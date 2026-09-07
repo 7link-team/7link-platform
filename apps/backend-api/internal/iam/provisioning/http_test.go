@@ -370,7 +370,7 @@ func TestProvisioningManagementHTTPWorkflow(t *testing.T) {
 	assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
 
 	provider, server := newSCIMProviderEndpoint(t, http.StatusOK, `{"id":"remote-management"}`)
-	createTarget := []byte(fmt.Sprintf(`{"name":"Management","base_url":%q,"bearer_token":"secret"}`, server.URL))
+	createTarget := []byte(fmt.Sprintf(`{"name":"Management","base_url":%q,"bearer_token":"secret","service_account_id":%q}`, server.URL, h.env.auth.PrincipalID.String()))
 	response = h.request(t, http.MethodPost, "/iam/scim/targets", createTarget, tenant, "", nil)
 	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 	decodeRecorder(t, response, &envelope)
@@ -433,6 +433,7 @@ func TestProvisioningHTTPBodyLimitAndErrorMapping(t *testing.T) {
 		ErrInvalidTarget: http.StatusUnprocessableEntity, ErrTargetMissing: http.StatusNotFound,
 		ErrTargetName: http.StatusConflict, ErrTargetVersion: http.StatusConflict,
 		ErrTargetKeyMissing: http.StatusUnprocessableEntity, ErrTargetDisabled: http.StatusConflict,
+		ErrUnauthorized:       http.StatusConflict,
 		ErrDeprovisionMissing: http.StatusNotFound, ErrRemoteUnavailable: http.StatusBadGateway,
 		ErrRemoteResponse: http.StatusBadGateway, assert.AnError: http.StatusInternalServerError,
 	} {

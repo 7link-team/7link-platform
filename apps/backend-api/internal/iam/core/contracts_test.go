@@ -36,11 +36,19 @@ var (
 
 type authorizationEvaluatorFixture struct{}
 
+func (*authorizationEvaluatorFixture) FieldConstraint(context.Context, guid.ID, guid.ID, string, guid.ID) (authz.FieldConstraint, error) {
+	return authz.FieldConstraint{}, nil
+}
+
 func (*authorizationEvaluatorFixture) CheckBulk(context.Context, guid.ID, []string, guid.ID) (map[string]bool, error) {
 	return nil, nil
 }
 
 func (*authorizationEvaluatorFixture) Constraint(context.Context, guid.ID, string, guid.ID) (authz.DataConstraint, error) {
+	return authz.DataConstraint{}, nil
+}
+
+func (*authorizationEvaluatorFixture) EntityConstraint(context.Context, guid.ID, guid.ID, string, guid.ID) (authz.DataConstraint, error) {
 	return authz.DataConstraint{}, nil
 }
 
@@ -80,6 +88,7 @@ func consumeAuthorizationEvaluator(evaluator AuthorizationEvaluator) {
 	ctx := context.Background()
 	_, _ = evaluator.CheckBulk(ctx, 0, nil, 0)
 	_, _ = evaluator.Constraint(ctx, 0, "", 0)
+	_, _ = evaluator.EntityConstraint(ctx, 0, 0, "", 0)
 	_, _ = evaluator.ExplainEntity(ctx, 0, 0, "", 0)
 	_, _ = evaluator.ExplainResource(ctx, 0, 0, "", 0, "", 0)
 }

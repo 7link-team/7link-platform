@@ -44,8 +44,8 @@ type principalListInput struct {
 }
 
 type principalListData struct {
-	Items []Principal `json:"items"`
-	Total int64       `json:"total"`
+	Items []PrincipalView `json:"items"`
+	Total int64           `json:"total"`
 }
 
 type principalIDInput struct {
@@ -54,6 +54,7 @@ type principalIDInput struct {
 }
 
 type principalCreateInput struct {
+	RawBody  []byte
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	Body     struct {
 		LoginName   string `json:"login_name" minLength:"1" maxLength:"200"`
@@ -64,6 +65,7 @@ type principalCreateInput struct {
 }
 
 type principalUpdateInput struct {
+	RawBody  []byte
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	ID       string `path:"id" maxLength:"64"`
 	Body     struct {
@@ -154,11 +156,25 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 			if err != nil {
 				return nil, err
 			}
+			fields, err := service.profileConstraint(ctx, tenantID)
+			if err == nil {
+				err = fields.RequireRead("login_name") // The endpoint orders by login name.
+			}
+			if err == nil && strings.TrimSpace(in.Search) != "" {
+				err = fields.RequireRead("display_name", "email")
+			}
+			if err != nil {
+				return nil, identityError(err)
+			}
 			items, total, err := service.List(ctx, tenantID, in.Search, in.Limit, in.Offset)
 			if err != nil {
 				return nil, identityError(err)
 			}
-			return respx.OK(ctx, principalListData{Items: items, Total: total}), nil
+			views := make([]PrincipalView, len(items))
+			for i, item := range items {
+				views[i] = profileView(item, fields)
+			}
+			return respx.OK(ctx, principalListData{Items: views, Total: total}), nil
 		})
 
 	authz.Register(registrar, api, huma.Operation{
@@ -170,10 +186,17 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		DefaultStatus: http.StatusCreated,
 		Errors:        []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "user", Verb: "create"},
-		func(ctx context.Context, in *principalCreateInput) (*respx.Body[Principal], error) {
+		func(ctx context.Context, in *principalCreateInput) (*respx.Body[PrincipalView], error) {
 			tenantID, err := requireID(in.TenantID)
 			if err != nil {
 				return nil, err
+			}
+			fields, err := service.profileConstraint(ctx, tenantID)
+			if err == nil {
+				err = requireProfileWrites(in.RawBody, fields, true)
+			}
+			if err != nil {
+				return nil, identityError(err)
 			}
 			principal, err := service.Create(
 				ctx, tenantID, in.Body.LoginName, in.Body.Password, in.Body.DisplayName, in.Body.Email,
@@ -181,7 +204,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 			if err != nil {
 				return nil, identityError(err)
 			}
-			return respx.OK(ctx, principal), nil
+			return respx.OK(ctx, profileView(principal, fields)), nil
 		})
 
 	authz.Register(registrar, api, huma.Operation{
@@ -192,16 +215,20 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Tags:        []string{"identity"},
 		Errors:      []int{http.StatusNotFound},
 	}, authz.Guard{Resource: "user", Verb: "view"},
-		func(ctx context.Context, in *principalIDInput) (*respx.Body[Principal], error) {
+		func(ctx context.Context, in *principalIDInput) (*respx.Body[PrincipalView], error) {
 			tenantID, id, err := principalRef(in.TenantID, in.ID)
 			if err != nil {
 				return nil, err
+			}
+			fields, err := service.profileConstraint(ctx, tenantID)
+			if err != nil {
+				return nil, identityError(err)
 			}
 			principal, err := service.Get(ctx, tenantID, id)
 			if err != nil {
 				return nil, identityError(err)
 			}
-			return respx.OK(ctx, principal), nil
+			return respx.OK(ctx, profileView(principal, fields)), nil
 		})
 
 	authz.Register(registrar, api, huma.Operation{
@@ -212,16 +239,23 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Tags:        []string{"identity"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "user", Verb: "update"},
-		func(ctx context.Context, in *principalUpdateInput) (*respx.Body[Principal], error) {
+		func(ctx context.Context, in *principalUpdateInput) (*respx.Body[PrincipalView], error) {
 			tenantID, id, err := principalRef(in.TenantID, in.ID)
 			if err != nil {
 				return nil, err
+			}
+			fields, err := service.profileConstraint(ctx, tenantID)
+			if err == nil {
+				err = requireProfileWrites(in.RawBody, fields, false)
+			}
+			if err != nil {
+				return nil, identityError(err)
 			}
 			principal, err := service.Update(ctx, tenantID, id, in.Body.DisplayName, in.Body.Email)
 			if err != nil {
 				return nil, identityError(err)
 			}
-			return respx.OK(ctx, principal), nil
+			return respx.OK(ctx, profileView(principal, fields)), nil
 		})
 
 	authz.Register(registrar, api, huma.Operation{
@@ -232,16 +266,20 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Tags:        []string{"identity"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict},
 	}, authz.Guard{Resource: "user", Verb: "update"},
-		func(ctx context.Context, in *principalIDInput) (*respx.Body[Principal], error) {
+		func(ctx context.Context, in *principalIDInput) (*respx.Body[PrincipalView], error) {
 			tenantID, id, err := principalRef(in.TenantID, in.ID)
 			if err != nil {
 				return nil, err
+			}
+			fields, err := service.profileConstraint(ctx, tenantID)
+			if err != nil {
+				return nil, identityError(err)
 			}
 			principal, err := service.SetStatus(ctx, tenantID, id, "disabled")
 			if err != nil {
 				return nil, identityError(err)
 			}
-			return respx.OK(ctx, principal), nil
+			return respx.OK(ctx, profileView(principal, fields)), nil
 		})
 
 	authz.Register(registrar, api, huma.Operation{
@@ -252,16 +290,20 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Tags:        []string{"identity"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict},
 	}, authz.Guard{Resource: "user", Verb: "update"},
-		func(ctx context.Context, in *principalIDInput) (*respx.Body[Principal], error) {
+		func(ctx context.Context, in *principalIDInput) (*respx.Body[PrincipalView], error) {
 			tenantID, id, err := principalRef(in.TenantID, in.ID)
 			if err != nil {
 				return nil, err
+			}
+			fields, err := service.profileConstraint(ctx, tenantID)
+			if err != nil {
+				return nil, identityError(err)
 			}
 			principal, err := service.SetStatus(ctx, tenantID, id, "active")
 			if err != nil {
 				return nil, identityError(err)
 			}
-			return respx.OK(ctx, principal), nil
+			return respx.OK(ctx, profileView(principal, fields)), nil
 		})
 }
 
@@ -452,6 +494,10 @@ type serviceAccountCredentialRevokeData struct {
 // report the same tenant, conflict, and validation semantics.
 func identityError(err error) error {
 	switch {
+	case errors.Is(err, authz.ErrFieldDenied):
+		return huma.Error403Forbidden("respx.forbidden")
+	case errors.Is(err, authz.ErrFieldsUnavailable):
+		return huma.Error503ServiceUnavailable(identityi18n.IdentityUnavailable)
 	case errors.Is(err, ErrNotFound):
 		return huma.Error404NotFound(identityi18n.PrincipalNotFound)
 	case errors.Is(err, ErrServiceAccountNotFound):

@@ -53,7 +53,14 @@ type IAMCore struct {
 // IAMAudit configures the IAM domain audit chain. It is intentionally separate
 // from Audit, which controls transport-level operation logging.
 type IAMAudit struct {
-	Anchor IAMAuditAnchor `mapstructure:"anchor" group:"anchor"`
+	Anchor  IAMAuditAnchor  `mapstructure:"anchor" group:"anchor"`
+	Archive IAMAuditArchive `mapstructure:"archive" group:"archive"`
+}
+
+type IAMAuditArchive struct {
+	Enabled  bool          `mapstructure:"enabled" description:"execute durable audit archives using the anchor S3 configuration; source events are never deleted" default:"false"`
+	Interval time.Duration `mapstructure:"interval" description:"interval between archive sweeps; at least one second" default:"1m"`
+	Timeout  time.Duration `mapstructure:"timeout" description:"maximum duration per archive attempt; one second to one hour" default:"4m"`
 }
 
 type IAMAuditAnchor struct {

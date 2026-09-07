@@ -31,6 +31,8 @@ func (*Module) MigrationMilestones() []module.MigrationMilestone {
 				{Module: "organization", Name: "base"},
 			},
 		},
+		{Name: "principal-erasure", Version: 4,
+			Dependencies: []module.MigrationMilestoneRef{{Module: "identity", Name: "lifecycle"}}},
 	}
 }
 

@@ -233,6 +233,9 @@ async function decide(review, actorID) {
     (candidate) =>
       candidate.decision === "pending" && candidate.principal_id !== actorID
   )) {
+    await waitFor(
+      `[...document.querySelectorAll('[data-review-item-id="${item.id}"] button')].some((button) => button.textContent.trim() === "保留" && !button.disabled)`
+    )
     await clickWithin(`[data-review-item-id="${item.id}"]`, "保留")
     await waitFor(`document.querySelector("#access-review-action")`)
     await submit("#access-review-action")

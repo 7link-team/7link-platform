@@ -17,6 +17,7 @@ import (
 
 var (
 	Q               = new(Query)
+	ArchiveJob      *archiveJob
 	Event           *event
 	Head            *head
 	RetentionPolicy *retentionPolicy
@@ -24,6 +25,7 @@ var (
 
 func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	*Q = *Use(db, opts...)
+	ArchiveJob = &Q.ArchiveJob
 	Event = &Q.Event
 	Head = &Q.Head
 	RetentionPolicy = &Q.RetentionPolicy
@@ -32,6 +34,7 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
 		db:              db,
+		ArchiveJob:      newArchiveJob(db, opts...),
 		Event:           newEvent(db, opts...),
 		Head:            newHead(db, opts...),
 		RetentionPolicy: newRetentionPolicy(db, opts...),
@@ -41,6 +44,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 type Query struct {
 	db *gorm.DB
 
+	ArchiveJob      archiveJob
 	Event           event
 	Head            head
 	RetentionPolicy retentionPolicy
@@ -53,6 +57,7 @@ func (q *Query) UnderlyingDB() *gorm.DB { return q.db }
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
 		db:              db,
+		ArchiveJob:      q.ArchiveJob.clone(db),
 		Event:           q.Event.clone(db),
 		Head:            q.Head.clone(db),
 		RetentionPolicy: q.RetentionPolicy.clone(db),
@@ -70,6 +75,7 @@ func (q *Query) WriteDB() *Query {
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
 		db:              db,
+		ArchiveJob:      q.ArchiveJob.replaceDB(db),
 		Event:           q.Event.replaceDB(db),
 		Head:            q.Head.replaceDB(db),
 		RetentionPolicy: q.RetentionPolicy.replaceDB(db),
@@ -77,6 +83,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 }
 
 type queryCtx struct {
+	ArchiveJob      IArchiveJobDo
 	Event           IEventDo
 	Head            IHeadDo
 	RetentionPolicy IRetentionPolicyDo
@@ -84,6 +91,7 @@ type queryCtx struct {
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
+		ArchiveJob:      q.ArchiveJob.WithContext(ctx),
 		Event:           q.Event.WithContext(ctx),
 		Head:            q.Head.WithContext(ctx),
 		RetentionPolicy: q.RetentionPolicy.WithContext(ctx),

@@ -36,8 +36,9 @@ func TestModuleMigrationContract(t *testing.T) {
 		for _, file := range files {
 			names = append(names, file.Name())
 		}
-		assert.Equal(t, []string{"00001_principals.sql", "00002_service_accounts.sql"}, names,
-			"dialect %s must carry the module's two migrations", dialect)
+		assert.Equal(t, []string{"00001_principals.sql", "00002_service_accounts.sql",
+			"00003_principal_lifecycles.sql", "00004_tombstone_guards.sql"}, names,
+			"dialect %s must carry the module's four migrations", dialect)
 	}
 }
 
@@ -45,10 +46,12 @@ func TestModuleMigrationMilestones(t *testing.T) {
 	t.Parallel()
 
 	milestones := (&Module{}).MigrationMilestones()
-	require.Len(t, milestones, 1)
+	require.Len(t, milestones, 2)
 	assert.Equal(t, "base", milestones[0].Name)
 	assert.Equal(t, int64(2), milestones[0].Version)
 	assert.Empty(t, milestones[0].Dependencies, "identity owns the root of the IAM migration DAG")
+	assert.Equal(t, "lifecycle", milestones[1].Name)
+	assert.Equal(t, int64(4), milestones[1].Version)
 
 	var _ module.MigrationSourceProvider = (*Module)(nil)
 	var _ module.MigrationMilestoneProvider = (*Module)(nil)

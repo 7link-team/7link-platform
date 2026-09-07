@@ -104,9 +104,11 @@ type Integrity struct {
 }
 
 type ExportSnapshot struct {
-	Filter      Filter
-	Integrity   Integrity
-	GeneratedAt time.Time
+	Filter        Filter
+	Integrity     Integrity
+	GeneratedAt   time.Time
+	AfterSequence int64
+	PreviousHash  string
 }
 
 type exportCriteria struct {
@@ -128,6 +130,8 @@ type exportManifest struct {
 	HeadHash       string         `json:"head_hash,omitempty"`
 	VerifiedEvents int64          `json:"verified_events"`
 	Filter         exportCriteria `json:"filter"`
+	AfterSequence  int64          `json:"after_sequence,omitempty"`
+	PreviousHash   string         `json:"previous_hash,omitempty"`
 }
 
 type exportEvent struct {
@@ -142,10 +146,11 @@ type exportComplete struct {
 }
 
 type Service struct {
-	repo   *Repository
-	now    func() time.Time
-	anchor *AnchorStore
-	signer *RootSigner
+	repo    *Repository
+	now     func() time.Time
+	anchor  *AnchorStore
+	signer  *RootSigner
+	archive *AnchorStore
 }
 
 func NewService(runtime *appenv.Runtime, ids guid.Source) *Service {
@@ -365,14 +370,16 @@ func (s *Service) RequestExport(ctx context.Context, filter Filter, principalID 
 }
 
 func (s *Service) WriteExport(ctx context.Context, snapshot ExportSnapshot, writer io.Writer) error {
-	if writer == nil || validateFilter(snapshot.Filter, false) != nil || !snapshot.Integrity.Valid || snapshot.Integrity.TenantID != snapshot.Filter.TenantID {
+	if writer == nil || validateFilter(snapshot.Filter, false) != nil || !snapshot.Integrity.Valid || snapshot.Integrity.TenantID != snapshot.Filter.TenantID ||
+		snapshot.AfterSequence < 0 || snapshot.AfterSequence > snapshot.Integrity.HeadSequence {
 		return ErrInvalidFilter
 	}
 	manifest := exportManifest{
 		Type: "manifest", Schema: "audit-export.v1", TenantID: snapshot.Filter.TenantID,
 		GeneratedAt: snapshot.GeneratedAt.UTC(), HeadSequence: snapshot.Integrity.HeadSequence,
 		HeadHash: snapshot.Integrity.HeadHash, VerifiedEvents: snapshot.Integrity.VerifiedEvents,
-		Filter: exportCriteriaOf(snapshot.Filter),
+		Filter:        exportCriteriaOf(snapshot.Filter),
+		AfterSequence: snapshot.AfterSequence, PreviousHash: snapshot.PreviousHash,
 	}
 	if err := writeJSONLine(writer, manifest); err != nil {
 		return fmt.Errorf("write audit export manifest: %w", err)
@@ -382,7 +389,8 @@ func (s *Service) WriteExport(ctx context.Context, snapshot ExportSnapshot, writ
 		return err
 	}
 	contentHash := sha256.New()
-	var cursor, exported int64
+	cursor := snapshot.AfterSequence
+	var exported int64
 	for cursor < snapshot.Integrity.HeadSequence {
 		rows, readErr := repo.readExport(ctx, snapshot.Filter, cursor, snapshot.Integrity.HeadSequence, exportBatchSize)
 		if readErr != nil {

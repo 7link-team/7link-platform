@@ -37,9 +37,11 @@ func TestModuleMigrationContract(t *testing.T) {
 	assert.Equal(t, "goose_audit_domain", source.TableName)
 	files, err := fs.ReadDir(source.FS, "sql/postgres")
 	require.NoError(t, err)
-	require.Len(t, files, 2)
+	require.Len(t, files, 3)
 	milestones := module.MigrationMilestones()
-	require.Len(t, milestones, 1)
+	require.Len(t, milestones, 2)
 	assert.Equal(t, "base", milestones[0].Name)
 	assert.Equal(t, int64(2), milestones[0].Version)
+	assert.Equal(t, "archive_jobs", milestones[1].Name)
+	assert.Equal(t, int64(3), milestones[1].Version)
 }

@@ -1,3 +1,43 @@
+export interface FieldDefinition {
+  resource: string
+  name: string
+  mutability: "readOnly" | "readWrite" | "immutable" | "writeOnly"
+  returned: "always" | "never" | "default" | "request"
+  maskable: boolean
+  configurable: boolean
+}
+
+export interface FieldAccess {
+  default: "allow" | "deny"
+  allow_roles: string[]
+  deny_roles: string[]
+}
+
+export interface FieldPolicy {
+  read: FieldAccess
+  write: FieldAccess
+  mask: "omit" | "redact"
+}
+
+export interface ManagedFieldPolicy {
+  resource: string
+  field: string
+  version: number
+  policy: FieldPolicy
+}
+
+export interface FieldConstraint {
+  revision: number
+  fields: Record<
+    string,
+    {
+      read: "allow" | "omit" | "redact"
+      create: boolean
+      update: boolean
+    }
+  >
+}
+
 export interface Envelope<T> {
   code: number
   message: string
@@ -17,7 +57,7 @@ export interface Session {
   auth_time?: string
   preferred_username?: string
   email?: string
-  email_verified: boolean
+  email_verified?: boolean
   organization_id?: string
 }
 
@@ -91,11 +131,11 @@ export interface Passkey {
 
 export interface Principal {
   id: string
-  login_name: string
+  login_name?: string
   activation_required: boolean
   email?: string
-  email_verified: boolean
-  display_name: string
+  email_verified?: boolean
+  display_name?: string
   status: "active" | "disabled"
   created_at: string
   updated_at: string
@@ -208,7 +248,7 @@ export interface TenantUpdate {
 export interface Member {
   tenant_id: string
   subject: string
-  display_name: string
+  display_name?: string
   email?: string
   department_id?: string
   status: "active" | "disabled"
@@ -650,6 +690,7 @@ export interface OAuthClientCreateResult {
 export interface SCIMDirectory {
   id: string
   tenant_id: string
+  service_account_id?: string
   name: string
   status: "active" | "disabled"
   version: number
@@ -659,6 +700,7 @@ export interface SCIMDirectory {
 
 export interface SCIMDirectoryInput {
   name: string
+  service_account_id?: string | null
 }
 
 export interface SCIMCredential {
@@ -674,6 +716,50 @@ export interface SCIMCredential {
 export interface SCIMCredentialSecret {
   credential: SCIMCredential
   bearer_token: string
+}
+
+export interface SCIMTarget {
+  id: string
+  tenant_id: string
+  name: string
+  base_url: string
+  status: "active" | "disabled"
+  service_account_id?: string
+  version: number
+  created_at: string
+  updated_at: string
+}
+
+export interface SCIMTargetInput {
+  name: string
+  base_url: string
+  bearer_token: string
+  service_account_id?: string | null
+}
+
+export interface SCIMTargetUpdate {
+  name: string
+  base_url: string
+  status: SCIMTarget["status"]
+  version: number
+  bearer_token?: string
+  service_account_id?: string | null
+}
+
+export interface SCIMTargetSecret {
+  target: SCIMTarget
+  bearer_token: string
+}
+
+export interface SCIMResourceInput {
+  resource_type: "User" | "Group"
+  resource_id: string
+}
+
+export interface SCIMPushResult extends SCIMResourceInput {
+  target_id: string
+  external_id: string
+  remote_id?: string
 }
 
 export interface AuditEvent {
@@ -731,7 +817,7 @@ export interface AuditAnchorStatus {
 }
 
 export interface AuditRetentionPolicy {
-  tenant_id: string
+  tenant_id: string | null
   min_days: number
   archive_after_days: number
   updated_at?: string
@@ -744,6 +830,45 @@ export interface AuditGovernance {
   total_events: number
   archive_ready_events: number
   anchored_events: number
+}
+
+export type AuditScope = "tenant" | "platform"
+
+export interface AuditArchiveObject {
+  bucket: string
+  key: string
+  version_id: string
+  sha256: string
+  size: number
+  retain_until: string
+}
+
+export interface AuditArchiveJob {
+  id: string
+  tenant_id: string | null
+  after_sequence: number
+  head_sequence: number
+  state: "queued" | "running" | "failed" | "complete"
+  attempts: number
+  next_attempt: number
+  error_code?: string
+  object?: AuditArchiveObject
+  retain_until: string
+  created_at: string
+  updated_at: string
+}
+
+export interface AuditArchiveStatus {
+  enabled: boolean
+  policy: AuditRetentionPolicy
+  total_events: number
+  eligible_events: number
+  archived_events: number
+  pending_events: number
+  queued_jobs: number
+  running_jobs: number
+  failed_jobs: number
+  completed_jobs: number
 }
 
 const tenantKey = "iam.tenant"
@@ -869,18 +994,15 @@ function tenantHeader(scope: string): Record<string, string> {
   return scope ? { "X-Tenant-Id": scope } : {}
 }
 
-async function requestAuditExportWithBase(
+async function requestAuditDownloadWithBase(
   apiBase: string,
   tenantID: () => string,
-  query: string
+  path: string
 ): Promise<AuditExportDownload> {
-  const response = await fetch(
-    `${apiBase}/iam/audit-events/export${query ? `?${query}` : ""}`,
-    {
-      headers: tenantHeader(tenantID()),
-      credentials: "include",
-    }
-  )
+  const response = await fetch(`${apiBase}${path}`, {
+    headers: tenantHeader(tenantID()),
+    credentials: "include",
+  })
   if (!response.ok) {
     const body = (await response
       .json()
@@ -961,8 +1083,10 @@ export function createIamApi(
 ) {
   const request = <T>(path: string, init: RequestInit = {}, tenant = true) =>
     requestWithBase<T>(apiBase, tenantID, path, init, tenant)
-  const requestEnvelope = <T>(path: string) =>
-    requestEnvelopeWithBase<T>(apiBase, tenantID, path)
+  const requestEnvelope = <T>(path: string, tenant = true) =>
+    requestEnvelopeWithBase<T>(apiBase, tenantID, path, {}, tenant)
+  const archivePath = (scope: AuditScope) =>
+    scope === "platform" ? "/platform/iam/audit" : "/iam/audit"
   return {
     capabilities: () =>
       request<AuthnCapabilities>("/authn/capabilities", {}, false),
@@ -1140,7 +1264,7 @@ export function createIamApi(
     createPrincipal: (body: {
       login_name: string
       password: string
-      display_name: string
+      display_name?: string
       email?: string
     }) =>
       request<Principal>("/iam/principals", {
@@ -1515,6 +1639,36 @@ export function createIamApi(
         `/iam/groups/${encodeURIComponent(id)}/members/${encodeURIComponent(principalID)}`,
         { method: "DELETE" }
       ),
+    fieldCatalog: () => request<FieldDefinition[]>("/iam/field-catalog"),
+    fieldPolicies: (resource = "") =>
+      request<ManagedFieldPolicy[]>(
+        `/iam/field-policies${resource ? `?${new URLSearchParams({ resource })}` : ""}`
+      ),
+    setFieldPolicy: (
+      resource: string,
+      field: string,
+      policy: FieldPolicy,
+      version: number
+    ) =>
+      request<ManagedFieldPolicy>(
+        `/iam/field-policies/${encodeURIComponent(resource)}/${encodeURIComponent(field)}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ policy, version }),
+        }
+      ),
+    deleteFieldPolicy: (resource: string, field: string, version: number) =>
+      request<{ changed: boolean }>(
+        `/iam/field-policies/${encodeURIComponent(resource)}/${encodeURIComponent(field)}?${new URLSearchParams({ version: String(version) })}`,
+        {
+          method: "DELETE",
+        }
+      ),
+    effectiveFields: (resource: string, entityID = "") => {
+      const query = new URLSearchParams({ resource })
+      if (entityID) query.set("entity_id", entityID)
+      return request<FieldConstraint>(`/iam/fields/effective?${query}`)
+    },
     roles: () => request<Role[]>("/iam/roles"),
     requestableRoles: () =>
       request<RequestableRole[]>("/iam/requestable-roles"),
@@ -1703,6 +1857,32 @@ export function createIamApi(
         { method: "DELETE" }
       ),
     scimDirectories: () => request<SCIMDirectory[]>("/iam/scim/directories"),
+    scimTargets: () => request<SCIMTarget[]>("/iam/scim/targets"),
+    createSCIMTarget: (body: SCIMTargetInput) =>
+      request<SCIMTargetSecret>("/iam/scim/targets", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    updateSCIMTarget: (id: string, body: SCIMTargetUpdate) =>
+      request<SCIMTarget>(`/iam/scim/targets/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
+    deleteSCIMTarget: (id: string) =>
+      request<{ deleted: boolean }>(
+        `/iam/scim/targets/${encodeURIComponent(id)}`,
+        { method: "DELETE" }
+      ),
+    pushSCIMResource: (id: string, body: SCIMResourceInput) =>
+      request<SCIMPushResult>(
+        `/iam/scim/targets/${encodeURIComponent(id)}/push`,
+        { method: "POST", body: JSON.stringify(body) }
+      ),
+    deprovisionSCIMResource: (id: string, body: SCIMResourceInput) =>
+      request<{ deprovisioned: boolean }>(
+        `/iam/scim/targets/${encodeURIComponent(id)}/deprovision`,
+        { method: "POST", body: JSON.stringify(body) }
+      ),
     createSCIMDirectory: (body: SCIMDirectoryInput) =>
       request<SCIMDirectory>("/iam/scim/directories", {
         method: "POST",
@@ -1746,15 +1926,72 @@ export function createIamApi(
       request<AuditEvent>(`/iam/audit-events/${encodeURIComponent(id)}`),
     auditIntegrity: () => request<AuditIntegrity>("/iam/audit-integrity"),
     auditExport: (query = "") =>
-      requestAuditExportWithBase(apiBase, tenantID, query),
+      requestAuditDownloadWithBase(
+        apiBase,
+        tenantID,
+        `/iam/audit-events/export${query ? `?${query}` : ""}`
+      ),
+    auditArchiveStatus: (scope: AuditScope = "tenant") =>
+      request<AuditArchiveStatus>(
+        `${archivePath(scope)}/archive-status`,
+        {},
+        scope === "tenant"
+      ),
+    auditArchives: async (
+      offset = 0,
+      limit = 20,
+      scope: AuditScope = "tenant"
+    ) => {
+      const query = new URLSearchParams({
+        offset: String(offset),
+        limit: String(limit),
+      })
+      const envelope = await requestEnvelope<AuditArchiveJob[]>(
+        `${archivePath(scope)}/archives?${query}`,
+        scope === "tenant"
+      )
+      return {
+        items: envelope.data,
+        total: envelope.meta?.page?.total ?? envelope.data.length,
+      }
+    },
+    requestAuditArchive: (scope: AuditScope = "tenant") =>
+      request<AuditArchiveJob>(
+        `${archivePath(scope)}/archives`,
+        { method: "POST" },
+        scope === "tenant"
+      ),
+    retryAuditArchive: (id: string, scope: AuditScope = "tenant") =>
+      request<AuditArchiveJob>(
+        `${archivePath(scope)}/archives/${encodeURIComponent(id)}/retry`,
+        { method: "POST" },
+        scope === "tenant"
+      ),
+    verifyAuditArchive: (id: string, scope: AuditScope = "tenant") =>
+      request<AuditArchiveObject>(
+        `${archivePath(scope)}/archives/${encodeURIComponent(id)}/verify`,
+        { method: "POST" },
+        scope === "tenant"
+      ),
+    downloadAuditArchive: (id: string, scope: AuditScope = "tenant") =>
+      requestAuditDownloadWithBase(
+        apiBase,
+        scope === "tenant" ? tenantID : () => "",
+        `${archivePath(scope)}/archives/${encodeURIComponent(id)}/download`
+      ),
     auditGovernance: () => request<AuditGovernance>("/iam/audit/governance"),
     setAuditRetention: (
-      body: Pick<AuditRetentionPolicy, "min_days" | "archive_after_days">
+      body: Pick<AuditRetentionPolicy, "min_days" | "archive_after_days">,
+      scope: AuditScope = "tenant"
     ) =>
-      request<AuditRetentionPolicy>("/iam/audit/retention", {
-        method: "PUT",
-        body: JSON.stringify(body),
-      }),
+      request<AuditRetentionPolicy>(
+        `${archivePath(scope)}/retention`,
+        {
+          method: "PUT",
+          body: JSON.stringify(body),
+        },
+        scope === "tenant"
+      ),
     auditSignRoot: () =>
       request<AuditAnchor>("/iam/audit/roots/sign", { method: "POST" }),
   }

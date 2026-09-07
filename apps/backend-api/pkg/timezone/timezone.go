@@ -3,6 +3,8 @@ package timezone
 import (
 	"os"
 	"time"
+	// Keep configured and authorization timezones available in standalone builds.
+	_ "time/tzdata"
 )
 
 // SetTimezone sets the process-wide timezone and TZ environment variable.

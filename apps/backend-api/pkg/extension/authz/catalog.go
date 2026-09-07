@@ -30,6 +30,9 @@ type Action struct {
 type Guard struct {
 	Resource string
 	Verb     string
+	// FilterData opts a typed entity route into row-scoped authorization. Its
+	// repository must enforce EntityConstraint on every read and write.
+	FilterData bool
 }
 
 // Code returns the canonical permission code for the guard.
@@ -50,6 +53,7 @@ func validRelationshipRelation(value string) bool {
 // Registry stores a validated, lookup-friendly action catalog.
 type Registry struct {
 	actions map[string]Action
+	fields  map[string]Field
 }
 
 // NewRegistry builds a registry from actions. Codes are derived when omitted.
@@ -141,7 +145,13 @@ func (r *Registry) All() []Action {
 // DefaultRegistry is the first-phase catalog for platform, tenant, merchant,
 // store, user, role, dept, and menu management.
 func DefaultRegistry() *Registry {
-	return MustRegistry(DefaultActions()...)
+	r := MustRegistry(DefaultActions()...)
+	for _, f := range DefaultFields() {
+		if err := r.RegisterField(f); err != nil {
+			panic(err)
+		}
+	}
+	return r
 }
 
 // DefaultActions is deliberately small but complete enough for the first IAM
@@ -149,6 +159,14 @@ func DefaultRegistry() *Registry {
 // these same codes.
 func DefaultActions() []Action {
 	return []Action{
+		{Resource: "field_policy", Verb: "view", Scope: "tenant", Summary: "view field policies"},
+		{Resource: "field_policy", Verb: "update", Scope: "tenant", Summary: "manage field read and write policies"},
+		{Resource: "todo", Verb: "create", Scope: "tenant", Summary: "create tasks", DataScoped: true},
+		{Resource: "todo", Verb: "view", Scope: "tenant", Summary: "view tasks", DataScoped: true},
+		{Resource: "todo", Verb: "update", Scope: "tenant", Summary: "update and restore tasks", DataScoped: true},
+		{Resource: "todo", Verb: "delete", Scope: "tenant", Summary: "delete tasks", DataScoped: true},
+		{Resource: "todo", Verb: "export", Scope: "tenant", Summary: "export tasks", DataScoped: true},
+		{Resource: "todo", Verb: "import", Scope: "tenant", Summary: "import tasks", DataScoped: true},
 		{Resource: "platform", Verb: "administer", Scope: "platform", Summary: "platform administration"},
 		{Resource: "tenant", Verb: "create", Scope: "platform", Summary: "create tenants"},
 		{Resource: "tenant", Verb: "view", Scope: "platform", Summary: "view tenants", DataScoped: true},

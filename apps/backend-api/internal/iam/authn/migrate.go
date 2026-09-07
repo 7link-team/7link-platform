@@ -32,6 +32,9 @@ func (*Module) MigrationMilestones() []module.MigrationMilestone {
 		},
 		{Name: "indexes", Version: 10},
 		{Name: "verification-attempts", Version: 11},
+		{Name: "notification-principals", Version: 12},
+		{Name: "principal-erasure", Version: 13,
+			Dependencies: []module.MigrationMilestoneRef{{Module: "identity", Name: "lifecycle"}}},
 	}
 }
 

@@ -43,3 +43,25 @@ type RetentionPolicy struct {
 }
 
 func (RetentionPolicy) TableName() string { return "iam_audit_retention_policies" }
+
+// ArchiveJob retains its frozen export and immutable object reference across
+// process restarts. Lease/retry timestamps use the shared database clock.
+type ArchiveJob struct {
+	ID            guid.ID   `gorm:"column:id;primaryKey;autoIncrement:false"`
+	TenantID      guid.ID   `gorm:"column:tenant_id;not null"`
+	AfterSequence int64     `gorm:"column:after_sequence;not null"`
+	HeadSequence  int64     `gorm:"column:head_sequence;not null"`
+	Snapshot      string    `gorm:"column:snapshot;type:text;not null"`
+	State         string    `gorm:"column:state;size:16;not null"`
+	Attempts      int64     `gorm:"column:attempts;not null"`
+	LeaseToken    guid.ID   `gorm:"column:lease_token;not null"`
+	LeaseUntil    int64     `gorm:"column:lease_until;not null"`
+	NextAttempt   int64     `gorm:"column:next_attempt;not null"`
+	ErrorCode     string    `gorm:"column:error_code;size:32;not null"`
+	Object        string    `gorm:"column:object;type:text;not null"`
+	RetainUntil   time.Time `gorm:"column:retain_until;not null"`
+	CreatedAt     time.Time `gorm:"column:created_at;not null"`
+	UpdatedAt     time.Time `gorm:"column:updated_at;not null"`
+}
+
+func (ArchiveJob) TableName() string { return "iam_audit_archive_jobs" }

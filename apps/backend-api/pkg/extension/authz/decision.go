@@ -1,6 +1,11 @@
 package authz
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"slices"
+
+	"7link.com/platform/internal/infra/guid"
+)
 
 // ResourceRef identifies an authorization scope without coupling IAM to the
 // business object stored below that scope.
@@ -12,6 +17,9 @@ type ResourceRef struct {
 // DataConstraint is the parameter-only result business repositories consume
 // when filtering tenant-owned rows. Producers returning it over JSON initialize
 // empty slices so clients do not need to treat null as a second empty value.
+// ResourceIDs and DeniedIDs identify IAM entities, not business row IDs.
+// Ancestors describe grant provenance; ResourceIDs already include eligible
+// descendants. Consumers must not expand Ancestors into additional grants.
 type DataConstraint struct {
 	AllowAll      bool          `json:"allow_all"`
 	OwnerIDs      []string      `json:"owner_ids"`
@@ -20,6 +28,18 @@ type DataConstraint struct {
 	Ancestors     []ResourceRef `json:"ancestors"`
 	DeniedIDs     []string      `json:"denied_ids"`
 	Revision      int64         `json:"revision"`
+}
+
+// AllowsEntityRows reports whether any row scope may be accessed within an
+// entity validated by EntityConstraint. It does not authorize a particular row:
+// repositories must still enforce owner/department filters and the tenant and
+// entity boundary. Explicit entity denials override every row scope.
+func (c DataConstraint) AllowsEntityRows(entityID guid.ID) bool {
+	if entityID.Zero() || slices.Contains(c.DeniedIDs, entityID.String()) {
+		return false
+	}
+	return c.AllowAll || slices.Contains(c.ResourceIDs, entityID.String()) ||
+		len(c.OwnerIDs) > 0 || len(c.DepartmentIDs) > 0
 }
 
 // RelationshipStep is one persisted edge in a relationship authorization path.

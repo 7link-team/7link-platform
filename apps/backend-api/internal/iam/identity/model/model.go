@@ -22,6 +22,19 @@ type Principal struct {
 
 func (Principal) TableName() string { return "iam_principals" }
 
+// PrincipalLifecycle preserves retention decisions and irreversible erasure state.
+type PrincipalLifecycle struct {
+	PrincipalID  guid.ID    `gorm:"column:principal_id;primaryKey;autoIncrement:false"`
+	Version      int64      `gorm:"column:version;not null"`
+	RetainUntil  time.Time  `gorm:"column:retain_until;not null"`
+	LegalHold    bool       `gorm:"column:legal_hold;not null"`
+	Reference    string     `gorm:"column:reference;type:text;not null"`
+	AnonymizedAt *time.Time `gorm:"column:anonymized_at"`
+	UpdatedAt    time.Time  `gorm:"column:updated_at;not null"`
+}
+
+func (PrincipalLifecycle) TableName() string { return "iam_principal_lifecycles" }
+
 type ServiceAccount struct {
 	PrincipalID   guid.ID    `gorm:"column:principal_id;primaryKey;autoIncrement:false"`
 	OwnerTenantID guid.ID    `gorm:"column:owner_tenant_id;not null"`

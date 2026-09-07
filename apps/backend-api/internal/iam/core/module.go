@@ -35,7 +35,7 @@ type Module struct {
 	service        *Service
 	repository     *Repository
 	registrar      *authz.Registrar
-	checker        AuthorizationEvaluator
+	checker        *Authorizer
 	members        *MembershipChecker
 	administrators AdministratorGuard
 	grants         RoleGrantStore
@@ -59,6 +59,7 @@ func NewModule(runtime *appenv.Runtime, config Config) *Module {
 		config:         config,
 		runtime:        runtime,
 		registrar:      authz.NewUnboundRegistrar(registry),
+		checker:        &Authorizer{},
 		members:        NewMembershipChecker(runtime),
 		administrators: NewAdministratorGuard(runtime),
 	}
@@ -90,6 +91,15 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[*authz.Registrar](services, m.registrar); err != nil {
 		return fmt.Errorf("provide authorization registrar: %w", err)
 	}
+	if err := module.Provide[AuthorizationEvaluator](services, m.checker); err != nil {
+		return fmt.Errorf("provide IAM authorization evaluator: %w", err)
+	}
+	if err := module.Provide[MemberDepartmentReader](services, m.members); err != nil {
+		return fmt.Errorf("provide IAM member department reader: %w", err)
+	}
+	if err := module.Provide[MemberTenantResolver](services, m.members.ResolveTenant); err != nil {
+		return fmt.Errorf("provide IAM member tenant resolver: %w", err)
+	}
 	return nil
 }
 
@@ -108,9 +118,9 @@ func (m *Module) InjectServices(services *module.Services) error {
 	}
 	m.ids, m.appender = ids, appender
 	repository := NewRepository(m.runtime, ids)
-	authorizer := NewAuthorizerWithRegistry(m.runtime, m.registrar.Registry())
-	m.checker = authorizer
-	if err := m.registrar.Bind(verifier, authorizer, m.members); err != nil {
+	// Keep the provider-phase pointer stable; requests start only after wiring.
+	*m.checker = *NewAuthorizerWithRegistry(m.runtime, m.registrar.Registry())
+	if err := m.registrar.Bind(verifier, m.checker, m.members); err != nil {
 		return fmt.Errorf("bind authorization registrar: %w", err)
 	}
 	m.service = NewService(m.registrar.Registry(), repository, m.checker, appender)

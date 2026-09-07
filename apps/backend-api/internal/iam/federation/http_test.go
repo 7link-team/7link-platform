@@ -227,6 +227,7 @@ func TestFederationErrorMapping(t *testing.T) {
 		ErrOIDCToken:              http.StatusBadRequest,
 		ErrOIDCTokenInvalid:       http.StatusBadRequest,
 		ErrOIDCState:              http.StatusBadRequest,
+		errReplayUnavailable:      http.StatusServiceUnavailable,
 		ErrSAMLResponse:           http.StatusBadRequest,
 	} {
 		mapped := federationError(err)

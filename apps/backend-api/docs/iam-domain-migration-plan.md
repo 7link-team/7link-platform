@@ -944,26 +944,26 @@ CREATE TABLE {{.Prefix}}iam_roles (
 | HTTP | **迁移契约完整** | 9 模块共 208 条 operation，实际 OpenAPI、source→target mapping、guard 分类均有集合门禁；这证明路由不漏项，不证明每个 guard 的产品语义正确 |
 | gRPC | **IAM 未实现；迁移不缺失** | IAM 9 模块无 proto、`GRPCRegistrar` 或 gRPC service；固定源树同样没有 IAM gRPC。应用自身仍有 health 等 gRPC 服务 |
 | 接口权限 | **执行链完整** | public/authenticated/member/tenant/entity/platform middleware 均实际执行；principal update/suspend/resume 曾把 `platform_administer` 注册为 tenant guard，10.3 已改为 `user_update`，并让这类误注册在启动期 panic |
-| 数据权限 | **计算完成，执行未闭环** | `Authorizer.Constraint()` 可产出 AllowAll/resource/department/ancestor/deny；生产业务 repository 无消费者，IAM 生产路由也没有 `RegisterEntity` 调用 |
-| 菜单权限 | **判定完整，初始化缺失** | `EffectiveMenus()` 读取持久化菜单并批量鉴权、未知 permission fail closed、保留有可见子项的容器；但新租户未写 `DefaultMenus()`，结果为空 |
-| 字段权限 | **未实现** | 没有 schema、catalog、管理 API、repository projection、masking 或 response serialization filter |
+| 数据权限 | **todo 参照实现已闭环** | 九条 task route 使用 `RegisterEntity/FilterData`，service 查询层独立执行 tenant/entity/owner/department 约束；继承、deny、分页 count、导出和真实写入经三引擎及真实 MySQL 验证；其他业务模块必须显式接入，不会自动获得行过滤 |
+| 菜单权限 | **判定与初始化完整** | `EffectiveMenus()` 批量鉴权、未知 permission fail closed、保留可见子项的容器；`BootstrapTenantOn()` 在新租户事务中写入 `DefaultMenus()` |
+| 字段权限 | **已装配，最终验收中** | schema/catalog、管理 API/UI、todo、用户管理、成员、会话、JWT、userinfo 与 SCIM 入站/出站均已接入；用户资料字段已注册默认目录。真实 SCIM 角色策略、拒写、脱敏与出站账号归属通过三引擎/表名前缀生命周期；前端可选字段和表单已适配。最新浏览器及最终发布门禁仍在执行，不据此宣布生产交付 |
 | IAM 源迁移 | **已完成** | 9 模块、63 表、208 HTTP、三方言 migration/隔离/并发/性能门禁均通过 |
-| IAM 产品闭环 | **未完成** | 缺平台/租户安全自举，另有 consent、archive、principal lifecycle、secret rotation 等产品缺口 |
+| IAM 产品闭环 | **未完成** | 安全自举、consent、数据权限参照与密钥轮换已完成；仍缺字段权限、实际审计归档、principal 匿名化生命周期及最终生产验收 |
 
 #### Critical / High
 
-- [x] **10.1 平台管理员安全自举（Critical）：**实现 §2.5.1。当前生产 CLI 只有 `serve`/`migrate`；`EnsureBootstrapPrincipal` 无生产调用者且不写 `iam_platform_administrators`。平台管理员管理 API 自身受 `platform_administer` 保护，空库无法建立第一个管理员。
-- [x] **10.2 新租户 owner 自举（Critical）：**实现 §2.5.2。当前 `TenantService.Create` 只写 tenant、policy revision、audit；所有 tenant route 先要求 active membership，故新租户无法经现有 HTTP 建立第一个成员/管理员。
+- [x] **10.1 平台管理员安全自举（Critical）：**§2.5.1 已实现，生产 CLI 提供 `iam bootstrap-platform-admin` 和 `iam reset-admin-password`，空库可建立首个平台管理员；已有管理员保护与审计受测试约束。
+- [x] **10.2 新租户 owner 自举（Critical）：**§2.5.2 已实现，创建租户的同一事务中建立 owner 活跃成员、Administrator 角色及授权、默认菜单、policy revision 和审计；存量零成员租户另有修复命令。
 - [x] **10.3 修正 principal 管理权限语义（High，见 D17）：**`identity-update-principal`、suspend、resume 三条使用 tenant 注册器却挂 `platform_administer`。`CheckBulk` 对 platform scope 的 action 只认平台管理员身份，`tenant_administer` 通配不覆盖它，所以租户管理员在自己租户里改人、停用、恢复一律 403。能调通的只剩一种账号：**既是平台管理员、又是该租户活跃成员**——`CheckBulk` 先过 `memberActive` 闸，再走 `allowed = platformAdministrator` 那一支，两个条件同时满足才放行。bootstrap 出来的管理员恰好是这一种，所以浏览器审计一直是绿的，这个口子才一直没被发现（@ClaudeWEB 提供反例）。按 Keycloak realm 模型，这本就是 realm 管理员的租户内能力，改用权限表里现成的 `user/update`（scope=tenant），与同文件 list/create/get 的 `user/view`、`user/create` 一致；路由与请求体不变，前端零改动。同时给 `authz.Register`/`RegisterEntity`/`RegisterEntityAdapter` 补上 `RegisterPlatform` 早有的反向检查：platform scope 的 action 注册到 tenant registrar 直接 panic，这类错误从此在启动期暴露。
-- [ ] **10.4 数据权限端到端执行（High，方案已定见 D17）：**以 `internal/todo` 为参照实现（用户 2026-09-05 确认），为其 repository/list/get/update/delete 接入 `DataConstraint`，并对 entity-scoped route 使用 `RegisterEntity`；过滤下沉到查询层，不放在 controller；覆盖 tenant A/B、owner/department/ancestor/explicit deny、分页 count 与导出路径。只暴露 constraint/explain API 不算完成。
-- [ ] **10.5 字段权限设计与实现（High，方案已定见 D17）：**对标 Keycloak 声明式 User Profile 的每字段 `view`/`edit` 角色授权与 SCIM 2.0 的 `mutability`/`returned`；据此确定主体/角色继承、read/write 分离、deny precedence、mask 规则、OpenAPI 表达和审计策略，再设计 schema/catalog/API/cache revision，并在读取 projection/序列化和写入 validation 两端强制执行。不得只做前端隐藏。
+- [x] **10.4 数据权限端到端执行（High，2026-09-05 工作区验证）：**`internal/todo` 九条路由通过 `RegisterEntity/FilterData` 接入 IAM，SQL 查询层独立执行每项操作的 `EntityConstraint`，覆盖 list/count/get/create/update/delete/restore/export/import。创建和导入归属来自可信上下文与活跃部门，历史 NULL 归属行保持不可见，无 IAM 时不开放 todo。tenant A/B、owner/department/部门后代、实体继承/explicit deny、即时撤权、分页 count、导出和真实写入通过 SQLite/PostgreSQL/MySQL 兼容引擎及真实 MySQL 8 验证；存量升级、约束和回滚、full CI、race、生成稳定性、前端门禁和 PostgreSQL/MySQL 性能回归均通过。普通 `CheckEntity` 的整实体授权语义不变；README 明确 v2 归属列和回滚限制。字段权限与最终生产验收仍未完成。
+- [x] **10.5 字段权限（High，2026-09-06 工作区验收）：**按 D17 实现声明式 catalog/policy、角色继承、读写分离、deny 优先、隐藏/固定脱敏、版本并发、审计与 revision。实际接入 todo 读写/导出、主体与成员资料、会话/JWT、OAuth userinfo、SCIM 入站与按绑定服务账号执行的出站；隐藏字段查询推断和拒写均在服务端阻断。管理 UI、资料局部编辑、SCIM 服务账号绑定与出站目标 UI 已验收。完整 CI、三引擎及真实 MySQL、race、性能、OpenAPI/生成稳定性证据见 task-state；当前版本原有 13 项浏览器回归全过，字段策略/资料/SCIM/会话专项复跑通过。此项完成不代表 10.7/10.8 或最终生产交付完成。
 
 #### Medium
 
 - [x] **10.6 OAuth 交互式 consent：**当前 `prompt=consent` 产生 `ErrConsentRequired` 后映射为通用 `invalid_request`，且默认 prompt 会直接 upsert consent。补 consent challenge/approve/deny/revoke API 或页面、短期一次性状态、防 CSRF 与审计。
-- [ ] **10.7 Audit archive 生命周期：**当前 retention 只保存 policy 并统计 `archive_ready_events`；补实际 archive/export worker、对象校验、重试、删除/保留边界和可观测状态。
-- [ ] **10.8 Principal 数据生命周期（方案已定见 D17）：**普通 principal 有 create/update/suspend/resume，但没有删除、匿名化或法定保留流程。按 SCIM + GDPR 通行组合：停用（`active=false`）→ 匿名化 PII → 保留主体行作墓碑，审计永不硬删，外键与审计链因此始终成立。
-- [ ] **10.9 Secret/key rotation（进行中，五步已完成四步）：**① 密钥环原语 `pkg/extension/keyringx`：信封记录是哪把密钥封的，一把在封、一圈都能开。② authn / federation / provisioning 三个模块接入密钥环，新增 `previous_*_keys` 配置。③ `iam rewrap-secrets` 把仍挂在旧密钥上的行重新封一遍，并报告「还剩多少行挂在旧密钥上」，让「可以把旧密钥拿掉了」有依据而不是靠猜；派生摘要（recovery code、验证令牌）无法重封，按各自是否会过期分别报 `expires=never` 或一个日期，不会给出读起来像许可的日期。④ authn 签名密钥环：`signingKeyring` 一把签、一圈验，`/.well-known/jwks.json` 同时发布 active 与 previous，验签按 token header 里的 `kid` 选key（不是逐把试——逐把试会让「把旧 key 从配置里拿掉」这个动作失效）；新增 `authn.previous_signing_keys` / `_files`；轮换步骤写进 `README.md` 的「Rotating keys」。旧 key 必须在配置里留满一个 `access_token_ttl` 才能退场，否则所有在途 token 一次性失效。剩余一步：⑤ federation replay registry 目前是进程内 map，多副本部署下同一个 nonce 每个副本各花一次，重放保护实际上是关的，需换成跨副本共享状态。
+- [x] **10.7 Audit archive 生命周期（2026-09-06 工作区验收）：**v3 持久任务、连续分批快照、数据库时钟租约、重试和后台 worker 已实现；精确 S3 版本、SHA-256/字节数及 COMPLIANCE 锁校验通过，源事件与审计链不硬删。租户及平台管理 API/UI、多连接池及真实 MySQL 并发恢复、约 70 MiB 双副本条件上传、失败清理和 1,003 条事件跨三个对象链验证通过。真实浏览器验收使用独占临时 SQLite、504 条通过 Append 生成的历史事件、实际 worker 和 MinIO，无 API mock；桌面/手机完成故障后重试、排队、校验及下载，跨租户 404、普通成员 403，四个任务完成且源事件全部保留。证据见 `.temp/archive-browser-live-current.log`、task-state 和 D20。此项完成不代表 10.8、10.11 或生产交付完成。
+- [ ] **10.8 Principal 数据生命周期（D17/D21，2026-09-06 实施中）：**identity v3/v4 已实现保留期限、法律保留、版本并发、数据库时钟和事务内匿名化编排；墓碑禁止恢复资料、状态、主体删除及生命周期重置，已有墓碑时迁移回退也被拒绝。identity 单测/race（90.3%）、三引擎及真实 MySQL 8.4 的升级与不可逆保护已验证。跨模块清理 capability 尚未装配，匿名化未开放 HTTP/UI，缺失清理器时拒绝执行。仍须完成关联 PII 与凭据清理、并发写回保护、平台管理界面和真实浏览器验收；不能据底层验证勾选完成。审计永不硬删，外键与审计链保留。
+- [x] **10.9 Secret/key rotation（五步完成，2026-09-05 工作区验证）：**① `keyringx` 密钥环；② authn / federation / provisioning 接入 active + previous keys；③ `iam rewrap-secrets` 重封存量密文并报告旧密钥依赖，无法重封的派生摘要按实际有效期报告；④ 签名密钥环按 `kid` 验签，JWKS 发布 active + previous，旧 key 至少保留完整 token 有效期；⑤ federation v4 数据库防重放，覆盖 OIDC/SAML state、SAML assertion 和 logout，唯一主键保证跨副本单次消费，数据库时钟控制过期与清理，存储失败返回 503 且不创建或撤销会话。已通过完整 CI、race、PostgreSQL/SQLite 及真实 MySQL 8 的跨连接池并发消费、三方言迁移和性能门禁；OpenAPI 与前端类型已同步。SLO 同时限制未来 IssueInstant 并执行 NotOnOrAfter。README 明确 v4-aware 回滚、备份恢复及旧版无界未来 SLO 消息的独立切换要求；不得声称等待固定十分钟就能排空旧 SLO 历史。
 - [x] **10.10 IAM gRPC 产品决策：不做（见 D17）。**主流 IAM 产品面是 REST + OIDC/OAuth2/SCIM，本项目已具备。无明确消费方、surface 未冻结就新增 proto/service 等于维护两份 API。本项关闭；若将来确有 HTTP/gRPC 双协议需求，须先冻结 API surface、auth metadata、错误码、版本兼容与 208 HTTP 能力的映射范围，再重开。
 - [ ] **10.11 最终产品门禁：**完成 10.1–10.9（10.10 已关闭）后重跑 SQLite/MySQL/PostgreSQL 初始化与权限矩阵、OpenAPI、race、`make generate`、`make ci`、真实 MySQL 及 live readiness。
 

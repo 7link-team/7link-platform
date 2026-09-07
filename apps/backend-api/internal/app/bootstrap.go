@@ -118,7 +118,7 @@ func (app *App) composeModules() error {
 	modules = append(modules, app.composeIAMRuntimeModules()...)
 
 	modules = append(modules,
-		todo.NewModule(rt),
+		todo.NewModule(rt, todo.Config{Config: module.Config{Enabled: app.config.Authn.Enabled}}),
 		health.NewModule(rt),
 	)
 	return app.addModule(modules...)

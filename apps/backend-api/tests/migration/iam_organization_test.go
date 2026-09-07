@@ -75,8 +75,8 @@ func assertOrganizationUp(t *testing.T, db *gorm.DB, modules []module.Module, pr
 		milestones[report.Module] = report.Milestone
 		assert.Equal(t, goosex.StateClean, report.Status.State)
 	}
-	assert.Equal(t, "base", milestones[iamcore.Name])
-	assert.Equal(t, "base", milestones[identity.Name])
+	assert.Equal(t, "field_policies", milestones[iamcore.Name])
+	assert.Equal(t, "lifecycle", milestones[identity.Name])
 	assert.Equal(t, "constraints", milestones[organization.Name])
 	assert.Equal(t, "consent", milestones[oauth.Name])
 }

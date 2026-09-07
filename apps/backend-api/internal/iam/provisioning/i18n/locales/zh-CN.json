@@ -23,6 +23,7 @@
   "scim_target_version_conflict": "SCIM 目标已被其他请求修改。请重新加载后重试。",
   "scim_target_key_missing": "对外 SCIM 配置未启用：请先设置配置加密密钥（provisioning.encryption_key）。",
   "scim_target_disabled": "SCIM 目标已被禁用。请在推送或移除资源前启用它。",
+  "scim_target_service_account_inactive": "SCIM 目标绑定的服务账号不可用。请绑定本租户的有效服务账号后重试。",
   "scim_target_resource_not_mapped": "此资源在 SCIM 目标上尚无有效映射。请先推送再移除。",
   "scim_target_remote_failed": "远程 SCIM 提供方无法完成请求。请检查目标 URL、Bearer 令牌和提供方状态。"
 }

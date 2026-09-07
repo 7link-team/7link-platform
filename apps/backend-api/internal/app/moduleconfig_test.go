@@ -105,7 +105,7 @@ func TestIAMModuleConfigsMapEverySetting(t *testing.T) {
 		IAMAudit: IAMAudit{Anchor: IAMAuditAnchor{
 			Enabled: true, Endpoint: "https://objects.example", Bucket: "anchors", Region: "us-test-1",
 			AccessKey: "access", SecretKey: "secret", RetentionDays: 90, SigningKey: "signing",
-		}},
+		}, Archive: IAMAuditArchive{Enabled: true, Interval: 2 * time.Minute, Timeout: 3 * time.Minute}},
 		Provisioning: IAMProvisioning{
 			EncryptionKey: "key", EncryptionKeyFile: "key-file", HTTPTimeout: 12 * time.Second,
 			SyncInterval: time.Minute,
@@ -131,6 +131,9 @@ func TestIAMModuleConfigsMapEverySetting(t *testing.T) {
 	assert.Equal(t, config.IAMAudit.Anchor.SecretKey, iamAuditConfig(config).Anchor.SecretKey)
 	assert.Equal(t, config.IAMAudit.Anchor.RetentionDays, iamAuditConfig(config).Anchor.RetentionDays)
 	assert.Equal(t, config.IAMAudit.Anchor.SigningKey, iamAuditConfig(config).Anchor.SigningKey)
+	assert.Equal(t, config.IAMAudit.Archive.Enabled, iamAuditConfig(config).Archive.Enabled)
+	assert.Equal(t, config.IAMAudit.Archive.Interval, iamAuditConfig(config).Archive.Interval)
+	assert.Equal(t, config.IAMAudit.Archive.Timeout, iamAuditConfig(config).Archive.Timeout)
 	assert.Equal(t, config.Provisioning.EncryptionKey, iamProvisioningConfig(config).EncryptionKey)
 	assert.True(t, iamProvisioningConfig(config).Enabled)
 	assert.Equal(t, config.Provisioning.EncryptionKeyFile, iamProvisioningConfig(config).EncryptionKeyFile)

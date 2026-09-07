@@ -23,6 +23,7 @@
   "scim_target_version_conflict": "The SCIM target was changed by another request. Reload it and try again.",
   "scim_target_key_missing": "Outbound SCIM provisioning is not configured: set the provisioning encryption key (provisioning.encryption_key) first.",
   "scim_target_disabled": "The SCIM target is disabled. Enable it before pushing or removing resources.",
+  "scim_target_service_account_inactive": "The SCIM target's service account is unavailable. Bind an active service account owned by this tenant before retrying.",
   "scim_target_resource_not_mapped": "This resource has no active mapping on the SCIM target. Push it first before removing it.",
   "scim_target_remote_failed": "The remote SCIM provider could not complete the request. Check the target URL, bearer token, and provider status."
 }

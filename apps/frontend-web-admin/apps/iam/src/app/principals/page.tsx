@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react"
 import { Pencil, Plus, Search, UserRoundCheck } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
@@ -24,13 +30,27 @@ import {
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import {
-  iamApi,
+  createIamApi,
+  getTenant,
   type Department,
+  type FieldConstraint,
   type Member,
   type Principal,
 } from "../../lib/iam-api"
 
 export default function PrincipalsPage() {
+  const [tenant, setTenantValue] = useState(getTenant)
+  useEffect(() => {
+    const sync = () => setTenantValue(getTenant())
+    window.addEventListener("tenant-change", sync)
+    return () => window.removeEventListener("tenant-change", sync)
+  }, [])
+  return <TenantPrincipals key={tenant} tenant={tenant} />
+}
+
+function TenantPrincipals({ tenant }: { tenant: string }) {
+  const iamApi = useMemo(() => createIamApi(undefined, () => tenant), [tenant])
+  const [fields, setFields] = useState<FieldConstraint["fields"]>({})
   const [items, setItems] = useState<Principal[]>([])
   const [members, setMembers] = useState<Member[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
@@ -46,12 +66,21 @@ export default function PrincipalsPage() {
         iamApi.principals(search),
         iamApi.members(),
         iamApi.departments(),
-      ]).then(([result, nextMembers, nextDepartments]) => {
-        setItems(result.items)
-        setMembers(nextMembers)
-        setDepartments(nextDepartments)
-      }),
-    [search]
+        iamApi.effectiveFields("user_profile"),
+      ])
+        .then(([result, nextMembers, nextDepartments, nextFields]) => {
+          setItems(result.items)
+          setMembers(nextMembers)
+          setDepartments(nextDepartments)
+          setFields(nextFields.fields)
+        })
+        .catch((cause: Error) => {
+          setItems([])
+          setMembers([])
+          setFields({})
+          throw cause
+        }),
+    [search, iamApi]
   )
   useEffect(() => {
     void refresh().catch((cause: Error) => setError(cause.message))
@@ -64,10 +93,16 @@ export default function PrincipalsPage() {
     const data = new FormData(event.currentTarget)
     try {
       if (editing) {
-        await iamApi.updatePrincipal(editing.id, {
-          display_name: String(data.get("display_name")),
-          email: String(data.get("email")),
-        })
+        const changes: { display_name?: string; email?: string } = {}
+        for (const field of ["display_name", "email"] as const) {
+          if (!data.has(field) || !fields[field]?.update) continue
+          const value = String(data.get(field))
+          const original =
+            fields[field]?.read === "allow" ? (editing[field] ?? "") : ""
+          if (value !== original) changes[field] = value
+        }
+        if (Object.keys(changes).length)
+          await iamApi.updatePrincipal(editing.id, changes)
         const membership = members.find(
           (member) => member.subject === editing.id
         )
@@ -77,8 +112,10 @@ export default function PrincipalsPage() {
         await iamApi.createPrincipal({
           login_name: String(data.get("login_name")),
           password: String(data.get("password")),
-          display_name: String(data.get("display_name")),
-          email: String(data.get("email")),
+          ...(data.has("display_name")
+            ? { display_name: String(data.get("display_name")) }
+            : {}),
+          ...(data.has("email") ? { email: String(data.get("email")) } : {}),
         })
       }
       setOpen(false)
@@ -115,6 +152,7 @@ export default function PrincipalsPage() {
         description="管理本地登录账号、全局生命周期及当前租户归属"
         action={
           <Button
+            disabled={!fields.login_name?.create}
             onClick={() => {
               setEditing(null)
               setDepartmentID("")
@@ -143,7 +181,7 @@ export default function PrincipalsPage() {
       </div>
       {error && <Alert>{error}</Alert>}
       <div className="overflow-hidden rounded-md border bg-card">
-        <Table>
+        <Table className="min-w-[900px] whitespace-nowrap">
           <TableHeader>
             <TableRow>
               <TableHead>主体</TableHead>
@@ -160,24 +198,31 @@ export default function PrincipalsPage() {
                 <TableCell>
                   <div className="flex items-center gap-3">
                     <span className="grid size-9 place-items-center rounded-full bg-primary/10 font-semibold text-primary">
-                      {principal.display_name[0]?.toUpperCase()}
+                      {(principal.display_name ||
+                        principal.login_name ||
+                        principal.id)[0]?.toUpperCase()}
                     </span>
                     <div>
                       <strong className="block text-sm">
-                        {principal.display_name}
+                        {principal.display_name ||
+                          principal.login_name ||
+                          principal.id}
                       </strong>
                       <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                         {principal.email || principal.id}
-                        {principal.email && (
-                          <Badge
-                            variant={
-                              principal.email_verified ? "secondary" : "outline"
-                            }
-                            className="px-1.5 py-0 text-[10px]"
-                          >
-                            {principal.email_verified ? "已验证" : "未验证"}
-                          </Badge>
-                        )}
+                        {principal.email &&
+                          principal.email_verified !== undefined && (
+                            <Badge
+                              variant={
+                                principal.email_verified
+                                  ? "secondary"
+                                  : "outline"
+                              }
+                              className="px-1.5 py-0 text-[10px]"
+                            >
+                              {principal.email_verified ? "已验证" : "未验证"}
+                            </Badge>
+                          )}
                       </span>
                     </div>
                   </div>
@@ -225,7 +270,7 @@ export default function PrincipalsPage() {
                         )
                         setOpen(true)
                       }}
-                      aria-label={`编辑${principal.display_name}`}
+                      aria-label={`编辑${principal.display_name || principal.login_name || principal.id}`}
                       title="编辑主体"
                     >
                       <Pencil />
@@ -265,7 +310,7 @@ export default function PrincipalsPage() {
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className="grid max-h-[calc(100svh-2rem)] gap-4 overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? "编辑主体" : "创建本地主体"}</DialogTitle>
             <DialogDescription>
@@ -284,8 +329,17 @@ export default function PrincipalsPage() {
             <Field
               label="显示名称"
               name="display_name"
-              defaultValue={editing?.display_name}
-              required
+              defaultValue={
+                fields.display_name?.read === "allow"
+                  ? editing?.display_name
+                  : undefined
+              }
+              disabled={
+                !(editing
+                  ? fields.display_name?.update
+                  : fields.display_name?.create)
+              }
+              required={!editing && Boolean(fields.display_name?.create)}
             />
             {editing && editingMembership && (
               <div className="grid gap-2">
@@ -319,7 +373,12 @@ export default function PrincipalsPage() {
               label="邮箱"
               name="email"
               type="email"
-              defaultValue={editing?.email}
+              defaultValue={
+                fields.email?.read === "allow" ? editing?.email : undefined
+              }
+              disabled={
+                !(editing ? fields.email?.update : fields.email?.create)
+              }
             />
             {!editing && (
               <Field
@@ -331,7 +390,7 @@ export default function PrincipalsPage() {
               />
             )}
           </form>
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setOpen(false)}>
               取消
             </Button>
@@ -352,6 +411,7 @@ function Field({
   required = false,
   minLength,
   defaultValue,
+  disabled = false,
 }: {
   label: string
   name: string
@@ -359,6 +419,7 @@ function Field({
   required?: boolean
   minLength?: number
   defaultValue?: string
+  disabled?: boolean
 }) {
   return (
     <div className="grid gap-2">
@@ -370,6 +431,7 @@ function Field({
         required={required}
         minLength={minLength}
         defaultValue={defaultValue}
+        disabled={disabled}
         maxLength={type === "password" ? 1024 : 320}
         autoComplete={type === "password" ? "new-password" : "off"}
       />

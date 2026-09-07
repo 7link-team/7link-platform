@@ -6,10 +6,12 @@ import (
 	"errors"
 	"net/http"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
@@ -19,9 +21,9 @@ import (
 type meOutput struct {
 	Subject           string     `json:"subject"`
 	Issuer            string     `json:"issuer"`
-	PreferredUsername string     `json:"preferred_username,omitempty"`
-	Email             string     `json:"email,omitempty"`
-	EmailVerified     bool       `json:"email_verified"`
+	PreferredUsername *string    `json:"preferred_username,omitempty"`
+	Email             *string    `json:"email,omitempty"`
+	EmailVerified     *bool      `json:"email_verified,omitempty"`
 	OrganizationID    string     `json:"organization_id,omitempty"`
 	ACR               int        `json:"acr"`
 	AMR               []string   `json:"amr,omitempty"`
@@ -31,6 +33,43 @@ type meOutput struct {
 type meInput struct {
 	Authorization string `header:"Authorization" hidden:"true"`
 	Cookie        string `header:"Cookie" hidden:"true"`
+	TenantID      string `header:"X-Tenant-Id" maxLength:"128"`
+}
+
+// Session tenancy is a validated request context, not a mutation of the global
+// login session. Token tenancy remains exclusively the signed token's choice.
+func sessionTenant(ctx context.Context, web *Service, in *meInput, claims *authnext.Claims) (*authnext.Claims, error) {
+	requested := strings.TrimSpace(in.TenantID)
+	if strings.TrimSpace(in.Authorization) != "" {
+		if requested != "" && requested != claims.OrganizationID {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return claims, nil
+	}
+	if web == nil || web.memberTenant == nil {
+		return nil, huma.Error503ServiceUnavailable("authentication_unavailable")
+	}
+	var requestedID guid.ID
+	if requested != "" {
+		id, err := guid.Parse(requested)
+		if err != nil || id <= 0 {
+			return nil, huma.Error422UnprocessableEntity("respx.invalid_id")
+		}
+		requestedID = id
+	}
+	tenantID, err := web.memberTenant(ctx, claims.PrincipalID, requestedID)
+	if err != nil {
+		return nil, huma.Error503ServiceUnavailable("authentication_unavailable")
+	}
+	if requestedID > 0 && tenantID != requestedID {
+		return nil, huma.Error403Forbidden("forbidden")
+	}
+	resolved := *claims
+	resolved.OrganizationID, resolved.TenantID = "", tenantID
+	if tenantID > 0 {
+		resolved.OrganizationID = tenantID.String()
+	}
+	return &resolved, nil
 }
 
 type logoutInput struct {
@@ -344,20 +383,21 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		Path:        "/authn/me",
 		Summary:     "Return the authenticated local principal",
 		Tags:        []string{"authn"},
-		Errors:      []int{http.StatusUnauthorized},
+		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusUnprocessableEntity, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *meInput) (*respx.Body[meOutput], error) {
 		claims, err := authenticator.Authenticate(ctx, in.Authorization, in.Cookie)
 		if err != nil {
 			return nil, huma.Error401Unauthorized("unauthorized")
 		}
-		return respx.OK(ctx, meOutput{
-			Subject:           claims.Subject,
-			Issuer:            claims.Issuer,
-			PreferredUsername: claims.PreferredUsername,
-			Email:             claims.Email,
-			EmailVerified:     claims.EmailVerified,
-			OrganizationID:    claims.OrganizationID,
-		}), nil
+		claims, err = sessionTenant(ctx, web, in, claims)
+		if err != nil {
+			return nil, err
+		}
+		output, err := sessionView(ctx, web, in, claims)
+		if err != nil {
+			return nil, err
+		}
+		return respx.OK(ctx, output), nil
 	})
 
 	if web == nil || !web.Enabled() {
@@ -498,16 +538,19 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
 		OperationID: "authn-get-current-session", Method: http.MethodGet, Path: "/authn/sessions/current",
 		Summary: "Return the browser session", Tags: []string{"authn"},
-		Errors: []int{http.StatusUnauthorized},
+		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusUnprocessableEntity, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *meInput) (*respx.Body[meOutput], error) {
 		claims, err := web.Authenticate(ctx, in.Authorization, in.Cookie)
 		if err != nil {
 			return nil, huma.Error401Unauthorized("unauthorized")
 		}
-		output := meOutput{Subject: claims.Subject, Issuer: claims.Issuer, PreferredUsername: claims.PreferredUsername, Email: claims.Email, EmailVerified: claims.EmailVerified, OrganizationID: claims.OrganizationID, ACR: claims.ACR, AMR: claims.AMR}
-		if !claims.AuthTime.IsZero() {
-			authTime := claims.AuthTime.UTC()
-			output.AuthTime = &authTime
+		claims, err = sessionTenant(ctx, web, in, claims)
+		if err != nil {
+			return nil, err
+		}
+		output, err := sessionView(ctx, web, in, claims)
+		if err != nil {
+			return nil, err
 		}
 		return respx.OK(ctx, output), nil
 	})
@@ -819,6 +862,10 @@ func loginResponse(ctx context.Context, web *Service, result authnext.LoginResul
 
 func authenticationError(err error) error {
 	switch {
+	case errors.Is(err, authz.ErrFieldDenied):
+		return huma.Error403Forbidden("forbidden")
+	case errors.Is(err, authz.ErrFieldsUnavailable):
+		return huma.Error503ServiceUnavailable("authentication_unavailable")
 	case errors.Is(err, authnext.ErrInvalidCredentials), errors.Is(err, authnext.ErrInvalidToken), errors.Is(err, authnext.ErrMissingBearer), errors.Is(err, authnext.ErrInvalidSession):
 		return huma.Error401Unauthorized("unauthorized")
 	case errors.Is(err, authnext.ErrSessionNotFound):

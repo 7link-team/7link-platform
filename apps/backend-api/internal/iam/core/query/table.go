@@ -7,6 +7,7 @@ import (
 
 type (
 	Entities               = entity
+	FieldPolicies          = fieldPolicy
 	Menus                  = menu
 	PlatformAdministrators = platformAdministrator
 	PlatformGrants         = platformGrant
@@ -26,6 +27,7 @@ type (
 // and unprefixed IAM tables.
 type Tables struct {
 	Entities               *Entities
+	FieldPolicies          *FieldPolicies
 	Menus                  *Menus
 	PlatformAdministrators *PlatformAdministrators
 	PlatformGrants         *PlatformGrants
@@ -45,6 +47,7 @@ func Bind(db *gorm.DB, prefix string) *Tables {
 	q := Use(db)
 	return &Tables{
 		Entities:               q.Entity.Table(prefix + model.Entity{}.TableName()),
+		FieldPolicies:          q.FieldPolicy.Table(prefix + model.FieldPolicy{}.TableName()),
 		Menus:                  q.Menu.Table(prefix + model.Menu{}.TableName()),
 		PlatformAdministrators: q.PlatformAdministrator.Table(prefix + model.PlatformAdministrator{}.TableName()),
 		PlatformGrants:         q.PlatformGrant.Table(prefix + model.PlatformGrant{}.TableName()),

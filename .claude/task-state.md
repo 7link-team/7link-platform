@@ -1,5 +1,988 @@
 # Task State
 
+## Active Delivery Objective (2026-09-05, authoritative)
+
+User requests completion of IAM for production delivery and user acceptance.
+Mall is OUT OF SCOPE. Historical sections below are previous checkpoints, not
+the current remaining-work list. No deployment to a live production system is
+required to prove a release candidate; provide a reproducible acceptance environment.
+
+### Current Phase / Execution
+
+Current continuation checkpoint (2026-09-06, owner erasure integration):
+- IMPLEMENTATION, NOT READY. Seven owner cleanup functions and three-dialect
+  write-fencing migrations are implemented and wired through the real identity
+  PrincipalAnonymizer. Authn notifications now persist principal ownership;
+  NULL legacy ownership and in-flight delivery block erasure. Platform grants
+  and live remote SCIM User mappings must be removed by their existing workflows.
+- Latest owner migrations: core/authn13, oauth/organization9, federation/
+  provisioning5, governance4; each erasure milestone depends on identity.lifecycle.
+  Schema lock NOT updated: new owner migrations still require real-engine proof.
+- Fixed core/OAuth fixtures to run actual identity migrations instead of minimal
+  principal tables, completed required seed fields and migration contract checks.
+  Scoped full suites PASS authn/OAuth/federation/governance/organization/
+  provisioning/identity; core final full rerun PASS7.435s after correcting its last
+  stale milestone-count assertion. Evidence: backend .temp/principal-erasure-unit-fixed.log
+  and .temp/principal-erasure-core-final.log.
+- New real-composition TestComposedPrincipalErasure PASS2.397s (four scenarios):
+  successful cleanup, late governance failure rolling back credentials/membership,
+  in-flight notification blocker and platform-access blocker. Tombstone writes
+  rejected, old bearer denied, unrelated admin bearer works, erasure audit retained.
+  Fifth unupgraded-owner negative included in final PASS2.132s. Scoped pinned
+  app/eight-owner lint PASS; diff whitespace check PASS.
+- TestIAMPrincipalErasureOwnerMigrations PASS8.824s on SQLite, PostgreSQL,
+  in-process MySQL; same test real MySQL8.4 PASS1.945s. All seven owner migrations
+  install, reject post-erasure notification writes, and refuse downgrade before
+  removing guards. PostgreSQL/real MySQL additionally reject PII insertion from
+  an already-open REPEATABLE READ pre-erasure snapshot. Compatibility driver has
+  no non-default isolation support, so it does not claim concurrency coverage.
+  Logs: .temp/principal-erasure-engines.log and -mysql8.log. Temporary MySQL
+  instances and their volumes removed by label-validated helper; sessions terminal.
+- README now documents cleanup boundaries, legacy notification remediation,
+  remote deprovisioning prerequisite, restore reconciliation and no guard downgrade.
+- No HTTP/UI for lifecycle yet. All-owner populated-data coverage, remote mapping
+  negatives, both-order in-flight races, migration contracts/schema lock and final
+  browser/release/recovery acceptance remain. No commits/pushes/agents/deployment.
+- Migration-directory pinned lint FAIL only on pre-existing untouched unused
+  databaseColumn in tests/migration/iam_core_model_test.go:23. New migration test
+  has no reported finding; do not claim directory lint PASS. All sessions terminal.
+- Next: extend populated owner/composed tests,
+  update remaining migration contract fixtures and run real full migration gate
+  before regenerating schema.lock and adding platform lifecycle API/UI. Existing
+  preview/MinIO untouched; no new acceptance environment claimed.
+
+Previous checkpoint:
+Current continuation checkpoint (2026-09-06 03:44 America/Los_Angeles):
+- IMPLEMENTATION, NOT READY. Reconciled10.7 plan checkbox with verified real
+  browser evidence.10.8 identity-owned lifecycle foundation is implemented;
+  cross-owner erasure is deliberately NOT wired or exposed through HTTP/UI yet.
+  Goal remains incomplete; no commits/pushes/agents/production deployment.
+- D21 records global platform authority, prior suspension, explicit retention
+  deadline, legal hold, optimistic version and caller-owned atomic cleanup.
+  New identity v3 lifecycle table and v4 immutable principal/lifecycle triggers;
+  milestone identity.lifecycle=4, identity.base remains2. Principal row locking
+  and current lifecycle reads avoid MySQL REPEATABLE READ stale decisions;
+  retention uses existing shared database-clock expression.
+- lifecycle.go implements GetPrincipalLifecycle, SetPrincipalRetention and
+  AnonymizePrincipal orchestration. Missing PrincipalAnonymizer fails closed.
+  The private service hook currently exists ONLY in unit tests, where test-owned
+  credential deletion proves cleanup/audit rollback, not cross-module erasure.
+  No application hook, management API, UI or new user-facing erasure claim.
+- Database guards reject tombstone profile/status update, principal deletion,
+  lifecycle reset/deletion. Migration down4 first performs an immutable-row
+  guarded no-op UPDATE, refusing downgrade BEFORE any DDL if tombstones exist.
+  Clean installations still downgrade/up. Generated query code regenerated,
+  manual prefix table binding and ownership fixtures updated (68 IAM tables).
+- PASS: identity full unit suite; scoped pinned lint; identity race90.3%,6.373s
+  (.temp/identity-lifecycle-race.log, .temp/identity-lifecycle-cover.out).
+  Focused three-engine/prefix upgrade,
+  preservation, immutable writes and downgrade rejection18.741s; after PostgreSQL
+  variable precision normalized to TIMESTAMPTZ(3), postgres-only17.955s PASS.
+  Real MySQL8.4 full migration test PLUS lifecycle semantic test PASS29.301s
+  (.temp/identity-lifecycle-mysql.log). Schema lock regenerated AFTER real
+  migration evidence:171 files/68 tables/29 cross-module FKs. Architecture,
+  autonomous ownership and composed tenant isolation tests PASS. No full CI,
+  broad performance or browser rerun in this increment.
+- Temporary MySQL fixture10e3bacfe72f07e200130e3bea992f40dabe66dcfc3669dd3c28e8e4cd7d2b24
+  and its exclusive anonymous volume removed after label verification. Initial
+  PowerShell helper failed on native stderr/SSH template quoting; reused same
+  instance, corrected structured inspect parsing, no duplicate resource created.
+  MinIO archive fixture and existing8083/8093 preview untouched. All test sessions
+  terminal at this checkpoint; preview NOT upgraded to lifecycle source.
+- Self-review: reused owned migration/query/transaction/audit/clock patterns,
+  source outputs regenerated, scoped architecture/ownership/isolation verified,
+  worktree preserved. Increment accepted only as an internal lifecycle foundation;
+  original production-delivery acceptance remains NOT READY.
+- Next: complete owner-scoped operational PII cleanup with in-flight writer
+  fencing before composing PrincipalAnonymizer. In addition to prior inventory,
+  governance AccessReviewItem has principal_name; authn notification_outbox has
+  recipient/ciphertext but NO principal ID, so do not blindly delete by email or
+  claim complete erasure. Platform administrative grant removal already exists
+  in core/platform.go. SCIM live outbound mappings must not lose remote IDs
+  without deprovision/reconciliation. Then platform HTTP/UI, composed browser
+  acceptance, final combined10.11 release/recovery and reproducible user environment.
+
+Previous checkpoint:
+Current continuation checkpoint (2026-09-06 03:16 America/Los_Angeles):
+- IMPLEMENTATION. Previous reply explained delays without implementation;
+  this turn closes10.7 real browser acceptance and proceeds to10.8. Mall excluded;
+  no commits, pushes, agents or production deployment. Avoid repeating full CI
+  after every increment; run focused regressions until final candidate is ready.
+- Real browser harness: TestArchiveBrowserSeed creates ONLY a new exclusive
+  temporary SQLite file, seeds504 aged events across platform0/tenant91001/91002
+  through actual Append with private test clock. No audit row mutation/triggers
+  weakened. TestComposedArchiveBrowserAcceptance uses the existing full app
+  fixture plus scoped config callback; actual worker15s, real MinIO behind a
+  temporary outage proxy, dynamic isolated HTTP/Vite listeners.
+- archive-live-browser-audit.mjs uses Node/Chrome, not API mocks. PASS35365,
+  68.645s: outage then browser retry, manual second-segment queue, live polling,
+  exact version/whole-file digest/NDJSON download, platform header omission,
+  cross-tenant404 and ordinary-member tenant/platform403. Four completed jobs,
+  all504 seed events preserved. Desktop/mobile tenant/platform screenshots
+  inspected: .local/screenshots/archive-live/1788689685843/. Backend log
+  .temp/archive-browser-live-current.log. Test backend/Vite/Chrome terminated
+  and temporary DB removed by harness. Existing8083/8093 preview untouched.
+- Initial harness attempts: Bun/Chrome pipe hung, terminated only confirmed
+  child32932 tree; switched to existing Node convention and added child timeout.
+  First Node run exposed test adapter assuming data.items; actual respx.List
+  returns data array, fixed test decoding (production client already correct).
+  Scoped app/audit lint PASS. No production runtime source edits in this increment.
+- Prior true MySQL31055 handle was lost at interruption, but terminal process
+  inspection and .temp/archive-multipart-mysql.log confirm all tests and final
+  schema reconciliation completed (165 files/67 IAM tables/29 cross-module FKs).
+  Earlier full CI77767 and full real audit race9992 remain current runtime evidence.
+-10.7 now complete. Remaining10.8: irreversible principal anonymization/retention
+  holds, credentials and linked PII cleanup, UI/API and restoration prevention;
+  then10.11 final combined recovery/release gates and user acceptance.
+-10.8 inspection: Principal is global, memberships hold copied profile fields;
+  identity already owns cross-module credential/revocation workflows. Other PII
+  is owned by authn (security state), federation (identity links), provisioning
+  (SCIM identifiers), organization (invitations), core (member profiles). Do not
+  implement name/email-only clearing or allow a tombstone to be reactivated.
+  D17 authorizes mainstream lifecycle choices; preserve module ownership using
+  existing narrow capability/composition conventions. Architecture not yet edited.
+- Next concrete action: implement10.8 lifecycle state and transaction orchestration,
+  owner-scoped PII cleanup and permanent restore/write guards, then targeted
+  integration/browser proof. MinIO fixture from previous checkpoint remains for
+  final combined acceptance; do not recreate it or touch other services.
+
+Previous checkpoint:
+Current continuation checkpoint (2026-09-06, multipart repair and verification):
+- IMPLEMENTATION. Previous goal turn was a read-only status report, classified
+  no progress. This continuation repairs the reproduced storage defect; overall
+  production objective remains open, mall excluded. No commits, pushes, agents
+  or production deployment.
+- Reconciled uncheckpointed prior increment: archive_integration_test.go tests
+  two independent pools, 16 concurrent requests/executors, durable recovery after
+  object upload, stale completion fencing, tenant isolation and platform worker.
+  Queue conflict fallback now clears the losing ID before winner lookup and uses
+  FOR UPDATE for non-SQLite so MySQL REPEATABLE READ observes the winning insert.
+  PostgreSQL/SQLite lifecycle PASS97.994s and real MySQL full gate PASS; logs
+  .temp/archive-concurrency-engines-fixed.log and -mysql-fixed.log in backend.
+- Real 70 MiB multipart replica test previously FAIL: two immutable versions
+  published. Root cause confirmed in minio-go v7.2.1: high-level multipart paths
+  reset PutObjectOptions and discard If-None-Match. archive.go now reuses SDK
+  Core multipart APIs above16 MiB, streams parts without PII temp files, awaits
+  producer digest/length before completion, and explicitly conditions completion.
+  Retention belongs to initiation, not completion (real MinIO rejects it there).
+  Canceled/failed uploads abort with independent10s cleanup; abrupt host/process
+  loss requires bucket incomplete-multipart lifecycle cleanup documented in README.
+- PASS: real replicas publish one version and leave no unfinished upload;
+  cancellation after first part, producer failure/changed source publish nothing;
+  lost completion response converges and retry reuses same version. The latter
+  recovers in the same SDK call, so test expects success, not a forced error.
+  Real HTTP download binds persisted version even after latest alias replacement.
+  A1,003-event chain across3 objects (first2 multipart) verifies no missing or
+  duplicate sequence, boundary hashes, completion counts and retained source rows.
+- PASS: full audit race9992,27.105s,92.4% coverage including real storage tests;
+  .temp/archive-multipart-race.log/.out. Pinned scoped lint PASS, diff-check PASS.
+  Full make ci77767 PASS exit0, log .temp/archive-multipart-ci.log: overall90.2%,
+  audit91.9% without real-store env, lifecycle80.544s, migration227.899s,
+  performance48.397s, full lint/build/OpenAPI match. Runtime source unchanged
+  after CI started. Current-source make test-mysql8 is running; inspect its
+  returned tool handle and .temp/archive-multipart-mysql.log before claiming PASS.
+  Schema/API contracts unchanged by this repair; no generated-output edits.
+- Isolated MinIO reused and confirmed live: container
+  cd9ec4f71f7401c7f2c5073e0b7c3dda07779a5870c6b0baab5f01b206a99a81,
+  iam-archive-acceptance-20260906 at http://10.0.0.100:32820, private volume
+  777662e9effe2cce2cce180eeab4675578f28d3558ac250a99f08ee0e6a6bd26.
+  Transport .temp/iam-env.mk, credentials are existing audit test constants.
+  Preview8083/8093 untouched and still previous CI binary, archive disabled.
+- Next: finish current real MySQL gate, then reproducible isolated aged-audit fixture and
+  REAL browser queue/worker/storage acceptance. Preserve append-only triggers and
+  do not edit production data.10.7 remains open, then10.8 anonymization/tombstones,
+  final recovery/release gates and user acceptance. Clean only validated isolated
+  MinIO resources after storage/browser evidence is complete.
+
+Previous checkpoint:
+Current continuation checkpoint (2026-09-06 02:24 America/Los_Angeles):
+- IMPLEMENTATION. Prior status-only goal turn classified as no progress. This
+  turn implements archive management HTTP/UI and verifies actual platform archive
+  execution. Overall production objective remains open; mall excluded; no commits,
+  pushes, production deployment or agents.
+- Recovered previous archive test handle28221: PASS8.254s. Added management tests
+  for actual/pending counts, retry/database-clock leases, audit rollback, exact
+  object verification/download, metadata corruption, tenancy/platform and guards.
+  Worker includes tenant0; platform retention supported. Download supplies exact
+  content length and verifies object retention against frozen job minimum.
+- HTTP manifests expanded8->21; app frozen operations218->231. Read/export/manage
+  guards are explicit, platform always platform/administer. I18n parity extended.
+  Full audit race17189 PASS16.053s, coverage92.2%; pinned audit lint PASS. No live
+  MinIO in this turn, so real storage tests are skipped, not newly verified.
+- OpenAPI68969 regenerated; frontend schema regenerated. Client uses explicit
+  tenant/platform scope; platform header omitted including download. API fixtures
+  validate paths, pagination, conflicts and missing NDJSON completion. UI retains
+  pinned tenant requests, keyed scope reset, polling, job details, retry/verify/
+  download and platform navigation. Retention editor is not overwritten by polls.
+- Frontend typecheck/lint/test/build PASS (IAM45 tests; shared UI tests cached).
+  archive-ui-browser-audit.mjs runs MOCK API fixtures only: desktop/mobile twice
+  PASS, final fixture run542ebf. Screenshots inspected (jobs and object dialog).
+  Proves UI interaction/layout, NOT real storage/browser acceptance.
+- First full CI10035 output reached all gates including migrations306.299s,
+  build and OpenAPI match, but PowerShell redirection contaminated exit status.
+  Correct final rerun34700 PASS exit0 via cmd /c: overall90.2%, audit92.2%,
+  uncached migration307.188s, lifecycle86.631s, performance64.519s, lint/build/
+  OpenAPI match. Log apps/backend-api/.temp/archive-management-ci-final.log.
+  No backend runtime edits after final CI started. All tool sessions terminal.
+- Preview8083/9093 upgraded using identical validated process args and --migrate;
+  API PID27596, frontend8093 PID15524. Binary .local/scim-actor-acceptance/
+  archive-preview.exe SHA256 matches final CI bin/7link-api. Health200.
+  Inline launch twice hit OS access-denied before execution; after stopping old
+  preview, .local/launch-archive-preview.ps1 successfully launched new process.
+  backend-pid.json updated; other8082/8092 untouched. Secret file args unchanged,
+  no passwords printed and ordinary preview still has archive execution disabled.
+- Real authenticated browser smoke .local/archive-live-smoke.mjs PASS on both
+  desktop/mobile (latest15287e): tenant and platform status/list200, disabled
+  request503, no browser/API errors; screenshots inspected. This exposed platform
+  guid0 serializing null (frontend types/fixtures corrected) and zero policy time
+  showing year1 (now platform default). Navigation scope selection tested too.
+  Preview http://127.0.0.1:8093/iam/audit-governance is NOT final user acceptance.
+- Remaining10.7: multi-engine concurrent jobs/recovery, multipart/large-chain
+  real storage checks and complete REAL browser acceptance. Then10.8 principal
+  anonymization/tombstones, recovery/release/final user acceptance. Do not mark
+  goal or10.7 complete on these management/UI-only results.
+- Next concrete step: recreate an isolated MinIO fixture using validated transport
+  in backend .temp/iam-env.mk; extend archive management to real immutable-version
+  download and three-engine concurrent retry/lease recovery. Existing real-object
+  tests are archive_test.go TestArchiveRealObjectLockAndRecovery and
+  archive_worker_test.go real durable job test; IAM_ARCHIVE_MINIO_ENDPOINT opts in.
+  Build a reproducible isolated aged-audit fixture for actual queue/worker/browser
+  acceptance without editing production data or weakening append-only triggers.
+- Self-review: export/S3/router/generation/UI patterns reused, original gates and
+  assertions preserved, generated schema regenerated, docs/D20/plan aligned,
+  git diff --check PASS. Original13 browser audits not rerun in this increment;
+  scoped UI/live tests do not substitute for the final broad regression.
+
+Previous checkpoint:
+Current continuation checkpoint (2026-09-06 01:36 America/Los_Angeles):
+- IMPLEMENTATION. Previous status-only turn was no implementation progress;
+  this continuation implements actual 10.7 archive execution. Overall goal stays
+  open; mall excluded; no commits, pushes, production deployment or agents.
+- Added archive.go real streamed NDJSON object write/readback using existing
+  PrepareExport/WriteExport and AnchorStore. Full-file SHA256/size, exact S3
+  version and COMPLIANCE retention required before success; conditional creation,
+  retry reuse, source revalidation, no PII temp files and no event deletion.
+  AnchorStore now caches only successful initialization, recovering after outages.
+- Added archive_jobs.go, model/query generation and three-engine v3 migration:
+  durable queued/running/failed/complete, frozen incremental sequence segments
+  (500 events), database-clock leases, fenced completion, bounded attempt duration,
+  persisted exponential backoff and transactional lifecycle audit events.
+  Added archive_worker.go module Start/Stop and iam_audit.archive app config;
+  shares anchor S3 config without requiring anchor.enabled. HTTP/UI NOT added.
+  Startup rejects missing v3 schema; persisted snapshots cannot change tenant,
+  sequence range/generation time or add filters that silently omit segment rows.
+- PASS: archive module full race including real MinIO tests (19235): 92.0%;
+  real immutable-version readback, deletion refusal, restart and alias replacement;
+  actual durable-job-to-MinIO completion. Focused three-engine/prefix migration
+  and ownership tests 38570 PASS. Pinned audit lint PASS after assertion cleanup.
+- Initial full CI 77148 failed architecture and the audit migration target fixture:
+  authn/provisioning prior field-policy work omitted core.Name dependencies; the
+  generic migration target still said v2. Declarations/tests and v3 target fixed.
+  Integration tests now use -count=1 because source/subprocess architecture checks
+  cannot rely on Go's test cache. No test assertions/thresholds were weakened.
+- PASS: final make ci 69391, overall90.2%, audit91.8%, every module threshold;
+  uncached architecture/lifecycle/migration/performance, migration242.859s,
+  build and OpenAPI consistency. PASS: make generate82399, all71 generated Go
+  hashes unchanged. Latest audit/authn/provisioning full race90781 PASS,
+  14.187/42.328/10.671s, includes real MinIO tests on current runtime source.
+- Real MySQL93639 initially passed execution but final lock check expected66;
+  updated actual ownership/tool to67 and regenerated lock after that evidence.
+  Normal no-update full gate31890 PASS. Explicit thresholds-enabled full gate
+  71298 PASS: migration10.899s, performance31.072s, replay.265s, lifecycle5.589s;
+  medians auth/session/SCIM/audit2.096/3.250/85.315/3.184ms below original limits.
+  Final lock:165 migration files,67 IAM tables,29 cross-module foreign keys.
+- Runtime preview 8083/8093 NOT rebuilt or migrated; previous 00:53 build remains.
+  API PID27964/frontend PID15524 and both HTTP probes200 rechecked. Temporary
+  dedicated MinIO container f518f6d992dcb0ab9f98fcebe68fe1fbff3a43cbea1e5bebcf49e464a4c85e08
+  and its verified private anonymous data volume were removed after acceptance;
+  Docker host10.0.0.100 has no running test containers. All tool sessions terminal.
+  Recreate isolated MinIO and set IAM_ARCHIVE_MINIO_ENDPOINT for real archive tests.
+- Self-review: reused export/S3/database-clock/module lifecycle; generated queries
+  regenerated; append-only triggers untouched; scoped dependency declarations
+  repaired; README/D20/backend plan updated; git diff --check PASS. No frontend
+  runtime edits or new browser-gate claim. NOT READY for production acceptance.
+- Next: add archive management HTTP/UI with correct view/export/manage guards,
+  tenant reset, job status and actual archived/pending counts. Frontend surface:
+  apps/iam/src/app/audit-governance/page.tsx. Complete platform tenant=0 archive
+  handling (currently skipped), multi-engine concurrent job execution, multipart
+  storage/recovery/large-chain acceptance and browser proof. 10.7 stays open.
+  Then 10.8 anonymization/tombstones, final recovery/release and user acceptance.
+
+Previous checkpoint:
+Current continuation checkpoint (2026-09-06 00:53 America/Los_Angeles):
+- IMPLEMENTATION, goal still open; mall excluded. 10.5 scoped implementation and
+  acceptance now PASS: core policy/catalog/audit/revision, todo, identity/core
+  profile APIs, authn session/JWT, OAuth userinfo, SCIM inbound and outbound, UI.
+  Prior three-engine, true MySQL, race and performance evidence remains below;
+  complete current browser regression now closes the previous acceptance gap.
+- SCIM outbound UI complete: tenant-bound API/contracts, create/edit, actor
+  preserve/rebind/clear, secret preservation/rotation, optimistic reload,
+  User/Group push, remote removal, local configuration deletion. Real receiver
+  audit repeatedly PASS, latest 49131 on CI backend: ordinary tenant admin, wire
+  payloads/mapping reuse, actor projection, denied identifier -> 403/zero calls,
+  disabled/unbound -> 409/zero calls, 502/retry, missing mapping/cross-tenant 404,
+  tenant reset, desktop/mobile screenshots inspected.
+- Original 13 browser audits ALL PASS in final full run 66849. Reused assertions;
+  SCIM binds a real account, registration permits exact expected field-catalog
+  GET 403 for a nonmember, invitation/review scripts wait for enabled buttons
+  after async list refresh. audit:legacy isolates profiles/CDP and seeds the
+  specified fixture tenant, leaves JS dialog handling to the legacy scripts.
+- Two real release defects fixed with red-before/green-after regressions:
+  pkg/timezone embeds time/tzdata so standalone -trimpath Windows binaries resolve
+  IANA zones without Go installed; AppLayout memoizes Navigate state so lazy login
+  loading does not cause a React update loop. audit:navigation PASS (84074) under
+  250ms latency on desktop/mobile, including login return to protected deep link.
+- PASS: full make ci 91728 (90.2% overall, all module thresholds, migrations
+  212.738s, lint/build/OpenAPI); timezone/policyx race 100.0%/91.2%; make generate
+  55596 preserves 70 generated Go hashes. Frontend typecheck/lint/test/build PASS,
+  42 IAM tests (UI tests reused cache). Profile, SCIM actor, session tenant and
+  field-policy browser audits also rerun PASS on final backend/frontend.
+- Runtime restored to ordinary preview config: API 8083/9093 PID 27964 matches
+  final CI binary hash, frontend 8093 PID 15524; both probes 200. Extended test
+  registration/captcha bypass/notification/passkey options are OFF again; local
+  notification receiver 8094 stopped, every test session terminal. Other services
+  8082/8092 untouched. Preview http://127.0.0.1:8093/iam/scim-directories?view=targets
+  is not final production acceptance. Password/tenant files unchanged.
+- Next: actual 10.7 archive lifecycle. Read audit/governance.go, audit.go
+  PrepareExport/WriteExport, anchor.go S3 object-lock client, module lifecycle.
+  Reuse these and existing app jobs; design durable job/status, integrity-checked
+  archive execution, retry/recovery and retention boundaries. D17 forbids hard
+  deletion of audit events. Then 10.8 anonymization/tombstones, recovery/release
+  and user acceptance. No commits, pushes, production deployment or agents.
+
+Previous checkpoint:
+Current continuation checkpoint (2026-09-06 00:11 America/Los_Angeles):
+- IMPLEMENTATION, not production acceptance. Profile default composition and
+  SCIM enforcement are integrated; all details at the 23:47 checkpoint below.
+- Full make ci 11708 PASS: 90.2% overall; identity 90.8%, all registered module
+  thresholds met; migrations 219.441s; lint/build/OpenAPI consistency PASS.
+  Initial CI 26327 failed identity coverage 89.8%; real HTTP policy projection,
+  denied/null writes, unavailable evaluator and scope tests fixed that gap.
+  Latest full identity race PASS 5.394s. make generate PASS, 70 *.gen.go hashes
+  unchanged. No runtime source changes after this CI; later edits are frontend,
+  performance fixture/plan checks and documentation, requiring final gate rerun.
+- Frontend typecheck/lint/test/build PASS; profile browser audit repeatedly PASS
+  on actual newest backend, last isolated tenant 35991337975152640. Desktop and
+  mobile masked/omitted email, capability-aware disabled input, partial PATCH,
+  raw email preservation, direct null rejection, hidden verification and tenant
+  reset proven. Final mobile editor/list screenshots inspected after fixing
+  local dialog grid/gaps and table minimum width. No shared UI component edits.
+  Current field-policy, SCIM-actor and session-tenant browser audits rerun PASS.
+  Original 13 browser audits still NOT fully rerun; old scim-browser-audit.mjs
+  must create/bind an actual service account before performing SCIM operations.
+- Preview rebuilt/restarted ONLY dedicated API 8083/9093: PID 5648, binary hash
+  matches CI bin/7link-api. Frontend 8093 remains live; 8082/8092 untouched.
+  Password file unchanged. Console http://127.0.0.1:8093/iam/users is a preview,
+  not a release candidate or final user acceptance.
+- MySQL normal gate initially identified new bound-account validation SQL not
+  in saved plans. Plans-only regeneration PASS (48030): migration 10.881s,
+  performance 30.719s, replay 0.250s, composed lifecycle 5.149s. PostgreSQL plan
+  guard initially assumed service account scope was tenant_id; it is actually
+  owner_tenant_id. Added accurate scope + MySQL alias and positive/negative
+  regression tests; missing/wrong filters still rejected. Focused tests/lint PASS.
+  PostgreSQL plans regeneration PASS 41.279s; normal updates-OFF enforced rerun
+  PASS 40.852s: medians auth/session/SCIM/audit = .305/.454/7.433/.354ms, original
+  thresholds .8/2/8/1ms. Structured HEAD comparison proves all baseline workload,
+  samples, thresholds and non-plan metadata unchanged.
+- PASS: MySQL updates-OFF enforced full gate 60212: migration 10.822s,
+  performance 32.127s (SCIM median 78.517ms < original 154ms), replay 0.224s,
+  composed lifecycle 5.147s. Final make ci 16033 PASS after the test-only plan
+  calibration and baseline changes, 90.2% overall, all module thresholds met,
+  integration/build/OpenAPI consistency PASS. Latest frontend gates rerun PASS.
+  All test/tool sessions are terminal. Preview probes both 200.
+- Self-review: default composition tested without fixture registration; raw and
+  public identity boundaries retained; automation fails closed; schemas generated;
+  no policy bypass or weakened thresholds. Reused core evaluator, service-account
+  validator, existing API factory and module lifecycle. git diff --check PASS.
+  Final production acceptance NOT READY: remaining features and regression scope
+  below are still required; no goal-completion claim.
+- Next: adapt legacy scim-browser-audit.mjs to create a real service account and
+  bind it through the directory editor, then run all original 13 browser audits
+  on the current preview. Add SCIM outbound target
+  management UI, 10.7 real archive, 10.8 anonymization/tombstones, recovery/release
+  and final user acceptance. No commits, pushes, production deployment or agents.
+
+Previous checkpoint:
+Current continuation checkpoint (2026-09-05 23:47 America/Los_Angeles):
+- IMPLEMENTATION. Latest goal resumed after read-only status report. Mall remains
+  excluded; no commits, pushes, deployment or agents. Prior status-only turn was
+  no implementation progress; this turn has implemented and verified integration.
+- SCIM now enforces profile policies on Get/List/Create/PUT/PATCH/Bulk, filter
+  inference and outbound users. Explicit nulls and aliases checked; raw PATCH
+  snapshots preserved. Unbound inbound/outbound automation fails closed; config
+  repair remains possible. Outbound uses the bound actor, not initiating admin.
+- ProfileFields is NOW REGISTERED in DefaultFields. Removed isolated registration
+  from app profile test. Old fixtures now inject the evaluator and bind real
+  service accounts; no production policy bypass or weaker test assertions.
+- PASS: provisioning full race 9.092s; composed SCIM profile SQLite plain/prefixed
+  2.217s; all-engine/prefixed lifecycle 103.389s, now includes real SCIM profile
+  role denies, projection, filters, null/PATCH/PUT/Bulk rejection, raw preservation,
+  remote payload attribution, zero remote calls on denial and role revocation.
+- PASS: full core/authn/oauth/provisioning/authz/app race 75.359/88.963/16.949/
+  21.813/1.137/89.718s. Identity originally failed on missing fixture dependency;
+  after fixing that, full identity race PASS 5.113s.
+- OpenAPI and TypeScript regenerated. Frontend profiles/session/member fields
+  now optional; contract check also prevents requiring server-optional fields.
+  Principal editor uses effective capabilities, only submits changed fields,
+  does not persist redacted placeholders, pins requests and resets on tenant
+  changes. Security page no longer labels an invisible email as unverified.
+  Frontend typecheck/lint/test/build PASS (41 IAM tests, 85 UI cached).
+- Full make ci running session 26327 (gofmt/lint passed; coverage in progress).
+  Existing preview still API 8083 PID 31208, frontend 8093 listener PID 15524;
+  it has NOT been rebuilt/restarted. Older 8082/8092 untouched. No current browser
+  proof yet for profile UI; add audit, then rebuild preview only after gates.
+- Next: finish CI, profile browser audit and latest real-MySQL/performance gates.
+  Update D17/D19/README/plan to remove obsolete unregistered/unbound notes.
+  Outbound target UI, actual 10.7 archive, 10.8 anonymization, recovery/release
+  gates and user acceptance remain open. Not a release candidate.
+
+Previous checkpoint (superseded by 23:47 for profile/SCIM integration):
+Current continuation checkpoint (2026-09-05 23:18 America/Los_Angeles):
+- IMPLEMENTATION, not a release candidate. The preceding user status request
+  was handled read-only; the active production-delivery goal then resumed.
+  No commits, pushes, production deployment, mall edits or agents this turn.
+- ProfileFields and identity/core public DTO projection now exist. Identity
+  create/update checks explicitly submitted fields including null; member
+  handlers project display/email. Lists reject hidden search fields and their
+  fixed ordering fields (login_name for principals, display_name for members).
+- Authn ProjectProfile uses the core evaluator through module.Services.
+  Sessions without a selected tenant omit profile attributes; scoped cookie
+  responses apply policy, bearer responses additionally honor token scopes.
+  Raw Authenticate identity remains internal and unchanged by projection.
+  Bearer profile reads refresh principal values from the writer before projection.
+- Principal access/ID tokens honor policy plus profile/email scopes. ID token
+  contract now takes the consented scope; OAuth passes row.Scope. Userinfo calls
+  the current policy projection and uses optional response fields. Local JWT
+  verification previously discarded Raw/scope, making real userinfo reject
+  authorized tokens; it now retains the verified payload. Regression proved
+  this with real signed tokens, not only OAuth fixtures.
+- SCIM PatchUser no longer builds replacement from public GetUser. It reads
+  raw identity inside its transaction, retains that version even without
+  If-Match and shares replaceUserOn with PUT. Tests cover concurrent disjoint
+  PATCH without ETags, stale versions and audit rollback. SCIM field projection
+  and write guards themselves are still NOT implemented.
+- PASS: full authn/oauth/authz race tests (47.625/9.830/1.110s); provisioning
+  full race (9.598s); composed SQLite plain/prefixed profile HTTP test under
+  race (4.717s). Covers real database policies, admin/member/session/userinfo,
+  old-token policy changes, scope separation, null rejection, fixed-order and
+  search restrictions, tenant isolation and membership revocation.
+- PASS: pinned lint for authn/oauth/provisioning/authz; gofmt and diff check.
+  Whole main-module compile-only go test ./... -run '^$' 15487 terminated
+  successfully. All test/tool sessions from this increment are terminal.
+  No full CI/current coverage/browser gate claim. Self-review checked raw/public
+  identity boundaries, actual scope propagation and non-bypass of policy denies;
+  final production acceptance remains open.
+- IMPORTANT: ProfileFields remains deliberately UNREGISTERED in DefaultFields.
+  The composed profile test registers fields only in its isolated fixture.
+  Current profile-protected admin/member/scoped-session HTTP cannot work in
+  the ordinary default composition until remaining consumers and registration
+  are finished. Do NOT rebuild/restart the existing preview from this tree.
+  OpenAPI/TypeScript and frontend optional-profile contracts are NOT yet
+  regenerated for this increment. Prior 22:48 full gates predate these edits.
+- Next: finish SCIM Get/List/Create/Replace/PATCH/filter/outbound profile guards
+  using the explicitly bound service account; fail closed on unbound automation.
+  Reuse the filter-parser AST and transactional raw patch flow. Only then
+  register ProfileFields, update fixtures and OpenAPI/frontend contracts, and
+  verify all consumers across engines and browser. Outbound UI, 10.7 archive,
+  10.8 anonymization, recovery/release gates and user acceptance remain open.
+- SCIM source notes: normalizeUserInput aliases displayName/name.formatted and
+  falls back to userName. PATCH alias handling needs real persisted-value tests;
+  current name.formatted replacement can be shadowed by retained displayName.
+  Do not infer write authorization merely from a full replacement after PATCH:
+  check explicitly affected attributes, preserve other raw values, and reject
+  filters/sorts on masked fields. UserResource currently uses scalar userName
+  and struct name; omission must be represented honestly when adding projection.
+
+Previous verified checkpoint (2026-09-05 22:48, predates profile edits):
+- D18 session tenant implemented for /authn/me and current session: explicit
+  membership checked on writer; only a sole active membership can auto-select;
+  ambiguous/empty remains unset. Signed token tenant cannot be overwritten with
+  a header; cookie context does not mutate the global login session. Core-owned
+  MemberTenantResolver is wired via module.Services. D18/README document semantics.
+- PASS: full make ci 92727 (90.2% overall; migration 213.803s; lint/build/OpenAPI
+  consistency), core/authn/app full race 80463 (90.1/90.2/89.6%, 63.685/69.213/
+  61.187s), uncached three-engine/prefixed lifecycle 71837 (64.383s), including
+  ordinary-member cookie login, multiple memberships, explicit selection, tenant
+  suspension, revocation and bearer tenant mismatch. Core fixture corrected its
+  duplicate principal seed; production behavior was not weakened.
+- PASS: make generate 89172; all 70 *.gen.go hashes unchanged. OpenAPI/TypeScript
+  regenerated; frontend typecheck/lint/test/build PASS (41 IAM, 85 UI cached).
+- PASS: new audit:session-tenant twice, starting with empty browser storage and
+  no tenant prefill, actual ordinary tenant administrator login, derived menu
+  requests, desktop/mobile, ambiguity, preserved manual choice and revocation.
+  Final screenshots inspected. SCIM actor browser audit rerun PASS on same build.
+  Original 13 audits still NOT rerun against this tree.
+- Preview restart recovered safely, no other environment stopped. API 8083 PID
+  31208 uses unique bin/7link-api-scim-*.exe; hash matches latest CI bin/7link-api.
+  Frontend 8093 remains live, both HTTP probes 200. Password/tenant files unchanged.
+  .local/start-scim-actor-acceptance.ps1 -BackendOnly and restart script avoid
+  overwriting a locked executable; existing 8082/8092 preserved.
+- PASS: current-source real MySQL 24444, updates OFF and thresholds enforced:
+  migrations 12.559s, performance 29.327s, replay 0.238s, composed lifecycle
+  including the new session scenario 4.595s; schema lock unchanged (162/66/29).
+  Uncached enforced PostgreSQL performance 84795 PASS (39.102s); medians
+  authorization/session/SCIM/audit = 0.276/0.398/3.927/0.314ms, all below original
+  thresholds. No thresholds or baseline samples changed in this continuation.
+- Self-review: scoped IAM fix, core owns membership reads, raw login/token
+  identity behavior preserved; HTTP tenant projection tested independently and
+  in composed apps; no frontend runtime changes, commits, pushes or mall edits.
+  git diff --check PASS (existing decisions LF normalization warning only).
+  All test/generation tool sessions are terminal. Preview services remain running.
+- Next: implement actual 10.5 profile consumers using the source map below,
+  not more prerequisite-only work. 10.7/10.8/outbound UI,
+  complete browser/production/recovery/release gates and user acceptance remain.
+
+Next 10.5 source map: identity.Principal is shared by raw internal provisioning
+reads, so protect public views without mutating that contract blindly. Core
+member HTTP also emits display_name/email. Authn sessionTenant now supplies a
+validated cookie response tenant but raw Authenticate still intentionally does
+not choose a tenant. JWT issueSubjectToken/IssueTenantIDTokenWithAssurance put
+preferred_username/email/email_verified directly into payloads; oauth userinfo
+echoes these claims after checking only openid, so scope and field restrictions
+must be enforced there too. Provisioning Get/ListUsers serializes raw records;
+PatchUser currently builds a replacement from GetUser, which must become a raw,
+version-protected internal read before masking is introduced. Outbound
+buildRemoteResource calls identity.Get then builds UserResource, so it must use
+the validated bound actor's fields, not the initiating administrator. Do not
+publish profile catalog fields until all these consumers enforce them; NULL
+automation bindings remain an explicitly unfinished fail-closed requirement.
+
+Previous implementation checkpoints:
+
+IMPLEMENTATION. Federation replay and 10.4 are verified at the 19:32 checkpoint
+below. 10.5 now has policies, the todo consumer and a verified management UI;
+IAM profile/alternate entrypoints remain. SCIM tenant/credential revalidation is
+implemented and verified at 21:22 below, including full backend CI. Frontend
+gates remain from 20:50; final production gates remain open.
+Direct execution: policy contracts, persistence and consumers share
+dependencies and are not suitable for concurrent edits.
+Preserve the uncommitted changes; no commit or push has been made.
+
+### Active Binding Checkpoint (2026-09-05 22:03, supersedes 21:22 for these changes)
+
+- Implemented identity.ServiceAccountValidator via module.Services. It requires
+  an active same-owner tenant, account/principal/member, no pending activation,
+  no deletion and no expiry, using the caller's transaction.
+- Provisioning directories/targets have optional versioned service_account_id;
+  v4 additive migrations reference identity service accounts. Create/rebind
+  validates the actor, retained SCIM contexts compare the current binding, and
+  inbound/outbound operations reject invalid bound actors. Disabled/deleted old
+  actors do not prevent configuration repair. Audit rollback and null clearing
+  are tested. Outbound administrative rejection is 409, inbound SCIM is 401.
+- IMPORTANT: nil bindings still preserve legacy operation as an intermediate
+  prerequisite. No automatic actors/roles, no profile fields exposed in catalog.
+  Full profile field enforcement and fail-closed unbound automation remain open.
+- PASS: identity/provisioning/app race tests, coverage 90.5/90.0/89.6%; real composed
+  HTTP create/rebind/stale-version/retained-context/spoofed-actor/status/expiry/
+  activation/membership/deletion/repair/clear, no remote calls on rejection.
+- PASS: three-engine plain/prefixed provisioning migration tests and identifier
+  limits (16.390s), populated v3->v4->v3->v4, FK/CHECKs, dependency rollback.
+  MySQL emulator driver fakeTransaction is no-op; transaction rollback assertions
+  run on SQLite/PostgreSQL and actual MySQL, not this emulator.
+- PASS: real MySQL gate (69283 exit 0): migrations 11.430s, performance under
+  unchanged thresholds, replay concurrency, composed lifecycle including actors.
+  Schema lock regenerated: 162 migrations, 66 IAM tables, 29 cross-module FKs.
+- PASS: PostgreSQL plans-only performance regeneration (39.080s), SCIM 4.459ms
+  < 8ms. Both engines preserve original benchmark samples and thresholds.
+- PASS: OpenAPI export/types regenerated; frontend typecheck/lint/test/build
+  (41 IAM tests, 85 UI tests cached). SCIM directory editor preserves/chooses/
+  clears bindings, pins requests to tenant, and offers explicit 409 reload.
+- PASS: new Node/Playwright scim-actor-browser-audit.mjs against fresh isolated
+  SQLite service: binding create/preserve/rebind/clear, conflict reload, tenant
+  switch, desktop/mobile. Final screenshots inspected after local dialog spacing
+  fix. Original 13 browser audits not rerun. Frontend gates need final rerun after
+  that last spacing edit.
+- Full make ci (25589) FAILED in an existing databasemonitor timing test: probe
+  call count became visible before snapshot publication. Focused 50x rerun passed;
+  code inspection confirms the race. Test-only fix now waits for published second
+  failure snapshot and stops the poller before asserting cached reads add no calls.
+  That fix and full CI must be reverified; production monitor code is unchanged.
+- Isolated preview: API http://127.0.0.1:8083 (PID 17804), frontend
+  http://127.0.0.1:8093/iam/scim-directories (PID 33928). Tenant 35978959510306816,
+  login scim-admin@example.test; password file .local/scim-actor-acceptance/audit-password.
+  Startup .local/start-scim-actor-acceptance.ps1; binary bin/7link-api-scim-acceptance.exe.
+  Existing 8082/8092 environment preserved. Preview is not final user acceptance.
+- Next: verify monitor test fix and full CI; rerun lifecycle and normal performance
+  serially, final frontend gates. Add any remaining actor boundary tests, then
+  continue 10.5 actual profile consumers (admin/member/session/JWT/userinfo/SCIM/
+  outbound) and outbound UI. 10.7, 10.8, recovery/release and final acceptance stay open.
+
+Binding follow-up, 22:12:
+- PASS: monitor test under race 100 times (7.165s); first complete CI after its
+  fix passed (17958, 90.1% overall, migrations 211.380s). That run predates final
+  actor audit changes and is not the final gate for the current tree.
+- Added actual actor attribution to inbound SCIM audit; outbound audit retains
+  initiating admin plus service_account_id, or uses actor for background work.
+  New composed and service tests verify inbound create, outbound push/sync/remove,
+  retained contexts, validator failure and zero remote calls on invalid actors.
+- PASS: final provisioning/app race (91.1%/89.6%, 9.238s/43.874s); uncached complete
+  three-engine/prefixed lifecycle including actor audit (71.724s); make generate
+  preserved all 70 *.gen.go hashes; structured comparison confirms both engines'
+  baseline workload/samples/thresholds/metadata match HEAD outside plans.
+- PASS: frontend typecheck/lint/build rerun after final spacing changes; browser
+  audit rerun and final desktop/mobile screenshots inspected, no overlap/overflow.
+- Final make ci currently running as session 73219. After it terminates, run
+  uncached PostgreSQL and real MySQL performance normally with updates OFF, serially.
+- D19 records the binding prerequisite. Local 8083 preview binary predates the
+  final audit-attribution-only change; do not describe that binary as the final
+  verified backend or a release candidate. No commits, pushes or mall changes.
+
+Next-stage source finding (22:17): browser-cookie Authenticate calls claims()
+without a tenant, and authenticateBrowserSession never assigns OrganizationID
+(authn/web.go). Both /authn/me and /authn/sessions/current echo that unset value
+(authn/http.go). D18's frontend adoption only works if the session actually has
+a tenant; the existing browser audits provide an explicit tenant. Resolve and
+test the intended session tenant contract alongside profile field projection;
+do not add a hardcoded tenant or treat current explicit-tenant audits as proof.
+
+### Delivery Requirements and Progress
+
+- [x] Reconcile HEAD f56cb43 with source, plans and existing dirty worktree.
+- [x] D18 cookie session tenant projection and no-default-tenant browser flow,
+  explicit membership/ambiguous choices/revocation, with three-engine and real
+  MySQL composition plus ordinary tenant administrator desktop/mobile acceptance.
+- [x] 10.9 shared federation replay claims: repository, all protocol callers,
+  migrations, concurrent replicas, persistence, expiry and unavailable-store tests.
+- [x] 10.4 tenant and entity data permissions enforced in todo repository for
+  list/count/get/create/update/delete/export; tenant A/B and deny matrix.
+- [x] 10.5 declarative field policy with read/write separation, deny precedence,
+  server projection/masking and write rejection, management API/UI and revision.
+- [ ] 10.7 audit archive execution, integrity checks, retries, retention boundaries
+  and observable status, tested without deleting unverified audit data.
+- [ ] 10.8 principal suspension -> anonymization -> retained tombstone, session
+  and credential revocation, referential/audit integrity and authorized API/UI.
+- [ ] Frontend workflows and contracts cover the resulting IAM capabilities;
+  include tenant administrator and session-derived tenant browser acceptance.
+- [ ] Final gates: generators stable, OpenAPI stable, make ci, race, PostgreSQL/
+  MySQL/SQLite migrations and permissions, true MySQL, performance regression,
+  frontend typecheck/lint/test/build and all real browser audits.
+- [ ] Production configuration, install/upgrade/rollback and recovery procedures,
+  key rotation and backup/restore validation, release/acceptance evidence and URL.
+- [ ] Final independent review, requirement-by-requirement acceptance audit,
+  then hand over the verified release candidate for user acceptance.
+
+### Confirmed Decisions
+
+10.5 implementation design (D17 refinement, 2026-09-05):
+- Verified Keycloak user-profile.adoc (upstream docs) and RFC 7643 section 7.
+  Keycloak distinguishes User/Admin contexts for view/edit; arbitrary local
+  role allow/deny lists are this platform's RBAC adaptation, not a SCIM claim.
+- Core owns one tenant/resource/field policy row with a versioned canonical
+  JSON declaration: separate read/write defaults and role allow/deny lists,
+  plus omit or constant text masking. Unknown/corrupt policy fails closed.
+- Code-first field catalog fixes mutability/returned boundaries; policies cannot
+  expose write-only credentials or mutate server-owned identifiers. Absent
+  policies preserve existing declared-field access, never unknown fields.
+- Reuse existing effective role sources (direct, temporary, static/dynamic groups,
+  positions and active inherited entity bindings), transaction/audit/revision.
+  No administrator bypass of explicit field denies. Policy administration has
+  its own tenant permission and optimistic concurrency.
+- Wire actual consumers incrementally: todo read/export projection and write
+  rejection first, then IAM user-profile administrative/alternate entrypoints and
+  management UI. Do not advertise fields before their consumers are enforced.
+  Search/filter/sort on non-readable fields must reject to prevent inference.
+- Sources: https://www.rfc-editor.org/rfc/rfc7643#section-7 and
+  https://github.com/keycloak/keycloak/blob/main/docs/documentation/server_admin/topics/users/user-profile.adoc
+  10.5 remains open until all intended consumers, UI and gates are verified.
+
+D17/D18 remain authoritative. 10.3 is implemented; no longer waiting for approval.
+10.10 IAM gRPC is closed by decision, not missing. Data permission reference is
+todo. Use existing module ownership, query, authz, audit, jobs and storage APIs.
+The user authorizes necessary IAM production fixes and tests across backend and
+frontend; older line ownership notes do not prevent completing this request.
+Do not commit/push or merge merely to record progress. Do not touch mall.
+
+### Verification / Next Action
+
+Checkpoint 2026-09-05 18:25 America/Los_Angeles, HEAD f56cb43 plus dirty tree:
+
+- PASS: full `make ci` (coverage 90.1%; federation 91.4%; lifecycle 60.884s;
+  migration 241.132s; build and OpenAPI consistency).
+- PASS: federation unit tests and `go test -race ./internal/iam/federation
+  -count=1`; clock failure after committed INSERT retains the claim, cleanup
+  failure does not bypass uniqueness, GET/POST SLO validity regressions.
+- PASS: `make test-mysql8-run`: true MySQL 8 migration, performance, and new
+  32-request/two-connection-pool replay test. PostgreSQL/SQLite run that same
+  replay test through lifecycle, plain and prefixed. The in-memory MySQL engine
+  demonstrably allows multiple concurrent winners and explicitly documents no
+  concurrency support in memory/session.go; its original lifecycle tests remain,
+  but replay concurrency is required on real MySQL instead of that emulator.
+- PASS: uncached `make test-performance` on PostgreSQL; all four medians below
+  recorded thresholds (default gate enforces SQL fingerprints/plans).
+- PASS: `make generate`; all 69 `*.gen.go` SHA-256 hashes unchanged; schema lock
+  reconciles 156 migration files, 65 IAM tables, 27 cross-module foreign keys.
+- PASS: frontend API types regenerated; workspace typecheck/lint/test/build.
+  UI package used existing turbo cache; IAM tests reran: 39 pass, 0 fail.
+- PASS: final deep-review perspectives (concurrency/security/distributed,
+  SQL/version/reuse/performance, API/observability/naming), no remaining findings;
+  parent reproduced SLO time defects before fixing. `git diff --check` clean.
+
+10.9 uses database time after committed claim insertion and for cleanup, rounds
+stored expiry upward to milliseconds, and scopes assertion/logout identifiers.
+SLO rejects future IssueInstant beyond configured skew and honors NotOnOrAfter.
+README limits rollback to v4-aware binaries and explicitly requires retiring
+legacy SP entity IDs for old unbounded future SLO history; no false fixed-wait
+promise. New-release backup recovery accounts for historical TTL/skew settings.
+
+Deep-review A1/A3/A6: committed claim before side effects; interrupted flows
+require fresh login, duplicates and storage failures cannot issue/revoke session.
+A4: provider and tenant/issuer key scopes. A7: additive v4 migration and explicit
+legacy/recovery restrictions. A2/A5/A8 not changed: no upload/batch entrypoint,
+financial arithmetic or asynchronous job added; cleanup remains synchronous.
+All frontend browser audits and complete production acceptance remain pending
+until 10.4/10.5/10.7/10.8 are implemented. These green gates do not finish IAM.
+
+10.4 prerequisite checkpoint, 2026-09-05 18:32 America/Los_Angeles:
+core.AuthorizationEvaluator is now published through module.Services as a
+stable Authorizer pointer, initialized during injection (not construction,
+which must still work before the database is available/activation is decided).
+Tests prove pre-injection fail-closed behavior, instance identity with the HTTP
+service, actual self-scope constraints, immediate revocation and duplicate
+provider rejection. Core/app full tests pass, core -race coverage 90.1%; the
+architecture gate passed. The full CI above predates this small prerequisite;
+do not describe it as a full CI run over later changes.
+
+10.4 row-scoped gateway checkpoint, 2026-09-05 18:54 America/Los_Angeles:
+- Implemented `Guard.FilterData` opt-in for typed `RegisterEntity` only, with
+  startup rejection on tenant/platform/raw-adapter registrars, non-data actions
+  and missing checker capability. OpenAPI declares `x-authz-data-filter: true`.
+- `AuthorizationEvaluator` now embeds `authz.EntityDataPermissionChecker`.
+  `Authorizer.EntityConstraint` reuses the existing revision-checked snapshot
+  and constraint compiler, focused on one active tenant entity. Unknown/non-data/
+  platform actions, missing/inactive entities and inactive memberships return
+  empty scopes. Explicit entity denies clear all allow/owner/department scopes.
+- `CheckEntity` semantics remain unchanged: self/department roles do not grant
+  whole-entity access. `DataConstraint.AllowsEntityRows` only admits a possible
+  row scope; it is NOT a substitute for repository filtering. ResourceIDs and
+  DeniedIDs are documented as entity IDs; Ancestors is provenance only.
+- PASS: authz/core tests; authz/core/app `-race -cover -count=1` (authz 95.4%,
+  core 90.2%, app 89.2%). Added real module-wiring HTTP assertions
+  proving self-scope 200, whole-entity 403, foreign/missing entity 403 and immediate
+  revocation 403; subsequently reran these module and EntityConstraint tests
+  under `-race -count=1` successfully. Architecture test passed uncached.
+- PASS: full `make ci` over this checkpoint, including the prior replay and
+  evaluator-provider changes (overall coverage 90.1%, all registered module
+  thresholds pass; migrations 238.842s, build, OpenAPI consistency). Lifecycle
+  and performance were cached in CI; lifecycle rerun explicitly without cache
+  passed in 58.785s. True MySQL and uncached performance evidence remain from
+  the replay checkpoint above, not new executions in this checkpoint.
+- Self-review: reused snapshot/compiler, preserved ordinary entity permission
+  semantics and existing edits, no generated schema changes or new production
+  route. No todo source changes yet; 10.4 and production acceptance remain open.
+
+10.4 todo implementation checkpoint, 2026-09-05 19:10 America/Los_Angeles:
+- All nine task routes now use RegisterEntity/FilterData. Default catalog has
+  todo_create/view/update/delete/export/import. Restore uses update; template
+  uses import. Every service operation enforces its own permission, including
+  post-update reads, list/count, export and all-or-nothing import.
+- Added nullable tenant/entity/department model columns and forward v2 migrations
+  for three dialects. Historical rows remain unassigned/invisible. Create/import
+  derive tenant/entity/creator from trusted claims and snapshot the creator's
+  active department. Core owns MemberDepartmentReader on MembershipChecker,
+  queries writer and publishes via module.Services; no cross-module model import.
+- Todo config/Enabler now follows authn activation in the app composition. Without
+  IAM no task module/routes are activated. Existing no-auth migration/health tests
+  updated from four flows to three and explicitly assert todo is absent.
+- New SQL negative tests caught a single-child field.Or being hoisted into the
+  outer GORM WHERE, bypassing tenant ANDs. Fixed by using a direct predicate for
+  one scope and grouped OR only for multiple scopes. Plain/prefixed tests cover
+  owner, department, union, all/entity, count/pagination, cross-tenant/entity
+  writes, exports, legacy rows, deny, attribution and failures.
+- PASS: todo full tests (coverage 90.8%), core full tests (90.2%), architecture,
+  TestTodoDataPermissionsWithIAM (real composed API, roles/members/departments,
+  tokens, self->department, deny and revocation). Updated external lifecycle to
+  run the same task permission scenario. All source changes remain uncommitted.
+- This historical run finished. Session 43953 is no longer live. Its PostgreSQL
+  duplicate updated_at failure was fixed by disabling automatic GORM timestamps
+  on the todo model; the service owns the timestamp assignments.
+
+10.4 verification checkpoint, 2026-09-05 19:32 America/Los_Angeles:
+- Reproduced the remaining app failure: TestBootstrapAddsEnabledHTTPModules still
+  expected todo with IAM disabled. Updated that exact module list; app/core/todo
+  full tests now pass. Expanded IAM task scenario itself was already passing.
+- Fixed migration test ordering without weakening the empty-database assertion.
+  MySQL v2 now adds columns and named CHECK constraints separately and drops the
+  checks before dropping columns. Populated legacy-table upgrade, positive-ID
+  checks (0/-1 rejected), down/up and plain/prefixed tests pass on all engines.
+- Expanded composed HTTP scenario: successful owner update/delete/restore with
+  persisted versions and actor, department descendants, entity inheritance/deny,
+  multipart import that cannot spoof creator, and immediate import revocation.
+  Reused the existing fixture with raw io.Reader body support.
+- PASS: uncached tests/lifecycle (64.368s), PostgreSQL/MySQL emulator/SQLite,
+  plain and prefixed. Actual SQL writes include the expanded todo scenario.
+- PASS: make test-mysql8-run: actual MySQL 8.4 populated-table upgrade/down/up,
+  lifecycle with tasks_ prefix, replay concurrency and performance. Four medians
+  remain below the recorded thresholds; temporary gate container was cleaned up.
+- PASS: app/todo/core/authz -race -cover -count=1; todo 90.8%, core 90.2%,
+  authz 95.4%, app 89.2%. make generate preserved all 69 *.gen.go hashes.
+- PASS: OpenAPI and frontend API types regenerated; frontend workspace typecheck,
+  lint, test and build. UI package reused cache; IAM tests reran (39 pass, 0 fail).
+- README now documents task activation, trusted attribution, historical rows,
+  and rollback limits. git diff --check clean; source changes remain uncommitted.
+- PASS: full make ci (session 93975 exited 0): format, lint, coverage (90.1%),
+  architecture, integration migrations (220.139s), build and OpenAPI consistency.
+  Lifecycle/performance were cached inside CI; both were also rerun uncached in
+  this checkpoint. PostgreSQL performance passed in 43.544s; four medians below
+  recorded thresholds (default gate enforces fingerprints/plans).
+- Scoped self-review/acceptance: 10.4 PASS. Kept ordinary CheckEntity semantics;
+  opt-in gateway is not the row enforcement boundary; repository always filters.
+  Trusted creation/import attribution, legacy NULL invisibility, owner/department/
+  descendants/entity inheritance/deny, count/export and actual writes covered.
+  No schema v1 rewrite, no unauthenticated fallback, no commits/pushes or mall work.
+
+10.5 implementation checkpoint, 2026-09-05 20:19 America/Los_Angeles:
+- Policy catalog, strict canonical read/write/role rules, omit/constant redaction,
+  same-tenant management API, revision-aware evaluator and v12 DDL are present.
+  Field versions use the locked tenant revision, preventing delete/recreate ABA;
+  overflow is rejected. Tests cover audit rollback and concurrent CAS winners.
+- Todo now enforces write policies in Create/Update/ImportAll, records actual
+  submitted JSON keys (including null/default) and supplied spreadsheet headers,
+  filters list/export SQL projection and query capabilities, rejects search/sort/
+  filter inference, masks all single-item responses and exports, and restricts
+  templates to create-writable fields. pkg/query.Readable copies the contract.
+- Real composed IAM API tests prove entity role inheritance, deny precedence,
+  immediate revision effect, tenant isolation, no administrator bypass and write
+  rejection without side effects. API and core frozen routes now include five
+  explicit Phase 10 additions (218 mappings, 56 core routes).
+- Fixed tenant registrar passing token tenant instead of verified request tenant:
+  copies claims, sets verified tenant, clears unverified entity; tests prove the
+  original token claims remain unchanged. Entity/platform semantics preserved.
+- Reproduced actual upgrade failure on existing OpenAPI DB. Keep iam.base at 11
+  and add field_policies milestone at 12; raising base would invalidate already
+  applied organization.constraints. Composed upgrade regression and OpenAPI export
+  now pass on the existing populated environment without resetting it.
+- Catalog refinement: id is always returned; version is nonconfigurable but uses
+  default returned semantics to preserve existing sparse selection and ETag API.
+- PASS: todo/query tests (91.3%/96.0%), composed app tests, uncached three-engine
+  lifecycle (62.403s), field DDL/ownership tests (27.042s), frontend type generation
+  and typecheck. First real MySQL run passed migrations/lifecycle/replay/performance
+  but static gate caught missing PostgreSQL TIMESTAMPTZ(3); corrected and rerunning.
+- Subsequent terminal results: race/full app/todo/core/authz PASS (89.6/91.3/
+  90.1/95.1%); lint PASS; second true-MySQL gate PASS; three-engine DDL PASS
+  (15.901s). Generated hashes stable (70 files), schema lock reconciled to
+  159 migrations, 66 IAM tables, 27 cross-module FKs. These sessions are closed.
+- Initial full CI over 10.5 failed stale core milestone assertions in governance,
+  organization and provisioning migration tests; no production migration failure.
+
+10.5 continuation checkpoint, 2026-09-05 20:36 America/Los_Angeles:
+- Corrected only the three latest-core-milestone assertions to field_policies;
+  identity base and all rollback dependency/constraint checks remain unchanged.
+- PASS: uncached affected three-engine migration tests (44.602s).
+- PASS: full make ci, session 88320 exited 0: format/lint, overall coverage
+  90.2%, all registered module thresholds, architecture, migrations 207.909s,
+  build and OpenAPI consistency. Lifecycle/performance reused cache; uncached
+  10.5 lifecycle and actual MySQL evidence remain in the earlier checkpoint.
+- The frontend work started here is verified at the next checkpoint.
+
+10.5 management UI checkpoint, 2026-09-05 20:50 America/Los_Angeles:
+- Added /iam/field-policies with catalog/resource search, separate read/write
+  defaults, role allow/deny matrix, omit/redact modes, immutable/read-only bounds,
+  versioned save/reset, explicit 409 reload, request errors and tenant-pinned
+  editors. Sidebar access is proven by the protected field catalog, scoped to
+  tenant and session subject; a tenant switch discards the previous editor.
+- Real browser testing caught version-zero default policies being treated as
+  stored overrides; fixed and covered by the reset-button regression. Screenshot
+  inspection caught inline checkbox sizing and mobile column wrapping; fixed
+  locally without changing shared components, and checked usable dimensions.
+- PASS: frontend workspace typecheck/lint/test/build after final source changes.
+  IAM 41 tests passed; ui 85 tests reused cache. api-contract now covers new
+  field declarations, policies, constraints and policy write-body field names.
+- PASS: scripts/field-policy-browser-audit.mjs, Node + pinned Playwright/Chrome,
+  real HTTP and SQLite: UI policy persistence; allow+deny (no admin bypass);
+  actual todo masking/write rejection; competing 409 and reset; 1440x1000 and
+  390x844 screenshots; read-only fields; tenant switch; non-platform read-only
+  viewer denied writes/cross-tenant reads; update grant without role_view permits
+  role-ID editing; revoked catalog permission clears menu/data. No page errors.
+  This is a new repeatable audit, not a rerun of all 13 older browser audits.
+- Local isolated environment runs detached: API http://127.0.0.1:8082 (PID 11032),
+  console http://127.0.0.1:8092 (bun parent 33968). API /healthz returned SERVING
+  HTTP 200. Revalidate ports/PIDs before reuse; never assume these are still live.
+  Tenant 35971203218800640, login field-admin@example.test; password file
+  .local/field-policy-acceptance/audit-password (never printed). SQLite and generated
+  keys/logs/PID records are in that ignored directory. Local start script:
+  .local/start-field-policy-acceptance.ps1; it refuses occupied ports.
+  Screenshots: .local/screenshots/field-policies/. No live tool command sessions.
+- Scoped self-review PASS: no mall changes, commits, pushes or production writes;
+  reused API/controls/bootstrap/secret-file helper and backend authorization;
+  new dev-only browser dependency supports actual repeatable UI regression.
+  Overall production acceptance remains NOT READY.
+
+SCIM security verification checkpoint, 2026-09-05 21:22 America/Los_Angeles:
+- Reproduced inactive-tenant bearer acceptance before the fix. Authentication
+  now joins active tenant/directory and live, unexpired credential; all resource
+  service methods revalidate the tenant/directory/credential tuple, with writes
+  checked inside their transactions. Resolved IDs constrain SQL explicitly.
+- Added composed HTTP tenant create -> SCIM user/group -> suspend -> resume ->
+  delete regression: 13 resource/bulk operations reject suspended/deleted tenants
+  with SCIM 401 and no audit/row-count/mapping-version changes. Reads recover
+  unchanged on resumption. Shared scenario runs in external lifecycle engines.
+- PASS: provisioning/app race+coverage (91.0%/89.6%, 9.539s/35.321s); focused
+  composed and service tests. Final uncached three-engine/prefixed lifecycle PASS
+  (52.877s), including the explicit SQL scope predicates and new SCIM scenario.
+- Fixed performance fixture's fabricated credential ID: create/authenticate a
+  real credential and assert all 25 missing-user operations return 404, not just
+  the bulk response length. A real MySQL gate reproduced the old fixture failure.
+- Reproduced plan checker accepting an unfiltered PostgreSQL scan because
+  `Plan Width` contains `id`. It now reads actual Filter/attached_condition fields,
+  matches whole column names, and resolves known SCIM aliases reported by MySQL.
+- Performance generator has IAM_PERFORMANCE_UPDATE=plans: validate new plans and
+  enforce original latency thresholds, regenerate plans only. Both engines now
+  capture 13 queries instead of 12. Structured comparison against HEAD proves
+  original benchmark samples AND thresholds are unchanged for both engines.
+- PASS: PostgreSQL plan regeneration under enforced thresholds (SCIM median
+  4.363ms < 8ms); true MySQL plan regeneration (SCIM 58.529ms < 154ms), migrations,
+  replay concurrency, expanded HTTP lifecycle and schema lock (159/66/27).
+- One PostgreSQL enforced run FAILED while race/CI were running; unchanged audit
+  append also exceeded threshold. Final serial run with updates OFF and thresholds
+  ON PASS (36.920s): medians auth 0.241ms < 0.8ms, session 0.374ms < 2ms,
+  SCIM 3.762ms < 8ms, audit 0.302ms < 1ms; every sample passes original limits.
+  Run same-machine latency gates alone, not concurrently with race/CI workloads.
+- PASS: final true MySQL with updates OFF and thresholds ON (session 67202 exit 0):
+  medians auth 2.080ms < 7ms, session 3.210ms < 10ms, SCIM 68.062ms < 154ms,
+  audit 3.255ms < 11ms; migrations, replay concurrency and new lifecycle PASS.
+  Generated plan review: PostgreSQL small-table scans all carry explicit ID
+  predicates; MySQL credential/directory/tenant accesses are const primary keys.
+- PASS: full make ci (65720 exit 0): formatting/lint, 90.2% overall coverage,
+  all module thresholds, architecture, migrations 206.478s, build, OpenAPI check.
+  Lifecycle/performance were cached in CI and independently rerun uncached above.
+- All tool sessions in this checkpoint are terminal. git diff --check clean;
+  benchmark samples/thresholds verified unchanged against HEAD for both engines.
+- README documents SCIM lifecycle and plan-only regeneration. No frontend/schema
+  production changes in this checkpoint; no commit, push, deployment or mall work.
+
+- Scoped self-review: reused repository/transactions and composed lifecycle;
+  explicit scoped SQL and no security/performance gate bypass. SCIM security
+  regression acceptance PASS; overall IAM production acceptance remains NOT READY.
+
+Next concrete action: wire IAM profile and alternate read/write consumers;
+this SCIM fix does not complete field-policy task 10.5. Resolve the real automation
+actor using existing service-account/ownership contracts before exposing profile
+fields in the catalog; no actor binding or new field semantics were added here.
+Identity Principal is shared with provisioning; do not mask authentication's
+internal identity records. Cover identity admin, core member views, authn session/
+me, OAuth userinfo, SCIM and outbound provisioning deliberately. SCIM authenticates
+a directory credential, not a human principal; do not grant a blanket automation
+bypass or fabricate a principal ID to satisfy FieldConstraint. Resolve its field
+authorization context using the existing directory/tenant ownership contracts.
+Do not mark 10.5 complete at the todo or management UI milestone.
+10.7, 10.8, browser acceptance and production recovery/environment handoff remain
+unimplemented or unverified; overall production acceptance is NOT READY.
+Implementation constraints:
+- DataConstraint.ResourceIDs and DeniedIDs are entity IDs, not todo IDs.
+  Ancestors are descriptive; expanded ResourceIDs already reflect descendants
+  and explicit denies. Never independently expand Ancestors to grant access.
+- RegisterEntity calls CheckEntity, which requires whole-entity
+  permission by default. The new FilterData opt-in calls EntityConstraint, so
+  row scopes can pass only that explicit entrypoint. Preserve this distinction
+  in the business repository; todo is now the production caller.
+- Never retain an unauthenticated fallback when IAM is disabled. Attribution
+  fields are not client-writable, including spreadsheet imports. A member moving
+  department does not silently move existing task department attribution.
+
+---
+
+## Historical Backend Checkpoint (superseded by active delivery objective above)
+
 ## Task
 IAM Phase 10 后端推进。10.1、10.2、10.6、§2.5.2 均已推送。当前：10.9 密钥轮换（第 ① 步已推送），
 以及 @gankcode 拍板的注册验证码可配置化（频道 task #5，已推送）。

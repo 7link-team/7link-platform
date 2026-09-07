@@ -555,7 +555,171 @@ codegen 引入一个生成步骤和生成物指纹门禁的维护成本，换取
 
 ---
 
+## D17 implementation refinement - profile claims and SCIM PATCH
+
+**Date** 2026-09-05
+
+**Decision / Reason**
+Tenant-controlled profile fields are projected only after a response tenant is
+resolved. Global, unscoped sessions and principal tokens omit these attributes;
+they do not guess a tenant or bypass tenant policy. Raw internal authentication
+and identity provisioning retain the actual values. Email verification follows
+email visibility, so hidden or masked email cannot expose a verification flag.
+OIDC profile/email scopes further restrict token and userinfo output; openid
+alone authorizes the subject identifier, not these optional profile attributes.
+ID token issuance receives the consented scope explicitly. Bearer profile views
+re-read the current principal rather than treating an old token's masked values
+as current source data. Existing signed JWT payloads remain immutable.
+
+SCIM PATCH must use a transactional raw snapshot and retain its version even
+without a client If-Match. The public projected GetUser result is never an
+input for persistence. PUT and PATCH share the same versioned write operation.
+
+**Alternatives / Tradeoffs / Status**
+Returning all global profile data would bypass tenant policies; filtering only
+at token issuance would miss later policy revocations in userinfo. Making every
+response field required would misrepresent omission. Optional public DTOs require
+OpenAPI and frontend updates. Profile catalog registration, SCIM enforcement and
+the generated contracts are now integrated; real composed tests cover bound
+actors, role policy changes, raw PATCH preservation and outbound projection.
+Profile browser acceptance now covers ordinary tenant administrators on desktop
+and mobile, masking/omission, partial writes and tenant reset. Full legacy browser
+regressions and final production acceptance remain open; this refinement does
+not mark 10.5 or production delivery complete.
+
+## D19 - SCIM automation uses explicit tenant-owned service accounts
+
+**Date** 2026-09-05
+
+**Decision**
+As a prerequisite for D17 field policies, SCIM directories and outbound targets
+bind an existing service account using optional `service_account_id`. Identity
+owns the validator capability; provisioning passes its active transaction. The
+account must belong to that tenant and have an active principal, membership and
+owner tenant, no pending activation, no deletion and no expired lifetime.
+No borrowed administrator identity, synthetic principal or automatic role grants.
+
+**Reason**
+Core field-policy evaluation requires a real principal with effective tenant
+roles. Directory credentials and target configuration previously provided only
+tenant/resource scope, not an automation principal. Reusing service accounts
+keeps identity ownership and revocation semantics in their existing module.
+
+**Alternatives Considered**
+Borrow the invoking administrator (incorrect for background synchronization),
+invent actor identifiers (no membership/role lifecycle), or automatically create
+and authorize accounts (unrequested privilege grants).
+
+**Tradeoffs / Scope / Status**
+Additive provisioning v4 references identity.base. Binding changes use existing
+optimistic versions and audit transactions; PUT null/omission clears the binding.
+An invalid old binding does not prevent disabling or repairing a configuration.
+Inbound audit records the bound actor; outbound records the initiating human,
+when present, plus the actor ID, and background work records the bound actor.
+NULL is allowed for configuration repair, but no longer permits automation:
+inbound SCIM rejects it with 401 and outbound operations with 409 before remote
+calls. Deployments must explicitly bind service accounts and configure their
+roles before upgrading. Profile enforcement uses the bound actor and the default
+catalog now includes those fields. This does not complete product acceptance.
+Structural down drops bindings and
+is not an operational rollback for an actor-dependent production deployment.
+
+## D21 - Principal lifecycle implementation boundary
+
+**Date** 2026-09-06
+
+**Decision / Reason**
+D17's irreversible erasure applies to a global principal, not one membership.
+Its management surface therefore requires platform administration; existing
+tenant profile and suspension permissions are unchanged. Require prior suspension,
+an expired retention deadline and no legal hold. Do not invent a universal legal
+retention period: an explicit platform retention policy records the deadline.
+Use optimistic lifecycle versions and a principal row lock for lifecycle writes.
+Identity owns the lifecycle record and permanent tombstone protection; operational
+PII owners must clean their records in the same caller-owned transaction. Missing
+cleanup capability fails closed. Historical audit records are not deleted or edited.
+
+**Alternatives / Tradeoffs / Scope / Status**
+Tenant-local global erasure would cross tenant authority. Clearing only the main
+profile would leave copied PII and credentials. Automatic timed erasure without
+an explicit operator action is not required here. This is implementation in
+progress, not acceptance: cross-owner cleanup, concurrent-write prevention, UI,
+multi-engine verification and final release gates must precede completion.
+
+## D20 - Durable audit archive execution
+
+**Date** 2026-09-06
+
+**Decision**
+The audit module owns archive jobs, SQL/model/query code and Start/Stop worker.
+There is no reusable application job scheduler in the current repository; use
+the established module lifecycle rather than add a generic scheduling framework.
+Reuse the existing NDJSON export protocol and S3 object-lock client. Archives use
+the configured anchor bucket under a separate prefix; enabling archives does not
+implicitly enable anchoring. Each job freezes a contiguous sequence segment,
+verified chain head, generation timestamp and minimum-retention deadline.
+
+Jobs persist queued/running/failed/complete state. Shared database time governs
+leases and retry eligibility; a unique lease token fences completion. Source
+events are never deleted, consistent with D17. Only a full readback of the exact
+S3 version, matching whole-file SHA-256/size and COMPLIANCE retention, permits
+success. A retry reuses an existing verified artifact; a conflicting artifact
+fails closed. No plaintext export temporary files are created.
+
+**Reason / Tradeoffs**
+This gives restart and multi-replica recovery without another service dependency.
+Two streamed export passes determine the expected digest before upload, trading
+database reads for bounded memory and avoiding audit PII on temporary disks.
+The audit chain and job records remain in database backups; object versions must
+be retained in bucket backups. Structural v3 rollback loses job references and
+cursors and is not an operational rollback for an active deployment.
+
+**Scope / Status**
+10.7 execution and management API/UI implemented. Tenant management reads use
+audit_event/view, requests/retries/downloads use audit_event/export; existing
+retention uses audit_event/manage. Mirrored platform routes and platform retention
+use RegisterPlatform with platform/administer, reject nonempty tenant headers,
+and always scope to zero. The worker now includes platform events. Completed job
+verification binds the object key to its tenant/job and enforces the frozen
+retention minimum; downloads provide the verified version and content length.
+Multi-pool PostgreSQL/SQLite and real MySQL queue/lease recovery now pass. A real
+multipart race exposed minio-go v7.2.1 dropping If-None-Match at completion;
+archive uploads now use SDK Core multipart APIs with explicit conditional
+completion, streamed parts and producer validation before publication. Failure
+cleanup uses a bounded uncanceled context. Real tests cover one-version replica
+convergence, cancellation after a committed part, failed/changed source, lost
+completion responses and 1,003 events across three chained objects. Operators
+must configure incomplete-multipart lifecycle cleanup for abrupt process loss;
+completed archive versions must not expire. Full real browser acceptance now
+passes: an exclusive temporary SQLite file is seeded through the actual audit
+service before app bootstrap; the composed app, worker and MinIO drive browser
+retry, manual queueing, exact-version verification/download and access negatives.
+Desktop/mobile screenshots were inspected.10.7 is closed; final combined release
+gates and user acceptance remain after10.8. Do not interpret age-based archive_ready_events as
+unarchived events, or this decision as completed 10.7/production acceptance.
+
+---
+
 ## D18 — 控制台的租户来自会话，不存在编译期兜底租户
+
+**Backend refinement (2026-09-05)**
+The original frontend change assumed a tenant-bearing cookie session, but authn
+sessions are global principal sessions. Both `/authn/me` and
+`/authn/sessions/current` now resolve a response tenant through core's
+`MemberTenantResolver`, which reads active memberships and active tenants from
+the writer. An explicit `X-Tenant-Id` must be a current membership (403 otherwise).
+Without a choice, exactly one active membership supplies `organization_id`;
+zero or multiple memberships leave it absent. Never select the first tenant.
+This is a request-scoped projection, not a persisted login-session mutation;
+another browser tab is unaffected. A bearer token retains its signed tenant and
+rejects a conflicting header. Bad IDs return 422 and an unavailable resolver/store
+returns 503, not a guessed tenant. No tenant or role is automatically granted.
+The console intentionally fetches its session without a tenant header, adopts
+only into an empty selection, and keeps explicit user/deployment choices.
+New ordinary-member browser acceptance starts with empty browser storage and
+no injected default tenant; it covers desktop/mobile adoption, ambiguous
+membership, preserved selection and immediate revocation. This closes D18's
+original browser gap, not the still-open 10.5 profile projection requirement.
 
 **Decision**
 `getTenant()` 删除硬编的 `"platform"` 兜底，改为三段来源：操作员在控制台里选的（存

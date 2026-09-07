@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"7link.com/platform/pkg/extension/passwordx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func newServiceAccountHarness(t *testing.T, prefix string) *identityHarness {
@@ -19,6 +21,70 @@ func newServiceAccountHarness(t *testing.T, prefix string) *identityHarness {
 	harness.seedTenant(t, 7, "active")
 	harness.seedTenant(t, 8, "active")
 	return harness
+}
+
+func TestValidateServiceAccountRequiresActiveOwnedIdentity(t *testing.T) {
+	for _, prefix := range []string{"", "sl_"} {
+		t.Run("prefix_"+prefix, func(t *testing.T) {
+			h := newServiceAccountHarness(t, prefix)
+			account, err := h.service.CreateServiceAccount(t.Context(), 7, "scim-agent", "SCIM agent", "", nil)
+			require.NoError(t, err)
+			ordinary, err := h.service.Create(t.Context(), 7, "ordinary", testPassword, "Ordinary", "")
+			require.NoError(t, err)
+			for _, id := range []guid.ID{ordinary.ID, 999999} {
+				active, err := h.service.ValidateServiceAccount(t.Context(), h.db, 7, id, identityTestNow)
+				require.NoError(t, err)
+				assert.False(t, active)
+			}
+			active, err := h.service.ValidateServiceAccount(t.Context(), h.db, 8, account.ID, identityTestNow)
+			require.NoError(t, err)
+			assert.False(t, active)
+			for _, state := range []struct {
+				table, where, column string
+				arg, value           any
+			}{
+				{"iam_tenants", "id = ?", "status", guid.ID(7), "suspended"},
+				{"iam_tenants", "id = ?", "status", guid.ID(7), "deleted"},
+				{"iam_service_accounts", "principal_id = ?", "status", account.ID, "disabled"},
+				{"iam_service_accounts", "principal_id = ?", "status", account.ID, "deleted"},
+				{"iam_service_accounts", "principal_id = ?", "deleted_at", account.ID, identityTestNow},
+				{"iam_service_accounts", "principal_id = ?", "expires_at", account.ID, identityTestNow},
+				{"iam_service_accounts", "principal_id = ?", "owner_tenant_id", account.ID, guid.ID(8)},
+				{"iam_principals", "id = ?", "status", account.ID, "disabled"},
+				{"iam_principals", "id = ?", "activation_required", account.ID, true},
+				{"iam_tenant_members", "principal_id = ?", "status", account.ID, "disabled"},
+			} {
+				t.Run(state.table+"/"+state.column, func(t *testing.T) {
+					rollback := errors.New("rollback test state")
+					err := h.db.Transaction(func(tx *gorm.DB) error {
+						require.NoError(t, tx.Table(h.table(state.table)).Where(state.where, state.arg).Update(state.column, state.value).Error)
+						active, err := h.service.ValidateServiceAccount(t.Context(), tx, 7, account.ID, identityTestNow)
+						require.NoError(t, err)
+						assert.False(t, active)
+						return rollback
+					})
+					require.ErrorIs(t, err, rollback)
+					active, err := h.service.ValidateServiceAccount(t.Context(), h.db, 7, account.ID, identityTestNow)
+					require.NoError(t, err)
+					assert.True(t, active)
+				})
+			}
+			for _, ids := range [][2]guid.ID{{0, account.ID}, {-1, account.ID}, {7, 0}, {7, -1}} {
+				_, err := h.service.ValidateServiceAccount(t.Context(), h.db, ids[0], ids[1], identityTestNow)
+				assert.ErrorIs(t, err, ErrServiceAccountInvalid)
+			}
+			_, err = h.service.ValidateServiceAccount(t.Context(), nil, 7, account.ID, identityTestNow)
+			assert.ErrorIs(t, err, ErrServiceAccountInvalid)
+			_, err = h.service.ValidateServiceAccount(t.Context(), h.db, 7, account.ID, time.Time{})
+			assert.ErrorIs(t, err, ErrServiceAccountInvalid)
+			_, err = (*Service)(nil).ValidateServiceAccount(t.Context(), h.db, 7, account.ID, identityTestNow)
+			assert.ErrorIs(t, err, ErrUnavailable)
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+			_, err = h.service.ValidateServiceAccount(ctx, h.db, 7, account.ID, identityTestNow)
+			assert.ErrorIs(t, err, context.Canceled)
+		})
+	}
 }
 
 func (h *identityHarness) serviceAccountRow(t *testing.T, id guid.ID) *model.ServiceAccount {

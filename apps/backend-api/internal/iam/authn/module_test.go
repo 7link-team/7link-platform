@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
@@ -40,7 +41,7 @@ func TestAuthnModuleIdentityDependenciesAndReadiness(t *testing.T) {
 		authnModuleConfig(localAuthnConfig()),
 	)
 	assert.Equal(t, Name, instance.ModuleName())
-	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name}, instance.ModuleDependencies())
+	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, core.Name}, instance.ModuleDependencies())
 	assert.ErrorIs(t, instance.CheckHealth(t.Context()), authnext.ErrUnavailable)
 
 	_, api := humatest.New(t)
@@ -73,6 +74,12 @@ func TestAuthnModuleResolvesDependenciesAndRunsLifecycle(t *testing.T) {
 		}},
 		&authnDependencyProvider{name: audit.Name, provide: func(services *module.Services) error {
 			return module.Provide[audit.Appender](services, harness.repository.audit)
+		}},
+		&authnDependencyProvider{name: core.Name, provide: func(services *module.Services) error {
+			if err := module.Provide[core.AuthorizationEvaluator](services, core.NewAuthorizer(harness.runtime)); err != nil {
+				return err
+			}
+			return module.Provide[core.MemberTenantResolver](services, core.NewMembershipChecker(harness.runtime).ResolveTenant)
 		}},
 		&authnDependencyProvider{name: identity.Name, provide: func(services *module.Services) error {
 			creator := registrationCreatorForHarness(harness)

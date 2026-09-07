@@ -98,6 +98,8 @@ func iamAuditConfig(c AppConfig) iamaudit.Config {
 		Bucket: c.IAMAudit.Anchor.Bucket, Region: c.IAMAudit.Anchor.Region,
 		AccessKey: c.IAMAudit.Anchor.AccessKey, SecretKey: c.IAMAudit.Anchor.SecretKey,
 		RetentionDays: c.IAMAudit.Anchor.RetentionDays, SigningKey: c.IAMAudit.Anchor.SigningKey,
+	}, Archive: iamaudit.ArchiveConfig{
+		Enabled: c.IAMAudit.Archive.Enabled, Interval: c.IAMAudit.Archive.Interval, Timeout: c.IAMAudit.Archive.Timeout,
 	}}
 }
 

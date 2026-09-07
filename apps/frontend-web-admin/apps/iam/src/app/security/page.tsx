@@ -351,6 +351,7 @@ function EmailSection({
 }) {
   const email = session?.email ?? ""
   const verified = Boolean(session?.email_verified)
+  const verificationVisible = session?.email_verified !== undefined
   return (
     <section className="mb-5 overflow-hidden rounded-md border bg-card">
       <header className="flex min-h-20 flex-wrap items-center justify-between gap-4 border-b px-5 py-4">
@@ -361,11 +362,13 @@ function EmailSection({
           <div className="min-w-0">
             <h2 className="font-semibold">主邮箱</h2>
             <p className="mt-1 truncate text-sm text-muted-foreground">
-              {email || "尚未设置邮箱"}
+              {email || (verificationVisible ? "尚未设置邮箱" : "不可见")}
             </p>
           </div>
         </div>
-        {verified ? (
+        {!verificationVisible ? (
+          <span className="text-sm text-muted-foreground">不可见</span>
+        ) : verified ? (
           <span className="inline-flex min-h-9 items-center gap-2 text-sm font-medium text-emerald-600 dark:text-emerald-400">
             <CheckCircle2 size={17} />
             已验证

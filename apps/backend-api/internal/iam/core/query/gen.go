@@ -18,6 +18,7 @@ import (
 var (
 	Q                     = new(Query)
 	Entity                *entity
+	FieldPolicy           *fieldPolicy
 	Menu                  *menu
 	PlatformAdministrator *platformAdministrator
 	PlatformGrant         *platformGrant
@@ -35,6 +36,7 @@ var (
 func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	*Q = *Use(db, opts...)
 	Entity = &Q.Entity
+	FieldPolicy = &Q.FieldPolicy
 	Menu = &Q.Menu
 	PlatformAdministrator = &Q.PlatformAdministrator
 	PlatformGrant = &Q.PlatformGrant
@@ -53,6 +55,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
 		db:                    db,
 		Entity:                newEntity(db, opts...),
+		FieldPolicy:           newFieldPolicy(db, opts...),
 		Menu:                  newMenu(db, opts...),
 		PlatformAdministrator: newPlatformAdministrator(db, opts...),
 		PlatformGrant:         newPlatformGrant(db, opts...),
@@ -72,6 +75,7 @@ type Query struct {
 	db *gorm.DB
 
 	Entity                entity
+	FieldPolicy           fieldPolicy
 	Menu                  menu
 	PlatformAdministrator platformAdministrator
 	PlatformGrant         platformGrant
@@ -94,6 +98,7 @@ func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
 		db:                    db,
 		Entity:                q.Entity.clone(db),
+		FieldPolicy:           q.FieldPolicy.clone(db),
 		Menu:                  q.Menu.clone(db),
 		PlatformAdministrator: q.PlatformAdministrator.clone(db),
 		PlatformGrant:         q.PlatformGrant.clone(db),
@@ -121,6 +126,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
 		db:                    db,
 		Entity:                q.Entity.replaceDB(db),
+		FieldPolicy:           q.FieldPolicy.replaceDB(db),
 		Menu:                  q.Menu.replaceDB(db),
 		PlatformAdministrator: q.PlatformAdministrator.replaceDB(db),
 		PlatformGrant:         q.PlatformGrant.replaceDB(db),
@@ -138,6 +144,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 
 type queryCtx struct {
 	Entity                IEntityDo
+	FieldPolicy           IFieldPolicyDo
 	Menu                  IMenuDo
 	PlatformAdministrator IPlatformAdministratorDo
 	PlatformGrant         IPlatformGrantDo
@@ -155,6 +162,7 @@ type queryCtx struct {
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
 		Entity:                q.Entity.WithContext(ctx),
+		FieldPolicy:           q.FieldPolicy.WithContext(ctx),
 		Menu:                  q.Menu.WithContext(ctx),
 		PlatformAdministrator: q.PlatformAdministrator.WithContext(ctx),
 		PlatformGrant:         q.PlatformGrant.WithContext(ctx),

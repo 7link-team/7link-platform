@@ -28,6 +28,7 @@ func newTarget(db *gorm.DB, opts ...gen.DOOption) target {
 
 	tableName := _target.targetDo.TableName()
 	_target.ALL = field.NewAsterisk(tableName)
+	_target.ServiceAccountID = field.NewField(tableName, "service_account_id")
 	_target.ID = field.NewField(tableName, "id")
 	_target.TenantID = field.NewField(tableName, "tenant_id")
 	_target.Name = field.NewString(tableName, "name")
@@ -48,6 +49,7 @@ type target struct {
 	targetDo targetDo
 
 	ALL                   field.Asterisk
+	ServiceAccountID      field.Field
 	ID                    field.Field
 	TenantID              field.Field
 	Name                  field.String
@@ -74,6 +76,7 @@ func (t target) As(alias string) *target {
 
 func (t *target) updateTableName(table string) *target {
 	t.ALL = field.NewAsterisk(table)
+	t.ServiceAccountID = field.NewField(table, "service_account_id")
 	t.ID = field.NewField(table, "id")
 	t.TenantID = field.NewField(table, "tenant_id")
 	t.Name = field.NewString(table, "name")
@@ -108,7 +111,8 @@ func (t *target) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (t *target) fillFieldMap() {
-	t.fieldMap = make(map[string]field.Expr, 10)
+	t.fieldMap = make(map[string]field.Expr, 11)
+	t.fieldMap["service_account_id"] = t.ServiceAccountID
 	t.fieldMap["id"] = t.ID
 	t.fieldMap["tenant_id"] = t.TenantID
 	t.fieldMap["name"] = t.Name

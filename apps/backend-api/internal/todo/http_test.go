@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"7link.com/platform/pkg/extension/authz"
 	humax "7link.com/platform/pkg/extension/huma"
 	"7link.com/platform/pkg/extension/huma/respx"
 	"github.com/danielgtaylor/huma/v2"
@@ -19,6 +20,11 @@ import (
 )
 
 func newTestAPI(t *testing.T) humatest.TestAPI {
+	api, _ := newTestAPIService(t)
+	return api
+}
+
+func newTestAPIService(t *testing.T) (humatest.TestAPI, *service) {
 	t.Helper()
 	svc, _ := newTestService(t, "")
 	// respx owns the error envelope's messages; without its catalog every
@@ -29,13 +35,22 @@ func newTestAPI(t *testing.T) humatest.TestAPI {
 	// The module contributes this middleware in production; without it the
 	// filter parameters never reach the handler and every list is unfiltered.
 	router.Use(RawQueryMiddleware)
+	// Existing functional tests run as an authenticated member of one boundary.
+	// Authorization tests use an API without these fixture selectors.
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Header.Set(authz.TenantHeader, "1")
+			r.Header.Set(authz.EntityHeader, "10")
+			next.ServeHTTP(w, r)
+		})
+	})
 	api := humax.New(router, humax.DefaultConfig("test", "1.0.0"))
 	contract, err := svc.contract()
 	require.NoError(t, err)
 	filterParams := contract.Parameters()
-	registerTransferHTTP(api, svc, filterParams)
-	registerHTTP(api, svc, filterParams)
-	return humatest.Wrap(t, api)
+	registerTransferHTTP(api, svc, filterParams, todoRegistrar(&todoPolicy{}))
+	registerHTTP(api, svc, filterParams, todoRegistrar(&todoPolicy{}))
+	return humatest.Wrap(t, api), svc
 }
 
 // decode unpacks the platform envelope so assertions read the typed view

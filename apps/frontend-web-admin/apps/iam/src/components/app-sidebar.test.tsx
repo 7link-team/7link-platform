@@ -6,16 +6,29 @@ import { AppSidebar } from "./app-sidebar"
 
 function renderSidebar(
   menus: EffectiveMenu[],
-  platformTenantAccess = false
+  platformTenantAccess = false,
+  fieldPolicyAccess = false,
+  path = "/"
 ): string {
   return renderToStaticMarkup(
-    <MemoryRouter>
-      <AppSidebar menus={menus} platformTenantAccess={platformTenantAccess} />
+    <MemoryRouter initialEntries={[path]}>
+      <AppSidebar
+        menus={menus}
+        platformTenantAccess={platformTenantAccess}
+        fieldPolicyAccess={fieldPolicyAccess}
+      />
     </MemoryRouter>
   )
 }
 
 describe("AppSidebar", () => {
+  it("shows field administration only after its own catalog access is proven", () => {
+    expect(renderSidebar([])).not.toContain('href="/iam/field-policies"')
+    expect(renderSidebar([], true)).not.toContain('href="/iam/field-policies"')
+    expect(renderSidebar([], false, true)).toContain(
+      'href="/iam/field-policies"'
+    )
+  })
   it("keeps self-service navigation without exposing administration", () => {
     const html = renderSidebar([])
     expect(html).toContain("概览")
@@ -107,8 +120,22 @@ describe("AppSidebar", () => {
 
   it("shows tenant management only after platform access is proven", () => {
     expect(renderSidebar([])).not.toContain("租户管理")
+    expect(renderSidebar([])).not.toContain("平台审计")
     const html = renderSidebar([], true)
     expect(html).toContain("租户管理")
     expect(html).toContain('href="/iam/tenants"')
+    expect(html).toContain('href="/iam/audit-governance?scope=platform"')
+  })
+
+  it("selects platform audit navigation only in the platform view", () => {
+    const tenant = renderSidebar([], true, false, "/iam/audit-governance")
+    const platform = renderSidebar(
+      [],
+      true,
+      false,
+      "/iam/audit-governance?scope=platform"
+    )
+    expect(tenant).not.toContain('aria-current="page"')
+    expect(platform).toContain('aria-current="page"')
   })
 })

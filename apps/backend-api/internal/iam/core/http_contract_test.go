@@ -14,6 +14,11 @@ import (
 )
 
 const coreRouteManifest = `
+iam-field-catalog|GET|/iam/field-catalog
+iam-list-field-policies|GET|/iam/field-policies
+iam-set-field-policy|PUT|/iam/field-policies/{resource}/{field}
+iam-delete-field-policy|DELETE|/iam/field-policies/{resource}/{field}
+iam-effective-fields|GET|/iam/fields/effective
 iam-list-relationships|GET|/iam/relationships
 iam-put-relationship|POST|/iam/relationships
 iam-delete-relationship|DELETE|/iam/relationships
@@ -78,13 +83,13 @@ func TestCoreRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 51)
+	require.Len(t, got, 56)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
 func TestCoreOpenAPISelectorsAndParametersAreConsistent(t *testing.T) {
 	spec := declarationAPI(t).OpenAPI()
-	operationIDs := make(map[string]string, 51)
+	operationIDs := make(map[string]string, 56)
 	pathParameter := regexp.MustCompile(`\{([^}]+)\}`)
 
 	for path, item := range spec.Paths {

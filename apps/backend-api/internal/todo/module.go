@@ -6,9 +6,11 @@ import (
 	"log/slog"
 	"net/http"
 
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
 	todoi18n "7link.com/platform/internal/todo/i18n"
 	"7link.com/platform/pkg/appenv"
+	"7link.com/platform/pkg/extension/authz"
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
@@ -16,19 +18,30 @@ import (
 
 // Module is the task module. It owns the todos table and exposes the task API.
 type Module struct {
-	runtime *appenv.Runtime
-	ids     guid.Source
-	service *service
+	runtime     *appenv.Runtime
+	ids         guid.Source
+	service     *service
+	config      Config
+	registrar   *authz.Registrar
+	checker     core.AuthorizationEvaluator
+	departments core.MemberDepartmentReader
 }
 
-func NewModule(rt *appenv.Runtime) *Module { return &Module{runtime: rt} }
+// Config controls task module activation. Production composition ties it to IAM.
+type Config struct{ module.Config }
+
+func NewModule(rt *appenv.Runtime, config Config) *Module {
+	return &Module{runtime: rt, config: config}
+}
+
+func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
 
 func (*Module) ModuleName() string { return Name }
 
 // ModuleDependencies: i18n supplies the message catalog, guid supplies task
-// identifiers.
+// identifiers, and core supplies authorization and department membership.
 func (*Module) ModuleDependencies() []string {
-	return []string{platformi18n.Name, guid.Name}
+	return []string{platformi18n.Name, guid.Name, core.Name}
 }
 
 // HTTPMiddleware makes the raw query string reachable from the list handler,
@@ -39,6 +52,7 @@ func (*Module) HTTPMiddleware(next http.Handler) http.Handler {
 }
 
 var (
+	_ module.Enabler                 = (*Module)(nil)
 	_ module.HTTPMiddlewareModule    = (*Module)(nil)
 	_ module.Depender                = (*Module)(nil)
 	_ module.ServiceInjector         = (*Module)(nil)
@@ -54,6 +68,15 @@ func (m *Module) InjectServices(services *module.Services) error {
 		return err
 	}
 	m.ids = ids
+	if m.registrar, err = module.Resolve[*authz.Registrar](services); err != nil {
+		return err
+	}
+	if m.checker, err = module.Resolve[core.AuthorizationEvaluator](services); err != nil {
+		return err
+	}
+	if m.departments, err = module.Resolve[core.MemberDepartmentReader](services); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -67,13 +90,15 @@ func (m *Module) Initialize(context.Context) error {
 		return err
 	}
 	m.service = newService(m.runtime, m.ids)
+	m.service.checker, m.service.departments = m.checker, m.departments
+	m.service.fields = m.checker
 	return nil
 }
 
 // CheckHealth reports the module unhealthy when it cannot reach a writable
 // datasource, since every task operation needs one.
 func (m *Module) CheckHealth(context.Context) error {
-	if m.service == nil || m.service.writer() == nil {
+	if m.service == nil || m.service.writer() == nil || m.checker == nil || m.departments == nil {
 		return ErrUnavailable
 	}
 	return nil
@@ -109,7 +134,7 @@ func (m *Module) RegisterHTTP(ctx context.Context, api huma.API) error {
 	// The transfer routes are registered first: their paths are static where the
 	// task routes take a parameter, and a static segment must not be captured as
 	// an identifier.
-	registerTransferHTTP(api, m.service, filterParams)
-	registerHTTP(api, m.service, filterParams)
+	registerTransferHTTP(api, m.service, filterParams, m.registrar)
+	registerHTTP(api, m.service, filterParams, m.registrar)
 	return nil
 }

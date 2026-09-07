@@ -39,7 +39,7 @@ type Config struct {
 	PreviousEncryptionKeys     []string      `mapstructure:"previous_encryption_keys" description:"retired base64 32-byte federation keys that still open stored values; prefer previous_encryption_key_files" secret:"true"`
 	PreviousEncryptionKeyFiles []string      `mapstructure:"previous_encryption_key_files" description:"files containing retired base64 32-byte federation keys"`
 	HTTPTimeout                time.Duration `mapstructure:"http_timeout" description:"upstream discovery, JWKS, and token endpoint timeout" default:"10s"`
-	ClockSkew                  time.Duration `mapstructure:"clock_skew" description:"allowed ID token clock skew" default:"30s"`
+	ClockSkew                  time.Duration `mapstructure:"clock_skew" description:"allowed ID token and SAML logout clock skew" default:"30s"`
 	StateTTL                   time.Duration `mapstructure:"state_ttl" description:"login state cookie lifetime" default:"10m"`
 	SAML                       SAMLConfig    `mapstructure:"saml" group:"saml"`
 }
@@ -74,6 +74,7 @@ type Service struct {
 	keys       *keyringx.Keyring
 	oidc       *oidcClient
 	stateTTL   time.Duration
+	clockSkew  time.Duration
 	now        func() time.Time
 	samlMu     sync.Mutex
 	samlCfg    SAMLConfig
@@ -161,15 +162,16 @@ func NewService(runtime *appenv.Runtime, appender audit.Appender, identities ide
 	if stateTTL <= 0 {
 		stateTTL = 10 * time.Minute
 	}
+	repo := NewRepository(runtime)
 	return &Service{
-		repo: NewRepository(runtime), audit: appender, identities: identities, authn: authn,
-		keys: keys, stateTTL: stateTTL, now: time.Now,
+		repo: repo, audit: appender, identities: identities, authn: authn,
+		keys: keys, stateTTL: stateTTL, clockSkew: skew, now: time.Now,
 		nextID: func() (guid.ID, error) {
 			id, err := ids.Next()
 			return guid.ID(id), err
 		},
 		oidc:    newOIDCClient(&http.Client{Timeout: timeout}, skew, 5*time.Minute),
-		replays: newReplayRegistry(10_000),
+		replays: newReplayRegistry(repo),
 	}
 }
 
@@ -335,8 +337,14 @@ func (s *Service) CompleteLogin(ctx context.Context, providerID guid.ID, code, s
 	}
 	now := s.now().UTC()
 	if sealedState.ProviderID != provider.ID.String() || sealedState.TenantID != provider.TenantID.String() ||
-		sealedState.Nonce != state || sealedState.ExpiresAt < now.Unix() ||
-		!s.replays.claim("state:"+sealedState.Nonce, time.Unix(sealedState.ExpiresAt, 0), now) {
+		sealedState.Nonce != state || sealedState.ExpiresAt <= now.Unix() {
+		return LoginComplete{}, ErrOIDCState
+	}
+	claimed, err := s.replays.claim(ctx, "state:"+sealedState.Nonce, time.Unix(sealedState.ExpiresAt, 0), now)
+	if err != nil {
+		return LoginComplete{}, err
+	}
+	if !claimed {
 		return LoginComplete{}, ErrOIDCState
 	}
 	var clientSecret string
@@ -455,15 +463,28 @@ func (s *Service) CompleteSAMLLogin(ctx context.Context, providerID guid.ID, sam
 	}
 	now := s.now().UTC()
 	if sealedState.ProviderID != provider.ID.String() || sealedState.TenantID != provider.TenantID.String() ||
-		sealedState.ExpiresAt < now.Unix() ||
-		!s.replays.claim("state:"+sealedState.Nonce, time.Unix(sealedState.ExpiresAt, 0), now) {
+		sealedState.ExpiresAt <= now.Unix() {
+		return "", "", ErrOIDCState
+	}
+	claimed, err := s.replays.claim(ctx, "state:"+sealedState.Nonce, time.Unix(sealedState.ExpiresAt, 0), now)
+	if err != nil {
+		return "", "", err
+	}
+	if !claimed {
 		return "", "", ErrOIDCState
 	}
 	assertion, err := s.parseSAMLResponse(ctx, provider, samlResponse, callback, sealedState.Nonce)
 	if err != nil {
 		return "", "", err
 	}
-	if assertion.ID == "" || !s.replays.claim("assertion:"+assertion.ID, time.Unix(sealedState.ExpiresAt, 0), now) {
+	if assertion.ID == "" {
+		return "", "", ErrSAMLResponse
+	}
+	claimed, err = s.replays.claim(ctx, "assertion:"+provider.ID.String()+":"+assertion.ID, time.Unix(sealedState.ExpiresAt, 0), now)
+	if err != nil {
+		return "", "", err
+	}
+	if !claimed {
 		return "", "", ErrSAMLResponse
 	}
 	email := strings.TrimSpace(samlAttribute(assertion, "email"))

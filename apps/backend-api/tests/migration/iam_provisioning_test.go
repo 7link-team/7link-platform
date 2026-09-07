@@ -8,6 +8,7 @@ import (
 
 	"7link.com/platform/internal/app"
 	iamcore "7link.com/platform/internal/iam/core"
+	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/iam/provisioning"
 	goosex "7link.com/platform/pkg/extension/goose"
@@ -33,6 +34,7 @@ func TestIAMProvisioningMigrationsAcrossEngines(t *testing.T) {
 					db := engine.open(t)
 					verifyProvisioningBaseNeedsOrganization(t, db, engine.dialect, prefix+"base_")
 					verifyProvisioningConstraintDataLifecycle(t, db, engine.dialect, prefix+"data_")
+					verifyProvisioningActorDataLifecycle(t, db, engine.dialect, prefix+"actor_", engine.name != "mysql")
 
 					gormDB := openMilestoneGORM(t, db, engine.dialect)
 					modules := provisioningMigrationModules()
@@ -47,7 +49,7 @@ func TestIAMProvisioningMigrationsAcrossEngines(t *testing.T) {
 
 func provisioningMigrationModules() []module.Module {
 	// Deliberately not dependency ordered: the milestone graph owns ordering.
-	return []module.Module{&provisioning.Module{}, &organization.Module{}, &iamcore.Module{}}
+	return []module.Module{&provisioning.Module{}, &organization.Module{}, &identity.Module{}, &iamcore.Module{}}
 }
 
 func verifyProvisioningBaseNeedsOrganization(t *testing.T, db *sql.DB, dialect, prefix string) {
@@ -99,9 +101,10 @@ func assertProvisioningUp(t *testing.T, db *gorm.DB, modules []module.Module, pr
 		milestones[report.Module] = report.Milestone
 		assert.Equal(t, goosex.StateClean, report.Status.State)
 	}
-	assert.Equal(t, "base", milestones[iamcore.Name])
+	assert.Equal(t, "field_policies", milestones[iamcore.Name])
 	assert.Equal(t, "constraints", milestones[organization.Name])
-	assert.Equal(t, "constraints", milestones[provisioning.Name])
+	assert.Equal(t, "lifecycle", milestones[identity.Name])
+	assert.Equal(t, "service_accounts", milestones[provisioning.Name])
 }
 
 func verifyProvisioningContracts(t *testing.T, db *sql.DB, prefix string) {
@@ -224,8 +227,12 @@ func verifyProvisioningRollbackGraph(
 		Action: app.MigrationDownTo, Module: organization.Name, To: 0,
 	}, prefix)
 	assert.ErrorContains(t, err, `"provisioning.constraints"`)
+	_, err = app.ExecuteModuleMigrations(t.Context(), db, modules, app.MigrationRequest{
+		Action: app.MigrationDownTo, Module: identity.Name, To: 0,
+	}, prefix)
+	assert.ErrorContains(t, err, `"provisioning.service_accounts"`)
 
-	for _, name := range []string{provisioning.Name, organization.Name, iamcore.Name} {
+	for _, name := range []string{provisioning.Name, organization.Name, identity.Name, iamcore.Name} {
 		_, err = app.ExecuteModuleMigrations(t.Context(), db, modules, app.MigrationRequest{
 			Action: app.MigrationDownTo, Module: name, To: 0,
 		}, prefix)
@@ -243,6 +250,66 @@ func provisioningTables(prefix string) []string {
 		prefix + "iam_scim_targets",
 		prefix + "iam_scim_target_resources",
 	}
+}
+
+func verifyProvisioningActorDataLifecycle(t *testing.T, db *sql.DB, dialect, prefix string, transactions bool) {
+	t.Helper()
+	organizationSource := (&organization.Module{}).MigrationSource()
+	organizationSource.Prefix = prefix
+	identitySource := (&identity.Module{}).MigrationSource()
+	identitySource.Prefix = prefix
+	source := (&provisioning.Module{}).MigrationSource()
+	source.Prefix = prefix
+	require.NoError(t, goosex.MigrateUpTo(t.Context(), db, organizationSource, dialect, 7))
+	require.NoError(t, goosex.MigrateUpTo(t.Context(), db, identitySource, dialect, 2))
+	require.NoError(t, goosex.MigrateUpTo(t.Context(), db, source, dialect, 3))
+	seedProvisioningRows(t, db, prefix)
+	// Existing non-positive account keys distinguish the CHECK from the foreign key.
+	for _, id := range []int{700, 0, -1} {
+		require.NoError(t, execProvisioningSQL(t, db,
+			"INSERT INTO %siam_principals (id, login_name, display_name, status, created_at, updated_at) VALUES (%d, 'actor-%d', 'Actor', 'active', '%s', '%s')",
+			prefix, id, id, provisioningTestTime, provisioningTestTime))
+		require.NoError(t, execProvisioningSQL(t, db,
+			"INSERT INTO %siam_service_accounts (principal_id, owner_tenant_id, created_at, updated_at) VALUES (%d, 1, '%s', '%s')",
+			prefix, id, provisioningTestTime, provisioningTestTime))
+	}
+	for cycle := 0; cycle < 2; cycle++ {
+		require.NoError(t, goosex.MigrateUpTo(t.Context(), db, source, dialect, 4))
+		for _, table := range provisioningTables(prefix) {
+			assert.Equal(t, 1, tableRowCount(t, db, table), "upgrade preserves %s", table)
+		}
+		for _, table := range []string{prefix + "iam_scim_directories", prefix + "iam_scim_targets"} {
+			var binding sql.NullInt64
+			require.NoError(t, db.QueryRowContext(t.Context(), "SELECT service_account_id FROM "+table).Scan(&binding))
+			assert.False(t, binding.Valid, "migration must not invent an automation actor")
+			for _, id := range []int{0, -1, 799} {
+				assert.Error(t, execProvisioningSQL(t, db, "UPDATE %s SET service_account_id = %d", table, id))
+			}
+			// The in-process MySQL driver returns fakeTransaction with no-op rollback.
+			// The real MySQL gate runs these assertions with transactions enabled.
+			if transactions {
+				tx, err := db.BeginTx(t.Context(), nil)
+				require.NoError(t, err)
+				_, err = tx.ExecContext(t.Context(), "UPDATE "+table+" SET service_account_id = 700")
+				require.NoError(t, err)
+				require.NoError(t, tx.Rollback())
+				require.NoError(t, db.QueryRowContext(t.Context(), "SELECT service_account_id FROM "+table).Scan(&binding))
+				assert.False(t, binding.Valid, "binding writes roll back")
+			}
+			require.NoError(t, execProvisioningSQL(t, db, "UPDATE %s SET service_account_id = 700", table))
+			assert.Error(t, execProvisioningSQL(t, db, "DELETE FROM %siam_service_accounts WHERE principal_id = 700", prefix),
+				"bound service accounts cannot be physically deleted")
+			require.NoError(t, db.QueryRowContext(t.Context(), "SELECT service_account_id FROM "+table).Scan(&binding))
+			assert.Equal(t, sql.NullInt64{Int64: 700, Valid: true}, binding)
+		}
+		require.NoError(t, goosex.MigrateDownTo(t.Context(), db, source, dialect, 3))
+		for _, table := range provisioningTables(prefix) {
+			assert.Equal(t, 1, tableRowCount(t, db, table), "rollback preserves %s", table)
+		}
+	}
+	require.NoError(t, goosex.MigrateDownTo(t.Context(), db, source, dialect, 0))
+	require.NoError(t, goosex.MigrateDownTo(t.Context(), db, identitySource, dialect, 0))
+	require.NoError(t, goosex.MigrateDownTo(t.Context(), db, organizationSource, dialect, 0))
 }
 
 func execProvisioningSQL(t *testing.T, db *sql.DB, format string, args ...any) error {

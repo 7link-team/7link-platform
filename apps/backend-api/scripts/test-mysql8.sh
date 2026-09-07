@@ -80,3 +80,16 @@ MYSQL8_EXPECTED_SQL_MODE="${mysql_sql_mode}" \
 IAM_PERFORMANCE_DATABASE_TYPE=mysql \
 IAM_PERFORMANCE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
   go test ./internal/app -run '^TestIAMPerformanceExternalDatabase$' -count=1 -v
+
+IAM_LIFECYCLE_DATABASE_TYPE=mysql \
+IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
+  go test ./internal/iam/federation -run '^TestReplayRegistryExternalDatabase$' -count=1 -v
+
+IAM_LIFECYCLE_DATABASE_TYPE=mysql \
+IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
+  go test ./internal/iam/audit -run '^TestArchiveExternalDatabase$' -count=1 -v
+
+IAM_LIFECYCLE_DATABASE_TYPE=mysql \
+IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
+IAM_LIFECYCLE_TABLE_PREFIX=tasks_ \
+  go test ./internal/app -run '^TestIAMLifecycleExternalDatabase$' -count=1

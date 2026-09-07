@@ -249,6 +249,7 @@ func browserResponses(schemas huma.Registry) map[string]*huma.Response {
 		"409": {Description: "Provider conflict", Content: map[string]*huma.MediaType{"application/json": {Schema: errorSchema}}},
 		"422": {Description: "Invalid identifier", Content: map[string]*huma.MediaType{"application/json": {Schema: errorSchema}}},
 		"500": {Description: "Federation unavailable", Content: map[string]*huma.MediaType{"application/json": {Schema: errorSchema}}},
+		"503": {Description: "Federation storage unavailable", Content: map[string]*huma.MediaType{"application/json": {Schema: errorSchema}}},
 	}
 }
 
@@ -318,6 +319,8 @@ func requestCallbackURL(ctx huma.Context, providerID guid.ID) string {
 
 func federationError(err error) error {
 	switch {
+	case errors.Is(err, errReplayUnavailable):
+		return huma.Error503ServiceUnavailable(federationi18n.Unavailable)
 	case errors.Is(err, ErrInvalidProvider), errors.Is(err, ErrOIDCState):
 		return huma.Error400BadRequest(federationi18n.InvalidRequest)
 	case errors.Is(err, ErrProviderNotFound):

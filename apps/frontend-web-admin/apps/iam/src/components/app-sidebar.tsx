@@ -7,6 +7,7 @@ import {
   ClipboardCheck,
   FileClock,
   KeyRound,
+  SlidersHorizontal,
   Landmark,
   LayoutDashboard,
   ListChecks,
@@ -17,7 +18,7 @@ import {
   Users,
   UsersRound,
 } from "lucide-react"
-import { NavLink } from "react-router"
+import { NavLink, useLocation } from "react-router"
 import type { EffectiveMenu } from "../lib/iam-api"
 import { effectiveMenuPaths, flattenEffectiveMenus } from "../lib/navigation"
 
@@ -38,18 +39,24 @@ const administrationRoutes = [
 ]
 const administrationPaths = new Set([
   ...administrationRoutes.map((route) => route.path),
+  "/iam/field-policies",
   "/iam/access-requests",
 ])
 
 export function AppSidebar({
   menus,
   platformTenantAccess = false,
+  fieldPolicyAccess = false,
   className = "",
 }: {
   menus: EffectiveMenu[]
   platformTenantAccess?: boolean
+  fieldPolicyAccess?: boolean
   className?: string
 }) {
+  const location = useLocation()
+  const platformAuditScope =
+    new URLSearchParams(location.search).get("scope") === "platform"
   const authorizedPaths = effectiveMenuPaths(menus)
   const authorizedAdministration = administrationRoutes.filter((route) =>
     authorizedPaths.has(route.path)
@@ -77,10 +84,16 @@ export function AppSidebar({
                 icon={<Landmark />}
                 label="租户管理"
               />
+              <SideLink
+                to="/iam/audit-governance?scope=platform"
+                icon={<FileClock />}
+                label="平台审计"
+                scopeMatches={platformAuditScope}
+              />
             </div>
           </div>
         )}
-        {authorizedAdministration.length > 0 && (
+        {(authorizedAdministration.length > 0 || fieldPolicyAccess) && (
           <div>
             <h2 className="mb-2 px-3 text-xs font-semibold text-sidebar-foreground/60 uppercase">
               身份与访问
@@ -94,6 +107,13 @@ export function AppSidebar({
                   label={route.label}
                 />
               ))}
+              {fieldPolicyAccess && (
+                <SideLink
+                  to="/iam/field-policies"
+                  icon={<SlidersHorizontal />}
+                  label="字段权限"
+                />
+              )}
             </div>
           </div>
         )}
@@ -140,17 +160,20 @@ function SideLink({
   to,
   icon,
   label,
+  scopeMatches = true,
 }: {
   to: string
   icon: React.ReactElement
   label: string
+  scopeMatches?: boolean
 }) {
   return (
     <NavLink
       to={to}
       end={to === "/"}
+      aria-current={scopeMatches ? undefined : false}
       className={({ isActive }) =>
-        `flex min-h-10 items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${isActive ? "sidebar-active-item bg-sidebar-primary font-medium text-sidebar-primary-foreground" : "text-sidebar-foreground/90 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`
+        `flex min-h-10 items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${isActive && scopeMatches ? "sidebar-active-item bg-sidebar-primary font-medium text-sidebar-primary-foreground" : "text-sidebar-foreground/90 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`
       }
     >
       <span className="shrink-0 [&>svg]:size-4" aria-hidden="true">

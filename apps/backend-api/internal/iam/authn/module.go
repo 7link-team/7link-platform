@@ -8,6 +8,7 @@ import (
 
 	"7link.com/platform/internal/iam/audit"
 	authni18n "7link.com/platform/internal/iam/authn/i18n"
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
@@ -28,6 +29,8 @@ type Module struct {
 	registrationCreator RegistrationPrincipalCreator
 	ids                 guid.Source
 	appender            audit.Appender
+	memberTenant        core.MemberTenantResolver
+	fields              authz.FieldPermissionChecker
 }
 
 // Config separates module activation from the authentication service's
@@ -51,7 +54,7 @@ func NewModule(runtime *appenv.Runtime, config Config) *Module {
 func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
 
 func (*Module) ModuleDependencies() []string {
-	return []string{platformi18n.Name, guid.Name, audit.Name}
+	return []string{platformi18n.Name, guid.Name, audit.Name, core.Name}
 }
 
 func (m *Module) ProvideServices(services *module.Services) error {
@@ -121,6 +124,16 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve authn registration principal creator: %w", err)
 	}
+	memberTenant, err := module.Resolve[core.MemberTenantResolver](services)
+	if err != nil {
+		return fmt.Errorf("resolve authn member tenant resolver: %w", err)
+	}
+	m.memberTenant = memberTenant
+	fields, err := module.Resolve[core.AuthorizationEvaluator](services)
+	if err != nil {
+		return fmt.Errorf("resolve authn field evaluator: %w", err)
+	}
+	m.fields = fields
 	m.ids = ids
 	m.appender = appender
 	m.registrationCreator = func(
@@ -155,6 +168,8 @@ func (m *Module) Initialize(context.Context) error {
 		m.config.Service,
 		repository,
 		WithRegistrationPrincipalCreator(m.registrationCreator),
+		WithMemberTenantResolver(m.memberTenant),
+		WithFieldPermissionChecker(m.fields),
 	)
 	if err != nil {
 		return fmt.Errorf("initialize authn service: %w", err)
@@ -170,6 +185,13 @@ func (m *Module) Authenticate(ctx context.Context, authorization, cookie string)
 		return nil, authnext.ErrUnavailable
 	}
 	return m.Service.Authenticate(ctx, authorization, cookie)
+}
+
+func (m *Module) ProjectProfile(ctx context.Context, claims *authnext.Claims, scope string) (ProfileClaims, error) {
+	if m == nil || m.Service == nil {
+		return ProfileClaims{}, authnext.ErrUnavailable
+	}
+	return m.Service.ProjectProfile(ctx, claims, scope)
 }
 
 func (m *Module) ValidateCSRF(method, origin, cookie, authorization string) error {

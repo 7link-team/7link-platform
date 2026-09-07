@@ -18,9 +18,11 @@ import (
 
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/authn/model"
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/keyringx"
 	"7link.com/platform/pkg/extension/passwordx"
 	"7link.com/platform/pkg/extension/secretx"
@@ -64,6 +66,8 @@ type Service struct {
 	now                 func() time.Time
 	enricher            claimEnricher
 	registrationCreator RegistrationPrincipalCreator
+	memberTenant        core.MemberTenantResolver
+	fields              authz.FieldPermissionChecker
 	verifiedHook        func(context.Context, *gorm.DB, guid.ID, string, time.Time) error
 
 	notificationAuthorization string
@@ -86,6 +90,10 @@ type claimEnricher interface {
 }
 
 type WebOption func(*Service)
+
+func WithMemberTenantResolver(resolver core.MemberTenantResolver) WebOption {
+	return func(service *Service) { service.memberTenant = resolver }
+}
 
 func WithClaimEnricher(enricher claimEnricher) WebOption {
 	return func(service *Service) { service.enricher = enricher }
@@ -808,8 +816,7 @@ func (s *Service) issueSubjectToken(
 	payload := map[string]any{
 		"iss": s.cfg.Issuer, "sub": subject, "aud": []string{audience},
 		"iat": now.Unix(), "exp": expiresAt.Unix(), "jti": jti,
-		"subject_type": subjectType, "preferred_username": username,
-		"email": email, "scope": scope,
+		"subject_type": subjectType, "scope": scope,
 	}
 	if tenantID != "" {
 		payload["organization_id"] = tenantID
@@ -821,7 +828,15 @@ func (s *Service) issueSubjectToken(
 		}
 	}
 	if subjectType == authnext.SubjectTypePrincipal {
-		payload["email_verified"] = emailVerified
+		principalID, parseErr := guid.Parse(subject)
+		if parseErr != nil || principalID <= 0 {
+			return "", 0, authnext.ErrInvalidToken
+		}
+		if err := s.tokenProfile(ctx, payload, principalID, tenantID, scope, username, email, emailVerified); err != nil {
+			return "", 0, err
+		}
+	} else {
+		payload["preferred_username"], payload["email"] = username, email
 	}
 	if !assurance.AuthTime.IsZero() {
 		payload["auth_time"] = assurance.AuthTime.UTC().Unix()
@@ -861,7 +876,7 @@ func (s *Service) IssueTenantIDToken(
 	principalID guid.ID,
 	tenantID, clientID, nonce string,
 ) (string, error) {
-	return s.IssueTenantIDTokenWithAssurance(ctx, principalID, tenantID, clientID, nonce, authnext.Assurance{
+	return s.IssueTenantIDTokenWithAssurance(ctx, principalID, tenantID, clientID, nonce, "openid", authnext.Assurance{
 		AuthTime: s.now().UTC(), Level: 1, Methods: []string{"pwd"}, ClientID: clientID,
 	})
 }
@@ -869,7 +884,7 @@ func (s *Service) IssueTenantIDToken(
 func (s *Service) IssueTenantIDTokenWithAssurance(
 	ctx context.Context,
 	principalID guid.ID,
-	tenantID, clientID, nonce string,
+	tenantID, clientID, nonce, scope string,
 	assurance authnext.Assurance,
 ) (string, error) {
 	if s == nil || !s.cfg.Enabled || !s.signingKeys.usable() {
@@ -893,8 +908,10 @@ func (s *Service) IssueTenantIDTokenWithAssurance(
 		"iat": now.Unix(), "exp": now.Add(s.cfg.AccessTokenTTL).Unix(), "jti": jti,
 		"subject_type":       authnext.SubjectTypePrincipal,
 		"credential_version": claims.CredentialVersion, "principal_id": claims.PrincipalID,
-		"auth_time": authTime, "preferred_username": claims.PreferredUsername,
-		"email": claims.Email, "email_verified": claims.EmailVerified,
+		"auth_time": authTime,
+	}
+	if err := s.tokenProfile(ctx, payload, principalID, tenantID, scope, claims.PreferredUsername, claims.Email, claims.EmailVerified); err != nil {
+		return "", err
 	}
 	if nonce != "" {
 		payload["nonce"] = nonce
@@ -909,7 +926,7 @@ func (s *Service) IssueTenantIDTokenWithAssurance(
 		payload["amr"] = assurance.Methods
 	}
 	if err := s.enrich(ctx, payload, ClaimContext{
-		TokenType: "id_token", Subject: claims.PrincipalID.String(), TenantID: tenantID, Audience: clientID,
+		TokenType: "id_token", Subject: claims.PrincipalID.String(), TenantID: tenantID, Audience: clientID, Scope: scope,
 	}); err != nil {
 		return "", err
 	}
@@ -1020,7 +1037,12 @@ func (s *Service) verifyAccessToken(authorization string) (*authnext.Claims, err
 	if len(s.cfg.Audience) > 0 && !hasAudience(raw.Audience, s.cfg.Audience) {
 		return nil, authnext.ErrInvalidAud
 	}
+	var rawClaims map[string]any
+	if err := json.Unmarshal(payload, &rawClaims); err != nil {
+		return nil, authnext.ErrInvalidToken
+	}
 	return &authnext.Claims{
+		Raw:    rawClaims,
 		Issuer: raw.Issuer, Subject: raw.Subject, SubjectType: raw.SubjectType, Audience: raw.Audience,
 		ExpiresAt: time.Unix(raw.ExpiresAt, 0).UTC(), IssuedAt: time.Unix(raw.IssuedAt, 0).UTC(),
 		AuthTime: time.Unix(raw.AuthTime, 0).UTC(), PreferredUsername: raw.PreferredUsername,

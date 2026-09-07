@@ -10,6 +10,7 @@ const (
 	Namespace = "todo"
 
 	NotFound        = Namespace + ".not_found"
+	Forbidden       = Namespace + ".forbidden"
 	Deleted         = Namespace + ".deleted"
 	NotDeleted      = Namespace + ".not_deleted"
 	VersionConflict = Namespace + ".version_conflict"

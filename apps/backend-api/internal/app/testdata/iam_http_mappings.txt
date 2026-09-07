@@ -1,4 +1,24 @@
 # Frozen source operation => approved target OperationID|METHOD|PATH.
+# Archive management operations are Phase 10 additions.
+audit-archive-status => audit-archive-status|GET|/iam/audit/archive-status
+audit-list-archives => audit-list-archives|GET|/iam/audit/archives
+audit-request-archive => audit-request-archive|POST|/iam/audit/archives
+audit-retry-archive => audit-retry-archive|POST|/iam/audit/archives/{id}/retry
+audit-verify-archive => audit-verify-archive|POST|/iam/audit/archives/{id}/verify
+audit-download-archive => audit-download-archive|GET|/iam/audit/archives/{id}/download
+audit-platform-archive-status => audit-platform-archive-status|GET|/platform/iam/audit/archive-status
+audit-platform-list-archives => audit-platform-list-archives|GET|/platform/iam/audit/archives
+audit-platform-request-archive => audit-platform-request-archive|POST|/platform/iam/audit/archives
+audit-platform-retry-archive => audit-platform-retry-archive|POST|/platform/iam/audit/archives/{id}/retry
+audit-platform-verify-archive => audit-platform-verify-archive|POST|/platform/iam/audit/archives/{id}/verify
+audit-platform-download-archive => audit-platform-download-archive|GET|/platform/iam/audit/archives/{id}/download
+audit-platform-set-retention => audit-platform-set-retention|PUT|/platform/iam/audit/retention
+# Field policy operations are Phase 10 additions, not migrated source features.
+iam-field-catalog => iam-field-catalog|GET|/iam/field-catalog
+iam-list-field-policies => iam-list-field-policies|GET|/iam/field-policies
+iam-set-field-policy => iam-set-field-policy|PUT|/iam/field-policies/{resource}/{field}
+iam-delete-field-policy => iam-delete-field-policy|DELETE|/iam/field-policies/{resource}/{field}
+iam-effective-fields => iam-effective-fields|GET|/iam/fields/effective
 iam-add-role-directory-binding => iam-add-role-directory-binding|PUT|/iam/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}
 iam-add-role-member => iam-add-role-member|PUT|/iam/roles/{role_id}/members/{subject}
 iam-authorization-constraint => iam-authorization-constraint|POST|/iam/authorization/constraints

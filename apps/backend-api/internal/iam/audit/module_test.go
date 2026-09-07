@@ -74,7 +74,7 @@ func TestAuditModuleLifecycleProvidesStableAppender(t *testing.T) {
 	assert.Equal(t, int64(1), h.count(t, "iam_audit_events", 901))
 	_, api = humatest.New(t)
 	require.NoError(t, instance.RegisterHTTP(t.Context(), api))
-	assert.Len(t, auditOperationManifest(api.OpenAPI()), 8)
+	assert.Len(t, auditOperationManifest(api.OpenAPI()), 21)
 }
 
 func TestAuditModuleActivationComesFromConfig(t *testing.T) {
@@ -140,6 +140,8 @@ func TestAuditI18nRegistrationAndKeyParity(t *testing.T) {
 		auditi18n.IntegrityFailed, auditi18n.Unavailable, auditi18n.AnchorNotEnabled,
 		auditi18n.AnchorEmpty, auditi18n.AnchorAlreadyExists, auditi18n.AnchorUnavailable,
 		auditi18n.RetentionInvalid, auditi18n.RootSigningDisabled,
+		auditi18n.ArchiveDisabled, auditi18n.ArchiveEmpty, auditi18n.ArchiveNotFound,
+		auditi18n.ArchiveBusy, auditi18n.ArchiveIntegrity, auditi18n.ArchiveUnavailable,
 	}
 	for _, locale := range []string{"en-US", "ms-MY", "zh-CN"} {
 		ctx := platformi18n.WithLocale(t.Context(), locale)

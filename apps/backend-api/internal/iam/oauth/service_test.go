@@ -462,15 +462,19 @@ func TestServiceAccountClientCredentials(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, harness.db.Table(harness.table("iam_principals")).Create(map[string]any{
 		"id": 202, "login_name": "robot", "status": "active",
+		"display_name": "Robot", "created_at": oauthTestNow, "updated_at": oauthTestNow,
 	}).Error)
 	require.NoError(t, harness.db.Table(harness.table("iam_tenant_members")).Create(map[string]any{
 		"tenant_id": 7, "principal_id": 202, "status": "active",
 	}).Error)
 	require.NoError(t, harness.db.Table(harness.table("iam_service_accounts")).Create(map[string]any{
 		"principal_id": 202, "owner_tenant_id": 7, "status": "active", "token_version": 3,
+		"created_at": oauthTestNow, "updated_at": oauthTestNow,
 	}).Error)
 	require.NoError(t, harness.db.Table(harness.table("iam_service_account_credentials")).Create(map[string]any{
 		"id": 303, "principal_id": 202, "secret_hash": hash, "scopes": "jobs.read jobs.write",
+		"name":       "worker",
+		"created_at": oauthTestNow,
 	}).Error)
 	form := url.Values{
 		"grant_type": {"client_credentials"}, "client_id": {"303"},

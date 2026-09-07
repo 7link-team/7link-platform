@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -17,6 +18,104 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestSCIMResourceOperationsRevalidateCredentialContext(t *testing.T) {
+	for _, prefix := range []string{"", "scim_gate_"} {
+		for _, state := range []string{"tenant_mismatch", "directory_mismatch", "credential_mismatch", "zero", "revoked", "expired", "directory_disabled", "tenant_suspended", "tenant_deleted"} {
+			t.Run("prefix_"+prefix+"/"+state, func(t *testing.T) {
+				env := newProvisioningEnvironmentWithPrefix(t, prefix)
+				input := activeUserInput("protected", "protected", "protected@example.test")
+				user, err := env.service.CreateUser(t.Context(), env.auth, input)
+				require.NoError(t, err)
+				groupInput := GroupInput{Schemas: []string{GroupSchema}, DisplayName: "Protected group"}
+				group, err := env.service.CreateGroup(t.Context(), env.auth, groupInput)
+				require.NoError(t, err)
+				auth := env.auth
+				switch state {
+				case "tenant_mismatch":
+					auth.TenantID = testID("tenant-b")
+				case "directory_mismatch":
+					directory, err := env.service.CreateDirectory(t.Context(), testID("tenant-b"), "Other tenant", nil)
+					require.NoError(t, err)
+					auth.DirectoryID = directory.ID
+				case "credential_mismatch":
+					auth.CredentialID = testID("missing-credential")
+				case "zero":
+					auth = AuthContext{}
+				case "revoked":
+					require.NoError(t, env.service.RevokeCredential(t.Context(), auth.TenantID, auth.DirectoryID, auth.CredentialID))
+				case "expired":
+					require.NoError(t, env.db.Table(prefix+"iam_scim_credentials").Where("id = ?", auth.CredentialID).Update("expires_at", provisioningTestNow).Error)
+				case "directory_disabled":
+					require.NoError(t, env.db.Table(prefix+"iam_scim_directories").Where("id = ?", auth.DirectoryID).Update("status", DirectoryDisabled).Error)
+				case "tenant_suspended", "tenant_deleted":
+					require.NoError(t, env.db.Table(prefix+"iam_tenants").Where("id = ?", auth.TenantID).Update("status", strings.TrimPrefix(state, "tenant_")).Error)
+				}
+				var auditCount, principalCount, groupCount int64
+				require.NoError(t, env.db.Table(prefix+"iam_audit_events").Count(&auditCount).Error)
+				require.NoError(t, env.db.Table(prefix+"iam_principals").Count(&principalCount).Error)
+				require.NoError(t, env.db.Table(prefix+"iam_groups").Count(&groupCount).Error)
+				patch := PatchRequest{Schemas: []string{PatchSchema}, Operations: []PatchOperation{{Op: "replace", Path: "displayName", Value: json.RawMessage(`"unauthorized"`)}}}
+				operations := []struct {
+					name string
+					run  func() error
+				}{
+					{"get_user", func() error { _, err := env.service.GetUser(t.Context(), auth, parseGUID(user.ID)); return err }},
+					{"list_users", func() error {
+						_, err := env.service.ListUsers(t.Context(), auth, ListRequest{Count: 100, StartIndex: 1})
+						return err
+					}},
+					{"create_user", func() error {
+						_, err := env.service.CreateUser(t.Context(), auth, activeUserInput("unauthorized", "unauthorized", "unauthorized@example.test"))
+						return err
+					}},
+					{"replace_user", func() error {
+						_, err := env.service.ReplaceUser(t.Context(), auth, parseGUID(user.ID), input, 1)
+						return err
+					}},
+					{"patch_user", func() error {
+						_, err := env.service.PatchUser(t.Context(), auth, parseGUID(user.ID), patch, 1)
+						return err
+					}},
+					{"delete_user", func() error { return env.service.DeleteUser(t.Context(), auth, parseGUID(user.ID), 1) }},
+					{"get_group", func() error { _, err := env.service.GetGroup(t.Context(), auth, parseGUID(group.ID)); return err }},
+					{"list_groups", func() error {
+						_, err := env.service.ListGroups(t.Context(), auth, ListRequest{Count: 100, StartIndex: 1})
+						return err
+					}},
+					{"create_group", func() error {
+						_, err := env.service.CreateGroup(t.Context(), auth, GroupInput{Schemas: []string{GroupSchema}, DisplayName: "Unauthorized group"})
+						return err
+					}},
+					{"replace_group", func() error {
+						_, err := env.service.ReplaceGroup(t.Context(), auth, parseGUID(group.ID), groupInput, 1)
+						return err
+					}},
+					{"patch_group", func() error {
+						_, err := env.service.PatchGroup(t.Context(), auth, parseGUID(group.ID), patch, 1)
+						return err
+					}},
+					{"delete_group", func() error { return env.service.DeleteGroup(t.Context(), auth, parseGUID(group.ID), 1) }},
+					{"bulk", func() error {
+						_, err := env.service.Bulk(t.Context(), auth, BulkRequest{Schemas: []string{BulkSchema}, Operations: []BulkOperation{{Method: "DELETE", Path: "/Users/" + user.ID}}})
+						return err
+					}},
+				}
+				for _, operation := range operations {
+					require.ErrorIs(t, operation.run(), ErrUnauthorized, operation.name)
+				}
+				for table, expected := range map[string]int64{"iam_audit_events": auditCount, "iam_principals": principalCount, "iam_groups": groupCount} {
+					var count int64
+					require.NoError(t, env.db.Table(prefix+table).Count(&count).Error)
+					assert.Equal(t, expected, count, table)
+				}
+				var changed int64
+				require.NoError(t, env.db.Table(prefix+"iam_scim_resources").Where("version <> 1 OR deleted_at IS NOT NULL").Count(&changed).Error)
+				assert.Zero(t, changed)
+			})
+		}
+	}
+}
 
 func TestProvisionedResourceRestoreAndValidationPaths(t *testing.T) {
 	env := newProvisioningEnvironment(t)
@@ -69,12 +168,12 @@ func TestDirectoryCredentialLifecycleAndFailures(t *testing.T) {
 	directories, err := env.service.ListDirectories(t.Context(), env.auth.TenantID)
 	require.NoError(t, err)
 	directory := directories[0]
-	unchanged, err := env.service.ReplaceDirectory(t.Context(), env.auth.TenantID, directory.ID, directory.Name, directory.Status, directory.Version)
+	unchanged, err := env.service.ReplaceDirectory(t.Context(), env.auth.TenantID, directory.ID, directory.Name, directory.Status, directory.Version, directory.ServiceAccountID)
 	require.NoError(t, err)
 	assert.Equal(t, directory.Version, unchanged.Version)
-	_, err = env.service.CreateDirectory(t.Context(), testID("missing-tenant"), "Missing")
+	_, err = env.service.CreateDirectory(t.Context(), testID("missing-tenant"), "Missing", nil)
 	assert.ErrorIs(t, err, ErrInvalidDirectory)
-	_, err = env.service.CreateDirectory(t.Context(), env.auth.TenantID, "primary idp")
+	_, err = env.service.CreateDirectory(t.Context(), env.auth.TenantID, "primary idp", nil)
 	assert.ErrorIs(t, err, ErrDirectoryName)
 
 	expiresAt := provisioningTestNow.Add(time.Hour)
@@ -103,18 +202,26 @@ func TestDirectoryCredentialLifecycleAndFailures(t *testing.T) {
 	assert.ErrorIs(t, err, ErrUnauthorized)
 	assert.ErrorIs(t, env.service.RevokeCredential(t.Context(), env.auth.TenantID, env.auth.DirectoryID, testID("missing")), ErrCredentialMissing)
 
-	updated, err := env.service.ReplaceDirectory(t.Context(), env.auth.TenantID, directory.ID, directory.Name, DirectoryDisabled, directory.Version)
+	updated, err := env.service.ReplaceDirectory(t.Context(), env.auth.TenantID, directory.ID, directory.Name, DirectoryDisabled, directory.Version, nil)
 	require.NoError(t, err)
 	_, err = env.service.CreateCredential(t.Context(), env.auth.TenantID, directory.ID, "disabled", nil)
 	assert.ErrorIs(t, err, ErrInvalidDirectory)
-	_, err = env.service.ReplaceDirectory(t.Context(), env.auth.TenantID, directory.ID, directory.Name, DirectoryActive, directory.Version)
+	_, err = env.service.ReplaceDirectory(t.Context(), env.auth.TenantID, directory.ID, directory.Name, DirectoryActive, directory.Version, nil)
 	assert.ErrorIs(t, err, ErrDirectoryVersion)
 	assert.Equal(t, DirectoryDisabled, updated.Status)
 }
 
 func TestCredentialTenantIsolationIncludesBulkDirectoryAndTarget(t *testing.T) {
 	env := newProvisioningEnvironmentWithPrefix(t, "sl_")
-	directoryB, err := env.service.CreateDirectory(t.Context(), testID("tenant-b"), "Tenant B")
+	actorB := testID("scim-actor-b")
+	validator := env.service.actors
+	env.service.actors = func(ctx context.Context, db *gorm.DB, tenant, actor guid.ID, now time.Time) (bool, error) {
+		if tenant == testID("tenant-b") && actor == actorB {
+			return true, nil
+		}
+		return validator(ctx, db, tenant, actor, now)
+	}
+	directoryB, err := env.service.CreateDirectory(t.Context(), testID("tenant-b"), "Tenant B", &actorB)
 	require.NoError(t, err)
 	credentialB, err := env.service.CreateCredential(t.Context(), testID("tenant-b"), directoryB.ID, "tenant-b", nil)
 	require.NoError(t, err)
@@ -124,7 +231,7 @@ func TestCredentialTenantIsolationIncludesBulkDirectoryAndTarget(t *testing.T) {
 	require.NoError(t, err)
 	groupB, err := env.service.CreateGroup(t.Context(), authB, GroupInput{Schemas: []string{GroupSchema}, DisplayName: "Tenant B Group", Members: []SCIMGroupMember{{Value: userB.ID}}})
 	require.NoError(t, err)
-	targetB, err := env.service.CreateTarget(t.Context(), testID("tenant-b"), "Tenant B Target", "https://example.test/scim", "secret")
+	targetB, err := env.service.CreateTarget(t.Context(), testID("tenant-b"), "Tenant B Target", "https://example.test/scim", "secret", nil)
 	require.NoError(t, err)
 
 	_, err = env.service.GetUser(t.Context(), env.auth, parseGUID(userB.ID))
@@ -133,9 +240,9 @@ func TestCredentialTenantIsolationIncludesBulkDirectoryAndTarget(t *testing.T) {
 	assert.ErrorIs(t, err, ErrResourceMissing)
 	_, err = env.service.ListCredentials(t.Context(), env.auth.TenantID, directoryB.ID)
 	assert.ErrorIs(t, err, ErrDirectoryMissing)
-	_, err = env.service.ReplaceDirectory(t.Context(), env.auth.TenantID, directoryB.ID, "Stolen", DirectoryDisabled, 1)
+	_, err = env.service.ReplaceDirectory(t.Context(), env.auth.TenantID, directoryB.ID, "Stolen", DirectoryDisabled, 1, nil)
 	assert.ErrorIs(t, err, ErrDirectoryMissing)
-	_, err = env.service.ReplaceTarget(t.Context(), env.auth.TenantID, parseGUID(targetB.Target.ID), "Stolen", targetB.Target.BaseURL, TargetDisabled, "", 1)
+	_, err = env.service.ReplaceTarget(t.Context(), env.auth.TenantID, parseGUID(targetB.Target.ID), "Stolen", targetB.Target.BaseURL, TargetDisabled, "", 1, nil)
 	assert.ErrorIs(t, err, ErrTargetMissing)
 	assert.ErrorIs(t, env.service.DeleteTarget(t.Context(), env.auth.TenantID, parseGUID(targetB.Target.ID)), ErrTargetMissing)
 

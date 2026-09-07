@@ -17,6 +17,7 @@ type PasswordRecoveryToken struct {
 func (PasswordRecoveryToken) TableName() string { return "iam_password_recovery_tokens" }
 
 type NotificationOutbox struct {
+	PrincipalID       *guid.ID   `gorm:"column:principal_id"`
 	ID                guid.ID    `gorm:"column:id;primaryKey;autoIncrement:false"`
 	Kind              string     `gorm:"column:kind;type:text;not null"`
 	Recipient         string     `gorm:"column:recipient;type:text;not null"`

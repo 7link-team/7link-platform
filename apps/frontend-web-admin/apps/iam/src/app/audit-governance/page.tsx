@@ -1,9 +1,18 @@
-import { useEffect, useState, type FormEvent } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react"
+import { useSearchParams } from "react-router"
 import {
   CheckCircle2,
   FileClock,
   Fingerprint,
   LoaderCircle,
+  Pencil,
   RefreshCw,
   ShieldCheck,
 } from "lucide-react"
@@ -19,6 +28,7 @@ import {
 } from "@workspace/ui/components/dialog"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import { Tabs, TabsList, TabsTrigger } from "@workspace/ui/components/tabs"
 import {
   Table,
   TableBody,
@@ -30,13 +40,69 @@ import {
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import {
-  iamApi,
+  createIamApi,
+  getTenant,
   type AuditAnchor,
+  type AuditArchiveStatus,
   type AuditGovernance,
+  type AuditScope,
 } from "../../lib/iam-api"
+import { ArchiveJobs } from "./archives"
 
 export default function AuditGovernancePage() {
+  const [tenant, setTenantValue] = useState(getTenant)
+  const [params, setParams] = useSearchParams()
+  const scope: AuditScope =
+    params.get("scope") === "platform" ? "platform" : "tenant"
+  useEffect(() => {
+    const sync = () => setTenantValue(getTenant())
+    window.addEventListener("tenant-change", sync)
+    return () => window.removeEventListener("tenant-change", sync)
+  }, [])
+  return (
+    <>
+      <Tabs
+        value={scope}
+        onValueChange={(value) =>
+          setParams((previous) => {
+            const next = new URLSearchParams(previous)
+            next.set("scope", value)
+            return next
+          })
+        }
+      >
+        <TabsList variant="line" className="mb-4" aria-label="审计范围">
+          <TabsTrigger variant="line" value="tenant">
+            当前租户
+          </TabsTrigger>
+          <TabsTrigger variant="line" value="platform">
+            平台
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+      <ScopedAuditGovernance
+        key={`${tenant}:${scope}`}
+        tenant={tenant}
+        scope={scope}
+      />
+    </>
+  )
+}
+
+function ScopedAuditGovernance({
+  tenant,
+  scope,
+}: {
+  tenant: string
+  scope: AuditScope
+}) {
+  const iamApi = useMemo(() => createIamApi(undefined, () => tenant), [tenant])
+  const active = useRef(true)
+  const refreshID = useRef(0)
   const [governance, setGovernance] = useState<AuditGovernance | null>(null)
+  const [archiveStatus, setArchiveStatus] = useState<AuditArchiveStatus | null>(
+    null
+  )
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
@@ -44,58 +110,96 @@ export default function AuditGovernancePage() {
   const [minDays, setMinDays] = useState("365")
   const [archiveDays, setArchiveDays] = useState("730")
 
-  const refresh = async () => {
-    setLoading(true)
-    setError("")
-    try {
-      const report = await iamApi.auditGovernance()
-      setGovernance(report)
-      setMinDays(String(report.policy.min_days))
-      setArchiveDays(String(report.policy.archive_after_days))
-    } catch (cause) {
-      setError((cause as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const load = useCallback(
+    () =>
+      Promise.all([
+        scope === "tenant" ? iamApi.auditGovernance() : Promise.resolve(null),
+        iamApi.auditArchiveStatus(scope),
+      ]),
+    [iamApi, scope]
+  )
+
+  const refresh = useCallback(
+    async (showLoading = true) => {
+      if (!active.current) return
+      const requestID = ++refreshID.current
+      if (showLoading) setLoading(true)
+      setError("")
+      try {
+        const [report, status] = await load()
+        if (!active.current || requestID !== refreshID.current) return
+        setGovernance(report)
+        setArchiveStatus(status)
+      } catch (cause) {
+        if (!active.current || requestID !== refreshID.current) return
+        setGovernance(null)
+        setArchiveStatus(null)
+        setError((cause as Error).message)
+      } finally {
+        if (active.current && requestID === refreshID.current) setLoading(false)
+      }
+    },
+    [load]
+  )
 
   useEffect(() => {
-    let active = true
-    void iamApi.auditGovernance().then(
-      (report) => {
-        if (!active) return
+    active.current = true
+    let current = true
+    void load().then(
+      ([report, status]) => {
+        if (!current) return
         setGovernance(report)
-        setMinDays(String(report.policy.min_days))
-        setArchiveDays(String(report.policy.archive_after_days))
+        setArchiveStatus(status)
+        setMinDays(String(status.policy.min_days))
+        setArchiveDays(String(status.policy.archive_after_days))
         setError("")
         setLoading(false)
       },
       (cause: Error) => {
-        if (!active) return
+        if (!current) return
         setError(cause.message)
         setLoading(false)
       }
     )
     return () => {
-      active = false
+      current = false
+      active.current = false
     }
-  }, [])
+  }, [load])
+
+  const hasPendingJobs =
+    !!archiveStatus &&
+    archiveStatus.queued_jobs +
+      archiveStatus.running_jobs +
+      archiveStatus.failed_jobs >
+      0
+  useEffect(() => {
+    if (!hasPendingJobs || dialogOpen) return
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void refresh(false)
+    }, 5000)
+    return () => window.clearInterval(timer)
+  }, [hasPendingJobs, dialogOpen, refresh])
 
   const saveRetention = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setBusy(true)
     setError("")
     try {
-      await iamApi.setAuditRetention({
-        min_days: Number(minDays),
-        archive_after_days: Number(archiveDays),
-      })
+      await iamApi.setAuditRetention(
+        {
+          min_days: Number(minDays),
+          archive_after_days: Number(archiveDays),
+        },
+        scope
+      )
+      if (!active.current) return
       setDialogOpen(false)
       await refresh()
     } catch (cause) {
-      setError((cause as Error).message)
+      if (active.current) setError((cause as Error).message)
     } finally {
-      setBusy(false)
+      if (active.current) setBusy(false)
     }
   }
 
@@ -106,21 +210,20 @@ export default function AuditGovernancePage() {
       await iamApi.auditSignRoot()
       await refresh()
     } catch (cause) {
-      setError((cause as Error).message)
+      if (active.current) setError((cause as Error).message)
     } finally {
-      setBusy(false)
+      if (active.current) setBusy(false)
     }
   }
 
-  const policy = governance?.policy
+  const policy = archiveStatus?.policy
   const integrity = governance?.integrity
   const anchor = integrity?.anchor
 
   return (
     <>
       <PageHeader
-        title="审计治理"
-        description="审计事件保留策略、链完整性校验与 WORM 根锚点签名"
+        title={scope === "platform" ? "平台审计治理" : "审计治理"}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -133,54 +236,80 @@ export default function AuditGovernancePage() {
               <RefreshCw className={loading ? "animate-spin" : ""} />
               刷新
             </Button>
-            <Button type="button" size="sm" onClick={() => setDialogOpen(true)}>
-              更新保留策略
-            </Button>
             <Button
               type="button"
               size="sm"
-              variant="secondary"
-              onClick={() => void signRoot()}
-              disabled={busy || integrity?.valid !== true}
+              disabled={!archiveStatus || busy}
+              onClick={() => {
+                setMinDays(String(policy?.min_days ?? 365))
+                setArchiveDays(String(policy?.archive_after_days ?? 730))
+                setDialogOpen(true)
+              }}
             >
-              {busy ? (
-                <LoaderCircle className="animate-spin" />
-              ) : (
-                <Fingerprint />
-              )}
-              签名当前根
+              <Pencil />
+              更新保留策略
             </Button>
+            {scope === "tenant" && (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => void signRoot()}
+                disabled={busy || integrity?.valid !== true}
+              >
+                {busy ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <Fingerprint />
+                )}
+                签名当前根
+              </Button>
+            )}
           </div>
         }
       />
       {error && <Alert>{error}</Alert>}
-      {loading && !governance ? (
+      {loading && !archiveStatus ? (
         <div className="flex items-center gap-2 text-muted-foreground">
           <LoaderCircle className="animate-spin" />
           加载中
         </div>
       ) : (
-        <div className="grid gap-4">
-          <section className="grid gap-4 lg:grid-cols-3">
-            <PolicyCard
-              minDays={policy?.min_days}
-              archiveAfterDays={policy?.archive_after_days}
-              updatedAt={policy?.updated_at}
+        archiveStatus && (
+          <div className="grid gap-4">
+            <section className="grid gap-4 lg:grid-cols-3">
+              <PolicyCard
+                minDays={policy?.min_days}
+                archiveAfterDays={policy?.archive_after_days}
+                updatedAt={policy?.updated_at}
+              />
+              {scope === "tenant" && (
+                <IntegrityCard
+                  valid={integrity?.valid}
+                  verified={integrity?.verified_events}
+                  headSequence={integrity?.head_sequence}
+                  anchor={anchor}
+                />
+              )}
+              {scope === "tenant" && (
+                <StatsCard
+                  total={governance?.total_events}
+                  archiveReady={governance?.archive_ready_events}
+                  anchored={governance?.anchored_events}
+                />
+              )}
+            </section>
+            <ArchiveJobs
+              api={iamApi}
+              scope={scope}
+              status={archiveStatus}
+              onChanged={refresh}
             />
-            <IntegrityCard
-              valid={integrity?.valid}
-              verified={integrity?.verified_events}
-              headSequence={integrity?.head_sequence}
-              anchor={anchor}
-            />
-            <StatsCard
-              total={governance?.total_events}
-              archiveReady={governance?.archive_ready_events}
-              anchored={governance?.anchored_events}
-            />
-          </section>
-          <AnchorsTable anchors={governance?.anchors ?? []} />
-        </div>
+            {scope === "tenant" && (
+              <AnchorsTable anchors={governance?.anchors ?? []} />
+            )}
+          </div>
+        )
       )}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
@@ -209,7 +338,7 @@ export default function AuditGovernancePage() {
                 <Input
                   id="archive-days"
                   type="number"
-                  min={1}
+                  min={Number(minDays) || 1}
                   max={36500}
                   required
                   value={archiveDays}
@@ -252,7 +381,11 @@ function PolicyCard({
       <Stat label="归档就绪天数" value={archiveAfterDays ?? "-"} />
       <Stat
         label="更新时间"
-        value={updatedAt ? new Date(updatedAt).toLocaleString() : "平台默认"}
+        value={
+          updatedAt && new Date(updatedAt).getUTCFullYear() > 1
+            ? new Date(updatedAt).toLocaleString()
+            : "平台默认"
+        }
       />
     </Card>
   )
@@ -325,7 +458,7 @@ function StatsCard({
   return (
     <Card icon={<FileClock />} title="统计数据">
       <Stat label="事件总数" value={total ?? 0} />
-      <Stat label="可归档事件" value={archiveReady ?? 0} />
+      <Stat label="已达归档期限" value={archiveReady ?? 0} />
       <Stat label="已锚定事件" value={anchored ?? 0} />
     </Card>
   )

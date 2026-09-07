@@ -50,6 +50,14 @@ func (httpMembershipChecker) IsMemberActive(context.Context, guid.ID, guid.ID) (
 
 type httpAuthorizationEvaluator struct{}
 
+func (httpAuthorizationEvaluator) FieldConstraint(context.Context, guid.ID, guid.ID, string, guid.ID) (authz.FieldConstraint, error) {
+	fields := map[string]authz.FieldDecision{}
+	for _, field := range authz.ProfileFields() {
+		fields[field.Name] = authz.DecideField(field, nil, nil)
+	}
+	return authz.FieldConstraint{Fields: fields}, nil
+}
+
 func (httpAuthorizationEvaluator) CheckBulk(_ context.Context, _ guid.ID, permissions []string, _ guid.ID) (map[string]bool, error) {
 	result := make(map[string]bool, len(permissions))
 	for _, permission := range permissions {
@@ -62,6 +70,10 @@ func (httpAuthorizationEvaluator) Constraint(context.Context, guid.ID, string, g
 	return authz.DataConstraint{AllowAll: true, OwnerIDs: []string{}, ResourceIDs: []string{}, DepartmentIDs: []string{}, Ancestors: []authz.ResourceRef{}, DeniedIDs: []string{}}, nil
 }
 
+func (e httpAuthorizationEvaluator) EntityConstraint(ctx context.Context, tenantID, _ guid.ID, permission string, subject guid.ID) (authz.DataConstraint, error) {
+	return e.Constraint(ctx, tenantID, permission, subject)
+}
+
 func (httpAuthorizationEvaluator) ExplainEntity(_ context.Context, _, entityID guid.ID, _ string, _ guid.ID) (authz.Explanation, error) {
 	return authz.Explanation{Allowed: true, Reason: "test_policy", Matches: []authz.DecisionMatch{{ScopeID: entityID.String()}}}, nil
 }
@@ -72,11 +84,19 @@ func (httpAuthorizationEvaluator) ExplainResource(_ context.Context, _, entityID
 
 type httpFailingAuthorizationEvaluator struct{ err error }
 
+func (e httpFailingAuthorizationEvaluator) FieldConstraint(context.Context, guid.ID, guid.ID, string, guid.ID) (authz.FieldConstraint, error) {
+	return authz.FieldConstraint{}, e.err
+}
+
 func (e httpFailingAuthorizationEvaluator) CheckBulk(context.Context, guid.ID, []string, guid.ID) (map[string]bool, error) {
 	return nil, e.err
 }
 
 func (e httpFailingAuthorizationEvaluator) Constraint(context.Context, guid.ID, string, guid.ID) (authz.DataConstraint, error) {
+	return authz.DataConstraint{}, e.err
+}
+
+func (e httpFailingAuthorizationEvaluator) EntityConstraint(context.Context, guid.ID, guid.ID, string, guid.ID) (authz.DataConstraint, error) {
 	return authz.DataConstraint{}, e.err
 }
 

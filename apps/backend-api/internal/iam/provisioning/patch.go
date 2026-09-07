@@ -28,21 +28,52 @@ type groupPatchValue struct {
 }
 
 func (s *Service) PatchUser(ctx context.Context, auth AuthContext, id guid.ID, patch PatchRequest, expectedVersion int64) (UserResource, error) {
-	current, err := s.GetUser(ctx, auth, id)
+	err := s.repo.runInTx(ctx, func(repo *Repository) error {
+		if err := repo.authorizeSCIM(ctx, auth, s.now(), s.actors); err != nil {
+			return err
+		}
+		record, err := repo.user(ctx, auth.DirectoryID, id)
+		if err != nil {
+			return err
+		}
+		if expectedVersion > 0 && record.Version != expectedVersion {
+			return ErrResourceVersion
+		}
+		if !validPatch(patch) {
+			return ErrInvalidPath
+		}
+		fields, err := s.profileConstraint(ctx, auth.TenantID, auth.PrincipalID)
+		if err != nil {
+			return err
+		}
+		if err := requireUserPatchFields(patch, fields); err != nil {
+			return err
+		}
+		// Never build a write from GetUser: its public view can omit or mask
+		// attributes the automation is allowed to preserve but not inspect.
+		active := record.PrincipalStatus == "active" && record.MembershipStatus == "active"
+		input := UserInput{
+			Schemas: []string{UserSchema}, ExternalID: record.ExternalID, UserName: record.LoginName,
+			Name: UserName{Formatted: record.DisplayName}, DisplayName: record.DisplayName, Active: &active,
+		}
+		if record.Email != "" {
+			input.Emails = []UserEmail{{Value: record.Email, Type: "work", Primary: true}}
+		}
+		for _, operation := range patch.Operations {
+			if err := applyUserPatch(&input, operation); err != nil {
+				return err
+			}
+		}
+		input, active, err = normalizeUserInput(input)
+		if err != nil {
+			return err
+		}
+		return s.replaceUserOn(ctx, repo, auth, id, input, active, record.Version)
+	})
 	if err != nil {
 		return UserResource{}, err
 	}
-	if !validPatch(patch) {
-		return UserResource{}, ErrInvalidPath
-	}
-	active := current.Active
-	input := UserInput{Schemas: []string{UserSchema}, ExternalID: current.ExternalID, UserName: current.UserName, Name: current.Name, DisplayName: current.DisplayName, Active: &active, Emails: current.Emails}
-	for _, operation := range patch.Operations {
-		if err := applyUserPatch(&input, operation); err != nil {
-			return UserResource{}, err
-		}
-	}
-	return s.ReplaceUser(ctx, auth, id, input, expectedVersion)
+	return s.GetUser(ctx, auth, id)
 }
 
 func (s *Service) PatchGroup(ctx context.Context, auth AuthContext, id guid.ID, patch PatchRequest, expectedVersion int64) (GroupResource, error) {
@@ -94,16 +125,24 @@ func applyUserPatch(input *UserInput, operation PatchOperation) error {
 		return decodePatchValue(operation.Value, &input.UserName)
 	case "displayname":
 		if op == "remove" {
-			input.DisplayName = ""
+			input.DisplayName, input.Name.Formatted = "", ""
 			return nil
 		}
-		return decodePatchValue(operation.Value, &input.DisplayName)
+		if err := decodePatchValue(operation.Value, &input.DisplayName); err != nil {
+			return err
+		}
+		input.Name.Formatted = input.DisplayName
+		return nil
 	case "name.formatted":
 		if op == "remove" {
-			input.Name.Formatted = ""
+			input.DisplayName, input.Name.Formatted = "", ""
 			return nil
 		}
-		return decodePatchValue(operation.Value, &input.Name.Formatted)
+		if err := decodePatchValue(operation.Value, &input.Name.Formatted); err != nil {
+			return err
+		}
+		input.DisplayName = input.Name.Formatted
+		return nil
 	case "active":
 		if op == "remove" {
 			return ErrInvalidPath
@@ -214,11 +253,13 @@ func mergeUserPatch(input *UserInput, value userPatchValue) {
 	if value.UserName != nil {
 		input.UserName = *value.UserName
 	}
-	if value.DisplayName != nil {
-		input.DisplayName = *value.DisplayName
-	}
 	if value.Name != nil {
 		input.Name = *value.Name
+		input.DisplayName = value.Name.Formatted
+	}
+	if value.DisplayName != nil {
+		input.DisplayName = *value.DisplayName
+		input.Name.Formatted = *value.DisplayName
 	}
 	if value.Active != nil {
 		input.Active = value.Active

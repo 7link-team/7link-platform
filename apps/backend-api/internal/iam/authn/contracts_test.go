@@ -26,6 +26,10 @@ func (*webServiceFixture) Authenticate(context.Context, string, string) (*authne
 	return nil, nil
 }
 
+func (*webServiceFixture) ProjectProfile(context.Context, *authnext.Claims, string) (ProfileClaims, error) {
+	return ProfileClaims{}, nil
+}
+
 func (*webServiceFixture) ClearCookie() string  { return "" }
 func (*webServiceFixture) CookieSecure() bool   { return false }
 func (*webServiceFixture) Issuer() string       { return "" }
@@ -48,7 +52,7 @@ func (*webServiceFixture) IssueTenantAccessTokenWithAssurance(context.Context, g
 	return "", 0, nil
 }
 
-func (*webServiceFixture) IssueTenantIDTokenWithAssurance(context.Context, guid.ID, string, string, string, authnext.Assurance) (string, error) {
+func (*webServiceFixture) IssueTenantIDTokenWithAssurance(context.Context, guid.ID, string, string, string, string, authnext.Assurance) (string, error) {
 	return "", nil
 }
 
@@ -76,12 +80,13 @@ func consumeInvitationCredentials(credentials InvitationCredentials) {
 func consumeWebService(service WebService) {
 	ctx := context.Background()
 	_, _ = service.Authenticate(ctx, "", "")
+	_, _ = service.ProjectProfile(ctx, nil, "")
 	_ = service.ClearCookie()
 	_ = service.CookieSecure()
 	_, _ = service.CreateSession(ctx, 0, time.Time{}, authnext.Assurance{})
 	_ = service.Issuer()
 	_, _, _ = service.IssueTenantAccessTokenWithAssurance(ctx, 0, "", "", "", authnext.Assurance{})
-	_, _ = service.IssueTenantIDTokenWithAssurance(ctx, 0, "", "", "", authnext.Assurance{})
+	_, _ = service.IssueTenantIDTokenWithAssurance(ctx, 0, "", "", "", "", authnext.Assurance{})
 	_, _, _ = service.IssueTenantOAuthClientToken(ctx, "", "", "", "", "")
 	_, _, _ = service.IssueTenantServiceAccountToken(ctx, "", "", "", "", "", 0)
 	_ = service.JWKS()

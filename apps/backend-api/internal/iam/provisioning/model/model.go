@@ -8,14 +8,15 @@ import (
 )
 
 type Directory struct {
-	ID        guid.ID   `gorm:"column:id;primaryKey;autoIncrement:false"`
-	TenantID  guid.ID   `gorm:"column:tenant_id;not null"`
-	Name      string    `gorm:"column:name;size:128;not null"`
-	NameKey   string    `gorm:"column:name_key;size:128;not null"`
-	Status    string    `gorm:"column:status;size:16;not null"`
-	Version   int64     `gorm:"column:version;not null"`
-	CreatedAt time.Time `gorm:"column:created_at;not null"`
-	UpdatedAt time.Time `gorm:"column:updated_at;not null"`
+	ServiceAccountID *guid.ID  `gorm:"column:service_account_id"`
+	ID               guid.ID   `gorm:"column:id;primaryKey;autoIncrement:false"`
+	TenantID         guid.ID   `gorm:"column:tenant_id;not null"`
+	Name             string    `gorm:"column:name;size:128;not null"`
+	NameKey          string    `gorm:"column:name_key;size:128;not null"`
+	Status           string    `gorm:"column:status;size:16;not null"`
+	Version          int64     `gorm:"column:version;not null"`
+	CreatedAt        time.Time `gorm:"column:created_at;not null"`
+	UpdatedAt        time.Time `gorm:"column:updated_at;not null"`
 }
 
 func (Directory) TableName() string { return "iam_scim_directories" }
@@ -48,6 +49,7 @@ type Resource struct {
 func (Resource) TableName() string { return "iam_scim_resources" }
 
 type Target struct {
+	ServiceAccountID      *guid.ID  `gorm:"column:service_account_id"`
 	ID                    guid.ID   `gorm:"column:id;primaryKey;autoIncrement:false"`
 	TenantID              guid.ID   `gorm:"column:tenant_id;not null"`
 	Name                  string    `gorm:"column:name;size:128;not null"`

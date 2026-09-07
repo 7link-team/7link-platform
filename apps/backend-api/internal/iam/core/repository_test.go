@@ -66,7 +66,11 @@ func initializeRepositoryDatabase(t *testing.T, dsn, prefix string) {
 	require.NoError(t, err)
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
+	defer func() { require.NoError(t, sqlDB.Close()) }()
+	_, filename, _, ok := runtime.Caller(0)
+	require.True(t, ok)
 	sources := []goosex.Source{
+		{FS: os.DirFS(filepath.Join(filepath.Dir(filename), "..", "identity")), TableName: "goose_identity"},
 		(&Module{}).MigrationSource(),
 		organizationTestMigrationSource(t),
 	}
@@ -74,19 +78,6 @@ func initializeRepositoryDatabase(t *testing.T, dsn, prefix string) {
 		source.Prefix = prefix
 		require.NoError(t, goosex.Migrate(t.Context(), sqlDB, source, db.Dialector.Name()))
 	}
-	// Identity owns iam_principals and imports core for the administrator guard,
-	// so its migration source cannot be reached from an in-package core test.
-	// Core reads principals through a raw table name and holds no constraint
-	// against it; the real schema is verified in tests/migration.
-	require.NoError(t, db.Exec(
-		"CREATE TABLE "+prefix+"iam_principals ("+
-			"id BIGINT NOT NULL PRIMARY KEY, login_name TEXT NOT NULL, email TEXT NOT NULL DEFAULT '', "+
-			"display_name TEXT NOT NULL, status TEXT NOT NULL, email_verified INTEGER NOT NULL DEFAULT 0, "+
-			"activation_required INTEGER NOT NULL DEFAULT 0, created_at DATETIME NOT NULL, "+
-			"updated_at DATETIME NOT NULL, disabled_at DATETIME NULL, "+
-			"CONSTRAINT "+prefix+"uq_iam_principals_login UNIQUE (login_name))",
-	).Error)
-	require.NoError(t, sqlDB.Close())
 }
 
 func organizationTestMigrationSource(t *testing.T) goosex.Source {

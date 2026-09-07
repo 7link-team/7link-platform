@@ -29,6 +29,87 @@ import (
 
 var provisioningTestNow = time.Date(2026, 9, 3, 12, 0, 0, 123_000_000, time.UTC)
 
+func TestBoundSCIMActorRevalidationAndAudit(t *testing.T) {
+	env := newProvisioningEnvironment(t)
+	s := env.service
+	actor := testID("automation-actor")
+	active := true
+	var validationError error
+	s.actors = func(ctx context.Context, db *gorm.DB, tenantID, principalID guid.ID, now time.Time) (bool, error) {
+		assert.Equal(t, env.auth.TenantID, tenantID)
+		assert.Equal(t, actor, principalID)
+		assert.Equal(t, provisioningTestNow, now)
+		require.NotNil(t, db)
+		return active, validationError
+	}
+	var events []audit.DomainEvent
+	appender := s.appender
+	s.appender = func(ctx context.Context, db *gorm.DB, event audit.DomainEvent) error {
+		events = append(events, event)
+		return appender(ctx, db, event)
+	}
+	directory, err := s.ReplaceDirectory(t.Context(), env.auth.TenantID, env.auth.DirectoryID, "Primary IdP", DirectoryActive, 1, &actor)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), directory.Version)
+	auth, err := s.Authenticate(t.Context(), "Bearer "+env.token)
+	require.NoError(t, err)
+	assert.Equal(t, actor, auth.PrincipalID)
+	user, err := s.CreateUser(t.Context(), auth, activeUserInput("bound-user", "bound-user", "bound@example.test"))
+	require.NoError(t, err)
+	assert.Equal(t, actor, events[len(events)-1].PrincipalID)
+	provider, server := newSCIMProviderEndpoint(t, 200, `{"id":"remote-bound-user"}`)
+	target, err := s.CreateTarget(t.Context(), auth.TenantID, "Bound target", server.URL, "token", &actor)
+	require.NoError(t, err)
+	targetID := parseGUID(target.Target.ID)
+	_, err = s.PushResource(t.Context(), auth.TenantID, targetID, ResourceUser, parseGUID(user.ID))
+	require.NoError(t, err)
+	assert.Equal(t, actor, events[len(events)-1].PrincipalID)
+	assert.Equal(t, actor, events[len(events)-1].Detail["service_account_id"])
+	require.NoError(t, s.DeprovisionResource(t.Context(), auth.TenantID, targetID, ResourceUser, parseGUID(user.ID)))
+	assert.Equal(t, actor, events[len(events)-1].PrincipalID)
+	assert.Equal(t, actor, events[len(events)-1].Detail["service_account_id"])
+	active = false
+	before := provider.count()
+	_, err = s.Authenticate(t.Context(), "Bearer "+env.token)
+	assert.ErrorIs(t, err, ErrUnauthorized)
+	_, err = s.GetUser(t.Context(), auth, parseGUID(user.ID))
+	assert.ErrorIs(t, err, ErrUnauthorized)
+	_, err = s.PushResource(t.Context(), auth.TenantID, targetID, ResourceUser, parseGUID(user.ID))
+	assert.ErrorIs(t, err, ErrUnauthorized)
+	assert.ErrorIs(t, s.DeprovisionResource(t.Context(), auth.TenantID, targetID, ResourceUser, parseGUID(user.ID)), ErrUnauthorized)
+	_, err = s.SyncTarget(t.Context(), auth.TenantID, targetID)
+	assert.ErrorIs(t, err, ErrUnauthorized)
+	assert.Equal(t, before, provider.count())
+	_, err = s.CreateDirectory(t.Context(), auth.TenantID, "Inactive actor", &actor)
+	assert.ErrorIs(t, err, ErrInvalidDirectory)
+	_, err = s.CreateTarget(t.Context(), auth.TenantID, "Inactive actor", server.URL, "token", &actor)
+	assert.ErrorIs(t, err, ErrInvalidTarget)
+	validationError = errors.New("actor lookup unavailable")
+	assert.ErrorIs(t, s.requireServiceAccount(t.Context(), s.repo, auth.TenantID, &actor), validationError)
+	s.actors = nil
+	assert.ErrorIs(t, s.requireServiceAccount(t.Context(), s.repo, auth.TenantID, &actor), errRepositoryUnavailable)
+	invalid := guid.ID(0)
+	assert.ErrorIs(t, s.requireServiceAccount(t.Context(), s.repo, auth.TenantID, &invalid), ErrUnauthorized)
+}
+
+func TestSCIMCredentialRejectsInactiveTenant(t *testing.T) {
+	for _, prefix := range []string{"", "scim_gate_"} {
+		t.Run("prefix_"+prefix, func(t *testing.T) {
+			env := newProvisioningEnvironmentWithPrefix(t, prefix)
+			for _, status := range []string{"suspended", "deleted"} {
+				require.NoError(t, env.db.Table(prefix+"iam_tenants").Where("id = ?", env.auth.TenantID).Update("status", status).Error)
+				auth, err := env.service.Authenticate(t.Context(), "Bearer "+env.token)
+				assert.ErrorIs(t, err, ErrUnauthorized, status)
+				assert.Equal(t, AuthContext{}, auth)
+			}
+			require.NoError(t, env.db.Table(prefix+"iam_tenants").Where("id = ?", env.auth.TenantID).Update("status", "active").Error)
+			auth, err := env.service.Authenticate(t.Context(), "Bearer "+env.token)
+			require.NoError(t, err)
+			assert.Equal(t, env.auth, auth)
+		})
+	}
+}
+
 type provisioningTestIDs struct{ next atomic.Int64 }
 
 func newProvisioningTestIDs(start int64) *provisioningTestIDs {
@@ -330,9 +411,13 @@ func newProvisioningEnvironmentWithPrefix(t *testing.T, prefix string) *provisio
 		return db.WithContext(ctx).Table(prefix + "iam_audit_events").Create(&row).Error
 	})
 	env.keys = newProvisioningTestKeyring(t, testProvisioningKey())
-	env.service = NewService(runtime, appender, ids, identities, groups, Config{}, env.keys)
+	actorID := testID("scim-actor")
+	actors := identity.ServiceAccountValidator(func(_ context.Context, _ *gorm.DB, tenant, actor guid.ID, _ time.Time) (bool, error) {
+		return tenant == testID("tenant-a") && actor == actorID, nil
+	})
+	env.service = NewService(runtime, appender, ids, identities, groups, actors, provisioningProfileChecker{}, Config{}, env.keys)
 	env.service.now = func() time.Time { return provisioningTestNow }
-	directory, err := env.service.CreateDirectory(t.Context(), testID("tenant-a"), "Primary IdP")
+	directory, err := env.service.CreateDirectory(t.Context(), testID("tenant-a"), "Primary IdP", &actorID)
 	require.NoError(t, err)
 	credential, err := env.service.CreateCredential(t.Context(), testID("tenant-a"), directory.ID, "acceptance", nil)
 	require.NoError(t, err)
@@ -428,7 +513,7 @@ func TestDirectoryCredentialAndResourceLifecycle(t *testing.T) {
 func TestAuditFailureRollsBackDirectoryAndResource(t *testing.T) {
 	env := newProvisioningEnvironment(t)
 	env.auditErr = errors.New("audit unavailable")
-	_, err := env.service.CreateDirectory(t.Context(), testID("tenant-a"), "Rolled back")
+	_, err := env.service.CreateDirectory(t.Context(), testID("tenant-a"), "Rolled back", nil)
 	assert.ErrorContains(t, err, "audit unavailable")
 	var count int64
 	require.NoError(t, env.db.Table(env.prefix+"iam_scim_directories").Where("name = ?", "Rolled back").Count(&count).Error)
@@ -443,10 +528,10 @@ func TestProvisioningIDFailuresAreRejected(t *testing.T) {
 	env := newProvisioningEnvironment(t)
 	original := env.service.ids
 	env.service.ids = fixedProvisioningID{err: errors.New("id unavailable")}
-	_, err := env.service.CreateDirectory(t.Context(), testID("tenant-a"), "ID failure")
+	_, err := env.service.CreateDirectory(t.Context(), testID("tenant-a"), "ID failure", nil)
 	assert.ErrorContains(t, err, "id unavailable")
 	env.service.ids = fixedProvisioningID{id: 0}
-	_, err = env.service.CreateDirectory(t.Context(), testID("tenant-a"), "Zero ID")
+	_, err = env.service.CreateDirectory(t.Context(), testID("tenant-a"), "Zero ID", nil)
 	assert.ErrorContains(t, err, "must be positive")
 	env.service.ids = original
 	assert.Equal(t, assert.AnError, firstError(assert.AnError, ErrInvalidTarget))

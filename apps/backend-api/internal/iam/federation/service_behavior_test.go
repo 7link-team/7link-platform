@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/iam/authn"
 	"7link.com/platform/internal/iam/federation/model"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
@@ -240,8 +241,12 @@ func (*federationWeb) Issuer() string { return "https://iam.example" }
 func (*federationWeb) IssueTenantAccessTokenWithAssurance(context.Context, guid.ID, string, string, string, authnext.Assurance) (string, int64, error) {
 	return "access", 60, nil
 }
-func (*federationWeb) IssueTenantIDTokenWithAssurance(context.Context, guid.ID, string, string, string, authnext.Assurance) (string, error) {
+func (*federationWeb) IssueTenantIDTokenWithAssurance(context.Context, guid.ID, string, string, string, string, authnext.Assurance) (string, error) {
 	return "id", nil
+}
+
+func (*federationWeb) ProjectProfile(context.Context, *authnext.Claims, string) (authn.ProfileClaims, error) {
+	return authn.ProfileClaims{}, nil
 }
 func (*federationWeb) IssueTenantOAuthClientToken(context.Context, string, string, string, string, string) (string, int64, error) {
 	return "client", 60, nil
@@ -314,6 +319,7 @@ func (e *federationEnvironment) migrate(t *testing.T) {
 	}{
 		{model.Provider{}.TableName(), &model.Provider{}}, {model.IdentityLink{}.TableName(), &model.IdentityLink{}},
 		{model.SAMLServiceProvider{}.TableName(), &model.SAMLServiceProvider{}}, {model.SAMLIDPKey{}.TableName(), &model.SAMLIDPKey{}},
+		{model.ReplayClaim{}.TableName(), &model.ReplayClaim{}},
 		{"iam_principals", &federationPrincipal{}}, {"iam_tenant_members", &federationMember{}},
 		{"iam_roles", &federationRole{}}, {"iam_role_members", &federationRoleMember{}}, {"iam_policy_revisions", &federationRevision{}},
 	} {

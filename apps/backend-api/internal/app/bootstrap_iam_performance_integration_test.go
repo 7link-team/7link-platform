@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"regexp"
 	"runtime"
@@ -208,15 +209,25 @@ func TestIAMPerformanceExternalDatabase(t *testing.T) {
 	require.Equal(t, workload, baseline.Workload)
 	expected, ok := baseline.Engines[databaseType]
 	require.True(t, ok, "missing checked-in %s performance baseline", databaseType)
-	require.Equal(t, iamPerformancePlanSignatures(expected.Plans), iamPerformancePlanSignatures(current.Plans),
-		"production SQL changed; review plans and regenerate the performance baseline")
-	validateIAMPerformancePlans(t, databaseType, expected.Plans)
-	if os.Getenv(iamPerformanceEnforce) == "1" {
+	updatePlans := os.Getenv(iamPerformanceUpdate) == "plans"
+	if !updatePlans {
+		require.Equal(t, iamPerformancePlanSignatures(expected.Plans), iamPerformancePlanSignatures(current.Plans),
+			"production SQL changed; review plans and regenerate with IAM_PERFORMANCE_UPDATE=plans")
+		validateIAMPerformancePlans(t, databaseType, expected.Plans)
+	}
+	if updatePlans || os.Getenv(iamPerformanceEnforce) == "1" {
 		enforceIAMPerformanceThresholds(t, expected.Benchmarks, current.Benchmarks)
 	}
 	for name, benchmark := range current.Benchmarks {
 		t.Logf("%s %s median=%dns/op threshold=%dns/op samples=%v", databaseType, name,
 			benchmark.MedianNSPerOp, expected.Benchmarks[name].ThresholdNSPerOp, benchmark.SamplesNSPerOp)
+	}
+	if updatePlans {
+		// SQL evolution must not silently reset the measured latency budget.
+		expected.Plans = current.Plans
+		baseline.Engines[databaseType] = expected
+		writeIAMPerformanceBaseline(t, baseline)
+		t.Logf("updated %s SQL plans; original benchmark samples and thresholds retained", databaseType)
 	}
 }
 
@@ -231,6 +242,16 @@ func TestIAMPerformancePlanRejectsUnscopedFullScans(t *testing.T) {
 	}
 	assert.ErrorContains(t, iamPerformancePlanError("postgres", postgresPlan), "unscoped full scan")
 	assert.ErrorContains(t, iamPerformancePlanError("mysql", mysqlPlan), "unscoped full scan")
+	postgresDirectoryPlan := iamPerformancePlan{
+		Path: "scim_bulk", SQLTemplate: "SELECT * FROM iam_scim_directories",
+		Plan: json.RawMessage(`[{"Plan":{"Node Type":"Seq Scan","Relation Name":"iam_scim_directories","Plan Width":23}}]`),
+	}
+	assert.ErrorContains(t, iamPerformancePlanError("postgres", postgresDirectoryPlan), "unscoped full scan")
+	mysqlDirectoryPlan := iamPerformancePlan{
+		Path: "scim_bulk", SQLTemplate: "SELECT * FROM iam_scim_directories AS directory",
+		Plan: json.RawMessage(`{"query_block":{"table":{"table_name":"directory","access_type":"ALL","used_columns":["id","tenant_id"]}}}`),
+	}
+	assert.ErrorContains(t, iamPerformancePlanError("mysql", mysqlDirectoryPlan), "unscoped full scan")
 
 	postgresPlan.SQLTemplate = "SELECT * FROM iam_groups WHERE tenant_id = ?"
 	postgresPlan.Plan = json.RawMessage(`[{"Plan":{"Node Type":"Seq Scan","Relation Name":"iam_groups","Filter":"tenant_id = 1"}}]`)
@@ -238,6 +259,19 @@ func TestIAMPerformancePlanRejectsUnscopedFullScans(t *testing.T) {
 	mysqlPlan.Plan = json.RawMessage(`{"query_block":{"table":{"table_name":"iam_scim_directories","access_type":"ALL","attached_condition":"id = 1"}}}`)
 	assert.NoError(t, iamPerformancePlanError("postgres", postgresPlan))
 	assert.NoError(t, iamPerformancePlanError("mysql", mysqlPlan))
+	for _, condition := range []string{"", "tenant_id = 1", "owner_tenant_id = 1"} {
+		postgresActor := iamPerformancePlan{Path: "scim_bulk", SQLTemplate: "SELECT * FROM iam_service_accounts"}
+		postgresActor.Plan = json.RawMessage(fmt.Sprintf(`[{"Plan":{"Node Type":"Seq Scan","Relation Name":"iam_service_accounts","Filter":%q}}]`, condition))
+		mysqlActor := iamPerformancePlan{Path: "scim_bulk", SQLTemplate: "SELECT * FROM iam_service_accounts AS service_account"}
+		mysqlActor.Plan = json.RawMessage(fmt.Sprintf(`{"query_block":{"table":{"table_name":"service_account","access_type":"ALL","attached_condition":%q}}}`, condition))
+		for engine, plan := range map[string]iamPerformancePlan{"postgres": postgresActor, "mysql": mysqlActor} {
+			if condition == "owner_tenant_id = 1" {
+				assert.NoError(t, iamPerformancePlanError(engine, plan))
+			} else {
+				assert.ErrorContains(t, iamPerformancePlanError(engine, plan), "unscoped full scan")
+			}
+		}
+	}
 }
 
 func TestIAMPerformanceBaselineContract(t *testing.T) {
@@ -292,8 +326,20 @@ func newIAMPerformancePaths(t *testing.T, fixture *iamTenantFixture, bulkOperati
 	require.NoError(t, err)
 	groups, err := module.Resolve[organization.GroupProvisioner](services)
 	require.NoError(t, err)
-	scim := provisioning.NewService(fixture.app.runtime, appender, ids, identities, groups, provisioning.Config{}, nil)
-	directory, err := scim.CreateDirectory(t.Context(), iamTenantA, "Performance directory")
+	actors, err := module.Resolve[identity.ServiceAccountValidator](services)
+	require.NoError(t, err)
+	fields, err := module.Resolve[core.AuthorizationEvaluator](services)
+	require.NoError(t, err)
+	scim := provisioning.NewService(fixture.app.runtime, appender, ids, identities, groups, actors, fields, provisioning.Config{}, nil)
+	response := fixture.request(t, http.MethodPost, "/iam/service-accounts", iamTenantA, fixture.tokenA,
+		map[string]any{"login_name": "performance-scim-actor", "display_name": "Performance SCIM actor"}, nil)
+	requireStatus(t, http.StatusCreated, response)
+	account := decodeEnvelope[identity.ServiceAccount](t, response)
+	directory, err := scim.CreateDirectory(t.Context(), iamTenantA, "Performance directory", &account.ID)
+	require.NoError(t, err)
+	credential, err := scim.CreateCredential(t.Context(), iamTenantA, directory.ID, "Performance credential", nil)
+	require.NoError(t, err)
+	scimAuth, err := scim.Authenticate(t.Context(), "Bearer "+credential.Token)
 	require.NoError(t, err)
 	auditService := iamaudit.NewService(fixture.app.runtime, ids)
 	authorizer := core.NewAuthorizer(fixture.app.runtime)
@@ -325,14 +371,17 @@ func newIAMPerformancePaths(t *testing.T, fixture *iamTenantFixture, bulkOperati
 			return err
 		},
 		scimBulk: func() error {
-			response, err := scim.Bulk(t.Context(), provisioning.AuthContext{
-				TenantID: iamTenantA, DirectoryID: directory.ID, CredentialID: 1,
-			}, bulkRequest)
+			response, err := scim.Bulk(t.Context(), scimAuth, bulkRequest)
 			if err != nil {
 				return err
 			}
 			if len(response.Operations) != bulkOperations {
 				return fmt.Errorf("SCIM bulk returned %d operations, want %d", len(response.Operations), bulkOperations)
+			}
+			for _, operation := range response.Operations {
+				if operation.Status != "404" {
+					return fmt.Errorf("SCIM bulk operation returned %s, want 404", operation.Status)
+				}
 			}
 			return nil
 		},
@@ -641,11 +690,30 @@ func iamPerformancePlanError(databaseType string, plan iamPerformancePlan) error
 	}
 	fullScans := iamPerformanceFullScans(databaseType, plan.Plan)
 	for _, scan := range fullScans {
+		if plan.Path == "scim_bulk" {
+			// MySQL reports the aliases used by the captured SCIM queries.
+			switch scan.table {
+			case "credential":
+				scan.table = "iam_scim_credentials"
+			case "directory":
+				scan.table = "iam_scim_directories"
+			case "tenant":
+				scan.table = "iam_tenants"
+			case "resource":
+				scan.table = "iam_scim_resources"
+			case "principal":
+				scan.table = "iam_principals"
+			case "member":
+				scan.table = "iam_tenant_members"
+			case "service_account":
+				scan.table = "iam_service_accounts"
+			}
+		}
 		scope := iamPerformanceScopeColumn(scan.table)
 		if scope == "" {
 			continue
 		}
-		if !strings.Contains(strings.ToLower(scan.condition), scope) {
+		if !regexp.MustCompile(`\b` + regexp.QuoteMeta(scope) + `\b`).MatchString(strings.ToLower(scan.condition)) {
 			return fmt.Errorf("unscoped full scan of %s in %s", scan.table, plan.Path)
 		}
 		if iamPerformanceRequiresIndex(plan.Path, scan.table) {
@@ -685,15 +753,15 @@ func iamPerformanceFullScans(databaseType string, raw json.RawMessage) []iamPerf
 		case map[string]any:
 			if databaseType == "postgres" && typed["Node Type"] == "Seq Scan" {
 				if table, ok := typed["Relation Name"].(string); ok {
-					detail, _ := json.Marshal(typed)
-					set[table+string(detail)] = iamPerformanceFullScan{table: table, condition: string(detail)}
+					filter, _ := typed["Filter"].(string)
+					set[table+filter] = iamPerformanceFullScan{table: table, condition: filter}
 				}
 			}
 			if databaseType == "mysql" {
 				if table, ok := typed["table"].(map[string]any); ok && table["access_type"] == "ALL" {
 					if name, ok := table["table_name"].(string); ok && !strings.HasPrefix(name, "<") {
-						detail, _ := json.Marshal(table)
-						set[name+string(detail)] = iamPerformanceFullScan{table: name, condition: string(detail)}
+						filter, _ := table["attached_condition"].(string)
+						set[name+filter] = iamPerformanceFullScan{table: name, condition: filter}
 					}
 				}
 			}
@@ -725,6 +793,8 @@ func iamPerformanceScopeColumn(table string) string {
 		return "id"
 	case "iam_credentials":
 		return "principal_id"
+	case "iam_service_accounts":
+		return "owner_tenant_id"
 	case "iam_platform_administrators", "iam_platform_grants":
 		return ""
 	case "iam_scim_credentials":

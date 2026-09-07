@@ -21,6 +21,7 @@ const (
 	platformMetadataKey      = "authz.platform"
 	publicMetadataKey        = "authz.public"
 	GuardExtensionKey        = "x-authz-permission"
+	DataFilterExtensionKey   = "x-authz-data-filter"
 	TenantHeader             = "X-Tenant-Id"
 	EntityHeader             = "X-Entity-Id"
 	TenantQuery              = "tenant_id"
@@ -42,6 +43,14 @@ type PermissionChecker interface {
 // implemented by the IAM owner and consumed by entity-scoped business routes.
 type EntityPermissionChecker interface {
 	CheckEntity(ctx context.Context, tenantID, entityID guid.ID, permission string, subject guid.ID) (bool, error)
+}
+
+// EntityDataPermissionChecker supplies filters for one active tenant entity.
+// Missing/inactive entities or memberships and unknown/non-data permissions
+// yield no allowed scopes. An explicit entity deny overrides owner/department
+// grants. Callers must enforce the returned constraints on business rows.
+type EntityDataPermissionChecker interface {
+	EntityConstraint(ctx context.Context, tenantID, entityID guid.ID, permission string, subject guid.ID) (DataConstraint, error)
 }
 
 type TokenVerifier interface {
@@ -141,6 +150,9 @@ func Register[I, O any](r *Registrar, api huma.API, op huma.Operation, guard Gua
 	if r == nil {
 		panic("authz registrar is nil")
 	}
+	if guard.FilterData {
+		panic("data filtering requires a typed entity operation")
+	}
 	r.prepare(api, &op, guard)
 	huma.Register(api, op, handler)
 }
@@ -152,8 +164,11 @@ func RegisterEntity[I, O any](r *Registrar, api huma.API, op huma.Operation, gua
 		panic("authz registrar is nil")
 	}
 	if r.checker != nil {
-		if _, ok := r.checker.(EntityPermissionChecker); !ok {
+		if _, ok := r.checker.(EntityPermissionChecker); !ok && !guard.FilterData {
 			panic("entity operation requires entity permission checker")
+		}
+		if _, ok := r.checker.(EntityDataPermissionChecker); !ok && guard.FilterData {
+			panic("data-filtered operation requires entity data permission checker")
 		}
 	}
 	r.prepare(api, &op, guard)
@@ -175,6 +190,9 @@ func RegisterEntity[I, O any](r *Registrar, api huma.API, op huma.Operation, gua
 func RegisterEntityAdapter(r *Registrar, api huma.API, op huma.Operation, guard Guard, handler func(huma.Context)) {
 	if r == nil || api == nil || handler == nil {
 		panic("entity adapter operation requires registrar, api, and handler")
+	}
+	if guard.FilterData {
+		panic("data filtering requires a typed entity operation")
 	}
 	if r.checker != nil {
 		if _, ok := r.checker.(EntityPermissionChecker); !ok {
@@ -260,6 +278,9 @@ func RegisterPlatform[I, O any](r *Registrar, api huma.API, op huma.Operation, g
 	if r == nil {
 		panic("authz registrar is nil")
 	}
+	if guard.FilterData {
+		panic("data filtering requires a typed entity operation")
+	}
 	if op.OperationID == "" {
 		panic("platform operation requires operation id")
 	}
@@ -321,6 +342,12 @@ func (r *Registrar) prepare(api huma.API, op *huma.Operation, guard Guard) {
 	}
 	op.Extensions[GuardExtensionKey] = guard.Code()
 	r.prepareAuthenticated(api, op, true)
+	if guard.FilterData {
+		if !action.DataScoped {
+			panic("data-filtered operation uses non-data permission: " + guard.Code())
+		}
+		op.Extensions[DataFilterExtensionKey] = true
+	}
 
 	if r.verifier != nil {
 		op.Middlewares = append(op.Middlewares, r.middleware(api, &guard))
@@ -461,7 +488,10 @@ func (r *Registrar) middleware(api huma.API, guard *Guard) func(huma.Context, fu
 				return
 			}
 		}
-		next(huma.WithContext(ctx, authn.WithClaims(requestContext, claims)))
+		trustedClaims := *claims
+		trustedClaims.TenantID = tenantID
+		trustedClaims.EntityID = 0
+		next(huma.WithContext(ctx, authn.WithClaims(requestContext, &trustedClaims)))
 	}
 }
 
@@ -502,13 +532,7 @@ func (r *Registrar) entityMiddlewareFor(api huma.API, guard Guard, selectors fun
 			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "inactive_tenant_membership")
 			return
 		}
-		checker, ok := r.checker.(EntityPermissionChecker)
-		if !ok {
-			slog.Error("entity permission checker unavailable", "operation", ctx.Operation().OperationID)
-			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "authorization_unavailable")
-			return
-		}
-		allowed, err := checker.CheckEntity(requestContext, tenantID, entityID, guard.Code(), principalID)
+		allowed, err := r.checkEntityAccess(requestContext, tenantID, entityID, guard, principalID)
 		if err != nil {
 			slog.Error("entity authz check failed", "operation", ctx.Operation().OperationID, "tenant", tenantID, "entity", entityID, "permission", guard.Code(), "err", err)
 			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "authorization_unavailable")
@@ -524,6 +548,22 @@ func (r *Registrar) entityMiddlewareFor(api huma.API, guard Guard, selectors fun
 		trustedClaims.PrincipalID = principalID
 		next(huma.WithContext(ctx, authn.WithClaims(requestContext, &trustedClaims)))
 	}
+}
+
+func (r *Registrar) checkEntityAccess(ctx context.Context, tenantID, entityID guid.ID, guard Guard, principalID guid.ID) (bool, error) {
+	if guard.FilterData {
+		checker, ok := r.checker.(EntityDataPermissionChecker)
+		if !ok {
+			return false, errors.New("entity data permission checker unavailable")
+		}
+		constraint, err := checker.EntityConstraint(ctx, tenantID, entityID, guard.Code(), principalID)
+		return constraint.AllowsEntityRows(entityID), err
+	}
+	checker, ok := r.checker.(EntityPermissionChecker)
+	if !ok {
+		return false, errors.New("entity permission checker unavailable")
+	}
+	return checker.CheckEntity(ctx, tenantID, entityID, guard.Code(), principalID)
 }
 
 func removeOperationParameter(parameters []*huma.Param, name, location string) []*huma.Param {

@@ -9,12 +9,14 @@ type (
 	Events            = event
 	Heads             = head
 	RetentionPolicies = retentionPolicy
+	ArchiveJobs       = archiveJob
 )
 
 type Tables struct {
 	Events            *Events
 	Heads             *Heads
 	RetentionPolicies *RetentionPolicies
+	ArchiveJobs       *ArchiveJobs
 }
 
 // Bind applies prefix to every table owned by the audit module.
@@ -24,5 +26,6 @@ func Bind(db *gorm.DB, prefix string) *Tables {
 		Events:            q.Event.Table(prefix + model.Event{}.TableName()),
 		Heads:             q.Head.Table(prefix + model.Head{}.TableName()),
 		RetentionPolicies: q.RetentionPolicy.Table(prefix + model.RetentionPolicy{}.TableName()),
+		ArchiveJobs:       q.ArchiveJob.Table(prefix + model.ArchiveJob{}.TableName()),
 	}
 }

@@ -1,0 +1,156 @@
+package identity
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
+)
+
+func TestPrincipalLifecycleRetentionAndTombstone(t *testing.T) {
+	t.Parallel()
+	h := newIdentityHarness(t, "lc_")
+	ctx := t.Context()
+	p, err := h.service.Create(ctx, 7, "private-login", testPassword, "Private Name", "private@example.test")
+	require.NoError(t, err)
+	initial, err := h.service.GetPrincipalLifecycle(ctx, p.ID)
+	require.NoError(t, err)
+	assert.Zero(t, initial.Version)
+	assert.Nil(t, initial.RetainUntil)
+	assert.Nil(t, initial.UpdatedAt)
+	_, err = h.service.AnonymizePrincipal(ctx, p.ID, 1)
+	require.ErrorIs(t, err, ErrUnavailable)
+
+	cleanupCalls := 0
+	h.service.anonymizer = func(ctx context.Context, tx *gorm.DB, current Principal, _ time.Time) error {
+		cleanupCalls++
+		assert.Equal(t, p.LoginName, current.LoginName)
+		assert.Equal(t, p.Email, current.Email)
+		return tx.WithContext(ctx).Table(h.table("iam_credentials")).Where("principal_id = ?", current.ID).Delete(map[string]any{}).Error
+	}
+	past := time.Now().UTC().Add(-time.Hour)
+	policy, err := h.service.SetPrincipalRetention(ctx, p.ID, 0, past, true, "case-123")
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), policy.Version)
+	assert.True(t, policy.LegalHold)
+	_, err = h.service.SetPrincipalRetention(ctx, p.ID, 0, past, false, "stale")
+	require.ErrorIs(t, err, ErrLifecycleConflict)
+	_, err = h.service.AnonymizePrincipal(ctx, p.ID, policy.Version)
+	require.ErrorIs(t, err, ErrSuspensionRequired)
+	_, err = h.service.SetStatus(ctx, 7, p.ID, "disabled")
+	require.NoError(t, err)
+	_, err = h.service.AnonymizePrincipal(ctx, p.ID, policy.Version)
+	require.ErrorIs(t, err, ErrPrincipalRetained)
+	assert.Zero(t, cleanupCalls)
+
+	policy, err = h.service.SetPrincipalRetention(ctx, p.ID, policy.Version, time.Now().Add(time.Hour), false, "case-123")
+	require.NoError(t, err)
+	_, err = h.service.AnonymizePrincipal(ctx, p.ID, policy.Version)
+	require.ErrorIs(t, err, ErrPrincipalRetained)
+	policy, err = h.service.SetPrincipalRetention(ctx, p.ID, policy.Version, past, false, "case-123")
+	require.NoError(t, err)
+	erased, err := h.service.AnonymizePrincipal(ctx, p.ID, policy.Version)
+	require.NoError(t, err)
+	require.NotNil(t, erased.AnonymizedAt)
+	assert.Empty(t, erased.Reference)
+	assert.Equal(t, policy.Version+1, erased.Version)
+	assert.Equal(t, 1, cleanupCalls)
+	row := h.principal(t, p.ID)
+	assert.Equal(t, "erased:"+p.ID.String(), row.LoginName)
+	assert.Equal(t, "Anonymized account", row.DisplayName)
+	assert.Empty(t, row.Email)
+	assert.Equal(t, "disabled", row.Status)
+	assert.False(t, row.EmailVerified)
+	assert.False(t, row.ActivationRequired)
+	assert.Equal(t, int64(1), h.principalCount(t))
+	assert.Zero(t, h.credentialVersion(t, p.ID))
+
+	repeated, err := h.service.AnonymizePrincipal(ctx, p.ID, erased.Version)
+	require.NoError(t, err)
+	assert.Equal(t, erased, repeated)
+	assert.Equal(t, 1, cleanupCalls)
+	_, err = h.service.SetPrincipalRetention(ctx, p.ID, erased.Version, past, false, "new-case")
+	require.ErrorIs(t, err, ErrPrincipalAnonymized)
+	_, err = h.service.SetStatus(ctx, 7, p.ID, "active")
+	require.Error(t, err)
+	name := "Restore PII"
+	_, err = h.service.Update(ctx, 7, p.ID, &name, nil)
+	require.Error(t, err)
+	require.Error(t, h.db.Table(h.table("iam_principals")).Where("id = ?", p.ID).Update("email", "repopulated@example.test").Error)
+	require.Error(t, h.db.Table(h.table("iam_principals")).Where("id = ?", p.ID).Delete(map[string]any{}).Error)
+	require.Error(t, h.db.Table(h.table("iam_principal_lifecycles")).Where("principal_id = ?", p.ID).Update("anonymized_at", nil).Error)
+	require.Error(t, h.db.Table(h.table("iam_principal_lifecycles")).Where("principal_id = ?", p.ID).Delete(map[string]any{}).Error)
+	_, err = h.service.ReplaceProvisionedTo(ctx, h.db, 7, p.ID, ProvisionedPrincipalInput{
+		LoginName: "restored", DisplayName: name, Email: "repopulated@example.test", Active: false,
+	})
+	require.Error(t, err)
+	events := h.events()
+	assert.Equal(t, "principal_anonymized", events[len(events)-1].EventType)
+	assert.Zero(t, events[len(events)-1].TenantID)
+	assert.NotContains(t, events[len(events)-1].Detail, "email")
+}
+
+func TestPrincipalLifecycleRollback(t *testing.T) {
+	t.Parallel()
+	for _, failure := range []string{"cleanup", "audit"} {
+		t.Run(failure, func(t *testing.T) {
+			h := newIdentityHarness(t, "")
+			ctx := t.Context()
+			p, err := h.service.Create(ctx, 7, "rollback", testPassword, "Keep Name", "keep@example.test")
+			require.NoError(t, err)
+			_, err = h.service.SetStatus(ctx, 7, p.ID, "disabled")
+			require.NoError(t, err)
+			policy, err := h.service.SetPrincipalRetention(ctx, p.ID, 0, time.Now().Add(-time.Hour), false, "case-rollback")
+			require.NoError(t, err)
+			sentinel := errors.New("injected " + failure + " failure")
+			h.service.anonymizer = func(ctx context.Context, tx *gorm.DB, current Principal, _ time.Time) error {
+				if err := tx.WithContext(ctx).Table(h.table("iam_credentials")).Where("principal_id = ?", current.ID).Delete(map[string]any{}).Error; err != nil {
+					return err
+				}
+				if failure == "cleanup" {
+					return sentinel
+				}
+				return nil
+			}
+			if failure == "audit" {
+				h.auditErr = sentinel
+			}
+			_, err = h.service.AnonymizePrincipal(ctx, p.ID, policy.Version)
+			require.ErrorIs(t, err, sentinel)
+			row := h.principal(t, p.ID)
+			assert.Equal(t, p.Email, row.Email)
+			assert.Equal(t, p.LoginName, row.LoginName)
+			assert.Equal(t, int64(1), h.credentialVersion(t, p.ID))
+			current, err := h.service.GetPrincipalLifecycle(ctx, p.ID)
+			require.NoError(t, err)
+			assert.Equal(t, policy, current)
+		})
+	}
+}
+
+func TestPrincipalLifecycleValidation(t *testing.T) {
+	t.Parallel()
+	h := newIdentityHarness(t, "")
+	ctx := t.Context()
+	_, err := h.service.GetPrincipalLifecycle(ctx, 0)
+	require.ErrorIs(t, err, ErrInvalid)
+	_, err = h.service.GetPrincipalLifecycle(ctx, 99)
+	require.ErrorIs(t, err, ErrNotFound)
+	_, err = h.service.SetPrincipalRetention(ctx, 99, 0, time.Time{}, false, "case")
+	require.ErrorIs(t, err, ErrInvalid)
+	_, err = h.service.SetPrincipalRetention(ctx, 99, 0, time.Now(), false, " ")
+	require.ErrorIs(t, err, ErrInvalid)
+	_, err = h.service.SetPrincipalRetention(ctx, 99, 0, time.Now(), false, "case")
+	require.ErrorIs(t, err, ErrNotFound)
+	_, err = h.service.AnonymizePrincipal(ctx, 99, 0)
+	require.ErrorIs(t, err, ErrInvalid)
+	h.seedTenant(t, 7, "active")
+	account, err := h.service.CreateServiceAccount(ctx, 7, "automation", "Automation", "", nil)
+	require.NoError(t, err)
+	_, err = h.service.GetPrincipalLifecycle(ctx, account.ID)
+	require.ErrorIs(t, err, ErrNotFound)
+}

@@ -1,4 +1,10 @@
 {
+  "archive_not_found": "当前作用域中不存在该归档任务。",
+  "archive_disabled": "当前部署未启用审计归档。",
+  "archive_empty": "没有达到归档期限的连续审计事件。",
+  "archive_busy": "归档任务正在执行、等待重试或状态不符合该操作，请刷新状态。",
+  "archive_integrity": "归档版本、内容或保留锁校验失败，请勿依赖此归档。",
+  "archive_unavailable": "归档对象存储不可用，请稍后重试。",
   "invalid_audit_time": "审计时间范围无效。请使用 RFC 3339 时间格式，并确保结束时间晚于开始时间。",
   "audit_event_not_found": "当前租户中不存在指定的审计事件，请核对事件标识符和租户后重试。",
   "invalid_audit_query": "审计查询条件无效，请检查租户、筛选条件和分页参数。",

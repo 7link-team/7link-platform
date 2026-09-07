@@ -17,6 +17,167 @@ describe("IAM API client", () => {
   let server: ReturnType<typeof Bun.serve> | undefined
   afterEach(() => server?.stop(true))
 
+  it("keeps archive management scoped and omits tenant headers on platform requests", async () => {
+    const requests: RecordedRequest[] = []
+    const completion = JSON.stringify({
+      type: "complete",
+      exported_events: 2,
+      content_sha256: "a".repeat(64),
+    })
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        requests.push({
+          method: request.method,
+          path: url.pathname + url.search,
+          headers: request.headers,
+          body: await request.text(),
+        })
+        if (url.pathname.endsWith("/download"))
+          return new Response(completion + "\n", {
+            headers: {
+              "Content-Type": "application/x-ndjson",
+              "Content-Disposition":
+                'attachment; filename="audit-archive-123.ndjson"',
+            },
+          })
+        return Response.json({
+          code: 0,
+          message: "ok",
+          data: [],
+          meta: { page: { total: 23 } },
+        })
+      },
+    })
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      () => "tenant-a"
+    )
+    for (const scope of ["tenant", "platform"] as const) {
+      await client.auditArchiveStatus(scope)
+      expect((await client.auditArchives(20, 20, scope)).total).toBe(23)
+      await client.requestAuditArchive(scope)
+      await client.retryAuditArchive("123/456", scope)
+      await client.verifyAuditArchive("123/456", scope)
+      const download = await client.downloadAuditArchive("123", scope)
+      expect(download.filename).toBe("audit-archive-123.ndjson")
+      expect(await download.blob.text()).toBe(completion + "\n")
+      await client.setAuditRetention(
+        { min_days: 30, archive_after_days: 60 },
+        scope
+      )
+    }
+    const expected = [
+      "GET /iam/audit/archive-status",
+      "GET /iam/audit/archives?offset=20&limit=20",
+      "POST /iam/audit/archives",
+      "POST /iam/audit/archives/123%2F456/retry",
+      "POST /iam/audit/archives/123%2F456/verify",
+      "GET /iam/audit/archives/123/download",
+      "PUT /iam/audit/retention",
+    ]
+    expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
+      ...expected,
+      ...expected.map((entry) => entry.replace(" /iam/", " /platform/iam/")),
+    ])
+    expect(
+      requests
+        .slice(0, 7)
+        .every(({ headers }) => headers.get("x-tenant-id") === "tenant-a")
+    ).toBe(true)
+    expect(
+      requests.slice(7).every(({ headers }) => !headers.has("x-tenant-id"))
+    ).toBe(true)
+    expect(JSON.parse(requests[13]!.body)).toEqual({
+      min_days: 30,
+      archive_after_days: 60,
+    })
+  })
+
+  it("rejects missing archive completion and preserves retry conflicts", async () => {
+    server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        if (new URL(request.url).pathname.endsWith("/retry"))
+          return Response.json(
+            { detail: "audit.archive_busy" },
+            { status: 409 }
+          )
+        return new Response('{"type":"event"}\n', {
+          headers: { "Content-Type": "application/x-ndjson" },
+        })
+      },
+    })
+    const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "11")
+    await expect(client.downloadAuditArchive("123")).rejects.toMatchObject({
+      status: 502,
+      code: "incomplete_audit_export",
+    })
+    await expect(client.retryAuditArchive("123")).rejects.toMatchObject({
+      status: 409,
+      code: "audit.archive_busy",
+    })
+  })
+
+  it("preserves field policy roles, tenant boundaries and optimistic versions", async () => {
+    const requests: RecordedRequest[] = []
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        requests.push({
+          method: request.method,
+          path: url.pathname + url.search,
+          headers: request.headers,
+          body: await request.text(),
+        })
+        if (request.method === "PUT" && requests.length === 6)
+          return Response.json({ detail: "version_conflict" }, { status: 409 })
+        return Response.json({ code: 0, message: "ok", data: [] })
+      },
+    })
+    let tenant = "tenant-a"
+    const client = createIamApi(`http://127.0.0.1:${server.port}`, () => tenant)
+    const policy = {
+      read: {
+        default: "deny" as const,
+        allow_roles: ["9007199254740993"],
+        deny_roles: ["9007199254740994"],
+      },
+      write: {
+        default: "allow" as const,
+        allow_roles: [],
+        deny_roles: ["9007199254740995"],
+      },
+      mask: "redact" as const,
+    }
+    await client.fieldCatalog()
+    await client.fieldPolicies("todo/a")
+    await client.setFieldPolicy("todo/a", "display/name", policy, 7)
+    await client.deleteFieldPolicy("todo/a", "display/name", 8)
+    tenant = "tenant-b"
+    await client.effectiveFields("todo", "9007199254740996")
+    await expect(
+      client.setFieldPolicy("todo", "title", policy, 7)
+    ).rejects.toMatchObject({ status: 409 })
+    expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
+      "GET /iam/field-catalog",
+      "GET /iam/field-policies?resource=todo%2Fa",
+      "PUT /iam/field-policies/todo%2Fa/display%2Fname",
+      "DELETE /iam/field-policies/todo%2Fa/display%2Fname?version=8",
+      "GET /iam/fields/effective?resource=todo&entity_id=9007199254740996",
+      "PUT /iam/field-policies/todo/title",
+    ])
+    expect(JSON.parse(requests[2]!.body)).toEqual({ policy, version: 7 })
+    expect(
+      requests
+        .slice(0, 4)
+        .every(({ headers }) => headers.get("x-tenant-id") === "tenant-a")
+    ).toBe(true)
+    expect(requests[4]!.headers.get("x-tenant-id")).toBe("tenant-b")
+  })
+
   it("uses real HTTP, cookies and the selected tenant", async () => {
     const requests: RecordedRequest[] = []
     server = Bun.serve({
@@ -638,11 +799,15 @@ describe("IAM API client", () => {
     )
 
     expect(await client.scimDirectories()).toEqual([directory])
-    await client.createSCIMDirectory({ name: "Workforce" })
+    await client.createSCIMDirectory({
+      name: "Workforce",
+      service_account_id: "12345",
+    })
     await client.updateSCIMDirectory(directory.id, {
       name: "Workforce",
       status: "disabled",
       version: 1,
+      service_account_id: null,
     })
     expect(await client.scimCredentials(directory.id)).toEqual([credential])
     expect(
@@ -663,6 +828,127 @@ describe("IAM API client", () => {
     ])
     for (const request of requests)
       expect(request.headers.get("x-tenant-id")).toBe("tenant-scim")
+    expect(JSON.parse(requests[1]!.body)).toEqual({
+      name: "Workforce",
+      service_account_id: "12345",
+    })
+    expect(JSON.parse(requests[2]!.body)).toEqual({
+      name: "Workforce",
+      status: "disabled",
+      version: 1,
+      service_account_id: null,
+    })
+  })
+
+  it("preserves outbound SCIM actor bindings, versions, secrets and resource operations", async () => {
+    const requests: RecordedRequest[] = []
+    const target = {
+      id: "target/a",
+      tenant_id: "tenant-outbound",
+      name: "Directory",
+      base_url: "https://scim.example.test/v2",
+      service_account_id: "123",
+      status: "active" as const,
+      version: 4,
+      created_at: "2026-09-06T00:00:00Z",
+      updated_at: "2026-09-06T00:00:00Z",
+    }
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const path = new URL(request.url).pathname
+        requests.push({
+          method: request.method,
+          path,
+          headers: request.headers,
+          body: await request.text(),
+        })
+        let data: unknown = target
+        if (request.method === "GET") data = [target]
+        else if (path.endsWith("/push"))
+          data = {
+            target_id: target.id,
+            resource_type: "User",
+            resource_id: "456",
+            external_id: "456",
+            remote_id: "remote-456",
+          }
+        else if (path.endsWith("/deprovision")) data = { deprovisioned: true }
+        else if (request.method === "DELETE") data = { deleted: true }
+        else if (request.method === "POST")
+          data = { target, bearer_token: "test-secret" }
+        return Response.json({ code: 0, message: "ok", data })
+      },
+    })
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      () => target.tenant_id
+    )
+    expect(await client.scimTargets()).toEqual([target])
+    const create = {
+      name: target.name,
+      base_url: target.base_url,
+      bearer_token: "test-secret",
+      service_account_id: "123",
+    }
+    expect(await client.createSCIMTarget(create)).toEqual({
+      target,
+      bearer_token: "test-secret",
+    })
+    const update = {
+      name: "Renamed",
+      base_url: target.base_url,
+      status: "disabled" as const,
+      version: 4,
+      service_account_id: "123",
+    }
+    await client.updateSCIMTarget(target.id, update)
+    await client.updateSCIMTarget(target.id, {
+      ...update,
+      version: 5,
+      service_account_id: null,
+      bearer_token: "new-secret",
+    })
+    expect(
+      await client.pushSCIMResource(target.id, {
+        resource_type: "User",
+        resource_id: "456",
+      })
+    ).toMatchObject({ remote_id: "remote-456" })
+    expect(
+      await client.deprovisionSCIMResource(target.id, {
+        resource_type: "Group",
+        resource_id: "789",
+      })
+    ).toEqual({ deprovisioned: true })
+    expect(await client.deleteSCIMTarget(target.id)).toEqual({ deleted: true })
+    expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
+      "GET /iam/scim/targets",
+      "POST /iam/scim/targets",
+      "PUT /iam/scim/targets/target%2Fa",
+      "PUT /iam/scim/targets/target%2Fa",
+      "POST /iam/scim/targets/target%2Fa/push",
+      "POST /iam/scim/targets/target%2Fa/deprovision",
+      "DELETE /iam/scim/targets/target%2Fa",
+    ])
+    for (const request of requests)
+      expect(request.headers.get("x-tenant-id")).toBe(target.tenant_id)
+    expect(JSON.parse(requests[1]!.body)).toEqual(create)
+    expect(JSON.parse(requests[2]!.body)).toEqual(update)
+    expect(JSON.parse(requests[2]!.body)).not.toHaveProperty("bearer_token")
+    expect(JSON.parse(requests[3]!.body)).toMatchObject({
+      version: 5,
+      service_account_id: null,
+      bearer_token: "new-secret",
+    })
+    expect(JSON.parse(requests[4]!.body)).toEqual({
+      resource_type: "User",
+      resource_id: "456",
+    })
+    expect(JSON.parse(requests[5]!.body)).toEqual({
+      resource_type: "Group",
+      resource_id: "789",
+    })
   })
 
   it("uses the tenant-scoped service account and credential contract", async () => {

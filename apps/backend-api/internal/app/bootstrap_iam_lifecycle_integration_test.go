@@ -48,6 +48,11 @@ func TestIAMLifecycleExternalDatabase(t *testing.T) {
 		MaxOpenConns: 8, MaxIdleConns: 4,
 	}, os.Getenv(iamLifecycleTablePrefix))
 	fixture.runIAMLifecycle(t)
+	fixture.runTodoDataPermissions(t)
+	fixture.runSCIMTenantLifecycle(t)
+	fixture.runSCIMActorLifecycle(t)
+	fixture.runBrowserSessionTenant(t)
+	fixture.runSCIMProfileLifecycle(t)
 }
 
 func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
@@ -69,10 +74,14 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 		before := f.auditCount(t, 0)
 		response := f.request(t, http.MethodPost, "/iam/tenants", 0, f.tokenA, map[string]any{
 			"slug": "lifecycle-tenant", "name": "Lifecycle Tenant",
+			"owner_principal_id": f.adminA.ID.String(),
 		}, nil)
 		requireStatus(t, http.StatusCreated, response)
 		tenant = decodeEnvelope[organization.Tenant](t, response)
 		assert.Equal(t, int64(1), f.count(t, "iam_tenants", "id = ? AND slug = ? AND status = 'active'", tenant.ID, tenant.Slug))
+		assert.Equal(t, int64(1), f.count(t, "iam_tenant_members", "tenant_id = ? AND principal_id = ? AND status = 'active'", tenant.ID, f.adminA.ID))
+		assert.Equal(t, int64(1), f.count(t, "iam_role_members", "tenant_id = ? AND principal_id = ?", tenant.ID, f.adminA.ID))
+		assert.Positive(t, f.count(t, "iam_menus", "tenant_id = ?", tenant.ID))
 		assert.Equal(t, before+1, f.auditCount(t, 0))
 		f.assertAuditEvent(t, 0, "tenant_created", tenant.ID)
 	}))

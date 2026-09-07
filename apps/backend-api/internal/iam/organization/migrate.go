@@ -28,6 +28,8 @@ func (*Module) MigrationMilestones() []module.MigrationMilestone {
 				{Module: "iam", Name: "base"},
 			},
 		},
+		{Name: "principal-erasure", Version: 9,
+			Dependencies: []module.MigrationMilestoneRef{{Module: "identity", Name: "lifecycle"}}},
 	}
 }
 

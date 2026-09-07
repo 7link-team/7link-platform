@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	auditi18n "7link.com/platform/internal/iam/audit/i18n"
 	"7link.com/platform/internal/infra/guid"
@@ -20,11 +21,14 @@ var ErrUnavailable = errors.New("audit service unavailable")
 // Module owns the IAM append-only audit chain, retention policy, anchoring,
 // HTTP operations, and the Appender capability consumed by other IAM modules.
 type Module struct {
-	service   *Service
-	runtime   *appenv.Runtime
-	registrar *authz.Registrar
-	config    Config
-	ids       guid.Source
+	service      *Service
+	runtime      *appenv.Runtime
+	registrar    *authz.Registrar
+	config       Config
+	ids          guid.Source
+	workerMu     sync.Mutex
+	workerCancel context.CancelFunc
+	workerDone   chan struct{}
 }
 
 func NewModule(runtime *appenv.Runtime, config Config) *Module {
@@ -74,8 +78,13 @@ func (m *Module) Initialize(context.Context) error {
 	return nil
 }
 
-func (m *Module) Start(context.Context) error {
-	if m == nil || !m.config.Anchor.Enabled {
+func (m *Module) Start(ctx context.Context) error {
+	if m == nil || (!m.config.Anchor.Enabled && !m.config.Archive.Enabled) {
+		return nil
+	}
+	m.workerMu.Lock()
+	defer m.workerMu.Unlock()
+	if m.workerDone != nil {
 		return nil
 	}
 	if m.service == nil {
@@ -85,15 +94,34 @@ func (m *Module) Start(context.Context) error {
 	if err != nil {
 		return fmt.Errorf("audit anchor configuration: %w", err)
 	}
-	service := NewServiceWithAnchor(m.runtime, store, m.ids)
-	if m.config.Anchor.SigningKey != "" {
+	service := NewService(m.runtime, m.ids)
+	if m.config.Anchor.Enabled {
+		service.anchor = store
+	}
+	if m.config.Anchor.Enabled && m.config.Anchor.SigningKey != "" {
 		signer, err := NewRootSigner(m.config.Anchor.SigningKey)
 		if err != nil {
 			return fmt.Errorf("audit anchor signing key: %w", err)
 		}
-		service = NewServiceWithAnchorAndSigner(m.runtime, store, signer, m.ids)
+		service.signer = signer
+	}
+	if m.config.Archive.Enabled {
+		if err := validateArchiveWorker(m.config.Archive); err != nil {
+			return err
+		}
+		var existingIDs []guid.ID
+		db := service.repo.writer()
+		if err := db.WithContext(ctx).Table(service.repo.tables(db).ArchiveJobs.TableName()).Limit(1).Pluck("id", &existingIDs).Error; err != nil {
+			return fmt.Errorf("audit archive schema is unavailable; apply audit v3 migration: %w", err)
+		}
+		service.archive = store
 	}
 	m.service = service
+	if m.config.Archive.Enabled {
+		runCtx, cancel := context.WithCancel(ctx)
+		m.workerCancel, m.workerDone = cancel, make(chan struct{})
+		go m.runArchives(runCtx, service, m.workerDone)
+	}
 	return nil
 }
 
@@ -130,6 +158,7 @@ var (
 	_ module.ServiceInjector = (*Module)(nil)
 	_ module.Initializer     = (*Module)(nil)
 	_ module.Starter         = (*Module)(nil)
+	_ module.Stopper         = (*Module)(nil)
 	_ module.HealthChecker   = (*Module)(nil)
 	_ module.HTTPRegistrar   = (*Module)(nil)
 )

@@ -51,7 +51,7 @@ func TestFederationRuntimeModuleExactOperationManifest(t *testing.T) {
 	require.NoError(t, authz.ValidateOperations(api, declaration.registrar.Registry()))
 	assert.Equal(t, approvedFederationOperations(), federationOperationManifest(api.OpenAPI()))
 	assert.Equal(t, "goose_federation", declaration.MigrationSource().TableName)
-	assert.Len(t, declaration.MigrationMilestones(), 2)
+	assert.Len(t, declaration.MigrationMilestones(), 4)
 }
 
 func TestFederationModuleActivationComesFromItsProtocolConfig(t *testing.T) {

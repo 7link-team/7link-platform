@@ -35,6 +35,10 @@ type ProvisionedPrincipalInput struct {
 // through the organization's caller-owned transaction.
 type InvitationPrincipalCreator func(context.Context, *gorm.DB, guid.ID, string, string, string, string) (guid.ID, error)
 
+// ServiceAccountValidator checks a real automation principal's tenant ownership,
+// membership, status and expiry using the caller's database transaction.
+type ServiceAccountValidator func(context.Context, *gorm.DB, guid.ID, guid.ID, time.Time) (bool, error)
+
 // IdentityProvisioner is the identity capability shared with SCIM and federation.
 type IdentityProvisioner interface {
 	CreateProvisionedTo(context.Context, *gorm.DB, guid.ID, ProvisionedPrincipalInput) (Principal, error)

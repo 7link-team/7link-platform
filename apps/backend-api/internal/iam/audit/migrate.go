@@ -21,7 +21,7 @@ func (*Module) MigrationSource() goosex.Source {
 }
 
 func (*Module) MigrationMilestones() []module.MigrationMilestone {
-	return []module.MigrationMilestone{{Name: "base", Version: 2}}
+	return []module.MigrationMilestone{{Name: "base", Version: 2}, {Name: "archive_jobs", Version: 3}}
 }
 
 var (

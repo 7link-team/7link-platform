@@ -662,7 +662,7 @@ func TestServiceCatalogsAndConstructors(t *testing.T) {
 	assert.Panics(t, func() { NewAuthorizerWithRegistry(nil, harness.service.registry) })
 	assert.Panics(t, func() { NewAuthorizerWithRegistry(harness.runtime, nil) })
 	assert.Equal(t, Name, (&Module{}).ModuleName())
-	require.Len(t, (&Module{}).MigrationMilestones(), 1)
+	require.Len(t, (&Module{}).MigrationMilestones(), 3)
 }
 
 func TestServiceRoleConditionValidationAndReadModels(t *testing.T) {

@@ -285,6 +285,142 @@ func TestAuthorizerCompilesSelectedDepartmentAndOwnerConstraints(t *testing.T) {
 	assert.Equal(t, []string{guid.ID(101).String()}, constraint.DepartmentIDs)
 }
 
+func TestAuthorizerEntityConstraintKeepsRowScopesBelowEntityBoundary(t *testing.T) {
+	for _, scope := range []DataScope{DataScopeSelf, DataScopeSelectedDepartments, DataScopeAll} {
+		t.Run(string(scope), func(t *testing.T) {
+			harness := newCoreServiceHarness(t)
+			tenantID, subject := guid.ID(1), guid.ID(11)
+			harness.seedMember(t, tenantID, subject, MemberActive)
+			harness.seedMember(t, 2, 22, MemberActive)
+			foreign, err := harness.service.CreateEntity(t.Context(), Entity{TenantID: 2, Type: "store", Name: "Foreign"})
+			require.NoError(t, err)
+			entity, err := harness.service.CreateEntity(t.Context(), Entity{TenantID: tenantID, Type: "store", Name: "Local"})
+			require.NoError(t, err)
+			require.NoError(t, harness.db.Exec(`INSERT INTO sl_iam_departments
+				(tenant_id,id,parent_id,name,name_key,status,sort_order,version,created_at,updated_at)
+				VALUES (?,101,NULL,'Engineering','engineering','active',0,1,?,?)`, tenantID, repositoryTestTime, repositoryTestTime).Error)
+			role, err := harness.service.CreateRole(t.Context(), tenantID, "Data access", "")
+			require.NoError(t, err)
+			_, err = harness.service.GrantPermission(t.Context(), tenantID, role.ID, "store_view")
+			require.NoError(t, err)
+			_, err = harness.service.AddMember(t.Context(), tenantID, role.ID, subject)
+			require.NoError(t, err)
+			var departments []guid.ID
+			if scope == DataScopeSelectedDepartments {
+				departments = []guid.ID{101}
+			}
+			_, _, err = harness.service.SetRoleDataScope(t.Context(), tenantID, role.ID, scope, departments)
+			require.NoError(t, err)
+
+			constraint, err := harness.authorizer.EntityConstraint(t.Context(), tenantID, entity.ID, "store_view", subject)
+			require.NoError(t, err)
+			assert.True(t, constraint.AllowsEntityRows(entity.ID))
+			assert.Equal(t, scope == DataScopeAll, constraint.AllowAll)
+			if scope == DataScopeSelf {
+				assert.Equal(t, []string{subject.String()}, constraint.OwnerIDs)
+			}
+			if scope == DataScopeSelectedDepartments {
+				assert.Equal(t, []string{"101"}, constraint.DepartmentIDs)
+			}
+			whole, err := harness.authorizer.CheckEntity(t.Context(), tenantID, entity.ID, "store_view", subject)
+			require.NoError(t, err)
+			assert.Equal(t, scope == DataScopeAll, whole, "row scope must not expand whole-entity permission")
+			for _, id := range []guid.ID{foreign.ID, 999} {
+				denied, checkErr := harness.authorizer.EntityConstraint(t.Context(), tenantID, id, "store_view", subject)
+				require.NoError(t, checkErr)
+				assert.False(t, denied.AllowsEntityRows(id))
+				assert.Empty(t, denied.OwnerIDs)
+				assert.Empty(t, denied.DepartmentIDs)
+			}
+			for _, permission := range []string{"unknown_view", "role_view", "tenant_view"} {
+				denied, checkErr := harness.authorizer.EntityConstraint(t.Context(), tenantID, entity.ID, permission, subject)
+				require.NoError(t, checkErr)
+				assert.False(t, denied.AllowsEntityRows(entity.ID), permission)
+			}
+
+			denyRole, err := harness.service.CreateRole(t.Context(), tenantID, "Entity deny", "")
+			require.NoError(t, err)
+			_, err = harness.service.GrantPermission(t.Context(), tenantID, denyRole.ID, "store_view")
+			require.NoError(t, err)
+			_, _, err = harness.service.PutEntityRoleBinding(t.Context(), tenantID, entity.ID, denyRole.ID, subject, BindingDeny, time.Time{})
+			require.NoError(t, err)
+			denied, err := harness.authorizer.EntityConstraint(t.Context(), tenantID, entity.ID, "store_view", subject)
+			require.NoError(t, err)
+			assert.Greater(t, denied.Revision, constraint.Revision)
+			assert.Equal(t, []string{entity.ID.String()}, denied.DeniedIDs)
+			assert.False(t, denied.AllowAll)
+			assert.Empty(t, denied.OwnerIDs)
+			assert.Empty(t, denied.DepartmentIDs)
+			assert.False(t, denied.AllowsEntityRows(entity.ID))
+			_, err = harness.service.DeleteEntityRoleBinding(t.Context(), tenantID, entity.ID, denyRole.ID, subject)
+			require.NoError(t, err)
+
+			disabled := EntityDisabled
+			_, err = harness.service.UpdateEntity(t.Context(), tenantID, entity.ID, EntityPatch{Status: &disabled})
+			require.NoError(t, err)
+			denied, err = harness.authorizer.EntityConstraint(t.Context(), tenantID, entity.ID, "store_view", subject)
+			require.NoError(t, err)
+			assert.False(t, denied.AllowsEntityRows(entity.ID))
+			active := EntityActive
+			_, err = harness.service.UpdateEntity(t.Context(), tenantID, entity.ID, EntityPatch{Status: &active})
+			require.NoError(t, err)
+			_, err = harness.service.RevokePermission(t.Context(), tenantID, role.ID, "store_view")
+			require.NoError(t, err)
+			denied, err = harness.authorizer.EntityConstraint(t.Context(), tenantID, entity.ID, "store_view", subject)
+			require.NoError(t, err)
+			assert.False(t, denied.AllowsEntityRows(entity.ID), "revocation must take effect without rewiring")
+		})
+	}
+}
+
+func TestAuthorizerEntityConstraintInheritedGrantDenyAndMembership(t *testing.T) {
+	harness := newCoreServiceHarness(t)
+	tenantID, subject := guid.ID(1), guid.ID(11)
+	harness.seedMember(t, tenantID, subject, MemberActive)
+	root, err := harness.service.CreateEntity(t.Context(), Entity{TenantID: tenantID, Type: "company", Name: "Root"})
+	require.NoError(t, err)
+	child, err := harness.service.CreateEntity(t.Context(), Entity{TenantID: tenantID, ParentID: root.ID, Type: "store", Name: "Child"})
+	require.NoError(t, err)
+	role, err := harness.service.CreateRole(t.Context(), tenantID, "Inherited", "")
+	require.NoError(t, err)
+	_, err = harness.service.GrantPermission(t.Context(), tenantID, role.ID, "store_view")
+	require.NoError(t, err)
+	_, _, err = harness.service.PutEntityRoleBinding(t.Context(), tenantID, root.ID, role.ID, subject, BindingAllow, time.Time{})
+	require.NoError(t, err)
+	constraint, err := harness.authorizer.EntityConstraint(t.Context(), tenantID, child.ID, "store_view", subject)
+	require.NoError(t, err)
+	assert.Equal(t, []string{child.ID.String()}, constraint.ResourceIDs)
+	require.Len(t, constraint.Ancestors, 1)
+	assert.Equal(t, root.ID.String(), constraint.Ancestors[0].ID)
+	assert.True(t, constraint.AllowsEntityRows(child.ID))
+	_, _, err = harness.service.PutEntityRoleBinding(t.Context(), tenantID, child.ID, role.ID, subject, BindingDeny, time.Time{})
+	require.NoError(t, err)
+	constraint, err = harness.authorizer.EntityConstraint(t.Context(), tenantID, child.ID, "store_view", subject)
+	require.NoError(t, err)
+	assert.Empty(t, constraint.ResourceIDs)
+	assert.False(t, constraint.AllowsEntityRows(child.ID), "ancestor provenance cannot override a child deny")
+	_, err = harness.service.PutTenantMember(t.Context(), tenantID, subject, "Member", "member@example.test", 0, MemberDisabled)
+	require.NoError(t, err)
+	constraint, err = harness.authorizer.EntityConstraint(t.Context(), tenantID, root.ID, "store_view", subject)
+	require.NoError(t, err)
+	assert.False(t, constraint.AllowsEntityRows(root.ID))
+	assert.Empty(t, constraint.ResourceIDs)
+}
+
+func TestAuthorizerEntityConstraintFailsClosedOnInvalidInputAndUnavailableStore(t *testing.T) {
+	var absent *Authorizer
+	_, err := absent.EntityConstraint(t.Context(), 1, 2, "store_view", 11)
+	assert.ErrorIs(t, err, ErrUnavailable)
+	harness := newCoreServiceHarness(t)
+	_, err = harness.authorizer.EntityConstraint(t.Context(), 1, 0, "store_view", 11)
+	assert.ErrorIs(t, err, ErrInvalidArgument)
+	harness.seedMember(t, 1, 11, MemberActive)
+	require.NoError(t, harness.db.Exec("DROP TABLE sl_iam_policy_revisions").Error)
+	constraint, err := harness.authorizer.EntityConstraint(t.Context(), 1, 2, "store_view", 11)
+	require.Error(t, err)
+	assert.False(t, constraint.AllowsEntityRows(2))
+}
+
 func TestAuthorizerInactiveMembershipEntityStateAndAliases(t *testing.T) {
 	harness := newCoreServiceHarness(t)
 	tenantID, principalID := guid.ID(1), guid.ID(11)
@@ -399,6 +535,11 @@ func TestAuthorizerDirectoryAssignmentSourcesAndDataScopeDescendants(t *testing.
 		allowed, checkErr := harness.authorizer.Check(t.Context(), tenantID, item.permission, principalID)
 		require.NoError(t, checkErr)
 		assert.True(t, allowed, item.name)
+		pinned, pinErr := harness.authorizer.pinWriter()
+		require.NoError(t, pinErr)
+		fieldRoles, fieldErr := pinned.fieldPolicyRoles(t.Context(), tenantID, 0, principalID)
+		require.NoError(t, fieldErr)
+		assert.Contains(t, fieldRoles, role.ID, item.name+" also participates in field policies")
 	}
 
 	role, err := harness.service.CreateRole(t.Context(), tenantID, "Department descendants", "")

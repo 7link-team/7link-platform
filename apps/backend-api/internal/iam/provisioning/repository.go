@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/provisioning/model"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
@@ -24,6 +25,60 @@ type credentialAuthRow struct {
 	model.Credential `gorm:"embedded"`
 	TenantID         guid.ID `gorm:"column:tenant_id"`
 	DirectoryStatus  string  `gorm:"column:directory_status"`
+	TenantStatus     string  `gorm:"column:tenant_status"`
+	PrincipalID      guid.ID `gorm:"column:service_account_id"`
+}
+
+func (row credentialAuthRow) active(now time.Time) bool {
+	return row.TenantStatus == "active" && row.DirectoryStatus == DirectoryActive &&
+		row.RevokedAt == nil && (row.ExpiresAt == nil || row.ExpiresAt.After(now))
+}
+
+// authorizeSCIM revalidates the authenticated tuple at the service boundary,
+// including credentials retained by a caller after revocation or suspension.
+func (r *Repository) authorizeSCIM(ctx context.Context, auth AuthContext, now time.Time, actors identity.ServiceAccountValidator) error {
+	if auth.TenantID <= 0 || auth.DirectoryID <= 0 || auth.CredentialID <= 0 || auth.PrincipalID <= 0 {
+		return ErrUnauthorized
+	}
+	pinned, err := r.pinWriter()
+	if err != nil {
+		return err
+	}
+	row, err := pinned.credentialForAuth(ctx, auth.CredentialID, auth.TenantID, auth.DirectoryID)
+	if err != nil {
+		return err
+	}
+	if row.TenantID != auth.TenantID || row.DirectoryID != auth.DirectoryID || row.PrincipalID != auth.PrincipalID || !row.active(now) {
+		return ErrUnauthorized
+	}
+	if row.PrincipalID > 0 {
+		return pinned.requireServiceAccount(ctx, row.TenantID, &row.PrincipalID, now, actors)
+	}
+	return nil
+}
+
+func (r *Repository) requireServiceAccount(ctx context.Context, tenantID guid.ID, id *guid.ID, now time.Time, actors identity.ServiceAccountValidator) error {
+	if id == nil {
+		return nil
+	}
+	if *id <= 0 {
+		return ErrUnauthorized
+	}
+	if actors == nil {
+		return errRepositoryUnavailable
+	}
+	pinned, err := r.pinWriter()
+	if err != nil {
+		return err
+	}
+	active, err := actors(ctx, pinned.writer(), tenantID, *id, now)
+	if err != nil {
+		return err
+	}
+	if !active {
+		return ErrUnauthorized
+	}
+	return nil
 }
 
 type userRecord struct {
@@ -151,7 +206,7 @@ func (r *Repository) insertTarget(ctx context.Context, row *targetRow) error {
 func (r *Repository) replaceTarget(ctx context.Context, row *targetRow, expectedVersion int64) error {
 	result := r.writer().WithContext(ctx).Table(r.table(model.Target{}.TableName())).
 		Where("tenant_id = ? AND id = ? AND version = ?", row.TenantID, row.ID, expectedVersion).
-		Select("name", "name_key", "base_url", "bearer_token_ciphertext", "status", "version", "updated_at").Updates(row)
+		Select("name", "name_key", "base_url", "bearer_token_ciphertext", "status", "version", "updated_at", "service_account_id").Updates(row)
 	if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
 		return ErrTargetName
 	}
@@ -271,7 +326,7 @@ func (r *Repository) insertDirectory(ctx context.Context, row *directoryRow) err
 func (r *Repository) updateDirectory(ctx context.Context, row *directoryRow, expectedVersion int64) error {
 	result := r.writer().WithContext(ctx).Table(r.table(model.Directory{}.TableName())).
 		Where("tenant_id = ? AND id = ? AND version = ?", row.TenantID, row.ID, expectedVersion).
-		Select("name", "name_key", "status", "version", "updated_at").Updates(row)
+		Select("name", "name_key", "status", "version", "updated_at", "service_account_id").Updates(row)
 	if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
 		return ErrDirectoryName
 	}
@@ -329,14 +384,24 @@ func (r *Repository) revokeCredential(ctx context.Context, directoryID, id guid.
 	return false, nil
 }
 
-func (r *Repository) credentialForAuth(ctx context.Context, id guid.ID) (credentialAuthRow, error) {
+// Initial bearer authentication has no trusted scope yet; subsequent checks
+// bind the resolved tenant and directory in SQL as well as validating the row.
+func (r *Repository) credentialForAuth(ctx context.Context, id, tenantID, directoryID guid.ID) (credentialAuthRow, error) {
 	var row credentialAuthRow
 	credentialTable := r.table(model.Credential{}.TableName())
 	directoryTable := r.table(model.Directory{}.TableName())
-	err := r.writer().WithContext(ctx).Table(credentialTable+" AS credential").
-		Select("credential.*, directory.tenant_id AS tenant_id, directory.status AS directory_status").
+	query := r.writer().WithContext(ctx).Table(credentialTable+" AS credential").
+		Select("credential.*, directory.tenant_id AS tenant_id, directory.status AS directory_status, tenant.status AS tenant_status, COALESCE(directory.service_account_id, 0) AS service_account_id").
 		Joins("JOIN "+directoryTable+" AS directory ON directory.id = credential.directory_id").
-		Where("credential.id = ?", id).Take(&row).Error
+		Joins("JOIN "+r.table("iam_tenants")+" AS tenant ON tenant.id = directory.tenant_id").
+		Where("credential.id = ?", id)
+	if tenantID > 0 {
+		query = query.Where("tenant.id = ? AND directory.tenant_id = ?", tenantID, tenantID)
+	}
+	if directoryID > 0 {
+		query = query.Where("directory.id = ? AND credential.directory_id = ?", directoryID, directoryID)
+	}
+	err := query.Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return row, ErrUnauthorized
 	}

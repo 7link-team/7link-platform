@@ -73,7 +73,8 @@ func newRewrapFixture(t *testing.T) *rewrapFixture {
 	)
 	require.NoError(t, err)
 	require.NoError(t, harness.db.Create(&model.NotificationOutbox{
-		ID: fixture.outboxID, Kind: "password-recovery", Recipient: "admin@example.test",
+		PrincipalID: &principalID,
+		ID:          fixture.outboxID, Kind: "password-recovery", Recipient: "admin@example.test",
 		PayloadCiphertext: payload, Status: "pending", AvailableAt: repositoryTestNow,
 		CreatedAt: repositoryTestNow, UpdatedAt: repositoryTestNow,
 	}).Error)

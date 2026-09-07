@@ -63,6 +63,37 @@ type serviceAccountView struct {
 	DisplayName          string `gorm:"column:display_name"`
 }
 
+// ValidateServiceAccount never treats an ordinary user or foreign tenant member
+// as an automation principal. It reads through the supplied transaction.
+func (s *Service) ValidateServiceAccount(ctx context.Context, db *gorm.DB, tenantID, principalID guid.ID, now time.Time) (bool, error) {
+	if s == nil || s.repo == nil {
+		return false, ErrUnavailable
+	}
+	if db == nil || tenantID <= 0 || principalID <= 0 || now.IsZero() {
+		return false, ErrServiceAccountInvalid
+	}
+	repo, err := s.repo.on(db)
+	if err != nil {
+		return false, err
+	}
+	query, err := repo.serviceAccountQuery(ctx)
+	if err != nil {
+		return false, err
+	}
+	var count int64
+	err = query.
+		Joins("JOIN "+repo.table("iam_tenant_members")+" AS member ON member.principal_id = principal.id AND member.tenant_id = service_account.owner_tenant_id").
+		Joins("JOIN "+repo.table("iam_tenants")+" AS tenant ON tenant.id = service_account.owner_tenant_id").
+		Where("service_account.owner_tenant_id = ? AND service_account.principal_id = ?", tenantID, principalID).
+		Where("service_account.status = 'active' AND service_account.deleted_at IS NULL AND (service_account.expires_at IS NULL OR service_account.expires_at > ?)", now.UTC()).
+		Where("principal.status = 'active' AND principal.activation_required = ? AND member.status = 'active' AND tenant.status = 'active'", false).
+		Count(&count).Error
+	if err != nil {
+		return false, fmt.Errorf("validate service account: %w", err)
+	}
+	return count == 1, nil
+}
+
 func (s *Service) CreateServiceAccount(
 	ctx context.Context,
 	tenantID guid.ID,

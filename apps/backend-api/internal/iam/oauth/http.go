@@ -87,10 +87,10 @@ type userInfoInput struct {
 }
 
 type userInfoDocument struct {
-	Subject           string `json:"sub"`
-	PreferredUsername string `json:"preferred_username"`
-	Email             string `json:"email"`
-	EmailVerified     bool   `json:"email_verified"`
+	Subject           string  `json:"sub"`
+	PreferredUsername *string `json:"preferred_username,omitempty"`
+	Email             *string `json:"email,omitempty"`
+	EmailVerified     *bool   `json:"email_verified,omitempty"`
 }
 
 type introspectionDocument struct {
@@ -496,12 +496,23 @@ func registerProtocolHTTP(api huma.API, service *Service) {
 		if !claimHasScope(claims, "openid") {
 			return nil, oauthError(ctx, http.StatusForbidden, "insufficient_scope")
 		}
+		scope, _ := claims.Raw["scope"].(string)
+		profile, err := service.authn.ProjectProfile(ctx, claims, scope)
+		if err != nil {
+			if errors.Is(err, authnext.ErrInvalidSession) {
+				return nil, oauthError(ctx, http.StatusUnauthorized, "invalid_token")
+			}
+			if errors.Is(err, authz.ErrFieldDenied) {
+				return nil, oauthError(ctx, http.StatusForbidden, "access_denied")
+			}
+			return nil, oauthError(ctx, http.StatusServiceUnavailable, "server_error")
+		}
 		return &userInfoOutput{Body: userInfoDocument{
-			Subject: claims.Subject, PreferredUsername: claims.PreferredUsername,
-			Email: claims.Email, EmailVerified: claims.EmailVerified,
+			Subject: claims.Subject, PreferredUsername: profile.PreferredUsername,
+			Email: profile.Email, EmailVerified: profile.EmailVerified,
 		}}, nil
 	})
-	documentOAuthErrors(api, api.OpenAPI().Paths["/oauth/userinfo"].Get, http.StatusUnauthorized, http.StatusForbidden)
+	documentOAuthErrors(api, api.OpenAPI().Paths["/oauth/userinfo"].Get, http.StatusUnauthorized, http.StatusForbidden, http.StatusServiceUnavailable)
 }
 
 func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registrar) {

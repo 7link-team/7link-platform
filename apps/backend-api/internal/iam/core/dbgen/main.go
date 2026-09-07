@@ -10,6 +10,7 @@ func main() {
 	gengorm.Generate(
 		model.Role{},
 		model.RolePermission{},
+		model.FieldPolicy{},
 		model.RoleMember{},
 		model.TenantMember{},
 		model.Menu{},

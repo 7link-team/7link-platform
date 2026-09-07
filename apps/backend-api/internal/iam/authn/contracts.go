@@ -23,12 +23,13 @@ type InvitationCredentials interface {
 // authz request-path contracts.
 type WebService interface {
 	Authenticate(context.Context, string, string) (*authnext.Claims, error)
+	ProjectProfile(context.Context, *authnext.Claims, string) (ProfileClaims, error)
 	ClearCookie() string
 	CookieSecure() bool
 	CreateSession(context.Context, guid.ID, time.Time, authnext.Assurance) (string, error)
 	Issuer() string
 	IssueTenantAccessTokenWithAssurance(context.Context, guid.ID, string, string, string, authnext.Assurance) (string, int64, error)
-	IssueTenantIDTokenWithAssurance(context.Context, guid.ID, string, string, string, authnext.Assurance) (string, error)
+	IssueTenantIDTokenWithAssurance(context.Context, guid.ID, string, string, string, string, authnext.Assurance) (string, error)
 	IssueTenantOAuthClientToken(context.Context, string, string, string, string, string) (string, int64, error)
 	IssueTenantServiceAccountToken(context.Context, string, string, string, string, string, int64) (string, int64, error)
 	JWKS() map[string]any
@@ -37,4 +38,12 @@ type WebService interface {
 	SessionCookie(string) string
 	SessionCookieName() string
 	ValidateCSRF(method, origin, cookieHeader, authorization string) error
+}
+
+// ProfileClaims contains only tenant-policy-visible and scope-authorized claims.
+// Omission is distinct from an empty string or a false verification state.
+type ProfileClaims struct {
+	PreferredUsername *string `json:"preferred_username,omitempty"`
+	Email             *string `json:"email,omitempty"`
+	EmailVerified     *bool   `json:"email_verified,omitempty"`
 }

@@ -12,6 +12,9 @@ import (
 )
 
 func (s *Service) Bulk(ctx context.Context, auth AuthContext, request BulkRequest) (BulkResponse, error) {
+	if err := s.repo.authorizeSCIM(ctx, auth, s.now(), s.actors); err != nil {
+		return BulkResponse{}, err
+	}
 	if len(request.Operations) > maxBulkOps || request.FailOnErrors > maxBulkOps {
 		return BulkResponse{}, ErrTooMany
 	}

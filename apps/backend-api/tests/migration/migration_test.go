@@ -61,10 +61,43 @@ func TestModuleMigrationsAcrossEngines(t *testing.T) {
 					verifyPrefixedMigration(t, db, engine, module)
 					verifyMaximumPrefixMigration(t, db, engine, module)
 					verifyLifecycle(t, db, engine, module)
+					if module.name == "todo" {
+						for _, prefix := range []string{"", deploymentPrefix} {
+							verifyTodoBoundaryUpgrade(t, db, engine.dialect, prefix)
+						}
+					}
 				})
 			}
 		})
 	}
+}
+
+func verifyTodoBoundaryUpgrade(t *testing.T, db *sql.DB, dialect, prefix string) {
+	t.Helper()
+	source := (&todo.Module{}).MigrationSource()
+	source.Prefix = prefix
+	table := prefix + "todos"
+	require.NoError(t, goosex.MigrateUpTo(t.Context(), db, source, dialect, 1))
+	_, err := db.ExecContext(t.Context(), "INSERT INTO "+table+" (id,title,description,status,created_at,updated_at) VALUES (1,'legacy','','open','2026-09-02 00:00:00','2026-09-02 00:00:00')")
+	require.NoError(t, err)
+	require.NoError(t, goosex.Migrate(t.Context(), db, source, dialect))
+	var count int
+	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM "+table+" WHERE id = 1 AND tenant_id IS NULL AND entity_id IS NULL AND department_id IS NULL").Scan(&count))
+	assert.Equal(t, 1, count, "upgrade must never invent legacy data ownership")
+	_, err = db.ExecContext(t.Context(), "INSERT INTO "+table+" (id,title,description,status,created_at,updated_at,tenant_id,entity_id,department_id) VALUES (2,'owned','','open','2026-09-02 00:00:00','2026-09-02 00:00:00',1,10,100)")
+	require.NoError(t, err)
+	for _, column := range []string{"tenant_id", "entity_id", "department_id"} {
+		for _, value := range []string{"0", "-1"} {
+			_, err = db.ExecContext(t.Context(), "UPDATE "+table+" SET "+column+" = "+value+" WHERE id = 2")
+			require.Error(t, err, "%s must reject non-positive %s", dialect, column)
+		}
+	}
+	require.NoError(t, goosex.MigrateDownTo(t.Context(), db, source, dialect, 1))
+	assert.Equal(t, 2, tableRowCount(t, db, table), "structural rollback preserves task rows")
+	require.NoError(t, goosex.Migrate(t.Context(), db, source, dialect))
+	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM "+table+" WHERE tenant_id IS NULL AND entity_id IS NULL").Scan(&count))
+	assert.Equal(t, 2, count, "rows without surviving attribution remain inaccessible")
+	require.NoError(t, goosex.MigrateDownTo(t.Context(), db, source, dialect, 0))
 }
 
 func TestMigrationIdentifiersFitEngineLimitsAtMaximumPrefix(t *testing.T) {
@@ -74,8 +107,8 @@ func TestMigrationIdentifiersFitEngineLimitsAtMaximumPrefix(t *testing.T) {
 	identifierModules := append(moduleMigrations(), []moduleMigration{
 		{name: "organization", table: "iam_tenants", target: 8, source: (&organization.Module{}).MigrationSource()},
 		{name: "governance", table: "iam_access_requests", target: 3, source: (&governance.Module{}).MigrationSource()},
-		{name: "provisioning", table: "iam_scim_directories", target: 3, source: (&provisioning.Module{}).MigrationSource()},
-		{name: "federation", table: "iam_identity_providers", target: 3, source: (&federation.Module{}).MigrationSource()},
+		{name: "provisioning", table: "iam_scim_directories", target: 4, source: (&provisioning.Module{}).MigrationSource()},
+		{name: "federation", table: "iam_identity_providers", target: 4, source: (&federation.Module{}).MigrationSource()},
 	}...)
 	for _, module := range identifierModules {
 		for _, engine := range []databaseEngine{
@@ -99,7 +132,7 @@ func moduleMigrations() []moduleMigration {
 		{
 			name:    "todo",
 			table:   "todos",
-			target:  1,
+			target:  2,
 			seedSQL: `INSERT INTO todos (id, title, description, status, created_at, updated_at) VALUES (1, 'first', '', 'pending', '2026-09-02 00:00:00', '2026-09-02 00:00:00')`,
 			source:  (&todo.Module{}).MigrationSource(),
 		},
@@ -127,21 +160,21 @@ func moduleMigrations() []moduleMigration {
 		{
 			name:    "identity",
 			table:   "iam_principals",
-			target:  2,
+			target:  4,
 			seedSQL: `INSERT INTO iam_principals (id, login_name, display_name, status, created_at, updated_at) VALUES (1, 'first', 'First', 'active', '2026-09-02 00:00:00', '2026-09-02 00:00:00')`,
 			source:  (&identity.Module{}).MigrationSource(),
 		},
 		{
 			name:    "iam-audit",
 			table:   "iam_audit_events",
-			target:  2,
+			target:  3,
 			seedSQL: `INSERT INTO iam_audit_events (id, tenant_id, event_type, outcome, detail, created_at, sequence, event_hash) VALUES (1, 0, 'platform_event', 'success', '{}', '2026-09-02 00:00:00', 1, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')`,
 			source:  (&iamaudit.Module{}).MigrationSource(),
 		},
 		{
 			name:    "iam-core",
 			table:   "iam_roles",
-			target:  11,
+			target:  12,
 			seedSQL: `INSERT INTO iam_roles (tenant_id, id, name, name_key, created_at, updated_at) VALUES (1, 1, 'First', 'first', '2026-09-02 00:00:00', '2026-09-02 00:00:00')`,
 			source:  (&iamcore.Module{}).MigrationSource(),
 		},

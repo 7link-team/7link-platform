@@ -26,6 +26,9 @@ import type {
   AccessReview,
   AccessReviewItem,
   AuditAnchor,
+  AuditArchiveJob,
+  AuditArchiveObject,
+  AuditArchiveStatus,
   AuditEvent,
   AuditGovernance,
   AuditIntegrity,
@@ -38,6 +41,11 @@ import type {
   Department,
   Entity,
   EntityRoleBinding,
+  FieldDefinition,
+  FieldAccess,
+  FieldPolicy,
+  ManagedFieldPolicy,
+  FieldConstraint,
   Group,
   GroupMember,
   Invitation,
@@ -67,6 +75,12 @@ import type {
   SCIMCredential,
   SCIMCredentialSecret,
   SCIMDirectory,
+  SCIMTarget,
+  SCIMTargetInput,
+  SCIMTargetUpdate,
+  SCIMTargetSecret,
+  SCIMResourceInput,
+  SCIMPushResult,
   ServiceAccount,
   ServiceAccountCredential,
   ServiceAccountCredentialSecret,
@@ -94,12 +108,43 @@ type Compare<Client, Spec> = [Exclude<keyof Client, keyof Spec>] extends [never]
 
 type Agreed<R extends true> = R
 
+type Optionality<Client, Spec> = [
+  Exclude<RequiredKeys<Client>, RequiredKeys<Spec>>,
+] extends [never]
+  ? true
+  : {
+      clientRequiresOptionalFields: Exclude<
+        RequiredKeys<Client>,
+        RequiredKeys<Spec>
+      >
+    }
+
+export type _FieldDefinition = Agreed<Compare<FieldDefinition, S["Field"]>>
+export type _FieldAccess = Agreed<Compare<FieldAccess, S["FieldAccess"]>>
+export type _FieldPolicy = Agreed<Compare<FieldPolicy, S["FieldPolicy"]>>
+export type _ManagedFieldPolicy = Agreed<
+  Compare<ManagedFieldPolicy, S["ManagedFieldPolicy"]>
+>
+export type _FieldConstraint = Agreed<
+  Compare<FieldConstraint, S["FieldConstraint"]>
+>
+export type _FieldPolicyInput = Agreed<
+  Compare<{ policy: FieldPolicy; version: number }, S["FieldPolicyInputBody"]>
+>
+
 export type _AccessRequest = Agreed<Compare<AccessRequest, S["AccessRequest"]>>
 export type _AccessReview = Agreed<Compare<AccessReview, S["AccessReview"]>>
 export type _AccessReviewItem = Agreed<
   Compare<AccessReviewItem, S["AccessReviewItem"]>
 >
 export type _AuditAnchor = Agreed<Compare<AuditAnchor, S["Anchor"]>>
+export type _AuditArchiveJob = Agreed<Compare<AuditArchiveJob, S["ArchiveJob"]>>
+export type _AuditArchiveObject = Agreed<
+  Compare<AuditArchiveObject, S["ArchiveObject"]>
+>
+export type _AuditArchiveStatus = Agreed<
+  Compare<AuditArchiveStatus, S["ArchiveStatus"]>
+>
 export type _AuditEvent = Agreed<Compare<AuditEvent, S["Event"]>>
 export type _AuditGovernance = Agreed<Compare<AuditGovernance, S["Governance"]>>
 export type _AuditIntegrity = Agreed<Compare<AuditIntegrity, S["Integrity"]>>
@@ -162,7 +207,12 @@ export type _Position = Agreed<Compare<Position, S["Position"]>>
 export type _PositionMember = Agreed<
   Compare<PositionMember, S["PositionMember"]>
 >
-export type _Principal = Agreed<Compare<Principal, S["Principal"]>>
+export type _Principal = Agreed<Compare<Principal, S["PrincipalView"]>>
+export type _PrincipalOptional = Agreed<
+  Optionality<Principal, S["PrincipalView"]>
+>
+export type _MemberOptional = Agreed<Optionality<Member, S["APITenantMember"]>>
+export type _SessionOptional = Agreed<Optionality<Session, S["MeOutput"]>>
 export type _PrincipalList = Agreed<
   Compare<PrincipalList, S["PrincipalListData"]>
 >
@@ -185,6 +235,20 @@ export type _SCIMCredentialSecret = Agreed<
   Compare<SCIMCredentialSecret, S["CredentialSecret"]>
 >
 export type _SCIMDirectory = Agreed<Compare<SCIMDirectory, S["Directory"]>>
+export type _SCIMTarget = Agreed<Compare<SCIMTarget, S["Target"]>>
+export type _SCIMTargetInput = Agreed<
+  Compare<SCIMTargetInput, S["TargetCreateInputBody"]>
+>
+export type _SCIMTargetUpdate = Agreed<
+  Compare<SCIMTargetUpdate, S["TargetReplaceInputBody"]>
+>
+export type _SCIMTargetSecret = Agreed<
+  Compare<SCIMTargetSecret, S["TargetSecret"]>
+>
+export type _SCIMResourceInput = Agreed<
+  Compare<SCIMResourceInput, S["TargetPushInputBody"]>
+>
+export type _SCIMPushResult = Agreed<Compare<SCIMPushResult, S["PushResult"]>>
 export type _ServiceAccount = Agreed<
   Compare<ServiceAccount, S["ServiceAccount"]>
 >

@@ -21,6 +21,12 @@ const (
 	AnchorUnavailable   = Namespace + ".audit_anchor_unavailable"
 	RetentionInvalid    = Namespace + ".audit_retention_invalid"
 	RootSigningDisabled = Namespace + ".audit_root_signing_not_enabled"
+	ArchiveNotFound     = Namespace + ".archive_not_found"
+	ArchiveDisabled     = Namespace + ".archive_disabled"
+	ArchiveEmpty        = Namespace + ".archive_empty"
+	ArchiveBusy         = Namespace + ".archive_busy"
+	ArchiveIntegrity    = Namespace + ".archive_integrity"
+	ArchiveUnavailable  = Namespace + ".archive_unavailable"
 )
 
 //go:embed locales/*.json

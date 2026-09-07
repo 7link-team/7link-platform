@@ -848,6 +848,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/iam/audit/archive-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read audit archive execution status */
+        get: operations["audit-archive-status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/iam/audit/archives": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List durable audit archive jobs */
+        get: operations["audit-list-archives"];
+        put?: never;
+        /** Queue the next eligible audit archive segment */
+        post: operations["audit-request-archive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/iam/audit/archives/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download the verified immutable audit archive version */
+        get: operations["audit-download-archive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/iam/audit/archives/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue a failed or expired audit archive job for retry */
+        post: operations["audit-retry-archive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/iam/audit/archives/{id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify the archived object version, content and retention */
+        post: operations["audit-verify-archive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/iam/audit/governance": {
         parameters: {
             query?: never;
@@ -1054,6 +1140,75 @@ export interface paths {
         post?: never;
         /** Remove a direct principal role from an entity scope */
         delete: operations["iam-delete-entity-role-binding"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/iam/field-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List declared field capabilities */
+        get: operations["iam-field-catalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/iam/field-policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List tenant field policies */
+        get: operations["iam-list-field-policies"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/iam/field-policies/{resource}/{field}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set a tenant field policy */
+        put: operations["iam-set-field-policy"];
+        post?: never;
+        /** Restore a field's declared default policy */
+        delete: operations["iam-delete-field-policy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/iam/fields/effective": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get own effective field capabilities */
+        get: operations["iam-effective-fields"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2363,6 +2518,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/platform/iam/audit/archive-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Platform: Read audit archive execution status */
+        get: operations["audit-platform-archive-status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/platform/iam/audit/archives": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Platform: List durable audit archive jobs */
+        get: operations["audit-platform-list-archives"];
+        put?: never;
+        /** Platform: Queue the next eligible audit archive segment */
+        post: operations["audit-platform-request-archive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/platform/iam/audit/archives/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Platform: Download the verified immutable audit archive version */
+        get: operations["audit-platform-download-archive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/platform/iam/audit/archives/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Platform: Queue a failed or expired audit archive job for retry */
+        post: operations["audit-platform-retry-archive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/platform/iam/audit/archives/{id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Platform: Verify the archived object version, content and retention */
+        post: operations["audit-platform-verify-archive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/platform/iam/audit/retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Platform: Configure platform audit retention policy */
+        put: operations["audit-platform-set-retention"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/readyz": {
         parameters: {
             query?: never;
@@ -2792,7 +3050,7 @@ export interface components {
             department_id?: string;
             /** Format: date-time */
             disabled_at?: string;
-            display_name: string;
+            display_name?: string;
             email?: string;
             role_ids?: string[] | null;
             status: string;
@@ -2917,6 +3175,57 @@ export interface components {
             signature_valid?: boolean;
             signed: boolean;
             valid: boolean;
+        };
+        ArchiveJob: {
+            /** Format: int64 */
+            after_sequence: number;
+            /** Format: int64 */
+            attempts: number;
+            /** Format: date-time */
+            created_at: string;
+            error_code?: string;
+            /** Format: int64 */
+            head_sequence: number;
+            id: string | null;
+            /** Format: int64 */
+            next_attempt: number;
+            object?: components["schemas"]["ArchiveObject"];
+            /** Format: date-time */
+            retain_until: string;
+            state: string;
+            tenant_id: string | null;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ArchiveObject: {
+            bucket: string;
+            key: string;
+            /** Format: date-time */
+            retain_until: string;
+            sha256: string;
+            /** Format: int64 */
+            size: number;
+            version_id: string;
+        };
+        ArchiveStatus: {
+            /** Format: int64 */
+            archived_events: number;
+            /** Format: int64 */
+            completed_jobs: number;
+            /** Format: int64 */
+            eligible_events: number;
+            enabled: boolean;
+            /** Format: int64 */
+            failed_jobs: number;
+            /** Format: int64 */
+            pending_events: number;
+            policy: components["schemas"]["RetentionPolicy"];
+            /** Format: int64 */
+            queued_jobs: number;
+            /** Format: int64 */
+            running_jobs: number;
+            /** Format: int64 */
+            total_events: number;
         };
         AuthenticationCapabilities: {
             passkey: boolean;
@@ -3352,6 +3661,7 @@ export interface components {
             created_at: string;
             id: string | null;
             name: string;
+            service_account_id?: string;
             status: string;
             tenant_id: string | null;
             /** Format: date-time */
@@ -3361,9 +3671,11 @@ export interface components {
         };
         DirectoryCreateInputBody: {
             name: string;
+            service_account_id?: string | null;
         };
         DirectoryReplaceInputBody: {
             name: string;
+            service_account_id?: string | null;
             /** @enum {string} */
             status: "active" | "disabled";
             /** Format: int64 */
@@ -3541,6 +3853,45 @@ export interface components {
             code: number;
             /** @description response payload; null on error */
             data: components["schemas"]["Anchor"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeArchiveJob: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["ArchiveJob"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeArchiveObject: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["ArchiveObject"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeArchiveStatus: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["ArchiveStatus"];
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -3749,6 +4100,19 @@ export interface components {
             code: number;
             /** @description response payload; null on error */
             data: components["schemas"]["Explanation"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeFieldConstraint: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["FieldConstraint"];
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -4001,6 +4365,19 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
+        EnvelopeListArchiveJob: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["ArchiveJob"][] | null;
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
         EnvelopeListBrowserSession: {
             /**
              * Format: int64
@@ -4079,6 +4456,19 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
+        EnvelopeListField: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["Field"][] | null;
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
         EnvelopeListGrantedConsent: {
             /**
              * Format: int64
@@ -4139,6 +4529,19 @@ export interface components {
             code: number;
             /** @description response payload; null on error */
             data: components["schemas"]["Invitation"][] | null;
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeListManagedFieldPolicy: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["ManagedFieldPolicy"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -4391,6 +4794,19 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
+        EnvelopeManagedFieldPolicy: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["ManagedFieldPolicy"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
         EnvelopeMapStringBool: {
             /**
              * Format: int64
@@ -4510,19 +4926,6 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
-        EnvelopePrincipal: {
-            /**
-             * Format: int64
-             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
-             */
-            code: number;
-            /** @description response payload; null on error */
-            data: components["schemas"]["Principal"];
-            /** @description human-readable status; "ok" on success */
-            message: string;
-            /** @description request metadata */
-            meta: components["schemas"]["Meta"];
-        };
         EnvelopePrincipalListData: {
             /**
              * Format: int64
@@ -4531,6 +4934,19 @@ export interface components {
             code: number;
             /** @description response payload; null on error */
             data: components["schemas"]["PrincipalListData"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopePrincipalView: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["PrincipalView"];
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -4795,6 +5211,46 @@ export interface components {
             /** Format: int64 */
             revision: number;
         };
+        Field: {
+            configurable: boolean;
+            maskable: boolean;
+            /** @enum {string} */
+            mutability: "readOnly" | "readWrite" | "immutable" | "writeOnly";
+            name: string;
+            resource: string;
+            /** @enum {string} */
+            returned: "always" | "never" | "default" | "request";
+        };
+        FieldAccess: {
+            allow_roles: (string | null)[] | null;
+            /** @enum {string} */
+            default: "allow" | "deny";
+            deny_roles: (string | null)[] | null;
+        };
+        FieldConstraint: {
+            fields: {
+                [key: string]: components["schemas"]["FieldDecision"];
+            };
+            /** Format: int64 */
+            revision: number;
+        };
+        FieldDecision: {
+            create: boolean;
+            /** @enum {string} */
+            read: "allow" | "omit" | "redact";
+            update: boolean;
+        };
+        FieldPolicy: {
+            /** @enum {string} */
+            mask: "omit" | "redact";
+            read: components["schemas"]["FieldAccess"];
+            write: components["schemas"]["FieldAccess"];
+        };
+        FieldPolicyInputBody: {
+            policy: components["schemas"]["FieldPolicy"];
+            /** Format: int64 */
+            version: number;
+        };
         FilterCapability: {
             field: string;
             /** Format: int64 */
@@ -4982,6 +5438,13 @@ export interface components {
             recovery_codes_remaining: number;
             totp_enabled: boolean;
         };
+        ManagedFieldPolicy: {
+            field: string;
+            policy: components["schemas"]["FieldPolicy"];
+            resource: string;
+            /** Format: int64 */
+            version: number;
+        };
         MeOutput: {
             /** Format: int64 */
             acr: number;
@@ -4989,7 +5452,7 @@ export interface components {
             /** Format: date-time */
             auth_time?: string;
             email?: string;
-            email_verified: boolean;
+            email_verified?: boolean;
             issuer: string;
             organization_id?: string;
             preferred_username?: string;
@@ -5193,19 +5656,6 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
-        Principal: {
-            activation_required: boolean;
-            /** Format: date-time */
-            created_at: string;
-            display_name: string;
-            email?: string;
-            email_verified: boolean;
-            id: string | null;
-            login_name: string;
-            status: string;
-            /** Format: date-time */
-            updated_at: string;
-        };
         PrincipalCreateInputBody: {
             display_name?: string;
             email?: string;
@@ -5213,13 +5663,26 @@ export interface components {
             password: string;
         };
         PrincipalListData: {
-            items: components["schemas"]["Principal"][] | null;
+            items: components["schemas"]["PrincipalView"][] | null;
             /** Format: int64 */
             total: number;
         };
         PrincipalUpdateInputBody: {
             display_name?: string;
             email?: string;
+        };
+        PrincipalView: {
+            activation_required: boolean;
+            /** Format: date-time */
+            created_at: string;
+            display_name?: string;
+            email?: string;
+            email_verified?: boolean;
+            id: string | null;
+            login_name?: string;
+            status: string;
+            /** Format: date-time */
+            updated_at: string;
         };
         Provider: {
             auto_provision: boolean;
@@ -5583,6 +6046,7 @@ export interface components {
             created_at: string;
             id: string;
             name: string;
+            service_account_id?: string;
             status: string;
             tenant_id: string;
             /** Format: date-time */
@@ -5594,6 +6058,7 @@ export interface components {
             base_url: string;
             bearer_token: string;
             name: string;
+            service_account_id?: string | null;
         };
         TargetPushInputBody: {
             resource_id: string;
@@ -5605,6 +6070,7 @@ export interface components {
             /** @description Optional new bearer token; empty keeps the existing one. */
             bearer_token?: string;
             name: string;
+            service_account_id?: string | null;
             /** @enum {string} */
             status: "active" | "disabled";
             /** Format: int64 */
@@ -5732,9 +6198,9 @@ export interface components {
             name: string;
         };
         UserInfoDocument: {
-            email: string;
-            email_verified: boolean;
-            preferred_username: string;
+            email?: string;
+            email_verified?: boolean;
+            preferred_username?: string;
             sub: string;
         };
         UserName: {
@@ -5749,7 +6215,7 @@ export interface components {
             meta: components["schemas"]["ResourceMeta"];
             name?: components["schemas"]["UserName"];
             schemas: string[] | null;
-            userName: string;
+            userName?: string;
         };
         View: {
             /** Format: date-time */
@@ -6050,7 +6516,9 @@ export interface operations {
     "authn-me": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Tenant-Id"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -7515,7 +7983,9 @@ export interface operations {
     "authn-get-current-session": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Tenant-Id"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -8259,6 +8729,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Federation storage unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
         };
     };
     "federation-callback-saml-login": {
@@ -8342,6 +8821,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Federation storage unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
         };
     };
     "federation-start-login": {
@@ -8413,6 +8901,15 @@ export interface operations {
             };
             /** @description Federation unavailable */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Federation storage unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9989,6 +10486,531 @@ export interface operations {
             };
         };
     };
+    "audit-archive-status": {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeArchiveStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "audit-list-archives": {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeListArchiveJob"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "audit-request-archive": {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeArchiveJob"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "audit-download-archive": {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A newline-delimited JSON audit snapshot ending with a completion record */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-ndjson": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "audit-retry-archive": {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeArchiveJob"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "audit-verify-archive": {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeArchiveObject"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     "audit-get-governance": {
         parameters: {
             query?: never;
@@ -11497,6 +12519,385 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "iam-field-catalog": {
+        parameters: {
+            query?: {
+                resource?: string;
+                entity_id?: string;
+            };
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeListField"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "iam-list-field-policies": {
+        parameters: {
+            query?: {
+                resource?: string;
+                entity_id?: string;
+            };
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeListManagedFieldPolicy"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "iam-set-field-policy": {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+            };
+            path: {
+                resource: string;
+                field: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FieldPolicyInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeManagedFieldPolicy"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "iam-delete-field-policy": {
+        parameters: {
+            query: {
+                version: number;
+            };
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+            };
+            path: {
+                resource: string;
+                field: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeMutationResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "iam-effective-fields": {
+        parameters: {
+            query?: {
+                resource?: string;
+                entity_id?: string;
+            };
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeFieldConstraint"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -13285,6 +14686,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CreateTenantMemberInputBody"];
+                "application/octet-stream": string;
             };
         };
         responses: {
@@ -13456,6 +14858,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["UpdateTenantMemberInputBody"];
+                "application/octet-stream": string;
             };
         };
         responses: {
@@ -15623,6 +17026,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PrincipalCreateInputBody"];
+                "application/octet-stream": string;
             };
         };
         responses: {
@@ -15632,7 +17036,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EnvelopePrincipal"];
+                    "application/json": components["schemas"]["EnvelopePrincipalView"];
                 };
             };
             /** @description Unauthorized */
@@ -15711,7 +17115,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EnvelopePrincipal"];
+                    "application/json": components["schemas"]["EnvelopePrincipalView"];
                 };
             };
             /** @description Unauthorized */
@@ -15785,6 +17189,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PrincipalUpdateInputBody"];
+                "application/octet-stream": string;
             };
         };
         responses: {
@@ -15794,7 +17199,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EnvelopePrincipal"];
+                    "application/json": components["schemas"]["EnvelopePrincipalView"];
                 };
             };
             /** @description Unauthorized */
@@ -15882,7 +17287,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EnvelopePrincipal"];
+                    "application/json": components["schemas"]["EnvelopePrincipalView"];
                 };
             };
             /** @description Unauthorized */
@@ -15970,7 +17375,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EnvelopePrincipal"];
+                    "application/json": components["schemas"]["EnvelopePrincipalView"];
                 };
             };
             /** @description Unauthorized */
@@ -21050,8 +22455,628 @@ export interface operations {
                     };
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: string;
+                        error_description?: string;
+                    };
+                };
+            };
             /** @description Error */
             default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "audit-platform-archive-status": {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Tenant-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeArchiveStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "audit-platform-list-archives": {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: {
+                "X-Tenant-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeListArchiveJob"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "audit-platform-request-archive": {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Tenant-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeArchiveJob"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "audit-platform-download-archive": {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Tenant-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A newline-delimited JSON audit snapshot ending with a completion record */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-ndjson": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "audit-platform-retry-archive": {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Tenant-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeArchiveJob"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "audit-platform-verify-archive": {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Tenant-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeArchiveObject"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "audit-platform-set-retention": {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Tenant-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetentionInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeRetentionPolicy"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -21158,6 +23183,20 @@ export interface operations {
                 };
             };
             /** @description SCIM error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -21215,6 +23254,20 @@ export interface operations {
             };
             /** @description SCIM error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -21289,6 +23342,20 @@ export interface operations {
                 };
             };
             /** @description SCIM error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -21346,6 +23413,20 @@ export interface operations {
             };
             /** @description SCIM error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -21423,6 +23504,20 @@ export interface operations {
                 };
             };
             /** @description SCIM error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -21480,6 +23575,20 @@ export interface operations {
             };
             /** @description SCIM error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -21550,6 +23659,20 @@ export interface operations {
                 };
             };
             /** @description SCIM error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -21607,6 +23730,20 @@ export interface operations {
             };
             /** @description SCIM error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -21686,6 +23823,20 @@ export interface operations {
                 };
             };
             /** @description SCIM error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -21743,6 +23894,20 @@ export interface operations {
             };
             /** @description SCIM error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -21804,6 +23969,20 @@ export interface operations {
                 };
             };
             /** @description SCIM error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -21861,6 +24040,20 @@ export interface operations {
             };
             /** @description SCIM error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -21938,6 +24131,20 @@ export interface operations {
                 };
             };
             /** @description SCIM error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -21995,6 +24202,20 @@ export interface operations {
             };
             /** @description SCIM error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22065,6 +24286,20 @@ export interface operations {
                 };
             };
             /** @description SCIM error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -22122,6 +24357,20 @@ export interface operations {
             };
             /** @description SCIM error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22193,6 +24442,20 @@ export interface operations {
                 };
             };
             /** @description SCIM error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -22250,6 +24513,20 @@ export interface operations {
             };
             /** @description SCIM error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22320,6 +24597,20 @@ export interface operations {
                 };
             };
             /** @description SCIM error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -22377,6 +24668,20 @@ export interface operations {
             };
             /** @description SCIM error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22446,6 +24751,20 @@ export interface operations {
                 };
             };
             /** @description SCIM error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -22503,6 +24822,20 @@ export interface operations {
             };
             /** @description SCIM error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22572,6 +24905,20 @@ export interface operations {
                 };
             };
             /** @description SCIM error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -22629,6 +24976,20 @@ export interface operations {
             };
             /** @description SCIM error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22703,6 +25064,20 @@ export interface operations {
                 };
             };
             /** @description SCIM error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -22760,6 +25135,20 @@ export interface operations {
             };
             /** @description SCIM error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22810,7 +25199,7 @@ export interface operations {
                         meta: components["schemas"]["ResourceMeta"];
                         name?: components["schemas"]["UserName"];
                         schemas: string[] | null;
-                        userName: string;
+                        userName?: string;
                     };
                 };
             };
@@ -22830,6 +25219,20 @@ export interface operations {
             };
             /** @description SCIM error */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22900,6 +25303,20 @@ export interface operations {
             };
             /** @description SCIM error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22940,7 +25357,7 @@ export interface operations {
                         meta: components["schemas"]["ResourceMeta"];
                         name?: components["schemas"]["UserName"];
                         schemas: string[] | null;
-                        userName: string;
+                        userName?: string;
                     };
                 };
             };
@@ -22960,6 +25377,20 @@ export interface operations {
             };
             /** @description SCIM error */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23030,6 +25461,20 @@ export interface operations {
             };
             /** @description SCIM error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23082,7 +25527,7 @@ export interface operations {
                         meta: components["schemas"]["ResourceMeta"];
                         name?: components["schemas"]["UserName"];
                         schemas: string[] | null;
-                        userName: string;
+                        userName?: string;
                     };
                 };
             };
@@ -23102,6 +25547,20 @@ export interface operations {
             };
             /** @description SCIM error */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23172,6 +25631,20 @@ export interface operations {
             };
             /** @description SCIM error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23233,6 +25706,20 @@ export interface operations {
                 };
             };
             /** @description SCIM error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -23290,6 +25777,20 @@ export interface operations {
             };
             /** @description SCIM error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23337,7 +25838,7 @@ export interface operations {
                         meta: components["schemas"]["ResourceMeta"];
                         name?: components["schemas"]["UserName"];
                         schemas: string[] | null;
-                        userName: string;
+                        userName?: string;
                     };
                 };
             };
@@ -23357,6 +25858,20 @@ export interface operations {
             };
             /** @description SCIM error */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23427,6 +25942,20 @@ export interface operations {
             };
             /** @description SCIM error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": {
+                        detail: string;
+                        schemas: string[] | null;
+                        scimType?: string;
+                        status: string;
+                    };
+                };
+            };
+            /** @description SCIM error */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23475,7 +26004,12 @@ export interface operations {
                 /** @description request the filter and sort contract alongside the page */
                 meta?: "capabilities";
             };
-            header?: never;
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+                /** @description Authorized entity resource boundary */
+                "X-Entity-Id": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -23490,8 +26024,44 @@ export interface operations {
                     "application/json": components["schemas"]["EnvelopeListView"];
                 };
             };
-            /** @description Error */
-            default: {
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23504,13 +26074,19 @@ export interface operations {
     "create-todo": {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+                /** @description Authorized entity resource boundary */
+                "X-Entity-Id": string;
+            };
             path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CreateInputBody"];
+                "application/octet-stream": string;
             };
         };
         responses: {
@@ -23524,8 +26100,44 @@ export interface operations {
                     "application/json": components["schemas"]["EnvelopeView"];
                 };
             };
-            /** @description Error */
-            default: {
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23570,7 +26182,12 @@ export interface operations {
                 meta?: "capabilities";
                 format?: "csv" | "xlsx";
             };
-            header?: never;
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+                /** @description Authorized entity resource boundary */
+                "X-Entity-Id": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -23583,8 +26200,44 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Error */
-            default: {
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23599,7 +26252,12 @@ export interface operations {
             query?: {
                 format?: "csv" | "xlsx";
             };
-            header?: never;
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+                /** @description Authorized entity resource boundary */
+                "X-Entity-Id": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -23621,8 +26279,44 @@ export interface operations {
                     "application/json": components["schemas"]["EnvelopeImportReport"];
                 };
             };
-            /** @description Error */
-            default: {
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23639,7 +26333,12 @@ export interface operations {
                 /** @description include an example row showing each column's accepted form */
                 sample?: boolean;
             };
-            header?: never;
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+                /** @description Authorized entity resource boundary */
+                "X-Entity-Id": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -23652,8 +26351,44 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Error */
-            default: {
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23666,7 +26401,12 @@ export interface operations {
     "get-todo": {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+                /** @description Authorized entity resource boundary */
+                "X-Entity-Id": string;
+            };
             path: {
                 /** @description task identifier */
                 id: string;
@@ -23685,8 +26425,44 @@ export interface operations {
                     "application/json": components["schemas"]["EnvelopeView"];
                 };
             };
-            /** @description Error */
-            default: {
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23699,7 +26475,11 @@ export interface operations {
     "delete-todo": {
         parameters: {
             query?: never;
-            header?: {
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+                /** @description Authorized entity resource boundary */
+                "X-Entity-Id": string;
                 /** @description version of the task being replaced, as returned in ETag */
                 "If-Match"?: string;
             };
@@ -23718,8 +26498,44 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Error */
-            default: {
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23732,7 +26548,11 @@ export interface operations {
     "update-todo": {
         parameters: {
             query?: never;
-            header?: {
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+                /** @description Authorized entity resource boundary */
+                "X-Entity-Id": string;
                 /** @description version of the task being replaced, as returned in ETag */
                 "If-Match"?: string;
             };
@@ -23745,6 +26565,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PatchInputBody"];
+                "application/octet-stream": string;
             };
         };
         responses: {
@@ -23758,8 +26579,44 @@ export interface operations {
                     "application/json": components["schemas"]["EnvelopeView"];
                 };
             };
-            /** @description Error */
-            default: {
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23772,7 +26629,11 @@ export interface operations {
     "restore-todo": {
         parameters: {
             query?: never;
-            header?: {
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+                /** @description Authorized entity resource boundary */
+                "X-Entity-Id": string;
                 /** @description version of the task being replaced, as returned in ETag */
                 "If-Match"?: string;
             };
@@ -23794,8 +26655,44 @@ export interface operations {
                     "application/json": components["schemas"]["EnvelopeView"];
                 };
             };
-            /** @description Error */
-            default: {
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

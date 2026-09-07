@@ -78,15 +78,41 @@ func TestIAMAuditMigrationsAcrossEngines(t *testing.T) {
 					assertRetentionPolicyRejected(t, db, policies, 2, 0, 1)
 					assertRetentionPolicyRejected(t, db, policies, 3, 10, 9)
 					assertRetentionPolicyRejected(t, db, policies, 4, 1, 36501)
+					assertArchiveJobSchema(t, db, prefix+"iam_audit_archive_jobs")
 
 					require.NoError(t, goosex.MigrateDownTo(t.Context(), db, source, engine.dialect, 0))
 					assertTableExists(t, db, engine.dialect, events, false)
 					assertTableExists(t, db, engine.dialect, heads, false)
 					assertTableExists(t, db, engine.dialect, policies, false)
+					assertTableExists(t, db, engine.dialect, prefix+"iam_audit_archive_jobs", false)
 				})
 			}
 		})
 	}
+}
+
+func assertArchiveJobSchema(t *testing.T, db *sql.DB, table string) {
+	t.Helper()
+	insert := func(id, tenant, after, head, attempts int64, state string) error {
+		_, err := db.ExecContext(t.Context(), fmt.Sprintf(
+			"INSERT INTO %s (id, tenant_id, after_sequence, head_sequence, snapshot, state, attempts, object, retain_until, created_at, updated_at) VALUES (%d, %d, %d, %d, '{}', '%s', %d, '{}', '2027-09-06 00:00:00', '2026-09-06 00:00:00', '2026-09-06 00:00:00')",
+			table, id, tenant, after, head, state, attempts,
+		))
+		return err
+	}
+	require.NoError(t, insert(1, 11, 0, 500, 0, "queued"))
+	assert.Error(t, insert(2, 11, 0, 501, 0, "queued"), "replicas cannot create competing jobs at the same cursor")
+	require.NoError(t, insert(3, 12, 0, 500, 0, "queued"), "tenant cursors are independent")
+	require.NoError(t, insert(4, 11, 500, 600, 1, "complete"))
+	assert.Error(t, insert(5, 11, 600, 600, 0, "queued"), "an archive segment cannot be empty")
+	assert.Error(t, insert(6, 11, -1, 600, 0, "queued"))
+	assert.Error(t, insert(7, 11, 600, 700, -1, "queued"))
+	assert.Error(t, insert(8, 11, 600, 700, 0, "unknown"))
+	var token, lease, next int64
+	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT lease_token, lease_until, next_attempt FROM "+table+" WHERE id = 1").Scan(&token, &lease, &next))
+	assert.Zero(t, token)
+	assert.Zero(t, lease)
+	assert.Zero(t, next)
 }
 
 func insertAuditEvent(t *testing.T, db *sql.DB, table string, id, tenantID int64, outcome string, sequence int64, hash string) {

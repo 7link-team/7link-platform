@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -77,6 +78,158 @@ func TestComposedIAMTenantIsolationAcrossModules(t *testing.T) {
 	fixture.assertTenantBAuditTargetsNeverAppearInTenantA(t, invitation.ID, group.ID, request.ID, entity.ID)
 }
 
+func TestComposedSCIMTenantLifecycle(t *testing.T) {
+	newIAMTenantFixture(t).runSCIMTenantLifecycle(t)
+}
+
+func TestComposedBrowserSessionTenant(t *testing.T) {
+	newIAMTenantFixture(t).runBrowserSessionTenant(t)
+}
+
+func (f *iamTenantFixture) runBrowserSessionTenant(t *testing.T) {
+	t.Helper()
+	response := f.request(t, http.MethodPost, "/authn/sessions", 0, "", map[string]any{
+		"login_name": f.requesterB.LoginName, "password": "correct horse battery staple",
+	}, map[string]string{"Origin": "https://app.example.test"})
+	requireStatus(t, http.StatusOK, response)
+	require.NotEmpty(t, response.Cookies)
+	headers := map[string]string{"Cookie": response.Cookies[0].String()}
+	check := func(requested guid.ID, code int, expected string) {
+		t.Helper()
+		for _, path := range []string{"/authn/me", "/authn/sessions/current"} {
+			response := f.request(t, http.MethodGet, path, requested, "", nil, headers)
+			requireStatus(t, code, response)
+			if code == http.StatusOK {
+				data := decodeEnvelope[map[string]any](t, response)
+				assert.Equal(t, f.requesterB.ID.String(), data["subject"])
+				if expected == "" {
+					assert.NotContains(t, data, "organization_id")
+				} else {
+					assert.Equal(t, expected, data["organization_id"])
+				}
+			}
+		}
+	}
+	assert.Zero(t, f.count(t, "iam_platform_administrators", "principal_id = ?", f.requesterB.ID))
+	check(0, http.StatusOK, iamTenantB.String())
+	check(iamTenantA, http.StatusForbidden, "")
+	response = f.request(t, http.MethodPost, "/iam/members", iamTenantA, f.tokenA, map[string]any{
+		"subject": f.requesterB.ID.String(), "display_name": "Session member", "email": f.requesterB.Email, "status": "active",
+	}, nil)
+	requireStatus(t, http.StatusCreated, response)
+	check(0, http.StatusOK, "")
+	check(iamTenantA, http.StatusOK, iamTenantA.String())
+	check(iamTenantB, http.StatusOK, iamTenantB.String())
+	response = f.request(t, http.MethodPatch, "/iam/members/"+f.requesterB.ID.String(), iamTenantA, f.tokenA,
+		map[string]any{"status": "disabled"}, nil)
+	requireStatus(t, http.StatusOK, response)
+	check(iamTenantA, http.StatusForbidden, "")
+	check(0, http.StatusOK, iamTenantB.String())
+	require.NoError(t, f.db.Table(f.table("iam_tenants")).Where("id = ?", iamTenantB).Update("status", "suspended").Error)
+	check(iamTenantB, http.StatusForbidden, "")
+	check(0, http.StatusOK, "")
+	require.NoError(t, f.db.Table(f.table("iam_tenants")).Where("id = ?", iamTenantB).Update("status", "active").Error)
+	check(0, http.StatusOK, iamTenantB.String())
+	response = f.request(t, http.MethodGet, "/authn/sessions/current", iamTenantA, f.requester, nil, nil)
+	requireStatus(t, http.StatusForbidden, response)
+	response = f.request(t, http.MethodGet, "/authn/sessions/current", iamTenantB, f.requester, nil, nil)
+	requireStatus(t, http.StatusOK, response)
+}
+
+func (f *iamTenantFixture) runSCIMTenantLifecycle(t *testing.T) {
+	t.Helper()
+	response := f.request(t, http.MethodPost, "/iam/tenants", 0, f.tokenA, map[string]any{
+		"slug": "scim-lifecycle", "name": "SCIM lifecycle", "owner_principal_id": f.adminA.ID.String(),
+	}, nil)
+	requireStatus(t, http.StatusCreated, response)
+	tenant := decodeEnvelope[organization.Tenant](t, response)
+	directory, token := f.createSCIMCredential(t, tenant.ID, f.tokenA, "SCIM lifecycle")
+	active := true
+	userInput := provisioning.UserInput{
+		Schemas: []string{provisioning.UserSchema}, UserName: "scim-lifecycle", DisplayName: "SCIM lifecycle",
+		Active: &active, Emails: []provisioning.UserEmail{{Value: "scim-lifecycle@example.test", Primary: true}},
+	}
+	response = f.request(t, http.MethodPost, "/scim/v2/Users", 0, token, userInput, nil)
+	requireStatus(t, http.StatusCreated, response)
+	user := decodeBody[provisioning.UserResource](t, response)
+	groupInput := provisioning.GroupInput{
+		Schemas: []string{provisioning.GroupSchema}, DisplayName: "SCIM lifecycle",
+		Members: []provisioning.SCIMGroupMember{{Value: user.ID}},
+	}
+	response = f.request(t, http.MethodPost, "/scim/v2/Groups", 0, token, groupInput, nil)
+	requireStatus(t, http.StatusCreated, response)
+	group := decodeBody[provisioning.GroupResource](t, response)
+
+	setStatus := func(status string) {
+		response := f.request(t, http.MethodPatch, "/iam/tenants/"+tenant.ID.String(), 0, f.tokenA,
+			map[string]any{"status": status, "version": tenant.Version}, nil)
+		requireStatus(t, http.StatusOK, response)
+		tenant = decodeEnvelope[organization.Tenant](t, response)
+		require.Equal(t, status, tenant.Status)
+	}
+	assertReadable := func() {
+		response := f.request(t, http.MethodGet, "/scim/v2/Users/"+user.ID, 0, token, nil, nil)
+		requireStatus(t, http.StatusOK, response)
+		assert.Equal(t, user, decodeBody[provisioning.UserResource](t, response))
+		response = f.request(t, http.MethodGet, "/scim/v2/Groups/"+group.ID, 0, token, nil, nil)
+		requireStatus(t, http.StatusOK, response)
+		assert.Equal(t, group, decodeBody[provisioning.GroupResource](t, response))
+	}
+	assertRejected := func(t *testing.T) {
+		t.Helper()
+		counts := make(map[string]int64)
+		for _, table := range []string{"iam_audit_events", "iam_principals", "iam_groups", "iam_group_members", "iam_tenant_members", "iam_scim_resources"} {
+			counts[table] = f.count(t, table, "1 = 1")
+		}
+		patch := provisioning.PatchRequest{Schemas: []string{provisioning.PatchSchema}, Operations: []provisioning.PatchOperation{
+			{Op: "replace", Path: "displayName", Value: json.RawMessage(`"Unauthorized"`)},
+		}}
+		operations := []struct {
+			method, path, version string
+			body                  any
+		}{
+			{http.MethodGet, "/Users", "", nil},
+			{http.MethodGet, "/Users/" + user.ID, "", nil},
+			{http.MethodPost, "/Users", "", userInput},
+			{http.MethodPut, "/Users/" + user.ID, user.Meta.Version, userInput},
+			{http.MethodPatch, "/Users/" + user.ID, user.Meta.Version, patch},
+			{http.MethodDelete, "/Users/" + user.ID, user.Meta.Version, nil},
+			{http.MethodGet, "/Groups", "", nil},
+			{http.MethodGet, "/Groups/" + group.ID, "", nil},
+			{http.MethodPost, "/Groups", "", groupInput},
+			{http.MethodPut, "/Groups/" + group.ID, group.Meta.Version, groupInput},
+			{http.MethodPatch, "/Groups/" + group.ID, group.Meta.Version, patch},
+			{http.MethodDelete, "/Groups/" + group.ID, group.Meta.Version, nil},
+			{http.MethodPost, "/Bulk", "", provisioning.BulkRequest{Schemas: []string{provisioning.BulkSchema}, Operations: []provisioning.BulkOperation{
+				{Method: http.MethodDelete, Path: "/Users/" + user.ID, Version: user.Meta.Version},
+			}}},
+		}
+		for _, operation := range operations {
+			t.Run(operation.method+operation.path, func(t *testing.T) {
+				response := f.request(t, operation.method, "/scim/v2"+operation.path, 0, token, operation.body,
+					map[string]string{"If-Match": operation.version})
+				requireStatus(t, http.StatusUnauthorized, response)
+				failure := decodeBody[provisioning.SCIMError](t, response)
+				assert.Equal(t, "401", failure.Status)
+				for table, count := range counts {
+					assert.Equal(t, count, f.count(t, table, "1 = 1"), table)
+				}
+				assert.Zero(t, f.count(t, "iam_scim_resources", "directory_id = ? AND (version <> 1 OR deleted_at IS NOT NULL)", directory.ID))
+			})
+		}
+	}
+
+	assertReadable()
+	setStatus(organization.TenantSuspended)
+	require.True(t, t.Run("suspended", assertRejected))
+	setStatus(organization.TenantActive)
+	assertReadable()
+	response = f.request(t, http.MethodDelete, "/iam/tenants/"+tenant.ID.String()+"?version="+strconv.FormatInt(tenant.Version, 10), 0, f.tokenA, nil, nil)
+	requireStatus(t, http.StatusOK, response)
+	assert.Equal(t, int64(1), f.count(t, "iam_tenants", "id = ? AND status = ?", tenant.ID, organization.TenantDeleted))
+	require.True(t, t.Run("deleted", assertRejected))
+}
+
 func newIAMTenantFixture(t *testing.T) *iamTenantFixture {
 	t.Helper()
 	return newIAMTenantFixtureWithDatabase(t, Database{
@@ -84,7 +237,7 @@ func newIAMTenantFixture(t *testing.T) *iamTenantFixture {
 	}, "")
 }
 
-func newIAMTenantFixtureWithDatabase(t *testing.T, database Database, prefix string) *iamTenantFixture {
+func newIAMTenantFixtureWithDatabase(t *testing.T, database Database, prefix string, configure ...func(*AppConfig)) *iamTenantFixture {
 	t.Helper()
 	seed := make([]byte, ed25519.SeedSize)
 	for index := range seed {
@@ -105,8 +258,12 @@ func newIAMTenantFixtureWithDatabase(t *testing.T, database Database, prefix str
 			},
 			MFA: authnext.MFAConfig{EncryptionKey: key},
 		}),
-		Federation: IAMFederation{Enabled: true, EncryptionKey: key},
+		Federation:   IAMFederation{Enabled: true, EncryptionKey: key},
+		Provisioning: IAMProvisioning{EncryptionKey: key},
 	}}
+	for _, apply := range configure {
+		apply(&application.config)
+	}
 	require.NoError(t, application.bootstrap(t.Context()))
 	t.Cleanup(func() { assert.NoError(t, application.shutdown()) })
 
@@ -241,7 +398,12 @@ func (f *iamTenantFixture) provisionTenantBGroup(t *testing.T) (provisioning.Use
 
 func (f *iamTenantFixture) createSCIMCredential(t *testing.T, tenantID guid.ID, adminToken, name string) (provisioning.Directory, string) {
 	t.Helper()
-	response := f.request(t, http.MethodPost, "/iam/scim/directories", tenantID, adminToken, map[string]any{"name": name}, nil)
+	response := f.request(t, http.MethodPost, "/iam/service-accounts", tenantID, adminToken,
+		map[string]any{"login_name": "scim-" + strings.ReplaceAll(strings.ToLower(name), " ", "-"), "display_name": name}, nil)
+	requireStatus(t, http.StatusCreated, response)
+	account := decodeEnvelope[identity.ServiceAccount](t, response)
+	response = f.request(t, http.MethodPost, "/iam/scim/directories", tenantID, adminToken,
+		map[string]any{"name": name, "service_account_id": account.ID.String()}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	directory := decodeEnvelope[provisioning.Directory](t, response)
 	response = f.request(t, http.MethodPost, "/iam/scim/directories/"+directory.ID.String()+"/credentials", tenantID, adminToken, map[string]any{"name": "integration"}, nil)
@@ -418,6 +580,8 @@ func (f *iamTenantFixture) request(t *testing.T, method, path string, tenantID g
 	form, isForm := body.(url.Values)
 	if isForm {
 		reader = strings.NewReader(form.Encode())
+	} else if raw, ok := body.(io.Reader); ok {
+		reader = raw
 	} else if body != nil {
 		encoded, err := json.Marshal(body)
 		require.NoError(t, err)

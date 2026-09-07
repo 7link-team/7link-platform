@@ -40,11 +40,16 @@ type fakeS3 struct {
 	failContains string
 	objects      map[string][]byte
 	retention    map[string]string
+	lockModes    map[string]string
+	versions     map[string]string
 	requestPaths []string
 }
 
 func newFakeS3() *fakeS3 {
-	return &fakeS3{objects: make(map[string][]byte), retention: make(map[string]string)}
+	return &fakeS3{
+		objects: make(map[string][]byte), retention: make(map[string]string),
+		lockModes: make(map[string]string), versions: make(map[string]string),
+	}
 }
 
 func (store *fakeS3) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
@@ -105,6 +110,15 @@ func (store *fakeS3) handleObject(writer http.ResponseWriter, request *http.Requ
 		fakeS3Error(writer, http.StatusNotFound, "NoSuchBucket", "bucket does not exist")
 		return
 	}
+	if version := request.URL.Query().Get("versionId"); version != "" && version != store.versions[key] {
+		fakeS3Error(writer, http.StatusNotFound, "NoSuchVersion", "object version does not exist")
+		return
+	}
+	if request.Method == http.MethodGet && request.URL.Query().Has("retention") {
+		writer.Header().Set("Content-Type", "application/xml")
+		_, _ = fmt.Fprintf(writer, `<Retention xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Mode>%s</Mode><RetainUntilDate>%s</RetainUntilDate></Retention>`, store.lockModes[key], store.retention[key])
+		return
+	}
 	switch request.Method {
 	case http.MethodHead:
 		payload, exists := store.objects[key]
@@ -115,8 +129,13 @@ func (store *fakeS3) handleObject(writer http.ResponseWriter, request *http.Requ
 		writer.Header().Set("Content-Length", fmt.Sprint(len(payload)))
 		writer.Header().Set("Last-Modified", auditTestNow.Format(http.TimeFormat))
 		writer.Header().Set("ETag", `"fixture"`)
+		writer.Header().Set("X-Amz-Version-Id", store.versions[key])
 		writer.WriteHeader(http.StatusOK)
 	case http.MethodPut:
+		if _, exists := store.objects[key]; exists && request.Header.Get("If-None-Match") == "*" {
+			fakeS3Error(writer, http.StatusPreconditionFailed, "PreconditionFailed", "object already exists")
+			return
+		}
 		if request.Header.Get("X-Amz-Object-Lock-Mode") != "" && !store.objectLock {
 			fakeS3Error(writer, http.StatusBadRequest, "InvalidRequest", "object lock is disabled")
 			return
@@ -128,7 +147,10 @@ func (store *fakeS3) handleObject(writer http.ResponseWriter, request *http.Requ
 		}
 		store.objects[key] = payload
 		store.retention[key] = request.Header.Get("X-Amz-Object-Lock-Retain-Until-Date")
+		store.lockModes[key] = request.Header.Get("X-Amz-Object-Lock-Mode")
+		store.versions[key] = fmt.Sprintf("version-%d", len(store.versions)+1)
 		writer.Header().Set("ETag", `"fixture"`)
+		writer.Header().Set("X-Amz-Version-Id", store.versions[key])
 		writer.WriteHeader(http.StatusOK)
 	case http.MethodGet:
 		payload, exists := store.objects[key]
@@ -139,6 +161,7 @@ func (store *fakeS3) handleObject(writer http.ResponseWriter, request *http.Requ
 		writer.Header().Set("Content-Length", fmt.Sprint(len(payload)))
 		writer.Header().Set("Last-Modified", auditTestNow.Format(http.TimeFormat))
 		writer.Header().Set("ETag", `"fixture"`)
+		writer.Header().Set("X-Amz-Version-Id", store.versions[key])
 		_, _ = writer.Write(payload)
 	case http.MethodDelete:
 		delete(store.objects, key)

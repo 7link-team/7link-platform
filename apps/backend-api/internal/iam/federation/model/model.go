@@ -60,3 +60,12 @@ type SAMLIDPKey struct {
 }
 
 func (SAMLIDPKey) TableName() string { return "iam_saml_idp_keys" }
+
+// ReplayClaim persists a protocol identifier's consumption across replicas.
+type ReplayClaim struct {
+	ClaimKey  string    `gorm:"column:claim_key;primaryKey;size:255"`
+	ExpiresAt time.Time `gorm:"column:expires_at;not null;index"`
+	CreatedAt time.Time `gorm:"column:created_at;not null"`
+}
+
+func (ReplayClaim) TableName() string { return "iam_federation_replay_claims" }

@@ -135,7 +135,7 @@ func TestPushResourceLocksSerializeAndCleanUp(t *testing.T) {
 func TestTargetCRUDLifecycleAndValidation(t *testing.T) {
 	env := newProvisioningEnvironment(t)
 	ctx := t.Context()
-	created, err := env.service.CreateTarget(ctx, testID("tenant-a"), "Okta", "https://scim.example.test/v2", "bearer-secret")
+	created, err := env.service.CreateTarget(ctx, testID("tenant-a"), "Okta", "https://scim.example.test/v2", "bearer-secret", nil)
 	require.NoError(t, err)
 	assert.Equal(t, TargetActive, created.Target.Status)
 	assert.Equal(t, int64(1), created.Target.Version)
@@ -147,18 +147,18 @@ func TestTargetCRUDLifecycleAndValidation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "bearer-secret", plain)
 
-	_, err = env.service.CreateTarget(ctx, testID("tenant-a"), "okta", "https://other.example.test/v2", "x")
+	_, err = env.service.CreateTarget(ctx, testID("tenant-a"), "okta", "https://other.example.test/v2", "x", nil)
 	assert.ErrorIs(t, err, ErrTargetName)
 	targets, err := env.service.ListTargets(ctx, testID("tenant-a"))
 	require.NoError(t, err)
 	require.Len(t, targets, 1)
 
-	updated, err := env.service.ReplaceTarget(ctx, testID("tenant-a"), parseGUID(created.Target.ID), "Okta Prod", "https://scim.example.test/v2", TargetActive, "rotated-secret", 1)
+	updated, err := env.service.ReplaceTarget(ctx, testID("tenant-a"), parseGUID(created.Target.ID), "Okta Prod", "https://scim.example.test/v2", TargetActive, "rotated-secret", 1, nil)
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), updated.Version)
-	_, err = env.service.ReplaceTarget(ctx, testID("tenant-a"), parseGUID(created.Target.ID), "Okta Prod", "https://scim.example.test/v2", TargetActive, "", 1)
+	_, err = env.service.ReplaceTarget(ctx, testID("tenant-a"), parseGUID(created.Target.ID), "Okta Prod", "https://scim.example.test/v2", TargetActive, "", 1, nil)
 	assert.ErrorIs(t, err, ErrTargetVersion)
-	noop, err := env.service.ReplaceTarget(ctx, testID("tenant-a"), parseGUID(created.Target.ID), "Okta Prod", "https://scim.example.test/v2", TargetActive, "", 2)
+	noop, err := env.service.ReplaceTarget(ctx, testID("tenant-a"), parseGUID(created.Target.ID), "Okta Prod", "https://scim.example.test/v2", TargetActive, "", 2, nil)
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), noop.Version)
 	require.NoError(t, env.service.DeleteTarget(ctx, testID("tenant-a"), parseGUID(created.Target.ID)))
@@ -168,14 +168,14 @@ func TestTargetCRUDLifecycleAndValidation(t *testing.T) {
 		{"bad", "not-a-url", "token"}, {"bad", "ftp://example.test", "token"},
 		{"bad", "https://example.test", ""}, {"", "https://example.test", "token"},
 	} {
-		_, err := env.service.CreateTarget(ctx, testID("tenant-a"), input.name, input.url, input.token)
+		_, err := env.service.CreateTarget(ctx, testID("tenant-a"), input.name, input.url, input.token, nil)
 		assert.ErrorIs(t, err, ErrInvalidTarget)
 	}
 	_, err = env.service.ListTargets(ctx, 0)
 	assert.ErrorIs(t, err, ErrInvalidTarget)
 	assert.ErrorIs(t, env.service.DeleteTarget(ctx, 0, testID("target")), ErrInvalidTarget)
 	assert.ErrorIs(t, env.service.DeprovisionResource(ctx, 0, testID("target"), ResourceUser, testID("user")), ErrInvalidTarget)
-	_, err = env.service.ReplaceTarget(ctx, testID("tenant-a"), testID("missing"), "x", "https://example.test", TargetActive, "", 1)
+	_, err = env.service.ReplaceTarget(ctx, testID("tenant-a"), testID("missing"), "x", "https://example.test", TargetActive, "", 1, nil)
 	assert.ErrorIs(t, err, ErrTargetMissing)
 }
 
@@ -184,7 +184,7 @@ func TestPushUserGroupDeprovisionAndSync(t *testing.T) {
 	provider, server := newSCIMProviderEndpoint(t, http.StatusOK, "")
 	provider.configure(http.StatusOK, "", true)
 	ctx := t.Context()
-	target, err := env.service.CreateTarget(ctx, testID("tenant-a"), "Okta", server.URL, "bearer-secret")
+	target, err := env.service.CreateTarget(ctx, testID("tenant-a"), "Okta", server.URL, "bearer-secret", &env.auth.PrincipalID)
 	require.NoError(t, err)
 
 	synced, err := env.service.SyncTarget(ctx, testID("tenant-a"), parseGUID(target.Target.ID))
@@ -236,7 +236,7 @@ func TestTargetRemoteAndKeyFailurePaths(t *testing.T) {
 	require.NoError(t, err)
 
 	provider, server := newSCIMProviderEndpoint(t, http.StatusInternalServerError, strings.Repeat("remote failure\n", 100))
-	target, err := env.service.CreateTarget(ctx, testID("tenant-a"), "Failing", server.URL, "token")
+	target, err := env.service.CreateTarget(ctx, testID("tenant-a"), "Failing", server.URL, "token", &env.auth.PrincipalID)
 	require.NoError(t, err)
 	_, err = env.service.PushResource(ctx, testID("tenant-a"), parseGUID(target.Target.ID), ResourceUser, parseGUID(user.ID))
 	assert.ErrorIs(t, err, ErrRemoteResponse)
@@ -244,7 +244,7 @@ func TestTargetRemoteAndKeyFailurePaths(t *testing.T) {
 	closed := httptest.NewServer(http.NotFoundHandler())
 	closedURL := closed.URL
 	closed.Close()
-	down, err := env.service.CreateTarget(ctx, testID("tenant-a"), "Down", closedURL, "token")
+	down, err := env.service.CreateTarget(ctx, testID("tenant-a"), "Down", closedURL, "token", &env.auth.PrincipalID)
 	require.NoError(t, err)
 	_, err = env.service.PushResource(ctx, testID("tenant-a"), parseGUID(down.Target.ID), ResourceUser, parseGUID(user.ID))
 	assert.ErrorIs(t, err, ErrRemoteUnavailable)
@@ -255,14 +255,14 @@ func TestTargetRemoteAndKeyFailurePaths(t *testing.T) {
 	provider.configure(http.StatusNotFound, `{"detail":"gone"}`, false)
 	require.NoError(t, env.service.DeprovisionResource(ctx, testID("tenant-a"), parseGUID(target.Target.ID), ResourceUser, parseGUID(user.ID)))
 
-	disabled, err := env.service.ReplaceTarget(ctx, testID("tenant-a"), parseGUID(target.Target.ID), "Failing", server.URL, TargetDisabled, "", target.Target.Version)
+	disabled, err := env.service.ReplaceTarget(ctx, testID("tenant-a"), parseGUID(target.Target.ID), "Failing", server.URL, TargetDisabled, "", target.Target.Version, nil)
 	require.NoError(t, err)
 	_, err = env.service.PushResource(ctx, testID("tenant-a"), parseGUID(disabled.ID), ResourceUser, parseGUID(user.ID))
 	assert.ErrorIs(t, err, ErrTargetDisabled)
 	assert.ErrorIs(t, env.service.DeprovisionResource(ctx, testID("tenant-a"), parseGUID(disabled.ID), ResourceUser, parseGUID(user.ID)), ErrTargetDisabled)
 
-	noKey := NewService(env.runtime, env.service.appender, newProvisioningTestIDs(9000), env.service.identity, env.service.groups, Config{}, nil)
-	_, err = noKey.CreateTarget(ctx, testID("tenant-a"), "No Key", "https://example.test", "token")
+	noKey := NewService(env.runtime, env.service.appender, newProvisioningTestIDs(9000), env.service.identity, env.service.groups, env.service.actors, env.service.fields, Config{}, nil)
+	_, err = noKey.CreateTarget(ctx, testID("tenant-a"), "No Key", "https://example.test", "token", nil)
 	assert.ErrorIs(t, err, ErrTargetKeyMissing)
 	_, err = noKey.PushResource(ctx, testID("tenant-a"), parseGUID(down.Target.ID), ResourceUser, parseGUID(user.ID))
 	assert.ErrorIs(t, err, ErrTargetKeyMissing)
@@ -280,7 +280,7 @@ func TestTargetRemoteAndKeyFailurePaths(t *testing.T) {
 func TestTargetDeprovisionRemoteFailuresAndAuditRollback(t *testing.T) {
 	env := newProvisioningEnvironment(t)
 	provider, server := newSCIMProviderEndpoint(t, http.StatusOK, `{"id":"remote-user"}`)
-	target, err := env.service.CreateTarget(t.Context(), testID("tenant-a"), "Failures", server.URL, "secret")
+	target, err := env.service.CreateTarget(t.Context(), testID("tenant-a"), "Failures", server.URL, "secret", &env.auth.PrincipalID)
 	require.NoError(t, err)
 	user, err := env.service.CreateUser(t.Context(), env.auth, activeUserInput("failure-user", "failure-user", "failure@example.test"))
 	require.NoError(t, err)
@@ -318,7 +318,7 @@ func TestTargetDeprovisionRemoteFailuresAndAuditRollback(t *testing.T) {
 func TestSyncTargetDeprovisionsMissingLocalResource(t *testing.T) {
 	env := newProvisioningEnvironment(t)
 	provider, server := newSCIMProviderEndpoint(t, http.StatusOK, `{"id":"remote-missing"}`)
-	target, err := env.service.CreateTarget(t.Context(), testID("tenant-a"), "Drift", server.URL, "secret")
+	target, err := env.service.CreateTarget(t.Context(), testID("tenant-a"), "Drift", server.URL, "secret", &env.auth.PrincipalID)
 	require.NoError(t, err)
 	user, err := env.service.CreateUser(t.Context(), env.auth, activeUserInput("drift", "drift", "drift@example.test"))
 	require.NoError(t, err)
@@ -336,7 +336,7 @@ func TestPushRejectsMalformedStoredCiphertextAndMissingResources(t *testing.T) {
 	env := newProvisioningEnvironment(t)
 	provider, server := newSCIMProviderEndpoint(t, http.StatusOK, `{}`)
 	_ = provider
-	target, err := env.service.CreateTarget(t.Context(), testID("tenant-a"), "Malformed", server.URL, "secret")
+	target, err := env.service.CreateTarget(t.Context(), testID("tenant-a"), "Malformed", server.URL, "secret", &env.auth.PrincipalID)
 	require.NoError(t, err)
 	user, err := env.service.CreateUser(t.Context(), env.auth, activeUserInput("cipher", "cipher", "cipher@example.test"))
 	require.NoError(t, err)
@@ -344,7 +344,7 @@ func TestPushRejectsMalformedStoredCiphertextAndMissingResources(t *testing.T) {
 	_, err = env.service.PushResource(t.Context(), testID("tenant-a"), parseGUID(target.Target.ID), ResourceUser, parseGUID(user.ID))
 	assert.ErrorContains(t, err, "unsupported provisioning ciphertext")
 
-	valid, err := env.service.CreateTarget(t.Context(), testID("tenant-a"), "Valid", server.URL, "secret")
+	valid, err := env.service.CreateTarget(t.Context(), testID("tenant-a"), "Valid", server.URL, "secret", &env.auth.PrincipalID)
 	require.NoError(t, err)
 	_, err = env.service.PushResource(t.Context(), testID("tenant-a"), parseGUID(valid.Target.ID), ResourceUser, testID("missing"))
 	assert.ErrorIs(t, err, ErrResourceMissing)
@@ -388,21 +388,21 @@ func TestBuildRemoteResourcePropagatesProviderFailures(t *testing.T) {
 	providerErr := errors.New("provider read failed")
 	originalIdentity := env.service.identity
 	env.service.identity = failingTargetIdentity{IdentityProvisioner: originalIdentity, err: providerErr}
-	_, err := env.service.buildRemoteResource(t.Context(), testID("tenant-a"), testID("target"), ResourceUser, testID("user"))
+	_, err := env.service.buildRemoteResource(t.Context(), testID("tenant-a"), testID("target"), ResourceUser, testID("user"), env.auth.PrincipalID)
 	assert.ErrorIs(t, err, providerErr)
 	env.service.identity = originalIdentity
 
 	originalGroups := env.service.groups
 	env.service.groups = failingTargetGroups{GroupProvisioner: originalGroups, getErr: providerErr}
-	_, err = env.service.buildRemoteResource(t.Context(), testID("tenant-a"), testID("target"), ResourceGroup, testID("group"))
+	_, err = env.service.buildRemoteResource(t.Context(), testID("tenant-a"), testID("target"), ResourceGroup, testID("group"), env.auth.PrincipalID)
 	assert.ErrorIs(t, err, providerErr)
 	group, err := env.service.CreateGroup(t.Context(), env.auth, GroupInput{Schemas: []string{GroupSchema}, DisplayName: "Provider Group"})
 	require.NoError(t, err)
 	env.service.groups = failingTargetGroups{GroupProvisioner: originalGroups, membersErr: providerErr}
-	_, err = env.service.buildRemoteResource(t.Context(), testID("tenant-a"), testID("target"), ResourceGroup, parseGUID(group.ID))
+	_, err = env.service.buildRemoteResource(t.Context(), testID("tenant-a"), testID("target"), ResourceGroup, parseGUID(group.ID), env.auth.PrincipalID)
 	assert.ErrorIs(t, err, providerErr)
 	env.service.groups = originalGroups
-	_, err = env.service.buildRemoteResource(t.Context(), testID("tenant-a"), testID("target"), "Widget", testID("resource"))
+	_, err = env.service.buildRemoteResource(t.Context(), testID("tenant-a"), testID("target"), "Widget", testID("resource"), env.auth.PrincipalID)
 	assert.ErrorIs(t, err, ErrInvalidTarget)
 }
 
@@ -482,7 +482,7 @@ func TestProvisioningResolvesTheKeysARotationLeavesBehind(t *testing.T) {
 func TestProvisioningOpensWhatARetiredKeySealed(t *testing.T) {
 	env := newProvisioningEnvironment(t)
 	_, server := newSCIMProviderEndpoint(t, http.StatusOK, `{}`)
-	target, err := env.service.CreateTarget(t.Context(), testID("tenant-a"), "Rotating", server.URL, "not-a-real-bearer-token")
+	target, err := env.service.CreateTarget(t.Context(), testID("tenant-a"), "Rotating", server.URL, "not-a-real-bearer-token", nil)
 	require.NoError(t, err)
 	targetID := parseGUID(target.Target.ID)
 

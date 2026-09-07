@@ -23,6 +23,7 @@
   "scim_target_version_conflict": "Sasaran SCIM telah diubah oleh permintaan lain. Muat semula dan cuba lagi.",
   "scim_target_key_missing": "Peruntukan SCIM keluar belum dikonfigurasi: tetapkan kunci penyulitan peruntukan (provisioning.encryption_key) dahulu.",
   "scim_target_disabled": "Sasaran SCIM dilumpuhkan. Dayakan dahulu sebelum menolak atau mengeluarkan sumber.",
+  "scim_target_service_account_inactive": "Akaun perkhidmatan sasaran SCIM tidak tersedia. Pautkan akaun perkhidmatan aktif milik penyewa ini sebelum mencuba semula.",
   "scim_target_resource_not_mapped": "Sumber ini tiada pemetaan aktif pada sasaran SCIM. Tolak dahulu sebelum mengeluarkannya.",
   "scim_target_remote_failed": "Pembekal SCIM jauh tidak dapat melengkapkan permintaan. Semak URL sasaran, token pembawa dan status pembekal."
 }

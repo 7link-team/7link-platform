@@ -58,6 +58,23 @@ func TestIAMLifecycleAcrossEnginesAndPrefixes(t *testing.T) {
 				)
 				output, runErr := command.CombinedOutput()
 				require.NoError(t, runErr, string(output))
+				if engine.name == "mysql" {
+					// go-mysql-server/memory explicitly does not support concurrent
+					// transactions. test-mysql8.sh runs the identical replay test
+					// on real InnoDB instead of treating this emulator as evidence.
+					t.Log("replay concurrency is covered by the required real MySQL 8 gate")
+					return
+				}
+				replay := exec.CommandContext(t.Context(), "go", "test", "7link.com/platform/internal/iam/federation",
+					"-run", "^TestReplayRegistryExternalDatabase$", "-count=1")
+				replay.Dir, replay.Env = command.Dir, command.Env
+				output, runErr = replay.CombinedOutput()
+				require.NoError(t, runErr, string(output))
+				archives := exec.CommandContext(t.Context(), "go", "test", "7link.com/platform/internal/iam/audit",
+					"-run", "^TestArchiveExternalDatabase$", "-count=1")
+				archives.Dir, archives.Env = command.Dir, command.Env
+				output, runErr = archives.CombinedOutput()
+				require.NoError(t, runErr, string(output))
 			})
 		}
 	}

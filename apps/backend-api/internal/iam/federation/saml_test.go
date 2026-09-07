@@ -11,12 +11,14 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/pem"
 	"encoding/xml"
 	"fmt"
+	"github.com/beevik/etree"
 	saml "github.com/crewjam/saml"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
@@ -527,6 +529,75 @@ func TestSAMLSingleLogoutInvalid(t *testing.T) {
 	response = samlBrowserRequest(t, server, http.MethodGet, sloURL+"?SAMLRequest="+url.QueryEscape(base64.StdEncoding.EncodeToString(raw)), cookie)
 	assert.Equal(t, http.StatusBadRequest, response.StatusCode)
 	require.NoError(t, response.Body.Close())
+}
+
+func TestSAMLSingleLogoutValidityWindow(t *testing.T) {
+	env := newFederationEnvironment(t)
+	startSAML(t, env, SAMLConfig{Enabled: true})
+	tsp := newSAMLSPServer(t)
+	tsp.register(t, env)
+	server := newSAMLServer(t, env)
+	sloURL := server.URL + samlSLOPath(testID("tenant-a"))
+	now := time.Now().UTC().Truncate(time.Second)
+	env.service.now = func() time.Time { return now }
+	past := now.Add(-time.Second)
+	future := now.Add(time.Minute)
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		for _, tc := range []struct {
+			name     string
+			issued   time.Time
+			notAfter *time.Time
+			valid    bool
+		}{
+			{name: "future issue", issued: now.Add(24 * time.Hour)},
+			{name: "beyond skew", issued: now.Add(31 * time.Second)},
+			{name: "expired by age", issued: now.Add(-5 * time.Minute)},
+			{name: "expired by NotOnOrAfter", issued: now, notAfter: &past},
+			{name: "exact NotOnOrAfter", issued: now, notAfter: &now},
+			{name: "within skew", issued: now.Add(30 * time.Second), valid: true},
+			{name: "valid explicit expiry", issued: now, notAfter: &future, valid: true},
+			{name: "optional expiry absent", issued: now, valid: true},
+		} {
+			t.Run(method+"/"+tc.name, func(t *testing.T) {
+				principalID, cookie := samlSessionCookie(t, env)
+				logout := &saml.LogoutRequest{
+					ID: "id-" + mustRandomToken(), Version: "2.0", IssueInstant: tc.issued,
+					Destination: sloURL, Issuer: &saml.Issuer{Value: tsp.entityID},
+					NameID:       &saml.NameID{Value: principalID, Format: samlNameIDPersistent},
+					NotOnOrAfter: tc.notAfter,
+				}
+				doc := etree.NewDocument()
+				doc.SetRoot(logout.Element())
+				raw, err := doc.WriteToBytes()
+				require.NoError(t, err)
+				if method == http.MethodGet {
+					var compressed bytes.Buffer
+					zw, err := flate.NewWriter(&compressed, flate.DefaultCompression)
+					require.NoError(t, err)
+					_, err = zw.Write(raw)
+					require.NoError(t, err)
+					require.NoError(t, zw.Close())
+					raw = compressed.Bytes()
+				}
+				form := url.Values{"SAMLRequest": {base64.StdEncoding.EncodeToString(raw)}}.Encode()
+				var response *http.Response
+				if method == http.MethodGet {
+					response = samlBrowserRequest(t, server, method, sloURL+"?"+form, cookie)
+				} else {
+					response = samlBrowserRequest(t, server, method, sloURL, cookie, form)
+				}
+				require.NoError(t, response.Body.Close())
+				_, err = env.web.Authenticate(t.Context(), "", cookie)
+				if tc.valid {
+					assert.Equal(t, http.StatusOK, response.StatusCode)
+					assert.Error(t, err)
+				} else {
+					assert.Equal(t, http.StatusBadRequest, response.StatusCode)
+					assert.NoError(t, err, "an invalid logout must not revoke the session")
+				}
+			})
+		}
+	}
 }
 
 func samlBrowserRequest(t *testing.T, _ *httptest.Server, method, target, cookie string, bodies ...string) *http.Response {
@@ -1263,11 +1334,15 @@ func TestSAMLAssertionReplayIsRejectedIndependentlyOfState(t *testing.T) {
 	require.NoError(t, err)
 	// Remove only the state claim to prove the assertion claim independently
 	// rejects the same signed assertion on the second callback.
-	env.service.replays.mu.Lock()
-	delete(env.service.replays.claimed, "state:"+state.Nonce)
-	env.service.replays.mu.Unlock()
+	digest := sha256.Sum256([]byte("state:" + state.Nonce))
+	require.NoError(t, env.db.Exec("DELETE FROM iam_federation_replay_claims WHERE claim_key = ?", fmt.Sprintf("%x", digest)).Error)
+	env.service.replays = newReplayRegistry(NewRepository(env.runtime))
 	_, _, err = env.service.CompleteSAMLLogin(t.Context(), provider.ID, samlResponse, stateCookieName+"="+stateValue, callback)
 	assert.ErrorIs(t, err, ErrSAMLResponse)
+	require.NoError(t, env.db.Exec("DROP TABLE iam_federation_replay_claims").Error)
+	session, _, err := env.service.CompleteSAMLLogin(t.Context(), provider.ID, samlResponse, stateCookieName+"="+stateValue, callback)
+	assert.ErrorIs(t, err, errReplayUnavailable)
+	assert.Empty(t, session)
 }
 
 func TestSAMLLogoutRequestReplayIsRejectedBeforeRevokingNewSession(t *testing.T) {
@@ -1298,9 +1373,17 @@ func TestSAMLLogoutRequestReplayIsRejectedBeforeRevokingNewSession(t *testing.T)
 	require.Equal(t, http.StatusOK, first.StatusCode)
 	_ = first.Body.Close()
 	_, secondCookie := samlSessionCookie(t, env)
+	env.service.replays = newReplayRegistry(NewRepository(env.runtime))
 	second := samlBrowserRequest(t, server, http.MethodGet, target, secondCookie)
 	assert.Equal(t, http.StatusBadRequest, second.StatusCode)
 	_ = second.Body.Close()
 	_, err = env.web.Authenticate(t.Context(), "", secondCookie)
 	assert.NoError(t, err)
+
+	require.NoError(t, env.db.Exec("DROP TABLE iam_federation_replay_claims").Error)
+	unavailable := samlBrowserRequest(t, server, http.MethodGet, target, secondCookie)
+	assert.Equal(t, http.StatusServiceUnavailable, unavailable.StatusCode)
+	_ = unavailable.Body.Close()
+	_, err = env.web.Authenticate(t.Context(), "", secondCookie)
+	assert.NoError(t, err, "a storage outage must not revoke the authenticated session")
 }

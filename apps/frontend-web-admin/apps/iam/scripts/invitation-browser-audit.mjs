@@ -248,6 +248,9 @@ const revokedEmail = `revoked-${suffix}@example.test`
 const token = await createInvitation(acceptedEmail)
 const oldRevokedToken = await createInvitation(revokedEmail)
 
+await waitFor(
+  `${rowExpression(revokedEmail)}?.querySelector('button[title="重新发送并轮换凭据"]:not(:disabled)')`
+)
 await evaluate(`
   const row = ${rowExpression(revokedEmail)};
   const button = [...row.querySelectorAll("button")].find((item) => item.title === "重新发送并轮换凭据");
@@ -263,6 +266,9 @@ if (replacement === oldRevokedToken)
 await clickText("完成")
 await waitFor(`!document.querySelector("#issued-invitation-token")`)
 
+await waitFor(
+  `${rowExpression(revokedEmail)}?.querySelector('button[title="撤销邀请"]:not(:disabled)')`
+)
 await evaluate(`
   const row = ${rowExpression(revokedEmail)};
   const button = [...row.querySelectorAll("button")].find((item) => item.title === "撤销邀请");

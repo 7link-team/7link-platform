@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Building2, Menu as MenuIcon, ShieldCheck } from "lucide-react"
 import { Navigate, Outlet, useLocation, useNavigate } from "react-router"
 import {
@@ -25,8 +25,29 @@ export default function AppLayout() {
   const [tenantValue, setTenantValue] = useState(getTenant())
   const [tenantDraft, setTenantDraft] = useState(getTenant())
   const [platformTenants, setPlatformTenants] = useState<Tenant[] | null>(null)
+  const [fieldPolicyAccess, setFieldPolicyAccess] = useState("")
   const location = useLocation()
   const navigate = useNavigate()
+  const loginState = useMemo(
+    () => ({ from: location.pathname }),
+    [location.pathname]
+  )
+
+  useEffect(() => {
+    if (status !== "authenticated" || !tenantValue || !session) return
+    let active = true
+    void iamApi.fieldCatalog().then(
+      () => {
+        if (active) setFieldPolicyAccess(`${tenantValue}:${session.subject}`)
+      },
+      () => {
+        if (active) setFieldPolicyAccess("")
+      }
+    )
+    return () => {
+      active = false
+    }
+  }, [status, tenantValue, session])
 
   useEffect(() => {
     if (status === "authenticated") {
@@ -69,8 +90,7 @@ export default function AppLayout() {
         </div>
       </div>
     )
-  if (!session)
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  if (!session) return <Navigate to="/login" replace state={loginState} />
 
   const commitTenant = () => {
     const next = tenantDraft.trim()
@@ -96,6 +116,10 @@ export default function AppLayout() {
               <AppSidebar
                 menus={menus ?? []}
                 platformTenantAccess={platformTenants !== null}
+                fieldPolicyAccess={
+                  Boolean(tenantValue) &&
+                  fieldPolicyAccess === `${tenantValue}:${session.subject}`
+                }
                 className="block h-full w-full border-0"
               />
             </SheetContent>
@@ -148,6 +172,10 @@ export default function AppLayout() {
         <AppSidebar
           menus={menus ?? []}
           platformTenantAccess={platformTenants !== null}
+          fieldPolicyAccess={
+            Boolean(tenantValue) &&
+            fieldPolicyAccess === `${tenantValue}:${session.subject}`
+          }
           className="hidden md:block"
         />
         <main className="min-w-0 flex-1 overflow-auto">

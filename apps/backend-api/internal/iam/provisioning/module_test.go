@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/infra/guid"
@@ -25,9 +26,9 @@ func TestProvisioningModuleConstructionAndMetadata(t *testing.T) {
 	assert.Panics(t, func() { NewModule(nil, Config{}) })
 	instance := NewModule(runtime, Config{})
 	assert.Equal(t, Name, instance.ModuleName())
-	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, identity.Name, organization.Name}, instance.ModuleDependencies())
+	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, identity.Name, organization.Name, core.Name}, instance.ModuleDependencies())
 	assert.Equal(t, "goose_provisioning", instance.MigrationSource().TableName)
-	assert.Len(t, instance.MigrationMilestones(), 2)
+	assert.Len(t, instance.MigrationMilestones(), 4)
 }
 
 func TestProvisioningModuleActivationComesFromConfig(t *testing.T) {
@@ -54,6 +55,8 @@ func TestProvisioningModuleDependencyResolutionAndLifecycle(t *testing.T) {
 	require.NoError(t, platformmodule.Provide[audit.Appender](services, env.service.appender))
 	require.NoError(t, platformmodule.Provide[identity.IdentityProvisioner](services, env.service.identity))
 	require.NoError(t, platformmodule.Provide[organization.GroupProvisioner](services, env.service.groups))
+	require.NoError(t, platformmodule.Provide[identity.ServiceAccountValidator](services, env.service.actors))
+	require.NoError(t, platformmodule.Provide[core.AuthorizationEvaluator](services, core.NewAuthorizer(env.runtime)))
 	require.NoError(t, services.Seal())
 	require.NoError(t, instance.InjectServices(services))
 	require.NoError(t, instance.Initialize(t.Context()))
@@ -88,6 +91,8 @@ func TestProvisioningModuleReportsMissingDependenciesAndInitializationErrors(t *
 				require.NoError(t, platformmodule.Provide[audit.Appender](services, typed))
 			case identity.IdentityProvisioner:
 				require.NoError(t, platformmodule.Provide[identity.IdentityProvisioner](services, typed))
+			case organization.GroupProvisioner:
+				require.NoError(t, platformmodule.Provide[organization.GroupProvisioner](services, typed))
 			}
 		}
 		require.NoError(t, services.Seal())
@@ -96,6 +101,7 @@ func TestProvisioningModuleReportsMissingDependenciesAndInitializationErrors(t *
 	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(env.service.ids)), "audit appender")
 	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(env.service.ids, env.service.appender)), "identity provisioner")
 	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(env.service.ids, env.service.appender, env.service.identity)), "group provisioner")
+	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(env.service.ids, env.service.appender, env.service.identity, env.service.groups)), "service account validator")
 
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
 	missing := newInstance()
@@ -104,6 +110,7 @@ func TestProvisioningModuleReportsMissingDependenciesAndInitializationErrors(t *
 	badKey := newInstance()
 	badKey.registrar = provisioningRuntimeRegistrar()
 	badKey.ids, badKey.appender, badKey.identities, badKey.groups = env.service.ids, env.service.appender, env.service.identity, env.service.groups
+	badKey.actors = env.service.actors
 	badKey.config.EncryptionKey = "short"
 	assert.ErrorContains(t, badKey.Initialize(t.Context()), "encryption key")
 
@@ -117,7 +124,7 @@ func TestProvisioningModuleSyncLoopReconcilesActiveTenants(t *testing.T) {
 	env := newProvisioningEnvironment(t)
 	provider, server := newSCIMProviderEndpoint(t, 200, "")
 	provider.configure(200, "", true)
-	target, err := env.service.CreateTarget(t.Context(), testID("tenant-a"), "Sync", server.URL, "token")
+	target, err := env.service.CreateTarget(t.Context(), testID("tenant-a"), "Sync", server.URL, "token", &env.auth.PrincipalID)
 	require.NoError(t, err)
 	user, err := env.service.CreateUser(t.Context(), env.auth, activeUserInput("sync", "sync", "sync@example.test"))
 	require.NoError(t, err)
@@ -128,6 +135,8 @@ func TestProvisioningModuleSyncLoopReconcilesActiveTenants(t *testing.T) {
 	instance := NewModule(env.runtime, Config{SyncInterval: 5 * time.Millisecond})
 	instance.registrar = provisioningRuntimeRegistrar()
 	instance.ids, instance.appender, instance.identities, instance.groups = env.service.ids, env.service.appender, env.service.identity, env.service.groups
+	instance.actors = env.service.actors
+	instance.fields = env.service.fields
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
 	instance.config.EncryptionKey = base64.RawStdEncoding.EncodeToString(testProvisioningKey())
 	require.NoError(t, instance.Initialize(t.Context()))
@@ -146,9 +155,9 @@ func TestProvisioningModuleSyncLoopReconcilesActiveTenants(t *testing.T) {
 func TestProvisioningReconcilerHandlesDisabledTargetsAndStorageFailures(t *testing.T) {
 	t.Run("disabled target", func(t *testing.T) {
 		env := newProvisioningEnvironment(t)
-		target, err := env.service.CreateTarget(t.Context(), testID("tenant-a"), "Disabled", "https://example.test", "secret")
+		target, err := env.service.CreateTarget(t.Context(), testID("tenant-a"), "Disabled", "https://example.test", "secret", nil)
 		require.NoError(t, err)
-		_, err = env.service.ReplaceTarget(t.Context(), testID("tenant-a"), parseGUID(target.Target.ID), "Disabled", "https://example.test", TargetDisabled, "", 1)
+		_, err = env.service.ReplaceTarget(t.Context(), testID("tenant-a"), parseGUID(target.Target.ID), "Disabled", "https://example.test", TargetDisabled, "", 1, nil)
 		require.NoError(t, err)
 		instance := &Module{service: env.service}
 		assert.NotPanics(t, func() { instance.reconcileAll(t.Context()) })
@@ -161,7 +170,7 @@ func TestProvisioningReconcilerHandlesDisabledTargetsAndStorageFailures(t *testi
 	})
 	t.Run("target synchronization failure", func(t *testing.T) {
 		env := newProvisioningEnvironment(t)
-		_, err := env.service.CreateTarget(t.Context(), testID("tenant-a"), "Broken", "https://example.test", "secret")
+		_, err := env.service.CreateTarget(t.Context(), testID("tenant-a"), "Broken", "https://example.test", "secret", nil)
 		require.NoError(t, err)
 		require.NoError(t, env.db.Exec("DROP TABLE "+env.prefix+"iam_scim_target_resources").Error)
 		instance := &Module{service: env.service}

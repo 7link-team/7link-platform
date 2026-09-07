@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"7link.com/platform/internal/iam/identity"
 	healthservice "7link.com/platform/internal/infra/health/service"
 	"7link.com/platform/internal/infra/migrationstatus"
 	"7link.com/platform/pkg/module"
@@ -15,6 +16,9 @@ import (
 // module ServiceProviders but before the registry is sealed, and propagates every
 // error.
 func (app *App) provideCrossCutting(services *module.Services) error {
+	if err := module.Provide[identity.PrincipalAnonymizer](services, app.anonymizePrincipalData); err != nil {
+		return err
+	}
 	if err := module.Provide[healthservice.CheckerProvider](services, app.healthCheckers); err != nil {
 		return err
 	}

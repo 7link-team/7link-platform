@@ -244,9 +244,20 @@ const directoryName = `Browser SCIM ${suffix}`
 const renamedName = `${directoryName} Updated`
 const credentialName = `browser-${suffix}`
 
+const serviceAccount = await evaluate(`
+  const response = await fetch("/api/iam/service-accounts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Tenant-Id": ${JSON.stringify(tenantID)} },
+    body: JSON.stringify({ login_name: ${JSON.stringify(`scim-browser-${suffix}`)}, display_name: "SCIM browser automation" }),
+  });
+  if (!response.ok) throw new Error("create SCIM service account: " + response.status);
+  return (await response.json()).data;
+`)
+
 await clickText("创建目录")
 await waitFor(`document.querySelector("#scim-directory-form")`)
 await setInput("#scim-directory-name", directoryName)
+await setInput("#scim-directory-service-account", serviceAccount.id)
 await submit("#scim-directory-form")
 await waitFor(rowExpression(directoryName))
 

@@ -93,6 +93,17 @@ func (checker *fakeChecker) CheckEntity(_ context.Context, tenantID, entityID gu
 
 type tenantOnlyChecker struct{ allowed bool }
 
+type dataChecker struct {
+	fakeChecker
+	constraint authz.DataConstraint
+	dataCalls  []entityPermissionCall
+}
+
+func (checker *dataChecker) EntityConstraint(_ context.Context, tenantID, entityID guid.ID, permission string, subject guid.ID) (authz.DataConstraint, error) {
+	checker.dataCalls = append(checker.dataCalls, entityPermissionCall{tenantID: tenantID, entityID: entityID, permission: permission, subject: subject})
+	return checker.constraint, checker.err
+}
+
 func (checker tenantOnlyChecker) Check(context.Context, guid.ID, string, guid.ID) (bool, error) {
 	return checker.allowed, nil
 }
@@ -120,6 +131,33 @@ func testRegistry() *authz.Registry {
 
 func okRoute(context.Context, *struct{}) (*routeOutput, error) {
 	return &routeOutput{Body: "ok"}, nil
+}
+
+func TestTenantRoutePublishesVerifiedBoundaryWithoutMutatingToken(t *testing.T) {
+	for _, memberOnly := range []bool{false, true} {
+		_, api := humatest.New(t)
+		original := &authn.Claims{PrincipalID: 31, TenantID: 99, EntityID: 88}
+		registrar := authz.NewRegistrar(testRegistry(), &fakeVerifier{claims: original}, &fakeChecker{allowed: true}, &fakeMembership{active: true})
+		handler := func(ctx context.Context, _ *struct{}) (*routeOutput, error) {
+			claims, ok := authn.FromContext(ctx)
+			require.True(t, ok)
+			assert.Equal(t, guid.ID(11), claims.TenantID)
+			assert.Zero(t, claims.EntityID)
+			assert.Equal(t, guid.ID(31), claims.PrincipalID)
+			assert.NotSame(t, original, claims)
+			return &routeOutput{Body: "ok"}, nil
+		}
+		op := huma.Operation{OperationID: "tenant-context", Method: http.MethodGet, Path: "/tenant-context"}
+		if memberOnly {
+			authz.RegisterTenantMember(registrar, api, op, handler)
+		} else {
+			authz.Register(registrar, api, op, authz.Guard{Resource: "store", Verb: "view"}, handler)
+		}
+		response := api.Get("/tenant-context", "X-Tenant-Id: 11", "X-Entity-Id: 77")
+		require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+		assert.Equal(t, guid.ID(99), original.TenantID)
+		assert.Equal(t, guid.ID(88), original.EntityID)
+	}
 }
 
 func TestRegistrarDeclarationsCoverEveryRouteClass(t *testing.T) {
@@ -504,6 +542,99 @@ func TestEntityAuthorizationFailurePaths(t *testing.T) {
 			assert.Equal(t, test.want, response.Code)
 		})
 	}
+}
+
+func TestDataFilteredEntityAuthorization(t *testing.T) {
+	registry := authz.MustRegistry(authz.Action{Resource: "task", Verb: "view", Scope: "tenant", DataScoped: true})
+	for _, test := range []struct {
+		name       string
+		constraint authz.DataConstraint
+		err        error
+		want       int
+	}{
+		{name: "all", constraint: authz.DataConstraint{AllowAll: true}, want: http.StatusOK},
+		{name: "entity", constraint: authz.DataConstraint{ResourceIDs: []string{"21"}}, want: http.StatusOK},
+		{name: "owner", constraint: authz.DataConstraint{OwnerIDs: []string{"31"}}, want: http.StatusOK},
+		{name: "department", constraint: authz.DataConstraint{DepartmentIDs: []string{"41"}}, want: http.StatusOK},
+		{name: "no scope", want: http.StatusForbidden},
+		{name: "other entity", constraint: authz.DataConstraint{ResourceIDs: []string{"22"}}, want: http.StatusForbidden},
+		{name: "ancestor is not a grant", constraint: authz.DataConstraint{Ancestors: []authz.ResourceRef{{Type: "entity", ID: "21"}}}, want: http.StatusForbidden},
+		{name: "deny all scopes", constraint: authz.DataConstraint{AllowAll: true, ResourceIDs: []string{"21"}, OwnerIDs: []string{"31"}, DepartmentIDs: []string{"41"}, DeniedIDs: []string{"21"}}, want: http.StatusForbidden},
+		{name: "unavailable even with a grant", constraint: authz.DataConstraint{AllowAll: true}, err: assert.AnError, want: http.StatusServiceUnavailable},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, api := humatest.New(t)
+			checker := &dataChecker{constraint: test.constraint, fakeChecker: fakeChecker{err: test.err}}
+			verifier := validVerifier()
+			verifier.claims.TenantID, verifier.claims.EntityID = 999, 888
+			registrar := authz.NewRegistrar(registry, verifier, checker, &fakeMembership{active: true})
+			calls := 0
+			authz.RegisterEntity(registrar, api, huma.Operation{OperationID: "tasks", Method: http.MethodGet, Path: "/tasks"}, authz.Guard{Resource: "task", Verb: "view", FilterData: true}, func(ctx context.Context, _ *struct{}) (*routeOutput, error) {
+				calls++
+				claims, ok := authn.FromContext(ctx)
+				require.True(t, ok)
+				assert.Equal(t, guid.ID(11), claims.TenantID)
+				assert.Equal(t, guid.ID(21), claims.EntityID)
+				assert.Equal(t, guid.ID(31), claims.PrincipalID)
+				return &routeOutput{Body: "ok"}, nil
+			})
+			assert.Equal(t, test.want, api.Get("/tasks", authz.TenantHeader+": 11", authz.EntityHeader+": 21").Code)
+			assert.Equal(t, []entityPermissionCall{{tenantID: 11, entityID: 21, permission: "task_view", subject: 31}}, checker.dataCalls)
+			assert.Empty(t, checker.entityCalls, "row-scoped authorization must not require a whole-entity grant")
+			assert.Empty(t, checker.tenantCalls)
+			assert.Equal(t, true, api.OpenAPI().Paths["/tasks"].Get.Extensions[authz.DataFilterExtensionKey])
+			assertSelectorSchema(t, api.OpenAPI().Paths["/tasks"].Get, authz.EntityHeader, "header")
+			if test.want != http.StatusOK {
+				assert.Zero(t, calls)
+			} else {
+				assert.Equal(t, 1, calls)
+			}
+			assert.Equal(t, guid.ID(999), verifier.claims.TenantID, "request selectors must not mutate cached session claims")
+
+			authz.RegisterEntity(registrar, api, huma.Operation{OperationID: "whole", Method: http.MethodGet, Path: "/whole"}, authz.Guard{Resource: "task", Verb: "view"}, okRoute)
+			wantWhole := http.StatusForbidden
+			if test.err != nil {
+				wantWhole = http.StatusServiceUnavailable
+			}
+			assert.Equal(t, wantWhole, api.Get("/whole", authz.TenantHeader+": 11", authz.EntityHeader+": 21").Code)
+			assert.Len(t, checker.entityCalls, 1, "ordinary entity routes retain whole-entity semantics")
+			assert.Len(t, checker.dataCalls, 1)
+		})
+	}
+	assert.False(t, (authz.DataConstraint{AllowAll: true}).AllowsEntityRows(0))
+}
+
+func TestDataFilteredRegistrationRejectsUnsafeDeclarations(t *testing.T) {
+	registry := authz.MustRegistry(
+		authz.Action{Resource: "task", Verb: "view", Scope: "tenant", DataScoped: true},
+		authz.Action{Resource: "role", Verb: "view", Scope: "tenant"},
+	)
+	guard := authz.Guard{Resource: "task", Verb: "view", FilterData: true}
+	for _, name := range []string{"tenant", "platform", "adapter", "non-data", "no checker capability"} {
+		t.Run(name, func(t *testing.T) {
+			_, api := humatest.New(t)
+			registrar := authz.NewDeclarationOnlyRegistrar(registry)
+			op := huma.Operation{OperationID: "tasks", Method: http.MethodGet, Path: "/tasks"}
+			assert.Panics(t, func() {
+				switch name {
+				case "tenant":
+					authz.Register(registrar, api, op, guard, okRoute)
+				case "platform":
+					authz.RegisterPlatform(registrar, api, op, guard, okRoute)
+				case "adapter":
+					authz.RegisterEntityAdapter(registrar, api, op, guard, func(huma.Context) {})
+				case "non-data":
+					authz.RegisterEntity(registrar, api, op, authz.Guard{Resource: "role", Verb: "view", FilterData: true}, okRoute)
+				case "no checker capability":
+					registrar = authz.NewRegistrar(registry, validVerifier(), &fakeChecker{allowed: true}, &fakeMembership{active: true})
+					authz.RegisterEntity(registrar, api, op, guard, okRoute)
+				}
+			})
+		})
+	}
+	_, api := humatest.New(t)
+	authz.RegisterEntity(authz.NewDeclarationOnlyRegistrar(registry), api, huma.Operation{OperationID: "tasks", Method: http.MethodGet, Path: "/tasks"}, guard, okRoute)
+	assert.Equal(t, true, api.OpenAPI().Paths["/tasks"].Get.Extensions[authz.DataFilterExtensionKey])
 }
 
 func TestPlatformAuthorizationFailurePaths(t *testing.T) {

@@ -87,6 +87,9 @@ func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
 			))
 		}},
 		&identityDependencyProvider{name: core.Name, provide: func(services *module.Services) error {
+			if err := module.Provide[core.AuthorizationEvaluator](services, core.NewAuthorizer(harness.runtime)); err != nil {
+				return err
+			}
 			if err := module.Provide[*authz.Registrar](services, identityTestRegistrar()); err != nil {
 				return err
 			}
@@ -107,6 +110,10 @@ func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
 	require.NoError(t, err)
 	registrationCreator, err := module.Resolve[RegistrationPrincipalCreator](registry.Services())
 	require.NoError(t, err)
+	accountValidator, err := module.Resolve[ServiceAccountValidator](registry.Services())
+	require.NoError(t, err)
+	_, err = accountValidator(t.Context(), harness.db, 7, 1, time.Now())
+	assert.ErrorIs(t, err, ErrUnavailable)
 
 	// The invitation capability resolves the service per call, so it reports the
 	// module as unavailable before Initialize instead of panicking.
@@ -117,6 +124,12 @@ func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
 
 	require.NoError(t, registry.Initialize(t.Context()))
 	require.NoError(t, instance.CheckHealth(t.Context()))
+	harness.seedTenant(t, 7, "active")
+	account, err := instance.CreateServiceAccount(t.Context(), 7, "scim-agent", "SCIM agent", "", nil)
+	require.NoError(t, err)
+	validAccount, err := accountValidator(t.Context(), harness.db, 7, account.ID, time.Now())
+	require.NoError(t, err)
+	assert.True(t, validAccount)
 
 	invited, err := creator(t.Context(), harness.db, 7, "alice", testPassword, "Alice", "alice@example.test")
 	require.NoError(t, err)

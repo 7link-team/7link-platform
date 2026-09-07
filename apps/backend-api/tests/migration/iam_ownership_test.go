@@ -33,7 +33,7 @@ type iamMigrationContract struct {
 
 func TestIAMMigrationOwnershipIsAutonomousAndComplete(t *testing.T) {
 	contracts := iamMigrationContracts()
-	owners := make(map[string]string, 64)
+	owners := make(map[string]string, 68)
 	versionTables := make(map[string]string, len(contracts))
 	for _, contract := range contracts {
 		t.Run(contract.name, func(t *testing.T) {
@@ -61,13 +61,13 @@ func TestIAMMigrationOwnershipIsAutonomousAndComplete(t *testing.T) {
 			}
 		})
 	}
-	assert.Len(t, owners, 64)
+	assert.Len(t, owners, 68)
 }
 
 func iamMigrationContracts() []iamMigrationContract {
 	return []iamMigrationContract{
 		{name: "iam", tables: []string{
-			"iam_entities", "iam_menus", "iam_platform_administrators", "iam_platform_grants",
+			"iam_entities", "iam_field_policies", "iam_menus", "iam_platform_administrators", "iam_platform_grants",
 			"iam_policy_revisions", "iam_relationships", "iam_resource_relationships", "iam_role_bindings",
 			"iam_role_members", "iam_role_permissions", "iam_roles", "iam_temporary_role_grants", "iam_tenant_members",
 		}, module: &iamcore.Module{}},
@@ -78,14 +78,14 @@ func iamMigrationContracts() []iamMigrationContract {
 			"iam_stepup_challenges",
 		}, module: &authn.Module{}},
 		{name: "identity", tables: []string{
-			"iam_principals", "iam_service_account_credentials", "iam_service_accounts",
+			"iam_principal_lifecycles", "iam_principals", "iam_service_account_credentials", "iam_service_accounts",
 		}, module: &identity.Module{}},
 		{name: "oauth", tables: []string{
 			"iam_oauth_clients", "iam_oauth_codes", "iam_oauth_consent_requests", "iam_oauth_consents",
 			"iam_refresh_tokens",
 		}, module: &oauth.Module{}},
 		{name: "audit", tables: []string{
-			"iam_audit_events", "iam_audit_heads", "iam_audit_retention_policies",
+			"iam_audit_archive_jobs", "iam_audit_events", "iam_audit_heads", "iam_audit_retention_policies",
 		}, module: &iamaudit.Module{}},
 		{name: "organization", tables: []string{
 			"iam_department_closure", "iam_departments", "iam_group_members", "iam_group_role_bindings",
@@ -100,7 +100,7 @@ func iamMigrationContracts() []iamMigrationContract {
 			"iam_scim_credentials", "iam_scim_directories", "iam_scim_resources", "iam_scim_target_resources", "iam_scim_targets",
 		}, module: &provisioning.Module{}},
 		{name: "federation", tables: []string{
-			"iam_identity_links", "iam_identity_providers", "iam_saml_idp_keys", "iam_saml_service_providers",
+			"iam_federation_replay_claims", "iam_identity_links", "iam_identity_providers", "iam_saml_idp_keys", "iam_saml_service_providers",
 		}, module: &federation.Module{}},
 	}
 }

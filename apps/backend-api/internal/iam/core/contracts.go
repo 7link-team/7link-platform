@@ -9,9 +9,11 @@ import (
 	"gorm.io/gorm"
 )
 
-// AuthorizationEvaluator is the policy evaluation capability used by the IAM
-// administration service itself.
+// AuthorizationEvaluator is the policy evaluation capability shared by IAM
+// administration and business modules enforcing data constraints.
 type AuthorizationEvaluator interface {
+	authz.EntityDataPermissionChecker
+	authz.FieldPermissionChecker
 	CheckBulk(ctx context.Context, tenantID guid.ID, permissions []string, principalID guid.ID) (map[string]bool, error)
 	Constraint(ctx context.Context, tenantID guid.ID, permission string, principalID guid.ID) (authz.DataConstraint, error)
 	ExplainEntity(ctx context.Context, tenantID, entityID guid.ID, permission string, principalID guid.ID) (authz.Explanation, error)
@@ -24,6 +26,16 @@ type ActiveMemberChecker interface {
 	IsMemberActive(context.Context, guid.ID, guid.ID) (bool, error)
 	IsMemberActiveOn(context.Context, *gorm.DB, guid.ID, guid.ID) (bool, error)
 }
+
+// MemberDepartmentReader resolves a member's current active department from
+// the writer. A zero ID means no active department assignment.
+type MemberDepartmentReader interface {
+	ActiveDepartment(context.Context, guid.ID, guid.ID) (guid.ID, error)
+}
+
+// MemberTenantResolver validates an explicit tenant or returns the sole active
+// membership. Zero means there is no unambiguous choice, never a default tenant.
+type MemberTenantResolver func(context.Context, guid.ID, guid.ID) (guid.ID, error)
 
 // AdministratorGuard protects mutations that could remove a tenant's last
 // durable administrator. The returned verifier must run before the transaction

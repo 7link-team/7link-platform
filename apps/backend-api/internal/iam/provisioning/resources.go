@@ -13,18 +13,32 @@ import (
 )
 
 func (s *Service) CreateUser(ctx context.Context, auth AuthContext, input UserInput) (UserResource, error) {
+	submitted := input
 	input, active, err := normalizeUserInput(input)
 	if err != nil {
 		return UserResource{}, err
 	}
 	var resourceID guid.ID
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
+		if err := repo.authorizeSCIM(ctx, auth, s.now(), s.actors); err != nil {
+			return err
+		}
+		fields, err := s.profileConstraint(ctx, auth.TenantID, auth.PrincipalID)
+		if err != nil {
+			return err
+		}
+		if err := requireUserCreateFields(submitted, fields); err != nil {
+			return err
+		}
 		if input.ExternalID != "" {
 			mapping, err := repo.getResourceByExternalKey(ctx, auth.DirectoryID, ResourceUser, externalKey(input.ExternalID, 0))
 			switch {
 			case err == nil && mapping.DeletedAt == nil:
 				return ErrResourceConflict
 			case err == nil:
+				if err := fields.RequireWrite(false, "login_name", "display_name", "email"); err != nil {
+					return err
+				}
 				resourceID = mapping.ResourceID
 				if _, err := s.identity.ReplaceProvisionedTo(ctx, repo.writer(), auth.TenantID, resourceID, provisionedUser(input, active, "")); err != nil {
 					return err
@@ -67,21 +81,41 @@ func (s *Service) CreateUser(ctx context.Context, auth AuthContext, input UserIn
 }
 
 func (s *Service) GetUser(ctx context.Context, auth AuthContext, id guid.ID) (UserResource, error) {
+	if err := s.repo.authorizeSCIM(ctx, auth, s.now(), s.actors); err != nil {
+		return UserResource{}, err
+	}
+	fields, err := s.profileConstraint(ctx, auth.TenantID, auth.PrincipalID)
+	if err != nil {
+		return UserResource{}, err
+	}
 	record, err := s.repo.user(ctx, auth.DirectoryID, id)
 	if err != nil {
 		return UserResource{}, err
 	}
-	return userResource(record), nil
+	return projectUser(userResource(record), fields), nil
 }
 
 func (s *Service) ListUsers(ctx context.Context, auth AuthContext, request ListRequest) (ListResponse[UserResource], error) {
+	if err := s.repo.authorizeSCIM(ctx, auth, s.now(), s.actors); err != nil {
+		return ListResponse[UserResource]{}, err
+	}
+	fields, err := s.profileConstraint(ctx, auth.TenantID, auth.PrincipalID)
+	if err == nil {
+		err = fields.RequireRead("login_name") // The SQL query orders by login name.
+	}
+	if err == nil {
+		err = requireUserFilterFields(request.Filter, fields)
+	}
+	if err != nil {
+		return ListResponse[UserResource]{}, err
+	}
 	rows, total, err := s.repo.userPage(ctx, auth.DirectoryID, request, normalizeDialect(s.repo.writer()))
 	if err != nil {
 		return ListResponse[UserResource]{}, err
 	}
 	resources := make([]UserResource, 0, len(rows))
 	for _, row := range rows {
-		resources = append(resources, userResource(row))
+		resources = append(resources, projectUser(userResource(row), fields))
 	}
 	return ListResponse[UserResource]{Schemas: []string{ListSchema}, TotalResults: total, StartIndex: request.StartIndex, ItemsPerPage: len(resources), Resources: resources}, nil
 }
@@ -92,24 +126,17 @@ func (s *Service) ReplaceUser(ctx context.Context, auth AuthContext, id guid.ID,
 		return UserResource{}, ErrInvalidSCIM
 	}
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
-		mapping, err := repo.getResource(ctx, auth.DirectoryID, ResourceUser, id, false)
+		if err := repo.authorizeSCIM(ctx, auth, s.now(), s.actors); err != nil {
+			return err
+		}
+		fields, err := s.profileConstraint(ctx, auth.TenantID, auth.PrincipalID)
 		if err != nil {
 			return err
 		}
-		if expectedVersion > 0 && mapping.Version != expectedVersion {
-			return ErrResourceVersion
-		}
-		if _, err := s.identity.ReplaceProvisionedTo(ctx, repo.writer(), auth.TenantID, id, provisionedUser(input, active, "")); err != nil {
+		if err := fields.RequireWrite(false, "login_name", "display_name", "email"); err != nil {
 			return err
 		}
-		now := s.now().UTC().Truncate(time.Millisecond)
-		previous := mapping.Version
-		mapping.ExternalID, mapping.ExternalKey, mapping.Version = input.ExternalID, externalKey(input.ExternalID, id), previous+1
-		mapping.UpdatedAt = now
-		if err := repo.updateResource(ctx, &mapping, previous); err != nil {
-			return err
-		}
-		return s.appendResourceAudit(ctx, repo.writer(), auth, "scim_user_replaced", ResourceUser, id)
+		return s.replaceUserOn(ctx, repo, auth, id, input, active, expectedVersion)
 	})
 	if err != nil {
 		return UserResource{}, fmt.Errorf("replace SCIM user: %w", err)
@@ -117,11 +144,37 @@ func (s *Service) ReplaceUser(ctx context.Context, auth AuthContext, id guid.ID,
 	return s.GetUser(ctx, auth, id)
 }
 
+// replaceUserOn shares the versioned write between PUT and PATCH. PATCH must
+// retain its raw snapshot's version even when the client omits If-Match.
+func (s *Service) replaceUserOn(ctx context.Context, repo *Repository, auth AuthContext, id guid.ID, input UserInput, active bool, expectedVersion int64) error {
+	mapping, err := repo.getResource(ctx, auth.DirectoryID, ResourceUser, id, false)
+	if err != nil {
+		return err
+	}
+	if expectedVersion > 0 && mapping.Version != expectedVersion {
+		return ErrResourceVersion
+	}
+	if _, err := s.identity.ReplaceProvisionedTo(ctx, repo.writer(), auth.TenantID, id, provisionedUser(input, active, "")); err != nil {
+		return err
+	}
+	now := s.now().UTC().Truncate(time.Millisecond)
+	previous := mapping.Version
+	mapping.ExternalID, mapping.ExternalKey, mapping.Version = input.ExternalID, externalKey(input.ExternalID, id), previous+1
+	mapping.UpdatedAt = now
+	if err := repo.updateResource(ctx, &mapping, previous); err != nil {
+		return err
+	}
+	return s.appendResourceAudit(ctx, repo.writer(), auth, "scim_user_replaced", ResourceUser, id)
+}
+
 func (s *Service) DeleteUser(ctx context.Context, auth AuthContext, id guid.ID, expectedVersion int64) error {
 	if id.Zero() {
 		return ErrInvalidSCIM
 	}
 	err := s.repo.runInTx(ctx, func(repo *Repository) error {
+		if err := repo.authorizeSCIM(ctx, auth, s.now(), s.actors); err != nil {
+			return err
+		}
 		record, err := repo.user(ctx, auth.DirectoryID, id)
 		if err != nil {
 			return err
@@ -153,6 +206,9 @@ func (s *Service) CreateGroup(ctx context.Context, auth AuthContext, input Group
 	}
 	var resourceID guid.ID
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
+		if err := repo.authorizeSCIM(ctx, auth, s.now(), s.actors); err != nil {
+			return err
+		}
 		if err := requireSCIMUsers(ctx, repo, auth.DirectoryID, members); err != nil {
 			return err
 		}
@@ -196,6 +252,9 @@ func (s *Service) CreateGroup(ctx context.Context, auth AuthContext, input Group
 }
 
 func (s *Service) GetGroup(ctx context.Context, auth AuthContext, id guid.ID) (GroupResource, error) {
+	if err := s.repo.authorizeSCIM(ctx, auth, s.now(), s.actors); err != nil {
+		return GroupResource{}, err
+	}
 	record, err := s.repo.group(ctx, auth.DirectoryID, id)
 	if err != nil {
 		return GroupResource{}, err
@@ -208,6 +267,9 @@ func (s *Service) GetGroup(ctx context.Context, auth AuthContext, id guid.ID) (G
 }
 
 func (s *Service) ListGroups(ctx context.Context, auth AuthContext, request ListRequest) (ListResponse[GroupResource], error) {
+	if err := s.repo.authorizeSCIM(ctx, auth, s.now(), s.actors); err != nil {
+		return ListResponse[GroupResource]{}, err
+	}
 	rows, total, err := s.repo.groupPage(ctx, auth.DirectoryID, request, normalizeDialect(s.repo.writer()))
 	if err != nil {
 		return ListResponse[GroupResource]{}, err
@@ -229,6 +291,9 @@ func (s *Service) ReplaceGroup(ctx context.Context, auth AuthContext, id guid.ID
 		return GroupResource{}, ErrInvalidSCIM
 	}
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
+		if err := repo.authorizeSCIM(ctx, auth, s.now(), s.actors); err != nil {
+			return err
+		}
 		mapping, err := repo.getResource(ctx, auth.DirectoryID, ResourceGroup, id, false)
 		if err != nil {
 			return err
@@ -261,6 +326,9 @@ func (s *Service) DeleteGroup(ctx context.Context, auth AuthContext, id guid.ID,
 		return ErrInvalidSCIM
 	}
 	err := s.repo.runInTx(ctx, func(repo *Repository) error {
+		if err := repo.authorizeSCIM(ctx, auth, s.now(), s.actors); err != nil {
+			return err
+		}
 		mapping, err := repo.getResource(ctx, auth.DirectoryID, ResourceGroup, id, false)
 		if err != nil {
 			return err
@@ -319,7 +387,7 @@ func userResource(record userRecord) UserResource {
 	}
 	return UserResource{
 		Schemas: []string{UserSchema}, ID: record.ResourceID.String(), ExternalID: record.ExternalID,
-		UserName: record.LoginName, Name: UserName{Formatted: record.DisplayName}, DisplayName: record.DisplayName,
+		UserName: record.LoginName, Name: &UserName{Formatted: record.DisplayName}, DisplayName: record.DisplayName,
 		Active: record.PrincipalStatus == "active" && record.MembershipStatus == "active", Emails: emails,
 		Meta: ResourceMeta{ResourceType: ResourceUser, Created: unixTime(record.CreatedAt), LastModified: unixTime(record.UpdatedAt), Location: "/scim/v2/Users/" + record.ResourceID.String(), Version: weakETag(record.Version)},
 	}
