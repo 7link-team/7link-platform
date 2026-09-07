@@ -1,5 +1,58 @@
 # Task State
 
+## Remaining Work / Handoff (2026-09-06)
+
+Current implementation snapshot: `c7a02b1`, pushed to `origin/IAM` at the user's
+explicit request. This is a development checkpoint, NOT a production release.
+The remote accepted the push with an author/committer email mismatch warning;
+Git identity was left unchanged. Earlier no-commit/no-push notes are historical.
+No full CI was rerun solely for this checkpoint commit.
+
+### Remaining Work In Execution Order
+
+1. [ ] Complete 10.8 populated-data acceptance across all seven PII owners.
+   Seed real OAuth tokens/consents, federation links, SCIM mappings, accepted
+   invitations and access-review profile copies. Prove target cleanup, unrelated
+   principal/tenant preservation, immutable audit and late-failure rollback.
+   Add live remote mapping, legacy NULL notification and disabled-owner cases.
+2. [ ] Complete concurrent-writer coverage on PostgreSQL and real MySQL 8.4:
+   both transaction orderings, in-flight notification delivery and SCIM/API
+   attempts to restore a tombstone. Current old-snapshot notification rejection
+   is verified, but is not exhaustive concurrency acceptance.
+3. [ ] Reconcile remaining integration migration contract/version fixtures and
+   verify migration-ledger checks through upgrade/down/up and disabled modules.
+   Run the full real-MySQL migration gate, then regenerate and validate
+   `apps/backend-api/tests/migration/schema.lock`. The current lock predates
+   the seven owner-erasure migrations; do not claim generated schema consistency.
+4. [ ] Implement platform lifecycle HTTP management and console UI: retention
+   deadline, legal hold, lifecycle version, explicit irreversible confirmation,
+   actionable blockers and tombstone state. Global platform authority only;
+   no tenant-local permission may authorize global erasure. Regenerate OpenAPI
+   and frontend types; add authorization and stale-version API tests.
+5. [ ] Complete real desktop/mobile browser acceptance for retention, blockers,
+   erasure and restore prevention using the actual composed backend. Reconcile
+   the 10.8 plan checkbox only after all required behavior is accepted.
+6. [ ] Complete 10.11 once the candidate is ready: resolve migration lint's
+   existing unused `databaseColumn` at `tests/migration/iam_core_model_test.go:23`;
+   run formatting/lint/coverage, race, three-engine initialization and permission
+   matrix, real MySQL, generated-code/OpenAPI consistency, `make ci`, frontend
+   checks, regression browsers and live readiness. Verify backup/restore and
+   erasure reconciliation, archive recovery and rollback/roll-forward runbooks.
+7. [ ] Provide a reproducible user acceptance environment with startup/stop/reset
+   commands, runtime requirements, URLs, securely supplied test accounts and an
+   acceptance checklist. Existing previews predate lifecycle and are NOT the
+   final acceptance environment. Production deployment and mall stay out of scope.
+
+### Verified Baseline / Next Action
+
+Eight IAM module unit suites PASS; five composed erasure scenarios PASS;
+owner migrations and downgrade guards PASS on SQLite/PostgreSQL/MySQL-compatible
+and real MySQL 8.4; PostgreSQL/real MySQL reject pre-erasure snapshot notification
+writes. Scoped app/owner lint PASS, migration-directory lint NOT PASS as above.
+10.7 audit archive real-browser acceptance is complete. Detailed evidence follows.
+Next implementation action: extend `internal/app/principallifecycle_test.go`
+with populated owner records and negative cases, then proceed in the order above.
+
 ## Active Delivery Objective (2026-09-05, authoritative)
 
 User requests completion of IAM for production delivery and user acceptance.
@@ -17,7 +70,8 @@ Current continuation checkpoint (2026-09-06, owner erasure integration):
   and live remote SCIM User mappings must be removed by their existing workflows.
 - Latest owner migrations: core/authn13, oauth/organization9, federation/
   provisioning5, governance4; each erasure milestone depends on identity.lifecycle.
-  Schema lock NOT updated: new owner migrations still require real-engine proof.
+  Schema lock NOT updated: focused real-engine proof now passes, but the full
+  migration gate and contract reconciliation still precede lock regeneration.
 - Fixed core/OAuth fixtures to run actual identity migrations instead of minimal
   principal tables, completed required seed fields and migration contract checks.
   Scoped full suites PASS authn/OAuth/federation/governance/organization/
