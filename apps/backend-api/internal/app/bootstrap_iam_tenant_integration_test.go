@@ -258,8 +258,20 @@ func newIAMTenantFixtureWithDatabase(t *testing.T, database Database, prefix str
 			},
 			MFA: authnext.MFAConfig{EncryptionKey: key},
 		}),
-		Federation:   IAMFederation{Enabled: true, EncryptionKey: key},
-		Provisioning: IAMProvisioning{EncryptionKey: key},
+		// The upstream identity providers and SCIM directories these tests drive
+		// are httptest servers on loopback, which the shipped default refuses.
+		// Naming the range here is what a deployment does for an upstream on its
+		// own network; the guard itself is covered in pkg/extension/httpx.
+		Federation: IAMFederation{
+			Enabled: true, EncryptionKey: key,
+			OutboundAllowPlaintext: true,
+			OutboundAllowNetworks:  []string{"127.0.0.0/8", "::1/128"},
+		},
+		Provisioning: IAMProvisioning{
+			EncryptionKey:          key,
+			OutboundAllowPlaintext: true,
+			OutboundAllowNetworks:  []string{"127.0.0.0/8", "::1/128"},
+		},
 	}}
 	for _, apply := range configure {
 		apply(&application.config)

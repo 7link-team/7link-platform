@@ -112,7 +112,11 @@ func (m *Module) Initialize(context.Context) error {
 	if err != nil {
 		return fmt.Errorf("resolve provisioning encryption key: %w", err)
 	}
-	m.service = NewService(m.runtime, m.appender, m.ids, m.identities, m.groups, m.actors, m.fields, m.config, keys)
+	outbound, err := ResolveOutboundPolicy(m.config)
+	if err != nil {
+		return fmt.Errorf("resolve provisioning outbound policy: %w", err)
+	}
+	m.service = NewService(m.runtime, m.appender, m.ids, m.identities, m.groups, m.actors, m.fields, m.config, keys, outbound)
 	return nil
 }
 

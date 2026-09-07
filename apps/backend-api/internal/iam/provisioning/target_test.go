@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"path"
 	"path/filepath"
@@ -21,6 +22,7 @@ import (
 	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/iam/provisioning/model"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/httpx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -261,7 +263,7 @@ func TestTargetRemoteAndKeyFailurePaths(t *testing.T) {
 	assert.ErrorIs(t, err, ErrTargetDisabled)
 	assert.ErrorIs(t, env.service.DeprovisionResource(ctx, testID("tenant-a"), parseGUID(disabled.ID), ResourceUser, parseGUID(user.ID)), ErrTargetDisabled)
 
-	noKey := NewService(env.runtime, env.service.appender, newProvisioningTestIDs(9000), env.service.identity, env.service.groups, env.service.actors, env.service.fields, Config{}, nil)
+	noKey := NewService(env.runtime, env.service.appender, newProvisioningTestIDs(9000), env.service.identity, env.service.groups, env.service.actors, env.service.fields, Config{}, nil, testOutboundPolicy())
 	_, err = noKey.CreateTarget(ctx, testID("tenant-a"), "No Key", "https://example.test", "token", nil)
 	assert.ErrorIs(t, err, ErrTargetKeyMissing)
 	_, err = noKey.PushResource(ctx, testID("tenant-a"), parseGUID(down.Target.ID), ResourceUser, parseGUID(user.ID))
@@ -438,8 +440,8 @@ func TestTargetEncryptionConfigAndCipherErrors(t *testing.T) {
 		_, err := env.service.decryptToken(testID("target"), encoded)
 		assert.Error(t, err)
 	}
-	assert.False(t, validTargetURL("https://user:pass@example.test"))
-	assert.False(t, validTargetURL("https://example.test/#fragment"))
+	assert.False(t, validTargetURL("https://user:pass@example.test", httpx.Policy{}))
+	assert.False(t, validTargetURL("https://example.test/#fragment", httpx.Policy{}))
 	assert.Equal(t, strings.Repeat("x", 500)+"...", trimRemoteDetail([]byte(strings.Repeat("x", 501))))
 }
 
@@ -511,4 +513,35 @@ func TestProvisioningOpensWhatARetiredKeySealed(t *testing.T) {
 	_, err = env.service.decryptToken(targetID, row.BearerTokenCiphertext)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no longer holds")
+}
+
+// TestProvisioningTargetURLRefusesInternalAddresses covers the reason a tenant
+// does not get to name an arbitrary SCIM target: the request would leave this
+// process, from inside the network this process runs in.
+func TestProvisioningTargetURLRefusesInternalAddresses(t *testing.T) {
+	strict := httpx.Policy{}
+	for name, raw := range map[string]string{
+		"cloud metadata":  "https://169.254.169.254/latest/meta-data/",
+		"loopback":        "https://127.0.0.1:8443/scim/v2",
+		"loopback name":   "http://localhost:8443/scim/v2",
+		"ipv6 loopback":   "https://[::1]/scim/v2",
+		"private ten":     "https://10.0.0.5/scim/v2",
+		"private one 92":  "https://192.168.1.10/scim/v2",
+		"link local":      "https://169.254.10.10/scim/v2",
+		"plaintext":       "http://directory.example.test/scim/v2",
+		"not http":        "ftp://directory.example.test/scim/v2",
+		"unique local v6": "https://[fd00::1]/scim/v2",
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.False(t, validTargetURL(raw, strict), "%s must not be a usable SCIM target", raw)
+		})
+	}
+
+	assert.True(t, validTargetURL("https://directory.example.test/scim/v2", strict))
+
+	// A deployment that genuinely runs its directory on the inside says so, and
+	// only then is that address reachable.
+	internal := httpx.Policy{Allow: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}}
+	assert.True(t, validTargetURL("https://10.0.0.5/scim/v2", internal))
+	assert.False(t, validTargetURL("https://192.168.1.10/scim/v2", internal))
 }

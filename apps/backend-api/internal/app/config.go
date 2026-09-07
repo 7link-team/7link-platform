@@ -75,10 +75,12 @@ type IAMAuditAnchor struct {
 }
 
 type IAMProvisioning struct {
-	EncryptionKey     string        `mapstructure:"encryption_key" description:"base64 key encrypting outbound SCIM credentials" default:"" secret:"true"`
-	EncryptionKeyFile string        `mapstructure:"encryption_key_file" description:"file containing the outbound SCIM encryption key" default:""`
-	HTTPTimeout       time.Duration `mapstructure:"http_timeout" description:"outbound SCIM request timeout" default:"10s"`
-	SyncInterval      time.Duration `mapstructure:"sync_interval" description:"outbound SCIM reconciliation interval; zero disables it" default:"0"`
+	EncryptionKey          string        `mapstructure:"encryption_key" description:"base64 key encrypting outbound SCIM credentials" default:"" secret:"true"`
+	EncryptionKeyFile      string        `mapstructure:"encryption_key_file" description:"file containing the outbound SCIM encryption key" default:""`
+	HTTPTimeout            time.Duration `mapstructure:"http_timeout" description:"outbound SCIM request timeout" default:"10s"`
+	OutboundAllowPlaintext bool          `mapstructure:"outbound_allow_plaintext" description:"permit http:// SCIM targets; leave false to require https" default:"false"`
+	OutboundAllowNetworks  []string      `mapstructure:"outbound_allow_networks" description:"CIDR blocks a SCIM target may resolve to despite being private or reserved"`
+	SyncInterval           time.Duration `mapstructure:"sync_interval" description:"outbound SCIM reconciliation interval; zero disables it" default:"0"`
 }
 
 // IAMOAuth configures the parts of the OAuth authorization server an operator
@@ -95,13 +97,15 @@ type IAMOAuthConsent struct {
 }
 
 type IAMFederation struct {
-	Enabled           bool              `mapstructure:"enabled" description:"enable inbound identity-provider federation" default:"false"`
-	EncryptionKey     string            `mapstructure:"encryption_key" description:"base64 key protecting federation secrets and state" default:"" secret:"true"`
-	EncryptionKeyFile string            `mapstructure:"encryption_key_file" description:"file containing the federation encryption key" default:""`
-	HTTPTimeout       time.Duration     `mapstructure:"http_timeout" description:"federation upstream HTTP timeout" default:"10s"`
-	ClockSkew         time.Duration     `mapstructure:"clock_skew" description:"allowed upstream token clock skew" default:"30s"`
-	StateTTL          time.Duration     `mapstructure:"state_ttl" description:"federation login state lifetime" default:"10m"`
-	SAML              IAMFederationSAML `mapstructure:"saml" group:"saml"`
+	Enabled                bool              `mapstructure:"enabled" description:"enable inbound identity-provider federation" default:"false"`
+	EncryptionKey          string            `mapstructure:"encryption_key" description:"base64 key protecting federation secrets and state" default:"" secret:"true"`
+	EncryptionKeyFile      string            `mapstructure:"encryption_key_file" description:"file containing the federation encryption key" default:""`
+	HTTPTimeout            time.Duration     `mapstructure:"http_timeout" description:"federation upstream HTTP timeout" default:"10s"`
+	OutboundAllowPlaintext bool              `mapstructure:"outbound_allow_plaintext" description:"permit http:// upstream identity providers; leave false to require https" default:"false"`
+	OutboundAllowNetworks  []string          `mapstructure:"outbound_allow_networks" description:"CIDR blocks an upstream identity provider may resolve to despite being private or reserved"`
+	ClockSkew              time.Duration     `mapstructure:"clock_skew" description:"allowed upstream token clock skew" default:"30s"`
+	StateTTL               time.Duration     `mapstructure:"state_ttl" description:"federation login state lifetime" default:"10m"`
+	SAML                   IAMFederationSAML `mapstructure:"saml" group:"saml"`
 }
 
 type IAMFederationSAML struct {

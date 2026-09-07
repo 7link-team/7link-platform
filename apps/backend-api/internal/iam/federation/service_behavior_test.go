@@ -1,6 +1,7 @@
 package federation
 
 import (
+	"7link.com/platform/pkg/extension/httpx"
 	"7link.com/platform/pkg/extension/keyringx"
 	"context"
 	"encoding/base64"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -296,7 +298,7 @@ func newFederationEnvironment(t *testing.T, prefixes ...string) *federationEnvir
 		env.events = append(env.events, event)
 		return nil
 	})
-	env.service = NewService(runtime, appender, env.identity, env.web, Config{HTTPTimeout: 5 * time.Second, ClockSkew: 30 * time.Second, StateTTL: 10 * time.Minute}, env.keys, env.ids)
+	env.service = NewService(runtime, appender, env.identity, env.web, Config{HTTPTimeout: 5 * time.Second, ClockSkew: 30 * time.Second, StateTTL: 10 * time.Minute}, env.keys, env.ids, testOutboundPolicy())
 	env.service.now = func() time.Time { return federationTestNow }
 	env.idp = newTestIDP(t)
 	return env
@@ -802,11 +804,21 @@ func TestFederationHelpersAndConstructorGuards(t *testing.T) {
 	assert.Error(t, err)
 
 	config := Config{}
-	assert.Panics(t, func() { NewService(nil, env.service.audit, env.identity, env.web, config, env.keys, env.ids) })
-	assert.Panics(t, func() { NewService(env.runtime, nil, env.identity, env.web, config, env.keys, env.ids) })
-	assert.Panics(t, func() { NewService(env.runtime, env.service.audit, nil, env.web, config, env.keys, env.ids) })
-	assert.Panics(t, func() { NewService(env.runtime, env.service.audit, env.identity, nil, config, env.keys, env.ids) })
-	assert.Panics(t, func() { NewService(env.runtime, env.service.audit, env.identity, env.web, config, env.keys, nil) })
+	assert.Panics(t, func() {
+		NewService(nil, env.service.audit, env.identity, env.web, config, env.keys, env.ids, testOutboundPolicy())
+	})
+	assert.Panics(t, func() {
+		NewService(env.runtime, nil, env.identity, env.web, config, env.keys, env.ids, testOutboundPolicy())
+	})
+	assert.Panics(t, func() {
+		NewService(env.runtime, env.service.audit, nil, env.web, config, env.keys, env.ids, testOutboundPolicy())
+	})
+	assert.Panics(t, func() {
+		NewService(env.runtime, env.service.audit, env.identity, nil, config, env.keys, env.ids, testOutboundPolicy())
+	})
+	assert.Panics(t, func() {
+		NewService(env.runtime, env.service.audit, env.identity, env.web, config, env.keys, nil, testOutboundPolicy())
+	})
 }
 
 func TestFederationServiceRejectsInvalidIDsAndGeneratorFailures(t *testing.T) {
@@ -865,4 +877,59 @@ func TestFederationServicePropagatesSAMLTableFailures(t *testing.T) {
 	_, err = env.service.UpdateSAMLServiceProvider(t.Context(), tenant, testID("sp"), input)
 	assert.Error(t, err)
 	assert.Error(t, env.service.DeleteSAMLServiceProvider(t.Context(), tenant, testID("sp")))
+}
+
+// testOutboundPolicy permits the loopback address the fake upstream in these
+// tests listens on. The shipped default refuses it, which is the point of the
+// guard; allowing it here is the same thing a deployment does for a provider on
+// its own network, and the guard itself is covered in pkg/extension/httpx.
+func testOutboundPolicy() httpx.Policy {
+	return httpx.Policy{
+		AllowPlaintext: true,
+		Allow:          []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8"), netip.MustParsePrefix("::1/128")},
+	}
+}
+
+// TestFederationOutboundPolicyRefusesMalformedNetworks covers the startup path:
+// a typo in the allow list has to stop the process rather than quietly widen or
+// narrow what federation can reach.
+func TestFederationOutboundPolicyRefusesMalformedNetworks(t *testing.T) {
+	_, err := ResolveOutboundPolicy(Config{OutboundAllowNetworks: []string{"10.0.0.0/8", "not-a-cidr"}})
+	assert.ErrorContains(t, err, "federation outbound policy")
+
+	policy, err := ResolveOutboundPolicy(Config{OutboundAllowNetworks: []string{"10.0.0.0/8"}})
+	require.NoError(t, err)
+	assert.Len(t, policy.Allow, 1)
+
+	strict, err := ResolveOutboundPolicy(Config{})
+	require.NoError(t, err)
+	assert.Equal(t, httpx.Policy{}, strict, "an unconfigured deployment gets the strict policy")
+}
+
+// TestFederationIssuerRefusesInternalAddresses is the negative half of the
+// guard: a tenant naming an issuer inside the network must be refused when the
+// provider is saved, not merely when the discovery request is attempted.
+func TestFederationIssuerRefusesInternalAddresses(t *testing.T) {
+	strict := httpx.Policy{}
+	for name, issuer := range map[string]string{
+		"cloud metadata": "https://169.254.169.254/",
+		"loopback":       "https://127.0.0.1:8443/realms/main",
+		"ipv6 loopback":  "https://[::1]/realms/main",
+		"private ten":    "https://10.0.0.5/realms/main",
+		"private 192":    "https://192.168.1.10/realms/main",
+		"plaintext":      "http://idp.example.test/realms/main",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := normalizeIssuer(issuer, strict)
+			assert.ErrorContains(t, err, "invalid issuer", "%s must not be a usable issuer", issuer)
+		})
+	}
+
+	normalized, err := normalizeIssuer("https://idp.example.test/realms/main/", strict)
+	require.NoError(t, err)
+	assert.Equal(t, "https://idp.example.test/realms/main", normalized)
+
+	internal, err := normalizeIssuer("https://10.0.0.5/realms/main", httpx.Policy{Allow: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}})
+	require.NoError(t, err)
+	assert.Equal(t, "https://10.0.0.5/realms/main", internal)
 }

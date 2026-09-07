@@ -19,6 +19,7 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/httpx"
 	"7link.com/platform/pkg/extension/keyringx"
 	"7link.com/platform/pkg/extension/secretx"
 	"7link.com/platform/pkg/module"
@@ -39,9 +40,15 @@ type Config struct {
 	PreviousEncryptionKeys     []string      `mapstructure:"previous_encryption_keys" description:"retired base64 32-byte federation keys that still open stored values; prefer previous_encryption_key_files" secret:"true"`
 	PreviousEncryptionKeyFiles []string      `mapstructure:"previous_encryption_key_files" description:"files containing retired base64 32-byte federation keys"`
 	HTTPTimeout                time.Duration `mapstructure:"http_timeout" description:"upstream discovery, JWKS, and token endpoint timeout" default:"10s"`
-	ClockSkew                  time.Duration `mapstructure:"clock_skew" description:"allowed ID token and SAML logout clock skew" default:"30s"`
-	StateTTL                   time.Duration `mapstructure:"state_ttl" description:"login state cookie lifetime" default:"10m"`
-	SAML                       SAMLConfig    `mapstructure:"saml" group:"saml"`
+	// A tenant names its own issuer, so the addresses reached on its behalf are
+	// tenant-controlled. These two settings are the only way to widen what that
+	// reaches, and they are deliberately per-module: permitting an internal
+	// identity provider should not also permit outbound SCIM to that range.
+	OutboundAllowPlaintext bool          `mapstructure:"outbound_allow_plaintext" description:"permit http:// upstream identity providers; leave false to require https" default:"false"`
+	OutboundAllowNetworks  []string      `mapstructure:"outbound_allow_networks" description:"CIDR blocks an upstream identity provider may resolve to despite being private or reserved"`
+	ClockSkew              time.Duration `mapstructure:"clock_skew" description:"allowed ID token and SAML logout clock skew" default:"30s"`
+	StateTTL               time.Duration `mapstructure:"state_ttl" description:"login state cookie lifetime" default:"10m"`
+	SAML                   SAMLConfig    `mapstructure:"saml" group:"saml"`
 }
 
 const federationCipherVersion = "v1"
@@ -73,6 +80,7 @@ type Service struct {
 	nextID     func() (guid.ID, error)
 	keys       *keyringx.Keyring
 	oidc       *oidcClient
+	outbound   httpx.Policy
 	stateTTL   time.Duration
 	clockSkew  time.Duration
 	now        func() time.Time
@@ -107,6 +115,14 @@ type authnextWebService interface {
 // instead of surfacing a runtime secret error. The first key seals; every key
 // opens, which is what lets a deployment replace one without losing what the
 // replaced key protected.
+func ResolveOutboundPolicy(cfg Config) (httpx.Policy, error) {
+	policy, err := httpx.ParsePolicy(cfg.OutboundAllowPlaintext, cfg.OutboundAllowNetworks)
+	if err != nil {
+		return httpx.Policy{}, fmt.Errorf("federation outbound policy: %w", err)
+	}
+	return policy, nil
+}
+
 func ResolveKeyring(cfg Config) (*keyringx.Keyring, error) {
 	active, err := secretx.Resolve("federation.encryption_key", cfg.EncryptionKey, cfg.EncryptionKeyFile, 4096)
 	if err != nil {
@@ -146,7 +162,7 @@ func openError(what string, err error) error {
 	}
 }
 
-func NewService(runtime *appenv.Runtime, appender audit.Appender, identities identity.IdentityProvisioner, authn authnextWebService, cfg Config, keys *keyringx.Keyring, ids guid.Source) *Service {
+func NewService(runtime *appenv.Runtime, appender audit.Appender, identities identity.IdentityProvisioner, authn authnextWebService, cfg Config, keys *keyringx.Keyring, ids guid.Source, outbound httpx.Policy) *Service {
 	if runtime == nil || appender == nil || identities == nil || authn == nil || ids == nil {
 		panic("federation service requires database, audit appender, identity provisioner, authentication service, and id generator")
 	}
@@ -170,8 +186,9 @@ func NewService(runtime *appenv.Runtime, appender audit.Appender, identities ide
 			id, err := ids.Next()
 			return guid.ID(id), err
 		},
-		oidc:    newOIDCClient(&http.Client{Timeout: timeout}, skew, 5*time.Minute),
-		replays: newReplayRegistry(repo),
+		oidc:     newOIDCClient(httpx.NewClient(timeout, outbound), skew, 5*time.Minute),
+		outbound: outbound,
+		replays:  newReplayRegistry(repo),
 	}
 }
 
@@ -593,7 +610,7 @@ func (s *Service) normalizeProvider(tenantID guid.ID, input ProviderInput) (prov
 	if providerType == "" {
 		providerType = ProviderOIDC
 	}
-	issuer, err := normalizeIssuer(input.Issuer)
+	issuer, err := normalizeIssuer(input.Issuer, s.outbound)
 	clientID := strings.TrimSpace(input.ClientID)
 	scopes := normalizeScopes(input.Scopes)
 	defaultRoleID := input.DefaultRoleID
@@ -690,13 +707,20 @@ func optionalFederationID(id *guid.ID) guid.ID {
 	return *id
 }
 
-func normalizeIssuer(value string) (string, error) {
+func normalizeIssuer(value string, outbound httpx.Policy) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(value))
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
 		return "", errors.New("invalid issuer")
 	}
 	parsed.Path = strings.TrimRight(parsed.Path, "/")
-	return strings.TrimRight(parsed.String(), "/"), nil
+	normalized := strings.TrimRight(parsed.String(), "/")
+	// Refusing a plainly unreachable issuer here gives the operator the reason
+	// while they are still looking at the form. It is not the enforcement
+	// point: a name resolving somewhere else later is caught on the dial.
+	if err := outbound.ValidateURL(normalized); err != nil {
+		return "", fmt.Errorf("invalid issuer: %w", err)
+	}
+	return normalized, nil
 }
 
 func normalizeScopes(value string) string {

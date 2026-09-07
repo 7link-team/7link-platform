@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"net/netip"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	gormx "7link.com/platform/pkg/extension/gorm"
+	"7link.com/platform/pkg/extension/httpx"
 	"7link.com/platform/pkg/extension/keyringx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -415,7 +417,7 @@ func newProvisioningEnvironmentWithPrefix(t *testing.T, prefix string) *provisio
 	actors := identity.ServiceAccountValidator(func(_ context.Context, _ *gorm.DB, tenant, actor guid.ID, _ time.Time) (bool, error) {
 		return tenant == testID("tenant-a") && actor == actorID, nil
 	})
-	env.service = NewService(runtime, appender, ids, identities, groups, actors, provisioningProfileChecker{}, Config{}, env.keys)
+	env.service = NewService(runtime, appender, ids, identities, groups, actors, provisioningProfileChecker{}, Config{}, env.keys, testOutboundPolicy())
 	env.service.now = func() time.Time { return provisioningTestNow }
 	directory, err := env.service.CreateDirectory(t.Context(), testID("tenant-a"), "Primary IdP", &actorID)
 	require.NoError(t, err)
@@ -536,4 +538,27 @@ func TestProvisioningIDFailuresAreRejected(t *testing.T) {
 	env.service.ids = original
 	assert.Equal(t, assert.AnError, firstError(assert.AnError, ErrInvalidTarget))
 	assert.Equal(t, ErrInvalidTarget, firstError(nil, ErrInvalidTarget))
+}
+
+// testOutboundPolicy permits the loopback address the fake upstream in these
+// tests listens on. The shipped default refuses it, which is the point of the
+// guard; allowing it here is the same thing a deployment does for a provider on
+// its own network, and the guard itself is covered in pkg/extension/httpx.
+func testOutboundPolicy() httpx.Policy {
+	return httpx.Policy{
+		AllowPlaintext: true,
+		Allow:          []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8"), netip.MustParsePrefix("::1/128")},
+	}
+}
+
+// TestProvisioningOutboundPolicyRefusesMalformedNetworks covers the startup
+// path: a typo in the allow list stops the process instead of silently
+// changing what outbound SCIM can reach.
+func TestProvisioningOutboundPolicyRefusesMalformedNetworks(t *testing.T) {
+	_, err := ResolveOutboundPolicy(Config{OutboundAllowNetworks: []string{"192.168.0.0/16", "10.0.0.0/999"}})
+	assert.ErrorContains(t, err, "provisioning outbound policy")
+
+	strict, err := ResolveOutboundPolicy(Config{})
+	require.NoError(t, err)
+	assert.Equal(t, httpx.Policy{}, strict, "an unconfigured deployment gets the strict policy")
 }

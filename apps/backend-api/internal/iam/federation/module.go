@@ -95,7 +95,11 @@ func (m *Module) Initialize(context.Context) error {
 	if err != nil {
 		return fmt.Errorf("resolve federation encryption key: %w", err)
 	}
-	m.service = NewService(m.runtime, m.appender, m.identities, m.authn, m.config, keys, m.ids)
+	outbound, err := ResolveOutboundPolicy(m.config)
+	if err != nil {
+		return fmt.Errorf("resolve federation outbound policy: %w", err)
+	}
+	m.service = NewService(m.runtime, m.appender, m.identities, m.authn, m.config, keys, m.ids, outbound)
 	return nil
 }
 

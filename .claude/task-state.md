@@ -89,9 +89,46 @@ test-integration PASS(6 包全 ok) / build PASS / openapi-check PASS(matches doc
 改动 12 个源文件（+1 决策 +1 状态），仅 1 个非测试文件（`recovery.go` 纯格式化）；
 生产行为零改动。`bin/` 为 gitignore 覆盖，工作区无多余产物。未提交。
 
+## 批 1 进行中 —— P0-1 (SSRF) 已完成
+
+新增 `pkg/extension/httpx`（97%+ 覆盖）：按 OWASP 通行做法，检查发生在 `net.Dialer.Control`
+（socket 连接前的解析后地址），这是唯一能防 DNS rebinding 的位置；每个 redirect 跳都会重新
+拨号因此同一守卫覆盖整条链；显式禁用 Proxy（含环境代理），否则拨号目标是代理、地址检查失效；
+`Policy{}` 零值即严格（拒明文 + 封全部保留网段）。拦截清单为显式 CIDR 而非 Go 地址判定函数，
+因后者不含 CGNAT/benchmarking/240-4，且安全控制须可被评审者直读。
+
+已接入 federation（覆盖审计漏列的 `saml.go:1031`、`verifier.go:153`）与 provisioning
+（漏列的 `target.go:347`），并接通部署配置 `outbound_allow_plaintext` /
+`outbound_allow_networks`（per-module，理由见下）。补齐 metadata/私网/link-local/回环/
+明文/重定向负向测试及启动期 CIDR 校验。
+
+**行为变更**：`validTargetURL` 原硬编码放行 `http://localhost`/`127.0.0.1`/`::1`，已改为
+配置驱动——本地目标靠 allow 网段放行，不再把例外编译进每个部署。受影响测试现显式声明允许
+回环，反而证明守卫生效。
+
+**配置为 per-module 而非全局**：最小权限——允许 OIDC IdP 访问某内网段不应自动让 SCIM 也能
+到达；审计要求的「统一」指机制统一（都走 httpx），已满足。与既有 per-module `http_timeout`
+一致。
+
+### 附带完成（原属批 2）
+- 七个 owner 的 `ErasePrincipalData` 原为 0% 单元覆盖且**全部缺 `lifecycle_test.go`**
+  （违反测试文件一一对应约定）。已补 authn / core / organization 三个，含守卫分支、
+  填充数据删除、无关主体保留、策略修订号 bump 与「不殃及无关租户」。余四个待补。
+- `core/model` 的表名契约清单漏了 `FieldPolicy`（加字段权限时未同步），已补，13→14。
+- 修复既有时间 flake `TestRewrapSecretsCommandRefusesToPrintADateThatReadsAsPermission`：
+  断言用「今天」而 `clear_after` 是 now+90min，UTC 午夜前 90 分钟内必挂。改为让 seed 返回
+  实际写入的过期时刻再断言，保持精确、不削弱。
+
+## Verification（2026-09-07，实测）
+`make ci` **EXIT=0**：fmt-check / lint / test-coverage / test-integration / build /
+openapi-check 全绿。总覆盖率 90.1%，**每个模块均 ≥90%**（core 89.6→90.0，
+organization 89.8→90.0+）。tests 子模块 lint 独立跑 EXIT=0。
+审计所列四项红线门禁已全部关闭。
+
 ## Next Action
-批 1 涉及生产代码与架构性变更（统一出站 transport、SCIM deprovision 任务持久化、
-platform-only lifecycle API/UI），按 CLAUDE.md §3 须先出设计并获确认，再动手。
+批 1 余项：P0-2 SCIM 删除责任链（D23：默认 fail closed + 显式 deprovision 任务）；
+P0-3 platform-only lifecycle API→OpenAPI→前端类型→UI（内部串行）；补齐其余四个 owner 的
+`lifecycle_test.go` 与七 owner 填充数据/并发验收（10.8）。
 
 ## Verification
 Build: NOT_RUN（本轮改动后）/ 主模块 lint: NOT_RUN / tests lint: PASS /

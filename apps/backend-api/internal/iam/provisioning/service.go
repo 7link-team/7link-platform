@@ -1,6 +1,7 @@
 package provisioning
 
 import (
+	"7link.com/platform/pkg/extension/httpx"
 	"7link.com/platform/pkg/extension/keyringx"
 	"context"
 	"crypto/rand"
@@ -35,6 +36,7 @@ type Service struct {
 	groups   organization.GroupProvisioner
 	keys     *keyringx.Keyring
 	http     *http.Client
+	outbound httpx.Policy
 	now      func() time.Time
 
 	pushMu    sync.Mutex
@@ -46,7 +48,7 @@ type pushLock struct {
 	refs int
 }
 
-func NewService(runtime *appenv.Runtime, appender audit.Appender, ids guid.Source, identities identity.IdentityProvisioner, groups organization.GroupProvisioner, actors identity.ServiceAccountValidator, fields authz.FieldPermissionChecker, cfg Config, keys *keyringx.Keyring) *Service {
+func NewService(runtime *appenv.Runtime, appender audit.Appender, ids guid.Source, identities identity.IdentityProvisioner, groups organization.GroupProvisioner, actors identity.ServiceAccountValidator, fields authz.FieldPermissionChecker, cfg Config, keys *keyringx.Keyring, outbound httpx.Policy) *Service {
 	if runtime == nil || runtime.Database() == nil || runtime.Database().Write() == nil || appender == nil || ids == nil || identities == nil || groups == nil {
 		panic("provisioning service requires runtime database, audit appender, id generator, identity provisioner, and group provisioner")
 	}
@@ -57,7 +59,8 @@ func NewService(runtime *appenv.Runtime, appender audit.Appender, ids guid.Sourc
 	return &Service{
 		runtime: runtime, repo: NewRepository(runtime), appender: appender, ids: ids,
 		identity: identities, groups: groups, actors: actors, fields: fields, keys: keys,
-		http: &http.Client{Timeout: timeout}, now: time.Now, pushLocks: make(map[string]*pushLock),
+		http: httpx.NewClient(timeout, outbound), outbound: outbound,
+		now: time.Now, pushLocks: make(map[string]*pushLock),
 	}
 }
 

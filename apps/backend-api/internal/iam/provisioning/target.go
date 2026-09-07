@@ -1,6 +1,7 @@
 package provisioning
 
 import (
+	"7link.com/platform/pkg/extension/httpx"
 	"7link.com/platform/pkg/extension/keyringx"
 	"bytes"
 	"context"
@@ -93,7 +94,7 @@ func (s *Service) ListTargets(ctx context.Context, tenantID guid.ID) ([]Target, 
 
 func (s *Service) CreateTarget(ctx context.Context, tenantID guid.ID, name, baseURL, bearerToken string, serviceAccountID *guid.ID) (TargetSecret, error) {
 	name, baseURL, bearerToken = strings.TrimSpace(name), strings.TrimSpace(baseURL), strings.TrimSpace(bearerToken)
-	if tenantID.Zero() || name == "" || len(name) > 128 || bearerToken == "" || len(bearerToken) > 4096 || !validTargetURL(baseURL) {
+	if tenantID.Zero() || name == "" || len(name) > 128 || bearerToken == "" || len(bearerToken) > 4096 || !validTargetURL(baseURL, s.outbound) {
 		return TargetSecret{}, ErrInvalidTarget
 	}
 	if s.keys == nil {
@@ -138,7 +139,7 @@ func (s *Service) CreateTarget(ctx context.Context, tenantID guid.ID, name, base
 
 func (s *Service) ReplaceTarget(ctx context.Context, tenantID, id guid.ID, name, baseURL, status, bearerToken string, version int64, serviceAccountID *guid.ID) (Target, error) {
 	name, baseURL, status, bearerToken = strings.TrimSpace(name), strings.TrimSpace(baseURL), strings.TrimSpace(status), strings.TrimSpace(bearerToken)
-	if tenantID.Zero() || id.Zero() || name == "" || len(name) > 128 || !validTargetURL(baseURL) || len(bearerToken) > 4096 || version < 1 || (status != TargetActive && status != TargetDisabled) {
+	if tenantID.Zero() || id.Zero() || name == "" || len(name) > 128 || !validTargetURL(baseURL, s.outbound) || len(bearerToken) > 4096 || version < 1 || (status != TargetActive && status != TargetDisabled) {
 		return Target{}, ErrInvalidTarget
 	}
 	now := s.now().UTC().Truncate(time.Millisecond)
@@ -492,7 +493,7 @@ func targetFromRow(row targetRow) Target {
 	return Target{ID: row.ID.String(), TenantID: row.TenantID.String(), Name: row.Name, BaseURL: row.BaseURL, Status: row.Status, Version: row.Version, CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC(), ServiceAccountID: row.ServiceAccountID}
 }
 
-func validTargetURL(raw string) bool {
+func validTargetURL(raw string, outbound httpx.Policy) bool {
 	if raw == "" || len(raw) > 1024 {
 		return false
 	}
@@ -500,14 +501,11 @@ func validTargetURL(raw string) bool {
 	if err != nil || u.Host == "" || u.User != nil || u.Fragment != "" {
 		return false
 	}
-	switch u.Scheme {
-	case "https":
-		return true
-	case "http":
-		return u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1" || u.Hostname() == "::1"
-	default:
-		return false
-	}
+	// The loopback exception this used to hard-code is deployment configuration
+	// now: a local directory is reachable when outbound_allow_networks names it,
+	// which keeps the convenience for whoever needs it without compiling the
+	// hole into every deployment.
+	return outbound.ValidateURL(raw) == nil
 }
 
 func trimRemoteDetail(body []byte) string {

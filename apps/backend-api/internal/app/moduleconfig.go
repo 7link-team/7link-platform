@@ -129,6 +129,8 @@ func iamProvisioningConfig(c AppConfig) provisioning.Config {
 		Config:        iamActivationConfig(c),
 		EncryptionKey: c.Provisioning.EncryptionKey, EncryptionKeyFile: c.Provisioning.EncryptionKeyFile,
 		HTTPTimeout: c.Provisioning.HTTPTimeout, SyncInterval: c.Provisioning.SyncInterval,
+		OutboundAllowPlaintext: c.Provisioning.OutboundAllowPlaintext,
+		OutboundAllowNetworks:  c.Provisioning.OutboundAllowNetworks,
 	}
 }
 
@@ -141,6 +143,8 @@ func iamFederationConfig(c AppConfig) federation.Config {
 		Config: module.Config{Enabled: c.Federation.Enabled}, EncryptionKey: c.Federation.EncryptionKey,
 		EncryptionKeyFile: c.Federation.EncryptionKeyFile, HTTPTimeout: c.Federation.HTTPTimeout,
 		ClockSkew: c.Federation.ClockSkew, StateTTL: c.Federation.StateTTL,
+		OutboundAllowPlaintext: c.Federation.OutboundAllowPlaintext,
+		OutboundAllowNetworks:  c.Federation.OutboundAllowNetworks,
 		SAML: federation.SAMLConfig{
 			Enabled: c.Federation.SAML.Enabled, SigningKeyFile: c.Federation.SAML.SigningKeyFile,
 			CertificateFile: c.Federation.SAML.CertificateFile, LoginPath: c.Federation.SAML.LoginPath,

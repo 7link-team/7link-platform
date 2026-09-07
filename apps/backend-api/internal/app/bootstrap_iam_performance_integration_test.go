@@ -25,6 +25,7 @@ import (
 	"7link.com/platform/internal/iam/provisioning"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/httpx"
 	"7link.com/platform/pkg/module"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -330,7 +331,7 @@ func newIAMPerformancePaths(t *testing.T, fixture *iamTenantFixture, bulkOperati
 	require.NoError(t, err)
 	fields, err := module.Resolve[core.AuthorizationEvaluator](services)
 	require.NoError(t, err)
-	scim := provisioning.NewService(fixture.app.runtime, appender, ids, identities, groups, actors, fields, provisioning.Config{}, nil)
+	scim := provisioning.NewService(fixture.app.runtime, appender, ids, identities, groups, actors, fields, provisioning.Config{}, nil, httpx.Policy{})
 	response := fixture.request(t, http.MethodPost, "/iam/service-accounts", iamTenantA, fixture.tokenA,
 		map[string]any{"login_name": "performance-scim-actor", "display_name": "Performance SCIM actor"}, nil)
 	requireStatus(t, http.StatusCreated, response)

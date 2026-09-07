@@ -132,7 +132,14 @@ func TestProvisioningModuleSyncLoopReconcilesActiveTenants(t *testing.T) {
 	require.NoError(t, err)
 	before := provider.count()
 
-	instance := NewModule(env.runtime, Config{SyncInterval: 5 * time.Millisecond})
+	// The fake directory listens on loopback, so this module is configured the
+	// way a deployment with an internal directory is. It also proves the policy
+	// reaches the client through Initialize rather than only through NewService.
+	instance := NewModule(env.runtime, Config{
+		SyncInterval:           5 * time.Millisecond,
+		OutboundAllowPlaintext: true,
+		OutboundAllowNetworks:  []string{"127.0.0.0/8", "::1/128"},
+	})
 	instance.registrar = provisioningRuntimeRegistrar()
 	instance.ids, instance.appender, instance.identities, instance.groups = env.service.ids, env.service.appender, env.service.identity, env.service.groups
 	instance.actors = env.service.actors

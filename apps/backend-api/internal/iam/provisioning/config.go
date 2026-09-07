@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"7link.com/platform/pkg/extension/httpx"
 	"7link.com/platform/pkg/extension/keyringx"
 	"7link.com/platform/pkg/extension/secretx"
 	"7link.com/platform/pkg/module"
@@ -30,7 +31,12 @@ type Config struct {
 	PreviousEncryptionKeys     []string      `mapstructure:"previous_encryption_keys" description:"retired base64 32-byte provisioning keys that still open stored tokens; prefer previous_encryption_key_files" secret:"true"`
 	PreviousEncryptionKeyFiles []string      `mapstructure:"previous_encryption_key_files" description:"files containing retired base64 32-byte provisioning keys"`
 	HTTPTimeout                time.Duration `mapstructure:"http_timeout" description:"outbound SCIM request timeout" default:"10s"`
-	SyncInterval               time.Duration `mapstructure:"sync_interval" description:"background reconciliation interval for outbound SCIM targets; 0 disables" default:"0"`
+	// A tenant names its own SCIM target, so the addresses reached on its
+	// behalf are tenant-controlled. These are per-module on purpose: permitting
+	// an internal SCIM directory should not also permit federation to reach it.
+	OutboundAllowPlaintext bool          `mapstructure:"outbound_allow_plaintext" description:"permit http:// SCIM targets; leave false to require https" default:"false"`
+	OutboundAllowNetworks  []string      `mapstructure:"outbound_allow_networks" description:"CIDR blocks a SCIM target may resolve to despite being private or reserved"`
+	SyncInterval           time.Duration `mapstructure:"sync_interval" description:"background reconciliation interval for outbound SCIM targets; 0 disables" default:"0"`
 }
 
 // ResolveKeyring loads the configured provisioning keys so startup fails fast
@@ -41,6 +47,16 @@ type Config struct {
 // Previous keys without an active one are refused rather than ignored. That
 // configuration is a rotation someone got halfway through, and quietly
 // disabling outbound provisioning is not what they were trying to do.
+// ResolveOutboundPolicy loads the egress rules at startup so a malformed CIDR
+// fails fast rather than at the first push to a directory.
+func ResolveOutboundPolicy(cfg Config) (httpx.Policy, error) {
+	policy, err := httpx.ParsePolicy(cfg.OutboundAllowPlaintext, cfg.OutboundAllowNetworks)
+	if err != nil {
+		return httpx.Policy{}, fmt.Errorf("provisioning outbound policy: %w", err)
+	}
+	return policy, nil
+}
+
 func ResolveKeyring(cfg Config) (*keyringx.Keyring, error) {
 	active, err := secretx.Resolve("provisioning.encryption_key", cfg.EncryptionKey, cfg.EncryptionKeyFile, 4096)
 	if err != nil {

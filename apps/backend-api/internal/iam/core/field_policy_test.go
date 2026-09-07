@@ -214,3 +214,34 @@ func TestFieldPolicyRejectsMalformedStorageAndInvalidScope(t *testing.T) {
 	_, err = h.authorizer.FieldConstraint(t.Context(), 1, 0, "todo", 11)
 	assert.ErrorIs(t, err, ErrUnavailable)
 }
+
+// TestProfileConstraintRefusesATokenForAnotherTenant covers the guard that runs
+// before any policy is loaded: the field constraint describes what one person
+// may see of a tenant, so serving it against a token issued for a different
+// tenant would answer a question the caller never had standing to ask.
+func TestProfileConstraintRefusesATokenForAnotherTenant(t *testing.T) {
+	service := &Service{}
+
+	_, err := service.profileConstraint(t.Context(), guid.ID(1))
+	assert.ErrorIs(t, err, authz.ErrFieldDenied, "a request with no claims has no profile to constrain")
+
+	mismatched := authn.WithClaims(t.Context(), &authn.Claims{TenantID: guid.ID(2), PrincipalID: guid.ID(9)})
+	_, err = service.profileConstraint(mismatched, guid.ID(1))
+	assert.ErrorIs(t, err, authz.ErrFieldDenied, "a token for another tenant must not describe this one")
+}
+
+// TestRequireMemberProfileWritesChecksOnlySubmittedFields keeps the check tied
+// to what the caller actually sent: demanding permission for a field nobody
+// submitted would deny edits that change nothing about it.
+func TestRequireMemberProfileWritesChecksOnlySubmittedFields(t *testing.T) {
+	denied := authz.FieldConstraint{Fields: map[string]authz.FieldDecision{
+		"display_name": {Update: false},
+		"email":        {Update: true},
+	}}
+
+	assert.ErrorIs(t, requireMemberProfileWrites([]byte(`{"display_name":"New"}`), denied, false), authz.ErrFieldDenied)
+	assert.NoError(t, requireMemberProfileWrites([]byte(`{"email":"person@example.test"}`), denied, false))
+	assert.NoError(t, requireMemberProfileWrites([]byte(`{"note":"unrelated"}`), denied, false),
+		"a field outside the profile set is not this check's business")
+	assert.ErrorIs(t, requireMemberProfileWrites([]byte(`not json`), denied, false), ErrInvalidArgument)
+}

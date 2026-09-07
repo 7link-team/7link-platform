@@ -94,7 +94,10 @@ func keepDryRunFromLeaking(t *testing.T) {
 // seedDerivedDigestsCLI writes the values no rewrap can convert. They are
 // one-way digests rather than ciphertext, so plain strings are exactly what
 // these tables hold and no key is involved in putting them there.
-func seedDerivedDigestsCLI(t *testing.T, configPath string, recoveryCodes int, verification bool) {
+// It returns the expiry it wrote so a caller can assert on that instant
+// rather than on today's date: the two differ for the ninety minutes before
+// midnight UTC, which used to fail this suite once a day.
+func seedDerivedDigestsCLI(t *testing.T, configPath string, recoveryCodes int, verification bool) time.Time {
 	t.Helper()
 	db, err := (gormx.Datasource{
 		Type: "sqlite", Writable: true,
@@ -124,7 +127,9 @@ func seedDerivedDigestsCLI(t *testing.T, configPath string, recoveryCodes int, v
 			"not-a-real-verification-digest", principalID, "ops@example.test",
 			now, now.Add(90*time.Minute), "000000",
 		).Error)
+		return now.Add(90 * time.Minute)
 	}
+	return time.Time{}
 }
 
 // TestRewrapSecretsCommandIsWiredIntoTheIAMGroup keeps the command where an
@@ -188,13 +193,13 @@ func TestRewrapSecretsCommandRefusesToPrintADateThatReadsAsPermission(t *testing
 
 	t.Run("everything outstanding expires", func(t *testing.T) {
 		configPath := prepareRewrapCLIDatabase(t)
-		seedDerivedDigestsCLI(t, configPath, 0, true)
+		expiry := seedDerivedDigestsCLI(t, configPath, 0, true)
 
 		output, err := executeCommand("iam", "rewrap-secrets", "--config", configPath, "--dry-run")
 		require.NoError(t, err)
 		assert.Contains(t, output, "outstanding: 1")
 		assert.Contains(t, output, "retired_keys_still_needed: true")
-		assert.Contains(t, output, "clear_after: "+time.Now().UTC().Format("2006-01-02"),
+		assert.Contains(t, output, "clear_after: "+expiry.Format("2006-01-02"),
 			"a store that does expire earns a date, because waiting is a real plan")
 		assert.NotContains(t, output, "clear_after: never")
 	})

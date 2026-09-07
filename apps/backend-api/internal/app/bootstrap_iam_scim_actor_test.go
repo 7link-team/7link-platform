@@ -51,12 +51,18 @@ func (f *iamTenantFixture) actorProvisioningService(t *testing.T, appender audit
 		appender, err = module.Resolve[audit.Appender](services)
 		require.NoError(t, err)
 	}
-	config := provisioning.Config{EncryptionKey: f.app.config.Provisioning.EncryptionKey}
+	config := provisioning.Config{
+		EncryptionKey:          f.app.config.Provisioning.EncryptionKey,
+		OutboundAllowPlaintext: true,
+		OutboundAllowNetworks:  []string{"127.0.0.0/8", "::1/128"},
+	}
 	keys, err := provisioning.ResolveKeyring(config)
 	require.NoError(t, err)
 	fields, err := module.Resolve[core.AuthorizationEvaluator](services)
 	require.NoError(t, err)
-	return provisioning.NewService(f.app.runtime, appender, ids, identities, groups, actors, fields, config, keys)
+	outbound, err := provisioning.ResolveOutboundPolicy(config)
+	require.NoError(t, err)
+	return provisioning.NewService(f.app.runtime, appender, ids, identities, groups, actors, fields, config, keys, outbound)
 }
 
 func (f *iamTenantFixture) runSCIMActorLifecycle(t *testing.T) {
