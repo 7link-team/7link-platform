@@ -166,6 +166,31 @@
 - 开放身份连接协议的 `prompt=none`、`azp` 等合规缺口仍需处理，不能在未完成一致性验证时宣称完整标准提供方。
 - 与本次请求无关的商城、生产部署和其他模块改造不在范围内。
 
+## 批 3 发布矩阵进展（2026-09-08）
+
+已实测通过：
+- race：`go test -race -count=1 ./...` → **0 DATA RACE**，74 包通过、31 包无测试。
+- generate 零差异：`make generate` 后工作区无变化。
+- 真实 MySQL 8.4：`make test-mysql8` 六组全绿。前提是先修了 D29——门禁里那条
+  `--execute="GRANT ..."` 在本仓 `iam-preflight` 生成的远端 ssh 传输下会被重新分词，
+  该门禁在这套传输下从未通过过；已改为走 stdin。
+- schema.lock：**已冻结 201/201** 个 IAM 迁移文件（`--write` 的前提「真实 MySQL 门禁通过」
+  至此才真正成立）。
+- 恢复演练：在 10.0.0.100 的独立 MySQL 8.4.11 上实跑三项，证据见
+  `apps/backend-api/docs/runbook-migration-recovery.md`：单模块 15→14→15 数据存活；
+  全量 reverse-DAG 回滚到 0（13 模块）再前滚全 clean；219KB/88 表备份恢复耗时 1 秒，
+  58 触发器与数据回归，`migrate validate` 全 clean。演练容器已删，未触碰既有归档容器。
+
+未完成（对应上节第 5、6 条）：
+- **RTO/RPO 未定**：演练耗时是观测值不是目标值，须服务负责人决定，runbook 已显式声明不代表承诺。
+- **擦除对账未演练**：runbook 已写出程序与依据——墓碑（`iam_principal_lifecycles`）、
+  擦除审计事件（`iam_audit_events`）与被擦数据同在一个备份范围内，已用 dump 文件核实。
+  故恢复跨越擦除点的备份会同时复活 PII 并抹掉「本应擦除」的记录，唯一存活记录是外部审计归档。
+  端到端演练需要配好对象存储归档的环境。
+- **UAT 未验收**：`scripts/iam-uat.mjs:51,53` 要求无 `DOCKER_HOST`/`DOCKER_CONTEXT` 且
+  docker context 为 `unix://`。本机无 docker 客户端；10.0.0.100 满足 docker 条件但无
+  Go/Node/Bun/make 与仓库，需先为该主机装工具链——属改动用户机器，待用户决定。
+
 ## 提交边界与下一步
 
 - 用户已授权全部可交付改动提交并推送。逐文件检查并显式暂存，不使用 `git add .` 或 `git add -A`，不丢弃已有改动，不强制推送。
