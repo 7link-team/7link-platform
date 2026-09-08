@@ -9,6 +9,7 @@ import (
 
 	"7link.com/platform/internal/iam/core/model"
 	"7link.com/platform/internal/infra/guid"
+	platformi18n "7link.com/platform/pkg/i18n"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -247,7 +248,8 @@ func (r *Repository) UpdateMenu(ctx context.Context, menu Menu) (Menu, error) {
 		row := menuToRow(menu)
 		updates := map[string]any{
 			"parent_id": row.ParentID, "label": row.Label, "route": row.Route,
-			"icon": row.Icon, "sort_order": row.SortOrder,
+			"translations": row.Translations,
+			"icon":         row.Icon, "sort_order": row.SortOrder,
 			"permission_code": row.PermissionCode, "status": row.Status,
 			"updated_at": repo.now().UTC().Truncate(time.Millisecond),
 		}
@@ -318,6 +320,7 @@ func menuToRow(menu Menu) model.Menu {
 	return model.Menu{
 		TenantID: menu.TenantID, ID: menu.ID, ParentID: parentID,
 		Label: menu.Label, Route: route, Icon: menu.Icon, SortOrder: menu.SortOrder,
+		Translations:   platformi18n.MarshalField(menu.Translations),
 		PermissionCode: menu.PermissionCode, Status: string(menu.Status),
 	}
 }
@@ -328,6 +331,7 @@ func menuFromRow(row *model.Menu) Menu {
 		SortOrder: row.SortOrder, PermissionCode: row.PermissionCode, Status: MenuStatus(row.Status),
 		CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC(),
 	}
+	menu.Translations = platformi18n.ParseField(row.Translations)
 	if row.ParentID != nil {
 		menu.ParentID = *row.ParentID
 	}

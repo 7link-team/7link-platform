@@ -24,6 +24,7 @@ type Menu struct {
 	ID             guid.ID   `gorm:"column:id;primaryKey;autoIncrement:false"`
 	ParentID       *guid.ID  `gorm:"column:parent_id"`
 	Label          string    `gorm:"column:label;size:128;not null"`
+	Translations   string    `gorm:"column:translations;type:text;not null"`
 	Route          *string   `gorm:"column:route;size:512"`
 	Icon           string    `gorm:"column:icon;size:64;not null"`
 	SortOrder      int       `gorm:"column:sort_order;not null"`

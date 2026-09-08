@@ -41,6 +41,25 @@ export const router = createBrowserRouter([
         ),
         children: [
           {
+            path: "/account",
+            lazy: async () => ({
+              Component: (await import("./app/account/layout")).default,
+            }),
+            children: [
+              { index: true, element: <Navigate to="profile" replace /> },
+              ...["profile", "security", "mfa"].map((path) => ({
+                path,
+                lazy: async () => ({
+                  Component: (await import("./app/security/page")).default,
+                }),
+              })),
+            ],
+          },
+          {
+            path: "/security",
+            element: <Navigate to="/account/security" replace />,
+          },
+          {
             path: "/login",
             lazy: async () => ({
               Component: (await import("./app/login/page")).default,
@@ -86,6 +105,12 @@ export const router = createBrowserRouter([
                 path: "/iam/entities",
                 lazy: async () => ({
                   Component: (await import("./app/entities/page")).default,
+                }),
+              },
+              {
+                path: "/iam/entities/:entityID/:view",
+                lazy: async () => ({
+                  Component: (await import("./app/entities/workspace")).default,
                 }),
               },
               {
@@ -163,12 +188,6 @@ export const router = createBrowserRouter([
                 lazy: async () => ({
                   Component: (await import("./app/audit-governance/page"))
                     .default,
-                }),
-              },
-              {
-                path: "/security",
-                lazy: async () => ({
-                  Component: (await import("./app/security/page")).default,
                 }),
               },
             ],

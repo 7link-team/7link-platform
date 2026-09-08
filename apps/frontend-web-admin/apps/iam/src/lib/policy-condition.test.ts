@@ -25,7 +25,7 @@ describe("trusted context conditions", () => {
         { between_time: ["08:00", "18:00", "Asia/Shanghai"] },
       ],
     })
-    expect(trustedContextConditionSummary(condition)).toBe(
+    expect(trustedContextConditionSummary(condition, "Unrestricted")).toBe(
       "ACR >= 2 AND client.id = console AND network.zone = corp AND 08:00-18:00 Asia/Shanghai"
     )
     expect(trustedContextConditionDraft(condition, "UTC")).toEqual({
@@ -40,6 +40,9 @@ describe("trusted context conditions", () => {
 
   it("omits an unrestricted condition", () => {
     expect(trustedContextCondition("", "", "", "", "", "UTC")).toBeUndefined()
-    expect(trustedContextConditionSummary(undefined)).toBe("不限")
+    expect(trustedContextConditionSummary(undefined, "不限")).toBe("不限")
+    expect(trustedContextConditionSummary(undefined, "Unrestricted")).toBe(
+      "Unrestricted"
+    )
   })
 })

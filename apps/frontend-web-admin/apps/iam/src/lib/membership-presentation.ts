@@ -6,10 +6,10 @@ export interface MembershipDates {
 export function membershipState(
   member: MembershipDates,
   now = Date.now()
-): "待生效" | "有效" | "已结束" {
-  if (member.starts_at && Date.parse(member.starts_at) > now) return "待生效"
-  if (member.ends_at && Date.parse(member.ends_at) <= now) return "已结束"
-  return "有效"
+): "scheduled" | "active" | "ended" {
+  if (member.starts_at && Date.parse(member.starts_at) > now) return "scheduled"
+  if (member.ends_at && Date.parse(member.ends_at) <= now) return "ended"
+  return "active"
 }
 
 export function toDateTimeLocal(value?: string): string {
@@ -25,13 +25,17 @@ export function toISOString(value: string): string | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString()
 }
 
-export function membershipWindow(member: MembershipDates): string {
+export function membershipWindow(
+  member: MembershipDates,
+  locale: string,
+  unbounded: string
+): string {
   const format = (value?: string) =>
     value
-      ? new Intl.DateTimeFormat("zh-CN", {
+      ? new Intl.DateTimeFormat(locale, {
           dateStyle: "medium",
           timeStyle: "short",
         }).format(new Date(value))
-      : "不限"
+      : unbounded
   return `${format(member.starts_at)} - ${format(member.ends_at)}`
 }

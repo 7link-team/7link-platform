@@ -1,4 +1,6 @@
+import { useTranslations, useLocale } from "@workspace/ui/i18n/intl-provider"
 import { useEffect, useState, type FormEvent } from "react"
+import { useLocation } from "react-router"
 import {
   CheckCircle2,
   Copy,
@@ -57,10 +59,20 @@ type PasskeyDialog =
   | null
 
 export default function SecurityPage() {
+  const t = useTranslations("iam")
+
+  const { pathname } = useLocation()
+  const section =
+    pathname === "/account/profile"
+      ? "profile"
+      : pathname === "/account/mfa"
+        ? "mfa"
+        : "security"
   const { session } = useAuth()
   const [sessions, setSessions] = useState<BrowserSession[]>([])
   const [mfa, setMfa] = useState<MfaStatus | null>(null)
   const [passkeys, setPasskeys] = useState<Passkey[]>([])
+  const [passkeyError, setPasskeyError] = useState("")
   const [passwordOpen, setPasswordOpen] = useState(false)
   const [mfaDialog, setMfaDialog] = useState<MfaDialog>(null)
   const [passkeyDialog, setPasskeyDialog] = useState<PasskeyDialog>(null)
@@ -71,37 +83,42 @@ export default function SecurityPage() {
   const [notice, setNotice] = useState("")
 
   const refresh = async () => {
-    const [nextSessions, nextMfa, nextPasskeys] = await Promise.all([
-      iamApi.sessions(),
-      iamApi.mfaStatus(),
-      iamApi.passkeys(),
-    ])
-    setSessions(nextSessions)
-    setMfa(nextMfa)
-    setPasskeys(nextPasskeys)
+    if (section === "mfa") setMfa(await iamApi.mfaStatus())
+    if (section === "security") {
+      await Promise.all([
+        iamApi.sessions().then(setSessions),
+        iamApi.passkeys().then(setPasskeys),
+      ])
+    }
   }
 
   useEffect(() => {
     let active = true
-    void Promise.all([
-      iamApi.sessions(),
-      iamApi.mfaStatus(),
-      iamApi.passkeys(),
-    ]).then(
-      ([nextSessions, nextMfa, nextPasskeys]) => {
-        if (!active) return
-        setSessions(nextSessions)
-        setMfa(nextMfa)
-        setPasskeys(nextPasskeys)
-      },
-      (cause: Error) => {
-        if (active) setError(cause.message)
-      }
-    )
+    const failed = (cause: Error) => {
+      if (active) setError(cause.message)
+    }
+    if (section === "security") {
+      void iamApi.sessions().then((value) => {
+        if (active) setSessions(value)
+      }, failed)
+      void iamApi.passkeys().then(
+        (value) => {
+          if (active) setPasskeys(value)
+        },
+        (cause: Error) => {
+          if (active) setPasskeyError(cause.message)
+        }
+      )
+    }
+    if (section === "mfa") {
+      void iamApi.mfaStatus().then((value) => {
+        if (active) setMfa(value)
+      }, failed)
+    }
     return () => {
       active = false
     }
-  }, [])
+  }, [section])
 
   const run = async (operation: () => Promise<void>) => {
     setBusy(true)
@@ -122,7 +139,7 @@ export default function SecurityPage() {
       if (session.current) window.location.assign("/login")
       else {
         await refresh()
-        setNotice("会话已撤销")
+        setNotice(t("sessionRevoked"))
       }
     })
 
@@ -135,7 +152,7 @@ export default function SecurityPage() {
   const sendEmailVerification = () =>
     run(async () => {
       await iamApi.startEmailVerification()
-      setNotice("验证邮件已进入发送队列")
+      setNotice(t("emailQueued"))
     })
 
   const changePassword = (event: FormEvent<HTMLFormElement>) => {
@@ -149,7 +166,7 @@ export default function SecurityPage() {
       })
       form.reset()
       setPasswordOpen(false)
-      setNotice("密码已更新，其他设备会话已撤销")
+      setNotice(t("passwordUpdated"))
       await refresh()
     })
   }
@@ -203,7 +220,7 @@ export default function SecurityPage() {
       } else {
         await iamApi.disableTotp(input)
         setMfaDialog(null)
-        setNotice("多因素认证已停用，其他设备会话已撤销")
+        setNotice(t("mfaDisabled"))
       }
       form.reset()
       await refresh()
@@ -233,7 +250,7 @@ export default function SecurityPage() {
       })
       form.reset()
       setPasskeyDialog(null)
-      setNotice("通行密钥已添加")
+      setNotice(t("passkeyAdded"))
       await refresh()
     })
   }
@@ -247,7 +264,7 @@ export default function SecurityPage() {
     void run(async () => {
       await iamApi.renamePasskey(id, String(data.get("name") ?? "").trim())
       setPasskeyDialog(null)
-      setNotice("通行密钥名称已更新")
+      setNotice(t("passkeyRenamed"))
       await refresh()
     })
   }
@@ -262,7 +279,7 @@ export default function SecurityPage() {
       await iamApi.deletePasskey(id, String(data.get("current_password") ?? ""))
       form.reset()
       setPasskeyDialog(null)
-      setNotice("通行密钥已删除，其他设备会话已撤销")
+      setNotice(t("passkeyDeleted"))
       await refresh()
     })
   }
@@ -270,46 +287,80 @@ export default function SecurityPage() {
   return (
     <>
       <PageHeader
-        title="安全中心"
-        description="管理密码、通行密钥、多因素认证和已登录设备"
+        title={
+          section === "profile"
+            ? t("profile")
+            : section === "mfa"
+              ? t("twoFactor")
+              : t("security")
+        }
         action={
-          <Button onClick={() => setPasswordOpen(true)}>
-            <KeyRound />
-            修改密码
-          </Button>
+          section === "security" ? (
+            <Button onClick={() => setPasswordOpen(true)}>
+              <KeyRound />
+              {t("changePassword")}
+            </Button>
+          ) : undefined
         }
       />
       {error && <Alert>{error}</Alert>}
       {notice && <SuccessNotice>{notice}</SuccessNotice>}
 
-      <EmailSection
-        session={session}
-        busy={busy}
-        onSend={sendEmailVerification}
-      />
+      {section === "profile" && (
+        <>
+          <dl className="mb-5 grid gap-4 border-b py-5 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-muted-foreground">{t("username")}</dt>
+              <dd className="mt-1 break-all">
+                {session?.preferred_username ?? t("notVisible")}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">{t("accountId")}</dt>
+              <dd className="mt-1 font-mono break-all">{session?.subject}</dd>
+            </div>
+          </dl>
+          <EmailSection
+            session={session}
+            busy={busy}
+            onSend={sendEmailVerification}
+          />
+        </>
+      )}
 
-      <MfaSection
-        status={mfa}
-        busy={busy}
-        onEnable={() => setMfaDialog("enroll-password")}
-        onRegenerate={() => setMfaDialog("regenerate")}
-        onDisable={() => setMfaDialog("disable")}
-      />
+      {section === "mfa" && (
+        <MfaSection
+          status={mfa}
+          busy={busy}
+          onEnable={() => setMfaDialog("enroll-password")}
+          onRegenerate={() => setMfaDialog("regenerate")}
+          onDisable={() => setMfaDialog("disable")}
+        />
+      )}
 
-      <PasskeySection
-        passkeys={passkeys}
-        busy={busy}
-        onRegister={() => setPasskeyDialog({ type: "register" })}
-        onRename={(passkey) => setPasskeyDialog({ type: "rename", passkey })}
-        onDelete={(passkey) => setPasskeyDialog({ type: "delete", passkey })}
-      />
+      {section === "security" && (
+        <>
+          <PasskeySection
+            passkeys={passkeys}
+            error={passkeyError}
+            busy={busy}
+            onRegister={() => setPasskeyDialog({ type: "register" })}
+            onRename={(passkey) =>
+              setPasskeyDialog({ type: "rename", passkey })
+            }
+            onDelete={(passkey) =>
+              setPasskeyDialog({ type: "delete", passkey })
+            }
+          />
 
-      <SessionSection
-        sessions={sessions}
-        busy={busy}
-        onLogoutAll={logoutAll}
-        onRevoke={revoke}
-      />
+          <SessionSection
+            sessions={sessions}
+            busy={busy}
+            onLogoutAll={logoutAll}
+            onRevoke={revoke}
+          />
+        </>
+      )}
 
       <PasswordDialog
         open={passwordOpen}
@@ -349,6 +400,8 @@ function EmailSection({
   busy: boolean
   onSend: () => void
 }) {
+  const t = useTranslations("iam")
+
   const email = session?.email ?? ""
   const verified = Boolean(session?.email_verified)
   const verificationVisible = session?.email_verified !== undefined
@@ -360,26 +413,30 @@ function EmailSection({
             <Mail size={20} />
           </span>
           <div className="min-w-0">
-            <h2 className="font-semibold">主邮箱</h2>
+            <h2 className="font-semibold">{t("primaryEmail")}</h2>
             <p className="mt-1 truncate text-sm text-muted-foreground">
-              {email || (verificationVisible ? "尚未设置邮箱" : "不可见")}
+              {email || (verificationVisible ? t("noEmail") : t("notVisible"))}
             </p>
           </div>
         </div>
         {!verificationVisible ? (
-          <span className="text-sm text-muted-foreground">不可见</span>
+          <span className="text-sm text-muted-foreground">
+            {t("notVisible")}
+          </span>
         ) : verified ? (
           <span className="inline-flex min-h-9 items-center gap-2 text-sm font-medium text-emerald-600 dark:text-emerald-400">
             <CheckCircle2 size={17} />
-            已验证
+            {t("verified")}
           </span>
         ) : email ? (
           <Button disabled={busy} onClick={onSend}>
             <Mail />
-            发送验证邮件
+            {t("sendVerification")}
           </Button>
         ) : (
-          <span className="text-sm text-muted-foreground">未配置</span>
+          <span className="text-sm text-muted-foreground">
+            {t("notConfigured")}
+          </span>
         )}
       </header>
     </section>
@@ -388,17 +445,22 @@ function EmailSection({
 
 function PasskeySection({
   passkeys,
+  error,
   busy,
   onRegister,
   onRename,
   onDelete,
 }: {
   passkeys: Passkey[]
+  error: string
   busy: boolean
   onRegister: () => void
   onRename: (passkey: Passkey) => void
   onDelete: (passkey: Passkey) => void
 }) {
+  const t = useTranslations("iam")
+  const locale = useLocale()
+
   return (
     <section className="mb-5 overflow-hidden rounded-md border bg-card">
       <header className="flex min-h-20 flex-wrap items-center justify-between gap-4 border-b px-5 py-4">
@@ -407,15 +469,15 @@ function PasskeySection({
             <Fingerprint size={20} />
           </span>
           <div>
-            <h2 className="font-semibold">通行密钥</h2>
+            <h2 className="font-semibold">{t("passkeys")}</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              使用设备解锁或安全密钥进行无密码登录
+              {t("passkeyDescription")}
             </p>
           </div>
         </div>
-        <Button disabled={busy} onClick={onRegister}>
+        <Button disabled={busy || Boolean(error)} onClick={onRegister}>
           <Plus />
-          添加通行密钥
+          {t("addPasskey")}
         </Button>
       </header>
       {passkeys.map((passkey) => (
@@ -430,8 +492,12 @@ function PasskeySection({
             <strong className="block truncate text-sm">{passkey.name}</strong>
             <small className="mt-1 block text-xs text-muted-foreground">
               {passkey.last_used_at
-                ? `最近使用 ${new Date(passkey.last_used_at).toLocaleString()}`
-                : `添加于 ${new Date(passkey.created_at).toLocaleString()}`}
+                ? t("lastUsed", {
+                    date: new Date(passkey.last_used_at).toLocaleString(locale),
+                  })
+                : t("addedAt", {
+                    date: new Date(passkey.created_at).toLocaleString(locale),
+                  })}
             </small>
           </div>
           <Button
@@ -440,8 +506,8 @@ function PasskeySection({
             size="icon"
             disabled={busy}
             onClick={() => onRename(passkey)}
-            aria-label={`重命名通行密钥 ${passkey.name}`}
-            title="重命名"
+            aria-label={t("renameNamedPasskey", { name: passkey.name })}
+            title={t("rename")}
           >
             <Pencil />
           </Button>
@@ -451,16 +517,21 @@ function PasskeySection({
             size="icon"
             disabled={busy}
             onClick={() => onDelete(passkey)}
-            aria-label={`删除通行密钥 ${passkey.name}`}
-            title="删除"
+            aria-label={t("deleteNamedPasskey", { name: passkey.name })}
+            title={t("delete")}
           >
             <Trash2 className="text-destructive" />
           </Button>
         </article>
       ))}
-      {passkeys.length === 0 && (
+      {error && (
+        <div className="px-5 py-4">
+          <Alert>{t("passkeyUnavailable")}</Alert>
+        </div>
+      )}
+      {!error && passkeys.length === 0 && (
         <div className="grid min-h-32 place-items-center px-5 text-sm text-muted-foreground">
-          尚未添加通行密钥
+          {t("noPasskeys")}
         </div>
       )}
     </section>
@@ -482,6 +553,8 @@ function PasskeyFlowDialog({
   onRename: (event: FormEvent<HTMLFormElement>) => void
   onDelete: (event: FormEvent<HTMLFormElement>) => void
 }) {
+  const t = useTranslations("iam")
+
   const formID = state ? `passkey-${state.type}-form` : "passkey-form"
   return (
     <Dialog open={state !== null} onOpenChange={onOpenChange}>
@@ -489,17 +562,17 @@ function PasskeyFlowDialog({
         <DialogHeader>
           <DialogTitle>
             {state?.type === "register"
-              ? "添加通行密钥"
+              ? t("addPasskey")
               : state?.type === "rename"
-                ? "重命名通行密钥"
-                : "删除通行密钥"}
+                ? t("renamePasskey")
+                : t("deletePasskey")}
           </DialogTitle>
           <DialogDescription>
             {state?.type === "register"
-              ? "验证当前密码后，按浏览器提示解锁设备或使用安全密钥。"
+              ? t("registerPasskeyDescription")
               : state?.type === "rename"
-                ? "使用易识别的名称区分设备和安全密钥。"
-                : "删除后该凭据立即失效，并撤销其他设备会话。"}
+                ? t("renamePasskeyDescription")
+                : t("deletePasskeyDescription")}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -515,7 +588,7 @@ function PasskeyFlowDialog({
         >
           {state?.type !== "delete" && (
             <div className="grid gap-2">
-              <Label htmlFor={`${formID}-name`}>名称</Label>
+              <Label htmlFor={`${formID}-name`}>{t("name")}</Label>
               <Input
                 id={`${formID}-name`}
                 name="name"
@@ -529,7 +602,10 @@ function PasskeyFlowDialog({
             </div>
           )}
           {state?.type !== "rename" && (
-            <PasswordField id={`${formID}-password`} label="当前密码" />
+            <PasswordField
+              id={`${formID}-password`}
+              label={t("currentPassword")}
+            />
           )}
         </form>
         <DialogFooter>
@@ -538,7 +614,7 @@ function PasskeyFlowDialog({
             variant="outline"
             onClick={() => onOpenChange(false)}
           >
-            取消
+            {t("cancel")}
           </Button>
           <Button
             type="submit"
@@ -546,7 +622,11 @@ function PasskeyFlowDialog({
             variant={state?.type === "delete" ? "destructive" : "default"}
             disabled={busy}
           >
-            {busy ? "处理中" : state?.type === "delete" ? "确认删除" : "保存"}
+            {busy
+              ? t("processing")
+              : state?.type === "delete"
+                ? t("confirmDelete")
+                : t("save")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -567,6 +647,8 @@ function MfaSection({
   onRegenerate: () => void
   onDisable: () => void
 }) {
+  const t = useTranslations("iam")
+
   return (
     <section className="mb-5 overflow-hidden rounded-md border bg-card">
       <header className="flex min-h-20 flex-wrap items-center justify-between gap-4 px-5 py-4">
@@ -576,17 +658,19 @@ function MfaSection({
           </span>
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-semibold">多因素认证</h2>
+              <h2 className="font-semibold">{t("mfa")}</h2>
               {status?.totp_enabled && (
                 <span className="rounded bg-success/10 px-2 py-0.5 text-xs font-semibold text-success">
-                  已启用
+                  {t("enabled")}
                 </span>
               )}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
               {status?.totp_enabled
-                ? `验证器已绑定，剩余 ${status.recovery_codes_remaining} 枚恢复码`
-                : "使用验证器动态码保护账号登录"}
+                ? t("remainingCodes", {
+                    count: status.recovery_codes_remaining,
+                  })
+                : t("mfaDescription")}
             </p>
           </div>
         </div>
@@ -595,17 +679,17 @@ function MfaSection({
             <>
               <Button variant="outline" disabled={busy} onClick={onRegenerate}>
                 <RefreshCw />
-                更新恢复码
+                {t("renewRecoveryCodes")}
               </Button>
               <Button variant="destructive" disabled={busy} onClick={onDisable}>
                 <ShieldOff />
-                停用
+                {t("disable")}
               </Button>
             </>
           ) : (
             <Button disabled={busy || status === null} onClick={onEnable}>
               <Smartphone />
-              启用验证器
+              {t("enableAuthenticator")}
             </Button>
           )}
         </div>
@@ -625,13 +709,15 @@ function SessionSection({
   onLogoutAll: () => void
   onRevoke: (session: BrowserSession) => void
 }) {
+  const t = useTranslations("iam")
+
   return (
     <section className="overflow-hidden rounded-md border bg-card">
       <header className="flex min-h-20 flex-wrap items-center justify-between gap-4 border-b px-5 py-4">
         <div>
-          <h2 className="font-semibold">登录设备</h2>
+          <h2 className="font-semibold">{t("sessions")}</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            发现不认识的设备时立即撤销该会话
+            {t("sessionsDescription")}
           </p>
         </div>
         <Button
@@ -640,7 +726,7 @@ function SessionSection({
           onClick={onLogoutAll}
         >
           <LogOut />
-          退出全部设备
+          {t("logoutAll")}
         </Button>
       </header>
       <div>
@@ -656,7 +742,7 @@ function SessionSection({
           <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
             <div className="text-center">
               <ShieldCheck className="mx-auto mb-2 size-7" />
-              暂无活动会话
+              {t("noSessions")}
             </div>
           </div>
         )}
@@ -676,19 +762,19 @@ function PasswordDialog({
   onOpenChange: (open: boolean) => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
 }) {
+  const t = useTranslations("iam")
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>修改密码</DialogTitle>
-          <DialogDescription>
-            更新后保留当前设备，撤销其他会话和全部刷新令牌
-          </DialogDescription>
+          <DialogTitle>{t("changePassword")}</DialogTitle>
+          <DialogDescription>{t("passwordDescription")}</DialogDescription>
         </DialogHeader>
         <form id="password-form" className="grid gap-4" onSubmit={onSubmit}>
-          <PasswordField id="current-password" label="当前密码" />
+          <PasswordField id="current-password" label={t("currentPassword")} />
           <div className="grid gap-2">
-            <Label htmlFor="new-password">新密码</Label>
+            <Label htmlFor="new-password">{t("newPassword")}</Label>
             <Input
               id="new-password"
               name="new_password"
@@ -706,10 +792,10 @@ function PasswordDialog({
             variant="outline"
             onClick={() => onOpenChange(false)}
           >
-            取消
+            {t("cancel")}
           </Button>
           <Button type="submit" form="password-form" disabled={busy}>
-            {busy ? "保存中" : "保存"}
+            {busy ? t("saving") : t("save")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -738,16 +824,18 @@ function MfaFlowDialog({
   onRegenerate: (event: FormEvent<HTMLFormElement>) => void
   onDisable: (event: FormEvent<HTMLFormElement>) => void
 }) {
+  const t = useTranslations("iam")
+
   return (
     <Dialog open={state !== null} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-xl">
         {state === "enroll-password" && (
           <VerificationForm
             id="mfa-enroll-password-form"
-            title="启用验证器"
-            description="先验证当前密码，然后绑定 TOTP 验证器"
+            title={t("enableAuthenticator")}
+            description={t("enrollDescription")}
             busy={busy}
-            submitLabel="继续"
+            submitLabel={t("continue")}
             passwordOnly
             onSubmit={onBegin}
           />
@@ -768,20 +856,20 @@ function MfaFlowDialog({
         {state === "regenerate" && (
           <VerificationForm
             id="mfa-regenerate-form"
-            title="更新恢复码"
-            description="输入当前密码和动态码或现有恢复码。旧恢复码将立即失效。"
+            title={t("renewRecoveryCodes")}
+            description={t("renewCodesDescription")}
             busy={busy}
-            submitLabel="生成新恢复码"
+            submitLabel={t("generateCodes")}
             onSubmit={onRegenerate}
           />
         )}
         {state === "disable" && (
           <VerificationForm
             id="mfa-disable-form"
-            title="停用多因素认证"
-            description="输入当前密码和动态码或恢复码。停用后账号仅使用密码登录。"
+            title={t("disableMfa")}
+            description={t("disableMfaDescription")}
             busy={busy}
-            submitLabel="确认停用"
+            submitLabel={t("confirmDisable")}
             destructive
             onSubmit={onDisable}
           />
@@ -810,6 +898,8 @@ function VerificationForm({
   destructive?: boolean
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
 }) {
+  const t = useTranslations("iam")
+
   return (
     <>
       <DialogHeader>
@@ -817,7 +907,7 @@ function VerificationForm({
         <DialogDescription>{description}</DialogDescription>
       </DialogHeader>
       <form id={id} className="grid gap-4" onSubmit={onSubmit}>
-        <PasswordField id={`${id}-password`} label="当前密码" />
+        <PasswordField id={`${id}-password`} label={t("currentPassword")} />
         {!passwordOnly && <CodeField id={`${id}-code`} />}
       </form>
       <DialogFooter>
@@ -827,7 +917,7 @@ function VerificationForm({
           variant={destructive ? "destructive" : "default"}
           disabled={busy}
         >
-          {busy ? "处理中" : submitLabel}
+          {busy ? t("processing") : submitLabel}
         </Button>
       </DialogFooter>
     </>
@@ -843,31 +933,33 @@ function EnrollmentForm({
   busy: boolean
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
 }) {
+  const t = useTranslations("iam")
+  const locale = useLocale()
+
   return (
     <>
       <DialogHeader>
-        <DialogTitle>绑定验证器</DialogTitle>
-        <DialogDescription>
-          使用验证器扫描二维码，再输入生成的 6 位动态码
-        </DialogDescription>
+        <DialogTitle>{t("linkAuthenticator")}</DialogTitle>
+        <DialogDescription>{t("scanAuthenticator")}</DialogDescription>
       </DialogHeader>
       <div className="grid gap-4 sm:grid-cols-[176px_minmax(0,1fr)] sm:items-center">
         <div className="mx-auto grid size-44 place-items-center rounded-md border bg-white p-3">
           <QRCodeSVG
             value={enrollment.provisioning_uri}
-            title={`${appName} TOTP 配置二维码`}
+            title={t("totpQr", { app: appName })}
             size={152}
             level="M"
           />
         </div>
         <div className="min-w-0 space-y-2 text-sm">
-          <p className="text-muted-foreground">无法扫码时手动输入密钥：</p>
+          <p className="text-muted-foreground">{t("manualSecret")}</p>
           <code className="block rounded-md border bg-muted px-3 py-2 font-mono text-xs break-all">
             {enrollment.secret}
           </code>
           <p className="text-xs text-muted-foreground">
-            绑定请求在 {new Date(enrollment.expires_at).toLocaleTimeString()}{" "}
-            前有效
+            {t("enrollmentExpiry", {
+              time: new Date(enrollment.expires_at).toLocaleTimeString(locale),
+            })}
           </p>
         </div>
       </div>
@@ -876,7 +968,7 @@ function EnrollmentForm({
       </form>
       <DialogFooter>
         <Button type="submit" form="mfa-confirm-form" disabled={busy}>
-          {busy ? "正在确认" : "确认并启用"}
+          {busy ? t("confirming") : t("confirmEnable")}
         </Button>
       </DialogFooter>
     </>
@@ -890,6 +982,8 @@ function RecoveryCodes({
   codes: string[]
   onDone: () => void
 }) {
+  const t = useTranslations("iam")
+
   const content = `${codes.join("\n")}\n`
   const copy = () => void navigator.clipboard.writeText(content)
   const download = () => {
@@ -905,10 +999,8 @@ function RecoveryCodes({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>保存恢复码</DialogTitle>
-        <DialogDescription>
-          每枚恢复码只能使用一次，关闭后将无法再次查看
-        </DialogDescription>
+        <DialogTitle>{t("saveRecoveryCodes")}</DialogTitle>
+        <DialogDescription>{t("recoveryDescription")}</DialogDescription>
       </DialogHeader>
       <div className="grid grid-cols-1 gap-2 rounded-md border bg-muted/40 p-3 font-mono text-sm sm:grid-cols-2">
         {codes.map((code) => (
@@ -923,17 +1015,17 @@ function RecoveryCodes({
       <div className="flex flex-wrap gap-2">
         <Button type="button" variant="outline" onClick={copy}>
           <Copy />
-          复制
+          {t("copy")}
         </Button>
         <Button type="button" variant="outline" onClick={download}>
           <Download />
-          下载
+          {t("download")}
         </Button>
       </div>
       <DialogFooter>
         <Button type="button" onClick={onDone}>
           <CheckCircle2 />
-          已安全保存
+          {t("safelySaved")}
         </Button>
       </DialogFooter>
     </>
@@ -963,9 +1055,13 @@ function CodeField({
   id: string
   totpOnly?: boolean
 }) {
+  const t = useTranslations("iam")
+
   return (
     <div className="grid gap-2">
-      <Label htmlFor={id}>{totpOnly ? "6 位动态码" : "动态码或恢复码"}</Label>
+      <Label htmlFor={id}>
+        {totpOnly ? t("sixDigitCode") : t("authOrRecoveryCode")}
+      </Label>
       <Input
         id={id}
         name="code"
@@ -975,7 +1071,7 @@ function CodeField({
         required
         minLength={6}
         maxLength={64}
-        placeholder={totpOnly ? "000000" : "000000 或恢复码"}
+        placeholder={totpOnly ? "000000" : t("codePlaceholder")}
       />
     </div>
   )
@@ -1001,6 +1097,9 @@ function SessionRow({
   busy: boolean
   onRevoke: () => void
 }) {
+  const t = useTranslations("iam")
+  const locale = useLocale()
+
   const mobile = /android|iphone|ipad|mobile/i.test(session.user_agent ?? "")
   return (
     <article className="grid min-h-20 grid-cols-[40px_minmax(0,1fr)_auto_36px] items-center gap-3 border-b px-5 py-3 last:border-0 max-sm:grid-cols-[40px_minmax(0,1fr)_36px]">
@@ -1009,16 +1108,18 @@ function SessionRow({
       </span>
       <div className="min-w-0">
         <strong className="block truncate text-sm">
-          {session.user_agent || "未知浏览器"}
+          {session.user_agent || t("unknownBrowser")}
         </strong>
         <small className="mt-1 block text-xs text-muted-foreground">
-          {session.ip_address || "IP 未记录"} · 最近活动{" "}
-          {new Date(session.last_seen_at).toLocaleString()}
+          {t("sessionActivity", {
+            ip: session.ip_address || t("noIp"),
+            date: new Date(session.last_seen_at).toLocaleString(locale),
+          })}
         </small>
       </div>
       {session.current && (
         <span className="rounded bg-success/10 px-2 py-1 text-xs font-semibold text-success max-sm:col-start-2">
-          当前设备
+          {t("currentDevice")}
         </span>
       )}
       <Button
@@ -1027,7 +1128,9 @@ function SessionRow({
         size="icon"
         disabled={busy}
         onClick={onRevoke}
-        aria-label={`撤销${session.current ? "当前" : ""}会话`}
+        aria-label={t(
+          session.current ? "revokeCurrentSession" : "revokeSession"
+        )}
       >
         <Trash2 className="text-destructive" />
       </Button>

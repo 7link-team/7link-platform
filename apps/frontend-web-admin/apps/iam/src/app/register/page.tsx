@@ -1,3 +1,4 @@
+import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { useEffect, useState, type FormEvent } from "react"
 import {
   ArrowLeft,
@@ -16,6 +17,8 @@ import { ApiError, iamApi, type Captcha } from "../../lib/iam-api"
 import { appName, copyrightLine } from "../../lib/branding"
 
 export default function RegisterPage() {
+  const t = useTranslations("iam")
+
   const [busy, setBusy] = useState(false)
   const [complete, setComplete] = useState(false)
   const [visible, setVisible] = useState(false)
@@ -25,7 +28,7 @@ export default function RegisterPage() {
 
   const loadCaptcha = () => {
     void issueTextCaptcha().then(setCaptcha, () =>
-      setError("验证码服务暂时不可用")
+      setError(t("captchaUnavailable"))
     )
   }
 
@@ -35,7 +38,7 @@ export default function RegisterPage() {
     loadCaptcha()
   }
 
-  useEffect(loadCaptcha, [])
+  useEffect(loadCaptcha, [t])
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -45,7 +48,7 @@ export default function RegisterPage() {
     const data = new FormData(event.currentTarget)
     const password = String(data.get("password") ?? "")
     if (password !== String(data.get("confirm_password") ?? "")) {
-      setError("两次输入的密码不一致")
+      setError(t("passwordMismatch"))
       setBusy(false)
       return
     }
@@ -60,7 +63,7 @@ export default function RegisterPage() {
       })
       setComplete(true)
     } catch (cause) {
-      setError(registrationError(cause))
+      setError(t(registrationError(cause)))
       // Each challenge is consumed by the attempt that used it, so a retry
       // needs a new one whether or not the captcha was what failed.
       refreshCaptcha()
@@ -85,8 +88,12 @@ export default function RegisterPage() {
                 {appName}
               </span>
             </div>
-            <h1 className="text-xl font-semibold tracking-tight">创建账号</h1>
-            <p className="text-sm text-muted-foreground">验证邮箱后即可登录</p>
+            <h1 className="text-xl font-semibold tracking-tight">
+              {t("createAccount")}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {t("verifyEmailToSignIn")}
+            </p>
           </header>
 
           {complete ? (
@@ -96,16 +103,16 @@ export default function RegisterPage() {
             >
               <MailCheck className="mt-0.5 size-5 shrink-0 text-primary" />
               <div>
-                <p className="font-medium">请检查邮箱</p>
+                <p className="font-medium">{t("checkEmail")}</p>
                 <p className="mt-1 text-muted-foreground">
-                  如该邮箱可以注册，验证邮件已进入发送队列。
+                  {t("registrationEmailQueued")}
                 </p>
               </div>
             </div>
           ) : (
             <form className="mt-5 space-y-5" onSubmit={submit}>
               <div className="space-y-2">
-                <Label htmlFor="registration-email">邮箱</Label>
+                <Label htmlFor="registration-email">{t("email")}</Label>
                 <Input
                   id="registration-email"
                   name="email"
@@ -117,7 +124,7 @@ export default function RegisterPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="registration-name">显示名称</Label>
+                <Label htmlFor="registration-name">{t("displayName")}</Label>
                 <Input
                   id="registration-name"
                   name="display_name"
@@ -128,18 +135,18 @@ export default function RegisterPage() {
               <PasswordField
                 id="registration-password"
                 name="password"
-                label="密码"
+                label={t("password")}
                 visible={visible}
                 onVisible={() => setVisible((value) => !value)}
               />
               <PasswordField
                 id="registration-confirm"
                 name="confirm_password"
-                label="确认密码"
+                label={t("confirmPassword")}
                 visible={visible}
               />
               <div className="space-y-2">
-                <Label htmlFor="registration-captcha">验证码</Label>
+                <Label htmlFor="registration-captcha">{t("captcha")}</Label>
                 <div className="flex items-center gap-2">
                   <Input
                     id="registration-captcha"
@@ -155,13 +162,13 @@ export default function RegisterPage() {
                     type="button"
                     className="grid h-9 w-[110px] shrink-0 place-items-center overflow-hidden rounded-md border border-border/70 bg-muted/40"
                     onClick={refreshCaptcha}
-                    aria-label="换一张验证码"
-                    title="换一张"
+                    aria-label={t("refreshCaptcha")}
+                    title={t("anotherCaptcha")}
                   >
                     {captcha ? (
                       <img
                         src={captcha.image_base64}
-                        alt="验证码"
+                        alt={t("captcha")}
                         className="h-full w-full object-cover"
                       />
                     ) : (
@@ -170,7 +177,7 @@ export default function RegisterPage() {
                   </button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  看不清可以点击图片换一张
+                  {t("captchaHint")}
                 </p>
               </div>
               {error && (
@@ -183,7 +190,7 @@ export default function RegisterPage() {
                 className="w-full"
                 disabled={busy || !captcha}
               >
-                {busy ? "正在提交" : "创建账号"}
+                {busy ? t("submitting") : t("createAccount")}
               </Button>
             </form>
           )}
@@ -191,7 +198,7 @@ export default function RegisterPage() {
           <Button variant="ghost" className="mt-4 w-full" asChild>
             <Link to="/login">
               <ArrowLeft />
-              返回登录
+              {t("backSignIn")}
             </Link>
           </Button>
         </div>
@@ -216,6 +223,8 @@ function PasswordField({
   visible: boolean
   onVisible?: () => void
 }) {
+  const t = useTranslations("iam")
+
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
@@ -235,7 +244,7 @@ function PasswordField({
             type="button"
             className="absolute top-1 right-1 grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
             onClick={onVisible}
-            aria-label={visible ? "隐藏密码" : "显示密码"}
+            aria-label={visible ? t("hidePassword") : t("showPassword")}
           >
             {visible ? (
               <EyeOff className="size-4" />
@@ -261,12 +270,12 @@ async function issueTextCaptcha(): Promise<Captcha> {
 }
 
 function registrationError(cause: unknown): string {
-  if (!(cause instanceof ApiError)) return "身份服务暂时不可用"
-  if (cause.status === 403) return "请从已配置的应用地址发起注册"
+  if (!(cause instanceof ApiError)) return "identityUnavailable"
+  if (cause.status === 403) return "registrationOrigin"
   // A rejected captcha and a rejected email share one status, so tell them
   // apart by code; otherwise a wrong captcha reads as a bad password forever.
-  if (cause.code === "captcha_invalid") return "验证码不正确，请重新输入"
-  if (cause.status === 422) return "请输入有效邮箱和至少 12 个字符的密码"
-  if (cause.status === 503) return "当前未开放自助注册"
-  return "身份服务暂时不可用"
+  if (cause.code === "captcha_invalid") return "invalidCaptcha"
+  if (cause.status === 422) return "registrationInvalid"
+  if (cause.status === 503) return "registrationClosed"
+  return "identityUnavailable"
 }

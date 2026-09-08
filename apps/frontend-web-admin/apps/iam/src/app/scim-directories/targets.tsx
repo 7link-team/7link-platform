@@ -1,3 +1,4 @@
+import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import {
   useCallback,
   useEffect,
@@ -62,6 +63,8 @@ const emptyDraft: TargetDraft = {
 }
 
 export function SCIMTargets({ tenant }: { tenant: string }) {
+  const t = useTranslations("iam")
+
   const api = useMemo(() => createIamApi(undefined, () => tenant), [tenant])
   const [targets, setTargets] = useState<SCIMTarget[]>([])
   const [loading, setLoading] = useState(true)
@@ -223,7 +226,7 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
       } else {
         await api.createSCIMTarget({ ...body, bearer_token: draft.token })
       }
-      setNotice(editing ? "出站目标已更新" : "出站目标已创建")
+      setNotice(editing ? t("outboundUpdated") : t("outboundCreated"))
       closeEditor()
       await refresh()
     } catch (cause) {
@@ -241,7 +244,7 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
     try {
       await api.deleteSCIMTarget(deleting.id)
       setDeleting(null)
-      setNotice("出站配置已删除")
+      setNotice(t("outboundDeleted"))
       setResult(null)
       await refresh()
     } catch (cause) {
@@ -260,7 +263,7 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
     try {
       const outcome = await api.retireSCIMTarget(deleting.id)
       setDeleting(null)
-      setNotice(`已注销 ${outcome.deprovisioned} 个远端资源并删除出站配置`)
+      setNotice(t("deprovisionedCount", { count: outcome.deprovisioned }))
       setResult(null)
       await refresh()
     } catch (cause) {
@@ -287,10 +290,10 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
       const body = { ...resource, resource_id: resource.resource_id.trim() }
       if (operation.remove) {
         await api.deprovisionSCIMResource(operation.target.id, body)
-        setNotice("远端资源已移除")
+        setNotice(t("remoteRemoved"))
       } else {
         setResult(await api.pushSCIMResource(operation.target.id, body))
-        setNotice("资源已推送")
+        setNotice(t("resourcePushed"))
       }
       setOperation(null)
     } catch (cause) {
@@ -303,14 +306,14 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
   return (
     <>
       <PageHeader
-        title="SCIM 出站目标"
+        title={t("scimOutboundTargets")}
         action={
           <div className="flex gap-2">
             <Button
               variant="outline"
               size="icon"
-              title="刷新目标"
-              aria-label="刷新目标"
+              title={t("refreshTargets")}
+              aria-label={t("refreshTargets")}
               disabled={busy || loading}
               onClick={() => {
                 setError("")
@@ -324,7 +327,7 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
             </Button>
             <Button disabled={!available || busy} onClick={() => edit(null)}>
               <Plus />
-              创建目标
+              {t("createTarget")}
             </Button>
           </div>
         }
@@ -337,7 +340,8 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
           {notice}
           {result && (
             <span className="ml-2 font-mono text-xs break-all">
-              远端 ID: {result.remote_id || result.external_id}
+              {t("remoteId")}
+              {result.remote_id || result.external_id}
             </span>
           )}
         </div>
@@ -346,11 +350,11 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
         <Table className="min-w-[950px]">
           <TableHeader>
             <TableRow>
-              <TableHead>目标</TableHead>
-              <TableHead>服务账号</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>版本</TableHead>
-              <TableHead className="w-44 text-right">操作</TableHead>
+              <TableHead>{t("target")}</TableHead>
+              <TableHead>{t("serviceAccounts")}</TableHead>
+              <TableHead>{t("status")}</TableHead>
+              <TableHead>{t("version")}</TableHead>
+              <TableHead className="w-44 text-right">{t("actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -363,7 +367,7 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
                   </span>
                 </TableCell>
                 <TableCell className="font-mono text-xs">
-                  {target.service_account_id ?? "未绑定"}
+                  {target.service_account_id ?? t("unbound")}
                 </TableCell>
                 <TableCell>
                   <Badge
@@ -371,7 +375,7 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
                       target.status === "active" ? "secondary" : "outline"
                     }
                   >
-                    {target.status === "active" ? "启用" : "停用"}
+                    {target.status === "active" ? t("active") : t("disable")}
                   </Badge>
                 </TableCell>
                 <TableCell>{target.version}</TableCell>
@@ -381,8 +385,8 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
                       variant="ghost"
                       size="icon"
                       disabled={busy}
-                      title="编辑目标"
-                      aria-label={`编辑 ${target.name}`}
+                      title={t("editTarget")}
+                      aria-label={t("editNamedSpaced", { name: target.name })}
                       onClick={() => edit(target)}
                     >
                       <Pencil />
@@ -395,8 +399,8 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
                         target.status !== "active" ||
                         !target.service_account_id
                       }
-                      title="推送资源"
-                      aria-label={`推送到 ${target.name}`}
+                      title={t("pushResource")}
+                      aria-label={t("pushToNamed", { name: target.name })}
                       onClick={() => openOperation(target, false)}
                     >
                       <ArrowUpFromLine />
@@ -409,8 +413,8 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
                         target.status !== "active" ||
                         !target.service_account_id
                       }
-                      title="移除远端资源"
-                      aria-label={`从 ${target.name} 移除资源`}
+                      title={t("removeRemote")}
+                      aria-label={t("removeFromNamed", { name: target.name })}
                       onClick={() => openOperation(target, true)}
                     >
                       <UserMinus />
@@ -419,8 +423,8 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
                       variant="ghost"
                       size="icon"
                       disabled={busy}
-                      title="删除出站配置"
-                      aria-label={`删除 ${target.name}`}
+                      title={t("deleteOutbound")}
+                      aria-label={t("deleteNamedSpaced", { name: target.name })}
                       onClick={() => {
                         setError("")
                         setDeleting(target)
@@ -436,7 +440,11 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
         </Table>
         {!targets.length && (
           <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
-            {loading ? "加载中" : available ? "暂无出站目标" : "出站目标不可用"}
+            {loading
+              ? t("loadingShort")
+              : available
+                ? t("noOutboundTargets")
+                : t("outboundUnavailable")}
           </div>
         )}
       </div>
@@ -450,13 +458,13 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
         <DialogContent className="grid max-h-[calc(100svh-2rem)] gap-5 overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editing ? "编辑出站目标" : "创建出站目标"}
+              {editing ? t("editOutboundTarget") : t("createOutboundTarget")}
             </DialogTitle>
           </DialogHeader>
           {error && <Alert>{error}</Alert>}
           <form id="scim-target-form" className="grid gap-4" onSubmit={save}>
             <div className="grid gap-2">
-              <Label htmlFor="scim-target-name">名称</Label>
+              <Label htmlFor="scim-target-name">{t("name")}</Label>
               <Input
                 id="scim-target-name"
                 value={draft.name}
@@ -484,7 +492,7 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="scim-target-token">
-                {editing ? "新 Bearer Token（可选）" : "Bearer Token"}
+                {editing ? t("optionalBearer") : "Bearer Token"}
               </Label>
               <Input
                 id="scim-target-token"
@@ -500,7 +508,9 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="scim-target-account">服务账号</Label>
+              <Label htmlFor="scim-target-account">
+                {t("serviceAccounts")}
+              </Label>
               <Input
                 id="scim-target-account"
                 list="scim-target-accounts"
@@ -511,7 +521,7 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
                 pattern="[1-9][0-9]*"
                 maxLength={64}
                 autoComplete="off"
-                placeholder="未绑定"
+                placeholder={t("unbound")}
                 disabled={busy || conflict}
               />
               <datalist id="scim-target-accounts">
@@ -525,7 +535,7 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
             </div>
             {editing && (
               <div className="flex items-center justify-between gap-3">
-                <Label htmlFor="scim-target-enabled">启用目标</Label>
+                <Label htmlFor="scim-target-enabled">{t("enableTarget")}</Label>
                 <Switch
                   id="scim-target-enabled"
                   checked={draft.enabled}
@@ -537,16 +547,16 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
           </form>
           <DialogFooter className="gap-2">
             <Button variant="outline" disabled={busy} onClick={closeEditor}>
-              取消
+              {t("cancel")}
             </Button>
             {conflict ? (
               <Button disabled={busy} onClick={() => void reload()}>
                 <RefreshCw />
-                重新加载
+                {t("reload")}
               </Button>
             ) : (
               <Button type="submit" form="scim-target-form" disabled={busy}>
-                {busy ? "保存中" : "保存"}
+                {busy ? t("saving") : t("save")}
               </Button>
             )}
           </DialogFooter>
@@ -562,7 +572,7 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
         <DialogContent className="grid max-h-[calc(100svh-2rem)] gap-5 overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {operation?.remove ? "移除远端资源" : "推送资源"}
+              {operation?.remove ? t("removeRemote") : t("pushResource")}
             </DialogTitle>
             <DialogDescription className="break-all">
               {operation?.target.name} · {operation?.target.base_url}
@@ -575,7 +585,7 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
             onSubmit={runOperation}
           >
             <div className="grid gap-2">
-              <Label htmlFor="scim-resource-type">资源类型</Label>
+              <Label htmlFor="scim-resource-type">{t("resourceType")}</Label>
               <SimpleSelect
                 id="scim-resource-type"
                 value={resource.resource_type}
@@ -588,15 +598,17 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
                   })
                 }}
                 options={[
-                  { value: "User", label: "用户" },
-                  { value: "Group", label: "用户组" },
+                  { value: "User", label: t("user") },
+                  { value: "Group", label: t("groups") },
                 ]}
                 disabled={busy}
               />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="scim-resource-id">
-                {resource.resource_type === "User" ? "主体 ID" : "用户组 ID"}
+                {resource.resource_type === "User"
+                  ? t("principalId")
+                  : t("groupId")}
               </Label>
               <Input
                 id="scim-resource-id"
@@ -627,7 +639,7 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
               disabled={busy}
               onClick={() => setOperation(null)}
             >
-              取消
+              {t("cancel")}
             </Button>
             <Button
               type="submit"
@@ -636,7 +648,11 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
               variant={operation?.remove ? "destructive" : "default"}
             >
               {operation?.remove ? <UserMinus /> : <ArrowUpFromLine />}
-              {busy ? "处理中" : operation?.remove ? "确认移除" : "推送"}
+              {busy
+                ? t("processing")
+                : operation?.remove
+                  ? t("confirmRemove")
+                  : t("push")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -650,12 +666,9 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
       >
         <DialogContent className="grid gap-5">
           <DialogHeader>
-            <DialogTitle>删除出站配置</DialogTitle>
+            <DialogTitle>{t("deleteOutbound")}</DialogTitle>
             <DialogDescription>
-              {deleting?.name} 若仍在管理远端资源，直接删除会被拒绝：删掉配置就删掉了
-              访问令牌和远端标识，那些账号会留在原处且再也无法访问。「注销远端并删除」
-              会先逐个删除远端账号，全部成功后再删除配置；远端拒绝时不会删除任何本地
-              记录，稍后重试即可从中断处继续。
+              {deleting?.name} {t("outboundDeleteDescription")}
             </DialogDescription>
           </DialogHeader>
           {error && <Alert>{error}</Alert>}
@@ -665,7 +678,7 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
               disabled={busy}
               onClick={() => setDeleting(null)}
             >
-              取消
+              {t("cancel")}
             </Button>
             <Button
               variant="outline"
@@ -673,7 +686,7 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
               onClick={() => void removeTarget()}
             >
               <Trash2 />
-              {busy ? "处理中" : "仅删除配置"}
+              {busy ? t("processing") : t("deleteConfigOnly")}
             </Button>
             <Button
               variant="destructive"
@@ -681,7 +694,7 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
               onClick={() => void retireTarget()}
             >
               <Trash2 />
-              {busy ? "注销中" : "注销远端并删除"}
+              {busy ? t("deprovisioning") : t("deprovisionAndDelete")}
             </Button>
           </DialogFooter>
         </DialogContent>

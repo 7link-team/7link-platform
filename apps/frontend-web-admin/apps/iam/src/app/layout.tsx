@@ -1,6 +1,15 @@
+import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { useEffect, useMemo, useState } from "react"
 import { Building2, Menu as MenuIcon, ShieldCheck } from "lucide-react"
-import { Navigate, Outlet, useLocation, useNavigate } from "react-router"
+import {
+  Navigate,
+  Outlet,
+  useLocation,
+  useNavigate,
+  useMatch,
+} from "react-router"
+import { Alert } from "../components/alert"
+import { WorkspaceSwitcher } from "../components/workspace-switcher"
 import {
   Sheet,
   SheetContent,
@@ -16,18 +25,59 @@ import {
   setTenant,
   type EffectiveMenu,
   type Tenant,
+  type Entity,
 } from "../lib/iam-api"
 import { appName } from "../lib/branding"
+import { LanguageSwitcher } from "@workspace/ui/components/i18n/language-switcher"
+import { useClientLocale } from "@workspace/ui/i18n/intl-provider"
 
 export default function AppLayout() {
+  const t = useTranslations("iam")
+
   const { session, status } = useAuth()
   const [menus, setMenus] = useState<EffectiveMenu[] | null>(null)
   const [tenantValue, setTenantValue] = useState(getTenant())
-  const [tenantDraft, setTenantDraft] = useState(getTenant())
   const [platformTenants, setPlatformTenants] = useState<Tenant[] | null>(null)
   const [fieldPolicyAccess, setFieldPolicyAccess] = useState("")
+  const { locale: menuLanguage } = useClientLocale()
   const location = useLocation()
   const navigate = useNavigate()
+  const entityMatch = useMatch("/iam/entities/:entityID/:view")
+  const entityID = entityMatch?.params.entityID ?? ""
+  const [entityCatalog, setEntityCatalog] = useState<{
+    tenant: string
+    items: Entity[]
+    error: string
+  } | null>(null)
+  const catalog = entityCatalog?.tenant === tenantValue ? entityCatalog : null
+  const selectedEntity = catalog?.items.find((entity) => entity.id === entityID)
+
+  useEffect(() => {
+    if (status !== "authenticated" || !tenantValue) return
+    let active = true
+    const refresh = () => {
+      void iamApi.entities().then(
+        (items) => {
+          if (active)
+            setEntityCatalog({ tenant: tenantValue, items, error: "" })
+        },
+        (cause: Error) => {
+          if (active)
+            setEntityCatalog({
+              tenant: tenantValue,
+              items: [],
+              error: cause.message,
+            })
+        }
+      )
+    }
+    refresh()
+    window.addEventListener("entity-catalog-change", refresh)
+    return () => {
+      active = false
+      window.removeEventListener("entity-catalog-change", refresh)
+    }
+  }, [status, tenantValue])
   const loginState = useMemo(
     () => ({ from: location.pathname }),
     [location.pathname]
@@ -50,11 +100,24 @@ export default function AppLayout() {
   }, [status, tenantValue, session])
 
   useEffect(() => {
-    if (status === "authenticated") {
-      void iamApi
-        .effectiveMenus()
-        .then(setMenus)
-        .catch(() => setMenus([]))
+    let active = true
+    const refresh = () => {
+      if (status === "authenticated") {
+        void iamApi
+          .effectiveMenus()
+          .then((next) => {
+            if (active) setMenus(next)
+          })
+          .catch(() => {
+            if (active) setMenus([])
+          })
+      }
+    }
+    refresh()
+    window.addEventListener("menu-catalog-change", refresh)
+    return () => {
+      active = false
+      window.removeEventListener("menu-catalog-change", refresh)
     }
   }, [status, tenantValue])
 
@@ -75,7 +138,6 @@ export default function AppLayout() {
     const sync = () => {
       const next = getTenant()
       setTenantValue(next)
-      setTenantDraft(next)
     }
     window.addEventListener("tenant-change", sync)
     return () => window.removeEventListener("tenant-change", sync)
@@ -86,14 +148,13 @@ export default function AppLayout() {
       <div className="grid min-h-svh place-items-center bg-background text-sm text-muted-foreground">
         <div className="grid justify-items-center gap-3">
           <ShieldCheck className="size-8 animate-pulse" />
-          正在验证会话
+          {t("verifyingSession")}
         </div>
       </div>
     )
   if (!session) return <Navigate to="/login" replace state={loginState} />
 
-  const commitTenant = () => {
-    const next = tenantDraft.trim()
+  const commitTenant = (next: string) => {
     if (!next || next === tenantValue) return
     setMenus(null)
     setTenant(next)
@@ -104,16 +165,18 @@ export default function AppLayout() {
   return (
     <div className="flex h-svh flex-col bg-background">
       <header className="sticky top-0 z-40 border-b bg-background shadow-sm">
-        <div className="flex h-14 items-center gap-3 px-4">
+        <div className="flex min-h-14 flex-wrap items-center gap-2 px-4 py-2 sm:gap-3">
           <Sheet>
             <SheetTrigger
-              aria-label="打开主导航"
+              aria-label={t("openMainNav")}
               className="grid size-9 place-items-center rounded-md border border-input md:hidden"
             >
               <MenuIcon className="size-5" />
             </SheetTrigger>
             <SheetContent side="left" className="w-72 p-0">
               <AppSidebar
+                entityID={entityID}
+                language={menuLanguage}
                 menus={menus ?? []}
                 platformTenantAccess={platformTenants !== null}
                 fieldPolicyAccess={
@@ -131,45 +194,57 @@ export default function AppLayout() {
             <span className="grid size-8 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
               <ShieldCheck className="size-4" />
             </span>
-            <span className="hidden truncate sm:inline">{appName}</span>
+            <span className="hidden truncate lg:inline">{appName}</span>
           </div>
+          <WorkspaceSwitcher
+            tenantID={tenantValue}
+            entityID={entityID}
+            tenants={platformTenants}
+            entities={catalog?.items ?? null}
+            error={catalog?.error ?? ""}
+            onTenant={commitTenant}
+            onEntity={(id) =>
+              navigate(
+                id ? `/iam/entities/${encodeURIComponent(id)}/overview` : "/"
+              )
+            }
+          />
           <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
-            <div className="flex h-9 min-w-0 items-center gap-2 rounded-md border border-input px-2">
-              <Building2
-                className="size-4 shrink-0 text-muted-foreground"
-                aria-hidden="true"
-              />
-              <label htmlFor="tenant" className="sr-only">
-                当前租户
-              </label>
-              <input
-                id="tenant"
-                list={platformTenants ? "tenant-options" : undefined}
-                className="w-24 min-w-0 bg-transparent text-sm outline-none sm:w-36"
-                value={tenantDraft}
-                onChange={(event) => setTenantDraft(event.target.value)}
-                onBlur={commitTenant}
-                onKeyDown={(event) => event.key === "Enter" && commitTenant()}
-              />
-              {platformTenants && (
-                <datalist id="tenant-options">
-                  {platformTenants
-                    .filter((tenant) => tenant.status === "active")
-                    .map((tenant) => (
-                      <option key={tenant.id} value={tenant.id}>
-                        {tenant.name} ({tenant.slug})
-                      </option>
-                    ))}
-                </datalist>
-              )}
-            </div>
+            <LanguageSwitcher />
             <ThemeModeButton />
             <UserMenu />
           </div>
         </div>
       </header>
+      <div
+        className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-4 py-2 text-sm"
+        aria-label={t("currentWorkspace")}
+      >
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <Building2 className="size-4 shrink-0 text-muted-foreground" />
+          <span className="text-muted-foreground">{t("currentTenant")}</span>
+          <strong className="break-words">
+            {platformTenants?.find((tenant) => tenant.id === tenantValue)
+              ?.name ?? (tenantValue ? t("tenantWorkspace") : t("notSelected"))}
+          </strong>
+          <span className="font-mono text-xs text-muted-foreground">
+            {tenantValue}
+          </span>
+          {entityID && (
+            <>
+              <span aria-hidden="true">/</span>
+              <span>{t("entityPerspective")}</span>
+              <strong className="break-all">
+                {selectedEntity?.name ?? entityID}
+              </strong>
+            </>
+          )}
+        </div>
+      </div>
       <div className="flex min-h-0 flex-1">
         <AppSidebar
+          entityID={entityID}
+          language={menuLanguage}
           menus={menus ?? []}
           platformTenantAccess={platformTenants !== null}
           fieldPolicyAccess={
@@ -180,7 +255,15 @@ export default function AppLayout() {
         />
         <main className="min-w-0 flex-1 overflow-auto">
           <div className="mx-auto w-full max-w-[1440px] p-4 sm:p-6">
-            <Outlet context={{ menus }} />
+            {entityID && catalog?.error && <Alert>{catalog.error}</Alert>}
+            {entityID && !catalog ? (
+              <p role="status">{t("loading")}</p>
+            ) : entityID &&
+              (!selectedEntity || selectedEntity.status !== "active") ? (
+              <Alert>{t("entityUnavailable")}</Alert>
+            ) : (
+              <Outlet key={`${tenantValue}:${entityID}`} context={{ menus }} />
+            )}
           </div>
         </main>
       </div>

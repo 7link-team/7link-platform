@@ -6,6 +6,9 @@ import (
 	"net/mail"
 	"sort"
 	"strings"
+	"unicode/utf8"
+
+	"golang.org/x/text/language"
 
 	"7link.com/platform/internal/infra/guid"
 )
@@ -308,7 +311,8 @@ func (s *Service) EffectiveMenus(
 			}
 			result = append(result, MenuItem{
 				ID: menu.ID.String(), Label: menu.Label, Path: menu.Route,
-				Icon: menu.Icon, SortOrder: menu.SortOrder,
+				Translations: menu.Translations,
+				Icon:         menu.Icon, SortOrder: menu.SortOrder,
 				PermissionCode: menu.PermissionCode, Children: nodes,
 			})
 		}
@@ -325,6 +329,24 @@ func (s *Service) validateMenu(ctx context.Context, repo *Repository, menu *Menu
 		return err
 	}
 	menu.Label = strings.TrimSpace(menu.Label)
+	if len(menu.Translations) > 32 {
+		return fmt.Errorf("%w: too many menu translations", ErrInvalidArgument)
+	}
+	if menu.Translations != nil {
+		normalized := make(map[string]string, len(menu.Translations))
+		for locale, label := range menu.Translations {
+			tag, err := language.Parse(locale)
+			label = strings.TrimSpace(label)
+			if err != nil || tag == language.Und || len(locale) > 63 || label == "" || utf8.RuneCountInString(label) > 128 {
+				return fmt.Errorf("%w: invalid menu translation", ErrInvalidArgument)
+			}
+			if _, exists := normalized[tag.String()]; exists {
+				return fmt.Errorf("%w: duplicate menu language", ErrInvalidArgument)
+			}
+			normalized[tag.String()] = label
+		}
+		menu.Translations = normalized
+	}
 	menu.Route = strings.TrimSpace(menu.Route)
 	menu.Icon = strings.TrimSpace(menu.Icon)
 	menu.PermissionCode = strings.TrimSpace(menu.PermissionCode)

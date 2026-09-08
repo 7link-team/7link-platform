@@ -25,6 +25,21 @@ type coreServiceHarness struct {
 	events     *[]audit.DomainEvent
 }
 
+func TestDefaultMenuTranslationsAreComplete(t *testing.T) {
+	for _, menu := range DefaultMenus() {
+		require.Equal(t, menu.Label, menu.Translations["en-US"])
+		for _, locale := range []string{"en-US", "zh-CN", "ms-MY"} {
+			require.NotEmpty(t, menu.Translations[locale], menu.Route)
+			require.NotContains(t, menu.Translations[locale], "menu_", menu.Route)
+		}
+	}
+	catalog := (&Service{}).MenuCatalog(t.Context())
+	require.Len(t, catalog[0].Translations, 3)
+	for _, item := range catalog[0].Children {
+		require.Len(t, item.Translations, 3)
+	}
+}
+
 type policyPutResult struct {
 	changed bool
 	err     error
@@ -517,6 +532,36 @@ func TestServiceMenuCRUDValidationAndFailClosed(t *testing.T) {
 	assert.ErrorContains(t, err, "unknown persisted menu permission")
 }
 
+func TestMenuTranslationsRoundTripValidationAndTenantIsolation(t *testing.T) {
+	h := newCoreServiceHarness(t)
+	h.seedMember(t, 1, 11, MemberActive)
+	h.seedMember(t, 2, 22, MemberActive)
+	menu, err := h.service.CreateMenu(t.Context(), Menu{TenantID: 1, Label: "Default", Status: MenuActive,
+		Translations: map[string]string{"en-us": " Users ", "zh-CN": "成员"}})
+	require.NoError(t, err)
+	loaded, err := h.service.GetMenu(t.Context(), 1, menu.ID)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"en-US": "Users", "zh-CN": "成员"}, loaded.Translations)
+	_, err = h.service.GetMenu(t.Context(), 2, menu.ID)
+	assert.ErrorIs(t, err, ErrMenuNotFound)
+	tree, err := h.service.EffectiveMenus(t.Context(), 1, 11)
+	require.NoError(t, err)
+	require.Len(t, tree, 1)
+	assert.Equal(t, loaded.Translations, tree[0].Translations)
+	for _, invalid := range []map[string]string{{"not_a_locale!": "Name"}, {"en": " "}, {"en-US": "One", "en-us": "Two"}} {
+		loaded.Translations = invalid
+		_, err = h.service.UpdateMenu(t.Context(), loaded)
+		assert.ErrorIs(t, err, ErrInvalidArgument)
+	}
+	loaded.Translations = map[string]string{}
+	_, err = h.service.UpdateMenu(t.Context(), loaded)
+	require.NoError(t, err)
+	loaded, err = h.service.GetMenu(t.Context(), 1, menu.ID)
+	require.NoError(t, err)
+	assert.Empty(t, loaded.Translations)
+	assert.Equal(t, "Default", loaded.Label)
+}
+
 func TestServiceEntityCRUDValidationAndBindings(t *testing.T) {
 	harness := newCoreServiceHarness(t)
 	tenantID, principalID := guid.ID(1), guid.ID(11)
@@ -662,7 +707,7 @@ func TestServiceCatalogsAndConstructors(t *testing.T) {
 	assert.Panics(t, func() { NewAuthorizerWithRegistry(nil, harness.service.registry) })
 	assert.Panics(t, func() { NewAuthorizerWithRegistry(harness.runtime, nil) })
 	assert.Equal(t, Name, (&Module{}).ModuleName())
-	require.Len(t, (&Module{}).MigrationMilestones(), 3)
+	require.Len(t, (&Module{}).MigrationMilestones(), 5)
 }
 
 func TestServiceRoleConditionValidationAndReadModels(t *testing.T) {

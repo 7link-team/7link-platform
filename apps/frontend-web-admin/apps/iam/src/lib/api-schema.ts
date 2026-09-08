@@ -3065,6 +3065,9 @@ export interface components {
             sort_order: number;
             status: string;
             tenant_id: string;
+            translations?: {
+                [key: string]: string;
+            };
             /** Format: date-time */
             updated_at: string;
         };
@@ -3586,6 +3589,10 @@ export interface components {
              * @enum {string}
              */
             status: "active" | "disabled";
+            /** @description BCP 47 language tags mapped to menu labels; default label is the fallback */
+            translations?: {
+                [key: string]: string;
+            };
         };
         CreatePositionInputBody: {
             code: string;
@@ -5594,6 +5601,9 @@ export interface components {
             permission_code: string;
             /** Format: int64 */
             sort_order: number;
+            translations?: {
+                [key: string]: string;
+            };
         };
         Meta: {
             /** @description filter, sort and field contract; returned only when requested */
@@ -6323,6 +6333,10 @@ export interface components {
             sort_order?: number;
             /** @enum {string} */
             status?: "active" | "disabled";
+            /** @description replace translations; an empty object clears them; omitted preserves existing translations */
+            translations?: {
+                [key: string]: string;
+            };
         };
         UpdatePositionInputBody: {
             code?: string;

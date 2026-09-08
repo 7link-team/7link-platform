@@ -1,3 +1,4 @@
+import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { useCallback, useEffect, useState, type FormEvent } from "react"
 import {
   Eye,
@@ -59,6 +60,8 @@ const newRuleCondition = (): RuleConditionDraft => ({
 })
 
 export default function GroupsPage() {
+  const t = useTranslations("iam")
+
   const [groups, setGroups] = useState<Group[]>([])
   const [groupOpen, setGroupOpen] = useState(false)
   const [editingGroup, setEditingGroup] = useState<Group | null>(null)
@@ -223,12 +226,12 @@ export default function GroupsPage() {
   return (
     <>
       <PageHeader
-        title="用户组管理"
-        description="维护当前租户的静态安全组和成员有效时间"
+        title={t("groupManagement")}
+        description={t("groupsDescription")}
         action={
           <Button onClick={openCreate}>
             <Plus />
-            创建用户组
+            {t("createGroup")}
           </Button>
         }
       />
@@ -237,13 +240,13 @@ export default function GroupsPage() {
         <Table className="min-w-[920px]">
           <TableHeader>
             <TableRow>
-              <TableHead>用户组</TableHead>
-              <TableHead>类型</TableHead>
-              <TableHead>说明</TableHead>
-              <TableHead>排序</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>版本</TableHead>
-              <TableHead className="w-32 text-right">操作</TableHead>
+              <TableHead>{t("groups")}</TableHead>
+              <TableHead>{t("type")}</TableHead>
+              <TableHead>{t("notes")}</TableHead>
+              <TableHead>{t("sortOrder")}</TableHead>
+              <TableHead>{t("status")}</TableHead>
+              <TableHead>{t("version")}</TableHead>
+              <TableHead className="w-32 text-right">{t("actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -257,7 +260,7 @@ export default function GroupsPage() {
                 </TableCell>
                 <TableCell>
                   <Badge variant="outline">
-                    {group.type === "dynamic" ? "动态" : "静态"}
+                    {group.type === "dynamic" ? t("dynamic") : t("static")}
                   </Badge>
                 </TableCell>
                 <TableCell className="max-w-72 truncate text-sm text-muted-foreground">
@@ -272,7 +275,7 @@ export default function GroupsPage() {
                       group.status === "active" ? "secondary" : "destructive"
                     }
                   >
-                    {group.status === "active" ? "启用" : "停用"}
+                    {group.status === "active" ? t("active") : t("disable")}
                   </Badge>
                 </TableCell>
                 <TableCell className="font-mono text-xs">
@@ -285,9 +288,15 @@ export default function GroupsPage() {
                       size="icon"
                       disabled={busy}
                       onClick={() => void openMembers(group)}
-                      aria-label={`${group.type === "dynamic" ? "查看" : "管理"}${group.name}成员`}
+                      aria-label={t("groupMemberAction", {
+                        action:
+                          group.type === "dynamic" ? t("view") : t("manage"),
+                        name: group.name,
+                      })}
                       title={
-                        group.type === "dynamic" ? "查看计算成员" : "管理成员"
+                        group.type === "dynamic"
+                          ? t("viewComputedMembers")
+                          : t("manageMembers")
                       }
                     >
                       {group.type === "dynamic" ? <Eye /> : <UserRoundCog />}
@@ -297,8 +306,8 @@ export default function GroupsPage() {
                       size="icon"
                       disabled={busy}
                       onClick={() => openEdit(group)}
-                      aria-label={`编辑${group.name}`}
-                      title="编辑用户组"
+                      aria-label={t("editNamed", { name: group.name })}
+                      title={t("editGroup")}
                     >
                       <Pencil />
                     </Button>
@@ -307,8 +316,8 @@ export default function GroupsPage() {
                       size="icon"
                       disabled={busy}
                       onClick={() => void removeGroup(group)}
-                      aria-label={`删除${group.name}`}
-                      title="删除空用户组"
+                      aria-label={t("deleteNamed", { name: group.name })}
+                      title={t("deleteEmptyGroup")}
                     >
                       <Trash2 />
                     </Button>
@@ -322,7 +331,7 @@ export default function GroupsPage() {
           <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
             <span className="text-center">
               <UsersRound className="mx-auto mb-2 size-7" />
-              当前租户暂无用户组
+              {t("noGroups")}
             </span>
           </div>
         )}
@@ -338,11 +347,9 @@ export default function GroupsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editingGroup ? "编辑用户组" : "创建用户组"}
+              {editingGroup ? t("editGroup") : t("createGroup")}
             </DialogTitle>
-            <DialogDescription>
-              用户组名称在租户内不区分大小写且必须唯一；动态组按当前成员属性实时计算。
-            </DialogDescription>
+            <DialogDescription>{t("groupFormDescription")}</DialogDescription>
           </DialogHeader>
           <form
             key={editingGroup?.id ?? "create"}
@@ -352,7 +359,7 @@ export default function GroupsPage() {
           >
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
-                <Label htmlFor="group-name">用户组名称</Label>
+                <Label htmlFor="group-name">{t("groupName")}</Label>
                 <Input
                   id="group-name"
                   name="name"
@@ -362,10 +369,13 @@ export default function GroupsPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="group-type">类型</Label>
+                <Label htmlFor="group-type">{t("type")}</Label>
                 <SimpleSelect
                   id="group-type"
-                  options={{ static: "静态用户组", dynamic: "动态用户组" }}
+                  options={{
+                    static: t("staticGroup"),
+                    dynamic: t("dynamicGroup"),
+                  }}
                   value={groupType}
                   onValueChange={(value) =>
                     setGroupType(value as GroupInput["type"])
@@ -378,10 +388,10 @@ export default function GroupsPage() {
               <div className="grid gap-3 border-t pt-4">
                 <div className="flex items-end justify-between gap-3">
                   <div className="grid flex-1 gap-2">
-                    <Label htmlFor="group-rule-match">匹配方式</Label>
+                    <Label htmlFor="group-rule-match">{t("matchMode")}</Label>
                     <SimpleSelect
                       id="group-rule-match"
-                      options={{ all: "满足全部条件", any: "满足任一条件" }}
+                      options={{ all: t("matchAll"), any: t("matchAny") }}
                       value={ruleMatch}
                       onValueChange={(value) =>
                         setRuleMatch(value as "all" | "any")
@@ -400,7 +410,7 @@ export default function GroupsPage() {
                     disabled={ruleConditions.length >= 16}
                   >
                     <Plus />
-                    添加条件
+                    {t("addCondition")}
                   </Button>
                 </div>
                 {ruleConditions.map((condition, index) => (
@@ -410,13 +420,15 @@ export default function GroupsPage() {
                   >
                     <SimpleSelect
                       id={`group-rule-field-${index}`}
-                      aria-label={`条件 ${index + 1} 属性`}
+                      aria-label={t("conditionAttribute", {
+                        number: index + 1,
+                      })}
                       options={{
-                        "member.subject": "主体 ID",
-                        "member.email": "邮箱",
-                        "member.email_domain": "邮箱域名",
-                        "member.department_id": "部门 ID",
-                        "member.status": "成员状态",
+                        "member.subject": t("principalId"),
+                        "member.email": t("email"),
+                        "member.email_domain": t("emailDomain"),
+                        "member.department_id": t("departmentId"),
+                        "member.status": t("memberStatus"),
                       }}
                       value={condition.field}
                       onValueChange={(value) =>
@@ -431,8 +443,8 @@ export default function GroupsPage() {
                     />
                     <SimpleSelect
                       id={`group-rule-operator-${index}`}
-                      aria-label={`条件 ${index + 1} 操作符`}
-                      options={{ in: "属于", not_in: "不属于" }}
+                      aria-label={t("conditionOperator", { number: index + 1 })}
+                      options={{ in: t("inSet"), not_in: t("notInSet") }}
                       value={condition.operator}
                       onValueChange={(value) =>
                         setRuleConditions((current) =>
@@ -449,7 +461,7 @@ export default function GroupsPage() {
                       }
                     />
                     <Input
-                      aria-label={`条件 ${index + 1} 值`}
+                      aria-label={t("conditionValue", { number: index + 1 })}
                       value={condition.values}
                       onChange={(event) =>
                         setRuleConditions((current) =>
@@ -460,15 +472,17 @@ export default function GroupsPage() {
                           )
                         )
                       }
-                      placeholder="多个值用逗号分隔"
+                      placeholder={t("commaSeparated")}
                       required
                     />
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
-                      aria-label={`删除条件 ${index + 1}`}
-                      title="删除条件"
+                      aria-label={t("deleteConditionNumber", {
+                        number: index + 1,
+                      })}
+                      title={t("deleteCondition")}
                       disabled={ruleConditions.length === 1}
                       onClick={() =>
                         setRuleConditions((current) =>
@@ -483,7 +497,7 @@ export default function GroupsPage() {
               </div>
             )}
             <div className="grid gap-2">
-              <Label htmlFor="group-description">说明</Label>
+              <Label htmlFor="group-description">{t("notes")}</Label>
               <Textarea
                 id="group-description"
                 name="description"
@@ -494,7 +508,7 @@ export default function GroupsPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="group-sort-order">排序</Label>
+                <Label htmlFor="group-sort-order">{t("sortOrder")}</Label>
                 <Input
                   id="group-sort-order"
                   name="sort_order"
@@ -506,10 +520,10 @@ export default function GroupsPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="group-status">状态</Label>
+                <Label htmlFor="group-status">{t("status")}</Label>
                 <SimpleSelect
                   id="group-status"
-                  options={{ active: "启用", disabled: "停用" }}
+                  options={{ active: t("active"), disabled: t("disable") }}
                   value={status}
                   onValueChange={(value) =>
                     setStatus(value as GroupInput["status"])
@@ -520,10 +534,10 @@ export default function GroupsPage() {
           </form>
           <DialogFooter>
             <Button variant="outline" onClick={() => setGroupOpen(false)}>
-              取消
+              {t("cancel")}
             </Button>
             <Button type="submit" form="group-form" disabled={busy}>
-              {busy ? "保存中" : editingGroup ? "保存" : "创建"}
+              {busy ? t("saving") : editingGroup ? t("save") : t("create")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -534,8 +548,8 @@ export default function GroupsPage() {
           key={`${memberGroup.id}:${groupMembers.map((member) => `${member.principal_id}:${member.starts_at}:${member.ends_at}`).join("|")}`}
           open
           itemName={memberGroup.name}
-          directoryLabel="用户组"
-          scheduleLabel="有效时间"
+          directoryLabel={t("groups")}
+          scheduleLabel={t("effectivePeriod")}
           formID="group-member-form"
           inputPrefix="group-member"
           members={groupMembers}

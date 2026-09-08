@@ -5,15 +5,40 @@ import "./index.css"
 import { ThemeProvider } from "./components/theme-provider"
 import { appName } from "./lib/branding"
 import { router } from "./router"
+import { IntlAppProvider } from "@workspace/ui/i18n/intl-provider"
+import { defaultLocale, locales } from "@workspace/ui/i18n/config"
+import { loadMessages } from "./lib/i18n"
 
 // The document title is deployment configuration like every other display
 // name, so it follows VITE_APP_NAME instead of being baked into index.html.
 document.title = appName
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <ThemeProvider>
-      <RouterProvider router={router} />
-    </ThemeProvider>
-  </StrictMode>
-)
+const savedLocale = document.cookie
+  .split("; ")
+  .find((value) => value.startsWith("NEXT_LOCALE="))
+  ?.split("=")[1]
+const initialLocale =
+  locales.find((locale) => locale === savedLocale) ?? defaultLocale
+const root = createRoot(document.getElementById("root")!)
+void loadMessages(initialLocale)
+  .then((messages) =>
+    root.render(
+      <StrictMode>
+        <IntlAppProvider
+          initialLocale={initialLocale}
+          initialMessages={messages}
+          loadMessages={loadMessages}
+        >
+          <ThemeProvider>
+            <RouterProvider router={router} />
+          </ThemeProvider>
+        </IntlAppProvider>
+      </StrictMode>
+    )
+  )
+  .catch((error) => {
+    console.error(error)
+    root.render(
+      <p role="alert">Unable to load application language resources.</p>
+    )
+  })

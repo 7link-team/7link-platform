@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react"
 import { useTranslations } from "use-intl"
 import { Check, Globe } from "lucide-react"
-import { locales, type Locale } from "@workspace/ui/i18n/config"
+import { locales, localeNames, type Locale } from "@workspace/ui/i18n/config"
 import { useClientLocale } from "@workspace/ui/i18n/intl-provider"
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -9,15 +9,7 @@ interface LangInfo {
   code: Locale
   tag: string
   nativeName: string
-  englishName: string
 }
-
-const languageMap: Record<Locale, { nativeName: string; englishName: string }> =
-  {
-    "en-US": { nativeName: "English (US)", englishName: "English (US)" },
-    "zh-CN": { nativeName: "简体中文", englishName: "Simplified Chinese" },
-    "ms-MY": { nativeName: "Bahasa Melayu", englishName: "Malay" },
-  }
 
 function localeTag(code: string) {
   return code.split("-")[0]!.toUpperCase()
@@ -26,7 +18,7 @@ function localeTag(code: string) {
 const languages: LangInfo[] = locales.map((code) => ({
   code,
   tag: localeTag(code),
-  ...languageMap[code],
+  nativeName: localeNames[code],
 }))
 
 const LangItem = memo(function LangItem({

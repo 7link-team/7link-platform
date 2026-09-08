@@ -210,6 +210,7 @@ type Menu struct {
 	TenantID       guid.ID
 	ParentID       guid.ID
 	Label          string
+	Translations   map[string]string
 	Route          string
 	Icon           string
 	SortOrder      int

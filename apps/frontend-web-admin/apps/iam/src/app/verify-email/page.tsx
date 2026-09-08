@@ -1,3 +1,4 @@
+import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { useEffect, useRef, useState } from "react"
 import {
   ArrowLeft,
@@ -15,6 +16,8 @@ import { appName, copyrightLine } from "../../lib/branding"
 type VerificationState = "pending" | "success" | "invalid" | "unavailable"
 
 export default function VerifyEmailPage() {
+  const t = useTranslations("iam")
+
   const [token] = useState(
     () => new URLSearchParams(window.location.search).get("token") ?? ""
   )
@@ -55,7 +58,7 @@ export default function VerifyEmailPage() {
                 {appName}
               </span>
             </div>
-            <h1 className="text-xl font-semibold">验证邮箱</h1>
+            <h1 className="text-xl font-semibold">{t("verifyEmail")}</h1>
           </header>
 
           <VerificationResult state={state} />
@@ -64,7 +67,7 @@ export default function VerifyEmailPage() {
             <Button className="mt-5 w-full" asChild>
               <Link to="/login">
                 <ArrowLeft />
-                返回登录
+                {t("backSignIn")}
               </Link>
             </Button>
           )}
@@ -78,26 +81,28 @@ export default function VerifyEmailPage() {
 }
 
 function VerificationResult({ state }: { state: VerificationState }) {
+  const t = useTranslations("iam")
+
   const content = {
     pending: {
       icon: <LoaderCircle className="size-5 animate-spin" />,
-      title: "正在验证",
-      description: "正在确认邮箱所有权。",
+      title: t("verifying"),
+      description: t("verifyingEmail"),
     },
     success: {
       icon: <CheckCircle2 className="size-5" />,
-      title: "邮箱已验证",
-      description: "邮箱所有权已确认，现在可以登录。",
+      title: t("emailVerified"),
+      description: t("emailVerifiedDescription"),
     },
     invalid: {
       icon: <ShieldAlert className="size-5" />,
-      title: "验证链接无效",
-      description: "链接已过期、已使用，或邮箱已经发生变化。",
+      title: t("verificationLinkInvalid"),
+      description: t("verificationLinkInvalidDescription"),
     },
     unavailable: {
       icon: <ShieldAlert className="size-5" />,
-      title: "暂时无法验证",
-      description: "身份服务暂时不可用，请稍后重新打开验证链接。",
+      title: t("verificationUnavailable"),
+      description: t("verificationUnavailableDescription"),
     },
   }[state]
 

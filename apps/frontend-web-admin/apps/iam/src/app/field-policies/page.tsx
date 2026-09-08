@@ -1,3 +1,4 @@
+import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import {
   useCallback,
   useEffect,
@@ -48,12 +49,12 @@ import {
 } from "../../lib/iam-api"
 
 const mutabilityLabels = {
-  readOnly: "只读",
-  readWrite: "可读写",
-  immutable: "仅创建时可写",
-  writeOnly: "只写",
+  readOnly: "readOnly",
+  readWrite: "readWrite",
+  immutable: "createOnlyWrite",
+  writeOnly: "writeOnly",
 }
-const defaultOptions = { allow: "默认允许", deny: "默认拒绝" }
+const defaultOptions = { allow: "defaultAllow", deny: "defaultDeny" }
 
 export default function FieldPoliciesPage() {
   const [tenant, setTenantValue] = useState(getTenant)
@@ -66,6 +67,8 @@ export default function FieldPoliciesPage() {
 }
 
 function TenantFieldPolicies({ tenant }: { tenant: string }) {
+  const t = useTranslations("iam")
+
   // Pin requests to the editor's tenant, including refreshes after mutations.
   const api = useMemo(() => createIamApi(undefined, () => tenant), [tenant])
   const [catalog, setCatalog] = useState<FieldDefinition[]>([])
@@ -144,13 +147,13 @@ function TenantFieldPolicies({ tenant }: { tenant: string }) {
   return (
     <>
       <PageHeader
-        title="字段权限"
+        title={t("fieldPermissions")}
         action={
           <Button
             variant="outline"
             size="icon"
-            aria-label="刷新字段策略"
-            title="刷新字段策略"
+            aria-label={t("refreshFieldPolicies")}
+            title={t("refreshFieldPolicies")}
             disabled={loading}
             onClick={() => void refresh()}
           >
@@ -161,19 +164,19 @@ function TenantFieldPolicies({ tenant }: { tenant: string }) {
       {error && <Alert>{error}</Alert>}
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div className="grid w-48 gap-2">
-          <Label htmlFor="field-resource">资源</Label>
+          <Label htmlFor="field-resource">{t("resource")}</Label>
           <SimpleSelect
             id="field-resource"
             value={resource}
             onValueChange={setResource}
             options={[
-              { value: "all", label: "全部资源" },
+              { value: "all", label: t("allResources") },
               ...resources.map((value) => ({ value, label: value })),
             ]}
           />
         </div>
         <div className="grid min-w-0 flex-1 gap-2">
-          <Label htmlFor="field-search">字段</Label>
+          <Label htmlFor="field-search">{t("field")}</Label>
           <Input
             id="field-search"
             value={search}
@@ -185,14 +188,14 @@ function TenantFieldPolicies({ tenant }: { tenant: string }) {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>字段</TableHead>
-            <TableHead>属性</TableHead>
-            <TableHead>读取</TableHead>
-            <TableHead>写入</TableHead>
-            <TableHead>不可读时</TableHead>
-            <TableHead>版本</TableHead>
+            <TableHead>{t("field")}</TableHead>
+            <TableHead>{t("properties")}</TableHead>
+            <TableHead>{t("read")}</TableHead>
+            <TableHead>{t("write")}</TableHead>
+            <TableHead>{t("whenUnreadable")}</TableHead>
+            <TableHead>{t("version")}</TableHead>
             <TableHead className="w-14">
-              <span className="sr-only">操作</span>
+              <span className="sr-only">{t("actions")}</span>
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -205,7 +208,7 @@ function TenantFieldPolicies({ tenant }: { tenant: string }) {
                   role="status"
                 >
                   <LoaderCircle className="size-4 animate-spin" />
-                  加载中
+                  {t("loadingShort")}
                 </div>
               </TableCell>
             </TableRow>
@@ -225,37 +228,41 @@ function TenantFieldPolicies({ tenant }: { tenant: string }) {
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline">
-                      {mutabilityLabels[field.mutability]}
+                      {t(mutabilityLabels[field.mutability])}
                     </Badge>
                   </TableCell>
                   <TableCell>
                     {rule
-                      ? defaultOptions[rule.policy.read.default]
+                      ? t(defaultOptions[rule.policy.read.default])
                       : field.returned === "never"
-                        ? "不返回"
-                        : "声明默认"}
+                        ? t("omit")
+                        : t("declaredDefault")}
                     {rule && (
                       <div className="text-xs text-muted-foreground">
-                        允许 {rule.policy.read.allow_roles.length} / 拒绝{" "}
+                        {t("allow")}
+                        {rule.policy.read.allow_roles.length} {t("denySuffix")}{" "}
                         {rule.policy.read.deny_roles.length}
                       </div>
                     )}
                   </TableCell>
                   <TableCell>
                     {field.mutability === "readOnly"
-                      ? "禁止"
+                      ? t("forbidden")
                       : rule
-                        ? defaultOptions[rule.policy.write.default]
-                        : "声明默认"}
+                        ? t(defaultOptions[rule.policy.write.default])
+                        : t("declaredDefault")}
                     {rule && field.mutability !== "readOnly" && (
                       <div className="text-xs text-muted-foreground">
-                        允许 {rule.policy.write.allow_roles.length} / 拒绝{" "}
+                        {t("allow")}
+                        {rule.policy.write.allow_roles.length} {t("denySuffix")}{" "}
                         {rule.policy.write.deny_roles.length}
                       </div>
                     )}
                   </TableCell>
                   <TableCell>
-                    {rule?.policy.mask === "redact" ? "固定脱敏" : "隐藏"}
+                    {rule?.policy.mask === "redact"
+                      ? t("fixedMask")
+                      : t("hidden")}
                   </TableCell>
                   <TableCell className="font-mono text-xs">
                     {rule?.version ?? "-"}
@@ -265,18 +272,21 @@ function TenantFieldPolicies({ tenant }: { tenant: string }) {
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label={`编辑 ${field.name}`}
-                        title={`编辑 ${field.name}`}
+                        aria-label={t("editNamedSpaced", { name: field.name })}
+                        title={t("editNamedSpaced", { name: field.name })}
                         onClick={() => setSelected(field)}
                       >
                         <Pencil />
                       </Button>
                     ) : (
                       <span
-                        title="固定字段"
+                        title={t("fixedField")}
                         className="inline-flex size-9 items-center justify-center text-muted-foreground"
                       >
-                        <LockKeyhole className="size-4" aria-label="固定字段" />
+                        <LockKeyhole
+                          className="size-4"
+                          aria-label={t("fixedField")}
+                        />
                       </span>
                     )}
                   </TableCell>
@@ -290,7 +300,7 @@ function TenantFieldPolicies({ tenant }: { tenant: string }) {
                 colSpan={7}
                 className="h-24 text-center text-muted-foreground"
               >
-                {error ? "字段策略不可用" : "无匹配字段"}
+                {error ? t("fieldPoliciesUnavailable") : t("noMatchingFields")}
               </TableCell>
             </TableRow>
           )}
@@ -332,6 +342,8 @@ function FieldPolicyEditor({
   onClose: () => void
   onSaved: () => Promise<void>
 }) {
+  const t = useTranslations("iam")
+
   const [draft, setDraft] = useState<FieldPolicy>(() =>
     current
       ? structuredClone(current.policy)
@@ -381,7 +393,7 @@ function FieldPolicyEditor({
   ) => {
     const selected = draft[side][effect]
     if (checked && selected.length >= 64) {
-      setError("每项规则最多包含 64 个角色")
+      setError(t("maxRolesPerRule"))
       return
     }
     setDraft({
@@ -414,7 +426,7 @@ function FieldPolicyEditor({
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 409) {
         setConflict(true)
-        setError("策略版本冲突，当前修改未保存。")
+        setError(t("policyVersionConflict"))
       } else setError((cause as Error).message)
     } finally {
       setBusy(false)
@@ -434,16 +446,14 @@ function FieldPolicyEditor({
       >
         <DialogHeader>
           <DialogTitle className="text-base break-all">
-            {restore ? "恢复默认策略" : "编辑字段策略"} · {field.resource}.
-            {field.name}
+            {restore ? t("restoreDefaultPolicy") : t("editFieldPolicy")} ·{" "}
+            {field.resource}.{field.name}
           </DialogTitle>
         </DialogHeader>
         {error && <Alert>{error}</Alert>}
         <form className="mt-3" onSubmit={(event) => void submit(event)}>
           {restore ? (
-            <p className="mb-6 text-sm">
-              确认移除当前字段的自定义读写限制并恢复声明默认策略？
-            </p>
+            <p className="mb-6 text-sm">{t("restoreFieldPolicyConfirm")}</p>
           ) : (
             <fieldset
               disabled={busy || conflict}
@@ -451,10 +461,13 @@ function FieldPolicyEditor({
             >
               <div className="grid gap-4 sm:grid-cols-3">
                 <div className="grid gap-2">
-                  <Label htmlFor="field-read">读取</Label>
+                  <Label htmlFor="field-read">{t("read")}</Label>
                   <SimpleSelect
                     id="field-read"
-                    options={defaultOptions}
+                    options={{
+                      allow: t("defaultAllow"),
+                      deny: t("defaultDeny"),
+                    }}
                     value={draft.read.default}
                     disabled={neverRead || busy || conflict}
                     onValueChange={(value) =>
@@ -469,10 +482,13 @@ function FieldPolicyEditor({
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="field-write">写入</Label>
+                  <Label htmlFor="field-write">{t("write")}</Label>
                   <SimpleSelect
                     id="field-write"
-                    options={defaultOptions}
+                    options={{
+                      allow: t("defaultAllow"),
+                      deny: t("defaultDeny"),
+                    }}
                     value={draft.write.default}
                     disabled={readOnly || busy || conflict}
                     onValueChange={(value) =>
@@ -487,13 +503,13 @@ function FieldPolicyEditor({
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="field-mask">不可读时</Label>
+                  <Label htmlFor="field-mask">{t("whenUnreadable")}</Label>
                   <SimpleSelect
                     id="field-mask"
                     options={
                       field.maskable && !neverRead
-                        ? { omit: "隐藏", redact: "固定脱敏" }
-                        : { omit: "隐藏" }
+                        ? { omit: t("hidden"), redact: t("fixedMask") }
+                        : { omit: t("hidden") }
                     }
                     value={draft.mask}
                     disabled={busy || conflict}
@@ -503,9 +519,14 @@ function FieldPolicyEditor({
                   />
                 </div>
               </div>
-              {roleError && <Alert>角色目录不可用：{roleError}</Alert>}
+              {roleError && (
+                <Alert>
+                  {t("roleCatalogUnavailable")}
+                  {roleError}
+                </Alert>
+              )}
               <div className="grid gap-2">
-                <Label htmlFor="field-role-search">角色</Label>
+                <Label htmlFor="field-role-search">{t("role")}</Label>
                 <Input
                   id="field-role-search"
                   type="search"
@@ -518,13 +539,13 @@ function FieldPolicyEditor({
                   <TableHeader>
                     <TableRow>
                       <TableHead rowSpan={2} className="w-[40%]">
-                        角色
+                        {t("role")}
                       </TableHead>
                       <TableHead colSpan={2} className="text-center">
-                        读取
+                        {t("read")}
                       </TableHead>
                       <TableHead colSpan={2} className="text-center">
-                        写入
+                        {t("write")}
                       </TableHead>
                     </TableRow>
                     <TableRow>
@@ -538,7 +559,7 @@ function FieldPolicyEditor({
                           key={key}
                           className="px-1 text-center whitespace-nowrap"
                         >
-                          {key.endsWith("allow") ? "允许" : "拒绝"}
+                          {key.endsWith("allow") ? t("allow") : t("deny")}
                         </TableHead>
                       ))}
                     </TableRow>
@@ -563,7 +584,7 @@ function FieldPolicyEditor({
                               >
                                 <Checkbox
                                   className="inline-flex size-5 items-center justify-center align-middle"
-                                  aria-label={`${name} ${side === "read" ? "读取" : "写入"}${effect === "allow_roles" ? "允许" : "拒绝"}`}
+                                  aria-label={`${name} ${side === "read" ? t("read") : t("write")}${effect === "allow_roles" ? t("allow") : t("deny")}`}
                                   checked={draft[side][effect].includes(id)}
                                   disabled={
                                     busy ||
@@ -591,7 +612,7 @@ function FieldPolicyEditor({
                           colSpan={5}
                           className="text-center text-muted-foreground"
                         >
-                          无匹配角色
+                          {t("noMatchingRoles")}
                         </TableCell>
                       </TableRow>
                     )}
@@ -600,7 +621,7 @@ function FieldPolicyEditor({
               </div>
               <div className="flex items-end gap-2">
                 <div className="grid min-w-0 flex-1 gap-2">
-                  <Label htmlFor="field-role-id">角色 ID</Label>
+                  <Label htmlFor="field-role-id">{t("roleId")}</Label>
                   <Input
                     id="field-role-id"
                     inputMode="numeric"
@@ -612,8 +633,8 @@ function FieldPolicyEditor({
                   type="button"
                   variant="outline"
                   size="icon"
-                  aria-label="添加角色 ID"
-                  title="添加角色 ID"
+                  aria-label={t("addRoleId")}
+                  title={t("addRoleId")}
                   disabled={
                     !/^[1-9][0-9]{0,18}$/.test(roleID) ||
                     BigInt(roleID || "0") > 9223372036854775807n
@@ -638,7 +659,7 @@ function FieldPolicyEditor({
                 onClick={() => setRestore(true)}
               >
                 <RotateCcw />
-                恢复默认
+                {t("restoreDefault")}
               </Button>
             )}
             <Button
@@ -649,12 +670,12 @@ function FieldPolicyEditor({
                 restore && !conflict ? setRestore(false) : onClose()
               }
             >
-              取消
+              {t("cancel")}
             </Button>
             {conflict ? (
               <Button type="button" onClick={() => void onSaved()}>
                 <RefreshCw />
-                重新加载
+                {t("reload")}
               </Button>
             ) : (
               <Button type="submit" disabled={busy}>
@@ -665,7 +686,7 @@ function FieldPolicyEditor({
                 ) : (
                   <Save />
                 )}
-                {restore ? "确认恢复" : "保存"}
+                {restore ? t("confirmRestore") : t("save")}
               </Button>
             )}
           </DialogFooter>

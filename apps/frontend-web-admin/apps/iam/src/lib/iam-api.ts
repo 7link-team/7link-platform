@@ -650,6 +650,7 @@ export interface GroupMember {
 export type GroupMemberInput = MembershipWindowInput
 
 export interface Menu {
+  translations?: Record<string, string>
   id: string
   tenant_id: string
   parent_id?: string
@@ -664,6 +665,7 @@ export interface Menu {
 }
 
 export interface MenuInput {
+  translations?: Record<string, string>
   parent_id?: string
   label: string
   route?: string
@@ -674,6 +676,7 @@ export interface MenuInput {
 }
 
 export interface EffectiveMenu {
+  translations?: Record<string, string>
   id: string
   label: string
   path?: string
@@ -998,6 +1001,12 @@ async function requestEnvelopeWithBase<T>(
   tenant = true
 ): Promise<Envelope<T>> {
   const headers = new Headers(init.headers)
+  if (
+    typeof document !== "undefined" &&
+    document.documentElement.lang &&
+    !headers.has("Accept-Language")
+  )
+    headers.set("Accept-Language", document.documentElement.lang)
   const scope = tenant ? tenantID() : ""
   if (scope) headers.set("X-Tenant-Id", scope)
   if (init.body) headers.set("Content-Type", "application/json")

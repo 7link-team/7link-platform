@@ -32,6 +32,7 @@ func newMenu(db *gorm.DB, opts ...gen.DOOption) menu {
 	_menu.ID = field.NewField(tableName, "id")
 	_menu.ParentID = field.NewField(tableName, "parent_id")
 	_menu.Label = field.NewString(tableName, "label")
+	_menu.Translations = field.NewString(tableName, "translations")
 	_menu.Route = field.NewString(tableName, "route")
 	_menu.Icon = field.NewString(tableName, "icon")
 	_menu.SortOrder = field.NewInt(tableName, "sort_order")
@@ -53,6 +54,7 @@ type menu struct {
 	ID             field.Field
 	ParentID       field.Field
 	Label          field.String
+	Translations   field.String
 	Route          field.String
 	Icon           field.String
 	SortOrder      field.Int
@@ -80,6 +82,7 @@ func (m *menu) updateTableName(table string) *menu {
 	m.ID = field.NewField(table, "id")
 	m.ParentID = field.NewField(table, "parent_id")
 	m.Label = field.NewString(table, "label")
+	m.Translations = field.NewString(table, "translations")
 	m.Route = field.NewString(table, "route")
 	m.Icon = field.NewString(table, "icon")
 	m.SortOrder = field.NewInt(table, "sort_order")
@@ -111,11 +114,12 @@ func (m *menu) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (m *menu) fillFieldMap() {
-	m.fieldMap = make(map[string]field.Expr, 11)
+	m.fieldMap = make(map[string]field.Expr, 12)
 	m.fieldMap["tenant_id"] = m.TenantID
 	m.fieldMap["id"] = m.ID
 	m.fieldMap["parent_id"] = m.ParentID
 	m.fieldMap["label"] = m.Label
+	m.fieldMap["translations"] = m.Translations
 	m.fieldMap["route"] = m.Route
 	m.fieldMap["icon"] = m.Icon
 	m.fieldMap["sort_order"] = m.SortOrder

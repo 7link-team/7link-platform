@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"7link.com/platform/internal/iam/audit"
+	corei18n "7link.com/platform/internal/iam/core/i18n"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/policyx"
@@ -23,13 +24,14 @@ type ScopeNode struct {
 
 // MenuItem is one visible node in the effective navigation tree.
 type MenuItem struct {
-	ID             string     `json:"id"`
-	Label          string     `json:"label"`
-	Path           string     `json:"path,omitempty"`
-	PermissionCode string     `json:"permission_code"`
-	Icon           string     `json:"icon,omitempty"`
-	SortOrder      int        `json:"sort_order"`
-	Children       []MenuItem `json:"children,omitempty"`
+	ID             string            `json:"id"`
+	Label          string            `json:"label"`
+	Translations   map[string]string `json:"translations,omitempty"`
+	Path           string            `json:"path,omitempty"`
+	PermissionCode string            `json:"permission_code"`
+	Icon           string            `json:"icon,omitempty"`
+	SortOrder      int               `json:"sort_order"`
+	Children       []MenuItem        `json:"children,omitempty"`
 }
 
 // Service coordinates core IAM validation, persistence, authorization, policy
@@ -88,17 +90,17 @@ func (s *Service) MenuCatalog(context.Context) []MenuItem {
 	items := make([]MenuItem, 0, len(DefaultMenus()))
 	for _, menu := range DefaultMenus() {
 		items = append(items, MenuItem{
-			ID: menu.ID.String(), Label: menu.Label, Path: menu.Route,
+			ID: menu.ID.String(), Label: menu.Label, Translations: menu.Translations, Path: menu.Route,
 			PermissionCode: menu.PermissionCode, Icon: menu.Icon, SortOrder: menu.SortOrder,
 		})
 	}
-	return []MenuItem{{ID: "iam", Label: "IAM Administration", Children: items}}
+	return []MenuItem{{ID: "iam", Label: "IAM Administration", Translations: corei18n.Translations("menu_root"), Children: items}}
 }
 
 // DefaultMenus returns the built-in tenant menu definitions.
 func DefaultMenus() []Menu {
-	return []Menu{
-		{Label: "Principals and members", Route: "/iam/users", Icon: "users", SortOrder: 10, PermissionCode: "user_view", Status: MenuActive},
+	menus := []Menu{
+		{Label: "Accounts and members", Route: "/iam/users", Icon: "users", SortOrder: 10, PermissionCode: "user_view", Status: MenuActive},
 		{Label: "Invitations", Route: "/iam/invitations", Icon: "mail-plus", SortOrder: 11, PermissionCode: "invitation_view", Status: MenuActive},
 		{Label: "Service accounts", Route: "/iam/service-accounts", Icon: "bot", SortOrder: 12, PermissionCode: "service_account_view", Status: MenuActive},
 		{Label: "Entities", Route: "/iam/entities", Icon: "network", SortOrder: 13, PermissionCode: "entity_view", Status: MenuActive},
@@ -114,6 +116,11 @@ func DefaultMenus() []Menu {
 		{Label: "Audit events", Route: "/iam/audit-events", Icon: "file-clock", SortOrder: 50, PermissionCode: "audit_event_view", Status: MenuActive},
 		{Label: "Audit governance", Route: "/iam/audit-governance", Icon: "shield-check", SortOrder: 51, PermissionCode: "audit_event_view", Status: MenuActive},
 	}
+	for i := range menus {
+		key := "menu_" + strings.ReplaceAll(strings.TrimPrefix(menus[i].Route, "/iam/"), "-", "_")
+		menus[i].Translations = corei18n.Translations(key)
+	}
+	return menus
 }
 
 // CreateRole creates a normalized role inside one tenant.

@@ -10,10 +10,10 @@ export async function createPasskeyCredential(
   const publicKey = decodeCreationOptions(options.publicKey)
   const credential = await navigator.credentials.create({ publicKey })
   if (!(credential instanceof PublicKeyCredential))
-    throw new Error("未创建通行密钥")
+    throw new Error("passkeyNotCreated")
   const response = credential.response
   if (!(response instanceof AuthenticatorAttestationResponse))
-    throw new Error("通行密钥响应无效")
+    throw new Error("passkeyInvalidResponse")
   return {
     id: credential.id,
     rawId: encodeBase64URL(credential.rawId),
@@ -44,10 +44,10 @@ export async function getPasskeyCredential(
     mediation: options.mediation,
   })
   if (!(credential instanceof PublicKeyCredential))
-    throw new Error("未选择通行密钥")
+    throw new Error("passkeyNotSelected")
   const response = credential.response
   if (!(response instanceof AuthenticatorAssertionResponse))
-    throw new Error("通行密钥响应无效")
+    throw new Error("passkeyInvalidResponse")
   return {
     id: credential.id,
     rawId: encodeBase64URL(credential.rawId),
@@ -124,5 +124,5 @@ function requireWebAuthn(): void {
     !("PublicKeyCredential" in window) ||
     !navigator.credentials
   )
-    throw new Error("当前浏览器不支持通行密钥")
+    throw new Error("passkeyUnsupported")
 }

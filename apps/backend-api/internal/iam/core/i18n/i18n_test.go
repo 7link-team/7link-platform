@@ -19,3 +19,12 @@ func TestRegisterPublishesEveryIAMLocale(t *testing.T) {
 	}
 	assert.Error(t, Register(), "a module locale namespace is registered exactly once")
 }
+
+func TestStoredMenuTranslations(t *testing.T) {
+	labels := Translations("menu_users")
+	assert.Equal(t, "Accounts and members", labels["en-US"])
+	assert.Equal(t, "账号与成员", labels["zh-CN"])
+	assert.Equal(t, "Akaun dan ahli", labels["ms-MY"])
+	labels["en-US"] = "changed"
+	assert.Equal(t, "Accounts and members", Translations("menu_users")["en-US"])
+}

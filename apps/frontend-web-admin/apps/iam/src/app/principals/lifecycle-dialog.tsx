@@ -1,4 +1,5 @@
 "use client"
+import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 
 import { Button } from "@workspace/ui/components/button"
 import { Checkbox } from "@workspace/ui/components/checkbox"
@@ -24,11 +25,11 @@ import type {
 
 // 每条阻塞原因都对应运维要去做的一件具体的事，所以写成祈使句而不是状态描述。
 const BLOCKER_TEXT: Record<PrincipalLifecycleBlocker, string> = {
-  already_anonymized: "该主体已被擦除，记录已是墓碑状态，无法再更改。",
-  legal_hold: "存在法律保留。先解除保留，才能执行擦除。",
-  no_retention_recorded: "尚未记录保留期。先设定保留期限，擦除才有依据。",
-  retention_not_expired: "保留期尚未到期。到期后才允许擦除。",
-  not_suspended: "主体仍可登录。先停用它，再执行擦除。",
+  already_anonymized: "erasureTombstone",
+  legal_hold: "erasureLegalHold",
+  no_retention_recorded: "erasureNoRetention",
+  retention_not_expired: "erasureRetentionActive",
+  not_suspended: "erasureActivePrincipal",
 }
 
 function toDateInput(value: string | null): string {
@@ -47,6 +48,8 @@ export function PrincipalLifecycleDialog({
   iamApi: IamApi
   onClose: () => void
 }) {
+  const t = useTranslations("iam")
+
   const [status, setStatus] = useState<PrincipalLifecycleStatus | null>(null)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
@@ -87,7 +90,7 @@ export function PrincipalLifecycleDialog({
         legal_hold: legalHold,
         reference,
       })
-      setNotice("保留期已更新")
+      setNotice(t("retentionUpdated"))
       await load(principal.id)
     } catch (cause) {
       setError((cause as Error).message)
@@ -106,7 +109,7 @@ export function PrincipalLifecycleDialog({
         version: status.lifecycle.version,
         confirmation,
       })
-      setNotice("该主体的个人数据已被永久擦除")
+      setNotice(t("principalErased"))
       setConfirmation("")
       await load(principal.id)
     } catch (cause) {
@@ -129,11 +132,8 @@ export function PrincipalLifecycleDialog({
     >
       <DialogContent className="grid max-h-[85vh] gap-5 overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>数据保留与擦除</DialogTitle>
-          <DialogDescription>
-            这是平台级操作，不属于任何单个租户：擦除会移除该主体在所有模块中的个人数据，
-            且不可撤销。
-          </DialogDescription>
+          <DialogTitle>{t("retentionErasure")}</DialogTitle>
+          <DialogDescription>{t("erasureDescription")}</DialogDescription>
         </DialogHeader>
 
         {error && <Alert>{error}</Alert>}
@@ -146,24 +146,24 @@ export function PrincipalLifecycleDialog({
         {status && (
           <>
             <dl className="grid grid-cols-2 gap-2 text-sm">
-              <dt className="text-muted-foreground">登录名</dt>
+              <dt className="text-muted-foreground">{t("loginIdentifier")}</dt>
               <dd>{status.login_name}</dd>
-              <dt className="text-muted-foreground">状态</dt>
+              <dt className="text-muted-foreground">{t("status")}</dt>
               <dd>
                 {status.anonymized
-                  ? "已擦除（墓碑）"
+                  ? t("erasedTombstone")
                   : status.suspended
-                    ? "已停用"
-                    : "启用中"}
+                    ? t("disabled")
+                    : t("currentlyActive")}
               </dd>
-              <dt className="text-muted-foreground">策略版本</dt>
+              <dt className="text-muted-foreground">{t("policyVersion")}</dt>
               <dd>{status.lifecycle.version}</dd>
             </dl>
 
             {blocked && (
               <ul className="grid gap-1 text-sm">
                 {status.blockers.map((blocker) => (
-                  <li key={blocker}>· {BLOCKER_TEXT[blocker]}</li>
+                  <li key={blocker}>· {t(BLOCKER_TEXT[blocker])}</li>
                 ))}
               </ul>
             )}
@@ -172,7 +172,7 @@ export function PrincipalLifecycleDialog({
               <>
                 <div className="grid gap-3">
                   <div className="grid gap-1.5">
-                    <Label htmlFor="retain-until">保留至</Label>
+                    <Label htmlFor="retain-until">{t("retainUntil")}</Label>
                     <Input
                       id="retain-until"
                       type="date"
@@ -183,7 +183,7 @@ export function PrincipalLifecycleDialog({
                   </div>
                   <div className="grid gap-1.5">
                     <Label htmlFor="retention-reference">
-                      案件编号（不要填入当事人本人的信息）
+                      {t("caseReference")}
                     </Label>
                     <Input
                       id="retention-reference"
@@ -199,20 +199,21 @@ export function PrincipalLifecycleDialog({
                       disabled={busy}
                       onCheckedChange={(value) => setLegalHold(value === true)}
                     />
-                    法律保留（无论期限如何，一律阻止擦除）
+                    {t("legalHold")}
                   </label>
                   <Button
                     variant="outline"
                     disabled={busy || !retainUntil || !reference.trim()}
                     onClick={() => void saveRetention()}
                   >
-                    {busy ? "处理中" : "保存保留期"}
+                    {busy ? t("processing") : t("saveRetention")}
                   </Button>
                 </div>
 
                 <div className="grid gap-1.5 border-t pt-4">
                   <Label htmlFor="anonymize-confirmation">
-                    输入登录名 <b>{status.login_name}</b> 以确认永久擦除
+                    {t("enterLoginName")}
+                    <b>{status.login_name}</b> {t("confirmErasureSuffix")}
                   </Label>
                   <Input
                     id="anonymize-confirmation"
@@ -229,7 +230,7 @@ export function PrincipalLifecycleDialog({
 
         <DialogFooter className="gap-2">
           <Button variant="outline" disabled={busy} onClick={onClose}>
-            关闭
+            {t("close")}
           </Button>
           {status && !status.anonymized && (
             <Button
@@ -237,7 +238,7 @@ export function PrincipalLifecycleDialog({
               disabled={busy || blocked || !namedCorrectly}
               onClick={() => void anonymize()}
             >
-              {busy ? "擦除中" : "永久擦除"}
+              {busy ? t("erasing") : t("permanentErasure")}
             </Button>
           )}
         </DialogFooter>

@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react"
 import { IntlProvider } from "use-intl"
+export { useTranslations, useLocale, useFormatter } from "use-intl"
 
 import { isRTL, locales, type Locale } from "./config"
 import { loadMessages } from "./load-messages"

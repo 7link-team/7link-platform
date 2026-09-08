@@ -1,6 +1,7 @@
 package corei18n
 
 import (
+	"context"
 	"embed"
 
 	platformi18n "7link.com/platform/pkg/i18n"
@@ -51,6 +52,18 @@ const (
 
 //go:embed locales/*.json
 var locales embed.FS
+
+var fieldMessages = platformi18n.NewModuleI18nFS(platformi18n.Base, locales, "locales")
+
+// Translations supplies all supported translations for built-in stored labels.
+func Translations(key string) map[string]string {
+	labels := make(map[string]string)
+	for _, locale := range platformi18n.Supported() {
+		ctx := platformi18n.WithLocale(context.Background(), locale.Code)
+		labels[locale.Code] = fieldMessages.TContext(ctx, key)
+	}
+	return labels
+}
 
 func Register() error {
 	return platformi18n.RegisterFS(Namespace, locales, "locales")

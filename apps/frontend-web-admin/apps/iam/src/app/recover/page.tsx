@@ -1,3 +1,4 @@
+import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { useState, type FormEvent } from "react"
 import { ArrowLeft, KeyRound, Mail, ShieldCheck } from "lucide-react"
 import { Link, useLocation } from "react-router"
@@ -9,6 +10,8 @@ import { ApiError, iamApi } from "../../lib/iam-api"
 import { appName, copyrightLine } from "../../lib/branding"
 
 export default function RecoverPage() {
+  const t = useTranslations("iam")
+
   const location = useLocation()
   const token = new URLSearchParams(location.search).get("token") ?? ""
   const [busy, setBusy] = useState(false)
@@ -28,7 +31,7 @@ export default function RecoverPage() {
       } else {
         const password = String(data.get("new_password") ?? "")
         if (password !== String(data.get("confirm_password") ?? "")) {
-          setError("两次输入的密码不一致")
+          setError(t("passwordMismatch"))
           return
         }
         await iamApi.completePasswordRecovery({
@@ -38,7 +41,7 @@ export default function RecoverPage() {
       }
       setComplete(true)
     } catch (cause) {
-      setError(recoveryError(cause, Boolean(token)))
+      setError(t(recoveryError(cause, Boolean(token))))
     } finally {
       setBusy(false)
     }
@@ -61,12 +64,12 @@ export default function RecoverPage() {
               </span>
             </div>
             <h1 className="text-xl font-semibold tracking-tight">
-              {token ? "设置新密码" : "找回账号"}
+              {token ? t("setNewPassword") : t("recoverAccount")}
             </h1>
             <p className="text-sm text-muted-foreground">
               {token
-                ? "完成身份恢复并注销其他登录"
-                : "使用登录名或主邮箱申请恢复"}
+                ? t("recoveryResetDescription")
+                : t("recoveryDescriptionLogin")}
             </p>
           </header>
 
@@ -82,7 +85,11 @@ export default function RecoverPage() {
               )}
               <Button type="submit" className="w-full" disabled={busy}>
                 {token ? <KeyRound /> : <Mail />}
-                {busy ? "正在提交" : token ? "更新密码" : "发送恢复邮件"}
+                {busy
+                  ? t("submitting")
+                  : token
+                    ? t("updatePassword")
+                    : t("sendRecoveryEmail")}
               </Button>
             </form>
           )}
@@ -90,7 +97,7 @@ export default function RecoverPage() {
           <Button variant="ghost" className="mt-4 w-full" asChild>
             <Link to="/login">
               <ArrowLeft />
-              返回登录
+              {t("backSignIn")}
             </Link>
           </Button>
         </div>
@@ -103,9 +110,11 @@ export default function RecoverPage() {
 }
 
 function IdentifierField() {
+  const t = useTranslations("iam")
+
   return (
     <div className="space-y-2">
-      <Label htmlFor="recovery-identifier">账号或邮箱</Label>
+      <Label htmlFor="recovery-identifier">{t("accountOrEmail")}</Label>
       <Input
         id="recovery-identifier"
         name="identifier"
@@ -119,10 +128,12 @@ function IdentifierField() {
 }
 
 function ResetFields() {
+  const t = useTranslations("iam")
+
   return (
     <>
       <div className="space-y-2">
-        <Label htmlFor="recovery-password">新密码</Label>
+        <Label htmlFor="recovery-password">{t("newPassword")}</Label>
         <Input
           id="recovery-password"
           name="new_password"
@@ -135,7 +146,7 @@ function ResetFields() {
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="recovery-confirm">确认新密码</Label>
+        <Label htmlFor="recovery-confirm">{t("confirmNewPassword")}</Label>
         <Input
           id="recovery-confirm"
           name="confirm_password"
@@ -151,22 +162,22 @@ function ResetFields() {
 }
 
 function RecoveryComplete({ reset }: { reset: boolean }) {
+  const t = useTranslations("iam")
+
   return (
     <div
       className="mt-5 rounded-md border border-primary/25 bg-primary/5 px-4 py-3 text-sm"
       role="status"
     >
-      {reset
-        ? "密码已更新，所有既有登录已注销。"
-        : "如账号可恢复，邮件已进入发送队列。"}
+      {reset ? t("recoveryPasswordUpdated") : t("recoveryEmailQueued")}
     </div>
   )
 }
 
 function recoveryError(cause: unknown, completing: boolean): string {
-  if (!(cause instanceof ApiError)) return "身份服务暂时不可用"
-  if (cause.status === 409) return "新密码不能与近期密码相同"
-  if (completing && cause.status === 400) return "恢复链接无效或已过期"
-  if (cause.status === 422) return "请输入有效的账号或邮箱"
-  return "身份服务暂时不可用"
+  if (!(cause instanceof ApiError)) return "identityUnavailable"
+  if (cause.status === 409) return "passwordRecentlyUsed"
+  if (completing && cause.status === 400) return "recoveryLinkInvalid"
+  if (cause.status === 422) return "accountEmailRequired"
+  return "identityUnavailable"
 }

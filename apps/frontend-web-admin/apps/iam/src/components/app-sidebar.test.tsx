@@ -3,25 +3,70 @@ import { renderToStaticMarkup } from "react-dom/server"
 import { MemoryRouter } from "react-router"
 import type { EffectiveMenu } from "../lib/iam-api"
 import { AppSidebar } from "./app-sidebar"
+import { IntlAppProvider } from "@workspace/ui/i18n/intl-provider"
+import zh from "../messages/zh-CN.json"
 
 function renderSidebar(
   menus: EffectiveMenu[],
   platformTenantAccess = false,
   fieldPolicyAccess = false,
-  path = "/"
+  path = "/",
+  entityID = ""
 ): string {
   return renderToStaticMarkup(
     <MemoryRouter initialEntries={[path]}>
-      <AppSidebar
-        menus={menus}
-        platformTenantAccess={platformTenantAccess}
-        fieldPolicyAccess={fieldPolicyAccess}
-      />
+      <IntlAppProvider initialLocale="zh-CN" initialMessages={{ iam: zh }}>
+        <AppSidebar
+          entityID={entityID}
+          menus={menus}
+          platformTenantAccess={platformTenantAccess}
+          fieldPolicyAccess={fieldPolicyAccess}
+        />
+      </IntlAppProvider>
     </MemoryRouter>
   )
 }
 
 describe("AppSidebar", () => {
+  it("uses entity routes without exposing tenant-wide administration in entity view", () => {
+    const html = renderSidebar(
+      [
+        {
+          id: "users",
+          label: "Accounts",
+          path: "/iam/users",
+          permission_code: "user_view",
+          sort_order: 1,
+        },
+      ],
+      true,
+      true,
+      "/iam/entities/123/roles",
+      "123"
+    )
+    expect(html).toContain('href="/iam/entities/123/overview"')
+    expect(html).toContain('href="/iam/entities/123/roles"')
+    expect(html).toContain('href="/iam/entities/123/resources"')
+    expect(html).toContain('href="/iam/entities/123/manage"')
+    expect(html).not.toContain('href="/iam/users"')
+    expect(html).not.toContain('href="/iam/tenants"')
+    expect(html).not.toContain('href="/iam/field-policies"')
+    expect(html).not.toContain('href="/iam/access-requests"')
+  })
+  it("excludes personal routes even when supplied by the effective menu tree", () => {
+    const html = renderSidebar(
+      ["/security", "/account", "/account/profile"].map((path, index) => ({
+        id: String(index),
+        label: "Personal",
+        path,
+        permission_code: "",
+        sort_order: index,
+      }))
+    )
+    expect(html).not.toContain("Personal")
+    expect(html).not.toContain('href="/account')
+    expect(html).not.toContain('href="/security"')
+  })
   it("shows field administration only after its own catalog access is proven", () => {
     expect(renderSidebar([])).not.toContain('href="/iam/field-policies"')
     expect(renderSidebar([], true)).not.toContain('href="/iam/field-policies"')
@@ -32,7 +77,10 @@ describe("AppSidebar", () => {
   it("keeps self-service navigation without exposing administration", () => {
     const html = renderSidebar([])
     expect(html).toContain("概览")
-    expect(html).toContain("安全中心")
+    expect(html).not.toContain("安全中心")
+    expect(html).not.toContain("个人账户")
+    expect(html).not.toContain('href="/security"')
+    expect(html).not.toContain('href="/account/')
     expect(html).toContain("访问申请")
     expect(html).toContain('href="/iam/access-requests"')
     expect(html).not.toContain("主体与成员")
@@ -106,7 +154,7 @@ describe("AppSidebar", () => {
         ],
       },
     ])
-    expect(html).toContain("主体与成员")
+    expect(html).toContain("Users")
     expect(html).not.toContain("角色权限")
     expect(html).toContain('href="/iam/users"')
     expect(html).toContain('href="/iam/service-accounts"')

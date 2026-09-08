@@ -1,3 +1,4 @@
+import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { useEffect, useState } from "react"
 import { KeyRound, MonitorSmartphone, Network, Users } from "lucide-react"
 import { useOutletContext } from "react-router"
@@ -14,6 +15,8 @@ interface Metrics {
 }
 
 export default function DashboardPage() {
+  const t = useTranslations("iam")
+
   const { menus } = useOutletContext<{ menus: EffectiveMenu[] | null }>()
   const [metrics, setMetrics] = useState<Metrics>({
     sessions: 0,
@@ -51,40 +54,48 @@ export default function DashboardPage() {
   return (
     <>
       <PageHeader
-        title="身份控制面"
-        description="平台身份、授权和会话的实时状态"
+        title={t("identityControl")}
+        description={t("identityStatus")}
       />
       {error && <Alert>{error}</Alert>}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {metrics.principals !== undefined && (
           <Metric
             icon={<Users />}
-            label="本地主体"
+            label={t("localPrincipals")}
             value={metrics.principals}
           />
         )}
         {metrics.roles !== undefined && (
-          <Metric icon={<KeyRound />} label="租户角色" value={metrics.roles} />
+          <Metric
+            icon={<KeyRound />}
+            label={t("tenantRoles")}
+            value={metrics.roles}
+          />
         )}
         {metrics.menus !== undefined && (
-          <Metric icon={<Network />} label="菜单节点" value={metrics.menus} />
+          <Metric
+            icon={<Network />}
+            label={t("menuNodes")}
+            value={metrics.menus}
+          />
         )}
         <Metric
           icon={<MonitorSmartphone />}
-          label="我的会话"
+          label={t("mySessions")}
           value={metrics.sessions}
         />
       </div>
       <section className="mt-6 flex min-h-24 flex-wrap items-center justify-between gap-4 rounded-md border bg-card px-5 py-4">
         <div>
-          <h2 className="text-sm font-semibold">授权状态</h2>
+          <h2 className="text-sm font-semibold">{t("authorizationStatus")}</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            权限变更按请求实时计算，不依赖会话内角色快照。
+            {t("authorizationDescription")}
           </p>
         </div>
         <span className="flex items-center gap-2 text-xs font-semibold text-success">
           <i className="size-2 rounded-full bg-success ring-4 ring-success/10" />
-          策略引擎在线
+          {t("policyOnline")}
         </span>
       </section>
     </>

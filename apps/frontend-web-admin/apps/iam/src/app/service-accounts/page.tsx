@@ -1,3 +1,4 @@
+import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { useCallback, useEffect, useState, type FormEvent } from "react"
 import {
   Bot,
@@ -90,6 +91,10 @@ function accountDraft(account: ServiceAccount): AccountDraft {
 }
 
 export default function ServiceAccountsPage() {
+  const locale = useLocale()
+
+  const t = useTranslations("iam")
+
   const [accounts, setAccounts] = useState<ServiceAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -154,7 +159,7 @@ export default function ServiceAccountsPage() {
           version: editing.version,
         }
         await iamApi.updateServiceAccount(editing.id, body)
-        setNotice("服务账号已更新，状态与有效期变更会立即撤销旧令牌")
+        setNotice(t("serviceAccountUpdated"))
       } else {
         const body: ServiceAccountInput = {
           login_name: draft.loginName.trim(),
@@ -163,7 +168,7 @@ export default function ServiceAccountsPage() {
           expires_at: expiresAt,
         }
         await iamApi.createServiceAccount(body)
-        setNotice("服务账号已创建")
+        setNotice(t("serviceAccountCreated"))
       }
       setEditing(undefined)
       await refresh()
@@ -181,7 +186,7 @@ export default function ServiceAccountsPage() {
     try {
       await iamApi.deleteServiceAccount(deleting.id, deleting.version)
       setDeleting(null)
-      setNotice("服务账号已删除，成员资格、凭据和旧令牌均已失效")
+      setNotice(t("serviceAccountDeleted"))
       await refresh()
     } catch (cause) {
       setError((cause as Error).message)
@@ -212,7 +217,7 @@ export default function ServiceAccountsPage() {
     if (!credentialAccount) return
     const scopes = uniqueWords(credentialDraft.scopes)
     if (scopes.length === 0) {
-      setError("至少配置一个凭据 scope")
+      setError(t("credentialScopeRequired"))
       return
     }
     setBusy(true)
@@ -251,7 +256,7 @@ export default function ServiceAccountsPage() {
         await iamApi.serviceAccountCredentials(credentialAccount.id)
       )
       setRevokeCredential(null)
-      setNotice("凭据及其签发的旧令牌已撤销")
+      setNotice(t("credentialRevoked"))
     } catch (cause) {
       setError((cause as Error).message)
     } finally {
@@ -262,12 +267,12 @@ export default function ServiceAccountsPage() {
   return (
     <>
       <PageHeader
-        title="服务账号"
-        description="管理租户内的非交互式机器身份、有效期和 OAuth 客户端凭据"
+        title={t("serviceAccounts")}
+        description={t("serviceAccountsDescription")}
         action={
           <Button onClick={openCreate}>
             <Plus />
-            创建服务账号
+            {t("createServiceAccount")}
           </Button>
         }
       />
@@ -278,21 +283,25 @@ export default function ServiceAccountsPage() {
         <header className="flex min-h-14 items-center justify-between gap-4 border-b bg-muted/20 px-4">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Bot className="size-4 text-muted-foreground" />
-            机器身份
+            {t("machineIdentity")}
           </div>
           <span className="text-xs text-muted-foreground">
-            {loading ? "正在加载" : `${accounts.length} 个账号`}
+            {loading
+              ? t("loading")
+              : t("accountCount", { count: accounts.length })}
           </span>
         </header>
         <div className="hidden md:block">
           <Table containerClassName="min-h-56">
             <TableHeader>
               <TableRow>
-                <TableHead className="min-w-64">账号</TableHead>
-                <TableHead className="min-w-56">说明</TableHead>
-                <TableHead className="min-w-44">有效期</TableHead>
-                <TableHead className="w-24">状态</TableHead>
-                <TableHead className="w-40 text-right">操作</TableHead>
+                <TableHead className="min-w-64">{t("loginName")}</TableHead>
+                <TableHead className="min-w-56">{t("notes")}</TableHead>
+                <TableHead className="min-w-44">{t("validity")}</TableHead>
+                <TableHead className="w-24">{t("status")}</TableHead>
+                <TableHead className="w-40 text-right">
+                  {t("actions")}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -312,7 +321,9 @@ export default function ServiceAccountsPage() {
                   <TableCell className="max-w-72 truncate text-sm text-muted-foreground">
                     {account.description || "-"}
                   </TableCell>
-                  <TableCell>{formatDate(account.expires_at)}</TableCell>
+                  <TableCell>
+                    {formatDate(account.expires_at, locale, t("neverExpires"))}
+                  </TableCell>
                   <TableCell>
                     <StatusBadge status={account.status} />
                   </TableCell>
@@ -355,10 +366,11 @@ export default function ServiceAccountsPage() {
                 <StatusBadge status={account.status} />
               </div>
               <p className="text-sm break-words text-muted-foreground">
-                {account.description || "无说明"}
+                {account.description || t("withoutDescription")}
               </p>
               <div className="text-xs text-muted-foreground">
-                有效期：{formatDate(account.expires_at)}
+                {t("validityLabel")}
+                {formatDate(account.expires_at, locale, t("neverExpires"))}
               </div>
               <AccountActions
                 account={account}
@@ -399,16 +411,20 @@ export default function ServiceAccountsPage() {
       />
       <ConfirmDialog
         open={deleting !== null}
-        title="删除服务账号"
-        description={`将删除 ${deleting?.display_name ?? "该服务账号"}，并立即撤销其全部凭据与令牌。`}
+        title={t("deleteServiceAccount")}
+        description={t("deleteServiceAccountConfirm", {
+          name: deleting?.display_name ?? t("thisServiceAccount"),
+        })}
         busy={busy}
         onClose={() => !busy && setDeleting(null)}
         onConfirm={() => void removeAccount()}
       />
       <ConfirmDialog
         open={revokeCredential !== null}
-        title="撤销凭据"
-        description={`将撤销 ${revokeCredential?.name ?? "该凭据"}，由此凭据签发的令牌会立即失效。`}
+        title={t("revokeCredential")}
+        description={t("revokeCredentialConfirm", {
+          name: revokeCredential?.name ?? t("thisCredential"),
+        })}
         busy={busy}
         onClose={() => !busy && setRevokeCredential(null)}
         onConfirm={() => void revoke()}
@@ -431,25 +447,27 @@ function AccountActions({
   onEdit: () => void
   onDelete: () => void
 }) {
+  const t = useTranslations("iam")
+
   return (
     <TooltipProvider>
       <div className="flex justify-end gap-1">
         <ActionButton
-          label={`管理 ${account.display_name} 的凭据`}
+          label={t("manageCredentialsNamed", { name: account.display_name })}
           onClick={onCredentials}
           disabled={busy}
         >
           <KeyRound />
         </ActionButton>
         <ActionButton
-          label={`编辑 ${account.display_name}`}
+          label={t("editNamedSpaced", { name: account.display_name })}
           onClick={onEdit}
           disabled={busy}
         >
           <Pencil />
         </ActionButton>
         <ActionButton
-          label={`删除 ${account.display_name}`}
+          label={t("deleteNamedSpaced", { name: account.display_name })}
           onClick={onDelete}
           disabled={busy}
           destructive
@@ -478,13 +496,17 @@ function AccountEditor({
   onOpenChange: (open: boolean) => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
 }) {
+  const t = useTranslations("iam")
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>{account ? "编辑服务账号" : "创建服务账号"}</DialogTitle>
+          <DialogTitle>
+            {account ? t("editServiceAccount") : t("createServiceAccount")}
+          </DialogTitle>
           <DialogDescription>
-            {account ? account.login_name : "服务账号不能使用密码或浏览器登录"}
+            {account ? account.login_name : t("serviceAccountNoLogin")}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -492,7 +514,7 @@ function AccountEditor({
           className="space-y-4"
           onSubmit={onSubmit}
         >
-          <Field label="登录名" htmlFor="service-account-login">
+          <Field label={t("loginIdentifier")} htmlFor="service-account-login">
             <Input
               id="service-account-login"
               value={draft.loginName}
@@ -504,7 +526,7 @@ function AccountEditor({
               }
             />
           </Field>
-          <Field label="显示名称" htmlFor="service-account-display">
+          <Field label={t("displayName")} htmlFor="service-account-display">
             <Input
               id="service-account-display"
               value={draft.displayName}
@@ -516,7 +538,7 @@ function AccountEditor({
               }
             />
           </Field>
-          <Field label="说明" htmlFor="service-account-description">
+          <Field label={t("notes")} htmlFor="service-account-description">
             <Textarea
               id="service-account-description"
               value={draft.description}
@@ -528,7 +550,7 @@ function AccountEditor({
               }
             />
           </Field>
-          <Field label="有效期" htmlFor="service-account-expiry">
+          <Field label={t("validity")} htmlFor="service-account-expiry">
             <Input
               id="service-account-expiry"
               type="datetime-local"
@@ -541,7 +563,9 @@ function AccountEditor({
           </Field>
           {account && (
             <div className="flex min-h-11 items-center justify-between gap-4 rounded-md border px-3">
-              <Label htmlFor="service-account-enabled">启用账号</Label>
+              <Label htmlFor="service-account-enabled">
+                {t("enableAccount")}
+              </Label>
               <Switch
                 id="service-account-enabled"
                 checked={draft.enabled}
@@ -558,10 +582,10 @@ function AccountEditor({
             onClick={() => onOpenChange(false)}
             disabled={busy}
           >
-            取消
+            {t("cancel")}
           </Button>
           <Button type="submit" form="service-account-form" disabled={busy}>
-            {busy ? "正在保存" : "保存"}
+            {busy ? t("savingProgress") : t("save")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -590,11 +614,15 @@ function CredentialsDialog({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   onRevoke: (credential: ServiceAccountCredential) => void
 }) {
+  const locale = useLocale()
+
+  const t = useTranslations("iam")
+
   return (
     <Dialog open={account !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>服务账号凭据</DialogTitle>
+          <DialogTitle>{t("serviceAccountCredentials")}</DialogTitle>
           <DialogDescription>{account?.display_name}</DialogDescription>
         </DialogHeader>
         <form
@@ -602,7 +630,7 @@ function CredentialsDialog({
           className="grid gap-3 md:grid-cols-3"
           onSubmit={onSubmit}
         >
-          <Field label="凭据名称" htmlFor="service-credential-name">
+          <Field label={t("credentialName")} htmlFor="service-credential-name">
             <Input
               id="service-credential-name"
               value={draft.name}
@@ -625,7 +653,7 @@ function CredentialsDialog({
               }
             />
           </Field>
-          <Field label="有效期" htmlFor="service-credential-expiry">
+          <Field label={t("validity")} htmlFor="service-credential-expiry">
             <Input
               id="service-credential-expiry"
               type="datetime-local"
@@ -641,13 +669,15 @@ function CredentialsDialog({
           <Table containerClassName="min-w-[680px]">
             <TableHeader>
               <TableRow>
-                <TableHead>名称</TableHead>
-                <TableHead>客户端 ID</TableHead>
+                <TableHead>{t("name")}</TableHead>
+                <TableHead>{t("clientId")}</TableHead>
                 <TableHead>Scopes</TableHead>
-                <TableHead>有效期</TableHead>
-                <TableHead>最近使用</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead className="w-20 text-right">操作</TableHead>
+                <TableHead>{t("validity")}</TableHead>
+                <TableHead>{t("lastUsedLabel")}</TableHead>
+                <TableHead>{t("status")}</TableHead>
+                <TableHead className="w-20 text-right">
+                  {t("actions")}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -660,15 +690,27 @@ function CredentialsDialog({
                   <TableCell className="max-w-48 truncate">
                     {credential.scopes.join(" ")}
                   </TableCell>
-                  <TableCell>{formatDate(credential.expires_at)}</TableCell>
-                  <TableCell>{formatDate(credential.last_used_at)}</TableCell>
+                  <TableCell>
+                    {formatDate(
+                      credential.expires_at,
+                      locale,
+                      t("neverExpires")
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {formatDate(
+                      credential.last_used_at,
+                      locale,
+                      t("neverExpires")
+                    )}
+                  </TableCell>
                   <TableCell>
                     <CredentialStatus credential={credential} />
                   </TableCell>
                   <TableCell className="text-right">
                     {!credential.revoked_at && (
                       <ActionButton
-                        label={`撤销 ${credential.name}`}
+                        label={t("revokeNamed", { name: credential.name })}
                         onClick={() => onRevoke(credential)}
                         disabled={busy}
                         destructive
@@ -685,7 +727,7 @@ function CredentialsDialog({
                     colSpan={7}
                     className="h-24 text-center text-muted-foreground"
                   >
-                    {loading ? "正在加载凭据" : "暂无凭据"}
+                    {loading ? t("loadingCredentials") : t("noCredentials")}
                   </TableCell>
                 </TableRow>
               )}
@@ -699,11 +741,11 @@ function CredentialsDialog({
             onClick={onClose}
             disabled={busy}
           >
-            关闭
+            {t("close")}
           </Button>
           <Button type="submit" form="service-credential-form" disabled={busy}>
             <Plus />
-            {busy ? "正在创建" : "创建凭据"}
+            {busy ? t("creating") : t("createCredential")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -726,6 +768,8 @@ function ConfirmDialog({
   onClose: () => void
   onConfirm: () => void
 }) {
+  const t = useTranslations("iam")
+
   return (
     <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
       <DialogContent>
@@ -735,10 +779,10 @@ function ConfirmDialog({
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={busy}>
-            取消
+            {t("cancel")}
           </Button>
           <Button variant="destructive" onClick={onConfirm} disabled={busy}>
-            {busy ? "正在处理" : "确认"}
+            {busy ? t("processingProgress") : t("confirm")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -753,26 +797,28 @@ function SecretDialog({
   value: SecretResult | null
   onClose: () => void
 }) {
+  const t = useTranslations("iam")
+
   const copy = async (text: string) => navigator.clipboard.writeText(text)
   return (
     <Dialog open={value !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>保存客户端凭据</DialogTitle>
-          <DialogDescription>客户端密钥仅显示一次</DialogDescription>
+          <DialogTitle>{t("saveClientCredentials")}</DialogTitle>
+          <DialogDescription>{t("secretOnce")}</DialogDescription>
         </DialogHeader>
         <SecretField
-          label="客户端 ID"
+          label={t("clientId")}
           value={value?.clientID ?? ""}
           onCopy={copy}
         />
         <SecretField
-          label="客户端密钥"
+          label={t("clientSecret")}
           value={value?.clientSecret ?? ""}
           onCopy={copy}
         />
         <DialogFooter>
-          <Button onClick={onClose}>完成</Button>
+          <Button onClick={onClose}>{t("done")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -788,6 +834,8 @@ function SecretField({
   value: string
   onCopy: (value: string) => Promise<void>
 }) {
+  const t = useTranslations("iam")
+
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
@@ -797,7 +845,7 @@ function SecretField({
           type="button"
           size="icon"
           variant="outline"
-          aria-label={`复制${label}`}
+          aria-label={t("copyNamed", { label: label })}
           onClick={() => void onCopy(value)}
         >
           <Copy />
@@ -852,12 +900,14 @@ function ActionButton({
 }
 
 function StatusBadge({ status }: { status: ServiceAccount["status"] }) {
+  const t = useTranslations("iam")
+
   return (
     <Badge
       variant={status === "active" ? "default" : "outline"}
       className="shrink-0 whitespace-nowrap"
     >
-      {status === "active" ? "启用" : "停用"}
+      {status === "active" ? t("active") : t("disable")}
     </Badge>
   )
 }
@@ -867,17 +917,23 @@ function CredentialStatus({
 }: {
   credential: ServiceAccountCredential
 }) {
-  const label = credential.revoked_at ? "已撤销" : "未撤销"
+  const t = useTranslations("iam")
+
+  const label = credential.revoked_at ? t("revoked") : t("notRevoked")
   return (
-    <Badge variant={label === "未撤销" ? "default" : "outline"}>{label}</Badge>
+    <Badge variant={label === t("notRevoked") ? "default" : "outline"}>
+      {label}
+    </Badge>
   )
 }
 
 function EmptyAccounts() {
+  const t = useTranslations("iam")
+
   return (
     <div>
       <Bot className="mx-auto mb-2 size-7 text-muted-foreground" />
-      <p className="text-sm font-medium">尚未创建服务账号</p>
+      <p className="text-sm font-medium">{t("noServiceAccounts")}</p>
     </div>
   )
 }
@@ -913,11 +969,15 @@ function isoDateTime(value: string): string | undefined {
   return value ? new Date(value).toISOString() : undefined
 }
 
-function formatDate(value?: string): string {
+function formatDate(
+  value: string | undefined,
+  locale: string,
+  emptyLabel: string
+): string {
   return value
-    ? new Intl.DateTimeFormat("zh-CN", {
+    ? new Intl.DateTimeFormat(locale, {
         dateStyle: "medium",
         timeStyle: "short",
       }).format(new Date(value))
-    : "永不过期"
+    : emptyLabel
 }

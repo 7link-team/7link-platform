@@ -137,6 +137,12 @@
             "pattern": "^[1-9][0-9]*$",
             "type": "string"
           },
+          "translations": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "updated_at": {
             "format": "date-time",
             "type": "string"
@@ -2036,6 +2042,13 @@
               "disabled"
             ],
             "type": "string"
+          },
+          "translations": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "BCP 47 language tags mapped to menu labels; default label is the fallback",
+            "type": "object"
           }
         },
         "required": [
@@ -7635,6 +7648,12 @@
           "sort_order": {
             "format": "int64",
             "type": "integer"
+          },
+          "translations": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
           }
         },
         "required": [
@@ -10261,6 +10280,13 @@
               "disabled"
             ],
             "type": "string"
+          },
+          "translations": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "replace translations; an empty object clears them; omitted preserves existing translations",
+            "type": "object"
           }
         },
         "type": "object"

@@ -8,10 +8,12 @@ const PopoverTrigger = Popover.Trigger
 
 const PopoverContent = React.forwardRef<
   React.ElementRef<typeof Popover.Popup>,
-  React.ComponentPropsWithoutRef<typeof Popover.Popup>
->(({ className, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof Popover.Popup> & {
+    align?: "start" | "center" | "end"
+  }
+>(({ className, align = "center", ...props }, ref) => (
   <Popover.Portal>
-    <Popover.Positioner align="center" sideOffset={4} className="z-50">
+    <Popover.Positioner align={align} sideOffset={4} className="z-50">
       <Popover.Popup
         ref={ref}
         className={cn(

@@ -1,4 +1,6 @@
-import { LogOut } from "lucide-react"
+import { useTranslations } from "@workspace/ui/i18n/intl-provider"
+import { LogOut, UserRound } from "lucide-react"
+import { useNavigate } from "react-router"
 import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar"
 import {
   DropdownMenu,
@@ -11,6 +13,9 @@ import {
 import { useAuth } from "./auth"
 
 export function UserMenu() {
+  const t = useTranslations("iam")
+
+  const navigate = useNavigate()
   const { session, logout } = useAuth()
   if (!session) return null
   const name = session.preferred_username ?? session.email ?? session.subject
@@ -18,7 +23,10 @@ export function UserMenu() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="flex h-9 max-w-48 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none">
+      <DropdownMenuTrigger
+        aria-label={t("accountMenu")}
+        className="flex h-9 max-w-48 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      >
         <Avatar size="sm">
           <AvatarFallback>{initials}</AvatarFallback>
         </Avatar>
@@ -32,12 +40,17 @@ export function UserMenu() {
           </p>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => navigate("/account/profile")}>
+          <UserRound className="mr-2 size-4" />
+          {t("account")}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => void logout()}
           className="text-destructive focus:text-destructive"
         >
           <LogOut className="mr-2 size-4" />
-          退出登录
+          {t("logout")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

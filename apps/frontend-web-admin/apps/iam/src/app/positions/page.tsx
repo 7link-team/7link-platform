@@ -1,3 +1,4 @@
+import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { useCallback, useEffect, useState, type FormEvent } from "react"
 import {
   BriefcaseBusiness,
@@ -43,6 +44,8 @@ import {
 } from "../../lib/iam-api"
 
 export default function PositionsPage() {
+  const t = useTranslations("iam")
+
   const [positions, setPositions] = useState<Position[]>([])
   const [positionOpen, setPositionOpen] = useState(false)
   const [editingPosition, setEditingPosition] = useState<Position | null>(null)
@@ -168,12 +171,12 @@ export default function PositionsPage() {
   return (
     <>
       <PageHeader
-        title="岗位管理"
-        description="维护当前租户的岗位目录和成员任职时间"
+        title={t("positionManagement")}
+        description={t("positionsDescription")}
         action={
           <Button onClick={openCreate}>
             <Plus />
-            创建岗位
+            {t("createPosition")}
           </Button>
         }
       />
@@ -182,12 +185,12 @@ export default function PositionsPage() {
         <Table className="min-w-[760px]">
           <TableHeader>
             <TableRow>
-              <TableHead>岗位</TableHead>
-              <TableHead>编码</TableHead>
-              <TableHead>排序</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>版本</TableHead>
-              <TableHead className="w-32 text-right">操作</TableHead>
+              <TableHead>{t("positions")}</TableHead>
+              <TableHead>{t("code")}</TableHead>
+              <TableHead>{t("sortOrder")}</TableHead>
+              <TableHead>{t("status")}</TableHead>
+              <TableHead>{t("version")}</TableHead>
+              <TableHead className="w-32 text-right">{t("actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -213,7 +216,7 @@ export default function PositionsPage() {
                       position.status === "active" ? "secondary" : "destructive"
                     }
                   >
-                    {position.status === "active" ? "启用" : "停用"}
+                    {position.status === "active" ? t("active") : t("disable")}
                   </Badge>
                 </TableCell>
                 <TableCell className="font-mono text-xs">
@@ -226,8 +229,10 @@ export default function PositionsPage() {
                       size="icon"
                       disabled={busy}
                       onClick={() => void openMembers(position)}
-                      aria-label={`管理${position.name}成员`}
-                      title="管理成员"
+                      aria-label={t("manageMembersNamed", {
+                        name: position.name,
+                      })}
+                      title={t("manageMembers")}
                     >
                       <UserRoundCog />
                     </Button>
@@ -236,8 +241,8 @@ export default function PositionsPage() {
                       size="icon"
                       disabled={busy}
                       onClick={() => openEdit(position)}
-                      aria-label={`编辑${position.name}`}
-                      title="编辑岗位"
+                      aria-label={t("editNamed", { name: position.name })}
+                      title={t("editPosition")}
                     >
                       <Pencil />
                     </Button>
@@ -246,8 +251,8 @@ export default function PositionsPage() {
                       size="icon"
                       disabled={busy}
                       onClick={() => void removePosition(position)}
-                      aria-label={`删除${position.name}`}
-                      title="删除空岗位"
+                      aria-label={t("deleteNamed", { name: position.name })}
+                      title={t("deleteEmptyPosition")}
                     >
                       <Trash2 />
                     </Button>
@@ -261,7 +266,7 @@ export default function PositionsPage() {
           <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
             <span className="text-center">
               <BriefcaseBusiness className="mx-auto mb-2 size-7" />
-              当前租户暂无岗位
+              {t("noPositions")}
             </span>
           </div>
         )}
@@ -277,10 +282,10 @@ export default function PositionsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editingPosition ? "编辑岗位" : "创建岗位"}
+              {editingPosition ? t("editPosition") : t("createPosition")}
             </DialogTitle>
             <DialogDescription>
-              岗位编码在租户内唯一，保存时统一规范化为小写。
+              {t("positionFormDescription")}
             </DialogDescription>
           </DialogHeader>
           <form
@@ -291,7 +296,7 @@ export default function PositionsPage() {
           >
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
-                <Label htmlFor="position-code">岗位编码</Label>
+                <Label htmlFor="position-code">{t("positionCode")}</Label>
                 <Input
                   id="position-code"
                   name="code"
@@ -302,7 +307,7 @@ export default function PositionsPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="position-name">岗位名称</Label>
+                <Label htmlFor="position-name">{t("positionName")}</Label>
                 <Input
                   id="position-name"
                   name="name"
@@ -314,7 +319,7 @@ export default function PositionsPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="position-sort-order">排序</Label>
+                <Label htmlFor="position-sort-order">{t("sortOrder")}</Label>
                 <Input
                   id="position-sort-order"
                   name="sort_order"
@@ -326,10 +331,10 @@ export default function PositionsPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="position-status">状态</Label>
+                <Label htmlFor="position-status">{t("status")}</Label>
                 <SimpleSelect
                   id="position-status"
-                  options={{ active: "启用", disabled: "停用" }}
+                  options={{ active: t("active"), disabled: t("disable") }}
                   value={status}
                   onValueChange={(value) =>
                     setStatus(value as PositionInput["status"])
@@ -340,10 +345,10 @@ export default function PositionsPage() {
           </form>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPositionOpen(false)}>
-              取消
+              {t("cancel")}
             </Button>
             <Button type="submit" form="position-form" disabled={busy}>
-              {busy ? "保存中" : editingPosition ? "保存" : "创建"}
+              {busy ? t("saving") : editingPosition ? t("save") : t("create")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -354,8 +359,8 @@ export default function PositionsPage() {
           key={`${memberPosition.id}:${positionMembers.map((member) => `${member.principal_id}:${member.starts_at}:${member.ends_at}`).join("|")}`}
           open
           itemName={memberPosition.name}
-          directoryLabel="岗位"
-          scheduleLabel="任职时间"
+          directoryLabel={t("positions")}
+          scheduleLabel={t("assignmentPeriod")}
           formID="position-member-form"
           inputPrefix="position-member"
           members={positionMembers}

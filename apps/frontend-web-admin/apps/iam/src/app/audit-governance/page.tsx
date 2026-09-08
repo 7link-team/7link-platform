@@ -1,3 +1,4 @@
+import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import {
   useCallback,
   useEffect,
@@ -50,6 +51,8 @@ import {
 import { ArchiveJobs } from "./archives"
 
 export default function AuditGovernancePage() {
+  const t = useTranslations("iam")
+
   const [tenant, setTenantValue] = useState(getTenant)
   const [params, setParams] = useSearchParams()
   const scope: AuditScope =
@@ -71,12 +74,12 @@ export default function AuditGovernancePage() {
           })
         }
       >
-        <TabsList variant="line" className="mb-4" aria-label="审计范围">
+        <TabsList variant="line" className="mb-4" aria-label={t("auditScope")}>
           <TabsTrigger variant="line" value="tenant">
-            当前租户
+            {t("currentTenant")}
           </TabsTrigger>
           <TabsTrigger variant="line" value="platform">
-            平台
+            {t("platform")}
           </TabsTrigger>
         </TabsList>
       </Tabs>
@@ -96,6 +99,8 @@ function ScopedAuditGovernance({
   tenant: string
   scope: AuditScope
 }) {
+  const t = useTranslations("iam")
+
   const iamApi = useMemo(() => createIamApi(undefined, () => tenant), [tenant])
   const active = useRef(true)
   const refreshID = useRef(0)
@@ -223,7 +228,11 @@ function ScopedAuditGovernance({
   return (
     <>
       <PageHeader
-        title={scope === "platform" ? "平台审计治理" : "审计治理"}
+        title={
+          scope === "platform"
+            ? t("platformAuditGovernance")
+            : t("auditGovernance")
+        }
         action={
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -234,7 +243,7 @@ function ScopedAuditGovernance({
               disabled={loading}
             >
               <RefreshCw className={loading ? "animate-spin" : ""} />
-              刷新
+              {t("refresh")}
             </Button>
             <Button
               type="button"
@@ -247,7 +256,7 @@ function ScopedAuditGovernance({
               }}
             >
               <Pencil />
-              更新保留策略
+              {t("updateRetentionPolicy")}
             </Button>
             {scope === "tenant" && (
               <Button
@@ -262,7 +271,7 @@ function ScopedAuditGovernance({
                 ) : (
                   <Fingerprint />
                 )}
-                签名当前根
+                {t("signCurrentRoot")}
               </Button>
             )}
           </div>
@@ -272,7 +281,7 @@ function ScopedAuditGovernance({
       {loading && !archiveStatus ? (
         <div className="flex items-center gap-2 text-muted-foreground">
           <LoaderCircle className="animate-spin" />
-          加载中
+          {t("loadingShort")}
         </div>
       ) : (
         archiveStatus && (
@@ -314,15 +323,15 @@ function ScopedAuditGovernance({
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>配置保留策略</DialogTitle>
+            <DialogTitle>{t("configureRetention")}</DialogTitle>
             <DialogDescription>
-              设置事件的最小保留期与归档就绪期，归档不会删除事件。
+              {t("retentionPolicyDescription")}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={(event) => void saveRetention(event)}>
             <div className="grid gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="min-days">最短保留天数</Label>
+                <Label htmlFor="min-days">{t("minimumRetentionDays")}</Label>
                 <Input
                   id="min-days"
                   type="number"
@@ -334,7 +343,7 @@ function ScopedAuditGovernance({
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="archive-days">归档就绪天数</Label>
+                <Label htmlFor="archive-days">{t("archiveReadyDays")}</Label>
                 <Input
                   id="archive-days"
                   type="number"
@@ -352,11 +361,11 @@ function ScopedAuditGovernance({
                 variant="outline"
                 onClick={() => setDialogOpen(false)}
               >
-                取消
+                {t("cancel")}
               </Button>
               <Button type="submit" disabled={busy}>
                 {busy && <LoaderCircle className="animate-spin" />}
-                保存
+                {t("save")}
               </Button>
             </DialogFooter>
           </form>
@@ -375,16 +384,20 @@ function PolicyCard({
   archiveAfterDays?: number
   updatedAt?: string
 }) {
+  const locale = useLocale()
+
+  const t = useTranslations("iam")
+
   return (
-    <Card icon={<ShieldCheck />} title="保留策略">
-      <Stat label="最短保留天数" value={minDays ?? "-"} />
-      <Stat label="归档就绪天数" value={archiveAfterDays ?? "-"} />
+    <Card icon={<ShieldCheck />} title={t("retentionPolicy")}>
+      <Stat label={t("minimumRetentionDays")} value={minDays ?? "-"} />
+      <Stat label={t("archiveReadyDays")} value={archiveAfterDays ?? "-"} />
       <Stat
-        label="更新时间"
+        label={t("updatedAt")}
         value={
           updatedAt && new Date(updatedAt).getUTCFullYear() > 1
-            ? new Date(updatedAt).toLocaleString()
-            : "平台默认"
+            ? new Date(updatedAt).toLocaleString(locale)
+            : t("platformDefault")
         }
       />
     </Card>
@@ -402,28 +415,30 @@ function IntegrityCard({
   headSequence?: number
   anchor?: AuditGovernance["integrity"]["anchor"]
 }) {
+  const t = useTranslations("iam")
+
   return (
-    <Card icon={<CheckCircle2 />} title="链完整性">
+    <Card icon={<CheckCircle2 />} title={t("chainIntegrity")}>
       <Stat
-        label="链完整性"
+        label={t("chainIntegrity")}
         value={
           <Badge variant={valid ? "default" : "destructive"}>
-            {valid ? "有效" : "无效"}
+            {valid ? t("valid") : t("invalid")}
           </Badge>
         }
       />
-      <Stat label="已校验事件" value={verified ?? 0} />
-      <Stat label="链头序号" value={headSequence ?? 0} />
+      <Stat label={t("verifiedEvents")} value={verified ?? 0} />
+      <Stat label={t("chainHeadSequence")} value={headSequence ?? 0} />
       <Stat
-        label="锚定状态"
+        label={t("anchorStatus")}
         value={
           <Badge variant={anchor?.enabled ? "default" : "outline"}>
-            {anchor?.enabled ? "已启用" : "未启用"}
+            {anchor?.enabled ? t("enabled") : t("notEnabled")}
           </Badge>
         }
       />
       <Stat
-        label="签名状态"
+        label={t("signatureStatus")}
         value={
           <Badge
             variant={
@@ -436,9 +451,9 @@ function IntegrityCard({
           >
             {anchor?.signed
               ? anchor.signature_valid
-                ? "已签名"
-                : "签名无效"
-              : "未签名"}
+                ? t("signed")
+                : t("invalidSignature")
+              : t("unsigned")}
           </Badge>
         }
       />
@@ -455,34 +470,42 @@ function StatsCard({
   archiveReady?: number
   anchored?: number
 }) {
+  const t = useTranslations("iam")
+
   return (
-    <Card icon={<FileClock />} title="统计数据">
-      <Stat label="事件总数" value={total ?? 0} />
-      <Stat label="已达归档期限" value={archiveReady ?? 0} />
-      <Stat label="已锚定事件" value={anchored ?? 0} />
+    <Card icon={<FileClock />} title={t("statistics")}>
+      <Stat label={t("totalEvents")} value={total ?? 0} />
+      <Stat label={t("archiveEligible")} value={archiveReady ?? 0} />
+      <Stat label={t("anchoredEvents")} value={anchored ?? 0} />
     </Card>
   )
 }
 
 function AnchorsTable({ anchors }: { anchors: AuditAnchor[] }) {
+  const locale = useLocale()
+
+  const t = useTranslations("iam")
+
   return (
     <section className="rounded-md border">
       <div className="flex items-center gap-2 border-b px-4 py-3">
         <FileClock className="size-4 text-muted-foreground" />
-        <h2 className="text-sm font-medium">根锚点链</h2>
+        <h2 className="text-sm font-medium">{t("rootAnchorChain")}</h2>
       </div>
       {anchors.length === 0 ? (
-        <p className="px-4 py-6 text-sm text-muted-foreground">无锚点记录</p>
+        <p className="px-4 py-6 text-sm text-muted-foreground">
+          {t("noAnchors")}
+        </p>
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>序号</TableHead>
-              <TableHead>链头哈希</TableHead>
-              <TableHead>锚定时间</TableHead>
-              <TableHead>锚点哈希</TableHead>
-              <TableHead>签名状态</TableHead>
-              <TableHead>签名键 ID</TableHead>
+              <TableHead>{t("sequence")}</TableHead>
+              <TableHead>{t("chainHeadHash")}</TableHead>
+              <TableHead>{t("anchoredAt")}</TableHead>
+              <TableHead>{t("anchorHash")}</TableHead>
+              <TableHead>{t("signatureStatus")}</TableHead>
+              <TableHead>{t("signingKeyId")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -495,14 +518,14 @@ function AnchorsTable({ anchors }: { anchors: AuditAnchor[] }) {
                   {item.head_hash}
                 </TableCell>
                 <TableCell className="text-xs">
-                  {new Date(item.anchored_at).toLocaleString()}
+                  {new Date(item.anchored_at).toLocaleString(locale)}
                 </TableCell>
                 <TableCell className="max-w-52 truncate font-mono text-xs">
                   {item.anchor_hash}
                 </TableCell>
                 <TableCell>
                   <Badge variant={item.root_signature ? "default" : "outline"}>
-                    {item.root_signature ? "已签名" : "未签名"}
+                    {item.root_signature ? t("signed") : t("unsigned")}
                   </Badge>
                 </TableCell>
                 <TableCell className="font-mono text-xs">

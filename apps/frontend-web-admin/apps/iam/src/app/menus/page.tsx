@@ -1,5 +1,15 @@
+import { useTranslations, useLocale } from "@workspace/ui/i18n/intl-provider"
 import { useCallback, useEffect, useState, type FormEvent } from "react"
-import { ArrowUpDown, Boxes, Pencil, Plus, Trash2 } from "lucide-react"
+import {
+  ArrowUpDown,
+  Boxes,
+  ChevronDown,
+  ChevronRight,
+  Languages,
+  Pencil,
+  Plus,
+  Trash2,
+} from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -24,10 +34,15 @@ import {
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import { iamApi, type Menu, type MenuInput } from "../../lib/iam-api"
+import { menuLabel, menuRows } from "../../lib/navigation"
+import { defaultLocale, locales, localeNames } from "@workspace/ui/i18n/config"
 
 const rootMenu = "__root__"
 
 export default function MenusPage() {
+  const t = useTranslations("iam")
+  const locale = useLocale()
+
   const [menus, setMenus] = useState<Menu[]>([])
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Menu | null>(null)
@@ -35,6 +50,11 @@ export default function MenusPage() {
   const [status, setStatus] = useState<MenuInput["status"]>("active")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const [translations, setTranslations] = useState<
+    { locale: string; label: string }[]
+  >([])
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [previewLanguage, setPreviewLanguage] = useState<string | null>(null)
   const refresh = useCallback(() => iamApi.menus().then(setMenus), [])
 
   useEffect(() => {
@@ -45,6 +65,7 @@ export default function MenusPage() {
     setEditing(null)
     setParentID(rootMenu)
     setStatus("active")
+    setTranslations(locales.map((locale) => ({ locale, label: "" })))
     setOpen(true)
   }
 
@@ -52,6 +73,12 @@ export default function MenusPage() {
     setEditing(menu)
     setParentID(menu.parent_id || rootMenu)
     setStatus(menu.status)
+    setTranslations(
+      Object.entries(menu.translations ?? {}).map(([locale, label]) => ({
+        locale,
+        label,
+      }))
+    )
     setOpen(true)
   }
 
@@ -60,9 +87,21 @@ export default function MenusPage() {
     setBusy(true)
     setError("")
     const data = new FormData(event.currentTarget)
+    const translated = translations.filter((item) => item.label.trim())
+    if (
+      new Set(translated.map((item) => item.locale.trim().toLowerCase()))
+        .size !== translated.length
+    ) {
+      setError(t("duplicateLanguage"))
+      setBusy(false)
+      return
+    }
     const body: MenuInput = {
       parent_id: parentID === rootMenu ? "" : parentID,
       label: String(data.get("label")),
+      translations: Object.fromEntries(
+        translated.map((item) => [item.locale.trim(), item.label.trim()])
+      ),
       route: String(data.get("route")),
       icon: String(data.get("icon")),
       permission_code: String(data.get("permission_code")),
@@ -75,6 +114,7 @@ export default function MenusPage() {
       setOpen(false)
       setEditing(null)
       await refresh()
+      window.dispatchEvent(new Event("menu-catalog-change"))
     } catch (cause) {
       setError((cause as Error).message)
     } finally {
@@ -88,6 +128,7 @@ export default function MenusPage() {
     try {
       await iamApi.deleteMenu(id)
       await refresh()
+      window.dispatchEvent(new Event("menu-catalog-change"))
     } catch (cause) {
       setError((cause as Error).message)
     } finally {
@@ -95,100 +136,165 @@ export default function MenusPage() {
     }
   }
 
+  const rows = menuRows(menus)
   const parentOptions = [
-    { value: rootMenu, label: "顶级菜单" },
-    ...menus
-      .filter((menu) => menu.id !== editing?.id)
-      .map((menu) => ({ value: menu.id, label: menu.label })),
+    { value: rootMenu, label: t("rootMenu") },
+    ...rows
+      .filter(
+        ({ menu, ancestors }) =>
+          menu.id !== editing?.id && !ancestors.includes(editing?.id ?? "")
+      )
+      .map(({ menu, depth }) => ({
+        value: menu.id,
+        label: `${"  ".repeat(depth)}${menuLabel(menu, locale)}`,
+      })),
   ]
 
   return (
     <>
       <PageHeader
-        title="菜单管理"
-        description="菜单只控制导航可见性，后端权限仍由路由 Guard 强制执行"
+        title={t("menuManagement")}
         action={
           <Button onClick={openCreate}>
             <Plus />
-            创建菜单
+            {t("createMenu")}
           </Button>
         }
       />
       {error && <Alert>{error}</Alert>}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+        <span className="text-sm text-muted-foreground">
+          {t("menuCounts", {
+            roots: menus.filter((menu) => !menu.parent_id).length,
+            total: menus.length,
+          })}
+        </span>
+        <label className="flex items-center gap-2 text-sm">
+          <Languages className="size-4" />
+          {t("displayLanguage")}
+          <select
+            aria-label={t("menuPreviewLanguage")}
+            className="h-9 rounded-md border bg-background px-2"
+            value={previewLanguage ?? locale}
+            onChange={(event) => setPreviewLanguage(event.target.value)}
+          >
+            {locales.map((locale) => (
+              <option key={locale} value={locale}>
+                {localeNames[locale]}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       <div className="overflow-hidden rounded-md border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>菜单</TableHead>
-              <TableHead>路由</TableHead>
-              <TableHead>权限码</TableHead>
-              <TableHead>排序</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead className="w-24 text-right">操作</TableHead>
+              <TableHead>{t("menu")}</TableHead>
+              <TableHead>{t("route")}</TableHead>
+              <TableHead>{t("permissionCode")}</TableHead>
+              <TableHead>{t("sortOrder")}</TableHead>
+              <TableHead>{t("status")}</TableHead>
+              <TableHead className="w-24 text-right">{t("actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {menus.map((menu) => (
-              <TableRow key={menu.id}>
-                <TableCell>
-                  <span className="flex items-center gap-2 font-medium">
-                    <Boxes className="size-4 text-primary" />
-                    {menu.label}
-                  </span>
-                </TableCell>
-                <TableCell className="font-mono text-xs">
-                  {menu.route || "-"}
-                </TableCell>
-                <TableCell className="font-mono text-xs">
-                  {menu.permission_code || "-"}
-                </TableCell>
-                <TableCell>
-                  <span className="flex items-center gap-1 text-xs">
-                    <ArrowUpDown size={13} />
-                    {menu.sort_order}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <Badge
-                    variant={
-                      menu.status === "active" ? "secondary" : "destructive"
-                    }
-                  >
-                    {menu.status === "active" ? "启用" : "停用"}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={busy}
-                      onClick={() => openEdit(menu)}
-                      aria-label={`编辑${menu.label}`}
-                      title="编辑菜单"
+            {rows
+              .filter((row) => !row.ancestors.some((id) => collapsed.has(id)))
+              .map(({ menu, depth }) => (
+                <TableRow key={menu.id}>
+                  <TableCell>
+                    <span
+                      className="flex items-center gap-2 font-medium"
+                      style={{ paddingInlineStart: Math.min(depth, 8) * 20 }}
                     >
-                      <Pencil />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={busy}
-                      onClick={() => void remove(menu.id)}
-                      aria-label={`删除${menu.label}`}
-                      title="删除菜单"
+                      {menus.some((child) => child.parent_id === menu.id) ? (
+                        <button
+                          type="button"
+                          className="grid size-8 shrink-0 place-items-center rounded hover:bg-muted"
+                          aria-label={`${collapsed.has(menu.id) ? t("expand") : t("collapse")}${menu.label}`}
+                          aria-expanded={!collapsed.has(menu.id)}
+                          onClick={() =>
+                            setCollapsed((previous) => {
+                              const next = new Set(previous)
+                              if (next.has(menu.id)) next.delete(menu.id)
+                              else next.add(menu.id)
+                              return next
+                            })
+                          }
+                        >
+                          {collapsed.has(menu.id) ? (
+                            <ChevronRight className="size-4" />
+                          ) : (
+                            <ChevronDown className="size-4" />
+                          )}
+                        </button>
+                      ) : (
+                        <span className="w-8 shrink-0" />
+                      )}
+                      <Boxes className="size-4 text-primary" />
+                      <span>
+                        {menuLabel(menu, previewLanguage ?? locale)}
+                        <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                          {Object.keys(menu.translations ?? {}).join(" · ") ||
+                            t("defaultLabel")}
+                        </span>
+                      </span>
+                    </span>
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {menu.route || "-"}
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {menu.permission_code || "-"}
+                  </TableCell>
+                  <TableCell>
+                    <span className="flex items-center gap-1 text-xs">
+                      <ArrowUpDown size={13} />
+                      {menu.sort_order}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={
+                        menu.status === "active" ? "secondary" : "destructive"
+                      }
                     >
-                      <Trash2 className="text-destructive" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
+                      {menu.status === "active" ? t("active") : t("disable")}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={busy}
+                        onClick={() => openEdit(menu)}
+                        aria-label={t("editNamed", { name: menu.label })}
+                        title={t("editMenu")}
+                      >
+                        <Pencil />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={busy}
+                        onClick={() => void remove(menu.id)}
+                        aria-label={t("deleteNamed", { name: menu.label })}
+                        title={t("deleteMenu")}
+                      >
+                        <Trash2 className="text-destructive" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
           </TableBody>
         </Table>
         {menus.length === 0 && (
           <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
             <Boxes className="mb-2 size-7" />
-            暂无菜单节点
+            {t("noMenus")}
           </div>
         )}
       </div>
@@ -201,9 +307,11 @@ export default function MenusPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editing ? "编辑菜单" : "创建菜单"}</DialogTitle>
+            <DialogTitle>
+              {editing ? t("editMenu") : t("createMenu")}
+            </DialogTitle>
             <DialogDescription>
-              路由和权限码必须与已声明的前后端能力一致。
+              {t("menuContractDescription")}
             </DialogDescription>
           </DialogHeader>
           <form
@@ -213,32 +321,125 @@ export default function MenusPage() {
             onSubmit={submit}
           >
             <MenuField
-              label="显示名称"
+              label={t("defaultLabel")}
               name="label"
               defaultValue={editing?.label}
               maxLength={128}
               required
             />
+            <fieldset className="grid gap-3 border-y py-4 sm:col-span-2">
+              <legend className="px-1 text-sm font-medium">
+                {t("translatedLabels")}
+              </legend>
+              {translations.map((item, index) => (
+                <div className="flex items-end gap-2" key={index}>
+                  <label className="grid w-28 shrink-0 gap-1 text-xs">
+                    {t("languageTag")}
+                    <select
+                      aria-label={t("languageTagNumber", { number: index + 1 })}
+                      value={item.locale}
+                      className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                      onChange={(event) =>
+                        setTranslations((previous) =>
+                          previous.map((row, i) =>
+                            i === index
+                              ? { ...row, locale: event.target.value }
+                              : row
+                          )
+                        )
+                      }
+                    >
+                      {locales.map((locale) => (
+                        <option
+                          key={locale}
+                          value={locale}
+                          disabled={translations.some(
+                            (row, i) => i !== index && row.locale === locale
+                          )}
+                        >
+                          {localeNames[locale]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid min-w-0 flex-1 gap-1 text-xs">
+                    {t("translation")}
+                    <Input
+                      aria-label={t("translationNumber", { number: index + 1 })}
+                      value={item.label}
+                      maxLength={128}
+                      onChange={(event) =>
+                        setTranslations((previous) =>
+                          previous.map((row, i) =>
+                            i === index
+                              ? { ...row, label: event.target.value }
+                              : row
+                          )
+                        )
+                      }
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t("removeLanguageNumber", {
+                      number: index + 1,
+                    })}
+                    title={t("removeLanguage")}
+                    onClick={() =>
+                      setTranslations((previous) =>
+                        previous.filter((_, i) => i !== index)
+                      )
+                    }
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                className="justify-self-start"
+                disabled={translations.length >= locales.length}
+                onClick={() =>
+                  setTranslations((previous) => [
+                    ...previous,
+                    {
+                      locale:
+                        locales.find(
+                          (locale) =>
+                            !previous.some((row) => row.locale === locale)
+                        ) ?? defaultLocale,
+                      label: "",
+                    },
+                  ])
+                }
+              >
+                <Plus />
+                {t("addLanguage")}
+              </Button>
+            </fieldset>
             <MenuField
-              label="前端路由"
+              label={t("frontendRoute")}
               name="route"
               defaultValue={editing?.route}
               maxLength={512}
             />
             <MenuField
-              label="图标标识"
+              label={t("iconIdentifier")}
               name="icon"
               defaultValue={editing?.icon}
               maxLength={64}
             />
             <MenuField
-              label="权限码"
+              label={t("permissionCode")}
               name="permission_code"
               defaultValue={editing?.permission_code}
               maxLength={128}
             />
             <MenuField
-              label="排序"
+              label={t("sortOrder")}
               name="sort_order"
               type="number"
               defaultValue={String(editing?.sort_order ?? 0)}
@@ -246,7 +447,7 @@ export default function MenusPage() {
               max={100000}
             />
             <div className="grid gap-2">
-              <Label htmlFor="menu-parent">父级菜单</Label>
+              <Label htmlFor="menu-parent">{t("parentMenu")}</Label>
               <SimpleSelect
                 id="menu-parent"
                 options={parentOptions}
@@ -255,12 +456,12 @@ export default function MenusPage() {
               />
             </div>
             <div className="grid gap-2 sm:col-span-2">
-              <Label htmlFor="menu-status">状态</Label>
+              <Label htmlFor="menu-status">{t("status")}</Label>
               <SimpleSelect
                 id="menu-status"
                 options={[
-                  { value: "active", label: "启用" },
-                  { value: "disabled", label: "停用" },
+                  { value: "active", label: t("active") },
+                  { value: "disabled", label: t("disable") },
                 ]}
                 value={status}
                 onValueChange={(value) =>
@@ -271,10 +472,10 @@ export default function MenusPage() {
           </form>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
-              取消
+              {t("cancel")}
             </Button>
             <Button type="submit" form="menu-form" disabled={busy}>
-              {busy ? "保存中" : editing ? "保存" : "创建"}
+              {busy ? t("saving") : editing ? t("save") : t("create")}
             </Button>
           </DialogFooter>
         </DialogContent>

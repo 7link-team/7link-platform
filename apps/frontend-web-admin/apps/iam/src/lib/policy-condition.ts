@@ -74,9 +74,10 @@ export function trustedContextConditionDraft(
 }
 
 export function trustedContextConditionSummary(
-  condition: RelationshipCondition | undefined
+  condition: RelationshipCondition | undefined,
+  unrestricted: string
 ): string {
-  if (!condition) return "不限"
+  if (!condition) return unrestricted
   return expressionSummary(condition)
 }
 

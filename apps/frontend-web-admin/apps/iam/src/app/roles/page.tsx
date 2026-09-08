@@ -1,3 +1,4 @@
+import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import {
   useCallback,
   useEffect,
@@ -53,6 +54,8 @@ import {
 } from "../../lib/policy-condition"
 
 export default function RolesPage() {
+  const t = useTranslations("iam")
+
   const [roles, setRoles] = useState<Role[]>([])
   const [catalog, setCatalog] = useState<Permission[]>([])
   const [selected, setSelected] = useState<Role | null>(null)
@@ -386,8 +389,8 @@ export default function RolesPage() {
   return (
     <>
       <PageHeader
-        title="角色权限"
-        description="按租户管理角色、成员与权限目录绑定"
+        title={t("rolePermissions")}
+        description={t("rolesDescription")}
         action={
           <Button
             onClick={() => {
@@ -396,7 +399,7 @@ export default function RolesPage() {
             }}
           >
             <Plus />
-            创建角色
+            {t("createRole")}
           </Button>
         }
       />
@@ -404,7 +407,7 @@ export default function RolesPage() {
       <div className="grid min-h-[620px] overflow-hidden rounded-md border bg-card lg:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="border-b lg:border-r lg:border-b-0">
           <header className="flex h-12 items-center justify-between border-b bg-muted/30 px-4 text-sm font-semibold">
-            角色列表
+            {t("roleList")}
             <span className="text-xs font-normal text-muted-foreground">
               {roles.length}
             </span>
@@ -437,7 +440,7 @@ export default function RolesPage() {
                 <div>
                   <h2 className="font-semibold">{selected.name}</h2>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {selected.description || "未填写描述"}
+                    {selected.description || t("noDescription")}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -451,7 +454,7 @@ export default function RolesPage() {
                     }}
                   >
                     <Pencil />
-                    编辑
+                    {t("edit")}
                   </Button>
                   <Button
                     variant="destructive"
@@ -460,7 +463,7 @@ export default function RolesPage() {
                     onClick={() => void remove()}
                   >
                     <Trash2 />
-                    删除角色
+                    {t("deleteRole")}
                   </Button>
                 </div>
               </header>
@@ -468,16 +471,16 @@ export default function RolesPage() {
                 <section className="mb-7" data-role-data-scope>
                   <h3 className="mb-3 flex items-center gap-2 border-b pb-2 text-xs font-semibold text-muted-foreground uppercase">
                     <Database size={15} />
-                    数据范围
+                    {t("dataScope")}
                   </h3>
                   {loadingDetails ? (
                     <p className="text-sm text-muted-foreground">
-                      加载数据范围中
+                      {t("loadingDataScope")}
                     </p>
                   ) : (
                     <div className="grid gap-4">
                       <div className="grid max-w-md gap-2">
-                        <Label htmlFor="role-data-scope">范围</Label>
+                        <Label htmlFor="role-data-scope">{t("scope")}</Label>
                         <SimpleSelect
                           id="role-data-scope"
                           value={scopeDraft}
@@ -486,11 +489,13 @@ export default function RolesPage() {
                             setScopeDraft(value as DataScope)
                           }
                           options={{
-                            all: "全部数据",
-                            self: "本人数据",
-                            department: "本部门",
-                            department_and_descendants: "本部门及下级部门",
-                            selected_departments: "指定部门",
+                            all: t("allData"),
+                            self: t("ownData"),
+                            department: t("ownDepartment"),
+                            department_and_descendants: t(
+                              "departmentDescendants"
+                            ),
+                            selected_departments: t("selectedDepartments"),
                           }}
                         />
                       </div>
@@ -534,7 +539,9 @@ export default function RolesPage() {
                                   {department.name}
                                 </span>
                                 {department.status !== "active" && (
-                                  <Badge variant="destructive">停用</Badge>
+                                  <Badge variant="destructive">
+                                    {t("disable")}
+                                  </Badge>
                                 )}
                               </label>
                             )
@@ -548,7 +555,7 @@ export default function RolesPage() {
                           onClick={() => void saveDataScope()}
                           data-save-data-scope
                         >
-                          保存数据范围
+                          {t("saveDataScope")}
                         </Button>
                       </div>
                     </div>
@@ -557,13 +564,15 @@ export default function RolesPage() {
                 <section className="mb-7">
                   <h3 className="mb-3 flex items-center gap-2 border-b pb-2 text-xs font-semibold text-muted-foreground uppercase">
                     <UsersRound size={15} />
-                    角色成员
+                    {t("roleMembers")}
                   </h3>
                   {loadingDetails ? (
-                    <p className="text-sm text-muted-foreground">加载成员中</p>
+                    <p className="text-sm text-muted-foreground">
+                      {t("loadingMembers")}
+                    </p>
                   ) : members.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
-                      当前租户暂无可分配成员
+                      {t("noAssignableMembers")}
                     </p>
                   ) : (
                     <div className="grid gap-2 md:grid-cols-2">
@@ -588,7 +597,7 @@ export default function RolesPage() {
                             </small>
                           </span>
                           {member.status !== "active" && (
-                            <Badge variant="destructive">停用</Badge>
+                            <Badge variant="destructive">{t("disable")}</Badge>
                           )}
                         </label>
                       ))}
@@ -596,7 +605,7 @@ export default function RolesPage() {
                   )}
                 </section>
                 <DirectoryBindingsSection
-                  title="用户组"
+                  title={t("groups")}
                   kind="group"
                   icon={<UsersRound size={15} />}
                   loading={loadingDetails}
@@ -604,7 +613,7 @@ export default function RolesPage() {
                   items={directoryGroups.map((group) => ({
                     id: group.id,
                     name: group.name,
-                    detail: group.description || "静态用户组",
+                    detail: group.description || t("staticGroup"),
                     status: group.status,
                   }))}
                   boundIDs={directoryBindings
@@ -613,7 +622,7 @@ export default function RolesPage() {
                   onToggle={toggleDirectoryBinding}
                 />
                 <DirectoryBindingsSection
-                  title="岗位"
+                  title={t("positions")}
                   kind="position"
                   icon={<BriefcaseBusiness size={15} />}
                   loading={loadingDetails}
@@ -631,7 +640,7 @@ export default function RolesPage() {
                 />
                 <section>
                   <h3 className="mb-3 border-b pb-2 text-xs font-semibold text-muted-foreground uppercase">
-                    权限授权
+                    {t("permissionGrants")}
                   </h3>
                   {Object.entries(permissionGroups).map(
                     ([resource, permissions]) => (
@@ -651,7 +660,9 @@ export default function RolesPage() {
                                 data-permission-code={permission.code}
                               >
                                 <Checkbox
-                                  aria-label={`授予 ${permission.summary}`}
+                                  aria-label={t("grantNamed", {
+                                    permission: permission.summary,
+                                  })}
                                   checked={Boolean(grant)}
                                   disabled={busy || loadingDetails}
                                   onCheckedChange={(value) =>
@@ -674,7 +685,8 @@ export default function RolesPage() {
                                       data-permission-condition-summary
                                     >
                                       {trustedContextConditionSummary(
-                                        grant.condition
+                                        grant.condition,
+                                        t("unrestricted")
                                       )}
                                     </small>
                                   )}
@@ -694,7 +706,7 @@ export default function RolesPage() {
                                     }
                                   >
                                     <SlidersHorizontal />
-                                    条件
+                                    {t("condition")}
                                   </Button>
                                 )}
                               </div>
@@ -709,7 +721,7 @@ export default function RolesPage() {
             </>
           ) : (
             <div className="grid min-h-96 place-items-center text-sm text-muted-foreground">
-              选择或创建一个角色
+              {t("selectOrCreateRole")}
             </div>
           )}
         </section>
@@ -722,15 +734,18 @@ export default function RolesPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>设置权限条件</DialogTitle>
+            <DialogTitle>{t("permissionConditions")}</DialogTitle>
             <DialogDescription>
               {conditionPermission
                 ? `${conditionPermission.summary} (${conditionPermission.code})`
-                : "限制权限只在可信请求上下文满足时生效。"}
+                : t("permissionConditionsDescription")}
               {conditionGrant?.condition && (
                 <span className="mt-1 block" data-current-condition-summary>
-                  当前条件：
-                  {trustedContextConditionSummary(conditionGrant.condition)}
+                  {t("currentCondition")}
+                  {trustedContextConditionSummary(
+                    conditionGrant.condition,
+                    t("unrestricted")
+                  )}
                 </span>
               )}
             </DialogDescription>
@@ -741,7 +756,7 @@ export default function RolesPage() {
             onSubmit={savePermissionCondition}
           >
             <div className="grid gap-2">
-              <Label htmlFor="permission-minimum-acr">最低认证级别</Label>
+              <Label htmlFor="permission-minimum-acr">{t("minimumAcr")}</Label>
               <Input
                 id="permission-minimum-acr"
                 type="number"
@@ -754,11 +769,11 @@ export default function RolesPage() {
                     minimumAcr: event.target.value,
                   }))
                 }
-                placeholder="不限"
+                placeholder={t("unrestricted")}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="permission-client-id">OAuth 客户端</Label>
+              <Label htmlFor="permission-client-id">{t("oauthClients")}</Label>
               <Input
                 id="permission-client-id"
                 value={conditionDraft.clientID}
@@ -768,12 +783,14 @@ export default function RolesPage() {
                     clientID: event.target.value,
                   }))
                 }
-                placeholder="不限"
+                placeholder={t("unrestricted")}
                 maxLength={255}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="permission-network-zone">网络区域</Label>
+              <Label htmlFor="permission-network-zone">
+                {t("networkZone")}
+              </Label>
               <Input
                 id="permission-network-zone"
                 value={conditionDraft.networkZone}
@@ -783,12 +800,12 @@ export default function RolesPage() {
                     networkZone: event.target.value,
                   }))
                 }
-                placeholder="不限"
+                placeholder={t("unrestricted")}
                 maxLength={255}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="permission-timezone">IANA 时区</Label>
+              <Label htmlFor="permission-timezone">{t("ianaTimezone")}</Label>
               <Input
                 id="permission-timezone"
                 value={conditionDraft.timezone}
@@ -805,7 +822,7 @@ export default function RolesPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="permission-time-start">每日开始时间</Label>
+              <Label htmlFor="permission-time-start">{t("dailyStart")}</Label>
               <Input
                 id="permission-time-start"
                 type="time"
@@ -820,7 +837,7 @@ export default function RolesPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="permission-time-end">每日结束时间</Label>
+              <Label htmlFor="permission-time-end">{t("dailyEnd")}</Label>
               <Input
                 id="permission-time-end"
                 type="time"
@@ -843,7 +860,7 @@ export default function RolesPage() {
                 onClick={() => void clearPermissionCondition()}
                 data-clear-permission-condition
               >
-                清除条件
+                {t("clearCondition")}
               </Button>
             )}
             <Button
@@ -851,7 +868,7 @@ export default function RolesPage() {
               disabled={busy}
               onClick={() => setConditionPermission(null)}
             >
-              取消
+              {t("cancel")}
             </Button>
             <Button
               type="submit"
@@ -859,7 +876,7 @@ export default function RolesPage() {
               disabled={busy || !condition}
               data-save-permission-condition
             >
-              {busy ? "保存中" : "保存条件"}
+              {busy ? t("saving") : t("saveCondition")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -873,11 +890,11 @@ export default function RolesPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editing ? "编辑角色" : "创建租户角色"}</DialogTitle>
+            <DialogTitle>
+              {editing ? t("editRole") : t("createTenantRole")}
+            </DialogTitle>
             <DialogDescription>
-              {editing
-                ? "角色资料更新后立即生效，不改变现有成员和权限。"
-                : "角色创建后可绑定成员并从权限目录中按需授权。"}
+              {editing ? t("editRoleDescription") : t("createRoleDescription")}
             </DialogDescription>
           </DialogHeader>
           <form
@@ -887,7 +904,7 @@ export default function RolesPage() {
             onSubmit={submit}
           >
             <div className="grid gap-2">
-              <Label htmlFor="role-name">角色名称</Label>
+              <Label htmlFor="role-name">{t("roleName")}</Label>
               <Input
                 id="role-name"
                 name="name"
@@ -897,7 +914,7 @@ export default function RolesPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="role-description">描述</Label>
+              <Label htmlFor="role-description">{t("description")}</Label>
               <Input
                 id="role-description"
                 name="description"
@@ -908,10 +925,10 @@ export default function RolesPage() {
           </form>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
-              取消
+              {t("cancel")}
             </Button>
             <Button type="submit" form="role-form" disabled={busy}>
-              {busy ? "保存中" : editing ? "保存" : "创建"}
+              {busy ? t("saving") : editing ? t("save") : t("create")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -954,6 +971,8 @@ function DirectoryBindingsSection({
     checked: boolean
   ) => void
 }) {
+  const t = useTranslations("iam")
+
   return (
     <section className="mb-7" data-directory-section={kind}>
       <h3 className="mb-3 flex items-center gap-2 border-b pb-2 text-xs font-semibold text-muted-foreground uppercase">
@@ -961,9 +980,11 @@ function DirectoryBindingsSection({
         {title}
       </h3>
       {loading ? (
-        <p className="text-sm text-muted-foreground">加载中</p>
+        <p className="text-sm text-muted-foreground">{t("loadingShort")}</p>
       ) : items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">暂无可分配项</p>
+        <p className="text-sm text-muted-foreground">
+          {t("noAssignableItems")}
+        </p>
       ) : (
         <div className="grid gap-2 md:grid-cols-2">
           {items.map((item) => {
@@ -992,7 +1013,7 @@ function DirectoryBindingsSection({
                   </small>
                 </span>
                 {item.status !== "active" && (
-                  <Badge variant="destructive">停用</Badge>
+                  <Badge variant="destructive">{t("disable")}</Badge>
                 )}
               </label>
             )

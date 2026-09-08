@@ -123,17 +123,18 @@ type APITenantMember struct {
 }
 
 type APIMenu struct {
-	ID             string     `json:"id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
-	TenantID       string     `json:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
-	ParentID       string     `json:"parent_id,omitempty" pattern:"^[1-9][0-9]*$" maxLength:"19"`
-	Label          string     `json:"label"`
-	Route          string     `json:"route,omitempty"`
-	Icon           string     `json:"icon,omitempty"`
-	SortOrder      int        `json:"sort_order"`
-	PermissionCode string     `json:"permission_code,omitempty"`
-	Status         MenuStatus `json:"status"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	Translations   map[string]string `json:"translations,omitempty"`
+	ID             string            `json:"id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	TenantID       string            `json:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	ParentID       string            `json:"parent_id,omitempty" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	Label          string            `json:"label"`
+	Route          string            `json:"route,omitempty"`
+	Icon           string            `json:"icon,omitempty"`
+	SortOrder      int               `json:"sort_order"`
+	PermissionCode string            `json:"permission_code,omitempty"`
+	Status         MenuStatus        `json:"status"`
+	CreatedAt      time.Time         `json:"created_at"`
+	UpdatedAt      time.Time         `json:"updated_at"`
 }
 
 type APIRole struct {
@@ -303,13 +304,14 @@ type menuInput struct {
 type createMenuInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	Body     struct {
-		ParentID       string     `json:"parent_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19" doc:"positive parent menu ID; omitted or empty makes this a root menu"`
-		Label          string     `json:"label" minLength:"1" maxLength:"128"`
-		Route          string     `json:"route,omitempty" maxLength:"512"`
-		Icon           string     `json:"icon,omitempty" maxLength:"64"`
-		SortOrder      int        `json:"sort_order,omitempty" minimum:"-100000" maximum:"100000" default:"0"`
-		PermissionCode string     `json:"permission_code,omitempty" maxLength:"128"`
-		Status         MenuStatus `json:"status,omitempty" enum:"active,disabled" default:"active"`
+		Translations   map[string]string `json:"translations,omitempty" doc:"BCP 47 language tags mapped to menu labels; default label is the fallback"`
+		ParentID       string            `json:"parent_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19" doc:"positive parent menu ID; omitted or empty makes this a root menu"`
+		Label          string            `json:"label" minLength:"1" maxLength:"128"`
+		Route          string            `json:"route,omitempty" maxLength:"512"`
+		Icon           string            `json:"icon,omitempty" maxLength:"64"`
+		SortOrder      int               `json:"sort_order,omitempty" minimum:"-100000" maximum:"100000" default:"0"`
+		PermissionCode string            `json:"permission_code,omitempty" maxLength:"128"`
+		Status         MenuStatus        `json:"status,omitempty" enum:"active,disabled" default:"active"`
 	}
 }
 
@@ -317,13 +319,14 @@ type updateMenuInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	MenuID   string `path:"menu_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
-		ParentID       *string     `json:"parent_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19" doc:"positive parent menu ID, or an empty string to move this menu to the root; omitted leaves it where it is"`
-		Label          *string     `json:"label,omitempty" minLength:"1" maxLength:"128"`
-		Route          *string     `json:"route,omitempty" maxLength:"512"`
-		Icon           *string     `json:"icon,omitempty" maxLength:"64"`
-		SortOrder      *int        `json:"sort_order,omitempty" minimum:"-100000" maximum:"100000"`
-		PermissionCode *string     `json:"permission_code,omitempty" maxLength:"128"`
-		Status         *MenuStatus `json:"status,omitempty" enum:"active,disabled"`
+		Translations   *map[string]string `json:"translations,omitempty" doc:"replace translations; an empty object clears them; omitted preserves existing translations"`
+		ParentID       *string            `json:"parent_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19" doc:"positive parent menu ID, or an empty string to move this menu to the root; omitted leaves it where it is"`
+		Label          *string            `json:"label,omitempty" minLength:"1" maxLength:"128"`
+		Route          *string            `json:"route,omitempty" maxLength:"512"`
+		Icon           *string            `json:"icon,omitempty" maxLength:"64"`
+		SortOrder      *int               `json:"sort_order,omitempty" minimum:"-100000" maximum:"100000"`
+		PermissionCode *string            `json:"permission_code,omitempty" maxLength:"128"`
+		Status         *MenuStatus        `json:"status,omitempty" enum:"active,disabled"`
 	}
 }
 
@@ -1072,7 +1075,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		if err != nil {
 			return nil, err
 		}
-		menu, err := svc.CreateMenu(ctx, Menu{TenantID: tenantID, ParentID: parentID, Label: in.Body.Label, Route: in.Body.Route, Icon: in.Body.Icon, SortOrder: in.Body.SortOrder, PermissionCode: in.Body.PermissionCode, Status: in.Body.Status})
+		menu, err := svc.CreateMenu(ctx, Menu{TenantID: tenantID, ParentID: parentID, Label: in.Body.Label, Translations: in.Body.Translations, Route: in.Body.Route, Icon: in.Body.Icon, SortOrder: in.Body.SortOrder, PermissionCode: in.Body.PermissionCode, Status: in.Body.Status})
 		if err != nil {
 			return nil, apiError("create menu", err)
 		}
@@ -1111,6 +1114,9 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		}
 		if in.Body.Label != nil {
 			menu.Label = *in.Body.Label
+		}
+		if in.Body.Translations != nil {
+			menu.Translations = *in.Body.Translations
 		}
 		if in.Body.Route != nil {
 			menu.Route = *in.Body.Route
@@ -1246,7 +1252,7 @@ func roleDataScopeFromDomain(scope RoleDataScope) APIRoleDataScope {
 }
 
 func menuFromDomain(menu Menu) APIMenu {
-	return APIMenu{ID: menu.ID.String(), TenantID: menu.TenantID.String(), ParentID: optionalIDString(menu.ParentID), Label: menu.Label, Route: menu.Route, Icon: menu.Icon, SortOrder: menu.SortOrder, PermissionCode: menu.PermissionCode, Status: menu.Status, CreatedAt: menu.CreatedAt, UpdatedAt: menu.UpdatedAt}
+	return APIMenu{ID: menu.ID.String(), TenantID: menu.TenantID.String(), ParentID: optionalIDString(menu.ParentID), Label: menu.Label, Translations: menu.Translations, Route: menu.Route, Icon: menu.Icon, SortOrder: menu.SortOrder, PermissionCode: menu.PermissionCode, Status: menu.Status, CreatedAt: menu.CreatedAt, UpdatedAt: menu.UpdatedAt}
 }
 func menusFromDomain(menus []Menu) []APIMenu {
 	out := make([]APIMenu, 0, len(menus))

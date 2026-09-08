@@ -1,3 +1,4 @@
+import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { useState, type FormEvent } from "react"
 import { ArrowLeft, CheckCircle2, MailCheck, ShieldCheck } from "lucide-react"
 import { Link } from "react-router"
@@ -9,13 +10,15 @@ import { ApiError, iamApi, type InvitationAcceptance } from "../../lib/iam-api"
 import { appName, copyrightLine } from "../../lib/branding"
 
 export default function AcceptInvitationPage() {
+  const t = useTranslations("iam")
+
   const [token] = useState(() => {
     const value = new URLSearchParams(window.location.search).get("token") ?? ""
     window.history.replaceState(null, "", "/accept-invitation")
     return value
   })
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState(token ? "" : "邀请链接缺少凭据。")
+  const [error, setError] = useState(token ? "" : t("invitationMissingToken"))
   const [accepted, setAccepted] = useState<InvitationAcceptance | null>(null)
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -24,7 +27,7 @@ export default function AcceptInvitationPage() {
     const data = new FormData(event.currentTarget)
     const password = String(data.get("password") ?? "")
     if (password !== String(data.get("confirm_password") ?? "")) {
-      setError("两次输入的密码不一致。")
+      setError(t("passwordMismatchSentence"))
       return
     }
     setBusy(true)
@@ -40,9 +43,7 @@ export default function AcceptInvitationPage() {
       )
     } catch (cause) {
       setError(
-        cause instanceof ApiError
-          ? cause.message
-          : "身份服务暂时不可用，请稍后重试。"
+        cause instanceof ApiError ? cause.message : t("identityRetryLater")
       )
     } finally {
       setBusy(false)
@@ -65,9 +66,11 @@ export default function AcceptInvitationPage() {
                 {appName}
               </span>
             </div>
-            <h1 className="text-xl font-semibold">接受成员邀请</h1>
+            <h1 className="text-xl font-semibold">
+              {t("acceptMemberInvitation")}
+            </h1>
             <p className="text-sm text-muted-foreground">
-              创建本地登录账号并加入邀请指定的租户。
+              {t("acceptInvitationDescription")}
             </p>
           </header>
 
@@ -78,9 +81,9 @@ export default function AcceptInvitationPage() {
             >
               <CheckCircle2 className="mt-0.5 size-5 text-primary" />
               <div>
-                <p className="text-sm font-medium">邀请已接受</p>
+                <p className="text-sm font-medium">{t("invitationAccepted")}</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {accepted.email} 已加入租户，可以使用新账号登录。
+                  {accepted.email} {t("invitationAcceptedDescription")}
                 </p>
               </div>
             </div>
@@ -89,21 +92,21 @@ export default function AcceptInvitationPage() {
               <InvitationField
                 id="invitation-login"
                 name="login_name"
-                label="登录名"
+                label={t("loginIdentifier")}
                 autoComplete="username"
                 maxLength={200}
               />
               <InvitationField
                 id="invitation-display-name"
                 name="display_name"
-                label="显示名称"
+                label={t("displayName")}
                 autoComplete="name"
                 maxLength={128}
               />
               <InvitationField
                 id="invitation-password"
                 name="password"
-                label="密码"
+                label={t("password")}
                 type="password"
                 autoComplete="new-password"
                 minLength={12}
@@ -112,7 +115,7 @@ export default function AcceptInvitationPage() {
               <InvitationField
                 id="invitation-confirm-password"
                 name="confirm_password"
-                label="确认密码"
+                label={t("confirmPassword")}
                 type="password"
                 autoComplete="new-password"
                 minLength={12}
@@ -129,7 +132,7 @@ export default function AcceptInvitationPage() {
                 disabled={busy || !token}
               >
                 <ShieldCheck />
-                {busy ? "正在接受" : "接受邀请"}
+                {busy ? t("accepting") : t("acceptInvitation")}
               </Button>
             </form>
           )}
@@ -137,7 +140,7 @@ export default function AcceptInvitationPage() {
           <Button variant="ghost" className="mt-4 w-full" asChild>
             <Link to="/login">
               <ArrowLeft />
-              返回登录
+              {t("backSignIn")}
             </Link>
           </Button>
         </div>

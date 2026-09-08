@@ -24,6 +24,8 @@ func (*Module) MigrationMilestones() []module.MigrationMilestone {
 		{Name: "field_policies", Version: 12},
 		{Name: "principal-erasure", Version: 13,
 			Dependencies: []module.MigrationMilestoneRef{{Module: "identity", Name: "lifecycle"}}},
+		{Name: "menu-translations", Version: 14},
+		{Name: "default-menu-translations", Version: 15},
 	}
 }
 

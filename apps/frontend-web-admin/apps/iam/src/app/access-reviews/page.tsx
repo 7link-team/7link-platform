@@ -1,3 +1,4 @@
+import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { useCallback, useEffect, useState, type FormEvent } from "react"
 import {
   Ban,
@@ -53,6 +54,10 @@ type PendingAction =
   | { kind: "cancel"; review: AccessReview }
 
 export default function AccessReviewsPage() {
+  const locale = useLocale()
+
+  const t = useTranslations("iam")
+
   const { session } = useAuth()
   const [reviews, setReviews] = useState<AccessReview[]>([])
   const [selected, setSelected] = useState<AccessReview | null>(null)
@@ -149,7 +154,7 @@ export default function AccessReviewsPage() {
   return (
     <>
       <PageHeader
-        title="访问复核"
+        title={t("accessReviews")}
         action={
           <div className="flex flex-wrap gap-2">
             <Button
@@ -160,11 +165,11 @@ export default function AccessReviewsPage() {
               }
             >
               <RefreshCw className={busy ? "animate-spin" : ""} />
-              刷新
+              {t("refresh")}
             </Button>
             <Button disabled={busy} onClick={openCreate}>
               <Plus />
-              新建复核
+              {t("newReview")}
             </Button>
           </div>
         }
@@ -176,7 +181,7 @@ export default function AccessReviewsPage() {
           id="review-campaigns-heading"
           className="mb-3 text-sm font-semibold"
         >
-          复核活动
+          {t("reviewCampaigns")}
         </h2>
         <CampaignList
           items={reviews}
@@ -225,7 +230,7 @@ export default function AccessReviewsPage() {
                   }
                 >
                   <Ban />
-                  取消复核
+                  {t("cancelReview")}
                 </Button>
                 <Button
                   disabled={busy || selected.pending > 0}
@@ -234,19 +239,21 @@ export default function AccessReviewsPage() {
                   }
                 >
                   <CircleCheckBig />
-                  完成复核
+                  {t("completeReview")}
                 </Button>
               </div>
             )}
           </div>
           <dl className="mb-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
-            <ReviewMetric label="总计" value={selected.total} />
-            <ReviewMetric label="待处理" value={selected.pending} />
-            <ReviewMetric label="保留" value={selected.kept} />
-            <ReviewMetric label="撤销" value={selected.revoked} />
+            <ReviewMetric label={t("total")} value={selected.total} />
+            <ReviewMetric label={t("pending")} value={selected.pending} />
+            <ReviewMetric label={t("retain")} value={selected.kept} />
+            <ReviewMetric label={t("revoke")} value={selected.revoked} />
             <div>
-              <dt className="text-xs text-muted-foreground">截止时间</dt>
-              <dd className="mt-1 text-xs">{formatTime(selected.due_at)}</dd>
+              <dt className="text-xs text-muted-foreground">{t("deadline")}</dt>
+              <dd className="mt-1 text-xs">
+                {formatTime(selected.due_at, locale)}
+              </dd>
             </div>
           </dl>
           <ReviewItems
@@ -261,9 +268,9 @@ export default function AccessReviewsPage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>新建访问复核</DialogTitle>
+            <DialogTitle>{t("newAccessReview")}</DialogTitle>
             <DialogDescription>
-              创建时会固定记录当前有效授权。
+              {t("accessReviewFormDescription")}
             </DialogDescription>
           </DialogHeader>
           <form
@@ -272,7 +279,7 @@ export default function AccessReviewsPage() {
             onSubmit={createReview}
           >
             <div className="grid gap-2">
-              <Label htmlFor="access-review-name">名称</Label>
+              <Label htmlFor="access-review-name">{t("name")}</Label>
               <Input
                 id="access-review-name"
                 name="name"
@@ -283,7 +290,7 @@ export default function AccessReviewsPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="access-review-due-at">截止时间</Label>
+              <Label htmlFor="access-review-due-at">{t("deadline")}</Label>
               <Input
                 id="access-review-due-at"
                 type="datetime-local"
@@ -296,7 +303,7 @@ export default function AccessReviewsPage() {
           </form>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              取消
+              {t("cancel")}
             </Button>
             <Button
               type="submit"
@@ -304,7 +311,7 @@ export default function AccessReviewsPage() {
               disabled={busy || !dueAt}
             >
               {busy && <LoaderCircle className="animate-spin" />}
-              创建
+              {t("create")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -313,9 +320,14 @@ export default function AccessReviewsPage() {
       <Dialog open={Boolean(action)} onOpenChange={() => setAction(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{action && actionTitle(action)}</DialogTitle>
+            <DialogTitle>{action && t(actionTitle(action))}</DialogTitle>
             <DialogDescription>
-              {action && actionDescription(action)}
+              {action &&
+                (action.kind === "complete"
+                  ? t("completeReviewConfirm", { name: action.review.name })
+                  : action.kind === "cancel"
+                    ? t("cancelReviewConfirm", { name: action.review.name })
+                    : `${action.item.principal_name} · ${action.item.role_name}`)}
             </DialogDescription>
           </DialogHeader>
           <form
@@ -325,7 +337,7 @@ export default function AccessReviewsPage() {
           >
             {action?.kind === "decide" && (
               <>
-                <Label htmlFor="access-review-note">复核备注</Label>
+                <Label htmlFor="access-review-note">{t("reviewNote")}</Label>
                 <Textarea
                   id="access-review-note"
                   name="note"
@@ -337,7 +349,7 @@ export default function AccessReviewsPage() {
           </form>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAction(null)}>
-              返回
+              {t("back")}
             </Button>
             <Button
               type="submit"
@@ -351,7 +363,7 @@ export default function AccessReviewsPage() {
               disabled={busy}
             >
               {busy && <LoaderCircle className="animate-spin" />}
-              确认
+              {t("confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -373,11 +385,15 @@ function CampaignList({
   busy: boolean
   onSelect: (review: AccessReview) => void
 }) {
+  const locale = useLocale()
+
+  const t = useTranslations("iam")
+
   if (!loaded)
     return (
       <div
         className="grid min-h-32 place-items-center"
-        aria-label="正在加载访问复核"
+        aria-label={t("loadingReviews")}
       >
         <LoaderCircle className="animate-spin text-muted-foreground" />
       </div>
@@ -387,7 +403,7 @@ function CampaignList({
       <div className="grid min-h-40 place-items-center rounded-md border bg-card text-sm text-muted-foreground">
         <div className="grid justify-items-center gap-2">
           <ListChecks className="size-7" />
-          暂无访问复核
+          {t("noReviews")}
         </div>
       </div>
     )
@@ -407,13 +423,13 @@ function CampaignList({
               <ReviewStatus status={review.status} />
             </div>
             <dl className="mt-3 grid grid-cols-[4rem_1fr] gap-x-3 gap-y-1 text-xs">
-              <dt className="text-muted-foreground">进度</dt>
+              <dt className="text-muted-foreground">{t("progress")}</dt>
               <dd>
                 {review.total - review.pending}/{review.total}
               </dd>
-              <dt className="text-muted-foreground">截止</dt>
-              <dd>{formatTime(review.due_at)}</dd>
-              <dt className="text-muted-foreground">负责人</dt>
+              <dt className="text-muted-foreground">{t("due")}</dt>
+              <dd>{formatTime(review.due_at, locale)}</dd>
+              <dt className="text-muted-foreground">{t("reviewOwner")}</dt>
               <dd className="truncate">{review.owner_id}</dd>
             </dl>
             <Button
@@ -423,7 +439,7 @@ function CampaignList({
               onClick={() => onSelect(review)}
             >
               <Eye />
-              查看
+              {t("view")}
             </Button>
           </article>
         ))}
@@ -432,12 +448,12 @@ function CampaignList({
         <Table className="min-w-[760px]">
           <TableHeader>
             <TableRow>
-              <TableHead>名称</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>进度</TableHead>
-              <TableHead>截止时间</TableHead>
-              <TableHead>负责人</TableHead>
-              <TableHead className="w-24 text-right">操作</TableHead>
+              <TableHead>{t("name")}</TableHead>
+              <TableHead>{t("status")}</TableHead>
+              <TableHead>{t("progress")}</TableHead>
+              <TableHead>{t("deadline")}</TableHead>
+              <TableHead>{t("reviewOwner")}</TableHead>
+              <TableHead className="w-24 text-right">{t("actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -460,7 +476,7 @@ function CampaignList({
                   {review.total - review.pending}/{review.total}
                 </TableCell>
                 <TableCell className="text-xs">
-                  {formatTime(review.due_at)}
+                  {formatTime(review.due_at, locale)}
                 </TableCell>
                 <TableCell className="max-w-48 truncate text-sm">
                   {review.owner_id}
@@ -473,7 +489,7 @@ function CampaignList({
                     onClick={() => onSelect(review)}
                   >
                     <Eye />
-                    查看
+                    {t("view")}
                   </Button>
                 </TableCell>
               </TableRow>
@@ -496,6 +512,10 @@ function ReviewItems({
   busy: boolean
   onAction: (action: PendingAction) => void
 }) {
+  const locale = useLocale()
+
+  const t = useTranslations("iam")
+
   const actions = (item: AccessReviewItem) =>
     item.decision === "pending" && review.status === "open" ? (
       <div className="flex justify-end gap-2">
@@ -508,7 +528,7 @@ function ReviewItems({
           }
         >
           <Check />
-          保留
+          {t("retain")}
         </Button>
         <Button
           size="sm"
@@ -519,7 +539,7 @@ function ReviewItems({
           }
         >
           <X />
-          撤销
+          {t("revoke")}
         </Button>
       </div>
     ) : (
@@ -545,25 +565,29 @@ function ReviewItems({
                 </span>
               </div>
               <Badge variant="outline">
-                {item.grant_type === "permanent" ? "长期" : "临时"}
+                {item.grant_type === "permanent"
+                  ? t("permanent")
+                  : t("temporary")}
               </Badge>
             </div>
             <dl className="mt-3 grid grid-cols-[4rem_1fr] gap-x-3 gap-y-1 text-xs">
-              <dt className="text-muted-foreground">角色</dt>
+              <dt className="text-muted-foreground">{t("role")}</dt>
               <dd className="truncate">{item.role_name}</dd>
-              <dt className="text-muted-foreground">授权时间</dt>
-              <dd>{formatTime(item.grant_created_at)}</dd>
-              <dt className="text-muted-foreground">授权截止</dt>
+              <dt className="text-muted-foreground">{t("grantedAt")}</dt>
+              <dd>{formatTime(item.grant_created_at, locale)}</dd>
+              <dt className="text-muted-foreground">{t("grantUntil")}</dt>
               <dd>
                 {item.grant_expires_at
-                  ? formatTime(item.grant_expires_at)
-                  : "长期有效"}
+                  ? formatTime(item.grant_expires_at, locale)
+                  : t("noExpiry")}
               </dd>
               {item.principal_id === currentSubject &&
                 item.decision === "pending" && (
                   <>
-                    <dt className="text-muted-foreground">限制</dt>
-                    <dd>不能复核自己的权限</dd>
+                    <dt className="text-muted-foreground">
+                      {t("restriction")}
+                    </dt>
+                    <dd>{t("cannotReviewOwn")}</dd>
                   </>
                 )}
             </dl>
@@ -575,13 +599,15 @@ function ReviewItems({
         <Table className="min-w-[980px]">
           <TableHeader>
             <TableRow>
-              <TableHead>主体</TableHead>
-              <TableHead>角色</TableHead>
-              <TableHead>类型</TableHead>
-              <TableHead>授权时间</TableHead>
-              <TableHead>授权截止</TableHead>
-              <TableHead>决定人</TableHead>
-              <TableHead className="w-48 text-right">复核决定</TableHead>
+              <TableHead>{t("principal")}</TableHead>
+              <TableHead>{t("role")}</TableHead>
+              <TableHead>{t("type")}</TableHead>
+              <TableHead>{t("grantedAt")}</TableHead>
+              <TableHead>{t("grantUntil")}</TableHead>
+              <TableHead>{t("decidedBy")}</TableHead>
+              <TableHead className="w-48 text-right">
+                {t("reviewDecision")}
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -603,16 +629,18 @@ function ReviewItems({
                 </TableCell>
                 <TableCell>
                   <Badge variant="outline">
-                    {item.grant_type === "permanent" ? "长期" : "临时"}
+                    {item.grant_type === "permanent"
+                      ? t("permanent")
+                      : t("temporary")}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-xs">
-                  {formatTime(item.grant_created_at)}
+                  {formatTime(item.grant_created_at, locale)}
                 </TableCell>
                 <TableCell className="text-xs">
                   {item.grant_expires_at
-                    ? formatTime(item.grant_expires_at)
-                    : "长期有效"}
+                    ? formatTime(item.grant_expires_at, locale)
+                    : t("noExpiry")}
                 </TableCell>
                 <TableCell className="max-w-40 truncate text-sm">
                   {item.decided_by || "-"}
@@ -637,19 +665,21 @@ function ReviewMetric({ label, value }: { label: string; value: number }) {
 }
 
 function ReviewStatus({ status }: { status: AccessReviewStatus }) {
+  const t = useTranslations("iam")
   const value = reviewStatusLabels[status]
   return (
     <Badge className="shrink-0 whitespace-nowrap" variant={value.variant}>
-      {value.label}
+      {t(value.label)}
     </Badge>
   )
 }
 
 function DecisionBadge({ decision }: { decision: AccessReviewDecision }) {
+  const t = useTranslations("iam")
   const value = decisionLabels[decision]
   return (
     <Badge className="whitespace-nowrap" variant={value.variant}>
-      {value.label}
+      {t(value.label)}
     </Badge>
   )
 }
@@ -661,10 +691,10 @@ const reviewStatusLabels: Record<
     variant: "default" | "secondary" | "destructive" | "outline"
   }
 > = {
-  open: { label: "进行中", variant: "default" },
-  completed: { label: "已完成", variant: "secondary" },
-  cancelled: { label: "已取消", variant: "outline" },
-  expired: { label: "已过期", variant: "destructive" },
+  open: { label: "inProgress", variant: "default" },
+  completed: { label: "completed", variant: "secondary" },
+  cancelled: { label: "cancelled", variant: "outline" },
+  expired: { label: "expired", variant: "destructive" },
 }
 
 const decisionLabels: Record<
@@ -674,22 +704,15 @@ const decisionLabels: Record<
     variant: "default" | "secondary" | "destructive" | "outline"
   }
 > = {
-  pending: { label: "待处理", variant: "outline" },
-  keep: { label: "保留", variant: "secondary" },
-  revoke: { label: "已撤销", variant: "destructive" },
+  pending: { label: "pending", variant: "outline" },
+  keep: { label: "retain", variant: "secondary" },
+  revoke: { label: "revoked", variant: "destructive" },
 }
 
 function actionTitle(action: PendingAction): string {
-  if (action.kind === "complete") return "完成访问复核"
-  if (action.kind === "cancel") return "取消访问复核"
-  return action.decision === "keep" ? "保留授权" : "撤销授权"
-}
-
-function actionDescription(action: PendingAction): string {
-  if (action.kind === "complete") return `确认完成“${action.review.name}”。`
-  if (action.kind === "cancel")
-    return `确认取消“${action.review.name}”，已作出的复核决定不会回滚。`
-  return `${action.item.principal_name} · ${action.item.role_name}`
+  if (action.kind === "complete") return "completeAccessReview"
+  if (action.kind === "cancel") return "cancelAccessReview"
+  return action.decision === "keep" ? "retainGrant" : "revokeGrant"
 }
 
 function toLocalInputValue(value: Date): string {
@@ -698,8 +721,8 @@ function toLocalInputValue(value: Date): string {
     .slice(0, 16)
 }
 
-function formatTime(value: string): string {
-  return new Intl.DateTimeFormat("zh-CN", {
+function formatTime(value: string, locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value))

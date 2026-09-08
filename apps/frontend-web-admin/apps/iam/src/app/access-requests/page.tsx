@@ -1,3 +1,4 @@
+import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { useCallback, useEffect, useState, type FormEvent } from "react"
 import {
   Ban,
@@ -58,6 +59,8 @@ interface Decision {
 }
 
 export default function AccessRequestsPage() {
+  const t = useTranslations("iam")
+
   const { session } = useAuth()
   const { menus } = useOutletContext<{ menus: EffectiveMenu[] | null }>()
   const canApprove = Boolean(
@@ -157,8 +160,8 @@ export default function AccessRequestsPage() {
   return (
     <>
       <PageHeader
-        title="访问申请"
-        description="申请限时角色权限，并由另一名授权人员审批"
+        title={t("accessRequests")}
+        description={t("accessRequestsDescription")}
         action={
           <div className="flex gap-2">
             <Button
@@ -167,11 +170,11 @@ export default function AccessRequestsPage() {
               onClick={() => void refresh().catch(showError(setError))}
             >
               <RefreshCw className={busy ? "animate-spin" : ""} />
-              刷新
+              {t("refresh")}
             </Button>
             <Button disabled={roles.length === 0 || busy} onClick={openCreate}>
               <Plus />
-              发起申请
+              {t("newRequest")}
             </Button>
           </div>
         }
@@ -179,8 +182,10 @@ export default function AccessRequestsPage() {
       {error && <Alert>{error}</Alert>}
       <Tabs value={canApprove ? tab : "mine"} onValueChange={setTab}>
         <TabsList className="mb-4">
-          <TabsTrigger value="mine">我的申请</TabsTrigger>
-          {canApprove && <TabsTrigger value="queue">审批队列</TabsTrigger>}
+          <TabsTrigger value="mine">{t("myRequests")}</TabsTrigger>
+          {canApprove && (
+            <TabsTrigger value="queue">{t("approvalQueue")}</TabsTrigger>
+          )}
         </TabsList>
         <TabsContent value="mine">
           <AccessRequestTable
@@ -209,9 +214,9 @@ export default function AccessRequestsPage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>发起访问申请</DialogTitle>
+            <DialogTitle>{t("newAccessRequest")}</DialogTitle>
             <DialogDescription>
-              权限仅在审批后生效，并在设定时间自动失效。
+              {t("accessRequestFormDescription")}
             </DialogDescription>
           </DialogHeader>
           <form
@@ -220,7 +225,7 @@ export default function AccessRequestsPage() {
             onSubmit={submitRequest}
           >
             <div className="grid gap-2">
-              <Label htmlFor="access-request-role">角色</Label>
+              <Label htmlFor="access-request-role">{t("role")}</Label>
               <SimpleSelect
                 id="access-request-role"
                 value={roleID}
@@ -229,11 +234,13 @@ export default function AccessRequestsPage() {
                   value: role.id,
                   label: role.name,
                 }))}
-                placeholder="选择角色"
+                placeholder={t("selectRole")}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="access-request-expiry">访问截止时间</Label>
+              <Label htmlFor="access-request-expiry">
+                {t("accessDeadline")}
+              </Label>
               <Input
                 id="access-request-expiry"
                 type="datetime-local"
@@ -244,7 +251,9 @@ export default function AccessRequestsPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="access-request-reason">申请原因</Label>
+              <Label htmlFor="access-request-reason">
+                {t("requestReason")}
+              </Label>
               <Textarea
                 id="access-request-reason"
                 name="reason"
@@ -256,7 +265,7 @@ export default function AccessRequestsPage() {
           </form>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              取消
+              {t("cancel")}
             </Button>
             <Button
               type="submit"
@@ -264,7 +273,7 @@ export default function AccessRequestsPage() {
               disabled={busy || !roleID || !expiresAt}
             >
               {busy && <LoaderCircle className="animate-spin" />}
-              提交申请
+              {t("submitRequest")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -274,7 +283,7 @@ export default function AccessRequestsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {decision && decisionTitle[decision.action]}
+              {decision && t(decisionTitle[decision.action])}
             </DialogTitle>
             <DialogDescription>
               {decision?.request.requester_id} · {decision?.request.role_name}
@@ -286,7 +295,7 @@ export default function AccessRequestsPage() {
             onSubmit={applyDecision}
           >
             <Label htmlFor="access-decision-note">
-              {decision?.action === "approve" ? "审批备注" : "原因"}
+              {decision?.action === "approve" ? t("approvalNote") : t("reason")}
             </Label>
             <Textarea
               id="access-decision-note"
@@ -297,7 +306,7 @@ export default function AccessRequestsPage() {
           </form>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDecision(null)}>
-              取消
+              {t("cancel")}
             </Button>
             <Button
               type="submit"
@@ -308,7 +317,7 @@ export default function AccessRequestsPage() {
               disabled={busy}
             >
               {busy && <LoaderCircle className="animate-spin" />}
-              确认
+              {t("confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -332,12 +341,16 @@ function AccessRequestTable({
   busy: boolean
   onDecision: (decision: Decision) => void
 }) {
+  const locale = useLocale()
+
+  const t = useTranslations("iam")
+
   if (loaded && items.length === 0)
     return (
       <div className="grid min-h-40 place-items-center rounded-md border bg-card text-sm text-muted-foreground">
         <div className="grid justify-items-center gap-2">
           <ClipboardCheck className="size-7" />
-          暂无访问申请
+          {t("noAccessRequests")}
         </div>
       </div>
     )
@@ -359,11 +372,11 @@ function AccessRequestTable({
             </div>
             <p className="mt-3 text-sm break-words">{request.reason}</p>
             <dl className="mt-3 grid grid-cols-[5rem_1fr] gap-x-3 gap-y-1 text-xs">
-              <dt className="text-muted-foreground">申请人</dt>
+              <dt className="text-muted-foreground">{t("requester")}</dt>
               <dd className="truncate">{request.requester_id}</dd>
-              <dt className="text-muted-foreground">访问截止</dt>
-              <dd>{formatTime(request.access_expires_at)}</dd>
-              <dt className="text-muted-foreground">审批人</dt>
+              <dt className="text-muted-foreground">{t("accessUntil")}</dt>
+              <dd>{formatTime(request.access_expires_at, locale)}</dd>
+              <dt className="text-muted-foreground">{t("approver")}</dt>
               <dd className="truncate">{request.decided_by || "-"}</dd>
             </dl>
             <div className="mt-3 flex min-h-9 items-center justify-end border-t pt-2">
@@ -382,13 +395,13 @@ function AccessRequestTable({
         <Table className="min-w-[1040px]">
           <TableHeader>
             <TableRow>
-              <TableHead>申请人</TableHead>
-              <TableHead>角色</TableHead>
-              <TableHead>原因</TableHead>
-              <TableHead className="w-24">状态</TableHead>
-              <TableHead>访问截止</TableHead>
-              <TableHead>审批人</TableHead>
-              <TableHead className="w-32 text-right">操作</TableHead>
+              <TableHead>{t("requester")}</TableHead>
+              <TableHead>{t("role")}</TableHead>
+              <TableHead>{t("reason")}</TableHead>
+              <TableHead className="w-24">{t("status")}</TableHead>
+              <TableHead>{t("accessUntil")}</TableHead>
+              <TableHead>{t("approver")}</TableHead>
+              <TableHead className="w-32 text-right">{t("actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -415,7 +428,7 @@ function AccessRequestTable({
                   <RequestStatus status={request.status} />
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
-                  {formatTime(request.access_expires_at)}
+                  {formatTime(request.access_expires_at, locale)}
                 </TableCell>
                 <TableCell className="text-sm">
                   {request.decided_by || "-"}
@@ -451,12 +464,18 @@ function RequestActions({
   busy: boolean
   onDecision: (decision: Decision) => void
 }) {
+  const t = useTranslations("iam")
+
   if (mode === "mine") {
     if (request.status !== "pending" && request.status !== "approved")
       return null
     return (
       <IconAction
-        label={request.status === "pending" ? "撤回申请" : "放弃访问权限"}
+        label={
+          request.status === "pending"
+            ? t("withdrawRequest")
+            : t("relinquishAccess")
+        }
         disabled={busy}
         onClick={() => onDecision({ action: "withdraw", request })}
       >
@@ -465,19 +484,23 @@ function RequestActions({
     )
   }
   if (request.requester_id === currentSubject && request.status === "pending")
-    return <span className="text-xs text-muted-foreground">需他人审批</span>
+    return (
+      <span className="text-xs text-muted-foreground">
+        {t("otherApprovalRequired")}
+      </span>
+    )
   if (request.status === "pending")
     return (
       <div className="flex justify-end gap-1">
         <IconAction
-          label="批准申请"
+          label={t("approveRequest")}
           disabled={busy}
           onClick={() => onDecision({ action: "approve", request })}
         >
           <Check />
         </IconAction>
         <IconAction
-          label="拒绝申请"
+          label={t("denyRequest")}
           disabled={busy}
           onClick={() => onDecision({ action: "reject", request })}
         >
@@ -488,7 +511,7 @@ function RequestActions({
   if (request.status === "approved")
     return (
       <IconAction
-        label="撤销访问权限"
+        label={t("revokeAccess")}
         disabled={busy}
         onClick={() => onDecision({ action: "revoke", request })}
       >
@@ -518,10 +541,11 @@ function IconAction({
 }
 
 function RequestStatus({ status }: { status: AccessRequestStatus }) {
+  const t = useTranslations("iam")
   const value = statusLabels[status]
   return (
     <Badge className="shrink-0 whitespace-nowrap" variant={value.variant}>
-      {value.label}
+      {t(value.label)}
     </Badge>
   )
 }
@@ -533,19 +557,19 @@ const statusLabels: Record<
     variant: "default" | "secondary" | "destructive" | "outline"
   }
 > = {
-  pending: { label: "待审批", variant: "outline" },
-  approved: { label: "已批准", variant: "secondary" },
-  rejected: { label: "已拒绝", variant: "destructive" },
-  cancelled: { label: "已撤回", variant: "outline" },
-  revoked: { label: "已撤销", variant: "destructive" },
-  expired: { label: "已过期", variant: "outline" },
+  pending: { label: "pendingApproval", variant: "outline" },
+  approved: { label: "approved", variant: "secondary" },
+  rejected: { label: "denied", variant: "destructive" },
+  cancelled: { label: "withdrawn", variant: "outline" },
+  revoked: { label: "revoked", variant: "destructive" },
+  expired: { label: "expired", variant: "outline" },
 }
 
 const decisionTitle: Record<DecisionAction, string> = {
-  approve: "批准访问申请",
-  reject: "拒绝访问申请",
-  revoke: "撤销访问权限",
-  withdraw: "撤回申请或放弃权限",
+  approve: "approveAccessRequest",
+  reject: "denyAccessRequest",
+  revoke: "revokeAccess",
+  withdraw: "withdrawOrRelinquish",
 }
 
 function toLocalInputValue(value: Date): string {
@@ -553,8 +577,8 @@ function toLocalInputValue(value: Date): string {
   return new Date(value.getTime() - offset).toISOString().slice(0, 16)
 }
 
-function formatTime(value: string): string {
-  return new Date(value).toLocaleString()
+function formatTime(value: string, locale: string): string {
+  return new Date(value).toLocaleString(locale)
 }
 
 function showError(setError: (message: string) => void) {

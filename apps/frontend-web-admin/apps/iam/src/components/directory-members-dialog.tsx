@@ -1,3 +1,4 @@
+import { useTranslations, useLocale } from "@workspace/ui/i18n/intl-provider"
 import { useMemo, useState, type FormEvent } from "react"
 import { Pencil, Trash2 } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
@@ -69,6 +70,9 @@ export function DirectoryMembersDialog({
   onPut,
   onDelete,
 }: DirectoryMembersDialogProps) {
+  const t = useTranslations("iam")
+  const locale = useLocale()
+
   const firstAvailable = () =>
     tenantMembers.find(
       (member) =>
@@ -104,7 +108,7 @@ export function DirectoryMembersDialog({
     const startsAt = toISOString(String(data.get("starts_at")))
     const endsAt = toISOString(String(data.get("ends_at")))
     if (startsAt && endsAt && Date.parse(endsAt) <= Date.parse(startsAt)) {
-      onError("结束时间必须晚于开始时间")
+      onError(t("endAfterStart"))
       return
     }
     const saved = await onPut(selectedPrincipal, {
@@ -119,23 +123,26 @@ export function DirectoryMembersDialog({
       <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="pr-8">
-            {itemName} · {directoryLabel}成员
+            {itemName} · {directoryLabel}
+            {t("member")}
           </DialogTitle>
           <DialogDescription>
             {computed
-              ? `成员由${directoryLabel}规则和当前成员属性实时计算。`
-              : `只有当前租户的启用成员可以分配到${directoryLabel}。`}
+              ? t("computedMembersDescription", { directory: directoryLabel })
+              : t("assignMembersDescription", { directory: directoryLabel })}
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-64 overflow-auto rounded-md border">
           <Table className={computed ? "w-full" : "min-w-[640px]"}>
             <TableHeader>
               <TableRow>
-                <TableHead>成员</TableHead>
+                <TableHead>{t("member")}</TableHead>
                 {!computed && <TableHead>{scheduleLabel}</TableHead>}
-                <TableHead>状态</TableHead>
+                <TableHead>{t("status")}</TableHead>
                 {!computed && (
-                  <TableHead className="w-20 text-right">操作</TableHead>
+                  <TableHead className="w-20 text-right">
+                    {t("actions")}
+                  </TableHead>
                 )}
               </TableRow>
             </TableHeader>
@@ -150,21 +157,21 @@ export function DirectoryMembersDialog({
                   </TableCell>
                   {!computed && (
                     <TableCell className="text-xs text-muted-foreground">
-                      {membershipWindow(member)}
+                      {membershipWindow(member, locale, t("unrestricted"))}
                     </TableCell>
                   )}
                   <TableCell>
                     {computed ? (
-                      <Badge variant="secondary">实时</Badge>
+                      <Badge variant="secondary">{t("realtime")}</Badge>
                     ) : (
                       <Badge
                         variant={
-                          membershipState(member) === "有效"
+                          membershipState(member) === "active"
                             ? "secondary"
                             : "outline"
                         }
                       >
-                        {membershipState(member)}
+                        {t(`membership_${membershipState(member)}`)}
                       </Badge>
                     )}
                   </TableCell>
@@ -176,8 +183,11 @@ export function DirectoryMembersDialog({
                           size="icon"
                           disabled={busy}
                           onClick={() => editMember(member)}
-                          aria-label={`编辑${member.display_name}${scheduleLabel}`}
-                          title={`编辑${scheduleLabel}`}
+                          aria-label={t("editMemberSchedule", {
+                            name: member.display_name,
+                            schedule: scheduleLabel,
+                          })}
+                          title={t("editNamed", { name: scheduleLabel })}
                         >
                           <Pencil />
                         </Button>
@@ -186,8 +196,10 @@ export function DirectoryMembersDialog({
                           size="icon"
                           disabled={busy}
                           onClick={() => void onDelete(member)}
-                          aria-label={`移除${member.display_name}`}
-                          title="移除成员"
+                          aria-label={t("removeNamed", {
+                            name: member.display_name,
+                          })}
+                          title={t("removeMember")}
                         >
                           <Trash2 />
                         </Button>
@@ -200,7 +212,9 @@ export function DirectoryMembersDialog({
           </Table>
           {members.length === 0 && (
             <div className="grid min-h-24 place-items-center text-sm text-muted-foreground">
-              暂无{directoryLabel}成员
+              {t("noneYet")}
+              {directoryLabel}
+              {t("member")}
             </div>
           )}
         </div>
@@ -212,7 +226,7 @@ export function DirectoryMembersDialog({
             onSubmit={submit}
           >
             <div className="grid gap-2">
-              <Label htmlFor={inputPrefix}>租户成员</Label>
+              <Label htmlFor={inputPrefix}>{t("tenantMember")}</Label>
               <SimpleSelect
                 id={inputPrefix}
                 options={availableMembers.map((member) => ({
@@ -226,7 +240,7 @@ export function DirectoryMembersDialog({
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
-                <Label htmlFor={`${inputPrefix}-start`}>开始时间</Label>
+                <Label htmlFor={`${inputPrefix}-start`}>{t("startTime")}</Label>
                 <Input
                   id={`${inputPrefix}-start`}
                   name="starts_at"
@@ -235,7 +249,7 @@ export function DirectoryMembersDialog({
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor={`${inputPrefix}-end`}>结束时间</Label>
+                <Label htmlFor={`${inputPrefix}-end`}>{t("endTime")}</Label>
                 <Input
                   id={`${inputPrefix}-end`}
                   name="ends_at"
@@ -250,7 +264,7 @@ export function DirectoryMembersDialog({
           <DialogFooter>
             {editing && (
               <Button variant="outline" disabled={busy} onClick={cancelEdit}>
-                取消编辑
+                {t("cancelEdit")}
               </Button>
             )}
             <Button
@@ -258,7 +272,11 @@ export function DirectoryMembersDialog({
               form={formID}
               disabled={busy || !selectedPrincipal}
             >
-              {busy ? "保存中" : editing ? "更新时间" : "分配成员"}
+              {busy
+                ? t("saving")
+                : editing
+                  ? t("updatedAt")
+                  : t("assignMember")}
             </Button>
           </DialogFooter>
         )}

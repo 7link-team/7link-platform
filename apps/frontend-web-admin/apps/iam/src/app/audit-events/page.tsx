@@ -1,3 +1,4 @@
+import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { useEffect, useState, type FormEvent } from "react"
 import {
   CheckCircle2,
@@ -65,13 +66,17 @@ const emptyFilters: AuditFilters = {
 }
 
 const outcomeOptions = [
-  { value: "all", label: "全部结果" },
-  { value: "success", label: "成功" },
-  { value: "denied", label: "拒绝" },
-  { value: "failure", label: "失败" },
+  { value: "all", label: "allOutcomes" },
+  { value: "success", label: "success" },
+  { value: "denied", label: "deny" },
+  { value: "failure", label: "failure" },
 ]
 
 export default function AuditEventsPage() {
+  const locale = useLocale()
+
+  const t = useTranslations("iam")
+
   const [events, setEvents] = useState<AuditEvent[]>([])
   const [total, setTotal] = useState(0)
   const [offset, setOffset] = useState(0)
@@ -176,8 +181,8 @@ export default function AuditEventsPage() {
   return (
     <>
       <PageHeader
-        title="审计日志"
-        description="检索租户安全事件并验证追加式 hash chain"
+        title={t("auditLog")}
+        description={t("auditDescription")}
         action={
           <div className="flex flex-wrap gap-2">
             <Button
@@ -190,7 +195,7 @@ export default function AuditEventsPage() {
               ) : (
                 <Download />
               )}
-              {exporting ? "正在导出" : "导出当前结果"}
+              {exporting ? t("exporting") : t("exportResults")}
             </Button>
             <Button
               variant="outline"
@@ -201,7 +206,7 @@ export default function AuditEventsPage() {
               }}
             >
               <RefreshCw className={loading ? "animate-spin" : ""} />
-              刷新
+              {t("refresh")}
             </Button>
           </div>
         }
@@ -215,16 +220,19 @@ export default function AuditEventsPage() {
       >
         <FilterInput
           id="audit-event-type"
-          label="事件类型"
+          label={t("eventType")}
           value={filters.eventType}
           placeholder="oauth_client_created"
           onChange={(value) => setFilters({ ...filters, eventType: value })}
         />
         <div className="grid gap-2">
-          <Label htmlFor="audit-outcome">结果</Label>
+          <Label htmlFor="audit-outcome">{t("outcome")}</Label>
           <SimpleSelect
             id="audit-outcome"
-            options={outcomeOptions}
+            options={outcomeOptions.map((option) => ({
+              ...option,
+              label: t(option.label),
+            }))}
             value={filters.outcome || "all"}
             onValueChange={(value) =>
               setFilters({ ...filters, outcome: value })
@@ -233,33 +241,33 @@ export default function AuditEventsPage() {
         </div>
         <FilterInput
           id="audit-principal"
-          label="操作主体 ID"
+          label={t("actorId")}
           value={filters.principalID}
           onChange={(value) => setFilters({ ...filters, principalID: value })}
         />
         <FilterInput
           id="audit-target-type"
-          label="目标类型"
+          label={t("targetType")}
           value={filters.targetType}
           placeholder="oauth_client"
           onChange={(value) => setFilters({ ...filters, targetType: value })}
         />
         <FilterInput
           id="audit-target-id"
-          label="目标 ID"
+          label={t("targetId")}
           value={filters.targetID}
           onChange={(value) => setFilters({ ...filters, targetID: value })}
         />
         <FilterInput
           id="audit-from"
-          label="开始时间"
+          label={t("startTime")}
           type="datetime-local"
           value={filters.from}
           onChange={(value) => setFilters({ ...filters, from: value })}
         />
         <FilterInput
           id="audit-to"
-          label="结束时间"
+          label={t("endTime")}
           type="datetime-local"
           value={filters.to}
           onChange={(value) => setFilters({ ...filters, to: value })}
@@ -267,10 +275,10 @@ export default function AuditEventsPage() {
         <div className="flex items-end gap-2">
           <Button type="submit" className="flex-1">
             <Search />
-            查询
+            {t("query")}
           </Button>
           <Button type="button" variant="outline" onClick={reset}>
-            重置
+            {t("reset")}
           </Button>
         </div>
       </form>
@@ -279,30 +287,32 @@ export default function AuditEventsPage() {
         <header className="flex min-h-14 items-center justify-between gap-3 border-b bg-muted/20 px-4">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <FileClock className="size-4 text-muted-foreground" />
-            安全事件
+            {t("securityEvents")}
           </div>
           <span className="text-xs text-muted-foreground">
-            {loading ? "正在加载" : `${first}-${last} / ${total}`}
+            {loading ? t("loading") : `${first}-${last} / ${total}`}
           </span>
         </header>
         <div className="hidden md:block">
           <Table containerClassName="min-h-64">
             <TableHeader>
               <TableRow>
-                <TableHead className="min-w-44">发生时间</TableHead>
-                <TableHead className="min-w-52">事件</TableHead>
-                <TableHead className="min-w-44">主体</TableHead>
-                <TableHead className="min-w-52">目标</TableHead>
-                <TableHead className="w-24">结果</TableHead>
-                <TableHead className="w-24">链序号</TableHead>
-                <TableHead className="w-20 text-right">详情</TableHead>
+                <TableHead className="min-w-44">{t("occurredAt")}</TableHead>
+                <TableHead className="min-w-52">{t("event")}</TableHead>
+                <TableHead className="min-w-44">{t("principal")}</TableHead>
+                <TableHead className="min-w-52">{t("target")}</TableHead>
+                <TableHead className="w-24">{t("outcome")}</TableHead>
+                <TableHead className="w-24">{t("chainSequence")}</TableHead>
+                <TableHead className="w-20 text-right">
+                  {t("details")}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {events.map((event) => (
                 <TableRow key={event.id}>
                   <TableCell className="text-xs">
-                    {formatTime(event.created_at)}
+                    {formatTime(event.created_at, locale)}
                   </TableCell>
                   <TableCell>
                     <code className="font-mono text-xs">
@@ -359,21 +369,23 @@ export default function AuditEventsPage() {
                     {event.event_type}
                   </code>
                   <time className="mt-1 block text-xs text-muted-foreground">
-                    {formatTime(event.created_at)}
+                    {formatTime(event.created_at, locale)}
                   </time>
                 </div>
                 <OutcomeBadge outcome={event.outcome} />
               </div>
               <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
-                <span className="text-muted-foreground">主体</span>
+                <span className="text-muted-foreground">{t("principal")}</span>
                 <code className="truncate font-mono">
                   {event.principal_id || "system"}
                 </code>
-                <span className="text-muted-foreground">目标</span>
+                <span className="text-muted-foreground">{t("target")}</span>
                 <code className="truncate font-mono">
                   {event.target_type || "-"}:{event.target_id || "-"}
                 </code>
-                <span className="text-muted-foreground">链序号</span>
+                <span className="text-muted-foreground">
+                  {t("chainSequence")}
+                </span>
                 <span>
                   {event.sequence > 0 ? `#${event.sequence}` : "legacy"}
                 </span>
@@ -395,14 +407,15 @@ export default function AuditEventsPage() {
         </div>
         <footer className="flex min-h-14 items-center justify-between gap-3 border-t px-4">
           <span className="text-xs text-muted-foreground">
-            每页 {pageSize} 条
+            {t("perPage")}
+            {pageSize} {t("items")}
           </span>
           <div className="flex gap-2">
             <Button
               type="button"
               variant="outline"
               size="icon"
-              aria-label="上一页"
+              aria-label={t("previousPage")}
               disabled={loading || offset === 0}
               onClick={() => {
                 setLoading(true)
@@ -415,7 +428,7 @@ export default function AuditEventsPage() {
               type="button"
               variant="outline"
               size="icon"
-              aria-label="下一页"
+              aria-label={t("nextPage")}
               disabled={loading || offset + events.length >= total}
               onClick={() => {
                 setLoading(true)
@@ -439,6 +452,8 @@ function IntegrityStatus({
   value: AuditIntegrity | null
   loading: boolean
 }) {
+  const t = useTranslations("iam")
+
   const valid = value?.valid === true
   return (
     <section
@@ -453,17 +468,20 @@ function IntegrityStatus({
       <div className="min-w-0">
         <strong className="block text-sm">
           {loading
-            ? "正在验证审计链"
+            ? t("verifyingAuditChain")
             : valid
-              ? "审计链完整"
+              ? t("auditChainIntact")
               : value
-                ? "审计链校验失败"
-                : "尚未验证"}
+                ? t("auditChainInvalid")
+                : t("notYetVerified")}
         </strong>
         <p className="mt-1 truncate text-xs text-muted-foreground">
           {value
-            ? `已验证 ${value.verified_events} 个链式事件，当前 head #${value.head_sequence}`
-            : "等待当前租户的完整性结果"}
+            ? t("auditVerifiedCount", {
+                count: value.verified_events,
+                head: value.head_sequence,
+              })
+            : t("awaitTenantIntegrity")}
         </p>
       </div>
     </section>
@@ -501,8 +519,14 @@ function FilterInput({
 }
 
 function OutcomeBadge({ outcome }: { outcome: AuditEvent["outcome"] }) {
+  const t = useTranslations("iam")
+
   const label =
-    outcome === "success" ? "成功" : outcome === "denied" ? "拒绝" : "失败"
+    outcome === "success"
+      ? t("success")
+      : outcome === "denied"
+        ? t("deny")
+        : t("failure")
   return (
     <Badge
       variant={
@@ -523,7 +547,9 @@ function DetailButton({
   event,
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { event: AuditEvent }) {
-  const label = `查看 ${event.event_type} 详情`
+  const t = useTranslations("iam")
+
+  const label = t("eventDetailsNamed", { event: event.event_type })
   return (
     <TooltipProvider>
       <Tooltip>
@@ -551,14 +577,18 @@ function EventDetail({
   value: AuditEvent | null
   onClose: () => void
 }) {
+  const locale = useLocale()
+
+  const t = useTranslations("iam")
+
   return (
     <Dialog open={value !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>审计事件详情</DialogTitle>
+          <DialogTitle>{t("auditEventDetails")}</DialogTitle>
           <DialogDescription>
             {value
-              ? `${value.event_type} · ${formatTime(value.created_at)}`
+              ? `${value.event_type} · ${formatTime(value.created_at, locale)}`
               : ""}
           </DialogDescription>
         </DialogHeader>
@@ -566,7 +596,7 @@ function EventDetail({
           <div className="grid gap-4">
             <DetailGrid event={value} />
             <DetailCode
-              label="事件数据"
+              label={t("eventData")}
               value={JSON.stringify(value.detail, null, 2)}
             />
             <DetailCode
@@ -581,7 +611,7 @@ function EventDetail({
         )}
         <DialogFooter>
           <Button type="button" onClick={onClose}>
-            关闭
+            {t("close")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -624,10 +654,12 @@ function DetailCode({ label, value }: { label: string; value: string }) {
 }
 
 function EmptyEvents() {
+  const t = useTranslations("iam")
+
   return (
     <div>
       <FileClock className="mx-auto mb-2 size-7 text-muted-foreground" />
-      <p className="text-sm font-medium">没有匹配的审计事件</p>
+      <p className="text-sm font-medium">{t("noAuditEvents")}</p>
     </div>
   )
 }
@@ -641,6 +673,6 @@ function asRFC3339(value: string): string {
   return value ? new Date(value).toISOString() : ""
 }
 
-function formatTime(value: string): string {
-  return new Date(value).toLocaleString()
+function formatTime(value: string, locale: string): string {
+  return new Date(value).toLocaleString(locale)
 }

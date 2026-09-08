@@ -5,6 +5,12 @@ export const locales = ["en-US", "zh-CN", "ms-MY"] as const
 
 export type Locale = (typeof locales)[number]
 
+export const localeNames: Record<Locale, string> = {
+  "en-US": "English",
+  "zh-CN": "简体中文",
+  "ms-MY": "Bahasa Melayu",
+}
+
 export const defaultLocale: Locale = "en-US"
 export const rtlLocales: Locale[] = []
 

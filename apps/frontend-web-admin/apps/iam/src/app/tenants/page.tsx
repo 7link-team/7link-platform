@@ -1,3 +1,4 @@
+import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { useCallback, useEffect, useState, type FormEvent } from "react"
 import { ArrowRight, Landmark, Pencil, Plus, Trash2 } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
@@ -34,12 +35,16 @@ import {
 } from "../../lib/iam-api"
 
 const statusLabels: Record<Tenant["status"], string> = {
-  active: "启用",
-  suspended: "停用",
-  deleted: "已删除",
+  active: "active",
+  suspended: "disable",
+  deleted: "deleted",
 }
 
 export default function TenantsPage() {
+  const locale = useLocale()
+
+  const t = useTranslations("iam")
+
   const [tenants, setTenants] = useState<Tenant[]>([])
   const [includeDeleted, setIncludeDeleted] = useState(false)
   const [open, setOpen] = useState(false)
@@ -139,12 +144,12 @@ export default function TenantsPage() {
   return (
     <>
       <PageHeader
-        title="租户管理"
-        description="平台租户生命周期"
+        title={t("tenantManagement")}
+        description={t("tenantLifecycle")}
         action={
           <Button onClick={openCreate}>
             <Plus />
-            创建租户
+            {t("createTenant")}
           </Button>
         }
       />
@@ -163,20 +168,20 @@ export default function TenantsPage() {
               setIncludeDeleted(checked === true)
             }}
           />
-          显示已删除租户
+          {t("showDeletedTenants")}
         </label>
       </div>
       <div className="overflow-x-auto rounded-md border bg-card">
         <Table className="min-w-[900px]">
           <TableHeader>
             <TableRow>
-              <TableHead>租户</TableHead>
-              <TableHead>标识</TableHead>
+              <TableHead>{t("tenant")}</TableHead>
+              <TableHead>{t("identifier")}</TableHead>
               <TableHead>ID</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>版本</TableHead>
-              <TableHead>更新时间</TableHead>
-              <TableHead className="w-36 text-right">操作</TableHead>
+              <TableHead>{t("status")}</TableHead>
+              <TableHead>{t("version")}</TableHead>
+              <TableHead>{t("updatedAt")}</TableHead>
+              <TableHead className="w-36 text-right">{t("actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -204,14 +209,14 @@ export default function TenantsPage() {
                           : "outline"
                     }
                   >
-                    {statusLabels[tenant.status]}
+                    {t(statusLabels[tenant.status])}
                   </Badge>
                 </TableCell>
                 <TableCell className="font-mono text-xs">
                   v{tenant.version}
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
-                  {new Date(tenant.updated_at).toLocaleString("zh-CN", {
+                  {new Date(tenant.updated_at).toLocaleString(locale, {
                     hour12: false,
                   })}
                 </TableCell>
@@ -223,8 +228,10 @@ export default function TenantsPage() {
                         size="icon"
                         disabled={busy || tenant.status !== "active"}
                         onClick={() => enterTenant(tenant)}
-                        aria-label={`进入${tenant.name}`}
-                        title="进入租户"
+                        aria-label={t("enterTenantNamed", {
+                          name: tenant.name,
+                        })}
+                        title={t("enterTenant")}
                       >
                         <ArrowRight />
                       </Button>
@@ -233,8 +240,8 @@ export default function TenantsPage() {
                         size="icon"
                         disabled={busy}
                         onClick={() => openEdit(tenant)}
-                        aria-label={`编辑${tenant.name}`}
-                        title="编辑租户"
+                        aria-label={t("editNamed", { name: tenant.name })}
+                        title={t("editTenant")}
                       >
                         <Pencil />
                       </Button>
@@ -244,8 +251,8 @@ export default function TenantsPage() {
                         className="text-destructive"
                         disabled={busy}
                         onClick={() => setDeleting(tenant)}
-                        aria-label={`删除${tenant.name}`}
-                        title="删除租户"
+                        aria-label={t("deleteNamed", { name: tenant.name })}
+                        title={t("deleteTenant")}
                       >
                         <Trash2 />
                       </Button>
@@ -260,13 +267,13 @@ export default function TenantsPage() {
           <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
             <span className="text-center">
               <Landmark className="mx-auto mb-2 size-7" />
-              暂无租户
+              {t("noTenants")}
             </span>
           </div>
         )}
         {loading && (
           <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
-            正在加载
+            {t("loading")}
           </div>
         )}
       </div>
@@ -280,11 +287,11 @@ export default function TenantsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editing ? "编辑租户" : "创建租户"}</DialogTitle>
+            <DialogTitle>
+              {editing ? t("editTenant") : t("createTenant")}
+            </DialogTitle>
             <DialogDescription>
-              {editing
-                ? "租户标识创建后不可修改。"
-                : "租户标识用于平台内唯一识别。"}
+              {editing ? t("tenantSlugImmutable") : t("tenantSlugDescription")}
             </DialogDescription>
           </DialogHeader>
           <form
@@ -294,7 +301,7 @@ export default function TenantsPage() {
             onSubmit={submit}
           >
             <div className="grid gap-2">
-              <Label htmlFor="tenant-name">名称</Label>
+              <Label htmlFor="tenant-name">{t("name")}</Label>
               <Input
                 id="tenant-name"
                 name="name"
@@ -304,7 +311,7 @@ export default function TenantsPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="tenant-slug">标识</Label>
+              <Label htmlFor="tenant-slug">{t("identifier")}</Label>
               <Input
                 id="tenant-slug"
                 name="slug"
@@ -318,7 +325,7 @@ export default function TenantsPage() {
             </div>
             {!editing && (
               <div className="grid gap-2">
-                <Label htmlFor="tenant-owner">管理员</Label>
+                <Label htmlFor="tenant-owner">{t("administrator")}</Label>
                 <SimpleSelect
                   id="tenant-owner"
                   options={principals.map((principal) => ({
@@ -327,19 +334,19 @@ export default function TenantsPage() {
                   }))}
                   value={ownerID}
                   onValueChange={setOwnerID}
-                  placeholder="选择租户管理员"
+                  placeholder={t("selectTenantAdmin")}
                 />
                 <p className="text-xs text-muted-foreground">
-                  租户与它的管理员一并创建：新租户落库时这名管理员已经可以管理它。
+                  {t("tenantAdminDescription")}
                 </p>
               </div>
             )}
             {editing && (
               <div className="grid gap-2">
-                <Label htmlFor="tenant-status">状态</Label>
+                <Label htmlFor="tenant-status">{t("status")}</Label>
                 <SimpleSelect
                   id="tenant-status"
-                  options={{ active: "启用", suspended: "停用" }}
+                  options={{ active: t("active"), suspended: t("disable") }}
                   value={status}
                   onValueChange={(value) =>
                     setStatus(value as TenantUpdate["status"])
@@ -350,14 +357,14 @@ export default function TenantsPage() {
           </form>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
-              取消
+              {t("cancel")}
             </Button>
             <Button
               type="submit"
               form="tenant-form"
               disabled={busy || (!editing && !ownerID)}
             >
-              {busy ? "保存中" : editing ? "保存" : "创建"}
+              {busy ? t("saving") : editing ? t("save") : t("create")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -369,21 +376,21 @@ export default function TenantsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>删除租户</DialogTitle>
+            <DialogTitle>{t("deleteTenant")}</DialogTitle>
             <DialogDescription>
-              确认删除“{deleting?.name}”？删除后该租户将立即停止授权。
+              {t("deleteTenantConfirm", { name: deleting?.name ?? "" })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleting(null)}>
-              取消
+              {t("cancel")}
             </Button>
             <Button
               variant="destructive"
               disabled={busy}
               onClick={() => void remove()}
             >
-              {busy ? "删除中" : "确认删除"}
+              {busy ? t("deleting") : t("confirmDelete")}
             </Button>
           </DialogFooter>
         </DialogContent>

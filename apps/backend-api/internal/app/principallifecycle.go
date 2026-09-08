@@ -43,7 +43,8 @@ func (app *App) anonymizePrincipalData(ctx context.Context, tx *gorm.DB, princip
 			VersionID int64
 			IsApplied bool
 		}
-		err := tx.WithContext(ctx).Table(prefix + owner.versions).Where("version_id > 0").Order("id DESC").Take(&version).Error
+		// Later unrelated migrations do not remove the owner's erasure protection.
+		err := tx.WithContext(ctx).Table(prefix+owner.versions).Where("version_id = ?", owner.version).Order("id DESC").Take(&version).Error
 		if err != nil || !version.IsApplied || version.VersionID != owner.version {
 			return fmt.Errorf("%w: %s principal erasure migration is required", identity.ErrUnavailable, owner.name)
 		}

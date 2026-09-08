@@ -1,3 +1,4 @@
+import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { useCallback, useEffect, useState, type FormEvent } from "react"
 import {
   AppWindow,
@@ -115,6 +116,8 @@ function uniqueLines(value: string): string[] {
 }
 
 export default function OAuthClientsPage() {
+  const t = useTranslations("iam")
+
   const [clients, setClients] = useState<OAuthClient[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -175,14 +178,14 @@ export default function OAuthClientsPage() {
       public_client: draft.publicClient,
     }
     if (body.grant_types.length === 0 || body.scopes.length === 0) {
-      setError("至少选择一种授权类型并配置一个 scope")
+      setError(t("grantAndScopeRequired"))
       return
     }
     if (
       body.grant_types.includes("authorization_code") &&
       body.redirect_uris.length === 0
     ) {
-      setError("Authorization Code 客户端至少需要一个回调地址")
+      setError(t("redirectRequired"))
       return
     }
     setBusy(true)
@@ -194,7 +197,7 @@ export default function OAuthClientsPage() {
           ...body,
           status: draft.status,
         })
-        setNotice("OAuth 客户端已更新")
+        setNotice(t("oauthUpdated"))
       } else {
         const result = await iamApi.createOAuthClient(body)
         if (result.client_secret) {
@@ -203,7 +206,7 @@ export default function OAuthClientsPage() {
             secret: result.client_secret,
           })
         } else {
-          setNotice("公共 OAuth 客户端已创建")
+          setNotice(t("publicOAuthCreated"))
         }
       }
       setEditing(undefined)
@@ -231,7 +234,7 @@ export default function OAuthClientsPage() {
         })
       } else {
         await iamApi.deleteOAuthClient(confirmation.client.id)
-        setNotice("OAuth 客户端已删除，关联刷新令牌已撤销")
+        setNotice(t("oauthDeleted"))
         await refresh()
       }
       setConfirmation(null)
@@ -245,12 +248,12 @@ export default function OAuthClientsPage() {
   return (
     <>
       <PageHeader
-        title="OAuth 客户端"
-        description="按租户管理 OIDC 与 OAuth 2.0 应用、授权类型和凭据"
+        title={t("oauthClients")}
+        description={t("oauthDescription")}
         action={
           <Button onClick={openCreate}>
             <Plus />
-            创建客户端
+            {t("createClient")}
           </Button>
         }
       />
@@ -261,22 +264,26 @@ export default function OAuthClientsPage() {
         <header className="flex min-h-14 items-center justify-between gap-4 border-b bg-muted/20 px-4">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <AppWindow className="size-4 text-muted-foreground" />
-            已登记应用
+            {t("registeredApplications")}
           </div>
           <span className="text-xs text-muted-foreground">
-            {loading ? "正在加载" : `${clients.length} 个客户端`}
+            {loading
+              ? t("loading")
+              : t("clientCount", { count: clients.length })}
           </span>
         </header>
         <div className="hidden md:block">
           <Table containerClassName="min-h-56">
             <TableHeader>
               <TableRow>
-                <TableHead className="min-w-56">客户端</TableHead>
-                <TableHead className="min-w-40">类型</TableHead>
-                <TableHead className="min-w-64">授权类型</TableHead>
+                <TableHead className="min-w-56">{t("client")}</TableHead>
+                <TableHead className="min-w-40">{t("type")}</TableHead>
+                <TableHead className="min-w-64">{t("grantTypes")}</TableHead>
                 <TableHead className="min-w-52">Scopes</TableHead>
-                <TableHead className="w-24">状态</TableHead>
-                <TableHead className="w-36 text-right">操作</TableHead>
+                <TableHead className="w-24">{t("status")}</TableHead>
+                <TableHead className="w-36 text-right">
+                  {t("actions")}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -289,7 +296,9 @@ export default function OAuthClientsPage() {
                     </code>
                   </TableCell>
                   <TableCell>
-                    {client.public_client ? "公共客户端" : "机密客户端"}
+                    {client.public_client
+                      ? t("publicClient")
+                      : t("confidentialClient")}
                   </TableCell>
                   <TableCell>
                     <GrantBadges client={client} />
@@ -346,7 +355,9 @@ export default function OAuthClientsPage() {
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 <Badge variant="secondary">
-                  {client.public_client ? "公共客户端" : "机密客户端"}
+                  {client.public_client
+                    ? t("publicClient")
+                    : t("confidentialClient")}
                 </Badge>
                 <GrantBadges client={client} />
               </div>
@@ -403,11 +414,13 @@ function ClientActions({
   onRotate: () => void
   onDelete: () => void
 }) {
+  const t = useTranslations("iam")
+
   return (
     <TooltipProvider>
       <div className="flex justify-end gap-1">
         <ActionButton
-          label={`编辑 ${client.name}`}
+          label={t("editNamedSpaced", { name: client.name })}
           onClick={onEdit}
           disabled={busy}
         >
@@ -415,7 +428,7 @@ function ClientActions({
         </ActionButton>
         {!client.public_client && (
           <ActionButton
-            label={`轮换 ${client.name} 的密钥`}
+            label={t("rotateSecretNamed", { name: client.name })}
             onClick={onRotate}
             disabled={busy}
           >
@@ -423,7 +436,7 @@ function ClientActions({
           </ActionButton>
         )}
         <ActionButton
-          label={`删除 ${client.name}`}
+          label={t("deleteNamedSpaced", { name: client.name })}
           onClick={onDelete}
           disabled={busy}
           destructive
@@ -448,21 +461,25 @@ function GrantBadges({ client }: { client: OAuthClient }) {
 }
 
 function StatusBadge({ status }: { status: OAuthClient["status"] }) {
+  const t = useTranslations("iam")
+
   return (
     <Badge
       variant={status === "active" ? "default" : "outline"}
       className="shrink-0 whitespace-nowrap"
     >
-      {status === "active" ? "启用" : "停用"}
+      {status === "active" ? t("active") : t("disable")}
     </Badge>
   )
 }
 
 function EmptyClients() {
+  const t = useTranslations("iam")
+
   return (
     <div>
       <AppWindow className="mx-auto mb-2 size-7 text-muted-foreground" />
-      <p className="text-sm font-medium">尚未登记 OAuth 客户端</p>
+      <p className="text-sm font-medium">{t("noOAuthClients")}</p>
     </div>
   )
 }
@@ -511,6 +528,8 @@ function ClientEditor({
   onOpenChange: (open: boolean) => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
 }) {
+  const t = useTranslations("iam")
+
   const update = <K extends keyof ClientDraft>(key: K, value: ClientDraft[K]) =>
     onDraft({ ...draft, [key]: value })
   const toggleGrant = (grant: OAuthGrantType, checked: boolean) =>
@@ -534,15 +553,13 @@ function ClientEditor({
       <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            {client ? "编辑 OAuth 客户端" : "创建 OAuth 客户端"}
+            {client ? t("editOAuthClient") : t("createOAuthClient")}
           </DialogTitle>
-          <DialogDescription>
-            回调地址必须精确登记；公共客户端不得使用 Client Credentials。
-          </DialogDescription>
+          <DialogDescription>{t("oauthFormDescription")}</DialogDescription>
         </DialogHeader>
         <form id="oauth-client-form" className="grid gap-5" onSubmit={onSubmit}>
           <div className="grid gap-2">
-            <Label htmlFor="oauth-client-name">应用名称</Label>
+            <Label htmlFor="oauth-client-name">{t("applicationName")}</Label>
             <Input
               id="oauth-client-name"
               value={draft.name}
@@ -556,16 +573,16 @@ function ClientEditor({
           <div className="grid gap-3 sm:grid-cols-2">
             <BinarySetting
               id="oauth-public-client"
-              label="公共客户端"
-              description="无客户端密钥，必须使用 PKCE"
+              label={t("publicClient")}
+              description={t("publicPkce")}
               checked={draft.publicClient}
               onCheckedChange={setPublic}
             />
             {client && (
               <BinarySetting
                 id="oauth-client-status"
-                label="启用客户端"
-                description="停用后拒绝新的协议请求"
+                label={t("enableClient")}
+                description={t("disabledClientHint")}
                 checked={draft.status === "active"}
                 onCheckedChange={(checked) =>
                   update("status", checked ? "active" : "disabled")
@@ -574,7 +591,9 @@ function ClientEditor({
             )}
           </div>
           <fieldset className="grid gap-2">
-            <legend className="mb-1 text-sm font-medium">授权类型</legend>
+            <legend className="mb-1 text-sm font-medium">
+              {t("grantTypes")}
+            </legend>
             <div className="grid gap-2 sm:grid-cols-3">
               {grants.map((grant) => {
                 const disabled =
@@ -600,7 +619,7 @@ function ClientEditor({
             </div>
           </fieldset>
           <div className="grid gap-2">
-            <Label htmlFor="oauth-redirect-uris">回调地址</Label>
+            <Label htmlFor="oauth-redirect-uris">{t("redirectUris")}</Label>
             <Textarea
               id="oauth-redirect-uris"
               value={draft.redirectUris}
@@ -612,7 +631,7 @@ function ClientEditor({
               className="font-mono text-xs"
             />
             <p className="text-xs text-muted-foreground">
-              每行一个完整 URL，不允许 fragment。
+              {t("redirectUriHint")}
             </p>
           </div>
           <div className="grid gap-2">
@@ -626,9 +645,7 @@ function ClientEditor({
               maxLength={2048}
               className="font-mono text-xs"
             />
-            <p className="text-xs text-muted-foreground">
-              使用空格分隔，授权请求不能超出此范围。
-            </p>
+            <p className="text-xs text-muted-foreground">{t("scopeHint")}</p>
           </div>
         </form>
         <DialogFooter>
@@ -638,10 +655,10 @@ function ClientEditor({
             disabled={busy}
             onClick={() => onOpenChange(false)}
           >
-            取消
+            {t("cancel")}
           </Button>
           <Button type="submit" form="oauth-client-form" disabled={busy}>
-            {busy ? "保存中" : client ? "保存更改" : "创建客户端"}
+            {busy ? t("saving") : client ? t("saveChanges") : t("createClient")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -684,18 +701,24 @@ function ConfirmationDialog({
   onOpenChange: (open: boolean) => void
   onConfirm: () => void
 }) {
+  const t = useTranslations("iam")
+
   const rotating = value?.action === "rotate"
   return (
     <Dialog open={value !== null} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {rotating ? "轮换客户端密钥" : "删除 OAuth 客户端"}
+            {rotating ? t("rotateClientSecret") : t("deleteOAuthClient")}
           </DialogTitle>
           <DialogDescription>
             {rotating
-              ? `轮换后 ${value?.client.name ?? "该客户端"} 的旧密钥立即失效。`
-              : `删除 ${value?.client.name ?? "该客户端"} 后，关联刷新令牌将被撤销且无法恢复。`}
+              ? t("rotateSecretConfirm", {
+                  name: value?.client.name ?? t("thisClient"),
+                })
+              : t("deleteClientConfirm", {
+                  name: value?.client.name ?? t("thisClient"),
+                })}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -705,7 +728,7 @@ function ConfirmationDialog({
             disabled={busy}
             onClick={() => onOpenChange(false)}
           >
-            取消
+            {t("cancel")}
           </Button>
           <Button
             type="button"
@@ -713,7 +736,11 @@ function ConfirmationDialog({
             disabled={busy}
             onClick={onConfirm}
           >
-            {busy ? "处理中" : rotating ? "确认轮换" : "确认删除"}
+            {busy
+              ? t("processing")
+              : rotating
+                ? t("confirmRotation")
+                : t("confirmDelete")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -728,6 +755,8 @@ function SecretDialog({
   value: SecretResult | null
   onClose: () => void
 }) {
+  const t = useTranslations("iam")
+
   const content = value
     ? `client_id=${value.clientID}\nclient_secret=${value.secret}\n`
     : ""
@@ -747,10 +776,8 @@ function SecretDialog({
     <Dialog open={value !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>保存客户端密钥</DialogTitle>
-          <DialogDescription>
-            该密钥仅显示一次，关闭后无法再次查看。
-          </DialogDescription>
+          <DialogTitle>{t("saveClientSecret")}</DialogTitle>
+          <DialogDescription>{t("secretShownOnce")}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
           <div className="rounded-md border bg-muted/40 p-3">
@@ -772,18 +799,18 @@ function SecretDialog({
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" onClick={copy}>
               <Copy />
-              复制
+              {t("copy")}
             </Button>
             <Button type="button" variant="outline" onClick={download}>
               <Download />
-              下载
+              {t("download")}
             </Button>
           </div>
         </div>
         <DialogFooter>
           <Button type="button" onClick={onClose}>
             <CheckCircle2 />
-            已安全保存
+            {t("safelySaved")}
           </Button>
         </DialogFooter>
       </DialogContent>

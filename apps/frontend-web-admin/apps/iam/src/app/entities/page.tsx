@@ -1,3 +1,4 @@
+import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import {
   useCallback,
   useEffect,
@@ -71,7 +72,15 @@ async function loadRelationships(entityID: string) {
   ).flat()
 }
 
-export default function EntitiesPage() {
+export default function EntitiesPage({
+  scopeEntityID = "",
+}: {
+  scopeEntityID?: string
+}) {
+  const locale = useLocale()
+
+  const t = useTranslations("iam")
+
   const [entities, setEntities] = useState<Entity[]>([])
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [open, setOpen] = useState(false)
@@ -118,7 +127,14 @@ export default function EntitiesPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
 
-  const refresh = useCallback(() => iamApi.entities().then(setEntities), [])
+  const refresh = useCallback(
+    () =>
+      iamApi.entities().then((items) => {
+        setEntities(items)
+        window.dispatchEvent(new Event("entity-catalog-change"))
+      }),
+    []
+  )
 
   useEffect(() => {
     void refresh().catch((cause: Error) => setError(cause.message))
@@ -129,8 +145,14 @@ export default function EntitiesPage() {
     [entities]
   )
   const tree = useMemo(
-    () => flattenEntities(entities, collapsed),
-    [collapsed, entities]
+    () =>
+      flattenEntities(
+        scopeEntityID
+          ? entities.filter((entity) => entity.id === scopeEntityID)
+          : entities,
+        collapsed
+      ),
+    [collapsed, entities, scopeEntityID]
   )
   const childCounts = useMemo(() => {
     const counts = new Map<string, number>()
@@ -142,7 +164,7 @@ export default function EntitiesPage() {
   }, [entities])
   const parentOptions = useMemo(
     () => [
-      { value: rootEntity, label: "顶级实体" },
+      { value: rootEntity, label: t("topEntity") },
       ...flattenEntities(entities, new Set())
         .filter(
           ({ entity }) =>
@@ -154,7 +176,7 @@ export default function EntitiesPage() {
           label: `${"　".repeat(depth)}${entity.name}`,
         })),
     ],
-    [editing?.id, entities, entityByID]
+    [editing?.id, entities, entityByID, t]
   )
   const roleByID = useMemo(
     () => new Map(roles.map((role) => [role.id, role])),
@@ -507,13 +529,15 @@ export default function EntitiesPage() {
   return (
     <>
       <PageHeader
-        title="实体管理"
-        description="维护租户下公司、企业、商户、门店等业务承载实体及其直接角色授权"
+        title={t(scopeEntityID ? "entitySettings" : "entityManagement")}
+        description={t("entitiesDescription")}
         action={
-          <Button onClick={openCreate}>
-            <Plus />
-            创建实体
-          </Button>
+          !scopeEntityID && (
+            <Button onClick={openCreate}>
+              <Plus />
+              {t("createEntity")}
+            </Button>
+          )
         }
       />
       {error && !open && !bindingEntity && <Alert>{error}</Alert>}
@@ -521,12 +545,12 @@ export default function EntitiesPage() {
         <Table className="min-w-[900px]">
           <TableHeader>
             <TableRow>
-              <TableHead>实体</TableHead>
-              <TableHead>类型</TableHead>
-              <TableHead>上级实体</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>元数据</TableHead>
-              <TableHead className="w-32 text-right">操作</TableHead>
+              <TableHead>{t("entity")}</TableHead>
+              <TableHead>{t("type")}</TableHead>
+              <TableHead>{t("parentEntity")}</TableHead>
+              <TableHead>{t("status")}</TableHead>
+              <TableHead>{t("metadata")}</TableHead>
+              <TableHead className="w-32 text-right">{t("actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -545,11 +569,11 @@ export default function EntitiesPage() {
                           size="icon"
                           className="size-8 shrink-0"
                           onClick={() => toggleCollapsed(entity.id)}
-                          aria-label={`${collapsed.has(entity.id) ? "展开" : "收起"}${entity.name}`}
+                          aria-label={`${collapsed.has(entity.id) ? t("expand") : t("collapseShort")}${entity.name}`}
                           title={
                             collapsed.has(entity.id)
-                              ? "展开子实体"
-                              : "收起子实体"
+                              ? t("expandChildEntities")
+                              : t("collapseChildEntities")
                           }
                         >
                           {collapsed.has(entity.id) ? (
@@ -582,7 +606,7 @@ export default function EntitiesPage() {
                         entity.status === "active" ? "secondary" : "destructive"
                       }
                     >
-                      {entity.status === "active" ? "启用" : "停用"}
+                      {entity.status === "active" ? t("active") : t("disable")}
                     </Badge>
                   </TableCell>
                   <TableCell className="max-w-72 truncate font-mono text-xs text-muted-foreground">
@@ -595,8 +619,10 @@ export default function EntitiesPage() {
                         size="icon"
                         disabled={busy}
                         onClick={() => void openBindings(entity)}
-                        aria-label={`管理${entity.name}的角色绑定`}
-                        title="角色绑定"
+                        aria-label={t("manageRoleBindings", {
+                          name: entity.name,
+                        })}
+                        title={t("roleBindings")}
                       >
                         <KeyRound />
                       </Button>
@@ -605,8 +631,8 @@ export default function EntitiesPage() {
                         size="icon"
                         disabled={busy}
                         onClick={() => openEdit(entity)}
-                        aria-label={`编辑${entity.name}`}
-                        title="编辑实体"
+                        aria-label={t("editNamed", { name: entity.name })}
+                        title={t("editEntity")}
                       >
                         <Pencil />
                       </Button>
@@ -615,8 +641,8 @@ export default function EntitiesPage() {
                         size="icon"
                         disabled={busy}
                         onClick={() => void remove(entity)}
-                        aria-label={`删除${entity.name}`}
-                        title="删除空实体"
+                        aria-label={t("deleteNamed", { name: entity.name })}
+                        title={t("deleteEmptyEntity")}
                       >
                         <Trash2 />
                       </Button>
@@ -631,7 +657,7 @@ export default function EntitiesPage() {
           <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
             <span className="text-center">
               <Building2 className="mx-auto mb-2 size-7" />
-              当前租户暂无实体
+              {t("noEntities")}
             </span>
           </div>
         )}
@@ -646,10 +672,10 @@ export default function EntitiesPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editing ? "编辑实体" : "创建实体"}</DialogTitle>
-            <DialogDescription>
-              同级实体的类型和名称必须唯一；类型使用小写字母、数字、下划线或连字符。
-            </DialogDescription>
+            <DialogTitle>
+              {editing ? t("editEntity") : t("createEntity")}
+            </DialogTitle>
+            <DialogDescription>{t("entityFormDescription")}</DialogDescription>
           </DialogHeader>
           {error && <Alert>{error}</Alert>}
           <form
@@ -660,7 +686,7 @@ export default function EntitiesPage() {
           >
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
-                <Label htmlFor="entity-name">名称</Label>
+                <Label htmlFor="entity-name">{t("name")}</Label>
                 <Input
                   id="entity-name"
                   name="name"
@@ -670,7 +696,7 @@ export default function EntitiesPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="entity-type">类型</Label>
+                <Label htmlFor="entity-type">{t("type")}</Label>
                 <Input
                   id="entity-type"
                   name="type"
@@ -684,7 +710,7 @@ export default function EntitiesPage() {
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
-                <Label htmlFor="entity-parent">上级实体</Label>
+                <Label htmlFor="entity-parent">{t("parentEntity")}</Label>
                 <SimpleSelect
                   id="entity-parent"
                   options={parentOptions}
@@ -693,10 +719,10 @@ export default function EntitiesPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="entity-status">状态</Label>
+                <Label htmlFor="entity-status">{t("status")}</Label>
                 <SimpleSelect
                   id="entity-status"
-                  options={{ active: "启用", disabled: "停用" }}
+                  options={{ active: t("active"), disabled: t("disable") }}
                   value={status}
                   onValueChange={(value) =>
                     setStatus(value as EntityInput["status"])
@@ -705,7 +731,7 @@ export default function EntitiesPage() {
               </div>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="entity-metadata">元数据 JSON</Label>
+              <Label htmlFor="entity-metadata">{t("metadataJson")}</Label>
               <Textarea
                 id="entity-metadata"
                 name="metadata"
@@ -718,10 +744,10 @@ export default function EntitiesPage() {
           </form>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
-              取消
+              {t("cancel")}
             </Button>
             <Button type="submit" form="entity-form" disabled={busy}>
-              {busy ? "保存中" : editing ? "保存" : "创建"}
+              {busy ? t("saving") : editing ? t("save") : t("create")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -739,10 +765,10 @@ export default function EntitiesPage() {
         <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle className="pr-8 break-all">
-              {bindingEntity?.name} · 授权与角色绑定
+              {bindingEntity?.name} {t("entityGrantsSuffix")}
             </DialogTitle>
             <DialogDescription>
-              管理实体作用域角色与关系授权；显式拒绝始终优先于关系允许。
+              {t("entityGrantsDescription")}
             </DialogDescription>
           </DialogHeader>
           {error && <Alert>{error}</Alert>}
@@ -752,7 +778,7 @@ export default function EntitiesPage() {
             onSubmit={putBinding}
           >
             <div className="grid gap-2">
-              <Label htmlFor="entity-binding-role">角色</Label>
+              <Label htmlFor="entity-binding-role">{t("role")}</Label>
               <SimpleSelect
                 id="entity-binding-role"
                 options={roles.map((role) => ({
@@ -761,11 +787,11 @@ export default function EntitiesPage() {
                 }))}
                 value={roleID}
                 onValueChange={setRoleID}
-                placeholder="无可用角色"
+                placeholder={t("noAvailableRoles")}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="entity-binding-principal">成员</Label>
+              <Label htmlFor="entity-binding-principal">{t("member")}</Label>
               <SimpleSelect
                 id="entity-binding-principal"
                 options={members.map((member) => ({
@@ -774,14 +800,14 @@ export default function EntitiesPage() {
                 }))}
                 value={principalID}
                 onValueChange={setPrincipalID}
-                placeholder="无有效成员"
+                placeholder={t("noActiveMembers")}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="entity-binding-effect">效果</Label>
+              <Label htmlFor="entity-binding-effect">{t("effect")}</Label>
               <SimpleSelect
                 id="entity-binding-effect"
-                options={{ allow: "允许", deny: "拒绝" }}
+                options={{ allow: t("allow"), deny: t("deny") }}
                 value={effect}
                 onValueChange={(value) =>
                   setEffect(value as EntityRoleBinding["effect"])
@@ -789,7 +815,7 @@ export default function EntitiesPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="entity-binding-expiry">到期时间</Label>
+              <Label htmlFor="entity-binding-expiry">{t("expiresAt")}</Label>
               <Input
                 id="entity-binding-expiry"
                 type="datetime-local"
@@ -802,11 +828,13 @@ export default function EntitiesPage() {
             <Table className="min-w-[720px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead>角色</TableHead>
-                  <TableHead>成员</TableHead>
-                  <TableHead>效果</TableHead>
-                  <TableHead>到期时间</TableHead>
-                  <TableHead className="w-16 text-right">操作</TableHead>
+                  <TableHead>{t("role")}</TableHead>
+                  <TableHead>{t("member")}</TableHead>
+                  <TableHead>{t("effect")}</TableHead>
+                  <TableHead>{t("expiresAt")}</TableHead>
+                  <TableHead className="w-16 text-right">
+                    {t("actions")}
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -827,13 +855,13 @@ export default function EntitiesPage() {
                             : "destructive"
                         }
                       >
-                        {binding.effect === "allow" ? "允许" : "拒绝"}
+                        {binding.effect === "allow" ? t("allow") : t("deny")}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {binding.expires_at
-                        ? new Date(binding.expires_at).toLocaleString()
-                        : "长期有效"}
+                        ? new Date(binding.expires_at).toLocaleString(locale)
+                        : t("noExpiry")}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
@@ -841,8 +869,8 @@ export default function EntitiesPage() {
                         size="icon"
                         disabled={busy}
                         onClick={() => void removeBinding(binding)}
-                        aria-label="删除角色绑定"
-                        title="删除角色绑定"
+                        aria-label={t("deleteRoleBinding")}
+                        title={t("deleteRoleBinding")}
                       >
                         <Trash2 />
                       </Button>
@@ -853,7 +881,7 @@ export default function EntitiesPage() {
             </Table>
             {bindings.length === 0 && (
               <div className="grid min-h-24 place-items-center text-sm text-muted-foreground">
-                暂无直接角色绑定
+                {t("noDirectBindings")}
               </div>
             )}
           </div>
@@ -862,7 +890,7 @@ export default function EntitiesPage() {
             aria-labelledby="relationship-title"
           >
             <h3 id="relationship-title" className="mb-3 text-sm font-semibold">
-              关系授权
+              {t("relationshipGrants")}
             </h3>
             <form
               id="entity-relationship-form"
@@ -870,14 +898,16 @@ export default function EntitiesPage() {
               onSubmit={putRelationship}
             >
               <div className="grid gap-2">
-                <Label htmlFor="relationship-subject-type">主体类型</Label>
+                <Label htmlFor="relationship-subject-type">
+                  {t("principalType")}
+                </Label>
                 <SimpleSelect
                   id="relationship-subject-type"
                   options={{
-                    principal: "成员",
-                    group: "用户组",
-                    position: "岗位",
-                    entity: "实体",
+                    principal: t("member"),
+                    group: t("groups"),
+                    position: t("positions"),
+                    entity: t("entity"),
                   }}
                   value={relationshipSubjectType}
                   onValueChange={(value) => {
@@ -888,24 +918,26 @@ export default function EntitiesPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="relationship-subject">主体</Label>
+                <Label htmlFor="relationship-subject">{t("principal")}</Label>
                 <SimpleSelect
                   id="relationship-subject"
                   options={relationshipSubjectOptions}
                   value={relationshipSubjectID}
                   onValueChange={setRelationshipSubjectID}
-                  placeholder="无可用主体"
+                  placeholder={t("noPrincipalsAvailable")}
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="relationship-subject-relation">主体关系</Label>
+                <Label htmlFor="relationship-subject-relation">
+                  {t("subjectRelation")}
+                </Label>
                 {relationshipSubjectType === "entity" ? (
                   <SimpleSelect
                     id="relationship-subject-relation"
                     options={{
-                      owner: "所有者",
-                      editor: "编辑者",
-                      viewer: "查看者",
+                      owner: t("owner"),
+                      editor: t("editor"),
+                      viewer: t("viewer"),
                     }}
                     value={relationshipSubjectRelation}
                     onValueChange={(value) =>
@@ -919,7 +951,7 @@ export default function EntitiesPage() {
                     id="relationship-subject-relation"
                     value={
                       relationshipSubjectType === "principal"
-                        ? "直接主体"
+                        ? t("directPrincipal")
                         : "member"
                     }
                     disabled
@@ -927,13 +959,15 @@ export default function EntitiesPage() {
                 )}
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="relationship-relation">授予关系</Label>
+                <Label htmlFor="relationship-relation">
+                  {t("grantRelation")}
+                </Label>
                 <SimpleSelect
                   id="relationship-relation"
                   options={{
-                    owner: "所有者",
-                    editor: "编辑者",
-                    viewer: "查看者",
+                    owner: t("owner"),
+                    editor: t("editor"),
+                    viewer: t("viewer"),
                   }}
                   value={relationshipRelation}
                   onValueChange={(value) =>
@@ -942,30 +976,36 @@ export default function EntitiesPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="relationship-resource-type">业务资源类型</Label>
+                <Label htmlFor="relationship-resource-type">
+                  {t("businessResourceType")}
+                </Label>
                 <SimpleSelect
                   id="relationship-resource-type"
                   options={resourceTypeOptions}
                   value={relationshipResourceType}
                   onValueChange={setRelationshipResourceType}
-                  placeholder="选择类型"
+                  placeholder={t("selectType")}
                   disabled={!relationshipResourceID}
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="relationship-resource-id">业务资源 ID</Label>
+                <Label htmlFor="relationship-resource-id">
+                  {t("businessResourceId")}
+                </Label>
                 <Input
                   id="relationship-resource-id"
                   value={relationshipResourceID}
                   onChange={(event) =>
                     setRelationshipResourceID(event.target.value)
                   }
-                  placeholder="留空表示当前实体"
+                  placeholder={t("blankCurrentEntity")}
                   maxLength={255}
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="relationship-starts-at">生效时间</Label>
+                <Label htmlFor="relationship-starts-at">
+                  {t("effectiveAt")}
+                </Label>
                 <Input
                   id="relationship-starts-at"
                   type="datetime-local"
@@ -976,7 +1016,7 @@ export default function EntitiesPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="relationship-ends-at">到期时间</Label>
+                <Label htmlFor="relationship-ends-at">{t("expiresAt")}</Label>
                 <Input
                   id="relationship-ends-at"
                   type="datetime-local"
@@ -987,7 +1027,9 @@ export default function EntitiesPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="relationship-minimum-acr">最低认证级别</Label>
+                <Label htmlFor="relationship-minimum-acr">
+                  {t("minimumAcr")}
+                </Label>
                 <Input
                   id="relationship-minimum-acr"
                   type="number"
@@ -997,35 +1039,41 @@ export default function EntitiesPage() {
                   onChange={(event) =>
                     setRelationshipMinimumAcr(event.target.value)
                   }
-                  placeholder="不限"
+                  placeholder={t("unrestricted")}
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="relationship-client-id">OAuth 客户端</Label>
+                <Label htmlFor="relationship-client-id">
+                  {t("oauthClients")}
+                </Label>
                 <Input
                   id="relationship-client-id"
                   value={relationshipClientID}
                   onChange={(event) =>
                     setRelationshipClientID(event.target.value)
                   }
-                  placeholder="不限"
+                  placeholder={t("unrestricted")}
                   maxLength={255}
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="relationship-network-zone">网络区域</Label>
+                <Label htmlFor="relationship-network-zone">
+                  {t("networkZone")}
+                </Label>
                 <Input
                   id="relationship-network-zone"
                   value={relationshipNetworkZone}
                   onChange={(event) =>
                     setRelationshipNetworkZone(event.target.value)
                   }
-                  placeholder="不限"
+                  placeholder={t("unrestricted")}
                   maxLength={255}
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="relationship-time-start">每日开始时间</Label>
+                <Label htmlFor="relationship-time-start">
+                  {t("dailyStart")}
+                </Label>
                 <Input
                   id="relationship-time-start"
                   type="time"
@@ -1037,7 +1085,7 @@ export default function EntitiesPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="relationship-time-end">每日结束时间</Label>
+                <Label htmlFor="relationship-time-end">{t("dailyEnd")}</Label>
                 <Input
                   id="relationship-time-end"
                   type="time"
@@ -1049,7 +1097,7 @@ export default function EntitiesPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="relationship-timezone">时区</Label>
+                <Label htmlFor="relationship-timezone">{t("timezone")}</Label>
                 <Input
                   id="relationship-timezone"
                   value={relationshipTimezone}
@@ -1073,21 +1121,23 @@ export default function EntitiesPage() {
                 }
               >
                 <Plus />
-                授予关系
+                {t("grantRelation")}
               </Button>
             </form>
             <div className="mt-3 overflow-x-auto rounded-md border">
               <Table className="min-w-[1160px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>主体类型</TableHead>
-                    <TableHead>主体</TableHead>
-                    <TableHead>主体关系</TableHead>
-                    <TableHead>授予关系</TableHead>
-                    <TableHead>目标</TableHead>
-                    <TableHead>有效期</TableHead>
-                    <TableHead>条件</TableHead>
-                    <TableHead className="w-16 text-right">操作</TableHead>
+                    <TableHead>{t("principalType")}</TableHead>
+                    <TableHead>{t("principal")}</TableHead>
+                    <TableHead>{t("subjectRelation")}</TableHead>
+                    <TableHead>{t("grantRelation")}</TableHead>
+                    <TableHead>{t("target")}</TableHead>
+                    <TableHead>{t("validity")}</TableHead>
+                    <TableHead>{t("condition")}</TableHead>
+                    <TableHead className="w-16 text-right">
+                      {t("actions")}
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1100,7 +1150,7 @@ export default function EntitiesPage() {
                         {relationshipSubjectLabel(relationship)}
                       </TableCell>
                       <TableCell>
-                        {relationship.subject_relation || "直接"}
+                        {relationship.subject_relation || t("direct")}
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary">
@@ -1118,18 +1168,25 @@ export default function EntitiesPage() {
                         data-relationship-window
                       >
                         {relationship.starts_at
-                          ? new Date(relationship.starts_at).toLocaleString()
-                          : "立即生效"}
-                        {" 至 "}
+                          ? new Date(relationship.starts_at).toLocaleString(
+                              locale
+                            )
+                          : t("immediately")}
+                        {t("rangeTo")}
                         {relationship.ends_at
-                          ? new Date(relationship.ends_at).toLocaleString()
-                          : "长期有效"}
+                          ? new Date(relationship.ends_at).toLocaleString(
+                              locale
+                            )
+                          : t("noExpiry")}
                       </TableCell>
                       <TableCell
                         className="max-w-72 text-xs text-muted-foreground"
                         data-relationship-condition
                       >
-                        {trustedContextConditionSummary(relationship.condition)}
+                        {trustedContextConditionSummary(
+                          relationship.condition,
+                          t("unrestricted")
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <Button
@@ -1137,8 +1194,8 @@ export default function EntitiesPage() {
                           size="icon"
                           disabled={busy}
                           onClick={() => void removeRelationship(relationship)}
-                          aria-label="撤销关系"
-                          title="撤销关系"
+                          aria-label={t("revokeRelation")}
+                          title={t("revokeRelation")}
                         >
                           <Trash2 />
                         </Button>
@@ -1149,7 +1206,7 @@ export default function EntitiesPage() {
               </Table>
               {relationships.length === 0 && (
                 <div className="grid min-h-20 place-items-center text-sm text-muted-foreground">
-                  暂无关系授权
+                  {t("noRelations")}
                 </div>
               )}
             </div>
@@ -1163,11 +1220,13 @@ export default function EntitiesPage() {
               className="mb-3 flex items-center gap-2 text-sm font-semibold"
             >
               <ScanSearch className="size-4 text-primary" />
-              授权解释
+              {t("authorizationExplanation")}
             </h3>
             <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
               <div className="grid gap-2">
-                <Label htmlFor="authorization-inspection-principal">成员</Label>
+                <Label htmlFor="authorization-inspection-principal">
+                  {t("member")}
+                </Label>
                 <SimpleSelect
                   id="authorization-inspection-principal"
                   options={members.map((member) => ({
@@ -1179,12 +1238,12 @@ export default function EntitiesPage() {
                     setPrincipalID(value)
                     setInspection(null)
                   }}
-                  placeholder="无有效成员"
+                  placeholder={t("noActiveMembers")}
                 />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="authorization-inspection-permission">
-                  数据权限
+                  {t("dataPermission")}
                 </Label>
                 <SimpleSelect
                   id="authorization-inspection-permission"
@@ -1197,12 +1256,12 @@ export default function EntitiesPage() {
                     setInspectionPermission(value)
                     setInspection(null)
                   }}
-                  placeholder="无数据权限"
+                  placeholder={t("noDataPermission")}
                 />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="authorization-inspection-resource">
-                  业务资源 ID
+                  {t("businessResourceId")}
                 </Label>
                 <Input
                   id="authorization-inspection-resource"
@@ -1211,7 +1270,7 @@ export default function EntitiesPage() {
                     setInspectionResourceID(event.target.value)
                     setInspection(null)
                   }}
-                  placeholder="留空检查当前实体"
+                  placeholder={t("blankCheckCurrentEntity")}
                   maxLength={255}
                 />
               </div>
@@ -1222,7 +1281,7 @@ export default function EntitiesPage() {
                 onClick={() => void inspectAuthorization()}
               >
                 <ScanSearch />
-                计算授权
+                {t("evaluateAuthorization")}
               </Button>
             </div>
             {inspection && (
@@ -1235,30 +1294,36 @@ export default function EntitiesPage() {
                         : "destructive"
                     }
                   >
-                    {inspection.explanation.allowed ? "允许" : "拒绝"}
+                    {inspection.explanation.allowed ? t("allow") : t("deny")}
                   </Badge>
                   <span>
-                    {authorizationReason(inspection.explanation.reason)}
+                    {t(authorizationReason(inspection.explanation.reason))}
                   </span>
                   <span className="text-muted-foreground">
-                    策略版本 {inspection.explanation.revision}
+                    {t("policyVersion")}
+                    {inspection.explanation.revision}
                   </span>
                   <span className="text-muted-foreground">
                     {inspection.constraint.allow_all
-                      ? `全租户范围，排除 ${inspection.constraint.denied_ids.length} 个实体`
-                      : `允许 ${inspection.constraint.resource_ids.length} 个实体，拒绝 ${inspection.constraint.denied_ids.length} 个实体`}
+                      ? t("allTenantEntitiesExcept", {
+                          denied: inspection.constraint.denied_ids.length,
+                        })
+                      : t("allowedDeniedEntities", {
+                          allowed: inspection.constraint.resource_ids.length,
+                          denied: inspection.constraint.denied_ids.length,
+                        })}
                   </span>
                 </div>
                 <div className="overflow-x-auto rounded-md border">
                   <Table className="min-w-[760px]">
                     <TableHeader>
                       <TableRow>
-                        <TableHead>权限</TableHead>
-                        <TableHead>角色</TableHead>
-                        <TableHead>来源</TableHead>
-                        <TableHead>作用域</TableHead>
-                        <TableHead>关系路径</TableHead>
-                        <TableHead>效果</TableHead>
+                        <TableHead>{t("permission")}</TableHead>
+                        <TableHead>{t("role")}</TableHead>
+                        <TableHead>{t("source")}</TableHead>
+                        <TableHead>{t("authorizationScope")}</TableHead>
+                        <TableHead>{t("relationshipPath")}</TableHead>
+                        <TableHead>{t("effect")}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1285,7 +1350,7 @@ export default function EntitiesPage() {
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {match.scope_type}:{match.scope_id}
-                            {match.inherited ? "（继承）" : ""}
+                            {match.inherited ? t("inherited") : ""}
                           </TableCell>
                           <TableCell>
                             <Badge
@@ -1295,7 +1360,9 @@ export default function EntitiesPage() {
                                   : "destructive"
                               }
                             >
-                              {match.effect === "allow" ? "允许" : "拒绝"}
+                              {match.effect === "allow"
+                                ? t("allow")
+                                : t("deny")}
                             </Badge>
                           </TableCell>
                         </TableRow>
@@ -1304,7 +1371,7 @@ export default function EntitiesPage() {
                   </Table>
                   {inspection.explanation.matches.length === 0 && (
                     <div className="grid min-h-20 place-items-center text-sm text-muted-foreground">
-                      没有匹配的授权来源
+                      {t("noMatchingSources")}
                     </div>
                   )}
                 </div>
@@ -1313,14 +1380,14 @@ export default function EntitiesPage() {
           </section>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBindingEntity(null)}>
-              关闭
+              {t("close")}
             </Button>
             <Button
               type="submit"
               form="entity-binding-form"
               disabled={busy || !roleID || !principalID}
             >
-              {busy ? "保存中" : "保存绑定"}
+              {busy ? t("saving") : t("saveBinding")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1377,10 +1444,10 @@ function parseMetadata(raw: string): Record<string, unknown> {
   try {
     value = JSON.parse(raw || "{}")
   } catch {
-    throw new Error("元数据必须是有效的 JSON 对象")
+    throw new Error("metadataInvalidJson")
   }
   if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new Error("元数据必须是 JSON 对象")
+    throw new Error("metadataMustBeObject")
   return value as Record<string, unknown>
 }
 
@@ -1392,14 +1459,14 @@ function authorizationReason(
   reason: AuthorizationExplanation["reason"]
 ): string {
   return {
-    inactive_membership: "租户成员未启用",
-    inactive_tenant: "租户未启用",
-    inactive_resource: "实体已停用或不存在",
-    explicit_deny: "命中显式拒绝",
-    administrator_scope_denied: "管理员作用域被拒绝",
-    permission_grant: "命中权限授权",
-    administrator_grant: "命中管理员兜底授权",
-    relationship_grant: "命中关系授权",
-    no_matching_grant: "没有匹配的授权",
+    inactive_membership: "memberInactiveReason",
+    inactive_tenant: "tenantInactiveReason",
+    inactive_resource: "entityInactiveReason",
+    explicit_deny: "explicitDenyReason",
+    administrator_scope_denied: "adminScopeDenied",
+    permission_grant: "permissionGrantedReason",
+    administrator_grant: "adminFallbackReason",
+    relationship_grant: "relationshipGrantedReason",
+    no_matching_grant: "noMatchingGrant",
   }[reason]
 }

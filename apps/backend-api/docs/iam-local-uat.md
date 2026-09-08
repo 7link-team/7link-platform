@@ -39,6 +39,23 @@ the URLs printed by `start` or `status`. All listeners, including MySQL and gRPC
 bind to loopback. Selected ports are stable across restarts; a later collision
 fails rather than connecting to another service.
 
+## Existing Menu Translation Upgrade
+
+Core migration v14 adds `iam_menus.translations`; v15 backfills the 15 built-in
+menu routes in every tenant during the normal `migrate auto` workflow. No browser
+editing or local backfill script is required. Only exact built-in route/name pairs
+with `translations = '{}'` qualify (including the legacy accounts menu name).
+Custom labels/routes and nonempty translation maps, even partial maps, are preserved.
+New tenant initialization writes translations through `DefaultMenus()` as before.
+
+Rolling v15 back to v14 retains translated data, including subsequent edits;
+reapplying v15 leaves those values intact. Rolling v14 back removes the column
+and therefore its translations. Back up before any schema rollback.
+
+`TestIAMDefaultMenuTranslationUpgrade` covers old-version data, two tenants,
+customizations, prefix variants, repeated migration and rollback/re-upgrade.
+The real MySQL gate includes this test using isolated tables, not the UAT data.
+
 ## Accounts And Secrets
 
 | Persona | Login | Password File | Expected Access |
@@ -107,6 +124,21 @@ Operational logs: `.temp/iam-uat/uat.log`. Build identity and selected ports:
 `.temp/iam-uat/state.json`. These are local evidence, not an immutable release
 candidate or shared-environment sign-off.
 
+Browser verification uses the frontend's existing Playwright dependency and an
+installed Chrome; it does not require the agent's embedded browser tool. From
+`apps/backend-api`, with UAT running and `verify` already completed:
+
+```sh
+node ../frontend-web-admin/apps/iam/scripts/local-uat-browser-audit.mjs
+```
+
+This drives actual UI login, tenant selection, navigation, read-only lifecycle
+guards, member access denial and logout/protected-route redirect for both local
+personas at 1440x1000 and 390x844. It uses fresh browser contexts, no API mocks,
+and logs out its sessions. Report and screenshots are under
+`.temp/iam-uat/browser/`. Screenshots are captured with animations completed.
+This script does not execute permanent erasure or alter retention policy.
+
 Before formal acceptance, complete and record these separately:
 
 - Desktop and mobile browser login, tenant selection, navigation and logout.
@@ -133,5 +165,12 @@ HTTP verification must not be reported as browser acceptance.
   expected. Old stopped container, data volume and secret files remain present.
 - Initial random Docker host-port binding changed on restart. The implementation
   now selects an available port and publishes it explicitly; restart retest PASS.
-- Browser workflows, recovery drills and formal production acceptance: NOT RUN /
-  NOT READY. See the remaining checklist above.
+- Browser login/tenant/navigation/read-only lifecycle guard/access denial/logout
+  on desktop and mobile: PASS for all four persona/viewport combinations using
+  Playwright 1.58.2 and Chrome 152.0.7977.76. Screenshots visually inspected.
+- Existing session-tenant browser audit: PASS for unique membership adoption,
+  multiple-membership ambiguity, explicit tenant persistence and revocation. That
+  audit created a synthetic member and second tenant; it does not modify the two
+  documented UAT personas.
+- Permanent-erasure UI execution, recovery drills and formal production
+  acceptance remain NOT RUN / NOT READY. See the remaining checklist above.

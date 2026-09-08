@@ -1,3 +1,4 @@
+import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import {
   useCallback,
   useEffect,
@@ -50,6 +51,10 @@ export default function PrincipalsPage() {
 }
 
 function TenantPrincipals({ tenant }: { tenant: string }) {
+  const locale = useLocale()
+
+  const t = useTranslations("iam")
+
   const iamApi = useMemo(() => createIamApi(undefined, () => tenant), [tenant])
   const [fields, setFields] = useState<FieldConstraint["fields"]>({})
   const [items, setItems] = useState<Principal[]>([])
@@ -150,8 +155,8 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
   return (
     <>
       <PageHeader
-        title="主体与成员"
-        description="管理本地登录账号、全局生命周期及当前租户归属"
+        title={t("principalMembers")}
+        description={t("principalManagementDescription")}
         action={
           <Button
             disabled={!fields.login_name?.create}
@@ -162,7 +167,7 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
             }}
           >
             <Plus />
-            创建主体
+            {t("createPrincipal")}
           </Button>
         }
       />
@@ -171,14 +176,14 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
           <Search className="absolute top-2.5 left-3 size-4 text-muted-foreground" />
           <Input
             className="pl-9"
-            aria-label="搜索主体"
-            placeholder="登录名、显示名或邮箱"
+            aria-label={t("searchPrincipals")}
+            placeholder={t("loginNameOrEmail")}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
         </label>
         <span className="text-xs whitespace-nowrap text-muted-foreground">
-          {items.length} 条
+          {items.length} {t("items")}
         </span>
       </div>
       {error && <Alert>{error}</Alert>}
@@ -186,12 +191,12 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
         <Table className="min-w-[900px] whitespace-nowrap">
           <TableHeader>
             <TableRow>
-              <TableHead>主体</TableHead>
-              <TableHead>登录名</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>主部门</TableHead>
-              <TableHead>更新时间</TableHead>
-              <TableHead className="w-44 text-right">操作</TableHead>
+              <TableHead>{t("principal")}</TableHead>
+              <TableHead>{t("loginIdentifier")}</TableHead>
+              <TableHead>{t("status")}</TableHead>
+              <TableHead>{t("primaryDepartment")}</TableHead>
+              <TableHead>{t("updatedAt")}</TableHead>
+              <TableHead className="w-44 text-right">{t("actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -222,7 +227,9 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
                               }
                               className="px-1.5 py-0 text-[10px]"
                             >
-                              {principal.email_verified ? "已验证" : "未验证"}
+                              {principal.email_verified
+                                ? t("verified")
+                                : t("unverified")}
                             </Badge>
                           )}
                       </span>
@@ -240,7 +247,7 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
                         : "destructive"
                     }
                   >
-                    {principal.status === "active" ? "启用" : "停用"}
+                    {principal.status === "active" ? t("active") : t("disable")}
                   </Badge>
                 </TableCell>
                 <TableCell
@@ -252,10 +259,10 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
                       department.id ===
                       members.find((member) => member.subject === principal.id)
                         ?.department_id
-                  )?.name ?? "未分配"}
+                  )?.name ?? t("unassigned")}
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
-                  {new Date(principal.updated_at).toLocaleString()}
+                  {new Date(principal.updated_at).toLocaleString(locale)}
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
@@ -272,8 +279,13 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
                         )
                         setOpen(true)
                       }}
-                      aria-label={`编辑${principal.display_name || principal.login_name || principal.id}`}
-                      title="编辑主体"
+                      aria-label={t("editNamed", {
+                        name:
+                          principal.display_name ||
+                          principal.login_name ||
+                          principal.id,
+                      })}
+                      title={t("editPrincipal")}
                     >
                       <Pencil />
                     </Button>
@@ -282,8 +294,13 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
                       size="icon"
                       disabled={busy}
                       onClick={() => setLifecycle(principal)}
-                      aria-label={`${principal.display_name || principal.login_name || principal.id}的数据保留与擦除`}
-                      title="数据保留与擦除"
+                      aria-label={t("namedRetentionErasure", {
+                        name:
+                          principal.display_name ||
+                          principal.login_name ||
+                          principal.id,
+                      })}
+                      title={t("retentionErasure")}
                     >
                       <ShieldAlert />
                     </Button>
@@ -297,7 +314,9 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
                       disabled={busy}
                       onClick={() => void toggle(principal)}
                     >
-                      {principal.status === "active" ? "停用" : "恢复"}
+                      {principal.status === "active"
+                        ? t("disable")
+                        : t("restore")}
                     </Button>
                   </div>
                 </TableCell>
@@ -308,7 +327,7 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
         {items.length === 0 && (
           <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
             <UserRoundCheck className="mb-2 size-7" />
-            暂无本地主体
+            {t("noPrincipals")}
           </div>
         )}
       </div>
@@ -324,11 +343,13 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
       >
         <DialogContent className="grid max-h-[calc(100svh-2rem)] gap-4 overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editing ? "编辑主体" : "创建本地主体"}</DialogTitle>
+            <DialogTitle>
+              {editing ? t("editPrincipal") : t("createLocalPrincipal")}
+            </DialogTitle>
             <DialogDescription>
               {editing
-                ? "更新全局主体资料；邮箱变化会重置验证状态并撤销旧凭证。"
-                : "同时创建密码凭证和当前租户成员关系。"}
+                ? t("editPrincipalDescription")
+                : t("createPrincipalDescription")}
             </DialogDescription>
           </DialogHeader>
           <form
@@ -337,9 +358,11 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
             className="grid gap-4"
             onSubmit={submit}
           >
-            {!editing && <Field label="登录名" name="login_name" required />}
+            {!editing && (
+              <Field label={t("loginIdentifier")} name="login_name" required />
+            )}
             <Field
-              label="显示名称"
+              label={t("displayName")}
               name="display_name"
               defaultValue={
                 fields.display_name?.read === "allow"
@@ -355,7 +378,9 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
             />
             {editing && editingMembership && (
               <div className="grid gap-2">
-                <Label htmlFor="principal-department">主部门</Label>
+                <Label htmlFor="principal-department">
+                  {t("primaryDepartment")}
+                </Label>
                 <SimpleSelect
                   id="principal-department"
                   value={departmentID || "__none__"}
@@ -363,7 +388,7 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
                     setDepartmentID(value === "__none__" ? "" : value)
                   }
                   options={[
-                    { value: "__none__", label: "未分配" },
+                    { value: "__none__", label: t("unassigned") },
                     ...departments
                       .filter(
                         (department) =>
@@ -375,14 +400,14 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
                         label:
                           department.status === "active"
                             ? department.name
-                            : `${department.name}（停用）`,
+                            : t("disabledNamed", { name: department.name }),
                       })),
                   ]}
                 />
               </div>
             )}
             <Field
-              label="邮箱"
+              label={t("email")}
               name="email"
               type="email"
               defaultValue={
@@ -394,7 +419,7 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
             />
             {!editing && (
               <Field
-                label="初始密码"
+                label={t("initialPassword")}
                 name="password"
                 type="password"
                 minLength={12}
@@ -404,10 +429,10 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
           </form>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setOpen(false)}>
-              取消
+              {t("cancel")}
             </Button>
             <Button type="submit" form="principal-form" disabled={busy}>
-              {busy ? "保存中" : editing ? "保存" : "创建"}
+              {busy ? t("saving") : editing ? t("save") : t("create")}
             </Button>
           </DialogFooter>
         </DialogContent>

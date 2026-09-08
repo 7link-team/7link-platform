@@ -10,19 +10,19 @@ describe("directory membership presentation", () => {
   const now = Date.parse("2026-08-02T12:00:00Z")
 
   it("classifies scheduled membership windows", () => {
-    expect(membershipState({}, now)).toBe("有效")
+    expect(membershipState({}, now)).toBe("active")
     expect(membershipState({ starts_at: "2026-08-03T00:00:00Z" }, now)).toBe(
-      "待生效"
+      "scheduled"
     )
     expect(membershipState({ ends_at: "2026-08-02T12:00:00Z" }, now)).toBe(
-      "已结束"
+      "ended"
     )
     expect(
       membershipState(
         { starts_at: "2026-08-01T00:00:00Z", ends_at: "2026-08-03T00:00:00Z" },
         now
       )
-    ).toBe("有效")
+    ).toBe("active")
   })
 
   it("converts timestamps for controls and API requests", () => {
@@ -38,11 +38,18 @@ describe("directory membership presentation", () => {
   })
 
   it("formats open and bounded membership windows", () => {
-    expect(membershipWindow({})).toBe("不限 - 不限")
-    const bounded = membershipWindow({
-      starts_at: "2026-08-02T00:00:00Z",
-      ends_at: "2026-08-03T00:00:00Z",
-    })
+    expect(membershipWindow({}, "zh-CN", "不限")).toBe("不限 - 不限")
+    expect(membershipWindow({}, "en-US", "Unrestricted")).toBe(
+      "Unrestricted - Unrestricted"
+    )
+    const bounded = membershipWindow(
+      {
+        starts_at: "2026-08-02T00:00:00Z",
+        ends_at: "2026-08-03T00:00:00Z",
+      },
+      "zh-CN",
+      "不限"
+    )
     expect(bounded).not.toContain("Invalid Date")
     expect(bounded).not.toContain("不限")
   })

@@ -1,3 +1,4 @@
+import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import {
   useCallback,
   useEffect,
@@ -45,6 +46,8 @@ import {
 const rootDepartment = "__root__"
 
 export default function DepartmentsPage() {
+  const t = useTranslations("iam")
+
   const [departments, setDepartments] = useState<Department[]>([])
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [open, setOpen] = useState(false)
@@ -84,7 +87,7 @@ export default function DepartmentsPage() {
 
   const parentOptions = useMemo(
     () => [
-      { value: rootDepartment, label: "顶级部门" },
+      { value: rootDepartment, label: t("topDepartment") },
       ...departments
         .filter(
           (candidate) =>
@@ -96,7 +99,7 @@ export default function DepartmentsPage() {
           label: `${"　".repeat(department.depth)}${department.name}`,
         })),
     ],
-    [departmentByID, departments, editing?.id]
+    [departmentByID, departments, editing?.id, t]
   )
 
   const openCreate = () => {
@@ -171,12 +174,12 @@ export default function DepartmentsPage() {
   return (
     <>
       <PageHeader
-        title="部门管理"
-        description="维护当前租户的行政组织树，部门变更会立即推进授权策略版本"
+        title={t("departmentManagement")}
+        description={t("departmentsDescription")}
         action={
           <Button onClick={openCreate}>
             <Plus />
-            创建部门
+            {t("createDepartment")}
           </Button>
         }
       />
@@ -185,12 +188,12 @@ export default function DepartmentsPage() {
         <Table className="min-w-[720px]">
           <TableHeader>
             <TableRow>
-              <TableHead>部门</TableHead>
-              <TableHead>上级部门</TableHead>
-              <TableHead>排序</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>版本</TableHead>
-              <TableHead className="w-24 text-right">操作</TableHead>
+              <TableHead>{t("department")}</TableHead>
+              <TableHead>{t("parentDepartment")}</TableHead>
+              <TableHead>{t("sortOrder")}</TableHead>
+              <TableHead>{t("status")}</TableHead>
+              <TableHead>{t("version")}</TableHead>
+              <TableHead className="w-24 text-right">{t("actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -214,11 +217,11 @@ export default function DepartmentsPage() {
                           size="icon"
                           className="size-8 shrink-0"
                           onClick={() => toggleCollapsed(department.id)}
-                          aria-label={`${collapsed.has(department.id) ? "展开" : "收起"}${department.name}`}
+                          aria-label={`${collapsed.has(department.id) ? t("expand") : t("collapseShort")}${department.name}`}
                           title={
                             collapsed.has(department.id)
-                              ? "展开子部门"
-                              : "收起子部门"
+                              ? t("expandDepartments")
+                              : t("collapseDepartments")
                           }
                         >
                           {collapsed.has(department.id) ? (
@@ -250,7 +253,9 @@ export default function DepartmentsPage() {
                           : "destructive"
                       }
                     >
-                      {department.status === "active" ? "启用" : "停用"}
+                      {department.status === "active"
+                        ? t("active")
+                        : t("disable")}
                     </Badge>
                   </TableCell>
                   <TableCell className="font-mono text-xs">
@@ -263,8 +268,8 @@ export default function DepartmentsPage() {
                         size="icon"
                         disabled={busy}
                         onClick={() => openEdit(department)}
-                        aria-label={`编辑${department.name}`}
-                        title="编辑部门"
+                        aria-label={t("editNamed", { name: department.name })}
+                        title={t("editDepartment")}
                       >
                         <Pencil />
                       </Button>
@@ -273,8 +278,8 @@ export default function DepartmentsPage() {
                         size="icon"
                         disabled={busy}
                         onClick={() => void remove(department)}
-                        aria-label={`删除${department.name}`}
-                        title="删除空部门"
+                        aria-label={t("deleteNamed", { name: department.name })}
+                        title={t("deleteEmptyDepartment")}
                       >
                         <Trash2 />
                       </Button>
@@ -289,7 +294,7 @@ export default function DepartmentsPage() {
           <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
             <span className="text-center">
               <Building2 className="mx-auto mb-2 size-7" />
-              当前租户暂无部门
+              {t("noDepartments")}
             </span>
           </div>
         )}
@@ -304,9 +309,11 @@ export default function DepartmentsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editing ? "编辑部门" : "创建部门"}</DialogTitle>
+            <DialogTitle>
+              {editing ? t("editDepartment") : t("createDepartment")}
+            </DialogTitle>
             <DialogDescription>
-              移动部门时会同步重建整棵子树的层级关系；冲突版本不会覆盖其他管理员的修改。
+              {t("departmentFormDescription")}
             </DialogDescription>
           </DialogHeader>
           <form
@@ -316,7 +323,7 @@ export default function DepartmentsPage() {
             onSubmit={submit}
           >
             <div className="grid gap-2">
-              <Label htmlFor="department-name">部门名称</Label>
+              <Label htmlFor="department-name">{t("departmentName")}</Label>
               <Input
                 id="department-name"
                 name="name"
@@ -326,7 +333,7 @@ export default function DepartmentsPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="department-parent">上级部门</Label>
+              <Label htmlFor="department-parent">{t("parentDepartment")}</Label>
               <SimpleSelect
                 id="department-parent"
                 options={parentOptions}
@@ -336,7 +343,7 @@ export default function DepartmentsPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="department-sort-order">排序</Label>
+                <Label htmlFor="department-sort-order">{t("sortOrder")}</Label>
                 <Input
                   id="department-sort-order"
                   name="sort_order"
@@ -348,10 +355,10 @@ export default function DepartmentsPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="department-status">状态</Label>
+                <Label htmlFor="department-status">{t("status")}</Label>
                 <SimpleSelect
                   id="department-status"
-                  options={{ active: "启用", disabled: "停用" }}
+                  options={{ active: t("active"), disabled: t("disable") }}
                   value={status}
                   onValueChange={(value) =>
                     setStatus(value as DepartmentInput["status"])
@@ -362,10 +369,10 @@ export default function DepartmentsPage() {
           </form>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
-              取消
+              {t("cancel")}
             </Button>
             <Button type="submit" form="department-form" disabled={busy}>
-              {busy ? "保存中" : editing ? "保存" : "创建"}
+              {busy ? t("saving") : editing ? t("save") : t("create")}
             </Button>
           </DialogFooter>
         </DialogContent>
