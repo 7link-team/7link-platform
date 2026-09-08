@@ -153,10 +153,27 @@ guards testdata 232→235、identity i18n 的两份 declared 键清单。
 `TestIAMManagementHTTPFlowAndTenantIsolation` 失败，随后单独跑、加 `-covermode=atomic` 跑、
 以及完整重跑均通过，未能复现。疑为满负载并行下的时序问题，需在批 3 的发布流水线中留意。
 
+### 七 owner 擦除单元测试已补齐
+八个模块（含 identity 自身）现在都有 `lifecycle_test.go`，恢复了项目的测试文件一一对应约定。
+原先七个 `ErasePrincipalData` 单元覆盖为 0%，现为 76.5%–100%（authn 76.5 / core 83.3 /
+federation 100 / governance 100 / oauth 87.5 / organization 100 / provisioning 87.5；
+未覆盖的均为数据库错误返回分支）。
+
+各 owner 测试断言的是该模块擦除语义的**形状**，而不只是"行没了"：
+- federation：删除而非涂抹 identity link——外部 subject 是上游对这个人的称呼，涂抹后仍能
+  指出这曾是provider 上的哪个账号；且同一人可能来自多个 provider，全部要清。
+- governance：涂抹缓存的姓名但**保留**评审条目与决定——评审是某人做过并可能要为之负责的
+  记录，删掉等于借擦除对象销毁评审本身的审计。
+- oauth：四张表全清——refresh token 或未决 consent 都是重新进入账号的通路，留一个就等于
+  主体已被擦除却仍可被代表行事。
+- core：断言策略修订号 bump（否则权限缓存继续放行）且不殃及无关租户。
+- provisioning：含删 target 绕过擦除责任的完整回归链。
+
 ## Next Action
-批 1 余项：补齐其余四个 owner（federation/governance/oauth）的 `lifecycle_test.go`，
-以及七 owner 填充数据与双向并发验收（审计 10.8）。随后进批 3（串行）：全量门禁、
-冻结迁移 schema.lock、真实 MySQL/race/generate、UAT 环境、备份恢复与 rollback 演练。
+批 1 剩余：七 owner **填充数据的复合验收**与双向并发时序（审计 10.8），这部分属
+`internal/app` 与 `tests/` 层，不是单元测试。随后进批 3（串行、不可并行）：全量门禁、
+冻结 195 个迁移的 schema.lock、真实 MySQL/race/generate、UAT 环境、备份恢复与
+rollback/roll-forward 演练。
 
 ## Verification
 Build: NOT_RUN（本轮改动后）/ 主模块 lint: NOT_RUN / tests lint: PASS /
