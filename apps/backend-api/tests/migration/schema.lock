@@ -246,6 +246,14 @@
       "sha256": "5de1514af9fc7cfbfb59edb92279e01740870010d8b9f6e99955e883f8099216"
     },
     {
+      "path": "core/sql/mysql/00014_menu_translations.sql",
+      "sha256": "c0bccb411d57fec680f7f459201eb71d1421c3c1e9e67f20a93b567041ded72f"
+    },
+    {
+      "path": "core/sql/mysql/00015_default_menu_translations.sql",
+      "sha256": "20cdbf64735d19224f9213caeeaa4d59d913c6cf81f05596d2bdf12774cd0d66"
+    },
+    {
       "path": "core/sql/postgres/00001_authorization.sql",
       "sha256": "efe61ce3ba534aa7756b638c754f39669e6ab9ebb0725f82acc0beb10cb2e2d2"
     },
@@ -298,6 +306,14 @@
       "sha256": "b28e1540e8edc46280e0f54ddef80b754f0ae0ec6c382a8063066963a1fed591"
     },
     {
+      "path": "core/sql/postgres/00014_menu_translations.sql",
+      "sha256": "2277fcc00593b3ed95c2baa28c19918d8e236d1aef5134c4fe9d05ba209f8090"
+    },
+    {
+      "path": "core/sql/postgres/00015_default_menu_translations.sql",
+      "sha256": "349670343245e3db534700244922249eed3bbd3c42c8d0c5d23574e619e8d64b"
+    },
+    {
       "path": "core/sql/sqlite/00001_authorization.sql",
       "sha256": "bfbb1d550ddf6754f801350ed0629c9fe5f97804690d4a045246662f6ab13bd8"
     },
@@ -348,6 +364,14 @@
     {
       "path": "core/sql/sqlite/00013_principal_erasure_guards.sql",
       "sha256": "28f49d57f88b424f0ae95f965f884b6284cf5ddf272652de8c944081c7a3c935"
+    },
+    {
+      "path": "core/sql/sqlite/00014_menu_translations.sql",
+      "sha256": "2277fcc00593b3ed95c2baa28c19918d8e236d1aef5134c4fe9d05ba209f8090"
+    },
+    {
+      "path": "core/sql/sqlite/00015_default_menu_translations.sql",
+      "sha256": "349670343245e3db534700244922249eed3bbd3c42c8d0c5d23574e619e8d64b"
     },
     {
       "path": "federation/sql/mysql/00001_identity_providers.sql",

@@ -74,8 +74,12 @@ fi
 
 echo "mysql8 gate: ${docker_test_host}:${mysql_port} (${mysql_image})"
 # Observe actual blocking relationships in the isolated acceptance database.
-"${docker_command[@]}" exec "${container_id}" mysql --user=root "--password=${mysql_root_password}" \
-  --execute="GRANT SELECT ON performance_schema.* TO '${mysql_user}'@'%';"
+# The statement travels on stdin rather than in --execute because the docker
+# command is not always local: a remote transport puts a shell between here and
+# the daemon, and that shell re-splits an argument containing spaces and quotes.
+# Nothing re-splits stdin.
+printf '%s\n' "GRANT SELECT ON performance_schema.* TO '${mysql_user}'@'%';" \
+  | "${docker_command[@]}" exec --interactive "${container_id}" mysql --user=root "--password=${mysql_root_password}"
 
 IAM_LIFECYCLE_DATABASE_TYPE=mysql \
 IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \

@@ -1016,9 +1016,14 @@ subsequently passed; migration package took 640.915s, with all assertions intact
 3. 降级 principal 锁强度 —— 因 `login_name` 唯一约束不成立。
 
 **Tradeoffs**
-重试使「先拿到锁者必胜」不再成立，这一点已写进测试注释。验证强度需如实记录：重试逻辑由
-注入 40P01 的单元测试直接覆盖；真实 PostgreSQL 上，修复前失败可复现，修复后约 28 次运行
-（含 2 次完整 `make ci`）不再复现，但**未在修复后真实命中并观察到重试吸收一次死锁**。
+重试使「先拿到锁者必胜」不再成立，这一点已写进测试注释。
+
+**验证强度（2026-09-08 更新）**：真实 MySQL 8.4.11 门禁（`make test-mysql8`）单次运行中
+触发 **8 次真实死锁**，`TestPrincipalErasureConcurrencyExternalDatabase` 仍 PASS，门禁整体
+EXIT=0。死锁语句正是竞争写入方对 `iam_tenant_members` / `iam_oauth_consents` /
+`iam_identity_links` 的 UPDATE，与设计分析一致。至此重试吸收真实死锁已被直接观察到，
+不再只有注入 40P01 的单元证据。PostgreSQL 侧：修复前失败可复现，修复后约 28 次运行
+（含 2 次完整 `make ci`）不再复现。
 
 **Scope**
 `pkg/extension/gorm/retry.go`（新增）、`internal/iam/identity/lifecycle.go`、
@@ -1026,3 +1031,34 @@ subsequently passed; migration package took 640.915s, with all assertions intact
 
 **Status**
 已决定并执行（2026-09-08）。
+
+## D29 — 门禁脚本必须对「docker 命令带远端 shell」成立
+
+**Decision**
+`scripts/test-mysql8.sh` 中授权 `performance_schema` 的语句改为经 **stdin** 传给
+`docker exec --interactive`，不再放在 `--execute=` 参数里。
+
+**Reason**
+`DOCKER_CMD` 不保证是本地 `docker`：项目自己的 `make iam-preflight` 会为本机生成
+`ssh -i ~/.ssh/iam-docker-<host> root@<host> docker`，中间因此多一层远端 shell。
+`--execute="GRANT SELECT ON performance_schema.* TO 'user'@'%';"` 含空格与引号，会被那层
+shell 重新分词，`mysql` 收到 `--execute=GRANT` 加散落参数，打印用法后以非零退出，整道门禁失败。
+
+该语句由 `f371e7e` 引入，说明它只在本地 docker 传输下验证过；在本仓既定的远端传输下
+**从未通过**。stdin 不会被任何一层 shell 重新分词，因此本地与远端两种传输都成立。
+
+**Alternatives Considered**
+1. 在调用方包一层用 `printf %q` 转义的 wrapper —— 只修一台机器，仓库里的缺陷仍在，
+   下一个用远端传输的人照样踩。
+2. 要求所有人改用本地 docker —— 与 `iam-preflight` 自动生成远端传输的既定设计冲突。
+
+**Tradeoffs**
+脚本里其余参数（十六进制口令、`--sql-mode=` 逗号串、`{{.State.Running}}`）均不含空格，
+经远端 shell 后 argv 不变，故只此一处需要改。若日后再加入含空格的参数，应同样走 stdin
+或显式转义。
+
+**Scope**
+`apps/backend-api/scripts/test-mysql8.sh`。
+
+**Status**
+已决定并执行（2026-09-08）。修复后 `make test-mysql8` 六个测试组全绿，EXIT=0。
