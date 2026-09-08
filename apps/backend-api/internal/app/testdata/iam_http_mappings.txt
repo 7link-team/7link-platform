@@ -196,6 +196,7 @@ provisioning-list-scim-targets => provisioning-list-scim-targets|GET|/iam/scim/t
 provisioning-push-scim-resource => provisioning-push-scim-resource|POST|/iam/scim/targets/{target_id}/push
 provisioning-replace-scim-directory => provisioning-replace-scim-directory|PUT|/iam/scim/directories/{directory_id}
 provisioning-replace-scim-target => provisioning-replace-scim-target|PUT|/iam/scim/targets/{target_id}
+provisioning-retire-scim-target => provisioning-retire-scim-target|POST|/iam/scim/targets/{target_id}/retire
 provisioning-revoke-scim-credential => provisioning-revoke-scim-credential|DELETE|/iam/scim/directories/{directory_id}/credentials/{credential_id}
 scim-bulk => scim-bulk|POST|/scim/v2/Bulk
 scim-create-group => scim-create-group|POST|/scim/v2/Groups

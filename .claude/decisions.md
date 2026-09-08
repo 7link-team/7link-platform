@@ -929,3 +929,34 @@ Redis 让生产部署多一个必须高可用的有状态组件，运维成本�
 
 **Status**
 已决定（2026-09-07，用户明确指示）。
+
+## D27 — SCIM 退役采用同步可续跑，不引入后台重试队列
+
+**Decision**
+D23 的第二半「显式删除并注销」实现为 `RetireTarget`：逐个注销 live mapping，全部成功后才
+删除 target；任一失败即中止，保留 target、凭据与全部剩余 mapping 并返回已完成数量。
+**未实现**后台重试队列与死信治理面。
+
+**Reason**
+已注销的 mapping 会被墓碑化，而墓碑化的 mapping 不计为 live，因此重跑天然从中断处继续——
+幂等且可续，这已覆盖后台任务的主要价值。而持久化任务需要新增 target 状态，
+`iam_scim_targets.status` 上有 `CHECK (status IN ('active','disabled'))`，改它在 SQLite 需
+重建表，是一次三方言的重型迁移；在迁移即将冻结（批 3）的窗口内，这笔成本与它带来的增量
+收益不成比例。
+
+**Alternatives Considered**
+1. 新增 `retiring` 状态 + 复用现有 `reconcileAll` sync 循环作为 worker —— 设计上更好，
+   大目录不会阻塞调用方；代价是上述三方言 CHECK 迁移。若用户要求可后续补，属增量改动。
+2. 保持仅 fail closed —— 审计允许（close condition 是「或」），但大目录逐个手工注销不可运营。
+
+**Tradeoffs**
+同步实现对超大目录会长时间占用一个 HTTP 请求，可能触发网关超时；此时操作员重新调用即可
+续跑，不会丢失或重复注销。这一限制**须在交付说明中明示**，不得当作已解决。
+
+**Scope**
+`internal/iam/provisioning/target.go`（`RetireTarget`、`ErrTargetHasLiveMappings`、
+`DeleteTarget` 守卫）、`repository.go`（`countLiveTargetResources`）、`http.go` 与 i18n、
+前端 `targets.tsx` 与 `iam-api.ts`。
+
+**Status**
+已决定并执行（2026-09-07）。后台队列变体未实施，需用户决定是否排期。

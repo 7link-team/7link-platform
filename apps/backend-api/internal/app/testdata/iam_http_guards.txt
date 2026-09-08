@@ -211,6 +211,7 @@ provisioning-list-scim-targets => tenant|tenant_administer
 provisioning-push-scim-resource => tenant|tenant_administer
 provisioning-replace-scim-directory => tenant|tenant_administer
 provisioning-replace-scim-target => tenant|tenant_administer
+provisioning-retire-scim-target => tenant|tenant_administer
 provisioning-revoke-scim-credential => tenant|tenant_administer
 scim-bulk => public
 scim-create-group => public

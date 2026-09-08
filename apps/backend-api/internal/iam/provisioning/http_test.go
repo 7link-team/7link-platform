@@ -33,6 +33,7 @@ provisioning-list-scim-targets|GET|/iam/scim/targets
 provisioning-push-scim-resource|POST|/iam/scim/targets/{target_id}/push
 provisioning-replace-scim-directory|PUT|/iam/scim/directories/{directory_id}
 provisioning-replace-scim-target|PUT|/iam/scim/targets/{target_id}
+provisioning-retire-scim-target|POST|/iam/scim/targets/{target_id}/retire
 provisioning-revoke-scim-credential|DELETE|/iam/scim/directories/{directory_id}/credentials/{credential_id}
 scim-bulk|POST|/scim/v2/Bulk
 scim-create-group|POST|/scim/v2/Groups

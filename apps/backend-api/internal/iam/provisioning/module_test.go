@@ -65,7 +65,7 @@ func TestProvisioningModuleDependencyResolutionAndLifecycle(t *testing.T) {
 	require.NoError(t, instance.Stop(t.Context()))
 	_, api = humatest.New(t)
 	require.NoError(t, instance.RegisterHTTP(t.Context(), api))
-	assert.Len(t, provisioningOperationManifest(api.OpenAPI()), 30)
+	assert.Len(t, provisioningOperationManifest(api.OpenAPI()), 31)
 
 	var nilModule *Module
 	assert.ErrorContains(t, nilModule.Initialize(t.Context()), "module is required")

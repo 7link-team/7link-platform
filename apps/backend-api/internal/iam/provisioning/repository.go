@@ -231,6 +231,20 @@ func (r *Repository) deleteTarget(ctx context.Context, tenantID, id guid.ID) err
 	return nil
 }
 
+// countLiveTargetResources counts the mappings that still name a resource on
+// the remote side. The predicate is deliberately the one ErasePrincipalData
+// reads: if the two ever disagree, the mapping this count overlooks is the
+// one erasure would let through.
+func (r *Repository) countLiveTargetResources(ctx context.Context, targetID guid.ID) (int64, error) {
+	var count int64
+	err := r.writer().WithContext(ctx).Table(r.table(model.TargetResource{}.TableName())).
+		Where("target_id = ? AND deleted_at IS NULL AND external_id <> ''", targetID).Count(&count).Error
+	if err != nil {
+		return 0, fmt.Errorf("count live SCIM target resource mappings: %w", err)
+	}
+	return count, nil
+}
+
 func (r *Repository) listTargetResources(ctx context.Context, targetID guid.ID) ([]targetResourceRow, error) {
 	rows := make([]targetResourceRow, 0)
 	err := r.writer().WithContext(ctx).Table(r.table(model.TargetResource{}.TableName())).

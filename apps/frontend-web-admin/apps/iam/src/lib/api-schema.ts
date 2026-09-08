@@ -2255,6 +2255,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/iam/scim/targets/{target_id}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deprovision everything an outbound SCIM target provisions, then delete it
+         * @description Deleting a target is refused while it still provisions remote resources, because the mapping and bearer token that reach those accounts would go with it. This removes the remote accounts first and deletes the target once none are left. A remote that refuses leaves the target, its credentials and the remaining mappings in place; calling this again resumes where it stopped.
+         */
+        post: operations["provisioning-retire-scim-target"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/iam/scope-model": {
         parameters: {
             query?: never;
@@ -4816,6 +4836,21 @@ export interface components {
             /** @description response payload; null on error */
             data: {
                 [key: string]: boolean;
+            };
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeMapStringInt: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: {
+                [key: string]: number;
             };
             /** @description human-readable status; "ok" on success */
             message: string;
@@ -20684,6 +20719,103 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnvelopePushResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "provisioning-retire-scim-target": {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+            };
+            path: {
+                target_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeMapStringInt"];
                 };
             };
             /** @description Unauthorized */

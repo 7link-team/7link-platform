@@ -1883,6 +1883,11 @@ export function createIamApi(
         `/iam/scim/targets/${encodeURIComponent(id)}/deprovision`,
         { method: "POST", body: JSON.stringify(body) }
       ),
+    retireSCIMTarget: (id: string) =>
+      request<{ deprovisioned: number }>(
+        `/iam/scim/targets/${encodeURIComponent(id)}/retire`,
+        { method: "POST" }
+      ),
     createSCIMDirectory: (body: SCIMDirectoryInput) =>
       request<SCIMDirectory>("/iam/scim/directories", {
         method: "POST",

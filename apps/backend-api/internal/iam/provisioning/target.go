@@ -41,6 +41,14 @@ var (
 	ErrRemoteUnavailable  = errors.New("SCIM remote request failed")
 	ErrRemoteResponse     = errors.New("SCIM remote rejected the request")
 	ErrDeprovisionMissing = errors.New("SCIM remote resource has no active mapping")
+	// ErrTargetHasLiveMappings stops a deletion that would destroy the bearer
+	// token and remote identifiers which are the only way left to reach the
+	// accounts this target created. The rows would go with it -- the database
+	// cascades them -- and principal erasure reads exactly those rows to decide
+	// whether a remote account still holds the person's data. Deleting the
+	// target first therefore turns a refusal into an approval without anything
+	// having been deprovisioned.
+	ErrTargetHasLiveMappings = errors.New("deprovision the target's remote resources before deleting it")
 )
 
 // Target is an outbound SCIM endpoint managed per tenant.
@@ -197,6 +205,13 @@ func (s *Service) DeleteTarget(ctx context.Context, tenantID, id guid.ID) error 
 		if _, err := repo.getTarget(ctx, tenantID, id); err != nil {
 			return err
 		}
+		live, err := repo.countLiveTargetResources(ctx, id)
+		if err != nil {
+			return err
+		}
+		if live != 0 {
+			return ErrTargetHasLiveMappings
+		}
 		if err := repo.deleteTarget(ctx, tenantID, id); err != nil {
 			return err
 		}
@@ -206,6 +221,50 @@ func (s *Service) DeleteTarget(ctx context.Context, tenantID, id guid.ID) error 
 		return fmt.Errorf("delete SCIM target: %w", err)
 	}
 	return nil
+}
+
+// RetireTarget deprovisions everything this target still provisions and then
+// deletes it. It exists because DeleteTarget refuses while mappings are live,
+// and doing that by hand is not an option for a directory of any size.
+//
+// The remote account is removed before the mapping and the bearer token that
+// reach it, never after: a failure part-way leaves the target, its credentials
+// and every remaining mapping exactly where they were, so the accounts that
+// have not been dealt with are still reachable and still counted. Re-running
+// resumes rather than restarts -- a deprovisioned mapping is tombstoned, and
+// tombstoned mappings are not live -- so the answer to a remote that was down
+// is to call this again once it is back.
+//
+// It returns the number of resources deprovisioned, including on failure, so
+// the caller can say how far it got.
+func (s *Service) RetireTarget(ctx context.Context, tenantID, id guid.ID) (int, error) {
+	if tenantID.Zero() || id.Zero() {
+		return 0, ErrInvalidTarget
+	}
+	// Deprovisioning talks to the remote, which a disabled target may not do.
+	// Rather than make an exception here, retirement asks for the same target
+	// state every other outbound call asks for.
+	if _, err := s.repo.getTarget(ctx, tenantID, id); err != nil {
+		return 0, err
+	}
+	mappings, err := s.repo.listTargetResources(ctx, id)
+	if err != nil {
+		return 0, fmt.Errorf("list SCIM target resource mappings: %w", err)
+	}
+	deprovisioned := 0
+	for _, mapping := range mappings {
+		if mapping.DeletedAt != nil || mapping.ExternalID == "" {
+			continue
+		}
+		if err := s.DeprovisionResource(ctx, tenantID, id, mapping.ResourceType, mapping.ResourceID); err != nil {
+			return deprovisioned, fmt.Errorf("retire SCIM target: %w", err)
+		}
+		deprovisioned++
+	}
+	if err := s.DeleteTarget(ctx, tenantID, id); err != nil {
+		return deprovisioned, err
+	}
+	return deprovisioned, nil
 }
 
 // PushResource PUTs the current local user or group to the target. The mapping

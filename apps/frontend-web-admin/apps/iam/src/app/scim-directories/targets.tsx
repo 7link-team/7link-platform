@@ -250,6 +250,25 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
       setBusy(false)
     }
   }
+  // Retiring removes the remote accounts before the mapping and token that
+  // reach them. A remote that refuses leaves everything in place, so the
+  // operator can come back to it rather than losing track of what is out there.
+  const retireTarget = async () => {
+    if (!deleting) return
+    setBusy(true)
+    setError("")
+    try {
+      const outcome = await api.retireSCIMTarget(deleting.id)
+      setDeleting(null)
+      setNotice(`已注销 ${outcome.deprovisioned} 个远端资源并删除出站配置`)
+      setResult(null)
+      await refresh()
+    } catch (cause) {
+      setError((cause as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
   const openOperation = (target: SCIMTarget, remove: boolean) => {
     setError("")
     setChoices([])
@@ -633,7 +652,10 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
           <DialogHeader>
             <DialogTitle>删除出站配置</DialogTitle>
             <DialogDescription>
-              删除 {deleting?.name} 的配置及本地同步映射？远端资源不会被删除。
+              {deleting?.name} 若仍在管理远端资源，直接删除会被拒绝：删掉配置就删掉了
+              访问令牌和远端标识，那些账号会留在原处且再也无法访问。「注销远端并删除」
+              会先逐个删除远端账号，全部成功后再删除配置；远端拒绝时不会删除任何本地
+              记录，稍后重试即可从中断处继续。
             </DialogDescription>
           </DialogHeader>
           {error && <Alert>{error}</Alert>}
@@ -646,12 +668,20 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
               取消
             </Button>
             <Button
-              variant="destructive"
+              variant="outline"
               disabled={busy}
               onClick={() => void removeTarget()}
             >
               <Trash2 />
-              {busy ? "删除中" : "确认删除"}
+              {busy ? "处理中" : "仅删除配置"}
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={busy}
+              onClick={() => void retireTarget()}
+            >
+              <Trash2 />
+              {busy ? "注销中" : "注销远端并删除"}
             </Button>
           </DialogFooter>
         </DialogContent>

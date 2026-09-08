@@ -206,6 +206,8 @@ func provisioningError(err error) error {
 		return huma.Error422UnprocessableEntity(provisioningi18n.TargetKeyMissing)
 	case errors.Is(err, ErrTargetDisabled):
 		return huma.Error409Conflict(provisioningi18n.TargetDisabled)
+	case errors.Is(err, ErrTargetHasLiveMappings):
+		return huma.Error409Conflict(provisioningi18n.TargetHasLiveMappings)
 	case errors.Is(err, ErrUnauthorized):
 		return huma.Error409Conflict(provisioningi18n.TargetServiceAccountInactive)
 	case errors.Is(err, ErrDeprovisionMissing):
@@ -770,6 +772,21 @@ func registerTargetHTTP(api huma.API, service *Service, registrar *authz.Registr
 			return nil, provisioningError(err)
 		}
 		return respx.OK(ctx, map[string]bool{"deleted": true}), nil
+	})
+	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-retire-scim-target", Method: http.MethodPost, Path: "/iam/scim/targets/{target_id}/retire", Summary: "Deprovision everything an outbound SCIM target provisions, then delete it", Description: "Deleting a target is refused while it still provisions remote resources, because the mapping and bearer token that reach those accounts would go with it. This removes the remote accounts first and deletes the target once none are left. A remote that refuses leaves the target, its credentials and the remaining mappings in place; calling this again resumes where it stopped.", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusBadGateway}}, guard, func(ctx context.Context, in *targetIDInput) (*respx.Body[map[string]int], error) {
+		tenantID, err := parseProvisioningID(in.TenantID)
+		if err != nil {
+			return nil, err
+		}
+		targetID, err := parseProvisioningID(in.TargetID)
+		if err != nil {
+			return nil, err
+		}
+		deprovisioned, err := service.RetireTarget(ctx, tenantID, targetID)
+		if err != nil {
+			return nil, provisioningError(err)
+		}
+		return respx.OK(ctx, map[string]int{"deprovisioned": deprovisioned}), nil
 	})
 	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-push-scim-resource", Method: http.MethodPost, Path: "/iam/scim/targets/{target_id}/push", Summary: "Push a user or group to an outbound SCIM target", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusBadGateway}}, guard, func(ctx context.Context, in *targetPushInput) (*respx.Body[PushResult], error) {
 		tenantID, err := parseProvisioningID(in.TenantID)
