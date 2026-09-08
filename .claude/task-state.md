@@ -1,5 +1,112 @@
 # Task State
 
+## Active Checkpoint (2026-09-08)
+
+### Local UAT Continuation
+
+- Phase: ACCEPTANCE for isolated local UAT. User continued after migration freeze.
+- Execution: Direct/serial. Added scripts/iam-uat.mjs and docs/iam-local-uat.md under backend.
+  Reuses pinned MySQL image from Makefile, migrate/administrator CLI, existing frontend tenant
+  bootstrap and Vite proxy; no production source/schema edits or new dependencies.
+- Implemented: init/start/stop/status/verify/reset --preserve-old. Loopback-only ports, private random
+  key/password files, labelled workspace-owned container, separate API binary and binary hash,
+  supervised API/console, safe reset preserving old stopped container and state directory.
+- Verified: first initialization and API smoke PASS; restart exposed Docker dynamic host-port reassignment.
+  Fixed init to select an available port and bind it explicitly. Preserved the first test environment
+  with suffix 2026-09-08T07-56-02-318Z; no data or secrets deleted. Fixed init/start/API verify PASS.
+- API verify covers admin/member login, no member roles, denied tenant administration/platform lifecycle,
+  rejected cross-origin writes and logout invalidation through real console proxy. Synthetic member
+  created through principal API, never a raw database seed. Browser acceptance is NOT_RUN.
+- Safety checks PASS: repeated init/start idempotent, reset without --preserve-old refused,
+  DOCKER_HOST override refused. Fixed-port stop/restart plus repeated API verification PASS;
+  persisted tenant/member IDs are checked, not recreated to mask data loss.
+- Verification: node --check scripts/iam-uat.mjs and git diff --check PASS. Actual API build,
+  migrations, bootstrap, initial/repeated start, graceful stop, reset/new init, and nine proxy/API
+  checks PASS. Latest verification 2026-09-08T08:01:19Z in .temp/iam-uat/verification.json.
+  Directory 0700 and eight secret/config files 0600 verified. UAT log scan finds no generated
+  password/key values. Preserved old container is stopped, DB volume and credentials remain;
+  fresh admin password differs. No real business data used or deleted.
+- Running: console http://127.0.0.1:18091, API http://127.0.0.1:18080, fixed MySQL 127.0.0.1:13306.
+  Accounts: admin@example.test and member@example.test; passwords in respective admin-password /
+  member-password files under backend .temp/iam-uat. Do not print or commit those files.
+  Stop with node scripts/iam-uat.mjs stop from backend. Supervisor is detached, no tool session
+  remains needed. Separate binary hash 6febc82c6b1b57464c83fbae627aab86c17581f27486db06a7221a5577f4a66d.
+- Browser skill read in full; required node_repl js and discovery tools unavailable in this session.
+  No fallback browser automation used. Do not confuse API smoke with UI workflow acceptance.
+- Self-review / local UAT acceptance: PASS (scoped ops artifacts, existing CLI/API reuse, no new
+  dependencies or domain changes, real verification, private secrets, recoverable reset). No commit.
+- Next: backup/restore drill on a disposable clone of this synthetic MySQL UAT, then post-backup
+  erasure reconciliation and rollback/roll-forward. Inspect existing contracts before implementing;
+  preserve the current usable UAT and keys. Archive recovery requires an object-lock store not yet
+  configured. Browser workflows remain open until the browser tool is available. Formal environment
+  and business RTO/RPO remain unspecified; measured local times are not business SLOs or sign-off.
+
+### Batch 3 Continuation
+
+- Phase: ACCEPTANCE for generate/main-module race/schema freeze; UAT and recovery remain open.
+- Plan: serial generate consistency, full backend race, then review/freeze 195 migrations using
+  the existing lock generator and prior verified MySQL gate. Prepare isolated local UAT and recovery
+  drill artifacts after inspecting existing deployment/bootstrap commands. Direct execution.
+- Preserve the seven uncommitted files from the previous checkpoint. No commit/push authorized here.
+- Formal environment and business RTO/RPO targets remain unspecified; local measurements are not SLOs.
+- Verification: make generate EXIT=0; git status still contains exactly the original seven dirty files,
+  with no generated-source changes. Evidence: /tmp/iam-batch3-generate.log.
+- Verification: go test -race ./... -count=1 -timeout=20m EXIT=0 in the backend main module;
+  log /tmp/iam-batch3-race.log (app 142.902s, authn 143.230s). This is not a claim that the
+  separate tests/tools modules were fully run under race; prior PostgreSQL erasure race remains PASS.
+- Completed: extended tests/migration/schema.lock using the existing generator after the verified
+  real MySQL gate and the above checks. Read-only verification PASS: 195 files, 68 tables, 29 FKs.
+  Structured comparison against HEAD confirms all original 171 hashes unchanged, exactly 24 additions.
+  Additions: three dialects of authn v12/v13 and core/federation/governance/oauth/organization/provisioning
+  erasure guards. No migration SQL or production source changed.
+- Verification: go -C tools test ./iam-schema-lock -count=1 PASS (0.533s); git diff --check PASS.
+- Self-review: scoped generated artifact only, reused lock generator, original dirty files preserved;
+  generation/race/freeze checkpoint PASS. Full release acceptance remains NOT READY.
+- Remaining: reproducible UAT start/stop/reset, safe personas, browser acceptance, backup/restore,
+  erasure reconciliation, archive recovery, rollback/roll-forward, measured RTO/RPO and formal sign-off.
+  No UAT environment or recovery drill was created/run in this checkpoint. No commit/push performed.
+- Next: establish the UAT/drill environment boundary; questions about the formal machine/environment
+  and business RTO/RPO have been sent, no answer yet. For an isolated local implementation, reuse
+  migrate and iam bootstrap-platform-admin with private password/key files and the IAM Vite proxy
+  (VITE_API_PROXY_TARGET), never an existing business database. Do not rerun completed expensive
+  CI/MySQL/main-race gates absent changed inputs; do not represent local results as formal acceptance.
+
+### Completed Previous Checkpoint
+
+- Task: audit 10.8 populated seven-owner composed erasure and both concurrent writer orderings.
+- Phase: ACCEPTANCE - this requested test/verification work is complete. Full production release is not.
+- Execution: Direct; extended existing application fixture and integration runner. Baseline c7ce0f8.
+- Completed: eight populated composed cases covering all seven owners, same/cross-tenant bystanders,
+  immutable audit, full rollback/revision preservation, legacy NULL notification, disabled federation,
+  live remote mapping refusal, and valid SCIM/identity API attempts to restore a tombstone.
+- Completed: eighteen overlapping writer cases on PostgreSQL and real MySQL 8.4 (seven owners plus
+  in-flight delivery and live remote mapping, both orderings). DB lock-wait graphs prove overlap.
+  Raw child UPDATE may deadlock with parent-first erasure; typed concurrency conflicts are retried
+  after erasure commits and must still obey the tombstone. Other SQL errors do not satisfy acceptance.
+- Corrected one pre-existing MySQL test rollback order (core before identity), per D25 dependency graph.
+- D28: original CI hit its default 600s package-wide limit; isolated complete migration package passed
+  in 582.428s. Set configurable INTEGRATION_TEST_TIMEOUT=20m for the cumulative integration budget.
+  All assertions remain; new concurrency deadlines remain 5s for lock observation and 30s per operation.
+- Verification: normal make ci EXIT=0, total coverage 90.1%, every gated module >=90%, all six integration
+  packages PASS (migration 640.915s, lifecycle 245.228s), build/OpenAPI PASS. tests-module lint PASS.
+- Verification: make test-mysql8 EXIT=0 (MySQL 8.4.11); composed/concurrent suite 71.441s; migration
+  including old-snapshot erasure 58.959s; existing performance/replay/archive/lifecycle gates PASS.
+- Verification: GOFLAGS=-race go -C tests test ./lifecycle -run '^TestPrincipalErasureOnPostgres$'
+  -count=1 -v PASS (nested app suite 27.911s); no race report. SQLite composed suite also PASS in CI.
+- Evidence: /tmp/iam-erasure-ci-final.log, /tmp/iam-erasure-mysql8.log,
+  /tmp/iam-erasure-postgres-race.log, /tmp/iam-erasure-migration-isolated.log.
+- Self-review / requested acceptance: PASS (scope, existing-pattern reuse, architecture, regression,
+  complexity, real verification). Seven intended files changed, no production source/migration edits.
+  No commit or push performed. Test containers cleaned up; generated build outputs remain ignored.
+- Remaining: batch 3 release verification, full-repository race/generate consistency, freeze 195 migration
+  files only after final checks, reproducible UAT/browser acceptance, backup/restore and rollback/
+  roll-forward drills with measured RTO/RPO. P1/P2 remain excluded; 10.8 full product acceptance stays open.
+- Next action: inspect the existing generate/release commands and verify generated-source zero diff,
+  then perform the remaining migration-freeze/release checks in D22 order. Do not repeat this test work.
+- Schema-lock check was read-only: 171 published files unchanged; 195 files total, 68 IAM tables,
+  29 cross-module foreign keys. No new freeze or UAT/RTO/RPO decisions were made.
+- Earlier checkpoints below are historical and may contain superseded status.
+
 ## Current Delivery Run (2026-09-07)
 
 ## Current Phase          IMPLEMENTATION

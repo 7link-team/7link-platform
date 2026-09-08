@@ -21,6 +21,19 @@ type lifecycleEngine struct {
 	open func(*testing.T) string
 }
 
+func TestPrincipalErasureOnPostgres(t *testing.T) {
+	_, dsn := testdb.OpenPostgresWithDSN(t)
+	backendRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	require.NoError(t, err)
+	command := exec.CommandContext(t.Context(), "go", "test", "7link.com/platform/internal/app",
+		"-run", "^(TestComposedPrincipalErasureExternalDatabase|TestPrincipalErasureConcurrencyExternalDatabase)$", "-count=1", "-v")
+	command.Dir = backendRoot
+	command.Env = append(os.Environ(), lifecycleDatabaseType+"=postgres", lifecycleDatabaseDSN+"="+dsn)
+	output, err := command.CombinedOutput()
+	require.NoError(t, err, string(output))
+	t.Log(string(output))
+}
+
 func TestIAMLifecycleAcrossEnginesAndPrefixes(t *testing.T) {
 	engines := []lifecycleEngine{
 		{name: "postgres", open: func(t *testing.T) string {

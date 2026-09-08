@@ -73,9 +73,17 @@ if [[ ! "${mysql_port}" =~ ^[0-9]+$ ]]; then
 fi
 
 echo "mysql8 gate: ${docker_test_host}:${mysql_port} (${mysql_image})"
+# Observe actual blocking relationships in the isolated acceptance database.
+"${docker_command[@]}" exec "${container_id}" mysql --user=root "--password=${mysql_root_password}" \
+  --execute="GRANT SELECT ON performance_schema.* TO '${mysql_user}'@'%';"
+
+IAM_LIFECYCLE_DATABASE_TYPE=mysql \
+IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
+  go test ./internal/app -run '^(TestComposedPrincipalErasureExternalDatabase|TestPrincipalErasureConcurrencyExternalDatabase)$' -count=1 -v
+
 MYSQL8_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
 MYSQL8_EXPECTED_SQL_MODE="${mysql_sql_mode}" \
-  go -C tests test ./migration -run '^TestIAMMigrationsOnRealMySQL8$' -count=1
+  go -C tests test ./migration -run '^(TestIAMMigrationsOnRealMySQL8|TestIAMPrincipalErasureOwnerMigrations)$' -count=1
 
 IAM_PERFORMANCE_DATABASE_TYPE=mysql \
 IAM_PERFORMANCE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \

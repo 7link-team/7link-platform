@@ -960,3 +960,27 @@ D23 的第二半「显式删除并注销」实现为 `RetireTarget`：逐个注�
 
 **Status**
 已决定并执行（2026-09-07）。后台队列变体未实施，需用户决定是否排期。
+
+## D28 - Explicit Integration Suite Time Budget
+
+**Decision**
+Set the configurable `INTEGRATION_TEST_TIMEOUT` to 20m in the backend Makefile.
+This controls Go's cumulative per-package budget, not individual operation deadlines.
+
+**Reason**
+On 2026-09-08 the full CI migration package timed out at 600s while still progressing
+through the last status matrix. The same complete package then passed independently
+in 582.428s with no assertion failures. Eighteen seconds of headroom is insufficient
+for the existing multi-engine, prefix, upgrade/rollback and subprocess matrix.
+
+**Alternatives Considered / Tradeoffs**
+Reducing concurrent packages cannot provide useful headroom over an isolated 582s run.
+Keep all tests and assertions, expose the package budget through the existing Makefile
+variable convention, and retain the new concurrency tests' 5s lock-wait and 30s operation
+deadlines. A pre-existing unbounded test may now take longer to report a hang; this
+budget is not evidence that any individual operation should take twenty minutes.
+
+**Scope / Status**
+Backend integration runner only; no production timeout or migration changes.
+Implemented under D26's standard technical-remediation authorization. Normal `make ci`
+subsequently passed; migration package took 640.915s, with all assertions intact.

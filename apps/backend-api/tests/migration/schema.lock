@@ -82,6 +82,14 @@
       "sha256": "ad88a3af3a9fe2637e3d824f4b589b61f99c2b21633c4d68c5b3184818e7ae54"
     },
     {
+      "path": "authn/sql/mysql/00012_notification_principals.sql",
+      "sha256": "00f856670a855b2e6f8df170cf1699559af200ade57b24653e9786a14d8379eb"
+    },
+    {
+      "path": "authn/sql/mysql/00013_principal_erasure_guards.sql",
+      "sha256": "b26ffe5eb03ac19311b55b0399bb7287b5353c3f169e04317eb73c4639fa7da3"
+    },
+    {
       "path": "authn/sql/postgres/00001_credentials.sql",
       "sha256": "6205f24b9ee17a83d86bab761386e461a2e2150fb154131aacd498fb216c14b0"
     },
@@ -126,6 +134,14 @@
       "sha256": "14fa7dfad2860e8d64210e4bb9da44d1e45c53d39c9d6027046b3203e0bfa0a2"
     },
     {
+      "path": "authn/sql/postgres/00012_notification_principals.sql",
+      "sha256": "456dd5884c81038b2e5fe21d45c3b77aae35139d99c31445be55d17c82d868c4"
+    },
+    {
+      "path": "authn/sql/postgres/00013_principal_erasure_guards.sql",
+      "sha256": "9be655df5b63f105662938c781807ecebcd3206116ffae5f441374d450272ec2"
+    },
+    {
       "path": "authn/sql/sqlite/00001_credentials.sql",
       "sha256": "33756998bd13bafdd590831b996036473cadfd0dc57605dfa04b00b6321493e4"
     },
@@ -168,6 +184,14 @@
     {
       "path": "authn/sql/sqlite/00011_email_verification_attempts.sql",
       "sha256": "110bfe40ee725b128153b8f4821138a899f5e5e1f1456f5c267830468242a2e8"
+    },
+    {
+      "path": "authn/sql/sqlite/00012_notification_principals.sql",
+      "sha256": "456dd5884c81038b2e5fe21d45c3b77aae35139d99c31445be55d17c82d868c4"
+    },
+    {
+      "path": "authn/sql/sqlite/00013_principal_erasure_guards.sql",
+      "sha256": "e8d02d37a2abc6f23349e7d587291324af689a6fc540d1e087220e95f9379374"
     },
     {
       "path": "core/sql/mysql/00001_authorization.sql",
@@ -218,6 +242,10 @@
       "sha256": "da95f8ea4b237e09e5b8be2a969ddd10049138df851205e48a4efa231f872407"
     },
     {
+      "path": "core/sql/mysql/00013_principal_erasure_guards.sql",
+      "sha256": "5de1514af9fc7cfbfb59edb92279e01740870010d8b9f6e99955e883f8099216"
+    },
+    {
       "path": "core/sql/postgres/00001_authorization.sql",
       "sha256": "efe61ce3ba534aa7756b638c754f39669e6ab9ebb0725f82acc0beb10cb2e2d2"
     },
@@ -264,6 +292,10 @@
     {
       "path": "core/sql/postgres/00012_field_policies.sql",
       "sha256": "f364e7d9e999db92001334e444e3d17fce353a64b9da27ed461190687af41ea8"
+    },
+    {
+      "path": "core/sql/postgres/00013_principal_erasure_guards.sql",
+      "sha256": "b28e1540e8edc46280e0f54ddef80b754f0ae0ec6c382a8063066963a1fed591"
     },
     {
       "path": "core/sql/sqlite/00001_authorization.sql",
@@ -314,6 +346,10 @@
       "sha256": "b19dddfb9915d7b2940322478ac049258ec17735aa834827ac2c016d8b0a892d"
     },
     {
+      "path": "core/sql/sqlite/00013_principal_erasure_guards.sql",
+      "sha256": "28f49d57f88b424f0ae95f965f884b6284cf5ddf272652de8c944081c7a3c935"
+    },
+    {
       "path": "federation/sql/mysql/00001_identity_providers.sql",
       "sha256": "ca22404502288da9d163600a3f97ba7f5ae7344dce2b390ee378546c6e3ed571"
     },
@@ -328,6 +364,10 @@
     {
       "path": "federation/sql/mysql/00004_replay_claims.sql",
       "sha256": "8a38d52cadda5333656eaf871a747842ae93382e748032501c964bf84eecc3b4"
+    },
+    {
+      "path": "federation/sql/mysql/00005_principal_erasure_guards.sql",
+      "sha256": "683387ccfb6e02e36f0b63f4d8cd3da4355722f0110c773bb2fe75bf4f96b639"
     },
     {
       "path": "federation/sql/postgres/00001_identity_providers.sql",
@@ -346,6 +386,10 @@
       "sha256": "1275aeaf466d39cbfce90336de3631bee82467ab1128cfc47125f665757c6d92"
     },
     {
+      "path": "federation/sql/postgres/00005_principal_erasure_guards.sql",
+      "sha256": "6a5d340a47eb82a327d93da1046c259553587fba96a951a9ab40332882d560c9"
+    },
+    {
       "path": "federation/sql/sqlite/00001_identity_providers.sql",
       "sha256": "72b43e38161919cffe70adf54d6ef787c146e879423619415b01efb876d25cb7"
     },
@@ -362,6 +406,10 @@
       "sha256": "abaf8d29be3ee5ee51634bc82ecbbc69a471c14dfd7b6181920f73f8280aadc8"
     },
     {
+      "path": "federation/sql/sqlite/00005_principal_erasure_guards.sql",
+      "sha256": "b0e7f2db4346a92aa75caa249df3776b0da33c4e3db2b1c7828a236fb5f14cb1"
+    },
+    {
       "path": "governance/sql/mysql/00001_access_requests.sql",
       "sha256": "c5064b3132e71ee91f7c1e0b2d186a591ba3c1d270cdbb2a4887e6e6d2d6ded8"
     },
@@ -372,6 +420,10 @@
     {
       "path": "governance/sql/mysql/00003_constraints.sql",
       "sha256": "4444d71c1b57da2003c8164bc2ae33769fb0fcfb3dadff607a8f109f5698d79f"
+    },
+    {
+      "path": "governance/sql/mysql/00004_principal_erasure_guards.sql",
+      "sha256": "d73a8d6d05e42217be67b504643218f2e9ef9a86fd50397a9b5f0e681dee924e"
     },
     {
       "path": "governance/sql/postgres/00001_access_requests.sql",
@@ -386,6 +438,10 @@
       "sha256": "d110f7329294c88db5c836aa6d651c808a43cd8c6216485287cef440b0f97b20"
     },
     {
+      "path": "governance/sql/postgres/00004_principal_erasure_guards.sql",
+      "sha256": "ca7a3d47d75dc69530cff9d8eac8d1fc4730af40034b4d8029344f93472b8d13"
+    },
+    {
       "path": "governance/sql/sqlite/00001_access_requests.sql",
       "sha256": "cc13f278c4a2a6f06fc0d5e6745b4379c2272d79896416603334bc235d8baf46"
     },
@@ -396,6 +452,10 @@
     {
       "path": "governance/sql/sqlite/00003_constraints.sql",
       "sha256": "1d475a7f4729f4c6ab31aeb9c5cdb75016a2e72edb9e9783972c815e994c3cb2"
+    },
+    {
+      "path": "governance/sql/sqlite/00004_principal_erasure_guards.sql",
+      "sha256": "d70991f562ad03649717c0715cba21f33275ce1ea226ee5dde05db2c88b9df40"
     },
     {
       "path": "identity/sql/mysql/00001_principals.sql",
@@ -478,6 +538,10 @@
       "sha256": "a4ffe9e594fb898bedb8b4e1f6940ac97a9ac639e12fa46bb6f9229ef2a36abd"
     },
     {
+      "path": "oauth/sql/mysql/00009_principal_erasure_guards.sql",
+      "sha256": "d227552bba434baf7ab280bbb28c5a6ac2f1e90546a2c8b0b1bfb1955d24f8df"
+    },
+    {
       "path": "oauth/sql/postgres/00001_clients.sql",
       "sha256": "d3769573359bbfbd1fa1dbae0dc181f8cfe1661e06a6343fe1dd5bc68a9aadae"
     },
@@ -508,6 +572,10 @@
     {
       "path": "oauth/sql/postgres/00008_consent_requests.sql",
       "sha256": "4b5ba6f2da06b20cffbec1e63036464806f30fd29da89fd26373eedd6f507ef3"
+    },
+    {
+      "path": "oauth/sql/postgres/00009_principal_erasure_guards.sql",
+      "sha256": "fbf8b8726dd25b73ef153046020b9eff8a76c0462aa47f847bd2c1b45115bb56"
     },
     {
       "path": "oauth/sql/sqlite/00001_clients.sql",
@@ -542,6 +610,10 @@
       "sha256": "495d4b4bb3fab777e109d58620930924b945931af96f2ee0a6691c9ba6aabc05"
     },
     {
+      "path": "oauth/sql/sqlite/00009_principal_erasure_guards.sql",
+      "sha256": "e2f7d88a69d327ee6583a8f86ff0080c1488e915c4fafec8754d746bad1687ae"
+    },
+    {
       "path": "organization/sql/mysql/00001_departments.sql",
       "sha256": "6dc37d3c564021452c73432b9b90fb4d3f03d5a7ad73f226c0e2a8a47ada104b"
     },
@@ -572,6 +644,10 @@
     {
       "path": "organization/sql/mysql/00008_constraints.sql",
       "sha256": "39c03a99dc84b53695567a8f320c0f4004cb022fc29effc9af6175cd3700eb95"
+    },
+    {
+      "path": "organization/sql/mysql/00009_principal_erasure_guards.sql",
+      "sha256": "c1fd1b180b01cb4c7ec1f69369e3988cf7f627d8721257e19c623920aa9533e3"
     },
     {
       "path": "organization/sql/postgres/00001_departments.sql",
@@ -606,6 +682,10 @@
       "sha256": "0ae92865e4c5063e14e08f20c62493f21538cb1317c876882d871686347c063a"
     },
     {
+      "path": "organization/sql/postgres/00009_principal_erasure_guards.sql",
+      "sha256": "40b0c8c2ceec5cacf4b5c00e46e7fbee198b446f767f2f1c116a8edcb7180100"
+    },
+    {
       "path": "organization/sql/sqlite/00001_departments.sql",
       "sha256": "aaee61db9e83c62d4ab318b9cda630e37346cae69f90e308818b5cbcd54db078"
     },
@@ -638,6 +718,10 @@
       "sha256": "cafe14d847a416cd16f9c54a679f3d27251507437df69ece7d5c3198dfb60ce9"
     },
     {
+      "path": "organization/sql/sqlite/00009_principal_erasure_guards.sql",
+      "sha256": "e978714cdacaf98f1523deae06779e6485fe35f1d20587811d536418c3d3e7b6"
+    },
+    {
       "path": "provisioning/sql/mysql/00001_scim.sql",
       "sha256": "4d2f29de8e26afa1d1fda206d6091d4493b650f0d9f0bb851a20951e22e5cf84"
     },
@@ -652,6 +736,10 @@
     {
       "path": "provisioning/sql/mysql/00004_service_accounts.sql",
       "sha256": "db926170c6cf9f6e5db33335f344ed964d3f89e560a61464a86cb2d134eecfd8"
+    },
+    {
+      "path": "provisioning/sql/mysql/00005_principal_erasure_guards.sql",
+      "sha256": "8d7982c43df928111fb5ab52b05461dbebb060e7891ac231bab0e22313ff0ff3"
     },
     {
       "path": "provisioning/sql/postgres/00001_scim.sql",
@@ -670,6 +758,10 @@
       "sha256": "f54e2b6e536c03265484c9c92b7732b1d8f1b95529df5e12c649e85296835478"
     },
     {
+      "path": "provisioning/sql/postgres/00005_principal_erasure_guards.sql",
+      "sha256": "c5d279f6f90d130598aeb8bf1dcc90fdce72ed9ce1ed35af03f0dde01194b43b"
+    },
+    {
       "path": "provisioning/sql/sqlite/00001_scim.sql",
       "sha256": "397c8331188744f0f51467878f6530cb0fe97190c4e5d498386024658e006a40"
     },
@@ -684,6 +776,10 @@
     {
       "path": "provisioning/sql/sqlite/00004_service_accounts.sql",
       "sha256": "3a2ea051c138d22f3493f01fe4a0aff015aa30c4425be330aae645f862a46dd6"
+    },
+    {
+      "path": "provisioning/sql/sqlite/00005_principal_erasure_guards.sql",
+      "sha256": "334db372f596bcc261101cb048acdc36468fd116716e717b8e557eaffb64c413"
     }
   ]
 }

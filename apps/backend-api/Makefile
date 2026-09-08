@@ -66,6 +66,9 @@ OPENAPI_ARGS = openapi --name "$(OPENAPI_NAME)" --migrate \
 COVERAGE_MIN ?= 90
 COVERAGE_PROFILE ?= coverage.out
 COVERAGE_RAW_PROFILE ?= coverage.raw.out
+# The complete engine/prefix migration matrix alone takes about ten minutes on
+# macOS. This is a package-wide budget; individual concurrency deadlines stay short.
+INTEGRATION_TEST_TIMEOUT ?= 20m
 -include .temp/iam-env.mk
 
 IAM_SOURCE_ROOT ?=
@@ -224,7 +227,7 @@ test-coverage:
 	exit $$status
 
 test-integration:
-	go -C tests test ./... -count=1
+	go -C tests test ./... -count=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)"
 
 test-performance:
 	go -C tests test ./performance -count=1 -v

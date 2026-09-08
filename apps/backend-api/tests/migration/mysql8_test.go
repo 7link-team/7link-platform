@@ -114,7 +114,7 @@ func assertRealMySQLDown(t *testing.T, sqlDB *sql.DB, db *gorm.DB, modules []mod
 	t.Helper()
 	for _, name := range []string{
 		federation.Name, authn.Name, oauth.Name, governance.Name, provisioning.Name,
-		organization.Name, identity.Name, iamcore.Name, iamaudit.Name,
+		organization.Name, iamcore.Name, identity.Name, iamaudit.Name,
 	} {
 		_, err := app.ExecuteModuleMigrations(t.Context(), db, modules, app.MigrationRequest{
 			Action: app.MigrationDownTo, Module: name, To: 0,
