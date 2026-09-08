@@ -63,7 +63,7 @@ func TestComposedPrincipalErasure(t *testing.T) {
 				}))
 				t.Cleanup(func() { require.NoError(t, f.db.Callback().Update().Remove(callback)) })
 			}
-			result, err := service.AnonymizePrincipal(t.Context(), id, policy.Version)
+			result, err := service.AnonymizePrincipal(t.Context(), id, policy.Version, principal.LoginName)
 			if scenario != "success" {
 				switch scenario {
 				case "late-owner-failure":

@@ -125,10 +125,38 @@ openapi-check 全绿。总覆盖率 90.1%，**每个模块均 ≥90%**（core 89
 organization 89.8→90.0+）。tests 子模块 lint 独立跑 EXIT=0。
 审计所列四项红线门禁已全部关闭。
 
+## 批 1 —— P0-1 / P0-2 / P0-3 均已完成（2026-09-07）
+
+P0-2（提交 f0d4c47）：`DeleteTarget` 在有 live mapping 时拒绝，谓词与 `ErasePrincipalData`
+共用；`RetireTarget` 先删远端账号再删可达它们的映射与令牌，失败保留全部本地记录且可续跑
+（墓碑化的映射不计为 live）。控制台提供「仅删除配置」与「注销远端并删除」。见 D27：
+后台重试队列**未实施**（需三方言 CHECK 迁移），同步实现对超大目录可能触发网关超时。
+
+P0-3：新增三条 **platform-only** 路由（`authz.RegisterPlatform` + `platform_administer`，
+任何租户权限都不可达）：
+- `GET /platform/iam/principals/{id}/lifecycle` —— 保留期、法律保留、版本、墓碑状态，
+  以及可执行的阻塞原因（未停用/未记录保留期/未到期/法律保留/已擦除）。读取不会创建策略。
+- `PUT .../lifecycle/retention` —— 带版本的乐观并发。
+- `POST .../lifecycle/anonymization` —— 不可逆；须回填该主体当前登录名，**在持行锁的事务内**
+  校验，避免使用锁前读到的旧名字。
+服务层新增 `PrincipalLifecycleStatus`、`ErrConfirmationMismatch`，`AnonymizePrincipal`
+签名增加 confirmation 参数。i18n 三语齐备。前端新增 `lifecycle-dialog.tsx` 与三个客户端方法。
+
+新增路由触发的冻结均已核对后更新：identity 路由清单 14→17、guards 表、复合映射与
+guards testdata 232→235、identity i18n 的两份 declared 键清单。
+
+## Verification（2026-09-07 实测）
+`make ci` **EXIT=0**，总覆盖率 90.0-90.1%，每模块 ≥90%；tests 子模块 lint EXIT=0；
+前端 typecheck / lint / 45 测试 / 生产构建全过。
+
+**已知 flake（非本轮引入）**：一次 `make ci` 中 `internal/iam/core` 的
+`TestIAMManagementHTTPFlowAndTenantIsolation` 失败，随后单独跑、加 `-covermode=atomic` 跑、
+以及完整重跑均通过，未能复现。疑为满负载并行下的时序问题，需在批 3 的发布流水线中留意。
+
 ## Next Action
-批 1 余项：P0-2 SCIM 删除责任链（D23：默认 fail closed + 显式 deprovision 任务）；
-P0-3 platform-only lifecycle API→OpenAPI→前端类型→UI（内部串行）；补齐其余四个 owner 的
-`lifecycle_test.go` 与七 owner 填充数据/并发验收（10.8）。
+批 1 余项：补齐其余四个 owner（federation/governance/oauth）的 `lifecycle_test.go`，
+以及七 owner 填充数据与双向并发验收（审计 10.8）。随后进批 3（串行）：全量门禁、
+冻结迁移 schema.lock、真实 MySQL/race/generate、UAT 环境、备份恢复与 rollback 演练。
 
 ## Verification
 Build: NOT_RUN（本轮改动后）/ 主模块 lint: NOT_RUN / tests lint: PASS /

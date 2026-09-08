@@ -5831,6 +5831,64 @@
         ],
         "type": "object"
       },
+      "EnvelopePrincipalLifecycle": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PrincipalLifecycle",
+            "description": "response payload; null on error"
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
+      "EnvelopePrincipalLifecycleStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PrincipalLifecycleStatus",
+            "description": "response payload; null on error"
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
       "EnvelopePrincipalListData": {
         "additionalProperties": false,
         "properties": {
@@ -8066,6 +8124,61 @@
         ],
         "type": "object"
       },
+      "PlatformAnonymizeInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmation": {
+            "description": "the principal's current login name, repeated back",
+            "maxLength": 320,
+            "minLength": 1,
+            "type": "string"
+          },
+          "version": {
+            "description": "lifecycle version this erasure was decided against",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "confirmation"
+        ],
+        "type": "object"
+      },
+      "PlatformRetentionInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "legal_hold": {
+            "description": "block anonymization regardless of the deadline",
+            "type": "boolean"
+          },
+          "reference": {
+            "description": "administrative case identifier; never the subject's own data",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "retain_until": {
+            "description": "instant after which anonymization is permitted",
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "description": "lifecycle version this decision was made against; 0 records the first policy",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "retain_until",
+          "legal_hold",
+          "reference"
+        ],
+        "type": "object"
+      },
       "Position": {
         "additionalProperties": false,
         "properties": {
@@ -8196,6 +8309,93 @@
         "required": [
           "login_name",
           "password"
+        ],
+        "type": "object"
+      },
+      "PrincipalLifecycle": {
+        "additionalProperties": false,
+        "properties": {
+          "anonymized_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "legal_hold": {
+            "type": "boolean"
+          },
+          "principal_id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reference": {
+            "type": "string"
+          },
+          "retain_until": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "principal_id",
+          "version",
+          "retain_until",
+          "legal_hold",
+          "reference",
+          "anonymized_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "PrincipalLifecycleStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "anonymized": {
+            "type": "boolean"
+          },
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "lifecycle": {
+            "$ref": "#/components/schemas/PrincipalLifecycle"
+          },
+          "login_name": {
+            "type": "string"
+          },
+          "suspended": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "lifecycle",
+          "login_name",
+          "suspended",
+          "anonymized",
+          "blockers"
         ],
         "type": "object"
       },
@@ -34567,6 +34767,355 @@
         "summary": "Platform: Configure platform audit retention policy",
         "tags": [
           "audit"
+        ],
+        "x-authz-permission": "platform_administer"
+      }
+    },
+    "/platform/iam/principals/{principal_id}/lifecycle": {
+      "get": {
+        "description": "Reports the retention deadline, legal hold, lifecycle version and tombstone state, together with the reasons anonymization would be refused right now. Reading never records a policy, so looking at a principal does not start a retention clock. Blockers cover what this module decides; a module that still holds the principal's data refuses during the attempt and names itself, because that is the reason that says where the data still is.",
+        "operationId": "identity-platform-get-principal-lifecycle",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "principal_id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopePrincipalLifecycleStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Read a principal's retention policy and what blocks erasing it",
+        "tags": [
+          "identity"
+        ],
+        "x-authz-permission": "platform_administer"
+      }
+    },
+    "/platform/iam/principals/{principal_id}/lifecycle/anonymization": {
+      "post": {
+        "description": "This cannot be undone. Every owning module erases what it holds in one transaction, and a database tombstone then refuses to let the record be restored. The principal must already be suspended, its retention deadline must have passed, no legal hold may stand, and the request must repeat the principal's current login name -- checked while the row is locked, so it cannot be satisfied by a name read before someone else renamed the principal.",
+        "operationId": "identity-platform-anonymize-principal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "principal_id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlatformAnonymizeInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopePrincipalLifecycle"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Irreversibly erase a suspended principal's personal data",
+        "tags": [
+          "identity"
+        ],
+        "x-authz-permission": "platform_administer"
+      }
+    },
+    "/platform/iam/principals/{principal_id}/lifecycle/retention": {
+      "put": {
+        "description": "The version is the policy this decision was made against, so two administrators deciding from the same screen cannot silently overwrite each other -- the second is told the policy moved. Reference is an administrative case identifier and must not repeat the subject's own data, which erasure would then be unable to remove.",
+        "operationId": "identity-platform-set-principal-retention",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "principal_id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlatformRetentionInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopePrincipalLifecycle"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Record how long a principal's data is kept, and whether a hold prevents erasing it",
+        "tags": [
+          "identity"
         ],
         "x-authz-permission": "platform_administer"
       }

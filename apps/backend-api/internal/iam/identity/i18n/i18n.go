@@ -11,6 +11,11 @@ const (
 	Namespace = "identity"
 
 	PrincipalNotFound                = Namespace + ".principal_not_found"
+	LifecycleVersionConflict         = Namespace + ".principal_lifecycle_version_conflict"
+	PrincipalRetained                = Namespace + ".principal_retained"
+	PrincipalAnonymized              = Namespace + ".principal_anonymized"
+	SuspensionRequired               = Namespace + ".principal_suspension_required"
+	AnonymizationConfirmation        = Namespace + ".principal_anonymization_confirmation"
 	LoginNameExists                  = Namespace + ".login_name_exists"
 	InvalidPrincipal                 = Namespace + ".invalid_principal"
 	LastTenantAdministrator          = Namespace + ".last_tenant_administrator"

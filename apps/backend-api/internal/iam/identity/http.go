@@ -141,6 +141,7 @@ type serviceAccountCredentialIDInput struct {
 func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	registerPrincipalHTTP(api, service, registrar)
 	registerServiceAccountHTTP(api, service, registrar)
+	registerPrincipalLifecycleHTTP(api, service, registrar)
 }
 
 func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
@@ -493,6 +494,11 @@ type serviceAccountCredentialRevokeData struct {
 // Principal and service-account failures share a mapper because both surfaces
 // report the same tenant, conflict, and validation semantics.
 func identityError(err error) error {
+	// The lifecycle refusals are checked first: several of them wrap conditions
+	// the general cases below would flatten into a less useful status.
+	if mapped, handled := lifecycleAPIError(err); handled {
+		return mapped
+	}
 	switch {
 	case errors.Is(err, authz.ErrFieldDenied):
 		return huma.Error403Forbidden("respx.forbidden")

@@ -2641,6 +2641,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/platform/iam/principals/{principal_id}/lifecycle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a principal's retention policy and what blocks erasing it
+         * @description Reports the retention deadline, legal hold, lifecycle version and tombstone state, together with the reasons anonymization would be refused right now. Reading never records a policy, so looking at a principal does not start a retention clock. Blockers cover what this module decides; a module that still holds the principal's data refuses during the attempt and names itself, because that is the reason that says where the data still is.
+         */
+        get: operations["identity-platform-get-principal-lifecycle"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/platform/iam/principals/{principal_id}/lifecycle/anonymization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Irreversibly erase a suspended principal's personal data
+         * @description This cannot be undone. Every owning module erases what it holds in one transaction, and a database tombstone then refuses to let the record be restored. The principal must already be suspended, its retention deadline must have passed, no legal hold may stand, and the request must repeat the principal's current login name -- checked while the row is locked, so it cannot be satisfied by a name read before someone else renamed the principal.
+         */
+        post: operations["identity-platform-anonymize-principal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/platform/iam/principals/{principal_id}/lifecycle/retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Record how long a principal's data is kept, and whether a hold prevents erasing it
+         * @description The version is the policy this decision was made against, so two administrators deciding from the same screen cannot silently overwrite each other -- the second is told the policy moved. Reference is an administrative case identifier and must not repeat the subject's own data, which erasure would then be unable to remove.
+         */
+        put: operations["identity-platform-set-principal-retention"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/readyz": {
         parameters: {
             query?: never;
@@ -4961,6 +5021,32 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
+        EnvelopePrincipalLifecycle: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["PrincipalLifecycle"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopePrincipalLifecycleStatus: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["PrincipalLifecycleStatus"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
         EnvelopePrincipalListData: {
             /**
              * Format: int64
@@ -5662,6 +5748,31 @@ export interface components {
             permissions: string[] | null;
             principal_id: string;
         };
+        PlatformAnonymizeInputBody: {
+            /** @description the principal's current login name, repeated back */
+            confirmation: string;
+            /**
+             * Format: int64
+             * @description lifecycle version this erasure was decided against
+             */
+            version: number;
+        };
+        PlatformRetentionInputBody: {
+            /** @description block anonymization regardless of the deadline */
+            legal_hold: boolean;
+            /** @description administrative case identifier; never the subject's own data */
+            reference: string;
+            /**
+             * Format: date-time
+             * @description instant after which anonymization is permitted
+             */
+            retain_until: string;
+            /**
+             * Format: int64
+             * @description lifecycle version this decision was made against; 0 records the first policy
+             */
+            version: number;
+        };
         Position: {
             code: string;
             /** Format: date-time */
@@ -5696,6 +5807,26 @@ export interface components {
             email?: string;
             login_name: string;
             password: string;
+        };
+        PrincipalLifecycle: {
+            /** Format: date-time */
+            anonymized_at: string | null;
+            legal_hold: boolean;
+            principal_id: string | null;
+            reference: string;
+            /** Format: date-time */
+            retain_until: string | null;
+            /** Format: date-time */
+            updated_at: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        PrincipalLifecycleStatus: {
+            anonymized: boolean;
+            blockers: string[] | null;
+            lifecycle: components["schemas"]["PrincipalLifecycle"];
+            login_name: string;
+            suspended: boolean;
         };
         PrincipalListData: {
             items: components["schemas"]["PrincipalView"][] | null;
@@ -23151,6 +23282,260 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnvelopeRetentionPolicy"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "identity-platform-get-principal-lifecycle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                principal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopePrincipalLifecycleStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "identity-platform-anonymize-principal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                principal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlatformAnonymizeInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopePrincipalLifecycle"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "identity-platform-set-principal-retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                principal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlatformRetentionInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopePrincipalLifecycle"];
                 };
             };
             /** @description Unauthorized */

@@ -22,7 +22,7 @@ func TestPrincipalLifecycleRetentionAndTombstone(t *testing.T) {
 	assert.Zero(t, initial.Version)
 	assert.Nil(t, initial.RetainUntil)
 	assert.Nil(t, initial.UpdatedAt)
-	_, err = h.service.AnonymizePrincipal(ctx, p.ID, 1)
+	_, err = h.service.AnonymizePrincipal(ctx, p.ID, 1, p.LoginName)
 	require.ErrorIs(t, err, ErrUnavailable)
 
 	cleanupCalls := 0
@@ -39,21 +39,21 @@ func TestPrincipalLifecycleRetentionAndTombstone(t *testing.T) {
 	assert.True(t, policy.LegalHold)
 	_, err = h.service.SetPrincipalRetention(ctx, p.ID, 0, past, false, "stale")
 	require.ErrorIs(t, err, ErrLifecycleConflict)
-	_, err = h.service.AnonymizePrincipal(ctx, p.ID, policy.Version)
+	_, err = h.service.AnonymizePrincipal(ctx, p.ID, policy.Version, p.LoginName)
 	require.ErrorIs(t, err, ErrSuspensionRequired)
 	_, err = h.service.SetStatus(ctx, 7, p.ID, "disabled")
 	require.NoError(t, err)
-	_, err = h.service.AnonymizePrincipal(ctx, p.ID, policy.Version)
+	_, err = h.service.AnonymizePrincipal(ctx, p.ID, policy.Version, p.LoginName)
 	require.ErrorIs(t, err, ErrPrincipalRetained)
 	assert.Zero(t, cleanupCalls)
 
 	policy, err = h.service.SetPrincipalRetention(ctx, p.ID, policy.Version, time.Now().Add(time.Hour), false, "case-123")
 	require.NoError(t, err)
-	_, err = h.service.AnonymizePrincipal(ctx, p.ID, policy.Version)
+	_, err = h.service.AnonymizePrincipal(ctx, p.ID, policy.Version, p.LoginName)
 	require.ErrorIs(t, err, ErrPrincipalRetained)
 	policy, err = h.service.SetPrincipalRetention(ctx, p.ID, policy.Version, past, false, "case-123")
 	require.NoError(t, err)
-	erased, err := h.service.AnonymizePrincipal(ctx, p.ID, policy.Version)
+	erased, err := h.service.AnonymizePrincipal(ctx, p.ID, policy.Version, p.LoginName)
 	require.NoError(t, err)
 	require.NotNil(t, erased.AnonymizedAt)
 	assert.Empty(t, erased.Reference)
@@ -69,7 +69,7 @@ func TestPrincipalLifecycleRetentionAndTombstone(t *testing.T) {
 	assert.Equal(t, int64(1), h.principalCount(t))
 	assert.Zero(t, h.credentialVersion(t, p.ID))
 
-	repeated, err := h.service.AnonymizePrincipal(ctx, p.ID, erased.Version)
+	repeated, err := h.service.AnonymizePrincipal(ctx, p.ID, erased.Version, p.LoginName)
 	require.NoError(t, err)
 	assert.Equal(t, erased, repeated)
 	assert.Equal(t, 1, cleanupCalls)
@@ -119,7 +119,7 @@ func TestPrincipalLifecycleRollback(t *testing.T) {
 			if failure == "audit" {
 				h.auditErr = sentinel
 			}
-			_, err = h.service.AnonymizePrincipal(ctx, p.ID, policy.Version)
+			_, err = h.service.AnonymizePrincipal(ctx, p.ID, policy.Version, p.LoginName)
 			require.ErrorIs(t, err, sentinel)
 			row := h.principal(t, p.ID)
 			assert.Equal(t, p.Email, row.Email)
@@ -146,11 +146,80 @@ func TestPrincipalLifecycleValidation(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalid)
 	_, err = h.service.SetPrincipalRetention(ctx, 99, 0, time.Now(), false, "case")
 	require.ErrorIs(t, err, ErrNotFound)
-	_, err = h.service.AnonymizePrincipal(ctx, 99, 0)
+	_, err = h.service.AnonymizePrincipal(ctx, 99, 0, "absent")
 	require.ErrorIs(t, err, ErrInvalid)
 	h.seedTenant(t, 7, "active")
 	account, err := h.service.CreateServiceAccount(ctx, 7, "automation", "Automation", "", nil)
 	require.NoError(t, err)
 	_, err = h.service.GetPrincipalLifecycle(ctx, account.ID)
 	require.ErrorIs(t, err, ErrNotFound)
+}
+
+// TestPrincipalLifecycleStatusNamesWhatToGoAndDo covers the projection the
+// console renders. Each blocker is a thing an operator can act on, and reading
+// the status must never itself record a policy -- looking at a principal cannot
+// be what starts its retention clock.
+func TestPrincipalLifecycleStatusNamesWhatToGoAndDo(t *testing.T) {
+	h := newIdentityHarness(t, "sl_")
+	ctx := t.Context()
+	p, err := h.service.Create(ctx, 7, "subject", testPassword, "Subject Name", "subject@example.test")
+	require.NoError(t, err)
+
+	status, err := h.service.PrincipalLifecycleStatus(ctx, p.ID)
+	require.NoError(t, err)
+	assert.Equal(t, p.LoginName, status.LoginName)
+	assert.False(t, status.Suspended)
+	assert.False(t, status.Anonymized)
+	assert.ElementsMatch(t, []string{LifecycleBlockerNotSuspended, LifecycleBlockerNoRetention}, status.Blockers)
+	assert.Zero(t, status.Lifecycle.Version, "reading must not have recorded a policy")
+
+	future := time.Now().UTC().Add(48 * time.Hour)
+	policy, err := h.service.SetPrincipalRetention(ctx, p.ID, 0, future, true, "case-1")
+	require.NoError(t, err)
+
+	status, err = h.service.PrincipalLifecycleStatus(ctx, p.ID)
+	require.NoError(t, err)
+	assert.ElementsMatch(t,
+		[]string{LifecycleBlockerNotSuspended, LifecycleBlockerRetentionActive, LifecycleBlockerLegalHold},
+		status.Blockers)
+	assert.Equal(t, policy.Version, status.Lifecycle.Version)
+	assert.True(t, status.Lifecycle.LegalHold)
+
+	past := time.Now().UTC().Add(-time.Hour)
+	_, err = h.service.SetPrincipalRetention(ctx, p.ID, policy.Version, past, false, "case-1")
+	require.NoError(t, err)
+	_, err = h.service.SetStatus(ctx, 7, p.ID, "disabled")
+	require.NoError(t, err)
+
+	status, err = h.service.PrincipalLifecycleStatus(ctx, p.ID)
+	require.NoError(t, err)
+	assert.Empty(t, status.Blockers, "with nothing left to do the operator is told so")
+	assert.True(t, status.Suspended)
+}
+
+// TestAnonymizePrincipalRequiresNamingTheSubject covers the confirmation. It is
+// checked under the row lock, so a caller cannot satisfy it with a login name
+// read before someone else renamed the principal.
+func TestAnonymizePrincipalRequiresNamingTheSubject(t *testing.T) {
+	h := newIdentityHarness(t, "sl_")
+	ctx := t.Context()
+	h.service.anonymizer = func(context.Context, *gorm.DB, Principal, time.Time) error { return nil }
+	p, err := h.service.Create(ctx, 7, "subject", testPassword, "Subject Name", "subject@example.test")
+	require.NoError(t, err)
+	policy, err := h.service.SetPrincipalRetention(ctx, p.ID, 0, time.Now().UTC().Add(-time.Hour), false, "case-1")
+	require.NoError(t, err)
+	_, err = h.service.SetStatus(ctx, 7, p.ID, "disabled")
+	require.NoError(t, err)
+
+	_, err = h.service.AnonymizePrincipal(ctx, p.ID, policy.Version, "someone-else")
+	require.ErrorIs(t, err, ErrConfirmationMismatch)
+	_, err = h.service.AnonymizePrincipal(ctx, p.ID, policy.Version, "")
+	require.ErrorIs(t, err, ErrConfirmationMismatch)
+
+	status, err := h.service.PrincipalLifecycleStatus(ctx, p.ID)
+	require.NoError(t, err)
+	assert.False(t, status.Anonymized, "a refused confirmation must not have erased anything")
+
+	_, err = h.service.AnonymizePrincipal(ctx, p.ID, policy.Version, "  "+p.LoginName+"  ")
+	require.NoError(t, err, "surrounding whitespace is a typing artifact, not a different subject")
 }

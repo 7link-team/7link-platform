@@ -19,6 +19,8 @@ func TestRegisterPublishesEveryIdentityLocale(t *testing.T) {
 		PrincipalNotFound, LoginNameExists, InvalidPrincipal, LastTenantAdministrator,
 		IdentityUnavailable, ServiceAccountNotFound, ServiceAccountCredentialNotFound,
 		ServiceAccountVersionConflict, ServiceAccountCredentialLimit, InvalidServiceAccount,
+		LifecycleVersionConflict, PrincipalRetained, PrincipalAnonymized,
+		SuspensionRequired, AnonymizationConfirmation,
 	}
 	for _, locale := range platformi18n.Supported() {
 		ctx := platformi18n.WithLocale(t.Context(), locale.Code)
@@ -34,6 +36,8 @@ func TestEveryLocaleCarriesExactlyTheDeclaredKeys(t *testing.T) {
 		PrincipalNotFound, LoginNameExists, InvalidPrincipal, LastTenantAdministrator,
 		IdentityUnavailable, ServiceAccountNotFound, ServiceAccountCredentialNotFound,
 		ServiceAccountVersionConflict, ServiceAccountCredentialLimit, InvalidServiceAccount,
+		LifecycleVersionConflict, PrincipalRetained, PrincipalAnonymized,
+		SuspensionRequired, AnonymizationConfirmation,
 	}
 	expected := make([]string, 0, len(declared))
 	for _, key := range declared {

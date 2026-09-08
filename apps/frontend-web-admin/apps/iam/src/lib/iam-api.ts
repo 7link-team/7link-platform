@@ -146,6 +146,32 @@ export interface PrincipalList {
   total: number
 }
 
+export interface PrincipalLifecycle {
+  principal_id: string
+  version: number
+  retain_until: string | null
+  legal_hold: boolean
+  reference: string
+  anonymized_at: string | null
+  updated_at: string | null
+}
+
+// 阻塞原因是代码而非句子：控制台负责翻译，运维照着去做具体的一件事。
+export type PrincipalLifecycleBlocker =
+  | "already_anonymized"
+  | "legal_hold"
+  | "no_retention_recorded"
+  | "retention_not_expired"
+  | "not_suspended"
+
+export interface PrincipalLifecycleStatus {
+  lifecycle: PrincipalLifecycle
+  login_name: string
+  suspended: boolean
+  anonymized: boolean
+  blockers: PrincipalLifecycleBlocker[]
+}
+
 export interface ServiceAccount {
   id: string
   login_name: string
@@ -1290,6 +1316,32 @@ export function createIamApi(
       request<Principal>(
         `/iam/principals/${encodeURIComponent(id)}/suspension`,
         { method: "DELETE" }
+      ),
+    // 生命周期是平台级操作，租户权限不可达；后端以 platform 守卫强制。
+    principalLifecycle: (id: string) =>
+      request<PrincipalLifecycleStatus>(
+        `/platform/iam/principals/${encodeURIComponent(id)}/lifecycle`
+      ),
+    setPrincipalRetention: (
+      id: string,
+      body: {
+        version: number
+        retain_until: string
+        legal_hold: boolean
+        reference: string
+      }
+    ) =>
+      request<PrincipalLifecycle>(
+        `/platform/iam/principals/${encodeURIComponent(id)}/lifecycle/retention`,
+        { method: "PUT", body: JSON.stringify(body) }
+      ),
+    anonymizePrincipal: (
+      id: string,
+      body: { version: number; confirmation: string }
+    ) =>
+      request<PrincipalLifecycle>(
+        `/platform/iam/principals/${encodeURIComponent(id)}/lifecycle/anonymization`,
+        { method: "POST", body: JSON.stringify(body) }
       ),
     serviceAccounts: (search = "") =>
       request<ServiceAccountList>(

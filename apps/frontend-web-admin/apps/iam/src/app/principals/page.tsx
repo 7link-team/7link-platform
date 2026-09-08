@@ -5,7 +5,7 @@ import {
   useState,
   type FormEvent,
 } from "react"
-import { Pencil, Plus, Search, UserRoundCheck } from "lucide-react"
+import { Pencil, Plus, Search, ShieldAlert, UserRoundCheck } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -28,6 +28,7 @@ import {
   TableRow,
 } from "@workspace/ui/components/table"
 import { Alert } from "../../components/alert"
+import { PrincipalLifecycleDialog } from "./lifecycle-dialog"
 import { PageHeader } from "../../components/page-header"
 import {
   createIamApi,
@@ -127,6 +128,7 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
       setBusy(false)
     }
   }
+  const [lifecycle, setLifecycle] = useState<Principal | null>(null)
   const editingMembership = editing
     ? members.find((member) => member.subject === editing.id)
     : undefined
@@ -276,6 +278,16 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
                       <Pencil />
                     </Button>
                     <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={busy}
+                      onClick={() => setLifecycle(principal)}
+                      aria-label={`${principal.display_name || principal.login_name || principal.id}的数据保留与擦除`}
+                      title="数据保留与擦除"
+                    >
+                      <ShieldAlert />
+                    </Button>
+                    <Button
                       variant={
                         principal.status === "active"
                           ? "destructive"
@@ -400,6 +412,16 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PrincipalLifecycleDialog
+        key={lifecycle?.id ?? "none"}
+        principal={lifecycle}
+        iamApi={iamApi}
+        onClose={() => {
+          setLifecycle(null)
+          void refresh()
+        }}
+      />
     </>
   )
 }

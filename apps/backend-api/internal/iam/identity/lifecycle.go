@@ -20,7 +20,35 @@ var (
 	ErrPrincipalRetained   = errors.New("principal is subject to retention")
 	ErrPrincipalAnonymized = errors.New("principal is permanently anonymized")
 	ErrSuspensionRequired  = errors.New("principal must be suspended before anonymization")
+	// ErrConfirmationMismatch keeps an irreversible request from being satisfied
+	// by a caller that did not look at which principal it names. Anonymization
+	// cannot be undone and the subject cannot be identified afterwards, so the
+	// request has to repeat something only someone reading the record would know.
+	ErrConfirmationMismatch = errors.New("anonymization confirmation does not match the principal")
 )
+
+// Reasons anonymization would be refused right now. They are codes rather than
+// sentences because the console renders them and an operator acts on them: each
+// one names a thing to go and do.
+const (
+	LifecycleBlockerAnonymized      = "already_anonymized"
+	LifecycleBlockerLegalHold       = "legal_hold"
+	LifecycleBlockerNoRetention     = "no_retention_recorded"
+	LifecycleBlockerRetentionActive = "retention_not_expired"
+	LifecycleBlockerNotSuspended    = "not_suspended"
+)
+
+// PrincipalLifecycleStatus is the retention policy plus what currently stands in
+// the way of erasing the principal. Blockers are only the ones this module owns;
+// an owner module that refuses during the attempt reports its own reason, which
+// is the one that says which system still holds the data.
+type PrincipalLifecycleStatus struct {
+	Lifecycle  PrincipalLifecycle `json:"lifecycle"`
+	LoginName  string             `json:"login_name"`
+	Suspended  bool               `json:"suspended"`
+	Anonymized bool               `json:"anonymized"`
+	Blockers   []string           `json:"blockers"`
+}
 
 // PrincipalAnonymizer composes operational PII owners in the caller's transaction.
 // It must fail unless every installed owner's records can be erased safely,
@@ -53,6 +81,55 @@ func (s *Service) GetPrincipalLifecycle(ctx context.Context, id guid.ID) (Princi
 	}
 	row, err := repo.principalLifecycle(ctx, id)
 	return lifecycleView(id, row), err
+}
+
+// PrincipalLifecycleStatus reports the policy, the principal state anonymization
+// depends on, and the reasons it would be refused. It is a read: nothing here
+// creates a policy, so looking at a principal never starts a retention clock.
+func (s *Service) PrincipalLifecycleStatus(ctx context.Context, id guid.ID) (PrincipalLifecycleStatus, error) {
+	if id <= 0 {
+		return PrincipalLifecycleStatus{}, ErrInvalid
+	}
+	repo, err := s.repo.pinWriter()
+	if err != nil {
+		return PrincipalLifecycleStatus{}, err
+	}
+	principal, err := repo.lifecyclePrincipal(ctx, id, false)
+	if err != nil {
+		return PrincipalLifecycleStatus{}, err
+	}
+	row, err := repo.principalLifecycle(ctx, id)
+	if err != nil {
+		return PrincipalLifecycleStatus{}, err
+	}
+	now, err := lifecycleNow(ctx, repo.writer())
+	if err != nil {
+		return PrincipalLifecycleStatus{}, err
+	}
+	status := PrincipalLifecycleStatus{
+		Lifecycle: lifecycleView(id, row), LoginName: principal.LoginName,
+		Suspended: principal.Status == "disabled", Anonymized: row.AnonymizedAt != nil,
+		Blockers: []string{},
+	}
+	if status.Anonymized {
+		// Nothing else is worth reporting: the record is already a tombstone and
+		// the remaining fields describe what it used to be subject to.
+		status.Blockers = append(status.Blockers, LifecycleBlockerAnonymized)
+		return status, nil
+	}
+	if !status.Suspended {
+		status.Blockers = append(status.Blockers, LifecycleBlockerNotSuspended)
+	}
+	switch {
+	case row.Version == 0 || row.RetainUntil.IsZero():
+		status.Blockers = append(status.Blockers, LifecycleBlockerNoRetention)
+	case row.RetainUntil.After(now):
+		status.Blockers = append(status.Blockers, LifecycleBlockerRetentionActive)
+	}
+	if row.LegalHold {
+		status.Blockers = append(status.Blockers, LifecycleBlockerLegalHold)
+	}
+	return status, nil
 }
 
 // SetPrincipalRetention records an explicit deadline and optional legal hold.
@@ -105,7 +182,7 @@ func (s *Service) SetPrincipalRetention(
 
 // AnonymizePrincipal permanently erases a suspended principal's operational PII.
 // The linked cleanup, tombstone and append-only audit entry commit together.
-func (s *Service) AnonymizePrincipal(ctx context.Context, id guid.ID, version int64) (PrincipalLifecycle, error) {
+func (s *Service) AnonymizePrincipal(ctx context.Context, id guid.ID, version int64, confirmation string) (PrincipalLifecycle, error) {
 	if id <= 0 || version < 1 {
 		return PrincipalLifecycle{}, ErrInvalid
 	}
@@ -128,6 +205,13 @@ func (s *Service) AnonymizePrincipal(ctx context.Context, id guid.ID, version in
 		if row.AnonymizedAt != nil {
 			result = lifecycleView(id, row)
 			return nil
+		}
+		// Checked here rather than in the handler because the row is locked at
+		// this point: a login name read before the lock could belong to a
+		// principal that has since been renamed, and this operation cannot be
+		// undone once it has picked the wrong one.
+		if strings.TrimSpace(confirmation) != principal.LoginName {
+			return ErrConfirmationMismatch
 		}
 		if principal.Status != "disabled" {
 			return ErrSuspensionRequired

@@ -41,7 +41,10 @@ identity-replace-service-account|PUT|/iam/service-accounts/{id}
 identity-delete-service-account|DELETE|/iam/service-accounts/{id}
 identity-list-service-account-credentials|GET|/iam/service-accounts/{id}/credentials
 identity-create-service-account-credential|POST|/iam/service-accounts/{id}/credentials
-identity-delete-service-account-credential|DELETE|/iam/service-accounts/{id}/credentials/{credential_id}`
+identity-delete-service-account-credential|DELETE|/iam/service-accounts/{id}/credentials/{credential_id}
+identity-platform-get-principal-lifecycle|GET|/platform/iam/principals/{principal_id}/lifecycle
+identity-platform-set-principal-retention|PUT|/platform/iam/principals/{principal_id}/lifecycle/retention
+identity-platform-anonymize-principal|POST|/platform/iam/principals/{principal_id}/lifecycle/anonymization`
 
 // identityGuards is the permission code each operation must carry. Editing a
 // profile and suspending or restoring an account are changes to a user inside
@@ -64,6 +67,9 @@ var identityGuards = map[string]string{
 	"identity-list-service-account-credentials":  "service_account_manage_credential",
 	"identity-create-service-account-credential": "service_account_manage_credential",
 	"identity-delete-service-account-credential": "service_account_manage_credential",
+	"identity-platform-get-principal-lifecycle":  "platform_administer",
+	"identity-platform-set-principal-retention":  "platform_administer",
+	"identity-platform-anonymize-principal":      "platform_administer",
 }
 
 type identityTokenVerifier struct{ principalID guid.ID }
@@ -77,7 +83,10 @@ func (verifier identityTokenVerifier) Authenticate(context.Context, string, stri
 // three principal-administration routes while leaving the reads answerable, so
 // a denial that came from the guard can be told apart from one that came from
 // the route being unreachable at all.
-type identityRouteAuthorizer struct{ userUpdateAllowed bool }
+type identityRouteAuthorizer struct {
+	userUpdateAllowed bool
+	platformAllowed   bool
+}
 
 func (identityRouteAuthorizer) FieldConstraint(context.Context, guid.ID, guid.ID, string, guid.ID) (authz.FieldConstraint, error) {
 	fields := map[string]authz.FieldDecision{}
@@ -99,11 +108,13 @@ func (authorizer identityRouteAuthorizer) Check(
 	return true, nil
 }
 
-// CheckPlatform denies unconditionally: no route this module registers is
-// platform-scoped, so a test that only passes because this returned true would
-// be reporting on a route that should not exist here.
+// CheckPlatform answers for the principal lifecycle routes, which are the only
+// platform-scoped ones this module registers. It defaults to denying, so a test
+// that does not deliberately grant platform authority is reporting on a caller
+// without it -- which is the case that matters: no tenant permission may reach
+// retention or erasure.
 func (authorizer identityRouteAuthorizer) CheckPlatform(context.Context, string, guid.ID) (bool, error) {
-	return false, nil
+	return authorizer.platformAllowed, nil
 }
 
 type identityMembershipChecker struct{}
@@ -131,6 +142,12 @@ type identityHTTPHarness struct {
 }
 
 func newIdentityHTTPHarness(t *testing.T, userUpdateAllowed bool) identityHTTPHarness {
+	return newIdentityHTTPHarnessWithPlatform(t, userUpdateAllowed, false)
+}
+
+// newIdentityHTTPHarnessWithPlatform grants or withholds platform authority so
+// the lifecycle routes can be exercised from both sides of the boundary.
+func newIdentityHTTPHarnessWithPlatform(t *testing.T, userUpdateAllowed, platformAllowed bool) identityHTTPHarness {
 	t.Helper()
 	require.NoError(t, initializeIdentityLocales())
 	harness := newIdentityHarness(t, "sl_")
@@ -141,7 +158,7 @@ func newIdentityHTTPHarness(t *testing.T, userUpdateAllowed bool) identityHTTPHa
 	registrar := authz.NewRegistrar(
 		authz.DefaultRegistry(),
 		identityTokenVerifier{principalID: 11},
-		identityRouteAuthorizer{userUpdateAllowed: userUpdateAllowed},
+		identityRouteAuthorizer{userUpdateAllowed: userUpdateAllowed, platformAllowed: platformAllowed},
 		identityMembershipChecker{},
 	)
 	router := chi.NewRouter()
@@ -199,7 +216,7 @@ func TestIdentityRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 14)
+	require.Len(t, got, 17)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
@@ -253,7 +270,7 @@ func TestIdentityOpenAPIGuardsParametersAndSecurityAreConsistent(t *testing.T) {
 			}
 		}
 	}
-	require.Len(t, operationIDs, 14)
+	require.Len(t, operationIDs, 17)
 }
 
 func TestIdentityOpenAPIDescribesTypedMutationResponses(t *testing.T) {
