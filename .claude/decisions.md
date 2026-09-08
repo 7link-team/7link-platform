@@ -984,3 +984,45 @@ budget is not evidence that any individual operation should take twenty minutes.
 Backend integration runner only; no production timeout or migration changes.
 Implemented under D26's standard technical-remediation authorization. Normal `make ci`
 subsequently passed; migration package took 640.915s, with all assertions intact.
+
+## D28 — 擦除事务对锁冲突有界重试，并承认它可能被围栏反超
+
+**Decision**
+`AnonymizePrincipal` 在数据库因锁循环回滚它时重试，最多 3 次；判定收敛在
+`gormx.IsTransactionConflict`（pgx SQLState 40001/40P01、MySQL 1213）。**不重试**锁等待
+超时（MySQL 1205）。相应地，`TestPrincipalErasureConcurrencyExternalDatabase` 的
+`erasure-first` 分支承认「擦除被围栏反超」是合法结局：仅 `delivery-in-flight` 与
+`live-remote-mapping` 两个围栏 owner 允许，且必须断言什么都没被擦掉。
+
+**Reason**
+擦除先锁 principal 再遍历各 owner 的表；普通请求先拿子表行锁，再经外键触及 principal。
+两个方向天然相反，PostgreSQL 会发现环并回滚其中一侧，**挑谁由它决定**。原先擦除若被选中，
+运维看到的是裸 `deadlock detected (SQLSTATE 40P01)`。
+
+无法靠加锁顺序消除：写入方是任意并发请求，不受控；也不能把 principal 锁降级为
+`FOR NO KEY UPDATE`——`login_name` 有唯一约束（`uq_iam_principals_login`）而擦除要改写它，
+它是 key 列。因此重试是唯一正解，也是 PostgreSQL 对 40001/40P01 的官方建议。
+
+重试带来的语义后果是**正确的而非缺陷**：回滚释放了 principal 锁，竞争方得以提交，重试时
+重新评估围栏——此刻通知确实在投递中、远端账号确实存活，拒绝才是对的。原测试要求
+`erasure-first` 必须成功，等于要求擦除永不输掉锁循环，而不输的唯一办法是不重试。
+
+不重试锁等待超时：那说明对方仍持有行，立即重试只会排进同一个等待，会把容量或长事务问题
+埋成静默循环。
+
+**Alternatives Considered**
+1. 让死锁上浮为可重试错误交给调用方 —— 运维仍要手工重试，且 HTTP 层要暴露一个纯数据库概念。
+2. 统一加锁顺序 —— 不可行，写入方不受控。
+3. 降级 principal 锁强度 —— 因 `login_name` 唯一约束不成立。
+
+**Tradeoffs**
+重试使「先拿到锁者必胜」不再成立，这一点已写进测试注释。验证强度需如实记录：重试逻辑由
+注入 40P01 的单元测试直接覆盖；真实 PostgreSQL 上，修复前失败可复现，修复后约 28 次运行
+（含 2 次完整 `make ci`）不再复现，但**未在修复后真实命中并观察到重试吸收一次死锁**。
+
+**Scope**
+`pkg/extension/gorm/retry.go`（新增）、`internal/iam/identity/lifecycle.go`、
+`internal/app/principallifecycle_test.go`（erasure-first 分支）。
+
+**Status**
+已决定并执行（2026-09-08）。

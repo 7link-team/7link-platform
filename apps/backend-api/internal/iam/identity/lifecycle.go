@@ -180,8 +180,24 @@ func (s *Service) SetPrincipalRetention(
 	return result, err
 }
 
+// anonymizeAttempts bounds how many times erasure is re-run after the database
+// rolls it back to break a lock cycle. Two retries is enough for the case this
+// exists for -- the transaction that won the cycle has committed by then, so the
+// rows are free -- while a run that keeps losing stops rather than spinning.
+const anonymizeAttempts = 3
+
 // AnonymizePrincipal permanently erases a suspended principal's operational PII.
 // The linked cleanup, tombstone and append-only audit entry commit together.
+//
+// Erasure holds the principal row and then touches every owner's tables, while
+// ordinary traffic takes a child row first and reaches the principal through its
+// foreign key. The two orders are opposite, so under live load the database will
+// sometimes find a cycle and roll one side back; which side it picks is its
+// choice, not ours, and no lock ordering here can prevent it because the other
+// side is any concurrent request. A rolled-back transaction changed nothing, so
+// the answer is to run it again -- and the fences are re-evaluated on the way
+// through, so a retry that now finds a notification in flight refuses for that
+// reason rather than inheriting a decision made before the contender committed.
 func (s *Service) AnonymizePrincipal(ctx context.Context, id guid.ID, version int64, confirmation string) (PrincipalLifecycle, error) {
 	if id <= 0 || version < 1 {
 		return PrincipalLifecycle{}, ErrInvalid
@@ -189,6 +205,18 @@ func (s *Service) AnonymizePrincipal(ctx context.Context, id guid.ID, version in
 	if s.anonymizer == nil {
 		return PrincipalLifecycle{}, ErrUnavailable
 	}
+	var result PrincipalLifecycle
+	var err error
+	for attempt := 1; attempt <= anonymizeAttempts; attempt++ {
+		result, err = s.anonymizeOnce(ctx, id, version, confirmation)
+		if err == nil || !gormx.IsTransactionConflict(err) || ctx.Err() != nil {
+			break
+		}
+	}
+	return result, err
+}
+
+func (s *Service) anonymizeOnce(ctx context.Context, id guid.ID, version int64, confirmation string) (PrincipalLifecycle, error) {
 	var result PrincipalLifecycle
 	err := s.repo.runInTx(ctx, func(repo *Repository) error {
 		principal, err := repo.lifecyclePrincipal(ctx, id, true)

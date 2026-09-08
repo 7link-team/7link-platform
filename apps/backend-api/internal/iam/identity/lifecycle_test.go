@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -222,4 +223,94 @@ func TestAnonymizePrincipalRequiresNamingTheSubject(t *testing.T) {
 
 	_, err = h.service.AnonymizePrincipal(ctx, p.ID, policy.Version, "  "+p.LoginName+"  ")
 	require.NoError(t, err, "surrounding whitespace is a typing artifact, not a different subject")
+}
+
+// conflictError stands in for what a driver returns when the database has
+// already rolled the transaction back to break a lock cycle.
+type conflictError struct{ state string }
+
+func (e conflictError) Error() string    { return "deadlock detected" }
+func (e conflictError) SQLState() string { return e.state }
+
+// TestAnonymizePrincipalRetriesAfterTheDatabaseBreaksALockCycle covers the case
+// live traffic creates: erasure holds the principal and reaches for an owner's
+// rows while an ordinary request holds those rows and reaches for the principal.
+// The database rolls one side back, and which side is not ours to choose -- so
+// erasure losing must not turn into an operator seeing a raw deadlock.
+func TestAnonymizePrincipalRetriesAfterTheDatabaseBreaksALockCycle(t *testing.T) {
+	h := newIdentityHarness(t, "sl_")
+	ctx := t.Context()
+	attempts := 0
+	h.service.anonymizer = func(context.Context, *gorm.DB, Principal, time.Time) error {
+		attempts++
+		if attempts == 1 {
+			return fmt.Errorf("erase oauth principal data: %w", conflictError{state: "40P01"})
+		}
+		return nil
+	}
+	p, err := h.service.Create(ctx, 7, "subject", testPassword, "Subject Name", "subject@example.test")
+	require.NoError(t, err)
+	policy, err := h.service.SetPrincipalRetention(ctx, p.ID, 0, time.Now().UTC().Add(-time.Hour), false, "case-1")
+	require.NoError(t, err)
+	_, err = h.service.SetStatus(ctx, 7, p.ID, "disabled")
+	require.NoError(t, err)
+
+	erased, err := h.service.AnonymizePrincipal(ctx, p.ID, policy.Version, p.LoginName)
+	require.NoError(t, err)
+	assert.Equal(t, 2, attempts, "the rolled-back attempt changed nothing, so it is run again")
+	assert.NotNil(t, erased.AnonymizedAt)
+
+	status, err := h.service.PrincipalLifecycleStatus(ctx, p.ID)
+	require.NoError(t, err)
+	assert.True(t, status.Anonymized, "the retry committed the erasure exactly once")
+	assert.Equal(t, policy.Version+1, status.Lifecycle.Version)
+}
+
+func TestAnonymizePrincipalStopsRetryingAConflictThatKeepsRecurring(t *testing.T) {
+	h := newIdentityHarness(t, "sl_")
+	ctx := t.Context()
+	attempts := 0
+	h.service.anonymizer = func(context.Context, *gorm.DB, Principal, time.Time) error {
+		attempts++
+		return fmt.Errorf("erase oauth principal data: %w", conflictError{state: "40P01"})
+	}
+	p, err := h.service.Create(ctx, 7, "subject", testPassword, "Subject Name", "subject@example.test")
+	require.NoError(t, err)
+	policy, err := h.service.SetPrincipalRetention(ctx, p.ID, 0, time.Now().UTC().Add(-time.Hour), false, "case-1")
+	require.NoError(t, err)
+	_, err = h.service.SetStatus(ctx, 7, p.ID, "disabled")
+	require.NoError(t, err)
+
+	// Losing every time is a different problem from losing once, and it has to
+	// surface rather than spin.
+	_, err = h.service.AnonymizePrincipal(ctx, p.ID, policy.Version, p.LoginName)
+	require.Error(t, err)
+	assert.Equal(t, anonymizeAttempts, attempts)
+
+	status, err := h.service.PrincipalLifecycleStatus(ctx, p.ID)
+	require.NoError(t, err)
+	assert.False(t, status.Anonymized, "nothing was erased")
+}
+
+// TestAnonymizePrincipalDoesNotRetryARefusal keeps the retry aimed at
+// contention only. A fence is a decision about this principal; repeating it
+// would reach the same answer and hide how long the caller waited for it.
+func TestAnonymizePrincipalDoesNotRetryARefusal(t *testing.T) {
+	h := newIdentityHarness(t, "sl_")
+	ctx := t.Context()
+	attempts := 0
+	h.service.anonymizer = func(context.Context, *gorm.DB, Principal, time.Time) error {
+		attempts++
+		return nil
+	}
+	p, err := h.service.Create(ctx, 7, "subject", testPassword, "Subject Name", "subject@example.test")
+	require.NoError(t, err)
+	policy, err := h.service.SetPrincipalRetention(ctx, p.ID, 0, time.Now().UTC().Add(72*time.Hour), false, "case-1")
+	require.NoError(t, err)
+	_, err = h.service.SetStatus(ctx, 7, p.ID, "disabled")
+	require.NoError(t, err)
+
+	_, err = h.service.AnonymizePrincipal(ctx, p.ID, policy.Version, p.LoginName)
+	require.ErrorIs(t, err, ErrPrincipalRetained)
+	assert.Zero(t, attempts, "the retention fence is reached before any owner is touched")
 }

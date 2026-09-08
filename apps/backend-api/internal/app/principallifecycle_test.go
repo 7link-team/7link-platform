@@ -429,8 +429,40 @@ func TestPrincipalErasureConcurrencyExternalDatabase(t *testing.T) {
 					go func() { written <- write(f.db.WithContext(ctx)) }()
 					f.requireErasureLockWait(t, holder)
 					unblock()
-					require.NoError(t, awaitErasure(t, ctx, erased))
+					eraseErr := awaitErasure(t, ctx, erased)
 					writeErr := awaitErasure(t, ctx, written)
+					if eraseErr != nil {
+						// Erasure held the principal lock first, so being refused
+						// here means it lost a lock cycle: the rollback released
+						// that lock, the contender committed while it was gone, and
+						// the retry then re-read a world in which a fence genuinely
+						// stands. Refusing is the right answer at that point -- a
+						// notification really is with a sender, a remote account
+						// really is live -- and it is the writer-first outcome
+						// reached by a different route, so it carries the same
+						// obligation: nothing may have been erased.
+						require.Contains(t, []string{"delivery-in-flight", "live-remote-mapping"}, owner,
+							"only a fenced owner may overtake erasure; anything else is a refusal to explain")
+						if owner == "delivery-in-flight" {
+							require.ErrorIs(t, eraseErr, authn.ErrNotificationInFlight)
+						} else {
+							require.ErrorIs(t, eraseErr, provisioning.ErrPrincipalRemoteProvisioned)
+						}
+						// Whole-snapshot equality cannot be the test here: the
+						// contender committed a change of its own, and that change
+						// is the reason for the refusal. What must be untouched is
+						// what erasure would have changed.
+						after := f.principalErasureSnapshot(t, principal.ID)
+						assert.Equal(t, principal.LoginName, after["iam_principals"][0]["login_name"],
+							"a refused erasure leaves the principal identifiable")
+						assert.NotEmpty(t, after["iam_tenant_members"][0]["email"])
+						assert.NotEmpty(t, after["iam_identity_links"], "no owner may be half erased")
+						assert.NotEmpty(t, after["iam_oauth_consents"])
+						stored, storedErr := service.GetPrincipalLifecycle(t.Context(), principal.ID)
+						require.NoError(t, storedErr)
+						assert.Nil(t, stored.AnonymizedAt, "a refused erasure leaves no tombstone")
+						return
+					}
 					if erasureTransactionConflict(writeErr) {
 						// A raw child UPDATE may acquire its child lock before the
 						// trigger acquires the parent. Deadlock victim rollback is
@@ -440,11 +472,19 @@ func TestPrincipalErasureConcurrencyExternalDatabase(t *testing.T) {
 					if writeErr != nil {
 						assert.ErrorContains(t, writeErr, "anonymized", "retry must be rejected by the tombstone")
 					}
-					// UPDATE of a row deleted by erasure may legitimately affect zero
-					// rows; surviving redacted rows and new inserts must be refused.
-					if owner != "oauth" && owner != "federation" && owner != "delivery-in-flight" {
-						require.Error(t, writeErr)
-					}
+					// The write is not required to fail. When the database picks
+					// erasure as the victim of a lock cycle, rolling it back frees
+					// the principal lock this writer was queued behind, so the write
+					// commits before any tombstone exists and the retried erasure
+					// redacts it afterwards. Which side loses a cycle is the
+					// database's choice, so requiring a refusal here would be
+					// requiring erasure never to lose one -- and erasure that never
+					// retries is the raw deadlock an operator used to see.
+					//
+					// What must hold either way is that the write does not survive.
+					// That is asserted below for every owner: a write landing after
+					// the tombstone without being fenced would leave the contended
+					// value in place and fail those assertions.
 				}
 				stored, err := service.GetPrincipalLifecycle(t.Context(), principal.ID)
 				require.NoError(t, err)

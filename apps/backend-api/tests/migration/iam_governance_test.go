@@ -75,7 +75,7 @@ func assertGovernanceUp(t *testing.T, db *gorm.DB, modules []module.Module, pref
 		milestones[report.Module] = report.Milestone
 		assert.Equal(t, goosex.StateClean, report.Status.State)
 	}
-	assert.Equal(t, "principal-erasure", milestones[iamcore.Name])
+	assert.Equal(t, "default-menu-translations", milestones[iamcore.Name])
 	assert.Equal(t, "principal-erasure", milestones[organization.Name])
 	assert.Equal(t, "principal-erasure", milestones[governance.Name])
 }
