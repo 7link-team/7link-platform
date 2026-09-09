@@ -299,7 +299,6 @@ func newFederationEnvironment(t *testing.T, prefixes ...string) *federationEnvir
 		return nil
 	})
 	env.service = NewService(runtime, appender, env.identity, env.web, Config{HTTPTimeout: 5 * time.Second, ClockSkew: 30 * time.Second, StateTTL: 10 * time.Minute}, env.keys, env.ids, testOutboundPolicy())
-	env.service.now = func() time.Time { return federationTestNow }
 	env.idp = newTestIDP(t)
 	return env
 }
