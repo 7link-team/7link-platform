@@ -36,6 +36,9 @@ try {
       ["mobile", { width: 390, height: 844 }],
     ]) {
       const context = await browser.newContext({ baseURL, viewport })
+      await context.addCookies([
+        { name: "NEXT_LOCALE", value: "zh-CN", url: baseURL },
+      ])
       const page = await context.newPage()
       const errors = []
       page.on("pageerror", (error) => errors.push(error.message))
@@ -77,15 +80,13 @@ try {
             ).trim()
           )
         await page.locator('button[type="submit"]').click()
-        await page.locator("#tenant").waitFor()
-        if ((await page.locator("#tenant").inputValue()) !== tenant) {
-          await page.locator("#tenant").fill(tenant)
-          await page.locator("#tenant").press("Enter")
-        }
-        await page.waitForFunction(
-          (id) => document.querySelector("#tenant")?.value === id,
-          tenant
-        )
+        await page
+          .getByRole("button", { name: "切换工作空间", exact: true })
+          .waitFor()
+        await page
+          .locator('[aria-label="当前工作区"]')
+          .getByText(tenant, { exact: true })
+          .waitFor()
         await page.locator("main article").first().waitFor()
         await capture("dashboard")
         if (device === "mobile") {
@@ -98,11 +99,11 @@ try {
         await navigation.waitFor()
         if (persona === "admin") {
           await navigation
-            .getByRole("link", { name: "主体与成员", exact: true })
+            .getByRole("link", { name: "账号与成员", exact: true })
             .waitFor()
           await capture("navigation")
           await navigation
-            .getByRole("link", { name: "主体与成员", exact: true })
+            .getByRole("link", { name: "账号与成员", exact: true })
             .click()
           if (device === "mobile") await page.keyboard.press("Escape")
           await page
@@ -130,7 +131,7 @@ try {
             .waitFor()
           await page
             .getByRole("dialog")
-            .getByText(/主体仍可登录/)
+            .getByText(/账号仍可登录/)
             .waitFor()
           assert(
             await erase.isDisabled(),
@@ -141,7 +142,7 @@ try {
         } else {
           assert.equal(
             await navigation
-              .getByRole("link", { name: "主体与成员", exact: true })
+              .getByRole("link", { name: "账号与成员", exact: true })
               .count(),
             0
           )
@@ -160,10 +161,7 @@ try {
           )
           await page.goto("/iam/users")
           await denied
-          await page
-            .getByRole("alert")
-            .filter({ hasText: "forbidden" })
-            .waitFor()
+          await page.getByRole("alert").filter({ hasText: "禁止" }).waitFor()
           assert.equal(await page.locator("tbody tr").count(), 0)
           assert.equal(
             await page

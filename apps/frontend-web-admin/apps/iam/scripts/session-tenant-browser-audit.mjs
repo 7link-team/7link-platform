@@ -38,6 +38,15 @@ async function ok(context, path, method, body, scope) {
   )
   return result.data
 }
+async function expectTenantWorkspace(page, tenantID) {
+  await page
+    .getByRole("button", { name: "切换工作空间", exact: true })
+    .waitFor()
+  await page
+    .locator('[aria-label="当前工作区"]')
+    .getByText(tenantID, { exact: true })
+    .waitFor()
+}
 const errors = []
 try {
   await ok(admin, "/authn/sessions", "POST", {
@@ -75,6 +84,9 @@ try {
     ["mobile", { width: 390, height: 844 }],
   ]) {
     const context = await browser.newContext({ baseURL, viewport })
+    await context.addCookies([
+      { name: "NEXT_LOCALE", value: "zh-CN", url: baseURL },
+    ])
     lastContext = context
     const page = await context.newPage()
     page.on("pageerror", (error) => errors.push(error.message))
@@ -99,11 +111,7 @@ try {
         response.status() === 200
     )
     await page.locator('button[type="submit"]').click()
-    await page.locator("#tenant").waitFor()
-    await page.waitForFunction(
-      (expected) => document.querySelector("#tenant")?.value === expected,
-      tenant
-    )
+    await expectTenantWorkspace(page, tenant)
     assert(unscopedSession)
     await menusLoaded
     assert(derivedMenu)
@@ -157,21 +165,22 @@ try {
   const page = await ambiguous.newPage()
   page.on("pageerror", (error) => errors.push(error.message))
   await page.goto("/")
-  await page.locator("#tenant").waitFor()
-  assert.equal(
-    await page.locator("#tenant").inputValue(),
-    "",
-    "multiple memberships must not pick the first tenant"
-  )
-  await page.locator("#tenant").fill(tenant)
-  await page.locator("#tenant").press("Enter")
+  const switcher = page.getByRole("button", {
+    name: "切换工作空间",
+    exact: true,
+  })
+  await switcher.waitFor()
+  await page
+    .locator('[aria-label="当前工作区"]')
+    .getByText("未选择", { exact: true })
+    .waitFor()
+  await switcher.click()
+  const tenantInput = page.getByRole("dialog").locator("#workspace-tenant-id")
+  await tenantInput.fill(tenant)
+  await tenantInput.press("Enter")
+  await expectTenantWorkspace(page, tenant)
   await page.reload()
-  await page.locator("#tenant").waitFor()
-  assert.equal(
-    await page.locator("#tenant").inputValue(),
-    tenant,
-    "refresh must preserve explicit selection"
-  )
+  await expectTenantWorkspace(page, tenant)
   assert.equal(
     (await ok(ambiguous, "/authn/me", "GET", undefined, second.id))
       .organization_id,

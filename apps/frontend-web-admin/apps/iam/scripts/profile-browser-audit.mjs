@@ -154,13 +154,22 @@ try {
     )
     version = policy.version
     const context = await browser.newContext({ baseURL, viewport })
+    await context.addCookies([
+      { name: "NEXT_LOCALE", value: "zh-CN", url: baseURL },
+    ])
     const page = await context.newPage()
     page.on("pageerror", (error) => errors.push(error.message))
     await page.goto("/login")
     await page.locator('input[name="login_name"]').fill(actor.login_name)
     await page.locator('input[name="password"]').fill(password)
     await page.locator('button[type="submit"]').click()
-    await page.locator("#tenant").waitFor()
+    await page
+      .getByRole("button", { name: "切换工作空间", exact: true })
+      .waitFor()
+    await page
+      .locator('[aria-label="当前工作区"]')
+      .getByText(tenant.id, { exact: true })
+      .waitFor()
     await page.goto("/iam/users")
     const row = page
       .getByRole("row")
@@ -227,7 +236,7 @@ try {
       path: fileURLToPath(new URL(`${name}-list.png`, screenshots)),
       fullPage: true,
     })
-    await page.goto("/security")
+    await page.goto("/account/profile")
     await page.getByRole("heading", { name: "主邮箱", exact: true }).waitFor()
     assert.equal(
       await page

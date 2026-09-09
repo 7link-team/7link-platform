@@ -1,4 +1,6 @@
 import { Database } from "bun:sqlite"
+import { spawnSync } from "node:child_process"
+import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 
 const port = Number(process.argv[2] ?? 9333)
@@ -11,6 +13,8 @@ const notificationFile =
 const databaseFile =
   process.env.IAM_DATABASE_FILE ??
   fileURLToPath(new URL("../../../../../.local/iam-smoke.db", import.meta.url))
+const databaseContainer = process.env.IAM_DATABASE_CONTAINER
+const databaseTablePrefix = process.env.IAM_DATABASE_TABLE_PREFIX ?? ""
 const screenshotRoot = new URL(
   "../../../../../.local/screenshots/",
   import.meta.url
@@ -173,6 +177,55 @@ async function registrationNotification(email, timeout = 10000) {
   throw new Error(`Registration notification was not delivered for ${email}`)
 }
 
+function registrationState(email) {
+  if (!databaseContainer) {
+    const database = new Database(databaseFile, { readonly: true })
+    const principal = database
+      .query(
+        `SELECT p.email_verified, p.activation_required, COUNT(tm.tenant_id) AS memberships
+         FROM iam_principals p
+         LEFT JOIN iam_tenant_members tm ON tm.principal_id = p.id
+         WHERE p.email = ?
+         GROUP BY p.id, p.email_verified, p.activation_required`
+      )
+      .get(email)
+    database.close()
+    return principal
+  }
+  if (!/^[A-Za-z0-9_]*$/.test(databaseTablePrefix))
+    throw new Error("IAM_DATABASE_TABLE_PREFIX is invalid")
+  const encodedEmail = Buffer.from(email).toString("base64")
+  const query = `SELECT p.email_verified, p.activation_required, COUNT(tm.tenant_id)
+FROM ${databaseTablePrefix}iam_principals p
+LEFT JOIN ${databaseTablePrefix}iam_tenant_members tm ON tm.principal_id = p.id
+WHERE p.email = CONVERT(FROM_BASE64('${encodedEmail}') USING utf8mb4)
+GROUP BY p.id, p.email_verified, p.activation_required`
+  const result = spawnSync(
+    "docker",
+    [
+      "exec",
+      databaseContainer,
+      "sh",
+      "-c",
+      'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql --host=127.0.0.1 --user="$MYSQL_USER" --database="$MYSQL_DATABASE" --batch --raw --skip-column-names --execute="$1"',
+      "registration-audit",
+      query,
+    ],
+    { encoding: "utf8" }
+  )
+  if (result.error) throw result.error
+  if (result.status !== 0)
+    throw new Error(`registration state query failed: ${result.stderr.trim()}`)
+  const values = result.stdout.trim().split("\t").map(Number)
+  if (values.length !== 3 || values.some((value) => !Number.isInteger(value)))
+    return undefined
+  return {
+    email_verified: values[0],
+    activation_required: values[1],
+    memberships: values[2],
+  }
+}
+
 await Promise.all([
   command("Network.enable"),
   command("Page.enable"),
@@ -204,7 +257,9 @@ await setInput("#registration-confirm", password)
 // the same string here. A deployment that leaves it unset has no universal
 // answer at all, which is what makes this safe to keep in the repository.
 const captchaAnswer =
-  process.env.IAM_CAPTCHA_TEST_ANSWER ?? "acceptance-captcha-answer"
+  (process.env.IAM_CAPTCHA_TEST_ANSWER_FILE
+    ? readFileSync(process.env.IAM_CAPTCHA_TEST_ANSWER_FILE, "utf8").trim()
+    : process.env.IAM_CAPTCHA_TEST_ANSWER) ?? "acceptance-captcha-answer"
 await waitFor(`document.querySelector("#registration-captcha")`, 20000)
 await waitFor(
   `document.querySelector("#registration-captcha ~ button img")`,
@@ -251,17 +306,7 @@ await waitFor(`document.body.innerText.includes("邮箱已验证")`, 20000)
 if (await evaluate(`return location.search !== ""`))
   throw new Error("Verification token remained in the browser URL")
 
-const database = new Database(databaseFile, { readonly: true })
-const principal = database
-  .query(
-    `SELECT p.email_verified, p.activation_required, COUNT(tm.tenant_id) AS memberships
-     FROM iam_principals p
-     LEFT JOIN iam_tenant_members tm ON tm.principal_id = p.id
-     WHERE p.email = ?
-     GROUP BY p.id, p.email_verified, p.activation_required`
-  )
-  .get(email)
-database.close()
+const principal = registrationState(email)
 if (
   !principal ||
   principal.email_verified !== 1 ||

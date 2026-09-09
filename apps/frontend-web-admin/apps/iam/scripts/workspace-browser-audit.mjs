@@ -232,10 +232,8 @@ try {
           await switcher.click()
           await page
             .getByRole("dialog")
-            .getByRole("button", {
-              name: fixtures.other.name,
-              exact: false,
-            })
+            .getByRole("button")
+            .filter({ hasText: fixtures.other.slug })
             .click()
           await page
             .getByRole("dialog")

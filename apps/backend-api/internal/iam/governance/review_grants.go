@@ -101,16 +101,16 @@ type dynamicGroupReviewRow struct {
 func (r *Repository) listDynamicGroupGrants(ctx context.Context, tenantID guid.ID) ([]reviewableGrantRow, error) {
 	p := r.prefix()
 	rows := make([]dynamicGroupReviewRow, 0)
-	query := `SELECT groups.id AS group_id, groups.rule_json, members.principal_id AS subject,
+	query := `SELECT directory_groups.id AS group_id, directory_groups.rule_json, members.principal_id AS subject,
 members.display_name AS principal_name, members.email, departments.department_id, members.status,
 bindings.role_id, roles.name AS role_name, bindings.created_at
-FROM ` + p + `iam_groups AS groups
-JOIN ` + p + `iam_group_role_bindings AS bindings ON bindings.tenant_id = groups.tenant_id AND bindings.group_id = groups.id
+FROM ` + p + `iam_groups AS directory_groups
+JOIN ` + p + `iam_group_role_bindings AS bindings ON bindings.tenant_id = directory_groups.tenant_id AND bindings.group_id = directory_groups.id
 JOIN ` + p + `iam_roles AS roles ON roles.tenant_id = bindings.tenant_id AND roles.id = bindings.role_id
-JOIN ` + p + `iam_tenant_members AS members ON members.tenant_id = groups.tenant_id AND members.status = 'active'
+JOIN ` + p + `iam_tenant_members AS members ON members.tenant_id = directory_groups.tenant_id AND members.status = 'active'
 LEFT JOIN ` + p + `iam_member_departments AS departments ON departments.tenant_id = members.tenant_id AND departments.principal_id = members.principal_id
-WHERE groups.tenant_id = ? AND groups.group_type = 'dynamic' AND groups.status = 'active'
-ORDER BY groups.id, members.principal_id, bindings.role_id`
+WHERE directory_groups.tenant_id = ? AND directory_groups.group_type = 'dynamic' AND directory_groups.status = 'active'
+ORDER BY directory_groups.id, members.principal_id, bindings.role_id`
 	if err := r.writer().WithContext(ctx).Raw(query, tenantID).Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("list dynamic group review candidates: %w", err)
 	}

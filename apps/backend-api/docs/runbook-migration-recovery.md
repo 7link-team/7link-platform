@@ -128,28 +128,45 @@ So restoring a backup taken before an erasure returns the person's data *and*
 removes the record saying it should have been removed. Nothing inside the
 restored database can then tell you an erasure is owed.
 
-The record that survives is the one kept outside the database: the audit archive
-(`docs` and the archive workflow), which is append-only and stored externally.
-After any restore that crosses an erasure:
+The audit archive is outside the database and immutable, but it is not currently
+a complete near-real-time erasure ledger. `RequestArchive` only selects events
+older than the tenant's `archive_after_days`; the default is 730 days and the
+minimum policy is one day. A recent `principal_anonymized` event can therefore
+be absent from both a restored pre-erasure database and the external archive.
 
-1. List `principal_anonymized` events from the **archive**, not from the restored
-   `iam_audit_events`, for the window between the backup and the restore.
-2. For each principal named, re-run the platform erasure:
+**An empty archive query is not evidence that no erasure is owed. Do not reopen
+access after a restore unless an external source is proven to cover the entire
+interval from the backup point through the recovery point.** That source may be
+an independently durable erasure ledger or externally retained MySQL binlogs
+replayed through a tested point-in-time recovery procedure. The existing audit
+archive qualifies only for intervals whose completed, verified objects are
+proven to include the required event sequence.
+
+Once that coverage prerequisite is met, reconcile a restore that crosses an
+erasure as follows:
+
+1. Record the exact backup point, recovery point and coverage boundary of the
+   external source. Stop if any part of that interval is uncovered.
+2. List `principal_anonymized` events from the covered **external source**, not
+   from the restored `iam_audit_events`, for the window between the backup and
+   the recovery point.
+3. For each principal named, re-run the platform erasure:
    `POST /platform/iam/principals/{id}/lifecycle/anonymization`.
    The retention policy and suspension it requires were also rolled back, so
    they have to be re-recorded first -- the endpoint refuses otherwise, which is
    the intended behaviour rather than an obstacle.
-3. Confirm each principal's lifecycle reports `anonymized`, and that
+4. Confirm each principal's lifecycle reports `anonymized`, and that
    `GET /platform/iam/principals/{id}/lifecycle` lists `already_anonymized`.
 
-**Not yet rehearsed.** Drills 1-3 above were executed; this reconciliation
-procedure is derived from where the three records are stored and has not been
-run end to end. It needs an environment with the audit archive configured
-against an object store, which the drill database did not have.
+**Not yet rehearsed and not yet release-ready.** Drills 1-3 above were executed;
+this reconciliation has not been run end to end, and the current historical
+archive policy does not cover recent erasures. The coverage mechanism must be
+implemented and tested before this procedure can be accepted.
 
 ## Known Gaps
 
 - RTO and RPO are undecided (see above).
-- Erasure reconciliation is written but not rehearsed.
+- Recent erasures have no proven near-real-time external ledger or rehearsed
+  binlog/PITR coverage; reconciliation is blocked on that design.
 - These drills used one isolated database. They do not cover replication,
   failover, or a multi-node deployment.

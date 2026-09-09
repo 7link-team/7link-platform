@@ -26,6 +26,10 @@ node scripts/iam-uat.mjs status
 `iam bootstrap-platform-admin` commands, and records the binary SHA-256 and Git
 revision. It never overwrites an existing initialization. Interrupted initialization
 is retained for inspection; use the preserving reset below before retrying.
+The isolated configuration enables registration and passkeys for browser UAT.
+Its captcha test answer is randomly generated per initialization, and its local
+notification receiver listens only on loopback and records only the most recent
+synthetic notification under `.temp/iam-uat/`.
 
 `start` supervises the API and console in the background, waits for readiness,
 and reuses `bootstrap-audit-environment.mjs` to create the UAT tenant through the
@@ -38,6 +42,11 @@ The initializer chooses alternate free ports if those are occupied. Always use
 the URLs printed by `start` or `status`. All listeners, including MySQL and gRPC,
 bind to loopback. Selected ports are stable across restarts; a later collision
 fails rather than connecting to another service.
+
+The passkey browser audit opens the same console through `http://localhost:18091`
+because WebAuthn permits the `localhost` development domain as an RP ID but does
+not permit an IP address. The generated allowlists contain both loopback origins;
+neither listener is exposed beyond the local machine.
 
 ## Existing Menu Translation Upgrade
 
@@ -64,7 +73,7 @@ The real MySQL gate includes this test using isolated tables, not the UAT data.
 | Unprivileged tenant member | `member@example.test` | `.temp/iam-uat/member-password` | Sign-in and own session, no assigned roles or administrative access |
 
 The member is created by the first `verify` run through the principal API.
-Passwords and four independent encryption/signing keys are randomly generated,
+Passwords, the captcha test answer and four independent encryption/signing keys are randomly generated,
 stored under a mode-0700 directory in mode-0600 files, and never printed by the
 script. The configuration and MySQL environment file also contain secrets and
 must not be attached to tickets, copied into chat, or committed. Existing
@@ -139,6 +148,28 @@ and logs out its sessions. Report and screenshots are under
 `.temp/iam-uat/browser/`. Screenshots are captured with animations completed.
 This script does not execute permanent erasure or alter retention policy.
 
+The complete workflow audit also exercises the directory, authorization,
+governance, provisioning, registration and passkey screens. It uses `localhost`
+for the WebAuthn RP ID while retaining the same loopback listener:
+
+```sh
+IAM_CONSOLE_URL="http://localhost:$(node -p "require('./.temp/iam-uat/state.json').webPort")" \
+IAM_BROWSER_PASSWORD_FILE="$PWD/.temp/iam-uat/admin-password" \
+IAM_BROWSER_TENANT="$(tr -d '\r\n' < .temp/iam-uat/tenant-id)" \
+IAM_NOTIFICATION_FILE="$PWD/.temp/iam-uat/notification-last.json" \
+IAM_CAPTCHA_TEST_ANSWER_FILE="$PWD/.temp/iam-uat/captcha-test-answer" \
+IAM_DATABASE_CONTAINER="$(node -p "require('./.temp/iam-uat/state.json').container")" \
+IAM_DATABASE_TABLE_PREFIX=uat_ \
+node ../frontend-web-admin/apps/iam/scripts/run-browser-audits.mjs
+```
+
+The registration audit reads its randomly generated test answer from a file and
+uses a read-only query inside the owned MySQL container to verify email,
+activation and zero-membership state. It does not print database credentials.
+The workflow creates synthetic global accounts and completed governance records;
+use the preserving reset before a new formal run rather than reusing a database
+that contains failed or partial acceptance fixtures.
+
 Before formal acceptance, complete and record these separately:
 
 - Desktop and mobile browser login, tenant selection, navigation and logout.
@@ -151,7 +182,8 @@ Before formal acceptance, complete and record these separately:
   RTO/RPO targets; designated product/security/QA/operations sign-off.
 
 The local environment does not configure external IdPs, outbound SCIM providers,
-mail delivery, or an S3 object-lock store. Their acceptance remains open.
+real mail delivery, or an S3 object-lock store. Its loopback notification receiver
+only supports synthetic registration verification. External acceptance remains open.
 HTTP verification must not be reported as browser acceptance.
 
 ## Local Verification Record (2026-09-08)
@@ -174,3 +206,20 @@ HTTP verification must not be reported as browser acceptance.
   documented UAT personas.
 - Permanent-erasure UI execution, recovery drills and formal production
   acceptance remain NOT RUN / NOT READY. See the remaining checklist above.
+
+## Local Verification Record (2026-09-09)
+
+- A fresh environment generated from the current working tree enabled the local
+  registration receiver and WebAuthn RP configuration; nine proxy/API checks:
+  PASS.
+- Complete browser workflow aggregator: 13/13 PASS. This includes department,
+  position, static/dynamic group, business entity, tenant, role, invitation,
+  access request, access review, service account, SCIM, registration and passkey.
+- The run found a real MySQL 8.4 defect in access-review creation: the dynamic
+  group snapshot query used reserved word `groups` as an unquoted alias. The
+  alias was replaced and the real MySQL browser workflow then completed.
+- Administrator/member by desktop/mobile: 4/4 PASS. Session tenant behavior,
+  desktop-redact/mobile-omit profile policy, partial PATCH, account navigation,
+  and the three-language by two-viewport workspace matrix also passed.
+- Permanent erasure, external notification delivery, external IdP/SCIM/object
+  store integration and formal production acceptance remain NOT RUN / NOT READY.

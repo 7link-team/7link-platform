@@ -4,7 +4,8 @@ import { spawn, spawnSync } from "node:child_process";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, unlinkSync, openSync, closeSync } from "node:fs";
-import { createServer } from "node:net";
+import { createServer as createHTTPServer } from "node:http";
+import { createServer as createNetServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
@@ -22,6 +23,7 @@ const statePath = join(directory, "state.json");
 const pidPath = join(directory, "supervisor.pid");
 const readyPath = join(directory, "ready.json");
 const binary = join(directory, "api");
+const notificationPath = join(directory, "notification-last.json");
 process.umask(0o077);
 
 function run(command, args, options = {}) {
@@ -58,7 +60,7 @@ async function mysqlReady() {
 }
 async function availablePort(preferred) {
   return new Promise((resolvePort, reject) => {
-    const server = createServer();
+    const server = createNetServer();
     server.once("error", (error) => {
       if (error.code === "EADDRINUSE" && preferred !== 0) availablePort(0).then(resolvePort, reject);
       else reject(error);
@@ -99,6 +101,8 @@ async function init() {
   for (const key of ["signing-key", "mfa-key", "federation-key", "provisioning-key"]) {
     writeFileSync(join(directory, key), randomBytes(32).toString("base64") + "\n", { mode: 0o600 });
   }
+  const captchaTestAnswer = randomBytes(24).toString("base64url");
+  writeFileSync(join(directory, "captcha-test-answer"), captchaTestAnswer + "\n", { mode: 0o600 });
   writeFileSync(join(directory, "admin-password"), randomBytes(24).toString("base64url") + "aA1!\n", { mode: 0o600 });
   const image = readFileSync(join(root, "Makefile"), "utf8").match(/^MYSQL8_IMAGE \?= (.+)$/m)?.[1];
   if (!image?.includes("@sha256:")) throw new Error("Missing pinned MySQL image in Makefile.");
@@ -111,8 +115,10 @@ async function init() {
   const apiPort = await availablePort(18080);
   const webPort = await availablePort(18091);
   const grpcPort = await availablePort(19090);
+  const notificationPort = await availablePort(18100);
   const apiURL = `http://127.0.0.1:${apiPort}`;
   const webURL = `http://127.0.0.1:${webPort}`;
+  const passkeyURL = `http://localhost:${webPort}`;
   save(configPath, {
     name: "IAM Local UAT", table_prefix: "uat_",
     http_server: { address: "127.0.0.1", port: apiPort },
@@ -120,9 +126,13 @@ async function init() {
     database: { main: { type: "mysql", dsn: `iam_uat:${mysqlPassword}@tcp(127.0.0.1:${databasePort})/iam_uat?parseTime=true&multiStatements=true&charset=utf8mb4`, writable: true, readable: true } },
     authn: { enabled: true, issuer: apiURL, signing_key_file: join(directory, "signing-key"),
       mfa: { encryption_key_file: join(directory, "mfa-key") },
+      notification: { url: `http://127.0.0.1:${notificationPort}/notifications`, poll_interval: "100ms", request_timeout: "5s", max_attempts: 3 },
+      email_verification: { enabled: true, verify_url: webURL + "/verify-email" },
+      registration: { enabled: true, captcha: { test_answer: captchaTestAnswer } },
+      passkey: { enabled: true, rp_id: "localhost", display_name: "IAM Local UAT", origins: [passkeyURL] },
       web: { enabled: true, cookie_name: `uat_${identity}`, cookie_secure: false,
         post_login_url: webURL + "/", post_logout_url: webURL + "/login",
-        allowed_return_urls: [webURL + "/"], allowed_origins: [webURL] } },
+        allowed_return_urls: [webURL + "/", passkeyURL + "/"], allowed_origins: [webURL, passkeyURL] } },
     federation: { enabled: true, encryption_key_file: join(directory, "federation-key") },
     provisioning: { encryption_key_file: join(directory, "provisioning-key") },
   });
@@ -131,7 +141,7 @@ async function init() {
   run(binary, ["migrate", "auto", "--config", configPath]);
   run(binary, ["iam", "bootstrap-platform-admin", "--config", configPath,
     "--login", "admin@example.test", "--display-name", "UAT Administrator", "--password-file", join(directory, "admin-password")]);
-  save(statePath, { apiURL, webURL, apiPort, webPort, grpcPort, databasePort, container, image,
+  save(statePath, { apiURL, webURL, apiPort, webPort, grpcPort, notificationPort, databasePort, container, image,
     initializedAt: new Date().toISOString(), revision: run("git", ["rev-parse", "HEAD"]),
     binarySHA256: createHash("sha256").update(readFileSync(binary)).digest("hex") });
   console.log(`Initialized. Password file: ${join(directory, "admin-password")} (not printed).`);
@@ -141,6 +151,33 @@ async function serve() {
   const settings = state();
   writeFileSync(pidPath, String(process.pid), { flag: "wx", mode: 0o600 });
   const children = [];
+  const notificationServer = settings.notificationPort ? createHTTPServer((request, response) => {
+    if (request.method !== "POST" || request.url !== "/notifications") {
+      response.writeHead(404).end();
+      return;
+    }
+    let body = "";
+    let oversized = false;
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => {
+      if (oversized) return;
+      body += chunk;
+      if (Buffer.byteLength(body) > 1024 * 1024) {
+        oversized = true;
+        body = "";
+        response.writeHead(413).end();
+      }
+    });
+    request.on("end", () => {
+      if (oversized) return;
+      try {
+        save(notificationPath, JSON.parse(body));
+        response.writeHead(204).end();
+      } catch {
+        response.writeHead(400).end();
+      }
+    });
+  }) : null;
   let stopping = false;
   let stopped;
   const completion = new Promise((resolveStop) => { stopped = resolveStop; });
@@ -152,6 +189,9 @@ async function serve() {
     const force = setTimeout(() => { for (const child of children) child.kill("SIGKILL"); }, 35000);
     await Promise.all(children.map((child) => child.finished));
     clearTimeout(force);
+    if (notificationServer?.listening) {
+      await new Promise((resolveClose) => notificationServer.close(resolveClose));
+    }
     unlinkSync(pidPath);
     stopped();
   };
@@ -167,6 +207,12 @@ async function serve() {
     return child;
   };
   try {
+    if (notificationServer) {
+      await new Promise((resolveListen, reject) => {
+        notificationServer.once("error", reject);
+        notificationServer.listen(settings.notificationPort, "127.0.0.1", resolveListen);
+      });
+    }
     launch(binary, ["serve", "--config", configPath], { cwd: root });
     await waitFor(async () => { if (stopping) throw new Error("API exited during startup."); return httpReady(settings.apiURL + "/readyz"); }, "API readiness");
     const tenant = run("bun", ["scripts/bootstrap-audit-environment.mjs"], { cwd: frontend,
@@ -197,7 +243,7 @@ async function start() {
   await mysqlReady();
   const databasePort = Number(inspect().NetworkSettings.Ports["3306/tcp"][0].HostPort);
   if (databasePort !== settings.databasePort) throw new Error("Docker changed the database port; refusing to use a stale database address.");
-  for (const port of [settings.apiPort, settings.webPort, settings.grpcPort]) {
+  for (const port of [settings.apiPort, settings.webPort, settings.grpcPort, settings.notificationPort].filter(Number.isInteger)) {
     if (await availablePort(port) !== port) throw new Error(`Port ${port} is occupied; stop the conflicting process before starting this UAT.`);
   }
   const log = openSync(join(directory, "uat.log"), "a", 0o600);

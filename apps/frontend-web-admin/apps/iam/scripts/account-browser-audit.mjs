@@ -47,7 +47,7 @@ try {
         await page.getByText("passkey_unavailable", { exact: true }).count(),
         0
       )
-      assert.equal(await page.locator("#tenant").count(), 0)
+      assert.equal(await page.locator('[aria-label="当前工作区"]').count(), 0)
       assert.equal(
         await page
           .getByRole("button", { name: "切换工作空间", exact: true })

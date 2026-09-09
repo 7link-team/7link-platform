@@ -559,7 +559,7 @@ if (directoryKind === "group") {
   await setInput("#group-name", dynamicName)
   await setInput("#group-description", "Computed acceptance directory group")
   await chooseOption("#group-type", "动态用户组")
-  await chooseOption("#group-rule-field-0", "主体 ID")
+  await chooseOption("#group-rule-field-0", "账号 ID")
   await setInput('input[aria-label="条件 1 值"]', principal.subject)
   dynamicRuleDialogDesktop = await capture(
     "admin-groups-dynamic-rule-desktop.png",

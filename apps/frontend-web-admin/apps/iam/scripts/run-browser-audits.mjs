@@ -33,9 +33,16 @@ for (const name of selected.length ? selected : audits) {
     browser = await chromium.launchPersistentContext(profile, {
       channel: process.env.IAM_BROWSER_CHANNEL ?? "chrome",
       headless: true,
+      locale: "zh-CN",
       args: ["--remote-debugging-port=0"],
     })
     const page = browser.pages()[0] ?? (await browser.newPage())
+    await browser.addInitScript(() => {
+      document.cookie = "NEXT_LOCALE=zh-CN; Path=/; SameSite=Lax"
+    })
+    await browser.addCookies([
+      { name: "NEXT_LOCALE", value: "zh-CN", url: baseURL },
+    ])
     const diagnostics = await browser.newCDPSession(page)
     await diagnostics.send("Runtime.enable")
     diagnostics.on("Runtime.consoleAPICalled", (event) => {

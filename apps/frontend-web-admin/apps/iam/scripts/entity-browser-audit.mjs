@@ -161,7 +161,7 @@ async function submit(formID) {
 async function openCreateDialog() {
   await evaluate(`
     const button = [...document.querySelectorAll("button")].find(
-      (item) => item.textContent.trim() === "创建实体"
+      (item) => item.textContent.trim() === "创建业务主体"
     );
     if (!(button instanceof HTMLButtonElement)) throw new Error("create button not found");
     button.click();
@@ -257,7 +257,7 @@ async function cleanupArtifacts() {
   `)
   await navigate(`/iam/entities?audit=${Date.now()}`)
   await waitFor(
-    `document.querySelector("tbody") && [...document.querySelectorAll("button")].some((item) => item.textContent.trim() === "创建实体")`
+    `document.querySelector("tbody") && [...document.querySelectorAll("button")].some((item) => item.textContent.trim() === "创建业务主体")`
   )
 }
 
@@ -373,10 +373,10 @@ await evaluate(`
 `)
 await waitFor(rowExpression(childName))
 
-await clickRowAction(rootName, "删除空实体")
+await clickRowAction(rootName, "删除空业务主体")
 await waitFor(`document.querySelector('[role="alert"]')`)
 
-await clickRowAction(childName, "编辑实体")
+await clickRowAction(childName, "编辑业务主体")
 await waitFor(`document.querySelector("#entity-form")`)
 await setInput("#entity-name", updatedName)
 await setInput(
@@ -438,7 +438,7 @@ await evaluate(`
 `)
 await clickRowAction(updatedName, "角色绑定")
 await waitFor(`document.querySelector("#entity-binding-form")`)
-await selectOption("#relationship-subject-type", "实体")
+await selectOption("#relationship-subject-type", "业务主体")
 await selectOption("#relationship-subject", rootName)
 await submit("entity-relationship-form")
 await waitFor(
@@ -640,7 +640,7 @@ await evaluate(`
 `)
 await waitFor(`!document.querySelector("#entity-binding-form")`)
 
-await clickRowAction(updatedName, "删除空实体")
+await clickRowAction(updatedName, "删除空业务主体")
 await waitFor(`document.querySelector('[role="alert"]')`)
 await clickRowAction(updatedName, "角色绑定")
 await waitFor(`document.querySelector("#entity-binding-form")`)
@@ -752,9 +752,9 @@ await evaluate(`
 await waitFor(`!document.querySelector("#entity-relationship-form")`)
 
 const desktopLayout = await screenshot("admin-entities-desktop.png", 1440, 1000)
-await clickRowAction(updatedName, "删除空实体")
+await clickRowAction(updatedName, "删除空业务主体")
 await waitFor(`!(${rowExpression(updatedName)})`)
-await clickRowAction(rootName, "删除空实体")
+await clickRowAction(rootName, "删除空业务主体")
 await waitFor(`!(${rowExpression(rootName)})`)
 
 state = await entities()
