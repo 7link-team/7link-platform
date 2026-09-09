@@ -4,6 +4,7 @@ import {
   BriefcaseBusiness,
   Pencil,
   Plus,
+  ShieldCheck,
   Trash2,
   UserRoundCog,
 } from "lucide-react"
@@ -29,6 +30,7 @@ import {
   TableRow,
 } from "@workspace/ui/components/table"
 import { Alert } from "../../components/alert"
+import { DirectoryRoleBindingsDialog } from "../../components/directory-role-bindings-dialog"
 import {
   DirectoryMembersDialog,
   type DirectoryMember,
@@ -51,6 +53,7 @@ export default function PositionsPage() {
   const [editingPosition, setEditingPosition] = useState<Position | null>(null)
   const [status, setStatus] = useState<PositionInput["status"]>("active")
   const [memberPosition, setMemberPosition] = useState<Position | null>(null)
+  const [rolePosition, setRolePosition] = useState<Position | null>(null)
   const [positionMembers, setPositionMembers] = useState<PositionMember[]>([])
   const [tenantMembers, setTenantMembers] = useState<Member[]>([])
   const [busy, setBusy] = useState(false)
@@ -190,7 +193,7 @@ export default function PositionsPage() {
               <TableHead>{t("sortOrder")}</TableHead>
               <TableHead>{t("status")}</TableHead>
               <TableHead>{t("version")}</TableHead>
-              <TableHead className="w-32 text-right">{t("actions")}</TableHead>
+              <TableHead className="w-40 text-right">{t("actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -224,6 +227,19 @@ export default function PositionsPage() {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={busy}
+                      onClick={() => setRolePosition(position)}
+                      aria-label={t("manageRoleBindings", {
+                        name: position.name,
+                      })}
+                      title={t("roleBindings")}
+                      data-manage-directory-roles="position"
+                    >
+                      <ShieldCheck />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -370,6 +386,15 @@ export default function PositionsPage() {
           onError={setError}
           onPut={putMember}
           onDelete={removeMember}
+        />
+      )}
+      {rolePosition && (
+        <DirectoryRoleBindingsDialog
+          open
+          itemName={rolePosition.name}
+          assigneeType="position"
+          assigneeID={rolePosition.id}
+          onClose={() => setRolePosition(null)}
         />
       )}
     </>

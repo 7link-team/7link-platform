@@ -26,6 +26,7 @@
   "resendNamed": "重新发送 {name}",
   "revokeNamed": "撤销 {name}",
   "manageRoleBindings": "管理{name}的角色绑定",
+  "directoryRolesDescription": "选择分配给此对象的租户角色；更改也会同步显示在角色页面。",
   "allTenantEntitiesExcept": "全租户范围，排除 {denied} 个业务主体",
   "allowedDeniedEntities": "允许 {allowed} 个业务主体，拒绝 {denied} 个业务主体",
   "accountCount": "{count} 个账号",

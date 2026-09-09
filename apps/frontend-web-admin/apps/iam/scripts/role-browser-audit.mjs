@@ -105,6 +105,26 @@ async function waitFor(source, timeout = 15000) {
   throw new Error(`Timed out waiting for: ${source}`)
 }
 
+async function waitForResponse(method, path, fromIndex, timeout = 15000) {
+  const deadline = Date.now() + timeout
+  while (Date.now() < deadline) {
+    const response = responses
+      .slice(fromIndex)
+      .find(
+        (candidate) =>
+          candidate.method === method &&
+          new URL(candidate.url).pathname === `/api${path}`
+      )
+    if (response) {
+      if (response.status < 200 || response.status >= 300)
+        throw new Error(`${method} ${path} failed with ${response.status}`)
+      return
+    }
+    await Bun.sleep(100)
+  }
+  throw new Error(`Timed out waiting for: ${method} ${path}`)
+}
+
 async function navigate(path) {
   await command("Page.navigate", { url: `${baseURL}${path}` })
   await waitFor(`document.readyState === "complete"`)
@@ -250,6 +270,46 @@ async function capture(name, width, height, focusSelector = "") {
   return layout
 }
 
+async function captureDirectoryRoles(name, width, height, kind, roleID) {
+  await command("Emulation.setDeviceMetricsOverride", {
+    width,
+    height,
+    deviceScaleFactor: 1,
+    mobile: width < 600,
+  })
+  await Bun.sleep(250)
+  const layout = await evaluate(`
+    const dialog = document.querySelector('[data-directory-role-dialog=${JSON.stringify(kind)}]');
+    const checkbox = document.querySelector('[data-directory-role-id=${JSON.stringify(roleID)}]');
+    const rect = dialog?.getBoundingClientRect();
+    return {
+      width: innerWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+      horizontalOverflow: document.documentElement.scrollWidth > innerWidth,
+      dialogVisible: Boolean(dialog && rect && rect.width > 0 && rect.height > 0),
+      dialogWithinViewport: Boolean(rect && rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight),
+      roleChecked: checkbox?.getAttribute("aria-checked") === "true",
+    };
+  `)
+  if (
+    layout.horizontalOverflow ||
+    !layout.dialogVisible ||
+    !layout.dialogWithinViewport ||
+    !layout.roleChecked
+  )
+    throw new Error(`${name} layout failed: ${JSON.stringify(layout)}`)
+  const screenshot = await command("Page.captureScreenshot", {
+    format: "png",
+    fromSurface: true,
+    captureBeyondViewport: false,
+  })
+  await Bun.write(
+    new URL(name, screenshotRoot),
+    Buffer.from(screenshot.data, "base64")
+  )
+  return layout
+}
+
 await Promise.all([
   command("Network.enable"),
   command("Page.enable"),
@@ -332,7 +392,13 @@ await evaluate(`${selectedDepartmentsOption}.click()`)
 const departmentSelector = `[data-scope-department-id=${JSON.stringify(department.id)}]`
 await waitFor(`document.querySelector(${JSON.stringify(departmentSelector)})`)
 await click(departmentSelector)
+const dataScopeResponseIndex = responses.length
 await click("[data-save-data-scope]")
+await waitForResponse(
+  "PUT",
+  `/iam/roles/${encodeURIComponent(role.id)}/data-scope`,
+  dataScopeResponseIndex
+)
 await waitFor(
   `document.querySelector(${JSON.stringify(departmentSelector)})?.getAttribute("aria-checked") === "true"`
 )
@@ -408,6 +474,83 @@ if (
 )
   throw new Error("directory bindings did not persist")
 
+const reverseLayouts = []
+for (const [kind, item, path] of [
+  ["group", group, "/iam/groups"],
+  ["position", position, "/iam/positions"],
+]) {
+  await navigate(path)
+  await waitFor(`document.querySelector("h1")`)
+  const manageButton = `[...document.querySelectorAll("tr")].find((row) => row.textContent.includes(${JSON.stringify(item.name)}))?.querySelector('[data-manage-directory-roles=${JSON.stringify(kind)}]')`
+  await waitFor(manageButton)
+  await evaluate(`${manageButton}.click()`)
+  const reverseSelector = `[data-directory-role-id=${JSON.stringify(role.id)}]`
+  await waitFor(
+    `document.querySelector(${JSON.stringify(reverseSelector)})?.getAttribute("aria-checked") === "true"`
+  )
+  await click(reverseSelector)
+  await waitFor(
+    `document.querySelector(${JSON.stringify(reverseSelector)})?.getAttribute("aria-checked") === "false"`
+  )
+  const removedBindings = await api(
+    `/iam/roles/${encodeURIComponent(role.id)}/directory-bindings`
+  )
+  if (
+    removedBindings.some(
+      (binding) =>
+        binding.assignee_type === kind && binding.assignee_id === item.id
+    )
+  )
+    throw new Error(`${kind} reverse role removal did not persist`)
+  await click(reverseSelector)
+  await waitFor(
+    `document.querySelector(${JSON.stringify(reverseSelector)})?.getAttribute("aria-checked") === "true"`
+  )
+  const restoredBindings = await api(
+    `/iam/roles/${encodeURIComponent(role.id)}/directory-bindings`
+  )
+  if (
+    !restoredBindings.some(
+      (binding) =>
+        binding.assignee_type === kind && binding.assignee_id === item.id
+    )
+  )
+    throw new Error(`${kind} reverse role assignment did not persist`)
+  reverseLayouts.push(
+    await captureDirectoryRoles(
+      `${kind}-role-bindings-desktop.png`,
+      1440,
+      1000,
+      kind,
+      role.id
+    ),
+    await captureDirectoryRoles(
+      `${kind}-role-bindings-mobile.png`,
+      390,
+      844,
+      kind,
+      role.id
+    )
+  )
+  await command("Emulation.setDeviceMetricsOverride", {
+    width: 1440,
+    height: 1000,
+    deviceScaleFactor: 1,
+    mobile: false,
+  })
+  await click("[data-close-directory-roles]")
+  await waitFor(`!document.querySelector("[data-directory-role-dialog]")`)
+}
+
+await navigate("/iam/roles")
+await waitFor(`document.querySelector("h1")`)
+const roleButton = `[...document.querySelectorAll("button strong")].find((item) => item.textContent.trim() === ${JSON.stringify(roleName)})?.closest("button")`
+await waitFor(roleButton)
+await evaluate(`${roleButton}.click()`)
+await waitFor(
+  `[...document.querySelectorAll("h2")].some((item) => item.textContent.trim() === ${JSON.stringify(roleName)})`
+)
+
 const groupDelete = await apiRaw(
   `/iam/groups/${encodeURIComponent(group.id)}?version=${group.version}`,
   { method: "DELETE" }
@@ -469,8 +612,8 @@ for (const type of [
   const count = audit.filter(
     (event) => event.event_type === type && event.target_id === role.id
   ).length
-  if (count !== 2)
-    throw new Error(`expected two ${type} audit events, got ${count}`)
+  if (count !== 4)
+    throw new Error(`expected four ${type} audit events, got ${count}`)
 }
 const scopeAuditCount = audit.filter(
   (event) =>
@@ -514,7 +657,8 @@ console.log(
       positionID: position.id,
       departmentID: department.id,
       layouts,
-      auditEvents: 7,
+      reverseLayouts,
+      auditEvents: 11,
       consoleErrors,
       failedRequests: unexpectedFailures,
       unexpectedResponses,

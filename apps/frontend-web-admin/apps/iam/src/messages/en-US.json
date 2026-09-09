@@ -26,6 +26,7 @@
   "resendNamed": "Resend {name}",
   "revokeNamed": "Revoke {name}",
   "manageRoleBindings": "Manage role bindings for {name}",
+  "directoryRolesDescription": "Select the tenant roles assigned to this item. Changes are also reflected on the Roles page.",
   "allTenantEntitiesExcept": "Tenant-wide scope, excluding {denied} entities",
   "allowedDeniedEntities": "{allowed} entities allowed, {denied} denied",
   "accountCount": "{count} accounts",

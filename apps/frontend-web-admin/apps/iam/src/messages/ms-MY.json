@@ -26,6 +26,7 @@
   "resendNamed": "Hantar semula {name}",
   "revokeNamed": "Batalkan {name}",
   "manageRoleBindings": "Urus pengikatan peranan untuk {name}",
+  "directoryRolesDescription": "Pilih peranan penyewa yang ditugaskan kepada item ini. Perubahan turut dipaparkan pada halaman Peranan.",
   "allTenantEntitiesExcept": "Skop seluruh penyewa, tidak termasuk {denied} entiti",
   "allowedDeniedEntities": "{allowed} entiti dibenarkan, {denied} ditolak",
   "accountCount": "{count} akaun",

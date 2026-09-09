@@ -4,6 +4,7 @@ import {
   Eye,
   Pencil,
   Plus,
+  ShieldCheck,
   Trash2,
   UserRoundCog,
   UsersRound,
@@ -31,6 +32,7 @@ import {
 } from "@workspace/ui/components/table"
 import { Textarea } from "@workspace/ui/components/textarea"
 import { Alert } from "../../components/alert"
+import { DirectoryRoleBindingsDialog } from "../../components/directory-role-bindings-dialog"
 import {
   DirectoryMembersDialog,
   type DirectoryMember,
@@ -72,6 +74,7 @@ export default function GroupsPage() {
     newRuleCondition(),
   ])
   const [memberGroup, setMemberGroup] = useState<Group | null>(null)
+  const [roleGroup, setRoleGroup] = useState<Group | null>(null)
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([])
   const [tenantMembers, setTenantMembers] = useState<Member[]>([])
   const [busy, setBusy] = useState(false)
@@ -246,7 +249,7 @@ export default function GroupsPage() {
               <TableHead>{t("sortOrder")}</TableHead>
               <TableHead>{t("status")}</TableHead>
               <TableHead>{t("version")}</TableHead>
-              <TableHead className="w-32 text-right">{t("actions")}</TableHead>
+              <TableHead className="w-40 text-right">{t("actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -283,6 +286,17 @@ export default function GroupsPage() {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={busy}
+                      onClick={() => setRoleGroup(group)}
+                      aria-label={t("manageRoleBindings", { name: group.name })}
+                      title={t("roleBindings")}
+                      data-manage-directory-roles="group"
+                    >
+                      <ShieldCheck />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -560,6 +574,15 @@ export default function GroupsPage() {
           onError={setError}
           onPut={putMember}
           onDelete={removeMember}
+        />
+      )}
+      {roleGroup && (
+        <DirectoryRoleBindingsDialog
+          open
+          itemName={roleGroup.name}
+          assigneeType="group"
+          assigneeID={roleGroup.id}
+          onClose={() => setRoleGroup(null)}
         />
       )}
     </>
