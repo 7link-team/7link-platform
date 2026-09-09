@@ -1495,6 +1495,23 @@ export interface paths {
         patch: operations["iam-update-tenant-member"];
         trace?: never;
     };
+    "/iam/members/{subject}/authorization-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List effective authorization sources for a tenant member */
+        get: operations["iam-list-member-authorization-sources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/iam/members/{subject}/roles": {
         parameters: {
             query?: never;
@@ -3052,6 +3069,37 @@ export interface components {
             principal_id: string;
             role_id: string;
         };
+        APIMemberAuthorizationSnapshot: {
+            /** Format: date-time */
+            evaluated_at: string;
+            /** Format: int64 */
+            revision: number;
+            sources: components["schemas"]["APIMemberAuthorizationSource"][] | null;
+            subject: string;
+        };
+        APIMemberAuthorizationSource: {
+            /** @enum {string} */
+            data_scope?: "all" | "self" | "department" | "department_and_descendants" | "selected_departments";
+            department_ids: string[] | null;
+            /** @enum {string} */
+            effect: "allow" | "deny";
+            /** Format: date-time */
+            expires_at?: string;
+            inherited: boolean;
+            permission_codes: string[] | null;
+            /** @enum {string} */
+            relation?: "owner" | "editor" | "viewer";
+            relationship_path: components["schemas"]["RelationshipStep"][] | null;
+            role_id?: string;
+            role_name?: string;
+            scope_id: string;
+            scope_name?: string;
+            scope_type: string;
+            source_id: string;
+            source_name?: string;
+            /** @enum {string} */
+            type: "permanent_role" | "temporary_role" | "static_group" | "dynamic_group" | "position" | "entity_binding" | "relationship";
+        };
         APIMenu: {
             /** Format: date-time */
             created_at: string;
@@ -3810,6 +3858,19 @@ export interface components {
             code: number;
             /** @description response payload; null on error */
             data: components["schemas"]["APIEntityRoleBinding"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeAPIMemberAuthorizationSnapshot: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["APIMemberAuthorizationSnapshot"];
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -15049,6 +15110,94 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnvelopeAPITenantMember"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "iam-list-member-authorization-sources": {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id": string;
+            };
+            path: {
+                subject: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeAPIMemberAuthorizationSnapshot"];
                 };
             };
             /** @description Unauthorized */

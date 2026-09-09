@@ -107,7 +107,12 @@ func TestOrganizationModuleResolvesServicesAndProvidesGroupProvisioner(t *testin
 			if err := module.Provide[core.AdministratorGuard](services, guard); err != nil {
 				return err
 			}
-			return module.Provide[core.TenantBootstrapper](services, newTenantBootstrapStub().capability())
+			if err := module.Provide[core.TenantBootstrapper](services, newTenantBootstrapStub().capability()); err != nil {
+				return err
+			}
+			return module.Provide[core.DirectoryAuthorizationSourceConnector](services, core.DirectoryAuthorizationSourceConnector{
+				Bind: func(core.DirectoryAuthorizationSourceStore) error { return nil },
+			})
 		}},
 		&organizationDependencyProvider{name: authn.Name, provide: func(services *module.Services) error {
 			return module.Provide[authn.InvitationCredentials](services, credentials)

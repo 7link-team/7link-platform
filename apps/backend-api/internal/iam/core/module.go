@@ -100,6 +100,11 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[MemberTenantResolver](services, m.members.ResolveTenant); err != nil {
 		return fmt.Errorf("provide IAM member tenant resolver: %w", err)
 	}
+	if err := module.Provide[DirectoryAuthorizationSourceConnector](services, DirectoryAuthorizationSourceConnector{
+		Bind: m.checker.BindDirectoryAuthorizationSources,
+	}); err != nil {
+		return fmt.Errorf("provide IAM directory authorization source connector: %w", err)
+	}
 	return nil
 }
 

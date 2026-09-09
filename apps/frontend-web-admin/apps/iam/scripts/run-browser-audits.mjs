@@ -12,6 +12,7 @@ const audits = [
   "entity",
   "tenant",
   "role",
+  "member-authorization",
   "invitation",
   "access-request",
   "access-review",

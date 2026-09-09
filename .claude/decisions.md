@@ -1099,3 +1099,26 @@ shell 重新分词，`mysql` 收到 `--execute=GRANT` 加散落参数，打印�
 重新记录保留决策、停用并擦除后，数据库证据恢复且外部对象未被覆盖。恢复还必须重建 dump 所载
 触发器的 definer 身份与权限；仅成功导入触发器不代表其可执行。删除标记后的重试还必须先搜索并
 验证全部对象版本，不能因当前版本不可见而发布第二份义务。证据见恢复 runbook。
+
+## D31 — UI-03 展示元数据使用生成查询，不扩展授权原始 SQL
+
+**Decision**
+人员授权来源仍复用 `Authorizer` 的既有授权计算结果。UI-03 新增的临时角色和业务主体绑定
+有效期由 core 通过 `core/query.Bind` 读取；静态组、岗位和角色部门范围由 organization 模块通过
+`organization/query.Bind` 读取，再经 core 提供的窄连接契约装配。时间窗用同一个 UTC 毫秒
+`EvaluatedAt` 在 Go 中判断。不得为展示字段扩展 `effectiveRolesCTE` 或递归主体授权 SQL，也不得
+复制授权优先级或让 core 直接导入 organization 的 model/query 包。
+
+**Reason**
+授权器中的 CTE 是历史核心计算路径；把仅供界面展示的 `expires_at` 加入不同分支的 `UNION` 和
+递归列会扩大原始 SQL 契约，并把数据库日期类型推导差异带入 MySQL、PostgreSQL、SQLite。
+生成查询对表、列和结果模型提供编译期约束，同时保持来源是否生效仍由唯一授权器决定。
+
+**Tradeoffs**
+每次授权来源快照固定增加四次有界查询，但不产生按来源逐行查询。修订号前后检查覆盖这些读取，
+并发变更仍会使快照重试。历史授权器原始 SQL 不在 UI-03 范围内重写。
+
+**Scope / Status**
+`internal/iam/core/member_authorization.go`、organization 授权来源读取适配器及三方言针对性测试。
+SQLite、PostgreSQL 16 无前缀/带前缀及真实 MySQL 8.4 浏览器验收均已通过；最终 `make ci`
+通过，总覆盖率 90.1%，core 90.2%，organization 90.1%。

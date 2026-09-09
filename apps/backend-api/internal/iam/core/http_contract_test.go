@@ -64,6 +64,7 @@ iam-create-tenant-member|POST|/iam/members
 iam-get-tenant-member|GET|/iam/members/{subject}
 iam-update-tenant-member|PATCH|/iam/members/{subject}
 iam-list-tenant-member-roles|GET|/iam/members/{subject}/roles
+iam-list-member-authorization-sources|GET|/iam/members/{subject}/authorization-sources
 iam-list-menus|GET|/iam/menus
 iam-create-menu|POST|/iam/menus
 iam-get-menu|GET|/iam/menus/{menu_id}
@@ -83,13 +84,13 @@ func TestCoreRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 56)
+	require.Len(t, got, 57)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
 func TestCoreOpenAPISelectorsAndParametersAreConsistent(t *testing.T) {
 	spec := declarationAPI(t).OpenAPI()
-	operationIDs := make(map[string]string, 56)
+	operationIDs := make(map[string]string, 57)
 	pathParameter := regexp.MustCompile(`\{([^}]+)\}`)
 
 	for path, item := range spec.Paths {
@@ -226,13 +227,14 @@ func TestCoreOpenAPIUsesOneErrorEnvelopeAndDeclaresDomainStatuses(t *testing.T) 
 	}
 
 	expected := map[string][]string{
-		"iam-add-role-member":          {"404", "409", "422"},
-		"iam-create-tenant-member":     {"404", "409", "422"},
-		"iam-list-tenant-member-roles": {"404", "422"},
-		"iam-create-menu":              {"409", "422"},
-		"iam-get-menu":                 {"404", "422"},
-		"iam-update-menu":              {"404", "409", "422"},
-		"iam-delete-menu":              {"404", "409", "422"},
+		"iam-add-role-member":                   {"404", "409", "422"},
+		"iam-create-tenant-member":              {"404", "409", "422"},
+		"iam-list-tenant-member-roles":          {"404", "422"},
+		"iam-list-member-authorization-sources": {"404", "409", "422"},
+		"iam-create-menu":                       {"409", "422"},
+		"iam-get-menu":                          {"404", "422"},
+		"iam-update-menu":                       {"404", "409", "422"},
+		"iam-delete-menu":                       {"404", "409", "422"},
 	}
 	for _, item := range spec.Paths {
 		for _, operation := range pathOperations(item) {

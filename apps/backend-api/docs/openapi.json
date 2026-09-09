@@ -96,6 +96,155 @@
         ],
         "type": "object"
       },
+      "APIMemberAuthorizationSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "evaluated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/APIMemberAuthorizationSource"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "subject": {
+            "maxLength": 19,
+            "pattern": "^[1-9][0-9]*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "revision",
+          "evaluated_at",
+          "sources"
+        ],
+        "type": "object"
+      },
+      "APIMemberAuthorizationSource": {
+        "additionalProperties": false,
+        "properties": {
+          "data_scope": {
+            "enum": [
+              "all",
+              "self",
+              "department",
+              "department_and_descendants",
+              "selected_departments"
+            ],
+            "type": "string"
+          },
+          "department_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "effect": {
+            "enum": [
+              "allow",
+              "deny"
+            ],
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "inherited": {
+            "type": "boolean"
+          },
+          "permission_codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "relation": {
+            "enum": [
+              "owner",
+              "editor",
+              "viewer"
+            ],
+            "type": "string"
+          },
+          "relationship_path": {
+            "items": {
+              "$ref": "#/components/schemas/RelationshipStep"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "role_id": {
+            "maxLength": 19,
+            "pattern": "^[1-9][0-9]*$",
+            "type": "string"
+          },
+          "role_name": {
+            "type": "string"
+          },
+          "scope_id": {
+            "maxLength": 19,
+            "pattern": "^[1-9][0-9]*$",
+            "type": "string"
+          },
+          "scope_name": {
+            "type": "string"
+          },
+          "scope_type": {
+            "type": "string"
+          },
+          "source_id": {
+            "maxLength": 19,
+            "pattern": "^[1-9][0-9]*$",
+            "type": "string"
+          },
+          "source_name": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "permanent_role",
+              "temporary_role",
+              "static_group",
+              "dynamic_group",
+              "position",
+              "entity_binding",
+              "relationship"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "source_id",
+          "permission_codes",
+          "effect",
+          "scope_type",
+          "scope_id",
+          "department_ids",
+          "inherited",
+          "relationship_path"
+        ],
+        "type": "object"
+      },
       "APIMenu": {
         "additionalProperties": false,
         "properties": {
@@ -2879,6 +3028,35 @@
           },
           "data": {
             "$ref": "#/components/schemas/APIEntityRoleBinding",
+            "description": "response payload; null on error"
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
+      "EnvelopeAPIMemberAuthorizationSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/APIMemberAuthorizationSnapshot",
             "description": "response payload; null on error"
           },
           "message": {
@@ -22753,6 +22931,129 @@
           "iam"
         ],
         "x-authz-permission": "user_update"
+      }
+    },
+    "/iam/members/{subject}/authorization-sources": {
+      "get": {
+        "operationId": "iam-list-member-authorization-sources",
+        "parameters": [
+          {
+            "description": "Tenant authorization boundary",
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "subject",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeAPIMemberAuthorizationSnapshot"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List effective authorization sources for a tenant member",
+        "tags": [
+          "iam"
+        ],
+        "x-authz-permission": "role_view"
       }
     },
     "/iam/members/{subject}/roles": {

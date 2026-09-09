@@ -119,6 +119,9 @@ func verifyCoreServiceBehavior(t *testing.T, datasourceType, dsn, prefix string)
 	ids.next.Store(91_000)
 	repository := iamcore.NewRepository(runtime, ids)
 	authorizer := iamcore.NewAuthorizer(runtime)
+	require.NoError(t, authorizer.BindDirectoryAuthorizationSources(
+		organization.NewDirectoryAuthorizationSourceStore(runtime),
+	))
 	service := iamcore.NewService(
 		authz.DefaultRegistry(), repository, authorizer,
 		func(context.Context, *gorm.DB, iamaudit.DomainEvent) error { return nil },
@@ -139,6 +142,7 @@ func verifyCoreServiceBehavior(t *testing.T, datasourceType, dsn, prefix string)
 		t.Context(), tenantID, principalID, "Relationship Member", "relationship@example.test", 0, iamcore.MemberActive,
 	)
 	require.NoError(t, err)
+	verifyMemberAuthorizationSourceExpiries(t, db, service, repository, prefix, tenantID, principalID, now)
 	first, err := service.CreateEntity(t.Context(), iamcore.Entity{
 		TenantID: tenantID, Type: "store", Name: "First", Status: iamcore.EntityActive,
 	})
@@ -181,6 +185,82 @@ func verifyCoreServiceBehavior(t *testing.T, datasourceType, dsn, prefix string)
 	advanced, err := revisions.Current(t.Context(), db, tenantID)
 	require.NoError(t, err)
 	assert.Equal(t, current+2, advanced)
+}
+
+func verifyMemberAuthorizationSourceExpiries(
+	t *testing.T,
+	db *gorm.DB,
+	service *iamcore.Service,
+	repository *iamcore.Repository,
+	prefix string,
+	tenantID, principalID guid.ID,
+	now time.Time,
+) {
+	t.Helper()
+	windowNow := time.Now().UTC().Truncate(time.Millisecond)
+	createRole := func(name, permission string) iamcore.Role {
+		role, err := service.CreateRole(t.Context(), tenantID, name, "")
+		require.NoError(t, err)
+		_, err = service.GrantPermission(t.Context(), tenantID, role.ID, permission)
+		require.NoError(t, err)
+		return role
+	}
+	temporaryRole := createRole("Temporary source", "menu_view")
+	groupRole := createRole("Group source", "group_view")
+	positionRole := createRole("Position source", "position_view")
+	entityRole := createRole("Entity source", "entity_view")
+
+	temporaryEnd := windowNow.Add(2 * time.Hour)
+	require.NoError(t, repository.GrantTemporaryRole(
+		t.Context(), tenantID, 99_001, temporaryRole.ID, principalID, principalID,
+		windowNow.Add(-time.Hour), temporaryEnd,
+	))
+	groupEnd := windowNow.Add(3 * time.Hour)
+	require.NoError(t, db.Exec(
+		"INSERT INTO "+prefix+"iam_groups (tenant_id, id, name, name_key, group_type, rule_json, description, status, sort_order, version, created_at, updated_at) VALUES (?, 92001, 'Reviewers', 'reviewers', 'static', '{}', '', 'active', 0, 1, ?, ?)",
+		tenantID, now, now,
+	).Error)
+	require.NoError(t, db.Exec(
+		"INSERT INTO "+prefix+"iam_group_members (tenant_id, group_id, principal_id, starts_at, ends_at, created_at, updated_at) VALUES (?, 92001, ?, ?, ?, ?, ?)",
+		tenantID, principalID, windowNow.Add(-time.Hour), groupEnd, now, now,
+	).Error)
+	_, err := service.AddDirectoryBinding(t.Context(), tenantID, groupRole.ID, iamcore.DirectoryAssigneeGroup, 92_001)
+	require.NoError(t, err)
+
+	positionEnd := windowNow.Add(4 * time.Hour)
+	require.NoError(t, db.Exec(
+		"INSERT INTO "+prefix+"iam_positions (tenant_id, id, code, name, status, sort_order, version, created_at, updated_at) VALUES (?, 93001, 'reviewer', 'Reviewer', 'active', 0, 1, ?, ?)",
+		tenantID, now, now,
+	).Error)
+	require.NoError(t, db.Exec(
+		"INSERT INTO "+prefix+"iam_position_members (tenant_id, position_id, principal_id, starts_at, ends_at, created_at, updated_at) VALUES (?, 93001, ?, ?, ?, ?, ?)",
+		tenantID, principalID, windowNow.Add(-time.Hour), positionEnd, now, now,
+	).Error)
+	_, err = service.AddDirectoryBinding(t.Context(), tenantID, positionRole.ID, iamcore.DirectoryAssigneePosition, 93_001)
+	require.NoError(t, err)
+
+	entity, err := service.CreateEntity(t.Context(), iamcore.Entity{
+		TenantID: tenantID, Type: "store", Name: "Expiry scope", Status: iamcore.EntityActive,
+	})
+	require.NoError(t, err)
+	entityEnd := windowNow.Add(5 * time.Hour)
+	_, _, err = service.PutEntityRoleBinding(
+		t.Context(), tenantID, entity.ID, entityRole.ID, principalID, iamcore.BindingAllow, entityEnd,
+	)
+	require.NoError(t, err)
+
+	snapshot, err := service.ListMemberAuthorizationSources(t.Context(), tenantID, principalID)
+	require.NoError(t, err)
+	expiries := map[iamcore.MemberAuthorizationSourceType]time.Time{}
+	for _, source := range snapshot.Sources {
+		if source.ExpiresAt != nil {
+			expiries[source.Type] = *source.ExpiresAt
+		}
+	}
+	assert.Equal(t, temporaryEnd, expiries[iamcore.AuthorizationSourceTemporaryRole])
+	assert.Equal(t, groupEnd, expiries[iamcore.AuthorizationSourceStaticGroup])
+	assert.Equal(t, positionEnd, expiries[iamcore.AuthorizationSourcePosition])
+	assert.Equal(t, entityEnd, expiries[iamcore.AuthorizationSourceEntityBinding])
 }
 
 func verifyCoreRelationshipTraversalIndex(t *testing.T, db *sql.DB, prefix, dialect string) {

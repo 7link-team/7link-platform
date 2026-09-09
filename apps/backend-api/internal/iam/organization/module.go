@@ -30,22 +30,23 @@ type Config struct {
 }
 
 type Module struct {
-	config          Config
-	service         *Service
-	tenants         *TenantService
-	positions       *PositionService
-	groups          *GroupService
-	invitations     *InvitationService
-	runtime         *appenv.Runtime
-	registrar       *authz.Registrar
-	members         core.ActiveMemberChecker
-	administrators  core.AdministratorGuard
-	credentials     authn.InvitationCredentials
-	createPrincipal identity.InvitationPrincipalCreator
-	ids             guid.Source
-	appender        audit.Appender
-	bootstrap       core.TenantBootstrapper
-	owners          identity.TenantOwnerLookup
+	config           Config
+	service          *Service
+	tenants          *TenantService
+	positions        *PositionService
+	groups           *GroupService
+	invitations      *InvitationService
+	runtime          *appenv.Runtime
+	registrar        *authz.Registrar
+	members          core.ActiveMemberChecker
+	administrators   core.AdministratorGuard
+	credentials      authn.InvitationCredentials
+	createPrincipal  identity.InvitationPrincipalCreator
+	ids              guid.Source
+	appender         audit.Appender
+	bootstrap        core.TenantBootstrapper
+	owners           identity.TenantOwnerLookup
+	directorySources core.DirectoryAuthorizationSourceConnector
 }
 
 // NewModule builds a runnable organization module. Shared capabilities are
@@ -112,11 +113,22 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve organization tenant owner lookup: %w", err)
 	}
+	directorySources, err := module.Resolve[core.DirectoryAuthorizationSourceConnector](services)
+	if err != nil {
+		return fmt.Errorf("resolve organization directory authorization source connector: %w", err)
+	}
+	if directorySources.Bind == nil {
+		return errors.New("resolve organization directory authorization source connector: bind is required")
+	}
+	if err := directorySources.Bind(NewDirectoryAuthorizationSourceStore(m.runtime)); err != nil {
+		return fmt.Errorf("bind organization directory authorization sources: %w", err)
+	}
 	m.registrar = registrar
 	m.bootstrap, m.owners = bootstrap, owners
 	m.members, m.administrators = members, administrators
 	m.credentials, m.createPrincipal = credentials, createPrincipal
 	m.ids, m.appender = ids, appender
+	m.directorySources = directorySources
 	return nil
 }
 

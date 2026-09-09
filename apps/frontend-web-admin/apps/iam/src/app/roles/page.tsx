@@ -652,7 +652,7 @@ export default function RolesPage() {
                       </h3>
                       <Button variant="ghost" size="sm" asChild>
                         <Link
-                          to="/iam/principals"
+                          to="/iam/users"
                           data-role-directory-link="account"
                         >
                           <ExternalLink />

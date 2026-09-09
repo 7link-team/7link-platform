@@ -6,7 +6,18 @@ import {
   useState,
   type FormEvent,
 } from "react"
-import { Pencil, Plus, Search, ShieldAlert, UserRoundCheck } from "lucide-react"
+import {
+  Building2,
+  GitBranch,
+  KeyRound,
+  Loader2,
+  Pencil,
+  Plus,
+  Search,
+  ShieldAlert,
+  ShieldCheck,
+  UserRoundCheck,
+} from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -20,6 +31,13 @@ import {
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { SimpleSelect } from "@workspace/ui/components/select"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@workspace/ui/components/sheet"
 import {
   Table,
   TableBody,
@@ -37,6 +55,8 @@ import {
   type Department,
   type FieldConstraint,
   type Member,
+  type MemberAuthorizationSnapshot,
+  type MemberAuthorizationSource,
   type Principal,
 } from "../../lib/iam-api"
 
@@ -134,6 +154,26 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
     }
   }
   const [lifecycle, setLifecycle] = useState<Principal | null>(null)
+  const [authorizationPrincipal, setAuthorizationPrincipal] =
+    useState<Principal | null>(null)
+  const [authorization, setAuthorization] =
+    useState<MemberAuthorizationSnapshot | null>(null)
+  const [authorizationBusy, setAuthorizationBusy] = useState(false)
+  const [authorizationError, setAuthorizationError] = useState("")
+
+  const inspectAuthorization = async (principal: Principal) => {
+    setAuthorizationPrincipal(principal)
+    setAuthorization(null)
+    setAuthorizationError("")
+    setAuthorizationBusy(true)
+    try {
+      setAuthorization(await iamApi.memberAuthorizationSources(principal.id))
+    } catch (cause) {
+      setAuthorizationError((cause as Error).message)
+    } finally {
+      setAuthorizationBusy(false)
+    }
+  }
   const editingMembership = editing
     ? members.find((member) => member.subject === editing.id)
     : undefined
@@ -196,7 +236,7 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
               <TableHead>{t("status")}</TableHead>
               <TableHead>{t("primaryDepartment")}</TableHead>
               <TableHead>{t("updatedAt")}</TableHead>
-              <TableHead className="w-44 text-right">{t("actions")}</TableHead>
+              <TableHead className="w-56 text-right">{t("actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -266,6 +306,22 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={busy}
+                      data-view-authorization-sources={principal.id}
+                      onClick={() => void inspectAuthorization(principal)}
+                      aria-label={t("viewNamedAuthorizationSources", {
+                        name:
+                          principal.display_name ||
+                          principal.login_name ||
+                          principal.id,
+                      })}
+                      title={t("authorizationSources")}
+                    >
+                      <ShieldCheck />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -438,6 +494,16 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
         </DialogContent>
       </Dialog>
 
+      <AuthorizationSourcesSheet
+        principal={authorizationPrincipal}
+        snapshot={authorization}
+        departments={departments}
+        locale={locale}
+        busy={authorizationBusy}
+        error={authorizationError}
+        onClose={() => setAuthorizationPrincipal(null)}
+      />
+
       <PrincipalLifecycleDialog
         key={lifecycle?.id ?? "none"}
         principal={lifecycle}
@@ -448,6 +514,280 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
         }}
       />
     </>
+  )
+}
+
+function AuthorizationSourcesSheet({
+  principal,
+  snapshot,
+  departments,
+  locale,
+  busy,
+  error,
+  onClose,
+}: {
+  principal: Principal | null
+  snapshot: MemberAuthorizationSnapshot | null
+  departments: Department[]
+  locale: string
+  busy: boolean
+  error: string
+  onClose: () => void
+}) {
+  const t = useTranslations("iam")
+  const sources = snapshot?.sources ?? []
+  const sections = [
+    {
+      key: "roles",
+      title: t("roleAuthorizationSources"),
+      icon: KeyRound,
+      sources: sources.filter((source) =>
+        [
+          "permanent_role",
+          "temporary_role",
+          "static_group",
+          "dynamic_group",
+          "position",
+        ].includes(source.type)
+      ),
+    },
+    {
+      key: "entities",
+      title: t("entityAuthorizationSources"),
+      icon: Building2,
+      sources: sources.filter((source) => source.type === "entity_binding"),
+    },
+    {
+      key: "relationships",
+      title: t("relationshipAuthorizationSources"),
+      icon: GitBranch,
+      sources: sources.filter((source) => source.type === "relationship"),
+    },
+  ].filter((section) => section.sources.length > 0)
+  const departmentByID = new Map(
+    departments.map((department) => [department.id, department.name])
+  )
+
+  const sourceTypeLabel = (source: MemberAuthorizationSource) =>
+    t(
+      {
+        permanent_role: "directRoleSource",
+        temporary_role: "temporaryRoleSource",
+        static_group: "staticGroupSource",
+        dynamic_group: "dynamicGroupSource",
+        position: "positionRoleSource",
+        entity_binding: "entityRoleSource",
+        relationship: "resourceRelationshipSource",
+      }[source.type]
+    )
+  const dataScopeLabel = (source: MemberAuthorizationSource) =>
+    source.data_scope
+      ? t(
+          {
+            all: "allData",
+            self: "ownData",
+            department: "ownDepartment",
+            department_and_descendants: "departmentDescendants",
+            selected_departments: "selectedDepartments",
+          }[source.data_scope]
+        )
+      : ""
+
+  return (
+    <Sheet
+      open={Boolean(principal)}
+      onOpenChange={(open) => !open && onClose()}
+    >
+      <SheetContent
+        side="right"
+        className="w-full overflow-hidden sm:max-w-3xl"
+        data-authorization-sources-sheet
+      >
+        <SheetHeader className="border-b pr-12 pb-5">
+          <SheetTitle>{t("authorizationSources")}</SheetTitle>
+          <SheetDescription className="break-words">
+            {principal
+              ? t("authorizationSourcesFor", {
+                  name:
+                    principal.display_name ||
+                    principal.login_name ||
+                    principal.id,
+                })
+              : ""}
+          </SheetDescription>
+        </SheetHeader>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          {busy && (
+            <div className="grid min-h-48 place-items-center text-sm text-muted-foreground">
+              <span className="flex items-center gap-2">
+                <Loader2 className="size-4 animate-spin" />
+                {t("loadingAuthorizationSources")}
+              </span>
+            </div>
+          )}
+          {!busy && error && <Alert>{error}</Alert>}
+          {!busy && snapshot && (
+            <>
+              <div className="mb-5 flex flex-wrap gap-x-5 gap-y-1 border-b pb-4 text-xs text-muted-foreground">
+                <span>
+                  {t("authorizationSourceCount", { count: sources.length })}
+                </span>
+                <span>
+                  {t("policyVersion")} {snapshot.revision}
+                </span>
+                <span>
+                  {t("evaluatedAt")}{" "}
+                  {new Date(snapshot.evaluated_at).toLocaleString(locale)}
+                </span>
+              </div>
+              <div className="mb-5 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm text-foreground">
+                {t("authorizationSourceRemovalCaution")}
+              </div>
+              {sections.map((section) => {
+                const Icon = section.icon
+                return (
+                  <section
+                    key={section.key}
+                    className="mb-6"
+                    aria-labelledby={`authorization-source-${section.key}`}
+                  >
+                    <h3
+                      id={`authorization-source-${section.key}`}
+                      className="mb-2 flex items-center gap-2 text-sm font-semibold"
+                    >
+                      <Icon className="size-4 text-primary" />
+                      {section.title}
+                      <Badge variant="outline">{section.sources.length}</Badge>
+                    </h3>
+                    <div className="divide-y rounded-md border">
+                      {section.sources.map((source, index) => (
+                        <div
+                          key={`${source.type}:${source.role_id ?? "none"}:${source.source_id}:${source.scope_id}:${source.effect}:${index}`}
+                          className="grid gap-3 p-4"
+                          data-authorization-source={source.type}
+                          data-authorization-role={source.role_id ?? ""}
+                          data-authorization-source-id={source.source_id}
+                          data-authorization-scope-id={source.scope_id}
+                          data-authorization-effect={source.effect}
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <strong className="block text-sm break-words">
+                                {source.role_name ||
+                                  source.scope_name ||
+                                  `${source.scope_type}:${source.scope_id}`}
+                              </strong>
+                              <span className="mt-1 block text-xs break-words text-muted-foreground">
+                                {sourceTypeLabel(source)}
+                                {source.source_name
+                                  ? ` · ${source.source_name}`
+                                  : ""}
+                              </span>
+                            </div>
+                            <div className="flex shrink-0 flex-wrap gap-1.5">
+                              {source.inherited && (
+                                <Badge variant="outline">
+                                  {t("inheritedSource")}
+                                </Badge>
+                              )}
+                              <Badge
+                                variant={
+                                  source.effect === "deny"
+                                    ? "destructive"
+                                    : "secondary"
+                                }
+                              >
+                                {source.effect === "deny"
+                                  ? t("deny")
+                                  : t("allow")}
+                              </Badge>
+                            </div>
+                          </div>
+                          <dl className="grid gap-2 text-xs sm:grid-cols-2">
+                            <div>
+                              <dt className="text-muted-foreground">
+                                {t("authorizationScope")}
+                              </dt>
+                              <dd className="mt-0.5 break-all">
+                                {source.scope_name || source.scope_type} ·{" "}
+                                {source.scope_id}
+                              </dd>
+                            </div>
+                            {source.expires_at && (
+                              <div>
+                                <dt className="text-muted-foreground">
+                                  {t("expiresAt")}
+                                </dt>
+                                <dd className="mt-0.5">
+                                  {new Date(source.expires_at).toLocaleString(
+                                    locale
+                                  )}
+                                </dd>
+                              </div>
+                            )}
+                            {source.data_scope && (
+                              <div className="sm:col-span-2">
+                                <dt className="text-muted-foreground">
+                                  {t("dataScope")}
+                                </dt>
+                                <dd className="mt-0.5 break-words">
+                                  {dataScopeLabel(source)}
+                                  {source.department_ids.length > 0
+                                    ? ` · ${source.department_ids
+                                        .map(
+                                          (id) => departmentByID.get(id) ?? id
+                                        )
+                                        .join(", ")}`
+                                    : ""}
+                                </dd>
+                              </div>
+                            )}
+                            {source.relationship_path.length > 0 && (
+                              <div className="sm:col-span-2">
+                                <dt className="text-muted-foreground">
+                                  {t("relationshipPath")}
+                                </dt>
+                                <dd className="mt-0.5 break-all">
+                                  {source.relationship_path
+                                    .map(
+                                      (step) =>
+                                        `${step.subject_type}:${step.subject_id}${step.subject_relation ? `#${step.subject_relation}` : ""} -> ${step.relation} -> ${step.resource_type}:${step.resource_id}`
+                                    )
+                                    .join(" / ")}
+                                </dd>
+                              </div>
+                            )}
+                          </dl>
+                          <div className="flex flex-wrap gap-1.5">
+                            {source.permission_codes.map((permission) => (
+                              <Badge
+                                key={permission}
+                                variant="outline"
+                                className="max-w-full font-mono text-[11px] whitespace-normal"
+                              >
+                                {permission}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )
+              })}
+              {sources.length === 0 && (
+                <div className="grid min-h-48 place-items-center text-center text-sm text-muted-foreground">
+                  <div>
+                    <ShieldCheck className="mx-auto mb-2 size-7" />
+                    {t("noEffectiveAuthorizationSources")}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
   )
 }
 

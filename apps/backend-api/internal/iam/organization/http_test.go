@@ -112,6 +112,9 @@ func organizationDeclarationAPI(t *testing.T) huma.API {
 	require.NoError(t, module.Provide[authn.InvitationCredentials](services, &invitationCredentialFixture{}))
 	require.NoError(t, module.Provide[identity.InvitationPrincipalCreator](services, creator))
 	require.NoError(t, module.Provide[core.TenantBootstrapper](services, newTenantBootstrapStub().capability()))
+	require.NoError(t, module.Provide[core.DirectoryAuthorizationSourceConnector](services, core.DirectoryAuthorizationSourceConnector{
+		Bind: func(core.DirectoryAuthorizationSourceStore) error { return nil },
+	}))
 	require.NoError(t, module.Provide[identity.TenantOwnerLookup](services, newTenantOwnerStub().capability()))
 	require.NoError(t, module.Provide[guid.Source](services, newOrganizationTestIDs(9000)))
 	require.NoError(t, module.Provide[audit.Appender](services, h.appender))

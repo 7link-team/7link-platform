@@ -278,6 +278,9 @@ async function captureRoleWorkspace(
       permissionCount: document.querySelector('[data-role-count="permissions"]')?.textContent.trim(),
       assignmentCount: document.querySelector('[data-role-count="assignments"]')?.textContent.trim(),
       directoryLinks: document.querySelectorAll('[data-role-directory-link]').length,
+      directoryHrefs: [...document.querySelectorAll('[data-role-directory-link]')]
+        .map((link) => link.getAttribute("href"))
+        .sort(),
       permissionConditionSummary: Boolean(document.querySelector('[data-permission-condition-summary]')),
     };
   `)
@@ -290,7 +293,10 @@ async function captureRoleWorkspace(
     layout.permissionCount !== "1" ||
     layout.assignmentCount !== "3" ||
     (view === "permissions" && !layout.permissionConditionSummary) ||
-    (view === "assignments" && layout.directoryLinks !== 3)
+    (view === "assignments" &&
+      (layout.directoryLinks !== 3 ||
+        JSON.stringify(layout.directoryHrefs) !==
+          JSON.stringify(["/iam/groups", "/iam/positions", "/iam/users"])))
   )
     throw new Error(`${name} layout failed: ${JSON.stringify(layout)}`)
   const screenshot = await command("Page.captureScreenshot", {

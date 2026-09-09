@@ -44,6 +44,7 @@ iam-get-tenant-member => iam-get-tenant-member|GET|/iam/members/{subject}
 iam-grant-role-permission => iam-grant-role-permission|PUT|/iam/roles/{role_id}/permissions/{permission_code}
 iam-list-entities => iam-list-entities|GET|/iam/entities
 iam-list-entity-role-bindings => iam-list-entity-role-bindings|GET|/iam/entities/{entity_id}/role-bindings
+iam-list-member-authorization-sources => iam-list-member-authorization-sources|GET|/iam/members/{subject}/authorization-sources
 iam-list-menus => iam-list-menus|GET|/iam/menus
 iam-list-platform-administrators => iam-list-platform-administrators|GET|/iam/platform-administrators
 iam-list-relationships => iam-list-relationships|GET|/iam/relationships

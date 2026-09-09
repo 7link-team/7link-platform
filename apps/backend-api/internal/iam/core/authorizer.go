@@ -20,12 +20,13 @@ const policySnapshotAttempts = 3
 // Authorizer evaluates declared platform, tenant, entity, and business
 // resource permissions against the current policy revision.
 type Authorizer struct {
-	runtime   *appenv.Runtime
-	db        *gorm.DB
-	prefix    string
-	registry  *authz.Registry
-	revisions *RevisionStore
-	now       func() time.Time
+	runtime          *appenv.Runtime
+	db               *gorm.DB
+	prefix           string
+	registry         *authz.Registry
+	revisions        *RevisionStore
+	now              func() time.Time
+	directorySources DirectoryAuthorizationSourceStore
 }
 
 type tenantGrant struct {

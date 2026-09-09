@@ -922,6 +922,287 @@ func TestServiceListsPermanentAndTemporaryMemberRoles(t *testing.T) {
 	assert.ErrorIs(t, err, ErrUnavailable)
 }
 
+func TestServiceListsIndependentEffectiveAuthorizationSources(t *testing.T) {
+	harness := newCoreServiceHarness(t)
+	tenantID, principalID := guid.ID(1), guid.ID(11)
+	harness.seedMember(t, tenantID, principalID, MemberActive)
+	seedDirectoryFixtures(t, harness.repositoryHarness, tenantID)
+
+	createRole := func(name, permission string) Role {
+		role, err := harness.service.CreateRole(t.Context(), tenantID, name, "")
+		require.NoError(t, err)
+		_, err = harness.service.GrantPermission(t.Context(), tenantID, role.ID, permission)
+		require.NoError(t, err)
+		return role
+	}
+	directRole := createRole("Direct", "role_view")
+	temporaryRole := createRole("Temporary", "menu_view")
+	staticRole := createRole("Static group", "group_view")
+	dynamicRole := createRole("Dynamic group", "position_view")
+	positionRole := createRole("Position", "dept_view")
+	scopedRole := createRole("Scoped", "store_view")
+
+	_, err := harness.service.AddMember(t.Context(), tenantID, directRole.ID, principalID)
+	require.NoError(t, err)
+	require.NoError(t, harness.repository.runInTx(t.Context(), func(repo *Repository) error {
+		return repo.replaceRoleDataScope(t.Context(), tenantID, directRole.ID, DataScopeSelectedDepartments, []guid.ID{100})
+	}))
+	temporaryEnd := repositoryTestTime.Add(2 * time.Hour)
+	require.NoError(t, harness.repository.GrantTemporaryRole(
+		t.Context(), tenantID, 401, temporaryRole.ID, principalID, principalID,
+		repositoryTestTime.Add(-time.Hour), temporaryEnd,
+	))
+	require.NoError(t, harness.repository.GrantTemporaryRole(
+		t.Context(), tenantID, 402, temporaryRole.ID, principalID, principalID,
+		repositoryTestTime.Add(-2*time.Hour), repositoryTestTime.Add(-time.Hour),
+	))
+
+	staticEnd := repositoryTestTime.Add(3 * time.Hour)
+	require.NoError(t, harness.db.Exec(
+		"INSERT INTO sl_iam_group_members (tenant_id, group_id, principal_id, starts_at, ends_at, created_at, updated_at) VALUES (?, 200, ?, NULL, ?, ?, ?)",
+		tenantID, principalID, staticEnd, repositoryTestTime, repositoryTestTime,
+	).Error)
+	_, err = harness.service.AddDirectoryBinding(t.Context(), tenantID, staticRole.ID, DirectoryAssigneeGroup, 200)
+	require.NoError(t, err)
+
+	dynamicRule := `{"version":1,"match":"all","conditions":[{"field":"member.email_domain","operator":"in","values":["example.test"]}]}`
+	require.NoError(t, harness.db.Exec(
+		"INSERT INTO sl_iam_groups (tenant_id, id, name, name_key, group_type, rule_json, description, status, sort_order, version, created_at, updated_at) VALUES (?, 201, 'Current staff', 'current staff', 'dynamic', ?, '', 'active', 0, 1, ?, ?)",
+		tenantID, dynamicRule, repositoryTestTime, repositoryTestTime,
+	).Error)
+	_, err = harness.service.AddDirectoryBinding(t.Context(), tenantID, dynamicRole.ID, DirectoryAssigneeGroup, 201)
+	require.NoError(t, err)
+
+	positionEnd := repositoryTestTime.Add(4 * time.Hour)
+	require.NoError(t, harness.db.Exec(
+		"INSERT INTO sl_iam_position_members (tenant_id, position_id, principal_id, starts_at, ends_at, created_at, updated_at) VALUES (?, 300, ?, NULL, ?, ?, ?)",
+		tenantID, principalID, positionEnd, repositoryTestTime, repositoryTestTime,
+	).Error)
+	_, err = harness.service.AddDirectoryBinding(t.Context(), tenantID, positionRole.ID, DirectoryAssigneePosition, 300)
+	require.NoError(t, err)
+
+	root, err := harness.service.CreateEntity(t.Context(), Entity{TenantID: tenantID, Type: "company", Name: "North region"})
+	require.NoError(t, err)
+	child, err := harness.service.CreateEntity(t.Context(), Entity{TenantID: tenantID, ParentID: root.ID, Type: "store", Name: "Outlet"})
+	require.NoError(t, err)
+	entityEnd := time.Now().UTC().Add(5 * time.Hour).Truncate(time.Millisecond)
+	_, _, err = harness.service.PutEntityRoleBinding(t.Context(), tenantID, root.ID, scopedRole.ID, principalID, BindingAllow, entityEnd)
+	require.NoError(t, err)
+	_, _, err = harness.service.PutEntityRoleBinding(t.Context(), tenantID, child.ID, scopedRole.ID, principalID, BindingDeny, time.Time{})
+	require.NoError(t, err)
+	_, _, err = harness.service.PutRelationship(t.Context(), Relationship{
+		TenantID: tenantID, SubjectType: "principal", SubjectID: principalID,
+		Relation: "viewer", ResourceType: root.Type, ResourceID: root.ID,
+	})
+	require.NoError(t, err)
+	require.NoError(t, harness.authorizer.BindDirectoryAuthorizationSources(DirectoryAuthorizationSourceStore{
+		ListMembershipExpiries: func(context.Context, guid.ID, guid.ID, time.Time) (DirectoryAuthorizationSourceExpiries, error) {
+			return DirectoryAuthorizationSourceExpiries{
+				Groups: map[guid.ID]time.Time{200: staticEnd}, Positions: map[guid.ID]time.Time{300: positionEnd},
+			}, nil
+		},
+		ListLabels: func(context.Context, guid.ID, []guid.ID, []guid.ID, []guid.ID) (DirectoryAuthorizationSourceLabels, error) {
+			return DirectoryAuthorizationSourceLabels{
+				Groups:          map[guid.ID]string{200: "Operators", 201: "Current staff"},
+				GroupTypes:      map[guid.ID]string{200: "static", 201: "dynamic"},
+				Positions:       map[guid.ID]string{300: "Manager"},
+				RoleDepartments: map[guid.ID][]guid.ID{directRole.ID: {100}},
+			}, nil
+		},
+	}))
+
+	snapshot, err := harness.service.ListMemberAuthorizationSources(t.Context(), tenantID, principalID)
+	require.NoError(t, err)
+	assert.Equal(t, principalID, snapshot.Subject)
+	assert.Equal(t, repositoryTestTime, snapshot.EvaluatedAt)
+	assert.NotZero(t, snapshot.Revision)
+
+	byType := make(map[MemberAuthorizationSourceType][]MemberAuthorizationSource)
+	for _, source := range snapshot.Sources {
+		byType[source.Type] = append(byType[source.Type], source)
+	}
+	require.Len(t, byType[AuthorizationSourcePermanentRole], 1)
+	assert.Equal(t, DataScopeSelectedDepartments, byType[AuthorizationSourcePermanentRole][0].DataScope)
+	assert.Equal(t, []guid.ID{100}, byType[AuthorizationSourcePermanentRole][0].DepartmentIDs)
+	require.Len(t, byType[AuthorizationSourceTemporaryRole], 1, "expired temporary grants must not be listed")
+	assert.Equal(t, temporaryEnd, *byType[AuthorizationSourceTemporaryRole][0].ExpiresAt)
+	require.Len(t, byType[AuthorizationSourceStaticGroup], 1)
+	assert.Equal(t, "Operators", byType[AuthorizationSourceStaticGroup][0].SourceName)
+	assert.Equal(t, staticEnd, *byType[AuthorizationSourceStaticGroup][0].ExpiresAt)
+	require.Len(t, byType[AuthorizationSourceDynamicGroup], 1)
+	assert.Equal(t, "Current staff", byType[AuthorizationSourceDynamicGroup][0].SourceName)
+	require.Len(t, byType[AuthorizationSourcePosition], 1)
+	assert.Equal(t, "Manager", byType[AuthorizationSourcePosition][0].SourceName)
+	assert.Equal(t, positionEnd, *byType[AuthorizationSourcePosition][0].ExpiresAt)
+
+	entitySources := byType[AuthorizationSourceEntityBinding]
+	require.Len(t, entitySources, 3)
+	assert.True(t, hasAuthorizationSource(entitySources, root.ID, BindingAllow, false))
+	assert.True(t, hasAuthorizationSource(entitySources, child.ID, BindingAllow, true))
+	assert.True(t, hasAuthorizationSource(entitySources, child.ID, BindingDeny, false))
+	require.Len(t, byType[AuthorizationSourceRelationship], 1)
+	assert.Equal(t, "North region", byType[AuthorizationSourceRelationship][0].ScopeName)
+	assert.Contains(t, byType[AuthorizationSourceRelationship][0].PermissionCodes, "entity_view")
+
+	_, err = harness.service.ListMemberAuthorizationSources(t.Context(), tenantID, 999)
+	assert.ErrorIs(t, err, ErrMemberNotFound)
+	_, err = harness.service.ListMemberAuthorizationSources(t.Context(), 0, principalID)
+	assert.ErrorIs(t, err, ErrInvalidArgument)
+
+	untypedService := NewService(
+		authz.DefaultRegistry(), harness.repository, httpAuthorizationEvaluator{},
+		func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil },
+	)
+	_, err = untypedService.ListMemberAuthorizationSources(t.Context(), tenantID, principalID)
+	assert.ErrorIs(t, err, ErrUnavailable)
+}
+
+func hasAuthorizationSource(
+	sources []MemberAuthorizationSource,
+	scopeID guid.ID,
+	effect BindingEffect,
+	inherited bool,
+) bool {
+	for _, source := range sources {
+		if source.ScopeID == scopeID && source.Effect == effect && source.Inherited == inherited {
+			return true
+		}
+	}
+	return false
+}
+
+func TestAuthorizationSourceAggregationBranches(t *testing.T) {
+	labels := authorizationSourceLabels{
+		roles:  map[guid.ID]string{1: "Role 1", 2: "Role 2"},
+		groups: map[guid.ID]string{3: "Group"}, positions: map[guid.ID]string{4: "Position"},
+		entities: map[guid.ID]string{5: "Entity"}, principals: map[guid.ID]string{6: "Principal"},
+		roleDepartments: map[guid.ID][]guid.ID{}, groupTypes: map[guid.ID]string{},
+	}
+	expiries := authorizationSourceExpiries{
+		temporaryRoles: map[guid.ID]time.Time{}, groups: map[guid.ID]time.Time{},
+		positions: map[guid.ID]time.Time{}, entityBindings: map[entityBindingSourceKey]time.Time{},
+	}
+	tenantGrants := []tenantGrant{
+		{PermissionCode: "role_update", RoleID: 1, SourceType: "role_member", SourceID: 6, DataScope: string(DataScopeAll)},
+		{PermissionCode: "role_view", RoleID: 1, SourceType: "role_member", SourceID: 6, DataScope: string(DataScopeAll)},
+		{PermissionCode: "role_view", RoleID: 1, SourceType: "role_member", SourceID: 6, DataScope: string(DataScopeAll)},
+	}
+	scopedGrants := []scopedGrant{
+		{PermissionCode: "entity_view", RoleID: 2, Effect: string(BindingAllow), ScopeID: 5, EntityID: 5},
+		{PermissionCode: "entity_view", RoleID: 1, Effect: string(BindingAllow), ScopeID: 5, EntityID: 6, Depth: 1},
+		{PermissionCode: "entity_view", RoleID: 1, Effect: string(BindingDeny), ScopeID: 5, EntityID: 6, Depth: 1},
+	}
+	actions := []authz.Action{{Code: "entity_view", Resource: "entity", AllowedRelations: []string{"viewer"}}}
+	relationshipGrants := []relationshipGrant{
+		{ResourceType: "entity", ResourceID: 5, Relation: "viewer"},
+		{ResourceType: "entity", ResourceID: 5, Relation: "viewer", Path: []authz.RelationshipStep{{SubjectType: "principal", SubjectID: "invalid"}}},
+	}
+
+	sources := aggregateAuthorizationSources(1, tenantGrants, scopedGrants, relationshipGrants, actions, labels, expiries)
+	require.Len(t, sources, 4)
+	var permanentSource MemberAuthorizationSource
+	for _, source := range sources {
+		if source.Type == AuthorizationSourcePermanentRole {
+			permanentSource = source
+			break
+		}
+	}
+	assert.Equal(t, []string{"role_update", "role_view"}, permanentSource.PermissionCodes)
+	assert.Equal(t, []string{"role_update", "role_view"}, appendUnique(permanentSource.PermissionCodes, "role_view"))
+	assert.Equal(t, "Principal", authorizationSourceName("principal", 6, labels))
+	assert.Equal(t, "Group", authorizationSourceName("group", 3, labels))
+	assert.Equal(t, "Position", authorizationSourceName("position", 4, labels))
+	assert.Equal(t, "Entity", authorizationSourceName("entity", 5, labels))
+	assert.Empty(t, authorizationSourceName("unknown", 1, labels))
+}
+
+func TestAuthorizationSourceGeneratedQueriesPropagateFailures(t *testing.T) {
+	t.Run("expiry queries", func(t *testing.T) {
+		for _, table := range []string{"iam_temporary_role_grants", "iam_role_bindings"} {
+			t.Run(table, func(t *testing.T) {
+				harness := newRepositoryHarness(t, "sl_")
+				authorizer := NewAuthorizer(harness.runtime)
+				pinned, err := authorizer.pinWriter()
+				require.NoError(t, err)
+				require.NoError(t, harness.db.Exec("DROP TABLE sl_"+table).Error)
+				_, err = pinned.loadAuthorizationSourceExpiries(t.Context(), 1, 2, repositoryTestTime)
+				assert.Error(t, err)
+			})
+		}
+	})
+
+	t.Run("label queries", func(t *testing.T) {
+		tests := []struct {
+			name               string
+			table              string
+			tenantGrants       []tenantGrant
+			scopedGrants       []scopedGrant
+			relationshipGrants []relationshipGrant
+		}{
+			{name: "roles", table: "iam_roles", tenantGrants: []tenantGrant{{RoleID: 1}}},
+			{name: "entities", table: "iam_entities", scopedGrants: []scopedGrant{{RoleID: 1, ScopeID: 2, EntityID: 3}}},
+			{name: "tenant members", table: "iam_tenant_members"},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				harness := newRepositoryHarness(t, "sl_")
+				authorizer := NewAuthorizer(harness.runtime)
+				pinned, err := authorizer.pinWriter()
+				require.NoError(t, err)
+				require.NoError(t, harness.db.Exec("DROP TABLE sl_"+test.table).Error)
+				_, err = pinned.loadAuthorizationSourceLabels(
+					t.Context(), 1, 2, test.tenantGrants, test.scopedGrants, test.relationshipGrants,
+				)
+				assert.Error(t, err)
+			})
+		}
+	})
+
+	t.Run("directory reader", func(t *testing.T) {
+		harness := newRepositoryHarness(t, "sl_")
+		authorizer := NewAuthorizer(harness.runtime)
+		pinned, err := authorizer.pinWriter()
+		require.NoError(t, err)
+		want := errors.New("directory unavailable")
+		require.NoError(t, pinned.BindDirectoryAuthorizationSources(DirectoryAuthorizationSourceStore{
+			ListMembershipExpiries: func(context.Context, guid.ID, guid.ID, time.Time) (DirectoryAuthorizationSourceExpiries, error) {
+				return DirectoryAuthorizationSourceExpiries{}, want
+			},
+			ListLabels: func(context.Context, guid.ID, []guid.ID, []guid.ID, []guid.ID) (DirectoryAuthorizationSourceLabels, error) {
+				return DirectoryAuthorizationSourceLabels{}, want
+			},
+		}))
+		_, err = pinned.loadAuthorizationSourceExpiries(t.Context(), 1, 2, repositoryTestTime)
+		assert.ErrorIs(t, err, want)
+		_, err = pinned.loadAuthorizationSourceLabels(t.Context(), 1, 2, nil, nil, nil)
+		assert.ErrorIs(t, err, want)
+	})
+
+	t.Run("invalid relationship source", func(t *testing.T) {
+		harness := newRepositoryHarness(t, "sl_")
+		authorizer := NewAuthorizer(harness.runtime)
+		pinned, err := authorizer.pinWriter()
+		require.NoError(t, err)
+		_, err = pinned.loadAuthorizationSourceLabels(t.Context(), 1, 2, nil, nil, []relationshipGrant{{
+			Path: []authz.RelationshipStep{{SubjectID: "invalid"}},
+		}})
+		assert.Error(t, err)
+	})
+}
+
+func TestMemberAuthorizationSourcesRejectsUnavailableAndInvalidAuthorizer(t *testing.T) {
+	var authorizer *Authorizer
+	_, err := authorizer.MemberAuthorizationSources(t.Context(), 1, 2)
+	assert.ErrorIs(t, err, ErrUnavailable)
+	assert.ErrorIs(t, authorizer.BindDirectoryAuthorizationSources(DirectoryAuthorizationSourceStore{}), ErrUnavailable)
+
+	harness := newRepositoryHarness(t, "sl_")
+	authorizer = NewAuthorizer(harness.runtime)
+	assert.ErrorIs(t, authorizer.BindDirectoryAuthorizationSources(DirectoryAuthorizationSourceStore{}), ErrUnavailable)
+	_, err = authorizer.MemberAuthorizationSources(t.Context(), 0, 2)
+	assert.ErrorIs(t, err, ErrInvalidArgument)
+}
+
 func TestServiceWriteRollsBackMutationRevisionAndAuditFailure(t *testing.T) {
 	harness := newRepositoryHarness(t, "sl_")
 	seedTenantAndPrincipal(t, harness.db, "sl_", 1, 11)

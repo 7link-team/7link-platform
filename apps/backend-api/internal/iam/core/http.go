@@ -192,6 +192,32 @@ type APIEntityRoleBinding struct {
 	CreatedAt   time.Time     `json:"created_at"`
 }
 
+type APIMemberAuthorizationSource struct {
+	Type             MemberAuthorizationSourceType `json:"type" enum:"permanent_role,temporary_role,static_group,dynamic_group,position,entity_binding,relationship"`
+	SourceID         string                        `json:"source_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	SourceName       string                        `json:"source_name,omitempty"`
+	RoleID           string                        `json:"role_id,omitempty" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	RoleName         string                        `json:"role_name,omitempty"`
+	PermissionCodes  []string                      `json:"permission_codes"`
+	Effect           BindingEffect                 `json:"effect" enum:"allow,deny"`
+	ScopeType        string                        `json:"scope_type"`
+	ScopeID          string                        `json:"scope_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	ScopeName        string                        `json:"scope_name,omitempty"`
+	DataScope        DataScope                     `json:"data_scope,omitempty" enum:"all,self,department,department_and_descendants,selected_departments"`
+	DepartmentIDs    []string                      `json:"department_ids"`
+	ExpiresAt        *time.Time                    `json:"expires_at,omitempty"`
+	Inherited        bool                          `json:"inherited"`
+	Relation         string                        `json:"relation,omitempty" enum:"owner,editor,viewer"`
+	RelationshipPath []authz.RelationshipStep      `json:"relationship_path"`
+}
+
+type APIMemberAuthorizationSnapshot struct {
+	Subject     string                         `json:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	Revision    int64                          `json:"revision"`
+	EvaluatedAt time.Time                      `json:"evaluated_at"`
+	Sources     []APIMemberAuthorizationSource `json:"sources"`
+}
+
 type tenantInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128" doc:"tenant authorization boundary"`
 	// ponytail: pagination added to prevent unbounded list responses.
@@ -1054,6 +1080,22 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, guidStrings(roles)), nil
 	})
+	authz.Register(registrar, a, huma.Operation{
+		OperationID: "iam-list-member-authorization-sources", Method: http.MethodGet,
+		Path:    "/iam/members/{subject}/authorization-sources",
+		Summary: "List effective authorization sources for a tenant member", Tags: []string{"iam"},
+		Errors: []int{http.StatusNotFound, http.StatusConflict},
+	}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *tenantMemberInput) (*respx.Body[APIMemberAuthorizationSnapshot], error) {
+		tenantID, subject, err := tenantMemberRef(in)
+		if err != nil {
+			return nil, err
+		}
+		snapshot, err := svc.ListMemberAuthorizationSources(ctx, tenantID, subject)
+		if err != nil {
+			return nil, apiError("list member authorization sources", err)
+		}
+		return respx.OK(ctx, memberAuthorizationSnapshotFromDomain(snapshot)), nil
+	})
 
 	authz.Register(registrar, a, huma.Operation{OperationID: "iam-list-menus", Method: http.MethodGet, Path: "/iam/menus", Summary: "List tenant menu metadata", Tags: []string{"iam"}}, authz.Guard{Resource: "menu", Verb: "view"}, func(ctx context.Context, in *tenantInput) (*respx.Body[[]APIMenu], error) {
 		tenantID, err := requireID(in.TenantID)
@@ -1221,6 +1263,26 @@ func entityBindingsFromDomain(bindings []EntityRoleBinding) []APIEntityRoleBindi
 	out := make([]APIEntityRoleBinding, 0, len(bindings))
 	for _, binding := range bindings {
 		out = append(out, entityBindingFromDomain(binding))
+	}
+	return out
+}
+
+func memberAuthorizationSnapshotFromDomain(snapshot MemberAuthorizationSnapshot) APIMemberAuthorizationSnapshot {
+	out := APIMemberAuthorizationSnapshot{
+		Subject: snapshot.Subject.String(), Revision: snapshot.Revision, EvaluatedAt: snapshot.EvaluatedAt,
+		Sources: make([]APIMemberAuthorizationSource, 0, len(snapshot.Sources)),
+	}
+	for _, source := range snapshot.Sources {
+		expiresAt := cloneOptionalTime(source.ExpiresAt)
+		out.Sources = append(out.Sources, APIMemberAuthorizationSource{
+			Type: source.Type, SourceID: source.SourceID.String(), SourceName: source.SourceName,
+			RoleID: optionalIDString(source.RoleID), RoleName: source.RoleName,
+			PermissionCodes: append([]string(nil), source.PermissionCodes...), Effect: source.Effect,
+			ScopeType: source.ScopeType, ScopeID: source.ScopeID.String(), ScopeName: source.ScopeName,
+			DataScope: source.DataScope, DepartmentIDs: guidStrings(source.DepartmentIDs), ExpiresAt: expiresAt,
+			Inherited: source.Inherited, Relation: source.Relation,
+			RelationshipPath: append([]authz.RelationshipStep{}, source.RelationshipPath...),
+		})
 	}
 	return out
 }

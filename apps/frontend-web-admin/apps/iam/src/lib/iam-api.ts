@@ -284,6 +284,41 @@ export interface Member {
   updated_at: string
 }
 
+export type MemberAuthorizationSourceType =
+  | "permanent_role"
+  | "temporary_role"
+  | "static_group"
+  | "dynamic_group"
+  | "position"
+  | "entity_binding"
+  | "relationship"
+
+export interface MemberAuthorizationSource {
+  type: MemberAuthorizationSourceType
+  source_id: string
+  source_name?: string
+  role_id?: string
+  role_name?: string
+  permission_codes: string[]
+  effect: "allow" | "deny"
+  scope_type: string
+  scope_id: string
+  scope_name?: string
+  data_scope?: DataScope
+  department_ids: string[]
+  expires_at?: string
+  inherited: boolean
+  relation?: RelationshipRelation
+  relationship_path: RelationshipInput[]
+}
+
+export interface MemberAuthorizationSnapshot {
+  subject: string
+  revision: number
+  evaluated_at: string
+  sources: MemberAuthorizationSource[]
+}
+
 export interface Permission {
   resource: string
   verb: string
@@ -1463,6 +1498,10 @@ export function createIamApi(
       }),
     memberRoles: (subject: string) =>
       request<string[]>(`/iam/members/${encodeURIComponent(subject)}/roles`),
+    memberAuthorizationSources: (subject: string) =>
+      request<MemberAuthorizationSnapshot>(
+        `/iam/members/${encodeURIComponent(subject)}/authorization-sources`
+      ),
     entities: () => request<Entity[]>("/iam/entities"),
     entity: (id: string) =>
       request<Entity>(`/iam/entities/${encodeURIComponent(id)}`),

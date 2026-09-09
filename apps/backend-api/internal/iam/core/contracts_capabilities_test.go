@@ -44,6 +44,7 @@ func TestFrozenIAMCapabilitiesHaveCanonicalOwners(t *testing.T) {
 		{"core.ActiveMemberChecker", reflect.TypeFor[core.ActiveMemberChecker](), "7link.com/platform/internal/iam/core"},
 		{"core.MemberDepartmentReader", reflect.TypeFor[core.MemberDepartmentReader](), "7link.com/platform/internal/iam/core"},
 		{"core.MemberTenantResolver", reflect.TypeFor[core.MemberTenantResolver](), "7link.com/platform/internal/iam/core"},
+		{"core.DirectoryAuthorizationSourceConnector", reflect.TypeFor[core.DirectoryAuthorizationSourceConnector](), "7link.com/platform/internal/iam/core"},
 		{"core.AdministratorGuard", reflect.TypeFor[core.AdministratorGuard](), "7link.com/platform/internal/iam/core"},
 		{"authn.InvitationCredentials", reflect.TypeFor[authn.InvitationCredentials](), "7link.com/platform/internal/iam/authn"},
 		{"identity.InvitationPrincipalCreator", reflect.TypeFor[identity.InvitationPrincipalCreator](), "7link.com/platform/internal/iam/identity"},
@@ -61,7 +62,7 @@ func TestFrozenIAMCapabilitiesHaveCanonicalOwners(t *testing.T) {
 		{"provisioning.SecretRewrapper", reflect.TypeFor[provisioning.SecretRewrapper](), "7link.com/platform/internal/iam/provisioning"},
 	}
 
-	require.Len(t, capabilities, 19)
+	require.Len(t, capabilities, 20)
 	seen := make(map[reflect.Type]struct{}, len(capabilities))
 	for _, capability := range capabilities {
 		require.NotNil(t, capability.typ)
@@ -108,22 +109,23 @@ func TestIAMCapabilitiesAreDeclaredByTheirProviderRoots(t *testing.T) {
 	t.Parallel()
 
 	expected := map[string]string{
-		"audit.Appender":                      "func",
-		"authn.InvitationCredentials":         "interface",
-		"authn.SecretRewrapper":               "interface",
-		"federation.SecretRewrapper":          "interface",
-		"provisioning.SecretRewrapper":        "interface",
-		"authn.WebService":                    "interface",
-		"core.ActiveMemberChecker":            "interface",
-		"core.MemberDepartmentReader":         "interface",
-		"core.MemberTenantResolver":           "func",
-		"core.AdministratorGuard":             "interface",
-		"core.AuthorizationEvaluator":         "interface",
-		"core.RoleGrantStore":                 "struct",
-		"identity.IdentityProvisioner":        "interface",
-		"identity.InvitationPrincipalCreator": "func",
-		"identity.ServiceAccountValidator":    "func",
-		"organization.GroupProvisioner":       "interface",
+		"audit.Appender":                             "func",
+		"authn.InvitationCredentials":                "interface",
+		"authn.SecretRewrapper":                      "interface",
+		"federation.SecretRewrapper":                 "interface",
+		"provisioning.SecretRewrapper":               "interface",
+		"authn.WebService":                           "interface",
+		"core.ActiveMemberChecker":                   "interface",
+		"core.MemberDepartmentReader":                "interface",
+		"core.MemberTenantResolver":                  "func",
+		"core.AdministratorGuard":                    "interface",
+		"core.AuthorizationEvaluator":                "interface",
+		"core.DirectoryAuthorizationSourceConnector": "struct",
+		"core.RoleGrantStore":                        "struct",
+		"identity.IdentityProvisioner":               "interface",
+		"identity.InvitationPrincipalCreator":        "func",
+		"identity.ServiceAccountValidator":           "func",
+		"organization.GroupProvisioner":              "interface",
 	}
 	declarations := readIAMRootDeclarations(t)
 	for name, kind := range expected {

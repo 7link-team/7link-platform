@@ -111,6 +111,7 @@ iam-get-tenant-member => tenant|user_view
 iam-grant-role-permission => tenant|role_grant_permission
 iam-list-entities => tenant|entity_view
 iam-list-entity-role-bindings => tenant|entity_view
+iam-list-member-authorization-sources => tenant|role_view
 iam-list-menus => tenant|menu_view
 iam-list-platform-administrators => platform|platform_administer
 iam-list-relationships => tenant|entity_view

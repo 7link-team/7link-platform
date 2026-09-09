@@ -443,6 +443,42 @@ func TestIAMManagementHTTPFlowAndTenantIsolation(t *testing.T) {
 	assert.Equal(t, http.StatusOK, harness.api.Delete("/iam/roles/"+role.ID, "Authorization: Bearer test", headerA).Code)
 }
 
+func TestMemberAuthorizationSourcesHTTPReturnsSnapshotAndNotFound(t *testing.T) {
+	harness := newHTTPIAMHarness(t, true)
+	authorizer := NewAuthorizer(harness.runtime)
+	authorizer.now = harness.repository.now
+	harness.module.service.checker = authorizer
+	header := tenantHeader(1)
+
+	role, err := harness.module.service.CreateRole(t.Context(), 1, "Auditor", "")
+	require.NoError(t, err)
+	_, err = harness.module.service.GrantPermission(t.Context(), 1, role.ID, "audit_event_view")
+	require.NoError(t, err)
+	_, err = harness.module.service.AddMember(t.Context(), 1, role.ID, 11)
+	require.NoError(t, err)
+
+	response := harness.api.Get(
+		"/iam/members/11/authorization-sources", "Authorization: Bearer test", header,
+	)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	snapshot := decodeEnvelope[APIMemberAuthorizationSnapshot](t, response).Data
+	assert.Equal(t, "11", snapshot.Subject)
+	assert.NotZero(t, snapshot.Revision)
+	require.Len(t, snapshot.Sources, 1)
+	assert.Equal(t, AuthorizationSourcePermanentRole, snapshot.Sources[0].Type)
+	assert.Equal(t, role.ID.String(), snapshot.Sources[0].RoleID)
+	assert.Equal(t, []string{"audit_event_view"}, snapshot.Sources[0].PermissionCodes)
+	assert.Equal(t, BindingAllow, snapshot.Sources[0].Effect)
+	assert.NotNil(t, snapshot.Sources[0].DepartmentIDs)
+	assert.NotNil(t, snapshot.Sources[0].RelationshipPath)
+	assert.Empty(t, snapshot.Sources[0].RelationshipPath)
+
+	notFound := harness.api.Get(
+		"/iam/members/999/authorization-sources", "Authorization: Bearer test", header,
+	)
+	assert.Equal(t, http.StatusNotFound, notFound.Code, notFound.Body.String())
+}
+
 // TestCreatingARootAcceptsTheClearedFormFieldTheUpdateAccepts covers the shape a
 // client actually sends. A form offering "no parent" as a cleared select posts
 // an empty string, and the update already reads that as the root, so a create

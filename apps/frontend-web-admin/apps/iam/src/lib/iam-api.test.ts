@@ -3,6 +3,7 @@ import {
   createIamApi,
   type AuditEvent,
   type DepartmentInput,
+  type MemberAuthorizationSnapshot,
   type OAuthClientInput,
 } from "./iam-api"
 
@@ -16,6 +17,54 @@ interface RecordedRequest {
 describe("IAM API client", () => {
   let server: ReturnType<typeof Bun.serve> | undefined
   afterEach(() => server?.stop(true))
+
+  it("reads a tenant member authorization snapshot without losing source paths", async () => {
+    const snapshot: MemberAuthorizationSnapshot = {
+      subject: "member/11",
+      revision: 9,
+      evaluated_at: "2026-09-09T12:00:00Z",
+      sources: [
+        {
+          type: "position",
+          source_id: "position/3",
+          source_name: "Finance manager",
+          role_id: "role/7",
+          role_name: "Reviewer",
+          permission_codes: ["audit_event_view"],
+          effect: "allow",
+          scope_type: "tenant",
+          scope_id: "tenant/1",
+          data_scope: "department",
+          department_ids: [],
+          expires_at: "2026-10-01T00:00:00Z",
+          inherited: false,
+          relationship_path: [],
+        },
+      ],
+    }
+    let seenPath = ""
+    let seenTenant = ""
+    server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        seenPath = new URL(request.url).pathname
+        seenTenant = request.headers.get("x-tenant-id") ?? ""
+        return Response.json({ code: 0, message: "ok", data: snapshot })
+      },
+    })
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      () => "tenant/1"
+    )
+
+    expect(await client.memberAuthorizationSources("member/11")).toEqual(
+      snapshot
+    )
+    expect(seenPath).toBe(
+      "/iam/members/member%2F11/authorization-sources"
+    )
+    expect(seenTenant).toBe("tenant/1")
+  })
 
   it("keeps archive management scoped and omits tenant headers on platform requests", async () => {
     const requests: RecordedRequest[] = []
