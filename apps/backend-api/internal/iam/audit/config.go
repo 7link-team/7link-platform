@@ -10,8 +10,16 @@ import (
 // application operation-audit configuration used by internal/infra/audit.
 type Config struct {
 	module.Config
-	Anchor  AnchorConfig  `mapstructure:"anchor" group:"anchor"`
-	Archive ArchiveConfig `mapstructure:"archive" group:"archive"`
+	Anchor        AnchorConfig        `mapstructure:"anchor" group:"anchor"`
+	Archive       ArchiveConfig       `mapstructure:"archive" group:"archive"`
+	ErasureLedger ErasureLedgerConfig `mapstructure:"erasure_ledger" group:"erasure_ledger"`
+}
+
+// ErasureLedgerConfig makes accepted erasure obligations survive restoration of
+// an older database backup. It reuses the anchor store connection and retention.
+type ErasureLedgerConfig struct {
+	Enabled bool          `mapstructure:"enabled" description:"require an external immutable obligation before permanently erasing a principal" default:"false"`
+	Timeout time.Duration `mapstructure:"timeout" description:"maximum duration of each synchronous erasure-ledger operation; one second to one minute" default:"10s"`
 }
 
 // ArchiveConfig uses the anchor S3 endpoint, credentials and object-lock bucket;

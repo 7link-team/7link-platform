@@ -31,14 +31,15 @@ type Config struct {
 
 type Module struct {
 	*Service
-	config         Config
-	runtime        *appenv.Runtime
-	registrar      *authz.Registrar
-	administrators core.AdministratorGuard
-	fields         authz.FieldPermissionChecker
-	ids            guid.Source
-	appender       audit.Appender
-	anonymizer     PrincipalAnonymizer
+	config          Config
+	runtime         *appenv.Runtime
+	registrar       *authz.Registrar
+	administrators  core.AdministratorGuard
+	fields          authz.FieldPermissionChecker
+	ids             guid.Source
+	appender        audit.Appender
+	anonymizer      PrincipalAnonymizer
+	erasureRecorder audit.ErasureRecorder
 }
 
 // RegistrationPrincipalCreator creates a pending principal and its credential
@@ -160,6 +161,10 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve identity audit appender: %w", err)
 	}
+	erasureRecorder, err := module.Resolve[audit.ErasureRecorder](services)
+	if err != nil {
+		return fmt.Errorf("resolve audit erasure recorder: %w", err)
+	}
 	administrators, err := module.Resolve[core.AdministratorGuard](services)
 	if err != nil {
 		return fmt.Errorf("resolve identity administrator guard: %w", err)
@@ -172,6 +177,7 @@ func (m *Module) InjectServices(services *module.Services) error {
 	m.registrar = registrar
 	m.ids = ids
 	m.appender = appender
+	m.erasureRecorder = erasureRecorder
 	m.administrators = administrators
 	anonymizer, err := module.Resolve[PrincipalAnonymizer](services)
 	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
@@ -193,6 +199,7 @@ func (m *Module) Initialize(context.Context) error {
 	m.Service = NewService(m.runtime, m.appender, m.administrators, m.ids)
 	m.Service.fields = m.fields
 	m.Service.anonymizer = m.anonymizer
+	m.Service.erasureRecorder = m.erasureRecorder
 	return nil
 }
 

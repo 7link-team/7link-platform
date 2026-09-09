@@ -146,11 +146,13 @@ type exportComplete struct {
 }
 
 type Service struct {
-	repo    *Repository
-	now     func() time.Time
-	anchor  *AnchorStore
-	signer  *RootSigner
-	archive *AnchorStore
+	repo           *Repository
+	now            func() time.Time
+	anchor         *AnchorStore
+	signer         *RootSigner
+	archive        *AnchorStore
+	erasureLedger  *ErasureLedger
+	erasureTimeout time.Duration
 }
 
 func NewService(runtime *appenv.Runtime, ids guid.Source) *Service {

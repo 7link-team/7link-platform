@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"testing"
+	"time"
 
 	auditi18n "7link.com/platform/internal/iam/audit/i18n"
 	"7link.com/platform/internal/infra/guid"
@@ -130,6 +131,39 @@ func TestAuditModuleReportsMissingAndInvalidStartupDependencies(t *testing.T) {
 	badSigner.ids = newAuditTestIDs(1)
 	require.NoError(t, badSigner.Initialize(t.Context()))
 	assert.ErrorContains(t, badSigner.Start(t.Context()), "signing key")
+}
+
+func TestAuditModuleErasureLedgerStartupAndRecorderGates(t *testing.T) {
+	assert.ErrorIs(t, (&Module{}).recordErasure(t.Context(), ErasureObligation{}), ErrErasureLedgerDisabled)
+
+	newInstance := func(t *testing.T, config Config) *Module {
+		t.Helper()
+		h := newAuditHarness(t, "")
+		require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
+		instance := NewModule(h.runtime, config)
+		instance.registrar = auditRuntimeRegistrar()
+		instance.ids = newAuditTestIDs(1)
+		require.NoError(t, instance.Initialize(t.Context()))
+		return instance
+	}
+
+	fixture := newFakeS3()
+	_, server := fakeAnchorStore(t, fixture, "unused")
+	base := Config{
+		Anchor: AnchorConfig{
+			Endpoint: server.URL, Bucket: "erasure-module", AccessKey: "access",
+			SecretKey: "secret", RetentionDays: 30,
+		},
+		ErasureLedger: ErasureLedgerConfig{Enabled: true, Timeout: 5 * time.Second},
+	}
+
+	invalidTimeout := base
+	invalidTimeout.ErasureLedger.Timeout = 0
+	assert.ErrorContains(t, newInstance(t, invalidTimeout).Start(t.Context()), "timeout")
+
+	fixture.bucket = true
+	fixture.objectLock = false
+	assert.ErrorContains(t, newInstance(t, base).Start(t.Context()), "must support object locking")
 }
 
 func TestAuditI18nRegistrationAndKeyParity(t *testing.T) {

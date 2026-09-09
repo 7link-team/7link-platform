@@ -202,13 +202,14 @@ func (s *Service) AnonymizePrincipal(ctx context.Context, id guid.ID, version in
 	if id <= 0 || version < 1 {
 		return PrincipalLifecycle{}, ErrInvalid
 	}
-	if s.anonymizer == nil {
+	if s.anonymizer == nil || s.erasureRecorder == nil {
 		return PrincipalLifecycle{}, ErrUnavailable
 	}
+	recordedAt := s.now().UTC().Truncate(time.Millisecond)
 	var result PrincipalLifecycle
 	var err error
 	for attempt := 1; attempt <= anonymizeAttempts; attempt++ {
-		result, err = s.anonymizeOnce(ctx, id, version, confirmation)
+		result, err = s.anonymizeOnce(ctx, id, version, confirmation, recordedAt)
 		if err == nil || !gormx.IsTransactionConflict(err) || ctx.Err() != nil {
 			break
 		}
@@ -216,7 +217,9 @@ func (s *Service) AnonymizePrincipal(ctx context.Context, id guid.ID, version in
 	return result, err
 }
 
-func (s *Service) anonymizeOnce(ctx context.Context, id guid.ID, version int64, confirmation string) (PrincipalLifecycle, error) {
+func (s *Service) anonymizeOnce(
+	ctx context.Context, id guid.ID, version int64, confirmation string, recordedAt time.Time,
+) (PrincipalLifecycle, error) {
 	var result PrincipalLifecycle
 	err := s.repo.runInTx(ctx, func(repo *Repository) error {
 		principal, err := repo.lifecyclePrincipal(ctx, id, true)
@@ -231,6 +234,10 @@ func (s *Service) anonymizeOnce(ctx context.Context, id guid.ID, version int64, 
 			return ErrLifecycleConflict
 		}
 		if row.AnonymizedAt != nil {
+			obligation := audit.NewErasureObligation(ctx, id, row.Version, row.AnonymizedAt.UTC())
+			if err := s.erasureRecorder(ctx, obligation); err != nil {
+				return errors.Join(ErrUnavailable, fmt.Errorf("record external erasure obligation: %w", err))
+			}
 			result = lifecycleView(id, row)
 			return nil
 		}
@@ -253,6 +260,10 @@ func (s *Service) anonymizeOnce(ctx context.Context, id guid.ID, version int64, 
 		}
 		if err := s.anonymizer(ctx, repo.writer(), principalFromRow(principal), now); err != nil {
 			return fmt.Errorf("erase linked principal data: %w", err)
+		}
+		obligation := audit.NewErasureObligation(ctx, id, version+1, recordedAt)
+		if err := s.erasureRecorder(ctx, obligation); err != nil {
+			return errors.Join(ErrUnavailable, fmt.Errorf("record external erasure obligation: %w", err))
 		}
 		if err := repo.updatePrincipalRow(ctx, id, map[string]any{
 			"login_name": "erased:" + id.String(), "display_name": "Anonymized account", "email": "",

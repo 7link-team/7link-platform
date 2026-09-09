@@ -319,6 +319,47 @@ security depends on those bindings, or mix actor-aware and older replicas.
 
 ## Audit Archive Execution
 
+Permanent principal erasure has a separate, near-real-time recovery ledger.
+Enable it on every replica that can accept erasure:
+
+```yaml
+iam_audit:
+  anchor:
+    endpoint: https://objects.example.invalid
+    bucket: audit-anchors
+    region: us-east-1
+    access_key: ${AUDIT_OBJECT_ACCESS_KEY}
+    secret_key: ${AUDIT_OBJECT_SECRET_KEY}
+    retention_days: 365
+  erasure_ledger:
+    enabled: true
+    timeout: 10s
+```
+
+It reuses the anchor S3 connection and writes COMPLIANCE-locked objects under
+`audit/erasures/{principal_id}/{lifecycle_version}.json`. `anchor.enabled` does
+not have to be enabled. If the ledger is disabled, unavailable, unlocked or
+cannot be read back exactly, permanent erasure returns unavailable and all
+database changes roll back. The objects contain identifiers and timestamps but
+no login, email, display name or other subject PII.
+
+Set `anchor.retention_days` longer than the maximum age of every database backup
+that can be restored, including off-site copies and the operational recovery
+window. A shorter object retention creates an interval in which an old backup
+can revive PII after its corresponding obligation is legally deletable. Before
+reopening a restored database, run:
+
+```sh
+7link-api iam list-erasure-obligations --config <config> > erasure-obligations.ndjson
+```
+
+The command does not initialize the application or read its database. It lists
+all object versions so an S3 delete marker cannot hide a locked obligation, and
+verifies each object's key, schema, exact version, SHA-256 and COMPLIANCE
+retention before writing one JSON object per line. Treat any command failure as
+an incomplete recovery and keep admission disabled. The full reconciliation
+procedure is in `docs/runbook-migration-recovery.md`.
+
 The audit module owns a durable archive executor. Enable
 `iam_audit.archive.enabled` after applying audit migration v3. It uses the
 endpoint, bucket, region, credentials and minimum object-lock duration in

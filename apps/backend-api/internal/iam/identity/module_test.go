@@ -82,8 +82,13 @@ func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
 			return module.Provide[guid.Source](services, newIdentityTestIDs(9000))
 		}},
 		&identityDependencyProvider{name: audit.Name, provide: func(services *module.Services) error {
-			return module.Provide[audit.Appender](services, audit.Appender(
+			if err := module.Provide[audit.Appender](services, audit.Appender(
 				func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil },
+			)); err != nil {
+				return err
+			}
+			return module.Provide[audit.ErasureRecorder](services, audit.ErasureRecorder(
+				func(context.Context, audit.ErasureObligation) error { return nil },
 			))
 		}},
 		&identityDependencyProvider{name: core.Name, provide: func(services *module.Services) error {
@@ -175,6 +180,18 @@ func TestModuleReportsMissingWiring(t *testing.T) {
 	require.NoError(t, module.Provide[guid.Source](services, newIdentityTestIDs(1)))
 	require.NoError(t, module.Provide[audit.Appender](services, audit.Appender(
 		func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil },
+	)))
+	require.NoError(t, services.Seal())
+	assert.ErrorContains(t, instance.InjectServices(services), "resolve audit erasure recorder")
+
+	services = module.NewServices()
+	require.NoError(t, module.Provide[*authz.Registrar](services, identityTestRegistrar()))
+	require.NoError(t, module.Provide[guid.Source](services, newIdentityTestIDs(1)))
+	require.NoError(t, module.Provide[audit.Appender](services, audit.Appender(
+		func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil },
+	)))
+	require.NoError(t, module.Provide[audit.ErasureRecorder](services, audit.ErasureRecorder(
+		func(context.Context, audit.ErasureObligation) error { return nil },
 	)))
 	require.NoError(t, services.Seal())
 	assert.ErrorContains(t, instance.InjectServices(services), "resolve identity administrator guard")

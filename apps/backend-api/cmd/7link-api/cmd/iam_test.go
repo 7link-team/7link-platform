@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -11,8 +12,10 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"7link.com/platform/internal/app"
+	iamaudit "7link.com/platform/internal/iam/audit"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,6 +25,10 @@ import (
 // obviously not a credential anyone deploys.
 const bootstrapTestPassword = "not-a-real-bootstrap-password"
 
+type erasureErrorWriter struct{}
+
+func (erasureErrorWriter) Write([]byte) (int, error) { return 0, errors.New("output unavailable") }
+
 // TestIamCommandKeepsThePasswordOffTheCommandLine pins the security property
 // the whole command shape exists for: process arguments are readable by every
 // local user and shell history keeps them, so there must be no way to pass the
@@ -29,12 +36,37 @@ const bootstrapTestPassword = "not-a-real-bootstrap-password"
 func TestIamCommandKeepsThePasswordOffTheCommandLine(t *testing.T) {
 	assert.Same(t, rootCmd, iamCmd.Parent())
 	assert.Same(t, iamCmd, bootstrapPlatformAdminCmd.Parent())
+	assert.Same(t, iamCmd, listErasureObligationsCmd.Parent())
 	assert.NotNil(t, iamCmd.PersistentFlags().Lookup("config"))
 	assert.NotNil(t, iamCmd.PersistentFlags().Lookup("login"))
 	assert.NotNil(t, iamCmd.PersistentFlags().Lookup("password-file"))
 	assert.Nil(t, iamCmd.PersistentFlags().Lookup("password"),
 		"the password must never be accepted as a command-line argument")
 	assert.Nil(t, bootstrapPlatformAdminCmd.Flags().Lookup("password"))
+}
+
+func TestWriteErasureObligationsEmitsOneVerifiedObjectPerNDJSONLine(t *testing.T) {
+	output := &bytes.Buffer{}
+	obligations := []iamaudit.VerifiedErasureObligation{{
+		ErasureObligation: iamaudit.ErasureObligation{
+			Schema: "iam-erasure-obligation.v1", PrincipalID: 81, LifecycleVersion: 4,
+			RequestedBy: 17, RecordedAt: time.Date(2026, 9, 9, 8, 0, 0, 0, time.UTC),
+		},
+		ObjectKey: "audit/erasures/81/4.json", VersionID: "version-1",
+		SHA256: strings.Repeat("a", 64), RetainUntil: time.Date(2027, 9, 9, 8, 0, 0, 0, time.UTC),
+	}}
+	require.NoError(t, writeErasureObligations(output, obligations))
+	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+	require.Len(t, lines, 1)
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal([]byte(lines[0]), &decoded))
+	assert.Equal(t, "81", decoded["principal_id"])
+	assert.EqualValues(t, 4, decoded["lifecycle_version"])
+	assert.Equal(t, "audit/erasures/81/4.json", decoded["object_key"])
+	assert.Equal(t, "version-1", decoded["version_id"])
+	assert.Equal(t, strings.Repeat("a", 64), decoded["sha256"])
+	assert.Equal(t, "2027-09-09T08:00:00Z", decoded["retain_until"])
+	assert.ErrorContains(t, writeErasureObligations(erasureErrorWriter{}, obligations), "write erasure obligation")
 }
 
 func newPasswordCommand(stdin string) *cobra.Command {
@@ -289,4 +321,5 @@ func TestIamCommandWithoutASubcommandShowsItsHelp(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, output, "bootstrap-platform-admin")
 	assert.Contains(t, output, "reset-admin-password")
+	assert.Contains(t, output, "list-erasure-obligations")
 }

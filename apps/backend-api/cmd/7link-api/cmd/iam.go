@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/app"
+	iamaudit "7link.com/platform/internal/iam/audit"
 	"7link.com/platform/pkg/config"
 	"github.com/spf13/cobra"
 )
@@ -134,12 +136,24 @@ var (
 		Args: cobra.NoArgs,
 		RunE: runRewrapSecrets,
 	}
+
+	listErasureObligationsCmd = &cobra.Command{
+		Use:   "list-erasure-obligations",
+		Short: "List verified external erasure obligations as NDJSON",
+		Long: "List verified external erasure obligations as NDJSON.\n\n" +
+			"The command reads only the S3-compatible object-lock store configured by\n" +
+			"iam_audit.anchor. It does not connect to the application database, so its\n" +
+			"answer survives restoring a database backup from before an erasure.",
+		Args: cobra.NoArgs,
+		RunE: runListErasureObligations,
+	}
 )
 
 func init() {
 	rootCmd.AddCommand(iamCmd)
 	iamCmd.AddCommand(
 		bootstrapPlatformAdminCmd, resetAdminPasswordCmd, repairTenantOwnerCmd, rewrapSecretsCmd,
+		listErasureObligationsCmd,
 	)
 	platformAdminConfigurator.UseFlags(iamCmd.PersistentFlags())
 	platformAdminConfigurator.UseConfigFileArgDefault()
@@ -239,6 +253,30 @@ func runRewrapSecrets(command *cobra.Command, _ []string) error {
 		return withExitCode(platformAdminExitCode(err), err)
 	}
 	writeSecretRewrapReport(command.OutOrStdout(), report)
+	return nil
+}
+
+func runListErasureObligations(command *cobra.Command, _ []string) error {
+	if platformAdminConfigErr != nil {
+		return platformAdminConfigErr
+	}
+	if err := platformAdminConfigurator.Load(&platformAdminConfig); err != nil {
+		return err
+	}
+	obligations, err := (&app.App{}).ListErasureObligations(command.Context(), platformAdminConfig.AppConfig)
+	if err != nil {
+		return err
+	}
+	return writeErasureObligations(command.OutOrStdout(), obligations)
+}
+
+func writeErasureObligations(output io.Writer, obligations []iamaudit.VerifiedErasureObligation) error {
+	encoder := json.NewEncoder(output)
+	for _, obligation := range obligations {
+		if err := encoder.Encode(obligation); err != nil {
+			return fmt.Errorf("write erasure obligation: %w", err)
+		}
+	}
 	return nil
 }
 

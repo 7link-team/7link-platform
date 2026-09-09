@@ -99,7 +99,7 @@ func (store *fakeS3) handleBucket(writer http.ResponseWriter, request *http.Requ
 			fakeS3Error(writer, http.StatusNotFound, "NoSuchBucket", "bucket does not exist")
 			return
 		}
-		store.writeList(writer, request.URL.Query().Get("prefix"))
+		store.writeList(writer, request)
 	default:
 		fakeS3Error(writer, http.StatusMethodNotAllowed, "MethodNotAllowed", "unsupported method")
 	}
@@ -205,13 +205,32 @@ func readFakeS3Body(request *http.Request) ([]byte, error) {
 	}
 }
 
-func (store *fakeS3) writeList(writer http.ResponseWriter, prefix string) {
+func (store *fakeS3) writeList(writer http.ResponseWriter, request *http.Request) {
+	prefix := request.URL.Query().Get("prefix")
 	type content struct {
 		Key          string `xml:"Key"`
 		LastModified string `xml:"LastModified"`
 		ETag         string `xml:"ETag"`
 		Size         int    `xml:"Size"`
 		StorageClass string `xml:"StorageClass"`
+	}
+	type version struct {
+		Key          string `xml:"Key"`
+		VersionID    string `xml:"VersionId"`
+		IsLatest     bool   `xml:"IsLatest"`
+		LastModified string `xml:"LastModified"`
+		ETag         string `xml:"ETag"`
+		Size         int    `xml:"Size"`
+		StorageClass string `xml:"StorageClass"`
+	}
+	type versionsResult struct {
+		XMLName        xml.Name  `xml:"ListVersionsResult"`
+		Xmlns          string    `xml:"xmlns,attr"`
+		Name           string    `xml:"Name"`
+		Prefix         string    `xml:"Prefix"`
+		MaxKeys        int       `xml:"MaxKeys"`
+		IsTruncated    bool      `xml:"IsTruncated"`
+		ObjectVersions []version `xml:"Version"`
 	}
 	type result struct {
 		XMLName     xml.Name  `xml:"ListBucketResult"`
@@ -230,6 +249,23 @@ func (store *fakeS3) writeList(writer http.ResponseWriter, prefix string) {
 		}
 	}
 	sort.Strings(keys)
+	if request.URL.Query().Has("versions") {
+		response := versionsResult{
+			Xmlns: "http://s3.amazonaws.com/doc/2006-03-01/", Name: "anchors", Prefix: prefix,
+			MaxKeys: 1000,
+		}
+		for _, key := range keys {
+			response.ObjectVersions = append(response.ObjectVersions, version{
+				Key: key, VersionID: store.versions[key], IsLatest: true,
+				LastModified: auditTestNow.Format(time.RFC3339), ETag: `"fixture"`,
+				Size: len(store.objects[key]), StorageClass: "STANDARD",
+			})
+		}
+		payload, _ := xml.Marshal(response)
+		writer.Header().Set("Content-Type", "application/xml")
+		_, _ = writer.Write(payload)
+		return
+	}
 	response := result{
 		Xmlns: "http://s3.amazonaws.com/doc/2006-03-01/", Name: "anchors", Prefix: prefix,
 		KeyCount: len(keys), MaxKeys: 1000,

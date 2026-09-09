@@ -71,7 +71,7 @@ func TestEveryCommandAcceptsEitherFlagSeparator(t *testing.T) {
 		"a command carrying its own settings":    serveCmd,
 		"a subcommand of the migrate group":      migrateUpCmd,
 		"a subcommand of the iam group":          bootstrapPlatformAdminCmd,
-		"the newest subcommand of the iam group": repairTenantOwnerCmd,
+		"the newest subcommand of the iam group": listErasureObligationsCmd,
 	} {
 		t.Run(name, func(t *testing.T) {
 			// Cobra folds a parent group persistent flags into a subcommand

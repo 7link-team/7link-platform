@@ -39,11 +39,12 @@ type tenantMemberRecord struct {
 
 // Service coordinates principal and service-account identity workflows.
 type Service struct {
-	repo           *Repository
-	administrators core.AdministratorGuard
-	fields         authz.FieldPermissionChecker
-	anonymizer     PrincipalAnonymizer
-	now            func() time.Time
+	repo            *Repository
+	administrators  core.AdministratorGuard
+	fields          authz.FieldPermissionChecker
+	anonymizer      PrincipalAnonymizer
+	erasureRecorder audit.ErasureRecorder
+	now             func() time.Time
 }
 
 func NewService(

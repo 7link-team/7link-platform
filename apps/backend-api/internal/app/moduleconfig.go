@@ -100,6 +100,8 @@ func iamAuditConfig(c AppConfig) iamaudit.Config {
 		RetentionDays: c.IAMAudit.Anchor.RetentionDays, SigningKey: c.IAMAudit.Anchor.SigningKey,
 	}, Archive: iamaudit.ArchiveConfig{
 		Enabled: c.IAMAudit.Archive.Enabled, Interval: c.IAMAudit.Archive.Interval, Timeout: c.IAMAudit.Archive.Timeout,
+	}, ErasureLedger: iamaudit.ErasureLedgerConfig{
+		Enabled: c.IAMAudit.ErasureLedger.Enabled, Timeout: c.IAMAudit.ErasureLedger.Timeout,
 	}}
 }
 

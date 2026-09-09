@@ -48,6 +48,9 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[Appender](services, Appender(m.appendDomain)); err != nil {
 		return fmt.Errorf("provide audit appender: %w", err)
 	}
+	if err := module.Provide[ErasureRecorder](services, ErasureRecorder(m.recordErasure)); err != nil {
+		return fmt.Errorf("provide erasure recorder: %w", err)
+	}
 	return nil
 }
 
@@ -79,7 +82,7 @@ func (m *Module) Initialize(context.Context) error {
 }
 
 func (m *Module) Start(ctx context.Context) error {
-	if m == nil || (!m.config.Anchor.Enabled && !m.config.Archive.Enabled) {
+	if m == nil || (!m.config.Anchor.Enabled && !m.config.Archive.Enabled && !m.config.ErasureLedger.Enabled) {
 		return nil
 	}
 	m.workerMu.Lock()
@@ -116,6 +119,19 @@ func (m *Module) Start(ctx context.Context) error {
 		}
 		service.archive = store
 	}
+	if m.config.ErasureLedger.Enabled {
+		if err := validateErasureLedgerConfig(m.config.ErasureLedger); err != nil {
+			return err
+		}
+		service.erasureLedger = NewErasureLedger(store)
+		service.erasureTimeout = m.config.ErasureLedger.Timeout
+		checkCtx, cancel := context.WithTimeout(ctx, service.erasureTimeout)
+		err := service.erasureLedger.Check(checkCtx)
+		cancel()
+		if err != nil {
+			return fmt.Errorf("audit erasure ledger: %w", err)
+		}
+	}
 	m.service = service
 	if m.config.Archive.Enabled {
 		runCtx, cancel := context.WithCancel(ctx)
@@ -148,6 +164,18 @@ func (m *Module) appendDomain(ctx context.Context, db *gorm.DB, event DomainEven
 		return ErrUnavailable
 	}
 	return m.service.DomainAppender()(ctx, db, event)
+}
+
+func (m *Module) recordErasure(ctx context.Context, obligation ErasureObligation) error {
+	if m == nil || !m.config.ErasureLedger.Enabled {
+		return ErrErasureLedgerDisabled
+	}
+	if m.service == nil || m.service.erasureLedger == nil {
+		return ErrErasureLedgerUnavailable
+	}
+	writeCtx, cancel := context.WithTimeout(ctx, m.service.erasureTimeout)
+	defer cancel()
+	return m.service.erasureLedger.Put(writeCtx, obligation)
 }
 
 var (

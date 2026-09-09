@@ -41,6 +41,7 @@ func runComposedPrincipalErasure(t *testing.T, external *Database) {
 	t.Helper()
 	for index, scenario := range []string{"success", "late-owner-failure", "delivery-in-flight", "platform-access", "unupgraded-owner", "legacy-notification", "disabled-owner", "live-remote-mapping"} {
 		t.Run(scenario, func(t *testing.T) {
+			ledger := newPrincipalErasureLedgerFixture(t)
 			database := Database{
 				Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "erasure.sqlite"), Writable: true, Readable: true,
 			}
@@ -52,6 +53,7 @@ func runComposedPrincipalErasure(t *testing.T, external *Database) {
 				prefix = fmt.Sprintf("pe%d_", index)
 			}
 			f := newIAMTenantFixtureWithDatabase(t, database, prefix, func(config *AppConfig) {
+				ledger.configure(config)
 				if scenario == "disabled-owner" {
 					config.Federation.Enabled = false
 				}
@@ -177,9 +179,11 @@ func runComposedPrincipalErasure(t *testing.T, external *Database) {
 				var email string
 				require.NoError(t, f.db.Table(f.prefix+"iam_tenant_members").Where("principal_id = ?", id).Pluck("email", &email).Error)
 				assert.Equal(t, principal.Email, email)
+				requirePrincipalErasureObligationCount(t, ledger, 0)
 				return
 			}
 			require.NoError(t, err)
+			requirePrincipalErasureObligationCount(t, ledger, 1)
 			require.NotNil(t, result.AnonymizedAt)
 			assert.Equal(t, policy.Version+1, result.Version)
 			f.assertPrincipalOwnersErased(t, principal, before)
@@ -317,7 +321,8 @@ func TestPrincipalErasureConcurrencyExternalDatabase(t *testing.T) {
 		t.Skip("external IAM lifecycle database is not configured")
 	}
 	require.Contains(t, []string{"postgres", "mysql"}, database.Type, "concurrency requires real row locking")
-	f := newIAMTenantFixtureWithDatabase(t, database, "pc_")
+	ledger := newPrincipalErasureLedgerFixture(t)
+	f := newIAMTenantFixtureWithDatabase(t, database, "pc_", ledger.configure)
 	identityModule := requireIAMModule[*identity.Module](t, f, identity.Name)
 	for _, owner := range []string{"authn", "core", "oauth", "federation", "provisioning", "organization", "governance", "delivery-in-flight", "live-remote-mapping"} {
 		for _, order := range []string{"writer-first", "erasure-first"} {

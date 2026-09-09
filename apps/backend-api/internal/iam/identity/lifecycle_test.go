@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/internal/iam/audit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -27,6 +28,11 @@ func TestPrincipalLifecycleRetentionAndTombstone(t *testing.T) {
 	require.ErrorIs(t, err, ErrUnavailable)
 
 	cleanupCalls := 0
+	var obligations []audit.ErasureObligation
+	h.service.erasureRecorder = func(_ context.Context, obligation audit.ErasureObligation) error {
+		obligations = append(obligations, obligation)
+		return nil
+	}
 	h.service.anonymizer = func(ctx context.Context, tx *gorm.DB, current Principal, _ time.Time) error {
 		cleanupCalls++
 		assert.Equal(t, p.LoginName, current.LoginName)
@@ -60,6 +66,9 @@ func TestPrincipalLifecycleRetentionAndTombstone(t *testing.T) {
 	assert.Empty(t, erased.Reference)
 	assert.Equal(t, policy.Version+1, erased.Version)
 	assert.Equal(t, 1, cleanupCalls)
+	require.Len(t, obligations, 1)
+	assert.Equal(t, p.ID, obligations[0].PrincipalID)
+	assert.Equal(t, erased.Version, obligations[0].LifecycleVersion)
 	row := h.principal(t, p.ID)
 	assert.Equal(t, "erased:"+p.ID.String(), row.LoginName)
 	assert.Equal(t, "Anonymized account", row.DisplayName)
@@ -74,6 +83,9 @@ func TestPrincipalLifecycleRetentionAndTombstone(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, erased, repeated)
 	assert.Equal(t, 1, cleanupCalls)
+	require.Len(t, obligations, 2, "an existing tombstone must backfill or re-verify its external obligation")
+	assert.Equal(t, obligations[0].PrincipalID, obligations[1].PrincipalID)
+	assert.Equal(t, obligations[0].LifecycleVersion, obligations[1].LifecycleVersion)
 	_, err = h.service.SetPrincipalRetention(ctx, p.ID, erased.Version, past, false, "new-case")
 	require.ErrorIs(t, err, ErrPrincipalAnonymized)
 	_, err = h.service.SetStatus(ctx, 7, p.ID, "active")
@@ -97,7 +109,7 @@ func TestPrincipalLifecycleRetentionAndTombstone(t *testing.T) {
 
 func TestPrincipalLifecycleRollback(t *testing.T) {
 	t.Parallel()
-	for _, failure := range []string{"cleanup", "audit"} {
+	for _, failure := range []string{"cleanup", "ledger", "audit"} {
 		t.Run(failure, func(t *testing.T) {
 			h := newIdentityHarness(t, "")
 			ctx := t.Context()
@@ -119,6 +131,9 @@ func TestPrincipalLifecycleRollback(t *testing.T) {
 			}
 			if failure == "audit" {
 				h.auditErr = sentinel
+			}
+			if failure == "ledger" {
+				h.service.erasureRecorder = func(context.Context, audit.ErasureObligation) error { return sentinel }
 			}
 			_, err = h.service.AnonymizePrincipal(ctx, p.ID, policy.Version, p.LoginName)
 			require.ErrorIs(t, err, sentinel)

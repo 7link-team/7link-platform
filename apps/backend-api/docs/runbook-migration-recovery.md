@@ -86,7 +86,8 @@ them. Restoring it is Drill 3.
 ```sh
 # Backup
 <docker> exec -i <container> mysqldump --user=<user> --password=<password> \
-  --single-transaction --routines --triggers --events --hex-blob <database> > backup.sql
+  --single-transaction --no-tablespaces --routines --triggers --events \
+  --hex-blob <database> > backup.sql
 
 # Restore
 <docker> exec -i <container> mysql --user=<user> --password=<password> <database> < backup.sql
@@ -94,7 +95,17 @@ them. Restoring it is Drill 3.
 
 `--triggers` is not optional. The principal tombstone guards are triggers, so a
 dump taken without them restores a schema that no longer refuses to bring erased
-data back.
+data back. `--no-tablespaces` avoids requiring the application backup identity
+to hold MySQL's global `PROCESS` privilege.
+
+Inventory trigger definers before the incident. The restore identity needs
+`SET_ANY_DEFINER` (or the corresponding tightly controlled administrative
+capability) to recreate a trigger carrying another account's definer, and every
+named definer must exist with permission to execute its trigger afterwards. In
+the rehearsal, root could restore all 58 triggers, but the first application
+write then failed with MySQL error 1449 until the original `iam_uat@%` definer
+identity was recreated and granted access to the restored database. A successful
+import alone is therefore not proof that the restored schema is operable.
 
 Rehearsed: a 219 KB dump of 88 tables restored in **1 second** (observation, not
 an RTO). Afterwards the seeded principal and platform administrator were present,
@@ -128,45 +139,83 @@ So restoring a backup taken before an erasure returns the person's data *and*
 removes the record saying it should have been removed. Nothing inside the
 restored database can then tell you an erasure is owed.
 
-The audit archive is outside the database and immutable, but it is not currently
-a complete near-real-time erasure ledger. `RequestArchive` only selects events
-older than the tenant's `archive_after_days`; the default is 730 days and the
-minimum policy is one day. A recent `principal_anonymized` event can therefore
-be absent from both a restored pre-erasure database and the external archive.
+Accepted erasures now first create a database-external, COMPLIANCE-locked
+obligation under `audit/erasures/{principal_id}/{lifecycle_version}.json`. The
+database transaction cannot commit an erasure unless that exact object version
+has been read back and its content, SHA-256 and retention verified. A database
+failure after the object write may leave an obligation for work that did not
+commit; that is intentional and must be reconciled rather than deleted.
 
-**An empty archive query is not evidence that no erasure is owed. Do not reopen
-access after a restore unless an external source is proven to cover the entire
-interval from the backup point through the recovery point.** That source may be
-an independently durable erasure ledger or externally retained MySQL binlogs
-replayed through a tested point-in-time recovery procedure. The existing audit
-archive qualifies only for intervals whose completed, verified objects are
-proven to include the required event sequence.
+The deployment must set `iam_audit.erasure_ledger.enabled: true` on every replica
+that accepts erasure. Its `iam_audit.anchor.retention_days` must exceed the age
+of the oldest database backup that can be restored plus the operational recovery
+window. Do not reopen access if that coverage relationship is false or unknown.
 
-Once that coverage prerequisite is met, reconcile a restore that crosses an
-erasure as follows:
+Reconcile every restore, including one believed not to cross an erasure:
 
-1. Record the exact backup point, recovery point and coverage boundary of the
-   external source. Stop if any part of that interval is uncovered.
-2. List `principal_anonymized` events from the covered **external source**, not
-   from the restored `iam_audit_events`, for the window between the backup and
-   the recovery point.
-3. For each principal named, re-run the platform erasure:
+1. Keep admission and background writers disabled. Record the backup point,
+   recovery point, object-store bucket and configured retention period.
+2. Read and verify the external ledger, not the restored audit table:
+
+   ```sh
+   7link-api iam list-erasure-obligations --config <config> \
+     > erasure-obligations.ndjson
+   ```
+
+   Each NDJSON line contains `principal_id`, `lifecycle_version`, `object_key`,
+   exact `version_id`, `sha256` and `retain_until`. The command reads all object
+   versions, so a delete marker does not hide a locked obligation. It does not
+   initialize application modules or connect to the restored database. Any
+   list, decode, key, hash, version or retention failure stops recovery.
+3. For each listed principal whose lifecycle in the restored database is not
+   already anonymized at that version or later, re-run the platform erasure:
    `POST /platform/iam/principals/{id}/lifecycle/anonymization`.
    The retention policy and suspension it requires were also rolled back, so
    they have to be re-recorded first -- the endpoint refuses otherwise, which is
    the intended behaviour rather than an obstacle.
-4. Confirm each principal's lifecycle reports `anonymized`, and that
-   `GET /platform/iam/principals/{id}/lifecycle` lists `already_anonymized`.
+4. Run the external list again and retain its output with the recovery evidence.
+   Confirm every listed obligation has a matching lifecycle tombstone at the
+   same or later version, the principal and all owner copies contain no PII, and
+   a `principal_anonymized` audit event exists. Only then re-enable admission.
 
-**Not yet rehearsed and not yet release-ready.** Drills 1-3 above were executed;
-this reconciliation has not been run end to end, and the current historical
-archive policy does not cover recent erasures. The coverage mechanism must be
-implemented and tested before this procedure can be accepted.
+The historical audit archive remains useful evidence but is not a substitute:
+its age policy can omit recent erasures. An empty ledger is evidence only when
+the ledger was enabled throughout the entire interval covered by every
+restorable backup and its retention was long enough.
+
+Rehearsed on 2026-09-09 with an isolated MySQL 8.4.11 database and a disposable
+MinIO S3-compatible Object Lock service:
+
+- A 354,263-byte backup was taken after creating a synthetic principal but
+  before its retention decision and suspension.
+- The first erasure reached lifecycle version 2 and wrote one verified external
+  obligation. The principal and membership copies were redacted, the credential
+  was removed, and one tombstone and one `principal_anonymized` event remained.
+- Restoring the older backup made the login, email, active state and credential
+  return while both the tombstone and erasure event returned to zero. All 58
+  triggers were present and all 13 migration modules still validated `clean`.
+- `iam list-erasure-obligations` still returned the obligation with its original
+  object VersionID and SHA-256 despite the database rollback. The restored
+  database was not configured or consulted by that command.
+- Re-recording the expired retention decision, suspending and erasing again
+  restored the version-2 tombstone and audit event and removed both principal
+  and membership PII plus the credential. The ledger still contained exactly
+  the original object version and digest: reconciliation verified it rather
+  than replacing it.
+
+The delete-marker retry case was separately reverified against MinIO
+RELEASE.2025-09-07T16-13-09Z (container image digest
+`sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e`):
+after an unversioned delete, a retry found the first locked version and did not
+publish a second obligation version.
+
+The drill used a one-day object retention only because both containers were
+disposable. Production must use the longer backup-coverage relationship stated
+above. The drill containers and temporary dumps were deleted; the existing local
+UAT database was only read to seed the isolated copy.
 
 ## Known Gaps
 
 - RTO and RPO are undecided (see above).
-- Recent erasures have no proven near-real-time external ledger or rehearsed
-  binlog/PITR coverage; reconciliation is blocked on that design.
 - These drills used one isolated database. They do not cover replication,
   failover, or a multi-node deployment.

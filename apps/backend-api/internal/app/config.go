@@ -53,8 +53,14 @@ type IAMCore struct {
 // IAMAudit configures the IAM domain audit chain. It is intentionally separate
 // from Audit, which controls transport-level operation logging.
 type IAMAudit struct {
-	Anchor  IAMAuditAnchor  `mapstructure:"anchor" group:"anchor"`
-	Archive IAMAuditArchive `mapstructure:"archive" group:"archive"`
+	Anchor        IAMAuditAnchor        `mapstructure:"anchor" group:"anchor"`
+	Archive       IAMAuditArchive       `mapstructure:"archive" group:"archive"`
+	ErasureLedger IAMAuditErasureLedger `mapstructure:"erasure_ledger" group:"erasure_ledger"`
+}
+
+type IAMAuditErasureLedger struct {
+	Enabled bool          `mapstructure:"enabled" description:"require an external immutable obligation before permanently erasing a principal" default:"false"`
+	Timeout time.Duration `mapstructure:"timeout" description:"maximum duration of each synchronous erasure-ledger operation" default:"10s"`
 }
 
 type IAMAuditArchive struct {

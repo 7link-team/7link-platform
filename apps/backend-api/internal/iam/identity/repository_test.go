@@ -143,6 +143,7 @@ func newIdentityHarness(t *testing.T, prefix string) *identityHarness {
 	})
 	harness.service = NewService(harness.runtime, appender, harness.guard, newIdentityTestIDs(1000))
 	harness.service.now = func() time.Time { return identityTestNow }
+	harness.service.erasureRecorder = func(context.Context, audit.ErasureObligation) error { return nil }
 	harness.repository = harness.service.repo
 	return harness
 }
