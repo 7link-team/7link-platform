@@ -186,6 +186,28 @@ real mail delivery, or an S3 object-lock store. Its loopback notification receiv
 only supports synthetic registration verification. External acceptance remains open.
 HTTP verification must not be reported as browser acceptance.
 
+Permanent-erasure browser acceptance must use a separate disposable database and
+an S3-compatible object-lock store. It must never target the retained local UAT
+personas. After starting that isolated deployment, run the frontend audit with
+all paths and identifiers explicit:
+
+```sh
+IAM_ERASURE_ACCEPT_DISPOSABLE_DATABASE=true \
+IAM_CONSOLE_URL=http://127.0.0.1:<console-port> \
+IAM_BROWSER_TENANT=<disposable-tenant-id> \
+IAM_BROWSER_PASSWORD_FILE=<disposable-admin-password-file> \
+IAM_ERASURE_REPORT_DIR=<private-report-directory> \
+bun --cwd ../frontend-web-admin/apps/iam run audit:permanent-erasure
+```
+
+The safety acknowledgement and loopback URL check are mandatory. The audit creates
+a random synthetic principal, disables it, records an expired retention decision,
+types the login confirmation, performs permanent erasure, and reads the versioned
+tombstone back through the API. It writes a mode-0600 JSON report and before/after
+screenshots. Complete acceptance also requires independent reconciliation of the
+external erasure obligation and the database state; the browser report alone is
+not sufficient.
+
 ## Local Verification Record (2026-09-08)
 
 - Real MySQL initialization, backend build/migration/bootstrap, console startup,
@@ -221,5 +243,15 @@ HTTP verification must not be reported as browser acceptance.
 - Administrator/member by desktop/mobile: 4/4 PASS. Session tenant behavior,
   desktop-redact/mobile-omit profile policy, partial PATCH, account navigation,
   and the three-language by two-viewport workspace matrix also passed.
-- Permanent erasure, external notification delivery, external IdP/SCIM/object
-  store integration and formal production acceptance remain NOT RUN / NOT READY.
+- Permanent-erasure browser acceptance on a disposable MySQL 8.4.11 and MinIO
+  object-lock deployment: PASS. A random synthetic account completed UI disable,
+  expired-retention save, typed confirmation, erasure, tombstone rendering and API
+  read-back at lifecycle version 2. Both 1440x1000 screenshots were inspected.
+- Independent reconciliation found exactly one verified COMPLIANCE-locked external
+  obligation for that synthetic account. The principal and tenant-member rows were
+  anonymized, the credential count was zero, the version-2 tombstone and one
+  `principal_anonymized` event remained, and all four MySQL tombstone triggers were
+  installed. Direct attempts to revive the principal or clear `anonymized_at` were
+  rejected and the stored tombstone remained intact.
+- External notification delivery, external IdP/SCIM integration, approved RTO/RPO,
+  designated sign-off and formal production acceptance remain NOT READY.
