@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
-import { ShieldCheck } from "lucide-react"
+import { ExternalLink, ShieldCheck } from "lucide-react"
+import { Link } from "react-router"
 import { Button } from "@workspace/ui/components/button"
 import { Checkbox } from "@workspace/ui/components/checkbox"
 import {
@@ -126,11 +127,12 @@ export function DirectoryRoleBindingsDialog({
             roles.map((role) => {
               const checked = boundRoleIDs.includes(role.id)
               return (
-                <label
+                <div
                   key={role.id}
                   className="flex min-h-14 items-center gap-3 rounded-md border p-3 hover:bg-muted/30"
                 >
                   <Checkbox
+                    id={`directory-role-${assigneeType}-${role.id}`}
                     data-directory-role-id={role.id}
                     aria-label={t("manageRoleBindings", { name: role.name })}
                     checked={checked}
@@ -139,15 +141,28 @@ export function DirectoryRoleBindingsDialog({
                       void toggleRole(role, value === true)
                     }
                   />
-                  <span className="min-w-0 flex-1">
+                  <label
+                    htmlFor={`directory-role-${assigneeType}-${role.id}`}
+                    className="min-w-0 flex-1"
+                  >
                     <strong className="block text-sm break-words">
                       {role.name}
                     </strong>
                     <small className="mt-1 block text-xs break-words text-muted-foreground">
                       {role.description || role.id}
                     </small>
-                  </span>
-                </label>
+                  </label>
+                  <Button variant="ghost" size="icon" asChild>
+                    <Link
+                      to={`/iam/roles?role=${encodeURIComponent(role.id)}&view=assignments`}
+                      aria-label={t("openNamedRole", { name: role.name })}
+                      title={t("openNamedRole", { name: role.name })}
+                      data-open-role-id={role.id}
+                    >
+                      <ExternalLink />
+                    </Link>
+                  </Button>
+                </div>
               )
             })
           )}

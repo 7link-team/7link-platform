@@ -1,4 +1,5 @@
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
+import { Link, useSearchParams } from "react-router"
 import {
   useCallback,
   useEffect,
@@ -10,6 +11,7 @@ import {
 import {
   BriefcaseBusiness,
   Database,
+  ExternalLink,
   KeyRound,
   Pencil,
   Plus,
@@ -31,6 +33,12 @@ import {
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { SimpleSelect } from "@workspace/ui/components/select"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@workspace/ui/components/tabs"
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import {
@@ -55,10 +63,13 @@ import {
 
 export default function RolesPage() {
   const t = useTranslations("iam")
+  const [params, setParams] = useSearchParams()
+  const view = roleWorkspaceView(params.get("view"))
 
   const [roles, setRoles] = useState<Role[]>([])
   const [catalog, setCatalog] = useState<Permission[]>([])
-  const [selected, setSelected] = useState<Role | null>(null)
+  const selected =
+    roles.find((role) => role.id === params.get("role")) ?? roles[0] ?? null
   const [details, setDetails] = useState<{
     roleID: string
     grants: RolePermissionGrant[]
@@ -94,17 +105,11 @@ export default function RolesPage() {
     )
 
   const refresh = useCallback(
-    (preferredID?: string) =>
+    () =>
       Promise.all([iamApi.roles(), iamApi.permissions()]).then(
         ([nextRoles, nextCatalog]) => {
           setRoles(nextRoles)
           setCatalog(nextCatalog)
-          setSelected((current) => {
-            const id = preferredID ?? current?.id
-            return (
-              nextRoles.find((role) => role.id === id) ?? nextRoles[0] ?? null
-            )
-          })
         }
       ),
     []
@@ -192,6 +197,21 @@ export default function RolesPage() {
       }, {}),
     [catalog]
   )
+  const assignmentCount = boundMembers.length + directoryBindings.length
+
+  const selectRole = (role: Role) => {
+    setConditionPermission(null)
+    const next = new URLSearchParams(params)
+    next.set("role", role.id)
+    setParams(next)
+  }
+
+  const selectView = (nextView: string) => {
+    const next = new URLSearchParams(params)
+    if (nextView === "permissions") next.delete("view")
+    else next.set("view", nextView)
+    setParams(next)
+  }
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -208,7 +228,10 @@ export default function RolesPage() {
         : await iamApi.createRole(body)
       setOpen(false)
       setEditing(null)
-      await refresh(role.id)
+      const next = new URLSearchParams(params)
+      next.set("role", role.id)
+      setParams(next)
+      await refresh()
     } catch (cause) {
       setError((cause as Error).message)
     } finally {
@@ -356,7 +379,9 @@ export default function RolesPage() {
     setError("")
     try {
       await iamApi.deleteRole(selected.id)
-      setSelected(null)
+      const next = new URLSearchParams(params)
+      next.delete("role")
+      setParams(next)
       await refresh()
     } catch (cause) {
       setError((cause as Error).message)
@@ -416,17 +441,17 @@ export default function RolesPage() {
             <button
               key={role.id}
               className={`grid min-h-16 w-full grid-cols-[34px_minmax(0,1fr)] items-center gap-3 border-b px-3 text-left hover:bg-muted/40 ${selected?.id === role.id ? "bg-primary/5 shadow-[inset_3px_0_var(--primary)]" : ""}`}
-              onClick={() => {
-                setConditionPermission(null)
-                setSelected(role)
-              }}
+              onClick={() => selectRole(role)}
+              aria-current={selected?.id === role.id ? "true" : undefined}
             >
               <span className="grid size-8 place-items-center rounded-md bg-primary/10 text-primary">
                 <KeyRound size={16} />
               </span>
               <span className="min-w-0">
-                <strong className="block truncate text-sm">{role.name}</strong>
-                <small className="mt-1 block truncate text-xs text-muted-foreground">
+                <strong className="block text-sm break-words">
+                  {role.name}
+                </strong>
+                <small className="mt-1 block text-xs break-words text-muted-foreground">
                   {role.description || role.id}
                 </small>
               </span>
@@ -437,9 +462,9 @@ export default function RolesPage() {
           {selected ? (
             <>
               <header className="flex min-h-20 flex-wrap items-center justify-between gap-4 border-b px-5 py-3">
-                <div>
-                  <h2 className="font-semibold">{selected.name}</h2>
-                  <p className="mt-1 text-xs text-muted-foreground">
+                <div className="min-w-0">
+                  <h2 className="font-semibold break-words">{selected.name}</h2>
+                  <p className="mt-1 text-xs break-words text-muted-foreground">
                     {selected.description || t("noDescription")}
                   </p>
                 </div>
@@ -467,257 +492,344 @@ export default function RolesPage() {
                   </Button>
                 </div>
               </header>
-              <div className="p-5">
-                <section className="mb-7" data-role-data-scope>
-                  <h3 className="mb-3 flex items-center gap-2 border-b pb-2 text-xs font-semibold text-muted-foreground uppercase">
-                    <Database size={15} />
+              <Tabs value={view} onValueChange={selectView}>
+                <TabsList
+                  variant="line"
+                  className="flex w-full justify-start gap-2 overflow-x-auto border-b px-3 sm:gap-5 sm:px-5"
+                  aria-label={t("roleWorkspaceSections")}
+                  data-role-workspace-tabs
+                >
+                  <TabsTrigger
+                    variant="line"
+                    value="permissions"
+                    className="min-w-0 gap-1.5"
+                    data-role-view="permissions"
+                  >
+                    <KeyRound className="size-4" />
+                    {t("permissionContent")}
+                    <span
+                      className="min-w-5 text-center text-xs text-muted-foreground tabular-nums"
+                      data-role-count="permissions"
+                    >
+                      {loadingDetails ? "..." : grants.length}
+                    </span>
+                  </TabsTrigger>
+                  <TabsTrigger
+                    variant="line"
+                    value="assignments"
+                    className="min-w-0 gap-1.5"
+                    data-role-view="assignments"
+                  >
+                    <UsersRound className="size-4" />
+                    {t("assignedObjects")}
+                    <span
+                      className="min-w-5 text-center text-xs text-muted-foreground tabular-nums"
+                      data-role-count="assignments"
+                    >
+                      {loadingDetails ? "..." : assignmentCount}
+                    </span>
+                  </TabsTrigger>
+                  <TabsTrigger
+                    variant="line"
+                    value="scope"
+                    className="min-w-0 gap-1.5"
+                    data-role-view="scope"
+                  >
+                    <Database className="size-4" />
                     {t("dataScope")}
-                  </h3>
-                  {loadingDetails ? (
-                    <p className="text-sm text-muted-foreground">
-                      {t("loadingDataScope")}
-                    </p>
-                  ) : (
-                    <div className="grid gap-4">
-                      <div className="grid max-w-md gap-2">
-                        <Label htmlFor="role-data-scope">{t("scope")}</Label>
-                        <SimpleSelect
-                          id="role-data-scope"
-                          value={scopeDraft}
-                          disabled={busy}
-                          onValueChange={(value) =>
-                            setScopeDraft(value as DataScope)
-                          }
-                          options={{
-                            all: t("allData"),
-                            self: t("ownData"),
-                            department: t("ownDepartment"),
-                            department_and_descendants: t(
-                              "departmentDescendants"
-                            ),
-                            selected_departments: t("selectedDepartments"),
-                          }}
-                        />
-                      </div>
-                      {scopeDraft === "selected_departments" && (
-                        <div
-                          className="grid gap-2 md:grid-cols-2"
-                          data-scope-departments
-                        >
-                          {departments.map((department) => {
-                            const checked = scopeDepartmentIDs.includes(
-                              department.id
-                            )
-                            return (
-                              <label
-                                key={department.id}
-                                className="flex min-h-12 items-center gap-3 rounded-md border p-3 hover:bg-muted/30"
-                              >
-                                <Checkbox
-                                  data-scope-department-id={department.id}
-                                  checked={checked}
-                                  disabled={
-                                    busy ||
-                                    (department.status !== "active" && !checked)
-                                  }
-                                  onCheckedChange={(value) =>
-                                    setScopeDepartmentIDs((current) =>
-                                      value === true
-                                        ? [
-                                            ...new Set([
-                                              ...current,
-                                              department.id,
-                                            ]),
-                                          ]
-                                        : current.filter(
-                                            (id) => id !== department.id
-                                          )
-                                    )
-                                  }
-                                />
-                                <span className="min-w-0 flex-1 truncate text-sm">
-                                  {department.name}
-                                </span>
-                                {department.status !== "active" && (
-                                  <Badge variant="destructive">
-                                    {t("disable")}
-                                  </Badge>
-                                )}
-                              </label>
-                            )
-                          })}
-                        </div>
-                      )}
-                      <div>
-                        <Button
-                          size="sm"
-                          disabled={busy}
-                          onClick={() => void saveDataScope()}
-                          data-save-data-scope
-                        >
-                          {t("saveDataScope")}
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </section>
-                <section className="mb-7">
-                  <h3 className="mb-3 flex items-center gap-2 border-b pb-2 text-xs font-semibold text-muted-foreground uppercase">
-                    <UsersRound size={15} />
-                    {t("roleMembers")}
-                  </h3>
-                  {loadingDetails ? (
-                    <p className="text-sm text-muted-foreground">
-                      {t("loadingMembers")}
-                    </p>
-                  ) : members.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      {t("noAssignableMembers")}
-                    </p>
-                  ) : (
-                    <div className="grid gap-2 md:grid-cols-2">
-                      {members.map((member) => (
-                        <label
-                          key={member.subject}
-                          className="flex min-h-14 items-center gap-3 rounded-md border p-3 hover:bg-muted/30"
-                        >
-                          <Checkbox
-                            checked={boundMembers.includes(member.subject)}
-                            disabled={busy || member.status !== "active"}
-                            onCheckedChange={(value) =>
-                              void toggleMember(member.subject, value === true)
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent
+                  value="scope"
+                  className="m-0 p-5"
+                  data-role-panel="scope"
+                >
+                  <section data-role-data-scope>
+                    <h3 className="mb-3 flex items-center gap-2 border-b pb-2 text-xs font-semibold text-muted-foreground uppercase">
+                      <Database size={15} />
+                      {t("dataScope")}
+                    </h3>
+                    {loadingDetails ? (
+                      <p className="text-sm text-muted-foreground">
+                        {t("loadingDataScope")}
+                      </p>
+                    ) : (
+                      <div className="grid gap-4">
+                        <div className="grid max-w-md gap-2">
+                          <Label htmlFor="role-data-scope">{t("scope")}</Label>
+                          <SimpleSelect
+                            id="role-data-scope"
+                            value={scopeDraft}
+                            disabled={busy}
+                            onValueChange={(value) =>
+                              setScopeDraft(value as DataScope)
                             }
+                            options={{
+                              all: t("allData"),
+                              self: t("ownData"),
+                              department: t("ownDepartment"),
+                              department_and_descendants: t(
+                                "departmentDescendants"
+                              ),
+                              selected_departments: t("selectedDepartments"),
+                            }}
                           />
-                          <span className="min-w-0 flex-1">
-                            <strong className="block truncate text-sm">
-                              {member.display_name}
-                            </strong>
-                            <small className="mt-1 block truncate text-xs text-muted-foreground">
-                              {member.email || member.subject}
-                            </small>
-                          </span>
-                          {member.status !== "active" && (
-                            <Badge variant="destructive">{t("disable")}</Badge>
-                          )}
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </section>
-                <DirectoryBindingsSection
-                  title={t("groups")}
-                  kind="group"
-                  icon={<UsersRound size={15} />}
-                  loading={loadingDetails}
-                  busy={busy}
-                  items={directoryGroups.map((group) => ({
-                    id: group.id,
-                    name: group.name,
-                    detail: group.description || t("staticGroup"),
-                    status: group.status,
-                  }))}
-                  boundIDs={directoryBindings
-                    .filter((binding) => binding.assignee_type === "group")
-                    .map((binding) => binding.assignee_id)}
-                  onToggle={toggleDirectoryBinding}
-                />
-                <DirectoryBindingsSection
-                  title={t("positions")}
-                  kind="position"
-                  icon={<BriefcaseBusiness size={15} />}
-                  loading={loadingDetails}
-                  busy={busy}
-                  items={directoryPositions.map((position) => ({
-                    id: position.id,
-                    name: position.name,
-                    detail: position.code,
-                    status: position.status,
-                  }))}
-                  boundIDs={directoryBindings
-                    .filter((binding) => binding.assignee_type === "position")
-                    .map((binding) => binding.assignee_id)}
-                  onToggle={toggleDirectoryBinding}
-                />
-                <section>
-                  <h3 className="mb-3 border-b pb-2 text-xs font-semibold text-muted-foreground uppercase">
-                    {t("permissionGrants")}
-                  </h3>
-                  {Object.entries(permissionGroups).map(
-                    ([resource, permissions]) => (
-                      <section key={resource} className="mb-6">
-                        <h4 className="mb-3 text-xs font-semibold text-muted-foreground uppercase">
-                          {resource}
-                        </h4>
-                        <div className="grid gap-2 md:grid-cols-2">
-                          {permissions.map((permission) => {
-                            const grant = grants.find(
-                              (item) => item.permission_code === permission.code
-                            )
-                            return (
-                              <div
-                                key={permission.code}
-                                className="grid min-h-14 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 rounded-md border p-3 hover:bg-muted/30 sm:grid-cols-[auto_minmax(0,1fr)_auto]"
-                                data-permission-code={permission.code}
-                              >
-                                <Checkbox
-                                  aria-label={t("grantNamed", {
-                                    permission: permission.summary,
-                                  })}
-                                  checked={Boolean(grant)}
-                                  disabled={busy || loadingDetails}
-                                  onCheckedChange={(value) =>
-                                    void togglePermission(
-                                      permission.code,
-                                      value === true
-                                    )
-                                  }
-                                />
-                                <span className="min-w-0 flex-1">
-                                  <strong className="block text-sm">
-                                    {permission.summary}
-                                  </strong>
-                                  <small className="mt-1 block font-mono text-xs text-muted-foreground">
-                                    {permission.code}
-                                  </small>
-                                  {grant?.condition && (
-                                    <small
-                                      className="mt-1 block text-xs break-words text-muted-foreground"
-                                      data-permission-condition-summary
-                                    >
-                                      {trustedContextConditionSummary(
-                                        grant.condition,
-                                        t("unrestricted")
-                                      )}
-                                    </small>
-                                  )}
-                                </span>
-                                {grant && (
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="col-start-2 justify-self-start sm:col-start-3 sm:row-start-1 sm:justify-self-end"
-                                    disabled={busy}
-                                    onClick={() =>
-                                      openPermissionCondition(permission)
-                                    }
-                                    data-edit-permission-condition={
-                                      permission.code
-                                    }
-                                  >
-                                    <SlidersHorizontal />
-                                    {t("condition")}
-                                  </Button>
-                                )}
-                              </div>
-                            )
-                          })}
                         </div>
-                      </section>
-                    )
-                  )}
-                </section>
-              </div>
+                        {scopeDraft === "selected_departments" && (
+                          <div
+                            className="grid gap-2 md:grid-cols-2"
+                            data-scope-departments
+                          >
+                            {departments.map((department) => {
+                              const checked = scopeDepartmentIDs.includes(
+                                department.id
+                              )
+                              return (
+                                <label
+                                  key={department.id}
+                                  className="flex min-h-12 items-center gap-3 rounded-md border p-3 hover:bg-muted/30"
+                                >
+                                  <Checkbox
+                                    data-scope-department-id={department.id}
+                                    checked={checked}
+                                    disabled={
+                                      busy ||
+                                      (department.status !== "active" &&
+                                        !checked)
+                                    }
+                                    onCheckedChange={(value) =>
+                                      setScopeDepartmentIDs((current) =>
+                                        value === true
+                                          ? [
+                                              ...new Set([
+                                                ...current,
+                                                department.id,
+                                              ]),
+                                            ]
+                                          : current.filter(
+                                              (id) => id !== department.id
+                                            )
+                                      )
+                                    }
+                                  />
+                                  <span className="min-w-0 flex-1 text-sm break-words">
+                                    {department.name}
+                                  </span>
+                                  {department.status !== "active" && (
+                                    <Badge variant="destructive">
+                                      {t("disable")}
+                                    </Badge>
+                                  )}
+                                </label>
+                              )
+                            })}
+                          </div>
+                        )}
+                        <div>
+                          <Button
+                            size="sm"
+                            disabled={busy}
+                            onClick={() => void saveDataScope()}
+                            data-save-data-scope
+                          >
+                            {t("saveDataScope")}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </section>
+                </TabsContent>
+                <TabsContent
+                  value="assignments"
+                  className="m-0 p-5"
+                  data-role-panel="assignments"
+                >
+                  <section className="mb-7">
+                    <div className="mb-3 flex min-h-9 flex-wrap items-center justify-between gap-3 border-b pb-2">
+                      <h3 className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase">
+                        <UsersRound size={15} />
+                        {t("roleMembers")}
+                      </h3>
+                      <Button variant="ghost" size="sm" asChild>
+                        <Link
+                          to="/iam/principals"
+                          data-role-directory-link="account"
+                        >
+                          <ExternalLink />
+                          {t("openAccountDirectory")}
+                        </Link>
+                      </Button>
+                    </div>
+                    {loadingDetails ? (
+                      <p className="text-sm text-muted-foreground">
+                        {t("loadingMembers")}
+                      </p>
+                    ) : members.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        {t("noAssignableMembers")}
+                      </p>
+                    ) : (
+                      <div className="grid gap-2 md:grid-cols-2">
+                        {members.map((member) => (
+                          <label
+                            key={member.subject}
+                            className="flex min-h-14 items-center gap-3 rounded-md border p-3 hover:bg-muted/30"
+                          >
+                            <Checkbox
+                              data-role-member-id={member.subject}
+                              checked={boundMembers.includes(member.subject)}
+                              disabled={busy || member.status !== "active"}
+                              onCheckedChange={(value) =>
+                                void toggleMember(
+                                  member.subject,
+                                  value === true
+                                )
+                              }
+                            />
+                            <span className="min-w-0 flex-1">
+                              <strong className="block text-sm break-words">
+                                {member.display_name}
+                              </strong>
+                              <small className="mt-1 block text-xs break-words text-muted-foreground">
+                                {member.email || member.subject}
+                              </small>
+                            </span>
+                            {member.status !== "active" && (
+                              <Badge variant="destructive">
+                                {t("disable")}
+                              </Badge>
+                            )}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                  <DirectoryBindingsSection
+                    title={t("groups")}
+                    href="/iam/groups"
+                    linkLabel={t("openGroupDirectory")}
+                    kind="group"
+                    icon={<UsersRound size={15} />}
+                    loading={loadingDetails}
+                    busy={busy}
+                    items={directoryGroups.map((group) => ({
+                      id: group.id,
+                      name: group.name,
+                      detail: group.description || t("staticGroup"),
+                      status: group.status,
+                    }))}
+                    boundIDs={directoryBindings
+                      .filter((binding) => binding.assignee_type === "group")
+                      .map((binding) => binding.assignee_id)}
+                    onToggle={toggleDirectoryBinding}
+                  />
+                  <DirectoryBindingsSection
+                    title={t("positions")}
+                    href="/iam/positions"
+                    linkLabel={t("openPositionDirectory")}
+                    kind="position"
+                    icon={<BriefcaseBusiness size={15} />}
+                    loading={loadingDetails}
+                    busy={busy}
+                    items={directoryPositions.map((position) => ({
+                      id: position.id,
+                      name: position.name,
+                      detail: position.code,
+                      status: position.status,
+                    }))}
+                    boundIDs={directoryBindings
+                      .filter((binding) => binding.assignee_type === "position")
+                      .map((binding) => binding.assignee_id)}
+                    onToggle={toggleDirectoryBinding}
+                  />
+                </TabsContent>
+                <TabsContent
+                  value="permissions"
+                  className="m-0 p-5"
+                  data-role-panel="permissions"
+                >
+                  <section>
+                    <h3 className="mb-3 border-b pb-2 text-xs font-semibold text-muted-foreground uppercase">
+                      {t("permissionGrants")}
+                    </h3>
+                    {Object.entries(permissionGroups).map(
+                      ([resource, permissions]) => (
+                        <section key={resource} className="mb-6">
+                          <h4 className="mb-3 text-xs font-semibold text-muted-foreground uppercase">
+                            {resource}
+                          </h4>
+                          <div className="grid gap-2 md:grid-cols-2">
+                            {permissions.map((permission) => {
+                              const grant = grants.find(
+                                (item) =>
+                                  item.permission_code === permission.code
+                              )
+                              return (
+                                <div
+                                  key={permission.code}
+                                  className="grid min-h-14 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 rounded-md border p-3 hover:bg-muted/30 sm:grid-cols-[auto_minmax(0,1fr)_auto]"
+                                  data-permission-code={permission.code}
+                                >
+                                  <Checkbox
+                                    aria-label={t("grantNamed", {
+                                      permission: permission.summary,
+                                    })}
+                                    checked={Boolean(grant)}
+                                    disabled={busy || loadingDetails}
+                                    onCheckedChange={(value) =>
+                                      void togglePermission(
+                                        permission.code,
+                                        value === true
+                                      )
+                                    }
+                                  />
+                                  <span className="min-w-0 flex-1">
+                                    <strong className="block text-sm">
+                                      {permission.summary}
+                                    </strong>
+                                    <small className="mt-1 block font-mono text-xs text-muted-foreground">
+                                      {permission.code}
+                                    </small>
+                                    {grant?.condition && (
+                                      <small
+                                        className="mt-1 block text-xs break-words text-muted-foreground"
+                                        data-permission-condition-summary
+                                      >
+                                        {trustedContextConditionSummary(
+                                          grant.condition,
+                                          t("unrestricted")
+                                        )}
+                                      </small>
+                                    )}
+                                  </span>
+                                  {grant && (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="col-start-2 justify-self-start sm:col-start-3 sm:row-start-1 sm:justify-self-end"
+                                      disabled={busy}
+                                      onClick={() =>
+                                        openPermissionCondition(permission)
+                                      }
+                                      data-edit-permission-condition={
+                                        permission.code
+                                      }
+                                    >
+                                      <SlidersHorizontal />
+                                      {t("condition")}
+                                    </Button>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </section>
+                      )
+                    )}
+                  </section>
+                </TabsContent>
+              </Tabs>
             </>
           ) : (
             <div className="grid min-h-96 place-items-center text-sm text-muted-foreground">
@@ -937,6 +1049,8 @@ export default function RolesPage() {
   )
 }
 
+type RoleWorkspaceView = "permissions" | "assignments" | "scope"
+
 interface DirectoryOption {
   id: string
   name: string
@@ -948,8 +1062,14 @@ function localTimezone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
 }
 
+function roleWorkspaceView(value: string | null): RoleWorkspaceView {
+  return value === "assignments" || value === "scope" ? value : "permissions"
+}
+
 function DirectoryBindingsSection({
   title,
+  href,
+  linkLabel,
   kind,
   icon,
   items,
@@ -959,6 +1079,8 @@ function DirectoryBindingsSection({
   onToggle,
 }: {
   title: string
+  href: string
+  linkLabel: string
   kind: RoleDirectoryBinding["assignee_type"]
   icon: ReactNode
   items: DirectoryOption[]
@@ -975,10 +1097,18 @@ function DirectoryBindingsSection({
 
   return (
     <section className="mb-7" data-directory-section={kind}>
-      <h3 className="mb-3 flex items-center gap-2 border-b pb-2 text-xs font-semibold text-muted-foreground uppercase">
-        {icon}
-        {title}
-      </h3>
+      <div className="mb-3 flex min-h-9 flex-wrap items-center justify-between gap-3 border-b pb-2">
+        <h3 className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase">
+          {icon}
+          {title}
+        </h3>
+        <Button variant="ghost" size="sm" asChild>
+          <Link to={href} data-role-directory-link={kind}>
+            <ExternalLink />
+            {linkLabel}
+          </Link>
+        </Button>
+      </div>
       {loading ? (
         <p className="text-sm text-muted-foreground">{t("loadingShort")}</p>
       ) : items.length === 0 ? (
@@ -1005,10 +1135,10 @@ function DirectoryBindingsSection({
                   }
                 />
                 <span className="min-w-0 flex-1">
-                  <strong className="block truncate text-sm">
+                  <strong className="block text-sm break-words">
                     {item.name}
                   </strong>
-                  <small className="mt-1 block truncate text-xs text-muted-foreground">
+                  <small className="mt-1 block text-xs break-words text-muted-foreground">
                     {item.detail}
                   </small>
                 </span>

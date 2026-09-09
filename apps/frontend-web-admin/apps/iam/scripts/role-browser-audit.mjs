@@ -227,7 +227,26 @@ async function cleanup() {
     )
 }
 
-async function capture(name, width, height, focusSelector = "") {
+async function selectRoleView(view) {
+  await click(`[data-role-view="${view}"]`)
+  await waitFor(
+    `document.querySelector('[data-role-view="${view}"]')?.hasAttribute("data-active")`
+  )
+  await waitFor(
+    view === "permissions"
+      ? `!new URLSearchParams(location.search).has("view")`
+      : `new URLSearchParams(location.search).get("view") === ${JSON.stringify(view)}`
+  )
+}
+
+async function captureRoleWorkspace(
+  name,
+  width,
+  height,
+  view,
+  roleID,
+  focusSelector = ""
+) {
   await command("Emulation.setDeviceMetricsOverride", {
     width,
     height,
@@ -241,21 +260,37 @@ async function capture(name, width, height, focusSelector = "") {
       target.scrollIntoView({ block: "start" });
     `)
   await Bun.sleep(250)
-  const layout = await evaluate(`return {
-    width: innerWidth,
-    scrollWidth: document.documentElement.scrollWidth,
-    horizontalOverflow: document.documentElement.scrollWidth > innerWidth,
-    groupSection: Boolean(document.querySelector('[data-directory-section="group"]')),
-	positionSection: Boolean(document.querySelector('[data-directory-section="position"]')),
-	dataScopeSection: Boolean(document.querySelector('[data-role-data-scope]')),
-	permissionConditionSummary: Boolean(document.querySelector('[data-permission-condition-summary]')),
-  }`)
+  const layout = await evaluate(`
+    const tab = document.querySelector('[data-role-view=${JSON.stringify(view)}]');
+    const panel = document.querySelector('[data-role-panel=${JSON.stringify(view)}]');
+    const panelRect = panel?.getBoundingClientRect();
+    return {
+      view: ${JSON.stringify(view)},
+      width: innerWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+      horizontalOverflow: document.documentElement.scrollWidth > innerWidth,
+      activeTab: Boolean(tab?.hasAttribute("data-active")),
+      panelVisible: Boolean(panel && !panel.hidden && panelRect && panelRect.width > 0 && panelRect.height > 0),
+      roleDeepLink: new URLSearchParams(location.search).get("role") === ${JSON.stringify(roleID)},
+      viewDeepLink: ${JSON.stringify(view)} === "permissions"
+        ? !new URLSearchParams(location.search).has("view")
+        : new URLSearchParams(location.search).get("view") === ${JSON.stringify(view)},
+      permissionCount: document.querySelector('[data-role-count="permissions"]')?.textContent.trim(),
+      assignmentCount: document.querySelector('[data-role-count="assignments"]')?.textContent.trim(),
+      directoryLinks: document.querySelectorAll('[data-role-directory-link]').length,
+      permissionConditionSummary: Boolean(document.querySelector('[data-permission-condition-summary]')),
+    };
+  `)
   if (
     layout.horizontalOverflow ||
-    !layout.groupSection ||
-    !layout.positionSection ||
-    !layout.dataScopeSection ||
-    !layout.permissionConditionSummary
+    !layout.activeTab ||
+    !layout.panelVisible ||
+    !layout.roleDeepLink ||
+    !layout.viewDeepLink ||
+    layout.permissionCount !== "1" ||
+    layout.assignmentCount !== "3" ||
+    (view === "permissions" && !layout.permissionConditionSummary) ||
+    (view === "assignments" && layout.directoryLinks !== 3)
   )
     throw new Error(`${name} layout failed: ${JSON.stringify(layout)}`)
   const screenshot = await command("Page.captureScreenshot", {
@@ -367,6 +402,10 @@ const department = await api("/iam/departments", {
     sort_order: 10,
   }),
 })
+const member = (await api("/iam/members")).find(
+  (item) => item.status === "active"
+)
+if (!member) throw new Error("active acceptance member was not returned")
 
 await click("header:has(h1) button")
 await waitFor(`document.querySelector("#role-form")`)
@@ -378,12 +417,29 @@ await waitFor(
   `[...document.querySelectorAll("button strong")].some((item) => item.textContent.trim() === ${JSON.stringify(roleName)})`
 )
 
-const role = (await api("/iam/roles")).find((item) => item.name === roleName)
+const persistedRoles = await api("/iam/roles")
+const role = persistedRoles.find((item) => item.name === roleName)
 if (!role) throw new Error("created role was not returned")
+const alternateRole = persistedRoles.find((item) => item.id !== role.id)
+if (!alternateRole) throw new Error("an alternate role is required")
 await waitFor(
   `[...document.querySelectorAll("h2")].some((item) => item.textContent.trim() === ${JSON.stringify(roleName)})`
 )
+await waitFor(
+  `new URLSearchParams(location.search).get("role") === ${JSON.stringify(role.id)}`
+)
+const alternateRoleButton = `[...document.querySelectorAll("button strong")].find((item) => item.textContent.trim() === ${JSON.stringify(alternateRole.name)})?.closest("button")`
+await waitFor(alternateRoleButton)
+await evaluate(`${alternateRoleButton}.click()`)
+await waitFor(
+  `new URLSearchParams(location.search).get("role") === ${JSON.stringify(alternateRole.id)} && [...document.querySelectorAll("h2")].some((item) => item.textContent.trim() === ${JSON.stringify(alternateRole.name)})`
+)
+await evaluate(`history.back()`)
+await waitFor(
+  `new URLSearchParams(location.search).get("role") === ${JSON.stringify(role.id)} && [...document.querySelectorAll("h2")].some((item) => item.textContent.trim() === ${JSON.stringify(roleName)})`
+)
 
+await selectRoleView("scope")
 await waitFor(`document.querySelector("#role-data-scope")`)
 await click("#role-data-scope")
 const selectedDepartmentsOption = `[...document.querySelectorAll('[role="option"]')].find((item) => item.textContent.trim() === "指定部门")`
@@ -412,6 +468,7 @@ if (
 )
   throw new Error("role data scope did not persist")
 
+await selectRoleView("permissions")
 const permissionSelector = `document.querySelector('[data-permission-code="menu_view"] [role="checkbox"]')`
 await waitFor(permissionSelector)
 await evaluate(`${permissionSelector}.click()`)
@@ -445,6 +502,19 @@ await waitFor(
   `document.querySelector('[data-permission-condition-summary]')?.textContent.includes("ACR >= 2")`
 )
 
+await selectRoleView("assignments")
+const memberSelector = `[data-role-member-id=${JSON.stringify(member.subject)}]`
+await waitFor(`document.querySelector(${JSON.stringify(memberSelector)})`)
+await click(memberSelector)
+await waitFor(
+  `document.querySelector(${JSON.stringify(memberSelector)})?.getAttribute("aria-checked") === "true"`
+)
+if (
+  !(await api(`/iam/roles/${encodeURIComponent(role.id)}/members`)).includes(
+    member.subject
+  )
+)
+  throw new Error("direct role member assignment did not persist")
 for (const [kind, item] of [
   ["group", group],
   ["position", position],
@@ -473,6 +543,9 @@ if (
   )
 )
   throw new Error("directory bindings did not persist")
+await waitFor(
+  `document.querySelector('[data-role-count="permissions"]')?.textContent.trim() === "1" && document.querySelector('[data-role-count="assignments"]')?.textContent.trim() === "3"`
+)
 
 const reverseLayouts = []
 for (const [kind, item, path] of [
@@ -538,17 +611,19 @@ for (const [kind, item, path] of [
     deviceScaleFactor: 1,
     mobile: false,
   })
-  await click("[data-close-directory-roles]")
-  await waitFor(`!document.querySelector("[data-directory-role-dialog]")`)
+  await click(`[data-open-role-id="${role.id}"]`)
+  await waitFor(
+    `location.pathname === "/iam/roles" && new URLSearchParams(location.search).get("role") === ${JSON.stringify(role.id)} && new URLSearchParams(location.search).get("view") === "assignments"`
+  )
+  await waitFor(
+    `[...document.querySelectorAll("h2")].some((item) => item.textContent.trim() === ${JSON.stringify(roleName)}) && document.querySelector('[data-role-view="assignments"]')?.hasAttribute("data-active")`
+  )
 }
 
-await navigate("/iam/roles")
+await navigate(`/iam/roles?role=${encodeURIComponent(role.id)}`)
 await waitFor(`document.querySelector("h1")`)
-const roleButton = `[...document.querySelectorAll("button strong")].find((item) => item.textContent.trim() === ${JSON.stringify(roleName)})?.closest("button")`
-await waitFor(roleButton)
-await evaluate(`${roleButton}.click()`)
 await waitFor(
-  `[...document.querySelectorAll("h2")].some((item) => item.textContent.trim() === ${JSON.stringify(roleName)})`
+  `[...document.querySelectorAll("h2")].some((item) => item.textContent.trim() === ${JSON.stringify(roleName)}) && document.querySelector('[data-role-view="permissions"]')?.hasAttribute("data-active")`
 )
 
 const groupDelete = await apiRaw(
@@ -562,20 +637,64 @@ const positionDelete = await apiRaw(
 if (groupDelete.status !== 409 || positionDelete.status !== 409)
   throw new Error("role-bound directory deletion was not protected")
 
-const layouts = [
-  await capture(
-    "role-directory-desktop.png",
+const layouts = []
+await selectRoleView("permissions")
+layouts.push(
+  await captureRoleWorkspace(
+    "role-permissions-desktop.png",
     1440,
     1000,
-    '[data-permission-code="menu_view"]'
+    "permissions",
+    role.id,
+    "[data-role-workspace-tabs]"
   ),
-  await capture(
-    "role-directory-mobile.png",
+  await captureRoleWorkspace(
+    "role-permissions-mobile.png",
     390,
     844,
-    '[data-permission-code="menu_view"]'
+    "permissions",
+    role.id,
+    "[data-role-workspace-tabs]"
+  )
+)
+await selectRoleView("assignments")
+layouts.push(
+  await captureRoleWorkspace(
+    "role-assignments-desktop.png",
+    1440,
+    1000,
+    "assignments",
+    role.id,
+    "[data-role-workspace-tabs]"
   ),
-]
+  await captureRoleWorkspace(
+    "role-assignments-mobile.png",
+    390,
+    844,
+    "assignments",
+    role.id,
+    "[data-role-workspace-tabs]"
+  )
+)
+await selectRoleView("scope")
+layouts.push(
+  await captureRoleWorkspace(
+    "role-scope-desktop.png",
+    1440,
+    1000,
+    "scope",
+    role.id,
+    "[data-role-workspace-tabs]"
+  ),
+  await captureRoleWorkspace(
+    "role-scope-mobile.png",
+    390,
+    844,
+    "scope",
+    role.id,
+    "[data-role-workspace-tabs]"
+  )
+)
 await command("Emulation.setDeviceMetricsOverride", {
   width: 1440,
   height: 1000,
@@ -583,6 +702,7 @@ await command("Emulation.setDeviceMetricsOverride", {
   mobile: false,
 })
 
+await selectRoleView("assignments")
 for (const [kind, item] of [
   ["group", group],
   ["position", position],
@@ -593,7 +713,18 @@ for (const [kind, item] of [
     `document.querySelector(${JSON.stringify(selector)})?.getAttribute("aria-checked") === "false"`
   )
 }
+await click(memberSelector)
+await waitFor(
+  `document.querySelector(${JSON.stringify(memberSelector)})?.getAttribute("aria-checked") === "false"`
+)
+if (
+  (await api(`/iam/roles/${encodeURIComponent(role.id)}/members`)).includes(
+    member.subject
+  )
+)
+  throw new Error("direct role member removal did not persist")
 
+await selectRoleView("permissions")
 await click('[data-edit-permission-condition="menu_view"]')
 await waitFor(`document.querySelector("[data-clear-permission-condition]")`)
 await click("[data-clear-permission-condition]")
@@ -633,6 +764,12 @@ if (conditionAuditCount !== 2)
   throw new Error(
     `expected two role_permission_condition_updated audit events, got ${conditionAuditCount}`
   )
+for (const type of ["role_member_added", "role_member_removed"]) {
+  const count = audit.filter(
+    (event) => event.event_type === type && event.target_id === role.id
+  ).length
+  if (count !== 1) throw new Error(`expected one ${type} audit event, got ${count}`)
+}
 
 await cleanup()
 const unexpectedResponses = responses.filter(
@@ -658,7 +795,7 @@ console.log(
       departmentID: department.id,
       layouts,
       reverseLayouts,
-      auditEvents: 11,
+      auditEvents: 13,
       consoleErrors,
       failedRequests: unexpectedFailures,
       unexpectedResponses,
