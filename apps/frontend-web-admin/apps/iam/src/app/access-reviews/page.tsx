@@ -42,6 +42,7 @@ import {
   type AccessReviewItem,
   type AccessReviewStatus,
 } from "../../lib/iam-api"
+import { useAllowed } from "../../lib/permissions"
 
 type PendingAction =
   | {
@@ -57,6 +58,7 @@ export default function AccessReviewsPage() {
   const locale = useLocale()
 
   const t = useTranslations("iam")
+  const allowed = useAllowed()
 
   const { session } = useAuth()
   const [reviews, setReviews] = useState<AccessReview[]>([])
@@ -172,10 +174,12 @@ export default function AccessReviewsPage() {
               <RefreshCw className={busy ? "animate-spin" : ""} />
               {t("refresh")}
             </Button>
-            <Button disabled={busy} onClick={openCreate}>
-              <Plus />
-              {t("newReview")}
-            </Button>
+            {allowed("access_review_create") && (
+              <Button disabled={busy} onClick={openCreate}>
+                <Plus />
+                {t("newReview")}
+              </Button>
+            )}
           </div>
         }
       />
@@ -237,25 +241,29 @@ export default function AccessReviewsPage() {
             </div>
             {selected.status === "open" && (
               <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() =>
-                    setAction({ kind: "cancel", review: selected })
-                  }
-                >
-                  <Ban />
-                  {t("cancelReview")}
-                </Button>
-                <Button
-                  disabled={busy || selected.pending > 0}
-                  onClick={() =>
-                    setAction({ kind: "complete", review: selected })
-                  }
-                >
-                  <CircleCheckBig />
-                  {t("completeReview")}
-                </Button>
+                {allowed("access_review_manage") && (
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() =>
+                      setAction({ kind: "cancel", review: selected })
+                    }
+                  >
+                    <Ban />
+                    {t("cancelReview")}
+                  </Button>
+                )}
+                {allowed("access_review_manage") && (
+                  <Button
+                    disabled={busy || selected.pending > 0}
+                    onClick={() =>
+                      setAction({ kind: "complete", review: selected })
+                    }
+                  >
+                    <CircleCheckBig />
+                    {t("completeReview")}
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -530,9 +538,12 @@ function ReviewItems({
   const locale = useLocale()
 
   const t = useTranslations("iam")
+  const allowed = useAllowed()
 
   const actions = (item: AccessReviewItem) =>
-    item.decision === "pending" && review.status === "open" ? (
+    item.decision === "pending" &&
+    review.status === "open" &&
+    allowed("access_review_decide") ? (
       <div className="flex justify-end gap-2">
         <Button
           size="sm"

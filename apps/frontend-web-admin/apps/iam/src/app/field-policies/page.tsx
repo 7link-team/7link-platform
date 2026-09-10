@@ -47,6 +47,7 @@ import {
   type ManagedFieldPolicy,
   type Role,
 } from "../../lib/iam-api"
+import { useAllowed } from "../../lib/permissions"
 
 const mutabilityLabels = {
   readOnly: "readOnly",
@@ -68,6 +69,7 @@ export default function FieldPoliciesPage() {
 
 function TenantFieldPolicies({ tenant }: { tenant: string }) {
   const t = useTranslations("iam")
+  const allowed = useAllowed()
 
   // Pin requests to the editor's tenant, including refreshes after mutations.
   const api = useMemo(() => createIamApi(undefined, () => tenant), [tenant])
@@ -268,17 +270,10 @@ function TenantFieldPolicies({ tenant }: { tenant: string }) {
                     {rule?.version ?? "-"}
                   </TableCell>
                   <TableCell>
-                    {field.configurable ? (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={t("editNamedSpaced", { name: field.name })}
-                        title={t("editNamedSpaced", { name: field.name })}
-                        onClick={() => setSelected(field)}
-                      >
-                        <Pencil />
-                      </Button>
-                    ) : (
+                    {/* A field nobody may configure keeps the lock. A field this
+                        caller may not configure shows nothing, because calling
+                        it fixed would be a different claim. */}
+                    {!field.configurable ? (
                       <span
                         title={t("fixedField")}
                         className="inline-flex size-9 items-center justify-center text-muted-foreground"
@@ -288,7 +283,17 @@ function TenantFieldPolicies({ tenant }: { tenant: string }) {
                           aria-label={t("fixedField")}
                         />
                       </span>
-                    )}
+                    ) : allowed("field_policy_update") ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={t("editNamedSpaced", { name: field.name })}
+                        title={t("editNamedSpaced", { name: field.name })}
+                        onClick={() => setSelected(field)}
+                      >
+                        <Pencil />
+                      </Button>
+                    ) : null}
                   </TableCell>
                 </TableRow>
               )

@@ -54,6 +54,7 @@ import {
   type RoleDataScope,
   type RolePermissionGrant,
 } from "../../lib/iam-api"
+import { useAllowed } from "../../lib/permissions"
 import {
   trustedContextCondition,
   trustedContextConditionDraft,
@@ -63,6 +64,7 @@ import {
 
 export default function RolesPage() {
   const t = useTranslations("iam")
+  const allowed = useAllowed()
   const [params, setParams] = useSearchParams()
   const view = roleWorkspaceView(params.get("view"))
 
@@ -122,50 +124,70 @@ export default function RolesPage() {
   useEffect(() => {
     if (!selected) return
     let current = true
-    void Promise.all([
+    // Four of these answer to permissions a role administrator need not hold:
+    // the member directory to user_view, groups and positions to their own view
+    // codes, departments to dept_view. Asking for all eight at once used to make
+    // any one refusal empty the whole role workspace, so the assignable lists
+    // degrade on their own and the role's own data still arrives.
+    void Promise.allSettled([
       iamApi.rolePermissionGrants(selected.id),
       iamApi.roleMembers(selected.id),
-      iamApi.members(),
+      allowed("user_view") ? iamApi.members() : Promise.resolve([]),
       iamApi.roleDirectoryBindings(selected.id),
-      iamApi.groups(),
-      iamApi.positions(),
+      allowed("group_view") ? iamApi.groups() : Promise.resolve([]),
+      allowed("position_view") ? iamApi.positions() : Promise.resolve([]),
       iamApi.roleDataScope(selected.id),
-      iamApi.departments(),
-    ])
-      .then(
-        ([
+      allowed("dept_view") ? iamApi.departments() : Promise.resolve([]),
+    ]).then(
+      ([
+        nextGrants,
+        nextBoundMembers,
+        nextMembers,
+        nextBindings,
+        nextGroups,
+        nextPositions,
+        nextDataScope,
+        nextDepartments,
+      ]) => {
+        if (!current) return
+        const refused = [
           nextGrants,
           nextBoundMembers,
-          nextMembers,
           nextBindings,
-          nextGroups,
-          nextPositions,
           nextDataScope,
-          nextDepartments,
-        ]) => {
-          if (!current) return
-          setDetails({
-            roleID: selected.id,
-            grants: nextGrants,
-            boundMembers: nextBoundMembers,
-            members: nextMembers,
-            bindings: nextBindings,
-            groups: nextGroups,
-            positions: nextPositions,
-            dataScope: nextDataScope,
-            departments: nextDepartments,
-          })
-          setScopeDraft(nextDataScope.scope)
-          setScopeDepartmentIDs(nextDataScope.department_ids)
+        ].find((result) => result.status === "rejected")
+        if (refused?.status === "rejected") {
+          setError((refused.reason as Error | undefined)?.message ?? "")
+          return
         }
-      )
-      .catch((cause: Error) => {
-        if (current) setError(cause.message)
-      })
+        if (
+          nextGrants.status !== "fulfilled" ||
+          nextBoundMembers.status !== "fulfilled" ||
+          nextBindings.status !== "fulfilled" ||
+          nextDataScope.status !== "fulfilled"
+        )
+          return
+        setDetails({
+          roleID: selected.id,
+          grants: nextGrants.value,
+          boundMembers: nextBoundMembers.value,
+          members: nextMembers.status === "fulfilled" ? nextMembers.value : [],
+          bindings: nextBindings.value,
+          groups: nextGroups.status === "fulfilled" ? nextGroups.value : [],
+          positions:
+            nextPositions.status === "fulfilled" ? nextPositions.value : [],
+          dataScope: nextDataScope.value,
+          departments:
+            nextDepartments.status === "fulfilled" ? nextDepartments.value : [],
+        })
+        setScopeDraft(nextDataScope.value.scope)
+        setScopeDepartmentIDs(nextDataScope.value.department_ids)
+      }
+    )
     return () => {
       current = false
     }
-  }, [selected])
+  }, [selected, allowed])
 
   const loadingDetails = details.roleID !== selected?.id
   const grants = loadingDetails ? [] : details.grants
@@ -417,15 +439,17 @@ export default function RolesPage() {
         title={t("rolePermissions")}
         description={t("rolesDescription")}
         action={
-          <Button
-            onClick={() => {
-              setEditing(null)
-              setOpen(true)
-            }}
-          >
-            <Plus />
-            {t("createRole")}
-          </Button>
+          allowed("role_create") && (
+            <Button
+              onClick={() => {
+                setEditing(null)
+                setOpen(true)
+              }}
+            >
+              <Plus />
+              {t("createRole")}
+            </Button>
+          )
         }
       />
       {error && <Alert>{error}</Alert>}
@@ -469,27 +493,31 @@ export default function RolesPage() {
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => {
-                      setEditing(selected)
-                      setOpen(true)
-                    }}
-                  >
-                    <Pencil />
-                    {t("edit")}
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => void remove()}
-                  >
-                    <Trash2 />
-                    {t("deleteRole")}
-                  </Button>
+                  {allowed("role_update") && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => {
+                        setEditing(selected)
+                        setOpen(true)
+                      }}
+                    >
+                      <Pencil />
+                      {t("edit")}
+                    </Button>
+                  )}
+                  {allowed("role_delete") && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => void remove()}
+                    >
+                      <Trash2 />
+                      {t("deleteRole")}
+                    </Button>
+                  )}
                 </div>
               </header>
               <Tabs value={view} onValueChange={selectView}>
@@ -560,7 +588,7 @@ export default function RolesPage() {
                           <SimpleSelect
                             id="role-data-scope"
                             value={scopeDraft}
-                            disabled={busy}
+                            disabled={busy || !allowed("role_update")}
                             onValueChange={(value) =>
                               setScopeDraft(value as DataScope)
                             }
@@ -594,6 +622,7 @@ export default function RolesPage() {
                                     checked={checked}
                                     disabled={
                                       busy ||
+                                      !allowed("role_update") ||
                                       (department.status !== "active" &&
                                         !checked)
                                     }
@@ -626,14 +655,16 @@ export default function RolesPage() {
                           </div>
                         )}
                         <div>
-                          <Button
-                            size="sm"
-                            disabled={busy}
-                            onClick={() => void saveDataScope()}
-                            data-save-data-scope
-                          >
-                            {t("saveDataScope")}
-                          </Button>
+                          {allowed("role_update") && (
+                            <Button
+                              size="sm"
+                              disabled={busy}
+                              onClick={() => void saveDataScope()}
+                              data-save-data-scope
+                            >
+                              {t("saveDataScope")}
+                            </Button>
+                          )}
                         </div>
                       </div>
                     )}
@@ -678,7 +709,11 @@ export default function RolesPage() {
                             <Checkbox
                               data-role-member-id={member.subject}
                               checked={boundMembers.includes(member.subject)}
-                              disabled={busy || member.status !== "active"}
+                              disabled={
+                                busy ||
+                                !allowed("role_manage_member") ||
+                                member.status !== "active"
+                              }
                               onCheckedChange={(value) =>
                                 void toggleMember(
                                   member.subject,
@@ -711,7 +746,7 @@ export default function RolesPage() {
                     kind="group"
                     icon={<UsersRound size={15} />}
                     loading={loadingDetails}
-                    busy={busy}
+                    busy={busy || !allowed("role_manage_assignee")}
                     items={directoryGroups.map((group) => ({
                       id: group.id,
                       name: group.name,
@@ -730,7 +765,7 @@ export default function RolesPage() {
                     kind="position"
                     icon={<BriefcaseBusiness size={15} />}
                     loading={loadingDetails}
-                    busy={busy}
+                    busy={busy || !allowed("role_manage_assignee")}
                     items={directoryPositions.map((position) => ({
                       id: position.id,
                       name: position.name,
@@ -775,7 +810,11 @@ export default function RolesPage() {
                                       permission: permission.summary,
                                     })}
                                     checked={Boolean(grant)}
-                                    disabled={busy || loadingDetails}
+                                    disabled={
+                                      busy ||
+                                      loadingDetails ||
+                                      !allowed("role_grant_permission")
+                                    }
                                     onCheckedChange={(value) =>
                                       void togglePermission(
                                         permission.code,
@@ -802,24 +841,25 @@ export default function RolesPage() {
                                       </small>
                                     )}
                                   </span>
-                                  {grant && (
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      className="col-start-2 justify-self-start sm:col-start-3 sm:row-start-1 sm:justify-self-end"
-                                      disabled={busy}
-                                      onClick={() =>
-                                        openPermissionCondition(permission)
-                                      }
-                                      data-edit-permission-condition={
-                                        permission.code
-                                      }
-                                    >
-                                      <SlidersHorizontal />
-                                      {t("condition")}
-                                    </Button>
-                                  )}
+                                  {grant &&
+                                    allowed("role_grant_permission") && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="col-start-2 justify-self-start sm:col-start-3 sm:row-start-1 sm:justify-self-end"
+                                        disabled={busy}
+                                        onClick={() =>
+                                          openPermissionCondition(permission)
+                                        }
+                                        data-edit-permission-condition={
+                                          permission.code
+                                        }
+                                      >
+                                        <SlidersHorizontal />
+                                        {t("condition")}
+                                      </Button>
+                                    )}
                                 </div>
                               )
                             })}

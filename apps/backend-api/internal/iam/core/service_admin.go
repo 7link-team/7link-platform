@@ -330,6 +330,62 @@ func (s *Service) EffectiveMenus(
 	return build(0, map[guid.ID]bool{}), nil
 }
 
+// EffectivePermissions returns the declared permission codes the caller holds
+// right now, so a console can leave out an action instead of offering one the
+// server is going to refuse. It answers only for the caller: the codes come
+// from the same evaluators the route guards use, so the reply cannot describe
+// authority the request itself would not have.
+//
+// A zero tenant, or a tenant the caller is not an active member of, yields the
+// platform codes alone -- CheckBulk already returns nothing for a non-member.
+// Platform codes are evaluated separately because platform authority does not
+// come from a membership, and a platform administrator with no tenant of their
+// own still has to be able to see the platform actions.
+func (s *Service) EffectivePermissions(
+	ctx context.Context,
+	tenantID, principalID guid.ID,
+) ([]string, error) {
+	if principalID.Zero() {
+		return nil, fmt.Errorf("%w: invalid principal", ErrInvalidArgument)
+	}
+	tenantCodes, platformCodes := []string{}, []string{}
+	for _, action := range s.registry.All() {
+		if action.Scope == "platform" {
+			platformCodes = append(platformCodes, action.Code)
+			continue
+		}
+		tenantCodes = append(tenantCodes, action.Code)
+	}
+	sort.Strings(tenantCodes)
+	sort.Strings(platformCodes)
+	granted := make([]string, 0, len(tenantCodes)+len(platformCodes))
+	if !tenantID.Zero() {
+		for start := 0; start < len(tenantCodes); start += 100 {
+			end := min(start+100, len(tenantCodes))
+			result, err := s.checker.CheckBulk(ctx, tenantID, tenantCodes[start:end], principalID)
+			if err != nil {
+				return nil, fmt.Errorf("check effective tenant permissions: %w", err)
+			}
+			for _, code := range tenantCodes[start:end] {
+				if result[code] {
+					granted = append(granted, code)
+				}
+			}
+		}
+	}
+	for _, code := range platformCodes {
+		allowed, err := s.checker.CheckPlatform(ctx, code, principalID)
+		if err != nil {
+			return nil, fmt.Errorf("check effective platform permissions: %w", err)
+		}
+		if allowed {
+			granted = append(granted, code)
+		}
+	}
+	sort.Strings(granted)
+	return granted, nil
+}
+
 func (s *Service) validateMenu(ctx context.Context, repo *Repository, menu *Menu) error {
 	if menu == nil {
 		return fmt.Errorf("%w: invalid menu", ErrInvalidArgument)

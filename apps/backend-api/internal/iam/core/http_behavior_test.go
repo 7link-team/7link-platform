@@ -66,6 +66,14 @@ func (httpAuthorizationEvaluator) CheckBulk(_ context.Context, _ guid.ID, permis
 	return result, nil
 }
 
+func (httpAuthorizationEvaluator) Check(context.Context, guid.ID, string, guid.ID) (bool, error) {
+	return true, nil
+}
+
+func (httpAuthorizationEvaluator) CheckPlatform(context.Context, string, guid.ID) (bool, error) {
+	return true, nil
+}
+
 func (httpAuthorizationEvaluator) Constraint(context.Context, guid.ID, string, guid.ID) (authz.DataConstraint, error) {
 	return authz.DataConstraint{AllowAll: true, OwnerIDs: []string{}, ResourceIDs: []string{}, DepartmentIDs: []string{}, Ancestors: []authz.ResourceRef{}, DeniedIDs: []string{}}, nil
 }
@@ -90,6 +98,14 @@ func (e httpFailingAuthorizationEvaluator) FieldConstraint(context.Context, guid
 
 func (e httpFailingAuthorizationEvaluator) CheckBulk(context.Context, guid.ID, []string, guid.ID) (map[string]bool, error) {
 	return nil, e.err
+}
+
+func (e httpFailingAuthorizationEvaluator) Check(context.Context, guid.ID, string, guid.ID) (bool, error) {
+	return false, e.err
+}
+
+func (e httpFailingAuthorizationEvaluator) CheckPlatform(context.Context, string, guid.ID) (bool, error) {
+	return false, e.err
 }
 
 func (e httpFailingAuthorizationEvaluator) Constraint(context.Context, guid.ID, string, guid.ID) (authz.DataConstraint, error) {

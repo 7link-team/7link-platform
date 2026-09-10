@@ -47,6 +47,7 @@ import {
   type OAuthClientInput,
   type OAuthGrantType,
 } from "../../lib/iam-api"
+import { useAllowed } from "../../lib/permissions"
 
 const grants: Array<{ value: OAuthGrantType; label: string }> = [
   { value: "authorization_code", label: "Authorization Code + PKCE" },
@@ -117,6 +118,7 @@ function uniqueLines(value: string): string[] {
 
 export default function OAuthClientsPage() {
   const t = useTranslations("iam")
+  const allowed = useAllowed()
 
   const [clients, setClients] = useState<OAuthClient[]>([])
   const [loading, setLoading] = useState(true)
@@ -260,10 +262,12 @@ export default function OAuthClientsPage() {
         title={t("oauthClients")}
         description={t("oauthDescription")}
         action={
-          <Button onClick={openCreate}>
-            <Plus />
-            {t("createClient")}
-          </Button>
+          allowed("oauth_client_create") && (
+            <Button onClick={openCreate}>
+              <Plus />
+              {t("createClient")}
+            </Button>
+          )
         }
       />
       {error && <Alert>{error}</Alert>}
@@ -438,18 +442,21 @@ function ClientActions({
   onDelete: () => void
 }) {
   const t = useTranslations("iam")
+  const allowed = useAllowed()
 
   return (
     <TooltipProvider>
       <div className="flex justify-end gap-1">
-        <ActionButton
-          label={t("editNamedSpaced", { name: client.name })}
-          onClick={onEdit}
-          disabled={busy}
-        >
-          <Pencil />
-        </ActionButton>
-        {!client.public_client && (
+        {allowed("oauth_client_update") && (
+          <ActionButton
+            label={t("editNamedSpaced", { name: client.name })}
+            onClick={onEdit}
+            disabled={busy}
+          >
+            <Pencil />
+          </ActionButton>
+        )}
+        {!client.public_client && allowed("oauth_client_update") && (
           <ActionButton
             label={t("rotateSecretNamed", { name: client.name })}
             onClick={onRotate}
@@ -458,14 +465,16 @@ function ClientActions({
             <RefreshCw />
           </ActionButton>
         )}
-        <ActionButton
-          label={t("deleteNamedSpaced", { name: client.name })}
-          onClick={onDelete}
-          disabled={busy}
-          destructive
-        >
-          <Trash2 />
-        </ActionButton>
+        {allowed("oauth_client_delete") && (
+          <ActionButton
+            label={t("deleteNamedSpaced", { name: client.name })}
+            onClick={onDelete}
+            disabled={busy}
+            destructive
+          >
+            <Trash2 />
+          </ActionButton>
+        )}
       </div>
     </TooltipProvider>
   )

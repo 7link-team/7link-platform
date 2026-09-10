@@ -160,6 +160,19 @@
     cursor: pointer;
   }
 
+  /* A finger is not a cursor. The size variants are tuned for a dense desktop
+     table -- 24 to 36 px tall -- which is below the 44 px target a touch screen
+     needs, and the icon-only variants are the worst of them because they are
+     also that narrow. Rather than inflate every variant for every device, grow
+     the hit area only where the pointer is coarse; the visual size of a button
+     on a desktop stays exactly as designed. */
+  @media (pointer: coarse) {
+    [data-slot="button"] {
+      min-height: 44px;
+      min-width: 44px;
+    }
+  }
+
   /* Theme-aware utility overrides */
   .rounded-sm {
     border-radius: calc(var(--radius) * 0.6);

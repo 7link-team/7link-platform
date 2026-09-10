@@ -48,6 +48,7 @@ import {
   type AuditGovernance,
   type AuditScope,
 } from "../../lib/iam-api"
+import { useAllowed } from "../../lib/permissions"
 import { ArchiveJobs } from "./archives"
 
 export default function AuditGovernancePage() {
@@ -100,6 +101,11 @@ function ScopedAuditGovernance({
   scope: AuditScope
 }) {
   const t = useTranslations("iam")
+  const allowed = useAllowed()
+  // The platform tab reaches /platform/iam/... routes, which are guarded by
+  // platform_administer instead of the tenant audit verbs.
+  const scopedCode = (tenantCode: string) =>
+    scope === "platform" ? "platform_administer" : tenantCode
 
   const iamApi = useMemo(() => createIamApi(undefined, () => tenant), [tenant])
   const active = useRef(true)
@@ -245,20 +251,22 @@ function ScopedAuditGovernance({
               <RefreshCw className={loading ? "animate-spin" : ""} />
               {t("refresh")}
             </Button>
-            <Button
-              type="button"
-              size="sm"
-              disabled={!archiveStatus || busy}
-              onClick={() => {
-                setMinDays(String(policy?.min_days ?? 365))
-                setArchiveDays(String(policy?.archive_after_days ?? 730))
-                setDialogOpen(true)
-              }}
-            >
-              <Pencil />
-              {t("updateRetentionPolicy")}
-            </Button>
-            {scope === "tenant" && (
+            {allowed(scopedCode("audit_event_manage")) && (
+              <Button
+                type="button"
+                size="sm"
+                disabled={!archiveStatus || busy}
+                onClick={() => {
+                  setMinDays(String(policy?.min_days ?? 365))
+                  setArchiveDays(String(policy?.archive_after_days ?? 730))
+                  setDialogOpen(true)
+                }}
+              >
+                <Pencil />
+                {t("updateRetentionPolicy")}
+              </Button>
+            )}
+            {scope === "tenant" && allowed("audit_event_manage") && (
               <Button
                 type="button"
                 size="sm"

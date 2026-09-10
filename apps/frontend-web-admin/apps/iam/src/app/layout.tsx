@@ -13,6 +13,7 @@ import { WorkspaceSwitcher } from "../components/workspace-switcher"
 import {
   Sheet,
   SheetContent,
+  SheetTitle,
   SheetTrigger,
 } from "@workspace/ui/components/sheet"
 import { AppSidebar } from "../components/app-sidebar"
@@ -30,6 +31,7 @@ import {
   ApiError,
 } from "../lib/iam-api"
 import { appName } from "../lib/branding"
+import type { EffectivePermissions } from "../lib/permissions"
 import { LanguageSwitcher } from "@workspace/ui/components/i18n/language-switcher"
 import { useClientLocale } from "@workspace/ui/i18n/intl-provider"
 
@@ -41,6 +43,7 @@ export default function AppLayout() {
     subject: string
     tenant: string
     items: EffectiveMenu[] | null
+    permissions: EffectivePermissions
     error: string
   } | null>(null)
   const [tenantValue, setTenantValue] = useState(getTenant())
@@ -62,10 +65,19 @@ export default function AppLayout() {
       ? menuCatalog
       : null
   const menus = currentMenus?.items ?? null
+  const permissions = currentMenus?.permissions ?? null
+  // The shell loads the menu tree and the caller's own codes together, so one
+  // completed load answers both.
+  const permissionsResolved = currentMenus !== null
   const menuError = currentMenus?.error ?? ""
   const [fieldPolicyAccess, setFieldPolicyAccess] = useState("")
   const { locale: menuLanguage } = useClientLocale()
   const location = useLocation()
+  // The navigation panel overlays the page on a small screen, so choosing a
+  // destination has to dismiss it; leaving it open hides the page the person
+  // just asked for behind the menu they used to ask.
+  const [navOpen, setNavOpen] = useState(false)
+
   const navigate = useNavigate()
   const entityMatch = useMatch("/iam/entities/:entityID/:view")
   const entityID = entityMatch?.params.entityID ?? ""
@@ -143,28 +155,29 @@ export default function AppLayout() {
     const refresh = () => {
       if (status === "authenticated" && directoryReady && tenantValue) {
         const request = ++generation
-        void iamApi
-          .effectiveMenus()
-          .then((next) => {
-            if (active && request === generation) {
-              setMenuCatalog({
-                subject,
-                tenant: tenantValue,
-                items: next,
-                error: "",
-              })
-            }
+        void Promise.allSettled([
+          iamApi.effectiveMenus(),
+          iamApi.myPermissions(),
+        ]).then(([menuResult, permissionResult]) => {
+          if (!active || request !== generation) return
+          // A permission read that did not answer leaves the set unknown rather
+          // than empty, so a failure here cannot quietly remove every action
+          // from the console.
+          const permissions =
+            permissionResult.status === "fulfilled"
+              ? new Set(permissionResult.value)
+              : null
+          setMenuCatalog({
+            subject,
+            tenant: tenantValue,
+            items: menuResult.status === "fulfilled" ? menuResult.value : null,
+            permissions,
+            error:
+              menuResult.status === "fulfilled"
+                ? ""
+                : ((menuResult.reason as Error | undefined)?.message ?? ""),
           })
-          .catch((cause: Error) => {
-            if (active && request === generation) {
-              setMenuCatalog({
-                subject,
-                tenant: tenantValue,
-                items: null,
-                error: cause.message,
-              })
-            }
-          })
+        })
       }
     }
     refresh()
@@ -261,7 +274,7 @@ export default function AppLayout() {
     <div className="flex h-svh flex-col bg-background">
       <header className="sticky top-0 z-40 border-b bg-background shadow-sm">
         <div className="flex min-h-14 flex-wrap items-center gap-2 px-4 py-2 sm:gap-3">
-          <Sheet>
+          <Sheet open={navOpen} onOpenChange={setNavOpen}>
             <SheetTrigger
               aria-label={t("openMainNav")}
               className="grid size-9 place-items-center rounded-md border border-input md:hidden"
@@ -269,17 +282,31 @@ export default function AppLayout() {
               <MenuIcon className="size-5" />
             </SheetTrigger>
             <SheetContent side="left" className="w-72 p-0">
-              <AppSidebar
-                entityID={entityID}
-                language={menuLanguage}
-                menus={directoryReady ? (menus ?? []) : []}
-                platformTenantAccess={platformTenantAccess}
-                fieldPolicyAccess={
-                  Boolean(tenantValue) &&
-                  fieldPolicyAccess === `${tenantValue}:${session.subject}`
-                }
-                className="block h-full w-full border-0"
-              />
+              {/* The panel is a dialog, and a dialog needs a name even when the
+                  design has no visible heading for it. */}
+              <SheetTitle className="sr-only">{t("mainNav")}</SheetTitle>
+              {/* Choosing a destination dismisses the panel. Only a link does:
+                  the expand and collapse controls inside the tree have to leave
+                  it open to be usable at all. */}
+              <div
+                className="h-full"
+                onClick={(event) => {
+                  if ((event.target as HTMLElement).closest("a"))
+                    setNavOpen(false)
+                }}
+              >
+                <AppSidebar
+                  entityID={entityID}
+                  language={menuLanguage}
+                  menus={directoryReady ? (menus ?? []) : []}
+                  platformTenantAccess={platformTenantAccess}
+                  fieldPolicyAccess={
+                    Boolean(tenantValue) &&
+                    fieldPolicyAccess === `${tenantValue}:${session.subject}`
+                  }
+                  className="block h-full w-full border-0"
+                />
+              </div>
             </SheetContent>
           </Sheet>
           <div
@@ -382,7 +409,10 @@ export default function AppLayout() {
               (!selectedEntity || selectedEntity.status !== "active") ? (
               <Alert>{t("entityUnavailable")}</Alert>
             ) : (
-              <Outlet key={`${tenantValue}:${entityID}`} context={{ menus }} />
+              <Outlet
+                key={`${tenantValue}:${entityID}`}
+                context={{ menus, permissions, permissionsResolved }}
+              />
             )}
           </div>
         </main>

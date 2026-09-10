@@ -48,6 +48,7 @@ import {
   type GroupMemberInput,
   type Member,
 } from "../../lib/iam-api"
+import { useAllowed } from "../../lib/permissions"
 
 interface RuleConditionDraft {
   field: GroupRuleField
@@ -63,6 +64,7 @@ const newRuleCondition = (): RuleConditionDraft => ({
 
 export default function GroupsPage() {
   const t = useTranslations("iam")
+  const allowed = useAllowed()
 
   const [groups, setGroups] = useState<Group[]>([])
   const [groupOpen, setGroupOpen] = useState(false)
@@ -201,9 +203,13 @@ export default function GroupsPage() {
     setBusy(true)
     setError("")
     try {
+      // Same split as positions: the directory needs user_view, the membership
+      // list does not.
       const [assigned, members] = await Promise.all([
         iamApi.groupMembers(group.id),
-        group.type === "static" ? iamApi.members() : Promise.resolve([]),
+        group.type === "static" && allowed("user_view")
+          ? iamApi.members()
+          : Promise.resolve([]),
       ])
       setMemberGroup(group)
       setGroupMembers(assigned)
@@ -256,10 +262,12 @@ export default function GroupsPage() {
         title={t("groupManagement")}
         description={t("groupsDescription")}
         action={
-          <Button onClick={openCreate}>
-            <Plus />
-            {t("createGroup")}
-          </Button>
+          allowed("group_create") && (
+            <Button onClick={openCreate}>
+              <Plus />
+              {t("createGroup")}
+            </Button>
+          )
         }
       />
       {error && <Alert>{error}</Alert>}
@@ -319,55 +327,65 @@ export default function GroupsPage() {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={busy}
-                      onClick={() => setRoleGroup(group)}
-                      aria-label={t("manageRoleBindings", { name: group.name })}
-                      title={t("roleBindings")}
-                      data-manage-directory-roles="group"
-                    >
-                      <ShieldCheck />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={busy}
-                      onClick={() => void openMembers(group)}
-                      aria-label={t("groupMemberAction", {
-                        action:
-                          group.type === "dynamic" ? t("view") : t("manage"),
-                        name: group.name,
-                      })}
-                      title={
-                        group.type === "dynamic"
-                          ? t("viewComputedMembers")
-                          : t("manageMembers")
-                      }
-                    >
-                      {group.type === "dynamic" ? <Eye /> : <UserRoundCog />}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={busy}
-                      onClick={() => openEdit(group)}
-                      aria-label={t("editNamed", { name: group.name })}
-                      title={t("editGroup")}
-                    >
-                      <Pencil />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={busy}
-                      onClick={() => void removeGroup(group)}
-                      aria-label={t("deleteNamed", { name: group.name })}
-                      title={t("deleteEmptyGroup")}
-                    >
-                      <Trash2 />
-                    </Button>
+                    {allowed("role_manage_assignee") && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={busy}
+                        onClick={() => setRoleGroup(group)}
+                        aria-label={t("manageRoleBindings", {
+                          name: group.name,
+                        })}
+                        title={t("roleBindings")}
+                        data-manage-directory-roles="group"
+                      >
+                        <ShieldCheck />
+                      </Button>
+                    )}
+                    {allowed("group_manage_member") && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={busy}
+                        onClick={() => void openMembers(group)}
+                        aria-label={t("groupMemberAction", {
+                          action:
+                            group.type === "dynamic" ? t("view") : t("manage"),
+                          name: group.name,
+                        })}
+                        title={
+                          group.type === "dynamic"
+                            ? t("viewComputedMembers")
+                            : t("manageMembers")
+                        }
+                      >
+                        {group.type === "dynamic" ? <Eye /> : <UserRoundCog />}
+                      </Button>
+                    )}
+                    {allowed("group_update") && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={busy}
+                        onClick={() => openEdit(group)}
+                        aria-label={t("editNamed", { name: group.name })}
+                        title={t("editGroup")}
+                      >
+                        <Pencil />
+                      </Button>
+                    )}
+                    {allowed("group_delete") && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={busy}
+                        onClick={() => void removeGroup(group)}
+                        aria-label={t("deleteNamed", { name: group.name })}
+                        title={t("deleteEmptyGroup")}
+                      >
+                        <Trash2 />
+                      </Button>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>

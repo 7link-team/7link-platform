@@ -57,6 +57,7 @@ iam-delete-platform-administrator => iam-delete-platform-administrator|DELETE|/i
 iam-delete-relationship => iam-delete-relationship|DELETE|/iam/relationships
 iam-delete-role => iam-delete-role|DELETE|/iam/roles/{role_id}
 iam-effective-menus => iam-effective-menus|GET|/iam/me/menus
+iam-effective-permissions => iam-effective-permissions|GET|/iam/me/permissions
 iam-explain-authorization => iam-explain-authorization|POST|/iam/authorization/explain
 iam-get-entity => iam-get-entity|GET|/iam/entities/{entity_id}
 iam-get-menu => iam-get-menu|GET|/iam/menus/{menu_id}

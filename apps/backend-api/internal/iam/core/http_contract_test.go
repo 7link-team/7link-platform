@@ -72,7 +72,8 @@ iam-create-menu|POST|/iam/menus
 iam-get-menu|GET|/iam/menus/{menu_id}
 iam-update-menu|PATCH|/iam/menus/{menu_id}
 iam-delete-menu|DELETE|/iam/menus/{menu_id}
-iam-effective-menus|GET|/iam/me/menus`
+iam-effective-menus|GET|/iam/me/menus
+iam-effective-permissions|GET|/iam/me/permissions`
 
 func declarationAPI(t *testing.T) huma.API {
 	t.Helper()
@@ -86,13 +87,13 @@ func TestCoreRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 59)
+	require.Len(t, got, 60)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
 func TestCoreOpenAPISelectorsAndParametersAreConsistent(t *testing.T) {
 	spec := declarationAPI(t).OpenAPI()
-	operationIDs := make(map[string]string, 59)
+	operationIDs := make(map[string]string, 60)
 	pathParameter := regexp.MustCompile(`\{([^}]+)\}`)
 
 	for path, item := range spec.Paths {

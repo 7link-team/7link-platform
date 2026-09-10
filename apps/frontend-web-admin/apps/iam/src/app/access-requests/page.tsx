@@ -49,6 +49,7 @@ import {
   type EffectiveMenu,
   type RequestableRole,
 } from "../../lib/iam-api"
+import { useAllowed } from "../../lib/permissions"
 import { effectiveMenuPaths } from "../../lib/navigation"
 
 type DecisionAction = "approve" | "reject" | "revoke" | "withdraw"
@@ -465,6 +466,9 @@ function RequestActions({
   onDecision: (decision: Decision) => void
 }) {
   const t = useTranslations("iam")
+  // Reaching the queue is access_request_view; deciding on it is
+  // access_request_approve, and the two are granted separately.
+  const allowed = useAllowed()
 
   if (mode === "mine") {
     if (request.status !== "pending" && request.status !== "approved")
@@ -489,6 +493,7 @@ function RequestActions({
         {t("otherApprovalRequired")}
       </span>
     )
+  if (!allowed("access_request_approve")) return null
   if (request.status === "pending")
     return (
       <div className="flex justify-end gap-1">

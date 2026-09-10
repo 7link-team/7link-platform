@@ -32,11 +32,13 @@ import {
   type IssuedInvitation,
   type Role,
 } from "../../lib/iam-api"
+import { useAllowed } from "../../lib/permissions"
 
 export default function InvitationsPage() {
   const locale = useLocale()
 
   const t = useTranslations("iam")
+  const allowed = useAllowed()
 
   const [items, setItems] = useState<Invitation[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
@@ -73,18 +75,21 @@ export default function InvitationsPage() {
     void Promise.resolve().then(() => {
       if (active) void refresh()
     })
-    void Promise.allSettled([iamApi.departments(), iamApi.roles()]).then(
-      ([departmentResult, roleResult]) => {
-        if (!active) return
-        if (departmentResult.status === "fulfilled")
-          setDepartments(departmentResult.value)
-        if (roleResult.status === "fulfilled") setRoles(roleResult.value)
-      }
-    )
+    // Both lists belong to other permissions; an invitation manager without
+    // them still gets the page, with those selectors empty.
+    void Promise.allSettled([
+      allowed("dept_view") ? iamApi.departments() : Promise.resolve([]),
+      allowed("role_view") ? iamApi.roles() : Promise.resolve([]),
+    ]).then(([departmentResult, roleResult]) => {
+      if (!active) return
+      if (departmentResult.status === "fulfilled")
+        setDepartments(departmentResult.value)
+      if (roleResult.status === "fulfilled") setRoles(roleResult.value)
+    })
     return () => {
       active = false
     }
-  }, [refresh])
+  }, [refresh, allowed])
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -147,10 +152,12 @@ export default function InvitationsPage() {
         title={t("memberInvitations")}
         description={t("invitationManagementDescription")}
         action={
-          <Button onClick={() => setOpen(true)}>
-            <MailPlus />
-            {t("createInvitation")}
-          </Button>
+          allowed("invitation_create") && (
+            <Button onClick={() => setOpen(true)}>
+              <MailPlus />
+              {t("createInvitation")}
+            </Button>
+          )
         }
       />
       {error && <Alert>{error}</Alert>}
@@ -210,30 +217,34 @@ export default function InvitationsPage() {
                 <TableCell className="text-right">
                   {invitation.status === "pending" && (
                     <div className="flex justify-end gap-1">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        disabled={busy}
-                        onClick={() => void resend(invitation)}
-                        aria-label={t("resendNamed", {
-                          name: invitation.email,
-                        })}
-                        title={t("resendRotate")}
-                      >
-                        <RefreshCw />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        disabled={busy}
-                        onClick={() => void revoke(invitation)}
-                        aria-label={t("revokeNamed", {
-                          name: invitation.email,
-                        })}
-                        title={t("revokeInvitation")}
-                      >
-                        <Ban />
-                      </Button>
+                      {allowed("invitation_resend") && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          disabled={busy}
+                          onClick={() => void resend(invitation)}
+                          aria-label={t("resendNamed", {
+                            name: invitation.email,
+                          })}
+                          title={t("resendRotate")}
+                        >
+                          <RefreshCw />
+                        </Button>
+                      )}
+                      {allowed("invitation_revoke") && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          disabled={busy}
+                          onClick={() => void revoke(invitation)}
+                          aria-label={t("revokeNamed", {
+                            name: invitation.email,
+                          })}
+                          title={t("revokeInvitation")}
+                        >
+                          <Ban />
+                        </Button>
+                      )}
                     </div>
                   )}
                 </TableCell>

@@ -44,9 +44,11 @@ import {
   type PositionMember,
   type PositionMemberInput,
 } from "../../lib/iam-api"
+import { useAllowed } from "../../lib/permissions"
 
 export default function PositionsPage() {
   const t = useTranslations("iam")
+  const allowed = useAllowed()
 
   const [positions, setPositions] = useState<Position[]>([])
   const [positionOpen, setPositionOpen] = useState(false)
@@ -146,9 +148,11 @@ export default function PositionsPage() {
     setBusy(true)
     setError("")
     try {
+      // The tenant directory is read under user_view, which a position manager
+      // need not hold; without it the dialog still lists current members.
       const [assigned, members] = await Promise.all([
         iamApi.positionMembers(position.id),
-        iamApi.members(),
+        allowed("user_view") ? iamApi.members() : Promise.resolve([]),
       ])
       setMemberPosition(position)
       setPositionMembers(assigned)
@@ -201,10 +205,12 @@ export default function PositionsPage() {
         title={t("positionManagement")}
         description={t("positionsDescription")}
         action={
-          <Button onClick={openCreate}>
-            <Plus />
-            {t("createPosition")}
-          </Button>
+          allowed("position_create") && (
+            <Button onClick={openCreate}>
+              <Plus />
+              {t("createPosition")}
+            </Button>
+          )
         }
       />
       {error && <Alert>{error}</Alert>}
@@ -260,51 +266,59 @@ export default function PositionsPage() {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={busy}
-                      onClick={() => setRolePosition(position)}
-                      aria-label={t("manageRoleBindings", {
-                        name: position.name,
-                      })}
-                      title={t("roleBindings")}
-                      data-manage-directory-roles="position"
-                    >
-                      <ShieldCheck />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={busy}
-                      onClick={() => void openMembers(position)}
-                      aria-label={t("manageMembersNamed", {
-                        name: position.name,
-                      })}
-                      title={t("manageMembers")}
-                    >
-                      <UserRoundCog />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={busy}
-                      onClick={() => openEdit(position)}
-                      aria-label={t("editNamed", { name: position.name })}
-                      title={t("editPosition")}
-                    >
-                      <Pencil />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={busy}
-                      onClick={() => void removePosition(position)}
-                      aria-label={t("deleteNamed", { name: position.name })}
-                      title={t("deleteEmptyPosition")}
-                    >
-                      <Trash2 />
-                    </Button>
+                    {allowed("role_manage_assignee") && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={busy}
+                        onClick={() => setRolePosition(position)}
+                        aria-label={t("manageRoleBindings", {
+                          name: position.name,
+                        })}
+                        title={t("roleBindings")}
+                        data-manage-directory-roles="position"
+                      >
+                        <ShieldCheck />
+                      </Button>
+                    )}
+                    {allowed("position_manage_member") && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={busy}
+                        onClick={() => void openMembers(position)}
+                        aria-label={t("manageMembersNamed", {
+                          name: position.name,
+                        })}
+                        title={t("manageMembers")}
+                      >
+                        <UserRoundCog />
+                      </Button>
+                    )}
+                    {allowed("position_update") && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={busy}
+                        onClick={() => openEdit(position)}
+                        aria-label={t("editNamed", { name: position.name })}
+                        title={t("editPosition")}
+                      >
+                        <Pencil />
+                      </Button>
+                    )}
+                    {allowed("position_delete") && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={busy}
+                        onClick={() => void removePosition(position)}
+                        aria-label={t("deleteNamed", { name: position.name })}
+                        title={t("deleteEmptyPosition")}
+                      >
+                        <Trash2 />
+                      </Button>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>

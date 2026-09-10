@@ -46,6 +46,7 @@ import {
   type ServiceAccountInput,
   type ServiceAccountUpdate,
 } from "../../lib/iam-api"
+import { useAllowed } from "../../lib/permissions"
 
 interface AccountDraft {
   loginName: string
@@ -94,6 +95,7 @@ export default function ServiceAccountsPage() {
   const locale = useLocale()
 
   const t = useTranslations("iam")
+  const allowed = useAllowed()
 
   const [accounts, setAccounts] = useState<ServiceAccount[]>([])
   const [loading, setLoading] = useState(true)
@@ -281,10 +283,12 @@ export default function ServiceAccountsPage() {
         title={t("serviceAccounts")}
         description={t("serviceAccountsDescription")}
         action={
-          <Button onClick={openCreate}>
-            <Plus />
-            {t("createServiceAccount")}
-          </Button>
+          allowed("service_account_create") && (
+            <Button onClick={openCreate}>
+              <Plus />
+              {t("createServiceAccount")}
+            </Button>
+          )
         }
       />
       {error && <Alert>{error}</Alert>}
@@ -467,32 +471,39 @@ function AccountActions({
   onDelete: () => void
 }) {
   const t = useTranslations("iam")
+  const allowed = useAllowed()
 
   return (
     <TooltipProvider>
       <div className="flex justify-end gap-1">
-        <ActionButton
-          label={t("manageCredentialsNamed", { name: account.display_name })}
-          onClick={onCredentials}
-          disabled={busy}
-        >
-          <KeyRound />
-        </ActionButton>
-        <ActionButton
-          label={t("editNamedSpaced", { name: account.display_name })}
-          onClick={onEdit}
-          disabled={busy}
-        >
-          <Pencil />
-        </ActionButton>
-        <ActionButton
-          label={t("deleteNamedSpaced", { name: account.display_name })}
-          onClick={onDelete}
-          disabled={busy}
-          destructive
-        >
-          <Trash2 />
-        </ActionButton>
+        {allowed("service_account_manage_credential") && (
+          <ActionButton
+            label={t("manageCredentialsNamed", { name: account.display_name })}
+            onClick={onCredentials}
+            disabled={busy}
+          >
+            <KeyRound />
+          </ActionButton>
+        )}
+        {allowed("service_account_update") && (
+          <ActionButton
+            label={t("editNamedSpaced", { name: account.display_name })}
+            onClick={onEdit}
+            disabled={busy}
+          >
+            <Pencil />
+          </ActionButton>
+        )}
+        {allowed("service_account_delete") && (
+          <ActionButton
+            label={t("deleteNamedSpaced", { name: account.display_name })}
+            onClick={onDelete}
+            disabled={busy}
+            destructive
+          >
+            <Trash2 />
+          </ActionButton>
+        )}
       </div>
     </TooltipProvider>
   )

@@ -42,6 +42,7 @@ import {
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import { iamApi, type AuditEvent, type AuditIntegrity } from "../../lib/iam-api"
+import { useAllowed } from "../../lib/permissions"
 
 const pageSize = 50
 
@@ -76,6 +77,7 @@ export default function AuditEventsPage() {
   const locale = useLocale()
 
   const t = useTranslations("iam")
+  const allowed = useAllowed()
 
   const [events, setEvents] = useState<AuditEvent[]>([])
   const [total, setTotal] = useState(0)
@@ -188,18 +190,20 @@ export default function AuditEventsPage() {
         description={t("auditDescription")}
         action={
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              disabled={loading || exporting || integrity?.valid !== true}
-              onClick={() => void exportEvents()}
-            >
-              {exporting ? (
-                <LoaderCircle className="animate-spin" />
-              ) : (
-                <Download />
-              )}
-              {exporting ? t("exporting") : t("exportResults")}
-            </Button>
+            {allowed("audit_event_export") && (
+              <Button
+                variant="outline"
+                disabled={loading || exporting || integrity?.valid !== true}
+                onClick={() => void exportEvents()}
+              >
+                {exporting ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <Download />
+                )}
+                {exporting ? t("exporting") : t("exportResults")}
+              </Button>
+            )}
             <Button
               variant="outline"
               disabled={loading || exporting}

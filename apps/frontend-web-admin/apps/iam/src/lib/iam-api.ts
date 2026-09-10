@@ -2142,6 +2142,8 @@ export function createIamApi(
     menus: () => request<Menu[]>("/iam/menus"),
     effectiveMenus: async () =>
       (await request<EffectiveMenu[] | null>("/iam/me/menus")) ?? [],
+    myPermissions: async () =>
+      (await request<string[] | null>("/iam/me/permissions")) ?? [],
     createMenu: (body: MenuInput) =>
       request<Menu>("/iam/menus", {
         method: "POST",

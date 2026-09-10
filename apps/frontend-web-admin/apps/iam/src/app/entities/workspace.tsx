@@ -19,6 +19,7 @@ import {
   type Role,
   type Member,
 } from "../../lib/iam-api"
+import { useAllowed } from "../../lib/permissions"
 import EntitiesPage from "./page"
 
 export default function EntityWorkspace() {
@@ -43,6 +44,7 @@ export default function EntityWorkspace() {
 function EntityDetails({ entityID, view }: { entityID: string; view: string }) {
   const t = useTranslations("iam")
   const locale = useLocale()
+  const allowed = useAllowed()
   const [data, setData] = useState<{
     entity: Entity
     bindings: EntityRoleBinding[]
@@ -61,8 +63,14 @@ function EntityDetails({ entityID, view }: { entityID: string; view: string }) {
       view === "resources"
         ? iamApi.resourceRelationships(entityID)
         : Promise.resolve([]),
-      view === "roles" ? iamApi.roles() : Promise.resolve([]),
-      view === "roles" ? iamApi.members() : Promise.resolve([]),
+      // Role and member directories belong to other permissions; without them
+      // the entity workspace still renders its own bindings.
+      view === "roles" && allowed("role_view")
+        ? iamApi.roles()
+        : Promise.resolve([]),
+      view === "roles" && allowed("user_view")
+        ? iamApi.members()
+        : Promise.resolve([]),
     ]).then(
       ([entity, bindings, relationships, roles, members]) => {
         if (active) setData({ entity, bindings, relationships, roles, members })
@@ -74,7 +82,7 @@ function EntityDetails({ entityID, view }: { entityID: string; view: string }) {
     return () => {
       active = false
     }
-  }, [entityID, view])
+  }, [entityID, view, allowed])
   if (error) return <Alert>{error}</Alert>
   if (!data) return <p role="status">{t("loading")}</p>
   const title =

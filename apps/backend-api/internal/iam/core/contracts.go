@@ -14,6 +14,10 @@ import (
 type AuthorizationEvaluator interface {
 	authz.EntityDataPermissionChecker
 	authz.FieldPermissionChecker
+	// PermissionChecker carries CheckPlatform, which answers for authority that
+	// does not come from a tenant membership and that tenant-bulk evaluation
+	// therefore reports as absent.
+	authz.PermissionChecker
 	CheckBulk(ctx context.Context, tenantID guid.ID, permissions []string, principalID guid.ID) (map[string]bool, error)
 	Constraint(ctx context.Context, tenantID guid.ID, permission string, principalID guid.ID) (authz.DataConstraint, error)
 	ExplainEntity(ctx context.Context, tenantID, entityID guid.ID, permission string, principalID guid.ID) (authz.Explanation, error)

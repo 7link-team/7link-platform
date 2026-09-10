@@ -33,6 +33,7 @@ import {
   type Tenant,
   type TenantUpdate,
 } from "../../lib/iam-api"
+import { useAllowed } from "../../lib/permissions"
 
 const statusLabels: Record<Tenant["status"], string> = {
   active: "active",
@@ -44,6 +45,7 @@ export default function TenantsPage() {
   const locale = useLocale()
 
   const t = useTranslations("iam")
+  const allowed = useAllowed()
 
   const [tenants, setTenants] = useState<Tenant[]>([])
   const [includeDeleted, setIncludeDeleted] = useState(false)
@@ -155,10 +157,12 @@ export default function TenantsPage() {
         title={t("tenantManagement")}
         description={t("tenantLifecycle")}
         action={
-          <Button onClick={openCreate}>
-            <Plus />
-            {t("createTenant")}
-          </Button>
+          allowed("tenant_create") && (
+            <Button onClick={openCreate}>
+              <Plus />
+              {t("createTenant")}
+            </Button>
+          )
         }
       />
       {error && <Alert>{error}</Alert>}
@@ -257,27 +261,31 @@ export default function TenantsPage() {
                       >
                         <ArrowRight />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={busy}
-                        onClick={() => openEdit(tenant)}
-                        aria-label={t("editNamed", { name: tenant.name })}
-                        title={t("editTenant")}
-                      >
-                        <Pencil />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-destructive"
-                        disabled={busy}
-                        onClick={() => setDeleting(tenant)}
-                        aria-label={t("deleteNamed", { name: tenant.name })}
-                        title={t("deleteTenant")}
-                      >
-                        <Trash2 />
-                      </Button>
+                      {allowed("tenant_update") && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={busy}
+                          onClick={() => openEdit(tenant)}
+                          aria-label={t("editNamed", { name: tenant.name })}
+                          title={t("editTenant")}
+                        >
+                          <Pencil />
+                        </Button>
+                      )}
+                      {allowed("tenant_delete") && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive"
+                          disabled={busy}
+                          onClick={() => setDeleting(tenant)}
+                          aria-label={t("deleteNamed", { name: tenant.name })}
+                          title={t("deleteTenant")}
+                        >
+                          <Trash2 />
+                        </Button>
+                      )}
                     </div>
                   )}
                 </TableCell>

@@ -34,6 +34,7 @@ import type {
   AuditScope,
   IamApi,
 } from "../../lib/iam-api"
+import { useAllowed } from "../../lib/permissions"
 
 const pageSize = 20
 const stateLabels = {
@@ -62,6 +63,11 @@ export function ArchiveJobs({
   const locale = useLocale()
 
   const t = useTranslations("iam")
+  const allowed = useAllowed()
+  // The platform scope of this screen reaches /platform/iam/... routes, which
+  // are guarded by platform_administer rather than the tenant audit verbs.
+  const scopedCode = (tenantCode: string) =>
+    scope === "platform" ? "platform_administer" : tenantCode
 
   const active = useRef(true)
   const [jobs, setJobs] = useState<AuditArchiveJob[]>([])
@@ -165,24 +171,26 @@ export function ArchiveJobs({
             {status.enabled ? t("enabled") : t("notEnabled")}
           </Badge>
         </div>
-        <Button
-          size="sm"
-          disabled={
-            !status.enabled ||
-            status.pending_events === 0 ||
-            pending > 0 ||
-            !!busy ||
-            loading
-          }
-          onClick={() => void requestArchive()}
-        >
-          {busy === "request" ? (
-            <LoaderCircle className="animate-spin" />
-          ) : (
-            <Archive />
-          )}
-          {t("createArchiveJob")}
-        </Button>
+        {allowed(scopedCode("audit_event_export")) && (
+          <Button
+            size="sm"
+            disabled={
+              !status.enabled ||
+              status.pending_events === 0 ||
+              pending > 0 ||
+              !!busy ||
+              loading
+            }
+            onClick={() => void requestArchive()}
+          >
+            {busy === "request" ? (
+              <LoaderCircle className="animate-spin" />
+            ) : (
+              <Archive />
+            )}
+            {t("createArchiveJob")}
+          </Button>
+        )}
       </div>
       <dl className="mb-4 grid grid-cols-2 gap-4 border-y py-3 sm:grid-cols-4">
         <Metric label={t("archivedEvents")} value={status.archived_events} />
@@ -282,30 +290,31 @@ export function ArchiveJobs({
                     >
                       <FileSearch />
                     </Button>
-                    {(job.state === "failed" || job.state === "running") && (
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        disabled={!!busy || !status.enabled}
-                        aria-label={t("retryArchiveNamed", { id: job.id })}
-                        title={
-                          job.state === "running"
-                            ? t("retryExpiredJob")
-                            : t("retryNow")
-                        }
-                        onClick={() =>
-                          void run(`retry:${job.id}`, async () => {
-                            await api.retryAuditArchive(job.id, scope)
-                          })
-                        }
-                      >
-                        {busy === `retry:${job.id}` ? (
-                          <LoaderCircle className="animate-spin" />
-                        ) : (
-                          <RotateCcw />
-                        )}
-                      </Button>
-                    )}
+                    {(job.state === "failed" || job.state === "running") &&
+                      allowed(scopedCode("audit_event_export")) && (
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          disabled={!!busy || !status.enabled}
+                          aria-label={t("retryArchiveNamed", { id: job.id })}
+                          title={
+                            job.state === "running"
+                              ? t("retryExpiredJob")
+                              : t("retryNow")
+                          }
+                          onClick={() =>
+                            void run(`retry:${job.id}`, async () => {
+                              await api.retryAuditArchive(job.id, scope)
+                            })
+                          }
+                        >
+                          {busy === `retry:${job.id}` ? (
+                            <LoaderCircle className="animate-spin" />
+                          ) : (
+                            <RotateCcw />
+                          )}
+                        </Button>
+                      )}
                     {job.state === "complete" && (
                       <>
                         <Button
@@ -322,20 +331,24 @@ export function ArchiveJobs({
                             <ShieldCheck />
                           )}
                         </Button>
-                        <Button
-                          size="icon-sm"
-                          variant="ghost"
-                          disabled={!!busy || !status.enabled}
-                          aria-label={t("downloadArchiveNamed", { id: job.id })}
-                          title={t("downloadArchive")}
-                          onClick={() => void download(job)}
-                        >
-                          {busy === `download:${job.id}` ? (
-                            <LoaderCircle className="animate-spin" />
-                          ) : (
-                            <Download />
-                          )}
-                        </Button>
+                        {allowed(scopedCode("audit_event_export")) && (
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            disabled={!!busy || !status.enabled}
+                            aria-label={t("downloadArchiveNamed", {
+                              id: job.id,
+                            })}
+                            title={t("downloadArchive")}
+                            onClick={() => void download(job)}
+                          >
+                            {busy === `download:${job.id}` ? (
+                              <LoaderCircle className="animate-spin" />
+                            ) : (
+                              <Download />
+                            )}
+                          </Button>
+                        )}
                       </>
                     )}
                   </div>

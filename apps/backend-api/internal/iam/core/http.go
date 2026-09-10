@@ -226,6 +226,12 @@ type tenantInput struct {
 	Limit  int `query:"limit" minimum:"0" maximum:"200" default:"0"`
 }
 
+// myPermissionsInput carries the tenant selector alone: the reply is a bounded
+// catalog of the caller's own codes, so there is nothing to page through.
+type myPermissionsInput struct {
+	TenantID string `header:"X-Tenant-Id" maxLength:"128" doc:"tenant authorization boundary"`
+}
+
 type roleInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	RoleID   string `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
@@ -1206,6 +1212,29 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 			return nil, apiError("effective menus", err)
 		}
 		return paginateList(ctx, menus, in.Offset, in.Limit), nil
+	})
+	// Same gate as the effective menu tree: what the console may show is decided
+	// by the caller's own membership. The reply also carries the platform codes
+	// the caller holds, because the platform pages this console reaches are
+	// guarded by those and not by any tenant role.
+	authz.RegisterTenantMember(registrar, a, huma.Operation{
+		OperationID: "iam-effective-permissions", Method: http.MethodGet,
+		Path:    "/iam/me/permissions",
+		Summary: "Return my effective permission codes", Tags: []string{"iam"},
+	}, func(ctx context.Context, in *myPermissionsInput) (*respx.Body[[]string], error) {
+		claims, ok := authnext.FromContext(ctx)
+		if !ok || claims == nil || claims.PrincipalID.Zero() {
+			return nil, huma.Error401Unauthorized("unauthorized")
+		}
+		tenantID, err := requireID(in.TenantID)
+		if err != nil {
+			return nil, err
+		}
+		codes, err := svc.EffectivePermissions(ctx, tenantID, claims.PrincipalID)
+		if err != nil {
+			return nil, apiError("effective permissions", err)
+		}
+		return respx.OK(ctx, codes), nil
 	})
 }
 

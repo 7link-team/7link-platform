@@ -44,6 +44,14 @@ func (*authorizationEvaluatorFixture) CheckBulk(context.Context, guid.ID, []stri
 	return nil, nil
 }
 
+func (*authorizationEvaluatorFixture) Check(context.Context, guid.ID, string, guid.ID) (bool, error) {
+	return false, nil
+}
+
+func (*authorizationEvaluatorFixture) CheckPlatform(context.Context, string, guid.ID) (bool, error) {
+	return false, nil
+}
+
 func (*authorizationEvaluatorFixture) Constraint(context.Context, guid.ID, string, guid.ID) (authz.DataConstraint, error) {
 	return authz.DataConstraint{}, nil
 }

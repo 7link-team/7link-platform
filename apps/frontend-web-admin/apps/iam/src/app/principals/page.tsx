@@ -61,6 +61,7 @@ import {
   type MemberAuthorizationSource,
   type Principal,
 } from "../../lib/iam-api"
+import { useAllowed } from "../../lib/permissions"
 
 export default function PrincipalsPage() {
   const [tenant, setTenantValue] = useState(getTenant)
@@ -78,6 +79,7 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
   const t = useTranslations("iam")
 
   const iamApi = useMemo(() => createIamApi(undefined, () => tenant), [tenant])
+  const allowed = useAllowed()
   const [fields, setFields] = useState<FieldConstraint["fields"]>({})
   const [items, setItems] = useState<Principal[]>([])
   const [members, setMembers] = useState<Member[]>([])
@@ -95,31 +97,35 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
     const generation = ++loadGeneration.current
     setLoading(true)
     setLoadError("")
-    return Promise.all([
+    // The department directory answers to a different permission than the
+    // principal list, so a member who may read principals but not departments
+    // loses one column rather than the whole page.
+    return Promise.allSettled([
       iamApi.principals(search),
       iamApi.members(),
-      iamApi.departments(),
+      allowed("dept_view") ? iamApi.departments() : Promise.resolve([]),
       iamApi.effectiveFields("user_profile"),
     ])
       .then(([result, nextMembers, nextDepartments, nextFields]) => {
         if (generation !== loadGeneration.current) return
-        setItems(result.items)
-        setMembers(nextMembers)
-        setDepartments(nextDepartments)
-        setFields(nextFields.fields)
-      })
-      .catch((cause: Error) => {
-        if (generation !== loadGeneration.current) return
-        setItems([])
-        setMembers([])
-        setDepartments([])
-        setFields({})
-        setLoadError(cause.message)
+        setItems(result.status === "fulfilled" ? result.value.items : [])
+        setMembers(nextMembers.status === "fulfilled" ? nextMembers.value : [])
+        setDepartments(
+          nextDepartments.status === "fulfilled" ? nextDepartments.value : []
+        )
+        setFields(
+          nextFields.status === "fulfilled" ? nextFields.value.fields : {}
+        )
+        setLoadError(
+          result.status === "rejected"
+            ? ((result.reason as Error | undefined)?.message ?? "")
+            : ""
+        )
       })
       .finally(() => {
         if (generation === loadGeneration.current) setLoading(false)
       })
-  }, [search, iamApi])
+  }, [search, iamApi, allowed])
   useEffect(() => {
     let active = true
     void Promise.resolve().then(() => {
@@ -217,23 +223,27 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
         description={t("principalManagementDescription")}
         action={
           <div className="flex flex-wrap gap-2">
-            <Link
-              className="inline-flex min-h-11 items-center rounded-md border px-3 text-sm"
-              to="/iam/closure-requests"
-            >
-              {t("closureRequests")}
-            </Link>
-            <Button
-              disabled={!fields.login_name?.create}
-              onClick={() => {
-                setEditing(null)
-                setDepartmentID("")
-                setOpen(true)
-              }}
-            >
-              <Plus />
-              {t("createPrincipal")}
-            </Button>
+            {allowed("platform_administer") && (
+              <Link
+                className="inline-flex min-h-11 items-center rounded-md border px-3 text-sm"
+                to="/iam/closure-requests"
+              >
+                {t("closureRequests")}
+              </Link>
+            )}
+            {allowed("user_create") && (
+              <Button
+                disabled={!fields.login_name?.create}
+                onClick={() => {
+                  setEditing(null)
+                  setDepartmentID("")
+                  setOpen(true)
+                }}
+              >
+                <Plus />
+                {t("createPrincipal")}
+              </Button>
+            )}
           </div>
         }
       />
@@ -345,74 +355,82 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={busy}
-                      data-view-authorization-sources={principal.id}
-                      onClick={() => void inspectAuthorization(principal)}
-                      aria-label={t("viewNamedAuthorizationSources", {
-                        name:
-                          principal.display_name ||
-                          principal.login_name ||
-                          principal.id,
-                      })}
-                      title={t("authorizationSources")}
-                    >
-                      <ShieldCheck />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={busy}
-                      onClick={() => {
-                        setEditing(principal)
-                        setDepartmentID(
-                          members.find(
-                            (member) => member.subject === principal.id
-                          )?.department_id ?? ""
-                        )
-                        setOpen(true)
-                      }}
-                      aria-label={t("editNamed", {
-                        name:
-                          principal.display_name ||
-                          principal.login_name ||
-                          principal.id,
-                      })}
-                      title={t("editPrincipal")}
-                    >
-                      <Pencil />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={busy}
-                      onClick={() => setLifecycle(principal)}
-                      aria-label={t("namedRetentionErasure", {
-                        name:
-                          principal.display_name ||
-                          principal.login_name ||
-                          principal.id,
-                      })}
-                      title={t("retentionErasure")}
-                    >
-                      <ShieldAlert />
-                    </Button>
-                    <Button
-                      variant={
-                        principal.status === "active"
-                          ? "destructive"
-                          : "outline"
-                      }
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => void toggle(principal)}
-                    >
-                      {principal.status === "active"
-                        ? t("disable")
-                        : t("restore")}
-                    </Button>
+                    {allowed("role_view") && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={busy}
+                        data-view-authorization-sources={principal.id}
+                        onClick={() => void inspectAuthorization(principal)}
+                        aria-label={t("viewNamedAuthorizationSources", {
+                          name:
+                            principal.display_name ||
+                            principal.login_name ||
+                            principal.id,
+                        })}
+                        title={t("authorizationSources")}
+                      >
+                        <ShieldCheck />
+                      </Button>
+                    )}
+                    {allowed("user_update") && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={busy}
+                        onClick={() => {
+                          setEditing(principal)
+                          setDepartmentID(
+                            members.find(
+                              (member) => member.subject === principal.id
+                            )?.department_id ?? ""
+                          )
+                          setOpen(true)
+                        }}
+                        aria-label={t("editNamed", {
+                          name:
+                            principal.display_name ||
+                            principal.login_name ||
+                            principal.id,
+                        })}
+                        title={t("editPrincipal")}
+                      >
+                        <Pencil />
+                      </Button>
+                    )}
+                    {allowed("platform_administer") && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={busy}
+                        onClick={() => setLifecycle(principal)}
+                        aria-label={t("namedRetentionErasure", {
+                          name:
+                            principal.display_name ||
+                            principal.login_name ||
+                            principal.id,
+                        })}
+                        title={t("retentionErasure")}
+                      >
+                        <ShieldAlert />
+                      </Button>
+                    )}
+                    {allowed("user_update") && (
+                      <Button
+                        variant={
+                          principal.status === "active"
+                            ? "destructive"
+                            : "outline"
+                        }
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => void toggle(principal)}
+                      >
+                        {principal.status === "active"
+                          ? t("disable")
+                          : t("restore")}
+                      </Button>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>

@@ -56,6 +56,7 @@ import {
   type RelationshipSubjectType,
   type Role,
 } from "../../lib/iam-api"
+import { useAllowed } from "../../lib/permissions"
 import {
   trustedContextCondition,
   trustedContextConditionSummary,
@@ -80,6 +81,7 @@ export default function EntitiesPage({
   const locale = useLocale()
 
   const t = useTranslations("iam")
+  const allowed = useAllowed()
 
   const [entities, setEntities] = useState<Entity[]>([])
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
@@ -309,11 +311,15 @@ export default function EntitiesPage({
       ] = await Promise.all([
         iamApi.entityRoleBindings(entity.id),
         loadRelationships(entity.id),
-        iamApi.roles(),
-        iamApi.members(),
-        iamApi.groups(),
-        iamApi.positions(),
-        iamApi.permissions(),
+        // Roles, the member directory, groups, positions and the permission
+        // catalog each answer to their own view permission. Without one of them
+        // the dialog still opens on the bindings that already exist; the
+        // selector it feeds is simply empty.
+        allowed("role_view") ? iamApi.roles() : Promise.resolve([]),
+        allowed("user_view") ? iamApi.members() : Promise.resolve([]),
+        allowed("group_view") ? iamApi.groups() : Promise.resolve([]),
+        allowed("position_view") ? iamApi.positions() : Promise.resolve([]),
+        allowed("role_view") ? iamApi.permissions() : Promise.resolve([]),
       ])
       const activeMembers = nextMembers.filter(
         (member) => member.status === "active"
@@ -537,7 +543,8 @@ export default function EntitiesPage({
         action={
           !scopeEntityID &&
           loaded &&
-          !loadError && (
+          !loadError &&
+          allowed("entity_create") && (
             <Button onClick={openCreate}>
               <Plus />
               {t("createEntity")}
@@ -643,38 +650,44 @@ export default function EntitiesPage({
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          disabled={busy}
-                          onClick={() => void openBindings(entity)}
-                          aria-label={t("manageRoleBindings", {
-                            name: entity.name,
-                          })}
-                          title={t("roleBindings")}
-                        >
-                          <KeyRound />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          disabled={busy}
-                          onClick={() => openEdit(entity)}
-                          aria-label={t("editNamed", { name: entity.name })}
-                          title={t("editEntity")}
-                        >
-                          <Pencil />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          disabled={busy}
-                          onClick={() => void remove(entity)}
-                          aria-label={t("deleteNamed", { name: entity.name })}
-                          title={t("deleteEmptyEntity")}
-                        >
-                          <Trash2 />
-                        </Button>
+                        {allowed("entity_manage_binding") && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled={busy}
+                            onClick={() => void openBindings(entity)}
+                            aria-label={t("manageRoleBindings", {
+                              name: entity.name,
+                            })}
+                            title={t("roleBindings")}
+                          >
+                            <KeyRound />
+                          </Button>
+                        )}
+                        {allowed("entity_update") && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled={busy}
+                            onClick={() => openEdit(entity)}
+                            aria-label={t("editNamed", { name: entity.name })}
+                            title={t("editEntity")}
+                          >
+                            <Pencil />
+                          </Button>
+                        )}
+                        {allowed("entity_delete") && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled={busy}
+                            onClick={() => void remove(entity)}
+                            aria-label={t("deleteNamed", { name: entity.name })}
+                            title={t("deleteEmptyEntity")}
+                          >
+                            <Trash2 />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -894,16 +907,18 @@ export default function EntitiesPage({
                         : t("noExpiry")}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={busy}
-                        onClick={() => void removeBinding(binding)}
-                        aria-label={t("deleteRoleBinding")}
-                        title={t("deleteRoleBinding")}
-                      >
-                        <Trash2 />
-                      </Button>
+                      {allowed("entity_manage_binding") && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={busy}
+                          onClick={() => void removeBinding(binding)}
+                          aria-label={t("deleteRoleBinding")}
+                          title={t("deleteRoleBinding")}
+                        >
+                          <Trash2 />
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1219,16 +1234,20 @@ export default function EntitiesPage({
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          disabled={busy}
-                          onClick={() => void removeRelationship(relationship)}
-                          aria-label={t("revokeRelation")}
-                          title={t("revokeRelation")}
-                        >
-                          <Trash2 />
-                        </Button>
+                        {allowed("entity_manage_binding") && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled={busy}
+                            onClick={() =>
+                              void removeRelationship(relationship)
+                            }
+                            aria-label={t("revokeRelation")}
+                            title={t("revokeRelation")}
+                          >
+                            <Trash2 />
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1304,15 +1323,17 @@ export default function EntitiesPage({
                   maxLength={255}
                 />
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={busy || !principalID || !inspectionPermission}
-                onClick={() => void inspectAuthorization()}
-              >
-                <ScanSearch />
-                {t("evaluateAuthorization")}
-              </Button>
+              {allowed("role_view") && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy || !principalID || !inspectionPermission}
+                  onClick={() => void inspectAuthorization()}
+                >
+                  <ScanSearch />
+                  {t("evaluateAuthorization")}
+                </Button>
+              )}
             </div>
             {inspection && (
               <div className="mt-4" data-authorization-explanation>

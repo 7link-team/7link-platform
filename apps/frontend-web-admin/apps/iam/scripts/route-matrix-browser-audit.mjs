@@ -110,6 +110,26 @@ const routes = [
   ]),
 ].map(([id, path, title, api, fixture]) => ({ id, path, title, api, fixture }))
 
+// Controls that exist only for a caller who holds the matching write verb. The
+// reader persona is granted every tenant view permission and nothing else, so
+// each of these must be absent for it and present for the administrator -- a
+// guard bound to the wrong permission code fails one side or the other.
+const writeControls = {
+  users: ["createPrincipal"],
+  departments: ["createDepartment"],
+  positions: ["createPosition"],
+  groups: ["createGroup"],
+  menus: ["createMenu"],
+  roles: ["createRole"],
+  invitations: ["createInvitation"],
+  "oauth-clients": ["createClient"],
+  "service-accounts": ["createServiceAccount"],
+  "access-reviews": ["newReview"],
+  "audit-events": ["exportResults"],
+  "audit-governance": ["updateRetentionPolicy"],
+  entities: ["createEntity"],
+}
+
 const personalAndPublic = [
   "/account/profile",
   "/account/security",
@@ -530,6 +550,21 @@ async function cell(
         .getByRole("heading", { name: messages[route.title], exact: true })
         .first()
         .waitFor()
+      for (const key of writeControls[route.id] ?? []) {
+        assert(messages[key], `Missing write control key ${key}`)
+        // Exact and visible: a shorter label is a substring of a longer one in
+        // some locales, and a closed dialog keeps its own submit button in the
+        // DOM, so a loose match answers about the wrong control.
+        const control = page
+          .getByRole("button", { name: messages[key], exact: true })
+          .filter({ visible: true })
+        if (persona === "admin") await control.first().waitFor()
+        assert.equal(
+          (await control.count()) > 0,
+          persona === "admin",
+          `${route.id} ${persona} must ${persona === "admin" ? "" : "not "}be offered ${key}`
+        )
+      }
       if (route.fixture && !["event", "governance"].includes(route.fixture)) {
         assert(f.labels[route.fixture], `${route.id} has no populated fixture`)
         await page

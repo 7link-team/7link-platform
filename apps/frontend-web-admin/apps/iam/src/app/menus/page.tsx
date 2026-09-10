@@ -34,6 +34,7 @@ import {
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
 import { iamApi, type Menu, type MenuInput } from "../../lib/iam-api"
+import { useAllowed } from "../../lib/permissions"
 import { menuLabel, menuRows } from "../../lib/navigation"
 import { defaultLocale, locales, localeNames } from "@workspace/ui/i18n/config"
 
@@ -41,6 +42,7 @@ const rootMenu = "__root__"
 
 export default function MenusPage() {
   const t = useTranslations("iam")
+  const allowed = useAllowed()
   const locale = useLocale()
 
   const [menus, setMenus] = useState<Menu[]>([])
@@ -179,10 +181,12 @@ export default function MenusPage() {
       <PageHeader
         title={t("menuManagement")}
         action={
-          <Button onClick={openCreate}>
-            <Plus />
-            {t("createMenu")}
-          </Button>
+          allowed("menu_create") && (
+            <Button onClick={openCreate}>
+              <Plus />
+              {t("createMenu")}
+            </Button>
+          )
         }
       />
       {error && <Alert>{error}</Alert>}
@@ -300,26 +304,30 @@ export default function MenusPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={busy}
-                        onClick={() => openEdit(menu)}
-                        aria-label={t("editNamed", { name: menu.label })}
-                        title={t("editMenu")}
-                      >
-                        <Pencil />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={busy}
-                        onClick={() => void remove(menu.id)}
-                        aria-label={t("deleteNamed", { name: menu.label })}
-                        title={t("deleteMenu")}
-                      >
-                        <Trash2 className="text-destructive" />
-                      </Button>
+                      {allowed("menu_update") && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={busy}
+                          onClick={() => openEdit(menu)}
+                          aria-label={t("editNamed", { name: menu.label })}
+                          title={t("editMenu")}
+                        >
+                          <Pencil />
+                        </Button>
+                      )}
+                      {allowed("menu_delete") && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={busy}
+                          onClick={() => void remove(menu.id)}
+                          aria-label={t("deleteNamed", { name: menu.label })}
+                          title={t("deleteMenu")}
+                        >
+                          <Trash2 className="text-destructive" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

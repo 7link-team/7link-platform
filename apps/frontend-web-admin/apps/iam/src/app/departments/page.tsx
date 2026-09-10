@@ -43,11 +43,13 @@ import {
   type Department,
   type DepartmentInput,
 } from "../../lib/iam-api"
+import { useAllowed } from "../../lib/permissions"
 
 const rootDepartment = "__root__"
 
 export default function DepartmentsPage() {
   const t = useTranslations("iam")
+  const allowed = useAllowed()
 
   const [departments, setDepartments] = useState<Department[]>([])
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
@@ -202,10 +204,12 @@ export default function DepartmentsPage() {
         title={t("departmentManagement")}
         description={t("departmentsDescription")}
         action={
-          <Button onClick={openCreate}>
-            <Plus />
-            {t("createDepartment")}
-          </Button>
+          allowed("dept_create") && (
+            <Button onClick={openCreate}>
+              <Plus />
+              {t("createDepartment")}
+            </Button>
+          )
         }
       />
       {error && <Alert>{error}</Alert>}
@@ -297,28 +301,32 @@ export default function DepartmentsPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={busy}
-                        onClick={() => openEdit(department)}
-                        aria-label={t("editNamed", { name: department.name })}
-                        title={t("editDepartment")}
-                      >
-                        <Pencil />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={busy}
-                        onClick={() => void remove(department)}
-                        aria-label={t("deleteNamed", {
-                          name: department.name,
-                        })}
-                        title={t("deleteEmptyDepartment")}
-                      >
-                        <Trash2 />
-                      </Button>
+                      {allowed("dept_update") && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={busy}
+                          onClick={() => openEdit(department)}
+                          aria-label={t("editNamed", { name: department.name })}
+                          title={t("editDepartment")}
+                        >
+                          <Pencil />
+                        </Button>
+                      )}
+                      {allowed("dept_delete") && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={busy}
+                          onClick={() => void remove(department)}
+                          aria-label={t("deleteNamed", {
+                            name: department.name,
+                          })}
+                          title={t("deleteEmptyDepartment")}
+                        >
+                          <Trash2 />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
