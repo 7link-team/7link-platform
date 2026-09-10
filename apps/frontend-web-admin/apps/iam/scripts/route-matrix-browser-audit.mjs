@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs"
 import { randomBytes, createHash } from "node:crypto"
+import { fileURLToPath } from "node:url"
 import { chromium } from "playwright"
 
 // Real API fixtures and real pages. Network-failure injection belongs to the
@@ -630,7 +631,9 @@ async function cell(
     )
     const screenshot = `${route.id}-${locale}-${width}-${persona}-${f.tenant.id}.png`
     await page.screenshot({
-      path: new URL(screenshot, output).pathname,
+      // fileURLToPath, not .pathname: on Windows the latter yields "/D:/..."
+      // and the screenshot write then fails with a doubled drive letter.
+      path: fileURLToPath(new URL(screenshot, output)),
       fullPage: true,
       animations: "disabled",
     })

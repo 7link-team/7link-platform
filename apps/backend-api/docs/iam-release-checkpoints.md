@@ -65,7 +65,11 @@ Redis拓扑代码及相关门禁已经验收；此结论不包含生产部署或
 - **个人关联账户**：使用purpose、当前session和principal绑定的一次性reauth证明；绑定只写当前本人链接，
   不调用会自动建号/授角色的普通federation登录分支。解绑需事务锁定principal并检查剩余本地密码、
   passkey或有效provider登录方式；本人并发解绑也必须保留至少一种方式。仅session.AuthTime较新不足以证明重新认证。
-  SAML跨站POST需专用Secure SameSite=None交易cookie及同源最终确认，不降低主session安全属性。
+  SAML跨站POST不依赖任何跨站cookie：回调端点（`/federation/{provider_id}/callback`）是公开端点，
+  只按RelayState定位本次操作并记录经签名验证的断言属性，不读取会话或交易cookie；随后以303跳转到同源的
+  `/federation/{provider_id}/identity-continuations`，在那里用既有的Lax会话cookie与交易cookie完成绑定校验
+  （本人、会话哈希、凭据版本、已验签时间）。因此**不引入SameSite=None**，主session安全属性不变；
+  该设计比"跨站可读的交易cookie"更强，不要在后续改动中退回前者。
   共享reauth和完整上游流程已实施；真实OIDC浏览器闭环及真实签名SAML的Go/HTTP测试通过，未宣称浏览器SAML验收。
 - **个人PAT**：v15独立个人令牌；随机原文只在创建成功时返回一次，只存SHA256；限定一个本人有效租户、
   当前已获授的非platform权限集合及用户显式到期时间。创建准备接口返回规范化参数指纹，reauth精确绑定

@@ -173,7 +173,7 @@ func TestOAuthRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 }
 
 // TestConsentSelfServiceRoutesActOnlyForTheirCaller is the HTTP half of the
-// self-service contract. The route names no subject, so the token is the only
+// self-service contract. The route names no subject, so the session is the only
 // thing that can decide whose grants these are -- and an unauthenticated caller
 // must not reach the handler at all.
 func TestConsentSelfServiceRoutesActOnlyForTheirCaller(t *testing.T) {
@@ -181,7 +181,7 @@ func TestConsentSelfServiceRoutesActOnlyForTheirCaller(t *testing.T) {
 	client := createBrowserClient(t, harness.oauthHarness)
 	_, err := exchangeCode(t, harness.oauthHarness, client, authorizeCode(t, harness.oauthHarness, client))
 	require.NoError(t, err)
-	caller := map[string]string{"Authorization": "Bearer admin"}
+	caller := map[string]string{"Cookie": "session"}
 
 	// No tenant header anywhere: a person's grants are not a tenant's business,
 	// and requiring one would hide the grants they most need to see.
@@ -202,6 +202,19 @@ func TestConsentSelfServiceRoutesActOnlyForTheirCaller(t *testing.T) {
 				method = http.MethodDelete
 			}
 			refused := harness.request(method, target, "", nil, nil)
+			assert.Equal(t, http.StatusUnauthorized, refused.Code, refused.Body.String())
+		})
+
+		t.Run("a bearer caller is refused before "+name, func(t *testing.T) {
+			// A self-service operation is registered session-only, so a bearer
+			// credential is not a second way to be the person whose grants
+			// these are. Without this the two routes would be the only
+			// self-service operations accepting one.
+			method := http.MethodGet
+			if strings.Contains(target, client.ID) {
+				method = http.MethodDelete
+			}
+			refused := harness.request(method, target, "", nil, map[string]string{"Authorization": "Bearer admin"})
 			assert.Equal(t, http.StatusUnauthorized, refused.Code, refused.Body.String())
 		})
 	}
@@ -225,7 +238,7 @@ func TestConsentSelfServiceRoutesActOnlyForTheirCaller(t *testing.T) {
 // out of the query rather than letting it arrive as a zero.
 func TestConsentRevocationRefusesAnIdentifierThatIsNotOne(t *testing.T) {
 	harness := newOAuthHTTPHarness(t)
-	caller := map[string]string{"Authorization": "Bearer admin"}
+	caller := map[string]string{"Cookie": "session"}
 	for name, id := range map[string]string{"a zero": "0", "a word": "latest", "a negative": "-1"} {
 		t.Run(name, func(t *testing.T) {
 			response := harness.request(http.MethodDelete, "/iam/me/oauth-consents/"+id, "", nil, caller)
@@ -1075,7 +1088,7 @@ func TestOAuthHTTPDatabaseFailuresUseCorrectResponseContracts(t *testing.T) {
 		harness := newOAuthHTTPHarness(t)
 		client := createBrowserClient(t, harness.oauthHarness)
 		require.NoError(t, harness.db.Exec("DROP TABLE "+harness.table("iam_oauth_consents")).Error)
-		caller := map[string]string{"Authorization": "Bearer admin"}
+		caller := map[string]string{"Cookie": "session"}
 		for name, request := range map[string]struct {
 			method string
 			target string

@@ -189,7 +189,7 @@ func NewService(runtime *appenv.Runtime, appender audit.Appender, identities ide
 			id, err := ids.Next()
 			return guid.ID(id), err
 		},
-		oidc:     newOIDCClient(httpx.NewClient(timeout, outbound), skew, 5*time.Minute),
+		oidc:     newOIDCClient(httpx.NewClient(timeout, outbound), outbound, skew, 5*time.Minute),
 		outbound: outbound,
 		replays:  newReplayRegistry(repo),
 	}

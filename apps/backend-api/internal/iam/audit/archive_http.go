@@ -47,9 +47,45 @@ func registerArchiveOperation[I, O any](api huma.API, registrar *authz.Registrar
 		op.Path = "/platform" + op.Path
 		op.Summary = "Platform: " + op.Summary
 		authz.RegisterPlatform(registrar, api, op, authz.Guard{Resource: "platform", Verb: "administer"}, handler)
+		documentPlatformScopeWithoutTenantHeader(api, op.Method, op.Path)
 		return
 	}
 	authz.Register(registrar, api, op, authz.Guard{Resource: "audit_event", Verb: verb}, handler)
+}
+
+// documentPlatformScopeWithoutTenantHeader drops the tenant selector the shared
+// input type declares for both scopes. The platform handler still refuses a
+// caller-supplied tenant, so publishing the parameter would describe a request
+// that can only ever be answered with 422.
+func documentPlatformScopeWithoutTenantHeader(api huma.API, method, path string) {
+	item, ok := api.OpenAPI().Paths[path]
+	if !ok || item == nil {
+		return
+	}
+	var operation *huma.Operation
+	switch method {
+	case http.MethodGet:
+		operation = item.Get
+	case http.MethodPut:
+		operation = item.Put
+	case http.MethodPost:
+		operation = item.Post
+	case http.MethodPatch:
+		operation = item.Patch
+	case http.MethodDelete:
+		operation = item.Delete
+	}
+	if operation == nil {
+		return
+	}
+	kept := make([]*huma.Param, 0, len(operation.Parameters))
+	for _, parameter := range operation.Parameters {
+		if parameter.In == "header" && parameter.Name == authz.TenantHeader {
+			continue
+		}
+		kept = append(kept, parameter)
+	}
+	operation.Parameters = kept
 }
 
 func registerArchiveHTTP(api huma.API, service *Service, registrar *authz.Registrar, platform bool) {

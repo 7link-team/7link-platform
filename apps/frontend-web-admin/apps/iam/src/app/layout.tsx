@@ -10,6 +10,7 @@ import {
 } from "react-router"
 import { Alert } from "../components/alert"
 import { WorkspaceSwitcher } from "../components/workspace-switcher"
+import { Button } from "@workspace/ui/components/button"
 import {
   Sheet,
   SheetContent,
@@ -275,9 +276,18 @@ export default function AppLayout() {
       <header className="sticky top-0 z-40 border-b bg-background shadow-sm">
         <div className="flex min-h-14 flex-wrap items-center gap-2 px-4 py-2 sm:gap-3">
           <Sheet open={navOpen} onOpenChange={setNavOpen}>
+            {/* A Button, not a bare trigger: the shared coarse-pointer rule in
+                globals.css grows [data-slot="button"] to 44 px, while the
+                icon-lg size keeps the desktop density at its usual 36 px. */}
             <SheetTrigger
-              aria-label={t("openMainNav")}
-              className="grid size-9 place-items-center rounded-md border border-input md:hidden"
+              render={
+                <Button
+                  variant="outline"
+                  size="icon-lg"
+                  aria-label={t("openMainNav")}
+                  className="rounded-md border-input md:hidden"
+                />
+              }
             >
               <MenuIcon className="size-5" />
             </SheetTrigger>

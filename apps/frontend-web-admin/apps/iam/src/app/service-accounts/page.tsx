@@ -672,7 +672,7 @@ function CredentialsDialog({
               }
             />
           </Field>
-          <Field label="Scopes" htmlFor="service-credential-scopes">
+          <Field label={t("scopes")} htmlFor="service-credential-scopes">
             <Input
               id="service-credential-scopes"
               value={draft.scopes}
@@ -701,7 +701,7 @@ function CredentialsDialog({
               <TableRow>
                 <TableHead>{t("name")}</TableHead>
                 <TableHead>{t("clientId")}</TableHead>
-                <TableHead>Scopes</TableHead>
+                <TableHead>{t("scopes")}</TableHead>
                 <TableHead>{t("validity")}</TableHead>
                 <TableHead>{t("lastUsedLabel")}</TableHead>
                 <TableHead>{t("status")}</TableHead>

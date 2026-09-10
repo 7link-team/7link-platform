@@ -623,11 +623,11 @@ function EventDetail({
               value={JSON.stringify(value.detail, null, 2)}
             />
             <DetailCode
-              label="Previous Hash"
+              label={t("previousHash")}
               value={value.previous_hash || "-"}
             />
             <DetailCode
-              label="Event Hash"
+              label={t("eventHash")}
               value={value.event_hash || "legacy event"}
             />
           </div>
@@ -643,15 +643,17 @@ function EventDetail({
 }
 
 function DetailGrid({ event }: { event: AuditEvent }) {
+  const t = useTranslations("iam")
+
   const items = [
-    ["Event ID", event.id],
-    ["Tenant", event.tenant_id],
-    ["Principal", event.principal_id || "system"],
-    ["Target", `${event.target_type || "-"}:${event.target_id || "-"}`],
-    ["Outcome", event.outcome],
-    ["Sequence", event.sequence > 0 ? String(event.sequence) : "legacy"],
+    [t("eventId"), event.id],
+    [t("tenant"), event.tenant_id],
+    [t("principal"), event.principal_id || "system"],
+    [t("target"), `${event.target_type || "-"}:${event.target_id || "-"}`],
+    [t("outcome"), event.outcome],
+    [t("sequence"), event.sequence > 0 ? String(event.sequence) : "legacy"],
     ["IP", event.ip_address || "-"],
-    ["User Agent", event.user_agent || "-"],
+    [t("userAgent"), event.user_agent || "-"],
   ]
   return (
     <dl className="grid gap-x-4 gap-y-3 rounded-md border p-4 sm:grid-cols-2">

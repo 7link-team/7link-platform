@@ -49,12 +49,19 @@ var blockedPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("240.0.0.0/4"),     // reserved, includes the broadcast address
 	netip.MustParsePrefix("::/128"),          // unspecified
 	netip.MustParsePrefix("::1/128"),         // loopback
-	netip.MustParsePrefix("64:ff9b:1::/48"),  // local-use NAT64
-	netip.MustParsePrefix("100::/64"),        // discard-only
-	netip.MustParsePrefix("2001:db8::/32"),   // documentation
-	netip.MustParsePrefix("fc00::/7"),        // unique local
-	netip.MustParsePrefix("fe80::/10"),       // link-local
-	netip.MustParsePrefix("ff00::/8"),        // multicast
+	// IPv6 transition ranges carry an IPv4 address in their low bits, so a
+	// request to one reaches whatever that IPv4 address names. None of them is
+	// loopback, link-local or multicast, so IsGlobalUnicast accepts all three
+	// and the predicate alone would let 64:ff9b::a00:1 reach 10.0.0.1.
+	netip.MustParsePrefix("64:ff9b::/96"),   // well-known NAT64
+	netip.MustParsePrefix("64:ff9b:1::/48"), // local-use NAT64
+	netip.MustParsePrefix("100::/64"),       // discard-only
+	netip.MustParsePrefix("2001::/32"),      // Teredo
+	netip.MustParsePrefix("2001:db8::/32"),  // documentation
+	netip.MustParsePrefix("2002::/16"),      // 6to4
+	netip.MustParsePrefix("fc00::/7"),       // unique local
+	netip.MustParsePrefix("fe80::/10"),      // link-local
+	netip.MustParsePrefix("ff00::/8"),       // multicast
 }
 
 // DefaultTimeout is the round trip budget used when a caller passes none.

@@ -50,7 +50,9 @@ identity-create-service-account-credential|POST|/iam/service-accounts/{id}/crede
 identity-delete-service-account-credential|DELETE|/iam/service-accounts/{id}/credentials/{credential_id}
 identity-platform-get-principal-lifecycle|GET|/platform/iam/principals/{principal_id}/lifecycle
 identity-platform-set-principal-retention|PUT|/platform/iam/principals/{principal_id}/lifecycle/retention
-identity-platform-anonymize-principal|POST|/platform/iam/principals/{principal_id}/lifecycle/anonymization`
+identity-platform-anonymize-principal|POST|/platform/iam/principals/{principal_id}/lifecycle/anonymization
+identity-platform-suspend-principal|PUT|/platform/iam/principals/{principal_id}/suspension
+identity-platform-restore-principal|DELETE|/platform/iam/principals/{principal_id}/suspension`
 
 // identityGuards is the permission code each operation must carry. Editing a
 // profile and suspending or restoring an account are changes to a user inside
@@ -79,6 +81,8 @@ var identityGuards = map[string]string{
 	"identity-platform-get-principal-lifecycle":  "platform_administer",
 	"identity-platform-set-principal-retention":  "platform_administer",
 	"identity-platform-anonymize-principal":      "platform_administer",
+	"identity-platform-suspend-principal":        "platform_administer",
+	"identity-platform-restore-principal":        "platform_administer",
 }
 
 type identityTokenVerifier struct{ principalID guid.ID }
@@ -225,7 +229,7 @@ func TestIdentityRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 23)
+	require.Len(t, got, 25)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
@@ -289,7 +293,7 @@ func TestIdentityOpenAPIGuardsParametersAndSecurityAreConsistent(t *testing.T) {
 			}
 		}
 	}
-	require.Len(t, operationIDs, 23)
+	require.Len(t, operationIDs, 25)
 }
 
 func TestIdentityOpenAPIDescribesTypedMutationResponses(t *testing.T) {

@@ -63,14 +63,14 @@ func TestSharedRedisExternal(t *testing.T) {
 			group.Wait()
 			require.EqualValues(t, 1, winners.Load())
 			for range 2 {
-				retry, err := a.allow(t.Context(), "192.0.2.1:123")
+				retry, err := a.allow(t.Context(), "192.0.2.1:123", scopeAuthentication)
 				require.NoError(t, err)
 				require.Zero(t, retry)
 			}
-			retry, err := b.allow(t.Context(), "192.0.2.1:456")
+			retry, err := b.allow(t.Context(), "192.0.2.1:456", scopeAuthentication)
 			require.NoError(t, err)
 			require.Positive(t, retry)
-			retry, err = b.allow(t.Context(), "198.51.100.1:123")
+			retry, err = b.allow(t.Context(), "198.51.100.1:123", scopeAuthentication)
 			require.NoError(t, err)
 			require.Positive(t, retry)
 			switch mode {

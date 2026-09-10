@@ -49,10 +49,10 @@ import {
 } from "../../lib/iam-api"
 import { useAllowed } from "../../lib/permissions"
 
-const grants: Array<{ value: OAuthGrantType; label: string }> = [
-  { value: "authorization_code", label: "Authorization Code + PKCE" },
-  { value: "refresh_token", label: "Refresh Token" },
-  { value: "client_credentials", label: "Client Credentials" },
+const grants: Array<{ value: OAuthGrantType; labelKey: string }> = [
+  { value: "authorization_code", labelKey: "grantAuthorizationCode" },
+  { value: "refresh_token", labelKey: "grantRefreshToken" },
+  { value: "client_credentials", labelKey: "grantClientCredentials" },
 ]
 
 interface ClientDraft {
@@ -306,7 +306,7 @@ export default function OAuthClientsPage() {
                 <TableHead className="min-w-56">{t("client")}</TableHead>
                 <TableHead className="min-w-40">{t("type")}</TableHead>
                 <TableHead className="min-w-64">{t("grantTypes")}</TableHead>
-                <TableHead className="min-w-52">Scopes</TableHead>
+                <TableHead className="min-w-52">{t("scopes")}</TableHead>
                 <TableHead className="w-24">{t("status")}</TableHead>
                 <TableHead className="w-36 text-right">
                   {t("actions")}
@@ -643,7 +643,7 @@ function ClientEditor({
                       }
                     />
                     <span className={disabled ? "text-muted-foreground" : ""}>
-                      {grant.label}
+                      {t(grant.labelKey)}
                     </span>
                   </label>
                 )
@@ -667,7 +667,7 @@ function ClientEditor({
             </p>
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="oauth-scopes">Scopes</Label>
+            <Label htmlFor="oauth-scopes">{t("scopes")}</Label>
             <Input
               id="oauth-scopes"
               value={draft.scopes}
@@ -814,7 +814,7 @@ function SecretDialog({
         <div className="grid gap-3">
           <div className="rounded-md border bg-muted/40 p-3">
             <span className="block text-xs text-muted-foreground">
-              Client ID
+              {t("clientId")}
             </span>
             <code className="mt-1 block font-mono text-xs break-all">
               {value?.clientID}
@@ -822,7 +822,7 @@ function SecretDialog({
           </div>
           <div className="rounded-md border bg-muted/40 p-3">
             <span className="block text-xs text-muted-foreground">
-              Client Secret
+              {t("clientSecret")}
             </span>
             <code className="mt-1 block font-mono text-xs break-all">
               {value?.secret}

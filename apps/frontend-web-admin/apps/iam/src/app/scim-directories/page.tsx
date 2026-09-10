@@ -330,7 +330,7 @@ function TenantSCIMDirectories({ tenant }: { tenant: string }) {
       <section className="mb-4 flex min-h-14 flex-wrap items-center justify-between gap-3 border-y bg-muted/20 px-4 py-3">
         <div className="min-w-0">
           <span className="block text-xs font-medium text-muted-foreground">
-            SCIM Base URL
+            {t("scimBaseUrl")}
           </span>
           <code className="mt-1 block truncate font-mono text-xs">
             {endpoint}
@@ -927,12 +927,12 @@ function SecretDialog({
           <DialogDescription>{t("bearerOnce")}</DialogDescription>
         </DialogHeader>
         <SecretField
-          label="SCIM Base URL"
+          label={t("scimBaseUrl")}
           value={endpoint}
           onCopy={() => onCopy(endpoint, t("scimUrlCopied"))}
         />
         <SecretField
-          label="Bearer token"
+          label={t("bearerToken")}
           value={value?.bearer_token ?? ""}
           onCopy={() => onCopy(value?.bearer_token ?? "", t("scimTokenCopied"))}
         />

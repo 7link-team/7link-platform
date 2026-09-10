@@ -203,7 +203,7 @@ export default function TenantsPage() {
             <TableRow>
               <TableHead>{t("tenant")}</TableHead>
               <TableHead>{t("identifier")}</TableHead>
-              <TableHead>ID</TableHead>
+              <TableHead>{t("id")}</TableHead>
               <TableHead>{t("status")}</TableHead>
               <TableHead>{t("version")}</TableHead>
               <TableHead>{t("updatedAt")}</TableHead>

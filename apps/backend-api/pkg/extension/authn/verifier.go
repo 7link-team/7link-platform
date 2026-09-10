@@ -105,6 +105,8 @@ type SharedSecurityConfig struct {
 	Window               time.Duration `mapstructure:"window" description:"fixed authentication request limit window" default:"1m"`
 	PerIP                int           `mapstructure:"per_ip" description:"maximum POST /authn requests per socket peer per window" default:"60"`
 	Global               int           `mapstructure:"global" description:"maximum POST /authn requests across all replicas per window" default:"3000"`
+	OAuthPerIP           int           `mapstructure:"oauth_per_ip" description:"maximum POST /oauth token, revocation and introspection requests per socket peer per window" default:"600"`
+	OAuthGlobal          int           `mapstructure:"oauth_global" description:"maximum POST /oauth token, revocation and introspection requests across all replicas per window" default:"30000"`
 }
 
 // RegistrationConfig enables email-verified self-service global principals.

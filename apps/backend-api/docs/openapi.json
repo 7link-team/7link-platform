@@ -6437,6 +6437,35 @@
         ],
         "type": "object"
       },
+      "EnvelopePrincipal": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/Principal",
+            "description": "response payload; null on error"
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
       "EnvelopePrincipalLifecycle": {
         "additionalProperties": false,
         "properties": {
@@ -9363,6 +9392,55 @@
           "position_id",
           "principal_id",
           "display_name",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "Principal": {
+        "additionalProperties": false,
+        "properties": {
+          "activation_required": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "email_verified": {
+            "type": "boolean"
+          },
+          "id": {
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "login_name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "login_name",
+          "email_verified",
+          "activation_required",
+          "display_name",
+          "status",
           "created_at",
           "updated_at"
         ],
@@ -25530,6 +25608,15 @@
     "/iam/me/oauth-consents": {
       "get": {
         "operationId": "oauth-list-consents",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Cookie",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -25561,6 +25648,16 @@
             },
             "description": "Forbidden"
           },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
           "500": {
             "content": {
               "application/json": {
@@ -25584,9 +25681,6 @@
         },
         "security": [
           {
-            "bearerAuth": []
-          },
-          {
             "sessionCookie": []
           }
         ],
@@ -25600,6 +25694,13 @@
       "delete": {
         "operationId": "oauth-revoke-consent",
         "parameters": [
+          {
+            "in": "header",
+            "name": "Cookie",
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "in": "path",
             "name": "client_id",
@@ -25684,9 +25785,6 @@
           }
         },
         "security": [
-          {
-            "bearerAuth": []
-          },
           {
             "sessionCookie": []
           }
@@ -37277,6 +37375,28 @@
             },
             "description": "Unauthorized"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "error_description": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
           "500": {
             "content": {
               "application/json": {
@@ -37298,6 +37418,28 @@
               }
             },
             "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "error_description": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           },
           "default": {
             "content": {
@@ -37406,6 +37548,28 @@
             },
             "description": "Unauthorized"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "error_description": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
           "500": {
             "content": {
               "application/json": {
@@ -37427,6 +37591,28 @@
               }
             },
             "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "error_description": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           },
           "default": {
             "content": {
@@ -37563,6 +37749,28 @@
             },
             "description": "Unauthorized"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "error_description": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
           "500": {
             "content": {
               "application/json": {
@@ -37584,6 +37792,28 @@
               }
             },
             "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "error_description": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           },
           "default": {
             "content": {
@@ -37722,16 +37952,6 @@
     "/platform/iam/audit/archive-status": {
       "get": {
         "operationId": "audit-platform-archive-status",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-Tenant-Id",
-            "schema": {
-              "maxLength": 128,
-              "type": "string"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "content": {
@@ -37833,14 +38053,6 @@
       "get": {
         "operationId": "audit-platform-list-archives",
         "parameters": [
-          {
-            "in": "header",
-            "name": "X-Tenant-Id",
-            "schema": {
-              "maxLength": 128,
-              "type": "string"
-            }
-          },
           {
             "explode": false,
             "in": "query",
@@ -37963,16 +38175,6 @@
       },
       "post": {
         "operationId": "audit-platform-request-archive",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-Tenant-Id",
-            "schema": {
-              "maxLength": 128,
-              "type": "string"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "content": {
@@ -38074,14 +38276,6 @@
       "get": {
         "operationId": "audit-platform-download-archive",
         "parameters": [
-          {
-            "in": "header",
-            "name": "X-Tenant-Id",
-            "schema": {
-              "maxLength": 128,
-              "type": "string"
-            }
-          },
           {
             "in": "path",
             "name": "id",
@@ -38196,14 +38390,6 @@
         "operationId": "audit-platform-retry-archive",
         "parameters": [
           {
-            "in": "header",
-            "name": "X-Tenant-Id",
-            "schema": {
-              "maxLength": 128,
-              "type": "string"
-            }
-          },
-          {
             "in": "path",
             "name": "id",
             "required": true,
@@ -38315,14 +38501,6 @@
         "operationId": "audit-platform-verify-archive",
         "parameters": [
           {
-            "in": "header",
-            "name": "X-Tenant-Id",
-            "schema": {
-              "maxLength": 128,
-              "type": "string"
-            }
-          },
-          {
             "in": "path",
             "name": "id",
             "required": true,
@@ -38432,16 +38610,6 @@
     "/platform/iam/audit/retention": {
       "put": {
         "operationId": "audit-platform-set-retention",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-Tenant-Id",
-            "schema": {
-              "maxLength": 128,
-              "type": "string"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -39256,6 +39424,230 @@
           }
         ],
         "summary": "Record how long a principal's data is kept, and whether a hold prevents erasing it",
+        "tags": [
+          "identity"
+        ],
+        "x-authz-permission": "platform_administer"
+      }
+    },
+    "/platform/iam/principals/{principal_id}/suspension": {
+      "delete": {
+        "description": "Restores the account to active without recreating credentials, because suspension keeps them. A permanently anonymized principal is refused: its row is a tombstone and the database rejects the write as well.",
+        "operationId": "identity-platform-restore-principal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "principal_id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopePrincipal"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Lift a principal suspension applied from the platform",
+        "tags": [
+          "identity"
+        ],
+        "x-authz-permission": "platform_administer"
+      },
+      "put": {
+        "description": "Reaches a principal that holds no membership, which the tenant suspension route cannot address and the closure route only covers after the person asks. It revokes sessions and refresh tokens and refuses to remove the last administrator of a tenant the principal still belongs to.",
+        "operationId": "identity-platform-suspend-principal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "principal_id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopePrincipal"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Suspend a principal, including one no tenant administrator can reach",
         "tags": [
           "identity"
         ],

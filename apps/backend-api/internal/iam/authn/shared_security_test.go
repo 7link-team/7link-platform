@@ -26,7 +26,7 @@ func sharedSecurityPair(t *testing.T) (*sharedSecurity, *sharedSecurity) {
 	}
 	path := filepath.Join(t.TempDir(), "redis-url")
 	require.NoError(t, os.WriteFile(path, []byte(address), 0600))
-	cfg := authnext.SharedSecurityConfig{RedisURLFile: path, FailurePolicy: "closed", Namespace: fmt.Sprintf("%s-%d", t.Name(), time.Now().UnixNano()), PerIP: 2, Global: 3}
+	cfg := authnext.SharedSecurityConfig{RedisURLFile: path, FailurePolicy: "closed", Namespace: fmt.Sprintf("%s-%d", t.Name(), time.Now().UnixNano()), PerIP: 2, Global: 3, OAuthPerIP: 2, OAuthGlobal: 3}
 	a, err := newSharedSecurity(cfg)
 	require.NoError(t, err)
 	b, err := newSharedSecurity(cfg)
@@ -82,30 +82,59 @@ func TestSharedCaptchaAcrossReplicasIsOneShot(t *testing.T) {
 func TestSharedAuthenticationLimitsBothScopesAndExpires(t *testing.T) {
 	a, b := sharedSecurityPair(t)
 	for _, client := range []*sharedSecurity{a, b} {
-		retry, err := client.allow(t.Context(), "192.0.2.1:4567")
+		retry, err := client.allow(t.Context(), "192.0.2.1:4567", scopeAuthentication)
 		require.NoError(t, err)
 		require.Zero(t, retry)
 	}
-	retry, err := b.allow(t.Context(), "192.0.2.1:4568")
+	retry, err := b.allow(t.Context(), "192.0.2.1:4568", scopeAuthentication)
 	require.NoError(t, err)
 	require.Positive(t, retry)
-	retry, err = a.allow(t.Context(), "198.51.100.2:1234")
+	retry, err = a.allow(t.Context(), "198.51.100.2:1234", scopeAuthentication)
 	require.NoError(t, err)
 	require.Positive(t, retry, "rotating peers cannot bypass global budget")
-	for _, key := range []string{a.key("limit", "global"), a.key("peer", "192.0.2.1")} {
+	for _, key := range []string{a.key("authn-limit", "global"), a.key("authn-peer", "192.0.2.1")} {
 		ttl, err := a.client.PTTL(t.Context(), key).Result()
 		require.NoError(t, err)
 		require.Positive(t, ttl)
 		require.NoError(t, a.client.Del(t.Context(), key).Err())
 	}
-	retry, err = b.allow(t.Context(), "192.0.2.1:9876")
+	retry, err = b.allow(t.Context(), "192.0.2.1:9876", scopeAuthentication)
 	require.NoError(t, err)
 	require.Zero(t, retry)
 	// An accidentally persistent counter must regain an expiry, not deny forever.
-	require.NoError(t, a.client.Set(t.Context(), a.key("peer", "unknown"), 5, 0).Err())
-	retry, err = a.allow(t.Context(), "not-an-address")
+	require.NoError(t, a.client.Set(t.Context(), a.key("authn-peer", "unknown"), 5, 0).Err())
+	retry, err = a.allow(t.Context(), "not-an-address", scopeAuthentication)
 	require.NoError(t, err)
 	require.Positive(t, retry)
+}
+
+// TestSharedOAuthLimitsUseTheirOwnBudget keeps the two budgets apart: the
+// authentication routes must not be throttled by OAuth traffic, and OAuth must
+// not be throttled by sign-in attempts.
+func TestSharedOAuthLimitsUseTheirOwnBudget(t *testing.T) {
+	a, b := sharedSecurityPair(t)
+	// Two OAuth requests from one peer are within budget; the third is not.
+	for range 2 {
+		retry, err := a.allow(t.Context(), "192.0.2.9:1111", scopeOAuth)
+		require.NoError(t, err)
+		require.Zero(t, retry)
+	}
+	retry, err := b.allow(t.Context(), "192.0.2.9:2222", scopeOAuth)
+	require.NoError(t, err)
+	require.Positive(t, retry, "the OAuth budget is shared across replicas")
+
+	// The authentication budget is untouched by the OAuth traffic.
+	for _, client := range []*sharedSecurity{a, b} {
+		authnRetry, err := client.allow(t.Context(), "192.0.2.9:3333", scopeAuthentication)
+		require.NoError(t, err)
+		require.Zero(t, authnRetry, "OAuth traffic must not consume the authentication budget")
+	}
+
+	for _, key := range []string{a.key("oauth-limit", "global"), a.key("oauth-peer", "192.0.2.9")} {
+		ttl, err := a.client.PTTL(t.Context(), key).Result()
+		require.NoError(t, err)
+		require.Positive(t, ttl)
+	}
 }
 
 func TestSharedCaptchaExpiryAndStorageFailure(t *testing.T) {
@@ -139,7 +168,7 @@ func TestSharedAuthenticationConcurrentBudgetCannotBeExceeded(t *testing.T) {
 			if i%2 == 0 {
 				client = b
 			}
-			retry, err := client.allow(t.Context(), "192.0.2.3:4321")
+			retry, err := client.allow(t.Context(), "192.0.2.3:4321", scopeAuthentication)
 			if err != nil {
 				failed.Add(1)
 			} else if retry == 0 {
@@ -203,6 +232,38 @@ func TestSharedSecurityHTTPRateLimitAndOutagePolicy(t *testing.T) {
 	service.sharedSecurity = nil
 	require.Equal(t, 200, api.Post("/authn/test").Code)
 	require.False(t, limitedAuthenticationOperation(nil))
+}
+
+// TestSharedOAuthEndpointsAreLimitedAndAnswerInTheProtocolShape covers the
+// public OAuth endpoints the limiter now answers directly. They are not
+// authentication routes and they do not use the platform envelope, so both the
+// budget and the refusal shape are asserted here.
+func TestSharedOAuthEndpointsAreLimitedAndAnswerInTheProtocolShape(t *testing.T) {
+	a, _ := sharedSecurityPair(t)
+	_, api := humatest.New(t)
+	service := &Service{sharedSecurity: a}
+	service.registerSharedSecurity(api)
+	register := func(path string) {
+		huma.Register(api, huma.Operation{OperationID: "test" + path, Method: http.MethodPost, Path: path}, func(context.Context, *struct{}) (*struct{ Body string }, error) {
+			return &struct{ Body string }{Body: "ok"}, nil
+		})
+	}
+	for _, path := range []string{"/oauth/token", "/oauth/revoke", "/oauth/introspect"} {
+		register(path)
+		require.Equal(t, scopeOAuth, requestScope(api.OpenAPI().Paths[path].Post), path)
+	}
+
+	require.Equal(t, 200, api.Post("/oauth/token").Code)
+	require.Equal(t, 200, api.Post("/oauth/token").Code)
+	limited := api.Post("/oauth/token", "X-Forwarded-For: 1.2.3.4")
+	require.Equal(t, 429, limited.Code)
+	require.NotEmpty(t, limited.Header().Get("Retry-After"))
+	require.JSONEq(t, oauthLimitRefusal, limited.Body.String())
+
+	// The authentication budget is a separate counter, so OAuth traffic has not
+	// spent any of it.
+	register("/authn/test")
+	require.Equal(t, 200, api.Post("/authn/test").Code)
 }
 
 func TestAllAuthenticationMutationsDocumentSharedSecurityErrors(t *testing.T) {

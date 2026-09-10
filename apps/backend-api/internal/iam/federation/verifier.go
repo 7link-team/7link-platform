@@ -19,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"7link.com/platform/pkg/extension/httpx"
 )
 
 const wellKnownPath = "/.well-known/openid-configuration"
@@ -28,6 +30,7 @@ const wellKnownPath = "/.well-known/openid-configuration"
 // standard library so the trust boundary stays small and auditable.
 type oidcClient struct {
 	client    *http.Client
+	policy    httpx.Policy
 	clockSkew time.Duration
 	cacheTTL  time.Duration
 	mu        sync.Mutex
@@ -46,8 +49,8 @@ type oidcDiscovery struct {
 	JWKSURI               string `json:"jwks_uri"`
 }
 
-func newOIDCClient(client *http.Client, clockSkew, cacheTTL time.Duration) *oidcClient {
-	return &oidcClient{client: client, clockSkew: clockSkew, cacheTTL: cacheTTL, cache: map[string]oidcCacheEntry{}}
+func newOIDCClient(client *http.Client, policy httpx.Policy, clockSkew, cacheTTL time.Duration) *oidcClient {
+	return &oidcClient{client: client, policy: policy, clockSkew: clockSkew, cacheTTL: cacheTTL, cache: map[string]oidcCacheEntry{}}
 }
 
 func (c *oidcClient) discovery(ctx context.Context, issuer string) (oidcDiscovery, error) {
@@ -75,8 +78,15 @@ func (c *oidcClient) discovery(ctx context.Context, issuer string) (oidcDiscover
 	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
 		return oidcDiscovery{}, fmt.Errorf("%w: decode metadata: %w", ErrOIDCDiscovery, err)
 	}
-	if !validHTTPURL(doc.AuthorizationEndpoint) || !validHTTPURL(doc.TokenEndpoint) || !validHTTPURL(doc.JWKSURI) {
-		return oidcDiscovery{}, fmt.Errorf("%w: metadata misses required endpoints", ErrOIDCDiscovery)
+	// The issuer URL was judged when it was stored, but these endpoints come
+	// out of the provider's own document, so a deployment that refuses
+	// plaintext would still send the client secret and the authorization code
+	// to an http:// token endpoint without this. Judge them with the same
+	// policy rather than only asking whether they parse.
+	for _, endpoint := range []string{doc.AuthorizationEndpoint, doc.TokenEndpoint, doc.JWKSURI} {
+		if err := c.policy.ValidateURL(endpoint); err != nil {
+			return oidcDiscovery{}, fmt.Errorf("%w: %w", ErrOIDCDiscovery, err)
+		}
 	}
 	c.mu.Lock()
 	c.cache[issuer] = oidcCacheEntry{discovery: &doc, fetchedAt: now}

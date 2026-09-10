@@ -477,7 +477,7 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="scim-target-url">SCIM Base URL</Label>
+              <Label htmlFor="scim-target-url">{t("scimBaseUrl")}</Label>
               <Input
                 id="scim-target-url"
                 type="url"
@@ -492,7 +492,7 @@ export function SCIMTargets({ tenant }: { tenant: string }) {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="scim-target-token">
-                {editing ? t("optionalBearer") : "Bearer Token"}
+                {editing ? t("optionalBearer") : t("bearerToken")}
               </Label>
               <Input
                 id="scim-target-token"

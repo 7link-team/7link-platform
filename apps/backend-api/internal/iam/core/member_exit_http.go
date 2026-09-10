@@ -33,7 +33,7 @@ type leaveMembershipInput struct {
 }
 
 func registerMemberExitHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
-	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "iam-my-memberships", Method: http.MethodGet, Path: "/iam/me/memberships", Summary: "List my active tenant memberships", Tags: []string{"iam"}, Security: authz.UserSecurity(), Errors: []int{401, 503}}, func(ctx context.Context, in *myMembershipInput) (*respx.Body[myMembershipPage], error) {
+	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "iam-my-memberships", Method: http.MethodGet, Path: "/iam/me/memberships", Summary: "List my active tenant memberships", Tags: []string{"iam"}, Errors: []int{401, 503}}, func(ctx context.Context, in *myMembershipInput) (*respx.Body[myMembershipPage], error) {
 		claims, err := s.memberBrowser(ctx, in.Cookie, in.Authorization)
 		if err != nil {
 			return nil, err
@@ -44,7 +44,7 @@ func registerMemberExitHTTP(api huma.API, s *Service, registrar *authz.Registrar
 		}
 		return respx.OK(ctx, myMembershipPage{Items: items, Total: total}), nil
 	})
-	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "iam-leave-membership", Method: http.MethodPost, Path: "/iam/me/memberships/{tenant_id}/leave", Summary: "Leave one tenant while preserving my global account", Tags: []string{"iam"}, Security: authz.UserSecurity(), Errors: []int{401, 403, 404, 409, 503}}, func(ctx context.Context, in *leaveMembershipInput) (*respx.Body[map[string]string], error) {
+	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "iam-leave-membership", Method: http.MethodPost, Path: "/iam/me/memberships/{tenant_id}/leave", Summary: "Leave one tenant while preserving my global account", Tags: []string{"iam"}, Errors: []int{401, 403, 404, 409, 503}}, func(ctx context.Context, in *leaveMembershipInput) (*respx.Body[map[string]string], error) {
 		claims, err := s.memberBrowser(ctx, in.Cookie, in.Authorization)
 		if err != nil {
 			return nil, err

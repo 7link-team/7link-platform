@@ -12,6 +12,8 @@ import (
 
 func TestPolicyPermitsRejectsReservedAddresses(t *testing.T) {
 	policy := Policy{}
+	// The transition ranges pass IsGlobalUnicast, so only the explicit list
+	// stops them. Those literals each wrap 10.0.0.1 or 169.254.169.254.
 	blocked := map[string]string{
 		"loopback":             "127.0.0.1",
 		"loopback high":        "127.255.255.254",
@@ -33,6 +35,11 @@ func TestPolicyPermitsRejectsReservedAddresses(t *testing.T) {
 		"ipv6 link local":      "fe80::1",
 		"ipv6 multicast":       "ff02::1",
 		"ipv6 documentation":   "2001:db8::1",
+		"nat64 well-known":     "64:ff9b::a00:1",
+		"nat64 local use":      "64:ff9b:1::a00:1",
+		"teredo":               "2001:0:4136:e378:8000:63bf:3fff:fdd2",
+		"6to4":                 "2002:0a00:0001::",
+		"6to4 metadata":        "2002:a9fe:a9fe::",
 		"ipv4 mapped loopback": "::ffff:127.0.0.1",
 		"ipv4 mapped private":  "::ffff:10.0.0.1",
 		"ipv4 mapped metadata": "::ffff:169.254.169.254",

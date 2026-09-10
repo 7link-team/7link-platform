@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const iamHTTPMappingCount = 258
+const iamHTTPMappingCount = 260
 
 type iamHTTPMapping struct {
 	sourceOperation string
@@ -212,6 +212,7 @@ func iamAuthorizationOf(operation *huma.Operation) (iamHTTPAuthorization, error)
 	}
 
 	selectors := map[string]bool{}
+	namedSelectors := 0
 	authorizationSelectors := map[string]string{
 		"header|" + strings.ToLower(authz.TenantHeader): "Tenant authorization boundary",
 		"header|" + strings.ToLower(authz.EntityHeader): "Authorized entity resource boundary",
@@ -224,7 +225,16 @@ func iamAuthorizationOf(operation *huma.Operation) (iamHTTPAuthorization, error)
 		}
 		key := strings.ToLower(parameter.In + "|" + parameter.Name)
 		description, authorizationSelector := authorizationSelectors[key]
-		if !authorizationSelector || parameter.Description != description {
+		if !authorizationSelector {
+			continue
+		}
+		// Every parameter that occupies a selector slot counts, whether or not
+		// it carries the registrar's declaration. The archive routes bound an
+		// X-Tenant-Id straight from their input struct, which published a
+		// platform selector their handler answers with 422 while the declared
+		// selector count stayed zero.
+		namedSelectors++
+		if parameter.Description != description {
 			continue
 		}
 		if !parameter.Required {
@@ -249,7 +259,7 @@ func iamAuthorizationOf(operation *huma.Operation) (iamHTTPAuthorization, error)
 			return iamHTTPAuthorization{}, fmt.Errorf("tenant-member operation does not have exactly one tenant header selector")
 		}
 	case "platform":
-		if !guarded || selectorCount != 0 {
+		if !guarded || selectorCount != 0 || namedSelectors != 0 {
 			return iamHTTPAuthorization{}, fmt.Errorf("platform operation does not have exactly one guard and no tenant/entity selector")
 		}
 	case "":

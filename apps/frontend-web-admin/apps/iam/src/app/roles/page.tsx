@@ -97,6 +97,7 @@ export default function RolesPage() {
   const [editing, setEditing] = useState<Role | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const [loadError, setLoadError] = useState("")
   const [scopeDraft, setScopeDraft] = useState<DataScope>("all")
   const [scopeDepartmentIDs, setScopeDepartmentIDs] = useState<string[]>([])
   const [conditionPermission, setConditionPermission] =
@@ -106,19 +107,22 @@ export default function RolesPage() {
       trustedContextConditionDraft(undefined, localTimezone())
     )
 
+  // Reading the page and writing to it fail on different channels: a refused
+  // read keeps the error next to a retry, a refused write next to the form.
   const refresh = useCallback(
     () =>
-      Promise.all([iamApi.roles(), iamApi.permissions()]).then(
-        ([nextRoles, nextCatalog]) => {
+      Promise.all([iamApi.roles(), iamApi.permissions()])
+        .then(([nextRoles, nextCatalog]) => {
           setRoles(nextRoles)
           setCatalog(nextCatalog)
-        }
-      ),
+          setLoadError("")
+        })
+        .catch((cause: Error) => setLoadError(cause.message)),
     []
   )
 
   useEffect(() => {
-    void refresh().catch((cause: Error) => setError(cause.message))
+    void refresh()
   }, [refresh])
 
   useEffect(() => {
@@ -157,7 +161,7 @@ export default function RolesPage() {
           nextDataScope,
         ].find((result) => result.status === "rejected")
         if (refused?.status === "rejected") {
-          setError((refused.reason as Error | undefined)?.message ?? "")
+          setLoadError((refused.reason as Error | undefined)?.message ?? "")
           return
         }
         if (
@@ -453,6 +457,14 @@ export default function RolesPage() {
         }
       />
       {error && <Alert>{error}</Alert>}
+      {loadError && (
+        <Alert>
+          <p>{t.has(loadError) ? t(loadError) : loadError}</p>
+          <Button variant="outline" onClick={() => void refresh()}>
+            {t("retryNow")}
+          </Button>
+        </Alert>
+      )}
       <div className="grid min-h-[620px] overflow-hidden rounded-md border bg-card lg:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="border-b lg:border-r lg:border-b-0">
           <header className="flex h-12 items-center justify-between border-b bg-muted/30 px-4 text-sm font-semibold">

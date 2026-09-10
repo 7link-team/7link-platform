@@ -143,6 +143,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	registerPrincipalHTTP(api, service, registrar)
 	registerServiceAccountHTTP(api, service, registrar)
 	registerPrincipalLifecycleHTTP(api, service, registrar)
+	registerPlatformStatusHTTP(api, service, registrar)
 }
 
 func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Registrar) {

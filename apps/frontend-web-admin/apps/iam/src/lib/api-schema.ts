@@ -3044,6 +3044,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/platform/iam/principals/{principal_id}/suspension": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Suspend a principal, including one no tenant administrator can reach
+         * @description Reaches a principal that holds no membership, which the tenant suspension route cannot address and the closure route only covers after the person asks. It revokes sessions and refresh tokens and refuses to remove the last administrator of a tenant the principal still belongs to.
+         */
+        put: operations["identity-platform-suspend-principal"];
+        post?: never;
+        /**
+         * Lift a principal suspension applied from the platform
+         * @description Restores the account to active without recreating credentials, because suspension keeps them. A permanently anonymized principal is refused: its row is a tombstone and the database rejects the write as well.
+         */
+        delete: operations["identity-platform-restore-principal"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/readyz": {
         parameters: {
             query?: never;
@@ -5575,6 +5599,19 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
+        EnvelopePrincipal: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["Principal"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
         EnvelopePrincipalLifecycle: {
             /**
              * Format: int64
@@ -6468,6 +6505,19 @@ export interface components {
             principal_id: string | null;
             /** Format: date-time */
             starts_at?: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        Principal: {
+            activation_required: boolean;
+            /** Format: date-time */
+            created_at: string;
+            display_name: string;
+            email?: string;
+            email_verified: boolean;
+            id: string | null;
+            login_name: string;
+            status: string;
             /** Format: date-time */
             updated_at: string;
         };
@@ -16914,7 +16964,9 @@ export interface operations {
     "oauth-list-consents": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Cookie?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -16947,6 +16999,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal Server Error */
             500: {
                 headers: {
@@ -16970,7 +17031,9 @@ export interface operations {
     "oauth-revoke-consent": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Cookie?: string;
+            };
             path: {
                 client_id: string;
             };
@@ -24997,8 +25060,32 @@ export interface operations {
                     };
                 };
             };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: string;
+                        error_description?: string;
+                    };
+                };
+            };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: string;
+                        error_description?: string;
+                    };
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -25070,8 +25157,32 @@ export interface operations {
                     };
                 };
             };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: string;
+                        error_description?: string;
+                    };
+                };
+            };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: string;
+                        error_description?: string;
+                    };
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -25149,8 +25260,32 @@ export interface operations {
                     };
                 };
             };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: string;
+                        error_description?: string;
+                    };
+                };
+            };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: string;
+                        error_description?: string;
+                    };
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -25242,9 +25377,7 @@ export interface operations {
     "audit-platform-archive-status": {
         parameters: {
             query?: never;
-            header?: {
-                "X-Tenant-Id"?: string;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -25330,9 +25463,7 @@ export interface operations {
                 offset?: number;
                 limit?: number;
             };
-            header?: {
-                "X-Tenant-Id"?: string;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -25415,9 +25546,7 @@ export interface operations {
     "audit-platform-request-archive": {
         parameters: {
             query?: never;
-            header?: {
-                "X-Tenant-Id"?: string;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -25500,9 +25629,7 @@ export interface operations {
     "audit-platform-download-archive": {
         parameters: {
             query?: never;
-            header?: {
-                "X-Tenant-Id"?: string;
-            };
+            header?: never;
             path: {
                 id: string;
             };
@@ -25587,9 +25714,7 @@ export interface operations {
     "audit-platform-retry-archive": {
         parameters: {
             query?: never;
-            header?: {
-                "X-Tenant-Id"?: string;
-            };
+            header?: never;
             path: {
                 id: string;
             };
@@ -25674,9 +25799,7 @@ export interface operations {
     "audit-platform-verify-archive": {
         parameters: {
             query?: never;
-            header?: {
-                "X-Tenant-Id"?: string;
-            };
+            header?: never;
             path: {
                 id: string;
             };
@@ -25761,9 +25884,7 @@ export interface operations {
     "audit-platform-set-retention": {
         parameters: {
             query?: never;
-            header?: {
-                "X-Tenant-Id"?: string;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -26281,6 +26402,176 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnvelopePrincipalLifecycle"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "identity-platform-suspend-principal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                principal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopePrincipal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "identity-platform-restore-principal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                principal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopePrincipal"];
                 };
             };
             /** @description Unauthorized */

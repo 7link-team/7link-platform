@@ -22,6 +22,8 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/pkg/extension/httpx"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -242,8 +244,38 @@ func (p *testIDP) authorize(t *testing.T, client *http.Client, issuer, verifier,
 	return body.Code, body.State
 }
 
+func TestOIDCDiscoveryRefusesEndpointsOutsideTheOutboundPolicy(t *testing.T) {
+	// These endpoints come out of the provider's own document rather than out
+	// of the stored issuer, so a provider that answers over https can still
+	// name plaintext ones. Without the policy check the client used them and
+	// sent the client secret and the authorization code in the clear.
+	var issuer string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"authorization_endpoint": issuer + "/authorize",
+			"token_endpoint":         issuer + "/token",
+			"jwks_uri":               issuer + "/jwks",
+		})
+	}))
+	defer server.Close()
+	issuer = server.URL
+
+	// The strict policy is the shipped default, and the fixture is plaintext,
+	// so every advertised endpoint is one the deployment refuses.
+	client := newOIDCClient(server.Client(), httpx.Policy{}, 30*time.Second, 5*time.Minute)
+	_, err := client.discovery(t.Context(), issuer)
+	assert.ErrorIs(t, err, ErrOIDCDiscovery)
+	assert.ErrorContains(t, err, "must use https")
+
+	// The same document is accepted by a policy that admits it, so the refusal
+	// is the policy rather than the shape of the document.
+	relaxed := newOIDCClient(server.Client(), testOutboundPolicy(), 30*time.Second, 5*time.Minute)
+	_, err = relaxed.discovery(t.Context(), issuer)
+	assert.NoError(t, err)
+}
+
 func newTestOIDCClient(idp *testIDP) *oidcClient {
-	return newOIDCClient(idp.server.Client(), 30*time.Second, 5*time.Minute)
+	return newOIDCClient(idp.server.Client(), testOutboundPolicy(), 30*time.Second, 5*time.Minute)
 }
 
 func TestOIDCDiscoveryCachesAndValidates(t *testing.T) {
@@ -280,7 +312,7 @@ func TestOIDCClientPreservesUpstreamFailures(t *testing.T) {
 	httpClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return nil, upstreamErr
 	})}
-	client := newOIDCClient(httpClient, 30*time.Second, 5*time.Minute)
+	client := newOIDCClient(httpClient, testOutboundPolicy(), 30*time.Second, 5*time.Minute)
 	ctx := t.Context()
 	issuer := "https://idp.example"
 
@@ -645,7 +677,7 @@ func TestOIDCDiscoveryServerErrors(t *testing.T) {
 	}))
 	t.Cleanup(badJSON.Close)
 
-	client := newOIDCClient(http.DefaultClient, 30*time.Second, 5*time.Minute)
+	client := newOIDCClient(http.DefaultClient, testOutboundPolicy(), 30*time.Second, 5*time.Minute)
 	_, err := client.discovery(context.Background(), internalError.URL)
 	assert.ErrorIs(t, err, ErrOIDCDiscovery)
 	_, err = client.discovery(context.Background(), badJSON.URL)
@@ -672,7 +704,7 @@ func newJwksServer(t *testing.T, jwksHandler func(http.ResponseWriter)) *httptes
 }
 
 func TestOIDCKeysServerErrors(t *testing.T) {
-	client := newOIDCClient(http.DefaultClient, 30*time.Second, 5*time.Minute)
+	client := newOIDCClient(http.DefaultClient, testOutboundPolicy(), 30*time.Second, 5*time.Minute)
 
 	status500 := newJwksServer(t, func(w http.ResponseWriter) { http.Error(w, "boom", http.StatusInternalServerError) })
 	_, err := client.keys(context.Background(), status500.URL, false)
@@ -708,7 +740,7 @@ func TestOIDCExchangeCodeServerError(t *testing.T) {
 		_, _ = w.Write([]byte("{"))
 	}))
 	t.Cleanup(server.Close)
-	client := newOIDCClient(http.DefaultClient, 30*time.Second, 5*time.Minute)
+	client := newOIDCClient(http.DefaultClient, testOutboundPolicy(), 30*time.Second, 5*time.Minute)
 	_, err := client.exchangeCode(context.Background(), server.URL, "client", "", "code", server.URL+"/callback", "verifier")
 	assert.ErrorIs(t, err, ErrOIDCToken)
 }

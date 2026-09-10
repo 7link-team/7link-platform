@@ -117,7 +117,7 @@ function EntityDetails({ entityID, view }: { entityID: string; view: string }) {
         <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-x-4 text-sm [&>dd]:border-b [&>dd]:py-4 [&>dd]:break-all [&>dt]:border-b [&>dt]:py-4 [&>dt]:text-muted-foreground">
           <dt>{t("entity")}</dt>
           <dd>{data.entity.name}</dd>
-          <dt>ID</dt>
+          <dt>{t("id")}</dt>
           <dd>{data.entity.id}</dd>
           <dt>{t("type")}</dt>
           <dd>{data.entity.type}</dd>

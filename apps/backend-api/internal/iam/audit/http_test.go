@@ -122,7 +122,14 @@ func TestAuditRouteManifestAndOpenAPIContract(t *testing.T) {
 					tenantHeaders++
 				}
 			}
-			assert.Equal(t, 1, tenantHeaders, location)
+			// Platform routes never derive their scope from a caller-controlled
+			// tenant header, so the document must not offer them one either: a
+			// platform archive request that sends it is answered with 422.
+			wantTenantHeaders := 1
+			if strings.HasPrefix(path, "/platform/") {
+				wantTenantHeaders = 0
+			}
+			assert.Equal(t, wantTenantHeaders, tenantHeaders, location)
 		}
 	}
 	export := api.OpenAPI().Paths["/iam/audit-events/export"].Get

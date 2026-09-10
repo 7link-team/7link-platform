@@ -232,8 +232,15 @@ type clientSecretData struct {
 	ClientSecret string `json:"client_secret"`
 }
 
+type consentListInput struct {
+	Cookie        string `header:"Cookie"`
+	Authorization string `header:"Authorization" hidden:"true"`
+}
+
 type consentRevokeInput struct {
-	ClientID string `path:"client_id" maxLength:"19" pattern:"^[1-9][0-9]*$"`
+	Cookie        string `header:"Cookie"`
+	Authorization string `header:"Authorization" hidden:"true"`
+	ClientID      string `path:"client_id" maxLength:"19" pattern:"^[1-9][0-9]*$"`
 }
 
 type consentRevokeData struct {
@@ -479,6 +486,14 @@ func registerProtocolHTTP(api huma.API, service *Service) {
 		return &introspectOutput{Body: document}, nil
 	})
 	documentOAuthForm[introspectionForm](api, "/oauth/introspect")
+	// The shared request limiter answers these three public endpoints directly,
+	// so their contract has to carry its refusals even when no shared storage is
+	// configured. It replies with an RFC 6749 error object rather than the
+	// platform envelope, which is why the schema is the protocol one.
+	for _, limited := range []string{"/oauth/token", "/oauth/revoke", "/oauth/introspect"} {
+		documentOAuthErrors(api, api.OpenAPI().Paths[limited].Post,
+			http.StatusTooManyRequests, http.StatusServiceUnavailable)
+	}
 	authz.RegisterPublic(api, huma.Operation{
 		OperationID: "oauth-userinfo", Method: http.MethodGet, Path: "/oauth/userinfo",
 		Summary:  "Return OpenID Connect claims for an access token",
@@ -596,12 +611,12 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 // a grant belongs to the principal who gave it rather than to any one tenant,
 // and no tenant permission stands between somebody and their own consent.
 func registerGrantHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
-	authz.RegisterAuthenticated(registrar, api, huma.Operation{
+	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{
 		OperationID: "oauth-list-consents", Method: http.MethodGet, Path: "/iam/me/oauth-consents",
 		Summary: "List the applications the caller has authorized", Tags: []string{"oauth"},
 		Errors: []int{http.StatusUnauthorized, http.StatusInternalServerError},
-	}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]GrantedConsent], error) {
-		principalID, err := callingPrincipal(ctx)
+	}, func(ctx context.Context, in *consentListInput) (*respx.Body[[]GrantedConsent], error) {
+		principalID, err := consentPrincipal(ctx, in.Cookie, in.Authorization)
 		if err != nil {
 			return nil, err
 		}
@@ -611,13 +626,13 @@ func registerGrantHTTP(api huma.API, service *Service, registrar *authz.Registra
 		}
 		return respx.OK(ctx, consents), nil
 	})
-	authz.RegisterAuthenticated(registrar, api, huma.Operation{
+	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{
 		OperationID: "oauth-revoke-consent", Method: http.MethodDelete,
 		Path: "/iam/me/oauth-consents/{client_id}", Tags: []string{"oauth"},
 		Summary: "Withdraw the caller's authorization of one application",
 		Errors:  []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *consentRevokeInput) (*respx.Body[consentRevokeData], error) {
-		principalID, err := callingPrincipal(ctx)
+		principalID, err := consentPrincipal(ctx, in.Cookie, in.Authorization)
 		if err != nil {
 			return nil, err
 		}
@@ -632,12 +647,14 @@ func registerGrantHTTP(api huma.API, service *Service, registrar *authz.Registra
 	})
 }
 
-// callingPrincipal reads the subject a self-service operation acts for. Taking
-// it from the request instead would turn "revoke my consent" into "revoke
-// anyone's consent", so the token is the only source there can be.
-func callingPrincipal(ctx context.Context) (guid.ID, error) {
+// consentPrincipal reads the subject a self-service consent operation acts for.
+// Taking it from the request instead would turn "revoke my consent" into
+// "revoke anyone's consent", so the token is the only source there can be. The
+// route is session-only like the other self-service operations, so a bearer
+// credential is refused rather than accepted as a second way to be the caller.
+func consentPrincipal(ctx context.Context, cookie, authorization string) (guid.ID, error) {
 	claims, ok := authnext.FromContext(ctx)
-	if !ok || claims == nil || claims.PrincipalID.Zero() {
+	if authorization != "" || cookie == "" || !ok || claims == nil || claims.PrincipalID.Zero() {
 		return 0, huma.Error401Unauthorized(oauthi18n.InvalidToken)
 	}
 	return claims.PrincipalID, nil

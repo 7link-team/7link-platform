@@ -50,7 +50,14 @@ func newSharedSecurity(cfg authnext.SharedSecurityConfig) (*sharedSecurity, erro
 	if cfg.Global == 0 {
 		cfg.Global = 3000
 	}
-	if cfg.RequestTimeout < time.Millisecond || cfg.Window < time.Second || cfg.PerIP < 1 || cfg.Global < 1 {
+	if cfg.OAuthPerIP == 0 {
+		cfg.OAuthPerIP = 600
+	}
+	if cfg.OAuthGlobal == 0 {
+		cfg.OAuthGlobal = 30000
+	}
+	if cfg.RequestTimeout < time.Millisecond || cfg.Window < time.Second || cfg.PerIP < 1 || cfg.Global < 1 ||
+		cfg.OAuthPerIP < 1 || cfg.OAuthGlobal < 1 {
 		return nil, errors.New("authn shared_security requires positive timeouts and request limits")
 	}
 	client, err := newSecurityRedisClient(cfg)
@@ -113,7 +120,7 @@ end
 return retry
 `)
 
-func (s *sharedSecurity) allow(ctx context.Context, remote string) (time.Duration, error) {
+func (s *sharedSecurity) allow(ctx context.Context, remote, scope string) (time.Duration, error) {
 	peer, _, err := net.SplitHostPort(remote)
 	if err != nil {
 		peer = remote
@@ -126,36 +133,94 @@ func (s *sharedSecurity) allow(ctx context.Context, remote string) (time.Duratio
 	} else {
 		peer = "unknown"
 	}
+	global, perIP := s.cfg.Global, s.cfg.PerIP
+	if scope == scopeOAuth {
+		global, perIP = s.cfg.OAuthGlobal, s.cfg.OAuthPerIP
+	}
 	ctx, cancel := context.WithTimeout(ctx, s.cfg.RequestTimeout)
 	defer cancel()
 	retry, err := authenticationLimit.Run(ctx, s.client,
-		[]string{s.key("limit", "global"), s.key("peer", peer)},
-		s.cfg.Window.Milliseconds(), s.cfg.Global, s.cfg.PerIP).Int64()
+		[]string{s.key(scope+"-limit", "global"), s.key(scope+"-peer", peer)},
+		s.cfg.Window.Milliseconds(), global, perIP).Int64()
 	return time.Duration(retry) * time.Millisecond, err
 }
+
+// The two budgets are counted separately so a busy OAuth integration cannot
+// exhaust the one that protects password and MFA attempts, and the other way
+// round. Each scope names its own Redis keys for the same reason.
+const (
+	scopeAuthentication = "authn"
+	scopeOAuth          = "oauth"
+)
 
 func limitedAuthenticationOperation(op *huma.Operation) bool {
 	return op != nil && op.Method == http.MethodPost && strings.HasPrefix(op.Path, "/authn/")
 }
 
+// limitedOAuthOperation covers the protocol endpoints that authenticate a
+// client or consume a credential. They are public routes, so nothing else
+// counts attempts against them.
+func limitedOAuthOperation(op *huma.Operation) bool {
+	if op == nil || op.Method != http.MethodPost {
+		return false
+	}
+	switch op.Path {
+	case "/oauth/token", "/oauth/revoke", "/oauth/introspect":
+		return true
+	}
+	return false
+}
+
+// requestScope reports which budget an operation is counted against, or the
+// empty string when it is not limited at all.
+func requestScope(op *huma.Operation) string {
+	switch {
+	case limitedAuthenticationOperation(op):
+		return scopeAuthentication
+	case limitedOAuthOperation(op):
+		return scopeOAuth
+	}
+	return ""
+}
+
+// oauthLimitRefusal is the RFC 6749 error object. The OAuth protocol endpoints
+// do not use the platform envelope, and a client that cannot parse the refusal
+// cannot tell a rate limit from a broken provider.
+const oauthLimitRefusal = `{"error":"temporarily_unavailable"}`
+
+func refuseLimitedRequest(a huma.API, ctx huma.Context, scope string, status int, platformCode string) {
+	if scope != scopeOAuth {
+		_ = huma.WriteErr(a, ctx, status, platformCode)
+		return
+	}
+	ctx.SetHeader("Content-Type", "application/json")
+	ctx.SetStatus(status)
+	_, _ = ctx.BodyWriter().Write([]byte(oauthLimitRefusal))
+}
+
 func (s *Service) registerSharedSecurity(a huma.API) {
 	a.UseMiddleware(func(ctx huma.Context, next func(huma.Context)) {
-		if s == nil || s.sharedSecurity == nil || !limitedAuthenticationOperation(ctx.Operation()) {
+		if s == nil || s.sharedSecurity == nil {
 			next(ctx)
 			return
 		}
-		retry, err := s.sharedSecurity.allow(ctx.Context(), ctx.RemoteAddr())
+		scope := requestScope(ctx.Operation())
+		if scope == "" {
+			next(ctx)
+			return
+		}
+		retry, err := s.sharedSecurity.allow(ctx.Context(), ctx.RemoteAddr(), scope)
 		if err != nil {
 			// Deliberately omit the raw error: it may contain infrastructure or
 			// credential details. The configured namespace identifies the service.
 			slog.Warn("authentication request limiter unavailable", "policy", s.sharedSecurity.cfg.FailurePolicy)
 			if s.sharedSecurity.cfg.FailurePolicy == "closed" {
-				_ = huma.WriteErr(a, ctx, http.StatusServiceUnavailable, "authentication_unavailable")
+				refuseLimitedRequest(a, ctx, scope, http.StatusServiceUnavailable, "authentication_unavailable")
 				return
 			}
 		} else if retry > 0 {
 			ctx.SetHeader("Retry-After", strconv.FormatInt((retry.Milliseconds()+999)/1000, 10))
-			_ = huma.WriteErr(a, ctx, http.StatusTooManyRequests, "authentication_rate_limited")
+			refuseLimitedRequest(a, ctx, scope, http.StatusTooManyRequests, "authentication_rate_limited")
 			return
 		}
 		next(ctx)
