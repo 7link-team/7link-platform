@@ -28,7 +28,7 @@ func TestProvisioningModuleConstructionAndMetadata(t *testing.T) {
 	assert.Equal(t, Name, instance.ModuleName())
 	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, identity.Name, organization.Name, core.Name}, instance.ModuleDependencies())
 	assert.Equal(t, "goose_provisioning", instance.MigrationSource().TableName)
-	assert.Len(t, instance.MigrationMilestones(), 4)
+	assert.Len(t, instance.MigrationMilestones(), 5)
 }
 
 func TestProvisioningModuleActivationComesFromConfig(t *testing.T) {

@@ -1,0 +1,29 @@
+# Load into the deployment's Prometheus rule_files. Route these alerts to the
+# SCIM operator; an unavailable remote directory must not evict login servers.
+groups:
+  - name: iam-scim
+    rules:
+      - alert: IAMSCIMUnresolvedOperation
+        expr: max by (job) (iam_scim_unfinished_operations) > 0 and max by (job) (iam_scim_oldest_operation_age_seconds) > 120
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: SCIM operation has an unresolved remote outcome
+          description: Inspect the target operation token and provider evidence using iam-scim-operations.md. Never expire or clear the claim based only on elapsed time.
+      - alert: IAMSCIMReconciliationFailing
+        expr: max by (job) (iam_scim_failed_targets) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: SCIM targets continue to fail reconciliation
+          description: Check remote connectivity, credentials and target synchronization state. Authentication readiness is intentionally independent.
+      - alert: IAMSCIMMetricsUnavailable
+        expr: iam_scim_metrics_database_success == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: SCIM operational state cannot be observed
+          description: Restore database access for the metrics probe before treating zero pending or failed targets as healthy.

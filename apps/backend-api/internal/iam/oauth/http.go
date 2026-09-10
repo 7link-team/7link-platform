@@ -394,11 +394,6 @@ func registerProtocolHTTP(api huma.API, service *Service) {
 			in.CodeChallenge, in.CodeChallengeMethod, in.Nonce, in.Prompt,
 		)
 		if err != nil {
-			// OIDC Core 3.1.2.6 names consent_required for a request that
-			// needs consent the server cannot collect here.
-			if isConsentRequired(err) {
-				return nil, oauthError(ctx, http.StatusBadRequest, "consent_required")
-			}
 			if errors.Is(err, ErrInvalidRequest) || errors.Is(err, authnext.ErrInvalidCredentials) {
 				return nil, oauthError(ctx, http.StatusBadRequest, "invalid_request")
 			}
@@ -687,11 +682,6 @@ func oauthClientError(err error, notFound bool) error {
 		return huma.Error422UnprocessableEntity(oauthi18n.InvalidClientConfiguration)
 	}
 	return huma.Error500InternalServerError(oauthi18n.ServerError)
-}
-
-func isConsentRequired(err error) bool {
-	var consent *ErrConsentRequired
-	return errors.As(err, &consent)
 }
 
 func validAuthorizeInput(in *authorizeInput) bool {

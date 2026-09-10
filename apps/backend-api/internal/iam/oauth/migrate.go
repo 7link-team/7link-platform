@@ -34,6 +34,7 @@ func (*Module) MigrationMilestones() []module.MigrationMilestone {
 		{Name: "consent", Version: 8},
 		{Name: "principal-erasure", Version: 9,
 			Dependencies: []module.MigrationMilestoneRef{{Module: "identity", Name: "lifecycle"}}},
+		{Name: "grant-incarnation", Version: 10},
 	}
 }
 

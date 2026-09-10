@@ -484,11 +484,64 @@ variable unset to verify SQL fingerprints without updating the baseline.
 
 ## Principal Erasure Upgrade Boundary
 
-Principal anonymization is still an internal service capability, not a released
-HTTP/UI workflow. Apply every owner's erasure migration before enabling that
-workflow: identity lifecycle v4; core/authn v13; OAuth/organization v9;
+Principal anonymization is exposed through the platform-admin lifecycle API
+and account administration UI. Apply every owner's erasure migration before enabling
+that workflow: identity lifecycle v4; core/authn v13; OAuth/organization v9;
 federation/provisioning v5; governance v4. Disabled runtime modules may still own
 historical records, so their persisted schemas and cleanup are not skipped.
+
+Outbound SCIM replicas additionally require provisioning v6 before serving
+traffic. Do not run old replicas alongside v6 writers: old code does not honor
+durable operation claims. Stop old writers before migration and restart the
+candidate together. See [SCIM operations](docs/iam-scim-operations.md) for
+unknown-outcome recovery; timeouts do not authorize clearing a pending claim.
+
+OAuth grant-incarnation migration v10 introduces application-specific access
+revocation. The matching authentication implementation validates the grant carried
+by an OAuth principal token on the platform's request path. Legacy OAuth access
+tokens, authorization codes and refresh tokens without a grant require renewed
+authorization; ordinary browser sessions are not invalidated by this migration.
+Stop all old OAuth writers before upgrading and do not mix old authentication
+instances with the new candidate. Reverting to an old verifier can accept already
+signed, revoked JWTs again: deleting grant rows alone does not make that rollback
+safe. A downgrade must first remove trust in those signing keys or establish that
+all affected JWTs have expired, with OAuth traffic held closed throughout.
+
+External resource servers that only verify JWT signatures offline do not observe
+platform grant revocation immediately. They must use online introspection or an
+equivalent revocation mechanism for immediate enforcement; otherwise their token
+expiry window remains an explicit deployment limitation.
+
+### Shared authentication security
+
+For multiple replicas, configure `authn.shared_security.redis_url_file` with a
+private file containing a Redis 6.2+ URL (`rediss://` for TLS). All replicas must
+use the same database and deployment-specific `namespace`. Text, slide and click
+captcha answers expire after five minutes and are atomically consumed even on
+an incorrect answer. Shared mode rejects `registration.captcha.test_answer`.
+
+`failure_policy` must explicitly be `closed` (503 on limiter storage outage) or
+`open` (continue requests and log a warning); neither is silently chosen. Captcha
+storage failure always rejects the challenge. The service owner must select the
+production policy. Test both policies using an unavailable Redis before release.
+
+The default fixed-window limits are 60 requests per socket peer and 3000 requests
+globally per minute, shared across replicas for all `POST /authn/` operations.
+Exceeding either returns 429 and `Retry-After`. Configure the budgets from measured
+traffic. Forwarded IP headers are deliberately not trusted: behind a reverse proxy,
+the socket-peer budget applies to that proxy, and the trusted ingress must enforce
+the client-IP budget. GET session checks and DELETE logout remain available.
+
+### Release verification
+
+`make release-check` serially runs `ci`, the full Go race suite, generation
+idempotence, frontend lint/typecheck/tests/build, alert rule tests, real MySQL and
+the schema lock. Install `promtool` (tested with 3.5.0) or set `PROMTOOL` to its
+command. Load `docs/iam-alerts.yml` into the deployment's Prometheus and separately
+verify delivery to the responsible operator; rule tests do not prove alert routing.
+Use an already provisioned `DOCKER_CMD` / `DOCKER_TEST_HOST`; it does not install
+Docker remotely. Browser UAT, the production deployment, recovery objectives and
+sign-off are separate release evidence, not implied by this target passing.
 
 Erasure covers global principal profiles, membership profile copies,
 authentication secrets/sessions/owned notifications, OAuth grants/tokens,

@@ -10894,6 +10894,24 @@
             },
             "description": "OK"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication request limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the request budget resets",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "500": {
             "content": {
               "application/json": {
@@ -10903,6 +10921,16 @@
               }
             },
             "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication shared storage unavailable"
           }
         },
         "summary": "Issue a graphic captcha for registration",
@@ -10964,6 +10992,24 @@
               }
             },
             "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication request limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the request budget resets",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "500": {
             "content": {
@@ -11092,6 +11138,24 @@
               }
             },
             "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication request limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the request budget resets",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "500": {
             "content": {
@@ -11555,6 +11619,24 @@
             },
             "description": "Unprocessable Entity"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication request limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the request budget resets",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "500": {
             "content": {
               "application/json": {
@@ -11564,6 +11646,16 @@
               }
             },
             "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication shared storage unavailable"
           }
         },
         "security": [
@@ -11644,6 +11736,24 @@
             },
             "description": "Unprocessable Entity"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication request limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the request budget resets",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "500": {
             "content": {
               "application/json": {
@@ -11653,6 +11763,16 @@
               }
             },
             "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication shared storage unavailable"
           }
         },
         "security": [
@@ -11733,6 +11853,24 @@
             },
             "description": "Unprocessable Entity"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication request limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the request budget resets",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "500": {
             "content": {
               "application/json": {
@@ -11811,6 +11949,24 @@
               }
             },
             "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication request limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the request budget resets",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "500": {
             "content": {
@@ -11899,6 +12055,24 @@
               }
             },
             "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication request limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the request budget resets",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "500": {
             "content": {
@@ -12067,6 +12241,24 @@
               }
             },
             "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication request limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the request budget resets",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "500": {
             "content": {
@@ -12478,6 +12670,24 @@
             },
             "description": "Unprocessable Entity"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication request limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the request budget resets",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "500": {
             "content": {
               "application/json": {
@@ -12549,6 +12759,24 @@
             },
             "description": "Unprocessable Entity"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication request limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the request budget resets",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "500": {
             "content": {
               "application/json": {
@@ -12619,6 +12847,24 @@
               }
             },
             "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication request limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the request budget resets",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "500": {
             "content": {
@@ -12708,6 +12954,24 @@
             },
             "description": "Unprocessable Entity"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication request limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the request budget resets",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "500": {
             "content": {
               "application/json": {
@@ -12717,6 +12981,16 @@
               }
             },
             "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication shared storage unavailable"
           }
         },
         "summary": "Complete an MFA login challenge",
@@ -12957,6 +13231,24 @@
             },
             "description": "Unprocessable Entity"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication request limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the request budget resets",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "500": {
             "content": {
               "application/json": {
@@ -12966,6 +13258,16 @@
               }
             },
             "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication shared storage unavailable"
           }
         },
         "summary": "Log in with a local username and password",
@@ -13024,6 +13326,16 @@
               }
             },
             "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Destroy the browser session",
@@ -13275,6 +13587,24 @@
             },
             "description": "Unprocessable Entity"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication request limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the request budget resets",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "500": {
             "content": {
               "application/json": {
@@ -13380,6 +13710,24 @@
               }
             },
             "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication request limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the request budget resets",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "500": {
             "content": {
@@ -30996,6 +31344,16 @@
             },
             "description": "Not Found"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -31458,7 +31816,7 @@
     },
     "/iam/scim/targets/{target_id}/retire": {
       "post": {
-        "description": "Deleting a target is refused while it still provisions remote resources, because the mapping and bearer token that reach those accounts would go with it. This removes the remote accounts first and deletes the target once none are left. A remote that refuses leaves the target, its credentials and the remaining mappings in place; calling this again resumes where it stopped.",
+        "description": "Retirement blocks new provisioning and configuration changes, removes remote resources in pages, and deletes the target only once none remain. A definitive remote refusal preserves credentials and progress so another call can resume. A timeout, disconnect, asynchronous acceptance, or failed local completion leaves an unfinished operation that requires verified remote recovery; retrying never expires that protection.",
         "operationId": "provisioning-retire-scim-target",
         "parameters": [
           {

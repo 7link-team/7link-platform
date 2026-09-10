@@ -170,7 +170,7 @@ func TestRetireTargetKeepsEverythingWhenTheRemoteRefuses(t *testing.T) {
 	_, err = env.service.PushResource(t.Context(), tenant, targetID, ResourceUser, principalID)
 	require.NoError(t, err)
 
-	provider.configure(500, "remote is unwell", true)
+	provider.configure(429, "remote rejected this request", true)
 	count, err := env.service.RetireTarget(t.Context(), tenant, targetID)
 	require.Error(t, err)
 	assert.Zero(t, count)
@@ -183,7 +183,7 @@ func TestRetireTargetKeepsEverythingWhenTheRemoteRefuses(t *testing.T) {
 	_, err = env.service.repo.getTarget(t.Context(), tenant, targetID)
 	assert.NoError(t, err, "the target and its credentials outlive a failed retirement")
 
-	// Coming back to it once the remote is well resumes rather than restarts.
+	// An explicit rejection permits retry once the provider accepts requests.
 	provider.configure(204, "", true)
 	count, err = env.service.RetireTarget(t.Context(), tenant, targetID)
 	require.NoError(t, err)

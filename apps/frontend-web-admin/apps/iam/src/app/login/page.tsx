@@ -13,6 +13,7 @@ import {
 } from "../../lib/iam-api"
 import { appName, copyrightLine } from "../../lib/branding"
 import { useAuth } from "../../components/auth"
+import { SessionVerification } from "../../components/session-verification"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 
 export default function LoginPage() {
@@ -32,6 +33,7 @@ export default function LoginPage() {
       .capabilities()
       .then(setCapabilities, () => setCapabilities(null))
   }, [])
+  if (status === "loading" || status === "error") return <SessionVerification />
   if (status === "authenticated") return <Navigate to="/" replace />
 
   const submitPassword = async (event: FormEvent<HTMLFormElement>) => {

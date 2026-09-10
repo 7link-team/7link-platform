@@ -265,6 +265,35 @@ func (r *Repository) upsertConsent(ctx context.Context, row *model.Consent) erro
 	return nil
 }
 
+// lockConsent serializes grant issuance, consumption and withdrawal on the
+// existing consent row. A no-op UPDATE also acquires SQLite's writer lock.
+func (r *Repository) lockConsent(ctx context.Context, principalID, clientID guid.ID) (*model.Consent, error) {
+	tables, db, err := r.tables()
+	if err != nil {
+		return nil, err
+	}
+	if err := db.WithContext(ctx).Table(tables.Consents.TableName()).
+		Where("principal_id = ? AND client_id = ?", principalID, clientID).
+		Update("last_used_at", gorm.Expr("last_used_at")).Error; err != nil {
+		return nil, err
+	}
+	return r.consent(ctx, clientID, principalID)
+}
+
+func (r *Repository) requireGrant(ctx context.Context, principalID, clientID guid.ID, grant string) error {
+	if grant == "" {
+		return ErrInvalidRequest
+	}
+	row, err := r.lockConsent(ctx, principalID, clientID)
+	if err != nil {
+		return err
+	}
+	if row == nil || row.GrantID != grant {
+		return ErrInvalidRequest
+	}
+	return nil
+}
+
 // grantedConsent is one standing consent joined to the client it names. A list
 // somebody is meant to act on has to identify the application, and the client
 // row is the only place its name lives.
@@ -423,7 +452,24 @@ func (r *Repository) consumeAuthorizationCode(
 	now time.Time,
 	refresh *model.RefreshToken,
 ) error {
+	// Read the immutable reference before opening the transaction so its first
+	// operation acquires the consent write lock (also safe for SQLite WAL).
+	tables, db, err := r.tables()
+	if err != nil {
+		return err
+	}
+	var code model.AuthorizationCode
+	if err := db.WithContext(ctx).Table(tables.AuthorizationCodes.TableName()).Where("code_hash = ?", codeHash).Take(&code).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrInvalidRequest
+		}
+		return err
+	}
 	return r.runInTx(ctx, func(tx *Repository) error {
+		// Lock the current incarnation before codes, matching RevokeConsent.
+		if err := tx.requireGrant(ctx, code.PrincipalID, code.ClientID, code.GrantID); err != nil {
+			return err
+		}
 		tables, db, err := tx.tables()
 		if err != nil {
 			return err
@@ -471,6 +517,12 @@ func (r *Repository) rotateRefreshToken(
 ) error {
 	replayed := false
 	err := r.runInTx(ctx, func(tx *Repository) error {
+		if next == nil {
+			return ErrInvalidRequest
+		}
+		if err := tx.requireGrant(ctx, next.PrincipalID, next.ClientID, next.GrantID); err != nil {
+			return err
+		}
 		tables, db, err := tx.tables()
 		if err != nil {
 			return err

@@ -1,4 +1,12 @@
 {
+  "sessionVerificationFailed": "Sesi anda tidak dapat disahkan. Semak sambungan dan cuba lagi. Status log masuk anda belum dapat dipastikan.",
+  "logoutFailed": "Log keluar tidak dapat disahkan. Sesi anda mungkin masih aktif. Cuba lagi sebelum meninggalkan peranti ini.",
+  "noAvailableTenants": "Tiada ruang kerja aktif tersedia untuk akaun ini.",
+  "authorizedApplications": "Aplikasi yang dibenarkan",
+  "authorizedApplicationsDescription": "Aplikasi yang anda benarkan merentas semua ruang kerja. Batalkan kebenaran untuk menamatkan akses aplikasi kepada akaun anda.",
+  "noAuthorizedApplications": "Anda belum membenarkan sebarang aplikasi.",
+  "authorizedScopes": "Skop yang dibenarkan",
+  "revokeApplicationConfirm": "Batalkan kebenaran {name}? Ini menamatkan kebenaran aplikasi dan membatalkan token yang telah diterimanya untuk akaun anda.",
   "switchWorkspace": "Tukar ruang kerja",
   "tenantPerspective": "Paparan penyewa",
   "entityPerspective": "Paparan entiti",

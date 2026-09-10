@@ -155,10 +155,11 @@ func (*federationIdentity) Get(context.Context, guid.ID, guid.ID) (identity.Prin
 }
 
 type federationWeb struct {
-	mu       sync.Mutex
-	next     int
-	sessions map[string]*authnext.Claims
-	profiles map[guid.ID]federationProfile
+	mu        sync.Mutex
+	next      int
+	sessions  map[string]*authnext.Claims
+	profiles  map[guid.ID]federationProfile
+	logoutErr error
 }
 
 type federationProfile struct {
@@ -221,14 +222,17 @@ func (w *federationWeb) Authenticate(_ context.Context, authorization, cookieHea
 	return &result, nil
 }
 
-func (w *federationWeb) Logout(_ context.Context, cookieHeader string) string {
+func (w *federationWeb) Logout(_ context.Context, cookieHeader string) (string, error) {
+	if w.logoutErr != nil {
+		return "", w.logoutErr
+	}
 	request := &http.Request{Header: http.Header{"Cookie": []string{cookieHeader}}}
 	if cookie, err := request.Cookie(w.SessionCookieName()); err == nil {
 		w.mu.Lock()
 		delete(w.sessions, cookie.Value)
 		w.mu.Unlock()
 	}
-	return "https://app.example/login"
+	return "https://app.example/login", nil
 }
 
 func (*federationWeb) CookieSecure() bool        { return true }

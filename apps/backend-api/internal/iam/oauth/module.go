@@ -10,6 +10,7 @@ import (
 	oauthi18n "7link.com/platform/internal/iam/oauth/i18n"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
@@ -54,6 +55,16 @@ func (*Module) ModuleName() string { return Name }
 
 func (*Module) ModuleDependencies() []string {
 	return []string{platformi18n.Name, guid.Name, audit.Name, authn.Name}
+}
+
+// ProvideServices exposes grant validation without making authn depend on OAuth.
+func (m *Module) ProvideServices(services *module.Services) error {
+	return module.Provide[authn.OAuthGrantValidator](services, authn.OAuthGrantValidator(func(ctx context.Context, claims *authnext.Claims) error {
+		if m.Service == nil {
+			return authnext.ErrUnavailable
+		}
+		return m.Service.ValidateAccessGrant(ctx, claims)
+	}))
 }
 
 func (m *Module) InjectServices(services *module.Services) error {
@@ -115,6 +126,7 @@ var (
 	_ module.Module          = (*Module)(nil)
 	_ module.Enabler         = (*Module)(nil)
 	_ module.Depender        = (*Module)(nil)
+	_ module.ServiceProvider = (*Module)(nil)
 	_ module.ServiceInjector = (*Module)(nil)
 	_ module.Initializer     = (*Module)(nil)
 	_ module.HealthChecker   = (*Module)(nil)

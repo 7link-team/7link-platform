@@ -274,12 +274,12 @@ func TestAuthorizationPersistenceIsAtomic(t *testing.T) {
 func TestAuthorizationPromptAndMembershipFailures(t *testing.T) {
 	harness := newOAuthHarness(t, "")
 	client := createBrowserClient(t, harness)
-	_, err := harness.service.Authorize(
+	silentLocation, err := harness.service.Authorize(
 		t.Context(), "session", client.ID, client.RedirectURIs[0], "code", "openid",
 		"", oauthChallenge(), "S256", "", "none",
 	)
-	var silent *ErrConsentRequired
-	assert.ErrorAs(t, err, &silent)
+	require.NoError(t, err)
+	assert.Contains(t, silentLocation, "error=consent_required")
 	// prompt=consent asks for the screen, so it parks the request instead of
 	// either granting or failing.
 	location, err := harness.service.Authorize(
@@ -290,6 +290,17 @@ func TestAuthorizationPromptAndMembershipFailures(t *testing.T) {
 	assert.True(t, strings.HasPrefix(location, defaultConsentPath+"?"), location)
 	assert.Zero(t, harness.count(t, "iam_oauth_consents"),
 		"parking a request must not record consent before the subject answers")
+	_ = authorizeCode(t, harness, client)
+	silentLocation, err = harness.service.Authorize(
+		t.Context(), "session", client.ID, client.RedirectURIs[0], "code", "openid",
+		"silent-state", oauthChallenge(), "S256", "", "none",
+	)
+	require.NoError(t, err)
+	silentURL, err := url.Parse(silentLocation)
+	require.NoError(t, err)
+	assert.NotEmpty(t, silentURL.Query().Get("code"))
+	assert.Empty(t, silentURL.Query().Get("error"))
+	assert.Equal(t, "silent-state", silentURL.Query().Get("state"))
 
 	require.NoError(t, harness.db.Table("iam_tenant_members").Where("tenant_id = ? AND principal_id = ?", 7, 101).
 		Update("status", "disabled").Error)
@@ -625,7 +636,6 @@ func TestOAuthValidationAndProtocolRejectionPaths(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalidRequest)
 	_, err = harness.service.Token(t.Context(), url.Values{"grant_type": {"refresh_token"}, "client_id": {client.ID}}, "")
 	assert.ErrorIs(t, err, ErrInvalidRequest)
-	assert.Equal(t, "OAuth consent required", (&ErrConsentRequired{}).Error())
 }
 
 func TestOAuthIssueAndDatabaseFailuresPropagate(t *testing.T) {

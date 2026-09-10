@@ -126,18 +126,22 @@ export default function EntitiesPage({
   } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const [loaded, setLoaded] = useState(false)
+  const [loadError, setLoadError] = useState("")
 
   const refresh = useCallback(
     () =>
       iamApi.entities().then((items) => {
         setEntities(items)
+        setLoaded(true)
+        setLoadError("")
         window.dispatchEvent(new Event("entity-catalog-change"))
       }),
     []
   )
 
   useEffect(() => {
-    void refresh().catch((cause: Error) => setError(cause.message))
+    void refresh().catch((cause: Error) => setLoadError(cause.message))
   }, [refresh])
 
   const entityByID = useMemo(
@@ -146,12 +150,11 @@ export default function EntitiesPage({
   )
   const tree = useMemo(
     () =>
-      flattenEntities(
-        scopeEntityID
-          ? entities.filter((entity) => entity.id === scopeEntityID)
-          : entities,
-        collapsed
-      ),
+      scopeEntityID
+        ? entities
+            .filter((entity) => entity.id === scopeEntityID)
+            .map((entity) => ({ entity, depth: 0 }))
+        : flattenEntities(entities, collapsed),
     [collapsed, entities, scopeEntityID]
   )
   const childCounts = useMemo(() => {
@@ -532,7 +535,9 @@ export default function EntitiesPage({
         title={t(scopeEntityID ? "entitySettings" : "entityManagement")}
         description={t("entitiesDescription")}
         action={
-          !scopeEntityID && (
+          !scopeEntityID &&
+          loaded &&
+          !loadError && (
             <Button onClick={openCreate}>
               <Plus />
               {t("createEntity")}
@@ -541,127 +546,152 @@ export default function EntitiesPage({
         }
       />
       {error && !open && !bindingEntity && <Alert>{error}</Alert>}
-      <div className="overflow-x-auto rounded-md border bg-card">
-        <Table className="min-w-[900px]">
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("entity")}</TableHead>
-              <TableHead>{t("type")}</TableHead>
-              <TableHead>{t("parentEntity")}</TableHead>
-              <TableHead>{t("status")}</TableHead>
-              <TableHead>{t("metadata")}</TableHead>
-              <TableHead className="w-32 text-right">{t("actions")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {tree.map(({ entity, depth }) => {
-              const hasChildren = (childCounts.get(entity.id) ?? 0) > 0
-              return (
-                <TableRow key={entity.id}>
-                  <TableCell>
-                    <div
-                      className="flex min-w-0 items-center gap-1"
-                      style={{ paddingInlineStart: `${depth * 24}px` }}
-                    >
-                      {hasChildren ? (
+      {loadError ? (
+        <Alert>
+          <p>{loadError}</p>
+          <Button
+            variant="outline"
+            onClick={() =>
+              void refresh().catch((cause: Error) =>
+                setLoadError(cause.message)
+              )
+            }
+          >
+            {t("retryNow")}
+          </Button>
+        </Alert>
+      ) : !loaded ? (
+        <p role="status">{t("loading")}</p>
+      ) : (
+        <div className="overflow-x-auto rounded-md border bg-card">
+          <Table className="min-w-[900px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("entity")}</TableHead>
+                <TableHead>{t("type")}</TableHead>
+                <TableHead>{t("parentEntity")}</TableHead>
+                <TableHead>{t("status")}</TableHead>
+                <TableHead>{t("metadata")}</TableHead>
+                <TableHead className="w-32 text-right">
+                  {t("actions")}
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {tree.map(({ entity, depth }) => {
+                const hasChildren =
+                  !scopeEntityID && (childCounts.get(entity.id) ?? 0) > 0
+                return (
+                  <TableRow key={entity.id}>
+                    <TableCell>
+                      <div
+                        className="flex min-w-0 items-center gap-1"
+                        style={{ paddingInlineStart: `${depth * 24}px` }}
+                      >
+                        {hasChildren ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 shrink-0"
+                            onClick={() => toggleCollapsed(entity.id)}
+                            aria-label={`${collapsed.has(entity.id) ? t("expand") : t("collapseShort")}${entity.name}`}
+                            title={
+                              collapsed.has(entity.id)
+                                ? t("expandChildEntities")
+                                : t("collapseChildEntities")
+                            }
+                          >
+                            {collapsed.has(entity.id) ? (
+                              <ChevronRight />
+                            ) : (
+                              <ChevronDown />
+                            )}
+                          </Button>
+                        ) : (
+                          <span className="block size-8 shrink-0" />
+                        )}
+                        <Building2 className="size-4 shrink-0 text-primary" />
+                        <strong className="truncate text-sm">
+                          {entity.name}
+                        </strong>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{entity.type}</Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {entity.parent_id
+                        ? (entityByID.get(entity.parent_id)?.name ??
+                          entity.parent_id)
+                        : "-"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          entity.status === "active"
+                            ? "secondary"
+                            : "destructive"
+                        }
+                      >
+                        {entity.status === "active"
+                          ? t("active")
+                          : t("disable")}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="max-w-72 truncate font-mono text-xs text-muted-foreground">
+                      {metadataSummary(entity.metadata)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="size-8 shrink-0"
-                          onClick={() => toggleCollapsed(entity.id)}
-                          aria-label={`${collapsed.has(entity.id) ? t("expand") : t("collapseShort")}${entity.name}`}
-                          title={
-                            collapsed.has(entity.id)
-                              ? t("expandChildEntities")
-                              : t("collapseChildEntities")
-                          }
+                          disabled={busy}
+                          onClick={() => void openBindings(entity)}
+                          aria-label={t("manageRoleBindings", {
+                            name: entity.name,
+                          })}
+                          title={t("roleBindings")}
                         >
-                          {collapsed.has(entity.id) ? (
-                            <ChevronRight />
-                          ) : (
-                            <ChevronDown />
-                          )}
+                          <KeyRound />
                         </Button>
-                      ) : (
-                        <span className="block size-8 shrink-0" />
-                      )}
-                      <Building2 className="size-4 shrink-0 text-primary" />
-                      <strong className="truncate text-sm">
-                        {entity.name}
-                      </strong>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{entity.type}</Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {entity.parent_id
-                      ? (entityByID.get(entity.parent_id)?.name ??
-                        entity.parent_id)
-                      : "-"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        entity.status === "active" ? "secondary" : "destructive"
-                      }
-                    >
-                      {entity.status === "active" ? t("active") : t("disable")}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="max-w-72 truncate font-mono text-xs text-muted-foreground">
-                    {metadataSummary(entity.metadata)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={busy}
-                        onClick={() => void openBindings(entity)}
-                        aria-label={t("manageRoleBindings", {
-                          name: entity.name,
-                        })}
-                        title={t("roleBindings")}
-                      >
-                        <KeyRound />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={busy}
-                        onClick={() => openEdit(entity)}
-                        aria-label={t("editNamed", { name: entity.name })}
-                        title={t("editEntity")}
-                      >
-                        <Pencil />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={busy}
-                        onClick={() => void remove(entity)}
-                        aria-label={t("deleteNamed", { name: entity.name })}
-                        title={t("deleteEmptyEntity")}
-                      >
-                        <Trash2 />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
-        {entities.length === 0 && (
-          <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
-            <span className="text-center">
-              <Building2 className="mx-auto mb-2 size-7" />
-              {t("noEntities")}
-            </span>
-          </div>
-        )}
-      </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={busy}
+                          onClick={() => openEdit(entity)}
+                          aria-label={t("editNamed", { name: entity.name })}
+                          title={t("editEntity")}
+                        >
+                          <Pencil />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={busy}
+                          onClick={() => void remove(entity)}
+                          aria-label={t("deleteNamed", { name: entity.name })}
+                          title={t("deleteEmptyEntity")}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+          {tree.length === 0 && (
+            <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
+              <span className="text-center">
+                <Building2 className="mx-auto mb-2 size-7" />
+                {t(scopeEntityID ? "entityUnavailable" : "noEntities")}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       <Dialog
         open={open}

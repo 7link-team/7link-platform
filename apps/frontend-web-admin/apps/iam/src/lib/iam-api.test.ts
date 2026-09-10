@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test"
 import {
   createIamApi,
+  clientErrorMessage,
   type AuditEvent,
   type DepartmentInput,
   type MemberAuthorizationSnapshot,
@@ -17,6 +18,119 @@ interface RecordedRequest {
 describe("IAM API client", () => {
   let server: ReturnType<typeof Bun.serve> | undefined
   afterEach(() => server?.stop(true))
+
+  it("discovers personal tenants and manages consent without a selected tenant header", async () => {
+    const requests: RecordedRequest[] = []
+    server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        requests.push({
+          method: request.method,
+          path: new URL(request.url).pathname,
+          headers: request.headers,
+          body: "",
+        })
+        return Response.json({
+          code: 0,
+          data: request.method === "DELETE" ? { revoked: true } : [],
+        })
+      },
+    })
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      () => "stale-tenant"
+    )
+    expect(await client.myTenants()).toEqual([])
+    expect(await client.oauthConsents()).toEqual([])
+    expect(await client.revokeOAuthConsent("client/1")).toEqual({
+      revoked: true,
+    })
+    expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
+      "GET /iam/me/tenants",
+      "GET /iam/me/oauth-consents",
+      "DELETE /iam/me/oauth-consents/client%2F1",
+    ])
+    expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
+      true
+    )
+  })
+
+  it("normalizes nullable OAuth arrays on list, create and update responses", async () => {
+    const clientData = {
+      id: "client-1",
+      tenant_id: "tenant-1",
+      name: "Machine client",
+      consent_mode: "implicit",
+      redirect_uris: null,
+      grant_types: null,
+      scopes: null,
+      public_client: false,
+      status: "active",
+    }
+    server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        return Response.json({
+          code: 0,
+          data:
+            request.method === "GET"
+              ? [clientData]
+              : request.method === "POST"
+                ? { client: clientData, client_secret: "once" }
+                : clientData,
+        })
+      },
+    })
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      () => "tenant-1"
+    )
+    const input: OAuthClientInput = {
+      name: "Machine client",
+      redirect_uris: [],
+      grant_types: ["client_credentials"],
+      scopes: ["read"],
+      public_client: false,
+    }
+    const results = [
+      (await client.oauthClients())[0],
+      (await client.createOAuthClient(input)).client,
+      await client.updateOAuthClient("client-1", {
+        ...input,
+        status: "active",
+      }),
+    ]
+    for (const result of results) {
+      expect(result?.redirect_uris).toEqual([])
+      expect(result?.grant_types).toEqual([])
+      expect(result?.scopes).toEqual([])
+    }
+  })
+
+  it("uses the active document language for client errors after a language switch", () => {
+    const previous = Object.getOwnPropertyDescriptor(globalThis, "document")
+    const document = { documentElement: { lang: "zh-CN" } }
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: document,
+    })
+    try {
+      expect(clientErrorMessage("invalid_response")).toBe(
+        "服务返回了无效响应。"
+      )
+      document.documentElement.lang = "ms-MY"
+      expect(clientErrorMessage("invalid_response")).toBe(
+        "Perkhidmatan mengembalikan respons yang tidak sah."
+      )
+      document.documentElement.lang = "en-US"
+      expect(clientErrorMessage("invalid_response")).toBe(
+        "The service returned an invalid response."
+      )
+    } finally {
+      if (previous) Object.defineProperty(globalThis, "document", previous)
+      else Reflect.deleteProperty(globalThis, "document")
+    }
+  })
 
   it("reads a tenant member authorization snapshot without losing source paths", async () => {
     const snapshot: MemberAuthorizationSnapshot = {
@@ -60,9 +174,7 @@ describe("IAM API client", () => {
     expect(await client.memberAuthorizationSources("member/11")).toEqual(
       snapshot
     )
-    expect(seenPath).toBe(
-      "/iam/members/member%2F11/authorization-sources"
-    )
+    expect(seenPath).toBe("/iam/members/member%2F11/authorization-sources")
     expect(seenTenant).toBe("tenant/1")
   })
 

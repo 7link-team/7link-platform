@@ -69,6 +69,11 @@ func TestIAMOAuthSQLiteConstraintUpgradePreservesRows(t *testing.T) {
 		require.NoError(t, err)
 	}
 	require.NoError(t, goosex.Migrate(t.Context(), db, oauthSource, "sqlite"))
+	for _, table := range []string{"iam_oauth_consents", "iam_oauth_codes", "iam_refresh_tokens"} {
+		var grant string
+		require.NoError(t, db.QueryRowContext(t.Context(), "SELECT grant_id FROM "+prefix+table+" LIMIT 1").Scan(&grant))
+		assert.Empty(t, grant, "legacy rows must not receive a usable grant during migration")
+	}
 
 	var redirectURI, codeScope, challenge string
 	var consumedAt sql.NullTime

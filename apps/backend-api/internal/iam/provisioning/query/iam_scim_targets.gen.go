@@ -28,6 +28,16 @@ func newTarget(db *gorm.DB, opts ...gen.DOOption) target {
 
 	tableName := _target.targetDo.TableName()
 	_target.ALL = field.NewAsterisk(tableName)
+	_target.OperationToken = field.NewField(tableName, "operation_token")
+	_target.OperationKind = field.NewString(tableName, "operation_kind")
+	_target.OperationResourceType = field.NewString(tableName, "operation_resource_type")
+	_target.OperationResourceID = field.NewField(tableName, "operation_resource_id")
+	_target.OperationStartedAt = field.NewTime(tableName, "operation_started_at")
+	_target.Retiring = field.NewBool(tableName, "retiring")
+	_target.SyncResourceType = field.NewString(tableName, "sync_resource_type")
+	_target.SyncResourceID = field.NewField(tableName, "sync_resource_id")
+	_target.SyncFailures = field.NewInt64(tableName, "sync_failures")
+	_target.SyncAfterMS = field.NewInt64(tableName, "sync_after_ms")
 	_target.ServiceAccountID = field.NewField(tableName, "service_account_id")
 	_target.ID = field.NewField(tableName, "id")
 	_target.TenantID = field.NewField(tableName, "tenant_id")
@@ -49,6 +59,16 @@ type target struct {
 	targetDo targetDo
 
 	ALL                   field.Asterisk
+	OperationToken        field.Field
+	OperationKind         field.String
+	OperationResourceType field.String
+	OperationResourceID   field.Field
+	OperationStartedAt    field.Time
+	Retiring              field.Bool
+	SyncResourceType      field.String
+	SyncResourceID        field.Field
+	SyncFailures          field.Int64
+	SyncAfterMS           field.Int64
 	ServiceAccountID      field.Field
 	ID                    field.Field
 	TenantID              field.Field
@@ -76,6 +96,16 @@ func (t target) As(alias string) *target {
 
 func (t *target) updateTableName(table string) *target {
 	t.ALL = field.NewAsterisk(table)
+	t.OperationToken = field.NewField(table, "operation_token")
+	t.OperationKind = field.NewString(table, "operation_kind")
+	t.OperationResourceType = field.NewString(table, "operation_resource_type")
+	t.OperationResourceID = field.NewField(table, "operation_resource_id")
+	t.OperationStartedAt = field.NewTime(table, "operation_started_at")
+	t.Retiring = field.NewBool(table, "retiring")
+	t.SyncResourceType = field.NewString(table, "sync_resource_type")
+	t.SyncResourceID = field.NewField(table, "sync_resource_id")
+	t.SyncFailures = field.NewInt64(table, "sync_failures")
+	t.SyncAfterMS = field.NewInt64(table, "sync_after_ms")
 	t.ServiceAccountID = field.NewField(table, "service_account_id")
 	t.ID = field.NewField(table, "id")
 	t.TenantID = field.NewField(table, "tenant_id")
@@ -111,7 +141,17 @@ func (t *target) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (t *target) fillFieldMap() {
-	t.fieldMap = make(map[string]field.Expr, 11)
+	t.fieldMap = make(map[string]field.Expr, 21)
+	t.fieldMap["operation_token"] = t.OperationToken
+	t.fieldMap["operation_kind"] = t.OperationKind
+	t.fieldMap["operation_resource_type"] = t.OperationResourceType
+	t.fieldMap["operation_resource_id"] = t.OperationResourceID
+	t.fieldMap["operation_started_at"] = t.OperationStartedAt
+	t.fieldMap["retiring"] = t.Retiring
+	t.fieldMap["sync_resource_type"] = t.SyncResourceType
+	t.fieldMap["sync_resource_id"] = t.SyncResourceID
+	t.fieldMap["sync_failures"] = t.SyncFailures
+	t.fieldMap["sync_after_ms"] = t.SyncAfterMS
 	t.fieldMap["service_account_id"] = t.ServiceAccountID
 	t.fieldMap["id"] = t.ID
 	t.fieldMap["tenant_id"] = t.TenantID

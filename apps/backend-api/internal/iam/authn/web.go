@@ -62,6 +62,8 @@ type Service struct {
 	mfaKeys             *keyringx.Keyring
 	returnURLs          returnURLAllowlist
 	captcha             *captchaOffering
+	sharedSecurity      *sharedSecurity
+	oauthGrants         OAuthGrantValidator
 	passkeys            *webauthnx.Adapter
 	now                 func() time.Time
 	enricher            claimEnricher
@@ -269,6 +271,18 @@ func NewWebService(cfg authnext.Config, repository *Repository, options ...WebOp
 		return nil, err
 	}
 	service.signingKeys = signingKeys
+	shared, err := newSharedSecurity(cfg.SharedSecurity)
+	if err != nil {
+		return nil, err
+	}
+	service.sharedSecurity = shared
+	if shared != nil {
+		if service.captcha.testAnswer != "" {
+			_ = shared.client.Close()
+			return nil, errors.New("shared authentication security cannot enable a captcha test answer")
+		}
+		service.captcha.store = shared
+	}
 	return service, nil
 }
 
@@ -488,14 +502,19 @@ func (s *Service) ValidateLoginOrigin(origin string) error {
 	return nil
 }
 
-func (s *Service) Logout(ctx context.Context, cookieHeader string) string {
+func (s *Service) Logout(ctx context.Context, cookieHeader string) (string, error) {
 	if s == nil {
-		return ""
+		return "", authnext.ErrDisabled
 	}
-	if token, err := cookieValue(cookieHeader, s.web.CookieName); err == nil && s.repo != nil {
-		_, _ = s.repo.revokeSessionByHash(ctx, tokenHash(token), s.now().UTC())
+	if token, err := cookieValue(cookieHeader, s.web.CookieName); err == nil {
+		if s.repo == nil {
+			return "", errors.New("revoke browser session: authentication storage unavailable")
+		}
+		if _, err := s.repo.revokeSessionByHash(ctx, tokenHash(token), s.now().UTC()); err != nil {
+			return "", fmt.Errorf("revoke browser session: %w", err)
+		}
 	}
-	return s.web.PostLogoutURL
+	return s.web.PostLogoutURL, nil
 }
 
 func (s *Service) ListSessions(
@@ -850,6 +869,9 @@ func (s *Service) issueSubjectToken(
 	if assurance.ClientID != "" {
 		payload["client_id"] = assurance.ClientID
 	}
+	if assurance.OAuthGrantID != "" {
+		payload["oauth_grant_id"] = assurance.OAuthGrantID
+	}
 	if assurance.NetworkZone != "" {
 		payload["network_zone"] = assurance.NetworkZone
 	}
@@ -1028,6 +1050,7 @@ func (s *Service) verifyAccessToken(authorization string) (*authnext.Claims, err
 		ACR               int      `json:"acr"`
 		AMR               []string `json:"amr"`
 		ClientID          string   `json:"client_id"`
+		OAuthGrantID      string   `json:"oauth_grant_id"`
 		NetworkZone       string   `json:"network_zone"`
 	}
 	if json.Unmarshal(payload, &raw) != nil || raw.Issuer != s.cfg.Issuer || raw.Subject == "" ||
@@ -1049,6 +1072,7 @@ func (s *Service) verifyAccessToken(authorization string) (*authnext.Claims, err
 		Email: raw.Email, EmailVerified: raw.EmailVerified, OrganizationID: raw.OrganizationID,
 		PrincipalID: raw.PrincipalID, CredentialVersion: raw.CredentialVersion,
 		ACR: raw.ACR, AMR: raw.AMR, ClientID: raw.ClientID, NetworkZone: raw.NetworkZone,
+		OAuthGrantID: raw.OAuthGrantID,
 	}, nil
 }
 
@@ -1070,6 +1094,12 @@ func (s *Service) verifySubjectState(ctx context.Context, claims *authnext.Claim
 		}
 		if err != nil {
 			return fmt.Errorf("%w: verify principal status: %w", authnext.ErrUnavailable, err)
+		}
+		if claims.ClientID != "" {
+			if claims.OAuthGrantID == "" || s.oauthGrants == nil {
+				return authnext.ErrInvalidToken
+			}
+			return s.oauthGrants(ctx, claims)
 		}
 		return nil
 	case authnext.SubjectTypeOAuthClient:

@@ -146,10 +146,17 @@ has been read back and its content, SHA-256 and retention verified. A database
 failure after the object write may leave an obligation for work that did not
 commit; that is intentional and must be reconciled rather than deleted.
 
-The deployment must set `iam_audit.erasure_ledger.enabled: true` on every replica
+When offering permanent erasure, the deployment must set `iam_audit.erasure_ledger.enabled: true` on every replica
 that accepts erasure. Its `iam_audit.anchor.retention_days` must exceed the age
 of the oldest database backup that can be restored plus the operational recovery
 window. Do not reopen access if that coverage relationship is false or unknown.
+
+Enabled ledgers expose a separate optional `audit-erasure-ledger` health check.
+It performs a bounded, read-only Object Lock configuration request and requires
+`s3:GetBucketObjectLockConfiguration`. An unhealthy ledger must alert the erasure
+operator; it does not remove otherwise healthy login servers from readiness.
+This probe does not prove write permission: each actual erasure still requires
+the immutable obligation write and verified read-back before database erasure.
 
 Reconcile every restore, including one believed not to cross an erasure:
 

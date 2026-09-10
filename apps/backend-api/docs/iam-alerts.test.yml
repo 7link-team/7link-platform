@@ -1,0 +1,59 @@
+rule_files:
+  - iam-alerts.yml
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'iam_scim_unfinished_operations{job="iam",instance="a"}'
+        values: '1 1 1 1 1 0 0 0'
+      - series: 'iam_scim_oldest_operation_age_seconds{job="iam",instance="a"}'
+        values: '180 240 300 360 420 0 0 0'
+      - series: 'iam_scim_unfinished_operations{job="iam",instance="b"}'
+        values: '1 1 1 1 1 0 0 0'
+      - series: 'iam_scim_oldest_operation_age_seconds{job="iam",instance="b"}'
+        values: '180 240 300 360 420 0 0 0'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: IAMSCIMUnresolvedOperation
+        exp_alerts:
+          - exp_labels:
+              job: iam
+              severity: critical
+            exp_annotations:
+              summary: SCIM operation has an unresolved remote outcome
+              description: Inspect the target operation token and provider evidence using iam-scim-operations.md. Never expire or clear the claim based only on elapsed time.
+      - eval_time: 6m
+        alertname: IAMSCIMUnresolvedOperation
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'iam_scim_failed_targets{job="iam"}'
+        values: '1 1 1 1 1 1 1 0 0'
+      - series: 'iam_scim_metrics_database_success{job="iam",instance="a"}'
+        values: '0 0 0 0 0 0 0 1 1'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: IAMSCIMReconciliationFailing
+        exp_alerts:
+          - exp_labels:
+              job: iam
+              severity: warning
+            exp_annotations:
+              summary: SCIM targets continue to fail reconciliation
+              description: Check remote connectivity, credentials and target synchronization state. Authentication readiness is intentionally independent.
+      - eval_time: 3m
+        alertname: IAMSCIMMetricsUnavailable
+        exp_alerts:
+          - exp_labels:
+              job: iam
+              instance: a
+              severity: warning
+            exp_annotations:
+              summary: SCIM operational state cannot be observed
+              description: Restore database access for the metrics probe before treating zero pending or failed targets as healthy.
+      - eval_time: 8m
+        alertname: IAMSCIMReconciliationFailing
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: IAMSCIMMetricsUnavailable
+        exp_alerts: []

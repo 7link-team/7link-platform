@@ -8,6 +8,7 @@ import (
 
 	auditi18n "7link.com/platform/internal/iam/audit/i18n"
 	"7link.com/platform/internal/infra/guid"
+	healthservice "7link.com/platform/internal/infra/health/service"
 	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/extension/authz"
 	platformi18n "7link.com/platform/pkg/i18n"
@@ -144,6 +145,35 @@ func (m *Module) Start(ctx context.Context) error {
 func (m *Module) CheckHealth(context.Context) error {
 	if m == nil || m.service == nil || m.service.repo == nil || m.service.repo.writer() == nil {
 		return ErrUnavailable
+	}
+	return nil
+}
+
+// HealthCheckers reports optional erasure capability without removing healthy
+// authentication and audit services from readiness during an object-store outage.
+func (m *Module) HealthCheckers() []healthservice.Checker {
+	checks := []healthservice.Checker{{Name: Name, Check: m.CheckHealth}}
+	if m != nil && m.config.ErasureLedger.Enabled {
+		checks = append(checks, healthservice.Checker{Name: Name + "-erasure-ledger", Optional: true, Check: m.checkErasureHealth})
+	}
+	return checks
+}
+
+func (m *Module) checkErasureHealth(ctx context.Context) error {
+	if m.service == nil || m.service.erasureLedger == nil || m.service.erasureLedger.store == nil {
+		return ErrErasureLedgerUnavailable
+	}
+	ctx, cancel := context.WithTimeout(ctx, m.config.ErasureLedger.Timeout)
+	defer cancel()
+	store := m.service.erasureLedger.store
+	// Read configuration afresh; ensureBucket caches success and its startup
+	// probe writes an object. Neither is a runtime health probe.
+	lock, _, _, _, err := store.client.GetObjectLockConfig(ctx, store.bucket)
+	if err != nil {
+		return erasureLedgerStoreError(err)
+	}
+	if lock != "Enabled" {
+		return ErrErasureLedgerUnavailable
 	}
 	return nil
 }

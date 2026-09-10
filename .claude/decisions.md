@@ -1122,3 +1122,40 @@ shell 重新分词，`mysql` 收到 `--execute=GRANT` 加散落参数，打印�
 `internal/iam/core/member_authorization.go`、organization 授权来源读取适配器及三方言针对性测试。
 SQLite、PostgreSQL 16 无前缀/带前缀及真实 MySQL 8.4 浏览器验收均已通过；最终 `make ci`
 通过，总覆盖率 90.1%，core 90.2%，organization 90.1%。
+
+## D32 — 出站 SCIM 未知结果使用不自动过期的操作占用
+
+**Decision / Reason**
+以target持久operation token覆盖push、deprovision、配置替换及删除；首次远端PUT前提交live mapping intent。
+自动同步取得claim后重新检查mapping状态，显式人工重新provisioning仍允许。客户端超时、HTTP202、
+进程死亡与本地提交失败均不证明远端请求停止，因此不能依靠会过期的租约允许后续DELETE越过旧PUT。
+
+**Tradeoffs / Scope**
+未知结果会阻塞整个target，必须取得provider完成/取消证据后按精确token修复，不能自动清锁。
+provisioning v6升级和回退均要求停止全部writer/worker并排空远端请求；COUNT guard不是在线屏障。
+Redis失效时限流open/closed仍保留D24/D26的业务选择，不受此决策替代。
+
+**Status**
+本轮评审后修复授权范围内已实施；SQLite、真实PostgreSQL和MySQL操作并发及有数据回退保护通过。
+gateway504先响应、provider迟到PUT/DELETE的双HTTP回归及变异通过；408/所有5xx/未知响应均保持claim。
+真实MySQL完整门禁EXIT0，v6已纳入207文件迁移锁；生产停writer/排空请求与provider恢复取证仍须部署演练。
+
+## D33 — OAuth撤销必须覆盖已签发的应用访问令牌
+
+**Decision / Evidence**
+真实MySQL/浏览器联测证实：个人consent撤销成功并从列表消失后，access token仍可introspect为active。
+原实现只撤refresh/code，实际principal bearer校验未查询应用授权；现有“撤销结束已授访问”契约未兑现。
+修复为应用授权独立grant incarnation，经consent→code/refresh→JWT传递，并在真实Bearer认证链校验。
+
+**Alternatives / Tradeoffs**
+仅查询consent是否存在会在重新同意时复活旧JWT；仅改introspection遗漏直接资源访问；全局提升
+principal credential_version会误撤其他应用。采用独立随机grant代号，不依赖时间精度或同毫秒先后。
+旧无grant OAuth令牌须重新授权，普通浏览器session及其他应用隔离语义保留。升级禁止新旧writer混跑；
+仅删数据库grant并不能保证旧binary拒绝已签JWT，不能据此宣称安全降级。
+
+**Scope / Status**
+oauth/authn/pkg claims契约、模块内查询/三方言迁移和真实前后端验收；属于用户已授权的评审后必要修复，
+不是代用户选择新的账号注销或组织归属模型。方案已二次复审并实施；三方言旧数据升级/回退保留状态、
+签名后撤销交错、同毫秒regrant与其他app隔离通过，真实MySQL UAT浏览器10/10通过。
+Introspect仅明确无效凭证返回inactive，基础设施/取消/未知故障保留500；HTTP回归与变异通过。
+外部离线JWT消费方的即时撤销、生产升级/降级流程仍需部署验收；本地通过不代表生产已就绪。

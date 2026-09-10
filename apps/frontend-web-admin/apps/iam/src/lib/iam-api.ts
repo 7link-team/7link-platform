@@ -1,3 +1,7 @@
+import type { components } from "./api-schema"
+
+export type GrantedConsent = components["schemas"]["GrantedConsent"]
+
 export interface FieldDefinition {
   resource: string
   name: string
@@ -746,6 +750,24 @@ export interface OAuthClientInput {
   public_client: boolean
 }
 
+type OAuthClientResponse = Omit<
+  OAuthClient,
+  "redirect_uris" | "grant_types" | "scopes"
+> & {
+  redirect_uris: string[] | null
+  grant_types: OAuthGrantType[] | null
+  scopes: string[] | null
+}
+
+function normalizeOAuthClient(client: OAuthClientResponse): OAuthClient {
+  return {
+    ...client,
+    redirect_uris: client.redirect_uris ?? [],
+    grant_types: client.grant_types ?? [],
+    scopes: client.scopes ?? [],
+  }
+}
+
 export interface OAuthClientCreateResult {
   client: OAuthClient
   client_secret?: string
@@ -1003,10 +1025,21 @@ export function getTenant(): string {
  * Adopt the tenant the service says this session belongs to.
  *
  * Called when a session is established, so that a first login lands on the
- * tenant the account actually belongs to instead of on a guess. A choice the
- * operator already made wins — this only fills an empty selection.
+ * tenant the account actually belongs to instead of on a guess. Preserve a
+ * choice only for the same account; AppLayout validates it against the current
+ * accessible tenant directory before loading tenant data.
  */
-export function adoptSessionTenant(session: Pick<Session, "organization_id">) {
+export function adoptSessionTenant(
+  session: Pick<Session, "organization_id"> & Partial<Pick<Session, "subject">>
+) {
+  if (session.subject && typeof localStorage !== "undefined") {
+    const ownerKey = `${tenantKey}:subject`
+    if (localStorage.getItem(ownerKey) !== session.subject) {
+      setTenant(session.organization_id ?? "")
+      localStorage.setItem(ownerKey, session.subject)
+      return
+    }
+  }
   if (!session.organization_id || getTenant()) return
   setTenant(session.organization_id)
 }
@@ -1110,7 +1143,9 @@ function apiError(status: number, body: ErrorResponse | null): ApiError {
 
 export function clientErrorMessage(code: string): string {
   const language =
-    typeof navigator === "undefined" ? "en-US" : navigator.language || "en-US"
+    (typeof document !== "undefined" && document.documentElement.lang) ||
+    (typeof navigator !== "undefined" && navigator.language) ||
+    "en-US"
   const locale = language.toLowerCase().startsWith("zh")
     ? "zh-CN"
     : language.toLowerCase().startsWith("ms")
@@ -1176,6 +1211,15 @@ export function createIamApi(
         false
       ),
     session: () => request<Session>("/authn/sessions/current", {}, false),
+    myTenants: () => request<Tenant[]>("/iam/me/tenants", {}, false),
+    oauthConsents: () =>
+      request<GrantedConsent[]>("/iam/me/oauth-consents", {}, false),
+    revokeOAuthConsent: (clientID: string) =>
+      request<{ revoked: boolean }>(
+        `/iam/me/oauth-consents/${encodeURIComponent(clientID)}`,
+        { method: "DELETE" },
+        false
+      ),
     login: (body: {
       login_name: string
       password: string
@@ -1932,20 +1976,33 @@ export function createIamApi(
       }),
     deleteMenu: (id: string) =>
       request(`/iam/menus/${encodeURIComponent(id)}`, { method: "DELETE" }),
-    oauthClients: () => request<OAuthClient[]>("/iam/oauth-clients"),
+    oauthClients: () =>
+      request<OAuthClientResponse[]>("/iam/oauth-clients").then((clients) =>
+        clients.map(normalizeOAuthClient)
+      ),
     createOAuthClient: (body: OAuthClientInput) =>
-      request<OAuthClientCreateResult>("/iam/oauth-clients", {
+      request<
+        Omit<OAuthClientCreateResult, "client"> & {
+          client: OAuthClientResponse
+        }
+      >("/iam/oauth-clients", {
         method: "POST",
         body: JSON.stringify(body),
-      }),
+      }).then((result) => ({
+        ...result,
+        client: normalizeOAuthClient(result.client),
+      })),
     updateOAuthClient: (
       id: string,
       body: OAuthClientInput & Pick<OAuthClient, "status">
     ) =>
-      request<OAuthClient>(`/iam/oauth-clients/${encodeURIComponent(id)}`, {
-        method: "PUT",
-        body: JSON.stringify(body),
-      }),
+      request<OAuthClientResponse>(
+        `/iam/oauth-clients/${encodeURIComponent(id)}`,
+        {
+          method: "PUT",
+          body: JSON.stringify(body),
+        }
+      ).then(normalizeOAuthClient),
     rotateOAuthClientSecret: (id: string) =>
       request<{ client_secret: string }>(
         `/iam/oauth-clients/${encodeURIComponent(id)}/rotate-secret`,

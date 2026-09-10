@@ -17,6 +17,7 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"github.com/beevik/etree"
 	saml "github.com/crewjam/saml"
@@ -484,6 +485,28 @@ func TestSAMLSingleLogout(t *testing.T) {
 	var compressed bytes.Buffer
 	zw, err := flate.NewWriter(&compressed, flate.DefaultCompression)
 	require.NoError(t, err)
+	_, err = zw.Write(raw)
+	require.NoError(t, err)
+	require.NoError(t, zw.Close())
+
+	// A valid upstream logout cannot become a success response while local
+	// storage refused the revocation. The request is consumed even on failure.
+	env.web.logoutErr = errors.New("session storage unavailable")
+	eventsBefore := len(env.events)
+	failed := samlBrowserRequest(t, server, http.MethodGet, sloURL+"?SAMLRequest="+url.QueryEscape(base64.StdEncoding.EncodeToString(compressed.Bytes())), cookie)
+	require.Equal(t, http.StatusServiceUnavailable, failed.StatusCode)
+	assert.Empty(t, failed.Header.Values("Set-Cookie"))
+	assert.NotContains(t, samlReadBody(t, failed), "SAMLResponse")
+	assert.Len(t, env.events, eventsBefore, "failed logout must not emit a success audit")
+	_, err = env.web.Authenticate(t.Context(), "", cookie)
+	require.NoError(t, err)
+	env.web.logoutErr = nil
+	// A fresh LogoutRequest can be retried after the dependency recovers.
+	logout.ID = "id-logout-retry"
+	raw, err = xml.Marshal(logout)
+	require.NoError(t, err)
+	compressed.Reset()
+	zw.Reset(&compressed)
 	_, err = zw.Write(raw)
 	require.NoError(t, err)
 	require.NoError(t, zw.Close())

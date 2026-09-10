@@ -99,6 +99,10 @@ IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_ho
 
 IAM_LIFECYCLE_DATABASE_TYPE=mysql \
 IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
+  go test ./internal/iam/provisioning -run '^TestTargetCoordinationExternalDatabase$' -count=1 -v
+
+IAM_LIFECYCLE_DATABASE_TYPE=mysql \
+IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
   go test ./internal/iam/audit -run '^TestArchiveExternalDatabase$' -count=1 -v
 
 IAM_LIFECYCLE_DATABASE_TYPE=mysql \

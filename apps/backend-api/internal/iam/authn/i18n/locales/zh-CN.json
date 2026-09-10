@@ -4,6 +4,7 @@
   "additional_verification_required": "完成额外验证后才能登录，请按页面提示完成验证步骤。",
   "invalid_login": "登录名或密码错误，请核对凭据或发起密码恢复。",
   "authentication_unavailable": "认证服务无法完成该请求，请稍后重试；若问题持续，请联系管理员。",
+  "authentication_rate_limited": "认证请求过于频繁，请稍后重试。",
   "invalid_mfa_challenge": "多因素认证挑战或验证码无效或已过期，请重新登录并使用新验证码。",
   "passkey_request_rejected": "通行密钥请求来源不在允许范围内，请使用已配置的应用地址或联系管理员。",
   "passkey_unavailable": "通行密钥认证无法完成该请求，请稍后重试或使用其他已配置的登录方式。",

@@ -408,10 +408,49 @@ func TestOIDCIDTokenVerification(t *testing.T) {
 	t.Run("audience as array", func(t *testing.T) {
 		sub := newTestIDP(t)
 		sub.setClaim("aud", []string{"first", sub.clientID})
+		sub.setClaim("azp", sub.clientID)
 		claims, err := verifyIDTokenViaFlow(t, sub, newTestOIDCClient(sub))
 		require.NoError(t, err)
 		assert.Contains(t, claims.Audience, sub.clientID)
 	})
+}
+
+func TestOIDCAuthorizedParty(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		multiple bool
+		party    any
+		valid    bool
+	}{
+		{"single absent", false, nil, true},
+		{"single correct", false, "client", true},
+		{"single wrong", false, "other", false},
+		{"single empty", false, "", false},
+		{"multiple absent", true, nil, false},
+		{"multiple correct", true, "client", true},
+		{"multiple wrong", true, "other", false},
+		{"multiple malformed", true, 42, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			idp := newTestIDP(t)
+			if test.multiple {
+				idp.setClaim("aud", []string{"other", idp.clientID})
+			}
+			party := test.party
+			if party == "client" {
+				party = idp.clientID
+			}
+			if party != nil {
+				idp.setClaim("azp", party)
+			}
+			_, err := verifyIDTokenViaFlow(t, idp, newTestOIDCClient(idp))
+			if test.valid {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, ErrOIDCTokenInvalid)
+			}
+		})
+	}
 }
 
 func TestOIDCKeyRotationRetries(t *testing.T) {

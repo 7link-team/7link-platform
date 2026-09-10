@@ -1,7 +1,13 @@
 import { createContext, useContext } from "react"
-import type { LoginResult, Session } from "../lib/iam-api"
+import { ApiError, type LoginResult, type Session } from "../lib/iam-api"
 
-export type AuthStatus = "loading" | "authenticated" | "anonymous"
+export type AuthStatus = "loading" | "authenticated" | "anonymous" | "error"
+
+export function sessionFailureStatus(cause: unknown): "anonymous" | "error" {
+  return cause instanceof ApiError && cause.status === 401
+    ? "anonymous"
+    : "error"
+}
 
 export interface AuthContextValue {
   session: Session | null

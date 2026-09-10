@@ -56,19 +56,27 @@ export default function TenantsPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const [loadError, setLoadError] = useState("")
   const navigate = useNavigate()
 
   const refresh = useCallback(
     () =>
       iamApi
         .tenants(includeDeleted)
-        .then(setTenants)
+        .then((next) => {
+          setTenants(next)
+          setLoadError("")
+        })
+        .catch((cause: Error) => {
+          setTenants([])
+          setLoadError(cause.message)
+        })
         .finally(() => setLoading(false)),
     [includeDeleted]
   )
 
   useEffect(() => {
-    void refresh().catch((cause: Error) => setError(cause.message))
+    void refresh()
   }, [refresh])
 
   const openCreate = () => {
@@ -154,6 +162,20 @@ export default function TenantsPage() {
         }
       />
       {error && <Alert>{error}</Alert>}
+      {loadError && !loading && (
+        <Alert>
+          <p>{t.has(loadError) ? t(loadError) : loadError}</p>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setLoading(true)
+              void refresh()
+            }}
+          >
+            {t("retryNow")}
+          </Button>
+        </Alert>
+      )}
       <div className="mb-3 flex min-h-9 items-center justify-end">
         <label
           htmlFor="include-deleted-tenants"
@@ -185,7 +207,7 @@ export default function TenantsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {tenants.map((tenant) => (
+            {(loading || loadError ? [] : tenants).map((tenant) => (
               <TableRow key={tenant.id}>
                 <TableCell>
                   <div className="flex min-w-0 items-center gap-2">
@@ -263,7 +285,7 @@ export default function TenantsPage() {
             ))}
           </TableBody>
         </Table>
-        {!loading && tenants.length === 0 && (
+        {!loading && !loadError && tenants.length === 0 && (
           <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
             <span className="text-center">
               <Landmark className="mx-auto mb-2 size-7" />

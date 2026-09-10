@@ -345,7 +345,7 @@ func (s *Service) RevokeConsent(ctx context.Context, principalID, clientID guid.
 		return ErrInvalidRequest
 	}
 	return s.repo.runInTx(ctx, func(repo *Repository) error {
-		row, err := repo.consent(ctx, clientID, principalID)
+		row, err := repo.lockConsent(ctx, principalID, clientID)
 		if err != nil {
 			return err
 		}
@@ -366,12 +366,6 @@ func (s *Service) RevokeConsent(ctx context.Context, principalID, clientID guid.
 	})
 }
 
-// ErrConsentRequired signals that the authorization flow needs interactive
-// consent before issuing a code.
-type ErrConsentRequired struct{}
-
-func (*ErrConsentRequired) Error() string { return "OAuth consent required" }
-
 func (s *Service) Authorize(
 	ctx context.Context,
 	cookieHeader, clientID, redirectURI, responseType, scope, state,
@@ -379,10 +373,6 @@ func (s *Service) Authorize(
 ) (string, error) {
 	if responseType != "code" || challengeMethod != "S256" || !validPKCEChallenge(challenge) {
 		return "", ErrInvalidRequest
-	}
-	claims, err := s.authn.Authenticate(ctx, "", cookieHeader)
-	if err != nil {
-		return "", authnext.ErrInvalidCredentials
 	}
 	repo, err := s.repo.pinWriter()
 	if err != nil {
@@ -396,6 +386,20 @@ func (s *Service) Authorize(
 	if err != nil || !containsWord(client.GrantTypes, "authorization_code") ||
 		!allowedRedirect(client.RedirectURIs, redirectURI) || !allowedScopes(client.Scopes, scope) {
 		return "", ErrInvalidRequest
+	}
+	claims, err := s.authn.Authenticate(ctx, "", cookieHeader)
+	if err != nil {
+		// Only an absent or invalid browser credential calls for login. Storage
+		// failures and cancellation must retain the protocol server_error path.
+		if errors.Is(err, authnext.ErrUnavailable) ||
+			(!errors.Is(err, authnext.ErrInvalidSession) && !errors.Is(err, authnext.ErrMissingBearer) &&
+				!errors.Is(err, authnext.ErrInvalidCredentials)) {
+			return "", err
+		}
+		if prompt == "none" {
+			return authorizationErrorLocation(redirectURI, state, "login_required")
+		}
+		return "", authnext.ErrInvalidCredentials
 	}
 	if active, activeErr := repo.activeMember(ctx, client.TenantID, claims.PrincipalID); activeErr != nil || !active {
 		return "", ErrInvalidRequest
@@ -413,7 +417,7 @@ func (s *Service) Authorize(
 		// prompt=none forbids any interaction, so an unmet consent is
 		// reported instead of collected (OIDC Core 3.1.2.6).
 		if !satisfied {
-			return "", &ErrConsentRequired{}
+			return authorizationErrorLocation(redirectURI, state, "consent_required")
 		}
 	case "consent":
 		// prompt=consent asks for the screen even when a stored consent would
@@ -595,12 +599,17 @@ func (s *Service) consentLocation(challenge string) (string, error) {
 // deniedConsentLocation reports a refusal to the client the way RFC 6749
 // 4.1.2.1 requires, instead of leaving the browser on an error page.
 func deniedConsentLocation(redirectURI, state string) (string, error) {
+	return authorizationErrorLocation(redirectURI, state, "access_denied")
+}
+
+// authorizationErrorLocation is used only after the client redirect is validated.
+func authorizationErrorLocation(redirectURI, state, code string) (string, error) {
 	target, err := url.Parse(redirectURI)
 	if err != nil {
 		return "", ErrInvalidRequest
 	}
 	query := target.Query()
-	query.Set("error", "access_denied")
+	query.Set("error", code)
 	if state != "" {
 		query.Set("state", state)
 	}
@@ -637,6 +646,10 @@ func (s *Service) issueAuthorizationCode(
 	if err != nil {
 		return "", err
 	}
+	grant, err := secureToken(32)
+	if err != nil {
+		return "", err
+	}
 	now := oauthTime(s.now())
 	codeRow := model.AuthorizationCode{
 		CodeHash: hashToken(code), ClientID: client.ID, PrincipalID: claims.PrincipalID,
@@ -645,6 +658,7 @@ func (s *Service) issueAuthorizationCode(
 		CreatedAt: now, ExpiresAt: now.Add(5 * time.Minute),
 	}
 	consentRow := model.Consent{
+		GrantID:     grant,
 		PrincipalID: claims.PrincipalID, ClientID: client.ID, TenantID: client.TenantID,
 		Scope: normalizeWords(scope), CreatedAt: now, LastUsedAt: now,
 	}
@@ -654,6 +668,20 @@ func (s *Service) issueAuthorizationCode(
 		if err := tx.upsertConsent(ctx, &consentRow); err != nil {
 			return err
 		}
+		current, err := tx.consent(ctx, client.ID, claims.PrincipalID)
+		if err != nil {
+			return err
+		}
+		if current.GrantID == "" {
+			// Upgrade a legacy standing consent without adopting its old tokens.
+			if err := tx.writer().WithContext(ctx).Table(tx.table("iam_oauth_consents")).
+				Where("principal_id = ? AND client_id = ?", claims.PrincipalID, client.ID).
+				Update("grant_id", grant).Error; err != nil {
+				return err
+			}
+			current.GrantID = grant
+		}
+		codeRow.GrantID = current.GrantID
 		if err := tx.insertAuthorizationCode(ctx, &codeRow); err != nil {
 			return err
 		}
@@ -777,6 +805,10 @@ func (s *Service) authorizationCode(
 		return TokenResponse{}, ErrInvalidRequest
 	}
 	assurance := oauthAssurance(row.AuthTime, row.ACR, row.AMR, client.ID.String())
+	if err := s.checkGrant(ctx, repo, row.PrincipalID, client.ID, client.TenantID, row.GrantID); err != nil {
+		return TokenResponse{}, err
+	}
+	assurance.OAuthGrantID = row.GrantID
 	access, expires, err := s.authn.IssueTenantAccessTokenWithAssurance(
 		ctx, row.PrincipalID, client.TenantID.String(), "", row.Scope, assurance,
 	)
@@ -832,6 +864,10 @@ func (s *Service) refresh(
 		return TokenResponse{}, ErrInvalidRequest
 	}
 	assurance := oauthAssurance(row.AuthTime, row.ACR, row.AMR, client.ID.String())
+	if err := s.checkGrant(ctx, repo, row.PrincipalID, client.ID, client.TenantID, row.GrantID); err != nil {
+		return TokenResponse{}, err
+	}
+	assurance.OAuthGrantID = row.GrantID
 	next, nextRow, err := s.makeRefresh(row.PrincipalID, client.ID, row.Scope, row.FamilyID, assurance)
 	if err != nil {
 		return TokenResponse{}, err
@@ -868,7 +904,8 @@ func (s *Service) makeRefresh(
 	}
 	now := oauthTime(s.now())
 	return token, &model.RefreshToken{
-		IDHash: hashToken(token), FamilyID: familyID, PrincipalID: principalID, ClientID: clientID,
+		GrantID: assurance.OAuthGrantID,
+		IDHash:  hashToken(token), FamilyID: familyID, PrincipalID: principalID, ClientID: clientID,
 		Scope: scope, AuthTime: oauthTime(assurance.AuthTime), ACR: assurance.Level,
 		AMR: strings.Join(assurance.Methods, " "), CreatedAt: now,
 		ExpiresAt: now.Add(30 * 24 * time.Hour),
@@ -901,6 +938,54 @@ func (s *Service) Revoke(ctx context.Context, form url.Values, authorization str
 	return repo.revokeRefreshFamily(ctx, row.FamilyID, oauthTime(s.now()))
 }
 
+// ValidateAccessGrant is called by authn for every application-bound principal
+// bearer, including direct resource requests rather than only introspection.
+func (s *Service) ValidateAccessGrant(ctx context.Context, claims *authnext.Claims) error {
+	if claims == nil || claims.PrincipalID.Zero() {
+		return authnext.ErrInvalidToken
+	}
+	clientID, err := guid.Parse(claims.ClientID)
+	if err != nil {
+		return authnext.ErrInvalidToken
+	}
+	tenantID, err := guid.Parse(claims.OrganizationID)
+	if err != nil {
+		return authnext.ErrInvalidToken
+	}
+	repo, err := s.repo.pinWriter()
+	if err != nil {
+		return fmt.Errorf("%w: %w", authnext.ErrUnavailable, err)
+	}
+	if err := s.checkGrant(ctx, repo, claims.PrincipalID, clientID, tenantID, claims.OAuthGrantID); err != nil {
+		if errors.Is(err, ErrInvalidRequest) {
+			return authnext.ErrInvalidToken
+		}
+		return fmt.Errorf("%w: %w", authnext.ErrUnavailable, err)
+	}
+	return nil
+}
+
+func (*Service) checkGrant(ctx context.Context, repo *Repository, principalID, clientID, tenantID guid.ID, grant string) error {
+	if grant == "" {
+		return ErrInvalidRequest
+	}
+	client, err := repo.activeClient(ctx, clientID)
+	if err != nil {
+		return err
+	}
+	if client.TenantID != tenantID {
+		return ErrInvalidRequest
+	}
+	row, err := repo.consent(ctx, clientID, principalID)
+	if err != nil {
+		return err
+	}
+	if row == nil || row.GrantID != grant || row.TenantID != tenantID {
+		return ErrInvalidRequest
+	}
+	return nil
+}
+
 func (s *Service) Introspect(
 	ctx context.Context,
 	form url.Values,
@@ -922,7 +1007,18 @@ func (s *Service) Introspect(
 	}
 	claims, err := s.authn.Authenticate(ctx, "Bearer "+form.Get("token"), "")
 	if err != nil {
-		return map[string]any{"active": false}, nil //nolint:nilerr // RFC 7662 represents an invalid token as an inactive response.
+		switch {
+		case errors.Is(err, authnext.ErrUnavailable), errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			return nil, err
+		case errors.Is(err, authnext.ErrInvalidToken), errors.Is(err, authnext.ErrExpiredToken),
+			errors.Is(err, authnext.ErrUnknownKey), errors.Is(err, authnext.ErrInvalidIssuer), errors.Is(err, authnext.ErrInvalidAud),
+			errors.Is(err, authnext.ErrInvalidCredentials), errors.Is(err, authnext.ErrMissingBearer),
+			errors.Is(err, authnext.ErrInvalidBearer), errors.Is(err, authnext.ErrInvalidSession):
+			// RFC 7662 represents invalid credentials, not failed validation, as inactive.
+			return map[string]any{"active": false}, nil
+		default:
+			return nil, err
+		}
 	}
 	if claims == nil || claims.ClientID != client.ID.String() || claims.OrganizationID != client.TenantID.String() {
 		return map[string]any{"active": false}, nil

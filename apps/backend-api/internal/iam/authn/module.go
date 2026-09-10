@@ -31,6 +31,7 @@ type Module struct {
 	appender            audit.Appender
 	memberTenant        core.MemberTenantResolver
 	fields              authz.FieldPermissionChecker
+	oauthGrants         OAuthGrantValidator
 }
 
 // Config separates module activation from the authentication service's
@@ -112,6 +113,11 @@ func (m *Module) bootstrapCredentialStore() BootstrapCredentialStore {
 }
 
 func (m *Module) InjectServices(services *module.Services) error {
+	grants, grantErr := module.Resolve[OAuthGrantValidator](services)
+	if grantErr != nil && !errors.Is(grantErr, module.ErrServiceMissing) {
+		return grantErr
+	}
+	m.oauthGrants = grants
 	ids, err := module.Resolve[guid.Source](services)
 	if err != nil {
 		return fmt.Errorf("resolve authn id generator: %w", err)
@@ -175,6 +181,7 @@ func (m *Module) Initialize(context.Context) error {
 		return fmt.Errorf("initialize authn service: %w", err)
 	}
 	m.Service = service
+	m.Service.oauthGrants = m.oauthGrants
 	return nil
 }
 
@@ -234,7 +241,11 @@ func (m *Module) Stop(ctx context.Context) error {
 	if m == nil || m.Service == nil {
 		return nil
 	}
-	return m.StopNotificationWorker(ctx)
+	err := m.StopNotificationWorker(ctx)
+	if m.sharedSecurity != nil {
+		err = errors.Join(err, m.sharedSecurity.client.Close())
+	}
+	return err
 }
 
 var (

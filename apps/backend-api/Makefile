@@ -75,6 +75,7 @@ IAM_SOURCE_ROOT ?=
 DOCKER_CMD ?= docker
 DOCKER_TEST_HOST ?= 127.0.0.1
 MYSQL8_IMAGE ?= mysql:8.4@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb
+PROMTOOL ?= promtool
 ifeq ($(OS),Windows_NT)
 MKDIR_OUTPUT = powershell.exe -NoProfile -NonInteractive -Command "New-Item -ItemType Directory -Force -Path '$(dir $(OUTPUT))' | Out-Null"
 else
@@ -114,6 +115,10 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/pkg/query
 
 .PHONY: build ci dev fmt-check generate generate-docs golangci iam-preflight lint openapi openapi-check test test-coverage test-integration test-performance test-all test-mysql8 test-mysql8-run
+.PHONY: release-check test-race generate-check frontend-check test-alerts
+# These gates share coverage files and embedded database resources. Even when
+# invoked with -j, execute each prerequisite to completion before starting the next.
+.NOTPARALLEL: ci release-check
 
 build:
 	$(MKDIR_OUTPUT)
@@ -150,6 +155,32 @@ test-mysql8-run:
 # formatting or lint failure reports before the slow database tests run. Fails
 # on the first gate that fails.
 ci: fmt-check lint test-coverage test-integration build openapi-check
+
+# The production candidate adds the slow gates deliberately kept outside ci.
+# Configure DOCKER_CMD / DOCKER_TEST_HOST for an already provisioned test daemon;
+# release verification must not bootstrap or change a remote Docker installation.
+# Environment deployment, browser UAT and service-owner sign-off remain separate.
+release-check: ci test-race generate-check frontend-check test-alerts test-mysql8-run
+
+test-alerts:
+	cd docs && $(PROMTOOL) test rules iam-alerts.test.yml
+
+test-race:
+	go test -race ./... -count=1
+
+generate-check:
+	@before="$$(mktemp)"; after="$$(mktemp)"; \
+	trap 'rm -f "$$before" "$$after"' EXIT; \
+	git ls-files --full-name | git hash-object --stdin-paths > "$$before" && \
+	$(MAKE) --no-print-directory generate && \
+	git ls-files --full-name | git hash-object --stdin-paths > "$$after" && \
+	cmp "$$before" "$$after" || { echo "generate changed tracked content; review and regenerate the candidate"; exit 1; }
+
+frontend-check:
+	cd ../frontend-web-admin && bun run lint --force
+	cd ../frontend-web-admin && bun run typecheck --force
+	cd ../frontend-web-admin && bun run test --force
+	cd ../frontend-web-admin && bun run build --force
 
 # gofmt has no check mode; -l prints files that need formatting and exits 0, so
 # the emptiness of that list is the assertion.

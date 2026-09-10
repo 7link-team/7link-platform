@@ -2,6 +2,25 @@
 
 ## 当前检查点
 
+- 任务：复核 `apps/backend-api/docs/iam-release-checkpoints.md`、二次相关性/方案评审、必要技术修复、真实测试验收及结果合并已完成。当前阶段：本轮修复ACCEPTED，IAM整体生产NOT READY。用户最新授权全部可交付改动提交并推送至origin/IAM；提交与远端一致性以Git实际记录为准，不代签生产验收。
+- 生产结论仍NOT READY：UI-04归属、PAT资源/期限、自助注销对象、Redis限流故障open/closed及生产RTO/RPO等未获业务选择；不得把“继续”当选择。详见清单2.1及D24/D26/D32/D33。
+- 已实施：SCIM持久claim/首次mapping intent/retiring/有界分页/指标与告警，408/5xx/未知响应保持claim（真实gateway504迟到PUT/DELETE反转已复现并封堵）；v6与sync_after_ms命名统一。OIDC azp/prompt错误及存储故障分类、真实logout失败传播、optional ledger health、Redis共享captcha/Lua额度。OAuth v10随机grant incarnation覆盖consent/code/refresh/JWT/实际Bearer校验，旧令牌重新授权，regrant不复活旧token，不误撤其他app。
+- 三组代理均已完成并冻结源码。Introspect追加修复：基础设施/取消/未知错误返回既有500 server_error，明确无效凭证才200 inactive；oauth全包91.5%、定向race5.352s、lint与overlay变异通过。frontend_review_fix已修复principals、tenants、oauth-clients真实403+空态误报，仅改相关前端状态和测试。独立SQL方案复审无新发现，主线程已亲自复核grant验证/锁顺序与旧binary降级边界。
+- 最新已验证：三页错误态修复后前端强制门禁58/85测试PASS；27/27 fixture Chromium PASS，三页empty保护浏览器响应变异均检出。最终Introspect源码重建真实MySQL UAT HTTP9项、增强浏览器10/10 PASS（含真实资源Bearer401、introspection inactive、refresh拒绝、regrant旧token仍拒绝及其他app200、三页403重试无空态），binary SHA256 `e35bb88bdab3db58c480c1a039bfd4c53fa041da28198c9682a36f4ca15d871d`，报告04:13:18Z。六张最新三页桌面/移动拒绝截图主线程已查看。不能将局部PASS代表全UI05。
+- 最终Go coverage全部阈值PASS：总90.1%、authn90.2%、oauth91.5%、provisioning90.3%。grant定向race、两项overlay变异、DI/parser/client禁用/删除、多连接签名后撤销交错通过。坏签名测试改为XOR真实签名字节，20次复验PASS。
+- SCIM真实PG多连接七场景PASS；v6三引擎模型及PG有数据rollback/再升级PASS；gateway504双HTTP服务/响应矩阵race及overlay变异PASS。主线程新加v9→v10→9→10旧数据迁移测试SQLite/PG两前缀PASS21.979s，旧撤销状态保留、grant默认空；legacy默认grant变异被击杀，临时overlay目录已删除。真实MySQL脚本已接上述两类迁移测试及SCIM多连接。
+- 旧CI session97091唯一失败为grant_test.go命名，已改service_grant_test.go并由最终完整CI关闭。全量race session49553已EXIT0（最后Introspect窄改动之前，之后定向race通过），日志`.temp/release-race-acceptance.log`。
+- 最新独立门禁：真实MySQL完整脚本session13051 EXIT0，`.temp/release-mysql-final.log`：组合/并发擦除66.070s、迁移89.533s、性能38.516s、重放1.768s、SCIM多连接10.798s、归档1.369s、生命周期15.446s；门禁容器已自动移除。schema-lock --write及verify通过207文件/68表/29跨模块FK，旧201哈希未改。make generate-check EXIT0（`.temp/release-generate-final.log`）。
+- 最终完整CI session15319 EXIT0，2026-09-10 04:32 UTC；`.temp/release-ci-final.log`。fmt/lint/coverage、架构3.114s、goose68.572s、lifecycle215.443s、migration579.919s、performance77.800s、正式build与openapi-check全部PASS。无在途验收进程；源码及前端冻结。
+- 生成/依赖：最终schema源稳定后的generate幂等PASS；schema parser支持IF NOT EXISTS且单测/变异PASS。Go govulncheck新增Redis后0 reachable、13 module-only。公共npmjs audit发现dev生成器js-yaml漏洞，最小override @redocly/openapi-core1.34.20后audit exit0零项、API两次生成hash与升级前相同，typecheck/test/build PASS。
+- 环境：最终UAT18091/18080运行，旧UAT均通过reset --preserve-old保存（最近suffix2026-09-10T04-10-43-589Z），保留可恢复。主线程可丢弃验收容器iam-release-redis-review和iam-release-postgres-review及其匿名卷已精确移除，仅合成数据；Docker daemon未停止，UAT未删除。真实MySQL gate自带精确容器清理已成功。
+- 清单及D32/D33已回填最终方案/验收；README记录v6停writer/v10旧OAuth重新授权及离线JWT边界。主线程完成范围、复用、架构、复杂度、回归与原请求验收复核；日志/截图/密钥/二进制保持忽略，不纳入提交。UI04/UI06/UI05/07及外部生产证据仍未完成。
+- 下一步：本轮技术修复停止扩展；由产品/服务负责人明确清单2.1业务选择，并推进全路由与生产部署验收。不能将“继续”解释为任何尚未选择的业务模型或风险策略。
+
+## 历史基线（2026-09-09及以前）
+
+以下为已交付批次的历史记录；旧“未实现”“下一步”和提交授权仅描述当时批次，当前状态及边界以上方检查点为准。
+
 - 日期：2026-09-09。
 - 阶段：外部擦除义务账本、全量 race、永久擦除界面 UAT、UI-01、UI-02 和 UI-03 已验收；下一项为 UI-04。
 - 当前任务：在人员页面展示真实有效授权及其来源，不把移除单个绑定误称为撤销全部访问权。

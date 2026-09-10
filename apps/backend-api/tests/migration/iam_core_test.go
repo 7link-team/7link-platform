@@ -337,6 +337,9 @@ func verifyCoreRoleContracts(t *testing.T, db *sql.DB, prefix string) {
 	t.Helper()
 	roles := prefix + "iam_roles"
 	permissions := prefix + "iam_role_permissions"
+	// The full MySQL gate runs service-behavior checks first; their other
+	// tenants' role permissions must survive this role's cascade deletion.
+	otherPermissions := coreRowCount(t, db, permissions)
 
 	require.NoError(t, execCoreSQL(t, db,
 		"INSERT INTO %s (tenant_id, id, name, name_key, created_at, updated_at) VALUES (1, 1, 'Admin', 'admin', '%s', '%s')",
@@ -355,7 +358,10 @@ func verifyCoreRoleContracts(t *testing.T, db *sql.DB, prefix string) {
 		"INSERT INTO %s (tenant_id, role_id, permission_code, created_at) VALUES (1, 1, 'user_view', '%s')",
 		permissions, coreTestTime))
 	require.NoError(t, execCoreSQL(t, db, "DELETE FROM %s WHERE tenant_id = 1 AND id = 1", roles))
-	assert.Zero(t, coreRowCount(t, db, permissions), "deleting a role must cascade its permissions")
+	var deletedRolePermissions int
+	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM "+permissions+" WHERE tenant_id = 1 AND role_id = 1").Scan(&deletedRolePermissions))
+	assert.Zero(t, deletedRolePermissions, "deleting a role must cascade its own permissions")
+	assert.Equal(t, otherPermissions, coreRowCount(t, db, permissions), "deleting a role must preserve other roles' permissions")
 }
 
 func verifyCoreMenuContracts(t *testing.T, db *sql.DB, prefix string) {

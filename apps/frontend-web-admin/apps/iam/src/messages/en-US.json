@@ -1,4 +1,12 @@
 {
+  "sessionVerificationFailed": "Your session could not be verified. Check your connection and retry. Your sign-in status is currently unknown.",
+  "logoutFailed": "Sign out could not be confirmed. Your session may still be active. Retry before leaving this device.",
+  "noAvailableTenants": "No active workspaces are available for this account.",
+  "authorizedApplications": "Authorized applications",
+  "authorizedApplicationsDescription": "Applications you have authorized across all workspaces. Revoke an application to end its access to your account.",
+  "noAuthorizedApplications": "You have not authorized any applications.",
+  "authorizedScopes": "Authorized scopes",
+  "revokeApplicationConfirm": "Revoke {name}? This ends this application's authorization and invalidates the tokens it has already received for your account.",
   "switchWorkspace": "Switch workspace",
   "tenantPerspective": "Tenant view",
   "entityPerspective": "Entity view",

@@ -47,6 +47,13 @@ export const router = createBrowserRouter([
             }),
             children: [
               { index: true, element: <Navigate to="profile" replace /> },
+              {
+                path: "applications",
+                lazy: async () => ({
+                  Component: (await import("./app/account/applications"))
+                    .default,
+                }),
+              },
               ...["profile", "security", "mfa"].map((path) => ({
                 path,
                 lazy: async () => ({

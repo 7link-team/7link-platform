@@ -29,7 +29,7 @@ var (
 		"identity", "oauth", "organization", "provisioning",
 	}
 	expectedDialects = []string{"mysql", "postgres", "sqlite"}
-	createTableRE    = regexp.MustCompile(`(?i)\bCREATE\s+TABLE\s+([^\s(]+)`)
+	createTableRE    = regexp.MustCompile(`(?i)\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([^\s(]+)`)
 	referenceRE      = regexp.MustCompile(`(?i)\bREFERENCES\s+([^\s(]+)`)
 	constraintRE     = regexp.MustCompile(`(?i)\bCONSTRAINT\s+([^\s;,(]+)`)
 	createIndexRE    = regexp.MustCompile(`(?i)\bCREATE\s+(?:UNIQUE\s+)?INDEX\s+([^\s;(]+)`)

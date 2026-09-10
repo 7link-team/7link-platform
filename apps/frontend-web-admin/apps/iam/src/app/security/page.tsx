@@ -35,6 +35,7 @@ import { useAuth } from "../../components/auth"
 import { PageHeader } from "../../components/page-header"
 import {
   iamApi,
+  setTenant,
   type BrowserSession,
   type MfaEnrollment,
   type MfaStatus,
@@ -145,8 +146,9 @@ export default function SecurityPage() {
 
   const logoutAll = () =>
     run(async () => {
-      await iamApi.logoutAll()
-      window.location.assign("/login")
+      const result = await iamApi.logoutAll()
+      setTenant("")
+      window.location.assign(result?.logout_url || "/login")
     })
 
   const sendEmailVerification = () =>

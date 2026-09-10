@@ -78,6 +78,20 @@ type Config struct {
 	Recovery                RecoveryConfig          `mapstructure:"recovery" group:"recovery"`
 	EmailVerification       EmailVerificationConfig `mapstructure:"email_verification" group:"email_verification"`
 	Registration            RegistrationConfig      `mapstructure:"registration" group:"registration"`
+	SharedSecurity          SharedSecurityConfig    `mapstructure:"shared_security" group:"shared_security"`
+}
+
+// SharedSecurityConfig shares captcha answers and request limits across replicas.
+// Enabling it requires an explicit outage policy; availability policy is owned by
+// the deployment, not silently selected by the authentication implementation.
+type SharedSecurityConfig struct {
+	RedisURLFile   string        `mapstructure:"redis_url_file" description:"file containing redis:// or rediss:// URL; empty retains single-instance captcha storage"`
+	Namespace      string        `mapstructure:"namespace" description:"shared namespace unique to this deployment" default:"iam-security"`
+	FailurePolicy  string        `mapstructure:"failure_policy" description:"required with Redis: closed blocks authentication attempts on Redis failure; open permits attempts and logs a warning; captcha always fails closed"`
+	RequestTimeout time.Duration `mapstructure:"request_timeout" description:"Redis operation deadline" default:"2s"`
+	Window         time.Duration `mapstructure:"window" description:"fixed authentication request limit window" default:"1m"`
+	PerIP          int           `mapstructure:"per_ip" description:"maximum POST /authn requests per socket peer per window" default:"60"`
+	Global         int           `mapstructure:"global" description:"maximum POST /authn requests across all replicas per window" default:"3000"`
 }
 
 // RegistrationConfig enables email-verified self-service global principals.
@@ -227,16 +241,18 @@ type Claims struct {
 	ACR               int            `json:"acr,omitempty"`
 	AMR               []string       `json:"amr,omitempty"`
 	ClientID          string         `json:"client_id,omitempty"`
+	OAuthGrantID      string         `json:"oauth_grant_id,omitempty"`
 	NetworkZone       string         `json:"network_zone,omitempty"`
 	Raw               map[string]any `json:"raw,omitempty"`
 }
 
 type Assurance struct {
-	AuthTime    time.Time
-	Level       int
-	Methods     []string
-	ClientID    string
-	NetworkZone string
+	OAuthGrantID string
+	AuthTime     time.Time
+	Level        int
+	Methods      []string
+	ClientID     string
+	NetworkZone  string
 }
 
 // Verifier verifies compact JWTs signed by the issuer's JWKS.
@@ -663,6 +679,7 @@ func parseClaims(raw map[string]any) (*Claims, error) {
 	claims.ACR = int(int64Claim(raw["acr"]))
 	claims.AMR = stringSliceClaim(raw["amr"])
 	claims.ClientID, _ = raw["client_id"].(string)
+	claims.OAuthGrantID, _ = raw["oauth_grant_id"].(string)
 	claims.NetworkZone, _ = raw["network_zone"].(string)
 	claims.Audience = stringSliceClaim(raw["aud"])
 	claims.ExpiresAt = unixClaim(raw["exp"])

@@ -1,4 +1,6 @@
 {
+  "scim_target_busy": "该 SCIM 目标存在未完成操作。若持续出现，请联系管理员核实远端结果后恢复。",
+  "scim_target_retiring": "该 SCIM 目标正在退役，不能接受新的同步推送或配置更改。",
   "invalid_scim_directory": "SCIM 目录数据无效，请检查名称、状态、版本和凭据过期时间。",
   "invalid_scim_target": "SCIM 目标数据无效。请检查其名称、URL、Bearer 令牌、状态和版本。",
   "provisioning_unavailable": "预配服务暂时无法完成请求，请稍后重试；若问题持续，请联系管理员。",

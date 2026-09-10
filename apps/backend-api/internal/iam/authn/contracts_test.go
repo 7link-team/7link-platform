@@ -34,8 +34,8 @@ func (*webServiceFixture) ClearCookie() string  { return "" }
 func (*webServiceFixture) CookieSecure() bool   { return false }
 func (*webServiceFixture) Issuer() string       { return "" }
 func (*webServiceFixture) JWKS() map[string]any { return nil }
-func (*webServiceFixture) Logout(context.Context, string) string {
-	return ""
+func (*webServiceFixture) Logout(context.Context, string) (string, error) {
+	return "", nil
 }
 func (*webServiceFixture) ResolveReturnURL(string) (string, error) { return "", nil }
 func (*webServiceFixture) SessionCookie(string) string             { return "" }
@@ -90,7 +90,7 @@ func consumeWebService(service WebService) {
 	_, _, _ = service.IssueTenantOAuthClientToken(ctx, "", "", "", "", "")
 	_, _, _ = service.IssueTenantServiceAccountToken(ctx, "", "", "", "", "", 0)
 	_ = service.JWKS()
-	_ = service.Logout(ctx, "")
+	_, _ = service.Logout(ctx, "")
 	_, _ = service.ResolveReturnURL("")
 	_ = service.SessionCookie("")
 	_ = service.SessionCookieName()

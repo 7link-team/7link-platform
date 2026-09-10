@@ -53,3 +53,21 @@ func assertErrorContains(t *testing.T, err error, fragment string) {
 		t.Fatalf("error %v does not contain %q", err, fragment)
 	}
 }
+
+func TestCreateTablePrefixWithOptionalExistenceClause(t *testing.T) {
+	for _, clause := range []string{"", "IF NOT EXISTS ", "if\nnot\texists "} {
+		t.Run(clause, func(t *testing.T) {
+			for _, name := range []string{"{{.Prefix}}iam_targets", "{{.Prefix}}scim_rollback_guard", "unprefixed"} {
+				ddl := "CREATE TABLE " + clause + name + " (n BIGINT)"
+				match := createTableRE.FindStringSubmatch(ddl)
+				if len(match) != 2 || match[1] != name {
+					t.Fatalf("table identifier in %q: %v", ddl, match)
+				}
+				err := validateObjectPrefixes("fixture.sql", ddl)
+				if (err == nil) != strings.HasPrefix(name, "{{.Prefix}}") {
+					t.Fatalf("prefix validation of %q: %v", ddl, err)
+				}
+			}
+		})
+	}
+}

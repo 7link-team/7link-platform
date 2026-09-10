@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"7link.com/platform/internal/iam/audit"
@@ -39,8 +40,9 @@ type Service struct {
 	outbound httpx.Policy
 	now      func() time.Time
 
-	pushMu    sync.Mutex
-	pushLocks map[string]*pushLock
+	pushMu                   sync.Mutex
+	pushLocks                map[string]*pushLock
+	operationReleaseFailures atomic.Int64
 }
 
 type pushLock struct {

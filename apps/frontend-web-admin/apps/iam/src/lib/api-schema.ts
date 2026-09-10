@@ -2283,7 +2283,7 @@ export interface paths {
         put?: never;
         /**
          * Deprovision everything an outbound SCIM target provisions, then delete it
-         * @description Deleting a target is refused while it still provisions remote resources, because the mapping and bearer token that reach those accounts would go with it. This removes the remote accounts first and deletes the target once none are left. A remote that refuses leaves the target, its credentials and the remaining mappings in place; calling this again resumes where it stopped.
+         * @description Retirement blocks new provisioning and configuration changes, removes remote resources in pages, and deletes the target only once none remain. A definitive remote refusal preserves credentials and progress so another call can resume. A timeout, disconnect, asynchronous acceptance, or failed local completion leaves an unfinished operation that requires verified remote recovery; retrying never expires that protection.
          */
         post: operations["provisioning-retire-scim-target"];
         delete?: never;
@@ -6595,8 +6595,28 @@ export interface operations {
                     "application/json": components["schemas"]["EnvelopeCaptchaOutput"];
                 };
             };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authentication shared storage unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6654,6 +6674,17 @@ export interface operations {
             /** @description Unprocessable Entity */
             422: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -6728,6 +6759,17 @@ export interface operations {
             /** @description Unprocessable Entity */
             422: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7023,8 +7065,28 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authentication shared storage unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7170,8 +7232,28 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authentication shared storage unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7239,6 +7321,17 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal Server Error */
             500: {
                 headers: {
@@ -7293,6 +7386,17 @@ export interface operations {
             /** @description Unprocessable Entity */
             422: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7363,6 +7467,17 @@ export interface operations {
             /** @description Unprocessable Entity */
             422: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7506,6 +7621,17 @@ export interface operations {
             /** @description Unprocessable Entity */
             422: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7819,6 +7945,17 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal Server Error */
             500: {
                 headers: {
@@ -7879,6 +8016,17 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal Server Error */
             500: {
                 headers: {
@@ -7933,6 +8081,17 @@ export interface operations {
             /** @description Unprocessable Entity */
             422: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -8009,8 +8168,28 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authentication shared storage unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8144,8 +8323,28 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authentication shared storage unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8334,6 +8533,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
         };
     };
     "authn-delete-session": {
@@ -8466,6 +8674,17 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal Server Error */
             500: {
                 headers: {
@@ -8539,6 +8758,17 @@ export interface operations {
             /** @description Unprocessable Entity */
             422: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authentication request limit exceeded */
+            429: {
+                headers: {
+                    /** @description Seconds until the request budget resets */
+                    "Retry-After"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -20851,6 +21081,15 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

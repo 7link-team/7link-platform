@@ -1,4 +1,6 @@
 {
+  "scim_target_busy": "Sasaran SCIM ini mempunyai operasi yang belum selesai. Jika berterusan, hubungi pentadbir untuk mengesahkan hasil jauh sebelum pemulihan.",
+  "scim_target_retiring": "Sasaran SCIM ini sedang ditamatkan dan tidak menerima peruntukan atau perubahan konfigurasi baharu.",
   "invalid_scim_directory": "Data direktori SCIM tidak sah. Semak nama, status, versi dan tamat tempoh kelayakannya.",
   "invalid_scim_target": "Data sasaran SCIM tidak sah. Semak nama, URL, token pembawa, status dan versi.",
   "provisioning_unavailable": "Perkhidmatan peruntukan tidak dapat melengkapkan permintaan. Cuba lagi kemudian; hubungi pentadbir jika masalah berterusan.",

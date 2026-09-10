@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react"
@@ -85,31 +86,47 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
   const [editing, setEditing] = useState<Principal | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
+  const loadGeneration = useRef(0)
   const [departmentID, setDepartmentID] = useState("")
-  const refresh = useCallback(
-    () =>
-      Promise.all([
-        iamApi.principals(search),
-        iamApi.members(),
-        iamApi.departments(),
-        iamApi.effectiveFields("user_profile"),
-      ])
-        .then(([result, nextMembers, nextDepartments, nextFields]) => {
-          setItems(result.items)
-          setMembers(nextMembers)
-          setDepartments(nextDepartments)
-          setFields(nextFields.fields)
-        })
-        .catch((cause: Error) => {
-          setItems([])
-          setMembers([])
-          setFields({})
-          throw cause
-        }),
-    [search, iamApi]
-  )
+  const refresh = useCallback(async () => {
+    const generation = ++loadGeneration.current
+    setLoading(true)
+    setLoadError("")
+    return Promise.all([
+      iamApi.principals(search),
+      iamApi.members(),
+      iamApi.departments(),
+      iamApi.effectiveFields("user_profile"),
+    ])
+      .then(([result, nextMembers, nextDepartments, nextFields]) => {
+        if (generation !== loadGeneration.current) return
+        setItems(result.items)
+        setMembers(nextMembers)
+        setDepartments(nextDepartments)
+        setFields(nextFields.fields)
+      })
+      .catch((cause: Error) => {
+        if (generation !== loadGeneration.current) return
+        setItems([])
+        setMembers([])
+        setDepartments([])
+        setFields({})
+        setLoadError(cause.message)
+      })
+      .finally(() => {
+        if (generation === loadGeneration.current) setLoading(false)
+      })
+  }, [search, iamApi])
   useEffect(() => {
-    void refresh().catch((cause: Error) => setError(cause.message))
+    let active = true
+    void Promise.resolve().then(() => {
+      if (active) void refresh()
+    })
+    return () => {
+      active = false
+    }
   }, [refresh])
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -223,10 +240,23 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
           />
         </label>
         <span className="text-xs whitespace-nowrap text-muted-foreground">
-          {items.length} {t("items")}
+          {!loading && !loadError && (
+            <>
+              {items.length} {t("items")}
+            </>
+          )}
         </span>
       </div>
       {error && <Alert>{error}</Alert>}
+      {loadError && (
+        <Alert>
+          <p>{t.has(loadError) ? t(loadError) : loadError}</p>
+          <Button variant="outline" onClick={() => void refresh()}>
+            {t("retryNow")}
+          </Button>
+        </Alert>
+      )}
+      {loading && <p role="status">{t("loading")}</p>}
       <div className="overflow-hidden rounded-md border bg-card">
         <Table className="min-w-[900px] whitespace-nowrap">
           <TableHeader>
@@ -240,7 +270,7 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {items.map((principal) => (
+            {(loading || loadError ? [] : items).map((principal) => (
               <TableRow key={principal.id}>
                 <TableCell>
                   <div className="flex items-center gap-3">
@@ -380,7 +410,7 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
             ))}
           </TableBody>
         </Table>
-        {items.length === 0 && (
+        {!loading && !loadError && items.length === 0 && (
           <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
             <UserRoundCheck className="mb-2 size-7" />
             {t("noPrincipals")}

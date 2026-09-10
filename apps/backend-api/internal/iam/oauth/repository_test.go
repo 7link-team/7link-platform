@@ -42,14 +42,15 @@ type oauthFailingIDs struct{}
 func (oauthFailingIDs) Next() (int64, error) { return 0, errors.New("ID source down") }
 
 type oauthWebFixture struct {
-	mu           sync.Mutex
-	next         int
-	session      *authnext.Claims
-	tokens       map[string]*authnext.Claims
-	issue        error
-	csrf         error
-	profileError error
-	profileScope string
+	mu                sync.Mutex
+	next              int
+	session           *authnext.Claims
+	tokens            map[string]*authnext.Claims
+	issue             error
+	csrf              error
+	profileError      error
+	authenticateError error
+	profileScope      string
 }
 
 func newOAuthWebFixture() *oauthWebFixture {
@@ -65,6 +66,9 @@ func newOAuthWebFixture() *oauthWebFixture {
 func (web *oauthWebFixture) Authenticate(_ context.Context, authorization, cookie string) (*authnext.Claims, error) {
 	web.mu.Lock()
 	defer web.mu.Unlock()
+	if web.authenticateError != nil {
+		return nil, web.authenticateError
+	}
 	if cookie == "session" {
 		claimsCopy := *web.session
 		return &claimsCopy, nil
@@ -103,7 +107,8 @@ func (web *oauthWebFixture) IssueTenantAccessTokenWithAssurance(
 	return web.issueToken(&authnext.Claims{
 		Subject: principalID.String(), PrincipalID: principalID, OrganizationID: tenantID,
 		ClientID: assurance.ClientID, AuthTime: assurance.AuthTime, ACR: assurance.Level,
-		AMR: assurance.Methods, SubjectType: authnext.SubjectTypePrincipal,
+		OAuthGrantID: assurance.OAuthGrantID,
+		AMR:          assurance.Methods, SubjectType: authnext.SubjectTypePrincipal,
 		Raw: map[string]any{"scope": scope},
 	})
 }
@@ -160,14 +165,14 @@ func (web *oauthWebFixture) IssueTenantServiceAccountToken(
 	})
 }
 
-func (*oauthWebFixture) ClearCookie() string                           { return "" }
-func (*oauthWebFixture) CookieSecure() bool                            { return false }
-func (*oauthWebFixture) Issuer() string                                { return "https://iam.example" }
-func (*oauthWebFixture) JWKS() map[string]any                          { return map[string]any{"keys": []any{}} }
-func (*oauthWebFixture) Logout(context.Context, string) string         { return "" }
-func (*oauthWebFixture) ResolveReturnURL(value string) (string, error) { return value, nil }
-func (*oauthWebFixture) SessionCookie(value string) string             { return value }
-func (*oauthWebFixture) SessionCookieName() string                     { return "session" }
+func (*oauthWebFixture) ClearCookie() string                            { return "" }
+func (*oauthWebFixture) CookieSecure() bool                             { return false }
+func (*oauthWebFixture) Issuer() string                                 { return "https://iam.example" }
+func (*oauthWebFixture) JWKS() map[string]any                           { return map[string]any{"keys": []any{}} }
+func (*oauthWebFixture) Logout(context.Context, string) (string, error) { return "", nil }
+func (*oauthWebFixture) ResolveReturnURL(value string) (string, error)  { return value, nil }
+func (*oauthWebFixture) SessionCookie(value string) string              { return value }
+func (*oauthWebFixture) SessionCookieName() string                      { return "session" }
 func (web *oauthWebFixture) setCSRF(err error) {
 	web.mu.Lock()
 	defer web.mu.Unlock()
@@ -411,8 +416,16 @@ func TestOAuthModelRowsRoundTripNullableTimes(t *testing.T) {
 
 func TestRefreshCASLoserRevokesCompleteFamily(t *testing.T) {
 	harness := newOAuthHarness(t, "")
+	client, _ := grantClient(t, harness, "Refresh CAS")
+	clientID, err := guid.Parse(client.ID)
+	require.NoError(t, err)
+	require.NoError(t, harness.db.Create(&model.Consent{
+		PrincipalID: 101, ClientID: clientID, TenantID: 7, GrantID: "current-grant",
+		Scope: "openid", CreatedAt: oauthTestNow, LastUsedAt: oauthTestNow,
+	}).Error)
 	initial := model.RefreshToken{
-		IDHash: hashToken("initial"), FamilyID: "family", PrincipalID: 101, ClientID: 22,
+		GrantID: "current-grant",
+		IDHash:  hashToken("initial"), FamilyID: "family", PrincipalID: 101, ClientID: clientID,
 		Scope: "openid", AuthTime: oauthTestNow, CreatedAt: oauthTestNow,
 		ExpiresAt: oauthTestNow.Add(time.Hour),
 	}
@@ -421,7 +434,8 @@ func TestRefreshCASLoserRevokesCompleteFamily(t *testing.T) {
 	errs := runOAuthConcurrently(8, func() error {
 		index := sequence.Add(1)
 		next := model.RefreshToken{
-			IDHash: hashToken(fmt.Sprintf("next-%d", index)), FamilyID: initial.FamilyID,
+			GrantID: initial.GrantID,
+			IDHash:  hashToken(fmt.Sprintf("next-%d", index)), FamilyID: initial.FamilyID,
 			PrincipalID: initial.PrincipalID, ClientID: initial.ClientID, Scope: initial.Scope,
 			AuthTime: oauthTestNow, CreatedAt: oauthTestNow, ExpiresAt: oauthTestNow.Add(time.Hour),
 		}

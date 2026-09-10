@@ -5,6 +5,7 @@ import {
   Menu,
   ShieldCheck,
   Smartphone,
+  KeyRound,
   UserRound,
 } from "lucide-react"
 import { Link, Navigate, NavLink, Outlet, useLocation } from "react-router"
@@ -16,6 +17,7 @@ import {
 } from "@workspace/ui/components/sheet"
 import { LanguageSwitcher } from "@workspace/ui/components/i18n/language-switcher"
 import { useAuth } from "../../components/auth"
+import { SessionVerification } from "../../components/session-verification"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 import { UserMenu } from "../../components/user-menu"
 
@@ -29,6 +31,11 @@ export function AccountNavigation({ onNavigate }: { onNavigate?: () => void }) {
         { path: "profile", label: t("profile"), Icon: UserRound },
         { path: "security", label: t("security"), Icon: ShieldCheck },
         { path: "mfa", label: t("twoFactor"), Icon: Smartphone },
+        {
+          path: "applications",
+          label: t("authorizedApplications"),
+          Icon: KeyRound,
+        },
       ].map(({ path, label, Icon }) => (
         <NavLink
           key={path}
@@ -52,12 +59,7 @@ export default function AccountLayout() {
   const { session, status } = useAuth()
   const location = useLocation()
   const [open, setOpen] = useState(false)
-  if (status === "loading")
-    return (
-      <div role="status" className="grid min-h-svh place-items-center">
-        {t("verifyingSession")}
-      </div>
-    )
+  if (status === "loading" || status === "error") return <SessionVerification />
   if (!session)
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
   return (

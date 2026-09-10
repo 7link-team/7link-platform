@@ -7,6 +7,7 @@ toolchain go1.26.6
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20260709200747-435963d16310.1
 	buf.build/go/protovalidate v1.3.0
+	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/arsham/figurine/v2 v2.1.1
 	github.com/beevik/etree v1.6.0
 	github.com/crewjam/saml v0.5.1
@@ -27,6 +28,7 @@ require (
 	github.com/mojocn/base64Captcha v1.3.8
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.24.1
+	github.com/redis/go-redis/v9 v9.21.0
 	github.com/russellhaering/goxmldsig v1.6.0
 	github.com/scim2/filter-parser/v2 v2.3.1
 	github.com/sony/sonyflake v1.3.0
@@ -112,6 +114,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.45.0 // indirect
 	go.opentelemetry.io/otel/metric v1.45.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
+	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/exp v0.0.0-20260718201538-764159d718ef // indirect
 	golang.org/x/image v0.38.0 // indirect
@@ -140,6 +143,6 @@ require (
 	github.com/subosito/gotenv v1.6.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/sys v0.47.0
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/text v0.41.0
 	modernc.org/sqlite v1.57.0 // indirect
 )

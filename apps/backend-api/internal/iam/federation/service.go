@@ -105,7 +105,7 @@ type authnextWebService interface {
 	ClearCookie() string
 	CookieSecure() bool
 	CreateSession(context.Context, guid.ID, time.Time, authnext.Assurance) (string, error)
-	Logout(context.Context, string) string
+	Logout(context.Context, string) (string, error)
 	ResolveReturnURL(string) (string, error)
 	SessionCookie(string) string
 	SessionCookieName() string

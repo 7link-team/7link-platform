@@ -25,6 +25,7 @@ type Client struct {
 func (Client) TableName() string { return "iam_oauth_clients" }
 
 type AuthorizationCode struct {
+	GrantID       string     `gorm:"column:grant_id;size:64;not null"`
 	CodeHash      string     `gorm:"column:code_hash;size:64;primaryKey"`
 	ClientID      guid.ID    `gorm:"column:client_id;not null"`
 	PrincipalID   guid.ID    `gorm:"column:principal_id;not null"`
@@ -43,6 +44,7 @@ type AuthorizationCode struct {
 func (AuthorizationCode) TableName() string { return "iam_oauth_codes" }
 
 type Consent struct {
+	GrantID     string    `gorm:"column:grant_id;size:64;not null"`
 	PrincipalID guid.ID   `gorm:"column:principal_id;primaryKey;autoIncrement:false"`
 	ClientID    guid.ID   `gorm:"column:client_id;primaryKey;autoIncrement:false"`
 	TenantID    guid.ID   `gorm:"column:tenant_id;not null"`
@@ -73,6 +75,7 @@ type ConsentRequest struct {
 func (ConsentRequest) TableName() string { return "iam_oauth_consent_requests" }
 
 type RefreshToken struct {
+	GrantID     string     `gorm:"column:grant_id;size:64;not null"`
 	IDHash      string     `gorm:"column:id_hash;size:64;primaryKey"`
 	FamilyID    string     `gorm:"column:family_id;size:64;not null"`
 	PrincipalID guid.ID    `gorm:"column:principal_id;not null"`

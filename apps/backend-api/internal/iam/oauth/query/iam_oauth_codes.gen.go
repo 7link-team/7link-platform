@@ -28,6 +28,7 @@ func newAuthorizationCode(db *gorm.DB, opts ...gen.DOOption) authorizationCode {
 
 	tableName := _authorizationCode.authorizationCodeDo.TableName()
 	_authorizationCode.ALL = field.NewAsterisk(tableName)
+	_authorizationCode.GrantID = field.NewString(tableName, "grant_id")
 	_authorizationCode.CodeHash = field.NewString(tableName, "code_hash")
 	_authorizationCode.ClientID = field.NewField(tableName, "client_id")
 	_authorizationCode.PrincipalID = field.NewField(tableName, "principal_id")
@@ -51,6 +52,7 @@ type authorizationCode struct {
 	authorizationCodeDo authorizationCodeDo
 
 	ALL           field.Asterisk
+	GrantID       field.String
 	CodeHash      field.String
 	ClientID      field.Field
 	PrincipalID   field.Field
@@ -80,6 +82,7 @@ func (a authorizationCode) As(alias string) *authorizationCode {
 
 func (a *authorizationCode) updateTableName(table string) *authorizationCode {
 	a.ALL = field.NewAsterisk(table)
+	a.GrantID = field.NewString(table, "grant_id")
 	a.CodeHash = field.NewString(table, "code_hash")
 	a.ClientID = field.NewField(table, "client_id")
 	a.PrincipalID = field.NewField(table, "principal_id")
@@ -121,7 +124,8 @@ func (a *authorizationCode) GetFieldByName(fieldName string) (field.OrderExpr, b
 }
 
 func (a *authorizationCode) fillFieldMap() {
-	a.fieldMap = make(map[string]field.Expr, 13)
+	a.fieldMap = make(map[string]field.Expr, 14)
+	a.fieldMap["grant_id"] = a.GrantID
 	a.fieldMap["code_hash"] = a.CodeHash
 	a.fieldMap["client_id"] = a.ClientID
 	a.fieldMap["principal_id"] = a.PrincipalID

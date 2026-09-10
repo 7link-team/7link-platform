@@ -9,6 +9,7 @@ import (
 	"7link.com/platform/internal/iam/authn"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
 	platformi18n "7link.com/platform/pkg/i18n"
@@ -60,6 +61,27 @@ func oauthTestRegistrar(web authz.TokenVerifier) *authz.Registrar {
 
 func TestOAuthModuleRequiresRuntimeAtConstruction(t *testing.T) {
 	assert.Panics(t, func() { NewModule(nil, Config{}) })
+}
+
+func TestOAuthGrantCapabilityFollowsModuleReadiness(t *testing.T) {
+	h, authenticator := newGrantHarness(t)
+	client, secret := grantClient(t, h, "Capability")
+	tokens := grantTokens(t, h, client, secret)
+	claims, err := authenticator.Authenticate(t.Context(), "Bearer "+tokens.AccessToken, "")
+	require.NoError(t, err)
+	instance := NewModule(h.runtime, enabledModuleConfig())
+	services := module.NewServices()
+	require.NoError(t, instance.ProvideServices(services))
+	require.NoError(t, services.Seal())
+	validator, err := module.Resolve[authn.OAuthGrantValidator](services)
+	require.NoError(t, err)
+	assert.ErrorIs(t, validator(t.Context(), claims), authnext.ErrUnavailable)
+	instance.Service = h.service
+	require.NoError(t, validator(t.Context(), claims))
+	clientID, err := guid.Parse(client.ID)
+	require.NoError(t, err)
+	require.NoError(t, h.service.RevokeConsent(t.Context(), 101, clientID))
+	assert.ErrorIs(t, validator(t.Context(), claims), authnext.ErrInvalidToken)
 }
 
 func TestOAuthModuleDependenciesAndReadinessBeforeInitialize(t *testing.T) {

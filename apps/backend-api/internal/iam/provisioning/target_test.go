@@ -237,7 +237,7 @@ func TestTargetRemoteAndKeyFailurePaths(t *testing.T) {
 	user, err := env.service.CreateUser(ctx, env.auth, activeUserInput("ext-alice", "alice", "alice@example.test"))
 	require.NoError(t, err)
 
-	provider, server := newSCIMProviderEndpoint(t, http.StatusInternalServerError, strings.Repeat("remote failure\n", 100))
+	provider, server := newSCIMProviderEndpoint(t, http.StatusTooManyRequests, strings.Repeat("remote rejection\n", 100))
 	target, err := env.service.CreateTarget(ctx, testID("tenant-a"), "Failing", server.URL, "token", &env.auth.PrincipalID)
 	require.NoError(t, err)
 	_, err = env.service.PushResource(ctx, testID("tenant-a"), parseGUID(target.Target.ID), ResourceUser, parseGUID(user.ID))
@@ -267,6 +267,10 @@ func TestTargetRemoteAndKeyFailurePaths(t *testing.T) {
 	_, err = noKey.CreateTarget(ctx, testID("tenant-a"), "No Key", "https://example.test", "token", nil)
 	assert.ErrorIs(t, err, ErrTargetKeyMissing)
 	_, err = noKey.PushResource(ctx, testID("tenant-a"), parseGUID(down.Target.ID), ResourceUser, parseGUID(user.ID))
+	assert.ErrorIs(t, err, ErrTargetBusy, "an unknown remote outcome must not be superseded")
+	keyTarget, err := env.service.CreateTarget(ctx, testID("tenant-a"), "Missing key", server.URL, "token", &env.auth.PrincipalID)
+	require.NoError(t, err)
+	_, err = noKey.PushResource(ctx, testID("tenant-a"), parseGUID(keyTarget.Target.ID), ResourceUser, parseGUID(user.ID))
 	assert.ErrorIs(t, err, ErrTargetKeyMissing)
 
 	_, err = env.service.PushResource(ctx, testID("tenant-a"), parseGUID(target.Target.ID), "Widget", parseGUID(user.ID))
@@ -289,7 +293,7 @@ func TestTargetDeprovisionRemoteFailuresAndAuditRollback(t *testing.T) {
 	_, err = env.service.PushResource(t.Context(), testID("tenant-a"), parseGUID(target.Target.ID), ResourceUser, parseGUID(user.ID))
 	require.NoError(t, err)
 
-	provider.configure(http.StatusInternalServerError, "delete rejected", false)
+	provider.configure(http.StatusTooManyRequests, "delete rejected", false)
 	err = env.service.DeprovisionResource(t.Context(), testID("tenant-a"), parseGUID(target.Target.ID), ResourceUser, parseGUID(user.ID))
 	assert.ErrorIs(t, err, ErrRemoteResponse)
 	provider.configure(http.StatusOK, "", false)
@@ -309,12 +313,16 @@ func TestTargetDeprovisionRemoteFailuresAndAuditRollback(t *testing.T) {
 	env.auditErr = nil
 	second, err = env.service.CreateUser(t.Context(), env.auth, activeUserInput("second-failure", "second-failure", "second-failure@example.test"))
 	require.NoError(t, err)
-	env.auditErr = errors.New("push audit failed")
 	_, err = env.service.PushResource(t.Context(), testID("tenant-a"), parseGUID(target.Target.ID), ResourceUser, parseGUID(second.ID))
+	assert.ErrorIs(t, err, ErrTargetBusy, "failed local completion preserves the durable claim")
+	secondTarget, err := env.service.CreateTarget(t.Context(), testID("tenant-a"), "Push audit failure", server.URL, "token", &env.auth.PrincipalID)
+	require.NoError(t, err)
+	env.auditErr = errors.New("push audit failed")
+	_, err = env.service.PushResource(t.Context(), testID("tenant-a"), parseGUID(secondTarget.Target.ID), ResourceUser, parseGUID(second.ID))
 	assert.ErrorContains(t, err, "push audit failed")
 	var count int64
-	require.NoError(t, env.db.Table(env.prefix+"iam_scim_target_resources").Where("target_id = ? AND resource_id = ?", target.Target.ID, second.ID).Count(&count).Error)
-	assert.Zero(t, count)
+	require.NoError(t, env.db.Table(env.prefix+"iam_scim_target_resources").Where("target_id = ? AND resource_id = ? AND deleted_at IS NULL AND external_id <> ''", secondTarget.Target.ID, second.ID).Count(&count).Error)
+	assert.EqualValues(t, 1, count, "the committed intent remains available for remote recovery and blocks erasure")
 }
 
 func TestSyncTargetDeprovisionsMissingLocalResource(t *testing.T) {

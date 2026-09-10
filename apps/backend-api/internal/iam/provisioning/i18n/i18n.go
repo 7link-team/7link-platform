@@ -35,6 +35,8 @@ const (
 	TargetKeyMissing             = Namespace + ".scim_target_key_missing"
 	TargetDisabled               = Namespace + ".scim_target_disabled"
 	TargetHasLiveMappings        = Namespace + ".scim_target_has_live_mappings"
+	TargetBusy                   = Namespace + ".scim_target_busy"
+	TargetRetiring               = Namespace + ".scim_target_retiring"
 	TargetServiceAccountInactive = Namespace + ".scim_target_service_account_inactive"
 	TargetResourceNotMapped      = Namespace + ".scim_target_resource_not_mapped"
 	TargetRemoteFailed           = Namespace + ".scim_target_remote_failed"

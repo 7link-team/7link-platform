@@ -8,25 +8,28 @@ import {
 import {
   adoptSessionTenant,
   iamApi,
+  setTenant,
   type LoginResult,
   type Session,
 } from "../lib/iam-api"
 import { getPasskeyCredential } from "../lib/webauthn"
-import { AuthContext, type AuthStatus } from "./auth"
+import { AuthContext, sessionFailureStatus, type AuthStatus } from "./auth"
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [status, setStatus] = useState<AuthStatus>("loading")
 
   const refresh = useCallback(async () => {
+    setStatus("loading")
     try {
       const next = await iamApi.session()
       adoptSessionTenant(next)
       setSession(next)
       setStatus("authenticated")
-    } catch {
+    } catch (cause) {
       setSession(null)
-      setStatus("anonymous")
+      setStatus(sessionFailureStatus(cause))
+      throw cause
     }
   }, [])
 
@@ -39,10 +42,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(next)
         setStatus("authenticated")
       },
-      () => {
+      (cause: unknown) => {
         if (!active) return
         setSession(null)
-        setStatus("anonymous")
+        setStatus(sessionFailureStatus(cause))
       }
     )
     return () => {
@@ -95,10 +98,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const logout = useCallback(async () => {
-    await iamApi.logout().catch(() => undefined)
+    const result = await iamApi.logout()
+    setTenant("")
     setSession(null)
     setStatus("anonymous")
-    window.location.assign("/login")
+    window.location.assign(result?.logout_url || "/login")
   }, [])
 
   const value = useMemo(

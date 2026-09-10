@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -512,6 +513,39 @@ func TestOAuthAuthorizationCodeHTTPLifecycle(t *testing.T) {
 	assert.Equal(t, http.StatusOK, revoked.Code, revoked.Body.String())
 }
 
+func TestOAuthIntrospectionPreservesAuthenticationFailures(t *testing.T) {
+	harness := newOAuthHTTPHarness(t)
+	client, secret, err := harness.service.CreateClient(t.Context(), 7, "Introspection", nil,
+		[]string{"client_credentials"}, []string{"jobs.read"}, false, ConsentImplicit)
+	require.NoError(t, err)
+	headers := map[string]string{"Authorization": "Basic " + base64.StdEncoding.EncodeToString([]byte(client.ID+":"+secret))}
+	for _, failure := range []error{
+		authnext.ErrUnavailable, context.Canceled, context.DeadlineExceeded,
+		errors.New("grant storage unavailable"),
+		errors.Join(authnext.ErrInvalidToken, authnext.ErrUnavailable),
+	} {
+		harness.web.authenticateError = failure
+		response := harness.form(http.MethodPost, "/oauth/introspect", url.Values{"token": {"probe"}}, headers)
+		assert.Equal(t, http.StatusInternalServerError, response.Code)
+		if response.Code == http.StatusInternalServerError {
+			assert.Equal(t, "server_error", decodeProtocolError(t, response).Code)
+		}
+		assert.NotContains(t, response.Body.String(), failure.Error())
+	}
+	for _, invalid := range []error{
+		authnext.ErrInvalidToken, authnext.ErrExpiredToken, authnext.ErrUnknownKey,
+		authnext.ErrInvalidIssuer, authnext.ErrInvalidAud, authnext.ErrInvalidCredentials,
+		authnext.ErrMissingBearer, authnext.ErrInvalidBearer, authnext.ErrInvalidSession,
+	} {
+		harness.web.authenticateError = invalid
+		response := harness.form(http.MethodPost, "/oauth/introspect", url.Values{"token": {"probe"}}, headers)
+		require.Equal(t, http.StatusOK, response.Code)
+		var result map[string]any
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result))
+		assert.Equal(t, map[string]any{"active": false}, result)
+	}
+}
+
 func TestOAuthIntrospectionAndProtocolErrors(t *testing.T) {
 	harness := newOAuthHTTPHarness(t)
 	client, secret, err := harness.service.CreateClient(
@@ -652,6 +686,73 @@ func TestOAuthProtocolRequiresTokenAndRejectsUnsupportedRevocationHint(t *testin
 	assert.Equal(t, "unsupported_token_type", decodeProtocolError(t, response).Code)
 }
 
+func TestOAuthAuthorizationPreservesAuthenticationFailures(t *testing.T) {
+	harness := newOAuthHTTPHarness(t)
+	client := createBrowserClient(t, harness.oauthHarness)
+	query := url.Values{
+		"client_id": {client.ID}, "redirect_uri": {client.RedirectURIs[0]}, "response_type": {"code"},
+		"scope": {"openid"}, "code_challenge": {oauthChallenge()}, "code_challenge_method": {"S256"},
+	}
+	for _, failure := range []error{
+		errors.Join(authnext.ErrUnavailable, errors.New("session writer unavailable")),
+		context.Canceled,
+		errors.New("principal claims lookup failed"),
+	} {
+		for _, prompt := range []string{"none", ""} {
+			harness.web.authenticateError = failure
+			query.Set("prompt", prompt)
+			response := harness.request(http.MethodGet, "/oauth/authorize?"+query.Encode(), "", nil, map[string]string{"Cookie": "session"})
+			require.Equal(t, http.StatusInternalServerError, response.Code, response.Body.String())
+			assert.Empty(t, response.Header().Get("Location"))
+			assert.Equal(t, "server_error", decodeProtocolError(t, response).Code)
+			assert.NotContains(t, response.Body.String(), failure.Error())
+		}
+	}
+	for _, credentialError := range []error{authnext.ErrInvalidSession, authnext.ErrMissingBearer, authnext.ErrInvalidCredentials} {
+		harness.web.authenticateError = credentialError
+		query.Set("prompt", "none")
+		response := harness.request(http.MethodGet, "/oauth/authorize?"+query.Encode(), "", nil, nil)
+		require.Equal(t, http.StatusFound, response.Code, response.Body.String())
+		location, err := url.Parse(response.Header().Get("Location"))
+		require.NoError(t, err)
+		assert.Equal(t, "login_required", location.Query().Get("error"))
+	}
+	assert.Zero(t, harness.count(t, "iam_oauth_codes"))
+	assert.Zero(t, harness.count(t, "iam_oauth_consent_requests"))
+}
+
+func TestOAuthSilentAuthorizationRedirectSafety(t *testing.T) {
+	harness := newOAuthHTTPHarness(t)
+	client := createBrowserClient(t, harness.oauthHarness)
+	query := url.Values{
+		"client_id": {client.ID}, "redirect_uri": {client.RedirectURIs[0]}, "response_type": {"code"},
+		"scope": {"openid"}, "code_challenge": {oauthChallenge()}, "code_challenge_method": {"S256"},
+		"prompt": {"none"}, "state": {"state with & delimiters"},
+	}
+	for _, cookie := range []string{"", "expired-session"} {
+		response := harness.request(http.MethodGet, "/oauth/authorize?"+query.Encode(), "", nil, map[string]string{"Cookie": cookie})
+		require.Equal(t, http.StatusFound, response.Code, response.Body.String())
+		location, err := url.Parse(response.Header().Get("Location"))
+		require.NoError(t, err)
+		assert.Equal(t, "login_required", location.Query().Get("error"))
+		assert.Equal(t, query.Get("state"), location.Query().Get("state"))
+		location.RawQuery = ""
+		assert.Equal(t, client.RedirectURIs[0], location.String())
+	}
+	assert.Zero(t, harness.count(t, "iam_oauth_consent_requests"))
+	assert.Zero(t, harness.count(t, "iam_oauth_codes"))
+	query.Set("redirect_uri", "https://attacker.example/callback")
+	response := harness.request(http.MethodGet, "/oauth/authorize?"+query.Encode(), "", nil, nil)
+	require.Equal(t, http.StatusBadRequest, response.Code)
+	assert.Empty(t, response.Header().Get("Location"))
+	assert.Equal(t, "invalid_request", decodeProtocolError(t, response).Code)
+	query.Set("redirect_uri", client.RedirectURIs[0])
+	query.Set("client_id", "1234567890123456789")
+	response = harness.request(http.MethodGet, "/oauth/authorize?"+query.Encode(), "", nil, nil)
+	require.Equal(t, http.StatusBadRequest, response.Code)
+	assert.Empty(t, response.Header().Get("Location"))
+}
+
 func TestOAuthPromptDirectsTheBrowserToTheConsentScreen(t *testing.T) {
 	harness := newOAuthHTTPHarness(t)
 	client := createBrowserClient(t, harness.oauthHarness)
@@ -678,9 +779,10 @@ func TestOAuthPromptDirectsTheBrowserToTheConsentScreen(t *testing.T) {
 	// instead of redirecting to a screen nobody asked to see.
 	query.Set("prompt", "none")
 	silent := harness.request(http.MethodGet, "/oauth/authorize?"+query.Encode(), "", nil, map[string]string{"Cookie": "session"})
-	require.Equal(t, http.StatusBadRequest, silent.Code, silent.Body.String())
-	assert.Empty(t, silent.Header().Get("Location"))
-	assert.Equal(t, "consent_required", decodeProtocolError(t, silent).Code)
+	require.Equal(t, http.StatusFound, silent.Code, silent.Body.String())
+	silentURL, err := url.Parse(silent.Header().Get("Location"))
+	require.NoError(t, err)
+	assert.Equal(t, "consent_required", silentURL.Query().Get("error"))
 
 	// A well-formed request that the service still rejects keeps reporting
 	// invalid_request, so adding the screen did not widen consent_required.

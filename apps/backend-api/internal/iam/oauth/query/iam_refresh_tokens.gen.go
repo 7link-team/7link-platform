@@ -28,6 +28,7 @@ func newRefreshToken(db *gorm.DB, opts ...gen.DOOption) refreshToken {
 
 	tableName := _refreshToken.refreshTokenDo.TableName()
 	_refreshToken.ALL = field.NewAsterisk(tableName)
+	_refreshToken.GrantID = field.NewString(tableName, "grant_id")
 	_refreshToken.IDHash = field.NewString(tableName, "id_hash")
 	_refreshToken.FamilyID = field.NewString(tableName, "family_id")
 	_refreshToken.PrincipalID = field.NewField(tableName, "principal_id")
@@ -50,6 +51,7 @@ type refreshToken struct {
 	refreshTokenDo refreshTokenDo
 
 	ALL         field.Asterisk
+	GrantID     field.String
 	IDHash      field.String
 	FamilyID    field.String
 	PrincipalID field.Field
@@ -78,6 +80,7 @@ func (r refreshToken) As(alias string) *refreshToken {
 
 func (r *refreshToken) updateTableName(table string) *refreshToken {
 	r.ALL = field.NewAsterisk(table)
+	r.GrantID = field.NewString(table, "grant_id")
 	r.IDHash = field.NewString(table, "id_hash")
 	r.FamilyID = field.NewString(table, "family_id")
 	r.PrincipalID = field.NewField(table, "principal_id")
@@ -118,7 +121,8 @@ func (r *refreshToken) GetFieldByName(fieldName string) (field.OrderExpr, bool) 
 }
 
 func (r *refreshToken) fillFieldMap() {
-	r.fieldMap = make(map[string]field.Expr, 12)
+	r.fieldMap = make(map[string]field.Expr, 13)
+	r.fieldMap["grant_id"] = r.GrantID
 	r.fieldMap["id_hash"] = r.IDHash
 	r.fieldMap["family_id"] = r.FamilyID
 	r.fieldMap["principal_id"] = r.PrincipalID

@@ -494,7 +494,10 @@ func (s *Service) ServeSAMLSLO(api huma.API, ctx huma.Context, tenantID guid.ID)
 		return
 	}
 
-	s.authn.Logout(ctx.Context(), ctx.Header("Cookie"))
+	if _, err := s.authn.Logout(ctx.Context(), ctx.Header("Cookie")); err != nil {
+		writeSAMLError(api, ctx, http.StatusServiceUnavailable, federationi18n.SAMLUnavailable)
+		return
+	}
 	ctx.AppendHeader("Set-Cookie", s.authn.ClearCookie())
 	event := audit.NewDomainEvent(ctx.Context(), tenantID, "federation_saml_slo", "service_provider", 0)
 	event.Detail["service_provider"] = logout.Issuer.Value

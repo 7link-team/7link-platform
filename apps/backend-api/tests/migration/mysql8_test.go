@@ -43,8 +43,10 @@ func TestIAMMigrationsOnRealMySQL8(t *testing.T) {
 	for _, prefix := range []string{"", deploymentPrefix} {
 		t.Run(prefixTestName(prefix), func(t *testing.T) {
 			verifyTodoBoundaryUpgrade(t, db, "mysql", prefix)
+			verifyOAuthGrantMigration(t, db, "mysql", "grant_"+prefix)
 			verifyProvisioningActorDataLifecycle(t, db, "mysql", prefix+"actor_", true)
 			assertRealMySQLUp(t, gormDB, modules, prefix)
+			verifyProvisioningCoordinationRollback(t, db, gormDB, "mysql", prefix)
 			assertRealMySQLSchemaSet(t, db, prefix)
 			fieldSource := (&iamcore.Module{}).MigrationSource()
 			fieldSource.Prefix = prefix

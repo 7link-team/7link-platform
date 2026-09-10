@@ -99,6 +99,15 @@ func (store *fakeS3) handleBucket(writer http.ResponseWriter, request *http.Requ
 			fakeS3Error(writer, http.StatusNotFound, "NoSuchBucket", "bucket does not exist")
 			return
 		}
+		if request.URL.Query().Has("object-lock") {
+			lock := "Disabled"
+			if store.objectLock {
+				lock = "Enabled"
+			}
+			writer.Header().Set("Content-Type", "application/xml")
+			_, _ = fmt.Fprintf(writer, `<ObjectLockConfiguration><ObjectLockEnabled>%s</ObjectLockEnabled></ObjectLockConfiguration>`, lock)
+			return
+		}
 		store.writeList(writer, request)
 	default:
 		fakeS3Error(writer, http.StatusMethodNotAllowed, "MethodNotAllowed", "unsupported method")

@@ -266,7 +266,7 @@ func TestAuthnOpenAPIDeclaresRuntimeErrorsWithOneEnvelope(t *testing.T) {
 		"authn-create-passkey-session-challenge":      {"403", "422", "500", "503"},
 		"authn-create-passkey-session-verification":   {"401", "403", "500", "503"},
 		"authn-get-current-session":                   {"401", "403", "503"},
-		"authn-delete-current-session":                {"403"},
+		"authn-delete-current-session":                {"403", "503"},
 		"authn-list-sessions":                         {"401", "403", "500", "503"},
 		"authn-delete-session":                        {"401", "403", "404", "500", "503"},
 		"authn-delete-sessions":                       {"401", "403", "500", "503"},

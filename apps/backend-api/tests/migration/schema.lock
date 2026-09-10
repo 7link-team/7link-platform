@@ -566,6 +566,10 @@
       "sha256": "d227552bba434baf7ab280bbb28c5a6ac2f1e90546a2c8b0b1bfb1955d24f8df"
     },
     {
+      "path": "oauth/sql/mysql/00010_grant_incarnation.sql",
+      "sha256": "2fe11fb50941c034913846d1f36863536b9fe31d5f57c4910c8ce6fd735e5c0f"
+    },
+    {
       "path": "oauth/sql/postgres/00001_clients.sql",
       "sha256": "d3769573359bbfbd1fa1dbae0dc181f8cfe1661e06a6343fe1dd5bc68a9aadae"
     },
@@ -602,6 +606,10 @@
       "sha256": "fbf8b8726dd25b73ef153046020b9eff8a76c0462aa47f847bd2c1b45115bb56"
     },
     {
+      "path": "oauth/sql/postgres/00010_grant_incarnation.sql",
+      "sha256": "2fe11fb50941c034913846d1f36863536b9fe31d5f57c4910c8ce6fd735e5c0f"
+    },
+    {
       "path": "oauth/sql/sqlite/00001_clients.sql",
       "sha256": "574b42bd8059861fb1e849bd7354b4732bd5774def52ae97aa14b246ccb8cb1e"
     },
@@ -636,6 +644,10 @@
     {
       "path": "oauth/sql/sqlite/00009_principal_erasure_guards.sql",
       "sha256": "e2f7d88a69d327ee6583a8f86ff0080c1488e915c4fafec8754d746bad1687ae"
+    },
+    {
+      "path": "oauth/sql/sqlite/00010_grant_incarnation.sql",
+      "sha256": "2fe11fb50941c034913846d1f36863536b9fe31d5f57c4910c8ce6fd735e5c0f"
     },
     {
       "path": "organization/sql/mysql/00001_departments.sql",
@@ -766,6 +778,10 @@
       "sha256": "8d7982c43df928111fb5ab52b05461dbebb060e7891ac231bab0e22313ff0ff3"
     },
     {
+      "path": "provisioning/sql/mysql/00006_outbound_coordination.sql",
+      "sha256": "cd0fc0aff5b224c9a4e50a52eedf027b2cc163036f19ab67aa4ad844f433ded6"
+    },
+    {
       "path": "provisioning/sql/postgres/00001_scim.sql",
       "sha256": "b4da32be6dba9421a9822e89cf7a9788d40a00a58fbdd809c701cff432a44403"
     },
@@ -786,6 +802,10 @@
       "sha256": "c5d279f6f90d130598aeb8bf1dcc90fdce72ed9ce1ed35af03f0dde01194b43b"
     },
     {
+      "path": "provisioning/sql/postgres/00006_outbound_coordination.sql",
+      "sha256": "e4272dc7f89cc4199f8766211257540131d94783bbbe81c8004bd8cb413ef054"
+    },
+    {
       "path": "provisioning/sql/sqlite/00001_scim.sql",
       "sha256": "397c8331188744f0f51467878f6530cb0fe97190c4e5d498386024658e006a40"
     },
@@ -804,6 +824,10 @@
     {
       "path": "provisioning/sql/sqlite/00005_principal_erasure_guards.sql",
       "sha256": "334db372f596bcc261101cb048acdc36468fd116716e717b8e557eaffb64c413"
+    },
+    {
+      "path": "provisioning/sql/sqlite/00006_outbound_coordination.sql",
+      "sha256": "23a074edb591beb38673314b487946b5e45e14ee9ec734abfede1e9b3c5f3b7f"
     }
   ]
 }

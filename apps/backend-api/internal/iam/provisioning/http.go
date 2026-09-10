@@ -202,6 +202,10 @@ func provisioningError(err error) error {
 		return huma.Error409Conflict(provisioningi18n.TargetNameExists)
 	case errors.Is(err, ErrTargetVersion):
 		return huma.Error409Conflict(provisioningi18n.TargetVersion)
+	case errors.Is(err, ErrTargetBusy):
+		return huma.Error409Conflict(provisioningi18n.TargetBusy)
+	case errors.Is(err, ErrTargetRetiring):
+		return huma.Error409Conflict(provisioningi18n.TargetRetiring)
 	case errors.Is(err, ErrTargetKeyMissing):
 		return huma.Error422UnprocessableEntity(provisioningi18n.TargetKeyMissing)
 	case errors.Is(err, ErrTargetDisabled):
@@ -759,7 +763,7 @@ func registerTargetHTTP(api huma.API, service *Service, registrar *authz.Registr
 		}
 		return respx.OK(ctx, item), nil
 	})
-	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-delete-scim-target", Method: http.MethodDelete, Path: "/iam/scim/targets/{target_id}", Summary: "Delete an outbound SCIM target", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity}}, guard, func(ctx context.Context, in *targetIDInput) (*respx.Body[map[string]bool], error) {
+	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-delete-scim-target", Method: http.MethodDelete, Path: "/iam/scim/targets/{target_id}", Summary: "Delete an outbound SCIM target", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity}}, guard, func(ctx context.Context, in *targetIDInput) (*respx.Body[map[string]bool], error) {
 		tenantID, err := parseProvisioningID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -773,7 +777,7 @@ func registerTargetHTTP(api huma.API, service *Service, registrar *authz.Registr
 		}
 		return respx.OK(ctx, map[string]bool{"deleted": true}), nil
 	})
-	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-retire-scim-target", Method: http.MethodPost, Path: "/iam/scim/targets/{target_id}/retire", Summary: "Deprovision everything an outbound SCIM target provisions, then delete it", Description: "Deleting a target is refused while it still provisions remote resources, because the mapping and bearer token that reach those accounts would go with it. This removes the remote accounts first and deletes the target once none are left. A remote that refuses leaves the target, its credentials and the remaining mappings in place; calling this again resumes where it stopped.", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusBadGateway}}, guard, func(ctx context.Context, in *targetIDInput) (*respx.Body[map[string]int], error) {
+	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-retire-scim-target", Method: http.MethodPost, Path: "/iam/scim/targets/{target_id}/retire", Summary: "Deprovision everything an outbound SCIM target provisions, then delete it", Description: "Retirement blocks new provisioning and configuration changes, removes remote resources in pages, and deletes the target only once none remain. A definitive remote refusal preserves credentials and progress so another call can resume. A timeout, disconnect, asynchronous acceptance, or failed local completion leaves an unfinished operation that requires verified remote recovery; retrying never expires that protection.", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusBadGateway}}, guard, func(ctx context.Context, in *targetIDInput) (*respx.Body[map[string]int], error) {
 		tenantID, err := parseProvisioningID(in.TenantID)
 		if err != nil {
 			return nil, err

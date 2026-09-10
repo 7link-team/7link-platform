@@ -38,6 +38,50 @@ func (verifier fixedTokenVerifier) Authenticate(context.Context, string, string)
 	return verifier.claims, nil
 }
 
+func TestLogoutStorageFailurePreservesSessionUntilRetry(t *testing.T) {
+	db, web, principalID := newAuthenticationService(t)
+	_, api := humatest.New(t)
+	RegisterHTTP(api, web, web)
+	token, err := web.CreateSession(t.Context(), parseGUID(principalID), time.Now().UTC(), authnext.Assurance{Level: 1, Methods: []string{"pwd"}})
+	require.NoError(t, err)
+	cookie := web.SessionCookie(token)
+	writeFailure := errors.New("injected session write failure")
+	require.NoError(t, db.Callback().Update().Before("gorm:update").Register("test:logout_failure", func(tx *gorm.DB) {
+		if strings.HasSuffix(tx.Statement.Table, "iam_sessions") {
+			_ = tx.AddError(writeFailure)
+		}
+	}))
+	t.Cleanup(func() { _ = db.Callback().Update().Remove("test:logout_failure") })
+	location, err := web.Logout(t.Context(), cookie)
+	require.ErrorIs(t, err, writeFailure)
+	assert.Empty(t, location)
+	failed := api.Delete("/authn/sessions/current", "Cookie: "+cookie, "Origin: https://app.example")
+	require.Equal(t, http.StatusServiceUnavailable, failed.Code, failed.Body.String())
+	assert.Empty(t, failed.Header().Values("Set-Cookie"))
+	assert.NotContains(t, failed.Body.String(), "logout_url")
+	_, err = web.Authenticate(t.Context(), "", cookie)
+	require.NoError(t, err, "failed revocation must remain visible as an active session")
+	require.NoError(t, db.Callback().Update().Remove("test:logout_failure"))
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err = web.Logout(canceled, cookie)
+	require.ErrorIs(t, err, context.Canceled)
+	_, err = web.Authenticate(t.Context(), "", cookie)
+	require.NoError(t, err)
+	retry := api.Delete("/authn/sessions/current", "Cookie: "+cookie, "Origin: https://app.example")
+	require.Equal(t, http.StatusOK, retry.Code, retry.Body.String())
+	assert.Contains(t, retry.Header().Get("Set-Cookie"), "Max-Age=0")
+	_, err = web.Authenticate(t.Context(), "", cookie)
+	require.Error(t, err)
+	for _, previous := range []string{cookie, "", web.SessionCookie("unknown")} {
+		_, err = web.Logout(t.Context(), previous)
+		require.NoError(t, err, "logout is idempotent after confirmed revocation")
+	}
+	web.repo = nil
+	_, err = web.Logout(t.Context(), cookie)
+	require.ErrorContains(t, err, "authentication storage unavailable")
+}
+
 func TestAuthenticationHTTPFlow(t *testing.T) {
 	db, web, principalID := newAuthenticationService(t)
 	_, api := humatest.New(t)

@@ -1,4 +1,12 @@
 {
+  "sessionVerificationFailed": "暂时无法验证会话，请检查网络后重试。目前无法确认您的登录状态。",
+  "logoutFailed": "无法确认退出成功，会话可能仍然有效。请在离开此设备前重试。",
+  "noAvailableTenants": "此账户没有可用的活跃工作区。",
+  "authorizedApplications": "已授权应用",
+  "authorizedApplicationsDescription": "查看所有工作区中您授权过的应用。撤销授权将终止应用对您账户的访问。",
+  "noAuthorizedApplications": "您尚未授权任何应用。",
+  "authorizedScopes": "授权范围",
+  "revokeApplicationConfirm": "撤销 {name} 的授权？这将终止该应用的授权，并使其已获得的账户令牌失效。",
   "switchWorkspace": "切换工作空间",
   "tenantPerspective": "租户视角",
   "entityPerspective": "主体视角",

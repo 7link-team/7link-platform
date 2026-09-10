@@ -376,6 +376,8 @@ type mfaConfirmationOutput struct {
 
 // RegisterHTTP registers the authn module's HTTP operations.
 func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
+	web.registerSharedSecurity(a)
+	defer documentSharedSecurity(a)
 	authenticated := authz.NewAuthenticationOnlyRegistrar(authenticator)
 	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
 		OperationID: "authn-me",
@@ -557,12 +559,15 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 	authz.RegisterPublic(a, huma.Operation{
 		OperationID: "authn-delete-current-session", Method: http.MethodDelete, Path: "/authn/sessions/current",
 		Summary: "Destroy the browser session", Tags: []string{"authn"},
-		Errors: []int{http.StatusForbidden},
+		Errors: []int{http.StatusForbidden, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *logoutInput) (*logoutOutput, error) {
 		if err := web.ValidateCSRF(http.MethodDelete, in.Origin, in.Cookie, in.Authorization); err != nil {
 			return nil, huma.Error403Forbidden("csrf_rejected")
 		}
-		logoutURL := web.Logout(ctx, in.Cookie)
+		logoutURL, err := web.Logout(ctx, in.Cookie)
+		if err != nil {
+			return nil, huma.Error503ServiceUnavailable("authentication_unavailable")
+		}
 		return &logoutOutput{SetCookie: web.ClearCookie(), Body: respx.OK(ctx, logoutData{LogoutURL: logoutURL}).Body}, nil
 	})
 	authz.RegisterAuthenticated(authenticated, a, huma.Operation{

@@ -150,9 +150,14 @@ func (s *Service) ReplaceTarget(ctx context.Context, tenantID, id guid.ID, name,
 	if tenantID.Zero() || id.Zero() || name == "" || len(name) > 128 || !validTargetURL(baseURL, s.outbound) || len(bearerToken) > 4096 || version < 1 || (status != TargetActive && status != TargetDisabled) {
 		return Target{}, ErrInvalidTarget
 	}
+	op, err := s.claimTarget(ctx, tenantID, id, "replace", false, "", 0)
+	if err != nil {
+		return Target{}, err
+	}
+	defer op.release()
 	now := s.now().UTC().Truncate(time.Millisecond)
 	var updated targetRow
-	err := s.repo.runInTx(ctx, func(repo *Repository) error {
+	err = s.repo.runInTx(ctx, func(repo *Repository) error {
 		current, err := repo.getTarget(ctx, tenantID, id)
 		if err != nil {
 			return err
@@ -201,7 +206,12 @@ func (s *Service) DeleteTarget(ctx context.Context, tenantID, id guid.ID) error 
 	if tenantID.Zero() || id.Zero() {
 		return ErrInvalidTarget
 	}
-	err := s.repo.runInTx(ctx, func(repo *Repository) error {
+	op, err := s.claimTarget(ctx, tenantID, id, "delete", true, "", 0)
+	if err != nil {
+		return err
+	}
+	defer op.release()
+	err = s.repo.runInTx(ctx, func(repo *Repository) error {
 		if _, err := repo.getTarget(ctx, tenantID, id); err != nil {
 			return err
 		}
@@ -244,22 +254,27 @@ func (s *Service) RetireTarget(ctx context.Context, tenantID, id guid.ID) (int, 
 	// Deprovisioning talks to the remote, which a disabled target may not do.
 	// Rather than make an exception here, retirement asks for the same target
 	// state every other outbound call asks for.
-	if _, err := s.repo.getTarget(ctx, tenantID, id); err != nil {
+	if err := s.markRetiring(ctx, tenantID, id); err != nil {
 		return 0, err
 	}
-	mappings, err := s.repo.listTargetResources(ctx, id)
-	if err != nil {
-		return 0, fmt.Errorf("list SCIM target resource mappings: %w", err)
-	}
 	deprovisioned := 0
-	for _, mapping := range mappings {
-		if mapping.DeletedAt != nil || mapping.ExternalID == "" {
-			continue
+	for {
+		mappings, err := s.repo.targetResourcePage(ctx, id, "", 0, syncPageSize)
+		if err != nil {
+			return deprovisioned, err
 		}
-		if err := s.DeprovisionResource(ctx, tenantID, id, mapping.ResourceType, mapping.ResourceID); err != nil {
-			return deprovisioned, fmt.Errorf("retire SCIM target: %w", err)
+		if len(mappings) == 0 {
+			break
 		}
-		deprovisioned++
+		for _, mapping := range mappings {
+			if mapping.DeletedAt != nil || mapping.ExternalID == "" {
+				continue
+			}
+			if err := s.DeprovisionResource(ctx, tenantID, id, mapping.ResourceType, mapping.ResourceID); err != nil {
+				return deprovisioned, fmt.Errorf("retire SCIM target: %w", err)
+			}
+			deprovisioned++
+		}
 	}
 	if err := s.DeleteTarget(ctx, tenantID, id); err != nil {
 		return deprovisioned, err
@@ -270,6 +285,10 @@ func (s *Service) RetireTarget(ctx context.Context, tenantID, id guid.ID) (int, 
 // PushResource PUTs the current local user or group to the target. The mapping
 // is upserted with the remote id so later pushes and deprovisioning reuse it.
 func (s *Service) PushResource(ctx context.Context, tenantID, targetID guid.ID, resourceType string, resourceID guid.ID) (PushResult, error) {
+	return s.pushResource(ctx, tenantID, targetID, resourceType, resourceID, false)
+}
+
+func (s *Service) pushResource(ctx context.Context, tenantID, targetID guid.ID, resourceType string, resourceID guid.ID, liveOnly bool) (PushResult, error) {
 	resourceType = strings.TrimSpace(resourceType)
 	if tenantID.Zero() || targetID.Zero() || resourceID.Zero() || (resourceType != ResourceUser && resourceType != ResourceGroup) {
 		return PushResult{}, ErrInvalidTarget
@@ -278,6 +297,20 @@ func (s *Service) PushResource(ctx context.Context, tenantID, targetID guid.ID, 
 	// state between concurrent operations.
 	unlock := s.lockPushResource(targetID, resourceType, resourceID)
 	defer unlock()
+	op, err := s.claimTarget(ctx, tenantID, targetID, "push", false, resourceType, resourceID)
+	if err != nil {
+		return PushResult{}, err
+	}
+	defer op.release()
+	if liveOnly {
+		mapping, err := s.repo.getTargetResource(ctx, targetID, resourceType, resourceID)
+		if errors.Is(err, gorm.ErrRecordNotFound) || (err == nil && (mapping.DeletedAt != nil || mapping.ExternalID == "")) {
+			return PushResult{}, ErrDeprovisionMissing
+		}
+		if err != nil {
+			return PushResult{}, err
+		}
+	}
 	target, err := s.repo.getTarget(ctx, tenantID, targetID)
 	if err != nil {
 		return PushResult{}, err
@@ -314,6 +347,24 @@ func (s *Service) PushResource(ctx context.Context, tenantID, targetID guid.ID, 
 	request.Header.Set("Authorization", "Bearer "+bearer)
 	request.Header.Set("Content-Type", SCIMContentType)
 	request.Header.Set("Accept", SCIMContentType)
+	// Commit an intent before any remote I/O. The normal live-mapping erasure
+	// guard now also covers the first PUT and explicit reprovisioning.
+	now := s.now().UTC().Truncate(time.Millisecond)
+	err = s.repo.runInTx(ctx, func(repo *Repository) error {
+		mapping, err := repo.getTargetResource(ctx, targetID, resourceType, resourceID)
+		if err == nil && mapping.DeletedAt == nil && mapping.ExternalID != "" {
+			return nil
+		}
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		row := targetResourceRow{TargetID: targetID, ResourceType: resourceType, ResourceID: resourceID, ExternalID: payload.externalID, Version: 1, CreatedAt: now, UpdatedAt: now}
+		return repo.upsertTargetResource(ctx, &row)
+	})
+	if err != nil {
+		return PushResult{}, err
+	}
+	op.uncertain = true
 	response, err := s.http.Do(request)
 	if err != nil {
 		return PushResult{}, fmt.Errorf("%w: %w", ErrRemoteUnavailable, err)
@@ -323,6 +374,12 @@ func (s *Service) PushResource(ctx context.Context, tenantID, targetID guid.ID, 
 			slog.Warn("close SCIM push response", "error", err)
 		}
 	}()
+	if remoteRequestRejected(response.StatusCode) {
+		op.uncertain = false
+	}
+	if response.StatusCode == http.StatusAccepted {
+		return PushResult{}, fmt.Errorf("%w: asynchronous remote completion is unresolved", ErrRemoteUnavailable)
+	}
 	responseBody, err := io.ReadAll(io.LimitReader(response.Body, maxRemoteResponseBytes))
 	if err != nil {
 		return PushResult{}, fmt.Errorf("read SCIM push response: %w", err)
@@ -337,7 +394,7 @@ func (s *Service) PushResource(ctx context.Context, tenantID, targetID guid.ID, 
 	if json.Unmarshal(responseBody, &created) == nil && created.ID != "" {
 		remoteID = created.ID
 	}
-	now := s.now().UTC().Truncate(time.Millisecond)
+	now = s.now().UTC().Truncate(time.Millisecond)
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
 		row := targetResourceRow{TargetID: targetID, ResourceType: resourceType, ResourceID: resourceID, ExternalID: remoteID, Version: 1, CreatedAt: now, UpdatedAt: now}
 		if err := repo.upsertTargetResource(ctx, &row); err != nil {
@@ -350,7 +407,10 @@ func (s *Service) PushResource(ctx context.Context, tenantID, targetID guid.ID, 
 		if event.PrincipalID == 0 {
 			event.PrincipalID = actorID(target.ServiceAccountID)
 		}
-		return s.appender(ctx, repo.writer(), event)
+		if err := s.appender(ctx, repo.writer(), event); err != nil {
+			return err
+		}
+		return op.finish(ctx, repo)
 	})
 	if err != nil {
 		return PushResult{}, fmt.Errorf("record SCIM push mapping: %w", err)
@@ -367,6 +427,11 @@ func (s *Service) DeprovisionResource(ctx context.Context, tenantID, targetID gu
 	}
 	unlock := s.lockPushResource(targetID, resourceType, resourceID)
 	defer unlock()
+	op, err := s.claimTarget(ctx, tenantID, targetID, "deprovision", true, resourceType, resourceID)
+	if err != nil {
+		return err
+	}
+	defer op.release()
 	target, err := s.repo.getTarget(ctx, tenantID, targetID)
 	if err != nil {
 		return err
@@ -404,6 +469,7 @@ func (s *Service) DeprovisionResource(ctx context.Context, tenantID, targetID gu
 	}
 	request.Header.Set("Authorization", "Bearer "+bearer)
 	request.Header.Set("Accept", SCIMContentType)
+	op.uncertain = true
 	response, err := s.http.Do(request)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrRemoteUnavailable, err)
@@ -413,6 +479,12 @@ func (s *Service) DeprovisionResource(ctx context.Context, tenantID, targetID gu
 			slog.Warn("close SCIM deprovision response", "error", err)
 		}
 	}()
+	if remoteRequestRejected(response.StatusCode) && response.StatusCode != http.StatusNotFound {
+		op.uncertain = false
+	}
+	if response.StatusCode == http.StatusAccepted {
+		return fmt.Errorf("%w: asynchronous remote completion is unresolved", ErrRemoteUnavailable)
+	}
 	responseBody, err := io.ReadAll(io.LimitReader(response.Body, maxRemoteResponseBytes))
 	if err != nil {
 		return err
@@ -431,7 +503,10 @@ func (s *Service) DeprovisionResource(ctx context.Context, tenantID, targetID gu
 		if event.PrincipalID == 0 {
 			event.PrincipalID = actorID(target.ServiceAccountID)
 		}
-		return s.appender(ctx, repo.writer(), event)
+		if err := s.appender(ctx, repo.writer(), event); err != nil {
+			return err
+		}
+		return op.finish(ctx, repo)
 	})
 	if err != nil {
 		return fmt.Errorf("record SCIM deprovision: %w", err)
@@ -575,13 +650,9 @@ func trimRemoteDetail(body []byte) string {
 	return strings.ReplaceAll(detail, "\n", " ")
 }
 
-// SyncTarget reconciles all mapped resources for a target by pushing every
-// active resource that has a local mapping. Missing remote resources are
-// re-created; existing ones are updated. Returns the count of synced resources.
-//
-// ponytail: full incremental sync (drift detection, auto-deprovision on
-// disable, outbound bulk) deferred to a scheduled-worker delivery. This
-// provides the on-demand reconciliation primitive.
+// SyncTarget reconciles one bounded page and persists its cursor for the next
+// call. Only mappings still live after acquiring the operation claim are
+// pushed. It reports partial progress together with any per-resource failures.
 func (s *Service) SyncTarget(ctx context.Context, tenantID, targetID guid.ID) (int, error) {
 	if tenantID.Zero() || targetID.Zero() {
 		return 0, ErrInvalidTarget
@@ -599,22 +670,40 @@ func (s *Service) SyncTarget(ctx context.Context, tenantID, targetID guid.ID) (i
 	if err := s.requireServiceAccount(ctx, s.repo, tenantID, target.ServiceAccountID); err != nil {
 		return 0, err
 	}
-	mappings, err := s.repo.listTargetResources(ctx, targetID)
+	if target.Retiring {
+		return 0, ErrTargetRetiring
+	}
+	ctx, cancel := context.WithTimeout(ctx, syncBatchTimeout)
+	defer cancel()
+	mappings, err := s.repo.targetResourcePage(ctx, targetID, target.SyncResourceType, target.SyncResourceID, syncPageSize)
 	if err != nil {
 		return 0, fmt.Errorf("list SCIM target resource mappings: %w", err)
 	}
 	synced := 0
 	deprovisioned := 0
+	var failures []error
+	afterType, afterID := target.SyncResourceType, target.SyncResourceID
 	for _, m := range mappings {
+		if err := ctx.Err(); err != nil {
+			failures = append(failures, err)
+			break
+		}
+		afterType, afterID = m.ResourceType, m.ResourceID
 		if m.DeletedAt != nil {
 			continue
 		}
-		_, err := s.PushResource(ctx, tenantID, targetID, m.ResourceType, m.ResourceID)
+		_, err := s.pushResource(ctx, tenantID, targetID, m.ResourceType, m.ResourceID, true)
 		if err != nil {
+			if errors.Is(err, ErrDeprovisionMissing) {
+				continue
+			}
 			// The local resource no longer exists (deleted in the platform);
 			// drift-detection auto-deprovisions it from the target.
 			if errors.Is(err, ErrResourceMissing) {
 				if derr := s.DeprovisionResource(ctx, tenantID, targetID, m.ResourceType, m.ResourceID); derr != nil {
+					if !errors.Is(derr, ErrDeprovisionMissing) {
+						failures = append(failures, derr)
+					}
 					slog.Warn("SCIM sync auto-deprovision failed", "target", targetID, "resource", m.ResourceID, "error", derr)
 				} else {
 					deprovisioned++
@@ -622,6 +711,7 @@ func (s *Service) SyncTarget(ctx context.Context, tenantID, targetID guid.ID) (i
 				continue
 			}
 			slog.Warn("SCIM sync push failed", "target", targetID, "resource", m.ResourceID, "error", err)
+			failures = append(failures, err)
 			continue
 		}
 		synced++
@@ -629,5 +719,23 @@ func (s *Service) SyncTarget(ctx context.Context, tenantID, targetID guid.ID) (i
 	if deprovisioned > 0 {
 		slog.Info("SCIM sync auto-deprovisioned missing resources", "target", targetID, "count", deprovisioned)
 	}
-	return synced, nil
+	if len(mappings) < syncPageSize && ctx.Err() == nil {
+		afterType, afterID = "", 0
+	}
+	// Checkpoint even when the batch deadline fired. A compare-and-swap keeps
+	// a concurrent batch from rewinding an already advanced cursor.
+	checkpointCtx, checkpointCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer checkpointCancel()
+	updates := map[string]any{"sync_resource_type": afterType, "sync_resource_id": afterID, "sync_failures": 0, "sync_after_ms": 0}
+	if len(failures) > 0 {
+		attempts := min(target.SyncFailures+1, int64(10))
+		updates["sync_failures"] = attempts
+		updates["sync_after_ms"] = s.now().Add(time.Second * time.Duration(1<<uint(attempts))).UnixMilli()
+	}
+	if err := s.repo.writer().WithContext(checkpointCtx).Table(s.repo.table("iam_scim_targets")).
+		Where("id = ? AND tenant_id = ? AND sync_resource_type = ? AND sync_resource_id = ? AND sync_failures = ?", targetID, tenantID, target.SyncResourceType, target.SyncResourceID, target.SyncFailures).
+		Updates(updates).Error; err != nil {
+		failures = append(failures, err)
+	}
+	return synced, errors.Join(failures...)
 }

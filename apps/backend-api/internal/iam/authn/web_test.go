@@ -130,7 +130,9 @@ func TestBootstrapLoginSessionAndBearerLifecycle(t *testing.T) {
 	assert.Equal(t, principalID, bearerClaims.PrincipalID)
 	assert.Equal(t, "openid", tokenPayloadString(t, accessToken, "scope"))
 
-	assert.Equal(t, service.web.PostLogoutURL, service.Logout(t.Context(), cookie))
+	logoutURL, err := service.Logout(t.Context(), cookie)
+	require.NoError(t, err)
+	assert.Equal(t, service.web.PostLogoutURL, logoutURL)
 	_, err = service.Authenticate(t.Context(), "", cookie)
 	assert.ErrorIs(t, err, ErrInvalidSession)
 }
@@ -314,6 +316,11 @@ func TestSubjectAndIDTokenVariantsAndEnrichment(t *testing.T) {
 	service, err := NewWebService(
 		config, harness.repository,
 		WithClaimEnricher(enricher),
+		WithOAuthGrantValidator(func(_ context.Context, claims *authnext.Claims) error {
+			assert.Equal(t, "browser", claims.ClientID)
+			assert.Equal(t, "current-grant", claims.OAuthGrantID)
+			return nil
+		}),
 		WithVerifiedHook(func(context.Context, *gorm.DB, guid.ID, string, time.Time) error { verified = true; return nil }),
 	)
 	require.NoError(t, err)
@@ -342,7 +349,7 @@ func TestSubjectAndIDTokenVariantsAndEnrichment(t *testing.T) {
 		t.Context(), principalID, "tenant-a", "7link-api", "openid",
 		authnext.Assurance{
 			AuthTime: repositoryTestNow.Add(-time.Minute), Level: 2,
-			Methods: []string{"pwd", "totp"}, ClientID: "browser", NetworkZone: "trusted",
+			Methods: []string{"pwd", "totp"}, ClientID: "browser", OAuthGrantID: "current-grant", NetworkZone: "trusted",
 		},
 	)
 	require.NoError(t, err)
@@ -367,6 +374,22 @@ func TestSubjectAndIDTokenVariantsAndEnrichment(t *testing.T) {
 	assert.Len(t, contexts, 6)
 	assert.Equal(t, "id_token", contexts[len(contexts)-1].TokenType)
 	assert.Equal(t, "west", tokenPayload(t, access)["ext"].(map[string]any)["region"])
+}
+
+func TestApplicationBearerRequiresAvailableGrantValidator(t *testing.T) {
+	harness := newAuthnRepositoryHarness(t, "")
+	principalID := bootstrapLocalPrincipal(t, harness, "alice", "correct horse battery staple")
+	service, err := NewWebService(localAuthnConfig(), harness.repository)
+	require.NoError(t, err)
+	token, _, err := service.IssueTenantAccessTokenWithAssurance(t.Context(), principalID, "7", "", "openid", authnext.Assurance{
+		ClientID: "22", OAuthGrantID: "current-grant",
+	})
+	require.NoError(t, err)
+	_, err = service.Authenticate(t.Context(), "Bearer "+token, "")
+	assert.ErrorIs(t, err, authnext.ErrInvalidToken, "missing OAuth capability must fail closed")
+	service.oauthGrants = func(context.Context, *authnext.Claims) error { return authnext.ErrUnavailable }
+	_, err = service.Authenticate(t.Context(), "Bearer "+token, "")
+	assert.ErrorIs(t, err, authnext.ErrUnavailable, "storage outages remain server failures")
 }
 
 func TestTokenEnricherFailureIsReturned(t *testing.T) {
@@ -486,7 +509,9 @@ func TestWebServiceDatabaseFailuresFailClosed(t *testing.T) {
 			t.Context(), "Bearer "+bearer, "", "correct horse battery staple", "different horse battery staple",
 		)
 		assert.ErrorContains(t, err, "change password")
-		assert.Equal(t, service.web.PostLogoutURL, service.Logout(t.Context(), service.SessionCookie(login.SessionID)))
+		logoutURL, err := service.Logout(t.Context(), service.SessionCookie(login.SessionID))
+		assert.ErrorContains(t, err, "revoke browser session")
+		assert.Empty(t, logoutURL)
 	})
 
 	t.Run("OAuth client state", func(t *testing.T) {
@@ -760,7 +785,8 @@ func TestWebServiceReachableEdgeBranches(t *testing.T) {
 	assert.ErrorIs(t, err, authnext.ErrDisabled)
 	_, err = disabled.IssueIDToken(t.Context(), 1, "client", "")
 	assert.ErrorIs(t, err, authnext.ErrDisabled)
-	assert.Empty(t, (*Service)(nil).Logout(t.Context(), ""))
+	_, err = (*Service)(nil).Logout(t.Context(), "")
+	assert.ErrorIs(t, err, authnext.ErrDisabled)
 	(*Service)(nil).audit(t.Context(), 1, "ignored", "denied")
 
 	service, harness := newLocalService(t)

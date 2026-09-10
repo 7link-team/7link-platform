@@ -101,7 +101,12 @@ func TestVerifyRejectsBadSignatureAndUnknownKey(t *testing.T) {
 	assert.ErrorIs(t, err, ErrUnknownKey)
 
 	token := key.sign(t, map[string]any{"iss": "https://issuer.example", "sub": "u1", "exp": time.Now().Add(time.Hour).Unix()})
-	_, err = verifier.Verify(context.Background(), token[:len(token)-2]+"xx")
+	parts := strings.Split(token, ".")
+	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
+	require.NoError(t, err)
+	signature[0] ^= 1
+	parts[2] = base64.RawURLEncoding.EncodeToString(signature)
+	_, err = verifier.Verify(context.Background(), strings.Join(parts, "."))
 	assert.Error(t, err)
 }
 
@@ -219,6 +224,7 @@ func TestIdentityClaims(t *testing.T) {
 		"acr":                float64(2),
 		"amr":                []any{"pwd", "totp", 3},
 		"client_id":          "client",
+		"oauth_grant_id":     "current-grant",
 		"network_zone":       "office",
 		"email_verified":     true,
 	}
@@ -233,6 +239,7 @@ func TestIdentityClaims(t *testing.T) {
 	assert.Equal(t, []string{"api", "web"}, claims.Audience)
 	assert.Equal(t, "external-org", claims.OrganizationID)
 	assert.Equal(t, "client", claims.ClientID)
+	assert.Equal(t, "current-grant", claims.OAuthGrantID)
 	assert.Equal(t, "office", claims.NetworkZone)
 	assert.True(t, claims.EmailVerified)
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"7link.com/platform/internal/iam/audit"
@@ -24,19 +25,23 @@ import (
 var ErrUnavailable = errors.New("provisioning service unavailable")
 
 type Module struct {
-	service    *Service
-	runtime    *appenv.Runtime
-	registrar  *authz.Registrar
-	config     Config
-	ids        guid.Source
-	appender   audit.Appender
-	identities identity.IdentityProvisioner
-	actors     identity.ServiceAccountValidator
-	fields     authz.FieldPermissionChecker
-	groups     organization.GroupProvisioner
-	syncCancel context.CancelFunc
-	syncDone   chan struct{}
-	syncMu     sync.Mutex
+	service         *Service
+	runtime         *appenv.Runtime
+	registrar       *authz.Registrar
+	config          Config
+	ids             guid.Source
+	appender        audit.Appender
+	identities      identity.IdentityProvisioner
+	actors          identity.ServiceAccountValidator
+	fields          authz.FieldPermissionChecker
+	groups          organization.GroupProvisioner
+	syncCancel      context.CancelFunc
+	syncDone        chan struct{}
+	syncMu          sync.Mutex
+	syncCursor      guid.ID
+	syncRuns        atomic.Int64
+	syncFailures    atomic.Int64
+	syncLastSuccess atomic.Int64
 }
 
 func NewModule(runtime *appenv.Runtime, config Config) *Module {
@@ -174,37 +179,43 @@ func (m *Module) syncLoop(ctx context.Context, done chan<- struct{}) {
 }
 
 func (m *Module) reconcileAll(ctx context.Context) {
-	var tenants []guid.ID
-	err := m.service.repo.writer().WithContext(ctx).Table(m.service.repo.table("iam_tenants")).
-		Where("status = 'active'").Pluck("id", &tenants).Error
+	ctx, cancel := context.WithTimeout(ctx, syncBatchTimeout)
+	defer cancel()
+	m.syncRuns.Add(1)
+	var targets []targetRow
+	err := m.service.repo.writer().WithContext(ctx).Table(m.service.repo.table("iam_scim_targets")).
+		Where("status = ? AND retiring = ? AND id > ? AND sync_after_ms <= ?", TargetActive, false, m.syncCursor, m.service.now().UnixMilli()).
+		Where("tenant_id IN (?)", m.service.repo.writer().Table(m.service.repo.table("iam_tenants")).Select("id").Where("status = 'active'")).
+		Order("id ASC").Limit(syncTargetPageSize).Find(&targets).Error
 	if err != nil {
-		slog.Warn("scim sync: list tenants failed", "error", err)
+		m.syncFailures.Add(1)
+		slog.Warn("scim sync: list targets failed", "error", err)
 		return
 	}
-	for _, tenantID := range tenants {
-		targets, err := m.service.ListTargets(ctx, tenantID)
+	failed := false
+	for _, target := range targets {
+		if ctx.Err() != nil {
+			failed = true
+			break
+		}
+		m.syncCursor = target.ID
+		count, err := m.service.SyncTarget(ctx, target.TenantID, target.ID)
 		if err != nil {
-			slog.Warn("scim sync: list targets failed", "tenant", tenantID, "error", err)
+			failed = true
+			slog.Warn("scim sync: target reconcile failed", "target", target.ID, "error", err)
 			continue
 		}
-		for _, target := range targets {
-			if target.Status != TargetActive {
-				continue
-			}
-			targetID, err := guid.Parse(target.ID)
-			if err != nil {
-				slog.Warn("scim sync: invalid target identifier", "target", target.ID, "error", err)
-				continue
-			}
-			count, err := m.service.SyncTarget(ctx, tenantID, targetID)
-			if err != nil {
-				slog.Warn("scim sync: target reconcile failed", "target", target.ID, "error", err)
-				continue
-			}
-			if count > 0 {
-				slog.Info("scim sync: resources pushed", "target", target.ID, "count", count)
-			}
+		if count > 0 {
+			slog.Info("scim sync: resources pushed", "target", target.ID, "count", count)
 		}
+	}
+	if len(targets) < syncTargetPageSize && ctx.Err() == nil {
+		m.syncCursor = 0
+	}
+	if failed {
+		m.syncFailures.Add(1)
+	} else {
+		m.syncLastSuccess.Store(m.service.now().Unix())
 	}
 }
 

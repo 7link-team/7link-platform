@@ -214,6 +214,12 @@ func (c *oidcClient) verifyWithKeys(issuer, clientID, raw string, keys map[strin
 	if !containsAudience(claims.Audience, clientID) {
 		return idTokenClaims{}, fmt.Errorf("%w: audience mismatch", ErrOIDCTokenInvalid)
 	}
+	// OIDC Core 3.1.3.7: multiple audiences require an authorized party;
+	// whenever supplied, that party must identify this relying party.
+	if (len(claims.Audience) > 1 && claims.AuthorizedParty == nil) ||
+		(claims.AuthorizedParty != nil && *claims.AuthorizedParty != clientID) {
+		return idTokenClaims{}, fmt.Errorf("%w: authorized party mismatch", ErrOIDCTokenInvalid)
+	}
 	nowUnix := now.Unix()
 	skew := int64(c.clockSkew.Seconds())
 	if claims.ExpiresAt <= nowUnix-skew || (claims.NotBefore > 0 && claims.NotBefore > nowUnix+skew) {
@@ -246,6 +252,7 @@ func (a *audClaim) UnmarshalJSON(data []byte) error {
 }
 
 type idTokenClaims struct {
+	AuthorizedParty   *string  `json:"azp"`
 	Issuer            string   `json:"iss"`
 	Subject           string   `json:"sub"`
 	Audience          audClaim `json:"aud"`

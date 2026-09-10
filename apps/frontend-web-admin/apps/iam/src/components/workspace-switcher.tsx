@@ -22,6 +22,8 @@ export function WorkspaceSwitcher({
   tenants,
   entities,
   error,
+  tenantError = "",
+  onRetryTenants,
   onTenant,
   onEntity,
 }: {
@@ -30,12 +32,13 @@ export function WorkspaceSwitcher({
   tenants: Tenant[] | null
   entities: Entity[] | null
   error: string
+  tenantError?: string
+  onRetryTenants?: () => void
   onTenant: (id: string) => void
   onEntity: (id: string) => void
 }) {
   const t = useTranslations("iam")
   const [open, setOpen] = useState(false)
-  const [draft, setDraft] = useState(tenantID)
   const tenantName =
     tenants?.find((tenant) => tenant.id === tenantID)?.name ||
     tenantID ||
@@ -47,7 +50,6 @@ export function WorkspaceSwitcher({
       open={open}
       onOpenChange={(next) => {
         setOpen(next)
-        if (next) setDraft(tenantID)
       }}
     >
       <PopoverTrigger
@@ -77,8 +79,18 @@ export function WorkspaceSwitcher({
             aria-label={t("currentTenant")}
           >
             <h2 className="mb-2 text-sm font-semibold">{t("currentTenant")}</h2>
-            {tenants ? (
+            {tenantError ? (
+              <Alert>
+                <p>{tenantError}</p>
+                <Button variant="outline" onClick={onRetryTenants}>
+                  {t("retryNow")}
+                </Button>
+              </Alert>
+            ) : tenants ? (
               <div className="max-h-60 space-y-1 overflow-y-auto">
+                {tenants.length === 0 && (
+                  <p className="text-sm">{t("noAvailableTenants")}</p>
+                )}
                 {tenants
                   .filter((tenant) => tenant.status === "active")
                   .map((tenant) => (
@@ -101,26 +113,9 @@ export function WorkspaceSwitcher({
                   ))}
               </div>
             ) : (
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  if (draft.trim()) onTenant(draft.trim())
-                }}
-                className="space-y-2"
-              >
-                <label htmlFor="workspace-tenant-id" className="text-sm">
-                  {t("tenantId")}
-                </label>
-                <input
-                  id="workspace-tenant-id"
-                  className="h-11 w-full rounded-md border bg-background px-3 text-sm"
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                />
-                <Button type="submit" variant="outline">
-                  {t("tenantPerspective")}
-                </Button>
-              </form>
+              <p role="status" className="text-sm">
+                {t("loading")}
+              </p>
             )}
           </section>
           <section className="min-w-0" aria-label={t("entityPerspective")}>

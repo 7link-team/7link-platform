@@ -4,6 +4,7 @@
   "additional_verification_required": "Additional verification is required to complete login. Complete the displayed verification step.",
   "invalid_login": "The login name or password is incorrect. Check the credentials or start password recovery.",
   "authentication_unavailable": "The authentication service could not complete the request. Retry later; contact an administrator if the problem continues.",
+  "authentication_rate_limited": "Too many authentication attempts. Wait before trying again.",
   "invalid_mfa_challenge": "The multi-factor authentication challenge or code is invalid or expired. Restart sign-in and use a new code.",
   "passkey_request_rejected": "The passkey request origin is not allowed. Use the configured application address or contact an administrator.",
   "passkey_unavailable": "Passkey authentication could not complete the request. Retry later or use another configured sign-in method.",

@@ -69,6 +69,11 @@ func TestAuthnModuleResolvesDependenciesAndRunsLifecycle(t *testing.T) {
 	require.NoError(t, registry.Register(
 		platformi18n.NewModule(nil, platformi18n.Base),
 		respx.NewModule(nil),
+		&authnDependencyProvider{name: "oauth-grants-test", provide: func(services *module.Services) error {
+			return module.Provide[OAuthGrantValidator](services, OAuthGrantValidator(func(context.Context, *authnext.Claims) error {
+				return assert.AnError
+			}))
+		}},
 		&authnDependencyProvider{name: guid.Name, provide: func(services *module.Services) error {
 			return module.Provide[guid.Source](services, newRepositoryTestIDs(5000))
 		}},
@@ -116,6 +121,8 @@ func TestAuthnModuleResolvesDependenciesAndRunsLifecycle(t *testing.T) {
 	assert.ErrorIs(t, instance.ValidateCSRF(http.MethodPost, "", "", ""), authnext.ErrUnavailable)
 	assert.Empty(t, instance.SessionCookieName())
 	require.NoError(t, registry.Initialize(t.Context()))
+	require.NotNil(t, instance.Service.oauthGrants)
+	assert.ErrorIs(t, instance.Service.oauthGrants(t.Context(), &authnext.Claims{}), assert.AnError)
 	assert.Equal(t, config.Web.CookieName, instance.SessionCookieName())
 	require.NoError(t, instance.CheckHealth(t.Context()))
 	require.NoError(t, registry.Start(t.Context()))

@@ -122,6 +122,7 @@ export default function OAuthClientsPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const [loadError, setLoadError] = useState("")
   const [notice, setNotice] = useState("")
   const [editing, setEditing] = useState<OAuthClient | null | undefined>()
   const [draft, setDraft] = useState<ClientDraft>(emptyDraft)
@@ -129,7 +130,15 @@ export default function OAuthClientsPage() {
   const [secret, setSecret] = useState<SecretResult | null>(null)
 
   const refresh = useCallback(async () => {
-    setClients(await iamApi.oauthClients())
+    try {
+      setClients(await iamApi.oauthClients())
+      setLoadError("")
+    } catch (cause) {
+      setClients([])
+      setLoadError((cause as Error).message)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -141,7 +150,7 @@ export default function OAuthClientsPage() {
           if (active) setClients(next)
         },
         (cause: Error) => {
-          if (active) setError(cause.message)
+          if (active) setLoadError(cause.message)
         }
       )
       .finally(() => {
@@ -258,6 +267,20 @@ export default function OAuthClientsPage() {
         }
       />
       {error && <Alert>{error}</Alert>}
+      {loadError && !loading && (
+        <Alert>
+          <p>{t.has(loadError) ? t(loadError) : loadError}</p>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setLoading(true)
+              void refresh()
+            }}
+          >
+            {t("retryNow")}
+          </Button>
+        </Alert>
+      )}
       {notice && <SuccessNotice>{notice}</SuccessNotice>}
 
       <section className="overflow-hidden rounded-md border bg-card">
@@ -269,7 +292,7 @@ export default function OAuthClientsPage() {
           <span className="text-xs text-muted-foreground">
             {loading
               ? t("loading")
-              : t("clientCount", { count: clients.length })}
+              : !loadError && t("clientCount", { count: clients.length })}
           </span>
         </header>
         <div className="hidden md:block">
@@ -287,7 +310,7 @@ export default function OAuthClientsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {clients.map((client) => (
+              {(loading || loadError ? [] : clients).map((client) => (
                 <TableRow key={client.id}>
                   <TableCell>
                     <strong className="block text-sm">{client.name}</strong>
@@ -326,7 +349,7 @@ export default function OAuthClientsPage() {
                   </TableCell>
                 </TableRow>
               ))}
-              {!loading && clients.length === 0 && (
+              {!loading && !loadError && clients.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="h-52 text-center">
                     <EmptyClients />
@@ -337,7 +360,7 @@ export default function OAuthClientsPage() {
           </Table>
         </div>
         <div className="md:hidden">
-          {clients.map((client) => (
+          {(loading || loadError ? [] : clients).map((client) => (
             <article
               key={client.id}
               className="space-y-3 border-b p-4 last:border-0"
@@ -373,7 +396,7 @@ export default function OAuthClientsPage() {
               />
             </article>
           ))}
-          {!loading && clients.length === 0 && (
+          {!loading && !loadError && clients.length === 0 && (
             <div className="grid h-52 place-items-center text-center">
               <EmptyClients />
             </div>

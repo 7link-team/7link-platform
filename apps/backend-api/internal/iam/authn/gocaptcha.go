@@ -184,9 +184,24 @@ type captchaOutput struct {
 // by the deployment's offering rather than here, so which challenges exist and
 // which a deployment presents stay separate questions.
 func issueCaptchaOf(kind captchaKind) (*captchaOutput, error) {
+	return issueCaptchaWithStore(kind, nil)
+}
+
+func issueCaptchaWithStore(kind captchaKind, store base64Captcha.Store) (*captchaOutput, error) {
+	put := func(id, answer string) error {
+		if store != nil {
+			return store.Set(id, answer)
+		}
+		storeInteractiveAnswer(id, answer)
+		return nil
+	}
 	switch kind {
 	case captchaText:
-		id, encoded, _, err := imageCaptcha.Generate()
+		generator := imageCaptcha
+		if store != nil {
+			generator = base64Captcha.NewCaptcha(captchaDrivers[0], store)
+		}
+		id, encoded, _, err := generator.Generate()
 		if err != nil {
 			return nil, err
 		}
@@ -206,7 +221,9 @@ func issueCaptchaOf(kind captchaKind) (*captchaOutput, error) {
 		if err != nil {
 			return nil, err
 		}
-		storeInteractiveAnswer(id, fmt.Sprintf("S:%d:%d", block.DX, block.DY))
+		if err := put(id, fmt.Sprintf("S:%d:%d", block.DX, block.DY)); err != nil {
+			return nil, err
+		}
 		master, err := data.GetMasterImage().ToBase64()
 		if err != nil {
 			return nil, err
@@ -245,7 +262,9 @@ func issueCaptchaOf(kind captchaKind) (*captchaOutput, error) {
 		if err != nil {
 			return nil, err
 		}
-		storeInteractiveAnswer(id, "C:"+string(dotsJSON))
+		if err := put(id, "C:"+string(dotsJSON)); err != nil {
+			return nil, err
+		}
 		master, err := data.GetMasterImage().ToBase64()
 		if err != nil {
 			return nil, err
@@ -270,14 +289,25 @@ func issueCaptchaOf(kind captchaKind) (*captchaOutput, error) {
 // verifyCaptchaOf validates and consumes one challenge. Whether the deployment
 // offers this kind at all is decided by the offering before this is reached.
 func verifyCaptchaOf(kind captchaKind, id, answer string) bool {
+	return verifyCaptchaWithStore(kind, id, answer, nil)
+}
+
+func verifyCaptchaWithStore(kind captchaKind, id, answer string, store base64Captcha.Store) bool {
 	if id == "" || answer == "" {
 		return false
 	}
+	take := takeInteractiveAnswer
+	if store != nil {
+		take = func(id string) string { return store.Get(id, true) }
+	}
 	switch kind {
 	case captchaText:
+		if store != nil {
+			return store.Verify(id, answer, true)
+		}
 		return imageCaptcha.Verify(id, answer, true)
 	case captchaSlide:
-		stored := takeInteractiveAnswer(id)
+		stored := take(id)
 		var tileX, tileY, userX int
 		if _, err := fmt.Sscanf(stored, "S:%d:%d", &tileX, &tileY); err != nil {
 			return false
@@ -287,7 +317,7 @@ func verifyCaptchaOf(kind captchaKind, id, answer string) bool {
 		}
 		return slide.Validate(tileX, tileY, userX, tileY, slidePadding)
 	case captchaClick:
-		stored := takeInteractiveAnswer(id)
+		stored := take(id)
 		if !strings.HasPrefix(stored, "C:") {
 			return false
 		}

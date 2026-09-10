@@ -39,6 +39,7 @@ func TestIAMProvisioningMigrationsAcrossEngines(t *testing.T) {
 					gormDB := openMilestoneGORM(t, db, engine.dialect)
 					modules := provisioningMigrationModules()
 					assertProvisioningUp(t, gormDB, modules, prefix)
+					verifyProvisioningCoordinationRollback(t, db, gormDB, engine.dialect, prefix)
 					verifyProvisioningContracts(t, db, prefix)
 					verifyProvisioningRollbackGraph(t, db, gormDB, modules, engine.dialect, prefix)
 				})
@@ -50,6 +51,80 @@ func TestIAMProvisioningMigrationsAcrossEngines(t *testing.T) {
 func provisioningMigrationModules() []module.Module {
 	// Deliberately not dependency ordered: the milestone graph owns ordering.
 	return []module.Module{&provisioning.Module{}, &organization.Module{}, &identity.Module{}, &iamcore.Module{}}
+}
+
+// The guard must refuse each unsafe state independently, before any column or
+// row disappears. This helper also runs against the real MySQL gate because
+// its failed DDL transaction leaves the guard table behind.
+func verifyProvisioningCoordinationRollback(t *testing.T, db *sql.DB, gormDB *gorm.DB, dialect, prefix string) {
+	t.Helper()
+	source := (&provisioning.Module{}).MigrationSource()
+	source.Prefix = prefix
+	seedProvisioningRows(t, db, prefix)
+	for _, state := range []struct {
+		name     string
+		token    int64
+		retiring bool
+	}{
+		{name: "unfinished_operation", token: 42},
+		{name: "retirement_in_progress", retiring: true},
+	} {
+		require.NoError(t, execProvisioningSQL(t, db,
+			"UPDATE %siam_scim_targets SET operation_token = %d, retiring = %t, operation_kind = 'push', operation_resource_type = 'Group', operation_resource_id = 500, operation_started_at = '%s', sync_resource_type = 'Group', sync_resource_id = 499, sync_failures = 2, sync_after_ms = 123 WHERE id = 400",
+			prefix, state.token, state.retiring, provisioningTestTime))
+		require.Error(t, goosex.MigrateDownTo(t.Context(), db, source, dialect, 5), state.name)
+		status, err := goosex.Inspect(t.Context(), db, source, dialect)
+		require.NoError(t, err)
+		assert.EqualValues(t, 6, status.Current, state.name)
+		assert.Equal(t, goosex.StateClean, status.State, state.name)
+		var token, resourceID, cursorID, failures, after int64
+		var retiring bool
+		var kind, resourceType, cursorType, name, bearer string
+		var started any
+		require.NoError(t, db.QueryRowContext(t.Context(), "SELECT operation_token, retiring, operation_kind, operation_resource_type, operation_resource_id, operation_started_at, sync_resource_type, sync_resource_id, sync_failures, sync_after_ms, name, bearer_token_ciphertext FROM "+prefix+"iam_scim_targets WHERE id = 400").
+			Scan(&token, &retiring, &kind, &resourceType, &resourceID, &started, &cursorType, &cursorID, &failures, &after, &name, &bearer))
+		assert.Equal(t, state.token, token)
+		assert.Equal(t, state.retiring, retiring)
+		assert.Equal(t, "push", kind)
+		assert.Equal(t, "Group", resourceType)
+		assert.EqualValues(t, 500, resourceID)
+		assert.NotNil(t, started)
+		assert.Equal(t, "Group", cursorType)
+		assert.EqualValues(t, 499, cursorID)
+		assert.EqualValues(t, 2, failures)
+		assert.EqualValues(t, 123, after)
+		assert.Equal(t, "Target", name)
+		assert.Equal(t, "Cipher", bearer)
+		for _, table := range provisioningTables(prefix) {
+			assert.Equal(t, 1, tableRowCount(t, db, table), state.name+": "+table)
+		}
+	}
+	// A normally populated, quiescent target must remain roll-backable; only
+	// clearing all targets would miss the positive COUNT = 0 branch.
+	require.NoError(t, execProvisioningSQL(t, db, "UPDATE %siam_scim_targets SET operation_token = 0, retiring = FALSE WHERE id = 400", prefix))
+	require.NoError(t, goosex.MigrateDownTo(t.Context(), db, source, dialect, 5))
+	status, err := goosex.Inspect(t.Context(), db, source, dialect)
+	require.NoError(t, err)
+	assert.EqualValues(t, 5, status.Current)
+	assert.False(t, gormDB.Migrator().HasColumn(prefix+"iam_scim_targets", "operation_token"))
+	assert.False(t, gormDB.Migrator().HasColumn(prefix+"iam_scim_targets", "retiring"))
+	assertTableExists(t, db, dialect, prefix+"scim_coordination_rollback_guard", false)
+	for _, table := range provisioningTables(prefix) {
+		assert.Equal(t, 1, tableRowCount(t, db, table), "safe down preserves "+table)
+	}
+	require.NoError(t, goosex.MigrateUpTo(t.Context(), db, source, dialect, 6))
+	status, err = goosex.Inspect(t.Context(), db, source, dialect)
+	require.NoError(t, err)
+	assert.EqualValues(t, 6, status.Current)
+	var token int64
+	var retiring bool
+	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT operation_token, retiring FROM "+prefix+"iam_scim_targets WHERE id = 400").Scan(&token, &retiring))
+	assert.Zero(t, token)
+	assert.False(t, retiring)
+	for _, table := range provisioningTables(prefix) {
+		assert.Equal(t, 1, tableRowCount(t, db, table), "safe up preserves "+table)
+	}
+	require.NoError(t, execProvisioningSQL(t, db, "DELETE FROM %siam_tenants WHERE id = 1", prefix))
 }
 
 func verifyProvisioningBaseNeedsOrganization(t *testing.T, db *sql.DB, dialect, prefix string) {
@@ -104,7 +179,7 @@ func assertProvisioningUp(t *testing.T, db *gorm.DB, modules []module.Module, pr
 	assert.Equal(t, "default-menu-translations", milestones[iamcore.Name])
 	assert.Equal(t, "principal-erasure", milestones[organization.Name])
 	assert.Equal(t, "lifecycle", milestones[identity.Name])
-	assert.Equal(t, "principal-erasure", milestones[provisioning.Name])
+	assert.Equal(t, "outbound-coordination", milestones[provisioning.Name])
 }
 
 func verifyProvisioningContracts(t *testing.T, db *sql.DB, prefix string) {

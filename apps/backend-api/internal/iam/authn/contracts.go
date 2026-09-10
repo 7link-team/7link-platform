@@ -18,6 +18,15 @@ type InvitationCredentials interface {
 	InvitationTokenMatches(token, digest string) bool
 }
 
+// OAuthGrantValidator verifies the current application grant for a principal
+// bearer token. The OAuth module supplies this capability without owning authn.
+type OAuthGrantValidator func(context.Context, *authnext.Claims) error
+
+// WithOAuthGrantValidator connects application-grant validation to bearer authentication.
+func WithOAuthGrantValidator(check OAuthGrantValidator) WebOption {
+	return func(service *Service) { service.oauthGrants = check }
+}
+
 // WebService is the authentication workflow consumed by OAuth and federation.
 // The authentication module's concrete service also implements the narrower
 // authz request-path contracts.
@@ -33,7 +42,7 @@ type WebService interface {
 	IssueTenantOAuthClientToken(context.Context, string, string, string, string, string) (string, int64, error)
 	IssueTenantServiceAccountToken(context.Context, string, string, string, string, string, int64) (string, int64, error)
 	JWKS() map[string]any
-	Logout(context.Context, string) string
+	Logout(context.Context, string) (string, error)
 	ResolveReturnURL(string) (string, error)
 	SessionCookie(string) string
 	SessionCookieName() string

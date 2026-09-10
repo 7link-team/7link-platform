@@ -41,6 +41,7 @@ var defaultCaptchaKinds = []captchaKind{captchaText}
 // because the kinds do not all cost the same to defeat.
 type captchaOffering struct {
 	kinds []captchaKind
+	store base64Captcha.Store
 	// testAnswer is empty in any deployment real people use. When it is set,
 	// it is accepted as the answer to any challenge, which is what lets an
 	// automated check get through registration without a way to read an image.
@@ -111,7 +112,7 @@ func (o *captchaOffering) offers(kind captchaKind) bool {
 // issue produces one challenge, picking uniformly among the offered kinds so a
 // deployment that offers more than one does not become predictable.
 func (o *captchaOffering) issue() (*captchaOutput, error) {
-	return issueCaptchaOf(o.kinds[secureIntn(len(o.kinds))])
+	return issueCaptchaWithStore(o.kinds[secureIntn(len(o.kinds))], o.store)
 }
 
 // verify consumes one challenge and reports whether it was answered. A kind the
@@ -124,7 +125,7 @@ func (o *captchaOffering) verify(kind, id, answer string) bool {
 	if id == "" || answer == "" || !o.offers(captchaKind(kind)) {
 		return false
 	}
-	solved := verifyCaptchaOf(captchaKind(kind), id, answer)
+	solved := verifyCaptchaWithStore(captchaKind(kind), id, answer, o.store)
 	if solved || o.testAnswer == "" {
 		return solved
 	}

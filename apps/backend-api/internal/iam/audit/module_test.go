@@ -8,6 +8,7 @@ import (
 
 	auditi18n "7link.com/platform/internal/iam/audit/i18n"
 	"7link.com/platform/internal/infra/guid"
+	healthservice "7link.com/platform/internal/infra/health/service"
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
@@ -227,6 +228,47 @@ type auditMembershipChecker struct{}
 
 func (auditMembershipChecker) IsMemberActive(context.Context, guid.ID, guid.ID) (bool, error) {
 	return true, nil
+}
+
+func TestErasureLedgerOptionalRuntimeHealth(t *testing.T) {
+	h := newAuditHarness(t, "")
+	fixture := newFakeS3()
+	store, _ := fakeAnchorStore(t, fixture, "health-ledger")
+	ledger := NewErasureLedger(store)
+	require.NoError(t, ledger.Check(t.Context()))
+	instance := NewModule(h.runtime, Config{ErasureLedger: ErasureLedgerConfig{Enabled: true, Timeout: time.Second}})
+	instance.service = NewService(h.runtime, newAuditTestIDs(9000))
+	instance.service.erasureLedger = ledger
+	health := healthservice.New(instance.HealthCheckers)
+	for _, test := range []struct {
+		name         string
+		fail, locked bool
+		status       healthservice.Status
+	}{
+		{"healthy", false, true, healthservice.StatusServing},
+		{"disconnected", true, true, healthservice.StatusNotServing},
+		{"lock lost", false, false, healthservice.StatusNotServing},
+		{"recovered", false, true, healthservice.StatusServing},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fixture.mu.Lock()
+			fixture.fail, fixture.objectLock = test.fail, test.locked
+			fixture.requestPaths = nil
+			fixture.mu.Unlock()
+			result := health.Check(t.Context())
+			assert.Equal(t, healthservice.StatusServing, result.Status)
+			require.Len(t, result.Modules, 2)
+			assert.Equal(t, test.status, result.Modules[1].Status)
+			assert.Equal(t, Name+"-erasure-ledger", result.Modules[1].Name)
+			fixture.mu.Lock()
+			for _, path := range fixture.requestPaths {
+				assert.Contains(t, path, "GET ")
+			}
+			fixture.mu.Unlock()
+		})
+	}
+	instance.config.ErasureLedger.Enabled = false
+	assert.Len(t, instance.HealthCheckers(), 1)
 }
 
 func auditRuntimeRegistrar() *authz.Registrar {

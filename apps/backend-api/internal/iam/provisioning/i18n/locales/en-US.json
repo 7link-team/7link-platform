@@ -1,4 +1,6 @@
 {
+  "scim_target_busy": "This SCIM target has an unfinished operation. If it persists, contact an administrator to verify the remote outcome before recovery.",
+  "scim_target_retiring": "This SCIM target is being retired and cannot accept new provisioning or configuration changes.",
   "invalid_scim_directory": "The SCIM directory data is invalid. Check its name, status, version, and credential expiry.",
   "invalid_scim_target": "The SCIM target data is invalid. Check its name, URL, bearer token, status, and version.",
   "provisioning_unavailable": "The provisioning service could not complete the request. Retry later; contact an administrator if the problem continues.",

@@ -4,6 +4,7 @@
   "additional_verification_required": "Pengesahan tambahan diperlukan untuk melengkapkan log masuk. Selesaikan langkah pengesahan yang dipaparkan.",
   "invalid_login": "Nama log masuk atau kata laluan tidak betul. Semak kelayakan atau mulakan pemulihan kata laluan.",
   "authentication_unavailable": "Perkhidmatan pengesahan tidak dapat menyelesaikan permintaan. Cuba lagi kemudian; hubungi pentadbir jika masalah berterusan.",
+  "authentication_rate_limited": "Terlalu banyak percubaan pengesahan. Tunggu sebelum mencuba lagi.",
   "invalid_mfa_challenge": "Cabaran atau kod pengesahan berbilang faktor tidak sah atau telah tamat tempoh. Mulakan semula log masuk dan gunakan kod baharu.",
   "passkey_request_rejected": "Asal permintaan kunci laluan tidak dibenarkan. Gunakan alamat aplikasi yang dikonfigurasi atau hubungi pentadbir.",
   "passkey_unavailable": "Pengesahan kunci laluan tidak dapat menyelesaikan permintaan. Cuba lagi kemudian atau gunakan kaedah log masuk lain.",

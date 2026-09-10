@@ -28,6 +28,7 @@ func newConsent(db *gorm.DB, opts ...gen.DOOption) consent {
 
 	tableName := _consent.consentDo.TableName()
 	_consent.ALL = field.NewAsterisk(tableName)
+	_consent.GrantID = field.NewString(tableName, "grant_id")
 	_consent.PrincipalID = field.NewField(tableName, "principal_id")
 	_consent.ClientID = field.NewField(tableName, "client_id")
 	_consent.TenantID = field.NewField(tableName, "tenant_id")
@@ -44,6 +45,7 @@ type consent struct {
 	consentDo consentDo
 
 	ALL         field.Asterisk
+	GrantID     field.String
 	PrincipalID field.Field
 	ClientID    field.Field
 	TenantID    field.Field
@@ -66,6 +68,7 @@ func (c consent) As(alias string) *consent {
 
 func (c *consent) updateTableName(table string) *consent {
 	c.ALL = field.NewAsterisk(table)
+	c.GrantID = field.NewString(table, "grant_id")
 	c.PrincipalID = field.NewField(table, "principal_id")
 	c.ClientID = field.NewField(table, "client_id")
 	c.TenantID = field.NewField(table, "tenant_id")
@@ -96,7 +99,8 @@ func (c *consent) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (c *consent) fillFieldMap() {
-	c.fieldMap = make(map[string]field.Expr, 6)
+	c.fieldMap = make(map[string]field.Expr, 7)
+	c.fieldMap["grant_id"] = c.GrantID
 	c.fieldMap["principal_id"] = c.PrincipalID
 	c.fieldMap["client_id"] = c.ClientID
 	c.fieldMap["tenant_id"] = c.TenantID

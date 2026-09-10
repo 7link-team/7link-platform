@@ -153,7 +153,7 @@ type testTenant struct {
 
 type testPrincipal struct {
 	ID          guid.ID
-	LoginName   string
+	LoginName   string `gorm:"size:128"`
 	Email       string
 	DisplayName string
 	Status      string
@@ -175,7 +175,7 @@ type testGroup struct {
 	TenantID  guid.ID
 	ID        guid.ID
 	Name      string
-	NameKey   string
+	NameKey   string `gorm:"size:128"`
 	Type      string
 	Status    string
 	Version   int64
@@ -372,15 +372,16 @@ func activeStatus(active bool) string {
 }
 
 type provisioningEnvironment struct {
-	db       *gorm.DB
-	runtime  *appenv.Runtime
-	service  *Service
-	keys     *keyringx.Keyring
-	auth     AuthContext
-	token    string
-	prefix   string
-	auditMu  sync.Mutex
-	auditErr error
+	db         *gorm.DB
+	runtime    *appenv.Runtime
+	service    *Service
+	keys       *keyringx.Keyring
+	auth       AuthContext
+	token      string
+	prefix     string
+	auditMu    sync.Mutex
+	auditErr   error
+	datasource gormx.Datasource
 }
 
 func newProvisioningEnvironment(t *testing.T) *provisioningEnvironment {
@@ -391,13 +392,25 @@ func newProvisioningEnvironment(t *testing.T) *provisioningEnvironment {
 func newProvisioningEnvironmentWithPrefix(t *testing.T, prefix string) *provisioningEnvironment {
 	t.Helper()
 	dsn := fmt.Sprintf("file:%s?_busy_timeout=10000&_journal_mode=WAL&_foreign_keys=on", filepath.ToSlash(filepath.Join(t.TempDir(), "provisioning.sqlite")))
+	return newProvisioningEnvironmentWithDatasource(t, prefix, gormx.Datasource{Type: "sqlite", DSN: dsn, Writable: true, Readable: true})
+}
+
+func newProvisioningEnvironmentWithDatasource(t *testing.T, prefix string, datasource gormx.Datasource) *provisioningEnvironment {
+	t.Helper()
 	router, err := gormx.NewDatasourceRouter(t.Context(), false, map[string]gormx.Datasource{
-		"primary": {Type: "sqlite", DSN: dsn, Writable: true, Readable: true},
+		"primary": datasource,
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, router.Close()) })
 	runtime := appenv.NewRuntime(appenv.NewIdentity("provisioning-test", "1"), appenv.WithDatabase(router), appenv.WithTablePrefix(prefix))
-	env := &provisioningEnvironment{db: router.Write(), runtime: runtime, prefix: prefix}
+	env := &provisioningEnvironment{db: router.Write(), runtime: runtime, prefix: prefix, datasource: datasource}
+	if datasource.Type != "sqlite" {
+		t.Cleanup(func() {
+			for _, table := range []string{"iam_group_members", "iam_groups", "iam_tenant_members", "iam_principals", "iam_audit_events", "iam_scim_target_resources", "iam_scim_targets", "iam_scim_resources", "iam_scim_credentials", "iam_scim_directories", "iam_tenants"} {
+				require.NoError(t, env.db.Migrator().DropTable(prefix+table))
+			}
+		})
+	}
 	env.migrate(t)
 	require.NoError(t, env.db.Table(prefix+"iam_tenants").Create([]testTenant{{ID: testID("tenant-a"), Status: "active"}, {ID: testID("tenant-b"), Status: "active"}}).Error)
 	ids := newProvisioningTestIDs(1000)
