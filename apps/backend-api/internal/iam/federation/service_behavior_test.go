@@ -325,6 +325,7 @@ func (e *federationEnvironment) migrate(t *testing.T) {
 		{model.Provider{}.TableName(), &model.Provider{}}, {model.IdentityLink{}.TableName(), &model.IdentityLink{}},
 		{model.SAMLServiceProvider{}.TableName(), &model.SAMLServiceProvider{}}, {model.SAMLIDPKey{}.TableName(), &model.SAMLIDPKey{}},
 		{model.ReplayClaim{}.TableName(), &model.ReplayClaim{}},
+		{model.IdentityLinkTransaction{}.TableName(), &model.IdentityLinkTransaction{}},
 		{"iam_principals", &federationPrincipal{}}, {"iam_tenant_members", &federationMember{}},
 		{"iam_roles", &federationRole{}}, {"iam_role_members", &federationRoleMember{}}, {"iam_policy_revisions", &federationRevision{}},
 	} {

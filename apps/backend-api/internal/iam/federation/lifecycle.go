@@ -19,5 +19,10 @@ func ErasePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, id guid
 	if err := goosex.ValidatePrefix(prefix); err != nil {
 		return err
 	}
-	return tx.WithContext(ctx).Table(prefix+"iam_identity_links").Where("principal_id = ?", id).Delete(map[string]any{}).Error
+	for _, table := range []string{"iam_identity_link_transactions", "iam_identity_links"} {
+		if err := tx.WithContext(ctx).Table(prefix+table).Where("principal_id = ?", id).Delete(map[string]any{}).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }

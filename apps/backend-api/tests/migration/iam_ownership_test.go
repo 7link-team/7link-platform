@@ -33,7 +33,7 @@ type iamMigrationContract struct {
 
 func TestIAMMigrationOwnershipIsAutonomousAndComplete(t *testing.T) {
 	contracts := iamMigrationContracts()
-	owners := make(map[string]string, 68)
+	owners := make(map[string]string, 72)
 	versionTables := make(map[string]string, len(contracts))
 	for _, contract := range contracts {
 		t.Run(contract.name, func(t *testing.T) {
@@ -61,7 +61,7 @@ func TestIAMMigrationOwnershipIsAutonomousAndComplete(t *testing.T) {
 			}
 		})
 	}
-	assert.Len(t, owners, 68)
+	assert.Len(t, owners, 72)
 }
 
 func iamMigrationContracts() []iamMigrationContract {
@@ -74,11 +74,11 @@ func iamMigrationContracts() []iamMigrationContract {
 		{name: "authn", tables: []string{
 			"iam_credentials", "iam_email_verification_tokens", "iam_mfa_challenges", "iam_mfa_enrollments",
 			"iam_notification_outbox", "iam_passkey_challenges", "iam_passkey_users", "iam_passkeys",
-			"iam_password_history", "iam_password_recovery_tokens", "iam_recovery_codes", "iam_sessions",
+			"iam_password_history", "iam_password_recovery_tokens", "iam_personal_tokens", "iam_reauth_challenges", "iam_recovery_codes", "iam_sessions",
 			"iam_stepup_challenges",
 		}, module: &authn.Module{}},
 		{name: "identity", tables: []string{
-			"iam_principal_lifecycles", "iam_principals", "iam_service_account_credentials", "iam_service_accounts",
+			"iam_closure_requests", "iam_principal_lifecycles", "iam_principals", "iam_service_account_credentials", "iam_service_accounts",
 		}, module: &identity.Module{}},
 		{name: "oauth", tables: []string{
 			"iam_oauth_clients", "iam_oauth_codes", "iam_oauth_consent_requests", "iam_oauth_consents",
@@ -100,7 +100,7 @@ func iamMigrationContracts() []iamMigrationContract {
 			"iam_scim_credentials", "iam_scim_directories", "iam_scim_resources", "iam_scim_target_resources", "iam_scim_targets",
 		}, module: &provisioning.Module{}},
 		{name: "federation", tables: []string{
-			"iam_federation_replay_claims", "iam_identity_links", "iam_identity_providers", "iam_saml_idp_keys", "iam_saml_service_providers",
+			"iam_federation_replay_claims", "iam_identity_link_transactions", "iam_identity_links", "iam_identity_providers", "iam_saml_idp_keys", "iam_saml_service_providers",
 		}, module: &federation.Module{}},
 	}
 }

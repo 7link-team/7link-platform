@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const iamHTTPMappingCount = 236
+const iamHTTPMappingCount = 257
 
 type iamHTTPMapping struct {
 	sourceOperation string
@@ -270,6 +270,15 @@ func iamAuthorizationOf(operation *huma.Operation) (iamHTTPAuthorization, error)
 	if markedClass != "public" && len(operation.Security) == 0 {
 		return iamHTTPAuthorization{}, fmt.Errorf("non-public %s operation has no security requirement", markedClass)
 	}
+	if markedClass == "authenticated" && operation.Metadata["authz.session-only"] == true {
+		if len(operation.Security) != 1 || len(operation.Security[0]) != 1 {
+			return iamHTTPAuthorization{}, fmt.Errorf("session-only operation advertises alternative authentication")
+		}
+		if _, ok := operation.Security[0]["sessionCookie"]; !ok {
+			return iamHTTPAuthorization{}, fmt.Errorf("session-only operation does not require sessionCookie")
+		}
+		markedClass = "session-only"
+	}
 	return iamHTTPAuthorization{class: markedClass, permission: permission}, nil
 }
 
@@ -309,7 +318,7 @@ func loadIAMHTTPAuthorizations(t *testing.T) map[string]iamHTTPAuthorization {
 		parts := strings.SplitN(line, " => ", 2)
 		require.Len(t, parts, 2, "line %d", lineNumber+1)
 		fields := strings.Split(parts[1], "|")
-		require.Contains(t, []string{"public", "authenticated", "tenant-member", "tenant", "platform", "entity-header", "entity-query"}, fields[0], "line %d", lineNumber+1)
+		require.Contains(t, []string{"public", "authenticated", "session-only", "tenant-member", "tenant", "platform", "entity-header", "entity-query"}, fields[0], "line %d", lineNumber+1)
 		permissionRequired := fields[0] == "tenant" || fields[0] == "platform" || strings.HasPrefix(fields[0], "entity-")
 		if permissionRequired {
 			require.Len(t, fields, 2, "line %d", lineNumber+1)

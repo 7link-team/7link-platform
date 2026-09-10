@@ -1,4 +1,6 @@
 {
+  "identity_link_conflict": "This external identity is already linked. Choose another identity or review your existing links.",
+  "last_login_method": "Keep at least one usable login method. Add another method before unlinking this identity.",
   "invalid_request": "The federation request is invalid or its login state is missing, expired, or replayed. Restart sign-in and complete it in one browser session.",
   "provider_not_found": "The requested identity provider does not exist. Refresh the provider list and choose an existing provider.",
   "provider_issuer_exists": "An identity provider for this issuer already exists in the tenant. Choose a different issuer or update the existing provider.",

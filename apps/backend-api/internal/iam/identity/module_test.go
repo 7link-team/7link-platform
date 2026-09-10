@@ -152,7 +152,7 @@ func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
 	require.NoError(t, registry.Start(t.Context()))
 	_, api := humatest.New(t)
 	require.NoError(t, registry.RegisterHTTP(t.Context(), api))
-	assert.Len(t, identityOperationManifest(api.OpenAPI()), 17)
+	assert.Len(t, identityOperationManifest(api.OpenAPI()), 23)
 	require.NoError(t, registry.Stop(context.Background()))
 	require.NoError(t, registry.Deinitialize(context.Background()))
 }

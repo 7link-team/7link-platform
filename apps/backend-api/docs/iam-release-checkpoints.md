@@ -1,8 +1,13 @@
 # IAM 发布前检查点、解决方案与验收
 
 文档日期：2026-09-10。审计基线：`IAM@df8677b`；本轮修复随本文一同提交交付，提交标识以Git记录为准。
-本文合并第一次审计、相关性二次评审、方案复审及实施证据。**当前发布结论仍为 NOT READY**：
-已修复代码缺陷与生产部署验收是不同的完成条件，最终门禁、业务选择及运行环境证据见下文。
+本文合并第一次审计、相关性二次评审、方案复审及实施证据。
+
+**最新范围调整（2026-09-10）**：用户要求一次完成IAM应用功能与代码验收，暂不纳入生产部署、灾备、
+HA演练和运维签字。应用所需的Redis Cluster/Sentinel配置、客户端连接及故障处理明确纳入，不能推给运维。
+**本轮结论：IAM在约定的应用功能与代码范围内已就绪。** 个人能力、现有归属展示、完整界面矩阵、
+Redis拓扑代码及相关门禁已经验收；此结论不包含生产部署或灾备演练。
+第2.2节记录当前候选证据，第3节单列`34778e7`历史基线；生产运维条目不作为本轮应用验收退出条件。
 
 ## 1. 二次复核与相关性结论
 
@@ -50,29 +55,78 @@
 | OIDC | 先验证client及redirect，再返回login_required/consent_required与原state；校验多audience及显式azp | 通过：非法client/URI仍本地400，无开放重定向；保持已有正常授权流程 |
 | Redis共享安全 | Redis6.2+原子GETDEL+5分钟TTL覆盖text/slide/click；Lua原子共享global与socket-peer额度，429/Retry-After；deadline与file-backed URL | 通过技术设计：启用时必须显式closed/open策略，不擅自选择。captcha始终失败关闭，shared模式拒绝test_answer。代理后的真实客户端IP仍由可信ingress限流 |
 | Ledger健康 | enabled-only Optional健康检查，限时只读GetObjectLockConfig；擦除写入回读仍fail closed | 通过：需s3:GetBucketObjectLockConfiguration；健康探针不证明Put权限，也不会自动建桶或写探测对象 |
-| 发布门禁 | make release-check串行组合ci、race、generate-check、frontend-check、test-alerts、真实MySQL和schema-lock | 通过：避免共享coverage/embeddedPG并发；不自动在远端安装Docker，不假造生产部署/签字 |
+| 发布门禁 | make release-check串行组合ci、race、generate-check、frontend-check、test-alerts、真实MySQL/schema-lock及Redis两拓扑矩阵 | 通过：避免共享coverage/embeddedPG并发；不自动在远端安装Docker，不假造生产部署/签字 |
 
-### 2.1 UI-04 / UI-06 的待定部分及可执行方案
+### 2.1 本轮应用补齐方案及复审
 
-- **UI-04归属**：推荐维持租户拥有部门、组、岗位、角色及菜单定义，主体/资源只展示明确绑定与生效来源。
+- **UI-04归属**：沿用现有租户拥有部门、组、岗位、角色及菜单定义，主体/资源只展示明确绑定与生效来源。
   若要求每主体独立拥有组织和菜单，则需要新外键、查询/迁移和继承规则；这是另一种业务模型。
-  已向服务负责人询问，未收到选择前不改变授权语义。
+  本轮据现有契约补齐归属文案及真实绑定展示，独立主体组织模型不作为应用就绪前置条件。
 - **个人关联账户**：使用purpose、当前session和principal绑定的一次性reauth证明；绑定只写当前本人链接，
   不调用会自动建号/授角色的普通federation登录分支。解绑需事务锁定principal并检查剩余本地密码、
   passkey或有效provider登录方式；本人并发解绑也必须保留至少一种方式。仅session.AuthTime较新不足以证明重新认证。
   SAML跨站POST需专用Secure SameSite=None交易cookie及同源最终确认，不降低主session安全属性。
-  这套完整安全流程尚未实现，不能用只新增列表接口宣称关闭。
-- **个人PAT**：独立个人令牌契约，随机令牌仅展示一次、仅存哈希、本人撤销、最小scope和显式到期；
-  必须定义可授权资源/租户范围及期限运营规则，不能复用权限更大的service-account凭据。
-- **自助注销**：必须明确申请销毁全局principal还是退出当前tenant，已发出问题。
-  全局注销复用retention/legal-hold/远端义务检查，采用本人申请与可追踪处理；不允许自助调用platform管理员擦除接口。
-- **Redis故障策略**：D24/D26保留该业务选择，已询问closed/open。代码支持两者并强制显式配置，
-  不将“继续”解释为任一风险选择或生产配置确认。
+  共享reauth和完整上游流程已实施；真实OIDC浏览器闭环及真实签名SAML的Go/HTTP测试通过，未宣称浏览器SAML验收。
+- **个人PAT**：v15独立个人令牌；随机原文只在创建成功时返回一次，只存SHA256；限定一个本人有效租户、
+  当前已获授的非platform权限集合及用户显式到期时间。创建准备接口返回规范化参数指纹，reauth精确绑定
+  名称、租户、权限及期限；证明消费、创建和审计同事务。每次请求仍经过现有成员、接口、主体/数据/字段授权。
+  只有真正执行权限检查的路由可接受PAT，authentication-only、个人安全、platform及OAuth换发路径拒绝，
+  entity adapter依据实际query selector绑定租户。本人列表分页且不返回digest，撤销幂等。方案复审：
+  普通JWT携带scope但未全链约束会留下换发绕过；可信路由上下文限定opaque PAT入口。响应丢失不再次披露secret，
+  用户从列表撤销后重新创建。服务/真实Registrar、三方言迁移及三语言双端真实浏览器闭环通过。
+- **自助注销**：提供明确区分的“退出当前租户”和“申请关闭全局账号”。退出复用既有last-admin保护，
+  仅撤销所属租户授权凭据，保留全局浏览器会话及其他租户。关闭仅提交可取消申请，不立即停用或擦除；
+  平台管理员可见/驳回并沿既有账号状态、retention、legal-hold、远端义务和永久擦除路径处理，最终状态
+  从实际生命周期派生。申请不自动填写保留期限，不允许本人调用平台擦除接口。方案复审：现有SetStatus依赖
+  tenant JOIN，不能直接用于零租户全局账号；因此增加平台专用pending→processing入口，按version防并发覆盖，
+  锁定账号并检查全部租户last-admin及平台权限保护后，原子停用及撤销旧凭据。零租户账号也可处理；
+  不自动设置保留期限，继续使用原生命周期接口。申请阶段不修改权限，不能误报为已关闭。
+- **Redis拓扑代码**：显式standalone/cluster/sentinel，Cluster单seed仍构造ClusterClient；ACL和file-backed密码、
+  Sentinel独立凭据、TLS>=1.2及可选mTLS、严格配置冲突校验、完整请求deadline。旧URL方式保留且不与新拓扑字段混用。
+  禁止未知网络结果自动重放，同时保留MOVED/ASK；双key Lua同slot。真实plain及全拓扑mTLS矩阵、
+  Cluster重定向/副本提升、Sentinel重发现、错误ACL/TLS、已执行丢响应及三项变异已通过。
+  全局限流与captcha使用一个namespace槽，支持拓扑不等于认证负载跨槽分片；异步复制仍可能丢消费/计数，
+  不宣称切主后严格一次性。详见[Redis应用配置与边界](iam-redis-security.md)。
+- **Redis故障策略**：代码支持closed/open并强制显式配置，验证码始终失败关闭。
+  具体环境选择何种策略属于部署配置，不阻塞两条路径均已实现和验证的应用代码验收。
 
-## 3. 本轮实施与测试证据
+### 2.2 当前候选验收证据
 
-当前阶段：本轮代码修复验收通过，生产验收仍为NOT READY。最终CI于2026-09-10 04:32 UTC完成。
-以下结果适用于本轮冻结工作区；后续代码变化必须重跑相关门禁。
+| 检查 | 已执行结果与剩余边界 |
+|---|---|
+| 本人认证与PAT | 完整authn测试通过，覆盖率90.4%；包含密码/必需MFA、真实UV passkey、精确参数proof、撤销和逐存储阶段回滚。最终CI整体结果另计 |
+| 绑定/解绑 | federation全包90.9%，OIDC/SAML签名协议、同会话continuation、无JIT/角色提升和last-method并发测试通过；真实本地RS256 IdP覆盖纯联邦fresh reauth，18次fresh上游认证、24次code兑换、0协议错误 |
+| 退租/关闭 | core90.3%、identity90.6%、oauth90.2%，定向race与失败回滚通过；零租户processing、restore不复活、last-admin/proof/OAuth原子回滚、迟到leave/closure授权交错，真实PG六场景通过16.415s，真实MySQL组合回归通过206.545s |
+| Redis | 最终make test-redis-security EXIT0：plain4.10s、全mTLS9.30s，Cluster/Sentinel/standalone真实矩阵、ACL/TLS拒绝、MOVED/ASK、已执行丢响应不重放及切主重发现通过；纳入release-check |
+| 前端 | 59 IAM+85共享UI测试、lint/typecheck/build及58个fixture场景通过。真实矩阵追加发现3处嵌套Alert漏翻译，已按类修复并通过真实三语言与9个定向fixture验证 |
+| 真实页面矩阵 | 最终792/792 PASS：22路由×3语言×1440/390×admin/reader/denied×2租户；真实有数据请求、实体/租户隔离、权限与写拒绝、翻译、console和横向溢出检查。首轮脚本错误和产品嵌套Alert错误均已修正，首轮FAIL保留，不冒充PASS |
+| 个人生命周期浏览器 | 6/6 PASS：三语言×双端，退租后cookie仍有效、零成员→申请/取消/重申请→平台processing→旧cookie401→队列读回→真正打开零租户生命周期详情200；suspended=true、anonymized=false，不自动擦除 |
+| 个人安全浏览器 | 12/12 PASS：三语言×双端×密码/纯联邦；PAT仅一次展示、真实scope/跨租户/撤销验证，本人链接无JIT/角色授予/session替换，最后登录方式DELETE409。PAT成功对话框补grid，最终12格含不重叠几何断言与截图复核 |
+| 实际OpenAPI | 21个新增operation、0个删除，总271（其中IAM257）；新增18个本人敏感入口仅sessionCookie，3个平台入口要求platform_administer。既有schema无变化/删除；仅3个既有federation start/callback操作补303响应，其余既有operation不变；state必填和ID边界通过真实HTTP验证 |
+| 迁移与冻结 | 真实MySQL8.4固定镜像完整脚本EXIT0，迁移409.699s、生命周期23.168s，组合/性能/SCIM/重放/归档均通过；authn13→15→13→15、federation5→6→5→6、identity4→5→4→5，保留旧凭据/链接、校验9999到期及owner/墓碑守卫。schema.lock为219文件、72表、33跨模块FK，旧207哈希逐项不变，新增12 |
+| CI各阶段与失败项复验 | fmt/lint及覆盖率通过，总90.1%、全部模块≥90%；goose108.634s、lifecycle387.688s、performance121.604s通过。原make ci EXIT2：架构漏登记两项共享能力/两项测试命名，以及4组迁移测试仍断言旧里程碑/版本。修正后架构3.425s、4组真实三引擎迁移146.127s全部通过；没有删除/放宽断言。build及openapi-check独立补跑通过，不伪称原聚合命令EXIT0 |
+| 生成与规范冻结 | make generate-check及额外包含untracked新增生成物的hash比较PASS；前端API类型再生成逐字节不变；schema-lock正常verify为219/72/33，工具测试通过 |
+| 最后前端检查 | PAT布局定向eslint、三个新增浏览器脚本syntax/prettier检查PASS；不把仅支持TS/TSX的eslint称为mjs脚本lint |
+| 全量race | make test-race PASS、无DATA RACE；app133.366s、authn144.298s、core93.687s、federation53.204s、identity39.058s、oauth61.512s，全部主模块包通过 |
+
+真实PostgreSQL复核发现两类SQLite未暴露的缺陷，已按类修复：OAuth跨表查询复用GORM statement
+导致principal id条件泄漏到membership，改为各表独立Session；七处显式UpdatedAt叠加自动时间赋值
+导致PG重复SET列（42601），authn六处及core角色更新一处改用UpdateColumnSimple。
+真实PG闭环由FAIL转PASS；五个authn SQL场景和core精确时间回归通过，恢复旧实现的变异均被检出。
+
+Redis最终复验曾暴露测试同步缺陷：Sentinel宣布新主不代表双方客户端已收到switch-master，旧主尚未
+降级时SET成功也不证明请求已到新主。测试改为只读CLIENT INFO确认两条实际连接均到新主后，再执行
+原单次SET/GETDEL与不能再次消费断言；不重试消费、不改生产逻辑。修正后两模式通过，旧FAIL日志保留。
+
+浏览器报告在`.temp/iam-uat/browser/{route-matrix,personal-security,personal-lifecycle}/report.json`，
+实际后端binary SHA256为`70b55f3af4e092c0037708d2b93d7d9da80b376bebbce0b8fc31d4f46513e52b`。
+三组finally清理均通过；生命周期合成账号停用、租户软删除，保留processing元数据，不声称物理清空。
+临时盘与Docker故障已恢复，后续真实数据库和浏览器验收正常完成，未豁免任何必要验证。
+
+## 3. 历史修复基线实施与测试证据（34778e7）
+
+以下为34778e7历史修复验收，最终CI于2026-09-10 04:32 UTC完成。
+不替代当前新增个人能力和Redis拓扑的候选验收；本轮证据见第2.2节。
 
 | 项目 | 结果 | 证据与边界 |
 |---|---|---|
@@ -104,7 +158,10 @@
 [真实MySQL完整脚本](../scripts/test-mysql8.sh)。本地门禁日志保存在 `.temp/release-*-final.log`，
 浏览器报告位于 `.temp/iam-uat/browser/release-report.json`；日志、截图、凭据和二进制不纳入提交。
 
-## 4. 生产环境与业务验收（不能由代码测试代签）
+## 4. 生产环境与业务验收（历史参考；运维工作不纳入本轮）
+
+本表保留原发布审计的职责划分。UI-04归属、PAT范围/期限和关闭对象已由D34/D35收敛并实现；
+前后端应用验收以第2.2、5节为准。正式环境的配置值、演练和签字另行安排，不再列为代码缺口。
 
 | 责任方 | 交付/验收要求 |
 |---|---|
@@ -118,17 +175,19 @@
 Redis单主GETDEL保证不能扩大为异步复制failover下严格一次消费；需要部署验证与明确风险边界。
 SCIM指标与promtool通过也不证明有人收到告警。永久擦除需启用外部义务账本并覆盖可恢复备份时窗。
 
-## 5. 发布退出条件
+## 5. 本轮应用与代码验收退出条件
 
-- [x] 当前修复通过完整ci及独立race、真实数据库、生成幂等、OpenAPI、schema-lock；没有未解释的失败。全量race后唯一后端改动为Introspect错误分类，其定向race另已通过。
-- [ ] SCIM跨实例/首次PUT/旧快照/timeout/202/退役/擦除不变量及v6迁移升级回退通过；旧writer停机升级和未知结果恢复流程已演练。
-- [x] 注销的前端网络失败、后端DB失败、SAML失败及恢复重试验证通过；成功后原cookie确实不可认证。
-- [x] 多租户发现、子主体设置、consent通过真实后端联测；会话故障/菜单隔离通过独立浏览器故障注入回归。
-- [ ] UI-04和剩余UI-06业务方案已确认、实施并验收；不以局部consent功能代替整项。
-- [ ] UI-05/07全路由三语言、桌面/移动、有数据、多权限矩阵通过。
-- [ ] 生产Redis策略/代理额度已配置，单主故障/故障切换语义已验收；告警规则及实际接收路由通过。
-- [ ] 正式环境、RTO/RPO、隔离归档恢复、外部IdP/SCIM/通知与交付账号证据齐全。
-- [ ] 最终制品漏洞/许可证核查完成，产品/安全/QA/运维共同签署同一个RC。
+- [x] 当前候选ci各阶段及独立race、生成幂等、OpenAPI检查全部完成；原CI失败及定向修后复验见第2.2节，不沿用历史源码结果。
+- [x] SCIM并发/未知响应/退役/擦除不变量及真实数据库迁移回归通过；部署停writer和provider取证说明保留。
+- [x] 注销失败与恢复、真实cookie失效、多租户/主体/consent及会话/菜单故障隔离通过。
+- [x] UI-04现有归属和UI-06个人PAT、本人关联账户、退租与关闭申请全部实现并验收。
+- [x] UI-05/07真实全路由三语言、双端、有数据、多权限、两租户792格通过。
+- [x] 新增个人安全12格、个人生命周期6格真实流程通过；Go测试补充MFA/passkey/SAML和事务失败路径。
+- [x] Redis standalone/cluster/sentinel、TLS/mTLS/ACL、显式故障策略、同slot Lua、未知结果不重放均实现并真实测试；异步复制边界明确。
+- [x] 三方言新增迁移、旧数据保留、owner/墓碑守卫通过，219文件迁移锁保留旧207哈希。
+- [x] 最终自审与原请求验收通过；全部可交付文件按已有授权提交推送，提交标识以本分支Git记录为准。
+
+生产部署、灾备、RTO/RPO、正式告警接收和运维签字不属于上述退出条件。
 
 ## 6. A1–A8 风险模式复核
 
@@ -137,10 +196,10 @@ SCIM指标与promtool通过也不证明有人收到告警。永久擦除需启�
 | A1 本地暂存 | 无离线业务提交队列；租户选择是UI状态，本轮已按账号隔离 |
 | A2 大批量 | SCIM Bulk已有100操作/1MiB边界；同步新增有界分页，真实大目录/部署网关预算仍须验收 |
 | A3 中断路径 | 退役持久状态/续跑、未知远端结果保留claim；完整恢复需provider证据，不自动过期 |
-| A4 隔离 | 236 IAM guard精确映射经最终CI通过；真实cookie注销、Bearer撤销、regrant旧令牌拒绝、其他应用隔离与跨origin拒绝已通过 |
+| A4 隔离 | IAM257精确映射，新增18个cookie-only与3个平台入口；PAT权限上限、跨租户拒绝、退租及关闭撤销、迟到OAuth围栏及792格真实权限矩阵通过 |
 | A5 数值对账 | 无金额、税费、汇率或资金分摊，不适用 |
 | A6 幂等 | SCIM/验证码/注销新增跨实例或失败重试断言；显式重新provisioning不算旧任务复活 |
-| A7 兼容 | provisioning v6及oauth v10真实三方言DDL/旧数据回退再升级与207文件迁移锁已通过；不支持旧writer混跑。v10回退保留旧撤销标记，但旧binary信任已签JWT的问题需按第2节封闭流量处理 |
+| A7 兼容 | 新增authn v14/v15、federation v6及identity v5三方言升降级保留数据，219文件锁保留旧207哈希；既有OpenAPI schema无删除/变化。不支持旧writer混跑，回退新表会丢失新功能数据，不能据测试升降级推断在线无损回滚；旧OAuth binary信任问题仍按第2节处理 |
 | A8 异步 | audit保留既有租约/fencing；SCIM新增持久claim/游标/退避/指标，实际告警与恢复仍需运维验收 |
 
 ## 7. 已关闭历史项
@@ -161,7 +220,9 @@ platform-only Principal retention/legal-hold/anonymization API/UI；历史格式
 与最终方案一致，文档区分可复跑本地验收和生产签字。deep-review要求的证伪、同类扫描、变异验证及独立门禁
 已纳入本轮工作。`release-check`各组成门禁已分别实跑，本轮未将未执行的聚合命令冒称为已执行。
 
-原请求验收：清单复核、相关性纠正、解决方案补充及二次评审、必要技术修复、测试验收和结果合并已完成。
-**IAM整体仍不具备生产放行结论**：第2.1、4、5节的业务选择、完整产品流程及生产证据尚未关闭。
-用户已授权本轮全部可交付改动提交并推送至`origin/IAM`；生产放行条件不因推送而改变。
+原请求中的清单复核、相关性纠正、解决方案补充及二次评审、必要代码修复、真实功能验收和最终门禁
+均已完成。**应用/代码验收：PASS；本范围内无剩余已知阻塞项。** Redis集群所需配置、客户端、TLS/ACL
+和故障处理包含在结论内；不以已排除的生产部署、灾备和签字阻塞应用就绪。
+自审中的范围、复用、架构、复杂度、回归、状态记录与提交卫生通过；三组独立复核结果由主线程整合验收。
+用户已授权全部可交付改动提交推送`origin/IAM`，临时日志、密钥、截图和构建产物不纳入提交。
 临时Redis/PostgreSQL及MySQL门禁容器已清理，最新UAT及历史备份保留。

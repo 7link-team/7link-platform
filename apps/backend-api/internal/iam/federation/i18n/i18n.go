@@ -11,6 +11,8 @@ const Namespace = "federation"
 
 const (
 	InvalidRequest           = Namespace + ".invalid_request"
+	IdentityLinkConflict     = Namespace + ".identity_link_conflict"
+	LastLoginMethod          = Namespace + ".last_login_method"
 	ProviderNotFound         = Namespace + ".provider_not_found"
 	ProviderIssuerExists     = Namespace + ".provider_issuer_exists"
 	ProviderRoleMissing      = Namespace + ".provider_role_missing"

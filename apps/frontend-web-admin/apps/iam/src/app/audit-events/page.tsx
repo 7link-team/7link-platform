@@ -85,6 +85,7 @@ export default function AuditEventsPage() {
   const [integrity, setIntegrity] = useState<AuditIntegrity | null>(null)
   const [selected, setSelected] = useState<AuditEvent | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
   const [exporting, setExporting] = useState(false)
   const [detailBusy, setDetailBusy] = useState(false)
   const [error, setError] = useState("")
@@ -104,12 +105,14 @@ export default function AuditEventsPage() {
         setEvents(page.items)
         setTotal(page.total)
         setIntegrity(chain)
-        setError("")
+        setLoadError("")
         setLoading(false)
       },
       (cause: Error) => {
         if (!active) return
-        setError(cause.message)
+        setLoadError(cause.message)
+        setEvents([])
+        setIntegrity(null)
         setLoading(false)
       }
     )
@@ -212,6 +215,20 @@ export default function AuditEventsPage() {
         }
       />
       {error && <Alert>{error}</Alert>}
+      {loadError && !loading && (
+        <Alert>
+          <p>{t.has(loadError) ? t(loadError) : loadError}</p>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setLoading(true)
+              setRefreshKey((value) => value + 1)
+            }}
+          >
+            {t("retryNow")}
+          </Button>
+        </Alert>
+      )}
       <IntegrityStatus value={integrity} loading={loading} />
 
       <form
@@ -290,7 +307,9 @@ export default function AuditEventsPage() {
             {t("securityEvents")}
           </div>
           <span className="text-xs text-muted-foreground">
-            {loading ? t("loading") : `${first}-${last} / ${total}`}
+            {loading
+              ? t("loading")
+              : !loadError && `${first}-${last} / ${total}`}
           </span>
         </header>
         <div className="hidden md:block">
@@ -309,7 +328,7 @@ export default function AuditEventsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {events.map((event) => (
+              {(loading || loadError ? [] : events).map((event) => (
                 <TableRow key={event.id}>
                   <TableCell className="text-xs">
                     {formatTime(event.created_at, locale)}
@@ -347,7 +366,7 @@ export default function AuditEventsPage() {
                   </TableCell>
                 </TableRow>
               ))}
-              {!loading && events.length === 0 && (
+              {!loading && !loadError && events.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} className="h-56 text-center">
                     <EmptyEvents />
@@ -358,7 +377,7 @@ export default function AuditEventsPage() {
           </Table>
         </div>
         <div className="md:hidden">
-          {events.map((event) => (
+          {(loading || loadError ? [] : events).map((event) => (
             <article
               key={event.id}
               className="space-y-3 border-b p-4 last:border-0"
@@ -399,7 +418,7 @@ export default function AuditEventsPage() {
               </div>
             </article>
           ))}
-          {!loading && events.length === 0 && (
+          {!loading && !loadError && events.length === 0 && (
             <div className="grid h-56 place-items-center text-center">
               <EmptyEvents />
             </div>

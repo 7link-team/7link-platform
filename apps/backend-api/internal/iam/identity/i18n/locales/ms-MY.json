@@ -1,4 +1,6 @@
 {
+  "closure_conflict": "Permintaan penutupan telah berubah atau tindakan ini tidak dibenarkan dalam keadaan semasa. Muat semula dan cuba lagi.",
+  "platform_access_blocks_closure": "Tarik balik akses platform akaun ini melalui aliran pentadbir yang dilindungi sebelum memproses penutupan.",
   "identity_unavailable": "Perkhidmatan identiti tidak dapat menyelesaikan permintaan. Cuba lagi kemudian; hubungi pentadbir jika masalah berterusan.",
   "invalid_principal": "Data prinsipal tidak sah. Semak nama log masuk, profil, e-mel dan keperluan kata laluan.",
   "invalid_service_account": "Data akaun perkhidmatan tidak sah. Semak nama, status, tamat tempoh, skop bukti kelayakan dan keadaan penyewa.",

@@ -65,6 +65,54 @@ export interface Session {
   organization_id?: string
 }
 
+export interface PersonalTokenRequest {
+  name: string
+  tenant_id: string
+  permissions: string[]
+  expires_at: string
+}
+export interface PersonalToken extends PersonalTokenRequest {
+  id: string
+  created_at: string
+  revoked_at?: string
+}
+export interface IdentityLink {
+  id: string
+  provider_id: string
+  tenant_id: string
+  provider_name: string
+  provider_type: string
+  external_subject: string
+  email: string
+  display_name: string
+}
+export interface IdentityLinkProvider {
+  id: string
+  tenant_id: string
+  name: string
+  provider_type: "oidc" | "saml"
+}
+export type ReauthenticationMethod = "password" | "passkey" | "federation"
+export interface ReauthenticationChallenge {
+  proof: string
+  method: ReauthenticationMethod
+  expires_at: string
+  options?: { publicKey: Record<string, unknown> }
+}
+export interface PersonalMembership {
+  tenant_id: string
+  tenant_name: string
+  status: string
+}
+export interface ClosureRequest {
+  principal_id: string
+  status:
+    "none" | "pending" | "processing" | "canceled" | "rejected" | "completed"
+  version: number
+  requested_at?: string
+  updated_at?: string
+}
+
 export interface BrowserSession {
   id: string
   current: boolean
@@ -1212,6 +1260,136 @@ export function createIamApi(
       ),
     session: () => request<Session>("/authn/sessions/current", {}, false),
     myTenants: () => request<Tenant[]>("/iam/me/tenants", {}, false),
+    personalTokenPermissions: (tenant: string) =>
+      request<Permission[]>(
+        `/authn/personal-token-permissions?${new URLSearchParams({ tenant_id: tenant })}`,
+        {},
+        false
+      ),
+    personalTokens: async (offset = 0, limit = 20) => {
+      const result = await requestEnvelope<PersonalToken[]>(
+        `/authn/personal-tokens?${new URLSearchParams({ offset: String(offset), limit: String(limit) })}`,
+        false
+      )
+      return {
+        items: result.data,
+        total: result.meta?.page?.total ?? result.data.length,
+      }
+    },
+    preparePersonalToken: (body: PersonalTokenRequest) =>
+      request<{ request: PersonalTokenRequest; target: string }>(
+        "/authn/personal-token-preparations",
+        { method: "POST", body: JSON.stringify(body) },
+        false
+      ),
+    createPersonalToken: (body: PersonalTokenRequest & { proof: string }) =>
+      request<PersonalToken & { token: string }>(
+        "/authn/personal-tokens",
+        { method: "POST", body: JSON.stringify(body) },
+        false
+      ),
+    revokePersonalToken: (id: string) =>
+      request<{ revoked: boolean }>(
+        `/authn/personal-tokens/${encodeURIComponent(id)}`,
+        { method: "DELETE" },
+        false
+      ),
+    reauthenticationMethods: () =>
+      request<{ methods: ReauthenticationMethod[]; mfa_required: boolean }>(
+        "/authn/reauthentication-methods",
+        {},
+        false
+      ),
+    createReauthenticationChallenge: (body: {
+      purpose: string
+      target: string
+      method: ReauthenticationMethod
+    }) =>
+      request<ReauthenticationChallenge>(
+        "/authn/reauthentication-challenges",
+        { method: "POST", body: JSON.stringify(body) },
+        false
+      ),
+    verifyReauthentication: (body: {
+      proof: string
+      password?: string
+      code?: string
+      response?: Record<string, unknown>
+    }) =>
+      request<{ verified: boolean }>(
+        "/authn/reauthentication-verifications",
+        { method: "POST", body: JSON.stringify(body) },
+        false
+      ),
+    identityLinks: () =>
+      request<IdentityLink[]>("/authn/identity-links", {}, false),
+    identityLinkProviders: () =>
+      request<IdentityLinkProvider[]>(
+        "/authn/identity-link-providers",
+        {},
+        false
+      ),
+    createIdentityLinkTransaction: (body: {
+      provider_id: string
+      proof: string
+      existing_link_id?: string
+      return_url: string
+    }) =>
+      request<{ authorization_url: string }>(
+        "/authn/identity-link-transactions",
+        { method: "POST", body: JSON.stringify(body) },
+        false
+      ),
+    deleteIdentityLink: (id: string, proof: string) =>
+      request<{ deleted: boolean }>(
+        `/authn/identity-links/${encodeURIComponent(id)}`,
+        { method: "DELETE", body: JSON.stringify({ proof }) },
+        false
+      ),
+    personalMemberships: (offset = 0, limit = 50) =>
+      request<{ items: PersonalMembership[]; total: number }>(
+        `/iam/me/memberships?${new URLSearchParams({ offset: String(offset), limit: String(limit) })}`,
+        {},
+        false
+      ),
+    leaveMembership: (id: string, proof: string) =>
+      request<{ status: string }>(
+        `/iam/me/memberships/${encodeURIComponent(id)}/leave`,
+        { method: "POST", body: JSON.stringify({ proof }) },
+        false
+      ),
+    closureRequest: () =>
+      request<ClosureRequest>("/iam/me/closure-request", {}, false),
+    submitClosureRequest: (proof: string, version: number) =>
+      request<ClosureRequest>(
+        "/iam/me/closure-request",
+        { method: "POST", body: JSON.stringify({ proof, version }) },
+        false
+      ),
+    cancelClosureRequest: (version: number) =>
+      request<ClosureRequest>(
+        "/iam/me/closure-request",
+        { method: "DELETE", body: JSON.stringify({ version }) },
+        false
+      ),
+    closureRequests: (offset = 0, limit = 50, status = "pending") =>
+      request<{ items: ClosureRequest[]; total: number }>(
+        `/platform/iam/closure-requests?${new URLSearchParams({ status, offset: String(offset), limit: String(limit) })}`,
+        {},
+        false
+      ),
+    rejectClosureRequest: (id: string, version: number) =>
+      request<ClosureRequest>(
+        `/platform/iam/principals/${encodeURIComponent(id)}/closure-request/rejection`,
+        { method: "POST", body: JSON.stringify({ version }) },
+        false
+      ),
+    processClosureRequest: (id: string, version: number) =>
+      request<ClosureRequest>(
+        `/platform/iam/principals/${encodeURIComponent(id)}/closure-request/processing`,
+        { method: "POST", body: JSON.stringify({ version }) },
+        false
+      ),
     oauthConsents: () =>
       request<GrantedConsent[]>("/iam/me/oauth-consents", {}, false),
     revokeOAuthConsent: (clientID: string) =>

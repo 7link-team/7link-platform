@@ -28,6 +28,12 @@ import (
 // plan: 14 operations covering the source module's 14 principal and
 // service-account capabilities.
 const identityRouteManifest = `
+identity-my-closure-request|GET|/iam/me/closure-request
+identity-submit-closure-request|POST|/iam/me/closure-request
+identity-cancel-closure-request|DELETE|/iam/me/closure-request
+identity-list-closure-requests|GET|/platform/iam/closure-requests
+identity-reject-closure-request|POST|/platform/iam/principals/{principal_id}/closure-request/rejection
+identity-process-closure-request|POST|/platform/iam/principals/{principal_id}/closure-request/processing
 identity-list-principals|GET|/iam/principals
 identity-create-principal|POST|/iam/principals
 identity-get-principal|GET|/iam/principals/{id}
@@ -53,6 +59,9 @@ identity-platform-anonymize-principal|POST|/platform/iam/principals/{principal_i
 // is deployed. They were declared platform_administer until 10.3, which put
 // them out of reach of the only role that should hold them.
 var identityGuards = map[string]string{
+	"identity-list-closure-requests":             "platform_administer",
+	"identity-reject-closure-request":            "platform_administer",
+	"identity-process-closure-request":           "platform_administer",
 	"identity-list-principals":                   "user_view",
 	"identity-create-principal":                  "user_create",
 	"identity-get-principal":                     "user_view",
@@ -75,7 +84,7 @@ var identityGuards = map[string]string{
 type identityTokenVerifier struct{ principalID guid.ID }
 
 func (verifier identityTokenVerifier) Authenticate(context.Context, string, string) (*authnext.Claims, error) {
-	return &authnext.Claims{PrincipalID: verifier.principalID, ACR: 1, AMR: []string{"password"}}, nil
+	return &authnext.Claims{PrincipalID: verifier.principalID, SubjectType: authnext.SubjectTypePrincipal, ACR: 1, AMR: []string{"password"}}, nil
 }
 
 // identityRouteAuthorizer answers the tenant permission check each guarded
@@ -216,7 +225,7 @@ func TestIdentityRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 17)
+	require.Len(t, got, 23)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
@@ -247,8 +256,15 @@ func TestIdentityOpenAPIGuardsParametersAndSecurityAreConsistent(t *testing.T) {
 			assert.NotEmpty(t, operation.Security, location)
 
 			guard, declared := identityGuards[operation.OperationID]
-			require.True(t, declared, "%s is not in the approved contract", location)
-			assert.Equal(t, guard, operation.Metadata["authz.guard"], location)
+			switch operation.OperationID {
+			case "identity-my-closure-request", "identity-submit-closure-request", "identity-cancel-closure-request":
+				assert.True(t, authz.IsAuthenticatedOperation(operation), location)
+				assert.Equal(t, []map[string][]string{{authz.SessionScheme: {}}}, operation.Security, location)
+				assert.NotContains(t, operation.Metadata, "authz.guard", location)
+			default:
+				require.True(t, declared, "%s is not in the approved contract", location)
+				assert.Equal(t, guard, operation.Metadata["authz.guard"], location)
+			}
 
 			parameters := make(map[string]*huma.Param, len(operation.Parameters))
 			for _, parameter := range operation.Parameters {
@@ -266,11 +282,14 @@ func TestIdentityOpenAPIGuardsParametersAndSecurityAreConsistent(t *testing.T) {
 				}
 			}
 			for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+				if operation.OperationID == "identity-my-closure-request" && status == http.StatusForbidden {
+					continue // Reading one's own request requires authentication only.
+				}
 				assert.Contains(t, operation.Errors, status, location)
 			}
 		}
 	}
-	require.Len(t, operationIDs, 17)
+	require.Len(t, operationIDs, 23)
 }
 
 func TestIdentityOpenAPIDescribesTypedMutationResponses(t *testing.T) {

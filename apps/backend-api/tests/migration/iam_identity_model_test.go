@@ -11,13 +11,13 @@ import (
 )
 
 func TestIAMIdentityModelsMatchMigratedSchemas(t *testing.T) {
-	models := []tableModel{model.Principal{}, model.ServiceAccount{}, model.ServiceAccountCredential{}}
+	models := []tableModel{model.Principal{}, model.ServiceAccount{}, model.ServiceAccountCredential{}, model.PrincipalLifecycle{}, model.ClosureRequest{}}
 	engines := []databaseEngine{
 		{name: "sqlite", dialect: "sqlite", open: testdb.OpenSQLite},
 		{name: "mysql", dialect: "mysql", open: testdb.OpenMySQL},
 		{name: "postgres", dialect: "postgres", open: testdb.OpenPostgres},
 	}
-	require.Len(t, models, 3)
+	require.Len(t, models, 5)
 	for _, engine := range engines {
 		t.Run(engine.name, func(t *testing.T) {
 			db := engine.open(t)

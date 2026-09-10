@@ -29,7 +29,7 @@ import (
 type httpTokenVerifier struct{ principalID guid.ID }
 
 func (verifier httpTokenVerifier) Authenticate(context.Context, string, string) (*authn.Claims, error) {
-	return &authn.Claims{PrincipalID: verifier.principalID, ACR: 1, AMR: []string{"password"}}, nil
+	return &authn.Claims{PrincipalID: verifier.principalID, SubjectType: authn.SubjectTypePrincipal, ACR: 1, AMR: []string{"password"}}, nil
 }
 
 type httpRouteAuthorizer struct{ platformAllowed bool }

@@ -1,4 +1,6 @@
 {
+  "closure_conflict": "The closure request changed or cannot perform this action in its current state. Refresh and try again.",
+  "platform_access_blocks_closure": "Remove this account's platform access through the protected administrator workflow before processing closure.",
   "identity_unavailable": "The identity service could not complete the request. Retry later; contact an administrator if the problem continues.",
   "invalid_principal": "The principal data is invalid. Check the login name, profile, email, and password requirements.",
   "invalid_service_account": "The service account data is invalid. Check its name, status, expiry, credential scopes, and tenant state.",

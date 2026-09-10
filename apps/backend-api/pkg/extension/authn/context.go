@@ -9,6 +9,26 @@ import (
 
 type contextKey struct{}
 
+type personalTokenScopeKey struct{}
+
+// PersonalTokenScope is supplied by a permission-enforcing route, never by a
+// client. Authentication-only and platform routes do not accept personal tokens.
+type PersonalTokenScope struct {
+	TenantID   guid.ID
+	Permission string
+}
+
+// WithPersonalTokenScope binds authentication to the route's actual selector.
+func WithPersonalTokenScope(ctx context.Context, tenantID guid.ID, permission string) context.Context {
+	return context.WithValue(ctx, personalTokenScopeKey{}, PersonalTokenScope{TenantID: tenantID, Permission: permission})
+}
+
+// PersonalTokenScopeFromContext returns the permission enforced by this route.
+func PersonalTokenScopeFromContext(ctx context.Context) (PersonalTokenScope, bool) {
+	scope, ok := ctx.Value(personalTokenScopeKey{}).(PersonalTokenScope)
+	return scope, ok && !scope.TenantID.Zero() && scope.Permission != ""
+}
+
 // WithClaims stores verified claims in ctx.
 func WithClaims(ctx context.Context, claims *Claims) context.Context {
 	return context.WithValue(ctx, contextKey{}, claims)

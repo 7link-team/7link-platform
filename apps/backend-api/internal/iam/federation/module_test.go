@@ -51,7 +51,7 @@ func TestFederationRuntimeModuleExactOperationManifest(t *testing.T) {
 	require.NoError(t, authz.ValidateOperations(api, declaration.registrar.Registry()))
 	assert.Equal(t, approvedFederationOperations(), federationOperationManifest(api.OpenAPI()))
 	assert.Equal(t, "goose_federation", declaration.MigrationSource().TableName)
-	assert.Len(t, declaration.MigrationMilestones(), 4)
+	assert.Len(t, declaration.MigrationMilestones(), 5)
 }
 
 func TestFederationModuleActivationComesFromItsProtocolConfig(t *testing.T) {
@@ -112,6 +112,28 @@ func TestFederationSAMLBrowserOpenAPIContract(t *testing.T) {
 			assert.Contains(t, operation.Responses, status, operation.OperationID)
 		}
 	}
+}
+
+func TestFederationIdentityContinuationOpenAPIRequiresBoundedStateAndProvider(t *testing.T) {
+	declaration := federationRuntimeModule(t)
+	_, api := humatest.New(t)
+	require.NoError(t, declaration.RegisterHTTP(t.Context(), api))
+	operation := api.OpenAPI().Paths["/federation/{provider_id}/identity-continuations"].Get
+	parameters := map[string]*huma.Param{}
+	for _, parameter := range operation.Parameters {
+		parameters[parameter.Name] = parameter
+	}
+	state, provider := parameters["state"], parameters["provider_id"]
+	require.NotNil(t, state)
+	require.NotNil(t, provider)
+	assert.True(t, state.Required)
+	assert.Equal(t, "query", state.In)
+	assert.Equal(t, intPointer(1), state.Schema.MinLength)
+	assert.Equal(t, intPointer(256), state.Schema.MaxLength)
+	assert.True(t, provider.Required)
+	assert.Equal(t, "path", provider.In)
+	assert.Equal(t, "^[1-9][0-9]*$", provider.Schema.Pattern)
+	assert.Equal(t, intPointer(19), provider.Schema.MaxLength)
 }
 
 func TestFederationModuleDependencyResolutionAndLifecycle(t *testing.T) {
@@ -204,7 +226,12 @@ func federationRuntimeModule(t *testing.T) *Module {
 
 func approvedFederationOperations() map[string]string {
 	return map[string]string{
-		"federation-callback-login": "GET /federation/{provider_id}/callback", "federation-callback-saml-login": "POST /federation/{provider_id}/callback",
+		"federation-list-personal-identity-links":           "GET /authn/identity-links",
+		"federation-list-personal-identity-providers":       "GET /authn/identity-link-providers",
+		"federation-create-personal-identity-transaction":   "POST /authn/identity-link-transactions",
+		"federation-delete-personal-identity-link":          "DELETE /authn/identity-links/{link_id}",
+		"federation-complete-personal-identity-transaction": "GET /federation/{provider_id}/identity-continuations",
+		"federation-callback-login":                         "GET /federation/{provider_id}/callback", "federation-callback-saml-login": "POST /federation/{provider_id}/callback",
 		"federation-create-identity-provider": "POST /iam/identity-providers", "federation-create-saml-service-provider": "POST /iam/saml/service-providers",
 		"federation-delete-identity-provider": "DELETE /iam/identity-providers/{provider_id}", "federation-delete-saml-service-provider": "DELETE /iam/saml/service-providers/{sp_id}",
 		"federation-list-identity-providers": "GET /iam/identity-providers", "federation-list-saml-service-providers": "GET /iam/saml/service-providers",

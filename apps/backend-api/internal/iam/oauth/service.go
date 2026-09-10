@@ -423,10 +423,10 @@ func (s *Service) Authorize(
 		// prompt=consent asks for the screen even when a stored consent would
 		// have covered the scope, and it overrides a client's permission to
 		// skip it. That override is the only reason the parameter exists.
-		return s.startConsent(ctx, repo, client, claims.PrincipalID, redirectURI, scope, state, challenge, nonce)
+		return s.startConsent(ctx, repo, client, claims, redirectURI, scope, state, challenge, nonce)
 	case "":
 		if !satisfied && ConsentMode(client.ConsentMode) != ConsentImplicit {
-			return s.startConsent(ctx, repo, client, claims.PrincipalID, redirectURI, scope, state, challenge, nonce)
+			return s.startConsent(ctx, repo, client, claims, redirectURI, scope, state, challenge, nonce)
 		}
 	default:
 		// An unrecognized prompt is invalid_request rather than a value that
@@ -446,7 +446,7 @@ func (s *Service) startConsent(
 	ctx context.Context,
 	repo *Repository,
 	client *model.Client,
-	principalID guid.ID,
+	claims *authnext.Claims,
 	redirectURI, scope, state, challenge, nonce string,
 ) (string, error) {
 	value, err := secureToken(32)
@@ -455,12 +455,17 @@ func (s *Service) startConsent(
 	}
 	now := oauthTime(s.now())
 	row := model.ConsentRequest{
-		ChallengeHash: hashToken(value), ClientID: client.ID, PrincipalID: principalID,
+		ChallengeHash: hashToken(value), ClientID: client.ID, PrincipalID: claims.PrincipalID,
 		RedirectURI: redirectURI, Scope: normalizeWords(scope), State: state,
 		CodeChallenge: challenge, Nonce: nonce,
 		CreatedAt: now, ExpiresAt: now.Add(s.consentTTL()),
 	}
-	if err := repo.insertConsentRequest(ctx, &row); err != nil {
+	if err := repo.runInTx(ctx, func(tx *Repository) error {
+		if err := tx.lockGrantAdmission(ctx, claims, client.TenantID); err != nil {
+			return err
+		}
+		return tx.insertConsentRequest(ctx, &row)
+	}); err != nil {
 		return "", err
 	}
 	return s.consentLocation(value)
@@ -510,6 +515,10 @@ func (s *Service) ResolveConsent(
 	}
 	location := ""
 	err = repo.runInTx(ctx, func(tx *Repository) error {
+		// Match exit/closure lock order: principal before pending request.
+		if err := tx.lockGrantAdmission(ctx, claims, client.TenantID); err != nil {
+			return err
+		}
 		// Burning the challenge first means a replayed decision loses the
 		// compare-and-set rather than minting a second authorization code.
 		if resolveErr := tx.resolveConsentRequest(ctx, hashToken(challenge), oauthTime(s.now())); resolveErr != nil {
@@ -665,6 +674,9 @@ func (s *Service) issueAuthorizationCode(
 	event := audit.NewDomainEvent(ctx, client.TenantID, "oauth_consent_granted", "oauth_client", client.ID)
 	event.Detail["scope"] = scope
 	err = repo.runInTx(ctx, func(tx *Repository) error {
+		if err := tx.lockGrantAdmission(ctx, claims, client.TenantID); err != nil {
+			return err
+		}
 		if err := tx.upsertConsent(ctx, &consentRow); err != nil {
 			return err
 		}

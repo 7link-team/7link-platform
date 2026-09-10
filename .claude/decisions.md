@@ -1159,3 +1159,40 @@ oauth/authn/pkg claims契约、模块内查询/三方言迁移和真实前后端
 签名后撤销交错、同毫秒regrant与其他app隔离通过，真实MySQL UAT浏览器10/10通过。
 Introspect仅明确无效凭证返回inactive，基础设施/取消/未知故障保留500；HTTP回归与变异通过。
 外部离线JWT消费方的即时撤销、生产升级/降级流程仍需部署验收；本地通过不代表生产已就绪。
+
+## D34 — 应用就绪范围与Redis拓扑支持
+
+**Decision / Reason**
+用户明确本轮一次完成应用功能与代码验收，生产部署、灾备与运维演练暂不纳入；Redis集群所需
+配置/客户端/错误处理属于应用代码，必须纳入。沿D26成熟方案授权补standalone/cluster/sentinel、
+TLS/mTLS及ACL，保留单机URL配置，严格拒绝混用和半配置。未知网络结果不重放，保留明确重定向。
+
+**Tradeoffs / Status**
+全局Lua限流要求同slot，支持Cluster拓扑不表示认证负载跨槽分片；异步复制可能丢失消费/计数，
+不附加数据库消费账本，也不宣称切主后严格exactly-once。Redis故障open/closed由启用者显式配置，
+不替用户制定生产策略。真实plain/全mTLS拓扑、重定向、切主和三项变异已验证；最终门禁证据见发布检查点第2.2节。
+
+## D35 — 个人令牌范围与本人账户操作
+
+**Decision / Reason**
+个人PAT限定一个当前有效租户、本人已有非platform接口权限及显式到期时间。现有权限/数据/字段
+检查始终保留，PAT是其额外上限。opaque令牌仅存摘要，创建成功只返回一次；创建参数规范化后
+绑定共享reauth目的/目标/会话/主体/credential version。消费proof与写入、审计同事务。
+普通authentication-only、OAuth换发和平台入口不接受PAT，真实权限路由通过可信上下文提供
+实际tenant/permission（entity adapter使用其query selector），防止scope在后续换发中丢失。
+个人管理接口采用统一session-only注册，规范和运行时都拒绝Bearer。
+
+**Alternatives / Tradeoffs**
+不复用服务账号密钥，不默认无限期或制定业务最长有效期；数据库使用支持9999年的时间列，
+用户显式填写期限。丢失创建响应不能再次披露secret，可从列表撤销后重新创建。
+个人权限选择复用当前注册表及CheckBulk，不要求role_view管理权限，不另建权限目录。
+
+**Scope / Status**
+沿现有租户归属展示UI04；分别提供退出当前租户、申请关闭全局账号，不新建独立主体组织模型。
+退出保留全局会话和其他租户，撤销所属租户OAuth/PAT并保留last-admin保护。关闭仅申请、可取消、
+平台可追踪/驳回，申请本身不自动停用或选择保留期限。平台显式pending→processing处理入口
+按version并发控制并原子停用/撤销凭据，覆盖零租户账号，保留全部租户last-admin及平台权限保护；
+后续处理沿既有生命周期/保留/法律冻结/外部义务，完成态由墓碑派生。OAuth新code及待同意请求
+与退租/关闭共用principal锁，并重验成员和credential version，防迟到请求恢复旧授权。
+个人闭环服务/HTTP及失败回滚通过，真实PostgreSQL/MySQL组合与并发通过；最新后端真实浏览器
+个人安全12/12、生命周期6/6、全业务矩阵792/792通过。最终独立门禁与交付状态见发布检查点和task-state。

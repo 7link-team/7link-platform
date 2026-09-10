@@ -34,6 +34,7 @@ func (*Module) MigrationMilestones() []module.MigrationMilestone {
 		{Name: "replay", Version: 4},
 		{Name: "principal-erasure", Version: 5,
 			Dependencies: []module.MigrationMilestoneRef{{Module: "identity", Name: "lifecycle"}}},
+		{Name: "identity-link-transactions", Version: 6},
 	}
 }
 

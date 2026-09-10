@@ -6,6 +6,7 @@ import (
 	iamauthn "7link.com/platform/internal/iam/authn"
 	"7link.com/platform/internal/iam/authn/model"
 	"7link.com/platform/internal/iam/identity"
+	"7link.com/platform/internal/iam/organization"
 	goosex "7link.com/platform/pkg/extension/goose"
 	"7link.com/platform/tests/internal/testdb"
 	"github.com/stretchr/testify/require"
@@ -16,7 +17,7 @@ func TestIAMAuthnModelsMatchMigratedSchemas(t *testing.T) {
 		model.Credential{}, model.Session{}, model.PasswordHistory{}, model.MFAEnrollment{},
 		model.RecoveryCode{}, model.MFAChallenge{}, model.PasskeyUser{}, model.Passkey{},
 		model.PasskeyChallenge{}, model.PasswordRecoveryToken{}, model.NotificationOutbox{},
-		model.EmailVerificationToken{}, model.StepUpChallenge{},
+		model.EmailVerificationToken{}, model.StepUpChallenge{}, model.ReauthenticationChallenge{}, model.PersonalToken{},
 	}
 	engines := []databaseEngine{
 		{name: "sqlite", dialect: "sqlite", open: testdb.OpenSQLite},
@@ -24,10 +25,11 @@ func TestIAMAuthnModelsMatchMigratedSchemas(t *testing.T) {
 		{name: "postgres", dialect: "postgres", open: testdb.OpenPostgres},
 	}
 
-	require.Len(t, models, 13)
+	require.Len(t, models, 15)
 	for _, engine := range engines {
 		t.Run(engine.name, func(t *testing.T) {
 			db := engine.open(t)
+			require.NoError(t, goosex.MigrateUpTo(t.Context(), db, (&organization.Module{}).MigrationSource(), engine.dialect, 7))
 			sources := []goosex.Source{
 				(&identity.Module{}).MigrationSource(),
 				(&iamauthn.Module{}).MigrationSource(),

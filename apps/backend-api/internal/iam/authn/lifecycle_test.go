@@ -4,14 +4,119 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/internal/iam/authn/model"
 	"7link.com/platform/internal/infra/guid"
+	authnext "7link.com/platform/pkg/extension/authn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 // authnErasureTime is the instant the seeded rows carry. Erasure does not read
 // it, so any fixed value keeps the fixtures readable.
 var authnErasureTime = time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC)
+
+func TestClosureCredentialRevocationIsAtomicAndSupportsPasswordlessPrincipals(t *testing.T) {
+	for _, passwordless := range []bool{false, true} {
+		t.Run(map[bool]string{false: "password", true: "federated-only"}[passwordless], func(t *testing.T) {
+			s, h, cookie, in := personalTokenService(t)
+			principal := createdPrincipal(t, s, cookie)
+			version := int64(1)
+			if passwordless {
+				require.NoError(t, h.db.Where("principal_id = ?", principal).Delete(&model.Credential{}).Error)
+				version = 0
+			}
+			secret := "pat_test-closure-secret"
+			row := model.PersonalToken{ID: 801, TokenHash: tokenHash(secret), PrincipalID: principal, TenantID: 71, Name: "closure", Permissions: `["store_view"]`, CredentialVersion: version, CreatedAt: repositoryTestNow, ExpiresAt: in.ExpiresAt}
+			require.NoError(t, h.db.Create(&row).Error)
+			challenge, err := s.BeginReauthentication(t.Context(), cookie, ReauthenticationPrincipalClose, principal.String(), "federation", "")
+			require.NoError(t, err)
+			h.seedPrincipal(t, 902, "unrelated")
+			h.seedCredential(t, 902, "other-password-hash")
+			err = h.db.Transaction(func(tx *gorm.DB) error {
+				if _, err := s.repo.withDB(tx, true).lockPrincipal(t.Context(), principal); err != nil {
+					return err
+				}
+				if err := s.revokePrincipalCredentialsOn(t.Context(), tx, principal); err != nil {
+					return err
+				}
+				return assert.AnError
+			})
+			require.ErrorIs(t, err, assert.AnError)
+			_, err = s.Authenticate(t.Context(), "", cookie)
+			require.NoError(t, err)
+			ctx := authnext.WithPersonalTokenScope(t.Context(), 71, "store_view")
+			_, err = s.Authenticate(ctx, "Bearer "+secret, "")
+			require.NoError(t, err)
+			require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
+				if _, err := s.repo.withDB(tx, true).lockPrincipal(t.Context(), principal); err != nil {
+					return err
+				}
+				return s.revokePrincipalCredentialsOn(t.Context(), tx, principal)
+			}))
+			_, err = s.Authenticate(t.Context(), "", cookie)
+			require.Error(t, err)
+			_, err = s.Authenticate(ctx, "Bearer "+secret, "")
+			require.Error(t, err)
+			credential, err := s.repo.getCredential(t.Context(), principal)
+			require.NoError(t, err)
+			assert.Equal(t, version+1, credential.CredentialVersion)
+			if passwordless {
+				assert.Empty(t, credential.PasswordHash)
+			} else {
+				assert.NotEmpty(t, credential.PasswordHash)
+			}
+			other, err := s.repo.getCredential(t.Context(), 902)
+			require.NoError(t, err)
+			assert.EqualValues(t, 1, other.CredentialVersion)
+			assert.Equal(t, "other-password-hash", other.PasswordHash)
+			var proof model.ReauthenticationChallenge
+			require.NoError(t, h.db.Where("id_hash = ?", tokenHash(challenge.Proof)).Take(&proof).Error)
+			assert.NotNil(t, proof.ConsumedAt)
+			require.Error(t, s.revokePrincipalCredentialsOn(t.Context(), nil, principal))
+		})
+	}
+}
+
+func TestClosureCredentialRevocationRollsBackEveryFailedWrite(t *testing.T) {
+	for _, table := range []string{"iam_credentials", "iam_sessions", "iam_personal_tokens", "iam_reauth_challenges", "iam_mfa_challenges", "iam_passkey_challenges", "iam_stepup_challenges"} {
+		t.Run(table, func(t *testing.T) {
+			s, h, cookie, in := personalTokenService(t)
+			principal := createdPrincipal(t, s, cookie)
+			secret := "pat_atomic-closure-test"
+			row := model.PersonalToken{ID: 801, TokenHash: tokenHash(secret), PrincipalID: principal, TenantID: 71, Name: "atomic", Permissions: `["store_view"]`, CredentialVersion: 1, CreatedAt: repositoryTestNow, ExpiresAt: in.ExpiresAt}
+			require.NoError(t, h.db.Create(&row).Error)
+			challenge, err := s.BeginReauthentication(t.Context(), cookie, ReauthenticationPrincipalClose, principal.String(), "federation", "")
+			require.NoError(t, err)
+			hit := false
+			require.NoError(t, h.db.Callback().Update().Before("gorm:update").Register("closure_write_failure", func(db *gorm.DB) {
+				if db.Statement.Table == table {
+					hit = true
+					db.AddError(assert.AnError)
+				}
+			}))
+			err = h.db.Transaction(func(tx *gorm.DB) error {
+				if _, err := s.repo.withDB(tx, true).lockPrincipal(t.Context(), principal); err != nil {
+					return err
+				}
+				return s.revokePrincipalCredentialsOn(t.Context(), tx, principal)
+			})
+			require.NoError(t, h.db.Callback().Update().Remove("closure_write_failure"))
+			require.True(t, hit, "the intended storage stage must execute")
+			require.ErrorIs(t, err, assert.AnError)
+			credential, err := s.repo.getCredential(t.Context(), principal)
+			require.NoError(t, err)
+			assert.EqualValues(t, 1, credential.CredentialVersion)
+			_, err = s.Authenticate(t.Context(), "", cookie)
+			require.NoError(t, err)
+			_, err = s.Authenticate(authnext.WithPersonalTokenScope(t.Context(), 71, "store_view"), "Bearer "+secret, "")
+			require.NoError(t, err)
+			var proof model.ReauthenticationChallenge
+			require.NoError(t, h.db.Where("id_hash = ?", tokenHash(challenge.Proof)).Take(&proof).Error)
+			assert.Nil(t, proof.ConsumedAt, "failure must preserve the proof for a retry")
+		})
+	}
+}
 
 func TestAuthnErasePrincipalDataRefusesUnusableArguments(t *testing.T) {
 	harness := newAuthnRepositoryHarness(t, "")

@@ -8,7 +8,9 @@ import (
 )
 
 const (
-	Namespace = "identity"
+	Namespace                   = "identity"
+	ClosureConflict             = Namespace + ".closure_conflict"
+	PlatformAccessBlocksClosure = Namespace + ".platform_access_blocks_closure"
 
 	PrincipalNotFound                = Namespace + ".principal_not_found"
 	LifecycleVersionConflict         = Namespace + ".principal_lifecycle_version_conflict"

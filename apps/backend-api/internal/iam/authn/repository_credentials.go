@@ -118,7 +118,7 @@ func (r *Repository) requireMFA(ctx context.Context, principalID guid.ID, now ti
 	}
 	_, err = tables.Credentials.WithContext(ctx).
 		Where(tables.Credentials.PrincipalID.Eq(principalID)).
-		UpdateSimple(tables.Credentials.MFARequired.Value(true), tables.Credentials.UpdatedAt.Value(now))
+		UpdateColumnSimple(tables.Credentials.MFARequired.Value(true), tables.Credentials.UpdatedAt.Value(now))
 	return err
 }
 
@@ -135,7 +135,7 @@ func (r *Repository) enableMFA(
 	}
 	result, err := tables.Credentials.WithContext(ctx).
 		Where(tables.Credentials.PrincipalID.Eq(principalID), tables.Credentials.TOTPSecret.Eq("")).
-		UpdateSimple(
+		UpdateColumnSimple(
 			tables.Credentials.TOTPSecret.Value(secretCiphertext),
 			tables.Credentials.MFARequired.Value(true),
 			tables.Credentials.TOTPLastUsedStep.Value(lastUsedStep),

@@ -250,6 +250,7 @@ func initializeOAuthDatabase(t *testing.T, dsn, prefix string) {
 	identitySource := goosex.Source{FS: os.DirFS(filepath.Join(filepath.Dir(filename), "..", "identity")), TableName: "goose_identity", Prefix: prefix}
 	require.NoError(t, goosex.Migrate(t.Context(), sqlDB, identitySource, db.Dialector.Name()))
 	statements := []string{
+		"CREATE TABLE " + prefix + "iam_credentials (principal_id BIGINT PRIMARY KEY, credential_version BIGINT NOT NULL)",
 		"CREATE TABLE " + prefix + "iam_tenants (id BIGINT PRIMARY KEY, status TEXT NOT NULL)",
 		"CREATE TABLE " + prefix + "iam_tenant_members (tenant_id BIGINT NOT NULL, principal_id BIGINT NOT NULL, status TEXT NOT NULL, PRIMARY KEY (tenant_id, principal_id))",
 		"CREATE TABLE " + prefix + "oauth_test_audits (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id BIGINT NOT NULL, principal_id BIGINT NOT NULL, event_type TEXT NOT NULL, target_id BIGINT NOT NULL)",

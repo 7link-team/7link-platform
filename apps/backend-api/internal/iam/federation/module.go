@@ -20,14 +20,16 @@ import (
 var ErrUnavailable = errors.New("federation service unavailable")
 
 type Module struct {
-	service    *Service
-	runtime    *appenv.Runtime
-	registrar  *authz.Registrar
-	config     Config
-	ids        guid.Source
-	appender   audit.Appender
-	identities identity.IdentityProvisioner
-	authn      authn.WebService
+	service                 *Service
+	runtime                 *appenv.Runtime
+	registrar               *authz.Registrar
+	config                  Config
+	ids                     guid.Source
+	appender                audit.Appender
+	identities              identity.IdentityProvisioner
+	authn                   authn.WebService
+	accountProofs           authn.ReauthenticationConsumer
+	accountReauthentication authn.FederatedReauthentication
 }
 
 func NewModule(runtime *appenv.Runtime, config Config) *Module {
@@ -56,6 +58,15 @@ func (m *Module) ProvideServices(services *module.Services) error {
 }
 
 func (m *Module) InjectServices(services *module.Services) error {
+	proofs, proofErr := module.Resolve[authn.ReauthenticationConsumer](services)
+	if proofErr != nil && !errors.Is(proofErr, module.ErrServiceMissing) {
+		return proofErr
+	}
+	accountReauthentication, accountErr := module.Resolve[authn.FederatedReauthentication](services)
+	if accountErr != nil && !errors.Is(accountErr, module.ErrServiceMissing) {
+		return accountErr
+	}
+	m.accountProofs, m.accountReauthentication = proofs, accountReauthentication
 	registrar, err := module.Resolve[*authz.Registrar](services)
 	if err != nil {
 		return fmt.Errorf("resolve federation authorization registrar: %w", err)
@@ -100,6 +111,7 @@ func (m *Module) Initialize(context.Context) error {
 		return fmt.Errorf("resolve federation outbound policy: %w", err)
 	}
 	m.service = NewService(m.runtime, m.appender, m.identities, m.authn, m.config, keys, m.ids, outbound)
+	m.service.accountProofs, m.service.accountReauthentication = m.accountProofs, m.accountReauthentication
 	return nil
 }
 

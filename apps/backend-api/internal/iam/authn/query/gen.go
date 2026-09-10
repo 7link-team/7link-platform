@@ -16,20 +16,22 @@ import (
 )
 
 var (
-	Q                      = new(Query)
-	Credential             *credential
-	EmailVerificationToken *emailVerificationToken
-	MFAChallenge           *mFAChallenge
-	MFAEnrollment          *mFAEnrollment
-	NotificationOutbox     *notificationOutbox
-	Passkey                *passkey
-	PasskeyChallenge       *passkeyChallenge
-	PasskeyUser            *passkeyUser
-	PasswordHistory        *passwordHistory
-	PasswordRecoveryToken  *passwordRecoveryToken
-	RecoveryCode           *recoveryCode
-	Session                *session
-	StepUpChallenge        *stepUpChallenge
+	Q                         = new(Query)
+	Credential                *credential
+	EmailVerificationToken    *emailVerificationToken
+	MFAChallenge              *mFAChallenge
+	MFAEnrollment             *mFAEnrollment
+	NotificationOutbox        *notificationOutbox
+	Passkey                   *passkey
+	PasskeyChallenge          *passkeyChallenge
+	PasskeyUser               *passkeyUser
+	PasswordHistory           *passwordHistory
+	PasswordRecoveryToken     *passwordRecoveryToken
+	PersonalToken             *personalToken
+	ReauthenticationChallenge *reauthenticationChallenge
+	RecoveryCode              *recoveryCode
+	Session                   *session
+	StepUpChallenge           *stepUpChallenge
 )
 
 func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
@@ -44,6 +46,8 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	PasskeyUser = &Q.PasskeyUser
 	PasswordHistory = &Q.PasswordHistory
 	PasswordRecoveryToken = &Q.PasswordRecoveryToken
+	PersonalToken = &Q.PersonalToken
+	ReauthenticationChallenge = &Q.ReauthenticationChallenge
 	RecoveryCode = &Q.RecoveryCode
 	Session = &Q.Session
 	StepUpChallenge = &Q.StepUpChallenge
@@ -51,39 +55,43 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
-		db:                     db,
-		Credential:             newCredential(db, opts...),
-		EmailVerificationToken: newEmailVerificationToken(db, opts...),
-		MFAChallenge:           newMFAChallenge(db, opts...),
-		MFAEnrollment:          newMFAEnrollment(db, opts...),
-		NotificationOutbox:     newNotificationOutbox(db, opts...),
-		Passkey:                newPasskey(db, opts...),
-		PasskeyChallenge:       newPasskeyChallenge(db, opts...),
-		PasskeyUser:            newPasskeyUser(db, opts...),
-		PasswordHistory:        newPasswordHistory(db, opts...),
-		PasswordRecoveryToken:  newPasswordRecoveryToken(db, opts...),
-		RecoveryCode:           newRecoveryCode(db, opts...),
-		Session:                newSession(db, opts...),
-		StepUpChallenge:        newStepUpChallenge(db, opts...),
+		db:                        db,
+		Credential:                newCredential(db, opts...),
+		EmailVerificationToken:    newEmailVerificationToken(db, opts...),
+		MFAChallenge:              newMFAChallenge(db, opts...),
+		MFAEnrollment:             newMFAEnrollment(db, opts...),
+		NotificationOutbox:        newNotificationOutbox(db, opts...),
+		Passkey:                   newPasskey(db, opts...),
+		PasskeyChallenge:          newPasskeyChallenge(db, opts...),
+		PasskeyUser:               newPasskeyUser(db, opts...),
+		PasswordHistory:           newPasswordHistory(db, opts...),
+		PasswordRecoveryToken:     newPasswordRecoveryToken(db, opts...),
+		PersonalToken:             newPersonalToken(db, opts...),
+		ReauthenticationChallenge: newReauthenticationChallenge(db, opts...),
+		RecoveryCode:              newRecoveryCode(db, opts...),
+		Session:                   newSession(db, opts...),
+		StepUpChallenge:           newStepUpChallenge(db, opts...),
 	}
 }
 
 type Query struct {
 	db *gorm.DB
 
-	Credential             credential
-	EmailVerificationToken emailVerificationToken
-	MFAChallenge           mFAChallenge
-	MFAEnrollment          mFAEnrollment
-	NotificationOutbox     notificationOutbox
-	Passkey                passkey
-	PasskeyChallenge       passkeyChallenge
-	PasskeyUser            passkeyUser
-	PasswordHistory        passwordHistory
-	PasswordRecoveryToken  passwordRecoveryToken
-	RecoveryCode           recoveryCode
-	Session                session
-	StepUpChallenge        stepUpChallenge
+	Credential                credential
+	EmailVerificationToken    emailVerificationToken
+	MFAChallenge              mFAChallenge
+	MFAEnrollment             mFAEnrollment
+	NotificationOutbox        notificationOutbox
+	Passkey                   passkey
+	PasskeyChallenge          passkeyChallenge
+	PasskeyUser               passkeyUser
+	PasswordHistory           passwordHistory
+	PasswordRecoveryToken     passwordRecoveryToken
+	PersonalToken             personalToken
+	ReauthenticationChallenge reauthenticationChallenge
+	RecoveryCode              recoveryCode
+	Session                   session
+	StepUpChallenge           stepUpChallenge
 }
 
 func (q *Query) Available() bool { return q.db != nil }
@@ -92,20 +100,22 @@ func (q *Query) UnderlyingDB() *gorm.DB { return q.db }
 
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
-		db:                     db,
-		Credential:             q.Credential.clone(db),
-		EmailVerificationToken: q.EmailVerificationToken.clone(db),
-		MFAChallenge:           q.MFAChallenge.clone(db),
-		MFAEnrollment:          q.MFAEnrollment.clone(db),
-		NotificationOutbox:     q.NotificationOutbox.clone(db),
-		Passkey:                q.Passkey.clone(db),
-		PasskeyChallenge:       q.PasskeyChallenge.clone(db),
-		PasskeyUser:            q.PasskeyUser.clone(db),
-		PasswordHistory:        q.PasswordHistory.clone(db),
-		PasswordRecoveryToken:  q.PasswordRecoveryToken.clone(db),
-		RecoveryCode:           q.RecoveryCode.clone(db),
-		Session:                q.Session.clone(db),
-		StepUpChallenge:        q.StepUpChallenge.clone(db),
+		db:                        db,
+		Credential:                q.Credential.clone(db),
+		EmailVerificationToken:    q.EmailVerificationToken.clone(db),
+		MFAChallenge:              q.MFAChallenge.clone(db),
+		MFAEnrollment:             q.MFAEnrollment.clone(db),
+		NotificationOutbox:        q.NotificationOutbox.clone(db),
+		Passkey:                   q.Passkey.clone(db),
+		PasskeyChallenge:          q.PasskeyChallenge.clone(db),
+		PasskeyUser:               q.PasskeyUser.clone(db),
+		PasswordHistory:           q.PasswordHistory.clone(db),
+		PasswordRecoveryToken:     q.PasswordRecoveryToken.clone(db),
+		PersonalToken:             q.PersonalToken.clone(db),
+		ReauthenticationChallenge: q.ReauthenticationChallenge.clone(db),
+		RecoveryCode:              q.RecoveryCode.clone(db),
+		Session:                   q.Session.clone(db),
+		StepUpChallenge:           q.StepUpChallenge.clone(db),
 	}
 }
 
@@ -119,54 +129,60 @@ func (q *Query) WriteDB() *Query {
 
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
-		db:                     db,
-		Credential:             q.Credential.replaceDB(db),
-		EmailVerificationToken: q.EmailVerificationToken.replaceDB(db),
-		MFAChallenge:           q.MFAChallenge.replaceDB(db),
-		MFAEnrollment:          q.MFAEnrollment.replaceDB(db),
-		NotificationOutbox:     q.NotificationOutbox.replaceDB(db),
-		Passkey:                q.Passkey.replaceDB(db),
-		PasskeyChallenge:       q.PasskeyChallenge.replaceDB(db),
-		PasskeyUser:            q.PasskeyUser.replaceDB(db),
-		PasswordHistory:        q.PasswordHistory.replaceDB(db),
-		PasswordRecoveryToken:  q.PasswordRecoveryToken.replaceDB(db),
-		RecoveryCode:           q.RecoveryCode.replaceDB(db),
-		Session:                q.Session.replaceDB(db),
-		StepUpChallenge:        q.StepUpChallenge.replaceDB(db),
+		db:                        db,
+		Credential:                q.Credential.replaceDB(db),
+		EmailVerificationToken:    q.EmailVerificationToken.replaceDB(db),
+		MFAChallenge:              q.MFAChallenge.replaceDB(db),
+		MFAEnrollment:             q.MFAEnrollment.replaceDB(db),
+		NotificationOutbox:        q.NotificationOutbox.replaceDB(db),
+		Passkey:                   q.Passkey.replaceDB(db),
+		PasskeyChallenge:          q.PasskeyChallenge.replaceDB(db),
+		PasskeyUser:               q.PasskeyUser.replaceDB(db),
+		PasswordHistory:           q.PasswordHistory.replaceDB(db),
+		PasswordRecoveryToken:     q.PasswordRecoveryToken.replaceDB(db),
+		PersonalToken:             q.PersonalToken.replaceDB(db),
+		ReauthenticationChallenge: q.ReauthenticationChallenge.replaceDB(db),
+		RecoveryCode:              q.RecoveryCode.replaceDB(db),
+		Session:                   q.Session.replaceDB(db),
+		StepUpChallenge:           q.StepUpChallenge.replaceDB(db),
 	}
 }
 
 type queryCtx struct {
-	Credential             ICredentialDo
-	EmailVerificationToken IEmailVerificationTokenDo
-	MFAChallenge           IMFAChallengeDo
-	MFAEnrollment          IMFAEnrollmentDo
-	NotificationOutbox     INotificationOutboxDo
-	Passkey                IPasskeyDo
-	PasskeyChallenge       IPasskeyChallengeDo
-	PasskeyUser            IPasskeyUserDo
-	PasswordHistory        IPasswordHistoryDo
-	PasswordRecoveryToken  IPasswordRecoveryTokenDo
-	RecoveryCode           IRecoveryCodeDo
-	Session                ISessionDo
-	StepUpChallenge        IStepUpChallengeDo
+	Credential                ICredentialDo
+	EmailVerificationToken    IEmailVerificationTokenDo
+	MFAChallenge              IMFAChallengeDo
+	MFAEnrollment             IMFAEnrollmentDo
+	NotificationOutbox        INotificationOutboxDo
+	Passkey                   IPasskeyDo
+	PasskeyChallenge          IPasskeyChallengeDo
+	PasskeyUser               IPasskeyUserDo
+	PasswordHistory           IPasswordHistoryDo
+	PasswordRecoveryToken     IPasswordRecoveryTokenDo
+	PersonalToken             IPersonalTokenDo
+	ReauthenticationChallenge IReauthenticationChallengeDo
+	RecoveryCode              IRecoveryCodeDo
+	Session                   ISessionDo
+	StepUpChallenge           IStepUpChallengeDo
 }
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
-		Credential:             q.Credential.WithContext(ctx),
-		EmailVerificationToken: q.EmailVerificationToken.WithContext(ctx),
-		MFAChallenge:           q.MFAChallenge.WithContext(ctx),
-		MFAEnrollment:          q.MFAEnrollment.WithContext(ctx),
-		NotificationOutbox:     q.NotificationOutbox.WithContext(ctx),
-		Passkey:                q.Passkey.WithContext(ctx),
-		PasskeyChallenge:       q.PasskeyChallenge.WithContext(ctx),
-		PasskeyUser:            q.PasskeyUser.WithContext(ctx),
-		PasswordHistory:        q.PasswordHistory.WithContext(ctx),
-		PasswordRecoveryToken:  q.PasswordRecoveryToken.WithContext(ctx),
-		RecoveryCode:           q.RecoveryCode.WithContext(ctx),
-		Session:                q.Session.WithContext(ctx),
-		StepUpChallenge:        q.StepUpChallenge.WithContext(ctx),
+		Credential:                q.Credential.WithContext(ctx),
+		EmailVerificationToken:    q.EmailVerificationToken.WithContext(ctx),
+		MFAChallenge:              q.MFAChallenge.WithContext(ctx),
+		MFAEnrollment:             q.MFAEnrollment.WithContext(ctx),
+		NotificationOutbox:        q.NotificationOutbox.WithContext(ctx),
+		Passkey:                   q.Passkey.WithContext(ctx),
+		PasskeyChallenge:          q.PasskeyChallenge.WithContext(ctx),
+		PasskeyUser:               q.PasskeyUser.WithContext(ctx),
+		PasswordHistory:           q.PasswordHistory.WithContext(ctx),
+		PasswordRecoveryToken:     q.PasswordRecoveryToken.WithContext(ctx),
+		PersonalToken:             q.PersonalToken.WithContext(ctx),
+		ReauthenticationChallenge: q.ReauthenticationChallenge.WithContext(ctx),
+		RecoveryCode:              q.RecoveryCode.WithContext(ctx),
+		Session:                   q.Session.WithContext(ctx),
+		StepUpChallenge:           q.StepUpChallenge.WithContext(ctx),
 	}
 }
 

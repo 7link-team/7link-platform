@@ -1,4 +1,6 @@
 {
+  "identity_link_conflict": "Identiti luaran ini telah dipautkan. Pilih identiti lain atau semak pautan sedia ada.",
+  "last_login_method": "Kekalkan sekurang-kurangnya satu kaedah log masuk yang boleh digunakan. Tambah kaedah lain sebelum menyahpaut identiti ini.",
   "invalid_request": "Permintaan gabungan tidak sah atau keadaan log masuk hilang, tamat tempoh, atau diulang semula. Mulakan semula log masuk dan lengkapkannya dalam sesi penyemak imbas yang sama.",
   "provider_not_found": "Pembekal identiti yang diminta tidak wujud. Muat semula senarai pembekal dan pilih pembekal yang wujud.",
   "provider_issuer_exists": "Pembekal identiti untuk penerbit ini sudah wujud dalam penyewa. Gunakan penerbit lain atau kemas kini pembekal sedia ada.",

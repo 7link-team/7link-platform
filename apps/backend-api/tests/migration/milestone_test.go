@@ -8,7 +8,9 @@ import (
 
 	"7link.com/platform/internal/app"
 	"7link.com/platform/internal/iam/authn"
+	iamcore "7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
+	"7link.com/platform/internal/iam/organization"
 	goosex "7link.com/platform/pkg/extension/goose"
 	"7link.com/platform/pkg/module"
 	"7link.com/platform/tests/internal/testdb"
@@ -32,15 +34,19 @@ func TestIAMIdentityAuthnMigrationsAcrossEngines(t *testing.T) {
 				t.Run(prefixTestName(prefix), func(t *testing.T) {
 					db := engine.open(t)
 					gormDB := openMilestoneGORM(t, db, engine.dialect)
-					modules := []module.Module{&identity.Module{}, &authn.Module{}}
+					modules := []module.Module{&identity.Module{}, &authn.Module{}, &organization.Module{}, &iamcore.Module{}}
 
 					reports, err := app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{
 						Action: app.MigrationUp,
 					}, prefix)
 					require.NoError(t, err)
-					require.Len(t, reports, 2)
-					assert.Equal(t, "lifecycle", reports[0].Milestone)
-					assert.Equal(t, "principal-erasure", reports[1].Milestone)
+					require.Len(t, reports, 4)
+					milestones := map[string]string{}
+					for _, report := range reports {
+						milestones[report.Module] = report.Milestone
+					}
+					assert.Equal(t, "personal-tokens", milestones[authn.Name])
+					assert.Equal(t, "principal-erasure", milestones[organization.Name])
 					assertTableExists(t, db, engine.dialect, prefix+"iam_principals", true)
 					assertTableExists(t, db, engine.dialect, prefix+"iam_credentials", true)
 					assertTableExists(t, db, engine.dialect, prefix+"goose_identity", true)
@@ -64,7 +70,7 @@ func TestIAMIdentityAuthnMigrationsAcrossEngines(t *testing.T) {
 						Module: identity.Name,
 						To:     0,
 					}, prefix)
-					assert.ErrorContains(t, err, `cannot roll back migration milestones "identity.base", "identity.lifecycle"`)
+					assert.ErrorContains(t, err, `cannot roll back migration milestones "identity.base", "identity.closure-requests", "identity.lifecycle"`)
 					assert.ErrorContains(t, err, `"authn.constraints"`)
 
 					_, err = app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{
@@ -73,6 +79,10 @@ func TestIAMIdentityAuthnMigrationsAcrossEngines(t *testing.T) {
 						To:     0,
 					}, prefix)
 					require.NoError(t, err)
+					for _, name := range []string{organization.Name, iamcore.Name} {
+						_, err = app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{Action: app.MigrationDownTo, Module: name, To: 0}, prefix)
+						require.NoError(t, err)
+					}
 					_, err = app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{
 						Action: app.MigrationDownTo,
 						Module: identity.Name,

@@ -1,5 +1,27 @@
 # Frozen source operation => approved target OperationID|METHOD|PATH.
 # Archive management operations are Phase 10 additions.
+# Personal security and closure operations are application readiness additions.
+authn-list-personal-token-permissions => authn-list-personal-token-permissions|GET|/authn/personal-token-permissions
+authn-create-personal-token-preparation => authn-create-personal-token-preparation|POST|/authn/personal-token-preparations
+authn-list-personal-tokens => authn-list-personal-tokens|GET|/authn/personal-tokens
+authn-create-personal-token => authn-create-personal-token|POST|/authn/personal-tokens
+authn-delete-personal-token => authn-delete-personal-token|DELETE|/authn/personal-tokens/{id}
+authn-create-reauthentication-challenge => authn-create-reauthentication-challenge|POST|/authn/reauthentication-challenges
+authn-list-reauthentication-methods => authn-list-reauthentication-methods|GET|/authn/reauthentication-methods
+authn-create-reauthentication-verification => authn-create-reauthentication-verification|POST|/authn/reauthentication-verifications
+federation-list-personal-identity-providers => federation-list-personal-identity-providers|GET|/authn/identity-link-providers
+federation-create-personal-identity-transaction => federation-create-personal-identity-transaction|POST|/authn/identity-link-transactions
+federation-list-personal-identity-links => federation-list-personal-identity-links|GET|/authn/identity-links
+federation-delete-personal-identity-link => federation-delete-personal-identity-link|DELETE|/authn/identity-links/{link_id}
+federation-complete-personal-identity-transaction => federation-complete-personal-identity-transaction|GET|/federation/{provider_id}/identity-continuations
+identity-my-closure-request => identity-my-closure-request|GET|/iam/me/closure-request
+identity-submit-closure-request => identity-submit-closure-request|POST|/iam/me/closure-request
+identity-cancel-closure-request => identity-cancel-closure-request|DELETE|/iam/me/closure-request
+iam-my-memberships => iam-my-memberships|GET|/iam/me/memberships
+iam-leave-membership => iam-leave-membership|POST|/iam/me/memberships/{tenant_id}/leave
+identity-list-closure-requests => identity-list-closure-requests|GET|/platform/iam/closure-requests
+identity-process-closure-request => identity-process-closure-request|POST|/platform/iam/principals/{principal_id}/closure-request/processing
+identity-reject-closure-request => identity-reject-closure-request|POST|/platform/iam/principals/{principal_id}/closure-request/rejection
 audit-archive-status => audit-archive-status|GET|/iam/audit/archive-status
 audit-list-archives => audit-list-archives|GET|/iam/audit/archives
 audit-request-archive => audit-request-archive|POST|/iam/audit/archives

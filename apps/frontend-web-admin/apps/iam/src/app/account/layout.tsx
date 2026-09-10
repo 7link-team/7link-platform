@@ -31,6 +31,10 @@ export function AccountNavigation({ onNavigate }: { onNavigate?: () => void }) {
         { path: "profile", label: t("profile"), Icon: UserRound },
         { path: "security", label: t("security"), Icon: ShieldCheck },
         { path: "mfa", label: t("twoFactor"), Icon: Smartphone },
+        { path: "tokens", label: t("personalTokens"), Icon: KeyRound },
+        { path: "memberships", label: t("myMemberships"), Icon: UserRound },
+        { path: "identities", label: t("linkedIdentities"), Icon: UserRound },
+        { path: "closure", label: t("accountClosure"), Icon: ShieldCheck },
         {
           path: "applications",
           label: t("authorizedApplications"),

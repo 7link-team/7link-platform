@@ -14,7 +14,16 @@ describe("AccountNavigation", () => {
         </IntlAppProvider>
       </MemoryRouter>
     )
-    for (const path of ["profile", "security", "mfa", "applications"])
+    for (const path of [
+      "profile",
+      "security",
+      "mfa",
+      "applications",
+      "tokens",
+      "memberships",
+      "identities",
+      "closure",
+    ])
       expect(html).toContain(`href="/account/${path}"`)
     expect(html).toContain('aria-current="page"')
     expect(html).not.toContain("/iam/")

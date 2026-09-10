@@ -510,18 +510,31 @@ func (s *Service) resolvePasskey(
 	ctx context.Context,
 	credentialID, userHandle []byte,
 ) (guid.ID, *model.Passkey, error) {
-	row, err := s.repo.getPasskey(ctx, passkeyIDHash(credentialID))
+	return s.resolvePasskeyOn(ctx, s.repo, credentialID, userHandle)
+}
+
+func (s *Service) resolvePasskeyOn(ctx context.Context, repository *Repository, credentialID, userHandle []byte) (guid.ID, *model.Passkey, error) {
+	row, err := repository.getPasskey(ctx, passkeyIDHash(credentialID))
 	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, nil, err
+		}
 		return 0, nil, authnext.ErrPasskeyCredential
 	}
-	_, err = s.repo.findPasskeyUserByHandle(
+	_, err = repository.findPasskeyUserByHandle(
 		ctx, row.PrincipalID, base64.RawURLEncoding.EncodeToString(userHandle),
 	)
 	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, nil, err
+		}
 		return 0, nil, authnext.ErrPasskeyCredential
 	}
-	if _, err := s.repo.getActivePrincipal(ctx, row.PrincipalID); err != nil {
-		return 0, nil, authnext.ErrPasskeyCredential
+	if _, err := repository.getActivePrincipal(ctx, row.PrincipalID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, nil, authnext.ErrPasskeyCredential
+		}
+		return 0, nil, err
 	}
 	return row.PrincipalID, row, nil
 }

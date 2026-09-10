@@ -1,4 +1,6 @@
 {
+  "closure_conflict": "注销申请已变更，或当前状态不允许此操作。请刷新后重试。",
+  "platform_access_blocks_closure": "请先通过受保护的管理员流程移除此账号的平台权限，再处理注销申请。",
   "identity_unavailable": "身份服务无法完成该请求，请稍后重试；若问题持续，请联系管理员。",
   "invalid_principal": "身份主体数据无效，请检查登录名、资料、邮箱和密码要求。",
   "invalid_service_account": "服务账号数据无效，请检查名称、状态、有效期、凭据作用域和租户状态。",

@@ -19,6 +19,99 @@ describe("IAM API client", () => {
   let server: ReturnType<typeof Bun.serve> | undefined
   afterEach(() => server?.stop(true))
 
+  it("keeps personal proofs, lifecycle versions and pagination outside the selected tenant context", async () => {
+    const requests: RecordedRequest[] = []
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        requests.push({
+          method: request.method,
+          path: url.pathname + url.search,
+          headers: request.headers,
+          body: await request.text(),
+        })
+        return Response.json({
+          code: 0,
+          data:
+            url.pathname === "/authn/personal-tokens" &&
+            request.method === "GET"
+              ? []
+              : {},
+          meta: { page: { total: 47 } },
+        })
+      },
+    })
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      () => "unrelated-selected-tenant"
+    )
+    expect(await client.personalTokens(20, 20)).toEqual({
+      items: [],
+      total: 47,
+    })
+    await client.personalTokenPermissions("71")
+    const token = {
+      name: "Job token",
+      tenant_id: "71",
+      permissions: ["user_view"],
+      expires_at: "2027-01-01T00:00:00Z",
+    }
+    await client.preparePersonalToken(token)
+    await client.createReauthenticationChallenge({
+      purpose: "personal_token_create",
+      target: "bound-target",
+      method: "password",
+    })
+    await client.verifyReauthentication({
+      proof: "proof",
+      password: "password",
+      code: "123456",
+    })
+    await client.createPersonalToken({ ...token, proof: "proof" })
+    await client.revokePersonalToken("token/id")
+    await client.personalMemberships(50, 50)
+    await client.leaveMembership("71", "leave-proof")
+    await client.submitClosureRequest("close-proof", 3)
+    await client.cancelClosureRequest(4)
+    await client.closureRequests(50, 50, "processing")
+    await client.processClosureRequest("81", 5)
+    await client.rejectClosureRequest("82", 6)
+    await client.createIdentityLinkTransaction({
+      provider_id: "provider",
+      proof: "federation-proof",
+      existing_link_id: "existing",
+      return_url: "https://console.example.test/account/tokens",
+    })
+    await client.deleteIdentityLink("provider/link", "unlink-proof")
+    expect(
+      requests.every(
+        ({ headers }) =>
+          !headers.has("x-tenant-id") && !headers.has("authorization")
+      )
+    ).toBe(true)
+    expect(requests[0]?.path).toBe("/authn/personal-tokens?offset=20&limit=20")
+    expect(requests[1]?.path).toBe(
+      "/authn/personal-token-permissions?tenant_id=71"
+    )
+    expect(JSON.parse(requests[5]!.body)).toEqual({ ...token, proof: "proof" })
+    expect(requests[6]?.path).toBe("/authn/personal-tokens/token%2Fid")
+    expect(requests[7]?.path).toBe("/iam/me/memberships?offset=50&limit=50")
+    expect(JSON.parse(requests[8]!.body)).toEqual({ proof: "leave-proof" })
+    expect(JSON.parse(requests[9]!.body)).toEqual({
+      proof: "close-proof",
+      version: 3,
+    })
+    expect(requests[10]?.method).toBe("DELETE")
+    expect(JSON.parse(requests[10]!.body)).toEqual({ version: 4 })
+    expect(requests[11]?.path).toBe(
+      "/platform/iam/closure-requests?status=processing&offset=50&limit=50"
+    )
+    expect(JSON.parse(requests[12]!.body)).toEqual({ version: 5 })
+    expect(requests[15]?.path).toBe("/authn/identity-links/provider%2Flink")
+    expect(JSON.parse(requests[15]!.body)).toEqual({ proof: "unlink-proof" })
+  })
+
   it("discovers personal tenants and manages consent without a selected tenant header", async () => {
     const requests: RecordedRequest[] = []
     server = Bun.serve({

@@ -39,6 +39,8 @@ func (web *grantWeb) Authenticate(ctx context.Context, authorization, cookie str
 func newGrantHarness(t *testing.T) (*oauthHarness, *authn.Service) {
 	t.Helper()
 	h := newOAuthHarness(t, "")
+	// Replace the lightweight OAuth credential-state fixture with authn's real schema.
+	require.NoError(t, h.db.Exec("DROP TABLE iam_credentials").Error)
 	db, err := h.db.DB()
 	require.NoError(t, err)
 	require.NoError(t, goosex.Migrate(t.Context(), db, (&authn.Module{}).MigrationSource(), "sqlite"))

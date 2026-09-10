@@ -11,6 +11,7 @@ import (
 
 	federationi18n "7link.com/platform/internal/iam/federation/i18n"
 	"7link.com/platform/internal/infra/guid"
+	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
 	"github.com/danielgtaylor/huma/v2"
@@ -61,6 +62,7 @@ type providerReplaceInput struct {
 // are intentionally public because their security is carried by the sealed
 // state cookie and PKCE verifier.
 func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
+	registerPersonalIdentityHTTP(api, service)
 	registerAdminHTTP(api, service, registrar)
 	registerBrowserHTTP(api, service)
 	registerSAMLAdminHTTP(api, service, registrar)
@@ -180,6 +182,15 @@ func registerBrowserHTTP(api huma.API, service *Service) {
 			writeFederationError(api, ctx, err)
 			return
 		}
+		if strings.HasPrefix(ctx.Query("state"), "account.") {
+			if err := service.VerifyIdentityOperation(ctx.Context(), providerID, ctx.Query("state"), ctx.Query("code"), "", requestCallbackURL(ctx, providerID)); err != nil {
+				writeFederationError(api, ctx, err)
+				return
+			}
+			ctx.SetHeader("Location", identityContinuationURL(providerID, ctx.Query("state")))
+			ctx.SetStatus(http.StatusSeeOther)
+			return
+		}
 		result, err := service.CompleteLogin(ctx.Context(), providerID, ctx.Query("code"), ctx.Query("state"), ctx.Header("Cookie"), requestCallbackURL(ctx, providerID))
 		if err != nil {
 			ctx.AppendHeader("Set-Cookie", service.StateClearCookie())
@@ -219,6 +230,15 @@ func registerBrowserHTTP(api huma.API, service *Service) {
 			writeFederationError(api, ctx, ErrOIDCState)
 			return
 		}
+		if strings.HasPrefix(values.Get("RelayState"), "account.") {
+			if err := service.VerifyIdentityOperation(ctx.Context(), providerID, values.Get("RelayState"), "", values.Get("SAMLResponse"), requestCallbackURL(ctx, providerID)); err != nil {
+				writeFederationError(api, ctx, err)
+				return
+			}
+			ctx.SetHeader("Location", identityContinuationURL(providerID, values.Get("RelayState")))
+			ctx.SetStatus(http.StatusSeeOther)
+			return
+		}
 		sessionToken, returnURL, err := service.CompleteSAMLLogin(ctx.Context(), providerID, values.Get("SAMLResponse"), ctx.Header("Cookie"), requestCallbackURL(ctx, providerID))
 		if err != nil {
 			ctx.AppendHeader("Set-Cookie", service.StateClearCookie())
@@ -243,6 +263,7 @@ func browserResponses(schemas huma.Registry) map[string]*huma.Response {
 	errorSchema := errorResponseSchema(schemas)
 	return map[string]*huma.Response{
 		"302": redirect,
+		"303": {Description: http.StatusText(http.StatusSeeOther), Headers: redirect.Headers},
 		"400": {Description: "Bad request", Content: map[string]*huma.MediaType{"application/json": {Schema: errorSchema}}},
 		"403": {Description: "Login denied", Content: map[string]*huma.MediaType{"application/json": {Schema: errorSchema}}},
 		"404": {Description: "Provider not found", Content: map[string]*huma.MediaType{"application/json": {Schema: errorSchema}}},
@@ -319,6 +340,14 @@ func requestCallbackURL(ctx huma.Context, providerID guid.ID) string {
 
 func federationError(err error) error {
 	switch {
+	case errors.Is(err, authnext.ErrInvalidCredentials), errors.Is(err, authnext.ErrInvalidSession):
+		return huma.Error401Unauthorized(federationi18n.IdentityUnavailable)
+	case errors.Is(err, authnext.ErrUnavailable):
+		return huma.Error503ServiceUnavailable(federationi18n.Unavailable)
+	case errors.Is(err, ErrIdentityLinkConflict):
+		return huma.Error409Conflict(federationi18n.IdentityLinkConflict)
+	case errors.Is(err, ErrLastLoginMethod):
+		return huma.Error409Conflict(federationi18n.LastLoginMethod)
 	case errors.Is(err, errReplayUnavailable):
 		return huma.Error503ServiceUnavailable(federationi18n.Unavailable)
 	case errors.Is(err, ErrInvalidProvider), errors.Is(err, ErrOIDCState):

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
 import { chromium } from "playwright"
 
 // Isolated browser regression: only HTTP responses are stubbed; the real app,
@@ -75,19 +76,35 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
     "principals-empty": ["principals", "items"],
     "tenants-empty": ["tenants", "tenants"],
     "oauth-clients-empty": ["oauth-clients", "clients"],
+    "departments-empty": ["departments", "departments"],
+    "positions-empty": ["positions", "positions"],
+    "groups-empty": ["groups", "groups"],
+    "menus-empty": ["menus", "menus"],
+    "invitations-empty": ["invitations", "items", "loaded"],
+    "service-accounts-empty": ["service-accounts", "accounts"],
+    "scim-directories-empty": ["scim-directories", "directories"],
+    "audit-events-empty": ["audit-events", "events"],
+    "access-reviews-empty": ["access-reviews", null],
   }[process.env.IAM_REGRESSION_MUTATION]
   if (mutation) {
     await page.route(`**/src/app/${mutation[0]}/page.tsx*`, async (route) => {
       const response = await route.fetch()
       const source = await response.text()
-      const fixed = `!loading && !loadError && ${mutation[1]}.length === 0`
+      const fixed = mutation[1]
+        ? `${mutation[2] ?? "!loading"} && !loadError && ${mutation[1]}.length === 0`
+        : "!loadError && /* @__PURE__ */ _jsxDEV(CampaignList"
       assert(
         source.includes(fixed),
         "Mutation targets the real empty-state guard"
       )
       await route.fulfill({
         response,
-        body: source.replaceAll(fixed, `${mutation[1]}.length === 0`),
+        body: source.replaceAll(
+          fixed,
+          mutation[1]
+            ? `${mutation[1]}.length === 0`
+            : "/* @__PURE__ */ _jsxDEV(CampaignList"
+        ),
       })
     })
   }
@@ -105,7 +122,8 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
         contentType: "application/json",
         body: JSON.stringify({
           code: status < 400 ? 0 : status,
-          message: status < 400 ? "ok" : `failure ${status}`,
+          message:
+            status < 400 ? "ok" : (state.failureMessage ?? `failure ${status}`),
           data,
         }),
       })
@@ -117,6 +135,174 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
         return
       }
       return result()
+    }
+    if (path === "/authn/personal-token-permissions")
+      return send([
+        { code: "user_view", resource: "user", verb: "view", scope: "tenant" },
+      ])
+    if (path === "/authn/reauthentication-methods")
+      return send({
+        methods: state.federated ? [] : ["password"],
+        mfa_required: !state.federated,
+      })
+    if (path === "/authn/identity-links")
+      return send(
+        state.links ??
+          (state.federated
+            ? [
+                {
+                  id: "link-1",
+                  provider_id: "provider-1",
+                  provider_name: "Test identity provider",
+                  tenant_id: "t1",
+                },
+              ]
+            : [])
+      )
+    if (path === "/authn/identity-link-providers")
+      return send(
+        state.providers ??
+          (state.federated
+            ? [
+                {
+                  id: "provider-1",
+                  name: "Test identity provider",
+                  tenant_id: "t1",
+                },
+              ]
+            : [])
+      )
+    if (path === "/authn/identity-link-transactions") {
+      if (state.identityFlow) {
+        assert(state.proofVerified)
+        assert.equal(state.reauthPurpose, "identity_link")
+        state.links = [
+          {
+            id: "link-1",
+            provider_id: "provider-1",
+            provider_name: "Test identity provider",
+            tenant_id: "t1",
+            external_subject: "External person",
+          },
+        ]
+        return send({ authorization_url: baseURL + "/account/identities" })
+      }
+      state.proofVerified = true
+      return send({ authorization_url: baseURL + "/account/tokens" })
+    }
+    if (path === "/authn/personal-token-preparations") {
+      state.tokenPreparation = request.postDataJSON()
+      return send({
+        request: state.tokenPreparation,
+        target: "bound-request-target",
+      })
+    }
+    if (path === "/authn/reauthentication-challenges") {
+      state.proofVerified = false
+      state.reauthPurpose = request.postDataJSON().purpose
+      state.reauthTarget = request.postDataJSON().target
+      return send({
+        proof: "fixture-proof",
+        method: state.federated ? "federation" : "password",
+        expires_at: "2027-01-01T00:00:00Z",
+      })
+    }
+    if (path === "/authn/reauthentication-verifications") {
+      const body = request.postDataJSON()
+      state.proofVerified =
+        body.password === "correct-password" && body.code === "123456"
+      return send(
+        { verified: state.proofVerified },
+        state.proofVerified ? 200 : 401
+      )
+    }
+    if (path === "/authn/personal-tokens" && request.method() === "POST") {
+      assert(state.proofVerified, "Token creation requires verified proof")
+      assert.equal(state.reauthPurpose, "personal_token_create")
+      const token = {
+        ...state.tokenPreparation,
+        id: "token-1",
+        created_at: "2026-09-10T00:00:00Z",
+      }
+      state.personalTokens = [token]
+      return send({ ...token, token: "fixture-one-time-secret" })
+    }
+    if (path === "/authn/personal-tokens")
+      return send(state.personalTokens ?? [])
+    if (
+      path === "/authn/identity-links/link-1" &&
+      request.method() === "DELETE"
+    ) {
+      assert(state.proofVerified)
+      assert.equal(state.reauthPurpose, "identity_unlink")
+      assert.equal(state.reauthTarget, "link-1")
+      if (state.actionConflict) return send(null, 409)
+      state.links = []
+      return send({ deleted: true })
+    }
+    if (path === "/iam/me/memberships")
+      return send({
+        items: state.memberships ?? [],
+        total: state.memberships?.length ?? 0,
+      })
+    if (path === "/iam/me/memberships/t1/leave") {
+      assert(state.proofVerified)
+      assert.equal(state.reauthPurpose, "tenant_leave")
+      assert.equal(state.reauthTarget, "t1")
+      if (state.actionConflict) return send(null, 409)
+      state.memberships = state.memberships.filter(
+        (item) => item.tenant_id !== "t1"
+      )
+      state.mine = state.mine.filter((item) => item.id !== "t1")
+      return send({ status: "disabled" })
+    }
+    if (path === "/iam/me/closure-request") {
+      state.closure ??= {
+        principal_id: state.subject,
+        status: "none",
+        version: 0,
+      }
+      if (request.method() !== "GET") {
+        assert.equal(request.postDataJSON().version, state.closure.version)
+        if (state.actionConflict) return send(null, 409)
+        if (request.method() === "POST") {
+          assert(state.proofVerified)
+          assert.equal(state.reauthPurpose, "principal_close")
+          assert.equal(state.reauthTarget, state.subject)
+        }
+        state.closure = {
+          ...state.closure,
+          status: request.method() === "POST" ? "pending" : "canceled",
+          version: state.closure.version + 1,
+        }
+      }
+      return send(state.closure)
+    }
+    if (path === "/platform/iam/closure-requests") {
+      const status = new URL(request.url()).searchParams.get("status")
+      const items = (state.closureQueue ?? []).filter(
+        (item) => item.status === status
+      )
+      return send({ items, total: items.length })
+    }
+    if (
+      path.startsWith("/platform/iam/principals/") &&
+      path.includes("/closure-request/")
+    ) {
+      const id = path.split("/")[4]
+      const item = state.closureQueue.find((entry) => entry.principal_id === id)
+      assert.equal(request.postDataJSON().version, item.version)
+      if (state.actionConflict) return send(null, 409)
+      item.status = path.endsWith("/processing") ? "processing" : "rejected"
+      item.version++
+      return send(item)
+    }
+    if (
+      path === "/authn/personal-tokens/token-1" &&
+      request.method() === "DELETE"
+    ) {
+      state.personalTokens[0].revoked_at = "2026-09-10T00:01:00Z"
+      return send({ revoked: true })
     }
     if (path === "/authn/sessions/current" && request.method() === "GET") {
       if (state.sessionStatus === "network") return route.abort("failed")
@@ -195,6 +381,8 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
     }
     if (path === "/iam/principals") return send({ items: [] })
     if (path === "/iam/fields/effective") return send({ fields: {} })
+    if (path === "/iam/audit-integrity")
+      return send({ valid: true, verified_events: 0, head_sequence: 0 })
     if (path === "/iam/oauth-clients")
       return send([
         {
@@ -664,6 +852,89 @@ try {
     }
   )
   for (const fixture of [
+    ...[
+      ["departments", "No departments in this tenant"],
+      ["positions", "No positions in this tenant"],
+      ["groups", "No user groups in this tenant"],
+      ["menus", "No menu nodes"],
+      ["invitations", "No member invitations"],
+      ["access-reviews", "No access reviews"],
+      ["scim-directories", "No SCIM directories created"],
+    ].map(([name, empty]) => ({
+      name,
+      path: `/iam/${name}`,
+      api:
+        name === "scim-directories" ? "/iam/scim/directories" : `/iam/${name}`,
+      empty,
+      emptyData: [],
+      data: [
+        {
+          id: "visible-item",
+          name: "Visible item",
+          label: "Visible item",
+          email: "visible@example.test",
+          code: "visible-item",
+          status:
+            name === "invitations"
+              ? "pending"
+              : name === "access-reviews"
+                ? "open"
+                : "active",
+          type: "static",
+          sort_order: 0,
+          version: 1,
+          role_ids: [],
+          items: [],
+          total: 0,
+          pending: 0,
+          kept: 0,
+          revoked: 0,
+          created_at: "2026-09-01T00:00:00Z",
+          updated_at: "2026-09-01T00:00:00Z",
+          due_at: "2027-09-01T00:00:00Z",
+          expires_at: "2027-09-01T00:00:00Z",
+        },
+      ],
+      row: name === "invitations" ? "visible@example.test" : "Visible item",
+    })),
+    {
+      name: "service-accounts",
+      path: "/iam/service-accounts",
+      api: "/iam/service-accounts",
+      empty: "No service accounts created",
+      emptyData: { items: [], total: 0 },
+      data: {
+        items: [
+          {
+            id: "machine",
+            login_name: "visible-machine",
+            display_name: "Visible machine",
+            status: "active",
+            version: 1,
+          },
+        ],
+        total: 1,
+      },
+      row: "Visible machine",
+    },
+    {
+      name: "audit-events",
+      path: "/iam/audit-events",
+      api: "/iam/audit-events",
+      empty: "No matching audit events",
+      emptyData: [],
+      data: [
+        {
+          id: "event-1",
+          event_type: "visible_event",
+          outcome: "success",
+          sequence: 1,
+          detail: {},
+          created_at: "2026-09-01T00:00:00Z",
+        },
+      ],
+      row: "visible_event",
+    },
     {
       name: "principals",
       path: "/iam/users",
@@ -732,7 +1003,11 @@ try {
           })
           await page.goto(fixture.path)
           await requested
-          await visible(page, "Loading")
+          if (fixture.name === "access-reviews")
+            await page
+              .getByLabel("Loading access reviews", { exact: true })
+              .waitFor()
+          else await visible(page, "Loading")
           assert.equal(
             await page.getByText(fixture.empty, { exact: true }).count(),
             0
@@ -749,6 +1024,13 @@ try {
             await page.getByText("0 clients", { exact: true }).count(),
             0
           )
+          for (const zero of [
+            "0 accounts",
+            "0 directories",
+            "0 root nodes · 0 menus",
+            "0-0 / 0",
+          ])
+            assert.equal(await page.getByText(zero, { exact: true }).count(), 0)
           state.listStatus = 200
           await page
             .getByRole("button", { name: "Retry now", exact: true })
@@ -762,7 +1044,7 @@ try {
           state.listData = fixture.data
           await page.reload()
           await page
-            .getByText(fixture.row, { exact: true })
+            .getByText(fixture.row, { exact: false })
             .filter({ visible: true })
             .first()
             .waitFor()
@@ -774,6 +1056,331 @@ try {
         { mobile }
       )
     }
+  for (const locale of ["en-US", "zh-CN", "ms-MY"])
+    for (const mobile of [false, true]) {
+      const messages = JSON.parse(
+        readFileSync(
+          new URL(`../src/messages/${locale}.json`, import.meta.url),
+          "utf8"
+        )
+      )
+      await scenario(
+        `personal token verification create revoke ${locale} ${mobile ? "mobile" : "desktop"}`,
+        async (page, state) => {
+          await page.goto("/account/tokens")
+          await page
+            .getByRole("heading", {
+              name: messages.personalTokens,
+              exact: true,
+            })
+            .waitFor()
+          await visible(page, messages.noPersonalTokens)
+          await page
+            .getByRole("button", {
+              name: messages.createPersonalToken,
+              exact: true,
+            })
+            .click()
+          assert.equal(
+            await page.locator("#token-expiry").inputValue(),
+            "",
+            "User must choose the expiry"
+          )
+          await page.locator("#token-name").fill("Acceptance token")
+          await page.locator("#token-tenant").selectOption("t1")
+          await page.locator("#token-expiry").fill("2027-01-01T12:00")
+          await page.getByRole("checkbox").check()
+          await page
+            .getByRole("dialog")
+            .getByRole("button", { name: messages.continue, exact: true })
+            .click()
+          await page.locator("#reauth-password").fill("wrong-password")
+          await page.locator("#reauth-code").fill("123456")
+          await page
+            .getByRole("dialog")
+            .getByRole("button", { name: messages.continue, exact: true })
+            .click()
+          await visible(page, "failure 401")
+          assert.equal(state.personalTokens?.length ?? 0, 0)
+          await page.locator("#reauth-password").fill("correct-password")
+          await page
+            .getByRole("dialog")
+            .getByRole("button", { name: messages.continue, exact: true })
+            .click()
+          await page.getByTestId("personal-token-secret").waitFor()
+          assert.equal(
+            await page.getByTestId("personal-token-secret").innerText(),
+            "fixture-one-time-secret"
+          )
+          assert.equal(
+            await page.evaluate(() =>
+              JSON.stringify({ ...localStorage, ...sessionStorage }).includes(
+                "fixture-one-time-secret"
+              )
+            ),
+            false
+          )
+          await page
+            .getByRole("dialog")
+            .getByRole("button", { name: messages.close, exact: true })
+            .first()
+            .click()
+          await page.reload()
+          await visible(page, "Acceptance token")
+          assert.equal(
+            await page.getByTestId("personal-token-secret").count(),
+            0
+          )
+          await page
+            .getByRole("button", { name: messages.revoke, exact: true })
+            .click()
+          await page
+            .getByRole("dialog")
+            .getByRole("button", { name: messages.revoke, exact: true })
+            .click()
+          await page
+            .getByRole("button", { name: messages.revoked, exact: true })
+            .waitFor()
+          for (const request of state.requests.filter(
+            (item) =>
+              item.path.startsWith("/authn/") ||
+              item.path.startsWith("/iam/me/")
+          ))
+            assert.equal(request.tenant, undefined)
+          assert(
+            await page.evaluate(
+              () => document.documentElement.scrollWidth <= innerWidth
+            )
+          )
+        },
+        { locale, mobile }
+      )
+    }
+  await scenario(
+    "personal token federated continuation keeps proof out of URL",
+    async (page, state) => {
+      state.federated = true
+      await page.goto("/account/tokens")
+      await page
+        .getByRole("button", { name: "Create personal token", exact: true })
+        .click()
+      await page.locator("#token-name").fill("Federated token")
+      await page.locator("#token-tenant").selectOption("t1")
+      await page.locator("#token-expiry").fill("2027-01-01T12:00")
+      await page.getByRole("checkbox").check()
+      await page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Continue", exact: true })
+        .click()
+      await page.locator("#reauth-method").waitFor()
+      await page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Continue", exact: true })
+        .click()
+      await page.getByTestId("personal-token-secret").waitFor()
+      assert.equal(new URL(page.url()).search, "")
+      assert.equal(
+        await page.evaluate(() =>
+          sessionStorage.getItem("iam.reauthentication")
+        ),
+        null
+      )
+    }
+  )
+  for (const locale of ["en-US", "zh-CN", "ms-MY"])
+    for (const mobile of [false, true]) {
+      const messages = JSON.parse(
+        readFileSync(
+          new URL(`../src/messages/${locale}.json`, import.meta.url),
+          "utf8"
+        )
+      )
+      await scenario(
+        `personal lifecycle conflicts and readback ${locale} ${mobile ? "mobile" : "desktop"}`,
+        async (page, state) => {
+          const button = (key) =>
+            page.getByRole("button", { name: messages[key], exact: true })
+          const verify = async () => {
+            await page.locator("#reauth-password").fill("correct-password")
+            await page.locator("#reauth-code").fill("123456")
+            await page
+              .getByRole("dialog")
+              .getByRole("button", { name: messages.continue, exact: true })
+              .click()
+          }
+          state.memberships = [
+            { tenant_id: "t1", tenant_name: "Workspace t1" },
+            { tenant_id: "t2", tenant_name: "Workspace t2" },
+          ]
+          await page.goto("/account/memberships")
+          await visible(page, "Workspace t1")
+          state.actionConflict = true
+          await button("leaveTenant").first().click()
+          await verify()
+          await visible(page, "failure 409")
+          assert.equal(state.memberships.length, 2)
+          state.actionConflict = false
+          await verify()
+          await page.getByRole("dialog").waitFor({ state: "hidden" })
+          await visible(page, "Workspace t2")
+          assert.equal(
+            await page
+              .getByRole("heading", { name: "Workspace t1", exact: true })
+              .count(),
+            0
+          )
+          await page.reload()
+          await visible(page, "Workspace t2")
+          assert.equal(state.sessionStatus, 200)
+
+          await page.goto("/account/closure")
+          await button("submitClosureRequest").click()
+          await verify()
+          await button("cancelClosureRequest").waitFor()
+          assert.equal(state.closure.status, "pending")
+          state.actionConflict = true
+          await button("cancelClosureRequest").click()
+          await visible(page, "failure 409")
+          assert.equal(state.closure.status, "pending")
+          state.actionConflict = false
+          await button("cancelClosureRequest").click()
+          await button("submitClosureRequest").waitFor()
+          await page.reload()
+          await visible(page, messages.closureStatus_canceled)
+
+          state.identityFlow = true
+          state.links = []
+          state.providers = [
+            {
+              id: "provider-1",
+              name: "Test identity provider",
+              tenant_id: "t1",
+              provider_type: "oidc",
+            },
+          ]
+          await page.goto("/account/identities")
+          await page.locator("#identity-provider").selectOption("provider-1")
+          await button("linkIdentity").click()
+          await verify()
+          await button("unlinkIdentity").waitFor()
+          await visible(page, "External person")
+          assert.equal(new URL(page.url()).search, "")
+          state.actionConflict = true
+          await button("unlinkIdentity").click()
+          await verify()
+          await visible(page, "failure 409")
+          assert.equal(state.links.length, 1)
+          state.actionConflict = false
+          await verify()
+          await visible(page, messages.noLinkedIdentities)
+          await page.reload()
+          await visible(page, messages.noLinkedIdentities)
+
+          state.closureQueue = [
+            { principal_id: "requester-one", status: "pending", version: 1 },
+            { principal_id: "requester-two", status: "pending", version: 3 },
+          ]
+          await page.goto("/iam/closure-requests")
+          await visible(page, "requester-one")
+          await button("rejectClosureRequest").first().click()
+          state.actionConflict = true
+          await page
+            .getByRole("dialog")
+            .getByRole("button", {
+              name: messages.rejectClosureRequest,
+              exact: true,
+            })
+            .click()
+          await visible(page, "failure 409")
+          assert.equal(state.closureQueue[0].status, "pending")
+          state.actionConflict = false
+          await page
+            .getByRole("dialog")
+            .getByRole("button", {
+              name: messages.rejectClosureRequest,
+              exact: true,
+            })
+            .click()
+          await page.getByRole("dialog").waitFor({ state: "hidden" })
+          await button("processClosureRequest").click()
+          assert(
+            (await page.getByRole("dialog").innerText()).includes(
+              "requester-two"
+            )
+          )
+          await page
+            .getByRole("dialog")
+            .getByRole("button", {
+              name: messages.processClosureRequest,
+              exact: true,
+            })
+            .click()
+          await page.getByRole("dialog").waitFor({ state: "hidden" })
+          await visible(page, "requester-two")
+          assert.equal(state.closureQueue[1].status, "processing")
+          assert.equal(await button("processClosureRequest").count(), 0)
+          await button("retentionErasure").waitFor()
+          assert(
+            await page.evaluate(
+              () => document.documentElement.scrollWidth <= innerWidth
+            )
+          )
+          for (const request of state.requests.filter(
+            (item) =>
+              item.path.startsWith("/platform/") ||
+              item.path.startsWith("/authn/") ||
+              item.path.startsWith("/iam/me/memberships") ||
+              item.path === "/iam/me/closure-request"
+          ))
+            assert.equal(request.tenant, undefined)
+        },
+        { locale, mobile }
+      )
+    }
+  for (const locale of ["en-US", "zh-CN", "ms-MY"]) {
+    const messages = JSON.parse(
+      readFileSync(
+        new URL(`../src/messages/${locale}.json`, import.meta.url),
+        "utf8"
+      )
+    )
+    await scenario(
+      `nested error localization ${locale}`,
+      async (page, state) => {
+        state.failureMessage = "forbidden"
+        state.entitiesStatus = 403
+        await page.goto("/iam/entities")
+        await page
+          .getByRole("alert")
+          .filter({ hasText: messages.forbidden })
+          .first()
+          .waitFor()
+        assert.equal(
+          await page
+            .getByRole("alert")
+            .getByText("forbidden", { exact: true })
+            .count(),
+          0
+        )
+        state.consentStatus = 403
+        await page.goto("/account/applications")
+        await page
+          .getByRole("alert")
+          .filter({ hasText: messages.forbidden })
+          .first()
+          .waitFor()
+        state.entitiesStatus = 200
+        state.menusStatus = 403
+        await page.goto("/")
+        await page
+          .getByRole("alert")
+          .filter({ hasText: messages.forbidden })
+          .first()
+          .waitFor()
+      },
+      { locale }
+    )
+  }
   console.log(`PASS ${completed} browser regression scenarios`)
 } finally {
   await browser.close()

@@ -66,8 +66,8 @@ func TestIAMMigrationStatusAcrossEnginesAndPrefixes(t *testing.T) {
 
 func assertIAMDatabaseTableOwnership(t *testing.T, db *sql.DB, dialect, prefix string) {
 	t.Helper()
-	expected := make([]string, 0, 66)
-	owners := make(map[string]string, 66)
+	expected := make([]string, 0, 72)
+	owners := make(map[string]string, 72)
 	for _, contract := range iamMigrationContracts() {
 		provider, ok := contract.module.(module.MigrationSourceProvider)
 		require.True(t, ok, "%s must provide migrations", contract.name)
@@ -80,7 +80,7 @@ func assertIAMDatabaseTableOwnership(t *testing.T, db *sql.DB, dialect, prefix s
 			expected = append(expected, prefix+table)
 		}
 	}
-	require.Len(t, owners, 68)
+	require.Len(t, owners, 72)
 	sort.Strings(expected)
 	assert.Equal(t, expected, readIAMDatabaseTables(t, db, dialect))
 }

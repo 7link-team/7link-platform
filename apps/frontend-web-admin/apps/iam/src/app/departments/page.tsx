@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react"
@@ -57,13 +58,34 @@ export default function DepartmentsPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
 
-  const refresh = useCallback(
-    () => iamApi.departments().then(setDepartments),
-    []
-  )
+  const loadGeneration = useRef(0)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
+  const refresh = useCallback(async () => {
+    const generation = ++loadGeneration.current
+    setLoading(true)
+    setLoadError("")
+    try {
+      const next = await iamApi.departments()
+      if (generation === loadGeneration.current) setDepartments(next)
+    } catch (cause) {
+      if (generation === loadGeneration.current) {
+        setDepartments([])
+        setLoadError((cause as Error).message)
+      }
+    } finally {
+      if (generation === loadGeneration.current) setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    void refresh().catch((cause: Error) => setError(cause.message))
+    let active = true
+    void Promise.resolve().then(() => {
+      if (active) void refresh()
+    })
+    return () => {
+      active = false
+    }
   }, [refresh])
 
   const childrenByParent = useMemo(() => {
@@ -81,8 +103,11 @@ export default function DepartmentsPage() {
   )
 
   const visibleDepartments = useMemo(
-    () => filterCollapsedDepartments(departments, collapsed),
-    [collapsed, departments]
+    () =>
+      loading || loadError
+        ? []
+        : filterCollapsedDepartments(departments, collapsed),
+    [collapsed, departments, loading, loadError]
   )
 
   const parentOptions = useMemo(
@@ -184,6 +209,15 @@ export default function DepartmentsPage() {
         }
       />
       {error && <Alert>{error}</Alert>}
+      {loadError && (
+        <Alert>
+          <p>{t.has(loadError) ? t(loadError) : loadError}</p>
+          <Button variant="outline" onClick={() => void refresh()}>
+            {t("retryNow")}
+          </Button>
+        </Alert>
+      )}
+      {loading && <p role="status">{t("loading")}</p>}
       <div className="overflow-x-auto rounded-md border bg-card">
         <Table className="min-w-[720px]">
           <TableHeader>
@@ -278,7 +312,9 @@ export default function DepartmentsPage() {
                         size="icon"
                         disabled={busy}
                         onClick={() => void remove(department)}
-                        aria-label={t("deleteNamed", { name: department.name })}
+                        aria-label={t("deleteNamed", {
+                          name: department.name,
+                        })}
                         title={t("deleteEmptyDepartment")}
                       >
                         <Trash2 />
@@ -290,7 +326,7 @@ export default function DepartmentsPage() {
             })}
           </TableBody>
         </Table>
-        {departments.length === 0 && (
+        {!loading && !loadError && departments.length === 0 && (
           <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
             <span className="text-center">
               <Building2 className="mx-auto mb-2 size-7" />

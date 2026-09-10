@@ -1,5 +1,5 @@
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { Ban, Copy, MailPlus, RefreshCw } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
@@ -48,28 +48,42 @@ export default function InvitationsPage() {
   const [busy, setBusy] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState("")
+  const [loadError, setLoadError] = useState("")
+  const loadGeneration = useRef(0)
 
-  const refresh = useCallback(
-    () =>
-      iamApi.invitations().then((invitations) => {
-        setItems(invitations)
-        setLoaded(true)
-      }),
-    []
-  )
+  const refresh = useCallback(async () => {
+    const generation = ++loadGeneration.current
+    setLoaded(false)
+    setLoadError("")
+    try {
+      const next = await iamApi.invitations()
+      if (generation === loadGeneration.current) setItems(next)
+    } catch (cause) {
+      if (generation === loadGeneration.current) {
+        setItems([])
+        setLoadError((cause as Error).message)
+      }
+    } finally {
+      if (generation === loadGeneration.current) setLoaded(true)
+    }
+  }, [])
 
   useEffect(() => {
-    void refresh().catch((cause: Error) => {
-      setError(cause.message)
-      setLoaded(true)
+    let active = true
+    void Promise.resolve().then(() => {
+      if (active) void refresh()
     })
     void Promise.allSettled([iamApi.departments(), iamApi.roles()]).then(
       ([departmentResult, roleResult]) => {
+        if (!active) return
         if (departmentResult.status === "fulfilled")
           setDepartments(departmentResult.value)
         if (roleResult.status === "fulfilled") setRoles(roleResult.value)
       }
     )
+    return () => {
+      active = false
+    }
   }, [refresh])
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -140,6 +154,15 @@ export default function InvitationsPage() {
         }
       />
       {error && <Alert>{error}</Alert>}
+      {loadError && (
+        <Alert>
+          <p>{t.has(loadError) ? t(loadError) : loadError}</p>
+          <Button variant="outline" onClick={() => void refresh()}>
+            {t("retryNow")}
+          </Button>
+        </Alert>
+      )}
+      {!loaded && <p role="status">{t("loading")}</p>}
       <div className="overflow-x-auto rounded-md border bg-card">
         <Table className="min-w-[860px]">
           <TableHeader>
@@ -153,7 +176,7 @@ export default function InvitationsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {items.map((invitation) => (
+            {(!loaded || loadError ? [] : items).map((invitation) => (
               <TableRow key={invitation.id}>
                 <TableCell>
                   <strong className="block text-sm">{invitation.email}</strong>
@@ -218,7 +241,7 @@ export default function InvitationsPage() {
             ))}
           </TableBody>
         </Table>
-        {loaded && items.length === 0 && (
+        {loaded && !loadError && items.length === 0 && (
           <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
             <MailPlus className="mb-2 size-7" />
             {t("noInvitations")}

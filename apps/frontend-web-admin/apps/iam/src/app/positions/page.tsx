@@ -1,5 +1,5 @@
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import {
   BriefcaseBusiness,
   Pencil,
@@ -59,10 +59,34 @@ export default function PositionsPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
 
-  const refresh = useCallback(() => iamApi.positions().then(setPositions), [])
+  const loadGeneration = useRef(0)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
+  const refresh = useCallback(async () => {
+    const generation = ++loadGeneration.current
+    setLoading(true)
+    setLoadError("")
+    try {
+      const next = await iamApi.positions()
+      if (generation === loadGeneration.current) setPositions(next)
+    } catch (cause) {
+      if (generation === loadGeneration.current) {
+        setPositions([])
+        setLoadError((cause as Error).message)
+      }
+    } finally {
+      if (generation === loadGeneration.current) setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    void refresh().catch((cause: Error) => setError(cause.message))
+    let active = true
+    void Promise.resolve().then(() => {
+      if (active) void refresh()
+    })
+    return () => {
+      active = false
+    }
   }, [refresh])
 
   const openCreate = () => {
@@ -184,6 +208,15 @@ export default function PositionsPage() {
         }
       />
       {error && <Alert>{error}</Alert>}
+      {loadError && (
+        <Alert>
+          <p>{t.has(loadError) ? t(loadError) : loadError}</p>
+          <Button variant="outline" onClick={() => void refresh()}>
+            {t("retryNow")}
+          </Button>
+        </Alert>
+      )}
+      {loading && <p role="status">{t("loading")}</p>}
       <div className="overflow-x-auto rounded-md border bg-card">
         <Table className="min-w-[760px]">
           <TableHeader>
@@ -197,7 +230,7 @@ export default function PositionsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {positions.map((position) => (
+            {(loading || loadError ? [] : positions).map((position) => (
               <TableRow key={position.id}>
                 <TableCell>
                   <div className="flex min-w-0 items-center gap-2">
@@ -278,7 +311,7 @@ export default function PositionsPage() {
             ))}
           </TableBody>
         </Table>
-        {positions.length === 0 && (
+        {!loading && !loadError && positions.length === 0 && (
           <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
             <span className="text-center">
               <BriefcaseBusiness className="mx-auto mb-2 size-7" />

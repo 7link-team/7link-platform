@@ -63,7 +63,7 @@ export default function AuthorizedApplicationsPage() {
       />
       {error && !selected && (
         <Alert>
-          <p>{error}</p>
+          <p>{t.has(error) ? t(error) : error}</p>
           <Button
             variant="outline"
             disabled={busy}

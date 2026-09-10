@@ -16,17 +16,19 @@ import (
 )
 
 var (
-	Q                   = new(Query)
-	IdentityLink        *identityLink
-	Provider            *provider
-	ReplayClaim         *replayClaim
-	SAMLIDPKey          *sAMLIDPKey
-	SAMLServiceProvider *sAMLServiceProvider
+	Q                       = new(Query)
+	IdentityLink            *identityLink
+	IdentityLinkTransaction *identityLinkTransaction
+	Provider                *provider
+	ReplayClaim             *replayClaim
+	SAMLIDPKey              *sAMLIDPKey
+	SAMLServiceProvider     *sAMLServiceProvider
 )
 
 func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	*Q = *Use(db, opts...)
 	IdentityLink = &Q.IdentityLink
+	IdentityLinkTransaction = &Q.IdentityLinkTransaction
 	Provider = &Q.Provider
 	ReplayClaim = &Q.ReplayClaim
 	SAMLIDPKey = &Q.SAMLIDPKey
@@ -35,23 +37,25 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
-		db:                  db,
-		IdentityLink:        newIdentityLink(db, opts...),
-		Provider:            newProvider(db, opts...),
-		ReplayClaim:         newReplayClaim(db, opts...),
-		SAMLIDPKey:          newSAMLIDPKey(db, opts...),
-		SAMLServiceProvider: newSAMLServiceProvider(db, opts...),
+		db:                      db,
+		IdentityLink:            newIdentityLink(db, opts...),
+		IdentityLinkTransaction: newIdentityLinkTransaction(db, opts...),
+		Provider:                newProvider(db, opts...),
+		ReplayClaim:             newReplayClaim(db, opts...),
+		SAMLIDPKey:              newSAMLIDPKey(db, opts...),
+		SAMLServiceProvider:     newSAMLServiceProvider(db, opts...),
 	}
 }
 
 type Query struct {
 	db *gorm.DB
 
-	IdentityLink        identityLink
-	Provider            provider
-	ReplayClaim         replayClaim
-	SAMLIDPKey          sAMLIDPKey
-	SAMLServiceProvider sAMLServiceProvider
+	IdentityLink            identityLink
+	IdentityLinkTransaction identityLinkTransaction
+	Provider                provider
+	ReplayClaim             replayClaim
+	SAMLIDPKey              sAMLIDPKey
+	SAMLServiceProvider     sAMLServiceProvider
 }
 
 func (q *Query) Available() bool { return q.db != nil }
@@ -60,12 +64,13 @@ func (q *Query) UnderlyingDB() *gorm.DB { return q.db }
 
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
-		db:                  db,
-		IdentityLink:        q.IdentityLink.clone(db),
-		Provider:            q.Provider.clone(db),
-		ReplayClaim:         q.ReplayClaim.clone(db),
-		SAMLIDPKey:          q.SAMLIDPKey.clone(db),
-		SAMLServiceProvider: q.SAMLServiceProvider.clone(db),
+		db:                      db,
+		IdentityLink:            q.IdentityLink.clone(db),
+		IdentityLinkTransaction: q.IdentityLinkTransaction.clone(db),
+		Provider:                q.Provider.clone(db),
+		ReplayClaim:             q.ReplayClaim.clone(db),
+		SAMLIDPKey:              q.SAMLIDPKey.clone(db),
+		SAMLServiceProvider:     q.SAMLServiceProvider.clone(db),
 	}
 }
 
@@ -79,30 +84,33 @@ func (q *Query) WriteDB() *Query {
 
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
-		db:                  db,
-		IdentityLink:        q.IdentityLink.replaceDB(db),
-		Provider:            q.Provider.replaceDB(db),
-		ReplayClaim:         q.ReplayClaim.replaceDB(db),
-		SAMLIDPKey:          q.SAMLIDPKey.replaceDB(db),
-		SAMLServiceProvider: q.SAMLServiceProvider.replaceDB(db),
+		db:                      db,
+		IdentityLink:            q.IdentityLink.replaceDB(db),
+		IdentityLinkTransaction: q.IdentityLinkTransaction.replaceDB(db),
+		Provider:                q.Provider.replaceDB(db),
+		ReplayClaim:             q.ReplayClaim.replaceDB(db),
+		SAMLIDPKey:              q.SAMLIDPKey.replaceDB(db),
+		SAMLServiceProvider:     q.SAMLServiceProvider.replaceDB(db),
 	}
 }
 
 type queryCtx struct {
-	IdentityLink        IIdentityLinkDo
-	Provider            IProviderDo
-	ReplayClaim         IReplayClaimDo
-	SAMLIDPKey          ISAMLIDPKeyDo
-	SAMLServiceProvider ISAMLServiceProviderDo
+	IdentityLink            IIdentityLinkDo
+	IdentityLinkTransaction IIdentityLinkTransactionDo
+	Provider                IProviderDo
+	ReplayClaim             IReplayClaimDo
+	SAMLIDPKey              ISAMLIDPKeyDo
+	SAMLServiceProvider     ISAMLServiceProviderDo
 }
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
-		IdentityLink:        q.IdentityLink.WithContext(ctx),
-		Provider:            q.Provider.WithContext(ctx),
-		ReplayClaim:         q.ReplayClaim.WithContext(ctx),
-		SAMLIDPKey:          q.SAMLIDPKey.WithContext(ctx),
-		SAMLServiceProvider: q.SAMLServiceProvider.WithContext(ctx),
+		IdentityLink:            q.IdentityLink.WithContext(ctx),
+		IdentityLinkTransaction: q.IdentityLinkTransaction.WithContext(ctx),
+		Provider:                q.Provider.WithContext(ctx),
+		ReplayClaim:             q.ReplayClaim.WithContext(ctx),
+		SAMLIDPKey:              q.SAMLIDPKey.WithContext(ctx),
+		SAMLServiceProvider:     q.SAMLServiceProvider.WithContext(ctx),
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	"7link.com/platform/internal/iam/identity/model"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/passwordx"
 	"gorm.io/gorm"
@@ -39,12 +40,17 @@ type tenantMemberRecord struct {
 
 // Service coordinates principal and service-account identity workflows.
 type Service struct {
-	repo            *Repository
-	administrators  core.AdministratorGuard
-	fields          authz.FieldPermissionChecker
-	anonymizer      PrincipalAnonymizer
-	erasureRecorder audit.ErasureRecorder
-	now             func() time.Time
+	repo                *Repository
+	administrators      core.AdministratorGuard
+	fields              authz.FieldPermissionChecker
+	anonymizer          PrincipalAnonymizer
+	erasureRecorder     audit.ErasureRecorder
+	privacyBrowser      authnext.BrowserSessionSecurity
+	reauthenticate      authnext.ReauthenticationConsumer
+	closeCredentials    PrincipalCredentialsRevoker
+	closeOAuth          PrincipalOAuthRevoker
+	platformAccessGuard core.PrincipalPlatformAccessGuard
+	now                 func() time.Time
 }
 
 func NewService(

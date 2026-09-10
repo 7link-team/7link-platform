@@ -1,5 +1,5 @@
 import { useTranslations, useLocale } from "@workspace/ui/i18n/intl-provider"
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import {
   ArrowUpDown,
   Boxes,
@@ -55,10 +55,34 @@ export default function MenusPage() {
   >([])
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [previewLanguage, setPreviewLanguage] = useState<string | null>(null)
-  const refresh = useCallback(() => iamApi.menus().then(setMenus), [])
+  const loadGeneration = useRef(0)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
+  const refresh = useCallback(async () => {
+    const generation = ++loadGeneration.current
+    setLoading(true)
+    setLoadError("")
+    try {
+      const next = await iamApi.menus()
+      if (generation === loadGeneration.current) setMenus(next)
+    } catch (cause) {
+      if (generation === loadGeneration.current) {
+        setMenus([])
+        setLoadError((cause as Error).message)
+      }
+    } finally {
+      if (generation === loadGeneration.current) setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    void refresh().catch((cause: Error) => setError(cause.message))
+    let active = true
+    void Promise.resolve().then(() => {
+      if (active) void refresh()
+    })
+    return () => {
+      active = false
+    }
   }, [refresh])
 
   const openCreate = () => {
@@ -136,7 +160,7 @@ export default function MenusPage() {
     }
   }
 
-  const rows = menuRows(menus)
+  const rows = menuRows(loading || loadError ? [] : menus)
   const parentOptions = [
     { value: rootMenu, label: t("rootMenu") },
     ...rows
@@ -162,12 +186,23 @@ export default function MenusPage() {
         }
       />
       {error && <Alert>{error}</Alert>}
+      {loadError && (
+        <Alert>
+          <p>{t.has(loadError) ? t(loadError) : loadError}</p>
+          <Button variant="outline" onClick={() => void refresh()}>
+            {t("retryNow")}
+          </Button>
+        </Alert>
+      )}
+      {loading && <p role="status">{t("loading")}</p>}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b pb-3">
         <span className="text-sm text-muted-foreground">
-          {t("menuCounts", {
-            roots: menus.filter((menu) => !menu.parent_id).length,
-            total: menus.length,
-          })}
+          {!loading &&
+            !loadError &&
+            t("menuCounts", {
+              roots: menus.filter((menu) => !menu.parent_id).length,
+              total: menus.length,
+            })}
         </span>
         <label className="flex items-center gap-2 text-sm">
           <Languages className="size-4" />
@@ -291,7 +326,7 @@ export default function MenusPage() {
               ))}
           </TableBody>
         </Table>
-        {menus.length === 0 && (
+        {!loading && !loadError && menus.length === 0 && (
           <div className="grid min-h-40 place-items-center text-sm text-muted-foreground">
             <Boxes className="mb-2 size-7" />
             {t("noMenus")}

@@ -356,7 +356,7 @@ export default function AppLayout() {
           <div className="mx-auto w-full max-w-[1440px] p-4 sm:p-6">
             {menuError && directoryReady && (
               <Alert>
-                <p>{menuError}</p>
+                <p>{t.has(menuError) ? t(menuError) : menuError}</p>
                 <button
                   type="button"
                   className="min-h-11 underline"

@@ -48,6 +48,31 @@ export const router = createBrowserRouter([
             children: [
               { index: true, element: <Navigate to="profile" replace /> },
               {
+                path: "tokens",
+                lazy: async () => ({
+                  Component: (await import("./app/account/tokens")).default,
+                }),
+              },
+              {
+                path: "memberships",
+                lazy: async () => ({
+                  Component: (await import("./app/account/memberships"))
+                    .default,
+                }),
+              },
+              {
+                path: "identities",
+                lazy: async () => ({
+                  Component: (await import("./app/account/identities")).default,
+                }),
+              },
+              {
+                path: "closure",
+                lazy: async () => ({
+                  Component: (await import("./app/account/closure")).default,
+                }),
+              },
+              {
                 path: "applications",
                 lazy: async () => ({
                   Component: (await import("./app/account/applications"))
@@ -89,6 +114,7 @@ export const router = createBrowserRouter([
                   Component: (await import("./app/principals/page")).default,
                 }),
               },
+              { path: "/iam/closure-requests", lazy: async () => ({ Component: (await import("./app/principals/closure-requests")).default }) },
               {
                 path: "/iam/invitations",
                 lazy: async () => ({

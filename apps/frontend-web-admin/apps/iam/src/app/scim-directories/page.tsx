@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react"
@@ -148,23 +149,34 @@ function TenantSCIMDirectories({ tenant }: { tenant: string }) {
   const [secret, setSecret] = useState<SCIMCredentialSecret | null>(null)
   const [endpoint] = useState(() => scimEndpoint())
 
+  const loadGeneration = useRef(0)
+  const [loadError, setLoadError] = useState("")
   const refresh = useCallback(async () => {
-    setDirectories(await api.scimDirectories())
+    const generation = ++loadGeneration.current
+    setLoading(true)
+    setLoadError("")
+    try {
+      const next = await api.scimDirectories()
+      if (generation === loadGeneration.current) setDirectories(next)
+    } catch (cause) {
+      if (generation === loadGeneration.current) {
+        setDirectories([])
+        setLoadError((cause as Error).message)
+      }
+    } finally {
+      if (generation === loadGeneration.current) setLoading(false)
+    }
   }, [api])
 
   useEffect(() => {
     let active = true
-    void api
-      .scimDirectories()
-      .then(
-        (items) => active && setDirectories(items),
-        (cause: Error) => active && setError(cause.message)
-      )
-      .finally(() => active && setLoading(false))
+    void Promise.resolve().then(() => {
+      if (active) void refresh()
+    })
     return () => {
       active = false
     }
-  }, [api])
+  }, [refresh])
 
   const openCreate = () => {
     setError("")
@@ -305,6 +317,14 @@ function TenantSCIMDirectories({ tenant }: { tenant: string }) {
         }
       />
       {error && <Alert>{error}</Alert>}
+      {loadError && (
+        <Alert>
+          <p>{t.has(loadError) ? t(loadError) : loadError}</p>
+          <Button variant="outline" onClick={() => void refresh()}>
+            {t("retryNow")}
+          </Button>
+        </Alert>
+      )}
       {notice && <SuccessNotice>{notice}</SuccessNotice>}
 
       <section className="mb-4 flex min-h-14 flex-wrap items-center justify-between gap-3 border-y bg-muted/20 px-4 py-3">
@@ -336,7 +356,8 @@ function TenantSCIMDirectories({ tenant }: { tenant: string }) {
           <span className="text-xs text-muted-foreground">
             {loading
               ? t("loading")
-              : t("directoryCount", { count: directories.length })}
+              : !loadError &&
+                t("directoryCount", { count: directories.length })}
           </span>
         </header>
         <div className="hidden md:block">
@@ -353,7 +374,7 @@ function TenantSCIMDirectories({ tenant }: { tenant: string }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {directories.map((directory) => (
+              {(loading || loadError ? [] : directories).map((directory) => (
                 <TableRow key={directory.id}>
                   <TableCell>
                     <strong className="block text-sm">{directory.name}</strong>
@@ -382,7 +403,7 @@ function TenantSCIMDirectories({ tenant }: { tenant: string }) {
                   </TableCell>
                 </TableRow>
               ))}
-              {!loading && directories.length === 0 && (
+              {!loading && !loadError && directories.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={5} className="h-52 text-center">
                     <EmptyDirectories />
@@ -393,7 +414,7 @@ function TenantSCIMDirectories({ tenant }: { tenant: string }) {
           </Table>
         </div>
         <div className="md:hidden">
-          {directories.map((directory) => (
+          {(loading || loadError ? [] : directories).map((directory) => (
             <article
               key={directory.id}
               className="space-y-3 border-b p-4 last:border-0"
@@ -421,7 +442,7 @@ function TenantSCIMDirectories({ tenant }: { tenant: string }) {
               />
             </article>
           ))}
-          {!loading && directories.length === 0 && (
+          {!loading && !loadError && directories.length === 0 && (
             <div className="grid h-52 place-items-center text-center">
               <EmptyDirectories />
             </div>

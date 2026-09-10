@@ -548,7 +548,7 @@ export default function EntitiesPage({
       {error && !open && !bindingEntity && <Alert>{error}</Alert>}
       {loadError ? (
         <Alert>
-          <p>{loadError}</p>
+          <p>{t.has(loadError) ? t(loadError) : loadError}</p>
           <Button
             variant="outline"
             onClick={() =>

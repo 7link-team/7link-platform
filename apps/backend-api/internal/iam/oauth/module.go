@@ -7,6 +7,8 @@ import (
 
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/authn"
+	"7link.com/platform/internal/iam/core"
+	"7link.com/platform/internal/iam/identity"
 	oauthi18n "7link.com/platform/internal/iam/oauth/i18n"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
@@ -15,6 +17,7 @@ import (
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
+	"gorm.io/gorm"
 )
 
 // ErrUnavailable reports that the OAuth module has not been initialized with
@@ -59,6 +62,22 @@ func (*Module) ModuleDependencies() []string {
 
 // ProvideServices exposes grant validation without making authn depend on OAuth.
 func (m *Module) ProvideServices(services *module.Services) error {
+	if err := module.Provide[identity.PrincipalOAuthRevoker](services, func(ctx context.Context, tx *gorm.DB, id guid.ID) error {
+		if m.Service == nil {
+			return ErrUnavailable
+		}
+		return m.Service.revokePrincipalGrantsOn(ctx, tx, id, 0)
+	}); err != nil {
+		return err
+	}
+	if err := module.Provide[core.TenantOAuthRevoker](services, func(ctx context.Context, tx *gorm.DB, tenantID, principalID guid.ID) error {
+		if m.Service == nil {
+			return ErrUnavailable
+		}
+		return m.Service.revokeTenantGrantsOn(ctx, tx, tenantID, principalID)
+	}); err != nil {
+		return err
+	}
 	return module.Provide[authn.OAuthGrantValidator](services, authn.OAuthGrantValidator(func(ctx context.Context, claims *authnext.Claims) error {
 		if m.Service == nil {
 			return authnext.ErrUnavailable

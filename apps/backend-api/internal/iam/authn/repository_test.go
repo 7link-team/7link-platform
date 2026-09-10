@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -20,10 +21,74 @@ import (
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 var repositoryTestNow = time.Date(2026, 9, 3, 12, 0, 0, 123_000_000, time.UTC)
+
+func TestRepositoryExplicitAuthenticationTimestampsPostgresSQL(t *testing.T) {
+	harness := newAuthnRepositoryHarness(t, "sql_")
+	connection, err := harness.db.DB()
+	require.NoError(t, err)
+	// Render through the real PostgreSQL dialect and real repository methods.
+	// DryRun never executes PostgreSQL syntax on the fixture's SQLite connection.
+	db, err := gorm.Open(postgres.New(postgres.Config{Conn: connection}), &gorm.Config{
+		DryRun: true, SkipDefaultTransaction: true, DisableAutomaticPing: true,
+		NowFunc: func() time.Time { return repositoryTestNow.Add(time.Hour) },
+		Logger:  logger.Default.LogMode(logger.Silent),
+	})
+	require.NoError(t, err)
+	repo := harness.repository.withDB(db, true)
+	var generated string
+	var values []any
+	var automaticTimestamp bool
+	require.NoError(t, db.Callback().Update().After("gorm:update").Register("capture_authentication_timestamp_sql", func(tx *gorm.DB) {
+		generated = tx.Statement.SQL.String()
+		values = append([]any(nil), tx.Statement.Vars...)
+		field := tx.Statement.Schema.LookUpField("UpdatedAt")
+		automaticTimestamp = field != nil && field.AutoUpdateTime != 0
+	}))
+	for _, test := range []struct {
+		name string
+		run  func() error
+	}{
+		{"require MFA", func() error { return repo.requireMFA(t.Context(), 101, repositoryTestNow) }},
+		{"enable MFA", func() error {
+			_, err := repo.enableMFA(t.Context(), 101, "test-ciphertext", 1, repositoryTestNow)
+			return err
+		}},
+		{"passkey counter", func() error {
+			_, err := repo.updatePasskeyCounter(t.Context(), "test-hash", 1, 2, "old-ciphertext", "new-ciphertext", repositoryTestNow)
+			return err
+		}},
+		{"passkey clone warning", func() error {
+			_, err := repo.storePasskeyCloneWarning(t.Context(), "test-hash", "old-ciphertext", "new-ciphertext", repositoryTestNow)
+			return err
+		}},
+		{"passkey name", func() error {
+			_, _, err := repo.renamePasskey(t.Context(), 101, "test-hash", "Renamed", repositoryTestNow)
+			return err
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			generated, values, automaticTimestamp = "", nil, false
+			require.NoError(t, test.run())
+			require.True(t, automaticTimestamp, "the persisted model uses GORM's automatic UpdatedAt convention")
+			require.True(t, strings.HasPrefix(generated, "UPDATE "), "must inspect an actual generated update")
+			assert.Equal(t, 1, strings.Count(generated, `"updated_at"=`), "PostgreSQL rejects duplicate SET assignments")
+			found := false
+			for _, value := range values {
+				if timestamp, ok := value.(time.Time); ok {
+					found = true
+					assert.True(t, timestamp.Equal(repositoryTestNow), "explicit operation time must not be replaced by the ORM clock")
+				}
+			}
+			assert.True(t, found, "the operation must bind its explicit timestamp")
+		})
+	}
+}
 
 type repositoryTestIDs struct{ next atomic.Int64 }
 
@@ -130,7 +195,8 @@ func TestModuleMigrationContract(t *testing.T) {
 	module := &Module{}
 	assert.Equal(t, Name, module.ModuleName())
 	assert.Equal(t, "goose_authn", module.MigrationSource().TableName)
-	require.Len(t, module.MigrationMilestones(), 6)
+	require.Len(t, module.MigrationMilestones(), 8)
+	assert.Equal(t, "reauthentication", module.MigrationMilestones()[6].Name)
 	assert.Equal(t, []string{"base", "constraints", "indexes", "verification-attempts", "notification-principals", "principal-erasure"}, []string{
 		module.MigrationMilestones()[0].Name,
 		module.MigrationMilestones()[1].Name,

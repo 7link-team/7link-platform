@@ -117,6 +117,10 @@ func (s *Service) SetTenantMemberStatus(
 	tenantID, principalID guid.ID,
 	status MemberStatus,
 ) (TenantMember, error) {
+	return s.setTenantMemberStatus(ctx, tenantID, principalID, status, nil)
+}
+
+func (s *Service) setTenantMemberStatus(ctx context.Context, tenantID, principalID guid.ID, status MemberStatus, prepare func(*Repository) error) (TenantMember, error) {
 	if err := validateMemberRef(tenantID, principalID); err != nil {
 		return TenantMember{}, err
 	}
@@ -128,6 +132,11 @@ func (s *Service) SetTenantMemberStatus(
 	record.Detail["status"] = status
 	record.PolicyChanged = true
 	err := s.writes.Run(ctx, record, func(repo *Repository) error {
+		if prepare != nil {
+			if err := prepare(repo); err != nil {
+				return err
+			}
+		}
 		var verify func() error
 		var err error
 		if status == MemberDisabled {

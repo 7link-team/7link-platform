@@ -423,6 +423,7 @@ type authorizationExplanationInput struct {
 
 // RegisterHTTP registers all core IAM HTTP operations.
 func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
+	registerMemberExitHTTP(a, svc, registrar)
 	registerFieldPolicyHTTP(a, svc, registrar)
 	registerRelationshipHTTP(a, svc, registrar)
 	registerPlatformHTTP(a, svc, registrar)

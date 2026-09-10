@@ -7,12 +7,14 @@ import (
 
 type (
 	Principals                = principal
+	ClosureRequests           = closureRequest
 	PrincipalLifecycles       = principalLifecycle
 	ServiceAccounts           = serviceAccount
 	ServiceAccountCredentials = serviceAccountCredential
 )
 
 type Tables struct {
+	ClosureRequests           *ClosureRequests
 	Principals                *Principals
 	PrincipalLifecycles       *PrincipalLifecycles
 	ServiceAccounts           *ServiceAccounts
@@ -23,6 +25,7 @@ type Tables struct {
 func Bind(db *gorm.DB, prefix string) *Tables {
 	q := Use(db)
 	return &Tables{
+		ClosureRequests:           q.ClosureRequest.Table(prefix + model.ClosureRequest{}.TableName()),
 		Principals:                q.Principal.Table(prefix + model.Principal{}.TableName()),
 		PrincipalLifecycles:       q.PrincipalLifecycle.Table(prefix + model.PrincipalLifecycle{}.TableName()),
 		ServiceAccounts:           q.ServiceAccount.Table(prefix + model.ServiceAccount{}.TableName()),

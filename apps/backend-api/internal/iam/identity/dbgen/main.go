@@ -10,6 +10,7 @@ func main() {
 	gengorm.Generate(
 		model.Principal{},
 		model.PrincipalLifecycle{},
+		model.ClosureRequest{},
 		model.ServiceAccount{},
 		model.ServiceAccountCredential{},
 	)

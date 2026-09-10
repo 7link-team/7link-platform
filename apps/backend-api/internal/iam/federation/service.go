@@ -73,22 +73,24 @@ type LoginComplete struct {
 }
 
 type Service struct {
-	repo       *Repository
-	audit      audit.Appender
-	identities identity.IdentityProvisioner
-	authn      authnextWebService
-	nextID     func() (guid.ID, error)
-	keys       *keyringx.Keyring
-	oidc       *oidcClient
-	outbound   httpx.Policy
-	stateTTL   time.Duration
-	clockSkew  time.Duration
-	now        func() time.Time
-	samlMu     sync.Mutex
-	samlCfg    SAMLConfig
-	samlKey    *rsa.PrivateKey
-	samlCert   *x509.Certificate
-	samlSPs    sync.Map
+	repo                    *Repository
+	audit                   audit.Appender
+	identities              identity.IdentityProvisioner
+	authn                   authnextWebService
+	accountProofs           reauthenticationConsumer
+	accountReauthentication federatedReauthentication
+	nextID                  func() (guid.ID, error)
+	keys                    *keyringx.Keyring
+	oidc                    *oidcClient
+	outbound                httpx.Policy
+	stateTTL                time.Duration
+	clockSkew               time.Duration
+	now                     func() time.Time
+	samlMu                  sync.Mutex
+	samlCfg                 SAMLConfig
+	samlKey                 *rsa.PrivateKey
+	samlCert                *x509.Certificate
+	samlSPs                 sync.Map
 	// SAML SP-initiated login state: cached upstream IdP metadata keyed by
 	// provider ID, plus the lazily generated SP signing key for AuthnRequests.
 	samlIDPCache sync.Map // providerID -> *saml.EntityDescriptor
@@ -109,6 +111,7 @@ type authnextWebService interface {
 	ResolveReturnURL(string) (string, error)
 	SessionCookie(string) string
 	SessionCookieName() string
+	ValidateCSRF(string, string, string, string) error
 }
 
 // ResolveKeyring loads the configured federation keys so startup fails fast

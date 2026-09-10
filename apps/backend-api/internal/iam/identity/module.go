@@ -11,6 +11,7 @@ import (
 	identityi18n "7link.com/platform/internal/iam/identity/i18n"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
@@ -31,15 +32,20 @@ type Config struct {
 
 type Module struct {
 	*Service
-	config          Config
-	runtime         *appenv.Runtime
-	registrar       *authz.Registrar
-	administrators  core.AdministratorGuard
-	fields          authz.FieldPermissionChecker
-	ids             guid.Source
-	appender        audit.Appender
-	anonymizer      PrincipalAnonymizer
-	erasureRecorder audit.ErasureRecorder
+	config              Config
+	runtime             *appenv.Runtime
+	registrar           *authz.Registrar
+	administrators      core.AdministratorGuard
+	fields              authz.FieldPermissionChecker
+	ids                 guid.Source
+	appender            audit.Appender
+	anonymizer          PrincipalAnonymizer
+	erasureRecorder     audit.ErasureRecorder
+	privacyBrowser      authnext.BrowserSessionSecurity
+	reauthenticate      authnext.ReauthenticationConsumer
+	closeCredentials    PrincipalCredentialsRevoker
+	closeOAuth          PrincipalOAuthRevoker
+	platformAccessGuard core.PrincipalPlatformAccessGuard
 }
 
 // RegistrationPrincipalCreator creates a pending principal and its credential
@@ -179,6 +185,26 @@ func (m *Module) InjectServices(services *module.Services) error {
 	m.appender = appender
 	m.erasureRecorder = erasureRecorder
 	m.administrators = administrators
+	m.privacyBrowser, err = module.Resolve[authnext.BrowserSessionSecurity](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
+	m.reauthenticate, err = module.Resolve[authnext.ReauthenticationConsumer](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
+	m.closeCredentials, err = module.Resolve[PrincipalCredentialsRevoker](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
+	m.closeOAuth, err = module.Resolve[PrincipalOAuthRevoker](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
+	m.platformAccessGuard, err = module.Resolve[core.PrincipalPlatformAccessGuard](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
 	anonymizer, err := module.Resolve[PrincipalAnonymizer](services)
 	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
 		return fmt.Errorf("resolve principal anonymizer: %w", err)
@@ -200,6 +226,8 @@ func (m *Module) Initialize(context.Context) error {
 	m.Service.fields = m.fields
 	m.Service.anonymizer = m.anonymizer
 	m.Service.erasureRecorder = m.erasureRecorder
+	m.Service.privacyBrowser, m.Service.reauthenticate = m.privacyBrowser, m.reauthenticate
+	m.Service.closeCredentials, m.Service.closeOAuth, m.Service.platformAccessGuard = m.closeCredentials, m.closeOAuth, m.platformAccessGuard
 	return nil
 }
 

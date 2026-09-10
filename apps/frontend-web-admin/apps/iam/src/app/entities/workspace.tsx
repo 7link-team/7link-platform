@@ -97,6 +97,14 @@ function EntityDetails({ entityID, view }: { entityID: string; view: string }) {
           </Link>
         }
       />
+      <p className="mb-4 text-sm text-muted-foreground">
+        {t("tenantDefinitionOwnership")}
+      </p>
+      {view !== "overview" && (
+        <p className="mb-4 text-sm text-muted-foreground">
+          {t("entityBindingScopeExplanation")}
+        </p>
+      )}
       {view === "overview" && (
         <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-x-4 text-sm [&>dd]:border-b [&>dd]:py-4 [&>dd]:break-all [&>dt]:border-b [&>dt]:py-4 [&>dt]:text-muted-foreground">
           <dt>{t("entity")}</dt>
@@ -168,6 +176,9 @@ function EntityDetails({ entityID, view }: { entityID: string; view: string }) {
                 <TableHead>{t("resourceId")}</TableHead>
                 <TableHead>{t("grantRelation")}</TableHead>
                 <TableHead>{t("grantRecipient")}</TableHead>
+                <TableHead>{t("type")}</TableHead>
+                <TableHead>{t("startTime")}</TableHead>
+                <TableHead>{t("endTime")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -181,11 +192,22 @@ function EntityDetails({ entityID, view }: { entityID: string; view: string }) {
                   <TableCell className="break-all">
                     {relationship.subject_id}
                   </TableCell>
+                  <TableCell>{t(relationship.subject_type)}</TableCell>
+                  <TableCell>
+                    {relationship.starts_at
+                      ? new Date(relationship.starts_at).toLocaleString(locale)
+                      : "—"}
+                  </TableCell>
+                  <TableCell>
+                    {relationship.ends_at
+                      ? new Date(relationship.ends_at).toLocaleString(locale)
+                      : t("neverExpires")}
+                  </TableCell>
                 </TableRow>
               ))}
               {data.relationships.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4}>{t("noRelations")}</TableCell>
+                  <TableCell colSpan={7}>{t("noRelations")}</TableCell>
                 </TableRow>
               )}
             </TableBody>

@@ -18,6 +18,14 @@ import (
 )
 
 const authnRouteManifest = `
+authn-create-personal-token-preparation|POST|/authn/personal-token-preparations
+authn-create-personal-token|POST|/authn/personal-tokens
+authn-delete-personal-token|DELETE|/authn/personal-tokens/{id}
+authn-list-personal-tokens|GET|/authn/personal-tokens
+authn-list-personal-token-permissions|GET|/authn/personal-token-permissions
+authn-list-reauthentication-methods|GET|/authn/reauthentication-methods
+authn-create-reauthentication-challenge|POST|/authn/reauthentication-challenges
+authn-create-reauthentication-verification|POST|/authn/reauthentication-verifications
 authn-capabilities|GET|/authn/capabilities
 authn-create-captcha|POST|/authn/captchas
 authn-create-email-verification-request|POST|/authn/email-verification-requests
@@ -65,7 +73,7 @@ func TestAuthnRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 30)
+	require.Len(t, got, 38)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
@@ -85,6 +93,12 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 		"authn-create-passkey":                        true, "authn-update-passkey": true,
 		"authn-delete-passkey": true,
 	}
+	sessionOnly := map[string]bool{
+		"authn-create-reauthentication-challenge": true, "authn-create-reauthentication-verification": true,
+		"authn-list-reauthentication-methods": true, "authn-create-personal-token-preparation": true,
+		"authn-create-personal-token": true, "authn-delete-personal-token": true,
+		"authn-list-personal-tokens": true, "authn-list-personal-token-permissions": true,
+	}
 
 	for path, item := range spec.Paths {
 		assert.Equal(t, strings.ToLower(path), path, "paths use lowercase resource names")
@@ -103,7 +117,9 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 			}
 			operationIDs[operation.OperationID] = location
 			assert.Equal(t, []string{"authn"}, operation.Tags, location)
-			if secured[operation.OperationID] {
+			if sessionOnly[operation.OperationID] {
+				assert.Equal(t, []map[string][]string{{authz.SessionScheme: {}}}, operation.Security, location)
+			} else if secured[operation.OperationID] {
 				assert.Equal(t, authz.UserSecurity(), operation.Security, location)
 			} else {
 				assert.Empty(t, operation.Security, location)
@@ -128,7 +144,7 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 			}
 		}
 	}
-	require.Len(t, operationIDs, 30)
+	require.Len(t, operationIDs, 38)
 	assert.Equal(t, "session", spec.Components.SecuritySchemes[authz.SessionScheme].Name)
 	for _, path := range []string{"/authn/sessions/{id}", "/authn/passkeys/{id}"} {
 		parameter := authnPathOperations(spec.Paths[path])[http.MethodDelete].Parameters[0]

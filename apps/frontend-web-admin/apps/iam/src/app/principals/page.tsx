@@ -1,4 +1,5 @@
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
+import { Link } from "react-router"
 import {
   useCallback,
   useEffect,
@@ -215,17 +216,25 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
         title={t("principalMembers")}
         description={t("principalManagementDescription")}
         action={
-          <Button
-            disabled={!fields.login_name?.create}
-            onClick={() => {
-              setEditing(null)
-              setDepartmentID("")
-              setOpen(true)
-            }}
-          >
-            <Plus />
-            {t("createPrincipal")}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              className="inline-flex min-h-11 items-center rounded-md border px-3 text-sm"
+              to="/iam/closure-requests"
+            >
+              {t("closureRequests")}
+            </Link>
+            <Button
+              disabled={!fields.login_name?.create}
+              onClick={() => {
+                setEditing(null)
+                setDepartmentID("")
+                setOpen(true)
+              }}
+            >
+              <Plus />
+              {t("createPrincipal")}
+            </Button>
+          </div>
         }
       />
       <div className="mb-4 flex items-center justify-between gap-3">

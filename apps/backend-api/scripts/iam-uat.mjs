@@ -133,7 +133,9 @@ async function init() {
       web: { enabled: true, cookie_name: `uat_${identity}`, cookie_secure: false,
         post_login_url: webURL + "/", post_logout_url: webURL + "/login",
         allowed_return_urls: [webURL + "/", passkeyURL + "/"], allowed_origins: [webURL, passkeyURL] } },
-    federation: { enabled: true, encryption_key_file: join(directory, "federation-key") },
+    // Local protocol audits run their test IdP on an ephemeral loopback port.
+    federation: { enabled: true, encryption_key_file: join(directory, "federation-key"),
+      outbound_allow_plaintext: true, outbound_allow_networks: ["127.0.0.1/32"] },
     provisioning: { encryption_key_file: join(directory, "provisioning-key") },
   });
   console.log("Building the backend and initializing the isolated schema...");

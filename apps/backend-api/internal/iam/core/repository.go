@@ -198,7 +198,7 @@ func (r *Repository) UpdateRole(ctx context.Context, tenantID, roleID guid.ID, n
 		}
 		info, err := tables.Roles.WithContext(ctx).
 			Where(tables.Roles.TenantID.Eq(tenantID), tables.Roles.ID.Eq(roleID)).
-			UpdateSimple(
+			UpdateColumnSimple(
 				tables.Roles.Name.Value(name),
 				tables.Roles.NameKey.Value(roleNameKey(name)),
 				tables.Roles.Description.Value(description),

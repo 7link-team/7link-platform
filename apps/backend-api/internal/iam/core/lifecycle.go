@@ -13,6 +13,23 @@ import (
 // removal workflow to run before irreversible anonymization.
 var ErrPrincipalHasPlatformAccess = errors.New("remove principal platform access before anonymization")
 
+// PrincipalPlatformAccessGuard requires protected platform-grant removal before
+// global suspension, using the caller's principal-locked transaction.
+type PrincipalPlatformAccessGuard func(context.Context, *gorm.DB, guid.ID) error
+
+func requireNoPrincipalPlatformAccess(ctx context.Context, tx *gorm.DB, prefix string, id guid.ID) error {
+	for _, table := range []string{"iam_platform_administrators", "iam_platform_grants"} {
+		var count int64
+		if err := tx.WithContext(ctx).Table(prefix+table).Where("principal_id = ?", id).Count(&count).Error; err != nil {
+			return err
+		}
+		if count != 0 {
+			return ErrPrincipalHasPlatformAccess
+		}
+	}
+	return nil
+}
+
 // ErasePrincipalData redacts every membership profile and withdraws admission.
 // The caller owns the transaction and the suspended principal's row lock.
 func ErasePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, id guid.ID, now time.Time) error {
@@ -23,14 +40,8 @@ func ErasePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, id guid
 	if err != nil {
 		return err
 	}
-	for _, table := range []string{"iam_platform_administrators", "iam_platform_grants"} {
-		var count int64
-		if err := tx.WithContext(ctx).Table(prefix+table).Where("principal_id = ?", id).Count(&count).Error; err != nil {
-			return err
-		}
-		if count != 0 {
-			return ErrPrincipalHasPlatformAccess
-		}
+	if err := requireNoPrincipalPlatformAccess(ctx, tx, prefix, id); err != nil {
+		return err
 	}
 	var tenants []guid.ID
 	if err := tx.WithContext(ctx).Table(prefix+"iam_tenant_members").Where("principal_id = ?", id).

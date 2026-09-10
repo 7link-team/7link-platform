@@ -19,8 +19,8 @@ import (
 
 const (
 	lockVersion            = 1
-	expectedIAMTables      = 68
-	expectedCrossModuleFKs = 29
+	expectedIAMTables      = 72
+	expectedCrossModuleFKs = 33
 )
 
 var (

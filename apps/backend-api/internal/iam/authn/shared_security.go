@@ -14,7 +14,6 @@ import (
 	"time"
 
 	authnext "7link.com/platform/pkg/extension/authn"
-	"7link.com/platform/pkg/extension/secretx"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/redis/go-redis/v9"
 )
@@ -22,12 +21,12 @@ import (
 // sharedSecurity owns one bounded Redis client for the authentication module.
 // Captcha GETDEL and counter increments are atomic across application replicas.
 type sharedSecurity struct {
-	client *redis.Client
+	client redis.UniversalClient
 	cfg    authnext.SharedSecurityConfig
 }
 
 func newSharedSecurity(cfg authnext.SharedSecurityConfig) (*sharedSecurity, error) {
-	if strings.TrimSpace(cfg.RedisURLFile) == "" {
+	if !redisSecurityConfigured(cfg) {
 		return nil, nil
 	}
 	if cfg.FailurePolicy != "closed" && cfg.FailurePolicy != "open" {
@@ -54,18 +53,12 @@ func newSharedSecurity(cfg authnext.SharedSecurityConfig) (*sharedSecurity, erro
 	if cfg.RequestTimeout < time.Millisecond || cfg.Window < time.Second || cfg.PerIP < 1 || cfg.Global < 1 {
 		return nil, errors.New("authn shared_security requires positive timeouts and request limits")
 	}
-	value, err := secretx.Resolve("authn shared_security redis_url", "", cfg.RedisURLFile, secretx.DefaultMaxBytes)
+	client, err := newSecurityRedisClient(cfg)
 	if err != nil {
 		return nil, err
 	}
-	options, err := redis.ParseURL(value)
-	if err != nil {
-		return nil, errors.New("authn shared_security Redis URL is invalid")
-	}
-	options.DialTimeout, options.ReadTimeout, options.WriteTimeout = cfg.RequestTimeout, cfg.RequestTimeout, cfg.RequestTimeout
-	options.ContextTimeoutEnabled = true
-	options.MaxRetries = -1
-	return &sharedSecurity{client: redis.NewClient(options), cfg: cfg}, nil
+	client.AddHook(noRedisReplay{})
+	return &sharedSecurity{client: client, cfg: cfg}, nil
 }
 
 func (s *sharedSecurity) key(kind, id string) string {

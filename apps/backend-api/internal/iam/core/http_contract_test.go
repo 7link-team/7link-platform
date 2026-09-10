@@ -14,6 +14,8 @@ import (
 )
 
 const coreRouteManifest = `
+iam-my-memberships|GET|/iam/me/memberships
+iam-leave-membership|POST|/iam/me/memberships/{tenant_id}/leave
 iam-field-catalog|GET|/iam/field-catalog
 iam-list-field-policies|GET|/iam/field-policies
 iam-set-field-policy|PUT|/iam/field-policies/{resource}/{field}
@@ -84,13 +86,13 @@ func TestCoreRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 57)
+	require.Len(t, got, 59)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
 func TestCoreOpenAPISelectorsAndParametersAreConsistent(t *testing.T) {
 	spec := declarationAPI(t).OpenAPI()
-	operationIDs := make(map[string]string, 57)
+	operationIDs := make(map[string]string, 59)
 	pathParameter := regexp.MustCompile(`\{([^}]+)\}`)
 
 	for path, item := range spec.Paths {
@@ -121,6 +123,9 @@ func TestCoreOpenAPISelectorsAndParametersAreConsistent(t *testing.T) {
 			tenantKey := strings.ToLower("header\x00" + authz.TenantHeader)
 			if authz.IsPlatformOperation(operation) {
 				assert.NotContains(t, parameters, tenantKey, "%s is platform-scoped", location)
+			} else if authz.IsAuthenticatedOperation(operation) {
+				assert.NotContains(t, parameters, tenantKey, location)
+				assert.Equal(t, []map[string][]string{{authz.SessionScheme: {}}}, operation.Security, location)
 			} else {
 				tenant := parameters[tenantKey]
 				if assert.NotNil(t, tenant, "%s is tenant-scoped", location) {

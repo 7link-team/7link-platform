@@ -51,6 +51,11 @@ func TestIAMCoreModelsMatchMigratedSchemas(t *testing.T) {
 
 func assertModelMatchesTable(t *testing.T, db *sql.DB, dialect string, persisted tableModel) {
 	t.Helper()
+	assertModelMatchesNamedTable(t, db, dialect, persisted, persisted.TableName())
+}
+
+func assertModelMatchesNamedTable(t *testing.T, db *sql.DB, dialect string, persisted tableModel, table string) {
+	t.Helper()
 
 	parsed, err := schema.Parse(persisted, &sync.Map{}, schema.NamingStrategy{})
 	require.NoError(t, err)
@@ -65,7 +70,7 @@ func assertModelMatchesTable(t *testing.T, db *sql.DB, dialect string, persisted
 		}
 	}
 
-	actual := readDatabaseColumns(t, db, dialect, persisted.TableName())
+	actual := readDatabaseColumns(t, db, dialect, table)
 	if dialect == "mysql" && persisted.TableName() == (model.Entity{}).TableName() {
 		_, ok := actual["parent_key"]
 		require.True(t, ok, "the entity generated-column allowlist must remain explicit")

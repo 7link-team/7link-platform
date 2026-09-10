@@ -534,6 +534,23 @@ func inspectCall(call *ast.CallExpr, aliases map[string]string, owner, importPat
 	}
 }
 
+func TestStableWiringCapabilitiesRemainNarrow(t *testing.T) {
+	aliases := map[string]string{"authnext": "7link.com/platform/pkg/extension/authn"}
+	for _, testCase := range []struct {
+		expression string
+		want       bool
+	}{
+		{"authnext.BrowserSessionSecurity", true},
+		{"authnext.ReauthenticationConsumer", true},
+		{"authnext.Claims", false},
+		{"authnext.UnknownProvider", false},
+	} {
+		expression, err := parser.ParseExpr(testCase.expression)
+		require.NoError(t, err)
+		assert.Equal(t, testCase.want, isStableWiringCapability(expression, aliases), testCase.expression)
+	}
+}
+
 func isStableWiringCapability(expression ast.Expr, aliases map[string]string) bool {
 	for {
 		switch current := expression.(type) {
@@ -552,6 +569,12 @@ func isStableWiringCapability(expression ast.Expr, aliases map[string]string) bo
 			}
 			if importPath == "7link.com/platform/pkg/extension/authz" {
 				return selector.Sel.Name == "Registrar" || selector.Sel.Name == "TokenVerifier"
+			}
+			// Provider-neutral capabilities are wired during service injection,
+			// like TokenVerifier; an authn lifecycle edge would create a
+			// core -> authn -> core initialization cycle.
+			if importPath == "7link.com/platform/pkg/extension/authn" {
+				return selector.Sel.Name == "BrowserSessionSecurity" || selector.Sel.Name == "ReauthenticationConsumer"
 			}
 			return importPath == iamImportPrefix+"/identity" && selector.Sel.Name == "RegistrationPrincipalCreator"
 		}

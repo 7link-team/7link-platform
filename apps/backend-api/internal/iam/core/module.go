@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -10,6 +11,7 @@ import (
 	corei18n "7link.com/platform/internal/iam/core/i18n"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
@@ -76,6 +78,14 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[ActiveMemberChecker](services, ActiveMemberChecker(m.members)); err != nil {
 		return fmt.Errorf("provide IAM active member checker: %w", err)
 	}
+	if err := module.Provide[PrincipalPlatformAccessGuard](services, func(ctx context.Context, tx *gorm.DB, id guid.ID) error {
+		if tx == nil || id <= 0 {
+			return ErrInvalidArgument
+		}
+		return requireNoPrincipalPlatformAccess(ctx, tx, m.runtime.TablePrefix(), id)
+	}); err != nil {
+		return err
+	}
 	if err := module.Provide[AdministratorGuard](services, m.administrators); err != nil {
 		return fmt.Errorf("provide IAM administrator guard: %w", err)
 	}
@@ -130,6 +140,22 @@ func (m *Module) InjectServices(services *module.Services) error {
 	}
 	m.service = NewService(m.registrar.Registry(), repository, m.checker, appender)
 	m.service.administrators = m.administrators
+	m.service.privacyBrowser, err = module.Resolve[authnext.BrowserSessionSecurity](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
+	m.service.reauthenticate, err = module.Resolve[authnext.ReauthenticationConsumer](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
+	m.service.revokePersonalTokens, err = module.Resolve[TenantPersonalTokenRevoker](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
+	m.service.revokeOAuth, err = module.Resolve[TenantOAuthRevoker](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
 	m.repository = repository
 	m.grants = NewRoleGrantStore(repository, m.administrators)
 	return nil

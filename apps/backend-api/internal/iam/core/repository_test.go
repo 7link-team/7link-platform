@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -128,6 +129,27 @@ func TestRepositoryRoleIsolationAndNormalizedNameConflict(t *testing.T) {
 	unchanged, err := repository.GetRole(t.Context(), tenantB, roleB.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "Admin", unchanged.Name)
+}
+
+func TestRoleUpdateAssignsItsExplicitTimestampOnce(t *testing.T) {
+	h := newRepositoryHarness(t, "sl_")
+	role, err := h.repository.CreateRole(t.Context(), 1, "Before", "old")
+	require.NoError(t, err)
+	var statements []string
+	require.NoError(t, h.db.Callback().Update().After("gorm:update").Register("capture_role_update", func(db *gorm.DB) {
+		if db.Statement.Table == "sl_iam_roles" {
+			statements = append(statements, db.Statement.SQL.String())
+		}
+	}))
+	t.Cleanup(func() { require.NoError(t, h.db.Callback().Update().Remove("capture_role_update")) })
+	updated, err := h.repository.UpdateRole(t.Context(), 1, role.ID, "After", "new")
+	require.NoError(t, err)
+	assert.Equal(t, "After", updated.Name)
+	require.Len(t, statements, 1)
+	assert.Equal(t, 1, strings.Count(statements[0], "updated_at"), "PostgreSQL rejects duplicate SET columns even when SQLite accepts them")
+	var stored struct{ UpdatedAt time.Time }
+	require.NoError(t, h.db.Table("sl_iam_roles").Select("updated_at").Where("id = ?", role.ID).Take(&stored).Error)
+	assert.True(t, h.now.Equal(stored.UpdatedAt), "GORM must not replace the application timestamp with its own clock")
 }
 
 func TestRepositoryPutMemberPreservesCreatedAtAndNullableDisabledAt(t *testing.T) {

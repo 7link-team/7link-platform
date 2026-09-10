@@ -18,6 +18,7 @@ const (
 	guardMetadataKey         = "authz.guard"
 	tenantMemberMetadataKey  = "authz.tenant-member"
 	authenticatedMetadataKey = "authz.authenticated"
+	sessionOnlyMetadataKey   = "authz.session-only"
 	platformMetadataKey      = "authz.platform"
 	publicMetadataKey        = "authz.public"
 	GuardExtensionKey        = "x-authz-permission"
@@ -235,6 +236,16 @@ func RegisterTenantMember[I, O any](r *Registrar, api huma.API, op huma.Operatio
 	huma.Register(api, op, handler)
 }
 
+// RegisterSessionAuthenticated requires a browser cookie for personal security
+// operations. Both runtime enforcement and OpenAPI exclude bearer credentials.
+func RegisterSessionAuthenticated[I, O any](r *Registrar, api huma.API, op huma.Operation, handler func(context.Context, *I) (*O, error)) {
+	if op.Metadata == nil {
+		op.Metadata = map[string]any{}
+	}
+	op.Metadata[sessionOnlyMetadataKey] = true
+	RegisterAuthenticated(r, api, op, handler)
+}
+
 // RegisterAuthenticated declares an authenticated operation that does NOT bind a
 // tenant (no X-Tenant-Id required, no membership check). Claims are injected so
 // the handler can resolve the caller. Use for personal/cross-tenant queries like
@@ -366,6 +377,9 @@ func (r *Registrar) prepareAuthenticated(api huma.API, op *huma.Operation, tenan
 	if provider, ok := r.verifier.(sessionCookieNamer); ok && provider.SessionCookieName() != "" {
 		op.Security = UserSecurity()
 	}
+	if sessionOnly, _ := op.Metadata[sessionOnlyMetadataKey].(bool); sessionOnly {
+		op.Security = []map[string][]string{{SessionScheme: {}}}
+	}
 	EnsureSecuritySchemes(api, r.SessionCookieName())
 	if tenantScoped {
 		op.Parameters = append(op.Parameters, &huma.Param{
@@ -431,6 +445,10 @@ func ClientSecurity() []map[string][]string {
 func intPointer(value int) *int { return &value }
 
 func (r *Registrar) authenticate(api huma.API, ctx huma.Context) (*authn.Claims, bool) {
+	if sessionOnly, _ := ctx.Operation().Metadata[sessionOnlyMetadataKey].(bool); sessionOnly && ctx.Header("Authorization") != "" {
+		_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "unauthorized")
+		return nil, false
+	}
 	if validator, ok := r.verifier.(csrfValidator); ok {
 		if err := validator.ValidateCSRF(ctx.Method(), ctx.Header("Origin"), ctx.Header("Cookie"), ctx.Header("Authorization")); err != nil {
 			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "csrf_rejected")
@@ -452,6 +470,10 @@ func (r *Registrar) authenticate(api huma.API, ctx huma.Context) (*authn.Claims,
 
 func (r *Registrar) middleware(api huma.API, guard *Guard) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
+		if guard != nil {
+			tenantID, _ := guid.Parse(ctx.Header(TenantHeader))
+			ctx = huma.WithContext(ctx, authn.WithPersonalTokenScope(ctx.Context(), tenantID, guard.Code()))
+		}
 		claims, ok := r.authenticate(api, ctx)
 		if !ok {
 			return
@@ -503,13 +525,14 @@ func (r *Registrar) entityMiddleware(api huma.API, guard Guard) func(huma.Contex
 
 func (r *Registrar) entityMiddlewareFor(api huma.API, guard Guard, selectors func(huma.Context) (string, string)) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
+		tenantText, entityText := selectors(ctx)
+		tenantID, tenantErr := guid.Parse(tenantText)
+		ctx = huma.WithContext(ctx, authn.WithPersonalTokenScope(ctx.Context(), tenantID, guard.Code()))
 		claims, ok := r.authenticate(api, ctx)
 		if !ok {
 			return
 		}
 		var err error
-		tenantText, entityText := selectors(ctx)
-		tenantID, tenantErr := guid.Parse(tenantText)
 		entityID, entityErr := guid.Parse(entityText)
 		principalID := claims.PrincipalID
 		if principalID.Zero() {

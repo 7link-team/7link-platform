@@ -115,7 +115,7 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/pkg/query
 
 .PHONY: build ci dev fmt-check generate generate-docs golangci iam-preflight lint openapi openapi-check test test-coverage test-integration test-performance test-all test-mysql8 test-mysql8-run
-.PHONY: release-check test-race generate-check frontend-check test-alerts
+.PHONY: release-check test-race generate-check frontend-check test-alerts test-redis-security
 # These gates share coverage files and embedded database resources. Even when
 # invoked with -j, execute each prerequisite to completion before starting the next.
 .NOTPARALLEL: ci release-check
@@ -160,7 +160,11 @@ ci: fmt-check lint test-coverage test-integration build openapi-check
 # Configure DOCKER_CMD / DOCKER_TEST_HOST for an already provisioned test daemon;
 # release verification must not bootstrap or change a remote Docker installation.
 # Environment deployment, browser UAT and service-owner sign-off remain separate.
-release-check: ci test-race generate-check frontend-check test-alerts test-mysql8-run
+test-redis-security:
+	bash scripts/test-redis-security.sh
+	IAM_TEST_REDIS_TLS=1 bash scripts/test-redis-security.sh
+
+release-check: ci test-race generate-check frontend-check test-alerts test-mysql8-run test-redis-security
 
 test-alerts:
 	cd docs && $(PROMTOOL) test rules iam-alerts.test.yml

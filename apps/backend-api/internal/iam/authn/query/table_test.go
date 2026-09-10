@@ -33,9 +33,11 @@ func TestBindAppliesPrefixToEveryAuthnTable(t *testing.T) {
 		"notification_outbox":       {plain.NotificationOutbox.TableName(), prefixed.NotificationOutbox.TableName()},
 		"email_verification_tokens": {plain.EmailVerificationTokens.TableName(), prefixed.EmailVerificationTokens.TableName()},
 		"stepup_challenges":         {plain.StepUpChallenges.TableName(), prefixed.StepUpChallenges.TableName()},
+		"personal_tokens":           {plain.PersonalTokens.TableName(), prefixed.PersonalTokens.TableName()},
+		"reauth_challenges":         {plain.ReauthenticationChallenges.TableName(), prefixed.ReauthenticationChallenges.TableName()},
 	}
 
-	require.Len(t, actual, 13)
+	require.Len(t, actual, 15)
 	for name, pair := range actual {
 		assert.Equal(t, "sl_"+pair[0], pair[1], name)
 	}

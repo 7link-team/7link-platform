@@ -1,5 +1,5 @@
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import {
   Bot,
   CheckCircle2,
@@ -113,23 +113,34 @@ export default function ServiceAccountsPage() {
     useState<ServiceAccountCredential | null>(null)
   const [secret, setSecret] = useState<SecretResult | null>(null)
 
+  const loadGeneration = useRef(0)
+  const [loadError, setLoadError] = useState("")
   const refresh = useCallback(async () => {
-    setAccounts((await iamApi.serviceAccounts()).items)
+    const generation = ++loadGeneration.current
+    setLoading(true)
+    setLoadError("")
+    try {
+      const next = await iamApi.serviceAccounts()
+      if (generation === loadGeneration.current) setAccounts(next.items)
+    } catch (cause) {
+      if (generation === loadGeneration.current) {
+        setAccounts([])
+        setLoadError((cause as Error).message)
+      }
+    } finally {
+      if (generation === loadGeneration.current) setLoading(false)
+    }
   }, [])
 
   useEffect(() => {
     let active = true
-    void iamApi
-      .serviceAccounts()
-      .then(
-        (result) => active && setAccounts(result.items),
-        (cause: Error) => active && setError(cause.message)
-      )
-      .finally(() => active && setLoading(false))
+    void Promise.resolve().then(() => {
+      if (active) void refresh()
+    })
     return () => {
       active = false
     }
-  }, [])
+  }, [refresh])
 
   const openCreate = () => {
     setError("")
@@ -277,6 +288,14 @@ export default function ServiceAccountsPage() {
         }
       />
       {error && <Alert>{error}</Alert>}
+      {loadError && (
+        <Alert>
+          <p>{t.has(loadError) ? t(loadError) : loadError}</p>
+          <Button variant="outline" onClick={() => void refresh()}>
+            {t("retryNow")}
+          </Button>
+        </Alert>
+      )}
       {notice && <SuccessNotice>{notice}</SuccessNotice>}
 
       <section className="overflow-hidden rounded-md border bg-card">
@@ -288,7 +307,7 @@ export default function ServiceAccountsPage() {
           <span className="text-xs text-muted-foreground">
             {loading
               ? t("loading")
-              : t("accountCount", { count: accounts.length })}
+              : !loadError && t("accountCount", { count: accounts.length })}
           </span>
         </header>
         <div className="hidden md:block">
@@ -305,7 +324,7 @@ export default function ServiceAccountsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {accounts.map((account) => (
+              {(loading || loadError ? [] : accounts).map((account) => (
                 <TableRow key={account.id}>
                   <TableCell>
                     <strong className="block text-sm">
@@ -338,7 +357,7 @@ export default function ServiceAccountsPage() {
                   </TableCell>
                 </TableRow>
               ))}
-              {!loading && accounts.length === 0 && (
+              {!loading && !loadError && accounts.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={5} className="h-52 text-center">
                     <EmptyAccounts />
@@ -349,7 +368,7 @@ export default function ServiceAccountsPage() {
           </Table>
         </div>
         <div className="md:hidden">
-          {accounts.map((account) => (
+          {(loading || loadError ? [] : accounts).map((account) => (
             <article
               key={account.id}
               className="space-y-3 border-b p-4 last:border-0"
@@ -381,7 +400,7 @@ export default function ServiceAccountsPage() {
               />
             </article>
           ))}
-          {!loading && accounts.length === 0 && (
+          {!loading && !loadError && accounts.length === 0 && (
             <div className="grid h-52 place-items-center text-center">
               <EmptyAccounts />
             </div>

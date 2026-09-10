@@ -32,6 +32,8 @@ type Module struct {
 	memberTenant        core.MemberTenantResolver
 	fields              authz.FieldPermissionChecker
 	oauthGrants         OAuthGrantValidator
+	personalPermissions func(context.Context, guid.ID, []string, guid.ID) (map[string]bool, error)
+	personalRegistry    *authz.Registry
 }
 
 // Config separates module activation from the authentication service's
@@ -59,6 +61,57 @@ func (*Module) ModuleDependencies() []string {
 }
 
 func (m *Module) ProvideServices(services *module.Services) error {
+	if err := module.Provide[identity.PrincipalCredentialsRevoker](services, func(ctx context.Context, tx *gorm.DB, principalID guid.ID) error {
+		if m.Service == nil {
+			return authnext.ErrUnavailable
+		}
+		return m.Service.revokePrincipalCredentialsOn(ctx, tx, principalID)
+	}); err != nil {
+		return err
+	}
+	if err := module.Provide[core.TenantPersonalTokenRevoker](services, func(ctx context.Context, tx *gorm.DB, tenantID, principalID guid.ID) error {
+		if m.Service == nil {
+			return authnext.ErrUnavailable
+		}
+		return m.Service.revokeTenantPersonalTokensOn(ctx, tx, tenantID, principalID)
+	}); err != nil {
+		return err
+	}
+	if err := module.Provide[authnext.BrowserSessionSecurity](services, authnext.BrowserSessionSecurity{
+		Authenticate: func(ctx context.Context, cookie string) (*authnext.Claims, error) {
+			return m.Authenticate(ctx, "", cookie)
+		},
+		ValidateCSRF: func(method, origin, cookie string) error { return m.ValidateCSRF(method, origin, cookie, "") },
+	}); err != nil {
+		return err
+	}
+	if err := module.Provide[ReauthenticationConsumer](services, func(ctx context.Context, tx *gorm.DB, principalID guid.ID, cookieHeader, proof, purpose, target string) error {
+		return m.Service.ConsumeReauthenticationOn(ctx, tx, principalID, cookieHeader, proof, purpose, target)
+	}); err != nil {
+		return err
+	}
+	if err := module.Provide[FederatedReauthentication](services, FederatedReauthentication{
+		Inspect: func(ctx context.Context, cookieHeader, proof string) (ReauthenticationBinding, error) {
+			if m.Service == nil {
+				return ReauthenticationBinding{}, authnext.ErrUnavailable
+			}
+			return m.Service.inspectFederatedReauthentication(ctx, cookieHeader, proof)
+		},
+		VerifyOn: func(ctx context.Context, tx *gorm.DB, principalID guid.ID, cookieHeader, hash string) error {
+			return m.Service.verifyFederatedReauthenticationOn(ctx, tx, principalID, cookieHeader, hash)
+		},
+		ValidateSessionOn: func(ctx context.Context, tx *gorm.DB, principalID guid.ID, cookieHeader string) (int64, error) {
+			if m.Service == nil || tx == nil {
+				return 0, authnext.ErrUnavailable
+			}
+			return m.Service.lockReauthenticationSession(ctx, m.Service.repo.withDB(tx, true), principalID, currentSessionHash(cookieHeader, m.Service.web.CookieName))
+		},
+		LocalMethodsOn: func(ctx context.Context, tx *gorm.DB, principalID guid.ID) (int, error) {
+			return m.Service.localLoginMethodsOn(ctx, tx, principalID)
+		},
+	}); err != nil {
+		return err
+	}
 	if err := module.Provide[WebService](services, m); err != nil {
 		return fmt.Errorf("provide authn web service: %w", err)
 	}
@@ -113,6 +166,13 @@ func (m *Module) bootstrapCredentialStore() BootstrapCredentialStore {
 }
 
 func (m *Module) InjectServices(services *module.Services) error {
+	registrar, registrarErr := module.Resolve[*authz.Registrar](services)
+	if registrarErr != nil && !errors.Is(registrarErr, module.ErrServiceMissing) {
+		return registrarErr
+	}
+	if registrar != nil {
+		m.personalRegistry = registrar.Registry()
+	}
 	grants, grantErr := module.Resolve[OAuthGrantValidator](services)
 	if grantErr != nil && !errors.Is(grantErr, module.ErrServiceMissing) {
 		return grantErr
@@ -140,6 +200,7 @@ func (m *Module) InjectServices(services *module.Services) error {
 		return fmt.Errorf("resolve authn field evaluator: %w", err)
 	}
 	m.fields = fields
+	m.personalPermissions = fields.CheckBulk
 	m.ids = ids
 	m.appender = appender
 	m.registrationCreator = func(
@@ -182,6 +243,8 @@ func (m *Module) Initialize(context.Context) error {
 	}
 	m.Service = service
 	m.Service.oauthGrants = m.oauthGrants
+	m.Service.personalPermissions = m.personalPermissions
+	m.Service.personalRegistry = m.personalRegistry
 	return nil
 }
 

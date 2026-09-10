@@ -21,5 +21,7 @@ func main() {
 		model.NotificationOutbox{},
 		model.EmailVerificationToken{},
 		model.StepUpChallenge{},
+		model.ReauthenticationChallenge{},
+		model.PersonalToken{},
 	)
 }

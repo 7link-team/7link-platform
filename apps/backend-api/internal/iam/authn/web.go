@@ -64,6 +64,8 @@ type Service struct {
 	captcha             *captchaOffering
 	sharedSecurity      *sharedSecurity
 	oauthGrants         OAuthGrantValidator
+	personalPermissions func(context.Context, guid.ID, []string, guid.ID) (map[string]bool, error)
+	personalRegistry    *authz.Registry
 	passkeys            *webauthnx.Adapter
 	now                 func() time.Time
 	enricher            claimEnricher
@@ -342,6 +344,9 @@ func (s *Service) Authenticate(
 	authorization, cookieHeader string,
 ) (*authnext.Claims, error) {
 	if strings.TrimSpace(authorization) != "" {
+		if scheme, raw, ok := strings.Cut(strings.TrimSpace(authorization), " "); ok && strings.EqualFold(scheme, "Bearer") && strings.HasPrefix(raw, "pat_") {
+			return s.authenticatePersonalToken(ctx, raw)
+		}
 		claims, err := s.verifyAccessToken(authorization)
 		if err != nil {
 			return nil, err

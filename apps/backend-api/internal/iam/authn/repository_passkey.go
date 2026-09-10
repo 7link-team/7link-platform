@@ -81,7 +81,7 @@ func (r *Repository) updatePasskeyCounter(
 		tables.Passkeys.IDHash.Eq(idHash),
 		tables.Passkeys.SignCount.Eq(expectedSignCount),
 		tables.Passkeys.CredentialCiphertext.Eq(expectedCredentialCiphertext),
-	).UpdateSimple(
+	).UpdateColumnSimple(
 		tables.Passkeys.CredentialCiphertext.Value(credentialCiphertext),
 		tables.Passkeys.SignCount.Value(signCount),
 		tables.Passkeys.UpdatedAt.Value(now),
@@ -123,7 +123,7 @@ func (r *Repository) storePasskeyCloneWarning(
 	result, err := tables.Passkeys.WithContext(ctx).Where(
 		tables.Passkeys.IDHash.Eq(idHash),
 		tables.Passkeys.CredentialCiphertext.Eq(expectedCredentialCiphertext),
-	).UpdateSimple(
+	).UpdateColumnSimple(
 		tables.Passkeys.CredentialCiphertext.Value(credentialCiphertext),
 		tables.Passkeys.UpdatedAt.Value(now),
 	)
@@ -153,7 +153,7 @@ func (r *Repository) renamePasskey(
 		}
 		result, err := tables.Passkeys.WithContext(ctx).Where(
 			tables.Passkeys.IDHash.Eq(idHash), tables.Passkeys.PrincipalID.Eq(principalID),
-		).UpdateSimple(tables.Passkeys.Name.Value(name), tables.Passkeys.UpdatedAt.Value(now))
+		).UpdateColumnSimple(tables.Passkeys.Name.Value(name), tables.Passkeys.UpdatedAt.Value(now))
 		if err != nil {
 			return err
 		}

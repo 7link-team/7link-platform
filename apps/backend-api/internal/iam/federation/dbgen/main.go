@@ -7,5 +7,5 @@ import (
 )
 
 func main() {
-	gengorm.Generate(model.Provider{}, model.IdentityLink{}, model.SAMLServiceProvider{}, model.SAMLIDPKey{}, model.ReplayClaim{})
+	gengorm.Generate(model.Provider{}, model.IdentityLink{}, model.SAMLServiceProvider{}, model.SAMLIDPKey{}, model.ReplayClaim{}, model.IdentityLinkTransaction{})
 }

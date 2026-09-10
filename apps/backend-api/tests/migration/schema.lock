@@ -90,6 +90,14 @@
       "sha256": "b26ffe5eb03ac19311b55b0399bb7287b5353c3f169e04317eb73c4639fa7da3"
     },
     {
+      "path": "authn/sql/mysql/00014_reauthentication.sql",
+      "sha256": "4ba3670d4d7af43f42f88c97defaa6b460d669bd1096af5efb3a08b6995d2c81"
+    },
+    {
+      "path": "authn/sql/mysql/00015_personal_tokens.sql",
+      "sha256": "50f6d80c96c5b1439fcb8fc1bed147f33ebd17fc3b94af56958e3b2ba37642e3"
+    },
+    {
       "path": "authn/sql/postgres/00001_credentials.sql",
       "sha256": "6205f24b9ee17a83d86bab761386e461a2e2150fb154131aacd498fb216c14b0"
     },
@@ -142,6 +150,14 @@
       "sha256": "9be655df5b63f105662938c781807ecebcd3206116ffae5f441374d450272ec2"
     },
     {
+      "path": "authn/sql/postgres/00014_reauthentication.sql",
+      "sha256": "551c39794a3fe44dcb1653a985f0351ad0ec4289907819acd391163f9229d3ef"
+    },
+    {
+      "path": "authn/sql/postgres/00015_personal_tokens.sql",
+      "sha256": "4d0250a8aafe863bac8b980172d93e77092a6e3dc3184654a97e03f26ac9b7e1"
+    },
+    {
       "path": "authn/sql/sqlite/00001_credentials.sql",
       "sha256": "33756998bd13bafdd590831b996036473cadfd0dc57605dfa04b00b6321493e4"
     },
@@ -192,6 +208,14 @@
     {
       "path": "authn/sql/sqlite/00013_principal_erasure_guards.sql",
       "sha256": "e8d02d37a2abc6f23349e7d587291324af689a6fc540d1e087220e95f9379374"
+    },
+    {
+      "path": "authn/sql/sqlite/00014_reauthentication.sql",
+      "sha256": "89b8e86a4e0d32790575866473f1888ac1d139c5c59fe01db2e690cd6c1b8c33"
+    },
+    {
+      "path": "authn/sql/sqlite/00015_personal_tokens.sql",
+      "sha256": "8f84f19c532ad2637a2bad23b6d8316f1fb9a9b460cf7be39af3be3941447b20"
     },
     {
       "path": "core/sql/mysql/00001_authorization.sql",
@@ -394,6 +418,10 @@
       "sha256": "683387ccfb6e02e36f0b63f4d8cd3da4355722f0110c773bb2fe75bf4f96b639"
     },
     {
+      "path": "federation/sql/mysql/00006_identity_link_transactions.sql",
+      "sha256": "8fcecd2af19f16428e73e4ebc316eaa4378afdce8d69d03a78f5621af080db12"
+    },
+    {
       "path": "federation/sql/postgres/00001_identity_providers.sql",
       "sha256": "880c7eb6392f86192fd13312f2082b720aaf9256a41d162aee31e3f2a48d8436"
     },
@@ -414,6 +442,10 @@
       "sha256": "6a5d340a47eb82a327d93da1046c259553587fba96a951a9ab40332882d560c9"
     },
     {
+      "path": "federation/sql/postgres/00006_identity_link_transactions.sql",
+      "sha256": "928b1d24d0b1a33fd7c06af5d89f6a3f8895e1131215d54860a636784af4a6b0"
+    },
+    {
       "path": "federation/sql/sqlite/00001_identity_providers.sql",
       "sha256": "72b43e38161919cffe70adf54d6ef787c146e879423619415b01efb876d25cb7"
     },
@@ -432,6 +464,10 @@
     {
       "path": "federation/sql/sqlite/00005_principal_erasure_guards.sql",
       "sha256": "b0e7f2db4346a92aa75caa249df3776b0da33c4e3db2b1c7828a236fb5f14cb1"
+    },
+    {
+      "path": "federation/sql/sqlite/00006_identity_link_transactions.sql",
+      "sha256": "4b971d6472ab92884e5fac33b43838065eead5211b6d723bb7e724fb438a8918"
     },
     {
       "path": "governance/sql/mysql/00001_access_requests.sql",
@@ -498,6 +534,10 @@
       "sha256": "6234c6ba1a0717725ae65e5f2802b9d23c759e00834ce015d836fb4e257dfd77"
     },
     {
+      "path": "identity/sql/mysql/00005_closure_requests.sql",
+      "sha256": "14a7d46c497a38519dd6c7010da64590f90c4bc6952a7361dbf8981c37cf38cd"
+    },
+    {
       "path": "identity/sql/postgres/00001_principals.sql",
       "sha256": "681b58026ec749496bda38be27ff89ada9522958d4d268ee9be1c9118be0c4a1"
     },
@@ -514,6 +554,10 @@
       "sha256": "f3d51553625d3f3929be60f05aafa46d360b1198a4ec2c699ee3ba18721673dc"
     },
     {
+      "path": "identity/sql/postgres/00005_closure_requests.sql",
+      "sha256": "fdc5ef73dce2ffc4be4cc0c0a103c7d58ee7ba85400b27021721bce5403684c2"
+    },
+    {
       "path": "identity/sql/sqlite/00001_principals.sql",
       "sha256": "df18e34520cb0c7213a974b2286a05c569cab060ccd4deb732d6be5c2e7d0f31"
     },
@@ -528,6 +572,10 @@
     {
       "path": "identity/sql/sqlite/00004_tombstone_guards.sql",
       "sha256": "4dcde79d0184a1b54adc4a25e1a240cb112ab1611e5ef56016f5c143e5aadc9a"
+    },
+    {
+      "path": "identity/sql/sqlite/00005_closure_requests.sql",
+      "sha256": "634b5ec7770e4c72b94028a0e380b1777ff85083164b558757124444a8686d21"
     },
     {
       "path": "oauth/sql/mysql/00001_clients.sql",

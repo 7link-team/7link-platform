@@ -44,7 +44,7 @@ export function PrincipalLifecycleDialog({
   iamApi,
   onClose,
 }: {
-  principal: Principal | null
+  principal: Pick<Principal, "id"> | null
   iamApi: IamApi
   onClose: () => void
 }) {

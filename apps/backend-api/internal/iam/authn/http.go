@@ -405,6 +405,8 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 	if web == nil || !web.Enabled() {
 		return
 	}
+	registerReauthenticationHTTP(a, web)
+	registerPersonalTokenHTTP(a, web)
 	authz.RegisterPublic(a, huma.Operation{
 		OperationID: "authn-capabilities", Method: http.MethodGet, Path: "/authn/capabilities",
 		Summary: "Return enabled public authentication capabilities", Tags: []string{"authn"},

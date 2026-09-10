@@ -130,7 +130,7 @@ func TestAuthnModuleResolvesDependenciesAndRunsLifecycle(t *testing.T) {
 
 	_, api := humatest.New(t)
 	require.NoError(t, registry.RegisterHTTP(t.Context(), api))
-	assert.Len(t, authnOperationManifest(api.OpenAPI()), 30)
+	assert.Len(t, authnOperationManifest(api.OpenAPI()), 38)
 	require.NoError(t, registry.Stop(context.Background()))
 	assert.Nil(t, instance.notificationCancel)
 	require.NoError(t, registry.Deinitialize(context.Background()))
@@ -158,7 +158,7 @@ func TestAuthnModuleReportsMissingWiring(t *testing.T) {
 
 	providers := module.NewServices()
 	require.NoError(t, instance.ProvideServices(providers))
-	assert.ErrorContains(t, instance.ProvideServices(providers), "provide authn web service")
+	assert.ErrorContains(t, instance.ProvideServices(providers), "PrincipalCredentialsRevoker")
 }
 
 func authnModuleConfig(service authnext.Config) Config {

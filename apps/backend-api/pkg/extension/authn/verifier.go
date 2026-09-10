@@ -85,13 +85,26 @@ type Config struct {
 // Enabling it requires an explicit outage policy; availability policy is owned by
 // the deployment, not silently selected by the authentication implementation.
 type SharedSecurityConfig struct {
-	RedisURLFile   string        `mapstructure:"redis_url_file" description:"file containing redis:// or rediss:// URL; empty retains single-instance captcha storage"`
-	Namespace      string        `mapstructure:"namespace" description:"shared namespace unique to this deployment" default:"iam-security"`
-	FailurePolicy  string        `mapstructure:"failure_policy" description:"required with Redis: closed blocks authentication attempts on Redis failure; open permits attempts and logs a warning; captcha always fails closed"`
-	RequestTimeout time.Duration `mapstructure:"request_timeout" description:"Redis operation deadline" default:"2s"`
-	Window         time.Duration `mapstructure:"window" description:"fixed authentication request limit window" default:"1m"`
-	PerIP          int           `mapstructure:"per_ip" description:"maximum POST /authn requests per socket peer per window" default:"60"`
-	Global         int           `mapstructure:"global" description:"maximum POST /authn requests across all replicas per window" default:"3000"`
+	RedisMode            string        `mapstructure:"redis_mode" description:"standalone, cluster, or sentinel; empty preserves the legacy URL-file configuration"`
+	RedisAddresses       []string      `mapstructure:"redis_addresses" description:"Redis nodes or Sentinel discovery addresses as host:port, without credentials"`
+	RedisMasterName      string        `mapstructure:"redis_master_name" description:"Sentinel master name; required only in sentinel mode"`
+	RedisDB              int           `mapstructure:"redis_db" description:"database number; cluster requires zero"`
+	RedisUsername        string        `mapstructure:"redis_username" description:"Redis data-node ACL username"`
+	RedisPasswordFile    string        `mapstructure:"redis_password_file" description:"file containing the Redis data-node password"`
+	SentinelUsername     string        `mapstructure:"sentinel_username" description:"Sentinel ACL username"`
+	SentinelPasswordFile string        `mapstructure:"sentinel_password_file" description:"file containing the Sentinel password"`
+	RedisTLSEnabled      bool          `mapstructure:"redis_tls_enabled" description:"verify TLS on every Redis and Sentinel connection"`
+	RedisTLSCAFile       string        `mapstructure:"redis_tls_ca_file" description:"PEM trust roots for Redis and Sentinel; empty uses system roots"`
+	RedisTLSCertFile     string        `mapstructure:"redis_tls_cert_file" description:"PEM client certificate for mutual TLS"`
+	RedisTLSKeyFile      string        `mapstructure:"redis_tls_key_file" description:"PEM private key paired with redis_tls_cert_file"`
+	RedisTLSServerName   string        `mapstructure:"redis_tls_server_name" description:"optional certificate identity override; normally each discovered node hostname is verified"`
+	RedisURLFile         string        `mapstructure:"redis_url_file" description:"file containing redis:// or rediss:// URL; empty retains single-instance captcha storage"`
+	Namespace            string        `mapstructure:"namespace" description:"shared namespace unique to this deployment" default:"iam-security"`
+	FailurePolicy        string        `mapstructure:"failure_policy" description:"required with Redis: closed blocks authentication attempts on Redis failure; open permits attempts and logs a warning; captcha always fails closed"`
+	RequestTimeout       time.Duration `mapstructure:"request_timeout" description:"Redis operation deadline" default:"2s"`
+	Window               time.Duration `mapstructure:"window" description:"fixed authentication request limit window" default:"1m"`
+	PerIP                int           `mapstructure:"per_ip" description:"maximum POST /authn requests per socket peer per window" default:"60"`
+	Global               int           `mapstructure:"global" description:"maximum POST /authn requests across all replicas per window" default:"3000"`
 }
 
 // RegistrationConfig enables email-verified self-service global principals.

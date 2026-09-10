@@ -252,6 +252,7 @@ func (a *audClaim) UnmarshalJSON(data []byte) error {
 }
 
 type idTokenClaims struct {
+	Nonce             string   `json:"nonce"`
 	AuthorizedParty   *string  `json:"azp"`
 	Issuer            string   `json:"iss"`
 	Subject           string   `json:"sub"`

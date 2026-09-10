@@ -9,6 +9,7 @@ import (
 	"7link.com/platform/internal/iam/audit"
 	corei18n "7link.com/platform/internal/iam/core/i18n"
 	"7link.com/platform/internal/infra/guid"
+	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/policyx"
 )
@@ -37,11 +38,15 @@ type MenuItem struct {
 // Service coordinates core IAM validation, persistence, authorization, policy
 // revision updates, and audit appends.
 type Service struct {
-	registry       *authz.Registry
-	repo           *Repository
-	checker        AuthorizationEvaluator
-	writes         *transactionCoordinator
-	administrators AdministratorGuard
+	registry             *authz.Registry
+	repo                 *Repository
+	checker              AuthorizationEvaluator
+	writes               *transactionCoordinator
+	administrators       AdministratorGuard
+	privacyBrowser       authnext.BrowserSessionSecurity
+	reauthenticate       authnext.ReauthenticationConsumer
+	revokePersonalTokens TenantPersonalTokenRevoker
+	revokeOAuth          TenantOAuthRevoker
 }
 
 // NewService constructs the core IAM service from its owned repository and

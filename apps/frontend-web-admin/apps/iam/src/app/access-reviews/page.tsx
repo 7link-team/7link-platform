@@ -1,5 +1,5 @@
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import {
   Ban,
   Check,
@@ -66,36 +66,41 @@ export default function AccessReviewsPage() {
   const [action, setAction] = useState<PendingAction | null>(null)
   const [busy, setBusy] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [loadError, setLoadError] = useState("")
+  const loadGeneration = useRef(0)
   const [error, setError] = useState("")
 
   const refresh = useCallback(async (reviewID?: string) => {
-    const [items, detail] = await Promise.all([
-      iamApi.accessReviews(),
-      reviewID ? iamApi.accessReview(reviewID) : Promise.resolve(null),
-    ])
-    setReviews(items)
-    if (reviewID) setSelected(detail)
-    setLoaded(true)
+    const generation = ++loadGeneration.current
+    setLoaded(false)
+    setLoadError("")
+    try {
+      const [items, detail] = await Promise.all([
+        iamApi.accessReviews(),
+        reviewID ? iamApi.accessReview(reviewID) : Promise.resolve(null),
+      ])
+      if (generation !== loadGeneration.current) return
+      setReviews(items)
+      if (reviewID) setSelected(detail)
+    } catch (cause) {
+      if (generation !== loadGeneration.current) return
+      setReviews([])
+      setSelected(null)
+      setLoadError((cause as Error).message)
+    } finally {
+      if (generation === loadGeneration.current) setLoaded(true)
+    }
   }, [])
 
   useEffect(() => {
     let active = true
-    void iamApi
-      .accessReviews()
-      .then((items) => {
-        if (!active) return
-        setReviews(items)
-        setLoaded(true)
-      })
-      .catch((cause: Error) => {
-        if (!active) return
-        setError(cause.message)
-        setLoaded(true)
-      })
+    void Promise.resolve().then(() => {
+      if (active) void refresh()
+    })
     return () => {
       active = false
     }
-  }, [])
+  }, [refresh])
 
   const openCreate = () => {
     setDueAt(toLocalInputValue(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)))
@@ -175,6 +180,14 @@ export default function AccessReviewsPage() {
         }
       />
       {error && <Alert>{error}</Alert>}
+      {loadError && (
+        <Alert>
+          <p>{t.has(loadError) ? t(loadError) : loadError}</p>
+          <Button variant="outline" onClick={() => void refresh(selected?.id)}>
+            {t("retryNow")}
+          </Button>
+        </Alert>
+      )}
 
       <section aria-labelledby="review-campaigns-heading">
         <h2
@@ -183,21 +196,23 @@ export default function AccessReviewsPage() {
         >
           {t("reviewCampaigns")}
         </h2>
-        <CampaignList
-          items={reviews}
-          loaded={loaded}
-          selectedID={selected?.id}
-          busy={busy}
-          onSelect={(review) => {
-            setBusy(true)
-            setError("")
-            void iamApi
-              .accessReview(review.id)
-              .then(setSelected)
-              .catch(showError(setError))
-              .finally(() => setBusy(false))
-          }}
-        />
+        {!loadError && (
+          <CampaignList
+            items={reviews}
+            loaded={loaded}
+            selectedID={selected?.id}
+            busy={busy}
+            onSelect={(review) => {
+              setBusy(true)
+              setError("")
+              void iamApi
+                .accessReview(review.id)
+                .then(setSelected)
+                .catch(showError(setError))
+                .finally(() => setBusy(false))
+            }}
+          />
+        )}
       </section>
 
       {selected && (

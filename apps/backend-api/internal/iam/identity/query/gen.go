@@ -17,6 +17,7 @@ import (
 
 var (
 	Q                        = new(Query)
+	ClosureRequest           *closureRequest
 	Principal                *principal
 	PrincipalLifecycle       *principalLifecycle
 	ServiceAccount           *serviceAccount
@@ -25,6 +26,7 @@ var (
 
 func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	*Q = *Use(db, opts...)
+	ClosureRequest = &Q.ClosureRequest
 	Principal = &Q.Principal
 	PrincipalLifecycle = &Q.PrincipalLifecycle
 	ServiceAccount = &Q.ServiceAccount
@@ -34,6 +36,7 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
 		db:                       db,
+		ClosureRequest:           newClosureRequest(db, opts...),
 		Principal:                newPrincipal(db, opts...),
 		PrincipalLifecycle:       newPrincipalLifecycle(db, opts...),
 		ServiceAccount:           newServiceAccount(db, opts...),
@@ -44,6 +47,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 type Query struct {
 	db *gorm.DB
 
+	ClosureRequest           closureRequest
 	Principal                principal
 	PrincipalLifecycle       principalLifecycle
 	ServiceAccount           serviceAccount
@@ -57,6 +61,7 @@ func (q *Query) UnderlyingDB() *gorm.DB { return q.db }
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
 		db:                       db,
+		ClosureRequest:           q.ClosureRequest.clone(db),
 		Principal:                q.Principal.clone(db),
 		PrincipalLifecycle:       q.PrincipalLifecycle.clone(db),
 		ServiceAccount:           q.ServiceAccount.clone(db),
@@ -75,6 +80,7 @@ func (q *Query) WriteDB() *Query {
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
 		db:                       db,
+		ClosureRequest:           q.ClosureRequest.replaceDB(db),
 		Principal:                q.Principal.replaceDB(db),
 		PrincipalLifecycle:       q.PrincipalLifecycle.replaceDB(db),
 		ServiceAccount:           q.ServiceAccount.replaceDB(db),
@@ -83,6 +89,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 }
 
 type queryCtx struct {
+	ClosureRequest           IClosureRequestDo
 	Principal                IPrincipalDo
 	PrincipalLifecycle       IPrincipalLifecycleDo
 	ServiceAccount           IServiceAccountDo
@@ -91,6 +98,7 @@ type queryCtx struct {
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
+		ClosureRequest:           q.ClosureRequest.WithContext(ctx),
 		Principal:                q.Principal.WithContext(ctx),
 		PrincipalLifecycle:       q.PrincipalLifecycle.WithContext(ctx),
 		ServiceAccount:           q.ServiceAccount.WithContext(ctx),
