@@ -29,8 +29,12 @@ func (s *Service) MyMemberships(ctx context.Context, principalID guid.ID, offset
 	if err != nil {
 		return nil, 0, err
 	}
+	directory, err := s.repo.directoryTables()
+	if err != nil {
+		return nil, 0, err
+	}
 	query := db.WithContext(ctx).Table(tables.TenantMembers.TableName()+" AS membership").
-		Joins("JOIN "+s.repo.table("iam_tenants")+" AS tenant ON tenant.id = membership.tenant_id AND tenant.status = 'active'").
+		Joins("JOIN "+directory.Tenants.String()+" AS tenant ON tenant.id = membership.tenant_id AND tenant.status = 'active'").
 		Where("membership.principal_id = ? AND membership.status = ?", principalID, MemberActive)
 	var total int64
 	if err := query.Count(&total).Error; err != nil {

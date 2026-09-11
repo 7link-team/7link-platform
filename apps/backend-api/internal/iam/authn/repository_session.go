@@ -117,7 +117,13 @@ func (r *Repository) revokeRefreshTokens(ctx context.Context, principalID guid.I
 	if err != nil {
 		return 0, err
 	}
-	result := db.WithContext(ctx).Table(r.table("iam_refresh_tokens")).
+	// Resolved before the update: a table-name set that never arrived must
+	// reject the write, not revoke nothing under an empty table name.
+	refreshTokens, err := r.oauthTable("iam_refresh_tokens")
+	if err != nil {
+		return 0, err
+	}
+	result := db.WithContext(ctx).Table(refreshTokens).
 		Where("principal_id = ? AND revoked_at IS NULL", principalID).Update("revoked_at", now)
 	return result.RowsAffected, result.Error
 }

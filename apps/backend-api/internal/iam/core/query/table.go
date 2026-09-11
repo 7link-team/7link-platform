@@ -1,6 +1,8 @@
 package query
 
 import (
+	"fmt"
+
 	"7link.com/platform/internal/iam/core/model"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
@@ -84,21 +86,20 @@ func BindNames(prefix string) TableNames {
 	}
 }
 
-// ForeignTables names the tables the core authorizer reads but does not own.
+// DirectoryTables names the tables the organization module owns and the
+// authorization statements join: the group, position and department tables and
+// the role data scopes attached to them.
 //
-// The authorization statements join the principal table of the authn module
-// and the group, position and department tables of the organization module.
-// Importing those modules' query packages is not an option: pkg/module's
-// Activate resolves a total order over module dependencies, core is activated
-// before them, and a reverse import would make that order unsatisfiable, which
+// Importing that module's query package is not an option: pkg/module's Activate
+// resolves a total order over module dependencies, core is activated before
+// organization, and a reverse import would make that order unsatisfiable, which
 // fails at startup rather than at review.
 //
-// TODO(P5): the owning modules publish these names through their TableSet, and
-// this is where the injected set is read instead of the prefix. Until then this
-// function is the single point in core where a prefix reaches a table the
-// module does not own, so the concatenation stays auditable.
-type ForeignTables struct {
-	Principals           gormx.TableName
+// So the names arrive as the set organization publishes, and the logical names
+// below are a request rather than a definition: a name the owner does not
+// publish is an error, not a concatenation core guessed wrong in a deployment
+// that has a prefix.
+type DirectoryTables struct {
 	Groups               gormx.TableName
 	GroupMembers         gormx.TableName
 	GroupRoleBindings    gormx.TableName
@@ -110,39 +111,71 @@ type ForeignTables struct {
 	MemberDepartments    gormx.TableName
 	RoleDataScopes       gormx.TableName
 	RoleScopeDepartments gormx.TableName
+	Tenants              gormx.TableName
 }
 
-// BindForeign applies prefix to every table core joins but does not own. The
-// logical names are written down here and nowhere else in the module.
-func BindForeign(prefix string) ForeignTables {
-	return ForeignTables{
-		Principals:           gormx.NewTableName(prefix, "iam_principals"),
-		Groups:               gormx.NewTableName(prefix, "iam_groups"),
-		GroupMembers:         gormx.NewTableName(prefix, "iam_group_members"),
-		GroupRoleBindings:    gormx.NewTableName(prefix, "iam_group_role_bindings"),
-		Positions:            gormx.NewTableName(prefix, "iam_positions"),
-		PositionMembers:      gormx.NewTableName(prefix, "iam_position_members"),
-		PositionRoleBindings: gormx.NewTableName(prefix, "iam_position_role_bindings"),
-		Departments:          gormx.NewTableName(prefix, "iam_departments"),
-		DepartmentClosure:    gormx.NewTableName(prefix, "iam_department_closure"),
-		MemberDepartments:    gormx.NewTableName(prefix, "iam_member_departments"),
-		RoleDataScopes:       gormx.NewTableName(prefix, "iam_role_data_scopes"),
-		RoleScopeDepartments: gormx.NewTableName(prefix, "iam_role_scope_departments"),
+// BindDirectoryTables resolves every directory table core joins out of the set
+// the organization module publishes. It fails on the first name the owner does
+// not publish, because the statement it would otherwise build reads a table the
+// deployment does not have.
+func BindDirectoryTables(published gormx.TableSet) (DirectoryTables, error) {
+	tables := DirectoryTables{}
+	requests := []struct {
+		target  *gormx.TableName
+		logical string
+	}{
+		{&tables.Groups, "iam_groups"},
+		{&tables.GroupMembers, "iam_group_members"},
+		{&tables.GroupRoleBindings, "iam_group_role_bindings"},
+		{&tables.Positions, "iam_positions"},
+		{&tables.PositionMembers, "iam_position_members"},
+		{&tables.PositionRoleBindings, "iam_position_role_bindings"},
+		{&tables.Departments, "iam_departments"},
+		{&tables.DepartmentClosure, "iam_department_closure"},
+		{&tables.MemberDepartments, "iam_member_departments"},
+		{&tables.RoleDataScopes, "iam_role_data_scopes"},
+		{&tables.RoleScopeDepartments, "iam_role_scope_departments"},
+		{&tables.Tenants, "iam_tenants"},
 	}
+	for _, request := range requests {
+		name, ok := published.Lookup(request.logical)
+		if !ok {
+			return DirectoryTables{}, fmt.Errorf("organization publishes no table named %s", request.logical)
+		}
+		*request.target = name
+	}
+	return tables, nil
+}
+
+// BindPrincipalTable resolves the principal table core joins out of the set the
+// identity module publishes.
+func BindPrincipalTable(published gormx.TableSet) (gormx.TableName, error) {
+	name, ok := published.Lookup("iam_principals")
+	if !ok {
+		return gormx.TableName{}, fmt.Errorf("identity publishes no table named iam_principals")
+	}
+	return name, nil
 }
 
 // AuthorizationTables is every physical table name an authorization statement
-// may name: the tables core owns and the ones it only joins. It exists so a
-// statement is handed one value that already carries the deployment prefix,
-// rather than a prefix it could apply unevenly to half its joins.
+// may name: the tables core owns, the directory tables organization publishes
+// and the principal table identity publishes. It exists so a statement is
+// handed one value that already carries the deployment prefix, rather than a
+// prefix it could apply unevenly to half its joins.
 type AuthorizationTables struct {
-	Tables  TableNames
-	Foreign ForeignTables
+	Tables    TableNames
+	Directory DirectoryTables
+	Principal gormx.TableName
 }
 
-// BindAuthorizationTables resolves both sets from one deployment prefix.
-func BindAuthorizationTables(prefix string) AuthorizationTables {
-	return AuthorizationTables{Tables: BindNames(prefix), Foreign: BindForeign(prefix)}
+// BindAuthorizationTables assembles one statement's table names from core's own
+// deployment prefix and from the sets the owning modules published.
+func BindAuthorizationTables(
+	prefix string,
+	directory DirectoryTables,
+	principal gormx.TableName,
+) AuthorizationTables {
+	return AuthorizationTables{Tables: BindNames(prefix), Directory: directory, Principal: principal}
 }
 
 // Map indexes the names by logical name so the module root can publish them as

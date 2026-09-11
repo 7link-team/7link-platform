@@ -28,6 +28,11 @@ type Repository struct {
 	revisions *core.RevisionStore
 	db        *gorm.DB
 	inTx      bool
+	// foreign holds the names of the tables this repository reads but does not
+	// own. The module's wiring attaches the holder its connectors bind; a
+	// repository built without one reports the published tables as missing
+	// instead of reading a table nobody named.
+	foreign *foreignTables
 }
 
 func NewRepository(runtime *appenv.Runtime, ids guid.Source, appender audit.Appender) *Repository {
@@ -38,7 +43,29 @@ func NewRepository(runtime *appenv.Runtime, ids guid.Source, appender audit.Appe
 	if err != nil {
 		panic(err)
 	}
-	return &Repository{runtime: runtime, ids: ids, appender: appender, revisions: revisions}
+	return &Repository{
+		runtime: runtime, ids: ids, appender: appender, revisions: revisions,
+		foreign: &foreignTables{},
+	}
+}
+
+// tenantTable returns the physical name organization published for the tenant
+// table. identity reads it without owning it, and a deployment where the owner
+// never published gets this error rather than a statement against an empty
+// table name.
+func (r *Repository) tenantTable() (string, error) {
+	if r == nil {
+		return "", errRepositoryUnavailable
+	}
+	return r.foreign.directoryTable("iam_tenants")
+}
+
+// oauthTable returns the physical name oauth published for a logical table.
+func (r *Repository) oauthTable(logical string) (string, error) {
+	if r == nil {
+		return "", errRepositoryUnavailable
+	}
+	return r.foreign.oauthTable(logical)
 }
 
 func (r *Repository) writer() *gorm.DB {
@@ -185,13 +212,30 @@ func (r *Repository) revokeSessionsAndRefreshTokens(ctx context.Context, princip
 		return err
 	}
 	for _, table := range []string{"iam_sessions", "iam_refresh_tokens"} {
-		result := db.WithContext(ctx).Table(r.table(table)).
+		// Resolved before each write, so a name the owner never published stops
+		// the revocation instead of running it against an empty table name.
+		physical, err := r.revocationTable(table)
+		if err != nil {
+			return err
+		}
+		result := db.WithContext(ctx).Table(physical).
 			Where("principal_id = ? AND revoked_at IS NULL", principalID).Update("revoked_at", now)
 		if result.Error != nil {
 			return fmt.Errorf("revoke principal state in %s: %w", table, result.Error)
 		}
 	}
 	return nil
+}
+
+// revocationTable returns the physical name of a table a principal-state
+// revocation writes. The sessions belong to identity, so its own prefix names
+// them; the refresh tokens belong to oauth, so their name is the one the owner
+// published.
+func (r *Repository) revocationTable(logical string) (string, error) {
+	if logical != "iam_refresh_tokens" {
+		return r.table(logical), nil
+	}
+	return r.oauthTable(logical)
 }
 
 func (r *Repository) revokeAllSecurityState(ctx context.Context, principalID guid.ID, now time.Time) error {

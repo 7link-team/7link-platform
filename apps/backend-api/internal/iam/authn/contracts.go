@@ -7,6 +7,7 @@ import (
 
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
+	gormx "7link.com/platform/pkg/extension/gorm"
 )
 
 // InvitationCredentials issues tenant invitation tokens and recognizes them
@@ -55,4 +56,18 @@ type ProfileClaims struct {
 	PreferredUsername *string `json:"preferred_username,omitempty"`
 	Email             *string `json:"email,omitempty"`
 	EmailVerified     *bool   `json:"email_verified,omitempty"`
+}
+
+// DirectoryTableSetConnector lets the module that owns the directory tables
+// publish their names to authn. authn reads the tenant table without owning it
+// and cannot name it itself: the owner is activated after authn, so the name
+// arrives as a set rather than as a prefix authn would apply on its own.
+type DirectoryTableSetConnector struct {
+	Bind func(gormx.TableSet) error
+}
+
+// OAuthTableSetConnector does the same for the OAuth tables authn reads when it
+// authenticates a service account or revokes a principal's refresh tokens.
+type OAuthTableSetConnector struct {
+	Bind func(gormx.TableSet) error
 }

@@ -29,6 +29,12 @@ func (r *Repository) PutMember(ctx context.Context, member TenantMember) (Tenant
 	if err != nil {
 		return TenantMember{}, err
 	}
+	// The read-back below JOINs the member's department, which this module does
+	// not own. Resolving those names before the upsert keeps a table-name set
+	// that never arrived from leaving a row written by a call that then failed.
+	if _, err = repo.directoryTables(); err != nil {
+		return TenantMember{}, err
+	}
 	now := repo.now().UTC().Truncate(time.Millisecond)
 	var disabledAt *time.Time
 	if member.Status == MemberDisabled {
@@ -56,9 +62,13 @@ func (r *Repository) GetMember(ctx context.Context, tenantID, principalID guid.I
 	if err != nil {
 		return TenantMember{}, err
 	}
+	directory, err := r.directoryTables()
+	if err != nil {
+		return TenantMember{}, err
+	}
 	var row tenantMemberRecord
 	members := tables.TenantMembers.TableName()
-	departments := r.prefix() + "iam_member_departments"
+	departments := directory.MemberDepartments.String()
 	err = db.WithContext(ctx).Table(members+" AS tm").
 		Select("tm.*, COALESCE(md.department_id, 0) AS department_id").
 		Joins("LEFT JOIN "+departments+" AS md ON md.tenant_id = tm.tenant_id AND md.principal_id = tm.principal_id").
@@ -100,7 +110,11 @@ func (r *Repository) ListMembersPage(
 		return nil, 0, fmt.Errorf("count tenant members: %w", err)
 	}
 
-	departments := r.prefix() + "iam_member_departments"
+	directory, err := r.directoryTables()
+	if err != nil {
+		return nil, 0, err
+	}
+	departments := directory.MemberDepartments.String()
 	listing := base().Select("tm.*, COALESCE(md.department_id, 0) AS department_id").
 		Joins("LEFT JOIN " + departments + " AS md ON md.tenant_id = tm.tenant_id AND md.principal_id = tm.principal_id").
 		Order("tm.display_name ASC, tm.principal_id ASC")

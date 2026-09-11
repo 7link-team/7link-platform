@@ -166,6 +166,7 @@ func newHTTPIAMHarness(t *testing.T, platformAllowed bool) httpIAMHarness {
 	)
 	appender := func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil }
 	module := NewModule(database.runtime, enabledModuleConfig())
+	bindModuleTables(t, module, "sl_")
 	services := modulepkg.NewServices()
 	require.NoError(t, modulepkg.Provide[guid.Source](services, database.repository.ids))
 	require.NoError(t, modulepkg.Provide[audit.Appender](services, appender))
@@ -461,7 +462,7 @@ func TestIAMManagementHTTPFlowAndTenantIsolation(t *testing.T) {
 
 func TestMemberAuthorizationSourcesHTTPReturnsSnapshotAndNotFound(t *testing.T) {
 	harness := newHTTPIAMHarness(t, true)
-	authorizer := NewAuthorizer(harness.runtime)
+	authorizer := boundAuthorizer(t, harness.runtime, "sl_")
 	authorizer.now = harness.repository.now
 	harness.module.service.checker = authorizer
 	header := tenantHeader(1)

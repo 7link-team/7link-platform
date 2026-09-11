@@ -26,9 +26,24 @@ import (
 // The second half of each case pins the argument list. A placeholder whose
 // argument moved is as wrong as a placeholder that disappeared, and the SQL
 // text alone would not show it.
+// authorizationTablesFor assembles one statement's names the way the wired
+// module does: core's own names from its deployment prefix, and the names of
+// the tables it joins from the sets their owning modules publish.
+func authorizationTablesFor(prefix string) AuthorizationTables {
+	directory, err := BindDirectoryTables(publishedSet(prefix, directoryLogicalNames...))
+	if err != nil {
+		panic(err)
+	}
+	principal, err := BindPrincipalTable(publishedSet(prefix, "iam_principals"))
+	if err != nil {
+		panic(err)
+	}
+	return BindAuthorizationTables(prefix, directory, principal)
+}
+
 func TestAuthorizationStatementsPinSQLTextAndParameterOrder(t *testing.T) {
 	t.Parallel()
-	tables := BindAuthorizationTables("sl_")
+	tables := authorizationTablesFor("sl_")
 	requested := []string{"iam_read", "iam_write"}
 	now := time.Date(2026, time.February, 3, 4, 5, 6, 0, time.UTC)
 
@@ -426,7 +441,7 @@ func authorizationDatabase(t *testing.T) *gorm.DB {
 func TestAuthorizationStatementsExecuteAgainstEveryTableTheyName(t *testing.T) {
 	t.Parallel()
 	db := authorizationDatabase(t)
-	tables := BindAuthorizationTables("")
+	tables := authorizationTablesFor("")
 	ctx := context.Background()
 	now := time.Date(2026, time.February, 3, 4, 5, 6, 0, time.UTC)
 	roles := EffectiveRolesParams{
@@ -484,7 +499,7 @@ func TestAuthorizationStatementsExecuteAgainstEveryTableTheyName(t *testing.T) {
 func TestAuthorizationStatementsReportFailureToRead(t *testing.T) {
 	t.Parallel()
 	db := sqliteDatabase(t)
-	tables := BindAuthorizationTables("")
+	tables := authorizationTablesFor("")
 	ctx := context.Background()
 	var err error
 	now := time.Date(2026, time.February, 3, 4, 5, 6, 0, time.UTC)

@@ -44,6 +44,11 @@ type Module struct {
 	ids            guid.Source
 	appender       audit.Appender
 
+	// joined is the one holder of the table names other modules publish to the
+	// tables core JOINS but does not own. Every reader core hands out shares it,
+	// so the connectors below bind once for the whole module.
+	joined joinedTables
+
 	// administratorPresent latches the readiness gate. The last-administrator
 	// guard means the count never returns to zero, so once it is satisfied the
 	// probe stops paying for a union query on every request.
@@ -58,13 +63,18 @@ func NewModule(runtime *appenv.Runtime, config Config) *Module {
 	}
 	registry := authz.DefaultRegistry()
 	instance := &Module{
-		config:         config,
-		runtime:        runtime,
-		registrar:      authz.NewUnboundRegistrar(registry),
-		checker:        &Authorizer{},
-		members:        NewMembershipChecker(runtime),
-		administrators: NewAdministratorGuard(runtime),
+		config:    config,
+		runtime:   runtime,
+		registrar: authz.NewUnboundRegistrar(registry),
 	}
+	// Every reader that JOINs a table core does not own shares the module's one
+	// holder, so the connector the owner calls binds the whole module at once.
+	instance.checker = &Authorizer{joined: &instance.joined}
+	instance.members = NewMembershipChecker(runtime)
+	instance.members.joined = &instance.joined
+	guard := NewAdministratorGuard(runtime)
+	guard.joined = &instance.joined
+	instance.administrators = guard
 	return instance
 }
 
@@ -115,6 +125,16 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	}); err != nil {
 		return fmt.Errorf("provide IAM directory authorization source connector: %w", err)
 	}
+	if err := module.Provide[DirectoryTableSetConnector](services, DirectoryTableSetConnector{
+		Bind: m.joined.bindDirectoryTables,
+	}); err != nil {
+		return fmt.Errorf("provide IAM directory table set connector: %w", err)
+	}
+	if err := module.Provide[PrincipalTableSetConnector](services, PrincipalTableSetConnector{
+		Bind: m.joined.bindPrincipalTable,
+	}); err != nil {
+		return fmt.Errorf("provide IAM principal table set connector: %w", err)
+	}
 	return nil
 }
 
@@ -133,8 +153,10 @@ func (m *Module) InjectServices(services *module.Services) error {
 	}
 	m.ids, m.appender = ids, appender
 	repository := NewRepository(m.runtime, ids)
+	repository.joined = &m.joined
 	// Keep the provider-phase pointer stable; requests start only after wiring.
 	*m.checker = *NewAuthorizerWithRegistry(m.runtime, m.registrar.Registry())
+	m.checker.joined = &m.joined
 	if err := m.registrar.Bind(verifier, m.checker, m.members); err != nil {
 		return fmt.Errorf("bind authorization registrar: %w", err)
 	}

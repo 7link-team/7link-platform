@@ -22,13 +22,18 @@ type Repository struct {
 	audit   audit.Appender
 	db      *gorm.DB
 	inTx    bool
+	// foreign holds the names of the tables this repository reads but does not
+	// own. The module's wiring attaches the holder its connectors bind; a
+	// repository built without one reports the published tables as missing
+	// instead of reading a table nobody named.
+	foreign *foreignTables
 }
 
 func NewRepository(runtime *appenv.Runtime, ids guid.Source, appender audit.Appender) *Repository {
 	if runtime == nil || ids == nil || appender == nil {
 		panic("authentication repository requires runtime, id generator, and audit appender")
 	}
-	return &Repository{runtime: runtime, ids: ids, audit: appender}
+	return &Repository{runtime: runtime, ids: ids, audit: appender, foreign: &foreignTables{}}
 }
 
 func (r *Repository) writer() *gorm.DB {
@@ -52,6 +57,25 @@ func (r *Repository) prefix() string {
 }
 
 func (r *Repository) table(name string) string { return r.prefix() + name }
+
+// tenantTable returns the physical name organization published for the tenant
+// table. authn reads it without owning it, and a deployment where the owner
+// never published gets this error rather than a statement against an empty
+// table name.
+func (r *Repository) tenantTable() (string, error) {
+	if r == nil {
+		return "", errRepositoryUnavailable
+	}
+	return r.foreign.directoryTable("iam_tenants")
+}
+
+// oauthTable returns the physical name oauth published for a logical table.
+func (r *Repository) oauthTable(logical string) (string, error) {
+	if r == nil {
+		return "", errRepositoryUnavailable
+	}
+	return r.foreign.oauthTable(logical)
+}
 
 func (r *Repository) tables() (*query.Tables, *gorm.DB, error) {
 	db := r.writer()

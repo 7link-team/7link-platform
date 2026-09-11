@@ -102,10 +102,10 @@ func TestMatchingDynamicGroupsUsesMemberFactsWithinTenant(t *testing.T) {
 		rule, repositoryTestTime, repositoryTestTime,
 	).Error)
 
-	ids, err := matchingDynamicGroupIDs(t.Context(), harness.db, "sl_", 1, 11)
+	ids, err := matchingDynamicGroupIDs(t.Context(), harness.db, testAuthorizationTables(t, "sl_"), 1, 11)
 	require.NoError(t, err)
 	assert.Equal(t, []guid.ID{201}, ids)
-	ids, err = matchingDynamicGroupIDs(t.Context(), harness.db, "sl_", 2, 11)
+	ids, err = matchingDynamicGroupIDs(t.Context(), harness.db, testAuthorizationTables(t, "sl_"), 2, 11)
 	require.NoError(t, err)
 	assert.Empty(t, ids, "another tenant must not observe or evaluate tenant 1's dynamic group")
 }

@@ -9,11 +9,12 @@ P4a/b/c 拼表名清理 → P5 注入连接器 → P6 门禁收紧；PD 文档�
 用户确认的路线：**跨模块取表名一律走窄接口/注入**，不放宽架构测试、不放宽依赖全序（D37）。
 
 ## Current Phase
-IMPLEMENTATION —— P0/P1/P2/P3/P4a 已完成；**P4b 第一个契约（identity.PrincipalStateStore）完成并全量验证通过，未提交**
+ACCEPTANCE —— **P5「拥有者把表名集合注入给消费者」已完成并全量验证通过（6/6 对，另有 4 对结构性不可做）**，
+P4b 第一个契约（identity.PrincipalStateStore）在其下方未提交；**尚未提交**
 
 ## Current Step
-P4b 已完成一对：owner=identity、契约 `identity.PrincipalStateStore`、消费方 oauth + federation。
-下一步：提交，再按同一形态评估下一个契约（见 Remaining Work 的取舍结论）
+P5 全部 6 对连接器完成，8 项要求的实测已跑完（见 Verification 的 P5 段）。
+下一步：提交（P4b + P5 同一工作树），然后才动 P6
 
 ## Overall Progress
 - [x] **P0 门禁 + 冻结基线**：`tests/architecture/query_gate_test.go`（5 条 AST 规则）+
@@ -84,8 +85,33 @@ P4b 已完成一对：owner=identity、契约 `identity.PrincipalStateStore`、�
       - 新增门禁要求：两个消费方 `ModuleDependencies()` 的 return 表达式里声明 `identity.Name`（oauth 原缺）
       - 全覆盖：`internal/iam/identity/principalstate_test.go` 5 个测试（前缀绑定 / 找不到 / 表不可读 /
         两种锁不改行 / 调用方事务可见性 / 未接线返回 ErrUnavailable）
-- [ ] P4b/c 剩余跨模块单表 / 跨模块 JOIN 拼表名清理
-- [ ] P5 表名集合注入连接器（6–9 个）
+- [ ] P4b/c 剩余跨模块单表 / 跨模块 JOIN 拼表名清理（逐站点结论见 Remaining Work）
+- [x] **P5 表名集合注入连接器（6 对，用户指定，未扩范围）**：形态完全沿用仓内既有先例
+      `core.DirectoryAuthorizationSourceConnector`——消费方在**根包 `contracts.go`** 声明
+      `type XTableSetConnector struct{ Bind func(gormx.TableSet) error }` 并在 `ProvideServices` 提供；
+      拥有者在 `InjectServices` 里 `module.Resolve[...]` + **显式判 `Bind == nil` 即报错**，
+      再 `Bind(owner.TableSet(runtime.TablePrefix()))`。
+      - `core ← organization`：`core.DirectoryTableSetConnector` → `m.joined.bindDirectoryTables`，
+        12 个目录表名（`BindDirectoryTables` 逐个 `Lookup`，缺一个即错）
+      - `core ← identity`：`core.PrincipalTableSetConnector` → `m.joined.bindPrincipalTable`，`iam_principals`
+      - `authn ← organization`：`authn.DirectoryTableSetConnector` → `m.foreign.bindDirectory`，`iam_tenants`
+      - `authn ← oauth`：`authn.OAuthTableSetConnector` → `m.foreign.bindOAuth`，
+        `iam_oauth_clients`（`repository_identity.go:230`）+ `iam_refresh_tokens`（`repository_session.go:122`）
+      - `identity ← oauth`：`identity.OAuthTableSetConnector` → `m.foreign.bindOAuth`，`iam_refresh_tokens`
+        （`revokeSessionsAndRefreshTokens`）
+      - `identity ← organization`：`identity.DirectoryTableSetConnector` → `m.foreign.bindDirectory`，
+        `iam_tenants`（`service_account.go` 2 个调用点经 `Repository.tenantTable`）
+      - 消费方侧：`publishedTableName` / `joinedTables` 在**未绑定或 owner 没发布该名**时显式返回
+        模块自身的 `ErrUnavailable`，绝不退化成一个空表名；写路径（identity 的撤销、
+        core 的 `PutMember`）在语句之前解析
+      - **未新增任何 `ModuleDependencies` 声明**（`Wire` 是先全体 Provide→Seal→再全体 Inject，
+        与注册序无关；新增声明反而会触发 `Activate` 全序校验启动失败）；owner 侧**既有**声明未动
+      - `core/query/table.go` 的 `ForeignTables`/`BindForeign` 与 `TODO(P5)` 已删除，改为
+        `BindDirectoryTables`/`BindPrincipalTable`
+      - **明确不做**（用户指定，两向都会违反 `Activate` 全序）：
+        `identity←authn`（`iam_sessions` 仍按自身前缀拼）、`oauth←organization`（`iam_tenants`）、
+        `governance←organization`（`iam_tenants` + `review_grants.go` 3 处 groups/positions/
+        member_departments 片段）、`federation←organization`（`iam_tenants` 3 处）——**表名保持原样，如实报告**
 - [ ] P6 门禁收紧（budget 降到 SQL 类 = 0）
 - [ ] PD 全仓文档体检（六批）
 
@@ -160,6 +186,43 @@ P4b 已完成一对：owner=identity、契约 `identity.PrincipalStateStore`、�
     P2 的 authorization CTE。因此 **不需要** `IAM_PERFORMANCE_UPDATE=plans`，
     也没有新旧 EXPLAIN 可 diff，自然不存在新增全扫。
 
+- **P5**（干净树、无并发编辑）：
+  - `go build ./...` **EXIT=0**；`go test ./internal/... -count=1` 无 FAIL；`gofmt -l internal pkg` **空**
+  - `make ci` **EXIT=0**：fmt clean、lint 0 findings、**总覆盖率 90.1%**（core 90.0 / authn 90.5 /
+    identity 90.4 / oauth 90.1 / organization 90.3）、`go -C tests test ./...` 6 个包全 ok
+    （architecture 3.3s / goose 16.7s / testdb 0.3s / lifecycle 131.7s / migration 327.4s /
+    performance 42.0s）、build、`openapi: matches docs/openapi.json`
+  - `make test-mysql8-run` **EXIT=0**（真实 MySQL 8.4）：`schema lock: 219 published migration files
+    unchanged`、`static reconciliation: 219 files, 72 IAM tables, 33 cross-module foreign keys`
+  - 账本：**HEAD(85ebe5f) budget 572 → 工作树 482**（条目 236→211；`handwritten-sql` **15→15**，
+    7 个 key 完全相同；concatenated 121→120、naked 436→347）。
+    **注意口径**：工作树含未提交的 P4b，572→482 是 P4b 与 P5 的**合计**降幅，无法拆开归因；
+    会话中曾观测到中间值 489（P5 中途刷新过一次），但那是 P5 自身改动之后就有的数。
+    另跑一次 `QUERY_GATE_UPDATE=1` 后文件语义**逐字节不变**（budget 482 / 211 条目 /
+    逐规则 120/15/347 / handwritten-sql 7 个 key 全同）→ 冻结预算精确等于当前违规数，未留余量
+  - 「未接线即失败」实测（全部 PASS，见下）：
+    - core `TestModuleReadersFailClosedUntilTheOwnersPublish`：7 个 reader + 写路径 `PutMember`
+      均 `ErrUnavailable`，且 `sl_iam_tenant_members` **0 行**（拒绝的写没落地）；绑定后同一批调用正常
+    - core `TestJoinedTablesReportUnboundAsUnavailable` / `TestBindForeignTablesGuardsAnAbsentReaderAndAMissingHolder`
+    - authn `TestAuthnReadersFailClosedUntilTheOwnersPublish`：module 级，3 个 reader 报错、
+      `sl_iam_refresh_tokens` 行未被动；绑定后同一调用到达表并给出自己的答案
+    - identity `TestForeignTablesReportUnboundAsUnavailable`、`TestRepositoryReportsForeignTablesAsUnbound`、
+      `TestRevokeReportsUnavailabilityWithoutTouchingStorage`（写路径：oauth 拥有的那一半被扣下，
+      identity 自己拥有的 `iam_sessions` 那半仍执行，调用方拿到 error 而不是静默的半结果）
+    - owner 侧「`Bind == nil` 即启动失败」：organization `TestOrganizationModuleReportsMissingWiring`
+      4 个子测试（core/authn/identity 三个连接器 + 既有 directory authorization source）、
+      oauth `TestOAuthModuleReportsMissingWiring` 2 个子测试，全部 `ErrorContains(..., "bind is required")`
+  - `git status --porcelain` 66 项（60 个 ` M` + 6 个未跟踪新文件），**无 `.gen.go` / `cover*.raw` /
+    `.log` / `bin/`**；`coverage.out`/`coverage.raw.out` 在磁盘上但被 `.gitignore` 覆盖
+  - 中途真实故障与修法（不是推测）：① 加了 owner 侧 Resolve 后，organization/oauth/app 的测试假依赖
+    没提供连接器 → `module: service is not registered`，补 no-op `Bind` 的假连接器解决；
+    ② `QUERY_GATE_UPDATE=1` 报 `490 violations exceed the frozen budget of 489` —— **没有**用
+    `QUERY_GATE_REBASELINE`，改为把 identity 撤销里的嵌套匿名结构体切片拆成
+    `[]string` + `revocationTable(logical)`（门禁的 `nakedTableLiterals` 对嵌套复合字面量会重复计数），
+    解决后无新增违规；③ 删除 core 死代码 `(*Repository).table` 触发 lint unused + 覆盖率掉到 89.9%，
+    删代码的同时补 `TestBindForeignTablesGuardsAnAbsentReaderAndAMissingHolder` 与
+    `TestModulePublishesThePlatformAccessGuard` 把 core 拉回 90.0%
+
 ## Remaining Work（P4b 的逐站点结论，实测过，不是推测）
 1. **`authn → identity` 不可做（硬约束）**：`composeIAMRuntimeModules` 的注册序是
    audit→core→authn→**identity**→organization→oauth→provisioning→governance→federation，
@@ -175,12 +238,22 @@ P4b 已完成一对：owner=identity、契约 `identity.PrincipalStateStore`、�
    `audit.EventReader`）在允许方向的剩余站点均只 1 处且嵌在 JOIN 内，收益不足 —— **如实跳过**。
 
 ## Next Action
-提交本次 P4b（12 个文件 + 2 个新文件 + 账本）。之后若要推进 P4b，先重新核对
-`Remaining Work` 的第 1 条硬约束是否已被 P5 解除；否则直接从 P4c/P5 继续。
-每阶段改完都要 `QUERY_GATE_UPDATE=1 … -run TestQueryGate` 刷新后**手工下调** `budget`（当前 572）。
+提交本次工作树（未提交的 P4b + P5 一起）。之后：
+- 若要继续 P4c，先重新核对 `Remaining Work` 第 1 条的硬约束是否已被 P5 解除；
+- P6 门禁收紧时才允许动 `budget`/规则。
+每阶段改完都要 `QUERY_GATE_UPDATE=1 … -run TestQueryGate` 刷新后**手工下调** `budget`（当前 482）。
 若刷新时报 "exceed the frozen budget"，说明引入了新违规，去修代码而不是用 `QUERY_GATE_REBASELINE` 掩盖。
 
 ## Last Checkpoint
+2026-09-11 **P5 六对连接器全部完成并实测**：`go build ./...` EXIT=0、`go test ./internal/... -count=1`
+无 FAIL、`make ci` **EXIT=0**（总覆盖率 **90.1%**，全模块 ≥90.0%）、`make test-mysql8-run` **EXIT=0**
+（schema lock 219 文件未变、72 IAM 表、33 跨模块 FK）、`gofmt -l internal pkg` 空、
+账本 **HEAD 572 → 482**（`handwritten-sql` **15 不变**，7 个 key 逐字相同）、
+`git status --porcelain` 66 项且无 `.gen.go`/`cover*.raw`/`.log`/`bin/`；
+「未接线即失败」在 core/authn/identity 三处消费方 + organization/oauth 两处 owner 侧全部实测 PASS。
+**未做**的 4 对（`identity←authn`、`oauth←organization`、`governance←organization`、
+`federation←organization`）表名保持原样，已逐站点列出。
+
 2026-09-11 **P4b 第一对（`identity.PrincipalStateStore`）完成并实测**：`go build ./...` EXIT=0、
 `go test ./internal/... -count=1` **51 包 ok / 0 FAIL**、`make ci` **EXIT=0**（总覆盖率 **90.1%**，
 oauth 90.2 / federation 91.0 / identity 90.5）、`make test-mysql8-run` **EXIT=0**（真实 MySQL 8.4，

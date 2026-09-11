@@ -136,6 +136,9 @@ func newAuthnRepositoryHarness(t *testing.T, prefix string) *authnRepositoryHarn
 		return harness.auditErr
 	})
 	harness.repository = NewRepository(harness.runtime, newRepositoryTestIDs(1000), appender)
+	// The repository a running deployment gets is the one its connectors bound;
+	// a harness that expects an answer has to publish the owners' names too.
+	bindForeignTables(t, harness.repository, prefix)
 	return harness
 }
 

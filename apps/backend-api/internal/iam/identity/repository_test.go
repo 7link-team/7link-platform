@@ -145,6 +145,10 @@ func newIdentityHarness(t *testing.T, prefix string) *identityHarness {
 	harness.service.now = func() time.Time { return identityTestNow }
 	harness.service.erasureRecorder = func(context.Context, audit.ErasureObligation) error { return nil }
 	harness.repository = harness.service.repo
+	// The owners' connectors publish their table names in a running deployment;
+	// a harness that runs identity alone publishes what they would, so a reader
+	// here reaches a table instead of reporting the table names as missing.
+	bindForeignTables(t, harness.repository, prefix)
 	return harness
 }
 

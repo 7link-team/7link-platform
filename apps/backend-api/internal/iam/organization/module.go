@@ -123,6 +123,36 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err := directorySources.Bind(NewDirectoryAuthorizationSourceStore(m.runtime)); err != nil {
 		return fmt.Errorf("bind organization directory authorization sources: %w", err)
 	}
+	directoryTables, err := module.Resolve[core.DirectoryTableSetConnector](services)
+	if err != nil {
+		return fmt.Errorf("resolve organization directory table set connector: %w", err)
+	}
+	if directoryTables.Bind == nil {
+		return errors.New("resolve organization directory table set connector: bind is required")
+	}
+	if err := directoryTables.Bind(TableSet(m.runtime.TablePrefix())); err != nil {
+		return fmt.Errorf("bind organization directory table set: %w", err)
+	}
+	authnDirectoryTables, err := module.Resolve[authn.DirectoryTableSetConnector](services)
+	if err != nil {
+		return fmt.Errorf("resolve authn directory table set connector: %w", err)
+	}
+	if authnDirectoryTables.Bind == nil {
+		return errors.New("resolve authn directory table set connector: bind is required")
+	}
+	if err := authnDirectoryTables.Bind(TableSet(m.runtime.TablePrefix())); err != nil {
+		return fmt.Errorf("bind authn directory table set: %w", err)
+	}
+	identityDirectoryTables, err := module.Resolve[identity.DirectoryTableSetConnector](services)
+	if err != nil {
+		return fmt.Errorf("resolve identity directory table set connector: %w", err)
+	}
+	if identityDirectoryTables.Bind == nil {
+		return errors.New("resolve identity directory table set connector: bind is required")
+	}
+	if err := identityDirectoryTables.Bind(TableSet(m.runtime.TablePrefix())); err != nil {
+		return fmt.Errorf("bind identity directory table set: %w", err)
+	}
 	m.registrar = registrar
 	m.bootstrap, m.owners = bootstrap, owners
 	m.members, m.administrators = members, administrators

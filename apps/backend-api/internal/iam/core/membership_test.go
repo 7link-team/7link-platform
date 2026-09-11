@@ -12,7 +12,7 @@ func TestActiveMemberDepartmentIsTenantScopedAndWriterBacked(t *testing.T) {
 	h := newCoreServiceHarness(t)
 	h.seedMember(t, 1, 11, MemberActive)
 	h.seedMember(t, 2, 22, MemberActive)
-	m := NewMembershipChecker(h.runtime)
+	m := boundChecker(t, h.runtime, "sl_")
 	for _, tenant := range []guid.ID{1, 2} {
 		require.NoError(t, h.db.Exec(`INSERT INTO sl_iam_departments
 			(tenant_id,id,parent_id,name,name_key,status,sort_order,version,created_at,updated_at)
@@ -52,7 +52,7 @@ func TestActiveMemberDepartmentIsTenantScopedAndWriterBacked(t *testing.T) {
 
 func TestMemberTenantResolutionNeverGuessesOrUsesInactiveMemberships(t *testing.T) {
 	h := newCoreServiceHarness(t)
-	m := NewMembershipChecker(h.runtime)
+	m := boundChecker(t, h.runtime, "sl_")
 	resolve := func(principal, requested, expected guid.ID) {
 		t.Helper()
 		id, err := m.ResolveTenant(t.Context(), principal, requested)

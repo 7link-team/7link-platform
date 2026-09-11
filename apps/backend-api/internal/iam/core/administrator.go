@@ -19,16 +19,17 @@ const (
 )
 
 type tenantAdministratorGuard struct {
+	prefix    string
 	revisions *RevisionStore
 	now       func() time.Time
-	tables    query.AuthorizationTables
+	joined    *joinedTables
 }
 
 // NewAdministratorGuard creates the tenant-administrator safety capability.
-// It binds the tables the durable-administrator statement reads with the
-// deployment prefix carried by the application runtime, so the guard counts
+// The tables the durable-administrator statement reads arrive from the modules
+// that own them through the connectors core publishes, so the guard counts
 // administrators in the same schema the rest of the module writes to.
-func NewAdministratorGuard(runtime *appenv.Runtime) AdministratorGuard {
+func NewAdministratorGuard(runtime *appenv.Runtime) *tenantAdministratorGuard {
 	if runtime == nil {
 		panic("IAM administrator guard requires runtime")
 	}
@@ -37,8 +38,8 @@ func NewAdministratorGuard(runtime *appenv.Runtime) AdministratorGuard {
 		panic(err)
 	}
 	return &tenantAdministratorGuard{
-		revisions: revisions, now: time.Now,
-		tables: query.BindAuthorizationTables(runtime.TablePrefix()),
+		prefix: runtime.TablePrefix(), revisions: revisions, now: time.Now,
+		joined: &joinedTables{},
 	}
 }
 
@@ -75,8 +76,12 @@ func (guard *tenantAdministratorGuard) hasDurableAdministrator(
 	tenantID guid.ID,
 ) (bool, error) {
 	now := guard.now().UTC().Truncate(time.Millisecond)
+	tables, err := guard.joined.authorizationTables(guard.prefix)
+	if err != nil {
+		return false, err
+	}
 	count, err := query.CountDurableAdministrators(ctx, db, query.DurableAdministratorParams{
-		AuthorizationTables:     guard.tables,
+		AuthorizationTables:     tables,
 		TenantID:                tenantID,
 		Now:                     now,
 		AdministratorPermission: tenantAdministratorPermission,

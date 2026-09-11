@@ -118,7 +118,13 @@ func verifyCoreServiceBehavior(t *testing.T, datasourceType, dsn, prefix string)
 	ids := &relationshipTestIDSource{}
 	ids.next.Store(91_000)
 	repository := iamcore.NewRepository(runtime, ids)
+	require.NoError(t, repository.BindForeignTables(
+		organization.TableSet(prefix), identity.TableSet(prefix),
+	))
 	authorizer := iamcore.NewAuthorizer(runtime)
+	require.NoError(t, authorizer.BindForeignTables(
+		organization.TableSet(prefix), identity.TableSet(prefix),
+	))
 	require.NoError(t, authorizer.BindDirectoryAuthorizationSources(
 		organization.NewDirectoryAuthorizationSourceStore(runtime),
 	))

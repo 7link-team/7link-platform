@@ -221,7 +221,7 @@ func CountDurableAdministrators(ctx context.Context, db *gorm.DB, params Durable
 // duplicate assignment cannot grant a permission twice.
 func effectiveRolesCTE(params EffectiveRolesParams) (string, []any) {
 	tables := params.Tables
-	foreign := params.Foreign
+	directory := params.Directory
 	return `
 WITH effective_roles(role_id, source_type, source_id) AS (
     SELECT m.role_id, 'role_member', m.principal_id
@@ -238,10 +238,10 @@ WITH effective_roles(role_id, source_type, source_id) AS (
       AND grants.starts_at <= ? AND grants.ends_at > ?
     UNION
     SELECT b.role_id, 'group', b.group_id
-    FROM ` + foreign.GroupRoleBindings.String() + ` b
-    JOIN ` + foreign.Groups.String() + ` g
+    FROM ` + directory.GroupRoleBindings.String() + ` b
+    JOIN ` + directory.Groups.String() + ` g
       ON g.tenant_id = b.tenant_id AND g.id = b.group_id AND g.status = 'active' AND g.group_type = 'static'
-    JOIN ` + foreign.GroupMembers.String() + ` gm
+    JOIN ` + directory.GroupMembers.String() + ` gm
       ON gm.tenant_id = b.tenant_id AND gm.group_id = b.group_id
     JOIN ` + tables.TenantMembers.String() + ` tm
       ON tm.tenant_id = gm.tenant_id AND tm.principal_id = gm.principal_id AND tm.status = ?
@@ -250,10 +250,10 @@ WITH effective_roles(role_id, source_type, source_id) AS (
       AND (gm.ends_at IS NULL OR gm.ends_at > ?)
     UNION
     SELECT b.role_id, 'position', b.position_id
-    FROM ` + foreign.PositionRoleBindings.String() + ` b
-    JOIN ` + foreign.Positions.String() + ` pos
+    FROM ` + directory.PositionRoleBindings.String() + ` b
+    JOIN ` + directory.Positions.String() + ` pos
       ON pos.tenant_id = b.tenant_id AND pos.id = b.position_id AND pos.status = 'active'
-    JOIN ` + foreign.PositionMembers.String() + ` pm
+    JOIN ` + directory.PositionMembers.String() + ` pm
       ON pm.tenant_id = b.tenant_id AND pm.position_id = b.position_id
     JOIN ` + tables.TenantMembers.String() + ` tm
       ON tm.tenant_id = pm.tenant_id AND tm.principal_id = pm.principal_id AND tm.status = ?
@@ -272,13 +272,13 @@ WITH effective_roles(role_id, source_type, source_id) AS (
 func tenantGrantStatement(params TenantGrantParams) (string, []any) {
 	cte, args := effectiveRolesCTE(params.EffectiveRolesParams)
 	tables := params.Tables
-	foreign := params.Foreign
+	directory := params.Directory
 	return cte + `
 SELECT DISTINCT rp.permission_code, er.role_id, er.source_type, er.source_id,
        COALESCE(ds.scope_type, 'all') AS data_scope, rp.condition_json
 FROM ` + tables.RolePermissions.String() + ` rp
 JOIN effective_roles er ON er.role_id = rp.role_id
-LEFT JOIN ` + foreign.RoleDataScopes.String() + ` ds
+LEFT JOIN ` + directory.RoleDataScopes.String() + ` ds
   ON ds.tenant_id = rp.tenant_id AND ds.role_id = rp.role_id
 WHERE rp.tenant_id = ? AND rp.permission_code IN ?`,
 		append(args, params.TenantID, params.Requested)
@@ -416,7 +416,7 @@ FROM walk`, []any{
 // CountDurableAdministrators executes.
 func durableAdministratorCountStatement(params DurableAdministratorParams) (string, []any) {
 	tables := params.Tables
-	foreign := params.Foreign
+	directory := params.Directory
 	return `
 SELECT COUNT(DISTINCT administrators.principal_id)
 FROM (
@@ -427,32 +427,32 @@ FROM (
     WHERE members.tenant_id = ? AND permissions.permission_code IN (?, ?) AND permissions.condition_json = ''
     UNION
     SELECT group_members.principal_id
-    FROM ` + foreign.GroupRoleBindings.String() + ` AS bindings
+    FROM ` + directory.GroupRoleBindings.String() + ` AS bindings
     JOIN ` + tables.RolePermissions.String() + ` AS permissions
       ON permissions.tenant_id = bindings.tenant_id AND permissions.role_id = bindings.role_id
-    JOIN ` + foreign.Groups.String() + ` AS grp
+    JOIN ` + directory.Groups.String() + ` AS grp
       ON grp.tenant_id = bindings.tenant_id AND grp.id = bindings.group_id
      AND grp.status = 'active' AND grp.group_type = 'static'
-    JOIN ` + foreign.GroupMembers.String() + ` AS group_members
+    JOIN ` + directory.GroupMembers.String() + ` AS group_members
       ON group_members.tenant_id = bindings.tenant_id AND group_members.group_id = bindings.group_id
     WHERE bindings.tenant_id = ? AND permissions.permission_code IN (?, ?) AND permissions.condition_json = ''
       AND (group_members.starts_at IS NULL OR group_members.starts_at <= ?)
       AND group_members.ends_at IS NULL
     UNION
     SELECT position_members.principal_id
-    FROM ` + foreign.PositionRoleBindings.String() + ` AS bindings
+    FROM ` + directory.PositionRoleBindings.String() + ` AS bindings
     JOIN ` + tables.RolePermissions.String() + ` AS permissions
       ON permissions.tenant_id = bindings.tenant_id AND permissions.role_id = bindings.role_id
-    JOIN ` + foreign.Positions.String() + ` AS positions
+    JOIN ` + directory.Positions.String() + ` AS positions
       ON positions.tenant_id = bindings.tenant_id AND positions.id = bindings.position_id
      AND positions.status = 'active'
-    JOIN ` + foreign.PositionMembers.String() + ` AS position_members
+    JOIN ` + directory.PositionMembers.String() + ` AS position_members
       ON position_members.tenant_id = bindings.tenant_id AND position_members.position_id = bindings.position_id
     WHERE bindings.tenant_id = ? AND permissions.permission_code IN (?, ?) AND permissions.condition_json = ''
       AND (position_members.starts_at IS NULL OR position_members.starts_at <= ?)
       AND position_members.ends_at IS NULL
 ) AS administrators
-JOIN ` + foreign.Principals.String() + ` AS principals
+JOIN ` + params.Principal.String() + ` AS principals
   ON principals.id = administrators.principal_id AND principals.status = 'active'
 JOIN ` + tables.TenantMembers.String() + ` AS tenant_members
   ON tenant_members.tenant_id = ?

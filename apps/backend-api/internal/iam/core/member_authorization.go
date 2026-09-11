@@ -130,12 +130,16 @@ func (a *Authorizer) MemberAuthorizationSources(
 		requested = append(requested, action.Code)
 		actions = append(actions, action)
 	}
+	names, err := a.authorizationTables()
+	if err != nil {
+		return MemberAuthorizationSnapshot{}, err
+	}
 	for range policySnapshotAttempts {
 		before, err := a.revisions.Current(ctx, a.db, tenantID)
 		if err != nil {
 			return MemberAuthorizationSnapshot{}, err
 		}
-		_, memberActive, err := tenantMembershipState(ctx, a.db, a.prefix, tenantID, subject)
+		_, memberActive, err := tenantMembershipState(ctx, a.db, names, tenantID, subject)
 		if err != nil {
 			return MemberAuthorizationSnapshot{}, err
 		}

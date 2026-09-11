@@ -207,7 +207,10 @@ func (r *Repository) serviceAccountState(ctx context.Context, principalID guid.I
 	accountTable := r.table(serviceAccountTableName)
 	principalTable := r.table(principalTableName)
 	memberTable := r.table("iam_tenant_members")
-	tenantTable := r.table("iam_tenants")
+	tenantTable, err := r.tenantTable()
+	if err != nil {
+		return serviceAccountState{}, err
+	}
 	var state serviceAccountState
 	err = db.WithContext(ctx).Table(accountTable+" AS account").
 		Select("account.owner_tenant_id AS tenant_id, account.status AS account_status, account.expires_at, account.token_version, "+
@@ -224,8 +227,12 @@ func (r *Repository) oauthClientState(ctx context.Context, clientID guid.ID) (oa
 	if err != nil {
 		return oauthClientState{}, err
 	}
+	clientTable, err := r.oauthTable("iam_oauth_clients")
+	if err != nil {
+		return oauthClientState{}, err
+	}
 	var state oauthClientState
-	err = db.WithContext(ctx).Table(r.table("iam_oauth_clients")).
+	err = db.WithContext(ctx).Table(clientTable).
 		Select("tenant_id, status").Where("id = ?", clientID).Take(&state).Error
 	return state, err
 }

@@ -50,6 +50,10 @@ func newCoreServiceHarness(t *testing.T) coreServiceHarness {
 	harness := newRepositoryHarness(t, "sl_")
 	authorizer := NewAuthorizer(harness.runtime)
 	authorizer.now = harness.repository.now
+	require.NoError(t, authorizer.BindForeignTables(
+		publishedTableSet("sl_", publishedDirectoryTables...),
+		publishedTableSet("sl_", publishedPrincipalTable),
+	))
 	events := make([]audit.DomainEvent, 0)
 	appender := func(_ context.Context, _ *gorm.DB, event audit.DomainEvent) error {
 		events = append(events, event)
@@ -405,7 +409,7 @@ func TestServiceMemberLifecycleFiltersAndMembershipChecker(t *testing.T) {
 	require.Len(t, members, 1)
 	assert.Equal(t, aliceID, members[0].PrincipalID)
 
-	checker := NewMembershipChecker(harness.runtime)
+	checker := boundChecker(t, harness.runtime, "sl_")
 	active, err := checker.IsMemberActive(t.Context(), tenantID, aliceID)
 	require.NoError(t, err)
 	assert.True(t, active)

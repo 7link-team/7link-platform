@@ -274,18 +274,21 @@ func (a *Authorizer) FieldConstraint(ctx context.Context, tenantID, entityID gui
 	if tenantID <= 0 || subject <= 0 || entityID < 0 || resource == "" || len(fields) == 0 {
 		return authz.FieldConstraint{}, ErrInvalidArgument
 	}
+	names, err := a.authorizationTables()
+	if err != nil {
+		return authz.FieldConstraint{}, err
+	}
 	for range policySnapshotAttempts {
 		before, err := a.revisions.Current(ctx, a.db, tenantID)
 		if err != nil {
 			return authz.FieldConstraint{}, err
 		}
-		_, active, err := tenantMembershipState(ctx, a.db, a.prefix, tenantID, subject)
+		_, active, err := tenantMembershipState(ctx, a.db, names, tenantID, subject)
 		if err != nil {
 			return authz.FieldConstraint{}, err
 		}
-		names := a.authorizationTables()
 		var principals int64
-		if err := a.db.WithContext(ctx).Table(names.Foreign.Principals.String()).Where("id = ? AND status = 'active'", subject).Count(&principals).Error; err != nil {
+		if err := a.db.WithContext(ctx).Table(names.Principal.String()).Where("id = ? AND status = 'active'", subject).Count(&principals).Error; err != nil {
 			return authz.FieldConstraint{}, err
 		}
 		if entityID > 0 {
@@ -342,18 +345,25 @@ func (a *Authorizer) FieldConstraint(ctx context.Context, tenantID, entityID gui
 
 func (a *Authorizer) fieldPolicyRoles(ctx context.Context, tenantID, entityID, subject guid.ID) ([]guid.ID, error) {
 	now := a.now().UTC().Truncate(time.Millisecond)
-	roles, err := query.FieldPolicyRoles(ctx, a.db, a.effectiveRolesParams(tenantID, subject, now))
+	params, err := a.effectiveRolesParams(tenantID, subject, now)
 	if err != nil {
 		return nil, err
 	}
-	names := a.authorizationTables()
-	groups, err := matchingDynamicGroupIDs(ctx, a.db, a.prefix, tenantID, subject)
+	roles, err := query.FieldPolicyRoles(ctx, a.db, params)
+	if err != nil {
+		return nil, err
+	}
+	names, err := a.authorizationTables()
+	if err != nil {
+		return nil, err
+	}
+	groups, err := matchingDynamicGroupIDs(ctx, a.db, names, tenantID, subject)
 	if err != nil {
 		return nil, err
 	}
 	if len(groups) > 0 {
 		dynamic := []guid.ID{}
-		if err := a.db.WithContext(ctx).Table(names.Foreign.GroupRoleBindings.String()).Where("tenant_id = ? AND group_id IN ?", tenantID, groups).Pluck("role_id", &dynamic).Error; err != nil {
+		if err := a.db.WithContext(ctx).Table(names.Directory.GroupRoleBindings.String()).Where("tenant_id = ? AND group_id IN ?", tenantID, groups).Pluck("role_id", &dynamic).Error; err != nil {
 			return nil, err
 		}
 		roles = append(roles, dynamic...)

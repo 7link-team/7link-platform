@@ -12,6 +12,7 @@ import (
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/extension/huma/respx"
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
@@ -110,18 +111,35 @@ func TestOrganizationModuleResolvesServicesAndProvidesGroupProvisioner(t *testin
 			if err := module.Provide[core.TenantBootstrapper](services, newTenantBootstrapStub().capability()); err != nil {
 				return err
 			}
-			return module.Provide[core.DirectoryAuthorizationSourceConnector](services, core.DirectoryAuthorizationSourceConnector{
+			if err := module.Provide[core.DirectoryAuthorizationSourceConnector](services, core.DirectoryAuthorizationSourceConnector{
 				Bind: func(core.DirectoryAuthorizationSourceStore) error { return nil },
+			}); err != nil {
+				return err
+			}
+			return module.Provide[core.DirectoryTableSetConnector](services, core.DirectoryTableSetConnector{
+				Bind: func(gormx.TableSet) error { return nil },
 			})
 		}},
 		&organizationDependencyProvider{name: authn.Name, provide: func(services *module.Services) error {
-			return module.Provide[authn.InvitationCredentials](services, credentials)
+			if err := module.Provide[authn.InvitationCredentials](services, credentials); err != nil {
+				return err
+			}
+			// The consumers publish these during Wire in a running deployment;
+			// this registry fakes them so organization's own wiring resolves.
+			return module.Provide[authn.DirectoryTableSetConnector](services, authn.DirectoryTableSetConnector{
+				Bind: func(gormx.TableSet) error { return nil },
+			})
 		}},
 		&organizationDependencyProvider{name: identity.Name, provide: func(services *module.Services) error {
 			if err := module.Provide[identity.InvitationPrincipalCreator](services, creator); err != nil {
 				return err
 			}
-			return module.Provide[identity.TenantOwnerLookup](services, newTenantOwnerStub().capability())
+			if err := module.Provide[identity.TenantOwnerLookup](services, newTenantOwnerStub().capability()); err != nil {
+				return err
+			}
+			return module.Provide[identity.DirectoryTableSetConnector](services, identity.DirectoryTableSetConnector{
+				Bind: func(gormx.TableSet) error { return nil },
+			})
 		}},
 		instance,
 	))
@@ -163,6 +181,7 @@ func TestOrganizationModuleReportsMissingWiring(t *testing.T) {
 		func(services *module.Services) error {
 			return module.Provide[*authz.Registrar](services, organizationTestRegistrar(members))
 		},
+
 		func(services *module.Services) error {
 			return module.Provide[core.ActiveMemberChecker](services, members)
 		},
@@ -179,11 +198,51 @@ func TestOrganizationModuleReportsMissingWiring(t *testing.T) {
 		func(services *module.Services) error {
 			return module.Provide[audit.Appender](services, audit.Appender(func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil }))
 		},
+		func(services *module.Services) error {
+			return module.Provide[core.TenantBootstrapper](services, newTenantBootstrapStub().capability())
+		},
+		func(services *module.Services) error {
+			return module.Provide[identity.TenantOwnerLookup](services, newTenantOwnerStub().capability())
+		},
+	}
+	// The connectors organization's wiring resolves are the last four, in the
+	// order it resolves them, so the nil-Bind check below can replace one by
+	// position without restating the whole list.
+	connectors := []struct {
+		message string
+		provide func(*module.Services) error
+	}{
+		{"directory authorization source connector", func(services *module.Services) error {
+			return module.Provide[core.DirectoryAuthorizationSourceConnector](services, core.DirectoryAuthorizationSourceConnector{
+				Bind: func(core.DirectoryAuthorizationSourceStore) error { return nil },
+			})
+		}},
+		{"directory table set connector", func(services *module.Services) error {
+			return module.Provide[core.DirectoryTableSetConnector](services, core.DirectoryTableSetConnector{
+				Bind: func(gormx.TableSet) error { return nil },
+			})
+		}},
+		{"authn directory table set connector", func(services *module.Services) error {
+			return module.Provide[authn.DirectoryTableSetConnector](services, authn.DirectoryTableSetConnector{
+				Bind: func(gormx.TableSet) error { return nil },
+			})
+		}},
+		{"identity directory table set connector", func(services *module.Services) error {
+			return module.Provide[identity.DirectoryTableSetConnector](services, identity.DirectoryTableSetConnector{
+				Bind: func(gormx.TableSet) error { return nil },
+			})
+		}},
+	}
+	for _, connector := range connectors {
+		providers = append(providers, connector.provide)
 	}
 	expected := []string{
 		"authorization registrar", "active member checker", "administrator guard", "invitation credentials",
-		"invitation principal creator", "id generator", "audit appender",
+		"invitation principal creator", "id generator", "audit appender", "tenant bootstrapper",
+		"tenant owner lookup", "directory authorization source connector", "directory table set connector",
+		"authn directory table set connector", "identity directory table set connector",
 	}
+	require.Len(t, expected, len(providers), "every provider is the one the next message reports missing")
 	for count, message := range expected {
 		services := module.NewServices()
 		for _, provide := range providers[:count] {
@@ -192,6 +251,42 @@ func TestOrganizationModuleReportsMissingWiring(t *testing.T) {
 		require.NoError(t, services.Seal())
 		instance := NewModule(runtime, enabledModuleConfig())
 		assert.ErrorContains(t, instance.InjectServices(services), message)
+	}
+
+	// A consumer that provides a connector without a bind would leave the tables
+	// unpublished while module wiring reported success, so wiring refuses it.
+	// Every consumer module is checked, because a single unchecked one silently
+	// reintroduces the empty table name the connectors exist to remove.
+	for index, connector := range connectors {
+		t.Run(connector.message, func(t *testing.T) {
+			services := module.NewServices()
+			for position, provide := range providers {
+				if position == len(providers)-len(connectors)+index {
+					require.NoError(t, provideUnboundConnector(connector.message, services))
+					continue
+				}
+				require.NoError(t, provide(services))
+			}
+			require.NoError(t, services.Seal())
+			instance := NewModule(runtime, enabledModuleConfig())
+			assert.ErrorContains(t, instance.InjectServices(services), connector.message+": bind is required")
+		})
+	}
+}
+
+// provideUnboundConnector provides one of organization's consumer connectors
+// with no Bind function, which is what a consumer that declared the type and
+// never filled it in hands its owner.
+func provideUnboundConnector(message string, services *module.Services) error {
+	switch message {
+	case "directory authorization source connector":
+		return module.Provide[core.DirectoryAuthorizationSourceConnector](services, core.DirectoryAuthorizationSourceConnector{})
+	case "directory table set connector":
+		return module.Provide[core.DirectoryTableSetConnector](services, core.DirectoryTableSetConnector{})
+	case "authn directory table set connector":
+		return module.Provide[authn.DirectoryTableSetConnector](services, authn.DirectoryTableSetConnector{})
+	default:
+		return module.Provide[identity.DirectoryTableSetConnector](services, identity.DirectoryTableSetConnector{})
 	}
 }
 

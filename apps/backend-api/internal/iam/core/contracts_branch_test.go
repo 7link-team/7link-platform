@@ -160,7 +160,7 @@ func TestEscalationAndDynamicGroupBoundaryBranches(t *testing.T) {
 	harness := newCoreServiceHarness(t)
 	ctx := authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 11})
 	require.NoError(t, harness.service.requireGrantablePermissions(ctx, 1, "", ""))
-	_, err := matchingDynamicGroupIDs(t.Context(), nil, "sl_", 1, 11)
+	_, err := matchingDynamicGroupIDs(t.Context(), nil, testAuthorizationTables(t, "sl_"), 1, 11)
 	assert.ErrorIs(t, err, ErrUnavailable)
 
 	seedTenantAndPrincipal(t, harness.db, "sl_", 1, 11)
@@ -170,7 +170,7 @@ func TestEscalationAndDynamicGroupBoundaryBranches(t *testing.T) {
 	require.NoError(t, harness.db.Exec(`INSERT INTO sl_iam_groups
 		(tenant_id,id,name,name_key,group_type,rule_json,description,status,sort_order,version,created_at,updated_at)
 		VALUES (1,201,'Broken','broken','dynamic','{broken','','active',0,1,?,?)`, now, now).Error)
-	_, err = matchingDynamicGroupIDs(t.Context(), harness.db, "sl_", 1, 11)
+	_, err = matchingDynamicGroupIDs(t.Context(), harness.db, testAuthorizationTables(t, "sl_"), 1, 11)
 	assert.ErrorContains(t, err, "evaluate dynamic group")
 }
 

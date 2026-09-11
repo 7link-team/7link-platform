@@ -34,6 +34,11 @@ type Module struct {
 	oauthGrants         OAuthGrantValidator
 	personalPermissions func(context.Context, guid.ID, []string, guid.ID) (map[string]bool, error)
 	personalRegistry    *authz.Registry
+
+	// foreign is the one holder of the table names the modules that own them
+	// publish to authn. The connectors below bind it, and every repository the
+	// module builds shares it.
+	foreign foreignTables
 }
 
 // Config separates module activation from the authentication service's
@@ -127,6 +132,16 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[SecretRewrapper](services, m); err != nil {
 		return fmt.Errorf("provide authn secret rewrapper: %w", err)
 	}
+	if err := module.Provide[DirectoryTableSetConnector](services, DirectoryTableSetConnector{
+		Bind: m.foreign.bindDirectory,
+	}); err != nil {
+		return fmt.Errorf("provide authn directory table set connector: %w", err)
+	}
+	if err := module.Provide[OAuthTableSetConnector](services, OAuthTableSetConnector{
+		Bind: m.foreign.bindOAuth,
+	}); err != nil {
+		return fmt.Errorf("provide authn oauth table set connector: %w", err)
+	}
 	return nil
 }
 
@@ -138,7 +153,11 @@ func (m *Module) bootstrapCredentialStore() BootstrapCredentialStore {
 		if m == nil || m.runtime == nil || m.ids == nil || m.appender == nil {
 			return nil, authnext.ErrUnavailable
 		}
-		return NewRepository(m.runtime, m.ids, m.appender), nil
+		repo := NewRepository(m.runtime, m.ids, m.appender)
+		// The bootstrap runs after Wire, so the owners have published and the
+		// module's holder already carries their names.
+		repo.foreign = &m.foreign
+		return repo, nil
 	}
 	return BootstrapCredentialStore{
 		Exists: func(ctx context.Context, db *gorm.DB, principalID guid.ID) (bool, error) {
@@ -231,6 +250,9 @@ func (m *Module) Initialize(context.Context) error {
 		return fmt.Errorf("initialize authn: runtime, id generator, and audit appender are required")
 	}
 	repository := NewRepository(m.runtime, m.ids, m.appender)
+	// Wire has already run, so the owners have published; the service and every
+	// repository it clones share the one holder the connectors bound.
+	repository.foreign = &m.foreign
 	service, err := NewWebService(
 		m.config.Service,
 		repository,

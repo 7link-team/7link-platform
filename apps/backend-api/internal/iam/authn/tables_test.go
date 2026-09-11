@@ -3,9 +3,72 @@ package authn
 import (
 	"testing"
 
+	"7link.com/platform/internal/iam/core"
+	"7link.com/platform/pkg/appenv"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// publishedDirectoryTables is the set the organization module publishes. authn
+// cannot import organization -- organization imports authn, so the import is a
+// cycle -- and a harness that runs authn alone has to publish what the owner
+// would, the way the connectors do in a running deployment.
+var publishedDirectoryTables = []string{
+	"iam_groups",
+	"iam_group_members",
+	"iam_group_role_bindings",
+	"iam_positions",
+	"iam_position_members",
+	"iam_position_role_bindings",
+	"iam_departments",
+	"iam_department_closure",
+	"iam_member_departments",
+	"iam_role_data_scopes",
+	"iam_role_scope_departments",
+	"iam_tenants",
+}
+
+// publishedForeignTables returns the sets the identity module publishes, in the
+// shape core's connectors receive them.
+func publishedForeignTables(prefix string) (gormx.TableSet, gormx.TableSet) {
+	directory := make(map[string]gormx.TableName, len(publishedDirectoryTables))
+	for _, logical := range publishedDirectoryTables {
+		directory[logical] = gormx.NewTableName(prefix, logical)
+	}
+	return gormx.NewTableSet(directory), gormx.NewTableSet(map[string]gormx.TableName{
+		"iam_principals": gormx.NewTableName(prefix, "iam_principals"),
+	})
+}
+
+// boundMembershipChecker returns a tenant checker wired the way module wiring
+// wires it. An unwired one reports ErrUnavailable instead of resolving a
+// tenant from a table it cannot name, so a harness that expects an answer has
+// to publish the names first.
+func boundMembershipChecker(t *testing.T, runtime *appenv.Runtime) *core.MembershipChecker {
+	t.Helper()
+	checker := core.NewMembershipChecker(runtime)
+	directory, principal := publishedForeignTables(runtime.TablePrefix())
+	require.NoError(t, checker.BindForeignTables(directory, principal))
+	return checker
+}
+
+// boundMemberTenantResolver returns the resolver module wiring hands to web
+// sessions, bound to the same published names.
+func boundMemberTenantResolver(t *testing.T, runtime *appenv.Runtime) core.MemberTenantResolver {
+	t.Helper()
+	return boundMembershipChecker(t, runtime).ResolveTenant
+}
+
+// boundAuthorizationEvaluator returns an evaluator wired the way module wiring
+// wires it, for a harness that provides one to a module under test.
+func boundAuthorizationEvaluator(t *testing.T, runtime *appenv.Runtime) core.AuthorizationEvaluator {
+	t.Helper()
+	authorizer := core.NewAuthorizer(runtime)
+	directory, principal := publishedForeignTables(runtime.TablePrefix())
+	require.NoError(t, authorizer.BindForeignTables(directory, principal))
+	return authorizer
+}
 
 // TestTableSetPublishesPrefixedNames is the contract the modules that JOIN this
 // module's tables depend on: every name this module binds is published, and

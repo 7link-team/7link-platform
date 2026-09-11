@@ -12,12 +12,14 @@ import (
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/extension/huma/respx"
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func enabledModuleConfig() Config {
@@ -125,7 +127,14 @@ func TestOAuthModuleResolvesDependenciesAndRegistersContract(t *testing.T) {
 			if err := module.Provide[*authz.Registrar](services, oauthTestRegistrar(harness.web)); err != nil {
 				return err
 			}
-			return module.Provide[authn.WebService](services, harness.web)
+			if err := module.Provide[authn.WebService](services, harness.web); err != nil {
+				return err
+			}
+			// The consumers publish these during Wire in a running deployment;
+			// this registry fakes them so oauth's own wiring resolves.
+			return module.Provide[authn.OAuthTableSetConnector](services, authn.OAuthTableSetConnector{
+				Bind: func(gormx.TableSet) error { return nil },
+			})
 		}},
 		&oauthDependencyProvider{
 			name:    identity.Name,
@@ -163,6 +172,50 @@ func TestOAuthModuleReportsMissingWiring(t *testing.T) {
 	require.NoError(t, module.Provide[guid.Source](services, newOAuthTestIDs(1)))
 	require.NoError(t, services.Seal())
 	assert.ErrorContains(t, instance.InjectServices(services), "audit appender")
+
+	services = module.NewServices()
+	require.NoError(t, module.Provide[*authz.Registrar](services, oauthTestRegistrar(newOAuthWebFixture())))
+	require.NoError(t, module.Provide[authn.WebService](services, newOAuthWebFixture()))
+	require.NoError(t, module.Provide[guid.Source](services, newOAuthTestIDs(1)))
+	require.NoError(t, module.Provide[audit.Appender](services, audit.Appender(
+		func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil },
+	)))
+	require.NoError(t, services.Seal())
+	assert.ErrorContains(t, instance.InjectServices(services), "principal state store")
+
+	// A consumer that provides a connector without a bind would leave the tables
+	// unpublished while module wiring reported success, so wiring refuses it.
+	// Both consumers are checked, because a single unchecked one silently
+	// reintroduces the empty table name the connectors exist to remove.
+	for name, unbound := range map[string]func(*module.Services) error{
+		"authn oauth table set connector": func(services *module.Services) error {
+			return module.Provide[authn.OAuthTableSetConnector](services, authn.OAuthTableSetConnector{})
+		},
+		"identity oauth table set connector": func(services *module.Services) error {
+			return module.Provide[identity.OAuthTableSetConnector](services, identity.OAuthTableSetConnector{})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			services := module.NewServices()
+			require.NoError(t, module.Provide[*authz.Registrar](services, oauthTestRegistrar(newOAuthWebFixture())))
+			require.NoError(t, module.Provide[authn.WebService](services, newOAuthWebFixture()))
+			require.NoError(t, module.Provide[guid.Source](services, newOAuthTestIDs(1)))
+			require.NoError(t, module.Provide[audit.Appender](services, audit.Appender(
+				func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil },
+			)))
+			require.NoError(t, module.Provide[identity.PrincipalStateStore](services, identity.PrincipalStateStore{}))
+			require.NoError(t, unbound(services))
+			// The other connector is bound, so the refusal can only be the one
+			// under test rather than the first one that happens to be missing.
+			if name == "identity oauth table set connector" {
+				require.NoError(t, module.Provide[authn.OAuthTableSetConnector](services, authn.OAuthTableSetConnector{
+					Bind: func(gormx.TableSet) error { return nil },
+				}))
+			}
+			require.NoError(t, services.Seal())
+			assert.ErrorContains(t, instance.InjectServices(services), name+": bind is required")
+		})
+	}
 }
 
 // TestOAuthModuleRefusesToStartWithAnUnusableConsentScreen keeps a bad template

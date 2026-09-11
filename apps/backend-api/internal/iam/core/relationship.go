@@ -619,12 +619,15 @@ func (a *Authorizer) relationshipRoots(
 	tenantID, subject guid.ID,
 	now time.Time,
 ) ([]relationshipNode, error) {
-	names := a.authorizationTables()
+	names, err := a.authorizationTables()
+	if err != nil {
+		return nil, err
+	}
 	roots := []relationshipNode{{Type: "principal", ID: subject}}
 	groups := make([]guid.ID, 0)
-	err := a.db.WithContext(ctx).Table(names.Foreign.GroupMembers.String()+" AS gm").
+	err = a.db.WithContext(ctx).Table(names.Directory.GroupMembers.String()+" AS gm").
 		Select("gm.group_id").
-		Joins("JOIN "+names.Foreign.Groups.String()+" AS g ON g.tenant_id = gm.tenant_id AND g.id = gm.group_id AND g.status = 'active' AND g.group_type = 'static'").
+		Joins("JOIN "+names.Directory.Groups.String()+" AS g ON g.tenant_id = gm.tenant_id AND g.id = gm.group_id AND g.status = 'active' AND g.group_type = 'static'").
 		Where("gm.tenant_id = ? AND gm.principal_id = ?", tenantID, subject).
 		Where("(gm.starts_at IS NULL OR gm.starts_at <= ?) AND (gm.ends_at IS NULL OR gm.ends_at > ?)", now, now).
 		Order("gm.group_id ASC").Pluck("gm.group_id", &groups).Error
@@ -634,7 +637,7 @@ func (a *Authorizer) relationshipRoots(
 	for _, id := range groups {
 		roots = append(roots, relationshipNode{Type: "group", ID: id, Relation: "member"})
 	}
-	dynamicGroups, err := matchingDynamicGroupIDs(ctx, a.db, a.prefix, tenantID, subject)
+	dynamicGroups, err := matchingDynamicGroupIDs(ctx, a.db, names, tenantID, subject)
 	if err != nil {
 		return nil, err
 	}
@@ -642,9 +645,9 @@ func (a *Authorizer) relationshipRoots(
 		roots = append(roots, relationshipNode{Type: "group", ID: id, Relation: "member"})
 	}
 	positions := make([]guid.ID, 0)
-	err = a.db.WithContext(ctx).Table(names.Foreign.PositionMembers.String()+" AS pm").
+	err = a.db.WithContext(ctx).Table(names.Directory.PositionMembers.String()+" AS pm").
 		Select("pm.position_id").
-		Joins("JOIN "+names.Foreign.Positions.String()+" AS p ON p.tenant_id = pm.tenant_id AND p.id = pm.position_id AND p.status = 'active'").
+		Joins("JOIN "+names.Directory.Positions.String()+" AS p ON p.tenant_id = pm.tenant_id AND p.id = pm.position_id AND p.status = 'active'").
 		Where("pm.tenant_id = ? AND pm.principal_id = ?", tenantID, subject).
 		Where("(pm.starts_at IS NULL OR pm.starts_at <= ?) AND (pm.ends_at IS NULL OR pm.ends_at > ?)", now, now).
 		Order("pm.position_id ASC").Pluck("pm.position_id", &positions).Error

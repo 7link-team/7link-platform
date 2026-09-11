@@ -45,6 +45,11 @@ func TestFrozenIAMCapabilitiesHaveCanonicalOwners(t *testing.T) {
 		{"core.MemberDepartmentReader", reflect.TypeFor[core.MemberDepartmentReader](), "7link.com/platform/internal/iam/core"},
 		{"core.MemberTenantResolver", reflect.TypeFor[core.MemberTenantResolver](), "7link.com/platform/internal/iam/core"},
 		{"core.DirectoryAuthorizationSourceConnector", reflect.TypeFor[core.DirectoryAuthorizationSourceConnector](), "7link.com/platform/internal/iam/core"},
+		// The two table-name connectors are keys of the same registry, so they
+		// belong in the same frozen inventory: a second module publishing table
+		// names under a colliding key would silently replace core's.
+		{"core.DirectoryTableSetConnector", reflect.TypeFor[core.DirectoryTableSetConnector](), "7link.com/platform/internal/iam/core"},
+		{"core.PrincipalTableSetConnector", reflect.TypeFor[core.PrincipalTableSetConnector](), "7link.com/platform/internal/iam/core"},
 		{"core.AdministratorGuard", reflect.TypeFor[core.AdministratorGuard](), "7link.com/platform/internal/iam/core"},
 		{"authn.InvitationCredentials", reflect.TypeFor[authn.InvitationCredentials](), "7link.com/platform/internal/iam/authn"},
 		{"identity.InvitationPrincipalCreator", reflect.TypeFor[identity.InvitationPrincipalCreator](), "7link.com/platform/internal/iam/identity"},
@@ -62,7 +67,7 @@ func TestFrozenIAMCapabilitiesHaveCanonicalOwners(t *testing.T) {
 		{"provisioning.SecretRewrapper", reflect.TypeFor[provisioning.SecretRewrapper](), "7link.com/platform/internal/iam/provisioning"},
 	}
 
-	require.Len(t, capabilities, 20)
+	require.Len(t, capabilities, 22)
 	seen := make(map[reflect.Type]struct{}, len(capabilities))
 	for _, capability := range capabilities {
 		require.NotNil(t, capability.typ)

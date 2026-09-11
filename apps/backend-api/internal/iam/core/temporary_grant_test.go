@@ -135,7 +135,7 @@ func TestRoleGrantStoreRemovesExactScopedAssignments(t *testing.T) {
 	).Error)
 	_, _, err = repository.PutEntityRoleBinding(t.Context(), 1, entity.ID, role.ID, 11, BindingAllow, time.Time{})
 	require.NoError(t, err)
-	store := NewRoleGrantStore(repository, NewAdministratorGuard(harness.runtime))
+	store := NewRoleGrantStore(repository, boundGuard(t, harness.runtime, "sl_"))
 
 	require.NoError(t, repository.runInTx(t.Context(), func(repo *Repository) error {
 		changed, err := store.RemoveGroupMembership(t.Context(), repo.writer(), 1, 200, 11)

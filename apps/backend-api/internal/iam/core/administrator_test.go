@@ -32,7 +32,7 @@ func TestAdministratorGuardRollsBackLastDurableAdministratorRemoval(t *testing.T
 	_, err = repository.AddMember(t.Context(), 1, role.ID, 22)
 	require.NoError(t, err)
 
-	store := NewRoleGrantStore(repository, NewAdministratorGuard(harness.runtime))
+	store := NewRoleGrantStore(repository, boundGuard(t, harness.runtime, "sl_"))
 	var removed bool
 	require.NoError(t, repository.runInTx(t.Context(), func(repo *Repository) error {
 		var err error
@@ -84,7 +84,7 @@ func TestRoleGrantStoreRollsBackLastDirectoryAdministratorRemoval(t *testing.T) 
 				test.directoryID, repositoryTestTime, repositoryTestTime,
 			).Error)
 
-			store := NewRoleGrantStore(repository, NewAdministratorGuard(harness.runtime))
+			store := NewRoleGrantStore(repository, boundGuard(t, harness.runtime, "sl_"))
 			err = repository.runInTx(t.Context(), func(repo *Repository) error {
 				if test.assigneeType == DirectoryAssigneeGroup {
 					_, err := store.RemoveGroupMembership(t.Context(), repo.writer(), 1, test.directoryID, 11)

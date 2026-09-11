@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 
+	"7link.com/platform/internal/iam/core/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
 
@@ -14,13 +16,37 @@ import (
 // authorization consumers. It owns no mutation methods.
 type MembershipChecker struct {
 	runtime *appenv.Runtime
+	joined  *joinedTables
 }
 
 func NewMembershipChecker(runtime *appenv.Runtime) *MembershipChecker {
 	if runtime == nil {
 		panic("iam membership checker requires runtime")
 	}
-	return &MembershipChecker{runtime: runtime}
+	return &MembershipChecker{runtime: runtime, joined: &joinedTables{}}
+}
+
+// authorizationTables binds the names the membership statements read: core's
+// own tables from its deployment prefix, and the tenant and directory tables
+// from the modules that own them. An owner that has not published is
+// ErrUnavailable, not an empty table name in a statement.
+func (m *MembershipChecker) authorizationTables() (query.AuthorizationTables, error) {
+	return m.joined.authorizationTables(m.prefix())
+}
+
+// BindForeignTables records the table-name sets of the tables membership reads
+// but does not own. The modules that own them call it through the connectors
+// core publishes; a caller that builds the checker outside the module has to
+// call it itself, because an unbound checker reports ErrUnavailable rather than
+// running a statement against an empty table name.
+func (m *MembershipChecker) BindForeignTables(directory, principal gormx.TableSet) error {
+	if m == nil {
+		return ErrUnavailable
+	}
+	if m.joined == nil {
+		m.joined = &joinedTables{}
+	}
+	return m.joined.bind(directory, principal)
 }
 
 func (m *MembershipChecker) IsMemberActive(ctx context.Context, tenantID, principalID guid.ID) (bool, error) {
@@ -43,9 +69,12 @@ func (m *MembershipChecker) ResolveTenant(ctx context.Context, principalID, requ
 	if principalID <= 0 || requested < 0 {
 		return 0, ErrInvalidArgument
 	}
-	prefix := m.prefix()
-	db := m.runtime.Database().Write().WithContext(ctx).Table(prefix+"iam_tenant_members AS tm").
-		Joins("JOIN "+prefix+"iam_tenants AS t ON t.id = tm.tenant_id AND t.status = 'active'").
+	names, err := m.authorizationTables()
+	if err != nil {
+		return 0, err
+	}
+	db := m.runtime.Database().Write().WithContext(ctx).Table(names.Tables.TenantMembers.String()+" AS tm").
+		Joins("JOIN "+names.Directory.Tenants.String()+" AS t ON t.id = tm.tenant_id AND t.status = 'active'").
 		Where("tm.principal_id = ? AND tm.status = ?", principalID, MemberActive)
 	if requested > 0 {
 		db = db.Where("tm.tenant_id = ?", requested)
@@ -68,13 +97,16 @@ func (m *MembershipChecker) ActiveDepartment(ctx context.Context, tenantID, prin
 	if err := validateMemberRef(tenantID, principalID); err != nil {
 		return 0, err
 	}
-	prefix := m.prefix()
+	names, err := m.authorizationTables()
+	if err != nil {
+		return 0, err
+	}
 	var row struct{ DepartmentID guid.ID }
-	err := m.runtime.Database().Write().WithContext(ctx).Table(prefix+"iam_member_departments AS md").
+	err = m.runtime.Database().Write().WithContext(ctx).Table(names.Directory.MemberDepartments.String()+" AS md").
 		Select("md.department_id").
-		Joins("JOIN "+prefix+"iam_departments AS d ON d.tenant_id = md.tenant_id AND d.id = md.department_id AND d.status = 'active'").
-		Joins("JOIN "+prefix+"iam_tenant_members AS tm ON tm.tenant_id = md.tenant_id AND tm.principal_id = md.principal_id AND tm.status = 'active'").
-		Joins("JOIN "+prefix+"iam_tenants AS t ON t.id = md.tenant_id AND t.status = 'active'").
+		Joins("JOIN "+names.Directory.Departments.String()+" AS d ON d.tenant_id = md.tenant_id AND d.id = md.department_id AND d.status = 'active'").
+		Joins("JOIN "+names.Tables.TenantMembers.String()+" AS tm ON tm.tenant_id = md.tenant_id AND tm.principal_id = md.principal_id AND tm.status = 'active'").
+		Joins("JOIN "+names.Directory.Tenants.String()+" AS t ON t.id = md.tenant_id AND t.status = 'active'").
 		Where("md.tenant_id = ? AND md.principal_id = ?", tenantID, principalID).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return 0, nil
@@ -90,7 +122,11 @@ func (m *MembershipChecker) IsMemberActiveOn(
 	db *gorm.DB,
 	tenantID, principalID guid.ID,
 ) (bool, error) {
-	_, active, err := tenantMembershipState(ctx, db, m.prefix(), tenantID, principalID)
+	names, err := m.authorizationTables()
+	if err != nil {
+		return false, err
+	}
+	_, active, err := tenantMembershipState(ctx, db, names, tenantID, principalID)
 	return active, err
 }
 
@@ -109,16 +145,16 @@ type tenantAdmission struct {
 func tenantMembershipState(
 	ctx context.Context,
 	db *gorm.DB,
-	prefix string,
+	names query.AuthorizationTables,
 	tenantID, principalID guid.ID,
 ) (tenantActive, memberActive bool, err error) {
 	if db == nil {
 		return false, false, ErrUnavailable
 	}
 	var state tenantAdmission
-	err = db.WithContext(ctx).Table(prefix+"iam_tenants AS t").
+	err = db.WithContext(ctx).Table(names.Directory.Tenants.String()+" AS t").
 		Select("t.status, COUNT(tm.principal_id) AS member_count").
-		Joins("LEFT JOIN "+prefix+"iam_tenant_members AS tm ON tm.tenant_id = t.id AND tm.principal_id = ? AND tm.status = ?",
+		Joins("LEFT JOIN "+names.Tables.TenantMembers.String()+" AS tm ON tm.tenant_id = t.id AND tm.principal_id = ? AND tm.status = ?",
 			principalID, MemberActive).
 		Where("t.id = ?", tenantID).
 		Group("t.status").Take(&state).Error

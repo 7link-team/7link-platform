@@ -12,6 +12,7 @@ import (
 	"7link.com/platform/internal/iam/core/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -25,6 +26,7 @@ type Repository struct {
 	db        *gorm.DB
 	revisions *RevisionStore
 	now       func() time.Time
+	joined    *joinedTables
 }
 
 func NewRepository(runtime *appenv.Runtime, ids guid.Source) *Repository {
@@ -37,8 +39,38 @@ func NewRepository(runtime *appenv.Runtime, ids guid.Source) *Repository {
 	}
 	return &Repository{
 		runtime: runtime, ids: ids, revisions: revisions,
-		now: func() time.Time { return time.Now().UTC() },
+		now:    func() time.Time { return time.Now().UTC() },
+		joined: &joinedTables{},
 	}
+}
+
+// authorizationTables binds the names a written statement reads: core's own
+// tables from its deployment prefix, and the ones it only joins from the
+// modules that own them. An owner that has not published is ErrUnavailable,
+// not an empty table name in a statement.
+func (r *Repository) authorizationTables() (query.AuthorizationTables, error) {
+	return r.joined.authorizationTables(r.prefix())
+}
+
+// directoryTables returns the published directory names, or ErrUnavailable
+// when the organization module never published them.
+func (r *Repository) directoryTables() (query.DirectoryTables, error) {
+	return r.joined.directoryNames()
+}
+
+// BindForeignTables records the table-name sets of the tables this repository
+// reads but does not own. The modules that own them call it through the
+// connectors core publishes; a caller that builds a repository outside the
+// module has to call it itself, because an unbound repository reports
+// ErrUnavailable rather than running a statement against an empty table name.
+func (r *Repository) BindForeignTables(directory, principal gormx.TableSet) error {
+	if r == nil {
+		return ErrUnavailable
+	}
+	if r.joined == nil {
+		r.joined = &joinedTables{}
+	}
+	return r.joined.bind(directory, principal)
 }
 
 func (r *Repository) writer() *gorm.DB {
@@ -60,8 +92,6 @@ func (r *Repository) prefix() string {
 	}
 	return r.runtime.TablePrefix()
 }
-
-func (r *Repository) table(name string) string { return r.prefix() + name }
 
 func (r *Repository) tables() (*query.Tables, *gorm.DB, error) {
 	db := r.writer()

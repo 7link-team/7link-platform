@@ -143,7 +143,7 @@ func TestCorePersistenceAndAuthorizationFailClosedAfterDatabaseShutdown(t *testi
 	assert.Error(t, err)
 	_, err = checker.IsMemberActiveOn(ctx, harness.db, tenantID, principalID)
 	assert.Error(t, err)
-	_, _, err = tenantMembershipState(ctx, nil, "sl_", tenantID, principalID)
+	_, _, err = tenantMembershipState(ctx, nil, testAuthorizationTables(t, "sl_"), tenantID, principalID)
 	assert.ErrorIs(t, err, ErrUnavailable)
 
 	store := NewRoleGrantStore(repo, NewAdministratorGuard(harness.runtime))

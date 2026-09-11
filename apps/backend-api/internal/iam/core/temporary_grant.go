@@ -28,7 +28,11 @@ func (r *Repository) GrantTemporaryRole(
 		if err != nil {
 			return err
 		}
-		_, active, err := tenantMembershipState(ctx, db, repo.prefix(), tenantID, principalID)
+		names, err := repo.authorizationTables()
+		if err != nil {
+			return err
+		}
+		_, active, err := tenantMembershipState(ctx, db, names, tenantID, principalID)
 		if err != nil {
 			return err
 		}

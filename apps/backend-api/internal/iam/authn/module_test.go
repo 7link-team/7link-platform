@@ -50,20 +50,14 @@ func TestAuthnModuleIdentityDependenciesAndReadiness(t *testing.T) {
 	assert.NoError(t, instance.Stop(t.Context()))
 }
 
-func TestAuthnModuleResolvesDependenciesAndRunsLifecycle(t *testing.T) {
-	harness := newAuthnRepositoryHarness(t, "")
-	notifications := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	t.Cleanup(notifications.Close)
-	config := localAuthnConfig()
-	config.Recovery = authnext.RecoveryConfig{
-		Enabled: true, TokenTTL: 15 * time.Minute, Cooldown: time.Hour,
-		ResetURL: "https://app.example.test/recover",
-	}
-	config.Notification = authnext.NotificationConfig{
-		URL: notifications.URL, PollInterval: time.Minute, RequestTimeout: time.Second, MaxAttempts: 1,
-	}
+// authnWiredRegistry registers authn with fakes standing in for the modules it
+// depends on, then activates and wires the registry. The table-name owners are
+// deliberately not among the fakes: a caller that wants their names publishes
+// them itself. Initialization is left to the caller, because it is the phase
+// that turns the module into a live service.
+func authnWiredRegistry(t *testing.T, harness *authnRepositoryHarness, config authnext.Config) (*module.Registry, *Module) {
+	t.Helper()
+
 	instance := NewModule(harness.runtime, authnModuleConfig(config))
 	registry := module.NewRegistry()
 	require.NoError(t, registry.Register(
@@ -81,10 +75,10 @@ func TestAuthnModuleResolvesDependenciesAndRunsLifecycle(t *testing.T) {
 			return module.Provide[audit.Appender](services, harness.repository.audit)
 		}},
 		&authnDependencyProvider{name: core.Name, provide: func(services *module.Services) error {
-			if err := module.Provide[core.AuthorizationEvaluator](services, core.NewAuthorizer(harness.runtime)); err != nil {
+			if err := module.Provide[core.AuthorizationEvaluator](services, boundAuthorizationEvaluator(t, harness.runtime)); err != nil {
 				return err
 			}
-			return module.Provide[core.MemberTenantResolver](services, core.NewMembershipChecker(harness.runtime).ResolveTenant)
+			return module.Provide[core.MemberTenantResolver](services, boundMemberTenantResolver(t, harness.runtime))
 		}},
 		&authnDependencyProvider{name: identity.Name, provide: func(services *module.Services) error {
 			creator := registrationCreatorForHarness(harness)
@@ -103,10 +97,62 @@ func TestAuthnModuleResolvesDependenciesAndRunsLifecycle(t *testing.T) {
 		instance,
 	))
 	require.NoError(t, registry.Activate())
+	require.NoError(t, registry.Wire(nil))
+	return registry, instance
+}
+
+// TestAuthnReadersFailClosedUntilTheOwnersPublish is the guarantee the table-set
+// connectors exist for, proven on the module a deployment runs: with neither
+// owner in wiring, every reader that needs a table authn does not own reports
+// the repository unavailable instead of running a statement against an empty
+// table name. The harness database has the tables, so an empty name would come
+// back as a SQL error rather than as this one.
+func TestAuthnReadersFailClosedUntilTheOwnersPublish(t *testing.T) {
+	harness := newAuthnRepositoryHarness(t, "sl_")
+	registry, instance := authnWiredRegistry(t, harness, localAuthnConfig())
+	require.NoError(t, registry.Initialize(t.Context()))
+	ctx := t.Context()
+
+	_, err := instance.Service.repo.oauthClientState(ctx, 1)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, err = instance.Service.repo.revokeRefreshTokens(ctx, 1, repositoryTestNow)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, err = instance.Service.repo.serviceAccountState(ctx, 1)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+
+	var revoked int64
+	require.NoError(t, harness.db.Table("sl_iam_refresh_tokens").
+		Where("principal_id = ?", 1).Count(&revoked).Error)
+	assert.Zero(t, revoked, "a rejected revocation must not touch a row")
+
+	// The owners publish, and the same readers serve the same calls.
+	bindModuleForeignTables(t, instance, "sl_")
+	_, err = instance.Service.repo.oauthClientState(ctx, 1)
+	assert.ErrorIs(t, err, gorm.ErrRecordNotFound, "a bound reader reaches the table and reports its own answer")
+	revoked, err = instance.Service.repo.revokeRefreshTokens(ctx, 1, repositoryTestNow)
+	require.NoError(t, err)
+	assert.Zero(t, revoked)
+}
+
+func TestAuthnModuleResolvesDependenciesAndRunsLifecycle(t *testing.T) {
+	harness := newAuthnRepositoryHarness(t, "")
+	notifications := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(notifications.Close)
+	config := localAuthnConfig()
+	config.Recovery = authnext.RecoveryConfig{
+		Enabled: true, TokenTTL: 15 * time.Minute, Cooldown: time.Hour,
+		ResetURL: "https://app.example.test/recover",
+	}
+	config.Notification = authnext.NotificationConfig{
+		URL: notifications.URL, PollInterval: time.Minute, RequestTimeout: time.Second, MaxAttempts: 1,
+	}
+	registry, instance := authnWiredRegistry(t, harness, config)
+
 	active, exists := registry.ByName(Name)
 	require.True(t, exists)
 	assert.Same(t, instance, active)
-	require.NoError(t, registry.Wire(nil))
 
 	web, err := module.Resolve[WebService](registry.Services())
 	require.NoError(t, err)

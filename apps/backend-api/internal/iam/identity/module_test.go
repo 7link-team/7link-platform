@@ -10,6 +10,7 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/extension/authz"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/extension/huma/respx"
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
@@ -98,7 +99,12 @@ func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
 			if err := module.Provide[*authz.Registrar](services, identityTestRegistrar()); err != nil {
 				return err
 			}
-			return module.Provide[core.AdministratorGuard](services, harness.guard)
+			if err := module.Provide[core.AdministratorGuard](services, harness.guard); err != nil {
+				return err
+			}
+			return module.Provide[core.PrincipalTableSetConnector](services, core.PrincipalTableSetConnector{
+				Bind: func(gormx.TableSet) error { return nil },
+			})
 		}},
 		instance,
 	))
@@ -107,6 +113,9 @@ func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
 	require.True(t, exists)
 	assert.Same(t, instance, active)
 	require.NoError(t, registry.Wire(nil))
+	// The owners publish their table names during Wire in a running deployment;
+	// this registry runs identity alone, so it publishes what they would.
+	bindModuleForeignTables(t, instance, harness.prefix)
 
 	provisioner, err := module.Resolve[IdentityProvisioner](registry.Services())
 	require.NoError(t, err)

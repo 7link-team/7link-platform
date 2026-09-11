@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/infra/guid"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
 
@@ -45,4 +46,19 @@ type IdentityProvisioner interface {
 	ReplaceProvisionedTo(context.Context, *gorm.DB, guid.ID, guid.ID, ProvisionedPrincipalInput) (Principal, error)
 	Get(context.Context, guid.ID, guid.ID) (Principal, error)
 	EnsureExternalPrincipal(context.Context, *gorm.DB, guid.ID, string, string, time.Time) (guid.ID, bool, error)
+}
+
+// DirectoryTableSetConnector lets the module that owns the directory tables
+// publish their names to identity. identity reads the tenant table without
+// owning it and cannot name it itself: the owner is activated after identity,
+// so the name arrives as a set rather than as a prefix identity would apply on
+// its own.
+type DirectoryTableSetConnector struct {
+	Bind func(gormx.TableSet) error
+}
+
+// OAuthTableSetConnector does the same for the OAuth tables identity reads when
+// a principal's security state is revoked.
+type OAuthTableSetConnector struct {
+	Bind func(gormx.TableSet) error
 }

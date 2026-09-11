@@ -46,6 +46,11 @@ type Module struct {
 	closeCredentials    PrincipalCredentialsRevoker
 	closeOAuth          PrincipalOAuthRevoker
 	platformAccessGuard core.PrincipalPlatformAccessGuard
+
+	// foreign is the one holder of the table names the modules that own them
+	// publish to identity. The connectors below bind it, and the repository the
+	// module builds shares it.
+	foreign foreignTables
 }
 
 // RegistrationPrincipalCreator creates a pending principal and its credential
@@ -126,6 +131,16 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[PrincipalStateStore](services, m.principalStateStore()); err != nil {
 		return fmt.Errorf("provide identity principal state store: %w", err)
 	}
+	if err := module.Provide[DirectoryTableSetConnector](services, DirectoryTableSetConnector{
+		Bind: m.foreign.bindDirectory,
+	}); err != nil {
+		return fmt.Errorf("provide identity directory table set connector: %w", err)
+	}
+	if err := module.Provide[OAuthTableSetConnector](services, OAuthTableSetConnector{
+		Bind: m.foreign.bindOAuth,
+	}); err != nil {
+		return fmt.Errorf("provide identity oauth table set connector: %w", err)
+	}
 	return nil
 }
 
@@ -137,7 +152,11 @@ func (m *Module) bootstrapPrincipalStore() BootstrapPrincipalStore {
 		if m == nil || m.runtime == nil || m.ids == nil || m.appender == nil {
 			return nil, ErrUnavailable
 		}
-		return NewRepository(m.runtime, m.ids, m.appender), nil
+		repo := NewRepository(m.runtime, m.ids, m.appender)
+		// The bootstrap runs after Wire, so the owners have published and the
+		// module's holder already carries their names.
+		repo.foreign = &m.foreign
+		return repo, nil
 	}
 	return BootstrapPrincipalStore{
 		Find: func(ctx context.Context, db *gorm.DB, loginName string) (Principal, bool, error) {
@@ -181,6 +200,16 @@ func (m *Module) InjectServices(services *module.Services) error {
 	fields, err := module.Resolve[core.AuthorizationEvaluator](services)
 	if err != nil {
 		return fmt.Errorf("resolve identity field permissions: %w", err)
+	}
+	principalTables, err := module.Resolve[core.PrincipalTableSetConnector](services)
+	if err != nil {
+		return fmt.Errorf("resolve identity principal table set connector: %w", err)
+	}
+	if principalTables.Bind == nil {
+		return errors.New("resolve identity principal table set connector: bind is required")
+	}
+	if err := principalTables.Bind(TableSet(m.runtime.TablePrefix())); err != nil {
+		return fmt.Errorf("bind identity principal table set: %w", err)
 	}
 	m.fields = fields
 	m.registrar = registrar
@@ -226,6 +255,9 @@ func (m *Module) Initialize(context.Context) error {
 		)
 	}
 	m.Service = NewService(m.runtime, m.appender, m.administrators, m.ids)
+	// Wire has already run, so the owners have published; the service and every
+	// repository it clones share the one holder the connectors bound.
+	m.Service.repo.foreign = &m.foreign
 	m.Service.fields = m.fields
 	m.Service.anonymizer = m.anonymizer
 	m.Service.erasureRecorder = m.erasureRecorder

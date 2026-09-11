@@ -60,10 +60,16 @@ func NewService(
 	if registry == nil || repository == nil || checker == nil || appender == nil {
 		panic("iam service requires registry, repository, permission checker, and audit appender")
 	}
+	// The guard JOINs tables core does not own, so it shares the repository's
+	// holder rather than starting with one of its own: the connectors that bind
+	// the repository bind the guard with it, and an unbound guard reports
+	// ErrUnavailable instead of reading a table it cannot name.
+	guard := NewAdministratorGuard(repository.runtime)
+	guard.joined = repository.joined
 	return &Service{
 		registry: registry, repo: repository, checker: checker,
 		writes:         newTransactionCoordinator(repository, appender),
-		administrators: NewAdministratorGuard(repository.runtime),
+		administrators: guard,
 	}
 }
 

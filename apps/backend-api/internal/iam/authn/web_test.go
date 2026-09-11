@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/authn/model"
-	"7link.com/platform/internal/iam/core"
 	identitymodel "7link.com/platform/internal/iam/identity/model"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
@@ -55,7 +54,7 @@ func newLocalService(t *testing.T) (*Service, *authnRepositoryHarness) {
 	t.Helper()
 	harness := newAuthnRepositoryHarness(t, "")
 	service, err := NewWebService(localAuthnConfig(), harness.repository,
-		WithMemberTenantResolver(core.NewMembershipChecker(harness.runtime).ResolveTenant))
+		WithMemberTenantResolver(boundMemberTenantResolver(t, harness.runtime)))
 	require.NoError(t, err)
 	service.now = func() time.Time { return repositoryTestNow }
 	return service, harness

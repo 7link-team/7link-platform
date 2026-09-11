@@ -8,6 +8,7 @@ import (
 	"7link.com/platform/internal/iam/core/model"
 	"7link.com/platform/internal/iam/core/query"
 	"7link.com/platform/internal/infra/guid"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
 
@@ -171,16 +172,21 @@ func (r *Repository) removeDirectoryMembershipOn(kind string) func(
 		if db == nil || tenantID.Zero() || directoryID.Zero() || principalID.Zero() {
 			return false, fmt.Errorf("remove %s membership: %w", kind, ErrInvalidArgument)
 		}
-		var table, idColumn string
+		directory, err := r.withDB(db).directoryTables()
+		if err != nil {
+			return false, err
+		}
+		var table gormx.TableName
+		var idColumn string
 		switch kind {
 		case "group":
-			table, idColumn = "iam_group_members", "group_id"
+			table, idColumn = directory.GroupMembers, "group_id"
 		case "position":
-			table, idColumn = "iam_position_members", "position_id"
+			table, idColumn = directory.PositionMembers, "position_id"
 		default:
 			return false, fmt.Errorf("remove directory membership: %w", ErrInvalidArgument)
 		}
-		result := db.WithContext(ctx).Table(r.table(table)).Where(
+		result := db.WithContext(ctx).Table(table.String()).Where(
 			"tenant_id = ? AND "+idColumn+" = ? AND principal_id = ?",
 			tenantID, directoryID, principalID,
 		).Delete(&struct{}{})

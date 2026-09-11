@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"github.com/danielgtaylor/huma/v2"
@@ -972,7 +971,7 @@ func newAuthenticationService(t *testing.T) (*gorm.DB, *Service, string) {
 			PostLoginURL: "https://app.example/", PostLogoutURL: "https://app.example/login",
 			AllowedReturnURLs: []string{"https://app.example/"}, AllowedOrigins: []string{"https://app.example"},
 		},
-	}, harness.repository, WithMemberTenantResolver(core.NewMembershipChecker(harness.runtime).ResolveTenant))
+	}, harness.repository, WithMemberTenantResolver(boundMemberTenantResolver(t, harness.runtime)))
 	require.NoError(t, err)
 	principalID, err := EnsureBootstrapPrincipal(context.Background(), harness.repository, BootstrapPrincipal{
 		LoginName: "alice", Password: "correct horse battery staple", DisplayName: "Alice", Email: "alice@example.com",
@@ -989,7 +988,7 @@ func newRecoveryAuthenticationService(t *testing.T, notificationURL string, regi
 		seed[index] = byte(index + 1)
 	}
 	registrationEnabled := len(registration) > 0 && registration[0]
-	options := []WebOption{WithMemberTenantResolver(core.NewMembershipChecker(harness.runtime).ResolveTenant)}
+	options := []WebOption{WithMemberTenantResolver(boundMemberTenantResolver(t, harness.runtime))}
 	if registrationEnabled {
 		options = append(options, WithRegistrationPrincipalCreator(registrationCreatorForHarness(harness)))
 	}

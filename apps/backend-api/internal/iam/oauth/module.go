@@ -108,6 +108,26 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve OAuth principal state store: %w", err)
 	}
+	authnTables, err := module.Resolve[authn.OAuthTableSetConnector](services)
+	if err != nil {
+		return fmt.Errorf("resolve authn oauth table set connector: %w", err)
+	}
+	if authnTables.Bind == nil {
+		return errors.New("resolve authn oauth table set connector: bind is required")
+	}
+	if err := authnTables.Bind(TableSet(m.runtime.TablePrefix())); err != nil {
+		return fmt.Errorf("bind authn oauth table set: %w", err)
+	}
+	identityTables, err := module.Resolve[identity.OAuthTableSetConnector](services)
+	if err != nil {
+		return fmt.Errorf("resolve identity oauth table set connector: %w", err)
+	}
+	if identityTables.Bind == nil {
+		return errors.New("resolve identity oauth table set connector: bind is required")
+	}
+	if err := identityTables.Bind(TableSet(m.runtime.TablePrefix())); err != nil {
+		return fmt.Errorf("bind identity oauth table set: %w", err)
+	}
 	m.registrar = registrar
 	m.authn = authenticator
 	m.ids = ids

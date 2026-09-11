@@ -182,6 +182,9 @@ func TestModulePublishesTheSameLiveAuthorizationEvaluator(t *testing.T) {
 	_, err = evaluator.EntityConstraint(t.Context(), tenantID, entity.ID, "user_view", principalID)
 	require.ErrorIs(t, err, ErrUnavailable)
 	require.NoError(t, instance.InjectServices(services))
+	// The owners of the tables core joins publish them after core's own
+	// injection, so a harness that runs core alone supplies them here.
+	bindModuleTables(t, instance, "sl_")
 	require.Same(t, evaluator, instance.checker)
 	require.Same(t, evaluator, instance.service.checker, "HTTP and business consumers must share one evaluator")
 	constraint, err := evaluator.Constraint(t.Context(), tenantID, "user_view", principalID)
@@ -219,6 +222,29 @@ func TestModulePublishesTheSameLiveAuthorizationEvaluator(t *testing.T) {
 	assert.Empty(t, constraint.OwnerIDs, "a consumer must observe revocation without being rewired")
 	assert.Equal(t, http.StatusForbidden, api.Get("/filtered", headers...).Code)
 	assert.Equal(t, 1, handlerCalls, "revoked requests never enter the handler")
+}
+
+// TestModulePublishesThePlatformAccessGuard proves the capability core hands the
+// module that removes platform grants is the live one: it rejects a call it
+// cannot honor instead of passing it to a statement, and it reads the tables it
+// names under core's own deployment prefix.
+func TestModulePublishesThePlatformAccessGuard(t *testing.T) {
+	harness := newCoreServiceHarness(t)
+	instance := NewModule(harness.runtime, enabledModuleConfig())
+	services := module.NewServices()
+	require.NoError(t, instance.ProvideServices(services))
+	require.NoError(t, services.Seal())
+	guard, err := module.Resolve[PrincipalPlatformAccessGuard](services)
+	require.NoError(t, err)
+
+	assert.ErrorIs(t, guard(t.Context(), nil, 1), ErrInvalidArgument, "a call without a transaction must not reach a statement")
+	assert.ErrorIs(t, guard(t.Context(), harness.db, 0), ErrInvalidArgument)
+	assert.NoError(t, guard(t.Context(), harness.db, 11), "a principal holding no platform grant passes")
+	require.NoError(t, harness.db.Exec(
+		"INSERT INTO sl_iam_platform_grants (principal_id, permission_code, created_at) VALUES (11, 'zz_administer', ?)",
+		harness.repository.now(),
+	).Error)
+	assert.ErrorIs(t, guard(t.Context(), harness.db, 11), ErrPrincipalHasPlatformAccess)
 }
 
 func TestModuleReportsDuplicateAuthorizationEvaluator(t *testing.T) {

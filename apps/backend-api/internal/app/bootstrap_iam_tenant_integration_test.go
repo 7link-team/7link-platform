@@ -511,7 +511,11 @@ func (f *iamTenantFixture) assertIAMAuthorizationCannotCrossTenants(t *testing.T
 
 	entityID, err := guid.Parse(entity.ID)
 	require.NoError(t, err)
-	allowed, err := core.NewAuthorizer(f.app.runtime).CheckEntity(t.Context(), iamTenantB, entityID, "entity_view", f.adminA.ID)
+	authorizer := core.NewAuthorizer(f.app.runtime)
+	require.NoError(t, authorizer.BindForeignTables(
+		organization.TableSet(f.app.runtime.TablePrefix()), identity.TableSet(f.app.runtime.TablePrefix()),
+	))
+	allowed, err := authorizer.CheckEntity(t.Context(), iamTenantB, entityID, "entity_view", f.adminA.ID)
 	require.NoError(t, err)
 	assert.False(t, allowed)
 	assert.Equal(t, int64(1), f.count(t, "iam_role_permissions", "tenant_id = ? AND role_id = ? AND permission_code = ?", iamTenantB, role.ID, "entity_view"))

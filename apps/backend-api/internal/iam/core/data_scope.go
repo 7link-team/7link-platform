@@ -41,12 +41,16 @@ func (r *Repository) GetRoleDataScope(ctx context.Context, tenantID, roleID guid
 	if err != nil {
 		return RoleDataScope{}, err
 	}
+	directory, err := repo.directoryTables()
+	if err != nil {
+		return RoleDataScope{}, err
+	}
 	if err := repo.ensureRole(ctx, tenantID, roleID); err != nil {
 		return RoleDataScope{}, err
 	}
 	db := repo.writer().WithContext(ctx)
 	var row roleDataScopeRecord
-	err = db.Table(repo.table("iam_role_data_scopes")).
+	err = db.Table(directory.RoleDataScopes.String()).
 		Where("tenant_id = ? AND role_id = ?", tenantID, roleID).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return RoleDataScope{RoleID: roleID, Scope: DataScopeAll, DepartmentIDs: []guid.ID{}}, nil
@@ -55,7 +59,7 @@ func (r *Repository) GetRoleDataScope(ctx context.Context, tenantID, roleID guid
 		return RoleDataScope{}, fmt.Errorf("get role data scope: %w", err)
 	}
 	departmentIDs := make([]guid.ID, 0)
-	if err := db.Table(repo.table("iam_role_scope_departments")).
+	if err := db.Table(directory.RoleScopeDepartments.String()).
 		Where("tenant_id = ? AND role_id = ?", tenantID, roleID).
 		Order("department_id ASC").Pluck("department_id", &departmentIDs).Error; err != nil {
 		return RoleDataScope{}, fmt.Errorf("list role scope departments: %w", err)
@@ -76,8 +80,12 @@ func (r *Repository) replaceRoleDataScope(
 	if err != nil {
 		return err
 	}
+	directory, err := repo.directoryTables()
+	if err != nil {
+		return err
+	}
 	db := repo.writer().WithContext(ctx)
-	if result := db.Table(repo.table("iam_role_data_scopes")).
+	if result := db.Table(directory.RoleDataScopes.String()).
 		Where("tenant_id = ? AND role_id = ?", tenantID, roleID).
 		Delete(&roleDataScopeRecord{}); result.Error != nil {
 		return fmt.Errorf("delete role data scope: %w", result.Error)
@@ -87,7 +95,7 @@ func (r *Repository) replaceRoleDataScope(
 	}
 	now := repo.now().UTC().Truncate(time.Millisecond)
 	row := roleDataScopeRecord{TenantID: tenantID, RoleID: roleID, ScopeType: string(scope), UpdatedAt: now}
-	if result := db.Table(repo.table("iam_role_data_scopes")).Create(&row); result.Error != nil {
+	if result := db.Table(directory.RoleDataScopes.String()).Create(&row); result.Error != nil {
 		return fmt.Errorf("insert role data scope: %w", result.Error)
 	}
 	if len(departmentIDs) == 0 {
@@ -99,7 +107,7 @@ func (r *Repository) replaceRoleDataScope(
 			TenantID: tenantID, RoleID: roleID, DepartmentID: departmentID, CreatedAt: now,
 		}
 	}
-	if result := db.Table(repo.table("iam_role_scope_departments")).Create(&rows); result.Error != nil {
+	if result := db.Table(directory.RoleScopeDepartments.String()).Create(&rows); result.Error != nil {
 		return fmt.Errorf("insert role scope departments: %w", result.Error)
 	}
 	return nil
@@ -113,8 +121,12 @@ func (r *Repository) setMemberDepartment(
 	if err != nil {
 		return err
 	}
+	directory, err := repo.directoryTables()
+	if err != nil {
+		return err
+	}
 	db := repo.writer().WithContext(ctx)
-	if result := db.Table(repo.table("iam_member_departments")).
+	if result := db.Table(directory.MemberDepartments.String()).
 		Where("tenant_id = ? AND principal_id = ?", tenantID, principalID).
 		Delete(&memberDepartmentRecord{}); result.Error != nil {
 		return fmt.Errorf("clear member department: %w", result.Error)
@@ -126,7 +138,7 @@ func (r *Repository) setMemberDepartment(
 		TenantID: tenantID, PrincipalID: principalID, DepartmentID: departmentID,
 		UpdatedAt: repo.now().UTC().Truncate(time.Millisecond),
 	}
-	if result := db.Table(repo.table("iam_member_departments")).Create(&row); result.Error != nil {
+	if result := db.Table(directory.MemberDepartments.String()).Create(&row); result.Error != nil {
 		return fmt.Errorf("set member department: %w", result.Error)
 	}
 	return nil
@@ -141,6 +153,10 @@ func (r *Repository) departmentStatuses(
 	if err != nil {
 		return nil, err
 	}
+	directory, err := repo.directoryTables()
+	if err != nil {
+		return nil, err
+	}
 	statuses := make(map[guid.ID]string, len(departmentIDs))
 	for start := 0; start < len(departmentIDs); start += roleScopeDepartmentQueryBatch {
 		end := min(start+roleScopeDepartmentQueryBatch, len(departmentIDs))
@@ -148,7 +164,7 @@ func (r *Repository) departmentStatuses(
 			ID     guid.ID `gorm:"column:id"`
 			Status string  `gorm:"column:status"`
 		}, 0, end-start)
-		if err := repo.writer().WithContext(ctx).Table(repo.table("iam_departments")).
+		if err := repo.writer().WithContext(ctx).Table(directory.Departments.String()).
 			Select("id, status").Where("tenant_id = ? AND id IN ?", tenantID, departmentIDs[start:end]).
 			Scan(&rows).Error; err != nil {
 			return nil, fmt.Errorf("list department statuses: %w", err)

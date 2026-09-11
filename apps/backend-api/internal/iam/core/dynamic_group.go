@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"7link.com/platform/internal/iam/core/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/policyx"
 	"gorm.io/gorm"
@@ -22,17 +23,17 @@ type dynamicGroupRuleRecord struct {
 func matchingDynamicGroupIDs(
 	ctx context.Context,
 	db *gorm.DB,
-	prefix string,
+	names query.AuthorizationTables,
 	tenantID, subject guid.ID,
 ) ([]guid.ID, error) {
 	if db == nil {
 		return nil, ErrUnavailable
 	}
 	rows := make([]dynamicGroupRuleRecord, 0)
-	err := db.WithContext(ctx).Table(prefix+"iam_groups AS g").
+	err := db.WithContext(ctx).Table(names.Directory.Groups.String()+" AS g").
 		Select("g.id, g.rule_json, tm.principal_id AS subject, tm.email, COALESCE(md.department_id, 0) AS department_id, tm.status").
-		Joins("JOIN "+prefix+"iam_tenant_members AS tm ON tm.tenant_id = g.tenant_id AND tm.principal_id = ? AND tm.status = ?", subject, MemberActive).
-		Joins("LEFT JOIN "+prefix+"iam_member_departments AS md ON md.tenant_id = tm.tenant_id AND md.principal_id = tm.principal_id").
+		Joins("JOIN "+names.Tables.TenantMembers.String()+" AS tm ON tm.tenant_id = g.tenant_id AND tm.principal_id = ? AND tm.status = ?", subject, MemberActive).
+		Joins("LEFT JOIN "+names.Directory.MemberDepartments.String()+" AS md ON md.tenant_id = tm.tenant_id AND md.principal_id = tm.principal_id").
 		Where("g.tenant_id = ? AND g.group_type = 'dynamic' AND g.status = 'active'", tenantID).
 		Order("g.id ASC").Scan(&rows).Error
 	if err != nil {

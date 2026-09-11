@@ -63,7 +63,7 @@ func TestRoleGrantedMergesPermanentAndTemporaryHolds(t *testing.T) {
 		t.Context(), 1, 604, heldTwice.ID, 11, 99, now.Add(-time.Hour), now.Add(time.Hour),
 	))
 
-	store := NewRoleGrantStore(repository, NewAdministratorGuard(harness.runtime))
+	store := NewRoleGrantStore(repository, boundGuard(t, harness.runtime, "sl_"))
 	for _, test := range []struct {
 		name   string
 		roleID guid.ID

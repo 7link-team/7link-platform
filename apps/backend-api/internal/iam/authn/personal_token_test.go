@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/authn/model"
-	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
@@ -25,7 +24,7 @@ func personalTokenService(t *testing.T) (*Service, *authnRepositoryHarness, stri
 	t.Helper()
 	s, h, cookie := authenticatedLocalService(t)
 	s.personalRegistry = authz.DefaultRegistry()
-	s.memberTenant = core.NewMembershipChecker(h.runtime).ResolveTenant
+	s.memberTenant = boundMemberTenantResolver(t, h.runtime)
 	claims, err := s.Authenticate(t.Context(), "", cookie)
 	require.NoError(t, err)
 	require.NoError(t, h.db.Exec("INSERT INTO iam_tenants (id,status) VALUES (71,'active'),(72,'active')").Error)
@@ -58,7 +57,7 @@ func TestPersonalTokenRealRegistrarPreservesAllRouteBoundaries(t *testing.T) {
 	require.NoError(t, err)
 	_, api := humatest.New(t)
 	checker := &personalTokenRouteChecker{allowed: true}
-	r := authz.NewRegistrar(s.personalRegistry, s, checker, core.NewMembershipChecker(h.runtime))
+	r := authz.NewRegistrar(s.personalRegistry, s, checker, boundMembershipChecker(t, h.runtime))
 	type output struct{ Body string }
 	handler := func(context.Context, *struct{}) (*output, error) { return &output{Body: "ok"}, nil }
 	op := func(path string) huma.Operation {

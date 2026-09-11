@@ -6,6 +6,7 @@ import (
 
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authz"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
 
@@ -108,4 +109,18 @@ type TenantBootstrapper struct {
 	// because it has other reasons to; a caller outside organization has none,
 	// and this is the only way core lets it say so.
 	BumpRevision func(context.Context, *gorm.DB, guid.ID, time.Time) error
+}
+
+// DirectoryTableSetConnector lets the module that owns the directory tables
+// publish their names to core. Core's authorization statements JOIN those
+// tables and cannot name them itself -- the owner is activated after core, so
+// the name arrives as a set rather than as a prefix core would apply itself.
+type DirectoryTableSetConnector struct {
+	Bind func(gormx.TableSet) error
+}
+
+// PrincipalTableSetConnector lets the module that owns the principal table
+// publish its name to core, for the same reason and by the same route.
+type PrincipalTableSetConnector struct {
+	Bind func(gormx.TableSet) error
 }

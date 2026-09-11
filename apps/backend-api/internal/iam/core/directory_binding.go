@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/infra/guid"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -36,12 +37,16 @@ func (r *Repository) ListDirectoryBindings(
 	if err != nil {
 		return nil, err
 	}
+	directory, err := repo.directoryTables()
+	if err != nil {
+		return nil, err
+	}
 	if err := repo.ensureRole(ctx, tenantID, roleID); err != nil {
 		return nil, err
 	}
 	db := repo.writer().WithContext(ctx)
 	var groups []groupRoleBindingRecord
-	if err := db.Table(repo.table("iam_group_role_bindings")).
+	if err := db.Table(directory.GroupRoleBindings.String()).
 		Where("tenant_id = ? AND role_id = ?", tenantID, roleID).Find(&groups).Error; err != nil {
 		return nil, fmt.Errorf("list group role bindings: %w", err)
 	}
@@ -53,7 +58,7 @@ func (r *Repository) ListDirectoryBindings(
 		})
 	}
 	var positions []positionRoleBindingRecord
-	if err := db.Table(repo.table("iam_position_role_bindings")).
+	if err := db.Table(directory.PositionRoleBindings.String()).
 		Where("tenant_id = ? AND role_id = ?", tenantID, roleID).Find(&positions).Error; err != nil {
 		return nil, fmt.Errorf("list position role bindings: %w", err)
 	}
@@ -83,6 +88,10 @@ func (r *Repository) ChangeDirectoryBinding(
 ) (bool, error) {
 	var changed bool
 	err := r.runInTx(ctx, func(repo *Repository) error {
+		directory, err := repo.directoryTables()
+		if err != nil {
+			return err
+		}
 		if err := repo.ensureRole(ctx, tenantID, roleID); err != nil {
 			return err
 		}
@@ -99,7 +108,7 @@ func (r *Repository) ChangeDirectoryBinding(
 		case DirectoryAssigneeGroup:
 			if add {
 				row := groupRoleBindingRecord{TenantID: tenantID, RoleID: roleID, GroupID: assigneeID, CreatedAt: now}
-				result := db.Table(repo.table("iam_group_role_bindings")).
+				result := db.Table(directory.GroupRoleBindings.String()).
 					Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
 				if result.Error != nil {
 					return fmt.Errorf("insert group role binding: %w", result.Error)
@@ -107,7 +116,7 @@ func (r *Repository) ChangeDirectoryBinding(
 				changed = result.RowsAffected > 0
 				return nil
 			}
-			result := db.Table(repo.table("iam_group_role_bindings")).
+			result := db.Table(directory.GroupRoleBindings.String()).
 				Where("tenant_id = ? AND role_id = ? AND group_id = ?", tenantID, roleID, assigneeID).
 				Delete(&groupRoleBindingRecord{})
 			if result.Error != nil {
@@ -117,7 +126,7 @@ func (r *Repository) ChangeDirectoryBinding(
 		case DirectoryAssigneePosition:
 			if add {
 				row := positionRoleBindingRecord{TenantID: tenantID, RoleID: roleID, PositionID: assigneeID, CreatedAt: now}
-				result := db.Table(repo.table("iam_position_role_bindings")).
+				result := db.Table(directory.PositionRoleBindings.String()).
 					Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
 				if result.Error != nil {
 					return fmt.Errorf("insert position role binding: %w", result.Error)
@@ -125,7 +134,7 @@ func (r *Repository) ChangeDirectoryBinding(
 				changed = result.RowsAffected > 0
 				return nil
 			}
-			result := db.Table(repo.table("iam_position_role_bindings")).
+			result := db.Table(directory.PositionRoleBindings.String()).
 				Where("tenant_id = ? AND role_id = ? AND position_id = ?", tenantID, roleID, assigneeID).
 				Delete(&positionRoleBindingRecord{})
 			if result.Error != nil {
@@ -150,19 +159,23 @@ func (r *Repository) directoryAssigneeStatus(
 	if err != nil {
 		return "", err
 	}
-	table := ""
+	directory, err := repo.directoryTables()
+	if err != nil {
+		return "", err
+	}
+	var table gormx.TableName
 	switch assigneeType {
 	case DirectoryAssigneeGroup:
-		table = "iam_groups"
+		table = directory.Groups
 	case DirectoryAssigneePosition:
-		table = "iam_positions"
+		table = directory.Positions
 	default:
 		return "", fmt.Errorf("%w: invalid directory assignee type", ErrInvalidArgument)
 	}
 	var row struct {
 		Status string `gorm:"column:status"`
 	}
-	err = repo.writer().WithContext(ctx).Table(repo.table(table)).
+	err = repo.writer().WithContext(ctx).Table(table.String()).
 		Select("status").Where("tenant_id = ? AND id = ?", tenantID, assigneeID).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return "", ErrDirectoryAssigneeNotFound

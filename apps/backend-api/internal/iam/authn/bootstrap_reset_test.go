@@ -234,11 +234,15 @@ func TestBootstrapCredentialStoreResetDelegatesToTheWiredRepository(t *testing.T
 	harness := newAuthnRepositoryHarness(t, "credresetwired_")
 	const principalID guid.ID = 4600
 	seedResettableAdministrator(t, harness, principalID)
-	store := (&Module{
+	instance := &Module{
 		runtime:  harness.runtime,
 		ids:      newRepositoryTestIDs(9200),
 		appender: harness.repository.audit,
-	}).bootstrapCredentialStore()
+	}
+	// The repository this store builds is handed the module's holder, which the
+	// owners' connectors bind in a running deployment.
+	bindModuleForeignTables(t, instance, "credresetwired_")
+	store := instance.bootstrapCredentialStore()
 
 	replaced, err := store.Reset(t.Context(), harness.db, principalID, resetTestPassword, repositoryTestNow)
 	require.NoError(t, err)
