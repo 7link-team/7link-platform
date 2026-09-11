@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/core/model"
+	"7link.com/platform/internal/iam/core/query"
 	"7link.com/platform/internal/infra/guid"
 	"gorm.io/gorm"
 )
@@ -141,8 +142,7 @@ func (r *Repository) removePermanentRoleOn(guard AdministratorGuard) func(
 		if err != nil {
 			return false, err
 		}
-		tables := r.withDB(db)
-		result := db.WithContext(ctx).Table(tables.table("iam_role_members")).
+		result := db.WithContext(ctx).Table(query.BindNames(r.prefix()).RoleMembers.String()).
 			Where(
 				"tenant_id = ? AND role_id = ? AND principal_id = ? AND created_at = ?",
 				tenantID, roleID, principalID, createdAt.UTC().Truncate(time.Millisecond),

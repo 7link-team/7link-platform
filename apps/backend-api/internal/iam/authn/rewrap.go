@@ -4,8 +4,10 @@ import (
 	"context"
 	"time"
 
+	"7link.com/platform/internal/iam/authn/query"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/extension/keyringx"
 	"gorm.io/gorm"
 )
@@ -64,9 +66,9 @@ func (m *Module) RewrapSecrets(
 // principalSealedStore describes a column sealed under a principal identifier,
 // which is the shape two of this module's four sealed columns share.
 func (s *Service) principalSealedStore(
-	tx *gorm.DB, tableName, column, purpose string,
+	tx *gorm.DB, tableName gormx.TableName, column, purpose string,
 ) keyringx.SealedStore {
-	table := s.repo.table(tableName)
+	table := tableName.String()
 	return keyringx.SealedStore{
 		Name:    table + "." + column,
 		Purpose: purpose,
@@ -114,15 +116,17 @@ func (s *Service) principalSealedStore(
 // one on. Losing it locks each of them out of a second factor they cannot
 // re-enroll without first passing the factor they have just lost.
 func (s *Service) totpSecretStore(tx *gorm.DB) keyringx.SealedStore {
-	return s.principalSealedStore(tx, "iam_credentials", "totp_secret", "encryption:"+mfaSecretCipher)
+	names := query.BindNames(s.repo.prefix())
+	return s.principalSealedStore(tx, names.Credentials, "totp_secret", "encryption:"+mfaSecretCipher)
 }
 
 // mfaEnrollmentStore holds the half-finished enrollment of somebody looking at a
 // QR code right now. These expire on their own, so covering them saves one
 // person one retry rather than saving an account.
 func (s *Service) mfaEnrollmentStore(tx *gorm.DB) keyringx.SealedStore {
+	names := query.BindNames(s.repo.prefix())
 	return s.principalSealedStore(
-		tx, "iam_mfa_enrollments", "secret_ciphertext", "encryption:"+mfaSecretCipher,
+		tx, names.MFAEnrollments, "secret_ciphertext", "encryption:"+mfaSecretCipher,
 	)
 }
 
@@ -130,7 +134,7 @@ func (s *Service) mfaEnrollmentStore(tx *gorm.DB) keyringx.SealedStore {
 // it cannot reuse the principal-only shape above.
 func (s *Service) passkeyStore(tx *gorm.DB) keyringx.SealedStore {
 	const column = "credential_ciphertext"
-	table := s.repo.table("iam_passkeys")
+	table := query.BindNames(s.repo.prefix()).Passkeys.String()
 	return keyringx.SealedStore{
 		Name:    table + "." + column,
 		Purpose: "encryption:" + passkeyCipher,
@@ -170,7 +174,7 @@ func (s *Service) passkeyStore(tx *gorm.DB) keyringx.SealedStore {
 // exactly the case where a row would still be sitting under the old key.
 func (s *Service) notificationStore(tx *gorm.DB) keyringx.SealedStore {
 	const column = "payload_ciphertext"
-	table := s.repo.table("iam_notification_outbox")
+	table := query.BindNames(s.repo.prefix()).NotificationOutbox.String()
 	return keyringx.SealedStore{
 		Name:    table + "." + column,
 		Purpose: "encryption:" + notificationCipher,
@@ -214,23 +218,28 @@ func (s *Service) derivedStores(
 	ctx context.Context, tx *gorm.DB, now time.Time,
 ) ([]keyringx.DerivedStoreReport, error) {
 	reports := make([]keyringx.DerivedStoreReport, 0, 3)
+	names := query.BindNames(s.repo.prefix())
 	// Recovery codes never expire. Waiting will not empty this store, and the
 	// deployment cannot regenerate somebody's codes on their behalf, so a
 	// rotation that drops the key silently removes the one route back into an
 	// account whose authenticator is already gone.
-	codes, _, err := s.countDerived(ctx, tx, "iam_recovery_codes", "used_at IS NULL", "", now)
+	codes, _, err := s.countDerived(ctx, tx, names.RecoveryCodes, "used_at IS NULL", "", now)
 	if err != nil {
 		return nil, err
 	}
 	reports = append(reports, keyringx.DerivedStoreReport{
-		Store:   s.repo.table("iam_recovery_codes") + ".code_hash",
+		Store:   names.RecoveryCodes.String() + ".code_hash",
 		Reissue: "each person holding recovery codes generates a new set",
 		// No Until: this store has no expiry, and saying so is the finding.
 		Outstanding: codes,
 	})
-	for _, store := range []struct{ table, column, reissue string }{
-		{"iam_password_recovery_tokens", "token_hmac", "the person requests another recovery link"},
-		{"iam_email_verification_tokens", "token_hmac", "the person is sent another verification link"},
+	for _, store := range []struct {
+		table   gormx.TableName
+		column  string
+		reissue string
+	}{
+		{names.PasswordRecoveryTokens, "token_hmac", "the person requests another recovery link"},
+		{names.EmailVerificationTokens, "token_hmac", "the person is sent another verification link"},
 	} {
 		outstanding, until, err := s.countDerived(
 			ctx, tx, store.table, "consumed_at IS NULL AND expires_at > ?", "expires_at", now,
@@ -239,7 +248,7 @@ func (s *Service) derivedStores(
 			return nil, err
 		}
 		reports = append(reports, keyringx.DerivedStoreReport{
-			Store: s.repo.table(store.table) + "." + store.column,
+			Store: store.table.String() + "." + store.column,
 			// These do expire, so the honest answer is a date rather than a
 			// warning: past it, nothing here needs the retired key.
 			Outstanding: outstanding, Until: until, Reissue: store.reissue,
@@ -251,9 +260,9 @@ func (s *Service) derivedStores(
 // countDerived counts the live rows of one derived store and, when the store
 // expires at all, finds the moment its last row stops mattering.
 func (s *Service) countDerived(
-	ctx context.Context, tx *gorm.DB, tableName, condition, expiryColumn string, now time.Time,
+	ctx context.Context, tx *gorm.DB, tableName gormx.TableName, condition, expiryColumn string, now time.Time,
 ) (int64, time.Time, error) {
-	table := s.repo.table(tableName)
+	table := tableName.String()
 	live := func() *gorm.DB {
 		query := tx.WithContext(ctx).Table(table)
 		if expiryColumn == "" {

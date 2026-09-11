@@ -14,6 +14,7 @@ import (
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/organization"
 	provisioningi18n "7link.com/platform/internal/iam/provisioning/i18n"
+	"7link.com/platform/internal/iam/provisioning/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/extension/authz"
@@ -183,7 +184,8 @@ func (m *Module) reconcileAll(ctx context.Context) {
 	defer cancel()
 	m.syncRuns.Add(1)
 	var targets []targetRow
-	err := m.service.repo.writer().WithContext(ctx).Table(m.service.repo.table("iam_scim_targets")).
+	scimTargets := query.BindNames(m.service.repo.prefix()).Targets.String()
+	err := m.service.repo.writer().WithContext(ctx).Table(scimTargets).
 		Where("status = ? AND retiring = ? AND id > ? AND sync_after_ms <= ?", TargetActive, false, m.syncCursor, m.service.now().UnixMilli()).
 		Where("tenant_id IN (?)", m.service.repo.writer().Table(m.service.repo.table("iam_tenants")).Select("id").Where("status = 'active'")).
 		Order("id ASC").Limit(syncTargetPageSize).Find(&targets).Error

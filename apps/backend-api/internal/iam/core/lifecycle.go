@@ -5,7 +5,9 @@ import (
 	"errors"
 	"time"
 
+	"7link.com/platform/internal/iam/core/query"
 	"7link.com/platform/internal/infra/guid"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
 
@@ -18,9 +20,10 @@ var ErrPrincipalHasPlatformAccess = errors.New("remove principal platform access
 type PrincipalPlatformAccessGuard func(context.Context, *gorm.DB, guid.ID) error
 
 func requireNoPrincipalPlatformAccess(ctx context.Context, tx *gorm.DB, prefix string, id guid.ID) error {
-	for _, table := range []string{"iam_platform_administrators", "iam_platform_grants"} {
+	names := query.BindNames(prefix)
+	for _, table := range []gormx.TableName{names.PlatformAdministrators, names.PlatformGrants} {
 		var count int64
-		if err := tx.WithContext(ctx).Table(prefix+table).Where("principal_id = ?", id).Count(&count).Error; err != nil {
+		if err := tx.WithContext(ctx).Table(table.String()).Where("principal_id = ?", id).Count(&count).Error; err != nil {
 			return err
 		}
 		if count != 0 {
@@ -44,7 +47,8 @@ func ErasePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, id guid
 		return err
 	}
 	var tenants []guid.ID
-	if err := tx.WithContext(ctx).Table(prefix+"iam_tenant_members").Where("principal_id = ?", id).
+	members := query.BindNames(prefix).TenantMembers
+	if err := tx.WithContext(ctx).Table(members.String()).Where("principal_id = ?", id).
 		Order("tenant_id ASC").Pluck("tenant_id", &tenants).Error; err != nil {
 		return err
 	}
@@ -53,7 +57,7 @@ func ErasePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, id guid
 			return err
 		}
 	}
-	return tx.WithContext(ctx).Table(prefix+"iam_tenant_members").Where("principal_id = ?", id).
+	return tx.WithContext(ctx).Table(members.String()).Where("principal_id = ?", id).
 		Updates(map[string]any{"display_name": "Anonymized account", "email": "", "status": "disabled",
 			"disabled_at": now, "updated_at": now}).Error
 }

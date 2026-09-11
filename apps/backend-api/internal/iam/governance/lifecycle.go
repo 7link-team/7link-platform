@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"7link.com/platform/internal/iam/governance/query"
 	"7link.com/platform/internal/infra/guid"
 	goosex "7link.com/platform/pkg/extension/goose"
 	"gorm.io/gorm"
@@ -20,6 +21,7 @@ func ErasePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, id guid
 	if err := goosex.ValidatePrefix(prefix); err != nil {
 		return err
 	}
-	return tx.WithContext(ctx).Table(prefix+"iam_access_review_items").Where("principal_id = ?", id).
+	items := query.BindNames(prefix).AccessReviewItems.String()
+	return tx.WithContext(ctx).Table(items).Where("principal_id = ?", id).
 		Update("principal_name", "Anonymized account").Error
 }

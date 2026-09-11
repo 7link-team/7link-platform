@@ -15,6 +15,7 @@ import (
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/authn"
 	"7link.com/platform/internal/iam/federation/model"
+	"7link.com/platform/internal/iam/federation/query"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"github.com/crewjam/saml"
@@ -95,9 +96,10 @@ func (s *Service) ListPersonalIdentityLinks(ctx context.Context, cookieHeader st
 	if err != nil {
 		return nil, err
 	}
-	err = repo.writer().WithContext(ctx).Table(repo.table("iam_identity_links")+" AS link").
+	names := query.BindNames(repo.prefix())
+	err = repo.writer().WithContext(ctx).Table(names.IdentityLinks.String()+" AS link").
 		Select("link.provider_id, link.tenant_id, provider.name AS provider_name, provider.provider_type, link.external_subject, link.email, link.display_name").
-		Joins("JOIN "+repo.table("iam_identity_providers")+" AS provider ON provider.id = link.provider_id AND provider.tenant_id = link.tenant_id").
+		Joins("JOIN "+names.Providers.String()+" AS provider ON provider.id = link.provider_id AND provider.tenant_id = link.tenant_id").
 		Where("link.principal_id = ?", claims.PrincipalID).Order("provider.name, link.external_subject").Scan(&rows).Error
 	for i := range rows {
 		rows[i].ID = identityLinkID(rows[i].ProviderID, rows[i].ExternalSubject)
@@ -115,7 +117,8 @@ func (s *Service) ListLinkableProviders(ctx context.Context, cookieHeader string
 		return nil, err
 	}
 	rows := []LinkableProvider{}
-	err = repo.writer().WithContext(ctx).Table(repo.table("iam_identity_providers")+" AS provider").
+	names := query.BindNames(repo.prefix())
+	err = repo.writer().WithContext(ctx).Table(names.Providers.String()+" AS provider").
 		Select("provider.id, provider.tenant_id, provider.name, provider.provider_type").
 		Joins("JOIN "+repo.table("iam_tenant_members")+" AS member ON member.tenant_id = provider.tenant_id AND member.principal_id = ? AND member.status = ?", claims.PrincipalID, "active").
 		Joins("JOIN "+repo.table("iam_tenants")+" AS tenant ON tenant.id = provider.tenant_id AND tenant.status = ?", "active").
@@ -468,8 +471,9 @@ func (s *Service) UnlinkPersonalIdentity(ctx context.Context, cookieHeader, id, 
 			return err
 		}
 		var alternatives int64
-		err = repo.writer().WithContext(ctx).Table(repo.table("iam_identity_links")+" AS link").
-			Joins("JOIN "+repo.table("iam_identity_providers")+" AS provider ON provider.id = link.provider_id AND provider.tenant_id = link.tenant_id AND provider.status = ?", ProviderActive).
+		names := query.BindNames(repo.prefix())
+		err = repo.writer().WithContext(ctx).Table(names.IdentityLinks.String()+" AS link").
+			Joins("JOIN "+names.Providers.String()+" AS provider ON provider.id = link.provider_id AND provider.tenant_id = link.tenant_id AND provider.status = ?", ProviderActive).
 			Joins("JOIN "+repo.table("iam_tenant_members")+" AS member ON member.tenant_id = link.tenant_id AND member.principal_id = link.principal_id AND member.status = ?", "active").
 			Joins("JOIN "+repo.table("iam_tenants")+" AS tenant ON tenant.id = link.tenant_id AND tenant.status = ?", "active").
 			Where("link.principal_id = ? AND NOT (link.provider_id = ? AND link.external_subject = ?)", claims.PrincipalID, providerID, subject).Count(&alternatives).Error
@@ -479,7 +483,7 @@ func (s *Service) UnlinkPersonalIdentity(ctx context.Context, cookieHeader, id, 
 		if local == 0 && alternatives == 0 {
 			return ErrLastLoginMethod
 		}
-		result := repo.writer().WithContext(ctx).Table(repo.table("iam_identity_links")).Where("principal_id = ? AND provider_id = ? AND tenant_id = ? AND external_subject = ?", claims.PrincipalID, providerID, provider.TenantID, subject).Delete(&model.IdentityLink{})
+		result := repo.writer().WithContext(ctx).Table(names.IdentityLinks.String()).Where("principal_id = ? AND provider_id = ? AND tenant_id = ? AND external_subject = ?", claims.PrincipalID, providerID, provider.TenantID, subject).Delete(&model.IdentityLink{})
 		if result.Error != nil {
 			return result.Error
 		}

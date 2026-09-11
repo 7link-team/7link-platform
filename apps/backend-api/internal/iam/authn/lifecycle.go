@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/authn/model"
+	"7link.com/platform/internal/iam/authn/query"
 	"7link.com/platform/internal/infra/guid"
 	goosex "7link.com/platform/pkg/extension/goose"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
 
@@ -75,29 +77,31 @@ func ErasePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, id guid
 	if err := goosex.ValidatePrefix(prefix); err != nil {
 		return err
 	}
+	names := query.BindNames(prefix)
+	outbox := names.NotificationOutbox.String()
 	var count int64
-	if err := tx.WithContext(ctx).Table(prefix + "iam_notification_outbox").Where("principal_id IS NULL").Count(&count).Error; err != nil {
+	if err := tx.WithContext(ctx).Table(outbox).Where("principal_id IS NULL").Count(&count).Error; err != nil {
 		return err
 	}
 	if count != 0 {
 		return ErrLegacyNotifications
 	}
-	if err := tx.WithContext(ctx).Table(prefix+"iam_notification_outbox").
+	if err := tx.WithContext(ctx).Table(outbox).
 		Where("principal_id = ? AND status = 'delivering'", id).Count(&count).Error; err != nil {
 		return err
 	}
 	if count != 0 {
 		return ErrNotificationInFlight
 	}
-	for _, table := range []string{
-		"iam_reauth_challenges", "iam_personal_tokens",
-		"iam_notification_outbox", "iam_email_verification_tokens", "iam_password_recovery_tokens",
-		"iam_stepup_challenges", "iam_passkey_challenges", "iam_passkeys", "iam_passkey_users",
-		"iam_mfa_challenges", "iam_recovery_codes", "iam_mfa_enrollments", "iam_password_history",
-		"iam_sessions", "iam_credentials",
+	for _, table := range []gormx.TableName{
+		names.ReauthenticationChallenges, names.PersonalTokens,
+		names.NotificationOutbox, names.EmailVerificationTokens, names.PasswordRecoveryTokens,
+		names.StepUpChallenges, names.PasskeyChallenges, names.Passkeys, names.PasskeyUsers,
+		names.MFAChallenges, names.RecoveryCodes, names.MFAEnrollments, names.PasswordHistory,
+		names.Sessions, names.Credentials,
 	} {
-		if err := tx.WithContext(ctx).Table(prefix+table).Where("principal_id = ?", id).Delete(map[string]any{}).Error; err != nil {
-			return fmt.Errorf("erase authentication table %s: %w", table, err)
+		if err := tx.WithContext(ctx).Table(table.String()).Where("principal_id = ?", id).Delete(map[string]any{}).Error; err != nil {
+			return fmt.Errorf("erase authentication table %s: %w", table.Logical(), err)
 		}
 	}
 	return nil

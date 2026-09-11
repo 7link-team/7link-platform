@@ -11,8 +11,10 @@ import (
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/organization/model"
+	"7link.com/platform/internal/iam/organization/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
 
@@ -277,9 +279,10 @@ func (r *Repository) deleteDepartment(ctx context.Context, tenantID, id guid.ID,
 	if count > 0 {
 		return ErrHasChildren
 	}
-	for _, table := range []string{"iam_member_departments", "iam_role_scope_departments"} {
-		if err := db.Table(r.table(table)).Where("tenant_id = ? AND department_id = ?", tenantID, id).Count(&count).Error; err != nil {
-			return fmt.Errorf("check department references in %s: %w", table, err)
+	names := query.BindNames(r.prefix())
+	for _, table := range []gormx.TableName{names.MemberDepartments, names.RoleScopeDepartments} {
+		if err := db.Table(table.String()).Where("tenant_id = ? AND department_id = ?", tenantID, id).Count(&count).Error; err != nil {
+			return fmt.Errorf("check department references in %s: %w", table.Logical(), err)
 		}
 		if count > 0 {
 			return ErrInUse

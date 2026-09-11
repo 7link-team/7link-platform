@@ -9,10 +9,10 @@ P4a/b/c 拼表名清理 → P5 注入连接器 → P6 门禁收紧；PD 文档�
 用户确认的路线：**跨模块取表名一律走窄接口/注入**，不放宽架构测试、不放宽依赖全序（D37）。
 
 ## Current Phase
-IMPLEMENTATION —— P0/P1/P2/P3 已完成并推送；P4a 未开始
+IMPLEMENTATION —— P0/P1/P2/P3 已完成并推送；**P4a 代码完成、8 道验证全绿，未提交**
 
 ## Current Step
-P3 已提交推送（`f3c23c9`）。下一步：P4a 自有表拼表名清理（34 处）
+P4a 自有表字面量清理完成（21 文件 + 账本）。下一步：提交 P4a，然后进入 P4b（跨模块单表）
 
 ## Overall Progress
 - [x] **P0 门禁 + 冻结基线**：`tests/architecture/query_gate_test.go`（5 条 AST 规则）+
@@ -60,7 +60,18 @@ P3 已提交推送（`f3c23c9`）。下一步：P4a 自有表拼表名清理（3
       （调用方事务内两臂都可见自身未提交写；MySQL 默认 RR 下两臂同一快照）。
       **未动**：`administrator.go` 的 last-admin 守卫（维持单语句）、P2 已搬入 `core/query/authorization.go`
       的 7 条。门禁账本 749→**736**（8 条 key 消失、1 条 3→2、**无新增 key**）。
-- [ ] P4a/b/c 拼表名清理（自有表 34 处 → 跨模块单表 → 跨模块 JOIN 72 条）
+- [x] **P4a 自有表字面量清理**：8 个 IAM 模块共 **69 处**自有表字面量改走同模块
+      `query.BindNames(prefix)`（core 7 / authn 26 / identity 2 / oauth 5 / governance 1 /
+      organization 3 / federation 10 / provisioning 15），与方案普查给出的逐模块数字完全吻合。
+      形态：需要 query 对象→`query.Bind(db,prefix)`；只需要字符串→`BindNames(prefix).X.String()`；
+      列表/switch/map 键一律携带 `gormx.TableName`；错误信息改 `Logical()`（不加前缀）。
+      **未改**：102 处他模块表字面量（P4b/P4c 范围，core 反向 import 会在 `Registry.Activate` 全序上启动失败）；
+      各模块 `migrate.go` 与 `internal/app/principallifecycle.go` 的 `goose_*`（前缀由 `goosex` 外部
+      `internal/app/migration.go:243` 施加，站点处无 prefix、无 typed 表示，改不了）；
+      `provisioning/metrics.go` 11 条 `iam_scim_*` Prometheus 指标名（非表，改名=可观测业务语义变化）。
+      两处签名收窄为 `gormx.TableName`（`authn/rewrap.go` 的 `principalSealedStore`/`countDerived`，
+      原先内部再拼一次 `repo.table(name)`，传已绑定名会**双重加前缀**）。
+- [ ] P4b/c 跨模块单表 / 跨模块 JOIN 拼表名清理（他模块表 102 处）
 - [ ] P5 表名集合注入连接器（6–9 个）
 - [ ] P6 门禁收紧（budget 降到 SQL 类 = 0）
 - [ ] PD 全仓文档体检（六批）
@@ -96,6 +107,19 @@ P3 已提交推送（`f3c23c9`）。下一步：P4a 自有表拼表名清理（3
   真正带 DSN 比对的是 `make test-mysql8-run`。
 
 ## Verification
+- **P4a**（干净树、无并发编辑）：
+  - `go build ./...` EXIT=0；`go test ./internal/... -count=1` **51 包 ok / 0 FAIL**；`gofmt -l internal pkg` 空
+  - `make ci` **EXIT=0**：fmt clean、lint 0 findings、**总覆盖率 90.1%**（≥90.0%）、
+    integration architecture 5.96s / goose 20.3s / testdb 0.3s / lifecycle 138.0s /
+    migration 349.4s / performance 49.3s **全 ok、0 FAIL**、build、`openapi: matches docs/openapi.json`
+  - `make test-mysql8-run` **EXIT=0**（真实 MySQL 8.4）：`TestIAMPerformanceExternalDatabase` PASS
+    ——查询计划指纹与基线一致，即**表名字符串被改错会立刻在此暴露**，未暴露；
+    schema lock `219 published migration files unchanged`、72 IAM 表、33 跨模块 FK
+  - 账本：budget **736→581**、条目 **287→237**、逐规则 naked 585→445 / concatenated 136→121 /
+    `handwritten-sql` **15 处 7 key，改前改后逐 key 完全相同**；对最终代码再跑一次
+    `QUERY_GATE_UPDATE=1` 输出 `237 entries, 581 violations, budget 581` 且文件 md5 **未变**（基线精确当前）
+  - `git status --porcelain`：22 个受控改动（21 源文件 + 账本），无 `.gen.go` / `cover*.raw` / `.log` /
+    `bin/`，无未跟踪文件
 - **P0**：`tests/architecture` PASS（含夹具与白名单断言）；三次执行路径变异均被抓住；UPDATE 无法抬高预算
 - **P1**（干净树、无并发编辑）：
   - `make ci` **EXIT=0**：fmt clean、lint 0 findings、覆盖率全模块 ≥90%、
@@ -124,11 +148,13 @@ P3 已提交推送（`f3c23c9`）。下一步：P4a 自有表拼表名清理（3
     也没有新旧 EXPLAIN 可 diff，自然不存在新增全扫。
 
 ## Next Action
-进入 **P4a（自有表拼表名清理，34 处）**：一律改用同模块 `query/` 的 `TableName()`/`Bind()`，
-不得跨模块 import query；改完跑 `QUERY_GATE_UPDATE=1 go -C tests test ./architecture -run TestQueryGate`
-刷新条目后**手工下调** `budget`（当前 736），再跑 `make ci` 与 `make test-mysql8-run`。
+提交 P4a（21 个源文件 + 账本）。然后进入 **P4b**：他模块单表访问改窄接口注入，
+不得跨模块 import `query`/`model`/`dbgen`；`core` 反向依赖下游会让 `Registry.Activate` 的全序不可满足。
+每阶段改完都要 `QUERY_GATE_UPDATE=1 … -run TestQueryGate` 刷新后**手工下调** `budget`（当前 581）。
 若刷新时报 "exceed the frozen budget"，说明引入了新违规，去修代码而不是用 `QUERY_GATE_REBASELINE` 掩盖。
 
 ## Last Checkpoint
-2026-09-10 P3 三条语句改写完成并实证（`make ci` EXIT=0、覆盖率 90.0665%、账本 budget 736、
-性能基线逐字节未变）；P4a 未开始
+2026-09-11 P4a 完成并实测：`go build ./...` 0、`go test ./internal/... -count=1` 51 ok/0 FAIL、
+`make ci` **EXIT=0**（总覆盖率 **90.1%**）、`make test-mysql8-run` **EXIT=0**（`TestIAMPerformanceExternalDatabase`
+指纹比对 PASS、schema lock 219 文件未变）、`gofmt -l internal pkg` 空、账本 budget **736→581**
+（条目 287→237；`handwritten-sql` 7 key/15 处**逐 key 相同**）；`git status` 仅 22 个受控改动、无临时产物

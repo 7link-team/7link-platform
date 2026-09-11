@@ -1,12 +1,8 @@
 {
   "schema_version": 1,
-  "budget": 736,
+  "budget": 581,
   "rebaseline": "initial freeze at the P0 commit",
   "entries": [
-    {
-      "key": "concatenated-table-name:007a39585103244c",
-      "count": 1
-    },
     {
       "key": "concatenated-table-name:04dff51201564535",
       "count": 1
@@ -21,6 +17,10 @@
     },
     {
       "key": "concatenated-table-name:12dac5aba56daf45",
+      "count": 1
+    },
+    {
+      "key": "concatenated-table-name:136af008ccd6a6a7",
       "count": 1
     },
     {
@@ -64,10 +64,6 @@
       "count": 1
     },
     {
-      "key": "concatenated-table-name:2cf2078ee1b04f2e",
-      "count": 1
-    },
-    {
       "key": "concatenated-table-name:2d7dbf84b4cf72e3",
       "count": 1
     },
@@ -80,15 +76,7 @@
       "count": 1
     },
     {
-      "key": "concatenated-table-name:32267be9659ea35c",
-      "count": 1
-    },
-    {
       "key": "concatenated-table-name:334f9622875a0f70",
-      "count": 1
-    },
-    {
-      "key": "concatenated-table-name:3535f0d4bbd1e89f",
       "count": 1
     },
     {
@@ -104,10 +92,6 @@
       "count": 1
     },
     {
-      "key": "concatenated-table-name:3c7fb33455ab15f7",
-      "count": 1
-    },
-    {
       "key": "concatenated-table-name:3d16c8b6d3c98597",
       "count": 1
     },
@@ -118,6 +102,10 @@
     {
       "key": "concatenated-table-name:3fa793cdd2b2d418",
       "count": 1
+    },
+    {
+      "key": "concatenated-table-name:3ff2fb1fef01c0de",
+      "count": 2
     },
     {
       "key": "concatenated-table-name:40c0d2e5ba1c9de7",
@@ -132,11 +120,11 @@
       "count": 3
     },
     {
-      "key": "concatenated-table-name:48f6d828d08f17cf",
+      "key": "concatenated-table-name:439eb02931f690d5",
       "count": 1
     },
     {
-      "key": "concatenated-table-name:4d81beb676b25d7a",
+      "key": "concatenated-table-name:48f6d828d08f17cf",
       "count": 1
     },
     {
@@ -172,10 +160,6 @@
       "count": 1
     },
     {
-      "key": "concatenated-table-name:5ddfc1cad3fe05e8",
-      "count": 1
-    },
-    {
       "key": "concatenated-table-name:61af520d302bd53b",
       "count": 1
     },
@@ -192,10 +176,6 @@
       "count": 1
     },
     {
-      "key": "concatenated-table-name:6b62edb90f9bfcb3",
-      "count": 1
-    },
-    {
       "key": "concatenated-table-name:6b89b6f5403da952",
       "count": 1
     },
@@ -204,11 +184,7 @@
       "count": 1
     },
     {
-      "key": "concatenated-table-name:6ea7aafb2d2547ad",
-      "count": 1
-    },
-    {
-      "key": "concatenated-table-name:76bc4124b644d755",
+      "key": "concatenated-table-name:6e6dc4b617bcab5b",
       "count": 1
     },
     {
@@ -225,10 +201,6 @@
     },
     {
       "key": "concatenated-table-name:826951ff25ac7a86",
-      "count": 1
-    },
-    {
-      "key": "concatenated-table-name:851b5306d9cbfe78",
       "count": 1
     },
     {
@@ -252,10 +224,6 @@
       "count": 1
     },
     {
-      "key": "concatenated-table-name:8ada50d0eea3422b",
-      "count": 1
-    },
-    {
       "key": "concatenated-table-name:8b2f6c9d16dc821e",
       "count": 3
     },
@@ -276,10 +244,6 @@
       "count": 1
     },
     {
-      "key": "concatenated-table-name:91e3c4a5724708db",
-      "count": 2
-    },
-    {
       "key": "concatenated-table-name:92595e1eb00c5a96",
       "count": 2
     },
@@ -293,10 +257,6 @@
     },
     {
       "key": "concatenated-table-name:96b774109bb5cdd8",
-      "count": 1
-    },
-    {
-      "key": "concatenated-table-name:97e931f2f9023ed1",
       "count": 1
     },
     {
@@ -340,15 +300,7 @@
       "count": 1
     },
     {
-      "key": "concatenated-table-name:af06cf8bd08eb804",
-      "count": 1
-    },
-    {
       "key": "concatenated-table-name:b062678cbf1768ee",
-      "count": 1
-    },
-    {
-      "key": "concatenated-table-name:b35d0ea6845e8f47",
       "count": 1
     },
     {
@@ -362,10 +314,6 @@
     {
       "key": "concatenated-table-name:c063e1fb43766005",
       "count": 1
-    },
-    {
-      "key": "concatenated-table-name:c0eb9c1ce49fb3e5",
-      "count": 2
     },
     {
       "key": "concatenated-table-name:c2b7523f1c1f3d2c",
@@ -420,7 +368,11 @@
       "count": 1
     },
     {
-      "key": "concatenated-table-name:e0e59ba0214c3ae6",
+      "key": "concatenated-table-name:de964e83e21494ad",
+      "count": 1
+    },
+    {
+      "key": "concatenated-table-name:e1fba8462c0b0318",
       "count": 1
     },
     {
@@ -444,10 +396,6 @@
       "count": 1
     },
     {
-      "key": "concatenated-table-name:ebce1d0216f0e810",
-      "count": 1
-    },
-    {
       "key": "concatenated-table-name:f1df8ec8a0515dc9",
       "count": 1
     },
@@ -457,10 +405,6 @@
     },
     {
       "key": "concatenated-table-name:f64ff82448ea4cdc",
-      "count": 1
-    },
-    {
-      "key": "concatenated-table-name:f7122288940ecbd7",
       "count": 1
     },
     {
@@ -540,10 +484,6 @@
       "count": 1
     },
     {
-      "key": "naked-table-literal:1220714fde255912",
-      "count": 1
-    },
-    {
       "key": "naked-table-literal:13c5e8760f97d5dc",
       "count": 3
     },
@@ -553,10 +493,6 @@
     },
     {
       "key": "naked-table-literal:14fddecdd1403b8a",
-      "count": 3
-    },
-    {
-      "key": "naked-table-literal:159b1789e3e1c617",
       "count": 3
     },
     {
@@ -584,18 +520,6 @@
       "count": 9
     },
     {
-      "key": "naked-table-literal:1c3c574f6316f8dc",
-      "count": 1
-    },
-    {
-      "key": "naked-table-literal:1d529985ba037e83",
-      "count": 2
-    },
-    {
-      "key": "naked-table-literal:1e1d1dd7f14c80af",
-      "count": 6
-    },
-    {
       "key": "naked-table-literal:1ee29af86a0c035b",
       "count": 3
     },
@@ -606,10 +530,6 @@
     {
       "key": "naked-table-literal:212d1cbfe248aec7",
       "count": 3
-    },
-    {
-      "key": "naked-table-literal:23c961e685f764d0",
-      "count": 1
     },
     {
       "key": "naked-table-literal:282d3daf8488a5f3",
@@ -632,15 +552,7 @@
       "count": 2
     },
     {
-      "key": "naked-table-literal:306a144d18bc0651",
-      "count": 1
-    },
-    {
       "key": "naked-table-literal:321e171941d4a20d",
-      "count": 3
-    },
-    {
-      "key": "naked-table-literal:32c6a2cdb203e49d",
       "count": 3
     },
     {
@@ -664,16 +576,8 @@
       "count": 3
     },
     {
-      "key": "naked-table-literal:40d4547b252b5c3c",
-      "count": 5
-    },
-    {
       "key": "naked-table-literal:41af42e094e02810",
       "count": 2
-    },
-    {
-      "key": "naked-table-literal:4205fce0fb2663bb",
-      "count": 1
     },
     {
       "key": "naked-table-literal:43c1a1ff5ca53166",
@@ -696,16 +600,8 @@
       "count": 3
     },
     {
-      "key": "naked-table-literal:4ccf1c893725476e",
-      "count": 4
-    },
-    {
       "key": "naked-table-literal:4d077598d1b8baf8",
       "count": 6
-    },
-    {
-      "key": "naked-table-literal:4e05c83bf18ee5e7",
-      "count": 1
     },
     {
       "key": "naked-table-literal:4f7d0342f9380dbc",
@@ -764,16 +660,8 @@
       "count": 1
     },
     {
-      "key": "naked-table-literal:6065020ed2dc16c5",
-      "count": 6
-    },
-    {
       "key": "naked-table-literal:609d4803931145fe",
       "count": 2
-    },
-    {
-      "key": "naked-table-literal:640fe0cb027dc9e4",
-      "count": 1
     },
     {
       "key": "naked-table-literal:647d035dd776e715",
@@ -788,10 +676,6 @@
       "count": 2
     },
     {
-      "key": "naked-table-literal:666710fe7f8fa9c5",
-      "count": 1
-    },
-    {
       "key": "naked-table-literal:6751a781fa815c48",
       "count": 1
     },
@@ -804,10 +688,6 @@
       "count": 3
     },
     {
-      "key": "naked-table-literal:6b6cafdb43c46757",
-      "count": 9
-    },
-    {
       "key": "naked-table-literal:6bb53febd63dd1f8",
       "count": 3
     },
@@ -816,15 +696,7 @@
       "count": 3
     },
     {
-      "key": "naked-table-literal:726fe7661d56c0c6",
-      "count": 1
-    },
-    {
       "key": "naked-table-literal:7305e73a84e6dd8c",
-      "count": 3
-    },
-    {
-      "key": "naked-table-literal:76efdf4051be445b",
       "count": 3
     },
     {
@@ -836,16 +708,8 @@
       "count": 3
     },
     {
-      "key": "naked-table-literal:7b7a7badf820304b",
-      "count": 3
-    },
-    {
       "key": "naked-table-literal:7cdb0f976ea82593",
       "count": 3
-    },
-    {
-      "key": "naked-table-literal:7e0a1e37428171b8",
-      "count": 1
     },
     {
       "key": "naked-table-literal:80e2cfe6aff541fc",
@@ -856,28 +720,8 @@
       "count": 1
     },
     {
-      "key": "naked-table-literal:83d79ac9e2538283",
-      "count": 6
-    },
-    {
-      "key": "naked-table-literal:84237dfb44de6537",
-      "count": 1
-    },
-    {
       "key": "naked-table-literal:8797e9e083c15201",
       "count": 1
-    },
-    {
-      "key": "naked-table-literal:87f8800fc6e5dc01",
-      "count": 3
-    },
-    {
-      "key": "naked-table-literal:8b1edf71ee4a86ae",
-      "count": 14
-    },
-    {
-      "key": "naked-table-literal:8b55e2be29e2e0a5",
-      "count": 7
     },
     {
       "key": "naked-table-literal:908ef0dad000c2d0",
@@ -920,14 +764,6 @@
       "count": 3
     },
     {
-      "key": "naked-table-literal:99e98f23964a4618",
-      "count": 1
-    },
-    {
-      "key": "naked-table-literal:9d18918e9c2b08a5",
-      "count": 4
-    },
-    {
       "key": "naked-table-literal:9dd2e01639376975",
       "count": 3
     },
@@ -960,10 +796,6 @@
       "count": 3
     },
     {
-      "key": "naked-table-literal:a9af71741e7e2fb1",
-      "count": 13
-    },
-    {
       "key": "naked-table-literal:abfdde1449a348ac",
       "count": 3
     },
@@ -988,20 +820,8 @@
       "count": 3
     },
     {
-      "key": "naked-table-literal:b55b9ab3d75034c3",
-      "count": 28
-    },
-    {
-      "key": "naked-table-literal:b75ee36ba1b63d90",
-      "count": 1
-    },
-    {
       "key": "naked-table-literal:bbf97e78307e9407",
       "count": 3
-    },
-    {
-      "key": "naked-table-literal:c46d7d3b7fe0d5b7",
-      "count": 1
     },
     {
       "key": "naked-table-literal:c520a121d814cc40",
@@ -1014,10 +834,6 @@
     {
       "key": "naked-table-literal:c86dff4161f17bb3",
       "count": 1
-    },
-    {
-      "key": "naked-table-literal:d042ad124ba3665c",
-      "count": 2
     },
     {
       "key": "naked-table-literal:d34935bcbc5e19ac",
@@ -1033,10 +849,6 @@
     },
     {
       "key": "naked-table-literal:d805f5ff98b462f2",
-      "count": 2
-    },
-    {
-      "key": "naked-table-literal:d831c1ebc8223a06",
       "count": 2
     },
     {
@@ -1056,24 +868,12 @@
       "count": 9
     },
     {
-      "key": "naked-table-literal:dc5c451095b7836c",
-      "count": 1
-    },
-    {
       "key": "naked-table-literal:de300c9c2aa455eb",
       "count": 6
     },
     {
       "key": "naked-table-literal:de4ee4ce613105ab",
       "count": 3
-    },
-    {
-      "key": "naked-table-literal:e38d48c4d6a389e9",
-      "count": 1
-    },
-    {
-      "key": "naked-table-literal:e776aca91929a012",
-      "count": 1
     },
     {
       "key": "naked-table-literal:e84074a4ec20b83d",

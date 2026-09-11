@@ -3,6 +3,7 @@ package federation
 import (
 	"context"
 
+	"7link.com/platform/internal/iam/federation/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/keyringx"
 	"gorm.io/gorm"
@@ -46,7 +47,7 @@ func (m *Module) RewrapSecrets(
 // identifier through with the ciphertext rather than resealing bytes alone.
 func (s *Service) providerSecretStore(tx *gorm.DB) keyringx.SealedStore {
 	const column = "client_secret_ciphertext"
-	table := s.repo.table("iam_identity_providers")
+	table := query.BindNames(s.repo.prefix()).Providers.String()
 	return keyringx.SealedStore{
 		Name:    table + "." + column,
 		Purpose: "client-secret",
@@ -88,7 +89,7 @@ func (s *Service) providerSecretStore(tx *gorm.DB) keyringx.SealedStore {
 // row would have changed what every already-stored key authenticates against.
 func (s *Service) samlKeyStore(tx *gorm.DB) keyringx.SealedStore {
 	const column = "key_ciphertext"
-	table := s.repo.table("iam_saml_idp_keys")
+	table := query.BindNames(s.repo.prefix()).SAMLIDPKeys.String()
 	return keyringx.SealedStore{
 		Name:    table + "." + column,
 		Purpose: "saml-key",

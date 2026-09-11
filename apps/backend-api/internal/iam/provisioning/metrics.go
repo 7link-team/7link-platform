@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"7link.com/platform/internal/iam/provisioning/query"
 	"7link.com/platform/pkg/module"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -52,19 +53,21 @@ func (m *Module) Collect(ch chan<- prometheus.Metric) {
 			Failed     int64
 			Retiring   int64
 		}
-		err := m.service.repo.writer().WithContext(ctx).Table(m.service.repo.table("iam_scim_targets")).
+		names := query.BindNames(m.service.repo.prefix())
+		targets, targetResources := names.Targets.String(), names.TargetResources.String()
+		err := m.service.repo.writer().WithContext(ctx).Table(targets).
 			Select("COALESCE(SUM(CASE WHEN operation_token <> 0 THEN 1 ELSE 0 END), 0) AS unfinished, COALESCE(SUM(CASE WHEN sync_failures > 0 THEN 1 ELSE 0 END), 0) AS failed, COALESCE(SUM(CASE WHEN retiring THEN 1 ELSE 0 END), 0) AS retiring").Scan(&state).Error
 		if err == nil {
 			values[3], values[5], values[6] = float64(state.Unfinished), float64(state.Failed), float64(state.Retiring)
 			var oldest targetRow
-			err = m.service.repo.writer().WithContext(ctx).Table(m.service.repo.table("iam_scim_targets")).Select("operation_started_at").Where("operation_token <> 0").Order("operation_started_at ASC").Limit(1).Find(&oldest).Error
+			err = m.service.repo.writer().WithContext(ctx).Table(targets).Select("operation_started_at").Where("operation_token <> 0").Order("operation_started_at ASC").Limit(1).Find(&oldest).Error
 			oldestRead := err == nil
 			if oldest.OperationStartedAt != nil {
 				values[4] = max(0, m.service.now().Sub(*oldest.OperationStartedAt).Seconds())
 			}
 			var pending int64
-			err = m.service.repo.writer().WithContext(ctx).Table(m.service.repo.table("iam_scim_target_resources")+" AS r").
-				Joins("JOIN "+m.service.repo.table("iam_scim_targets")+" AS t ON t.id = r.target_id").
+			err = m.service.repo.writer().WithContext(ctx).Table(targetResources+" AS r").
+				Joins("JOIN "+targets+" AS t ON t.id = r.target_id").
 				Where("r.deleted_at IS NULL AND t.status = ? AND t.retiring = ? AND t.sync_after_ms <= ?", TargetActive, false, m.service.now().UnixMilli()).
 				Where("r.resource_type > t.sync_resource_type OR (r.resource_type = t.sync_resource_type AND r.resource_id > t.sync_resource_id)").Count(&pending).Error
 			if err == nil && oldestRead {

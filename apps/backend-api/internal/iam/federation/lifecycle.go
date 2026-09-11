@@ -5,8 +5,10 @@ import (
 	"errors"
 	"time"
 
+	"7link.com/platform/internal/iam/federation/query"
 	"7link.com/platform/internal/infra/guid"
 	goosex "7link.com/platform/pkg/extension/goose"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
 
@@ -19,8 +21,9 @@ func ErasePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, id guid
 	if err := goosex.ValidatePrefix(prefix); err != nil {
 		return err
 	}
-	for _, table := range []string{"iam_identity_link_transactions", "iam_identity_links"} {
-		if err := tx.WithContext(ctx).Table(prefix+table).Where("principal_id = ?", id).Delete(map[string]any{}).Error; err != nil {
+	names := query.BindNames(prefix)
+	for _, table := range []gormx.TableName{names.IdentityLinkTransactions, names.IdentityLinks} {
+		if err := tx.WithContext(ctx).Table(table.String()).Where("principal_id = ?", id).Delete(map[string]any{}).Error; err != nil {
 			return err
 		}
 	}

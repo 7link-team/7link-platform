@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/core/model"
+	"7link.com/platform/internal/iam/core/query"
 	"7link.com/platform/internal/infra/guid"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
 
@@ -191,13 +193,13 @@ func (r *Repository) TenantIsUnclaimedOn(
 	if tenantID.Zero() {
 		return false, fmt.Errorf("%w: tenant is required", ErrInvalidArgument)
 	}
-	repo := r.withDB(db)
-	for table, label := range map[string]string{
-		"iam_tenant_members": "members",
-		"iam_roles":          "roles",
+	names := query.BindNames(r.prefix())
+	for table, label := range map[gormx.TableName]string{
+		names.TenantMembers: "members",
+		names.Roles:         "roles",
 	} {
 		var count int64
-		err := db.WithContext(ctx).Table(repo.table(table)).
+		err := db.WithContext(ctx).Table(table.String()).
 			Where("tenant_id = ?", tenantID).Limit(1).Count(&count).Error
 		if err != nil {
 			return false, fmt.Errorf("count tenant %s: %w", label, err)

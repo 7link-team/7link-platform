@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/authn/model"
+	"7link.com/platform/internal/iam/authn/query"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/passwordx"
@@ -170,7 +171,8 @@ func (s *Service) lockReauthenticationSession(ctx context.Context, repo *Reposit
 	if err != nil {
 		return 0, err
 	}
-	if err := repo.writer().WithContext(ctx).Table(repo.table("iam_sessions")).Where("id_hash = ?", sessionHash).
+	sessions := query.BindNames(repo.prefix()).Sessions.String()
+	if err := repo.writer().WithContext(ctx).Table(sessions).Where("id_hash = ?", sessionHash).
 		Update("last_seen_at", gorm.Expr("last_seen_at")).Error; err != nil {
 		return 0, err
 	}

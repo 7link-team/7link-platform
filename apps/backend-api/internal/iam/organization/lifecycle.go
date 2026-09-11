@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"7link.com/platform/internal/iam/organization/query"
 	"7link.com/platform/internal/infra/guid"
 	goosex "7link.com/platform/pkg/extension/goose"
 	"gorm.io/gorm"
@@ -20,6 +21,7 @@ func ErasePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, id guid
 	if err := goosex.ValidatePrefix(prefix); err != nil {
 		return err
 	}
-	return tx.WithContext(ctx).Table(prefix+"iam_invitations").Where("accepted_by = ?", id).
+	invitations := query.BindNames(prefix).Invitations.String()
+	return tx.WithContext(ctx).Table(invitations).Where("accepted_by = ?", id).
 		Updates(map[string]any{"email": "", "email_key": "", "updated_at": now}).Error
 }
