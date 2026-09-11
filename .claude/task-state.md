@@ -9,13 +9,11 @@ P4a/b/c 拼表名清理 → P5 注入连接器 → P6 门禁收紧；PD 文档�
 用户确认的路线：**跨模块取表名一律走窄接口/注入**，不放宽架构测试、不放宽依赖全序（D37）。
 
 ## Current Phase
-BLOCKED —— P0–P5 全部完成、验证并**已推送到 `origin/IAM`（HEAD `b24aa5a`）**。
-P5「拥有者把表名集合注入给消费者」6/6 对完成（另 4 对结构性不可做）；P4b 契约已随 `85ebe5f` 提交。
-**P4c 被一个架构决策阻塞**（见 Next Action），未开工。
+BLOCKED→READY —— P0–P5 已完成、验证并推送到 `origin/IAM`（HEAD `9295570`）。
+P4c 未开工，但**受阻范围已修正为个位数**（见 Next Action）。
 
 ## Current Step
-P5 已提交 `b24aa5a` 并推送（提交时曾漏暂存 `tests/migration/iam_core_test.go`，已 amend 修正；
-远端当时尚未有该提交，amend 安全）。**P4c 未开工**，原因见 Next Action。
+P4c 可行性分析已做过两轮修正；下一步是**用实测代替推演**（见 Next Action）。
 
 ## Overall Progress
 - [x] **P0 门禁 + 冻结基线**：`tests/architecture/query_gate_test.go`（5 条 AST 规则）+
@@ -239,16 +237,37 @@ P5 已提交 `b24aa5a` 并推送（提交时曾漏暂存 `tests/migration/iam_co
    `audit.EventReader`）在允许方向的剩余站点均只 1 处且嵌在 JOIN 内，收益不足 —— **如实跳过**。
 
 ## Next Action
-**P4c 开工前需用户决策**：把跨模块连接器/能力类型放在 `pkg/`（走 `isStableWiringCapability` 白名单）是否可接受？
-- 若可接受：为 `identity←authn`、`oauth←organization`、`governance←organization`、`federation←organization`
-  这 4 对在 `pkg/` 下声明能力类型，两侧都用它，绕开模块间反向 import；然后 P4c 才能处理这些 JOIN。
-- 若不可接受：这 4 对的表名只能保持现状，P4c 的可做范围仅剩"已建连接器的 6 对"中的残余站点。
-- 已完成的 P5 为可行方向建好了 6 个连接器（共注入 18 个表名）。
+### P4c 的正确起手（已被两轮修正，不要再从头推演）
+**关键认知**：P5 用的「连接器」（消费者声明类型、拥有者 import 并填充）**只在消费者注册在拥有者之前时才必需**。
+消费者注册在拥有者**之后**时，拥有者直接 `Provide` 一个"提供自己表名"的能力、消费者 `Resolve` 即可——普通 provider 关系，不需要连接器，也不需要 `pkg/`。
 
-其余待用户定：Codeup 提交邮箱与推送账号不一致（非本次引入）；覆盖率余量约 0.1pp；
-UAT 环境（远端 MySQL 容器 + 本机 API/控制台）是否清理。
+**修正后的受阻判断**（`organization.ModuleDependencies()` 实测 = `[platformi18n, guid, audit, core, authn, identity]`，不含 governance/oauth/federation）：
+
+| 对 | 站点(非测试) | 判断 |
+|---|---|---|
+| `governance←organization` | 1 | ✅ 可行：governance 加依赖（注册在后、无环） |
+| `federation←organization` | 3 | ✅ 可行：同上 |
+| `oauth←organization` | 1 | ✅ 可行：同上 |
+| `identity←authn` | 4 | ⛔ **真受阻**：authn 已依赖 identity，反向再加即成环，`Activate` 启动失败 |
+
+**真正的受阻集合很可能只有 4 处**（identity 读 authn 的 `iam_credentials`/`iam_email_verification_tokens`/`iam_password_recovery_tokens`/`iam_sessions`）。
+
+### 执行顺序（用实测代替推演）
+1. 给 `organization`（及需要的 `authn`）加"提供自己 TableSet 的 capability"，`ProvideServices` 里 `module.Provide`。
+2. `governance`/`federation`/`oauth` 在 `InjectServices` 里 `Resolve`，并在 `ModuleDependencies()` **return 表达式**里声明 organization。
+3. **先跑 `make ci`**：`Registry.Activate` 是启动期 fail-fast，方向或环错了 lifecycle 用例立刻红——**不要再靠推演**（本会话在这一点上推演错过三次）。
+4. 成功的对逐条把表名改成解析来的名字；跑门禁 + 下调账本 budget。
+5. 最后单独处理 `identity←authn` 的 4 处：若确实无解，**如实保留在基线里**，并把 P6 的目标从"budget 归零"改为"降到该值"。
+
+### 用户约束（本轮明确）
+- **不要把带 SQL 的东西放进 `pkg/`。** 若某对最终必须走中立位置，优先考虑**放在某个业务模块下的独立子目录**（前提：两侧 import 它不构成环），而不是 `pkg/`。
+
+### 本会话的教训（写给下一个上下文，避免重犯）
+在这个边界上我推演错过三次：(1) 只按 import 依赖方向判，漏了**注册顺序**；(2) 把连接器当成唯一机制，得出"4 对全不可行"；(3) 站点计数被测试文件与坏 grep 撑大。
+**结论：这一层的正确性只能由 `Registry.Activate` 的启动期检查确证，不要用推理代替。**
 
 ## Last Checkpoint
+2026-09-11 P0–P5 已推送（`0da7f6e..9295570`，9 个提交）；P4c 受阻范围修正为约 4 处。
 2026-09-11 **P5 六对连接器全部完成并实测**：`go build ./...` EXIT=0、`go test ./internal/... -count=1`
 无 FAIL、`make ci` **EXIT=0**（总覆盖率 **90.1%**，全模块 ≥90.0%）、`make test-mysql8-run` **EXIT=0**
 （schema lock 219 文件未变、72 IAM 表、33 跨模块 FK）、`gofmt -l internal pkg` 空、
