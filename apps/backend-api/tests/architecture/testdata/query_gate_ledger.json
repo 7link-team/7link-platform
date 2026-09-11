@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "budget": 581,
+  "budget": 572,
   "rebaseline": "initial freeze at the P0 commit",
   "entries": [
     {
@@ -700,10 +700,6 @@
       "count": 3
     },
     {
-      "key": "naked-table-literal:78ea0c76dd7bb78f",
-      "count": 3
-    },
-    {
       "key": "naked-table-literal:79a6cb376053a5d2",
       "count": 3
     },
@@ -841,7 +837,7 @@
     },
     {
       "key": "naked-table-literal:d64029d91df9e2fd",
-      "count": 9
+      "count": 3
     },
     {
       "key": "naked-table-literal:d7e7b37e67a362ca",

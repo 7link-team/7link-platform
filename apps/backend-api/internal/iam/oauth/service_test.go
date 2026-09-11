@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/oauth/model"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
@@ -63,10 +64,21 @@ func exchangeCode(t *testing.T, harness *oauthHarness, client Client, code strin
 
 func TestNewOAuthServiceRequiresDependencies(t *testing.T) {
 	harness := newOAuthHarness(t, "")
-	assert.Panics(t, func() { NewService(nil, harness.web, newOAuthTestIDs(0), harness.repo.appender, ConsentConfig{}) })
-	assert.Panics(t, func() { NewService(harness.runtime, nil, newOAuthTestIDs(0), harness.repo.appender, ConsentConfig{}) })
-	assert.Panics(t, func() { NewService(harness.runtime, harness.web, nil, harness.repo.appender, ConsentConfig{}) })
-	assert.Panics(t, func() { NewService(harness.runtime, harness.web, newOAuthTestIDs(0), nil, ConsentConfig{}) })
+	assert.Panics(t, func() {
+		NewService(nil, harness.web, newOAuthTestIDs(0), harness.repo.appender, harness.repo.principals, ConsentConfig{})
+	})
+	assert.Panics(t, func() {
+		NewService(harness.runtime, nil, newOAuthTestIDs(0), harness.repo.appender, harness.repo.principals, ConsentConfig{})
+	})
+	assert.Panics(t, func() {
+		NewService(harness.runtime, harness.web, nil, harness.repo.appender, harness.repo.principals, ConsentConfig{})
+	})
+	assert.Panics(t, func() {
+		NewService(harness.runtime, harness.web, newOAuthTestIDs(0), nil, harness.repo.principals, ConsentConfig{})
+	})
+	assert.Panics(t, func() {
+		NewService(harness.runtime, harness.web, newOAuthTestIDs(0), harness.repo.appender, identity.PrincipalStateStore{}, ConsentConfig{})
+	})
 }
 
 func TestClientManagementIsTenantScopedAndAudited(t *testing.T) {

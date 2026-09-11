@@ -9,10 +9,11 @@ P4a/b/c 拼表名清理 → P5 注入连接器 → P6 门禁收紧；PD 文档�
 用户确认的路线：**跨模块取表名一律走窄接口/注入**，不放宽架构测试、不放宽依赖全序（D37）。
 
 ## Current Phase
-IMPLEMENTATION —— P0/P1/P2/P3 已完成并推送；**P4a 代码完成、8 道验证全绿，未提交**
+IMPLEMENTATION —— P0/P1/P2/P3/P4a 已完成；**P4b 第一个契约（identity.PrincipalStateStore）完成并全量验证通过，未提交**
 
 ## Current Step
-P4a 自有表字面量清理完成（21 文件 + 账本）。下一步：提交 P4a，然后进入 P4b（跨模块单表）
+P4b 已完成一对：owner=identity、契约 `identity.PrincipalStateStore`、消费方 oauth + federation。
+下一步：提交，再按同一形态评估下一个契约（见 Remaining Work 的取舍结论）
 
 ## Overall Progress
 - [x] **P0 门禁 + 冻结基线**：`tests/architecture/query_gate_test.go`（5 条 AST 规则）+
@@ -71,7 +72,19 @@ P4a 自有表字面量清理完成（21 文件 + 账本）。下一步：提交 
       `provisioning/metrics.go` 11 条 `iam_scim_*` Prometheus 指标名（非表，改名=可观测业务语义变化）。
       两处签名收窄为 `gormx.TableName`（`authn/rewrap.go` 的 `principalSealedStore`/`countDerived`，
       原先内部再拼一次 `repo.table(name)`，传已绑定名会**双重加前缀**）。
-- [ ] P4b/c 跨模块单表 / 跨模块 JOIN 拼表名清理（他模块表 102 处）
+- [~] **P4b 跨模块单表 → 窄接口契约**：已完成 1 对（见下），其余对经逐站点核查后**判定不可做或收益不足**，
+      结论已写入 Remaining Work。剩余可做的只有 P4c（跨模块 JOIN，需 owner 发布 SQL 片段 = 过度设计）
+- [x] **P4b 第一对：`identity.PrincipalStateStore`**（owner=identity，根包 `principalstate.go`）
+      - 形态：函数结构体 `{Lock, LockActive, Status}`，每个字段收 `ctx, *gorm.DB, guid.ID`，**用调用方的事务与快照**
+        （与 `core.RoleGrantStore` 同形）；由 `module.Provide[T]` 提供，消费方 `InjectServices` 里 `module.Resolve[T]`
+      - 契约经 `NewService(...)` 参数传入（与 `governance.NewService(..., grants core.RoleGrantStore, ...)` 一致），
+        不用"构造后再赋值字段"——后者在测试里会退化成 nil 函数指针 panic
+      - 消费方 2 个、替换站点 3 处：oauth `tenant_exit.go:lockGrantAdmission`（lock + status 两条）、
+        federation `repository.go:verifyPrincipalAndMember`（principal status 一条）
+      - 新增门禁要求：两个消费方 `ModuleDependencies()` 的 return 表达式里声明 `identity.Name`（oauth 原缺）
+      - 全覆盖：`internal/iam/identity/principalstate_test.go` 5 个测试（前缀绑定 / 找不到 / 表不可读 /
+        两种锁不改行 / 调用方事务可见性 / 未接线返回 ErrUnavailable）
+- [ ] P4b/c 剩余跨模块单表 / 跨模块 JOIN 拼表名清理
 - [ ] P5 表名集合注入连接器（6–9 个）
 - [ ] P6 门禁收紧（budget 降到 SQL 类 = 0）
 - [ ] PD 全仓文档体检（六批）
@@ -147,13 +160,35 @@ P4a 自有表字面量清理完成（21 文件 + 账本）。下一步：提交 
     P2 的 authorization CTE。因此 **不需要** `IAM_PERFORMANCE_UPDATE=plans`，
     也没有新旧 EXPLAIN 可 diff，自然不存在新增全扫。
 
+## Remaining Work（P4b 的逐站点结论，实测过，不是推测）
+1. **`authn → identity` 不可做（硬约束）**：`composeIAMRuntimeModules` 的注册序是
+   audit→core→authn→**identity**→organization→oauth→provisioning→governance→federation，
+   `pkg/module/registry.go:128` 要求 `dependencyIndex < index`，**authn 声明 identity 会在 `Activate` 直接启动失败**。
+   authn 现在能 `Resolve[identity.RegistrationPrincipalCreator]` 只因为门禁的 `isStableWiringCapability`
+   白名单（禁止改 `tests/architecture`）。→ 只能等 P5 的表名集合注入。
+2. **`provisioning → identity`／`provisioning → organization` 不可做**：剩下的站点全是多表 JOIN
+   （`repository.go:534` principals JOIN、`:585` groups JOIN、`:595` group_members 四表 JOIN、
+   `filter.go:227` EXISTS 子查询片段）。要转换就得让 owner 发布 SQL 片段 → 语句结构与文本都变（违反铁律 4），
+   且属"为一个用例造框架"（违反铁律 5）。
+3. **`oauth → identity` 剩余 1 处**（`repository.go:606` service-account JOIN）同上，属 P4c。
+4. 其余建议契约（`core.RoleReader`、`organization.DirectoryReader`、`authn.CredentialReader`、
+   `audit.EventReader`）在允许方向的剩余站点均只 1 处且嵌在 JOIN 内，收益不足 —— **如实跳过**。
+
 ## Next Action
-提交 P4a（21 个源文件 + 账本）。然后进入 **P4b**：他模块单表访问改窄接口注入，
-不得跨模块 import `query`/`model`/`dbgen`；`core` 反向依赖下游会让 `Registry.Activate` 的全序不可满足。
-每阶段改完都要 `QUERY_GATE_UPDATE=1 … -run TestQueryGate` 刷新后**手工下调** `budget`（当前 581）。
+提交本次 P4b（12 个文件 + 2 个新文件 + 账本）。之后若要推进 P4b，先重新核对
+`Remaining Work` 的第 1 条硬约束是否已被 P5 解除；否则直接从 P4c/P5 继续。
+每阶段改完都要 `QUERY_GATE_UPDATE=1 … -run TestQueryGate` 刷新后**手工下调** `budget`（当前 572）。
 若刷新时报 "exceed the frozen budget"，说明引入了新违规，去修代码而不是用 `QUERY_GATE_REBASELINE` 掩盖。
 
 ## Last Checkpoint
+2026-09-11 **P4b 第一对（`identity.PrincipalStateStore`）完成并实测**：`go build ./...` EXIT=0、
+`go test ./internal/... -count=1` **51 包 ok / 0 FAIL**、`make ci` **EXIT=0**（总覆盖率 **90.1%**，
+oauth 90.2 / federation 91.0 / identity 90.5）、`make test-mysql8-run` **EXIT=0**（真实 MySQL 8.4，
+`TestIAMPerformanceExternalDatabase` 指纹 PASS、schema lock 219 文件未变）、`gofmt -l internal pkg` 空、
+账本 budget **581→572**（`handwritten-sql` 仍 7 key/15 处）、`git status` 仅本次受控改动、无临时产物。
+逐语句 SQL 实测（gorm DryRun + callback 钩子）：oauth LOCK/STATUS 与 HEAD **逐字符相同**；
+federation PRINCIPAL 由 `Scan` 改为 `Take`，**多一个 `LIMIT 1`**（主键等值查找，语义等价，已如实报告）。
+
 2026-09-11 P4a 完成并实测：`go build ./...` 0、`go test ./internal/... -count=1` 51 ok/0 FAIL、
 `make ci` **EXIT=0**（总覆盖率 **90.1%**）、`make test-mysql8-run` **EXIT=0**（`TestIAMPerformanceExternalDatabase`
 指纹比对 PASS、schema lock 219 文件未变）、`gofmt -l internal pkg` 空、账本 budget **736→581**

@@ -165,9 +165,9 @@ func openError(what string, err error) error {
 	}
 }
 
-func NewService(runtime *appenv.Runtime, appender audit.Appender, identities identity.IdentityProvisioner, authn authnextWebService, cfg Config, keys *keyringx.Keyring, ids guid.Source, outbound httpx.Policy) *Service {
-	if runtime == nil || appender == nil || identities == nil || authn == nil || ids == nil {
-		panic("federation service requires database, audit appender, identity provisioner, authentication service, and id generator")
+func NewService(runtime *appenv.Runtime, appender audit.Appender, identities identity.IdentityProvisioner, principals identity.PrincipalStateStore, authn authnextWebService, cfg Config, keys *keyringx.Keyring, ids guid.Source, outbound httpx.Policy) *Service {
+	if runtime == nil || appender == nil || identities == nil || principals.Status == nil || authn == nil || ids == nil {
+		panic("federation service requires database, audit appender, identity provisioner, principal state store, authentication service, and id generator")
 	}
 	timeout := cfg.HTTPTimeout
 	if timeout <= 0 {
@@ -182,6 +182,7 @@ func NewService(runtime *appenv.Runtime, appender audit.Appender, identities ide
 		stateTTL = 10 * time.Minute
 	}
 	repo := NewRepository(runtime)
+	repo.principals = principals
 	return &Service{
 		repo: repo, audit: appender, identities: identities, authn: authn,
 		keys: keys, stateTTL: stateTTL, clockSkew: skew, now: time.Now,

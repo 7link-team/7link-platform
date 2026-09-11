@@ -70,9 +70,8 @@ func (s *Service) revokePrincipalGrantsOn(ctx context.Context, tx *gorm.DB, prin
 // after processing, including after a later administrator restoration.
 func (repo *Repository) lockGrantAdmission(ctx context.Context, claims *authnext.Claims, tenantID guid.ID) error {
 	db := repo.writer().WithContext(ctx)
-	locked := db.Table(repo.table("iam_principals")).Where("id = ?", claims.PrincipalID).Update("updated_at", gorm.Expr("updated_at"))
-	if locked.Error != nil {
-		return locked.Error
+	if err := repo.principals.Lock(ctx, db, claims.PrincipalID); err != nil {
+		return err
 	}
 	// These must be current reads even when an outer consent transaction has
 	// already established a MySQL REPEATABLE READ snapshot.
@@ -82,15 +81,11 @@ func (repo *Repository) lockGrantAdmission(ctx context.Context, claims *authnext
 	// Clauses materializes a statement; clone it for each table query so the
 	// principal's id predicate cannot leak into membership/credential reads.
 	db = db.Session(&gorm.Session{})
-	var principal struct{ Status string }
-	err := db.Table(repo.table("iam_principals")).Select("status").Where("id = ?", claims.PrincipalID).Take(&principal).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return ErrInvalidRequest
-	}
+	status, found, err := repo.principals.Status(ctx, db, claims.PrincipalID)
 	if err != nil {
 		return err
 	}
-	if principal.Status != "active" {
+	if !found || status != "active" {
 		return ErrInvalidRequest
 	}
 	var member struct{ Status string }

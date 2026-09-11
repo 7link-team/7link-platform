@@ -209,7 +209,7 @@ func TestGrantWithdrawalWinsAgainstInFlightCodeAndRefresh(t *testing.T) {
 			client, secret := grantClient(t, h, "Application")
 			initial := grantTokens(t, h, client, secret)
 			code := grantCode(t, h, client)
-			peer := NewService(h.runtime, h.service.authn, newOAuthTestIDs(20000), h.repo.appender, h.service.consent)
+			peer := NewService(h.runtime, h.service.authn, newOAuthTestIDs(20000), h.repo.appender, h.repo.principals, h.service.consent)
 			peer.now = h.service.now
 			paused := &pausedGrantWeb{WebService: h.service.authn, signed: make(chan struct{}), resume: make(chan struct{})}
 			h.service.authn = paused

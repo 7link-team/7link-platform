@@ -27,6 +27,7 @@ type Module struct {
 	ids                     guid.Source
 	appender                audit.Appender
 	identities              identity.IdentityProvisioner
+	principals              identity.PrincipalStateStore
 	authn                   authn.WebService
 	accountProofs           authn.ReauthenticationConsumer
 	accountReauthentication authn.FederatedReauthentication
@@ -83,11 +84,15 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve federation identity provisioner: %w", err)
 	}
+	principals, err := module.Resolve[identity.PrincipalStateStore](services)
+	if err != nil {
+		return fmt.Errorf("resolve federation principal state store: %w", err)
+	}
 	authenticator, err := module.Resolve[authn.WebService](services)
 	if err != nil {
 		return fmt.Errorf("resolve federation authentication service: %w", err)
 	}
-	m.registrar, m.ids, m.appender, m.identities, m.authn = registrar, ids, appender, identities, authenticator
+	m.registrar, m.ids, m.appender, m.identities, m.principals, m.authn = registrar, ids, appender, identities, principals, authenticator
 	return nil
 }
 
@@ -99,8 +104,9 @@ func (m *Module) Initialize(context.Context) error {
 		return fmt.Errorf("register federation i18n: %w", err)
 	}
 	if m.runtime == nil || m.runtime.Database() == nil || m.runtime.Database().Write() == nil ||
-		m.registrar == nil || m.ids == nil || m.appender == nil || m.identities == nil || m.authn == nil {
-		return errors.New("initialize federation: runtime database, authz registrar, id generator, audit appender, identity provisioner, and authentication service are required")
+		m.registrar == nil || m.ids == nil || m.appender == nil || m.identities == nil || m.authn == nil ||
+		m.principals.Status == nil {
+		return errors.New("initialize federation: runtime database, authz registrar, id generator, audit appender, identity provisioner, principal state store, and authentication service are required")
 	}
 	keys, err := ResolveKeyring(m.config)
 	if err != nil {
@@ -110,7 +116,7 @@ func (m *Module) Initialize(context.Context) error {
 	if err != nil {
 		return fmt.Errorf("resolve federation outbound policy: %w", err)
 	}
-	m.service = NewService(m.runtime, m.appender, m.identities, m.authn, m.config, keys, m.ids, outbound)
+	m.service = NewService(m.runtime, m.appender, m.identities, m.principals, m.authn, m.config, keys, m.ids, outbound)
 	m.service.accountProofs, m.service.accountReauthentication = m.accountProofs, m.accountReauthentication
 	return nil
 }

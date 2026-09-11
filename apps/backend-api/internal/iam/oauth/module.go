@@ -35,12 +35,13 @@ type Config struct {
 
 type Module struct {
 	*Service
-	config    Config
-	runtime   *appenv.Runtime
-	registrar *authz.Registrar
-	authn     authn.WebService
-	ids       guid.Source
-	appender  audit.Appender
+	config     Config
+	runtime    *appenv.Runtime
+	registrar  *authz.Registrar
+	authn      authn.WebService
+	principals identity.PrincipalStateStore
+	ids        guid.Source
+	appender   audit.Appender
 }
 
 // NewModule builds the OAuth module. Shared business and infrastructure
@@ -57,7 +58,7 @@ func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
 func (*Module) ModuleName() string { return Name }
 
 func (*Module) ModuleDependencies() []string {
-	return []string{platformi18n.Name, guid.Name, audit.Name, authn.Name}
+	return []string{platformi18n.Name, guid.Name, audit.Name, identity.Name, authn.Name}
 }
 
 // ProvideServices exposes grant validation without making authn depend on OAuth.
@@ -103,10 +104,15 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve OAuth audit appender: %w", err)
 	}
+	principals, err := module.Resolve[identity.PrincipalStateStore](services)
+	if err != nil {
+		return fmt.Errorf("resolve OAuth principal state store: %w", err)
+	}
 	m.registrar = registrar
 	m.authn = authenticator
 	m.ids = ids
 	m.appender = appender
+	m.principals = principals
 	return nil
 }
 
@@ -114,10 +120,10 @@ func (m *Module) Initialize(context.Context) error {
 	if err := oauthi18n.Register(); err != nil {
 		return fmt.Errorf("register OAuth i18n: %w", err)
 	}
-	if m == nil || m.runtime == nil || m.registrar == nil || m.authn == nil || m.ids == nil || m.appender == nil {
-		return errors.New("initialize OAuth: runtime, authz registrar, authentication, id generator, and audit appender are required")
+	if m == nil || m.runtime == nil || m.registrar == nil || m.authn == nil || m.ids == nil || m.appender == nil || m.principals.Status == nil {
+		return errors.New("initialize OAuth: runtime, authz registrar, authentication, id generator, audit appender, and principal state store are required")
 	}
-	m.Service = NewService(m.runtime, m.authn, m.ids, m.appender, m.config.Consent)
+	m.Service = NewService(m.runtime, m.authn, m.ids, m.appender, m.principals, m.config.Consent)
 	// Parse the consent screen now: a misconfigured template file should stop
 	// the process here rather than surface as a 500 on someone's first login.
 	if _, err := m.Service.consentTemplate(); err != nil {

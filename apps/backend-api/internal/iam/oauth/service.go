@@ -17,6 +17,7 @@ import (
 
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/authn"
+	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/oauth/model"
 	"7link.com/platform/internal/iam/oauth/query"
 	"7link.com/platform/internal/infra/guid"
@@ -78,13 +79,16 @@ func NewService(
 	authenticator authn.WebService,
 	ids guid.Source,
 	appender audit.Appender,
+	principals identity.PrincipalStateStore,
 	consent ConsentConfig,
 ) *Service {
-	if runtime == nil || authenticator == nil || ids == nil || appender == nil {
-		panic("OAuth service requires runtime, authentication, id generator, and audit appender")
+	if runtime == nil || authenticator == nil || ids == nil || appender == nil || principals.Status == nil {
+		panic("OAuth service requires runtime, authentication, id generator, audit appender, and principal state store")
 	}
+	repo := NewRepository(runtime, ids, appender)
+	repo.principals = principals
 	return &Service{
-		repo: NewRepository(runtime, ids, appender), authn: authenticator,
+		repo: repo, authn: authenticator,
 		consent: consent.normalized(), consentPage: &consentRenderer{}, now: time.Now,
 	}
 }

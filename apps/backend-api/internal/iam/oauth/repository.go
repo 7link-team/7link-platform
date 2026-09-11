@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/oauth/model"
 	"7link.com/platform/internal/iam/oauth/query"
 	"7link.com/platform/internal/infra/guid"
@@ -20,11 +21,12 @@ var errRepositoryUnavailable = errors.New("OAuth repository unavailable")
 // Repository persists OAuth state through the runtime's current writer. A
 // transactional clone pins one writer for the complete protocol operation.
 type Repository struct {
-	runtime  *appenv.Runtime
-	ids      guid.Source
-	appender audit.Appender
-	db       *gorm.DB
-	inTx     bool
+	runtime    *appenv.Runtime
+	ids        guid.Source
+	appender   audit.Appender
+	principals identity.PrincipalStateStore
+	db         *gorm.DB
+	inTx       bool
 }
 
 func NewRepository(runtime *appenv.Runtime, ids guid.Source, appender audit.Appender) *Repository {

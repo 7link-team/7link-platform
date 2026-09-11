@@ -155,6 +155,7 @@ func TestFederationModuleDependencyResolutionAndLifecycle(t *testing.T) {
 	appender := audit.Appender(func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil })
 	require.NoError(t, platformmodule.Provide[audit.Appender](services, appender))
 	require.NoError(t, platformmodule.Provide[identity.IdentityProvisioner](services, env.identity))
+	require.NoError(t, platformmodule.Provide[identity.PrincipalStateStore](services, federationPrincipalState(t, env.runtime)))
 	require.NoError(t, platformmodule.Provide[authn.WebService](services, env.web))
 	require.NoError(t, services.Seal())
 	require.NoError(t, instance.InjectServices(services))
@@ -186,6 +187,9 @@ func TestFederationModuleRejectsMissingDependenciesAndInvalidState(t *testing.T)
 			require.NoError(t, platformmodule.Provide[identity.IdentityProvisioner](services, env.identity))
 		}
 		if include > 3 {
+			require.NoError(t, platformmodule.Provide[identity.PrincipalStateStore](services, federationPrincipalState(t, env.runtime)))
+		}
+		if include > 4 {
 			require.NoError(t, platformmodule.Provide[authn.WebService](services, env.web))
 		}
 		require.NoError(t, services.Seal())
@@ -193,7 +197,8 @@ func TestFederationModuleRejectsMissingDependenciesAndInvalidState(t *testing.T)
 	}
 	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(1)), "audit appender")
 	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(2)), "identity provisioner")
-	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(3)), "authentication service")
+	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(3)), "principal state store")
+	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(4)), "authentication service")
 
 	var nilModule *Module
 	assert.ErrorContains(t, nilModule.Initialize(t.Context()), "module is required")
@@ -203,6 +208,7 @@ func TestFederationModuleRejectsMissingDependenciesAndInvalidState(t *testing.T)
 	badKey := newInstance()
 	badKey.registrar = registrar
 	badKey.ids, badKey.appender, badKey.identities, badKey.authn = env.ids, func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil }, env.identity, env.web
+	badKey.principals = federationPrincipalState(t, env.runtime)
 	badKey.config.EncryptionKey = "short"
 	assert.ErrorContains(t, badKey.Initialize(t.Context()), "encryption key")
 }
@@ -217,6 +223,7 @@ func federationRuntimeModule(t *testing.T) *Module {
 	require.NoError(t, platformmodule.Provide[guid.Source](services, env.ids))
 	require.NoError(t, platformmodule.Provide[audit.Appender](services, func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil }))
 	require.NoError(t, platformmodule.Provide[identity.IdentityProvisioner](services, env.identity))
+	require.NoError(t, platformmodule.Provide[identity.PrincipalStateStore](services, federationPrincipalState(t, env.runtime)))
 	require.NoError(t, platformmodule.Provide[authn.WebService](services, env.web))
 	require.NoError(t, services.Seal())
 	require.NoError(t, instance.InjectServices(services))

@@ -123,6 +123,9 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[TenantOwnerLookup](services, m.tenantOwnerLookup()); err != nil {
 		return fmt.Errorf("provide identity tenant owner lookup: %w", err)
 	}
+	if err := module.Provide[PrincipalStateStore](services, m.principalStateStore()); err != nil {
+		return fmt.Errorf("provide identity principal state store: %w", err)
+	}
 	return nil
 }
 

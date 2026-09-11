@@ -232,7 +232,10 @@ func newOAuthHarness(t *testing.T, prefix string) *oauthHarness {
 			"event_type": event.EventType, "target_id": event.TargetID,
 		}).Error
 	})
-	harness.service = NewService(harness.runtime, harness.web, newOAuthTestIDs(1000), appender, ConsentConfig{})
+	harness.service = NewService(
+		harness.runtime, harness.web, newOAuthTestIDs(1000), appender,
+		resolveIdentityPrincipalState(t, harness.runtime), ConsentConfig{},
+	)
 	harness.service.now = func() time.Time { return oauthTestNow }
 	harness.repo = harness.service.repo
 	return harness

@@ -28,6 +28,7 @@ import (
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
 	gormx "7link.com/platform/pkg/extension/gorm"
+	"7link.com/platform/pkg/module"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -302,9 +303,21 @@ func newFederationEnvironment(t *testing.T, prefixes ...string) *federationEnvir
 		env.events = append(env.events, event)
 		return nil
 	})
-	env.service = NewService(runtime, appender, env.identity, env.web, Config{HTTPTimeout: 5 * time.Second, ClockSkew: 30 * time.Second, StateTTL: 10 * time.Minute}, env.keys, env.ids, testOutboundPolicy())
+	env.service = NewService(runtime, appender, env.identity, federationPrincipalState(t, runtime), env.web, Config{HTTPTimeout: 5 * time.Second, ClockSkew: 30 * time.Second, StateTTL: 10 * time.Minute}, env.keys, env.ids, testOutboundPolicy())
 	env.idp = newTestIDP(t)
 	return env
+}
+
+// federationPrincipalState resolves the capability the way module wiring does,
+// so the environment carries the same store production provides.
+func federationPrincipalState(t *testing.T, runtime *appenv.Runtime) identity.PrincipalStateStore {
+	t.Helper()
+	services := module.NewServices()
+	require.NoError(t, identity.NewModule(runtime, identity.Config{}).ProvideServices(services))
+	require.NoError(t, services.Seal())
+	store, err := module.Resolve[identity.PrincipalStateStore](services)
+	require.NoError(t, err)
+	return store
 }
 
 func insertRole(t *testing.T, db *gorm.DB, tenant, role string) {
@@ -808,20 +821,24 @@ func TestFederationHelpersAndConstructorGuards(t *testing.T) {
 	assert.Error(t, err)
 
 	config := Config{}
+	store := env.service.repo.principals
 	assert.Panics(t, func() {
-		NewService(nil, env.service.audit, env.identity, env.web, config, env.keys, env.ids, testOutboundPolicy())
+		NewService(nil, env.service.audit, env.identity, store, env.web, config, env.keys, env.ids, testOutboundPolicy())
 	})
 	assert.Panics(t, func() {
-		NewService(env.runtime, nil, env.identity, env.web, config, env.keys, env.ids, testOutboundPolicy())
+		NewService(env.runtime, nil, env.identity, store, env.web, config, env.keys, env.ids, testOutboundPolicy())
 	})
 	assert.Panics(t, func() {
-		NewService(env.runtime, env.service.audit, nil, env.web, config, env.keys, env.ids, testOutboundPolicy())
+		NewService(env.runtime, env.service.audit, nil, store, env.web, config, env.keys, env.ids, testOutboundPolicy())
 	})
 	assert.Panics(t, func() {
-		NewService(env.runtime, env.service.audit, env.identity, nil, config, env.keys, env.ids, testOutboundPolicy())
+		NewService(env.runtime, env.service.audit, env.identity, store, nil, config, env.keys, env.ids, testOutboundPolicy())
 	})
 	assert.Panics(t, func() {
-		NewService(env.runtime, env.service.audit, env.identity, env.web, config, env.keys, nil, testOutboundPolicy())
+		NewService(env.runtime, env.service.audit, env.identity, identity.PrincipalStateStore{}, env.web, config, env.keys, env.ids, testOutboundPolicy())
+	})
+	assert.Panics(t, func() {
+		NewService(env.runtime, env.service.audit, env.identity, store, env.web, config, env.keys, nil, testOutboundPolicy())
 	})
 }
 

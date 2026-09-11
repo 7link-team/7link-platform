@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/federation/model"
+	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	gormx "7link.com/platform/pkg/extension/gorm"
@@ -73,9 +74,10 @@ func (r *Repository) sweepReplayClaims(ctx context.Context) error {
 }
 
 type Repository struct {
-	runtime *appenv.Runtime
-	db      *gorm.DB
-	inTx    bool
+	runtime    *appenv.Runtime
+	principals identity.PrincipalStateStore
+	db         *gorm.DB
+	inTx       bool
 }
 
 func NewRepository(runtime *appenv.Runtime) *Repository {
@@ -286,12 +288,11 @@ func (r *Repository) grantDefaultRole(ctx context.Context, tenantID, roleID, pri
 }
 
 func (r *Repository) verifyPrincipalAndMember(ctx context.Context, tenantID, principalID guid.ID) error {
-	var status string
-	err := r.writer().WithContext(ctx).Table(r.table("iam_principals")).Select("status").Where("id = ?", principalID).Scan(&status).Error
+	status, found, err := r.principals.Status(ctx, r.writer(), principalID)
 	if err != nil {
 		return err
 	}
-	if status != "active" {
+	if !found || status != "active" {
 		return ErrPrincipalInactive
 	}
 	status = ""

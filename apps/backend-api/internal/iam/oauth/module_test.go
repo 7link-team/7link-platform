@@ -7,6 +7,7 @@ import (
 
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/authn"
+	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
@@ -21,6 +22,18 @@ import (
 
 func enabledModuleConfig() Config {
 	return Config{Config: module.Config{Enabled: true}}
+}
+
+// resolveIdentityPrincipalState resolves the capability the way module wiring
+// does, so a hand-built Module carries the same store production provides.
+func resolveIdentityPrincipalState(t *testing.T, runtime *appenv.Runtime) identity.PrincipalStateStore {
+	t.Helper()
+	services := module.NewServices()
+	require.NoError(t, identity.NewModule(runtime, identity.Config{}).ProvideServices(services))
+	require.NoError(t, services.Seal())
+	store, err := module.Resolve[identity.PrincipalStateStore](services)
+	require.NoError(t, err)
+	return store
 }
 
 func TestModuleActivationComesFromConfig(t *testing.T) {
@@ -88,7 +101,7 @@ func TestOAuthModuleDependenciesAndReadinessBeforeInitialize(t *testing.T) {
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
 	instance := NewModule(appenv.NewRuntime(appenv.NewIdentity("oauth-test", "1")), enabledModuleConfig())
 	assert.Equal(t, Name, instance.ModuleName())
-	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, authn.Name}, instance.ModuleDependencies())
+	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, identity.Name, authn.Name}, instance.ModuleDependencies())
 	assert.ErrorIs(t, instance.CheckHealth(t.Context()), ErrUnavailable)
 	_, api := humatest.New(t)
 	assert.ErrorContains(t, instance.RegisterHTTP(t.Context(), api), "service is unavailable")
@@ -114,6 +127,10 @@ func TestOAuthModuleResolvesDependenciesAndRegistersContract(t *testing.T) {
 			}
 			return module.Provide[authn.WebService](services, harness.web)
 		}},
+		&oauthDependencyProvider{
+			name:    identity.Name,
+			provide: identity.NewModule(harness.runtime, identity.Config{}).ProvideServices,
+		},
 		instance,
 	))
 	require.NoError(t, registry.Activate())
@@ -162,5 +179,6 @@ func TestOAuthModuleRefusesToStartWithAnUnusableConsentScreen(t *testing.T) {
 	instance.authn = harness.web
 	instance.ids = newOAuthTestIDs(7100)
 	instance.appender = harness.repo.appender
+	instance.principals = resolveIdentityPrincipalState(t, harness.runtime)
 	assert.ErrorContains(t, instance.Initialize(t.Context()), "initialize OAuth consent screen")
 }
