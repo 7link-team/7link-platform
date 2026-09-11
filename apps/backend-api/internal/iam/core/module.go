@@ -232,6 +232,12 @@ func (m *Module) roleGrantStore() RoleGrantStore {
 			}
 			return m.grants.Revoke(ctx, db, tenantID, requestID)
 		},
+		RoleGranted: func(ctx context.Context, db *gorm.DB, tenantID, roleID, principalID guid.ID, now time.Time) (bool, error) {
+			if m == nil || m.grants.RoleGranted == nil {
+				return false, ErrUnavailable
+			}
+			return m.grants.RoleGranted(ctx, db, tenantID, roleID, principalID, now)
+		},
 		RemovePermanent: func(ctx context.Context, db *gorm.DB, tenantID, roleID, principalID guid.ID, createdAt time.Time) (bool, error) {
 			if m == nil || m.grants.RemovePermanent == nil {
 				return false, ErrUnavailable

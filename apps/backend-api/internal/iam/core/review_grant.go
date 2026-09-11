@@ -21,11 +21,57 @@ func NewRoleGrantStore(repository *Repository, guard AdministratorGuard) RoleGra
 	return RoleGrantStore{
 		Grant:                    repository.grantTemporaryRoleOn,
 		Revoke:                   repository.revokeTemporaryRoleOn,
+		RoleGranted:              repository.roleGrantedOn,
 		RemovePermanent:          repository.removePermanentRoleOn(guard),
 		RemoveGroupMembership:    protectDirectoryRemoval(guard, removeGroup),
 		RemovePositionMembership: protectDirectoryRemoval(guard, removePosition),
 		RemoveEntityRoleBinding:  protectEntityRoleRemoval(guard, repository.deleteEntityRoleBindingOn),
 	}
+}
+
+// roleGrantedOn reports whether a principal already holds a role, as a
+// permanent member or through an unexpired temporary grant. It is the read that
+// keeps an access request from opening for access the requester already has.
+//
+// The two counts are added rather than short-circuited on the first, because the
+// statement this replaces summed them: a UNION ALL is a bag union, so a role
+// held both ways contributed two rows there and contributes two here. The two
+// statements read through the caller's transaction, so the answer and the write
+// that follows it share one snapshot.
+func (r *Repository) roleGrantedOn(
+	ctx context.Context,
+	db *gorm.DB,
+	tenantID, roleID, principalID guid.ID,
+	now time.Time,
+) (bool, error) {
+	if db == nil || tenantID.Zero() || roleID.Zero() || principalID.Zero() || now.IsZero() {
+		return false, fmt.Errorf("check existing role grant: %w", ErrInvalidArgument)
+	}
+	tables, _, err := r.withDB(db).tables()
+	if err != nil {
+		return false, fmt.Errorf("check existing role grant: %w", err)
+	}
+	memberCount, err := tables.RoleMembers.WithContext(ctx).
+		Where(
+			tables.RoleMembers.TenantID.Eq(tenantID),
+			tables.RoleMembers.RoleID.Eq(roleID),
+			tables.RoleMembers.PrincipalID.Eq(principalID),
+		).Count()
+	if err != nil {
+		return false, fmt.Errorf("check existing role grant: %w", err)
+	}
+	grantCount, err := tables.TemporaryRoleGrants.WithContext(ctx).
+		Where(
+			tables.TemporaryRoleGrants.TenantID.Eq(tenantID),
+			tables.TemporaryRoleGrants.RoleID.Eq(roleID),
+			tables.TemporaryRoleGrants.PrincipalID.Eq(principalID),
+			tables.TemporaryRoleGrants.StartsAt.Lte(now),
+			tables.TemporaryRoleGrants.EndsAt.Gt(now),
+		).Count()
+	if err != nil {
+		return false, fmt.Errorf("check existing role grant: %w", err)
+	}
+	return memberCount+grantCount > 0, nil
 }
 
 func protectDirectoryRemoval(

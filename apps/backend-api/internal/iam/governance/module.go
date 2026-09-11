@@ -79,8 +79,9 @@ func (m *Module) Initialize(context.Context) error {
 		return errors.New("initialize governance: module is required")
 	}
 	if m.runtime == nil || m.registrar == nil || m.ids == nil || m.appender == nil || m.administrators == nil ||
-		m.grants.Grant == nil || m.grants.Revoke == nil || m.grants.RemovePermanent == nil ||
-		m.grants.RemoveGroupMembership == nil || m.grants.RemovePositionMembership == nil || m.grants.RemoveEntityRoleBinding == nil {
+		m.grants.Grant == nil || m.grants.Revoke == nil || m.grants.RoleGranted == nil ||
+		m.grants.RemovePermanent == nil || m.grants.RemoveGroupMembership == nil ||
+		m.grants.RemovePositionMembership == nil || m.grants.RemoveEntityRoleBinding == nil {
 		return errors.New("initialize governance: runtime, authz registrar, id generator, audit appender, role grant store, and administrator guard are required")
 	}
 	m.service = NewService(m.runtime, m.appender, m.grants, m.ids)

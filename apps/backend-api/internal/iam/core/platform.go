@@ -46,8 +46,25 @@ func validatePlatformPrincipal(principalID guid.ID) (guid.ID, error) {
 	return principalID, nil
 }
 
+// platformRecordKindRank orders the two record kinds the way the merged
+// statement's DESC clause did: under any collation this repository uses, 'grant'
+// sorts above 'full', so grants precede the full-administrator row of the same
+// principal.
+func platformRecordKindRank(kind string) int {
+	if kind == "grant" {
+		return 0
+	}
+	return 1
+}
+
 // ListPlatformAdministrators returns full and restricted platform
-// administrators from one database statement snapshot.
+// administrators. The statement this replaced read both sources at once and the
+// two arm queries below cannot, so the function runs them in one transaction,
+// which is what keeps the parts of that guarantee its callers rely on. A caller
+// already inside a transaction sees its own uncommitted writes on both arms; and
+// under an isolation level that gives a transaction a repeatable snapshot —
+// MySQL's default — a grant committed mid-read cannot land on one side of the
+// result but in neither arm.
 func (r *Repository) ListPlatformAdministrators(ctx context.Context) ([]PlatformAdministrator, error) {
 	return r.listPlatformAdministrators(ctx, nil)
 }
@@ -56,27 +73,56 @@ func (r *Repository) listPlatformAdministrators(
 	ctx context.Context,
 	principalID *guid.ID,
 ) ([]PlatformAdministrator, error) {
-	tables, db, err := r.tables()
-	if err != nil {
-		return nil, err
-	}
-	where, arguments := "", []any{}
-	if principalID != nil {
-		where = " WHERE principal_id = ?"
-		arguments = append(arguments, *principalID, *principalID)
-	}
 	rows := make([]platformAdministratorRow, 0)
-	err = db.WithContext(ctx).Raw(
-		"SELECT principal_id, 'full' AS record_kind, '' AS permission_code, created_at FROM "+
-			tables.PlatformAdministrators.TableName()+where+
-			" UNION ALL SELECT principal_id, 'grant' AS record_kind, permission_code, created_at FROM "+
-			tables.PlatformGrants.TableName()+where+
-			" ORDER BY principal_id ASC, record_kind DESC, permission_code ASC",
-		arguments...,
-	).Scan(&rows).Error
+	err := r.runInTx(ctx, func(repo *Repository) error {
+		tables, _, err := repo.tables()
+		if err != nil {
+			return err
+		}
+		fullQuery := tables.PlatformAdministrators.WithContext(ctx).
+			Select(tables.PlatformAdministrators.PrincipalID, tables.PlatformAdministrators.CreatedAt)
+		grantQuery := tables.PlatformGrants.WithContext(ctx).
+			Select(
+				tables.PlatformGrants.PrincipalID, tables.PlatformGrants.PermissionCode,
+				tables.PlatformGrants.CreatedAt,
+			)
+		if principalID != nil {
+			fullQuery = fullQuery.Where(tables.PlatformAdministrators.PrincipalID.Eq(*principalID))
+			grantQuery = grantQuery.Where(tables.PlatformGrants.PrincipalID.Eq(*principalID))
+		}
+		fullRows := make([]platformAdministratorRow, 0)
+		if err := fullQuery.Scan(&fullRows); err != nil {
+			return err
+		}
+		grantRows := make([]platformAdministratorRow, 0)
+		if err := grantQuery.Scan(&grantRows); err != nil {
+			return err
+		}
+		for index := range fullRows {
+			fullRows[index].RecordKind = "full"
+		}
+		for index := range grantRows {
+			grantRows[index].RecordKind = "grant"
+		}
+		rows = append(append(rows, fullRows...), grantRows...)
+		return nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list platform administrators: %w", err)
 	}
+	// Reproduces the ORDER BY the merged statement carried. principal_id and
+	// permission_code are read the way the statement compared them: a signed
+	// BIGINT, and a column declared COLLATE utf8mb4_bin / COLLATE "C", both of
+	// which order the same way Go compares int64 and string.
+	sort.SliceStable(rows, func(i, j int) bool {
+		if rows[i].PrincipalID != rows[j].PrincipalID {
+			return rows[i].PrincipalID < rows[j].PrincipalID
+		}
+		if rows[i].RecordKind != rows[j].RecordKind {
+			return platformRecordKindRank(rows[i].RecordKind) < platformRecordKindRank(rows[j].RecordKind)
+		}
+		return rows[i].PermissionCode < rows[j].PermissionCode
+	})
 
 	result := make([]PlatformAdministrator, 0, len(rows))
 	for _, row := range rows {

@@ -19,6 +19,9 @@ var (
 			return nil
 		},
 		Revoke: func(context.Context, *gorm.DB, guid.ID, guid.ID) (bool, error) { return false, nil },
+		RoleGranted: func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, time.Time) (bool, error) {
+			return false, nil
+		},
 		RemovePermanent: func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, time.Time) (bool, error) {
 			return false, nil
 		},

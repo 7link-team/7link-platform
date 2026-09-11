@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "budget": 749,
+  "budget": 736,
   "rebaseline": "initial freeze at the P0 commit",
   "entries": [
     {
@@ -153,10 +153,6 @@
     },
     {
       "key": "concatenated-table-name:5502f0ba59a5fc72",
-      "count": 1
-    },
-    {
-      "key": "concatenated-table-name:57eae0e33d210ad2",
       "count": 1
     },
     {
@@ -412,10 +408,6 @@
       "count": 1
     },
     {
-      "key": "concatenated-table-name:d842dd9caff7381d",
-      "count": 1
-    },
-    {
       "key": "concatenated-table-name:d9fa4032225e8f91",
       "count": 1
     },
@@ -488,23 +480,15 @@
       "count": 1
     },
     {
-      "key": "handwritten-sql:57d4332b29dc36b0",
-      "count": 1
-    },
-    {
       "key": "handwritten-sql:61b570db00a1dbc7",
       "count": 8
     },
     {
       "key": "handwritten-sql:62c6ad7c6dc52de0",
-      "count": 3
+      "count": 2
     },
     {
       "key": "handwritten-sql:723eddbdcf0c99b9",
-      "count": 1
-    },
-    {
-      "key": "handwritten-sql:80ac509e7a72846d",
       "count": 1
     },
     {
@@ -668,10 +652,6 @@
       "count": 3
     },
     {
-      "key": "naked-table-literal:364b0af0cfb79ae8",
-      "count": 2
-    },
-    {
       "key": "naked-table-literal:39f5ae4791c8cbd9",
       "count": 2
     },
@@ -686,10 +666,6 @@
     {
       "key": "naked-table-literal:40d4547b252b5c3c",
       "count": 5
-    },
-    {
-      "key": "naked-table-literal:4167ec24be29c980",
-      "count": 2
     },
     {
       "key": "naked-table-literal:41af42e094e02810",
@@ -1040,15 +1016,7 @@
       "count": 1
     },
     {
-      "key": "naked-table-literal:ce17349f247254ce",
-      "count": 2
-    },
-    {
       "key": "naked-table-literal:d042ad124ba3665c",
-      "count": 2
-    },
-    {
-      "key": "naked-table-literal:d0cb0ad3c72cba1b",
       "count": 2
     },
     {

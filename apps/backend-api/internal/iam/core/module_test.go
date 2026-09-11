@@ -92,6 +92,7 @@ func TestRoleGrantStoreProviderLateBindsInjectedCallbacks(t *testing.T) {
 	assert.ErrorIs(t, store.Grant(ctx, nil, 1, 2, 3, 4, 5, now, now.Add(time.Hour)), ErrUnavailable)
 	for _, remove := range []func() (bool, error){
 		func() (bool, error) { return store.Revoke(ctx, nil, 1, 2) },
+		func() (bool, error) { return store.RoleGranted(ctx, nil, 1, 2, 3, now) },
 		func() (bool, error) { return store.RemovePermanent(ctx, nil, 1, 2, 3, now) },
 		func() (bool, error) { return store.RemoveGroupMembership(ctx, nil, 1, 2, 3) },
 		func() (bool, error) { return store.RemovePositionMembership(ctx, nil, 1, 2, 3) },
@@ -110,6 +111,10 @@ func TestRoleGrantStoreProviderLateBindsInjectedCallbacks(t *testing.T) {
 			return nil
 		},
 		Revoke: func(context.Context, *gorm.DB, guid.ID, guid.ID) (bool, error) {
+			removeCalls++
+			return true, nil
+		},
+		RoleGranted: func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, time.Time) (bool, error) {
 			removeCalls++
 			return true, nil
 		},
@@ -134,6 +139,7 @@ func TestRoleGrantStoreProviderLateBindsInjectedCallbacks(t *testing.T) {
 	require.NoError(t, store.Grant(ctx, nil, 1, 2, 3, 4, 5, now, now.Add(time.Hour)))
 	for _, remove := range []func() (bool, error){
 		func() (bool, error) { return store.Revoke(ctx, nil, 1, 2) },
+		func() (bool, error) { return store.RoleGranted(ctx, nil, 1, 2, 3, now) },
 		func() (bool, error) { return store.RemovePermanent(ctx, nil, 1, 2, 3, now) },
 		func() (bool, error) { return store.RemoveGroupMembership(ctx, nil, 1, 2, 3) },
 		func() (bool, error) { return store.RemovePositionMembership(ctx, nil, 1, 2, 3) },
@@ -144,7 +150,7 @@ func TestRoleGrantStoreProviderLateBindsInjectedCallbacks(t *testing.T) {
 		assert.True(t, changed)
 	}
 	assert.Equal(t, 1, grantCalls)
-	assert.Equal(t, 5, removeCalls)
+	assert.Equal(t, 6, removeCalls)
 }
 
 func TestModulePublishesTheSameLiveAuthorizationEvaluator(t *testing.T) {

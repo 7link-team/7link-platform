@@ -89,8 +89,8 @@ type Service struct {
 
 func NewService(runtime *appenv.Runtime, appender audit.Appender, grants core.RoleGrantStore, ids guid.Source) *Service {
 	if runtime == nil || appender == nil || ids == nil || grants.Grant == nil || grants.Revoke == nil ||
-		grants.RemovePermanent == nil || grants.RemoveGroupMembership == nil || grants.RemovePositionMembership == nil ||
-		grants.RemoveEntityRoleBinding == nil {
+		grants.RoleGranted == nil || grants.RemovePermanent == nil || grants.RemoveGroupMembership == nil ||
+		grants.RemovePositionMembership == nil || grants.RemoveEntityRoleBinding == nil {
 		panic("governance service requires runtime, audit appender, role grant store, and id generator")
 	}
 	return &Service{repo: NewRepository(runtime, ids), audit: appender, grants: grants, now: time.Now}
@@ -139,7 +139,7 @@ func (s *Service) Create(ctx context.Context, tenantID, requesterID guid.ID, inp
 		if err != nil {
 			return err
 		}
-		granted, err := repo.roleAlreadyGranted(ctx, tenantID, role.ID, requesterID, now)
+		granted, err := s.grants.RoleGranted(ctx, repo.writer(), tenantID, role.ID, requesterID, now)
 		if err != nil {
 			return err
 		}
@@ -377,20 +377,6 @@ func (r *Repository) activeTenantMember(ctx context.Context, tenantID, principal
 		return false, fmt.Errorf("check access requester membership: %w", err)
 	}
 	return count == 1, nil
-}
-
-func (r *Repository) roleAlreadyGranted(ctx context.Context, tenantID, roleID, principalID guid.ID, now time.Time) (bool, error) {
-	var count int64
-	query := `SELECT COUNT(*) FROM (
-SELECT role_id FROM ` + r.table("iam_role_members") + ` WHERE tenant_id = ? AND role_id = ? AND principal_id = ?
-UNION ALL
-SELECT role_id FROM ` + r.table("iam_temporary_role_grants") + ` WHERE tenant_id = ? AND role_id = ? AND principal_id = ? AND starts_at <= ? AND ends_at > ?
-) AS grants`
-	err := r.writer().WithContext(ctx).Raw(query, tenantID, roleID, principalID, tenantID, roleID, principalID, now, now).Scan(&count).Error
-	if err != nil {
-		return false, fmt.Errorf("check existing role grant: %w", err)
-	}
-	return count > 0, nil
 }
 
 func requestFromRow(row model.AccessRequest, now time.Time) AccessRequest {

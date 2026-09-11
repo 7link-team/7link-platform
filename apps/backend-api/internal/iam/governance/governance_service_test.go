@@ -154,6 +154,26 @@ func (h *governanceHarness) grantStore() core.RoleGrantStore {
 				Where("tenant_id = ? AND id = ?", tenantID, grantID).Delete(&coremodel.TemporaryRoleGrant{})
 			return result.RowsAffected > 0, result.Error
 		},
+		// The message matches the core implementation's, because this harness
+		// stands in for it: a fault in the check has to stay recognizable as the
+		// check failing rather than as "already granted".
+		RoleGranted: func(ctx context.Context, db *gorm.DB, tenantID, roleID, principalID guid.ID, now time.Time) (bool, error) {
+			track(db)
+			var memberCount, grantCount int64
+			if err := db.WithContext(ctx).Table(h.table("iam_role_members")).
+				Where("tenant_id = ? AND role_id = ? AND principal_id = ?", tenantID, roleID, principalID).
+				Count(&memberCount).Error; err != nil {
+				return false, fmt.Errorf("check existing role grant: %w", err)
+			}
+			if err := db.WithContext(ctx).Table(h.table("iam_temporary_role_grants")).
+				Where(
+					"tenant_id = ? AND role_id = ? AND principal_id = ? AND starts_at <= ? AND ends_at > ?",
+					tenantID, roleID, principalID, now, now,
+				).Count(&grantCount).Error; err != nil {
+				return false, fmt.Errorf("check existing role grant: %w", err)
+			}
+			return memberCount+grantCount > 0, nil
+		},
 		RemovePermanent: func(ctx context.Context, db *gorm.DB, tenantID, roleID, principalID guid.ID, createdAt time.Time) (bool, error) {
 			track(db)
 			h.mu.Lock()

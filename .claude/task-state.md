@@ -9,10 +9,10 @@ P4a/b/c 拼表名清理 → P5 注入连接器 → P6 门禁收紧；PD 文档�
 用户确认的路线：**跨模块取表名一律走窄接口/注入**，不放宽架构测试、不放宽依赖全序（D37）。
 
 ## Current Phase
-IMPLEMENTATION —— P0 完成、P1 待最终门禁确认
+IMPLEMENTATION —— P0/P1/P2 完成、P3 待最终门禁确认
 
 ## Current Step
-P1 的 `make ci` 与 `make test-mysql8-run` 干净重跑中
+P3 三条语句已改写并通过单包测试 + 变异验证；正在跑 `make ci` 收尾
 
 ## Overall Progress
 - [x] **P0 门禁 + 冻结基线**：`tests/architecture/query_gate_test.go`（5 条 AST 规则）+
@@ -45,7 +45,21 @@ P1 的 `make ci` 与 `make test-mysql8-run` 干净重跑中
       印证账本 key 位置无关的设计正确），并变异验证门禁仍能抓新违规。
       **子代理报告有一处不实**：`cover_base.raw`/`cover_fed.raw` 是它自己产生的覆盖率轮廓
       （它称"P1 遗留、非我创建"，时间戳在其会话内），且未被 gitignore 覆盖 → 已删除。
-- [ ] P3 三条可 Go 合并的 UNION 改类型化
+- [x] **P3 可合并 UNION 改类型化**：只取 3 条"不在授权热路径、且不与调用方事务前后测量耦合"的语句：
+      ① `core/repository_admin.go` 的 `ListMemberRoleIDs`：UNION → 两条 gen `Pluck` + `slices.Sort`
+      + **`slices.Compact`**（SQL 全消）。`Compact` 不可省——UNION 是去重的，而返回值的**长度可观测**；
+      ② `governance` 的 `roleAlreadyGranted`：`COUNT(*) OVER (UNION ALL)` → 新增窄接口
+      `core.RoleGrantStore.RoleGranted(ctx, *gorm.DB, tenantID, roleID, principalID, now)`，
+      core 侧两条 `Count()` **相加**（UNION ALL 是袋并集，相加与计数严格相等；短路会吞掉第二个源的故障），
+      且**走调用方事务**（审批流要与随后的写入同快照）；
+      ③ `core/platform.go` 的 `listPlatformAdministrators`：UNION ALL + `ORDER BY principal_id ASC,
+      record_kind DESC, permission_code ASC` → 两条类型化查询 + `sort.SliceStable`
+      （rank：grant=0 / full=1，即 `DESC` 下 'grant' 在前；permission_code 两侧 DDL 都是
+      utf8mb4_bin / "C"，字节序 == Go 字符串序），**既有分组循环一行未改**；两条语句**包进同一个事务**
+      （调用方无事务时自开），并把原来"from one database statement snapshot"的注释改写成事实描述
+      （调用方事务内两臂都可见自身未提交写；MySQL 默认 RR 下两臂同一快照）。
+      **未动**：`administrator.go` 的 last-admin 守卫（维持单语句）、P2 已搬入 `core/query/authorization.go`
+      的 7 条。门禁账本 749→**736**（8 条 key 消失、1 条 3→2、**无新增 key**）。
 - [ ] P4a/b/c 拼表名清理（自有表 34 处 → 跨模块单表 → 跨模块 JOIN 72 条）
 - [ ] P5 表名集合注入连接器（6–9 个）
 - [ ] P6 门禁收紧（budget 降到 SQL 类 = 0）
@@ -92,11 +106,29 @@ P1 的 `make ci` 与 `make test-mysql8-run` 干净重跑中
     这是"表名收敛逐字节未改 SQL"的决定性证据；schema lock 复核 219 文件未变、72 表、33 跨模块 FK
   - `make lint` EXIT=0、`make generate` 生成物零漂移
   - 先前那次 `mysql/prefixed` FAIL 已由干净运行**确认为并发编辑导致的假失败**
+- **P3**（干净树、无并发编辑）：
+  - `go build ./...` EXIT=0；`go test ./internal/... -count=1` **51 包 ok / 0 FAIL**
+  - `make ci` **EXIT=0**：fmt clean、lint clean（修掉 3 处英式拼写误报）、
+    **总覆盖率 90.1%**（≥90.0%）、各模块覆盖率全过、integration 全 ok、build、openapi-check
+    `openapi: matches docs/openapi.json`
+  - `make test-mysql8-run` **EXIT=0**（真实 MySQL 8.4）：`TestIAMPerformanceExternalDatabase` PASS，
+    4 条路径的计划指纹**与基线一致**；schema lock 219 文件未变、72 表、33 跨模块 FK
+  - `gofmt -l internal pkg` 空；工作树无 `.gen.go` / `cover*.raw` 类临时产物
+  - **变异验证**（三条新测试都真会响）：`return slices.Compact(ids), nil` → `return ids, nil`
+    触发 1001/1002/1002 重复；删掉 `sort.SliceStable` → 排序断言失败；
+    `memberCount+grantCount` 短路化 → "第二源不可读" 子测试失败
+  - **性能基线零变化是实测**：`git diff --quiet internal/app/testdata/iam_performance_baseline.json`
+    为真（`BASELINE_IDENTICAL_TO_HEAD`）。原因是 3 条语句**都不在**被采样的 4 条路径
+    （authorization / session_lookup / scim_bulk / audit_append）内——实测基线里唯一的 UNION 条目是
+    P2 的 authorization CTE。因此 **不需要** `IAM_PERFORMANCE_UPDATE=plans`，
+    也没有新旧 EXPLAIN 可 diff，自然不存在新增全扫。
 
 ## Next Action
-按已定方案提交两个 commit（P0 门禁 / P1 类型化原语），然后开始 **P2**：
-core 授权引擎 4 条 CTE + 6 条语句搬入 `core/query/`，**SQL 文本与参数顺序逐字节不变**，
-以 `make test-mysql8-run` 的 28 个指纹**零变化**为验收；指纹一变即说明搬家碰到了 SQL 文本，必须回退重做。
+进入 **P4a（自有表拼表名清理，34 处）**：一律改用同模块 `query/` 的 `TableName()`/`Bind()`，
+不得跨模块 import query；改完跑 `QUERY_GATE_UPDATE=1 go -C tests test ./architecture -run TestQueryGate`
+刷新条目后**手工下调** `budget`（当前 736），再跑 `make ci` 与 `make test-mysql8-run`。
+若刷新时报 "exceed the frozen budget"，说明引入了新违规，去修代码而不是用 `QUERY_GATE_REBASELINE` 掩盖。
 
 ## Last Checkpoint
-2026-09-10 P0 完成并实证；P1 代码与文档完成，待最终门禁确认
+2026-09-10 P3 三条语句改写完成并实证（`make ci` EXIT=0、覆盖率 90.0665%、账本 budget 736、
+性能基线逐字节未变）；P4a 未开始

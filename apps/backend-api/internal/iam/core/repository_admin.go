@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -155,30 +156,43 @@ func (r *Repository) IsMemberActive(ctx context.Context, tenantID, principalID g
 	return count == 1, nil
 }
 
+// ListMemberRoleIDs returns the roles a principal holds in a tenant, as a
+// permanent member or through an unexpired temporary grant.
+//
+// The two sources used to be one UNION statement, whose result was distinct and
+// ordered. Both halves are read here and merged in Go instead, and the merge
+// has to reproduce that exactly: Sort orders the concatenation the way the
+// statement's trailing ORDER BY did, and Compact removes the duplicate a role
+// earns by being both a permanent member and an unexpired grant. Dropping the
+// Compact would make this return one ID twice, and the length of the result is
+// what every caller reads.
 func (r *Repository) ListMemberRoleIDs(ctx context.Context, tenantID, principalID guid.ID) ([]guid.ID, error) {
-	_, db, err := r.tables()
+	tables, _, err := r.tables()
 	if err != nil {
 		return nil, err
 	}
-	prefix := r.prefix()
 	now := r.now().UTC().Truncate(time.Millisecond)
-	var rows []struct {
-		RoleID guid.ID `gorm:"column:role_id"`
-	}
-	err = db.WithContext(ctx).Raw(`
-SELECT role_id FROM `+prefix+`iam_role_members WHERE tenant_id = ? AND principal_id = ?
-UNION
-SELECT role_id FROM `+prefix+`iam_temporary_role_grants
-WHERE tenant_id = ? AND principal_id = ? AND starts_at <= ? AND ends_at > ?
-ORDER BY role_id ASC`, tenantID, principalID, tenantID, principalID, now, now).Scan(&rows).Error
-	if err != nil {
+	memberRoleIDs := []guid.ID{}
+	if err := tables.RoleMembers.WithContext(ctx).
+		Where(
+			tables.RoleMembers.TenantID.Eq(tenantID),
+			tables.RoleMembers.PrincipalID.Eq(principalID),
+		).Pluck(tables.RoleMembers.RoleID, &memberRoleIDs); err != nil {
 		return nil, fmt.Errorf("list tenant member roles: %w", err)
 	}
-	ids := make([]guid.ID, len(rows))
-	for index, row := range rows {
-		ids[index] = row.RoleID
+	grantedRoleIDs := []guid.ID{}
+	if err := tables.TemporaryRoleGrants.WithContext(ctx).
+		Where(
+			tables.TemporaryRoleGrants.TenantID.Eq(tenantID),
+			tables.TemporaryRoleGrants.PrincipalID.Eq(principalID),
+			tables.TemporaryRoleGrants.StartsAt.Lte(now),
+			tables.TemporaryRoleGrants.EndsAt.Gt(now),
+		).Pluck(tables.TemporaryRoleGrants.RoleID, &grantedRoleIDs); err != nil {
+		return nil, fmt.Errorf("list tenant member roles: %w", err)
 	}
-	return ids, nil
+	ids := append(memberRoleIDs, grantedRoleIDs...)
+	slices.Sort(ids)
+	return slices.Compact(ids), nil
 }
 
 func (r *Repository) CreateMenu(ctx context.Context, menu Menu) (Menu, error) {

@@ -47,6 +47,69 @@ func TestTemporaryRoleGrantUsesRealTimeAndTenantMembership(t *testing.T) {
 	assert.True(t, changed)
 }
 
+// TestListMemberRoleIDsKeepsTheOrderAndDistinctnessOfTheUnionItReplaced pins
+// the two properties the merged statement had that a plain concatenation of its
+// two halves would lose. A role a principal holds both permanently and through
+// an unexpired temporary grant has to appear once, because the length of this
+// result is what callers read; and the result has to be ordered even though
+// neither half is read in that order.
+func TestListMemberRoleIDsKeepsTheOrderAndDistinctnessOfTheUnionItReplaced(t *testing.T) {
+	harness := newRepositoryHarness(t, "sl_")
+	repository := harness.repository
+	seedTenantAndPrincipal(t, harness.db, "sl_", 1, 11)
+	_, err := repository.PutMember(t.Context(), TenantMember{
+		TenantID: 1, PrincipalID: 11, DisplayName: "Member", Email: "member@example.test", Status: MemberActive,
+	})
+	require.NoError(t, err)
+
+	// Created first, so it carries the lowest ID and must sort ahead of the
+	// roles created after it even though it is read second.
+	temporary, err := repository.CreateRole(t.Context(), 1, "Granted", "")
+	require.NoError(t, err)
+	both, err := repository.CreateRole(t.Context(), 1, "HeldTwice", "")
+	require.NoError(t, err)
+	expired, err := repository.CreateRole(t.Context(), 1, "Expired", "")
+	require.NoError(t, err)
+	pending, err := repository.CreateRole(t.Context(), 1, "Pending", "")
+	require.NoError(t, err)
+
+	now := repositoryTestTime
+	_, err = repository.AddMember(t.Context(), 1, both.ID, 11)
+	require.NoError(t, err)
+	require.NoError(t, repository.GrantTemporaryRole(
+		t.Context(), 1, 501, temporary.ID, 11, 99, now.Add(-time.Hour), now.Add(time.Hour),
+	))
+	require.NoError(t, repository.GrantTemporaryRole(
+		t.Context(), 1, 502, both.ID, 11, 99, now.Add(-time.Hour), now.Add(time.Hour),
+	))
+	require.NoError(t, repository.GrantTemporaryRole(
+		t.Context(), 1, 503, expired.ID, 11, 99, now.Add(-2*time.Hour), now.Add(-time.Hour),
+	))
+	require.NoError(t, repository.GrantTemporaryRole(
+		t.Context(), 1, 504, pending.ID, 11, 99, now.Add(time.Hour), now.Add(2*time.Hour),
+	))
+
+	roleIDs, err := repository.ListMemberRoleIDs(t.Context(), 1, 11)
+	require.NoError(t, err)
+	assert.Equal(t, []guid.ID{temporary.ID, both.ID}, roleIDs)
+
+	empty, err := repository.ListMemberRoleIDs(t.Context(), 1, 99)
+	require.NoError(t, err)
+	assert.NotNil(t, empty)
+	assert.Empty(t, empty)
+
+	// A failed half must fail the read rather than look like "no roles": the
+	// merged statement could not return a partial answer either.
+	unavailable, err := (&Repository{}).ListMemberRoleIDs(t.Context(), 1, 11)
+	assert.Nil(t, unavailable)
+	assert.ErrorIs(t, err, ErrUnavailable)
+
+	broken := newRepositoryHarness(t, "sl_")
+	require.NoError(t, broken.db.Exec("DROP TABLE sl_iam_temporary_role_grants").Error)
+	_, err = broken.repository.ListMemberRoleIDs(t.Context(), 1, 11)
+	assert.ErrorContains(t, err, "list tenant member roles")
+}
+
 func TestRoleGrantStoreRemovesExactScopedAssignments(t *testing.T) {
 	harness := newRepositoryHarness(t, "sl_")
 	repository := harness.repository

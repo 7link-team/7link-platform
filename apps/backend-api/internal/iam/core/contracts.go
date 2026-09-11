@@ -51,8 +51,13 @@ type AdministratorGuard interface {
 // RoleGrantStore groups the transactional IAM mutations required by governance
 // access requests and reviews. The composition root supplies every function.
 type RoleGrantStore struct {
-	Grant                    func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, guid.ID, guid.ID, time.Time, time.Time) error
-	Revoke                   func(context.Context, *gorm.DB, guid.ID, guid.ID) (bool, error)
+	Grant  func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, guid.ID, guid.ID, time.Time, time.Time) error
+	Revoke func(context.Context, *gorm.DB, guid.ID, guid.ID) (bool, error)
+	// RoleGranted reports whether a principal already holds a role, as a
+	// permanent member or through an unexpired temporary grant. It reads through
+	// the caller's transaction because an access request has to see the grants
+	// the write that follows it will be compared against.
+	RoleGranted              func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, time.Time) (bool, error)
 	RemovePermanent          func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, time.Time) (bool, error)
 	RemoveGroupMembership    func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID) (bool, error)
 	RemovePositionMembership func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID) (bool, error)

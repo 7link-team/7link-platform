@@ -73,7 +73,7 @@ func TestFrozenIAMCapabilitiesHaveCanonicalOwners(t *testing.T) {
 	}
 
 	storeType := reflect.TypeFor[core.RoleGrantStore]()
-	assert.Equal(t, 6, storeType.NumField())
+	assert.Equal(t, 7, storeType.NumField())
 	assert.Equal(t, 0, storeType.NumMethod())
 	assert.Equal(t, 0, reflect.PointerTo(storeType).NumMethod())
 }
