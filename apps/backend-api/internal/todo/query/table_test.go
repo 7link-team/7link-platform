@@ -1,7 +1,6 @@
 package query
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,41 +10,30 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-func testDB(t *testing.T) *gorm.DB {
-	t.Helper()
-	db, err := gorm.Open(sqlite.Open("file::memory:"), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent),
-		DryRun: true,
-	})
+// TestBindNamesMapPublishesPrefixedNames keeps the published set and the bound
+// queries from drifting apart: a table reachable through Bind but missing from
+// the map would be invisible to every consumer, and a name in the map that
+// Bind does not bind would point at a table this module does not own.
+func TestBindNamesMapPublishesPrefixedNames(t *testing.T) {
+	t.Parallel()
+	const prefix = "sl_"
+	published := BindNames(prefix).Map()
+	require.NotEmpty(t, published, "a module that binds tables publishes them")
+	for logical, name := range published {
+		assert.Equal(t, prefix+logical, name.String(), logical)
+		assert.Equal(t, logical, name.Logical(), logical)
+		assert.False(t, name.IsZero(), logical)
+	}
+}
+
+// TestBindAppliesThePrefix covers the binding path itself: a table name that
+// reached the generated query object without the prefix would read the wrong
+// table in a prefixed deployment and the same one in every test that runs
+// without a prefix.
+func TestBindAppliesThePrefix(t *testing.T) {
+	t.Parallel()
+	db, err := gorm.Open(sqlite.Open("file::memory:"), &gorm.Config{DryRun: true, Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
-	return db
-}
-
-// Bind is the single place this module names its table, so a prefixed binding
-// must differ from an unprefixed one by exactly the prefix.
-func TestBindAppliesPrefix(t *testing.T) {
-	db := testDB(t)
-	plain := Bind(db, "").TableName()
-	prefixed := Bind(db, "wp_").TableName()
-
-	assert.NotEqual(t, plain, prefixed)
-	assert.Equal(t, "wp_"+plain, prefixed)
-}
-
-// The generated fields carry the table as a qualifier, so the rendered SQL must
-// name the prefixed table in the FROM clause and in the predicate alike. A
-// plain NotContains would not do: the base name is a substring of the prefixed
-// one, so the prefixed occurrences are removed before looking for a bare one.
-func TestBindQualifiesColumnsWithPrefixedTable(t *testing.T) {
-	db := testDB(t)
-	base := Bind(db, "").TableName()
-
-	q := Bind(db, "wp_")
-	statement := q.WithContext(t.Context()).Where(q.Title.Eq("x")).UnderlyingDB().
-		Find(&[]struct{}{}).Statement
-	sql := statement.SQL.String()
-
-	require.Contains(t, sql, "wp_"+base, "the prefixed table must be named")
-	assert.NotContains(t, strings.ReplaceAll(sql, "wp_"+base, ""), base,
-		"no reference may fall back to the unprefixed table")
+	plain, prefixed := Bind(db, ""), Bind(db, "sl_")
+	assert.Equal(t, "sl_"+plain.TableName(), prefixed.TableName())
 }

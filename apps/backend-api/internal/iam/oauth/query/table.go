@@ -2,6 +2,7 @@ package query
 
 import (
 	"7link.com/platform/internal/iam/oauth/model"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
 
@@ -21,14 +22,52 @@ type Tables struct {
 	RefreshTokens      *RefreshTokens
 }
 
-// Bind applies prefix to every table owned by the OAuth module.
+// TableNames is the physical name of every table oauth owns under one
+// deployment prefix.
+type TableNames struct {
+	Clients            gormx.TableName
+	AuthorizationCodes gormx.TableName
+	Consents           gormx.TableName
+	ConsentRequests    gormx.TableName
+	RefreshTokens      gormx.TableName
+}
+
+// BindNames returns the physical name of every table oauth owns. It is the only
+// place the deployment prefix is applied to one of them, so a deployment
+// cannot end up with half of oauth's tables prefixed.
+func BindNames(prefix string) TableNames {
+	return TableNames{
+		Clients:            gormx.NewTableName(prefix, model.Client{}.TableName()),
+		AuthorizationCodes: gormx.NewTableName(prefix, model.AuthorizationCode{}.TableName()),
+		Consents:           gormx.NewTableName(prefix, model.Consent{}.TableName()),
+		ConsentRequests:    gormx.NewTableName(prefix, model.ConsentRequest{}.TableName()),
+		RefreshTokens:      gormx.NewTableName(prefix, model.RefreshToken{}.TableName()),
+	}
+}
+
+// Map indexes the names by logical name so the module root can publish them as
+// a set to the modules that JOIN oauth's tables.
+func (names TableNames) Map() map[string]gormx.TableName {
+	return map[string]gormx.TableName{
+		model.Client{}.TableName():            names.Clients,
+		model.AuthorizationCode{}.TableName(): names.AuthorizationCodes,
+		model.Consent{}.TableName():           names.Consents,
+		model.ConsentRequest{}.TableName():    names.ConsentRequests,
+		model.RefreshToken{}.TableName():      names.RefreshTokens,
+	}
+}
+
+// Bind applies prefix to every table owned by the OAuth module. It builds from
+// BindNames, so the prefix reaches the generated query objects through one path
+// rather than five.
 func Bind(db *gorm.DB, prefix string) *Tables {
+	names := BindNames(prefix)
 	q := Use(db)
 	return &Tables{
-		Clients:            q.Client.Table(prefix + model.Client{}.TableName()),
-		AuthorizationCodes: q.AuthorizationCode.Table(prefix + model.AuthorizationCode{}.TableName()),
-		Consents:           q.Consent.Table(prefix + model.Consent{}.TableName()),
-		ConsentRequests:    q.ConsentRequest.Table(prefix + model.ConsentRequest{}.TableName()),
-		RefreshTokens:      q.RefreshToken.Table(prefix + model.RefreshToken{}.TableName()),
+		Clients:            q.Client.Table(names.Clients.String()),
+		AuthorizationCodes: q.AuthorizationCode.Table(names.AuthorizationCodes.String()),
+		Consents:           q.Consent.Table(names.Consents.String()),
+		ConsentRequests:    q.ConsentRequest.Table(names.ConsentRequests.String()),
+		RefreshTokens:      q.RefreshToken.Table(names.RefreshTokens.String()),
 	}
 }

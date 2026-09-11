@@ -2,6 +2,7 @@ package query
 
 import (
 	"7link.com/platform/internal/iam/identity/model"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
 
@@ -21,14 +22,52 @@ type Tables struct {
 	ServiceAccountCredentials *ServiceAccountCredentials
 }
 
-// Bind applies prefix to every table owned by the identity module.
+// TableNames is the physical name of every table identity owns under one
+// deployment prefix.
+type TableNames struct {
+	ClosureRequests           gormx.TableName
+	Principals                gormx.TableName
+	PrincipalLifecycles       gormx.TableName
+	ServiceAccounts           gormx.TableName
+	ServiceAccountCredentials gormx.TableName
+}
+
+// BindNames returns the physical name of every table identity owns. It is the
+// only place the deployment prefix is applied to one of them, so a deployment
+// cannot end up with half of identity's tables prefixed.
+func BindNames(prefix string) TableNames {
+	return TableNames{
+		ClosureRequests:           gormx.NewTableName(prefix, model.ClosureRequest{}.TableName()),
+		Principals:                gormx.NewTableName(prefix, model.Principal{}.TableName()),
+		PrincipalLifecycles:       gormx.NewTableName(prefix, model.PrincipalLifecycle{}.TableName()),
+		ServiceAccounts:           gormx.NewTableName(prefix, model.ServiceAccount{}.TableName()),
+		ServiceAccountCredentials: gormx.NewTableName(prefix, model.ServiceAccountCredential{}.TableName()),
+	}
+}
+
+// Map indexes the names by logical name so the module root can publish them as
+// a set to the modules that JOIN identity's tables.
+func (names TableNames) Map() map[string]gormx.TableName {
+	return map[string]gormx.TableName{
+		model.ClosureRequest{}.TableName():           names.ClosureRequests,
+		model.Principal{}.TableName():                names.Principals,
+		model.PrincipalLifecycle{}.TableName():       names.PrincipalLifecycles,
+		model.ServiceAccount{}.TableName():           names.ServiceAccounts,
+		model.ServiceAccountCredential{}.TableName(): names.ServiceAccountCredentials,
+	}
+}
+
+// Bind applies prefix to every table owned by the identity module. It builds
+// from BindNames, so the prefix reaches the generated query objects through one
+// path rather than five.
 func Bind(db *gorm.DB, prefix string) *Tables {
+	names := BindNames(prefix)
 	q := Use(db)
 	return &Tables{
-		ClosureRequests:           q.ClosureRequest.Table(prefix + model.ClosureRequest{}.TableName()),
-		Principals:                q.Principal.Table(prefix + model.Principal{}.TableName()),
-		PrincipalLifecycles:       q.PrincipalLifecycle.Table(prefix + model.PrincipalLifecycle{}.TableName()),
-		ServiceAccounts:           q.ServiceAccount.Table(prefix + model.ServiceAccount{}.TableName()),
-		ServiceAccountCredentials: q.ServiceAccountCredential.Table(prefix + model.ServiceAccountCredential{}.TableName()),
+		ClosureRequests:           q.ClosureRequest.Table(names.ClosureRequests.String()),
+		Principals:                q.Principal.Table(names.Principals.String()),
+		PrincipalLifecycles:       q.PrincipalLifecycle.Table(names.PrincipalLifecycles.String()),
+		ServiceAccounts:           q.ServiceAccount.Table(names.ServiceAccounts.String()),
+		ServiceAccountCredentials: q.ServiceAccountCredential.Table(names.ServiceAccountCredentials.String()),
 	}
 }

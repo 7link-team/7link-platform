@@ -2,6 +2,7 @@ package query
 
 import (
 	"7link.com/platform/internal/iam/governance/model"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
 
@@ -19,12 +20,48 @@ type Tables struct {
 	AccessReviewItems *AccessReviewItems
 }
 
+// TableNames is the physical name of every table governance owns under one
+// deployment prefix.
+type TableNames struct {
+	AccessRequests    gormx.TableName
+	ApprovalSteps     gormx.TableName
+	AccessReviews     gormx.TableName
+	AccessReviewItems gormx.TableName
+}
+
+// BindNames returns the physical name of every table governance owns. It is the
+// only place the deployment prefix is applied to one of them, so a deployment
+// cannot end up with half of governance's tables prefixed.
+func BindNames(prefix string) TableNames {
+	return TableNames{
+		AccessRequests:    gormx.NewTableName(prefix, model.AccessRequest{}.TableName()),
+		ApprovalSteps:     gormx.NewTableName(prefix, model.ApprovalStep{}.TableName()),
+		AccessReviews:     gormx.NewTableName(prefix, model.AccessReview{}.TableName()),
+		AccessReviewItems: gormx.NewTableName(prefix, model.AccessReviewItem{}.TableName()),
+	}
+}
+
+// Map indexes the names by logical name so the module root can publish them as
+// a set to the modules that JOIN governance's tables.
+func (names TableNames) Map() map[string]gormx.TableName {
+	return map[string]gormx.TableName{
+		model.AccessRequest{}.TableName():    names.AccessRequests,
+		model.ApprovalStep{}.TableName():     names.ApprovalSteps,
+		model.AccessReview{}.TableName():     names.AccessReviews,
+		model.AccessReviewItem{}.TableName(): names.AccessReviewItems,
+	}
+}
+
+// Bind applies prefix to every table owned by the governance module. It builds
+// from BindNames, so the prefix reaches the generated query objects through one
+// path rather than four.
 func Bind(db *gorm.DB, prefix string) *Tables {
+	names := BindNames(prefix)
 	q := Use(db)
 	return &Tables{
-		AccessRequests:    q.AccessRequest.Table(prefix + model.AccessRequest{}.TableName()),
-		ApprovalSteps:     q.ApprovalStep.Table(prefix + model.ApprovalStep{}.TableName()),
-		AccessReviews:     q.AccessReview.Table(prefix + model.AccessReview{}.TableName()),
-		AccessReviewItems: q.AccessReviewItem.Table(prefix + model.AccessReviewItem{}.TableName()),
+		AccessRequests:    q.AccessRequest.Table(names.AccessRequests.String()),
+		ApprovalSteps:     q.ApprovalStep.Table(names.ApprovalSteps.String()),
+		AccessReviews:     q.AccessReview.Table(names.AccessReviews.String()),
+		AccessReviewItems: q.AccessReviewItem.Table(names.AccessReviewItems.String()),
 	}
 }

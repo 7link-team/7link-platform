@@ -2,6 +2,7 @@ package query
 
 import (
 	"7link.com/platform/internal/iam/organization/model"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
 
@@ -39,23 +40,88 @@ type Tables struct {
 	InvitationRoles      *InvitationRoles
 }
 
-// Bind applies prefix to every table owned by the organization module.
+// TableNames is the physical name of every table organization owns under one
+// deployment prefix.
+type TableNames struct {
+	Departments          gormx.TableName
+	DepartmentClosures   gormx.TableName
+	Positions            gormx.TableName
+	PositionMembers      gormx.TableName
+	Groups               gormx.TableName
+	GroupMembers         gormx.TableName
+	GroupRoleBindings    gormx.TableName
+	PositionRoleBindings gormx.TableName
+	Tenants              gormx.TableName
+	MemberDepartments    gormx.TableName
+	RoleDataScopes       gormx.TableName
+	RoleScopeDepartments gormx.TableName
+	Invitations          gormx.TableName
+	InvitationRoles      gormx.TableName
+}
+
+// BindNames returns the physical name of every table organization owns. It is
+// the only place the deployment prefix is applied to one of them, so a
+// deployment cannot end up with half of organization's tables prefixed.
+func BindNames(prefix string) TableNames {
+	return TableNames{
+		Departments:          gormx.NewTableName(prefix, model.Department{}.TableName()),
+		DepartmentClosures:   gormx.NewTableName(prefix, model.DepartmentClosure{}.TableName()),
+		Positions:            gormx.NewTableName(prefix, model.Position{}.TableName()),
+		PositionMembers:      gormx.NewTableName(prefix, model.PositionMember{}.TableName()),
+		Groups:               gormx.NewTableName(prefix, model.Group{}.TableName()),
+		GroupMembers:         gormx.NewTableName(prefix, model.GroupMember{}.TableName()),
+		GroupRoleBindings:    gormx.NewTableName(prefix, model.GroupRoleBinding{}.TableName()),
+		PositionRoleBindings: gormx.NewTableName(prefix, model.PositionRoleBinding{}.TableName()),
+		Tenants:              gormx.NewTableName(prefix, model.Tenant{}.TableName()),
+		MemberDepartments:    gormx.NewTableName(prefix, model.MemberDepartment{}.TableName()),
+		RoleDataScopes:       gormx.NewTableName(prefix, model.RoleDataScope{}.TableName()),
+		RoleScopeDepartments: gormx.NewTableName(prefix, model.RoleScopeDepartment{}.TableName()),
+		Invitations:          gormx.NewTableName(prefix, model.Invitation{}.TableName()),
+		InvitationRoles:      gormx.NewTableName(prefix, model.InvitationRole{}.TableName()),
+	}
+}
+
+// Map indexes the names by logical name so the module root can publish them as
+// a set to the modules that JOIN organization's tables.
+func (names TableNames) Map() map[string]gormx.TableName {
+	return map[string]gormx.TableName{
+		model.Department{}.TableName():          names.Departments,
+		model.DepartmentClosure{}.TableName():   names.DepartmentClosures,
+		model.Position{}.TableName():            names.Positions,
+		model.PositionMember{}.TableName():      names.PositionMembers,
+		model.Group{}.TableName():               names.Groups,
+		model.GroupMember{}.TableName():         names.GroupMembers,
+		model.GroupRoleBinding{}.TableName():    names.GroupRoleBindings,
+		model.PositionRoleBinding{}.TableName(): names.PositionRoleBindings,
+		model.Tenant{}.TableName():              names.Tenants,
+		model.MemberDepartment{}.TableName():    names.MemberDepartments,
+		model.RoleDataScope{}.TableName():       names.RoleDataScopes,
+		model.RoleScopeDepartment{}.TableName(): names.RoleScopeDepartments,
+		model.Invitation{}.TableName():          names.Invitations,
+		model.InvitationRole{}.TableName():      names.InvitationRoles,
+	}
+}
+
+// Bind applies prefix to every table owned by the organization module. It
+// builds from BindNames, so the prefix reaches the generated query objects
+// through one path rather than fourteen.
 func Bind(db *gorm.DB, prefix string) *Tables {
+	names := BindNames(prefix)
 	q := Use(db)
 	return &Tables{
-		Departments:          q.Department.Table(prefix + model.Department{}.TableName()),
-		DepartmentClosures:   q.DepartmentClosure.Table(prefix + model.DepartmentClosure{}.TableName()),
-		Positions:            q.Position.Table(prefix + model.Position{}.TableName()),
-		PositionMembers:      q.PositionMember.Table(prefix + model.PositionMember{}.TableName()),
-		Groups:               q.Group.Table(prefix + model.Group{}.TableName()),
-		GroupMembers:         q.GroupMember.Table(prefix + model.GroupMember{}.TableName()),
-		GroupRoleBindings:    q.GroupRoleBinding.Table(prefix + model.GroupRoleBinding{}.TableName()),
-		PositionRoleBindings: q.PositionRoleBinding.Table(prefix + model.PositionRoleBinding{}.TableName()),
-		Tenants:              q.Tenant.Table(prefix + model.Tenant{}.TableName()),
-		MemberDepartments:    q.MemberDepartment.Table(prefix + model.MemberDepartment{}.TableName()),
-		RoleDataScopes:       q.RoleDataScope.Table(prefix + model.RoleDataScope{}.TableName()),
-		RoleScopeDepartments: q.RoleScopeDepartment.Table(prefix + model.RoleScopeDepartment{}.TableName()),
-		Invitations:          q.Invitation.Table(prefix + model.Invitation{}.TableName()),
-		InvitationRoles:      q.InvitationRole.Table(prefix + model.InvitationRole{}.TableName()),
+		Departments:          q.Department.Table(names.Departments.String()),
+		DepartmentClosures:   q.DepartmentClosure.Table(names.DepartmentClosures.String()),
+		Positions:            q.Position.Table(names.Positions.String()),
+		PositionMembers:      q.PositionMember.Table(names.PositionMembers.String()),
+		Groups:               q.Group.Table(names.Groups.String()),
+		GroupMembers:         q.GroupMember.Table(names.GroupMembers.String()),
+		GroupRoleBindings:    q.GroupRoleBinding.Table(names.GroupRoleBindings.String()),
+		PositionRoleBindings: q.PositionRoleBinding.Table(names.PositionRoleBindings.String()),
+		Tenants:              q.Tenant.Table(names.Tenants.String()),
+		MemberDepartments:    q.MemberDepartment.Table(names.MemberDepartments.String()),
+		RoleDataScopes:       q.RoleDataScope.Table(names.RoleDataScopes.String()),
+		RoleScopeDepartments: q.RoleScopeDepartment.Table(names.RoleScopeDepartments.String()),
+		Invitations:          q.Invitation.Table(names.Invitations.String()),
+		InvitationRoles:      q.InvitationRole.Table(names.InvitationRoles.String()),
 	}
 }

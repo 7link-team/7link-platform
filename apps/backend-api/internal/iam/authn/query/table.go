@@ -2,6 +2,7 @@ package query
 
 import (
 	"7link.com/platform/internal/iam/authn/model"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
 
@@ -42,24 +43,92 @@ type Tables struct {
 	PersonalTokens             *PersonalTokens
 }
 
-// Bind applies prefix to every table owned by the authentication module.
+// TableNames is the physical name of every table authn owns under one
+// deployment prefix.
+type TableNames struct {
+	Credentials                gormx.TableName
+	Sessions                   gormx.TableName
+	PasswordHistory            gormx.TableName
+	MFAEnrollments             gormx.TableName
+	RecoveryCodes              gormx.TableName
+	MFAChallenges              gormx.TableName
+	PasskeyUsers               gormx.TableName
+	Passkeys                   gormx.TableName
+	PasskeyChallenges          gormx.TableName
+	PasswordRecoveryTokens     gormx.TableName
+	NotificationOutbox         gormx.TableName
+	EmailVerificationTokens    gormx.TableName
+	StepUpChallenges           gormx.TableName
+	ReauthenticationChallenges gormx.TableName
+	PersonalTokens             gormx.TableName
+}
+
+// BindNames returns the physical name of every table authn owns. It is the only
+// place the deployment prefix is applied to one of them, so a deployment
+// cannot end up with half of authn's tables prefixed.
+func BindNames(prefix string) TableNames {
+	return TableNames{
+		Credentials:                gormx.NewTableName(prefix, model.Credential{}.TableName()),
+		Sessions:                   gormx.NewTableName(prefix, model.Session{}.TableName()),
+		PasswordHistory:            gormx.NewTableName(prefix, model.PasswordHistory{}.TableName()),
+		MFAEnrollments:             gormx.NewTableName(prefix, model.MFAEnrollment{}.TableName()),
+		RecoveryCodes:              gormx.NewTableName(prefix, model.RecoveryCode{}.TableName()),
+		MFAChallenges:              gormx.NewTableName(prefix, model.MFAChallenge{}.TableName()),
+		PasskeyUsers:               gormx.NewTableName(prefix, model.PasskeyUser{}.TableName()),
+		Passkeys:                   gormx.NewTableName(prefix, model.Passkey{}.TableName()),
+		PasskeyChallenges:          gormx.NewTableName(prefix, model.PasskeyChallenge{}.TableName()),
+		PasswordRecoveryTokens:     gormx.NewTableName(prefix, model.PasswordRecoveryToken{}.TableName()),
+		NotificationOutbox:         gormx.NewTableName(prefix, model.NotificationOutbox{}.TableName()),
+		EmailVerificationTokens:    gormx.NewTableName(prefix, model.EmailVerificationToken{}.TableName()),
+		StepUpChallenges:           gormx.NewTableName(prefix, model.StepUpChallenge{}.TableName()),
+		ReauthenticationChallenges: gormx.NewTableName(prefix, model.ReauthenticationChallenge{}.TableName()),
+		PersonalTokens:             gormx.NewTableName(prefix, model.PersonalToken{}.TableName()),
+	}
+}
+
+// Map indexes the names by logical name so the module root can publish them as
+// a set to the modules that JOIN authn's tables.
+func (names TableNames) Map() map[string]gormx.TableName {
+	return map[string]gormx.TableName{
+		model.Credential{}.TableName():                names.Credentials,
+		model.Session{}.TableName():                   names.Sessions,
+		model.PasswordHistory{}.TableName():           names.PasswordHistory,
+		model.MFAEnrollment{}.TableName():             names.MFAEnrollments,
+		model.RecoveryCode{}.TableName():              names.RecoveryCodes,
+		model.MFAChallenge{}.TableName():              names.MFAChallenges,
+		model.PasskeyUser{}.TableName():               names.PasskeyUsers,
+		model.Passkey{}.TableName():                   names.Passkeys,
+		model.PasskeyChallenge{}.TableName():          names.PasskeyChallenges,
+		model.PasswordRecoveryToken{}.TableName():     names.PasswordRecoveryTokens,
+		model.NotificationOutbox{}.TableName():        names.NotificationOutbox,
+		model.EmailVerificationToken{}.TableName():    names.EmailVerificationTokens,
+		model.StepUpChallenge{}.TableName():           names.StepUpChallenges,
+		model.ReauthenticationChallenge{}.TableName(): names.ReauthenticationChallenges,
+		model.PersonalToken{}.TableName():             names.PersonalTokens,
+	}
+}
+
+// Bind applies prefix to every table owned by the authentication module. It
+// builds from BindNames, so the prefix reaches the generated query objects
+// through one path rather than fifteen.
 func Bind(db *gorm.DB, prefix string) *Tables {
+	names := BindNames(prefix)
 	q := Use(db)
 	return &Tables{
-		Credentials:                q.Credential.Table(prefix + model.Credential{}.TableName()),
-		Sessions:                   q.Session.Table(prefix + model.Session{}.TableName()),
-		PasswordHistory:            q.PasswordHistory.Table(prefix + model.PasswordHistory{}.TableName()),
-		MFAEnrollments:             q.MFAEnrollment.Table(prefix + model.MFAEnrollment{}.TableName()),
-		RecoveryCodes:              q.RecoveryCode.Table(prefix + model.RecoveryCode{}.TableName()),
-		MFAChallenges:              q.MFAChallenge.Table(prefix + model.MFAChallenge{}.TableName()),
-		PasskeyUsers:               q.PasskeyUser.Table(prefix + model.PasskeyUser{}.TableName()),
-		Passkeys:                   q.Passkey.Table(prefix + model.Passkey{}.TableName()),
-		PasskeyChallenges:          q.PasskeyChallenge.Table(prefix + model.PasskeyChallenge{}.TableName()),
-		PasswordRecoveryTokens:     q.PasswordRecoveryToken.Table(prefix + model.PasswordRecoveryToken{}.TableName()),
-		NotificationOutbox:         q.NotificationOutbox.Table(prefix + model.NotificationOutbox{}.TableName()),
-		EmailVerificationTokens:    q.EmailVerificationToken.Table(prefix + model.EmailVerificationToken{}.TableName()),
-		StepUpChallenges:           q.StepUpChallenge.Table(prefix + model.StepUpChallenge{}.TableName()),
-		ReauthenticationChallenges: q.ReauthenticationChallenge.Table(prefix + model.ReauthenticationChallenge{}.TableName()),
-		PersonalTokens:             q.PersonalToken.Table(prefix + model.PersonalToken{}.TableName()),
+		Credentials:                q.Credential.Table(names.Credentials.String()),
+		Sessions:                   q.Session.Table(names.Sessions.String()),
+		PasswordHistory:            q.PasswordHistory.Table(names.PasswordHistory.String()),
+		MFAEnrollments:             q.MFAEnrollment.Table(names.MFAEnrollments.String()),
+		RecoveryCodes:              q.RecoveryCode.Table(names.RecoveryCodes.String()),
+		MFAChallenges:              q.MFAChallenge.Table(names.MFAChallenges.String()),
+		PasskeyUsers:               q.PasskeyUser.Table(names.PasskeyUsers.String()),
+		Passkeys:                   q.Passkey.Table(names.Passkeys.String()),
+		PasskeyChallenges:          q.PasskeyChallenge.Table(names.PasskeyChallenges.String()),
+		PasswordRecoveryTokens:     q.PasswordRecoveryToken.Table(names.PasswordRecoveryTokens.String()),
+		NotificationOutbox:         q.NotificationOutbox.Table(names.NotificationOutbox.String()),
+		EmailVerificationTokens:    q.EmailVerificationToken.Table(names.EmailVerificationTokens.String()),
+		StepUpChallenges:           q.StepUpChallenge.Table(names.StepUpChallenges.String()),
+		ReauthenticationChallenges: q.ReauthenticationChallenge.Table(names.ReauthenticationChallenges.String()),
+		PersonalTokens:             q.PersonalToken.Table(names.PersonalTokens.String()),
 	}
 }
