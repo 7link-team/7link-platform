@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/core/model"
+	"7link.com/platform/internal/iam/core/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/policyx"
@@ -21,11 +22,7 @@ const (
 	relationshipQueryBatch = 200
 )
 
-type relationshipNode struct {
-	Type     string
-	ID       guid.ID
-	Relation string
-}
+type relationshipNode = query.RelationshipWalkNode
 
 type relationshipGrant struct {
 	EntityID     guid.ID
@@ -488,11 +485,6 @@ func (s *Service) resourceRelationDeclared(resourceType, relation string) bool {
 	return false
 }
 
-type relationshipWalkSummary struct {
-	MaxDepth      int `gorm:"column:max_depth"`
-	ReachesSource int `gorm:"column:reaches_source"`
-}
-
 func (r *Repository) validateRelationshipAddition(ctx context.Context, relationship Relationship) error {
 	tables, db, err := r.tables()
 	if err != nil {
@@ -515,76 +507,31 @@ func (r *Repository) validateRelationshipAddition(ctx context.Context, relations
 		Type: relationship.SubjectType, ID: relationship.SubjectID, Relation: relationship.SubjectRelation,
 	}
 	target := relationshipNode{Type: "entity", ID: relationship.ResourceID, Relation: relationship.Relation}
-	table := tables.Relationships.TableName()
-	textParameter, entityLiteral, integerParameter := relationshipTraversalExpressions(db.Dialector.Name())
-	var downstream relationshipWalkSummary
-	err = db.WithContext(ctx).Raw(`
-WITH RECURSIVE walk(node_type, node_id, node_relation, depth) AS (
-    SELECT `+textParameter+` AS node_type,
-           `+integerParameter+` AS node_id,
-           `+textParameter+` AS node_relation,
-           0 AS depth
-    UNION
-    SELECT `+entityLiteral+`, rel.resource_id, rel.relation, walk.depth + 1
-    FROM `+table+` AS rel
-    JOIN walk ON rel.subject_type = walk.node_type
-             AND rel.subject_id = walk.node_id
-             AND rel.subject_relation = walk.node_relation
-    WHERE rel.tenant_id = ? AND walk.depth < ?
-)
-SELECT COALESCE(MAX(depth), 0) AS max_depth,
-       COALESCE(MAX(CASE WHEN node_type = ? AND node_id = `+integerParameter+` AND node_relation = ? THEN 1 ELSE 0 END), 0) AS reaches_source
-FROM walk`,
-		target.Type, target.ID, target.Relation, relationship.TenantID, maxRelationshipDepth,
-		source.Type, source.ID, source.Relation,
-	).Scan(&downstream).Error
+	walk := query.RelationshipWalkParams{
+		Relationships: query.BindNames(r.prefix()).Relationships,
+		Dialect:       db.Dialector.Name(),
+		TenantID:      relationship.TenantID,
+		MaxDepth:      maxRelationshipDepth,
+		Seed:          target,
+		Against:       source,
+	}
+	downstream, err := query.RelationshipWalkDownstream(ctx, db, walk)
 	if err != nil {
-		return fmt.Errorf("walk IAM relationship descendants: %w", err)
+		return err
 	}
 	if downstream.ReachesSource != 0 {
 		return ErrRelationshipHierarchy
 	}
 
-	var upstream relationshipWalkSummary
-	err = db.WithContext(ctx).Raw(`
-WITH RECURSIVE walk(node_type, node_id, node_relation, depth) AS (
-    SELECT `+textParameter+` AS node_type,
-           `+integerParameter+` AS node_id,
-           `+textParameter+` AS node_relation,
-           0 AS depth
-    UNION
-    SELECT rel.subject_type, rel.subject_id, rel.subject_relation, walk.depth + 1
-    FROM `+table+` AS rel
-    JOIN walk ON walk.node_type = 'entity'
-             AND rel.resource_id = walk.node_id
-             AND rel.relation = walk.node_relation
-    WHERE rel.tenant_id = ? AND walk.depth < ?
-)
-SELECT COALESCE(MAX(depth), 0) AS max_depth, 0 AS reaches_source
-FROM walk`,
-		source.Type, source.ID, source.Relation, relationship.TenantID, maxRelationshipDepth,
-	).Scan(&upstream).Error
+	walk.Seed, walk.Against = source, relationshipNode{}
+	upstream, err := query.RelationshipWalkUpstream(ctx, db, walk)
 	if err != nil {
-		return fmt.Errorf("walk IAM relationship ancestors: %w", err)
+		return err
 	}
 	if upstream.MaxDepth+1+downstream.MaxDepth > maxRelationshipDepth {
 		return ErrRelationshipHierarchy
 	}
 	return nil
-}
-
-func relationshipTraversalExpressions(dialect string) (textParameter, entityLiteral, integerParameter string) {
-	textParameter, entityLiteral = "CAST(? AS TEXT)", "CAST('entity' AS TEXT)"
-	integerParameter = "CAST(? AS BIGINT)"
-	switch dialect {
-	case "mysql":
-		textParameter, entityLiteral = "CAST(? AS CHAR(16))", "CAST('entity' AS CHAR(16))"
-		integerParameter = "CAST(? AS SIGNED)"
-	case "postgres":
-		textParameter = `CAST(? AS VARCHAR(16)) COLLATE "C"`
-		entityLiteral = `CAST('entity' AS VARCHAR(16)) COLLATE "C"`
-	}
-	return textParameter, entityLiteral, integerParameter
 }
 
 func (a *Authorizer) loadRelationshipGrants(
@@ -672,11 +619,12 @@ func (a *Authorizer) relationshipRoots(
 	tenantID, subject guid.ID,
 	now time.Time,
 ) ([]relationshipNode, error) {
+	names := a.authorizationTables()
 	roots := []relationshipNode{{Type: "principal", ID: subject}}
 	groups := make([]guid.ID, 0)
-	err := a.db.WithContext(ctx).Table(a.table("iam_group_members")+" AS gm").
+	err := a.db.WithContext(ctx).Table(names.Foreign.GroupMembers.String()+" AS gm").
 		Select("gm.group_id").
-		Joins("JOIN "+a.table("iam_groups")+" AS g ON g.tenant_id = gm.tenant_id AND g.id = gm.group_id AND g.status = 'active' AND g.group_type = 'static'").
+		Joins("JOIN "+names.Foreign.Groups.String()+" AS g ON g.tenant_id = gm.tenant_id AND g.id = gm.group_id AND g.status = 'active' AND g.group_type = 'static'").
 		Where("gm.tenant_id = ? AND gm.principal_id = ?", tenantID, subject).
 		Where("(gm.starts_at IS NULL OR gm.starts_at <= ?) AND (gm.ends_at IS NULL OR gm.ends_at > ?)", now, now).
 		Order("gm.group_id ASC").Pluck("gm.group_id", &groups).Error
@@ -694,9 +642,9 @@ func (a *Authorizer) relationshipRoots(
 		roots = append(roots, relationshipNode{Type: "group", ID: id, Relation: "member"})
 	}
 	positions := make([]guid.ID, 0)
-	err = a.db.WithContext(ctx).Table(a.table("iam_position_members")+" AS pm").
+	err = a.db.WithContext(ctx).Table(names.Foreign.PositionMembers.String()+" AS pm").
 		Select("pm.position_id").
-		Joins("JOIN "+a.table("iam_positions")+" AS p ON p.tenant_id = pm.tenant_id AND p.id = pm.position_id AND p.status = 'active'").
+		Joins("JOIN "+names.Foreign.Positions.String()+" AS p ON p.tenant_id = pm.tenant_id AND p.id = pm.position_id AND p.status = 'active'").
 		Where("pm.tenant_id = ? AND pm.principal_id = ?", tenantID, subject).
 		Where("(pm.starts_at IS NULL OR pm.starts_at <= ?) AND (pm.ends_at IS NULL OR pm.ends_at > ?)", now, now).
 		Order("pm.position_id ASC").Pluck("pm.position_id", &positions).Error

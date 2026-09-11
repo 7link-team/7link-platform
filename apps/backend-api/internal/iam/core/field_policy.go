@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"math"
 	"slices"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/core/model"
+	"7link.com/platform/internal/iam/core/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
@@ -283,13 +283,14 @@ func (a *Authorizer) FieldConstraint(ctx context.Context, tenantID, entityID gui
 		if err != nil {
 			return authz.FieldConstraint{}, err
 		}
+		names := a.authorizationTables()
 		var principals int64
-		if err := a.db.WithContext(ctx).Table(a.table("iam_principals")).Where("id = ? AND status = 'active'", subject).Count(&principals).Error; err != nil {
+		if err := a.db.WithContext(ctx).Table(names.Foreign.Principals.String()).Where("id = ? AND status = 'active'", subject).Count(&principals).Error; err != nil {
 			return authz.FieldConstraint{}, err
 		}
 		if entityID > 0 {
 			var entities int64
-			if err := a.db.WithContext(ctx).Table(a.table("iam_entities")).Where("tenant_id = ? AND id = ? AND status = 'active'", tenantID, entityID).Count(&entities).Error; err != nil {
+			if err := a.db.WithContext(ctx).Table(names.Tables.Entities.String()).Where("tenant_id = ? AND id = ? AND status = 'active'", tenantID, entityID).Count(&entities).Error; err != nil {
 				return authz.FieldConstraint{}, err
 			}
 			active = active && entities == 1
@@ -297,7 +298,7 @@ func (a *Authorizer) FieldConstraint(ctx context.Context, tenantID, entityID gui
 		result := authz.FieldConstraint{Fields: map[string]authz.FieldDecision{}}
 		if active && principals == 1 {
 			rows := []model.FieldPolicy{}
-			if err := a.db.WithContext(ctx).Table(a.table("iam_field_policies")).Where("tenant_id = ? AND resource = ?", tenantID, resource).Find(&rows).Error; err != nil {
+			if err := a.db.WithContext(ctx).Table(names.Tables.FieldPolicies.String()).Where("tenant_id = ? AND resource = ?", tenantID, resource).Find(&rows).Error; err != nil {
 				return authz.FieldConstraint{}, err
 			}
 			policies := map[string]authz.FieldPolicy{}
@@ -341,35 +342,30 @@ func (a *Authorizer) FieldConstraint(ctx context.Context, tenantID, entityID gui
 
 func (a *Authorizer) fieldPolicyRoles(ctx context.Context, tenantID, entityID, subject guid.ID) ([]guid.ID, error) {
 	now := a.now().UTC().Truncate(time.Millisecond)
-	cte, args := effectiveRolesCTE(a.prefix, tenantID, subject, now)
-	roles := []guid.ID{}
-	if err := a.db.WithContext(ctx).Raw(cte+` SELECT DISTINCT role_id FROM effective_roles`, args...).Scan(&roles).Error; err != nil {
-		return nil, fmt.Errorf("load field policy roles: %w", err)
+	roles, err := query.FieldPolicyRoles(ctx, a.db, a.effectiveRolesParams(tenantID, subject, now))
+	if err != nil {
+		return nil, err
 	}
+	names := a.authorizationTables()
 	groups, err := matchingDynamicGroupIDs(ctx, a.db, a.prefix, tenantID, subject)
 	if err != nil {
 		return nil, err
 	}
 	if len(groups) > 0 {
 		dynamic := []guid.ID{}
-		if err := a.db.WithContext(ctx).Table(a.table("iam_group_role_bindings")).Where("tenant_id = ? AND group_id IN ?", tenantID, groups).Pluck("role_id", &dynamic).Error; err != nil {
+		if err := a.db.WithContext(ctx).Table(names.Foreign.GroupRoleBindings.String()).Where("tenant_id = ? AND group_id IN ?", tenantID, groups).Pluck("role_id", &dynamic).Error; err != nil {
 			return nil, err
 		}
 		roles = append(roles, dynamic...)
 	}
 	if entityID > 0 {
-		inherited := []guid.ID{}
-		p := a.prefix
-		err := a.db.WithContext(ctx).Raw(`WITH RECURSIVE ancestors(id, parent_id, depth) AS (
-SELECT id, parent_id, 0 FROM `+p+`iam_entities WHERE tenant_id = ? AND id = ? AND status = 'active'
-UNION ALL
-SELECT e.id, e.parent_id, ancestors.depth + 1 FROM `+p+`iam_entities e
-JOIN ancestors ON e.id = ancestors.parent_id
-WHERE e.tenant_id = ? AND e.status = 'active' AND ancestors.depth < 15
-)
-SELECT DISTINCT b.role_id FROM `+p+`iam_role_bindings b JOIN ancestors ON b.scope_id = ancestors.id
-WHERE b.tenant_id = ? AND b.principal_id = ? AND b.scope_type = 'entity' AND b.effect = 'allow'
-AND (b.expires_at IS NULL OR b.expires_at > ?)`, tenantID, entityID, tenantID, tenantID, subject, now).Scan(&inherited).Error
+		inherited, err := query.DirectoryAncestorRoleIDs(ctx, a.db, query.DirectoryAncestorParams{
+			Tables:   names.Tables,
+			TenantID: tenantID,
+			EntityID: entityID,
+			Subject:  subject,
+			Now:      now,
+		})
 		if err != nil {
 			return nil, err
 		}

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"time"
 
+	"7link.com/platform/internal/iam/core/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/extension/authz"
@@ -29,23 +30,20 @@ type Authorizer struct {
 	directorySources DirectoryAuthorizationSourceStore
 }
 
-type tenantGrant struct {
-	PermissionCode string  `gorm:"column:permission_code"`
-	RoleID         guid.ID `gorm:"column:role_id"`
-	SourceType     string  `gorm:"column:source_type"`
-	SourceID       guid.ID `gorm:"column:source_id"`
-	DataScope      string  `gorm:"column:data_scope"`
-	ConditionJSON  string  `gorm:"column:condition_json"`
-}
+// The persistence shapes live in the query package, which owns the statements
+// that scan into them. The aliases keep the module root's vocabulary -- and the
+// unexported name its callers already use -- without re-exporting the types.
+type (
+	tenantGrant = query.TenantGrant
+	scopedGrant = query.ScopedGrant
+)
 
-type scopedGrant struct {
-	PermissionCode string  `gorm:"column:permission_code"`
-	RoleID         guid.ID `gorm:"column:role_id"`
-	Effect         string  `gorm:"column:effect"`
-	ScopeID        guid.ID `gorm:"column:scope_id"`
-	EntityID       guid.ID `gorm:"column:entity_id"`
-	Depth          int     `gorm:"column:depth"`
-	ConditionJSON  string  `gorm:"column:condition_json"`
+// authorizationTables binds the names the authorization statements read: the
+// tables this module owns and the ones it only joins. Both are resolved from
+// one prefix in the query package, so a statement cannot resolve half of its
+// JOINs against a different deployment than the rest of the module.
+func (a *Authorizer) authorizationTables() query.AuthorizationTables {
+	return query.BindAuthorizationTables(a.prefix)
 }
 
 type authorizationSnapshot struct {
@@ -104,8 +102,6 @@ func (a *Authorizer) pinWriter() (*Authorizer, error) {
 	return &pinned, nil
 }
 
-func (a *Authorizer) table(name string) string { return a.prefix + name }
-
 // Check reports whether subject has one declared permission in a tenant.
 func (a *Authorizer) Check(
 	ctx context.Context,
@@ -133,11 +129,12 @@ func (a *Authorizer) CheckPlatform(ctx context.Context, permission string, subje
 	if action, ok := a.registry.Find(permission); !ok || action.Scope != "platform" {
 		return false, nil
 	}
+	names := a.authorizationTables()
 	var count int64
-	err = a.db.WithContext(ctx).Table(a.table("iam_principals")+" AS p").
+	err = a.db.WithContext(ctx).Table(names.Foreign.Principals.String()+" AS p").
 		Where("p.id = ? AND p.status = 'active'", subject).
-		Where("(EXISTS (SELECT 1 FROM "+a.table("iam_platform_administrators")+" AS pa WHERE pa.principal_id = p.id)"+
-			" OR EXISTS (SELECT 1 FROM "+a.table("iam_platform_grants")+" AS pg WHERE pg.principal_id = p.id AND pg.permission_code = ?))", permission).
+		Where("(EXISTS (SELECT 1 FROM "+names.Tables.PlatformAdministrators.String()+" AS pa WHERE pa.principal_id = p.id)"+
+			" OR EXISTS (SELECT 1 FROM "+names.Tables.PlatformGrants.String()+" AS pg WHERE pg.principal_id = p.id AND pg.permission_code = ?))", permission).
 		Count(&count).Error
 	if err != nil {
 		return false, fmt.Errorf("evaluate platform permission: %w", err)
@@ -378,8 +375,9 @@ func (a *Authorizer) inactiveOrMissingEntity(
 	tenantID, entityID guid.ID,
 	revision int64,
 ) (authz.Explanation, error) {
+	names := a.authorizationTables()
 	var count int64
-	if err := a.db.WithContext(ctx).Table(a.table("iam_entities")).
+	if err := a.db.WithContext(ctx).Table(names.Tables.Entities.String()).
 		Where("tenant_id = ? AND id = ?", tenantID, entityID).Count(&count).Error; err != nil {
 		return authz.Explanation{}, fmt.Errorf("get authorization entity state: %w", err)
 	}
@@ -508,7 +506,8 @@ func (a *Authorizer) snapshot(
 		if err != nil {
 			return authorizationSnapshot{}, err
 		}
-		entities := a.db.WithContext(ctx).Table(a.table("iam_entities")).
+		names := a.authorizationTables()
+		entities := a.db.WithContext(ctx).Table(names.Tables.Entities.String()).
 			Where("tenant_id = ? AND status = ?", tenantID, EntityActive)
 		if !focusEntityID.Zero() {
 			entities = entities.Where("id = ?", focusEntityID)
@@ -565,33 +564,25 @@ func (a *Authorizer) loadTenantGrants(
 		return []tenantGrant{}, nil
 	}
 	now := trusted.Time.UTC().Truncate(time.Millisecond)
-	p := a.prefix
-	grants := make([]tenantGrant, 0)
-	cte, args := effectiveRolesCTE(p, tenantID, subject, now)
-	err := a.db.WithContext(ctx).Raw(cte+`
-SELECT DISTINCT rp.permission_code, er.role_id, er.source_type, er.source_id,
-       COALESCE(ds.scope_type, 'all') AS data_scope, rp.condition_json
-FROM `+p+`iam_role_permissions rp
-JOIN effective_roles er ON er.role_id = rp.role_id
-LEFT JOIN `+p+`iam_role_data_scopes ds
-  ON ds.tenant_id = rp.tenant_id AND ds.role_id = rp.role_id
-WHERE rp.tenant_id = ? AND rp.permission_code IN ?`,
-		append(args, tenantID, requested)...,
-	).Scan(&grants).Error
+	grants, err := query.LoadTenantGrants(ctx, a.db, query.TenantGrantParams{
+		EffectiveRolesParams: a.effectiveRolesParams(tenantID, subject, now),
+		Requested:            requested,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("evaluate tenant permissions: %w", err)
+		return nil, err
 	}
+	names := a.authorizationTables()
 	dynamicGroupIDs, err := matchingDynamicGroupIDs(ctx, a.db, a.prefix, tenantID, subject)
 	if err != nil {
 		return nil, err
 	}
 	if len(dynamicGroupIDs) > 0 {
 		dynamicGrants := make([]tenantGrant, 0)
-		err = a.db.WithContext(ctx).Table(a.table("iam_group_role_bindings")+" AS b").
+		err = a.db.WithContext(ctx).Table(names.Foreign.GroupRoleBindings.String()+" AS b").
 			Select("rp.permission_code, b.role_id, 'group' AS source_type, b.group_id AS source_id, "+
 				"COALESCE(ds.scope_type, 'all') AS data_scope, rp.condition_json").
-			Joins("JOIN "+a.table("iam_role_permissions")+" AS rp ON rp.tenant_id = b.tenant_id AND rp.role_id = b.role_id").
-			Joins("LEFT JOIN "+a.table("iam_role_data_scopes")+" AS ds ON ds.tenant_id = b.tenant_id AND ds.role_id = b.role_id").
+			Joins("JOIN "+names.Tables.RolePermissions.String()+" AS rp ON rp.tenant_id = b.tenant_id AND rp.role_id = b.role_id").
+			Joins("LEFT JOIN "+names.Foreign.RoleDataScopes.String()+" AS ds ON ds.tenant_id = b.tenant_id AND ds.role_id = b.role_id").
 			Where("b.tenant_id = ? AND b.group_id IN ? AND rp.permission_code IN ?", tenantID, dynamicGroupIDs, requested).
 			Scan(&dynamicGrants).Error
 		if err != nil {
@@ -602,53 +593,17 @@ WHERE rp.tenant_id = ? AND rp.permission_code IN ?`,
 	return matchingTenantGrants(grants, trusted)
 }
 
-// Effective role membership is shared by endpoint grants and field policies.
-// Field restrictions also apply to assigned roles with no endpoint grants.
-func effectiveRolesCTE(p string, tenantID, subject guid.ID, now time.Time) (string, []any) {
-	return `
-WITH effective_roles(role_id, source_type, source_id) AS (
-    SELECT m.role_id, 'role_member', m.principal_id
-    FROM ` + p + `iam_role_members m
-    JOIN ` + p + `iam_tenant_members tm
-      ON tm.tenant_id = m.tenant_id AND tm.principal_id = m.principal_id AND tm.status = ?
-    WHERE m.tenant_id = ? AND m.principal_id = ?
-    UNION
-    SELECT grants.role_id, 'temporary_role', grants.id
-    FROM ` + p + `iam_temporary_role_grants grants
-    JOIN ` + p + `iam_tenant_members tm
-      ON tm.tenant_id = grants.tenant_id AND tm.principal_id = grants.principal_id AND tm.status = ?
-    WHERE grants.tenant_id = ? AND grants.principal_id = ?
-      AND grants.starts_at <= ? AND grants.ends_at > ?
-    UNION
-    SELECT b.role_id, 'group', b.group_id
-    FROM ` + p + `iam_group_role_bindings b
-    JOIN ` + p + `iam_groups g
-      ON g.tenant_id = b.tenant_id AND g.id = b.group_id AND g.status = 'active' AND g.group_type = 'static'
-    JOIN ` + p + `iam_group_members gm
-      ON gm.tenant_id = b.tenant_id AND gm.group_id = b.group_id
-    JOIN ` + p + `iam_tenant_members tm
-      ON tm.tenant_id = gm.tenant_id AND tm.principal_id = gm.principal_id AND tm.status = ?
-    WHERE b.tenant_id = ? AND gm.principal_id = ?
-      AND (gm.starts_at IS NULL OR gm.starts_at <= ?)
-      AND (gm.ends_at IS NULL OR gm.ends_at > ?)
-    UNION
-    SELECT b.role_id, 'position', b.position_id
-    FROM ` + p + `iam_position_role_bindings b
-    JOIN ` + p + `iam_positions pos
-      ON pos.tenant_id = b.tenant_id AND pos.id = b.position_id AND pos.status = 'active'
-    JOIN ` + p + `iam_position_members pm
-      ON pm.tenant_id = b.tenant_id AND pm.position_id = b.position_id
-    JOIN ` + p + `iam_tenant_members tm
-      ON tm.tenant_id = pm.tenant_id AND tm.principal_id = pm.principal_id AND tm.status = ?
-    WHERE b.tenant_id = ? AND pm.principal_id = ?
-      AND (pm.starts_at IS NULL OR pm.starts_at <= ?)
-      AND (pm.ends_at IS NULL OR pm.ends_at > ?)
-)`, []any{
-			MemberActive, tenantID, subject,
-			MemberActive, tenantID, subject, now, now,
-			MemberActive, tenantID, subject, now, now,
-			MemberActive, tenantID, subject, now, now,
-		}
+// effectiveRolesParams is the one place the module root assembles the tables
+// and membership status the role CTE reads, so the tenant-grant statement and
+// the field-policy statement can never disagree about who holds a role.
+func (a *Authorizer) effectiveRolesParams(tenantID, subject guid.ID, now time.Time) query.EffectiveRolesParams {
+	return query.EffectiveRolesParams{
+		AuthorizationTables: a.authorizationTables(),
+		TenantID:            tenantID,
+		Subject:             subject,
+		Now:                 now,
+		MemberStatus:        string(MemberActive),
+	}
 }
 
 func (a *Authorizer) loadDataScopeFacts(
@@ -675,14 +630,15 @@ func (a *Authorizer) loadDataScopeFacts(
 			selectedRoles[grant.RoleID] = struct{}{}
 		}
 	}
+	names := a.authorizationTables()
 	departmentSet := map[guid.ID]struct{}{}
 	if needDepartment || needDescendants {
 		var row struct {
 			DepartmentID guid.ID `gorm:"column:department_id"`
 		}
-		err := a.db.WithContext(ctx).Table(a.table("iam_member_departments")+" AS md").
+		err := a.db.WithContext(ctx).Table(names.Foreign.MemberDepartments.String()+" AS md").
 			Select("md.department_id").
-			Joins("JOIN "+a.table("iam_departments")+" AS d ON d.tenant_id = md.tenant_id AND d.id = md.department_id AND d.status = 'active'").
+			Joins("JOIN "+names.Foreign.Departments.String()+" AS d ON d.tenant_id = md.tenant_id AND d.id = md.department_id AND d.status = 'active'").
 			Where("md.tenant_id = ? AND md.principal_id = ?", tenantID, subject).Take(&row).Error
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil, fmt.Errorf("get authorization member department: %w", err)
@@ -693,9 +649,9 @@ func (a *Authorizer) loadDataScopeFacts(
 			}
 			if needDescendants {
 				ids := make([]guid.ID, 0)
-				err = a.db.WithContext(ctx).Table(a.table("iam_department_closure")+" AS c").
+				err = a.db.WithContext(ctx).Table(names.Foreign.DepartmentClosure.String()+" AS c").
 					Select("c.descendant_id").
-					Joins("JOIN "+a.table("iam_departments")+" AS d ON d.tenant_id = c.tenant_id AND d.id = c.descendant_id AND d.status = 'active'").
+					Joins("JOIN "+names.Foreign.Departments.String()+" AS d ON d.tenant_id = c.tenant_id AND d.id = c.descendant_id AND d.status = 'active'").
 					Where("c.tenant_id = ? AND c.ancestor_id = ?", tenantID, row.DepartmentID).
 					Pluck("c.descendant_id", &ids).Error
 				if err != nil {
@@ -713,9 +669,9 @@ func (a *Authorizer) loadDataScopeFacts(
 			roleIDs = append(roleIDs, roleID)
 		}
 		ids := make([]guid.ID, 0)
-		err := a.db.WithContext(ctx).Table(a.table("iam_role_scope_departments")+" AS rsd").
+		err := a.db.WithContext(ctx).Table(names.Foreign.RoleScopeDepartments.String()+" AS rsd").
 			Distinct("rsd.department_id").
-			Joins("JOIN "+a.table("iam_departments")+" AS d ON d.tenant_id = rsd.tenant_id AND d.id = rsd.department_id AND d.status = 'active'").
+			Joins("JOIN "+names.Foreign.Departments.String()+" AS d ON d.tenant_id = rsd.tenant_id AND d.id = rsd.department_id AND d.status = 'active'").
 			Where("rsd.tenant_id = ? AND rsd.role_id IN ?", tenantID, roleIDs).
 			Pluck("rsd.department_id", &ids).Error
 		if err != nil {
@@ -751,32 +707,17 @@ func (a *Authorizer) loadScopedGrants(
 	requested []string,
 	trusted policyx.TrustedContext,
 ) ([]scopedGrant, error) {
-	p := a.prefix
-	grants := make([]scopedGrant, 0)
-	err := a.db.WithContext(ctx).Raw(`
-WITH RECURSIVE expanded(permission_code, role_id, effect, scope_id, condition_json, entity_id, depth) AS (
-    SELECT p.permission_code, b.role_id, b.effect, b.scope_id, p.condition_json, e.id, 0
-    FROM `+p+`iam_role_bindings b
-    JOIN `+p+`iam_tenant_members tm
-      ON tm.tenant_id = b.tenant_id AND tm.principal_id = b.principal_id AND tm.status = ?
-    JOIN `+p+`iam_role_permissions p
-      ON p.tenant_id = b.tenant_id AND p.role_id = b.role_id
-    JOIN `+p+`iam_entities e
-      ON e.tenant_id = b.tenant_id AND e.id = b.scope_id AND e.status = 'active'
-    WHERE b.tenant_id = ? AND b.principal_id = ? AND b.scope_type = 'entity'
-      AND (b.expires_at IS NULL OR b.expires_at > ?)
-      AND p.permission_code IN ?
-    UNION ALL
-    SELECT x.permission_code, x.role_id, x.effect, x.scope_id, x.condition_json, e.id, x.depth + 1
-    FROM expanded x
-    JOIN `+p+`iam_entities e ON e.tenant_id = ? AND e.parent_id = x.entity_id AND e.status = 'active'
-    WHERE x.depth < 15
-)
-SELECT DISTINCT permission_code, role_id, effect, scope_id, condition_json, entity_id, depth
-FROM expanded`, MemberActive, tenantID, subject, trusted.Time.UTC().Truncate(time.Millisecond), requested, tenantID).
-		Scan(&grants).Error
+	now := trusted.Time.UTC().Truncate(time.Millisecond)
+	grants, err := query.LoadScopedGrants(ctx, a.db, query.ScopedGrantParams{
+		AuthorizationTables: a.authorizationTables(),
+		TenantID:            tenantID,
+		Subject:             subject,
+		Requested:           requested,
+		Now:                 now,
+		MemberStatus:        string(MemberActive),
+	})
 	if err != nil {
-		return nil, fmt.Errorf("evaluate scoped entity permissions: %w", err)
+		return nil, err
 	}
 	return matchingScopedGrants(grants, trusted)
 }
