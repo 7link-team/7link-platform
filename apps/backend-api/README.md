@@ -211,11 +211,12 @@ IAM state when recovering, and verify tenant A/B read, write and export isolatio
 before reopening traffic. Never run an old unrestricted binary against that
 backup or a downgraded schema.
 
-## Field policies (delivery in progress)
+## Field policies
 
 The field catalog covers `todo` and `user_profile` (login name, display name and
-email). The management UI and server-side consumers enforce these declarations;
-the final release gates and other lifecycle features are still in progress.
+email). The management UI and server-side consumers enforce these declarations.
+Field policies were accepted as part of phase 10.5; `docs/iam-release-checkpoints.md`
+records the current release evidence and what remains outside application scope.
 Tenant administrators with `field_policy_view` / `field_policy_update` can inspect
 `GET /iam/field-catalog`, list `GET /iam/field-policies?resource=todo`, and change
 `PUT /iam/field-policies/{resource}/{field}` with `version` and `policy`. Each

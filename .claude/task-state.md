@@ -1,124 +1,102 @@
 # Task State
 
 ## Task
-修复 2026-09-10 生产就绪审计查出的 IAM 功能/安全/契约缺陷（应用与代码范围，不含运维部署）。
+消除手写 SQL、表名类型化、新增静态门禁、全仓文档体检。方案见 `C:\Users\Feather\.claude\plans\giggly-bubbling-clock.md`（已批准）。
 
 ## Objective
-把审计确认的 12 项缺口全部关闭：9 项明确缺陷直接修，3 项经用户确认后的方案实施。
+按批准的方案分阶段推进：P0 门禁 → P1 类型化原语 → P2 core 授权引擎搬迁 → P3 可合并 UNION →
+P4a/b/c 拼表名清理 → P5 注入连接器 → P6 门禁收紧；PD 文档体检独立并行。
+用户确认的路线：**跨模块取表名一律走窄接口/注入**，不放宽架构测试、不放宽依赖全序（D37）。
 
 ## Current Phase
-IMPLEMENTATION
+IMPLEMENTATION —— P0 完成、P1 待最终门禁确认
 
 ## Current Step
-后端安全修复（httpx IPv6 过渡前缀 + federation discovery scheme 校验）先行
+P1 的 `make ci` 与 `make test-mysql8-run` 干净重跑中
 
 ## Overall Progress
-- [x] W1a httpx：补 `64:ff9b::/96`、`2002::/16`、`2001::/32` + 负向用例；`pkg/extension/httpx` PASS
-- [x] W1b federation：`oidcClient` 持有 `httpx.Policy`，discovery 三端点改用 `ValidateURL`；
-      新增 `TestOIDCDiscoveryRefusesEndpointsOutsideTheOutboundPolicy`；federation PASS
-- [x] W2a audit：platform 归档路由不再声明 `X-Tenant-Id`；新增 `documentPlatformScopeWithoutTenantHeader`；
-      守卫改为"platform 路由不得出现任何选择器槽位参数"，**已用变异验证**（移除修复即失败）；
-      修正 `internal/iam/audit/http_test.go` 中把缺陷冻结成契约的断言（platform 由 1 收紧为 0）
-- [x] W2b oauth：两条 consent 路由改 `RegisterSessionAuthenticated` + `consentPrincipal`（拒绝 Bearer）；
-      fixture 由 `authenticated` 改 `session-only`；OpenAPI 实测已是 sessionCookie-only
-- [x] W2c 移除 2 处被覆盖的死 `Security` 声明（`core/member_exit_http.go`）
-- [x] W3a identity：新增 `platform_status.go`（`SetPlatformStatus` + 两条 platform 路由 PUT/DELETE
-      `/platform/iam/principals/{principal_id}/suspension`）；复用租户语义（status + 撤销会话/refresh，
-      **不**销毁凭据，使恢复后仍可登录）；保留全部租户 last-admin 保护与平台访问守卫；
-      拒绝对墓碑主体写入；新增 `platform_status_test.go` 4 个用例（零租户主体可达、墓碑拒绝、
-      守卫拒绝不落库、非法状态）；identity 冻结清单 23→25 同步
-- [x] W3b authn：`requestScope` 把 `/oauth/token|revoke|introspect` 纳入限流，**独立预算**
-      （`oauth_per_ip` 默认 600、`oauth_global` 默认 30000，与登录预算分开计数、分开 Redis key）；
-      拒绝时对 OAuth 端点返回 RFC 6749 `{"error":"temporarily_unavailable"}` 而非平台信封；
-      oauth 模块自行声明 429/503 契约；新增两组测试（独立预算 + 运行时拒绝形状）
-- [x] W5 前端三项（子代理完成，我已复核 diff）：汉堡按钮改 `Button size="icon-lg"` 命中 44px 规则；
-      11 个硬编码英文键补齐三语言；roles 页读写错误分离 + 重试
-- [x] W7 重新生成 `docs/openapi.json` 与前端 `api-schema.ts`（+314 行）
-- [x] W4 federation：**经查为误报，不需要改代码**。跨站 SAML POST 的 callback 端点是
-      `authz.Public`、不读取任何 cookie（`VerifyIdentityOperation` 签名里根本没有 cookie 参数），
-      只按 RelayState 定位操作并记录验签后的断言属性；随后 303 跳转到同源
-      `/federation/{provider_id}/identity-continuations`（`RegisterSessionAuthenticated`），
-      在那里用既有的 Lax 会话 cookie + 交易 cookie 完成绑定校验。**加 SameSite=None 反而会削弱安全**。
-      真实缺陷只是 `docs/iam-release-checkpoints.md:68` 描述了一个未采用的设计 → 已改为描述实际实现
-- [ ] W6 真实数据库门禁：远端 docker 已确认可用（26.1.5），`test-mysql8-run` / `test-redis-security`
-      尚未在本轮改动后执行
-
-## Active Work
-W3b（OAuth 三接口限流）
-
-## Important Decisions（本轮新增）
-- D-fix-6：`fieldPolicyListInput.EntityID` 是 `/iam/fields/effective` 的**合法可选筛选参数**，与授权选择器
-  `entity_id` 同名不同物 → 守卫不得按名字全量拒绝，只对 **platform 类**操作要求选择器槽位为空。
-  这是对初次过宽检查的自我纠正，已记录以免后人重犯。
-
-## Verification
-**真实浏览器门禁（本轮最终回归证据）**：`route-matrix-browser-audit.mjs` **792/792 PASS，EXIT=0**，
-报告 `.temp/iam-uat/browser/route-matrix/report.json`（status PASS、results 792 全 PASS、两个夹具租户
-finally 清理均 PASS）。22 路由 × 3 语言 × 1440/390 × admin/reader/denied × 2 租户。
-被测二进制 SHA256 `3d6ae5df01e045f7af1c951360e8a316dd2a3c7a91c44a5474ff18679c71721c`，
-与该二进制**运行中**的 `/openapi.json` 一并确认包含本轮全部契约改动（新 suspension 路由、
-consent 已 sessionCookie-only、platform 归档无 `X-Tenant-Id`、`/oauth/token` 声明 429）。
-→ 本轮前后端改动未击穿任何一格，含 reader/denied 的权限裁剪与写拒绝断言。
-
-环境中转：MySQL 容器 `7link-iam-console-uat-mysql`（远端 10.0.0.100:32769，**保留未删**）；
-本机 API `127.0.0.1:18080` 与控制台 `127.0.0.1:18091` 仍在运行，由 `node .temp/iam-uat/serve.mjs`
-与 `bun run dev --host 127.0.0.1 --port 18091 --strictPort` 拉起。
-
-后端（本轮改动后实测）：
-- `make ci` **EXIT=0**：fmt clean、lint 0 findings、总覆盖率 90.0%（identity 89.9%→90.5%）、
-  integration 全 ok（architecture 2.6s / goose 17.7s / testdb 0.3s / lifecycle 124.1s / migration 291.9s /
-  performance 45.3s）、build 通过、`openapi: matches`
-- `make test-race` **EXIT=0**，无 DATA RACE、无 FAIL
-- `make test-mysql8-run` **EXIT=0**（真实 MySQL 8.4），schema lock 复核 219 文件未变、72 表、33 跨模块 FK
-- `make test-redis-security` 运行中（本轮改了共享限流器，必须跑）
-- 未跑：`make test-alerts`（本机无 promtool；本轮未改告警规则）
-
-前端（子代理执行 + 我强制无缓存复核）：`typecheck` / `lint` / `test`（148 pass 0 fail）/ `build` 全 EXIT 0
-
-生成物：`docs/openapi.json` 与 `api-schema.ts`（+314 行）均已由生成器重新产出
-
-## Completed Work
-- 审计与证据核实（本机 make ci EXIT=0；schema.lock 219/219；OpenAPI 191 paths/272 ops）
-- 远端 Docker 可达（ssh 密钥 C:/Users/Feather/.ssh/iam-docker-10.0.0.100 → root@10.0.0.100，Server 26.1.5）
-
-## Remaining Work
-1. 按 W1→W5 顺序实施，每批后跑对应门禁
-2. W6 全量门禁与自审、最终验收
-3. 用户确认后提交
+- [x] **P0 门禁 + 冻结基线**：`tests/architecture/query_gate_test.go`（5 条 AST 规则）+
+      `testdata/query_gate_ledger.json`（347 条目 / **budget 879**）+ `testdata/query_violations/` 夹具。
+      五条规则均在夹具上触发；白名单可断言；三条执行路径做过变异验证；**UPDATE 无法抬高预算**，
+      升预算必须带 `QUERY_GATE_REBASELINE=<原因>` 且原因入账本。
+      **变异测试在冻结前抓到并修掉两个真实漏洞**：① 裸表名规则不看 `return`，
+      `func helper(){return prefix+"iam_roles"}` 只要不叫 `table` 就能绕过（补上后 +55 处既有违规，
+      预算 836→879）；② 补 `return` 时误报了 S3 对象键与 URL 前缀，已收紧为"必须同时出现表名字面量
+      或 `.TableName()`"，夹具里正反例各留一个钉住边界。
+      另有 `gorm-expr-dynamic` 初版误判 `gorm.Expr(clock+" + ?")`（列表达式），已收窄，真实仓库归零。
+      与独立普查交叉验证：`handwritten-sql` 实测 18 = 普查数 18（规则补漏后仍是 18）
+- [x] **P1 类型化原语**：`gormx.TableName`（唯一构造函数 / `IsZero` 可观测）+ `gormx.TableSet`
+      （`NewTableSet/Lookup/Len`）+ `gormx.DatabaseClockMillis`；13 个模块 `query/table.go` 增
+      `TableNames`/`BindNames`/`Map` 且 `Bind` 由 `BindNames` 构建；13 个模块根包新增 `tables.go` 的 `TableSet`
+- [x] **P1 附带**：补 `internal/iam/federation/query/table_test.go`（该模块原本没有表名测试，
+      含"Bind 与 BindNames 不得漂移"断言）；补全 audit(3→4)、oauth(4→5) 两个只枚举部分表的既有测试
+- [x] **文档同步（P1 直接引起的部分）**：SKILL.md §4 改为描述 `BindNames`/`TableName`/`TableSet` 新机制 +
+      门禁说明；§8 补"不要靠跨模块 import query"（附注册表全序的硬理由与 D37 指路）；
+      去掉会漂移的"161 个时间列"硬数字
+- [x] **P2 core 授权引擎搬迁**：7 条语句 + 共享 CTE + 三方言 switch 搬入
+      `internal/iam/core/query/authorization.go`，**SQL 文本与 `[]any` 顺序逐字节不变**
+      （两法证明：一次性提取脚本 diff = BYTE-IDENTICAL；新增 golden 断言持续钉死）。
+      `Authorizer.table` 删除，21 处改用绑定表名；他人表的前缀拼接收敛到 `query/table.go` 的
+      `BindForeign` 单点并标 `TODO(P5)`；未 import 其他 IAM 模块、未自造连接器。
+      `administrator.go` 的**最后管理员守卫仍是单条语句**（前后两次度量同事务同快照）。
+      **验收（我自跑，非采信子代理）：`make ci` EXIT=0、`make test-mysql8-run` EXIT=0、0 FAIL、
+      覆盖率 90.1%、schema lock 219 未变、`iam_performance_baseline.json` diff 为空（28 指纹零变化）。**
+      预算随之下调 879→**749**（naked 715→593、concatenated 146→138；`handwritten-sql` 仍 18 ——
+      印证账本 key 位置无关的设计正确），并变异验证门禁仍能抓新违规。
+      **子代理报告有一处不实**：`cover_base.raw`/`cover_fed.raw` 是它自己产生的覆盖率轮廓
+      （它称"P1 遗留、非我创建"，时间戳在其会话内），且未被 gitignore 覆盖 → 已删除。
+- [ ] P3 三条可 Go 合并的 UNION 改类型化
+- [ ] P4a/b/c 拼表名清理（自有表 34 处 → 跨模块单表 → 跨模块 JOIN 72 条）
+- [ ] P5 表名集合注入连接器（6–9 个）
+- [ ] P6 门禁收紧（budget 降到 SQL 类 = 0）
+- [ ] PD 全仓文档体检（六批）
 
 ## Important Decisions
-- D-fix-1：SAML 绑定按 `docs/iam-release-checkpoints.md` §2.1 既定设计实现（SameSite=None 交易 cookie +
-  同源最终确认），用户已确认。**本机无法做真实浏览器 SAML 验收**（`scripts/iam-uat.mjs` 明确拒绝远端
-  Docker context），只能以 Go/HTTP 测试覆盖，交付时须标注未浏览器验证。
-- D-fix-2：OAuth 三接口纳入同一限流中间件但使用**独立可配置预算**，不与登录共享额度（用户已确认）。
-- D-fix-3：新增 platform 作用域 suspend/restore 入口（用户已确认），复用既有账号停用与 last-admin 保护语义。
-- D-fix-4：platform 归档路由的 `X-Tenant-Id` 用注册后文档修正移除（先例：`documentSharedSecurity` 同样
-  在注册后改写 `api.OpenAPI().Paths`），运行时继续 422 拒绝，不改为接受。
-- D-fix-5：永久擦除默认关闭（`erasure_ledger.enabled` default false）**保持不动**——属有意的 fail-closed
-  设计且已写入 runbook，改默认值会削弱擦除的不变量。
+- **D36**（已写入 `.claude/decisions.md`）：查询门禁的形状、5 条规则、基线只减不增、变异验证结论。
+- **D37**（已写入）：跨模块取表名走窄接口注入；`pkg/module/registry.go:126` 的 `Activate` 要求依赖全序，
+  **core 反向 import 下游 query 在启动期就是硬失败**；授权引擎语句保持单条。
+- 用户先后给出两个互相冲突的答复：对 `administrator.go:70` 先答"仍然拆分"，后选路线含"不拆授权引擎"。
+  **方案按"保持单语句"执行**（D3 已标注该不一致）。
 
 ## Confirmed Constraints
-- 不碰运维/部署/灾备/RTO-RPO/告警接收路由/签字；仓库无部署物这一事实不因此轮改变。
-- 生成物（openapi.json、api-schema.ts）必须经生成器产出，不手改。
-- 不弱化任何既有测试断言；不降低覆盖率门槛；保留旧迁移哈希。
-- 远端 Docker 仅用于测试门禁，不 bootstrap、不改动其安装。
+- 不放宽 `cross-module-storage-import` 门禁，不放宽 `Registry.Activate`，不改 `tests/architecture` 的既有规则。
+- 生成物（`*.gen.go`、`openapi.json`、`api-schema.ts`）必须经生成器产出；`make generate` 后工作树零差异。
+- 重命名/搬家 SQL 时**文本与参数顺序必须逐字节不变**，由性能基线 28 个指纹证明。
+- `Delete(map[string]any{})` 不得换成 `Delete(&model{})`（会让带 `DeletedAt` 的模型变软删）。
+- `authn/repository_credentials.go` 的 CASE UPDATE 依赖 MySQL 从左到右求值，只许搬文件不许改写。
 
 ## Known Issues / Risks
-- 覆盖率总值为 90.0%，刚好压线；本轮新增代码必须带测试，否则会击穿门槛。
-- 新增 platform 停用入口会改变现有 `iam_http_mappings.txt`/`iam_http_guards.txt`（258 条）与 OpenAPI
-  操作数（272），属预期契约变更，需同步 fixture 与前端类型生成物。
-- consent 路由改 session-only 会从对外契约移除 bearerAuth，属预期变更。
+- **覆盖率门禁余量极薄（既有问题，待用户定处置）**：精确 **90.0464%**（29728 条语句，未覆盖 2959），
+  距门槛 90.0% 仅 **0.0464 pp ≈ 14 条语句**。任意一处小改动没带测试就会把门禁压红。
+  本次曾因此出现 `make ci` EXIT=2（**无任何测试失败**，仅覆盖率 89.9371%）：P1 新增代码占 31 条未覆盖。
+  已按"不降门槛、补真测试"修复，P1 新增代码现 **100% 覆盖**。处置选项：接受现状 / 专门排一次覆盖率补齐 /
+  记为已知风险。
+- **Go 覆盖率机制（踩过的坑）**：`-coverprofile` **只记录被测包自身**的语句，不用 `-coverpkg`。
+  在别的包（如 `internal/app`）的测试里调用某函数，**不会**给它所在包贡献覆盖率。
+  因此每个包的表名契约必须在**该包内**测试。
+- `make generate-check` 在本机跑不起来（GnuWin32 make 3.81 的 `$(MAKE)` 递归 + shell 语法），
+  改用手工等价验证：`make generate` 后 `git status` 无任何 `.gen.go`。
+- 一次 `make test-integration` 出现 `tests/lifecycle` 的 `mysql/prefixed` FAIL，**是在子代理并发改文件时跑的**，
+  隔离复跑即通过。判断为并发假失败，但**未定论** —— 干净重跑结果为准。
+- `make test-performance` 单独跑不校验指纹（缺 DSN 时 `TestIAMPerformanceExternalDatabase` SKIP）；
+  真正带 DSN 比对的是 `make test-mysql8-run`。
 
 ## Verification
-Build / Tests / Other: NOT_RUN（本轮尚未执行）
+- **P0**：`tests/architecture` PASS（含夹具与白名单断言）；三次执行路径变异均被抓住；UPDATE 无法抬高预算
+- **P1**（干净树、无并发编辑）：
+  - `make ci` **EXIT=0**：fmt clean、lint 0 findings、覆盖率全模块 ≥90%、
+    integration architecture 5.6s / goose 24.0s / testdb 0.3s / **lifecycle 131.2s** /
+    **migration 310.9s** / performance 51.2s **全 ok、0 FAIL**、build、openapi-check
+  - `make test-mysql8-run` **EXIT=0**（真实 MySQL 8.4）：含
+    `TestIAMPerformanceExternalDatabase` 的**查询计划指纹"当前代码 vs 基线"比对通过**——
+    这是"表名收敛逐字节未改 SQL"的决定性证据；schema lock 复核 219 文件未变、72 表、33 跨模块 FK
+  - `make lint` EXIT=0、`make generate` 生成物零漂移
+  - 先前那次 `mysql/prefixed` FAIL 已由干净运行**确认为并发编辑导致的假失败**
 
 ## Next Action
-原 12 项**全部关闭**：11 项为真实缺陷并已修复实证，第 12 项（SAML）经复核为**误报**，改为修正文档。
-可选后续（未开始，需用户决定是否值得）：
-1. 用真实浏览器跑仓库既有的 route-matrix（792 格）作为本轮前后端契约改动的回归证据
-   —— 环境子代理正在用远端 MySQL 搭本地 API + 控制台，若成功可复用。
-2. `make test-alerts` 仍需 promtool。
-未提交：全部改动仍在工作区，等用户确认后再按 Conventional Commit 精确暂存提交。
+按已定方案提交两个 commit（P0 门禁 / P1 类型化原语），然后开始 **P2**：
+core 授权引擎 4 条 CTE + 6 条语句搬入 `core/query/`，**SQL 文本与参数顺序逐字节不变**，
+以 `make test-mysql8-run` 的 28 个指纹**零变化**为验收；指纹一变即说明搬家碰到了 SQL 文本，必须回退重做。
 
 ## Last Checkpoint
-2026-09-10 全部条目关闭；SAML 项由"实现 cookie"更正为"修正文档"，原因是实际实现比文档描述的更强
+2026-09-10 P0 完成并实证；P1 代码与文档完成，待最终门禁确认

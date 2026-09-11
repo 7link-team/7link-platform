@@ -100,16 +100,47 @@ var (
 行类型带完整 gorm tag,并实现 `TableName() string` 返回**不带前缀**的表名。
 时间列用 `time.Time`,可空时间用 `*time.Time`(NULL 表示"未发生",不要用零值当哨兵)。
 
-**query** —— `gen.go` 由 `make generate` 产出,**不要手改**;`table.go` 手写,只放一件事:
+**query** —— `gen.go` 由 `make generate` 产出,**不要手改**;`table.go` 手写,放三件事:
 
 ```go
+// 物理表名:逻辑名 + 已生效的部署前缀。构造函数唯一,IsZero 可观测。
+type TableNames struct { Todos gormx.TableName }
+
+func BindNames(prefix string) TableNames {
+    return TableNames{Todos: gormx.NewTableName(prefix, model.TodoRow{}.TableName())}
+}
+
+// 供模块根包发布 TableSet,给 JOIN 本模块表的消费方用。
+func (names TableNames) Map() map[string]gormx.TableName {
+    return map[string]gormx.TableName{model.TodoRow{}.TableName(): names.Todos}
+}
+
+// Bind 从 BindNames 构建,所以前缀只经过一条路径。
 func Bind(db *gorm.DB, prefix string) *Todos {
-    return Use(db).TodoRow.Table(prefix + model.TodoRow{}.TableName())
+    names := BindNames(prefix)
+    return Use(db).TodoRow.Table(names.Todos.String())
 }
 ```
 
-**这是全模块唯一拼接表名的地方。** 分散拼接会让加了前缀的部署"半生效" —— 一半表带前缀一半不带,
-而且单元测试发现不了(测试通常不带前缀)。
+**`BindNames` 是全模块唯一拼接表名的地方。** 分散拼接会让加了前缀的部署"半生效" —— 一半表带前缀一半不带,
+而且单元测试发现不了(测试通常不带前缀)。`gormx.TableName` 的存在就是为了让这件事物理上只发生一次:
+别处拿到的都是已经构造好的名字,它们**无法自己发明**。
+
+**模块根包再加一个 `tables.go`**,把本模块的表名发布给别人:
+
+```go
+func TableSet(prefix string) gormx.TableSet {
+    return gormx.NewTableSet(query.BindNames(prefix).Map())
+}
+```
+
+消费方拿到的是**名字的集合,不是前缀**,所以它造不出拥有者没发布的名字;解析不到时
+`Lookup` 返回 `ok=false`,**此时必须返回 error,不许把零值表名放进语句**(零值即空表名)。
+
+**这两条由静态门禁强制**:`tests/architecture/query_gate_test.go` 禁止在 `Bind` 之外拼表名、
+禁止手写 SQL、禁止裸 `iam_`/`goose_` 表名字面量;豁免文件只有各模块的 `query/table.go` 与
+`pkg/extension/{gorm,goose}` 这两个原语包。门禁按冻结基线 `testdata/query_gate_ledger.json`
+执行,**预算只减不增** —— 清理可以下调 `budget`,禁止为了变绿而抬高预算或删条目。
 
 **服务层再收一次口**:像 `todo` 的 `scope()` 那样,提供唯一的查询构造入口,
 把软删谓词和前缀绑定都锁在里面,**并让 `includeDeleted` 这类语义在每个调用点显式传参** ——
@@ -125,7 +156,8 @@ func Bind(db *gorm.DB, prefix string) *Todos {
 写 DDL 时:金额用定点不用浮点;可空语义用 NULL 不用 0 或空串;
 业务唯一键必须落唯一索引。跨模块外键归**依赖方**的迁移文件。
 
-**时间列的类型是定死的**,三方言各自只有一种写法,现有 161 个时间列全部如此:
+**时间列的类型是定死的**,三方言各自只有一种写法(此处不写具体列数 —— 它会随迁移增加而漂移,
+以 `make test-mysql8` 的 schema lock 实测为准):
 
 | 方言 | 用 | 不要用 |
 |:---|:---|:---|
@@ -203,10 +235,18 @@ key 一律 namespace 限定,**不要裸 key** —— 跨模块撞名时是静默
 测试必须命名为 `xx_test.go` 或 `xx_子主题_test.go`,且同目录下要存在对应的 `xx.go`。
 凭空起一个 `helpers_test.go` 而没有 `helpers.go`,门禁会红。
 
-`tests/architecture` 的另外几项目前**只作用于 `internal/iam`**(模块根包必须有自己的业务源码、
+**查询门禁的作用域是全仓 `internal/` + `pkg/`**(`TestQueryGate`:禁手写 SQL、禁在 `BindNames` 之外
+拼表名、禁裸 `iam_`/`goose_` 表名字面量),测试文件不在其内。
+
+`tests/architecture` 的另外几项**只作用于 `internal/iam`**(模块根包必须有自己的业务源码、
 `module.Resolve` 必须在 `ModuleDependencies` 的 return 表达式里声明、禁止跨模块引用
 model/query/dbgen、禁止从根包泄漏持久化类型)。**新写的模块即使不在强制范围内,也按同样的约束写** ——
 这些规则是从本仓已经踩过的问题里长出来的,而且作用域随时可能扩到全仓。
+
+**不要试图靠跨模块引用别人的 `query` 来复用表名**:`pkg/module/registry.go` 的 `Activate` 要求
+"模块必须注册在其全部依赖之后",即**依赖图必须是严格全序,环即启动失败**。像 `core` 这种被大家依赖的模块,
+反向 import 下游的 `query` 在启动期就是硬失败。跨模块取表名只有一条路:拥有者在**根包**发布
+`TableSet`(表名集合,不是前缀)或冻结窄接口,依赖方用 `module.Resolve[T]` 拿。见 decisions D37。
 
 ## 九、动手顺序
 

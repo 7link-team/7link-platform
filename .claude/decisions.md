@@ -854,7 +854,8 @@ Redis 让生产部署多一个必须高可用的有状态组件，运维成本�
 本轮零改动。
 
 **Status**
-已批准，未实施（2026-09-07）。排入 P1 迭代。
+已实施（2026-09-10）。共享限流与 captcha 存储已交付：见 `apps/backend-api/docs/iam-redis-security.md`
+与 `make test-redis-security`；`/authn/*` 与 `/oauth/{token,revoke,introspect}` 分别计自己的预算（D36 之后）。
 
 ## D25 — 模块的独立回滚只在自身 milestone 依赖闭包内有定义
 
@@ -985,7 +986,10 @@ Backend integration runner only; no production timeout or migration changes.
 Implemented under D26's standard technical-remediation authorization. Normal `make ci`
 subsequently passed; migration package took 640.915s, with all assertions intact.
 
-## D28 — 擦除事务对锁冲突有界重试，并承认它可能被围栏反超
+## D28b — 擦除事务对锁冲突有界重试，并承认它可能被围栏反超
+
+（编号说明：本条曾与上面的 `D28 - Explicit Integration Suite Time Budget` 重号，导致"按 D28 引用"无法消歧。
+保留两条的历史位置不动，把这一条标为 D28b；全仓没有别处按编号引用 D28。）
 
 **Decision**
 `AnonymizePrincipal` 在数据库因锁循环回滚它时重试，最多 3 次；判定收敛在
@@ -1196,3 +1200,55 @@ TLS/mTLS及ACL，保留单机URL配置，严格拒绝混用和半配置。未知
 与退租/关闭共用principal锁，并重验成员和credential version，防迟到请求恢复旧授权。
 个人闭环服务/HTTP及失败回滚通过，真实PostgreSQL/MySQL组合与并发通过；最新后端真实浏览器
 个人安全12/12、生命周期6/6、全业务矩阵792/792通过。最终独立门禁与交付状态见发布检查点和task-state。
+
+## D36 — 查询门禁：禁手写 SQL 与禁拼表名，用只减不增的冻结基线
+
+**Decision / Reason**
+用户要求"严禁 raw SQL、全部走 gorm/gen 类型化写法"。实测：生产代码 18 个 `.Raw(`/`.Exec(` 调用点、23 条语句，
+但**真正的战场是 72 条 `.Joins(` 生产语句与约 170 处绕过 `Bind` 的拼表名**。
+新增 `tests/architecture/query_gate_test.go`（5 条 AST 规则）+ `testdata/query_gate_ledger.json` 冻结基线：
+`handwritten-sql` 18、`concatenated-table-name` 146、`naked-table-literal` 715，预算 **879**（347 条目）。
+门禁放在 `tests/architecture` 而非 `tools/*`，因为它随 `make test-integration` 在 `make ci` 内，每个提交必跑。
+
+**Alternatives / Tradeoffs**
+不用 `forbidigo`：它只能按标识符名/正则匹配，表达不了"ADD 出现在某方法实参里""字面量在某上下文里"，
+而 `prefix` 这个名字在 URL、S3 key、env 变量三处合法存在，会大量误伤。
+`naked-table-literal` 只匹配 `^(iam_|goose_)`，这三类前缀永远不会命中，实测零误报。
+`gorm-expr-dynamic` 初版曾把 `gorm.Expr(clock+" + ?")`（列名 + 运算符，正是该 API 的用途）误判为违规，
+已收窄为"动态**且**文本含 SQL 关键字或表名"，真实仓库归零。
+预算只能降不能升：`QUERY_GATE_UPDATE=1` 在结果超过既有预算时直接失败；**确需升预算**（例如规则补漏后
+合法浮出更多既有违规）必须设 `QUERY_GATE_REBASELINE=<原因>`，原因会写进账本与 diff，是一次留痕的、
+可评审的动作，而不是靠删账本绕过。三条执行路径都做了变异验证
+（漏一条→报 new violation；多一条→报 not found；预算调低→报 above its budget）。
+
+**变异测试在冻结前抓到并修掉了两个真实漏洞**（这正是"规则要能被证伪"的价值）：
+① 裸表名规则原本只看实参/RHS/复合字面量/常量声明，**不看 `return`**——
+   `func helper(...) string { return prefix + "iam_roles" }` 只要不叫 `table` 就能绕过。
+   补上 `return` 上下文后预算从 836 升到 879（多浮出 55 处既有违规，其中大数是此前完全没被统计的）。
+② 补 `return` 时一开始把 `audit/anchor.go:151` 的 S3 对象键与 `authn/returnurl.go:129` 的 URL 前缀
+   误报为拼表名（它们同样由名为 `prefix` 的变量拼成）。已收紧为"必须同时出现表名字面量或
+   `.TableName()`"，两处误报消除；夹具里也各留了一个正例与一个反例把这条边界钉住。
+
+**Scope / Status**
+P0 已完成并实证（含夹具证明 5 条规则均非空断言、白名单可断言）。后续按阶段推进，**基线集合只减不增**；
+清理时必须同步下调 `budget`。**不得为了让门禁变绿而抬高预算或删除条目。**
+
+## D37 — 跨模块取表名走窄接口注入，不放宽架构测试、不放宽依赖全序
+
+**Decision / Reason**
+128 处 `table("字面量")` 中只有 34 处是本模块自有表，94 处是别人的表。
+用户初选"允许跨模块 import query"，但实测 `pkg/module/registry.go:126` 的 `Activate` 要求
+"模块必须注册在其全部依赖之后"——**依赖图必须是严格全序，环即启动失败**；
+而 organization/identity/authn/oauth/provisioning 全部已依赖 core，
+**core 反向 import 它们的 query 在启动期就是硬失败**，与风格无关。
+最终确认走窄接口/注入（照抄既有 `DirectoryAuthorizationSourceConnector`、`RoleGrantStore` 两个先例），
+未环方向的跨模块引用也不放开，保持 `cross-module-storage-import` 门禁与 `Activate` 一字不改。
+
+**Alternatives / Tradeoffs**
+改 `Activate` 允许成环会破坏关停严格逆序的根基，影响全仓 19 个模块的生命周期与迁移顺序，是降低架构强度而非提升，
+且选窄接口后它无事可做。代价是需新建 6–9 个契约与连接器，工作量更大。
+
+**Scope / Status**
+P2/P4b/P5 落地。授权引擎的语句保持单条（`administrator.go` 的 last-admin 守卫由 `Protect` 在调用方事务里
+做前后两次测量，拆分会让两次测量落在不同快照上）；`relationshipTraversalExpressions` 的三方言 switch
+原样搬迁，性能基线 28 个指纹必须零变化以证明"只搬家不改语义"。
