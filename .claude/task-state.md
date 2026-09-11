@@ -9,12 +9,13 @@ P4a/b/c 拼表名清理 → P5 注入连接器 → P6 门禁收紧；PD 文档�
 用户确认的路线：**跨模块取表名一律走窄接口/注入**，不放宽架构测试、不放宽依赖全序（D37）。
 
 ## Current Phase
-ACCEPTANCE —— **P5「拥有者把表名集合注入给消费者」已完成并全量验证通过（6/6 对，另有 4 对结构性不可做）**，
-P4b 第一个契约（identity.PrincipalStateStore）在其下方未提交；**尚未提交**
+BLOCKED —— P0–P5 全部完成、验证并**已推送到 `origin/IAM`（HEAD `b24aa5a`）**。
+P5「拥有者把表名集合注入给消费者」6/6 对完成（另 4 对结构性不可做）；P4b 契约已随 `85ebe5f` 提交。
+**P4c 被一个架构决策阻塞**（见 Next Action），未开工。
 
 ## Current Step
-P5 全部 6 对连接器完成，8 项要求的实测已跑完（见 Verification 的 P5 段）。
-下一步：提交（P4b + P5 同一工作树），然后才动 P6
+P5 已提交 `b24aa5a` 并推送（提交时曾漏暂存 `tests/migration/iam_core_test.go`，已 amend 修正；
+远端当时尚未有该提交，amend 安全）。**P4c 未开工**，原因见 Next Action。
 
 ## Overall Progress
 - [x] **P0 门禁 + 冻结基线**：`tests/architecture/query_gate_test.go`（5 条 AST 规则）+
@@ -238,11 +239,14 @@ P5 全部 6 对连接器完成，8 项要求的实测已跑完（见 Verificatio
    `audit.EventReader`）在允许方向的剩余站点均只 1 处且嵌在 JOIN 内，收益不足 —— **如实跳过**。
 
 ## Next Action
-提交本次工作树（未提交的 P4b + P5 一起）。之后：
-- 若要继续 P4c，先重新核对 `Remaining Work` 第 1 条的硬约束是否已被 P5 解除；
-- P6 门禁收紧时才允许动 `budget`/规则。
-每阶段改完都要 `QUERY_GATE_UPDATE=1 … -run TestQueryGate` 刷新后**手工下调** `budget`（当前 482）。
-若刷新时报 "exceed the frozen budget"，说明引入了新违规，去修代码而不是用 `QUERY_GATE_REBASELINE` 掩盖。
+**P4c 开工前需用户决策**：把跨模块连接器/能力类型放在 `pkg/`（走 `isStableWiringCapability` 白名单）是否可接受？
+- 若可接受：为 `identity←authn`、`oauth←organization`、`governance←organization`、`federation←organization`
+  这 4 对在 `pkg/` 下声明能力类型，两侧都用它，绕开模块间反向 import；然后 P4c 才能处理这些 JOIN。
+- 若不可接受：这 4 对的表名只能保持现状，P4c 的可做范围仅剩"已建连接器的 6 对"中的残余站点。
+- 已完成的 P5 为可行方向建好了 6 个连接器（共注入 18 个表名）。
+
+其余待用户定：Codeup 提交邮箱与推送账号不一致（非本次引入）；覆盖率余量约 0.1pp；
+UAT 环境（远端 MySQL 容器 + 本机 API/控制台）是否清理。
 
 ## Last Checkpoint
 2026-09-11 **P5 六对连接器全部完成并实测**：`go build ./...` EXIT=0、`go test ./internal/... -count=1`
