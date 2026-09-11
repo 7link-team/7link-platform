@@ -9,10 +9,10 @@ P4a/b/c 拼表名清理 → P5 注入连接器 → P6 门禁收紧；PD 文档�
 用户确认的路线：**跨模块取表名一律走窄接口/注入**，不放宽架构测试、不放宽依赖全序（D37）。
 
 ## Current Phase
-IMPLEMENTATION —— P0/P1/P2 完成、P3 待最终门禁确认
+IMPLEMENTATION —— P0/P1/P2/P3 已完成并推送；P4a 未开始
 
 ## Current Step
-P3 三条语句已改写并通过单包测试 + 变异验证；正在跑 `make ci` 收尾
+P3 已提交推送（`f3c23c9`）。下一步：P4a 自有表拼表名清理（34 处）
 
 ## Overall Progress
 - [x] **P0 门禁 + 冻结基线**：`tests/architecture/query_gate_test.go`（5 条 AST 规则）+
