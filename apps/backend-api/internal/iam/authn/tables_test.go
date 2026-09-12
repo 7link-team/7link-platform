@@ -7,41 +7,36 @@ import (
 	"7link.com/platform/internal/iam/authn/query"
 
 	"7link.com/platform/internal/iam/core"
+	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/pkg/appenv"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// publishedDirectoryTables is the set the organization module publishes. authn
-// cannot import organization -- organization imports authn, so the import is a
-// cycle -- and a harness that runs authn alone has to publish what the owner
-// would, the way the connectors do in a running deployment.
-var publishedDirectoryTables = []string{
-	"iam_groups",
-	"iam_group_members",
-	"iam_group_role_bindings",
-	"iam_positions",
-	"iam_position_members",
-	"iam_position_role_bindings",
-	"iam_departments",
-	"iam_department_closure",
-	"iam_member_departments",
-	"iam_role_data_scopes",
-	"iam_role_scope_departments",
-	"iam_tenants",
-}
-
-// publishedForeignTables returns the sets the identity module publishes, in the
-// shape core's connectors receive them.
-func publishedForeignTables(prefix string) (gormx.TableSet, gormx.TableSet) {
-	directory := make(map[string]gormx.TableName, len(publishedDirectoryTables))
-	for _, logical := range publishedDirectoryTables {
-		directory[logical] = gormx.NewTableName(prefix, logical)
-	}
-	return gormx.NewTableSet(directory), gormx.NewTableSet(map[string]gormx.TableName{
-		"iam_principals": gormx.NewTableName(prefix, "iam_principals"),
-	})
+// publishedForeignTables returns the names the organization and identity
+// modules fill into the shapes core declared for the tables its authorization
+// statements JOIN. authn cannot import organization -- organization imports
+// authn, so the import is a cycle -- so a harness that wires one of core's
+// readers here has to fill the shape the owner would. identity is importable,
+// so its name comes from the owner's own constructor.
+func publishedForeignTables(prefix string) (core.DirectoryTableNames, core.PrincipalTableNames) {
+	return core.DirectoryTableNames{
+			Groups:               gormx.NewTableName(prefix, "iam_groups"),
+			GroupMembers:         gormx.NewTableName(prefix, "iam_group_members"),
+			GroupRoleBindings:    gormx.NewTableName(prefix, "iam_group_role_bindings"),
+			Positions:            gormx.NewTableName(prefix, "iam_positions"),
+			PositionMembers:      gormx.NewTableName(prefix, "iam_position_members"),
+			PositionRoleBindings: gormx.NewTableName(prefix, "iam_position_role_bindings"),
+			Departments:          gormx.NewTableName(prefix, "iam_departments"),
+			DepartmentClosure:    gormx.NewTableName(prefix, "iam_department_closure"),
+			MemberDepartments:    gormx.NewTableName(prefix, "iam_member_departments"),
+			RoleDataScopes:       gormx.NewTableName(prefix, "iam_role_data_scopes"),
+			RoleScopeDepartments: gormx.NewTableName(prefix, "iam_role_scope_departments"),
+			Tenants:              gormx.NewTableName(prefix, "iam_tenants"),
+		}, core.PrincipalTableNames{
+			Principals: identity.PublishedPrincipalTableNames(prefix).Principals,
+		}
 }
 
 // boundMembershipChecker returns a tenant checker wired the way module wiring
@@ -73,29 +68,31 @@ func boundAuthorizationEvaluator(t *testing.T, runtime *appenv.Runtime) core.Aut
 	return authorizer
 }
 
-// TestTableSetPublishesPrefixedNames is the contract the modules that JOIN this
-// module's tables depend on: every name this module binds is published, and
-// every name it publishes carries the deployment prefix exactly once.
+// TestCredentialTableNamesCarryThePrefixExactlyOnce is the contract the
+// modules that JOIN this module's tables depend on: every name this module
+// publishes carries the deployment prefix exactly once.
 //
 // A published name that lost its prefix would send a consumer to a table the
 // deployment does not have, and the defect would only appear where a prefix is
 // configured -- never in the tests that run without one.
-func TestTableSetPublishesPrefixedNames(t *testing.T) {
+func TestCredentialTableNamesCarryThePrefixExactlyOnce(t *testing.T) {
+	t.Parallel()
+
 	const prefix = "sl_"
-	plain, prefixed := TableSet(""), TableSet(prefix)
-	require.Positive(t, prefixed.Len(), "a module that owns tables publishes at least one")
-	assert.Equal(t, plain.Len(), prefixed.Len(), "the prefix must not change what is published")
+	plain := reflect.ValueOf(PublishedCredentialTableNames(""))
+	prefixed := reflect.ValueOf(PublishedCredentialTableNames(prefix))
+	require.Positive(t, prefixed.NumField(), "a module that owns tables publishes at least one")
 
-	for _, logical := range prefixed.Names() {
-		name, ok := prefixed.Lookup(logical)
-		require.True(t, ok, logical)
-		assert.Equal(t, prefix+logical, name.String(), logical)
-		assert.Equal(t, logical, name.Logical(), logical)
-		assert.False(t, name.IsZero(), logical)
+	for index := range prefixed.NumField() {
+		field := prefixed.Type().Field(index).Name
+		name, ok := prefixed.Field(index).Interface().(gormx.TableName)
+		require.True(t, ok, field)
+		assert.False(t, name.IsZero(), field)
+		assert.Equal(t, prefix+name.Logical(), name.String(), field)
 
-		withoutPrefix, ok := plain.Lookup(logical)
-		require.True(t, ok, logical)
-		assert.Equal(t, logical, withoutPrefix.String(), logical)
+		withoutPrefix, ok := plain.Field(index).Interface().(gormx.TableName)
+		require.True(t, ok, field)
+		assert.Equal(t, name.Logical(), withoutPrefix.String(), field)
 	}
 }
 

@@ -136,20 +136,20 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[SecretRewrapper](services, m); err != nil {
 		return fmt.Errorf("provide authn secret rewrapper: %w", err)
 	}
-	if err := module.Provide[DirectoryTableSetConnector](services, DirectoryTableSetConnector{
+	if err := module.Provide[DirectoryTableNamesConnector](services, DirectoryTableNamesConnector{
 		Bind: m.foreign.bindDirectory,
 	}); err != nil {
-		return fmt.Errorf("provide authn directory table set connector: %w", err)
+		return fmt.Errorf("provide authn directory table names connector: %w", err)
 	}
-	if err := module.Provide[OAuthTableSetConnector](services, OAuthTableSetConnector{
+	if err := module.Provide[OAuthTableNamesConnector](services, OAuthTableNamesConnector{
 		Bind: m.foreign.bindOAuth,
 	}); err != nil {
-		return fmt.Errorf("provide authn oauth table set connector: %w", err)
+		return fmt.Errorf("provide authn oauth table names connector: %w", err)
 	}
-	if err := module.Provide[identity.PrincipalTableSetReceiver](services, identity.PrincipalTableSetReceiver{
+	if err := module.Provide[identity.PrincipalTableNamesReceiver](services, identity.PrincipalTableNamesReceiver{
 		Bind: m.foreign.bindPrincipal,
 	}); err != nil {
-		return fmt.Errorf("provide authn principal table set receiver: %w", err)
+		return fmt.Errorf("provide authn principal table names receiver: %w", err)
 	}
 	if err := module.Provide[identity.PrincipalStateReceiver](services, identity.PrincipalStateReceiver{
 		Bind: m.bindPrincipalState,
@@ -158,9 +158,6 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	}
 	if err := module.Provide[identity.PrincipalCredentialStore](services, m.principalCredentialStore()); err != nil {
 		return fmt.Errorf("provide authn principal credential store: %w", err)
-	}
-	if err := module.Provide[CredentialTables](services, CredentialTables{Published: TableSet(m.runtime.TablePrefix())}); err != nil {
-		return fmt.Errorf("provide authn credential tables: %w", err)
 	}
 	if err := module.Provide[CredentialTableNames](services, PublishedCredentialTableNames(m.runtime.TablePrefix())); err != nil {
 		return fmt.Errorf("provide authn credential table names: %w", err)
@@ -255,11 +252,11 @@ func (m *Module) InjectServices(services *module.Services) error {
 	}
 	m.fields = fields
 	m.personalPermissions = fields.CheckBulk
-	accessTables, err := module.Resolve[core.AccessTables](services)
+	accessTables, err := module.Resolve[core.AccessTableNames](services)
 	if err != nil {
 		return fmt.Errorf("resolve authn access tables: %w", err)
 	}
-	if err := m.foreign.bindAccess(accessTables.Published); err != nil {
+	if err := m.foreign.bindAccess(accessTables); err != nil {
 		return fmt.Errorf("bind authn access tables: %w", err)
 	}
 	m.ids = ids
@@ -290,6 +287,11 @@ func (m *Module) Initialize(context.Context) error {
 	}
 	if m == nil || m.runtime == nil || m.ids == nil || m.appender == nil {
 		return fmt.Errorf("initialize authn: runtime, id generator, and audit appender are required")
+	}
+	// Checked here rather than in every statement: injection has run, so an
+	// owner that published nothing is a deployment that must not start.
+	if !m.foreign.bound() {
+		return fmt.Errorf("initialize authn: the core, identity, organization, and oauth modules must publish the table names authn joins")
 	}
 	repository := NewRepository(m.runtime, m.ids, m.appender)
 	// Wire has already run, so the owners have published; the service and every

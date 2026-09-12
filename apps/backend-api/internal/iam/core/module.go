@@ -125,18 +125,15 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	}); err != nil {
 		return fmt.Errorf("provide IAM directory authorization source connector: %w", err)
 	}
-	if err := module.Provide[DirectoryTableSetConnector](services, DirectoryTableSetConnector{
+	if err := module.Provide[DirectoryTableNamesConnector](services, DirectoryTableNamesConnector{
 		Bind: m.joined.bindDirectoryTables,
 	}); err != nil {
-		return fmt.Errorf("provide IAM directory table set connector: %w", err)
+		return fmt.Errorf("provide IAM directory table names connector: %w", err)
 	}
-	if err := module.Provide[PrincipalTableSetConnector](services, PrincipalTableSetConnector{
+	if err := module.Provide[PrincipalTableNamesConnector](services, PrincipalTableNamesConnector{
 		Bind: m.joined.bindPrincipalTable,
 	}); err != nil {
-		return fmt.Errorf("provide IAM principal table set connector: %w", err)
-	}
-	if err := module.Provide[AccessTables](services, AccessTables{Published: TableSet(m.runtime.TablePrefix())}); err != nil {
-		return fmt.Errorf("provide IAM access tables: %w", err)
+		return fmt.Errorf("provide IAM principal table names connector: %w", err)
 	}
 	if err := module.Provide[AccessTableNames](services, PublishedAccessTableNames(m.runtime.TablePrefix())); err != nil {
 		return fmt.Errorf("provide IAM access table names: %w", err)

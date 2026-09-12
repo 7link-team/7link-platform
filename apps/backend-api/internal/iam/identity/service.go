@@ -496,10 +496,7 @@ func (r *Repository) insertTenantMember(ctx context.Context, member tenantMember
 	if err != nil {
 		return err
 	}
-	members, err := r.memberTable()
-	if err != nil {
-		return err
-	}
+	members := r.foreign.access.TenantMembers.String()
 	if err := db.WithContext(ctx).Table(members).Create(&member).Error; err != nil {
 		return fmt.Errorf("insert tenant membership: %w", err)
 	}
@@ -511,10 +508,7 @@ func (r *Repository) getPrincipal(ctx context.Context, tenantID, id guid.ID) (*m
 	if err != nil {
 		return nil, err
 	}
-	members, err := r.memberTable()
-	if err != nil {
-		return nil, err
-	}
+	members := r.foreign.access.TenantMembers.String()
 	var row model.Principal
 	err = db.WithContext(ctx).Table(tables.Principals.TableName()+" AS principal").
 		Joins("JOIN "+members+" AS member ON member.principal_id = principal.id").
@@ -541,10 +535,7 @@ func (r *Repository) listPrincipals(
 	if err != nil {
 		return nil, 0, err
 	}
-	members, err := r.memberTable()
-	if err != nil {
-		return nil, 0, err
-	}
+	members := r.foreign.access.TenantMembers.String()
 	query := db.WithContext(ctx).Table(tables.Principals.TableName()+" AS principal").
 		Joins("JOIN "+members+" AS member ON member.principal_id = principal.id").
 		Where("member.tenant_id = ?", tenantID).
@@ -596,10 +587,7 @@ func (r *Repository) updateTenantMember(
 	if err != nil {
 		return err
 	}
-	members, err := r.memberTable()
-	if err != nil {
-		return err
-	}
+	members := r.foreign.access.TenantMembers.String()
 	result := db.WithContext(ctx).Table(members).
 		Where("tenant_id = ? AND principal_id = ?", tenantID, principalID).Updates(updates)
 	if result.Error != nil {
@@ -616,10 +604,7 @@ func (r *Repository) activeTenantIDs(ctx context.Context, principalID guid.ID) (
 	if err != nil {
 		return nil, err
 	}
-	members, err := r.memberTable()
-	if err != nil {
-		return nil, err
-	}
+	members := r.foreign.access.TenantMembers.String()
 	tenantIDs := make([]guid.ID, 0)
 	if err := db.WithContext(ctx).Table(members).Select("tenant_id").
 		Where("principal_id = ? AND status = 'active'", principalID).Order("tenant_id ASC").Scan(&tenantIDs).Error; err != nil {
@@ -674,10 +659,7 @@ func (r *Repository) ensureTenantMember(
 	if err != nil {
 		return false, err
 	}
-	members, err := r.memberTable()
-	if err != nil {
-		return false, err
-	}
+	members := r.foreign.access.TenantMembers.String()
 	member := tenantMemberRecord{
 		TenantID: tenantID, PrincipalID: principal.ID, DisplayName: principal.DisplayName,
 		Email: principal.Email, Status: "active", CreatedAt: now, UpdatedAt: now,

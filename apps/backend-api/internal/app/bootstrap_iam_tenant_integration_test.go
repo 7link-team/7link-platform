@@ -24,6 +24,7 @@ import (
 	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/iam/provisioning"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	humax "7link.com/platform/pkg/extension/huma"
@@ -511,10 +512,7 @@ func (f *iamTenantFixture) assertIAMAuthorizationCannotCrossTenants(t *testing.T
 
 	entityID, err := guid.Parse(entity.ID)
 	require.NoError(t, err)
-	authorizer := core.NewAuthorizer(f.app.runtime)
-	require.NoError(t, authorizer.BindForeignTables(
-		organization.TableSet(f.app.runtime.TablePrefix()), identity.TableSet(f.app.runtime.TablePrefix()),
-	))
+	authorizer := newBoundIAMAuthorizer(t, f.app.runtime)
 	allowed, err := authorizer.CheckEntity(t.Context(), iamTenantB, entityID, "entity_view", f.adminA.ID)
 	require.NoError(t, err)
 	assert.False(t, allowed)
@@ -672,6 +670,21 @@ func (f *iamTenantFixture) groupState(t *testing.T, tenantID, groupID guid.ID) (
 	}
 	require.NoError(t, f.db.Table(f.table("iam_groups")).Select("name, version").Where("tenant_id = ? AND id = ?", tenantID, groupID).Take(&state).Error)
 	return state.Name, state.Version
+}
+
+// newBoundIAMAuthorizer builds an authorizer the way module wiring does. An
+// authorizer built outside injection never received the directory and principal
+// names core JOINs, so they are filled here through the owners' own mapping --
+// the same call the connectors make during Wire, rather than a field list this
+// test spells out and could drift from.
+func newBoundIAMAuthorizer(t *testing.T, runtime *appenv.Runtime) *core.Authorizer {
+	t.Helper()
+	prefix := runtime.TablePrefix()
+	authorizer := core.NewAuthorizer(runtime)
+	require.NoError(t, authorizer.BindForeignTables(
+		organization.CoreDirectoryTableNames(prefix), identity.CorePrincipalTableNames(prefix),
+	))
+	return authorizer
 }
 
 func decodeEnvelope[T any](t *testing.T, response iamHTTPResponse) T {

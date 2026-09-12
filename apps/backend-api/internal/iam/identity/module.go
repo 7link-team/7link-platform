@@ -135,18 +135,15 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[PrincipalStateStore](services, m.principalStateStore()); err != nil {
 		return fmt.Errorf("provide identity principal state store: %w", err)
 	}
-	if err := module.Provide[DirectoryTableSetConnector](services, DirectoryTableSetConnector{
+	if err := module.Provide[DirectoryTableNamesConnector](services, DirectoryTableNamesConnector{
 		Bind: m.foreign.bindDirectory,
 	}); err != nil {
-		return fmt.Errorf("provide identity directory table set connector: %w", err)
+		return fmt.Errorf("provide identity directory table names connector: %w", err)
 	}
-	if err := module.Provide[OAuthTableSetConnector](services, OAuthTableSetConnector{
+	if err := module.Provide[OAuthTableNamesConnector](services, OAuthTableNamesConnector{
 		Bind: m.foreign.bindOAuth,
 	}); err != nil {
-		return fmt.Errorf("provide identity oauth table set connector: %w", err)
-	}
-	if err := module.Provide[PrincipalTables](services, PrincipalTables{Published: TableSet(m.runtime.TablePrefix())}); err != nil {
-		return fmt.Errorf("provide identity principal tables: %w", err)
+		return fmt.Errorf("provide identity oauth table names connector: %w", err)
 	}
 	if err := module.Provide[PrincipalTableNames](services, PublishedPrincipalTableNames(m.runtime.TablePrefix())); err != nil {
 		return fmt.Errorf("provide identity principal table names: %w", err)
@@ -212,22 +209,22 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve identity field permissions: %w", err)
 	}
-	accessTables, err := module.Resolve[core.AccessTables](services)
+	accessTables, err := module.Resolve[core.AccessTableNames](services)
 	if err != nil {
 		return fmt.Errorf("resolve identity access tables: %w", err)
 	}
-	if err := m.foreign.bindAccess(accessTables.Published); err != nil {
+	if err := m.foreign.bindAccess(accessTables); err != nil {
 		return fmt.Errorf("bind identity access tables: %w", err)
 	}
-	principalTables, err := module.Resolve[core.PrincipalTableSetConnector](services)
+	principalTables, err := module.Resolve[core.PrincipalTableNamesConnector](services)
 	if err != nil {
-		return fmt.Errorf("resolve identity principal table set connector: %w", err)
+		return fmt.Errorf("resolve identity principal table names connector: %w", err)
 	}
 	if principalTables.Bind == nil {
-		return errors.New("resolve identity principal table set connector: bind is required")
+		return errors.New("resolve identity principal table names connector: bind is required")
 	}
-	if err := principalTables.Bind(TableSet(m.runtime.TablePrefix())); err != nil {
-		return fmt.Errorf("bind identity principal table set: %w", err)
+	if err := principalTables.Bind(CorePrincipalTableNames(m.runtime.TablePrefix())); err != nil {
+		return fmt.Errorf("bind identity principal table names: %w", err)
 	}
 	m.fields = fields
 	m.registrar = registrar
@@ -266,16 +263,16 @@ func (m *Module) InjectServices(services *module.Services) error {
 			return fmt.Errorf("bind identity principal state: %w", err)
 		}
 	}
-	publishedPrincipals, err := module.Resolve[PrincipalTableSetReceiver](services)
+	publishedPrincipals, err := module.Resolve[PrincipalTableNamesReceiver](services)
 	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
 		return err
 	}
 	if err == nil {
 		if publishedPrincipals.Bind == nil {
-			return errors.New("resolve identity principal table set receiver: bind is required")
+			return errors.New("resolve identity principal table names receiver: bind is required")
 		}
-		if err := publishedPrincipals.Bind(TableSet(m.runtime.TablePrefix())); err != nil {
-			return fmt.Errorf("bind identity principal table set: %w", err)
+		if err := publishedPrincipals.Bind(PublishedPrincipalTableNames(m.runtime.TablePrefix())); err != nil {
+			return fmt.Errorf("bind identity principal table names: %w", err)
 		}
 	}
 	m.closeOAuth, err = module.Resolve[PrincipalOAuthRevoker](services)
@@ -302,6 +299,11 @@ func (m *Module) Initialize(context.Context) error {
 		return errors.New(
 			"initialize identity: runtime, id generator, audit appender, and administrator guard are required",
 		)
+	}
+	// Checked here rather than in every statement: injection has run, so an
+	// owner that published nothing is a deployment that must not start.
+	if !m.foreign.bound() {
+		return errors.New("initialize identity: the core, organization, and oauth modules must publish the table names identity joins")
 	}
 	m.Service = NewService(m.runtime, m.appender, m.administrators, m.ids)
 	// Wire has already run, so the owners have published; the service and every

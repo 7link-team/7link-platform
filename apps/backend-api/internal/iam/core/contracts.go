@@ -111,16 +111,45 @@ type TenantBootstrapper struct {
 	BumpRevision func(context.Context, *gorm.DB, guid.ID, time.Time) error
 }
 
-// DirectoryTableSetConnector lets the module that owns the directory tables
-// publish their names to core. Core's authorization statements JOIN those
-// tables and cannot name them itself -- the owner is activated after core, so
-// the name arrives as a set rather than as a prefix core would apply itself.
-type DirectoryTableSetConnector struct {
-	Bind func(gormx.TableSet) error
+// DirectoryTableNames are the directory tables core's authorization statements
+// JOIN, named field by field.
+//
+// Core declares this struct rather than receiving the owner's, because the
+// import runs the other way: organization is activated after core and imports
+// it, so core cannot name organization's type without a cycle. Declaring the
+// shape here is the stronger half of the arrangement anyway -- it says exactly
+// which tables core needs, and the owner fills that and nothing else.
+type DirectoryTableNames struct {
+	Groups               gormx.TableName
+	GroupMembers         gormx.TableName
+	GroupRoleBindings    gormx.TableName
+	Positions            gormx.TableName
+	PositionMembers      gormx.TableName
+	PositionRoleBindings gormx.TableName
+	Departments          gormx.TableName
+	DepartmentClosure    gormx.TableName
+	MemberDepartments    gormx.TableName
+	RoleDataScopes       gormx.TableName
+	RoleScopeDepartments gormx.TableName
+	Tenants              gormx.TableName
 }
 
-// PrincipalTableSetConnector lets the module that owns the principal table
-// publish its name to core, for the same reason and by the same route.
-type PrincipalTableSetConnector struct {
-	Bind func(gormx.TableSet) error
+// DirectoryTableNamesConnector lets the module that owns the directory tables
+// fill in the names core declared. The owner is activated after core, so the
+// names arrive through this connector rather than as a prefix core would
+// otherwise have to apply itself.
+type DirectoryTableNamesConnector struct {
+	Bind func(DirectoryTableNames) error
+}
+
+// PrincipalTableNames is the principal table core JOINs, for the same reason
+// and by the same route.
+type PrincipalTableNames struct {
+	Principals gormx.TableName
+}
+
+// PrincipalTableNamesConnector lets the module that owns the principal table
+// fill in the name core declared.
+type PrincipalTableNamesConnector struct {
+	Bind func(PrincipalTableNames) error
 }

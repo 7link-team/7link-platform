@@ -180,10 +180,7 @@ func (r *Repository) getTenantMember(ctx context.Context, tenantID, principalID 
 	if err != nil {
 		return nil, err
 	}
-	members, err := r.memberTable()
-	if err != nil {
-		return nil, err
-	}
+	members := r.foreign.access.TenantMembers.String()
 	var member tenantMemberRecord
 	err = db.WithContext(ctx).Table(members).
 		Where("tenant_id = ? AND principal_id = ?", tenantID, principalID).Take(&member).Error

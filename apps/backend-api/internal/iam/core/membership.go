@@ -8,7 +8,6 @@ import (
 	"7link.com/platform/internal/iam/core/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
-	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
 
@@ -39,7 +38,7 @@ func (m *MembershipChecker) authorizationTables() (query.AuthorizationTables, er
 // core publishes; a caller that builds the checker outside the module has to
 // call it itself, because an unbound checker reports ErrUnavailable rather than
 // running a statement against an empty table name.
-func (m *MembershipChecker) BindForeignTables(directory, principal gormx.TableSet) error {
+func (m *MembershipChecker) BindForeignTables(directory DirectoryTableNames, principal PrincipalTableNames) error {
 	if m == nil {
 		return ErrUnavailable
 	}

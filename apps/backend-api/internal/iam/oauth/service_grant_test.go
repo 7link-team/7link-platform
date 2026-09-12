@@ -51,11 +51,13 @@ func newGrantHarness(t *testing.T) (*oauthHarness, *authn.Service) {
 	authnRepository := authn.NewRepository(h.runtime, newOAuthTestIDs(9000), appender)
 	// A deployment publishes these through authn's connectors and the receiver
 	// identity pushes into, and the module hands the holder to the repository in
-	// Initialize. This harness builds the repository itself, so it publishes the
-	// same sets itself rather than letting authn name another module's table.
+	// Initialize. This harness builds the repository itself, so it fills the same
+	// fields itself rather than letting authn name another module's table.
+	grants := PublishedGrantTableNames(h.prefix)
 	require.NoError(t, authnRepository.BindForeignTables(
-		organization.TableSet(h.prefix), TableSet(h.prefix),
-		core.TableSet(h.prefix), identity.TableSet(h.prefix),
+		authn.DirectoryTableNames{Tenants: organization.PublishedDirectoryTableNames(h.prefix).Tenants},
+		authn.OAuthTableNames{Clients: grants.Clients, RefreshTokens: grants.RefreshTokens},
+		core.PublishedAccessTableNames(h.prefix), identity.PublishedPrincipalTableNames(h.prefix),
 	))
 	authenticator, err := authn.NewWebService(authnext.Config{
 		Enabled: true, Issuer: "https://issuer.example", Audience: []string{"api"},

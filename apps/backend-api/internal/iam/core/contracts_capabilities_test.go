@@ -48,8 +48,8 @@ func TestFrozenIAMCapabilitiesHaveCanonicalOwners(t *testing.T) {
 		// The two table-name connectors are keys of the same registry, so they
 		// belong in the same frozen inventory: a second module publishing table
 		// names under a colliding key would silently replace core's.
-		{"core.DirectoryTableSetConnector", reflect.TypeFor[core.DirectoryTableSetConnector](), "7link.com/platform/internal/iam/core"},
-		{"core.PrincipalTableSetConnector", reflect.TypeFor[core.PrincipalTableSetConnector](), "7link.com/platform/internal/iam/core"},
+		{"core.DirectoryTableNamesConnector", reflect.TypeFor[core.DirectoryTableNamesConnector](), "7link.com/platform/internal/iam/core"},
+		{"core.PrincipalTableNamesConnector", reflect.TypeFor[core.PrincipalTableNamesConnector](), "7link.com/platform/internal/iam/core"},
 		{"core.AdministratorGuard", reflect.TypeFor[core.AdministratorGuard](), "7link.com/platform/internal/iam/core"},
 		{"authn.InvitationCredentials", reflect.TypeFor[authn.InvitationCredentials](), "7link.com/platform/internal/iam/authn"},
 		{"identity.InvitationPrincipalCreator", reflect.TypeFor[identity.InvitationPrincipalCreator](), "7link.com/platform/internal/iam/identity"},

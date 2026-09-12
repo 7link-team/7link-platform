@@ -116,25 +116,31 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve OAuth principal state store: %w", err)
 	}
-	authnTables, err := module.Resolve[authn.OAuthTableSetConnector](services)
+	// Each consumer declares the fields it reads and oauth fills exactly those,
+	// all from the module's own published struct, so a consumer cannot be handed
+	// a name oauth builds a second way.
+	published := PublishedGrantTableNames(m.runtime.TablePrefix())
+	authnTables, err := module.Resolve[authn.OAuthTableNamesConnector](services)
 	if err != nil {
-		return fmt.Errorf("resolve authn oauth table set connector: %w", err)
+		return fmt.Errorf("resolve authn oauth table names connector: %w", err)
 	}
 	if authnTables.Bind == nil {
-		return errors.New("resolve authn oauth table set connector: bind is required")
+		return errors.New("resolve authn oauth table names connector: bind is required")
 	}
-	if err := authnTables.Bind(TableSet(m.runtime.TablePrefix())); err != nil {
-		return fmt.Errorf("bind authn oauth table set: %w", err)
+	if err := authnTables.Bind(authn.OAuthTableNames{
+		Clients: published.Clients, RefreshTokens: published.RefreshTokens,
+	}); err != nil {
+		return fmt.Errorf("bind authn oauth table names: %w", err)
 	}
-	identityTables, err := module.Resolve[identity.OAuthTableSetConnector](services)
+	identityTables, err := module.Resolve[identity.OAuthTableNamesConnector](services)
 	if err != nil {
-		return fmt.Errorf("resolve identity oauth table set connector: %w", err)
+		return fmt.Errorf("resolve identity oauth table names connector: %w", err)
 	}
 	if identityTables.Bind == nil {
-		return errors.New("resolve identity oauth table set connector: bind is required")
+		return errors.New("resolve identity oauth table names connector: bind is required")
 	}
-	if err := identityTables.Bind(TableSet(m.runtime.TablePrefix())); err != nil {
-		return fmt.Errorf("bind identity oauth table set: %w", err)
+	if err := identityTables.Bind(identity.OAuthTableNames{RefreshTokens: published.RefreshTokens}); err != nil {
+		return fmt.Errorf("bind identity oauth table names: %w", err)
 	}
 	accessTables, err := module.Resolve[core.AccessTableNames](services)
 	if err != nil {

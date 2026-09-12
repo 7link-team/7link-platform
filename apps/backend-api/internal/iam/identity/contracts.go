@@ -57,9 +57,9 @@ type PrincipalStateReceiver struct {
 	Bind func(PrincipalStateStore) error
 }
 
-// PrincipalTableSetReceiver is how identity hands the names of its own tables to
+// PrincipalTableNamesReceiver is how identity hands the names of its own tables to
 // a module that JOINs them in one statement. It is named for its direction,
-// because it is the mirror image of core.PrincipalTableSetConnector: there core
+// because it is the mirror image of core.PrincipalTableNamesConnector: there core
 // declares the connector and identity fills it, and here the consumer provides
 // a receiver and identity pushes into it.
 //
@@ -70,21 +70,32 @@ type PrincipalStateReceiver struct {
 // the type declared here, identity resolves a type of its own -- which the
 // dependency rule does not record, because the type belongs to the module
 // resolving it -- and no import direction changes.
-type PrincipalTableSetReceiver struct {
-	Bind func(gormx.TableSet) error
+type PrincipalTableNamesReceiver struct {
+	Bind func(PrincipalTableNames) error
 }
 
-// DirectoryTableSetConnector lets the module that owns the directory tables
-// publish their names to identity. identity reads the tenant table without
-// owning it and cannot name it itself: the owner is activated after identity,
-// so the name arrives as a set rather than as a prefix identity would apply on
-// its own.
-type DirectoryTableSetConnector struct {
-	Bind func(gormx.TableSet) error
+// DirectoryTableNames are the directory tables identity reads without owning
+// them. Identity declares the shape and the owner fills it, because the owner
+// is activated after identity and imports it: identity cannot name the owner's
+// type, and asking for a field here is how it says which table it needs.
+type DirectoryTableNames struct {
+	Tenants gormx.TableName
 }
 
-// OAuthTableSetConnector does the same for the OAuth tables identity reads when
-// a principal's security state is revoked.
-type OAuthTableSetConnector struct {
-	Bind func(gormx.TableSet) error
+// DirectoryTableNamesConnector lets the module that owns the directory tables
+// fill in the names identity declared.
+type DirectoryTableNamesConnector struct {
+	Bind func(DirectoryTableNames) error
+}
+
+// OAuthTableNames are the OAuth tables identity reads when a principal's
+// security state is revoked, declared for the same reason.
+type OAuthTableNames struct {
+	RefreshTokens gormx.TableName
+}
+
+// OAuthTableNamesConnector lets the module that owns the OAuth tables fill in
+// the names identity declared.
+type OAuthTableNamesConnector struct {
+	Bind func(OAuthTableNames) error
 }

@@ -5,13 +5,6 @@ import (
 	gormx "7link.com/platform/pkg/extension/gorm"
 )
 
-// TableSet publishes the same names as an opaque set. It is what the consumers
-// that cannot name core's type still resolve, and it goes away once they all
-// hold the typed struct.
-func TableSet(prefix string) gormx.TableSet {
-	return gormx.NewTableSet(query.BindNames(prefix).Map())
-}
-
 // AccessTableNames is the physical name of every table core owns, as core hands them
 // to the modules that JOIN them.
 //
@@ -65,10 +58,3 @@ func PublishedAccessTableNames(prefix string) AccessTableNames {
 // at once, so one zero field means the consumer was never given the set rather
 // than that core published an incomplete one.
 func (t AccessTableNames) Bound() bool { return !t.TenantMembers.IsZero() }
-
-// AccessTables is the opaque form of the same publication, still resolved by the
-// consumers that have not moved to the typed names yet. It goes away with the
-// last of them.
-type AccessTables struct {
-	Published gormx.TableSet
-}

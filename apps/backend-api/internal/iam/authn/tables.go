@@ -5,16 +5,6 @@ import (
 	gormx "7link.com/platform/pkg/extension/gorm"
 )
 
-// TableSet publishes the physical names of the tables authn owns to the modules
-// that JOIN them.
-//
-// It carries names rather than a database handle or a prefix: a consumer
-// resolves the names it needs and queries with its own connection, so it cannot
-// build a name authn never published.
-func TableSet(prefix string) gormx.TableSet {
-	return gormx.NewTableSet(query.BindNames(prefix).Map())
-}
-
 // CredentialTableNames is the physical name of every table authn owns, as authn hands
 // them to the modules that JOIN them.
 //
@@ -67,10 +57,3 @@ func PublishedCredentialTableNames(prefix string) CredentialTableNames {
 // at once, so one zero field means the consumer was never given the set rather
 // than that authn published an incomplete one.
 func (t CredentialTableNames) Bound() bool { return !t.Credentials.IsZero() }
-
-// CredentialTables is the opaque form of the same publication, still resolved by the
-// consumers that have not moved to the typed names yet. It goes away with the
-// last of them.
-type CredentialTables struct {
-	Published gormx.TableSet
-}

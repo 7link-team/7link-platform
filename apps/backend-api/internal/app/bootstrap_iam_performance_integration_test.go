@@ -350,10 +350,7 @@ func newIAMPerformancePaths(t *testing.T, fixture *iamTenantFixture, bulkOperati
 	scimAuth, err := scim.Authenticate(t.Context(), "Bearer "+credential.Token)
 	require.NoError(t, err)
 	auditService := iamaudit.NewService(fixture.app.runtime, ids)
-	authorizer := core.NewAuthorizer(fixture.app.runtime)
-	require.NoError(t, authorizer.BindForeignTables(
-		organization.TableSet(fixture.app.runtime.TablePrefix()), identity.TableSet(fixture.app.runtime.TablePrefix()),
-	))
+	authorizer := newBoundIAMAuthorizer(t, fixture.app.runtime)
 	authnModule := requireIAMModule[*iamauthn.Module](t, fixture, iamauthn.Name)
 	sessionToken, err := authnModule.CreateSession(t.Context(), fixture.adminA.ID, now, authn.Assurance{
 		AuthTime: now, Level: 1, Methods: []string{"pwd"},

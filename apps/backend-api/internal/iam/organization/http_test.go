@@ -18,7 +18,6 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
-	gormx "7link.com/platform/pkg/extension/gorm"
 	humax "7link.com/platform/pkg/extension/huma"
 	"7link.com/platform/pkg/extension/huma/respx"
 	platformi18n "7link.com/platform/pkg/i18n"
@@ -116,15 +115,15 @@ func organizationDeclarationAPI(t *testing.T) huma.API {
 	require.NoError(t, module.Provide[core.DirectoryAuthorizationSourceConnector](services, core.DirectoryAuthorizationSourceConnector{
 		Bind: func(core.DirectoryAuthorizationSourceStore) error { return nil },
 	}))
-	require.NoError(t, module.Provide[core.DirectoryTableSetConnector](services, core.DirectoryTableSetConnector{
-		Bind: func(gormx.TableSet) error { return nil },
+	require.NoError(t, module.Provide[core.DirectoryTableNamesConnector](services, core.DirectoryTableNamesConnector{
+		Bind: func(core.DirectoryTableNames) error { return nil },
 	}))
 	require.NoError(t, module.Provide[identity.TenantOwnerLookup](services, newTenantOwnerStub().capability()))
-	require.NoError(t, module.Provide[authn.DirectoryTableSetConnector](services, authn.DirectoryTableSetConnector{
-		Bind: func(gormx.TableSet) error { return nil },
+	require.NoError(t, module.Provide[authn.DirectoryTableNamesConnector](services, authn.DirectoryTableNamesConnector{
+		Bind: func(authn.DirectoryTableNames) error { return nil },
 	}))
-	require.NoError(t, module.Provide[identity.DirectoryTableSetConnector](services, identity.DirectoryTableSetConnector{
-		Bind: func(gormx.TableSet) error { return nil },
+	require.NoError(t, module.Provide[identity.DirectoryTableNamesConnector](services, identity.DirectoryTableNamesConnector{
+		Bind: func(identity.DirectoryTableNames) error { return nil },
 	}))
 	require.NoError(t, module.Provide[core.AccessTableNames](services, core.PublishedAccessTableNames(h.runtime.TablePrefix())))
 	require.NoError(t, module.Provide[guid.Source](services, newOrganizationTestIDs(9000)))

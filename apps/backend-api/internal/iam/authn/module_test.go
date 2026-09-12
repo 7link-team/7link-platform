@@ -51,10 +51,11 @@ func TestAuthnModuleIdentityDependenciesAndReadiness(t *testing.T) {
 }
 
 // authnWiredRegistry registers authn with fakes standing in for the modules it
-// depends on, then activates and wires the registry. The table-name owners are
-// deliberately not among the fakes: a caller that wants their names publishes
-// them itself. Initialization is left to the caller, because it is the phase
-// that turns the module into a live service.
+// depends on, then activates and wires the registry. The modules that reach
+// authn's connectors are deliberately not among the fakes: a caller that wants
+// their names publishes them itself, and a caller that wants to see the module
+// refuse to start does not. Initialization is left to the caller, because it is
+// the phase that turns the module into a live service.
 func authnWiredRegistry(t *testing.T, harness *authnRepositoryHarness, config authnext.Config) (*module.Registry, *Module) {
 	t.Helper()
 
@@ -81,9 +82,8 @@ func authnWiredRegistry(t *testing.T, harness *authnRepositoryHarness, config au
 			if err := module.Provide[core.MemberTenantResolver](services, boundMemberTenantResolver(t, harness.runtime)); err != nil {
 				return err
 			}
-			return module.Provide[core.AccessTables](services, core.AccessTables{
-				Published: core.TableSet(harness.runtime.TablePrefix()),
-			})
+			return module.Provide[core.AccessTableNames](services,
+				core.PublishedAccessTableNames(harness.runtime.TablePrefix()))
 		}},
 		&authnDependencyProvider{name: identity.Name, provide: func(services *module.Services) error {
 			creator := registrationCreatorForHarness(harness)
@@ -106,35 +106,103 @@ func authnWiredRegistry(t *testing.T, harness *authnRepositoryHarness, config au
 	return registry, instance
 }
 
-// TestAuthnReadersFailClosedUntilTheOwnersPublish is the guarantee the table-set
-// connectors exist for, proven on the module a deployment runs: with neither
-// owner in wiring, every reader that needs a table authn does not own reports
-// the repository unavailable instead of running a statement against an empty
-// table name. The harness database has the tables, so an empty name would come
-// back as a SQL error rather than as this one.
-func TestAuthnReadersFailClosedUntilTheOwnersPublish(t *testing.T) {
+// TestAuthnModuleRefusesToStartWithoutThePublishedTableNames is what the
+// per-statement checks collapsed into. authn holds its foreign names as typed
+// fields now, so a name that never arrived can no longer be reported by the
+// statement that needed it: it is caught once, here, and the deployment does
+// not start rather than joining an empty table name.
+func TestAuthnModuleRefusesToStartWithoutThePublishedTableNames(t *testing.T) {
+	harness := newAuthnRepositoryHarness(t, "sl_")
+	const prefix = "sl_"
+	directory := func(t *testing.T, instance *Module) {
+		require.NoError(t, instance.foreign.bindDirectory(publishedDirectoryTables(prefix)))
+	}
+	oauth := func(t *testing.T, instance *Module) {
+		require.NoError(t, instance.foreign.bindOAuth(publishedOAuthTables(prefix)))
+	}
+	principal := func(t *testing.T, instance *Module) {
+		require.NoError(t, instance.foreign.bindPrincipal(identity.PublishedPrincipalTableNames(prefix)))
+	}
+
+	for _, missing := range []struct {
+		owner string
+		// access is what core provides during injection; the other three
+		// owners reach the module through the connectors it publishes, so an
+		// owner that published nothing simply never calls its own.
+		access  core.AccessTableNames
+		publish []func(*testing.T, *Module)
+	}{
+		{owner: "core", publish: []func(*testing.T, *Module){directory, oauth, principal}},
+		{
+			owner:   "identity",
+			access:  core.PublishedAccessTableNames(prefix),
+			publish: []func(*testing.T, *Module){directory, oauth},
+		},
+		{
+			owner:   "organization",
+			access:  core.PublishedAccessTableNames(prefix),
+			publish: []func(*testing.T, *Module){oauth, principal},
+		},
+		{
+			owner:   "oauth",
+			access:  core.PublishedAccessTableNames(prefix),
+			publish: []func(*testing.T, *Module){directory, principal},
+		},
+		{owner: "every owner"},
+	} {
+		t.Run(missing.owner, func(t *testing.T) {
+			// The startup check runs after the module registers its locales,
+			// which the registry initializes ahead of authn in a deployment.
+			require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
+			instance := NewModule(harness.runtime, authnModuleConfig(localAuthnConfig()))
+
+			services := module.NewServices()
+			require.NoError(t, module.Provide[guid.Source](services, newRepositoryTestIDs(5000)))
+			require.NoError(t, module.Provide[audit.Appender](services, harness.repository.audit))
+			require.NoError(t, module.Provide[identity.RegistrationPrincipalCreator](services,
+				identity.RegistrationPrincipalCreator(func(
+					context.Context, *gorm.DB, string, string, string, time.Time,
+				) (guid.ID, error) {
+					return 0, nil
+				})))
+			require.NoError(t, module.Provide[core.MemberTenantResolver](services,
+				boundMemberTenantResolver(t, harness.runtime)))
+			require.NoError(t, module.Provide[core.AuthorizationEvaluator](services,
+				boundAuthorizationEvaluator(t, harness.runtime)))
+			require.NoError(t, module.Provide[core.AccessTableNames](services, missing.access))
+			require.NoError(t, services.Seal())
+			require.NoError(t, instance.InjectServices(services))
+
+			for _, publish := range missing.publish {
+				publish(t, instance)
+			}
+			require.ErrorContains(t, instance.Initialize(t.Context()),
+				"the core, identity, organization, and oauth modules must publish the table names authn joins")
+			assert.Nil(t, instance.Service, "a module that refused to start has no service")
+		})
+	}
+}
+
+// TestAuthnReadersUseTheNamesTheOwnersPublished is the other half of that
+// guarantee, proven on the module a deployment runs: once every owner has
+// published, the readers that need a table authn does not own reach it through
+// the one holder the connectors bound. The harness database has the prefixed
+// tables, so a name that was not the owner's would come back as a SQL error
+// rather than as the reader's own answer.
+func TestAuthnReadersUseTheNamesTheOwnersPublished(t *testing.T) {
 	harness := newAuthnRepositoryHarness(t, "sl_")
 	registry, instance := authnWiredRegistry(t, harness, localAuthnConfig())
+	// The owners reach the module's connectors during Wire in a running
+	// deployment; none of them is among the fakes, so the harness publishes.
+	bindModuleForeignTables(t, instance, "sl_")
 	require.NoError(t, registry.Initialize(t.Context()))
 	ctx := t.Context()
 
 	_, err := instance.Service.repo.oauthClientState(ctx, 1)
-	assert.ErrorIs(t, err, errRepositoryUnavailable)
-	_, err = instance.Service.repo.revokeRefreshTokens(ctx, 1, repositoryTestNow)
-	assert.ErrorIs(t, err, errRepositoryUnavailable)
-	_, err = instance.Service.repo.serviceAccountState(ctx, 1)
-	assert.ErrorIs(t, err, errRepositoryUnavailable)
-
-	var revoked int64
-	require.NoError(t, harness.db.Table("sl_iam_refresh_tokens").
-		Where("principal_id = ?", 1).Count(&revoked).Error)
-	assert.Zero(t, revoked, "a rejected revocation must not touch a row")
-
-	// The owners publish, and the same readers serve the same calls.
-	bindModuleForeignTables(t, instance, "sl_")
-	_, err = instance.Service.repo.oauthClientState(ctx, 1)
 	assert.ErrorIs(t, err, gorm.ErrRecordNotFound, "a bound reader reaches the table and reports its own answer")
-	revoked, err = instance.Service.repo.revokeRefreshTokens(ctx, 1, repositoryTestNow)
+	_, err = instance.Service.repo.serviceAccountState(ctx, 1)
+	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	revoked, err := instance.Service.repo.revokeRefreshTokens(ctx, 1, repositoryTestNow)
 	require.NoError(t, err)
 	assert.Zero(t, revoked)
 }
@@ -171,6 +239,10 @@ func TestAuthnModuleResolvesDependenciesAndRunsLifecycle(t *testing.T) {
 	assert.ErrorIs(t, err, authnext.ErrUnavailable)
 	assert.ErrorIs(t, instance.ValidateCSRF(http.MethodPost, "", "", ""), authnext.ErrUnavailable)
 	assert.Empty(t, instance.SessionCookieName())
+	// The owners reach the module's connectors during Wire in a running
+	// deployment; none of them is among the fakes, so the harness publishes
+	// before the startup check reads the holder.
+	bindModuleForeignTables(t, instance, harness.runtime.TablePrefix())
 	require.NoError(t, registry.Initialize(t.Context()))
 	require.NotNil(t, instance.Service.oauthGrants)
 	assert.ErrorIs(t, instance.Service.oauthGrants(t.Context(), &authnext.Claims{}), assert.AnError)

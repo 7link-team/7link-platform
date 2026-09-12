@@ -12,7 +12,6 @@ import (
 	"7link.com/platform/internal/iam/core/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
-	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -63,7 +62,7 @@ func (r *Repository) directoryTables() (query.DirectoryTables, error) {
 // connectors core publishes; a caller that builds a repository outside the
 // module has to call it itself, because an unbound repository reports
 // ErrUnavailable rather than running a statement against an empty table name.
-func (r *Repository) BindForeignTables(directory, principal gormx.TableSet) error {
+func (r *Repository) BindForeignTables(directory DirectoryTableNames, principal PrincipalTableNames) error {
 	if r == nil {
 		return ErrUnavailable
 	}

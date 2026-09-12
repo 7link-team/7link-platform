@@ -53,36 +53,6 @@ func NewRepository(runtime *appenv.Runtime, ids guid.Source, appender audit.Appe
 	}
 }
 
-// tenantTable returns the physical name organization published for the tenant
-// table. identity reads it without owning it, and a deployment where the owner
-// never published gets this error rather than a statement against an empty
-// table name.
-func (r *Repository) tenantTable() (string, error) {
-	if r == nil {
-		return "", errRepositoryUnavailable
-	}
-	return r.foreign.directoryTable("iam_tenants")
-}
-
-// memberTable returns the physical name core published for the tenant member
-// table. identity reads and writes membership rows without owning them, so a
-// deployment where core never published gets this error rather than a
-// statement against an empty table name.
-func (r *Repository) memberTable() (string, error) {
-	if r == nil {
-		return "", errRepositoryUnavailable
-	}
-	return r.foreign.accessTable("iam_tenant_members")
-}
-
-// oauthTable returns the physical name oauth published for a logical table.
-func (r *Repository) oauthTable(logical string) (string, error) {
-	if r == nil {
-		return "", errRepositoryUnavailable
-	}
-	return r.foreign.oauthTable(logical)
-}
-
 func (r *Repository) writer() *gorm.DB {
 	if r == nil {
 		return nil
@@ -239,10 +209,7 @@ func (r *Repository) revokeSessionsAndRefreshTokens(ctx context.Context, princip
 	if err := r.credentials.RevokeSessions(ctx, db, principalID, now); err != nil {
 		return fmt.Errorf("revoke principal sessions: %w", err)
 	}
-	refreshTokens, err := r.oauthTable("iam_refresh_tokens")
-	if err != nil {
-		return err
-	}
+	refreshTokens := r.foreign.oauth.RefreshTokens.String()
 	result := db.WithContext(ctx).Table(refreshTokens).
 		Where("principal_id = ? AND revoked_at IS NULL", principalID).Update("revoked_at", now)
 	if result.Error != nil {

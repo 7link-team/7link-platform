@@ -1,19 +1,10 @@
 package organization
 
 import (
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/organization/query"
 	gormx "7link.com/platform/pkg/extension/gorm"
 )
-
-// TableSet publishes the physical names of the tables organization owns to the
-// modules that JOIN them.
-//
-// It carries names rather than a database handle or a prefix: a consumer
-// resolves the names it needs and queries with its own connection, so it cannot
-// build a name organization never published.
-func TableSet(prefix string) gormx.TableSet {
-	return gormx.NewTableSet(query.BindNames(prefix).Map())
-}
 
 // DirectoryTableNames is the physical name of every table organization owns, as organization hands
 // them to the modules that JOIN them.
@@ -66,9 +57,25 @@ func PublishedDirectoryTableNames(prefix string) DirectoryTableNames {
 // than that organization published an incomplete one.
 func (t DirectoryTableNames) Bound() bool { return !t.Tenants.IsZero() }
 
-// DirectoryTables is the opaque form of the same publication, still resolved by the
-// consumers that have not moved to the typed names yet. It goes away with the
-// last of them.
-type DirectoryTables struct {
-	Published gormx.TableSet
+// CoreDirectoryTableNames fills the shape core declares from what organization
+// publishes. It is the one mapping between the two field sets: the connector
+// binds it during Wire, and a harness that builds an evaluator outside the
+// module calls it rather than writing the twelve fields out again, so a
+// harness cannot pair core with names the deployment never uses.
+func CoreDirectoryTableNames(prefix string) core.DirectoryTableNames {
+	published := PublishedDirectoryTableNames(prefix)
+	return core.DirectoryTableNames{
+		Groups:               published.Groups,
+		GroupMembers:         published.GroupMembers,
+		GroupRoleBindings:    published.GroupRoleBindings,
+		Positions:            published.Positions,
+		PositionMembers:      published.PositionMembers,
+		PositionRoleBindings: published.PositionRoleBindings,
+		Departments:          published.Departments,
+		DepartmentClosure:    published.DepartmentClosures,
+		MemberDepartments:    published.MemberDepartments,
+		RoleDataScopes:       published.RoleDataScopes,
+		RoleScopeDepartments: published.RoleScopeDepartments,
+		Tenants:              published.Tenants,
+	}
 }

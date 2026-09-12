@@ -1,19 +1,10 @@
 package identity
 
 import (
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity/query"
 	gormx "7link.com/platform/pkg/extension/gorm"
 )
-
-// TableSet publishes the physical names of the tables identity owns to the
-// modules that JOIN them.
-//
-// It carries names rather than a database handle or a prefix: a consumer
-// resolves the names it needs and queries with its own connection, so it cannot
-// build a name identity never published.
-func TableSet(prefix string) gormx.TableSet {
-	return gormx.NewTableSet(query.BindNames(prefix).Map())
-}
 
 // PrincipalTableNames is the physical name of every table identity owns, as identity hands
 // them to the modules that JOIN them.
@@ -48,9 +39,9 @@ func PublishedPrincipalTableNames(prefix string) PrincipalTableNames {
 // than that identity published an incomplete one.
 func (t PrincipalTableNames) Bound() bool { return !t.Principals.IsZero() }
 
-// PrincipalTables is the opaque form of the same publication, still resolved by the
-// consumers that have not moved to the typed names yet. It goes away with the
-// last of them.
-type PrincipalTables struct {
-	Published gormx.TableSet
+// CorePrincipalTableNames fills the shape core declares from what identity
+// publishes, for the same reason: the connector binds it during Wire and a
+// harness built outside the module calls it rather than naming the table again.
+func CorePrincipalTableNames(prefix string) core.PrincipalTableNames {
+	return core.PrincipalTableNames{Principals: PublishedPrincipalTableNames(prefix).Principals}
 }

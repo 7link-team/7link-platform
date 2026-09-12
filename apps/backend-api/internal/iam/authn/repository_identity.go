@@ -146,10 +146,7 @@ func (r *Repository) principalState(ctx context.Context, principalID guid.ID) (p
 	if err != nil {
 		return principalCredentialState{}, err
 	}
-	principalTable, err := r.principalTable()
-	if err != nil {
-		return principalCredentialState{}, err
-	}
+	principalTable := r.foreign.principal.Principals.String()
 	var state principalCredentialState
 	err = db.WithContext(ctx).Table(principalTable+" AS principal").
 		Select("principal.status AS status, COALESCE(credential.credential_version, 0) AS credential_version").
@@ -163,22 +160,10 @@ func (r *Repository) serviceAccountState(ctx context.Context, principalID guid.I
 	if err != nil {
 		return serviceAccountState{}, err
 	}
-	accountTable, err := r.serviceAccountTable()
-	if err != nil {
-		return serviceAccountState{}, err
-	}
-	principalTable, err := r.principalTable()
-	if err != nil {
-		return serviceAccountState{}, err
-	}
-	memberTable, err := r.foreign.accessTable("iam_tenant_members")
-	if err != nil {
-		return serviceAccountState{}, err
-	}
-	tenantTable, err := r.tenantTable()
-	if err != nil {
-		return serviceAccountState{}, err
-	}
+	accountTable := r.foreign.principal.ServiceAccounts.String()
+	principalTable := r.foreign.principal.Principals.String()
+	memberTable := r.foreign.access.TenantMembers.String()
+	tenantTable := r.foreign.directory.Tenants.String()
 	var state serviceAccountState
 	err = db.WithContext(ctx).Table(accountTable+" AS account").
 		Select("account.owner_tenant_id AS tenant_id, account.status AS account_status, account.expires_at, account.token_version, "+
@@ -195,10 +180,7 @@ func (r *Repository) oauthClientState(ctx context.Context, clientID guid.ID) (oa
 	if err != nil {
 		return oauthClientState{}, err
 	}
-	clientTable, err := r.oauthTable("iam_oauth_clients")
-	if err != nil {
-		return oauthClientState{}, err
-	}
+	clientTable := r.foreign.oauth.Clients.String()
 	var state oauthClientState
 	err = db.WithContext(ctx).Table(clientTable).
 		Select("tenant_id, status").Where("id = ?", clientID).Take(&state).Error
@@ -214,10 +196,7 @@ func (r *Repository) activePrincipalClaims(ctx context.Context, principalID guid
 		identity.Principal `gorm:"embedded"`
 		CredentialVersion  int64 `gorm:"column:credential_version"`
 	}
-	principalTable, err := r.principalTable()
-	if err != nil {
-		return nil, 0, err
-	}
+	principalTable := r.foreign.principal.Principals.String()
 	err = db.WithContext(ctx).Table(principalTable+" AS principal").
 		Select("principal.id, principal.login_name, principal.email, principal.email_verified, "+
 			"principal.activation_required, principal.display_name, principal.status, principal.created_at, "+

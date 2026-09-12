@@ -3,48 +3,53 @@ package authn
 import (
 	"fmt"
 
-	gormx "7link.com/platform/pkg/extension/gorm"
+	"7link.com/platform/internal/iam/core"
+	"7link.com/platform/internal/iam/identity"
 )
 
-// foreignTables carries the table names of the tables authn reads but does not
-// own. Three routes fill it, because which one applies depends on when the owner
-// is activated relative to authn:
+// foreignTables carries the names of the tables authn reads but does not own,
+// in the form each owner hands them over. Three routes fill it, because which
+// one applies depends on when the owner is activated relative to authn:
 //
-//   - an owner activated after authn (organization, oauth) binds its set
-//     through a connector authn declares;
-//   - an owner activated before authn (core) is an ordinary provider authn
-//     resolves;
+//   - an owner activated after authn (organization, oauth) imports authn, so
+//     authn declares the shape it needs and the owner fills it through a
+//     connector authn provides;
+//   - an owner activated before authn (core) is imported by authn, so it
+//     declares the struct and authn resolves it as an ordinary provider;
 //   - identity is neither, because authn already imports it: authn cannot
 //     resolve an identity type without declaring a dependency the registration
 //     order rejects, and identity cannot resolve an authn type without an import
-//     cycle. So identity pushes, through the receiver it declares and authn
-//     provides -- see identity.PrincipalTableSetReceiver.
+//     cycle. So identity pushes its own published struct, through the receiver
+//     it declares and authn provides -- see identity.PrincipalTableNamesReceiver.
 //
-// Whichever route, a set that never arrived stays empty and every lookup fails,
-// so a missing publication is an error rather than an empty table name in a
-// statement.
+// Whether the names arrived is checked once, when the module initializes -- the
+// registry has run every Provide and Bind by then -- so an owner that published
+// nothing fails startup rather than the first query that needs it.
 type foreignTables struct {
-	directory gormx.TableSet
-	oauth     gormx.TableSet
-	access    gormx.TableSet
-	principal gormx.TableSet
+	directory DirectoryTableNames
+	oauth     OAuthTableNames
+	access    core.AccessTableNames
+	principal identity.PrincipalTableNames
 }
 
-// bindDirectory records the table names the organization module published to
-// authn. It is what the connector authn provides hands to its owner.
-func (t *foreignTables) bindDirectory(published gormx.TableSet) error {
+// bindDirectory records the names the organization module filled in. It is what
+// the connector authn provides hands to its owner.
+func (t *foreignTables) bindDirectory(published DirectoryTableNames) error {
 	if t == nil {
 		return fmt.Errorf("%w: no holder for the published directory tables", errRepositoryUnavailable)
+	}
+	if published.Tenants.IsZero() {
+		return fmt.Errorf("%w: organization left Tenants empty", errRepositoryUnavailable)
 	}
 	t.directory = published
 	return nil
 }
 
-// bindAccess records the table names the core module published to authn. core
-// is activated before authn, so it is an ordinary provider rather than a
+// bindAccess records the names the core module published to authn. core is
+// activated before authn, so it is an ordinary provider rather than a
 // connector; the holder is shared so that the binding still reaches every
 // repository clone.
-func (t *foreignTables) bindAccess(published gormx.TableSet) error {
+func (t *foreignTables) bindAccess(published core.AccessTableNames) error {
 	if t == nil {
 		return fmt.Errorf("%w: no holder for the published access tables", errRepositoryUnavailable)
 	}
@@ -52,10 +57,10 @@ func (t *foreignTables) bindAccess(published gormx.TableSet) error {
 	return nil
 }
 
-// bindPrincipal records the table names the identity module published to authn.
-// identity pushes them itself: see identity.PrincipalTableSetConnector for why
-// neither module can resolve the other's type here.
-func (t *foreignTables) bindPrincipal(published gormx.TableSet) error {
+// bindPrincipal records the names the identity module pushed to authn. identity
+// pushes them itself: see identity.PrincipalTableNamesReceiver for why neither
+// module can resolve the other's type here.
+func (t *foreignTables) bindPrincipal(published identity.PrincipalTableNames) error {
 	if t == nil {
 		return fmt.Errorf("%w: no holder for the published principal tables", errRepositoryUnavailable)
 	}
@@ -63,71 +68,42 @@ func (t *foreignTables) bindPrincipal(published gormx.TableSet) error {
 	return nil
 }
 
-// bindOAuth records the table names the oauth module published to authn.
-func (t *foreignTables) bindOAuth(published gormx.TableSet) error {
+// bindOAuth records the names the oauth module filled in.
+func (t *foreignTables) bindOAuth(published OAuthTableNames) error {
 	if t == nil {
 		return fmt.Errorf("%w: no holder for the published oauth tables", errRepositoryUnavailable)
+	}
+	if published.Clients.IsZero() || published.RefreshTokens.IsZero() {
+		return fmt.Errorf("%w: oauth left Clients or RefreshTokens empty", errRepositoryUnavailable)
 	}
 	t.oauth = published
 	return nil
 }
 
-// directoryTable returns the physical name organization published for a
-// logical table.
-func (t *foreignTables) directoryTable(logical string) (string, error) {
-	if t == nil {
-		return "", fmt.Errorf("%w: no published directory tables", errRepositoryUnavailable)
-	}
-	return publishedTableName(t.directory, "organization", logical)
-}
-
-// accessTable returns the physical name core published for a logical table.
-func (t *foreignTables) accessTable(logical string) (string, error) {
-	if t == nil {
-		return "", fmt.Errorf("%w: no published access tables", errRepositoryUnavailable)
-	}
-	return publishedTableName(t.access, "core", logical)
-}
-
-// principalTable returns the physical name identity published for a logical
-// table.
-func (t *foreignTables) principalTable(logical string) (string, error) {
-	if t == nil {
-		return "", fmt.Errorf("%w: no published principal tables", errRepositoryUnavailable)
-	}
-	return publishedTableName(t.principal, "identity", logical)
-}
-
-// oauthTable returns the physical name oauth published for a logical table.
-func (t *foreignTables) oauthTable(logical string) (string, error) {
-	if t == nil {
-		return "", fmt.Errorf("%w: no published oauth tables", errRepositoryUnavailable)
-	}
-	return publishedTableName(t.oauth, "oauth", logical)
-}
-
-// bind records every owner's set at once. It is what an exported binder hands
+// bind records every owner's names at once. It is what an exported binder hands
 // a repository built outside the module, where no connector has run.
-func (t *foreignTables) bind(directory, oauth, access, principal gormx.TableSet) error {
+func (t *foreignTables) bind(
+	directory DirectoryTableNames, oauth OAuthTableNames,
+	access core.AccessTableNames, principal identity.PrincipalTableNames,
+) error {
 	if t == nil {
 		return fmt.Errorf("%w: no holder for the published tables", errRepositoryUnavailable)
 	}
-	t.directory, t.oauth = directory, oauth
-	t.access, t.principal = access, principal
-	return nil
+	if err := t.bindDirectory(directory); err != nil {
+		return err
+	}
+	if err := t.bindOAuth(oauth); err != nil {
+		return err
+	}
+	if err := t.bindAccess(access); err != nil {
+		return err
+	}
+	return t.bindPrincipal(principal)
 }
 
-// publishedTableName resolves one logical table in what an owner published. An
-// empty set means the owner has published nothing, and a missing name means it
-// published something incomplete; both are errors rather than a table name
-// this module would otherwise have to invent from its own prefix.
-func publishedTableName(published gormx.TableSet, owner, logical string) (string, error) {
-	if published.Len() == 0 {
-		return "", fmt.Errorf("%s has not published its table names: %w", owner, errRepositoryUnavailable)
-	}
-	name, ok := published.Lookup(logical)
-	if !ok {
-		return "", fmt.Errorf("%s did not publish %s: %w", owner, logical, errRepositoryUnavailable)
-	}
-	return name.String(), nil
+// bound reports whether every owner published. Until they have, no statement
+// that reads a table authn does not own may run.
+func (t *foreignTables) bound() bool {
+	return t != nil && t.access.Bound() && t.principal.Bound() &&
+		!t.directory.Tenants.IsZero() && !t.oauth.Clients.IsZero() && !t.oauth.RefreshTokens.IsZero()
 }

@@ -7,10 +7,10 @@ import (
 
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/authn/query"
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
-	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
 
@@ -64,24 +64,16 @@ func (r *Repository) prefix() string {
 
 func (r *Repository) table(name string) string { return r.prefix() + name }
 
-// tenantTable returns the physical name organization published for the tenant
-// table. authn reads it without owning it, and a deployment where the owner
-// never published gets this error rather than a statement against an empty
-// table name.
-func (r *Repository) tenantTable() (string, error) {
-	if r == nil {
-		return "", errRepositoryUnavailable
-	}
-	return r.foreign.directoryTable("iam_tenants")
-}
-
 // BindForeignTables records the table-name sets of the tables this repository
 // reads but does not own. The modules that own them reach it through the
 // connectors authn publishes and the receiver identity pushes into; a caller
 // that builds a repository outside the module has to call it itself, because an
 // unbound repository reports the publication as missing rather than running a
 // statement against an empty table name.
-func (r *Repository) BindForeignTables(directory, oauth, access, principal gormx.TableSet) error {
+func (r *Repository) BindForeignTables(
+	directory DirectoryTableNames, oauth OAuthTableNames,
+	access core.AccessTableNames, principal identity.PrincipalTableNames,
+) error {
 	if r == nil {
 		return errRepositoryUnavailable
 	}
@@ -103,32 +95,6 @@ func (r *Repository) BindPrincipalState(store identity.PrincipalStateStore) erro
 	}
 	r.principals = store
 	return nil
-}
-
-// principalTable returns the physical name identity published for the principal
-// table, and serviceAccountTable the one it published for service accounts.
-// authn JOINs both without owning either, so a deployment where identity never
-// published gets this error rather than a statement against an empty name.
-func (r *Repository) principalTable() (string, error) {
-	if r == nil {
-		return "", errRepositoryUnavailable
-	}
-	return r.foreign.principalTable("iam_principals")
-}
-
-func (r *Repository) serviceAccountTable() (string, error) {
-	if r == nil {
-		return "", errRepositoryUnavailable
-	}
-	return r.foreign.principalTable("iam_service_accounts")
-}
-
-// oauthTable returns the physical name oauth published for a logical table.
-func (r *Repository) oauthTable(logical string) (string, error) {
-	if r == nil {
-		return "", errRepositoryUnavailable
-	}
-	return r.foreign.oauthTable(logical)
 }
 
 func (r *Repository) tables() (*query.Tables, *gorm.DB, error) {

@@ -51,8 +51,7 @@ func newCoreServiceHarness(t *testing.T) coreServiceHarness {
 	authorizer := NewAuthorizer(harness.runtime)
 	authorizer.now = harness.repository.now
 	require.NoError(t, authorizer.BindForeignTables(
-		publishedTableSet("sl_", publishedDirectoryTables...),
-		publishedTableSet("sl_", publishedPrincipalTable),
+		publishedDirectoryTables("sl_"), publishedPrincipalTable("sl_"),
 	))
 	events := make([]audit.DomainEvent, 0)
 	appender := func(_ context.Context, _ *gorm.DB, event audit.DomainEvent) error {

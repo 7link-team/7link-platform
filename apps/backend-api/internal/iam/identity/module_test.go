@@ -10,7 +10,6 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/extension/authz"
-	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/extension/huma/respx"
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
@@ -74,11 +73,11 @@ func TestModuleIdentityDependenciesAndReadinessBeforeInitialize(t *testing.T) {
 // identityWiredRegistry registers identity behind everything it resolves. The
 // receiver stands for a module that JOINs identity's tables: identity resolves a
 // type of its own and pushes its names into it, because the real consumer --
-// authn -- is activated before identity. See PrincipalTableSetReceiver.
+// authn -- is activated before identity. See PrincipalTableNamesReceiver.
 func identityWiredRegistry(
 	t *testing.T,
 	harness *identityHarness,
-	receiver PrincipalTableSetReceiver,
+	receiver PrincipalTableNamesReceiver,
 	state ...PrincipalStateReceiver,
 ) (*module.Registry, *Module) {
 	t.Helper()
@@ -110,14 +109,14 @@ func identityWiredRegistry(
 			if err := module.Provide[core.AdministratorGuard](services, harness.guard); err != nil {
 				return err
 			}
-			if err := module.Provide[core.PrincipalTableSetConnector](services, core.PrincipalTableSetConnector{
-				Bind: func(gormx.TableSet) error { return nil },
+			if err := module.Provide[core.PrincipalTableNamesConnector](services, core.PrincipalTableNamesConnector{
+				Bind: func(core.PrincipalTableNames) error { return nil },
 			}); err != nil {
 				return err
 			}
-			if err := module.Provide[core.AccessTables](services, core.AccessTables{
-				Published: core.TableSet(harness.runtime.TablePrefix()),
-			}); err != nil {
+			if err := module.Provide[core.AccessTableNames](services,
+				core.PublishedAccessTableNames(harness.runtime.TablePrefix()),
+			); err != nil {
 				return err
 			}
 			// authn provides this in a deployment; the registry runs identity
@@ -132,7 +131,7 @@ func identityWiredRegistry(
 					return err
 				}
 			}
-			return module.Provide[PrincipalTableSetReceiver](services, receiver)
+			return module.Provide[PrincipalTableNamesReceiver](services, receiver)
 		}},
 		instance,
 	))
@@ -142,21 +141,18 @@ func identityWiredRegistry(
 
 func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
 	harness := newIdentityHarness(t, "sl_")
-	var publishedToConsumer gormx.TableSet
-	registry, instance := identityWiredRegistry(t, harness, PrincipalTableSetReceiver{
-		Bind: func(set gormx.TableSet) error { publishedToConsumer = set; return nil },
+	var publishedToConsumer PrincipalTableNames
+	registry, instance := identityWiredRegistry(t, harness, PrincipalTableNamesReceiver{
+		Bind: func(names PrincipalTableNames) error { publishedToConsumer = names; return nil },
 	})
 
 	active, exists := registry.ByName(Name)
 	require.True(t, exists)
 	assert.Same(t, instance, active)
 	require.NoError(t, registry.Wire(nil))
-	principals, ok := publishedToConsumer.Lookup("iam_principals")
-	require.True(t, ok, "identity must push the tables it owns into the receiver")
-	assert.Equal(t, "sl_iam_principals", principals.String())
-	accounts, ok := publishedToConsumer.Lookup("iam_service_accounts")
-	require.True(t, ok)
-	assert.Equal(t, "sl_iam_service_accounts", accounts.String())
+	require.True(t, publishedToConsumer.Bound(), "identity must push the tables it owns into the receiver")
+	assert.Equal(t, "sl_iam_principals", publishedToConsumer.Principals.String())
+	assert.Equal(t, "sl_iam_service_accounts", publishedToConsumer.ServiceAccounts.String())
 	// The owners publish their table names during Wire in a running deployment;
 	// this registry runs identity alone, so it publishes what they would.
 	bindModuleForeignTables(t, instance, harness.prefix)
@@ -254,13 +250,75 @@ func TestModuleReportsMissingWiring(t *testing.T) {
 	assert.ErrorContains(t, instance.ProvideServices(providers), "provide identity provisioner")
 }
 
+// TestIdentityModuleRefusesToStartWithoutThePublishedTableNames is what the
+// per-statement checks collapsed into. identity holds the names it joins as
+// typed fields now, so a name that never arrived can no longer be reported by
+// the statement that needed it: it is caught once, here, and the deployment
+// does not start rather than joining an empty table name.
+//
+// core is an ordinary provider, so a core that published nothing still arrives
+// as the zero struct. organization and oauth are activated after identity and
+// publish through the connectors identity provides, so an owner that is not in
+// the deployment is one that never called the connector it was given.
+func TestIdentityModuleRefusesToStartWithoutThePublishedTableNames(t *testing.T) {
+	harness := newIdentityHarness(t, "sl_")
+
+	for _, absent := range []struct {
+		owner                 string
+		access                core.AccessTableNames
+		organizationPublishes bool
+		oauthPublishes        bool
+	}{
+		{"core", core.AccessTableNames{}, true, true},
+		{"organization", core.PublishedAccessTableNames(harness.prefix), false, true},
+		{"oauth", core.PublishedAccessTableNames(harness.prefix), true, false},
+	} {
+		t.Run(absent.owner, func(t *testing.T) {
+			require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
+			instance := NewModule(harness.runtime, enabledModuleConfig())
+
+			services := module.NewServices()
+			require.NoError(t, instance.ProvideServices(services))
+			require.NoError(t, module.Provide[*authz.Registrar](services, identityTestRegistrar()))
+			require.NoError(t, module.Provide[guid.Source](services, newIdentityTestIDs(9500)))
+			require.NoError(t, module.Provide[audit.Appender](services, audit.Appender(
+				func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil },
+			)))
+			require.NoError(t, module.Provide[audit.ErasureRecorder](services, audit.ErasureRecorder(
+				func(context.Context, audit.ErasureObligation) error { return nil },
+			)))
+			require.NoError(t, module.Provide[core.AdministratorGuard](services, harness.guard))
+			require.NoError(t, module.Provide[core.AuthorizationEvaluator](services, core.NewAuthorizer(harness.runtime)))
+			require.NoError(t, module.Provide[core.PrincipalTableNamesConnector](services,
+				core.PrincipalTableNamesConnector{Bind: func(core.PrincipalTableNames) error { return nil }}))
+			require.NoError(t, module.Provide[core.AccessTableNames](services, absent.access))
+			require.NoError(t, services.Seal())
+
+			require.NoError(t, instance.InjectServices(services))
+			if absent.organizationPublishes {
+				directory, err := module.Resolve[DirectoryTableNamesConnector](services)
+				require.NoError(t, err)
+				require.NoError(t, directory.Bind(publishedDirectoryTables(harness.prefix)))
+			}
+			if absent.oauthPublishes {
+				oauth, err := module.Resolve[OAuthTableNamesConnector](services)
+				require.NoError(t, err)
+				require.NoError(t, oauth.Bind(publishedOAuthTables(harness.prefix)))
+			}
+
+			assert.ErrorContains(t, instance.Initialize(t.Context()),
+				"the core, organization, and oauth modules must publish the table names identity joins")
+		})
+	}
+}
+
 // TestModuleRejectsAReceiverWithoutABind covers the one wiring mistake the
 // inverted direction makes possible: a consumer registers the receiver but
 // leaves Bind nil, which would make identity publish its names into nothing and
 // leave that consumer naming identity's tables itself.
 func TestModuleRejectsAReceiverWithoutABind(t *testing.T) {
 	harness := newIdentityHarness(t, "sl_")
-	registry, _ := identityWiredRegistry(t, harness, PrincipalTableSetReceiver{})
+	registry, _ := identityWiredRegistry(t, harness, PrincipalTableNamesReceiver{})
 	assert.ErrorContains(t, registry.Wire(nil), "bind is required")
 }
 
@@ -270,7 +328,7 @@ func TestModuleRejectsAReceiverWithoutABind(t *testing.T) {
 // rather than something to publish into silently.
 func TestModulePushesPrincipalStateAndReportsABrokenReceiver(t *testing.T) {
 	harness := newIdentityHarness(t, "sl_")
-	noopTables := PrincipalTableSetReceiver{Bind: func(gormx.TableSet) error { return nil }}
+	noopTables := PrincipalTableNamesReceiver{Bind: func(PrincipalTableNames) error { return nil }}
 
 	t.Run("pushes the owner's statements", func(t *testing.T) {
 		var pushed PrincipalStateStore

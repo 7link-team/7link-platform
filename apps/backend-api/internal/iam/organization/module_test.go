@@ -12,7 +12,6 @@ import (
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
-	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/extension/huma/respx"
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
@@ -116,8 +115,8 @@ func TestOrganizationModuleResolvesServicesAndProvidesGroupProvisioner(t *testin
 			}); err != nil {
 				return err
 			}
-			if err := module.Provide[core.DirectoryTableSetConnector](services, core.DirectoryTableSetConnector{
-				Bind: func(gormx.TableSet) error { return nil },
+			if err := module.Provide[core.DirectoryTableNamesConnector](services, core.DirectoryTableNamesConnector{
+				Bind: func(core.DirectoryTableNames) error { return nil },
 			}); err != nil {
 				return err
 			}
@@ -129,8 +128,8 @@ func TestOrganizationModuleResolvesServicesAndProvidesGroupProvisioner(t *testin
 			}
 			// The consumers publish these during Wire in a running deployment;
 			// this registry fakes them so organization's own wiring resolves.
-			return module.Provide[authn.DirectoryTableSetConnector](services, authn.DirectoryTableSetConnector{
-				Bind: func(gormx.TableSet) error { return nil },
+			return module.Provide[authn.DirectoryTableNamesConnector](services, authn.DirectoryTableNamesConnector{
+				Bind: func(authn.DirectoryTableNames) error { return nil },
 			})
 		}},
 		&organizationDependencyProvider{name: identity.Name, provide: func(services *module.Services) error {
@@ -140,8 +139,8 @@ func TestOrganizationModuleResolvesServicesAndProvidesGroupProvisioner(t *testin
 			if err := module.Provide[identity.TenantOwnerLookup](services, newTenantOwnerStub().capability()); err != nil {
 				return err
 			}
-			return module.Provide[identity.DirectoryTableSetConnector](services, identity.DirectoryTableSetConnector{
-				Bind: func(gormx.TableSet) error { return nil },
+			return module.Provide[identity.DirectoryTableNamesConnector](services, identity.DirectoryTableNamesConnector{
+				Bind: func(identity.DirectoryTableNames) error { return nil },
 			})
 		}},
 		instance,
@@ -223,19 +222,19 @@ func TestOrganizationModuleReportsMissingWiring(t *testing.T) {
 				Bind: func(core.DirectoryAuthorizationSourceStore) error { return nil },
 			})
 		}},
-		{"directory table set connector", func(services *module.Services) error {
-			return module.Provide[core.DirectoryTableSetConnector](services, core.DirectoryTableSetConnector{
-				Bind: func(gormx.TableSet) error { return nil },
+		{"directory table names connector", func(services *module.Services) error {
+			return module.Provide[core.DirectoryTableNamesConnector](services, core.DirectoryTableNamesConnector{
+				Bind: func(core.DirectoryTableNames) error { return nil },
 			})
 		}},
-		{"authn directory table set connector", func(services *module.Services) error {
-			return module.Provide[authn.DirectoryTableSetConnector](services, authn.DirectoryTableSetConnector{
-				Bind: func(gormx.TableSet) error { return nil },
+		{"authn directory table names connector", func(services *module.Services) error {
+			return module.Provide[authn.DirectoryTableNamesConnector](services, authn.DirectoryTableNamesConnector{
+				Bind: func(authn.DirectoryTableNames) error { return nil },
 			})
 		}},
-		{"identity directory table set connector", func(services *module.Services) error {
-			return module.Provide[identity.DirectoryTableSetConnector](services, identity.DirectoryTableSetConnector{
-				Bind: func(gormx.TableSet) error { return nil },
+		{"identity directory table names connector", func(services *module.Services) error {
+			return module.Provide[identity.DirectoryTableNamesConnector](services, identity.DirectoryTableNamesConnector{
+				Bind: func(identity.DirectoryTableNames) error { return nil },
 			})
 		}},
 	}
@@ -245,8 +244,8 @@ func TestOrganizationModuleReportsMissingWiring(t *testing.T) {
 	expected := []string{
 		"authorization registrar", "active member checker", "administrator guard", "invitation credentials",
 		"invitation principal creator", "id generator", "audit appender", "tenant bootstrapper",
-		"tenant owner lookup", "access tables", "directory authorization source connector", "directory table set connector",
-		"authn directory table set connector", "identity directory table set connector",
+		"tenant owner lookup", "access tables", "directory authorization source connector", "directory table names connector",
+		"authn directory table names connector", "identity directory table names connector",
 	}
 	require.Len(t, expected, len(providers), "every provider is the one the next message reports missing")
 	for count, message := range expected {
@@ -287,12 +286,12 @@ func provideUnboundConnector(message string, services *module.Services) error {
 	switch message {
 	case "directory authorization source connector":
 		return module.Provide[core.DirectoryAuthorizationSourceConnector](services, core.DirectoryAuthorizationSourceConnector{})
-	case "directory table set connector":
-		return module.Provide[core.DirectoryTableSetConnector](services, core.DirectoryTableSetConnector{})
-	case "authn directory table set connector":
-		return module.Provide[authn.DirectoryTableSetConnector](services, authn.DirectoryTableSetConnector{})
+	case "directory table names connector":
+		return module.Provide[core.DirectoryTableNamesConnector](services, core.DirectoryTableNamesConnector{})
+	case "authn directory table names connector":
+		return module.Provide[authn.DirectoryTableNamesConnector](services, authn.DirectoryTableNamesConnector{})
 	default:
-		return module.Provide[identity.DirectoryTableSetConnector](services, identity.DirectoryTableSetConnector{})
+		return module.Provide[identity.DirectoryTableNamesConnector](services, identity.DirectoryTableNamesConnector{})
 	}
 }
 
@@ -323,14 +322,14 @@ func TestOrganizationModuleRefusesToStartWithoutThePublishedTableNames(t *testin
 	require.NoError(t, module.Provide[core.DirectoryAuthorizationSourceConnector](services, core.DirectoryAuthorizationSourceConnector{
 		Bind: func(core.DirectoryAuthorizationSourceStore) error { return nil },
 	}))
-	require.NoError(t, module.Provide[core.DirectoryTableSetConnector](services, core.DirectoryTableSetConnector{
-		Bind: func(gormx.TableSet) error { return nil },
+	require.NoError(t, module.Provide[core.DirectoryTableNamesConnector](services, core.DirectoryTableNamesConnector{
+		Bind: func(core.DirectoryTableNames) error { return nil },
 	}))
-	require.NoError(t, module.Provide[authn.DirectoryTableSetConnector](services, authn.DirectoryTableSetConnector{
-		Bind: func(gormx.TableSet) error { return nil },
+	require.NoError(t, module.Provide[authn.DirectoryTableNamesConnector](services, authn.DirectoryTableNamesConnector{
+		Bind: func(authn.DirectoryTableNames) error { return nil },
 	}))
-	require.NoError(t, module.Provide[identity.DirectoryTableSetConnector](services, identity.DirectoryTableSetConnector{
-		Bind: func(gormx.TableSet) error { return nil },
+	require.NoError(t, module.Provide[identity.DirectoryTableNamesConnector](services, identity.DirectoryTableNamesConnector{
+		Bind: func(identity.DirectoryTableNames) error { return nil },
 	}))
 	require.NoError(t, services.Seal())
 

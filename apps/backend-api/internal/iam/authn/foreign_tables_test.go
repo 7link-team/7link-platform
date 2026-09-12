@@ -1,8 +1,10 @@
 package authn
 
 import (
+	"context"
 	"testing"
 
+	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
@@ -13,35 +15,37 @@ import (
 	"gorm.io/gorm"
 )
 
-// publishedOAuthTables is the set the oauth module publishes. authn cannot
-// import oauth -- oauth imports authn -- so a harness that runs authn alone has
-// to publish what the owner would, the way the connectors do in a running
+// publishedDirectoryTables is what the organization module fills into the shape
+// authn declared. authn cannot import organization -- organization imports
+// authn, so the import is a cycle -- and a harness that runs authn alone has to
+// publish what the owner would, the way the connectors do in a running
 // deployment.
-var publishedOAuthTables = []string{
-	"iam_oauth_clients",
-	"iam_oauth_codes",
-	"iam_oauth_consents",
-	"iam_oauth_consent_requests",
-	"iam_refresh_tokens",
+func publishedDirectoryTables(prefix string) DirectoryTableNames {
+	return DirectoryTableNames{Tenants: gormx.NewTableName(prefix, "iam_tenants")}
 }
 
-// bindForeignTables publishes both owners' sets into a repository the way the
-// module's connectors do, for a harness that builds one outside the module. A
-// reader is unbound until this runs, and an unbound reader reports the published
-// tables as missing instead of querying an empty table name.
+// publishedOAuthTables is the same for the oauth module, which authn cannot
+// import for the same reason.
+func publishedOAuthTables(prefix string) OAuthTableNames {
+	return OAuthTableNames{
+		Clients:       gormx.NewTableName(prefix, "iam_oauth_clients"),
+		RefreshTokens: gormx.NewTableName(prefix, "iam_refresh_tokens"),
+	}
+}
+
+// bindForeignTables publishes every owner's names into a repository the way the
+// module's wiring does, for a harness that builds one outside the module. A
+// repository is unbound until this runs, and a module whose owners never
+// published does not start.
 func bindForeignTables(t *testing.T, repository *Repository, prefix string) {
 	t.Helper()
 	require.NotNil(t, repository)
-	foreign := &foreignTables{}
-	require.NoError(t, foreign.bindDirectory(publishedTableSet(prefix, publishedDirectoryTables...)))
-	require.NoError(t, foreign.bindOAuth(publishedTableSet(prefix, publishedOAuthTables...)))
-	// core is the one owner authn can import: it is activated first, so the
-	// set comes from core itself rather than from a list repeated here.
-	require.NoError(t, foreign.bindAccess(core.TableSet(prefix)))
-	// identity pushes its own names through the receiver authn provides, so the
-	// set here comes from identity itself rather than a list repeated in authn.
-	require.NoError(t, foreign.bindPrincipal(identity.TableSet(prefix)))
-	repository.foreign = foreign
+	// core and identity are the two owners authn imports, so their names come
+	// from the owners' own constructors rather than from a list repeated here.
+	require.NoError(t, repository.BindForeignTables(
+		publishedDirectoryTables(prefix), publishedOAuthTables(prefix),
+		core.PublishedAccessTableNames(prefix), identity.PublishedPrincipalTableNames(prefix),
+	))
 	// The reads and locks on identity's own table go through identity's
 	// capability, which the module receives the same way. A harness that built
 	// the repository itself has to supply it, and it comes from identity rather
@@ -54,112 +58,166 @@ func bindForeignTables(t *testing.T, repository *Repository, prefix string) {
 func bindModuleForeignTables(t *testing.T, module *Module, prefix string) {
 	t.Helper()
 	require.NotNil(t, module)
-	require.NoError(t, module.foreign.bindDirectory(publishedTableSet(prefix, publishedDirectoryTables...)))
-	require.NoError(t, module.foreign.bindOAuth(publishedTableSet(prefix, publishedOAuthTables...)))
-	require.NoError(t, module.foreign.bindAccess(core.TableSet(prefix)))
-	require.NoError(t, module.foreign.bindPrincipal(identity.TableSet(prefix)))
+	require.NoError(t, module.foreign.bind(
+		publishedDirectoryTables(prefix), publishedOAuthTables(prefix),
+		core.PublishedAccessTableNames(prefix), identity.PublishedPrincipalTableNames(prefix),
+	))
 	require.NoError(t, module.bindPrincipalState(identityPrincipalStateFor(t, prefix)))
-}
-
-// publishedTableSet builds the set an owner publishes: every logical name it
-// owns, bound to the deployment prefix.
-func publishedTableSet(prefix string, logical ...string) gormx.TableSet {
-	names := make(map[string]gormx.TableName, len(logical))
-	for _, name := range logical {
-		names[name] = gormx.NewTableName(prefix, name)
-	}
-	return gormx.NewTableSet(names)
 }
 
 // TestForeignTablesCarryTheOwnersPrefix keeps the resolved names exactly the
 // ones the owners published. A name authn invented from its own prefix would
 // send a statement to a table the deployment does not have, and the defect
-// would appear only where a prefix is configured.
+// would appear only where a prefix is configured. Asking for a table an owner
+// does not have no longer has a runtime failure to pin: it does not compile.
 func TestForeignTablesCarryTheOwnersPrefix(t *testing.T) {
 	t.Parallel()
 
 	foreign := &foreignTables{}
-	require.NoError(t, foreign.bindDirectory(publishedTableSet("sl_", publishedDirectoryTables...)))
-	require.NoError(t, foreign.bindOAuth(publishedTableSet("sl_", publishedOAuthTables...)))
+	require.NoError(t, foreign.bind(
+		publishedDirectoryTables("sl_"), publishedOAuthTables("sl_"),
+		core.PublishedAccessTableNames("sl_"), identity.PublishedPrincipalTableNames("sl_"),
+	))
+	require.True(t, foreign.bound())
 
-	tenant, err := foreign.directoryTable("iam_tenants")
-	require.NoError(t, err)
-	assert.Equal(t, "sl_iam_tenants", tenant)
-
-	clients, err := foreign.oauthTable("iam_oauth_clients")
-	require.NoError(t, err)
-	assert.Equal(t, "sl_iam_oauth_clients", clients)
-
-	refresh, err := foreign.oauthTable("iam_refresh_tokens")
-	require.NoError(t, err)
-	assert.Equal(t, "sl_iam_refresh_tokens", refresh)
-
-	require.NoError(t, foreign.bindAccess(core.TableSet("sl_")))
-	members, err := foreign.accessTable("iam_tenant_members")
-	require.NoError(t, err)
-	assert.Equal(t, "sl_iam_tenant_members", members)
+	for want, got := range map[string]string{
+		"sl_iam_tenants":          foreign.directory.Tenants.String(),
+		"sl_iam_oauth_clients":    foreign.oauth.Clients.String(),
+		"sl_iam_refresh_tokens":   foreign.oauth.RefreshTokens.String(),
+		"sl_iam_tenant_members":   foreign.access.TenantMembers.String(),
+		"sl_iam_principals":       foreign.principal.Principals.String(),
+		"sl_iam_service_accounts": foreign.principal.ServiceAccounts.String(),
+	} {
+		assert.Equal(t, want, got)
+	}
 }
 
-// TestForeignTablesReportUnboundAsUnavailable is the guarantee the connectors
-// exist for: a table-name set that never arrived is an explicit error, never an
-// empty table name in a statement. Every state a holder can be in is checked,
-// including a holder that is not there at all.
-func TestForeignTablesReportUnboundAsUnavailable(t *testing.T) {
+// TestForeignTablesRejectAnIncompletePublication covers the two guards every
+// binder carries. A holder that is not there at all has nowhere to record the
+// names, and a field authn declared and the owner left empty is refused here
+// rather than carried into a statement as an empty table name -- which is what
+// the per-name lookups used to report one statement at a time.
+func TestForeignTablesRejectAnIncompletePublication(t *testing.T) {
 	t.Parallel()
 
-	unbound := &foreignTables{}
-	_, err := unbound.directoryTable("iam_tenants")
-	assert.ErrorIs(t, err, errRepositoryUnavailable)
-	_, err = unbound.oauthTable("iam_refresh_tokens")
-	assert.ErrorIs(t, err, errRepositoryUnavailable)
-	_, err = unbound.accessTable("iam_tenant_members")
-	assert.ErrorIs(t, err, errRepositoryUnavailable)
-
-	// An owner that published a set without the name this module reads is the
-	// same failure: the name must not fall back to something authn assembled.
-	partial := &foreignTables{}
-	require.NoError(t, partial.bindOAuth(publishedTableSet("sl_", "iam_oauth_clients")))
-	_, err = partial.oauthTable("iam_refresh_tokens")
-	assert.ErrorIs(t, err, errRepositoryUnavailable)
-	require.NoError(t, partial.bindAccess(publishedTableSet("sl_", "iam_roles")))
-	_, err = partial.accessTable("iam_tenant_members")
-	assert.ErrorIs(t, err, errRepositoryUnavailable)
-
 	var absent *foreignTables
-	assert.ErrorIs(t, absent.bindDirectory(publishedTableSet("sl_", publishedDirectoryTables...)), errRepositoryUnavailable)
-	assert.ErrorIs(t, absent.bindOAuth(publishedTableSet("sl_", publishedOAuthTables...)), errRepositoryUnavailable)
-	assert.ErrorIs(t, absent.bindAccess(core.TableSet("sl_")), errRepositoryUnavailable)
-	_, err = absent.accessTable("iam_tenant_members")
-	assert.ErrorIs(t, err, errRepositoryUnavailable)
-	_, err = absent.directoryTable("iam_tenants")
-	assert.ErrorIs(t, err, errRepositoryUnavailable)
-	_, err = absent.oauthTable("iam_refresh_tokens")
-	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	assert.ErrorIs(t, absent.bindDirectory(publishedDirectoryTables("sl_")), errRepositoryUnavailable)
+	assert.ErrorIs(t, absent.bindOAuth(publishedOAuthTables("sl_")), errRepositoryUnavailable)
+	assert.ErrorIs(t, absent.bindAccess(core.PublishedAccessTableNames("sl_")), errRepositoryUnavailable)
+	assert.ErrorIs(t, absent.bindPrincipal(identity.PublishedPrincipalTableNames("sl_")), errRepositoryUnavailable)
+	assert.ErrorIs(t, absent.bind(
+		publishedDirectoryTables("sl_"), publishedOAuthTables("sl_"),
+		core.PublishedAccessTableNames("sl_"), identity.PublishedPrincipalTableNames("sl_"),
+	), errRepositoryUnavailable)
+
+	err := (&foreignTables{}).bindDirectory(DirectoryTableNames{})
+	require.ErrorIs(t, err, errRepositoryUnavailable)
+	assert.Contains(t, err.Error(), "organization left Tenants empty")
+
+	for name, half := range map[string]OAuthTableNames{
+		"no clients":        {RefreshTokens: gormx.NewTableName("sl_", "iam_refresh_tokens")},
+		"no refresh tokens": {Clients: gormx.NewTableName("sl_", "iam_oauth_clients")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := (&foreignTables{}).bindOAuth(half)
+			require.ErrorIs(t, err, errRepositoryUnavailable)
+			assert.Contains(t, err.Error(), "oauth left Clients or RefreshTokens empty")
+		})
+	}
+
+	// bind stops at the owner that published nothing usable, so the holder is
+	// left unbound rather than half filled from the owners that came after.
+	for name, refused := range map[string]func(*foreignTables) error{
+		"organization published nothing": func(tables *foreignTables) error {
+			return tables.bind(DirectoryTableNames{}, publishedOAuthTables("sl_"),
+				core.PublishedAccessTableNames("sl_"), identity.PublishedPrincipalTableNames("sl_"))
+		},
+		"oauth published nothing": func(tables *foreignTables) error {
+			return tables.bind(publishedDirectoryTables("sl_"), OAuthTableNames{},
+				core.PublishedAccessTableNames("sl_"), identity.PublishedPrincipalTableNames("sl_"))
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			tables := &foreignTables{}
+			assert.ErrorIs(t, refused(tables), errRepositoryUnavailable)
+			assert.False(t, tables.bound())
+		})
+	}
 }
 
-// TestRepositoryReportsForeignTablesAsUnbound proves the repository a caller
-// builds without module wiring fails closed on both accessors rather than
-// resolving a name from its own prefix.
+// TestForeignTablesAreUnboundUntilEveryOwnerPublishes pins what the startup
+// check reads. One owner short is still unbound: a module that started on part
+// of its names would send an empty table name in the statements that need the
+// rest.
+func TestForeignTablesAreUnboundUntilEveryOwnerPublishes(t *testing.T) {
+	t.Parallel()
+
+	var absent *foreignTables
+	assert.False(t, absent.bound(), "a holder that is not there has nothing bound")
+	assert.False(t, (&foreignTables{}).bound(), "the zero value must report that nothing arrived")
+
+	complete := foreignTables{
+		directory: publishedDirectoryTables("sl_"),
+		oauth:     publishedOAuthTables("sl_"),
+		access:    core.PublishedAccessTableNames("sl_"),
+		principal: identity.PublishedPrincipalTableNames("sl_"),
+	}
+	require.True(t, complete.bound())
+
+	for owner, withhold := range map[string]func(*foreignTables){
+		"organization":  func(tables *foreignTables) { tables.directory = DirectoryTableNames{} },
+		"oauth":         func(tables *foreignTables) { tables.oauth = OAuthTableNames{} },
+		"oauth clients": func(tables *foreignTables) { tables.oauth.Clients = gormx.TableName{} },
+		"oauth refresh": func(tables *foreignTables) { tables.oauth.RefreshTokens = gormx.TableName{} },
+		"core":          func(tables *foreignTables) { tables.access = core.AccessTableNames{} },
+		"identity":      func(tables *foreignTables) { tables.principal = identity.PrincipalTableNames{} },
+	} {
+		t.Run(owner, func(t *testing.T) {
+			short := complete
+			withhold(&short)
+			assert.False(t, short.bound())
+		})
+	}
+}
+
+// TestRepositoryReportsForeignTablesAsUnbound proves a repository built without
+// module wiring stays unbound until it publishes the owners' names itself, and
+// covers the two states the exported binder can be reached in: a repository
+// that is not there, and one built outside its constructor with no holder to
+// record into.
 func TestRepositoryReportsForeignTablesAsUnbound(t *testing.T) {
 	t.Parallel()
 
-	harness := newAuthnRepositoryHarness(t, "sl_")
+	published := func(repository *Repository) error {
+		return repository.BindForeignTables(
+			publishedDirectoryTables("sl_"), publishedOAuthTables("sl_"),
+			core.PublishedAccessTableNames("sl_"), identity.PublishedPrincipalTableNames("sl_"),
+		)
+	}
+	assert.ErrorIs(t, published(nil), errRepositoryUnavailable)
+
 	// A repository the module's connectors never reached: NewRepository gives
-	// it an empty holder, so both accessors report the tables as missing.
-	unbound := NewRepository(harness.runtime, newRepositoryTestIDs(1000), harness.repository.audit)
-	_, err := unbound.tenantTable()
-	assert.ErrorIs(t, err, errRepositoryUnavailable)
-	_, err = unbound.oauthTable("iam_refresh_tokens")
-	assert.ErrorIs(t, err, errRepositoryUnavailable)
-	_, err = (*Repository)(nil).tenantTable()
-	assert.ErrorIs(t, err, errRepositoryUnavailable)
-	_, err = (*Repository)(nil).oauthTable("iam_refresh_tokens")
-	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	// it an empty holder, and the module refuses to start until every owner has
+	// filled it.
+	runtime := appenv.NewRuntime(appenv.NewIdentity("authn-test", "1"), appenv.WithTablePrefix("sl_"))
+	appender := audit.Appender(func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil })
+	unwired := NewRepository(runtime, newRepositoryTestIDs(1), appender)
+	assert.False(t, unwired.foreign.bound())
+	require.NoError(t, published(unwired))
+	assert.True(t, unwired.foreign.bound())
+
+	// A repository assembled by hand has no holder at all, and the binder
+	// creates one instead of dereferencing nil.
+	withoutHolder := &Repository{}
+	assert.False(t, withoutHolder.foreign.bound())
+	require.NoError(t, published(withoutHolder))
+	assert.True(t, withoutHolder.foreign.bound())
 }
 
 // TestForeignTablesReachTheStatementsTheyWerePublishedFor proves the readers
-// use the published names rather than dropping them: the tenant read and the
-// refresh-token revocation both run against the prefixed tables.
+// use the published names rather than dropping them. The fixture database has
+// every prefixed table, so a name that was not the owner's would come back as a
+// SQL error rather than as the statement's own answer.
 func TestForeignTablesReachTheStatementsTheyWerePublishedFor(t *testing.T) {
 	harness := newAuthnRepositoryHarness(t, "sl_")
 	ctx := t.Context()
@@ -171,111 +229,16 @@ func TestForeignTablesReachTheStatementsTheyWerePublishedFor(t *testing.T) {
 	revoked, err := harness.repository.revokeRefreshTokens(ctx, principalID, repositoryTestNow)
 	require.NoError(t, err)
 	assert.Zero(t, revoked)
-}
 
-// TestServiceAccountStateStopsWhenTheMemberTableWasNeverPublished covers the
-// one table authn reads from core. The set core publishes is complete here
-// except for that name, so the statement cannot be reached by resolving the
-// rest -- which is what an owner publishing an incomplete set looks like.
-func TestServiceAccountStateStopsWhenTheMemberTableWasNeverPublished(t *testing.T) {
-	harness := newAuthnRepositoryHarness(t, "sl_")
-	bindForeignTables(t, harness.repository, "sl_")
-
-	published := core.TableSet("sl_")
-	names := make(map[string]gormx.TableName, published.Len())
-	for _, logical := range published.Names() {
-		if logical == "iam_tenant_members" {
-			continue
-		}
-		name, _ := published.Lookup(logical)
-		names[logical] = name
-	}
-	require.NoError(t, harness.repository.foreign.bindAccess(gormx.NewTableSet(names)))
-
-	_, err := harness.repository.serviceAccountState(t.Context(), 1)
-	require.ErrorIs(t, err, errRepositoryUnavailable)
-	assert.Contains(t, err.Error(), "core did not publish iam_tenant_members")
-}
-
-// TestPrincipalTablesReportUnpublishedAsUnavailable covers the set identity
-// pushes. The three statements authn keeps against identity's tables are JOINs
-// it cannot delegate, so the only thing standing between a missing publication
-// and a query against an empty table name is this error.
-func TestPrincipalTablesReportUnpublishedAsUnavailable(t *testing.T) {
-	t.Parallel()
-
-	bound := &foreignTables{}
-	require.NoError(t, bound.bindPrincipal(identity.TableSet("sl_")))
-	principals, err := bound.principalTable("iam_principals")
-	require.NoError(t, err)
-	assert.Equal(t, "sl_iam_principals", principals)
-	accounts, err := bound.principalTable("iam_service_accounts")
-	require.NoError(t, err)
-	assert.Equal(t, "sl_iam_service_accounts", accounts)
-
-	unbound := &foreignTables{}
-	_, err = unbound.principalTable("iam_principals")
-	require.ErrorIs(t, err, errRepositoryUnavailable)
-	assert.Contains(t, err.Error(), "identity has not published its table names")
-
-	partial := &foreignTables{}
-	require.NoError(t, partial.bindPrincipal(publishedTableSet("sl_", "iam_service_accounts")))
-	_, err = partial.principalTable("iam_principals")
-	require.ErrorIs(t, err, errRepositoryUnavailable)
-	assert.Contains(t, err.Error(), "identity did not publish iam_principals")
-
-	var absent *foreignTables
-	assert.ErrorIs(t, absent.bindPrincipal(identity.TableSet("sl_")), errRepositoryUnavailable)
-	_, err = absent.principalTable("iam_principals")
-	assert.ErrorIs(t, err, errRepositoryUnavailable)
-	assert.ErrorIs(t, absent.bind(
-		gormx.TableSet{}, gormx.TableSet{}, gormx.TableSet{}, identity.TableSet("sl_"),
-	), errRepositoryUnavailable)
-}
-
-// TestJoinsAgainstIdentityTablesRefuseAnUnpublishedName covers the three
-// statements that still name identity's tables, because each one joins a table
-// authn owns and so cannot be handed to the owner. The fixture database has the
-// tables, so an empty name would come back as a SQL error rather than as this
-// one.
-func TestJoinsAgainstIdentityTablesRefuseAnUnpublishedName(t *testing.T) {
-	harness := newAuthnRepositoryHarness(t, "sl_")
-
-	for name, testCase := range map[string]struct {
-		omitted string
-		call    func(*Repository) error
-	}{
-		"principal state": {"iam_principals", func(r *Repository) error {
-			_, err := r.principalState(t.Context(), 1)
-			return err
-		}},
-		"principal claims": {"iam_principals", func(r *Repository) error {
-			_, _, err := r.activePrincipalClaims(t.Context(), 1)
-			return err
-		}},
-		"service account state": {"iam_service_accounts", func(r *Repository) error {
-			_, err := r.serviceAccountState(t.Context(), 1)
-			return err
-		}},
-		"service account principal": {"iam_principals", func(r *Repository) error {
-			_, err := r.serviceAccountState(t.Context(), 1)
-			return err
-		}},
-	} {
-		t.Run(name, func(t *testing.T) {
-			repository := harness.repository.withDB(harness.db, false)
-			repository.foreign = &foreignTables{}
-			require.NoError(t, repository.foreign.bindAccess(core.TableSet("sl_")))
-			require.NoError(t, repository.foreign.bindDirectory(publishedTableSet("sl_", publishedDirectoryTables...)))
-			require.NoError(t, repository.foreign.bindPrincipal(
-				partialPublishedSet(identity.TableSet("sl_"), testCase.omitted),
-			))
-
-			err := testCase.call(repository)
-			require.ErrorIs(t, err, errRepositoryUnavailable)
-			assert.Contains(t, err.Error(), "identity did not publish "+testCase.omitted)
-		})
-	}
+	// The three statements that still name identity's, core's and
+	// organization's tables each JOIN a table authn owns, so they cannot be
+	// handed to the owner and have to carry the published names themselves.
+	_, err = harness.repository.principalState(ctx, principalID)
+	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	_, _, err = harness.repository.activePrincipalClaims(ctx, principalID)
+	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	_, err = harness.repository.serviceAccountState(ctx, principalID)
+	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
 }
 
 // TestReadsOnIdentityTablesRefuseAnUnwiredCapability covers the other side of
@@ -318,20 +281,6 @@ func TestReadsOnIdentityTablesRefuseAnUnwiredCapability(t *testing.T) {
 			assert.ErrorIs(t, call(repository), errRepositoryUnavailable)
 		})
 	}
-}
-
-// partialPublishedSet is what an owner publishing an incomplete set looks like:
-// every name it owns except the one this statement needs.
-func partialPublishedSet(full gormx.TableSet, omit string) gormx.TableSet {
-	names := make(map[string]gormx.TableName, full.Len())
-	for _, logical := range full.Names() {
-		if logical == omit {
-			continue
-		}
-		name, _ := full.Lookup(logical)
-		names[logical] = name
-	}
-	return gormx.NewTableSet(names)
 }
 
 // identityPrincipalStateFor resolves identity's principal-state capability from

@@ -12,7 +12,6 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/extension/authz"
-	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/extension/policyx"
 	"gorm.io/gorm"
 )
@@ -53,7 +52,7 @@ func (a *Authorizer) authorizationTables() (query.AuthorizationTables, error) {
 // connectors core publishes; a caller that builds an evaluator outside the
 // module has to call it itself, because an unbound evaluator reports
 // ErrUnavailable rather than running a statement against an empty table name.
-func (a *Authorizer) BindForeignTables(directory, principal gormx.TableSet) error {
+func (a *Authorizer) BindForeignTables(directory DirectoryTableNames, principal PrincipalTableNames) error {
 	if a == nil {
 		return ErrUnavailable
 	}

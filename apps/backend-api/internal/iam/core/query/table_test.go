@@ -49,101 +49,30 @@ func TestBindAppliesPrefixToEveryCoreTable(t *testing.T) {
 	}
 }
 
-// directoryLogicalNames is the contract core requests from the organization
-// module: every table an authorization statement JOINs and core does not own.
-var directoryLogicalNames = []string{
-	"iam_groups",
-	"iam_group_members",
-	"iam_group_role_bindings",
-	"iam_positions",
-	"iam_position_members",
-	"iam_position_role_bindings",
-	"iam_departments",
-	"iam_department_closure",
-	"iam_member_departments",
-	"iam_role_data_scopes",
-	"iam_role_scope_departments",
-	"iam_tenants",
-}
-
-// publishedSet builds the set a table-name owner publishes for one deployment.
-// The query package cannot import the owning modules to ask them for it -- core
-// is activated before them and the import would be a cycle -- so a test states
-// the published contract instead of borrowing the owner's own test.
-func publishedSet(prefix string, logical ...string) gormx.TableSet {
-	names := make(map[string]gormx.TableName, len(logical))
-	for _, name := range logical {
-		names[name] = gormx.NewTableName(prefix, name)
+// publishedDirectoryTables and publishedPrincipalTable are what the owning
+// modules publish for one deployment. The query package cannot import them to
+// ask for the names -- core is activated before them and the import would be a
+// cycle -- so a test states the published contract instead of borrowing the
+// owner's own test.
+func publishedDirectoryTables(prefix string) DirectoryTables {
+	return DirectoryTables{
+		Groups:               gormx.NewTableName(prefix, "iam_groups"),
+		GroupMembers:         gormx.NewTableName(prefix, "iam_group_members"),
+		GroupRoleBindings:    gormx.NewTableName(prefix, "iam_group_role_bindings"),
+		Positions:            gormx.NewTableName(prefix, "iam_positions"),
+		PositionMembers:      gormx.NewTableName(prefix, "iam_position_members"),
+		PositionRoleBindings: gormx.NewTableName(prefix, "iam_position_role_bindings"),
+		Departments:          gormx.NewTableName(prefix, "iam_departments"),
+		DepartmentClosure:    gormx.NewTableName(prefix, "iam_department_closure"),
+		MemberDepartments:    gormx.NewTableName(prefix, "iam_member_departments"),
+		RoleDataScopes:       gormx.NewTableName(prefix, "iam_role_data_scopes"),
+		RoleScopeDepartments: gormx.NewTableName(prefix, "iam_role_scope_departments"),
+		Tenants:              gormx.NewTableName(prefix, "iam_tenants"),
 	}
-	return gormx.NewTableSet(names)
 }
 
-// TestBindDirectoryTablesResolvesEveryJoinedTable keeps the resolved names
-// exactly the ones the owner published, prefix included. A name core invented
-// from its own prefix would send an authorization statement to a table the
-// deployment does not have, and the defect would only appear where a prefix is
-// configured -- never in the tests that run without one.
-func TestBindDirectoryTablesResolvesEveryJoinedTable(t *testing.T) {
-	t.Parallel()
-
-	plain, err := BindDirectoryTables(publishedSet("", directoryLogicalNames...))
-	require.NoError(t, err)
-	prefixed, err := BindDirectoryTables(publishedSet("sl_", directoryLogicalNames...))
-	require.NoError(t, err)
-
-	actual := map[string][2]string{
-		"iam_groups":                 {plain.Groups.String(), prefixed.Groups.String()},
-		"iam_group_members":          {plain.GroupMembers.String(), prefixed.GroupMembers.String()},
-		"iam_group_role_bindings":    {plain.GroupRoleBindings.String(), prefixed.GroupRoleBindings.String()},
-		"iam_positions":              {plain.Positions.String(), prefixed.Positions.String()},
-		"iam_position_members":       {plain.PositionMembers.String(), prefixed.PositionMembers.String()},
-		"iam_position_role_bindings": {plain.PositionRoleBindings.String(), prefixed.PositionRoleBindings.String()},
-		"iam_departments":            {plain.Departments.String(), prefixed.Departments.String()},
-		"iam_department_closure":     {plain.DepartmentClosure.String(), prefixed.DepartmentClosure.String()},
-		"iam_member_departments":     {plain.MemberDepartments.String(), prefixed.MemberDepartments.String()},
-		"iam_role_data_scopes":       {plain.RoleDataScopes.String(), prefixed.RoleDataScopes.String()},
-		"iam_role_scope_departments": {plain.RoleScopeDepartments.String(), prefixed.RoleScopeDepartments.String()},
-		"iam_tenants":                {plain.Tenants.String(), prefixed.Tenants.String()},
-	}
-
-	require.Len(t, actual, len(directoryLogicalNames))
-	for logical, pair := range actual {
-		assert.Equal(t, logical, pair[0], logical)
-		assert.Equal(t, "sl_"+logical, pair[1], logical)
-	}
-	assert.Equal(t, "iam_groups", prefixed.Groups.Logical())
-	assert.False(t, prefixed.Groups.IsZero())
-}
-
-// TestBindDirectoryTablesRejectsANameTheOwnerDoesNotPublish keeps a missing
-// name an error rather than a zero TableName: an unbound name would reach a
-// statement as an empty table and read whatever the database makes of that.
-func TestBindDirectoryTablesRejectsANameTheOwnerDoesNotPublish(t *testing.T) {
-	t.Parallel()
-
-	incomplete := directoryLogicalNames[:len(directoryLogicalNames)-1]
-	tables, err := BindDirectoryTables(publishedSet("sl_", incomplete...))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), directoryLogicalNames[len(directoryLogicalNames)-1])
-	assert.Equal(t, DirectoryTables{}, tables)
-}
-
-// TestBindPrincipalTableResolvesThePublishedName keeps the one name core reads
-// from the identity module coming from that module's set.
-func TestBindPrincipalTableResolvesThePublishedName(t *testing.T) {
-	t.Parallel()
-
-	principal, err := BindPrincipalTable(publishedSet("sl_", "iam_principals"))
-	require.NoError(t, err)
-	assert.Equal(t, "sl_iam_principals", principal.String())
-	assert.Equal(t, "iam_principals", principal.Logical())
-	assert.False(t, principal.IsZero())
-
-	missing, err := BindPrincipalTable(publishedSet("sl_", "iam_service_accounts"))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "iam_principals")
-	assert.True(t, missing.IsZero())
-	assert.Equal(t, gormx.TableName{}, missing)
+func publishedPrincipalTable(prefix string) gormx.TableName {
+	return gormx.NewTableName(prefix, "iam_principals")
 }
 
 // TestBindAuthorizationTablesCarriesEachOwnersNames keeps one statement's
@@ -152,10 +81,8 @@ func TestBindPrincipalTableResolvesThePublishedName(t *testing.T) {
 func TestBindAuthorizationTablesCarriesEachOwnersNames(t *testing.T) {
 	t.Parallel()
 
-	directory, err := BindDirectoryTables(publishedSet("sl_", directoryLogicalNames...))
-	require.NoError(t, err)
-	principal, err := BindPrincipalTable(publishedSet("sl_", "iam_principals"))
-	require.NoError(t, err)
+	directory := publishedDirectoryTables("sl_")
+	principal := publishedPrincipalTable("sl_")
 
 	bound := BindAuthorizationTables("sl_", directory, principal)
 	assert.Equal(t, BindNames("sl_"), bound.Tables)

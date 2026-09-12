@@ -28,35 +28,69 @@ type joinedTables struct {
 	principalBound bool
 }
 
-// bindDirectoryTables records the set the organization module publishes.
-func (t *joinedTables) bindDirectoryTables(published gormx.TableSet) error {
+// bindDirectoryTables records the names the organization module filled in.
+//
+// A field core declared and the owner left empty is rejected here rather than
+// carried into a statement: the JOIN it would build reads a table the
+// deployment does not have.
+func (t *joinedTables) bindDirectoryTables(published DirectoryTableNames) error {
 	if t == nil {
 		return ErrUnavailable
 	}
-	directory, err := query.BindDirectoryTables(published)
-	if err != nil {
-		return fmt.Errorf("bind the directory table set: %w", err)
+	for _, field := range []struct {
+		name  gormx.TableName
+		field string
+	}{
+		{published.Groups, "Groups"},
+		{published.GroupMembers, "GroupMembers"},
+		{published.GroupRoleBindings, "GroupRoleBindings"},
+		{published.Positions, "Positions"},
+		{published.PositionMembers, "PositionMembers"},
+		{published.PositionRoleBindings, "PositionRoleBindings"},
+		{published.Departments, "Departments"},
+		{published.DepartmentClosure, "DepartmentClosure"},
+		{published.MemberDepartments, "MemberDepartments"},
+		{published.RoleDataScopes, "RoleDataScopes"},
+		{published.RoleScopeDepartments, "RoleScopeDepartments"},
+		{published.Tenants, "Tenants"},
+	} {
+		if field.name.IsZero() {
+			return fmt.Errorf("bind the directory table names: organization left %s empty", field.field)
+		}
 	}
-	t.directory, t.directoryBound = directory, true
+	t.directory = query.DirectoryTables{
+		Groups:               published.Groups,
+		GroupMembers:         published.GroupMembers,
+		GroupRoleBindings:    published.GroupRoleBindings,
+		Positions:            published.Positions,
+		PositionMembers:      published.PositionMembers,
+		PositionRoleBindings: published.PositionRoleBindings,
+		Departments:          published.Departments,
+		DepartmentClosure:    published.DepartmentClosure,
+		MemberDepartments:    published.MemberDepartments,
+		RoleDataScopes:       published.RoleDataScopes,
+		RoleScopeDepartments: published.RoleScopeDepartments,
+		Tenants:              published.Tenants,
+	}
+	t.directoryBound = true
 	return nil
 }
 
-// bindPrincipalTable records the set the identity module publishes.
-func (t *joinedTables) bindPrincipalTable(published gormx.TableSet) error {
+// bindPrincipalTable records the name the identity module filled in.
+func (t *joinedTables) bindPrincipalTable(published PrincipalTableNames) error {
 	if t == nil {
 		return ErrUnavailable
 	}
-	principal, err := query.BindPrincipalTable(published)
-	if err != nil {
-		return fmt.Errorf("bind the principal table set: %w", err)
+	if published.Principals.IsZero() {
+		return fmt.Errorf("bind the principal table name: identity left Principals empty")
 	}
-	t.principal, t.principalBound = principal, true
+	t.principal, t.principalBound = published.Principals, true
 	return nil
 }
 
-// bind records both sets in one step, for a caller that builds an evaluator
-// outside the module and has to supply them itself.
-func (t *joinedTables) bind(directory, principal gormx.TableSet) error {
+// bind records both in one step, for a caller that builds an evaluator outside
+// the module and has to supply them itself.
+func (t *joinedTables) bind(directory DirectoryTableNames, principal PrincipalTableNames) error {
 	if err := t.bindDirectoryTables(directory); err != nil {
 		return err
 	}

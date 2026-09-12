@@ -30,15 +30,7 @@ import (
 // module does: core's own names from its deployment prefix, and the names of
 // the tables it joins from the sets their owning modules publish.
 func authorizationTablesFor(prefix string) AuthorizationTables {
-	directory, err := BindDirectoryTables(publishedSet(prefix, directoryLogicalNames...))
-	if err != nil {
-		panic(err)
-	}
-	principal, err := BindPrincipalTable(publishedSet(prefix, "iam_principals"))
-	if err != nil {
-		panic(err)
-	}
-	return BindAuthorizationTables(prefix, directory, principal)
+	return BindAuthorizationTables(prefix, publishedDirectoryTables(prefix), publishedPrincipalTable(prefix))
 }
 
 func TestAuthorizationStatementsPinSQLTextAndParameterOrder(t *testing.T) {

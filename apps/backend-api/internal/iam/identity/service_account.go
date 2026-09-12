@@ -80,14 +80,8 @@ func (s *Service) ValidateServiceAccount(ctx context.Context, db *gorm.DB, tenan
 	if err != nil {
 		return false, err
 	}
-	tenantTable, err := repo.tenantTable()
-	if err != nil {
-		return false, err
-	}
-	members, err := repo.memberTable()
-	if err != nil {
-		return false, err
-	}
+	tenantTable := repo.foreign.directory.Tenants.String()
+	members := repo.foreign.access.TenantMembers.String()
 	var count int64
 	err = query.
 		Joins("JOIN "+members+" AS member ON member.principal_id = principal.id AND member.tenant_id = service_account.owner_tenant_id").
@@ -461,10 +455,7 @@ func (r *Repository) tenantActive(ctx context.Context, tenantID guid.ID) (bool, 
 	if err != nil {
 		return false, err
 	}
-	tenantTable, err := r.tenantTable()
-	if err != nil {
-		return false, err
-	}
+	tenantTable := r.foreign.directory.Tenants.String()
 	var count int64
 	err = db.WithContext(ctx).Table(tenantTable).
 		Where("id = ? AND status = 'active'", tenantID).Count(&count).Error

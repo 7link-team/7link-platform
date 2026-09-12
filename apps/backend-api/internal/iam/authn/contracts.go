@@ -58,16 +58,29 @@ type ProfileClaims struct {
 	EmailVerified     *bool   `json:"email_verified,omitempty"`
 }
 
-// DirectoryTableSetConnector lets the module that owns the directory tables
-// publish their names to authn. authn reads the tenant table without owning it
-// and cannot name it itself: the owner is activated after authn, so the name
-// arrives as a set rather than as a prefix authn would apply on its own.
-type DirectoryTableSetConnector struct {
-	Bind func(gormx.TableSet) error
+// DirectoryTableNames are the directory tables authn reads without owning them.
+// authn declares the shape and the owner fills it, because the owner is
+// activated after authn and imports it: authn cannot name the owner's type, and
+// asking for a field here is how it says which table it needs.
+type DirectoryTableNames struct {
+	Tenants gormx.TableName
 }
 
-// OAuthTableSetConnector does the same for the OAuth tables authn reads when it
-// authenticates a service account or revokes a principal's refresh tokens.
-type OAuthTableSetConnector struct {
-	Bind func(gormx.TableSet) error
+// DirectoryTableNamesConnector lets the module that owns the directory tables
+// fill in the names authn declared.
+type DirectoryTableNamesConnector struct {
+	Bind func(DirectoryTableNames) error
+}
+
+// OAuthTableNames are the OAuth tables authn reads when it authenticates a
+// service account or revokes a principal's refresh tokens.
+type OAuthTableNames struct {
+	Clients       gormx.TableName
+	RefreshTokens gormx.TableName
+}
+
+// OAuthTableNamesConnector lets the module that owns the OAuth tables fill in
+// the names authn declared.
+type OAuthTableNamesConnector struct {
+	Bind func(OAuthTableNames) error
 }

@@ -63,16 +63,19 @@ func newIdentityLinkEnvironment(t *testing.T) (*federationEnvironment, *authn.Se
 	// A deployment binds these through the connectors authn publishes and the
 	// receiver identity pushes into, and the module hands the holder to the
 	// repository in Initialize. This harness builds the repository itself, so it
-	// publishes the same four sets itself -- without them authn refuses the
+	// fills the same four sets itself -- without them authn refuses the
 	// JOINs rather than naming another module's table.
 	require.NoError(t, repo.BindPrincipalState(
 		identityPrincipalStateForFederation(t, env.runtime.TablePrefix()),
 	))
+	grants := oauth.PublishedGrantTableNames(env.runtime.TablePrefix())
 	require.NoError(t, repo.BindForeignTables(
-		organization.TableSet(env.runtime.TablePrefix()),
-		oauth.TableSet(env.runtime.TablePrefix()),
-		core.TableSet(env.runtime.TablePrefix()),
-		identity.TableSet(env.runtime.TablePrefix()),
+		authn.DirectoryTableNames{
+			Tenants: organization.PublishedDirectoryTableNames(env.runtime.TablePrefix()).Tenants,
+		},
+		authn.OAuthTableNames{Clients: grants.Clients, RefreshTokens: grants.RefreshTokens},
+		core.PublishedAccessTableNames(env.runtime.TablePrefix()),
+		identity.PublishedPrincipalTableNames(env.runtime.TablePrefix()),
 	))
 	env.service.accountProofs, err = module.Resolve[authn.ReauthenticationConsumer](services)
 	require.NoError(t, err)

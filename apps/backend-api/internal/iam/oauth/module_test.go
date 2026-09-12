@@ -14,7 +14,6 @@ import (
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
-	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/extension/huma/respx"
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
@@ -140,8 +139,8 @@ func TestOAuthModuleResolvesDependenciesAndRegistersContract(t *testing.T) {
 			}
 			// The consumers publish these during Wire in a running deployment;
 			// this registry fakes them so oauth's own wiring resolves.
-			if err := module.Provide[authn.OAuthTableSetConnector](services, authn.OAuthTableSetConnector{
-				Bind: func(gormx.TableSet) error { return nil },
+			if err := module.Provide[authn.OAuthTableNamesConnector](services, authn.OAuthTableNamesConnector{
+				Bind: func(authn.OAuthTableNames) error { return nil },
 			}); err != nil {
 				return err
 			}
@@ -204,11 +203,11 @@ func TestOAuthModuleReportsMissingWiring(t *testing.T) {
 	// Both consumers are checked, because a single unchecked one silently
 	// reintroduces the empty table name the connectors exist to remove.
 	for name, unbound := range map[string]func(*module.Services) error{
-		"authn oauth table set connector": func(services *module.Services) error {
-			return module.Provide[authn.OAuthTableSetConnector](services, authn.OAuthTableSetConnector{})
+		"authn oauth table names connector": func(services *module.Services) error {
+			return module.Provide[authn.OAuthTableNamesConnector](services, authn.OAuthTableNamesConnector{})
 		},
-		"identity oauth table set connector": func(services *module.Services) error {
-			return module.Provide[identity.OAuthTableSetConnector](services, identity.OAuthTableSetConnector{})
+		"identity oauth table names connector": func(services *module.Services) error {
+			return module.Provide[identity.OAuthTableNamesConnector](services, identity.OAuthTableNamesConnector{})
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -223,9 +222,9 @@ func TestOAuthModuleReportsMissingWiring(t *testing.T) {
 			require.NoError(t, unbound(services))
 			// The other connector is bound, so the refusal can only be the one
 			// under test rather than the first one that happens to be missing.
-			if name == "identity oauth table set connector" {
-				require.NoError(t, module.Provide[authn.OAuthTableSetConnector](services, authn.OAuthTableSetConnector{
-					Bind: func(gormx.TableSet) error { return nil },
+			if name == "identity oauth table names connector" {
+				require.NoError(t, module.Provide[authn.OAuthTableNamesConnector](services, authn.OAuthTableNamesConnector{
+					Bind: func(authn.OAuthTableNames) error { return nil },
 				}))
 			}
 			require.NoError(t, services.Seal())
@@ -265,11 +264,11 @@ func TestOAuthModuleRefusesToStartWithoutThePublishedTableNames(t *testing.T) {
 			require.NoError(t, module.Provide[audit.Appender](services, harness.repo.appender))
 			require.NoError(t, module.Provide[identity.PrincipalStateStore](services,
 				resolveIdentityPrincipalState(t, harness.runtime)))
-			require.NoError(t, module.Provide[authn.OAuthTableSetConnector](services, authn.OAuthTableSetConnector{
-				Bind: func(gormx.TableSet) error { return nil },
+			require.NoError(t, module.Provide[authn.OAuthTableNamesConnector](services, authn.OAuthTableNamesConnector{
+				Bind: func(authn.OAuthTableNames) error { return nil },
 			}))
-			require.NoError(t, module.Provide[identity.OAuthTableSetConnector](services, identity.OAuthTableSetConnector{
-				Bind: func(gormx.TableSet) error { return nil },
+			require.NoError(t, module.Provide[identity.OAuthTableNamesConnector](services, identity.OAuthTableNamesConnector{
+				Bind: func(identity.OAuthTableNames) error { return nil },
 			}))
 			require.NoError(t, module.Provide[core.AccessTableNames](services, missing.access))
 			require.NoError(t, module.Provide[identity.PrincipalTableNames](services, missing.principal))

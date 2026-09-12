@@ -1,8 +1,6 @@
 package query
 
 import (
-	"fmt"
-
 	"7link.com/platform/internal/iam/core/model"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
@@ -112,49 +110,6 @@ type DirectoryTables struct {
 	RoleDataScopes       gormx.TableName
 	RoleScopeDepartments gormx.TableName
 	Tenants              gormx.TableName
-}
-
-// BindDirectoryTables resolves every directory table core joins out of the set
-// the organization module publishes. It fails on the first name the owner does
-// not publish, because the statement it would otherwise build reads a table the
-// deployment does not have.
-func BindDirectoryTables(published gormx.TableSet) (DirectoryTables, error) {
-	tables := DirectoryTables{}
-	requests := []struct {
-		target  *gormx.TableName
-		logical string
-	}{
-		{&tables.Groups, "iam_groups"},
-		{&tables.GroupMembers, "iam_group_members"},
-		{&tables.GroupRoleBindings, "iam_group_role_bindings"},
-		{&tables.Positions, "iam_positions"},
-		{&tables.PositionMembers, "iam_position_members"},
-		{&tables.PositionRoleBindings, "iam_position_role_bindings"},
-		{&tables.Departments, "iam_departments"},
-		{&tables.DepartmentClosure, "iam_department_closure"},
-		{&tables.MemberDepartments, "iam_member_departments"},
-		{&tables.RoleDataScopes, "iam_role_data_scopes"},
-		{&tables.RoleScopeDepartments, "iam_role_scope_departments"},
-		{&tables.Tenants, "iam_tenants"},
-	}
-	for _, request := range requests {
-		name, ok := published.Lookup(request.logical)
-		if !ok {
-			return DirectoryTables{}, fmt.Errorf("organization publishes no table named %s", request.logical)
-		}
-		*request.target = name
-	}
-	return tables, nil
-}
-
-// BindPrincipalTable resolves the principal table core joins out of the set the
-// identity module publishes.
-func BindPrincipalTable(published gormx.TableSet) (gormx.TableName, error) {
-	name, ok := published.Lookup("iam_principals")
-	if !ok {
-		return gormx.TableName{}, fmt.Errorf("identity publishes no table named iam_principals")
-	}
-	return name, nil
 }
 
 // AuthorizationTables is every physical table name an authorization statement

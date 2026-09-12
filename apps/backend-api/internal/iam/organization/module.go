@@ -78,9 +78,6 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[TenantLookup](services, m.tenantLookup()); err != nil {
 		return fmt.Errorf("provide organization tenant lookup: %w", err)
 	}
-	if err := module.Provide[DirectoryTables](services, DirectoryTables{Published: TableSet(m.runtime.TablePrefix())}); err != nil {
-		return fmt.Errorf("provide organization directory tables: %w", err)
-	}
 	if err := module.Provide[DirectoryTableNames](services, PublishedDirectoryTableNames(m.runtime.TablePrefix())); err != nil {
 		return fmt.Errorf("provide organization directory table names: %w", err)
 	}
@@ -141,35 +138,39 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err := directorySources.Bind(NewDirectoryAuthorizationSourceStore(m.runtime)); err != nil {
 		return fmt.Errorf("bind organization directory authorization sources: %w", err)
 	}
-	directoryTables, err := module.Resolve[core.DirectoryTableSetConnector](services)
+	// Each consumer declares the fields it JOINs and organization fills exactly
+	// those. The names all come from the module's own published struct, so a
+	// consumer cannot be handed a name organization builds a second way.
+	tenants := PublishedDirectoryTableNames(m.runtime.TablePrefix()).Tenants
+	directoryTables, err := module.Resolve[core.DirectoryTableNamesConnector](services)
 	if err != nil {
-		return fmt.Errorf("resolve organization directory table set connector: %w", err)
+		return fmt.Errorf("resolve organization directory table names connector: %w", err)
 	}
 	if directoryTables.Bind == nil {
-		return errors.New("resolve organization directory table set connector: bind is required")
+		return errors.New("resolve organization directory table names connector: bind is required")
 	}
-	if err := directoryTables.Bind(TableSet(m.runtime.TablePrefix())); err != nil {
-		return fmt.Errorf("bind organization directory table set: %w", err)
+	if err := directoryTables.Bind(CoreDirectoryTableNames(m.runtime.TablePrefix())); err != nil {
+		return fmt.Errorf("bind organization directory table names: %w", err)
 	}
-	authnDirectoryTables, err := module.Resolve[authn.DirectoryTableSetConnector](services)
+	authnDirectoryTables, err := module.Resolve[authn.DirectoryTableNamesConnector](services)
 	if err != nil {
-		return fmt.Errorf("resolve authn directory table set connector: %w", err)
+		return fmt.Errorf("resolve authn directory table names connector: %w", err)
 	}
 	if authnDirectoryTables.Bind == nil {
-		return errors.New("resolve authn directory table set connector: bind is required")
+		return errors.New("resolve authn directory table names connector: bind is required")
 	}
-	if err := authnDirectoryTables.Bind(TableSet(m.runtime.TablePrefix())); err != nil {
-		return fmt.Errorf("bind authn directory table set: %w", err)
+	if err := authnDirectoryTables.Bind(authn.DirectoryTableNames{Tenants: tenants}); err != nil {
+		return fmt.Errorf("bind authn directory table names: %w", err)
 	}
-	identityDirectoryTables, err := module.Resolve[identity.DirectoryTableSetConnector](services)
+	identityDirectoryTables, err := module.Resolve[identity.DirectoryTableNamesConnector](services)
 	if err != nil {
-		return fmt.Errorf("resolve identity directory table set connector: %w", err)
+		return fmt.Errorf("resolve identity directory table names connector: %w", err)
 	}
 	if identityDirectoryTables.Bind == nil {
-		return errors.New("resolve identity directory table set connector: bind is required")
+		return errors.New("resolve identity directory table names connector: bind is required")
 	}
-	if err := identityDirectoryTables.Bind(TableSet(m.runtime.TablePrefix())); err != nil {
-		return fmt.Errorf("bind identity directory table set: %w", err)
+	if err := identityDirectoryTables.Bind(identity.DirectoryTableNames{Tenants: tenants}); err != nil {
+		return fmt.Errorf("bind identity directory table names: %w", err)
 	}
 	m.registrar = registrar
 	m.bootstrap, m.owners = bootstrap, owners
