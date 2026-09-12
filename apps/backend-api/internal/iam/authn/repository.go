@@ -7,6 +7,7 @@ import (
 
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/authn/query"
+	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	gormx "7link.com/platform/pkg/extension/gorm"
@@ -28,6 +29,10 @@ type Repository struct {
 	// repository built without one reports the published tables as missing
 	// instead of reading a table nobody named.
 	foreign *foreignTables
+	// principals is identity's principal-state capability, used for the reads
+	// and locks on identity's own table that authn does not have to JOIN with
+	// one of its own.
+	principals identity.PrincipalStateStore
 }
 
 func NewRepository(runtime *appenv.Runtime, ids guid.Source, appender audit.Appender) *Repository {

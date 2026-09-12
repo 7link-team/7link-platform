@@ -39,6 +39,10 @@ type Module struct {
 	// publish to authn. The connectors below bind it, and every repository the
 	// module builds shares it.
 	foreign foreignTables
+	// principals is identity's own principal-state capability. identity pushes
+	// it through the receiver authn provides, because authn is activated first
+	// and so cannot resolve an identity type itself.
+	principals identity.PrincipalStateStore
 }
 
 // Config separates module activation from the authentication service's
@@ -147,11 +151,27 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	}); err != nil {
 		return fmt.Errorf("provide authn principal table set receiver: %w", err)
 	}
+	if err := module.Provide[identity.PrincipalStateReceiver](services, identity.PrincipalStateReceiver{
+		Bind: m.bindPrincipalState,
+	}); err != nil {
+		return fmt.Errorf("provide authn principal state receiver: %w", err)
+	}
 	if err := module.Provide[CredentialTables](services, CredentialTables{
 		Published: TableSet(m.runtime.TablePrefix()),
 	}); err != nil {
 		return fmt.Errorf("provide authn credential tables: %w", err)
 	}
+	return nil
+}
+
+// bindPrincipalState records identity's principal-state capability. identity
+// pushes it during its own injection, which is after authn's, so the module
+// stores it and hands it to the repositories it builds in Initialize.
+func (m *Module) bindPrincipalState(store identity.PrincipalStateStore) error {
+	if m == nil {
+		return authnext.ErrUnavailable
+	}
+	m.principals = store
 	return nil
 }
 
@@ -167,6 +187,7 @@ func (m *Module) bootstrapCredentialStore() BootstrapCredentialStore {
 		// The bootstrap runs after Wire, so the owners have published and the
 		// module's holder already carries their names.
 		repo.foreign = &m.foreign
+		repo.principals = m.principals
 		return repo, nil
 	}
 	return BootstrapCredentialStore{
@@ -270,6 +291,7 @@ func (m *Module) Initialize(context.Context) error {
 	// Wire has already run, so the owners have published; the service and every
 	// repository it clones share the one holder the connectors bound.
 	repository.foreign = &m.foreign
+	repository.principals = m.principals
 	service, err := NewWebService(
 		m.config.Service,
 		repository,

@@ -48,6 +48,15 @@ type IdentityProvisioner interface {
 	EnsureExternalPrincipal(context.Context, *gorm.DB, guid.ID, string, string, time.Time) (guid.ID, bool, error)
 }
 
+// PrincipalStateReceiver is how identity hands its principal-state capability to
+// a module activated before it. PrincipalStateStore is an ordinary provider for
+// the modules activated after identity -- oauth and federation resolve it
+// directly -- but authn cannot, for the reason PrincipalTableSetReceiver
+// explains, so identity pushes the same capability instead.
+type PrincipalStateReceiver struct {
+	Bind func(PrincipalStateStore) error
+}
+
 // PrincipalTableSetReceiver is how identity hands the names of its own tables to
 // a module that JOINs them in one statement. It is named for its direction,
 // because it is the mirror image of core.PrincipalTableSetConnector: there core

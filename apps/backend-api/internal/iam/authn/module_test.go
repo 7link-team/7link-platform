@@ -215,3 +215,46 @@ func TestAuthnModuleReportsMissingWiring(t *testing.T) {
 func authnModuleConfig(service authnext.Config) Config {
 	return Config{Config: module.Config{Enabled: service.Enabled}, Service: service}
 }
+
+// TestModuleHoldsThePrincipalStateIdentityPushes covers the receiver authn
+// provides for identity's capability. authn is activated before identity, so it
+// cannot resolve the capability itself; identity pushes it during its own
+// injection and the module hands it to the repositories it builds afterwards.
+func TestModuleHoldsThePrincipalStateIdentityPushes(t *testing.T) {
+	harness := newAuthnRepositoryHarness(t, "sl_")
+	instance := NewModule(harness.runtime, authnModuleConfig(localAuthnConfig()))
+
+	services := module.NewServices()
+	require.NoError(t, instance.ProvideServices(services))
+	require.NoError(t, services.Seal())
+	receiver, err := module.Resolve[identity.PrincipalStateReceiver](services)
+	require.NoError(t, err)
+	require.NotNil(t, receiver.Bind)
+
+	// Before the push there is nothing to call, which is what an unwired module
+	// looks like; after it the module carries the owner's statements.
+	assert.Nil(t, instance.principals.LockActive)
+	published := identity.NewModule(harness.runtime, identity.Config{})
+	store, err := identityPrincipalState(t, published)
+	require.NoError(t, err)
+	require.NoError(t, receiver.Bind(store))
+	require.NotNil(t, instance.principals.LockActive)
+	assert.NoError(t, instance.principals.LockActive(t.Context(), harness.db, 1))
+
+	var absent *Module
+	assert.ErrorIs(t, absent.bindPrincipalState(store), authnext.ErrUnavailable)
+}
+
+// identityPrincipalState resolves the capability from identity itself, so this
+// test exercises the owner's real statements rather than a stand-in.
+func identityPrincipalState(t *testing.T, instance *identity.Module) (identity.PrincipalStateStore, error) {
+	t.Helper()
+	services := module.NewServices()
+	if err := instance.ProvideServices(services); err != nil {
+		return identity.PrincipalStateStore{}, err
+	}
+	if err := services.Seal(); err != nil {
+		return identity.PrincipalStateStore{}, err
+	}
+	return module.Resolve[identity.PrincipalStateStore](services)
+}

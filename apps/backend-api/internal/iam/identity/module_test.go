@@ -79,6 +79,7 @@ func identityWiredRegistry(
 	t *testing.T,
 	harness *identityHarness,
 	receiver PrincipalTableSetReceiver,
+	state ...PrincipalStateReceiver,
 ) (*module.Registry, *Module) {
 	t.Helper()
 	instance := NewModule(harness.runtime, enabledModuleConfig())
@@ -118,6 +119,11 @@ func identityWiredRegistry(
 				Published: core.TableSet(harness.runtime.TablePrefix()),
 			}); err != nil {
 				return err
+			}
+			if len(state) > 0 {
+				if err := module.Provide[PrincipalStateReceiver](services, state[0]); err != nil {
+					return err
+				}
 			}
 			return module.Provide[PrincipalTableSetReceiver](services, receiver)
 		}},
@@ -249,4 +255,37 @@ func TestModuleRejectsAReceiverWithoutABind(t *testing.T) {
 	harness := newIdentityHarness(t, "sl_")
 	registry, _ := identityWiredRegistry(t, harness, PrincipalTableSetReceiver{})
 	assert.ErrorContains(t, registry.Wire(nil), "bind is required")
+}
+
+// TestModulePushesPrincipalStateAndReportsABrokenReceiver covers the second
+// receiver: a module activated before identity gets identity's own statements
+// pushed into it, and a receiver that cannot take them is a wiring mistake
+// rather than something to publish into silently.
+func TestModulePushesPrincipalStateAndReportsABrokenReceiver(t *testing.T) {
+	harness := newIdentityHarness(t, "sl_")
+	noopTables := PrincipalTableSetReceiver{Bind: func(gormx.TableSet) error { return nil }}
+
+	t.Run("pushes the owner's statements", func(t *testing.T) {
+		var pushed PrincipalStateStore
+		registry, _ := identityWiredRegistry(t, harness, noopTables, PrincipalStateReceiver{
+			Bind: func(store PrincipalStateStore) error { pushed = store; return nil },
+		})
+		require.NoError(t, registry.Wire(nil))
+		require.NotNil(t, pushed.LockActiveRow)
+		_, found, err := pushed.LockActiveRow(t.Context(), harness.db, 404)
+		require.NoError(t, err)
+		assert.False(t, found, "the pushed capability must be the owner's working statements")
+	})
+
+	t.Run("a receiver without a bind is reported", func(t *testing.T) {
+		registry, _ := identityWiredRegistry(t, harness, noopTables, PrincipalStateReceiver{})
+		assert.ErrorContains(t, registry.Wire(nil), "principal state receiver: bind is required")
+	})
+
+	t.Run("a receiver that refuses is reported", func(t *testing.T) {
+		registry, _ := identityWiredRegistry(t, harness, noopTables, PrincipalStateReceiver{
+			Bind: func(PrincipalStateStore) error { return assert.AnError },
+		})
+		assert.ErrorContains(t, registry.Wire(nil), "bind identity principal state")
+	})
 }

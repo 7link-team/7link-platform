@@ -244,6 +244,18 @@ func (m *Module) InjectServices(services *module.Services) error {
 	// A module that JOINs identity's tables provides this hook; identity pushes
 	// its own names into it. Absent means nobody JOINs them in this deployment,
 	// which is not identity's problem to report.
+	principalState, err := module.Resolve[PrincipalStateReceiver](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
+	if err == nil {
+		if principalState.Bind == nil {
+			return errors.New("resolve identity principal state receiver: bind is required")
+		}
+		if err := principalState.Bind(m.principalStateStore()); err != nil {
+			return fmt.Errorf("bind identity principal state: %w", err)
+		}
+	}
 	publishedPrincipals, err := module.Resolve[PrincipalTableSetReceiver](services)
 	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
 		return err
