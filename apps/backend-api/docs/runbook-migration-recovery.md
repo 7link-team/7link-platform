@@ -38,7 +38,7 @@ production runs, not a compatible substitute.
 
 `status` reports every module's current and target version. `validate` additionally
 refuses a state the embedded migrations cannot explain. Read one of them before
-and after every step below; a step that leaves a module `pending` or `dirty` has
+and after every step below; a step that leaves a module `pending`, `ahead` or `diverged` has
 not finished, whatever else looked successful.
 
 Rehearsed: 13 modules, all `clean`, after each of the three drills.
@@ -151,7 +151,7 @@ that accepts erasure. Its `iam_audit.anchor.retention_days` must exceed the age
 of the oldest database backup that can be restored plus the operational recovery
 window. Do not reopen access if that coverage relationship is false or unknown.
 
-Enabled ledgers expose a separate optional `audit-erasure-ledger` health check.
+Enabled ledgers expose a separate optional `iam-audit-erasure-ledger` health check.
 It performs a bounded, read-only Object Lock configuration request and requires
 `s3:GetBucketObjectLockConfiguration`. An unhealthy ledger must alert the erasure
 operator; it does not remove otherwise healthy login servers from readiness.
@@ -176,7 +176,7 @@ Reconcile every restore, including one believed not to cross an erasure:
    list, decode, key, hash, version or retention failure stops recovery.
 3. For each listed principal whose lifecycle in the restored database is not
    already anonymized at that version or later, re-run the platform erasure:
-   `POST /platform/iam/principals/{id}/lifecycle/anonymization`.
+   `POST /platform/iam/principals/{principal_id}/lifecycle/anonymization`.
    The retention policy and suspension it requires were also rolled back, so
    they have to be re-recorded first -- the endpoint refuses otherwise, which is
    the intended behaviour rather than an obstacle.

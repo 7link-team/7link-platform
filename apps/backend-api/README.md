@@ -31,7 +31,7 @@ make build   # version-stamped binary at bin/7link-api
 ## Layout
 
 ```
-cmd/7link-api/       CLI entrypoint: serve and migrate commands
+cmd/7link-api/       CLI entrypoint: serve, migrate, iam and openapi commands
 internal/app/        composition root: runtime, module registry, HTTP/gRPC servers
 internal/infra/      infrastructure modules (see below)
 internal/iam/        namespace for nine autonomous identity and access modules
@@ -79,7 +79,8 @@ and `default` tags there drive both flag registration and generated config.
 Fields tagged `secret:"true"` — datasource DSNs, OTLP headers — are redacted
 wherever configuration is rendered, including the config-inspector endpoint.
 
-Run `make dev` with `--help` for the full flag list.
+Run `make dev DEV_ARGS="serve --help"` for the full flag list. Passing `--help` to
+`make` itself prints make's usage, not the server's.
 
 ## Rotating keys
 
@@ -536,8 +537,9 @@ the client-IP budget. GET session checks and DELETE logout remain available.
 ### Release verification
 
 `make release-check` serially runs `ci`, the full Go race suite, generation
-idempotence, frontend lint/typecheck/tests/build, alert rule tests, real MySQL and
-the schema lock. Install `promtool` (tested with 3.5.0) or set `PROMTOOL` to its
+idempotence, frontend lint/typecheck/tests/build, alert rule tests, real MySQL,
+the schema lock and the disposable Redis security checks in plaintext and TLS.
+Install `promtool` (tested with 3.5.0) or set `PROMTOOL` to its
 command. Load `docs/iam-alerts.yml` into the deployment's Prometheus and separately
 verify delivery to the responsible operator; rule tests do not prove alert routing.
 Use an already provisioned `DOCKER_CMD` / `DOCKER_TEST_HOST`; it does not install
