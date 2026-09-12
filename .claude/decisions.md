@@ -1396,10 +1396,12 @@ authn/identity `Repository` 上的 `tenantTable()`/`memberTable()`/`principalTab
 `serviceAccountTable()`/`oauthTable()` 中间取名方法；8 个无人消费的 `tables.go` + 其 `tables_test.go`；
 `internal/app/bootstrap_iam_tables_test.go`（它枚举的 13 个 `TableSet` 已不存在）。
 
-**保留 `query.TableNames.Map()`，这是一次有意的不彻底**
-它在生产上已无调用者（唯一调用方是被删的 `TableSet`），但它是那 8 个没有类型化发布的模块
-**唯一的枚举入口**，13 条「BindNames 的每个名字都带前缀、Logical() 正确、非零」的断言靠它。
-删掉等于拿掉真实验证换整洁。若要彻底删，需先把那 13 条改成反射枚举。
+**`query.TableNames.Map()` 也删了——先前记为「有意保留」，后来推翻**
+最初的保留理由是「13 条前缀断言靠它枚举」。这个理由在看到 `backend-module` SKILL.md 的模板后不成立：
+文档会教**每个新模块**都写一个无人调用的 `Map()`。13 条断言改成反射枚举 `BindNames(prefix)` 的字段后
+**比原来更强**——`Map()` 同样是手写的，它漏掉的字段原测试根本看不见，而反射走的是结构体每一个字段。
+已变异验证（去掉某个名字的前缀 → 用例立刻红）。federation 那条 `BindNames vs Bind` 漂移断言
+也一并改成反射，语义不变。
 
 **Alternatives / Tradeoffs**
 - **让 organization 直接填 `core/query.DirectoryTables`**（省掉 core 根包再声明一份 12 字段）：
