@@ -9,10 +9,11 @@ P4a/b/c 拼表名清理 → P5 注入连接器 → P6 门禁收紧；PD 文档�
 用户确认的路线：**跨模块取表名一律走窄接口/注入**，不放宽架构测试、不放宽依赖全序（D37）。
 
 ## Current Phase
-READY —— P0–P5 已推送；**P4c 全部完成并通过全量门禁**（4 个提交待推送）。剩 P6 与 PD。
+IMPLEMENTATION —— 按已批准的收尾计划推进（计划文件见下）。
+**阶段一（authn↔identity 解耦）已全部完成并通过 `make ci` + `make test-mysql8-run`。**
 
 ## Current Step
-P4c 收尾完成。下一步：推送 → P6 门禁收紧（目标值 = 385，不是 0）→ PD 文档体检。
+阶段一收口完成（S0–S8，8 个提交）。下一步按计划进入**阶段二**：跨模块表名改成带类型字段。
 
 ## Overall Progress
 - [x] **P0 门禁 + 冻结基线**：`tests/architecture/query_gate_test.go`（5 条 AST 规则）+
@@ -338,6 +339,39 @@ so its own prefix names them」——**`iam_sessions` 是 authn 拥有的**
   `accessTable("iam_tenant_members")`：魔法字符串还在、编译器帮不上忙、每处多一个永不触发的错误分支。
   改成拥有者导出带字段的结构体（`tables.TenantMembers`）则三者全解，且拥有者那边
   `query/table.go` 的 `TableNames` **已经是这个形状**。属返工（约 65 处），收益是代码变少。
+
+## 收尾计划的执行进度（2026-09-12）
+
+计划文件：`~/.claude/plans/flickering-toasting-neumann.md`（用户已批准）。
+
+### 阶段一 authn↔identity 解耦 —— 完成，**全仓自拼他模块表名 65 → 0**
+提交 `9e89c5e..501efc0`（未推送）：
+- `9e89c5e` S0 冻结 9 条语句的 SQL 文本 + 补链路特征测试（零生产改动）
+- `906df4e` S1 删 `EnsureBootstrapPrincipal` 等死码（净 −196 行）
+- `7fbf266` S2 identity 推表名给 authn（`PrincipalTableSetReceiver`，方向反转）
+- `7d41726` S3 扩 `PrincipalStateStore` 六个 reader（纯增量，SQL 等价实测）
+- `c7555db` S4 authn 七条语句换方法体（签名/错误/调用点不变）
+- `d374ef8` S5 authn 提供 `PrincipalCredentialStore`（四个闭包钉在调用方事务）
+- `61f2b35` S6 identity 五条越界写换成能力
+- `501efc0` S7/S8 保留 sessions 双写 + 计数不变量、修 authn 持有者注释、写 D39
+
+**决定性验证**：`make ci` **EXIT=0**（总覆盖率 90.1%、六个集成套件全 ok、openapi 指纹一致）；
+`make test-mysql8-run` **EXIT=0**，`TestIAMPerformanceExternalDatabase` **PASS**、
+`iam_performance_baseline.json` `git diff --quiet` 为真、schema lock 219 文件未变、72 表、33 跨模块 FK。
+门禁账本 **385 → 372**（四次手动下调，全程未用 `QUERY_GATE_REBASELINE`）。
+
+详细决策见 `.claude/decisions.md` 的 **D38**（死码删除）与 **D39**（双向委派、方向反转、
+`LockActiveRow` 的安全差异、sessions 双写为何保留、identity 测试为何只能用替身）。
+
+### 阶段二 带类型字段 —— 待开始
+拥有者在根包导出字段为 `gormx.TableName` 的结构体（镜像 `query.TableNames`，带漂移测试）；
+把「是否已绑定」校验集中到 `Initialize`（任一字段为零值即启动失败），业务代码错误分支从约 65 降到每消费方 1 个；
+P4c 写的约 30 个运行时用例会收敛成每模块 1 个。**顺序在阶段三之前**——计划里纠正过用户最初的选择：
+返工之后那 142 个「查表键」从代码里消失，门禁就不需要加「查表键不算违规」这条特例。
+
+### 阶段三 门禁规则 / 阶段四 文档体检 —— 待开始
+阶段三五项修正（排除 Prometheus 指标名误报、只认前缀加法、按 file:line:col 去重、补常量洞、
+补 `sql-in-format-string` 的局部变量洞）与阶段四 36 份文档清单见计划文件。
 
 ## Last Checkpoint
 2026-09-11 **P4c 全部完成，全量门禁绿**（4 个提交 `3cb34f1..001f6a0`，未推送）：
