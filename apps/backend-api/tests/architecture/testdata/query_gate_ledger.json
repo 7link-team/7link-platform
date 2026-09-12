@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "budget": 46,
+  "budget": 44,
   "rebaseline": "initial freeze at the P0 commit",
   "entries": [
     {
@@ -68,19 +68,11 @@
       "count": 2
     },
     {
-      "key": "handwritten-sql:723eddbdcf0c99b9",
-      "count": 1
-    },
-    {
       "key": "handwritten-sql:8f8cec4aee2aba5b",
       "count": 1
     },
     {
       "key": "handwritten-sql:9b0891fddd16f6aa",
-      "count": 1
-    },
-    {
-      "key": "handwritten-sql:ed70608643c3f52f",
       "count": 1
     },
     {

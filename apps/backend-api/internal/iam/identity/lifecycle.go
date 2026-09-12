@@ -358,8 +358,7 @@ func (r *Repository) savePrincipalLifecycle(ctx context.Context, row *model.Prin
 }
 
 func lifecycleNow(ctx context.Context, db *gorm.DB) (time.Time, error) {
-	var millis int64
-	err := db.WithContext(ctx).Raw("SELECT " + gormx.NowMillisExpr(db.Dialector.Name())).Scan(&millis).Error
+	millis, err := gormx.DatabaseClockMillis(ctx, db)
 	return time.UnixMilli(millis).UTC(), err
 }
 

@@ -54,9 +54,7 @@ func (r *Repository) claimReplay(ctx context.Context, key string, expiresAt, now
 }
 
 func (r *Repository) replayNow(ctx context.Context) (int64, error) {
-	var millis int64
-	err := r.db.WithContext(ctx).Raw("SELECT " + gormx.NowMillisExpr(r.db.Dialector.Name())).Scan(&millis).Error
-	return millis, err
+	return gormx.DatabaseClockMillis(ctx, r.db)
 }
 
 func (r *Repository) sweepReplayClaims(ctx context.Context) error {
