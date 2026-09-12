@@ -122,8 +122,26 @@ func (f *iamTenantFixture) runPrincipalClosure(t *testing.T) {
 		require.NoError(t, err)
 		_, err = authnService.Authenticate(t.Context(), "", cookie)
 		require.NoError(t, err, "request alone preserves global browser access")
+		// Two modules revoke the sessions in this one transaction, and that is
+		// deliberate. identity asks authn to revoke them with identity's database
+		// clock, and authn's own credential revocation runs again with its service
+		// clock; the second is a no-op, because the first already cleared
+		// revoked_at IS NULL. So the timestamp that lands is identity's. Dropping
+		// either write would silently move the audit timestamp to the other
+		// clock, which no end-state assertion can see -- hence the count.
+		sessionRevocations := 0
+		sessionsTable := f.table("iam_sessions")
+		require.NoError(t, f.db.Callback().Update().After("gorm:update").
+			Register("count_session_revocations", func(tx *gorm.DB) {
+				if tx.Statement.Table == sessionsTable {
+					sessionRevocations++
+				}
+			}))
 		processed, err := identityService.ProcessClosureRequest(adminContext, principal.ID, request.Version)
+		require.NoError(t, f.db.Callback().Update().Remove("count_session_revocations"))
 		require.NoError(t, err)
+		require.Equal(t, 2, sessionRevocations,
+			"identity asks the owner to revoke, and the owner revokes again as a no-op")
 		require.Equal(t, "processing", processed.Status)
 		require.EqualValues(t, 0, f.count(t, "iam_tenant_members", "principal_id = ?", principal.ID))
 		require.EqualValues(t, 1, f.count(t, "iam_principals", "id = ? AND status = 'disabled'", principal.ID))

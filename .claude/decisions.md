@@ -1292,3 +1292,63 @@ S1 已完成：净 **-196 行**（8 文件，+74/-270）。`go build`、全量�
 （直接写 principal + credential 两行，并按 `normalizeLogin` 归一化登录名——否则 fixture 用自己的
 登录名都查不到自己）；读 principal 的 6 处测试改用 harness 的 `principal()` 直读，
 不再让生产代码为测试保留一个读方法。
+
+## D39 — authn 与 identity 的双向越界改为互相委派；不可委派的只剩一个 JOIN 形状
+
+**Decision / Reason**
+authn 与 identity 互相往对方拥有的表里读写（18 条语句，双向）。修法不是「发布表名」，而是**委派**：
+拥有者在调用方的事务里执行自己的语句。样板是仓内已有的 `internal/app/principallifecycle.go`
+与 `identity.PrincipalStateStore`。
+
+- **authn → identity 13 条**：3 条死码删除（D38）；7 条委派给 `identity.PrincipalStateStore`
+  新增的 6 个 reader；3 条**不可委派**（每条都同时读 authn 自己的表），保留在 authn，表名改走
+  identity 发布的集合。
+- **identity → authn 5 条**：全部委派给新增的 `identity.PrincipalCredentialStore`（authn 提供）。
+
+结果：脚本普查「模块用自己的前缀拼别人家表名」**65 处 → 0 处**。
+
+**接线形状：两处方向反转，这是被迫的**
+`authn` 激活在 `identity` **之前**，于是两种常规形状都走不通：
+authn 去 `Resolve` identity 的类型 → 架构门禁 `module-dependency` 要求声明 identity →
+`Activate` 的注册序校验失败；identity 去 `Resolve` authn 的类型 → 必须 import authn →
+与已有的 authn→identity 成 **Go 包环**。
+合法形状只有：**类型声明在 identity，消费方提供钩子，identity 解析自己包的类型后推过去**
+（`inspectCall` 对「实参所属包 == 自己」不记依赖）。据此新增
+`identity.PrincipalTableSetReceiver`（推表名）与 `identity.PrincipalStateReceiver`（推能力）。
+命名刻意用 `Receiver` 而非 `Connector`，以区别于方向相反的 `core.PrincipalTableSetConnector`。
+
+**`LockActiveRow` 不是 `LockActive` 加个返回值——这是安全差异**
+`lockPrincipal` 的 7 个调用点里 6 个只取 error，依赖「principal 不存在或已停用 → 报错 → 事务回滚」。
+`LockActive` 是一条 UPDATE，**不报告是否匹配到行**。照「复用 LockActive」的最初设想改，
+会让**停用账号走通找回密码 / MFA 注册 / 邮箱验证**。故新增会报告 `found` 的 `LockActiveRow`，
+并有专门断言钉住（`TestSecurityStateWritesRefuseADisabledPrincipal` 5 个子用例）。
+
+**SQL 逐字节未变，是实测而非声称**
+先在 authn 侧冻结 9 条语句的完整文本（DryRun + 真实 PostgreSQL 方言，含 gorm 单独发出的
+NOT EXISTS 子查询），再在 identity 侧**独立写死同一批字面量**断言新 reader 产出相同文本，
+搬完再跑一次。三次都相等。这层断言的必要性在于：性能基线的查询计划指纹需要外部数据库，
+**`make ci` 里没有**，没有它等于在 CI 看不见的地方改冻结路径。
+
+**关户路径的 sessions 被写两次，刻意保留**
+identity 请 authn 用 **identity 的数据库时钟**吊销；authn 自己的凭据吊销又用**服务时钟**跑一次。
+两条都带 `revoked_at IS NULL`，identity 在前，**落库的时间戳是 identity 的**，第二条是真 no-op。
+删掉任一条都会静默改变审计时间戳来源，而任何「终态」断言都看不见。
+故保留，并在 `internal/app` 的组合测试里钉住「恰好 2 条 sessions UPDATE」；
+该断言做过变异验证（改成 3 即失败，实测值 2）。要改时间戳来源需单独 ADR。
+
+**Alternatives / Tradeoffs**
+- 放宽 `isStableWiringCapability` 白名单或调换注册序：前者是用户明令禁止改 `tests/architecture`，
+  后者影响全仓 19 个模块的生命周期与关停逆序，风险远大于收益。均否决。
+- 加宽 `identity.ServiceAccountValidator` 以接走 authn 的四表 JOIN：它的 SQL 是冻结的
+  （性能基线 `scim_bulk` 路径，`count(*)`），改返回字段即破指纹。否决，该 JOIN 留在 authn。
+- 把两条 `iam_principals ⋈ iam_credentials` 的 JOIN 拆成两次调用：会改 `session_lookup` 指纹，
+  且多一次往返。否决，保留 JOIN、表名走发布集。
+
+**测试侧的一处不对称（如实记录）**
+identity 的测试**不能**使用 authn 的真实能力——authn import identity，所以 identity 的测试也不能
+import authn，这正是当初需要这个能力的同一个方向约束。identity 侧用替身（写同样的行），
+真实闭包的行为在 `internal/iam/authn/credentialstore_test.go` 断言。替身文件顶部写明了这一点。
+
+**Scope / Status**
+阶段一（S0–S8）完成，7 个提交 `9e89c5e..61f2b35`。门禁账本 **385 → 372**，四次均手动下调，
+全程未用 `QUERY_GATE_REBASELINE`。

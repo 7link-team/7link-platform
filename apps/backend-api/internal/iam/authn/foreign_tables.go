@@ -7,11 +7,22 @@ import (
 )
 
 // foreignTables carries the table names of the tables authn reads but does not
-// own. An owner activated after authn binds its set through a connector authn
-// declares; an owner activated before authn -- core -- is an ordinary provider
-// authn resolves. Either way a set that never arrived stays empty and every
-// lookup fails, so a missing publication is an error rather than an empty
-// table name in a statement.
+// own. Three routes fill it, because which one applies depends on when the owner
+// is activated relative to authn:
+//
+//   - an owner activated after authn (organization, oauth) binds its set
+//     through a connector authn declares;
+//   - an owner activated before authn (core) is an ordinary provider authn
+//     resolves;
+//   - identity is neither, because authn already imports it: authn cannot
+//     resolve an identity type without declaring a dependency the registration
+//     order rejects, and identity cannot resolve an authn type without an import
+//     cycle. So identity pushes, through the receiver it declares and authn
+//     provides -- see identity.PrincipalTableSetReceiver.
+//
+// Whichever route, a set that never arrived stays empty and every lookup fails,
+// so a missing publication is an error rather than an empty table name in a
+// statement.
 type foreignTables struct {
 	directory gormx.TableSet
 	oauth     gormx.TableSet
