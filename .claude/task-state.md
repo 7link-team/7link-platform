@@ -13,9 +13,10 @@ IMPLEMENTATION —— 按已批准的收尾计划推进（计划文件见下）�
 **阶段一（authn↔identity 解耦）已全部完成并通过 `make ci` + `make test-mysql8-run`。**
 
 ## Current Step
-**阶段二全部完成**（3 个提交 `815b5d9`、`d2ca56c`、`660bf97`，未推送），
-`make ci` **EXIT=0** + `make test-mysql8-run` **EXIT=0** 已实跑通过。
-下一步是**阶段三（门禁规则五项修正）**与**阶段四（文档体检）**，均未开工，见 `## Next Action`。
+**阶段二、阶段三均已完成**（未推送）。阶段二 3 个提交 `815b5d9`/`d2ca56c`/`660bf97` +
+`faaf90a`（删 Map、重写 SKILL.md §4）；阶段三 1 个提交 `a35723c`（门禁规则六项修正）。
+每一步都跑过 `make ci` **EXIT=0**；阶段二另跑过 `make test-mysql8-run` **EXIT=0**。
+**下一步是阶段四（文档体检，36 份，未开工）**，见 `## Next Action`。
 
 ## Overall Progress
 - [x] **P0 门禁 + 冻结基线**：`tests/architecture/query_gate_test.go`（5 条 AST 规则）+
@@ -253,13 +254,11 @@ IMPLEMENTATION —— 按已批准的收尾计划推进（计划文件见下）�
 
 ## Next Action
 1. **推送** `9817860..660bf97`（21 个提交）到 `origin/IAM`——用户此前说过不急，需确认后再推。
-2. **阶段三 门禁规则五项修正**（未开工，清单见计划文件 `~/.claude/plans/flickering-toasting-neumann.md`）：
-   排除 Prometheus 指标名误报、只认前缀加法、按 `file:line:col` 去重、补常量洞、
-   补 `sql-in-format-string` 的局部变量洞。做完再压 budget（当前 218）。
-   注意：阶段二已让「查表键」这类违规从代码里消失，所以阶段三**不需要**再加「查表键不算违规」的特例。
-3. **阶段四 文档体检**（未开工，36 份文档清单见计划文件）。其中 `backend-module` SKILL.md §4
-   仍在描述 `TableSet`/`Lookup` 机制，**已经过时**，必须改写成类型化结构体 + 连接器方向规则（D40）。
-4. **P6 门禁收紧**：把 budget 从 218 继续压。**目标不是 0**——authn↔identity 的 8 处无解（见下），
+2. **阶段四 文档体检**（未开工，36 份文档清单见计划文件
+   `~/.claude/plans/flickering-toasting-neumann.md`）。`backend-module` SKILL.md §4/§8
+   **已在 `faaf90a` 改完**（类型化结构体 + 连接器方向规则表 + D40 指路），其余 35 份未看。
+3. **P6 门禁收紧已无空间可压**：budget 现为 **46**，剩下的 46 处全部可指认，
+   见下「阶段三」一节的清单。继续压需要改生产代码，不是改门禁。**目标不是 0**——authn↔identity 的 8 处无解（见下），
    且 `naked-table-literal` 里还剩大量「逻辑名作为 `accessTable("iam_x")` 的查表键」，
    那不是缺陷（名字不是自己拼的）。收紧前先决定这一类要不要从规则里区分出去，
    否则 P6 会变成为了数字而改代码。
@@ -507,7 +506,44 @@ P4c 写的约 30 个运行时用例会收敛成每模块 1 个。**顺序在阶�
 `go test ./internal/iam/... ./internal/app/... -count=1` **0 FAIL**；
 `go -C tests test ./architecture/ -count=1` **ok**；门禁账本 **372 → 350**（手动下调，未用 REBASELINE）。
 
+### 阶段三 门禁规则修正（2026-09-12，提交 `a35723c`）
+
+**规则从「量 AST 形状」改成「量真实缺陷」，账本 218 → 46，手动下调，未用 REBASELINE。**
+218 次计数只落在 163 个物理位置上——这两个数字的差、以及 163 里的大部分，都不是缺陷。
+
+六项改动，每项都有夹具且都做过变异验证：
+1. **真实表名集合**：从各模块 `model` 的 `TableName()` 读出真表（与迁移、schema lock 同源）。
+   只靠形状会把 11 个 `iam_scim_*` Prometheus 指标名当成表。
+2. **位置收紧**（用户选的「两者都做」= 真表集合 **且** 查询位置）：只有查询方法实参、
+   模块自己的前缀帮手实参、以及 return 出去的名字才算表位置。
+3. **补常量洞**：标识符绑定到字符串会被解析，把表名塞进常量再传给 `Table()` 不再能绕过。
+4. **只认前缀加法**：加法某一侧必须是前缀来源。「任何加法」此前把 `"version": version + 1`、
+   一处 `sync.Map` 键、以及 90 多处「已解析名 + `" AS 别名"`」全算成违规。
+5. **按 file:line:col 去重**：五种宿主节点嵌套，同一字面量被算 2–3 次。
+6. **`sql-in-format-string` 跟一跳赋值** + **修 `UPDATE\s` 永不匹配 `UPDATE %s`**（计划里没有这条，
+   验证时发现：只补局部变量洞仍抓不到那唯一一处 Sprintf，边界写法才是真凶）。
+
+**我自己两处实现被验证推翻，已不在结果里**（写下来是因为它们都很容易再犯）：
+- 给 `Table()` 实参加「结果得像张表」的守卫 → 丢掉 `Table(prefix+owner.versions)` 这个真违规
+  （表名来自结构体字段）。`Table()` 的实参按定义就是表名；该守卫只该留在 return 路径。
+- 换成真表集合后 return 路径钻进嵌套调用 → 误报 `fileResponse("todos", …)`（`todos` 是真表名，
+  但那是文件名）。改为不下钻嵌套调用，由被调方自己判定。
+
+**剩余 46 处全部可指认**：13 处 `goose_<模块>` 版本表（前缀由 `goosex` 外部施加，站点处改不了）、
+7 条 core 授权语句 + 8 处 `core/relationship.go` 递归 CTE（P2 冻结，有 golden 断言）、
+6 个模块的 `func (r *Repository) table(name string)` 帮手、5 处 governance SQL 片段、
+`core/revision.go:28`（D 类已知项）、`app/principallifecycle.go:47`（goose 版本查询）、
+1 处 `sql-in-format-string`（`authn/repository_credentials.go`）。
+**继续压需要改生产代码，不是改门禁。**
+
+**账本 `rebaseline` 字段未动**，仍写着 `initial freeze at the P0 commit`。budget 46 的真实出处是
+「规则语义变更后重新量测，不是抬高」——用户明确要求不动 rebaseline 机制，故字段保持原样，
+出处记录在此与提交 `a35723c` 的说明里。**若日后觉得字段该如实，改字符串即可，不触发抬预算机制。**
+
 ## Last Checkpoint
+2026-09-12 **阶段三完成**，提交 `a35723c`，`make ci` **EXIT=0**（在最终状态上重跑确认过一次，
+因为第一次 CI 启动时还差一段注释修改）。总覆盖率仍为 90.0%。
+
 2026-09-12 **阶段二完成并全量验证通过**，3 个提交 `815b5d9`（federation 参考实现）、
 `d2ca56c`（四个 A 类消费方）、`660bf97`（B 类六对 + 清理 + 测试跟进），**未推送**。
 
