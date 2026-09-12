@@ -118,14 +118,8 @@ func (s *Service) ListLinkableProviders(ctx context.Context, cookieHeader string
 	}
 	rows := []LinkableProvider{}
 	names := query.BindNames(repo.prefix())
-	members, err := repo.foreign.accessTable("iam_tenant_members")
-	if err != nil {
-		return nil, err
-	}
-	tenants, err := repo.foreign.directoryTable("iam_tenants")
-	if err != nil {
-		return nil, err
-	}
+	members := repo.foreign.access.TenantMembers.String()
+	tenants := repo.foreign.directory.Tenants.String()
 	err = repo.writer().WithContext(ctx).Table(names.Providers.String()+" AS provider").
 		Select("provider.id, provider.tenant_id, provider.name, provider.provider_type").
 		Joins("JOIN "+members+" AS member ON member.tenant_id = provider.tenant_id AND member.principal_id = ? AND member.status = ?", claims.PrincipalID, "active").
@@ -294,10 +288,7 @@ func (s *Service) identityOperation(ctx context.Context, repo *Repository, provi
 	if provider.Status != ProviderActive || provider.TenantID != row.TenantID || providerFingerprint(provider) != row.ProviderFingerprint {
 		return nil, providerRow{}, ErrProviderDisabled
 	}
-	tenants, err := repo.foreign.directoryTable("iam_tenants")
-	if err != nil {
-		return nil, providerRow{}, err
-	}
+	tenants := repo.foreign.directory.Tenants.String()
 	var tenant struct{ Status string }
 	if err := repo.writer().WithContext(ctx).Table(tenants).Where("id = ?", provider.TenantID).Take(&tenant).Error; err != nil {
 		return nil, providerRow{}, err
@@ -484,14 +475,8 @@ func (s *Service) UnlinkPersonalIdentity(ctx context.Context, cookieHeader, id, 
 		}
 		var alternatives int64
 		names := query.BindNames(repo.prefix())
-		members, err := repo.foreign.accessTable("iam_tenant_members")
-		if err != nil {
-			return err
-		}
-		tenants, err := repo.foreign.directoryTable("iam_tenants")
-		if err != nil {
-			return err
-		}
+		members := repo.foreign.access.TenantMembers.String()
+		tenants := repo.foreign.directory.Tenants.String()
 		err = repo.writer().WithContext(ctx).Table(names.IdentityLinks.String()+" AS link").
 			Joins("JOIN "+names.Providers.String()+" AS provider ON provider.id = link.provider_id AND provider.tenant_id = link.tenant_id AND provider.status = ?", ProviderActive).
 			Joins("JOIN "+members+" AS member ON member.tenant_id = link.tenant_id AND member.principal_id = link.principal_id AND member.status = ?", "active").

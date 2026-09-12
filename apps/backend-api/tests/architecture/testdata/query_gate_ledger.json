@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "budget": 372,
+  "budget": 350,
   "rebaseline": "initial freeze at the P0 commit",
   "entries": [
     {
@@ -588,14 +588,6 @@
       "count": 2
     },
     {
-      "key": "naked-table-literal:93ae354f5675b96a",
-      "count": 8
-    },
-    {
-      "key": "naked-table-literal:93b92388117a1776",
-      "count": 2
-    },
-    {
       "key": "naked-table-literal:93f93f89bf94df2d",
       "count": 4
     },
@@ -630,14 +622,6 @@
     {
       "key": "naked-table-literal:a9555e0273bca987",
       "count": 4
-    },
-    {
-      "key": "naked-table-literal:abfdde1449a348ac",
-      "count": 2
-    },
-    {
-      "key": "naked-table-literal:ac2b6794aa1a398f",
-      "count": 2
     },
     {
       "key": "naked-table-literal:b06e7a96a484bf77",
@@ -742,10 +726,6 @@
     {
       "key": "naked-table-literal:ff226e9283e65120",
       "count": 2
-    },
-    {
-      "key": "naked-table-literal:ff7113f6261949b1",
-      "count": 8
     }
   ]
 }

@@ -260,12 +260,9 @@ func (r *Repository) touchIdentityLink(ctx context.Context, providerID, tenantID
 }
 
 func (r *Repository) roleExists(ctx context.Context, tenantID, roleID guid.ID) (bool, error) {
-	roles, err := r.foreign.accessTable("iam_roles")
-	if err != nil {
-		return false, err
-	}
+	roles := r.foreign.access.Roles.String()
 	var count int64
-	err = r.writer().WithContext(ctx).Table(roles).Where("tenant_id = ? AND id = ?", tenantID, roleID).Count(&count).Error
+	err := r.writer().WithContext(ctx).Table(roles).Where("tenant_id = ? AND id = ?", tenantID, roleID).Count(&count).Error
 	if err != nil {
 		return false, fmt.Errorf("validate default role: %w", err)
 	}
@@ -277,14 +274,8 @@ func (r *Repository) grantDefaultRole(ctx context.Context, tenantID, roleID, pri
 	if err != nil || !exists {
 		return false, err
 	}
-	roleMembers, err := r.foreign.accessTable("iam_role_members")
-	if err != nil {
-		return false, err
-	}
-	revisions, err := r.foreign.accessTable("iam_policy_revisions")
-	if err != nil {
-		return false, err
-	}
+	roleMembers := r.foreign.access.RoleMembers.String()
+	revisions := r.foreign.access.PolicyRevisions.String()
 	member := map[string]any{"tenant_id": tenantID, "role_id": roleID, "principal_id": principalID, "created_at": now}
 	if err := r.writer().WithContext(ctx).Table(roleMembers).Create(member).Error; err != nil {
 		return false, fmt.Errorf("grant federation default role: %w", err)
@@ -311,10 +302,7 @@ func (r *Repository) verifyPrincipalAndMember(ctx context.Context, tenantID, pri
 	if !found || status != "active" {
 		return ErrPrincipalInactive
 	}
-	members, err := r.foreign.accessTable("iam_tenant_members")
-	if err != nil {
-		return err
-	}
+	members := r.foreign.access.TenantMembers.String()
 	status = ""
 	err = r.writer().WithContext(ctx).Table(members).Select("status").
 		Where("tenant_id = ? AND principal_id = ?", tenantID, principalID).Scan(&status).Error

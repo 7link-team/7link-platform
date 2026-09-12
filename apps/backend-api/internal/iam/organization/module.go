@@ -81,6 +81,9 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[DirectoryTables](services, DirectoryTables{Published: TableSet(m.runtime.TablePrefix())}); err != nil {
 		return fmt.Errorf("provide organization directory tables: %w", err)
 	}
+	if err := module.Provide[DirectoryTableNames](services, PublishedDirectoryTableNames(m.runtime.TablePrefix())); err != nil {
+		return fmt.Errorf("provide organization directory table names: %w", err)
+	}
 	return nil
 }
 

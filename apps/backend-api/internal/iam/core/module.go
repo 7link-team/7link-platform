@@ -138,6 +138,9 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[AccessTables](services, AccessTables{Published: TableSet(m.runtime.TablePrefix())}); err != nil {
 		return fmt.Errorf("provide IAM access tables: %w", err)
 	}
+	if err := module.Provide[AccessTableNames](services, PublishedAccessTableNames(m.runtime.TablePrefix())); err != nil {
+		return fmt.Errorf("provide IAM access table names: %w", err)
+	}
 	return nil
 }
 

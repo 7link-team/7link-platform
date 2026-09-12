@@ -199,9 +199,8 @@ func TestFederationModuleRejectsMissingDependenciesAndInvalidState(t *testing.T)
 			require.NoError(t, platformmodule.Provide[authn.WebService](services, env.web))
 		}
 		if include > 5 {
-			require.NoError(t, platformmodule.Provide[core.AccessTables](services, core.AccessTables{
-				Published: core.TableSet(env.prefix),
-			}))
+			require.NoError(t, platformmodule.Provide[core.AccessTableNames](services,
+				core.PublishedAccessTableNames(env.prefix)))
 		}
 		require.NoError(t, services.Seal())
 		return services
@@ -222,8 +221,50 @@ func TestFederationModuleRejectsMissingDependenciesAndInvalidState(t *testing.T)
 	badKey.registrar = registrar
 	badKey.ids, badKey.appender, badKey.identities, badKey.authn = env.ids, func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil }, env.identity, env.web
 	badKey.principals = federationPrincipalState(t, env.runtime)
+	require.NoError(t, badKey.foreign.bind(
+		core.PublishedAccessTableNames(env.prefix), organization.PublishedDirectoryTableNames(env.prefix),
+	))
 	badKey.config.EncryptionKey = "short"
 	assert.ErrorContains(t, badKey.Initialize(t.Context()), "encryption key")
+}
+
+// TestFederationModuleRefusesToStartWithoutThePublishedTableNames is what the
+// per-statement checks collapsed into. Federation holds its foreign names as
+// typed fields now, so a name that never arrived can no longer be reported by
+// the statement that needed it: it is caught once, here, and the deployment
+// does not start rather than joining an empty table name.
+func TestFederationModuleRefusesToStartWithoutThePublishedTableNames(t *testing.T) {
+	for _, missing := range []struct {
+		owner     string
+		access    core.AccessTableNames
+		directory organization.DirectoryTableNames
+	}{
+		{"core", core.AccessTableNames{}, organization.PublishedDirectoryTableNames("")},
+		{"organization", core.PublishedAccessTableNames(""), organization.DirectoryTableNames{}},
+		{"both", core.AccessTableNames{}, organization.DirectoryTableNames{}},
+	} {
+		t.Run(missing.owner, func(t *testing.T) {
+			env := newFederationEnvironment(t, "")
+			require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
+			instance := NewModule(env.runtime, Config{EncryptionKey: base64.RawStdEncoding.EncodeToString(env.key)})
+
+			services := platformmodule.NewServices()
+			require.NoError(t, platformmodule.Provide[*authz.Registrar](services, federationRuntimeRegistrar(env.web)))
+			require.NoError(t, platformmodule.Provide[guid.Source](services, env.ids))
+			require.NoError(t, platformmodule.Provide[audit.Appender](services,
+				audit.Appender(func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil })))
+			require.NoError(t, platformmodule.Provide[identity.IdentityProvisioner](services, env.identity))
+			require.NoError(t, platformmodule.Provide[identity.PrincipalStateStore](services, federationPrincipalState(t, env.runtime)))
+			require.NoError(t, platformmodule.Provide[authn.WebService](services, env.web))
+			require.NoError(t, platformmodule.Provide[core.AccessTableNames](services, missing.access))
+			require.NoError(t, platformmodule.Provide[organization.DirectoryTableNames](services, missing.directory))
+			require.NoError(t, services.Seal())
+
+			require.NoError(t, instance.InjectServices(services))
+			assert.ErrorContains(t, instance.Initialize(t.Context()),
+				"the core and organization modules must publish the table names federation joins")
+		})
+	}
 }
 
 func federationRuntimeModule(t *testing.T) *Module {
@@ -250,12 +291,9 @@ func federationRuntimeModule(t *testing.T) *Module {
 // running deployment does.
 func provideFederationForeignTables(t *testing.T, services *platformmodule.Services, prefix string) {
 	t.Helper()
-	require.NoError(t, platformmodule.Provide[core.AccessTables](services, core.AccessTables{
-		Published: core.TableSet(prefix),
-	}))
-	require.NoError(t, platformmodule.Provide[organization.DirectoryTables](services, organization.DirectoryTables{
-		Published: organization.TableSet(prefix),
-	}))
+	require.NoError(t, platformmodule.Provide[core.AccessTableNames](services, core.PublishedAccessTableNames(prefix)))
+	require.NoError(t, platformmodule.Provide[organization.DirectoryTableNames](services,
+		organization.PublishedDirectoryTableNames(prefix)))
 }
 
 func approvedFederationOperations() map[string]string {

@@ -101,15 +101,15 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve federation authentication service: %w", err)
 	}
-	accessTables, err := module.Resolve[core.AccessTables](services)
+	accessTables, err := module.Resolve[core.AccessTableNames](services)
 	if err != nil {
 		return fmt.Errorf("resolve federation access tables: %w", err)
 	}
-	directoryTables, err := module.Resolve[organization.DirectoryTables](services)
+	directoryTables, err := module.Resolve[organization.DirectoryTableNames](services)
 	if err != nil {
 		return fmt.Errorf("resolve federation directory tables: %w", err)
 	}
-	if err := m.foreign.bind(accessTables.Published, directoryTables.Published); err != nil {
+	if err := m.foreign.bind(accessTables, directoryTables); err != nil {
 		return fmt.Errorf("bind federation foreign tables: %w", err)
 	}
 	m.registrar, m.ids, m.appender, m.identities, m.principals, m.authn = registrar, ids, appender, identities, principals, authenticator
@@ -127,6 +127,11 @@ func (m *Module) Initialize(context.Context) error {
 		m.registrar == nil || m.ids == nil || m.appender == nil || m.identities == nil || m.authn == nil ||
 		m.principals.Status == nil {
 		return errors.New("initialize federation: runtime database, authz registrar, id generator, audit appender, identity provisioner, principal state store, and authentication service are required")
+	}
+	// Checked here rather than in every statement: injection has run, so an
+	// owner that published nothing is a deployment that must not start.
+	if !m.foreign.bound() {
+		return errors.New("initialize federation: the core and organization modules must publish the table names federation joins")
 	}
 	keys, err := ResolveKeyring(m.config)
 	if err != nil {

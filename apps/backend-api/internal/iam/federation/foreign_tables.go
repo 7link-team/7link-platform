@@ -3,23 +3,30 @@ package federation
 import (
 	"fmt"
 
-	gormx "7link.com/platform/pkg/extension/gorm"
+	"7link.com/platform/internal/iam/core"
+	"7link.com/platform/internal/iam/organization"
 )
 
 // foreignTables carries the names of the tables federation reads but does not
-// own. Both owners are activated before federation and publish their sets as a
-// capability, which federation resolves during injection; a set that never
-// arrived stays empty and every lookup fails, so a missing publication is an
-// error rather than a name federation would otherwise have to invent from its
-// own prefix.
+// own, in the form each owner publishes them.
+//
+// Both owners are activated before federation and federation imports both, so
+// each hands over a struct whose fields are the tables it owns rather than a
+// set looked up by a string. A table federation asks for that its owner does
+// not have is then a compile error rather than a statement that fails in the
+// deployment that first runs it.
+//
+// Whether the names arrived is checked once, when the module initializes --
+// the registry has run every Provide and Bind by then -- so an owner that
+// published nothing fails startup rather than the first query that needs it.
 type foreignTables struct {
-	access    gormx.TableSet
-	directory gormx.TableSet
+	access    core.AccessTableNames
+	directory organization.DirectoryTableNames
 }
 
 // bind records what each owner published. It is what the module hands the
 // repository once injection has resolved the two capabilities.
-func (t *foreignTables) bind(access, directory gormx.TableSet) error {
+func (t *foreignTables) bind(access core.AccessTableNames, directory organization.DirectoryTableNames) error {
 	if t == nil {
 		return fmt.Errorf("%w: no holder for the published tables", errRepositoryUnavailable)
 	}
@@ -27,34 +34,8 @@ func (t *foreignTables) bind(access, directory gormx.TableSet) error {
 	return nil
 }
 
-// accessTable returns the physical name core published for a logical table.
-func (t *foreignTables) accessTable(logical string) (string, error) {
-	if t == nil {
-		return "", fmt.Errorf("%w: no published access tables", errRepositoryUnavailable)
-	}
-	return publishedTableName(t.access, "core", logical)
-}
-
-// directoryTable returns the physical name organization published for a
-// logical table.
-func (t *foreignTables) directoryTable(logical string) (string, error) {
-	if t == nil {
-		return "", fmt.Errorf("%w: no published directory tables", errRepositoryUnavailable)
-	}
-	return publishedTableName(t.directory, "organization", logical)
-}
-
-// publishedTableName resolves one logical table in what an owner published. An
-// empty set means the owner has published nothing, and a missing name means it
-// published something incomplete; both are errors rather than a table name
-// this module would otherwise have to invent from its own prefix.
-func publishedTableName(published gormx.TableSet, owner, logical string) (string, error) {
-	if published.Len() == 0 {
-		return "", fmt.Errorf("%s has not published its table names: %w", owner, errRepositoryUnavailable)
-	}
-	name, ok := published.Lookup(logical)
-	if !ok {
-		return "", fmt.Errorf("%s did not publish %s: %w", owner, logical, errRepositoryUnavailable)
-	}
-	return name.String(), nil
+// bound reports whether both owners published. Until they have, no statement
+// that reads a table federation does not own may run.
+func (t *foreignTables) bound() bool {
+	return t != nil && t.access.Bound() && t.directory.Bound()
 }
