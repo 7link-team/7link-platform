@@ -13,7 +13,8 @@ IMPLEMENTATION —— 按已批准的收尾计划推进（计划文件见下）�
 **阶段一（authn↔identity 解耦）已全部完成并通过 `make ci` + `make test-mysql8-run`。**
 
 ## Current Step
-阶段一收口完成（S0–S8，8 个提交）。下一步按计划进入**阶段二**：跨模块表名改成带类型字段。
+**阶段二拥有者侧完成（`1478189`），消费方侧未开工。** 下一步见下方「阶段二 …… 剩余工作」。
+本会话上下文已耗尽，在此交接；接续所需信息全部在本文件与 `.claude/decisions.md`。
 
 ## Overall Progress
 - [x] **P0 门禁 + 冻结基线**：`tests/architecture/query_gate_test.go`（5 条 AST 规则）+
@@ -363,7 +364,78 @@ so its own prefix names them」——**`iam_sessions` 是 authn 拥有的**
 详细决策见 `.claude/decisions.md` 的 **D38**（死码删除）与 **D39**（双向委派、方向反转、
 `LockActiveRow` 的安全差异、sessions 双写为何保留、identity 测试为何只能用替身）。
 
-### 阶段二 带类型字段 —— 进行中，**方案已由用户改为 C（全仓统一、0 遗憾）**
+### 阶段二 带类型字段 —— 拥有者侧已完成（`1478189`），**消费方侧未开工**
+
+#### 已完成
+五个拥有者各导出一个类型化结构体 + 构造函数 + `Bound()`，并各带一个**漂移门禁**
+（`TestXCoversEveryTableTheModuleOwns`，用反射比对 `query.BindNames` 的字段集；
+已做变异验证：删掉一个字段立刻失败）：
+
+| 模块 | 类型 | 构造函数 | 字段数 |
+|---|---|---|---|
+| core | `AccessTableNames` | `PublishedAccessTableNames(prefix)` | 14 |
+| identity | `PrincipalTableNames` | `PublishedPrincipalTableNames(prefix)` | 5 |
+| authn | `CredentialTableNames` | `PublishedCredentialTableNames(prefix)` | 15 |
+| organization | `DirectoryTableNames` | `PublishedDirectoryTableNames(prefix)` | 14 |
+| oauth | `GrantTableNames` | `PublishedGrantTableNames(prefix)` | 5 |
+
+**旧的不具名形式仍在并存**（`XTables{Published gormx.TableSet}` 能力 + `TableSet(prefix)` 函数），
+这是为了让消费方能一个模块一个模块地迁移。**它们在阶段二结束时必须删除。**
+
+#### 剩余工作：消费方迁移（71 处生产 + 52 处测试）
+
+**唯一的一条规则**（由 Go 的 import 方向决定，不可选）：
+> 跨界的类型化结构体，声明在**被对方 import 的那一侧**。
+
+**A 类 —— 消费方 import 拥有者 ⇒ 直接用拥有者导出的类型**（66 处生产）：
+
+| 消费方 | 拥有者(槽位) | 生产处 | 测试处 |
+|---|---|---|---|
+| authn | core(access) | 1 | 4 |
+| authn | identity(principal) | 2 | 5 |
+| identity | core(access) | 1 | 0 |
+| organization | core(access) | 8 | 5 |
+| oauth | core(access) / identity(principal) / authn(credential) / organization(directory) | 3/4/1/1 | 2/1/1/1 |
+| provisioning | core(access) / identity(principal) / organization(directory) | 1/1/7 | 2/1/4 |
+| governance | core(access) / organization(directory) | 17/10 | 3/2 |
+| federation | core(access) / organization(directory) | 6/3 | 1/1 |
+
+做法：消费方的 `foreignTables` 槽位从 `gormx.TableSet` 换成拥有者的类型化结构体；
+`module.Resolve[core.AccessTables]` 换成 `module.Resolve[core.AccessTableNames]`；
+调用点 `r.foreign.accessTable("iam_tenant_members")` 换成 `r.foreign.access.TenantMembers.String()`；
+**「是否已绑定」的检查从每处一条收成每对一条**，放在 `Initialize`（Registry 相位保证那时所有
+Provide/Bind 都已完成），任一槽位 `!Bound()` 即启动失败。P4c 写的那批「未发布即报错」的
+运行时用例随之收敛成每模块一条启动期用例。
+
+**B 类 —— 拥有者 import 消费方 ⇒ 消费方声明自己需要的字段，拥有者填满**（5 处生产）：
+
+| 消费方 | 拥有者 | 现有连接器 | 生产处 |
+|---|---|---|---|
+| core | organization | `core.DirectoryTableSetConnector` | 走 `query.BindDirectoryTables`，已是类型化 |
+| core | identity | `core.PrincipalTableSetConnector` | 同上 |
+| authn | organization | `authn.DirectoryTableSetConnector` | 1 |
+| authn | oauth | `authn.OAuthTableSetConnector` | 2 |
+| identity | organization | `identity.DirectoryTableSetConnector` | 1 |
+| identity | oauth | `identity.OAuthTableSetConnector` | 1 |
+
+做法：把连接器的载荷 `Bind func(gormx.TableSet) error` 换成
+`Bind func(消费方声明的类型化结构体) error`；拥有者（organization/oauth，它们 import 消费方）
+在填充处逐字段构造。**这一侧比 A 类更强**：消费方加一个字段，拥有者的填充处立刻编译不过。
+core 的两对已经是这个形状（`joined_tables.go` 在绑定时转成 `query.DirectoryTables`），
+可直接照抄；只是要把中间那个不具名集合去掉。
+
+**收尾（0 遗憾的判据）**：
+1. 全仓 `grep -rn 'Table("iam_' --include=*.go internal/` 除拥有者自己的 `query/table.go` 外无命中；
+2. `gormx.TableSet` / `NewTableSet` / `Lookup` 若已无人使用即整体删除（`make lint` 的 unused 判定）；
+3. 各模块的 `XTables{Published ...}` 与 `TableSet(prefix)` 全部删除；
+4. SQL 文本不变——由 `internal/iam/authn/repository_identity_test.go` 的 9 条冻结断言、
+   `internal/iam/identity/principalstate_test.go` 的 8 条、以及 `make test-mysql8-run` 的
+   查询计划指纹共同证明。
+
+**并行建议**：A 类按消费方模块切，彼此不共享文件，可并行下放；B 类涉及 organization/oauth 的
+填充处（会被多个消费方同时触碰），必须串行、由主代理自做。门禁账本由主代理统一刷新。
+
+### 阶段二 方案 C 的来由（保留）
 
 **用户的要求（2026-09-12）**：必须强类型约束写法，全仓统一，0 遗憾。
 并明确指出一处我解释失败：**本次不改任何表名**，「改名就编译不过」只是在比较两种写法的安全性。
