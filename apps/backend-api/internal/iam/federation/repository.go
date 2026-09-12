@@ -78,13 +78,17 @@ type Repository struct {
 	principals identity.PrincipalStateStore
 	db         *gorm.DB
 	inTx       bool
+	// foreign holds the names of the tables this repository reads but does
+	// not own. It is a pointer so a transactional clone reads the same
+	// publication as the repository it came from.
+	foreign *foreignTables
 }
 
 func NewRepository(runtime *appenv.Runtime) *Repository {
 	if runtime == nil {
 		panic("federation repository requires runtime")
 	}
-	return &Repository{runtime: runtime}
+	return &Repository{runtime: runtime, foreign: &foreignTables{}}
 }
 
 func (r *Repository) writer() *gorm.DB {
@@ -256,8 +260,12 @@ func (r *Repository) touchIdentityLink(ctx context.Context, providerID, tenantID
 }
 
 func (r *Repository) roleExists(ctx context.Context, tenantID, roleID guid.ID) (bool, error) {
+	roles, err := r.foreign.accessTable("iam_roles")
+	if err != nil {
+		return false, err
+	}
 	var count int64
-	err := r.writer().WithContext(ctx).Table(r.table("iam_roles")).Where("tenant_id = ? AND id = ?", tenantID, roleID).Count(&count).Error
+	err = r.writer().WithContext(ctx).Table(roles).Where("tenant_id = ? AND id = ?", tenantID, roleID).Count(&count).Error
 	if err != nil {
 		return false, fmt.Errorf("validate default role: %w", err)
 	}
@@ -269,15 +277,23 @@ func (r *Repository) grantDefaultRole(ctx context.Context, tenantID, roleID, pri
 	if err != nil || !exists {
 		return false, err
 	}
+	roleMembers, err := r.foreign.accessTable("iam_role_members")
+	if err != nil {
+		return false, err
+	}
+	revisions, err := r.foreign.accessTable("iam_policy_revisions")
+	if err != nil {
+		return false, err
+	}
 	member := map[string]any{"tenant_id": tenantID, "role_id": roleID, "principal_id": principalID, "created_at": now}
-	if err := r.writer().WithContext(ctx).Table(r.table("iam_role_members")).Create(member).Error; err != nil {
+	if err := r.writer().WithContext(ctx).Table(roleMembers).Create(member).Error; err != nil {
 		return false, fmt.Errorf("grant federation default role: %w", err)
 	}
 	revision := map[string]any{"tenant_id": tenantID, "revision": int64(1), "updated_at": now}
-	err = r.writer().WithContext(ctx).Table(r.table("iam_policy_revisions")).Clauses(clause.OnConflict{
+	err = r.writer().WithContext(ctx).Table(revisions).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "tenant_id"}},
 		DoUpdates: clause.Assignments(map[string]any{
-			"revision":   gorm.Expr("? + 1", clause.Column{Table: r.table("iam_policy_revisions"), Name: "revision"}),
+			"revision":   gorm.Expr("? + 1", clause.Column{Table: revisions, Name: "revision"}),
 			"updated_at": now,
 		}),
 	}).Create(revision).Error
@@ -295,8 +311,12 @@ func (r *Repository) verifyPrincipalAndMember(ctx context.Context, tenantID, pri
 	if !found || status != "active" {
 		return ErrPrincipalInactive
 	}
+	members, err := r.foreign.accessTable("iam_tenant_members")
+	if err != nil {
+		return err
+	}
 	status = ""
-	err = r.writer().WithContext(ctx).Table(r.table("iam_tenant_members")).Select("status").
+	err = r.writer().WithContext(ctx).Table(members).Select("status").
 		Where("tenant_id = ? AND principal_id = ?", tenantID, principalID).Scan(&status).Error
 	if err != nil {
 		return err

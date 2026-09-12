@@ -21,17 +21,17 @@ func TestSCIMFilterASTCompilation(t *testing.T) {
 		UserSchema + `:name.formatted pr`,
 		`meta.created ge "2026-08-03T00:00:00Z"`,
 	} {
-		_, err := applySCIMFilter(db.Table("iam_scim_resources AS resource"), filter, ResourceUser, "sqlite", "")
+		_, err := applySCIMFilter(db.Table("iam_scim_resources AS resource"), filter, ResourceUser, "sqlite", testForeignTables(t, ""))
 		require.NoError(t, err, filter)
 	}
-	_, err = applySCIMFilter(db.Table("iam_scim_resources AS resource"), `members[value eq "`+wireID("principal")+`"]`, ResourceGroup, "sqlite", "sl_")
+	_, err = applySCIMFilter(db.Table("iam_scim_resources AS resource"), `members[value eq "`+wireID("principal")+`"]`, ResourceGroup, "sqlite", testForeignTables(t, "sl_"))
 	require.NoError(t, err)
 
 	for _, filter := range []string{
 		`unknown eq "x"`, GroupSchema + `:displayName eq "x"`, `meta.created co "2026"`,
 		`active gt true`, `emails[type eq "work"]`, strings.Repeat("x", maxFilterBytes+1),
 	} {
-		_, err := applySCIMFilter(db.Table("iam_scim_resources AS resource"), filter, ResourceUser, "sqlite", "")
+		_, err := applySCIMFilter(db.Table("iam_scim_resources AS resource"), filter, ResourceUser, "sqlite", testForeignTables(t, ""))
 		assert.ErrorIs(t, err, ErrInvalidFilter, filter)
 	}
 }
@@ -69,20 +69,21 @@ func TestSCIMComparisonUsesDialectAndTimestamp(t *testing.T) {
 }
 
 func TestMemberFilterAndDialectHelpers(t *testing.T) {
-	condition, args, err := compileMemberFilter(scimfilter.EQ, wireID("one"), "sl_")
+	prefixed, plain := testForeignTables(t, "sl_"), testForeignTables(t, "")
+	condition, args, err := compileMemberFilter(scimfilter.EQ, wireID("one"), prefixed)
 	require.NoError(t, err)
 	assert.Contains(t, condition, "sl_iam_group_members")
 	assert.Equal(t, []any{wireID("one")}, args)
-	condition, _, err = compileMemberFilter(scimfilter.NE, wireID("one"), "")
+	condition, _, err = compileMemberFilter(scimfilter.NE, wireID("one"), plain)
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(condition, "NOT "))
-	_, _, err = compileMemberFilter(scimfilter.CO, wireID("one"), "")
+	_, _, err = compileMemberFilter(scimfilter.CO, wireID("one"), plain)
 	assert.ErrorIs(t, err, ErrInvalidFilter)
-	condition, args, err = compileMemberFilter(scimfilter.PR, nil, "sl_")
+	condition, args, err = compileMemberFilter(scimfilter.PR, nil, prefixed)
 	require.NoError(t, err)
 	assert.Contains(t, condition, "sl_iam_group_members")
 	assert.Empty(t, args)
-	_, _, err = compileMemberFilter(scimfilter.EQ, nil, "")
+	_, _, err = compileMemberFilter(scimfilter.EQ, nil, plain)
 	assert.ErrorIs(t, err, ErrInvalidFilter)
 	assert.Empty(t, normalizeDialect(nil))
 	condition, _, err = compileComparison(filterTarget{expression: "active", boolean: true}, scimfilter.PR, nil, "sqlite")
@@ -120,7 +121,7 @@ func TestSCIMSubstringOperatorsRejectEmptyValues(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{DryRun: true})
 	require.NoError(t, err)
 	for _, filter := range []string{`userName co ""`, `userName sw ""`, `userName ew ""`} {
-		_, err := applySCIMFilter(db.Table("iam_scim_resources AS resource"), filter, ResourceUser, "sqlite", "")
+		_, err := applySCIMFilter(db.Table("iam_scim_resources AS resource"), filter, ResourceUser, "sqlite", testForeignTables(t, ""))
 		assert.ErrorIs(t, err, ErrInvalidFilter, filter)
 	}
 }

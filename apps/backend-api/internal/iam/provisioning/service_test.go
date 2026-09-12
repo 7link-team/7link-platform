@@ -431,6 +431,7 @@ func newProvisioningEnvironmentWithDatasource(t *testing.T, prefix string, datas
 		return tenant == testID("tenant-a") && actor == actorID, nil
 	})
 	env.service = NewService(runtime, appender, ids, identities, groups, actors, provisioningProfileChecker{}, Config{}, env.keys, testOutboundPolicy())
+	bindForeignTables(t, env.service.repo, prefix)
 	env.service.now = func() time.Time { return provisioningTestNow }
 	directory, err := env.service.CreateDirectory(t.Context(), testID("tenant-a"), "Primary IdP", &actorID)
 	require.NoError(t, err)

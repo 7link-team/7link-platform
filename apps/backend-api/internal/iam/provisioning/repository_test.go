@@ -13,6 +13,7 @@ import (
 func TestProvisioningRepositoryConstraintsAndCAS(t *testing.T) {
 	env := newProvisioningEnvironment(t)
 	repo := NewRepository(env.runtime)
+	bindForeignTables(t, repo, env.prefix)
 	directories, err := repo.listDirectories(t.Context(), env.auth.TenantID)
 	require.NoError(t, err)
 	directory, err := repo.getDirectory(t.Context(), env.auth.TenantID, env.auth.DirectoryID)
@@ -73,6 +74,7 @@ func TestProvisioningRepositoryAvailabilityAndTransactionHelpers(t *testing.T) {
 
 	env := newProvisioningEnvironment(t)
 	repo := NewRepository(env.runtime)
+	bindForeignTables(t, repo, env.prefix)
 	pinned, err := repo.pinWriter()
 	require.NoError(t, err)
 	assert.Same(t, env.db, pinned.writer())
@@ -91,6 +93,7 @@ func TestProvisioningRepositorySurfacesStorageFailures(t *testing.T) {
 	t.Run("targets", func(t *testing.T) {
 		env := newProvisioningEnvironment(t)
 		repo := NewRepository(env.runtime)
+		bindForeignTables(t, repo, env.prefix)
 		require.NoError(t, env.db.Exec("DROP TABLE "+env.prefix+"iam_scim_targets").Error)
 		_, err := repo.listTargets(t.Context(), testID("tenant-a"))
 		assert.Error(t, err)
@@ -103,6 +106,7 @@ func TestProvisioningRepositorySurfacesStorageFailures(t *testing.T) {
 	t.Run("target resources", func(t *testing.T) {
 		env := newProvisioningEnvironment(t)
 		repo := NewRepository(env.runtime)
+		bindForeignTables(t, repo, env.prefix)
 		require.NoError(t, env.db.Exec("DROP TABLE "+env.prefix+"iam_scim_target_resources").Error)
 		_, err := repo.listTargetResources(t.Context(), 1)
 		assert.Error(t, err)
@@ -114,6 +118,7 @@ func TestProvisioningRepositorySurfacesStorageFailures(t *testing.T) {
 	t.Run("directories and credentials", func(t *testing.T) {
 		env := newProvisioningEnvironment(t)
 		repo := NewRepository(env.runtime)
+		bindForeignTables(t, repo, env.prefix)
 		require.NoError(t, env.db.Exec("DROP TABLE "+env.prefix+"iam_scim_credentials").Error)
 		_, err := repo.listCredentials(t.Context(), 1)
 		assert.Error(t, err)
@@ -129,6 +134,7 @@ func TestProvisioningRepositorySurfacesStorageFailures(t *testing.T) {
 	t.Run("directories", func(t *testing.T) {
 		env := newProvisioningEnvironment(t)
 		repo := NewRepository(env.runtime)
+		bindForeignTables(t, repo, env.prefix)
 		require.NoError(t, env.db.Exec("DROP TABLE "+env.prefix+"iam_scim_directories").Error)
 		_, err := repo.listDirectories(t.Context(), 1)
 		assert.Error(t, err)
@@ -140,6 +146,7 @@ func TestProvisioningRepositorySurfacesStorageFailures(t *testing.T) {
 	t.Run("group members", func(t *testing.T) {
 		env := newProvisioningEnvironment(t)
 		repo := NewRepository(env.runtime)
+		bindForeignTables(t, repo, env.prefix)
 		require.NoError(t, env.db.Exec("DROP TABLE "+env.prefix+"iam_group_members").Error)
 		_, err := repo.groupMembers(t.Context(), env.auth.DirectoryID, 1)
 		assert.Error(t, err)
@@ -147,6 +154,7 @@ func TestProvisioningRepositorySurfacesStorageFailures(t *testing.T) {
 	t.Run("resource queries", func(t *testing.T) {
 		env := newProvisioningEnvironment(t)
 		repo := NewRepository(env.runtime)
+		bindForeignTables(t, repo, env.prefix)
 		require.NoError(t, env.db.Exec("DROP TABLE "+env.prefix+"iam_scim_resources").Error)
 		_, _, err := repo.userPage(t.Context(), 1, ListRequest{StartIndex: 1, Count: 1}, "sqlite")
 		assert.Error(t, err)

@@ -8,8 +8,10 @@ import (
 
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/authn"
+	"7link.com/platform/internal/iam/core"
 	federationi18n "7link.com/platform/internal/iam/federation/i18n"
 	"7link.com/platform/internal/iam/identity"
+	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
@@ -43,7 +45,10 @@ func RegisterSAMLREST(api huma.API, service *Service, registrar *authz.Registrar
 func TestFederationRuntimeModuleExactOperationManifest(t *testing.T) {
 	declaration := federationRuntimeModule(t)
 	assert.Equal(t, Name, declaration.ModuleName())
-	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, identity.Name, authn.Name}, declaration.ModuleDependencies())
+	assert.Equal(t, []string{
+		platformi18n.Name, guid.Name, audit.Name,
+		core.Name, identity.Name, authn.Name, organization.Name,
+	}, declaration.ModuleDependencies())
 	require.NoError(t, declaration.Start(t.Context()))
 	require.NoError(t, declaration.CheckHealth(t.Context()))
 	_, api := humatest.New(t)
@@ -157,6 +162,7 @@ func TestFederationModuleDependencyResolutionAndLifecycle(t *testing.T) {
 	require.NoError(t, platformmodule.Provide[identity.IdentityProvisioner](services, env.identity))
 	require.NoError(t, platformmodule.Provide[identity.PrincipalStateStore](services, federationPrincipalState(t, env.runtime)))
 	require.NoError(t, platformmodule.Provide[authn.WebService](services, env.web))
+	provideFederationForeignTables(t, services, env.prefix)
 	require.NoError(t, services.Seal())
 	require.NoError(t, instance.InjectServices(services))
 	require.NoError(t, instance.Initialize(t.Context()))
@@ -192,6 +198,11 @@ func TestFederationModuleRejectsMissingDependenciesAndInvalidState(t *testing.T)
 		if include > 4 {
 			require.NoError(t, platformmodule.Provide[authn.WebService](services, env.web))
 		}
+		if include > 5 {
+			require.NoError(t, platformmodule.Provide[core.AccessTables](services, core.AccessTables{
+				Published: core.TableSet(env.prefix),
+			}))
+		}
 		require.NoError(t, services.Seal())
 		return services
 	}
@@ -199,6 +210,8 @@ func TestFederationModuleRejectsMissingDependenciesAndInvalidState(t *testing.T)
 	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(2)), "identity provisioner")
 	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(3)), "principal state store")
 	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(4)), "authentication service")
+	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(5)), "access tables")
+	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(6)), "directory tables")
 
 	var nilModule *Module
 	assert.ErrorContains(t, nilModule.Initialize(t.Context()), "module is required")
@@ -225,10 +238,24 @@ func federationRuntimeModule(t *testing.T) *Module {
 	require.NoError(t, platformmodule.Provide[identity.IdentityProvisioner](services, env.identity))
 	require.NoError(t, platformmodule.Provide[identity.PrincipalStateStore](services, federationPrincipalState(t, env.runtime)))
 	require.NoError(t, platformmodule.Provide[authn.WebService](services, env.web))
+	provideFederationForeignTables(t, services, env.prefix)
 	require.NoError(t, services.Seal())
 	require.NoError(t, instance.InjectServices(services))
 	require.NoError(t, instance.Initialize(t.Context()))
 	return instance
+}
+
+// provideFederationForeignTables publishes what core and organization publish
+// during Wire, so a registry assembled by hand resolves the same sets the
+// running deployment does.
+func provideFederationForeignTables(t *testing.T, services *platformmodule.Services, prefix string) {
+	t.Helper()
+	require.NoError(t, platformmodule.Provide[core.AccessTables](services, core.AccessTables{
+		Published: core.TableSet(prefix),
+	}))
+	require.NoError(t, platformmodule.Provide[organization.DirectoryTables](services, organization.DirectoryTables{
+		Published: organization.TableSet(prefix),
+	}))
 }
 
 func approvedFederationOperations() map[string]string {

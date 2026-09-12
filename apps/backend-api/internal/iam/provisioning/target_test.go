@@ -264,6 +264,7 @@ func TestTargetRemoteAndKeyFailurePaths(t *testing.T) {
 	assert.ErrorIs(t, env.service.DeprovisionResource(ctx, testID("tenant-a"), parseGUID(disabled.ID), ResourceUser, parseGUID(user.ID)), ErrTargetDisabled)
 
 	noKey := NewService(env.runtime, env.service.appender, newProvisioningTestIDs(9000), env.service.identity, env.service.groups, env.service.actors, env.service.fields, Config{}, nil, testOutboundPolicy())
+	bindForeignTables(t, noKey.repo, env.prefix)
 	_, err = noKey.CreateTarget(ctx, testID("tenant-a"), "No Key", "https://example.test", "token", nil)
 	assert.ErrorIs(t, err, ErrTargetKeyMissing)
 	_, err = noKey.PushResource(ctx, testID("tenant-a"), parseGUID(down.Target.ID), ResourceUser, parseGUID(user.ID))

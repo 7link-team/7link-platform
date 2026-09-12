@@ -57,6 +57,9 @@ func TestProvisioningModuleDependencyResolutionAndLifecycle(t *testing.T) {
 	require.NoError(t, platformmodule.Provide[organization.GroupProvisioner](services, env.service.groups))
 	require.NoError(t, platformmodule.Provide[identity.ServiceAccountValidator](services, env.service.actors))
 	require.NoError(t, platformmodule.Provide[core.AuthorizationEvaluator](services, core.NewAuthorizer(env.runtime)))
+	require.NoError(t, platformmodule.Provide[core.AccessTables](services, core.AccessTables{Published: core.TableSet(env.prefix)}))
+	require.NoError(t, platformmodule.Provide[identity.PrincipalTables](services, identity.PrincipalTables{Published: identity.TableSet(env.prefix)}))
+	require.NoError(t, platformmodule.Provide[organization.DirectoryTables](services, organization.DirectoryTables{Published: organization.TableSet(env.prefix)}))
 	require.NoError(t, services.Seal())
 	require.NoError(t, instance.InjectServices(services))
 	require.NoError(t, instance.Initialize(t.Context()))
@@ -147,6 +150,9 @@ func TestProvisioningModuleSyncLoopReconcilesActiveTenants(t *testing.T) {
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
 	instance.config.EncryptionKey = base64.RawStdEncoding.EncodeToString(testProvisioningKey())
 	require.NoError(t, instance.Initialize(t.Context()))
+	// The reconciler reads the tenant table organization owns, so this
+	// instance needs the publication its own injection would have resolved.
+	bindForeignTables(t, instance.service.repo, env.prefix)
 	require.NoError(t, instance.Start(t.Context()))
 	require.NoError(t, instance.Start(t.Context()))
 	require.Eventually(t, func() bool { return provider.count() > before }, time.Second, 10*time.Millisecond)

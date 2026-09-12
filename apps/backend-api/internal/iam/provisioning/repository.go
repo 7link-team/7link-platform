@@ -102,13 +102,17 @@ type Repository struct {
 	runtime *appenv.Runtime
 	db      *gorm.DB
 	inTx    bool
+	// foreign holds the names of the tables this repository reads but does
+	// not own. It is a pointer so a transactional clone reads the same
+	// publication as the repository it came from.
+	foreign *foreignTables
 }
 
 func NewRepository(runtime *appenv.Runtime) *Repository {
 	if runtime == nil {
 		panic("provisioning repository requires runtime")
 	}
-	return &Repository{runtime: runtime}
+	return &Repository{runtime: runtime, foreign: &foreignTables{}}
 }
 
 func (r *Repository) writer() *gorm.DB {
@@ -404,10 +408,14 @@ func (r *Repository) credentialForAuth(ctx context.Context, id, tenantID, direct
 	var row credentialAuthRow
 	credentialTable := r.table(model.Credential{}.TableName())
 	directoryTable := r.table(model.Directory{}.TableName())
+	tenants, err := r.foreign.directoryTable("iam_tenants")
+	if err != nil {
+		return row, err
+	}
 	query := r.writer().WithContext(ctx).Table(credentialTable+" AS credential").
 		Select("credential.*, directory.tenant_id AS tenant_id, directory.status AS directory_status, tenant.status AS tenant_status, COALESCE(directory.service_account_id, 0) AS service_account_id").
 		Joins("JOIN "+directoryTable+" AS directory ON directory.id = credential.directory_id").
-		Joins("JOIN "+r.table("iam_tenants")+" AS tenant ON tenant.id = directory.tenant_id").
+		Joins("JOIN "+tenants+" AS tenant ON tenant.id = directory.tenant_id").
 		Where("credential.id = ?", id)
 	if tenantID > 0 {
 		query = query.Where("tenant.id = ? AND directory.tenant_id = ?", tenantID, tenantID)
@@ -415,7 +423,7 @@ func (r *Repository) credentialForAuth(ctx context.Context, id, tenantID, direct
 	if directoryID > 0 {
 		query = query.Where("directory.id = ? AND credential.directory_id = ?", directoryID, directoryID)
 	}
-	err := query.Take(&row).Error
+	err = query.Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return row, ErrUnauthorized
 	}
@@ -491,7 +499,11 @@ func (r *Repository) updateResource(ctx context.Context, row *resourceRow, expec
 
 func (r *Repository) user(ctx context.Context, directoryID, resourceID guid.ID) (userRecord, error) {
 	var row userRecord
-	err := r.userQuery(directoryID, false).WithContext(ctx).Where("resource.resource_id = ?", resourceID).Take(&row).Error
+	query, err := r.userQuery(directoryID, false)
+	if err != nil {
+		return row, err
+	}
+	err = query.WithContext(ctx).Where("resource.resource_id = ?", resourceID).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return row, ErrResourceMissing
 	}
@@ -502,7 +514,11 @@ func (r *Repository) user(ctx context.Context, directoryID, resourceID guid.ID) 
 }
 
 func (r *Repository) userPage(ctx context.Context, directoryID guid.ID, request ListRequest, dialect string) ([]userRecord, int, error) {
-	query, err := applySCIMFilter(r.userQuery(directoryID, false), request.Filter, ResourceUser, dialect, r.prefix())
+	base, err := r.userQuery(directoryID, false)
+	if err != nil {
+		return nil, 0, err
+	}
+	query, err := applySCIMFilter(base, request.Filter, ResourceUser, dialect, r.foreign)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -513,7 +529,11 @@ func (r *Repository) userPage(ctx context.Context, directoryID guid.ID, request 
 	if request.Count == 0 {
 		return []userRecord{}, int(total), nil
 	}
-	query, err = applySCIMFilter(r.userQuery(directoryID, false), request.Filter, ResourceUser, dialect, r.prefix())
+	base, err = r.userQuery(directoryID, false)
+	if err != nil {
+		return nil, 0, err
+	}
+	query, err = applySCIMFilter(base, request.Filter, ResourceUser, dialect, r.foreign)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -525,24 +545,36 @@ func (r *Repository) userPage(ctx context.Context, directoryID guid.ID, request 
 	return rows, int(total), nil
 }
 
-func (r *Repository) userQuery(directoryID guid.ID, includeDeleted bool) *gorm.DB {
+func (r *Repository) userQuery(directoryID guid.ID, includeDeleted bool) (*gorm.DB, error) {
 	resourceTable := r.table(model.Resource{}.TableName())
 	directoryTable := r.table(model.Directory{}.TableName())
+	principals, err := r.foreign.principalTable("iam_principals")
+	if err != nil {
+		return nil, err
+	}
+	members, err := r.foreign.accessTable("iam_tenant_members")
+	if err != nil {
+		return nil, err
+	}
 	query := r.writer().Table(resourceTable+" AS resource").
 		Select("resource.*, principal.login_name, principal.email, principal.display_name, principal.status AS principal_status, member.status AS membership_status").
 		Joins("JOIN "+directoryTable+" AS directory ON directory.id = resource.directory_id").
-		Joins("JOIN "+r.table("iam_principals")+" AS principal ON principal.id = resource.resource_id").
-		Joins("JOIN "+r.table("iam_tenant_members")+" AS member ON member.tenant_id = directory.tenant_id AND member.principal_id = resource.resource_id").
+		Joins("JOIN "+principals+" AS principal ON principal.id = resource.resource_id").
+		Joins("JOIN "+members+" AS member ON member.tenant_id = directory.tenant_id AND member.principal_id = resource.resource_id").
 		Where("resource.directory_id = ? AND resource.resource_type = ?", directoryID, ResourceUser)
 	if !includeDeleted {
 		query = query.Where("resource.deleted_at IS NULL")
 	}
-	return query
+	return query, nil
 }
 
 func (r *Repository) group(ctx context.Context, directoryID, resourceID guid.ID) (groupRecord, error) {
 	var row groupRecord
-	err := r.groupQuery(directoryID, false).WithContext(ctx).Where("resource.resource_id = ?", resourceID).Take(&row).Error
+	query, err := r.groupQuery(directoryID, false)
+	if err != nil {
+		return row, err
+	}
+	err = query.WithContext(ctx).Where("resource.resource_id = ?", resourceID).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return row, ErrResourceMissing
 	}
@@ -553,7 +585,11 @@ func (r *Repository) group(ctx context.Context, directoryID, resourceID guid.ID)
 }
 
 func (r *Repository) groupPage(ctx context.Context, directoryID guid.ID, request ListRequest, dialect string) ([]groupRecord, int, error) {
-	query, err := applySCIMFilter(r.groupQuery(directoryID, false), request.Filter, ResourceGroup, dialect, r.prefix())
+	base, err := r.groupQuery(directoryID, false)
+	if err != nil {
+		return nil, 0, err
+	}
+	query, err := applySCIMFilter(base, request.Filter, ResourceGroup, dialect, r.foreign)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -564,7 +600,11 @@ func (r *Repository) groupPage(ctx context.Context, directoryID guid.ID, request
 	if request.Count == 0 {
 		return []groupRecord{}, int(total), nil
 	}
-	query, err = applySCIMFilter(r.groupQuery(directoryID, false), request.Filter, ResourceGroup, dialect, r.prefix())
+	base, err = r.groupQuery(directoryID, false)
+	if err != nil {
+		return nil, 0, err
+	}
+	query, err = applySCIMFilter(base, request.Filter, ResourceGroup, dialect, r.foreign)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -576,23 +616,31 @@ func (r *Repository) groupPage(ctx context.Context, directoryID guid.ID, request
 	return rows, int(total), nil
 }
 
-func (r *Repository) groupQuery(directoryID guid.ID, includeDeleted bool) *gorm.DB {
+func (r *Repository) groupQuery(directoryID guid.ID, includeDeleted bool) (*gorm.DB, error) {
 	resourceTable := r.table(model.Resource{}.TableName())
 	directoryTable := r.table(model.Directory{}.TableName())
+	groups, err := r.foreign.directoryTable("iam_groups")
+	if err != nil {
+		return nil, err
+	}
 	query := r.writer().Table(resourceTable+" AS resource").
 		Select("resource.*, scim_group.name, scim_group.status").
 		Joins("JOIN "+directoryTable+" AS directory ON directory.id = resource.directory_id").
-		Joins("JOIN "+r.table("iam_groups")+" AS scim_group ON scim_group.tenant_id = directory.tenant_id AND scim_group.id = resource.resource_id").
+		Joins("JOIN "+groups+" AS scim_group ON scim_group.tenant_id = directory.tenant_id AND scim_group.id = resource.resource_id").
 		Where("resource.directory_id = ? AND resource.resource_type = ?", directoryID, ResourceGroup)
 	if !includeDeleted {
 		query = query.Where("resource.deleted_at IS NULL")
 	}
-	return query
+	return query, nil
 }
 
 func (r *Repository) groupMembers(ctx context.Context, directoryID, groupID guid.ID) ([]guid.ID, error) {
 	ids := make([]guid.ID, 0)
-	err := r.writer().WithContext(ctx).Table(r.table("iam_group_members")+" AS member").Select("member.principal_id").
+	members, err := r.foreign.directoryTable("iam_group_members")
+	if err != nil {
+		return nil, err
+	}
+	err = r.writer().WithContext(ctx).Table(members+" AS member").Select("member.principal_id").
 		Joins("JOIN "+r.table(model.Directory{}.TableName())+" AS directory ON directory.tenant_id = member.tenant_id").
 		Joins("JOIN "+r.table(model.Resource{}.TableName())+" AS resource ON resource.directory_id = directory.id AND resource.resource_type = ? AND resource.resource_id = member.principal_id AND resource.deleted_at IS NULL", ResourceUser).
 		Where("directory.id = ? AND member.group_id = ?", directoryID, groupID).Order("member.principal_id ASC").Scan(&ids).Error

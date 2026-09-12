@@ -62,7 +62,12 @@ func (f *iamTenantFixture) actorProvisioningService(t *testing.T, appender audit
 	require.NoError(t, err)
 	outbound, err := provisioning.ResolveOutboundPolicy(config)
 	require.NoError(t, err)
-	return provisioning.NewService(f.app.runtime, appender, ids, identities, groups, actors, fields, config, keys, outbound)
+	scim := provisioning.NewService(f.app.runtime, appender, ids, identities, groups, actors, fields, config, keys, outbound)
+	// A service built outside the module never went through injection, so it
+	// binds the owners' published names itself.
+	prefix := f.app.runtime.TablePrefix()
+	require.NoError(t, scim.BindForeignTables(core.TableSet(prefix), identity.TableSet(prefix), organization.TableSet(prefix)))
+	return scim
 }
 
 func (f *iamTenantFixture) runSCIMActorLifecycle(t *testing.T) {

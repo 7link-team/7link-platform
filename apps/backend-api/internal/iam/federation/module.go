@@ -7,8 +7,10 @@ import (
 
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/authn"
+	"7link.com/platform/internal/iam/core"
 	federationi18n "7link.com/platform/internal/iam/federation/i18n"
 	"7link.com/platform/internal/iam/identity"
+	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/extension/authz"
@@ -31,6 +33,10 @@ type Module struct {
 	authn                   authn.WebService
 	accountProofs           authn.ReauthenticationConsumer
 	accountReauthentication authn.FederatedReauthentication
+	// foreign is the one holder of the table names the modules that own them
+	// published to federation. The repository reads through it, so a name that
+	// was never published fails the statement instead of reaching the database.
+	foreign foreignTables
 }
 
 func NewModule(runtime *appenv.Runtime, config Config) *Module {
@@ -45,7 +51,10 @@ func (m *Module) Enabled() bool {
 }
 
 func (*Module) ModuleDependencies() []string {
-	return []string{platformi18n.Name, guid.Name, audit.Name, identity.Name, authn.Name}
+	return []string{
+		platformi18n.Name, guid.Name, audit.Name,
+		core.Name, identity.Name, authn.Name, organization.Name,
+	}
 }
 
 // ProvideServices publishes the module itself, so the capability resolves the
@@ -92,6 +101,17 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve federation authentication service: %w", err)
 	}
+	accessTables, err := module.Resolve[core.AccessTables](services)
+	if err != nil {
+		return fmt.Errorf("resolve federation access tables: %w", err)
+	}
+	directoryTables, err := module.Resolve[organization.DirectoryTables](services)
+	if err != nil {
+		return fmt.Errorf("resolve federation directory tables: %w", err)
+	}
+	if err := m.foreign.bind(accessTables.Published, directoryTables.Published); err != nil {
+		return fmt.Errorf("bind federation foreign tables: %w", err)
+	}
 	m.registrar, m.ids, m.appender, m.identities, m.principals, m.authn = registrar, ids, appender, identities, principals, authenticator
 	return nil
 }
@@ -117,6 +137,7 @@ func (m *Module) Initialize(context.Context) error {
 		return fmt.Errorf("resolve federation outbound policy: %w", err)
 	}
 	m.service = NewService(m.runtime, m.appender, m.identities, m.principals, m.authn, m.config, keys, m.ids, outbound)
+	m.service.repo.foreign = &m.foreign
 	m.service.accountProofs, m.service.accountReauthentication = m.accountProofs, m.accountReauthentication
 	return nil
 }

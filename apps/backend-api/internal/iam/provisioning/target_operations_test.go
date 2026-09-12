@@ -31,6 +31,7 @@ func independentProvisioningService(t *testing.T, env *provisioningEnvironment) 
 	runtime := appenv.NewRuntime(appenv.NewIdentity("provisioning-test", "1"), appenv.WithDatabase(router), appenv.WithTablePrefix(env.prefix))
 	s := env.service
 	other := NewService(runtime, s.appender, newProvisioningTestIDs(90000), s.identity, s.groups, s.actors, s.fields, Config{}, s.keys, testOutboundPolicy())
+	bindForeignTables(t, other.repo, runtime.TablePrefix())
 	other.now = s.now
 	return other
 }

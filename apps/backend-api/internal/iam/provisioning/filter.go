@@ -1,6 +1,7 @@
 package provisioning
 
 import (
+	"errors"
 	"strings"
 	"time"
 
@@ -17,7 +18,11 @@ type filterTarget struct {
 	timestamp  bool
 }
 
-func applySCIMFilter(query *gorm.DB, raw, resourceType, dialect, prefix string) (*gorm.DB, error) {
+// applySCIMFilter compiles a SCIM filter onto query. tables carries the names
+// the owners published, because a member filter reads a table this module does
+// not own; a name that was never published fails the filter rather than
+// reaching the database.
+func applySCIMFilter(query *gorm.DB, raw, resourceType, dialect string, tables *foreignTables) (*gorm.DB, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return query, nil
@@ -30,14 +35,20 @@ func applySCIMFilter(query *gorm.DB, raw, resourceType, dialect, prefix string) 
 		return nil, ErrInvalidFilter
 	}
 	nodes := 0
-	condition, args, err := compileFilterExpression(expression, resourceType, dialect, prefix, false, 0, &nodes)
+	condition, args, err := compileFilterExpression(expression, resourceType, dialect, tables, false, 0, &nodes)
 	if err != nil {
+		// An unpublished table is a wiring failure, not a filter the caller
+		// can correct, so it keeps its own error instead of being reported
+		// as an invalid filter.
+		if errors.Is(err, errRepositoryUnavailable) {
+			return nil, err
+		}
 		return nil, ErrInvalidFilter
 	}
 	return query.Where(condition, args...), nil
 }
 
-func compileFilterExpression(expression scimfilter.Expression, resourceType, dialect, prefix string, negate bool, depth int, nodes *int) (string, []any, error) {
+func compileFilterExpression(expression scimfilter.Expression, resourceType, dialect string, tables *foreignTables, negate bool, depth int, nodes *int) (string, []any, error) {
 	(*nodes)++
 	if depth > 16 || *nodes > 64 {
 		return "", nil, ErrInvalidFilter
@@ -47,7 +58,7 @@ func compileFilterExpression(expression scimfilter.Expression, resourceType, dia
 	switch value := expression.(type) {
 	case *scimfilter.AttributeExpression:
 		var err error
-		condition, args, err = compileAttribute(*value, resourceType, dialect, prefix, "")
+		condition, args, err = compileAttribute(*value, resourceType, dialect, tables, "")
 		if err != nil {
 			return "", nil, err
 		}
@@ -55,11 +66,11 @@ func compileFilterExpression(expression scimfilter.Expression, resourceType, dia
 		if value.Operator != scimfilter.AND && value.Operator != scimfilter.OR {
 			return "", nil, ErrInvalidFilter
 		}
-		left, leftArgs, err := compileFilterExpression(value.Left, resourceType, dialect, prefix, false, depth+1, nodes)
+		left, leftArgs, err := compileFilterExpression(value.Left, resourceType, dialect, tables, false, depth+1, nodes)
 		if err != nil {
 			return "", nil, err
 		}
-		right, rightArgs, err := compileFilterExpression(value.Right, resourceType, dialect, prefix, false, depth+1, nodes)
+		right, rightArgs, err := compileFilterExpression(value.Right, resourceType, dialect, tables, false, depth+1, nodes)
 		if err != nil {
 			return "", nil, err
 		}
@@ -69,7 +80,7 @@ func compileFilterExpression(expression scimfilter.Expression, resourceType, dia
 		}
 		condition, args = "("+left+operator+right+")", append(leftArgs, rightArgs...)
 	case *scimfilter.NotExpression:
-		return compileFilterExpression(value.Expression, resourceType, dialect, prefix, !negate, depth+1, nodes)
+		return compileFilterExpression(value.Expression, resourceType, dialect, tables, !negate, depth+1, nodes)
 	case *scimfilter.ValuePath:
 		attribute := strings.ToLower(value.AttributePath.AttributeName)
 		if attribute != "emails" && attribute != "members" {
@@ -80,7 +91,7 @@ func compileFilterExpression(expression scimfilter.Expression, resourceType, dia
 			return "", nil, ErrInvalidFilter
 		}
 		var err error
-		condition, args, err = compileAttribute(*inner, resourceType, dialect, prefix, attribute)
+		condition, args, err = compileAttribute(*inner, resourceType, dialect, tables, attribute)
 		if err != nil {
 			return "", nil, err
 		}
@@ -93,7 +104,7 @@ func compileFilterExpression(expression scimfilter.Expression, resourceType, dia
 	return condition, args, nil
 }
 
-func compileAttribute(expression scimfilter.AttributeExpression, resourceType, dialect, prefix, parent string) (string, []any, error) {
+func compileAttribute(expression scimfilter.AttributeExpression, resourceType, dialect string, tables *foreignTables, parent string) (string, []any, error) {
 	path := expression.AttributePath
 	if path.URIPrefix != nil {
 		allowed := UserSchema
@@ -112,7 +123,7 @@ func compileAttribute(expression scimfilter.AttributeExpression, resourceType, d
 		name = strings.ToLower(parent) + "." + name
 	}
 	if resourceType == ResourceGroup && name == "members.value" {
-		return compileMemberFilter(expression.Operator, expression.CompareValue, prefix)
+		return compileMemberFilter(expression.Operator, expression.CompareValue, tables)
 	}
 	target, ok := filterAttributes(resourceType)[name]
 	if !ok {
@@ -223,8 +234,12 @@ func comparison(column string, operator scimfilter.CompareOperator, argument any
 	}
 }
 
-func compileMemberFilter(operator scimfilter.CompareOperator, value any, prefix string) (string, []any, error) {
-	exists := "EXISTS (SELECT 1 FROM " + prefix + "iam_group_members AS filter_member WHERE filter_member.tenant_id = directory.tenant_id AND filter_member.group_id = resource.resource_id"
+func compileMemberFilter(operator scimfilter.CompareOperator, value any, tables *foreignTables) (string, []any, error) {
+	members, err := tables.directoryTable("iam_group_members")
+	if err != nil {
+		return "", nil, err
+	}
+	exists := "EXISTS (SELECT 1 FROM " + members + " AS filter_member WHERE filter_member.tenant_id = directory.tenant_id AND filter_member.group_id = resource.resource_id"
 	if operator == scimfilter.PR {
 		return exists + ")", nil, nil
 	}

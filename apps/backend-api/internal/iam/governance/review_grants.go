@@ -11,7 +11,54 @@ import (
 )
 
 func (r *Repository) listReviewableGrants(ctx context.Context, tenantID guid.ID, now time.Time) ([]reviewableGrantRow, error) {
-	p := r.prefix()
+	roleMembers, err := r.foreign.accessTable("iam_role_members")
+	if err != nil {
+		return nil, err
+	}
+	roles, err := r.foreign.accessTable("iam_roles")
+	if err != nil {
+		return nil, err
+	}
+	tenantMembers, err := r.foreign.accessTable("iam_tenant_members")
+	if err != nil {
+		return nil, err
+	}
+	temporaryGrants, err := r.foreign.accessTable("iam_temporary_role_grants")
+	if err != nil {
+		return nil, err
+	}
+	roleBindings, err := r.foreign.accessTable("iam_role_bindings")
+	if err != nil {
+		return nil, err
+	}
+	entities, err := r.foreign.accessTable("iam_entities")
+	if err != nil {
+		return nil, err
+	}
+	groupRoleBindings, err := r.foreign.directoryTable("iam_group_role_bindings")
+	if err != nil {
+		return nil, err
+	}
+	groups, err := r.foreign.directoryTable("iam_groups")
+	if err != nil {
+		return nil, err
+	}
+	groupMembers, err := r.foreign.directoryTable("iam_group_members")
+	if err != nil {
+		return nil, err
+	}
+	positionRoleBindings, err := r.foreign.directoryTable("iam_position_role_bindings")
+	if err != nil {
+		return nil, err
+	}
+	positions, err := r.foreign.directoryTable("iam_positions")
+	if err != nil {
+		return nil, err
+	}
+	positionMembers, err := r.foreign.directoryTable("iam_position_members")
+	if err != nil {
+		return nil, err
+	}
 	rows := make([]reviewableGrantRow, 0)
 	queries := []struct {
 		sql  string
@@ -21,48 +68,48 @@ func (r *Repository) listReviewableGrants(ctx context.Context, tenantID guid.ID,
 SELECT members.principal_id, tenant_members.display_name AS principal_name,
        roles.id AS role_id, roles.name AS role_name, 'permanent' AS grant_type, NULL AS grant_id,
        members.created_at AS grant_created_at, NULL AS grant_expires_at
-FROM ` + p + `iam_role_members AS members
-JOIN ` + p + `iam_roles AS roles ON roles.tenant_id = members.tenant_id AND roles.id = members.role_id
-JOIN ` + p + `iam_tenant_members AS tenant_members
+FROM ` + roleMembers + ` AS members
+JOIN ` + roles + ` AS roles ON roles.tenant_id = members.tenant_id AND roles.id = members.role_id
+JOIN ` + tenantMembers + ` AS tenant_members
   ON tenant_members.tenant_id = members.tenant_id AND tenant_members.principal_id = members.principal_id AND tenant_members.status = 'active'
 WHERE members.tenant_id = ?`, args: []any{tenantID}},
 		{sql: `
 SELECT grants.principal_id, tenant_members.display_name AS principal_name,
        roles.id AS role_id, roles.name AS role_name, 'temporary' AS grant_type, grants.id AS grant_id,
        grants.created_at AS grant_created_at, grants.ends_at AS grant_expires_at
-FROM ` + p + `iam_temporary_role_grants AS grants
-JOIN ` + p + `iam_roles AS roles ON roles.tenant_id = grants.tenant_id AND roles.id = grants.role_id
-JOIN ` + p + `iam_tenant_members AS tenant_members
+FROM ` + temporaryGrants + ` AS grants
+JOIN ` + roles + ` AS roles ON roles.tenant_id = grants.tenant_id AND roles.id = grants.role_id
+JOIN ` + tenantMembers + ` AS tenant_members
   ON tenant_members.tenant_id = grants.tenant_id AND tenant_members.principal_id = grants.principal_id AND tenant_members.status = 'active'
 WHERE grants.tenant_id = ? AND grants.starts_at <= ? AND grants.ends_at > ?`, args: []any{tenantID, now, now}},
 		{sql: `
 SELECT gm.principal_id, tm.display_name AS principal_name,
        roles.id AS role_id, roles.name AS role_name, 'group' AS grant_type, b.group_id AS grant_id,
        gm.created_at AS grant_created_at, gm.ends_at AS grant_expires_at
-FROM ` + p + `iam_group_role_bindings AS b
-JOIN ` + p + `iam_groups AS g ON g.tenant_id = b.tenant_id AND g.id = b.group_id AND g.status = 'active' AND g.group_type = 'static'
-JOIN ` + p + `iam_group_members AS gm ON gm.tenant_id = b.tenant_id AND gm.group_id = b.group_id
-JOIN ` + p + `iam_roles AS roles ON roles.tenant_id = b.tenant_id AND roles.id = b.role_id
-JOIN ` + p + `iam_tenant_members AS tm ON tm.tenant_id = gm.tenant_id AND tm.principal_id = gm.principal_id AND tm.status = 'active'
+FROM ` + groupRoleBindings + ` AS b
+JOIN ` + groups + ` AS g ON g.tenant_id = b.tenant_id AND g.id = b.group_id AND g.status = 'active' AND g.group_type = 'static'
+JOIN ` + groupMembers + ` AS gm ON gm.tenant_id = b.tenant_id AND gm.group_id = b.group_id
+JOIN ` + roles + ` AS roles ON roles.tenant_id = b.tenant_id AND roles.id = b.role_id
+JOIN ` + tenantMembers + ` AS tm ON tm.tenant_id = gm.tenant_id AND tm.principal_id = gm.principal_id AND tm.status = 'active'
 WHERE b.tenant_id = ? AND (gm.starts_at IS NULL OR gm.starts_at <= ?) AND (gm.ends_at IS NULL OR gm.ends_at > ?)`, args: []any{tenantID, now, now}},
 		{sql: `
 SELECT pm.principal_id, tm.display_name AS principal_name,
        roles.id AS role_id, roles.name AS role_name, 'position' AS grant_type, b.position_id AS grant_id,
        pm.created_at AS grant_created_at, pm.ends_at AS grant_expires_at
-FROM ` + p + `iam_position_role_bindings AS b
-JOIN ` + p + `iam_positions AS positions ON positions.tenant_id = b.tenant_id AND positions.id = b.position_id AND positions.status = 'active'
-JOIN ` + p + `iam_position_members AS pm ON pm.tenant_id = b.tenant_id AND pm.position_id = b.position_id
-JOIN ` + p + `iam_roles AS roles ON roles.tenant_id = b.tenant_id AND roles.id = b.role_id
-JOIN ` + p + `iam_tenant_members AS tm ON tm.tenant_id = pm.tenant_id AND tm.principal_id = pm.principal_id AND tm.status = 'active'
+FROM ` + positionRoleBindings + ` AS b
+JOIN ` + positions + ` AS positions ON positions.tenant_id = b.tenant_id AND positions.id = b.position_id AND positions.status = 'active'
+JOIN ` + positionMembers + ` AS pm ON pm.tenant_id = b.tenant_id AND pm.position_id = b.position_id
+JOIN ` + roles + ` AS roles ON roles.tenant_id = b.tenant_id AND roles.id = b.role_id
+JOIN ` + tenantMembers + ` AS tm ON tm.tenant_id = pm.tenant_id AND tm.principal_id = pm.principal_id AND tm.status = 'active'
 WHERE b.tenant_id = ? AND (pm.starts_at IS NULL OR pm.starts_at <= ?) AND (pm.ends_at IS NULL OR pm.ends_at > ?)`, args: []any{tenantID, now, now}},
 		{sql: `
 SELECT bindings.principal_id, tm.display_name AS principal_name,
        roles.id AS role_id, roles.name AS role_name, 'entity' AS grant_type, bindings.scope_id AS grant_id,
        bindings.created_at AS grant_created_at, bindings.expires_at AS grant_expires_at
-FROM ` + p + `iam_role_bindings AS bindings
-JOIN ` + p + `iam_entities AS entities ON entities.tenant_id = bindings.tenant_id AND entities.id = bindings.scope_id AND entities.status = 'active'
-JOIN ` + p + `iam_roles AS roles ON roles.tenant_id = bindings.tenant_id AND roles.id = bindings.role_id
-JOIN ` + p + `iam_tenant_members AS tm ON tm.tenant_id = bindings.tenant_id AND tm.principal_id = bindings.principal_id AND tm.status = 'active'
+FROM ` + roleBindings + ` AS bindings
+JOIN ` + entities + ` AS entities ON entities.tenant_id = bindings.tenant_id AND entities.id = bindings.scope_id AND entities.status = 'active'
+JOIN ` + roles + ` AS roles ON roles.tenant_id = bindings.tenant_id AND roles.id = bindings.role_id
+JOIN ` + tenantMembers + ` AS tm ON tm.tenant_id = bindings.tenant_id AND tm.principal_id = bindings.principal_id AND tm.status = 'active'
 WHERE bindings.tenant_id = ? AND bindings.scope_type = 'entity' AND (bindings.expires_at IS NULL OR bindings.expires_at > ?)`, args: []any{tenantID, now}},
 	}
 	for _, query := range queries {
@@ -99,16 +146,35 @@ type dynamicGroupReviewRow struct {
 }
 
 func (r *Repository) listDynamicGroupGrants(ctx context.Context, tenantID guid.ID) ([]reviewableGrantRow, error) {
-	p := r.prefix()
+	groups, err := r.foreign.directoryTable("iam_groups")
+	if err != nil {
+		return nil, err
+	}
+	groupRoleBindings, err := r.foreign.directoryTable("iam_group_role_bindings")
+	if err != nil {
+		return nil, err
+	}
+	memberDepartments, err := r.foreign.directoryTable("iam_member_departments")
+	if err != nil {
+		return nil, err
+	}
+	roles, err := r.foreign.accessTable("iam_roles")
+	if err != nil {
+		return nil, err
+	}
+	tenantMembers, err := r.foreign.accessTable("iam_tenant_members")
+	if err != nil {
+		return nil, err
+	}
 	rows := make([]dynamicGroupReviewRow, 0)
 	query := `SELECT directory_groups.id AS group_id, directory_groups.rule_json, members.principal_id AS subject,
 members.display_name AS principal_name, members.email, departments.department_id, members.status,
 bindings.role_id, roles.name AS role_name, bindings.created_at
-FROM ` + p + `iam_groups AS directory_groups
-JOIN ` + p + `iam_group_role_bindings AS bindings ON bindings.tenant_id = directory_groups.tenant_id AND bindings.group_id = directory_groups.id
-JOIN ` + p + `iam_roles AS roles ON roles.tenant_id = bindings.tenant_id AND roles.id = bindings.role_id
-JOIN ` + p + `iam_tenant_members AS members ON members.tenant_id = directory_groups.tenant_id AND members.status = 'active'
-LEFT JOIN ` + p + `iam_member_departments AS departments ON departments.tenant_id = members.tenant_id AND departments.principal_id = members.principal_id
+FROM ` + groups + ` AS directory_groups
+JOIN ` + groupRoleBindings + ` AS bindings ON bindings.tenant_id = directory_groups.tenant_id AND bindings.group_id = directory_groups.id
+JOIN ` + roles + ` AS roles ON roles.tenant_id = bindings.tenant_id AND roles.id = bindings.role_id
+JOIN ` + tenantMembers + ` AS members ON members.tenant_id = directory_groups.tenant_id AND members.status = 'active'
+LEFT JOIN ` + memberDepartments + ` AS departments ON departments.tenant_id = members.tenant_id AND departments.principal_id = members.principal_id
 WHERE directory_groups.tenant_id = ? AND directory_groups.group_type = 'dynamic' AND directory_groups.status = 'active'
 ORDER BY directory_groups.id, members.principal_id, bindings.role_id`
 	if err := r.writer().WithContext(ctx).Raw(query, tenantID).Scan(&rows).Error; err != nil {
@@ -151,14 +217,29 @@ type relationshipReviewRow struct {
 }
 
 func (r *Repository) listRelationshipGrants(ctx context.Context, tenantID guid.ID) ([]reviewableGrantRow, error) {
-	p := r.prefix()
+	relationships, err := r.foreign.accessTable("iam_relationships")
+	if err != nil {
+		return nil, err
+	}
+	resourceRelationships, err := r.foreign.accessTable("iam_resource_relationships")
+	if err != nil {
+		return nil, err
+	}
+	entities, err := r.foreign.accessTable("iam_entities")
+	if err != nil {
+		return nil, err
+	}
+	tenantMembers, err := r.foreign.accessTable("iam_tenant_members")
+	if err != nil {
+		return nil, err
+	}
 	rows := make([]relationshipReviewRow, 0)
 	graphQuery := `SELECT relationships.subject_id AS principal_id, members.display_name AS principal_name,
 relationships.relation, entities.type AS resource_type, relationships.resource_id,
 relationships.resource_id AS grant_id, relationships.created_at AS grant_created_at, entities.name AS entity_name
-FROM ` + p + `iam_relationships AS relationships
-JOIN ` + p + `iam_entities AS entities ON entities.tenant_id = relationships.tenant_id AND entities.id = relationships.resource_id AND entities.status = 'active'
-JOIN ` + p + `iam_tenant_members AS members ON members.tenant_id = relationships.tenant_id AND members.principal_id = relationships.subject_id AND members.status = 'active'
+FROM ` + relationships + ` AS relationships
+JOIN ` + entities + ` AS entities ON entities.tenant_id = relationships.tenant_id AND entities.id = relationships.resource_id AND entities.status = 'active'
+JOIN ` + tenantMembers + ` AS members ON members.tenant_id = relationships.tenant_id AND members.principal_id = relationships.subject_id AND members.status = 'active'
 WHERE relationships.tenant_id = ? AND relationships.subject_type = 'principal'`
 	if err := r.writer().WithContext(ctx).Raw(graphQuery, tenantID).Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("list graph relationship grants: %w", err)
@@ -167,9 +248,9 @@ WHERE relationships.tenant_id = ? AND relationships.subject_type = 'principal'`
 	resourceQuery := `SELECT relationships.subject_id AS principal_id, members.display_name AS principal_name,
 relationships.relation, relationships.resource_type, relationships.resource_id,
 relationships.entity_id AS grant_id, relationships.created_at AS grant_created_at, '' AS entity_name
-FROM ` + p + `iam_resource_relationships AS relationships
-JOIN ` + p + `iam_entities AS entities ON entities.tenant_id = relationships.tenant_id AND entities.id = relationships.entity_id AND entities.status = 'active'
-JOIN ` + p + `iam_tenant_members AS members ON members.tenant_id = relationships.tenant_id AND members.principal_id = relationships.subject_id AND members.status = 'active'
+FROM ` + resourceRelationships + ` AS relationships
+JOIN ` + entities + ` AS entities ON entities.tenant_id = relationships.tenant_id AND entities.id = relationships.entity_id AND entities.status = 'active'
+JOIN ` + tenantMembers + ` AS members ON members.tenant_id = relationships.tenant_id AND members.principal_id = relationships.subject_id AND members.status = 'active'
 WHERE relationships.tenant_id = ? AND relationships.subject_type = 'principal'`
 	if err := r.writer().WithContext(ctx).Raw(resourceQuery, tenantID).Scan(&resourceRows).Error; err != nil {
 		return nil, fmt.Errorf("list resource relationship grants: %w", err)

@@ -304,6 +304,7 @@ func newFederationEnvironment(t *testing.T, prefixes ...string) *federationEnvir
 		return nil
 	})
 	env.service = NewService(runtime, appender, env.identity, federationPrincipalState(t, runtime), env.web, Config{HTTPTimeout: 5 * time.Second, ClockSkew: 30 * time.Second, StateTTL: 10 * time.Minute}, env.keys, env.ids, testOutboundPolicy())
+	bindForeignTables(t, env.service.repo, prefix)
 	env.idp = newTestIDP(t)
 	return env
 }

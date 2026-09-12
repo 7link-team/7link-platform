@@ -81,6 +81,7 @@ func newGovernanceHarness(t *testing.T, prefix string) *governanceHarness {
 	h.migrate(t)
 	h.service = NewService(runtime, h.appendAudit, h.grantStore(), newGovernanceTestIDs(1000))
 	h.service.now = func() time.Time { return governanceTestNow }
+	bindForeignTables(t, h.service.repo, prefix)
 	return h
 }
 

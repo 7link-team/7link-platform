@@ -332,6 +332,12 @@ func newIAMPerformancePaths(t *testing.T, fixture *iamTenantFixture, bulkOperati
 	fields, err := module.Resolve[core.AuthorizationEvaluator](services)
 	require.NoError(t, err)
 	scim := provisioning.NewService(fixture.app.runtime, appender, ids, identities, groups, actors, fields, provisioning.Config{}, nil, httpx.Policy{})
+	// A service built outside the module never went through injection, so it
+	// binds the owners' published names itself.
+	scimPrefix := fixture.app.runtime.TablePrefix()
+	require.NoError(t, scim.BindForeignTables(
+		core.TableSet(scimPrefix), identity.TableSet(scimPrefix), organization.TableSet(scimPrefix),
+	))
 	response := fixture.request(t, http.MethodPost, "/iam/service-accounts", iamTenantA, fixture.tokenA,
 		map[string]any{"login_name": "performance-scim-actor", "display_name": "Performance SCIM actor"}, nil)
 	requireStatus(t, http.StatusCreated, response)

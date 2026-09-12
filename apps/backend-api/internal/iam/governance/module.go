@@ -8,6 +8,7 @@ import (
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/core"
 	governancei18n "7link.com/platform/internal/iam/governance/i18n"
+	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/extension/authz"
@@ -31,6 +32,10 @@ type Module struct {
 	appender       audit.Appender
 	grants         core.RoleGrantStore
 	administrators core.AdministratorGuard
+	// foreign is the one holder of the table names the modules that own them
+	// published to governance. The repository reads through it, so a name that
+	// was never published fails the statement instead of reaching the database.
+	foreign foreignTables
 }
 
 func NewModule(runtime *appenv.Runtime, config Config) *Module {
@@ -43,7 +48,7 @@ func NewModule(runtime *appenv.Runtime, config Config) *Module {
 func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
 
 func (*Module) ModuleDependencies() []string {
-	return []string{platformi18n.Name, guid.Name, audit.Name, core.Name}
+	return []string{platformi18n.Name, guid.Name, audit.Name, core.Name, organization.Name}
 }
 
 func (m *Module) InjectServices(services *module.Services) error {
@@ -67,6 +72,17 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve governance administrator guard: %w", err)
 	}
+	accessTables, err := module.Resolve[core.AccessTables](services)
+	if err != nil {
+		return fmt.Errorf("resolve governance access tables: %w", err)
+	}
+	directoryTables, err := module.Resolve[organization.DirectoryTables](services)
+	if err != nil {
+		return fmt.Errorf("resolve governance directory tables: %w", err)
+	}
+	if err := m.foreign.bind(accessTables.Published, directoryTables.Published); err != nil {
+		return fmt.Errorf("bind governance foreign tables: %w", err)
+	}
 	m.registrar, m.ids, m.appender, m.grants, m.administrators = registrar, ids, appender, grants, administrators
 	return nil
 }
@@ -85,6 +101,7 @@ func (m *Module) Initialize(context.Context) error {
 		return errors.New("initialize governance: runtime, authz registrar, id generator, audit appender, role grant store, and administrator guard are required")
 	}
 	m.service = NewService(m.runtime, m.appender, m.grants, m.ids)
+	m.service.repo.foreign = &m.foreign
 	return nil
 }
 

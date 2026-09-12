@@ -22,6 +22,10 @@ type Repository struct {
 	revisions *core.RevisionStore
 	db        *gorm.DB
 	inTx      bool
+	// foreign holds the names of the tables this repository reads but does
+	// not own. It is a pointer so a transactional clone reads the same
+	// publication as the repository it came from.
+	foreign *foreignTables
 }
 
 func NewRepository(runtime *appenv.Runtime, ids guid.Source) *Repository {
@@ -32,7 +36,7 @@ func NewRepository(runtime *appenv.Runtime, ids guid.Source) *Repository {
 	if err != nil {
 		panic(err)
 	}
-	return &Repository{runtime: runtime, ids: ids, revisions: revisions}
+	return &Repository{runtime: runtime, ids: ids, revisions: revisions, foreign: &foreignTables{}}
 }
 
 func (r *Repository) writer() *gorm.DB {
@@ -54,8 +58,6 @@ func (r *Repository) prefix() string {
 	}
 	return r.runtime.TablePrefix()
 }
-
-func (r *Repository) table(name string) string { return r.prefix() + name }
 
 func (r *Repository) tables(db *gorm.DB) *query.Tables { return query.Bind(db, r.prefix()) }
 

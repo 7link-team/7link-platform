@@ -6,6 +6,7 @@ import (
 
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/core"
+	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/extension/authz"
@@ -46,6 +47,12 @@ func governanceServices(t *testing.T, h *governanceHarness) *module.Services {
 	require.NoError(t, module.Provide[audit.Appender](services, h.appendAudit))
 	require.NoError(t, module.Provide[core.RoleGrantStore](services, h.grantStore()))
 	require.NoError(t, module.Provide[core.AdministratorGuard](services, governanceAdministratorGuard{}))
+	require.NoError(t, module.Provide[core.AccessTables](services, core.AccessTables{
+		Published: core.TableSet(h.prefix),
+	}))
+	require.NoError(t, module.Provide[organization.DirectoryTables](services, organization.DirectoryTables{
+		Published: organization.TableSet(h.prefix),
+	}))
 	require.NoError(t, services.Seal())
 	return services
 }
@@ -55,7 +62,9 @@ func TestGovernanceModuleConstructionAndReadiness(t *testing.T) {
 	assert.Panics(t, func() { NewModule(nil, Config{}) })
 	instance := NewModule(runtime, Config{})
 	assert.Equal(t, Name, instance.ModuleName())
-	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, core.Name}, instance.ModuleDependencies())
+	assert.Equal(t, []string{
+		platformi18n.Name, guid.Name, audit.Name, core.Name, organization.Name,
+	}, instance.ModuleDependencies())
 	assert.ErrorIs(t, instance.CheckHealth(t.Context()), ErrUnavailable)
 }
 
@@ -101,6 +110,27 @@ func TestGovernanceModuleReportsMissingDependenciesAndInvalidState(t *testing.T)
 	require.NoError(t, module.Provide[core.RoleGrantStore](services, h.grantStore()))
 	require.NoError(t, services.Seal())
 	assert.ErrorContains(t, instance.InjectServices(services), "administrator guard")
+
+	services = module.NewServices()
+	require.NoError(t, module.Provide[*authz.Registrar](services, governanceRuntimeRegistrar()))
+	require.NoError(t, module.Provide[guid.Source](services, newGovernanceTestIDs(1)))
+	require.NoError(t, module.Provide[audit.Appender](services, h.appendAudit))
+	require.NoError(t, module.Provide[core.RoleGrantStore](services, h.grantStore()))
+	require.NoError(t, module.Provide[core.AdministratorGuard](services, governanceAdministratorGuard{}))
+	require.NoError(t, services.Seal())
+	assert.ErrorContains(t, instance.InjectServices(services), "access tables")
+
+	services = module.NewServices()
+	require.NoError(t, module.Provide[*authz.Registrar](services, governanceRuntimeRegistrar()))
+	require.NoError(t, module.Provide[guid.Source](services, newGovernanceTestIDs(1)))
+	require.NoError(t, module.Provide[audit.Appender](services, h.appendAudit))
+	require.NoError(t, module.Provide[core.RoleGrantStore](services, h.grantStore()))
+	require.NoError(t, module.Provide[core.AdministratorGuard](services, governanceAdministratorGuard{}))
+	require.NoError(t, module.Provide[core.AccessTables](services, core.AccessTables{
+		Published: core.TableSet(h.prefix),
+	}))
+	require.NoError(t, services.Seal())
+	assert.ErrorContains(t, instance.InjectServices(services), "directory tables")
 
 	var unavailable *Module
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))

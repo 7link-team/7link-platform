@@ -43,6 +43,11 @@ type Module struct {
 	syncRuns        atomic.Int64
 	syncFailures    atomic.Int64
 	syncLastSuccess atomic.Int64
+	// foreign is the one holder of the table names the modules that own them
+	// published to provisioning. The repository reads through it, so a name
+	// that was never published fails the statement instead of reaching the
+	// database.
+	foreign foreignTables
 }
 
 func NewModule(runtime *appenv.Runtime, config Config) *Module {
@@ -100,6 +105,21 @@ func (m *Module) InjectServices(services *module.Services) error {
 		return fmt.Errorf("resolve provisioning field evaluator: %w", err)
 	}
 	m.fields = fields
+	accessTables, err := module.Resolve[core.AccessTables](services)
+	if err != nil {
+		return fmt.Errorf("resolve provisioning access tables: %w", err)
+	}
+	principalTables, err := module.Resolve[identity.PrincipalTables](services)
+	if err != nil {
+		return fmt.Errorf("resolve provisioning principal tables: %w", err)
+	}
+	directoryTables, err := module.Resolve[organization.DirectoryTables](services)
+	if err != nil {
+		return fmt.Errorf("resolve provisioning directory tables: %w", err)
+	}
+	if err := m.foreign.bind(accessTables.Published, principalTables.Published, directoryTables.Published); err != nil {
+		return fmt.Errorf("bind provisioning foreign tables: %w", err)
+	}
 	return nil
 }
 
@@ -123,6 +143,7 @@ func (m *Module) Initialize(context.Context) error {
 		return fmt.Errorf("resolve provisioning outbound policy: %w", err)
 	}
 	m.service = NewService(m.runtime, m.appender, m.ids, m.identities, m.groups, m.actors, m.fields, m.config, keys, outbound)
+	m.service.repo.foreign = &m.foreign
 	return nil
 }
 
@@ -185,9 +206,15 @@ func (m *Module) reconcileAll(ctx context.Context) {
 	m.syncRuns.Add(1)
 	var targets []targetRow
 	scimTargets := query.BindNames(m.service.repo.prefix()).Targets.String()
-	err := m.service.repo.writer().WithContext(ctx).Table(scimTargets).
+	tenants, err := m.service.repo.foreign.directoryTable("iam_tenants")
+	if err != nil {
+		m.syncFailures.Add(1)
+		slog.Warn("scim sync: list targets failed", "error", err)
+		return
+	}
+	err = m.service.repo.writer().WithContext(ctx).Table(scimTargets).
 		Where("status = ? AND retiring = ? AND id > ? AND sync_after_ms <= ?", TargetActive, false, m.syncCursor, m.service.now().UnixMilli()).
-		Where("tenant_id IN (?)", m.service.repo.writer().Table(m.service.repo.table("iam_tenants")).Select("id").Where("status = 'active'")).
+		Where("tenant_id IN (?)", m.service.repo.writer().Table(tenants).Select("id").Where("status = 'active'")).
 		Order("id ASC").Limit(syncTargetPageSize).Find(&targets).Error
 	if err != nil {
 		m.syncFailures.Add(1)

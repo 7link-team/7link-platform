@@ -118,10 +118,18 @@ func (s *Service) ListLinkableProviders(ctx context.Context, cookieHeader string
 	}
 	rows := []LinkableProvider{}
 	names := query.BindNames(repo.prefix())
+	members, err := repo.foreign.accessTable("iam_tenant_members")
+	if err != nil {
+		return nil, err
+	}
+	tenants, err := repo.foreign.directoryTable("iam_tenants")
+	if err != nil {
+		return nil, err
+	}
 	err = repo.writer().WithContext(ctx).Table(names.Providers.String()+" AS provider").
 		Select("provider.id, provider.tenant_id, provider.name, provider.provider_type").
-		Joins("JOIN "+repo.table("iam_tenant_members")+" AS member ON member.tenant_id = provider.tenant_id AND member.principal_id = ? AND member.status = ?", claims.PrincipalID, "active").
-		Joins("JOIN "+repo.table("iam_tenants")+" AS tenant ON tenant.id = provider.tenant_id AND tenant.status = ?", "active").
+		Joins("JOIN "+members+" AS member ON member.tenant_id = provider.tenant_id AND member.principal_id = ? AND member.status = ?", claims.PrincipalID, "active").
+		Joins("JOIN "+tenants+" AS tenant ON tenant.id = provider.tenant_id AND tenant.status = ?", "active").
 		Where("provider.status = ?", ProviderActive).Order("provider.name, provider.id").Scan(&rows).Error
 	return rows, err
 }
@@ -286,8 +294,12 @@ func (s *Service) identityOperation(ctx context.Context, repo *Repository, provi
 	if provider.Status != ProviderActive || provider.TenantID != row.TenantID || providerFingerprint(provider) != row.ProviderFingerprint {
 		return nil, providerRow{}, ErrProviderDisabled
 	}
+	tenants, err := repo.foreign.directoryTable("iam_tenants")
+	if err != nil {
+		return nil, providerRow{}, err
+	}
 	var tenant struct{ Status string }
-	if err := repo.writer().WithContext(ctx).Table(repo.table("iam_tenants")).Where("id = ?", provider.TenantID).Take(&tenant).Error; err != nil {
+	if err := repo.writer().WithContext(ctx).Table(tenants).Where("id = ?", provider.TenantID).Take(&tenant).Error; err != nil {
 		return nil, providerRow{}, err
 	}
 	if tenant.Status != "active" {
@@ -472,10 +484,18 @@ func (s *Service) UnlinkPersonalIdentity(ctx context.Context, cookieHeader, id, 
 		}
 		var alternatives int64
 		names := query.BindNames(repo.prefix())
+		members, err := repo.foreign.accessTable("iam_tenant_members")
+		if err != nil {
+			return err
+		}
+		tenants, err := repo.foreign.directoryTable("iam_tenants")
+		if err != nil {
+			return err
+		}
 		err = repo.writer().WithContext(ctx).Table(names.IdentityLinks.String()+" AS link").
 			Joins("JOIN "+names.Providers.String()+" AS provider ON provider.id = link.provider_id AND provider.tenant_id = link.tenant_id AND provider.status = ?", ProviderActive).
-			Joins("JOIN "+repo.table("iam_tenant_members")+" AS member ON member.tenant_id = link.tenant_id AND member.principal_id = link.principal_id AND member.status = ?", "active").
-			Joins("JOIN "+repo.table("iam_tenants")+" AS tenant ON tenant.id = link.tenant_id AND tenant.status = ?", "active").
+			Joins("JOIN "+members+" AS member ON member.tenant_id = link.tenant_id AND member.principal_id = link.principal_id AND member.status = ?", "active").
+			Joins("JOIN "+tenants+" AS tenant ON tenant.id = link.tenant_id AND tenant.status = ?", "active").
 			Where("link.principal_id = ? AND NOT (link.provider_id = ? AND link.external_subject = ?)", claims.PrincipalID, providerID, subject).Count(&alternatives).Error
 		if err != nil {
 			return err
