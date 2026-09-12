@@ -136,25 +136,24 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err := identityTables.Bind(TableSet(m.runtime.TablePrefix())); err != nil {
 		return fmt.Errorf("bind identity oauth table set: %w", err)
 	}
-	accessTables, err := module.Resolve[core.AccessTables](services)
+	accessTables, err := module.Resolve[core.AccessTableNames](services)
 	if err != nil {
 		return fmt.Errorf("resolve OAuth access tables: %w", err)
 	}
-	principalTables, err := module.Resolve[identity.PrincipalTables](services)
+	principalTables, err := module.Resolve[identity.PrincipalTableNames](services)
 	if err != nil {
 		return fmt.Errorf("resolve OAuth principal tables: %w", err)
 	}
-	credentialTables, err := module.Resolve[authn.CredentialTables](services)
+	credentialTables, err := module.Resolve[authn.CredentialTableNames](services)
 	if err != nil {
 		return fmt.Errorf("resolve OAuth credential tables: %w", err)
 	}
-	directoryTables, err := module.Resolve[organization.DirectoryTables](services)
+	directoryTables, err := module.Resolve[organization.DirectoryTableNames](services)
 	if err != nil {
 		return fmt.Errorf("resolve OAuth directory tables: %w", err)
 	}
 	if err := m.foreign.bind(
-		accessTables.Published, principalTables.Published,
-		credentialTables.Published, directoryTables.Published,
+		accessTables, principalTables, credentialTables, directoryTables,
 	); err != nil {
 		return fmt.Errorf("bind OAuth foreign tables: %w", err)
 	}
@@ -172,6 +171,11 @@ func (m *Module) Initialize(context.Context) error {
 	}
 	if m == nil || m.runtime == nil || m.registrar == nil || m.authn == nil || m.ids == nil || m.appender == nil || m.principals.Status == nil {
 		return errors.New("initialize OAuth: runtime, authz registrar, authentication, id generator, audit appender, and principal state store are required")
+	}
+	// Checked here rather than in every statement: injection has run, so an
+	// owner that published nothing is a deployment that must not start.
+	if !m.foreign.bound() {
+		return errors.New("initialize OAuth: the core, identity, authn, and organization modules must publish the table names OAuth joins")
 	}
 	m.Service = NewService(m.runtime, m.authn, m.ids, m.appender, m.principals, m.config.Consent)
 	m.Service.repo.foreign = &m.foreign

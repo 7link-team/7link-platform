@@ -124,11 +124,11 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve organization tenant owner lookup: %w", err)
 	}
-	accessTables, err := module.Resolve[core.AccessTables](services)
+	accessTables, err := module.Resolve[core.AccessTableNames](services)
 	if err != nil {
 		return fmt.Errorf("resolve organization access tables: %w", err)
 	}
-	if err := m.foreign.bindAccess(accessTables.Published); err != nil {
+	if err := m.foreign.bindAccess(accessTables); err != nil {
 		return fmt.Errorf("bind organization access tables: %w", err)
 	}
 	directorySources, err := module.Resolve[core.DirectoryAuthorizationSourceConnector](services)
@@ -190,6 +190,11 @@ func (m *Module) Initialize(context.Context) error {
 	if m.runtime == nil || m.registrar == nil || m.members == nil || m.administrators == nil ||
 		m.credentials == nil || m.createPrincipal == nil || m.ids == nil || m.appender == nil {
 		return errors.New("initialize organization: runtime, authz registrar, member checker, administrator guard, invitation credentials, principal creator, id generator, and audit appender are required")
+	}
+	// Checked here rather than in every statement: injection has run, so an
+	// owner that published nothing is a deployment that must not start.
+	if !m.foreign.bound() {
+		return errors.New("initialize organization: the core module must publish the table names organization joins")
 	}
 	m.service = NewService(m.runtime, m.appender, m.ids)
 	m.tenants = NewTenantService(m.runtime, m.appender, m.ids, m.bootstrap, m.owners)

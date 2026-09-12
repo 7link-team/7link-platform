@@ -66,7 +66,8 @@ func (f *iamTenantFixture) actorProvisioningService(t *testing.T, appender audit
 	// A service built outside the module never went through injection, so it
 	// binds the owners' published names itself.
 	prefix := f.app.runtime.TablePrefix()
-	require.NoError(t, scim.BindForeignTables(core.TableSet(prefix), identity.TableSet(prefix), organization.TableSet(prefix)))
+	require.NoError(t, scim.BindForeignTables(core.PublishedAccessTableNames(prefix),
+		identity.PublishedPrincipalTableNames(prefix), organization.PublishedDirectoryTableNames(prefix)))
 	return scim
 }
 

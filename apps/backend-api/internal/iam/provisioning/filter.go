@@ -1,7 +1,6 @@
 package provisioning
 
 import (
-	"errors"
 	"strings"
 	"time"
 
@@ -37,12 +36,6 @@ func applySCIMFilter(query *gorm.DB, raw, resourceType, dialect string, tables *
 	nodes := 0
 	condition, args, err := compileFilterExpression(expression, resourceType, dialect, tables, false, 0, &nodes)
 	if err != nil {
-		// An unpublished table is a wiring failure, not a filter the caller
-		// can correct, so it keeps its own error instead of being reported
-		// as an invalid filter.
-		if errors.Is(err, errRepositoryUnavailable) {
-			return nil, err
-		}
 		return nil, ErrInvalidFilter
 	}
 	return query.Where(condition, args...), nil
@@ -235,10 +228,7 @@ func comparison(column string, operator scimfilter.CompareOperator, argument any
 }
 
 func compileMemberFilter(operator scimfilter.CompareOperator, value any, tables *foreignTables) (string, []any, error) {
-	members, err := tables.directoryTable("iam_group_members")
-	if err != nil {
-		return "", nil, err
-	}
+	members := tables.directory.GroupMembers.String()
 	exists := "EXISTS (SELECT 1 FROM " + members + " AS filter_member WHERE filter_member.tenant_id = directory.tenant_id AND filter_member.group_id = resource.resource_id"
 	if operator == scimfilter.PR {
 		return exists + ")", nil, nil

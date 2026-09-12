@@ -57,9 +57,9 @@ func TestProvisioningModuleDependencyResolutionAndLifecycle(t *testing.T) {
 	require.NoError(t, platformmodule.Provide[organization.GroupProvisioner](services, env.service.groups))
 	require.NoError(t, platformmodule.Provide[identity.ServiceAccountValidator](services, env.service.actors))
 	require.NoError(t, platformmodule.Provide[core.AuthorizationEvaluator](services, core.NewAuthorizer(env.runtime)))
-	require.NoError(t, platformmodule.Provide[core.AccessTables](services, core.AccessTables{Published: core.TableSet(env.prefix)}))
-	require.NoError(t, platformmodule.Provide[identity.PrincipalTables](services, identity.PrincipalTables{Published: identity.TableSet(env.prefix)}))
-	require.NoError(t, platformmodule.Provide[organization.DirectoryTables](services, organization.DirectoryTables{Published: organization.TableSet(env.prefix)}))
+	require.NoError(t, platformmodule.Provide[core.AccessTableNames](services, core.PublishedAccessTableNames(env.prefix)))
+	require.NoError(t, platformmodule.Provide[identity.PrincipalTableNames](services, identity.PublishedPrincipalTableNames(env.prefix)))
+	require.NoError(t, platformmodule.Provide[organization.DirectoryTableNames](services, organization.PublishedDirectoryTableNames(env.prefix)))
 	require.NoError(t, services.Seal())
 	require.NoError(t, instance.InjectServices(services))
 	require.NoError(t, instance.Initialize(t.Context()))
@@ -114,6 +114,10 @@ func TestProvisioningModuleReportsMissingDependenciesAndInitializationErrors(t *
 	badKey.registrar = provisioningRuntimeRegistrar()
 	badKey.ids, badKey.appender, badKey.identities, badKey.groups = env.service.ids, env.service.appender, env.service.identity, env.service.groups
 	badKey.actors = env.service.actors
+	require.NoError(t, badKey.foreign.bind(
+		core.PublishedAccessTableNames(env.prefix), identity.PublishedPrincipalTableNames(env.prefix),
+		organization.PublishedDirectoryTableNames(env.prefix),
+	))
 	badKey.config.EncryptionKey = "short"
 	assert.ErrorContains(t, badKey.Initialize(t.Context()), "encryption key")
 
@@ -121,6 +125,53 @@ func TestProvisioningModuleReportsMissingDependenciesAndInitializationErrors(t *
 	stopCtx, cancel := context.WithCancel(context.Background())
 	cancel()
 	assert.ErrorIs(t, timed.Stop(stopCtx), context.Canceled)
+}
+
+// TestProvisioningModuleRefusesToStartWithoutThePublishedTableNames is what the
+// per-statement checks collapsed into. Provisioning holds its foreign names as
+// typed fields now, so a name that never arrived can no longer be reported by
+// the statement that needed it: it is caught once, here, and the deployment
+// does not start rather than joining an empty table name.
+func TestProvisioningModuleRefusesToStartWithoutThePublishedTableNames(t *testing.T) {
+	for _, missing := range []struct {
+		owner     string
+		access    core.AccessTableNames
+		principal identity.PrincipalTableNames
+		directory organization.DirectoryTableNames
+	}{
+		{"core", core.AccessTableNames{}, identity.PublishedPrincipalTableNames(""),
+			organization.PublishedDirectoryTableNames("")},
+		{"identity", core.PublishedAccessTableNames(""), identity.PrincipalTableNames{},
+			organization.PublishedDirectoryTableNames("")},
+		{"organization", core.PublishedAccessTableNames(""), identity.PublishedPrincipalTableNames(""),
+			organization.DirectoryTableNames{}},
+		{"every owner", core.AccessTableNames{}, identity.PrincipalTableNames{}, organization.DirectoryTableNames{}},
+	} {
+		t.Run(missing.owner, func(t *testing.T) {
+			env := newProvisioningEnvironment(t)
+			require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
+			instance := NewModule(env.runtime, Config{
+				EncryptionKey: base64.RawStdEncoding.EncodeToString(testProvisioningKey()),
+			})
+
+			services := platformmodule.NewServices()
+			require.NoError(t, platformmodule.Provide[*authz.Registrar](services, provisioningRuntimeRegistrar()))
+			require.NoError(t, platformmodule.Provide[guid.Source](services, env.service.ids))
+			require.NoError(t, platformmodule.Provide[audit.Appender](services, env.service.appender))
+			require.NoError(t, platformmodule.Provide[identity.IdentityProvisioner](services, env.service.identity))
+			require.NoError(t, platformmodule.Provide[organization.GroupProvisioner](services, env.service.groups))
+			require.NoError(t, platformmodule.Provide[identity.ServiceAccountValidator](services, env.service.actors))
+			require.NoError(t, platformmodule.Provide[core.AuthorizationEvaluator](services, core.NewAuthorizer(env.runtime)))
+			require.NoError(t, platformmodule.Provide[core.AccessTableNames](services, missing.access))
+			require.NoError(t, platformmodule.Provide[identity.PrincipalTableNames](services, missing.principal))
+			require.NoError(t, platformmodule.Provide[organization.DirectoryTableNames](services, missing.directory))
+			require.NoError(t, services.Seal())
+
+			require.NoError(t, instance.InjectServices(services))
+			assert.ErrorContains(t, instance.Initialize(t.Context()),
+				"the core, identity, and organization modules must publish the table names provisioning joins")
+		})
+	}
 }
 
 func TestProvisioningModuleSyncLoopReconcilesActiveTenants(t *testing.T) {
@@ -149,10 +200,13 @@ func TestProvisioningModuleSyncLoopReconcilesActiveTenants(t *testing.T) {
 	instance.fields = env.service.fields
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
 	instance.config.EncryptionKey = base64.RawStdEncoding.EncodeToString(testProvisioningKey())
-	require.NoError(t, instance.Initialize(t.Context()))
 	// The reconciler reads the tenant table organization owns, so this
 	// instance needs the publication its own injection would have resolved.
-	bindForeignTables(t, instance.service.repo, env.prefix)
+	require.NoError(t, instance.foreign.bind(
+		core.PublishedAccessTableNames(env.prefix), identity.PublishedPrincipalTableNames(env.prefix),
+		organization.PublishedDirectoryTableNames(env.prefix),
+	))
+	require.NoError(t, instance.Initialize(t.Context()))
 	require.NoError(t, instance.Start(t.Context()))
 	require.NoError(t, instance.Start(t.Context()))
 	require.Eventually(t, func() bool { return provider.count() > before }, time.Second, 10*time.Millisecond)

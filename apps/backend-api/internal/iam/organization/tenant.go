@@ -144,10 +144,7 @@ func (s *TenantService) ListByMember(ctx context.Context, subject guid.ID) ([]Te
 	if err != nil {
 		return nil, err
 	}
-	memberTable, err := repo.foreign.accessTable("iam_tenant_members")
-	if err != nil {
-		return nil, err
-	}
+	memberTable := repo.foreign.access.TenantMembers.String()
 	var rows []model.Tenant
 	tenantTable := repo.table(model.Tenant{}.TableName())
 	err = repo.writer().WithContext(ctx).Table(tenantTable+" AS t").Select("t.*").

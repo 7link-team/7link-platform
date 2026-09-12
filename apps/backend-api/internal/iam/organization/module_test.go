@@ -121,9 +121,7 @@ func TestOrganizationModuleResolvesServicesAndProvidesGroupProvisioner(t *testin
 			}); err != nil {
 				return err
 			}
-			return module.Provide[core.AccessTables](services, core.AccessTables{
-				Published: core.TableSet(h.runtime.TablePrefix()),
-			})
+			return module.Provide[core.AccessTableNames](services, core.PublishedAccessTableNames(h.runtime.TablePrefix()))
 		}},
 		&organizationDependencyProvider{name: authn.Name, provide: func(services *module.Services) error {
 			if err := module.Provide[authn.InvitationCredentials](services, credentials); err != nil {
@@ -210,7 +208,7 @@ func TestOrganizationModuleReportsMissingWiring(t *testing.T) {
 			return module.Provide[identity.TenantOwnerLookup](services, newTenantOwnerStub().capability())
 		},
 		func(services *module.Services) error {
-			return module.Provide[core.AccessTables](services, core.AccessTables{Published: core.TableSet("sl_")})
+			return module.Provide[core.AccessTableNames](services, core.PublishedAccessTableNames("sl_"))
 		},
 	}
 	// The connectors organization's wiring resolves are the last four, in the
@@ -296,6 +294,51 @@ func provideUnboundConnector(message string, services *module.Services) error {
 	default:
 		return module.Provide[identity.DirectoryTableSetConnector](services, identity.DirectoryTableSetConnector{})
 	}
+}
+
+// TestOrganizationModuleRefusesToStartWithoutThePublishedTableNames is what the
+// per-statement checks collapsed into. Organization holds the tables core owns
+// as typed fields now, so a name that never arrived can no longer be reported
+// by the statement that needed it: it is caught once, here, and the deployment
+// does not start rather than joining an empty table name.
+func TestOrganizationModuleRefusesToStartWithoutThePublishedTableNames(t *testing.T) {
+	runtime := appenv.NewRuntime(appenv.NewIdentity("organization-test", "1"))
+	members := &organizationMemberChecker{}
+	creator := identity.InvitationPrincipalCreator(func(context.Context, *gorm.DB, guid.ID, string, string, string, string) (guid.ID, error) {
+		return 1, nil
+	})
+
+	services := module.NewServices()
+	require.NoError(t, module.Provide[*authz.Registrar](services, organizationTestRegistrar(members)))
+	require.NoError(t, module.Provide[core.ActiveMemberChecker](services, members))
+	require.NoError(t, module.Provide[core.AdministratorGuard](services, &organizationAdministratorGuard{}))
+	require.NoError(t, module.Provide[authn.InvitationCredentials](services, &invitationCredentialFixture{}))
+	require.NoError(t, module.Provide[identity.InvitationPrincipalCreator](services, creator))
+	require.NoError(t, module.Provide[guid.Source](services, newOrganizationTestIDs(1)))
+	require.NoError(t, module.Provide[audit.Appender](services,
+		audit.Appender(func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil })))
+	require.NoError(t, module.Provide[core.TenantBootstrapper](services, newTenantBootstrapStub().capability()))
+	require.NoError(t, module.Provide[identity.TenantOwnerLookup](services, newTenantOwnerStub().capability()))
+	require.NoError(t, module.Provide[core.AccessTableNames](services, core.AccessTableNames{}))
+	require.NoError(t, module.Provide[core.DirectoryAuthorizationSourceConnector](services, core.DirectoryAuthorizationSourceConnector{
+		Bind: func(core.DirectoryAuthorizationSourceStore) error { return nil },
+	}))
+	require.NoError(t, module.Provide[core.DirectoryTableSetConnector](services, core.DirectoryTableSetConnector{
+		Bind: func(gormx.TableSet) error { return nil },
+	}))
+	require.NoError(t, module.Provide[authn.DirectoryTableSetConnector](services, authn.DirectoryTableSetConnector{
+		Bind: func(gormx.TableSet) error { return nil },
+	}))
+	require.NoError(t, module.Provide[identity.DirectoryTableSetConnector](services, identity.DirectoryTableSetConnector{
+		Bind: func(gormx.TableSet) error { return nil },
+	}))
+	require.NoError(t, services.Seal())
+
+	instance := NewModule(runtime, enabledModuleConfig())
+	require.NoError(t, instance.InjectServices(services))
+	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
+	assert.ErrorContains(t, instance.Initialize(t.Context()),
+		"the core module must publish the table names organization joins")
 }
 
 func TestOrganizationModuleProvisionerUnavailableBeforeInitialize(t *testing.T) {

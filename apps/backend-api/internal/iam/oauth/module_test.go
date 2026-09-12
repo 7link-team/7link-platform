@@ -129,9 +129,7 @@ func TestOAuthModuleResolvesDependenciesAndRegistersContract(t *testing.T) {
 			return module.Provide[audit.Appender](services, harness.repo.appender)
 		}},
 		&oauthDependencyProvider{name: core.Name, provide: func(services *module.Services) error {
-			return module.Provide[core.AccessTables](services, core.AccessTables{
-				Published: core.TableSet(harness.prefix),
-			})
+			return module.Provide[core.AccessTableNames](services, core.PublishedAccessTableNames(harness.prefix))
 		}},
 		&oauthDependencyProvider{name: authn.Name, provide: func(services *module.Services) error {
 			if err := module.Provide[*authz.Registrar](services, oauthTestRegistrar(harness.web)); err != nil {
@@ -147,18 +145,16 @@ func TestOAuthModuleResolvesDependenciesAndRegistersContract(t *testing.T) {
 			}); err != nil {
 				return err
 			}
-			return module.Provide[authn.CredentialTables](services, authn.CredentialTables{
-				Published: authn.TableSet(harness.prefix),
-			})
+			return module.Provide[authn.CredentialTableNames](services,
+				authn.PublishedCredentialTableNames(harness.prefix))
 		}},
 		&oauthDependencyProvider{
 			name:    identity.Name,
 			provide: identity.NewModule(harness.runtime, identity.Config{}).ProvideServices,
 		},
 		&oauthDependencyProvider{name: organization.Name, provide: func(services *module.Services) error {
-			return module.Provide[organization.DirectoryTables](services, organization.DirectoryTables{
-				Published: organization.TableSet(harness.prefix),
-			})
+			return module.Provide[organization.DirectoryTableNames](services,
+				organization.PublishedDirectoryTableNames(harness.prefix))
 		}},
 		instance,
 	))
@@ -238,6 +234,56 @@ func TestOAuthModuleReportsMissingWiring(t *testing.T) {
 	}
 }
 
+// TestOAuthModuleRefusesToStartWithoutThePublishedTableNames is what the
+// per-statement checks collapsed into. OAuth holds its foreign names as typed
+// fields now, so a name that never arrived can no longer be reported by the
+// statement that needed it: it is caught once, here, and the deployment does
+// not start rather than joining an empty table name.
+func TestOAuthModuleRefusesToStartWithoutThePublishedTableNames(t *testing.T) {
+	harness := newOAuthHarness(t, "sl_")
+	access, principal, credential, directory := publishedForeignTables(harness.prefix)
+
+	for _, missing := range []struct {
+		owner      string
+		access     core.AccessTableNames
+		principal  identity.PrincipalTableNames
+		credential authn.CredentialTableNames
+		directory  organization.DirectoryTableNames
+	}{
+		{"core", core.AccessTableNames{}, principal, credential, directory},
+		{"identity", access, identity.PrincipalTableNames{}, credential, directory},
+		{"authn", access, principal, authn.CredentialTableNames{}, directory},
+		{"organization", access, principal, credential, organization.DirectoryTableNames{}},
+	} {
+		t.Run(missing.owner, func(t *testing.T) {
+			require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
+			instance := NewModule(harness.runtime, enabledModuleConfig())
+			services := module.NewServices()
+			require.NoError(t, module.Provide[*authz.Registrar](services, oauthTestRegistrar(harness.web)))
+			require.NoError(t, module.Provide[authn.WebService](services, harness.web))
+			require.NoError(t, module.Provide[guid.Source](services, newOAuthTestIDs(7200)))
+			require.NoError(t, module.Provide[audit.Appender](services, harness.repo.appender))
+			require.NoError(t, module.Provide[identity.PrincipalStateStore](services,
+				resolveIdentityPrincipalState(t, harness.runtime)))
+			require.NoError(t, module.Provide[authn.OAuthTableSetConnector](services, authn.OAuthTableSetConnector{
+				Bind: func(gormx.TableSet) error { return nil },
+			}))
+			require.NoError(t, module.Provide[identity.OAuthTableSetConnector](services, identity.OAuthTableSetConnector{
+				Bind: func(gormx.TableSet) error { return nil },
+			}))
+			require.NoError(t, module.Provide[core.AccessTableNames](services, missing.access))
+			require.NoError(t, module.Provide[identity.PrincipalTableNames](services, missing.principal))
+			require.NoError(t, module.Provide[authn.CredentialTableNames](services, missing.credential))
+			require.NoError(t, module.Provide[organization.DirectoryTableNames](services, missing.directory))
+			require.NoError(t, services.Seal())
+
+			require.NoError(t, instance.InjectServices(services))
+			assert.ErrorContains(t, instance.Initialize(t.Context()),
+				"the core, identity, authn, and organization modules must publish the table names OAuth joins")
+		})
+	}
+}
+
 // TestOAuthModuleRefusesToStartWithAnUnusableConsentScreen keeps a bad template
 // path a startup failure. Discovering it lazily would turn a deployment typo
 // into a 500 on the first person who tries to log in.
@@ -253,5 +299,6 @@ func TestOAuthModuleRefusesToStartWithAnUnusableConsentScreen(t *testing.T) {
 	instance.ids = newOAuthTestIDs(7100)
 	instance.appender = harness.repo.appender
 	instance.principals = resolveIdentityPrincipalState(t, harness.runtime)
+	require.NoError(t, instance.foreign.bind(publishedForeignTables(harness.prefix)))
 	assert.ErrorContains(t, instance.Initialize(t.Context()), "initialize OAuth consent screen")
 }

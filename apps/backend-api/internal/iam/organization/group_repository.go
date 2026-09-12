@@ -113,13 +113,10 @@ func (r *Repository) deleteGroup(ctx context.Context, tenantID, id guid.ID, vers
 }
 
 func (r *Repository) listDynamicGroupCandidates(ctx context.Context, tenantID, groupID guid.ID) ([]groupMemberRow, error) {
-	tm, err := r.foreign.accessTable("iam_tenant_members")
-	if err != nil {
-		return nil, err
-	}
+	tm := r.foreign.access.TenantMembers.String()
 	var rows []groupMemberRow
 	md := r.table(model.MemberDepartment{}.TableName())
-	err = r.writer().WithContext(ctx).Table(tm+" AS tm").Select("? AS group_id, tm.principal_id, tm.display_name, tm.email, md.department_id, tm.status, tm.created_at, tm.updated_at", groupID).
+	err := r.writer().WithContext(ctx).Table(tm+" AS tm").Select("? AS group_id, tm.principal_id, tm.display_name, tm.email, md.department_id, tm.status, tm.created_at, tm.updated_at", groupID).
 		Joins("LEFT JOIN "+md+" AS md ON md.tenant_id = tm.tenant_id AND md.principal_id = tm.principal_id").
 		Where("tm.tenant_id = ? AND tm.status = ?", tenantID, StatusActive).Order("tm.display_name ASC, tm.principal_id ASC").Scan(&rows).Error
 	if err != nil {
@@ -129,13 +126,10 @@ func (r *Repository) listDynamicGroupCandidates(ctx context.Context, tenantID, g
 }
 
 func (r *Repository) listGroupMembers(ctx context.Context, tenantID, groupID guid.ID) ([]groupMemberRow, error) {
-	tm, err := r.foreign.accessTable("iam_tenant_members")
-	if err != nil {
-		return nil, err
-	}
+	tm := r.foreign.access.TenantMembers.String()
 	var rows []groupMemberRow
 	gm := r.table(model.GroupMember{}.TableName())
-	err = r.writer().WithContext(ctx).Table(gm+" AS gm").Select("gm.*, tm.display_name, tm.email").
+	err := r.writer().WithContext(ctx).Table(gm+" AS gm").Select("gm.*, tm.display_name, tm.email").
 		Joins("JOIN "+tm+" AS tm ON tm.tenant_id = gm.tenant_id AND tm.principal_id = gm.principal_id").
 		Where("gm.tenant_id = ? AND gm.group_id = ?", tenantID, groupID).Order("tm.display_name ASC, gm.principal_id ASC").Scan(&rows).Error
 	if err != nil {
@@ -145,13 +139,10 @@ func (r *Repository) listGroupMembers(ctx context.Context, tenantID, groupID gui
 }
 
 func (r *Repository) getGroupMember(ctx context.Context, tenantID, groupID, principalID guid.ID) (*groupMemberRow, error) {
-	tm, err := r.foreign.accessTable("iam_tenant_members")
-	if err != nil {
-		return nil, err
-	}
+	tm := r.foreign.access.TenantMembers.String()
 	var row groupMemberRow
 	gm := r.table(model.GroupMember{}.TableName())
-	err = r.writer().WithContext(ctx).Table(gm+" AS gm").Select("gm.*, tm.display_name, tm.email").
+	err := r.writer().WithContext(ctx).Table(gm+" AS gm").Select("gm.*, tm.display_name, tm.email").
 		Joins("JOIN "+tm+" AS tm ON tm.tenant_id = gm.tenant_id AND tm.principal_id = gm.principal_id").
 		Where("gm.tenant_id = ? AND gm.group_id = ? AND gm.principal_id = ?", tenantID, groupID, principalID).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {

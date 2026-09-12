@@ -105,19 +105,19 @@ func (m *Module) InjectServices(services *module.Services) error {
 		return fmt.Errorf("resolve provisioning field evaluator: %w", err)
 	}
 	m.fields = fields
-	accessTables, err := module.Resolve[core.AccessTables](services)
+	accessTables, err := module.Resolve[core.AccessTableNames](services)
 	if err != nil {
 		return fmt.Errorf("resolve provisioning access tables: %w", err)
 	}
-	principalTables, err := module.Resolve[identity.PrincipalTables](services)
+	principalTables, err := module.Resolve[identity.PrincipalTableNames](services)
 	if err != nil {
 		return fmt.Errorf("resolve provisioning principal tables: %w", err)
 	}
-	directoryTables, err := module.Resolve[organization.DirectoryTables](services)
+	directoryTables, err := module.Resolve[organization.DirectoryTableNames](services)
 	if err != nil {
 		return fmt.Errorf("resolve provisioning directory tables: %w", err)
 	}
-	if err := m.foreign.bind(accessTables.Published, principalTables.Published, directoryTables.Published); err != nil {
+	if err := m.foreign.bind(accessTables, principalTables, directoryTables); err != nil {
 		return fmt.Errorf("bind provisioning foreign tables: %w", err)
 	}
 	return nil
@@ -133,6 +133,11 @@ func (m *Module) Initialize(context.Context) error {
 	if m.runtime == nil || m.runtime.Database() == nil || m.runtime.Database().Write() == nil ||
 		m.registrar == nil || m.ids == nil || m.appender == nil || m.identities == nil || m.groups == nil || m.actors == nil {
 		return errors.New("initialize provisioning: runtime database, authz registrar, id generator, audit appender, identity provisioner, group provisioner, and service account validator are required")
+	}
+	// Checked here rather than in every statement: injection has run, so an
+	// owner that published nothing is a deployment that must not start.
+	if !m.foreign.bound() {
+		return errors.New("initialize provisioning: the core, identity, and organization modules must publish the table names provisioning joins")
 	}
 	keys, err := ResolveKeyring(m.config)
 	if err != nil {
@@ -206,13 +211,8 @@ func (m *Module) reconcileAll(ctx context.Context) {
 	m.syncRuns.Add(1)
 	var targets []targetRow
 	scimTargets := query.BindNames(m.service.repo.prefix()).Targets.String()
-	tenants, err := m.service.repo.foreign.directoryTable("iam_tenants")
-	if err != nil {
-		m.syncFailures.Add(1)
-		slog.Warn("scim sync: list targets failed", "error", err)
-		return
-	}
-	err = m.service.repo.writer().WithContext(ctx).Table(scimTargets).
+	tenants := m.service.repo.foreign.directory.Tenants.String()
+	err := m.service.repo.writer().WithContext(ctx).Table(scimTargets).
 		Where("status = ? AND retiring = ? AND id > ? AND sync_after_ms <= ?", TargetActive, false, m.syncCursor, m.service.now().UnixMilli()).
 		Where("tenant_id IN (?)", m.service.repo.writer().Table(tenants).Select("id").Where("status = 'active'")).
 		Order("id ASC").Limit(syncTargetPageSize).Find(&targets).Error

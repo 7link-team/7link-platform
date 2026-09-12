@@ -88,10 +88,7 @@ func (repo *Repository) lockGrantAdmission(ctx context.Context, claims *authnext
 	if !found || status != "active" {
 		return ErrInvalidRequest
 	}
-	members, err := repo.foreign.accessTable("iam_tenant_members")
-	if err != nil {
-		return err
-	}
+	members := repo.foreign.access.TenantMembers.String()
 	var member struct{ Status string }
 	err = db.Table(members).Select("status").Where("tenant_id = ? AND principal_id = ?", tenantID, claims.PrincipalID).Take(&member).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -103,10 +100,7 @@ func (repo *Repository) lockGrantAdmission(ctx context.Context, claims *authnext
 	if member.Status != "active" {
 		return ErrInvalidRequest
 	}
-	credentials, err := repo.foreign.credentialTable("iam_credentials")
-	if err != nil {
-		return err
-	}
+	credentials := repo.foreign.credential.Credentials.String()
 	var credential struct{ CredentialVersion int64 }
 	err = db.Table(credentials).Select("credential_version").Where("principal_id = ?", claims.PrincipalID).Take(&credential).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {

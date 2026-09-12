@@ -232,10 +232,7 @@ func (r *Repository) activeMember(ctx context.Context, tenantID, principalID gui
 	if err != nil {
 		return false, err
 	}
-	members, err := r.foreign.accessTable("iam_tenant_members")
-	if err != nil {
-		return false, err
-	}
+	members := r.foreign.access.TenantMembers.String()
 	var count int64
 	err = db.WithContext(ctx).Table(members).
 		Where("tenant_id = ? AND principal_id = ? AND status = ?", tenantID, principalID, "active").
@@ -601,26 +598,11 @@ func (r *Repository) serviceAccountClient(ctx context.Context, id guid.ID) (*ser
 	if err != nil {
 		return nil, err
 	}
-	credentials, err := r.foreign.principalTable("iam_service_account_credentials")
-	if err != nil {
-		return nil, err
-	}
-	accounts, err := r.foreign.principalTable("iam_service_accounts")
-	if err != nil {
-		return nil, err
-	}
-	principals, err := r.foreign.principalTable("iam_principals")
-	if err != nil {
-		return nil, err
-	}
-	members, err := r.foreign.accessTable("iam_tenant_members")
-	if err != nil {
-		return nil, err
-	}
-	tenants, err := r.foreign.directoryTable("iam_tenants")
-	if err != nil {
-		return nil, err
-	}
+	credentials := r.foreign.principal.ServiceAccountCredentials.String()
+	accounts := r.foreign.principal.ServiceAccounts.String()
+	principals := r.foreign.principal.Principals.String()
+	members := r.foreign.access.TenantMembers.String()
+	tenants := r.foreign.directory.Tenants.String()
 	var row serviceAccountClient
 	err = db.WithContext(ctx).Table(credentials+" AS credential").
 		Select("credential.id AS credential_id, credential.principal_id AS principal_id, "+
@@ -649,10 +631,7 @@ func (r *Repository) touchServiceAccountCredential(ctx context.Context, id guid.
 	if err != nil {
 		return err
 	}
-	credentials, err := r.foreign.principalTable("iam_service_account_credentials")
-	if err != nil {
-		return err
-	}
+	credentials := r.foreign.principal.ServiceAccountCredentials.String()
 	result := db.WithContext(ctx).Table(credentials).
 		Where("id = ? AND revoked_at IS NULL", id).Update("last_used_at", now)
 	if result.Error != nil {

@@ -11,54 +11,18 @@ import (
 )
 
 func (r *Repository) listReviewableGrants(ctx context.Context, tenantID guid.ID, now time.Time) ([]reviewableGrantRow, error) {
-	roleMembers, err := r.foreign.accessTable("iam_role_members")
-	if err != nil {
-		return nil, err
-	}
-	roles, err := r.foreign.accessTable("iam_roles")
-	if err != nil {
-		return nil, err
-	}
-	tenantMembers, err := r.foreign.accessTable("iam_tenant_members")
-	if err != nil {
-		return nil, err
-	}
-	temporaryGrants, err := r.foreign.accessTable("iam_temporary_role_grants")
-	if err != nil {
-		return nil, err
-	}
-	roleBindings, err := r.foreign.accessTable("iam_role_bindings")
-	if err != nil {
-		return nil, err
-	}
-	entities, err := r.foreign.accessTable("iam_entities")
-	if err != nil {
-		return nil, err
-	}
-	groupRoleBindings, err := r.foreign.directoryTable("iam_group_role_bindings")
-	if err != nil {
-		return nil, err
-	}
-	groups, err := r.foreign.directoryTable("iam_groups")
-	if err != nil {
-		return nil, err
-	}
-	groupMembers, err := r.foreign.directoryTable("iam_group_members")
-	if err != nil {
-		return nil, err
-	}
-	positionRoleBindings, err := r.foreign.directoryTable("iam_position_role_bindings")
-	if err != nil {
-		return nil, err
-	}
-	positions, err := r.foreign.directoryTable("iam_positions")
-	if err != nil {
-		return nil, err
-	}
-	positionMembers, err := r.foreign.directoryTable("iam_position_members")
-	if err != nil {
-		return nil, err
-	}
+	roleMembers := r.foreign.access.RoleMembers.String()
+	roles := r.foreign.access.Roles.String()
+	tenantMembers := r.foreign.access.TenantMembers.String()
+	temporaryGrants := r.foreign.access.TemporaryRoleGrants.String()
+	roleBindings := r.foreign.access.RoleBindings.String()
+	entities := r.foreign.access.Entities.String()
+	groupRoleBindings := r.foreign.directory.GroupRoleBindings.String()
+	groups := r.foreign.directory.Groups.String()
+	groupMembers := r.foreign.directory.GroupMembers.String()
+	positionRoleBindings := r.foreign.directory.PositionRoleBindings.String()
+	positions := r.foreign.directory.Positions.String()
+	positionMembers := r.foreign.directory.PositionMembers.String()
 	rows := make([]reviewableGrantRow, 0)
 	queries := []struct {
 		sql  string
@@ -146,26 +110,11 @@ type dynamicGroupReviewRow struct {
 }
 
 func (r *Repository) listDynamicGroupGrants(ctx context.Context, tenantID guid.ID) ([]reviewableGrantRow, error) {
-	groups, err := r.foreign.directoryTable("iam_groups")
-	if err != nil {
-		return nil, err
-	}
-	groupRoleBindings, err := r.foreign.directoryTable("iam_group_role_bindings")
-	if err != nil {
-		return nil, err
-	}
-	memberDepartments, err := r.foreign.directoryTable("iam_member_departments")
-	if err != nil {
-		return nil, err
-	}
-	roles, err := r.foreign.accessTable("iam_roles")
-	if err != nil {
-		return nil, err
-	}
-	tenantMembers, err := r.foreign.accessTable("iam_tenant_members")
-	if err != nil {
-		return nil, err
-	}
+	groups := r.foreign.directory.Groups.String()
+	groupRoleBindings := r.foreign.directory.GroupRoleBindings.String()
+	memberDepartments := r.foreign.directory.MemberDepartments.String()
+	roles := r.foreign.access.Roles.String()
+	tenantMembers := r.foreign.access.TenantMembers.String()
 	rows := make([]dynamicGroupReviewRow, 0)
 	query := `SELECT directory_groups.id AS group_id, directory_groups.rule_json, members.principal_id AS subject,
 members.display_name AS principal_name, members.email, departments.department_id, members.status,
@@ -217,22 +166,10 @@ type relationshipReviewRow struct {
 }
 
 func (r *Repository) listRelationshipGrants(ctx context.Context, tenantID guid.ID) ([]reviewableGrantRow, error) {
-	relationships, err := r.foreign.accessTable("iam_relationships")
-	if err != nil {
-		return nil, err
-	}
-	resourceRelationships, err := r.foreign.accessTable("iam_resource_relationships")
-	if err != nil {
-		return nil, err
-	}
-	entities, err := r.foreign.accessTable("iam_entities")
-	if err != nil {
-		return nil, err
-	}
-	tenantMembers, err := r.foreign.accessTable("iam_tenant_members")
-	if err != nil {
-		return nil, err
-	}
+	relationships := r.foreign.access.Relationships.String()
+	resourceRelationships := r.foreign.access.ResourceRelationships.String()
+	entities := r.foreign.access.Entities.String()
+	tenantMembers := r.foreign.access.TenantMembers.String()
 	rows := make([]relationshipReviewRow, 0)
 	graphQuery := `SELECT relationships.subject_id AS principal_id, members.display_name AS principal_name,
 relationships.relation, entities.type AS resource_type, relationships.resource_id,

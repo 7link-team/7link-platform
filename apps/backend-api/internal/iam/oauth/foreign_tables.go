@@ -3,24 +3,37 @@ package oauth
 import (
 	"fmt"
 
-	gormx "7link.com/platform/pkg/extension/gorm"
+	"7link.com/platform/internal/iam/authn"
+	"7link.com/platform/internal/iam/core"
+	"7link.com/platform/internal/iam/identity"
+	"7link.com/platform/internal/iam/organization"
 )
 
-// foreignTables carries the names of the tables oauth reads but does not own.
-// Every owner is activated before oauth and publishes its set as a capability,
-// which oauth resolves during injection; a set that never arrived stays empty
-// and every lookup fails, so a missing publication is an error rather than a
-// name oauth would otherwise have to invent from its own prefix.
+// foreignTables carries the names of the tables oauth reads but does not own,
+// in the form each owner publishes them.
+//
+// Every owner is activated before oauth and oauth imports all four, so each
+// hands over a struct whose fields are the tables it owns rather than a set
+// looked up by a string. A table oauth asks for that its owner does not have is
+// then a compile error rather than a statement that fails in the deployment
+// that first runs it.
+//
+// Whether the names arrived is checked once, when the module initializes -- the
+// registry has run every Provide and Bind by then -- so an owner that published
+// nothing fails startup rather than the first query that needs it.
 type foreignTables struct {
-	access     gormx.TableSet
-	principal  gormx.TableSet
-	credential gormx.TableSet
-	directory  gormx.TableSet
+	access     core.AccessTableNames
+	principal  identity.PrincipalTableNames
+	credential authn.CredentialTableNames
+	directory  organization.DirectoryTableNames
 }
 
 // bind records what each owner published. It is what the module hands the
 // repository once injection has resolved the four capabilities.
-func (t *foreignTables) bind(access, principal, credential, directory gormx.TableSet) error {
+func (t *foreignTables) bind(
+	access core.AccessTableNames, principal identity.PrincipalTableNames,
+	credential authn.CredentialTableNames, directory organization.DirectoryTableNames,
+) error {
 	if t == nil {
 		return fmt.Errorf("%w: no holder for the published tables", errRepositoryUnavailable)
 	}
@@ -29,52 +42,9 @@ func (t *foreignTables) bind(access, principal, credential, directory gormx.Tabl
 	return nil
 }
 
-// accessTable returns the physical name core published for a logical table.
-func (t *foreignTables) accessTable(logical string) (string, error) {
-	if t == nil {
-		return "", fmt.Errorf("%w: no published access tables", errRepositoryUnavailable)
-	}
-	return publishedTableName(t.access, "core", logical)
-}
-
-// principalTable returns the physical name identity published for a logical
-// table.
-func (t *foreignTables) principalTable(logical string) (string, error) {
-	if t == nil {
-		return "", fmt.Errorf("%w: no published principal tables", errRepositoryUnavailable)
-	}
-	return publishedTableName(t.principal, "identity", logical)
-}
-
-// credentialTable returns the physical name authn published for a logical
-// table.
-func (t *foreignTables) credentialTable(logical string) (string, error) {
-	if t == nil {
-		return "", fmt.Errorf("%w: no published credential tables", errRepositoryUnavailable)
-	}
-	return publishedTableName(t.credential, "authn", logical)
-}
-
-// directoryTable returns the physical name organization published for a
-// logical table.
-func (t *foreignTables) directoryTable(logical string) (string, error) {
-	if t == nil {
-		return "", fmt.Errorf("%w: no published directory tables", errRepositoryUnavailable)
-	}
-	return publishedTableName(t.directory, "organization", logical)
-}
-
-// publishedTableName resolves one logical table in what an owner published. An
-// empty set means the owner has published nothing, and a missing name means it
-// published something incomplete; both are errors rather than a table name
-// this module would otherwise have to invent from its own prefix.
-func publishedTableName(published gormx.TableSet, owner, logical string) (string, error) {
-	if published.Len() == 0 {
-		return "", fmt.Errorf("%s has not published its table names: %w", owner, errRepositoryUnavailable)
-	}
-	name, ok := published.Lookup(logical)
-	if !ok {
-		return "", fmt.Errorf("%s did not publish %s: %w", owner, logical, errRepositoryUnavailable)
-	}
-	return name.String(), nil
+// bound reports whether every owner published. Until they all have, no
+// statement that reads a table oauth does not own may run.
+func (t *foreignTables) bound() bool {
+	return t != nil && t.access.Bound() && t.principal.Bound() &&
+		t.credential.Bound() && t.directory.Bound()
 }

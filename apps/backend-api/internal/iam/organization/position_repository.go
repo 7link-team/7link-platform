@@ -111,13 +111,10 @@ func (r *Repository) deletePosition(ctx context.Context, tenantID, id guid.ID, v
 }
 
 func (r *Repository) listPositionMembers(ctx context.Context, tenantID, positionID guid.ID) ([]positionMemberRow, error) {
-	tm, err := r.foreign.accessTable("iam_tenant_members")
-	if err != nil {
-		return nil, err
-	}
+	tm := r.foreign.access.TenantMembers.String()
 	var rows []positionMemberRow
 	pm := r.table(model.PositionMember{}.TableName())
-	err = r.writer().WithContext(ctx).Table(pm+" AS pm").Select("pm.*, tm.display_name, tm.email").
+	err := r.writer().WithContext(ctx).Table(pm+" AS pm").Select("pm.*, tm.display_name, tm.email").
 		Joins("JOIN "+tm+" AS tm ON tm.tenant_id = pm.tenant_id AND tm.principal_id = pm.principal_id").
 		Where("pm.tenant_id = ? AND pm.position_id = ?", tenantID, positionID).Order("tm.display_name ASC, pm.principal_id ASC").Scan(&rows).Error
 	if err != nil {
@@ -127,13 +124,10 @@ func (r *Repository) listPositionMembers(ctx context.Context, tenantID, position
 }
 
 func (r *Repository) getPositionMember(ctx context.Context, tenantID, positionID, principalID guid.ID) (*positionMemberRow, error) {
-	tm, err := r.foreign.accessTable("iam_tenant_members")
-	if err != nil {
-		return nil, err
-	}
+	tm := r.foreign.access.TenantMembers.String()
 	var row positionMemberRow
 	pm := r.table(model.PositionMember{}.TableName())
-	err = r.writer().WithContext(ctx).Table(pm+" AS pm").Select("pm.*, tm.display_name, tm.email").
+	err := r.writer().WithContext(ctx).Table(pm+" AS pm").Select("pm.*, tm.display_name, tm.email").
 		Joins("JOIN "+tm+" AS tm ON tm.tenant_id = pm.tenant_id AND tm.principal_id = pm.principal_id").
 		Where("pm.tenant_id = ? AND pm.position_id = ? AND pm.principal_id = ?", tenantID, positionID, principalID).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {

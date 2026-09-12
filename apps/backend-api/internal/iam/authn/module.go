@@ -162,6 +162,9 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[CredentialTables](services, CredentialTables{Published: TableSet(m.runtime.TablePrefix())}); err != nil {
 		return fmt.Errorf("provide authn credential tables: %w", err)
 	}
+	if err := module.Provide[CredentialTableNames](services, PublishedCredentialTableNames(m.runtime.TablePrefix())); err != nil {
+		return fmt.Errorf("provide authn credential table names: %w", err)
+	}
 	return nil
 }
 

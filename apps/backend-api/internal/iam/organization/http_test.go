@@ -126,9 +126,7 @@ func organizationDeclarationAPI(t *testing.T) huma.API {
 	require.NoError(t, module.Provide[identity.DirectoryTableSetConnector](services, identity.DirectoryTableSetConnector{
 		Bind: func(gormx.TableSet) error { return nil },
 	}))
-	require.NoError(t, module.Provide[core.AccessTables](services, core.AccessTables{
-		Published: core.TableSet(h.runtime.TablePrefix()),
-	}))
+	require.NoError(t, module.Provide[core.AccessTableNames](services, core.PublishedAccessTableNames(h.runtime.TablePrefix())))
 	require.NoError(t, module.Provide[guid.Source](services, newOrganizationTestIDs(9000)))
 	require.NoError(t, module.Provide[audit.Appender](services, h.appender))
 	require.NoError(t, services.Seal())

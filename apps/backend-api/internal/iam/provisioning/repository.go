@@ -408,10 +408,7 @@ func (r *Repository) credentialForAuth(ctx context.Context, id, tenantID, direct
 	var row credentialAuthRow
 	credentialTable := r.table(model.Credential{}.TableName())
 	directoryTable := r.table(model.Directory{}.TableName())
-	tenants, err := r.foreign.directoryTable("iam_tenants")
-	if err != nil {
-		return row, err
-	}
+	tenants := r.foreign.directory.Tenants.String()
 	query := r.writer().WithContext(ctx).Table(credentialTable+" AS credential").
 		Select("credential.*, directory.tenant_id AS tenant_id, directory.status AS directory_status, tenant.status AS tenant_status, COALESCE(directory.service_account_id, 0) AS service_account_id").
 		Joins("JOIN "+directoryTable+" AS directory ON directory.id = credential.directory_id").
@@ -423,7 +420,7 @@ func (r *Repository) credentialForAuth(ctx context.Context, id, tenantID, direct
 	if directoryID > 0 {
 		query = query.Where("directory.id = ? AND credential.directory_id = ?", directoryID, directoryID)
 	}
-	err = query.Take(&row).Error
+	err := query.Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return row, ErrUnauthorized
 	}
@@ -548,14 +545,8 @@ func (r *Repository) userPage(ctx context.Context, directoryID guid.ID, request 
 func (r *Repository) userQuery(directoryID guid.ID, includeDeleted bool) (*gorm.DB, error) {
 	resourceTable := r.table(model.Resource{}.TableName())
 	directoryTable := r.table(model.Directory{}.TableName())
-	principals, err := r.foreign.principalTable("iam_principals")
-	if err != nil {
-		return nil, err
-	}
-	members, err := r.foreign.accessTable("iam_tenant_members")
-	if err != nil {
-		return nil, err
-	}
+	principals := r.foreign.principal.Principals.String()
+	members := r.foreign.access.TenantMembers.String()
 	query := r.writer().Table(resourceTable+" AS resource").
 		Select("resource.*, principal.login_name, principal.email, principal.display_name, principal.status AS principal_status, member.status AS membership_status").
 		Joins("JOIN "+directoryTable+" AS directory ON directory.id = resource.directory_id").
@@ -619,10 +610,7 @@ func (r *Repository) groupPage(ctx context.Context, directoryID guid.ID, request
 func (r *Repository) groupQuery(directoryID guid.ID, includeDeleted bool) (*gorm.DB, error) {
 	resourceTable := r.table(model.Resource{}.TableName())
 	directoryTable := r.table(model.Directory{}.TableName())
-	groups, err := r.foreign.directoryTable("iam_groups")
-	if err != nil {
-		return nil, err
-	}
+	groups := r.foreign.directory.Groups.String()
 	query := r.writer().Table(resourceTable+" AS resource").
 		Select("resource.*, scim_group.name, scim_group.status").
 		Joins("JOIN "+directoryTable+" AS directory ON directory.id = resource.directory_id").
@@ -636,11 +624,8 @@ func (r *Repository) groupQuery(directoryID guid.ID, includeDeleted bool) (*gorm
 
 func (r *Repository) groupMembers(ctx context.Context, directoryID, groupID guid.ID) ([]guid.ID, error) {
 	ids := make([]guid.ID, 0)
-	members, err := r.foreign.directoryTable("iam_group_members")
-	if err != nil {
-		return nil, err
-	}
-	err = r.writer().WithContext(ctx).Table(members+" AS member").Select("member.principal_id").
+	members := r.foreign.directory.GroupMembers.String()
+	err := r.writer().WithContext(ctx).Table(members+" AS member").Select("member.principal_id").
 		Joins("JOIN "+r.table(model.Directory{}.TableName())+" AS directory ON directory.tenant_id = member.tenant_id").
 		Joins("JOIN "+r.table(model.Resource{}.TableName())+" AS resource ON resource.directory_id = directory.id AND resource.resource_type = ? AND resource.resource_id = member.principal_id AND resource.deleted_at IS NULL", ResourceUser).
 		Where("directory.id = ? AND member.group_id = ?", directoryID, groupID).Order("member.principal_id ASC").Scan(&ids).Error

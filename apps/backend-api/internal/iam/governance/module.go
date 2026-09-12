@@ -72,15 +72,15 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve governance administrator guard: %w", err)
 	}
-	accessTables, err := module.Resolve[core.AccessTables](services)
+	accessTables, err := module.Resolve[core.AccessTableNames](services)
 	if err != nil {
 		return fmt.Errorf("resolve governance access tables: %w", err)
 	}
-	directoryTables, err := module.Resolve[organization.DirectoryTables](services)
+	directoryTables, err := module.Resolve[organization.DirectoryTableNames](services)
 	if err != nil {
 		return fmt.Errorf("resolve governance directory tables: %w", err)
 	}
-	if err := m.foreign.bind(accessTables.Published, directoryTables.Published); err != nil {
+	if err := m.foreign.bind(accessTables, directoryTables); err != nil {
 		return fmt.Errorf("bind governance foreign tables: %w", err)
 	}
 	m.registrar, m.ids, m.appender, m.grants, m.administrators = registrar, ids, appender, grants, administrators
@@ -99,6 +99,11 @@ func (m *Module) Initialize(context.Context) error {
 		m.grants.RemovePermanent == nil || m.grants.RemoveGroupMembership == nil ||
 		m.grants.RemovePositionMembership == nil || m.grants.RemoveEntityRoleBinding == nil {
 		return errors.New("initialize governance: runtime, authz registrar, id generator, audit appender, role grant store, and administrator guard are required")
+	}
+	// Checked here rather than in every statement: injection has run, so an
+	// owner that published nothing is a deployment that must not start.
+	if !m.foreign.bound() {
+		return errors.New("initialize governance: the core and organization modules must publish the table names governance joins")
 	}
 	m.service = NewService(m.runtime, m.appender, m.grants, m.ids)
 	m.service.repo.foreign = &m.foreign

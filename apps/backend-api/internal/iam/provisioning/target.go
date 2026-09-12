@@ -126,12 +126,9 @@ func (s *Service) CreateTarget(ctx context.Context, tenantID guid.ID, name, base
 		if err := s.requireServiceAccount(ctx, repo, tenantID, serviceAccountID); err != nil {
 			return errors.Join(ErrInvalidTarget, err)
 		}
-		tenants, err := repo.foreign.directoryTable("iam_tenants")
-		if err != nil {
-			return err
-		}
+		tenants := repo.foreign.directory.Tenants.String()
 		var active int64
-		err = repo.writer().WithContext(ctx).Table(tenants).
+		err := repo.writer().WithContext(ctx).Table(tenants).
 			Where("id = ? AND status = 'active'", tenantID).Count(&active).Error
 		if err != nil {
 			return err

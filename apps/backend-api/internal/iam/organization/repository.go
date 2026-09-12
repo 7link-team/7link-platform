@@ -147,11 +147,9 @@ func (r *Repository) bumpPolicyRevision(ctx context.Context, tenantID guid.ID, n
 
 func (r *Repository) countRelationshipSubject(ctx context.Context, tenantID guid.ID, subjectType string, subjectID guid.ID) (int64, error) {
 	var total int64
-	for _, logical := range []string{"iam_relationships", "iam_resource_relationships"} {
-		table, err := r.foreign.accessTable(logical)
-		if err != nil {
-			return 0, err
-		}
+	for _, table := range []string{
+		r.foreign.access.Relationships.String(), r.foreign.access.ResourceRelationships.String(),
+	} {
 		var count int64
 		if err := r.writer().WithContext(ctx).Table(table).
 			Where("tenant_id = ? AND subject_type = ? AND subject_id = ?", tenantID, subjectType, subjectID).Count(&count).Error; err != nil {

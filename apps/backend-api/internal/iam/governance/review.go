@@ -438,14 +438,8 @@ FROM ` + r.tables(r.writer()).AccessReviewItems.TableName() + ` WHERE tenant_id 
 }
 
 func (r *Repository) removeRelationship(ctx context.Context, tenantID, principalID, grantID guid.ID) (bool, error) {
-	relationships, err := r.foreign.accessTable("iam_relationships")
-	if err != nil {
-		return false, err
-	}
-	resourceRelationships, err := r.foreign.accessTable("iam_resource_relationships")
-	if err != nil {
-		return false, err
-	}
+	relationships := r.foreign.access.Relationships.String()
+	resourceRelationships := r.foreign.access.ResourceRelationships.String()
 	result := r.writer().WithContext(ctx).Table(relationships).
 		Where("tenant_id = ? AND subject_type = ? AND subject_id = ? AND resource_id = ?", tenantID, "principal", principalID, grantID).
 		Delete(&struct{}{})

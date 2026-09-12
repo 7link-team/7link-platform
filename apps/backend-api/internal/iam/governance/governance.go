@@ -104,12 +104,9 @@ func (s *Service) RequestableRoles(ctx context.Context, tenantID guid.ID) ([]Req
 	if db == nil {
 		return nil, errRepositoryUnavailable
 	}
-	roleTable, err := s.repo.foreign.accessTable("iam_roles")
-	if err != nil {
-		return nil, err
-	}
+	roleTable := s.repo.foreign.access.Roles.String()
 	roles := make([]RequestableRole, 0)
-	err = db.WithContext(ctx).Table(roleTable).
+	err := db.WithContext(ctx).Table(roleTable).
 		Select("id, name, description").Where("tenant_id = ?", tenantID).
 		Order("name ASC, id ASC").Find(&roles).Error
 	if err != nil {
@@ -360,11 +357,8 @@ func (s *Service) revoke(ctx context.Context, tenantID, requestID, actorID guid.
 
 func (r *Repository) requestableRole(ctx context.Context, tenantID, roleID guid.ID) (RequestableRole, error) {
 	var role RequestableRole
-	roleTable, err := r.foreign.accessTable("iam_roles")
-	if err != nil {
-		return role, err
-	}
-	err = r.writer().WithContext(ctx).Table(roleTable).Select("id, name, description").
+	roleTable := r.foreign.access.Roles.String()
+	err := r.writer().WithContext(ctx).Table(roleTable).Select("id, name, description").
 		Where("tenant_id = ? AND id = ?", tenantID, roleID).Take(&role).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return role, ErrRoleNotFound
@@ -376,16 +370,10 @@ func (r *Repository) requestableRole(ctx context.Context, tenantID, roleID guid.
 }
 
 func (r *Repository) activeTenantMember(ctx context.Context, tenantID, principalID guid.ID) (bool, error) {
-	members, err := r.foreign.accessTable("iam_tenant_members")
-	if err != nil {
-		return false, err
-	}
-	tenants, err := r.foreign.directoryTable("iam_tenants")
-	if err != nil {
-		return false, err
-	}
+	members := r.foreign.access.TenantMembers.String()
+	tenants := r.foreign.directory.Tenants.String()
 	var count int64
-	err = r.writer().WithContext(ctx).Table(members+" AS members").
+	err := r.writer().WithContext(ctx).Table(members+" AS members").
 		Joins("JOIN "+tenants+" AS tenants ON tenants.id = members.tenant_id AND tenants.status = 'active'").
 		Where("members.tenant_id = ? AND members.principal_id = ? AND members.status = 'active'", tenantID, principalID).
 		Count(&count).Error

@@ -336,7 +336,8 @@ func newIAMPerformancePaths(t *testing.T, fixture *iamTenantFixture, bulkOperati
 	// binds the owners' published names itself.
 	scimPrefix := fixture.app.runtime.TablePrefix()
 	require.NoError(t, scim.BindForeignTables(
-		core.TableSet(scimPrefix), identity.TableSet(scimPrefix), organization.TableSet(scimPrefix),
+		core.PublishedAccessTableNames(scimPrefix), identity.PublishedPrincipalTableNames(scimPrefix),
+		organization.PublishedDirectoryTableNames(scimPrefix),
 	))
 	response := fixture.request(t, http.MethodPost, "/iam/service-accounts", iamTenantA, fixture.tokenA,
 		map[string]any{"login_name": "performance-scim-actor", "display_name": "Performance SCIM actor"}, nil)

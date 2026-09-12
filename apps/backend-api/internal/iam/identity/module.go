@@ -148,6 +148,9 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[PrincipalTables](services, PrincipalTables{Published: TableSet(m.runtime.TablePrefix())}); err != nil {
 		return fmt.Errorf("provide identity principal tables: %w", err)
 	}
+	if err := module.Provide[PrincipalTableNames](services, PublishedPrincipalTableNames(m.runtime.TablePrefix())); err != nil {
+		return fmt.Errorf("provide identity principal table names: %w", err)
+	}
 	return nil
 }
 
