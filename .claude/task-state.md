@@ -552,6 +552,23 @@ P4c 写的约 30 个运行时用例会收敛成每模块 1 个。**顺序在阶�
 出处记录在此与提交 `a35723c` 的说明里。**若日后觉得字段该如实，改字符串即可，不触发抬预算机制。**
 
 ## Last Checkpoint
+2026-09-12 **形状统一收尾**（用户在验收提问后要求「改，要到位」），提交 `01c14cf`：
+八个模块「不属于自己的表」这一层现在只有一种形状。
+- core 的 `joinedTables` → `foreignTables`（文件与配对测试同时改名），
+  `bindDirectoryTables`/`bindPrincipalTable` → `bindDirectory`/`bindPrincipal`；
+  删掉 `directoryBound`/`principalBound` 两个布尔——状态从名字本身读，布尔会与它描述的名字不一致
+- `organization.bindAccess` → `bind`（与同为一次性 Resolve 的四个模块一致）
+- **六个「消费方声明的载荷」补上 `Bound()`**（拥有者发布的五个本就有）。这是统一的关键一步：
+  八个模块的 `bound()` 现在都是「逐槽位问 `Bound()`」
+- authn 的 oauth 绑定器改为逐字段报名，断言随之**变严**（必须报出具体字段）
+**验证**：`make ci` **EXIT=0**；`make test-mysql8-run` **EXIT=0**，
+`TestIAMPerformanceExternalDatabase` **PASS**、性能基线 diff 为空、schema lock 219 未变
+——core 动了持有者类型与授权语句组装路径，指纹一致是「只换形状未改 SQL」的证据。
+**过程中的错误（写下来防再犯）**：做 `joined` → `foreign` 改名时用了全词正则，
+改到了英文注释与一个局部变量（`never joined` → `never foreign`、
+`consent joined to the client` → `consent foreign to`）。三个文件已还原。
+**机械替换必须先看命中列表再落笔**。
+
 2026-09-12 **阶段四（文档体检）完成**，提交 `848297f`（skill 补「何时不该让表名过界」+ D39/D37 加注）
 与 `8d696aa`（README 3 处、runbook 3 处事实订正）。
 审计方式是**逐条对照代码验证**，不是通读：后端 11 份 docs + README 共查出 5 处与代码矛盾的陈述。
