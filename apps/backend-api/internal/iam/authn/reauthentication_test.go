@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/authn/model"
+	"7link.com/platform/internal/iam/identity"
 	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -324,4 +326,34 @@ func TestReauthenticationRejectsExpiredExhaustedAndFederatedForgery(t *testing.T
 	service.now = func() time.Time { return repositoryTestNow.Add(reauthenticationTTL + time.Second) }
 	_, err = service.inspectFederatedReauthentication(t.Context(), cookie, federated.Proof)
 	assert.Error(t, err)
+}
+
+// TestReauthenticationPrincipalLockMatchesTheOwnersCapability pins the one
+// statement authn writes to a table identity owns purely to take a row lock,
+// and proves it is character-for-character the statement identity's own
+// PrincipalStateStore.LockActive sends. That equality is what lets authn stop
+// naming the principal table and call the owner's capability instead without
+// changing a single byte of SQL.
+func TestReauthenticationPrincipalLockMatchesTheOwnersCapability(t *testing.T) {
+	const frozen = `UPDATE "sl_iam_principals" SET "updated_at"=updated_at WHERE id = $1 AND status = $2`
+
+	harness := newAuthnRepositoryHarness(t, "sl_")
+	repo, recorded := newFrozenSQLRecorder(t, harness)
+	service, _ := newLocalService(t)
+
+	_, _ = service.lockReauthenticationSession(t.Context(), repo, 101, "session-hash")
+	statements := recorded()
+	require.NotEmpty(t, statements)
+	assert.Equal(t, frozen, statements[0], "the lock is the first statement of the transaction")
+
+	// The owner's capability, resolved the way a deployment resolves it.
+	services := module.NewServices()
+	require.NoError(t, identity.NewModule(harness.runtime, identity.Config{}).ProvideServices(services))
+	require.NoError(t, services.Seal())
+	principals, err := module.Resolve[identity.PrincipalStateStore](services)
+	require.NoError(t, err)
+
+	owner, ownerRecorded := newFrozenSQLRecorder(t, harness)
+	require.NoError(t, principals.LockActive(t.Context(), owner.writer(), 101))
+	assert.Equal(t, []string{frozen}, ownerRecorded())
 }

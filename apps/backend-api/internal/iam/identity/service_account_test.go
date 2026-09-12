@@ -12,7 +12,9 @@ import (
 	"7link.com/platform/pkg/extension/passwordx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func newServiceAccountHarness(t *testing.T, prefix string) *identityHarness {
@@ -662,4 +664,44 @@ func TestCreateServiceAccountCredentialSurfacesIDFailure(t *testing.T) {
 
 	_, err = harness.service.CreateServiceAccountCredential(t.Context(), 7, account.ID, "ci", []string{"read"}, nil)
 	assert.EqualError(t, err, "id source down")
+}
+
+// TestServiceAccountValidationSQLIsFrozen pins the statement behind
+// ValidateServiceAccount. Its query plan is one of the four fingerprints in
+// internal/app/testdata/iam_performance_baseline.json (path scim_bulk), and
+// that comparison needs an external MySQL or PostgreSQL instance, which
+// `make ci` does not provide. Freezing the text here makes a drift fail
+// `go test ./...` instead of surfacing only in the external run -- which also
+// closes the door on widening the capability's return type, because selecting
+// columns instead of count(*) would change this string.
+func TestServiceAccountValidationSQLIsFrozen(t *testing.T) {
+	const frozen = `SELECT count(*) FROM sl_iam_service_accounts AS service_account ` +
+		`JOIN sl_iam_principals AS principal ON principal.id = service_account.principal_id ` +
+		`JOIN sl_iam_tenant_members AS member ON member.principal_id = principal.id ` +
+		`AND member.tenant_id = service_account.owner_tenant_id ` +
+		`JOIN sl_iam_tenants AS tenant ON tenant.id = service_account.owner_tenant_id ` +
+		`WHERE (service_account.owner_tenant_id = $1 AND service_account.principal_id = $2) ` +
+		`AND (service_account.status = 'active' AND service_account.deleted_at IS NULL ` +
+		`AND (service_account.expires_at IS NULL OR service_account.expires_at > $3)) ` +
+		`AND (principal.status = 'active' AND principal.activation_required = $4 ` +
+		`AND member.status = 'active' AND tenant.status = 'active')`
+
+	harness := newIdentityHarness(t, "sl_")
+	connection, err := harness.db.DB()
+	require.NoError(t, err)
+	// The real PostgreSQL dialect with DryRun: the text is what a deployment
+	// sends, not what the SQLite fixture happens to accept.
+	db, err := gorm.Open(postgres.New(postgres.Config{Conn: connection}), &gorm.Config{
+		DryRun: true, SkipDefaultTransaction: true, DisableAutomaticPing: true,
+		NowFunc: func() time.Time { return identityTestNow },
+		Logger:  logger.Default.LogMode(logger.Silent),
+	})
+	require.NoError(t, err)
+	var recorded []string
+	require.NoError(t, db.Callback().Query().After("gorm:query").Register("freeze_service_account", func(tx *gorm.DB) {
+		recorded = append(recorded, tx.Statement.SQL.String())
+	}))
+
+	_, _ = harness.service.ValidateServiceAccount(t.Context(), db, 10, 2, identityTestNow)
+	assert.Equal(t, []string{frozen}, recorded)
 }

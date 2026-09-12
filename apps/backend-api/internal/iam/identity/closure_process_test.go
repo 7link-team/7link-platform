@@ -9,6 +9,7 @@ import (
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -132,4 +133,46 @@ func TestClosureProcessingFailuresAreAtomic(t *testing.T) {
 			require.Equal(t, "pending", state.Status)
 		})
 	}
+}
+
+// TestClosureRollbackLeavesEveryAuthnOwnedRowUntouched pins the invariant the
+// existing atomicity test leaves implicit: when a later stage fails, the
+// security state this transaction revoked must come back too. Sessions and both
+// credential-token tables belong to authn, so whichever module ends up writing
+// them, it has to write them inside the caller's transaction -- a capability
+// that opened its own connection would leave these rows revoked after the
+// rollback and no other test would notice.
+func TestClosureRollbackLeavesEveryAuthnOwnedRowUntouched(t *testing.T) {
+	h, p := closureHarness(t)
+	configureClosureProcessing(h)
+	_, err := h.service.ChangeClosureRequest(t.Context(), p.ID, 0, "pending", "browser", "verified")
+	require.NoError(t, err)
+
+	require.NoError(t, h.db.Table(h.table("iam_sessions")).Create(map[string]any{
+		"id": 9001, "principal_id": p.ID,
+	}).Error)
+	for index, table := range []string{"iam_password_recovery_tokens", "iam_email_verification_tokens"} {
+		require.NoError(t, h.db.Table(h.table(table)).Create(map[string]any{
+			"id": 9100 + index, "principal_id": p.ID,
+		}).Error)
+	}
+
+	// Fail after the security state has already been revoked in this transaction.
+	h.service.closeOAuth = func(context.Context, *gorm.DB, guid.ID) error {
+		return errors.New("processing dependency unavailable")
+	}
+	_, err = h.service.ProcessClosureRequest(t.Context(), p.ID, 1)
+	require.Error(t, err)
+
+	var revoked int64
+	require.NoError(t, h.db.Table(h.table("iam_sessions")).
+		Where("principal_id = ? AND revoked_at IS NOT NULL", p.ID).Count(&revoked).Error)
+	assert.Zero(t, revoked, "a rolled back closure must not leave a session revoked")
+	for _, table := range []string{"iam_password_recovery_tokens", "iam_email_verification_tokens"} {
+		var consumed int64
+		require.NoError(t, h.db.Table(h.table(table)).
+			Where("principal_id = ? AND consumed_at IS NOT NULL", p.ID).Count(&consumed).Error)
+		assert.Zero(t, consumed, "a rolled back closure must not leave %s consumed", table)
+	}
+	assert.Equal(t, "active", h.principal(t, p.ID).Status)
 }

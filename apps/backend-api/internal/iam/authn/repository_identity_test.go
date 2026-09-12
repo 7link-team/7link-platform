@@ -11,7 +11,9 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func TestRepositoryIdentityReadsRespectIdentityOwnershipAndPrefix(t *testing.T) {
@@ -271,4 +273,189 @@ func TestRepositoryCredentialCASAndPasswordHistory(t *testing.T) {
 	history, err = harness.repository.listPasswordHistory(t.Context(), 1, 0)
 	require.NoError(t, err)
 	assert.Len(t, history, 5)
+}
+
+// serviceAccountExistsSubquery is emitted as its own statement: gorm builds a
+// NOT EXISTS argument through a separate Statement, so a call that reads
+// principals while excluding service accounts sends two, in this order.
+const serviceAccountExistsSubquery = `SELECT 1 FROM sl_iam_service_accounts AS service_account ` +
+	`WHERE service_account.principal_id = principal.id`
+
+// frozenIdentitySQL is the exact text of every statement authn runs against a
+// table identity owns, in the order one call emits them. Two of them -- the
+// principal/credential joins -- are also pinned by the query-plan fingerprints
+// in internal/app/testdata/iam_performance_baseline.json, and that comparison
+// only runs against an external MySQL or PostgreSQL instance, which `make ci`
+// does not provide. Freezing the text here is what makes a drift visible to
+// `go test ./...` rather than only to the external run.
+var frozenIdentitySQL = map[string][]string{
+	"lockPrincipal": {
+		`SELECT * FROM "sl_iam_principals" WHERE id = $1 AND status = $2 LIMIT $3 FOR UPDATE`,
+	},
+	"lockPrincipalByLogin": {
+		`SELECT * FROM "sl_iam_principals" WHERE login_name = $1 LIMIT $2 FOR UPDATE`,
+	},
+	"getActivePrincipal": {
+		`SELECT * FROM "sl_iam_principals" WHERE id = $1 AND status = $2 LIMIT $3`,
+	},
+	"verifyPrincipalEmail": {
+		`UPDATE "sl_iam_principals" SET "activation_required"=$1,"email_verified"=$2,` +
+			`"updated_at"=$3 WHERE id = $4 AND status = $5 AND email = $6 AND email_verified = $7`,
+	},
+	"findLoginPrincipal": {
+		serviceAccountExistsSubquery,
+		`SELECT * FROM sl_iam_principals AS principal WHERE principal.login_name = $1 ` +
+			`AND NOT EXISTS (` + serviceAccountExistsSubquery + `) LIMIT $2`,
+	},
+	"findRecoveryPrincipal": {
+		serviceAccountExistsSubquery,
+		`SELECT * FROM sl_iam_principals AS principal ` +
+			`WHERE (status = $1 AND email_verified = $2) ` +
+			`AND (LOWER(principal.login_name) = $3 OR LOWER(principal.email) = $4) ` +
+			`AND NOT EXISTS (` + serviceAccountExistsSubquery + `) LIMIT $5`,
+	},
+	"principalState": {
+		`SELECT principal.status AS status, ` +
+			`COALESCE(credential.credential_version, 0) AS credential_version ` +
+			`FROM sl_iam_principals AS principal ` +
+			`LEFT JOIN sl_iam_credentials AS credential ON credential.principal_id = principal.id ` +
+			`WHERE principal.id = $1 LIMIT $2`,
+	},
+	"activePrincipalClaims": {
+		`SELECT principal.id, principal.login_name, principal.email, ` +
+			`principal.email_verified, principal.activation_required, principal.display_name, ` +
+			`principal.status, principal.created_at, principal.updated_at, ` +
+			`COALESCE(credential.credential_version, 0) AS credential_version ` +
+			`FROM sl_iam_principals AS principal ` +
+			`LEFT JOIN sl_iam_credentials AS credential ON credential.principal_id = principal.id ` +
+			`WHERE principal.id = $1 AND principal.status = $2 AND principal.activation_required = $3 LIMIT $4`,
+	},
+	"serviceAccountState": {
+		`SELECT account.owner_tenant_id AS tenant_id, account.status AS account_status, ` +
+			`account.expires_at, account.token_version, principal.status AS principal_status, ` +
+			`member.status AS member_status, tenant.status AS tenant_status ` +
+			`FROM sl_iam_service_accounts AS account ` +
+			`JOIN sl_iam_principals AS principal ON principal.id = account.principal_id ` +
+			`JOIN sl_iam_tenant_members AS member ON member.tenant_id = account.owner_tenant_id ` +
+			`AND member.principal_id = account.principal_id ` +
+			`JOIN sl_iam_tenants AS tenant ON tenant.id = account.owner_tenant_id ` +
+			`WHERE account.principal_id = $1 LIMIT $2`,
+	},
+}
+
+// newFrozenSQLRecorder renders through the real PostgreSQL dialect with DryRun,
+// so the recorded text is what a deployment sends rather than what SQLite
+// accepts. It returns the repository to call and a function that yields the
+// statements the last call produced, in order, and resets the recording.
+func newFrozenSQLRecorder(t *testing.T, harness *authnRepositoryHarness) (*Repository, func() []string) {
+	t.Helper()
+	connection, err := harness.db.DB()
+	require.NoError(t, err)
+	db, err := gorm.Open(postgres.New(postgres.Config{Conn: connection}), &gorm.Config{
+		DryRun: true, SkipDefaultTransaction: true, DisableAutomaticPing: true,
+		NowFunc: func() time.Time { return repositoryTestNow },
+		Logger:  logger.Default.LogMode(logger.Silent),
+	})
+	require.NoError(t, err)
+	var recorded []string
+	capture := func(tx *gorm.DB) { recorded = append(recorded, tx.Statement.SQL.String()) }
+	require.NoError(t, db.Callback().Query().After("gorm:query").Register("freeze_identity_query", capture))
+	require.NoError(t, db.Callback().Update().After("gorm:update").Register("freeze_identity_update", capture))
+	return harness.repository.withDB(db, true), func() []string {
+		statements := recorded
+		recorded = nil
+		return statements
+	}
+}
+
+func TestStatementsAgainstIdentityTablesAreFrozen(t *testing.T) {
+	harness := newAuthnRepositoryHarness(t, "sl_")
+	repo, recorded := newFrozenSQLRecorder(t, harness)
+
+	for name, run := range map[string]func() error{
+		"lockPrincipal":         func() error { _, e := repo.lockPrincipal(t.Context(), 101); return e },
+		"lockPrincipalByLogin":  func() error { _, e := repo.lockPrincipalByLogin(t.Context(), "alice"); return e },
+		"getActivePrincipal":    func() error { _, e := repo.getActivePrincipal(t.Context(), 101); return e },
+		"findLoginPrincipal":    func() error { _, e := repo.findLoginPrincipal(t.Context(), "alice"); return e },
+		"findRecoveryPrincipal": func() error { _, e := repo.findRecoveryPrincipal(t.Context(), "a@b.test"); return e },
+		"principalState":        func() error { _, e := repo.principalState(t.Context(), 101); return e },
+		"serviceAccountState":   func() error { _, e := repo.serviceAccountState(t.Context(), 101); return e },
+		"activePrincipalClaims": func() error { _, _, e := repo.activePrincipalClaims(t.Context(), 101); return e },
+		"verifyPrincipalEmail": func() error {
+			_, e := repo.verifyPrincipalEmail(t.Context(), 101, "a@b.test", repositoryTestNow)
+			return e
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_ = run()
+			assert.Equal(t, frozenIdentitySQL[name], recorded())
+		})
+	}
+}
+
+// TestSecurityStateWritesRefuseADisabledPrincipal is the invariant every
+// lockPrincipal caller relies on: a principal that is absent or no longer
+// active must stop the operation, so a disabled account cannot be issued a
+// recovery token, enrolled in MFA, sent an email verification, or given a
+// passkey. Six of the seven callers discard the returned row and keep only the
+// error, so this is the only place the guard is observable -- and the only
+// thing standing between a refactor and a disabled account walking through
+// password recovery.
+func TestSecurityStateWritesRefuseADisabledPrincipal(t *testing.T) {
+	harness := newAuthnRepositoryHarness(t, "sl_")
+	harness.seedPrincipal(t, 1, "alice")
+	require.NoError(t, harness.db.Table("sl_iam_principals").
+		Where("id = ?", 1).Update("status", "disabled").Error)
+	repo := harness.repository
+
+	for name, run := range map[string]func() error{
+		"password recovery": func() error {
+			return repo.createPasswordRecovery(t.Context(), &model.PasswordRecoveryToken{
+				PrincipalID: 1, TokenHMAC: "recovery-hash", ExpiresAt: repositoryTestNow.Add(time.Hour),
+				CreatedAt: repositoryTestNow,
+			}, repositoryTestNow)
+		},
+		"email verification": func() error {
+			return repo.replaceEmailVerification(t.Context(), &model.EmailVerificationToken{
+				PrincipalID: 1, Email: "alice@example.test", TokenHMAC: "verify-hash",
+				ExpiresAt: repositoryTestNow.Add(time.Hour), CreatedAt: repositoryTestNow,
+			}, repositoryTestNow)
+		},
+		"mfa enrollment": func() error {
+			return repo.replaceMFAEnrollment(t.Context(), &model.MFAEnrollment{
+				PrincipalID: 1, SecretCiphertext: "cipher",
+				CreatedAt: repositoryTestNow, ExpiresAt: repositoryTestNow.Add(time.Hour),
+			})
+		},
+		"mfa enrollment lookup": func() error {
+			_, err := repo.activeMFAEnrollmentForUpdate(t.Context(), 1, repositoryTestNow)
+			return err
+		},
+		"passkey": func() error {
+			_, err := repo.createPasskey(t.Context(), &model.Passkey{
+				IDHash: "passkey-hash", PrincipalID: 1, Name: "laptop",
+				CredentialCiphertext: "cipher",
+				CreatedAt:            repositoryTestNow, UpdatedAt: repositoryTestNow,
+			}, 5)
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.ErrorIs(t, run(), gorm.ErrRecordNotFound)
+		})
+	}
+}
+
+// TestRecoveryIdentifierWithNoMatchReportsNotFound covers the zero-row arm of
+// findRecoveryPrincipal. The one-row and two-row arms are covered by
+// TestRepositoryRecoveryIdentifierMustResolveOneHumanPrincipal; without this
+// one, a refactor could collapse "nobody" into "ambiguous" and the suite would
+// stay green.
+func TestRecoveryIdentifierWithNoMatchReportsNotFound(t *testing.T) {
+	harness := newAuthnRepositoryHarness(t, "sl_")
+	harness.seedPrincipal(t, 1, "alice")
+
+	_, err := harness.repository.findRecoveryPrincipal(t.Context(), "nobody@example.test")
+	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	assert.NotErrorIs(t, err, errAmbiguousRecoveryPrincipal)
 }
