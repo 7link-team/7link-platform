@@ -22,7 +22,7 @@ type tenantAdministratorGuard struct {
 	prefix    string
 	revisions *RevisionStore
 	now       func() time.Time
-	joined    *joinedTables
+	foreign   *foreignTables
 }
 
 // NewAdministratorGuard creates the tenant-administrator safety capability.
@@ -39,7 +39,7 @@ func NewAdministratorGuard(runtime *appenv.Runtime) *tenantAdministratorGuard {
 	}
 	return &tenantAdministratorGuard{
 		prefix: runtime.TablePrefix(), revisions: revisions, now: time.Now,
-		joined: &joinedTables{},
+		foreign: &foreignTables{},
 	}
 }
 
@@ -76,7 +76,7 @@ func (guard *tenantAdministratorGuard) hasDurableAdministrator(
 	tenantID guid.ID,
 ) (bool, error) {
 	now := guard.now().UTC().Truncate(time.Millisecond)
-	tables, err := guard.joined.authorizationTables(guard.prefix)
+	tables, err := guard.foreign.authorizationTables(guard.prefix)
 	if err != nil {
 		return false, err
 	}

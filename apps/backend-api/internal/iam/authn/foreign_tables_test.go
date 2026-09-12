@@ -114,14 +114,19 @@ func TestForeignTablesRejectAnIncompletePublication(t *testing.T) {
 	require.ErrorIs(t, err, errRepositoryUnavailable)
 	assert.Contains(t, err.Error(), "organization left Tenants empty")
 
-	for name, half := range map[string]OAuthTableNames{
-		"no clients":        {RefreshTokens: gormx.NewTableName("sl_", "iam_refresh_tokens")},
-		"no refresh tokens": {Clients: gormx.NewTableName("sl_", "iam_oauth_clients")},
+	for name, half := range map[string]struct {
+		published OAuthTableNames
+		missing   string
+	}{
+		"no clients":        {OAuthTableNames{RefreshTokens: gormx.NewTableName("sl_", "iam_refresh_tokens")}, "Clients"},
+		"no refresh tokens": {OAuthTableNames{Clients: gormx.NewTableName("sl_", "iam_oauth_clients")}, "RefreshTokens"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			err := (&foreignTables{}).bindOAuth(half)
+			err := (&foreignTables{}).bindOAuth(half.published)
 			require.ErrorIs(t, err, errRepositoryUnavailable)
-			assert.Contains(t, err.Error(), "oauth left Clients or RefreshTokens empty")
+			// The binder names the field it did not get. Reporting only that
+			// something was missing left the reader to work out which.
+			assert.Contains(t, err.Error(), "oauth left "+half.missing+" empty")
 		})
 	}
 

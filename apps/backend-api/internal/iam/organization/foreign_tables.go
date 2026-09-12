@@ -22,10 +22,10 @@ type foreignTables struct {
 	access core.AccessTableNames
 }
 
-// bindAccess records the table names the core module published to organization.
+// bind records the table names the core module published to organization.
 // It is what the module hands the repositories once injection has resolved the
 // capability.
-func (t *foreignTables) bindAccess(access core.AccessTableNames) error {
+func (t *foreignTables) bind(access core.AccessTableNames) error {
 	if t == nil {
 		return fmt.Errorf("%w: no holder for the published access tables", errRepositoryUnavailable)
 	}

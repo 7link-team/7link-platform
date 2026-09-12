@@ -134,6 +134,43 @@ type DirectoryTableNames struct {
 	Tenants              gormx.TableName
 }
 
+// Bound reports whether every name core declared arrived. The owner fills the
+// struct field by field, so a field left empty means the owner filled part of
+// it -- which is why this asks about all of them rather than one.
+func (t DirectoryTableNames) Bound() bool {
+	for _, name := range t.each() {
+		if name.name.IsZero() {
+			return false
+		}
+	}
+	return true
+}
+
+// each pairs every declared name with its field, so the binder can say which
+// one the owner left empty instead of only that something is missing.
+func (t DirectoryTableNames) each() []struct {
+	name  gormx.TableName
+	field string
+} {
+	return []struct {
+		name  gormx.TableName
+		field string
+	}{
+		{t.Groups, "Groups"},
+		{t.GroupMembers, "GroupMembers"},
+		{t.GroupRoleBindings, "GroupRoleBindings"},
+		{t.Positions, "Positions"},
+		{t.PositionMembers, "PositionMembers"},
+		{t.PositionRoleBindings, "PositionRoleBindings"},
+		{t.Departments, "Departments"},
+		{t.DepartmentClosure, "DepartmentClosure"},
+		{t.MemberDepartments, "MemberDepartments"},
+		{t.RoleDataScopes, "RoleDataScopes"},
+		{t.RoleScopeDepartments, "RoleScopeDepartments"},
+		{t.Tenants, "Tenants"},
+	}
+}
+
 // DirectoryTableNamesConnector lets the module that owns the directory tables
 // fill in the names core declared. The owner is activated after core, so the
 // names arrive through this connector rather than as a prefix core would
@@ -147,6 +184,9 @@ type DirectoryTableNamesConnector struct {
 type PrincipalTableNames struct {
 	Principals gormx.TableName
 }
+
+// Bound reports whether the name core declared arrived.
+func (t PrincipalTableNames) Bound() bool { return !t.Principals.IsZero() }
 
 // PrincipalTableNamesConnector lets the module that owns the principal table
 // fill in the name core declared.

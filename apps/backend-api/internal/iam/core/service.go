@@ -65,7 +65,7 @@ func NewService(
 	// the repository bind the guard with it, and an unbound guard reports
 	// ErrUnavailable instead of reading a table it cannot name.
 	guard := NewAdministratorGuard(repository.runtime)
-	guard.joined = repository.joined
+	guard.foreign = repository.foreign
 	return &Service{
 		registry: registry, repo: repository, checker: checker,
 		writes:         newTransactionCoordinator(repository, appender),

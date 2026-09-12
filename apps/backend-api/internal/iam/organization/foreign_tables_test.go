@@ -19,7 +19,7 @@ import (
 func bindForeignTables(t *testing.T, repository *Repository, prefix string) {
 	t.Helper()
 	require.NotNil(t, repository)
-	require.NoError(t, repository.foreign.bindAccess(core.PublishedAccessTableNames(prefix)))
+	require.NoError(t, repository.foreign.bind(core.PublishedAccessTableNames(prefix)))
 }
 
 // The bound constructors below build a service the way Initialize does: with
@@ -99,7 +99,7 @@ func TestForeignTablesCarryWhatCorePublished(t *testing.T) {
 	t.Parallel()
 
 	tables := &foreignTables{}
-	require.NoError(t, tables.bindAccess(core.PublishedAccessTableNames("sl_")))
+	require.NoError(t, tables.bind(core.PublishedAccessTableNames("sl_")))
 	require.True(t, tables.bound())
 
 	for want, got := range map[string]string{
@@ -122,11 +122,11 @@ func TestForeignTablesAreUnboundUntilCorePublishes(t *testing.T) {
 
 	var absent *foreignTables
 	assert.False(t, absent.bound())
-	assert.ErrorIs(t, absent.bindAccess(core.PublishedAccessTableNames("sl_")), errRepositoryUnavailable)
+	assert.ErrorIs(t, absent.bind(core.PublishedAccessTableNames("sl_")), errRepositoryUnavailable)
 
 	assert.False(t, (&foreignTables{}).bound())
 
 	unpublished := &foreignTables{}
-	require.NoError(t, unpublished.bindAccess(core.AccessTableNames{}))
+	require.NoError(t, unpublished.bind(core.AccessTableNames{}))
 	assert.False(t, unpublished.bound())
 }

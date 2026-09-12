@@ -125,7 +125,7 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve organization access tables: %w", err)
 	}
-	if err := m.foreign.bindAccess(accessTables); err != nil {
+	if err := m.foreign.bind(accessTables); err != nil {
 		return fmt.Errorf("bind organization access tables: %w", err)
 	}
 	directorySources, err := module.Resolve[core.DirectoryAuthorizationSourceConnector](services)

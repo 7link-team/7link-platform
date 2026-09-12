@@ -58,7 +58,7 @@ func newRepositoryHarness(t *testing.T, prefix string) repositoryHarness {
 	now := repositoryTestTime
 	repository := NewRepository(runtime, newRepositoryTestIDs(1000))
 	repository.now = func() time.Time { return now }
-	repository.joined = joinedTestTables(t, prefix)
+	repository.foreign = joinedTestTables(t, prefix)
 	return repositoryHarness{repository: repository, db: router.Write(), runtime: runtime, now: &now}
 }
 

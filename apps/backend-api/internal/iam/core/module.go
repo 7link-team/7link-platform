@@ -44,10 +44,10 @@ type Module struct {
 	ids            guid.Source
 	appender       audit.Appender
 
-	// joined is the one holder of the table names other modules publish to the
+	// foreign is the one holder of the table names other modules publish to the
 	// tables core JOINS but does not own. Every reader core hands out shares it,
 	// so the connectors below bind once for the whole module.
-	joined joinedTables
+	foreign foreignTables
 
 	// administratorPresent latches the readiness gate. The last-administrator
 	// guard means the count never returns to zero, so once it is satisfied the
@@ -69,11 +69,11 @@ func NewModule(runtime *appenv.Runtime, config Config) *Module {
 	}
 	// Every reader that JOINs a table core does not own shares the module's one
 	// holder, so the connector the owner calls binds the whole module at once.
-	instance.checker = &Authorizer{joined: &instance.joined}
+	instance.checker = &Authorizer{foreign: &instance.foreign}
 	instance.members = NewMembershipChecker(runtime)
-	instance.members.joined = &instance.joined
+	instance.members.foreign = &instance.foreign
 	guard := NewAdministratorGuard(runtime)
-	guard.joined = &instance.joined
+	guard.foreign = &instance.foreign
 	instance.administrators = guard
 	return instance
 }
@@ -126,12 +126,12 @@ func (m *Module) ProvideServices(services *module.Services) error {
 		return fmt.Errorf("provide IAM directory authorization source connector: %w", err)
 	}
 	if err := module.Provide[DirectoryTableNamesConnector](services, DirectoryTableNamesConnector{
-		Bind: m.joined.bindDirectoryTables,
+		Bind: m.foreign.bindDirectory,
 	}); err != nil {
 		return fmt.Errorf("provide IAM directory table names connector: %w", err)
 	}
 	if err := module.Provide[PrincipalTableNamesConnector](services, PrincipalTableNamesConnector{
-		Bind: m.joined.bindPrincipalTable,
+		Bind: m.foreign.bindPrincipal,
 	}); err != nil {
 		return fmt.Errorf("provide IAM principal table names connector: %w", err)
 	}
@@ -156,10 +156,10 @@ func (m *Module) InjectServices(services *module.Services) error {
 	}
 	m.ids, m.appender = ids, appender
 	repository := NewRepository(m.runtime, ids)
-	repository.joined = &m.joined
+	repository.foreign = &m.foreign
 	// Keep the provider-phase pointer stable; requests start only after wiring.
 	*m.checker = *NewAuthorizerWithRegistry(m.runtime, m.registrar.Registry())
-	m.checker.joined = &m.joined
+	m.checker.foreign = &m.foreign
 	if err := m.registrar.Bind(verifier, m.checker, m.members); err != nil {
 		return fmt.Errorf("bind authorization registrar: %w", err)
 	}

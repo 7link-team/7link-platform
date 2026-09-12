@@ -44,9 +44,9 @@ func publishedPrincipalTable(prefix string) PrincipalTableNames {
 }
 
 // joinedTestTables returns a holder wired the way a running deployment wires it.
-func joinedTestTables(t *testing.T, prefix string) *joinedTables {
+func joinedTestTables(t *testing.T, prefix string) *foreignTables {
 	t.Helper()
-	tables := &joinedTables{}
+	tables := &foreignTables{}
 	require.NoError(t, tables.bind(publishedDirectoryTables(prefix), publishedPrincipalTable(prefix)))
 	return tables
 }
@@ -65,7 +65,7 @@ func testAuthorizationTables(t *testing.T, prefix string) query.AuthorizationTab
 // names are the ones organization and identity would publish.
 func bindModuleTables(t *testing.T, module *Module, prefix string) {
 	t.Helper()
-	require.NoError(t, module.joined.bind(publishedDirectoryTables(prefix), publishedPrincipalTable(prefix)))
+	require.NoError(t, module.foreign.bind(publishedDirectoryTables(prefix), publishedPrincipalTable(prefix)))
 }
 
 // boundGuard, boundChecker and boundAuthorizer wire a reader built outside the
@@ -75,21 +75,21 @@ func bindModuleTables(t *testing.T, module *Module, prefix string) {
 func boundGuard(t *testing.T, runtime *appenv.Runtime, prefix string) *tenantAdministratorGuard {
 	t.Helper()
 	guard := NewAdministratorGuard(runtime)
-	guard.joined = joinedTestTables(t, prefix)
+	guard.foreign = joinedTestTables(t, prefix)
 	return guard
 }
 
 func boundChecker(t *testing.T, runtime *appenv.Runtime, prefix string) *MembershipChecker {
 	t.Helper()
 	checker := NewMembershipChecker(runtime)
-	checker.joined = joinedTestTables(t, prefix)
+	checker.foreign = joinedTestTables(t, prefix)
 	return checker
 }
 
 func boundAuthorizer(t *testing.T, runtime *appenv.Runtime, prefix string) *Authorizer {
 	t.Helper()
 	authorizer := NewAuthorizer(runtime)
-	authorizer.joined = joinedTestTables(t, prefix)
+	authorizer.foreign = joinedTestTables(t, prefix)
 	return authorizer
 }
 
@@ -158,17 +158,17 @@ func TestJoinedTablesRejectAnOwnerThatDoesNotPublish(t *testing.T) {
 		incomplete := publishedDirectoryTables("sl_")
 		reflect.ValueOf(&incomplete).Elem().Field(index).SetZero()
 
-		short := &joinedTables{}
-		require.ErrorContains(t, short.bindDirectoryTables(incomplete), field)
+		short := &foreignTables{}
+		require.ErrorContains(t, short.bindDirectory(incomplete), field)
 		assert.False(t, short.bound(), field)
 	}
 
-	noPrincipal := &joinedTables{}
-	err := noPrincipal.bindPrincipalTable(PrincipalTableNames{})
+	noPrincipal := &foreignTables{}
+	err := noPrincipal.bindPrincipal(PrincipalTableNames{})
 	require.ErrorContains(t, err, "Principals")
 	assert.False(t, noPrincipal.bound())
 
-	partial := &joinedTables{}
+	partial := &foreignTables{}
 	err = partial.bind(publishedDirectoryTables("sl_"), PrincipalTableNames{})
 	require.Error(t, err)
 	assert.False(t, partial.bound(), "a half-bound holder must not report itself bound")
@@ -181,7 +181,7 @@ func TestJoinedTablesRejectAnOwnerThatDoesNotPublish(t *testing.T) {
 func TestJoinedTablesReportUnboundAsUnavailable(t *testing.T) {
 	t.Parallel()
 
-	unbound := &joinedTables{}
+	unbound := &foreignTables{}
 	names, err := unbound.authorizationTables("sl_")
 	assert.ErrorIs(t, err, ErrUnavailable)
 	assert.Empty(t, names.Tables.Roles.String())
@@ -189,14 +189,14 @@ func TestJoinedTablesReportUnboundAsUnavailable(t *testing.T) {
 	assert.ErrorIs(t, err, ErrUnavailable)
 	assert.True(t, directory.Groups.IsZero())
 
-	var absent *joinedTables
+	var absent *foreignTables
 	assert.False(t, absent.bound())
 	_, err = absent.authorizationTables("sl_")
 	assert.ErrorIs(t, err, ErrUnavailable)
 	_, err = absent.directoryNames()
 	assert.ErrorIs(t, err, ErrUnavailable)
-	assert.ErrorIs(t, absent.bindDirectoryTables(publishedDirectoryTables("sl_")), ErrUnavailable)
-	assert.ErrorIs(t, absent.bindPrincipalTable(publishedPrincipalTable("sl_")), ErrUnavailable)
+	assert.ErrorIs(t, absent.bindDirectory(publishedDirectoryTables("sl_")), ErrUnavailable)
+	assert.ErrorIs(t, absent.bindPrincipal(publishedPrincipalTable("sl_")), ErrUnavailable)
 }
 
 // TestModuleReadersFailClosedUntilTheOwnersPublish is the guarantee the
@@ -315,5 +315,5 @@ func TestBindForeignTablesGuardsAnAbsentReaderAndAMissingHolder(t *testing.T) {
 
 	checker := &MembershipChecker{}
 	require.NoError(t, checker.BindForeignTables(directory, principal))
-	assert.True(t, checker.joined.bound())
+	assert.True(t, checker.foreign.bound())
 }

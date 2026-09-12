@@ -15,14 +15,14 @@ import (
 // authorization consumers. It owns no mutation methods.
 type MembershipChecker struct {
 	runtime *appenv.Runtime
-	joined  *joinedTables
+	foreign *foreignTables
 }
 
 func NewMembershipChecker(runtime *appenv.Runtime) *MembershipChecker {
 	if runtime == nil {
 		panic("iam membership checker requires runtime")
 	}
-	return &MembershipChecker{runtime: runtime, joined: &joinedTables{}}
+	return &MembershipChecker{runtime: runtime, foreign: &foreignTables{}}
 }
 
 // authorizationTables binds the names the membership statements read: core's
@@ -30,7 +30,7 @@ func NewMembershipChecker(runtime *appenv.Runtime) *MembershipChecker {
 // from the modules that own them. An owner that has not published is
 // ErrUnavailable, not an empty table name in a statement.
 func (m *MembershipChecker) authorizationTables() (query.AuthorizationTables, error) {
-	return m.joined.authorizationTables(m.prefix())
+	return m.foreign.authorizationTables(m.prefix())
 }
 
 // BindForeignTables records the table-name sets of the tables membership reads
@@ -42,10 +42,10 @@ func (m *MembershipChecker) BindForeignTables(directory DirectoryTableNames, pri
 	if m == nil {
 		return ErrUnavailable
 	}
-	if m.joined == nil {
-		m.joined = &joinedTables{}
+	if m.foreign == nil {
+		m.foreign = &foreignTables{}
 	}
-	return m.joined.bind(directory, principal)
+	return m.foreign.bind(directory, principal)
 }
 
 func (m *MembershipChecker) IsMemberActive(ctx context.Context, tenantID, principalID guid.ID) (bool, error) {

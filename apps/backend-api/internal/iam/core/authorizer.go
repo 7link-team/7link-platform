@@ -28,7 +28,7 @@ type Authorizer struct {
 	revisions        *RevisionStore
 	now              func() time.Time
 	directorySources DirectoryAuthorizationSourceStore
-	joined           *joinedTables
+	foreign          *foreignTables
 }
 
 // The persistence shapes live in the query package, which owns the statements
@@ -44,7 +44,7 @@ type (
 // it only joins, from the owners that published them. An owner that has not
 // published is ErrUnavailable, not an empty table name in a statement.
 func (a *Authorizer) authorizationTables() (query.AuthorizationTables, error) {
-	return a.joined.authorizationTables(a.prefix)
+	return a.foreign.authorizationTables(a.prefix)
 }
 
 // BindForeignTables records the table-name sets of the tables authorization
@@ -56,10 +56,10 @@ func (a *Authorizer) BindForeignTables(directory DirectoryTableNames, principal 
 	if a == nil {
 		return ErrUnavailable
 	}
-	if a.joined == nil {
-		a.joined = &joinedTables{}
+	if a.foreign == nil {
+		a.foreign = &foreignTables{}
 	}
-	return a.joined.bind(directory, principal)
+	return a.foreign.bind(directory, principal)
 }
 
 type authorizationSnapshot struct {
@@ -95,7 +95,7 @@ func NewAuthorizerWithRegistry(runtime *appenv.Runtime, registry *authz.Registry
 	}
 	return &Authorizer{
 		runtime: runtime, prefix: runtime.TablePrefix(), registry: registry,
-		revisions: revisions, now: time.Now, joined: &joinedTables{},
+		revisions: revisions, now: time.Now, foreign: &foreignTables{},
 	}
 }
 

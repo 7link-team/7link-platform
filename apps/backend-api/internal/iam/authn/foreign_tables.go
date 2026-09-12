@@ -5,6 +5,7 @@ import (
 
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
+	gormx "7link.com/platform/pkg/extension/gorm"
 )
 
 // foreignTables carries the names of the tables authn reads but does not own,
@@ -73,8 +74,13 @@ func (t *foreignTables) bindOAuth(published OAuthTableNames) error {
 	if t == nil {
 		return fmt.Errorf("%w: no holder for the published oauth tables", errRepositoryUnavailable)
 	}
-	if published.Clients.IsZero() || published.RefreshTokens.IsZero() {
-		return fmt.Errorf("%w: oauth left Clients or RefreshTokens empty", errRepositoryUnavailable)
+	for _, entry := range []struct {
+		name  gormx.TableName
+		field string
+	}{{published.Clients, "Clients"}, {published.RefreshTokens, "RefreshTokens"}} {
+		if entry.name.IsZero() {
+			return fmt.Errorf("%w: oauth left %s empty", errRepositoryUnavailable, entry.field)
+		}
 	}
 	t.oauth = published
 	return nil
@@ -105,5 +111,5 @@ func (t *foreignTables) bind(
 // that reads a table authn does not own may run.
 func (t *foreignTables) bound() bool {
 	return t != nil && t.access.Bound() && t.principal.Bound() &&
-		!t.directory.Tenants.IsZero() && !t.oauth.Clients.IsZero() && !t.oauth.RefreshTokens.IsZero()
+		t.directory.Bound() && t.oauth.Bound()
 }

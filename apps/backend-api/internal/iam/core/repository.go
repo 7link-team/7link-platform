@@ -25,7 +25,7 @@ type Repository struct {
 	db        *gorm.DB
 	revisions *RevisionStore
 	now       func() time.Time
-	joined    *joinedTables
+	foreign   *foreignTables
 }
 
 func NewRepository(runtime *appenv.Runtime, ids guid.Source) *Repository {
@@ -38,8 +38,8 @@ func NewRepository(runtime *appenv.Runtime, ids guid.Source) *Repository {
 	}
 	return &Repository{
 		runtime: runtime, ids: ids, revisions: revisions,
-		now:    func() time.Time { return time.Now().UTC() },
-		joined: &joinedTables{},
+		now:     func() time.Time { return time.Now().UTC() },
+		foreign: &foreignTables{},
 	}
 }
 
@@ -48,13 +48,13 @@ func NewRepository(runtime *appenv.Runtime, ids guid.Source) *Repository {
 // modules that own them. An owner that has not published is ErrUnavailable,
 // not an empty table name in a statement.
 func (r *Repository) authorizationTables() (query.AuthorizationTables, error) {
-	return r.joined.authorizationTables(r.prefix())
+	return r.foreign.authorizationTables(r.prefix())
 }
 
 // directoryTables returns the published directory names, or ErrUnavailable
 // when the organization module never published them.
 func (r *Repository) directoryTables() (query.DirectoryTables, error) {
-	return r.joined.directoryNames()
+	return r.foreign.directoryNames()
 }
 
 // BindForeignTables records the table-name sets of the tables this repository
@@ -66,10 +66,10 @@ func (r *Repository) BindForeignTables(directory DirectoryTableNames, principal 
 	if r == nil {
 		return ErrUnavailable
 	}
-	if r.joined == nil {
-		r.joined = &joinedTables{}
+	if r.foreign == nil {
+		r.foreign = &foreignTables{}
 	}
-	return r.joined.bind(directory, principal)
+	return r.foreign.bind(directory, principal)
 }
 
 func (r *Repository) writer() *gorm.DB {

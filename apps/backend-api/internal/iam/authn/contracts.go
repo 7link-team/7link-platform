@@ -66,6 +66,9 @@ type DirectoryTableNames struct {
 	Tenants gormx.TableName
 }
 
+// Bound reports whether the name authn declared arrived.
+func (t DirectoryTableNames) Bound() bool { return !t.Tenants.IsZero() }
+
 // DirectoryTableNamesConnector lets the module that owns the directory tables
 // fill in the names authn declared.
 type DirectoryTableNamesConnector struct {
@@ -78,6 +81,9 @@ type OAuthTableNames struct {
 	Clients       gormx.TableName
 	RefreshTokens gormx.TableName
 }
+
+// Bound reports whether every name authn declared arrived.
+func (t OAuthTableNames) Bound() bool { return !t.Clients.IsZero() && !t.RefreshTokens.IsZero() }
 
 // OAuthTableNamesConnector lets the module that owns the OAuth tables fill in
 // the names authn declared.

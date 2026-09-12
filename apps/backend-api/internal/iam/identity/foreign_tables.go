@@ -63,5 +63,5 @@ func (t *foreignTables) bindOAuth(published OAuthTableNames) error {
 // bound reports whether every owner published. Until they have, no statement
 // that reads a table identity does not own may run.
 func (t *foreignTables) bound() bool {
-	return t != nil && t.access.Bound() && !t.directory.Tenants.IsZero() && !t.oauth.RefreshTokens.IsZero()
+	return t != nil && t.access.Bound() && t.directory.Bound() && t.oauth.Bound()
 }
