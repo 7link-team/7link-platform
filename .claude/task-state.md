@@ -9,11 +9,10 @@ P4a/b/c 拼表名清理 → P5 注入连接器 → P6 门禁收紧；PD 文档�
 用户确认的路线：**跨模块取表名一律走窄接口/注入**，不放宽架构测试、不放宽依赖全序（D37）。
 
 ## Current Phase
-IMPLEMENTATION —— P0–P5 已推送；**P4c 已开工**，第一段（oauth）已提交 `89de48b`。
+READY —— P0–P5 已推送；**P4c 全部完成并通过全量门禁**（4 个提交待推送）。剩 P6 与 PD。
 
 ## Current Step
-P4c 按「消费方模块」分段推进。oauth 段完成并实测；provisioning / governance / federation 三段
-已下放给子代理并行执行（互不共享文件）；organization←core、identity←core、authn←core 三段由主代理随后自做。
+P4c 收尾完成。下一步：推送 → P6 门禁收紧（目标值 = 385，不是 0）→ PD 文档体检。
 
 ## Overall Progress
 - [x] **P0 门禁 + 冻结基线**：`tests/architecture/query_gate_test.go`（5 条 AST 规则）+
@@ -111,7 +110,20 @@ P4c 按「消费方模块」分段推进。oauth 段完成并实测；provisioni
         `identity←authn`（`iam_sessions` 仍按自身前缀拼）、`oauth←organization`（`iam_tenants`）、
         `governance←organization`（`iam_tenants` + `review_grants.go` 3 处 groups/positions/
         member_departments 片段）、`federation←organization`（`iam_tenants` 3 处）——**表名保持原样，如实报告**
-- [ ] P6 门禁收紧（budget 降到 SQL 类 = 0）
+- [x] **P4c 跨模块表名全部改为「只用拥有者发布的名字」**（7 个消费方 / 4 个拥有者，共约 65 处）：
+      拥有者在 `tables.go` 声明 `Published gormx.TableSet` 的能力类型并在 `ProvideServices` 里 `Provide`：
+      `core.AccessTables` / `identity.PrincipalTables` / `authn.CredentialTables` / `organization.DirectoryTables`。
+      消费方在 `InjectServices` 里 `Resolve` + 在 `ModuleDependencies()` 声明拥有者，
+      模块在 `Initialize` 把唯一的 `foreignTables` 持有者交给 repository（指针，事务克隆共享同一份发布）。
+      - oauth（9 处，4 个拥有者）`89de48b`；provisioning（8 处）/ governance（**37 处**）/ federation（10 处）`a4f8e2c`；
+        organization←core（10）/ identity←core（9）/ authn←core（1）`001f6a0`
+      - **governance 实际是 37 处不是 11 处**：`review_grants.go` 的裸 SQL 还用 `p +` 拼了 8 张 core 表
+        与 3 张 organization 表；子代理按「全模块重扫」指令一并改了，并用 gorm logger 抓 13 条语句
+        改前改后 `cmp` 字节相同
+      - provisioning 新增导出方法 `Service.BindForeignTables`（`internal/app` 两个测试在接线外构造 service，
+        跨包够不到包内 helper）。**不是新模式**：`core` 已有三个同名同形先例
+      - SQL 文本逐字节不变（解析出的名字 == 原 `prefix+逻辑名`），参数顺序未动
+- [ ] P6 门禁收紧（目标 **385**，不是 0 —— 差额是 authn↔identity 的 8 处，见下）
 - [ ] PD 全仓文档体检（六批）
 
 ## Important Decisions
@@ -237,67 +249,62 @@ P4c 按「消费方模块」分段推进。oauth 段完成并实测；provisioni
    `audit.EventReader`）在允许方向的剩余站点均只 1 处且嵌在 JOIN 内，收益不足 —— **如实跳过**。
 
 ## Next Action
-### P4c 的机制已由实测确证（不要再推演，也不要再改这个判断）
-**结论**：拥有者在注册序里排在消费者**之前**时，根本不需要 P5 那种「连接器」——
-拥有者在 `ProvideServices` 里 `module.Provide` 自己的表名集合，消费者在 `InjectServices` 里
-`module.Resolve` 并在 `ModuleDependencies()` 的 return 表达式里声明拥有者的 `Name` 即可。
-连接器只在**拥有者排在消费者之后**（因而无法被声明为依赖）时才必需，P5 的六对正是那种情形。
+1. **推送** `3cb34f1..001f6a0`（4 个提交）到 `origin/IAM`。
+2. **P6 门禁收紧**：把 budget 从 385 继续压。**目标不是 0**——authn↔identity 的 8 处无解（见下），
+   且 `naked-table-literal` 里还剩大量「逻辑名作为 `accessTable("iam_x")` 的查表键」，
+   那不是缺陷（名字不是自己拼的）。收紧前先决定这一类要不要从规则里区分出去，
+   否则 P6 会变成为了数字而改代码。
+3. PD 全仓文档体检（六批，未开工）。
 
-**确证方式（不是推理）**：oauth 新增声明 `core` 与 `organization` 后
-`go test ./tests/lifecycle/ -count=1` **ok 99.194s** —— `Registry.Activate` 是启动期 fail-fast，
-方向或环错了这里立刻红。
+### P4c 的机制（已实测确证，不要再推演）
+拥有者在注册序里排在消费者**之前**时不需要连接器：拥有者 `Provide` 自己的表名集合，
+消费者 `Resolve` 并在 `ModuleDependencies()` 声明拥有者即可。
+连接器只在**拥有者排在消费者之后**（无法被声明为依赖）时才必需，P5 的六对正是那种情形。
+注册序：`audit(0) core(1) authn(2) identity(3) organization(4) oauth(5) provisioning(6) governance(7) federation(8)`；
+`Registry.Activate` 要求 `dependencyIndex < index`，架构门禁 `module-dependency` 要求
+「Resolve 了谁的类型就必须声明谁」——合起来即**拥有者 index 必须小于消费者 index**。
 
-**已落地的拥有者能力**（`tables.go` 里的类型 + `ProvideServices` 里的 Provide）：
-`core.AccessTables` / `identity.PrincipalTables` / `authn.CredentialTables` / `organization.DirectoryTables`，
-字段一律 `Published gormx.TableSet`。
+### 唯一受阻：authn ↔ identity，共 8 处，如实保留在基线里
+authn 已 import identity（`identity.RegistrationPrincipalCreator`，靠架构门禁
+`isStableWiringCapability`（`tests/architecture/architecture_test.go:554`）白名单放行）。于是：
+- identity 读 authn 的表 → identity 要 import authn → **Go 包环**；
+- authn 读 identity 的表 → authn 要声明 `identity.Name`，而 identity(3) ≥ authn(2) → `Activate` 启动失败；
+- 连接器方向同样撞上这两条之一；白名单只列了那一个类型，且**不许改 tests/architecture**。
+站点：identity 读 authn 的 `iam_credentials`×2、`iam_sessions`、`iam_email_verification_tokens`、
+`iam_password_recovery_tokens`（5）；authn 读 identity 的 `iam_principals`×2、`iam_service_accounts`（3）。
+**唯一的解法是把 `RegistrationPrincipalCreator` 这条 authn→identity 的边移走**，属独立议题，需用户决定。
 
-### 注册序（判定可行性的唯一依据）
-`audit(0) core(1) authn(2) identity(3) organization(4) oauth(5) provisioning(6) governance(7) federation(8)`
-—— `Registry.Activate` 要求 `dependencyIndex < index`；架构门禁 `module-dependency` 要求
-「Resolve 了谁的类型就必须声明谁」。两条合起来即：**拥有者 index 必须小于消费者 index**。
-
-### 全仓跨模块表字面量普查（脚本实测，非测试文件）
-| 消费者 ← 拥有者 | 站点 | 状态 |
-|---|---|---|
-| oauth ← core/identity/authn/organization | 9 | ✅ 已完成 `89de48b` |
-| provisioning ← core(1)/identity(1)/organization(6+filter 片段) | 8+ | 子代理执行中 |
-| governance ← core(5)/organization(1+review_grants 5 处片段) | 6+ | 子代理执行中 |
-| federation ← core(7)/organization(3) | 10 | 子代理执行中 |
-| organization ← core | 10 | 待主代理 |
-| identity ← core | 9 | 待主代理 |
-| authn ← core | 1 | 待主代理 |
-| **identity ← authn** | 5 | ⛔ 受阻 |
-| **authn ← identity** | 3 | ⛔ 受阻 |
-
-### 受阻的只有 authn↔identity 这一对（共 8 处），原因已查到源码级
-authn 已经 import identity（`identity.RegistrationPrincipalCreator`，靠架构门禁的
-`isStableWiringCapability` 白名单放行）。于是：
-- **普通 provider 方向**：identity 要读 authn 的表就得 import authn → 与 authn→identity 形成 **Go 包环**；
-  authn 要读 identity 的表则需声明 `identity.Name`，而 identity(3) ≥ authn(2)，`Activate` 直接失败。
-- **连接器方向**：谁 Resolve 对方的连接器类型，谁就得声明对方 → 同样撞上上面两条之一。
-- `isStableWiringCapability`（`tests/architecture/architecture_test.go:554`）只白名单了
-  `identity.RegistrationPrincipalCreator` 一个类型，**不许改 tests/architecture**。
-→ **这 8 处如实留在门禁基线里**；P6 的目标相应地从「budget 归零」改为「降到该值」。
-若将来要解掉，唯一的路是把 `RegistrationPrincipalCreator` 这条 authn→identity 的边移走，属独立议题。
-
-### 剩余执行顺序
-1. 收三个子代理的结果，逐个核对（SQL 逐字节不变 / fail-closed / 覆盖率 ≥90 / 无越界改动）。
-2. 主代理自做 organization←core、identity←core、authn←core。
-3. 统一刷新门禁账本（`QUERY_GATE_UPDATE=1`）并**手动下调 budget**（只许降；升需 `QUERY_GATE_REBASELINE`）。
-4. 跑 `make ci` + `make test-mysql8-run`（后者才做查询计划指纹与 schema lock 比对）。
-5. P6 门禁收紧：目标值 = 届时的实际违规数（不是 0），并把 authn↔identity 的 8 处记为已知豁免。
+### 已知的同类缺陷，未修（D 类，超出本次范围，需用户决定）
+`core.NewRevisionStore(runtime.TablePrefix())`：governance / identity / organization 把**自己的前缀**
+交给 core，由 core 在 `core/revision.go` 内部拼到 core 拥有的 `iam_policy_revisions` 上。
+同一缺陷类，但拼接发生在 core 的构造函数里，改动会波及 4 个模块共用的 core API。
 
 ### 用户约束（未变）
 - **不要把带 SQL 的东西放进 `pkg/`。** 若某对必须走中立位置，优先考虑业务模块下的独立子目录
   （前提：两侧 import 它不构成环），而不是 `pkg/`。
 
-### 本会话的教训（写给下一个上下文）
-在这个边界上曾推演错三次：(1) 只按 import 方向判、漏了注册顺序；(2) 把连接器当成唯一机制，
-得出「4 对全不可行」；(3) 站点计数被测试文件与坏 grep 撑大。
-**这一层的正确性只能由 `Registry.Activate` 的启动期检查（`tests/lifecycle`）确证。**
-本次已用该方式确证「拥有者在前 → 普通 provider 可行」，并用脚本普查代替了目测计数。
+### 教训（写给下一个上下文）
+- 这一层的正确性只能由 `Registry.Activate` 的启动期检查（`tests/lifecycle`）确证，不要用推理代替。
+  本会话此前在这个边界上推演错过三次。
+- **站点数要用脚本普查，不要目测**：governance 目测 11 处，实际 37 处。
+- 并发子代理共用一个工作树时**不要 `git stash`**（本会话有代理这么做了，连带暂存了同伴的在途改动，
+  pop 成功但属高风险操作）。
 
 ## Last Checkpoint
+2026-09-11 **P4c 全部完成，全量门禁绿**（4 个提交 `3cb34f1..001f6a0`，未推送）：
+- `make ci` **EXIT=0**：fmt clean、lint 0 findings、**总覆盖率 90.1%**（全模块 ≥90.0：organization 90.0 /
+  identity 90.2 / authn 90.5 / oauth 90.2 / provisioning 90.4 / governance 93.6 / federation 91.1）、
+  architecture 3.6s / goose 15.4s / testdb 0.3s / lifecycle 112.2s / migration 265.3s / performance 41.0s
+  **全 ok、0 FAIL**、build、`openapi: matches docs/openapi.json`
+- `make test-mysql8-run` **EXIT=0**（真实 MySQL 8.4）：`TestIAMPerformanceExternalDatabase` **PASS**
+  ——查询计划指纹与基线一致（表名被改错会立刻在此暴露）；`iam_performance_baseline.json`
+  `git diff --quiet` 为真；`schema lock: 219 published migration files unchanged`；
+  `static reconciliation: 219 files, 72 IAM tables, 33 cross-module foreign keys`
+- 门禁账本 **482 → 473 → 412 → 385**，三次均**手动下调**，全程未用 `QUERY_GATE_REBASELINE`
+- 脚本普查复核：全仓「消费方用自己前缀拼他模块表名」**从约 65 处降到 8 处**，
+  剩下的 8 处全部落在受阻的 authn↔identity 一对内
+- `git status` 仅受控改动，无 `.gen.go` / `cover*.raw` / `.log` / `bin/` / 临时产物
+
 2026-09-11 **P4c 第一段（oauth）完成并提交 `89de48b`**：新增四个拥有者能力
 （`core.AccessTables` / `identity.PrincipalTables` / `authn.CredentialTables` / `organization.DirectoryTables`），
 oauth 的 9 处他模块表名改为解析而来，`ModuleDependencies` 增 `core`+`organization`。
