@@ -355,7 +355,6 @@ func TestRepositoryPrefixIsAppliedToEveryTable(t *testing.T) {
 
 	harness := newIdentityHarness(t, "sl_")
 	assert.Equal(t, "sl_", harness.repository.prefix())
-	assert.Equal(t, "sl_iam_tenant_members", harness.repository.table("iam_tenant_members"))
 	tables, db, err := harness.repository.tables()
 	require.NoError(t, err)
 	require.NotNil(t, db)

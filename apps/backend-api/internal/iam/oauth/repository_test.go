@@ -384,7 +384,7 @@ func TestRepositoryMethodsFailClosedWithoutWriter(t *testing.T) {
 
 func TestRepositoryPrefixAndTransactionReuse(t *testing.T) {
 	harness := newOAuthHarness(t, "sl_")
-	assert.Equal(t, "sl_iam_tenant_members", harness.repo.table("iam_tenant_members"))
+	assert.Equal(t, "sl_", harness.repo.prefix())
 	tables, db, err := harness.repo.tables()
 	require.NoError(t, err)
 	assert.Equal(t, "sl_iam_oauth_clients", tables.Clients.TableName())

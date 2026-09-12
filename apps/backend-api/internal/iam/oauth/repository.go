@@ -60,8 +60,6 @@ func (r *Repository) prefix() string {
 	return r.runtime.TablePrefix()
 }
 
-func (r *Repository) table(name string) string { return r.prefix() + name }
-
 func (r *Repository) tables() (*query.Tables, *gorm.DB, error) {
 	db := r.writer()
 	if db == nil {
