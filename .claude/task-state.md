@@ -290,6 +290,55 @@ authn 已 import identity（`identity.RegistrationPrincipalCreator`，靠架构�
 - 并发子代理共用一个工作树时**不要 `git stash`**（本会话有代理这么做了，连带暂存了同伴的在途改动，
   pop 成功但属高风险操作）。
 
+## 事后修正（2026-09-11，用户质疑后核实，优先级高于上面的记述）
+
+### 1. P4c 的理由我写错了，已改提交说明
+`table_prefix` 是**全局唯一一个配置项**（`internal/app/config.go:34`，装在 runtime 上，整个程序一份）。
+因此消费方自己拼出的 `prefix+逻辑名` 与拥有者拼出的**永远是同一个字符串**。
+我在三条提交说明里写的「某个部署里拥有者前缀不同就会查到不存在的表」**场景不可能发生**。
+提交（未推送）已重写为真实理由：**表名没有主人**——拥有者改名时，消费方照样编译通过、只在运行时炸；
+而且跨模块读表这件事以前在依赖图上看不见。
+
+### 2. 真正优雅的做法：让拥有者干活，而不是把表名递出去
+仓内**已经有这个样板且在用**：
+- `internal/app/principallifecycle.go`：app 作为编排者，依次调用每个拥有者**自己**的
+  `XXX.ErasePrincipalData(ctx, tx, prefix, id, now)`，各自清自己的表。没有任何模块读别人的表，
+  也就没有任何循环依赖。
+- `authn/module.go:69` 已经 `Provide[identity.PrincipalCredentialsRevoker]` ——委派通道早就存在。
+
+**设计规则（建议写进 SKILL.md）**：
+- 跨模块的**写**、或**单表读** → **委派给拥有者**（表名不过界，不产生依赖边）；
+- 跨模块的**单条语句 JOIN** → 名字必须过界，才用「拥有者发布表名」。
+按这条规则，P4c 已做的 65 处里属于 JOIN 的那部分是对的；而下面第 3 条那些是**该委派却没委派**的。
+
+### 3. 「authn↔identity 受阻 8 处」这个判断是错的，而且规模远大于 8
+受阻只是针对「发布表名」这一种机制。按委派走不产生任何 import 边，**不受阻**。
+而且真实规模被我的普查低估了（普查只认字面量，没认常量）：
+- **identity 写 authn 的表**：`createCredential`（建凭据）、`incrementCredentialVersion`（改版本号）、
+  `revokeAllSecurityState`（吊销 `iam_sessions` + 消费 `iam_password_recovery_tokens` /
+  `iam_email_verification_tokens`）。authn 已经提供了 `PrincipalCredentialsRevoker`，
+  这些本就该委派。
+- **authn 操作 identity 的表**：`internal/iam/authn/repository_identity.go` 用
+  `principalTableName`/`serviceAccountTableName` 两个常量，**约 15 条语句**——建 principal、改 principal、
+  读 principal、JOIN service_accounts。不是 3 处。
+→ 这是**双向的数据所有权破裂**，不是命名问题。修法是把两侧的跨界操作改成互相委派，
+  规模是一块独立的工程，需要用户决定是否排期。**不要再试图用发布表名解决它。**
+
+### 4. 一处注释是错的（未修，下次顺手改）
+`internal/iam/identity/repository.go` 的 `revocationTable` 注释写「The sessions belong to identity,
+so its own prefix names them」——**`iam_sessions` 是 authn 拥有的**
+（`internal/iam/authn/model/credential.go:41`）。这条注释会把下一个读者引到错的所有权认知上。
+
+### 5. 两个「本来可以更简单」的发现
+- **gorm 的命名策略完全没用**（`pkg/extension/gorm` 里没有 `NamingStrategy`/`TablePrefix:`）。
+  如果建连接时配一次 `schema.NamingStrategy{TablePrefix: ...}`，基于模型的查询就自动带前缀，
+  业务代码里一个 `prefix +` 都不用写——P1~P6 这条路线的大半不会存在。现在改的代价是裸 SQL 与
+  `Table()` 调用绕过命名策略，享受不到。
+- **跨模块传表名应该用「带类型的字段」而不是「字符串查 map」**。现在是
+  `accessTable("iam_tenant_members")`：魔法字符串还在、编译器帮不上忙、每处多一个永不触发的错误分支。
+  改成拥有者导出带字段的结构体（`tables.TenantMembers`）则三者全解，且拥有者那边
+  `query/table.go` 的 `TableNames` **已经是这个形状**。属返工（约 65 处），收益是代码变少。
+
 ## Last Checkpoint
 2026-09-11 **P4c 全部完成，全量门禁绿**（4 个提交 `3cb34f1..001f6a0`，未推送）：
 - `make ci` **EXIT=0**：fmt clean、lint 0 findings、**总覆盖率 90.1%**（全模块 ≥90.0：organization 90.0 /
