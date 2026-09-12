@@ -1352,3 +1352,66 @@ import authn，这正是当初需要这个能力的同一个方向约束。ident
 **Scope / Status**
 阶段一（S0–S8）完成，7 个提交 `9e89c5e..61f2b35`。门禁账本 **385 → 372**，四次均手动下调，
 全程未用 `QUERY_GATE_REBASELINE`。
+
+## D40 — 跨模块表名一律走类型化结构体；声明在被对方 import 的那一侧；不具名集合整体删除
+
+**Decision / Reason**
+阶段二把「拥有者发布一袋按字符串查的表名」（`gormx.TableSet` + `XTables{Published}`）
+全部换成类型化结构体，全仓一种形态。用户要求：强类型约束写法、全仓统一、0 遗憾。
+消费方拿到的一律是结构体字段，**没有任何一处再用字符串查表**；问一张拥有者没有的表
+从「运行期 error」变成「编译不过」。
+
+**唯一的一条规则（由 Go 的 import 方向决定，不是偏好）**
+> 跨界的类型化结构体，声明在**被对方 import 的那一侧**。
+
+- **消费方 import 拥有者**（拥有者激活在前）→ 拥有者导出 `PublishedXTableNames(prefix)` 与
+  `XTableNames`，`module.Provide[XTableNames]`，消费方 `Resolve` 后直接持有。
+  适用 65 处：authn/identity/organization/oauth/provisioning/governance/federation ← core 等。
+- **拥有者 import 消费方**（拥有者激活在后）→ **消费方声明它需要的字段**，拥有者在连接器里填满。
+  适用 6 对：core←organization(12 字段)、core←identity(1)、authn←organization(1)、
+  authn←oauth(2)、identity←organization(1)、identity←oauth(1)。
+- **两条都走不通的一对**（authn↔identity，见 D39）→ identity 推自己的 `PrincipalTableNames`
+  给 authn 提供的 `PrincipalTableNamesReceiver`。
+
+连接器随载荷改名：`XTableSetConnector` → `XTableNamesConnector`。
+`TableSet` 这个词在仓里已不存在，名字里留着它就是假话。
+
+**「消费方加字段 → 拥有者编译不过」并不成立，别这么写文档**
+计划里曾这么描述 B 类的强度。实际上 Go 的**带键结构体字面量**在结构体新增字段时照样编译，
+新字段静默为零值。真正的强制手段是运行期 + 启动期：`core.joinedTables.bindDirectoryTables`
+逐字段检查 `IsZero()` 并**报出字段名**，authn/identity 的 bind 同理；每个模块的 `Initialize`
+再查一次 `foreign.bound()`，任一槽位未到即**启动失败**。这一条已对 7 个模块做过变异验证
+（删掉检查 → 对应用例立刻失败）。
+
+**「是否已绑定」从每处一条收敛到每模块一条**
+原先每个调用点都有 `x, err := r.foreign.accessTable("iam_x"); if err != nil {...}` 三行。
+现在是一行字段读取，检查搬到 `Initialize`（Registry 相位保证那时 Provide/Bind 全部完成）。
+**代价，如实记录**：在模块外手工构造 repository 而忘记 bind 的调用方（只有测试夹具），
+过去得到一个 error，现在得到空表名。模块自身的路径由启动检查覆盖。
+
+**顺带删除的东西（全部是本工作流自己引入、现已无调用者）**
+`gormx.TableSet`/`NewTableSet`/`Lookup`/`Names`/`Len`；13 个模块的 `TableSet(prefix)`；
+4 个 `XTables{Published}` 能力；`query.BindDirectoryTables`/`BindPrincipalTable`；
+authn/identity `Repository` 上的 `tenantTable()`/`memberTable()`/`principalTable()`/
+`serviceAccountTable()`/`oauthTable()` 中间取名方法；8 个无人消费的 `tables.go` + 其 `tables_test.go`；
+`internal/app/bootstrap_iam_tables_test.go`（它枚举的 13 个 `TableSet` 已不存在）。
+
+**保留 `query.TableNames.Map()`，这是一次有意的不彻底**
+它在生产上已无调用者（唯一调用方是被删的 `TableSet`），但它是那 8 个没有类型化发布的模块
+**唯一的枚举入口**，13 条「BindNames 的每个名字都带前缀、Logical() 正确、非零」的断言靠它。
+删掉等于拿掉真实验证换整洁。若要彻底删，需先把那 13 条改成反射枚举。
+
+**Alternatives / Tradeoffs**
+- **让 organization 直接填 `core/query.DirectoryTables`**（省掉 core 根包再声明一份 12 字段）：
+  被架构门禁 `cross-module-storage-import` 禁止（跨模块 import 他人 `query`/`model`/`dbgen`）。
+  用 root 包里 `type X = query.Y` 的**类型别名**能绕过（源码里不出现该 import），
+  但那是绕规则不是守规则。故 core 根包声明一份，`joined_tables.go` 里逐字段转换——
+  多 12 行，换来的是转换本身受编译器检查。
+- **不删 8 个无人消费的 `TableSet`**：它们是 P1 为这套机制铺的，机制没了就是死代码。
+  代价是丢掉 `TestEveryModulePublishesPrefixedTableNames` 这条「13 个模块都得发布」的跨模块门禁；
+  其「前缀正确」的保证在每个模块自己的 `query/table_test.go` 里仍在
+  （`TestBindAppliesPrefixToEveryXTable`），丢掉的只是「新模块也必须发布一份」这层提醒。
+
+**Scope / Status**
+阶段二。SQL 文本逐字节未变——施工上靠「保留局部变量、只删错误分支、语句行不进 diff」，
+验证上靠既有的 9+8 条冻结断言与 MySQL 查询计划指纹。

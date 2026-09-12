@@ -13,8 +13,9 @@ IMPLEMENTATION —— 按已批准的收尾计划推进（计划文件见下）�
 **阶段一（authn↔identity 解耦）已全部完成并通过 `make ci` + `make test-mysql8-run`。**
 
 ## Current Step
-**阶段二拥有者侧完成（`1478189`），消费方侧未开工。** 下一步见下方「阶段二 …… 剩余工作」。
-本会话上下文已耗尽，在此交接；接续所需信息全部在本文件与 `.claude/decisions.md`。
+**阶段二全部完成**（3 个提交 `815b5d9`、`d2ca56c`、`660bf97`，未推送），
+`make ci` **EXIT=0** + `make test-mysql8-run` **EXIT=0** 已实跑通过。
+下一步是**阶段三（门禁规则五项修正）**与**阶段四（文档体检）**，均未开工，见 `## Next Action`。
 
 ## Overall Progress
 - [x] **P0 门禁 + 冻结基线**：`tests/architecture/query_gate_test.go`（5 条 AST 规则）+
@@ -251,8 +252,14 @@ IMPLEMENTATION —— 按已批准的收尾计划推进（计划文件见下）�
    `audit.EventReader`）在允许方向的剩余站点均只 1 处且嵌在 JOIN 内，收益不足 —— **如实跳过**。
 
 ## Next Action
-1. **推送** `3cb34f1..001f6a0`（4 个提交）到 `origin/IAM`。
-2. **P6 门禁收紧**：把 budget 从 385 继续压。**目标不是 0**——authn↔identity 的 8 处无解（见下），
+1. **推送** `9817860..660bf97`（21 个提交）到 `origin/IAM`——用户此前说过不急，需确认后再推。
+2. **阶段三 门禁规则五项修正**（未开工，清单见计划文件 `~/.claude/plans/flickering-toasting-neumann.md`）：
+   排除 Prometheus 指标名误报、只认前缀加法、按 `file:line:col` 去重、补常量洞、
+   补 `sql-in-format-string` 的局部变量洞。做完再压 budget（当前 218）。
+   注意：阶段二已让「查表键」这类违规从代码里消失，所以阶段三**不需要**再加「查表键不算违规」的特例。
+3. **阶段四 文档体检**（未开工，36 份文档清单见计划文件）。其中 `backend-module` SKILL.md §4
+   仍在描述 `TableSet`/`Lookup` 机制，**已经过时**，必须改写成类型化结构体 + 连接器方向规则（D40）。
+4. **P6 门禁收紧**：把 budget 从 218 继续压。**目标不是 0**——authn↔identity 的 8 处无解（见下），
    且 `naked-table-literal` 里还剩大量「逻辑名作为 `accessTable("iam_x")` 的查表键」，
    那不是缺陷（名字不是自己拼的）。收紧前先决定这一类要不要从规则里区分出去，
    否则 P6 会变成为了数字而改代码。
@@ -477,7 +484,56 @@ P4c 写的约 30 个运行时用例会收敛成每模块 1 个。**顺序在阶�
 阶段三五项修正（排除 Prometheus 指标名误报、只认前缀加法、按 file:line:col 去重、补常量洞、
 补 `sql-in-format-string` 的局部变量洞）与阶段四 36 份文档清单见计划文件。
 
+### 阶段二执行进度（2026-09-12，本会话）
+
+**已提交 `815b5d9`——federation 参考实现，其余模块一律照抄这个形状：**
+1. 拥有者在 `ProvideServices` 里**并行**多 `Provide` 一个类型化结构体
+   （`core.AccessTableNames` / `organization.DirectoryTableNames` / `identity.PrincipalTableNames` /
+   `authn.CredentialTableNames`；oauth 无需——它只被 B 类连接器消费）。旧的 `XTables{Published}` 暂留。
+2. 消费方 `foreignTables` 的槽位换成拥有者的类型化结构体；`bind` 收类型化结构体；新增 `bound() bool`；
+   删掉 `xxxTable(logical string)` 查表方法与 `publishedTableName` 帮手。
+3. 调用点 `x, err := r.foreign.accessTable("iam_roles")` + `if err != nil` 三行 → `x := r.foreign.access.Roles.String()` 一行。
+   **保留局部变量与变量名**，构造 SQL 的语句行一个字节都不动（这是 SQL 文本不变的施工保证）。
+   删掉 `:=` 后若后文 `err = ...` 变成未声明，把那一处改成 `err :=`。
+4. `module.go` 改 `module.Resolve[core.AccessTableNames]`；`Initialize` 里加一条 `!m.foreign.bound()` 启动检查。
+5. 测试：per-statement「未发布即报错」用例**收敛**成 (a) 一条 `bound()` 单测（零值 / 各拥有者缺一 / nil）
+   + (b) 一条启动期用例（`Initialize` 报错）。「发布了但不全」的用例随类型消失——结构体没有部分发布这回事。
+
+**已做的一处修正**：federation 的 `badKey` 用例原先绕过依赖直接置字段，新增的启动检查排在
+加密密钥检查之前，导致它读到新错误。修法是给该夹具补上 `foreign.bind`（补全前置条件），
+不是把检查挪后——检查属于「必需依赖」那一组。
+
+**federation 实测**：`go test ./internal/iam/federation/ -count=1` **ok**；
+`go test ./internal/iam/... ./internal/app/... -count=1` **0 FAIL**；
+`go -C tests test ./architecture/ -count=1` **ok**；门禁账本 **372 → 350**（手动下调，未用 REBASELINE）。
+
 ## Last Checkpoint
+2026-09-12 **阶段二完成并全量验证通过**，3 个提交 `815b5d9`（federation 参考实现）、
+`d2ca56c`（四个 A 类消费方）、`660bf97`（B 类六对 + 清理 + 测试跟进），**未推送**。
+
+**决定性验证（我自跑，非采信子代理）**
+- `make ci` **EXIT=0**：fmt clean、lint 0 findings、六个集成套件全 ok
+  （architecture 3.4s / goose 16.5s / testdb 0.3s / lifecycle 114.3s / migration 272.6s /
+  performance 44.5s）、build、`openapi: matches docs/openapi.json`
+- `make test-mysql8-run` **EXIT=0**（真实 MySQL 8.4）：`TestIAMPerformanceExternalDatabase` **PASS**
+  ——查询计划指纹与基线一致；`iam_performance_baseline.json` `git diff` 为空；
+  `schema lock: 219 published migration files unchanged`；72 表、33 跨模块外键
+- 门禁账本 **372 → 350 → 236 → 218**，三次均**手动下调**，全程未用 `QUERY_GATE_REBASELINE`
+- 三条收尾判据全部实测通过：生产代码 `Table("iam_` 零命中；`gormx.TableSet`/`NewTableSet`
+  在 `internal/`+`pkg/`+`tests/` 零命中；`TableSet(prefix)` 与 `XTables{Published}` 全部消失
+
+**必须记住的两件事**
+1. **总覆盖率 90.1% → 90.0%，正好压在门禁线上，余量为零**（core 与 oauth 两个包同样是 90.0%）。
+   原因是删掉了大量被测试覆盖的错误分支（每个调用点三行 `if err != nil`），分母缩小得比分子慢。
+   **下一次任何删减都可能把它压到线下**，改动前先跑 `make test-coverage`。
+2. **`make ci` 抓到了我 grep 没抓到的东西**：`tests/` 是独立 Go module，
+   我只 grep 了 `gormx.TableSet` 而没 grep `<模块>.TableSet(`，漏了
+   `tests/migration/iam_core_test.go` 两处，编译失败。**普查必须覆盖 `tests/` 模块**。
+
+**本会话推翻的一个计划结论**：计划称 B 类「消费方加字段 → 拥有者编译不过」。**这是错的**，
+Go 的带键结构体字面量在新增字段时照样编译。真正的强制是运行期逐字段 `IsZero()` + 启动期
+`bound()`，两者都做过变异验证。详见 D40。
+
 2026-09-11 **P4c 全部完成，全量门禁绿**（4 个提交 `3cb34f1..001f6a0`，未推送）：
 - `make ci` **EXIT=0**：fmt clean、lint 0 findings、**总覆盖率 90.1%**（全模块 ≥90.0：organization 90.0 /
   identity 90.2 / authn 90.5 / oauth 90.2 / provisioning 90.4 / governance 93.6 / federation 91.1）、
