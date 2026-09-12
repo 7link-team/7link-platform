@@ -3,6 +3,7 @@ package authn
 import (
 	"testing"
 
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"github.com/stretchr/testify/assert"
@@ -32,6 +33,9 @@ func bindForeignTables(t *testing.T, repository *Repository, prefix string) {
 	foreign := &foreignTables{}
 	require.NoError(t, foreign.bindDirectory(publishedTableSet(prefix, publishedDirectoryTables...)))
 	require.NoError(t, foreign.bindOAuth(publishedTableSet(prefix, publishedOAuthTables...)))
+	// core is the one owner authn can import: it is activated first, so the
+	// set comes from core itself rather than from a list repeated here.
+	require.NoError(t, foreign.bindAccess(core.TableSet(prefix)))
 	repository.foreign = foreign
 }
 
@@ -42,6 +46,7 @@ func bindModuleForeignTables(t *testing.T, module *Module, prefix string) {
 	require.NotNil(t, module)
 	require.NoError(t, module.foreign.bindDirectory(publishedTableSet(prefix, publishedDirectoryTables...)))
 	require.NoError(t, module.foreign.bindOAuth(publishedTableSet(prefix, publishedOAuthTables...)))
+	require.NoError(t, module.foreign.bindAccess(core.TableSet(prefix)))
 }
 
 // publishedTableSet builds the set an owner publishes: every logical name it
@@ -76,6 +81,11 @@ func TestForeignTablesCarryTheOwnersPrefix(t *testing.T) {
 	refresh, err := foreign.oauthTable("iam_refresh_tokens")
 	require.NoError(t, err)
 	assert.Equal(t, "sl_iam_refresh_tokens", refresh)
+
+	require.NoError(t, foreign.bindAccess(core.TableSet("sl_")))
+	members, err := foreign.accessTable("iam_tenant_members")
+	require.NoError(t, err)
+	assert.Equal(t, "sl_iam_tenant_members", members)
 }
 
 // TestForeignTablesReportUnboundAsUnavailable is the guarantee the connectors
@@ -90,6 +100,8 @@ func TestForeignTablesReportUnboundAsUnavailable(t *testing.T) {
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
 	_, err = unbound.oauthTable("iam_refresh_tokens")
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, err = unbound.accessTable("iam_tenant_members")
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
 
 	// An owner that published a set without the name this module reads is the
 	// same failure: the name must not fall back to something authn assembled.
@@ -97,10 +109,16 @@ func TestForeignTablesReportUnboundAsUnavailable(t *testing.T) {
 	require.NoError(t, partial.bindOAuth(publishedTableSet("sl_", "iam_oauth_clients")))
 	_, err = partial.oauthTable("iam_refresh_tokens")
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	require.NoError(t, partial.bindAccess(publishedTableSet("sl_", "iam_roles")))
+	_, err = partial.accessTable("iam_tenant_members")
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
 
 	var absent *foreignTables
 	assert.ErrorIs(t, absent.bindDirectory(publishedTableSet("sl_", publishedDirectoryTables...)), errRepositoryUnavailable)
 	assert.ErrorIs(t, absent.bindOAuth(publishedTableSet("sl_", publishedOAuthTables...)), errRepositoryUnavailable)
+	assert.ErrorIs(t, absent.bindAccess(core.TableSet("sl_")), errRepositoryUnavailable)
+	_, err = absent.accessTable("iam_tenant_members")
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
 	_, err = absent.directoryTable("iam_tenants")
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
 	_, err = absent.oauthTable("iam_refresh_tokens")
@@ -141,4 +159,28 @@ func TestForeignTablesReachTheStatementsTheyWerePublishedFor(t *testing.T) {
 	revoked, err := harness.repository.revokeRefreshTokens(ctx, principalID, repositoryTestNow)
 	require.NoError(t, err)
 	assert.Zero(t, revoked)
+}
+
+// TestServiceAccountStateStopsWhenTheMemberTableWasNeverPublished covers the
+// one table authn reads from core. The set core publishes is complete here
+// except for that name, so the statement cannot be reached by resolving the
+// rest -- which is what an owner publishing an incomplete set looks like.
+func TestServiceAccountStateStopsWhenTheMemberTableWasNeverPublished(t *testing.T) {
+	harness := newAuthnRepositoryHarness(t, "sl_")
+	bindForeignTables(t, harness.repository, "sl_")
+
+	published := core.TableSet("sl_")
+	names := make(map[string]gormx.TableName, published.Len())
+	for _, logical := range published.Names() {
+		if logical == "iam_tenant_members" {
+			continue
+		}
+		name, _ := published.Lookup(logical)
+		names[logical] = name
+	}
+	require.NoError(t, harness.repository.foreign.bindAccess(gormx.NewTableSet(names)))
+
+	_, err := harness.repository.serviceAccountState(t.Context(), 1)
+	require.ErrorIs(t, err, errRepositoryUnavailable)
+	assert.Contains(t, err.Error(), "core did not publish iam_tenant_members")
 }

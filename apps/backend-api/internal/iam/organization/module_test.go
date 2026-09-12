@@ -116,8 +116,13 @@ func TestOrganizationModuleResolvesServicesAndProvidesGroupProvisioner(t *testin
 			}); err != nil {
 				return err
 			}
-			return module.Provide[core.DirectoryTableSetConnector](services, core.DirectoryTableSetConnector{
+			if err := module.Provide[core.DirectoryTableSetConnector](services, core.DirectoryTableSetConnector{
 				Bind: func(gormx.TableSet) error { return nil },
+			}); err != nil {
+				return err
+			}
+			return module.Provide[core.AccessTables](services, core.AccessTables{
+				Published: core.TableSet(h.runtime.TablePrefix()),
 			})
 		}},
 		&organizationDependencyProvider{name: authn.Name, provide: func(services *module.Services) error {
@@ -204,6 +209,9 @@ func TestOrganizationModuleReportsMissingWiring(t *testing.T) {
 		func(services *module.Services) error {
 			return module.Provide[identity.TenantOwnerLookup](services, newTenantOwnerStub().capability())
 		},
+		func(services *module.Services) error {
+			return module.Provide[core.AccessTables](services, core.AccessTables{Published: core.TableSet("sl_")})
+		},
 	}
 	// The connectors organization's wiring resolves are the last four, in the
 	// order it resolves them, so the nil-Bind check below can replace one by
@@ -239,7 +247,7 @@ func TestOrganizationModuleReportsMissingWiring(t *testing.T) {
 	expected := []string{
 		"authorization registrar", "active member checker", "administrator guard", "invitation credentials",
 		"invitation principal creator", "id generator", "audit appender", "tenant bootstrapper",
-		"tenant owner lookup", "directory authorization source connector", "directory table set connector",
+		"tenant owner lookup", "access tables", "directory authorization source connector", "directory table set connector",
 		"authn directory table set connector", "identity directory table set connector",
 	}
 	require.Len(t, expected, len(providers), "every provider is the one the next message reports missing")

@@ -119,7 +119,7 @@ func newInvitationService(t *testing.T, h *organizationHarness, credentials Invi
 		}).Error
 		return id, err
 	})
-	service := NewInvitationService(h.runtime, h.appender, newOrganizationTestIDs(600), credentials, creator)
+	service := newBoundInvitationService(t, h.runtime, h.appender, newOrganizationTestIDs(600), credentials, creator)
 	service.now = func() time.Time { return organizationTestNow }
 	return service
 }
@@ -298,7 +298,7 @@ func TestInvitationCredentialAndPrincipalFailures(t *testing.T) {
 	assert.ErrorIs(t, err, assert.AnError)
 
 	credentials := &invitationCredentialFixture{}
-	service = NewInvitationService(
+	service = newBoundInvitationService(t,
 		h.runtime, h.appender, newOrganizationTestIDs(1700), credentials,
 		func(context.Context, *gorm.DB, guid.ID, string, string, string, string) (guid.ID, error) {
 			return 0, assert.AnError
@@ -313,7 +313,7 @@ func TestInvitationCredentialAndPrincipalFailures(t *testing.T) {
 	assert.ErrorIs(t, err, assert.AnError)
 
 	digestFailure := &invitationCredentialFailure{digestErr: assert.AnError}
-	digestService := NewInvitationService(
+	digestService := newBoundInvitationService(t,
 		h.runtime, h.appender, newOrganizationTestIDs(1800), digestFailure,
 		func(context.Context, *gorm.DB, guid.ID, string, string, string, string) (guid.ID, error) {
 			return 1, nil

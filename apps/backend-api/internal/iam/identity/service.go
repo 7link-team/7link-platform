@@ -496,7 +496,11 @@ func (r *Repository) insertTenantMember(ctx context.Context, member tenantMember
 	if err != nil {
 		return err
 	}
-	if err := db.WithContext(ctx).Table(r.table("iam_tenant_members")).Create(&member).Error; err != nil {
+	members, err := r.memberTable()
+	if err != nil {
+		return err
+	}
+	if err := db.WithContext(ctx).Table(members).Create(&member).Error; err != nil {
 		return fmt.Errorf("insert tenant membership: %w", err)
 	}
 	return nil
@@ -507,9 +511,13 @@ func (r *Repository) getPrincipal(ctx context.Context, tenantID, id guid.ID) (*m
 	if err != nil {
 		return nil, err
 	}
+	members, err := r.memberTable()
+	if err != nil {
+		return nil, err
+	}
 	var row model.Principal
 	err = db.WithContext(ctx).Table(tables.Principals.TableName()+" AS principal").
-		Joins("JOIN "+r.table("iam_tenant_members")+" AS member ON member.principal_id = principal.id").
+		Joins("JOIN "+members+" AS member ON member.principal_id = principal.id").
 		Where("member.tenant_id = ? AND principal.id = ?", tenantID, id).
 		Where("NOT EXISTS (?)", db.Table(tables.ServiceAccounts.TableName()+" AS service_account").
 			Select("1").Where("service_account.principal_id = principal.id")).
@@ -533,8 +541,12 @@ func (r *Repository) listPrincipals(
 	if err != nil {
 		return nil, 0, err
 	}
+	members, err := r.memberTable()
+	if err != nil {
+		return nil, 0, err
+	}
 	query := db.WithContext(ctx).Table(tables.Principals.TableName()+" AS principal").
-		Joins("JOIN "+r.table("iam_tenant_members")+" AS member ON member.principal_id = principal.id").
+		Joins("JOIN "+members+" AS member ON member.principal_id = principal.id").
 		Where("member.tenant_id = ?", tenantID).
 		Where("NOT EXISTS (?)", db.Table(tables.ServiceAccounts.TableName()+" AS service_account").
 			Select("1").Where("service_account.principal_id = principal.id"))
@@ -584,7 +596,11 @@ func (r *Repository) updateTenantMember(
 	if err != nil {
 		return err
 	}
-	result := db.WithContext(ctx).Table(r.table("iam_tenant_members")).
+	members, err := r.memberTable()
+	if err != nil {
+		return err
+	}
+	result := db.WithContext(ctx).Table(members).
 		Where("tenant_id = ? AND principal_id = ?", tenantID, principalID).Updates(updates)
 	if result.Error != nil {
 		return fmt.Errorf("update tenant membership: %w", result.Error)
@@ -600,8 +616,12 @@ func (r *Repository) activeTenantIDs(ctx context.Context, principalID guid.ID) (
 	if err != nil {
 		return nil, err
 	}
+	members, err := r.memberTable()
+	if err != nil {
+		return nil, err
+	}
 	tenantIDs := make([]guid.ID, 0)
-	if err := db.WithContext(ctx).Table(r.table("iam_tenant_members")).Select("tenant_id").
+	if err := db.WithContext(ctx).Table(members).Select("tenant_id").
 		Where("principal_id = ? AND status = 'active'", principalID).Order("tenant_id ASC").Scan(&tenantIDs).Error; err != nil {
 		return nil, fmt.Errorf("list active principal tenants: %w", err)
 	}
@@ -654,11 +674,15 @@ func (r *Repository) ensureTenantMember(
 	if err != nil {
 		return false, err
 	}
+	members, err := r.memberTable()
+	if err != nil {
+		return false, err
+	}
 	member := tenantMemberRecord{
 		TenantID: tenantID, PrincipalID: principal.ID, DisplayName: principal.DisplayName,
 		Email: principal.Email, Status: "active", CreatedAt: now, UpdatedAt: now,
 	}
-	result := db.WithContext(ctx).Table(r.table("iam_tenant_members")).
+	result := db.WithContext(ctx).Table(members).
 		Clauses(clause.OnConflict{DoNothing: true}).Create(&member)
 	if result.Error != nil {
 		return false, fmt.Errorf("insert external membership: %w", result.Error)
@@ -670,7 +694,7 @@ func (r *Repository) ensureTenantMember(
 		return true, nil
 	}
 	var existing tenantMemberRecord
-	if err := db.WithContext(ctx).Table(r.table("iam_tenant_members")).
+	if err := db.WithContext(ctx).Table(members).
 		Where("tenant_id = ? AND principal_id = ?", tenantID, principal.ID).Take(&existing).Error; err != nil {
 		return false, fmt.Errorf("read external membership: %w", err)
 	}

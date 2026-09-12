@@ -206,7 +206,10 @@ func (r *Repository) serviceAccountState(ctx context.Context, principalID guid.I
 	}
 	accountTable := r.table(serviceAccountTableName)
 	principalTable := r.table(principalTableName)
-	memberTable := r.table("iam_tenant_members")
+	memberTable, err := r.foreign.accessTable("iam_tenant_members")
+	if err != nil {
+		return serviceAccountState{}, err
+	}
 	tenantTable, err := r.tenantTable()
 	if err != nil {
 		return serviceAccountState{}, err

@@ -16,7 +16,7 @@ import (
 func newTenantLookupHarness(t *testing.T) (*organizationHarness, TenantLookup, Tenant) {
 	t.Helper()
 	h := newOrganizationHarness(t, "sl_")
-	service, _, _ := newTenantServiceForTest(h, newOrganizationTestIDs(3100))
+	service, _, _ := newTenantServiceForTest(t, h, newOrganizationTestIDs(3100))
 	service.now = func() time.Time { return organizationTestNow }
 	tenant, err := service.Create(t.Context(), newTenantForTest("acme", "Acme"))
 	require.NoError(t, err)

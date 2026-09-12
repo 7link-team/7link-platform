@@ -89,10 +89,11 @@ func (s *tenantOwnerStub) capability() identity.TenantOwnerLookup {
 }
 
 func newTenantServiceForTest(
-	h *organizationHarness, ids guid.Source,
+	t *testing.T, h *organizationHarness, ids guid.Source,
 ) (*TenantService, *tenantBootstrapStub, *tenantOwnerStub) {
+	t.Helper()
 	bootstrap, owners := newTenantBootstrapStub(), newTenantOwnerStub()
-	service := NewTenantService(h.runtime, h.appender, ids, bootstrap.capability(), owners.capability())
+	service := newBoundTenantService(t, h.runtime, h.appender, ids, bootstrap.capability(), owners.capability())
 	return service, bootstrap, owners
 }
 
@@ -102,7 +103,7 @@ func newTenantForTest(slug, name string) CreateTenant {
 
 func TestCreateTenantBootstrapsItsFirstAdministrator(t *testing.T) {
 	h := newOrganizationHarness(t, "sl_")
-	service, bootstrap, _ := newTenantServiceForTest(h, newOrganizationTestIDs(2400))
+	service, bootstrap, _ := newTenantServiceForTest(t, h, newOrganizationTestIDs(2400))
 	service.now = func() time.Time { return organizationTestNow }
 
 	tenant, err := service.Create(t.Context(), newTenantForTest("acme", "Acme"))
@@ -136,7 +137,7 @@ func TestCreateTenantBootstrapsItsFirstAdministrator(t *testing.T) {
 
 func TestCreateTenantRefusesAnOwnerItCannotHandTheTenantTo(t *testing.T) {
 	h := newOrganizationHarness(t, "sl_")
-	service, bootstrap, owners := newTenantServiceForTest(h, newOrganizationTestIDs(2500))
+	service, bootstrap, owners := newTenantServiceForTest(t, h, newOrganizationTestIDs(2500))
 	service.now = func() time.Time { return organizationTestNow }
 
 	_, err := service.Create(t.Context(), CreateTenant{Slug: "noowner", Name: "No Owner"})
@@ -161,7 +162,7 @@ func TestCreateTenantRefusesAnOwnerItCannotHandTheTenantTo(t *testing.T) {
 
 func TestCreateTenantRollsBackWhenTheBootstrapFails(t *testing.T) {
 	h := newOrganizationHarness(t, "sl_")
-	service, bootstrap, _ := newTenantServiceForTest(h, newOrganizationTestIDs(2600))
+	service, bootstrap, _ := newTenantServiceForTest(t, h, newOrganizationTestIDs(2600))
 	service.now = func() time.Time { return organizationTestNow }
 	bootstrap.err = errors.New("menu insert failed")
 
@@ -178,10 +179,10 @@ func TestTenantServiceRefusesToStartWithoutItsBootstrapCapabilities(t *testing.T
 	ids := newOrganizationTestIDs(2700)
 	owners := newTenantOwnerStub().capability()
 	assert.Panics(t, func() {
-		NewTenantService(h.runtime, h.appender, ids, core.TenantBootstrapper{}, owners)
+		newBoundTenantService(t, h.runtime, h.appender, ids, core.TenantBootstrapper{}, owners)
 	}, "a service that cannot bootstrap could only create unreachable tenants")
 	assert.Panics(t, func() {
-		NewTenantService(h.runtime, h.appender, ids, newTenantBootstrapStub().capability(), nil)
+		newBoundTenantService(t, h.runtime, h.appender, ids, newTenantBootstrapStub().capability(), nil)
 	})
 }
 
@@ -190,7 +191,7 @@ func TestTenantServiceRefusesToStartWithoutItsBootstrapCapabilities(t *testing.T
 // refused for the wrong reason and reported to the caller as a 422.
 func TestCreateTenantSurfacesAnOwnerLookupFailure(t *testing.T) {
 	h := newOrganizationHarness(t, "sl_")
-	service, bootstrap, owners := newTenantServiceForTest(h, newOrganizationTestIDs(7100))
+	service, bootstrap, owners := newTenantServiceForTest(t, h, newOrganizationTestIDs(7100))
 	owners.err = assert.AnError
 
 	_, err := service.Create(t.Context(), newTenantForTest("broken", "Broken"))

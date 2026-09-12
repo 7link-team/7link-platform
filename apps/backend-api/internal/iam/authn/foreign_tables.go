@@ -7,13 +7,15 @@ import (
 )
 
 // foreignTables carries the table names of the tables authn reads but does not
-// own. The modules that own them bind their sets through the connectors authn
-// declares; a set that never arrived stays empty and every lookup fails, so a
-// missing publication is an error rather than an empty table name in a
-// statement.
+// own. An owner activated after authn binds its set through a connector authn
+// declares; an owner activated before authn -- core -- is an ordinary provider
+// authn resolves. Either way a set that never arrived stays empty and every
+// lookup fails, so a missing publication is an error rather than an empty
+// table name in a statement.
 type foreignTables struct {
 	directory gormx.TableSet
 	oauth     gormx.TableSet
+	access    gormx.TableSet
 }
 
 // bindDirectory records the table names the organization module published to
@@ -23,6 +25,18 @@ func (t *foreignTables) bindDirectory(published gormx.TableSet) error {
 		return fmt.Errorf("%w: no holder for the published directory tables", errRepositoryUnavailable)
 	}
 	t.directory = published
+	return nil
+}
+
+// bindAccess records the table names the core module published to authn. core
+// is activated before authn, so it is an ordinary provider rather than a
+// connector; the holder is shared so that the binding still reaches every
+// repository clone.
+func (t *foreignTables) bindAccess(published gormx.TableSet) error {
+	if t == nil {
+		return fmt.Errorf("%w: no holder for the published access tables", errRepositoryUnavailable)
+	}
+	t.access = published
 	return nil
 }
 
@@ -42,6 +56,14 @@ func (t *foreignTables) directoryTable(logical string) (string, error) {
 		return "", fmt.Errorf("%w: no published directory tables", errRepositoryUnavailable)
 	}
 	return publishedTableName(t.directory, "organization", logical)
+}
+
+// accessTable returns the physical name core published for a logical table.
+func (t *foreignTables) accessTable(logical string) (string, error) {
+	if t == nil {
+		return "", fmt.Errorf("%w: no published access tables", errRepositoryUnavailable)
+	}
+	return publishedTableName(t.access, "core", logical)
 }
 
 // oauthTable returns the physical name oauth published for a logical table.

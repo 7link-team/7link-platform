@@ -126,6 +126,9 @@ func organizationDeclarationAPI(t *testing.T) huma.API {
 	require.NoError(t, module.Provide[identity.DirectoryTableSetConnector](services, identity.DirectoryTableSetConnector{
 		Bind: func(gormx.TableSet) error { return nil },
 	}))
+	require.NoError(t, module.Provide[core.AccessTables](services, core.AccessTables{
+		Published: core.TableSet(h.runtime.TablePrefix()),
+	}))
 	require.NoError(t, module.Provide[guid.Source](services, newOrganizationTestIDs(9000)))
 	require.NoError(t, module.Provide[audit.Appender](services, h.appender))
 	require.NoError(t, services.Seal())
@@ -313,9 +316,9 @@ func newOrganizationHTTPHarness(t *testing.T) organizationHTTPHarness {
 	members := &organizationMemberChecker{prefix: h.prefix}
 	guard := &organizationAdministratorGuard{}
 	departments := h.service
-	tenants, _, _ := newTenantServiceForTest(h, newOrganizationTestIDs(1000))
-	positions := NewPositionService(h.runtime, h.appender, members, guard, newOrganizationTestIDs(300))
-	groups := NewGroupService(h.runtime, h.appender, members, guard, newOrganizationTestIDs(400))
+	tenants, _, _ := newTenantServiceForTest(t, h, newOrganizationTestIDs(1000))
+	positions := newBoundPositionService(t, h.runtime, h.appender, members, guard, newOrganizationTestIDs(300))
+	groups := newBoundGroupService(t, h.runtime, h.appender, members, guard, newOrganizationTestIDs(400))
 	credentials := &invitationCredentialFixture{}
 	creator := identity.InvitationPrincipalCreator(func(
 		ctx context.Context, db *gorm.DB, tenantID guid.ID, _, _, displayName, email string,
@@ -328,7 +331,7 @@ func newOrganizationHTTPHarness(t *testing.T) organizationHTTPHarness {
 		}).Error
 		return principalID, err
 	})
-	invitations := NewInvitationService(h.runtime, h.appender, newOrganizationTestIDs(600), credentials, creator)
+	invitations := newBoundInvitationService(t, h.runtime, h.appender, newOrganizationTestIDs(600), credentials, creator)
 
 	registrar := authz.NewRegistrar(
 		authz.DefaultRegistry(),
@@ -435,7 +438,7 @@ func TestTenantAdministrationRequiresPlatformPermission(t *testing.T) {
 	h := newOrganizationHarness(t, "sl_")
 	h.seedTenant(t, 2, TenantActive)
 	h.seedMember(t, 2, 1, "Caller")
-	service, _, _ := newTenantServiceForTest(h, newOrganizationTestIDs(1500))
+	service, _, _ := newTenantServiceForTest(t, h, newOrganizationTestIDs(1500))
 	registrar := authz.NewRegistrar(
 		authz.DefaultRegistry(), organizationHTTPTokenVerifier{},
 		organizationDenyPlatformChecker{}, organizationHTTPMembershipChecker{},

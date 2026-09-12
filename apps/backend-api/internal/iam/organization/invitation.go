@@ -278,8 +278,12 @@ func (s *InvitationService) Accept(ctx context.Context, input AcceptInvitation) 
 				return fmt.Errorf("assign invitation department: %w", err)
 			}
 		}
+		roleMembers, err := repo.foreign.accessTable("iam_role_members")
+		if err != nil {
+			return err
+		}
 		for _, roleID := range roles {
-			if err := repo.writer().WithContext(ctx).Table(repo.table("iam_role_members")).Create(map[string]any{"tenant_id": row.TenantID, "role_id": roleID, "principal_id": principalID, "created_at": now}).Error; err != nil {
+			if err := repo.writer().WithContext(ctx).Table(roleMembers).Create(map[string]any{"tenant_id": row.TenantID, "role_id": roleID, "principal_id": principalID, "created_at": now}).Error; err != nil {
 				return fmt.Errorf("assign invitation role: %w", err)
 			}
 		}
@@ -418,8 +422,12 @@ func validateInvitationBindings(ctx context.Context, repo *Repository, tenantID,
 		}
 	}
 	if len(roleIDs) > 0 {
+		roles, err := repo.foreign.accessTable("iam_roles")
+		if err != nil {
+			return err
+		}
 		var count int64
-		err := repo.writer().WithContext(ctx).Table(repo.table("iam_roles")).Where("tenant_id = ? AND id IN ?", tenantID, roleIDs).Count(&count).Error
+		err = repo.writer().WithContext(ctx).Table(roles).Where("tenant_id = ? AND id IN ?", tenantID, roleIDs).Count(&count).Error
 		if err != nil {
 			return fmt.Errorf("count invitation roles: %w", err)
 		}

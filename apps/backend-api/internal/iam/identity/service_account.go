@@ -84,9 +84,13 @@ func (s *Service) ValidateServiceAccount(ctx context.Context, db *gorm.DB, tenan
 	if err != nil {
 		return false, err
 	}
+	members, err := repo.memberTable()
+	if err != nil {
+		return false, err
+	}
 	var count int64
 	err = query.
-		Joins("JOIN "+repo.table("iam_tenant_members")+" AS member ON member.principal_id = principal.id AND member.tenant_id = service_account.owner_tenant_id").
+		Joins("JOIN "+members+" AS member ON member.principal_id = principal.id AND member.tenant_id = service_account.owner_tenant_id").
 		Joins("JOIN "+tenantTable+" AS tenant ON tenant.id = service_account.owner_tenant_id").
 		Where("service_account.owner_tenant_id = ? AND service_account.principal_id = ?", tenantID, principalID).
 		Where("service_account.status = 'active' AND service_account.deleted_at IS NULL AND (service_account.expires_at IS NULL OR service_account.expires_at > ?)", now.UTC()).

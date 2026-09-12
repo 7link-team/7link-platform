@@ -3,6 +3,7 @@ package identity
 import (
 	"testing"
 
+	"7link.com/platform/internal/iam/core"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -47,6 +48,9 @@ func bindForeignTables(t *testing.T, repository *Repository, prefix string) {
 	foreign := &foreignTables{}
 	require.NoError(t, foreign.bindDirectory(publishedTableSet(prefix, publishedDirectoryTables...)))
 	require.NoError(t, foreign.bindOAuth(publishedTableSet(prefix, publishedOAuthTables...)))
+	// core is the one owner identity can import: it is activated first, so the
+	// set comes from core itself rather than from a list repeated here.
+	require.NoError(t, foreign.bindAccess(core.TableSet(prefix)))
 	repository.foreign = foreign
 }
 
@@ -57,6 +61,7 @@ func bindModuleForeignTables(t *testing.T, module *Module, prefix string) {
 	require.NotNil(t, module)
 	require.NoError(t, module.foreign.bindDirectory(publishedTableSet(prefix, publishedDirectoryTables...)))
 	require.NoError(t, module.foreign.bindOAuth(publishedTableSet(prefix, publishedOAuthTables...)))
+	require.NoError(t, module.foreign.bindAccess(core.TableSet(prefix)))
 }
 
 // publishedTableSet builds the set an owner publishes: every logical name it
@@ -175,4 +180,65 @@ func TestRevokeReportsUnavailabilityWithoutTouchingStorage(t *testing.T) {
 		"a rejected revocation must not touch a row")
 	assert.Zero(t, harness.nullTimeCount(t, "iam_sessions", "revoked_at", 900),
 		"the half identity owns still runs; only the unpublished name is withheld")
+}
+
+// TestStatementsRejectAnUnpublishedMemberTable walks every statement that
+// reads or writes the tenant member table core owns, with core's set published
+// complete except for that one name. Each must report the gap rather than
+// query an empty table name, and the writes among them must leave storage
+// untouched.
+func TestStatementsRejectAnUnpublishedMemberTable(t *testing.T) {
+	harness := newIdentityHarness(t, "sl_")
+	repository := harness.repository
+
+	published := core.TableSet("sl_")
+	names := make(map[string]gormx.TableName, published.Len())
+	for _, logical := range published.Names() {
+		if logical == "iam_tenant_members" {
+			continue
+		}
+		name, _ := published.Lookup(logical)
+		names[logical] = name
+	}
+	require.NoError(t, repository.foreign.bindAccess(gormx.NewTableSet(names)))
+
+	var before int64
+	require.NoError(t, harness.db.Table("sl_iam_tenant_members").Count(&before).Error)
+
+	for name, call := range map[string]func() error{
+		"insert member": func() error {
+			return repository.insertTenantMember(t.Context(), tenantMemberRecord{
+				TenantID: 1, PrincipalID: 2, Status: "active",
+			})
+		},
+		"get principal": func() error {
+			_, err := repository.getPrincipal(t.Context(), 1, 2)
+			return err
+		},
+		"list principals": func() error {
+			_, _, err := repository.listPrincipals(t.Context(), 1, "", 10, 0)
+			return err
+		},
+		"update member": func() error {
+			return repository.updateTenantMember(t.Context(), 1, 2, map[string]any{"status": "inactive"})
+		},
+		"active tenants": func() error {
+			_, err := repository.activeTenantIDs(t.Context(), 2)
+			return err
+		},
+		"get tenant member": func() error {
+			_, err := repository.getTenantMember(t.Context(), 1, 2)
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := call()
+			require.ErrorIs(t, err, errRepositoryUnavailable)
+			assert.Contains(t, err.Error(), "core did not publish iam_tenant_members")
+		})
+	}
+
+	var after int64
+	require.NoError(t, harness.db.Table("sl_iam_tenant_members").Count(&after).Error)
+	assert.Equal(t, before, after, "a rejected write must not reach storage")
 }

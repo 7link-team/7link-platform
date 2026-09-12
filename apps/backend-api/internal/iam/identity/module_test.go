@@ -102,8 +102,13 @@ func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
 			if err := module.Provide[core.AdministratorGuard](services, harness.guard); err != nil {
 				return err
 			}
-			return module.Provide[core.PrincipalTableSetConnector](services, core.PrincipalTableSetConnector{
+			if err := module.Provide[core.PrincipalTableSetConnector](services, core.PrincipalTableSetConnector{
 				Bind: func(gormx.TableSet) error { return nil },
+			}); err != nil {
+				return err
+			}
+			return module.Provide[core.AccessTables](services, core.AccessTables{
+				Published: core.TableSet(harness.runtime.TablePrefix()),
 			})
 		}},
 		instance,

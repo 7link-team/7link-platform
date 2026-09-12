@@ -78,7 +78,12 @@ func authnWiredRegistry(t *testing.T, harness *authnRepositoryHarness, config au
 			if err := module.Provide[core.AuthorizationEvaluator](services, boundAuthorizationEvaluator(t, harness.runtime)); err != nil {
 				return err
 			}
-			return module.Provide[core.MemberTenantResolver](services, boundMemberTenantResolver(t, harness.runtime))
+			if err := module.Provide[core.MemberTenantResolver](services, boundMemberTenantResolver(t, harness.runtime)); err != nil {
+				return err
+			}
+			return module.Provide[core.AccessTables](services, core.AccessTables{
+				Published: core.TableSet(harness.runtime.TablePrefix()),
+			})
 		}},
 		&authnDependencyProvider{name: identity.Name, provide: func(services *module.Services) error {
 			creator := registrationCreatorForHarness(harness)

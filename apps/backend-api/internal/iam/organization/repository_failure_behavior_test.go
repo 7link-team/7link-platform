@@ -89,17 +89,17 @@ func TestOrganizationRepositoryStateAndConstructorFailures(t *testing.T) {
 	assert.Panics(t, func() { NewRepository(h.runtime, nil, h.appender) })
 	assert.Panics(t, func() { NewRepository(h.runtime, newOrganizationTestIDs(1), nil) })
 	assert.Panics(t, func() {
-		NewGroupService(nil, h.appender, &organizationMemberChecker{}, &organizationAdministratorGuard{}, newOrganizationTestIDs(1))
+		newBoundGroupService(t, nil, h.appender, &organizationMemberChecker{}, &organizationAdministratorGuard{}, newOrganizationTestIDs(1))
 	})
 	assert.Panics(t, func() {
-		NewPositionService(h.runtime, h.appender, nil, &organizationAdministratorGuard{}, newOrganizationTestIDs(1))
+		newBoundPositionService(t, h.runtime, h.appender, nil, &organizationAdministratorGuard{}, newOrganizationTestIDs(1))
 	})
 	assert.Panics(t, func() {
-		NewTenantService(h.runtime, nil, newOrganizationTestIDs(1),
+		newBoundTenantService(t, h.runtime, nil, newOrganizationTestIDs(1),
 			newTenantBootstrapStub().capability(), newTenantOwnerStub().capability())
 	})
 	assert.Panics(t, func() {
-		NewInvitationService(h.runtime, h.appender, newOrganizationTestIDs(1), nil, func(context.Context, *gorm.DB, guid.ID, string, string, string, string) (guid.ID, error) {
+		newBoundInvitationService(t, h.runtime, h.appender, newOrganizationTestIDs(1), nil, func(context.Context, *gorm.DB, guid.ID, string, string, string, string) (guid.ID, error) {
 			return 1, nil
 		})
 	})
@@ -148,10 +148,10 @@ func TestOrganizationServicesSurfaceClosedDatabase(t *testing.T) {
 	h := newOrganizationHarness(t, "")
 	memberChecker := &organizationMemberChecker{}
 	guard := &organizationAdministratorGuard{}
-	groups := NewGroupService(h.runtime, h.appender, memberChecker, guard, newOrganizationTestIDs(10))
-	positions := NewPositionService(h.runtime, h.appender, memberChecker, guard, newOrganizationTestIDs(20))
-	tenants, _, _ := newTenantServiceForTest(h, newOrganizationTestIDs(30))
-	invitations := NewInvitationService(
+	groups := newBoundGroupService(t, h.runtime, h.appender, memberChecker, guard, newOrganizationTestIDs(10))
+	positions := newBoundPositionService(t, h.runtime, h.appender, memberChecker, guard, newOrganizationTestIDs(20))
+	tenants, _, _ := newTenantServiceForTest(t, h, newOrganizationTestIDs(30))
+	invitations := newBoundInvitationService(t,
 		h.runtime, h.appender, newOrganizationTestIDs(40), &invitationCredentialFixture{},
 		func(context.Context, *gorm.DB, guid.ID, string, string, string, string) (guid.ID, error) {
 			return 50, nil
@@ -206,8 +206,8 @@ func TestGroupAndPositionServicesRejectInvalidReferences(t *testing.T) {
 	h := newOrganizationHarness(t, "")
 	members := &organizationMemberChecker{}
 	guard := &organizationAdministratorGuard{}
-	groups := NewGroupService(h.runtime, h.appender, members, guard, newOrganizationTestIDs(10))
-	positions := NewPositionService(h.runtime, h.appender, members, guard, newOrganizationTestIDs(20))
+	groups := newBoundGroupService(t, h.runtime, h.appender, members, guard, newOrganizationTestIDs(10))
+	positions := newBoundPositionService(t, h.runtime, h.appender, members, guard, newOrganizationTestIDs(20))
 
 	_, err := groups.List(t.Context(), 0)
 	assert.ErrorIs(t, err, ErrGroupInvalid)
@@ -237,10 +237,10 @@ func TestGroupAndPositionServicesRejectInvalidReferences(t *testing.T) {
 	_, err = positions.DeleteMember(t.Context(), 1, 2, 0)
 	assert.ErrorIs(t, err, ErrPositionInvalid)
 
-	failingGroups := NewGroupService(h.runtime, h.appender, members, guard, failingOrganizationIDs{})
+	failingGroups := newBoundGroupService(t, h.runtime, h.appender, members, guard, failingOrganizationIDs{})
 	_, err = failingGroups.Create(t.Context(), 1, CreateGroup{Name: "Group"})
 	assert.ErrorContains(t, err, "generate group id")
-	failingPositions := NewPositionService(h.runtime, h.appender, members, guard, failingOrganizationIDs{})
+	failingPositions := newBoundPositionService(t, h.runtime, h.appender, members, guard, failingOrganizationIDs{})
 	_, err = failingPositions.Create(t.Context(), 1, CreatePosition{Code: "position", Name: "Position"})
 	assert.ErrorContains(t, err, "generate position id")
 }

@@ -144,8 +144,12 @@ func (s *TenantService) ListByMember(ctx context.Context, subject guid.ID) ([]Te
 	if err != nil {
 		return nil, err
 	}
+	memberTable, err := repo.foreign.accessTable("iam_tenant_members")
+	if err != nil {
+		return nil, err
+	}
 	var rows []model.Tenant
-	tenantTable, memberTable := repo.table(model.Tenant{}.TableName()), repo.table("iam_tenant_members")
+	tenantTable := repo.table(model.Tenant{}.TableName())
 	err = repo.writer().WithContext(ctx).Table(tenantTable+" AS t").Select("t.*").
 		Joins("JOIN "+memberTable+" AS m ON m.tenant_id = t.id AND m.principal_id = ?", subject).
 		Where("t.status <> ? AND m.status = ?", TenantDeleted, StatusActive).Order("t.name ASC, t.id ASC").Scan(&rows).Error

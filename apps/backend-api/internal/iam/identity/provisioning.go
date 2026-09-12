@@ -180,8 +180,12 @@ func (r *Repository) getTenantMember(ctx context.Context, tenantID, principalID 
 	if err != nil {
 		return nil, err
 	}
+	members, err := r.memberTable()
+	if err != nil {
+		return nil, err
+	}
 	var member tenantMemberRecord
-	err = db.WithContext(ctx).Table(r.table("iam_tenant_members")).
+	err = db.WithContext(ctx).Table(members).
 		Where("tenant_id = ? AND principal_id = ?", tenantID, principalID).Take(&member).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound

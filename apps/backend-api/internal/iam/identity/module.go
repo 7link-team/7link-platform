@@ -206,6 +206,13 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve identity field permissions: %w", err)
 	}
+	accessTables, err := module.Resolve[core.AccessTables](services)
+	if err != nil {
+		return fmt.Errorf("resolve identity access tables: %w", err)
+	}
+	if err := m.foreign.bindAccess(accessTables.Published); err != nil {
+		return fmt.Errorf("bind identity access tables: %w", err)
+	}
 	principalTables, err := module.Resolve[core.PrincipalTableSetConnector](services)
 	if err != nil {
 		return fmt.Errorf("resolve identity principal table set connector: %w", err)

@@ -43,7 +43,7 @@ func TestTenantNormalization(t *testing.T) {
 
 func TestTenantLifecycleMemberListingAndRollback(t *testing.T) {
 	h := newOrganizationHarness(t, "sl_")
-	service, _, _ := newTenantServiceForTest(h, newOrganizationTestIDs(500))
+	service, _, _ := newTenantServiceForTest(t, h, newOrganizationTestIDs(500))
 	service.now = func() time.Time { return organizationTestNow }
 	tenant, err := service.Create(t.Context(), newTenantForTest("acme", "Acme"))
 	require.NoError(t, err)
@@ -103,7 +103,7 @@ func TestEnsureTenantIsIdempotent(t *testing.T) {
 
 func TestTenantMutationFailuresRollbackAndDeletedRowsRemainQueryable(t *testing.T) {
 	h := newOrganizationHarness(t, "")
-	service, _, _ := newTenantServiceForTest(h, newOrganizationTestIDs(1600))
+	service, _, _ := newTenantServiceForTest(t, h, newOrganizationTestIDs(1600))
 	service.now = func() time.Time { return organizationTestNow }
 	tenant, err := service.Create(t.Context(), newTenantForTest("rollback", "Original"))
 	require.NoError(t, err)

@@ -61,7 +61,7 @@ func TestGroupLifecycleMembersAndTenantIsolation(t *testing.T) {
 	h.seedMember(t, 1, 10, "Alice")
 	h.seedMember(t, 2, 20, "Bob")
 	guard := &organizationAdministratorGuard{}
-	service := NewGroupService(h.runtime, h.appender, &organizationMemberChecker{prefix: h.prefix}, guard, newOrganizationTestIDs(200))
+	service := newBoundGroupService(t, h.runtime, h.appender, &organizationMemberChecker{prefix: h.prefix}, guard, newOrganizationTestIDs(200))
 	service.now = func() time.Time { return organizationTestNow }
 
 	group, err := service.Create(t.Context(), 1, CreateGroup{Name: "Operators"})
@@ -101,7 +101,7 @@ func TestDynamicGroupEvaluationAndMutationGuard(t *testing.T) {
 	h.seedMember(t, 1, 10, "Alice")
 	h.seedMember(t, 1, 11, "Bob")
 	guard := &organizationAdministratorGuard{}
-	service := NewGroupService(h.runtime, h.appender, &organizationMemberChecker{}, guard, newOrganizationTestIDs(300))
+	service := newBoundGroupService(t, h.runtime, h.appender, &organizationMemberChecker{}, guard, newOrganizationTestIDs(300))
 	service.now = func() time.Time { return organizationTestNow }
 	rule := MembershipRule(`{"version":1,"match":"all","conditions":[{"field":"member.email","operator":"in","values":["alice@example.com"]}]}`)
 	group, err := service.Create(t.Context(), 1, CreateGroup{Name: "Alice only", Type: GroupTypeDynamic, Rule: rule})
@@ -121,7 +121,7 @@ func TestPositionLifecycleMembersAndTenantIsolation(t *testing.T) {
 	h.seedMember(t, 1, 10, "Alice")
 	h.seedMember(t, 2, 20, "Bob")
 	guard := &organizationAdministratorGuard{}
-	service := NewPositionService(h.runtime, h.appender, &organizationMemberChecker{prefix: h.prefix}, guard, newOrganizationTestIDs(400))
+	service := newBoundPositionService(t, h.runtime, h.appender, &organizationMemberChecker{prefix: h.prefix}, guard, newOrganizationTestIDs(400))
 	service.now = func() time.Time { return organizationTestNow }
 	position, err := service.Create(t.Context(), 1, CreatePosition{Code: "engineer", Name: "Engineer"})
 	require.NoError(t, err)
@@ -148,7 +148,7 @@ func TestPositionLifecycleMembersAndTenantIsolation(t *testing.T) {
 func TestGroupUpdateFieldsGuardsAndReferenceChecks(t *testing.T) {
 	h := newOrganizationHarness(t, "")
 	guard := &organizationAdministratorGuard{}
-	service := NewGroupService(h.runtime, h.appender, &organizationMemberChecker{}, guard, newOrganizationTestIDs(1000))
+	service := newBoundGroupService(t, h.runtime, h.appender, &organizationMemberChecker{}, guard, newOrganizationTestIDs(1000))
 	service.now = func() time.Time { return organizationTestNow }
 	rule := MembershipRule(`{"version":1,"match":"all","conditions":[{"field":"member.status","operator":"in","values":["active"]}]}`)
 	group, err := service.Create(t.Context(), 1, CreateGroup{Name: "Dynamic", Type: GroupTypeDynamic, Rule: rule})
@@ -210,7 +210,7 @@ func TestGroupUpdateFieldsGuardsAndReferenceChecks(t *testing.T) {
 func TestPositionUpdateFieldsGuardsAndReferenceChecks(t *testing.T) {
 	h := newOrganizationHarness(t, "sl_")
 	guard := &organizationAdministratorGuard{}
-	service := NewPositionService(h.runtime, h.appender, &organizationMemberChecker{prefix: h.prefix}, guard, newOrganizationTestIDs(1100))
+	service := newBoundPositionService(t, h.runtime, h.appender, &organizationMemberChecker{prefix: h.prefix}, guard, newOrganizationTestIDs(1100))
 	service.now = func() time.Time { return organizationTestNow }
 	position, err := service.Create(t.Context(), 1, CreatePosition{Code: "engineer", Name: "Engineer"})
 	require.NoError(t, err)
@@ -268,8 +268,8 @@ func TestGroupAndPositionMembershipFailuresRollback(t *testing.T) {
 	h.seedMember(t, 1, 11, "Bob")
 	checker := &organizationMemberChecker{}
 	guard := &organizationAdministratorGuard{}
-	groups := NewGroupService(h.runtime, h.appender, checker, guard, newOrganizationTestIDs(1200))
-	positions := NewPositionService(h.runtime, h.appender, checker, guard, newOrganizationTestIDs(1300))
+	groups := newBoundGroupService(t, h.runtime, h.appender, checker, guard, newOrganizationTestIDs(1200))
+	positions := newBoundPositionService(t, h.runtime, h.appender, checker, guard, newOrganizationTestIDs(1300))
 	groups.now = func() time.Time { return organizationTestNow }
 	positions.now = func() time.Time { return organizationTestNow }
 	group, err := groups.Create(t.Context(), 1, CreateGroup{Name: "Operators"})

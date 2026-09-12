@@ -225,6 +225,13 @@ func (m *Module) InjectServices(services *module.Services) error {
 	}
 	m.fields = fields
 	m.personalPermissions = fields.CheckBulk
+	accessTables, err := module.Resolve[core.AccessTables](services)
+	if err != nil {
+		return fmt.Errorf("resolve authn access tables: %w", err)
+	}
+	if err := m.foreign.bindAccess(accessTables.Published); err != nil {
+		return fmt.Errorf("bind authn access tables: %w", err)
+	}
 	m.ids = ids
 	m.appender = appender
 	m.registrationCreator = func(

@@ -14,6 +14,7 @@ import (
 type foreignTables struct {
 	directory gormx.TableSet
 	oauth     gormx.TableSet
+	access    gormx.TableSet
 }
 
 // bindDirectory records the table names the organization module published to
@@ -23,6 +24,17 @@ func (t *foreignTables) bindDirectory(published gormx.TableSet) error {
 		return fmt.Errorf("%w: no holder for the published directory tables", errRepositoryUnavailable)
 	}
 	t.directory = published
+	return nil
+}
+
+// bindAccess records the table names the core module published to identity.
+// core is activated before identity, so it is an ordinary provider rather than
+// a connector; the holder is shared so the binding reaches every clone.
+func (t *foreignTables) bindAccess(published gormx.TableSet) error {
+	if t == nil {
+		return fmt.Errorf("%w: no holder for the published access tables", errRepositoryUnavailable)
+	}
+	t.access = published
 	return nil
 }
 
@@ -42,6 +54,14 @@ func (t *foreignTables) directoryTable(logical string) (string, error) {
 		return "", fmt.Errorf("%w: no published directory tables", errRepositoryUnavailable)
 	}
 	return publishedTableName(t.directory, "organization", logical)
+}
+
+// accessTable returns the physical name core published for a logical table.
+func (t *foreignTables) accessTable(logical string) (string, error) {
+	if t == nil {
+		return "", fmt.Errorf("%w: no published access tables", errRepositoryUnavailable)
+	}
+	return publishedTableName(t.access, "core", logical)
 }
 
 // oauthTable returns the physical name oauth published for a logical table.

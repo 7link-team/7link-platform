@@ -15,7 +15,7 @@ func TestGroupProvisionerUsesCallerTransaction(t *testing.T) {
 	h := newOrganizationHarness(t, "sl_")
 	h.seedMember(t, 1, 10, "Alice")
 	h.seedMember(t, 1, 11, "Bob")
-	service := NewGroupService(
+	service := newBoundGroupService(t,
 		h.runtime, h.appender, &organizationMemberChecker{prefix: h.prefix},
 		&organizationAdministratorGuard{}, newOrganizationTestIDs(700),
 	)
@@ -62,7 +62,7 @@ func TestGroupProvisionerUsesCallerTransaction(t *testing.T) {
 func TestGroupProvisionerRollbackAndTenantValidation(t *testing.T) {
 	h := newOrganizationHarness(t, "")
 	h.seedMember(t, 1, 10, "Alice")
-	service := NewGroupService(
+	service := newBoundGroupService(t,
 		h.runtime, h.appender, &organizationMemberChecker{},
 		&organizationAdministratorGuard{}, newOrganizationTestIDs(800),
 	)
@@ -120,7 +120,7 @@ func TestNormalizeProvisionedGroup(t *testing.T) {
 func TestDisableProvisionedGroupUsesCallerTransaction(t *testing.T) {
 	h := newOrganizationHarness(t, "sl_")
 	guard := &organizationAdministratorGuard{}
-	service := NewGroupService(
+	service := newBoundGroupService(t,
 		h.runtime, h.appender, &organizationMemberChecker{prefix: h.prefix},
 		guard, newOrganizationTestIDs(900),
 	)
@@ -157,7 +157,7 @@ func TestProvisionedGroupReplacementAndGuardFailureRollback(t *testing.T) {
 	h.seedMember(t, 1, 10, "Alice")
 	h.seedMember(t, 1, 11, "Bob")
 	guard := &organizationAdministratorGuard{}
-	service := NewGroupService(
+	service := newBoundGroupService(t,
 		h.runtime, h.appender, &organizationMemberChecker{}, guard, newOrganizationTestIDs(950),
 	)
 	service.now = func() time.Time { return organizationTestNow }

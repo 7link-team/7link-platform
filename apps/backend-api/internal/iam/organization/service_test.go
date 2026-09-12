@@ -63,7 +63,7 @@ func newOrganizationHarness(t *testing.T, prefix string) *organizationHarness {
 		return harness.auditErr
 	})
 	harness.runtime, harness.appender = runtime, appender
-	harness.service = NewService(runtime, appender, newOrganizationTestIDs(100))
+	harness.service = newBoundService(t, runtime, appender, newOrganizationTestIDs(100))
 	harness.service.now = func() time.Time { return organizationTestNow }
 	return harness
 }

@@ -31,7 +31,7 @@ func TestEveryDirectoryMutationIsTenantScoped(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Tenant B Department", storedDepartment.Name)
 
-	positions := NewPositionService(h.runtime, h.appender, members, guard, newOrganizationTestIDs(1100))
+	positions := newBoundPositionService(t, h.runtime, h.appender, members, guard, newOrganizationTestIDs(1100))
 	positionB, err := positions.Create(t.Context(), 2, CreatePosition{Code: "operator", Name: "Operator"})
 	require.NoError(t, err)
 	_, err = positions.Get(t.Context(), 1, positionB.ID)
@@ -47,7 +47,7 @@ func TestEveryDirectoryMutationIsTenantScoped(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Operator", positionB.Name)
 
-	groups := NewGroupService(h.runtime, h.appender, members, guard, newOrganizationTestIDs(1200))
+	groups := newBoundGroupService(t, h.runtime, h.appender, members, guard, newOrganizationTestIDs(1200))
 	groupB, err := groups.Create(t.Context(), 2, CreateGroup{Name: "Tenant B Group"})
 	require.NoError(t, err)
 	_, err = groups.Get(t.Context(), 1, groupB.ID)
@@ -70,7 +70,7 @@ func TestInvitationTokenRemainsBoundToItsPersistedTenant(t *testing.T) {
 	h.seedTenant(t, 2, TenantActive)
 	credentials := &invitationCredentialFixture{}
 	createdTenants := make([]guid.ID, 0, 1)
-	service := NewInvitationService(
+	service := newBoundInvitationService(t,
 		h.runtime, h.appender, newOrganizationTestIDs(1300), credentials,
 		func(_ context.Context, _ *gorm.DB, tenantID guid.ID, _, _, _, _ string) (guid.ID, error) {
 			createdTenants = append(createdTenants, tenantID)

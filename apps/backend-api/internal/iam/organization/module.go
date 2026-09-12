@@ -47,6 +47,11 @@ type Module struct {
 	bootstrap        core.TenantBootstrapper
 	owners           identity.TenantOwnerLookup
 	directorySources core.DirectoryAuthorizationSourceConnector
+	// foreign is the one holder of the table names core published to
+	// organization. Every service's repository reads through it, so a name
+	// that was never published fails the statement instead of reaching the
+	// database.
+	foreign foreignTables
 }
 
 // NewModule builds a runnable organization module. Shared capabilities are
@@ -118,6 +123,13 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve organization tenant owner lookup: %w", err)
 	}
+	accessTables, err := module.Resolve[core.AccessTables](services)
+	if err != nil {
+		return fmt.Errorf("resolve organization access tables: %w", err)
+	}
+	if err := m.foreign.bindAccess(accessTables.Published); err != nil {
+		return fmt.Errorf("bind organization access tables: %w", err)
+	}
 	directorySources, err := module.Resolve[core.DirectoryAuthorizationSourceConnector](services)
 	if err != nil {
 		return fmt.Errorf("resolve organization directory authorization source connector: %w", err)
@@ -183,6 +195,11 @@ func (m *Module) Initialize(context.Context) error {
 	m.positions = NewPositionService(m.runtime, m.appender, m.members, m.administrators, m.ids)
 	m.groups = NewGroupService(m.runtime, m.appender, m.members, m.administrators, m.ids)
 	m.invitations = NewInvitationService(m.runtime, m.appender, m.ids, m.credentials, m.createPrincipal)
+	for _, repo := range []*Repository{
+		m.service.repo, m.tenants.repo, m.positions.repo, m.groups.repo, m.invitations.repo,
+	} {
+		repo.foreign = &m.foreign
+	}
 	return nil
 }
 

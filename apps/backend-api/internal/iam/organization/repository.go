@@ -31,6 +31,10 @@ type Repository struct {
 	revisions *core.RevisionStore
 	db        *gorm.DB
 	inTx      bool
+	// foreign holds the names of the tables this repository reads but does
+	// not own. It is a pointer so a transactional clone reads the same
+	// publication as the repository it came from.
+	foreign *foreignTables
 }
 
 func NewRepository(runtime *appenv.Runtime, ids guid.Source, appender audit.Appender) *Repository {
@@ -41,7 +45,10 @@ func NewRepository(runtime *appenv.Runtime, ids guid.Source, appender audit.Appe
 	if err != nil {
 		panic(err)
 	}
-	return &Repository{runtime: runtime, ids: ids, appender: appender, revisions: revisions}
+	return &Repository{
+		runtime: runtime, ids: ids, appender: appender, revisions: revisions,
+		foreign: &foreignTables{},
+	}
 }
 
 func (r *Repository) writer() *gorm.DB {
@@ -140,9 +147,13 @@ func (r *Repository) bumpPolicyRevision(ctx context.Context, tenantID guid.ID, n
 
 func (r *Repository) countRelationshipSubject(ctx context.Context, tenantID guid.ID, subjectType string, subjectID guid.ID) (int64, error) {
 	var total int64
-	for _, table := range []string{"iam_relationships", "iam_resource_relationships"} {
+	for _, logical := range []string{"iam_relationships", "iam_resource_relationships"} {
+		table, err := r.foreign.accessTable(logical)
+		if err != nil {
+			return 0, err
+		}
 		var count int64
-		if err := r.writer().WithContext(ctx).Table(r.table(table)).
+		if err := r.writer().WithContext(ctx).Table(table).
 			Where("tenant_id = ? AND subject_type = ? AND subject_id = ?", tenantID, subjectType, subjectID).Count(&count).Error; err != nil {
 			return 0, err
 		}

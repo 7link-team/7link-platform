@@ -60,6 +60,17 @@ func (r *Repository) tenantTable() (string, error) {
 	return r.foreign.directoryTable("iam_tenants")
 }
 
+// memberTable returns the physical name core published for the tenant member
+// table. identity reads and writes membership rows without owning them, so a
+// deployment where core never published gets this error rather than a
+// statement against an empty table name.
+func (r *Repository) memberTable() (string, error) {
+	if r == nil {
+		return "", errRepositoryUnavailable
+	}
+	return r.foreign.accessTable("iam_tenant_members")
+}
+
 // oauthTable returns the physical name oauth published for a logical table.
 func (r *Repository) oauthTable(logical string) (string, error) {
 	if r == nil {
