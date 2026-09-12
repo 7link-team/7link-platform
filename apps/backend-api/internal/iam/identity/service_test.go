@@ -795,6 +795,6 @@ func TestSetStatusSurfacesMembershipQueryFailure(t *testing.T) {
 
 	_, err = harness.service.SetStatus(t.Context(), 7, principal.ID, "disabled")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "revoke principal state in iam_sessions")
+	assert.Contains(t, err.Error(), "revoke principal sessions")
 	assert.Equal(t, "active", harness.principal(t, principal.ID).Status)
 }

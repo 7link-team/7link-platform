@@ -149,6 +149,10 @@ func newIdentityHarness(t *testing.T, prefix string) *identityHarness {
 	// a harness that runs identity alone publishes what they would, so a reader
 	// here reaches a table instead of reporting the table names as missing.
 	bindForeignTables(t, harness.repository, prefix)
+	// The credential tables belong to authn, which runs those writes in
+	// identity's transaction. identity's tests cannot reach the real capability,
+	// so they supply a fixture -- see repository_credentialstore_test.go.
+	bindCredentialStore(t, harness.repository, prefix)
 	return harness
 }
 
@@ -481,14 +485,14 @@ func TestRepositoryReportsMissingCrossModuleTables(t *testing.T) {
 	require.NoError(t, harness.db.Exec("DROP TABLE iam_sessions").Error)
 	err := harness.repository.revokeSessionsAndRefreshTokens(t.Context(), 900, identityTestNow)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "revoke principal state in iam_sessions")
+	assert.Contains(t, err.Error(), "revoke principal sessions")
 	require.NoError(t, harness.db.Exec("DROP TABLE iam_password_recovery_tokens").Error)
 	require.NoError(t, harness.db.Exec(
 		"CREATE TABLE iam_sessions (id BIGINT PRIMARY KEY, principal_id BIGINT NOT NULL, revoked_at DATETIME NULL)",
 	).Error)
 	err = harness.repository.revokeAllSecurityState(t.Context(), 900, identityTestNow)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "consume principal state in iam_password_recovery_tokens")
+	assert.Contains(t, err.Error(), "consume principal credential tokens")
 }
 
 // newDetachedRepository builds a repository whose runtime carries no database,

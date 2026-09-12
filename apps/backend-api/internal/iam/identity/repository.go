@@ -33,6 +33,10 @@ type Repository struct {
 	// repository built without one reports the published tables as missing
 	// instead of reading a table nobody named.
 	foreign *foreignTables
+	// credentials is authn's capability for the credential tables authn owns.
+	// identity sequences those writes inside its own transaction; it does not
+	// run them.
+	credentials PrincipalCredentialStore
 }
 
 func NewRepository(runtime *appenv.Runtime, ids guid.Source, appender audit.Appender) *Repository {
@@ -191,12 +195,11 @@ func (r *Repository) createCredential(ctx context.Context, principalID guid.ID, 
 	if err != nil {
 		return err
 	}
-	result := db.WithContext(ctx).Table(r.table("iam_credentials")).Create(map[string]any{
-		"principal_id": principalID, "password_hash": passwordHash,
-		"password_changed_at": now, "credential_version": int64(1), "updated_at": now,
-	})
-	if result.Error != nil {
-		return fmt.Errorf("insert principal credential: %w", result.Error)
+	if r.credentials.CreateHashed == nil {
+		return fmt.Errorf("%w: no credential store", errRepositoryUnavailable)
+	}
+	if err := r.credentials.CreateHashed(ctx, db, principalID, passwordHash, now); err != nil {
+		return fmt.Errorf("insert principal credential: %w", err)
 	}
 	return nil
 }
@@ -206,12 +209,17 @@ func (r *Repository) incrementCredentialVersion(ctx context.Context, principalID
 	if err != nil {
 		return err
 	}
-	result := db.WithContext(ctx).Table(r.table("iam_credentials")).Where("principal_id = ?", principalID).
-		Updates(map[string]any{"credential_version": gorm.Expr("credential_version + 1"), "updated_at": now})
-	if result.Error != nil {
-		return fmt.Errorf("increment principal credential version: %w", result.Error)
+	if r.credentials.IncrementVersion == nil {
+		return fmt.Errorf("%w: no credential store", errRepositoryUnavailable)
 	}
-	if result.RowsAffected != 1 {
+	found, err := r.credentials.IncrementVersion(ctx, db, principalID, now)
+	if err != nil {
+		return fmt.Errorf("increment principal credential version: %w", err)
+	}
+	// A principal with no credential at all is not an error authn can judge: a
+	// federation-only principal legitimately has none, and what that means here
+	// is identity's to say.
+	if !found {
 		return errPrincipalCredentialNotFound
 	}
 	return nil
@@ -222,31 +230,25 @@ func (r *Repository) revokeSessionsAndRefreshTokens(ctx context.Context, princip
 	if err != nil {
 		return err
 	}
-	for _, table := range []string{"iam_sessions", "iam_refresh_tokens"} {
-		// Resolved before each write, so a name the owner never published stops
-		// the revocation instead of running it against an empty table name.
-		physical, err := r.revocationTable(table)
-		if err != nil {
-			return err
-		}
-		result := db.WithContext(ctx).Table(physical).
-			Where("principal_id = ? AND revoked_at IS NULL", principalID).Update("revoked_at", now)
-		if result.Error != nil {
-			return fmt.Errorf("revoke principal state in %s: %w", table, result.Error)
-		}
+	if r.credentials.RevokeSessions == nil {
+		return fmt.Errorf("%w: no credential store", errRepositoryUnavailable)
+	}
+	// The sessions belong to authn and the refresh tokens to oauth, so neither
+	// is named here: authn runs its own revocation in this transaction, and
+	// oauth's name arrives from the set oauth published.
+	if err := r.credentials.RevokeSessions(ctx, db, principalID, now); err != nil {
+		return fmt.Errorf("revoke principal sessions: %w", err)
+	}
+	refreshTokens, err := r.oauthTable("iam_refresh_tokens")
+	if err != nil {
+		return err
+	}
+	result := db.WithContext(ctx).Table(refreshTokens).
+		Where("principal_id = ? AND revoked_at IS NULL", principalID).Update("revoked_at", now)
+	if result.Error != nil {
+		return fmt.Errorf("revoke principal state in iam_refresh_tokens: %w", result.Error)
 	}
 	return nil
-}
-
-// revocationTable returns the physical name of a table a principal-state
-// revocation writes. The sessions belong to identity, so its own prefix names
-// them; the refresh tokens belong to oauth, so their name is the one the owner
-// published.
-func (r *Repository) revocationTable(logical string) (string, error) {
-	if logical != "iam_refresh_tokens" {
-		return r.table(logical), nil
-	}
-	return r.oauthTable(logical)
 }
 
 func (r *Repository) revokeAllSecurityState(ctx context.Context, principalID guid.ID, now time.Time) error {
@@ -257,12 +259,13 @@ func (r *Repository) revokeAllSecurityState(ctx context.Context, principalID gui
 	if err != nil {
 		return err
 	}
-	for _, table := range []string{"iam_password_recovery_tokens", "iam_email_verification_tokens"} {
-		result := db.WithContext(ctx).Table(r.table(table)).
-			Where("principal_id = ? AND consumed_at IS NULL", principalID).Update("consumed_at", now)
-		if result.Error != nil {
-			return fmt.Errorf("consume principal state in %s: %w", table, result.Error)
-		}
+	if r.credentials.ConsumeCredentialTokens == nil {
+		return fmt.Errorf("%w: no credential store", errRepositoryUnavailable)
+	}
+	// The recovery and verification tokens are authn's too, so spending them is
+	// authn's statement, run here in identity's transaction.
+	if err := r.credentials.ConsumeCredentialTokens(ctx, db, principalID, now); err != nil {
+		return fmt.Errorf("consume principal credential tokens: %w", err)
 	}
 	return nil
 }

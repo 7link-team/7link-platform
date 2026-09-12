@@ -120,6 +120,13 @@ func identityWiredRegistry(
 			}); err != nil {
 				return err
 			}
+			// authn provides this in a deployment; the registry runs identity
+			// alone, so it stands in for the owner of the credential tables.
+			if err := module.Provide[PrincipalCredentialStore](
+				services, authnCredentialFixture(harness.runtime.TablePrefix()),
+			); err != nil {
+				return err
+			}
 			if len(state) > 0 {
 				if err := module.Provide[PrincipalStateReceiver](services, state[0]); err != nil {
 					return err

@@ -51,6 +51,10 @@ type Module struct {
 	// publish to identity. The connectors below bind it, and the repository the
 	// module builds shares it.
 	foreign foreignTables
+	// credentials is authn's capability for the tables authn owns. identity
+	// resolves it optionally: a deployment without authn has no credentials to
+	// write, and the repository refuses rather than writing them itself.
+	credentials PrincipalCredentialStore
 }
 
 // RegistrationPrincipalCreator creates a pending principal and its credential
@@ -161,6 +165,7 @@ func (m *Module) bootstrapPrincipalStore() BootstrapPrincipalStore {
 		// The bootstrap runs after Wire, so the owners have published and the
 		// module's holder already carries their names.
 		repo.foreign = &m.foreign
+		repo.credentials = m.credentials
 		return repo, nil
 	}
 	return BootstrapPrincipalStore{
@@ -241,6 +246,10 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
 		return err
 	}
+	m.credentials, err = module.Resolve[PrincipalCredentialStore](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
 	// A module that JOINs identity's tables provides this hook; identity pushes
 	// its own names into it. Absent means nobody JOINs them in this deployment,
 	// which is not identity's problem to report.
@@ -297,6 +306,7 @@ func (m *Module) Initialize(context.Context) error {
 	// Wire has already run, so the owners have published; the service and every
 	// repository it clones share the one holder the connectors bound.
 	m.Service.repo.foreign = &m.foreign
+	m.Service.repo.credentials = m.credentials
 	m.Service.fields = m.fields
 	m.Service.anonymizer = m.anonymizer
 	m.Service.erasureRecorder = m.erasureRecorder
