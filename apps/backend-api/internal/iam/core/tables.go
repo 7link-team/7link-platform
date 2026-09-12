@@ -5,20 +5,70 @@ import (
 	gormx "7link.com/platform/pkg/extension/gorm"
 )
 
-// TableSet publishes the physical names of the tables core owns to the modules
-// that JOIN them.
-//
-// It carries names rather than a database handle or a prefix: a consumer
-// resolves the names it needs and queries with its own connection, so it cannot
-// build a name core never published.
+// TableSet publishes the same names as an opaque set. It is what the consumers
+// that cannot name core's type still resolve, and it goes away once they all
+// hold the typed struct.
 func TableSet(prefix string) gormx.TableSet {
 	return gormx.NewTableSet(query.BindNames(prefix).Map())
 }
 
-// AccessTables is how core hands its table names to the modules that JOIN
-// them. Those modules are activated after core, so they declare core as a
-// dependency and resolve the published set during their own injection, rather
-// than applying the deployment prefix to a name they do not own.
+// AccessTableNames is the physical name of every table core owns, as core hands them
+// to the modules that JOIN them.
+//
+// The fields are named, not looked up by string, so a consumer cannot ask for a
+// table core does not have and cannot misspell the one it wants. Every module
+// that reads these is activated after core and imports it, which is what lets
+// core be the side that declares the type; where the import runs the other way,
+// the consumer declares the struct and the owner fills it instead.
+type AccessTableNames struct {
+	Entities               gormx.TableName
+	FieldPolicies          gormx.TableName
+	Menus                  gormx.TableName
+	PlatformAdministrators gormx.TableName
+	PlatformGrants         gormx.TableName
+	PolicyRevisions        gormx.TableName
+	Relationships          gormx.TableName
+	ResourceRelationships  gormx.TableName
+	Roles                  gormx.TableName
+	RoleBindings           gormx.TableName
+	RoleMembers            gormx.TableName
+	RolePermissions        gormx.TableName
+	TemporaryRoleGrants    gormx.TableName
+	TenantMembers          gormx.TableName
+}
+
+// PublishedAccessTableNames binds every name core owns to one deployment prefix. It builds
+// from the module's own BindNames, so the prefix is applied the same way it is
+// everywhere else core queries, and a table added to core cannot be forgotten
+// here without the drift test noticing.
+func PublishedAccessTableNames(prefix string) AccessTableNames {
+	names := query.BindNames(prefix)
+	return AccessTableNames{
+		Entities:               names.Entities,
+		FieldPolicies:          names.FieldPolicies,
+		Menus:                  names.Menus,
+		PlatformAdministrators: names.PlatformAdministrators,
+		PlatformGrants:         names.PlatformGrants,
+		PolicyRevisions:        names.PolicyRevisions,
+		Relationships:          names.Relationships,
+		ResourceRelationships:  names.ResourceRelationships,
+		Roles:                  names.Roles,
+		RoleBindings:           names.RoleBindings,
+		RoleMembers:            names.RoleMembers,
+		RolePermissions:        names.RolePermissions,
+		TemporaryRoleGrants:    names.TemporaryRoleGrants,
+		TenantMembers:          names.TenantMembers,
+	}
+}
+
+// Bound reports whether these names arrived. PublishedAccessTableNames fills every field
+// at once, so one zero field means the consumer was never given the set rather
+// than that core published an incomplete one.
+func (t AccessTableNames) Bound() bool { return !t.TenantMembers.IsZero() }
+
+// AccessTables is the opaque form of the same publication, still resolved by the
+// consumers that have not moved to the typed names yet. It goes away with the
+// last of them.
 type AccessTables struct {
 	Published gormx.TableSet
 }

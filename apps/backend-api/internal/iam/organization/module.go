@@ -78,9 +78,7 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[TenantLookup](services, m.tenantLookup()); err != nil {
 		return fmt.Errorf("provide organization tenant lookup: %w", err)
 	}
-	if err := module.Provide[DirectoryTables](services, DirectoryTables{
-		Published: TableSet(m.runtime.TablePrefix()),
-	}); err != nil {
+	if err := module.Provide[DirectoryTables](services, DirectoryTables{Published: TableSet(m.runtime.TablePrefix())}); err != nil {
 		return fmt.Errorf("provide organization directory tables: %w", err)
 	}
 	return nil

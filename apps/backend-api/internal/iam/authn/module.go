@@ -159,9 +159,7 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[identity.PrincipalCredentialStore](services, m.principalCredentialStore()); err != nil {
 		return fmt.Errorf("provide authn principal credential store: %w", err)
 	}
-	if err := module.Provide[CredentialTables](services, CredentialTables{
-		Published: TableSet(m.runtime.TablePrefix()),
-	}); err != nil {
+	if err := module.Provide[CredentialTables](services, CredentialTables{Published: TableSet(m.runtime.TablePrefix())}); err != nil {
 		return fmt.Errorf("provide authn credential tables: %w", err)
 	}
 	return nil
