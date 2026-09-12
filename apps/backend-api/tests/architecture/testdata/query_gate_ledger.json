@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "budget": 384,
+  "budget": 380,
   "rebaseline": "initial freeze at the P0 commit",
   "entries": [
     {
@@ -204,10 +204,6 @@
       "count": 1
     },
     {
-      "key": "concatenated-table-name:7c01d21f2b0d363f",
-      "count": 2
-    },
-    {
       "key": "concatenated-table-name:802198067bae1502",
       "count": 1
     },
@@ -245,7 +241,7 @@
     },
     {
       "key": "concatenated-table-name:8b2f6c9d16dc821e",
-      "count": 4
+      "count": 2
     },
     {
       "key": "concatenated-table-name:8b42a35783b25032",

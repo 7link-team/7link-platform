@@ -24,6 +24,7 @@ import (
 	"7link.com/platform/internal/iam/oauth"
 	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -64,6 +65,9 @@ func newIdentityLinkEnvironment(t *testing.T) (*federationEnvironment, *authn.Se
 	// repository in Initialize. This harness builds the repository itself, so it
 	// publishes the same four sets itself -- without them authn refuses the
 	// JOINs rather than naming another module's table.
+	require.NoError(t, repo.BindPrincipalState(
+		identityPrincipalStateForFederation(t, env.runtime.TablePrefix()),
+	))
 	require.NoError(t, repo.BindForeignTables(
 		organization.TableSet(env.runtime.TablePrefix()),
 		oauth.TableSet(env.runtime.TablePrefix()),
@@ -638,4 +642,19 @@ func TestSAMLIdentityLinkUsesFreshSignedResponseAndSameSiteContinuation(t *testi
 	var link model.IdentityLink
 	require.NoError(t, env.db.Take(&link).Error)
 	assert.Equal(t, principalID, link.PrincipalID)
+}
+
+// identityPrincipalStateForFederation resolves identity's principal-state
+// capability from identity itself. authn reads and locks identity's principal
+// table through it, so a harness that builds authn by hand has to push the real
+// one rather than a stand-in.
+func identityPrincipalStateForFederation(t *testing.T, prefix string) identity.PrincipalStateStore {
+	t.Helper()
+	runtime := appenv.NewRuntime(appenv.NewIdentity("federation-test", "1"), appenv.WithTablePrefix(prefix))
+	services := module.NewServices()
+	require.NoError(t, identity.NewModule(runtime, identity.Config{}).ProvideServices(services))
+	require.NoError(t, services.Seal())
+	store, err := module.Resolve[identity.PrincipalStateStore](services)
+	require.NoError(t, err)
+	return store
 }

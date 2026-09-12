@@ -6,6 +6,7 @@ import (
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/appenv"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,6 +42,11 @@ func bindForeignTables(t *testing.T, repository *Repository, prefix string) {
 	// set here comes from identity itself rather than a list repeated in authn.
 	require.NoError(t, foreign.bindPrincipal(identity.TableSet(prefix)))
 	repository.foreign = foreign
+	// The reads and locks on identity's own table go through identity's
+	// capability, which the module receives the same way. A harness that built
+	// the repository itself has to supply it, and it comes from identity rather
+	// than from a stand-in so these tests exercise the owner's statements.
+	repository.principals = identityPrincipalStateFor(t, prefix)
 }
 
 // bindModuleForeignTables does the same for a module built by hand instead of
@@ -52,6 +58,7 @@ func bindModuleForeignTables(t *testing.T, module *Module, prefix string) {
 	require.NoError(t, module.foreign.bindOAuth(publishedTableSet(prefix, publishedOAuthTables...)))
 	require.NoError(t, module.foreign.bindAccess(core.TableSet(prefix)))
 	require.NoError(t, module.foreign.bindPrincipal(identity.TableSet(prefix)))
+	require.NoError(t, module.bindPrincipalState(identityPrincipalStateFor(t, prefix)))
 }
 
 // publishedTableSet builds the set an owner publishes: every logical name it
@@ -226,45 +233,18 @@ func TestPrincipalTablesReportUnpublishedAsUnavailable(t *testing.T) {
 	), errRepositoryUnavailable)
 }
 
-// TestStatementsAgainstIdentityTablesRefuseAnUnpublishedName walks every
-// statement that still reads a table identity owns with that one name withheld.
-// The fixture database has the tables, so an empty name would come back as a
-// SQL error rather than as this one.
-func TestStatementsAgainstIdentityTablesRefuseAnUnpublishedName(t *testing.T) {
+// TestJoinsAgainstIdentityTablesRefuseAnUnpublishedName covers the three
+// statements that still name identity's tables, because each one joins a table
+// authn owns and so cannot be handed to the owner. The fixture database has the
+// tables, so an empty name would come back as a SQL error rather than as this
+// one.
+func TestJoinsAgainstIdentityTablesRefuseAnUnpublishedName(t *testing.T) {
 	harness := newAuthnRepositoryHarness(t, "sl_")
 
 	for name, testCase := range map[string]struct {
 		omitted string
 		call    func(*Repository) error
 	}{
-		"login principal": {"iam_principals", func(r *Repository) error {
-			_, err := r.findLoginPrincipal(t.Context(), "alice")
-			return err
-		}},
-		"login service account exclusion": {"iam_service_accounts", func(r *Repository) error {
-			_, err := r.findLoginPrincipal(t.Context(), "alice")
-			return err
-		}},
-		"recovery principal": {"iam_principals", func(r *Repository) error {
-			_, err := r.findRecoveryPrincipal(t.Context(), "a@b.test")
-			return err
-		}},
-		"active principal": {"iam_principals", func(r *Repository) error {
-			_, err := r.getActivePrincipal(t.Context(), 1)
-			return err
-		}},
-		"principal lock": {"iam_principals", func(r *Repository) error {
-			_, err := r.lockPrincipal(t.Context(), 1)
-			return err
-		}},
-		"principal lock by login": {"iam_principals", func(r *Repository) error {
-			_, err := r.lockPrincipalByLogin(t.Context(), "alice")
-			return err
-		}},
-		"email verification write": {"iam_principals", func(r *Repository) error {
-			_, err := r.verifyPrincipalEmail(t.Context(), 1, "a@b.test", repositoryTestNow)
-			return err
-		}},
 		"principal state": {"iam_principals", func(r *Repository) error {
 			_, err := r.principalState(t.Context(), 1)
 			return err
@@ -298,6 +278,48 @@ func TestStatementsAgainstIdentityTablesRefuseAnUnpublishedName(t *testing.T) {
 	}
 }
 
+// TestReadsOnIdentityTablesRefuseAnUnwiredCapability covers the other side of
+// the same guarantee. These statements no longer name identity's tables at all:
+// identity owns them and runs them, so what authn has to refuse is a capability
+// that never arrived -- the repository must report it rather than call a nil
+// function or read nothing and call it an absence.
+func TestReadsOnIdentityTablesRefuseAnUnwiredCapability(t *testing.T) {
+	harness := newAuthnRepositoryHarness(t, "sl_")
+
+	for name, call := range map[string]func(*Repository) error{
+		"login principal": func(r *Repository) error {
+			_, err := r.findLoginPrincipal(t.Context(), "alice")
+			return err
+		},
+		"recovery principal": func(r *Repository) error {
+			_, err := r.findRecoveryPrincipal(t.Context(), "a@b.test")
+			return err
+		},
+		"active principal": func(r *Repository) error {
+			_, err := r.getActivePrincipal(t.Context(), 1)
+			return err
+		},
+		"principal lock": func(r *Repository) error {
+			_, err := r.lockPrincipal(t.Context(), 1)
+			return err
+		},
+		"principal lock by login": func(r *Repository) error {
+			_, err := r.lockPrincipalByLogin(t.Context(), "alice")
+			return err
+		},
+		"email verification write": func(r *Repository) error {
+			_, err := r.verifyPrincipalEmail(t.Context(), 1, "a@b.test", repositoryTestNow)
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repository := harness.repository.withDB(harness.db, false)
+			repository.principals = identity.PrincipalStateStore{}
+			assert.ErrorIs(t, call(repository), errRepositoryUnavailable)
+		})
+	}
+}
+
 // partialPublishedSet is what an owner publishing an incomplete set looks like:
 // every name it owns except the one this statement needs.
 func partialPublishedSet(full gormx.TableSet, omit string) gormx.TableSet {
@@ -310,4 +332,15 @@ func partialPublishedSet(full gormx.TableSet, omit string) gormx.TableSet {
 		names[logical] = name
 	}
 	return gormx.NewTableSet(names)
+}
+
+// identityPrincipalStateFor resolves identity's principal-state capability from
+// identity itself, bound to one deployment prefix. A stand-in here would make
+// every assertion about the statements authn sends meaningless.
+func identityPrincipalStateFor(t *testing.T, prefix string) identity.PrincipalStateStore {
+	t.Helper()
+	runtime := appenv.NewRuntime(appenv.NewIdentity("authn-test", "1"), appenv.WithTablePrefix(prefix))
+	store, err := identityPrincipalState(t, identity.NewModule(runtime, identity.Config{}))
+	require.NoError(t, err)
+	return store
 }

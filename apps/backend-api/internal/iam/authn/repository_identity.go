@@ -3,13 +3,11 @@ package authn
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 var errAmbiguousRecoveryPrincipal = errors.New("ambiguous password recovery principal")
@@ -39,22 +37,15 @@ func (r *Repository) findLoginPrincipal(ctx context.Context, loginName string) (
 	if err != nil {
 		return nil, err
 	}
-	principalTable, err := r.principalTable()
+	if r.principals.HumanByLogin == nil {
+		return nil, errRepositoryUnavailable
+	}
+	row, found, err := r.principals.HumanByLogin(ctx, db, loginName)
 	if err != nil {
 		return nil, err
 	}
-	serviceAccountTable, err := r.serviceAccountTable()
-	if err != nil {
-		return nil, err
-	}
-	var row identity.Principal
-	err = db.WithContext(ctx).Table(principalTable+" AS principal").
-		Where("principal.login_name = ?", loginName).
-		Where("NOT EXISTS (?)", db.Table(serviceAccountTable+" AS service_account").
-			Select("1").Where("service_account.principal_id = principal.id")).
-		Take(&row).Error
-	if err != nil {
-		return nil, err
+	if !found {
+		return nil, gorm.ErrRecordNotFound
 	}
 	return &row, nil
 }
@@ -64,14 +55,15 @@ func (r *Repository) getActivePrincipal(ctx context.Context, principalID guid.ID
 	if err != nil {
 		return nil, err
 	}
-	principalTable, err := r.principalTable()
+	if r.principals.ActiveRow == nil {
+		return nil, errRepositoryUnavailable
+	}
+	row, found, err := r.principals.ActiveRow(ctx, db, principalID)
 	if err != nil {
 		return nil, err
 	}
-	var row identity.Principal
-	if err := db.WithContext(ctx).Table(principalTable).
-		Where("id = ? AND status = ?", principalID, "active").Take(&row).Error; err != nil {
-		return nil, err
+	if !found {
+		return nil, gorm.ErrRecordNotFound
 	}
 	return &row, nil
 }
@@ -81,22 +73,12 @@ func (r *Repository) findRecoveryPrincipal(ctx context.Context, identifier strin
 	if err != nil {
 		return nil, err
 	}
-	identifier = strings.ToLower(strings.TrimSpace(identifier))
-	principalTable, err := r.principalTable()
-	if err != nil {
-		return nil, err
+	if r.principals.ActiveHumanByIdentifier == nil {
+		return nil, errRepositoryUnavailable
 	}
-	serviceAccountTable, err := r.serviceAccountTable()
-	if err != nil {
-		return nil, err
-	}
-	var rows []*identity.Principal
-	err = db.WithContext(ctx).Table(principalTable+" AS principal").
-		Where("status = ? AND email_verified = ?", "active", true).
-		Where("LOWER(principal.login_name) = ? OR LOWER(principal.email) = ?", identifier, identifier).
-		Where("NOT EXISTS (?)", db.Table(serviceAccountTable+" AS service_account").
-			Select("1").Where("service_account.principal_id = principal.id")).
-		Limit(2).Find(&rows).Error
+	// Identity returns every match; which count means what is authn's recovery
+	// policy, so the decision stays here.
+	rows, err := r.principals.ActiveHumanByIdentifier(ctx, db, identifier)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +88,7 @@ func (r *Repository) findRecoveryPrincipal(ctx context.Context, identifier strin
 	if len(rows) != 1 {
 		return nil, errAmbiguousRecoveryPrincipal
 	}
-	return rows[0], nil
+	return &rows[0], nil
 }
 
 func (r *Repository) lockPrincipal(ctx context.Context, principalID guid.ID) (*identity.Principal, error) {
@@ -114,17 +96,18 @@ func (r *Repository) lockPrincipal(ctx context.Context, principalID guid.ID) (*i
 	if err != nil {
 		return nil, err
 	}
-	principalTable, err := r.principalTable()
+	if r.principals.LockActiveRow == nil {
+		return nil, errRepositoryUnavailable
+	}
+	row, found, err := r.principals.LockActiveRow(ctx, db, principalID)
 	if err != nil {
 		return nil, err
 	}
-	var row identity.Principal
-	query := db.WithContext(ctx).Table(principalTable).Where("id = ? AND status = ?", principalID, "active")
-	if db.Dialector.Name() != "sqlite" {
-		query = query.Clauses(clause.Locking{Strength: "UPDATE"})
-	}
-	if err := query.Take(&row).Error; err != nil {
-		return nil, err
+	// Every caller but one keeps only the error and relies on an absent or
+	// suspended principal stopping the operation, so a missing row has to be an
+	// error here and not a zero value.
+	if !found {
+		return nil, gorm.ErrRecordNotFound
 	}
 	return &row, nil
 }
@@ -134,17 +117,15 @@ func (r *Repository) lockPrincipalByLogin(ctx context.Context, loginName string)
 	if err != nil {
 		return nil, err
 	}
-	principalTable, err := r.principalTable()
+	if r.principals.LockByLogin == nil {
+		return nil, errRepositoryUnavailable
+	}
+	row, found, err := r.principals.LockByLogin(ctx, db, loginName)
 	if err != nil {
 		return nil, err
 	}
-	var row identity.Principal
-	query := db.WithContext(ctx).Table(principalTable).Where("login_name = ?", loginName)
-	if db.Dialector.Name() != "sqlite" {
-		query = query.Clauses(clause.Locking{Strength: "UPDATE"})
-	}
-	if err := query.Take(&row).Error; err != nil {
-		return nil, err
+	if !found {
+		return nil, gorm.ErrRecordNotFound
 	}
 	return &row, nil
 }
@@ -154,14 +135,10 @@ func (r *Repository) verifyPrincipalEmail(ctx context.Context, principalID guid.
 	if err != nil {
 		return false, err
 	}
-	principalTable, err := r.principalTable()
-	if err != nil {
-		return false, err
+	if r.principals.VerifyEmail == nil {
+		return false, errRepositoryUnavailable
 	}
-	result := db.WithContext(ctx).Table(principalTable).
-		Where("id = ? AND status = ? AND email = ? AND email_verified = ?", principalID, "active", email, false).
-		Updates(map[string]any{"email_verified": true, "activation_required": false, "updated_at": now})
-	return result.RowsAffected == 1, result.Error
+	return r.principals.VerifyEmail(ctx, db, principalID, email, now)
 }
 
 func (r *Repository) principalState(ctx context.Context, principalID guid.ID) (principalCredentialState, error) {

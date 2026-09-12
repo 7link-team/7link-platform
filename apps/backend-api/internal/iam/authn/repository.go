@@ -91,6 +91,20 @@ func (r *Repository) BindForeignTables(directory, oauth, access, principal gormx
 	return r.foreign.bind(directory, oauth, access, principal)
 }
 
+// BindPrincipalState records identity's principal-state capability, which is how
+// this repository reads and locks identity's own table. The module receives it
+// through the receiver it provides and hands it on in Initialize; a caller that
+// builds a repository outside the module has to supply it, because an unwired
+// repository reports the capability as missing rather than reading nothing and
+// calling it an absence.
+func (r *Repository) BindPrincipalState(store identity.PrincipalStateStore) error {
+	if r == nil {
+		return errRepositoryUnavailable
+	}
+	r.principals = store
+	return nil
+}
+
 // principalTable returns the physical name identity published for the principal
 // table, and serviceAccountTable the one it published for service accounts.
 // authn JOINs both without owning either, so a deployment where identity never

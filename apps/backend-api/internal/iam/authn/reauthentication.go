@@ -160,12 +160,10 @@ func (s *Service) lockReauthenticationSession(ctx context.Context, repo *Reposit
 	if principalID.Zero() || sessionHash == "" {
 		return 0, authnext.ErrInvalidCredentials
 	}
-	principalTable, err := repo.principalTable()
-	if err != nil {
-		return 0, err
+	if repo.principals.LockActive == nil {
+		return 0, errRepositoryUnavailable
 	}
-	if err := repo.writer().WithContext(ctx).Table(principalTable).
-		Where("id = ? AND status = ?", principalID, "active").Update("updated_at", gorm.Expr("updated_at")).Error; err != nil {
+	if err := repo.principals.LockActive(ctx, repo.writer().WithContext(ctx), principalID); err != nil {
 		return 0, err
 	}
 	_, version, err := repo.activePrincipalClaims(ctx, principalID)
