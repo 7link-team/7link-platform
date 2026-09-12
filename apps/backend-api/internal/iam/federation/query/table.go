@@ -45,18 +45,6 @@ func BindNames(prefix string) TableNames {
 	}
 }
 
-// Map indexes the names by logical name so the module root can publish them as
-// a set to the modules that JOIN federation's tables.
-func (names TableNames) Map() map[string]gormx.TableName {
-	return map[string]gormx.TableName{
-		model.Provider{}.TableName():                names.Providers,
-		model.IdentityLink{}.TableName():            names.IdentityLinks,
-		model.SAMLServiceProvider{}.TableName():     names.SAMLServiceProviders,
-		model.SAMLIDPKey{}.TableName():              names.SAMLIDPKeys,
-		model.IdentityLinkTransaction{}.TableName(): names.IdentityLinkTransactions,
-	}
-}
-
 // Bind applies prefix to every table owned by the federation module. It builds
 // from BindNames, so the prefix reaches the generated query objects through one
 // path rather than five.

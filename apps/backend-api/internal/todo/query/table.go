@@ -27,14 +27,6 @@ func BindNames(prefix string) TableNames {
 	}
 }
 
-// Map indexes the names by logical name so the module root can publish them as
-// a set to the modules that JOIN todo's table.
-func (names TableNames) Map() map[string]gormx.TableName {
-	return map[string]gormx.TableName{
-		model.TodoRow{}.TableName(): names.Todos,
-	}
-}
-
 // Bind returns the TodoRow query bound to prefix + the model's table name. It
 // builds from BindNames, so the prefix reaches the generated query object
 // through one path.

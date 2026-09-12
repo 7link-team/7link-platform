@@ -81,27 +81,6 @@ func BindNames(prefix string) TableNames {
 	}
 }
 
-// Map indexes the names by logical name so the module root can publish them as
-// a set to the modules that JOIN organization's tables.
-func (names TableNames) Map() map[string]gormx.TableName {
-	return map[string]gormx.TableName{
-		model.Department{}.TableName():          names.Departments,
-		model.DepartmentClosure{}.TableName():   names.DepartmentClosures,
-		model.Position{}.TableName():            names.Positions,
-		model.PositionMember{}.TableName():      names.PositionMembers,
-		model.Group{}.TableName():               names.Groups,
-		model.GroupMember{}.TableName():         names.GroupMembers,
-		model.GroupRoleBinding{}.TableName():    names.GroupRoleBindings,
-		model.PositionRoleBinding{}.TableName(): names.PositionRoleBindings,
-		model.Tenant{}.TableName():              names.Tenants,
-		model.MemberDepartment{}.TableName():    names.MemberDepartments,
-		model.RoleDataScope{}.TableName():       names.RoleDataScopes,
-		model.RoleScopeDepartment{}.TableName(): names.RoleScopeDepartments,
-		model.Invitation{}.TableName():          names.Invitations,
-		model.InvitationRole{}.TableName():      names.InvitationRoles,
-	}
-}
-
 // Bind applies prefix to every table owned by the organization module. It
 // builds from BindNames, so the prefix reaches the generated query objects
 // through one path rather than fourteen.

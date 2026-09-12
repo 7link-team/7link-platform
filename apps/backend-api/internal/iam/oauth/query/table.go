@@ -45,18 +45,6 @@ func BindNames(prefix string) TableNames {
 	}
 }
 
-// Map indexes the names by logical name so the module root can publish them as
-// a set to the modules that JOIN oauth's tables.
-func (names TableNames) Map() map[string]gormx.TableName {
-	return map[string]gormx.TableName{
-		model.Client{}.TableName():            names.Clients,
-		model.AuthorizationCode{}.TableName(): names.AuthorizationCodes,
-		model.Consent{}.TableName():           names.Consents,
-		model.ConsentRequest{}.TableName():    names.ConsentRequests,
-		model.RefreshToken{}.TableName():      names.RefreshTokens,
-	}
-}
-
 // Bind applies prefix to every table owned by the OAuth module. It builds from
 // BindNames, so the prefix reaches the generated query objects through one path
 // rather than five.

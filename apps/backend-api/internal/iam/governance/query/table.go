@@ -41,17 +41,6 @@ func BindNames(prefix string) TableNames {
 	}
 }
 
-// Map indexes the names by logical name so the module root can publish them as
-// a set to the modules that JOIN governance's tables.
-func (names TableNames) Map() map[string]gormx.TableName {
-	return map[string]gormx.TableName{
-		model.AccessRequest{}.TableName():    names.AccessRequests,
-		model.ApprovalStep{}.TableName():     names.ApprovalSteps,
-		model.AccessReview{}.TableName():     names.AccessReviews,
-		model.AccessReviewItem{}.TableName(): names.AccessReviewItems,
-	}
-}
-
 // Bind applies prefix to every table owned by the governance module. It builds
 // from BindNames, so the prefix reaches the generated query objects through one
 // path rather than four.

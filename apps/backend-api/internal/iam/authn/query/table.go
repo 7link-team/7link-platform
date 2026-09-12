@@ -86,28 +86,6 @@ func BindNames(prefix string) TableNames {
 	}
 }
 
-// Map indexes the names by logical name so the module root can publish them as
-// a set to the modules that JOIN authn's tables.
-func (names TableNames) Map() map[string]gormx.TableName {
-	return map[string]gormx.TableName{
-		model.Credential{}.TableName():                names.Credentials,
-		model.Session{}.TableName():                   names.Sessions,
-		model.PasswordHistory{}.TableName():           names.PasswordHistory,
-		model.MFAEnrollment{}.TableName():             names.MFAEnrollments,
-		model.RecoveryCode{}.TableName():              names.RecoveryCodes,
-		model.MFAChallenge{}.TableName():              names.MFAChallenges,
-		model.PasskeyUser{}.TableName():               names.PasskeyUsers,
-		model.Passkey{}.TableName():                   names.Passkeys,
-		model.PasskeyChallenge{}.TableName():          names.PasskeyChallenges,
-		model.PasswordRecoveryToken{}.TableName():     names.PasswordRecoveryTokens,
-		model.NotificationOutbox{}.TableName():        names.NotificationOutbox,
-		model.EmailVerificationToken{}.TableName():    names.EmailVerificationTokens,
-		model.StepUpChallenge{}.TableName():           names.StepUpChallenges,
-		model.ReauthenticationChallenge{}.TableName(): names.ReauthenticationChallenges,
-		model.PersonalToken{}.TableName():             names.PersonalTokens,
-	}
-}
-
 // Bind applies prefix to every table owned by the authentication module. It
 // builds from BindNames, so the prefix reaches the generated query objects
 // through one path rather than fifteen.

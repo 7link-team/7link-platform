@@ -133,27 +133,6 @@ func BindAuthorizationTables(
 	return AuthorizationTables{Tables: BindNames(prefix), Directory: directory, Principal: principal}
 }
 
-// Map indexes the names by logical name so the module root can publish them as
-// a set to the modules that JOIN core's tables.
-func (names TableNames) Map() map[string]gormx.TableName {
-	return map[string]gormx.TableName{
-		model.Entity{}.TableName():                names.Entities,
-		model.FieldPolicy{}.TableName():           names.FieldPolicies,
-		model.Menu{}.TableName():                  names.Menus,
-		model.PlatformAdministrator{}.TableName(): names.PlatformAdministrators,
-		model.PlatformGrant{}.TableName():         names.PlatformGrants,
-		model.PolicyRevision{}.TableName():        names.PolicyRevisions,
-		model.Relationship{}.TableName():          names.Relationships,
-		model.ResourceRelationship{}.TableName():  names.ResourceRelationships,
-		model.Role{}.TableName():                  names.Roles,
-		model.RoleBinding{}.TableName():           names.RoleBindings,
-		model.RoleMember{}.TableName():            names.RoleMembers,
-		model.RolePermission{}.TableName():        names.RolePermissions,
-		model.TemporaryRoleGrant{}.TableName():    names.TemporaryRoleGrants,
-		model.TenantMember{}.TableName():          names.TenantMembers,
-	}
-}
-
 // Bind applies prefix to all tables owned by the core IAM module. It builds
 // from BindNames, so the prefix reaches the generated query objects through
 // one path rather than fourteen.

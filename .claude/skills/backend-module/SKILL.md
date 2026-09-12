@@ -100,7 +100,7 @@ var (
 行类型带完整 gorm tag,并实现 `TableName() string` 返回**不带前缀**的表名。
 时间列用 `time.Time`,可空时间用 `*time.Time`(NULL 表示"未发生",不要用零值当哨兵)。
 
-**query** —— `gen.go` 由 `make generate` 产出,**不要手改**;`table.go` 手写,放三件事:
+**query** —— `gen.go` 由 `make generate` 产出,**不要手改**;`table.go` 手写,放两件事:
 
 ```go
 // 物理表名:逻辑名 + 已生效的部署前缀。构造函数唯一,IsZero 可观测。
@@ -108,11 +108,6 @@ type TableNames struct { Todos gormx.TableName }
 
 func BindNames(prefix string) TableNames {
     return TableNames{Todos: gormx.NewTableName(prefix, model.TodoRow{}.TableName())}
-}
-
-// 供模块根包发布 TableSet,给 JOIN 本模块表的消费方用。
-func (names TableNames) Map() map[string]gormx.TableName {
-    return map[string]gormx.TableName{model.TodoRow{}.TableName(): names.Todos}
 }
 
 // Bind 从 BindNames 构建,所以前缀只经过一条路径。
@@ -126,18 +121,40 @@ func Bind(db *gorm.DB, prefix string) *Todos {
 而且单元测试发现不了(测试通常不带前缀)。`gormx.TableName` 的存在就是为了让这件事物理上只发生一次:
 别处拿到的都是已经构造好的名字,它们**无法自己发明**。
 
-**模块根包再加一个 `tables.go`**,把本模块的表名发布给别人:
+**有别的模块 JOIN 你的表时,才在模块根包加 `tables.go`**,发布一个**字段有名字的结构体**
+(没人 JOIN 就不要发布 —— 无人消费的发布是死代码):
 
 ```go
-func TableSet(prefix string) gormx.TableSet {
-    return gormx.NewTableSet(query.BindNames(prefix).Map())
+type TodoTableNames struct { Todos gormx.TableName }
+
+func PublishedTodoTableNames(prefix string) TodoTableNames {
+    names := query.BindNames(prefix)          // 从模块自己的 BindNames 构建,前缀只有一条路径
+    return TodoTableNames{Todos: names.Todos}
 }
+
+func (t TodoTableNames) Bound() bool { return !t.Todos.IsZero() }
 ```
 
-消费方拿到的是**名字的集合,不是前缀**,所以它造不出拥有者没发布的名字;解析不到时
-`Lookup` 返回 `ok=false`,**此时必须返回 error,不许把零值表名放进语句**(零值即空表名)。
+结构体是手写的,所以**必须配一条反射漂移门禁**(`TestTodoTableNamesCoversEveryTableTheModuleOwns`),
+拿字段集与 `query.TableNames` 比对 —— 否则新加的表会悄悄漏发,消费方永远问不到那个名字。
 
-**这两条由静态门禁强制**:`tests/architecture/query_gate_test.go` 禁止在 `Bind` 之外拼表名、
+消费方拿到的是**字段,不是字符串键**:问一张拥有者没有的表**编译不过**,不是运行期 error。
+
+**结构体声明在哪一侧,由 import 方向决定,不是偏好**:
+
+| 情形 | 谁声明结构体 | 怎么传 |
+|---|---|---|
+| 消费方 import 拥有者(拥有者激活在前) | **拥有者** 导出 `XTableNames` | `module.Provide[XTableNames]` → 消费方 `Resolve` |
+| 拥有者 import 消费方(拥有者激活在后) | **消费方** 声明它需要的字段 | 消费方提供 `XTableNamesConnector{Bind func(X) error}`,拥有者 `Resolve` 后填满 |
+| 两条都走不通(已 import 且注册序反向) | 拥有者 | 消费方提供 `XTableNamesReceiver`,拥有者推过去 |
+
+第二种情形下拥有者用**带键结构体字面量**填充,而 Go 在结构体新增字段时**照样编译**、新字段静默为零。
+所以强制手段在运行期和启动期,不在编译器:`bind` 逐字段查 `IsZero()` 并**报出字段名**,
+模块 `Initialize` 再查一次 `foreign.bound()`,任一槽位未到即**启动失败** ——
+绝不允许零值表名(即空表名)进入语句。这条检查必须配一条启动期用例,并做变异验证(删掉检查,用例要立刻红)。
+见 decisions **D40**。
+
+**"表名只在 `BindNames` 里拼一次"这条由静态门禁强制**:`tests/architecture/query_gate_test.go` 禁止在 `Bind` 之外拼表名、
 禁止手写 SQL、禁止裸 `iam_`/`goose_` 表名字面量;豁免文件只有各模块的 `query/table.go` 与
 `pkg/extension/{gorm,goose}` 这两个原语包。门禁按冻结基线 `testdata/query_gate_ledger.json`
 执行,**预算只减不增** —— 清理可以下调 `budget`,禁止为了变绿而抬高预算或删条目。
@@ -245,8 +262,10 @@ model/query/dbgen、禁止从根包泄漏持久化类型)。**新写的模块即
 
 **不要试图靠跨模块引用别人的 `query` 来复用表名**:`pkg/module/registry.go` 的 `Activate` 要求
 "模块必须注册在其全部依赖之后",即**依赖图必须是严格全序,环即启动失败**。像 `core` 这种被大家依赖的模块,
-反向 import 下游的 `query` 在启动期就是硬失败。跨模块取表名只有一条路:拥有者在**根包**发布
-`TableSet`(表名集合,不是前缀)或冻结窄接口,依赖方用 `module.Resolve[T]` 拿。见 decisions D37。
+反向 import 下游的 `query` 在启动期就是硬失败;架构门禁 `cross-module-storage-import` 也直接禁止
+跨模块 import 别人的 `query`/`model`/`dbgen`。跨模块取表名只有一条路:在**根包**用类型化结构体
+(第四节那张表决定由哪一侧声明)或冻结窄接口,依赖方用 `module.Resolve[T]` 拿。
+见 decisions **D37**(依赖全序)与 **D40**(表名结构体的方向规则)。
 
 ## 九、动手顺序
 

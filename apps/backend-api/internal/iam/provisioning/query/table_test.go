@@ -1,8 +1,10 @@
 package query
 
 import (
+	"reflect"
 	"testing"
 
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
@@ -28,18 +30,23 @@ func TestBindAppliesPrefixToEveryProvisioningTable(t *testing.T) {
 	}
 }
 
-// TestBindNamesMapPublishesPrefixedNames keeps the published set and the bound
-// queries from drifting apart: a table reachable through Bind but missing from
-// the map would be invisible to every consumer, and a name in the map that
-// Bind does not bind would point at a table this module does not own.
-func TestBindNamesMapPublishesPrefixedNames(t *testing.T) {
+// TestBindNamesCarryThePrefixExactlyOnce reads every name BindNames produces,
+// field by field, at a prefix and without one. A name that lost the prefix
+// would read the wrong table in a prefixed deployment and the right one in
+// every test that runs without a prefix -- so the two have to be compared.
+func TestBindNamesCarryThePrefixExactlyOnce(t *testing.T) {
 	t.Parallel()
 	const prefix = "sl_"
-	published := BindNames(prefix).Map()
-	require.NotEmpty(t, published, "a module that binds tables publishes them")
-	for logical, name := range published {
-		assert.Equal(t, prefix+logical, name.String(), logical)
-		assert.Equal(t, logical, name.Logical(), logical)
-		assert.False(t, name.IsZero(), logical)
+	plain, prefixed := reflect.ValueOf(BindNames("")), reflect.ValueOf(BindNames(prefix))
+	names := prefixed.Type()
+	require.Positive(t, names.NumField(), "a module that binds tables names at least one")
+
+	for index := range names.NumField() {
+		field := names.Field(index).Name
+		name := prefixed.Field(index).Interface().(gormx.TableName)
+		logical := plain.Field(index).Interface().(gormx.TableName).String()
+		assert.Equal(t, prefix+logical, name.String(), field)
+		assert.Equal(t, logical, name.Logical(), field)
+		assert.False(t, name.IsZero(), field)
 	}
 }
