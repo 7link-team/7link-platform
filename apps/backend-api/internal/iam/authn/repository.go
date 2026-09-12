@@ -9,6 +9,7 @@ import (
 	"7link.com/platform/internal/iam/authn/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
 
@@ -67,6 +68,40 @@ func (r *Repository) tenantTable() (string, error) {
 		return "", errRepositoryUnavailable
 	}
 	return r.foreign.directoryTable("iam_tenants")
+}
+
+// BindForeignTables records the table-name sets of the tables this repository
+// reads but does not own. The modules that own them reach it through the
+// connectors authn publishes and the receiver identity pushes into; a caller
+// that builds a repository outside the module has to call it itself, because an
+// unbound repository reports the publication as missing rather than running a
+// statement against an empty table name.
+func (r *Repository) BindForeignTables(directory, oauth, access, principal gormx.TableSet) error {
+	if r == nil {
+		return errRepositoryUnavailable
+	}
+	if r.foreign == nil {
+		r.foreign = &foreignTables{}
+	}
+	return r.foreign.bind(directory, oauth, access, principal)
+}
+
+// principalTable returns the physical name identity published for the principal
+// table, and serviceAccountTable the one it published for service accounts.
+// authn JOINs both without owning either, so a deployment where identity never
+// published gets this error rather than a statement against an empty name.
+func (r *Repository) principalTable() (string, error) {
+	if r == nil {
+		return "", errRepositoryUnavailable
+	}
+	return r.foreign.principalTable("iam_principals")
+}
+
+func (r *Repository) serviceAccountTable() (string, error) {
+	if r == nil {
+		return "", errRepositoryUnavailable
+	}
+	return r.foreign.principalTable("iam_service_accounts")
 }
 
 // oauthTable returns the physical name oauth published for a logical table.

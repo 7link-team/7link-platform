@@ -241,6 +241,21 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
 		return err
 	}
+	// A module that JOINs identity's tables provides this hook; identity pushes
+	// its own names into it. Absent means nobody JOINs them in this deployment,
+	// which is not identity's problem to report.
+	publishedPrincipals, err := module.Resolve[PrincipalTableSetReceiver](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
+	if err == nil {
+		if publishedPrincipals.Bind == nil {
+			return errors.New("resolve identity principal table set receiver: bind is required")
+		}
+		if err := publishedPrincipals.Bind(TableSet(m.runtime.TablePrefix())); err != nil {
+			return fmt.Errorf("bind identity principal table set: %w", err)
+		}
+	}
 	m.closeOAuth, err = module.Resolve[PrincipalOAuthRevoker](services)
 	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
 		return err

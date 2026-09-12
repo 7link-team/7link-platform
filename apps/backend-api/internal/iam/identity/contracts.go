@@ -48,6 +48,23 @@ type IdentityProvisioner interface {
 	EnsureExternalPrincipal(context.Context, *gorm.DB, guid.ID, string, string, time.Time) (guid.ID, bool, error)
 }
 
+// PrincipalTableSetReceiver is how identity hands the names of its own tables to
+// a module that JOINs them in one statement. It is named for its direction,
+// because it is the mirror image of core.PrincipalTableSetConnector: there core
+// declares the connector and identity fills it, and here the consumer provides
+// a receiver and identity pushes into it.
+//
+// The mirror exists because authn is activated *earlier* than identity, which
+// rules out both ordinary shapes: authn resolving an identity type would have to
+// declare identity and fail the registration-order check, and identity resolving
+// an authn type would have to import authn, which already imports identity. With
+// the type declared here, identity resolves a type of its own -- which the
+// dependency rule does not record, because the type belongs to the module
+// resolving it -- and no import direction changes.
+type PrincipalTableSetReceiver struct {
+	Bind func(gormx.TableSet) error
+}
+
 // DirectoryTableSetConnector lets the module that owns the directory tables
 // publish their names to identity. identity reads the tenant table without
 // owning it and cannot name it itself: the owner is activated after identity,

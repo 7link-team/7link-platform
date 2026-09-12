@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "budget": 385,
+  "budget": 384,
   "rebaseline": "initial freeze at the P0 commit",
   "entries": [
     {
@@ -45,10 +45,6 @@
     },
     {
       "key": "concatenated-table-name:2393602ee1a7b7c0",
-      "count": 1
-    },
-    {
-      "key": "concatenated-table-name:285271473d2ed57f",
       "count": 1
     },
     {
@@ -249,7 +245,7 @@
     },
     {
       "key": "concatenated-table-name:8b2f6c9d16dc821e",
-      "count": 3
+      "count": 4
     },
     {
       "key": "concatenated-table-name:8b42a35783b25032",
@@ -437,7 +433,7 @@
     },
     {
       "key": "naked-table-literal:01bfff6c7f7d0ac3",
-      "count": 1
+      "count": 2
     },
     {
       "key": "naked-table-literal:026e525f7825dccb",
@@ -613,7 +609,7 @@
     },
     {
       "key": "naked-table-literal:98a257cd142f62cd",
-      "count": 4
+      "count": 2
     },
     {
       "key": "naked-table-literal:992e8d26960630a5",

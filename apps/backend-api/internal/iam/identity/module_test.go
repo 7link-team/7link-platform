@@ -71,10 +71,17 @@ func TestModuleIdentityDependenciesAndReadinessBeforeInitialize(t *testing.T) {
 	assert.ErrorContains(t, instance.Initialize(t.Context()), "id generator")
 }
 
-func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
-	harness := newIdentityHarness(t, "sl_")
+// identityWiredRegistry registers identity behind everything it resolves. The
+// receiver stands for a module that JOINs identity's tables: identity resolves a
+// type of its own and pushes its names into it, because the real consumer --
+// authn -- is activated before identity. See PrincipalTableSetReceiver.
+func identityWiredRegistry(
+	t *testing.T,
+	harness *identityHarness,
+	receiver PrincipalTableSetReceiver,
+) (*module.Registry, *Module) {
+	t.Helper()
 	instance := NewModule(harness.runtime, enabledModuleConfig())
-
 	registry := module.NewRegistry()
 	require.NoError(t, registry.Register(
 		platformi18n.NewModule(nil, platformi18n.Base),
@@ -107,17 +114,36 @@ func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
 			}); err != nil {
 				return err
 			}
-			return module.Provide[core.AccessTables](services, core.AccessTables{
+			if err := module.Provide[core.AccessTables](services, core.AccessTables{
 				Published: core.TableSet(harness.runtime.TablePrefix()),
-			})
+			}); err != nil {
+				return err
+			}
+			return module.Provide[PrincipalTableSetReceiver](services, receiver)
 		}},
 		instance,
 	))
 	require.NoError(t, registry.Activate())
+	return registry, instance
+}
+
+func TestModuleResolvesDependenciesAndRegistersItsContract(t *testing.T) {
+	harness := newIdentityHarness(t, "sl_")
+	var publishedToConsumer gormx.TableSet
+	registry, instance := identityWiredRegistry(t, harness, PrincipalTableSetReceiver{
+		Bind: func(set gormx.TableSet) error { publishedToConsumer = set; return nil },
+	})
+
 	active, exists := registry.ByName(Name)
 	require.True(t, exists)
 	assert.Same(t, instance, active)
 	require.NoError(t, registry.Wire(nil))
+	principals, ok := publishedToConsumer.Lookup("iam_principals")
+	require.True(t, ok, "identity must push the tables it owns into the receiver")
+	assert.Equal(t, "sl_iam_principals", principals.String())
+	accounts, ok := publishedToConsumer.Lookup("iam_service_accounts")
+	require.True(t, ok)
+	assert.Equal(t, "sl_iam_service_accounts", accounts.String())
 	// The owners publish their table names during Wire in a running deployment;
 	// this registry runs identity alone, so it publishes what they would.
 	bindModuleForeignTables(t, instance, harness.prefix)
@@ -213,4 +239,14 @@ func TestModuleReportsMissingWiring(t *testing.T) {
 	providers := module.NewServices()
 	require.NoError(t, instance.ProvideServices(providers))
 	assert.ErrorContains(t, instance.ProvideServices(providers), "provide identity provisioner")
+}
+
+// TestModuleRejectsAReceiverWithoutABind covers the one wiring mistake the
+// inverted direction makes possible: a consumer registers the receiver but
+// leaves Bind nil, which would make identity publish its names into nothing and
+// leave that consumer naming identity's tables itself.
+func TestModuleRejectsAReceiverWithoutABind(t *testing.T) {
+	harness := newIdentityHarness(t, "sl_")
+	registry, _ := identityWiredRegistry(t, harness, PrincipalTableSetReceiver{})
+	assert.ErrorContains(t, registry.Wire(nil), "bind is required")
 }

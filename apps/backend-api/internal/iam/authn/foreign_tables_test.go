@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"7link.com/platform/internal/iam/core"
+	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"github.com/stretchr/testify/assert"
@@ -36,6 +37,9 @@ func bindForeignTables(t *testing.T, repository *Repository, prefix string) {
 	// core is the one owner authn can import: it is activated first, so the
 	// set comes from core itself rather than from a list repeated here.
 	require.NoError(t, foreign.bindAccess(core.TableSet(prefix)))
+	// identity pushes its own names through the receiver authn provides, so the
+	// set here comes from identity itself rather than a list repeated in authn.
+	require.NoError(t, foreign.bindPrincipal(identity.TableSet(prefix)))
 	repository.foreign = foreign
 }
 
@@ -47,6 +51,7 @@ func bindModuleForeignTables(t *testing.T, module *Module, prefix string) {
 	require.NoError(t, module.foreign.bindDirectory(publishedTableSet(prefix, publishedDirectoryTables...)))
 	require.NoError(t, module.foreign.bindOAuth(publishedTableSet(prefix, publishedOAuthTables...)))
 	require.NoError(t, module.foreign.bindAccess(core.TableSet(prefix)))
+	require.NoError(t, module.foreign.bindPrincipal(identity.TableSet(prefix)))
 }
 
 // publishedTableSet builds the set an owner publishes: every logical name it
@@ -183,4 +188,126 @@ func TestServiceAccountStateStopsWhenTheMemberTableWasNeverPublished(t *testing.
 	_, err := harness.repository.serviceAccountState(t.Context(), 1)
 	require.ErrorIs(t, err, errRepositoryUnavailable)
 	assert.Contains(t, err.Error(), "core did not publish iam_tenant_members")
+}
+
+// TestPrincipalTablesReportUnpublishedAsUnavailable covers the set identity
+// pushes. The three statements authn keeps against identity's tables are JOINs
+// it cannot delegate, so the only thing standing between a missing publication
+// and a query against an empty table name is this error.
+func TestPrincipalTablesReportUnpublishedAsUnavailable(t *testing.T) {
+	t.Parallel()
+
+	bound := &foreignTables{}
+	require.NoError(t, bound.bindPrincipal(identity.TableSet("sl_")))
+	principals, err := bound.principalTable("iam_principals")
+	require.NoError(t, err)
+	assert.Equal(t, "sl_iam_principals", principals)
+	accounts, err := bound.principalTable("iam_service_accounts")
+	require.NoError(t, err)
+	assert.Equal(t, "sl_iam_service_accounts", accounts)
+
+	unbound := &foreignTables{}
+	_, err = unbound.principalTable("iam_principals")
+	require.ErrorIs(t, err, errRepositoryUnavailable)
+	assert.Contains(t, err.Error(), "identity has not published its table names")
+
+	partial := &foreignTables{}
+	require.NoError(t, partial.bindPrincipal(publishedTableSet("sl_", "iam_service_accounts")))
+	_, err = partial.principalTable("iam_principals")
+	require.ErrorIs(t, err, errRepositoryUnavailable)
+	assert.Contains(t, err.Error(), "identity did not publish iam_principals")
+
+	var absent *foreignTables
+	assert.ErrorIs(t, absent.bindPrincipal(identity.TableSet("sl_")), errRepositoryUnavailable)
+	_, err = absent.principalTable("iam_principals")
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	assert.ErrorIs(t, absent.bind(
+		gormx.TableSet{}, gormx.TableSet{}, gormx.TableSet{}, identity.TableSet("sl_"),
+	), errRepositoryUnavailable)
+}
+
+// TestStatementsAgainstIdentityTablesRefuseAnUnpublishedName walks every
+// statement that still reads a table identity owns with that one name withheld.
+// The fixture database has the tables, so an empty name would come back as a
+// SQL error rather than as this one.
+func TestStatementsAgainstIdentityTablesRefuseAnUnpublishedName(t *testing.T) {
+	harness := newAuthnRepositoryHarness(t, "sl_")
+
+	for name, testCase := range map[string]struct {
+		omitted string
+		call    func(*Repository) error
+	}{
+		"login principal": {"iam_principals", func(r *Repository) error {
+			_, err := r.findLoginPrincipal(t.Context(), "alice")
+			return err
+		}},
+		"login service account exclusion": {"iam_service_accounts", func(r *Repository) error {
+			_, err := r.findLoginPrincipal(t.Context(), "alice")
+			return err
+		}},
+		"recovery principal": {"iam_principals", func(r *Repository) error {
+			_, err := r.findRecoveryPrincipal(t.Context(), "a@b.test")
+			return err
+		}},
+		"active principal": {"iam_principals", func(r *Repository) error {
+			_, err := r.getActivePrincipal(t.Context(), 1)
+			return err
+		}},
+		"principal lock": {"iam_principals", func(r *Repository) error {
+			_, err := r.lockPrincipal(t.Context(), 1)
+			return err
+		}},
+		"principal lock by login": {"iam_principals", func(r *Repository) error {
+			_, err := r.lockPrincipalByLogin(t.Context(), "alice")
+			return err
+		}},
+		"email verification write": {"iam_principals", func(r *Repository) error {
+			_, err := r.verifyPrincipalEmail(t.Context(), 1, "a@b.test", repositoryTestNow)
+			return err
+		}},
+		"principal state": {"iam_principals", func(r *Repository) error {
+			_, err := r.principalState(t.Context(), 1)
+			return err
+		}},
+		"principal claims": {"iam_principals", func(r *Repository) error {
+			_, _, err := r.activePrincipalClaims(t.Context(), 1)
+			return err
+		}},
+		"service account state": {"iam_service_accounts", func(r *Repository) error {
+			_, err := r.serviceAccountState(t.Context(), 1)
+			return err
+		}},
+		"service account principal": {"iam_principals", func(r *Repository) error {
+			_, err := r.serviceAccountState(t.Context(), 1)
+			return err
+		}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repository := harness.repository.withDB(harness.db, false)
+			repository.foreign = &foreignTables{}
+			require.NoError(t, repository.foreign.bindAccess(core.TableSet("sl_")))
+			require.NoError(t, repository.foreign.bindDirectory(publishedTableSet("sl_", publishedDirectoryTables...)))
+			require.NoError(t, repository.foreign.bindPrincipal(
+				partialPublishedSet(identity.TableSet("sl_"), testCase.omitted),
+			))
+
+			err := testCase.call(repository)
+			require.ErrorIs(t, err, errRepositoryUnavailable)
+			assert.Contains(t, err.Error(), "identity did not publish "+testCase.omitted)
+		})
+	}
+}
+
+// partialPublishedSet is what an owner publishing an incomplete set looks like:
+// every name it owns except the one this statement needs.
+func partialPublishedSet(full gormx.TableSet, omit string) gormx.TableSet {
+	names := make(map[string]gormx.TableName, full.Len())
+	for _, logical := range full.Names() {
+		if logical == omit {
+			continue
+		}
+		name, _ := full.Lookup(logical)
+		names[logical] = name
+	}
+	return gormx.NewTableSet(names)
 }

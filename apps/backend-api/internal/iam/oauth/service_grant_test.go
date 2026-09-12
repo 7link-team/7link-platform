@@ -12,7 +12,10 @@ import (
 
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/authn"
+	"7link.com/platform/internal/iam/core"
+	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/oauth/model"
+	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	goosex "7link.com/platform/pkg/extension/goose"
@@ -45,11 +48,20 @@ func newGrantHarness(t *testing.T) (*oauthHarness, *authn.Service) {
 	require.NoError(t, err)
 	require.NoError(t, goosex.Migrate(t.Context(), db, (&authn.Module{}).MigrationSource(), "sqlite"))
 	appender := audit.Appender(func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil })
+	authnRepository := authn.NewRepository(h.runtime, newOAuthTestIDs(9000), appender)
+	// A deployment publishes these through authn's connectors and the receiver
+	// identity pushes into, and the module hands the holder to the repository in
+	// Initialize. This harness builds the repository itself, so it publishes the
+	// same sets itself rather than letting authn name another module's table.
+	require.NoError(t, authnRepository.BindForeignTables(
+		organization.TableSet(h.prefix), TableSet(h.prefix),
+		core.TableSet(h.prefix), identity.TableSet(h.prefix),
+	))
 	authenticator, err := authn.NewWebService(authnext.Config{
 		Enabled: true, Issuer: "https://issuer.example", Audience: []string{"api"},
 		SigningKey:     base64.RawStdEncoding.EncodeToString([]byte(strings.Repeat("k", 32))),
 		AccessTokenTTL: time.Hour,
-	}, authn.NewRepository(h.runtime, newOAuthTestIDs(9000), appender), authn.WithOAuthGrantValidator(h.service.ValidateAccessGrant))
+	}, authnRepository, authn.WithOAuthGrantValidator(h.service.ValidateAccessGrant))
 	require.NoError(t, err)
 	h.service.authn = &grantWeb{Service: authenticator, browser: h.web.session}
 	return h, authenticator

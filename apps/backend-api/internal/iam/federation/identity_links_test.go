@@ -17,9 +17,12 @@ import (
 
 	"7link.com/platform/internal/iam/authn"
 	authnmodel "7link.com/platform/internal/iam/authn/model"
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/federation/model"
 	"7link.com/platform/internal/iam/identity"
 	identitymodel "7link.com/platform/internal/iam/identity/model"
+	"7link.com/platform/internal/iam/oauth"
+	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/module"
@@ -56,6 +59,17 @@ func newIdentityLinkEnvironment(t *testing.T) (*federationEnvironment, *authn.Se
 	services := module.NewServices()
 	require.NoError(t, instance.ProvideServices(services))
 	require.NoError(t, services.Seal())
+	// A deployment binds these through the connectors authn publishes and the
+	// receiver identity pushes into, and the module hands the holder to the
+	// repository in Initialize. This harness builds the repository itself, so it
+	// publishes the same four sets itself -- without them authn refuses the
+	// JOINs rather than naming another module's table.
+	require.NoError(t, repo.BindForeignTables(
+		organization.TableSet(env.runtime.TablePrefix()),
+		oauth.TableSet(env.runtime.TablePrefix()),
+		core.TableSet(env.runtime.TablePrefix()),
+		identity.TableSet(env.runtime.TablePrefix()),
+	))
 	env.service.accountProofs, err = module.Resolve[authn.ReauthenticationConsumer](services)
 	require.NoError(t, err)
 	env.service.accountReauthentication, err = module.Resolve[authn.FederatedReauthentication](services)

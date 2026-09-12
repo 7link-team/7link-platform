@@ -16,6 +16,7 @@ type foreignTables struct {
 	directory gormx.TableSet
 	oauth     gormx.TableSet
 	access    gormx.TableSet
+	principal gormx.TableSet
 }
 
 // bindDirectory records the table names the organization module published to
@@ -37,6 +38,17 @@ func (t *foreignTables) bindAccess(published gormx.TableSet) error {
 		return fmt.Errorf("%w: no holder for the published access tables", errRepositoryUnavailable)
 	}
 	t.access = published
+	return nil
+}
+
+// bindPrincipal records the table names the identity module published to authn.
+// identity pushes them itself: see identity.PrincipalTableSetConnector for why
+// neither module can resolve the other's type here.
+func (t *foreignTables) bindPrincipal(published gormx.TableSet) error {
+	if t == nil {
+		return fmt.Errorf("%w: no holder for the published principal tables", errRepositoryUnavailable)
+	}
+	t.principal = published
 	return nil
 }
 
@@ -66,12 +78,32 @@ func (t *foreignTables) accessTable(logical string) (string, error) {
 	return publishedTableName(t.access, "core", logical)
 }
 
+// principalTable returns the physical name identity published for a logical
+// table.
+func (t *foreignTables) principalTable(logical string) (string, error) {
+	if t == nil {
+		return "", fmt.Errorf("%w: no published principal tables", errRepositoryUnavailable)
+	}
+	return publishedTableName(t.principal, "identity", logical)
+}
+
 // oauthTable returns the physical name oauth published for a logical table.
 func (t *foreignTables) oauthTable(logical string) (string, error) {
 	if t == nil {
 		return "", fmt.Errorf("%w: no published oauth tables", errRepositoryUnavailable)
 	}
 	return publishedTableName(t.oauth, "oauth", logical)
+}
+
+// bind records every owner's set at once. It is what an exported binder hands
+// a repository built outside the module, where no connector has run.
+func (t *foreignTables) bind(directory, oauth, access, principal gormx.TableSet) error {
+	if t == nil {
+		return fmt.Errorf("%w: no holder for the published tables", errRepositoryUnavailable)
+	}
+	t.directory, t.oauth = directory, oauth
+	t.access, t.principal = access, principal
+	return nil
 }
 
 // publishedTableName resolves one logical table in what an owner published. An

@@ -34,19 +34,20 @@ type oauthClientState struct {
 	Status   string
 }
 
-const (
-	principalTableName      = "iam_principals"
-	serviceAccountTableName = "iam_service_accounts"
-)
-
 func (r *Repository) findLoginPrincipal(ctx context.Context, loginName string) (*identity.Principal, error) {
 	_, db, err := r.tables()
 	if err != nil {
 		return nil, err
 	}
+	principalTable, err := r.principalTable()
+	if err != nil {
+		return nil, err
+	}
+	serviceAccountTable, err := r.serviceAccountTable()
+	if err != nil {
+		return nil, err
+	}
 	var row identity.Principal
-	principalTable := r.table(principalTableName)
-	serviceAccountTable := r.table(serviceAccountTableName)
 	err = db.WithContext(ctx).Table(principalTable+" AS principal").
 		Where("principal.login_name = ?", loginName).
 		Where("NOT EXISTS (?)", db.Table(serviceAccountTable+" AS service_account").
@@ -63,8 +64,12 @@ func (r *Repository) getActivePrincipal(ctx context.Context, principalID guid.ID
 	if err != nil {
 		return nil, err
 	}
+	principalTable, err := r.principalTable()
+	if err != nil {
+		return nil, err
+	}
 	var row identity.Principal
-	if err := db.WithContext(ctx).Table(r.table(principalTableName)).
+	if err := db.WithContext(ctx).Table(principalTable).
 		Where("id = ? AND status = ?", principalID, "active").Take(&row).Error; err != nil {
 		return nil, err
 	}
@@ -77,8 +82,14 @@ func (r *Repository) findRecoveryPrincipal(ctx context.Context, identifier strin
 		return nil, err
 	}
 	identifier = strings.ToLower(strings.TrimSpace(identifier))
-	principalTable := r.table(principalTableName)
-	serviceAccountTable := r.table(serviceAccountTableName)
+	principalTable, err := r.principalTable()
+	if err != nil {
+		return nil, err
+	}
+	serviceAccountTable, err := r.serviceAccountTable()
+	if err != nil {
+		return nil, err
+	}
 	var rows []*identity.Principal
 	err = db.WithContext(ctx).Table(principalTable+" AS principal").
 		Where("status = ? AND email_verified = ?", "active", true).
@@ -103,8 +114,12 @@ func (r *Repository) lockPrincipal(ctx context.Context, principalID guid.ID) (*i
 	if err != nil {
 		return nil, err
 	}
+	principalTable, err := r.principalTable()
+	if err != nil {
+		return nil, err
+	}
 	var row identity.Principal
-	query := db.WithContext(ctx).Table(r.table(principalTableName)).Where("id = ? AND status = ?", principalID, "active")
+	query := db.WithContext(ctx).Table(principalTable).Where("id = ? AND status = ?", principalID, "active")
 	if db.Dialector.Name() != "sqlite" {
 		query = query.Clauses(clause.Locking{Strength: "UPDATE"})
 	}
@@ -119,8 +134,12 @@ func (r *Repository) lockPrincipalByLogin(ctx context.Context, loginName string)
 	if err != nil {
 		return nil, err
 	}
+	principalTable, err := r.principalTable()
+	if err != nil {
+		return nil, err
+	}
 	var row identity.Principal
-	query := db.WithContext(ctx).Table(r.table(principalTableName)).Where("login_name = ?", loginName)
+	query := db.WithContext(ctx).Table(principalTable).Where("login_name = ?", loginName)
 	if db.Dialector.Name() != "sqlite" {
 		query = query.Clauses(clause.Locking{Strength: "UPDATE"})
 	}
@@ -135,7 +154,11 @@ func (r *Repository) verifyPrincipalEmail(ctx context.Context, principalID guid.
 	if err != nil {
 		return false, err
 	}
-	result := db.WithContext(ctx).Table(r.table(principalTableName)).
+	principalTable, err := r.principalTable()
+	if err != nil {
+		return false, err
+	}
+	result := db.WithContext(ctx).Table(principalTable).
 		Where("id = ? AND status = ? AND email = ? AND email_verified = ?", principalID, "active", email, false).
 		Updates(map[string]any{"email_verified": true, "activation_required": false, "updated_at": now})
 	return result.RowsAffected == 1, result.Error
@@ -146,8 +169,11 @@ func (r *Repository) principalState(ctx context.Context, principalID guid.ID) (p
 	if err != nil {
 		return principalCredentialState{}, err
 	}
+	principalTable, err := r.principalTable()
+	if err != nil {
+		return principalCredentialState{}, err
+	}
 	var state principalCredentialState
-	principalTable := r.table(principalTableName)
 	err = db.WithContext(ctx).Table(principalTable+" AS principal").
 		Select("principal.status AS status, COALESCE(credential.credential_version, 0) AS credential_version").
 		Joins("LEFT JOIN "+tables.Credentials.TableName()+" AS credential ON credential.principal_id = principal.id").
@@ -160,8 +186,14 @@ func (r *Repository) serviceAccountState(ctx context.Context, principalID guid.I
 	if err != nil {
 		return serviceAccountState{}, err
 	}
-	accountTable := r.table(serviceAccountTableName)
-	principalTable := r.table(principalTableName)
+	accountTable, err := r.serviceAccountTable()
+	if err != nil {
+		return serviceAccountState{}, err
+	}
+	principalTable, err := r.principalTable()
+	if err != nil {
+		return serviceAccountState{}, err
+	}
 	memberTable, err := r.foreign.accessTable("iam_tenant_members")
 	if err != nil {
 		return serviceAccountState{}, err
@@ -205,7 +237,11 @@ func (r *Repository) activePrincipalClaims(ctx context.Context, principalID guid
 		identity.Principal `gorm:"embedded"`
 		CredentialVersion  int64 `gorm:"column:credential_version"`
 	}
-	err = db.WithContext(ctx).Table(r.table(principalTableName)+" AS principal").
+	principalTable, err := r.principalTable()
+	if err != nil {
+		return nil, 0, err
+	}
+	err = db.WithContext(ctx).Table(principalTable+" AS principal").
 		Select("principal.id, principal.login_name, principal.email, principal.email_verified, "+
 			"principal.activation_required, principal.display_name, principal.status, principal.created_at, "+
 			"principal.updated_at, COALESCE(credential.credential_version, 0) AS credential_version").
