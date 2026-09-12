@@ -44,3 +44,42 @@ func physicalName(prefix string) string {
 func objectKey(prefix, tenant string) string {
 	return prefix + "/" + tenant
 }
+
+// naked-table-literal through a constant. Parking the name in a constant and
+// handing that to the helper used to be enough to leave the rule behind, which
+// is how thirteen sites in one module were counted as three.
+const roleTable = "iam_roles"
+
+func readThroughConstant(db *gorm.DB) {
+	db.Table(roleTable).Find(nil)
+}
+
+// sql-in-format-string through a local variable. The repository's one Sprintf
+// builds the statement into a variable and hands that to Exec; a rule that only
+// looked at the call argument saw nothing.
+//
+// The verb sits where the table name goes, which is the shape that exposed the
+// second half of the same hole: a keyword pattern bounded by  on both sides
+// cannot match "UPDATE %s", because whitespace followed by %% is not a boundary.
+func execThroughVariable(db *gorm.DB, tenant string) {
+	statement := fmt.Sprintf("UPDATE %s SET status = 'x'", tenant)
+	db.Exec(statement)
+}
+
+// Not a violation: a Prometheus metric name is not a table, however much it
+// looks like one. Eleven of these were counted as tables before the gate read
+// the names the models actually declare.
+func metricName() string {
+	return "iam_scim_sync_batches_total"
+}
+
+// Not a violation: appending a SQL alias to a name the owner already resolved
+// is not assembling a table name out of a prefix.
+func joinResolved(db *gorm.DB, resolved string) {
+	db.Table(resolved + " AS role").Find(nil)
+}
+
+// Not a violation: integer arithmetic in an update map.
+func bumpVersion(db *gorm.DB, version int) {
+	db.Updates(map[string]any{"version": version + 1})
+}

@@ -7,6 +7,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -62,11 +63,26 @@ var argumentScopeMethods = map[string]bool{
 }
 
 var (
-	// A logical table name, with or without a trailing alias or clause. S3 keys,
-	// URLs and environment prefixes never start this way, which is what makes
-	// this rule precise enough to enforce without a baseline judgement call.
-	tableLiteralPattern  = regexp.MustCompile(`^(iam_|goose_)[a-z0-9_]*(\s|$)`)
-	sqlKeywordPattern    = regexp.MustCompile(`(?i)\b(SELECT|INSERT\s+INTO|UPDATE\s|DELETE\s+FROM|JOIN|FROM|WITH\s+RECURSIVE)\b`)
+	// A name shaped like a table, used by the gorm.Expr rule alone: there the
+	// subject is assembled source text rather than a parsed literal, so there
+	// is nothing to look up. Every other rule asks knownTableNames whether the
+	// name belongs to a model, because shape alone read eleven metric names as
+	// tables.
+	tableLiteralPattern = regexp.MustCompile(`^(iam_|goose_)[a-z0-9_]*(\s|$)`)
+	// The migration version tables have no model to declare them, so they are
+	// recognized by shape. Everything else must be a name a model actually
+	// returns -- see knownTableNames.
+	gooseTablePattern = regexp.MustCompile(`^goose_[a-z0-9_]*$`)
+	// A module's own prefix helper. A table name reaching one of these is in a
+	// table position just as surely as one reaching Table(), and the rule must
+	// not depend on the helper being called exactly "table".
+	tableHelperPattern = regexp.MustCompile(`^([a-z][a-zA-Z0-9]*)?[Tt]able$`)
+	// UPDATE carries no trailing whitespace class: the pattern is bounded by word
+	// boundaries, and one after a whitespace class can never match "UPDATE %s" --
+	// whitespace followed by a non-word character is not a boundary. That is why
+	// the repository's one Sprintf-built statement stayed unreported even once the
+	// rule followed the variable it was assigned to.
+	sqlKeywordPattern    = regexp.MustCompile(`(?i)\b(SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|JOIN|FROM|WITH\s+RECURSIVE)\b`)
 	exprKeywordPattern   = regexp.MustCompile(`(?i)^[a-z_0-9]*\s*(FROM|JOIN)\s`)
 	prefixOperandPattern = regexp.MustCompile(`(?i)prefix`)
 )
@@ -144,8 +160,9 @@ func TestQueryGate(t *testing.T) {
 // TestQueryGateRulesRejectTheirFixtures proves each rule fires. Without this a
 // rule that silently matched nothing would look exactly like a clean repository.
 func TestQueryGateRulesRejectTheirFixtures(t *testing.T) {
+	known := knownTableNames(t, backendRoot(t))
 	fixture := filepath.Join("testdata", "query_violations", "violations.go")
-	violations := inspectQueryFile(t, "", fixture)
+	violations := inspectQueryFile(t, "", fixture, known)
 	rules := map[string]bool{}
 	for _, violation := range violations {
 		rules[violation.Rule] = true
@@ -157,6 +174,27 @@ func TestQueryGateRulesRejectTheirFixtures(t *testing.T) {
 		assert.True(t, rules[rule], "fixture must violate %s", rule)
 	}
 
+	// Which lines fire, not merely which rules. A rule can keep firing on the
+	// fixture while a narrowing quietly stops it from seeing the case it was
+	// narrowed for, and "every rule fired" would still be true. Reading the
+	// source back at each reported line is what makes the negative cases --
+	// the metric name, the alias, the arithmetic -- assertable at all.
+	assert.Equal(t, []string{
+		`concatenated-table-name	db.Table(prefix + "iam_roles").Find(nil)`,
+		`concatenated-table-name	func table(name string) string {`,
+		`concatenated-table-name	return prefix + "iam_positions"`,
+		`gorm-expr-dynamic	_ = gorm.Expr("SELECT id FROM iam_roles WHERE name = " + name)`,
+		`handwritten-sql	db.Exec("UPDATE iam_roles SET status = ?", name)`,
+		`handwritten-sql	db.Exec(statement)`,
+		`handwritten-sql	db.Raw("SELECT id FROM iam_roles WHERE tenant_id = ?", name)`,
+		`naked-table-literal	db.Table("iam_groups").Find(nil)`,
+		`naked-table-literal	db.Table(prefix + "iam_roles").Find(nil)`,
+		`naked-table-literal	db.Table(roleTable).Find(nil)`,
+		`naked-table-literal	return prefix + "iam_positions"`,
+		`sql-in-format-string	db.Exec(statement)`,
+		`sql-in-format-string	db.Where(fmt.Sprintf("SELECT id FROM iam_role_members WHERE tenant_id = %s", name)).Find(nil)`,
+	}, fixtureViolationLines(t, fixture, violations))
+
 	// The sanctioned concatenation points must stay quiet. Binding the prefix
 	// onto a table name is what the module shape requires of them, so a gate
 	// that reported them would be asking for the opposite of the rule.
@@ -165,12 +203,33 @@ func TestQueryGateRulesRejectTheirFixtures(t *testing.T) {
 		filepath.Join("..", "..", "pkg", "extension", "goose", "goose.go"),
 		filepath.Join("..", "..", "pkg", "extension", "gorm", "clock.go"),
 	} {
-		assert.Empty(t, inspectQueryFile(t, "", exempt), "%s is a sanctioned concatenation point", exempt)
+		assert.Empty(t, inspectQueryFile(t, "", exempt, known), "%s is a sanctioned concatenation point", exempt)
 	}
+}
+
+// fixtureViolationLines pairs each violation with the fixture line it was
+// reported on, sorted, so the expectation reads as the fixture does.
+func fixtureViolationLines(t *testing.T, fixture string, violations []queryViolation) []string {
+	t.Helper()
+	source, err := os.ReadFile(fixture)
+	require.NoError(t, err)
+	lines := strings.Split(string(source), "\n")
+	reported := make([]string, 0, len(violations))
+	for _, violation := range violations {
+		fields := strings.Split(violation.Where, ":")
+		require.GreaterOrEqual(t, len(fields), 2, violation.Where)
+		number, err := strconv.Atoi(fields[len(fields)-2])
+		require.NoError(t, err, violation.Where)
+		require.LessOrEqual(t, number, len(lines), violation.Where)
+		reported = append(reported, violation.Rule+"\t"+strings.TrimSpace(lines[number-1]))
+	}
+	sort.Strings(reported)
+	return reported
 }
 
 func detectQueryViolations(t *testing.T, root string) []queryViolation {
 	t.Helper()
+	known := knownTableNames(t, root)
 	packages := goList(t, root, "./internal/...", "./pkg/...")
 	var violations []queryViolation
 	for _, pkg := range packages {
@@ -181,13 +240,127 @@ func detectQueryViolations(t *testing.T, root string) []queryViolation {
 			if strings.HasSuffix(name, "_test.go") || strings.HasSuffix(name, ".gen.go") {
 				continue
 			}
-			violations = append(violations, inspectQueryFile(t, root, filepath.Join(pkg.Dir, name))...)
+			violations = append(violations, inspectQueryFile(t, root, filepath.Join(pkg.Dir, name), known)...)
 		}
 	}
 	return violations
 }
 
-func inspectQueryFile(t *testing.T, root, filename string) []queryViolation {
+// knownTableNames reads the logical table names the models declare, so the gate
+// can tell a table from a string that merely looks like one.
+//
+// Shape alone was not enough: internal/iam/provisioning names eleven Prometheus
+// metrics iam_scim_*, and the rule counted all eleven as tables. A name is a
+// table when a model returns it from TableName(), which is the same source the
+// migrations and the schema lock read, so the two cannot drift. The migration
+// version tables are the exception -- no model owns them -- and are matched by
+// shape instead.
+func knownTableNames(t *testing.T, root string) map[string]bool {
+	t.Helper()
+	names := map[string]bool{}
+	require.NoError(t, filepath.WalkDir(filepath.Join(root, "internal"), func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() || !strings.HasSuffix(path, ".go") {
+			return err
+		}
+		if !strings.Contains(filepath.ToSlash(path), "/model/") {
+			return nil
+		}
+		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			return err
+		}
+		for _, declaration := range parsed.Decls {
+			function, ok := declaration.(*ast.FuncDecl)
+			if !ok || function.Name.Name != "TableName" || function.Body == nil {
+				continue
+			}
+			ast.Inspect(function.Body, func(node ast.Node) bool {
+				literal, ok := node.(*ast.BasicLit)
+				if !ok || literal.Kind != token.STRING {
+					return true
+				}
+				if value, err := strconv.Unquote(literal.Value); err == nil && value != "" {
+					names[value] = true
+				}
+				return true
+			})
+		}
+		return nil
+	}))
+	require.NotEmpty(t, names, "the models declare the table names this gate reads")
+	return names
+}
+
+// tableNameOf reports the table a string literal names. A name may carry a SQL
+// alias ("iam_roles AS role"), so only the first word is the name.
+func tableNameOf(value string, known map[string]bool) (string, bool) {
+	name := strings.TrimSpace(value)
+	if index := strings.IndexAny(name, " 	"); index >= 0 {
+		name = name[:index]
+	}
+	if known[name] || gooseTablePattern.MatchString(name) {
+		return name, true
+	}
+	return "", false
+}
+
+// isTableHelperCall reports a call to a module's own prefix helper, whose
+// argument is a table position.
+func isTableHelperCall(fun ast.Expr) bool {
+	switch typed := fun.(type) {
+	case *ast.Ident:
+		return tableHelperPattern.MatchString(typed.Name)
+	case *ast.SelectorExpr:
+		return tableHelperPattern.MatchString(typed.Sel.Name)
+	}
+	return false
+}
+
+// stringValues maps every identifier the file binds to a string literal, so a
+// table name parked in a constant and handed to Table() later is still seen.
+// Without it a module could put the name in a const and leave the rule behind.
+func stringValues(file *ast.File) map[string]string {
+	values := map[string]string{}
+	ast.Inspect(file, func(node ast.Node) bool {
+		spec, ok := node.(*ast.ValueSpec)
+		if !ok {
+			return true
+		}
+		for index, name := range spec.Names {
+			if index >= len(spec.Values) {
+				continue
+			}
+			if literal, ok := spec.Values[index].(*ast.BasicLit); ok && literal.Kind == token.STRING {
+				if value, err := strconv.Unquote(literal.Value); err == nil {
+					values[name.Name] = value
+				}
+			}
+		}
+		return true
+	})
+	return values
+}
+
+// assignedExpressions maps every identifier assigned once in the file to what
+// it was assigned. It is how a Sprintf that reaches Exec through a local
+// variable is still read as a format string: without it, one variable is enough
+// to step around the rule.
+func assignedExpressions(file *ast.File) map[string]ast.Expr {
+	assigned := map[string]ast.Expr{}
+	ast.Inspect(file, func(node ast.Node) bool {
+		assignment, ok := node.(*ast.AssignStmt)
+		if !ok || len(assignment.Lhs) != 1 || len(assignment.Rhs) != 1 {
+			return true
+		}
+		if name, ok := assignment.Lhs[0].(*ast.Ident); ok {
+			assigned[name.Name] = assignment.Rhs[0]
+		}
+		return true
+	})
+	return assigned
+}
+
+func inspectQueryFile(t *testing.T, root, filename string, known map[string]bool) []queryViolation {
 	t.Helper()
 	source, err := os.ReadFile(filename)
 	require.NoError(t, err)
@@ -207,15 +380,63 @@ func inspectQueryFile(t *testing.T, root, filename string) []queryViolation {
 	directory := path.Dir(relative)
 	violations := make([]queryViolation, 0)
 
+	// One physical name reported once. Five host nodes nest, so the same
+	// literal used to be counted two or three times and the total said more
+	// about the AST than about the repository.
+	seen := map[string]bool{}
 	record := func(rule, scope, text string, node ast.Node) {
-		position := fileSet.Position(node.Pos())
+		position := fileSet.Position(node.Pos()).String()
+		if seen[rule+"@"+position] {
+			return
+		}
+		seen[rule+"@"+position] = true
 		violations = append(violations, queryViolation{
 			Rule:  rule,
 			Key:   queryViolationKey(rule, scope, text),
-			Where: position.String(),
+			Where: position,
 		})
 	}
 	text := func(node ast.Node) string { return sourceText(fileSet, source, node) }
+	constants, assignments := stringValues(file), assignedExpressions(file)
+
+	// recordTableNames reports the table names an expression carries, whether
+	// written there or bound to an identifier earlier. It is called only for
+	// expressions in a table position -- an argument to a query method or to a
+	// module's prefix helper, or a returned name -- so a string that merely
+	// looks like a table, in a metric or a log line, is not read as one.
+	recordTableNames := func(expressions []ast.Expr) {
+		for _, expression := range expressions {
+			ast.Inspect(expression, func(node ast.Node) bool {
+				switch typed := node.(type) {
+				case *ast.CallExpr:
+					// Do not descend. A nested call is judged on its own
+					// callee: fileResponse("todos", ...) returns a file named
+					// after the table, which is not the same as querying it,
+					// and only the callee can tell the two apart.
+					_ = typed
+					return false
+				case *ast.BasicLit:
+					if typed.Kind != token.STRING {
+						return true
+					}
+					value, err := strconv.Unquote(typed.Value)
+					if err != nil {
+						return true
+					}
+					if name, ok := tableNameOf(value, known); ok {
+						record(ruleNakedTableLiteral, directory, name, typed)
+					}
+				case *ast.Ident:
+					if value, ok := constants[typed.Name]; ok {
+						if name, found := tableNameOf(value, known); found {
+							record(ruleNakedTableLiteral, directory, name, typed)
+						}
+					}
+				}
+				return true
+			})
+		}
+	}
 
 	if queryGateExemptFile(relative) {
 		return nil
@@ -228,6 +449,11 @@ func inspectQueryFile(t *testing.T, root, filename string) []queryViolation {
 				record(ruleConcatenatedTableName, directory, "func "+typed.Name.Name, typed)
 			}
 		case *ast.CallExpr:
+			// A module's own prefix helper takes a table name, so its argument
+			// is a table position even though the callee is not a query method.
+			if isTableHelperCall(typed.Fun) {
+				recordTableNames(typed.Args)
+			}
 			selector, ok := typed.Fun.(*ast.SelectorExpr)
 			if !ok {
 				return true
@@ -242,63 +468,44 @@ func inspectQueryFile(t *testing.T, root, filename string) []queryViolation {
 				}
 			}
 			for _, argument := range typed.Args {
-				if tableScopeMethods[method] && containsAddition(argument) {
+				// Only an addition that builds a name out of a prefix. Any
+				// addition also caught "version": version + 1, a sync.Map key,
+				// and the ninety-odd places that append " AS alias" to a name
+				// an owner already resolved -- none of which assembles a name.
+				//
+				// No second test that the result looks like a table: what
+				// Table() receives is a table name by definition, and demanding
+				// a literal here lost Table(prefix+owner.versions), where the
+				// name arrives in a struct field and the prefix is applied
+				// right there. On a return there is no such guarantee, which is
+				// why that path still asks.
+				if tableScopeMethods[method] && containsPrefixAddition(fileSet, source, argument) {
 					record(ruleConcatenatedTableName, directory, text(argument), argument)
 				}
 				if argumentScopeMethods[method] {
-					if format, dynamic := formatStringSQL(argument); dynamic {
+					if format, dynamic := formatStringSQL(argument, assignments); dynamic {
 						record(ruleSQLInFormatString, "", format, argument)
 					}
 				}
 			}
-			violations = append(violations, nakedTableLiterals(fileSet, directory, typed.Args)...)
-		case *ast.AssignStmt:
-			violations = append(violations, nakedTableLiterals(fileSet, directory, typed.Rhs)...)
+			if tableScopeMethods[method] {
+				recordTableNames(typed.Args)
+			}
 		case *ast.ReturnStmt:
 			// A helper that returns prefix + "iam_roles" names a table just as
 			// surely as one that passes it to Table(), and leaving the return
 			// out let any function rename itself out of the rule. The table
 			// test is what keeps it off the S3 object key and the URL prefix,
 			// which are also built from something called prefix.
-			violations = append(violations, nakedTableLiterals(fileSet, directory, typed.Results)...)
+			recordTableNames(typed.Results)
 			for _, result := range typed.Results {
-				if containsPrefixAddition(fileSet, source, result) && namesATable(result) {
+				if containsPrefixAddition(fileSet, source, result) && namesATable(result, known) {
 					record(ruleConcatenatedTableName, directory, text(result), result)
 				}
 			}
-		case *ast.CompositeLit:
-			violations = append(violations, nakedTableLiterals(fileSet, directory, typed.Elts)...)
-		case *ast.ValueSpec:
-			violations = append(violations, nakedTableLiterals(fileSet, directory, typed.Values)...)
 		}
 		return true
 	})
-	return violations
-}
-
-// nakedTableLiterals reports logical table names written as literals in a
-// position that feeds a query. The owner's model and the generated query layer
-// are excluded, because naming the table is their job.
-func nakedTableLiterals(fileSet *token.FileSet, directory string, expressions []ast.Expr) []queryViolation {
-	violations := make([]queryViolation, 0)
-	for _, expression := range expressions {
-		ast.Inspect(expression, func(node ast.Node) bool {
-			literal, ok := node.(*ast.BasicLit)
-			if !ok || literal.Kind != token.STRING {
-				return true
-			}
-			value, err := strconv.Unquote(literal.Value)
-			if err != nil || !tableLiteralPattern.MatchString(value) {
-				return true
-			}
-			violations = append(violations, queryViolation{
-				Rule:  ruleNakedTableLiteral,
-				Key:   queryViolationKey(ruleNakedTableLiteral, directory, value),
-				Where: fileSet.Position(literal.Pos()).String(),
-			})
-			return true
-		})
-	}
 	return violations
 }
 
@@ -370,7 +577,16 @@ func gormExprViolation(fileSet *token.FileSet, source []byte, expression ast.Exp
 	return "", false
 }
 
-func formatStringSQL(node ast.Node) (string, bool) {
+// formatStringSQL reports a fmt.Sprintf carrying SQL. It follows one
+// assignment, because the repository's single instance builds the statement
+// into a local variable and hands that to Exec -- and a rule that only looked
+// at the call argument was stepped around by naming the string.
+func formatStringSQL(node ast.Node, assignments map[string]ast.Expr) (string, bool) {
+	if identifier, ok := node.(*ast.Ident); ok {
+		if assigned, found := assignments[identifier.Name]; found {
+			return formatStringSQL(assigned, nil)
+		}
+	}
 	var format string
 	found := false
 	ast.Inspect(node, func(child ast.Node) bool {
@@ -396,26 +612,11 @@ func formatStringSQL(node ast.Node) (string, bool) {
 	return format, found
 }
 
-func containsAddition(node ast.Node) bool {
-	found := false
-	ast.Inspect(node, func(child ast.Node) bool {
-		if found {
-			return false
-		}
-		if binary, ok := child.(*ast.BinaryExpr); ok && binary.Op == token.ADD {
-			found = true
-			return false
-		}
-		return true
-	})
-	return found
-}
-
 // namesATable reports whether an expression builds a table name: it carries a
 // logical table literal or calls the model's TableName(). A concatenation of
 // something called prefix with an object key or a URL is not this, and the two
 // are indistinguishable without looking for the table itself.
-func namesATable(node ast.Node) bool {
+func namesATable(node ast.Node, known map[string]bool) bool {
 	found := false
 	ast.Inspect(node, func(child ast.Node) bool {
 		if found {
@@ -426,9 +627,11 @@ func namesATable(node ast.Node) bool {
 			if typed.Kind != token.STRING {
 				return true
 			}
-			if value, err := strconv.Unquote(typed.Value); err == nil && tableLiteralPattern.MatchString(value) {
-				found = true
-				return false
+			if value, err := strconv.Unquote(typed.Value); err == nil {
+				if _, ok := tableNameOf(value, known); ok {
+					found = true
+					return false
+				}
 			}
 		case *ast.SelectorExpr:
 			if typed.Sel.Name == "TableName" {
