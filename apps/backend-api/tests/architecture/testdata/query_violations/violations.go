@@ -83,3 +83,16 @@ func joinResolved(db *gorm.DB, resolved string) {
 func bumpVersion(db *gorm.DB, version int) {
 	db.Updates(map[string]any{"version": version + 1})
 }
+
+// Not a violation: a struct field declaring the logical name of a table the
+// module owns. goosex.Source{TableName: "goose_iam"} is this shape -- the
+// prefix is applied once, inside goosex, exactly as a model's TableName()
+// declares a name that query.BindNames later prefixes. Returning the struct
+// does not make the name a query.
+type migrationSource struct {
+	TableName string
+}
+
+func migrations() migrationSource {
+	return migrationSource{TableName: "iam_roles"}
+}

@@ -408,12 +408,13 @@ func inspectQueryFile(t *testing.T, root, filename string, known map[string]bool
 		for _, expression := range expressions {
 			ast.Inspect(expression, func(node ast.Node) bool {
 				switch typed := node.(type) {
-				case *ast.CallExpr:
-					// Do not descend. A nested call is judged on its own
-					// callee: fileResponse("todos", ...) returns a file named
-					// after the table, which is not the same as querying it,
-					// and only the callee can tell the two apart.
-					_ = typed
+				case *ast.CallExpr, *ast.CompositeLit:
+					// Do not descend. A nested call or struct is judged on its
+					// own terms: fileResponse("todos", ...) returns a file named
+					// after the table rather than a query against it, and
+					// goosex.Source{TableName: "goose_iam"} declares the name of
+					// a table the module owns, exactly as a model's TableName()
+					// does -- the prefix is applied once, inside goosex.
 					return false
 				case *ast.BasicLit:
 					if typed.Kind != token.STRING {
