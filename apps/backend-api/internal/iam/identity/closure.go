@@ -17,6 +17,33 @@ var ErrClosureConflict = errors.New("closure request version or state conflict")
 // principal-locked transaction, including the credential version and PATs.
 type PrincipalCredentialsRevoker func(context.Context, *gorm.DB, guid.ID) error
 
+// PrincipalCredentialStore is how identity asks the module that owns the
+// credential tables to write them. identity creates a principal's first
+// password, invalidates tokens when a login or an email changes, and revokes
+// security state when a principal is suspended -- all of which land in tables
+// authn owns, so authn runs the statements and identity sequences them.
+//
+// Every function takes the caller's handle and runs there, so the writes stay
+// inside the transaction identity opened: a failure after one of them has to
+// roll it back with everything else.
+type PrincipalCredentialStore struct {
+	// CreateHashed stores a principal's first password, already hashed by the
+	// caller -- identity has the hash in hand at registration and invitation
+	// time, and passing it on avoids hashing the same password twice.
+	CreateHashed func(ctx context.Context, tx *gorm.DB, id guid.ID, hash string, now time.Time) error
+	// IncrementVersion invalidates every token issued against the principal's
+	// current credential. found is false when the principal has no credential at
+	// all, which is a state identity distinguishes: a federation-only principal
+	// legitimately has none.
+	IncrementVersion func(ctx context.Context, tx *gorm.DB, id guid.ID, now time.Time) (found bool, err error)
+	// RevokeSessions ends every unrevoked session the principal holds.
+	RevokeSessions func(ctx context.Context, tx *gorm.DB, id guid.ID, now time.Time) error
+	// ConsumeCredentialTokens spends the principal's outstanding password
+	// recovery and email verification tokens, so a suspension cannot be undone
+	// by a link issued before it.
+	ConsumeCredentialTokens func(ctx context.Context, tx *gorm.DB, id guid.ID, now time.Time) error
+}
+
 // PrincipalOAuthRevoker withdraws every application grant in that transaction.
 type PrincipalOAuthRevoker func(context.Context, *gorm.DB, guid.ID) error
 

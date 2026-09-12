@@ -32,6 +32,26 @@ func (r *Repository) createCredential(ctx context.Context, row *model.Credential
 	return tables.Credentials.WithContext(ctx).Create(row)
 }
 
+// bumpCredentialVersion invalidates every token issued against the principal's
+// current credential, and reports how many rows it moved so a caller can tell a
+// principal without a credential from one whose version advanced.
+func (r *Repository) bumpCredentialVersion(ctx context.Context, principalID guid.ID, now time.Time) (int64, error) {
+	tables, _, err := r.tables()
+	if err != nil {
+		return 0, err
+	}
+	result, err := tables.Credentials.WithContext(ctx).
+		Where(tables.Credentials.PrincipalID.Eq(principalID)).
+		UpdateSimple(
+			tables.Credentials.CredentialVersion.Add(1),
+			tables.Credentials.UpdatedAt.Value(now),
+		)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected, nil
+}
+
 func (r *Repository) resetBootstrapCredential(
 	ctx context.Context,
 	principalID guid.ID,
