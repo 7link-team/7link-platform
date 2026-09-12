@@ -1249,7 +1249,8 @@ P0 已完成并实证（含夹具证明 5 条规则均非空断言、白名单�
 且选窄接口后它无事可做。代价是需新建 6–9 个契约与连接器，工作量更大。
 
 **Scope / Status**
-P2/P4b/P5 落地。授权引擎的语句保持单条（`administrator.go` 的 last-admin 守卫由 `Protect` 在调用方事务里
+P2/P4b/P5 落地；**具体形状由 D40 定稿**（跨界结构体声明在被对方 import 的那一侧）。
+授权引擎的语句保持单条（`administrator.go` 的 last-admin 守卫由 `Protect` 在调用方事务里
 做前后两次测量，拆分会让两次测量落在不同快照上）；`relationshipTraversalExpressions` 的三方言 switch
 原样搬迁，性能基线 28 个指纹必须零变化以证明"只搬家不改语义"。
 
@@ -1316,6 +1317,11 @@ authn 去 `Resolve` identity 的类型 → 架构门禁 `module-dependency` 要�
 （`inspectCall` 对「实参所属包 == 自己」不记依赖）。据此新增
 `identity.PrincipalTableSetReceiver`（推表名）与 `identity.PrincipalStateReceiver`（推能力）。
 命名刻意用 `Receiver` 而非 `Connector`，以区别于方向相反的 `core.PrincipalTableSetConnector`。
+
+> **D40 起类型已改名，形状不变**：`identity.PrincipalTableSetReceiver` →
+> `identity.PrincipalTableNamesReceiver`（载荷改为 identity 自己的 `PrincipalTableNames`）；
+> `core.PrincipalTableSetConnector` → `core.PrincipalTableNamesConnector`。
+> 本条的**结论与理由全部仍然成立**，只是不具名集合 `gormx.TableSet` 已整体删除。
 
 **`LockActiveRow` 不是 `LockActive` 加个返回值——这是安全差异**
 `lockPrincipal` 的 7 个调用点里 6 个只取 error，依赖「principal 不存在或已停用 → 报错 → 事务回滚」。
