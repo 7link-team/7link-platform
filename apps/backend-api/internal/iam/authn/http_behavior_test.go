@@ -276,10 +276,7 @@ func TestAuthenticationSecurityCenterHTTPFlow(t *testing.T) {
 	_, web, _ := newAuthenticationService(t)
 	_, api := humatest.New(t)
 	RegisterHTTP(api, web, web)
-	_, err := EnsureBootstrapPrincipal(t.Context(), web.repo, BootstrapPrincipal{
-		LoginName: "bob", Password: "correct horse battery staple", DisplayName: "Bob", Email: "bob@example.com",
-	})
-	require.NoError(t, err)
+	seedLocalPrincipal(t, web.repo, "bob", "bob@example.com", "correct horse battery staple")
 	bobLogin, err := web.BeginLogin(t.Context(), "bob", "correct horse battery staple", "")
 	require.NoError(t, err)
 	login := func(password string) string {
@@ -716,10 +713,7 @@ func TestAuthenticationPasskeyHTTPContract(t *testing.T) {
 	}, "Origin: https://app.example")
 	require.Equal(t, http.StatusOK, login.Code, login.Body.String())
 	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
-	bobID, err := EnsureBootstrapPrincipal(t.Context(), web.repo, BootstrapPrincipal{
-		LoginName: "bob", Password: "correct horse battery staple", DisplayName: "Bob", Email: "bob@example.com",
-	})
-	require.NoError(t, err)
+	bobID := seedLocalPrincipal(t, web.repo, "bob", "bob@example.com", "correct horse battery staple")
 	bobLogin, err := web.BeginLogin(t.Context(), "bob", "correct horse battery staple", "")
 	require.NoError(t, err)
 	bobPasskey, err := web.storePasskeyCredential(t.Context(), bobID, "Bob's key",
@@ -973,10 +967,7 @@ func newAuthenticationService(t *testing.T) (*gorm.DB, *Service, string) {
 		},
 	}, harness.repository, WithMemberTenantResolver(boundMemberTenantResolver(t, harness.runtime)))
 	require.NoError(t, err)
-	principalID, err := EnsureBootstrapPrincipal(context.Background(), harness.repository, BootstrapPrincipal{
-		LoginName: "alice", Password: "correct horse battery staple", DisplayName: "Alice", Email: "alice@example.com",
-	})
-	require.NoError(t, err)
+	principalID := seedLocalPrincipal(t, harness.repository, "alice", "alice@example.com", "correct horse battery staple")
 	return harness.db, service, guidString(principalID)
 }
 
@@ -1007,10 +998,7 @@ func newRecoveryAuthenticationService(t *testing.T, notificationURL string, regi
 		},
 	}, harness.repository, options...)
 	require.NoError(t, err)
-	principalID, err := EnsureBootstrapPrincipal(context.Background(), harness.repository, BootstrapPrincipal{
-		LoginName: "alice", Password: "correct horse battery staple", DisplayName: "Alice", Email: "alice@example.com",
-	})
-	require.NoError(t, err)
+	principalID := seedLocalPrincipal(t, harness.repository, "alice", "alice@example.com", "correct horse battery staple")
 	return harness.db, service, guidString(principalID)
 }
 

@@ -39,38 +39,6 @@ const (
 	serviceAccountTableName = "iam_service_accounts"
 )
 
-func (r *Repository) createPrincipal(ctx context.Context, row *identity.Principal) error {
-	_, db, err := r.tables()
-	if err != nil {
-		return err
-	}
-	return db.WithContext(ctx).Table(r.table(principalTableName)).Create(row).Error
-}
-
-func (r *Repository) updateBootstrapPrincipal(
-	ctx context.Context,
-	principalID guid.ID,
-	email, displayName string,
-	emailVerified bool,
-	now time.Time,
-) error {
-	_, db, err := r.tables()
-	if err != nil {
-		return err
-	}
-	return db.WithContext(ctx).Table(r.table(principalTableName)).
-		Where("id = ?", principalID).
-		Updates(map[string]any{
-			"email":               email,
-			"email_verified":      emailVerified,
-			"activation_required": false,
-			"display_name":        displayName,
-			"status":              "active",
-			"disabled_at":         nil,
-			"updated_at":          now,
-		}).Error
-}
-
 func (r *Repository) findLoginPrincipal(ctx context.Context, loginName string) (*identity.Principal, error) {
 	_, db, err := r.tables()
 	if err != nil {
@@ -85,18 +53,6 @@ func (r *Repository) findLoginPrincipal(ctx context.Context, loginName string) (
 			Select("1").Where("service_account.principal_id = principal.id")).
 		Take(&row).Error
 	if err != nil {
-		return nil, err
-	}
-	return &row, nil
-}
-
-func (r *Repository) getPrincipal(ctx context.Context, principalID guid.ID) (*identity.Principal, error) {
-	_, db, err := r.tables()
-	if err != nil {
-		return nil, err
-	}
-	var row identity.Principal
-	if err := db.WithContext(ctx).Table(r.table(principalTableName)).Where("id = ?", principalID).Take(&row).Error; err != nil {
 		return nil, err
 	}
 	return &row, nil

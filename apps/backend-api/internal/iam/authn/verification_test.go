@@ -86,8 +86,7 @@ func TestEmailVerificationLifecycleByCode(t *testing.T) {
 	}
 	require.NoError(t, service.CompleteEmailVerification(t.Context(), "", payload.Recipient, payload.Code))
 	assert.Equal(t, principalID, hookedID)
-	principal, err := harness.repository.getPrincipal(t.Context(), principalID)
-	require.NoError(t, err)
+	principal := harness.principal(t, principalID)
 	assert.True(t, principal.EmailVerified)
 	assert.False(t, principal.ActivationRequired)
 	assert.ErrorIs(t, service.CompleteEmailVerification(
@@ -112,8 +111,7 @@ func TestEmailVerificationHookFailureRollsBackCompletion(t *testing.T) {
 	}
 	err = service.CompleteEmailVerification(t.Context(), token, "", "")
 	assert.ErrorContains(t, err, "tenant bootstrap unavailable")
-	principal, err := harness.repository.getPrincipal(t.Context(), principalID)
-	require.NoError(t, err)
+	principal := harness.principal(t, principalID)
 	assert.False(t, principal.EmailVerified)
 	_, err = harness.repository.activeEmailVerificationByHMAC(
 		t.Context(), service.emailVerificationHMACs(token), service.now(),
@@ -138,8 +136,7 @@ func TestEmailVerificationTokenIsSnapshotBoundAndAuditAtomic(t *testing.T) {
 	harness.auditErr = errors.New("audit unavailable")
 	err = service.CompleteEmailVerification(t.Context(), token, "", "")
 	assert.ErrorContains(t, err, "audit unavailable")
-	principal, err := harness.repository.getPrincipal(t.Context(), principalID)
-	require.NoError(t, err)
+	principal := harness.principal(t, principalID)
 	assert.False(t, principal.EmailVerified)
 	_, err = harness.repository.activeEmailVerificationByHMAC(
 		t.Context(), service.emailVerificationHMACs(token), service.now(),

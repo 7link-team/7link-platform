@@ -19,6 +19,7 @@ import (
 	"7link.com/platform/pkg/appenv"
 	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
+	"7link.com/platform/pkg/extension/passwordx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/postgres"
@@ -240,13 +241,8 @@ func TestRepositoryMethodsFailClosedWithoutWriter(t *testing.T) {
 	now := repositoryTestNow
 	principalID := guid.ID(1)
 	checks := map[string]func() error{
-		"pin writer":       func() error { _, err := repository.pinWriter(); return err },
-		"create principal": func() error { return repository.createPrincipal(t.Context(), &identity.Principal{}) },
-		"update bootstrap principal": func() error {
-			return repository.updateBootstrapPrincipal(t.Context(), principalID, "", "", false, now)
-		},
+		"pin writer":              func() error { _, err := repository.pinWriter(); return err },
 		"find login principal":    func() error { _, err := repository.findLoginPrincipal(t.Context(), "alice"); return err },
-		"get principal":           func() error { _, err := repository.getPrincipal(t.Context(), principalID); return err },
 		"get active principal":    func() error { _, err := repository.getActivePrincipal(t.Context(), principalID); return err },
 		"find recovery principal": func() error { _, err := repository.findRecoveryPrincipal(t.Context(), "alice"); return err },
 		"lock principal":          func() error { _, err := repository.lockPrincipal(t.Context(), principalID); return err },
@@ -459,4 +455,49 @@ func (h *authnRepositoryHarness) seedCredentialWithRepository(t *testing.T, repo
 		PrincipalID: principalID, PasswordHash: hash, PasswordChangedAt: repositoryTestNow,
 		CredentialVersion: 1, UpdatedAt: repositoryTestNow,
 	}))
+}
+
+// seedLocalPrincipal writes a principal and its password credential directly.
+// A deployment creates those two rows through two capabilities in one
+// transaction -- identity writes the principal, authn writes the credential,
+// sequenced by the composition root -- so authn has no function that writes
+// both, and a harness that needs somebody who can sign in seeds them itself.
+func seedLocalPrincipal(t *testing.T, repository *Repository, login, email, password string) guid.ID {
+	t.Helper()
+	require.NotNil(t, repository)
+	db := repository.writer()
+	require.NotNil(t, db)
+	principalID, err := repository.nextID()
+	require.NoError(t, err)
+	hash, err := passwordx.Hash(password)
+	require.NoError(t, err)
+
+	// Stored normalized, the way every path that creates a principal stores it:
+	// a login is matched after normalization, so a fixture that skipped this
+	// would be unreachable by its own login name.
+	principal := identitymodel.Principal{
+		ID:    principalID,
+		Email: strings.ToLower(strings.TrimSpace(email)), DisplayName: login,
+		LoginName: normalizeLogin(login),
+		Status:    "active", EmailVerified: email != "",
+		CreatedAt: repositoryTestNow, UpdatedAt: repositoryTestNow,
+	}
+	require.NoError(t, db.Table(repository.prefix()+principal.TableName()).Create(&principal).Error)
+	credential := model.Credential{
+		PrincipalID: principalID, PasswordHash: hash, PasswordChangedAt: repositoryTestNow,
+		CredentialVersion: 1, UpdatedAt: repositoryTestNow,
+	}
+	require.NoError(t, db.Table(repository.prefix()+credential.TableName()).Create(&credential).Error)
+	return principalID
+}
+
+// principal reads a principal row straight from storage. identity owns that
+// table, so authn has no method that reads it by id; a test that wants to see
+// what a flow left behind reads the row itself.
+func (h *authnRepositoryHarness) principal(t *testing.T, principalID guid.ID) identitymodel.Principal {
+	t.Helper()
+	var row identitymodel.Principal
+	require.NoError(t, h.db.Table(h.runtime.TablePrefix()+row.TableName()).
+		Where("id = ?", principalID).Take(&row).Error)
+	return row
 }

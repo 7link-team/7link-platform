@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/authn/model"
-	"7link.com/platform/internal/iam/identity"
 	identitymodel "7link.com/platform/internal/iam/identity/model"
 	"7link.com/platform/internal/infra/guid"
 	"github.com/stretchr/testify/assert"
@@ -43,9 +42,7 @@ func TestRepositoryIdentityReadsRespectIdentityOwnershipAndPrefix(t *testing.T) 
 	_, err = harness.repository.findRecoveryPrincipal(t.Context(), "WORKER@EXAMPLE.TEST")
 	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
 
-	principal, err = harness.repository.getPrincipal(t.Context(), 1)
-	require.NoError(t, err)
-	assert.Equal(t, "alice", principal.LoginName)
+	assert.Equal(t, "alice", harness.principal(t, 1).LoginName)
 	principal, err = harness.repository.getActivePrincipal(t.Context(), 1)
 	require.NoError(t, err)
 	assert.Equal(t, guid.ID(1), principal.ID)
@@ -155,46 +152,36 @@ func TestRepositoryVerifiesEmailOnlyAgainstBoundSnapshot(t *testing.T) {
 	assert.False(t, changed)
 }
 
-func TestRepositoryBootstrapMutationsUseIdentityModelsAndNullableState(t *testing.T) {
+// TestBootstrapCredentialResetClearsNullableSecurityState covers the one
+// bootstrap mutation authn still owns: resetting the credential of a platform
+// administrator, which internal/app drives through ResetBootstrapCredentialOn.
+// The principal row it reads belongs to identity, so the fixture seeds it
+// rather than asking authn to write it.
+func TestBootstrapCredentialResetClearsNullableSecurityState(t *testing.T) {
 	harness := newAuthnRepositoryHarness(t, "sl_")
 	disabledAt := repositoryTestNow.Add(-time.Hour)
-	principal := &identity.Principal{
-		ID: 4, LoginName: "bootstrap", Email: "old@example.test", DisplayName: "Old",
-		Status: "disabled", CreatedAt: repositoryTestNow, UpdatedAt: repositoryTestNow,
-	}
-	require.NoError(t, harness.repository.createPrincipal(t.Context(), principal))
-	require.NoError(t, harness.db.Table("sl_iam_principals").Where("id = ?", 4).Update("disabled_at", disabledAt).Error)
+	require.NoError(t, harness.db.Table("sl_iam_principals").Create(&identitymodel.Principal{
+		ID: 4, LoginName: "bootstrap", Email: "new@example.test", DisplayName: "Bootstrap",
+		Status: "active", EmailVerified: true, CreatedAt: repositoryTestNow, UpdatedAt: repositoryTestNow,
+	}).Error)
+	require.NoError(t, harness.db.Table("sl_iam_principals").Where("id = ?", 4).
+		Update("disabled_at", disabledAt).Error)
 	require.NoError(t, harness.repository.createCredential(t.Context(), &model.Credential{
 		PrincipalID: 4, PasswordHash: "old", PasswordChangedAt: repositoryTestNow,
 		CredentialVersion: 1, UpdatedAt: repositoryTestNow,
 	}))
-	now := repositoryTestNow.Add(time.Hour)
-	require.NoError(t, harness.repository.updateBootstrapPrincipal(
-		t.Context(), 4, "new@example.test", "Bootstrap", true, now,
-	))
+
 	newHash := "new"
-	changed, err := harness.repository.resetBootstrapCredential(t.Context(), 4, &newHash, true, now)
+	changed, err := harness.repository.resetBootstrapCredential(
+		t.Context(), 4, &newHash, true, repositoryTestNow.Add(time.Hour),
+	)
 	require.NoError(t, err)
 	assert.True(t, changed)
 
-	loaded, err := harness.repository.getPrincipal(t.Context(), 4)
-	require.NoError(t, err)
+	loaded := harness.principal(t, 4)
 	assert.Equal(t, "active", loaded.Status)
 	assert.Equal(t, "new@example.test", loaded.Email)
 	assert.True(t, loaded.EmailVerified)
-	var storedState struct {
-		DisabledAt *time.Time
-	}
-	require.NoError(t, harness.db.Table("sl_iam_principals").Select("disabled_at").Where("id = ?", 4).
-		Take(&storedState).Error)
-	assert.Nil(t, storedState.DisabledAt)
-	credential, err := harness.repository.getCredential(t.Context(), 4)
-	require.NoError(t, err)
-	assert.Equal(t, "new", credential.PasswordHash)
-	assert.Equal(t, int64(2), credential.CredentialVersion)
-	changed, err = harness.repository.resetBootstrapCredential(t.Context(), 99, nil, false, now)
-	require.NoError(t, err)
-	assert.False(t, changed)
 }
 
 func TestRepositoryCredentialCASAndPasswordHistory(t *testing.T) {

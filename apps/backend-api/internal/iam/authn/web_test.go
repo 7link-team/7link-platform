@@ -62,11 +62,7 @@ func newLocalService(t *testing.T) (*Service, *authnRepositoryHarness) {
 
 func bootstrapLocalPrincipal(t *testing.T, harness *authnRepositoryHarness, login, password string) guid.ID {
 	t.Helper()
-	id, err := EnsureBootstrapPrincipal(t.Context(), harness.repository, BootstrapPrincipal{
-		LoginName: login, Password: password, DisplayName: login, Email: login + "@example.test",
-	})
-	require.NoError(t, err)
-	return id
+	return seedLocalPrincipal(t, harness.repository, login, login+"@example.test", password)
 }
 
 func TestNewWebServiceConfiguration(t *testing.T) {
@@ -207,27 +203,6 @@ func TestSessionOwnershipAndCSRF(t *testing.T) {
 	assert.NoError(t, service.ValidateCSRF("POST", "", service.SessionCookie(alice.SessionID), "Bearer token"))
 	assert.ErrorIs(t, service.ValidateCSRF("POST", "https://evil.example", service.SessionCookie(alice.SessionID), ""), ErrCSRF)
 	assert.NoError(t, service.ValidateCSRF("POST", "https://app.example.test", service.SessionCookie(alice.SessionID), ""))
-}
-
-func TestEnsureBootstrapPrincipalReconcilesSecurityState(t *testing.T) {
-	service, harness := newLocalService(t)
-	id := bootstrapLocalPrincipal(t, harness, "admin", "correct horse battery staple")
-	session, err := service.BeginLogin(t.Context(), "admin", "correct horse battery staple", "")
-	require.NoError(t, err)
-	oldVersion, err := harness.repository.getCredential(t.Context(), id)
-	require.NoError(t, err)
-
-	reconciledID, err := EnsureBootstrapPrincipal(t.Context(), harness.repository, BootstrapPrincipal{
-		LoginName: "ADMIN", Password: "different horse battery staple",
-		DisplayName: "Administrator", Email: "new-admin@example.test",
-	})
-	require.NoError(t, err)
-	assert.Equal(t, id, reconciledID)
-	credential, err := harness.repository.getCredential(t.Context(), id)
-	require.NoError(t, err)
-	assert.Equal(t, oldVersion.CredentialVersion+1, credential.CredentialVersion)
-	_, err = service.Authenticate(t.Context(), "", service.SessionCookie(session.SessionID))
-	assert.ErrorIs(t, err, ErrInvalidSession)
 }
 
 func tokenPayloadString(t *testing.T, token, key string) string {
@@ -736,41 +711,6 @@ func TestWebServiceDefaultsAndConfigurationBoundaries(t *testing.T) {
 			assert.ErrorContains(t, err, test.match)
 		})
 	}
-}
-
-func TestEnsureBootstrapPrincipalFailureAndNoopBranches(t *testing.T) {
-	_, err := EnsureBootstrapPrincipal(t.Context(), nil, BootstrapPrincipal{})
-	assert.ErrorContains(t, err, "requires repository")
-	service, harness := newLocalService(t)
-	_, err = EnsureBootstrapPrincipal(t.Context(), harness.repository, BootstrapPrincipal{
-		LoginName: "", Password: "short",
-	})
-	assert.Error(t, err)
-	principalID := bootstrapLocalPrincipal(t, harness, "alice", "correct horse battery staple")
-	original, err := harness.repository.getCredential(t.Context(), principalID)
-	require.NoError(t, err)
-	reconciledID, err := EnsureBootstrapPrincipal(t.Context(), harness.repository, BootstrapPrincipal{
-		LoginName: "ALICE", Password: "correct horse battery staple",
-		DisplayName: "alice", Email: "alice@example.test",
-	})
-	require.NoError(t, err)
-	assert.Equal(t, principalID, reconciledID)
-	unchanged, err := harness.repository.getCredential(t.Context(), principalID)
-	require.NoError(t, err)
-	assert.Equal(t, original.CredentialVersion, unchanged.CredentialVersion)
-
-	require.NoError(t, harness.db.Table("iam_credentials").Where("principal_id = ?", principalID).Delete(nil).Error)
-	_, err = EnsureBootstrapPrincipal(t.Context(), harness.repository, BootstrapPrincipal{
-		LoginName: "alice", Password: "correct horse battery staple",
-	})
-	assert.ErrorContains(t, err, "credential not found")
-
-	failingIDs := NewRepository(harness.runtime, &repositoryIDFixture{err: assert.AnError}, harness.repository.audit)
-	_, err = EnsureBootstrapPrincipal(t.Context(), failingIDs, BootstrapPrincipal{
-		LoginName: "new-user", Password: "correct horse battery staple",
-	})
-	assert.ErrorContains(t, err, assert.AnError.Error())
-	assert.True(t, service.Enabled())
 }
 
 func TestWebServiceReachableEdgeBranches(t *testing.T) {

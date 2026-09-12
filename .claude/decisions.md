@@ -1252,3 +1252,43 @@ P0 已完成并实证（含夹具证明 5 条规则均非空断言、白名单�
 P2/P4b/P5 落地。授权引擎的语句保持单条（`administrator.go` 的 last-admin 守卫由 `Protect` 在调用方事务里
 做前后两次测量，拆分会让两次测量落在不同快照上）；`relationshipTraversalExpressions` 的三方言 switch
 原样搬迁，性能基线 28 个指纹必须零变化以证明"只搬家不改语义"。
+
+## D38 — authn 的 EnsureBootstrapPrincipal 与两条越界写删除，平台管理员初始化只保留 create-only 的那份
+
+**Decision / Reason**
+`authn/web.go` 的 `EnsureBootstrapPrincipal`（及 `BootstrapPrincipal`）与它专用的
+`Repository.createPrincipal` / `updateBootstrapPrincipal`，连同无调用方的 `getPrincipal`，一并删除。
+生产路径已由 `internal/app/platformadmin.go` 承担：`identity.BootstrapPrincipalStore` 建 principal、
+`authn.BootstrapCredentialStore` 建 credential、`core.PlatformAdministratorStore` 写管理员行，
+三个能力在同一事务里由组合根编排。authn 那份是重复实现，并且是 authn 写 identity 拥有的
+`iam_principals` 的三条越界写中的全部来源。
+
+**证据（实测，不是判断）**
+① `grep -rn "EnsureBootstrapPrincipal" --include=*.go` 的全部命中在 `_test.go` 与定义处；
+② **panic 探针**：在函数首行插 `panic(...)` 后，`go test` 全仓（排除 `internal/iam/authn` 自身）
+   与 `tests/` 六个集成套件（architecture / goose / testdb / lifecycle / migration / performance）
+   **全部通过、无 panic**；对 `getPrincipal` 同法同结果；
+③ `internal/app/platformadmin.go:36-44` 自己写明 bootstrap 是 create-only，
+   "password rotation belongs to a separate audited reset flow"。
+
+**语义差异（必须记下来，否则以后会被当成回归）**
+被删的那份会**重置密码并吊销会话**（reconcile 语义）；生产路径是 create-only，
+重复执行返回 `PlatformAdminAlreadyBootstrapped`。密码轮换由 `internal/app/platformadminreset.go`
+经 `authn.ResetBootstrapCredentialOn` 承担——**删它不丢任何能力**，只是去掉了第二条语义不同的路径。
+`resetBootstrapCredential` 本身保留（重置流程在用）。
+
+**Alternatives / Tradeoffs**
+保留并把三条越界写改成调用 identity 的能力：代价是仓里长期留着两份做同一件事、语义还不同的实现。
+本次不做、只记为技术债：同样留着那份重复实现。均已否决。
+
+**覆盖率实测与预估相反**
+事前预估"删掉一段覆盖率高于包均值的代码会把 authn 压低"，实测 **authn 90.6% → 90.7%**（反而升）——
+被删的那段含若干未覆盖的错误分支。预估错了，以实测为准。
+
+**Scope / Status**
+S1 已完成：净 **-196 行**（8 文件，+74/-270）。`go build`、全量单测、`make lint`、
+`tests/architecture`（含查询门禁账本）全绿；总覆盖率 90.1%。
+测试侧改动：`bootstrapLocalPrincipal` 与 4 个 harness 改用新的包内 `seedLocalPrincipal`
+（直接写 principal + credential 两行，并按 `normalizeLogin` 归一化登录名——否则 fixture 用自己的
+登录名都查不到自己）；读 principal 的 6 处测试改用 harness 的 `principal()` 直读，
+不再让生产代码为测试保留一个读方法。

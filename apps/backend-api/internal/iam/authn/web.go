@@ -19,7 +19,6 @@ import (
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/authn/model"
 	"7link.com/platform/internal/iam/core"
-	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
@@ -1181,109 +1180,6 @@ func securityAudit(principalID guid.ID, eventType, outcome string) audit.DomainE
 		EventType: eventType, TargetType: "principal", TargetID: principalID,
 		Detail: map[string]any{"outcome": outcome},
 	}
-}
-
-type BootstrapPrincipal struct {
-	LoginName   string
-	Password    string
-	DisplayName string
-	Email       string
-}
-
-func EnsureBootstrapPrincipal(
-	ctx context.Context,
-	repository *Repository,
-	spec BootstrapPrincipal,
-) (guid.ID, error) {
-	if repository == nil || repository.writer() == nil || repository.ids == nil {
-		return 0, errors.New("bootstrap principal requires repository and id generator")
-	}
-	spec.LoginName = normalizeLogin(spec.LoginName)
-	spec.DisplayName = strings.TrimSpace(spec.DisplayName)
-	spec.Email = strings.ToLower(strings.TrimSpace(spec.Email))
-	if spec.LoginName == "" || len(spec.LoginName) > 200 || len(spec.Password) < 12 || len(spec.Password) > 1024 {
-		return 0, errors.New("bootstrap login name and a 12-1024 character password are required")
-	}
-	if spec.DisplayName == "" {
-		spec.DisplayName = spec.LoginName
-	}
-	hash, err := passwordx.Hash(spec.Password)
-	if err != nil {
-		return 0, err
-	}
-	now := time.Now().UTC()
-	var principalID guid.ID
-	err = repository.runInTx(ctx, func(transaction *Repository) error {
-		existing, err := transaction.lockPrincipalByLogin(ctx, spec.LoginName)
-		if err == nil {
-			principalID = existing.ID
-			credential, err := transaction.getCredential(ctx, principalID)
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					return errors.New("bootstrap principal credential not found")
-				}
-				return err
-			}
-			passwordMatches, err := passwordx.Verify(credential.PasswordHash, spec.Password)
-			if err != nil {
-				return err
-			}
-			emailVerified := spec.Email != ""
-			securityStateChanged := !passwordMatches || existing.Email != spec.Email ||
-				existing.EmailVerified != emailVerified || existing.ActivationRequired || existing.Status != "active"
-			if err := transaction.updateBootstrapPrincipal(
-				ctx, principalID, spec.Email, spec.DisplayName, emailVerified, now,
-			); err != nil {
-				return err
-			}
-			var passwordHash *string
-			if !passwordMatches {
-				passwordHash = &hash
-			}
-			changed, err := transaction.resetBootstrapCredential(
-				ctx, principalID, passwordHash, securityStateChanged, now,
-			)
-			if err != nil {
-				return err
-			}
-			if !changed {
-				return errors.New("bootstrap principal credential not found")
-			}
-			if !securityStateChanged {
-				return nil
-			}
-			if err := transaction.revokeOtherAuthentication(ctx, principalID, "", now); err != nil {
-				return err
-			}
-			if err := transaction.consumePasswordRecoveries(ctx, principalID, now); err != nil {
-				return err
-			}
-			return transaction.consumeEmailVerifications(ctx, principalID, now)
-		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
-		}
-		principalID, err = transaction.nextID()
-		if err != nil {
-			return err
-		}
-		principal := identity.Principal{
-			ID: principalID, LoginName: spec.LoginName, Email: spec.Email,
-			EmailVerified: spec.Email != "", DisplayName: spec.DisplayName,
-			Status: "active", CreatedAt: now, UpdatedAt: now,
-		}
-		if err := transaction.createPrincipal(ctx, &principal); err != nil {
-			return err
-		}
-		return transaction.createCredential(ctx, &model.Credential{
-			PrincipalID: principalID, PasswordHash: hash, PasswordChangedAt: now,
-			CredentialVersion: 1, UpdatedAt: now,
-		})
-	})
-	if err != nil {
-		return 0, fmt.Errorf("ensure bootstrap principal: %w", err)
-	}
-	return principalID, nil
 }
 
 // mfaKeyDomain separates this module's derived subkeys from every other
