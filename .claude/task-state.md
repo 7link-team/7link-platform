@@ -363,7 +363,39 @@ so its own prefix names them」——**`iam_sessions` 是 authn 拥有的**
 详细决策见 `.claude/decisions.md` 的 **D38**（死码删除）与 **D39**（双向委派、方向反转、
 `LockActiveRow` 的安全差异、sessions 双写为何保留、identity 测试为何只能用替身）。
 
-### 阶段二 带类型字段 —— 待开始
+### 阶段二 带类型字段 —— 进行中，**方案已由用户改为 C（全仓统一、0 遗憾）**
+
+**用户的要求（2026-09-12）**：必须强类型约束写法，全仓统一，0 遗憾。
+并明确指出一处我解释失败：**本次不改任何表名**，「改名就编译不过」只是在比较两种写法的安全性。
+
+**实测规模**：生产调用点 **71 处**（不是计划估的 ~65），测试调用点 52 处。
+
+**被推翻的原计划**：原本要「拥有者导出类型化结构体、消费方引用它」。实测有 4 对做不到——
+拥有者激活在消费方之后时，消费方 import 拥有者会成包环（已验证 `organization` 确实 import 了 `core`，
+3 个文件）。那会导致 66/71 强类型、5 处留字符串，两种形态并存。
+
+**最终方案 C（一条规则，由 Go 的 import 方向决定，不可选）**：
+> 跨界的类型化结构体，声明在**被对方 import 的那一侧**。
+
+- **消费方 import 拥有者** → 拥有者导出自己的类型化结构体，消费方直接持有它。
+  适用：authn←core、identity←core、organization←core、oauth←{core,identity,authn,organization}、
+  provisioning←{core,identity,organization}、governance←{core,organization}、
+  federation←{core,organization}、authn←identity（S2 的 receiver 形状）。
+- **拥有者 import 消费方** → 消费方声明它需要的字段，拥有者负责填满（连接器的现有方向，
+  只是载荷从 `gormx.TableSet` 换成消费方声明的类型化结构体）。
+  适用：core←organization、core←identity、authn←organization、authn←oauth、
+  identity←organization、identity←oauth。
+  **这一侧更强**：消费方加字段 → 拥有者的填充处编译不过 → 被迫提供。
+
+两种情形下消费方手里都是类型化结构体，**71 处调用点全是字段访问**。
+
+**交付标准（0 遗憾）**：全仓无一处字符串查表、无不具名集合；`gormx.TableSet` 若无人使用即删除；
+每处 SQL 文本不变（由既有的冻结断言 + MySQL 查询计划指纹证明）。
+
+**仓内已有的先例**：`internal/iam/core/joined_tables.go` 已经在绑定时把集合转成
+`query.DirectoryTables`，调用点用字段——阶段二是把这件事做成全仓唯一形态，并去掉中间那个不具名集合。
+
+### 阶段二 原定描述（已作废，保留以便追溯）
 拥有者在根包导出字段为 `gormx.TableName` 的结构体（镜像 `query.TableNames`，带漂移测试）；
 把「是否已绑定」校验集中到 `Initialize`（任一字段为零值即启动失败），业务代码错误分支从约 65 降到每消费方 1 个；
 P4c 写的约 30 个运行时用例会收敛成每模块 1 个。**顺序在阶段三之前**——计划里纠正过用户最初的选择：
