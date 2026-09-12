@@ -27,13 +27,17 @@ type Repository struct {
 	principals identity.PrincipalStateStore
 	db         *gorm.DB
 	inTx       bool
+	// foreign holds the names of the tables this repository reads but does
+	// not own. It is a pointer so a transactional clone reads the same
+	// publication as the repository it came from.
+	foreign *foreignTables
 }
 
 func NewRepository(runtime *appenv.Runtime, ids guid.Source, appender audit.Appender) *Repository {
 	if runtime == nil || ids == nil || appender == nil {
 		panic("OAuth repository requires runtime, id generator, and audit appender")
 	}
-	return &Repository{runtime: runtime, ids: ids, appender: appender}
+	return &Repository{runtime: runtime, ids: ids, appender: appender, foreign: &foreignTables{}}
 }
 
 func (r *Repository) writer() *gorm.DB {
@@ -228,8 +232,12 @@ func (r *Repository) activeMember(ctx context.Context, tenantID, principalID gui
 	if err != nil {
 		return false, err
 	}
+	members, err := r.foreign.accessTable("iam_tenant_members")
+	if err != nil {
+		return false, err
+	}
 	var count int64
-	err = db.WithContext(ctx).Table(r.table("iam_tenant_members")).
+	err = db.WithContext(ctx).Table(members).
 		Where("tenant_id = ? AND principal_id = ? AND status = ?", tenantID, principalID, "active").
 		Count(&count).Error
 	return count == 1, err
@@ -593,8 +601,28 @@ func (r *Repository) serviceAccountClient(ctx context.Context, id guid.ID) (*ser
 	if err != nil {
 		return nil, err
 	}
+	credentials, err := r.foreign.principalTable("iam_service_account_credentials")
+	if err != nil {
+		return nil, err
+	}
+	accounts, err := r.foreign.principalTable("iam_service_accounts")
+	if err != nil {
+		return nil, err
+	}
+	principals, err := r.foreign.principalTable("iam_principals")
+	if err != nil {
+		return nil, err
+	}
+	members, err := r.foreign.accessTable("iam_tenant_members")
+	if err != nil {
+		return nil, err
+	}
+	tenants, err := r.foreign.directoryTable("iam_tenants")
+	if err != nil {
+		return nil, err
+	}
 	var row serviceAccountClient
-	err = db.WithContext(ctx).Table(r.table("iam_service_account_credentials")+" AS credential").
+	err = db.WithContext(ctx).Table(credentials+" AS credential").
 		Select("credential.id AS credential_id, credential.principal_id AS principal_id, "+
 			"credential.secret_hash AS secret_hash, credential.scopes AS scopes, "+
 			"credential.expires_at AS credential_expires_at, credential.revoked_at AS credential_revoked_at, "+
@@ -602,10 +630,10 @@ func (r *Repository) serviceAccountClient(ctx context.Context, id guid.ID) (*ser
 			"service_account.expires_at AS account_expires_at, service_account.token_version AS token_version, "+
 			"principal.login_name AS login_name, principal.status AS principal_status, "+
 			"member.status AS member_status, tenant.status AS tenant_status").
-		Joins("JOIN "+r.table("iam_service_accounts")+" AS service_account ON service_account.principal_id = credential.principal_id").
-		Joins("JOIN "+r.table("iam_principals")+" AS principal ON principal.id = service_account.principal_id").
-		Joins("JOIN "+r.table("iam_tenant_members")+" AS member ON member.tenant_id = service_account.owner_tenant_id AND member.principal_id = service_account.principal_id").
-		Joins("JOIN "+r.table("iam_tenants")+" AS tenant ON tenant.id = service_account.owner_tenant_id").
+		Joins("JOIN "+accounts+" AS service_account ON service_account.principal_id = credential.principal_id").
+		Joins("JOIN "+principals+" AS principal ON principal.id = service_account.principal_id").
+		Joins("JOIN "+members+" AS member ON member.tenant_id = service_account.owner_tenant_id AND member.principal_id = service_account.principal_id").
+		Joins("JOIN "+tenants+" AS tenant ON tenant.id = service_account.owner_tenant_id").
 		Where("credential.id = ?", id).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, errServiceAccountCredentialMissing
@@ -621,7 +649,11 @@ func (r *Repository) touchServiceAccountCredential(ctx context.Context, id guid.
 	if err != nil {
 		return err
 	}
-	result := db.WithContext(ctx).Table(r.table("iam_service_account_credentials")).
+	credentials, err := r.foreign.principalTable("iam_service_account_credentials")
+	if err != nil {
+		return err
+	}
+	result := db.WithContext(ctx).Table(credentials).
 		Where("id = ? AND revoked_at IS NULL", id).Update("last_used_at", now)
 	if result.Error != nil {
 		return fmt.Errorf("update service account credential use: %w", result.Error)

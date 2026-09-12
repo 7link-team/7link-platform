@@ -238,6 +238,7 @@ func newOAuthHarness(t *testing.T, prefix string) *oauthHarness {
 	)
 	harness.service.now = func() time.Time { return oauthTestNow }
 	harness.repo = harness.service.repo
+	bindForeignTables(t, harness.repo, prefix)
 	return harness
 }
 

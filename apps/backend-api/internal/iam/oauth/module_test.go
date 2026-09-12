@@ -7,7 +7,9 @@ import (
 
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/authn"
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
+	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
@@ -103,7 +105,10 @@ func TestOAuthModuleDependenciesAndReadinessBeforeInitialize(t *testing.T) {
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
 	instance := NewModule(appenv.NewRuntime(appenv.NewIdentity("oauth-test", "1")), enabledModuleConfig())
 	assert.Equal(t, Name, instance.ModuleName())
-	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, identity.Name, authn.Name}, instance.ModuleDependencies())
+	assert.Equal(t, []string{
+		platformi18n.Name, guid.Name, audit.Name,
+		core.Name, identity.Name, authn.Name, organization.Name,
+	}, instance.ModuleDependencies())
 	assert.ErrorIs(t, instance.CheckHealth(t.Context()), ErrUnavailable)
 	_, api := humatest.New(t)
 	assert.ErrorContains(t, instance.RegisterHTTP(t.Context(), api), "service is unavailable")
@@ -123,6 +128,11 @@ func TestOAuthModuleResolvesDependenciesAndRegistersContract(t *testing.T) {
 		&oauthDependencyProvider{name: audit.Name, provide: func(services *module.Services) error {
 			return module.Provide[audit.Appender](services, harness.repo.appender)
 		}},
+		&oauthDependencyProvider{name: core.Name, provide: func(services *module.Services) error {
+			return module.Provide[core.AccessTables](services, core.AccessTables{
+				Published: core.TableSet(harness.prefix),
+			})
+		}},
 		&oauthDependencyProvider{name: authn.Name, provide: func(services *module.Services) error {
 			if err := module.Provide[*authz.Registrar](services, oauthTestRegistrar(harness.web)); err != nil {
 				return err
@@ -132,14 +142,24 @@ func TestOAuthModuleResolvesDependenciesAndRegistersContract(t *testing.T) {
 			}
 			// The consumers publish these during Wire in a running deployment;
 			// this registry fakes them so oauth's own wiring resolves.
-			return module.Provide[authn.OAuthTableSetConnector](services, authn.OAuthTableSetConnector{
+			if err := module.Provide[authn.OAuthTableSetConnector](services, authn.OAuthTableSetConnector{
 				Bind: func(gormx.TableSet) error { return nil },
+			}); err != nil {
+				return err
+			}
+			return module.Provide[authn.CredentialTables](services, authn.CredentialTables{
+				Published: authn.TableSet(harness.prefix),
 			})
 		}},
 		&oauthDependencyProvider{
 			name:    identity.Name,
 			provide: identity.NewModule(harness.runtime, identity.Config{}).ProvideServices,
 		},
+		&oauthDependencyProvider{name: organization.Name, provide: func(services *module.Services) error {
+			return module.Provide[organization.DirectoryTables](services, organization.DirectoryTables{
+				Published: organization.TableSet(harness.prefix),
+			})
+		}},
 		instance,
 	))
 	require.NoError(t, registry.Activate())

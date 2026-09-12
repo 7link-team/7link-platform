@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "budget": 482,
+  "budget": 473,
   "rebaseline": "initial freeze at the P0 commit",
   "entries": [
     {
@@ -52,10 +52,6 @@
       "count": 1
     },
     {
-      "key": "concatenated-table-name:2800c8ad2b9dbde8",
-      "count": 1
-    },
-    {
       "key": "concatenated-table-name:285271473d2ed57f",
       "count": 1
     },
@@ -88,15 +84,15 @@
       "count": 1
     },
     {
+      "key": "concatenated-table-name:3afd2dca80ff0d01",
+      "count": 1
+    },
+    {
       "key": "concatenated-table-name:3d16c8b6d3c98597",
       "count": 1
     },
     {
       "key": "concatenated-table-name:3e48c1d7ea56889a",
-      "count": 1
-    },
-    {
-      "key": "concatenated-table-name:3fa793cdd2b2d418",
       "count": 1
     },
     {
@@ -121,10 +117,6 @@
     },
     {
       "key": "concatenated-table-name:4d5bccd88f43a85f",
-      "count": 1
-    },
-    {
-      "key": "concatenated-table-name:4e2d35e1e92b25fb",
       "count": 1
     },
     {
@@ -184,7 +176,7 @@
       "count": 1
     },
     {
-      "key": "concatenated-table-name:6b89b6f5403da952",
+      "key": "concatenated-table-name:6b732f5e7d0ba388",
       "count": 1
     },
     {
@@ -197,6 +189,10 @@
     },
     {
       "key": "concatenated-table-name:6f48b76616c232d6",
+      "count": 1
+    },
+    {
+      "key": "concatenated-table-name:7aae0d50d97ae161",
       "count": 1
     },
     {
@@ -284,6 +280,10 @@
       "count": 1
     },
     {
+      "key": "concatenated-table-name:a275bc0781fea780",
+      "count": 1
+    },
+    {
       "key": "concatenated-table-name:a3f89a6aa959c402",
       "count": 1
     },
@@ -300,7 +300,7 @@
       "count": 1
     },
     {
-      "key": "concatenated-table-name:b062678cbf1768ee",
+      "key": "concatenated-table-name:b1c511099ee6e447",
       "count": 1
     },
     {
@@ -497,7 +497,7 @@
     },
     {
       "key": "naked-table-literal:1c3a76c338dd03bc",
-      "count": 9
+      "count": 6
     },
     {
       "key": "naked-table-literal:1ee29af86a0c035b",
@@ -529,7 +529,7 @@
     },
     {
       "key": "naked-table-literal:35501da6957561af",
-      "count": 3
+      "count": 2
     },
     {
       "key": "naked-table-literal:363bfa3f613372e4",
@@ -677,7 +677,7 @@
     },
     {
       "key": "naked-table-literal:93f93f89bf94df2d",
-      "count": 6
+      "count": 4
     },
     {
       "key": "naked-table-literal:98a257cd142f62cd",
@@ -717,7 +717,7 @@
     },
     {
       "key": "naked-table-literal:a868dd02819cb16d",
-      "count": 3
+      "count": 2
     },
     {
       "key": "naked-table-literal:a9555e0273bca987",
@@ -733,7 +733,7 @@
     },
     {
       "key": "naked-table-literal:b07d0cb75a426a8f",
-      "count": 3
+      "count": 2
     },
     {
       "key": "naked-table-literal:b24fb8772da68269",
@@ -761,7 +761,7 @@
     },
     {
       "key": "naked-table-literal:d64029d91df9e2fd",
-      "count": 3
+      "count": 2
     },
     {
       "key": "naked-table-literal:d7e7b37e67a362ca",

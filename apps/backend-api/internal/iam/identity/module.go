@@ -141,6 +141,11 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	}); err != nil {
 		return fmt.Errorf("provide identity oauth table set connector: %w", err)
 	}
+	if err := module.Provide[PrincipalTables](services, PrincipalTables{
+		Published: TableSet(m.runtime.TablePrefix()),
+	}); err != nil {
+		return fmt.Errorf("provide identity principal tables: %w", err)
+	}
 	return nil
 }
 

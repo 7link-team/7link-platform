@@ -385,7 +385,9 @@ func TestIAMCompositionReportsEveryMissingBusinessProvider(t *testing.T) {
 		{core.Name, "resolve audit authorization registrar"},
 		{iamauthn.Name, "resolve authentication verifier"},
 		{identity.Name, "resolve authn registration principal creator"},
-		{organization.Name, "resolve provisioning group provisioner"},
+		// oauth is the first module activated after organization, so with
+		// organization stubbed out it is oauth's resolve that reports first.
+		{organization.Name, "resolve OAuth directory tables"},
 	}
 	for _, test := range tests {
 		t.Run(test.provider, func(t *testing.T) {

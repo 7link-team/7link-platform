@@ -10,6 +10,7 @@ import (
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
 	oauthi18n "7link.com/platform/internal/iam/oauth/i18n"
+	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
@@ -42,6 +43,10 @@ type Module struct {
 	principals identity.PrincipalStateStore
 	ids        guid.Source
 	appender   audit.Appender
+	// foreign is the one holder of the table names the modules that own them
+	// published to oauth. The repository reads through it, so a name that was
+	// never published fails the statement instead of reaching the database.
+	foreign foreignTables
 }
 
 // NewModule builds the OAuth module. Shared business and infrastructure
@@ -58,7 +63,10 @@ func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
 func (*Module) ModuleName() string { return Name }
 
 func (*Module) ModuleDependencies() []string {
-	return []string{platformi18n.Name, guid.Name, audit.Name, identity.Name, authn.Name}
+	return []string{
+		platformi18n.Name, guid.Name, audit.Name,
+		core.Name, identity.Name, authn.Name, organization.Name,
+	}
 }
 
 // ProvideServices exposes grant validation without making authn depend on OAuth.
@@ -128,6 +136,28 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err := identityTables.Bind(TableSet(m.runtime.TablePrefix())); err != nil {
 		return fmt.Errorf("bind identity oauth table set: %w", err)
 	}
+	accessTables, err := module.Resolve[core.AccessTables](services)
+	if err != nil {
+		return fmt.Errorf("resolve OAuth access tables: %w", err)
+	}
+	principalTables, err := module.Resolve[identity.PrincipalTables](services)
+	if err != nil {
+		return fmt.Errorf("resolve OAuth principal tables: %w", err)
+	}
+	credentialTables, err := module.Resolve[authn.CredentialTables](services)
+	if err != nil {
+		return fmt.Errorf("resolve OAuth credential tables: %w", err)
+	}
+	directoryTables, err := module.Resolve[organization.DirectoryTables](services)
+	if err != nil {
+		return fmt.Errorf("resolve OAuth directory tables: %w", err)
+	}
+	if err := m.foreign.bind(
+		accessTables.Published, principalTables.Published,
+		credentialTables.Published, directoryTables.Published,
+	); err != nil {
+		return fmt.Errorf("bind OAuth foreign tables: %w", err)
+	}
 	m.registrar = registrar
 	m.authn = authenticator
 	m.ids = ids
@@ -144,6 +174,7 @@ func (m *Module) Initialize(context.Context) error {
 		return errors.New("initialize OAuth: runtime, authz registrar, authentication, id generator, audit appender, and principal state store are required")
 	}
 	m.Service = NewService(m.runtime, m.authn, m.ids, m.appender, m.principals, m.config.Consent)
+	m.Service.repo.foreign = &m.foreign
 	// Parse the consent screen now: a misconfigured template file should stop
 	// the process here rather than surface as a 500 on someone's first login.
 	if _, err := m.Service.consentTemplate(); err != nil {

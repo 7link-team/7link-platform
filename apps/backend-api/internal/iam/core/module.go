@@ -135,6 +135,11 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	}); err != nil {
 		return fmt.Errorf("provide IAM principal table set connector: %w", err)
 	}
+	if err := module.Provide[AccessTables](services, AccessTables{
+		Published: TableSet(m.runtime.TablePrefix()),
+	}); err != nil {
+		return fmt.Errorf("provide IAM access tables: %w", err)
+	}
 	return nil
 }
 

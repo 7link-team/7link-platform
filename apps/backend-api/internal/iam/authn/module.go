@@ -142,6 +142,11 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	}); err != nil {
 		return fmt.Errorf("provide authn oauth table set connector: %w", err)
 	}
+	if err := module.Provide[CredentialTables](services, CredentialTables{
+		Published: TableSet(m.runtime.TablePrefix()),
+	}); err != nil {
+		return fmt.Errorf("provide authn credential tables: %w", err)
+	}
 	return nil
 }
 
