@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/pkg/appenv"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
@@ -23,7 +25,7 @@ func TestRevisionStoreLifecycleUsesPrefixedTable(t *testing.T) {
 		updated_at DATETIME NOT NULL
 	)`).Error)
 
-	store, err := NewRevisionStore("sl_")
+	store, err := NewRevisionStore(appenv.NewRuntime(appenv.NewIdentity("revision-test", "1"), appenv.WithTablePrefix("sl_")))
 	require.NoError(t, err)
 
 	revision, err := store.Current(t.Context(), db, 11)
@@ -67,7 +69,7 @@ func TestRevisionStoreConcurrentBumpsDoNotLoseUpdates(t *testing.T) {
 		revision BIGINT NOT NULL,
 		updated_at DATETIME NOT NULL
 	)`).Error)
-	store, err := NewRevisionStore("")
+	store, err := newRevisionStoreForPrefix("")
 	require.NoError(t, err)
 
 	const workers = 32
@@ -101,7 +103,7 @@ func TestRevisionStoreLockSerializesTenantMutations(t *testing.T) {
 		revision BIGINT NOT NULL,
 		updated_at DATETIME NOT NULL
 	)`).Error)
-	store, err := NewRevisionStore("")
+	store, err := newRevisionStoreForPrefix("")
 	require.NoError(t, err)
 	require.NoError(t, store.Bump(t.Context(), db, 23, time.Now()))
 
@@ -132,11 +134,11 @@ func TestRevisionStoreLockSerializesTenantMutations(t *testing.T) {
 }
 
 func TestRevisionStoreRejectsInvalidConfiguration(t *testing.T) {
-	store, err := NewRevisionStore("bad-prefix;")
+	store, err := newRevisionStoreForPrefix("bad-prefix;")
 	assert.Nil(t, store)
 	assert.ErrorContains(t, err, "invalid table prefix")
 
-	store, err = NewRevisionStore("")
+	store, err = newRevisionStoreForPrefix("")
 	require.NoError(t, err)
 	db := openRevisionDB(t)
 

@@ -33,7 +33,7 @@ func NewAdministratorGuard(runtime *appenv.Runtime) *tenantAdministratorGuard {
 	if runtime == nil {
 		panic("IAM administrator guard requires runtime")
 	}
-	revisions, err := NewRevisionStore(runtime.TablePrefix())
+	revisions, err := NewRevisionStore(runtime)
 	if err != nil {
 		panic(err)
 	}

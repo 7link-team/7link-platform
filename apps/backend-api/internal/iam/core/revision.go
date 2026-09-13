@@ -7,25 +7,36 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/core/model"
+	"7link.com/platform/internal/iam/core/query"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/extension/goose"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
-// RevisionStore operates on the core module's IAM policy revision table. The
-// prefix must be the same deployment prefix used by the module migration.
+// RevisionStore operates on the core module's IAM policy revision table. Its
+// table name is resolved through core's BindNames, so the store never carries
+// a deployment prefix into business code.
 type RevisionStore struct {
 	table string
 }
 
-// NewRevisionStore validates prefix before it can become part of a SQL table
-// name. Identifiers cannot be represented by bind parameters.
-func NewRevisionStore(prefix string) (*RevisionStore, error) {
+// NewRevisionStore builds the store from the deployment runtime. The runtime's
+// prefix was already validated when the runtime was constructed (D41: callers
+// do not hand a prefix to core).
+func NewRevisionStore(runtime *appenv.Runtime) (*RevisionStore, error) {
+	return newRevisionStoreForPrefix(runtime.TablePrefix())
+}
+
+// newRevisionStoreForPrefix is the core-internal constructor used where only
+// the deployment prefix string is in scope (app-layer erasure orchestration).
+// The prefix never leaves core: it is validated and applied by BindNames alone.
+func newRevisionStoreForPrefix(prefix string) (*RevisionStore, error) {
 	if err := goosex.ValidatePrefix(prefix); err != nil {
 		return nil, err
 	}
-	return &RevisionStore{table: prefix + model.PolicyRevision{}.TableName()}, nil
+	return &RevisionStore{table: query.BindNames(prefix).PolicyRevisions.String()}, nil
 }
 
 // Current returns the tenant's revision, or zero when no policy mutation has

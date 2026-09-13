@@ -32,7 +32,7 @@ func TestCoreErasePrincipalDataRedactsMembershipsAndSparesEveryoneElse(t *testin
 			seedCoreMembership(t, harness, prefix, tenantB, target, "Target Person", "target@example.test")
 			seedCoreMembership(t, harness, prefix, tenantA, bystander, "Other Person", "other@example.test")
 
-			revisions, err := NewRevisionStore(prefix)
+			revisions, err := newRevisionStoreForPrefix(prefix)
 			require.NoError(t, err)
 			before := map[guid.ID]int64{}
 			for _, tenant := range []guid.ID{tenantA, tenantB} {
@@ -133,7 +133,7 @@ func TestCoreErasePrincipalDataLeavesUnrelatedTenantsAlone(t *testing.T) {
 	seedCoreMembership(t, harness, "", joined, target, "Target Person", "target@example.test")
 	seedCoreMembership(t, harness, "", untouched, guid.ID(42), "Other Person", "other@example.test")
 
-	revisions, err := NewRevisionStore("")
+	revisions, err := newRevisionStoreForPrefix("")
 	require.NoError(t, err)
 	beforeUntouched, err := revisions.Current(t.Context(), harness.db, untouched)
 	require.NoError(t, err)

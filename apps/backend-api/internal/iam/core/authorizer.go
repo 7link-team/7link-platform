@@ -89,7 +89,7 @@ func NewAuthorizerWithRegistry(runtime *appenv.Runtime, registry *authz.Registry
 	if registry == nil {
 		panic("iam authorizer requires authorization registry")
 	}
-	revisions, err := NewRevisionStore(runtime.TablePrefix())
+	revisions, err := NewRevisionStore(runtime)
 	if err != nil {
 		panic(err)
 	}

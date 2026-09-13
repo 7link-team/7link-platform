@@ -32,7 +32,7 @@ func NewRepository(runtime *appenv.Runtime, ids guid.Source) *Repository {
 	if runtime == nil || ids == nil {
 		panic("governance repository requires runtime and id generator")
 	}
-	revisions, err := core.NewRevisionStore(runtime.TablePrefix())
+	revisions, err := core.NewRevisionStore(runtime)
 	if err != nil {
 		panic(err)
 	}

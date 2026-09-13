@@ -40,7 +40,7 @@ func NewRepository(runtime *appenv.Runtime, ids guid.Source, appender audit.Appe
 	if runtime == nil || ids == nil || appender == nil {
 		panic("organization repository requires runtime, id generator, and audit appender")
 	}
-	revisions, err := core.NewRevisionStore(runtime.TablePrefix())
+	revisions, err := core.NewRevisionStore(runtime)
 	if err != nil {
 		panic(err)
 	}

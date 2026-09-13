@@ -39,7 +39,7 @@ func ErasePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, id guid
 	if tx == nil || id <= 0 {
 		return errors.New("invalid principal erasure transaction")
 	}
-	revisions, err := NewRevisionStore(prefix)
+	revisions, err := newRevisionStoreForPrefix(prefix)
 	if err != nil {
 		return err
 	}
