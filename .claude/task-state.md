@@ -700,3 +700,11 @@ budget 20）分离。含 B2 决策清单 D1-D10、B3 冻结清单（20 站带锚
 
 **边界**：SQL 模板化只用于"文本冻结、表名已类型化"的语句，未推广全仓（SQL 进注释/占位后 AST 门禁需配套才能继续看见表名）。
 **待用户拍板（未动）**：governance reviewCounts（budget 19→18 预判）、B1 262 站迁移批次、B2 决策 D1-D10、是否把四轮结论写成 census 选型备注。
+
+## 2026-09-13（续）D41 Resolver Isolation 三件套落盘
+
+用户拍板"现在就做、一次定死、不动 tests/architecture"。已提交（未推送）：
+- **`decisions.md` D41**：Logical Table ≠ Physical Table；判定指标 =「0 个未经授权的 physical-table-name 决策」而非「0 TablePrefix()」；6 条 invariants + Allowed/Forbidden + Non-goals + enforcement 顺序（先清理后机械化、最后才动 architecture tests）。采纳了外部草稿的核心（指标措辞、invariant、non-goal、账本重标记），校准两处：①NewRevisionStore 是 resolver 泄漏不是跨 namespace 混淆（全仓共享同一 table_prefix）；②账本链路 19→15（4 helpers）→14（goose）。
+- **SKILL「十、Resolver Isolation」**：执行规则（动库代码前先分类表名；MUST NOT 清单；解析路径优先级；改完自检；不扩大范围）。
+- **census §5.4 账本重标记 + §8 门禁草案**：9 prefix()（leakage）+ 4 table()（reconstruction）+ NewRevisionStore（propagation）+ 1 goose（B3）分裂定性；resolver-isolation 规则形态 + allowlist + 迁移期机制，明确"未实施"。
+- 实测 40 处 TablePrefix() 全量分三类：~24 合法 / 9+4+NewRevisionStore 违规面 / goose B3 + S3-URL 不误伤。

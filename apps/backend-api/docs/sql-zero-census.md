@@ -97,6 +97,19 @@ B2 = gen 无同构 API，清零必须"换实现"，而换实现会动语义/性�
    - **authn ↔ identity 是确认死角**（D37/P5 用户判过"不做"）；identity 的 B2 里并无直接写 authn 表的语句（sessions/credentials 在 authn 代码内经能力在 identity 事务执行），收编方案一律不纳入。
    - 修订后 identity：B1 24 / B2 17。
 
+4. **账本重标记（D41 视角，2026-09-13）**：budget 19 不是"19 个 SQL 问题"，按 D41（Logical ≠ Physical，见 decisions.md）分裂成性质不同的两类工作：
+
+| 类别 | 数量 | 定性 |
+|---|---|---|
+| `prefix()` 访问器（9 个模块 Repository） | 9 | **Resolver leakage**（物理 namespace 从 Resolver 向上游泄漏） |
+| `table(name) { return prefix() + name }` 帮手（authn/fed/org/prov） | 4 | Physical-name reconstruction（= 账本 helpers 4 条目，115 调用点族） |
+| `core.NewRevisionStore(runtime.TablePrefix())`（4 模块传参） | 1 处 API | Dependency propagation（前缀作为业务参数运输；不是跨 namespace 混淆——全仓共享同一 `table_prefix`） |
+| goose 版本表（principallifecycle.go:47） | 1 | **B3 例外**（框架拥有表 + goosex 无访问器） |
+| 合法 resolver/发布/绑定（`PublishedXXXTableNames`、`query.Bind`、infra 注入、dlock/wuid `WithTablePrefix`） | ~24 | 合法，**不得误删** |
+| `audit/anchor.go`、`authn/returnurl.go` 的 `prefix+"..."` | 若干 | 非 DB 表（S3 键/URL），不属此规则 |
+
+  9 `prefix()` + 4 `table()` 不是 13 个独立特例，是同一个缺口的两种表现。清理链路：4 `table()` 清零 → 账本 15；goose 走 goosex 访问器 → 14；9 `prefix()` 与 `NewRevisionStore` 归位随 115 调用点族一并做。执行规则见 SKILL「十」。**不改 `tests/architecture` 直到清理完成。**
+
 ---
 
 ## 6. 里程碑建议（把"0 手写 SQL"变成可验收目标）
@@ -138,6 +151,24 @@ B2 = gen 无同构 API，清零必须"换实现"，而换实现会动语义/性�
 **数字口径（候选，非最终）**：B2 77 → 约 55-60；B1-check 21 → 约 40；B1 类 262 → 约 280（B1-check 计入 B1 类）。B3 20 不变。精确数字以逐站执行验证（M2）后的终稿为准。
 
 **试点（已执行 2026-09-13，对应「Typed Raw SQL」结论）**：authn `recordLoginFailure`（普查 A1，B3 中最危险一条：`fmt.Sprintf` 拼表名 + CASE 求值顺序）改为 `loginFailureStatement` 常量（`@@table` 占位）+ `strings.Replace` 渲染绑定表名。最终 SQL 文本逐字节不变（注释与 golden 均不涉文本变化）；`sql-in-format-string:339e…` 账本键消失、**账本 20→19**（handwritten-sql 未新增键：`@@table` 占位形态不被计数）；`authn` 全包测试绿、门禁绿且幂等。**边界照录**：SQL 若搬进注释/模板占位，门禁需配套改造才能继续看见表名——本次只对"文本冻结、表名已类型化"的语句采用模板化，未推广为全仓机制。
+
+---
+
+## 8. Resolver Isolation（D41）——门禁规则草案（供审，2026-09-13，未实施）
+
+对应决策：`decisions.md` **D41**；执行规则：SKILL「十」。**本草案未改动 `tests/architecture`**；
+按「先清理、后机械化」的顺序，它在清理完成前只登记为设计，不做成测试。
+
+**规则形态**：新增架构检查 `resolver-isolation` —— 出现「未经授权的 physical-table-name 决策」即违规。三类匹配面：
+1. 业务/Repository 代码直接调用 `runtime.TablePrefix()`，或读取 `r.prefix()` 类访问器；
+2. 数据库访问代码出现 `prefix + <表名>`、带表标识的 `fmt.Sprintf` 格式串，或硬编码物理表名（`"uat_iam_..."` 形状）；
+3. 模块构造他模块物理表名、或 Raw SQL 独立重建物理表名。
+
+**Allowlist（解析器/发布/基础设施边界内，豁免）**：`query/table.go` 的 BindNames / Bind / NewTableName；`PublishedXXXTableNames(...)` 发布点；`query.Bind(db, prefix)` 绑定点；infra 注入（dlock / wuid `WithTablePrefix`）；登记的 B3 例外（goose 版本表 R1、wuid/dlock 时钟表达式）；递归查询经 `AuthorizationTables` 的名称。
+
+**迁移期机制建议**：allowlist 清单（或规则内联清单）+ 豁免原因字段；新违规直接红；存量按账本分阶段迁移（4 `table()` → 9 `prefix()` → `NewRevisionStore`），迁移完一组撤一组豁免。
+
+**明确不做（本草案不包含）**：不定义「0 TablePrefix 出现」；不改 `tests/architecture` 既有规则；不绑定 ORM 选型（Gen 维持，sqlc/Bun 的否决见 D41 Tradeoffs）。
 
 ---
 

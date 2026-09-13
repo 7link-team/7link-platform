@@ -1423,3 +1423,77 @@ authn/identity `Repository` 上的 `tenantTable()`/`memberTable()`/`principalTab
 **Scope / Status**
 阶段二。SQL 文本逐字节未变——施工上靠「保留局部变量、只删错误分支、语句行不进 diff」，
 验证上靠既有的 9+8 条冻结断言与 MySQL 查询计划指纹。
+
+---
+
+## D41 — Logical Table ≠ Physical Table（表名唯一权威 = Resolver）
+
+**Date** 2026-09-13
+
+**Decision**
+数据库访问层严格区分三件事并保持解耦：**Logical Table Name**（业务 / Repository / Query Builder
+可见的唯一表名）、**Physical Table Name**（运行时由部署 namespace 解析出的真实表名，如
+`sl_iam_roles` / `uat_iam_roles`）、**Table Resolver**（唯一把 Logical 解析为 Physical 的
+基础设施边界）。业务代码不得自行推导、拼接、缓存或传播物理表名。
+
+**判定指标不是「0 个 `runtime.TablePrefix()`」，而是「0 个未经授权的 physical-table-name
+决策」**：resolver 内部的 TablePrefix() 合法；硬编码 `"uat_iam_users"` 即使不用 TablePrefix
+也违规。
+
+**Invariants**
+1. **逻辑名是业务可见的唯一表标识**：业务层 / Repository / Service / Query 只能见逻辑名、
+   发布的 typed 引用或 resolver 生成的名称；不知道部署 namespace。
+2. **`runtime.TablePrefix()` 是基础设施状态**：只允许出现在 resolver（`query/table.go` 的
+   BindNames/Bind）、module 表名发布/绑定、DB 基础设施注入、明确登记的 B3 例外；禁止出现在
+   业务查询、Repository 实现、Service/Domain 代码。
+3. **前缀拼接只能发生在 resolver 边界内**：`prefix + table`、`runtime.TablePrefix() + table`、
+   `fmt.Sprintf("... FROM %s ...", prefix+table)` 及其等价物在数据库访问代码中禁止。
+4. **Raw SQL 不能绕过**：Raw / CTE / JOIN / recursive 中使用的表名必须来自 resolver /
+   published names，不得自行拼 runtime prefix。
+5. **跨模块访问保持所有权**：消费方只经 owner 发布的 typed 名/引用读表，不复制 owner 的
+   物理命名逻辑。
+6. **方言与 namespace 独立**：MySQL/PG/SQLite 的 dialect 差异不得改变 Logical→Physical 的
+   规则；dialect 只负责 SQL 行为，resolver 只负责物理表名。
+
+**Allowed**：`BindNames(...)`、`Bind(db, prefix)`、`PublishedXXXTableNames(...)`、typed 表引用、
+resolver 生成名、明确的基础设施注入、登记的 B3 例外。
+**Forbidden**：Repository/业务代码里出现 `runtime.TablePrefix()`；`prefix()` 访问器在
+Repository 实现中传播；`prefix + table`；`fmt.Sprintf(... FROM %s ...)` 拼物理表名；模块自行
+构造他模块物理表名；Raw SQL 独立重建物理表名。
+
+**Non-goals**：不要求消灭 Raw SQL / 动态 SQL / gen 表达式；不强制三库同一 namespace 实现；
+不把模块 schema 所有权与部署 namespace 混同。
+
+**Enforcement 顺序（先清理、后机械化——避免「测试把现状定义成架构」）**：D41 入册 → SKILL
+执行规则 → 明确 allowlist/边界 → 清理现存违规（9 `prefix()` + 4 `table()` + `NewRevisionStore(prefix)`）
+→ 确认剩余合法点 → 账本 19→15→14 → **最后**才把规则机械化进 architecture tests / CI。
+**清理完成前不改 `tests/architecture`。**
+
+**Reason**
+HEAD 0e33cd7 实测 40 处 `runtime.TablePrefix()`：约 24 处是合法 resolver/发布/绑定
+（`PublishedXXXTableNames(prefix)`、`query.Bind`、infra 注入、dlock/wuid `WithTablePrefix`）；
+剩余违规面集中为 **9 个 `prefix()` 访问器 + 4 个 `table(name) { return r.prefix() + name }`
+帮手 + `core.NewRevisionStore(prefix)`（4 模块把部署前缀当业务参数传入 core 构造函数）**——
+它们是同一缺口的不同表现：物理表名正从 Resolver 向上游泄漏。goose 版本表
+（`principallifecycle.go:47`）是 B3 特殊项（框架拥有表、goosex 无访问器)；`audit/anchor.go`、
+`authn/returnurl.go` 的 `prefix + "..."` 是 S3 对象键/URL 拼接，非 DB 表名，不误伤。
+
+注：`NewRevisionStore(prefix)` 的严重度是 resolver 边界泄漏（前缀作为业务参数运输），不是
+跨 namespace 混淆——全部模块共享同一个部署 `table_prefix`，不存在「上层模块知道 core 私有的
+另一套命名」；修法仍是归位：core 的 revision 存储自己经 resolver/bound 名取表，调用方不再传前缀。
+
+**Alternatives Considered**
+1. `schema.NamingStrategy{TablePrefix}`（连接级）——gorm 只对 model 派生路径生效，
+   `Table()`/Raw/JOIN 不经过 naming（已核 v1.31.2 源码），会造出两套前缀系统；且前缀是运行期
+   部署配置，不该埋进数据源层。
+2. 按库 namespace（PG schema / MySQL database 分部署）——SQLite 无 schema namespace，三库统一失败。
+3. 新建中央 `Table(module, logicalName)` resolver——等价物已存在（每模块 `query/table.go` 的
+   BindNames + 发布名），再建一层是过度设计；缺的是 enforcement 不是 abstraction。
+
+**Tradeoffs**
+每模块 resolver 各自持有（而非中央函数）符合「表名有主人」；代价是「不该碰表名的地方」要靠
+规则钉死。D41 对 sqlc 的隐含裁决：多方言 + 运行期前缀 + 跨模块 schema + 动态查询四个补丁会
+吃光 sqlc 的简单性，故 sqlc 不作目标（Bun 同理：迁移成本换不回编译期列校验）。
+
+**Scope / Status**
+全仓。Accepted / Architecture Invariant。enforcement 未机械化；现存合法点保持明确 allowlist。

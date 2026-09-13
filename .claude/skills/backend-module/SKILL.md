@@ -291,6 +291,35 @@ model/query/dbgen、禁止从根包泄漏持久化类型)。**新写的模块即
 8. 补测试到 ≥90%,加进 `MODULE_COVERAGE_PACKAGES`
 9. `make generate` → `make ci`;动过 SQL 或查询再跑 `make test-mysql8`、`make test-performance`
 
+## 十、Resolver Isolation：物理表名不越过 Resolver
+
+**不变量（D41）**：业务代码唯一可见的是逻辑表名 / 发布的 typed 引用 / resolver 生成的名称；
+物理表名（`sl_iam_users`、`uat_iam_roles`）由 resolver/infrastructure 决定。
+判定指标 = **0 个未经授权的 physical-table-name 决策**，不是「0 个 TablePrefix() 出现」。
+
+**动数据库代码前，先给表名分类**：它属于 ①逻辑名 ②resolver 生成名 ③module 发布的 typed 名
+④仅限基础设施的场合？若代码在直接构造物理表名，按**架构违规**处理，不是普通实现工作。
+
+**禁止（MUST NOT）**：
+- 在业务/Repository 查询逻辑里引入 `runtime.TablePrefix()`
+- `prefix + table` 或等价字符串拼接出表名
+- `fmt.Sprintf(..., prefix, ...)` 构造表标识
+- 模块独立重建另一模块的物理表名
+- 因为查询是 Raw 就给 Raw SQL 加前缀处理
+- 已有 resolver/绑定机制时新建前缀帮手
+
+**解析路径（按优先级）**：既有 typed gen 表引用 → 模块 `BindNames` / `query.Bind` →
+已发布的跨模块名字 → DB 基础设施绑定 → 仅有明确登记 B3 例外的场景。
+
+**合法而不得误删**：resolver 实现（`query/table.go`）、module 表名发布、`Bind(db, prefix)`、
+基础设施依赖注入、登记过的递归查询表解析、登记的 B3 例外。
+
+**改完自检**：①无新增业务侧 `runtime.TablePrefix()` ②无新增 `prefix + table` ③无硬编码
+物理表名 ④跨模块走 owner 发布 ⑤Raw SQL 不自己解析物理表名 ⑥既有 resolver/绑定点完好。
+
+**不要扩大范围**：本规则不授权迁移 ORM（Gen→sqlc/Bun）、重写可用查询、重设计模块所有权、
+把 Raw 换成非 Raw、或未经授权改 architecture tests。先守 namespace 边界，账本剩余项另行独立处理。
+
 ## 不要做的事
 
 - 不要新建中央 schema / port / DTO 包
