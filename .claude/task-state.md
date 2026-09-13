@@ -687,3 +687,16 @@ budget 20）分离。含 B2 决策清单 D1-D10、B3 冻结清单（20 站带锚
 方向不可（注册序 + 既有反向 Go import）；④ authn↔identity 死角维持（D37/P5）。
 
 **提交计划（未推送）**：census 文档一个提交 + 5 处修复与账本一个提交。
+
+## 2026-09-13（续）recordLoginFailure 模板化试点 —— 账本 20→19
+
+背景：用户连发四轮 gorm 能力文档（DAO 查询 / TablePrefix / Associations / CLI Typed Raw SQL），逐轮核对了钉死源码 v0.3.29：
+- **DAO 文档 → §7 回扫**（普查文档新增）：B2 过度归类修正——`LeftJoin(table, conds...)`多条件 ON、`As`、`Distinct`、`gen.Exists`、`Count/Sum/As`、`Between` 全在 v0.3.29；据此 15-20 站 B2→B1-check（候选口径 B2 77→约55-60、B1类 262→约280）。
+- **TablePrefix（连接级 naming）**：不适用——只作用于 model 派生路径，裸 SQL/Table()/Raw 不经过 naming；且前缀是运行期部署配置（runtime.TablePrefix），不该埋进数据源层。
+- **Associations/Preload**：不适用——零关联字段（model 层刻意扁平），跨模块引用 model 触 `cross-module-*` 门禁，双向引用=Go 包环（已实验证实）；Preload 是多语句非同一快照，与 B3 单语句约束冲突。
+- **CLI vs Gen / CLI Typed Raw SQL**：新 CLI（v1.31.2 的 `G[T]`/`schema.Interface[T]` 已存在，仓库 0 用）— Where/Select/Order 是字符串接口，换过去"0 手写"不缩反退；Typed Raw SQL 的 `@@table/@param/{{if}}` 是治理形态（SQL 进注释=门禁看不见，限局部用）。
+
+**试点落地**：`authn/repository_credentials.go:113` `recordLoginFailure` 从 `fmt.Sprintf(\`UPDATE %s …\`)` 改为包级常量 `loginFailureStatement`（`@@table` 占位）+ `strings.Replace(…, "@@table", tables.Credentials.TableName(), 1)`。最终 SQL 文本逐字节不变；账本 `sql-in-format-string:339e855787a58a02` 键消失、**20→19**（手工下调未用 REBASELINE）；handwritten-sql 无新增键（模板占位不被计数）。验证：gofmt clean、`go build ./...` 0、authn 全包测试 ok、门禁绿且 QUERY_GATE_UPDATE=1 幂等 md5 不变。
+
+**边界**：SQL 模板化只用于"文本冻结、表名已类型化"的语句，未推广全仓（SQL 进注释/占位后 AST 门禁需配套才能继续看见表名）。
+**待用户拍板（未动）**：governance reviewCounts（budget 19→18 预判）、B1 262 站迁移批次、B2 决策 D1-D10、是否把四轮结论写成 census 选型备注。

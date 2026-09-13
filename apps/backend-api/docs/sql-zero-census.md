@@ -12,7 +12,7 @@
 
 | 层 | 对象 | 度量 | 现状 |
 |---|---|---|---|
-| 账本层 | 表名位置（无主表名 / 裸表名 / 前缀拼接 / format 字符串） | 查询门禁账本 `query_gate_ledger.json` | budget **20**（2026-09-13 已执行 5 处账本层修复，29→20；手工下调、与违规数精确相等，未用 REBASELINE） |
+| 账本层 | 表名位置（无主表名 / 裸表名 / 前缀拼接 / format 字符串） | 查询门禁账本 `query_gate_ledger.json` | budget **19**（2026-09-13 执行 5 处账本层修复 29→20，再模板化 recordLoginFailure 20→19；手工下调、与违规数精确相等，未用 REBASELINE） |
 | 片段层（本普查） | **任何 SQL 字符串字面量**（WHERE 谓词、SELECT 列清单、ORDER、JOIN 子句、gorm.Expr、Raw 包裹、常量/变量模板、续行链式） | 本文件 | **349 个 SQL 站点** |
 
 两层独立：一条语句可能在账本层 0 命中（没有表名字面量）却在片段层是手写（如 audit 归档状态机里的 `next_attempt <= <clock>` 谓词）。**本普查 = 片段层全集**。
@@ -101,6 +101,8 @@ B2 = gen 无同构 API，清零必须"换实现"，而换实现会动语义/性�
 
 ## 6. 里程碑建议（把"0 手写 SQL"变成可验收目标）
 
+> **2026-09-13 修订**：经 API 面回扫（见 §7），B2 77 站中约 15-20 站降级 B1-check（形状可表达）；B1 类对应升至约 280。以下 B2 决策清单以 §7 后的余量为准。
+
 | 阶段 | 内容 | 类型 | 估算性质 |
 |---|---|---|---|
 | M1 | B1 机械迁移（248 站）：照 gen Do 类型化改写，逐语句跑既有测试 + 三方言 | 工作量（可并行按模块切） | 最大块 |
@@ -110,6 +112,32 @@ B2 = gen 无同构 API，清零必须"换实现"，而换实现会动语义/性�
 | 验收口径 | ① 账本：budget 降至与实际违规相等（含 reviewCounts 29→28 等）；② 片段层：B1+B1-check 归零；③ B2/B3 全部在案（清单即本文件） | 验收 | — |
 
 **跨模块 gen import / owner 能力接口**（D6）是唯一需要提前定的架构决策：它决定 oauth 5、identity 13、prov S44/S45、gov 5、fed 5 的归属。参考先例：`core.RoleGrantStore`、`identity.PrincipalStateStore`（函数结构体契约 + 调用方事务）；`ModuleDependencies()` 声明；`Registry.Activate` 全序不可破。已实测允许的方向：**identity → core/query**（4 站已降 B1）；不允许：**identity → organization/oauth**（注册序 + 既有反向 Go 边）、**authn ↔ identity**（死角）。
+
+---
+
+## 7. API 面回扫（2026-09-13）——B2 过度归类修正
+
+**起因**：读 gorm.io/gen 官方 DAO 文档后发现，普查把一批"文档与钉死源码（v0.3.29）里都有 API"的语句判进了 B2。子代理核对时主要停留在 `field` 表达式层，DO 层与顶层 API 覆盖不足。逐符号核对结果如下。
+
+**v0.3.29 源码确认在（此前被误判为"无"）**：
+- `DO.LeftJoin/Join/RightJoin(table schema.Tabler, conds ...field.Expr)`——多条件 ON、常量谓词（`e.Email.Eq(...)`）、列=列（`EqCol`）均可作 conds
+- `DO.As(alias)`（自连接/别名）、`DO.Distinct(...)`、`DO.Not(conds ...Condition)`
+- 顶层 `gen.Exists(subQuery)`、`gen.Table(subQueries...)`（FROM 子查询）
+- `field.Count/Sum/Max/Min/Avg/IfNull` + `.As(alias)`、`Between`（number/string/time）
+- 每个生成的 DO 自带 `ALL = field.NewAsterisk(...)`（`rel.*` 可表达）
+
+**仍未 API（B2/B3 的剩义，修订前后一致）**：CASE/IF 条件构建器（`SUM(CASE WHEN…)`、touchSession 的 `expires_at` CASE）、`WITH RECURSIVE`、任意 upsert（`Clauses(OnConflict)` + `Create(map)`）、条件聚合 WHEN、filter 编译器的 LOCATE/STRPOS 字面子串语义（gen `Like` 是通配符、不等价）。
+
+**归类调整（B2 → B1-check；B1-check = 形状可表达、运行时渲染待实测）**：
+- **同模块自定义 ON JOIN 族**：core C10/C11/C13/C14/C18/C19/C21 + **C15/C16 整条**（表名已修；`query.Bind(db,prefix).Relationships.As("rel")` + `Select(rel.ALL)` + 动态 OR 组用 `field.Or/And`，待实测星号渲染与 OR 排版）、org group/position 六站（自有 DO）→ B1-check。
+- **跨模块 JOIN 族**（core 读 org、org 读 core、oauth/fed/prov 外键表）：差距不在表达式而在 **`LeftJoin(table schema.Tabler)` 需要能拿到 owner 的 DO**（`gormx.TableName` 不实现 Tabler）——这仍是 §3 D6 架构决策；若 owner 发布 DO/能力则 B1-check，否则维持 B2/冻结。
+- **相关 EXISTS**：core C8（子查询读 PlatformAdministrators/PlatformGrants，**core 自有表 DO 在**）→ `gen.Exists(pa.WithContext(ctx).Select(pa.ID).Where(pa.PrincipalID.EqCol(<外别名 p.id>)))` 形状可行 → B1-check；identity NOT EXISTS 族 → 同样形状，B1-check（涉自有表）；prov P8（filter EXISTS）与编译器 P9 联动，维持 B2。
+- **DISTINCT**：core C12 → B1-check。
+- **时钟裸表达式**：audit 3 站可 `field.NewUnsafeFieldRaw(nowExpr)` 表达（与 wuid/dlock 同一逃生舱）→ 记 B1-check 选项；团队是否接受 unsafe raw 另议（wuid/dlock 保持 B3 口径不变）。
+
+**数字口径（候选，非最终）**：B2 77 → 约 55-60；B1-check 21 → 约 40；B1 类 262 → 约 280（B1-check 计入 B1 类）。B3 20 不变。精确数字以逐站执行验证（M2）后的终稿为准。
+
+**试点（已执行 2026-09-13，对应「Typed Raw SQL」结论）**：authn `recordLoginFailure`（普查 A1，B3 中最危险一条：`fmt.Sprintf` 拼表名 + CASE 求值顺序）改为 `loginFailureStatement` 常量（`@@table` 占位）+ `strings.Replace` 渲染绑定表名。最终 SQL 文本逐字节不变（注释与 golden 均不涉文本变化）；`sql-in-format-string:339e…` 账本键消失、**账本 20→19**（handwritten-sql 未新增键：`@@table` 占位形态不被计数）；`authn` 全包测试绿、门禁绿且幂等。**边界照录**：SQL 若搬进注释/模板占位，门禁需配套改造才能继续看见表名——本次只对"文本冻结、表名已类型化"的语句采用模板化，未推广为全仓机制。
 
 ---
 
@@ -196,7 +224,7 @@ strings\.Join\(
 
 | # | 位置 | 语句 | 冻结依据 |
 |---|---|---|---|
-| A1 | repository_credentials.go:111-120 | `statement := fmt.Sprintf(\`UPDATE %s SET locked_until = CASE WHEN failed_attempts >= ? THEN ? ELSE NULL END, failed_attempts = CASE …\`)` + `db.Exec(statement, …)` | **求值顺序 UPDATE**（MySQL 从左到右、两 CASE 须读旧计数）；gen field 无 CASE/IF 构建器；账本 `sql-in-format-string:339e855787a58a02` + `handwritten-sql:61b570db00a1dbc7`；注释已把左到右依赖文档化为不变量 |
+| A1 | repository_credentials.go:111-120 | `statement := fmt.Sprintf(\`UPDATE %s SET locked_until = CASE WHEN failed_attempts >= ? THEN ? ELSE NULL END, failed_attempts = CASE …\`)` + `db.Exec(statement, …)` | **2026-09-13 已模板化**：`loginFailureStatement` 常量（`@@table` 占位）+ `strings.Replace` 渲染绑定表名，SQL 文本逐字节不变；`sql-in-format-string:339e…` 账本键移除（budget 19）。**仍不可 gen 化**（CASE/求值顺序，field 无 CASE 构建器）；注释已把左到右求值依赖文档化为不变量 |
 | A2 | repository_identity.go:151-154 | principalState：`Table(principal+" AS principal").Select("principal.status AS status, COALESCE(credential.credential_version, 0)…").Joins("LEFT JOIN "+credentials…)` | `frozenIdentitySQL["principalState"]` golden + 性能基线指纹 |
 | A3 | repository_identity.go:168-174 | serviceAccountState：`Table(account+" AS account")` + Joins×3 | `frozenIdentitySQL["serviceAccountState"]` golden |
 | A4 | repository_identity.go:200-205 | activePrincipalClaims：别名 JOIN + 多条件 | `frozenIdentitySQL["activePrincipalClaims"]` golden + scim 指纹 |
