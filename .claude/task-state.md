@@ -716,3 +716,21 @@ budget 20）分离。含 B2 决策清单 D1-D10、B3 冻结清单（20 站带锚
 - 生产代码 `.table(` 残留 **0**；SQL 文本逐字节不变（`tables.X.TableName()` == `prefix+logical`，各模块 `table_test` 漂移门禁 + frozen 断言佐证）；`prefix()` 保留（仅 resolver 入口用途：`tables()` 与 `query.BindNames(repo.prefix())`——D41 Allowed，属下一步 9×prefix() 范围）。
 - 验证：gofmt 全树空、`go build ./...` 0、4 模块测试全 ok、全量 `go test ./internal/...` 后台跑；账本 **19→15**（QUERY_GATE_UPDATE 移除 4 键 955a3f/6520c/802198/e85793，手工下调 budget、幂等 md5 不变）、门禁绿。
 - 提交计划：4 模块改动 + 账本一笔；census/state 文档另一笔。
+
+## 2026-09-13（续）D41 第 2 步 Part A：NewRevisionStore 归位 —— 账本 15→14
+
+已提交（未推送）`f039051`（11 文件）：
+- `NewRevisionStore(prefix string)` → `NewRevisionStore(runtime *appenv.Runtime)`，core 内部 `query.BindNames(runtime.TablePrefix()).PolicyRevisions.String()` 自绑表名（消掉 `prefix + logical` 拼接 → 账本键 `1c5dc7` 消失）。
+- 跨模块调用者（governance/identity/organization repository.go）改传 runtime，不再把部署前缀当业务参数递进 core（D41 明确的泄漏点）。
+- 保留内部 `newRevisionStoreForPrefix(prefix)` 供 app 层统一擦除路径（`internal/app/principallifecycle.go:31` 的 `erase func(ctx, tx, prefix string, id, now)` 是 8 模块共享类型，签名零涟漪）。
+- 验证：core/gov/identity/org/authn 串行测试全 ok、门禁绿、语义幂等 True。账本 15→14（手工下调）。
+- 注意：本沙箱 `go test` 多 pattern 并发行会 setup failed（环境假象），单 pattern 串行正常；账本幂等用「语义比对」（budget+entries）而非 md5（门禁写入器自身格式化不同）。
+
+## 2026-09-13（续）D41 第 2 步 Part B：9×prefix() 归位 —— 账本保持 14
+
+6 子代理并行 + 主代理集成，已提交（未推送，Part B 随本文档一笔）：
+- **9 个模块 Repository 的 `prefix()` 方法全部删除**（audit/authn/core/federation/governance/identity/oauth/organization/provisioning），改为构造期一次绑定：`names query.TableNames` 字段 + `query.BindNames(runtime.TablePrefix())`；`query/table.go` 新增 `BindWithNames(db, names)`（`Bind(db, prefix)` 委托它），`tables()`/resolver 入口从 `r.names` 取已绑定名。core 的 `MembershipChecker.prefix()`、`Authorizer.prefix`、`tenantAdministratorGuard.prefix` 一并替换为 names。
+- **集成修复（主代理）**：`names query.TableNames` 是存储类型，直接做导出结构体字段触发 public-storage-type 门禁 → 嵌入**非导出** `repositoryTables{names query.TableNames}`（core 共享一份，其余模块各一份），`r.names` 经字段提升访问；构造函数 `repositoryTables: repositoryTables{names: query.BindNames(runtime.TablePrefix())}`。
+- **验证（最终状态全绿）**：gofmt 全树 **clean**（先 `gofmt -w` 8 个未对齐文件）、`go build ./...` exit **0**、9 个 IAM 模块 `-count=1` 串行测试 **AGGREGATE=0**、`tests/architecture` 门禁 **ok 3.6s**。
+- **账本 14 不变**（SQL 文本逐字节不变）：1 concatenated（c71210×1）+ 5 handwritten-sql（61b570×8 / 62c6ad×2 / 19680d / 8f8cec / 9b0891），6 条目。剩余唯一可降项是 goose 版本表（principallifecycle.go:47，B3 例外，需 goosex 访问器）。
+- 文档同步：census §5.4 清理链路改写为已全部执行 + 第 2 步记录（本文档同笔）。

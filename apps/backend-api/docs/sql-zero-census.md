@@ -12,7 +12,7 @@
 
 | 层 | 对象 | 度量 | 现状 |
 |---|---|---|---|
-| 账本层 | 表名位置（无主表名 / 裸表名 / 前缀拼接 / format 字符串） | 查询门禁账本 `query_gate_ledger.json` | budget **15**（29→20→19 后，2026-09-13 D41 第 1 步 4×`table()` 清零再降 19→15；手工下调、与违规数精确相等，未用 REBASELINE） |
+| 账本层 | 表名位置（无主表名 / 裸表名 / 前缀拼接 / format 字符串） | 查询门禁账本 `query_gate_ledger.json` | budget **14**（29→20→19→15 后，2026-09-13 D41 第 2 步 Part A `NewRevisionStore` 归位再降 15→14；手工下调、与违规数精确相等，未用 REBASELINE） |
 | 片段层（本普查） | **任何 SQL 字符串字面量**（WHERE 谓词、SELECT 列清单、ORDER、JOIN 子句、gorm.Expr、Raw 包裹、常量/变量模板、续行链式） | 本文件 | **349 个 SQL 站点** |
 
 两层独立：一条语句可能在账本层 0 命中（没有表名字面量）却在片段层是手写（如 audit 归档状态机里的 `next_attempt <= <clock>` 谓词）。**本普查 = 片段层全集**。
@@ -108,9 +108,15 @@ B2 = gen 无同构 API，清零必须"换实现"，而换实现会动语义/性�
 | 合法 resolver/发布/绑定（`PublishedXXXTableNames`、`query.Bind`、infra 注入、dlock/wuid `WithTablePrefix`） | ~24 | 合法，**不得误删** |
 | `audit/anchor.go`、`authn/returnurl.go` 的 `prefix+"..."` | 若干 | 非 DB 表（S3 键/URL），不属此规则 |
 
-  9 `prefix()` + 4 `table()` 不是 13 个独立特例，是同一个缺口的两种表现。清理链路：4 `table()` 清零 → 账本 15；goose 走 goosex 访问器 → 14；9 `prefix()` 与 `NewRevisionStore` 归位随 115 调用点族一并做。执行规则见 SKILL「十」。**不改 `tests/architecture` 直到清理完成。**
+  9 `prefix()` + 4 `table()` 不是 13 个独立特例，是同一个缺口的两种表现。清理链路（**已全部执行，2026-09-13**）：4 `table()` 清零 → 账本 15；`NewRevisionStore` 归位 → 14；9 `prefix()` 随 Part B 归位 → **账本保持 14**（SQL 文本逐字节不变）；剩余 1 处 goose 版本表为 B3 例外（账本 14 含它，需 goosex 访问器才可再降）。执行规则见 SKILL「十」。**不改 `tests/architecture` 直到清理完成。**
 
-**D41 第 1 步已执行（2026-09-13）**：4 个 `table(name)` 帮手全部清零（authn 6 站 / federation 26 站 + resolver 补 ReplayClaims / organization 51 站含 2 个循环站点逐表 typed 化 / provisioning 33 站）；生产代码 `.table(` 残留 **0**；SQL 文本逐字节不变（绑定名 == prefix+logical，各模块 `table_test` 漂移门禁钉住）；账本 **19→15**（4 条 concatenated 键消失：955a3f/6520c/802198/e85793，手工下调、幂等）。剩余：9 `prefix()`（resolver 入口用途）+ `NewRevisionStore` 归位 + goose（账本 15→14）。
+**D41 第 1 步已执行（2026-09-13）**：4 个 `table(name)` 帮手全部清零（authn 6 站 / federation 26 站 + resolver 补 ReplayClaims / organization 51 站含 2 个循环站点逐表 typed 化 / provisioning 33 站）；生产代码 `.table(` 残留 **0**；SQL 文本逐字节不变（绑定名 == prefix+logical，各模块 `table_test` 漂移门禁钉住）；账本 **19→15**（4 条 concatenated 键消失：955a3f/6520c/802198/e85793，手工下调、幂等）。
+
+**D41 第 2 步已执行（2026-09-13）**（9 模块；Part A 提交 `f039051`，Part B 随本文档提交）：
+- **Part A `NewRevisionStore` 归位 → 账本 15→14**：`NewRevisionStore(prefix string)` → `NewRevisionStore(runtime *appenv.Runtime)`，core 内部 `query.BindNames(runtime.TablePrefix()).PolicyRevisions.String()` 自绑表名（键 `1c5dc7` 消失）；跨模块调用者（governance/identity/organization repository.go）改传 runtime，不再把部署前缀当业务参数递进 core；保留内部 `newRevisionStoreForPrefix` 供 app 层统一擦除路径（8 模块共享 `erase` 签名零涟漪）。
+- **Part B 9×`prefix()` 归位 → 账本保持 14**：9 个模块 Repository 的 `prefix()` 方法全部删除；各 `query/table.go` 新增 `BindWithNames(db, names TableNames)`（`Bind(db, prefix)` 委托它），模块构造时 `query.BindNames(runtime.TablePrefix())` 一次绑定存入 `names` 字段，`tables()`/resolver 入口从此取已绑定名；core 的 `MembershipChecker.prefix()`、`Authorizer.prefix`、`tenantAdministratorGuard.prefix` 一并替换为 names。SQL 文本逐字节不变 → 账本 6 条目未动（concatenated c71210 ×1 + handwritten-sql 61b570 ×8 / 62c6ad ×2 / 19680d / 8f8cec / 9b0891）。
+- **形态注意**：`names query.TableNames` 是存储类型，直接作为导出结构体字段会触发 public-storage-type 门禁 → 嵌入**非导出** `repositoryTables{names query.TableNames}`（core 共享一份，其余模块各自一份），`r.names` 经字段提升访问，导出 API 面不泄漏存储类型。
+- **验证**：gofmt 全树 clean、`go build ./...` exit 0、9 个 IAM 模块 `-count=1` 串行全 ok（AGGREGATE=0）、`tests/architecture` 门禁 ok（3.6s）。
 
 ---
 
