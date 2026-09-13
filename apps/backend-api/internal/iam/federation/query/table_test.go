@@ -23,8 +23,9 @@ func TestBindAppliesPrefixToEveryFederationTable(t *testing.T) {
 		"saml-sps":      {plain.SAMLServiceProviders.TableName(), prefixed.SAMLServiceProviders.TableName()},
 		"saml-idp-keys": {plain.SAMLIDPKeys.TableName(), prefixed.SAMLIDPKeys.TableName()},
 		"transactions":  {plain.IdentityLinkTransactions.TableName(), prefixed.IdentityLinkTransactions.TableName()},
+		"replay-claims": {plain.ReplayClaims.TableName(), prefixed.ReplayClaims.TableName()},
 	}
-	require.Len(t, actual, 5)
+	require.Len(t, actual, 6)
 	for name, pair := range actual {
 		assert.Equal(t, "sl_"+pair[0], pair[1], name)
 	}
@@ -60,7 +61,7 @@ func TestBindNamesCoversEveryBoundTable(t *testing.T) {
 	require.NoError(t, err)
 
 	published := reflect.ValueOf(BindNames("sl_"))
-	require.Equal(t, 5, published.NumField())
+	require.Equal(t, 6, published.NumField())
 
 	for _, table := range []string{
 		Bind(db, "sl_").Providers.TableName(),
@@ -68,6 +69,7 @@ func TestBindNamesCoversEveryBoundTable(t *testing.T) {
 		Bind(db, "sl_").SAMLServiceProviders.TableName(),
 		Bind(db, "sl_").SAMLIDPKeys.TableName(),
 		Bind(db, "sl_").IdentityLinkTransactions.TableName(),
+		Bind(db, "sl_").ReplayClaims.TableName(),
 	} {
 		found := false
 		for index := range published.NumField() {

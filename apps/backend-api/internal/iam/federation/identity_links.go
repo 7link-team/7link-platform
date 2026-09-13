@@ -196,6 +196,10 @@ func (s *Service) StartIdentityOperation(ctx context.Context, cookieHeader strin
 		return LoginStart{}, err
 	}
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
+		tables, _, err := repo.tables()
+		if err != nil {
+			return err
+		}
 		version, err := s.accountReauthentication.ValidateSessionOn(ctx, repo.writer(), claims.PrincipalID, cookieHeader)
 		if err != nil {
 			return err
@@ -214,7 +218,7 @@ func (s *Service) StartIdentityOperation(ctx context.Context, cookieHeader strin
 				return ErrPrincipalInactive
 			}
 		}
-		if err := repo.writer().WithContext(ctx).Table(repo.table(row.TableName())).Create(&row).Error; err != nil {
+		if err := repo.writer().WithContext(ctx).Table(tables.IdentityLinkTransactions.TableName()).Create(&row).Error; err != nil {
 			return err
 		}
 		return s.audit(ctx, repo.writer(), audit.NewDomainEvent(ctx, provider.TenantID, "identity_operation_started", "identity_provider", providerID))
@@ -266,7 +270,11 @@ func (s *Service) identityOperation(ctx context.Context, repo *Repository, provi
 	if !strings.HasPrefix(state, "account.") {
 		return nil, providerRow{}, ErrOIDCState
 	}
-	err := repo.writer().WithContext(ctx).Table(repo.table(row.TableName())).Where("id_hash = ? AND provider_id = ?", identityOperationHash(state), providerID).Take(&row).Error
+	tables, _, err := repo.tables()
+	if err != nil {
+		return nil, providerRow{}, err
+	}
+	err = repo.writer().WithContext(ctx).Table(tables.IdentityLinkTransactions.TableName()).Where("id_hash = ? AND provider_id = ?", identityOperationHash(state), providerID).Take(&row).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			err = ErrOIDCState
@@ -277,7 +285,7 @@ func (s *Service) identityOperation(ctx context.Context, repo *Repository, provi
 		return nil, providerRow{}, ErrOIDCState
 	}
 	var provider providerRow
-	providerQuery := repo.writer().WithContext(ctx).Table(repo.table(model.Provider{}.TableName())).Where("id = ?", providerID)
+	providerQuery := repo.writer().WithContext(ctx).Table(tables.Providers.TableName()).Where("id = ?", providerID)
 	if repo.inTx {
 		providerQuery = providerQuery.Clauses(clause.Locking{Strength: "UPDATE"})
 	}
@@ -362,7 +370,11 @@ func (s *Service) VerifyIdentityOperation(ctx context.Context, providerID guid.I
 	if row.Purpose == "reauthentication" && claims.Subject != row.ExpectedSubject {
 		return ErrPrincipalInactive
 	}
-	result := repo.writer().WithContext(ctx).Table(repo.table(row.TableName())).Where("id_hash = ? AND verified_at IS NULL AND consumed_at IS NULL", row.IDHash).
+	tables, _, err := repo.tables()
+	if err != nil {
+		return err
+	}
+	result := repo.writer().WithContext(ctx).Table(tables.IdentityLinkTransactions.TableName()).Where("id_hash = ? AND verified_at IS NULL AND consumed_at IS NULL", row.IDHash).
 		Updates(map[string]any{"external_subject": claims.Subject, "email": claims.Email, "display_name": claims.Name, "verified_at": s.now().UTC()})
 	if result.Error != nil {
 		return result.Error
@@ -391,6 +403,10 @@ func (s *Service) CompleteIdentityOperation(ctx context.Context, providerID guid
 	}
 	returnURL := ""
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
+		tables, _, err := repo.tables()
+		if err != nil {
+			return err
+		}
 		version, err := s.accountReauthentication.ValidateSessionOn(ctx, repo.writer(), claims.PrincipalID, cookieHeader)
 		if err != nil {
 			return err
@@ -432,7 +448,7 @@ func (s *Service) CompleteIdentityOperation(ctx context.Context, providerID guid
 		} else {
 			return ErrOIDCState
 		}
-		result := repo.writer().WithContext(ctx).Table(repo.table(row.TableName())).Where("id_hash = ? AND consumed_at IS NULL", row.IDHash).Update("consumed_at", s.now().UTC())
+		result := repo.writer().WithContext(ctx).Table(tables.IdentityLinkTransactions.TableName()).Where("id_hash = ? AND consumed_at IS NULL", row.IDHash).Update("consumed_at", s.now().UTC())
 		if result.Error != nil {
 			return result.Error
 		}

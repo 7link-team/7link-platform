@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/federation/model"
+	"7link.com/platform/internal/iam/federation/query"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
@@ -37,7 +38,11 @@ func (r *Repository) claimReplay(ctx context.Context, key string, expiresAt, now
 		storedExpiry = storedExpiry.Add(time.Millisecond)
 	}
 	row := model.ReplayClaim{ClaimKey: hex.EncodeToString(digest[:]), ExpiresAt: storedExpiry, CreatedAt: now.UTC()}
-	err = repo.db.WithContext(ctx).Table(repo.table(row.TableName())).Create(&row).Error
+	tables, _, err := repo.tables()
+	if err != nil {
+		return false, fmt.Errorf("%w: %w", errReplayUnavailable, err)
+	}
+	err = repo.db.WithContext(ctx).Table(tables.ReplayClaims.TableName()).Create(&row).Error
 	if errors.Is(err, gorm.ErrDuplicatedKey) {
 		return false, nil
 	}
@@ -67,7 +72,11 @@ func (r *Repository) sweepReplayClaims(ctx context.Context) error {
 		return err
 	}
 	// A one-millisecond margin covers the SQL clock expression's rounding.
-	return repo.db.WithContext(ctx).Table(repo.table(model.ReplayClaim{}.TableName())).
+	tables, _, err := repo.tables()
+	if err != nil {
+		return err
+	}
+	return repo.db.WithContext(ctx).Table(tables.ReplayClaims.TableName()).
 		Where("expires_at <= ?", time.UnixMilli(millis-1).UTC()).Delete(&model.ReplayClaim{}).Error
 }
 
@@ -109,7 +118,18 @@ func (r *Repository) prefix() string {
 	return r.runtime.TablePrefix()
 }
 
-func (r *Repository) table(name string) string { return r.prefix() + name }
+// tables returns every table federation owns bound to the deployment prefix,
+// alongside the database the statements run on. It is the same shape the
+// sibling IAM repositories use: the repository reads physical names only
+// through the generated query objects the module resolver bound, never by
+// assembling one itself.
+func (r *Repository) tables() (*query.Tables, *gorm.DB, error) {
+	db := r.writer()
+	if db == nil {
+		return nil, nil, errRepositoryUnavailable
+	}
+	return query.Bind(db, r.prefix()), db, nil
+}
 
 func (r *Repository) withDB(db *gorm.DB, inTx bool) *Repository {
 	clone := *r
@@ -148,8 +168,12 @@ func (r *Repository) runInTx(ctx context.Context, fn func(*Repository) error) er
 }
 
 func (r *Repository) listProviders(ctx context.Context, tenantID guid.ID) ([]providerRow, error) {
+	tables, _, err := r.tables()
+	if err != nil {
+		return nil, err
+	}
 	rows := make([]providerRow, 0)
-	err := r.writer().WithContext(ctx).Table(r.table(model.Provider{}.TableName())).
+	err = r.writer().WithContext(ctx).Table(tables.Providers.TableName()).
 		Where("tenant_id = ?", tenantID).Order("name ASC, id ASC").Find(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("list identity providers: %w", err)
@@ -159,7 +183,11 @@ func (r *Repository) listProviders(ctx context.Context, tenantID guid.ID) ([]pro
 
 func (r *Repository) getProvider(ctx context.Context, tenantID, id guid.ID) (providerRow, error) {
 	var row providerRow
-	err := r.writer().WithContext(ctx).Table(r.table(model.Provider{}.TableName())).
+	tables, _, err := r.tables()
+	if err != nil {
+		return row, err
+	}
+	err = r.writer().WithContext(ctx).Table(tables.Providers.TableName()).
 		Where("tenant_id = ? AND id = ?", tenantID, id).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return row, ErrProviderNotFound
@@ -172,7 +200,11 @@ func (r *Repository) getProvider(ctx context.Context, tenantID, id guid.ID) (pro
 
 func (r *Repository) getProviderByID(ctx context.Context, id guid.ID) (providerRow, error) {
 	var row providerRow
-	err := r.writer().WithContext(ctx).Table(r.table(model.Provider{}.TableName())).Where("id = ?", id).Take(&row).Error
+	tables, _, err := r.tables()
+	if err != nil {
+		return row, err
+	}
+	err = r.writer().WithContext(ctx).Table(tables.Providers.TableName()).Where("id = ?", id).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return row, ErrProviderNotFound
 	}
@@ -183,7 +215,11 @@ func (r *Repository) getProviderByID(ctx context.Context, id guid.ID) (providerR
 }
 
 func (r *Repository) insertProvider(ctx context.Context, row *providerRow) error {
-	err := r.writer().WithContext(ctx).Table(r.table(model.Provider{}.TableName())).Create(row).Error
+	tables, _, err := r.tables()
+	if err != nil {
+		return err
+	}
+	err = r.writer().WithContext(ctx).Table(tables.Providers.TableName()).Create(row).Error
 	if errors.Is(err, gorm.ErrDuplicatedKey) {
 		return ErrProviderIssuerExists
 	}
@@ -194,7 +230,11 @@ func (r *Repository) insertProvider(ctx context.Context, row *providerRow) error
 }
 
 func (r *Repository) updateProvider(ctx context.Context, row *providerRow) error {
-	result := r.writer().WithContext(ctx).Table(r.table(model.Provider{}.TableName())).
+	tables, _, err := r.tables()
+	if err != nil {
+		return err
+	}
+	result := r.writer().WithContext(ctx).Table(tables.Providers.TableName()).
 		Where("tenant_id = ? AND id = ?", row.TenantID, row.ID).
 		Select("name", "provider_type", "issuer", "client_id", "client_secret_ciphertext", "scopes", "auto_provision", "default_role_id", "status", "updated_at").Updates(row)
 	if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
@@ -210,7 +250,11 @@ func (r *Repository) updateProvider(ctx context.Context, row *providerRow) error
 }
 
 func (r *Repository) deleteProvider(ctx context.Context, tenantID, id guid.ID) error {
-	result := r.writer().WithContext(ctx).Table(r.table(model.Provider{}.TableName())).
+	tables, _, err := r.tables()
+	if err != nil {
+		return err
+	}
+	result := r.writer().WithContext(ctx).Table(tables.Providers.TableName()).
 		Where("tenant_id = ? AND id = ?", tenantID, id).Delete(&providerRow{})
 	if result.Error != nil {
 		return fmt.Errorf("delete identity provider: %w", result.Error)
@@ -223,20 +267,32 @@ func (r *Repository) deleteProvider(ctx context.Context, tenantID, id guid.ID) e
 
 func (r *Repository) identityLink(ctx context.Context, providerID, tenantID guid.ID, subject string) (identityLinkRow, error) {
 	var row identityLinkRow
-	err := r.writer().WithContext(ctx).Table(r.table(model.IdentityLink{}.TableName())).
+	tables, _, err := r.tables()
+	if err != nil {
+		return row, err
+	}
+	err = r.writer().WithContext(ctx).Table(tables.IdentityLinks.TableName()).
 		Where("provider_id = ? AND tenant_id = ? AND external_subject = ?", providerID, tenantID, subject).Take(&row).Error
 	return row, err
 }
 
 func (r *Repository) insertIdentityLink(ctx context.Context, row *identityLinkRow) error {
-	if err := r.writer().WithContext(ctx).Table(r.table(model.IdentityLink{}.TableName())).Create(row).Error; err != nil {
+	tables, _, err := r.tables()
+	if err != nil {
+		return err
+	}
+	if err := r.writer().WithContext(ctx).Table(tables.IdentityLinks.TableName()).Create(row).Error; err != nil {
 		return fmt.Errorf("insert identity link: %w", err)
 	}
 	return nil
 }
 
 func (r *Repository) touchIdentityLink(ctx context.Context, providerID, tenantID guid.ID, subject string, now time.Time) error {
-	result := r.writer().WithContext(ctx).Table(r.table(model.IdentityLink{}.TableName())).
+	tables, _, err := r.tables()
+	if err != nil {
+		return err
+	}
+	result := r.writer().WithContext(ctx).Table(tables.IdentityLinks.TableName()).
 		Where("provider_id = ? AND tenant_id = ? AND external_subject = ?", providerID, tenantID, subject).
 		Updates(map[string]any{"last_login_at": now, "updated_at": now})
 	if result.Error != nil {
@@ -246,7 +302,7 @@ func (r *Repository) touchIdentityLink(ctx context.Context, providerID, tenantID
 		return nil
 	}
 	var count int64
-	if err := r.writer().WithContext(ctx).Table(r.table(model.IdentityLink{}.TableName())).
+	if err := r.writer().WithContext(ctx).Table(tables.IdentityLinks.TableName()).
 		Where("provider_id = ? AND tenant_id = ? AND external_subject = ?", providerID, tenantID, subject).
 		Count(&count).Error; err != nil {
 		return fmt.Errorf("verify identity link login update: %w", err)
@@ -314,8 +370,12 @@ func (r *Repository) verifyPrincipalAndMember(ctx context.Context, tenantID, pri
 }
 
 func (r *Repository) listSAMLServiceProviders(ctx context.Context, tenantID guid.ID) ([]samlSPRow, error) {
+	tables, _, err := r.tables()
+	if err != nil {
+		return nil, err
+	}
 	rows := make([]samlSPRow, 0)
-	err := r.writer().WithContext(ctx).Table(r.table(model.SAMLServiceProvider{}.TableName())).
+	err = r.writer().WithContext(ctx).Table(tables.SAMLServiceProviders.TableName()).
 		Where("tenant_id = ?", tenantID).Order("name ASC, id ASC").Find(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("list SAML service providers: %w", err)
@@ -325,7 +385,11 @@ func (r *Repository) listSAMLServiceProviders(ctx context.Context, tenantID guid
 
 func (r *Repository) getSAMLServiceProvider(ctx context.Context, tenantID, id guid.ID) (samlSPRow, error) {
 	var row samlSPRow
-	err := r.writer().WithContext(ctx).Table(r.table(model.SAMLServiceProvider{}.TableName())).
+	tables, _, err := r.tables()
+	if err != nil {
+		return row, err
+	}
+	err = r.writer().WithContext(ctx).Table(tables.SAMLServiceProviders.TableName()).
 		Where("tenant_id = ? AND id = ?", tenantID, id).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return row, ErrSAMLSPNotFound
@@ -338,13 +402,21 @@ func (r *Repository) getSAMLServiceProvider(ctx context.Context, tenantID, id gu
 
 func (r *Repository) activeSAMLServiceProvider(ctx context.Context, tenantID guid.ID, entityID string) (samlSPRow, error) {
 	var row samlSPRow
-	err := r.writer().WithContext(ctx).Table(r.table(model.SAMLServiceProvider{}.TableName())).
+	tables, _, err := r.tables()
+	if err != nil {
+		return row, err
+	}
+	err = r.writer().WithContext(ctx).Table(tables.SAMLServiceProviders.TableName()).
 		Where("tenant_id = ? AND entity_id = ? AND status = ?", tenantID, entityID, samlSPStatusActive).Take(&row).Error
 	return row, err
 }
 
 func (r *Repository) insertSAMLServiceProvider(ctx context.Context, row *samlSPRow) error {
-	err := r.writer().WithContext(ctx).Table(r.table(model.SAMLServiceProvider{}.TableName())).Create(row).Error
+	tables, _, err := r.tables()
+	if err != nil {
+		return err
+	}
+	err = r.writer().WithContext(ctx).Table(tables.SAMLServiceProviders.TableName()).Create(row).Error
 	if errors.Is(err, gorm.ErrDuplicatedKey) {
 		return ErrSAMLSPEntityIDExists
 	}
@@ -355,7 +427,11 @@ func (r *Repository) insertSAMLServiceProvider(ctx context.Context, row *samlSPR
 }
 
 func (r *Repository) updateSAMLServiceProvider(ctx context.Context, row *samlSPRow) error {
-	result := r.writer().WithContext(ctx).Table(r.table(model.SAMLServiceProvider{}.TableName())).
+	tables, _, err := r.tables()
+	if err != nil {
+		return err
+	}
+	result := r.writer().WithContext(ctx).Table(tables.SAMLServiceProviders.TableName()).
 		Where("tenant_id = ? AND id = ?", row.TenantID, row.ID).
 		Select("name", "entity_id", "metadata_xml", "status", "updated_at").Updates(row)
 	if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
@@ -371,7 +447,11 @@ func (r *Repository) updateSAMLServiceProvider(ctx context.Context, row *samlSPR
 }
 
 func (r *Repository) deleteSAMLServiceProvider(ctx context.Context, tenantID, id guid.ID) error {
-	result := r.writer().WithContext(ctx).Table(r.table(model.SAMLServiceProvider{}.TableName())).
+	tables, _, err := r.tables()
+	if err != nil {
+		return err
+	}
+	result := r.writer().WithContext(ctx).Table(tables.SAMLServiceProviders.TableName()).
 		Where("tenant_id = ? AND id = ?", tenantID, id).Delete(&samlSPRow{})
 	if result.Error != nil {
 		return fmt.Errorf("delete SAML service provider: %w", result.Error)
@@ -384,13 +464,21 @@ func (r *Repository) deleteSAMLServiceProvider(ctx context.Context, tenantID, id
 
 func (r *Repository) latestSAMLKey(ctx context.Context) (samlKeyRow, error) {
 	var row samlKeyRow
-	err := r.writer().WithContext(ctx).Table(r.table(model.SAMLIDPKey{}.TableName())).
+	tables, _, err := r.tables()
+	if err != nil {
+		return row, err
+	}
+	err = r.writer().WithContext(ctx).Table(tables.SAMLIDPKeys.TableName()).
 		Where("rotated_at IS NULL").Take(&row).Error
 	return row, err
 }
 
 func (r *Repository) insertSAMLKey(ctx context.Context, row *samlKeyRow) error {
-	if err := r.writer().WithContext(ctx).Table(r.table(model.SAMLIDPKey{}.TableName())).Create(row).Error; err != nil {
+	tables, _, err := r.tables()
+	if err != nil {
+		return err
+	}
+	if err := r.writer().WithContext(ctx).Table(tables.SAMLIDPKeys.TableName()).Create(row).Error; err != nil {
 		return fmt.Errorf("persist SAML signing key: %w", err)
 	}
 	return nil
@@ -401,7 +489,11 @@ func (r *Repository) rotateSAMLKeys(ctx context.Context, row *samlKeyRow, now ti
 		if err := tx.insertSAMLKey(ctx, row); err != nil {
 			return fmt.Errorf("persist rotated SAML signing key: %w", err)
 		}
-		if err := tx.writer().WithContext(ctx).Table(tx.table(model.SAMLIDPKey{}.TableName())).
+		tables, _, err := tx.tables()
+		if err != nil {
+			return err
+		}
+		if err := tx.writer().WithContext(ctx).Table(tables.SAMLIDPKeys.TableName()).
 			Where("key_id <> ? AND rotated_at IS NULL", row.KeyID).Update("rotated_at", now).Error; err != nil {
 			return fmt.Errorf("retire SAML signing keys: %w", err)
 		}

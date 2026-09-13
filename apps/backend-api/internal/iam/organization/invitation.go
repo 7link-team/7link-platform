@@ -101,8 +101,12 @@ func (s *InvitationService) List(ctx context.Context, tenantID guid.ID) ([]Invit
 	if err != nil {
 		return nil, err
 	}
+	tables, _, err := repo.tables()
+	if err != nil {
+		return nil, err
+	}
 	var rows []model.Invitation
-	err = repo.writer().WithContext(ctx).Table(repo.table(model.Invitation{}.TableName())).Where("tenant_id = ?", tenantID).Order("created_at DESC, id DESC").Limit(200).Find(&rows).Error
+	err = repo.writer().WithContext(ctx).Table(tables.Invitations.TableName()).Where("tenant_id = ?", tenantID).Order("created_at DESC, id DESC").Limit(200).Find(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("list invitations: %w", err)
 	}
@@ -127,17 +131,21 @@ func (s *InvitationService) Create(ctx context.Context, tenantID guid.ID, input 
 	event := audit.NewDomainEvent(ctx, tenantID, "invitation_created", "invitation", id)
 	event.Detail["department_assigned"], event.Detail["role_count"] = !input.DepartmentID.Zero(), len(input.RoleIDs)
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
+		tables, _, err := repo.tables()
+		if err != nil {
+			return err
+		}
 		if err := repo.revisions.Lock(ctx, repo.writer(), tenantID); err != nil {
 			return err
 		}
 		if err := validateInvitationBindings(ctx, repo, tenantID, input.DepartmentID, input.RoleIDs); err != nil {
 			return err
 		}
-		if err := repo.writer().WithContext(ctx).Table(repo.table(row.TableName())).Where("tenant_id = ? AND email_key = ? AND status = ?", tenantID, input.Email, InvitationPending).
+		if err := repo.writer().WithContext(ctx).Table(tables.Invitations.TableName()).Where("tenant_id = ? AND email_key = ? AND status = ?", tenantID, input.Email, InvitationPending).
 			Updates(map[string]any{"status": InvitationRevoked, "revoked_at": now, "updated_at": now}).Error; err != nil {
 			return fmt.Errorf("revoke previous invitation: %w", err)
 		}
-		if err := repo.writer().WithContext(ctx).Table(repo.table(row.TableName())).Create(&row).Error; err != nil {
+		if err := repo.writer().WithContext(ctx).Table(tables.Invitations.TableName()).Create(&row).Error; err != nil {
 			return fmt.Errorf("insert invitation: %w", err)
 		}
 		if err := insertInvitationRoles(ctx, repo, tenantID, id, input.RoleIDs); err != nil {
@@ -158,6 +166,10 @@ func (s *InvitationService) Revoke(ctx context.Context, tenantID, id guid.ID) er
 	now := organizationTime(s.now())
 	event := audit.NewDomainEvent(ctx, tenantID, "invitation_revoked", "invitation", id)
 	err := s.repo.runInTx(ctx, func(repo *Repository) error {
+		tables, _, err := repo.tables()
+		if err != nil {
+			return err
+		}
 		if err := repo.revisions.Lock(ctx, repo.writer(), tenantID); err != nil {
 			return err
 		}
@@ -171,7 +183,7 @@ func (s *InvitationService) Revoke(ctx context.Context, tenantID, id guid.ID) er
 		if !row.ExpiresAt.After(now) {
 			return ErrInvitationExpired
 		}
-		result := repo.writer().WithContext(ctx).Table(repo.table(row.TableName())).Where("tenant_id = ? AND id = ? AND status = ?", tenantID, id, InvitationPending).
+		result := repo.writer().WithContext(ctx).Table(tables.Invitations.TableName()).Where("tenant_id = ? AND id = ? AND status = ?", tenantID, id, InvitationPending).
 			Updates(map[string]any{"status": InvitationRevoked, "revoked_at": now, "updated_at": now})
 		if result.Error != nil {
 			return result.Error
@@ -202,6 +214,10 @@ func (s *InvitationService) Resend(ctx context.Context, tenantID, id guid.ID, tt
 	var updated *model.Invitation
 	event := audit.NewDomainEvent(ctx, tenantID, "invitation_resent", "invitation", id)
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
+		tables, _, err := repo.tables()
+		if err != nil {
+			return err
+		}
 		if err := repo.revisions.Lock(ctx, repo.writer(), tenantID); err != nil {
 			return err
 		}
@@ -212,7 +228,7 @@ func (s *InvitationService) Resend(ctx context.Context, tenantID, id guid.ID, tt
 		if current.Status != InvitationPending {
 			return ErrInvitationState
 		}
-		result := repo.writer().WithContext(ctx).Table(repo.table(current.TableName())).Where("tenant_id = ? AND id = ? AND status = ?", tenantID, id, InvitationPending).
+		result := repo.writer().WithContext(ctx).Table(tables.Invitations.TableName()).Where("tenant_id = ? AND id = ? AND status = ?", tenantID, id, InvitationPending).
 			Updates(map[string]any{"token_hmac": digest, "expires_at": now.Add(ttl), "updated_at": now})
 		if result.Error != nil {
 			return result.Error
@@ -244,6 +260,10 @@ func (s *InvitationService) Accept(ctx context.Context, input AcceptInvitation) 
 	now := organizationTime(s.now())
 	var accepted InvitationAcceptance
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
+		tables, _, err := repo.tables()
+		if err != nil {
+			return err
+		}
 		row, err := getInvitationByID(ctx, repo, id)
 		if err != nil || !s.credentials.InvitationTokenMatches(input.Token, row.TokenHMAC) {
 			return ErrInvitationCredential
@@ -274,7 +294,7 @@ func (s *InvitationService) Accept(ctx context.Context, input AcceptInvitation) 
 		}
 		if row.DepartmentID != nil {
 			membership := model.MemberDepartment{TenantID: row.TenantID, PrincipalID: principalID, DepartmentID: *row.DepartmentID, UpdatedAt: now}
-			if err := repo.writer().WithContext(ctx).Table(repo.table(membership.TableName())).Create(&membership).Error; err != nil {
+			if err := repo.writer().WithContext(ctx).Table(tables.MemberDepartments.TableName()).Create(&membership).Error; err != nil {
 				return fmt.Errorf("assign invitation department: %w", err)
 			}
 		}
@@ -284,7 +304,7 @@ func (s *InvitationService) Accept(ctx context.Context, input AcceptInvitation) 
 				return fmt.Errorf("assign invitation role: %w", err)
 			}
 		}
-		result := repo.writer().WithContext(ctx).Table(repo.table(row.TableName())).Where("tenant_id = ? AND id = ? AND status = ? AND token_hmac = ? AND expires_at > ?", row.TenantID, row.ID, InvitationPending, row.TokenHMAC, now).
+		result := repo.writer().WithContext(ctx).Table(tables.Invitations.TableName()).Where("tenant_id = ? AND id = ? AND status = ? AND token_hmac = ? AND expires_at > ?", row.TenantID, row.ID, InvitationPending, row.TokenHMAC, now).
 			Updates(map[string]any{"status": InvitationAccepted, "accepted_by": principalID, "accepted_at": now, "updated_at": now})
 		if result.Error != nil {
 			return result.Error
@@ -361,8 +381,12 @@ func getInvitationByID(ctx context.Context, repo *Repository, id guid.ID) (*mode
 }
 
 func scanInvitation(ctx context.Context, repo *Repository, condition string, values ...any) (*model.Invitation, error) {
+	tables, _, err := repo.tables()
+	if err != nil {
+		return nil, err
+	}
 	var row model.Invitation
-	err := repo.writer().WithContext(ctx).Table(repo.table(row.TableName())).Clauses(clause.Locking{Strength: "UPDATE"}).Where(condition, values...).Take(&row).Error
+	err = repo.writer().WithContext(ctx).Table(tables.Invitations.TableName()).Clauses(clause.Locking{Strength: "UPDATE"}).Where(condition, values...).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrInvitationNotFound
 	}
@@ -376,19 +400,27 @@ func insertInvitationRoles(ctx context.Context, repo *Repository, tenantID, invi
 	if len(roleIDs) == 0 {
 		return nil
 	}
+	tables, _, err := repo.tables()
+	if err != nil {
+		return err
+	}
 	rows := make([]model.InvitationRole, len(roleIDs))
 	for index, roleID := range roleIDs {
 		rows[index] = model.InvitationRole{TenantID: tenantID, InvitationID: invitationID, RoleID: roleID}
 	}
-	if err := repo.writer().WithContext(ctx).Table(repo.table(model.InvitationRole{}.TableName())).Create(&rows).Error; err != nil {
+	if err := repo.writer().WithContext(ctx).Table(tables.InvitationRoles.TableName()).Create(&rows).Error; err != nil {
 		return fmt.Errorf("insert invitation role: %w", err)
 	}
 	return nil
 }
 
 func invitationRoleIDs(ctx context.Context, repo *Repository, tenantID, invitationID guid.ID) ([]guid.ID, error) {
+	tables, _, err := repo.tables()
+	if err != nil {
+		return nil, err
+	}
 	var roleIDs []guid.ID
-	err := repo.writer().WithContext(ctx).Table(repo.table(model.InvitationRole{}.TableName())).Select("role_id").
+	err = repo.writer().WithContext(ctx).Table(tables.InvitationRoles.TableName()).Select("role_id").
 		Where("tenant_id = ? AND invitation_id = ?", tenantID, invitationID).Order("role_id ASC").Scan(&roleIDs).Error
 	if err != nil {
 		return nil, fmt.Errorf("list invitation roles: %w", err)
@@ -397,6 +429,10 @@ func invitationRoleIDs(ctx context.Context, repo *Repository, tenantID, invitati
 }
 
 func validateInvitationBindings(ctx context.Context, repo *Repository, tenantID, departmentID guid.ID, roleIDs []guid.ID) error {
+	tables, _, err := repo.tables()
+	if err != nil {
+		return err
+	}
 	tenant, err := getTenantRow(ctx, repo, tenantID)
 	if err != nil {
 		return err
@@ -406,7 +442,7 @@ func validateInvitationBindings(ctx context.Context, repo *Repository, tenantID,
 	}
 	if !departmentID.Zero() {
 		var status string
-		err := repo.writer().WithContext(ctx).Table(repo.table(model.Department{}.TableName())).Select("status").
+		err := repo.writer().WithContext(ctx).Table(tables.Departments.TableName()).Select("status").
 			Where("tenant_id = ? AND id = ?", tenantID, departmentID).Scan(&status).Error
 		if err != nil {
 			return fmt.Errorf("get invitation department: %w", err)

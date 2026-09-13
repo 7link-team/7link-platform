@@ -14,7 +14,6 @@ import (
 	"7link.com/platform/internal/iam/organization/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
-	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
 )
 
@@ -71,7 +70,18 @@ func (r *Repository) prefix() string {
 	return r.runtime.TablePrefix()
 }
 
-func (r *Repository) table(name string) string { return r.prefix() + name }
+// tables returns the bound query set for every table organization owns under
+// the deployment prefix. It is the module's resolver path: statements take
+// their physical names from these objects instead of building them from the
+// prefix, so a prefixed deployment cannot end up with half of a statement
+// naming the wrong table.
+func (r *Repository) tables() (*query.Tables, *gorm.DB, error) {
+	db := r.writer()
+	if db == nil {
+		return nil, nil, errRepositoryUnavailable
+	}
+	return query.Bind(db, r.prefix()), db, nil
+}
 
 func (r *Repository) withDB(db *gorm.DB, inTx bool) *Repository {
 	clone := *r
@@ -161,8 +171,12 @@ func (r *Repository) countRelationshipSubject(ctx context.Context, tenantID guid
 }
 
 func (r *Repository) listDepartments(ctx context.Context, tenantID guid.ID) ([]departmentRow, error) {
+	tables, _, err := r.tables()
+	if err != nil {
+		return nil, err
+	}
 	var rows []departmentRow
-	err := r.writer().WithContext(ctx).Table(r.table(model.Department{}.TableName())).Where("tenant_id = ?", tenantID).Find(&rows).Error
+	err = r.writer().WithContext(ctx).Table(tables.Departments.TableName()).Where("tenant_id = ?", tenantID).Find(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("list departments: %w", err)
 	}
@@ -170,8 +184,12 @@ func (r *Repository) listDepartments(ctx context.Context, tenantID guid.ID) ([]d
 }
 
 func (r *Repository) getDepartment(ctx context.Context, tenantID, id guid.ID) (*departmentRow, error) {
+	tables, _, err := r.tables()
+	if err != nil {
+		return nil, err
+	}
 	var row departmentRow
-	err := r.writer().WithContext(ctx).Table(r.table(row.TableName())).Where("tenant_id = ? AND id = ?", tenantID, id).Take(&row).Error
+	err = r.writer().WithContext(ctx).Table(tables.Departments.TableName()).Where("tenant_id = ? AND id = ?", tenantID, id).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound
 	}
@@ -182,20 +200,24 @@ func (r *Repository) getDepartment(ctx context.Context, tenantID, id guid.ID) (*
 }
 
 func (r *Repository) insertDepartment(ctx context.Context, row *departmentRow) error {
+	tables, _, err := r.tables()
+	if err != nil {
+		return err
+	}
 	if row.ParentID != nil {
 		if _, err := r.getDepartment(ctx, row.TenantID, *row.ParentID); err != nil {
 			return err
 		}
 	}
 	db := r.writer().WithContext(ctx)
-	if err := db.Table(r.table(row.TableName())).Create(row).Error; err != nil {
+	if err := db.Table(tables.Departments.TableName()).Create(row).Error; err != nil {
 		if isSiblingNameViolation(err) {
 			return ErrNameConflict
 		}
 		return fmt.Errorf("insert department: %w", err)
 	}
 	self := closureRow{TenantID: row.TenantID, AncestorID: row.ID, DescendantID: row.ID, Depth: 0}
-	if err := db.Table(r.table(self.TableName())).Create(&self).Error; err != nil {
+	if err := db.Table(tables.DepartmentClosures.TableName()).Create(&self).Error; err != nil {
 		return fmt.Errorf("insert department self closure: %w", err)
 	}
 	if row.ParentID == nil {
@@ -210,7 +232,7 @@ func (r *Repository) insertDepartment(ctx context.Context, row *departmentRow) e
 		links[index] = closureRow{TenantID: row.TenantID, AncestorID: ancestor.AncestorID, DescendantID: row.ID, Depth: ancestor.Depth + 1}
 	}
 	if len(links) > 0 {
-		if err := db.Table(r.table(self.TableName())).Create(&links).Error; err != nil {
+		if err := db.Table(tables.DepartmentClosures.TableName()).Create(&links).Error; err != nil {
 			return fmt.Errorf("insert department ancestor closures: %w", err)
 		}
 	}
@@ -218,7 +240,11 @@ func (r *Repository) insertDepartment(ctx context.Context, row *departmentRow) e
 }
 
 func (r *Repository) updateDepartment(ctx context.Context, row *departmentRow, expectedVersion int64) error {
-	result := r.writer().WithContext(ctx).Table(r.table(row.TableName())).
+	tables, _, err := r.tables()
+	if err != nil {
+		return err
+	}
+	result := r.writer().WithContext(ctx).Table(tables.Departments.TableName()).
 		Where("tenant_id = ? AND id = ? AND version = ?", row.TenantID, row.ID, expectedVersion).
 		Select("parent_id", "name", "name_key", "status", "sort_order", "version", "updated_at").Updates(row)
 	if result.Error != nil {
@@ -234,6 +260,10 @@ func (r *Repository) updateDepartment(ctx context.Context, row *departmentRow, e
 }
 
 func (r *Repository) moveDepartment(ctx context.Context, tenantID, id guid.ID, parentID *guid.ID) error {
+	tables, _, err := r.tables()
+	if err != nil {
+		return err
+	}
 	subtree, err := r.departmentDescendants(ctx, tenantID, id)
 	if err != nil {
 		return err
@@ -252,7 +282,7 @@ func (r *Repository) moveDepartment(ctx context.Context, tenantID, id guid.ID, p
 			oldAncestorIDs = append(oldAncestorIDs, link.AncestorID)
 		}
 	}
-	db := r.writer().WithContext(ctx).Table(r.table(model.DepartmentClosure{}.TableName()))
+	db := r.writer().WithContext(ctx).Table(tables.DepartmentClosures.TableName())
 	if len(oldAncestorIDs) > 0 {
 		if err := db.Where("tenant_id = ? AND ancestor_id IN ? AND descendant_id IN ?", tenantID, oldAncestorIDs, subtreeIDs).Delete(&closureRow{}).Error; err != nil {
 			return fmt.Errorf("remove old department closures: %w", err)
@@ -280,24 +310,32 @@ func (r *Repository) moveDepartment(ctx context.Context, tenantID, id guid.ID, p
 }
 
 func (r *Repository) deleteDepartment(ctx context.Context, tenantID, id guid.ID, version int64) error {
+	tables, _, err := r.tables()
+	if err != nil {
+		return err
+	}
 	db := r.writer().WithContext(ctx)
 	var count int64
-	if err := db.Table(r.table(model.Department{}.TableName())).Where("tenant_id = ? AND parent_id = ?", tenantID, id).Count(&count).Error; err != nil {
+	if err := db.Table(tables.Departments.TableName()).Where("tenant_id = ? AND parent_id = ?", tenantID, id).Count(&count).Error; err != nil {
 		return fmt.Errorf("count department children: %w", err)
 	}
 	if count > 0 {
 		return ErrHasChildren
 	}
-	names := query.BindNames(r.prefix())
-	for _, table := range []gormx.TableName{names.MemberDepartments, names.RoleScopeDepartments} {
-		if err := db.Table(table.String()).Where("tenant_id = ? AND department_id = ?", tenantID, id).Count(&count).Error; err != nil {
-			return fmt.Errorf("check department references in %s: %w", table.Logical(), err)
+	for _, table := range []struct {
+		name, logical string
+	}{
+		{tables.MemberDepartments.TableName(), model.MemberDepartment{}.TableName()},
+		{tables.RoleScopeDepartments.TableName(), model.RoleScopeDepartment{}.TableName()},
+	} {
+		if err := db.Table(table.name).Where("tenant_id = ? AND department_id = ?", tenantID, id).Count(&count).Error; err != nil {
+			return fmt.Errorf("check department references in %s: %w", table.logical, err)
 		}
 		if count > 0 {
 			return ErrInUse
 		}
 	}
-	result := db.Table(r.table(model.Department{}.TableName())).Where("tenant_id = ? AND id = ? AND version = ?", tenantID, id, version).Delete(&departmentRow{})
+	result := db.Table(tables.Departments.TableName()).Where("tenant_id = ? AND id = ? AND version = ?", tenantID, id, version).Delete(&departmentRow{})
 	if result.Error != nil {
 		return fmt.Errorf("delete department: %w", result.Error)
 	}
@@ -308,8 +346,12 @@ func (r *Repository) deleteDepartment(ctx context.Context, tenantID, id guid.ID,
 }
 
 func (r *Repository) isDepartmentDescendant(ctx context.Context, tenantID, ancestorID, descendantID guid.ID) (bool, error) {
+	tables, _, err := r.tables()
+	if err != nil {
+		return false, err
+	}
 	var count int64
-	err := r.writer().WithContext(ctx).Table(r.table(model.DepartmentClosure{}.TableName())).
+	err = r.writer().WithContext(ctx).Table(tables.DepartmentClosures.TableName()).
 		Where("tenant_id = ? AND ancestor_id = ? AND descendant_id = ?", tenantID, ancestorID, descendantID).Count(&count).Error
 	if err != nil {
 		return false, fmt.Errorf("check department hierarchy: %w", err)
@@ -318,8 +360,12 @@ func (r *Repository) isDepartmentDescendant(ctx context.Context, tenantID, ances
 }
 
 func (r *Repository) departmentAncestors(ctx context.Context, tenantID, descendantID guid.ID) ([]closureRow, error) {
+	tables, _, err := r.tables()
+	if err != nil {
+		return nil, err
+	}
 	var rows []closureRow
-	err := r.writer().WithContext(ctx).Table(r.table(model.DepartmentClosure{}.TableName())).
+	err = r.writer().WithContext(ctx).Table(tables.DepartmentClosures.TableName()).
 		Where("tenant_id = ? AND descendant_id = ?", tenantID, descendantID).Order("depth ASC, ancestor_id ASC").Find(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("list department ancestors: %w", err)
@@ -328,8 +374,12 @@ func (r *Repository) departmentAncestors(ctx context.Context, tenantID, descenda
 }
 
 func (r *Repository) departmentDescendants(ctx context.Context, tenantID, ancestorID guid.ID) ([]closureRow, error) {
+	tables, _, err := r.tables()
+	if err != nil {
+		return nil, err
+	}
 	var rows []closureRow
-	err := r.writer().WithContext(ctx).Table(r.table(model.DepartmentClosure{}.TableName())).
+	err = r.writer().WithContext(ctx).Table(tables.DepartmentClosures.TableName()).
 		Where("tenant_id = ? AND ancestor_id = ?", tenantID, ancestorID).Order("depth ASC, descendant_id ASC").Find(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("list department descendants: %w", err)

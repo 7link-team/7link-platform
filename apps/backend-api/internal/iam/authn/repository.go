@@ -62,8 +62,6 @@ func (r *Repository) prefix() string {
 	return r.runtime.TablePrefix()
 }
 
-func (r *Repository) table(name string) string { return r.prefix() + name }
-
 // BindForeignTables records the table-name sets of the tables this repository
 // reads but does not own. The modules that own them reach it through the
 // connectors authn publishes and the receiver identity pushes into; a caller

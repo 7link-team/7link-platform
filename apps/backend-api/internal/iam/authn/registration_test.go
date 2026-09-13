@@ -26,7 +26,7 @@ func registrationCreatorForHarness(harness *authnRepositoryHarness) Registration
 		ids guid.Source,
 	) (guid.ID, error) {
 		var count int64
-		if err := db.WithContext(ctx).Table(harness.repository.table("iam_principals")).
+		if err := db.WithContext(ctx).Table(harness.repository.prefix()+"iam_principals").
 			Where("login_name = ?", email).Count(&count).Error; err != nil {
 			return 0, err
 		}
@@ -38,13 +38,13 @@ func registrationCreatorForHarness(harness *authnRepositoryHarness) Registration
 			return 0, errors.New("generate registration principal id")
 		}
 		principalID := guid.ID(rawID)
-		if err := db.WithContext(ctx).Table(harness.repository.table("iam_principals")).Create(&identitymodel.Principal{
+		if err := db.WithContext(ctx).Table(harness.repository.prefix() + "iam_principals").Create(&identitymodel.Principal{
 			ID: principalID, LoginName: email, Email: email, DisplayName: displayName,
 			Status: "active", ActivationRequired: true, CreatedAt: now, UpdatedAt: now,
 		}).Error; err != nil {
 			return 0, err
 		}
-		if err := db.WithContext(ctx).Table(harness.repository.table("iam_credentials")).Create(&model.Credential{
+		if err := db.WithContext(ctx).Table(harness.repository.prefix() + "iam_credentials").Create(&model.Credential{
 			PrincipalID: principalID, PasswordHash: passwordHash, PasswordChangedAt: now,
 			CredentialVersion: 1, UpdatedAt: now,
 		}).Error; err != nil {
@@ -84,7 +84,7 @@ func TestRegistrationLifecycle(t *testing.T) {
 	require.NoError(t, service.Register(t.Context(), "user@example.com", password, "Duplicate"))
 
 	var principals []identitymodel.Principal
-	require.NoError(t, harness.db.Table(harness.repository.table("iam_principals")).
+	require.NoError(t, harness.db.Table(harness.repository.prefix()+"iam_principals").
 		Where("login_name = ?", "user@example.com").Find(&principals).Error)
 	require.Len(t, principals, 1)
 	principal := principals[0]
@@ -134,7 +134,7 @@ func TestRegistrationAuditFailureRollsBackAllOwnedRows(t *testing.T) {
 
 	for _, table := range []string{"iam_principals", "iam_credentials", "iam_email_verification_tokens", "iam_notification_outbox"} {
 		var count int64
-		require.NoError(t, harness.db.Table(harness.repository.table(table)).Count(&count).Error)
+		require.NoError(t, harness.db.Table(harness.repository.prefix()+table).Count(&count).Error)
 		assert.Zero(t, count, table)
 	}
 }

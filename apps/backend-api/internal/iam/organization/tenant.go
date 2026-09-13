@@ -122,8 +122,12 @@ func (s *TenantService) List(ctx context.Context, includeDeleted bool) ([]Tenant
 	if err != nil {
 		return nil, err
 	}
+	tables, _, err := repo.tables()
+	if err != nil {
+		return nil, err
+	}
 	var rows []model.Tenant
-	db := repo.writer().WithContext(ctx).Table(repo.table(model.Tenant{}.TableName()))
+	db := repo.writer().WithContext(ctx).Table(tables.Tenants.TableName())
 	if !includeDeleted {
 		db = db.Where("status <> ?", TenantDeleted)
 	}
@@ -146,8 +150,12 @@ func (s *TenantService) ListByMember(ctx context.Context, subject guid.ID) ([]Te
 		return nil, err
 	}
 	memberTable := repo.foreign.access.TenantMembers.String()
+	tables, _, err := repo.tables()
+	if err != nil {
+		return nil, err
+	}
 	var rows []model.Tenant
-	tenantTable := repo.table(model.Tenant{}.TableName())
+	tenantTable := tables.Tenants.TableName()
 	err = repo.writer().WithContext(ctx).Table(tenantTable+" AS t").Select("t.*").
 		Joins("JOIN "+memberTable+" AS m ON m.tenant_id = t.id AND m.principal_id = ?", subject).
 		Where("t.status <> ? AND m.status = ?", TenantDeleted, StatusActive).Order("t.name ASC, t.id ASC").Scan(&rows).Error
@@ -190,8 +198,12 @@ func (s *TenantService) Create(ctx context.Context, input CreateTenant) (Tenant,
 	event := audit.NewDomainEvent(ctx, 0, "tenant_created", "tenant", id)
 	event.Detail["slug"] = input.Slug
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
+		tables, _, err := repo.tables()
+		if err != nil {
+			return err
+		}
 		database := repo.writer().WithContext(ctx)
-		err := database.Table(repo.table(row.TableName())).Create(&row).Error
+		err = database.Table(tables.Tenants.TableName()).Create(&row).Error
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			return ErrTenantSlugConflict
 		}
@@ -246,6 +258,10 @@ func (s *TenantService) Update(ctx context.Context, id guid.ID, input UpdateTena
 	var updated *model.Tenant
 	event := audit.NewDomainEvent(ctx, 0, "tenant_updated", "tenant", id)
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
+		tables, _, err := repo.tables()
+		if err != nil {
+			return err
+		}
 		current, err := getTenantRow(ctx, repo, id)
 		if err != nil {
 			return err
@@ -265,7 +281,7 @@ func (s *TenantService) Update(ctx context.Context, id guid.ID, input UpdateTena
 			return nil
 		}
 		updated.Version, updated.UpdatedAt = current.Version+1, now
-		result := repo.writer().WithContext(ctx).Table(repo.table(updated.TableName())).Where("id = ? AND version = ?", id, current.Version).
+		result := repo.writer().WithContext(ctx).Table(tables.Tenants.TableName()).Where("id = ? AND version = ?", id, current.Version).
 			Select("name", "status", "version", "updated_at").Updates(updated)
 		if result.Error != nil {
 			return fmt.Errorf("update tenant: %w", result.Error)
@@ -292,6 +308,10 @@ func (s *TenantService) Delete(ctx context.Context, id guid.ID, version int64) e
 	now := organizationTime(s.now())
 	event := audit.NewDomainEvent(ctx, 0, "tenant_deleted", "tenant", id)
 	err := s.repo.runInTx(ctx, func(repo *Repository) error {
+		tables, _, err := repo.tables()
+		if err != nil {
+			return err
+		}
 		current, err := getTenantRow(ctx, repo, id)
 		if err != nil {
 			return err
@@ -299,7 +319,7 @@ func (s *TenantService) Delete(ctx context.Context, id guid.ID, version int64) e
 		if current.Status == TenantDeleted || current.Version != version {
 			return ErrTenantVersionConflict
 		}
-		result := repo.writer().WithContext(ctx).Table(repo.table(current.TableName())).Where("id = ? AND version = ?", id, version).
+		result := repo.writer().WithContext(ctx).Table(tables.Tenants.TableName()).Where("id = ? AND version = ?", id, version).
 			Updates(map[string]any{"status": TenantDeleted, "version": gorm.Expr("version + 1"), "updated_at": now})
 		if result.Error != nil {
 			return fmt.Errorf("delete tenant: %w", result.Error)
@@ -322,8 +342,12 @@ func getTenantRow(ctx context.Context, repo *Repository, id guid.ID) (*model.Ten
 	if repo == nil || id.Zero() {
 		return nil, ErrInvalidTenant
 	}
+	tables, _, err := repo.tables()
+	if err != nil {
+		return nil, err
+	}
 	var row model.Tenant
-	err := repo.writer().WithContext(ctx).Table(repo.table(row.TableName())).Where("id = ?", id).Take(&row).Error
+	err = repo.writer().WithContext(ctx).Table(tables.Tenants.TableName()).Where("id = ?", id).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrTenantNotFound
 	}

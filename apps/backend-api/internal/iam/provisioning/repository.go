@@ -10,6 +10,7 @@ import (
 
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/provisioning/model"
+	"7link.com/platform/internal/iam/provisioning/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	"gorm.io/gorm"
@@ -135,7 +136,17 @@ func (r *Repository) prefix() string {
 	return r.runtime.TablePrefix()
 }
 
-func (r *Repository) table(name string) string { return r.prefix() + name }
+// tables returns the module's resolver-bound query set and the same writer the
+// queries were bound to, so a caller can ask the resolver for a physical name
+// without ever reconstructing one. The physical names provisioning owns are
+// generated inside query.Bind only.
+func (r *Repository) tables() (*query.Tables, *gorm.DB, error) {
+	db := r.writer()
+	if db == nil {
+		return nil, nil, errRepositoryUnavailable
+	}
+	return query.Bind(db, r.prefix()), db, nil
+}
 
 func (r *Repository) withDB(db *gorm.DB, inTx bool) *Repository {
 	clone := *r
@@ -174,8 +185,12 @@ func (r *Repository) runInTx(ctx context.Context, fn func(*Repository) error) er
 }
 
 func (r *Repository) listTargets(ctx context.Context, tenantID guid.ID) ([]targetRow, error) {
+	tables, db, err := r.tables()
+	if err != nil {
+		return nil, err
+	}
 	rows := make([]targetRow, 0)
-	err := r.writer().WithContext(ctx).Table(r.table(model.Target{}.TableName())).
+	err = db.WithContext(ctx).Table(tables.Targets.TableName()).
 		Where("tenant_id = ?", tenantID).Order("name_key ASC, id ASC").Find(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("list SCIM targets: %w", err)
@@ -184,8 +199,12 @@ func (r *Repository) listTargets(ctx context.Context, tenantID guid.ID) ([]targe
 }
 
 func (r *Repository) getTarget(ctx context.Context, tenantID, id guid.ID) (targetRow, error) {
+	tables, db, err := r.tables()
+	if err != nil {
+		return targetRow{}, err
+	}
 	var row targetRow
-	err := r.writer().WithContext(ctx).Table(r.table(model.Target{}.TableName())).
+	err = db.WithContext(ctx).Table(tables.Targets.TableName()).
 		Where("tenant_id = ? AND id = ?", tenantID, id).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return row, ErrTargetMissing
@@ -197,7 +216,11 @@ func (r *Repository) getTarget(ctx context.Context, tenantID, id guid.ID) (targe
 }
 
 func (r *Repository) insertTarget(ctx context.Context, row *targetRow) error {
-	err := r.writer().WithContext(ctx).Table(r.table(model.Target{}.TableName())).Create(row).Error
+	tables, db, err := r.tables()
+	if err != nil {
+		return err
+	}
+	err = db.WithContext(ctx).Table(tables.Targets.TableName()).Create(row).Error
 	if errors.Is(err, gorm.ErrDuplicatedKey) {
 		return ErrTargetName
 	}
@@ -208,7 +231,11 @@ func (r *Repository) insertTarget(ctx context.Context, row *targetRow) error {
 }
 
 func (r *Repository) replaceTarget(ctx context.Context, row *targetRow, expectedVersion int64) error {
-	result := r.writer().WithContext(ctx).Table(r.table(model.Target{}.TableName())).
+	tables, db, err := r.tables()
+	if err != nil {
+		return err
+	}
+	result := db.WithContext(ctx).Table(tables.Targets.TableName()).
 		Where("tenant_id = ? AND id = ? AND version = ?", row.TenantID, row.ID, expectedVersion).
 		Select("name", "name_key", "base_url", "bearer_token_ciphertext", "status", "version", "updated_at", "service_account_id").Updates(row)
 	if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
@@ -224,7 +251,11 @@ func (r *Repository) replaceTarget(ctx context.Context, row *targetRow, expected
 }
 
 func (r *Repository) deleteTarget(ctx context.Context, tenantID, id guid.ID) error {
-	result := r.writer().WithContext(ctx).Table(r.table(model.Target{}.TableName())).
+	tables, db, err := r.tables()
+	if err != nil {
+		return err
+	}
+	result := db.WithContext(ctx).Table(tables.Targets.TableName()).
 		Where("tenant_id = ? AND id = ?", tenantID, id).Delete(&targetRow{})
 	if result.Error != nil {
 		return fmt.Errorf("delete SCIM target: %w", result.Error)
@@ -240,8 +271,12 @@ func (r *Repository) deleteTarget(ctx context.Context, tenantID, id guid.ID) err
 // reads: if the two ever disagree, the mapping this count overlooks is the
 // one erasure would let through.
 func (r *Repository) countLiveTargetResources(ctx context.Context, targetID guid.ID) (int64, error) {
+	tables, db, err := r.tables()
+	if err != nil {
+		return 0, err
+	}
 	var count int64
-	err := r.writer().WithContext(ctx).Table(r.table(model.TargetResource{}.TableName())).
+	err = db.WithContext(ctx).Table(tables.TargetResources.TableName()).
 		Where("target_id = ? AND deleted_at IS NULL AND external_id <> ''", targetID).Count(&count).Error
 	if err != nil {
 		return 0, fmt.Errorf("count live SCIM target resource mappings: %w", err)
@@ -250,8 +285,12 @@ func (r *Repository) countLiveTargetResources(ctx context.Context, targetID guid
 }
 
 func (r *Repository) listTargetResources(ctx context.Context, targetID guid.ID) ([]targetResourceRow, error) {
+	tables, db, err := r.tables()
+	if err != nil {
+		return nil, err
+	}
 	rows := make([]targetResourceRow, 0)
-	err := r.writer().WithContext(ctx).Table(r.table(model.TargetResource{}.TableName())).
+	err = db.WithContext(ctx).Table(tables.TargetResources.TableName()).
 		Where("target_id = ?", targetID).Order("resource_type ASC, resource_id ASC").Find(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("list SCIM target resources: %w", err)
@@ -260,13 +299,21 @@ func (r *Repository) listTargetResources(ctx context.Context, targetID guid.ID) 
 }
 
 func (r *Repository) getTargetResource(ctx context.Context, targetID guid.ID, resourceType string, resourceID guid.ID) (targetResourceRow, error) {
+	tables, db, err := r.tables()
+	if err != nil {
+		return targetResourceRow{}, err
+	}
 	var row targetResourceRow
-	err := r.writer().WithContext(ctx).Table(r.table(model.TargetResource{}.TableName())).
+	err = db.WithContext(ctx).Table(tables.TargetResources.TableName()).
 		Where("target_id = ? AND resource_type = ? AND resource_id = ?", targetID, resourceType, resourceID).Take(&row).Error
 	return row, err
 }
 
 func (r *Repository) upsertTargetResource(ctx context.Context, row *targetResourceRow) error {
+	tables, db, err := r.tables()
+	if err != nil {
+		return err
+	}
 	existing, err := r.getTargetResource(ctx, row.TargetID, row.ResourceType, row.ResourceID)
 	switch {
 	case err == nil:
@@ -274,7 +321,7 @@ func (r *Repository) upsertTargetResource(ctx context.Context, row *targetResour
 		existing.DeletedAt = nil
 		existing.Version++
 		existing.UpdatedAt = row.UpdatedAt
-		result := r.writer().WithContext(ctx).Table(r.table(model.TargetResource{}.TableName())).
+		result := db.WithContext(ctx).Table(tables.TargetResources.TableName()).
 			Where("target_id = ? AND resource_type = ? AND resource_id = ? AND version = ?", existing.TargetID, existing.ResourceType, existing.ResourceID, existing.Version-1).
 			Select("external_id", "deleted_at", "version", "updated_at").Updates(&existing)
 		if result.Error != nil {
@@ -285,7 +332,7 @@ func (r *Repository) upsertTargetResource(ctx context.Context, row *targetResour
 		}
 		*row = existing
 	case errors.Is(err, gorm.ErrRecordNotFound):
-		if err := r.writer().WithContext(ctx).Table(r.table(model.TargetResource{}.TableName())).Create(row).Error; err != nil {
+		if err := db.WithContext(ctx).Table(tables.TargetResources.TableName()).Create(row).Error; err != nil {
 			return fmt.Errorf("insert SCIM target resource: %w", err)
 		}
 	default:
@@ -295,7 +342,11 @@ func (r *Repository) upsertTargetResource(ctx context.Context, row *targetResour
 }
 
 func (r *Repository) markTargetResourceDeleted(ctx context.Context, targetID guid.ID, resourceType string, resourceID guid.ID, at time.Time) error {
-	result := r.writer().WithContext(ctx).Table(r.table(model.TargetResource{}.TableName())).
+	tables, db, err := r.tables()
+	if err != nil {
+		return err
+	}
+	result := db.WithContext(ctx).Table(tables.TargetResources.TableName()).
 		Where("target_id = ? AND resource_type = ? AND resource_id = ? AND deleted_at IS NULL", targetID, resourceType, resourceID).
 		Updates(map[string]any{"deleted_at": at, "updated_at": at})
 	if result.Error != nil {
@@ -308,8 +359,12 @@ func (r *Repository) markTargetResourceDeleted(ctx context.Context, targetID gui
 }
 
 func (r *Repository) listDirectories(ctx context.Context, tenantID guid.ID) ([]directoryRow, error) {
+	tables, db, err := r.tables()
+	if err != nil {
+		return nil, err
+	}
 	rows := make([]directoryRow, 0)
-	err := r.writer().WithContext(ctx).Table(r.table(model.Directory{}.TableName())).
+	err = db.WithContext(ctx).Table(tables.Directories.TableName()).
 		Where("tenant_id = ?", tenantID).Order("name_key ASC, id ASC").Find(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("list SCIM directories: %w", err)
@@ -318,8 +373,12 @@ func (r *Repository) listDirectories(ctx context.Context, tenantID guid.ID) ([]d
 }
 
 func (r *Repository) getDirectory(ctx context.Context, tenantID, id guid.ID) (directoryRow, error) {
+	tables, db, err := r.tables()
+	if err != nil {
+		return directoryRow{}, err
+	}
 	var row directoryRow
-	err := r.writer().WithContext(ctx).Table(r.table(model.Directory{}.TableName())).
+	err = db.WithContext(ctx).Table(tables.Directories.TableName()).
 		Where("tenant_id = ? AND id = ?", tenantID, id).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return row, ErrDirectoryMissing
@@ -331,7 +390,11 @@ func (r *Repository) getDirectory(ctx context.Context, tenantID, id guid.ID) (di
 }
 
 func (r *Repository) insertDirectory(ctx context.Context, row *directoryRow) error {
-	err := r.writer().WithContext(ctx).Table(r.table(model.Directory{}.TableName())).Create(row).Error
+	tables, db, err := r.tables()
+	if err != nil {
+		return err
+	}
+	err = db.WithContext(ctx).Table(tables.Directories.TableName()).Create(row).Error
 	if errors.Is(err, gorm.ErrDuplicatedKey) {
 		return ErrDirectoryName
 	}
@@ -342,7 +405,11 @@ func (r *Repository) insertDirectory(ctx context.Context, row *directoryRow) err
 }
 
 func (r *Repository) updateDirectory(ctx context.Context, row *directoryRow, expectedVersion int64) error {
-	result := r.writer().WithContext(ctx).Table(r.table(model.Directory{}.TableName())).
+	tables, db, err := r.tables()
+	if err != nil {
+		return err
+	}
+	result := db.WithContext(ctx).Table(tables.Directories.TableName()).
 		Where("tenant_id = ? AND id = ? AND version = ?", row.TenantID, row.ID, expectedVersion).
 		Select("name", "name_key", "status", "version", "updated_at", "service_account_id").Updates(row)
 	if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
@@ -358,8 +425,12 @@ func (r *Repository) updateDirectory(ctx context.Context, row *directoryRow, exp
 }
 
 func (r *Repository) listCredentials(ctx context.Context, directoryID guid.ID) ([]credentialRow, error) {
+	tables, db, err := r.tables()
+	if err != nil {
+		return nil, err
+	}
 	rows := make([]credentialRow, 0)
-	err := r.writer().WithContext(ctx).Table(r.table(model.Credential{}.TableName())).
+	err = db.WithContext(ctx).Table(tables.Credentials.TableName()).
 		Where("directory_id = ?", directoryID).Order("created_at DESC, id ASC").Find(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("list SCIM credentials: %w", err)
@@ -368,21 +439,33 @@ func (r *Repository) listCredentials(ctx context.Context, directoryID guid.ID) (
 }
 
 func (r *Repository) activeCredentialCount(ctx context.Context, directoryID guid.ID, now time.Time) (int64, error) {
+	tables, db, err := r.tables()
+	if err != nil {
+		return 0, err
+	}
 	var count int64
-	err := r.writer().WithContext(ctx).Table(r.table(model.Credential{}.TableName())).
+	err = db.WithContext(ctx).Table(tables.Credentials.TableName()).
 		Where("directory_id = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)", directoryID, now).Count(&count).Error
 	return count, err
 }
 
 func (r *Repository) insertCredential(ctx context.Context, row *credentialRow) error {
-	if err := r.writer().WithContext(ctx).Table(r.table(model.Credential{}.TableName())).Create(row).Error; err != nil {
+	tables, db, err := r.tables()
+	if err != nil {
+		return err
+	}
+	if err := db.WithContext(ctx).Table(tables.Credentials.TableName()).Create(row).Error; err != nil {
 		return fmt.Errorf("insert SCIM credential: %w", err)
 	}
 	return nil
 }
 
 func (r *Repository) revokeCredential(ctx context.Context, directoryID, id guid.ID, now time.Time) (bool, error) {
-	result := r.writer().WithContext(ctx).Table(r.table(model.Credential{}.TableName())).
+	tables, db, err := r.tables()
+	if err != nil {
+		return false, err
+	}
+	result := db.WithContext(ctx).Table(tables.Credentials.TableName()).
 		Where("directory_id = ? AND id = ? AND revoked_at IS NULL", directoryID, id).Update("revoked_at", now)
 	if result.Error != nil {
 		return false, fmt.Errorf("revoke SCIM credential: %w", result.Error)
@@ -391,7 +474,7 @@ func (r *Repository) revokeCredential(ctx context.Context, directoryID, id guid.
 		return true, nil
 	}
 	var count int64
-	err := r.writer().WithContext(ctx).Table(r.table(model.Credential{}.TableName())).
+	err = db.WithContext(ctx).Table(tables.Credentials.TableName()).
 		Where("directory_id = ? AND id = ?", directoryID, id).Count(&count).Error
 	if err != nil {
 		return false, err
@@ -405,11 +488,15 @@ func (r *Repository) revokeCredential(ctx context.Context, directoryID, id guid.
 // Initial bearer authentication has no trusted scope yet; subsequent checks
 // bind the resolved tenant and directory in SQL as well as validating the row.
 func (r *Repository) credentialForAuth(ctx context.Context, id, tenantID, directoryID guid.ID) (credentialAuthRow, error) {
+	tables, db, err := r.tables()
+	if err != nil {
+		return credentialAuthRow{}, err
+	}
 	var row credentialAuthRow
-	credentialTable := r.table(model.Credential{}.TableName())
-	directoryTable := r.table(model.Directory{}.TableName())
+	credentialTable := tables.Credentials.TableName()
+	directoryTable := tables.Directories.TableName()
 	tenants := r.foreign.directory.Tenants.String()
-	query := r.writer().WithContext(ctx).Table(credentialTable+" AS credential").
+	query := db.WithContext(ctx).Table(credentialTable+" AS credential").
 		Select("credential.*, directory.tenant_id AS tenant_id, directory.status AS directory_status, tenant.status AS tenant_status, COALESCE(directory.service_account_id, 0) AS service_account_id").
 		Joins("JOIN "+directoryTable+" AS directory ON directory.id = credential.directory_id").
 		Joins("JOIN "+tenants+" AS tenant ON tenant.id = directory.tenant_id").
@@ -420,7 +507,7 @@ func (r *Repository) credentialForAuth(ctx context.Context, id, tenantID, direct
 	if directoryID > 0 {
 		query = query.Where("directory.id = ? AND credential.directory_id = ?", directoryID, directoryID)
 	}
-	err := query.Take(&row).Error
+	err = query.Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return row, ErrUnauthorized
 	}
@@ -431,20 +518,28 @@ func (r *Repository) credentialForAuth(ctx context.Context, id, tenantID, direct
 }
 
 func (r *Repository) touchCredential(ctx context.Context, id guid.ID, now time.Time) error {
+	tables, db, err := r.tables()
+	if err != nil {
+		return err
+	}
 	cutoff := now.Add(-5 * time.Minute)
-	return r.writer().WithContext(ctx).Table(r.table(model.Credential{}.TableName())).
+	return db.WithContext(ctx).Table(tables.Credentials.TableName()).
 		Where("id = ? AND revoked_at IS NULL AND (last_used_at IS NULL OR last_used_at < ?)", id, cutoff).
 		Update("last_used_at", now).Error
 }
 
 func (r *Repository) getResource(ctx context.Context, directoryID guid.ID, resourceType string, resourceID guid.ID, includeDeleted bool) (resourceRow, error) {
+	tables, db, err := r.tables()
+	if err != nil {
+		return resourceRow{}, err
+	}
 	var row resourceRow
-	query := r.writer().WithContext(ctx).Table(r.table(model.Resource{}.TableName())).
+	query := db.WithContext(ctx).Table(tables.Resources.TableName()).
 		Where("directory_id = ? AND resource_type = ? AND resource_id = ?", directoryID, resourceType, resourceID)
 	if !includeDeleted {
 		query = query.Where("deleted_at IS NULL")
 	}
-	err := query.Take(&row).Error
+	err = query.Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return row, ErrResourceMissing
 	}
@@ -455,8 +550,12 @@ func (r *Repository) getResource(ctx context.Context, directoryID guid.ID, resou
 }
 
 func (r *Repository) getResourceByExternalKey(ctx context.Context, directoryID guid.ID, resourceType, key string) (resourceRow, error) {
+	tables, db, err := r.tables()
+	if err != nil {
+		return resourceRow{}, err
+	}
 	var row resourceRow
-	err := r.writer().WithContext(ctx).Table(r.table(model.Resource{}.TableName())).
+	err = db.WithContext(ctx).Table(tables.Resources.TableName()).
 		Where("directory_id = ? AND resource_type = ? AND external_key = ?", directoryID, resourceType, key).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return row, ErrResourceMissing
@@ -468,7 +567,11 @@ func (r *Repository) getResourceByExternalKey(ctx context.Context, directoryID g
 }
 
 func (r *Repository) insertResource(ctx context.Context, row *resourceRow) error {
-	err := r.writer().WithContext(ctx).Table(r.table(model.Resource{}.TableName())).Create(row).Error
+	tables, db, err := r.tables()
+	if err != nil {
+		return err
+	}
+	err = db.WithContext(ctx).Table(tables.Resources.TableName()).Create(row).Error
 	if errors.Is(err, gorm.ErrDuplicatedKey) {
 		return ErrResourceConflict
 	}
@@ -479,7 +582,11 @@ func (r *Repository) insertResource(ctx context.Context, row *resourceRow) error
 }
 
 func (r *Repository) updateResource(ctx context.Context, row *resourceRow, expectedVersion int64) error {
-	result := r.writer().WithContext(ctx).Table(r.table(model.Resource{}.TableName())).
+	tables, db, err := r.tables()
+	if err != nil {
+		return err
+	}
+	result := db.WithContext(ctx).Table(tables.Resources.TableName()).
 		Where("directory_id = ? AND resource_type = ? AND resource_id = ? AND version = ?", row.DirectoryID, row.ResourceType, row.ResourceID, expectedVersion).
 		Select("external_id", "external_key", "version", "updated_at", "deleted_at").Updates(row)
 	if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
@@ -543,11 +650,15 @@ func (r *Repository) userPage(ctx context.Context, directoryID guid.ID, request 
 }
 
 func (r *Repository) userQuery(directoryID guid.ID, includeDeleted bool) (*gorm.DB, error) {
-	resourceTable := r.table(model.Resource{}.TableName())
-	directoryTable := r.table(model.Directory{}.TableName())
+	tables, db, err := r.tables()
+	if err != nil {
+		return nil, err
+	}
+	resourceTable := tables.Resources.TableName()
+	directoryTable := tables.Directories.TableName()
 	principals := r.foreign.principal.Principals.String()
 	members := r.foreign.access.TenantMembers.String()
-	query := r.writer().Table(resourceTable+" AS resource").
+	query := db.Table(resourceTable+" AS resource").
 		Select("resource.*, principal.login_name, principal.email, principal.display_name, principal.status AS principal_status, member.status AS membership_status").
 		Joins("JOIN "+directoryTable+" AS directory ON directory.id = resource.directory_id").
 		Joins("JOIN "+principals+" AS principal ON principal.id = resource.resource_id").
@@ -608,10 +719,14 @@ func (r *Repository) groupPage(ctx context.Context, directoryID guid.ID, request
 }
 
 func (r *Repository) groupQuery(directoryID guid.ID, includeDeleted bool) (*gorm.DB, error) {
-	resourceTable := r.table(model.Resource{}.TableName())
-	directoryTable := r.table(model.Directory{}.TableName())
+	tables, db, err := r.tables()
+	if err != nil {
+		return nil, err
+	}
+	resourceTable := tables.Resources.TableName()
+	directoryTable := tables.Directories.TableName()
 	groups := r.foreign.directory.Groups.String()
-	query := r.writer().Table(resourceTable+" AS resource").
+	query := db.Table(resourceTable+" AS resource").
 		Select("resource.*, scim_group.name, scim_group.status").
 		Joins("JOIN "+directoryTable+" AS directory ON directory.id = resource.directory_id").
 		Joins("JOIN "+groups+" AS scim_group ON scim_group.tenant_id = directory.tenant_id AND scim_group.id = resource.resource_id").
@@ -623,11 +738,15 @@ func (r *Repository) groupQuery(directoryID guid.ID, includeDeleted bool) (*gorm
 }
 
 func (r *Repository) groupMembers(ctx context.Context, directoryID, groupID guid.ID) ([]guid.ID, error) {
+	tables, db, err := r.tables()
+	if err != nil {
+		return nil, err
+	}
 	ids := make([]guid.ID, 0)
 	members := r.foreign.directory.GroupMembers.String()
-	err := r.writer().WithContext(ctx).Table(members+" AS member").Select("member.principal_id").
-		Joins("JOIN "+r.table(model.Directory{}.TableName())+" AS directory ON directory.tenant_id = member.tenant_id").
-		Joins("JOIN "+r.table(model.Resource{}.TableName())+" AS resource ON resource.directory_id = directory.id AND resource.resource_type = ? AND resource.resource_id = member.principal_id AND resource.deleted_at IS NULL", ResourceUser).
+	err = db.WithContext(ctx).Table(members+" AS member").Select("member.principal_id").
+		Joins("JOIN "+tables.Directories.TableName()+" AS directory ON directory.tenant_id = member.tenant_id").
+		Joins("JOIN "+tables.Resources.TableName()+" AS resource ON resource.directory_id = directory.id AND resource.resource_type = ? AND resource.resource_id = member.principal_id AND resource.deleted_at IS NULL", ResourceUser).
 		Where("directory.id = ? AND member.group_id = ?", directoryID, groupID).Order("member.principal_id ASC").Scan(&ids).Error
 	if err != nil {
 		return nil, fmt.Errorf("list SCIM group members: %w", err)

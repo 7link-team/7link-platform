@@ -40,8 +40,12 @@ func (r *Repository) FindTenantBySlugOn(
 	if err != nil {
 		return Tenant{}, false, err
 	}
+	tables, _, err := repo.tables()
+	if err != nil {
+		return Tenant{}, false, err
+	}
 	var row model.Tenant
-	err = repo.writer().WithContext(ctx).Table(repo.table(row.TableName())).
+	err = repo.writer().WithContext(ctx).Table(tables.Tenants.TableName()).
 		Where("slug = ?", slug).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return Tenant{}, false, nil

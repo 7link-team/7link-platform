@@ -55,7 +55,9 @@ func TestProvisioningRepositoryConstraintsAndCAS(t *testing.T) {
 	assert.ErrorIs(t, repo.deleteTarget(t.Context(), env.auth.TenantID, testID("missing")), ErrTargetMissing)
 
 	assert.Panics(t, func() { NewRepository(nil) })
-	assert.Equal(t, model.Directory{}.TableName(), repo.table(model.Directory{}.TableName()))
+	tables, _, err := repo.tables()
+	require.NoError(t, err)
+	assert.Equal(t, model.Directory{}.TableName(), tables.Directories.TableName())
 }
 
 func TestProvisioningRepositoryAvailabilityAndTransactionHelpers(t *testing.T) {

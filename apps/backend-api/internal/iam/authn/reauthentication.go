@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/authn/model"
-	"7link.com/platform/internal/iam/authn/query"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/passwordx"
@@ -132,6 +131,10 @@ func (s *Service) BeginReauthentication(ctx context.Context, cookieHeader, purpo
 		result.Options = options
 	}
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
+		tables, _, err := repo.tables()
+		if err != nil {
+			return err
+		}
 		version, err := s.lockReauthenticationSession(ctx, repo, claims.PrincipalID, row.SessionHash)
 		if err != nil {
 			return err
@@ -146,7 +149,7 @@ func (s *Service) BeginReauthentication(ctx context.Context, cookieHeader, purpo
 				return err
 			}
 		}
-		if err := repo.writer().WithContext(ctx).Table(repo.table(row.TableName())).Create(&row).Error; err != nil {
+		if err := repo.writer().WithContext(ctx).Table(tables.ReauthenticationChallenges.TableName()).Create(&row).Error; err != nil {
 			return err
 		}
 		return repo.appendAudit(ctx, securityAudit(claims.PrincipalID, "reauthentication_started", "success"))
@@ -173,7 +176,11 @@ func (s *Service) lockReauthenticationSession(ctx context.Context, repo *Reposit
 	if err != nil {
 		return 0, err
 	}
-	sessions := query.BindNames(repo.prefix()).Sessions.String()
+	tables, _, err := repo.tables()
+	if err != nil {
+		return 0, err
+	}
+	sessions := tables.Sessions.TableName()
 	if err := repo.writer().WithContext(ctx).Table(sessions).Where("id_hash = ?", sessionHash).
 		Update("last_seen_at", gorm.Expr("last_seen_at")).Error; err != nil {
 		return 0, err
@@ -192,7 +199,11 @@ func (s *Service) reauthenticationOn(ctx context.Context, repo *Repository, prin
 		return nil, err
 	}
 	var row model.ReauthenticationChallenge
-	err = repo.writer().WithContext(ctx).Table(repo.table(row.TableName())).Where("id_hash = ?", hash).Take(&row).Error
+	tables, _, err := repo.tables()
+	if err != nil {
+		return nil, err
+	}
+	err = repo.writer().WithContext(ctx).Table(tables.ReauthenticationChallenges.TableName()).Where("id_hash = ?", hash).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, authnext.ErrInvalidCredentials
 	}
@@ -222,6 +233,10 @@ func (s *Service) VerifyReauthentication(ctx context.Context, cookieHeader, proo
 		if row.VerifiedAt != nil || row.Method == "federation" {
 			return authnext.ErrInvalidCredentials
 		}
+		tables, _, err := repo.tables()
+		if err != nil {
+			return err
+		}
 		valid := false
 		switch row.Method {
 		case "password":
@@ -250,7 +265,7 @@ func (s *Service) VerifyReauthentication(ctx context.Context, cookieHeader, proo
 		}
 		if !valid {
 			invalid = true
-			return repo.writer().WithContext(ctx).Table(repo.table(row.TableName())).Where("id_hash = ?", row.IDHash).
+			return repo.writer().WithContext(ctx).Table(tables.ReauthenticationChallenges.TableName()).Where("id_hash = ?", row.IDHash).
 				Update("attempts", gorm.Expr("attempts + 1")).Error
 		}
 		return s.markReauthenticationVerified(ctx, repo, row)
@@ -306,7 +321,11 @@ func (s *Service) verifyReauthenticationPasskey(ctx context.Context, repo *Repos
 }
 
 func (s *Service) markReauthenticationVerified(ctx context.Context, repo *Repository, row *model.ReauthenticationChallenge) error {
-	result := repo.writer().WithContext(ctx).Table(repo.table(row.TableName())).
+	tables, _, err := repo.tables()
+	if err != nil {
+		return err
+	}
+	result := repo.writer().WithContext(ctx).Table(tables.ReauthenticationChallenges.TableName()).
 		Where("id_hash = ? AND verified_at IS NULL AND consumed_at IS NULL", row.IDHash).Update("verified_at", s.now().UTC())
 	if result.Error != nil {
 		return result.Error
@@ -333,7 +352,11 @@ func (s *Service) ConsumeReauthenticationOn(ctx context.Context, tx *gorm.DB, pr
 	if row.VerifiedAt == nil || row.Purpose != purpose || row.Target != target {
 		return authnext.ErrInvalidCredentials
 	}
-	result := tx.WithContext(ctx).Table(repo.table(row.TableName())).
+	tables, _, err := repo.tables()
+	if err != nil {
+		return err
+	}
+	result := tx.WithContext(ctx).Table(tables.ReauthenticationChallenges.TableName()).
 		Where("id_hash = ? AND consumed_at IS NULL", row.IDHash).Update("consumed_at", s.now().UTC())
 	if result.Error != nil {
 		return result.Error

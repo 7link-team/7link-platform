@@ -194,12 +194,12 @@ func TestMFARecoveryCooldownAndDisabledState(t *testing.T) {
 	claims, err := service.Authenticate(t.Context(), "", cookie)
 	require.NoError(t, err)
 	future := service.now().Add(time.Hour)
-	require.NoError(t, harness.db.Table(harness.repository.table("iam_credentials")).
+	require.NoError(t, harness.db.Table(harness.repository.prefix()+"iam_credentials").
 		Where("principal_id = ?", claims.PrincipalID).Update("recovery_cooldown_until", future).Error)
 	_, err = service.BeginTOTPEnrollment(t.Context(), "", cookie, "correct horse battery staple")
 	assert.ErrorIs(t, err, authnext.ErrRecoveryCooldown)
 
-	require.NoError(t, harness.db.Table(harness.repository.table("iam_credentials")).
+	require.NoError(t, harness.db.Table(harness.repository.prefix()+"iam_credentials").
 		Where("principal_id = ?", claims.PrincipalID).Update("recovery_cooldown_until", nil).Error)
 	assert.ErrorIs(t, service.DisableTOTP(
 		t.Context(), "", cookie, "correct horse battery staple", "000000",

@@ -12,6 +12,7 @@ type (
 	SAMLServiceProviders     = sAMLServiceProvider
 	SAMLIDPKeys              = sAMLIDPKey
 	IdentityLinkTransactions = identityLinkTransaction
+	ReplayClaims             = replayClaim
 )
 
 type Tables struct {
@@ -20,6 +21,7 @@ type Tables struct {
 	SAMLServiceProviders     *SAMLServiceProviders
 	SAMLIDPKeys              *SAMLIDPKeys
 	IdentityLinkTransactions *IdentityLinkTransactions
+	ReplayClaims             *ReplayClaims
 }
 
 // TableNames is the physical name of every table federation owns under one
@@ -30,6 +32,7 @@ type TableNames struct {
 	SAMLServiceProviders     gormx.TableName
 	SAMLIDPKeys              gormx.TableName
 	IdentityLinkTransactions gormx.TableName
+	ReplayClaims             gormx.TableName
 }
 
 // BindNames returns the physical name of every table federation owns. It is the
@@ -42,12 +45,13 @@ func BindNames(prefix string) TableNames {
 		SAMLServiceProviders:     gormx.NewTableName(prefix, model.SAMLServiceProvider{}.TableName()),
 		SAMLIDPKeys:              gormx.NewTableName(prefix, model.SAMLIDPKey{}.TableName()),
 		IdentityLinkTransactions: gormx.NewTableName(prefix, model.IdentityLinkTransaction{}.TableName()),
+		ReplayClaims:             gormx.NewTableName(prefix, model.ReplayClaim{}.TableName()),
 	}
 }
 
 // Bind applies prefix to every table owned by the federation module. It builds
 // from BindNames, so the prefix reaches the generated query objects through one
-// path rather than five.
+// path rather than six.
 func Bind(db *gorm.DB, prefix string) *Tables {
 	names := BindNames(prefix)
 	q := Use(db)
@@ -57,5 +61,6 @@ func Bind(db *gorm.DB, prefix string) *Tables {
 		SAMLServiceProviders:     q.SAMLServiceProvider.Table(names.SAMLServiceProviders.String()),
 		SAMLIDPKeys:              q.SAMLIDPKey.Table(names.SAMLIDPKeys.String()),
 		IdentityLinkTransactions: q.IdentityLinkTransaction.Table(names.IdentityLinkTransactions.String()),
+		ReplayClaims:             q.ReplayClaim.Table(names.ReplayClaims.String()),
 	}
 }
