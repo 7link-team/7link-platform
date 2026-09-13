@@ -662,3 +662,28 @@ federation PRINCIPAL 由 `Scan` 改为 `Take`，**多一个 `LIMIT 1`**（主键
 `make ci` **EXIT=0**（总覆盖率 **90.1%**）、`make test-mysql8-run` **EXIT=0**（`TestIAMPerformanceExternalDatabase`
 指纹比对 PASS、schema lock 219 文件未变）、`gofmt -l internal pkg` 空、账本 budget **736→581**
 （条目 287→237；`handwritten-sql` 7 key/15 处**逐 key 相同**）；`git status` 仅 22 个受控改动、无临时产物
+
+## 2026-09-13 5 处账本层修复 + SQL 零手写普查（用户「your call」后执行）
+
+**5 处修复**：core/relationship.go 两处语句的表名（`iam_relationships`/`iam_entities`/
+`iam_resource_relationships`）与 organization/tenant.go:112（`iam_tenants`）改走各自模块
+`query.BindNames(prefix)`（`Relationships/Entities/ResourceRelationships/Tenants`）。
+SQL 文本逐字节不变（恒等式替换）。**账本 29→20**（12 条目/20 计数单位；9 计数单位消失，
+手工下调、未用 REBASELINE、`QUERY_GATE_UPDATE=1` 幂等 md5 不变）。架构门禁绿。
+`make ci` 在本沙箱跑不起来（fmt-check 首步 Git-bash `CreateFileMapping` 被拒——环境限制，
+与既有 GnuWin32/bash 记录同类），改为逐门禁直接验证：gofmt 整树 clean、go vet 两包 0、
+`go build ./...` 0、core+organization 模块测试 ok、架构门禁绿且幂等；全量 `go test ./internal/...`
+与 `go -C tests test ./...` 后台验证中。
+
+**交付 `apps/backend-api/docs/sql-zero-census.md`**（359 SQL 站点 = B1 类 262 / B2 77 / B3 20；
+另 B-NA ≈51、迁移物料另计）。口径=片段层（一切 SQL 字符串字面量），与账本层（表名位置，
+budget 20）分离。含 B2 决策清单 D1-D10、B3 冻结清单（20 站带锚点）、里程碑 M1-M4、
+扫描器模式集与盲区记录（**点在上行行尾、方法名在下行行首的续行形态**，21 模式扫描器
+系统性漏抓，oauth 实测漏 23/24）。
+
+**普查新发现（需拍板）**：① governance `reviewCounts`（SUM CASE）可 gen 化（GROUP BY+Go 折叠）
+→ 账本 key `query` 2→1、budget 20→19 预判（推翻了旧"13 条表达不了"原判，与 goose/5 处同类）；
+② identity 4 站可经 `core/query` 降 B1（core(1)<identity(3) 无反向边）；③ organization/oauth
+方向不可（注册序 + 既有反向 Go import）；④ authn↔identity 死角维持（D37/P5）。
+
+**提交计划（未推送）**：census 文档一个提交 + 5 处修复与账本一个提交。
