@@ -708,3 +708,11 @@ budget 20）分离。含 B2 决策清单 D1-D10、B3 冻结清单（20 站带锚
 - **SKILL「十、Resolver Isolation」**：执行规则（动库代码前先分类表名；MUST NOT 清单；解析路径优先级；改完自检；不扩大范围）。
 - **census §5.4 账本重标记 + §8 门禁草案**：9 prefix()（leakage）+ 4 table()（reconstruction）+ NewRevisionStore（propagation）+ 1 goose（B3）分裂定性；resolver-isolation 规则形态 + allowlist + 迁移期机制，明确"未实施"。
 - 实测 40 处 TablePrefix() 全量分三类：~24 合法 / 9+4+NewRevisionStore 违规面 / goose B3 + S3-URL 不误伤。
+
+## 2026-09-13（续）D41 第 1 步：4×table() 帮手清零 —— 账本 19→15
+
+4 模块并行子代理 + 主代理收尾，已提交（未推送）：
+- **authn**（6 站 reauthentication.go，删 `table()`、去无关 `query` import、测试改 `prefix()+...` 形态）、**federation**（26 站，新增 `tables()`——原模块缺；resolver 补 **ReplayClaims** 字段+漂移门禁 5→6 表）、**organization**（49 站代理转 + 主代理收尾 2 个动态循环站点：`deleteGroup`/`deletePosition` 的 checks 循环拆成逐表 typed 块，错误消息保留逻辑名；删 `table()`）、**provisioning**（33 站，新增 `tables()`、删 `table()`）。
+- 生产代码 `.table(` 残留 **0**；SQL 文本逐字节不变（`tables.X.TableName()` == `prefix+logical`，各模块 `table_test` 漂移门禁 + frozen 断言佐证）；`prefix()` 保留（仅 resolver 入口用途：`tables()` 与 `query.BindNames(repo.prefix())`——D41 Allowed，属下一步 9×prefix() 范围）。
+- 验证：gofmt 全树空、`go build ./...` 0、4 模块测试全 ok、全量 `go test ./internal/...` 后台跑；账本 **19→15**（QUERY_GATE_UPDATE 移除 4 键 955a3f/6520c/802198/e85793，手工下调 budget、幂等 md5 不变）、门禁绿。
+- 提交计划：4 模块改动 + 账本一笔；census/state 文档另一笔。

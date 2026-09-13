@@ -12,7 +12,7 @@
 
 | 层 | 对象 | 度量 | 现状 |
 |---|---|---|---|
-| 账本层 | 表名位置（无主表名 / 裸表名 / 前缀拼接 / format 字符串） | 查询门禁账本 `query_gate_ledger.json` | budget **19**（2026-09-13 执行 5 处账本层修复 29→20，再模板化 recordLoginFailure 20→19；手工下调、与违规数精确相等，未用 REBASELINE） |
+| 账本层 | 表名位置（无主表名 / 裸表名 / 前缀拼接 / format 字符串） | 查询门禁账本 `query_gate_ledger.json` | budget **15**（29→20→19 后，2026-09-13 D41 第 1 步 4×`table()` 清零再降 19→15；手工下调、与违规数精确相等，未用 REBASELINE） |
 | 片段层（本普查） | **任何 SQL 字符串字面量**（WHERE 谓词、SELECT 列清单、ORDER、JOIN 子句、gorm.Expr、Raw 包裹、常量/变量模板、续行链式） | 本文件 | **349 个 SQL 站点** |
 
 两层独立：一条语句可能在账本层 0 命中（没有表名字面量）却在片段层是手写（如 audit 归档状态机里的 `next_attempt <= <clock>` 谓词）。**本普查 = 片段层全集**。
@@ -109,6 +109,8 @@ B2 = gen 无同构 API，清零必须"换实现"，而换实现会动语义/性�
 | `audit/anchor.go`、`authn/returnurl.go` 的 `prefix+"..."` | 若干 | 非 DB 表（S3 键/URL），不属此规则 |
 
   9 `prefix()` + 4 `table()` 不是 13 个独立特例，是同一个缺口的两种表现。清理链路：4 `table()` 清零 → 账本 15；goose 走 goosex 访问器 → 14；9 `prefix()` 与 `NewRevisionStore` 归位随 115 调用点族一并做。执行规则见 SKILL「十」。**不改 `tests/architecture` 直到清理完成。**
+
+**D41 第 1 步已执行（2026-09-13）**：4 个 `table(name)` 帮手全部清零（authn 6 站 / federation 26 站 + resolver 补 ReplayClaims / organization 51 站含 2 个循环站点逐表 typed 化 / provisioning 33 站）；生产代码 `.table(` 残留 **0**；SQL 文本逐字节不变（绑定名 == prefix+logical，各模块 `table_test` 漂移门禁钉住）；账本 **19→15**（4 条 concatenated 键消失：955a3f/6520c/802198/e85793，手工下调、幂等）。剩余：9 `prefix()`（resolver 入口用途）+ `NewRevisionStore` 归位 + goose（账本 15→14）。
 
 ---
 
