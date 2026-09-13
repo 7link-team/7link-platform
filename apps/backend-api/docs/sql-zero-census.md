@@ -12,7 +12,7 @@
 
 | 层 | 对象 | 度量 | 现状 |
 |---|---|---|---|
-| 账本层 | 表名位置（无主表名 / 裸表名 / 前缀拼接 / format 字符串） | 查询门禁账本 `query_gate_ledger.json` | budget **14**（29→20→19→15 后，2026-09-13 D41 第 2 步 Part A `NewRevisionStore` 归位再降 15→14；手工下调、与违规数精确相等，未用 REBASELINE） |
+| 账本层 | 表名位置（无主表名 / 裸表名 / 前缀拼接 / format 字符串） | 查询门禁账本 `query_gate_ledger.json` | budget **13**（29→20→19→15→14 后，2026-09-13 D41 第 2 步 Part B `reviewCounts` 改写再降 14→13；手工下调、与违规数精确相等，未用 REBASELINE） |
 | 片段层（本普查） | **任何 SQL 字符串字面量**（WHERE 谓词、SELECT 列清单、ORDER、JOIN 子句、gorm.Expr、Raw 包裹、常量/变量模板、续行链式） | 本文件 | **349 个 SQL 站点** |
 
 两层独立：一条语句可能在账本层 0 命中（没有表名字面量）却在片段层是手写（如 audit 归档状态机里的 `next_attempt <= <clock>` 谓词）。**本普查 = 片段层全集**。
@@ -117,6 +117,7 @@ B2 = gen 无同构 API，清零必须"换实现"，而换实现会动语义/性�
 - **Part B 9×`prefix()` 归位 → 账本保持 14**：9 个模块 Repository 的 `prefix()` 方法全部删除；各 `query/table.go` 新增 `BindWithNames(db, names TableNames)`（`Bind(db, prefix)` 委托它），模块构造时 `query.BindNames(runtime.TablePrefix())` 一次绑定存入 `names` 字段，`tables()`/resolver 入口从此取已绑定名；core 的 `MembershipChecker.prefix()`、`Authorizer.prefix`、`tenantAdministratorGuard.prefix` 一并替换为 names。SQL 文本逐字节不变 → 账本 6 条目未动（concatenated c71210 ×1 + handwritten-sql 61b570 ×8 / 62c6ad ×2 / 19680d / 8f8cec / 9b0891）。
 - **形态注意**：`names query.TableNames` 是存储类型，直接作为导出结构体字段会触发 public-storage-type 门禁 → 嵌入**非导出** `repositoryTables{names query.TableNames}`（core 共享一份，其余模块各自一份），`r.names` 经字段提升访问，导出 API 面不泄漏存储类型。
 - **验证**：gofmt 全树 clean、`go build ./...` exit 0、9 个 IAM 模块 `-count=1` 串行全 ok（AGGREGATE=0）、`tests/architecture` 门禁 ok（3.6s）。
+- **Part B 后续：`reviewCounts` 改写 → 账本 14→13**：governance `reviewCounts`（原 Raw 语句：`FROM prefix+name` 拼接 + 3×`SUM(CASE WHEN decision=...)` 条件聚合）改为 gen DO 查询 —— `Select(ReviewID, Decision, ReviewID.Count().As("n")).Group(ReviewID, Decision)` + **Go 侧 fold**（`N` 累加进 total，按 decision 分桶 pending/kept/revoked）。`COUNT(review_id)` ≡ `COUNT(*)`（`review_id BIGINT NOT NULL`，迁移钉死）。语义等价由既有行为断言证明（review_test.go 经 `ListReviews` 断言 Total/Pending/Kept/Revoked）。账本 `handwritten-sql:62c6ad` 2→1，budget 13 = 6 条目和（c71210 ×1 + 61b570 ×8 + 62c6ad ×1 + 19680d / 8f8cec / 9b0891 各 ×1），手工下调、幂等、门禁绿。
 
 ---
 

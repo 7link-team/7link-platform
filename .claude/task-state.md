@@ -734,3 +734,12 @@ budget 20）分离。含 B2 决策清单 D1-D10、B3 冻结清单（20 站带锚
 - **验证（最终状态全绿）**：gofmt 全树 **clean**（先 `gofmt -w` 8 个未对齐文件）、`go build ./...` exit **0**、9 个 IAM 模块 `-count=1` 串行测试 **AGGREGATE=0**、`tests/architecture` 门禁 **ok 3.6s**。
 - **账本 14 不变**（SQL 文本逐字节不变）：1 concatenated（c71210×1）+ 5 handwritten-sql（61b570×8 / 62c6ad×2 / 19680d / 8f8cec / 9b0891），6 条目。剩余唯一可降项是 goose 版本表（principallifecycle.go:47，B3 例外，需 goosex 访问器）。
 - 文档同步：census §5.4 清理链路改写为已全部执行 + 第 2 步记录（本文档同笔）。
+
+## 2026-09-13（续）D41 第 2 步 Part B 后续：governance reviewCounts 改写 —— 账本 14→13
+
+用户拍板继续清理，唯一可再降项 `reviewCounts` 已改写（未提交）：
+- 原语句：Raw + `FROM prefix+name` 拼接 + 3×`SUM(CASE WHEN decision=...)`（条件聚合 gen 表达不了）。改为 gen DO：`Select(ReviewID, Decision, ReviewID.Count().As("n")).Group(ReviewID, Decision)` + **Go 侧 fold**：每 (review, decision) 桶的 `N` 累加进 total、按 decision 分桶 pending/kept/revoked。`COUNT(review_id)` ≡ `COUNT(*)`（迁移里 `review_id BIGINT NOT NULL` 钉死）。返回 map 形状与调用方（`ListReviews` 的 `counts[row.ID]` + 零值兜底）完全不变。
+- 踩坑：`accessReviewItemDo.Scan` 返回 `(err error)`（裸 error，非 gen.ResultInfo 链）——第一版写成 `.Scan(&rows).Error` 编译报 "err is a func value, not called"（`.Error` 命中 error 接口方法值），改为直接 `if err := ...Scan(&rows); err != nil`。
+- **验证（实测）**：`go build ./...` 0、`go test -count=1 ./internal/iam/governance/` ok、架构门禁全绿（4.2s 全包）；语义等价由既有行为断言证明（review_test.go 经 `ListReviews` 断言 Total/Pending/Kept/Revoked），未新增测试。
+- 账本：`QUERY_GATE_UPDATE=1` 重算 → `handwritten-sql:62c6ad` **2→1**，budget 手工下调 **14→13** = 6 条目和（c71210×1 + 61b570×8 + 62c6ad×1 + 19680d/8f8cec/9b0891 各×1），幂等、门禁绿。
+- 剩余唯一可降项：goose 版本表（principallifecycle.go:47，B3 例外，需 goosex 访问器）。
