@@ -55,7 +55,7 @@ func joinedTestTables(t *testing.T, prefix string) *foreignTables {
 // helpers that take the assembled set rather than a holder.
 func testAuthorizationTables(t *testing.T, prefix string) query.AuthorizationTables {
 	t.Helper()
-	names, err := joinedTestTables(t, prefix).authorizationTables(prefix)
+	names, err := joinedTestTables(t, prefix).authorizationTables(query.BindNames(prefix))
 	require.NoError(t, err)
 	return names
 }
@@ -134,7 +134,7 @@ func TestJoinedTablesBindBothOwners(t *testing.T) {
 	assert.Equal(t, "iam_groups", directory.Groups.Logical())
 	assert.False(t, directory.Groups.IsZero())
 
-	names, err := tables.authorizationTables("sl_")
+	names, err := tables.authorizationTables(query.BindNames("sl_"))
 	require.NoError(t, err)
 	assert.Equal(t, "sl_iam_roles", names.Tables.Roles.String())
 	assert.Equal(t, "sl_iam_member_departments", names.Directory.MemberDepartments.String())
@@ -182,7 +182,7 @@ func TestJoinedTablesReportUnboundAsUnavailable(t *testing.T) {
 	t.Parallel()
 
 	unbound := &foreignTables{}
-	names, err := unbound.authorizationTables("sl_")
+	names, err := unbound.authorizationTables(query.BindNames("sl_"))
 	assert.ErrorIs(t, err, ErrUnavailable)
 	assert.Empty(t, names.Tables.Roles.String())
 	directory, err := unbound.directoryNames()
@@ -191,7 +191,7 @@ func TestJoinedTablesReportUnboundAsUnavailable(t *testing.T) {
 
 	var absent *foreignTables
 	assert.False(t, absent.bound())
-	_, err = absent.authorizationTables("sl_")
+	_, err = absent.authorizationTables(query.BindNames("sl_"))
 	assert.ErrorIs(t, err, ErrUnavailable)
 	_, err = absent.directoryNames()
 	assert.ErrorIs(t, err, ErrUnavailable)

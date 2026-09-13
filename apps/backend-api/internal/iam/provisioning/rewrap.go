@@ -3,7 +3,6 @@ package provisioning
 import (
 	"context"
 
-	"7link.com/platform/internal/iam/provisioning/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/keyringx"
 	"gorm.io/gorm"
@@ -45,7 +44,7 @@ func (m *Module) RewrapSecrets(
 // through with the ciphertext rather than reseal the bytes on their own.
 func (s *Service) targetTokenStore(tx *gorm.DB) keyringx.SealedStore {
 	const column = "bearer_token_ciphertext"
-	table := query.BindNames(s.repo.prefix()).Targets.String()
+	table := s.repo.names.Targets.String()
 	return keyringx.SealedStore{
 		Name:    table + "." + column,
 		Purpose: "scim-target-bearer",

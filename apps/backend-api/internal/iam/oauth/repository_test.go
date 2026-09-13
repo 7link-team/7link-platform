@@ -302,8 +302,9 @@ func TestRepositoryInfrastructureContracts(t *testing.T) {
 	assert.Panics(t, func() { NewRepository(runtime, ids, nil) })
 	repo := NewRepository(runtime, ids, appender)
 	assert.Nil(t, (*Repository)(nil).writer())
-	assert.Empty(t, (*Repository)(nil).prefix())
-	_, _, err := repo.tables()
+	_, _, err := (*Repository)(nil).tables()
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, _, err = repo.tables()
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
 	_, err = repo.pinWriter()
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
@@ -384,7 +385,7 @@ func TestRepositoryMethodsFailClosedWithoutWriter(t *testing.T) {
 
 func TestRepositoryPrefixAndTransactionReuse(t *testing.T) {
 	harness := newOAuthHarness(t, "sl_")
-	assert.Equal(t, "sl_", harness.repo.prefix())
+	assert.Equal(t, "sl_iam_oauth_clients", harness.repo.names.Clients.String())
 	tables, db, err := harness.repo.tables()
 	require.NoError(t, err)
 	assert.Equal(t, "sl_iam_oauth_clients", tables.Clients.TableName())

@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"7link.com/platform/internal/iam/provisioning/query"
 	"7link.com/platform/pkg/module"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -53,7 +52,7 @@ func (m *Module) Collect(ch chan<- prometheus.Metric) {
 			Failed     int64
 			Retiring   int64
 		}
-		names := query.BindNames(m.service.repo.prefix())
+		names := m.service.repo.names
 		targets, targetResources := names.Targets.String(), names.TargetResources.String()
 		err := m.service.repo.writer().WithContext(ctx).Table(targets).
 			Select("COALESCE(SUM(CASE WHEN operation_token <> 0 THEN 1 ELSE 0 END), 0) AS unfinished, COALESCE(SUM(CASE WHEN sync_failures > 0 THEN 1 ELSE 0 END), 0) AS failed, COALESCE(SUM(CASE WHEN retiring THEN 1 ELSE 0 END), 0) AS retiring").Scan(&state).Error

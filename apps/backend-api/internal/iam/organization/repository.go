@@ -22,14 +22,24 @@ var errRepositoryUnavailable = errors.New("organization repository unavailable")
 type departmentRow = model.Department
 type closureRow = model.DepartmentClosure
 
+// repositoryTables holds the table names bound under the deployment prefix. It
+// is an unexported embedded type so the exported Repository's API surface
+// carries no storage type (public-storage-type rule).
+type repositoryTables struct{ names query.TableNames }
+
 // Repository persists organization state through the runtime's current writer.
 type Repository struct {
 	runtime   *appenv.Runtime
 	ids       guid.Source
 	appender  audit.Appender
 	revisions *core.RevisionStore
-	db        *gorm.DB
-	inTx      bool
+	// repositoryTables holds the physical name of every table this repository
+	// owns, bound to the deployment prefix once at construction. Embedded
+	// unexported so the exported Repository carries no storage type; resolver
+	// reads resolve through it.
+	repositoryTables
+	db   *gorm.DB
+	inTx bool
 	// foreign holds the names of the tables this repository reads but does
 	// not own. It is a pointer so a transactional clone reads the same
 	// publication as the repository it came from.
@@ -46,7 +56,7 @@ func NewRepository(runtime *appenv.Runtime, ids guid.Source, appender audit.Appe
 	}
 	return &Repository{
 		runtime: runtime, ids: ids, appender: appender, revisions: revisions,
-		foreign: &foreignTables{},
+		repositoryTables: repositoryTables{names: query.BindNames(runtime.TablePrefix())}, foreign: &foreignTables{},
 	}
 }
 
@@ -63,13 +73,6 @@ func (r *Repository) writer() *gorm.DB {
 	return r.runtime.Database().Write()
 }
 
-func (r *Repository) prefix() string {
-	if r == nil || r.runtime == nil {
-		return ""
-	}
-	return r.runtime.TablePrefix()
-}
-
 // tables returns the bound query set for every table organization owns under
 // the deployment prefix. It is the module's resolver path: statements take
 // their physical names from these objects instead of building them from the
@@ -80,7 +83,7 @@ func (r *Repository) tables() (*query.Tables, *gorm.DB, error) {
 	if db == nil {
 		return nil, nil, errRepositoryUnavailable
 	}
-	return query.Bind(db, r.prefix()), db, nil
+	return query.BindWithNames(db, r.names), db, nil
 }
 
 func (r *Repository) withDB(db *gorm.DB, inTx bool) *Repository {

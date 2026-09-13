@@ -159,7 +159,7 @@ func TestCoreUnavailableAndInvalidDependencyBranches(t *testing.T) {
 	ctx := context.Background()
 	var repo *Repository
 	assert.Nil(t, repo.writer())
-	assert.Empty(t, repo.prefix())
+	assert.Zero(t, new(Repository).names)
 	_, _, err := repo.tables()
 	assert.ErrorIs(t, err, ErrUnavailable)
 	_, err = repo.pinWriter()
@@ -193,7 +193,7 @@ func TestCoreUnavailableAndInvalidDependencyBranches(t *testing.T) {
 	var checker *MembershipChecker
 	_, err = checker.IsMemberActive(ctx, 1, 2)
 	assert.ErrorIs(t, err, ErrUnavailable)
-	assert.Empty(t, checker.prefix())
+	assert.Zero(t, new(MembershipChecker).names)
 }
 
 func TestRepositoryPropagatesPolicyTableFailures(t *testing.T) {

@@ -19,7 +19,7 @@ const (
 )
 
 type tenantAdministratorGuard struct {
-	prefix    string
+	names     query.TableNames
 	revisions *RevisionStore
 	now       func() time.Time
 	foreign   *foreignTables
@@ -38,7 +38,7 @@ func NewAdministratorGuard(runtime *appenv.Runtime) *tenantAdministratorGuard {
 		panic(err)
 	}
 	return &tenantAdministratorGuard{
-		prefix: runtime.TablePrefix(), revisions: revisions, now: time.Now,
+		names: query.BindNames(runtime.TablePrefix()), revisions: revisions, now: time.Now,
 		foreign: &foreignTables{},
 	}
 }
@@ -76,7 +76,7 @@ func (guard *tenantAdministratorGuard) hasDurableAdministrator(
 	tenantID guid.ID,
 ) (bool, error) {
 	now := guard.now().UTC().Truncate(time.Millisecond)
-	tables, err := guard.foreign.authorizationTables(guard.prefix)
+	tables, err := guard.foreign.authorizationTables(guard.names)
 	if err != nil {
 		return false, err
 	}

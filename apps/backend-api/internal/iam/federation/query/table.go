@@ -53,7 +53,14 @@ func BindNames(prefix string) TableNames {
 // from BindNames, so the prefix reaches the generated query objects through one
 // path rather than six.
 func Bind(db *gorm.DB, prefix string) *Tables {
-	names := BindNames(prefix)
+	return BindWithNames(db, BindNames(prefix))
+}
+
+// BindWithNames binds every table the federation module owns to db, using names
+// that were already resolved for the deployment prefix. Repositories keep the
+// resolved names for their lifetime and call this instead of carrying the
+// prefix around.
+func BindWithNames(db *gorm.DB, names TableNames) *Tables {
 	q := Use(db)
 	return &Tables{
 		Providers:                q.Provider.Table(names.Providers.String()),

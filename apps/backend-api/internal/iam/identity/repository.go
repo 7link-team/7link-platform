@@ -21,13 +21,23 @@ var (
 
 // Repository persists identity state through the runtime's current writer.
 // A transactional clone pins one writer for the complete workflow.
+// repositoryTables holds the table names bound under the deployment prefix. It
+// is an unexported embedded type so the exported Repository's API surface
+// carries no storage type (public-storage-type rule).
+type repositoryTables struct{ names query.TableNames }
+
 type Repository struct {
 	runtime   *appenv.Runtime
 	ids       guid.Source
 	appender  audit.Appender
 	revisions *core.RevisionStore
-	db        *gorm.DB
-	inTx      bool
+	// repositoryTables holds the physical name of every table this repository
+	// owns, bound to the deployment prefix once at construction. It is embedded
+	// unexported so the exported Repository carries no storage type; resolver
+	// reads and lifecycle statements resolve through it.
+	repositoryTables
+	db   *gorm.DB
+	inTx bool
 	// foreign holds the names of the tables this repository reads but does not
 	// own. The module's wiring attaches the holder its connectors bind; a
 	// repository built without one reports the published tables as missing
@@ -49,7 +59,7 @@ func NewRepository(runtime *appenv.Runtime, ids guid.Source, appender audit.Appe
 	}
 	return &Repository{
 		runtime: runtime, ids: ids, appender: appender, revisions: revisions,
-		foreign: &foreignTables{},
+		repositoryTables: repositoryTables{names: query.BindNames(runtime.TablePrefix())}, foreign: &foreignTables{},
 	}
 }
 
@@ -66,19 +76,12 @@ func (r *Repository) writer() *gorm.DB {
 	return r.runtime.Database().Write()
 }
 
-func (r *Repository) prefix() string {
-	if r == nil || r.runtime == nil {
-		return ""
-	}
-	return r.runtime.TablePrefix()
-}
-
 func (r *Repository) tables() (*query.Tables, *gorm.DB, error) {
 	db := r.writer()
 	if db == nil {
 		return nil, nil, errRepositoryUnavailable
 	}
-	return query.Bind(db, r.prefix()), db, nil
+	return query.BindWithNames(db, r.names), db, nil
 }
 
 func (r *Repository) withDB(db *gorm.DB, inTx bool) *Repository {

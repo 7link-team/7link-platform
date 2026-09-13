@@ -214,7 +214,7 @@ func (a *Authorizer) loadAuthorizationSourceExpiries(
 		temporaryRoles: map[guid.ID]time.Time{}, groups: map[guid.ID]time.Time{},
 		positions: map[guid.ID]time.Time{}, entityBindings: map[entityBindingSourceKey]time.Time{},
 	}
-	coreTables := corequery.Bind(a.db, a.prefix)
+	coreTables := corequery.BindWithNames(a.db, a.names)
 	temporaryRoles, err := coreTables.TemporaryRoleGrants.WithContext(ctx).Where(
 		coreTables.TemporaryRoleGrants.TenantID.Eq(tenantID),
 		coreTables.TemporaryRoleGrants.PrincipalID.Eq(subject),
@@ -330,7 +330,7 @@ func (a *Authorizer) loadAuthorizationSourceLabels(
 			entityIDs[id] = true
 		}
 	}
-	coreTables := corequery.Bind(a.db, a.prefix)
+	coreTables := corequery.BindWithNames(a.db, a.names)
 	if len(roleIDs) > 0 {
 		rows, err := coreTables.Roles.WithContext(ctx).Where(
 			coreTables.Roles.TenantID.Eq(tenantID),

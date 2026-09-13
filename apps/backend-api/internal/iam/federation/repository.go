@@ -80,8 +80,18 @@ func (r *Repository) sweepReplayClaims(ctx context.Context) error {
 		Where("expires_at <= ?", time.UnixMilli(millis-1).UTC()).Delete(&model.ReplayClaim{}).Error
 }
 
+// repositoryTables holds the table names bound under the deployment prefix. It
+// is an unexported embedded type so the exported Repository's API surface
+// carries no storage type (public-storage-type rule).
+type repositoryTables struct{ names query.TableNames }
+
 type Repository struct {
-	runtime    *appenv.Runtime
+	runtime *appenv.Runtime
+	// repositoryTables holds the physical name of every table federation owns,
+	// resolved once at construction so a transactional clone binds the same
+	// tables. Embedded unexported so the exported Repository carries no storage
+	// type.
+	repositoryTables
 	principals identity.PrincipalStateStore
 	db         *gorm.DB
 	inTx       bool
@@ -95,7 +105,11 @@ func NewRepository(runtime *appenv.Runtime) *Repository {
 	if runtime == nil {
 		panic("federation repository requires runtime")
 	}
-	return &Repository{runtime: runtime, foreign: &foreignTables{}}
+	return &Repository{
+		runtime:          runtime,
+		repositoryTables: repositoryTables{names: query.BindNames(runtime.TablePrefix())},
+		foreign:          &foreignTables{},
+	}
 }
 
 func (r *Repository) writer() *gorm.DB {
@@ -111,13 +125,6 @@ func (r *Repository) writer() *gorm.DB {
 	return r.runtime.Database().Write()
 }
 
-func (r *Repository) prefix() string {
-	if r == nil || r.runtime == nil {
-		return ""
-	}
-	return r.runtime.TablePrefix()
-}
-
 // tables returns every table federation owns bound to the deployment prefix,
 // alongside the database the statements run on. It is the same shape the
 // sibling IAM repositories use: the repository reads physical names only
@@ -128,7 +135,7 @@ func (r *Repository) tables() (*query.Tables, *gorm.DB, error) {
 	if db == nil {
 		return nil, nil, errRepositoryUnavailable
 	}
-	return query.Bind(db, r.prefix()), db, nil
+	return query.BindWithNames(db, r.names), db, nil
 }
 
 func (r *Repository) withDB(db *gorm.DB, inTx bool) *Repository {

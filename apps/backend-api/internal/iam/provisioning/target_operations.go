@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"7link.com/platform/internal/iam/provisioning/query"
 	"7link.com/platform/internal/infra/guid"
 )
 
@@ -47,7 +46,7 @@ func (s *Service) claimTarget(ctx context.Context, tenant, target guid.ID, kind 
 	}
 	op := &targetOperation{s: s, tenant: tenant, target: target, token: token}
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
-		targets := query.BindNames(repo.prefix()).Targets.String()
+		targets := repo.names.Targets.String()
 		q := repo.writer().WithContext(ctx).Table(targets).Where("tenant_id = ? AND id = ? AND operation_token = 0", tenant, target)
 		if !allowRetiring {
 			q = q.Where("retiring = ?", false)
@@ -72,7 +71,7 @@ func (s *Service) claimTarget(ctx context.Context, tenant, target guid.ID, kind 
 }
 
 func (op *targetOperation) finish(ctx context.Context, repo *Repository) error {
-	result := repo.writer().WithContext(ctx).Table(query.BindNames(repo.prefix()).Targets.String()).
+	result := repo.writer().WithContext(ctx).Table(repo.names.Targets.String()).
 		Where("tenant_id = ? AND id = ? AND operation_token = ?", op.tenant, op.target, op.token).
 		Updates(map[string]any{"operation_token": 0, "operation_kind": "", "operation_resource_type": "", "operation_resource_id": 0, "operation_started_at": nil})
 	if result.Error != nil {
@@ -119,14 +118,14 @@ func (s *Service) markRetiring(ctx context.Context, tenant, target guid.ID) erro
 	if err := s.requireServiceAccount(ctx, s.repo, tenant, row.ServiceAccountID); err != nil {
 		return err
 	}
-	return s.repo.writer().WithContext(ctx).Table(query.BindNames(s.repo.prefix()).Targets.String()).
+	return s.repo.writer().WithContext(ctx).Table(s.repo.names.Targets.String()).
 		Where("tenant_id = ? AND id = ? AND operation_token = ?", tenant, target, op.token).
 		Update("retiring", true).Error
 }
 
 func (r *Repository) targetResourcePage(ctx context.Context, target guid.ID, afterType string, afterID guid.ID, limit int) ([]targetResourceRow, error) {
 	var rows []targetResourceRow
-	err := r.writer().WithContext(ctx).Table(query.BindNames(r.prefix()).TargetResources.String()).
+	err := r.writer().WithContext(ctx).Table(r.names.TargetResources.String()).
 		Where("target_id = ? AND deleted_at IS NULL AND external_id <> ''", target).
 		Where("resource_type > ? OR (resource_type = ? AND resource_id > ?)", afterType, afterType, afterID).
 		Order("resource_type ASC, resource_id ASC").Limit(limit).Find(&rows).Error

@@ -19,7 +19,6 @@ import (
 	"7link.com/platform/internal/iam/authn"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/oauth/model"
-	"7link.com/platform/internal/iam/oauth/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
@@ -691,7 +690,7 @@ func (s *Service) issueAuthorizationCode(
 		}
 		if current.GrantID == "" {
 			// Upgrade a legacy standing consent without adopting its old tokens.
-			consents := query.BindNames(tx.prefix()).Consents.String()
+			consents := tx.names.Consents.String()
 			if err := tx.writer().WithContext(ctx).Table(consents).
 				Where("principal_id = ? AND client_id = ?", claims.PrincipalID, client.ID).
 				Update("grant_id", grant).Error; err != nil {

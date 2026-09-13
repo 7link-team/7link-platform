@@ -44,11 +44,11 @@ func seedUnverifiedPrincipal(t *testing.T, harness *authnRepositoryHarness, id g
 	t.Helper()
 	hash, err := passwordx.Hash("correct horse battery staple")
 	require.NoError(t, err)
-	require.NoError(t, harness.db.Table(harness.repository.prefix()+"iam_principals").Create(&identitymodel.Principal{
+	require.NoError(t, harness.db.Table(harness.runtime.TablePrefix()+"iam_principals").Create(&identitymodel.Principal{
 		ID: id, LoginName: login, Email: login + "@example.test", DisplayName: login,
 		Status: "active", CreatedAt: repositoryTestNow, UpdatedAt: repositoryTestNow,
 	}).Error)
-	require.NoError(t, harness.db.Table(harness.repository.prefix()+"iam_credentials").Create(&model.Credential{
+	require.NoError(t, harness.db.Table(harness.runtime.TablePrefix()+"iam_credentials").Create(&model.Credential{
 		PrincipalID: id, PasswordHash: hash, PasswordChangedAt: repositoryTestNow,
 		CredentialVersion: 1, UpdatedAt: repositoryTestNow,
 	}).Error)
@@ -144,7 +144,7 @@ func TestEmailVerificationTokenIsSnapshotBoundAndAuditAtomic(t *testing.T) {
 	require.NoError(t, err, "audit failure must roll back token consumption")
 
 	harness.auditErr = nil
-	require.NoError(t, harness.db.Table(harness.repository.prefix()+"iam_principals").
+	require.NoError(t, harness.db.Table(harness.runtime.TablePrefix()+"iam_principals").
 		Where("id = ?", principalID).Update("email", "changed@example.test").Error)
 	assert.ErrorIs(t, service.CompleteEmailVerification(t.Context(), token, "", ""), authnext.ErrInvalidEmailVerification)
 }

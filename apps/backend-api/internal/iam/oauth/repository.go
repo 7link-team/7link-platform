@@ -18,11 +18,17 @@ import (
 
 var errRepositoryUnavailable = errors.New("OAuth repository unavailable")
 
+// repositoryTables holds the table names bound under the deployment prefix. It
+// is an unexported embedded type so the exported Repository's API surface
+// carries no storage type (public-storage-type rule).
+type repositoryTables struct{ names query.TableNames }
+
 // Repository persists OAuth state through the runtime's current writer. A
 // transactional clone pins one writer for the complete protocol operation.
 type Repository struct {
-	runtime    *appenv.Runtime
-	ids        guid.Source
+	runtime *appenv.Runtime
+	ids     guid.Source
+	repositoryTables
 	appender   audit.Appender
 	principals identity.PrincipalStateStore
 	db         *gorm.DB
@@ -37,7 +43,7 @@ func NewRepository(runtime *appenv.Runtime, ids guid.Source, appender audit.Appe
 	if runtime == nil || ids == nil || appender == nil {
 		panic("OAuth repository requires runtime, id generator, and audit appender")
 	}
-	return &Repository{runtime: runtime, ids: ids, appender: appender, foreign: &foreignTables{}}
+	return &Repository{runtime: runtime, ids: ids, repositoryTables: repositoryTables{names: query.BindNames(runtime.TablePrefix())}, appender: appender, foreign: &foreignTables{}}
 }
 
 func (r *Repository) writer() *gorm.DB {
@@ -53,19 +59,12 @@ func (r *Repository) writer() *gorm.DB {
 	return r.runtime.Database().Write()
 }
 
-func (r *Repository) prefix() string {
-	if r == nil || r.runtime == nil {
-		return ""
-	}
-	return r.runtime.TablePrefix()
-}
-
 func (r *Repository) tables() (*query.Tables, *gorm.DB, error) {
 	db := r.writer()
 	if db == nil {
 		return nil, nil, errRepositoryUnavailable
 	}
-	return query.Bind(db, r.prefix()), db, nil
+	return query.BindWithNames(db, r.names), db, nil
 }
 
 func (r *Repository) withDB(db *gorm.DB, inTx bool) *Repository {

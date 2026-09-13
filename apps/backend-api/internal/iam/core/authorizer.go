@@ -21,9 +21,9 @@ const policySnapshotAttempts = 3
 // Authorizer evaluates declared platform, tenant, entity, and business
 // resource permissions against the current policy revision.
 type Authorizer struct {
-	runtime          *appenv.Runtime
-	db               *gorm.DB
-	prefix           string
+	runtime *appenv.Runtime
+	db      *gorm.DB
+	repositoryTables
 	registry         *authz.Registry
 	revisions        *RevisionStore
 	now              func() time.Time
@@ -44,7 +44,7 @@ type (
 // it only joins, from the owners that published them. An owner that has not
 // published is ErrUnavailable, not an empty table name in a statement.
 func (a *Authorizer) authorizationTables() (query.AuthorizationTables, error) {
-	return a.foreign.authorizationTables(a.prefix)
+	return a.foreign.authorizationTables(a.names)
 }
 
 // BindForeignTables records the table-name sets of the tables authorization
@@ -94,7 +94,7 @@ func NewAuthorizerWithRegistry(runtime *appenv.Runtime, registry *authz.Registry
 		panic(err)
 	}
 	return &Authorizer{
-		runtime: runtime, prefix: runtime.TablePrefix(), registry: registry,
+		runtime: runtime, repositoryTables: repositoryTables{names: query.BindNames(runtime.TablePrefix())}, registry: registry,
 		revisions: revisions, now: time.Now, foreign: &foreignTables{},
 	}
 }

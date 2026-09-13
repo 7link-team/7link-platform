@@ -72,13 +72,13 @@ func (t *foreignTables) bound() bool {
 	return t != nil && t.directory.Bound() && t.principal.Bound()
 }
 
-// authorizationTables assembles one statement's names from core's deployment
-// prefix and from the two published sets.
-func (t *foreignTables) authorizationTables(prefix string) (query.AuthorizationTables, error) {
+// authorizationTables assembles one statement's names from core's already-bound
+// table names and from the two published sets.
+func (t *foreignTables) authorizationTables(names query.TableNames) (query.AuthorizationTables, error) {
 	if !t.bound() {
 		return query.AuthorizationTables{}, ErrUnavailable
 	}
-	return query.BindAuthorizationTables(prefix, t.directoryQuery(), t.principal.Principals), nil
+	return query.AuthorizationTables{Tables: names, Directory: t.directoryQuery(), Principal: t.principal.Principals}, nil
 }
 
 // directoryNames returns the published directory names, or ErrUnavailable when

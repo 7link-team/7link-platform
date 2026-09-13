@@ -18,7 +18,6 @@ import (
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/organization"
-	"7link.com/platform/internal/iam/provisioning/query"
 	"7link.com/platform/internal/infra/guid"
 	"gorm.io/gorm"
 )
@@ -734,7 +733,7 @@ func (s *Service) SyncTarget(ctx context.Context, tenantID, targetID guid.ID) (i
 		updates["sync_failures"] = attempts
 		updates["sync_after_ms"] = s.now().Add(time.Second * time.Duration(1<<uint(attempts))).UnixMilli()
 	}
-	targets := query.BindNames(s.repo.prefix()).Targets.String()
+	targets := s.repo.names.Targets.String()
 	if err := s.repo.writer().WithContext(checkpointCtx).Table(targets).
 		Where("id = ? AND tenant_id = ? AND sync_resource_type = ? AND sync_resource_id = ? AND sync_failures = ?", targetID, tenantID, target.SyncResourceType, target.SyncResourceID, target.SyncFailures).
 		Updates(updates).Error; err != nil {

@@ -15,7 +15,6 @@ import (
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/authn"
 	"7link.com/platform/internal/iam/federation/model"
-	"7link.com/platform/internal/iam/federation/query"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"github.com/crewjam/saml"
@@ -96,7 +95,7 @@ func (s *Service) ListPersonalIdentityLinks(ctx context.Context, cookieHeader st
 	if err != nil {
 		return nil, err
 	}
-	names := query.BindNames(repo.prefix())
+	names := repo.names
 	err = repo.writer().WithContext(ctx).Table(names.IdentityLinks.String()+" AS link").
 		Select("link.provider_id, link.tenant_id, provider.name AS provider_name, provider.provider_type, link.external_subject, link.email, link.display_name").
 		Joins("JOIN "+names.Providers.String()+" AS provider ON provider.id = link.provider_id AND provider.tenant_id = link.tenant_id").
@@ -117,7 +116,7 @@ func (s *Service) ListLinkableProviders(ctx context.Context, cookieHeader string
 		return nil, err
 	}
 	rows := []LinkableProvider{}
-	names := query.BindNames(repo.prefix())
+	names := repo.names
 	members := repo.foreign.access.TenantMembers.String()
 	tenants := repo.foreign.directory.Tenants.String()
 	err = repo.writer().WithContext(ctx).Table(names.Providers.String()+" AS provider").
@@ -490,7 +489,7 @@ func (s *Service) UnlinkPersonalIdentity(ctx context.Context, cookieHeader, id, 
 			return err
 		}
 		var alternatives int64
-		names := query.BindNames(repo.prefix())
+		names := repo.names
 		members := repo.foreign.access.TenantMembers.String()
 		tenants := repo.foreign.directory.Tenants.String()
 		err = repo.writer().WithContext(ctx).Table(names.IdentityLinks.String()+" AS link").

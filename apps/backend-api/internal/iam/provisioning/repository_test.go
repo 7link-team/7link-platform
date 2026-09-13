@@ -63,7 +63,9 @@ func TestProvisioningRepositoryConstraintsAndCAS(t *testing.T) {
 func TestProvisioningRepositoryAvailabilityAndTransactionHelpers(t *testing.T) {
 	var nilRepo *Repository
 	assert.Nil(t, nilRepo.writer())
-	assert.Empty(t, nilRepo.prefix())
+	tables, _, tablesErr := nilRepo.tables()
+	assert.Nil(t, tables)
+	assert.ErrorIs(t, tablesErr, errRepositoryUnavailable)
 	_, err := nilRepo.pinWriter()
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
 	assert.Error(t, nilRepo.runInTx(t.Context(), func(*Repository) error { return nil }))

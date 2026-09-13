@@ -86,11 +86,10 @@ func BindNames(prefix string) TableNames {
 	}
 }
 
-// Bind applies prefix to every table owned by the authentication module. It
-// builds from BindNames, so the prefix reaches the generated query objects
-// through one path rather than fifteen.
-func Bind(db *gorm.DB, prefix string) *Tables {
-	names := BindNames(prefix)
+// BindWithNames binds the generated query set to already-resolved table names,
+// so the deployment prefix reaches the generated query objects through one
+// path rather than fifteen.
+func BindWithNames(db *gorm.DB, names TableNames) *Tables {
 	q := Use(db)
 	return &Tables{
 		Credentials:                q.Credential.Table(names.Credentials.String()),
@@ -109,4 +108,10 @@ func Bind(db *gorm.DB, prefix string) *Tables {
 		ReauthenticationChallenges: q.ReauthenticationChallenge.Table(names.ReauthenticationChallenges.String()),
 		PersonalTokens:             q.PersonalToken.Table(names.PersonalTokens.String()),
 	}
+}
+
+// Bind applies prefix to every table owned by the authentication module. It
+// resolves the names from the prefix and delegates to BindWithNames.
+func Bind(db *gorm.DB, prefix string) *Tables {
+	return BindWithNames(db, BindNames(prefix))
 }

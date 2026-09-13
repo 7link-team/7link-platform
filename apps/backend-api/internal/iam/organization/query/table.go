@@ -85,7 +85,14 @@ func BindNames(prefix string) TableNames {
 // builds from BindNames, so the prefix reaches the generated query objects
 // through one path rather than fourteen.
 func Bind(db *gorm.DB, prefix string) *Tables {
-	names := BindNames(prefix)
+	return BindWithNames(db, BindNames(prefix))
+}
+
+// BindWithNames binds the query objects to names a caller already resolved, so
+// a repository that resolved them at construction applies the same names to
+// every statement it composes. It is the resolver path: a module that holds its
+// names does not build them again from the prefix per statement.
+func BindWithNames(db *gorm.DB, names TableNames) *Tables {
 	q := Use(db)
 	return &Tables{
 		Departments:          q.Department.Table(names.Departments.String()),

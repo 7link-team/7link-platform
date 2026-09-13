@@ -9,7 +9,6 @@ import (
 
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/identity/model"
-	identityquery "7link.com/platform/internal/iam/identity/query"
 	"7link.com/platform/internal/infra/guid"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"gorm.io/gorm"
@@ -316,7 +315,7 @@ func (r *Repository) lifecyclePrincipal(ctx context.Context, id guid.ID, lock bo
 
 func (r *Repository) principalLifecycle(ctx context.Context, id guid.ID) (model.PrincipalLifecycle, error) {
 	var row model.PrincipalLifecycle
-	lifecycles := identityquery.BindNames(r.prefix()).PrincipalLifecycles.String()
+	lifecycles := r.names.PrincipalLifecycles.String()
 	query := r.writer().WithContext(ctx).Table(lifecycles).Where("principal_id = ?", id)
 	// Lifecycle writes already hold the parent lock. A current read also avoids a
 	// stale policy snapshot under MySQL REPEATABLE READ after waiting for that lock.
@@ -331,7 +330,7 @@ func (r *Repository) principalLifecycle(ctx context.Context, id guid.ID) (model.
 }
 
 func (r *Repository) savePrincipalLifecycle(ctx context.Context, row *model.PrincipalLifecycle, version int64) error {
-	lifecycles := identityquery.BindNames(r.prefix()).PrincipalLifecycles.String()
+	lifecycles := r.names.PrincipalLifecycles.String()
 	query := r.writer().WithContext(ctx).Table(lifecycles)
 	if version == 0 {
 		result := query.Clauses(clause.OnConflict{DoNothing: true}).Create(row)

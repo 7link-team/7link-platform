@@ -106,8 +106,9 @@ func TestOrganizationRepositoryStateAndConstructorFailures(t *testing.T) {
 
 	var nilRepo *Repository
 	assert.Nil(t, nilRepo.writer())
-	assert.Empty(t, nilRepo.prefix())
-	_, err := nilRepo.on(h.db)
+	_, _, err := nilRepo.tables()
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, err = nilRepo.on(h.db)
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
 	_, err = nilRepo.pinWriter()
 	assert.ErrorIs(t, err, errRepositoryUnavailable)

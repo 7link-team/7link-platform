@@ -133,11 +133,11 @@ func BindAuthorizationTables(
 	return AuthorizationTables{Tables: BindNames(prefix), Directory: directory, Principal: principal}
 }
 
-// Bind applies prefix to all tables owned by the core IAM module. It builds
-// from BindNames, so the prefix reaches the generated query objects through
-// one path rather than fourteen.
-func Bind(db *gorm.DB, prefix string) *Tables {
-	names := BindNames(prefix)
+// BindWithNames applies an already-bound name set to all tables owned by the
+// core IAM module. It is the same binding as Bind but with the names resolved
+// once, so a caller that holds its names binds from them rather than from a
+// prefix string.
+func BindWithNames(db *gorm.DB, names TableNames) *Tables {
 	q := Use(db)
 	return &Tables{
 		Entities:               q.Entity.Table(names.Entities.String()),
@@ -155,4 +155,11 @@ func Bind(db *gorm.DB, prefix string) *Tables {
 		TemporaryRoleGrants:    q.TemporaryRoleGrant.Table(names.TemporaryRoleGrants.String()),
 		TenantMembers:          q.TenantMember.Table(names.TenantMembers.String()),
 	}
+}
+
+// Bind applies prefix to all tables owned by the core IAM module. It builds
+// from BindNames, so the prefix reaches the generated query objects through
+// one path rather than fourteen.
+func Bind(db *gorm.DB, prefix string) *Tables {
+	return BindWithNames(db, BindNames(prefix))
 }

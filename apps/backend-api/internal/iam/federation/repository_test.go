@@ -13,7 +13,7 @@ func TestFederationRepositoryConstructionAndTransactionGuards(t *testing.T) {
 	assert.Panics(t, func() { NewRepository(nil) })
 	var nilRepository *Repository
 	assert.Nil(t, nilRepository.writer())
-	assert.Empty(t, nilRepository.prefix())
+	assert.Empty(t, (&Repository{}).names)
 	_, err := nilRepository.pinWriter()
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
 	assert.Error(t, nilRepository.runInTx(t.Context(), func(*Repository) error { return nil }))

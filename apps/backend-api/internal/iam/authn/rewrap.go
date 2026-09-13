@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"7link.com/platform/internal/iam/authn/query"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	gormx "7link.com/platform/pkg/extension/gorm"
@@ -116,7 +115,7 @@ func (s *Service) principalSealedStore(
 // one on. Losing it locks each of them out of a second factor they cannot
 // re-enroll without first passing the factor they have just lost.
 func (s *Service) totpSecretStore(tx *gorm.DB) keyringx.SealedStore {
-	names := query.BindNames(s.repo.prefix())
+	names := s.repo.names
 	return s.principalSealedStore(tx, names.Credentials, "totp_secret", "encryption:"+mfaSecretCipher)
 }
 
@@ -124,7 +123,7 @@ func (s *Service) totpSecretStore(tx *gorm.DB) keyringx.SealedStore {
 // QR code right now. These expire on their own, so covering them saves one
 // person one retry rather than saving an account.
 func (s *Service) mfaEnrollmentStore(tx *gorm.DB) keyringx.SealedStore {
-	names := query.BindNames(s.repo.prefix())
+	names := s.repo.names
 	return s.principalSealedStore(
 		tx, names.MFAEnrollments, "secret_ciphertext", "encryption:"+mfaSecretCipher,
 	)
@@ -134,7 +133,7 @@ func (s *Service) mfaEnrollmentStore(tx *gorm.DB) keyringx.SealedStore {
 // it cannot reuse the principal-only shape above.
 func (s *Service) passkeyStore(tx *gorm.DB) keyringx.SealedStore {
 	const column = "credential_ciphertext"
-	table := query.BindNames(s.repo.prefix()).Passkeys.String()
+	table := s.repo.names.Passkeys.String()
 	return keyringx.SealedStore{
 		Name:    table + "." + column,
 		Purpose: "encryption:" + passkeyCipher,
@@ -174,7 +173,7 @@ func (s *Service) passkeyStore(tx *gorm.DB) keyringx.SealedStore {
 // exactly the case where a row would still be sitting under the old key.
 func (s *Service) notificationStore(tx *gorm.DB) keyringx.SealedStore {
 	const column = "payload_ciphertext"
-	table := query.BindNames(s.repo.prefix()).NotificationOutbox.String()
+	table := s.repo.names.NotificationOutbox.String()
 	return keyringx.SealedStore{
 		Name:    table + "." + column,
 		Purpose: "encryption:" + notificationCipher,
@@ -218,7 +217,7 @@ func (s *Service) derivedStores(
 	ctx context.Context, tx *gorm.DB, now time.Time,
 ) ([]keyringx.DerivedStoreReport, error) {
 	reports := make([]keyringx.DerivedStoreReport, 0, 3)
-	names := query.BindNames(s.repo.prefix())
+	names := s.repo.names
 	// Recovery codes never expire. Waiting will not empty this store, and the
 	// deployment cannot regenerate somebody's codes on their behalf, so a
 	// rotation that drops the key silently removes the one route back into an

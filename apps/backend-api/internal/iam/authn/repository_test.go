@@ -220,7 +220,11 @@ func TestRepositoryUnavailableAndIDBranches(t *testing.T) {
 	assert.Error(t, repository.runInTx(t.Context(), nil))
 	assert.ErrorIs(t, repository.appendAudit(t.Context(), audit.DomainEvent{}), errRepositoryUnavailable)
 	assert.Nil(t, (*Repository)(nil).writer())
-	assert.Empty(t, (*Repository)(nil).prefix())
+	// Name resolution on a nil repository must fail closed rather than panic;
+	// the names field itself has no accessor, so tables() is the read path that
+	// has to stay nil-safe.
+	_, _, err = (*Repository)(nil).tables()
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
 	assert.ErrorContains(t, (*Repository)(nil).runInTx(t.Context(), func(*Repository) error { return nil }), "invalid authentication transaction")
 	assert.ErrorIs(t, (*Repository)(nil).appendAudit(t.Context(), audit.DomainEvent{}), errRepositoryUnavailable)
 	_, err = (*Repository)(nil).nextID()
@@ -482,12 +486,12 @@ func seedLocalPrincipal(t *testing.T, repository *Repository, login, email, pass
 		Status:    "active", EmailVerified: email != "",
 		CreatedAt: repositoryTestNow, UpdatedAt: repositoryTestNow,
 	}
-	require.NoError(t, db.Table(repository.prefix()+principal.TableName()).Create(&principal).Error)
+	require.NoError(t, db.Table(repository.runtime.TablePrefix()+principal.TableName()).Create(&principal).Error)
 	credential := model.Credential{
 		PrincipalID: principalID, PasswordHash: hash, PasswordChangedAt: repositoryTestNow,
 		CredentialVersion: 1, UpdatedAt: repositoryTestNow,
 	}
-	require.NoError(t, db.Table(repository.prefix()+credential.TableName()).Create(&credential).Error)
+	require.NoError(t, db.Table(repository.runtime.TablePrefix()+credential.TableName()).Create(&credential).Error)
 	return principalID
 }
 

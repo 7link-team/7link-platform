@@ -45,11 +45,11 @@ func BindNames(prefix string) TableNames {
 	}
 }
 
-// Bind applies prefix to every table owned by the provisioning module. It
-// builds from BindNames, so the prefix reaches the generated query objects
-// through one path rather than five.
-func Bind(db *gorm.DB, prefix string) *Tables {
-	names := BindNames(prefix)
+// BindWithNames binds every table owned by the provisioning module to the
+// physical names in names. It builds the generated query objects from the
+// names, so each physical name reaches its query object through one path
+// rather than five.
+func BindWithNames(db *gorm.DB, names TableNames) *Tables {
 	q := Use(db)
 	return &Tables{
 		Directories:     q.Directory.Table(names.Directories.String()),
@@ -58,4 +58,10 @@ func Bind(db *gorm.DB, prefix string) *Tables {
 		Targets:         q.Target.Table(names.Targets.String()),
 		TargetResources: q.TargetResource.Table(names.TargetResources.String()),
 	}
+}
+
+// Bind applies prefix to every table owned by the provisioning module. It
+// resolves the names with BindNames and delegates to BindWithNames.
+func Bind(db *gorm.DB, prefix string) *Tables {
+	return BindWithNames(db, BindNames(prefix))
 }

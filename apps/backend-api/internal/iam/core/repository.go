@@ -16,6 +16,11 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// repositoryTables holds the table names bound under the deployment prefix. It
+// is an unexported embedded type shared by core's exported holders, so their
+// API surface carries no storage type (public-storage-type rule).
+type repositoryTables struct{ names query.TableNames }
+
 // Repository persists core IAM policy through the runtime's current writer.
 // A transactional clone pins one *gorm.DB so every statement in the mutation
 // uses the same connection and transaction.
@@ -26,6 +31,7 @@ type Repository struct {
 	revisions *RevisionStore
 	now       func() time.Time
 	foreign   *foreignTables
+	repositoryTables
 }
 
 func NewRepository(runtime *appenv.Runtime, ids guid.Source) *Repository {
@@ -38,8 +44,9 @@ func NewRepository(runtime *appenv.Runtime, ids guid.Source) *Repository {
 	}
 	return &Repository{
 		runtime: runtime, ids: ids, revisions: revisions,
-		now:     func() time.Time { return time.Now().UTC() },
-		foreign: &foreignTables{},
+		now:              func() time.Time { return time.Now().UTC() },
+		foreign:          &foreignTables{},
+		repositoryTables: repositoryTables{names: query.BindNames(runtime.TablePrefix())},
 	}
 }
 
@@ -48,7 +55,7 @@ func NewRepository(runtime *appenv.Runtime, ids guid.Source) *Repository {
 // modules that own them. An owner that has not published is ErrUnavailable,
 // not an empty table name in a statement.
 func (r *Repository) authorizationTables() (query.AuthorizationTables, error) {
-	return r.foreign.authorizationTables(r.prefix())
+	return r.foreign.authorizationTables(r.names)
 }
 
 // directoryTables returns the published directory names, or ErrUnavailable
@@ -85,19 +92,12 @@ func (r *Repository) writer() *gorm.DB {
 	return r.runtime.Database().Write()
 }
 
-func (r *Repository) prefix() string {
-	if r == nil || r.runtime == nil {
-		return ""
-	}
-	return r.runtime.TablePrefix()
-}
-
 func (r *Repository) tables() (*query.Tables, *gorm.DB, error) {
 	db := r.writer()
 	if db == nil {
 		return nil, nil, ErrUnavailable
 	}
-	return query.Bind(db, r.prefix()), db, nil
+	return query.BindWithNames(db, r.names), db, nil
 }
 
 func (r *Repository) withDB(db *gorm.DB) *Repository {

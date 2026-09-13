@@ -16,13 +16,14 @@ import (
 type MembershipChecker struct {
 	runtime *appenv.Runtime
 	foreign *foreignTables
+	repositoryTables
 }
 
 func NewMembershipChecker(runtime *appenv.Runtime) *MembershipChecker {
 	if runtime == nil {
 		panic("iam membership checker requires runtime")
 	}
-	return &MembershipChecker{runtime: runtime, foreign: &foreignTables{}}
+	return &MembershipChecker{runtime: runtime, foreign: &foreignTables{}, repositoryTables: repositoryTables{names: query.BindNames(runtime.TablePrefix())}}
 }
 
 // authorizationTables binds the names the membership statements read: core's
@@ -30,7 +31,7 @@ func NewMembershipChecker(runtime *appenv.Runtime) *MembershipChecker {
 // from the modules that own them. An owner that has not published is
 // ErrUnavailable, not an empty table name in a statement.
 func (m *MembershipChecker) authorizationTables() (query.AuthorizationTables, error) {
-	return m.foreign.authorizationTables(m.prefix())
+	return m.foreign.authorizationTables(m.names)
 }
 
 // BindForeignTables records the table-name sets of the tables membership reads
@@ -127,13 +128,6 @@ func (m *MembershipChecker) IsMemberActiveOn(
 	}
 	_, active, err := tenantMembershipState(ctx, db, names, tenantID, principalID)
 	return active, err
-}
-
-func (m *MembershipChecker) prefix() string {
-	if m == nil || m.runtime == nil {
-		return ""
-	}
-	return m.runtime.TablePrefix()
 }
 
 type tenantAdmission struct {

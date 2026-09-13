@@ -99,10 +99,21 @@ type groupRecord struct {
 
 var errRepositoryUnavailable = errors.New("provisioning repository unavailable")
 
+// repositoryTables holds the table names bound under the deployment prefix. It
+// is an unexported embedded type so the exported Repository's API surface
+// carries no storage type (public-storage-type rule).
+type repositoryTables struct{ names query.TableNames }
+
 type Repository struct {
 	runtime *appenv.Runtime
 	db      *gorm.DB
 	inTx    bool
+	// repositoryTables holds the physical name of every table provisioning
+	// owns, bound from the runtime's deployment prefix when the repository is
+	// built. Embedded unexported so the exported Repository carries no storage
+	// type; the resolver reads them, so a statement never re-derives a prefix
+	// at execution time.
+	repositoryTables
 	// foreign holds the names of the tables this repository reads but does
 	// not own. It is a pointer so a transactional clone reads the same
 	// publication as the repository it came from.
@@ -113,7 +124,7 @@ func NewRepository(runtime *appenv.Runtime) *Repository {
 	if runtime == nil {
 		panic("provisioning repository requires runtime")
 	}
-	return &Repository{runtime: runtime, foreign: &foreignTables{}}
+	return &Repository{runtime: runtime, repositoryTables: repositoryTables{names: query.BindNames(runtime.TablePrefix())}, foreign: &foreignTables{}}
 }
 
 func (r *Repository) writer() *gorm.DB {
@@ -129,23 +140,17 @@ func (r *Repository) writer() *gorm.DB {
 	return r.runtime.Database().Write()
 }
 
-func (r *Repository) prefix() string {
-	if r == nil || r.runtime == nil {
-		return ""
-	}
-	return r.runtime.TablePrefix()
-}
-
 // tables returns the module's resolver-bound query set and the same writer the
 // queries were bound to, so a caller can ask the resolver for a physical name
 // without ever reconstructing one. The physical names provisioning owns are
-// generated inside query.Bind only.
+// bound from the runtime's deployment prefix when the repository is built, and
+// query.BindWithNames applies them to the generated query objects.
 func (r *Repository) tables() (*query.Tables, *gorm.DB, error) {
 	db := r.writer()
 	if db == nil {
 		return nil, nil, errRepositoryUnavailable
 	}
-	return query.Bind(db, r.prefix()), db, nil
+	return query.BindWithNames(db, r.names), db, nil
 }
 
 func (r *Repository) withDB(db *gorm.DB, inTx bool) *Repository {

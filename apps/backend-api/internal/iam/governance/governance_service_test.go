@@ -363,7 +363,6 @@ func TestGovernanceRepositoriesAndServicesFailClosed(t *testing.T) {
 
 	var repo *Repository
 	assert.Nil(t, repo.writer())
-	assert.Empty(t, repo.prefix())
 	_, err := repo.pinWriter()
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
 	assert.Error(t, repo.runInTx(t.Context(), func(*Repository) error { return nil }))

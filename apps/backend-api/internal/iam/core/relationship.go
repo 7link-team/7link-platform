@@ -508,7 +508,7 @@ func (r *Repository) validateRelationshipAddition(ctx context.Context, relations
 	}
 	target := relationshipNode{Type: "entity", ID: relationship.ResourceID, Relation: relationship.Relation}
 	walk := query.RelationshipWalkParams{
-		Relationships: query.BindNames(r.prefix()).Relationships,
+		Relationships: r.names.Relationships,
 		Dialect:       db.Dialector.Name(),
 		TenantID:      relationship.TenantID,
 		MaxDepth:      maxRelationshipDepth,
@@ -552,7 +552,7 @@ func (a *Authorizer) loadRelationshipGrants(
 	grants := make([]relationshipGrant, 0)
 	for depth := 0; depth < maxRelationshipDepth && len(frontier) > 0; depth++ {
 		resourceRows, err := listActiveResourceRelationshipsBySubjects(
-			ctx, a.db, a.prefix, tenantID, frontier, now,
+			ctx, a.db, a.names, tenantID, frontier, now,
 		)
 		if err != nil {
 			return nil, err
@@ -578,7 +578,7 @@ func (a *Authorizer) loadRelationshipGrants(
 				ResourceID: row.ResourceID, Relation: row.Relation, Path: path,
 			})
 		}
-		rows, err := listActiveRelationshipsBySubjects(ctx, a.db, a.prefix, tenantID, frontier, now)
+		rows, err := listActiveRelationshipsBySubjects(ctx, a.db, a.names, tenantID, frontier, now)
 		if err != nil {
 			return nil, err
 		}
@@ -663,13 +663,13 @@ func (a *Authorizer) relationshipRoots(
 func listActiveRelationshipsBySubjects(
 	ctx context.Context,
 	db *gorm.DB,
-	prefix string,
+	names query.TableNames,
 	tenantID guid.ID,
 	subjects []relationshipNode,
 	now time.Time,
 ) ([]*model.Relationship, error) {
 	rows := make([]*model.Relationship, 0)
-	tables := query.BindNames(prefix)
+	tables := names
 	for start := 0; start < len(subjects); start += relationshipQueryBatch {
 		end := min(start+relationshipQueryBatch, len(subjects))
 		conditions := make([]string, 0, end-start)
@@ -696,13 +696,13 @@ func listActiveRelationshipsBySubjects(
 func listActiveResourceRelationshipsBySubjects(
 	ctx context.Context,
 	db *gorm.DB,
-	prefix string,
+	names query.TableNames,
 	tenantID guid.ID,
 	subjects []relationshipNode,
 	now time.Time,
 ) ([]*model.ResourceRelationship, error) {
 	rows := make([]*model.ResourceRelationship, 0)
-	tables := query.BindNames(prefix)
+	tables := names
 	for start := 0; start < len(subjects); start += relationshipQueryBatch {
 		end := min(start+relationshipQueryBatch, len(subjects))
 		conditions := make([]string, 0, end-start)

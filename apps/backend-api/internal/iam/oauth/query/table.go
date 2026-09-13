@@ -49,7 +49,13 @@ func BindNames(prefix string) TableNames {
 // BindNames, so the prefix reaches the generated query objects through one path
 // rather than five.
 func Bind(db *gorm.DB, prefix string) *Tables {
-	names := BindNames(prefix)
+	return BindWithNames(db, BindNames(prefix))
+}
+
+// BindWithNames binds every table owned by the OAuth module to names prepared
+// by BindNames. Bind delegates here so a repository carrying its own TableNames
+// binds the generated query objects through the same single path.
+func BindWithNames(db *gorm.DB, names TableNames) *Tables {
 	q := Use(db)
 	return &Tables{
 		Clients:            q.Client.Table(names.Clients.String()),

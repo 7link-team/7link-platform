@@ -328,7 +328,8 @@ func TestRepositoryUnavailableWithoutDatabase(t *testing.T) {
 	_, err = repository.on(nil)
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
 	assert.Nil(t, (*Repository)(nil).writer())
-	assert.Empty(t, (*Repository)(nil).prefix())
+	_, _, err = (*Repository)(nil).tables()
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
 	_, err = (*Repository)(nil).pinWriter()
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
 	assert.ErrorIs(t, (*Repository)(nil).appendAudit(t.Context(), audit.DomainEvent{}), errRepositoryUnavailable)
@@ -354,7 +355,7 @@ func TestRepositoryPrefixIsAppliedToEveryTable(t *testing.T) {
 	t.Parallel()
 
 	harness := newIdentityHarness(t, "sl_")
-	assert.Equal(t, "sl_", harness.repository.prefix())
+	assert.Equal(t, "sl_iam_principals", harness.repository.names.Principals.String())
 	tables, db, err := harness.repository.tables()
 	require.NoError(t, err)
 	require.NotNil(t, db)

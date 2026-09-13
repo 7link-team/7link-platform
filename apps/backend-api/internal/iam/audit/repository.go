@@ -16,18 +16,24 @@ import (
 
 var errRepositoryUnavailable = errors.New("audit repository unavailable")
 
+// repositoryTables holds the table names bound under the deployment prefix. It
+// is an unexported embedded type so the exported Repository's API surface
+// carries no storage type (public-storage-type rule).
+type repositoryTables struct{ names query.TableNames }
+
 type Repository struct {
 	runtime *appenv.Runtime
 	ids     guid.Source
-	db      *gorm.DB
-	inTx    bool
+	repositoryTables
+	db   *gorm.DB
+	inTx bool
 }
 
 func NewRepository(runtime *appenv.Runtime, ids guid.Source) *Repository {
 	if runtime == nil || ids == nil {
 		panic("audit repository requires runtime and id generator")
 	}
-	return &Repository{runtime: runtime, ids: ids}
+	return &Repository{runtime: runtime, ids: ids, repositoryTables: repositoryTables{names: query.BindNames(runtime.TablePrefix())}}
 }
 
 func (r *Repository) writer() *gorm.DB {
@@ -43,14 +49,7 @@ func (r *Repository) writer() *gorm.DB {
 	return r.runtime.Database().Write()
 }
 
-func (r *Repository) prefix() string {
-	if r == nil || r.runtime == nil {
-		return ""
-	}
-	return r.runtime.TablePrefix()
-}
-
-func (r *Repository) tables(db *gorm.DB) *query.Tables { return query.Bind(db, r.prefix()) }
+func (r *Repository) tables(db *gorm.DB) *query.Tables { return query.BindWithNames(db, r.names) }
 
 func (r *Repository) withDB(db *gorm.DB, inTx bool) *Repository {
 	clone := *r
