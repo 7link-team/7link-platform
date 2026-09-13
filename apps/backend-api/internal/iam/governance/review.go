@@ -420,19 +420,38 @@ func (r *Repository) listReviewItems(ctx context.Context, tenantID, reviewID gui
 	return rows, nil
 }
 
+// reviewCountRow is one (review, decision) bucket: the review's id, the
+// decision value and how many items carry it. reviewCounts folds these into
+// accessReviewCountRow totals instead of asking SQL for conditional sums.
+type reviewCountRow struct {
+	ReviewID guid.ID `gorm:"column:review_id"`
+	Decision string  `gorm:"column:decision"`
+	N        int     `gorm:"column:n"`
+}
+
 func (r *Repository) reviewCounts(ctx context.Context, tenantID guid.ID) (map[guid.ID]accessReviewCountRow, error) {
-	rows := make([]accessReviewCountRow, 0)
-	query := `SELECT review_id, COUNT(*) AS total,
-SUM(CASE WHEN decision = 'pending' THEN 1 ELSE 0 END) AS pending,
-SUM(CASE WHEN decision = 'keep' THEN 1 ELSE 0 END) AS kept,
-SUM(CASE WHEN decision = 'revoke' THEN 1 ELSE 0 END) AS revoked
-FROM ` + r.tables(r.writer()).AccessReviewItems.TableName() + ` WHERE tenant_id = ? GROUP BY review_id`
-	if err := r.writer().WithContext(ctx).Raw(query, tenantID).Scan(&rows).Error; err != nil {
+	items := r.tables(r.writer()).AccessReviewItems
+	rows := make([]reviewCountRow, 0)
+	if err := items.WithContext(ctx).
+		Where(items.TenantID.Eq(tenantID)).
+		Select(items.ReviewID, items.Decision, items.ReviewID.Count().As("n")).
+		Group(items.ReviewID, items.Decision).
+		Scan(&rows); err != nil {
 		return nil, fmt.Errorf("count access review items: %w", err)
 	}
 	result := make(map[guid.ID]accessReviewCountRow, len(rows))
 	for _, row := range rows {
-		result[row.ReviewID] = row
+		cur := result[row.ReviewID]
+		cur.Total += row.N
+		switch row.Decision {
+		case ReviewDecisionPending:
+			cur.Pending += row.N
+		case ReviewDecisionKeep:
+			cur.Kept += row.N
+		case ReviewDecisionRevoke:
+			cur.Revoked += row.N
+		}
+		result[row.ReviewID] = cur
 	}
 	return result, nil
 }
