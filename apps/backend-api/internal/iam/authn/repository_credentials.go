@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"7link.com/platform/internal/iam/authn/model"
@@ -93,6 +94,16 @@ func (r *Repository) getMFAEnabledCredential(ctx context.Context, principalID gu
 	return row, nil
 }
 
+// loginFailureStatement renders recordLoginFailure's single UPDATE. Only the
+// table name is deployment-varying (inserted through @@table); the CASE
+// assignments stay as written because MySQL evaluates UPDATE assignments from
+// left to right and both must observe the old failed_attempts counter.
+const loginFailureStatement = `UPDATE @@table
+	SET locked_until = CASE WHEN failed_attempts >= ? THEN ? ELSE NULL END,
+		failed_attempts = CASE WHEN failed_attempts >= ? THEN 0 ELSE failed_attempts + 1 END,
+		updated_at = ?
+	WHERE principal_id = ? AND (locked_until IS NULL OR locked_until <= ?)`
+
 func (r *Repository) recordLoginFailure(
 	ctx context.Context,
 	principalID guid.ID,
@@ -110,11 +121,9 @@ func (r *Repository) recordLoginFailure(
 	threshold := maxAttempts - 1
 	// locked_until is assigned first because MySQL evaluates UPDATE assignments
 	// from left to right; both CASE expressions must observe the old counter.
-	statement := fmt.Sprintf(`UPDATE %s
-		SET locked_until = CASE WHEN failed_attempts >= ? THEN ? ELSE NULL END,
-			failed_attempts = CASE WHEN failed_attempts >= ? THEN 0 ELSE failed_attempts + 1 END,
-			updated_at = ?
-		WHERE principal_id = ? AND (locked_until IS NULL OR locked_until <= ?)`, tables.Credentials.TableName())
+	// The table name is inserted through the @@table marker rather than a
+	// fmt.Sprintf format string, so the SQL text never rides an untyped verb.
+	statement := strings.Replace(loginFailureStatement, "@@table", tables.Credentials.TableName(), 1)
 	result := db.WithContext(ctx).Exec(
 		statement, threshold, now.Add(lockDuration), threshold, now, principalID, now,
 	)
