@@ -669,6 +669,7 @@ func listActiveRelationshipsBySubjects(
 	now time.Time,
 ) ([]*model.Relationship, error) {
 	rows := make([]*model.Relationship, 0)
+	tables := query.BindNames(prefix)
 	for start := 0; start < len(subjects); start += relationshipQueryBatch {
 		end := min(start+relationshipQueryBatch, len(subjects))
 		conditions := make([]string, 0, end-start)
@@ -678,8 +679,8 @@ func listActiveRelationshipsBySubjects(
 			arguments = append(arguments, subject.Type, subject.ID, subject.Relation)
 		}
 		batch := make([]*model.Relationship, 0)
-		err := db.WithContext(ctx).Table(prefix+"iam_relationships AS rel").Select("rel.*").
-			Joins("JOIN "+prefix+"iam_entities AS resource ON resource.tenant_id = rel.tenant_id AND resource.id = rel.resource_id AND resource.type = rel.resource_type AND resource.status = 'active'").
+		err := db.WithContext(ctx).Table(tables.Relationships.String()+" AS rel").Select("rel.*").
+			Joins("JOIN "+tables.Entities.String()+" AS resource ON resource.tenant_id = rel.tenant_id AND resource.id = rel.resource_id AND resource.type = rel.resource_type AND resource.status = 'active'").
 			Where("rel.tenant_id = ? AND (rel.starts_at IS NULL OR rel.starts_at <= ?) AND (rel.ends_at IS NULL OR rel.ends_at > ?)", tenantID, now, now).
 			Where("("+strings.Join(conditions, " OR ")+")", arguments...).
 			Order("rel.resource_type ASC, rel.resource_id ASC, rel.relation ASC, rel.subject_type ASC, rel.subject_id ASC").
@@ -701,6 +702,7 @@ func listActiveResourceRelationshipsBySubjects(
 	now time.Time,
 ) ([]*model.ResourceRelationship, error) {
 	rows := make([]*model.ResourceRelationship, 0)
+	tables := query.BindNames(prefix)
 	for start := 0; start < len(subjects); start += relationshipQueryBatch {
 		end := min(start+relationshipQueryBatch, len(subjects))
 		conditions := make([]string, 0, end-start)
@@ -710,8 +712,8 @@ func listActiveResourceRelationshipsBySubjects(
 			arguments = append(arguments, subject.Type, subject.ID, subject.Relation)
 		}
 		batch := make([]*model.ResourceRelationship, 0)
-		err := db.WithContext(ctx).Table(prefix+"iam_resource_relationships AS rel").Select("rel.*").
-			Joins("JOIN "+prefix+"iam_entities AS entity ON entity.tenant_id = rel.tenant_id AND entity.id = rel.entity_id AND entity.status = 'active'").
+		err := db.WithContext(ctx).Table(tables.ResourceRelationships.String()+" AS rel").Select("rel.*").
+			Joins("JOIN "+tables.Entities.String()+" AS entity ON entity.tenant_id = rel.tenant_id AND entity.id = rel.entity_id AND entity.status = 'active'").
 			Where("rel.tenant_id = ? AND (rel.starts_at IS NULL OR rel.starts_at <= ?) AND (rel.ends_at IS NULL OR rel.ends_at > ?)", tenantID, now, now).
 			Where("("+strings.Join(conditions, " OR ")+")", arguments...).
 			Order("rel.entity_id ASC, rel.resource_type ASC, rel.resource_id ASC, rel.relation ASC, rel.subject_type ASC, rel.subject_id ASC").

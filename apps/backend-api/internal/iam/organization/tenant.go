@@ -13,6 +13,7 @@ import (
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/organization/model"
+	"7link.com/platform/internal/iam/organization/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/extension/goose"
@@ -109,7 +110,7 @@ func EnsureTenant(ctx context.Context, runtime *appenv.Runtime, id guid.ID) erro
 	}
 	now := organizationTime(time.Now())
 	row := model.Tenant{ID: id, Slug: tenantSlugForID(id.String()), Name: id.String(), Status: TenantActive, Version: 1, CreatedAt: now, UpdatedAt: now}
-	err := runtime.Database().Write().WithContext(ctx).Table(runtime.TablePrefix() + row.TableName()).Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error
+	err := runtime.Database().Write().WithContext(ctx).Table(query.BindNames(runtime.TablePrefix()).Tenants.String()).Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error
 	if err != nil {
 		return fmt.Errorf("ensure tenant: %w", err)
 	}
