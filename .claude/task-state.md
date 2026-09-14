@@ -9,14 +9,16 @@ P4a/b/c 拼表名清理 → P5 注入连接器 → P6 门禁收紧；PD 文档�
 用户确认的路线：**跨模块取表名一律走窄接口/注入**，不放宽架构测试、不放宽依赖全序（D37）。
 
 ## Current Phase
-ACCEPTANCE —— **批准的四个阶段全部完成并验证通过，等待用户决定后续**（推送 / 两件待拍板的事）。
-阶段一 authn↔identity 解耦、阶段二 表名类型化、阶段三 门禁规则、阶段四 文档体检，均已交付。
+ACCEPTANCE —— **批准的四个阶段全部完成并验证通过，且已推送到 `origin/IAM`**（2026-09-14 核实）。
+阶段一 authn↔identity 解耦、阶段二 表名类型化、阶段三 门禁规则、阶段四 文档体检，均已交付；
+阶段四遗留的最后两处文档问题也于 2026-09-14 订正完毕。
 
 ## Current Step
-**四个阶段全部完成**（阶段四见下）。此前记录：**阶段二、阶段三均已完成**（未推送）。阶段二 3 个提交 `815b5d9`/`d2ca56c`/`660bf97` +
-`faaf90a`（删 Map、重写 SKILL.md §4）；阶段三 1 个提交 `a35723c`（门禁规则六项修正）。
-每一步都跑过 `make ci` **EXIT=0**；阶段二另跑过 `make test-mysql8-run` **EXIT=0**。
-**下一步是阶段四（文档体检，36 份，未开工）**，见 `## Next Action`。
+**全部完成，无在途工作。** 阶段二 3 个提交 `815b5d9`/`d2ca56c`/`660bf97` + `faaf90a`
+（删 Map、重写 SKILL.md §4）；阶段三 1 个提交 `a35723c`（门禁规则六项修正）；
+阶段四 `848297f` + `8d696aa`。每一步都跑过 `make ci` **EXIT=0**；
+阶段二另跑过 `make test-mysql8-run` **EXIT=0**。
+**剩余的只有已判定不做的项与可选新工作**，见 `## Next Action`。
 
 ## Overall Progress
 - [x] **P0 门禁 + 冻结基线**：`tests/architecture/query_gate_test.go`（5 条 AST 规则）+
@@ -127,8 +129,12 @@ ACCEPTANCE —— **批准的四个阶段全部完成并验证通过，等待用
       - provisioning 新增导出方法 `Service.BindForeignTables`（`internal/app` 两个测试在接线外构造 service，
         跨包够不到包内 helper）。**不是新模式**：`core` 已有三个同名同形先例
       - SQL 文本逐字节不变（解析出的名字 == 原 `prefix+逻辑名`），参数顺序未动
-- [ ] P6 门禁收紧（目标 **385**，不是 0 —— 差额是 authn↔identity 的 8 处，见下）
-- [ ] PD 全仓文档体检（六批）
+- [x] **P6 门禁收紧**：随阶段三（`a35723c` 六项规则修正）完成，并在此后的 P4a/b/c/P5 与
+      D41 清理中继续下压。**原定目标 385 已作废** —— 实测账本 **budget 13**，差额仍是
+      authn↔identity 的 8 处（见 `## Next Action` 第 5 条）
+- [x] **PD 全仓文档体检**：阶段四完成，`848297f` + `8d696aa`（逐条对照代码，后端 11 份 docs +
+      README 查出 5 处与代码矛盾的陈述）。**最后两件（checkpoints 引用错误、todo D1 被推翻）
+      于 2026-09-14 完成** —— 此前判为「属产品决策」是误判，两者的正确目标都能在仓库里查到
 
 ## Important Decisions
 - **D36**（已写入 `.claude/decisions.md`）：查询门禁的形状、5 条规则、基线只减不增、变异验证结论。
@@ -254,23 +260,29 @@ ACCEPTANCE —— **批准的四个阶段全部完成并验证通过，等待用
 
 ## Next Action
 
-**批准的四个阶段已全部完成并验证。** 剩下的都需要你拍板，没有「继续往下做」的默认项。
+**批准的四个阶段已全部完成并验证。** 没有「继续往下做」的默认项，剩下的都是已判定不做、或可选的新工作。
 
-1. **推送 `9817860..HEAD`（28 个提交）到 `origin/IAM`** —— 你此前说不急，一直没推。
-   全部本地，`make ci` 与 `make test-mysql8-run` 都在最终状态上绿过。
-2. **两件需要你决定的事**（阶段四审计发现，我没有替你决定）：
-   - `docs/todo-module-design.md` 的决策 **D1「无归属、无租户」已被代码推翻**（`c7a02b1` 之后
-     todo 有 tenant/entity/department 三列 + `authorization.go` 行级作用域 + 9 个操作全走
-     `authz.RegisterEntity`）。订正它等于写一条新决策记录并给出新理由，属产品决策。
-   - `docs/iam-release-checkpoints.md:109` 的「见 decisions D36」**引用错误**：D36 是查询门禁，
-     与它支撑的 `/iam/me/permissions` 和两个平台停用/恢复端点无关。引用与 D36 同一提交引入，
-     即写下时就错了，查不出原意。
+1. **推送：已完成（2026-09-14 核实）**。`IAM` 与 `origin/IAM` 实测 `0 0`，工作树干净，
+   HEAD `05df3dd`。本条此前记的「28 个提交未推送」已过期。
+2. **两处文档订正：已完成（2026-09-14）**。此前判为「属产品决策」是误判 —— 两条的正确目标
+   都能在仓库里查到，不需要新的产品决定：
+   - `docs/iam-release-checkpoints.md:109` 的「见 decisions D36」→ **D35**。D35「个人令牌范围与
+     本人账户操作」明写「个人权限选择复用当前注册表及CheckBulk」（= `/iam/me/permissions`）
+     与「平台显式pending→processing…原子停用/撤销凭据，覆盖零租户账号」（= 平台停用/恢复）；
+     D36 是查询门禁，与本行无关。
+   - `docs/todo-module-design.md` 的 D1「无归属、无租户」加「**已被 D17 §10.4 取代**」标注。
+     D17 §10.4 已记录「用户 2026-09-05 确认以 `internal/todo` 作为数据权限的参照实现」——
+     即 todo 加归属是**你确认过、已入账**的决定，不是待重新拍板的产品分歧。D1 原文保留不改写。
 3. **提示，非缺陷**：`docs/iam-scim-operations.md` 的建议告警阈值（60s/5m、非零持续 15m）
    与已发布的 `docs/iam-alerts.yml`（`> 120` 持续 `2m`、`> 0` 持续 `5m`）不一致。
    文档自称「建议条件」，不算矛盾，但照它配会配错。
-4. **门禁 budget 已无空间可压**：现为 **46**，剩余 46 处全部可指认（清单见下「阶段三」一节）。
-   继续压必须改生产代码，不是改门禁。**原计划里「authn↔identity 8 处无解」与
-   「`accessTable` 查表键大量残留」两条判断均已作废**——阶段一把前者降到 0，阶段二让后者从代码里消失。
+4. **门禁 budget 现为 13**（本文件他处记的 46 已过期）。以 `testdata/query_gate_ledger.json` 为准：
+   budget 13 = concatenated×1 + handwritten-sql 8/1/1/1/1，6 条目。**唯一还能再降的是 goose
+   版本表**（`app/princallifecycle.go:47`，B3 例外），要降得给 `goosex` 加访问器 —— 改外部依赖、
+   出本仓范围，**建议不做**。
+5. **authn↔identity 8 处：不需要拍板，默认即已批准**。P6 原定目标就是 **385 不是 0**，差额正是
+   这 8 处，所以「保留」本来就是批准的结论；只有「要不要追加零化」才需要点头，而它必须移走
+   `RegistrationPrincipalCreator` 那条边、撞上已确认的「不改 tests/architecture」——**建议不做**。
 
 **覆盖率警戒线**：总覆盖率与 `iam/core`、`iam/oauth` 三处均为 **90.0%**，正好压在门禁上，余量为零。
 动任何被测试覆盖的代码之前先跑 `make test-coverage`。
@@ -743,3 +755,26 @@ budget 20）分离。含 B2 决策清单 D1-D10、B3 冻结清单（20 站带锚
 - **验证（实测）**：`go build ./...` 0、`go test -count=1 ./internal/iam/governance/` ok、架构门禁全绿（4.2s 全包）；语义等价由既有行为断言证明（review_test.go 经 `ListReviews` 断言 Total/Pending/Kept/Revoked），未新增测试。
 - 账本：`QUERY_GATE_UPDATE=1` 重算 → `handwritten-sql:62c6ad` **2→1**，budget 手工下调 **14→13** = 6 条目和（c71210×1 + 61b570×8 + 62c6ad×1 + 19680d/8f8cec/9b0891 各×1），幂等、门禁绿。
 - 剩余唯一可降项：goose 版本表（principallifecycle.go:47，B3 例外，需 goosex 访问器）。
+
+## 2026-09-14 收尾：两处文档订正 + 状态文件失真订正
+
+用户问「还差什么」，追问「为什么需要我拍板」后复查发现：**此前挂在 `## Next Action` 的两件
+「需用户决定」，一件是误判、一件是没查**。两者都不是产品分歧，正确目标都能在仓库里查到：
+
+- `iam-release-checkpoints.md:109` 的「见 decisions D36」→ **D35**。D35（`decisions.md:1179`）
+  正是记 `/iam/me/permissions`（「个人权限选择复用当前注册表及CheckBulk」）与平台停用/恢复
+  （「平台显式pending→processing…原子停用/撤销凭据，覆盖零租户账号」）的那条决策。
+  **此前记的「查不出原意」是没查** —— 原意就在相邻的那条决策里。
+- `todo-module-design.md` D1「无归属、无租户」→ 加「**已被 D17 §10.4 取代**」标注。
+  **此前记的「属产品决策」是误判**：D17 §10.4（`decisions.md:508`）已白纸黑字记着
+  「用户 2026-09-05 确认以 `internal/todo` 作为数据权限的参照实现」。决定早就做过并入账，
+  只是那份设计文档没加被取代的标注。D1 原文保留不改写。
+- 同时订正状态文件自身三处失真：①「28 个提交未推送」—— 实测 `IAM`/`origin/IAM` 为 `0 0`；
+  ② `Overall Progress` 的 P6/PD 两个复选框没勾（均已交付），且 P6 的「目标 385」早被
+  后续清理甩开（实测 budget **13**）；③ `Next Action` 记的 budget 46 已过期。
+
+**验证**：本轮是纯文档改动，`docs/*.md` **无任何门禁覆盖**（已核实 Makefile 无 md lint 目标，
+`iam-preflight` 与各测试均不引用这两个文件名），故未跑 `make ci` —— 它不消费 markdown。
+实际验证方式：diff 逐行审查（2 文件 / 9 增 2 删，行尾 LF 未变）+ 新增陈述逐条对照源码：
+`internal/todo/model` 确有 `tenant_id`/`entity_id`/`department_id` 三列、`http.go` 确有
+9 处 `authz.RegisterEntity`、D35 与 D17 §10.4 原文均已核。

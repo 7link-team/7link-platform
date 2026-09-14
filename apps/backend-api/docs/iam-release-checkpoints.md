@@ -106,7 +106,7 @@ Redis拓扑代码及相关门禁已经验收；此结论不包含生产部署或
 | 真实页面矩阵 | 最终792/792 PASS：22路由×3语言×1440/390×admin/reader/denied×2租户；真实有数据请求、实体/租户隔离、权限与写拒绝、翻译、console和横向溢出检查。首轮脚本错误和产品嵌套Alert错误均已修正，首轮FAIL保留，不冒充PASS |
 | 个人生命周期浏览器 | 6/6 PASS：三语言×双端，退租后cookie仍有效、零成员→申请/取消/重申请→平台processing→旧cookie401→队列读回→真正打开零租户生命周期详情200；suspended=true、anonymized=false，不自动擦除 |
 | 个人安全浏览器 | 12/12 PASS：三语言×双端×密码/纯联邦；PAT仅一次展示、真实scope/跨租户/撤销验证，本人链接无JIT/角色授予/session替换，最后登录方式DELETE409。PAT成功对话框补grid，最终12格含不重叠几何断言与截图复核 |
-| 实际OpenAPI | 21个新增operation、0个删除，总271（其中IAM257）；新增18个本人敏感入口仅sessionCookie，3个平台入口要求platform_administer。既有schema无变化/删除；仅3个既有federation start/callback操作补303响应，其余既有operation不变；state必填和ID边界通过真实HTTP验证。**（2026-09-10后续：此后又新增 `/iam/me/permissions` 与平台停用/恢复两条，实测当前 192 paths / 274 operations，其中 IAM 260；见 decisions D36。）** |
+| 实际OpenAPI | 21个新增operation、0个删除，总271（其中IAM257）；新增18个本人敏感入口仅sessionCookie，3个平台入口要求platform_administer。既有schema无变化/删除；仅3个既有federation start/callback操作补303响应，其余既有operation不变；state必填和ID边界通过真实HTTP验证。**（2026-09-10后续：此后又新增 `/iam/me/permissions` 与平台停用/恢复两条，实测当前 192 paths / 274 operations，其中 IAM 260；见 decisions D35。）** |
 | 迁移与冻结 | 真实MySQL8.4固定镜像完整脚本EXIT0，迁移409.699s、生命周期23.168s，组合/性能/SCIM/重放/归档均通过；authn13→15→13→15、federation5→6→5→6、identity4→5→4→5，保留旧凭据/链接、校验9999到期及owner/墓碑守卫。schema.lock为219文件、72表、33跨模块FK，旧207哈希逐项不变，新增12 |
 | CI各阶段与失败项复验 | fmt/lint及覆盖率通过，总90.1%、全部模块≥90%；goose108.634s、lifecycle387.688s、performance121.604s通过。原make ci EXIT2：架构漏登记两项共享能力/两项测试命名，以及4组迁移测试仍断言旧里程碑/版本。修正后架构3.425s、4组真实三引擎迁移146.127s全部通过；没有删除/放宽断言。build及openapi-check独立补跑通过，不伪称原聚合命令EXIT0 |
 | 生成与规范冻结 | make generate-check及额外包含untracked新增生成物的hash比较PASS；前端API类型再生成逐字节不变；schema-lock正常verify为219/72/33，工具测试通过 |
