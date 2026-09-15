@@ -848,3 +848,35 @@ scim 这 54% 之所以没拦住,不是阈值松,是阈值没跑。**待定:要�
 - 走 HTTP 全栈(routing/middleware/auth 都要真实),复用既有 fixture 造数 + `httptest.Server`
 - 外部库走既有 env 契约(同 `TestComposedPrincipalErasureExternalDatabase` 的形态)
 - 输出 RPS、p50/p95/p99、错误率
+
+### 第二阶段完成:HTTP 并发压测已建成并跑通
+
+**新增**(均为增量,未改任何生产代码):
+- `internal/app/bootstrap_iam_load_integration_test.go` —— 走 `httptest` 的真实全栈
+  (路由/中间件/认证/授权/数据库),复用既有 fixture 造数。4 条场景。**不设延迟断言**:
+  共享机器上的延迟不是稳定断言,会抖的门禁最后都会被关掉;只断言「无传输错误、无 5xx」,
+  以及 warm-up 必须命中预期 2xx(否则会静默地压一个 404 路径还当作容量)。
+  **不设环境变量则 skip**,不影响 `make ci`。
+- `scripts/load-mysql8.sh` —— 照 `test-mysql8.sh` 形态起一次性 MySQL 8.4 容器并驱动。
+  容器每次新建销毁,保证可重复:复用的库会带着上一轮留下的东西。
+- `Makefile` 加 `test-load`。**刻意不进 `ci` 与 `release-check`** —— 它是量测不是门禁,
+  且数字依赖机器。`IAM_LOAD_CONCURRENCY` / `IAM_LOAD_REQUESTS` 可调。
+
+**实测(真实 MySQL 8.4,16 并发 × 300 请求 × 4 场景 = 每场景 4800 请求,全部 200,零失败):**
+
+| 场景 | 吞吐 | p50 | p95 | p99 | max |
+|---|---|---|---|---|---|
+| authorization_check | 705 req/s | 21 ms | 29 ms | 58.1 ms | 154.7 ms |
+| roles_list | 1581 req/s | 9.0 ms | 12.5 ms | 27.5 ms | 97.0 ms |
+| entities_list | 1572 req/s | 9.0 ms | 12 ms | 32.5 ms | 103.5 ms |
+| tenants_list | 4190 req/s | 3.5 ms | 4.5 ms | 11.5 ms | 40.2 ms |
+
+**必须随数字一起讲的局限**:压测进程与服务同进程(`httptest`),生成器与服务抢同一份
+CPU,所以这些是**下界**,不是容量上限;且库在局域网远端的 10.0.0.100 上。
+要绝对容量得把服务独立部署出去再压,那是另一件事。
+
+**过程中的两个错误(都靠实跑才暴露)**:
+① `iamLoadIssue` 原本收 `t` 并调 `t.Helper()` —— 它在工作协程里跑,Go 的 `*testing.T`
+不允许在非测试协程调用。改为完全不收 `t`,错误以返回值交回测试协程断言。
+② `load-mysql8.sh` 抄 `test-mysql8.sh` 时漏了 `--log-bin-trust-function-creators=ON`,
+迁移建函数直接 1419 失败。**抄脚本要逐行对,不能凭印象。**
