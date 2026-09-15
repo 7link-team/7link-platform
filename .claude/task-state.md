@@ -909,3 +909,76 @@ scim 这条已被真实变化吃掉近三分之一。详见 decisions.md 的 D13
 `bulk.go` 两版之间只多了那 3 行。A/B 实测:基线提交 `3277e5e` 的旧代码今天同机重跑 58.56ms、
 HEAD 78.03ms;同轮四条路径里另外两条更快、一条持平,故非全局退化。**这是安全的成本,不是缺陷,
 建议不动。** 未做隔离实验(临时旁路鉴权再测),故「100% 由它造成」未证,只证了量级相符。
+
+## 2026-09-15 覆盖率门禁:当前 HEAD 的 make ci 是红的 —— 两个独立问题
+
+用户问「IAM 生产就绪了吗(只说 Go 代码功能逻辑)」。在当前 HEAD 实跑 `make ci`:
+**CI_EXIT=2,零测试失败**,卡在 `total coverage: 89.8% (minimum 90.0%)`;后面的
+test-integration / build / openapi-check 根本没跑到。
+
+**注意:后台任务报的 "exit code 0" 是包装 echo 的退出码,不是 make 的。**
+与之前 `tee` 掩盖退出码同一个坑 —— 判定必须读日志里的 CI_EXIT。
+
+### 问题 A:总覆盖率失败,是门禁自己的 bug(已修)
+`internal/*/query/gen.go` 由 gorm.io/gen 生成(头部 `DO NOT EDIT`),与同目录 14 个
+`.gen.go` 同一生成器。但过滤器写的是 `/\.gen\.go:/` —— `gen.go` 前面是斜杠不是点,
+**匹配不上,于是 297 条纯生成语句(覆盖率 4.4%)被算进了总覆盖率**。
+- 修法:再排除 `/\/query\/gen\.go:/`。**按全路径而非文件名排除** ——
+  `pkg/extension/gorm/gen/gen.go` 是**手写的构建工具**(差点误伤,已核实其头部注释)。
+- 验证(用真 awk 跑现有 profile,非推理):总覆盖率 **89.8% → 90.6%**,
+  `make -n test-coverage` 解析正常,手写的 gorm/gen 仍在 profile 里未被排除。
+- 注释按房屋风格放在 target 上方(recipe 内夹注释在 Make 里有风险)。
+
+### 问题 B:两个模块门禁是真缺口(子代理处理中)
+模块门禁用**未过滤**的 profile 且按目录精确匹配,`query/` 是另一个目录 ——
+**A 的修复对它们零影响**,已用门禁自己的 awk 实测确认仍是 88.9% / 89.5%。
+
+| 模块 | 现状 | 需补 | 未覆盖构成 |
+|---|---|---|---|
+| organization | 88.9% | +26 条 | 错误传播 131 / **真行为 121** |
+| provisioning | 89.5% | +15 条 | 错误传播 143 / **真行为 144** |
+
+**真行为那半里有该测没测的东西**(这才是补测试的理由,不是凑数):
+- provisioning:`filter.go:46` SCIM 过滤器 `depth>16||nodes>64` **DoS 防护**、
+  `field_policy.go:14` `actor<=0→ErrUnauthorized` **授权守卫**、`bulk.go` 7 处
+  `strictDecode→ErrInvalidSCIM` 畸形载荷校验、`bulk.go:157` DELETE 带 body 必须拒。
+- organization:**乐观锁冲突路径全线没测**(`group_repository.go:90/127`、
+  `group_service.go:106/174`、position 侧对应处)—— 即「并发编辑必须可检测」这个
+  设计目标在 group/position 上没有验证;另有唯一名/岗位编码冲突、邀请状态守卫。
+
+**错误传播那半(两模块合计 274 条)不主动追**:全是 `if err != nil { return err }`。
+仓里有现成套路(`governance/review_test.go:398-414` 的 `DropTable` + `ErrorContains`,
+authn/governance 正是靠它到的 90.3%/92.9%),它能抓「吞掉 DB 错误返回空列表」这类真 bug,
+**但纯按它凑数就是为覆盖率写测试**。仅在 P0 补完仍不够线时才用。
+
+### 执行方式
+Hybrid:两个包互相独立(不同目录/不同文件),两个子代理并行补测试;
+主代理自己改门禁 filter,并保留集成与最终验收。
+
+### 结果:make ci 全绿(2026-09-15,我自己跑的,非采信子代理)
+
+```
+gofmt: clean
+total coverage: 90.8% (minimum 90.0%)
+module coverage: internal/iam/organization    90.3% (minimum 90.0%)
+module coverage: internal/iam/provisioning    90.6% (minimum 90.0%)
+openapi: matches docs/openapi.json
+CI_EXIT=0
+```
+
+三笔提交:`7b9a233` 门禁 filter / `e611be2` provisioning 测试 / `5f96ae7` organization 测试。
+**生产代码零改动**(`git status` 核过,改的全是 `_test.go` 加一个 Makefile)。
+
+**复核方式(没有只看覆盖率数字)**:
+- 逐个读了关键测试。SCIM 复杂度上限用两组互相隔离的输入(17 层 vs 127 节点)分别证明两半守卫,
+  且各配限内反例防止退化成一律拒绝;授权守卫断言「拒绝 + 根本不去问下游 checker」;
+  乐观锁测试断言「赢家值幸存 + version 未变 + **policy revision 未被推进**」。
+- organization 子代理自己做了变异验证(5 个守卫逐个改坏 → 5/5 变红 → 还原),已在报告中给出证据。
+- 两个包 `-shuffle=on` 均 ok,新测试不依赖执行顺序。
+- 核实了子代理声称的「不可达分支」:`scim2/filter-parser` 的 `Expression` 确为密封接口
+  (`ast.go:109` 的未导出 `exprNode()`,包内恰 4 个实现),其 type switch 的 default 确实到不了。
+  **声明属实,未被糊弄。**
+
+**遗留(如实记录,未处置)**:四条不可达的防御分支仍计入分母
+(`provisioning/bulk.go:204`、`provisioning/field_policy.go:143`、`organization/invitation.go:191/236`)。
+两模块合计仍有约 500 条未覆盖,绝大多数是数据库错误传播;按既定判断不追。
