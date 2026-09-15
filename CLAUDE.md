@@ -224,9 +224,30 @@ Only PASS is eligible for delivery. If any important item is false, do not claim
 ### Acceptance — Requirement 1/2/3: PASS
 ### Self-Review — Scope / Reuse / Architecture / Regression / Complexity / Durable State: PASS
 ### Notes — ...
+### Next Step — what happens next, or "nothing"; never omitted
 ```
 
 If something couldn't be tested or verified, state it explicitly — don't hide limitations.
+
+**Always say what comes next.** Every report MUST end with `### Next Step`, and it MUST answer
+these without the user having to ask:
+
+1. **Is anything left?** If nothing is, say so plainly — "nothing outstanding, the working tree is
+   clean" is a complete answer and a useful one. Never omit the section to mean "no".
+2. **What exactly?** Name the file, command, or decision. "Continue the implementation" is not a
+   next step; "push the four local commits" and "run `make release-check` to cover the gates `ci`
+   does not" are.
+3. **Who is it waiting on?** Split what remains into work you can do without further input, and
+   decisions that genuinely need the user. Do the first kind rather than listing it back; only a
+   decision that is actually theirs — product semantics, an outward-facing or irreversible action,
+   a choice this contract reserves for them — belongs in the second.
+
+For anything in the second kind, **give a recommendation and its reason, not a bare menu**.
+Offering only "A or B?" when you already have the evidence to argue for one hands the analysis
+back to the user. State which you would do and why; they can still choose the other.
+
+**`### Notes` is for caveats, limitations and things deliberately left undone — never for the
+plan.** A next step buried there does not count as reported.
 
 ## 12. Repository Conventions
 
