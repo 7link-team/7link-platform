@@ -387,6 +387,24 @@ Phase 9 的 authorization、browser session、SCIM bulk 25 和 audit append 性�
 **Status**
 已确认并由 PostgreSQL 16.9/MySQL 8.4.11 双引擎基线验证。
 
+**Amendment 2026-09-15 —— 时延门禁真正接上了发布路径**
+本决策写明「发布机需要显式启用时延门禁」,但 `scripts/test-mysql8.sh` 从未设置过那个变量,
+于是 `make test-mysql8-run`(= `release-check` 的一环)长期只校验 SQL 集合与计划指纹,
+**时延一直是量而不判**。现已在该脚本的性能步骤加上 `IAM_PERFORMANCE_ENFORCE_THRESHOLDS=1`。
+作用域仅此一条命令(前缀赋值不 export),`make ci` 里 `tests/performance` 的 PostgreSQL 那条
+继承 `os.Environ()`,拿不到它 —— 与本决策「跨机器默认运行不因纯时延失败」一致,刻意不动。
+
+**验证**:开启后真实 MySQL 8.4 跑 PASS;另做变异验证 —— 把 `scim_bulk_25` 阈值降到 60ms 后
+门禁如期 FAIL(`exceeded the same-machine frozen threshold`,5 个样本逐条报),基线随即还原。
+**门禁确认是活的,不是空开关。**
+
+**随之暴露的约束(未处置,后续动基线时必须知道)**:本决策设计的「最大值 3 倍」余量,
+现已被真实变化吃掉一部分 —— 当前余量 authorization 3.53x / audit_append 3.47x /
+session_lookup 2.83x / **scim_bulk_25 仅 2.04x**。且冻结样本本身取自 2026-09-03 的机器状态:
+把基线提交 `3277e5e` 的**同一份旧代码**在今天同机同镜像重跑,`scim_bulk_25` 是 58.56ms 而非
+冻结的 50.77ms。即这份余量同时在吸收「机器差异」与「累积的真实变化」两件事,
+scim 那条已接近设计意图的下沿。重测基线等于抬高门槛,属独立决策,未做。
+
 ---
 
 ## D14 — SQLite 默认事务使用 `BEGIN IMMEDIATE`

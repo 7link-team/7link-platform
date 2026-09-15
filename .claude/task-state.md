@@ -880,3 +880,32 @@ CPU,所以这些是**下界**,不是容量上限;且库在局域网远端的 10.
 不允许在非测试协程调用。改为完全不收 `t`,错误以返回值交回测试协程断言。
 ② `load-mysql8.sh` 抄 `test-mysql8.sh` 时漏了 `--log-bin-trust-function-creators=ON`,
 迁移建函数直接 1419 失败。**抄脚本要逐行对,不能凭印象。**
+
+## 2026-09-15 时延门禁打开(用户拍板)
+
+**改动一行**:`scripts/test-mysql8.sh` 的性能步骤加 `IAM_PERFORMANCE_ENFORCE_THRESHOLDS=1`(+6 行注释)。
+
+**这不是新主张,是补上 D13 早就定的事。** D13 的 Tradeoffs 白纸黑字写着「发布机需要显式启用
+时延门禁」,但那个变量从来没人设过 —— 所以 `make test-mysql8-run`(`release-check` 的一环)
+长期**只校验 SQL 集合与计划指纹,时延量而不判**。我此前把它讲成「我的建议」,不准确。
+
+**验证(两步,缺一不可)**:
+1. **开启后 PASS**:真实 MySQL 8.4,`--- PASS (33.92s)`。
+2. **变异验证(关键)**:把 `scim_bulk_25` 阈值临时降到 60ms → 门禁如期 **FAIL**,
+   报 `"83006957" is not less than or equal to "60000000" / scim_bulk_25 exceeded the
+   same-machine frozen threshold`,5 个样本逐条报;基线由 trap `git checkout` 还原,
+   `git status` 已确认干净。**证明它是活的开关,不是设了个没用的变量。**
+
+**作用域已确认不泄漏**:`VAR=x cmd` 是前缀赋值不 export;`make ci` 里 `tests/performance`
+的 PostgreSQL 那条用 `os.Environ()` 继承,拿不到它。与 D13「跨机器默认运行不因纯时延失败」
+一致 —— PostgreSQL 阈值是亚毫秒级(authorization 0.8ms),在 CI 机器上开必然抖,**刻意不动**。
+
+**当前余量(开启后的真实位置)**:authorization 3.53x / audit_append 3.47x /
+session_lookup 2.83x / **scim_bulk_25 仅 2.04x**。D13 设计的是「最大值 3 倍」,
+scim 这条已被真实变化吃掉近三分之一。详见 decisions.md 的 D13 Amendment。
+
+**SCIM 那 54% 的根因(已查清,未处置)**:不是性能退化,是 `c7a02b1` 给 `Bulk` 加了鉴权
+(`authorizeSCIM`:读凭据行 + 校验租户/目录/主体 + 服务账号校验,每次调用多 3~4 次数据库往返)。
+`bulk.go` 两版之间只多了那 3 行。A/B 实测:基线提交 `3277e5e` 的旧代码今天同机重跑 58.56ms、
+HEAD 78.03ms;同轮四条路径里另外两条更快、一条持平,故非全局退化。**这是安全的成本,不是缺陷,
+建议不动。** 未做隔离实验(临时旁路鉴权再测),故「100% 由它造成」未证,只证了量级相符。
