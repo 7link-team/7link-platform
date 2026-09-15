@@ -18,6 +18,7 @@ import (
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/provisioning"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/appenv"
 	goosex "7link.com/platform/pkg/extension/goose"
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
@@ -135,7 +136,9 @@ func runComposedPrincipalErasure(t *testing.T, external *Database) {
 			bystander := f.principalErasureSnapshot(t, f.adminA.ID)
 			neighborBefore := f.principalErasureSnapshot(t, neighbor.ID)
 			audits := f.erasureRows(t, "iam_audit_events", "1 = 1")
-			revisions, revisionErr := core.NewRevisionStore(f.prefix)
+			revisions, revisionErr := core.NewRevisionStore(appenv.NewRuntime(
+				appenv.NewIdentity("principallifecycle-test", "1"), appenv.WithTablePrefix(f.prefix),
+			))
 			require.NoError(t, revisionErr)
 			revision, revisionErr := revisions.Current(t.Context(), f.db, iamTenantB)
 			require.NoError(t, revisionErr)

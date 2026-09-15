@@ -181,7 +181,9 @@ func verifyCoreServiceBehavior(t *testing.T, datasourceType, dsn, prefix string)
 	require.NoError(t, db.Table(prefix+"iam_relationships").Count(&relationshipsAfter).Error)
 	assert.Equal(t, relationshipsBefore, relationshipsAfter)
 
-	revisions, err := iamcore.NewRevisionStore(prefix)
+	revisions, err := iamcore.NewRevisionStore(appenv.NewRuntime(
+		appenv.NewIdentity("iam-core-test", "1"), appenv.WithTablePrefix(prefix),
+	))
 	require.NoError(t, err)
 	current, err := revisions.Current(t.Context(), db, tenantID)
 	require.NoError(t, err)
