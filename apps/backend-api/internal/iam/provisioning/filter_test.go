@@ -125,3 +125,111 @@ func TestSCIMSubstringOperatorsRejectEmptyValues(t *testing.T) {
 		assert.ErrorIs(t, err, ErrInvalidFilter, filter)
 	}
 }
+
+// TestSCIMFilterComplexityLimitsRejectDoSExpressions proves both halves of the
+// compiler's complexity guard on their own. A deeply nested negation trips the
+// depth cap while staying far under the node cap, and a wide balanced
+// conjunction trips the node cap at depth six; expressions one step inside
+// each limit still compile, so neither cap can be satisfied by rejecting
+// everything.
+func TestSCIMFilterComplexityLimitsRejectDoSExpressions(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{DryRun: true})
+	require.NoError(t, err)
+	compile := func(filter string) error {
+		_, err := applySCIMFilter(db.Table("iam_scim_resources AS resource"), filter, ResourceUser, "sqlite", testForeignTables(t, ""))
+		return err
+	}
+	nested := func(depth int) string {
+		return strings.Repeat("not (", depth) + "userName pr" + strings.Repeat(")", depth)
+	}
+	var balanced func(height int) string
+	balanced = func(height int) string {
+		if height == 0 {
+			return "userName pr"
+		}
+		return "(" + balanced(height-1) + " and " + balanced(height-1) + ")"
+	}
+
+	// 16 negations put the attribute at depth 16 with 17 nodes; 17 negations
+	// push it to depth 17, still only 18 nodes, so only the depth cap can fire.
+	require.NoError(t, compile(nested(16)))
+	assert.ErrorIs(t, compile(nested(17)), ErrInvalidFilter, "the depth cap must reject a deeper expression")
+
+	// Height 5 is 63 nodes, height 6 is 127 nodes, both far inside the depth
+	// cap, so only the node cap can reject the wider one.
+	require.NoError(t, compile(balanced(5)))
+	assert.ErrorIs(t, compile(balanced(6)), ErrInvalidFilter, "the node cap must reject a wider expression")
+}
+
+// TestSCIMFilterRejectsMalformedLogicalAndValuePathNodes keeps a malformed part
+// of a filter from being silently dropped: a bad operand on either side of a
+// logical node, an operator the compiler does not implement, a value path on an
+// attribute this module cannot join, and a compound value filter all have to
+// fail the whole filter rather than widen the result set.
+func TestSCIMFilterRejectsMalformedLogicalAndValuePathNodes(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{DryRun: true})
+	require.NoError(t, err)
+	for _, filter := range []string{
+		`unknown eq "x" and userName pr`,
+		`userName pr and unknown eq "x"`,
+		`groups[value eq "x"]`,
+		`emails[value eq "a" and type eq "work"]`,
+	} {
+		_, err := applySCIMFilter(db.Table("iam_scim_resources AS resource"), filter, ResourceUser, "sqlite", testForeignTables(t, ""))
+		assert.ErrorIs(t, err, ErrInvalidFilter, filter)
+	}
+
+	present := func() *scimfilter.AttributeExpression {
+		return &scimfilter.AttributeExpression{AttributePath: scimfilter.AttributePath{AttributeName: "userName"}, Operator: scimfilter.PR}
+	}
+	nodes := 0
+	_, _, err = compileFilterExpression(&scimfilter.LogicalExpression{Operator: scimfilter.LogicalOperator("xor"), Left: present(), Right: present()},
+		ResourceUser, "sqlite", testForeignTables(t, ""), false, 0, &nodes)
+	assert.ErrorIs(t, err, ErrInvalidFilter, "an unimplemented logical operator must not fall through to AND")
+
+	nodes = 0
+	_, _, err = compileFilterExpression(nil, ResourceUser, "sqlite", testForeignTables(t, ""), false, 0, &nodes)
+	assert.ErrorIs(t, err, ErrInvalidFilter, "an unrecognized node must fail closed, not compile to nothing")
+}
+
+// TestSCIMComparisonRejectsUncomparableValues stops a null or non-string
+// compare value from reaching SQL: ordering against null is never satisfiable
+// and a numeric literal would be bound against a text column.
+func TestSCIMComparisonRejectsUncomparableValues(t *testing.T) {
+	target := filterTarget{expression: "resource.external_id", caseExact: true}
+	for _, operator := range []scimfilter.CompareOperator{scimfilter.GT, scimfilter.GE, scimfilter.LT, scimfilter.LE, scimfilter.CO} {
+		_, _, err := compileComparison(target, operator, nil, "sqlite")
+		assert.ErrorIs(t, err, ErrInvalidFilter, "null is only comparable with eq and ne: %s", operator)
+	}
+	for _, value := range []any{42, 3.5, []any{"x"}} {
+		_, _, err := compileComparison(target, scimfilter.EQ, value, "sqlite")
+		assert.ErrorIs(t, err, ErrInvalidFilter)
+	}
+
+	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{DryRun: true})
+	require.NoError(t, err)
+	_, err = applySCIMFilter(db.Table("iam_scim_resources AS resource"), `userName eq 42`, ResourceUser, "sqlite", testForeignTables(t, ""))
+	assert.ErrorIs(t, err, ErrInvalidFilter)
+}
+
+// TestSCIMGroupFilterResolvesOnlyGroupSchemaAttributes proves a Group listing
+// compiles displayName against the group table and accepts only the Group
+// schema URI, so a User-schema prefix or a user-only attribute cannot be
+// smuggled into a group query.
+func TestSCIMGroupFilterResolvesOnlyGroupSchemaAttributes(t *testing.T) {
+	compile := func(raw string) (string, []any, error) {
+		expression, err := scimfilter.ParseFilter([]byte(raw))
+		require.NoError(t, err, raw)
+		nodes := 0
+		return compileFilterExpression(expression, ResourceGroup, "sqlite", testForeignTables(t, ""), false, 0, &nodes)
+	}
+	condition, args, err := compile(GroupSchema + `:displayName eq "Team"`)
+	require.NoError(t, err)
+	assert.Equal(t, "LOWER(scim_group.name) = ?", condition)
+	assert.Equal(t, []any{"team"}, args)
+
+	for _, raw := range []string{UserSchema + `:displayName eq "Team"`, `userName eq "team"`, `emails.value pr`} {
+		_, _, err := compile(raw)
+		assert.ErrorIs(t, err, ErrInvalidFilter, raw)
+	}
+}

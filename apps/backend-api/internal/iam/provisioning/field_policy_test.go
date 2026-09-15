@@ -219,3 +219,36 @@ func TestSCIMFieldGuardsRejectMalformedInputAndFilterLimits(t *testing.T) {
 		assert.Error(t, json.Unmarshal([]byte(raw), &input))
 	}
 }
+
+// TestSCIMProfileConstraintRequiresAnActor proves a missing or invalid actor is
+// refused before the field checker is consulted, so an unidentified caller can
+// never inherit whatever constraint the checker would otherwise hand back.
+func TestSCIMProfileConstraintRequiresAnActor(t *testing.T) {
+	service := &Service{fields: provisioningProfileCheckerFunc(func(context.Context, guid.ID, guid.ID, string, guid.ID) (authz.FieldConstraint, error) {
+		t.Error("the field constraint must not be resolved for a missing actor")
+		return authz.FieldConstraint{}, nil
+	})}
+	for _, actor := range []guid.ID{0, -1} {
+		_, err := service.profileConstraint(t.Context(), testID("tenant-a"), actor)
+		assert.ErrorIs(t, err, ErrUnauthorized, "actor %d", actor)
+	}
+	assert.Equal(t, http.StatusUnauthorized, mapSCIMError(t.Context(), ErrUnauthorized).GetStatus())
+}
+
+// TestSCIMFilterFieldChecksTraverseNestedAndLeftOperands proves the read check
+// follows a filter all the way down. A denied attribute buried inside a value
+// path's inner filter, or sitting on the left of a conjunction, still has to be
+// refused — otherwise a caller probes hidden data through the result count.
+func TestSCIMFilterFieldChecksTraverseNestedAndLeftOperands(t *testing.T) {
+	fields, err := (provisioningProfileChecker{}).FieldConstraint(t.Context(), 1, 0, authz.ProfileResource, 11)
+	require.NoError(t, err)
+	nested, leftOperand := `groups[displayName eq "Team"]`, `emails.value pr and userName pr`
+	require.NoError(t, requireUserFilterFields(nested, fields), "an allowed nested attribute must still pass")
+	require.NoError(t, requireUserFilterFields(leftOperand, fields))
+
+	fields.Fields["display_name"] = authz.FieldDecision{Read: "redact"}
+	fields.Fields["email"] = authz.FieldDecision{Read: "redact"}
+	for _, raw := range []string{nested, leftOperand} {
+		assert.ErrorIs(t, requireUserFilterFields(raw, fields), authz.ErrFieldDenied, raw)
+	}
+}
