@@ -114,7 +114,7 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/pkg/i18n \
 	7link.com/platform/pkg/query
 
-.PHONY: build ci dev fmt-check generate generate-docs golangci iam-preflight lint openapi openapi-check test test-coverage test-integration test-performance test-all test-mysql8 test-mysql8-run
+.PHONY: build ci dev fmt-check generate generate-docs golangci iam-preflight lint openapi openapi-check test test-coverage test-integration test-performance test-load test-all test-mysql8 test-mysql8-run
 .PHONY: release-check test-race generate-check frontend-check test-alerts test-redis-security
 # These gates share coverage files and embedded database resources. Even when
 # invoked with -j, execute each prerequisite to completion before starting the next.
@@ -266,5 +266,12 @@ test-integration:
 
 test-performance:
 	go -C tests test ./performance -count=1 -v
+
+# The HTTP load harness against a real MySQL 8.4. Deliberately outside ci and
+# release-check: it measures throughput and latency rather than asserting a
+# pass, and what it reports depends on the machine it ran on. Tune with
+# IAM_LOAD_CONCURRENCY and IAM_LOAD_REQUESTS.
+test-load:
+	bash scripts/load-mysql8.sh "$(DOCKER_TEST_HOST)" "$(MYSQL8_IMAGE)" $(DOCKER_CMD)
 
 test-all: test test-integration
