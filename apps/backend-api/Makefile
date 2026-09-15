@@ -234,10 +234,16 @@ golangci: lint
 test:
 	go test ./...
 
+# gorm.io/gen writes one file per table as <table>.gen.go and the package entry
+# point as query/gen.go. Only the first spelling matches the .gen.go pattern, so
+# the entry point -- transaction and session boilerplate that nothing here should
+# hand-test -- was counted as uncovered project code. It is excluded by its full
+# path rather than by name, because pkg/extension/gorm/gen is hand-written build
+# tooling that happens to share it.
 test-coverage:
 	@packages="$$(go list ./... | grep -Ev '/proto/gen/go/|/node_modules/|/dbgen$$')"; \
 	go test -count=1 -covermode=atomic -coverprofile="$(COVERAGE_RAW_PROFILE)" $$packages
-	@awk 'NR == 1 || ($$1 !~ /\/cmd\/7link-api\/main.go:/ && $$1 !~ /\/cmd\/infra-api\/main.go:/ && $$1 !~ /\.gen\.go:/)' \
+	@awk 'NR == 1 || ($$1 !~ /\/cmd\/7link-api\/main.go:/ && $$1 !~ /\/cmd\/infra-api\/main.go:/ && $$1 !~ /\.gen\.go:/ && $$1 !~ /\/query\/gen\.go:/)' \
 		"$(COVERAGE_RAW_PROFILE)" > "$(COVERAGE_PROFILE)"
 	@coverage="$$(go tool cover -func="$(COVERAGE_PROFILE)" | awk '/^total:/ {gsub(/%/, "", $$3); print $$3}')"; \
 	awk -v coverage="$$coverage" -v minimum="$(COVERAGE_MIN)" 'BEGIN { \
