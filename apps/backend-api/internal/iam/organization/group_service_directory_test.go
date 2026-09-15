@@ -328,3 +328,56 @@ func TestGroupAndPositionMembershipFailuresRollback(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, positionMembers, 1)
 }
+
+// TestDirectoryServicesRejectStaleVersions pins the concurrent-edit contract at
+// the service boundary. Two editors read version 1; one writes and the row
+// moves to 2. The second editor's update and delete both still carry version 1,
+// and both have to be refused with the conflict error the API maps to a 409 --
+// not applied, not partially applied, and without advancing the policy revision
+// that tells the authorization caches something changed.
+func TestDirectoryServicesRejectStaleVersions(t *testing.T) {
+	h := newOrganizationHarness(t, "")
+	guard := &organizationAdministratorGuard{}
+	groups := newBoundGroupService(t, h.runtime, h.appender, &organizationMemberChecker{}, guard, newOrganizationTestIDs(2200))
+	positions := newBoundPositionService(t, h.runtime, h.appender, &organizationMemberChecker{}, guard, newOrganizationTestIDs(2300))
+	groups.now = func() time.Time { return organizationTestNow }
+	positions.now = func() time.Time { return organizationTestNow }
+
+	group, err := groups.Create(t.Context(), 1, CreateGroup{Name: "Operators"})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, group.Version)
+	winnerName := "Operators renamed"
+	group, err = groups.Update(t.Context(), 1, group.ID, UpdateGroup{Name: &winnerName, Version: 1})
+	require.NoError(t, err)
+	require.EqualValues(t, 2, group.Version)
+	groupRevision := h.revision(t, 1)
+
+	loserName := "Operators clobbered"
+	_, err = groups.Update(t.Context(), 1, group.ID, UpdateGroup{Name: &loserName, Version: 1})
+	assert.ErrorIs(t, err, ErrGroupVersionConflict)
+	assert.ErrorIs(t, groups.Delete(t.Context(), 1, group.ID, 1), ErrGroupVersionConflict)
+	storedGroup, err := groups.Get(t.Context(), 1, group.ID)
+	require.NoError(t, err)
+	assert.Equal(t, winnerName, storedGroup.Name, "the edit that won must survive the stale one")
+	assert.EqualValues(t, 2, storedGroup.Version)
+	assert.Equal(t, groupRevision, h.revision(t, 1), "a rejected edit must not advance the policy revision")
+
+	position, err := positions.Create(t.Context(), 1, CreatePosition{Code: "engineer", Name: "Engineer"})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, position.Version)
+	winnerCode := "principal-engineer"
+	position, err = positions.Update(t.Context(), 1, position.ID, UpdatePosition{Code: &winnerCode, Version: 1})
+	require.NoError(t, err)
+	require.EqualValues(t, 2, position.Version)
+	positionRevision := h.revision(t, 1)
+
+	loserCode := "clobbered"
+	_, err = positions.Update(t.Context(), 1, position.ID, UpdatePosition{Code: &loserCode, Version: 1})
+	assert.ErrorIs(t, err, ErrPositionVersionConflict)
+	assert.ErrorIs(t, positions.Delete(t.Context(), 1, position.ID, 1), ErrPositionVersionConflict)
+	storedPosition, err := positions.Get(t.Context(), 1, position.ID)
+	require.NoError(t, err)
+	assert.Equal(t, winnerCode, storedPosition.Code, "the edit that won must survive the stale one")
+	assert.EqualValues(t, 2, storedPosition.Version)
+	assert.Equal(t, positionRevision, h.revision(t, 1), "a rejected edit must not advance the policy revision")
+}

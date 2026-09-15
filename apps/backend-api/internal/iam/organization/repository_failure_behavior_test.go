@@ -245,3 +245,48 @@ func TestGroupAndPositionServicesRejectInvalidReferences(t *testing.T) {
 	_, err = failingPositions.Create(t.Context(), 1, CreatePosition{Code: "position", Name: "Position"})
 	assert.ErrorContains(t, err, "generate position id")
 }
+
+// TestUnwiredRepositoryRefusesDirectoryOperations pins what a repository that
+// never reached a runtime does when it is called anyway. Every group and
+// position entry point resolves its physical table names before it touches the
+// writer, so an unwired one has to return errRepositoryUnavailable; the entry
+// point that skipped that guard would dereference a nil writer and take the
+// process down instead of handing the caller an error it can report.
+func TestUnwiredRepositoryRefusesDirectoryOperations(t *testing.T) {
+	t.Parallel()
+	unavailable := &Repository{}
+	group := groupRow{TenantID: 1, ID: 2, Name: "Group", NameKey: "group", GroupType: GroupTypeStatic, Status: StatusActive, Version: 1}
+	position := positionRow{TenantID: 1, ID: 2, Code: "position", Name: "Position", Status: StatusActive, Version: 1}
+
+	_, err := unavailable.listGroups(t.Context(), 1)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, err = unavailable.getGroup(t.Context(), 1, 2)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	assert.ErrorIs(t, unavailable.insertGroup(t.Context(), &group), errRepositoryUnavailable)
+	assert.ErrorIs(t, unavailable.updateGroup(t.Context(), &group, 1), errRepositoryUnavailable)
+	assert.ErrorIs(t, unavailable.deleteGroup(t.Context(), 1, 2, 1), errRepositoryUnavailable)
+	_, err = unavailable.listDynamicGroupCandidates(t.Context(), 1, 2)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, err = unavailable.listGroupMembers(t.Context(), 1, 2)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, err = unavailable.getGroupMember(t.Context(), 1, 2, 3)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	assert.ErrorIs(t, unavailable.putGroupMember(t.Context(), &model.GroupMember{}), errRepositoryUnavailable)
+	_, err = unavailable.deleteGroupMember(t.Context(), 1, 2, 3)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+
+	_, err = unavailable.listPositions(t.Context(), 1)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, err = unavailable.getPosition(t.Context(), 1, 2)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	assert.ErrorIs(t, unavailable.insertPosition(t.Context(), &position), errRepositoryUnavailable)
+	assert.ErrorIs(t, unavailable.updatePosition(t.Context(), &position, 1), errRepositoryUnavailable)
+	assert.ErrorIs(t, unavailable.deletePosition(t.Context(), 1, 2, 1), errRepositoryUnavailable)
+	_, err = unavailable.listPositionMembers(t.Context(), 1, 2)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, err = unavailable.getPositionMember(t.Context(), 1, 2, 3)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	assert.ErrorIs(t, unavailable.putPositionMember(t.Context(), &model.PositionMember{}), errRepositoryUnavailable)
+	_, err = unavailable.deletePositionMember(t.Context(), 1, 2, 3)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+}

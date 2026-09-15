@@ -331,3 +331,44 @@ func TestInvitationCredentialAndPrincipalFailures(t *testing.T) {
 	_, err = service.Accept(t.Context(), AcceptInvitation{Token: token, LoginName: "", Password: "short"})
 	assert.ErrorIs(t, err, ErrInvitationCredential)
 }
+
+// TestInvitationAcceptStopsWhenTheRowIsConsumedMidTransaction pins the guard on
+// the claiming UPDATE. Accept reads the invitation, creates the principal, and
+// only then claims the row, so the claim repeats the whole pending-token-
+// unexpired predicate instead of trusting the earlier read. Here the row stops
+// being claimable while the principal is being created -- the shape a second
+// acceptance racing the first would take -- and the claim must match nothing
+// and roll the acceptance back rather than hand out a second principal for an
+// invitation that is no longer pending.
+func TestInvitationAcceptStopsWhenTheRowIsConsumedMidTransaction(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	h.seedTenant(t, 1, TenantActive)
+	var consumed guid.ID
+	creator := InvitationPrincipalCreator(func(ctx context.Context, db *gorm.DB, tenantID guid.ID, _, _, displayName, email string) (guid.ID, error) {
+		err := db.WithContext(ctx).Table(h.table("iam_invitations")).Where("tenant_id = ? AND id = ?", tenantID, consumed).
+			Updates(map[string]any{"status": InvitationRevoked, "revoked_at": organizationTestNow, "updated_at": organizationTestNow}).Error
+		if err != nil {
+			return 0, err
+		}
+		return 901, db.WithContext(ctx).Table(h.table("iam_tenant_members")).Create(map[string]any{
+			"tenant_id": tenantID, "principal_id": 901, "display_name": displayName, "email": email,
+			"status": StatusActive, "created_at": organizationTestNow, "updated_at": organizationTestNow,
+		}).Error
+	})
+	service := newBoundInvitationService(t, h.runtime, h.appender, newOrganizationTestIDs(700), &invitationCredentialFixture{}, creator)
+	service.now = func() time.Time { return organizationTestNow }
+
+	invitation, token, err := service.Create(t.Context(), 1, CreateInvitation{Email: "user@example.com"})
+	require.NoError(t, err)
+	consumed = invitation.ID
+
+	_, err = service.Accept(t.Context(), AcceptInvitation{Token: token, LoginName: "user", Password: "correct horse battery staple", DisplayName: "User"})
+	assert.ErrorIs(t, err, ErrInvitationCredential)
+
+	var status string
+	require.NoError(t, h.db.Table(h.table("iam_invitations")).Select("status").Where("tenant_id = ? AND id = ?", 1, invitation.ID).Scan(&status).Error)
+	assert.Equal(t, InvitationPending, status, "the refused acceptance must roll back the row it failed to claim")
+	var members int64
+	require.NoError(t, h.db.Table(h.table("iam_tenant_members")).Where("tenant_id = ? AND principal_id = ?", 1, 901).Count(&members).Error)
+	assert.Zero(t, members, "the principal created inside the refused acceptance must not survive it")
+}

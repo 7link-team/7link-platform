@@ -75,3 +75,44 @@ func TestDirectoryMembershipWindowNormalization(t *testing.T) {
 	_, _, _, _, err = normalizePositionMember(1, 2, 0, PositionMemberWindow{})
 	assert.ErrorIs(t, err, ErrPositionInvalid)
 }
+
+// TestGroupRepositoryGuardsVersionAndNameKey pins the writes the repository
+// refuses on its own account. The service checks the version it just read
+// before it calls down, so a stale row never reaches the repository through
+// that path -- which is exactly why the guard has to be proven here: it is the
+// last thing standing between a concurrent editor whose read went stale and a
+// silent overwrite of the edit that won.
+func TestGroupRepositoryGuardsVersionAndNameKey(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	service := newBoundGroupService(t, h.runtime, h.appender, &organizationMemberChecker{prefix: h.prefix}, &organizationAdministratorGuard{}, newOrganizationTestIDs(2000))
+	service.now = func() time.Time { return organizationTestNow }
+	repo := service.repo
+	alpha, err := service.Create(t.Context(), 1, CreateGroup{Name: "Alpha"})
+	require.NoError(t, err)
+	beta, err := service.Create(t.Context(), 1, CreateGroup{Name: "Beta"})
+	require.NoError(t, err)
+
+	stale := groupRow{
+		TenantID: 1, ID: alpha.ID, Name: "Renamed", NameKey: nameKey("Renamed"), GroupType: alpha.Type,
+		Status: alpha.Status, SortOrder: alpha.SortOrder, Version: alpha.Version + 1, UpdatedAt: organizationTestNow,
+	}
+	assert.ErrorIs(t, repo.updateGroup(t.Context(), &stale, alpha.Version+1), ErrGroupVersionConflict)
+	unchanged, err := service.Get(t.Context(), 1, alpha.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "Alpha", unchanged.Name, "a write carrying the wrong version must not land")
+	assert.Equal(t, alpha.Version, unchanged.Version)
+
+	collision := groupRow{
+		TenantID: 1, ID: beta.ID, Name: "Alpha", NameKey: nameKey("Alpha"), GroupType: beta.Type,
+		Status: beta.Status, SortOrder: beta.SortOrder, Version: beta.Version + 1, UpdatedAt: organizationTestNow,
+	}
+	assert.ErrorIs(t, repo.updateGroup(t.Context(), &collision, beta.Version), ErrGroupNameConflict)
+	renamed, err := service.Get(t.Context(), 1, beta.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "Beta", renamed.Name)
+
+	assert.ErrorIs(t, repo.deleteGroup(t.Context(), 1, alpha.ID, alpha.Version+1), ErrGroupVersionConflict)
+	survivor, err := service.Get(t.Context(), 1, alpha.ID)
+	require.NoError(t, err)
+	assert.Equal(t, alpha.ID, survivor.ID, "a delete carrying the wrong version must not remove the row")
+}
