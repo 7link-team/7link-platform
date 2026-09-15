@@ -89,8 +89,15 @@ MYSQL8_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port
 MYSQL8_EXPECTED_SQL_MODE="${mysql_sql_mode}" \
   go -C tests test ./migration -run '^(TestIAMMigrationsOnRealMySQL8|TestIAMPrincipalErasureOwnerMigrations|TestIAMDefaultMenuTranslationUpgrade|TestIAMPersonalTokenMigrations)$' -count=1
 
+# Assert the frozen latency thresholds, not only the query plans. Measuring
+# without asserting is how scim_bulk_25 drifted from 50ms to 78ms while every
+# run stayed green. This step is where a latency assertion belongs and the
+# postgres run inside `make ci` is not: this one is invoked deliberately
+# against a provisioned host, where a threshold measures the code rather than
+# whatever else the machine was doing.
 IAM_PERFORMANCE_DATABASE_TYPE=mysql \
 IAM_PERFORMANCE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
+IAM_PERFORMANCE_ENFORCE_THRESHOLDS=1 \
   go test ./internal/app -run '^TestIAMPerformanceExternalDatabase$' -count=1 -v
 
 IAM_LIFECYCLE_DATABASE_TYPE=mysql \
