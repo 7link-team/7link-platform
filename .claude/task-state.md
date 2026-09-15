@@ -778,3 +778,73 @@ budget 20）分离。含 B2 决策清单 D1-D10、B3 冻结清单（20 站带锚
 实际验证方式：diff 逐行审查（2 文件 / 9 增 2 删，行尾 LF 未变）+ 新增陈述逐条对照源码：
 `internal/todo/model` 确有 `tenant_id`/`entity_id`/`department_id` 三列、`http.go` 确有
 9 处 `authz.RegisterEntity`、D35 与 D17 §10.4 原文均已核。
+
+## 2026-09-14 压测任务:先跑基准,第一步就撞出已推送的编译中断
+
+用户要求「压测一波」,先跑现成基准(`TestIAMPerformanceExternalDatabase`,仓里唯一现成的性能
+机制;真实并发压测仓库里没有,是第二阶段的新工作量)。
+
+**第一次跑直接 FAIL —— 不是环境问题,是测试包编译不过:**
+
+```
+internal\app\principallifecycle_test.go:138:52: cannot use f.prefix (variable of type string)
+  as *appenv.Runtime value in argument to core.NewRevisionStore
+```
+
+**根因**:`f039051`(D41 第 2 步 Part A,NewRevisionStore 改收 `*appenv.Runtime`)改了 11 个文件,
+**漏了两个测试调用点**,两处都把 `string` 当 `*appenv.Runtime` 传:
+
+| 文件 | 后果 |
+|---|---|
+| `internal/app/principallifecycle_test.go:138` | `internal/app` 测试包编译不过 → **性能测试就在这个包里,基准根本跑不起来** |
+| `tests/migration/iam_core_test.go:184` | `tests/migration` 编译不过 → 迁移门禁跑不了 |
+
+**当前 HEAD(`05df3dd`)上 `make ci` 与 `make test-mysql8-run` 都是红的。已推送到 origin。**
+之所以漏掉:`f039051` 记录的验证范围是「core/gov/identity/org/authn 串行测试全 ok」——
+`internal/app` 与 `tests/migration` 不在其中,而查询门禁只查 SQL 账本、不编译测试包。
+**因此本文件此前「make ci 在最终状态上绿过」的说法对 HEAD 不成立**,最后一次全绿早于 `f039051`。
+
+**已修**(最小改动,沿用仓内既有范式 `core/revision_test.go:28`):
+两处改为 `NewRevisionStore(appenv.NewRuntime(appenv.NewIdentity("<name>", "1"), appenv.WithTablePrefix(<prefix>)))`,
+app 侧补 `pkg/appenv` import。`ValidatePrefix("")` 放行空串,故 fixture 的 `prefix = ""` 路径不受影响。
+
+**验证**:`go vet` 两个包均 OK、gofmt 干净;`TestComposedPrincipalErasure`(sqlite 路径,
+正好覆盖 138 行)**跑过 ok 5.7s**。`tests/migration` 的 `TestIAMCoreServiceBehaviorOnPostgres`
+走 embedded-postgres(本地二进制,非 Docker),**尚未跑**,待基准结束后补。
+
+**教训(与「账本记录的是存在,不是正当」同类)**:改签名的机械替换,验证集必须是
+**能编译该符号的全部包**,不是「我改过的那些包」。`go build ./...` 不编译测试文件,
+所以它绿不代表测试包能编译;要抓这个必须跑 `go vet ./...` 或 `go test`。
+
+### 基准结果(修复后重跑,PASS)
+
+真实 MySQL 8.4,5 样本中位数,对比 2026-09-04 冻结基线:
+
+| 热路径 | 基线 | 现在 | 变化 | 阈值 | 余量 |
+|---|---|---|---|---|---|
+| audit_append | 3.12 ms | 3.12 ms | +0.1% | 11 ms | 3.5x |
+| authorization | 2.15 ms | 2.08 ms | −3.4% | 7 ms | 3.4x |
+| session_lookup | 3.14 ms | 2.93 ms | −6.6% | 10 ms | 3.4x |
+| **scim_bulk_25** | **50.77 ms** | **78.03 ms** | **+53.7%** | 154 ms | 2.0x |
+
+14 条 SQL 计划指纹与基线**逐条一致**(所以语句形态没变)。前三条稳定。
+**scim_bulk_25 慢 54% 是真漂移不是噪声**:基线 5 样本 48.0–51.3ms、现在 73.3–83.2ms,两组不重叠。
+**根因未查,不猜。** 候选方向:同一组语句形状下执行次数变多(需比对 SQL capture 的次数,或 profile)。
+
+### 新发现:延迟阈值根本没在执行
+
+`enforceIAMPerformanceThresholds` 只在 `IAM_PERFORMANCE_UPDATE=plans` 或
+`IAM_PERFORMANCE_ENFORCE_THRESHOLDS=1` 时才调用(`bootstrap_iam_performance_integration_test.go:220`),
+而官方门禁 `scripts/test-mysql8.sh` **两个都没设** —— 它只设 `IAM_PERFORMANCE_DATABASE_TYPE/DSN`。
+**所以 `make test-mysql8-run` 实际只校验 SQL 计划指纹,完全不校验延迟。**
+scim 这 54% 之所以没拦住,不是阈值松,是阈值没跑。**待定:要不要在门禁里打开 enforce。**
+
+### 第二阶段:真并发压测(用户已定方向)
+
+**用户选定:指向远程 MySQL 8.4**(不是 SQLite)。已确认 `make dev` 在 `--debug` 下用 SQLite
+(`internal/app/debug.go:11-23`,无 database 配置时落到 `sqlite.db`),压它没有生产参考价值。
+
+待建:压测载荷 + 驱动。设计要点(未开工):
+- 走 HTTP 全栈(routing/middleware/auth 都要真实),复用既有 fixture 造数 + `httptest.Server`
+- 外部库走既有 env 契约(同 `TestComposedPrincipalErasureExternalDatabase` 的形态)
+- 输出 RPS、p50/p95/p99、错误率
