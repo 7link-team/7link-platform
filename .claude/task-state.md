@@ -1054,3 +1054,45 @@ shell 遇到空格与括号直接语法错误。同文件 `test-mysql8` 那处�
 用 heredoc 写 `tr -d '\r'` 时反斜杠被吞一层,**写进脚本的是一个不可见的裸 CR 字节**。
 它看起来像能用,实际失效 —— WRONGPASS 正是它造成的,换成正规 `\r` 才通。
 **经 heredoc 写含反斜杠的内容后,必须用 `cat -A` 之类验证真实字节**,不能看渲染结果。
+
+## 2026-09-16 Swagger/OpenAPI 契约审计(用户此前问「接口审计没问题了」)
+
+推送完成(远端 `refs/heads/IAM` = `602c6a5`,0/0)后开始。**这是契约层审计,不是全仓 deep-audit。**
+范围:192 paths / 274 operations / 358 schemas。
+
+### 干净的(实测,非印象)
+- **零个** operation 缺 `operationId` / `summary` / `tags`
+- 31 条非信封 2xx 响应**全部有外部规范依据**:OIDC discovery、JWKS、SAML metadata/SSO/SLO、
+  文件下载(审计导出/归档)、RFC 7662 introspect —— 包信封反而是错的
+- 26 个匿名端点**逐条核过**:`.well-known`、SAML/OIDC 回调、登录前的 captcha/注册/找回密码等,
+  全部是合理的免鉴权面
+- 分页命名两套是**规范要求**,不是分歧:IAM `limit/offset`,SCIM `startIndex/count`(RFC 7644)
+- 错误码使用面一致(401/403 各 ~250、500/503 各 ~262)
+
+### 发现 1:DELETE 状态码,参照模块与主体不一致
+- IAM 全部 **36 条 DELETE 返 200 + 信封体**(如 `EnvelopeMapStringBool`)
+- **`/todos/{id}` 返 204 无体**;SCIM 两条返 204 是 **RFC 7644 强制,正确**
+- 问题在于 **todo 是"打样"模块**(其设计文档自述用途是给 catalog/order 照抄),
+  照它写的新模块会与 IAM 主体分歧。两种都是合法 REST,**但参照实现与主体不该不一致**。
+
+### 发现 2:31 个列表端点无分页,随租户数据无限增长
+53 个返回数组且无分页参数的 GET,分类后:
+- A 设计上有界 14(健康检查、静态权限/菜单目录、由路径参数限定)
+- B 限定在调用者自身 9(`/authn/me`、`/iam/me/*`、自己的会话与 passkey)
+- **C 随数据增长 31** —— 真正的发现。含 `/iam/tenants`(平台级)、
+  `/iam/roles/{role_id}/members`、`/iam/groups/{id}/members`、`/iam/positions/{id}/members`
+  (成员列表随租户规模增长)、`/iam/departments`、`/iam/groups`、`/iam/invitations` 等
+
+**已实证到实现层**:`/iam/roles/{role_id}/members` → `core.ListMembers` →
+`repository.go:460` 的 `.Find()`,**无 `.Limit()`**,返回全部行。
+而 `/iam/roles`、`/iam/entities` 是有 `limit/offset` 的,且全仓用了 **317 处 `.Limit()`** ——
+**所以这是既有模式没被用上,不是缺少模式。** 性能基线的工作负载正是 64 租户 × 64 成员。
+
+### 方法论教训(与门禁那次同源)
+第一版检测器报「0 个无分页列表端点」,**是假的**:schema 里 `data` 的 type 是 `["array","null"]`,
+我按 `== "array"` 判断,永远为假。**先用已知的分页端点自检检测器**才发现。
+「检测不出来」与「没有问题」是两回事 —— 任何扫描在报告结论前必须先证明它能检出已知实例。
+
+### 未做
+信封内 `code` 字段的语义一致性、各端点错误码与业务语义的逐条对应、schema 命名语义、
+向后兼容策略。这些属 `deep-audit` 的范围,未展开。
