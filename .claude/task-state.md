@@ -1010,3 +1010,47 @@ docker 命令参数 —— **属新工作,未做,未擅自改脚本**。
 **过程中的环境插曲**:10.0.0.100 一度 ping 通但 22 端口超时(sshd 未接受连接),用户恢复后正常。
 期间**未**使用 `make iam-preflight --bootstrap-docker` 去救 —— Makefile 明写
 「release verification must not bootstrap or change a remote Docker installation」。
+
+## 2026-09-16 release-check 首次端到端通过 —— RELEASE_EXIT=0
+
+用户要求打通此前卡住的两关。做完后 **`make release-check` 七关首次能整体执行并全绿**:
+
+```
+gofmt: clean
+total coverage: 90.8%   organization 90.3%   provisioning 90.6%
+openapi: matches docs/openapi.json
+race: 162 包 ok / DATA RACE 0 / FAIL 0
+promtool test rules: SUCCESS
+schema lock: 219 published migration files unchanged
+Redis mTLS/ACL + Cluster + Sentinel: PASS ×2(明文轮 + 全 mTLS 轮)
+RELEASE_EXIT=0
+```
+
+### promtool(未改仓库)
+官方 3.14.0 二进制,SHA256 与发布的 `sha256sums.txt` 逐字节吻合,放进 GOPATH/bin。
+**刻意不进 `tools/go.mod`**:实测 `go get` 会拖进 Kubernetes 客户端库(go.sum +367 行),
+为一条告警规则单测不值;且 Makefile 的 `PROMTOOL ?= promtool` 本就设计为来自环境
+(buf/golangci-lint 才在 tools 模块里),按既有约定办。
+
+### test-redis-security:四个独立的移植缺陷,逐个实测才暴露
+原估「让脚本接 DOCKER_CMD,约一小时」**严重低估**。实际:
+1. **bind mount 送不到远程 daemon**(`src=` 在 daemon 那台机器解析)→ `tar -cf - . | docker cp -`,fixture 走 stdin
+2. **70 行内联脚本被 SSH 中间 shell 重切** → `sh -eu` 从 heredoc 读 stdin(正是 `test-mysql8.sh:76-80` 记录过的洞见)
+3. **MSYS 把 `-subj /CN=x` 改写成 `C:/Program Files/Git/CN=x`** → `MSYS2_ARG_CONV_EXCL='/CN='`
+   (不能用 `'*'`:那会连文件路径一起排除,原生 openssl.exe 就写不了 MSYS 路径了)
+4. **Windows openssl 写 CRLF**(重定向流与 `-out` 文件都是)→ 容器里 `\r` 留在密码中 → `WRONGPASS`;
+   在**构建二进制之前**归一化文本 fixture(用 `cat >` 回写以保留 `chmod 600`)
+5. **Windows 无执行位** → bind mount 时 Docker 补 0755,tar 忠实保留「没有」→ 容器内 `chmod +x`
+
+**容器内那 70 行测试逻辑逐字节未改**(已用 diff 证明),只动传输层;无参数时仍默认 `docker`,
+本地 docker 用户路径不变。
+
+### 顺带修好 generate-check(此前被记为「本机跑不了」)
+根因不是玄学:`$(MAKE)` 未加引号,展开成 `C:/Program Files (x86)/GnuWin32/bin/make`,
+shell 遇到空格与括号直接语法错误。同文件 `test-mysql8` 那处本就写作 `@"$(MAKE)"` ——
+按同文件既有写法加引号即可。**本文件此前记录的「generate-check 在本机跑不起来」现已作废。**
+
+### 我自己犯的错(写下来防再犯)
+用 heredoc 写 `tr -d '\r'` 时反斜杠被吞一层,**写进脚本的是一个不可见的裸 CR 字节**。
+它看起来像能用,实际失效 —— WRONGPASS 正是它造成的,换成正规 `\r` 才通。
+**经 heredoc 写含反斜杠的内容后,必须用 `cat -A` 之类验证真实字节**,不能看渲染结果。
