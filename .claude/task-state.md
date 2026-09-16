@@ -982,3 +982,31 @@ CI_EXIT=0
 **遗留(如实记录,未处置)**:四条不可达的防御分支仍计入分母
 (`provisioning/bulk.go:204`、`provisioning/field_policy.go:143`、`organization/invitation.go:191/236`)。
 两模块合计仍有约 500 条未覆盖,绝大多数是数据库错误传播;按既定判断不追。
+
+## 2026-09-16 release-check:7 关跑了 5 关全绿,2 关被环境挡住
+
+用户问「IAM 生产就绪了吗」后要求跑发布门禁。**`make release-check` 无法整体执行**
+(其组成里有本机跑不了的关),故逐关执行。HEAD `d98cea3`,工作树全程干净。
+
+| 关卡 | 结果 |
+|---|---|
+| `ci` | ✅ CI_EXIT=0(总覆盖 90.8% / org 90.3% / prov 90.6% / openapi matches) |
+| `frontend-check` | ✅ FRONTEND_EXIT=0(lint/typecheck/**148 测试 0 fail**/build) |
+| `test-race` | ✅ RACE_EXIT=0,**零 DATA RACE,零 FAIL** |
+| `test-mysql8-run` | ✅ MYSQL8_EXIT=0,**schema lock 219 个迁移文件未变** |
+| `generate-check`(手工等价) | ✅ `make generate` 后 `git status` 全空,连未跟踪生成物都没有 |
+| `test-alerts` | ❌ **本机无 `promtool`** |
+| `test-redis-security` | ❌ **脚本结构性不支持本机** |
+
+**时延门禁首次在真门禁里执行并通过**(我 2026-09-15 加的 `IAM_PERFORMANCE_ENFORCE_THRESHOLDS=1`
+生效了):scim_bulk_25 中位数 **84.9ms** / 阈值 154ms —— 注意**比前几次(75–78ms)高**,
+余量收窄到约 1.8 倍。样本间波动比想象的大,D13 Amendment 记的 2.04x 应理解为「那一次的值」。
+
+**`test-redis-security` 是结构性跑不了,不是主机故障**:`scripts/test-redis-security.sh:5` 用
+`command -v docker` 要求**本机 PATH 上有 docker**,且全程裸 `docker` 调用,不接受 `DOCKER_CMD`。
+本机是走 SSH 驱动 10.0.0.100 的远程 docker。要跑就得让该脚本像 `test-mysql8.sh` 一样接受
+docker 命令参数 —— **属新工作,未做,未擅自改脚本**。
+
+**过程中的环境插曲**:10.0.0.100 一度 ping 通但 22 端口超时(sshd 未接受连接),用户恢复后正常。
+期间**未**使用 `make iam-preflight --bootstrap-docker` 去救 —— Makefile 明写
+「release verification must not bootstrap or change a remote Docker installation」。
