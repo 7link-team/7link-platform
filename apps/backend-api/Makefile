@@ -161,8 +161,8 @@ ci: fmt-check lint test-coverage test-integration build openapi-check
 # release verification must not bootstrap or change a remote Docker installation.
 # Environment deployment, browser UAT and service-owner sign-off remain separate.
 test-redis-security:
-	bash scripts/test-redis-security.sh
-	IAM_TEST_REDIS_TLS=1 bash scripts/test-redis-security.sh
+	bash scripts/test-redis-security.sh $(DOCKER_CMD)
+	IAM_TEST_REDIS_TLS=1 bash scripts/test-redis-security.sh $(DOCKER_CMD)
 
 release-check: ci test-race generate-check frontend-check test-alerts test-mysql8-run test-redis-security
 
@@ -176,7 +176,7 @@ generate-check:
 	@before="$$(mktemp)"; after="$$(mktemp)"; \
 	trap 'rm -f "$$before" "$$after"' EXIT; \
 	git ls-files --full-name | git hash-object --stdin-paths > "$$before" && \
-	$(MAKE) --no-print-directory generate && \
+	"$(MAKE)" --no-print-directory generate && \
 	git ls-files --full-name | git hash-object --stdin-paths > "$$after" && \
 	cmp "$$before" "$$after" || { echo "generate changed tracked content; review and regenerate the candidate"; exit 1; }
 

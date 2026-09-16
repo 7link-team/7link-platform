@@ -1,12 +1,31 @@
 #!/usr/bin/env bash
 # Disposable application compatibility checks; never targets an existing Redis.
+#
+# The Docker command is a parameter because the daemon is not always local: a
+# machine that drives a remote daemon passes its transport here, the same way
+# test-mysql8.sh does. Everything that has to reach the daemon therefore travels
+# on stdin -- the fixture directory as a tar stream, the container script as
+# input to sh. A remote transport puts a shell between here and the daemon, and
+# that shell re-splits an argument containing spaces and quotes. Nothing
+# re-splits stdin.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-for tool in docker go openssl; do command -v "$tool" >/dev/null; done
+
+docker_command=("$@")
+if (( ${#docker_command[@]} == 0 )); then
+  docker_command=(docker)
+fi
+
+for tool in go openssl tar; do command -v "$tool" >/dev/null; done
+# On Git Bash, openssl is a native Windows binary, so MSYS rewrites any
+# argument that looks like a Unix path -- turning -subj /CN=x into a drive
+# path and failing the certificate. Excluding that one prefix leaves the
+# file paths converted, which the same binary needs. Unix shells ignore it.
+export MSYS2_ARG_CONV_EXCL='/CN='
 redis_test_dir=$(mktemp -d "${TMPDIR:-/tmp}/iam-redis-security.XXXXXX")
 redis_test_name="iam-redis-test-$(openssl rand -hex 6)"
 cleanup() {
-  docker rm -f "$redis_test_name" >/dev/null 2>&1 || true
+  "${docker_command[@]}" rm --force "$redis_test_name" >/dev/null 2>&1 || true
   # Exact directory created by this invocation; contains only generated fixtures.
   rm -rf -- "$redis_test_dir"
 }
@@ -20,12 +39,31 @@ for identity in server client; do
   printf 'subjectAltName=DNS:localhost,IP:127.0.0.1\nextendedKeyUsage=serverAuth,clientAuth\n' > "$redis_test_dir/$identity.ext"
   openssl x509 -req -in "$redis_test_dir/$identity.csr" -CA "$redis_test_dir/ca.crt" -CAkey "$redis_test_dir/ca.key" -CAcreateserial -out "$redis_test_dir/$identity.crt" -days 1 -extfile "$redis_test_dir/$identity.ext" >/dev/null 2>&1
 done
-redis_test_arch=$(docker info --format '{{.Architecture}}')
+# Native Windows openssl writes CRLF, both into a redirected stream and into
+# its own -out files. The container reads them as Unix text, where a stray CR
+# survives inside a password and the ACL stops matching what redis-cli sends.
+# Normalizing here, before the test binary is built into the same directory,
+# keeps the rewrite away from anything that is not text. cat preserves the
+# passwords' mode where a move would not.
+for fixture in "$redis_test_dir"/*; do
+  tr -d '\r' < "$fixture" > "$fixture.lf" && cat "$fixture.lf" > "$fixture" && rm -f "$fixture.lf"
+done
+# The container runs wherever the daemon is, so the test binary is built for
+# that machine's architecture rather than this one's.
+redis_test_arch=$("${docker_command[@]}" info --format={{.Architecture}} | tr -d '\r')
 case "$redis_test_arch" in aarch64|arm64) redis_test_arch=arm64;; x86_64|amd64) redis_test_arch=amd64;; *) exit 1;; esac
 echo 'Building disposable Linux Redis test runner'
 CGO_ENABLED=0 GOOS=linux GOARCH="$redis_test_arch" go test -c -o "$redis_test_dir/authn.test" ./internal/iam/authn
-docker run --detach --name "$redis_test_name" --network none --mount "type=bind,src=$redis_test_dir,dst=/work" redis:7.4-alpine sleep 1800 >/dev/null
-docker exec -e "IAM_TEST_REDIS_TLS=${IAM_TEST_REDIS_TLS:-0}" "$redis_test_name" sh -eu -c '
+"${docker_command[@]}" run --detach --name "$redis_test_name" --network none redis:7.4-alpine sleep 1800 >/dev/null
+# A bind mount would name a path on the daemon's machine, which holds none of
+# these fixtures. The tar stream carries them instead.
+"${docker_command[@]}" exec "$redis_test_name" mkdir -p /work
+tar -C "$redis_test_dir" -cf - . | "${docker_command[@]}" cp - "$redis_test_name:/work"
+# A bind mount used to hand the runner to the container already executable.
+# tar carries the mode it was built with instead, and a Windows filesystem has
+# no execute bit to carry, so the container grants it.
+"${docker_command[@]}" exec "$redis_test_name" chmod +x /work/authn.test
+"${docker_command[@]}" exec --interactive -e "IAM_TEST_REDIS_TLS=${IAM_TEST_REDIS_TLS:-0}" "$redis_test_name" sh -eu <<'REDIS_CONTAINER_SCRIPT'
   data_password=$(cat /work/data-password)
   sentinel_password=$(cat /work/sentinel-password)
   redis_cli() {
@@ -76,5 +114,5 @@ docker exec -e "IAM_TEST_REDIS_TLS=${IAM_TEST_REDIS_TLS:-0}" "$redis_test_name" 
     sleep 0.1
   done
   IAM_TEST_REDIS_TOPOLOGIES=1 /work/authn.test -test.run "^TestSharedRedisExternal$" -test.v -test.timeout 2m
-'
+REDIS_CONTAINER_SCRIPT
 echo 'Redis standalone mTLS/ACL, Cluster, and Sentinel compatibility: PASS'
