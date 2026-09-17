@@ -1140,3 +1140,266 @@ provisioning 3、governance 3、federation 2、oauth 1、audit 1。
 `make ci` **EXIT=0**:gofmt clean、总覆盖率 **90.8%**、全部 30 个门禁模块 ≥90%、openapi 匹配。
 前端 typecheck 通过、**148 测试 0 fail**。lint 首轮红(英式拼写 6 处 + 我删测试后的孤儿辅助 1 处),
 已修,复跑绿。
+
+## E2E Verification - 2026-09-17
+
+- Request: run E2E tests. Execution: Direct; no business code or assertions changed.
+- Revision: `20a8c785de7abb88b07ea3ffab526c44e1518a9f`.
+- Build: PASS, `go build -trimpath -o .temp/e2e-current/api.exe ./cmd/7link-api`
+  from `apps/backend-api`. The existing UAT binary/state were not overwritten.
+- Real-backend E2E: BLOCKED. Existing isolated UAT MySQL endpoint
+  `10.0.0.100:32769` actively refused TCP connections on two checks.
+  Docker CLI is unavailable on this Windows host; the documented initializer
+  requires macOS/Linux and a local Unix-socket Docker context. No database reset,
+  migration, remote container change, or production acceptance was performed.
+- Frontend browser regression: 60 distinct scenarios PASS, 1 FAIL; real Chrome
+  and Vite, mocked API responses. Command from `apps/frontend-web-admin/apps/iam`:
+  `node scripts/release-regression-browser-audit.mjs`. Full run passed 19 scenarios
+  before failing. Separate runs with `IAM_REGRESSION_FILTER` completed remaining
+  groups: `list states` (24 PASS), `personal` (13 PASS), `language switch` (1 PASS),
+  `nested error` (3 PASS). `nullable OAuth` independently reproduced the failure.
+- Failure: `release-regression-browser-audit.mjs:835` times out waiting for
+  `Edit Machine client`. The mock has no `/iam/me/permissions` handler and its
+  default response is `[]`; the real page correctly gates edit controls on
+  `oauth_client_update` (`src/app/oauth-clients/page.tsx`). This identifies a
+  missing test permission fixture, not a verified backend or product defect.
+- Self-review: scope preserved; failures not suppressed; no test weakened.
+  Acceptance: NOT READY for real-backend E2E or production sign-off.
+- Next action: restore the isolated UAT MySQL endpoint, then run HTTP verification
+  and `local-uat-browser-audit.mjs --release`; recommend adding explicit OAuth
+  update permission to the affected mock scenario after user approval to fix it.
+
+### Authorized E2E Follow-up - 2026-09-17
+
+- User authorized fixes and environment work; MUST NOT commit or push.
+- Phase: ACCEPTANCE. All selected E2E suites PASS. No business code changed.
+- Fixed the regression mock: explicit `/iam/me/permissions` response, empty
+  permissions by default, `oauth_client_update` only for the OAuth edit scenario.
+  Full browser regression rerun: 61/61 PASS (exit 0).
+- Added optional `IAM_UAT_DIRECTORY` to local UAT and route-matrix browser scripts
+  so current-build evidence stays separate from previous UAT state/artifacts.
+- Confirmed the remote container name, pinned image, UAT label and existing
+  volume before starting only `7link-iam-console-uat-mysql` through the existing
+  dedicated SSH key. Restart changed its dynamic port from 32769 to 32768.
+  Only `.temp/e2e-current/config.yaml` was updated; original UAT config/state,
+  keys, passwords and binaries were preserved. No reset or migration performed.
+- Current backend SHA-256:
+  `504fdc947267cdf12847946b024ce44e409b2ec972c0154b70877bc74e34fa84`.
+- Fixed local UAT's single/default-tenant assumption: discover the configured
+  accessible tenant and explicitly choose it through the real workspace UI;
+  preserve tenant assertions and all existing checks.
+- Real API: 9 checks PASS via `.temp/e2e-current/verify-http.mjs` (exit 0).
+- Real browser: `local-uat-browser-audit.mjs --release` PASS (exit 0), 4
+  persona/device combinations and 6 additional child/OAuth flow results.
+  Reports and screenshots: `apps/backend-api/.temp/e2e-current/browser/`.
+- Full real-backend route matrix: 792/792 PASS (exit 0): 22 routes x 3 locales x
+  2 widths x 3 personas x 2 tenants. Both fixture cleanup results PASS: owned
+  synthetic tenant fixtures deleted and synthetic global principals disabled.
+- Frontend `bun run typecheck`, final `bun run lint`, `bun run test --force`,
+  `bun run build`: PASS (exit 0). Unit tests executed without cache: 148 PASS,
+  0 FAIL (ui 85, iam 63). Script syntax, Prettier and `git diff --check`: PASS.
+- Reviewed desktop failure evidence and successful mobile dashboard screenshot;
+  all route-matrix cells assert no page errors and no horizontal overflow.
+- Self-review and final acceptance: PASS for requested local E2E verification.
+  No production sign-off, permanent erasure, reset, migration, commit or push.
+- Processes started for this run: backend PID 17768 (loopback 18080), Vite
+  consoles 18091 and 18094. Both Vite consoles stopped; backend stopped after
+  executable-path ownership verification. UAT MySQL stopped to restore its
+  initial stopped state; database volume, current-build reports and screenshots
+  are retained. No user or unrelated service was stopped.
+- Next action: none for requested tests. Changes remain uncommitted in three
+  browser scripts plus this task-state record, as requested. To rerun against
+  this build, start the owned UAT container, refresh its dynamic port with
+  `.temp/e2e-current/prepare.mjs`, start the current API and proxy console, and
+  set `IAM_UAT_DIRECTORY` to `apps/backend-api/.temp/e2e-current`.
+
+## Business Workflow E2E - 2026-09-17
+
+- Request: run directory/authorization, governance, SCIM, registration/email
+  verification and Passkey workflow audits. Fix failures minimally; no commit
+  or push. Execution: Direct, sequential audits sharing the isolated UAT tenant.
+- Phase: TESTING. Existing UAT container restarted with preserved volume;
+  current backend PID 16588, Vite 18091, notification receiver 18100.
+  Build SHA-256 remains `504fdc947267cdf12847946b024ce44e409b2ec972c0154b70877bc74e34fa84`.
+- Initial department run failed on a missing create button. Runner only seeded
+  tenant ID, not its session subject; fixed by resolving subject through real
+  authenticated API and setting both existing storage keys together.
+- Directory group running: department then failed during list reload on a
+  transient missing row; position/group failed clicking create before effective
+  permissions resolved. Added bounded readiness waits, preserved assertions.
+- Registration needs remote MySQL readback: added optional existing-convention
+  `IAM_DOCKER_SSH` / `IAM_DOCKER_SSH_KEY` support, shell-quotes every remote arg,
+  requires batch key authentication and bounds the read-only query to 15 seconds.
+- Existing runner now optionally records reports and failure screenshots under
+  `IAM_BROWSER_AUDIT_OUTPUT`. No business source changed so far.
+- Next action: finish initial directory group, rerun failed audits, then governance
+  and protocol groups; inspect evidence, rerun checks and restore stopped services.
+  Permanent erasure, production sign-off and database reset remain out of scope.
+
+### Workflow Checkpoint - scope race reproduced and fixed
+
+- Department, position, static/dynamic group, entity, tenant and member
+  authorization-source audits have PASS results after bounded readiness waits
+  and correct tenant/subject binding on each test account switch.
+- Real product defect reproduced: UI role scope returns to "all" after saving
+  selected departments, while PUT payload and independent backend GET confirm
+  selected departments persisted. Older in-flight detail reads overwrite draft.
+- Added controlled delayed-read browser regression in the existing release
+  regression script. Before fix: FAIL (`All data` vs `Selected departments`).
+  After fix: PASS. Roles page now versions scope edits/saves; read responses
+  only initialize the draft if no newer scope edit/save occurred.
+- Role workflow progressed through scope persistence, conditional permission,
+  direct and directory grants; its next failure was screenshot sampling while
+  details showed loading counters. Added readiness wait for the existing expected
+  1 permission / 3 assignments, without changing screenshot assertions.
+- Frontend typecheck and lint after product fix: PASS.
+- Next action: run all 14 audits together with complete member, notification,
+  captcha and SSH readback configuration; fix remaining failures and rerun.
+
+### Workflow Checkpoint - integrated rerun in progress
+
+- Initial combined run passed 10/14 workflows; position, access-request and
+  access-review passed on retry after readiness/tenant-binding fixes.
+- Registration verified email activation and zero tenant memberships through
+  real DB readback. Corrected obsolete dashboard expectation to the established
+  no-active-workspace screen; added authenticated-session, zero-membership and
+  logout checks. Fixed browser Response.ok property use in those checks.
+- Full mocked browser regression after scope fix: 64/64 PASS (exit 0), including
+  delayed read versus unsaved/saved edits and legitimate untouched refresh.
+- Final frontend typecheck, lint, forced unit tests (148) and build: PASS.
+- Full 14-workflow final run active (exec session 16466), evidence under
+  `.temp/e2e-current/browser/business-workflows-final`; first five workflows PASS.
+- Standalone SCIM actor/target audits now bind session subject and test tenant
+  using existing storage keys. Not yet verified. For outbound receiver, only
+  owned test API may be restarted with CLI flags
+  `--provisioning.outbound-allow-plaintext` and
+  `--provisioning.outbound-allow-networks 127.0.0.1/32`; production defaults and
+  original UAT configuration MUST remain unchanged.
+- Next action: finish integrated run, run standalone SCIM audits and roles
+  route matrix, review evidence/diff, then stop verified owned services and
+  restore initially stopped UAT container. No commit/push/reset/erasure.
+
+### Workflow Checkpoint - Passkey and SCIM safety expectations
+
+- Combined final run passed 13/14; registration and all business workflows PASS,
+  Passkey rename failed because refresh still held its button disabled.
+- Passkey now waits for enabled controls and uses unique credential names to
+  prevent touching earlier failed fixtures. Retry PASS: register, rename,
+  authenticate, delete, reject deleted credential; no console errors/overflow.
+- Independent SCIM actor audit PASS after explicit zh-CN cookie and session
+  subject binding: create/preserve/rebind/conflict reload/clear/tenant switch.
+- Roles real route matrix PASS 36/36, cleanup PASS for both test tenants;
+  durable report `browser/route-matrix/roles-report.json`. Existing matrix
+  `report.json` is latest-run output (36 cells), not the earlier 792-cell run.
+- Owned backend restarted from verified executable path, now PID 1480 with
+  test-only loopback SCIM CLI allowlist. Original config remains unchanged.
+- Outbound audit found obsolete expectation: a 503 intentionally preserves
+  the durable uncertain-operation claim and subsequent push returns 409.
+  Backend tests/implementation document this safety invariant. Test now covers
+  definite rejection (429) followed by safe retry AND 503 followed by no resend
+  and no claim deletion. No backend code or DB records manually altered.
+- Outbound retry active session 17974. Full integrated green run active session
+  20538, output `browser/business-workflows-green`. Final readiness still pending.
+- Removed owned temporary roles probe (not a deliverable); retained evidence.
+- Next action: finish outbound and integrated suites, inspect screenshots,
+  final script/static checks, append actual outcomes, stop owned services and
+  UAT container while preserving its data volume and unfinished-operation claim.
+
+### Business Workflow Final Acceptance - 2026-09-17
+
+- Phase: ACCEPTANCE. Final integrated real-backend run PASS 14/14 (exit 0):
+  department, position, group, entity, tenant, role, member-authorization,
+  invitation, access-request, access-review, service-account, inbound SCIM,
+  registration/email verification and Passkey.
+- Report: `apps/backend-api/.temp/e2e-current/browser/business-workflows-green/report.json`.
+  Earlier failed-run evidence is retained separately, not presented as green.
+- Standalone SCIM actor PASS (exit 0); outbound SCIM target PASS (exit 0),
+  including wire payloads, ordinary tenant admin permissions, token lifecycle,
+  field projection, denials, safe retry after 429, 503 uncertain-operation
+  exclusion, version conflict reload, deletion and tenant isolation.
+- Roles route matrix PASS 36/36, both tenant cleanup results PASS. Report:
+  `apps/backend-api/.temp/e2e-current/browser/route-matrix/roles-report.json`.
+- Mocked regression PASS 64/64; frontend typecheck, lint, forced unit tests
+  (148 PASS, 0 FAIL), build, all changed script syntax, Prettier and diff checks
+  PASS. Final lint/format rerun includes standalone SCIM and Passkey edits.
+- Inspected role-scope and outbound-editor mobile screenshots: no overlap or
+  overflow; persisted selected department is visible, stored bearer token is
+  absent from editor. Browser audit assertions pass. Vite dev-server logs also
+  contain non-fatal ResizeObserver notification-loop warnings during resizing;
+  these are not counted as business failures or production acceptance.
+- Product change is limited to roles page scope-draft version guard. Added
+  three focused regression scenarios; test scripts fixed stale assumptions,
+  real session/tenant/locale setup, disabled-button races and fixture ownership.
+- Self-review PASS: scope/reuse/architecture/complexity/regression/durable state.
+  Original-request acceptance PASS for local E2E testing; execution Direct.
+- Owned API PID 1480 stopped after executable-path verification; Vite session
+  13553 and notification session 26913 stopped. Ports 18080/18091/18100 have no
+  remaining listeners. Owned labeled MySQL stopped, final status `exited`,
+  restoring initial state while retaining its volume.
+- Deliberately retained isolated synthetic records: standalone audits do not
+  clean their tenants/principals/service accounts; uncertain 503 targets keep
+  their protective operation claims, including the earlier failed test target.
+  No manual claim release, permanent erasure, reset, migration, production
+  configuration change, staging, commit or push performed.
+- Final Git diff check PASS; staged diff empty. No further test or implementation
+  work remains; local changes await user review, not auto-commit.
+
+### Interactive Preview - 2026-09-17
+
+- User requested running the app to inspect it in the browser. Execution Direct;
+  reused current UAT binary/config and preserved database, no commit or push.
+- Verified isolated MySQL container label before starting it; refreshed dynamic
+  port using existing ignored prepare helper. Original UAT configuration remains
+  unchanged. API restarted without outbound SCIM test-only network overrides.
+- Running owned API PID 18712, notification receiver PID 7064, Vite exec session
+  93672 on 18091. Browser helper PID 6312 opened visible dedicated Chrome,
+  authenticated existing admin and bound existing test tenant; no secrets logged.
+- Preview URL: `http://localhost:18091/`. Frontend GET and proxied `/api/readyz`
+  both HTTP 200; browser helper confirmed authenticated homepage and saved local
+  `apps/backend-api/.temp/e2e-current/preview-desktop.png` screenshot.
+- Added only ignored local browser-launch helper `open-preview.mjs`; no business
+  source changed. Services intentionally left running for the user's inspection.
+- Next action: user inspects browser. Stop only these verified owned services
+  and restore stopped container when preview is no longer needed; retain DB data.
+
+### Account Display Fix And Authorized Delivery - 2026-09-17
+
+- User requested fixing the numeric account label, then explicitly authorized
+  committing and pushing ALL local deliverable changes. This supersedes the
+  earlier no-commit/no-push constraint; ignored credentials/artifacts stay local.
+- Reproduced: unscoped real session exposes subject only; same session with the
+  authorized UAT tenant exposes `preferred_username: admin@example.test`.
+- Regression reproduced before fix (username absent), then PASS after fix.
+- Added explicit `sessionForTenant` client query, while global authentication
+  stays unscoped. UserMenu loads authorized profile keyed by tenant and subject,
+  rejects mismatched subjects and ignores late reads after context changes.
+  Empty/omitted/denied/unavailable attributes safely fall back to account ID.
+- Both workspace and personal account headers use the display query; no backend
+  policy bypass or authentication mutation. Existing personal-token test now
+  explicitly allows only read-only session projection with selected t1; all
+  other personal requests retain strict absent-tenant assertions.
+- Ten focused browser regressions PASS: username, cross-tenant late response,
+  omitted fields, 403/503/network failures preserving login, no workspaces,
+  mobile email fallback, subject mismatch and personal account navigation.
+- Real Chrome/current backend username readback PASS on desktop and mobile;
+  no uncaught page errors or horizontal overflow. Screenshots are ignored local
+  `username-desktop.png` and `username-mobile.png` under `.temp/e2e-current`.
+- Frontend typecheck/lint/forced tests (149 PASS, 0 FAIL)/build PASS.
+  Final full browser regression rerun PASS 74/74 (session 6634, exit 0).
+- `git fetch origin` PASS, current IAM and origin/IAM had no divergence.
+  All 22 modified paths reviewed; no untracked deliverables, credentials,
+  runtime configuration, browser profiles or generated reports to stage.
+- Final personal lifecycle six locale/device combinations PASS; only the
+  read-only display projection may carry t1/t2, while every personal lifecycle
+  and platform mutation retains strict absent-tenant assertions.
+- Final Prettier, script syntax and staged diff checks PASS. All 22 deliverable
+  paths explicitly staged; private-key marker and local-artifact checks clear.
+- Self-review and original-request acceptance PASS: username fixed, global
+  authentication preserved, field policy respected, delayed reads isolated,
+  existing E2E improvements retained and verified. Execution Direct.
+- Delivery authorized on branch IAM to origin/IAM, commit message:
+  `fix(iam): harden browser workflows and tenant-aware account display`.
+  Exact commit hash and remote synchronization are authoritative in Git.
+- Next action: execute authorized commit/push and verify equal local/remote heads
+  and clean worktree; then user continues inspection at localhost:18091.
+  Preview API/notification/Vite and owned UAT database remain running intentionally.

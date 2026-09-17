@@ -4,6 +4,8 @@ const port = Number(process.argv[2] ?? 9333)
 const baseURL = process.argv[3] ?? "http://localhost:8091"
 const password = auditPassword()
 const adminLogin = process.env.IAM_BROWSER_LOGIN ?? "admin@example.test"
+const keyName = `Chrome platform key ${Date.now()}`
+const renamedKeyName = `Primary passkey ${Date.now()}`
 const screenshotRoot = new URL(
   "../../../../../.local/screenshots/",
   import.meta.url
@@ -94,8 +96,11 @@ async function setInput(selector, value) {
 }
 
 async function clickText(text) {
+  await waitFor(
+    `[...document.querySelectorAll("button")].some((item) => item.textContent.includes(${JSON.stringify(text)}) && !item.disabled)`
+  )
   await evaluate(`
-    const element = [...document.querySelectorAll("button")].find((item) => item.textContent.includes(${JSON.stringify(text)}));
+    const element = [...document.querySelectorAll("button")].find((item) => item.textContent.includes(${JSON.stringify(text)}) && !item.disabled);
     if (!(element instanceof HTMLButtonElement)) throw new Error("button not found");
     element.click();
   `)
@@ -179,11 +184,11 @@ await waitFor(
   `[...document.querySelectorAll("button")].some((item) => item.textContent.includes("添加通行密钥"))`
 )
 await clickText("添加通行密钥")
-await setInput("#passkey-register-form-name", "Chrome platform key")
+await setInput("#passkey-register-form-name", keyName)
 await setInput("#passkey-register-form-password", password)
 await submit("#passkey-register-form")
 await waitFor(`document.body.textContent.includes("通行密钥已添加")`, 20000)
-await waitFor(`document.body.textContent.includes("Chrome platform key")`)
+await waitFor(`document.body.textContent.includes(${JSON.stringify(keyName)})`)
 
 // A modal marks the rest of the page inert, so clicking the rename button while
 // the register dialog is still on its way out does nothing at all and the wait
@@ -193,17 +198,22 @@ await waitFor(`document.body.textContent.includes("Chrome platform key")`)
 await waitFor(`!document.querySelector("[inert]")`, 20000)
 // The list also re-renders after the key is added, so the button can still be
 // missing here. Optional chaining would swallow that just as quietly.
-await waitFor(`document.querySelector('button[aria-label^="重命名通行密钥"]')`)
+const renameSelector = `button[aria-label^="重命名通行密钥"][aria-label$=${JSON.stringify(keyName)}]`
+await waitFor(
+  `document.querySelector(${JSON.stringify(renameSelector)}) && !document.querySelector(${JSON.stringify(renameSelector)}).disabled`
+)
 await evaluate(`
-  const rename = document.querySelector('button[aria-label^="重命名通行密钥"]');
+  const rename = document.querySelector(${JSON.stringify(renameSelector)});
   if (!(rename instanceof HTMLElement)) throw new Error("rename button not found");
   rename.click();
 `)
 await waitFor(`document.querySelector("#passkey-rename-form-name")`)
-await setInput("#passkey-rename-form-name", "Primary passkey")
+await setInput("#passkey-rename-form-name", renamedKeyName)
 await submit("#passkey-rename-form")
 await waitFor(`document.body.textContent.includes("通行密钥名称已更新")`)
-await waitFor(`document.body.textContent.includes("Primary passkey")`)
+await waitFor(
+  `document.body.textContent.includes(${JSON.stringify(renamedKeyName)})`
+)
 
 const desktopLayout = await screenshot("admin-passkey-desktop.png", 1440, 1000)
 const mobileLayout = await screenshot("admin-passkey-mobile.png", 390, 844)
@@ -231,15 +241,23 @@ if (!authenticated)
   throw new Error("Passkey login did not create a browser session")
 
 await navigate("/security")
-await waitFor(`document.body.textContent.includes("Primary passkey")`)
+await waitFor(
+  `document.body.textContent.includes(${JSON.stringify(renamedKeyName)})`
+)
+const deleteSelector = `button[aria-label^="删除通行密钥"][aria-label$=${JSON.stringify(renamedKeyName)}]`
+await waitFor(
+  `document.querySelector(${JSON.stringify(deleteSelector)}) && !document.querySelector(${JSON.stringify(deleteSelector)}).disabled`
+)
 await evaluate(
-  `document.querySelector('button[aria-label^="删除通行密钥"]')?.click()`
+  `document.querySelector(${JSON.stringify(deleteSelector)}).click()`
 )
 await waitFor(`document.querySelector("#passkey-delete-form-password")`)
 await setInput("#passkey-delete-form-password", password)
 await submit("#passkey-delete-form")
 await waitFor(`document.body.textContent.includes("通行密钥已删除")`)
-await waitFor(`!document.body.textContent.includes("Primary passkey")`)
+await waitFor(
+  `!document.body.textContent.includes(${JSON.stringify(renamedKeyName)})`
+)
 
 await evaluate(`
   await fetch("/api/authn/sessions/current", { method: "DELETE", credentials: "include" });

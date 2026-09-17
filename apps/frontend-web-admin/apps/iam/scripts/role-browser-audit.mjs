@@ -142,11 +142,32 @@ async function setInput(selector, value) {
 }
 
 async function click(selector) {
-  await evaluate(`
-    const element = document.querySelector(${JSON.stringify(selector)});
-    if (!(element instanceof HTMLElement)) throw new Error("element not found: " + ${JSON.stringify(selector)});
-    element.click();
+  await clickElement(`document.querySelector(${JSON.stringify(selector)})`)
+}
+
+async function clickElement(expression) {
+  await waitFor(
+    `(${expression}) && !(${expression}).matches(':disabled, [aria-disabled="true"]')`
+  )
+  const point = await evaluate(`
+    const element = ${expression};
+    element.scrollIntoView({ block: "center" });
+    const rect = element.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   `)
+  await command("Input.dispatchMouseEvent", { type: "mouseMoved", ...point })
+  await command("Input.dispatchMouseEvent", {
+    type: "mousePressed",
+    ...point,
+    button: "left",
+    clickCount: 1,
+  })
+  await command("Input.dispatchMouseEvent", {
+    type: "mouseReleased",
+    ...point,
+    button: "left",
+    clickCount: 1,
+  })
 }
 
 async function apiRaw(path, options = {}) {
@@ -247,6 +268,9 @@ async function captureRoleWorkspace(
   roleID,
   focusSelector = ""
 ) {
+  await waitFor(
+    `document.querySelector('[data-role-count="permissions"]')?.textContent.trim() === "1" && document.querySelector('[data-role-count="assignments"]')?.textContent.trim() === "3"`
+  )
   await command("Emulation.setDeviceMetricsOverride", {
     width,
     height,
@@ -450,10 +474,13 @@ await waitFor(`document.querySelector("#role-data-scope")`)
 await click("#role-data-scope")
 const selectedDepartmentsOption = `[...document.querySelectorAll('[role="option"]')].find((item) => item.textContent.trim() === "指定部门")`
 await waitFor(selectedDepartmentsOption)
-await evaluate(`${selectedDepartmentsOption}.click()`)
+await clickElement(selectedDepartmentsOption)
 const departmentSelector = `[data-scope-department-id=${JSON.stringify(department.id)}]`
 await waitFor(`document.querySelector(${JSON.stringify(departmentSelector)})`)
 await click(departmentSelector)
+await waitFor(
+  `document.querySelector(${JSON.stringify(departmentSelector)})?.getAttribute("aria-checked") === "true"`
+)
 const dataScopeResponseIndex = responses.length
 await click("[data-save-data-scope]")
 await waitForResponse(
@@ -477,7 +504,7 @@ if (
 await selectRoleView("permissions")
 const permissionSelector = `document.querySelector('[data-permission-code="menu_view"] [role="checkbox"]')`
 await waitFor(permissionSelector)
-await evaluate(`${permissionSelector}.click()`)
+await clickElement(permissionSelector)
 await waitFor(`${permissionSelector}?.getAttribute("aria-checked") === "true"`)
 if (
   !(
@@ -774,7 +801,8 @@ for (const type of ["role_member_added", "role_member_removed"]) {
   const count = audit.filter(
     (event) => event.event_type === type && event.target_id === role.id
   ).length
-  if (count !== 1) throw new Error(`expected one ${type} audit event, got ${count}`)
+  if (count !== 1)
+    throw new Error(`expected one ${type} audit event, got ${count}`)
 }
 
 await cleanup()

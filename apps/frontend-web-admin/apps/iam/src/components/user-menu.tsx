@@ -1,7 +1,7 @@
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { LogOut, UserRound } from "lucide-react"
 import { useNavigate } from "react-router"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Alert } from "./alert"
 import { Button } from "@workspace/ui/components/button"
 import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar"
@@ -14,12 +14,39 @@ import {
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu"
 import { useAuth } from "./auth"
+import { iamApi, type Session } from "../lib/iam-api"
 
-export function UserMenu() {
+export function UserMenu({ tenantID }: { tenantID: string }) {
   const t = useTranslations("iam")
 
   const navigate = useNavigate()
   const { session, logout } = useAuth()
+  const subject = session?.subject ?? ""
+  const [profile, setProfile] = useState<{
+    tenant: string
+    subject: string
+    session: Session | null
+  } | null>(null)
+  useEffect(() => {
+    if (!subject || !tenantID) return
+    let current = true
+    void iamApi.sessionForTenant(tenantID).then(
+      (next) => {
+        if (current)
+          setProfile({
+            tenant: tenantID,
+            subject,
+            session: next.subject === subject ? next : null,
+          })
+      },
+      () => {
+        if (current) setProfile({ tenant: tenantID, subject, session: null })
+      }
+    )
+    return () => {
+      current = false
+    }
+  }, [subject, tenantID])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(false)
   const signOut = async () => {
@@ -34,7 +61,15 @@ export function UserMenu() {
     }
   }
   if (!session) return null
-  const name = session.preferred_username ?? session.email ?? session.subject
+  const displaySession = tenantID
+    ? profile?.tenant === tenantID && profile.subject === subject
+      ? profile.session
+      : null
+    : session
+  const name =
+    displaySession?.preferred_username?.trim() ||
+    displaySession?.email?.trim() ||
+    session.subject
   const initials = name.slice(0, 2).toUpperCase()
 
   return (
@@ -67,7 +102,7 @@ export function UserMenu() {
           <DropdownMenuLabel className="font-normal">
             <p className="truncate text-sm font-medium">{name}</p>
             <p className="mt-1 truncate text-xs text-muted-foreground">
-              {session.email ?? session.subject}
+              {displaySession?.email?.trim() || session.subject}
             </p>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />

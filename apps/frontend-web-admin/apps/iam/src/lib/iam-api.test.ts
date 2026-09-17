@@ -19,6 +19,33 @@ describe("IAM API client", () => {
   let server: ReturnType<typeof Bun.serve> | undefined
   afterEach(() => server?.stop(true))
 
+  it("keeps authentication global and explicitly scopes display sessions", async () => {
+    const requests: RecordedRequest[] = []
+    server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        requests.push({
+          method: request.method,
+          path: new URL(request.url).pathname,
+          headers: request.headers,
+          body: "",
+        })
+        return Response.json({ code: 0, data: { subject: "person-1" } })
+      },
+    })
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      () => "unrelated-tenant"
+    )
+    await client.session()
+    await client.sessionForTenant("authorized-tenant")
+    expect(
+      requests.every(({ path }) => path === "/authn/sessions/current")
+    ).toBe(true)
+    expect(requests[0]?.headers.has("x-tenant-id")).toBe(false)
+    expect(requests[1]?.headers.get("x-tenant-id")).toBe("authorized-tenant")
+  })
+
   it("keeps personal proofs, lifecycle versions and pagination outside the selected tenant context", async () => {
     const requests: RecordedRequest[] = []
     server = Bun.serve({

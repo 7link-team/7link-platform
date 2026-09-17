@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process"
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { chromium } from "playwright"
+import { chromium, request } from "playwright"
+import { auditPassword } from "./audit-password.mjs"
 
 const audits = [
   "department",
@@ -27,6 +28,33 @@ for (const name of selected) {
 }
 const baseURL = process.env.IAM_CONSOLE_URL ?? "http://localhost:8091"
 const results = []
+const output = process.env.IAM_BROWSER_AUDIT_OUTPUT
+if (output) await mkdir(output, { recursive: true })
+let tenantSubject
+if (process.env.IAM_BROWSER_TENANT) {
+  const context = await request.newContext({ baseURL })
+  try {
+    const login = await context.post("/api/authn/sessions", {
+      headers: { Origin: baseURL },
+      data: {
+        login_name: process.env.IAM_BROWSER_LOGIN ?? "admin@example.test",
+        password: auditPassword(),
+        return_url: baseURL + "/",
+      },
+    })
+    if (!login.ok() || (await login.json()).data?.status !== "authenticated")
+      throw new Error("Browser audit tenant setup requires authenticated login")
+    const session = await context.get("/api/authn/sessions/current")
+    if (!session.ok()) throw new Error("Browser audit session lookup failed")
+    tenantSubject = (await session.json()).data?.subject
+    if (!tenantSubject) throw new Error("Browser audit session has no subject")
+  } finally {
+    await context.delete("/api/authn/sessions/current", {
+      headers: { Origin: baseURL },
+    })
+    await context.dispose()
+  }
+}
 for (const name of selected.length ? selected : audits) {
   const profile = await mkdtemp(join(tmpdir(), "iam-browser-audit-"))
   let browser
@@ -66,8 +94,11 @@ for (const name of selected.length ? selected : audits) {
     await page.goto(baseURL + "/login")
     if (process.env.IAM_BROWSER_TENANT) {
       await page.evaluate(
-        (tenant) => localStorage.setItem("iam.tenant", tenant),
-        process.env.IAM_BROWSER_TENANT
+        ({ tenant, subject }) => {
+          localStorage.setItem("iam.tenant", tenant)
+          localStorage.setItem("iam.tenant:subject", subject)
+        },
+        { tenant: process.env.IAM_BROWSER_TENANT, subject: tenantSubject }
       )
     }
     const port = Number(
@@ -97,10 +128,16 @@ for (const name of selected.length ? selected : audits) {
     })
     results.push({ name, status: status === 0 ? "PASS" : "FAIL" })
     if (status !== 0) {
+      if (output)
+        await page.screenshot({
+          path: join(output, `${name}-failure.png`),
+          fullPage: true,
+        })
       console.error(
         JSON.stringify(
           await page.evaluate(() => ({
             path: location.pathname,
+            text: document.querySelector("main")?.innerText,
             alerts: [...document.querySelectorAll('[role="alert"]')].map(
               (element) => element.textContent
             ),
@@ -123,4 +160,13 @@ for (const name of selected.length ? selected : audits) {
   }
 }
 console.log(JSON.stringify({ browserAudits: results }, null, 2))
+if (output)
+  await writeFile(
+    join(output, "report.json"),
+    JSON.stringify(
+      { at: new Date().toISOString(), baseURL, browserAudits: results },
+      null,
+      2
+    ) + "\n"
+  )
 if (results.some((result) => result.status !== "PASS")) process.exitCode = 1

@@ -129,6 +129,9 @@ async function setControl(selector, value) {
 }
 
 async function clickText(text) {
+  await waitFor(
+    `[...document.querySelectorAll("button")].some((item) => item.textContent.trim() === ${JSON.stringify(text)} && !item.disabled)`
+  )
   await evaluate(`
     const element = [...document.querySelectorAll("button")]
       .find((item) => item.textContent.trim() === ${JSON.stringify(text)} && !item.disabled);
@@ -184,6 +187,15 @@ async function login(loginName, loginPassword) {
   await setControl("#password", loginPassword)
   await submit("form")
   await waitFor(`location.pathname === "/"`, 20000)
+  const session = await api("/authn/sessions/current")
+  await evaluate(`
+    localStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)});
+    localStorage.setItem("iam.tenant:subject", ${JSON.stringify(session.subject)});
+  `)
+  await command("Page.reload", { ignoreCache: true })
+  await waitFor(
+    `document.readyState === "complete" && document.querySelector("h1")`
+  )
   signedOut = false
 }
 

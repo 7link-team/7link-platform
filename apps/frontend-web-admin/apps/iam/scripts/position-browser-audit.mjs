@@ -143,6 +143,9 @@ async function setInput(selector, value) {
 }
 
 async function click(selector) {
+  await waitFor(
+    `document.querySelector(${JSON.stringify(selector)}) instanceof HTMLButtonElement && !document.querySelector(${JSON.stringify(selector)}).disabled`
+  )
   await evaluate(`
     const button = document.querySelector(${JSON.stringify(selector)});
     if (!(button instanceof HTMLButtonElement)) throw new Error("button not found: " + ${JSON.stringify(selector)});
@@ -237,7 +240,7 @@ async function cleanupArtifacts() {
   const items = await api(directory.collectionPath)
   const artifacts = items.filter((item) =>
     directoryKind === "position"
-      ? item.code.startsWith("acceptance.")
+      ? item.code.startsWith("acceptance.platform-")
       : item.name.startsWith("Acceptance Group ") ||
         item.name.startsWith("Acceptance Security Group ") ||
         item.name.startsWith("Acceptance Dynamic Group ")

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict"
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs"
 import { randomBytes, createHash } from "node:crypto"
-import { fileURLToPath } from "node:url"
+import { resolve, sep } from "node:path"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { chromium } from "playwright"
 
 // Real API fixtures and real pages. Network-failure injection belongs to the
@@ -160,10 +161,9 @@ if (process.argv.includes("--list")) {
   )
   process.exit(0)
 }
-const directory = new URL(
-  "../../../../backend-api/.temp/iam-uat/",
-  import.meta.url
-)
+const directory = process.env.IAM_UAT_DIRECTORY
+  ? pathToFileURL(resolve(process.env.IAM_UAT_DIRECTORY) + sep)
+  : new URL("../../../../backend-api/.temp/iam-uat/", import.meta.url)
 const settings = JSON.parse(
   readFileSync(new URL("state.json", directory), "utf8")
 )

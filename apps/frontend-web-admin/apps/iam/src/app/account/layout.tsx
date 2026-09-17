@@ -20,6 +20,7 @@ import { useAuth } from "../../components/auth"
 import { SessionVerification } from "../../components/session-verification"
 import { ThemeModeButton } from "../../components/theme-mode-button"
 import { UserMenu } from "../../components/user-menu"
+import { getTenant } from "../../lib/iam-api"
 
 export function AccountNavigation({ onNavigate }: { onNavigate?: () => void }) {
   const t = useTranslations("iam")
@@ -91,7 +92,7 @@ export default function AccountLayout() {
         <div className="ml-auto flex items-center gap-1">
           <LanguageSwitcher />
           <ThemeModeButton />
-          <UserMenu />
+          <UserMenu tenantID={getTenant()} />
         </div>
       </header>
       <div className="flex min-h-0 flex-1">

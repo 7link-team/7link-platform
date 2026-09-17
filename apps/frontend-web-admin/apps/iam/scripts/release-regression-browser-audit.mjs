@@ -64,6 +64,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
     menusStatus: 200,
     sessionStatus: 200,
     menus: [],
+    permissions: [],
     delayedMenus: [],
     requests: [],
     delayed: [],
@@ -135,6 +136,32 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
         return
       }
       return result()
+    }
+    if (path === "/iam/me/permissions") return send(state.permissions)
+    if (state.roleScopeCase) {
+      if (path === "/iam/roles")
+        return send([{ id: "scope-role", name: "Scope role", description: "" }])
+      if (path === "/iam/departments")
+        return send([
+          {
+            id: "scope-department",
+            name: "Scope department",
+            status: "active",
+          },
+        ])
+      if (path === "/iam/roles/scope-role/data-scope") {
+        if (request.method() === "PUT") {
+          state.roleScope = { role_id: "scope-role", ...request.postDataJSON() }
+          return send(state.roleScope)
+        }
+        const snapshot = state.roleScope
+        if (state.delayRoleScope) {
+          state.releaseRoleScope = () => send(snapshot)
+          state.onRoleScopeDelayed()
+          return
+        }
+        return send(snapshot)
+      }
     }
     if (path === "/authn/personal-token-permissions")
       return send([
@@ -305,6 +332,26 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       return send({ revoked: true })
     }
     if (path === "/authn/sessions/current" && request.method() === "GET") {
+      if (state.accountIdentityCase) {
+        const tenantID = request.headers()["x-tenant-id"]
+        const profile = {
+          subject: state.subject,
+          issuer: "test",
+          acr: 1,
+          ...(tenantID ? state.accountProfiles?.[tenantID] : {}),
+        }
+        if (tenantID && state.delayAccountTenant === tenantID) {
+          state.releaseAccountProfile = () => send(profile)
+          state.onAccountProfileDelayed()
+          return
+        }
+        if (tenantID && state.accountProfileStatus === "network")
+          return route.abort("failed")
+        return send(
+          profile,
+          tenantID ? (state.accountProfileStatus ?? 200) : 200
+        )
+      }
       if (state.sessionStatus === "network") return route.abort("failed")
       return send(
         {
@@ -424,6 +471,235 @@ async function workspace(page) {
     .click()
 }
 try {
+  await scenario(
+    "account identity uses tenant profile without changing global authentication",
+    async (page, state) => {
+      state.accountIdentityCase = true
+      state.accountProfiles = {
+        t1: { preferred_username: "Administrator name", email: "" },
+      }
+      await page.goto("/")
+      const account = page.getByRole("button", {
+        name: "Account menu",
+        exact: true,
+      })
+      await page.waitForFunction(() =>
+        document
+          .querySelector('button[aria-label="Account menu"]')
+          ?.textContent.includes("Administrator name")
+      )
+      assert((await account.innerText()).includes("Administrator name"))
+      const sessions = state.requests.filter(
+        (request) => request.path === "/authn/sessions/current"
+      )
+      assert(
+        sessions.some((request) => !request.tenant),
+        "Authentication remains global"
+      )
+      assert(
+        sessions.some((request) => request.tenant === "t1"),
+        "Display uses authorized tenant context"
+      )
+      await account.click()
+      await page
+        .getByRole("menuitem", { name: "My account", exact: true })
+        .waitFor()
+      assert.equal(new URL(page.url()).pathname, "/")
+    }
+  )
+  await scenario(
+    "account identity ignores late profiles from another tenant",
+    async (page, state) => {
+      state.accountIdentityCase = true
+      state.accountProfiles = {
+        t1: { preferred_username: "Old tenant name" },
+        t2: { preferred_username: "Current tenant name" },
+      }
+      state.delayAccountTenant = "t1"
+      const delayed = new Promise((resolve) => {
+        state.onAccountProfileDelayed = resolve
+      })
+      await page.goto("/")
+      await delayed
+      await workspace(page)
+      await page.getByRole("button", { name: /Workspace t2/ }).click()
+      await page.waitForFunction(() =>
+        document
+          .querySelector('button[aria-label="Account menu"]')
+          ?.textContent.includes("Current tenant name")
+      )
+      await state.releaseAccountProfile()
+      await page.waitForTimeout(200)
+      const account = page.getByRole("button", {
+        name: "Account menu",
+        exact: true,
+      })
+      assert((await account.innerText()).includes("Current tenant name"))
+      assert(!(await account.innerText()).includes("Old tenant name"))
+    }
+  )
+  await scenario(
+    "account identity clears the previous tenant name when fields are omitted",
+    async (page, state) => {
+      state.accountIdentityCase = true
+      state.accountProfiles = {
+        t1: { preferred_username: "Private tenant name" },
+        t2: {},
+      }
+      await page.goto("/")
+      await page.waitForFunction(() =>
+        document
+          .querySelector('button[aria-label="Account menu"]')
+          ?.textContent.includes("Private tenant name")
+      )
+      const updated = page.waitForResponse(
+        (response) =>
+          response.url().endsWith("/authn/sessions/current") &&
+          response.request().headers()["x-tenant-id"] === "t2"
+      )
+      await workspace(page)
+      await page.getByRole("button", { name: /Workspace t2/ }).click()
+      await updated
+      await page.waitForFunction(() =>
+        document
+          .querySelector('button[aria-label="Account menu"]')
+          ?.textContent.includes("person-1")
+      )
+      await page
+        .getByRole("button", { name: "Account menu", exact: true })
+        .click()
+      assert(
+        !(await page.getByRole("menu").innerText()).includes(
+          "Private tenant name"
+        )
+      )
+    }
+  )
+  for (const status of [403, 503, "network"])
+    await scenario(
+      `account identity failure ${status} preserves global login`,
+      async (page, state) => {
+        state.accountIdentityCase = true
+        state.accountProfileStatus = status
+        const requested = page.waitForRequest(
+          (request) =>
+            request.url().endsWith("/authn/sessions/current") &&
+            request.headers()["x-tenant-id"] === "t1"
+        )
+        await page.goto("/")
+        await requested
+        const account = page.getByRole("button", {
+          name: "Account menu",
+          exact: true,
+        })
+        await account.click()
+        await page
+          .getByRole("menuitem", { name: "My account", exact: true })
+          .waitFor()
+        assert((await page.getByRole("menu").innerText()).includes("person-1"))
+        assert.equal(new URL(page.url()).pathname, "/")
+      }
+    )
+  await scenario(
+    "account identity without workspaces stays unscoped",
+    async (page, state) => {
+      state.accountIdentityCase = true
+      state.mine = []
+      await page.goto("/")
+      await visible(
+        page,
+        "No active workspaces are available for this account."
+      )
+      await page
+        .getByRole("button", { name: "Account menu", exact: true })
+        .click()
+      assert((await page.getByRole("menu").innerText()).includes("person-1"))
+      assert(
+        state.requests
+          .filter((request) => request.path === "/authn/sessions/current")
+          .every((request) => !request.tenant)
+      )
+    }
+  )
+  await scenario(
+    "account identity mobile uses permitted email for blank username",
+    async (page, state) => {
+      state.accountIdentityCase = true
+      state.accountProfiles = {
+        t1: { preferred_username: "  ", email: "person@example.test" },
+      }
+      await page.goto("/")
+      await page.waitForFunction(() =>
+        document
+          .querySelector('button[aria-label="Account menu"]')
+          ?.textContent.includes("person@example.test")
+      )
+      await page
+        .getByRole("button", { name: "Account menu", exact: true })
+        .click()
+      assert(
+        (await page.getByRole("menu").innerText()).includes(
+          "person@example.test"
+        )
+      )
+      assert(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth
+        )
+      )
+    },
+    { mobile: true }
+  )
+  await scenario(
+    "account identity rejects a profile for a different subject",
+    async (page, state) => {
+      state.accountIdentityCase = true
+      state.accountProfiles = {
+        t1: {
+          subject: "other-person",
+          preferred_username: "Other person's name",
+        },
+      }
+      const received = page.waitForResponse(
+        (response) =>
+          response.url().endsWith("/authn/sessions/current") &&
+          response.request().headers()["x-tenant-id"] === "t1"
+      )
+      await page.goto("/")
+      await received
+      await page
+        .getByRole("button", { name: "Account menu", exact: true })
+        .click()
+      const text = await page.getByRole("menu").innerText()
+      assert(text.includes("person-1"))
+      assert(!text.includes("Other person's name"))
+    }
+  )
+  await scenario(
+    "account identity remains readable in the personal account header",
+    async (page, state) => {
+      state.accountIdentityCase = true
+      state.accountProfiles = { t1: { preferred_username: "Account owner" } }
+      await page.goto("/")
+      await page.waitForFunction(() =>
+        document
+          .querySelector('button[aria-label="Account menu"]')
+          ?.textContent.includes("Account owner")
+      )
+      await page
+        .getByRole("button", { name: "Account menu", exact: true })
+        .click()
+      await page
+        .getByRole("menuitem", { name: "My account", exact: true })
+        .click()
+      await page.waitForURL("**/account/profile")
+      await page.waitForFunction(() =>
+        document
+          .querySelector('button[aria-label="Account menu"]')
+          ?.textContent.includes("Account owner")
+      )
+    }
+  )
   for (const route of ["/", "/account/applications", "/login"]) {
     await scenario(
       `session verification 503/network retry preserves route ${route}`,
@@ -825,9 +1101,90 @@ try {
     await page.getByRole("button", { name: "Retry now" }).click()
     await visible(page, "Calendar client")
   })
+  for (const saveDraft of [false, true])
+    await scenario(
+      `late role scope read cannot overwrite an ${saveDraft ? "edited and saved" : "unsaved"} scope`,
+      async (page, state) => {
+        state.roleScopeCase = true
+        state.roleScope = {
+          role_id: "scope-role",
+          scope: "all",
+          department_ids: [],
+        }
+        state.permissions = ["role_view", "role_update", "dept_view"]
+        await page.goto("/iam/roles?role=scope-role&view=scope")
+        const scope = page.locator("#role-data-scope")
+        await scope.waitFor()
+        state.delayRoleScope = true
+        const delayed = new Promise((resolve) => {
+          state.onRoleScopeDelayed = resolve
+        })
+        await page.evaluate(() =>
+          window.dispatchEvent(new Event("menu-catalog-change"))
+        )
+        await delayed
+        await scope.click()
+        await page
+          .getByRole("option", { name: "Selected departments", exact: true })
+          .click()
+        const checkbox = page.locator(
+          '[data-scope-department-id="scope-department"]'
+        )
+        await checkbox.click()
+        if (saveDraft) {
+          const saved = page.waitForResponse(
+            (response) =>
+              response.url().endsWith("/scope-role/data-scope") &&
+              response.request().method() === "PUT"
+          )
+          await page.locator("[data-save-data-scope]").click()
+          await saved
+          assert.equal(state.roleScope.scope, "selected_departments")
+        }
+        const stale = page.waitForResponse(
+          (response) =>
+            response.url().endsWith("/scope-role/data-scope") &&
+            response.request().method() === "GET"
+        )
+        await state.releaseRoleScope()
+        await stale
+        await page.waitForTimeout(200)
+        assert.equal(await scope.innerText(), "Selected departments")
+        assert.equal(await checkbox.getAttribute("aria-checked"), "true")
+      }
+    )
+  await scenario(
+    "role scope refresh initializes an untouched draft",
+    async (page, state) => {
+      state.roleScopeCase = true
+      state.roleScope = {
+        role_id: "scope-role",
+        scope: "all",
+        department_ids: [],
+      }
+      state.permissions = ["role_view", "role_update", "dept_view"]
+      await page.goto("/iam/roles?role=scope-role&view=scope")
+      const scope = page.locator("#role-data-scope")
+      await scope.waitFor()
+      state.roleScope = {
+        role_id: "scope-role",
+        scope: "self",
+        department_ids: [],
+      }
+      await page.evaluate(() =>
+        window.dispatchEvent(new Event("menu-catalog-change"))
+      )
+      await page.waitForFunction(
+        () =>
+          document.querySelector("#role-data-scope")?.textContent === "Own data"
+      )
+      assert.equal(await scope.innerText(), "Own data")
+    }
+  )
   await scenario(
     "nullable OAuth array fields render and open editor",
-    async (page) => {
+    async (page, state) => {
+      state.permissions = ["oauth_client_update"]
       await page.goto("/iam/oauth-clients")
       await visible(page, "Machine client")
       await page
@@ -1145,8 +1502,16 @@ try {
             (item) =>
               item.path.startsWith("/authn/") ||
               item.path.startsWith("/iam/me/")
-          ))
-            assert.equal(request.tenant, undefined)
+          )) {
+            // Only the header's read-only profile projection is tenant-scoped.
+            if (
+              request.path === "/authn/sessions/current" &&
+              request.method === "GET" &&
+              request.tenant !== undefined
+            )
+              assert.equal(request.tenant, "t1")
+            else assert.equal(request.tenant, undefined)
+          }
           assert(
             await page.evaluate(
               () => document.documentElement.scrollWidth <= innerWidth
@@ -1331,8 +1696,15 @@ try {
               item.path.startsWith("/authn/") ||
               item.path.startsWith("/iam/me/memberships") ||
               item.path === "/iam/me/closure-request"
-          ))
-            assert.equal(request.tenant, undefined)
+          )) {
+            if (
+              request.path === "/authn/sessions/current" &&
+              request.method === "GET" &&
+              request.tenant !== undefined
+            )
+              assert(["t1", "t2"].includes(request.tenant))
+            else assert.equal(request.tenant, undefined)
+          }
         },
         { locale, mobile }
       )

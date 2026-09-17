@@ -348,7 +348,7 @@ export default function AppLayout() {
           <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
             <LanguageSwitcher />
             <ThemeModeButton />
-            <UserMenu />
+            <UserMenu tenantID={directoryReady ? tenantValue : ""} />
           </div>
         </div>
       </header>

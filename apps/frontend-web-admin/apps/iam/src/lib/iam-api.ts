@@ -1245,7 +1245,10 @@ export function createIamApi(
    * wrong screen, not a short one: an assigned member would render unassigned.
    * Callers that genuinely want a single page pass offset and limit themselves.
    */
-  const requestAllPages = async <T>(path: string, tenant = true): Promise<T[]> => {
+  const requestAllPages = async <T>(
+    path: string,
+    tenant = true
+  ): Promise<T[]> => {
     const pageSize = 200
     const items: T[] = []
     for (let offset = 0; ; offset += pageSize) {
@@ -1282,6 +1285,12 @@ export function createIamApi(
         false
       ),
     session: () => request<Session>("/authn/sessions/current", {}, false),
+    sessionForTenant: (tenant: string) =>
+      request<Session>(
+        "/authn/sessions/current",
+        { headers: tenantHeader(tenant) },
+        false
+      ),
     myTenants: () => request<Tenant[]>("/iam/me/tenants", {}, false),
     personalTokenPermissions: (tenant: string) =>
       request<Permission[]>(
@@ -2120,9 +2129,7 @@ export function createIamApi(
         { method: "DELETE" }
       ),
     roleMembers: (id: string) =>
-      requestAllPages<string>(
-        `/iam/roles/${encodeURIComponent(id)}/members`
-      ),
+      requestAllPages<string>(`/iam/roles/${encodeURIComponent(id)}/members`),
     addRoleMember: (id: string, subject: string) =>
       request(
         `/iam/roles/${encodeURIComponent(id)}/members/${encodeURIComponent(subject)}`,

@@ -169,6 +169,15 @@ async function login(loginName, password) {
   await setInput("#password", password)
   await evaluate(`document.querySelector("form").requestSubmit()`)
   await waitFor(`location.pathname === "/"`, 20000)
+  const session = await api("/authn/sessions/current")
+  await evaluate(`
+    localStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)});
+    localStorage.setItem("iam.tenant:subject", ${JSON.stringify(session.subject)});
+  `)
+  await command("Page.reload", { ignoreCache: true })
+  await waitFor(
+    `document.readyState === "complete" && document.querySelector("h1")`
+  )
 }
 
 async function logout() {

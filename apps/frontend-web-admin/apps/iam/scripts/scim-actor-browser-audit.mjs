@@ -25,6 +25,9 @@ const context = await browser.newContext({
   viewport: { width: 1440, height: 1000 },
   reducedMotion: "reduce",
 })
+await context.addCookies([
+  { name: "NEXT_LOCALE", value: "zh-CN", url: baseURL },
+])
 const page = await context.newPage()
 const exceptions = []
 page.on("pageerror", (error) => exceptions.push(error.message))
@@ -87,15 +90,19 @@ async function capture(name) {
 }
 try {
   await page.goto(baseURL + "/login")
-  await page.evaluate(
-    (tenant) => localStorage.setItem("iam.tenant", tenant),
-    tenant
-  )
   await api("/authn/sessions", "POST", {
     login_name: login,
     password,
     return_url: baseURL + "/",
   })
+  const session = await api("/authn/sessions/current")
+  await page.evaluate(
+    ({ tenant, subject }) => {
+      localStorage.setItem("iam.tenant", tenant)
+      localStorage.setItem("iam.tenant:subject", subject)
+    },
+    { tenant, subject: session.subject }
+  )
   const suffix = Date.now()
   const first = await api("/iam/service-accounts", "POST", {
     login_name: `scim-ui-first-${suffix}`,

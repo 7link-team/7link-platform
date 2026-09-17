@@ -201,6 +201,7 @@ function rowExpression(name) {
 }
 
 async function openCreateDialog() {
+  await waitFor(`document.querySelector("header:has(h1) button")`)
   await evaluate(`
     const button = document.querySelector("header:has(h1) button");
     if (!(button instanceof HTMLButtonElement)) throw new Error("create button not found");
@@ -219,6 +220,9 @@ async function createDepartment(name, sortOrder, parentName = "") {
 }
 
 async function clickRowAction(name, fromEnd) {
+  await waitFor(
+    `(${rowExpression(name)})?.querySelectorAll("button[title]").length >= ${fromEnd}`
+  )
   await evaluate(`
     const row = ${rowExpression(name)};
     if (!(row instanceof HTMLTableRowElement)) throw new Error("department row not found");

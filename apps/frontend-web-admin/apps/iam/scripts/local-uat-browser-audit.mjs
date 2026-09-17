@@ -1,13 +1,13 @@
 import assert from "node:assert/strict"
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { fileURLToPath } from "node:url"
+import { resolve, sep } from "node:path"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { chromium } from "playwright"
 import { createHash, randomBytes } from "node:crypto"
 
-const directory = new URL(
-  "../../../../backend-api/.temp/iam-uat/",
-  import.meta.url
-)
+const directory = process.env.IAM_UAT_DIRECTORY
+  ? pathToFileURL(resolve(process.env.IAM_UAT_DIRECTORY) + sep)
+  : new URL("../../../../backend-api/.temp/iam-uat/", import.meta.url)
 const settings = JSON.parse(
   readFileSync(new URL("state.json", directory), "utf8")
 )
@@ -368,6 +368,23 @@ try {
         await page
           .getByRole("button", { name: "切换工作空间", exact: true })
           .waitFor()
+        const memberships = await context.request.get("/api/iam/me/tenants")
+        assert(memberships.ok(), "Tenant discovery must succeed")
+        const targetTenant = (await memberships.json()).data.find(
+          (item) => item.id === tenant
+        )
+        assert(targetTenant, "The configured UAT tenant must be accessible")
+        await page
+          .getByRole("button", { name: "切换工作空间", exact: true })
+          .click()
+        const switcher = page.getByRole("dialog", { name: "切换工作空间" })
+        await switcher
+          .getByRole("button")
+          .filter({ has: page.getByText(targetTenant.slug, { exact: true }) })
+          .click()
+        await switcher
+          .getByRole("button", { name: "租户视角", exact: true })
+          .click()
         await page
           .locator('[aria-label="当前工作区"]')
           .getByText(tenant, { exact: true })

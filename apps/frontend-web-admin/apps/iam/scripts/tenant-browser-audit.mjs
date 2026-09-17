@@ -128,6 +128,9 @@ async function click(selector) {
 }
 
 async function clickText(text, root = "document") {
+  await waitFor(
+    `[...${root}.querySelectorAll("button")].some((item) => item.textContent.trim() === ${JSON.stringify(text)} && !item.disabled)`
+  )
   await evaluate(`
     const element = [...${root}.querySelectorAll("button")].find(
       (item) => item.textContent.trim() === ${JSON.stringify(text)}
@@ -200,6 +203,15 @@ async function login(loginName, loginPassword) {
   await setInput("#password", loginPassword)
   await evaluate(`document.querySelector("form").requestSubmit()`)
   await waitFor(`location.pathname === "/iam/tenants"`, 20000)
+  const session = await api("/authn/sessions/current", {}, "")
+  await evaluate(`
+    localStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)});
+    localStorage.setItem("iam.tenant:subject", ${JSON.stringify(session.subject)});
+  `)
+  await command("Page.reload", { ignoreCache: true })
+  await waitFor(
+    `document.readyState === "complete" && document.querySelector("h1")`
+  )
 }
 
 async function api(path, init = {}, tenant = tenantID) {
@@ -220,6 +232,9 @@ function rowExpression(name) {
 }
 
 async function clickRowAction(name, title) {
+  await waitFor(
+    `(${rowExpression(name)}) && [...(${rowExpression(name)}).querySelectorAll("button")].some((item) => item.title === ${JSON.stringify(title)} && !item.disabled)`
+  )
   await evaluate(`
     const row = ${rowExpression(name)};
     const button = [...row.querySelectorAll("button")].find((item) => item.title === ${JSON.stringify(title)});

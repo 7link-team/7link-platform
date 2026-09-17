@@ -15,7 +15,7 @@ const screenshots = new URL(
 )
 mkdirSync(screenshots, { recursive: true })
 const received = []
-let rejectRemote = false
+let rejectRemoteStatus = 0
 const receiver = createServer(async (request, response) => {
   const chunks = []
   for await (const chunk of request) chunks.push(chunk)
@@ -27,12 +27,12 @@ const receiver = createServer(async (request, response) => {
     authorization: request.headers.authorization,
     body,
   })
-  response.writeHead(rejectRemote ? 503 : 200, {
+  response.writeHead(rejectRemoteStatus || 200, {
     "Content-Type": "application/scim+json",
   })
   response.end(
     JSON.stringify(
-      rejectRemote
+      rejectRemoteStatus
         ? { detail: "Acceptance receiver unavailable" }
         : { id: `remote-${body?.externalId ?? "deleted"}` }
     )
@@ -128,6 +128,18 @@ try {
     password: actorPassword,
     return_url: baseURL + "/",
   })
+  const actorSession = await ok(context, "/authn/sessions/current")
+  await context.addCookies([
+    { name: "NEXT_LOCALE", value: "zh-CN", url: baseURL },
+  ])
+  await context.addInitScript(
+    ({ tenant, subject }) => {
+      if (localStorage.getItem("iam.tenant:subject") === subject) return
+      localStorage.setItem("iam.tenant", tenant)
+      localStorage.setItem("iam.tenant:subject", subject)
+    },
+    { tenant: tenant.id, subject: actorSession.subject }
+  )
   const page = await context.newPage()
   page.on("pageerror", (error) => exceptions.push(error.message))
   await page.goto("/iam/scim-directories?view=targets")
@@ -300,14 +312,15 @@ try {
     `/iam/field-policies/user_profile/login_name?version=${loginPolicy.version}`,
     "DELETE"
   )
-  rejectRemote = true
+  // A definite rejection releases the claim and permits a deliberate retry.
+  rejectRemoteStatus = 429
   await operate("User", person.id, false, 502)
   assert.equal(
     received.length,
     calls + 1,
     "remote failure reaches receiver exactly once"
   )
-  rejectRemote = false
+  rejectRemoteStatus = 0
   await operate("User", person.id)
   await operate("Group", group.id, true)
   assert.equal(received.at(-1).method, "DELETE")
@@ -420,7 +433,7 @@ try {
   await page.setViewportSize({ width: 1440, height: 1000 })
   await capture("desktop-list")
   await page.getByRole("button", { name: `删除 ${name}`, exact: true }).click()
-  await dialog.getByRole("button", { name: "确认删除", exact: true }).click()
+  await dialog.getByRole("button", { name: "仅删除配置", exact: true }).click()
   await dialog.waitFor({ state: "hidden" })
   assert.equal(await getTarget(), undefined)
   assert.equal(
@@ -428,9 +441,39 @@ try {
     calls,
     "deleting local configuration leaves remote resources untouched"
   )
+
+  // A 5xx cannot prove the write was rejected; never resend or erase its claim.
+  name = `SCIM uncertain ${stamp}`
+  await page.getByRole("button", { name: "创建目标", exact: true }).click()
+  await page.locator("#scim-target-name").fill(name)
+  await page.locator("#scim-target-url").fill(targetURL)
+  await page.locator("#scim-target-token").fill(rotated)
+  await page.locator("#scim-target-account").fill(second.id)
+  await save()
+  target = (await local("/iam/scim/targets")).find((item) => item.name === name)
+  rejectRemoteStatus = 503
+  await operate("User", person.id, false, 502)
+  assert.equal(received.length, calls + 1)
+  rejectRemoteStatus = 0
+  await operate("User", person.id, false, 409)
+  assert.equal(received.length, calls + 1, "uncertain writes are not resent")
+  assert.equal(
+    (
+      await api(
+        context,
+        `/iam/scim/targets/${target.id}`,
+        "DELETE",
+        undefined,
+        tenant.id
+      )
+    ).status,
+    409,
+    "uncertain write claim cannot be deleted"
+  )
+  assert.equal(received.length, calls + 1)
   assert.deepEqual(exceptions, [])
   console.log(
-    "PASS: outbound UI, ordinary tenant admin, binding/token lifecycle, User/Group wire payloads, projection, denials, failure/retry, conflict reload, deletion, tenant isolation, desktop/mobile"
+    "PASS: outbound UI, ordinary tenant admin, binding/token lifecycle, User/Group wire payloads, projection, denials, definite rejection/retry, uncertain write protection, conflict reload, deletion, tenant isolation, desktop/mobile"
   )
 } finally {
   await browser?.close()

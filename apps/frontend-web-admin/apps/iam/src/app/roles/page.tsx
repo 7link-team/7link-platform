@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -100,6 +101,7 @@ export default function RolesPage() {
   const [loadError, setLoadError] = useState("")
   const [scopeDraft, setScopeDraft] = useState<DataScope>("all")
   const [scopeDepartmentIDs, setScopeDepartmentIDs] = useState<string[]>([])
+  const scopeDraftVersion = useRef(0)
   const [conditionPermission, setConditionPermission] =
     useState<Permission | null>(null)
   const [conditionDraft, setConditionDraft] =
@@ -128,6 +130,7 @@ export default function RolesPage() {
   useEffect(() => {
     if (!selected) return
     let current = true
+    const scopeVersion = scopeDraftVersion.current
     // Four of these answer to permissions a role administrator need not hold:
     // the member directory to user_view, groups and positions to their own view
     // codes, departments to dept_view. Asking for all eight at once used to make
@@ -184,8 +187,11 @@ export default function RolesPage() {
           departments:
             nextDepartments.status === "fulfilled" ? nextDepartments.value : [],
         })
-        setScopeDraft(nextDataScope.value.scope)
-        setScopeDepartmentIDs(nextDataScope.value.department_ids)
+        // A read started before an edit must not reset the newer scope draft.
+        if (scopeVersion === scopeDraftVersion.current) {
+          setScopeDraft(nextDataScope.value.scope)
+          setScopeDepartmentIDs(nextDataScope.value.department_ids)
+        }
       }
     )
     return () => {
@@ -418,6 +424,7 @@ export default function RolesPage() {
 
   const saveDataScope = async () => {
     if (!selected) return
+    scopeDraftVersion.current += 1
     setBusy(true)
     setError("")
     try {
@@ -601,9 +608,10 @@ export default function RolesPage() {
                             id="role-data-scope"
                             value={scopeDraft}
                             disabled={busy || !allowed("role_update")}
-                            onValueChange={(value) =>
+                            onValueChange={(value) => {
+                              scopeDraftVersion.current += 1
                               setScopeDraft(value as DataScope)
-                            }
+                            }}
                             options={{
                               all: t("allData"),
                               self: t("ownData"),
@@ -638,7 +646,8 @@ export default function RolesPage() {
                                       (department.status !== "active" &&
                                         !checked)
                                     }
-                                    onCheckedChange={(value) =>
+                                    onCheckedChange={(value) => {
+                                      scopeDraftVersion.current += 1
                                       setScopeDepartmentIDs((current) =>
                                         value === true
                                           ? [
@@ -651,7 +660,7 @@ export default function RolesPage() {
                                               (id) => id !== department.id
                                             )
                                       )
-                                    }
+                                    }}
                                   />
                                   <span className="min-w-0 flex-1 text-sm break-words">
                                     {department.name}

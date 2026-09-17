@@ -200,19 +200,44 @@ FROM ${databaseTablePrefix}iam_principals p
 LEFT JOIN ${databaseTablePrefix}iam_tenant_members tm ON tm.principal_id = p.id
 WHERE p.email = CONVERT(FROM_BASE64('${encodedEmail}') USING utf8mb4)
 GROUP BY p.id, p.email_verified, p.activation_required`
-  const result = spawnSync(
-    "docker",
-    [
-      "exec",
-      databaseContainer,
-      "sh",
-      "-c",
-      'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql --host=127.0.0.1 --user="$MYSQL_USER" --database="$MYSQL_DATABASE" --batch --raw --skip-column-names --execute="$1"',
-      "registration-audit",
-      query,
-    ],
-    { encoding: "utf8" }
-  )
+  const dockerArgs = [
+    "exec",
+    databaseContainer,
+    "sh",
+    "-c",
+    'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql --host=127.0.0.1 --user="$MYSQL_USER" --database="$MYSQL_DATABASE" --batch --raw --skip-column-names --execute="$1"',
+    "registration-audit",
+    query,
+  ]
+  let commandName = "docker"
+  let commandArgs = dockerArgs
+  if (process.env.IAM_DOCKER_SSH) {
+    const key = process.env.IAM_DOCKER_SSH_KEY
+    if (!key)
+      throw new Error("IAM_DOCKER_SSH_KEY is required for remote Docker")
+    commandName = "ssh"
+    // SSH sends a shell command; preserve SQL and container-shell arguments.
+    const remoteCommand = ["docker", ...dockerArgs]
+      .map((argument) => `'${argument.replaceAll("'", "'\"'\"'")}'`)
+      .join(" ")
+    commandArgs = [
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "IdentitiesOnly=yes",
+      "-o",
+      "ConnectTimeout=5",
+      "-i",
+      key,
+      process.env.IAM_DOCKER_SSH,
+      remoteCommand,
+    ]
+  }
+  const result = spawnSync(commandName, commandArgs, {
+    encoding: "utf8",
+    timeout: 15000,
+    windowsHide: true,
+  })
   if (result.error) throw result.error
   if (result.status !== 0)
     throw new Error(`registration state query failed: ${result.stderr.trim()}`)
@@ -322,8 +347,22 @@ await setInput("#password", password)
 await submit()
 await waitFor(`location.pathname === "/"`, 20000)
 await waitFor(
-  `document.querySelector("h1")?.textContent.includes("身份控制面")`
+  `document.body.innerText.includes("此账户没有可用的活跃工作区。")`
 )
+await evaluate(`
+  const session = await fetch("/api/authn/sessions/current", { credentials: "include" });
+  if (!session.ok || !(await session.json()).data?.subject)
+    throw new Error("Registered principal did not establish an authenticated session");
+  const tenants = await fetch("/api/iam/me/tenants", { credentials: "include" });
+  if (!tenants.ok || (await tenants.json()).data.length !== 0)
+    throw new Error("Registration unexpectedly granted tenant membership");
+  if (document.querySelector('a[href="/iam/users"]'))
+    throw new Error("Registered principal unexpectedly sees administrative navigation");
+  const logout = await fetch("/api/authn/sessions/current", { method: "DELETE", credentials: "include" });
+  if (!logout.ok) throw new Error("Registration session logout failed");
+  if ((await fetch("/api/authn/sessions/current", { credentials: "include" })).status !== 401)
+    throw new Error("Registration session remained active after logout");
+`)
 
 // The run deliberately submits one wrong captcha, so exactly one rejected
 // registration belongs here; a second one would be a real regression.
@@ -379,6 +418,7 @@ console.log(
     emailVerified: true,
     activationCleared: true,
     tenantMemberships: principal.memberships,
+    globalAccountWithoutWorkspace: true,
     login: true,
     layouts,
     consoleErrors,
