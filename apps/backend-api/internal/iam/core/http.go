@@ -237,6 +237,16 @@ type roleInput struct {
 	RoleID   string `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
+// listRoleMembersInput bounds the listing by default. A role's membership grows
+// with the tenant, so the page size follows listTenantMembersInput rather than
+// the opt-in shape, where omitting limit returns every row.
+type listRoleMembersInput struct {
+	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	RoleID   string `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	Offset   int    `query:"offset" minimum:"0" default:"0"`
+	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
+}
+
 type createRoleInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	Body     struct {
@@ -872,16 +882,16 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 
 	authz.Register(registrar, a, huma.Operation{
 		OperationID: "iam-list-role-members", Method: http.MethodGet, Path: "/iam/roles/{role_id}/members", Summary: "List local principals in a role", Tags: []string{"iam"}, Errors: []int{http.StatusNotFound},
-	}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *roleInput) (*respx.Body[[]string], error) {
-		tenantID, roleID, err := roleRef(in)
+	}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *listRoleMembersInput) (*respx.Body[[]string], error) {
+		tenantID, roleID, err := roleRefIDs(in.TenantID, in.RoleID)
 		if err != nil {
 			return nil, err
 		}
-		subjects, err := svc.ListMembers(ctx, tenantID, roleID)
+		subjects, total, err := svc.ListRoleMembersPage(ctx, tenantID, roleID, in.Offset, in.Limit)
 		if err != nil {
 			return nil, apiError("list role members", err)
 		}
-		return respx.OK(ctx, guidStrings(subjects)), nil
+		return respx.List(ctx, guidStrings(subjects), respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 	})
 
 	authz.Register(registrar, a, huma.Operation{

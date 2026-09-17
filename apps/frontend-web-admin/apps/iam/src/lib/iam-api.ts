@@ -2094,8 +2094,26 @@ export function createIamApi(
         `/iam/roles/${encodeURIComponent(id)}/permissions/${encodeURIComponent(code)}/condition`,
         { method: "DELETE" }
       ),
-    roleMembers: (id: string) =>
-      request<string[]>(`/iam/roles/${encodeURIComponent(id)}/members`),
+    // The server now bounds this listing, but the role editor needs every bound
+    // member to decide which boxes are checked -- a partial set would render an
+    // assigned member as unassigned. So the client pages through explicitly
+    // rather than asking the server for an unbounded response.
+    roleMembers: async (id: string) => {
+      const pageSize = 200
+      const members: string[] = []
+      for (let offset = 0; ; offset += pageSize) {
+        const result = await requestEnvelope<string[]>(
+          `/iam/roles/${encodeURIComponent(id)}/members?${new URLSearchParams({
+            offset: String(offset),
+            limit: String(pageSize),
+          })}`
+        )
+        members.push(...result.data)
+        const total = result.meta?.page?.total ?? members.length
+        if (result.data.length === 0 || members.length >= total) break
+      }
+      return members
+    },
     addRoleMember: (id: string, subject: string) =>
       request(
         `/iam/roles/${encodeURIComponent(id)}/members/${encodeURIComponent(subject)}`,

@@ -100,6 +100,52 @@ func (r *Repository) ListRolesPage(
 	return roles, total, nil
 }
 
+// ListRoleMembersPage returns a stable page of the principals holding a role and
+// the total number of holders before pagination. The role is checked first so
+// an unknown role is not reported as an empty membership.
+func (r *Repository) ListRoleMembersPage(
+	ctx context.Context,
+	tenantID, roleID guid.ID,
+	offset, limit int,
+) ([]guid.ID, int64, error) {
+	repo, err := r.pinWriter()
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := repo.ensureRole(ctx, tenantID, roleID); err != nil {
+		return nil, 0, err
+	}
+	tables, _, err := repo.tables()
+	if err != nil {
+		return nil, 0, err
+	}
+	offset, limit = normalizePage(offset, limit)
+	total, err := tables.RoleMembers.WithContext(ctx).
+		Where(tables.RoleMembers.TenantID.Eq(tenantID), tables.RoleMembers.RoleID.Eq(roleID)).Count()
+	if err != nil {
+		return nil, 0, fmt.Errorf("count role members: %w", err)
+	}
+	listing := tables.RoleMembers.WithContext(ctx).
+		Select(tables.RoleMembers.PrincipalID).
+		Where(tables.RoleMembers.TenantID.Eq(tenantID), tables.RoleMembers.RoleID.Eq(roleID)).
+		Order(tables.RoleMembers.PrincipalID)
+	if limit > 0 {
+		listing = listing.Limit(limit)
+	}
+	if offset > 0 {
+		listing = listing.Offset(offset)
+	}
+	rows, err := listing.Find()
+	if err != nil {
+		return nil, 0, fmt.Errorf("list role members: %w", err)
+	}
+	principals := make([]guid.ID, len(rows))
+	for index, row := range rows {
+		principals[index] = row.PrincipalID
+	}
+	return principals, total, nil
+}
+
 // ListEntitiesPage validates tenant scope and returns one entity page with its
 // unfiltered tenant total.
 func (s *Service) ListEntitiesPage(
@@ -124,4 +170,17 @@ func (s *Service) ListRolesPage(
 		return nil, 0, err
 	}
 	return s.repo.ListRolesPage(ctx, tenantID, offset, limit)
+}
+
+// ListRoleMembersPage validates the role reference and returns one page of its
+// holders with the unfiltered total.
+func (s *Service) ListRoleMembersPage(
+	ctx context.Context,
+	tenantID, roleID guid.ID,
+	offset, limit int,
+) ([]guid.ID, int64, error) {
+	if err := validateRoleRef(tenantID, roleID); err != nil {
+		return nil, 0, err
+	}
+	return s.repo.ListRoleMembersPage(ctx, tenantID, roleID, offset, limit)
 }
