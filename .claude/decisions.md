@@ -1515,3 +1515,35 @@ HEAD 0e33cd7 实测 40 处 `runtime.TablePrefix()`：约 24 处是合法 resolve
 
 **Scope / Status**
 全仓。Accepted / Architecture Invariant。enforcement 未机械化；现存合法点保持明确 allowlist。
+
+---
+
+## D42 — 列表端点默认有界,客户端需要全集时自己翻页
+
+**Date** 2026-09-16
+
+**Decision**
+所有随租户数据增长的列表端点,分页默认**有界**:`minimum:"1" maximum:"200" default:"50"`
+(沿用 `core/http.go` 里 `listTenantMembersInput` 的既有先例)。仓库侧新增 `XxxPage` 变体,
+**与既有非分页方法并存**,内部调用方不受影响;handler 由 `respx.OK` 改为 `respx.List`。
+前端由 `iam-api.ts` 的 `requestAllPages` 统一翻页,**需要完整集合的消费点行为完全不变**。
+
+**Reason**
+此前分页是 opt-in:`core/pagination.go` 的 `normalizePage` 把 `limit=0` 当"不限",而多数 input 的
+`Limit` 是 `default:"0"`,于是**不传 limit 的调用方拿到全表**。契约审计实测:53 个返回数组的 GET
+无分页参数,其中 31 个随租户数据增长,`/iam/tenants` 更是平台级。已追到实现层:
+`core.ListMembers` 以 `.Find()` 结束,无 `.Limit()`,而全仓另有 317 处 `.Limit()` ——
+**是既有模式没被用上,不是缺少模式。**
+
+**Alternatives / Tradeoffs**
+- *只加 opt-in 参数*:零行为变化,但不解决无界,否决。
+- *服务端硬上限(恒不超过 200)*:前端零改动,但超限静默截断;虽可由 `meta.page.total` 检测,
+  却把"发现被截断"的责任推给每个客户端。作为备选保留,未采用。
+- 采用方案的代价是前端必须配合。**代价不在"加翻页控件",而在判断每个消费点要"一页"还是"全集"** ——
+  角色编辑器用成员列表给复选框打勾,拿到部分集合会把**已分配成员渲染成未分配**,
+  这是错误的界面而不是短的界面。这个判断无法机械化,是本次唯一不可并行的部分。
+
+**Scope / Status**
+样板 `aabee75`(`/iam/roles/{role_id}/members`)确证:`respx.OK → respx.List` **不改变响应 schema**
+(两者返回同一个 `Envelope[T]`,`List` 只填 `meta.page`),故契约变更是纯增量的两个 query 参数,
+前端类型无需重新生成。其余模块按同一模式铺开。
