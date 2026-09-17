@@ -417,7 +417,7 @@ describe("IAM API client", () => {
     ).rejects.toMatchObject({ status: 409 })
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "GET /iam/field-catalog",
-      "GET /iam/field-policies?resource=todo%2Fa",
+      "GET /iam/field-policies?resource=todo%2Fa&offset=0&limit=200",
       "PUT /iam/field-policies/todo%2Fa/display%2Fname",
       "DELETE /iam/field-policies/todo%2Fa/display%2Fname?version=8",
       "GET /iam/fields/effective?resource=todo&entity_id=9007199254740996",
@@ -1354,7 +1354,7 @@ describe("IAM API client", () => {
     })
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /iam/departments",
+      "GET /iam/departments?offset=0&limit=200",
       "GET /iam/departments/department%2Fa",
       "POST /iam/departments",
       "PATCH /iam/departments/department%2Fa",
@@ -1554,7 +1554,7 @@ describe("IAM API client", () => {
     await client.deleteTenant("tenant/a", 3)
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /iam/tenants?include_deleted=true",
+      "GET /iam/tenants?include_deleted=true&offset=0&limit=200",
       "POST /iam/tenants",
       "PATCH /iam/tenants/tenant%2Fa",
       "DELETE /iam/tenants/tenant%2Fa?version=3",
@@ -1647,12 +1647,12 @@ describe("IAM API client", () => {
     ).toEqual({ deleted: true })
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /iam/positions",
+      "GET /iam/positions?offset=0&limit=200",
       "GET /iam/positions/position%2Fa",
       "POST /iam/positions",
       "PATCH /iam/positions/position%2Fa",
       "DELETE /iam/positions/position%2Fa?version=7",
-      "GET /iam/positions/position%2Fa/members",
+      "GET /iam/positions/position%2Fa/members?offset=0&limit=200",
       "PUT /iam/positions/position%2Fa/members/principal%2Fa",
       "DELETE /iam/positions/position%2Fa/members/principal%2Fa",
     ])
@@ -1765,12 +1765,12 @@ describe("IAM API client", () => {
     ).toEqual({ deleted: true })
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /iam/groups",
+      "GET /iam/groups?offset=0&limit=200",
       "GET /iam/groups/group%2Fa",
       "POST /iam/groups",
       "PATCH /iam/groups/group%2Fa",
       "DELETE /iam/groups/group%2Fa?version=7",
-      "GET /iam/groups/group%2Fa/members",
+      "GET /iam/groups/group%2Fa/members?offset=0&limit=200",
       "PUT /iam/groups/group%2Fa/members/principal%2Fa",
       "DELETE /iam/groups/group%2Fa/members/principal%2Fa",
     ])
@@ -2011,10 +2011,10 @@ describe("IAM API client", () => {
       "GET /iam/entities/entity%2Fa",
       "POST /iam/entities",
       "PATCH /iam/entities/entity%2Fa",
-      "GET /iam/entities/entity%2Fa/role-bindings",
+      "GET /iam/entities/entity%2Fa/role-bindings?offset=0&limit=200",
       "PUT /iam/entities/entity%2Fa/role-bindings/role%2Fa/principal%2Fa",
       "DELETE /iam/entities/entity%2Fa/role-bindings/role%2Fa/principal%2Fa",
-      "GET /iam/relationships?resource_id=entity%2Fa",
+      "GET /iam/relationships?resource_id=entity%2Fa&offset=0&limit=200",
       "POST /iam/relationships",
       "DELETE /iam/relationships?subject_type=principal&subject_id=principal%2Fa&relation=viewer&resource_type=store&resource_id=entity%2Fa",
       "GET /iam/relationships?entity_id=entity%2Fa",

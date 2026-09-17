@@ -62,11 +62,16 @@ func (condition *policyCondition) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// listRelationshipsInput bounds the listing by default: relationship grants grow
+// with the tenant's entities and business resources, so omitting limit must not
+// mean the whole table.
 type listRelationshipsInput struct {
 	TenantID     string `header:"X-Tenant-Id" maxLength:"128"`
 	EntityID     string `query:"entity_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	ResourceType string `query:"resource_type" maxLength:"64"`
 	ResourceID   string `query:"resource_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	Offset       int    `query:"offset" minimum:"0" default:"0"`
+	Limit        int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type putRelationshipInput struct {
@@ -119,11 +124,15 @@ func registerRelationshipHTTP(a huma.API, svc *Service, registrar *authz.Registr
 		if err != nil {
 			return nil, err
 		}
-		items, err := svc.ListRelationships(ctx, tenantID, RelationshipFilter{EntityID: entityID, ResourceType: in.ResourceType, ResourceID: resourceID})
+		items, total, err := svc.ListRelationshipsPage(
+			ctx, tenantID,
+			RelationshipFilter{EntityID: entityID, ResourceType: in.ResourceType, ResourceID: resourceID},
+			in.Offset, in.Limit,
+		)
 		if err != nil {
 			return nil, apiError("list relationships", err)
 		}
-		return respx.OK(ctx, relationshipsFromDomain(items)), nil
+		return respx.List(ctx, relationshipsFromDomain(items), respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 	})
 
 	authz.Register(registrar, a, huma.Operation{

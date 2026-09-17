@@ -86,11 +86,15 @@ func memberRef(in *memberInput) (guid.ID, guid.ID, guid.ID, error) {
 }
 
 func tenantMemberRef(in *tenantMemberInput) (guid.ID, guid.ID, error) {
-	tenantID, err := requireID(in.TenantID)
+	return tenantMemberRefIDs(in.TenantID, in.Subject)
+}
+
+func tenantMemberRefIDs(tenantIDValue, subjectValue string) (guid.ID, guid.ID, error) {
+	tenantID, err := requireID(tenantIDValue)
 	if err != nil {
 		return 0, 0, err
 	}
-	subject, err := requireID(in.Subject)
+	subject, err := requireID(subjectValue)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -226,6 +230,16 @@ type tenantInput struct {
 	Limit  int `query:"limit" minimum:"0" maximum:"200" default:"0"`
 }
 
+// boundedTenantInput is tenantInput's bounded counterpart, for the tenant-wide
+// listings that actually page: entities and roles both grow with the tenant, so
+// omitting limit must not mean the whole table. tenantInput keeps the opt-in
+// shape for the handlers that do not page at all.
+type boundedTenantInput struct {
+	TenantID string `header:"X-Tenant-Id" maxLength:"128" doc:"tenant authorization boundary"`
+	Offset   int    `query:"offset" minimum:"0" default:"0"`
+	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
+}
+
 // myPermissionsInput carries the tenant selector alone: the reply is a bounded
 // catalog of the caller's own codes, so there is nothing to page through.
 type myPermissionsInput struct {
@@ -241,6 +255,15 @@ type roleInput struct {
 // with the tenant, so the page size follows listTenantMembersInput rather than
 // the opt-in shape, where omitting limit returns every row.
 type listRoleMembersInput struct {
+	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	RoleID   string `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	Offset   int    `query:"offset" minimum:"0" default:"0"`
+	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
+}
+
+// listRoleDirectoryBindingsInput bounds the listing by default: a role can be
+// granted to any number of the tenant's groups and positions.
+type listRoleDirectoryBindingsInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	RoleID   string `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
@@ -314,6 +337,15 @@ type tenantMemberInput struct {
 	Subject  string `path:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
+// listTenantMemberRolesInput bounds the listing by default: a member holds as
+// many roles as the tenant grants them, permanent and temporary together.
+type listTenantMemberRolesInput struct {
+	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	Subject  string `path:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	Offset   int    `query:"offset" minimum:"0" default:"0"`
+	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
+}
+
 type createTenantMemberInput struct {
 	RawBody  []byte
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
@@ -375,6 +407,15 @@ type updateMenuInput struct {
 type entityInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	EntityID string `path:"entity_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+}
+
+// listEntityRoleBindingsInput bounds the listing by default: an entity carries
+// one binding per principal and role granted at its scope.
+type listEntityRoleBindingsInput struct {
+	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	EntityID string `path:"entity_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	Offset   int    `query:"offset" minimum:"0" default:"0"`
+	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type createEntityInput struct {
@@ -527,7 +568,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 
 	authz.Register(registrar, a, huma.Operation{
 		OperationID: "iam-list-entities", Method: http.MethodGet, Path: "/iam/entities", Summary: "List tenant entities", Tags: []string{"iam"},
-	}, authz.Guard{Resource: "entity", Verb: "view"}, func(ctx context.Context, in *tenantInput) (*respx.Body[[]APIEntity], error) {
+	}, authz.Guard{Resource: "entity", Verb: "view"}, func(ctx context.Context, in *boundedTenantInput) (*respx.Body[[]APIEntity], error) {
 		tenantID, err := requireID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -623,7 +664,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 
 	authz.Register(registrar, a, huma.Operation{
 		OperationID: "iam-list-entity-role-bindings", Method: http.MethodGet, Path: "/iam/entities/{entity_id}/role-bindings", Summary: "List direct principal role bindings for an entity", Tags: []string{"iam"}, Errors: []int{http.StatusNotFound},
-	}, authz.Guard{Resource: "entity", Verb: "view"}, func(ctx context.Context, in *entityInput) (*respx.Body[[]APIEntityRoleBinding], error) {
+	}, authz.Guard{Resource: "entity", Verb: "view"}, func(ctx context.Context, in *listEntityRoleBindingsInput) (*respx.Body[[]APIEntityRoleBinding], error) {
 		tenantID, err := requireID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -632,11 +673,11 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		if err != nil {
 			return nil, err
 		}
-		bindings, err := svc.ListEntityRoleBindings(ctx, tenantID, entityID)
+		bindings, total, err := svc.ListEntityRoleBindingsPage(ctx, tenantID, entityID, in.Offset, in.Limit)
 		if err != nil {
 			return nil, apiError("list entity role bindings", err)
 		}
-		return respx.OK(ctx, entityBindingsFromDomain(bindings)), nil
+		return respx.List(ctx, entityBindingsFromDomain(bindings), respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 	})
 
 	authz.Register(registrar, a, huma.Operation{
@@ -697,7 +738,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 
 	authz.Register(registrar, a, huma.Operation{
 		OperationID: "iam-list-roles", Method: http.MethodGet, Path: "/iam/roles", Summary: "List tenant roles", Tags: []string{"iam"},
-	}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *tenantInput) (*respx.Body[[]APIRole], error) {
+	}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *boundedTenantInput) (*respx.Body[[]APIRole], error) {
 		tenantID, err := requireID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -924,16 +965,16 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 
 	authz.Register(registrar, a, huma.Operation{
 		OperationID: "iam-list-role-directory-bindings", Method: http.MethodGet, Path: "/iam/roles/{role_id}/directory-bindings", Summary: "List group and position role assignments", Tags: []string{"iam"}, Errors: []int{http.StatusNotFound},
-	}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *roleInput) (*respx.Body[[]APIRoleDirectoryBinding], error) {
-		tenantID, roleID, err := roleRef(in)
+	}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *listRoleDirectoryBindingsInput) (*respx.Body[[]APIRoleDirectoryBinding], error) {
+		tenantID, roleID, err := roleRefIDs(in.TenantID, in.RoleID)
 		if err != nil {
 			return nil, err
 		}
-		bindings, err := svc.ListDirectoryBindings(ctx, tenantID, roleID)
+		bindings, total, err := svc.ListDirectoryBindingsPage(ctx, tenantID, roleID, in.Offset, in.Limit)
 		if err != nil {
 			return nil, apiError("list role directory bindings", err)
 		}
-		return respx.OK(ctx, directoryBindingsFromDomain(bindings)), nil
+		return respx.List(ctx, directoryBindingsFromDomain(bindings), respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 	})
 
 	authz.Register(registrar, a, huma.Operation{
@@ -1086,16 +1127,16 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, memberProfileView(member, fields)), nil
 	})
-	authz.Register(registrar, a, huma.Operation{OperationID: "iam-list-tenant-member-roles", Method: http.MethodGet, Path: "/iam/members/{subject}/roles", Summary: "List role assignments for a tenant member", Tags: []string{"iam"}, Errors: []int{http.StatusNotFound}}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *tenantMemberInput) (*respx.Body[[]string], error) {
-		tenantID, subject, err := tenantMemberRef(in)
+	authz.Register(registrar, a, huma.Operation{OperationID: "iam-list-tenant-member-roles", Method: http.MethodGet, Path: "/iam/members/{subject}/roles", Summary: "List role assignments for a tenant member", Tags: []string{"iam"}, Errors: []int{http.StatusNotFound}}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *listTenantMemberRolesInput) (*respx.Body[[]string], error) {
+		tenantID, subject, err := tenantMemberRefIDs(in.TenantID, in.Subject)
 		if err != nil {
 			return nil, err
 		}
-		roles, err := svc.ListTenantMemberRoles(ctx, tenantID, subject)
+		roles, total, err := svc.ListTenantMemberRolesPage(ctx, tenantID, subject, in.Offset, in.Limit)
 		if err != nil {
 			return nil, apiError("list tenant member roles", err)
 		}
-		return respx.OK(ctx, guidStrings(roles)), nil
+		return respx.List(ctx, guidStrings(roles), respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 	})
 	authz.Register(registrar, a, huma.Operation{
 		OperationID: "iam-list-member-authorization-sources", Method: http.MethodGet,

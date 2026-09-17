@@ -42,13 +42,21 @@ func parseSCIMID(value string) (guid.ID, error) {
 	return id, nil
 }
 
+// directoryListInput bounds the listing by default: a tenant's directory count
+// is open-ended, and an omitted limit used to mean "every row".
 type directoryListInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	Offset   int    `query:"offset" minimum:"0" default:"0"`
+	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
+// directoryIDInput addresses one directory's credential listing, which the
+// directory accumulates over its lifetime, so it is bounded by default too.
 type directoryIDInput struct {
 	TenantID    string `header:"X-Tenant-Id" maxLength:"128"`
 	DirectoryID string `path:"directory_id" maxLength:"128"`
+	Offset      int    `query:"offset" minimum:"0" default:"0"`
+	Limit       int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type directoryCreateInput struct {
@@ -92,11 +100,11 @@ func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registra
 		if err != nil {
 			return nil, err
 		}
-		items, err := service.ListDirectories(ctx, tenantID)
+		items, total, err := service.ListDirectoriesPage(ctx, tenantID, in.Offset, in.Limit)
 		if err != nil {
 			return nil, provisioningError(err)
 		}
-		return respx.OK(ctx, items), nil
+		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(items), Total: total}), nil
 	})
 	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-create-scim-directory", Method: http.MethodPost, Path: "/iam/scim/directories", Summary: "Create a tenant SCIM directory", Tags: []string{"provisioning"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity}}, guard, func(ctx context.Context, in *directoryCreateInput) (*respx.Body[Directory], error) {
 		tenantID, err := parseProvisioningID(in.TenantID)
@@ -133,11 +141,11 @@ func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registra
 		if err != nil {
 			return nil, err
 		}
-		items, err := service.ListCredentials(ctx, tenantID, directoryID)
+		items, total, err := service.ListCredentialsPage(ctx, tenantID, directoryID, in.Offset, in.Limit)
 		if err != nil {
 			return nil, provisioningError(err)
 		}
-		return respx.OK(ctx, items), nil
+		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(items), Total: total}), nil
 	})
 	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-create-scim-credential", Method: http.MethodPost, Path: "/iam/scim/directories/{directory_id}/credentials", Summary: "Create a one-display SCIM bearer credential", Tags: []string{"provisioning"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity}}, guard, func(ctx context.Context, in *credentialCreateInput) (*respx.Body[CredentialSecret], error) {
 		tenantID, err := parseProvisioningID(in.TenantID)
@@ -681,8 +689,11 @@ func writeSCIM(ctx huma.Context, status int, value any) {
 
 func intPointer(value int) *int { return &value }
 
+// targetListInput bounds the listing by default, like directoryListInput.
 type targetListInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	Offset   int    `query:"offset" minimum:"0" default:"0"`
+	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type targetIDInput struct {
@@ -731,11 +742,11 @@ func registerTargetHTTP(api huma.API, service *Service, registrar *authz.Registr
 		if err != nil {
 			return nil, err
 		}
-		items, err := service.ListTargets(ctx, tenantID)
+		items, total, err := service.ListTargetsPage(ctx, tenantID, in.Offset, in.Limit)
 		if err != nil {
 			return nil, provisioningError(err)
 		}
-		return respx.OK(ctx, items), nil
+		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(items), Total: total}), nil
 	})
 	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-create-scim-target", Method: http.MethodPost, Path: "/iam/scim/targets", Summary: "Create an outbound SCIM target", Tags: []string{"provisioning"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity}}, guard, func(ctx context.Context, in *targetCreateInput) (*respx.Body[TargetSecret], error) {
 		tenantID, err := parseProvisioningID(in.TenantID)

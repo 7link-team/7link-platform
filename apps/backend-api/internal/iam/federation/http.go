@@ -25,8 +25,12 @@ func parseFederationID(value string) (guid.ID, error) {
 	return id, nil
 }
 
+// providerListInput bounds the listing by default: a tenant's provider registry
+// is open-ended, and an omitted limit used to mean "every row".
 type providerListInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	Offset   int    `query:"offset" minimum:"0" default:"0"`
+	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type providerIDInput struct {
@@ -76,11 +80,11 @@ func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registra
 		if err != nil {
 			return nil, err
 		}
-		items, err := service.ListProviders(ctx, tenantID)
+		items, total, err := service.ListProvidersPage(ctx, tenantID, in.Offset, in.Limit)
 		if err != nil {
 			return nil, federationError(err)
 		}
-		return respx.OK(ctx, items), nil
+		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(items), Total: total}), nil
 	})
 	authz.Register(registrar, api, huma.Operation{OperationID: "federation-create-identity-provider", Method: http.MethodPost, Path: "/iam/identity-providers", Summary: "Create an OIDC identity provider", Tags: []string{"federation"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity}}, authz.Guard{Resource: "identity_provider", Verb: "create"}, func(ctx context.Context, in *providerCreateInput) (*respx.Body[Provider], error) {
 		tenantID, err := parseFederationID(in.TenantID)

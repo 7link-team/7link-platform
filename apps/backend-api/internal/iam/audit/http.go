@@ -51,6 +51,15 @@ type exportInput struct {
 	To          string `query:"to" maxLength:"40" doc:"exclusive RFC3339 timestamp"`
 }
 
+// governanceInput bounds the anchor chain the governance report carries. The
+// chain gains an entry on every anchoring run and an omitted limit used to
+// return all of it; the rest of the report is a fixed-size summary.
+type governanceInput struct {
+	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	Offset   int    `query:"offset" minimum:"0" default:"0"`
+	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
+}
+
 type retentionInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	Body     struct {
@@ -154,16 +163,18 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 		OperationID: "audit-get-governance", Method: http.MethodGet, Path: "/iam/audit/governance",
 		Summary: "Get WORM governance status: retention policy, chain integrity and anchor chain", Tags: []string{"audit"},
 		Errors: []int{http.StatusUnprocessableEntity, http.StatusServiceUnavailable, http.StatusInternalServerError},
-	}, authz.Guard{Resource: "audit_event", Verb: "view"}, func(ctx context.Context, in *tenantInput) (*respx.Body[Governance], error) {
+	}, authz.Guard{Resource: "audit_event", Verb: "view"}, func(ctx context.Context, in *governanceInput) (*respx.Body[Governance], error) {
 		tenantID, err := parseAuditID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
-		report, err := service.Governance(ctx, tenantID)
+		report, total, err := service.GovernancePage(ctx, tenantID, in.Offset, in.Limit)
 		if err != nil {
 			return nil, auditAPIError(err)
 		}
-		return respx.OK(ctx, report), nil
+		return respx.List(ctx, report, respx.Page{
+			Offset: in.Offset, Limit: in.Limit, Count: len(report.Anchors), Total: total,
+		}), nil
 	})
 
 	authz.Register(registrar, api, huma.Operation{

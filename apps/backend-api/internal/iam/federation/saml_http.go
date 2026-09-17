@@ -10,8 +10,11 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
+// samlSPListInput bounds the listing by default, like providerListInput.
 type samlSPListInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	Offset   int    `query:"offset" minimum:"0" default:"0"`
+	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type samlSPIDInput struct {
@@ -58,11 +61,11 @@ func registerSAMLAdminHTTP(api huma.API, service *Service, registrar *authz.Regi
 		if err != nil {
 			return nil, err
 		}
-		items, err := service.ListSAMLServiceProviders(ctx, tenantID)
+		items, total, err := service.ListSAMLServiceProvidersPage(ctx, tenantID, in.Offset, in.Limit)
 		if err != nil {
 			return nil, samlError(err)
 		}
-		return respx.OK(ctx, items), nil
+		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(items), Total: total}), nil
 	})
 
 	create := huma.Operation{OperationID: "federation-create-saml-service-provider", Method: http.MethodPost, Path: "/iam/saml/service-providers", Summary: "Register a SAML service provider from its metadata", Tags: []string{"federation"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity}}

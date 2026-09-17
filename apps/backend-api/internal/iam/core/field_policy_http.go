@@ -16,6 +16,19 @@ type fieldPolicyListInput struct {
 	EntityID string `query:"entity_id" maxLength:"64"`
 }
 
+// listFieldPoliciesInput bounds the policy listing by default. It repeats
+// fieldPolicyListInput's parameters rather than sharing the type, so that the
+// field catalog and the effective-fields routes -- which do not page -- keep
+// their published contract, and this one gains only offset and limit. EntityID
+// is carried for the same reason: this route has always declared it.
+type listFieldPoliciesInput struct {
+	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	Resource string `query:"resource" maxLength:"64"`
+	EntityID string `query:"entity_id" maxLength:"64"`
+	Offset   int    `query:"offset" minimum:"0" default:"0"`
+	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
+}
+
 type fieldPolicyInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	Resource string `path:"resource" maxLength:"64"`
@@ -39,16 +52,16 @@ func registerFieldPolicyHTTP(api huma.API, service *Service, registrar *authz.Re
 			return respx.OK(ctx, service.registry.Fields("")), nil
 		})
 	authz.Register(registrar, api, huma.Operation{OperationID: "iam-list-field-policies", Method: http.MethodGet, Path: "/iam/field-policies", Summary: "List tenant field policies", Tags: []string{"iam"}}, authz.Guard{Resource: "field_policy", Verb: "view"},
-		func(ctx context.Context, in *fieldPolicyListInput) (*respx.Body[[]ManagedFieldPolicy], error) {
+		func(ctx context.Context, in *listFieldPoliciesInput) (*respx.Body[[]ManagedFieldPolicy], error) {
 			tenantID, err := requireID(in.TenantID)
 			if err != nil {
 				return nil, err
 			}
-			policies, err := service.ListFieldPolicies(ctx, tenantID, in.Resource)
+			policies, total, err := service.ListFieldPoliciesPage(ctx, tenantID, in.Resource, in.Offset, in.Limit)
 			if err != nil {
 				return nil, apiError("list field policies", err)
 			}
-			return respx.OK(ctx, policies), nil
+			return respx.List(ctx, policies, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 		})
 	authz.Register(registrar, api, huma.Operation{OperationID: "iam-set-field-policy", Method: http.MethodPut, Path: "/iam/field-policies/{resource}/{field}", Summary: "Set a tenant field policy", Tags: []string{"iam"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity}}, authz.Guard{Resource: "field_policy", Verb: "update"},
 		func(ctx context.Context, in *fieldPolicyInput) (*respx.Body[ManagedFieldPolicy], error) {

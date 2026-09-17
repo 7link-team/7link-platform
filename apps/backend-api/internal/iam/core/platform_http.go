@@ -34,6 +34,13 @@ type platformPrincipalInput struct {
 	PrincipalID string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
+// listPlatformAdministratorsInput bounds the listing by default. The set is
+// platform-wide rather than tenant-scoped, so nothing else narrows it.
+type listPlatformAdministratorsInput struct {
+	Offset int `query:"offset" minimum:"0" default:"0"`
+	Limit  int `query:"limit" minimum:"1" maximum:"200" default:"50"`
+}
+
 func registerPlatformHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	authz.RegisterPlatform(registrar, a, huma.Operation{
 		OperationID: "iam-platform-permission-catalog", Method: http.MethodGet, Path: "/iam/platform-permission-catalog",
@@ -45,12 +52,12 @@ func registerPlatformHTTP(a huma.API, svc *Service, registrar *authz.Registrar) 
 	authz.RegisterPlatform(registrar, a, huma.Operation{
 		OperationID: "iam-list-platform-administrators", Method: http.MethodGet, Path: "/iam/platform-administrators",
 		Summary: "List platform administrators and their platform permissions", Tags: []string{"iam"},
-	}, authz.Guard{Resource: "platform", Verb: "administer"}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]PlatformAdministratorView], error) {
-		administrators, err := svc.ListPlatformAdministrators(ctx)
+	}, authz.Guard{Resource: "platform", Verb: "administer"}, func(ctx context.Context, in *listPlatformAdministratorsInput) (*respx.Body[[]PlatformAdministratorView], error) {
+		administrators, total, err := svc.ListPlatformAdministratorsPage(ctx, in.Offset, in.Limit)
 		if err != nil {
 			return nil, platformAPIError("list platform administrators", err)
 		}
-		return respx.OK(ctx, platformAdministratorsFromDomain(administrators)), nil
+		return respx.List(ctx, platformAdministratorsFromDomain(administrators), respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 	})
 
 	authz.RegisterPlatform(registrar, a, huma.Operation{

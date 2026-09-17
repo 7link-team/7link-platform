@@ -20,6 +20,15 @@ type tenantInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 }
 
+// listInput bounds a tenant listing by default. tenantInput stays as it is
+// because the endpoints that only address a tenant share it; these listings grow
+// with the tenant and an omitted limit used to mean "every row".
+type listInput struct {
+	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	Offset   int    `query:"offset" minimum:"0" default:"0"`
+	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
+}
+
 type createRequestInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	Body     struct {
@@ -72,16 +81,16 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	authz.RegisterTenantMember(registrar, api, operation(
 		"governance-list-requestable-roles", http.MethodGet, "/iam/requestable-roles",
 		"List tenant roles available for access requests", http.StatusUnprocessableEntity, http.StatusInternalServerError,
-	), func(ctx context.Context, in *tenantInput) (*respx.Body[[]RequestableRole], error) {
+	), func(ctx context.Context, in *listInput) (*respx.Body[[]RequestableRole], error) {
 		tenantID, err := parseGovernanceID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
-		items, err := service.RequestableRoles(ctx, tenantID)
+		items, total, err := service.RequestableRolesPage(ctx, tenantID, in.Offset, in.Limit)
 		if err != nil {
 			return nil, governanceError(err)
 		}
-		return respx.OK(ctx, items), nil
+		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(items), Total: total}), nil
 	})
 
 	createRequest := operation(
@@ -134,16 +143,16 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	authz.Register(registrar, api, operation(
 		"governance-list-access-requests", http.MethodGet, "/iam/access-requests",
 		"List tenant access requests for approval", http.StatusUnprocessableEntity, http.StatusInternalServerError,
-	), authz.Guard{Resource: "access_request", Verb: "view"}, func(ctx context.Context, in *tenantInput) (*respx.Body[[]AccessRequest], error) {
+	), authz.Guard{Resource: "access_request", Verb: "view"}, func(ctx context.Context, in *listInput) (*respx.Body[[]AccessRequest], error) {
 		tenantID, err := parseGovernanceID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
-		items, err := service.List(ctx, tenantID, 0)
+		items, total, err := service.ListPage(ctx, tenantID, 0, in.Offset, in.Limit)
 		if err != nil {
 			return nil, governanceError(err)
 		}
-		return respx.OK(ctx, items), nil
+		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(items), Total: total}), nil
 	})
 
 	registerRequestDecisionHTTP(api, service, registrar)
@@ -214,16 +223,16 @@ func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registr
 	authz.Register(registrar, api, operation(
 		"governance-list-access-reviews", http.MethodGet, "/iam/access-reviews",
 		"List tenant access review campaigns", http.StatusUnprocessableEntity, http.StatusInternalServerError,
-	), authz.Guard{Resource: "access_review", Verb: "view"}, func(ctx context.Context, in *tenantInput) (*respx.Body[[]AccessReview], error) {
+	), authz.Guard{Resource: "access_review", Verb: "view"}, func(ctx context.Context, in *listInput) (*respx.Body[[]AccessReview], error) {
 		tenantID, err := parseGovernanceID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
-		items, err := service.ListReviews(ctx, tenantID)
+		items, total, err := service.ListReviewsPage(ctx, tenantID, in.Offset, in.Limit)
 		if err != nil {
 			return nil, governanceError(err)
 		}
-		return respx.OK(ctx, items), nil
+		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(items), Total: total}), nil
 	})
 
 	createReview := operation(

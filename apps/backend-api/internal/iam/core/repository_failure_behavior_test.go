@@ -66,6 +66,10 @@ func TestCorePersistenceAndAuthorizationFailClosedAfterDatabaseShutdown(t *testi
 		{"set member department", func() error { return repo.setMemberDepartment(ctx, tenantID, principalID, 5) }},
 		{"get department status", func() error { _, err := repo.departmentStatus(ctx, tenantID, 5); return err }},
 		{"list directory bindings", func() error { _, err := repo.ListDirectoryBindings(ctx, tenantID, roleID); return err }},
+		{"list directory binding page", func() error {
+			_, _, err := repo.ListDirectoryBindingsPage(ctx, tenantID, roleID, 0, 1)
+			return err
+		}},
 		{"add directory binding", func() error {
 			_, err := repo.ChangeDirectoryBinding(ctx, tenantID, roleID, DirectoryAssigneeGroup, 5, true)
 			return err
@@ -90,6 +94,10 @@ func TestCorePersistenceAndAuthorizationFailClosedAfterDatabaseShutdown(t *testi
 		}},
 		{"delete entity", func() error { return repo.DeleteEntity(ctx, tenantID, entityID) }},
 		{"list entity bindings", func() error { _, err := repo.ListEntityRoleBindings(ctx, tenantID, entityID); return err }},
+		{"list entity binding page", func() error {
+			_, _, err := repo.ListEntityRoleBindingsPage(ctx, tenantID, entityID, 0, 1)
+			return err
+		}},
 		{"put entity binding", func() error {
 			_, _, err := repo.PutEntityRoleBinding(ctx, tenantID, entityID, roleID, principalID, BindingAllow, time.Time{})
 			return err
@@ -100,6 +108,14 @@ func TestCorePersistenceAndAuthorizationFailClosedAfterDatabaseShutdown(t *testi
 		}},
 		{"count entity relationships", func() error { _, err := repo.entityRelationshipCount(ctx, tenantID, entityID); return err }},
 		{"list relationships", func() error { _, err := repo.ListRelationships(ctx, tenantID, RelationshipFilter{}); return err }},
+		{"list relationship page", func() error {
+			_, _, err := repo.ListRelationshipsPage(ctx, tenantID, RelationshipFilter{}, 0, 1)
+			return err
+		}},
+		{"list resource relationship page", func() error {
+			_, _, err := repo.ListRelationshipsPage(ctx, tenantID, RelationshipFilter{EntityID: entityID}, 0, 1)
+			return err
+		}},
 		{"put relationship", func() error {
 			_, _, err := repo.PutRelationship(ctx, Relationship{TenantID: tenantID, SubjectType: "principal", SubjectID: principalID, Relation: "viewer", ResourceType: "unit", ResourceID: entityID})
 			return err

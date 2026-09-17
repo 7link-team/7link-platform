@@ -1238,6 +1238,29 @@ export function createIamApi(
     requestWithBase<T>(apiBase, tenantID, path, init, tenant)
   const requestEnvelope = <T>(path: string, tenant = true) =>
     requestEnvelopeWithBase<T>(apiBase, tenantID, path, {}, tenant)
+  /**
+   * Every list endpoint is bounded by default on the server, so a caller that
+   * needs the complete set -- a picker's universe, or a membership the UI
+   * checks boxes against -- has to walk the pages. A partial answer there is a
+   * wrong screen, not a short one: an assigned member would render unassigned.
+   * Callers that genuinely want a single page pass offset and limit themselves.
+   */
+  const requestAllPages = async <T>(path: string, tenant = true): Promise<T[]> => {
+    const pageSize = 200
+    const items: T[] = []
+    for (let offset = 0; ; offset += pageSize) {
+      const separator = path.includes("?") ? "&" : "?"
+      const result = await requestEnvelope<T[]>(
+        `${path}${separator}offset=${offset}&limit=${pageSize}`,
+        tenant
+      )
+      const page = result.data ?? []
+      items.push(...page)
+      const total = result.meta?.page?.total ?? items.length
+      if (page.length === 0 || items.length >= total) break
+    }
+    return items
+  }
   const archivePath = (scope: AuditScope) =>
     scope === "platform" ? "/platform/iam/audit" : "/iam/audit"
   return {
@@ -1645,7 +1668,7 @@ export function createIamApi(
         `/iam/service-accounts/${encodeURIComponent(id)}/credentials/${encodeURIComponent(credentialID)}`,
         { method: "DELETE" }
       ),
-    invitations: () => request<Invitation[]>("/iam/invitations"),
+    invitations: () => requestAllPages<Invitation>("/iam/invitations"),
     createInvitation: (body: {
       email: string
       department_id?: string
@@ -1681,9 +1704,8 @@ export function createIamApi(
         false
       ),
     tenants: (includeDeleted = false) =>
-      request<Tenant[]>(
+      requestAllPages<Tenant>(
         `/iam/tenants?include_deleted=${includeDeleted}`,
-        {},
         false
       ),
     createTenant: (body: TenantInput) =>
@@ -1705,8 +1727,8 @@ export function createIamApi(
         false
       ),
     members: (search = "") =>
-      request<Member[]>(
-        `/iam/members?limit=200&search=${encodeURIComponent(search)}`
+      requestAllPages<Member>(
+        `/iam/members?search=${encodeURIComponent(search)}`
       ),
     updateMember: (
       subject: string,
@@ -1743,7 +1765,7 @@ export function createIamApi(
         { method: "DELETE" }
       ),
     entityRoleBindings: (id: string) =>
-      request<EntityRoleBinding[]>(
+      requestAllPages<EntityRoleBinding>(
         `/iam/entities/${encodeURIComponent(id)}/role-bindings`
       ),
     putEntityRoleBinding: (
@@ -1766,7 +1788,7 @@ export function createIamApi(
         { method: "DELETE" }
       ),
     relationships: (resourceID = "") =>
-      request<Relationship[]>(
+      requestAllPages<Relationship>(
         `/iam/relationships${resourceID ? `?resource_id=${encodeURIComponent(resourceID)}` : ""}`
       ),
     resourceRelationships: (entityID: string) =>
@@ -1868,7 +1890,7 @@ export function createIamApi(
           subject,
         }),
       }),
-    departments: () => request<Department[]>("/iam/departments"),
+    departments: () => requestAllPages<Department>("/iam/departments"),
     department: (id: string) =>
       request<Department>(`/iam/departments/${encodeURIComponent(id)}`),
     createDepartment: (body: DepartmentInput) =>
@@ -1889,7 +1911,7 @@ export function createIamApi(
         `/iam/departments/${encodeURIComponent(id)}?version=${encodeURIComponent(version)}`,
         { method: "DELETE" }
       ),
-    positions: () => request<Position[]>("/iam/positions"),
+    positions: () => requestAllPages<Position>("/iam/positions"),
     position: (id: string) =>
       request<Position>(`/iam/positions/${encodeURIComponent(id)}`),
     createPosition: (body: PositionInput) =>
@@ -1911,7 +1933,7 @@ export function createIamApi(
         { method: "DELETE" }
       ),
     positionMembers: (id: string) =>
-      request<PositionMember[]>(
+      requestAllPages<PositionMember>(
         `/iam/positions/${encodeURIComponent(id)}/members`
       ),
     putPositionMember: (
@@ -1928,7 +1950,7 @@ export function createIamApi(
         `/iam/positions/${encodeURIComponent(id)}/members/${encodeURIComponent(principalID)}`,
         { method: "DELETE" }
       ),
-    groups: () => request<Group[]>("/iam/groups"),
+    groups: () => requestAllPages<Group>("/iam/groups"),
     group: (id: string) =>
       request<Group>(`/iam/groups/${encodeURIComponent(id)}`),
     createGroup: (body: GroupInput) =>
@@ -1950,7 +1972,9 @@ export function createIamApi(
         { method: "DELETE" }
       ),
     groupMembers: (id: string) =>
-      request<GroupMember[]>(`/iam/groups/${encodeURIComponent(id)}/members`),
+      requestAllPages<GroupMember>(
+        `/iam/groups/${encodeURIComponent(id)}/members`
+      ),
     putGroupMember: (id: string, principalID: string, body: GroupMemberInput) =>
       request<GroupMember>(
         `/iam/groups/${encodeURIComponent(id)}/members/${encodeURIComponent(principalID)}`,
@@ -1963,7 +1987,7 @@ export function createIamApi(
       ),
     fieldCatalog: () => request<FieldDefinition[]>("/iam/field-catalog"),
     fieldPolicies: (resource = "") =>
-      request<ManagedFieldPolicy[]>(
+      requestAllPages<ManagedFieldPolicy>(
         `/iam/field-policies${resource ? `?${new URLSearchParams({ resource })}` : ""}`
       ),
     setFieldPolicy: (
@@ -1993,9 +2017,10 @@ export function createIamApi(
     },
     roles: () => request<Role[]>("/iam/roles"),
     requestableRoles: () =>
-      request<RequestableRole[]>("/iam/requestable-roles"),
+      requestAllPages<RequestableRole>("/iam/requestable-roles"),
     myAccessRequests: () => request<AccessRequest[]>("/iam/my/access-requests"),
-    accessRequests: () => request<AccessRequest[]>("/iam/access-requests"),
+    accessRequests: () =>
+      requestAllPages<AccessRequest>("/iam/access-requests"),
     createAccessRequest: (body: AccessRequestInput) =>
       request<AccessRequest>("/iam/access-requests", {
         method: "POST",
@@ -2021,7 +2046,7 @@ export function createIamApi(
         `/iam/access-requests/${encodeURIComponent(id)}/withdraw`,
         { method: "POST", body: JSON.stringify({ reason }) }
       ),
-    accessReviews: () => request<AccessReview[]>("/iam/access-reviews"),
+    accessReviews: () => requestAllPages<AccessReview>("/iam/access-reviews"),
     accessReview: (id: string) =>
       request<AccessReview>(`/iam/access-reviews/${encodeURIComponent(id)}`),
     createAccessReview: (body: AccessReviewInput) =>
@@ -2094,26 +2119,10 @@ export function createIamApi(
         `/iam/roles/${encodeURIComponent(id)}/permissions/${encodeURIComponent(code)}/condition`,
         { method: "DELETE" }
       ),
-    // The server now bounds this listing, but the role editor needs every bound
-    // member to decide which boxes are checked -- a partial set would render an
-    // assigned member as unassigned. So the client pages through explicitly
-    // rather than asking the server for an unbounded response.
-    roleMembers: async (id: string) => {
-      const pageSize = 200
-      const members: string[] = []
-      for (let offset = 0; ; offset += pageSize) {
-        const result = await requestEnvelope<string[]>(
-          `/iam/roles/${encodeURIComponent(id)}/members?${new URLSearchParams({
-            offset: String(offset),
-            limit: String(pageSize),
-          })}`
-        )
-        members.push(...result.data)
-        const total = result.meta?.page?.total ?? members.length
-        if (result.data.length === 0 || members.length >= total) break
-      }
-      return members
-    },
+    roleMembers: (id: string) =>
+      requestAllPages<string>(
+        `/iam/roles/${encodeURIComponent(id)}/members`
+      ),
     addRoleMember: (id: string, subject: string) =>
       request(
         `/iam/roles/${encodeURIComponent(id)}/members/${encodeURIComponent(subject)}`,
@@ -2175,8 +2184,8 @@ export function createIamApi(
     deleteMenu: (id: string) =>
       request(`/iam/menus/${encodeURIComponent(id)}`, { method: "DELETE" }),
     oauthClients: () =>
-      request<OAuthClientResponse[]>("/iam/oauth-clients").then((clients) =>
-        clients.map(normalizeOAuthClient)
+      requestAllPages<OAuthClientResponse>("/iam/oauth-clients").then(
+        (clients) => clients.map(normalizeOAuthClient)
       ),
     createOAuthClient: (body: OAuthClientInput) =>
       request<
@@ -2211,8 +2220,9 @@ export function createIamApi(
         `/iam/oauth-clients/${encodeURIComponent(id)}`,
         { method: "DELETE" }
       ),
-    scimDirectories: () => request<SCIMDirectory[]>("/iam/scim/directories"),
-    scimTargets: () => request<SCIMTarget[]>("/iam/scim/targets"),
+    scimDirectories: () =>
+      requestAllPages<SCIMDirectory>("/iam/scim/directories"),
+    scimTargets: () => requestAllPages<SCIMTarget>("/iam/scim/targets"),
     createSCIMTarget: (body: SCIMTargetInput) =>
       request<SCIMTargetSecret>("/iam/scim/targets", {
         method: "POST",
@@ -2257,7 +2267,7 @@ export function createIamApi(
         { method: "PUT", body: JSON.stringify(body) }
       ),
     scimCredentials: (directoryID: string) =>
-      request<SCIMCredential[]>(
+      requestAllPages<SCIMCredential>(
         `/iam/scim/directories/${encodeURIComponent(directoryID)}/credentials`
       ),
     createSCIMCredential: (

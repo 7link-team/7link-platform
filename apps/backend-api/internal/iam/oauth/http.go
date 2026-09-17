@@ -188,8 +188,12 @@ type protocolError struct {
 func (e *protocolError) Error() string  { return e.Code }
 func (e *protocolError) GetStatus() int { return e.Status }
 
+// clientListInput bounds the listing by default: a tenant's client registry is
+// open-ended, and an omitted limit used to mean "every row".
 type clientListInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"19" pattern:"^[1-9][0-9]*$"`
+	Offset   int    `query:"offset" minimum:"0" default:"0"`
+	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type clientCreateInput struct {
@@ -534,11 +538,11 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 		if err != nil {
 			return nil, err
 		}
-		clients, err := service.ListClients(ctx, tenantID)
+		clients, total, err := service.ListClientsPage(ctx, tenantID, in.Offset, in.Limit)
 		if err != nil {
 			return nil, oauthClientError(err, false)
 		}
-		return respx.OK(ctx, clients), nil
+		return respx.List(ctx, clients, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(clients), Total: total}), nil
 	})
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "oauth-create-client", Method: http.MethodPost, Path: "/iam/oauth-clients",

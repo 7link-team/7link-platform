@@ -16,13 +16,29 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-type tenantSelector struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
-}
-
 type tenantResourceInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	ID       string `path:"id" maxLength:"128"`
+}
+
+// tenantPageSelector selects a tenant for a listing that has to be bounded by
+// default. These collections grow with the tenant's data, so the page follows
+// the bounded shape core's listTenantMembersInput already publishes -- minimum
+// one, maximum two hundred, default fifty -- rather than the opt-in shape,
+// where omitting limit returns every row.
+type tenantPageSelector struct {
+	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	Offset   int    `query:"offset" minimum:"0" default:"0"`
+	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
+}
+
+// tenantResourcePageInput is tenantPageSelector for the membership listings,
+// which also name the group or position whose members are being read.
+type tenantResourcePageInput struct {
+	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	ID       string `path:"id" maxLength:"128"`
+	Offset   int    `query:"offset" minimum:"0" default:"0"`
+	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type memberResourceInput struct {
@@ -116,8 +132,13 @@ type updateGroupInput struct {
 	}
 }
 
+// listTenantsInput bounds the platform tenant listing by default, for the same
+// reason tenantPageSelector bounds the tenant-scoped ones: the collection grows
+// with the deployment, and this one is not even narrowed by a tenant.
 type listTenantsInput struct {
 	IncludeDeleted bool `query:"include_deleted"`
+	Offset         int  `query:"offset" minimum:"0" default:"0"`
+	Limit          int  `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type tenantIDInput struct {
@@ -268,16 +289,16 @@ func registerDepartmentHTTP(api huma.API, service *Service, registrar *authz.Reg
 		Summary: "List the tenant department hierarchy", Tags: []string{"organization"},
 		Errors: []int{http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "dept", Verb: "view"},
-		func(ctx context.Context, in *tenantSelector) (*respx.Body[[]Department], error) {
+		func(ctx context.Context, in *tenantPageSelector) (*respx.Body[[]Department], error) {
 			tenantID, err := parseOrganizationID(in.TenantID)
 			if err != nil {
 				return nil, err
 			}
-			items, err := service.List(ctx, tenantID)
+			items, total, err := service.ListPage(ctx, tenantID, in.Offset, in.Limit)
 			if err != nil {
 				return nil, departmentError(err)
 			}
-			return respx.OK(ctx, items), nil
+			return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 		})
 
 	authz.Register(registrar, api, huma.Operation{
@@ -369,16 +390,16 @@ func registerPositionHTTP(api huma.API, service *PositionService, registrar *aut
 		OperationID: "organization-list-positions", Method: http.MethodGet, Path: "/iam/positions",
 		Summary: "List tenant positions", Tags: []string{"organization"}, Errors: []int{http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "position", Verb: "view"},
-		func(ctx context.Context, in *tenantSelector) (*respx.Body[[]Position], error) {
+		func(ctx context.Context, in *tenantPageSelector) (*respx.Body[[]Position], error) {
 			tenantID, err := parseOrganizationID(in.TenantID)
 			if err != nil {
 				return nil, err
 			}
-			items, err := service.List(ctx, tenantID)
+			items, total, err := service.ListPage(ctx, tenantID, in.Offset, in.Limit)
 			if err != nil {
 				return nil, positionError(err)
 			}
-			return respx.OK(ctx, items), nil
+			return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 		})
 
 	authz.Register(registrar, api, huma.Operation{
@@ -458,16 +479,16 @@ func registerPositionHTTP(api huma.API, service *PositionService, registrar *aut
 		Summary: "List position members", Tags: []string{"organization"},
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "position", Verb: "view"},
-		func(ctx context.Context, in *tenantResourceInput) (*respx.Body[[]PositionMember], error) {
+		func(ctx context.Context, in *tenantResourcePageInput) (*respx.Body[[]PositionMember], error) {
 			tenantID, id, err := organizationResourceIDs(in.TenantID, in.ID)
 			if err != nil {
 				return nil, err
 			}
-			items, err := service.ListMembers(ctx, tenantID, id)
+			items, total, err := service.ListMembersPage(ctx, tenantID, id, in.Offset, in.Limit)
 			if err != nil {
 				return nil, positionError(err)
 			}
-			return respx.OK(ctx, items), nil
+			return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 		})
 
 	authz.Register(registrar, api, huma.Operation{
@@ -520,16 +541,16 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 		OperationID: "organization-list-groups", Method: http.MethodGet, Path: "/iam/groups",
 		Summary: "List tenant groups", Tags: []string{"organization"}, Errors: []int{http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "group", Verb: "view"},
-		func(ctx context.Context, in *tenantSelector) (*respx.Body[[]Group], error) {
+		func(ctx context.Context, in *tenantPageSelector) (*respx.Body[[]Group], error) {
 			tenantID, err := parseOrganizationID(in.TenantID)
 			if err != nil {
 				return nil, err
 			}
-			items, err := service.List(ctx, tenantID)
+			items, total, err := service.ListPage(ctx, tenantID, in.Offset, in.Limit)
 			if err != nil {
 				return nil, groupError(err)
 			}
-			return respx.OK(ctx, items), nil
+			return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 		})
 
 	authz.Register(registrar, api, huma.Operation{
@@ -610,16 +631,16 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 		Summary: "List group members", Tags: []string{"organization"},
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "group", Verb: "view"},
-		func(ctx context.Context, in *tenantResourceInput) (*respx.Body[[]GroupMember], error) {
+		func(ctx context.Context, in *tenantResourcePageInput) (*respx.Body[[]GroupMember], error) {
 			tenantID, id, err := organizationResourceIDs(in.TenantID, in.ID)
 			if err != nil {
 				return nil, err
 			}
-			items, err := service.ListMembers(ctx, tenantID, id)
+			items, total, err := service.ListMembersPage(ctx, tenantID, id, in.Offset, in.Limit)
 			if err != nil {
 				return nil, groupError(err)
 			}
-			return respx.OK(ctx, items), nil
+			return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 		})
 
 	authz.Register(registrar, api, huma.Operation{
@@ -688,11 +709,11 @@ func registerTenantHTTP(api huma.API, service *TenantService, registrar *authz.R
 		Summary: "List platform tenants", Tags: []string{"organization"},
 	}, authz.Guard{Resource: "tenant", Verb: "view"},
 		func(ctx context.Context, in *listTenantsInput) (*respx.Body[[]Tenant], error) {
-			items, err := service.List(ctx, in.IncludeDeleted)
+			items, total, err := service.ListPage(ctx, in.IncludeDeleted, in.Offset, in.Limit)
 			if err != nil {
 				return nil, tenantError(err)
 			}
-			return respx.OK(ctx, items), nil
+			return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 		})
 
 	authz.RegisterPlatform(registrar, api, huma.Operation{
@@ -773,16 +794,16 @@ func registerInvitationHTTP(api huma.API, service *InvitationService, registrar 
 		Summary: "List tenant invitations", Tags: []string{"organization"},
 		Errors: []int{http.StatusUnprocessableEntity, http.StatusInternalServerError},
 	}, authz.Guard{Resource: "invitation", Verb: "view"},
-		func(ctx context.Context, in *tenantSelector) (*respx.Body[[]Invitation], error) {
+		func(ctx context.Context, in *tenantPageSelector) (*respx.Body[[]Invitation], error) {
 			tenantID, err := parseOrganizationID(in.TenantID)
 			if err != nil {
 				return nil, err
 			}
-			items, err := service.List(ctx, tenantID)
+			items, total, err := service.ListPage(ctx, tenantID, in.Offset, in.Limit)
 			if err != nil {
 				return nil, invitationError(err)
 			}
-			return respx.OK(ctx, items), nil
+			return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 		})
 
 	authz.Register(registrar, api, huma.Operation{

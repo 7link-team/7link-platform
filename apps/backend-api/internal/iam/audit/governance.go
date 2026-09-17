@@ -16,6 +16,10 @@ const (
 	defaultMinRetentionDays = 365
 	defaultArchiveAfterDays = 730
 	maxRetentionDays        = 36500
+	// maxAnchorPage is the widest anchor window the report will carry. It
+	// mirrors the maximum the governance input declares, so a service caller
+	// cannot ask for more than an HTTP caller is allowed to.
+	maxAnchorPage = 200
 )
 
 var ErrRetentionInvalid = errors.New("invalid audit retention policy")
@@ -122,6 +126,45 @@ func (s *Service) Governance(ctx context.Context, tenantID guid.ID) (Governance,
 		report.Anchored = anchors[len(anchors)-1].HeadSequence
 	}
 	return report, nil
+}
+
+// GovernancePage returns the governance report with its anchor chain bounded to
+// one window, plus the number of anchors before pagination. The chain is the one
+// open-ended part of the report: it gains an entry on every anchoring run, while
+// every other field is a fixed-size summary. Anchored is still derived from the
+// whole chain, so a bounded report names the same anchored head as an unbounded
+// one rather than the head of whichever page was asked for.
+func (s *Service) GovernancePage(ctx context.Context, tenantID guid.ID, offset, limit int) (Governance, int64, error) {
+	report, err := s.Governance(ctx, tenantID)
+	if err != nil {
+		return Governance{}, 0, err
+	}
+	total := int64(len(report.Anchors))
+	report.Anchors = pageAnchors(report.Anchors, offset, limit)
+	return report, total, nil
+}
+
+// pageAnchors returns one window of the anchor chain. A zero limit is unbounded
+// here, which is why the governance input declares a minimum of one: the bound a
+// caller is held to has to come from the transport, where the caller actually is.
+func pageAnchors(anchors []Anchor, offset, limit int) []Anchor {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit < 0 {
+		limit = 0
+	}
+	if limit > maxAnchorPage {
+		limit = maxAnchorPage
+	}
+	if offset >= len(anchors) {
+		return nil
+	}
+	window := anchors[offset:]
+	if limit > 0 && limit < len(window) {
+		window = window[:limit]
+	}
+	return window
 }
 
 func (r *Repository) getRetentionPolicy(ctx context.Context, tenantID guid.ID) (RetentionPolicy, error) {

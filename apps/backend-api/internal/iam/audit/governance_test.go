@@ -199,3 +199,54 @@ func TestRootSignerRejectsInvalidSeeds(t *testing.T) {
 		assert.ErrorIs(t, err, ErrInvalidSigningKey)
 	}
 }
+
+// The anchor chain is the one open-ended part of the governance report: it gains
+// an entry on every anchoring run, while every other field is a fixed-size
+// summary. Each assertion fails on its own if one half of the bound stops
+// working: the limit, the offset, or the total taken before the window.
+func TestGovernancePageBoundsTheAnchorChain(t *testing.T) {
+	chain := make([]Anchor, 5)
+	for index := range chain {
+		chain[index] = Anchor{
+			Schema: anchorSchema, TenantID: 701, HeadSequence: int64(index + 1),
+			HeadHash: strings.Repeat("c", 64), AnchoredAt: auditTestNow,
+		}
+	}
+
+	first := pageAnchors(chain, 0, 2)
+	require.Len(t, first, 2, "the limit must bound the window")
+	assert.Equal(t, int64(1), first[0].HeadSequence)
+
+	second := pageAnchors(chain, 2, 2)
+	require.Len(t, second, 2)
+	assert.Equal(t, int64(3), second[0].HeadSequence, "the offset must move the window, not repeat it")
+
+	last := pageAnchors(chain, 4, 2)
+	assert.Len(t, last, 1, "a final short page returns what is left, not an error")
+	assert.Nil(t, pageAnchors(chain, 5, 2), "an offset past the chain is empty, not the last page again")
+
+	// Zero means unbounded here, which is why the governance input declares a
+	// minimum of one: the bound has to be imposed where the caller is.
+	assert.Len(t, pageAnchors(chain, 0, 0), 5)
+	assert.Len(t, pageAnchors(chain, -1, -1), 5, "an inverted window is clamped, not inverted")
+	assert.Len(t, pageAnchors(chain, 0, maxAnchorPage+1), 5, "a caller cannot widen the window past the ceiling")
+}
+
+func TestGovernancePageReportsTheUnpagedAnchorTotal(t *testing.T) {
+	h := newAuditHarness(t, "")
+	tenantID := guid.ID(702)
+	_, err := h.service.Append(t.Context(), EventInput{
+		TenantID: tenantID, EventType: "created", Outcome: "success",
+	})
+	require.NoError(t, err)
+
+	report, total, err := h.service.GovernancePage(t.Context(), tenantID, 0, 2)
+	require.NoError(t, err)
+	assert.Zero(t, total, "an unanchored tenant has no anchors to page")
+	assert.Nil(t, report.Anchors)
+	assert.Equal(t, int64(1), report.TotalEvents, "the rest of the report is unchanged by the window")
+	assert.True(t, report.Integrity.Valid)
+
+	_, _, err = h.service.GovernancePage(t.Context(), 0, 0, 2)
+	assert.ErrorIs(t, err, ErrRetentionInvalid)
+}
