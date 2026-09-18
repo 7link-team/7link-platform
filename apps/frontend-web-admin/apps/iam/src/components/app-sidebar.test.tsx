@@ -11,15 +11,18 @@ function renderSidebar(
   platformTenantAccess = false,
   fieldPolicyAccess = false,
   path = "/",
-  entityID = ""
+  entityID = "",
+  permissions: ReadonlySet<string> | null = new Set(["entity_view"])
 ): string {
   return renderToStaticMarkup(
     <MemoryRouter initialEntries={[path]}>
       <IntlAppProvider initialLocale="zh-CN" initialMessages={{ iam: zh }}>
         <AppSidebar
+          permissions={permissions}
           entityID={entityID}
           menus={menus}
           platformTenantAccess={platformTenantAccess}
+          platformAuditAccess={permissions?.has("platform_administer") ?? false}
           fieldPolicyAccess={fieldPolicyAccess}
         />
       </IntlAppProvider>
@@ -28,6 +31,20 @@ function renderSidebar(
 }
 
 describe("AppSidebar", () => {
+  it("does not expose entity management navigation without its tenant permission", () => {
+    const html = renderSidebar(
+      [],
+      false,
+      false,
+      "/iam/entities/123/overview",
+      "123",
+      new Set(["todo_view"])
+    )
+    expect(html).not.toContain('href="/iam/entities/123/')
+    expect(renderSidebar([], false, false, "/", "123", null)).not.toContain(
+      'href="/iam/entities/123/'
+    )
+  })
   it("uses entity routes without exposing tenant-wide administration in entity view", () => {
     const html = renderSidebar(
       [
@@ -166,13 +183,77 @@ describe("AppSidebar", () => {
     expect(html).toContain('href="/iam/scim-directories"')
   })
 
-  it("shows tenant management only after platform access is proven", () => {
+  it("keeps platform administration out of the tenant sidebar even for administrators", () => {
     expect(renderSidebar([])).not.toContain("租户管理")
     expect(renderSidebar([])).not.toContain("平台审计")
     const html = renderSidebar([], true)
+    expect(html).not.toContain('href="/iam/tenants"')
+    expect(html).not.toContain('href="/iam/audit-governance?scope=platform"')
+  })
+
+  it("shows only platform navigation on platform pages, with independent permission gates", () => {
+    const html = renderSidebar(
+      [
+        {
+          id: "users",
+          label: "Users",
+          path: "/iam/users",
+          permission_code: "user_view",
+          sort_order: 0,
+        },
+      ],
+      true,
+      true,
+      "/iam/tenants",
+      "",
+      new Set(["platform_administer"])
+    )
     expect(html).toContain("租户管理")
     expect(html).toContain('href="/iam/tenants"')
     expect(html).toContain('href="/iam/audit-governance?scope=platform"')
+    expect(html).not.toContain('href="/iam/users"')
+    expect(html).not.toContain('href="/iam/field-policies"')
+    expect(html).not.toContain('href="/iam/access-requests"')
+    expect(
+      renderSidebar([], true, false, "/iam/tenants", "", new Set())
+    ).not.toContain('href="/iam/audit-governance?scope=platform"')
+    expect(renderSidebar([], false, false, "/iam/tenants")).not.toContain(
+      'href="/iam/tenants"'
+    )
+  })
+
+  it("filters platform routes from custom tenant menus, keeping tenant children as directories", () => {
+    const html = renderSidebar(
+      [
+        {
+          id: "p",
+          label: "Mixed parent",
+          path: "/iam/audit-governance?scope=platform",
+          sort_order: 0,
+          permission_code: "",
+          children: [
+            {
+              id: "u",
+              label: "Users",
+              path: "/iam/users",
+              sort_order: 0,
+              permission_code: "user_view",
+            },
+          ],
+        },
+        {
+          id: "t",
+          label: "Platform tenants",
+          path: "/iam/tenants?view=x",
+          sort_order: 1,
+          permission_code: "",
+        },
+      ],
+      true
+    )
+    expect(html).toContain('href="/iam/users"')
+    expect(html).not.toContain('href="/iam/audit-governance?scope=platform"')
+    expect(html).not.toContain("Platform tenants")
   })
 
   it("selects platform audit navigation only in the platform view", () => {
@@ -181,7 +262,9 @@ describe("AppSidebar", () => {
       [],
       true,
       false,
-      "/iam/audit-governance?scope=platform"
+      "/iam/audit-governance?scope=platform",
+      "",
+      new Set(["platform_administer"])
     )
     expect(tenant).not.toContain('aria-current="page"')
     expect(platform).toContain('aria-current="page"')

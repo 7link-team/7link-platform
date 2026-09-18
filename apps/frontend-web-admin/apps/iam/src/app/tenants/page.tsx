@@ -25,9 +25,11 @@ import {
 } from "@workspace/ui/components/table"
 import { useNavigate } from "react-router"
 import { Alert } from "../../components/alert"
+import { useAuth } from "../../components/auth"
 import { PageHeader } from "../../components/page-header"
 import {
   iamApi,
+  getTenant,
   setTenant,
   type Principal,
   type Tenant,
@@ -46,6 +48,7 @@ export default function TenantsPage() {
 
   const t = useTranslations("iam")
   const allowed = useAllowed()
+  const { session } = useAuth()
 
   const [tenants, setTenants] = useState<Tenant[]>([])
   const [includeDeleted, setIncludeDeleted] = useState(false)
@@ -53,7 +56,9 @@ export default function TenantsPage() {
   const [editing, setEditing] = useState<Tenant | null>(null)
   const [deleting, setDeleting] = useState<Tenant | null>(null)
   const [status, setStatus] = useState<TenantUpdate["status"]>("active")
-  const [principals, setPrincipals] = useState<Principal[]>([])
+  const [principals, setPrincipals] = useState<
+    Pick<Principal, "id" | "display_name" | "login_name">[]
+  >([])
   const [ownerID, setOwnerID] = useState("")
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -84,12 +89,28 @@ export default function TenantsPage() {
   const openCreate = () => {
     setEditing(null)
     setStatus("active")
-    setOwnerID("")
+    const owner = session
+      ? {
+          id: session.subject,
+          display_name: session.preferred_username ?? session.subject,
+          login_name: session.preferred_username ?? session.subject,
+        }
+      : null
+    setPrincipals(owner ? [owner] : [])
+    setOwnerID(owner?.id ?? "")
     setOpen(true)
+    if (!getTenant()) return
     iamApi
       .principals()
       .then((list) =>
-        setPrincipals(list.items.filter((item) => item.status === "active"))
+        setPrincipals([
+          ...new Map(
+            [
+              ...(owner ? [owner] : []),
+              ...list.items.filter((item) => item.status === "active"),
+            ].map((item) => [item.id, item])
+          ).values(),
+        ])
       )
       .catch((cause: Error) => setError(cause.message))
   }

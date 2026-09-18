@@ -2,6 +2,7 @@
 .DS_Store
 
 .temp/
+**/data/avatars/
 
 # Go build and test output
 **/bin/

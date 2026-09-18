@@ -1241,6 +1241,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/iam/avatars/{principal_id}/{file}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read an authorized account avatar image */
+        get: operations["identity-avatar-image"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/iam/departments": {
         parameters: {
             query?: never;
@@ -1590,6 +1607,41 @@ export interface paths {
         put?: never;
         /** Rotate and return a pending invitation credential once */
         post: operations["organization-resend-invitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/iam/me/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read my avatar */
+        get: operations["identity-my-avatar"];
+        /** Replace my avatar */
+        put: operations["identity-set-my-avatar"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/iam/me/avatar-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate six private server-side avatar candidates */
+        post: operations["identity-avatar-candidates"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3758,6 +3810,17 @@ export interface components {
             resource_type?: string;
             subject: string;
         };
+        Avatar: {
+            /** @enum {string} */
+            style: "robot" | "pixel" | "monster" | "geometric" | "custom";
+            url: string;
+        };
+        AvatarInput: {
+            candidate_url?: string;
+            image_data?: string;
+            /** @enum {string} */
+            style?: "robot" | "pixel" | "monster" | "geometric" | "custom";
+        };
         BrowserSession: {
             /** Format: date-time */
             absolute_expires_at: string;
@@ -3793,6 +3856,10 @@ export interface components {
             response?: unknown;
             status: string;
             version?: string;
+        };
+        CandidateInputBody: {
+            /** @enum {string} */
+            style?: "robot" | "pixel" | "monster" | "geometric";
         };
         Capabilities: {
             /** @description filterable parameters and the operators each accepts */
@@ -4449,6 +4516,19 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
+        EnvelopeAvatar: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["Avatar"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
         EnvelopeCaptchaOutput: {
             /**
              * Format: int64
@@ -4938,6 +5018,19 @@ export interface components {
             code: number;
             /** @description response payload; null on error */
             data: components["schemas"]["ArchiveJob"][] | null;
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeListAvatar: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["Avatar"][] | null;
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -6510,6 +6603,7 @@ export interface components {
         };
         Principal: {
             activation_required: boolean;
+            avatar?: components["schemas"]["Avatar"];
             /** Format: date-time */
             created_at: string;
             display_name: string;
@@ -6558,6 +6652,7 @@ export interface components {
         };
         PrincipalView: {
             activation_required: boolean;
+            avatar?: components["schemas"]["Avatar"];
             /** Format: date-time */
             created_at: string;
             display_name?: string;
@@ -11168,7 +11263,10 @@ export interface operations {
     };
     "governance-list-access-requests": {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
             header: {
                 /** @description Tenant authorization boundary */
                 "X-Tenant-Id": string;
@@ -11730,7 +11828,10 @@ export interface operations {
     };
     "governance-list-access-reviews": {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
             header: {
                 /** @description Tenant authorization boundary */
                 "X-Tenant-Id": string;
@@ -13170,7 +13271,10 @@ export interface operations {
     };
     "audit-get-governance": {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
             header: {
                 /** @description Tenant authorization boundary */
                 "X-Tenant-Id": string;
@@ -13619,9 +13723,85 @@ export interface operations {
             };
         };
     };
+    "identity-avatar-image": {
+        parameters: {
+            query?: {
+                tenant_id?: string;
+            };
+            header?: never;
+            path: {
+                principal_id: string;
+                file: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    "Content-Type"?: string;
+                    "X-Content-Type-Options"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     "organization-list-departments": {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
             header: {
                 /** @description Tenant authorization boundary */
                 "X-Tenant-Id": string;
@@ -14460,7 +14640,10 @@ export interface operations {
     };
     "iam-list-entity-role-bindings": {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
             header: {
                 /** @description Tenant authorization boundary */
                 "X-Tenant-Id": string;
@@ -14788,6 +14971,8 @@ export interface operations {
             query?: {
                 resource?: string;
                 entity_id?: string;
+                offset?: number;
+                limit?: number;
             };
             header: {
                 /** @description Tenant authorization boundary */
@@ -15093,7 +15278,10 @@ export interface operations {
     };
     "organization-list-groups": {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
             header: {
                 /** @description Tenant authorization boundary */
                 "X-Tenant-Id": string;
@@ -15503,7 +15691,10 @@ export interface operations {
     };
     "organization-list-group-members": {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
             header: {
                 /** @description Tenant authorization boundary */
                 "X-Tenant-Id": string;
@@ -15764,7 +15955,10 @@ export interface operations {
     };
     "federation-list-identity-providers": {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
             header: {
                 /** @description Tenant authorization boundary */
                 "X-Tenant-Id": string;
@@ -16084,7 +16278,10 @@ export interface operations {
     };
     "organization-list-invitations": {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
             header: {
                 /** @description Tenant authorization boundary */
                 "X-Tenant-Id": string;
@@ -16462,6 +16659,218 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "identity-my-avatar": {
+        parameters: {
+            query?: never;
+            header?: {
+                Cookie?: string;
+                Origin?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeAvatar"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "identity-set-my-avatar": {
+        parameters: {
+            query?: never;
+            header?: {
+                Cookie?: string;
+                Origin?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AvatarInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeAvatar"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "identity-avatar-candidates": {
+        parameters: {
+            query?: never;
+            header?: {
+                Cookie?: string;
+                Origin?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CandidateInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeListAvatar"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -17109,9 +17518,9 @@ export interface operations {
     "iam-effective-permissions": {
         parameters: {
             query?: never;
-            header: {
-                /** @description Tenant authorization boundary */
-                "X-Tenant-Id": string;
+            header?: {
+                /** @description tenant authorization boundary */
+                "X-Tenant-Id"?: string;
             };
             path?: never;
             cookie?: never;
@@ -17656,7 +18065,10 @@ export interface operations {
     };
     "iam-list-tenant-member-roles": {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
             header: {
                 /** @description Tenant authorization boundary */
                 "X-Tenant-Id": string;
@@ -18273,7 +18685,10 @@ export interface operations {
     };
     "oauth-list-clients": {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
             header: {
                 /** @description Tenant authorization boundary */
                 "X-Tenant-Id": string;
@@ -18704,7 +19119,10 @@ export interface operations {
     };
     "iam-list-platform-administrators": {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -18731,6 +19149,15 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -18990,7 +19417,10 @@ export interface operations {
     };
     "organization-list-positions": {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
             header: {
                 /** @description Tenant authorization boundary */
                 "X-Tenant-Id": string;
@@ -19400,7 +19830,10 @@ export interface operations {
     };
     "organization-list-position-members": {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
             header: {
                 /** @description Tenant authorization boundary */
                 "X-Tenant-Id": string;
@@ -20167,6 +20600,8 @@ export interface operations {
                 entity_id?: string;
                 resource_type?: string;
                 resource_id?: string;
+                offset?: number;
+                limit?: number;
             };
             header: {
                 /** @description Tenant authorization boundary */
@@ -20401,7 +20836,10 @@ export interface operations {
     };
     "governance-list-requestable-roles": {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
             header: {
                 /** @description Tenant authorization boundary */
                 "X-Tenant-Id": string;
@@ -21051,7 +21489,10 @@ export interface operations {
     };
     "iam-list-role-directory-bindings": {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
             header: {
                 /** @description Tenant authorization boundary */
                 "X-Tenant-Id": string;
@@ -21310,7 +21751,10 @@ export interface operations {
     };
     "iam-list-role-members": {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
             header: {
                 /** @description Tenant authorization boundary */
                 "X-Tenant-Id": string;
@@ -22069,7 +22513,10 @@ export interface operations {
     };
     "federation-list-saml-service-providers": {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
             header: {
                 /** @description Tenant authorization boundary */
                 "X-Tenant-Id": string;
@@ -22466,7 +22913,10 @@ export interface operations {
     };
     "provisioning-list-scim-directories": {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
             header: {
                 /** @description Tenant authorization boundary */
                 "X-Tenant-Id": string;
@@ -22707,7 +23157,10 @@ export interface operations {
     };
     "provisioning-list-scim-credentials": {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
             header: {
                 /** @description Tenant authorization boundary */
                 "X-Tenant-Id": string;
@@ -22958,7 +23411,10 @@ export interface operations {
     };
     "provisioning-list-scim-targets": {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
             header: {
                 /** @description Tenant authorization boundary */
                 "X-Tenant-Id": string;
@@ -24309,6 +24765,8 @@ export interface operations {
         parameters: {
             query?: {
                 include_deleted?: boolean;
+                offset?: number;
+                limit?: number;
             };
             header?: never;
             path?: never;

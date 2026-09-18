@@ -1,4 +1,144 @@
 # Task State
+## Authorized WIP Checkpoint - 2026-09-18
+
+- User explicitly requests committing preceding edits before presenting the file
+  design for approval. Commit authorized; push not requested. File module not built.
+- Checkpoint is WIP, not accepted release: `go test ./internal/iam/core
+  ./internal/iam/identity ./internal/app` FAIL at core/http.go:514, menu catalog
+  handler expects []MenuItem but service returns []MenuDeclaration.
+- `git diff --check` PASS. Existing baseline lifecycle acceptance is separate.
+- Next: present file design for confirmation; keep incomplete avatar/ID boundary
+  work visible and do not claim new full-chain acceptance.
+
+## Active Task - Streaming File Management - 2026-09-18
+
+- User authorizes general file management: ordinary and resumable upload/download,
+  four required whole-file digest headers (MD5/SHA1/SHA256/SHA512), instant upload,
+  streaming directly into local/S3 storage, bounded header/extension metadata.
+- Phase DESIGN; execution Direct. No file module implemented or accepted yet.
+- Latest requirement: separate upload parts, physical objects (one row per local
+  file or S3 object), and virtual filesystem nodes (folders and dedup references).
+- Inspected organization module: existing department parent_id + closure table
+  and transactional subtree move. Recommend same pattern for VFS, not persisted
+  path strings. CTE is a query mechanism, not a separate table model.
+- Proposed tables: physical objects, VFS nodes, VFS closure, upload sessions,
+  upload parts. Parts are transport receipts, not permanent file fragments.
+- Proposed portable names: Unicode NFC, casefold collision key scoped to parent,
+  reject path separators/control characters/Windows reserved names/trailing dot
+  or space; names never become local paths or S3 keys. Exact naming policy awaits
+  user confirmation because it determines case sensitivity/product behavior.
+- Proposed upload protocol tus 1.0 sequential offsets; download HTTP Range.
+  Whole-file digest headers are an application extension, not a standard tus set.
+- Offset and all four serialized cumulative hash states must commit together only
+  after storage confirms writes. Storage/DB crash reconciliation is mandatory.
+- No API-server spool files or whole-file memory buffering. Configured local
+  storage is a destination backend, not an intermediate server cache.
+- Metadata reads are bounded; unavailable video/thumbnail metadata stays unknown.
+  Instant upload must only reuse server-verified files within authorized scope.
+- Existing identity-owned avatarDirectory must migrate to file-module ownership;
+  identity retains only a URI/reference. Do not introduce an unapproved URI scheme.
+- Previous BLOCKED-on-authority note below is superseded: module is authorized,
+  but substantial architecture/protocol plan still needs confirmation per CLAUDE.md.
+- Next action: obtain confirmation of sequential tus upload / Range download /
+  scoped verified dedup / bounded metadata plan; then implement module and migrate
+  avatars, finish ID conversions, and run fresh SQLite and storage E2E acceptance.
+- Verification: design only; new file functionality NOT_RUN / NOT READY.
+
+## Active Task - Context Navigation / Backend Avatars / ID Audit - 2026-09-18
+
+- Objective: optimize all user additions together: perspective-limited sidebar,
+  independent platform entry; server-generated random multi-style avatars at every
+  account creation, file first then URL in DB, custom upload; comprehensive ID audit
+  and global JSON ID consistency. Execution Direct. Phase IMPLEMENTATION.
+- Explicit correction: frontend avatar generation and image-data-in-DB are rejected.
+  Pending DiceBear dependency/helper/editor are not final; remove dependency and
+  switch UI to server image URLs. No external service or Node backend dependency.
+- Existing IAM definitions remain tenant-owned. Public JSON snowflake IDs are
+  strings for JS precision; backend guid.ID globally serializes Sonyflake IDs.
+  Inspect manual string ID response DTOs and numeric coercions; path bindings remain
+  strings by Huma contract. Do not convert opaque security IDs to snowflakes.
+- Started navigation isolation with platform-route detection, tenant tree filtering,
+  separate account dropdown links and platform-only sidebar mode; frontend tests PASS,
+  new real browser acceptance pending.
+- Started identity avatar model/migration/reference changes; avatar.go now stores
+  file-backed JSON references, not base64. Configurable local file storage,
+  account creation hooks, image GET authorization, uploads/backfill/erasure pending.
+- Previous SQLite lifecycle report 4b977R PASS is baseline, not acceptance of new work.
+  Preview API/Vite sessions 89472/6967 still serve prior backend.
+- Latest user clarification: backend random avatar candidate batch + selection,
+  upload with browser cropping required. react-easy-crop installed; DiceBear removed.
+- Latest boundary question: why avatarDirectory rather than unified file-management
+  type/URI? Exhaustive source search found no general file-management/storage module
+  or localfile/http URI contract (only audit-specific S3 and upload demo).
+  Need user authority for adding a generic file-management module before widening
+  architecture. Current avatarDirectory implementation is NOT accepted/final.
+- Phase: BLOCKED on file-management boundary decision; do not claim completion.
+  Proposed contract: file service owns storage root and resolves {type:localfile,
+  uri:relative-key} or {type:http,uri:https-url}; identity stores only controlled
+  file URI/reference, never base64 or physical root paths. Recommend localfile first.
+- Incomplete source: backend avatar.go/render, account creation insertion hooks,
+  file-backed avatar JSON reference migration6, self/candidate/image routes and
+  configurable identity-owned directory exist but must be moved to confirmed storage
+  boundary. UI URL renderer/editor with backend six candidates and cropping staged.
+- ID audit found static menu catalog synthetic root ID "iam" and zero child IDs;
+  separate MenuDeclaration key from persisted MenuItem guid.ID started. core response
+  DTO conversion started but compile currently fails pending handler type and tests'
+  typed-ID URL construction, platform/relationship DTOs and mapper cleanup.
+- Verification of this new work NOT PASS. Initial backend tests showed expected
+  contract counts/migration milestones/GORM avatar serializer issues; counts,
+  milestone6 and serializer fixed but full rerun not complete. Frontend typecheck
+  initially failed because generated avatar schema was stale. Previous E2E does not
+  verify any of these additions. No commits/push; preserve all edits for continuation.
+- Next: obtain storage-module boundary approval, then complete implementation,
+  ID consistency and all acceptance gates. Also answer third-party question: current
+  federation supports OIDC/SAML auto-provision/link; no provider-specific adapters
+  for GitHub/QQ/WeChat/TikTok/Douyin, no real third-party acceptance claimed.
+
+## Active Task - SQLite IAM Lifecycle Acceptance - 2026-09-18
+
+- Objective: optimize existing IAM lifecycle and pass real SQLite API/browser
+  acceptance from platform bootstrap to first tenant, entities, accounts,
+  departments, roles, custom menus, permission modification and revocation.
+- Phase: ACCEPTANCE - PASS. Execution: Direct; tightly coupled authorization/UI contracts.
+- Baseline: clean worktree. Preserve existing preview/data; use a new isolated DB.
+- Boundary: tenant owns definitions; entities scope grants. No business templates,
+  entity-owned department/role catalogs, commit or push requested.
+- Required fixes: unauthorized parent routes; fail-closed unknown action permissions;
+  refresh authorization after mutations and on browser focus; align entity navigation
+  with tenant management permissions without promoting scoped grants globally.
+- UI skill used for permission failure states and responsive navigation review;
+  existing styling preserved.
+- Implemented parent directory-only routes, fail-closed unknown action reads,
+  IAM mutation/focus/15-second refresh, tenant-permission entity navigation.
+- Found first-tenant bootstrap UI deadlock: fixed platform-only permission
+  discovery without tenant, unscoped platform page rendering and self owner option.
+- Added isolated SQLite migration/bootstrap/API/browser lifecycle runner and
+  `apps/backend-api/docs/iam-sqlite-lifecycle-acceptance.md` run instructions.
+- Built-in menu route gates now intersect custom bindings; department cells retain
+  returned IDs when the department directory is unreadable, rather than misleading
+  users with an Unassigned label. OpenAPI contract assertions updated explicitly
+  for the authenticated, optional-tenant own-permissions endpoint.
+- Verification: latest real SQLite browser E2E 11/11 PASS, zero mocked business
+  responses and zero uncaught browser errors. Report/screenshots/database/logs:
+  `apps/backend-api/.temp/sqlite-lifecycle-4b977R/report.json`.
+- Coverage: platform create-only bootstrap, first tenant owner/role/default menus,
+  department/entity trees, accounts/roles, department scopes, entity inheritance and
+  deny/revoke, group/position union and dynamic department changes, custom menu
+  update/disable, live grant/revoke, permission failure/retry, cross-tenant denial,
+  suspension/restoration and audit events. Desktop/mobile screenshots reviewed.
+- Frontend workspace typecheck/lint/forced unit tests/build PASS (IAM 65 tests).
+  Backend core final rerun PASS (`.temp/lifecycle-core-final.log`); query,
+  organization, identity, app and authz regressions PASS in
+  `.temp/lifecycle-backend-regression-final.log` (its core contract failure was
+  corrected and verified by the final core rerun). `make openapi-check` PASS.
+- Self-review and acceptance: scope/reuse/architecture/regression/complexity PASS.
+  No commit/push; private acceptance artifacts remain ignored, no original DB touched.
+- Preview retained: web http://127.0.0.1:61828, API http://127.0.0.1:61827;
+  owned sessions 6967/89472. Login admin@example.test, password in private
+  `.temp/sqlite-lifecycle-4b977R/admin-password` (backend-relative).
+- Next: no implementation outstanding within tenant-owned catalog architecture;
+  deliver report and preview. Entity-owned catalogs remain outside scope.
+
 
 ## Task
 消除手写 SQL、表名类型化、新增静态门禁、全仓文档体检。方案见 `C:\Users\Feather\.claude\plans\giggly-bubbling-clock.md`（已批准）。

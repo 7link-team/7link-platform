@@ -16,6 +16,7 @@ type PrincipalView struct {
 	ID                 guid.ID   `json:"id"`
 	LoginName          *string   `json:"login_name,omitempty"`
 	DisplayName        *string   `json:"display_name,omitempty"`
+	Avatar             *Avatar   `json:"avatar,omitempty"`
 	Email              *string   `json:"email,omitempty"`
 	EmailVerified      *bool     `json:"email_verified,omitempty"`
 	ActivationRequired bool      `json:"activation_required"`
@@ -33,9 +34,14 @@ func (s *Service) profileConstraint(ctx context.Context, tenantID guid.ID) (auth
 }
 
 func profileView(principal Principal, fields authz.FieldConstraint) PrincipalView {
+	var avatar *Avatar
+	if fields.ReadString("display_name", principal.DisplayName) != nil {
+		avatar = principal.Avatar
+	}
 	return PrincipalView{
 		ID: principal.ID, LoginName: fields.ReadString("login_name", principal.LoginName),
 		DisplayName: fields.ReadString("display_name", principal.DisplayName),
+		Avatar:      avatar,
 		Email:       fields.ReadString("email", principal.Email), EmailVerified: fields.EmailVerified(principal.EmailVerified),
 		ActivationRequired: principal.ActivationRequired, Status: principal.Status,
 		CreatedAt: principal.CreatedAt, UpdatedAt: principal.UpdatedAt,

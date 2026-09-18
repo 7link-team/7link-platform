@@ -1,5 +1,6 @@
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Link } from "react-router"
+import { UserAvatar } from "../../components/user-avatar"
 import {
   useCallback,
   useEffect,
@@ -293,11 +294,7 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
               <TableRow key={principal.id}>
                 <TableCell>
                   <div className="flex items-center gap-3">
-                    <span className="grid size-9 place-items-center rounded-full bg-primary/10 font-semibold text-primary">
-                      {(principal.display_name ||
-                        principal.login_name ||
-                        principal.id)[0]?.toUpperCase()}
-                    </span>
+                    <UserAvatar id={principal.id} avatar={principal.avatar} />
                     <div>
                       <strong className="block text-sm">
                         {principal.display_name ||
@@ -348,7 +345,10 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
                       department.id ===
                       members.find((member) => member.subject === principal.id)
                         ?.department_id
-                  )?.name ?? t("unassigned")}
+                  )?.name ??
+                    (members.find((member) => member.subject === principal.id)
+                      ?.department_id ||
+                      t("unassigned"))}
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {new Date(principal.updated_at).toLocaleString(locale)}

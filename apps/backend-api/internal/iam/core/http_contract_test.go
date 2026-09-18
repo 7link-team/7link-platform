@@ -125,8 +125,18 @@ func TestCoreOpenAPISelectorsAndParametersAreConsistent(t *testing.T) {
 			if authz.IsPlatformOperation(operation) {
 				assert.NotContains(t, parameters, tenantKey, "%s is platform-scoped", location)
 			} else if authz.IsAuthenticatedOperation(operation) {
-				assert.NotContains(t, parameters, tenantKey, location)
-				assert.Equal(t, []map[string][]string{{authz.SessionScheme: {}}}, operation.Security, location)
+				if operation.OperationID == "iam-effective-permissions" {
+					tenant := parameters[tenantKey]
+					require.NotNil(t, tenant, location)
+					assert.False(t, tenant.Required, location)
+					assert.Equal(t, huma.TypeString, tenant.Schema.Type, location)
+					require.NotNil(t, tenant.Schema.MaxLength, location)
+					assert.Equal(t, 128, *tenant.Schema.MaxLength, location)
+					assert.Equal(t, []map[string][]string{{authz.BearerScheme: {}}}, operation.Security, location)
+				} else {
+					assert.NotContains(t, parameters, tenantKey, location)
+					assert.Equal(t, []map[string][]string{{authz.SessionScheme: {}}}, operation.Security, location)
+				}
 			} else {
 				tenant := parameters[tenantKey]
 				if assert.NotNil(t, tenant, "%s is tenant-scoped", location) {

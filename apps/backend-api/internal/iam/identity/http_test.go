@@ -28,6 +28,10 @@ import (
 // plan: 14 operations covering the source module's 14 principal and
 // service-account capabilities.
 const identityRouteManifest = `
+identity-avatar-candidates|POST|/iam/me/avatar-candidates
+identity-my-avatar|GET|/iam/me/avatar
+identity-set-my-avatar|PUT|/iam/me/avatar
+identity-avatar-image|GET|/iam/avatars/{principal_id}/{file}
 identity-my-closure-request|GET|/iam/me/closure-request
 identity-submit-closure-request|POST|/iam/me/closure-request
 identity-cancel-closure-request|DELETE|/iam/me/closure-request
@@ -229,7 +233,7 @@ func TestIdentityRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 25)
+	require.Len(t, got, 29)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
@@ -261,9 +265,12 @@ func TestIdentityOpenAPIGuardsParametersAndSecurityAreConsistent(t *testing.T) {
 
 			guard, declared := identityGuards[operation.OperationID]
 			switch operation.OperationID {
-			case "identity-my-closure-request", "identity-submit-closure-request", "identity-cancel-closure-request":
+			case "identity-my-closure-request", "identity-submit-closure-request", "identity-cancel-closure-request", "identity-my-avatar", "identity-set-my-avatar", "identity-avatar-candidates":
 				assert.True(t, authz.IsAuthenticatedOperation(operation), location)
 				assert.Equal(t, []map[string][]string{{authz.SessionScheme: {}}}, operation.Security, location)
+				assert.NotContains(t, operation.Metadata, "authz.guard", location)
+			case "identity-avatar-image":
+				assert.True(t, authz.IsAuthenticatedOperation(operation), location)
 				assert.NotContains(t, operation.Metadata, "authz.guard", location)
 			default:
 				require.True(t, declared, "%s is not in the approved contract", location)
@@ -286,14 +293,14 @@ func TestIdentityOpenAPIGuardsParametersAndSecurityAreConsistent(t *testing.T) {
 				}
 			}
 			for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
-				if operation.OperationID == "identity-my-closure-request" && status == http.StatusForbidden {
+				if (operation.OperationID == "identity-my-closure-request" || operation.OperationID == "identity-my-avatar" || operation.OperationID == "identity-avatar-image") && status == http.StatusForbidden {
 					continue // Reading one's own request requires authentication only.
 				}
 				assert.Contains(t, operation.Errors, status, location)
 			}
 		}
 	}
-	require.Len(t, operationIDs, 25)
+	require.Len(t, operationIDs, 29)
 }
 
 func TestIdentityOpenAPIDescribesTypedMutationResponses(t *testing.T) {

@@ -114,13 +114,13 @@ func menuRef(in *menuInput) (guid.ID, guid.ID, error) {
 }
 
 type APITenantMember struct {
-	TenantID     string       `json:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
-	Subject      string       `json:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	TenantID     guid.ID      `json:"tenant_id"`
+	Subject      guid.ID      `json:"subject"`
 	DisplayName  string       `json:"display_name,omitempty"`
 	Email        string       `json:"email,omitempty"`
-	DepartmentID string       `json:"department_id,omitempty" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	DepartmentID guid.ID      `json:"department_id,omitempty"`
 	Status       MemberStatus `json:"status"`
-	RoleIDs      []string     `json:"role_ids,omitempty"`
+	RoleIDs      []guid.ID    `json:"role_ids,omitempty"`
 	CreatedAt    time.Time    `json:"created_at"`
 	UpdatedAt    time.Time    `json:"updated_at"`
 	DisabledAt   *time.Time   `json:"disabled_at,omitempty"`
@@ -128,9 +128,9 @@ type APITenantMember struct {
 
 type APIMenu struct {
 	Translations   map[string]string `json:"translations,omitempty"`
-	ID             string            `json:"id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
-	TenantID       string            `json:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
-	ParentID       string            `json:"parent_id,omitempty" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	ID             guid.ID           `json:"id"`
+	TenantID       guid.ID           `json:"tenant_id"`
+	ParentID       guid.ID           `json:"parent_id,omitempty"`
 	Label          string            `json:"label"`
 	Route          string            `json:"route,omitempty"`
 	Icon           string            `json:"icon,omitempty"`
@@ -142,8 +142,8 @@ type APIMenu struct {
 }
 
 type APIRole struct {
-	ID          string    `json:"id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
-	TenantID    string    `json:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	ID          guid.ID   `json:"id"`
+	TenantID    guid.ID   `json:"tenant_id"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -157,16 +157,16 @@ type APIRolePermissionGrant struct {
 }
 
 type APIRoleDirectoryBinding struct {
-	RoleID       string                `json:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	RoleID       guid.ID               `json:"role_id"`
 	AssigneeType DirectoryAssigneeType `json:"assignee_type" enum:"group,position"`
-	AssigneeID   string                `json:"assignee_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	AssigneeID   guid.ID               `json:"assignee_id"`
 	CreatedAt    time.Time             `json:"created_at"`
 }
 
 type APIRoleDataScope struct {
-	RoleID        string     `json:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	RoleID        guid.ID    `json:"role_id"`
 	Scope         DataScope  `json:"scope" enum:"all,self,department,department_and_descendants,selected_departments"`
-	DepartmentIDs []string   `json:"department_ids"`
+	DepartmentIDs []guid.ID  `json:"department_ids"`
 	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
 }
 
@@ -176,9 +176,9 @@ type MutationResult struct {
 }
 
 type APIEntity struct {
-	ID        string         `json:"id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
-	TenantID  string         `json:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
-	ParentID  string         `json:"parent_id,omitempty" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	ID        guid.ID        `json:"id"`
+	TenantID  guid.ID        `json:"tenant_id"`
+	ParentID  guid.ID        `json:"parent_id,omitempty"`
 	Type      string         `json:"type"`
 	Name      string         `json:"name"`
 	Status    EntityStatus   `json:"status"`
@@ -188,9 +188,9 @@ type APIEntity struct {
 }
 
 type APIEntityRoleBinding struct {
-	EntityID    string        `json:"entity_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
-	RoleID      string        `json:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
-	PrincipalID string        `json:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	EntityID    guid.ID       `json:"entity_id"`
+	RoleID      guid.ID       `json:"role_id"`
+	PrincipalID guid.ID       `json:"principal_id"`
 	Effect      BindingEffect `json:"effect" enum:"allow,deny"`
 	ExpiresAt   *time.Time    `json:"expires_at,omitempty"`
 	CreatedAt   time.Time     `json:"created_at"`
@@ -198,17 +198,17 @@ type APIEntityRoleBinding struct {
 
 type APIMemberAuthorizationSource struct {
 	Type             MemberAuthorizationSourceType `json:"type" enum:"permanent_role,temporary_role,static_group,dynamic_group,position,entity_binding,relationship"`
-	SourceID         string                        `json:"source_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	SourceID         guid.ID                       `json:"source_id"`
 	SourceName       string                        `json:"source_name,omitempty"`
-	RoleID           string                        `json:"role_id,omitempty" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	RoleID           guid.ID                       `json:"role_id,omitempty"`
 	RoleName         string                        `json:"role_name,omitempty"`
 	PermissionCodes  []string                      `json:"permission_codes"`
 	Effect           BindingEffect                 `json:"effect" enum:"allow,deny"`
 	ScopeType        string                        `json:"scope_type"`
-	ScopeID          string                        `json:"scope_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
+	ScopeID          guid.ID                       `json:"scope_id"`
 	ScopeName        string                        `json:"scope_name,omitempty"`
 	DataScope        DataScope                     `json:"data_scope,omitempty" enum:"all,self,department,department_and_descendants,selected_departments"`
-	DepartmentIDs    []string                      `json:"department_ids"`
+	DepartmentIDs    []guid.ID                     `json:"department_ids"`
 	ExpiresAt        *time.Time                    `json:"expires_at,omitempty"`
 	Inherited        bool                          `json:"inherited"`
 	Relation         string                        `json:"relation,omitempty" enum:"owner,editor,viewer"`
@@ -1082,7 +1082,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 			return nil, apiError("list tenant member roles", err)
 		}
 		out := memberProfileView(member, fields)
-		out.RoleIDs = guidStrings(roles)
+		out.RoleIDs = append([]guid.ID{}, roles...)
 		return respx.OK(ctx, out), nil
 	})
 	authz.Register(registrar, a, huma.Operation{OperationID: "iam-update-tenant-member", Method: http.MethodPatch, Path: "/iam/members/{subject}", Summary: "Update or disable a tenant membership", Tags: []string{"iam"}, Errors: []int{http.StatusNotFound, http.StatusConflict}}, authz.Guard{Resource: "user", Verb: "update"}, func(ctx context.Context, in *updateTenantMemberInput) (*respx.Body[APITenantMember], error) {
@@ -1264,11 +1264,9 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		}
 		return paginateList(ctx, menus, in.Offset, in.Limit), nil
 	})
-	// Same gate as the effective menu tree: what the console may show is decided
-	// by the caller's own membership. The reply also carries the platform codes
-	// the caller holds, because the platform pages this console reaches are
-	// guarded by those and not by any tenant role.
-	authz.RegisterTenantMember(registrar, a, huma.Operation{
+	// A platform administrator must discover their own platform permissions
+	// before the first tenant exists. Tenant codes still require active membership.
+	authz.RegisterAuthenticated(registrar, a, huma.Operation{
 		OperationID: "iam-effective-permissions", Method: http.MethodGet,
 		Path:    "/iam/me/permissions",
 		Summary: "Return my effective permission codes", Tags: []string{"iam"},
@@ -1277,7 +1275,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		if !ok || claims == nil || claims.PrincipalID.Zero() {
 			return nil, huma.Error401Unauthorized("unauthorized")
 		}
-		tenantID, err := requireID(in.TenantID)
+		tenantID, err := optionalID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -1290,7 +1288,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 }
 
 func roleFromDomain(role Role) APIRole {
-	return APIRole{ID: role.ID.String(), TenantID: role.TenantID.String(), Name: role.Name, Description: role.Description, CreatedAt: role.CreatedAt, UpdatedAt: role.UpdatedAt}
+	return APIRole{ID: role.ID, TenantID: role.TenantID, Name: role.Name, Description: role.Description, CreatedAt: role.CreatedAt, UpdatedAt: role.UpdatedAt}
 }
 
 func rolesFromDomain(roles []Role) []APIRole {
@@ -1315,7 +1313,7 @@ func rolePermissionGrantsFromDomain(grants []RolePermissionGrant) []APIRolePermi
 
 func entityFromDomain(entity Entity) APIEntity {
 	return APIEntity{
-		ID: entity.ID.String(), TenantID: entity.TenantID.String(), ParentID: optionalIDString(entity.ParentID), Type: entity.Type, Name: entity.Name,
+		ID: entity.ID, TenantID: entity.TenantID, ParentID: entity.ParentID, Type: entity.Type, Name: entity.Name,
 		Status: entity.Status, Metadata: entity.Metadata, CreatedAt: entity.CreatedAt, UpdatedAt: entity.UpdatedAt,
 	}
 }
@@ -1330,7 +1328,7 @@ func entitiesFromDomain(entities []Entity) []APIEntity {
 
 func entityBindingFromDomain(binding EntityRoleBinding) APIEntityRoleBinding {
 	out := APIEntityRoleBinding{
-		EntityID: binding.EntityID.String(), RoleID: binding.RoleID.String(), PrincipalID: binding.PrincipalID.String(),
+		EntityID: binding.EntityID, RoleID: binding.RoleID, PrincipalID: binding.PrincipalID,
 		Effect: binding.Effect, CreatedAt: binding.CreatedAt,
 	}
 	if !binding.ExpiresAt.IsZero() {
@@ -1356,11 +1354,11 @@ func memberAuthorizationSnapshotFromDomain(snapshot MemberAuthorizationSnapshot)
 	for _, source := range snapshot.Sources {
 		expiresAt := cloneOptionalTime(source.ExpiresAt)
 		out.Sources = append(out.Sources, APIMemberAuthorizationSource{
-			Type: source.Type, SourceID: source.SourceID.String(), SourceName: source.SourceName,
-			RoleID: optionalIDString(source.RoleID), RoleName: source.RoleName,
+			Type: source.Type, SourceID: source.SourceID, SourceName: source.SourceName,
+			RoleID: source.RoleID, RoleName: source.RoleName,
 			PermissionCodes: append([]string(nil), source.PermissionCodes...), Effect: source.Effect,
-			ScopeType: source.ScopeType, ScopeID: source.ScopeID.String(), ScopeName: source.ScopeName,
-			DataScope: source.DataScope, DepartmentIDs: guidStrings(source.DepartmentIDs), ExpiresAt: expiresAt,
+			ScopeType: source.ScopeType, ScopeID: source.ScopeID, ScopeName: source.ScopeName,
+			DataScope: source.DataScope, DepartmentIDs: append([]guid.ID{}, source.DepartmentIDs...), ExpiresAt: expiresAt,
 			Inherited: source.Inherited, Relation: source.Relation,
 			RelationshipPath: append([]authz.RelationshipStep{}, source.RelationshipPath...),
 		})
@@ -1371,13 +1369,13 @@ func memberAuthorizationSnapshotFromDomain(snapshot MemberAuthorizationSnapshot)
 func directoryBindingsFromDomain(bindings []RoleDirectoryBinding) []APIRoleDirectoryBinding {
 	out := make([]APIRoleDirectoryBinding, 0, len(bindings))
 	for _, binding := range bindings {
-		out = append(out, APIRoleDirectoryBinding{RoleID: binding.RoleID.String(), AssigneeType: binding.AssigneeType, AssigneeID: binding.AssigneeID.String(), CreatedAt: binding.CreatedAt})
+		out = append(out, APIRoleDirectoryBinding{RoleID: binding.RoleID, AssigneeType: binding.AssigneeType, AssigneeID: binding.AssigneeID, CreatedAt: binding.CreatedAt})
 	}
 	return out
 }
 
 func memberFromDomain(member TenantMember) APITenantMember {
-	out := APITenantMember{TenantID: member.TenantID.String(), Subject: member.PrincipalID.String(), DisplayName: member.DisplayName, Email: member.Email, DepartmentID: optionalIDString(member.DepartmentID), Status: member.Status, CreatedAt: member.CreatedAt, UpdatedAt: member.UpdatedAt}
+	out := APITenantMember{TenantID: member.TenantID, Subject: member.PrincipalID, DisplayName: member.DisplayName, Email: member.Email, DepartmentID: member.DepartmentID, Status: member.Status, CreatedAt: member.CreatedAt, UpdatedAt: member.UpdatedAt}
 	if !member.DisabledAt.IsZero() {
 		value := member.DisabledAt
 		out.DisabledAt = &value
@@ -1386,7 +1384,7 @@ func memberFromDomain(member TenantMember) APITenantMember {
 }
 
 func roleDataScopeFromDomain(scope RoleDataScope) APIRoleDataScope {
-	out := APIRoleDataScope{RoleID: scope.RoleID.String(), Scope: scope.Scope, DepartmentIDs: guidStrings(scope.DepartmentIDs)}
+	out := APIRoleDataScope{RoleID: scope.RoleID, Scope: scope.Scope, DepartmentIDs: append([]guid.ID{}, scope.DepartmentIDs...)}
 	if !scope.UpdatedAt.IsZero() {
 		updatedAt := scope.UpdatedAt
 		out.UpdatedAt = &updatedAt
@@ -1395,7 +1393,7 @@ func roleDataScopeFromDomain(scope RoleDataScope) APIRoleDataScope {
 }
 
 func menuFromDomain(menu Menu) APIMenu {
-	return APIMenu{ID: menu.ID.String(), TenantID: menu.TenantID.String(), ParentID: optionalIDString(menu.ParentID), Label: menu.Label, Translations: menu.Translations, Route: menu.Route, Icon: menu.Icon, SortOrder: menu.SortOrder, PermissionCode: menu.PermissionCode, Status: menu.Status, CreatedAt: menu.CreatedAt, UpdatedAt: menu.UpdatedAt}
+	return APIMenu{ID: menu.ID, TenantID: menu.TenantID, ParentID: menu.ParentID, Label: menu.Label, Translations: menu.Translations, Route: menu.Route, Icon: menu.Icon, SortOrder: menu.SortOrder, PermissionCode: menu.PermissionCode, Status: menu.Status, CreatedAt: menu.CreatedAt, UpdatedAt: menu.UpdatedAt}
 }
 func menusFromDomain(menus []Menu) []APIMenu {
 	out := make([]APIMenu, 0, len(menus))

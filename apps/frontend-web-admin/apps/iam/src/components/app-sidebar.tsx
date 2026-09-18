@@ -23,7 +23,13 @@ import {
 } from "lucide-react"
 import { NavLink, useLocation } from "react-router"
 import type { EffectiveMenu } from "../lib/iam-api"
-import { effectiveMenuPaths, menuLabel } from "../lib/navigation"
+import {
+  effectiveMenuPaths,
+  isPlatformRoute,
+  menuLabel,
+  tenantNavigation,
+} from "../lib/navigation"
+import { can, type EffectivePermissions } from "../lib/permissions"
 
 const routeIcons: Record<string, ReactElement> = {
   "/iam/users": <Users />,
@@ -44,15 +50,19 @@ const routeIcons: Record<string, ReactElement> = {
 }
 
 export function AppSidebar({
+  permissions = null,
   menus,
   platformTenantAccess = false,
+  platformAuditAccess = false,
   fieldPolicyAccess = false,
   className = "",
   language = "",
   entityID = "",
 }: {
+  permissions?: EffectivePermissions
   menus: EffectiveMenu[]
   platformTenantAccess?: boolean
+  platformAuditAccess?: boolean
   fieldPolicyAccess?: boolean
   className?: string
   language?: string
@@ -61,10 +71,10 @@ export function AppSidebar({
   const t = useTranslations("iam")
 
   const location = useLocation()
-  const platformAuditScope =
-    new URLSearchParams(location.search).get("scope") === "platform"
+  const platformView = isPlatformRoute(location.pathname + location.search)
+  menus = tenantNavigation(menus)
   const paths = effectiveMenuPaths(menus)
-  if (entityID) {
+  if (entityID && !platformView) {
     const base = `/iam/entities/${encodeURIComponent(entityID)}`
     return (
       <aside
@@ -74,26 +84,34 @@ export function AppSidebar({
           <h2 className="px-3 py-2 text-xs font-semibold text-muted-foreground">
             {t("entityPerspective")}
           </h2>
-          <SideLink
-            to={`${base}/overview`}
-            icon={<LayoutDashboard />}
-            label={t("entityOverview")}
-          />
-          <SideLink
-            to={`${base}/roles`}
-            icon={<KeyRound />}
-            label={t("entityRoles")}
-          />
-          <SideLink
-            to={`${base}/resources`}
-            icon={<Boxes />}
-            label={t("entityResources")}
-          />
-          <SideLink
-            to={`${base}/manage`}
-            icon={<SlidersHorizontal />}
-            label={t("entitySettings")}
-          />
+          {can(permissions, "entity_view") && (
+            <SideLink
+              to={`${base}/overview`}
+              icon={<LayoutDashboard />}
+              label={t("entityOverview")}
+            />
+          )}
+          {can(permissions, "entity_view") && (
+            <SideLink
+              to={`${base}/roles`}
+              icon={<KeyRound />}
+              label={t("entityRoles")}
+            />
+          )}
+          {can(permissions, "entity_view") && (
+            <SideLink
+              to={`${base}/resources`}
+              icon={<Boxes />}
+              label={t("entityResources")}
+            />
+          )}
+          {can(permissions, "entity_view") && (
+            <SideLink
+              to={`${base}/manage`}
+              icon={<SlidersHorizontal />}
+              label={t("entitySettings")}
+            />
+          )}
         </nav>
       </aside>
     )
@@ -103,26 +121,33 @@ export function AppSidebar({
       className={`w-64 shrink-0 overflow-y-auto border-e border-sidebar-border bg-sidebar p-3 ${className}`}
     >
       <nav className="space-y-5" aria-label={t("mainNav")}>
-        <SideLink to="/" icon={<LayoutDashboard />} label={t("overview")} />
-        {platformTenantAccess && (
+        <SideLink
+          to="/"
+          icon={<LayoutDashboard />}
+          label={t(platformView ? "backWorkspace" : "overview")}
+        />
+        {platformView && (
           <section aria-label={t("platformManagement")}>
             <h2 className="mb-2 px-3 text-xs font-semibold text-muted-foreground">
               {t("platformManagement")}
             </h2>
-            <SideLink
-              to="/iam/tenants"
-              icon={<Landmark />}
-              label={t("tenantManagement")}
-            />
-            <SideLink
-              to="/iam/audit-governance?scope=platform"
-              icon={<FileClock />}
-              label={t("platformAudit")}
-              scopeMatches={platformAuditScope}
-            />
+            {platformTenantAccess && (
+              <SideLink
+                to="/iam/tenants"
+                icon={<Landmark />}
+                label={t("tenantManagement")}
+              />
+            )}
+            {platformAuditAccess && (
+              <SideLink
+                to="/iam/audit-governance?scope=platform"
+                icon={<FileClock />}
+                label={t("platformAudit")}
+              />
+            )}
           </section>
         )}
-        {(menus.length > 0 || fieldPolicyAccess) && (
+        {!platformView && (menus.length > 0 || fieldPolicyAccess) && (
           <section aria-label={t("tenantMenu")}>
             <h2 className="mb-2 px-3 text-xs font-semibold text-muted-foreground">
               {t("currentTenant")}
@@ -141,11 +166,13 @@ export function AppSidebar({
             )}
           </section>
         )}
-        <SideLink
-          to="/iam/access-requests"
-          icon={<ClipboardCheck />}
-          label={t("accessRequests")}
-        />
+        {!platformView && (
+          <SideLink
+            to="/iam/access-requests"
+            icon={<ClipboardCheck />}
+            label={t("accessRequests")}
+          />
+        )}
       </nav>
     </aside>
   )

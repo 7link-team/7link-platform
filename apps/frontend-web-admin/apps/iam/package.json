@@ -35,6 +35,7 @@
     "audit:archive-ui": "node scripts/archive-ui-browser-audit.mjs",
     "audit:permanent-erasure": "bun scripts/permanent-erasure-browser-audit.mjs",
     "audit:registration": "bun scripts/registration-browser-audit.mjs",
+    "audit:sqlite-lifecycle": "node scripts/sqlite-lifecycle-browser-audit.mjs",
     "audit:passkey": "bun scripts/passkey-browser-audit.mjs",
     "preview": "vite preview"
   },
@@ -45,6 +46,7 @@
     "qrcode.react": "^4.2.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "react-easy-crop": "^6.2.3",
     "react-router": "^8.1.0"
   },
   "devDependencies": {

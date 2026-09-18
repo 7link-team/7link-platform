@@ -182,6 +182,7 @@ export interface Passkey {
 }
 
 export interface Principal {
+  avatar?: AvatarSettings
   id: string
   login_name?: string
   activation_required: boolean
@@ -191,6 +192,11 @@ export interface Principal {
   status: "active" | "disabled"
   created_at: string
   updated_at: string
+}
+
+export interface AvatarSettings {
+  style: "robot" | "pixel" | "monster" | "geometric" | "custom"
+  url: string
 }
 
 export interface PrincipalList {
@@ -1131,6 +1137,14 @@ async function requestEnvelopeWithBase<T>(
     headers,
     credentials: "include",
   })
+  if (
+    response.ok &&
+    path.startsWith("/iam/") &&
+    !["GET", "HEAD"].includes((init.method ?? "GET").toUpperCase()) &&
+    typeof window !== "undefined"
+  ) {
+    window.dispatchEvent(new Event("menu-catalog-change"))
+  }
   if (response.status === 204)
     return { code: 0, message: "ok", data: undefined as T }
   const body = (await response.json().catch(() => null)) as
@@ -1392,6 +1406,23 @@ export function createIamApi(
       ),
     closureRequest: () =>
       request<ClosureRequest>("/iam/me/closure-request", {}, false),
+    myAvatar: () => request<AvatarSettings>("/iam/me/avatar", {}, false),
+    avatarCandidates: (style?: AvatarSettings["style"]) =>
+      request<AvatarSettings[]>(
+        "/iam/me/avatar-candidates",
+        { method: "POST", body: JSON.stringify({ style }) },
+        false
+      ),
+    setMyAvatar: (avatar: {
+      style?: AvatarSettings["style"]
+      image_data?: string
+      candidate_url?: string
+    }) =>
+      request<AvatarSettings>(
+        "/iam/me/avatar",
+        { method: "PUT", body: JSON.stringify(avatar) },
+        false
+      ),
     submitClosureRequest: (proof: string, version: number) =>
       request<ClosureRequest>(
         "/iam/me/closure-request",

@@ -18,6 +18,7 @@ type Principal struct {
 	EmailVerified      bool      `json:"email_verified"`
 	ActivationRequired bool      `json:"activation_required"`
 	DisplayName        string    `json:"display_name"`
+	Avatar             *Avatar   `json:"avatar,omitempty" gorm:"serializer:json"`
 	Status             string    `json:"status"`
 	CreatedAt          time.Time `json:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at"`

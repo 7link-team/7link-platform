@@ -9,11 +9,8 @@ describe("can", () => {
     expect(can(permissions, "user_delete")).toBe(false)
   })
 
-  it("treats an unanswered read as permission unknown, not permission denied", () => {
-    // A failed or absent /iam/me/permissions must not empty a console of every
-    // action: the server is still enforcing, and a transient outage that hides
-    // every button looks like a broken product rather than a refused request.
-    expect(can(null, "user_create")).toBe(true)
+  it("does not offer protected actions when permission reads fail", () => {
+    expect(can(null, "user_create")).toBe(false)
   })
 
   it("denies everything for a caller who holds nothing", () => {

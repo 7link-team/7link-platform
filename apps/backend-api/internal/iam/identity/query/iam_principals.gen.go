@@ -32,6 +32,7 @@ func newPrincipal(db *gorm.DB, opts ...gen.DOOption) principal {
 	_principal.LoginName = field.NewString(tableName, "login_name")
 	_principal.Email = field.NewString(tableName, "email")
 	_principal.DisplayName = field.NewString(tableName, "display_name")
+	_principal.Avatar = field.NewString(tableName, "avatar")
 	_principal.Status = field.NewString(tableName, "status")
 	_principal.EmailVerified = field.NewBool(tableName, "email_verified")
 	_principal.ActivationRequired = field.NewBool(tableName, "activation_required")
@@ -52,6 +53,7 @@ type principal struct {
 	LoginName          field.String
 	Email              field.String
 	DisplayName        field.String
+	Avatar             field.String
 	Status             field.String
 	EmailVerified      field.Bool
 	ActivationRequired field.Bool
@@ -78,6 +80,7 @@ func (p *principal) updateTableName(table string) *principal {
 	p.LoginName = field.NewString(table, "login_name")
 	p.Email = field.NewString(table, "email")
 	p.DisplayName = field.NewString(table, "display_name")
+	p.Avatar = field.NewString(table, "avatar")
 	p.Status = field.NewString(table, "status")
 	p.EmailVerified = field.NewBool(table, "email_verified")
 	p.ActivationRequired = field.NewBool(table, "activation_required")
@@ -110,11 +113,12 @@ func (p *principal) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (p *principal) fillFieldMap() {
-	p.fieldMap = make(map[string]field.Expr, 10)
+	p.fieldMap = make(map[string]field.Expr, 11)
 	p.fieldMap["id"] = p.ID
 	p.fieldMap["login_name"] = p.LoginName
 	p.fieldMap["email"] = p.Email
 	p.fieldMap["display_name"] = p.DisplayName
+	p.fieldMap["avatar"] = p.Avatar
 	p.fieldMap["status"] = p.Status
 	p.fieldMap["email_verified"] = p.EmailVerified
 	p.fieldMap["activation_required"] = p.ActivationRequired

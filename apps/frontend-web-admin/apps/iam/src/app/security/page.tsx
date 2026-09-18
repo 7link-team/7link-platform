@@ -33,6 +33,7 @@ import { Label } from "@workspace/ui/components/label"
 import { Alert } from "../../components/alert"
 import { useAuth } from "../../components/auth"
 import { PageHeader } from "../../components/page-header"
+import { AvatarEditor } from "../../components/avatar-editor"
 import {
   iamApi,
   setTenant,
@@ -310,6 +311,7 @@ export default function SecurityPage() {
 
       {section === "profile" && (
         <>
+          {session && <AvatarEditor id={session.subject} />}
           <dl className="mb-5 grid gap-4 border-b py-5 text-sm sm:grid-cols-2">
             <div>
               <dt className="text-muted-foreground">{t("username")}</dt>

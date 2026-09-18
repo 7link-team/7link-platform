@@ -1,10 +1,10 @@
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
-import { LogOut, UserRound } from "lucide-react"
+import { FileClock, Landmark, LogOut, UserRound } from "lucide-react"
 import { useNavigate } from "react-router"
 import { useEffect, useState } from "react"
 import { Alert } from "./alert"
 import { Button } from "@workspace/ui/components/button"
-import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar"
+import { UserAvatar } from "./user-avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,14 +14,48 @@ import {
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu"
 import { useAuth } from "./auth"
-import { iamApi, type Session } from "../lib/iam-api"
+import { iamApi, type AvatarSettings, type Session } from "../lib/iam-api"
 
-export function UserMenu({ tenantID }: { tenantID: string }) {
+export function UserMenu({
+  tenantID,
+  platformTenantAccess = false,
+  platformAuditAccess = false,
+}: {
+  tenantID: string
+  platformTenantAccess?: boolean
+  platformAuditAccess?: boolean
+}) {
   const t = useTranslations("iam")
 
   const navigate = useNavigate()
   const { session, logout } = useAuth()
   const subject = session?.subject ?? ""
+  const [avatar, setAvatar] = useState<{
+    subject: string
+    value: AvatarSettings
+  } | null>(null)
+  useEffect(() => {
+    let active = true
+    const refresh = () => {
+      if (subject)
+        void iamApi.myAvatar().then(
+          (value) => {
+            if (active) setAvatar({ subject, value })
+          },
+          () => {
+            if (active) setAvatar(null)
+          }
+        )
+    }
+    refresh()
+    window.addEventListener("avatar-change", refresh)
+    window.addEventListener("focus", refresh)
+    return () => {
+      active = false
+      window.removeEventListener("avatar-change", refresh)
+      window.removeEventListener("focus", refresh)
+    }
+  }, [subject])
   const [profile, setProfile] = useState<{
     tenant: string
     subject: string
@@ -70,7 +104,6 @@ export function UserMenu({ tenantID }: { tenantID: string }) {
     displaySession?.preferred_username?.trim() ||
     displaySession?.email?.trim() ||
     session.subject
-  const initials = name.slice(0, 2).toUpperCase()
 
   return (
     <>
@@ -93,9 +126,11 @@ export function UserMenu({ tenantID }: { tenantID: string }) {
           aria-label={t("accountMenu")}
           className="flex h-9 max-w-48 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <Avatar size="sm">
-            <AvatarFallback>{initials}</AvatarFallback>
-          </Avatar>
+          <UserAvatar
+            id={subject}
+            avatar={avatar?.subject === subject ? avatar.value : null}
+            className="size-7"
+          />
           <span className="hidden truncate text-xs sm:inline">{name}</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
@@ -111,6 +146,28 @@ export function UserMenu({ tenantID }: { tenantID: string }) {
             {t("account")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
+          {(platformTenantAccess || platformAuditAccess) && (
+            <>
+              <DropdownMenuLabel>{t("platformManagement")}</DropdownMenuLabel>
+              {platformTenantAccess && (
+                <DropdownMenuItem onClick={() => navigate("/iam/tenants")}>
+                  <Landmark className="mr-2 size-4" />
+                  {t("tenantManagement")}
+                </DropdownMenuItem>
+              )}
+              {platformAuditAccess && (
+                <DropdownMenuItem
+                  onClick={() =>
+                    navigate("/iam/audit-governance?scope=platform")
+                  }
+                >
+                  <FileClock className="mr-2 size-4" />
+                  {t("platformAudit")}
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+            </>
+          )}
           <DropdownMenuItem
             disabled={busy}
             onClick={() => void signOut()}

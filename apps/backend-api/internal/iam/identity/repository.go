@@ -46,7 +46,8 @@ type Repository struct {
 	// credentials is authn's capability for the credential tables authn owns.
 	// identity sequences those writes inside its own transaction; it does not
 	// run them.
-	credentials PrincipalCredentialStore
+	credentials     PrincipalCredentialStore
+	avatarDirectory string
 }
 
 func NewRepository(runtime *appenv.Runtime, ids guid.Source, appender audit.Appender) *Repository {
@@ -58,7 +59,8 @@ func NewRepository(runtime *appenv.Runtime, ids guid.Source, appender audit.Appe
 		panic(err)
 	}
 	return &Repository{
-		runtime: runtime, ids: ids, appender: appender, revisions: revisions,
+		avatarDirectory: "data/avatars",
+		runtime:         runtime, ids: ids, appender: appender, revisions: revisions,
 		repositoryTables: repositoryTables{names: query.BindNames(runtime.TablePrefix())}, foreign: &foreignTables{},
 	}
 }

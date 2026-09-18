@@ -25,7 +25,7 @@ type ScopeNode struct {
 
 // MenuItem is one visible node in the effective navigation tree.
 type MenuItem struct {
-	ID             string            `json:"id"`
+	ID             guid.ID           `json:"id"`
 	Label          string            `json:"label"`
 	Translations   map[string]string `json:"translations,omitempty"`
 	Path           string            `json:"path,omitempty"`
@@ -33,6 +33,18 @@ type MenuItem struct {
 	Icon           string            `json:"icon,omitempty"`
 	SortOrder      int               `json:"sort_order"`
 	Children       []MenuItem        `json:"children,omitempty"`
+}
+
+// MenuDeclaration is a template key, not a persisted menu identity.
+type MenuDeclaration struct {
+ Key string `json:"key"`
+ Label string `json:"label"`
+ Translations map[string]string `json:"translations,omitempty"`
+ Path string `json:"path,omitempty"`
+ PermissionCode string `json:"permission_code"`
+ Icon string `json:"icon,omitempty"`
+ SortOrder int `json:"sort_order"`
+ Children []MenuDeclaration `json:"children,omitempty"`
 }
 
 // Service coordinates core IAM validation, persistence, authorization, policy
@@ -97,15 +109,15 @@ func (s *Service) ScopeModel(context.Context) []ScopeNode {
 }
 
 // MenuCatalog returns the built-in IAM navigation declaration.
-func (s *Service) MenuCatalog(context.Context) []MenuItem {
-	items := make([]MenuItem, 0, len(DefaultMenus()))
+func (s *Service) MenuCatalog(context.Context) []MenuDeclaration {
+	items := make([]MenuDeclaration, 0, len(DefaultMenus()))
 	for _, menu := range DefaultMenus() {
-		items = append(items, MenuItem{
-			ID: menu.ID.String(), Label: menu.Label, Translations: menu.Translations, Path: menu.Route,
+		items = append(items, MenuDeclaration{
+			Key: strings.TrimPrefix(menu.Route,"/iam/"), Label: menu.Label, Translations: menu.Translations, Path: menu.Route,
 			PermissionCode: menu.PermissionCode, Icon: menu.Icon, SortOrder: menu.SortOrder,
 		})
 	}
-	return []MenuItem{{ID: "iam", Label: "IAM Administration", Translations: corei18n.Translations("menu_root"), Children: items}}
+	return []MenuDeclaration{{Key: "iam", Label: "IAM Administration", Translations: corei18n.Translations("menu_root"), Children: items}}
 }
 
 // DefaultMenus returns the built-in tenant menu definitions.

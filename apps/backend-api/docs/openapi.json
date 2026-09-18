@@ -1384,6 +1384,53 @@
         ],
         "type": "object"
       },
+      "Avatar": {
+        "additionalProperties": false,
+        "properties": {
+          "style": {
+            "enum": [
+              "robot",
+              "pixel",
+              "monster",
+              "geometric",
+              "custom"
+            ],
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "style",
+          "url"
+        ],
+        "type": "object"
+      },
+      "AvatarInput": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_url": {
+            "maxLength": 256,
+            "type": "string"
+          },
+          "image_data": {
+            "maxLength": 2800000,
+            "type": "string"
+          },
+          "style": {
+            "enum": [
+              "robot",
+              "pixel",
+              "monster",
+              "geometric",
+              "custom"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "BrowserSession": {
         "additionalProperties": false,
         "properties": {
@@ -1495,6 +1542,21 @@
           "method",
           "status"
         ],
+        "type": "object"
+      },
+      "CandidateInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "style": {
+            "enum": [
+              "robot",
+              "pixel",
+              "monster",
+              "geometric"
+            ],
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "Capabilities": {
@@ -3615,6 +3677,35 @@
         ],
         "type": "object"
       },
+      "EnvelopeAvatar": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/Avatar",
+            "description": "response payload; null on error"
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
       "EnvelopeCaptchaOutput": {
         "additionalProperties": false,
         "properties": {
@@ -4770,6 +4861,41 @@
             "description": "response payload; null on error",
             "items": {
               "$ref": "#/components/schemas/ArchiveJob"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
+      "EnvelopeListAvatar": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "description": "response payload; null on error",
+            "items": {
+              "$ref": "#/components/schemas/Avatar"
             },
             "type": [
               "array",
@@ -9403,6 +9529,9 @@
           "activation_required": {
             "type": "boolean"
           },
+          "avatar": {
+            "$ref": "#/components/schemas/Avatar"
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -9604,6 +9733,9 @@
         "properties": {
           "activation_required": {
             "type": "boolean"
+          },
+          "avatar": {
+            "$ref": "#/components/schemas/Avatar"
           },
           "created_at": {
             "format": "date-time",
@@ -20865,6 +20997,134 @@
         "x-authz-permission": "role_view"
       }
     },
+    "/iam/avatars/{principal_id}/{file}": {
+      "get": {
+        "operationId": "identity-avatar-image",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "principal_id",
+            "required": true,
+            "schema": {
+              "maxLength": 19,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file",
+            "required": true,
+            "schema": {
+              "maxLength": 52,
+              "pattern": "^[a-f0-9]{48}\\.png$",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "tenant_id",
+            "schema": {
+              "maxLength": 19,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "contentEncoding": "base64",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Type": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Read an authorized account avatar image",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
     "/iam/departments": {
       "get": {
         "operationId": "organization-list-departments",
@@ -25168,6 +25428,300 @@
         "x-authz-permission": "invitation_resend"
       }
     },
+    "/iam/me/avatar": {
+      "get": {
+        "operationId": "identity-my-avatar",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Cookie",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeAvatar"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Read my avatar",
+        "tags": [
+          "identity"
+        ]
+      },
+      "put": {
+        "operationId": "identity-set-my-avatar",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Cookie",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AvatarInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeAvatar"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Replace my avatar",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/iam/me/avatar-candidates": {
+      "post": {
+        "operationId": "identity-avatar-candidates",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Cookie",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CandidateInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeListAvatar"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Generate six private server-side avatar candidates",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
     "/iam/me/closure-request": {
       "delete": {
         "operationId": "identity-cancel-closure-request",
@@ -26030,13 +26584,12 @@
         "operationId": "iam-effective-permissions",
         "parameters": [
           {
-            "description": "Tenant authorization boundary",
+            "description": "tenant authorization boundary",
             "in": "header",
             "name": "X-Tenant-Id",
-            "required": true,
             "schema": {
-              "maxLength": 19,
-              "pattern": "^[1-9][0-9]*$",
+              "description": "tenant authorization boundary",
+              "maxLength": 128,
               "type": "string"
             }
           }

@@ -16,24 +16,20 @@ import { useOutletContext } from "react-router"
 
 import type { EffectiveMenu } from "./iam-api"
 
-// null means "not answered": the read failed, or this view is outside the
-// console shell. Actions stay visible in that case, because a transient
-// authorization outage that silently removes every button is worse than an
-// occasional refused request.
+// Unknown permission reads cannot authorize a protected action. The shell
+// surfaces failed reads and offers a retry instead of exposing forbidden verbs.
 export type EffectivePermissions = ReadonlySet<string> | null
 
 export interface ConsoleOutletContext {
   menus: EffectiveMenu[] | null
   permissions: EffectivePermissions
   // False while the first read is still in flight. Unresolved is not the same as
-  // unavailable: offering actions during the wait would show a view-only member
-  // buttons that vanish a moment later, so actions wait for the answer and only
-  // a failed answer falls back to showing them.
+  // unavailable: protected actions wait for a successful answer in either case.
   permissionsResolved: boolean
 }
 
 export function can(permissions: EffectivePermissions, code: string): boolean {
-  return permissions === null || permissions.has(code)
+  return permissions?.has(code) ?? false
 }
 
 /**

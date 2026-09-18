@@ -1,6 +1,25 @@
 import type { EffectiveMenu, Menu } from "./iam-api"
 import { defaultLocale } from "@workspace/ui/i18n/config"
 
+export function isPlatformRoute(route: string): boolean {
+  const url = new URL(route, "https://console.invalid")
+  return (
+    url.pathname === "/iam/tenants" ||
+    url.pathname.startsWith("/platform/") ||
+    (url.pathname === "/iam/audit-governance" &&
+      url.searchParams.get("scope") === "platform")
+  )
+}
+
+export function tenantNavigation(menus: EffectiveMenu[]): EffectiveMenu[] {
+  return menus.flatMap((menu) => {
+    const children = tenantNavigation(menu.children ?? [])
+    if (menu.path && isPlatformRoute(menu.path))
+      return children.length ? [{ ...menu, path: "", children }] : []
+    return [{ ...menu, children }]
+  })
+}
+
 export function menuLabel(
   menu: { label: string; translations?: Record<string, string> },
   locale: string

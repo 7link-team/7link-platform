@@ -28,6 +28,7 @@ var ErrUnavailable = errors.New("identity service unavailable")
 // federation, and invitation acceptance depend on.
 type Config struct {
 	module.Config
+	AvatarDirectory string
 }
 
 type Module struct {
@@ -37,6 +38,7 @@ type Module struct {
 	registrar           *authz.Registrar
 	administrators      core.AdministratorGuard
 	fields              authz.FieldPermissionChecker
+	avatarPermissions   authz.PermissionChecker
 	ids                 guid.Source
 	appender            audit.Appender
 	anonymizer          PrincipalAnonymizer
@@ -160,6 +162,9 @@ func (m *Module) bootstrapPrincipalStore() BootstrapPrincipalStore {
 			return nil, ErrUnavailable
 		}
 		repo := NewRepository(m.runtime, m.ids, m.appender)
+		if m.config.AvatarDirectory != "" {
+			repo.avatarDirectory = m.config.AvatarDirectory
+		}
 		// The bootstrap runs after Wire, so the owners have published and the
 		// module's holder already carries their names.
 		repo.foreign = &m.foreign
@@ -227,6 +232,7 @@ func (m *Module) InjectServices(services *module.Services) error {
 		return fmt.Errorf("bind identity principal table names: %w", err)
 	}
 	m.fields = fields
+	m.avatarPermissions = fields
 	m.registrar = registrar
 	m.ids = ids
 	m.appender = appender
@@ -306,11 +312,15 @@ func (m *Module) Initialize(context.Context) error {
 		return errors.New("initialize identity: the core, organization, and oauth modules must publish the table names identity joins")
 	}
 	m.Service = NewService(m.runtime, m.appender, m.administrators, m.ids)
+	if m.config.AvatarDirectory != "" {
+		m.Service.repo.avatarDirectory = m.config.AvatarDirectory
+	}
 	// Wire has already run, so the owners have published; the service and every
 	// repository it clones share the one holder the connectors bound.
 	m.Service.repo.foreign = &m.foreign
 	m.Service.repo.credentials = m.credentials
 	m.Service.fields = m.fields
+	m.Service.avatarPermissions = m.avatarPermissions
 	m.Service.anonymizer = m.anonymizer
 	m.Service.erasureRecorder = m.erasureRecorder
 	m.Service.privacyBrowser, m.Service.reauthenticate = m.privacyBrowser, m.reauthenticate

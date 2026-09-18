@@ -113,7 +113,7 @@ func iamCoreConfig(c AppConfig) core.Config {
 }
 
 func iamIdentityConfig(c AppConfig) identity.Config {
-	return identity.Config{Config: iamActivationConfig(c)}
+	return identity.Config{Config: iamActivationConfig(c), AvatarDirectory: c.IAM.AvatarDirectory}
 }
 
 func iamOrganizationConfig(c AppConfig) organization.Config {

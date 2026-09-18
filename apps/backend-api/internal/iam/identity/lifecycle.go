@@ -266,7 +266,7 @@ func (s *Service) anonymizeOnce(
 			return errors.Join(ErrUnavailable, fmt.Errorf("record external erasure obligation: %w", err))
 		}
 		if err := repo.updatePrincipalRow(ctx, id, map[string]any{
-			"login_name": "erased:" + id.String(), "display_name": "Anonymized account", "email": "",
+			"login_name": "erased:" + id.String(), "display_name": "Anonymized account", "email": "", "avatar": "",
 			"email_verified": false, "activation_required": false, "updated_at": now,
 		}); err != nil {
 			return err

@@ -12,6 +12,7 @@ type Principal struct {
 	LoginName          string     `gorm:"column:login_name;type:text;not null"`
 	Email              string     `gorm:"column:email;type:text;not null"`
 	DisplayName        string     `gorm:"column:display_name;type:text;not null"`
+	Avatar             string     `gorm:"column:avatar;type:text;not null;default:''"`
 	Status             string     `gorm:"column:status;type:text;not null"`
 	EmailVerified      bool       `gorm:"column:email_verified;not null"`
 	ActivationRequired bool       `gorm:"column:activation_required;not null"`

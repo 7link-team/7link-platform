@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/mail"
+	"net/url"
+	"path"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -273,14 +275,30 @@ func (s *Service) EffectiveMenus(
 		return nil, err
 	}
 	codeSet := map[string]struct{}{}
+	routePermissions := map[string]string{}
+	for _, menu := range DefaultMenus() {
+		routePermissions[menu.Route] = menu.PermissionCode
+	}
+	pagePermissions := map[guid.ID]string{}
 	for _, menu := range menus {
-		if menu.PermissionCode == "" {
-			continue
+		// A custom label or permission cannot weaken a built-in page's gate.
+		if parsed, err := url.Parse(menu.Route); err == nil && menu.Route != "" {
+			route := path.Clean(parsed.Path)
+			code := routePermissions[route]
+			if strings.HasPrefix(route, "/iam/entities/") {
+				code = routePermissions["/iam/entities"]
+			}
+			if code != "" {
+				pagePermissions[menu.ID] = code
+				codeSet[code] = struct{}{}
+			}
 		}
-		if _, ok := s.registry.Find(menu.PermissionCode); !ok {
-			return nil, fmt.Errorf("unknown persisted menu permission %q", menu.PermissionCode)
+		if menu.PermissionCode != "" {
+			if _, ok := s.registry.Find(menu.PermissionCode); !ok {
+				return nil, fmt.Errorf("unknown persisted menu permission %q", menu.PermissionCode)
+			}
+			codeSet[menu.PermissionCode] = struct{}{}
 		}
-		codeSet[menu.PermissionCode] = struct{}{}
 	}
 	codes := make([]string, 0, len(codeSet))
 	for code := range codeSet {
@@ -315,11 +333,17 @@ func (s *Service) EffectiveMenus(
 			}
 			next[menu.ID] = true
 			nodes := build(menu.ID, next)
-			if menu.PermissionCode != "" && !allowed[menu.PermissionCode] && len(nodes) == 0 {
+			accessible := (menu.PermissionCode == "" || allowed[menu.PermissionCode]) &&
+				(pagePermissions[menu.ID] == "" || allowed[pagePermissions[menu.ID]])
+			if !accessible && len(nodes) == 0 {
 				continue
 			}
+			route := menu.Route
+			if !accessible {
+				route = ""
+			}
 			result = append(result, MenuItem{
-				ID: menu.ID.String(), Label: menu.Label, Path: menu.Route,
+				ID: menu.ID, Label: menu.Label, Path: route,
 				Translations: menu.Translations,
 				Icon:         menu.Icon, SortOrder: menu.SortOrder,
 				PermissionCode: menu.PermissionCode, Children: nodes,

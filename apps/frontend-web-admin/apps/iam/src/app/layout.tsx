@@ -154,16 +154,15 @@ export default function AppLayout() {
     let active = true
     let generation = 0
     const refresh = () => {
-      if (status === "authenticated" && directoryReady && tenantValue) {
+      if (status === "authenticated" && directoryReady) {
         const request = ++generation
         void Promise.allSettled([
-          iamApi.effectiveMenus(),
+          tenantValue ? iamApi.effectiveMenus() : Promise.resolve([]),
           iamApi.myPermissions(),
         ]).then(([menuResult, permissionResult]) => {
           if (!active || request !== generation) return
-          // A permission read that did not answer leaves the set unknown rather
-          // than empty, so a failure here cannot quietly remove every action
-          // from the console.
+          // Failed permission reads remain unknown and protected actions stay
+          // unavailable until the caller retries successfully.
           const permissions =
             permissionResult.status === "fulfilled"
               ? new Set(permissionResult.value)
@@ -174,18 +173,25 @@ export default function AppLayout() {
             items: menuResult.status === "fulfilled" ? menuResult.value : null,
             permissions,
             error:
-              menuResult.status === "fulfilled"
-                ? ""
-                : ((menuResult.reason as Error | undefined)?.message ?? ""),
+              menuResult.status === "rejected"
+                ? ((menuResult.reason as Error | undefined)?.message ?? "")
+                : permissionResult.status === "rejected"
+                  ? ((permissionResult.reason as Error | undefined)?.message ??
+                    "")
+                  : "",
           })
         })
       }
     }
     refresh()
     window.addEventListener("menu-catalog-change", refresh)
+    window.addEventListener("focus", refresh)
+    const timer = window.setInterval(refresh, 15_000)
     return () => {
       active = false
+      window.clearInterval(timer)
       window.removeEventListener("menu-catalog-change", refresh)
+      window.removeEventListener("focus", refresh)
     }
   }, [status, tenantValue, subject, directoryReady])
 
@@ -306,10 +312,14 @@ export default function AppLayout() {
                 }}
               >
                 <AppSidebar
+                  permissions={permissions}
                   entityID={entityID}
                   language={menuLanguage}
                   menus={directoryReady ? (menus ?? []) : []}
                   platformTenantAccess={platformTenantAccess}
+                  platformAuditAccess={
+                    permissions?.has("platform_administer") ?? false
+                  }
                   fieldPolicyAccess={
                     Boolean(tenantValue) &&
                     fieldPolicyAccess === `${tenantValue}:${session.subject}`
@@ -348,7 +358,13 @@ export default function AppLayout() {
           <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
             <LanguageSwitcher />
             <ThemeModeButton />
-            <UserMenu tenantID={directoryReady ? tenantValue : ""} />
+            <UserMenu
+              tenantID={directoryReady ? tenantValue : ""}
+              platformTenantAccess={platformTenantAccess}
+              platformAuditAccess={
+                permissions?.has("platform_administer") ?? false
+              }
+            />
           </div>
         </div>
       </header>
@@ -379,10 +395,12 @@ export default function AppLayout() {
       </div>
       <div className="flex min-h-0 flex-1">
         <AppSidebar
+          permissions={permissions}
           entityID={entityID}
           language={menuLanguage}
           menus={directoryReady ? (menus ?? []) : []}
           platformTenantAccess={platformTenantAccess}
+          platformAuditAccess={permissions?.has("platform_administer") ?? false}
           fieldPolicyAccess={
             Boolean(tenantValue) &&
             fieldPolicyAccess === `${tenantValue}:${session.subject}`
@@ -409,7 +427,12 @@ export default function AppLayout() {
               <Alert>{currentTenants.error}</Alert>
             ) : !directoryReady ? (
               <p role="status">{t("loading")}</p>
-            ) : !tenantValue ? (
+            ) : !tenantValue &&
+              location.pathname !== "/iam/tenants" &&
+              !(
+                location.pathname === "/iam/audit-governance" &&
+                new URLSearchParams(location.search).get("scope") === "platform"
+              ) ? (
               <p>{t("noAvailableTenants")}</p>
             ) : entityID && catalog?.error ? (
               <Alert>{catalog.error}</Alert>
