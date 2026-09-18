@@ -82,6 +82,7 @@ else
 MKDIR_OUTPUT = mkdir -p $(dir $(OUTPUT))
 endif
 MODULE_COVERAGE_PACKAGES := \
+	7link.com/platform/internal/files \
 	7link.com/platform/internal/infra/audit \
 	7link.com/platform/internal/infra/configinspector \
 	7link.com/platform/internal/infra/databasemonitor \

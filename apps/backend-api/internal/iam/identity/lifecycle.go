@@ -261,6 +261,12 @@ func (s *Service) anonymizeOnce(
 		if err := s.anonymizer(ctx, repo.writer(), principalFromRow(principal), now); err != nil {
 			return fmt.Errorf("erase linked principal data: %w", err)
 		}
+		if repo.accountFiles == nil {
+			return ErrUnavailable
+		}
+		if err := repo.accountFiles.ReleaseAccountResources(ctx, repo.writer(), id, now); err != nil {
+			return fmt.Errorf("revoke account file resources: %w", err)
+		}
 		obligation := audit.NewErasureObligation(ctx, id, version+1, recordedAt)
 		if err := s.erasureRecorder(ctx, obligation); err != nil {
 			return errors.Join(ErrUnavailable, fmt.Errorf("record external erasure obligation: %w", err))

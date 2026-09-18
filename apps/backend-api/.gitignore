@@ -3,6 +3,7 @@
 
 .temp/
 **/data/avatars/
+**/data/files/
 
 # Go build and test output
 **/bin/

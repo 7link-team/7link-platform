@@ -76,7 +76,7 @@ func TestComposedIAMTenantIsolationAcrossModules(t *testing.T) {
 	fixture.assertGovernanceRevokeCannotCrossTenants(t, request)
 	fixture.assertIAMAuthorizationCannotCrossTenants(t, role, entity)
 	fixture.assertFederationCallbackCannotCrossTenants(t)
-	fixture.assertTenantBAuditTargetsNeverAppearInTenantA(t, invitation.ID, group.ID, request.ID, entity.ID)
+	fixture.assertTenantBAuditTargetsNeverAppearInTenantA(t, invitation.ID, group.ID, request.ID, entity.ID.String())
 }
 
 func TestComposedSCIMTenantLifecycle(t *testing.T) {
@@ -433,7 +433,7 @@ func (f *iamTenantFixture) approveTenantBAccessRequest(t *testing.T) (core.APIRo
 	requireStatus(t, http.StatusCreated, response)
 	role := decodeEnvelope[core.APIRole](t, response)
 
-	response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID+"/permissions/entity_view", iamTenantB, f.tokenB, nil, nil)
+	response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID.String()+"/permissions/entity_view", iamTenantB, f.tokenB, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 
 	response = f.request(t, http.MethodPost, "/iam/entities", iamTenantB, f.tokenB, map[string]any{
@@ -510,7 +510,7 @@ func (f *iamTenantFixture) assertIAMAuthorizationCannotCrossTenants(t *testing.T
 		}, nil)
 	})
 
-	entityID, err := guid.Parse(entity.ID)
+	entityID, err := guid.Parse(entity.ID.String())
 	require.NoError(t, err)
 	authorizer := newBoundIAMAuthorizer(t, f.app.runtime)
 	allowed, err := authorizer.CheckEntity(t.Context(), iamTenantB, entityID, "entity_view", f.adminA.ID)

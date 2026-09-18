@@ -255,7 +255,7 @@ func TestServiceMenuEntityAndAuthorizationLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, effective, 1)
 	require.Len(t, effective[0].Children, 1)
-	assert.Equal(t, child.ID.String(), effective[0].Children[0].ID)
+	assert.Equal(t, child.ID, effective[0].Children[0].ID)
 
 	root.ParentID = child.ID
 	_, err = harness.service.UpdateMenu(t.Context(), root)

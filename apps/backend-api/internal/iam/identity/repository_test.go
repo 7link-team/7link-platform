@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"7link.com/platform/internal/files"
 	"context"
 	"errors"
 	"fmt"
@@ -142,7 +143,11 @@ func newIdentityHarness(t *testing.T, prefix string) *identityHarness {
 		return harness.auditErr
 	})
 	harness.service = NewService(harness.runtime, appender, harness.guard, newIdentityTestIDs(1000))
-	harness.service.repo.avatarDirectory = t.TempDir()
+	storage, err := files.NewLocal(t.TempDir())
+	require.NoError(t, err)
+	harness.service.repo.storage = storage
+	harness.service.repo.accountFiles, err = files.NewAccountObjects(storage, "local", prefix)
+	require.NoError(t, err)
 	harness.service.now = func() time.Time { return identityTestNow }
 	harness.service.erasureRecorder = func(context.Context, audit.ErasureObligation) error { return nil }
 	harness.repository = harness.service.repo
@@ -168,6 +173,9 @@ func initializeIdentityDatabase(t *testing.T, dsn, prefix string) {
 	source := (&Module{}).MigrationSource()
 	source.Prefix = prefix
 	require.NoError(t, goosex.Migrate(t.Context(), sqlDB, source, db.Dialector.Name()))
+	fileSource := (&files.Module{}).MigrationSource()
+	fileSource.Prefix = prefix
+	require.NoError(t, goosex.Migrate(t.Context(), sqlDB, fileSource, db.Dialector.Name()))
 	statements := []string{
 		"CREATE TABLE " + prefix + "iam_tenants (id BIGINT PRIMARY KEY, status TEXT NOT NULL)",
 		"CREATE TABLE " + prefix + "iam_tenant_members (" +

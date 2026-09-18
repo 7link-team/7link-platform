@@ -1,6 +1,7 @@
 package app
 
 import (
+	"7link.com/platform/internal/files"
 	"context"
 	"errors"
 	"fmt"
@@ -132,6 +133,7 @@ func (app *App) composeIAMRuntimeModules() []module.Module {
 	return []module.Module{
 		iamaudit.NewModule(rt, iamAuditConfig(app.config)),
 		core.NewModule(rt, iamCoreConfig(app.config)),
+		files.NewModule(app.runtime, fileConfig(app.config)),
 		iamauthn.NewModule(rt, iamAuthnConfig(app.config)),
 		identity.NewModule(rt, iamIdentityConfig(app.config)),
 		organization.NewModule(rt, iamOrganizationConfig(app.config)),

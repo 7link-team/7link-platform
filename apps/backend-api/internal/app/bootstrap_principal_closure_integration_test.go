@@ -66,8 +66,8 @@ func (f *iamTenantFixture) closurePAT(t *testing.T, principal identity.Principal
 	}, nil)
 	requireStatus(t, http.StatusCreated, roleResponse)
 	role := decodeEnvelope[core.APIRole](t, roleResponse)
-	requireStatus(t, http.StatusOK, f.request(t, http.MethodPut, "/iam/roles/"+role.ID+"/permissions/entity_view", tenant, f.tokenB, nil, nil))
-	requireStatus(t, http.StatusOK, f.request(t, http.MethodPut, "/iam/roles/"+role.ID+"/members/"+principal.ID.String(), tenant, f.tokenB, nil, nil))
+	requireStatus(t, http.StatusOK, f.request(t, http.MethodPut, "/iam/roles/"+role.ID.String()+"/permissions/entity_view", tenant, f.tokenB, nil, nil))
+	requireStatus(t, http.StatusOK, f.request(t, http.MethodPut, "/iam/roles/"+role.ID.String()+"/members/"+principal.ID.String(), tenant, f.tokenB, nil, nil))
 	service := requireIAMModule[*authn.Module](t, f, authn.Name).Service
 	prepared, err := service.PreparePersonalToken(t.Context(), cookie, authn.PersonalTokenRequest{
 		Name: "Closure verification", TenantID: tenant, Permissions: []string{"entity_view"}, ExpiresAt: time.Now().UTC().Add(time.Hour),

@@ -38,12 +38,12 @@ func (f *iamTenantFixture) runTodoDataPermissions(t *testing.T) {
 		requireStatus(t, http.StatusCreated, response)
 		role := decodeEnvelope[core.APIRole](t, response)
 		for _, verb := range []string{"create", "view", "update", "delete", "export", "import"} {
-			response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID+"/permissions/todo_"+verb, tenant, token, map[string]any{}, nil)
+			response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID.String()+"/permissions/todo_"+verb, tenant, token, map[string]any{}, nil)
 			requireStatus(t, http.StatusOK, response)
 		}
-		response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID+"/data-scope", tenant, token, map[string]any{"scope": scope}, nil)
+		response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID.String()+"/data-scope", tenant, token, map[string]any{"scope": scope}, nil)
 		requireStatus(t, http.StatusOK, response)
-		response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID+"/members/"+subject.String(), tenant, token, map[string]any{}, nil)
+		response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID.String()+"/members/"+subject.String(), tenant, token, map[string]any{}, nil)
 		requireStatus(t, http.StatusOK, response)
 		return role
 	}
@@ -61,7 +61,7 @@ func (f *iamTenantFixture) runTodoDataPermissions(t *testing.T) {
 	}
 	a := createEntity(iamTenantA, f.tokenA, "Task entity A", "")
 	b := createEntity(iamTenantB, f.tokenB, "Task entity B", "")
-	headers := map[string]string{authz.EntityHeader: b.ID}
+	headers := map[string]string{authz.EntityHeader: b.ID.String()}
 	departmentResponse := f.request(t, http.MethodPost, "/iam/departments", iamTenantB, f.tokenB, map[string]any{"name": "Task department", "status": "active"}, nil)
 	requireStatus(t, http.StatusCreated, departmentResponse)
 	department := decodeEnvelope[organization.Department](t, departmentResponse)
@@ -76,7 +76,7 @@ func (f *iamTenantFixture) runTodoDataPermissions(t *testing.T) {
 	}
 	mine := createTask(iamTenantB, f.requester, "own task", headers)
 	peer := createTask(iamTenantB, f.tokenB, "department task", headers)
-	foreign := createTask(iamTenantA, f.tokenA, "foreign task", map[string]string{authz.EntityHeader: a.ID})
+	foreign := createTask(iamTenantA, f.tokenA, "foreign task", map[string]string{authz.EntityHeader: a.ID.String()})
 	assert.Equal(t, int64(1), f.count(t, "todos", "id = ? AND tenant_id = ? AND entity_id = ? AND created_by = ? AND department_id = ?", mine.ID, iamTenantB, b.ID, f.requesterB.ID, department.ID))
 	requireStatus(t, http.StatusUnauthorized, f.request(t, http.MethodGet, "/todos", iamTenantB, "", nil, headers))
 	requireStatus(t, http.StatusForbidden, f.request(t, http.MethodGet, "/todos", iamTenantB, f.requester, nil, nil))
@@ -86,17 +86,17 @@ func (f *iamTenantFixture) runTodoDataPermissions(t *testing.T) {
 	assert.Contains(t, string(response.Body), `"total":1`)
 	for _, id := range []guid.ID{peer.ID, foreign.ID} {
 		requireStatus(t, http.StatusNotFound, f.request(t, http.MethodGet, "/todos/"+id.String(), iamTenantB, f.requester, nil, headers))
-		writeHeaders := map[string]string{authz.EntityHeader: b.ID, "If-Match": `"1"`}
+		writeHeaders := map[string]string{authz.EntityHeader: b.ID.String(), "If-Match": `"1"`}
 		requireStatus(t, http.StatusNotFound, f.request(t, http.MethodPatch, "/todos/"+id.String(), iamTenantB, f.requester, map[string]any{"title": "forbidden"}, writeHeaders))
 		requireStatus(t, http.StatusNotFound, f.request(t, http.MethodDelete, "/todos/"+id.String(), iamTenantB, f.requester, nil, writeHeaders))
 	}
-	requireStatus(t, http.StatusForbidden, f.request(t, http.MethodGet, "/todos", iamTenantB, f.requester, nil, map[string]string{authz.EntityHeader: a.ID}))
+	requireStatus(t, http.StatusForbidden, f.request(t, http.MethodGet, "/todos", iamTenantB, f.requester, nil, map[string]string{authz.EntityHeader: a.ID.String()}))
 	response = f.request(t, http.MethodGet, "/todos/export?format=csv", iamTenantB, f.requester, nil, headers)
 	requireStatus(t, http.StatusOK, response)
 	assert.Contains(t, string(response.Body), "own task")
 	assert.NotContains(t, string(response.Body), "department task")
 	assert.NotContains(t, string(response.Body), "foreign task")
-	writeHeaders := map[string]string{authz.EntityHeader: b.ID, "If-Match": `"1"`}
+	writeHeaders := map[string]string{authz.EntityHeader: b.ID.String(), "If-Match": `"1"`}
 	response = f.request(t, http.MethodPatch, "/todos/"+mine.ID.String(), iamTenantB, f.requester, map[string]any{"description": "updated by owner"}, writeHeaders)
 	requireStatus(t, http.StatusOK, response)
 	assert.Equal(t, `"2"`, response.Header.Get("ETag"))
@@ -109,7 +109,7 @@ func (f *iamTenantFixture) runTodoDataPermissions(t *testing.T) {
 	assert.Equal(t, `"4"`, response.Header.Get("ETag"))
 	assert.Equal(t, int64(1), f.count(t, "todos", "id = ? AND version = 4 AND description = ? AND updated_by = ? AND deleted_at IS NULL", mine.ID, "updated by owner", f.requesterB.ID))
 
-	response = f.request(t, http.MethodPut, "/iam/roles/"+self.ID+"/data-scope", iamTenantB, f.tokenB, map[string]any{"scope": "department"}, nil)
+	response = f.request(t, http.MethodPut, "/iam/roles/"+self.ID.String()+"/data-scope", iamTenantB, f.tokenB, map[string]any{"scope": "department"}, nil)
 	requireStatus(t, http.StatusOK, response)
 	response = f.request(t, http.MethodGet, "/todos", iamTenantB, f.requester, nil, headers)
 	requireStatus(t, http.StatusOK, response)
@@ -123,36 +123,36 @@ func (f *iamTenantFixture) runTodoDataPermissions(t *testing.T) {
 	response = f.request(t, http.MethodGet, "/todos", iamTenantB, f.requester, nil, headers)
 	requireStatus(t, http.StatusOK, response)
 	assert.Len(t, decodeEnvelope[[]todo.View](t, response), 2)
-	response = f.request(t, http.MethodPut, "/iam/roles/"+self.ID+"/data-scope", iamTenantB, f.tokenB, map[string]any{"scope": "department_and_descendants"}, nil)
+	response = f.request(t, http.MethodPut, "/iam/roles/"+self.ID.String()+"/data-scope", iamTenantB, f.tokenB, map[string]any{"scope": "department_and_descendants"}, nil)
 	requireStatus(t, http.StatusOK, response)
 	response = f.request(t, http.MethodGet, "/todos", iamTenantB, f.requester, nil, headers)
 	requireStatus(t, http.StatusOK, response)
 	assert.Len(t, decodeEnvelope[[]todo.View](t, response), 3)
 
-	denyPath := "/iam/entities/" + b.ID + "/role-bindings/" + self.ID + "/" + f.requesterB.ID.String()
+	denyPath := "/iam/entities/" + b.ID.String() + "/role-bindings/" + self.ID.String() + "/" + f.requesterB.ID.String()
 	response = f.request(t, http.MethodPut, denyPath, iamTenantB, f.tokenB, map[string]any{"effect": "deny"}, nil)
 	requireStatus(t, http.StatusOK, response)
 	requireStatus(t, http.StatusForbidden, f.request(t, http.MethodGet, "/todos", iamTenantB, f.requester, nil, headers))
 	requireStatus(t, http.StatusForbidden, f.request(t, http.MethodPost, "/todos", iamTenantB, f.requester, map[string]any{"title": "denied"}, headers))
 	response = f.request(t, http.MethodDelete, denyPath, iamTenantB, f.tokenB, nil, nil)
 	requireStatus(t, http.StatusOK, response)
-	response = f.request(t, http.MethodDelete, "/iam/roles/"+self.ID+"/permissions/todo_view", iamTenantB, f.tokenB, nil, nil)
+	response = f.request(t, http.MethodDelete, "/iam/roles/"+self.ID.String()+"/permissions/todo_view", iamTenantB, f.tokenB, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 	requireStatus(t, http.StatusForbidden, f.request(t, http.MethodGet, "/todos", iamTenantB, f.requester, nil, headers))
 	assert.Equal(t, int64(1), f.count(t, "todos", "id = ? AND version = 1 AND deleted_at IS NULL", foreign.ID))
-	response = f.request(t, http.MethodPut, "/iam/roles/"+self.ID+"/permissions/todo_view", iamTenantB, f.tokenB, map[string]any{}, nil)
+	response = f.request(t, http.MethodPut, "/iam/roles/"+self.ID.String()+"/permissions/todo_view", iamTenantB, f.tokenB, map[string]any{}, nil)
 	requireStatus(t, http.StatusOK, response)
-	response = f.request(t, http.MethodDelete, "/iam/roles/"+self.ID+"/members/"+f.requesterB.ID.String(), iamTenantB, f.tokenB, nil, nil)
+	response = f.request(t, http.MethodDelete, "/iam/roles/"+self.ID.String()+"/members/"+f.requesterB.ID.String(), iamTenantB, f.tokenB, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 	response = f.request(t, http.MethodPut, denyPath, iamTenantB, f.tokenB, map[string]any{"effect": "allow"}, nil)
 	requireStatus(t, http.StatusOK, response)
-	childEntity := createEntity(iamTenantB, f.tokenB, "Task child entity", b.ID)
-	childHeaders := map[string]string{authz.EntityHeader: childEntity.ID}
+	childEntity := createEntity(iamTenantB, f.tokenB, "Task child entity", b.ID.String())
+	childHeaders := map[string]string{authz.EntityHeader: childEntity.ID.String()}
 	createTask(iamTenantB, f.tokenB, "child entity task", childHeaders)
 	response = f.request(t, http.MethodGet, "/todos", iamTenantB, f.requester, nil, childHeaders)
 	requireStatus(t, http.StatusOK, response)
 	assert.Len(t, decodeEnvelope[[]todo.View](t, response), 1)
-	childDeny := "/iam/entities/" + childEntity.ID + "/role-bindings/" + self.ID + "/" + f.requesterB.ID.String()
+	childDeny := "/iam/entities/" + childEntity.ID.String() + "/role-bindings/" + self.ID.String() + "/" + f.requesterB.ID.String()
 	response = f.request(t, http.MethodPut, childDeny, iamTenantB, f.tokenB, map[string]any{"effect": "deny"}, nil)
 	requireStatus(t, http.StatusOK, response)
 	requireStatus(t, http.StatusForbidden, f.request(t, http.MethodGet, "/todos", iamTenantB, f.requester, nil, childHeaders))
@@ -165,18 +165,18 @@ func (f *iamTenantFixture) runTodoDataPermissions(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, form.Close())
 		return f.request(t, http.MethodPost, "/todos/import", iamTenantB, f.requester, &buffer,
-			map[string]string{authz.EntityHeader: b.ID, "Content-Type": form.FormDataContentType()})
+			map[string]string{authz.EntityHeader: b.ID.String(), "Content-Type": form.FormDataContentType()})
 	}
 	response = upload()
 	requireStatus(t, http.StatusOK, response)
 	assert.Equal(t, 2, decodeEnvelope[todo.ImportReport](t, response).Imported)
 	assert.Equal(t, int64(2), f.count(t, "todos", "title LIKE ? AND tenant_id = ? AND entity_id = ? AND created_by = ? AND department_id = ?", "imported task %", iamTenantB, b.ID, f.requesterB.ID, department.ID))
-	response = f.request(t, http.MethodDelete, "/iam/roles/"+self.ID+"/permissions/todo_import", iamTenantB, f.tokenB, nil, nil)
+	response = f.request(t, http.MethodDelete, "/iam/roles/"+self.ID.String()+"/permissions/todo_import", iamTenantB, f.tokenB, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 	requireStatus(t, http.StatusForbidden, upload())
 	assert.Equal(t, int64(2), f.count(t, "todos", "title LIKE ?", "imported task %"))
 	requireStatus(t, http.StatusOK, f.request(t, http.MethodDelete, childDeny, iamTenantB, f.tokenB, nil, nil))
-	f.verifyTodoFieldPolicies(t, b.ID, childEntity.ID, self.ID, mine.ID)
+	f.verifyTodoFieldPolicies(t, b.ID.String(), childEntity.ID.String(), self.ID.String(), mine.ID)
 }
 
 func (f *iamTenantFixture) verifyTodoFieldPolicies(t *testing.T, entity, child, role string, taskID guid.ID) {

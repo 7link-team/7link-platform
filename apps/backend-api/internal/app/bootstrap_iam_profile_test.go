@@ -52,9 +52,9 @@ func (f *iamTenantFixture) runSCIMProfileLifecycle(t *testing.T) {
 		map[string]any{"name": "Restricted SCIM profile", "description": "Bound actor field policy"}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	role := decodeEnvelope[core.APIRole](t, response)
-	roleID, err := guid.Parse(role.ID)
+	roleID, err := guid.Parse(role.ID.String())
 	require.NoError(t, err)
-	memberPath := "/iam/roles/" + role.ID + "/members/" + directory.ServiceAccountID.String()
+	memberPath := "/iam/roles/" + role.ID.String() + "/members/" + directory.ServiceAccountID.String()
 	response = f.request(t, http.MethodPut, memberPath, iamTenantA, f.tokenA, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 	setPolicy := func(field, mask string) {

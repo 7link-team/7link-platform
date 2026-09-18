@@ -149,9 +149,9 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 		}, nil)
 		requireStatus(t, http.StatusCreated, response)
 		role = decodeEnvelope[core.APIRole](t, response)
-		response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID+"/permissions/entity_view", tenant.ID, actorToken, nil, nil)
+		response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID.String()+"/permissions/entity_view", tenant.ID, actorToken, nil, nil)
 		requireStatus(t, http.StatusOK, response)
-		response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID+"/members/"+actor.ID.String(), tenant.ID, actorToken, nil, nil)
+		response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID.String()+"/members/"+actor.ID.String(), tenant.ID, actorToken, nil, nil)
 		requireStatus(t, http.StatusOK, response)
 		response = f.request(t, http.MethodPost, "/iam/entities", tenant.ID, actorToken, map[string]any{
 			"type": "company", "name": "Lifecycle Company", "status": "active",
@@ -163,8 +163,8 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 		assert.Equal(t, int64(1), f.count(t, "iam_role_permissions", "tenant_id = ? AND role_id = ? AND permission_code = 'entity_view'", tenant.ID, role.ID))
 		assert.Equal(t, int64(1), f.count(t, "iam_role_members", "tenant_id = ? AND role_id = ? AND principal_id = ?", tenant.ID, role.ID, actor.ID))
 		assert.Equal(t, int64(1), f.count(t, "iam_entities", "tenant_id = ? AND id = ?", tenant.ID, entity.ID))
-		roleID := requireLifecycleID(t, role.ID)
-		entityID := requireLifecycleID(t, entity.ID)
+		roleID := requireLifecycleID(t, role.ID.String())
+		entityID := requireLifecycleID(t, entity.ID.String())
 		f.assertAuditEvent(t, tenant.ID, "role_created", roleID)
 		f.assertAuditEvent(t, tenant.ID, "role_permission_granted", roleID)
 		f.assertAuditEvent(t, tenant.ID, "role_member_added", roleID)

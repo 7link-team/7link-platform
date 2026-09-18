@@ -7,16 +7,21 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"image"
 	_ "image/jpeg"
 	"image/png"
+	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"7link.com/platform/internal/files"
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/identity/model"
+	"7link.com/platform/internal/iam/identity/query"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
@@ -39,6 +44,71 @@ type avatarInput struct {
 }
 
 var avatarStyles = []string{"robot", "pixel", "monster", "geometric"}
+
+func (s *Service) backfillMissingAvatars(ctx context.Context) error {
+	if s.repo.writer() == nil {
+		return nil
+	}
+	principals := query.BindWithNames(s.repo.writer(), s.repo.names).Principals
+	var last guid.ID
+	for {
+		rows, err := principals.WithContext(ctx).Where(principals.ID.Gt(last), principals.Avatar.Eq(""), principals.Status.Eq("active")).Order(principals.ID.Asc()).Limit(100).Find()
+		if err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		for _, row := range rows {
+			if _, err := s.setMyAvatar(ctx, row.ID, avatarInput{}, true); err != nil {
+				if errors.Is(err, ErrNotFound) || errors.Is(err, ErrPrincipalInactive) {
+					continue
+				}
+				return fmt.Errorf("backfill avatar for principal %s: %w", row.ID.String(), err)
+			}
+		}
+		last = rows[len(rows)-1].ID
+	}
+}
+
+func (s *Service) migrateAvatarStorage(ctx context.Context, importer files.LegacyImporter) error {
+	if s.repo.writer() == nil {
+		return nil
+	}
+	principals := query.BindWithNames(s.repo.writer(), s.repo.names).Principals
+	var last guid.ID
+	for {
+		do := principals.WithContext(ctx).Where(principals.Avatar.Neq("")).Order(principals.ID.Asc()).Limit(100)
+		if !last.Zero() {
+			do = do.Where(principals.ID.Gt(last))
+		}
+		rows, err := do.Find()
+		if err != nil {
+			return fmt.Errorf("scan legacy avatars: %w", err)
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		for _, row := range rows {
+			avatar := storedAvatar(row.Avatar)
+			if avatar == nil {
+				return fmt.Errorf("invalid avatar reference for principal %s", row.ID.String())
+			}
+			prefix := "/api/iam/avatars/" + row.ID.String() + "/"
+			name := strings.TrimPrefix(avatar.URL, prefix)
+			if !strings.HasPrefix(avatar.URL, prefix) || len(name) != 52 || !strings.HasSuffix(name, ".png") {
+				return ErrInvalid
+			}
+			if _, err := hex.DecodeString(strings.TrimSuffix(name, ".png")); err != nil {
+				return ErrInvalid
+			}
+			if err := importer(ctx, "avatars/"+row.ID.String()+"/"+name); err != nil {
+				return fmt.Errorf("migrate avatar for principal %s: %w", row.ID.String(), err)
+			}
+		}
+		last = rows[len(rows)-1].ID
+	}
+}
 
 func storedAvatar(raw string) *Avatar {
 	if raw == "" {
@@ -109,40 +179,22 @@ func avatarPixels(in avatarInput) ([]byte, string, error) {
 	return encoded.Bytes(), "custom", nil
 }
 
-func (r *Repository) saveAvatarFile(id guid.ID, pixels []byte, style string) (Avatar, error) {
+func (r *Repository) saveAvatarFile(ctx context.Context, id guid.ID, pixels []byte, style string) (Avatar, error) {
+	if r.storage == nil {
+		return Avatar{}, ErrUnavailable
+	}
 	var key [24]byte
 	if _, err := rand.Read(key[:]); err != nil {
 		return Avatar{}, err
 	}
 	name := hex.EncodeToString(key[:]) + ".png"
-	directory := filepath.Join(r.avatarDirectory, id.String())
-	if err := os.MkdirAll(directory, 0700); err != nil {
-		return Avatar{}, err
-	}
-	file, err := os.CreateTemp(directory, ".avatar-*")
-	if err != nil {
-		return Avatar{}, err
-	}
-	temporary := file.Name()
-	defer os.Remove(temporary)
-	_, writeErr := file.Write(pixels)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil {
-		return Avatar{}, writeErr
-	}
-	if closeErr != nil {
-		return Avatar{}, closeErr
-	}
-	if err := os.Rename(temporary, filepath.Join(directory, name)); err != nil {
+	if _, err := r.storage.Put(ctx, "avatars/"+id.String()+"/"+name, bytes.NewReader(pixels), int64(len(pixels))); err != nil {
 		return Avatar{}, err
 	}
 	return Avatar{Style: style, URL: "/api/iam/avatars/" + id.String() + "/" + name}, nil
 }
 
-func (r *Repository) initializeAvatar(row *model.Principal) error {
+func (r *Repository) initializeAvatar(ctx context.Context, row *model.Principal) error {
 	if row.Avatar != "" {
 		return nil
 	}
@@ -150,7 +202,7 @@ func (r *Repository) initializeAvatar(row *model.Principal) error {
 	if err != nil {
 		return err
 	}
-	avatar, err := r.saveAvatarFile(row.ID, pixels, style)
+	avatar, err := r.saveAvatarFile(ctx, row.ID, pixels, style)
 	if err != nil {
 		return err
 	}
@@ -160,6 +212,30 @@ func (r *Repository) initializeAvatar(row *model.Principal) error {
 	}
 	row.Avatar = string(raw)
 	return nil
+}
+
+func (r *Repository) prepareAvatarFile(ctx context.Context, id guid.ID, pixels []byte, style string) (Avatar, *files.PreparedAccountObject, guid.ID, error) {
+	if r.accountFiles == nil || r.inTx {
+		return Avatar{}, nil, 0, ErrUnavailable
+	}
+	objectID, err := r.nextID()
+	if err != nil {
+		return Avatar{}, nil, 0, err
+	}
+	referenceID, err := r.nextID()
+	if err != nil {
+		return Avatar{}, nil, 0, err
+	}
+	var token [24]byte
+	if _, err := rand.Read(token[:]); err != nil {
+		return Avatar{}, nil, 0, err
+	}
+	name := hex.EncodeToString(token[:]) + ".png"
+	prepared, err := r.accountFiles.Stage(ctx, r.writer(), objectID, id, "avatars/"+id.String()+"/"+name, bytes.NewReader(pixels), int64(len(pixels)), time.Now().Add(24*time.Hour))
+	if err != nil {
+		return Avatar{}, nil, 0, err
+	}
+	return Avatar{Style: style, URL: "/api/iam/avatars/" + id.String() + "/" + name}, prepared, referenceID, nil
 }
 
 // MyAvatar reads the caller's persisted global avatar reference.
@@ -174,14 +250,27 @@ func (s *Service) MyAvatar(ctx context.Context, id guid.ID) (Avatar, error) {
 	if avatar := storedAvatar(row.Avatar); avatar != nil {
 		return *avatar, nil
 	}
-	return s.SetMyAvatar(ctx, id, avatarInput{})
+	return Avatar{}, ErrNotFound
 }
 
 // SetMyAvatar writes a normalized PNG first, then saves its reference and audit event.
 func (s *Service) SetMyAvatar(ctx context.Context, id guid.ID, in avatarInput) (Avatar, error) {
+	return s.setMyAvatar(ctx, id, in, false)
+}
+
+func (s *Service) setMyAvatar(ctx context.Context, id guid.ID, in avatarInput, onlyMissing bool) (Avatar, error) {
+	if s.repo.accountFiles == nil {
+		return Avatar{}, ErrUnavailable
+	}
+	row, err := s.repo.lifecyclePrincipal(ctx, id, false)
+	if err != nil {
+		return Avatar{}, err
+	}
+	if row.Status != "active" {
+		return Avatar{}, ErrPrincipalInactive
+	}
 	var pixels []byte
 	style := in.Style
-	var err error
 	if in.CandidateURL != "" {
 		prefix := "/api/iam/avatars/" + id.String() + "/"
 		name := strings.TrimPrefix(in.CandidateURL, prefix)
@@ -198,15 +287,23 @@ func (s *Service) SetMyAvatar(ctx context.Context, id guid.ID, in avatarInput) (
 		if !valid {
 			return Avatar{}, ErrInvalid
 		}
-		pixels, err = os.ReadFile(filepath.Join(s.repo.avatarDirectory, id.String(), name))
 	} else {
 		pixels, style, err = avatarPixels(in)
 	}
 	if err != nil {
 		return Avatar{}, err
 	}
-	var avatar Avatar
-	var previous *Avatar
+	avatar := Avatar{Style: style, URL: in.CandidateURL}
+	var prepared *files.PreparedAccountObject
+	var referenceID guid.ID
+	if in.CandidateURL == "" {
+		avatar, prepared, referenceID, err = s.repo.prepareAvatarFile(ctx, id, pixels, style)
+	} else {
+		referenceID, err = s.repo.nextID()
+	}
+	if err != nil {
+		return Avatar{}, err
+	}
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
 		row, err := repo.lifecyclePrincipal(ctx, id, true)
 		if err != nil {
@@ -215,8 +312,21 @@ func (s *Service) SetMyAvatar(ctx context.Context, id guid.ID, in avatarInput) (
 		if row.Status != "active" {
 			return ErrPrincipalInactive
 		}
-		previous = storedAvatar(row.Avatar)
-		avatar, err = repo.saveAvatarFile(id, pixels, style)
+		if onlyMissing {
+			if current := storedAvatar(row.Avatar); current != nil {
+				avatar = *current
+				return nil
+			}
+		}
+		if prepared != nil {
+			err = repo.accountFiles.ReplaceAvatar(ctx, repo.writer(), prepared, referenceID, id)
+		} else {
+			name := strings.TrimPrefix(in.CandidateURL, "/api/iam/avatars/"+id.String()+"/")
+			err = repo.accountFiles.UseAvatarCandidate(ctx, repo.writer(), id, referenceID, "avatars/"+id.String()+"/"+name, time.Now())
+		}
+		if errors.Is(err, files.ErrNotFound) {
+			return ErrNotFound
+		}
 		if err != nil {
 			return err
 		}
@@ -229,11 +339,6 @@ func (s *Service) SetMyAvatar(ctx context.Context, id guid.ID, in avatarInput) (
 		}
 		return repo.appendAudit(ctx, audit.NewDomainEvent(ctx, 0, "principal_avatar_updated", "principal", id))
 	})
-	if err != nil {
-		s.repo.removeAvatarFile(id, &avatar)
-	} else {
-		s.repo.removeAvatarFile(id, previous)
-	}
 	return avatar, err
 }
 
@@ -249,7 +354,74 @@ func (r *Repository) removeAvatarFile(id guid.ID, avatar *Avatar) {
 	if filepath.Base(name) != name {
 		return
 	}
-	_ = os.Remove(filepath.Join(r.avatarDirectory, id.String(), name))
+	if r.storage != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = r.storage.Delete(ctx, "avatars/"+id.String()+"/"+name)
+	}
+}
+
+func (r *Repository) readAvatarFile(ctx context.Context, id guid.ID, name string) ([]byte, error) {
+	if r.storage == nil {
+		return nil, ErrUnavailable
+	}
+	reader, err := r.storage.Open(ctx, "avatars/"+id.String()+"/"+name)
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+	pixels, err := io.ReadAll(io.LimitReader(reader, 2*1024*1024+1))
+	if err == nil && len(pixels) > 2*1024*1024 {
+		return nil, ErrInvalid
+	}
+	return pixels, err
+}
+
+// AvatarCandidates creates a private expiring batch in one account transaction.
+func (s *Service) AvatarCandidates(ctx context.Context, id guid.ID, requestedStyle string) ([]Avatar, error) {
+	row, err := s.repo.lifecyclePrincipal(ctx, id, false)
+	if err != nil {
+		return nil, err
+	}
+	if row.Status != "active" {
+		return nil, ErrPrincipalInactive
+	}
+	candidates := make([]Avatar, 0, 6)
+	preparedFiles := make([]*files.PreparedAccountObject, 0, 6)
+	referenceIDs := make([]guid.ID, 0, 6)
+	expiry := time.Now().Add(24 * time.Hour)
+	for i := 0; i < 6; i++ {
+		pixels, style, err := avatarPixels(avatarInput{Style: requestedStyle})
+		if err != nil {
+			return nil, err
+		}
+		avatar, prepared, referenceID, err := s.repo.prepareAvatarFile(ctx, id, pixels, style)
+		if err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, avatar)
+		preparedFiles = append(preparedFiles, prepared)
+		referenceIDs = append(referenceIDs, referenceID)
+	}
+	err = s.repo.runInTx(ctx, func(repo *Repository) error {
+		row, err := repo.lifecyclePrincipal(ctx, id, true)
+		if err != nil {
+			return err
+		}
+		if row.Status != "active" {
+			return ErrPrincipalInactive
+		}
+		for i, prepared := range preparedFiles {
+			if err := repo.accountFiles.Register(ctx, repo.writer(), prepared, referenceIDs[i], id, "avatar_candidate", &expiry); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return candidates, nil
 }
 
 func registerAvatarHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
@@ -330,7 +502,19 @@ func registerAvatarHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 		if row.Status != "active" || (id != claims.PrincipalID && (avatar == nil || avatar.URL != "/api/iam/avatars/"+id.String()+"/"+in.File)) {
 			return nil, huma.Error404NotFound("respx.not_found")
 		}
-		pixels, err := os.ReadFile(filepath.Join(s.repo.avatarDirectory, id.String(), in.File))
+		if avatar == nil || avatar.URL != "/api/iam/avatars/"+id.String()+"/"+in.File {
+			if s.repo.accountFiles == nil {
+				return nil, huma.Error404NotFound("respx.not_found")
+			}
+			readable, err := s.repo.accountFiles.AccountKeyReadable(ctx, s.repo.writer(), id, "avatars/"+id.String()+"/"+in.File, time.Now())
+			if err != nil {
+				return nil, identityError(err)
+			}
+			if !readable {
+				return nil, huma.Error404NotFound("respx.not_found")
+			}
+		}
+		pixels, err := s.repo.readAvatarFile(ctx, id, in.File)
 		if err != nil {
 			return nil, huma.Error404NotFound("respx.not_found")
 		}
@@ -347,24 +531,9 @@ func registerAvatarHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 		if err != nil {
 			return nil, err
 		}
-		row, err := s.repo.lifecyclePrincipal(ctx, id, false)
+		candidates, err := s.AvatarCandidates(ctx, id, in.Body.Style)
 		if err != nil {
 			return nil, identityError(err)
-		}
-		if row.Status != "active" {
-			return nil, identityError(ErrPrincipalInactive)
-		}
-		candidates := make([]Avatar, 0, 6)
-		for i := 0; i < 6; i++ {
-			pixels, style, err := avatarPixels(avatarInput{Style: in.Body.Style})
-			if err != nil {
-				return nil, identityError(err)
-			}
-			avatar, err := s.repo.saveAvatarFile(id, pixels, style)
-			if err != nil {
-				return nil, identityError(err)
-			}
-			candidates = append(candidates, avatar)
 		}
 		return respx.OK(ctx, candidates), nil
 	})

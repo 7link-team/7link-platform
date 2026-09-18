@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"7link.com/platform/internal/files"
 	"context"
 	"testing"
 	"time"
@@ -62,7 +63,7 @@ func TestModuleIdentityDependenciesAndReadinessBeforeInitialize(t *testing.T) {
 		enabledModuleConfig(),
 	)
 	assert.Equal(t, Name, instance.ModuleName())
-	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, core.Name}, instance.ModuleDependencies())
+	assert.Equal(t, []string{platformi18n.Name, guid.Name, audit.Name, core.Name, files.Name}, instance.ModuleDependencies())
 	assert.ErrorIs(t, instance.CheckHealth(t.Context()), ErrUnavailable)
 
 	_, api := humatest.New(t)
@@ -86,6 +87,7 @@ func identityWiredRegistry(
 	require.NoError(t, registry.Register(
 		platformi18n.NewModule(nil, platformi18n.Base),
 		respx.NewModule(nil),
+		files.NewModule(harness.runtime, files.Config{Config: module.Config{Enabled: true}, LocalRoot: t.TempDir()}),
 		&identityDependencyProvider{name: guid.Name, provide: func(services *module.Services) error {
 			return module.Provide[guid.Source](services, newIdentityTestIDs(9000))
 		}},
@@ -292,6 +294,8 @@ func TestIdentityModuleRefusesToStartWithoutThePublishedTableNames(t *testing.T)
 			require.NoError(t, module.Provide[core.PrincipalTableNamesConnector](services,
 				core.PrincipalTableNamesConnector{Bind: func(core.PrincipalTableNames) error { return nil }}))
 			require.NoError(t, module.Provide[core.AccessTableNames](services, absent.access))
+			require.NoError(t, module.Provide[files.Driver](services, harness.repository.storage))
+			require.NoError(t, module.Provide[*files.AccountObjects](services, harness.repository.accountFiles))
 			require.NoError(t, services.Seal())
 
 			require.NoError(t, instance.InjectServices(services))

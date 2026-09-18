@@ -18,6 +18,7 @@ func TestBootstrapPrincipalStoreCreatesThenFindsTheAdministratorLogin(t *testing
 		runtime:  harness.runtime,
 		ids:      newIdentityTestIDs(7000),
 		appender: harness.repository.appender,
+		storage:  harness.repository.storage,
 	}).bootstrapPrincipalStore()
 
 	_, found, err := store.Find(t.Context(), harness.db, "Admin")

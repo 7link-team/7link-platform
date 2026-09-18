@@ -471,7 +471,7 @@ func (r *Repository) insertPrincipal(ctx context.Context, row *model.Principal) 
 	if err != nil {
 		return err
 	}
-	if err := r.initializeAvatar(row); err != nil {
+	if err := r.initializeAvatar(ctx, row); err != nil {
 		return fmt.Errorf("initialize avatar: %w", err)
 	}
 	result := db.WithContext(ctx).Table(tables.Principals.TableName()).Create(row)
@@ -489,7 +489,7 @@ func (r *Repository) insertExternalPrincipal(ctx context.Context, row *model.Pri
 	if err != nil {
 		return false, err
 	}
-	if err := r.initializeAvatar(row); err != nil {
+	if err := r.initializeAvatar(ctx, row); err != nil {
 		return false, fmt.Errorf("initialize avatar: %w", err)
 	}
 	result := db.WithContext(ctx).Table(tables.Principals.TableName()).Clauses(clause.OnConflict{

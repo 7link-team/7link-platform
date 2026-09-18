@@ -55,7 +55,7 @@ func TestContractDTOFields(t *testing.T) {
 
 	consumePrincipalFields(Principal{})
 	consumeProvisionedPrincipalInputFields(ProvisionedPrincipalInput{})
-	assertFieldCount(t, reflect.TypeFor[Principal](), 9)
+	assertFieldCount(t, reflect.TypeFor[Principal](), 10)
 	assertFieldCount(t, reflect.TypeFor[ProvisionedPrincipalInput](), 5)
 	assertJSONTags(t, reflect.TypeFor[Principal](), []string{
 		"id",
@@ -64,6 +64,7 @@ func TestContractDTOFields(t *testing.T) {
 		"email_verified",
 		"activation_required",
 		"display_name",
+		"avatar,omitempty",
 		"status",
 		"created_at",
 		"updated_at",
@@ -77,10 +78,11 @@ func consumePrincipalFields(value Principal) {
 	var emailVerified bool = value.EmailVerified
 	var activationRequired bool = value.ActivationRequired
 	var displayName string = value.DisplayName
+	var avatar *Avatar = value.Avatar
 	var status string = value.Status
 	var createdAt time.Time = value.CreatedAt
 	var updatedAt time.Time = value.UpdatedAt
-	_, _, _, _, _, _, _, _, _ = id, loginName, email, emailVerified, activationRequired, displayName, status, createdAt, updatedAt
+	_, _, _, _, _, _, _, _, _, _ = id, loginName, email, emailVerified, activationRequired, displayName, avatar, status, createdAt, updatedAt
 }
 
 func consumeProvisionedPrincipalInputFields(value ProvisionedPrincipalInput) {

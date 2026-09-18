@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"7link.com/platform/internal/files"
 	"context"
 	"errors"
 	"fmt"
@@ -46,8 +47,9 @@ type Repository struct {
 	// credentials is authn's capability for the credential tables authn owns.
 	// identity sequences those writes inside its own transaction; it does not
 	// run them.
-	credentials     PrincipalCredentialStore
-	avatarDirectory string
+	credentials  PrincipalCredentialStore
+	storage      files.Driver
+	accountFiles *files.AccountObjects
 }
 
 func NewRepository(runtime *appenv.Runtime, ids guid.Source, appender audit.Appender) *Repository {
@@ -59,8 +61,7 @@ func NewRepository(runtime *appenv.Runtime, ids guid.Source, appender audit.Appe
 		panic(err)
 	}
 	return &Repository{
-		avatarDirectory: "data/avatars",
-		runtime:         runtime, ids: ids, appender: appender, revisions: revisions,
+		runtime: runtime, ids: ids, appender: appender, revisions: revisions,
 		repositoryTables: repositoryTables{names: query.BindNames(runtime.TablePrefix())}, foreign: &foreignTables{},
 	}
 }

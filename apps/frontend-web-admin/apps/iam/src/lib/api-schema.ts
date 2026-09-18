@@ -3448,14 +3448,14 @@ export interface components {
         APIEntity: {
             /** Format: date-time */
             created_at: string;
-            id: string;
+            id: string | null;
             metadata: {
                 [key: string]: unknown;
             };
             name: string;
-            parent_id?: string;
+            parent_id?: string | null;
             status: string;
-            tenant_id: string;
+            tenant_id: string | null;
             type: string;
             /** Format: date-time */
             updated_at: string;
@@ -3465,11 +3465,11 @@ export interface components {
             created_at: string;
             /** @enum {string} */
             effect: "allow" | "deny";
-            entity_id: string;
+            entity_id: string | null;
             /** Format: date-time */
             expires_at?: string;
-            principal_id: string;
-            role_id: string;
+            principal_id: string | null;
+            role_id: string | null;
         };
         APIMemberAuthorizationSnapshot: {
             /** Format: date-time */
@@ -3482,7 +3482,7 @@ export interface components {
         APIMemberAuthorizationSource: {
             /** @enum {string} */
             data_scope?: "all" | "self" | "department" | "department_and_descendants" | "selected_departments";
-            department_ids: string[] | null;
+            department_ids: (string | null)[] | null;
             /** @enum {string} */
             effect: "allow" | "deny";
             /** Format: date-time */
@@ -3492,12 +3492,12 @@ export interface components {
             /** @enum {string} */
             relation?: "owner" | "editor" | "viewer";
             relationship_path: components["schemas"]["RelationshipStep"][] | null;
-            role_id?: string;
+            role_id?: string | null;
             role_name?: string;
-            scope_id: string;
+            scope_id: string | null;
             scope_name?: string;
             scope_type: string;
-            source_id: string;
+            source_id: string | null;
             source_name?: string;
             /** @enum {string} */
             type: "permanent_role" | "temporary_role" | "static_group" | "dynamic_group" | "position" | "entity_binding" | "relationship";
@@ -3506,15 +3506,15 @@ export interface components {
             /** Format: date-time */
             created_at: string;
             icon?: string;
-            id: string;
+            id: string | null;
             label: string;
-            parent_id?: string;
+            parent_id?: string | null;
             permission_code?: string;
             route?: string;
             /** Format: int64 */
             sort_order: number;
             status: string;
-            tenant_id: string;
+            tenant_id: string | null;
             translations?: {
                 [key: string]: string;
             };
@@ -3546,27 +3546,27 @@ export interface components {
             /** Format: date-time */
             created_at: string;
             description: string;
-            id: string;
+            id: string | null;
             name: string;
-            tenant_id: string;
+            tenant_id: string | null;
             /** Format: date-time */
             updated_at: string;
         };
         APIRoleDataScope: {
-            department_ids: string[] | null;
-            role_id: string;
+            department_ids: (string | null)[] | null;
+            role_id: string | null;
             /** @enum {string} */
             scope: "all" | "self" | "department" | "department_and_descendants" | "selected_departments";
             /** Format: date-time */
             updated_at?: string;
         };
         APIRoleDirectoryBinding: {
-            assignee_id: string;
+            assignee_id: string | null;
             /** @enum {string} */
             assignee_type: "group" | "position";
             /** Format: date-time */
             created_at: string;
-            role_id: string;
+            role_id: string | null;
         };
         APIRolePermissionGrant: {
             /** @description Versioned restricted relationship condition AST evaluated only against trusted authentication context */
@@ -3580,15 +3580,15 @@ export interface components {
         APITenantMember: {
             /** Format: date-time */
             created_at: string;
-            department_id?: string;
+            department_id?: string | null;
             /** Format: date-time */
             disabled_at?: string;
             display_name?: string;
             email?: string;
-            role_ids?: string[] | null;
+            role_ids?: (string | null)[] | null;
             status: string;
-            subject: string;
-            tenant_id: string;
+            subject: string | null;
+            tenant_id: string | null;
             /** Format: date-time */
             updated_at: string;
         };
@@ -5218,6 +5218,19 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
+        EnvelopeListMenuDeclaration: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["MenuDeclaration"][] | null;
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
         EnvelopeListMenuItem: {
             /**
              * Format: int64
@@ -6316,10 +6329,23 @@ export interface components {
             /** Format: date-time */
             starts_at?: string;
         };
+        MenuDeclaration: {
+            children?: components["schemas"]["MenuDeclaration"][] | null;
+            icon?: string;
+            key: string;
+            label: string;
+            path?: string;
+            permission_code: string;
+            /** Format: int64 */
+            sort_order: number;
+            translations?: {
+                [key: string]: string;
+            };
+        };
         MenuItem: {
             children?: components["schemas"]["MenuItem"][] | null;
             icon?: string;
-            id: string;
+            id: string | null;
             label: string;
             path?: string;
             permission_code: string;
@@ -18163,7 +18189,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EnvelopeListMenuItem"];
+                    "application/json": components["schemas"]["EnvelopeListMenuDeclaration"];
                 };
             };
             /** @description Unauthorized */

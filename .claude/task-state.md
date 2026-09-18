@@ -1,4 +1,316 @@
 # Task State
+## Authorized Checkpoint Delivery - 2026-09-18
+
+- User explicitly authorized committing and pushing ALL local deliverable changes
+  on IAM. This supersedes earlier no-staging/commit/push constraints; ignored
+  credentials, runtime files/databases, previews and diagnostic outputs stay local.
+- Delivering file-management foundation, avatar storage integration, generated
+  queries/OpenAPI types, approved design and tests as an implementation checkpoint,
+  NOT full product acceptance. Remaining work and83.4% coverage gate gap stay recorded.
+- Reviewed tracked/untracked manifest, storage ignore rules and scoped changes;
+  no new credential markers in new module/design/tests. git fetch origin and diff
+  check PASS. Last functional verification is recorded below; no full CI/E2E claim.
+- Next: commit explicitly reviewed paths, push IAM to origin/IAM, verify equal
+  local/remote heads and clean worktree. Continue the remaining approved design
+  only after this delivery request is handled; original DB/previews remain untouched.
+
+## Existing-Target Preparation Preflight - 2026-09-18
+
+- Phase IMPLEMENTATION, Direct. operation_preflight.go adds read-only target
+  checks before preparing -> ready: existing recursive merge collisions, target
+  read/update permissions, paged replacement-subtree delete permissions, per-target
+  node bounds, selected-source/ancestor overlap and replacement containing inputs.
+  No node/version/closure mutation; failed seal atomically releases source pins.
+  Execution retains its independent current authorization and revision checks.
+- New fresh SQLite tests cover nested update/create/read denial, descendant delete
+  denial, second page denial, target bounds, successful105-node target inspection,
+  skip without update/delete rights, self-merge and source-in-replacement rejection.
+- Worker expiry fixture used an unexecutable self-merge; changed its policy to
+  legal same-parent copy+rename. All expiry/pin release assertions retained.
+- PASS: files-target-preflight-final-race.log, files-target-preflight-coverage.log
+  (83.4%, BELOW90%; no gate lowered), files-target-preflight-architecture.log,
+  files-target-preflight-identity.log, go vet files and git diff --check.
+- Self-review: existing-target traversal stays indexed/paged and no storage I/O;
+  failed preparation releases pins; no new schema/API/configuration/dependency.
+  Original-request acceptance NOT READY. This is NOT a complete cost/conflict plan:
+  intra-batch virtual name reservations, cumulative target/depth/closure costs,
+  ask/per-conflict revision-bound decisions and real IAM/audit runner still missing.
+- Next: implement bounded virtual name reservations and cost simulation matching
+  execution; persist exact conflict identities/plan revision and decisions before
+  exposing HTTP. Transfers/cloud/account creation/UI/fresh full E2E still pending.
+- No staging/commit/push/delegation, original DB changes or preview restart.
+
+## Atomic Operation Engine Checkpoint - 2026-09-18
+
+- Phase IMPLEMENTATION, Direct. Migration7/model/resolver/generator now add
+  operations and paged snapshot items with nullable live node/version/object pins.
+  Pins constrain exact same-space node/version/content; terminal release retains
+  audit snapshots. Account object collector checks operation content pins.
+- operation.go prepares source snapshots in short pages100 with unchanged-space
+  revision fence each page/seal, normalized roots, actor+space idempotency identity,
+  canonical request hash, durable failure/cancel pin release. Explicit space input
+  makes the write lock precede reads (including raw deferred SQLite harness).
+- operation_execute.go internal caller-transaction engine: same-space copy/move,
+  explicit overwrite/merge/replace/skip/rename policies, immutable content references,
+  directory replacement trash-before-placement, merge retains skipped source items,
+  keyset traversal, cumulative budgets, precommit source validation/required access
+  callback, stored success/result in same transaction and succeeded replay.
+- Verified fresh SQLite recursive copy/move merge, file overwrite retains target ID,
+  directory/type replacement recycles target before placement, skip retains source,
+  rename incl same-parent copy, source physical-object count unchanged, success/result
+  durable replay without duplicate versions/tree revision. Live exact-content pins
+  prohibit deleting the source version; cancel/expiry/failure release pins atomically.
+- Preparation page100 fault tests: generator failure/page budget/revision change
+  after initial fence all preserve earlier page snapshots but release all live pins,
+  never mutate user tree. Tests include normalized nested sources, actor/scoped key
+  identity, binary case-sensitive keys, stale plan and mandatory access callback.
+- Expiry added to existing owned cleanup worker before account GC, cursor resets
+  on exhausted sweep so older/later-expiring plans aren't starved; actual worker
+  expiry and shutdown tested. Plan TTL supplied explicitly, no new retention default.
+- Added indexed child-ID cursor in migration7; source pages order closure descendant
+  key. SQLite EXPLAIN source-page JOIN, child cursor, item-page and object-pin lookup
+  all SEARCH without SCAN/temp sort (expiry filter uses owned expiry index).
+- Tests PASS: .temp/files-operation-tests.log, files-operation-race.log,
+  files-operation-final-race.log (latest includes result-root current-access replay),
+  files-operation-identity.log, files-operation-architecture.log (-count=1),
+  files-operation-compile.log (compile-only), files-operation-atomic-boundary.log
+  (-race count3 strengthened late SQL/permission/cumulative-budget rollback tests),
+  files-operation-app.log (Bootstrap/Module/Config), go vet files and
+  git diff --check. Coverage82.9%, BELOW90%; gate not lowered.
+- All owned diagnostic sessions finished. Self-review fixed byte-sensitive keys,
+  expiry cursor starvation, missing active-file heads, request hash/root validation,
+  succeeded replay result-root current access and source/target overlap protection.
+  Strengthened final-result failure test to include target recycling+placement;
+  cumulative-budget failure occurs after clone+overwrite, not before first mutation.
+- Two reviews: scope/reuse/ownership/transaction/index/regression checked for this
+  foundation; full original requirement review remains NOT READY for missing items.
+- Original-request acceptance NOT READY. No public file API/UI/cloud acceptance.
+  Ask/decision UI, accurate preparation-time full cost/conflict estimate, service
+  runner/audit+IAM transaction capability wiring/cancel-during-commit remain pending.
+  Reconcile version provenance references before implementing trash purge: current
+  immutable FK-backed provenance can retain a source version after a logical copy.
+- Next: implement full preflight conflict/cost plan with
+  revision-bound decisions; wire operation runner into IAM/audit capabilities before
+  exposing HTTP. File transfers/cloud adapters/legacy creation/UI/E2E still pending.
+- No staging/commit/push/delegation; original databases/previews preserved.
+
+## Trash And Closure-Safe Move Checkpoint - 2026-09-18
+
+- Phase IMPLEMENTATION, Direct. Added migration6 in all3dialects: trash batch,
+  normalized root snapshots, indexed node batch association with same-space guard.
+  Extended generator inputs/model/table resolver and regenerated successfully.
+- Added internal trash.go: transaction-required space CAS, bounded selection and
+  subtree budget, normalize parent/child roots, tag only currently active nodes,
+  original-placement restore with whole-batch conflict/parent checks; SQL chunks100
+  share caller transaction. No file I/O; previously trashed descendants retain batch.
+- Added move.go: pinned space/source/destination revisions, active directory target,
+  portable rename, scoped collision/cycle/depth checks, explicit node/closure budgets.
+  Replace only external ancestor edges; preserve internal closure, versions, objects
+  and old trashed descendants. Chunk SQL100 in caller transaction, no storage I/O.
+- Added fresh SQLite tests: normalized roots/name release/whole restore conflict,
+  old deletion doesn't revive/deleted parent rejection, budgets/scope/CAS/invalid
+  inputs/caller audit rollback, delete and restore second SQL chunk failures,
+  populated migration6 rollback/up, batch query EXPLAIN SEARCH index; real stored
+  old/current content survives GC with all account refs revoked and file trashed.
+  Moves test paths/internal rows/old trash restore, cycle/depth including trash,
+  stale pins/foreign scopes/invalid file parent, file ext vs immutable content,
+  node write failure after closure mutation, composed operations rollback and
+  concurrent pins allowing exactly one commit (also repeated20).
+- PASS: .temp/files-trash-move-final-race.log, files-trash-identity.log,
+  files-trash-move-concurrency.log, files-trash-move-compile.log (compile-only),
+  go vet ./internal/files/..., git diff --check. Architecture -count=1 verified
+  separately from tests module, files-trash-move-architecture.log.
+- Self-review found/fixed MySQL down order: drop FK before its supporting index.
+  MySQL/Postgres runtime NOT_RUN; no cloud/browser/public file E2E or full CI yet.
+  Coverage remains below90% gate (see files-trash-move-coverage.log); gate not lowered.
+  Original-request acceptance NOT READY. Public API/authz, alternate-target restore,
+  merge/overwrite/copy/purge/operations persistence, cloud/transfers/UI outstanding.
+- Next: build operation plan/result persistence plus atomic conflict engine over
+  these primitives, including file overwrite by version and recursive directory
+  merge/copy; no partial commits or waiting on user decisions inside transactions.
+- No staging/commit/push/delegation; old databases and previews untouched.
+
+## Immutable File Versions Checkpoint - 2026-09-18
+
+- Phase IMPLEMENTATION, execution Direct; full request acceptance NOT READY.
+- Recovered prior version-schema run: .temp/files-version-schema.log PASS.
+- Migration5/model/generated queries/current head and appendVersion primitive
+  present for SQLite/Postgres/MySQL; no storage I/O inside caller-owned transaction.
+- Added version_test.go: initial/overwrite retain node ID, stale revision/sequence
+  rollback including space revision, immutable history, rename preserves detected
+  physical MIME/history ext, directory/wrong-node heads rejected, wrong-space and
+  staged-object append rejected. Historical-only physical reference GC protection
+  tested with distinct replacement object. Populated SQLite migration5 down/up tested.
+- PASS: go test -race ./internal/files/... (final result below), go vet
+  ./internal/files/..., git diff --check. PostgreSQL/MySQL runtime NOT_RUN.
+- Self-review: strengthened GC test to use separate historical/current objects;
+  transaction ownership, DB scope constraints and generated output ownership checked.
+- Remaining: trash batches/atomic restore, closure-safe moves/copies/merge, full
+  account creation tracking, cloud driver/transfers/authz/Web UI and whole-chain E2E.
+- Next: implement owned trash batch/root association schema and transaction-bound
+  soft delete/restore preserving internal closure, releasing active name slots;
+  test nested selections, restore conflicts, deleted-parent and whole-batch rollback.
+- No staging/commit/push, delegation, original database or preview changes.
+
+## Durable Account Files / Indexed Closure Tree - 2026-09-18
+
+- Phase IMPLEMENTATION, Direct. User asks whether closure/path children use
+  indexes: schema and real SQLite EXPLAIN now implemented/tested, not just planned.
+- Added owned account preparation table (migration3, all3dialects) reserving key
+  BEFORE I/O. Stage publishes verified metadata into staged object after ACK;
+  Register consumes ready intent + object + reference in caller transaction.
+  It rejects a nontransaction caller; Stage rejects nested writer transactions.
+- Cleanup claims object before deletion, checks active references, expires
+  candidates, retries failed deletes. Uncertain abandoned writes remain durable
+  tombstones with repeated cleanup (not asserted remotely fenced/released).
+  Local pending keys are deterministic for NEVER-reused immutable generated keys;
+  reclaim removes publication source first. Delete/reclaim directory fsync added.
+- files module now receives runtime, publishes AccountObjects and owns stoppable
+  cleanup worker. identity resolves capability: self generation/upload/candidate
+  batch populate file tables; candidate selection promotes refs without copying.
+  Avatar/audit/ref updates atomic. Erasure revokes refs; no eager physical delete.
+  MyAvatar GET now read-only; startup backfills missing active avatars after GUID
+  starts, with in-transaction missing recheck to preserve concurrent custom avatar.
+- Added spaces/nodes/closure (migration4, all3dialects), internal directory creation,
+  root uniqueness, same-space directory-only parent FKs, portable sibling unique
+  key, 64-depth limit, scoped path resolution and single-join ancestor display.
+  No materialized full path. No public file/tree endpoints or authz claim yet.
+- SQLite EXPLAIN actual results: direct children uses idx_file_nodes_children;
+  kind filter uses idx_file_nodes_children_kind; exact path segment uses sibling
+  unique index; ancestors/subtree use corresponding COVERING closure indexes.
+  All SEARCH, no SCAN or temp sort in focused query-plan tests.
+- PASS so far: files unit/schema/path/depth/cleanup tests; focused avatar integration
+  .temp/files-avatar-tree-tests.log; identity regression before latest backfill
+  adjustment .temp/files-avatar-full-identity.log; initial files race
+  .temp/files-avatar-tree-race.log; app target initial .temp/files-account-app.log;
+  architecture separate-module .temp/files-account-architecture-final.log.
+- Final checks PASS: files race .temp/files-avatar-tree-final-race.log; full identity
+  .temp/files-avatar-tree-final-identity.log; app Bootstrap/Module/Config targeted
+  .temp/files-avatar-tree-final-app.log; files+identity focused boundary tests
+  .temp/files-avatar-tree-boundary-final.log; go vet files+identity; openapi-check
+  .temp/files-avatar-tree-openapi.log; whole main compile-only
+  .temp/files-account-tree-compile.log; git diff --check. No full E2E/ci.
+  Files final coverage84.6% (.temp/files-avatar-tree-final-coverage.log), below90%,
+  NOT gate PASS. Files added to registered module coverage gate, target not lowered.
+- Self-review: schema scope/NULL guards, prefix binding/generated queries, bounded
+  I/O, transaction rollback, cleanup/ref claim ordering, readonly GET and shutdown
+  checked. Original-request acceptance NOT READY. All owned diagnostic sessions
+  finished; previews untouched. No new file-tree API/browser/cloud acceptance.
+- IMPORTANT remaining: account creation/bootstrap/invitation/external registration
+  still uses old raw saveAvatarFile, legacy physical/reference backfill incomplete;
+  self replacement of old raw avatar leaves original for later reconciliation.
+  Configurable TTL/quota/cloud backends, versions/trash/atomic moves/merge/authz,
+  actual tus/upload/download/admin expiry, Web file manager and full E2E outstanding.
+- Next: finish new unit failure/lifecycle tests and final verification, then migrate
+  all account-creation workflows to pretransaction durable stage capability without
+  nesting SQLite writers or running storage I/O in committing transaction.
+- No staging, commit/push, original DB changes, previews restarted or delegation.
+
+## Account Object Capability Checkpoint - 2026-09-18
+
+- Continued Direct; no delegation, staging, commit, preview restart or original DB changes.
+- Added internal/files/account.go: bounded streaming storage preparation computes
+  four whole-content hashes and detected metadata; private prepared token prevents
+  registering caller-forged hashes. AccountObjects.Register uses supplied caller
+  transaction and module-owned prefixed generated queries for both object/reference.
+- SQLite tests cover caller rollback of BOTH rows, complete four-digest comparison,
+  prefixed schema, expiry validation, foreign preparation token rejection, invalid
+  names/IDs, short writes and immutable collision. Raster dimensions and reference
+  insertion failure rolling back the object row are covered as well.
+  go test ./internal/files/... and final go test -race ./internal/files/... PASS;
+  git diff --check PASS. Self-review: caller transaction boundary/bounded memory/
+  generated query reuse checked; full request acceptance NOT READY.
+- Not wired into module/identity yet. Prepared backend objects survive rollback;
+  durable pending protection, reconciler and safe GC remain REQUIRED before wiring.
+- Next: define durable preparation ownership/reconciliation, wire AccountObjects
+  into files services and identity flows without independent nested SQLite writer
+  transactions; test account failure, candidate expiry and cleanup races.
+- Full original acceptance remains NOT READY; cloud/VFS/transfer/UI/E2E outstanding.
+
+## File Implementation Authorized - 2026-09-18
+
+- User says 开工: approved file-management-design.md including latest part timeout
+  and spoofed extension requirements. Phase IMPLEMENTATION, execution Direct.
+- Step 1: restore WIP build/ID contracts, then minimal files storage capability and
+  avatarDirectory removal. Existing plan/review pending-approval notes are historical.
+- No push/new commit requested. Preserve previews and existing databases.
+- Next command: go test ./internal/iam/core ./internal/iam/identity ./internal/app;
+  resolve typed-ID regressions before storage migration.
+
+### Implementation Checkpoint - storage foundation
+
+- WIP MenuCatalog handler fixed; typed-ID URL/tests adapted without weakening wire
+  semantics. Core regression PASS (.temp/files-phase1-tests.log).
+- internal/files now has app-local driver registry/factories, immutable streaming
+  local backend using os.Root confinement, optional Range/multipart interfaces.
+  Native OSS is extensible but no native OSS/S3 driver implemented yet.
+- IAM AvatarDirectory fields removed. identity injects files.Driver, saves through
+  it, bounded reads; self avatar storage I/O moved outside mutation DB transaction.
+- files legacy importer copies/validates four digests while retaining original;
+  identity startup scans existing controlled references. files.legacy_local_roots
+  config maps old custom roots; historical default data/avatars maps avatars prefix.
+  Local publishes backend pending inode with atomic no-overwrite link (not API spool).
+- Four-hash checkpoint, strict header parser, portable NFC/casefold names and
+  bounded content-selected raster metadata strategies have focused tests.
+- Module-owned object/account-reference and upload/part schema in all three
+  dialects, generated queries. SQLite migration/idempotency/constraint tests added.
+- IMPORTANT incomplete: avatar physical objects/references not yet registered in
+  file tables; current Avatar still style/url compatibility DTO. Startup missing-
+  avatar backfill, candidate expiry and physical erasure still need implementation.
+- Outstanding full plan: tracked account capability, real S3 driver/receipts,
+  VFS/closure/version/trash/permissions, actual tus/ordinary/Range HTTP endpoints,
+  expiry worker/admin lists, atomic operations, Web views and fresh whole-chain E2E.
+- PASS evidence so far: files unit tests incl SQLite import/header/state checks
+  (latest post-upload-schema rerun pending), identity full regression
+  .temp/files-import-regression.log, app targeted regression
+  .temp/files-atomic-app.log. Whole main compile/race gates still running; no E2E.
+- Next: finish foundation tests; implement tracked account-object capability so
+  avatars populate physical/reference tables safely in caller transaction; then
+  extend storage adapters and VFS. Do not claim complete or restart old previews.
+
+### Foundation Verification Checkpoint
+
+- Current four-table migrations/schema constraints and driver/header/import/name/
+  metadata/hash-state tests PASS: .temp/files-upload-schema-final.log.
+- Final driver neutral errors and optional capability checks race PASS:
+  .temp/files-driver-contract-final.log. go vet ./internal/files/... PASS.
+- Main-module compile-only PASS: .temp/files-current-final-compile.log (no behavior
+  acceptance implied); earlier compilation while files were regenerated failed,
+  retained separately as .temp/files-main-compile.log, not a current PASS report.
+- Architecture suite PASS: .temp/files-architecture.log. OpenAPI regenerated;
+  make openapi-check PASS (.temp/files-openapi-check.log), IAM API types generated,
+  bun run --filter iam typecheck PASS.
+- Focused file package coverage last snapshot 84.8%, below required 90% target;
+  full make ci/coverage and full lifecycle E2E NOT_RUN for this work. No readiness claim.
+- Self-review: ownership/driver extensibility/reuse/scope checked. Whole-request
+  acceptance NOT READY because tracked physical references, cloud adapters, VFS,
+  HTTP transfer/expiry management, atomic tasks and browser workflows remain.
+- All owned diagnostic sessions finished; old preview untouched. No staging,
+  additional commit/push, original database migration or original file deletion.
+
+## File Design Final Confirmation - 2026-09-18
+
+- Latest user instruction: finish plan, perform two review rounds, output Markdown,
+  request confirmation before implementation. Do not change business code.
+- Plan: apps/backend-api/docs/file-management-design.md. Phase DESIGN, review complete,
+  awaiting user approval. Direct self-review twice, no delegated/independent review.
+- Covers object/part/VFS tables, closure, version/trash, local/S3 streaming, four
+  hashes/state recovery, tus/Range, scoped dedup, bounded extractor registry, Web UX.
+- User confirmed one logical DB transaction for whole batch including merge/overwrite;
+  supersedes old multi-transaction/partial-success proposals. Storage outside DB tx.
+- Round1 fixed S3 stale-writer caveat, plan source version pins, GC/ref races and
+  ambiguous commit recovery. Round2 added extension spoofing: node ext/name change
+  never changes shared physical metadata; sniffing can be unknown, not trusted proof.
+- New requirement integrated/re-reviewed: scoped backend upload/part lists, progress-
+  based timeout release, expired upload never resumes (410/restart_required), new
+  session starts at 0. Cleanup failures retry release only; HEAD does not renew.
+  Proposed idle timeout 24h pending approval; races covered by A04b/A15.
+- UI skill used for keyboard/focus/touch/loading states, existing shared styling kept.
+- Proposed limits and URI/retention defaults are explicitly pending final approval.
+- Only plan/state modified; no module/migration executed, no new acceptance claimed.
+- Next: user confirms Markdown; then restore WIP build, establish minimal files
+  capability and migrate/remove IAM avatarDirectory before broader implementation.
+
 ## Authorized WIP Checkpoint - 2026-09-18
 
 - User explicitly requests committing preceding edits before presenting the file

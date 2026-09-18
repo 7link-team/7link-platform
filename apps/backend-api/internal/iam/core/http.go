@@ -510,7 +510,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		Path:        "/iam/menu-catalog",
 		Summary:     "List menu metadata bound to permission codes",
 		Tags:        []string{"iam"},
-	}, authz.Guard{Resource: "menu", Verb: "view"}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]MenuItem], error) {
+	}, authz.Guard{Resource: "menu", Verb: "view"}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]MenuDeclaration], error) {
 		return respx.OK(ctx, svc.MenuCatalog(ctx)), nil
 	})
 

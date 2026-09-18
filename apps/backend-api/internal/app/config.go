@@ -19,6 +19,7 @@ type AppConfig struct {
 	Audit        Audit           `mapstructure:"audit" group:"audit"`
 	Authn        IAMAuthn        `mapstructure:"authn" group:"authn"`
 	IAM          IAMCore         `mapstructure:"iam" group:"iam"`
+	Files        FilesConfig     `mapstructure:"files" group:"files"`
 	IAMAudit     IAMAudit        `mapstructure:"iam_audit" group:"iam_audit"`
 	Provisioning IAMProvisioning `mapstructure:"provisioning" group:"provisioning"`
 	Federation   IAMFederation   `mapstructure:"federation" group:"federation"`
@@ -44,11 +45,16 @@ type IAMAuthn authnext.Config
 // IAMCore configures platform-wide IAM policy that belongs to no single IAM
 // sub-domain.
 type IAMCore struct {
-	AvatarDirectory string `mapstructure:"avatar_directory" description:"persistent directory for server-generated and uploaded account avatars" default:"data/avatars"`
 	// RequirePlatformAdministrator defaults to true because a freshly migrated
 	// database can serve no platform operation at all. Recovery and migration
 	// tooling can turn it off to reach an otherwise unreachable deployment.
 	RequirePlatformAdministrator bool `mapstructure:"require_platform_administrator" description:"report IAM unready until a platform administrator exists" default:"true"`
+}
+
+// FilesConfig owns storage settings shared by all file consumers.
+type FilesConfig struct {
+	LocalRoot        string            `mapstructure:"local_root" description:"final local file storage root" default:"data/files"`
+	LegacyLocalRoots map[string]string `mapstructure:"legacy_local_roots" group:"legacy_local_roots" mapkey:"<key-prefix>" description:"migration-only mapping from legacy key prefixes to source local roots"`
 }
 
 // IAMAudit configures the IAM domain audit chain. It is intentionally separate

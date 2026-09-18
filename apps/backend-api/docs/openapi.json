@@ -9,9 +9,11 @@
             "type": "string"
           },
           "id": {
-            "maxLength": 19,
             "pattern": "^[1-9][0-9]*$",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "metadata": {
             "additionalProperties": {},
@@ -21,17 +23,21 @@
             "type": "string"
           },
           "parent_id": {
-            "maxLength": 19,
             "pattern": "^[1-9][0-9]*$",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "status": {
             "type": "string"
           },
           "tenant_id": {
-            "maxLength": 19,
             "pattern": "^[1-9][0-9]*$",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "type": {
             "type": "string"
@@ -68,23 +74,29 @@
             "type": "string"
           },
           "entity_id": {
-            "maxLength": 19,
             "pattern": "^[1-9][0-9]*$",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "expires_at": {
             "format": "date-time",
             "type": "string"
           },
           "principal_id": {
-            "maxLength": 19,
             "pattern": "^[1-9][0-9]*$",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "role_id": {
-            "maxLength": 19,
             "pattern": "^[1-9][0-9]*$",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -145,7 +157,11 @@
           },
           "department_ids": {
             "items": {
-              "type": "string"
+              "pattern": "^[1-9][0-9]*$",
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "type": [
               "array",
@@ -193,17 +209,21 @@
             ]
           },
           "role_id": {
-            "maxLength": 19,
             "pattern": "^[1-9][0-9]*$",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "role_name": {
             "type": "string"
           },
           "scope_id": {
-            "maxLength": 19,
             "pattern": "^[1-9][0-9]*$",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "scope_name": {
             "type": "string"
@@ -212,9 +232,11 @@
             "type": "string"
           },
           "source_id": {
-            "maxLength": 19,
             "pattern": "^[1-9][0-9]*$",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "source_name": {
             "type": "string"
@@ -256,17 +278,21 @@
             "type": "string"
           },
           "id": {
-            "maxLength": 19,
             "pattern": "^[1-9][0-9]*$",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "label": {
             "type": "string"
           },
           "parent_id": {
-            "maxLength": 19,
             "pattern": "^[1-9][0-9]*$",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "permission_code": {
             "type": "string"
@@ -282,9 +308,11 @@
             "type": "string"
           },
           "tenant_id": {
-            "maxLength": 19,
             "pattern": "^[1-9][0-9]*$",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "translations": {
             "additionalProperties": {
@@ -388,17 +416,21 @@
             "type": "string"
           },
           "id": {
-            "maxLength": 19,
             "pattern": "^[1-9][0-9]*$",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "name": {
             "type": "string"
           },
           "tenant_id": {
-            "maxLength": 19,
             "pattern": "^[1-9][0-9]*$",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -420,7 +452,11 @@
         "properties": {
           "department_ids": {
             "items": {
-              "type": "string"
+              "pattern": "^[1-9][0-9]*$",
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "type": [
               "array",
@@ -428,9 +464,11 @@
             ]
           },
           "role_id": {
-            "maxLength": 19,
             "pattern": "^[1-9][0-9]*$",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "scope": {
             "enum": [
@@ -458,9 +496,11 @@
         "additionalProperties": false,
         "properties": {
           "assignee_id": {
-            "maxLength": 19,
             "pattern": "^[1-9][0-9]*$",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "assignee_type": {
             "enum": [
@@ -474,9 +514,11 @@
             "type": "string"
           },
           "role_id": {
-            "maxLength": 19,
             "pattern": "^[1-9][0-9]*$",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -517,9 +559,11 @@
             "type": "string"
           },
           "department_id": {
-            "maxLength": 19,
             "pattern": "^[1-9][0-9]*$",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "disabled_at": {
             "format": "date-time",
@@ -533,7 +577,11 @@
           },
           "role_ids": {
             "items": {
-              "type": "string"
+              "pattern": "^[1-9][0-9]*$",
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "type": [
               "array",
@@ -544,14 +592,18 @@
             "type": "string"
           },
           "subject": {
-            "maxLength": 19,
             "pattern": "^[1-9][0-9]*$",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "tenant_id": {
-            "maxLength": 19,
             "pattern": "^[1-9][0-9]*$",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -5413,6 +5465,41 @@
         ],
         "type": "object"
       },
+      "EnvelopeListMenuDeclaration": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "0 = success; 1..999 = HTTP status; 100000+ = business code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "description": "response payload; null on error",
+            "items": {
+              "$ref": "#/components/schemas/MenuDeclaration"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "human-readable status; \"ok\" on success",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "request metadata"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "meta",
+          "data"
+        ],
+        "type": "object"
+      },
       "EnvelopeListMenuItem": {
         "additionalProperties": false,
         "properties": {
@@ -8526,6 +8613,52 @@
         },
         "type": "object"
       },
+      "MenuDeclaration": {
+        "additionalProperties": false,
+        "properties": {
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/MenuDeclaration"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "icon": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "permission_code": {
+            "type": "string"
+          },
+          "sort_order": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "translations": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "permission_code",
+          "sort_order"
+        ],
+        "type": "object"
+      },
       "MenuItem": {
         "additionalProperties": false,
         "properties": {
@@ -8542,7 +8675,11 @@
             "type": "string"
           },
           "id": {
-            "type": "string"
+            "pattern": "^[1-9][0-9]*$",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "label": {
             "type": "string"
@@ -27535,7 +27672,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EnvelopeListMenuItem"
+                  "$ref": "#/components/schemas/EnvelopeListMenuDeclaration"
                 }
               }
             },

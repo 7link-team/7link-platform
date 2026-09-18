@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"7link.com/platform/internal/files"
 	"context"
 	"errors"
 	"fmt"
@@ -28,7 +29,6 @@ var ErrUnavailable = errors.New("identity service unavailable")
 // federation, and invitation acceptance depend on.
 type Config struct {
 	module.Config
-	AvatarDirectory string
 }
 
 type Module struct {
@@ -39,6 +39,9 @@ type Module struct {
 	administrators      core.AdministratorGuard
 	fields              authz.FieldPermissionChecker
 	avatarPermissions   authz.PermissionChecker
+	storage             files.Driver
+	accountFiles        *files.AccountObjects
+	legacyImporter      files.LegacyImporter
 	ids                 guid.Source
 	appender            audit.Appender
 	anonymizer          PrincipalAnonymizer
@@ -82,7 +85,7 @@ func NewModule(runtime *appenv.Runtime, config Config) *Module {
 func (m *Module) Enabled() bool { return m != nil && m.config.Enabled }
 
 func (*Module) ModuleDependencies() []string {
-	return []string{platformi18n.Name, guid.Name, audit.Name, core.Name}
+	return []string{platformi18n.Name, guid.Name, audit.Name, core.Name, files.Name}
 }
 
 func (m *Module) ProvideServices(services *module.Services) error {
@@ -162,9 +165,8 @@ func (m *Module) bootstrapPrincipalStore() BootstrapPrincipalStore {
 			return nil, ErrUnavailable
 		}
 		repo := NewRepository(m.runtime, m.ids, m.appender)
-		if m.config.AvatarDirectory != "" {
-			repo.avatarDirectory = m.config.AvatarDirectory
-		}
+		repo.storage = m.storage
+		repo.accountFiles = m.accountFiles
 		// The bootstrap runs after Wire, so the owners have published and the
 		// module's holder already carries their names.
 		repo.foreign = &m.foreign
@@ -233,6 +235,18 @@ func (m *Module) InjectServices(services *module.Services) error {
 	}
 	m.fields = fields
 	m.avatarPermissions = fields
+	m.storage, err = module.Resolve[files.Driver](services)
+	if err != nil {
+		return fmt.Errorf("resolve identity file storage: %w", err)
+	}
+	m.accountFiles, err = module.Resolve[*files.AccountObjects](services)
+	if err != nil {
+		return fmt.Errorf("resolve identity account files: %w", err)
+	}
+	m.legacyImporter, err = module.Resolve[files.LegacyImporter](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
 	m.registrar = registrar
 	m.ids = ids
 	m.appender = appender
@@ -297,7 +311,7 @@ func (m *Module) InjectServices(services *module.Services) error {
 	return nil
 }
 
-func (m *Module) Initialize(context.Context) error {
+func (m *Module) Initialize(ctx context.Context) error {
 	if err := identityi18n.Register(); err != nil {
 		return fmt.Errorf("register identity i18n: %w", err)
 	}
@@ -312,9 +326,8 @@ func (m *Module) Initialize(context.Context) error {
 		return errors.New("initialize identity: the core, organization, and oauth modules must publish the table names identity joins")
 	}
 	m.Service = NewService(m.runtime, m.appender, m.administrators, m.ids)
-	if m.config.AvatarDirectory != "" {
-		m.Service.repo.avatarDirectory = m.config.AvatarDirectory
-	}
+	m.Service.repo.storage = m.storage
+	m.Service.repo.accountFiles = m.accountFiles
 	// Wire has already run, so the owners have published; the service and every
 	// repository it clones share the one holder the connectors bound.
 	m.Service.repo.foreign = &m.foreign
@@ -325,6 +338,9 @@ func (m *Module) Initialize(context.Context) error {
 	m.Service.erasureRecorder = m.erasureRecorder
 	m.Service.privacyBrowser, m.Service.reauthenticate = m.privacyBrowser, m.reauthenticate
 	m.Service.closeCredentials, m.Service.closeOAuth, m.Service.platformAccessGuard = m.closeCredentials, m.closeOAuth, m.platformAccessGuard
+	if m.legacyImporter != nil {
+		return m.Service.migrateAvatarStorage(ctx, m.legacyImporter)
+	}
 	return nil
 }
 
@@ -333,6 +349,15 @@ func (m *Module) CheckHealth(context.Context) error {
 		return ErrUnavailable
 	}
 	return nil
+}
+
+// Start backfills missing active-account avatars after GUID has started, not
+// from a GET request and not during injection/initialization.
+func (m *Module) Start(ctx context.Context) error {
+	if m.Service == nil {
+		return ErrUnavailable
+	}
+	return m.Service.backfillMissingAvatars(ctx)
 }
 
 func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {

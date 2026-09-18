@@ -111,10 +111,10 @@ func (f *iamTenantFixture) loadScenarios(t *testing.T) []iamLoadScenario {
 	requireStatus(t, http.StatusCreated, response)
 	role := decodeEnvelope[core.APIRole](t, response)
 
-	response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID+"/permissions/entity_view", iamTenantA, f.tokenA, nil, nil)
+	response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID.String()+"/permissions/entity_view", iamTenantA, f.tokenA, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 
-	response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID+"/members/"+f.adminA.ID.String(), iamTenantA, f.tokenA, nil, nil)
+	response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID.String()+"/members/"+f.adminA.ID.String(), iamTenantA, f.tokenA, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 
 	response = f.request(t, http.MethodPost, "/iam/entities", iamTenantA, f.tokenA, map[string]any{

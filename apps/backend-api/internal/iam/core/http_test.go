@@ -185,7 +185,7 @@ func TestHTTPProjectionAndPaginationPreserveWireSemantics(t *testing.T) {
 
 	member := memberFromDomain(TenantMember{TenantID: 1, PrincipalID: 2, DepartmentID: 3, DisabledAt: now})
 	require.NotNil(t, member.DisabledAt)
-	assert.Equal(t, "3", member.DepartmentID)
+	assert.Equal(t, guid.ID(3), member.DepartmentID)
 	assert.Equal(t, now, *member.DisabledAt)
 
 	administrator := platformAdministratorFromDomain(PlatformAdministrator{PrincipalID: 1})

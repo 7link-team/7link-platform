@@ -1,6 +1,7 @@
 package app
 
 import (
+	"7link.com/platform/internal/files"
 	iamaudit "7link.com/platform/internal/iam/audit"
 	iamauthn "7link.com/platform/internal/iam/authn"
 	"7link.com/platform/internal/iam/core"
@@ -20,6 +21,14 @@ import (
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/module"
 )
+
+func fileConfig(c AppConfig) files.Config {
+	roots := c.Files.LegacyLocalRoots
+	if roots == nil {
+		roots = map[string]string{"avatars": "data/avatars"}
+	}
+	return files.Config{Config: iamActivationConfig(c), LocalRoot: c.Files.LocalRoot, LegacyLocalRoots: roots}
+}
 
 // moduleconfig.go is the only seam between AppConfig and per-module configs.
 // AppConfig never imports module packages (modules cannot import internal/app —
@@ -113,7 +122,7 @@ func iamCoreConfig(c AppConfig) core.Config {
 }
 
 func iamIdentityConfig(c AppConfig) identity.Config {
-	return identity.Config{Config: iamActivationConfig(c), AvatarDirectory: c.IAM.AvatarDirectory}
+	return identity.Config{Config: iamActivationConfig(c)}
 }
 
 func iamOrganizationConfig(c AppConfig) organization.Config {
