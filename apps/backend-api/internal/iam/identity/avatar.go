@@ -20,7 +20,6 @@ import (
 
 	"7link.com/platform/internal/files"
 	"7link.com/platform/internal/iam/audit"
-	"7link.com/platform/internal/iam/identity/model"
 	"7link.com/platform/internal/iam/identity/query"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
@@ -29,6 +28,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
+	"gorm.io/gorm"
 )
 
 // Avatar stores only the style and controlled file URL, never image content.
@@ -94,12 +94,104 @@ func (s *Service) migrateAvatarStorage(ctx context.Context, importer files.Legac
 			if avatar == nil {
 				return fmt.Errorf("invalid avatar reference for principal %s", row.ID.String())
 			}
+			if avatar.URL == "/api/principals/"+row.ID.String()+"/avatar" {
+				continue
+			}
 			name, ok := avatarStorageName(row.ID, avatar)
 			if !ok {
 				return ErrInvalid
 			}
 			if err := importer(ctx, "avatars/"+row.ID.String()+"/"+name); err != nil {
 				return fmt.Errorf("migrate avatar for principal %s: %w", row.ID.String(), err)
+			}
+		}
+		last = rows[len(rows)-1].ID
+	}
+}
+
+func registerAvatarResourcePurposes(resources *files.AccountResourceFiles, names query.TableNames) error {
+	validate := func(ctx context.Context, db *gorm.DB, resourceID guid.ID, owner files.ResourceOwner) error {
+		if owner.Scope != "account" || owner.ID != resourceID {
+			return ErrInvalid
+		}
+		principals := query.BindWithNames(db, names).Principals
+		count, err := principals.WithContext(ctx).Where(principals.ID.Eq(resourceID)).Count()
+		if err != nil {
+			return err
+		}
+		if count != 1 {
+			return ErrNotFound
+		}
+		return nil
+	}
+	if err := resources.RegisterPurpose(files.ResourcePurpose{
+		Name: files.PrincipalAvatarPurpose, ResourceKind: "principal", OwnerScopes: []string{"account"},
+		VersionMode: "head", ValidateResource: validate,
+	}); err != nil {
+		return err
+	}
+	return resources.RegisterPurpose(files.ResourcePurpose{
+		Name: files.PrincipalAvatarCandidatePurpose, ResourceKind: "principal", OwnerScopes: []string{"account"},
+		VersionMode: "head", AllowExpiry: true, ValidateResource: validate,
+	})
+}
+
+// migrateUngovernedAvatars adopts direct-storage avatars left by older
+// releases. Existing bytes are checksummed in place and receive a logical file
+// and binding; no storage copy is performed.
+func (s *Service) migrateUngovernedAvatars(ctx context.Context) error {
+	if s.repo.writer() == nil || s.repo.resourceFiles == nil {
+		return ErrUnavailable
+	}
+	principals := query.BindWithNames(s.repo.writer(), s.repo.names).Principals
+	var last guid.ID
+	for {
+		rows, err := principals.WithContext(ctx).Where(principals.ID.Gt(last), principals.Avatar.Neq("")).Order(principals.ID.Asc()).Limit(100).Find()
+		if err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		for _, row := range rows {
+			has, err := s.repo.resourceFiles.Has(ctx, s.repo.writer(), row.ID, files.PrincipalAvatarPurpose, "current", time.Now())
+			if err != nil {
+				return err
+			}
+			if has {
+				continue
+			}
+			avatar := storedAvatar(row.Avatar)
+			name, ok := avatarStorageName(row.ID, avatar)
+			if !ok {
+				return fmt.Errorf("invalid unbound avatar reference for principal %s", row.ID.String())
+			}
+			prepared, err := s.repo.resourceFiles.AdoptOn(ctx, s.repo.writer(), row.ID, "avatars/"+row.ID.String()+"/"+name, time.Now().Add(24*time.Hour))
+			if err != nil {
+				return fmt.Errorf("adopt avatar for principal %s: %w", row.ID.String(), err)
+			}
+			err = s.repo.runInTx(ctx, func(repo *Repository) error {
+				current, err := repo.lifecyclePrincipal(ctx, row.ID, true)
+				if err != nil {
+					return err
+				}
+				if current.Avatar != row.Avatar {
+					return ErrInvalid
+				}
+				if _, err := repo.resourceFiles.Create(ctx, repo.writer(), files.AccountResourceInput{
+					Prepared: prepared, PrincipalID: row.ID, Purpose: files.PrincipalAvatarPurpose,
+					Slot: "current", Name: name, ActorID: row.ID, Replace: true,
+				}, time.Now()); err != nil {
+					return err
+				}
+				normalized, err := json.Marshal(currentAvatar(row.ID, avatar))
+				if err != nil {
+					return err
+				}
+				return repo.updatePrincipalRow(ctx, row.ID, map[string]any{"avatar": string(normalized)})
+			})
+			if err != nil {
+				return err
 			}
 		}
 		last = rows[len(rows)-1].ID
@@ -145,15 +237,6 @@ func currentAvatar(id guid.ID, avatar *Avatar) *Avatar {
 		return nil
 	}
 	return &Avatar{Style: avatar.Style, URL: "/api/principals/" + id.String() + "/avatar"}
-}
-
-func candidateAvatar(avatar Avatar, id guid.ID) (Avatar, error) {
-	name, ok := avatarStorageName(id, &avatar)
-	if !ok {
-		return Avatar{}, ErrInvalid
-	}
-	avatar.URL = "/api/me/avatar-candidates/" + strings.TrimSuffix(name, ".png")
-	return avatar, nil
 }
 
 func avatarPixels(in avatarInput) ([]byte, string, error) {
@@ -214,63 +297,20 @@ func avatarPixels(in avatarInput) ([]byte, string, error) {
 	return encoded.Bytes(), "custom", nil
 }
 
-func (r *Repository) saveAvatarFile(ctx context.Context, id guid.ID, pixels []byte, style string) (Avatar, error) {
-	if r.storage == nil {
-		return Avatar{}, ErrUnavailable
-	}
-	var key [24]byte
-	if _, err := rand.Read(key[:]); err != nil {
-		return Avatar{}, err
-	}
-	name := hex.EncodeToString(key[:]) + ".png"
-	if _, err := r.storage.Put(ctx, "avatars/"+id.String()+"/"+name, bytes.NewReader(pixels), int64(len(pixels))); err != nil {
-		return Avatar{}, err
-	}
-	return Avatar{Style: style, URL: "/api/avatars/" + id.String() + "/" + name}, nil
-}
-
-func (r *Repository) initializeAvatar(ctx context.Context, row *model.Principal) error {
-	if row.Avatar != "" {
-		return nil
-	}
-	pixels, style, err := avatarPixels(avatarInput{})
-	if err != nil {
-		return err
-	}
-	avatar, err := r.saveAvatarFile(ctx, row.ID, pixels, style)
-	if err != nil {
-		return err
-	}
-	raw, err := json.Marshal(avatar)
-	if err != nil {
-		return err
-	}
-	row.Avatar = string(raw)
-	return nil
-}
-
-func (r *Repository) prepareAvatarFile(ctx context.Context, id guid.ID, pixels []byte, style string) (Avatar, *files.PreparedAccountObject, guid.ID, error) {
-	if r.accountFiles == nil || r.inTx {
-		return Avatar{}, nil, 0, ErrUnavailable
-	}
-	objectID, err := r.nextID()
-	if err != nil {
-		return Avatar{}, nil, 0, err
-	}
-	referenceID, err := r.nextID()
-	if err != nil {
-		return Avatar{}, nil, 0, err
+func (r *Repository) prepareAvatarFile(ctx context.Context, id guid.ID, pixels []byte, style string) (Avatar, *files.PreparedAccountObject, string, error) {
+	if r.resourceFiles == nil || r.inTx {
+		return Avatar{}, nil, "", ErrUnavailable
 	}
 	var token [24]byte
 	if _, err := rand.Read(token[:]); err != nil {
-		return Avatar{}, nil, 0, err
+		return Avatar{}, nil, "", err
 	}
 	name := hex.EncodeToString(token[:]) + ".png"
-	prepared, err := r.accountFiles.Stage(ctx, r.writer(), objectID, id, "avatars/"+id.String()+"/"+name, bytes.NewReader(pixels), int64(len(pixels)), time.Now().Add(24*time.Hour))
+	prepared, err := r.resourceFiles.StageOn(ctx, r.writer(), id, "avatars/"+id.String()+"/"+name, bytes.NewReader(pixels), int64(len(pixels)), time.Now().Add(24*time.Hour))
 	if err != nil {
-		return Avatar{}, nil, 0, err
+		return Avatar{}, nil, "", err
 	}
-	return Avatar{Style: style, URL: "/api/avatars/" + id.String() + "/" + name}, prepared, referenceID, nil
+	return Avatar{Style: style, URL: "/api/principals/" + id.String() + "/avatar"}, prepared, strings.TrimSuffix(name, ".png"), nil
 }
 
 // MyAvatar reads the caller's persisted global avatar reference.
@@ -283,7 +323,13 @@ func (s *Service) MyAvatar(ctx context.Context, id guid.ID) (Avatar, error) {
 		return Avatar{}, ErrPrincipalInactive
 	}
 	if avatar := storedAvatar(row.Avatar); avatar != nil {
-		return *currentAvatar(id, avatar), nil
+		has, err := s.repo.resourceFiles.Has(ctx, s.repo.writer(), id, files.PrincipalAvatarPurpose, "current", time.Now())
+		if err != nil {
+			return Avatar{}, err
+		}
+		if has {
+			return *currentAvatar(id, avatar), nil
+		}
 	}
 	return Avatar{}, ErrNotFound
 }
@@ -294,7 +340,7 @@ func (s *Service) SetMyAvatar(ctx context.Context, id guid.ID, in avatarInput) (
 }
 
 func (s *Service) setMyAvatar(ctx context.Context, id guid.ID, in avatarInput, onlyMissing bool) (Avatar, error) {
-	if s.repo.accountFiles == nil {
+	if s.repo.resourceFiles == nil {
 		return Avatar{}, ErrUnavailable
 	}
 	row, err := s.repo.lifecyclePrincipal(ctx, id, false)
@@ -330,12 +376,12 @@ func (s *Service) setMyAvatar(ctx context.Context, id guid.ID, in avatarInput, o
 	}
 	avatar := Avatar{Style: style}
 	var prepared *files.PreparedAccountObject
-	var referenceID guid.ID
+	var token string
 	if in.CandidateURL == "" {
-		avatar, prepared, referenceID, err = s.repo.prepareAvatarFile(ctx, id, pixels, style)
+		avatar, prepared, token, err = s.repo.prepareAvatarFile(ctx, id, pixels, style)
 	} else {
-		avatar.URL = "/api/avatars/" + id.String() + "/" + strings.TrimPrefix(in.CandidateURL, "/api/me/avatar-candidates/") + ".png"
-		referenceID, err = s.repo.nextID()
+		token = strings.TrimPrefix(in.CandidateURL, "/api/me/avatar-candidates/")
+		avatar.URL = "/api/principals/" + id.String() + "/avatar"
 	}
 	if err != nil {
 		return Avatar{}, err
@@ -355,10 +401,12 @@ func (s *Service) setMyAvatar(ctx context.Context, id guid.ID, in avatarInput, o
 			}
 		}
 		if prepared != nil {
-			err = repo.accountFiles.ReplaceAvatar(ctx, repo.writer(), prepared, referenceID, id)
+			_, err = repo.resourceFiles.Create(ctx, repo.writer(), files.AccountResourceInput{
+				Prepared: prepared, PrincipalID: id, Purpose: files.PrincipalAvatarPurpose,
+				Slot: "current", Name: token + ".png", ActorID: id, Replace: true,
+			}, time.Now())
 		} else {
-			name, _ := avatarStorageName(id, &avatar)
-			err = repo.accountFiles.UseAvatarCandidate(ctx, repo.writer(), id, referenceID, "avatars/"+id.String()+"/"+name, time.Now())
+			err = repo.resourceFiles.Promote(ctx, repo.writer(), id, "candidate-"+token, files.PrincipalAvatarPurpose, "current", id, time.Now())
 		}
 		if errors.Is(err, files.ErrNotFound) {
 			return ErrNotFound
@@ -381,35 +429,12 @@ func (s *Service) setMyAvatar(ctx context.Context, id guid.ID, in avatarInput, o
 	return *currentAvatar(id, &avatar), nil
 }
 
-func (r *Repository) removeAvatarFile(id guid.ID, avatar *Avatar) {
-	if avatar == nil || avatar.URL == "" {
-		return
-	}
-	prefix := "/api/avatars/" + id.String() + "/"
-	if !strings.HasPrefix(avatar.URL, prefix) {
-		return
-	}
-	name := strings.TrimPrefix(avatar.URL, prefix)
-	if filepath.Base(name) != name {
-		return
-	}
-	if r.storage != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = r.storage.Delete(ctx, "avatars/"+id.String()+"/"+name)
-	}
-}
-
-func (r *Repository) readAvatarFile(ctx context.Context, id guid.ID, name string) ([]byte, error) {
-	if r.storage == nil {
+func readAvatarFile(read *files.AccountResourceRead) ([]byte, error) {
+	if read == nil || read.Reader == nil {
 		return nil, ErrUnavailable
 	}
-	reader, err := r.storage.Open(ctx, "avatars/"+id.String()+"/"+name)
-	if err != nil {
-		return nil, err
-	}
-	pixels, err := io.ReadAll(io.LimitReader(reader, 2*1024*1024+1))
-	err = errors.Join(err, reader.Close())
+	pixels, err := io.ReadAll(io.LimitReader(read.Reader, 2*1024*1024+1))
+	err = errors.Join(err, read.Reader.Close())
 	if err == nil && len(pixels) > 2*1024*1024 {
 		return nil, ErrInvalid
 	}
@@ -427,24 +452,21 @@ func (s *Service) AvatarCandidates(ctx context.Context, id guid.ID, requestedSty
 	}
 	candidates := make([]Avatar, 0, 6)
 	preparedFiles := make([]*files.PreparedAccountObject, 0, 6)
-	referenceIDs := make([]guid.ID, 0, 6)
+	tokens := make([]string, 0, 6)
 	expiry := time.Now().Add(24 * time.Hour)
 	for i := 0; i < 6; i++ {
 		pixels, style, err := avatarPixels(avatarInput{Style: requestedStyle})
 		if err != nil {
 			return nil, err
 		}
-		avatar, prepared, referenceID, err := s.repo.prepareAvatarFile(ctx, id, pixels, style)
+		avatar, prepared, token, err := s.repo.prepareAvatarFile(ctx, id, pixels, style)
 		if err != nil {
 			return nil, err
 		}
-		candidate, err := candidateAvatar(avatar, id)
-		if err != nil {
-			return nil, err
-		}
+		candidate := Avatar{Style: avatar.Style, URL: "/api/me/avatar-candidates/" + token}
 		candidates = append(candidates, candidate)
 		preparedFiles = append(preparedFiles, prepared)
-		referenceIDs = append(referenceIDs, referenceID)
+		tokens = append(tokens, token)
 	}
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
 		row, err := repo.lifecyclePrincipal(ctx, id, true)
@@ -455,7 +477,10 @@ func (s *Service) AvatarCandidates(ctx context.Context, id guid.ID, requestedSty
 			return ErrPrincipalInactive
 		}
 		for i, prepared := range preparedFiles {
-			if err := repo.accountFiles.Register(ctx, repo.writer(), prepared, referenceIDs[i], id, "avatar_candidate", &expiry); err != nil {
+			if _, err := repo.resourceFiles.Create(ctx, repo.writer(), files.AccountResourceInput{
+				Prepared: prepared, PrincipalID: id, Purpose: files.PrincipalAvatarCandidatePurpose,
+				Slot: "candidate-" + tokens[i], Name: tokens[i] + ".png", ExpiresAt: &expiry, ActorID: id,
+			}, time.Now()); err != nil {
 				return err
 			}
 		}
@@ -544,12 +569,14 @@ func registerAvatarHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 		if err != nil {
 			return nil, identityError(err)
 		}
-		avatar := storedAvatar(row.Avatar)
-		name, valid := avatarStorageName(id, avatar)
-		if row.Status != "active" || !valid {
+		if row.Status != "active" || storedAvatar(row.Avatar) == nil || s.repo.resourceFiles == nil {
 			return nil, huma.Error404NotFound("respx.not_found")
 		}
-		pixels, err := s.repo.readAvatarFile(ctx, id, name)
+		read, err := s.repo.resourceFiles.Open(ctx, s.repo.writer(), id, files.PrincipalAvatarPurpose, "current", time.Now())
+		if err != nil {
+			return nil, huma.Error404NotFound("respx.not_found")
+		}
+		pixels, err := readAvatarFile(read)
 		if err != nil {
 			return nil, huma.Error404NotFound("respx.not_found")
 		}
@@ -560,18 +587,14 @@ func registerAvatarHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 		if err != nil {
 			return nil, err
 		}
-		name := in.CandidateID + ".png"
-		if s.repo.accountFiles == nil {
+		if s.repo.resourceFiles == nil {
 			return nil, huma.Error404NotFound("respx.not_found")
 		}
-		readable, err := s.repo.accountFiles.AccountKeyReadable(ctx, s.repo.writer(), id, "avatars/"+id.String()+"/"+name, time.Now())
+		read, err := s.repo.resourceFiles.Open(ctx, s.repo.writer(), id, files.PrincipalAvatarCandidatePurpose, "candidate-"+in.CandidateID, time.Now())
 		if err != nil {
-			return nil, identityError(err)
-		}
-		if !readable {
 			return nil, huma.Error404NotFound("respx.not_found")
 		}
-		pixels, err := s.repo.readAvatarFile(ctx, id, name)
+		pixels, err := readAvatarFile(read)
 		if err != nil {
 			return nil, huma.Error404NotFound("respx.not_found")
 		}

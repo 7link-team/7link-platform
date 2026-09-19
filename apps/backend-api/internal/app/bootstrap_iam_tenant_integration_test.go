@@ -548,7 +548,7 @@ func (f *iamTenantFixture) approveTenantBAccessRequest(t *testing.T) (core.APIRo
 	requireStatus(t, http.StatusCreated, response)
 	request := decodeEnvelope[governance.AccessRequest](t, response)
 
-	response = f.request(t, http.MethodPost, "/access-requests/"+request.ID.String()+"/approve", iamTenantB, f.tokenB, map[string]any{"note": "approved"}, nil)
+	response = f.request(t, http.MethodPut, "/access-requests/"+request.ID.String()+"/decision", iamTenantB, f.tokenB, map[string]any{"decision": "approved", "note": "approved"}, nil)
 	requireStatus(t, http.StatusOK, response)
 	approved := decodeEnvelope[governance.AccessRequest](t, response)
 	require.Equal(t, governance.StatusApproved, approved.Status)

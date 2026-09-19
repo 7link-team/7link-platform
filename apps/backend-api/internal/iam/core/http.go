@@ -1288,7 +1288,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 }
 
 func roleFromDomain(role Role) APIRole {
-	return APIRole{ID: role.ID, TenantID: role.TenantID, Name: role.Name, Description: role.Description, CreatedAt: role.CreatedAt, UpdatedAt: role.UpdatedAt}
+	return APIRole(role)
 }
 
 func rolesFromDomain(roles []Role) []APIRole {
@@ -1312,10 +1312,7 @@ func rolePermissionGrantsFromDomain(grants []RolePermissionGrant) []APIRolePermi
 }
 
 func entityFromDomain(entity Entity) APIEntity {
-	return APIEntity{
-		ID: entity.ID, TenantID: entity.TenantID, ParentID: entity.ParentID, Type: entity.Type, Name: entity.Name,
-		Status: entity.Status, Metadata: entity.Metadata, CreatedAt: entity.CreatedAt, UpdatedAt: entity.UpdatedAt,
-	}
+	return APIEntity(entity)
 }
 
 func entitiesFromDomain(entities []Entity) []APIEntity {
@@ -1369,7 +1366,7 @@ func memberAuthorizationSnapshotFromDomain(snapshot MemberAuthorizationSnapshot)
 func directoryBindingsFromDomain(bindings []RoleDirectoryBinding) []APIRoleDirectoryBinding {
 	out := make([]APIRoleDirectoryBinding, 0, len(bindings))
 	for _, binding := range bindings {
-		out = append(out, APIRoleDirectoryBinding{RoleID: binding.RoleID, AssigneeType: binding.AssigneeType, AssigneeID: binding.AssigneeID, CreatedAt: binding.CreatedAt})
+		out = append(out, APIRoleDirectoryBinding(binding))
 	}
 	return out
 }

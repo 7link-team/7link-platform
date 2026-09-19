@@ -40,22 +40,22 @@ future editor eligibility. It considers the server-detected MIME type first and
 the normalized extension second. `application/octet-stream` may fall back to the
 extension. A filename never changes authorization or backend format validation.
 
-| Category | Representative formats | Presentation |
-| --- | --- | --- |
-| PDF | pdf | red document icon, `PDF` badge |
-| Document | doc, docx, odt, rtf, wps | blue text-document icon |
-| Spreadsheet | xls, xlsx, ods, csv, et | green spreadsheet icon |
-| Presentation | ppt, pptx, odp, dps | orange presentation icon |
-| Image | jpg, png, gif, webp, svg, tiff, heic | image icon |
-| Video | mp4, webm, mov, mkv | video icon |
-| Audio | mp3, wav, flac, ogg, m4a | audio icon |
-| Archive | zip, 7z, rar, tar, gz, bz2, xz | archive icon |
-| Text/code | txt, md, json, yaml, xml, source files | text/code icon |
-| Email/book | eml, msg, mbox, epub | mail/book icon |
-| Data | sqlite, parquet, avro | database icon |
-| Drawing/CAD/3D/GIS | drawio, dwg, dxf, glb, geojson, shp | matching drawing/box/map icon |
-| Font | ttf, otf, woff | typography icon |
-| Unknown | everything else | neutral file icon |
+| Category           | Representative formats                 | Presentation                   |
+| ------------------ | -------------------------------------- | ------------------------------ |
+| PDF                | pdf                                    | red document icon, `PDF` badge |
+| Document           | doc, docx, odt, rtf, wps               | blue text-document icon        |
+| Spreadsheet        | xls, xlsx, ods, csv, et                | green spreadsheet icon         |
+| Presentation       | ppt, pptx, odp, dps                    | orange presentation icon       |
+| Image              | jpg, png, gif, webp, svg, tiff, heic   | image icon                     |
+| Video              | mp4, webm, mov, mkv                    | video icon                     |
+| Audio              | mp3, wav, flac, ogg, m4a               | audio icon                     |
+| Archive            | zip, 7z, rar, tar, gz, bz2, xz         | archive icon                   |
+| Text/code          | txt, md, json, yaml, xml, source files | text/code icon                 |
+| Email/book         | eml, msg, mbox, epub                   | mail/book icon                 |
+| Data               | sqlite, parquet, avro                  | database icon                  |
+| Drawing/CAD/3D/GIS | drawio, dwg, dxf, glb, geojson, shp    | matching drawing/box/map icon  |
+| Font               | ttf, otf, woff                         | typography icon                |
+| Unknown            | everything else                        | neutral file icon              |
 
 The same component is used by details, small-icon, large-icon, and properties
 views. The large icon view may show a short extension badge, but never renders an
@@ -136,8 +136,11 @@ The enabled DOCX/PPTX adapter addresses upstream 0.1.47 issue #140 locally. It
 renders into a detached staging element, removes iframe/srcdoc, script, object,
 embed and form content, strips event-handler attributes, rejects unsafe or
 external embedded resource URLs, sanitizes CSS imports/URLs, and observes later
-mutations before attaching output to the preview surface. No other Office
-extension may enter this adapter.
+mutations before attaching output to the preview surface. `docx-preview` labels
+package images as generic octet streams, so the adapter signature-checks common
+raster formats and rewrites only validated `<img src>` data URLs to their image
+MIME type. Unknown binary data remains blocked. No other Office extension may
+enter this adapter.
 
 Office formats without an accepted local renderer use external online viewers:
 Microsoft Office Viewer is the default and Google Viewer is an alternate `Open

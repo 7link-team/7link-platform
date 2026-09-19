@@ -70,7 +70,7 @@ func TestIAMIdentityAuthnMigrationsAcrossEngines(t *testing.T) {
 						Module: identity.Name,
 						To:     0,
 					}, prefix)
-					assert.ErrorContains(t, err, `cannot roll back migration milestones "identity.base", "identity.closure-requests", "identity.lifecycle"`)
+					assert.ErrorContains(t, err, `cannot roll back migration milestones "identity.avatars", "identity.base", "identity.closure-requests", "identity.lifecycle"`)
 					assert.ErrorContains(t, err, `"authn.constraints"`)
 
 					_, err = app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{

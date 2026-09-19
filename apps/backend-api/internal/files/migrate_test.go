@@ -44,6 +44,28 @@ func TestFileMigrationsAndGeneratedQueriesSQLite(t *testing.T) {
 	badOffset := upload
 	badOffset.ID, badOffset.Offset = 9, 4
 	require.Error(t, q.Upload.WithContext(t.Context()).Create(&badOffset))
+	owner, slot := guid.ID(11), 1
+	require.NoError(t, q.Space.WithContext(t.Context()).Create(&model.Space{ID: 10, ScopeKind: "account", PrincipalID: &owner, Version: 1, CreatedAt: 1}))
+	rootScope := "account"
+	require.NoError(t, q.Node.WithContext(t.Context()).Create(&model.Node{
+		ID: 12, SpaceID: 10, ParentKind: "directory", RootSlot: &slot, LiveSlot: &slot,
+		Kind: "directory", State: "active", Version: 1, ManagementMode: "user",
+		RootScope: &rootScope, RootOwnerID: &owner, ACLStopInheritance: true, CreatedAt: 1, UpdatedAt: 1,
+	}))
+	parent := guid.ID(12)
+	require.NoError(t, q.Node.WithContext(t.Context()).Create(&model.Node{
+		ID: 13, SpaceID: 10, ParentID: &parent, ParentKind: "directory", LiveSlot: &slot,
+		Kind: "file", Name: "avatar.png", NameKey: "avatar.png", Ext: "png", State: "active",
+		Version: 1, ManagementMode: "resource", CreatedAt: 1, UpdatedAt: 1,
+	}))
+	require.NoError(t, q.ResourceBinding.WithContext(t.Context()).Create(&model.ResourceBinding{
+		ID: 14, SpaceID: 10, FileID: 13, FileKind: "file", Purpose: "principal.avatar",
+		ResourceKind: "principal", ResourceID: 11, Slot: "current", State: "active", LiveSlot: &slot,
+		Version: 1, CreatedBy: 11, CreatedAt: 1, UpdatedAt: 1,
+	}))
+	binding, err := q.ResourceBinding.WithContext(t.Context()).Where(q.ResourceBinding.ID.Eq(guid.ID(14))).Take()
+	require.NoError(t, err)
+	require.Equal(t, guid.ID(13), binding.FileID)
 	require.NoError(t, goosex.MigrateDownTo(t.Context(), sqlDB, source, "sqlite", 0))
 	require.False(t, db.Migrator().HasTable(query.BindNames(source.Prefix).Objects.String()))
 }

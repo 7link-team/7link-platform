@@ -315,11 +315,11 @@ func documentFilePath(api huma.API, runtimePath, documentedPath string) {
 	documentedOperation := *item.Get
 	documentedOperation.Parameters = make([]*huma.Param, len(item.Get.Parameters))
 	for index, parameter := range item.Get.Parameters {
-		copy := *parameter
-		if copy.In == "path" && copy.Name == "*" {
-			copy.Name = "path"
+		clonedParameter := *parameter
+		if clonedParameter.In == "path" && clonedParameter.Name == "*" {
+			clonedParameter.Name = "path"
 		}
-		documentedOperation.Parameters[index] = &copy
+		documentedOperation.Parameters[index] = &clonedParameter
 	}
 	documentedItem.Get = &documentedOperation
 	delete(api.OpenAPI().Paths, runtimePath)
@@ -359,7 +359,7 @@ func fileOperationRequestOf(input *fileOperationInput) (immediateOperationReques
 	}
 	decisions := make([]immediateDecision, len(input.Body.Decisions))
 	for index, decision := range input.Body.Decisions {
-		decisions[index] = immediateDecision{ConflictKey: decision.ConflictKey, Policy: decision.Policy}
+		decisions[index] = immediateDecision(decision)
 	}
 	request := immediateOperationRequest{
 		operationRequest: operationRequest{

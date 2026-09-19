@@ -1,15 +1,16 @@
 package identity
 
 import (
-	"7link.com/platform/internal/files"
 	"context"
 	"errors"
 	"fmt"
 	"time"
 
+	"7link.com/platform/internal/files"
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/core"
 	identityi18n "7link.com/platform/internal/iam/identity/i18n"
+	"7link.com/platform/internal/iam/identity/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
@@ -39,8 +40,7 @@ type Module struct {
 	administrators      core.AdministratorGuard
 	fields              authz.FieldPermissionChecker
 	avatarPermissions   authz.PermissionChecker
-	storage             files.Driver
-	accountFiles        *files.AccountObjects
+	resourceFiles       *files.AccountResourceFiles
 	legacyImporter      files.LegacyImporter
 	ids                 guid.Source
 	appender            audit.Appender
@@ -165,8 +165,7 @@ func (m *Module) bootstrapPrincipalStore() BootstrapPrincipalStore {
 			return nil, ErrUnavailable
 		}
 		repo := NewRepository(m.runtime, m.ids, m.appender)
-		repo.storage = m.storage
-		repo.accountFiles = m.accountFiles
+		repo.resourceFiles = m.resourceFiles
 		// The bootstrap runs after Wire, so the owners have published and the
 		// module's holder already carries their names.
 		repo.foreign = &m.foreign
@@ -235,13 +234,12 @@ func (m *Module) InjectServices(services *module.Services) error {
 	}
 	m.fields = fields
 	m.avatarPermissions = fields
-	m.storage, err = module.Resolve[files.Driver](services)
+	m.resourceFiles, err = module.Resolve[*files.AccountResourceFiles](services)
 	if err != nil {
-		return fmt.Errorf("resolve identity file storage: %w", err)
+		return fmt.Errorf("resolve identity resource files: %w", err)
 	}
-	m.accountFiles, err = module.Resolve[*files.AccountObjects](services)
-	if err != nil {
-		return fmt.Errorf("resolve identity account files: %w", err)
+	if err := registerAvatarResourcePurposes(m.resourceFiles, query.BindNames(m.runtime.TablePrefix())); err != nil {
+		return fmt.Errorf("register identity avatar file purposes: %w", err)
 	}
 	m.legacyImporter, err = module.Resolve[files.LegacyImporter](services)
 	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
@@ -326,8 +324,7 @@ func (m *Module) Initialize(ctx context.Context) error {
 		return errors.New("initialize identity: the core, organization, and oauth modules must publish the table names identity joins")
 	}
 	m.Service = NewService(m.runtime, m.appender, m.administrators, m.ids)
-	m.Service.repo.storage = m.storage
-	m.Service.repo.accountFiles = m.accountFiles
+	m.Service.repo.resourceFiles = m.resourceFiles
 	// Wire has already run, so the owners have published; the service and every
 	// repository it clones share the one holder the connectors bound.
 	m.Service.repo.foreign = &m.foreign
@@ -339,9 +336,14 @@ func (m *Module) Initialize(ctx context.Context) error {
 	m.Service.privacyBrowser, m.Service.reauthenticate = m.privacyBrowser, m.reauthenticate
 	m.Service.closeCredentials, m.Service.closeOAuth, m.Service.platformAccessGuard = m.closeCredentials, m.closeOAuth, m.platformAccessGuard
 	if m.legacyImporter != nil {
-		return m.Service.migrateAvatarStorage(ctx, m.legacyImporter)
+		if err := m.Service.migrateAvatarStorage(ctx, m.legacyImporter); err != nil {
+			return err
+		}
 	}
-	return nil
+	if err := m.resourceFiles.MigrateLegacyAvatars(ctx, m.runtime.Database().Write(), time.Now()); err != nil {
+		return fmt.Errorf("migrate legacy avatar references: %w", err)
+	}
+	return m.Service.migrateUngovernedAvatars(ctx)
 }
 
 func (m *Module) CheckHealth(context.Context) error {

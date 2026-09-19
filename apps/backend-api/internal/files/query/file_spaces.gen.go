@@ -32,6 +32,7 @@ func newSpace(db *gorm.DB, opts ...gen.DOOption) space {
 	_space.ScopeKind = field.NewString(tableName, "scope_kind")
 	_space.TenantID = field.NewField(tableName, "tenant_id")
 	_space.PrincipalID = field.NewField(tableName, "principal_id")
+	_space.SystemSlot = field.NewInt(tableName, "system_slot")
 	_space.Version = field.NewInt64(tableName, "version")
 	_space.CreatedAt = field.NewInt64(tableName, "created_at")
 
@@ -48,6 +49,7 @@ type space struct {
 	ScopeKind   field.String
 	TenantID    field.Field
 	PrincipalID field.Field
+	SystemSlot  field.Int
 	Version     field.Int64
 	CreatedAt   field.Int64
 
@@ -70,6 +72,7 @@ func (s *space) updateTableName(table string) *space {
 	s.ScopeKind = field.NewString(table, "scope_kind")
 	s.TenantID = field.NewField(table, "tenant_id")
 	s.PrincipalID = field.NewField(table, "principal_id")
+	s.SystemSlot = field.NewInt(table, "system_slot")
 	s.Version = field.NewInt64(table, "version")
 	s.CreatedAt = field.NewInt64(table, "created_at")
 
@@ -96,11 +99,12 @@ func (s *space) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (s *space) fillFieldMap() {
-	s.fieldMap = make(map[string]field.Expr, 6)
+	s.fieldMap = make(map[string]field.Expr, 7)
 	s.fieldMap["id"] = s.ID
 	s.fieldMap["scope_kind"] = s.ScopeKind
 	s.fieldMap["tenant_id"] = s.TenantID
 	s.fieldMap["principal_id"] = s.PrincipalID
+	s.fieldMap["system_slot"] = s.SystemSlot
 	s.fieldMap["version"] = s.Version
 	s.fieldMap["created_at"] = s.CreatedAt
 }

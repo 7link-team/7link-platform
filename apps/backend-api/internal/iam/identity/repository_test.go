@@ -107,6 +107,9 @@ var _ core.AdministratorGuard = (*stubAdministratorGuard)(nil)
 type identityHarness struct {
 	service    *Service
 	repository *Repository
+	storage    files.Driver
+	accounts   *files.AccountObjects
+	resources  *files.AccountResourceFiles
 	guard      *stubAdministratorGuard
 	db         *gorm.DB
 	runtime    *appenv.Runtime
@@ -142,12 +145,20 @@ func newIdentityHarness(t *testing.T, prefix string) *identityHarness {
 		harness.audits = append(harness.audits, event)
 		return harness.auditErr
 	})
-	harness.service = NewService(harness.runtime, appender, harness.guard, newIdentityTestIDs(1000))
+	ids := newIdentityTestIDs(1000)
+	harness.service = NewService(harness.runtime, appender, harness.guard, ids)
 	storage, err := files.NewLocal(t.TempDir())
 	require.NoError(t, err)
-	harness.service.repo.storage = storage
-	harness.service.repo.accountFiles, err = files.NewAccountObjects(storage, "local", prefix)
+	harness.storage = storage
+	harness.accounts, err = files.NewAccountObjects(storage, "local", prefix)
 	require.NoError(t, err)
+	bindings, err := files.NewResourceBindings(prefix)
+	require.NoError(t, err)
+	harness.resources, err = files.NewAccountResourceFiles(harness.accounts, bindings, storage, prefix)
+	require.NoError(t, err)
+	require.NoError(t, harness.resources.Configure(ids, appender))
+	require.NoError(t, registerAvatarResourcePurposes(harness.resources, harness.service.repo.names))
+	harness.service.repo.resourceFiles = harness.resources
 	harness.service.now = func() time.Time { return identityTestNow }
 	harness.service.erasureRecorder = func(context.Context, audit.ErasureObligation) error { return nil }
 	harness.repository = harness.service.repo

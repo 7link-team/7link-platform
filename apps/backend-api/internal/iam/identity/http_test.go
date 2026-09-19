@@ -29,15 +29,15 @@ import (
 // service-account capabilities.
 const identityRouteManifest = `
 identity-avatar-candidates|POST|/me/avatar-candidates
+identity-avatar-candidate-image|GET|/me/avatar-candidates/{candidate_id}
 identity-my-avatar|GET|/me/avatar
 identity-set-my-avatar|PUT|/me/avatar
-identity-avatar-image|GET|/avatars/{principal_id}/{file}
+identity-avatar-image|GET|/principals/{principal_id}/avatar
 identity-my-closure-request|GET|/me/closure-request
 identity-submit-closure-request|POST|/me/closure-request
 identity-cancel-closure-request|DELETE|/me/closure-request
 identity-list-closure-requests|GET|/platform/closure-requests
-identity-reject-closure-request|POST|/platform/principals/{principal_id}/closure-request/rejection
-identity-process-closure-request|POST|/platform/principals/{principal_id}/closure-request/processing
+identity-update-closure-request|PATCH|/platform/principals/{principal_id}/closure-request
 identity-list-principals|GET|/principals
 identity-create-principal|POST|/principals
 identity-get-principal|GET|/principals/{principal_id}
@@ -53,8 +53,8 @@ identity-list-service-account-credentials|GET|/service-accounts/{service_account
 identity-create-service-account-credential|POST|/service-accounts/{service_account_id}/credentials
 identity-delete-service-account-credential|DELETE|/service-accounts/{service_account_id}/credentials/{credential_id}
 identity-platform-get-principal-lifecycle|GET|/platform/principals/{principal_id}/lifecycle
-identity-platform-set-principal-retention|PUT|/platform/principals/{principal_id}/lifecycle/retention
-identity-platform-anonymize-principal|POST|/platform/principals/{principal_id}/lifecycle/anonymization
+identity-platform-set-principal-retention|PUT|/platform/principals/{principal_id}/lifecycle/retention-policy
+identity-platform-anonymize-principal|PUT|/platform/principals/{principal_id}/lifecycle/anonymization
 identity-platform-suspend-principal|PUT|/platform/principals/{principal_id}/suspension
 identity-platform-restore-principal|DELETE|/platform/principals/{principal_id}/suspension`
 
@@ -66,8 +66,7 @@ identity-platform-restore-principal|DELETE|/platform/principals/{principal_id}/s
 // them out of reach of the only role that should hold them.
 var identityGuards = map[string]string{
 	"identity-list-closure-requests":             "platform_administer",
-	"identity-reject-closure-request":            "platform_administer",
-	"identity-process-closure-request":           "platform_administer",
+	"identity-update-closure-request":            "platform_administer",
 	"identity-list-principals":                   "user_view",
 	"identity-create-principal":                  "user_create",
 	"identity-get-principal":                     "user_view",
@@ -265,7 +264,7 @@ func TestIdentityOpenAPIGuardsParametersAndSecurityAreConsistent(t *testing.T) {
 
 			guard, declared := identityGuards[operation.OperationID]
 			switch operation.OperationID {
-			case "identity-my-closure-request", "identity-submit-closure-request", "identity-cancel-closure-request", "identity-my-avatar", "identity-set-my-avatar", "identity-avatar-candidates":
+			case "identity-my-closure-request", "identity-submit-closure-request", "identity-cancel-closure-request", "identity-my-avatar", "identity-set-my-avatar", "identity-avatar-candidates", "identity-avatar-candidate-image":
 				assert.True(t, authz.IsAuthenticatedOperation(operation), location)
 				assert.Equal(t, []map[string][]string{{authz.SessionScheme: {}}}, operation.Security, location)
 				assert.NotContains(t, operation.Metadata, "authz.guard", location)

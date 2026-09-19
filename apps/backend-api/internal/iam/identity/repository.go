@@ -1,12 +1,12 @@
 package identity
 
 import (
-	"7link.com/platform/internal/files"
 	"context"
 	"errors"
 	"fmt"
 	"time"
 
+	"7link.com/platform/internal/files"
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity/query"
@@ -47,9 +47,8 @@ type Repository struct {
 	// credentials is authn's capability for the credential tables authn owns.
 	// identity sequences those writes inside its own transaction; it does not
 	// run them.
-	credentials  PrincipalCredentialStore
-	storage      files.Driver
-	accountFiles *files.AccountObjects
+	credentials   PrincipalCredentialStore
+	resourceFiles *files.AccountResourceFiles
 }
 
 func NewRepository(runtime *appenv.Runtime, ids guid.Source, appender audit.Appender) *Repository {

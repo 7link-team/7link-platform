@@ -12,6 +12,7 @@ import "@open-file-viewer/core/style.css"
 import { FileViewer } from "@open-file-viewer/react"
 import pdfLegacyWorkerSrc from "pdfjs-dist/legacy/build/pdf.worker.mjs?url"
 import pdfWorkerSrc from "pdfjs-dist/build/pdf.worker.mjs?url"
+import { normalizeOfficeEmbeddedImageURL } from "../lib/office-preview-safety"
 
 const plugins = [
   imagePlugin(),
@@ -44,7 +45,9 @@ function sanitizedOfficePlugin(): PreviewPlugin {
       staging.className = "size-full"
       const instance = await office.render({ ...context, viewport: staging })
       sanitizeOfficePreview(staging)
-      const observer = new MutationObserver(() => sanitizeOfficePreview(staging))
+      const observer = new MutationObserver(() =>
+        sanitizeOfficePreview(staging)
+      )
       observer.observe(staging, {
         attributes: true,
         childList: true,
@@ -98,6 +101,13 @@ function sanitizeOfficeURL(
 ) {
   const value = element.getAttribute(attribute)?.trim()
   if (!value) return
+  if (attribute === "src" && element instanceof HTMLImageElement) {
+    const normalized = normalizeOfficeEmbeddedImageURL(value)
+    if (normalized) {
+      element.setAttribute(attribute, normalized)
+      return
+    }
+  }
   const lower = value.toLowerCase()
   const allowed = allowNavigation
     ? lower.startsWith("#") ||

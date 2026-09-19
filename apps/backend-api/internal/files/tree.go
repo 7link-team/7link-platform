@@ -43,7 +43,27 @@ func (t directoryTree) createSpaceOn(ctx context.Context, tx *gorm.DB, id, rootI
 		space.PrincipalID = &ownerID
 	}
 	slot := 1
-	root := model.Node{ID: rootID, SpaceID: id, ParentKind: "directory", RootSlot: &slot, LiveSlot: &slot, Kind: "directory", State: "active", Version: 1, CreatedAt: now.UnixMilli(), UpdatedAt: now.UnixMilli()}
+	root := model.Node{ID: rootID, SpaceID: id, ParentKind: "directory", RootSlot: &slot, LiveSlot: &slot, Kind: "directory", State: "active", Version: 1, ManagementMode: "user", CreatedAt: now.UnixMilli(), UpdatedAt: now.UnixMilli()}
+	q := query.Bind(tx, t.prefix)
+	if err := q.Space.WithContext(ctx).Create(&space); err != nil {
+		return err
+	}
+	if err := q.Node.WithContext(ctx).Create(&root); err != nil {
+		return err
+	}
+	return q.NodeClosure.WithContext(ctx).Create(&model.NodeClosure{SpaceID: id, AncestorID: rootID, DescendantID: rootID, Depth: 0})
+}
+
+func (t directoryTree) createSystemSpaceOn(ctx context.Context, tx *gorm.DB, id, rootID guid.ID, now time.Time) error {
+	if tx == nil || id <= 0 || rootID <= 0 {
+		return errHierarchy
+	}
+	if _, active := tx.Statement.ConnPool.(gorm.TxCommitter); !active {
+		return ErrAccountTransaction
+	}
+	slot := 1
+	space := model.Space{ID: id, ScopeKind: "system", SystemSlot: &slot, Version: 1, CreatedAt: now.UnixMilli()}
+	root := model.Node{ID: rootID, SpaceID: id, ParentKind: "directory", RootSlot: &slot, LiveSlot: &slot, Kind: "directory", State: "active", Version: 1, ManagementMode: "user", ACLStopInheritance: true, CreatedAt: now.UnixMilli(), UpdatedAt: now.UnixMilli()}
 	q := query.Bind(tx, t.prefix)
 	if err := q.Space.WithContext(ctx).Create(&space); err != nil {
 		return err
@@ -79,7 +99,7 @@ func (t directoryTree) createNodeOn(ctx context.Context, tx *gorm.DB, spaceID, i
 		return nil, err
 	}
 	slot := 1
-	row := model.Node{ID: id, SpaceID: spaceID, ParentID: &parentID, ParentKind: "directory", LiveSlot: &slot, Kind: kind, Name: name, NameKey: key, Ext: Extension(name), State: "active", Version: 1, CreatedAt: now.UnixMilli(), UpdatedAt: now.UnixMilli()}
+	row := model.Node{ID: id, SpaceID: spaceID, ParentID: &parentID, ParentKind: "directory", LiveSlot: &slot, Kind: kind, Name: name, NameKey: key, Ext: Extension(name), State: "active", Version: 1, ManagementMode: "user", CreatedAt: now.UnixMilli(), UpdatedAt: now.UnixMilli()}
 	if kind == "directory" {
 		row.Ext = ""
 	}

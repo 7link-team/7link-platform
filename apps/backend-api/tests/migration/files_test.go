@@ -43,13 +43,14 @@ func TestFileMigrationsOperationCostAndPermissionsAcrossEngines(t *testing.T) {
 					require.NoError(t, err)
 					q := query.Bind(db, prefix)
 					owner, slot := guid.ID(90), 1
-					require.NoError(t, q.Space.WithContext(t.Context()).Create(&model.Space{ID: 1, ScopeKind: "account", PrincipalID: &owner, Version: 1, CreatedAt: 1}))
-					require.NoError(t, q.Node.WithContext(t.Context()).Omit(q.Node.RootScope, q.Node.RootOwnerID, q.Node.ACLStopInheritance).Create(&model.Node{ID: 2, SpaceID: 1, ParentKind: "directory", RootSlot: &slot, LiveSlot: &slot, Kind: "directory", State: "active", Version: 1, CreatedAt: 1, UpdatedAt: 1}))
+					require.NoError(t, q.Space.WithContext(t.Context()).Omit(q.Space.SystemSlot).Create(&model.Space{ID: 1, ScopeKind: "account", PrincipalID: &owner, Version: 1, CreatedAt: 1}))
+					require.NoError(t, q.Node.WithContext(t.Context()).Omit(q.Node.RootScope, q.Node.RootOwnerID, q.Node.ACLStopInheritance, q.Node.ManagementMode).Create(&model.Node{ID: 2, SpaceID: 1, ParentKind: "directory", RootSlot: &slot, LiveSlot: &slot, Kind: "directory", State: "active", Version: 1, CreatedAt: 1, UpdatedAt: 1}))
 					require.NoError(t, q.NodeClosure.WithContext(t.Context()).Create(&model.NodeClosure{SpaceID: 1, AncestorID: 2, DescendantID: 2, Depth: 0}))
 					require.NoError(t, goosex.Migrate(t.Context(), sqlDB, source, engine.dialect))
 					root, err := q.Node.WithContext(t.Context()).Where(q.Node.ID.Eq(guid.ID(2))).Take()
 					require.NoError(t, err)
 					require.Nil(t, root.RootScope, "existing nodes have no implicit root ownership or grant")
+					require.Equal(t, "user", root.ManagementMode, "existing logical files remain user-managed")
 					_, err = q.Node.WithContext(t.Context()).Where(q.Node.ID.Eq(guid.ID(2))).UpdateSimple(q.Node.RootScope.Value("account"), q.Node.RootOwnerID.Value(owner), q.Node.ACLStopInheritance.Value(true))
 					require.NoError(t, err)
 					scope, parent := "account", guid.ID(2)
@@ -66,6 +67,21 @@ func TestFileMigrationsOperationCostAndPermissionsAcrossEngines(t *testing.T) {
 					root, err = q.Node.WithContext(t.Context()).Where(q.Node.ID.Eq(guid.ID(2))).Take()
 					require.NoError(t, err)
 					require.True(t, root.ACLStopInheritance)
+					file := model.Node{
+						ID: 4, SpaceID: 1, ParentID: &parent, ParentKind: "directory", LiveSlot: &slot,
+						Kind: "file", Name: "avatar.png", NameKey: "avatar.png", Ext: "png", State: "active",
+						Version: 1, ManagementMode: "resource", CreatedAt: 1, UpdatedAt: 1,
+					}
+					require.NoError(t, q.Node.WithContext(t.Context()).Create(&file))
+					binding := model.ResourceBinding{
+						ID: 300, SpaceID: 1, FileID: file.ID, FileKind: "file", Purpose: "principal.avatar",
+						ResourceKind: "principal", ResourceID: owner, Slot: "current", State: "active", LiveSlot: &slot,
+						Version: 1, CreatedBy: owner, CreatedAt: 1, UpdatedAt: 1,
+					}
+					require.NoError(t, q.ResourceBinding.WithContext(t.Context()).Create(&binding))
+					storedBinding, err := q.ResourceBinding.WithContext(t.Context()).Where(q.ResourceBinding.ID.Eq(binding.ID)).Take()
+					require.NoError(t, err)
+					require.Equal(t, binding.FileID, storedBinding.FileID)
 					for _, failure := range []string{"duplicate", "foreign-space", "invalid-action", "invalid-effect"} {
 						invalid := acl
 						invalid.ID = 201
@@ -95,6 +111,9 @@ func TestFileMigrationsOperationCostAndPermissionsAcrossEngines(t *testing.T) {
 					require.NoError(t, err)
 					require.Nil(t, root.RootScope)
 					require.False(t, root.ACLStopInheritance)
+					bindingCount, err := q.ResourceBinding.WithContext(t.Context()).Count()
+					require.NoError(t, err)
+					require.Zero(t, bindingCount, "rolling below the binding migration removes only the retired ledger")
 					aclCount, err := q.NodeACL.WithContext(t.Context()).Count()
 					require.NoError(t, err)
 					require.Zero(t, aclCount, "down/up never invents permissions for old nodes")

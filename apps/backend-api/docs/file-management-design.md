@@ -810,3 +810,121 @@ space。创建根仍使用 `POST /files` multipart：租户上下文只接受 `s
 Web 的 `/account/files` 是账号控制台页面路由，不是另一套后端资源；它调用相同 `/files`
 API且不发送租户/实体头。租户文件页继续同时发送两个头。切换两类页面必须清除旧选择、
 路径和迟到响应，不能把一个上下文的授权快照显示到另一个上下文。
+
+## 23. 全系统文件治理设计稿（2026-09-19）
+
+本节承接“所有持久化上传统一走文件模块、按最低有效粒度归属并消除游离文件”的要求。
+平台级全局逻辑/物理查看已明确延期，不属于当前实施范围。此处的“实例”按既有组织模型的 Entity
+（实体）理解；部署实例或应用实例不是同一资源，若以后需要必须另行定义归属。
+
+### 23.1 统一边界与强制不变量
+
+统一治理覆盖用户或业务运行时产生并需要持久保留的内容：文件管理器文件、头像、商品图、
+富文本图片、合同/工单/订单附件、导入源文件、需要留存的导出结果等。源代码静态资源、
+部署配置、密钥、数据库备份、运行日志和临时进程文件不伪装成业务文件，仍由各自基础设施治理。
+
+所有受管内容必须同时满足：
+
+1. 字节写入只通过 files Driver 和暂存协议产生 `file_objects`，业务模块不得直接拼接磁盘/S3 key。
+2. 长期对象必须被不可变 `file_versions` 引用；业务托管文件还必须有有效业务绑定。
+3. 每个逻辑文件都能经已验证祖先路径解析到唯一归属根；客户端不能提交任意 owner 逃逸归属。
+4. 读取只接受逻辑 `file_id` 或受控业务资源入口；storage key、URI、object ID 均不是普通下载凭证。
+5. 暂存对象有明确截止时间；到期后按声明、加锁、复核、删除的有界流程回收，不能永久游离。
+6. 物理删除前必须确认无 Version、业务绑定、同步操作 pin、上传/清理 claim 或合规保留。
+
+`file_objects` 是全局物理事实，不声明 Tenant/Entity/Principal 所有权：同一物理对象可能被多个
+逻辑版本引用。归属、名称、目录、权限、业务用途和生命周期属于逻辑层，不能下沉到对象行。
+
+### 23.2 最低有效归属
+
+服务器从已验证的业务资源和调用上下文推导归属，不让上传者为了省事自行选择更高层级。
+Department 比 Entity 更细，因此仍保留；Entity/Department/租户内个人根继续位于所属 Tenant
+space，不为每个组织资源创建物理 bucket 或新的公开 Workspace 概念。
+
+| 最低归属 | 使用条件与示例 | 普通文件管理器 |
+| --- | --- | --- |
+| system | 平台拥有且不属于任何租户的运行时模板、全局素材 | 不进入普通文件管理器；由对应业务入口访问 |
+| tenant | 多个 Entity 共同使用的租户文件、租户级模板 | 租户文件入口展示 |
+| entity | 商品、订单、项目等明确属于一个 Entity 的文件 | 对应 Entity 入口；业务托管项默认隐藏 |
+| department | 明确由一个 Department 管理的资料 | 对应 Department 入口；业务托管项默认隐藏 |
+| personal | 某 Tenant 内 Principal 的个人工作文件 | 该租户个人入口展示 |
+| account | 与任何 Tenant 无关的账号私有文件、Principal 头像 | 账号入口；头像等业务托管项默认隐藏 |
+
+`system` 需要一个内部 system space；Tenant 继续一租户一 space，Entity/Department/personal
+是其中的归属根；account 继续一 Principal 一 space。静态部署品牌资源不因 system scope 被强制
+迁入数据库。资源从细粒度迁往粗粒度必须是显式、审计化归属变更，不能通过普通 move 完成。
+
+System space 由受唯一约束的 `system_slot=1` 表示，`tenant_id` 与 `principal_id` 必须同时为空；
+system 根直接由该 space 的物理根确定，不伪造 Tenant、Principal 或 `root_owner_id`。三方言升级
+保留既有 Tenant/Account space；只要仍有 system 数据，降级到不认识 system 的旧结构就明确失败，
+绝不把 system 文件静默改属或删除。
+
+上传入口必须携带或由业务路由确定一个已注册 purpose。Purpose 合同声明允许的 owner scope、
+MIME/大小、单值或多值、是否固定版本、保留规则和生命周期责任。例如 Principal avatar 只能
+绑定 account scope；Entity 商品图不能写入 Tenant 根；Department 附件不能借当前 Entity 猜归属。
+
+### 23.3 用户文件与业务托管文件
+
+逻辑文件分为 `user-managed` 和 `resource-managed`，二者复用 Node/Version/Object，不另建文件系统：
+
+- `user-managed` 由用户在有权限的目录创建，可合法存在而不绑定业务对象。
+- `resource-managed` 由头像、商品、工单等业务资源持有，必须在创建逻辑文件/首版本的同一事务
+  建立有效绑定；普通文件创建 API 不能伪造此模式或 purpose。
+- 业务托管文件默认不出现在普通目录列表，避免系统附件污染文件管理器，也避免用户 move/delete
+  破坏业务记录；对应业务页面仍能按业务权限查询、预览、版本化和审计。
+- 一个业务文件可按 Purpose 合同允许多个引用。业务解绑只撤销该引用；最后一个引用消失后进入
+  保留/回收流程，不能直接删除仍被 Version、其他业务资源或操作 pin 引用的物理对象。
+
+建议新增唯一的 `file_resource_bindings` 作为 files 模块引用账本，而不是为每种业务复制一套
+上传元数据。最小字段为 logical file ID、可选固定 version ID、注册 purpose、resource kind/ID、
+slot、状态、创建/失效时间和并发版本。`resource kind + purpose` 必须来自启动时注册表；未知字符串
+拒绝，不能演变成无校验的多态垃圾桶。业务模块仍保留自身业务关系，但文件的生存引用以该账本
+为准，并通过模块窄能力在业务事务中原子更新。现有 avatar object reference 需迁移到逻辑文件与
+绑定，不继续作为第二套长期模型；迁移必须保持原有候选过期和账号注销语义。
+
+### 23.4 平台级全局查看（延期）
+
+当前阶段不实现全局逻辑文件 API、物理对象 API、跨范围内容读取权限或平台 Web 管理页面，也不为
+这些未来能力预注册权限。`GET /files` 只保持既有账号/组织授权范围，不能通过 query、header 或超管
+身份切换成全局查询。普通文件接口不返回 object ID、storage key 或 URI。
+
+未来确需全局查看时，应作为独立设计重新评审 URI、平台权限、字段脱敏、分页、查询计划和审计；
+全局元数据查看与实际内容读取仍必须分权。延期不影响当前 Object/Version/Binding 数据完整性、
+归属约束、业务入口读取、游离检测和清理能力。
+
+### 23.5 游离检测、回收与规模约束
+
+游离状态必须分类，不能用一个 `ref_count=0` 立即删除：
+
+| 类型 | 判定 | 处理 |
+| --- | --- | --- |
+| 暂存游离 | Preparation 到期且未原子附着 | claim 后复核并回收存储写入 |
+| 物理游离候选 | Object 无 Version/Binding/Pin，且无进行中 preparation/保留 | 隔离期后再次事务复核再删 |
+| 逻辑业务游离 | resource-managed Node 无有效 Binding | 管理告警并隔离，按 Purpose 保留策略修复/回收 |
+| 引用悬空 | Binding 对应业务资源不存在或已越界 | 禁止读取，告警；由 owning module 对账修复 |
+| 用户未归档文件 | user-managed Node 无业务 Binding | 合法状态，不算游离 |
+
+对象、版本、绑定和清理 claim 的状态转换必须可重试且对不确定提交保守；存储 I/O 不持有长数据库
+事务。删除采用有界 keyset 扫描和双重检查，不做停服全表扫描。至少增加 Binding 的 resource/slot、
+file/state 索引，Object 的 state/id 扫描索引，并复用 Version object 索引；反向引用计数批量聚合，
+禁止逐行 N+1。真实 MySQL/PostgreSQL 必须分别验证大规模执行计划和并发 attach/detach/cleanup，
+才能声称统一文件治理生产就绪。
+
+到期 Binding 由现有 files worker 以 ID keyset 有界扫描；每条状态变更仍获取对应 Space 写栅栏并
+推进 revision。与人工解绑并发时，已完成的状态变更视为幂等完成；其他错误保留到下一轮重试。
+Binding 到期只产生可见的逻辑业务孤儿，不直接越过 Purpose 保留策略删除 Node、Version 或 Object。
+
+### 23.6 实施顺序与待确认边界
+
+1. 固化 Scope/Purpose/Binding 合同，不预注册延期功能的全局平台权限。
+2. 增加 system space 与 `file_resource_bindings` 三方言迁移、约束、query 和并发/孤儿状态机测试。
+3. 先迁移头像为 account scope 的逻辑 resource-managed 文件，证明旧引用与候选过期可无损迁移。
+4. 提供业务模块上传/绑定/解绑窄能力，加入架构门禁，阻止新增直接 Driver、磁盘或 S3 写入。
+5. 做存量扫描和迁移报告；未知 owner/purpose 只报告和隔离，不自动塞入 system/tenant 根。
+6. 通过三方言、race、执行计划、故障恢复、权限矩阵和真实浏览器验收后再逐业务模块迁移。
+
+平台级全局逻辑/物理查看不在上述顺序内，待实际需要时再单独设计和排期。
+
+当前阶段明确排除：把 Object owner 当逻辑授权、每业务模块再建存储表、
+每 Entity/Department 建 bucket、按角色隐式切换 `/files` 语义、把未知存量文件粗暴归到 system，
+仅依赖定时任务最终清理却允许长期无归属对象，以及任何全局文件管理 API/Web 页面。

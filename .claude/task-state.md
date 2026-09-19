@@ -31,6 +31,13 @@
   `/sessions/current` returns the expected anonymous 401 directly and through
   the 18291 proxy. Fresh browser admin login and `/account/files` load PASS with
   zero post-login failed responses or console errors.
+- Port 18081 was still serving the pre-migration `.temp/files-preview/api.exe`
+  built on 2026-09-18, whose OpenAPI exposed 109 `/iam` and `/platform/iam`
+  paths. It was replaced with a current source build (`api-current.exe`, PID
+  15124). Live 18081 OpenAPI now has 183 enabled paths, zero IAM-prefixed paths,
+  and zero first-path-segment/tag mismatches; `/iam/tenants` is 404 while
+  `/tenants`, `/sessions/current`, and `/files` reach the new routes and return
+  the expected anonymous 401. Health, readiness, and OpenAPI probes return 200.
 - Broader migration gates remain red for stale expectations, not the file
   navigation fix: composed mapping, SCIM profile/service-account, tenant
   isolation, principal closure, identity closure and OAuth tag tests still use
@@ -2722,3 +2729,122 @@ provisioning 3、governance 3、federation 2、oauth 1、audit 1。
   checked. Overall file management production-readiness gaps remain unchanged.
 - Next action: user inspects `http://127.0.0.1:18291/account/files`; isolated API,
   Web and Swagger remain running at 18280/18291. No commit or push requested.
+
+### DOCX Embedded Image Follow-up - 2026-09-19
+
+- Phase: ACCEPTANCE. User reports that DOCX text renders but embedded images do not.
+- Current local Office adapter permits `data:image/*`, `data:font/*` and Blob URLs,
+  while `docx-preview` 0.3.7 is configured by `open-file-viewer` 0.1.47 to convert
+  package resources to data URLs. An isolated active `printtest.docx` contains
+  three embedded PNG files and is available for a real browser reproduction.
+- Scope: restore DOCX embedded-image preview without weakening the existing Office
+  active-content sanitization or changing file APIs. Add focused sanitizer coverage
+  and real-browser acceptance; then resume the global REST test migration.
+- Execution: Direct because the sanitizer and preview adapter are one tightly
+  coupled surface. No subagent is requested.
+- Real browser reproduction confirmed all three image elements had their `src`
+  removed and decoded to 0x0. The rejected values are PNG payloads emitted as
+  `data:application/octet-stream;base64,...` by `docx-preview`.
+- Implementation signature-checks generic package resources and rewrites only
+  verified PNG/JPEG/GIF/BMP/WebP payloads used by `<img src>`. Unknown binary data
+  remains rejected; the existing active-content and external-URL rules remain.
+- PASS: six focused signature tests, all 104 IAM tests, full IAM ESLint,
+  TypeScript typecheck, production build and `git diff --check`.
+- PASS in real Chrome against the isolated current API/Web: all three embedded PNGs
+  retain `data:image/png` sources and decode at 2480x1748, 2000x500 and 2000x700;
+  no browser console errors. Screenshot `docx-images-fixed.png` was inspected and
+  shows the document page and embedded color/grayscale test images without blank
+  placeholders, overlap or horizontal overflow.
+- Self-review and requirement acceptance PASS. The fix does not broaden generic
+  octet-stream access: only known raster signatures used by `<img src>` normalize;
+  unknown/malformed payloads and active/external resources remain blocked.
+
+### System-wide File Governance Design - 2026-09-19
+
+- Phase: IMPLEMENTATION. User requires every durable business upload to use the file core,
+  system/tenant/entity/department/personal/account ownership at the lowest valid
+  granularity, and prevention of unowned files.
+- Existing Object and Node/Version layers are reused. Existing tenant spaces and
+  entity/department/personal roots remain; proposal adds only system scope and a
+  registered-purpose logical resource binding ledger. Department and account scope
+  remain necessary. “Instance” is interpreted as the existing Entity resource.
+- Platform-wide logical/physical viewing is explicitly deferred. The current phase
+  has no global file API, Web page, or placeholder platform permissions. Ordinary
+  account `/files` never becomes global because of Principal privilege.
+- User-managed files may be unbound; resource-managed files must atomically bind
+  a verified domain resource and are hidden from ordinary folders by default.
+  Unknown/missing bindings are quarantined and audited, never auto-assigned upward.
+- Detailed design is section 23 of `docs/file-management-design.md`; the user
+  reviewed it and explicitly approved implementation.
+- Binding foundation completed: migration 00010 adds Node management mode and the
+  single `file_resource_bindings` ledger in all three dialects; generated queries
+  and DI publish one `ResourceBindings` capability. Purpose registration rejects
+  unknown/duplicate contracts and requires a transaction-bound business-resource
+  validator. Bind derives the verified root owner, validates the exact resource,
+  requires a real head/pinned Version, serializes on the Space and atomically marks
+  the Node resource-managed. Unbind is Space-fenced and leaves the Node quarantined
+  for orphan detection. Ordinary ACL authorization and browser pages reject/hide
+  resource-managed files.
+- Expiring bindings are no longer declarative-only: the existing bounded cleanup
+  worker keyset-scans due active bindings, applies the same per-Space mutation
+  fence, transitions them to `expired`, and leaves their resource-managed Node as
+  an explicit logical orphan for policy-driven reconciliation. Concurrent manual
+  unbind/expiry is idempotent at the worker boundary.
+- The earlier unused global inventory/content permission placeholders were removed
+  when the user deferred platform-wide viewing; no ordinary `/files` behavior was
+  changed.
+- System scope completed: `file_spaces.system_slot=1` is a cross-dialect singleton;
+  system rows require NULL Tenant/Principal ownership, and the physical root is
+  recognized without inventing a `root_owner_id`. SQLite uses one connection,
+  foreign keys disabled around an explicit `BEGIN IMMEDIATE` table rebuild; the
+  old rows are copied atomically and foreign keys are restored. Downgrade performs
+  a preflight guard and refuses while system data exists. PostgreSQL/MySQL replace
+  their old checks with named constraints and the same singleton invariant.
+- Verification 2026-09-19 after system scope: Files package PASS; Files race PASS
+  (38.673s after binding expiry coverage); backend `go build ./...` PASS; `make generate-check` PASS;
+  SQLite/MySQL/PostgreSQL migration matrix PASS with plain and prefixed schemas
+  (18.015s); `git diff
+  --check` PASS. Tests cover invalid Purpose contracts, exact owner validation,
+  head/pinned version scope, duplicate slots, node-transition rollback, optimistic
+  unbind, hidden ordinary access, orphan classification and populated rollback.
+- Remaining: avatar migration, business upload guardrails, stock-file
+  reconciliation, and storage/browser end-to-end acceptance. Platform-wide views
+  and cross-scope content access are deferred outside this phase.
+- Next action: migrate avatars with a single lifecycle: new writes create
+  account-scoped resource-managed Node/Version/Binding rows atomically; startup
+  backfill converts legacy account references idempotently before the old model is
+  retired. Preserve candidate expiry, selection, account erasure and storage
+  cleanup semantics throughout. Do not add a global route, global Web page, or
+  placeholder platform permission while completing this work.
+
+### REST Cleanup And Governed Avatar Acceptance - 2026-09-19
+
+- Phase: ACCEPTANCE. Public application paths contain no `/iam`, `/authn`, or
+  `/platform/iam` resource prefix. Swagger tags are lowercase kebab-case first
+  path segments. Core migration 16 upgrades existing built-in menu routes to the
+  new resource paths; custom labels/translations remain intact.
+- Avatar lifecycle now uses account-owned Object -> Version -> Node ->
+  ResourceBinding records. Current/candidate purposes are registered, ordinary
+  file browsing hides resource-managed Nodes, promotion reuses the object,
+  candidate expiry is bounded, erasure revokes bindings, and orphan cleanup is
+  Space-fenced before existing physical-object reclamation.
+- Legacy account references and direct-storage avatars migrate idempotently.
+  Existing object bytes are adopted and checksummed without a copy. New accounts
+  do not create a durable default avatar; the empty-avatar presentation fallback
+  remains until an avatar is explicitly set.
+- DOCX embedded images accept only signature-verified PNG/JPEG/GIF/BMP/WebP
+  octet-stream data URLs. Unknown binary, active content and external URLs remain
+  blocked.
+- PASS: migration matrix across SQLite/PostgreSQL/MySQL with plain/prefixed
+  schemas (315.302s); `go test ./... -count=1`; Files/Identity/Core race;
+  related package rerun after lint cleanup; `go build ./...`; backend fmt/lint;
+  OpenAPI and generate checks; schema-lock tool/tests (219 frozen unchanged,
+  228 files, 72 tables, 34 cross-module FKs); forced frontend lint/typecheck,
+  85 UI + 104 IAM tests and production build; `git diff --check`.
+- Scope review: no global file inventory/API/Web page, no public Node/Space/
+  Workspace abstraction, no conflict/task/cleanup table, no legacy route aliases,
+  and no storage key exposure. Real external MySQL 8 and deployment/browser UAT
+  were not rerun in this final commit cycle; the embedded three-engine matrix and
+  earlier live browser acceptance are the available evidence.
+- Next action: review the staged diff, commit the complete justified change set,
+  push branch `IAM`, and verify the remote tracking commit.

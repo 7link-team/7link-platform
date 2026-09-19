@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"time"
 
@@ -24,6 +25,57 @@ type AccountObjects struct {
 	backend  string
 	prefix   string
 	metadata *MetadataRegistry
+}
+
+// Adopt registers immutable bytes that already exist in the configured
+// backend. It is used only by bounded legacy migration and never rewrites the
+// object. The returned preparation follows the same transactional attach path
+// as a newly staged upload.
+func (a *AccountObjects) Adopt(ctx context.Context, db *gorm.DB, id, principalID guid.ID, key string, deadline time.Time) (*PreparedAccountObject, error) {
+	if a == nil || db == nil || id <= 0 || principalID <= 0 || !validKey(key) || !deadline.After(time.Now()) {
+		return nil, ErrInvalidKey
+	}
+	if _, active := db.Statement.ConnPool.(gorm.TxCommitter); active {
+		return nil, ErrAccountTransaction
+	}
+	reader, err := a.driver.Open(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	writer := &prefixChecksums{checksums: NewChecksums()}
+	size, readErr := io.Copy(writer, reader)
+	if err := errors.Join(readErr, reader.Close()); err != nil {
+		return nil, err
+	}
+	meta := a.metadata.Detect(writer.prefix)
+	raw, err := json.Marshal(meta)
+	if err != nil {
+		return nil, err
+	}
+	digests := writer.checksums.Digests()
+	now := time.Now()
+	prepared := &PreparedAccountObject{owner: a, staged: true, object: model.Object{
+		ID: id, BackendID: a.backend, StorageKey: key, URI: fmt.Sprintf("storage://%s/%s", a.backend, key),
+		State: "staged", Size: size, MD5: digests.MD5, SHA1: digests.SHA1, SHA256: digests.SHA256, SHA512: digests.SHA512,
+		MIME: meta.MIME, Type: meta.Type, Subtype: meta.Subtype, Format: meta.Format,
+		Width: meta.Width, Height: meta.Height, MetadataJSON: string(raw), MetadataState: meta.Status,
+		ExtractorVersion: meta.ExtractorVersion, Version: 1, CreatedAt: now.UnixMilli(),
+	}}
+	err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		q := query.Bind(tx, a.prefix)
+		intent := model.AccountPreparation{
+			ID: id, PrincipalID: principalID, BackendID: a.backend, StorageKey: key,
+			State: "ready", ExpiresAt: deadline.UnixMilli(), CreatedAt: now.UnixMilli(),
+		}
+		if err := q.AccountPreparation.WithContext(ctx).Create(&intent); err != nil {
+			return err
+		}
+		return q.Object.WithContext(ctx).Create(&prepared.object)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return prepared, nil
 }
 
 // NewAccountObjects binds private resources to one configured backend and schema.

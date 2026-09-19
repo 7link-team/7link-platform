@@ -144,7 +144,7 @@ func (f *iamTenantFixture) runSCIMProfileLifecycle(t *testing.T) {
 	}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	target := decodeEnvelope[provisioning.TargetSecret](t, response).Target
-	pushPath := "/scim-targets/" + target.ID + "/push"
+	pushPath := "/scim-targets/" + target.ID + "/provisioning-jobs"
 	pushBody := map[string]any{"resource_type": "User", "resource_id": user.ID}
 	response = f.request(t, http.MethodPost, pushPath, iamTenantA, f.tokenA, pushBody, nil)
 	requireStatus(t, http.StatusOK, response)

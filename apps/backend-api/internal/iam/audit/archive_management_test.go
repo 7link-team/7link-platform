@@ -198,9 +198,9 @@ func TestArchiveManagementHTTPPermissionsAndTenantHeaders(t *testing.T) {
 		{"/archive-status", "audit_event_view", api.Get},
 		{"/archives", "audit_event_view", api.Get},
 		{"/archives", "audit_event_export", api.Post},
-		{"/archives/999/retry", "audit_event_export", api.Post},
-		{"/archives/999/verify", "audit_event_view", api.Post},
-		{"/archives/999/download", "audit_event_export", api.Get},
+		{"/archives/999/attempts", "audit_event_export", api.Post},
+		{"/archives/999/verifications", "audit_event_view", api.Post},
+		{"/archives/999/content", "audit_event_export", api.Get},
 	} {
 		checker.permission, checker.platform = "", false
 		path := "/audit" + route.path
@@ -240,14 +240,14 @@ func TestArchiveManagementHTTPDownloadsVerifiedVersionAndRejectsTampering(t *tes
 	require.NoError(t, err)
 	path := "/audit/archives/" + job.ID.String()
 	checker.permission = "audit_event_view"
-	verified := api.Post(path+"/verify", "Authorization: Bearer test", "X-Tenant-Id: 11")
+	verified := api.Post(path+"/verifications", "Authorization: Bearer test", "X-Tenant-Id: 11")
 	require.Equal(t, http.StatusOK, verified.Code, verified.Body.String())
 	listed := api.Get("/audit/archives?offset=1&limit=1", "Authorization: Bearer test", "X-Tenant-Id: 11")
 	require.Equal(t, http.StatusOK, listed.Code, listed.Body.String())
 	assert.Contains(t, listed.Body.String(), `"data":[]`)
 	assert.Contains(t, listed.Body.String(), `"total":1`)
 	checker.permission = "audit_event_export"
-	download := api.Get(path+"/download", "Authorization: Bearer test", "X-Tenant-Id: 11")
+	download := api.Get(path+"/content", "Authorization: Bearer test", "X-Tenant-Id: 11")
 	require.Equal(t, http.StatusOK, download.Code, download.Body.String())
 	assert.Equal(t, "application/x-ndjson", download.Header().Get("Content-Type"))
 	assert.Equal(t, "no-store", download.Header().Get("Cache-Control"))
@@ -257,7 +257,7 @@ func TestArchiveManagementHTTPDownloadsVerifiedVersionAndRejectsTampering(t *tes
 	assert.Equal(t, fixture.objects[job.Object.Key], download.Body.Bytes())
 	fixture.objects[job.Object.Key][1] ^= 1
 	fixture.mu.Unlock()
-	corrupted := api.Get(path+"/download", "Authorization: Bearer test", "X-Tenant-Id: 11")
+	corrupted := api.Get(path+"/content", "Authorization: Bearer test", "X-Tenant-Id: 11")
 	assert.Equal(t, http.StatusConflict, corrupted.Code, corrupted.Body.String())
 	assert.NotContains(t, corrupted.Body.String(), "archive_fixture", "no archive bytes before verification")
 }
@@ -336,32 +336,32 @@ func TestArchiveManagementHTTPHandlerValidationAndPlatformRetention(t *testing.T
 		call func(string, ...any) *httptest.ResponseRecorder
 	}{
 		{"/archive-status", api.Get}, {"/archives", api.Get}, {"/archives", api.Post},
-		{"/archives/1/retry", api.Post}, {"/archives/1/verify", api.Post}, {"/archives/1/download", api.Get},
+		{"/archives/1/attempts", api.Post}, {"/archives/1/verifications", api.Post}, {"/archives/1/content", api.Get},
 	} {
 		for _, tenant := range []string{"", "0", "-1", "bad"} {
 			response := route.call("/audit"+route.path, "X-Tenant-Id: "+tenant)
 			assert.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 		}
 	}
-	for _, suffix := range []string{"retry", "verify"} {
+	for _, suffix := range []string{"attempts", "verifications"} {
 		assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/audit/archives/bad/"+suffix, "X-Tenant-Id: 11").Code)
 	}
-	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/audit/archives/bad/download", "X-Tenant-Id: 11").Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/audit/archives/bad/content", "X-Tenant-Id: 11").Code)
 	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/audit/archives?limit=201", "X-Tenant-Id: 11").Code)
 	checker := &archivePermissionChecker{platform: true}
 	secured := archiveManagementHTTP(t, h, checker)
 	body := map[string]any{"min_days": 30, "archive_after_days": 60}
-	response := secured.Put("/platform/audit/retention", "Authorization: Bearer test", body)
+	response := secured.Put("/platform/audit/retention-policy", "Authorization: Bearer test", body)
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	response = secured.Get("/platform/audit/archive-status", "Authorization: Bearer test")
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.Contains(t, response.Body.String(), `"archive_after_days":60`)
-	assert.Equal(t, http.StatusUnprocessableEntity, secured.Put("/platform/audit/retention", "Authorization: Bearer test", "X-Tenant-Id: 11", body).Code)
-	assert.Equal(t, http.StatusUnprocessableEntity, secured.Put("/platform/audit/retention", "Authorization: Bearer test", map[string]any{"min_days": 60, "archive_after_days": 30}).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, secured.Put("/platform/audit/retention-policy", "Authorization: Bearer test", "X-Tenant-Id: 11", body).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, secured.Put("/platform/audit/retention-policy", "Authorization: Bearer test", map[string]any{"min_days": 60, "archive_after_days": 30}).Code)
 	checker.platform = false
-	assert.Equal(t, http.StatusForbidden, secured.Put("/platform/audit/retention", "Authorization: Bearer test", body).Code)
+	assert.Equal(t, http.StatusForbidden, secured.Put("/platform/audit/retention-policy", "Authorization: Bearer test", body).Code)
 	h.service.archive = nil
 	assert.Equal(t, http.StatusServiceUnavailable, api.Post("/audit/archives", "X-Tenant-Id: 11").Code)
-	assert.Equal(t, http.StatusServiceUnavailable, api.Post("/audit/archives/1/retry", "X-Tenant-Id: 11").Code)
-	assert.Equal(t, http.StatusServiceUnavailable, api.Get("/audit/archives/1/download", "X-Tenant-Id: 11").Code)
+	assert.Equal(t, http.StatusServiceUnavailable, api.Post("/audit/archives/1/attempts", "X-Tenant-Id: 11").Code)
+	assert.Equal(t, http.StatusServiceUnavailable, api.Get("/audit/archives/1/content", "X-Tenant-Id: 11").Code)
 }

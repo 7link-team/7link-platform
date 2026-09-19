@@ -77,7 +77,7 @@ func TestGovernanceModuleRuntimeLifecycle(t *testing.T) {
 	require.NoError(t, instance.CheckHealth(t.Context()))
 	_, api = humatest.New(t)
 	require.NoError(t, instance.RegisterHTTP(t.Context(), api))
-	assert.Len(t, governanceOperationManifest(api.OpenAPI()), 14)
+	assert.Len(t, governanceOperationManifest(api.OpenAPI()), 12)
 }
 
 func TestGovernanceModuleReportsMissingDependenciesAndInvalidState(t *testing.T) {

@@ -33,16 +33,16 @@ audit-verify-integrity|GET|/audit/integrity-verifications
 audit-archive-status|GET|/audit/archive-status
 audit-list-archives|GET|/audit/archives
 audit-request-archive|POST|/audit/archives
-audit-retry-archive|POST|/audit/archives/{archive_id}/retry
-audit-verify-archive|POST|/audit/archives/{archive_id}/verify
-audit-download-archive|GET|/audit/archives/{archive_id}/download
+audit-retry-archive|POST|/audit/archives/{archive_id}/attempts
+audit-verify-archive|POST|/audit/archives/{archive_id}/verifications
+audit-download-archive|GET|/audit/archives/{archive_id}/content
 audit-platform-archive-status|GET|/platform/audit/archive-status
 audit-platform-list-archives|GET|/platform/audit/archives
 audit-platform-request-archive|POST|/platform/audit/archives
-audit-platform-retry-archive|POST|/platform/audit/archives/{archive_id}/retry
-audit-platform-verify-archive|POST|/platform/audit/archives/{archive_id}/verify
-audit-platform-download-archive|GET|/platform/audit/archives/{archive_id}/download
-audit-platform-set-retention|PUT|/platform/audit/retention`
+audit-platform-retry-archive|POST|/platform/audit/archives/{archive_id}/attempts
+audit-platform-verify-archive|POST|/platform/audit/archives/{archive_id}/verifications
+audit-platform-download-archive|GET|/platform/audit/archives/{archive_id}/content
+audit-platform-set-retention|PUT|/platform/audit/retention-policy`
 
 var auditGuards = map[string]string{
 	"audit-anchor-current":            "audit_event_anchor",

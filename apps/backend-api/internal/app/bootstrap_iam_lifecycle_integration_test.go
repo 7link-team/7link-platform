@@ -310,7 +310,7 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 		}, nil)
 		requireStatus(t, http.StatusCreated, response)
 		request := decodeEnvelope[governance.AccessRequest](t, response)
-		response = f.request(t, http.MethodPost, "/access-requests/"+request.ID.String()+"/approve", tenant.ID, actorToken, map[string]any{"note": "approved"}, nil)
+		response = f.request(t, http.MethodPut, "/access-requests/"+request.ID.String()+"/decision", tenant.ID, actorToken, map[string]any{"decision": "approved", "note": "approved"}, nil)
 		requireStatus(t, http.StatusOK, response)
 		approved := decodeEnvelope[governance.AccessRequest](t, response)
 		assert.Equal(t, governance.StatusApproved, approved.Status)

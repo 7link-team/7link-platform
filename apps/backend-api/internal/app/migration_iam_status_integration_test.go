@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/internal/files"
 	iamaudit "7link.com/platform/internal/iam/audit"
 	iamauthn "7link.com/platform/internal/iam/authn"
 	"7link.com/platform/internal/iam/core"
@@ -105,7 +106,7 @@ func assertIAMMigrationActionState(t *testing.T, config AppConfig, action Migrat
 
 func assertIAMMigrationReports(t *testing.T, reports []MigrationReport, state goosex.State) {
 	t.Helper()
-	require.Len(t, reports, 13)
+	require.Len(t, reports, 14)
 	names := make([]string, 0, len(reports))
 	for _, report := range reports {
 		names = append(names, report.Module)
@@ -172,7 +173,7 @@ func assertIAMMigrationStatusEndpoint(t *testing.T, config AppConfig) {
 
 func iamMigrationFlowNames() []string {
 	return []string{
-		dlock.Name, wuid.Name, infraaudit.Name, iamaudit.Name, core.Name, iamauthn.Name, identity.Name,
+		dlock.Name, wuid.Name, infraaudit.Name, iamaudit.Name, core.Name, files.Name, iamauthn.Name, identity.Name,
 		organization.Name, oauth.Name, provisioning.Name, governance.Name, federation.Name, todo.Name,
 	}
 }
@@ -180,7 +181,7 @@ func iamMigrationFlowNames() []string {
 func iamMigrationReverseOrder() []string {
 	return []string{
 		federation.Name, iamauthn.Name, oauth.Name, governance.Name, provisioning.Name,
-		organization.Name, core.Name, identity.Name, iamaudit.Name,
+		organization.Name, files.Name, core.Name, identity.Name, iamaudit.Name,
 		todo.Name, infraaudit.Name, wuid.Name, dlock.Name,
 	}
 }

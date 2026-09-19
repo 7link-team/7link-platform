@@ -281,6 +281,9 @@ func (a *nodeAuthorizer) authorizeLoaded(
 	constraint, management authz.DataConstraint,
 	action string,
 ) (bool, error) {
+	if permissions.managementMode != "user" {
+		return false, errOperationForbidden
+	}
 	if a.account {
 		if permissions.space.ScopeKind != "account" || permissions.space.PrincipalID == nil ||
 			*permissions.space.PrincipalID != a.actorID || permissions.space.TenantID != nil ||

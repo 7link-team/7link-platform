@@ -25,6 +25,7 @@ var (
 	Object             *object
 	Operation          *operation
 	OperationItem      *operationItem
+	ResourceBinding    *resourceBinding
 	Space              *space
 	TrashBatch         *trashBatch
 	TrashRoot          *trashRoot
@@ -43,6 +44,7 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	Object = &Q.Object
 	Operation = &Q.Operation
 	OperationItem = &Q.OperationItem
+	ResourceBinding = &Q.ResourceBinding
 	Space = &Q.Space
 	TrashBatch = &Q.TrashBatch
 	TrashRoot = &Q.TrashRoot
@@ -62,6 +64,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		Object:             newObject(db, opts...),
 		Operation:          newOperation(db, opts...),
 		OperationItem:      newOperationItem(db, opts...),
+		ResourceBinding:    newResourceBinding(db, opts...),
 		Space:              newSpace(db, opts...),
 		TrashBatch:         newTrashBatch(db, opts...),
 		TrashRoot:          newTrashRoot(db, opts...),
@@ -82,6 +85,7 @@ type Query struct {
 	Object             object
 	Operation          operation
 	OperationItem      operationItem
+	ResourceBinding    resourceBinding
 	Space              space
 	TrashBatch         trashBatch
 	TrashRoot          trashRoot
@@ -105,6 +109,7 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		Object:             q.Object.clone(db),
 		Operation:          q.Operation.clone(db),
 		OperationItem:      q.OperationItem.clone(db),
+		ResourceBinding:    q.ResourceBinding.clone(db),
 		Space:              q.Space.clone(db),
 		TrashBatch:         q.TrashBatch.clone(db),
 		TrashRoot:          q.TrashRoot.clone(db),
@@ -133,6 +138,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		Object:             q.Object.replaceDB(db),
 		Operation:          q.Operation.replaceDB(db),
 		OperationItem:      q.OperationItem.replaceDB(db),
+		ResourceBinding:    q.ResourceBinding.replaceDB(db),
 		Space:              q.Space.replaceDB(db),
 		TrashBatch:         q.TrashBatch.replaceDB(db),
 		TrashRoot:          q.TrashRoot.replaceDB(db),
@@ -151,6 +157,7 @@ type queryCtx struct {
 	Object             IObjectDo
 	Operation          IOperationDo
 	OperationItem      IOperationItemDo
+	ResourceBinding    IResourceBindingDo
 	Space              ISpaceDo
 	TrashBatch         ITrashBatchDo
 	TrashRoot          ITrashRootDo
@@ -169,6 +176,7 @@ func (q *Query) WithContext(ctx context.Context) *queryCtx {
 		Object:             q.Object.WithContext(ctx),
 		Operation:          q.Operation.WithContext(ctx),
 		OperationItem:      q.OperationItem.WithContext(ctx),
+		ResourceBinding:    q.ResourceBinding.WithContext(ctx),
 		Space:              q.Space.WithContext(ctx),
 		TrashBatch:         q.TrashBatch.WithContext(ctx),
 		TrashRoot:          q.TrashRoot.WithContext(ctx),

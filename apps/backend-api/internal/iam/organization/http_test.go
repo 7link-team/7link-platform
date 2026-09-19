@@ -57,7 +57,7 @@ organization-list-tenants|GET|/tenants
 organization-my-tenants|GET|/me/tenants
 organization-put-group-member|PUT|/groups/{group_id}/members/{principal_id}
 organization-put-position-member|PUT|/positions/{position_id}/members/{principal_id}
-organization-resend-invitation|POST|/invitations/{invitation_id}/resend
+organization-resend-invitation|POST|/invitations/{invitation_id}/deliveries
 organization-revoke-invitation|DELETE|/invitations/{invitation_id}
 organization-update-department|PATCH|/departments/{department_id}
 organization-update-group|PATCH|/groups/{group_id}
@@ -413,7 +413,7 @@ func TestOrganizationHTTPLifecycleExercisesEveryOperation(t *testing.T) {
 	})
 	assert.Equal(t, http.StatusCreated, issued.Code, issued.Body.String())
 	assert.Equal(t, http.StatusOK, h.api.Get("/invitations", auth, tenant).Code)
-	resent := h.api.Post("/invitations/601/resend", auth, tenant, map[string]any{"expires_in_hours": 48})
+	resent := h.api.Post("/invitations/601/deliveries", auth, tenant, map[string]any{"expires_in_hours": 48})
 	assert.Equal(t, http.StatusOK, resent.Code, resent.Body.String())
 	resentToken := fmt.Sprintf("inv1_%d.%s-%d", 601, strings.Repeat("s", 40), 2)
 	accepted := h.api.Post("/invitation-acceptances", map[string]any{
@@ -488,7 +488,7 @@ func TestOrganizationHTTPRejectsInvalidReferencesAndStorageFailures(t *testing.T
 		h.api.Get("/tenants/bad", auth),
 		h.api.Patch("/tenants/bad", auth, map[string]any{"name": "Name", "version": 1}),
 		h.api.Delete("/tenants/bad?version=1", auth),
-		h.api.Post("/invitations/bad/resend", auth, tenant, map[string]any{"expires_in_hours": 72}),
+		h.api.Post("/invitations/bad/deliveries", auth, tenant, map[string]any{"expires_in_hours": 72}),
 		h.api.Delete("/invitations/bad", auth, tenant),
 	}
 	for _, response := range invalidReferenceRequests {
@@ -530,7 +530,7 @@ func TestOrganizationHTTPRejectsInvalidReferencesAndStorageFailures(t *testing.T
 		h.api.Post("/invitations", auth, tenant, map[string]any{
 			"email": "user@example.com", "expires_in_hours": 72,
 		}),
-		h.api.Post("/invitations/1/resend", auth, tenant, map[string]any{"expires_in_hours": 72}),
+		h.api.Post("/invitations/1/deliveries", auth, tenant, map[string]any{"expires_in_hours": 72}),
 		h.api.Delete("/invitations/1", auth, tenant),
 		h.api.Post("/invitation-acceptances", map[string]any{
 			"token":      "inv1_1." + strings.Repeat("s", 40),

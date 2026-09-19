@@ -165,7 +165,7 @@ func (f *iamTenantFixture) runSCIMActorLifecycle(t *testing.T) {
 	response = f.request(t, http.MethodPut, targetPath, iamTenantA, f.tokenA, targetBody(&first.ID, "active", 1), nil)
 	requireStatus(t, http.StatusConflict, response)
 	pushBody := map[string]any{"resource_type": "User", "resource_id": f.adminA.ID.String()}
-	response = f.request(t, http.MethodPost, targetPath+"/push", iamTenantA, f.tokenA, pushBody, nil)
+	response = f.request(t, http.MethodPost, targetPath+"/provisioning-jobs", iamTenantA, f.tokenA, pushBody, nil)
 	requireStatus(t, http.StatusOK, response)
 	assert.Equal(t, int64(1), remoteCalls.Load())
 	var pushAudit struct {
@@ -188,7 +188,7 @@ func (f *iamTenantFixture) runSCIMActorLifecycle(t *testing.T) {
 		assert.ErrorIs(t, err, provisioning.ErrUnauthorized)
 		response := f.request(t, http.MethodGet, "/scim/v2/Users", 0, credential.Token, nil, nil)
 		requireStatus(t, http.StatusUnauthorized, response)
-		for _, operation := range []string{"push", "deprovision"} {
+		for _, operation := range []string{"provisioning-jobs", "deprovisioning-jobs"} {
 			response = f.request(t, http.MethodPost, targetPath+"/"+operation, iamTenantA, f.tokenA, pushBody, nil)
 			requireStatus(t, http.StatusConflict, response)
 		}
@@ -237,7 +237,7 @@ func (f *iamTenantFixture) runSCIMActorLifecycle(t *testing.T) {
 	target = decodeEnvelope[provisioning.Target](t, response)
 	_, err = service.Authenticate(t.Context(), "Bearer "+credential.Token)
 	require.NoError(t, err)
-	response = f.request(t, http.MethodPost, targetPath+"/push", iamTenantA, f.tokenA, pushBody, nil)
+	response = f.request(t, http.MethodPost, targetPath+"/provisioning-jobs", iamTenantA, f.tokenA, pushBody, nil)
 	requireStatus(t, http.StatusOK, response)
 	synced, err := service.SyncTarget(t.Context(), iamTenantA, targetID)
 	require.NoError(t, err)

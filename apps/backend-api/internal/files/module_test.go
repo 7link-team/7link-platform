@@ -65,6 +65,9 @@ func TestModuleProvidesConfiguredExtensibleDriver(t *testing.T) {
 	contentChecker, err := module.Resolve[core.FileRootContentChecker](services)
 	require.NoError(t, err)
 	require.NotNil(t, contentChecker)
+	bindings, err := module.Resolve[*ResourceBindings](services)
+	require.NoError(t, err)
+	require.Same(t, m.bindings, bindings)
 	require.NoError(t, m.Initialize(t.Context()))
 	require.Error(t, m.RegisterDriver("late", func(c DriverConfig) (Driver, error) { return NewLocal(c["root"]) }))
 	require.ErrorIs(t, (&Module{}).Initialize(t.Context()), ErrUnsupported)
@@ -102,9 +105,11 @@ func TestFileModuleRefusesDuplicateCapabilities(t *testing.T) {
 	require.NoError(t, err)
 	accounts, err := NewAccountObjects(driver, "local", "")
 	require.NoError(t, err)
+	bindings, err := NewResourceBindings("")
+	require.NoError(t, err)
 	_, err = NewAccountObjects(driver, "local", "invalid-prefix;")
 	require.Error(t, err)
-	for _, capability := range []string{"driver", "accounts", "root-provisioner", "root-content", "legacy"} {
+	for _, capability := range []string{"driver", "accounts", "bindings", "root-provisioner", "root-content", "legacy"} {
 		t.Run(capability, func(t *testing.T) {
 			m := NewModule(runtime, Config{})
 			services := module.NewServices()
@@ -113,6 +118,8 @@ func TestFileModuleRefusesDuplicateCapabilities(t *testing.T) {
 				require.NoError(t, module.Provide[Driver](services, driver))
 			case "accounts":
 				require.NoError(t, module.Provide[*AccountObjects](services, accounts))
+			case "bindings":
+				require.NoError(t, module.Provide[*ResourceBindings](services, bindings))
 			case "root-provisioner":
 				require.NoError(t, module.Provide[core.FileRootProvisioner](services, func(context.Context, *gorm.DB, core.FileRootProvisionInput, time.Time) (guid.ID, error) {
 					return 0, nil

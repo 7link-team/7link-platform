@@ -142,7 +142,7 @@ func DefaultMenus() []Menu {
 		{Label: "Audit governance", Route: "/audit-governance", Icon: "shield-check", SortOrder: 51, PermissionCode: "audit_event_view", Status: MenuActive},
 	}
 	for i := range menus {
-		key := "menu_" + strings.ReplaceAll(strings.TrimPrefix(menus[i].Route, "/"), "-", "_")
+		key := "menu_" + strings.NewReplacer("-", "_", "/", "_").Replace(strings.TrimPrefix(menus[i].Route, "/"))
 		menus[i].Translations = corei18n.Translations(key)
 	}
 	return menus

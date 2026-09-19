@@ -2114,6 +2114,73 @@ ownership and enlarge authorization paths, so they remain top-level resources;
 mandatory headers keep the request authorization boundary explicit.
 
 **Scope / Status**
-Approved and in implementation. Includes route declarations, action subresources,
-avatar resources, menus, Web clients, test manifests, generated OpenAPI and a
-repository-wide composed-contract gate.
+Implemented. Includes route declarations, action subresources, avatar resources,
+menus, Web clients, test manifests, generated OpenAPI and a repository-wide
+composed-contract gate. Core migration 16 upgrades existing built-in menu routes
+from the retired `/iam/...` locations without rewriting custom labels or
+translations.
+
+## D63 - All durable uploaded content uses governed physical and logical file layers
+
+**Date** 2026-09-19
+
+**Decision / Reason**
+All durable runtime uploads, including file-manager content, avatars, commerce
+images and business attachments, use the shared physical Object and logical
+Node/Version layers, validation, authorization, audit, retention and reference
+safety. Source assets, deployment configuration, keys, backups and logs remain
+in their proper infrastructure. Physical objects carry no business ownership;
+logical roots carry the lowest verified ownership scope.
+
+Scopes are system, tenant, entity, department, tenant-personal and account. The
+server derives the narrowest scope from the resource; callers cannot choose a
+broader owner for convenience. User-managed files may exist without a domain
+binding. Resource-managed files require an atomic registered-purpose binding and
+are hidden from ordinary directory listings by default while remaining visible
+in their authorized domain UI and lifecycle reconciliation.
+
+Platform-wide logical/physical file viewing is deferred. The current phase adds no
+global file API, Web page, or placeholder platform permission. A platform
+administrator's ordinary account `/files` request never changes into a global
+query. If global viewing is requested later, metadata inventory and actual content
+reading require a new design and separate permissions and auditing.
+
+**Alternatives Considered / Tradeoffs**
+Putting every business asset into visible directories makes the file manager noisy
+and permits moves/deletes to break business resources. Separate avatar, commerce
+and attachment stores duplicate security and cleanup. Object ownership is also
+rejected because one immutable object can back multiple logical versions/scopes.
+A registered binding ledger adds schema and reconciliation cost, but is necessary
+to prove resource-managed lifecycle and prevent long-lived unowned files.
+
+**Scope / Status**
+Confirmed product direction; detailed proposal is section 23 of
+`apps/backend-api/docs/file-management-design.md`. The binding and system-scope
+foundation is implemented locally. Existing and new avatar uploads now use
+logical resource-managed files; startup migration adopts legacy bytes without a
+copy and is idempotent. Global file management is explicitly outside the active
+implementation scope.
+
+## D64 - Avatars are account-owned resource files
+
+**Date** 2026-09-19
+
+**Decision / Reason**
+Store current and candidate avatars as account-root File Nodes and Versions with
+registered `principal.avatar` or `principal.avatar-candidate` bindings. Reads
+authorize the active binding and verified account owner rather than trusting a
+storage key. Candidate promotion rebinds the same logical file; account erasure
+revokes every active binding before the existing object collector reclaims bytes.
+
+**Alternatives Considered / Tradeoffs**
+Keeping direct avatar storage writes would leave durable bytes outside the shared
+file lifecycle. Copying legacy bytes would duplicate storage and complicate
+rollback. Legacy objects are therefore checksummed and adopted in place. New
+accounts have no stored default avatar until one is explicitly set; presentation
+uses the existing empty-avatar fallback instead of creating ungoverned bytes.
+
+**Scope / Status**
+Implemented and verified across the Files and Identity transaction tests, race
+tests, three-dialect migration matrix and full backend regression. Commerce media,
+general attachments and a platform-wide inventory remain future consumers of the
+same registered-purpose contract, not part of this change.

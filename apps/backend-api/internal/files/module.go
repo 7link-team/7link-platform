@@ -34,6 +34,8 @@ type Module struct {
 	registry     *Registry
 	runtime      *appenv.Runtime
 	accounts     *AccountObjects
+	bindings     *ResourceBindings
+	resources    *AccountResourceFiles
 	registrar    *authz.Registrar
 	policy       core.EntityConstraintOn
 	subjects     core.AuthorizationSubjectsOn
@@ -97,6 +99,20 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[*AccountObjects](services, m.accounts); err != nil {
 		return err
 	}
+	m.bindings, err = NewResourceBindings(m.runtime.TablePrefix())
+	if err != nil {
+		return err
+	}
+	if err := module.Provide[*ResourceBindings](services, m.bindings); err != nil {
+		return err
+	}
+	m.resources, err = NewAccountResourceFiles(m.accounts, m.bindings, driver, m.runtime.TablePrefix())
+	if err != nil {
+		return err
+	}
+	if err := module.Provide[*AccountResourceFiles](services, m.resources); err != nil {
+		return err
+	}
 	if err := module.Provide[core.FileRootProvisioner](services, core.FileRootProvisioner(m.provisionOrganizationRoot)); err != nil {
 		return fmt.Errorf("provide file root provisioner: %w", err)
 	}
@@ -150,6 +166,11 @@ func (m *Module) InjectServices(services *module.Services) error {
 	}
 	m.registrar, m.policy, m.subjects, m.references = registrar, policy, subjects, references
 	m.ids, m.appender = ids, appender
+	if m.resources != nil {
+		if err := m.resources.Configure(ids, appender); err != nil {
+			return err
+		}
+	}
 	m.operations = &operationService{
 		runtime: m.runtime, driver: m.driver, objects: m.accounts, ids: ids, policy: policy, subjects: subjects, references: references,
 		appender: appender, budget: operationBudget{Nodes: 1000, ClosureRows: 100000}, timeout: 30 * time.Second,
@@ -175,7 +196,7 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 
 // Start runs bounded cleanup pages against the runtime's current writer.
 func (m *Module) Start(ctx context.Context) error {
-	if m.accounts == nil || m.runtime == nil {
+	if m.accounts == nil || m.bindings == nil || m.runtime == nil {
 		return ErrUnsupported
 	}
 	m.workerMu.Lock()
@@ -194,7 +215,7 @@ func (m *Module) cleanupLoop(ctx context.Context, done chan struct{}) {
 	defer close(done)
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
-	var after, operationAfter guid.ID
+	var after, operationAfter, bindingAfter, resourceAfter guid.ID
 	for {
 		if m.runtime.Database() != nil && m.runtime.Database().Write() != nil {
 			workContext, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -203,6 +224,16 @@ func (m *Module) cleanupLoop(ctx context.Context, done chan struct{}) {
 			operationAfter = nextOperation
 			if operationErr != nil && ctx.Err() == nil {
 				slog.WarnContext(ctx, "file operation expiry will retry", "error", operationErr)
+			}
+			nextBinding, bindingErr := m.bindings.Expire(workContext, m.runtime.Database().Write(), time.Now(), bindingAfter, 100)
+			bindingAfter = nextBinding
+			if bindingErr != nil && ctx.Err() == nil {
+				slog.WarnContext(ctx, "file resource binding expiry will retry", "error", bindingErr)
+			}
+			nextResource, resourceErr := m.resources.PurgeOrphaned(workContext, m.runtime.Database().Write(), time.Now(), resourceAfter, 100)
+			resourceAfter = nextResource
+			if resourceErr != nil && ctx.Err() == nil {
+				slog.WarnContext(ctx, "orphaned resource file cleanup will retry", "error", resourceErr)
 			}
 			next, err := m.accounts.CollectAccountObjects(workContext, m.runtime.Database().Write(), time.Now(), after, 100)
 			cancel()

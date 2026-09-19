@@ -72,7 +72,7 @@ type reviewUpdateInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
 	ID       string `path:"review_id" maxLength:"64"`
 	Body     struct {
-		Status string `json:"status" enum:"completed,cancelled"`
+		Status string `json:"status" enum:"completed,cancelled"` //nolint:misspell // Frozen source state value.
 	}
 }
 

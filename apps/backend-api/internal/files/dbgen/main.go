@@ -7,5 +7,5 @@ import (
 )
 
 func main() {
-	gengorm.Generate(model.Object{}, model.AccountReference{}, model.AccountPreparation{}, model.Upload{}, model.UploadPart{}, model.Space{}, model.Node{}, model.NodeClosure{}, model.NodeACL{}, model.Version{}, model.TrashBatch{}, model.TrashRoot{}, model.Operation{}, model.OperationItem{})
+	gengorm.Generate(model.Object{}, model.AccountReference{}, model.AccountPreparation{}, model.Upload{}, model.UploadPart{}, model.Space{}, model.Node{}, model.NodeClosure{}, model.NodeACL{}, model.ResourceBinding{}, model.Version{}, model.TrashBatch{}, model.TrashRoot{}, model.Operation{}, model.OperationItem{})
 }

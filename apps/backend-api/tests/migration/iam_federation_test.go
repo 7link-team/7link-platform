@@ -103,7 +103,7 @@ func assertFederationUp(t *testing.T, db *gorm.DB, modules []module.Module, pref
 		milestones[report.Module] = report.Milestone
 		assert.Equal(t, goosex.StateClean, report.Status.State)
 	}
-	assert.Equal(t, "closure-requests", milestones[identity.Name])
+	assert.Equal(t, "avatars", milestones[identity.Name])
 	assert.Equal(t, "identity-link-transactions", milestones[federation.Name])
 }
 

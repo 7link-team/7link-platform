@@ -31,20 +31,27 @@ type rootBinding struct {
 }
 
 type storedNodePermissions struct {
-	space  *model.Space
-	rootID guid.ID
-	root   rootBinding
-	layers []nodeACLLayer
+	space          *model.Space
+	rootID         guid.ID
+	root           rootBinding
+	managementMode string
+	layers         []nodeACLLayer
 }
 
 func validRootBinding(space *model.Space, node *model.Node, binding rootBinding) bool {
-	if space == nil || node == nil || node.SpaceID != space.ID || node.Kind != "directory" || node.State != "active" || binding.ownerID <= 0 {
+	if space == nil || node == nil || node.SpaceID != space.ID || node.Kind != "directory" || node.State != "active" {
+		return false
+	}
+	if binding.scope == "system" {
+		return binding.ownerID == 0 && space.ScopeKind == "system" && space.SystemSlot != nil && *space.SystemSlot == 1 && space.TenantID == nil && space.PrincipalID == nil && node.ParentID == nil
+	}
+	if binding.ownerID <= 0 {
 		return false
 	}
 	if space.ScopeKind == "account" {
-		return space.PrincipalID != nil && *space.PrincipalID == binding.ownerID && space.TenantID == nil && binding.scope == "account" && node.ParentID == nil
+		return space.PrincipalID != nil && *space.PrincipalID == binding.ownerID && space.TenantID == nil && space.SystemSlot == nil && binding.scope == "account" && node.ParentID == nil
 	}
-	if space.ScopeKind != "tenant" || space.TenantID == nil || *space.TenantID <= 0 || space.PrincipalID != nil {
+	if space.ScopeKind != "tenant" || space.TenantID == nil || *space.TenantID <= 0 || space.PrincipalID != nil || space.SystemSlot != nil {
 		return false
 	}
 	switch binding.scope {
@@ -58,6 +65,13 @@ func validRootBinding(space *model.Space, node *model.Node, binding rootBinding)
 }
 
 func nodeRootBinding(space *model.Space, node *model.Node) (rootBinding, error) {
+	if space != nil && node != nil && space.ScopeKind == "system" && node.ParentID == nil {
+		binding := rootBinding{scope: "system"}
+		if node.RootScope != nil || node.RootOwnerID != nil || !validRootBinding(space, node, binding) {
+			return rootBinding{}, errFileACL
+		}
+		return binding, nil
+	}
 	if node == nil || (node.RootScope == nil) != (node.RootOwnerID == nil) {
 		return rootBinding{}, errFileACL
 	}
@@ -111,6 +125,7 @@ func (t directoryTree) loadNodePermissions(ctx context.Context, tx *gorm.DB, spa
 		}
 	}
 	result.space = space
+	result.managementMode = path[len(path)-1].ManagementMode
 	for _, node := range path[start:] {
 		acl := q.NodeACL
 		rows, err := acl.WithContext(ctx).Where(acl.SpaceID.Eq(spaceID), acl.NodeID.Eq(node.ID)).Order(acl.ID).Limit(maxNodeACLRules + 1).Find()
@@ -241,7 +256,7 @@ func (t directoryTree) loadNodePermissionsBatch(
 			targetErrors[id] = errHierarchy
 			continue
 		}
-		permissions := storedNodePermissions{space: space}
+		permissions := storedNodePermissions{space: space, managementMode: path[len(path)-1].ManagementMode}
 		rootIndex := -1
 		for index, node := range path {
 			binding, err := nodeRootBinding(space, node)

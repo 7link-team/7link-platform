@@ -42,7 +42,7 @@ oauth-list-clients|GET|/oauth-clients
 oauth-list-consents|GET|/me/oauth-consents
 oauth-revoke-consent|DELETE|/me/oauth-consents/{client_id}
 oauth-revoke|POST|/oauth/revoke
-oauth-rotate-client-secret|POST|/oauth-clients/{client_id}/rotate-secret
+oauth-rotate-client-secret|POST|/oauth-clients/{client_id}/credentials
 oauth-token|POST|/oauth/token
 oauth-update-client|PUT|/oauth-clients/{client_id}
 oauth-userinfo|GET|/oauth/userinfo`
@@ -276,7 +276,7 @@ func TestOAuthOpenAPISecurityGuardsParametersAndForms(t *testing.T) {
 	assert.NotContains(t, revoke.Responses, "204")
 	for _, operation := range []*huma.Operation{
 		spec.Paths["/oauth-clients/{client_id}"].Delete,
-		spec.Paths["/oauth-clients/{client_id}/rotate-secret"].Post,
+		spec.Paths["/oauth-clients/{client_id}/credentials"].Post,
 	} {
 		assert.Contains(t, operation.Errors, http.StatusNotFound)
 		assert.Contains(t, operation.Responses, "404")
@@ -344,14 +344,14 @@ func TestOAuthOpenAPISecurityGuardsParametersAndForms(t *testing.T) {
 		assert.Equal(t, `^\S+$`, requestSchema.Properties["scopes"].Items.Pattern, method)
 	}
 
-	for _, path := range []string{"/oauth-clients/{client_id}", "/oauth-clients/{client_id}/rotate-secret"} {
+	for _, path := range []string{"/oauth-clients/{client_id}", "/oauth-clients/{client_id}/credentials"} {
 		for _, operation := range oauthPathOperations(spec.Paths[path]) {
 			if operation == nil {
 				continue
 			}
 			var found bool
 			for _, parameter := range operation.Parameters {
-				if parameter.In == "path" && parameter.Name == "id" {
+				if parameter.In == "path" && parameter.Name == "client_id" {
 					found = true
 					assert.True(t, parameter.Required, path)
 					assert.Equal(t, `^[1-9][0-9]*$`, parameter.Schema.Pattern, path)
@@ -998,13 +998,13 @@ func TestOAuthClientManagementHTTPLifecycleAndTenantIsolation(t *testing.T) {
 		"scopes": []string{"jobs.read"}, "public_client": false, "status": "active",
 	}
 	assert.Equal(t, http.StatusUnprocessableEntity, harness.json(http.MethodPut, "/oauth-clients/"+id, replacement, headersB).Code)
-	assert.Equal(t, http.StatusNotFound, harness.request(http.MethodPost, "/oauth-clients/"+id+"/rotate-secret", "", nil, headersB).Code)
+	assert.Equal(t, http.StatusNotFound, harness.request(http.MethodPost, "/oauth-clients/"+id+"/credentials", "", nil, headersB).Code)
 	assert.Equal(t, http.StatusNotFound, harness.request(http.MethodDelete, "/oauth-clients/"+id, "", nil, headersB).Code)
 
 	updated := harness.json(http.MethodPut, "/oauth-clients/"+id, replacement, headersA)
 	require.Equal(t, http.StatusOK, updated.Code, updated.Body.String())
 	assert.Equal(t, "Worker Two", decodeOAuthEnvelope[Client](t, updated).Data.Name)
-	rotated := harness.request(http.MethodPost, "/oauth-clients/"+id+"/rotate-secret", "", nil, headersA)
+	rotated := harness.request(http.MethodPost, "/oauth-clients/"+id+"/credentials", "", nil, headersA)
 	require.Equal(t, http.StatusOK, rotated.Code, rotated.Body.String())
 	assert.NotEmpty(t, decodeOAuthEnvelope[clientSecretData](t, rotated).Data.ClientSecret)
 	deleted := harness.request(http.MethodDelete, "/oauth-clients/"+id, "", nil, headersA)

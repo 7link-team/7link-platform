@@ -175,10 +175,10 @@ func limitedOAuthOperation(op *huma.Operation) bool {
 // empty string when it is not limited at all.
 func requestScope(op *huma.Operation) string {
 	switch {
-	case limitedAuthenticationOperation(op):
-		return scopeAuthentication
 	case limitedOAuthOperation(op):
 		return scopeOAuth
+	case limitedAuthenticationOperation(op):
+		return scopeAuthentication
 	}
 	return ""
 }

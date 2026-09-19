@@ -26,14 +26,14 @@ provisioning-create-scim-credential|POST|/scim-directories/{directory_id}/creden
 provisioning-create-scim-directory|POST|/scim-directories
 provisioning-create-scim-target|POST|/scim-targets
 provisioning-delete-scim-target|DELETE|/scim-targets/{target_id}
-provisioning-deprovision-scim-resource|POST|/scim-targets/{target_id}/deprovision
+provisioning-deprovision-scim-resource|POST|/scim-targets/{target_id}/deprovisioning-jobs
 provisioning-list-scim-credentials|GET|/scim-directories/{directory_id}/credentials
 provisioning-list-scim-directories|GET|/scim-directories
 provisioning-list-scim-targets|GET|/scim-targets
-provisioning-push-scim-resource|POST|/scim-targets/{target_id}/push
+provisioning-push-scim-resource|POST|/scim-targets/{target_id}/provisioning-jobs
 provisioning-replace-scim-directory|PUT|/scim-directories/{directory_id}
 provisioning-replace-scim-target|PUT|/scim-targets/{target_id}
-provisioning-retire-scim-target|POST|/scim-targets/{target_id}/retire
+provisioning-retire-scim-target|PUT|/scim-targets/{target_id}/retirement
 provisioning-revoke-scim-credential|DELETE|/scim-directories/{directory_id}/credentials/{credential_id}
 scim-bulk|POST|/scim/v2/Bulk
 scim-create-group|POST|/scim/v2/Groups
@@ -134,7 +134,7 @@ func TestProvisioningRouteManifestAndOpenAPIContract(t *testing.T) {
 			if operation == nil {
 				continue
 			}
-			if strings.HasPrefix(path, "/scim/") {
+			if strings.HasPrefix(path, "/scim-directories") || strings.HasPrefix(path, "/scim-targets") {
 				assert.Equal(t, "tenant_administer", operation.Extensions[authz.GuardExtensionKey], operation.OperationID)
 				assert.Equal(t, []map[string][]string{{authz.BearerScheme: {}}, {authz.SessionScheme: {}}}, operation.Security, operation.OperationID)
 				continue
@@ -384,10 +384,10 @@ func TestProvisioningManagementHTTPWorkflow(t *testing.T) {
 	require.NoError(t, err)
 	resourceBody := []byte(fmt.Sprintf(`{"resource_type":"User","resource_id":%q}`, user.ID))
 	basePath := "/scim-targets/" + target.Target.ID
-	response = h.request(t, http.MethodPost, basePath+"/push", resourceBody, tenant, "", nil)
+	response = h.request(t, http.MethodPost, basePath+"/provisioning-jobs", resourceBody, tenant, "", nil)
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.Equal(t, http.MethodPut, provider.last(t).Method)
-	response = h.request(t, http.MethodPost, basePath+"/deprovision", resourceBody, tenant, "", nil)
+	response = h.request(t, http.MethodPost, basePath+"/deprovisioning-jobs", resourceBody, tenant, "", nil)
 	assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	replace := []byte(fmt.Sprintf(`{"name":"Management 2","base_url":%q,"status":"active","version":1}`, server.URL))
 	response = h.request(t, http.MethodPut, basePath, replace, tenant, "", nil)
@@ -412,8 +412,8 @@ func TestProvisioningManagementHTTPFailures(t *testing.T) {
 		{http.MethodDelete, "/scim-directories/" + h.env.auth.DirectoryID.String() + "/credentials/" + missing, nil, http.StatusNotFound},
 		{http.MethodPut, "/scim-targets/" + missing, []byte(`{"name":"Missing","base_url":"https://example.test","status":"active","version":1}`), http.StatusNotFound},
 		{http.MethodDelete, "/scim-targets/" + missing, nil, http.StatusNotFound},
-		{http.MethodPost, "/scim-targets/" + missing + "/push", []byte(`{"resource_type":"User","resource_id":"` + missing + `"}`), http.StatusNotFound},
-		{http.MethodPost, "/scim-targets/" + missing + "/deprovision", []byte(`{"resource_type":"User","resource_id":"` + missing + `"}`), http.StatusNotFound},
+		{http.MethodPost, "/scim-targets/" + missing + "/provisioning-jobs", []byte(`{"resource_type":"User","resource_id":"` + missing + `"}`), http.StatusNotFound},
+		{http.MethodPost, "/scim-targets/" + missing + "/deprovisioning-jobs", []byte(`{"resource_type":"User","resource_id":"` + missing + `"}`), http.StatusNotFound},
 	}
 	for _, test := range tests {
 		response := h.request(t, test.method, test.path, test.body, tenant, "", nil)

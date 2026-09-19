@@ -28,20 +28,18 @@ import (
 )
 
 const governanceRouteManifest = `
-governance-approve-access-request|POST|/access-requests/{request_id}/approve
-governance-cancel-access-review|POST|/access-reviews/{review_id}/cancel
-governance-complete-access-review|POST|/access-reviews/{review_id}/complete
 governance-create-access-request|POST|/access-requests
 governance-create-access-review|POST|/access-reviews
-governance-decide-access-review-item|POST|/access-reviews/{review_id}/items/{item_id}/decide
+governance-decide-access-review-item|PUT|/access-reviews/{review_id}/items/{item_id}/decision
 governance-get-access-review|GET|/access-reviews/{review_id}
 governance-list-access-requests|GET|/access-requests
 governance-list-access-reviews|GET|/access-reviews
 governance-list-my-access-requests|GET|/me/access-requests
 governance-list-requestable-roles|GET|/requestable-roles
-governance-reject-access-request|POST|/access-requests/{request_id}/reject
-governance-revoke-access-grant|POST|/access-requests/{request_id}/revoke
-governance-withdraw-access-request|POST|/access-requests/{request_id}/withdraw`
+governance-set-access-request-decision|PUT|/access-requests/{request_id}/decision
+governance-revoke-access-grant|PUT|/access-requests/{request_id}/grant-revocation
+governance-update-access-review|PATCH|/access-reviews/{review_id}
+governance-withdraw-access-request|PUT|/access-requests/{request_id}/withdrawal`
 
 func governancePathOperations(item *huma.PathItem) map[string]*huma.Operation {
 	if item == nil {
@@ -54,7 +52,7 @@ func governancePathOperations(item *huma.PathItem) map[string]*huma.Operation {
 }
 
 func governanceOperationManifest(spec *huma.OpenAPI) []string {
-	manifest := make([]string, 0, 14)
+	manifest := make([]string, 0, 12)
 	for path, item := range spec.Paths {
 		for method, operation := range governancePathOperations(item) {
 			if operation != nil {
@@ -73,7 +71,7 @@ func TestGovernanceRouteManifestAndOpenAPIContract(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 14)
+	require.Len(t, got, 12)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 
 	memberOperations := map[string]bool{
@@ -192,23 +190,23 @@ func TestGovernanceHTTPExercisesEveryOperation(t *testing.T) {
 	request := responseData[AccessRequest](t, created.Body.Bytes())
 	assert.Equal(t, http.StatusOK, api.Get("/me/access-requests", requester, tenant).Code)
 	assert.Equal(t, http.StatusOK, api.Get("/access-requests", reviewer, tenant).Code)
-	approved := api.Post("/access-requests/"+request.ID.String()+"/approve", reviewer, tenant, map[string]any{"note": "approved"})
+	approved := api.Put("/access-requests/"+request.ID.String()+"/decision", reviewer, tenant, map[string]any{"decision": "approved", "note": "approved"})
 	require.Equal(t, http.StatusOK, approved.Code, approved.Body.String())
-	assert.Equal(t, http.StatusOK, api.Post("/access-requests/"+request.ID.String()+"/revoke", reviewer, tenant, map[string]any{"reason": "finished"}).Code)
+	assert.Equal(t, http.StatusOK, api.Put("/access-requests/"+request.ID.String()+"/grant-revocation", reviewer, tenant, map[string]any{"reason": "finished"}).Code)
 
 	withdraw := api.Post("/access-requests", requester, tenant, map[string]any{
 		"role_id": "20", "reason": "withdraw this request", "access_expires_at": future,
 	})
 	require.Equal(t, http.StatusCreated, withdraw.Code, withdraw.Body.String())
 	withdrawID := responseData[AccessRequest](t, withdraw.Body.Bytes()).ID
-	assert.Equal(t, http.StatusOK, api.Post("/access-requests/"+withdrawID.String()+"/withdraw", requester, tenant, map[string]any{"reason": "changed"}).Code)
+	assert.Equal(t, http.StatusOK, api.Put("/access-requests/"+withdrawID.String()+"/withdrawal", requester, tenant, map[string]any{"reason": "changed"}).Code)
 
 	reject := api.Post("/access-requests", requester, tenant, map[string]any{
 		"role_id": "20", "reason": "reject this request", "access_expires_at": future,
 	})
 	require.Equal(t, http.StatusCreated, reject.Code, reject.Body.String())
 	rejectID := responseData[AccessRequest](t, reject.Body.Bytes()).ID
-	assert.Equal(t, http.StatusOK, api.Post("/access-requests/"+rejectID.String()+"/reject", reviewer, tenant, map[string]any{"note": "rejected"}).Code)
+	assert.Equal(t, http.StatusOK, api.Put("/access-requests/"+rejectID.String()+"/decision", reviewer, tenant, map[string]any{"decision": "rejected", "note": "rejected"}).Code)
 
 	require.NoError(t, h.db.Table(h.table("iam_role_members")).Create(&coremodel.RoleMember{
 		TenantID: 1, RoleID: 20, PrincipalID: 11, CreatedAt: governanceTestNow.Add(-time.Hour),
@@ -221,19 +219,19 @@ func TestGovernanceHTTPExercisesEveryOperation(t *testing.T) {
 	assert.Equal(t, http.StatusOK, api.Get("/access-reviews", reviewer, tenant).Code)
 	assert.Equal(t, http.StatusOK, api.Get("/access-reviews/"+review.ID.String(), reviewer, tenant).Code)
 	for _, item := range review.Items {
-		response := api.Post(fmt.Sprintf("/access-reviews/%s/items/%s/decide", review.ID, item.ID), reviewer, tenant, map[string]any{
+		response := api.Put(fmt.Sprintf("/access-reviews/%s/items/%s/decision", review.ID, item.ID), reviewer, tenant, map[string]any{
 			"decision": "keep", "note": "certified",
 		})
 		require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	}
-	assert.Equal(t, http.StatusOK, api.Post("/access-reviews/"+review.ID.String()+"/complete", reviewer, tenant).Code)
+	assert.Equal(t, http.StatusOK, api.Patch("/access-reviews/"+review.ID.String(), reviewer, tenant, map[string]any{"status": "completed"}).Code)
 
 	cancelResponse := api.Post("/access-reviews", requester, tenant, map[string]any{
 		"name": "Canceled access review", "due_at": future,
 	})
 	require.Equal(t, http.StatusCreated, cancelResponse.Code, cancelResponse.Body.String())
 	cancelID := responseData[AccessReview](t, cancelResponse.Body.Bytes()).ID
-	assert.Equal(t, http.StatusOK, api.Post("/access-reviews/"+cancelID.String()+"/cancel", reviewer, tenant).Code)
+	assert.Equal(t, http.StatusOK, api.Patch("/access-reviews/"+cancelID.String(), reviewer, tenant, map[string]any{"status": "cancelled"}).Code) //nolint:misspell // Frozen API value.
 }
 
 func TestGovernanceHTTPValidationHumanPrincipalAndErrorMappings(t *testing.T) {
@@ -296,12 +294,10 @@ func TestGovernanceHTTPRejectsInvalidReferencesAndUnauthorizedApprovers(t *testi
 		declaration.Get("/access-requests", badTenant),
 		declaration.Get("/access-reviews", badTenant),
 		declaration.Get("/access-reviews/bad", goodTenant),
-		declaration.Post("/access-requests/bad/approve", goodTenant, map[string]any{}),
-		declaration.Post("/access-requests/bad/reject", goodTenant, map[string]any{}),
-		declaration.Post("/access-requests/bad/revoke", goodTenant, map[string]any{}),
-		declaration.Post("/access-requests/bad/withdraw", goodTenant, map[string]any{}),
-		declaration.Post("/access-reviews/bad/complete", goodTenant),
-		declaration.Post("/access-reviews/bad/cancel", goodTenant),
+		declaration.Put("/access-requests/bad/decision", goodTenant, map[string]any{"decision": "approved"}),
+		declaration.Put("/access-requests/bad/grant-revocation", goodTenant, map[string]any{}),
+		declaration.Put("/access-requests/bad/withdrawal", goodTenant, map[string]any{}),
+		declaration.Patch("/access-reviews/bad", goodTenant, map[string]any{"status": "completed"}),
 	} {
 		assert.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 	}
@@ -313,9 +309,9 @@ func TestGovernanceHTTPRejectsInvalidReferencesAndUnauthorizedApprovers(t *testi
 	registrar := authz.NewRegistrar(authz.DefaultRegistry(), governanceHTTPVerifier{}, governanceDenyPermissions{}, governanceHTTPMembership{})
 	_, deniedAPI := humatest.New(t)
 	RegisterHTTP(deniedAPI, h.service, registrar)
-	response := deniedAPI.Post("/access-requests/1/approve", "Authorization: Bearer 10", goodTenant, map[string]any{})
+	response := deniedAPI.Put("/access-requests/1/decision", "Authorization: Bearer 10", goodTenant, map[string]any{"decision": "approved"})
 	assert.Equal(t, http.StatusForbidden, response.Code)
-	response = deniedAPI.Post("/access-reviews/1/items/1/decide", "Authorization: Bearer 10", goodTenant, map[string]any{"decision": "keep"})
+	response = deniedAPI.Put("/access-reviews/1/items/1/decision", "Authorization: Bearer 10", goodTenant, map[string]any{"decision": "keep"})
 	assert.Equal(t, http.StatusForbidden, response.Code)
 }
 
@@ -347,20 +343,20 @@ func TestGovernanceHTTPReportsStorageFaultsOnEveryOperation(t *testing.T) {
 		})},
 		{"my requests", api.Get("/me/access-requests", requester, tenant)},
 		{"list requests", api.Get("/access-requests", reviewer, tenant)},
-		{"approve", api.Post("/access-requests/1001/approve", reviewer, tenant, map[string]any{"note": "ok"})},
-		{"reject", api.Post("/access-requests/1001/reject", reviewer, tenant, map[string]any{"note": "no"})},
-		{"revoke", api.Post("/access-requests/1001/revoke", reviewer, tenant, map[string]any{"reason": "done"})},
-		{"withdraw", api.Post("/access-requests/1001/withdraw", requester, tenant, map[string]any{"reason": "changed"})},
+		{"approve", api.Put("/access-requests/1001/decision", reviewer, tenant, map[string]any{"decision": "approved", "note": "ok"})},
+		{"reject", api.Put("/access-requests/1001/decision", reviewer, tenant, map[string]any{"decision": "rejected", "note": "no"})},
+		{"revoke", api.Put("/access-requests/1001/grant-revocation", reviewer, tenant, map[string]any{"reason": "done"})},
+		{"withdraw", api.Put("/access-requests/1001/withdrawal", requester, tenant, map[string]any{"reason": "changed"})},
 		{"list reviews", api.Get("/access-reviews", reviewer, tenant)},
 		{"create review", api.Post("/access-reviews", requester, tenant, map[string]any{
 			"name": "Quarterly access review", "due_at": future,
 		})},
 		{"get review", api.Get("/access-reviews/1001", reviewer, tenant)},
-		{"decide item", api.Post("/access-reviews/1001/items/1002/decide", reviewer, tenant, map[string]any{
+		{"decide item", api.Put("/access-reviews/1001/items/1002/decision", reviewer, tenant, map[string]any{
 			"decision": "keep", "note": "certified",
 		})},
-		{"complete review", api.Post("/access-reviews/1001/complete", reviewer, tenant)},
-		{"cancel review", api.Post("/access-reviews/1001/cancel", reviewer, tenant)},
+		{"complete review", api.Patch("/access-reviews/1001", reviewer, tenant, map[string]any{"status": "completed"})},
+		{"cancel review", api.Patch("/access-reviews/1001", reviewer, tenant, map[string]any{"status": "cancelled"})}, //nolint:misspell // Frozen API value.
 	} {
 		assert.Equal(t, http.StatusInternalServerError, broken.response.Code, "%s: %s", broken.name, broken.response.Body.String())
 	}

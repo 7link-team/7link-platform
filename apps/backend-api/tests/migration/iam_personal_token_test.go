@@ -58,14 +58,14 @@ func TestIAMPersonalTokenMigrations(t *testing.T) {
 						{ID: 101, LoginName: "legacy-owner", DisplayName: "Legacy owner", Status: "active", CreatedAt: now, UpdatedAt: now},
 						{ID: 102, LoginName: "other-owner", DisplayName: "Other owner", Status: "active", CreatedAt: now, UpdatedAt: now},
 					}
-					require.NoError(t, gdb.Table(prefix+"iam_principals").Create(&principals).Error)
+					require.NoError(t, gdb.Table(prefix+"iam_principals").Omit("Avatar").Create(&principals).Error)
 					require.NoError(t, gdb.Table(prefix+"iam_tenants").Create(map[string]any{"id": 71, "slug": "personal", "name": "Personal", "status": "active", "version": 1, "created_at": now, "updated_at": now}).Error)
 					credential := authnmodel.Credential{PrincipalID: 101, PasswordHash: "legacy-hash", CredentialVersion: 3, PasswordChangedAt: now, UpdatedAt: now}
 					require.NoError(t, gdb.Table(prefix+"iam_credentials").Create(&credential).Error)
 					require.NoError(t, insertFederationProvider(t, db, prefix, 1, 71, "Existing IdP", "https://idp.example.test", "client", "oidc", "active"))
 					require.NoError(t, insertFederationLink(t, db, prefix, 1, 71, 101, "legacy-subject"))
 					for cycle := range 2 {
-						require.NoError(t, goosex.MigrateUpTo(t.Context(), db, identitySource, engine.dialect, 5))
+						require.NoError(t, goosex.MigrateUpTo(t.Context(), db, identitySource, engine.dialect, 6))
 						require.NoError(t, goosex.MigrateUpTo(t.Context(), db, source, engine.dialect, 15))
 						require.NoError(t, goosex.MigrateUpTo(t.Context(), db, federationSource, engine.dialect, 6))
 						assert.Equal(t, 1, tableRowCount(t, db, prefix+"iam_identity_links"))

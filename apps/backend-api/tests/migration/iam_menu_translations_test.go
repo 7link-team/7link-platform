@@ -53,10 +53,10 @@ func TestIAMDefaultMenuTranslationUpgrade(t *testing.T) {
 					for _, tenant := range []int{1, 2} {
 						for index, menu := range defaults {
 							label := menu.Label
-							if tenant == 1 && menu.Route == "/iam/users" {
+							if tenant == 1 && menu.Route == "/users" {
 								label = "Principals and members"
 							}
-							insert(tenant, tenant*100+index, menu.Route, label)
+							insert(tenant, tenant*100+index, legacyMenuRoute(menu.Route), label)
 						}
 					}
 					insert(3, 301, "/iam/users", "Custom directory")
@@ -80,6 +80,9 @@ func TestIAMDefaultMenuTranslationUpgrade(t *testing.T) {
 							var translations map[string]string
 							require.NoError(t, json.Unmarshal([]byte(read(tenant, tenant*100+index)), &translations))
 							assert.Equal(t, menu.Translations, translations, menu.Route)
+							var route string
+							require.NoError(t, db.QueryRowContext(t.Context(), fmt.Sprintf("SELECT route FROM %s WHERE tenant_id = %d AND id = %d", table, tenant, tenant*100+index)).Scan(&route))
+							assert.Equal(t, menu.Route, route)
 						}
 					}
 					assert.Equal(t, "{}", read(3, 301), "custom label must not be replaced by route matching")
@@ -99,4 +102,11 @@ func TestIAMDefaultMenuTranslationUpgrade(t *testing.T) {
 			}
 		})
 	}
+}
+
+func legacyMenuRoute(route string) string {
+	if route == "/audit/events" {
+		return "/iam/audit-events"
+	}
+	return "/iam" + route
 }

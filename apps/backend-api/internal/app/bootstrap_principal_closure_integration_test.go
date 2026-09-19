@@ -189,7 +189,7 @@ func (f *iamTenantFixture) runPrincipalClosure(t *testing.T) {
 		_, err = authnService.Authenticate(t.Context(), "Bearer "+tokens.AccessToken, "")
 		require.NoError(t, err)
 		leaveProof := f.closureProof(t, cookie, "tenant_leave", tenant.ID.String())
-		response := f.request(t, http.MethodPost, "/me/memberships/"+tenant.ID.String()+"/leave", 0, "", map[string]any{"proof": leaveProof}, map[string]string{"Cookie": cookie, "Origin": "https://app.example.test"})
+		response := f.request(t, http.MethodDelete, "/me/memberships/"+tenant.ID.String(), 0, "", map[string]any{"proof": leaveProof}, map[string]string{"Cookie": cookie, "Origin": "https://app.example.test"})
 		requireStatus(t, http.StatusConflict, response)
 		sum := sha256.Sum256([]byte(leaveProof))
 		require.EqualValues(t, 1, f.count(t, "iam_reauth_challenges", "id_hash = ? AND consumed_at IS NULL", hex.EncodeToString(sum[:])))
@@ -245,7 +245,7 @@ func (f *iamTenantFixture) runClosureAdmissionInterleavings(t *testing.T) {
 				}
 				if operation == "leave" {
 					proof := f.closureProof(t, cookie, "tenant_leave", iamTenantB.String())
-					requireStatus(t, http.StatusOK, f.request(t, http.MethodPost, "/me/memberships/"+iamTenantB.String()+"/leave", 0, "", map[string]any{"proof": proof}, map[string]string{"Cookie": cookie, "Origin": "https://app.example.test"}))
+					requireStatus(t, http.StatusOK, f.request(t, http.MethodDelete, "/me/memberships/"+iamTenantB.String(), 0, "", map[string]any{"proof": proof}, map[string]string{"Cookie": cookie, "Origin": "https://app.example.test"}))
 				} else {
 					identityService := requireIAMModule[*identity.Module](t, f, identity.Name).Service
 					proof := f.closureProof(t, cookie, "principal_close", principal.ID.String())

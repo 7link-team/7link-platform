@@ -26,6 +26,7 @@ func (*Module) MigrationMilestones() []module.MigrationMilestone {
 			Dependencies: []module.MigrationMilestoneRef{{Module: "identity", Name: "lifecycle"}}},
 		{Name: "menu-translations", Version: 14},
 		{Name: "default-menu-translations", Version: 15},
+		{Name: "resource-menu-routes", Version: 16},
 	}
 }
 

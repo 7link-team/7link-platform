@@ -42,6 +42,7 @@ func newNode(db *gorm.DB, opts ...gen.DOOption) node {
 	_node.Version = field.NewInt64(tableName, "version")
 	_node.CurrentVersionID = field.NewField(tableName, "current_version_id")
 	_node.TrashBatchID = field.NewField(tableName, "trash_batch_id")
+	_node.ManagementMode = field.NewString(tableName, "management_mode")
 	_node.RootScope = field.NewString(tableName, "root_scope")
 	_node.RootOwnerID = field.NewField(tableName, "root_owner_id")
 	_node.ACLStopInheritance = field.NewBool(tableName, "acl_stop_inheritance")
@@ -71,6 +72,7 @@ type node struct {
 	Version            field.Int64
 	CurrentVersionID   field.Field
 	TrashBatchID       field.Field
+	ManagementMode     field.String
 	RootScope          field.String
 	RootOwnerID        field.Field
 	ACLStopInheritance field.Bool
@@ -106,6 +108,7 @@ func (n *node) updateTableName(table string) *node {
 	n.Version = field.NewInt64(table, "version")
 	n.CurrentVersionID = field.NewField(table, "current_version_id")
 	n.TrashBatchID = field.NewField(table, "trash_batch_id")
+	n.ManagementMode = field.NewString(table, "management_mode")
 	n.RootScope = field.NewString(table, "root_scope")
 	n.RootOwnerID = field.NewField(table, "root_owner_id")
 	n.ACLStopInheritance = field.NewBool(table, "acl_stop_inheritance")
@@ -135,7 +138,7 @@ func (n *node) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (n *node) fillFieldMap() {
-	n.fieldMap = make(map[string]field.Expr, 19)
+	n.fieldMap = make(map[string]field.Expr, 20)
 	n.fieldMap["id"] = n.ID
 	n.fieldMap["space_id"] = n.SpaceID
 	n.fieldMap["parent_id"] = n.ParentID
@@ -150,6 +153,7 @@ func (n *node) fillFieldMap() {
 	n.fieldMap["version"] = n.Version
 	n.fieldMap["current_version_id"] = n.CurrentVersionID
 	n.fieldMap["trash_batch_id"] = n.TrashBatchID
+	n.fieldMap["management_mode"] = n.ManagementMode
 	n.fieldMap["root_scope"] = n.RootScope
 	n.fieldMap["root_owner_id"] = n.RootOwnerID
 	n.fieldMap["acl_stop_inheritance"] = n.ACLStopInheritance

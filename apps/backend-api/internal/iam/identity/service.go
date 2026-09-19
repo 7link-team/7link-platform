@@ -471,13 +471,7 @@ func (r *Repository) insertPrincipal(ctx context.Context, row *model.Principal) 
 	if err != nil {
 		return err
 	}
-	if err := r.initializeAvatar(ctx, row); err != nil {
-		return fmt.Errorf("initialize avatar: %w", err)
-	}
 	result := db.WithContext(ctx).Table(tables.Principals.TableName()).Create(row)
-	if result.Error != nil {
-		r.removeAvatarFile(row.ID, storedAvatar(row.Avatar))
-	}
 	if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
 		return ErrLoginConflict
 	}
@@ -489,15 +483,9 @@ func (r *Repository) insertExternalPrincipal(ctx context.Context, row *model.Pri
 	if err != nil {
 		return false, err
 	}
-	if err := r.initializeAvatar(ctx, row); err != nil {
-		return false, fmt.Errorf("initialize avatar: %w", err)
-	}
 	result := db.WithContext(ctx).Table(tables.Principals.TableName()).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "login_name"}}, DoNothing: true,
 	}).Create(row)
-	if result.Error != nil || result.RowsAffected == 0 {
-		r.removeAvatarFile(row.ID, storedAvatar(row.Avatar))
-	}
 	if result.Error != nil {
 		return false, fmt.Errorf("insert external principal: %w", result.Error)
 	}

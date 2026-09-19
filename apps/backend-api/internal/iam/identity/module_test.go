@@ -87,17 +87,22 @@ func identityWiredRegistry(
 	require.NoError(t, err)
 	accountFiles, err := files.NewAccountObjects(storage, "local", harness.prefix)
 	require.NoError(t, err)
+	bindings, err := files.NewResourceBindings(harness.prefix)
+	require.NoError(t, err)
+	resourceFiles, err := files.NewAccountResourceFiles(accountFiles, bindings, storage, harness.prefix)
+	require.NoError(t, err)
+	wiringIDs := newIdentityTestIDs(9000)
+	wiringAppender := audit.Appender(func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil })
+	require.NoError(t, resourceFiles.Configure(wiringIDs, wiringAppender))
 	registry := module.NewRegistry()
 	require.NoError(t, registry.Register(
 		platformi18n.NewModule(nil, platformi18n.Base),
 		respx.NewModule(nil),
 		&identityDependencyProvider{name: guid.Name, provide: func(services *module.Services) error {
-			return module.Provide[guid.Source](services, newIdentityTestIDs(9000))
+			return module.Provide[guid.Source](services, wiringIDs)
 		}},
 		&identityDependencyProvider{name: audit.Name, provide: func(services *module.Services) error {
-			if err := module.Provide[audit.Appender](services, audit.Appender(
-				func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil },
-			)); err != nil {
+			if err := module.Provide[audit.Appender](services, wiringAppender); err != nil {
 				return err
 			}
 			return module.Provide[audit.ErasureRecorder](services, audit.ErasureRecorder(
@@ -139,10 +144,7 @@ func identityWiredRegistry(
 			return module.Provide[PrincipalTableNamesReceiver](services, receiver)
 		}},
 		&identityDependencyProvider{name: files.Name, provide: func(services *module.Services) error {
-			if err := module.Provide[files.Driver](services, storage); err != nil {
-				return err
-			}
-			return module.Provide[*files.AccountObjects](services, accountFiles)
+			return module.Provide[*files.AccountResourceFiles](services, resourceFiles)
 		}},
 		instance,
 	))
@@ -289,6 +291,11 @@ func TestIdentityModuleRefusesToStartWithoutThePublishedTableNames(t *testing.T)
 			instance := NewModule(harness.runtime, enabledModuleConfig())
 
 			services := module.NewServices()
+			bindings, err := files.NewResourceBindings(harness.prefix)
+			require.NoError(t, err)
+			resourceFiles, err := files.NewAccountResourceFiles(harness.accounts, bindings, harness.storage, harness.prefix)
+			require.NoError(t, err)
+			require.NoError(t, resourceFiles.Configure(newIdentityTestIDs(9600), harness.repository.appender))
 			require.NoError(t, instance.ProvideServices(services))
 			require.NoError(t, module.Provide[*authz.Registrar](services, identityTestRegistrar()))
 			require.NoError(t, module.Provide[guid.Source](services, newIdentityTestIDs(9500)))
@@ -303,8 +310,7 @@ func TestIdentityModuleRefusesToStartWithoutThePublishedTableNames(t *testing.T)
 			require.NoError(t, module.Provide[core.PrincipalTableNamesConnector](services,
 				core.PrincipalTableNamesConnector{Bind: func(core.PrincipalTableNames) error { return nil }}))
 			require.NoError(t, module.Provide[core.AccessTableNames](services, absent.access))
-			require.NoError(t, module.Provide[files.Driver](services, harness.repository.storage))
-			require.NoError(t, module.Provide[*files.AccountObjects](services, harness.repository.accountFiles))
+			require.NoError(t, module.Provide[*files.AccountResourceFiles](services, resourceFiles))
 			require.NoError(t, services.Seal())
 
 			require.NoError(t, instance.InjectServices(services))

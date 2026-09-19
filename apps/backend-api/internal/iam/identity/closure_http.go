@@ -35,7 +35,7 @@ type closureCancelInput struct {
 type closureUpdateInput struct {
 	PrincipalID string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body        struct {
-		Version int64 `json:"version" minimum:"1"`
+		Version int64  `json:"version" minimum:"1"`
 		Status  string `json:"status" enum:"processing,rejected"`
 	}
 }

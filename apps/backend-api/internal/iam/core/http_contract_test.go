@@ -15,7 +15,7 @@ import (
 
 const coreRouteManifest = `
 iam-my-memberships|GET|/me/memberships
-iam-leave-membership|POST|/me/memberships/{tenant_id}/leave
+iam-leave-membership|DELETE|/me/memberships/{tenant_id}
 iam-field-catalog|GET|/field-catalog
 iam-list-field-policies|GET|/field-policies
 iam-set-field-policy|PUT|/field-policies/{resource}/{field}

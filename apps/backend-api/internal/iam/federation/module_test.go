@@ -74,8 +74,8 @@ func TestFederationSAMLBrowserOpenAPIContract(t *testing.T) {
 
 	for path, expected := range map[string][]string{
 		"/identity-providers/{provider_id}/callback": {"SAMLResponse", "RelayState"},
-		samlSSORoute:                         {"SAMLRequest", "RelayState"},
-		samlSLORoute:                         {"SAMLRequest", "RelayState"},
+		samlSSORoute: {"SAMLRequest", "RelayState"},
+		samlSLORoute: {"SAMLRequest", "RelayState"},
 	} {
 		operation := spec.Paths[path].Post
 		require.NotNil(t, operation.RequestBody, path)

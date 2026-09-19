@@ -639,7 +639,7 @@ func (t directoryTree) authorizedChildren(ctx context.Context, tx *gorm.DB, auth
 	for len(result.Items) <= request.Limit && scanned < maxBrowserScan {
 		batch := min(100, maxBrowserScan-scanned)
 		rows, err := q.Node.WithContext(ctx).
-			Where(q.Node.SpaceID.Eq(spaceID), q.Node.ParentID.Eq(nodeID), q.Node.LiveSlot.Eq(1), q.Node.State.Eq("active"), q.Node.ID.Gt(after)).
+			Where(q.Node.SpaceID.Eq(spaceID), q.Node.ParentID.Eq(nodeID), q.Node.LiveSlot.Eq(1), q.Node.State.Eq("active"), q.Node.ManagementMode.Eq("user"), q.Node.ID.Gt(after)).
 			Order(q.Node.ID.Asc()).Limit(batch).Find()
 		if err != nil {
 			return fileChildrenPage{}, err

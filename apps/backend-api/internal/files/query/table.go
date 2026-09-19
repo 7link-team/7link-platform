@@ -16,6 +16,7 @@ type TableNames struct {
 	Nodes               gormx.TableName
 	NodeClosure         gormx.TableName
 	NodeACL             gormx.TableName
+	ResourceBindings    gormx.TableName
 	Versions            gormx.TableName
 	TrashBatches        gormx.TableName
 	TrashRoots          gormx.TableName
@@ -34,6 +35,7 @@ func BindNames(prefix string) TableNames {
 		Nodes:               gormx.NewTableName(prefix, model.Node{}.TableName()),
 		NodeClosure:         gormx.NewTableName(prefix, model.NodeClosure{}.TableName()),
 		NodeACL:             gormx.NewTableName(prefix, model.NodeACL{}.TableName()),
+		ResourceBindings:    gormx.NewTableName(prefix, model.ResourceBinding{}.TableName()),
 		Versions:            gormx.NewTableName(prefix, model.Version{}.TableName()),
 		TrashBatches:        gormx.NewTableName(prefix, model.TrashBatch{}.TableName()),
 		TrashRoots:          gormx.NewTableName(prefix, model.TrashRoot{}.TableName()),
@@ -54,6 +56,7 @@ func Bind(db *gorm.DB, prefix string) *Query {
 	q.Node = *q.Node.Table(names.Nodes.String())
 	q.NodeClosure = *q.NodeClosure.Table(names.NodeClosure.String())
 	q.NodeACL = *q.NodeACL.Table(names.NodeACL.String())
+	q.ResourceBinding = *q.ResourceBinding.Table(names.ResourceBindings.String())
 	q.Version = *q.Version.Table(names.Versions.String())
 	q.TrashBatch = *q.TrashBatch.Table(names.TrashBatches.String())
 	q.TrashRoot = *q.TrashRoot.Table(names.TrashRoots.String())
