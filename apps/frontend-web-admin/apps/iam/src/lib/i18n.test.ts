@@ -33,6 +33,7 @@ describe("IAM translations", () => {
       const messages = await loadMessages(locale)
       expect(messages.localeSwitcher).toBeDefined()
       expect(messages.iam).toBeDefined()
+      expect(messages.files).toBeDefined()
     }
   })
   it("does not leave hardcoded Chinese in any IAM view or component", () => {

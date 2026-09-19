@@ -13,7 +13,10 @@ import (
 	"gorm.io/gorm"
 )
 
-var errTreeConflict = errors.New("files: tree changed or restore placement is unavailable")
+var (
+	errTreeConflict        = errors.New("files: tree changed or restore placement is unavailable")
+	errRestoreNameConflict = errors.Join(errTreeConflict, errors.New("files: restore destination name is occupied"))
+)
 
 type nodeRevision struct {
 	ID      guid.ID
@@ -125,11 +128,28 @@ func (t directoryTree) trash(ctx context.Context, tx *gorm.DB, spaceID, batchID,
 }
 
 // restoreOriginal restores a whole batch only when its original placements remain
-// available. Alternate destinations and conflict decisions belong to the operation
-// engine, not implicit renaming/merging here. Closure and physical data are untouched.
+// available. An explicit replacement name may resolve one root collision; destinations,
+// merging, and replacement remain operation-engine concerns. Closure and data stay untouched.
 func (t directoryTree) restoreOriginal(ctx context.Context, tx *gorm.DB, spaceID, batchID, actorID guid.ID, expectedSpace int64, budget int, now time.Time) error {
+	return t.restoreOriginalAs(ctx, tx, spaceID, batchID, actorID, expectedSpace, budget, 0, "", now)
+}
+
+func (t directoryTree) restoreOriginalAs(ctx context.Context, tx *gorm.DB, spaceID, batchID, actorID guid.ID, expectedSpace int64, budget int, renamedNodeID guid.ID, requestedName string, now time.Time) error {
 	if batchID <= 0 || actorID <= 0 || budget < 1 || budget == int(^uint(0)>>1) {
 		return errHierarchy
+	}
+	var renamedName, renamedKey, renamedExt string
+	renameRequested := requestedName != ""
+	if renameRequested {
+		if renamedNodeID <= 0 {
+			return errHierarchy
+		}
+		var err error
+		renamedName, renamedKey, err = PortableName(requestedName)
+		if err != nil {
+			return err
+		}
+		renamedExt = Extension(renamedName)
 	}
 	q, err := t.lockMutation(ctx, tx, spaceID, expectedSpace)
 	if err != nil {
@@ -151,6 +171,7 @@ func (t directoryTree) restoreOriginal(ctx context.Context, tx *gorm.DB, spaceID
 		return errHierarchy
 	}
 	node := q.Node
+	renamedRootFound := renamedNodeID == 0
 	for _, placement := range roots {
 		parent, err := t.pathNodes(ctx, tx, spaceID, placement.ParentID)
 		if err != nil {
@@ -166,13 +187,29 @@ func (t directoryTree) restoreOriginal(ctx context.Context, tx *gorm.DB, spaceID
 		if row.ParentID == nil || *row.ParentID != placement.ParentID || row.Name != placement.Name || row.NameKey != placement.NameKey || row.Ext != placement.Ext {
 			return errTreeConflict
 		}
-		conflicts, err := node.WithContext(ctx).Where(node.SpaceID.Eq(spaceID), node.ParentID.Eq(placement.ParentID), node.NameKey.Eq(placement.NameKey), node.LiveSlot.Eq(1)).Count()
+		nameKey := placement.NameKey
+		if renameRequested && placement.NodeID == renamedNodeID {
+			nameKey = renamedKey
+			if row.Kind == "directory" {
+				renamedExt = ""
+			}
+		}
+		if placement.NodeID == renamedNodeID {
+			renamedRootFound = true
+		}
+		conflicts, err := node.WithContext(ctx).Where(node.SpaceID.Eq(spaceID), node.ParentID.Eq(placement.ParentID), node.NameKey.Eq(nameKey), node.LiveSlot.Eq(1)).Count()
 		if err != nil {
 			return err
 		}
 		if conflicts != 0 {
+			if placement.NodeID == renamedNodeID {
+				return errRestoreNameConflict
+			}
 			return errTreeConflict
 		}
+	}
+	if !renamedRootFound {
+		return errTreeConflict
 	}
 	rows, err := node.WithContext(ctx).Select(node.ID).Where(node.SpaceID.Eq(spaceID), node.TrashBatchID.Eq(batchID), node.State.Eq("trashed")).Order(node.ID.Asc()).Limit(budget + 1).Find()
 	if err != nil {
@@ -180,6 +217,17 @@ func (t directoryTree) restoreOriginal(ctx context.Context, tx *gorm.DB, spaceID
 	}
 	if len(rows) != batch.NodeCount {
 		return errHierarchy
+	}
+	if renameRequested {
+		result, err := node.WithContext(ctx).Where(
+			node.SpaceID.Eq(spaceID), node.ID.Eq(renamedNodeID), node.TrashBatchID.Eq(batchID), node.State.Eq("trashed"),
+		).UpdateSimple(node.Name.Value(renamedName), node.NameKey.Value(renamedKey), node.Ext.Value(renamedExt))
+		if err != nil {
+			return err
+		}
+		if result.RowsAffected != 1 {
+			return errTreeConflict
+		}
 	}
 	for start := 0; start < len(rows); start += 100 {
 		end := min(start+100, len(rows))

@@ -64,7 +64,7 @@ export function ArchiveJobs({
 
   const t = useTranslations("iam")
   const allowed = useAllowed()
-  // The platform scope of this screen reaches /platform/iam/... routes, which
+  // The platform scope of this screen reaches /platform/... routes, which
   // are guarded by platform_administer rather than the tenant audit verbs.
   const scopedCode = (tenantCode: string) =>
     scope === "platform" ? "platform_administer" : tenantCode

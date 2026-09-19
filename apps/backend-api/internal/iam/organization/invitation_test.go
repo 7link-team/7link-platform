@@ -130,7 +130,7 @@ func TestInvitationLifecycleTenantBindingsAndAcceptance(t *testing.T) {
 	h.seedTenant(t, 2, TenantActive)
 	h.seedRole(t, 1, 10)
 	h.seedRole(t, 2, 20)
-	department, err := h.service.Create(t.Context(), 1, CreateDepartment{Name: "Engineering"})
+	department, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Engineering"})
 	require.NoError(t, err)
 	credentials := &invitationCredentialFixture{}
 	var principalCalls atomic.Int64
@@ -239,7 +239,7 @@ func TestInvitationExpiryBindingAndStateFailures(t *testing.T) {
 	h := newOrganizationHarness(t, "")
 	h.seedTenant(t, 1, TenantActive)
 	h.seedTenant(t, 2, TenantSuspended)
-	disabledDepartment, err := h.service.Create(t.Context(), 1, CreateDepartment{Name: "Disabled", Status: StatusDisabled})
+	disabledDepartment, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Disabled", Status: StatusDisabled})
 	require.NoError(t, err)
 	credentials := &invitationCredentialFixture{}
 	var principalCalls atomic.Int64

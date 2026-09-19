@@ -83,11 +83,14 @@ func identityWiredRegistry(
 ) (*module.Registry, *Module) {
 	t.Helper()
 	instance := NewModule(harness.runtime, enabledModuleConfig())
+	storage, err := files.NewLocal(t.TempDir())
+	require.NoError(t, err)
+	accountFiles, err := files.NewAccountObjects(storage, "local", harness.prefix)
+	require.NoError(t, err)
 	registry := module.NewRegistry()
 	require.NoError(t, registry.Register(
 		platformi18n.NewModule(nil, platformi18n.Base),
 		respx.NewModule(nil),
-		files.NewModule(harness.runtime, files.Config{Config: module.Config{Enabled: true}, LocalRoot: t.TempDir()}),
 		&identityDependencyProvider{name: guid.Name, provide: func(services *module.Services) error {
 			return module.Provide[guid.Source](services, newIdentityTestIDs(9000))
 		}},
@@ -134,6 +137,12 @@ func identityWiredRegistry(
 				}
 			}
 			return module.Provide[PrincipalTableNamesReceiver](services, receiver)
+		}},
+		&identityDependencyProvider{name: files.Name, provide: func(services *module.Services) error {
+			if err := module.Provide[files.Driver](services, storage); err != nil {
+				return err
+			}
+			return module.Provide[*files.AccountObjects](services, accountFiles)
 		}},
 		instance,
 	))

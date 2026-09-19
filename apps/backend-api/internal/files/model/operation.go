@@ -20,6 +20,7 @@ type Operation struct {
 	ItemCount          int     `gorm:"column:item_count"`
 	NodeBudget         int     `gorm:"column:node_budget"`
 	ClosureBudget      int     `gorm:"column:closure_budget"`
+	PlanJSON           string  `gorm:"column:plan_json"`
 	ResultJSON         string  `gorm:"column:result_json"`
 	ErrorCode          string  `gorm:"column:error_code"`
 	CreatedAt          int64   `gorm:"column:created_at;autoCreateTime:false"`

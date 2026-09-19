@@ -74,7 +74,7 @@ func (f *iamTenantFixture) actorProvisioningService(t *testing.T, appender audit
 func (f *iamTenantFixture) runSCIMActorLifecycle(t *testing.T) {
 	t.Helper()
 	createAccount := func(tenant guid.ID, token, login string) identity.ServiceAccount {
-		response := f.request(t, http.MethodPost, "/iam/service-accounts", tenant, token,
+		response := f.request(t, http.MethodPost, "/service-accounts", tenant, token,
 			map[string]any{"login_name": login, "display_name": login}, nil)
 		requireStatus(t, http.StatusCreated, response)
 		return decodeEnvelope[identity.ServiceAccount](t, response)
@@ -95,26 +95,26 @@ func (f *iamTenantFixture) runSCIMActorLifecycle(t *testing.T) {
 		beforeAudit := f.auditCount(t, iamTenantA)
 		beforeDirectories := f.count(t, "iam_scim_directories", "tenant_id = ?", iamTenantA)
 		beforeTargets := f.count(t, "iam_scim_targets", "tenant_id = ?", iamTenantA)
-		response := f.request(t, http.MethodPost, "/iam/scim/directories", iamTenantA, f.tokenA,
+		response := f.request(t, http.MethodPost, "/scim-directories", iamTenantA, f.tokenA,
 			map[string]any{"name": "invalid actor", "service_account_id": invalid.String()}, nil)
 		requireStatus(t, http.StatusUnprocessableEntity, response)
-		response = f.request(t, http.MethodPost, "/iam/scim/targets", iamTenantA, f.tokenA,
+		response = f.request(t, http.MethodPost, "/scim-targets", iamTenantA, f.tokenA,
 			map[string]any{"name": "invalid actor", "base_url": remote.URL, "bearer_token": "actor-test", "service_account_id": invalid.String()}, nil)
 		requireStatus(t, http.StatusUnprocessableEntity, response)
 		assert.Equal(t, beforeAudit, f.auditCount(t, iamTenantA))
 		assert.Equal(t, beforeDirectories, f.count(t, "iam_scim_directories", "tenant_id = ?", iamTenantA))
 		assert.Equal(t, beforeTargets, f.count(t, "iam_scim_targets", "tenant_id = ?", iamTenantA))
 	}
-	response := f.request(t, http.MethodPost, "/iam/scim/directories", iamTenantA, f.tokenA,
+	response := f.request(t, http.MethodPost, "/scim-directories", iamTenantA, f.tokenA,
 		map[string]any{"name": "Bound directory", "service_account_id": first.ID.String()}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	directory := decodeEnvelope[provisioning.Directory](t, response)
 	require.Equal(t, &first.ID, directory.ServiceAccountID)
-	response = f.request(t, http.MethodPost, "/iam/scim/directories/"+directory.ID.String()+"/credentials", iamTenantA, f.tokenA,
+	response = f.request(t, http.MethodPost, "/scim-directories/"+directory.ID.String()+"/credentials", iamTenantA, f.tokenA,
 		map[string]any{"name": "Bound credential"}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	credential := decodeEnvelope[provisioning.CredentialSecret](t, response)
-	response = f.request(t, http.MethodPost, "/iam/scim/targets", iamTenantA, f.tokenA,
+	response = f.request(t, http.MethodPost, "/scim-targets", iamTenantA, f.tokenA,
 		map[string]any{"name": "Bound target", "base_url": remote.URL, "bearer_token": "actor-test", "service_account_id": first.ID.String()}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	target := decodeEnvelope[provisioning.TargetSecret](t, response).Target
@@ -137,8 +137,8 @@ func (f *iamTenantFixture) runSCIMActorLifecycle(t *testing.T) {
 	targetBody := func(actor *guid.ID, status string, version int64) map[string]any {
 		return map[string]any{"name": target.Name, "base_url": target.BaseURL, "status": status, "version": version, "service_account_id": actor}
 	}
-	directoryPath := "/iam/scim/directories/" + directory.ID.String()
-	targetPath := "/iam/scim/targets/" + target.ID
+	directoryPath := "/scim-directories/" + directory.ID.String()
+	targetPath := "/scim-targets/" + target.ID
 	response = f.request(t, http.MethodPut, directoryPath, iamTenantA, f.tokenA, directoryBody(&second.ID, "active", directory.Version), nil)
 	requireStatus(t, http.StatusOK, response)
 	directory = decodeEnvelope[provisioning.Directory](t, response)
@@ -219,7 +219,7 @@ func (f *iamTenantFixture) runSCIMActorLifecycle(t *testing.T) {
 			assertRejected(t)
 		}))
 	}
-	response = f.request(t, http.MethodDelete, "/iam/service-accounts/"+second.ID.String()+"?version="+strconv.FormatInt(second.Version, 10), iamTenantA, f.tokenA, nil, nil)
+	response = f.request(t, http.MethodDelete, "/service-accounts/"+second.ID.String()+"?version="+strconv.FormatInt(second.Version, 10), iamTenantA, f.tokenA, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 	assertRejected(t)
 	// An invalid old actor must not prevent an administrator from disabling or repairing a configuration.
@@ -260,7 +260,7 @@ func (f *iamTenantFixture) runSCIMActorLifecycle(t *testing.T) {
 
 func TestComposedSCIMBindingAuditRollback(t *testing.T) {
 	f := newIAMTenantFixture(t)
-	response := f.request(t, http.MethodPost, "/iam/service-accounts", iamTenantA, f.tokenA,
+	response := f.request(t, http.MethodPost, "/service-accounts", iamTenantA, f.tokenA,
 		map[string]any{"login_name": "rollback-actor", "display_name": "Rollback actor"}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	account := decodeEnvelope[identity.ServiceAccount](t, response)

@@ -177,7 +177,7 @@ func assertProvisioningUp(t *testing.T, db *gorm.DB, modules []module.Module, pr
 		assert.Equal(t, goosex.StateClean, report.Status.State)
 	}
 	assert.Equal(t, "default-menu-translations", milestones[iamcore.Name])
-	assert.Equal(t, "principal-erasure", milestones[organization.Name])
+	assert.Equal(t, "department-entities", milestones[organization.Name])
 	assert.Equal(t, "closure-requests", milestones[identity.Name])
 	assert.Equal(t, "outbound-coordination", milestones[provisioning.Name])
 }

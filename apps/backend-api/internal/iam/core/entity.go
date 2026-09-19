@@ -334,6 +334,11 @@ func (s *Service) CreateEntity(ctx context.Context, entity Entity) (Entity, erro
 		}
 		var err error
 		created, err = repo.CreateEntity(ctx, entity)
+		if err == nil && s.roots != nil {
+			_, err = s.roots(ctx, repo.writer(), FileRootProvisionInput{
+				Scope: "entity", TenantID: created.TenantID, OwnerID: created.ID,
+			}, repo.now())
+		}
 		record.TargetID = created.ID
 		return err
 	})
@@ -411,6 +416,20 @@ func (s *Service) DeleteEntity(ctx context.Context, tenantID, entityID guid.ID) 
 	record := newAuditRecord(ctx, tenantID, "entity_deleted", "entity", entityID)
 	record.PolicyChanged = true
 	return s.writes.Run(ctx, record, func(repo *Repository) error {
+		if err := repo.revisions.Lock(ctx, repo.writer(), tenantID); err != nil {
+			return err
+		}
+		if s.rootContent != nil {
+			hasContent, err := s.rootContent(ctx, repo.writer(), FileRootProvisionInput{
+				Scope: "entity", TenantID: tenantID, OwnerID: entityID,
+			})
+			if err != nil {
+				return err
+			}
+			if hasContent {
+				return ErrEntityHasFiles
+			}
+		}
 		return repo.DeleteEntity(ctx, tenantID, entityID)
 	})
 }

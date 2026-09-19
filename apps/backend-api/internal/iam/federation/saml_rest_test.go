@@ -42,7 +42,7 @@ func TestSAMLServiceProviderHTTPWorkflow(t *testing.T) {
 
 	createBody, err := json.Marshal(samlSPBody{Name: "portal", EntityID: tsp.entityID, MetadataXML: tsp.metadataXML()})
 	require.NoError(t, err)
-	response := adminRequest(t, client, http.MethodPost, server.URL+"/iam/saml/service-providers", wireID("tenant-a"), createBody, nil)
+	response := adminRequest(t, client, http.MethodPost, server.URL+"/saml-service-providers", wireID("tenant-a"), createBody, nil)
 	assert.Equal(t, http.StatusCreated, response.StatusCode)
 	var envelope federationEnvelope
 	decodeHTTPBody(t, response, &envelope)
@@ -51,20 +51,20 @@ func TestSAMLServiceProviderHTTPWorkflow(t *testing.T) {
 	assert.Equal(t, "portal", registered.Name)
 	assert.Equal(t, tsp.entityID, registered.EntityID)
 
-	response = adminRequest(t, client, http.MethodGet, server.URL+"/iam/saml/service-providers", wireID("tenant-a"), nil, nil)
+	response = adminRequest(t, client, http.MethodGet, server.URL+"/saml-service-providers", wireID("tenant-a"), nil, nil)
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 	decodeHTTPBody(t, response, &envelope)
 	var items []SAMLServiceProvider
 	require.NoError(t, json.Unmarshal(envelope.Data, &items))
 	require.Len(t, items, 1)
 
-	response = adminRequest(t, client, http.MethodPost, server.URL+"/iam/saml/service-providers", wireID("tenant-a"), createBody, map[string]string{"Accept-Language": "zh-CN"})
+	response = adminRequest(t, client, http.MethodPost, server.URL+"/saml-service-providers", wireID("tenant-a"), createBody, map[string]string{"Accept-Language": "zh-CN"})
 	assert.Equal(t, http.StatusConflict, response.StatusCode)
 	decodeHTTPBody(t, response, &envelope)
 	assert.Equal(t, localized("zh-CN", "federation.saml_sp_entity_id_exists"), envelope.Message)
 
 	invalidBody := `{"name":"bad","entity_id":"https://bad.example/metadata","metadata_xml":"<not-xml"}`
-	response = adminRequest(t, client, http.MethodPost, server.URL+"/iam/saml/service-providers", wireID("tenant-a"), []byte(invalidBody), nil)
+	response = adminRequest(t, client, http.MethodPost, server.URL+"/saml-service-providers", wireID("tenant-a"), []byte(invalidBody), nil)
 	assert.Equal(t, http.StatusBadRequest, response.StatusCode)
 	decodeHTTPBody(t, response, &envelope)
 	assert.Equal(t, localized("en-US", "federation.saml_invalid_sp"), envelope.Message)
@@ -72,7 +72,7 @@ func TestSAMLServiceProviderHTTPWorkflow(t *testing.T) {
 	other := newSAMLSPServer(t)
 	updateBody, err := json.Marshal(samlSPBody{Name: "portal-v2", EntityID: other.entityID, MetadataXML: other.metadataXML(), Status: ProviderDisabled})
 	require.NoError(t, err)
-	response = adminRequest(t, client, http.MethodPut, server.URL+"/iam/saml/service-providers/"+registered.ID.String(), wireID("tenant-a"), updateBody, nil)
+	response = adminRequest(t, client, http.MethodPut, server.URL+"/saml-service-providers/"+registered.ID.String(), wireID("tenant-a"), updateBody, nil)
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 	decodeHTTPBody(t, response, &envelope)
 	var updated SAMLServiceProvider
@@ -80,10 +80,10 @@ func TestSAMLServiceProviderHTTPWorkflow(t *testing.T) {
 	assert.Equal(t, "portal-v2", updated.Name)
 	assert.Equal(t, ProviderDisabled, updated.Status)
 
-	response = adminRequest(t, client, http.MethodDelete, server.URL+"/iam/saml/service-providers/"+registered.ID.String(), wireID("tenant-a"), nil, nil)
+	response = adminRequest(t, client, http.MethodDelete, server.URL+"/saml-service-providers/"+registered.ID.String(), wireID("tenant-a"), nil, nil)
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 	require.NoError(t, response.Body.Close())
-	response = adminRequest(t, client, http.MethodDelete, server.URL+"/iam/saml/service-providers/"+registered.ID.String(), wireID("tenant-a"), nil, nil)
+	response = adminRequest(t, client, http.MethodDelete, server.URL+"/saml-service-providers/"+registered.ID.String(), wireID("tenant-a"), nil, nil)
 	assert.Equal(t, http.StatusNotFound, response.StatusCode)
 	decodeHTTPBody(t, response, &envelope)
 	assert.Equal(t, localized("en-US", "federation.saml_sp_not_found"), envelope.Message)
@@ -95,7 +95,7 @@ func TestSAMLSigningKeyRotationHTTP(t *testing.T) {
 	client, server := newSAMLAdminAPI(t, env)
 	firstCert := env.service.samlCert.Raw
 
-	response := adminRequest(t, client, http.MethodPost, server.URL+"/iam/saml/signing-key/rotate", wireID("tenant-a"), nil, nil)
+	response := adminRequest(t, client, http.MethodPost, server.URL+"/saml-signing-keys", wireID("tenant-a"), nil, nil)
 	assert.Equal(t, http.StatusCreated, response.StatusCode)
 	var envelope federationEnvelope
 	decodeHTTPBody(t, response, &envelope)
@@ -115,7 +115,7 @@ func TestSAMLSigningKeyRotationFileBackedConflict(t *testing.T) {
 	require.NoError(t, env.service.StartSAML(t.Context(), SAMLConfig{Enabled: true, SigningKeyFile: keyFile, CertificateFile: certFile}))
 	client, server := newSAMLAdminAPI(t, env)
 
-	response := adminRequest(t, client, http.MethodPost, server.URL+"/iam/saml/signing-key/rotate", wireID("tenant-a"), nil, nil)
+	response := adminRequest(t, client, http.MethodPost, server.URL+"/saml-signing-keys", wireID("tenant-a"), nil, nil)
 	assert.Equal(t, http.StatusConflict, response.StatusCode)
 	var envelope federationEnvelope
 	decodeHTTPBody(t, response, &envelope)
@@ -125,7 +125,7 @@ func TestSAMLSigningKeyRotationFileBackedConflict(t *testing.T) {
 func TestSAMLRotationUnavailableWhenDisabled(t *testing.T) {
 	env := newFederationEnvironment(t)
 	client, server := newSAMLAdminAPI(t, env)
-	response := adminRequest(t, client, http.MethodPost, server.URL+"/iam/saml/signing-key/rotate", wireID("tenant-a"), nil, nil)
+	response := adminRequest(t, client, http.MethodPost, server.URL+"/saml-signing-keys", wireID("tenant-a"), nil, nil)
 	assert.Equal(t, http.StatusConflict, response.StatusCode)
 	var envelope federationEnvelope
 	decodeHTTPBody(t, response, &envelope)
@@ -144,12 +144,12 @@ func TestSAMLHTTPRejectsInvalidTenantAndServiceProviderIDs(t *testing.T) {
 		tenantID string
 		body     []byte
 	}{
-		{http.MethodGet, "/iam/saml/service-providers", "invalid", nil},
-		{http.MethodPost, "/iam/saml/service-providers", "invalid", body},
-		{http.MethodPut, "/iam/saml/service-providers/" + wireID("missing"), "invalid", body},
-		{http.MethodPut, "/iam/saml/service-providers/invalid", wireID("tenant-a"), body},
-		{http.MethodDelete, "/iam/saml/service-providers/" + wireID("missing"), "invalid", nil},
-		{http.MethodDelete, "/iam/saml/service-providers/invalid", wireID("tenant-a"), nil},
+		{http.MethodGet, "/saml-service-providers", "invalid", nil},
+		{http.MethodPost, "/saml-service-providers", "invalid", body},
+		{http.MethodPut, "/saml-service-providers/" + wireID("missing"), "invalid", body},
+		{http.MethodPut, "/saml-service-providers/invalid", wireID("tenant-a"), body},
+		{http.MethodDelete, "/saml-service-providers/" + wireID("missing"), "invalid", nil},
+		{http.MethodDelete, "/saml-service-providers/invalid", wireID("tenant-a"), nil},
 	} {
 		response := adminRequest(t, client, test.method, server.URL+test.path, test.tenantID, test.body, nil)
 		assert.Equal(t, http.StatusUnprocessableEntity, response.StatusCode, "%s %s", test.method, test.path)

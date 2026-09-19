@@ -6,13 +6,16 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 )
 
 type Service struct {
-	repo *Repository
-	now  func() time.Time
+	repo        *Repository
+	now         func() time.Time
+	roots       core.FileRootProvisioner
+	rootContent core.FileRootContentChecker
 }
 
 func NewService(runtime *appenv.Runtime, appender audit.Appender, ids guid.Source) *Service {
@@ -66,13 +69,20 @@ func (s *Service) Create(ctx context.Context, tenantID guid.ID, input CreateDepa
 		return Department{}, fmt.Errorf("generate department id: %w", err)
 	}
 	now := organizationTime(s.now())
-	row := departmentRow{TenantID: tenantID, ID: id, ParentID: idOrNil(input.ParentID), Name: input.Name, NameKey: nameKey(input.Name), Status: input.Status, SortOrder: input.SortOrder, Version: 1, CreatedAt: now, UpdatedAt: now}
+	row := departmentRow{TenantID: tenantID, ID: id, EntityID: idOrNil(input.EntityID), ParentID: idOrNil(input.ParentID), Name: input.Name, NameKey: nameKey(input.Name), Status: input.Status, SortOrder: input.SortOrder, Version: 1, CreatedAt: now, UpdatedAt: now}
 	event := audit.NewDomainEvent(ctx, tenantID, "department_created", "department", id)
-	event.Detail["status"], event.Detail["has_parent"] = input.Status, !input.ParentID.Zero()
+	event.Detail["entity_id"], event.Detail["status"], event.Detail["has_parent"] = input.EntityID, input.Status, !input.ParentID.Zero()
 	createdDepth := 0
 	err = s.repo.runInTx(ctx, func(repo *Repository) error {
 		if err := repo.insertDepartment(ctx, &row); err != nil {
 			return err
+		}
+		if s.roots != nil {
+			if _, err := s.roots(ctx, repo.writer(), core.FileRootProvisionInput{
+				Scope: "department", TenantID: tenantID, EntityID: input.EntityID, OwnerID: id,
+			}, now); err != nil {
+				return fmt.Errorf("provision department file root: %w", err)
+			}
 		}
 		createdDepth, err = departmentDepth(ctx, repo, tenantID, id)
 		if err != nil {
@@ -122,8 +132,12 @@ func (s *Service) Update(ctx context.Context, tenantID, id guid.ID, input Update
 		}
 		parentChanged := optionalID(updated.ParentID) != optionalID(current.ParentID)
 		if parentChanged && updated.ParentID != nil {
-			if _, err := repo.getDepartment(ctx, tenantID, *updated.ParentID); err != nil {
+			parent, err := repo.getDepartment(ctx, tenantID, *updated.ParentID)
+			if err != nil {
 				return err
+			}
+			if current.EntityID == nil || parent.EntityID == nil || *parent.EntityID != *current.EntityID {
+				return ErrEntityMismatch
 			}
 			cycle, err := repo.isDepartmentDescendant(ctx, tenantID, id, *updated.ParentID)
 			if err != nil {
@@ -171,12 +185,29 @@ func (s *Service) Delete(ctx context.Context, tenantID, id guid.ID, version int6
 	now := organizationTime(s.now())
 	event := audit.NewDomainEvent(ctx, tenantID, "department_deleted", "department", id)
 	err := s.repo.runInTx(ctx, func(repo *Repository) error {
+		if err := repo.revisions.Lock(ctx, repo.writer(), tenantID); err != nil {
+			return err
+		}
 		current, err := repo.getDepartment(ctx, tenantID, id)
 		if err != nil {
 			return err
 		}
 		if current.Version != version {
 			return ErrVersionConflict
+		}
+		if s.rootContent != nil {
+			if current.EntityID == nil {
+				return ErrEntityMismatch
+			}
+			hasContent, err := s.rootContent(ctx, repo.writer(), core.FileRootProvisionInput{
+				Scope: "department", TenantID: tenantID, EntityID: *current.EntityID, OwnerID: id,
+			})
+			if err != nil {
+				return err
+			}
+			if hasContent {
+				return ErrInUse
+			}
 		}
 		if err := repo.deleteDepartment(ctx, tenantID, id, version); err != nil {
 			return err

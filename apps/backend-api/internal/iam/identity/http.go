@@ -50,7 +50,7 @@ type principalListData struct {
 
 type principalIDInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
-	ID       string `path:"id" maxLength:"64"`
+	ID       string `path:"principal_id" maxLength:"64"`
 }
 
 type principalCreateInput struct {
@@ -67,7 +67,7 @@ type principalCreateInput struct {
 type principalUpdateInput struct {
 	RawBody  []byte
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
-	ID       string `path:"id" maxLength:"64"`
+	ID       string `path:"principal_id" maxLength:"64"`
 	Body     struct {
 		DisplayName *string `json:"display_name,omitempty" minLength:"1" maxLength:"128"`
 		Email       *string `json:"email,omitempty" maxLength:"320"`
@@ -88,7 +88,7 @@ type serviceAccountListData struct {
 
 type serviceAccountIDInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
-	ID       string `path:"id" maxLength:"64"`
+	ID       string `path:"service_account_id" maxLength:"64"`
 }
 
 type serviceAccountCreateInput struct {
@@ -103,7 +103,7 @@ type serviceAccountCreateInput struct {
 
 type serviceAccountReplaceInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
-	ID       string `path:"id" maxLength:"64"`
+	ID       string `path:"service_account_id" maxLength:"64"`
 	Body     struct {
 		DisplayName string     `json:"display_name" minLength:"1" maxLength:"128"`
 		Description string     `json:"description,omitempty" maxLength:"1000"`
@@ -115,13 +115,13 @@ type serviceAccountReplaceInput struct {
 
 type serviceAccountDeleteInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
-	ID       string `path:"id" maxLength:"64"`
+	ID       string `path:"service_account_id" maxLength:"64"`
 	Version  int64  `query:"version" minimum:"1"`
 }
 
 type serviceAccountCredentialCreateInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
-	ID       string `path:"id" maxLength:"64"`
+	ID       string `path:"service_account_id" maxLength:"64"`
 	Body     struct {
 		Name      string     `json:"name" minLength:"1" maxLength:"128"`
 		Scopes    []string   `json:"scopes" minItems:"1" maxItems:"128"`
@@ -131,7 +131,7 @@ type serviceAccountCredentialCreateInput struct {
 
 type serviceAccountCredentialIDInput struct {
 	TenantID     string `header:"X-Tenant-Id" maxLength:"128"`
-	ID           string `path:"id" maxLength:"64"`
+	ID           string `path:"service_account_id" maxLength:"64"`
 	CredentialID string `path:"credential_id" maxLength:"64"`
 }
 
@@ -151,7 +151,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "identity-list-principals",
 		Method:      http.MethodGet,
-		Path:        "/iam/principals",
+		Path:        "/principals",
 		Summary:     "List local principals in the tenant",
 		Tags:        []string{"identity"},
 	}, authz.Guard{Resource: "user", Verb: "view"},
@@ -184,7 +184,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 	authz.Register(registrar, api, huma.Operation{
 		OperationID:   "identity-create-principal",
 		Method:        http.MethodPost,
-		Path:          "/iam/principals",
+		Path:          "/principals",
 		Summary:       "Create a local principal and tenant membership",
 		Tags:          []string{"identity"},
 		DefaultStatus: http.StatusCreated,
@@ -214,7 +214,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "identity-get-principal",
 		Method:      http.MethodGet,
-		Path:        "/iam/principals/{id}",
+		Path:        "/principals/{principal_id}",
 		Summary:     "Get a local principal in the tenant",
 		Tags:        []string{"identity"},
 		Errors:      []int{http.StatusNotFound},
@@ -238,7 +238,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "identity-update-principal",
 		Method:      http.MethodPatch,
-		Path:        "/iam/principals/{id}",
+		Path:        "/principals/{principal_id}",
 		Summary:     "Update a local principal profile",
 		Tags:        []string{"identity"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
@@ -265,7 +265,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "identity-create-principal-suspension",
 		Method:      http.MethodPut,
-		Path:        "/iam/principals/{id}/suspension",
+		Path:        "/principals/{principal_id}/suspension",
 		Summary:     "Suspend a principal and revoke its sessions and refresh tokens",
 		Tags:        []string{"identity"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict},
@@ -289,7 +289,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "identity-delete-principal-suspension",
 		Method:      http.MethodDelete,
-		Path:        "/iam/principals/{id}/suspension",
+		Path:        "/principals/{principal_id}/suspension",
 		Summary:     "Lift a principal suspension",
 		Tags:        []string{"identity"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict},
@@ -315,7 +315,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "identity-list-service-accounts",
 		Method:      http.MethodGet,
-		Path:        "/iam/service-accounts",
+		Path:        "/service-accounts",
 		Summary:     "List tenant service accounts",
 		Tags:        []string{"identity"},
 	}, authz.Guard{Resource: "service_account", Verb: "view"},
@@ -334,7 +334,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 	authz.Register(registrar, api, huma.Operation{
 		OperationID:   "identity-create-service-account",
 		Method:        http.MethodPost,
-		Path:          "/iam/service-accounts",
+		Path:          "/service-accounts",
 		Summary:       "Create a non-interactive tenant service account",
 		Tags:          []string{"identity"},
 		DefaultStatus: http.StatusCreated,
@@ -357,7 +357,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "identity-get-service-account",
 		Method:      http.MethodGet,
-		Path:        "/iam/service-accounts/{id}",
+		Path:        "/service-accounts/{service_account_id}",
 		Summary:     "Get a tenant service account",
 		Tags:        []string{"identity"},
 		Errors:      []int{http.StatusNotFound},
@@ -377,7 +377,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "identity-replace-service-account",
 		Method:      http.MethodPut,
-		Path:        "/iam/service-accounts/{id}",
+		Path:        "/service-accounts/{service_account_id}",
 		Summary:     "Replace service account profile and status",
 		Tags:        []string{"identity"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
@@ -400,7 +400,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "identity-delete-service-account",
 		Method:      http.MethodDelete,
-		Path:        "/iam/service-accounts/{id}",
+		Path:        "/service-accounts/{service_account_id}",
 		Summary:     "Delete a service account and revoke its credentials",
 		Tags:        []string{"identity"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict},
@@ -419,7 +419,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "identity-list-service-account-credentials",
 		Method:      http.MethodGet,
-		Path:        "/iam/service-accounts/{id}/credentials",
+		Path:        "/service-accounts/{service_account_id}/credentials",
 		Summary:     "List service account credentials without secrets",
 		Tags:        []string{"identity"},
 		Errors:      []int{http.StatusNotFound},
@@ -439,7 +439,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 	authz.Register(registrar, api, huma.Operation{
 		OperationID:   "identity-create-service-account-credential",
 		Method:        http.MethodPost,
-		Path:          "/iam/service-accounts/{id}/credentials",
+		Path:          "/service-accounts/{service_account_id}/credentials",
 		Summary:       "Create a service account client credential",
 		Tags:          []string{"identity"},
 		DefaultStatus: http.StatusCreated,
@@ -462,7 +462,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "identity-delete-service-account-credential",
 		Method:      http.MethodDelete,
-		Path:        "/iam/service-accounts/{id}/credentials/{credential_id}",
+		Path:        "/service-accounts/{service_account_id}/credentials/{credential_id}",
 		Summary:     "Revoke a service account credential and its active tokens",
 		Tags:        []string{"identity"},
 		Errors:      []int{http.StatusNotFound},

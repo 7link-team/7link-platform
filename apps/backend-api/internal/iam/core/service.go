@@ -37,14 +37,14 @@ type MenuItem struct {
 
 // MenuDeclaration is a template key, not a persisted menu identity.
 type MenuDeclaration struct {
- Key string `json:"key"`
- Label string `json:"label"`
- Translations map[string]string `json:"translations,omitempty"`
- Path string `json:"path,omitempty"`
- PermissionCode string `json:"permission_code"`
- Icon string `json:"icon,omitempty"`
- SortOrder int `json:"sort_order"`
- Children []MenuDeclaration `json:"children,omitempty"`
+	Key            string            `json:"key"`
+	Label          string            `json:"label"`
+	Translations   map[string]string `json:"translations,omitempty"`
+	Path           string            `json:"path,omitempty"`
+	PermissionCode string            `json:"permission_code"`
+	Icon           string            `json:"icon,omitempty"`
+	SortOrder      int               `json:"sort_order"`
+	Children       []MenuDeclaration `json:"children,omitempty"`
 }
 
 // Service coordinates core IAM validation, persistence, authorization, policy
@@ -59,6 +59,8 @@ type Service struct {
 	reauthenticate       authnext.ReauthenticationConsumer
 	revokePersonalTokens TenantPersonalTokenRevoker
 	revokeOAuth          TenantOAuthRevoker
+	roots                FileRootProvisioner
+	rootContent          FileRootContentChecker
 }
 
 // NewService constructs the core IAM service from its owned repository and
@@ -113,7 +115,7 @@ func (s *Service) MenuCatalog(context.Context) []MenuDeclaration {
 	items := make([]MenuDeclaration, 0, len(DefaultMenus()))
 	for _, menu := range DefaultMenus() {
 		items = append(items, MenuDeclaration{
-			Key: strings.TrimPrefix(menu.Route,"/iam/"), Label: menu.Label, Translations: menu.Translations, Path: menu.Route,
+			Key: strings.TrimPrefix(menu.Route, "/"), Label: menu.Label, Translations: menu.Translations, Path: menu.Route,
 			PermissionCode: menu.PermissionCode, Icon: menu.Icon, SortOrder: menu.SortOrder,
 		})
 	}
@@ -123,24 +125,24 @@ func (s *Service) MenuCatalog(context.Context) []MenuDeclaration {
 // DefaultMenus returns the built-in tenant menu definitions.
 func DefaultMenus() []Menu {
 	menus := []Menu{
-		{Label: "Accounts and members", Route: "/iam/users", Icon: "users", SortOrder: 10, PermissionCode: "user_view", Status: MenuActive},
-		{Label: "Invitations", Route: "/iam/invitations", Icon: "mail-plus", SortOrder: 11, PermissionCode: "invitation_view", Status: MenuActive},
-		{Label: "Service accounts", Route: "/iam/service-accounts", Icon: "bot", SortOrder: 12, PermissionCode: "service_account_view", Status: MenuActive},
-		{Label: "Entities", Route: "/iam/entities", Icon: "network", SortOrder: 13, PermissionCode: "entity_view", Status: MenuActive},
-		{Label: "Departments", Route: "/iam/departments", Icon: "building-2", SortOrder: 15, PermissionCode: "dept_view", Status: MenuActive},
-		{Label: "Positions", Route: "/iam/positions", Icon: "briefcase-business", SortOrder: 18, PermissionCode: "position_view", Status: MenuActive},
-		{Label: "Groups", Route: "/iam/groups", Icon: "users-round", SortOrder: 19, PermissionCode: "group_view", Status: MenuActive},
-		{Label: "Roles and permissions", Route: "/iam/roles", Icon: "key-round", SortOrder: 20, PermissionCode: "role_view", Status: MenuActive},
-		{Label: "Access requests", Route: "/iam/access-requests", Icon: "clipboard-check", SortOrder: 21, PermissionCode: "access_request_view", Status: MenuActive},
-		{Label: "Access reviews", Route: "/iam/access-reviews", Icon: "list-checks", SortOrder: 22, PermissionCode: "access_review_view", Status: MenuActive},
-		{Label: "Menu metadata", Route: "/iam/menus", Icon: "boxes", SortOrder: 30, PermissionCode: "menu_view", Status: MenuActive},
-		{Label: "OAuth clients", Route: "/iam/oauth-clients", Icon: "app-window", SortOrder: 40, PermissionCode: "oauth_client_view", Status: MenuActive},
-		{Label: "SCIM directories", Route: "/iam/scim-directories", Icon: "folder-sync", SortOrder: 45, PermissionCode: "tenant_administer", Status: MenuActive},
-		{Label: "Audit events", Route: "/iam/audit-events", Icon: "file-clock", SortOrder: 50, PermissionCode: "audit_event_view", Status: MenuActive},
-		{Label: "Audit governance", Route: "/iam/audit-governance", Icon: "shield-check", SortOrder: 51, PermissionCode: "audit_event_view", Status: MenuActive},
+		{Label: "Accounts and members", Route: "/users", Icon: "users", SortOrder: 10, PermissionCode: "user_view", Status: MenuActive},
+		{Label: "Invitations", Route: "/invitations", Icon: "mail-plus", SortOrder: 11, PermissionCode: "invitation_view", Status: MenuActive},
+		{Label: "Service accounts", Route: "/service-accounts", Icon: "bot", SortOrder: 12, PermissionCode: "service_account_view", Status: MenuActive},
+		{Label: "Entities", Route: "/entities", Icon: "network", SortOrder: 13, PermissionCode: "entity_view", Status: MenuActive},
+		{Label: "Departments", Route: "/departments", Icon: "building-2", SortOrder: 15, PermissionCode: "dept_view", Status: MenuActive},
+		{Label: "Positions", Route: "/positions", Icon: "briefcase-business", SortOrder: 18, PermissionCode: "position_view", Status: MenuActive},
+		{Label: "Groups", Route: "/groups", Icon: "users-round", SortOrder: 19, PermissionCode: "group_view", Status: MenuActive},
+		{Label: "Roles and permissions", Route: "/roles", Icon: "key-round", SortOrder: 20, PermissionCode: "role_view", Status: MenuActive},
+		{Label: "Access requests", Route: "/access-requests", Icon: "clipboard-check", SortOrder: 21, PermissionCode: "access_request_view", Status: MenuActive},
+		{Label: "Access reviews", Route: "/access-reviews", Icon: "list-checks", SortOrder: 22, PermissionCode: "access_review_view", Status: MenuActive},
+		{Label: "Menu metadata", Route: "/menus", Icon: "boxes", SortOrder: 30, PermissionCode: "menu_view", Status: MenuActive},
+		{Label: "OAuth clients", Route: "/oauth-clients", Icon: "app-window", SortOrder: 40, PermissionCode: "oauth_client_view", Status: MenuActive},
+		{Label: "SCIM directories", Route: "/scim-directories", Icon: "folder-sync", SortOrder: 45, PermissionCode: "tenant_administer", Status: MenuActive},
+		{Label: "Audit events", Route: "/audit/events", Icon: "file-clock", SortOrder: 50, PermissionCode: "audit_event_view", Status: MenuActive},
+		{Label: "Audit governance", Route: "/audit-governance", Icon: "shield-check", SortOrder: 51, PermissionCode: "audit_event_view", Status: MenuActive},
 	}
 	for i := range menus {
-		key := "menu_" + strings.ReplaceAll(strings.TrimPrefix(menus[i].Route, "/iam/"), "-", "_")
+		key := "menu_" + strings.ReplaceAll(strings.TrimPrefix(menus[i].Route, "/"), "-", "_")
 		menus[i].Translations = corei18n.Translations(key)
 	}
 	return menus

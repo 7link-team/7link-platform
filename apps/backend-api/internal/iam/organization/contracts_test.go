@@ -109,9 +109,9 @@ func TestModuleMigrationContract(t *testing.T) {
 	require.Equal(t, "goose_organization", source.TableName)
 	files, err := fs.ReadDir(source.FS, "sql/postgres")
 	require.NoError(t, err)
-	require.Len(t, files, 9)
+	require.Len(t, files, 10)
 	milestones := module.MigrationMilestones()
-	require.Len(t, milestones, 3)
+	require.Len(t, milestones, 4)
 	require.Equal(t, "principal-erasure", milestones[2].Name)
 	require.Equal(t, int64(9), milestones[2].Version)
 	require.Len(t, milestones[2].Dependencies, 1)
@@ -124,6 +124,11 @@ func TestModuleMigrationContract(t *testing.T) {
 	require.Len(t, milestones[1].Dependencies, 1)
 	require.Equal(t, "iam", milestones[1].Dependencies[0].Module)
 	require.Equal(t, "base", milestones[1].Dependencies[0].Name)
+	require.Equal(t, "department-entities", milestones[3].Name)
+	require.Equal(t, int64(10), milestones[3].Version)
+	require.Len(t, milestones[3].Dependencies, 1)
+	require.Equal(t, "iam", milestones[3].Dependencies[0].Module)
+	require.Equal(t, "base", milestones[3].Dependencies[0].Name)
 }
 
 func consumeGroupFields(value Group) {

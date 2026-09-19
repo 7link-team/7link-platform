@@ -259,7 +259,7 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, regist
 		Method:        http.MethodPost,
 		Path:          basePath,
 		Summary:       "Create a task",
-		Tags:          []string{"Todo"},
+		Tags:          []string{"todo"},
 		DefaultStatus: http.StatusCreated,
 	}, authz.Guard{Resource: "todo", Verb: "create", FilterData: true}, func(ctx context.Context, in *createInput) (*taskBody, error) {
 		draft, err := draftOf(in)
@@ -280,7 +280,7 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, regist
 		Summary:     "List tasks",
 		Description: "Filters are AND-combined. Sorting accepts up to three keys; the identifier is " +
 			"always appended so paging stays stable when sort values tie.",
-		Tags:       []string{"Todo"},
+		Tags:       []string{"todo"},
 		Parameters: filterParams,
 	}, authz.Guard{Resource: "todo", Verb: "view", FilterData: true}, func(ctx context.Context, in *ListInput) (*respx.Body[[]View], error) {
 		in.RawQuery = rawQueryFrom(ctx)
@@ -306,7 +306,7 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, regist
 		Method:      http.MethodGet,
 		Path:        basePath + "/{id}",
 		Summary:     "Read a task",
-		Tags:        []string{"Todo"},
+		Tags:        []string{"todo"},
 	}, authz.Guard{Resource: "todo", Verb: "view", FilterData: true}, func(ctx context.Context, in *IDInput) (*taskBody, error) {
 		id, err := taskID(in.ID)
 		if err != nil {
@@ -325,7 +325,7 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, regist
 		Path:        basePath + "/{id}",
 		Summary:     "Update a task",
 		Description: "Requires If-Match carrying the version last read, so a concurrent write cannot be lost.",
-		Tags:        []string{"Todo"},
+		Tags:        []string{"todo"},
 	}, authz.Guard{Resource: "todo", Verb: "update", FilterData: true}, func(ctx context.Context, in *patchInput) (*taskBody, error) {
 		version, err := parseIfMatch(in.IfMatch)
 		if err != nil {
@@ -352,7 +352,7 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, regist
 		Path:          basePath + "/{id}",
 		Summary:       "Delete a task",
 		Description:   "Soft delete. Requires If-Match: deleting a stale view loses an update just as writing one does.",
-		Tags:          []string{"Todo"},
+		Tags:          []string{"todo"},
 		DefaultStatus: http.StatusNoContent,
 	}, authz.Guard{Resource: "todo", Verb: "delete", FilterData: true}, func(ctx context.Context, in *VersionedInput) (*struct{}, error) {
 		version, err := parseIfMatch(in.IfMatch)
@@ -375,7 +375,7 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, regist
 		Path:        basePath + "/{id}/restore",
 		Summary:     "Restore a deleted task",
 		Description: "Requires If-Match, so a task cannot be restored from its identifier alone.",
-		Tags:        []string{"Todo"},
+		Tags:        []string{"todo"},
 	}, authz.Guard{Resource: "todo", Verb: "update", FilterData: true}, func(ctx context.Context, in *VersionedInput) (*taskBody, error) {
 		version, err := parseIfMatch(in.IfMatch)
 		if err != nil {
@@ -529,7 +529,7 @@ func registerTransferHTTP(api huma.API, svc *service, filterParams []*huma.Param
 		Summary:     "Download the import template",
 		Description: "Headers follow the request locale, and the importer accepts a template filled in " +
 			"under any supported locale.",
-		Tags: []string{"Todo"},
+		Tags: []string{"todo"},
 	}, authz.Guard{Resource: "todo", Verb: "import", FilterData: true}, func(ctx context.Context, in *TemplateRequest) (*huma.StreamResponse, error) {
 		format, err := parseFormat(in.Format)
 		if err != nil {
@@ -553,7 +553,7 @@ func registerTransferHTTP(api huma.API, svc *service, filterParams []*huma.Param
 		Summary:     "Export tasks",
 		Description: "Accepts every list filter. The result is not paginated but is capped; a filter " +
 			"matching more rows is rejected rather than silently truncated.",
-		Tags:       []string{"Todo"},
+		Tags:       []string{"todo"},
 		Parameters: filterParams,
 	}, authz.Guard{Resource: "todo", Verb: "export", FilterData: true}, func(ctx context.Context, in *ExportRequest) (*huma.StreamResponse, error) {
 		format, err := parseFormat(in.Format)
@@ -600,7 +600,7 @@ func registerTransferHTTP(api huma.API, svc *service, filterParams []*huma.Param
 		Summary:     "Import tasks",
 		Description: "Every row is validated first. If any row is invalid nothing is written and each " +
 			"problem is reported, so a corrected file can be re-uploaded whole without duplicating rows.",
-		Tags: []string{"Todo"},
+		Tags: []string{"todo"},
 	}, authz.Guard{Resource: "todo", Verb: "import", FilterData: true}, func(ctx context.Context, in *ImportRequest) (*respx.Body[ImportReport], error) {
 		format, err := parseFormat(in.Format)
 		if err != nil {

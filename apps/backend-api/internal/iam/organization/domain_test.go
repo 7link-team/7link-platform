@@ -12,7 +12,7 @@ import (
 func TestDepartmentNormalization(t *testing.T) {
 	t.Parallel()
 	tenantID := guid.ID(1)
-	gotTenant, input, err := normalizeCreate(tenantID, CreateDepartment{Name: " Engineering ", SortOrder: 10})
+	gotTenant, input, err := normalizeCreate(tenantID, CreateDepartment{EntityID: 10, Name: " Engineering ", SortOrder: 10})
 	require.NoError(t, err)
 	assert.Equal(t, tenantID, gotTenant)
 	assert.Equal(t, "Engineering", input.Name)
@@ -22,14 +22,15 @@ func TestDepartmentNormalization(t *testing.T) {
 		tenant guid.ID
 		input  CreateDepartment
 	}{
-		{0, CreateDepartment{Name: "Engineering"}},
+		{0, CreateDepartment{EntityID: 10, Name: "Engineering"}},
 		{tenantID, CreateDepartment{}},
-		{tenantID, CreateDepartment{Name: strings.Repeat("x", 129)}},
-		{tenantID, CreateDepartment{Name: "bad\nname"}},
-		{tenantID, CreateDepartment{Name: "Engineering", ParentID: -1}},
-		{tenantID, CreateDepartment{Name: "Engineering", Status: "archived"}},
-		{tenantID, CreateDepartment{Name: "Engineering", SortOrder: -1}},
-		{tenantID, CreateDepartment{Name: "Engineering", SortOrder: maxSortOrder + 1}},
+		{tenantID, CreateDepartment{Name: "Engineering"}},
+		{tenantID, CreateDepartment{EntityID: 10, Name: strings.Repeat("x", 129)}},
+		{tenantID, CreateDepartment{EntityID: 10, Name: "bad\nname"}},
+		{tenantID, CreateDepartment{EntityID: 10, Name: "Engineering", ParentID: -1}},
+		{tenantID, CreateDepartment{EntityID: 10, Name: "Engineering", Status: "archived"}},
+		{tenantID, CreateDepartment{EntityID: 10, Name: "Engineering", SortOrder: -1}},
+		{tenantID, CreateDepartment{EntityID: 10, Name: "Engineering", SortOrder: maxSortOrder + 1}},
 	} {
 		_, _, err := normalizeCreate(item.tenant, item.input)
 		assert.ErrorIs(t, err, ErrInvalid)

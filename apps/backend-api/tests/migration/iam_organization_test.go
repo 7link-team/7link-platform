@@ -76,8 +76,8 @@ func assertOrganizationUp(t *testing.T, db *gorm.DB, modules []module.Module, pr
 		assert.Equal(t, goosex.StateClean, report.Status.State)
 	}
 	assert.Equal(t, "default-menu-translations", milestones[iamcore.Name])
-	assert.Equal(t, "closure-requests", milestones[identity.Name])
-	assert.Equal(t, "principal-erasure", milestones[organization.Name])
+	assert.Equal(t, "avatars", milestones[identity.Name])
+	assert.Equal(t, "department-entities", milestones[organization.Name])
 	assert.Equal(t, "grant-incarnation", milestones[oauth.Name])
 }
 
@@ -121,6 +121,9 @@ func seedOrganizationParents(t *testing.T, db *sql.DB, prefix string) {
 		"INSERT INTO %siam_tenant_members (tenant_id, principal_id, status, created_at, updated_at) VALUES (1, 20, 'active', '%s', '%s')",
 		prefix, organizationTestTime, organizationTestTime))
 	require.NoError(t, execOrganizationSQL(t, db,
+		"INSERT INTO %siam_entities (tenant_id, id, type, name, name_key, status, metadata, created_at, updated_at) VALUES (1, 50, 'company', 'Entity One', 'entity one', 'active', '{}', '%s', '%s'), (1, 51, 'company', 'Entity Two', 'entity two', 'active', '{}', '%s', '%s'), (2, 60, 'company', 'Entity Three', 'entity three', 'active', '{}', '%s', '%s')",
+		prefix, organizationTestTime, organizationTestTime, organizationTestTime, organizationTestTime, organizationTestTime, organizationTestTime))
+	require.NoError(t, execOrganizationSQL(t, db,
 		"INSERT INTO %siam_principals (id, login_name, display_name, status, created_at, updated_at) VALUES (500, 'oauth-user', 'OAuth User', 'active', '%s', '%s')",
 		prefix, organizationTestTime, organizationTestTime))
 }
@@ -128,20 +131,23 @@ func seedOrganizationParents(t *testing.T, db *sql.DB, prefix string) {
 func verifyDepartmentContracts(t *testing.T, db *sql.DB, dialect, prefix string) {
 	t.Helper()
 	departments := prefix + "iam_departments"
-	insert := func(id int, parent, name, nameKey string) error {
+	insert := func(id, entityID int, parent, name, nameKey string) error {
 		return execOrganizationSQL(t, db,
-			"INSERT INTO %s (tenant_id, id, parent_id, name, name_key, status, created_at, updated_at) VALUES (1, %d, %s, '%s', '%s', 'active', '%s', '%s')",
-			departments, id, parent, name, nameKey, organizationTestTime, organizationTestTime)
+			"INSERT INTO %s (tenant_id, id, entity_id, parent_id, name, name_key, status, created_at, updated_at) VALUES (1, %d, %d, %s, '%s', '%s', 'active', '%s', '%s')",
+			departments, id, entityID, parent, name, nameKey, organizationTestTime, organizationTestTime)
 	}
-	require.NoError(t, insert(100, "NULL", "Root", "root"))
-	assert.Error(t, insert(101, "NULL", "root", "root"), "normalized root names must be unique")
-	require.NoError(t, insert(102, "NULL", "Other", "other"))
-	require.NoError(t, insert(110, "100", "Child", "child"))
-	assert.Error(t, insert(111, "100", "child", "child"), "normalized sibling names must be unique")
-	require.NoError(t, insert(112, "102", "Child", "child"))
-	assert.Error(t, insert(113, "999", "Orphan", "orphan"), "parent departments must exist in the same tenant")
+	require.NoError(t, insert(100, 50, "NULL", "Root", "root"))
+	assert.Error(t, insert(101, 50, "NULL", "root", "root"), "normalized root names must be unique")
+	require.NoError(t, insert(102, 50, "NULL", "Other", "other"))
+	require.NoError(t, insert(103, 51, "NULL", "Second Entity", "second entity"))
+	require.NoError(t, insert(110, 50, "100", "Child", "child"))
+	assert.Error(t, insert(111, 50, "100", "child", "child"), "normalized sibling names must be unique")
+	require.NoError(t, insert(112, 50, "102", "Child", "child"))
+	assert.Error(t, insert(113, 50, "999", "Orphan", "orphan"), "parent departments must exist in the same tenant")
+	assert.Error(t, insert(114, 51, "100", "Cross Entity", "cross entity"), "parent departments must belong to the same entity")
+	assert.Error(t, insert(115, 999, "NULL", "Missing Entity", "missing entity"), "department entities must exist in the same tenant")
 	if dialect == "mysql" {
-		assert.Error(t, insert(0, "NULL", "Zero", "zero"),
+		assert.Error(t, insert(0, 50, "NULL", "Zero", "zero"),
 			"MySQL's generated root key requires positive department identifiers")
 	}
 }

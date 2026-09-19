@@ -13,6 +13,12 @@ export default defineConfig({
       // 让迁移文件的 @/lib、@/components、@/hooks 零改动。src/ 仅放 Vite bootstrap。
       "@": path.resolve(__dirname, "."),
       "@workspace/ui": path.resolve(__dirname, "../../packages/ui/src"),
+      // The viewer's bundled core resolves this optional Node canvas backend
+      // even when its Office plugin is disabled. Keep that parser out of Web.
+      "emf-converter": path.resolve(
+        __dirname,
+        "src/shims/emf-converter-browser.ts"
+      ),
     },
   },
   server: {

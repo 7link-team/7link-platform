@@ -184,6 +184,38 @@ func RegisterEntity[I, O any](r *Registrar, api huma.API, op huma.Operation, gua
 	huma.Register(api, op, handler)
 }
 
+// RegisterEntityOrAuthenticated registers one resource URI with two explicit
+// contexts: both tenant/entity selectors use the ordinary entity guard; no
+// selectors uses authenticated self-service. A partial selector never falls
+// back to the self-service context.
+func RegisterEntityOrAuthenticated[I, O any](r *Registrar, api huma.API, op huma.Operation, guard Guard, handler func(context.Context, *I) (*O, error)) {
+	if r == nil {
+		panic("authz registrar is nil")
+	}
+	if r.checker != nil {
+		if _, ok := r.checker.(EntityPermissionChecker); !ok && !guard.FilterData {
+			panic("entity operation requires entity permission checker")
+		}
+		if _, ok := r.checker.(EntityDataPermissionChecker); !ok && guard.FilterData {
+			panic("data-filtered operation requires entity data permission checker")
+		}
+	}
+	r.prepare(api, &op, guard)
+	for _, parameter := range op.Parameters {
+		if parameter != nil && parameter.Name == TenantHeader && parameter.In == "header" {
+			parameter.Required = false
+		}
+	}
+	op.Parameters = append(op.Parameters, &huma.Param{
+		Name: EntityHeader, In: "header", Description: "Authorized entity resource boundary; required with X-Tenant-Id", Required: false,
+		Schema: &huma.Schema{Type: huma.TypeString, Pattern: guidTextPattern, MaxLength: intPointer(guidTextMaxLength)},
+	})
+	if r.verifier != nil {
+		op.Middlewares[len(op.Middlewares)-1] = r.entityOrAuthenticatedMiddleware(api, guard)
+	}
+	huma.Register(api, op, handler)
+}
+
 // RegisterEntityAdapter registers an entity-authorized operation that needs
 // direct access to the Huma transport context, such as WebSocket upgrades or
 // streaming protocols. It executes the same global and entity authorization
@@ -521,6 +553,25 @@ func (r *Registrar) entityMiddleware(api huma.API, guard Guard) func(huma.Contex
 	return r.entityMiddlewareFor(api, guard, func(ctx huma.Context) (string, string) {
 		return ctx.Header(TenantHeader), ctx.Header(EntityHeader)
 	})
+}
+
+func (r *Registrar) entityOrAuthenticatedMiddleware(api huma.API, guard Guard) func(huma.Context, func(huma.Context)) {
+	entity := r.entityMiddleware(api, guard)
+	authenticated := r.authenticatedOnly(api)
+	return func(ctx huma.Context, next func(huma.Context)) {
+		tenantText, entityText := ctx.Header(TenantHeader), ctx.Header(EntityHeader)
+		switch {
+		case tenantText == "" && entityText == "":
+			authenticated(ctx, next)
+		case tenantText == "" || entityText == "":
+			claims, ok := r.authenticate(api, ctx)
+			if ok && claims != nil {
+				_ = huma.WriteErr(api, ctx, http.StatusForbidden, "incomplete_resource_context")
+			}
+		default:
+			entity(ctx, next)
+		}
+	}
 }
 
 func (r *Registrar) entityMiddlewareFor(api huma.API, guard Guard, selectors func(huma.Context) (string, string)) func(huma.Context, func(huma.Context)) {

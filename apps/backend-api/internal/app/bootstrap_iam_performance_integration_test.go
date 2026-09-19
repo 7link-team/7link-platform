@@ -339,7 +339,7 @@ func newIAMPerformancePaths(t *testing.T, fixture *iamTenantFixture, bulkOperati
 		core.PublishedAccessTableNames(scimPrefix), identity.PublishedPrincipalTableNames(scimPrefix),
 		organization.PublishedDirectoryTableNames(scimPrefix),
 	))
-	response := fixture.request(t, http.MethodPost, "/iam/service-accounts", iamTenantA, fixture.tokenA,
+	response := fixture.request(t, http.MethodPost, "/service-accounts", iamTenantA, fixture.tokenA,
 		map[string]any{"login_name": "performance-scim-actor", "display_name": "Performance SCIM actor"}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	account := decodeEnvelope[identity.ServiceAccount](t, response)

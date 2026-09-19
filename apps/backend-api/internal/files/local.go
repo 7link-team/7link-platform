@@ -10,6 +10,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
+	"strings"
 )
 
 // Local streams into the configured final local backend, never an API spool.
@@ -49,7 +51,7 @@ func (s *Local) Put(ctx context.Context, key string, reader io.Reader, size int6
 	if err != nil {
 		return "", err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	if err := root.MkdirAll(path.Dir(key), 0700); err != nil {
 		return "", err
 	}
@@ -63,7 +65,7 @@ func (s *Local) Put(ctx context.Context, key string, reader io.Reader, size int6
 	committed := false
 	linked := false
 	defer func() {
-		file.Close()
+		_ = file.Close()
 		_ = root.Remove(pendingKey)
 		if linked && !committed {
 			_ = root.Remove(key)
@@ -97,21 +99,23 @@ func (s *Local) Put(ctx context.Context, key string, reader io.Reader, size int6
 	if err := root.Remove(pendingKey); err != nil {
 		return "", err
 	}
-	parent, err := root.Open(path.Dir(key))
-	if err != nil {
+	if err := syncLocalDirectory(root, path.Dir(key)); err != nil {
 		return "", err
 	}
-	syncErr := parent.Sync()
-	closeErr := parent.Close()
-	if syncErr != nil {
-		return "", syncErr
-	}
-	if closeErr != nil {
-		return "", closeErr
-	}
 	committed = true
-	location := url.URL{Scheme: "file", Path: filepath.ToSlash(filepath.Join(s.directory, filepath.FromSlash(key)))}
+	location := localFileURI(filepath.Join(s.directory, filepath.FromSlash(key)))
 	return location.String(), nil
+}
+
+func localFileURI(filename string) url.URL {
+	location := url.URL{Scheme: "file", Path: filepath.ToSlash(filename)}
+	if strings.HasPrefix(location.Path, "//") {
+		location.Host, location.Path, _ = strings.Cut(strings.TrimPrefix(location.Path, "//"), "/")
+		location.Path = "/" + location.Path
+	} else if !strings.HasPrefix(location.Path, "/") {
+		location.Path = "/" + location.Path
+	}
+	return location
 }
 
 func (s *Local) Open(ctx context.Context, key string) (io.ReadCloser, error) {
@@ -125,7 +129,7 @@ func (s *Local) Open(ctx context.Context, key string) (io.ReadCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	file, err := root.Open(key)
 	if err != nil {
 		return nil, localError(err)
@@ -147,18 +151,18 @@ func (s *Local) OpenRange(ctx context.Context, key string, offset, length int64)
 	if err != nil {
 		return nil, err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	file, err := root.Open(key)
 	if err != nil {
 		return nil, localError(err)
 	}
 	info, err := file.Stat()
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return nil, err
 	}
 	if !info.Mode().IsRegular() || offset > info.Size() || length > info.Size()-offset {
-		file.Close()
+		_ = file.Close()
 		return nil, ErrRange
 	}
 	return readCloser{contextReader{ctx, io.NewSectionReader(file, offset, length)}, file}, nil
@@ -175,7 +179,7 @@ func (s *Local) Delete(ctx context.Context, key string) error {
 	if err != nil {
 		return err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	err = root.Remove(key)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -205,7 +209,7 @@ func (s *Local) ReclaimWrite(ctx context.Context, key string) error {
 	if err != nil {
 		return err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	removed := false
 	if err := root.Remove(localPendingKey(key)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
@@ -227,6 +231,12 @@ func syncLocalDirectory(root *os.Root, key string) error {
 	directory, err := root.Open(key)
 	if err != nil {
 		return err
+	}
+	// Windows does not support FlushFileBuffers on directory handles. File data
+	// is synced before publication, but metadata power-loss durability on Windows
+	// is not equivalent to Unix directory fsync. Do not suppress Unix sync errors.
+	if runtime.GOOS == "windows" {
+		return directory.Close()
 	}
 	return errors.Join(directory.Sync(), directory.Close())
 }

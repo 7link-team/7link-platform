@@ -135,6 +135,41 @@ func TestCreateTenantBootstrapsItsFirstAdministrator(t *testing.T) {
 	assert.Equal(t, 1, bootstrapped, "the counts are reported, not asserted from memory")
 }
 
+func TestCreateTenantProvisionsOrganizationOwnedFileRootInTransaction(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	service, _, _ := newTenantServiceForTest(t, h, newOrganizationTestIDs(2500))
+	service.now = func() time.Time { return organizationTestNow }
+	called := 0
+	service.roots = func(ctx context.Context, tx *gorm.DB, input core.FileRootProvisionInput, _ time.Time) (guid.ID, error) {
+		called++
+		require.Equal(t, "tenant", input.Scope)
+		require.Equal(t, input.TenantID, input.OwnerID)
+		require.Zero(t, input.EntityID)
+		var count int64
+		require.NoError(t, tx.WithContext(ctx).Table("sl_iam_tenants").Where("id = ?", input.TenantID).Count(&count).Error)
+		require.Equal(t, int64(1), count, "the provisioner must see the uncommitted tenant")
+		return 9001, nil
+	}
+	created, err := service.Create(t.Context(), newTenantForTest("rooted", "Rooted"))
+	require.NoError(t, err)
+	require.Positive(t, created.ID)
+	require.Equal(t, 1, called)
+}
+
+func TestCreateTenantRollsBackWhenFileRootProvisioningFails(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	service, _, _ := newTenantServiceForTest(t, h, newOrganizationTestIDs(2600))
+	want := errors.New("root unavailable")
+	service.roots = func(context.Context, *gorm.DB, core.FileRootProvisionInput, time.Time) (guid.ID, error) {
+		return 0, want
+	}
+	_, err := service.Create(t.Context(), newTenantForTest("rollback-root", "Rollback Root"))
+	require.ErrorIs(t, err, want)
+	var count int64
+	require.NoError(t, h.db.Table("sl_iam_tenants").Where("slug = ?", "rollback-root").Count(&count).Error)
+	require.Zero(t, count)
+}
+
 func TestCreateTenantRefusesAnOwnerItCannotHandTheTenantTo(t *testing.T) {
 	h := newOrganizationHarness(t, "sl_")
 	service, bootstrap, owners := newTenantServiceForTest(t, h, newOrganizationTestIDs(2500))

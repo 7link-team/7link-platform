@@ -231,16 +231,18 @@ func TestOperationLatePermissionOrResultFailureRollsBackEverything(t *testing.T)
 		t.Run(failure, func(t *testing.T) {
 			db, tree, request := newOperationTree(t)
 			budget := operationBudget{100, 1000}
-			if failure == "budget" {
-				// First file clone costs five closure rows; the later clone fails
-				// only after that clone and the intervening overwrite succeeded.
-				budget.ClosureRows = 5
-			}
 			if failure == "result" {
 				request.Action, request.DirectoryPolicy = "move", "replace"
 			}
 			op := prepareFixtureOperation(t, db, tree, 100, "rollback", request, budget)
 			q := query.Bind(db, tree.prefix)
+			if failure == "budget" {
+				// Preparation now refuses insufficient budgets. Independently test
+				// the execution guard by tightening the stored budget after planning:
+				// the second clone fails after a clone and overwrite, not before work.
+				_, err := q.Operation.WithContext(t.Context()).Where(q.Operation.ID.Eq(op.ID)).Update(q.Operation.ClosureBudget, 5)
+				require.NoError(t, err)
+			}
 			revision := treeSpaceRevision(t, db, tree.prefix, 1)
 			nodesBefore, err := q.Node.WithContext(t.Context()).Order(q.Node.ID.Asc()).Find()
 			require.NoError(t, err)
@@ -345,7 +347,7 @@ func TestOperationPinsScopeCancelAndPopulatedMigration(t *testing.T) {
 	_, err = q.Version.WithContext(t.Context()).Where(q.Version.ID.Eq(guid.ID(2031))).Delete()
 	require.Error(t, err, "live plan prevents version removal even without a current head")
 	require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
-		return tree.finishOperation(t.Context(), tx, op.ID, 90, "cancelled", "user_cancelled", time.Now())
+		return tree.finishOperation(t.Context(), tx, op.ID, 90, operationCancelled, "user_cancelled", time.Now()) //nolint:misspell // Preserve the existing cancellation error code.
 	}))
 	_, err = q.Version.WithContext(t.Context()).Where(q.Version.ID.Eq(guid.ID(2031))).Delete()
 	require.NoError(t, err, "cancellation releases live references")
@@ -370,12 +372,12 @@ func TestOperationAutoRenameKeepsPhysicalContentAndPortableNames(t *testing.T) {
 	result, err := executeFixtureOperation(t, db, tree, op, operationAllow)
 	require.NoError(t, err)
 	require.Equal(t, 1, result.Created)
-	copy, err := tree.resolvePath(t.Context(), db, 1, "/Destination/Shared/Nested/clash (2).txt")
+	cloned, err := tree.resolvePath(t.Context(), db, 1, "/Destination/Shared/Nested/clash (2).txt")
 	require.NoError(t, err)
-	require.NotEqual(t, guid.ID(31), copy.ID)
-	require.Equal(t, "txt", copy.Ext)
+	require.NotEqual(t, guid.ID(31), cloned.ID)
+	require.Equal(t, "txt", cloned.Ext)
 	q := query.Bind(db, tree.prefix)
-	version, err := q.Version.WithContext(t.Context()).Where(q.Version.ID.Eq(*copy.CurrentVersionID)).Take()
+	version, err := q.Version.WithContext(t.Context()).Where(q.Version.ID.Eq(*cloned.CurrentVersionID)).Take()
 	require.NoError(t, err)
 	require.Equal(t, guid.ID(1031), version.ObjectID)
 	// Explicit rename also supports duplicating a file into its own parent.

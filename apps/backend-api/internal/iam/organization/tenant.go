@@ -71,6 +71,7 @@ type TenantService struct {
 	repo      *Repository
 	now       func() time.Time
 	bootstrap core.TenantBootstrapper
+	roots     core.FileRootProvisioner
 	owners    identity.TenantOwnerLookup
 }
 
@@ -229,6 +230,13 @@ func (s *TenantService) Create(ctx context.Context, input CreateTenant) (Tenant,
 		}, now)
 		if err != nil {
 			return fmt.Errorf("bootstrap tenant: %w", err)
+		}
+		if s.roots != nil {
+			if _, err := s.roots(ctx, repo.writer(), core.FileRootProvisionInput{
+				Scope: "tenant", TenantID: id, OwnerID: id,
+			}, now); err != nil {
+				return fmt.Errorf("provision tenant file root: %w", err)
+			}
 		}
 		if err := repo.bumpPolicyRevision(ctx, id, now); err != nil {
 			return err

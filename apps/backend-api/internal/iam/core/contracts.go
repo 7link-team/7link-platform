@@ -25,6 +25,37 @@ type AuthorizationEvaluator interface {
 	ExplainResource(ctx context.Context, tenantID, entityID guid.ID, resourceType string, resourceID guid.ID, permission string, principalID guid.ID) (authz.Explanation, error)
 }
 
+// EntityConstraintOn evaluates the existing entity/data policy through a caller's
+// active transaction and fences tenant policy mutations until that transaction
+// ends. Call it before reading business rows; every error must roll back.
+type EntityConstraintOn func(context.Context, *gorm.DB, guid.ID, guid.ID, string, guid.ID) (authz.DataConstraint, error)
+
+// AuthorizationSubjects is the current IAM identity set a business module may
+// match against its own ACL. IDs remain tenant-scoped and policy-revision fenced.
+type AuthorizationSubjects struct {
+	PrincipalID  guid.ID
+	DepartmentID guid.ID
+	RoleIDs      []guid.ID
+	GroupIDs     []guid.ID
+	Revision     int64
+}
+
+// AuthorizationSubjectsOn resolves current IAM subjects through a caller's
+// active transaction. It does not grant a business action or resource scope.
+type AuthorizationSubjectsOn func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID) (AuthorizationSubjects, error)
+
+// AuthorizationReferences identifies IAM-owned records persisted by another
+// module as scope anchors. Zero values mean that reference is not applicable.
+type AuthorizationReferences struct {
+	EntityID     guid.ID
+	DepartmentID guid.ID
+	PrincipalID  guid.ID
+}
+
+// AuthorizationReferencesOn verifies current active IAM records through a
+// caller's transaction. It validates references only and grants no action.
+type AuthorizationReferencesOn func(context.Context, *gorm.DB, guid.ID, AuthorizationReferences) (bool, error)
+
 // ActiveMemberChecker verifies membership either independently or through a
 // caller-owned transaction.
 type ActiveMemberChecker interface {
@@ -91,6 +122,25 @@ type TenantBootstrapResult struct {
 	PermissionCount     int
 	MenuCount           int
 }
+
+// FileRootProvisionInput identifies one organization-owned file root. OwnerID
+// is interpreted by Scope; EntityID is required only to validate a Department
+// against its immutable Entity in the caller's transaction.
+type FileRootProvisionInput struct {
+	Scope    string
+	TenantID guid.ID
+	EntityID guid.ID
+	OwnerID  guid.ID
+}
+
+// FileRootProvisioner creates or verifies one organization root in the caller's
+// transaction. The returned ID is the directory file ID, not another resource.
+type FileRootProvisioner func(context.Context, *gorm.DB, FileRootProvisionInput, time.Time) (guid.ID, error)
+
+// FileRootContentChecker reports whether an organization root still contains
+// retained descendants. Organization deletion calls it in the same transaction
+// and must refuse deletion when it returns true.
+type FileRootContentChecker func(context.Context, *gorm.DB, FileRootProvisionInput) (bool, error)
 
 // TenantBootstrapper is the narrow tenant-bootstrap capability core publishes
 // for the module that owns tenants. Organization runs it inside the same

@@ -207,9 +207,9 @@ func runComposedPrincipalErasure(t *testing.T, external *Database) {
 			assert.Error(t, f.db.Table(f.prefix+"iam_tenant_members").Where("principal_id = ?", id).Update("email", "restored@example.test").Error)
 			assert.Error(t, f.db.Table(f.prefix+"iam_principals").Where("id = ?", id).Update("status", "active").Error)
 			assert.Error(t, f.db.Table(f.prefix+"iam_notification_outbox").Create(&notification).Error)
-			response := f.request(t, http.MethodGet, "/authn/me", iamTenantB, f.requester, nil, nil)
+			response := f.request(t, http.MethodGet, "/me", iamTenantB, f.requester, nil, nil)
 			requireStatus(t, http.StatusUnauthorized, response)
-			response = f.request(t, http.MethodGet, "/authn/me", iamTenantA, f.tokenA, nil, nil)
+			response = f.request(t, http.MethodGet, "/me", iamTenantA, f.tokenA, nil, nil)
 			requireStatus(t, http.StatusOK, response)
 			response = f.request(t, http.MethodPut, "/scim/v2/Users/"+id.String(), 0, scimToken, map[string]any{
 				"schemas":  []string{"urn:ietf:params:scim:schemas:core:2.0:User"},

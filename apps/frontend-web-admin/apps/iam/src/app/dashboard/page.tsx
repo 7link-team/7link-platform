@@ -27,13 +27,13 @@ export default function DashboardPage() {
     const paths = effectiveMenuPaths(menus)
     let active = true
     void Promise.all([
-      paths.has("/iam/users")
+      paths.has("/users")
         ? iamApi.principals().then((result) => result.total)
         : undefined,
-      paths.has("/iam/roles")
+      paths.has("/roles")
         ? iamApi.roles().then((result) => result.length)
         : undefined,
-      paths.has("/iam/menus")
+      paths.has("/menus")
         ? iamApi.menus().then((result) => result.length)
         : undefined,
       iamApi.sessions().then((result) => result.length),

@@ -50,7 +50,7 @@ func TestDirectoryAuthorizationSourceStoreReadsGeneratedModels(t *testing.T) {
 		"created_at": organizationTestNow, "updated_at": organizationTestNow,
 	}).Error)
 
-	department, err := h.service.Create(t.Context(), 1, CreateDepartment{Name: "Engineering"})
+	department, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Engineering"})
 	require.NoError(t, err)
 	h.seedRole(t, 1, 30)
 	require.NoError(t, h.db.Table(h.table("iam_role_data_scopes")).Create(map[string]any{

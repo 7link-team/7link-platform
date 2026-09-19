@@ -28,6 +28,7 @@ var (
 	ErrEntityHasChildren              = errors.New("iam entity has children")
 	ErrEntityHasBindings              = errors.New("iam entity has role bindings")
 	ErrEntityHasRelationships         = errors.New("iam entity has relationships")
+	ErrEntityHasFiles                 = errors.New("iam entity has retained files")
 	ErrEntityHierarchy                = errors.New("invalid iam entity hierarchy")
 	ErrInvalidRelationship            = errors.New("invalid iam relationship")
 	ErrRelationshipSubjectMissing     = errors.New("iam relationship subject not found")

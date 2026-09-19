@@ -116,7 +116,7 @@ type sessionMutationInput struct {
 	Authorization string `header:"Authorization" hidden:"true"`
 	Cookie        string `header:"Cookie" hidden:"true"`
 	Origin        string `header:"Origin" hidden:"true"`
-	ID            string `path:"id" minLength:"64" maxLength:"64" pattern:"^[a-f0-9]{64}$"`
+	ID            string `path:"session_id" minLength:"64" maxLength:"64" pattern:"^[a-f0-9]{64}$"`
 }
 
 type passwordChangeInput struct {
@@ -322,7 +322,7 @@ type passkeyMutationInput struct {
 	Authorization string `header:"Authorization" hidden:"true"`
 	Cookie        string `header:"Cookie" hidden:"true"`
 	Origin        string `header:"Origin" hidden:"true"`
-	ID            string `path:"id" minLength:"64" maxLength:"64" pattern:"^[a-f0-9]{64}$"`
+	ID            string `path:"passkey_id" minLength:"64" maxLength:"64" pattern:"^[a-f0-9]{64}$"`
 	Body          struct {
 		Name string `json:"name" minLength:"1" maxLength:"200"`
 	}
@@ -332,7 +332,7 @@ type passkeyDeleteInput struct {
 	Authorization string `header:"Authorization" hidden:"true"`
 	Cookie        string `header:"Cookie" hidden:"true"`
 	Origin        string `header:"Origin" hidden:"true"`
-	ID            string `path:"id" minLength:"64" maxLength:"64" pattern:"^[a-f0-9]{64}$"`
+	ID            string `path:"passkey_id" minLength:"64" maxLength:"64" pattern:"^[a-f0-9]{64}$"`
 	Body          struct {
 		CurrentPassword string `json:"current_password" minLength:"1" maxLength:"1024"`
 	}
@@ -382,7 +382,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
 		OperationID: "authn-me",
 		Method:      http.MethodGet,
-		Path:        "/authn/me",
+		Path:        "/me",
 		Summary:     "Return the authenticated local principal",
 		Tags:        []string{"authn"},
 		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusUnprocessableEntity, http.StatusServiceUnavailable},
@@ -408,7 +408,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 	registerReauthenticationHTTP(a, web)
 	registerPersonalTokenHTTP(a, web)
 	authz.RegisterPublic(a, huma.Operation{
-		OperationID: "authn-capabilities", Method: http.MethodGet, Path: "/authn/capabilities",
+		OperationID: "authn-capabilities", Method: http.MethodGet, Path: "/authentication-capabilities",
 		Summary: "Return enabled public authentication capabilities", Tags: []string{"authn"},
 	}, func(ctx context.Context, _ *struct{}) (*respx.Body[AuthenticationCapabilities], error) {
 		capabilities := web.Capabilities()
@@ -418,7 +418,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		}), nil
 	})
 	authz.RegisterPublic(a, huma.Operation{
-		OperationID: "authn-create-captcha", Method: http.MethodPost, Path: "/authn/captchas",
+		OperationID: "authn-create-captcha", Method: http.MethodPost, Path: "/captchas",
 		Summary: "Issue a graphic captcha for registration", Tags: []string{"authn"},
 		Errors: []int{http.StatusInternalServerError},
 	}, func(ctx context.Context, _ *captchaInput) (*respx.Body[captchaOutput], error) {
@@ -429,7 +429,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return respx.OK(ctx, *out), nil
 	})
 	authz.RegisterPublic(a, huma.Operation{
-		OperationID: "authn-create-registration", Method: http.MethodPost, Path: "/authn/registrations",
+		OperationID: "authn-create-registration", Method: http.MethodPost, Path: "/registrations",
 		Summary: "Register a global principal pending email verification", Tags: []string{"authn"}, DefaultStatus: http.StatusAccepted,
 		Errors: []int{http.StatusForbidden, http.StatusUnprocessableEntity, http.StatusServiceUnavailable, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *registrationInput) (*respx.Body[map[string]bool], error) {
@@ -454,7 +454,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return respx.OK(ctx, map[string]bool{"accepted": true}), nil
 	})
 	authz.RegisterPublic(a, huma.Operation{
-		OperationID: "authn-create-session", Method: http.MethodPost, Path: "/authn/sessions",
+		OperationID: "authn-create-session", Method: http.MethodPost, Path: "/sessions",
 		Summary: "Log in with a local username and password", Tags: []string{"authn"},
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *loginInput) (*loginOutput, error) {
@@ -477,7 +477,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return loginResponse(ctx, web, result), nil
 	})
 	authz.RegisterPublic(a, huma.Operation{
-		OperationID: "authn-create-session-verification", Method: http.MethodPost, Path: "/authn/session-verifications",
+		OperationID: "authn-create-session-verification", Method: http.MethodPost, Path: "/session-verifications",
 		Summary: "Complete an MFA login challenge", Tags: []string{"authn"},
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *mfaLoginInput) (*loginOutput, error) {
@@ -494,7 +494,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return loginResponse(ctx, web, result), nil
 	})
 	authz.RegisterPublic(a, huma.Operation{
-		OperationID: "authn-create-passkey-session-challenge", Method: http.MethodPost, Path: "/authn/passkey-session-challenges",
+		OperationID: "authn-create-passkey-session-challenge", Method: http.MethodPost, Path: "/passkey-session-challenges",
 		Summary: "Begin a discoverable passkey login", Tags: []string{"authn"}, Errors: []int{http.StatusForbidden, http.StatusUnprocessableEntity, http.StatusInternalServerError, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *passkeyLoginBeginInput) (*respx.Body[passkeyAssertionOptions], error) {
 		if err := web.ValidateLoginOrigin(in.Origin); err != nil {
@@ -518,7 +518,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		}), nil
 	})
 	authz.RegisterPublic(a, huma.Operation{
-		OperationID: "authn-create-passkey-session-verification", Method: http.MethodPost, Path: "/authn/passkey-session-verifications",
+		OperationID: "authn-create-passkey-session-verification", Method: http.MethodPost, Path: "/passkey-session-verifications",
 		Summary: "Verify a passkey assertion and create a browser session", Tags: []string{"authn"}, Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *passkeyFinishInput) (*loginOutput, error) {
 		if err := web.ValidateLoginOrigin(in.Origin); err != nil {
@@ -540,7 +540,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return loginResponse(ctx, web, result), nil
 	})
 	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
-		OperationID: "authn-get-current-session", Method: http.MethodGet, Path: "/authn/sessions/current",
+		OperationID: "authn-get-current-session", Method: http.MethodGet, Path: "/sessions/current",
 		Summary: "Return the browser session", Tags: []string{"authn"},
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusUnprocessableEntity, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *meInput) (*respx.Body[meOutput], error) {
@@ -559,7 +559,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return respx.OK(ctx, output), nil
 	})
 	authz.RegisterPublic(a, huma.Operation{
-		OperationID: "authn-delete-current-session", Method: http.MethodDelete, Path: "/authn/sessions/current",
+		OperationID: "authn-delete-current-session", Method: http.MethodDelete, Path: "/sessions/current",
 		Summary: "Destroy the browser session", Tags: []string{"authn"},
 		Errors: []int{http.StatusForbidden, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *logoutInput) (*logoutOutput, error) {
@@ -573,7 +573,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return &logoutOutput{SetCookie: web.ClearCookie(), Body: respx.OK(ctx, logoutData{LogoutURL: logoutURL}).Body}, nil
 	})
 	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
-		OperationID: "authn-list-sessions", Method: http.MethodGet, Path: "/authn/sessions",
+		OperationID: "authn-list-sessions", Method: http.MethodGet, Path: "/sessions",
 		Summary: "List active browser sessions", Tags: []string{"authn"},
 		Errors: []int{http.StatusUnauthorized, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *sessionListInput) (*respx.Body[[]authnext.BrowserSession], error) {
@@ -584,7 +584,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return respx.OK(ctx, sessions), nil
 	})
 	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
-		OperationID: "authn-delete-session", Method: http.MethodDelete, Path: "/authn/sessions/{id}",
+		OperationID: "authn-delete-session", Method: http.MethodDelete, Path: "/sessions/{session_id}",
 		Summary: "Revoke a browser session", Tags: []string{"authn"},
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *sessionMutationInput) (*respx.Body[map[string]bool], error) {
@@ -597,7 +597,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return respx.OK(ctx, map[string]bool{"revoked": true}), nil
 	})
 	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
-		OperationID: "authn-delete-sessions", Method: http.MethodDelete, Path: "/authn/sessions",
+		OperationID: "authn-delete-sessions", Method: http.MethodDelete, Path: "/sessions",
 		Summary: "Revoke every session and refresh token", Tags: []string{"authn"},
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *logoutInput) (*logoutOutput, error) {
@@ -610,7 +610,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return &logoutOutput{SetCookie: web.ClearCookie(), Body: respx.OK(ctx, logoutData{LogoutURL: web.PostLogoutURL()}).Body}, nil
 	})
 	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
-		OperationID: "authn-update-password", Method: http.MethodPatch, Path: "/authn/password",
+		OperationID: "authn-update-password", Method: http.MethodPatch, Path: "/me/password",
 		Summary: "Change the current principal password", Tags: []string{"authn"},
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusUnprocessableEntity, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *passwordChangeInput) (*respx.Body[map[string]bool], error) {
@@ -623,7 +623,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return respx.OK(ctx, map[string]bool{"changed": true}), nil
 	})
 	authz.RegisterPublic(a, huma.Operation{
-		OperationID: "authn-create-password-recovery-request", Method: http.MethodPost, Path: "/authn/password-recovery-requests",
+		OperationID: "authn-create-password-recovery-request", Method: http.MethodPost, Path: "/password-recovery-requests",
 		Summary: "Queue a password recovery notification", Tags: []string{"authn"}, DefaultStatus: http.StatusAccepted,
 		Errors: []int{http.StatusForbidden, http.StatusUnprocessableEntity, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *passwordRecoveryStartInput) (*respx.Body[map[string]bool], error) {
@@ -643,7 +643,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return respx.OK(ctx, map[string]bool{"accepted": true}), nil
 	})
 	authz.RegisterPublic(a, huma.Operation{
-		OperationID: "authn-create-password-recovery", Method: http.MethodPost, Path: "/authn/password-recoveries",
+		OperationID: "authn-create-password-recovery", Method: http.MethodPost, Path: "/password-recoveries",
 		Summary: "Consume a password recovery credential", Tags: []string{"authn"},
 		Errors: []int{http.StatusBadRequest, http.StatusConflict, http.StatusForbidden, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *passwordRecoveryCompleteInput) (*respx.Body[map[string]bool], error) {
@@ -665,7 +665,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return respx.OK(ctx, map[string]bool{"changed": true}), nil
 	})
 	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
-		OperationID: "authn-create-email-verification-request", Method: http.MethodPost, Path: "/authn/email-verification-requests",
+		OperationID: "authn-create-email-verification-request", Method: http.MethodPost, Path: "/email-verification-requests",
 		Summary: "Queue verification for the authenticated principal email", Tags: []string{"authn"},
 		DefaultStatus: http.StatusAccepted,
 		Errors:        []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusServiceUnavailable},
@@ -688,7 +688,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return respx.OK(ctx, map[string]bool{"accepted": true}), nil
 	})
 	authz.RegisterPublic(a, huma.Operation{
-		OperationID: "authn-create-email-verification", Method: http.MethodPost, Path: "/authn/email-verifications",
+		OperationID: "authn-create-email-verification", Method: http.MethodPost, Path: "/email-verifications",
 		Summary: "Consume a primary email verification credential", Tags: []string{"authn"},
 		Errors: []int{http.StatusBadRequest, http.StatusForbidden, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *emailVerificationCompleteInput) (*respx.Body[map[string]bool], error) {
@@ -707,14 +707,14 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		}
 		return respx.OK(ctx, map[string]bool{"verified": true}), nil
 	})
-	authz.RegisterAuthenticated(authenticated, a, huma.Operation{OperationID: "authn-get-mfa", Method: http.MethodGet, Path: "/authn/mfa", Summary: "Return the current principal MFA status", Tags: []string{"authn"}, Errors: []int{http.StatusUnauthorized, http.StatusInternalServerError}}, func(ctx context.Context, in *mfaStatusInput) (*respx.Body[authnext.MFAStatus], error) {
+	authz.RegisterAuthenticated(authenticated, a, huma.Operation{OperationID: "authn-get-mfa", Method: http.MethodGet, Path: "/me/mfa", Summary: "Return the current principal MFA status", Tags: []string{"authn"}, Errors: []int{http.StatusUnauthorized, http.StatusInternalServerError}}, func(ctx context.Context, in *mfaStatusInput) (*respx.Body[authnext.MFAStatus], error) {
 		status, err := web.MFAStatus(ctx, in.Authorization, in.Cookie)
 		if err != nil {
 			return nil, authenticationError(err)
 		}
 		return respx.OK(ctx, status), nil
 	})
-	authz.RegisterPublic(a, huma.Operation{OperationID: "authn-create-totp-enrollment", Method: http.MethodPost, Path: "/authn/mfa/totp-enrollments", Summary: "Begin TOTP enrollment after password verification", Tags: []string{"authn"}, Security: authz.UserSecurity(), Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusInternalServerError}}, func(ctx context.Context, in *mfaPasswordInput) (*respx.Body[authnext.MFAEnrollment], error) {
+	authz.RegisterPublic(a, huma.Operation{OperationID: "authn-create-totp-enrollment", Method: http.MethodPost, Path: "/me/mfa/totp-enrollments", Summary: "Begin TOTP enrollment after password verification", Tags: []string{"authn"}, Security: authz.UserSecurity(), Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusInternalServerError}}, func(ctx context.Context, in *mfaPasswordInput) (*respx.Body[authnext.MFAEnrollment], error) {
 		if err := web.ValidateCSRF(http.MethodPost, in.Origin, in.Cookie, in.Authorization); err != nil {
 			return nil, huma.Error403Forbidden("csrf_rejected")
 		}
@@ -724,7 +724,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		}
 		return respx.OK(ctx, enrollment), nil
 	})
-	authz.RegisterPublic(a, huma.Operation{OperationID: "authn-create-totp-factor", Method: http.MethodPost, Path: "/authn/mfa/totp", Summary: "Confirm TOTP enrollment and issue recovery codes", Tags: []string{"authn"}, Security: authz.UserSecurity(), Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError}}, func(ctx context.Context, in *mfaCodeInput) (*mfaConfirmationOutput, error) {
+	authz.RegisterPublic(a, huma.Operation{OperationID: "authn-create-totp-factor", Method: http.MethodPost, Path: "/me/mfa/totp", Summary: "Confirm TOTP enrollment and issue recovery codes", Tags: []string{"authn"}, Security: authz.UserSecurity(), Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError}}, func(ctx context.Context, in *mfaCodeInput) (*mfaConfirmationOutput, error) {
 		if err := web.ValidateCSRF(http.MethodPost, in.Origin, in.Cookie, in.Authorization); err != nil {
 			return nil, huma.Error403Forbidden("csrf_rejected")
 		}
@@ -738,7 +738,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		}
 		return output, nil
 	})
-	authz.RegisterAuthenticated(authenticated, a, huma.Operation{OperationID: "authn-replace-recovery-codes", Method: http.MethodPut, Path: "/authn/mfa/recovery-codes", Summary: "Replace all MFA recovery codes", Tags: []string{"authn"}, Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError}}, func(ctx context.Context, in *mfaVerificationInput) (*respx.Body[authnext.MFAConfirmation], error) {
+	authz.RegisterAuthenticated(authenticated, a, huma.Operation{OperationID: "authn-replace-recovery-codes", Method: http.MethodPut, Path: "/me/mfa/recovery-codes", Summary: "Replace all MFA recovery codes", Tags: []string{"authn"}, Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError}}, func(ctx context.Context, in *mfaVerificationInput) (*respx.Body[authnext.MFAConfirmation], error) {
 		if err := web.ValidateCSRF(http.MethodPut, in.Origin, in.Cookie, in.Authorization); err != nil {
 			return nil, huma.Error403Forbidden("csrf_rejected")
 		}
@@ -748,7 +748,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		}
 		return respx.OK(ctx, confirmation), nil
 	})
-	authz.RegisterAuthenticated(authenticated, a, huma.Operation{OperationID: "authn-delete-totp-factor", Method: http.MethodDelete, Path: "/authn/mfa/totp", Summary: "Disable TOTP after password and factor verification", Tags: []string{"authn"}, Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError}}, func(ctx context.Context, in *mfaVerificationInput) (*respx.Body[map[string]bool], error) {
+	authz.RegisterAuthenticated(authenticated, a, huma.Operation{OperationID: "authn-delete-totp-factor", Method: http.MethodDelete, Path: "/me/mfa/totp", Summary: "Disable TOTP after password and factor verification", Tags: []string{"authn"}, Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError}}, func(ctx context.Context, in *mfaVerificationInput) (*respx.Body[map[string]bool], error) {
 		if err := web.ValidateCSRF(http.MethodDelete, in.Origin, in.Cookie, in.Authorization); err != nil {
 			return nil, huma.Error403Forbidden("csrf_rejected")
 		}
@@ -758,7 +758,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return respx.OK(ctx, map[string]bool{"disabled": true}), nil
 	})
 	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
-		OperationID: "authn-create-step-up-challenge", Method: http.MethodPost, Path: "/authn/step-up-challenges",
+		OperationID: "authn-create-step-up-challenge", Method: http.MethodPost, Path: "/step-up-challenges",
 		Summary: "Begin a step-up MFA challenge for the current browser session", Tags: []string{"authn"},
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusInternalServerError, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *stepUpOptionsInput) (*respx.Body[authnext.StepUpOptions], error) {
@@ -772,7 +772,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return respx.OK(ctx, options), nil
 	})
 	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
-		OperationID: "authn-create-step-up-verification", Method: http.MethodPost, Path: "/authn/step-up-verifications",
+		OperationID: "authn-create-step-up-verification", Method: http.MethodPost, Path: "/step-up-verifications",
 		Summary: "Verify a step-up factor and elevate the browser session", Tags: []string{"authn"},
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *stepUpVerifyInput) (*stepUpOutput, error) {
@@ -786,7 +786,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return &stepUpOutput{SetCookie: web.SessionCookie(result.SessionID), Body: respx.OK(ctx, result).Body}, nil
 	})
 	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
-		OperationID: "authn-list-passkeys", Method: http.MethodGet, Path: "/authn/passkeys",
+		OperationID: "authn-list-passkeys", Method: http.MethodGet, Path: "/me/passkeys",
 		Summary: "List the current principal passkeys", Tags: []string{"authn"}, Errors: []int{http.StatusUnauthorized, http.StatusInternalServerError, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *sessionListInput) (*respx.Body[[]authnext.Passkey], error) {
 		passkeys, err := web.ListPasskeys(ctx, in.Authorization, in.Cookie)
@@ -796,7 +796,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return respx.OK(ctx, passkeys), nil
 	})
 	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
-		OperationID: "authn-create-passkey-registration-challenge", Method: http.MethodPost, Path: "/authn/passkey-registration-challenges",
+		OperationID: "authn-create-passkey-registration-challenge", Method: http.MethodPost, Path: "/me/passkey-registration-challenges",
 		Summary: "Begin passkey registration after password verification", Tags: []string{"authn"},
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusInternalServerError, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *mfaPasswordInput) (*respx.Body[passkeyCreationOptions], error) {
@@ -814,7 +814,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		}), nil
 	})
 	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
-		OperationID: "authn-create-passkey", Method: http.MethodPost, Path: "/authn/passkeys",
+		OperationID: "authn-create-passkey", Method: http.MethodPost, Path: "/me/passkeys",
 		Summary: "Verify and store a new passkey", Tags: []string{"authn"},
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *passkeyRegistrationFinishInput) (*respx.Body[authnext.Passkey], error) {
@@ -831,7 +831,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return respx.OK(ctx, passkey), nil
 	})
 	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
-		OperationID: "authn-update-passkey", Method: http.MethodPatch, Path: "/authn/passkeys/{id}",
+		OperationID: "authn-update-passkey", Method: http.MethodPatch, Path: "/me/passkeys/{passkey_id}",
 		Summary: "Rename a passkey", Tags: []string{"authn"},
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusUnprocessableEntity, http.StatusInternalServerError, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *passkeyMutationInput) (*respx.Body[authnext.Passkey], error) {
@@ -845,7 +845,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return respx.OK(ctx, passkey), nil
 	})
 	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
-		OperationID: "authn-delete-passkey", Method: http.MethodDelete, Path: "/authn/passkeys/{id}",
+		OperationID: "authn-delete-passkey", Method: http.MethodDelete, Path: "/me/passkeys/{passkey_id}",
 		Summary: "Delete a passkey after password verification", Tags: []string{"authn"},
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusInternalServerError, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *passkeyDeleteInput) (*respx.Body[map[string]bool], error) {

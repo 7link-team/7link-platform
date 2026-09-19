@@ -20,7 +20,7 @@ func TestEveryDirectoryMutationIsTenantScoped(t *testing.T) {
 	members := &organizationMemberChecker{prefix: h.prefix}
 	guard := &organizationAdministratorGuard{}
 
-	departmentB, err := h.service.Create(t.Context(), 2, CreateDepartment{Name: "Tenant B Department"})
+	departmentB, err := h.service.Create(t.Context(), 2, CreateDepartment{EntityID: organizationEntityTwo, Name: "Tenant B Department"})
 	require.NoError(t, err)
 	_, err = h.service.Get(t.Context(), 1, departmentB.ID)
 	assert.ErrorIs(t, err, ErrNotFound)

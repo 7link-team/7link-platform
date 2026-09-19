@@ -21,6 +21,7 @@ var (
 	ErrNameConflict     = errors.New("department name already exists under parent")
 	ErrHierarchyCycle   = errors.New("department hierarchy cycle")
 	ErrHierarchyCorrupt = errors.New("department hierarchy is corrupt")
+	ErrEntityMismatch   = errors.New("department parent belongs to another entity")
 	ErrHasChildren      = errors.New("department has children")
 	ErrInUse            = errors.New("department is in use")
 	ErrVersionConflict  = errors.New("department version conflict")
@@ -30,6 +31,7 @@ var (
 type Department struct {
 	ID        guid.ID   `json:"id"`
 	TenantID  guid.ID   `json:"tenant_id"`
+	EntityID  guid.ID   `json:"entity_id,omitempty"`
 	ParentID  guid.ID   `json:"parent_id,omitempty"`
 	Name      string    `json:"name"`
 	Status    string    `json:"status"`
@@ -41,6 +43,7 @@ type Department struct {
 }
 
 type CreateDepartment struct {
+	EntityID  guid.ID
 	ParentID  guid.ID
 	Name      string
 	Status    string
@@ -66,7 +69,7 @@ func normalizeCreate(tenantID guid.ID, input CreateDepartment) (guid.ID, CreateD
 	if input.Status == "" {
 		input.Status = StatusActive
 	}
-	if tenantID.Zero() || !validOptionalID(input.ParentID) || !validName(input.Name) || !validStatus(input.Status) || !validSortOrder(input.SortOrder) {
+	if tenantID.Zero() || !validID(input.EntityID) || !validOptionalID(input.ParentID) || !validName(input.Name) || !validStatus(input.Status) || !validSortOrder(input.SortOrder) {
 		return 0, CreateDepartment{}, ErrInvalid
 	}
 	return tenantID, input, nil

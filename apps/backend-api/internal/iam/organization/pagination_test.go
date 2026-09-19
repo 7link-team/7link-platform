@@ -111,11 +111,11 @@ func TestDepartmentListPageBoundsTheHierarchy(t *testing.T) {
 	h := newOrganizationHarness(t, "sl_")
 	roots := make([]Department, 0, 5)
 	for _, name := range []string{"Alpha", "Bravo", "Charlie", "Delta", "Echo"} {
-		department, err := h.service.Create(t.Context(), 1, CreateDepartment{Name: name})
+		department, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: name})
 		require.NoError(t, err)
 		roots = append(roots, department)
 	}
-	child, err := h.service.Create(t.Context(), 1, CreateDepartment{ParentID: roots[0].ID, Name: "Platform"})
+	child, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, ParentID: roots[0].ID, Name: "Platform"})
 	require.NoError(t, err)
 	const departments = 6
 

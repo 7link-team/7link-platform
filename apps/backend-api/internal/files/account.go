@@ -184,6 +184,40 @@ func (a *AccountObjects) Stage(ctx context.Context, db *gorm.DB, id, principalID
 	return prepared, nil
 }
 
+// attachFileObject promotes a staged immutable object inside the transaction
+// that creates its first file version. A rollback leaves the preparation ready
+// for the normal expiry worker instead of exposing an unreferenced object.
+func (a *AccountObjects) attachFileObject(ctx context.Context, tx *gorm.DB, prepared *PreparedAccountObject, principalID guid.ID) (*model.Object, error) {
+	if a == nil || tx == nil || prepared == nil || prepared.owner != a || !prepared.staged || principalID <= 0 {
+		return nil, ErrInvalidKey
+	}
+	if _, active := tx.Statement.ConnPool.(gorm.TxCommitter); !active {
+		return nil, ErrAccountTransaction
+	}
+	q := query.Bind(tx, a.prefix)
+	intent := q.AccountPreparation
+	result, err := intent.WithContext(ctx).Where(
+		intent.ID.Eq(prepared.object.ID), intent.PrincipalID.Eq(principalID), intent.State.Eq("ready"), intent.ExpiresAt.Gt(time.Now().UnixMilli()),
+	).Update(intent.State, "attached")
+	if err != nil {
+		return nil, err
+	}
+	if result.RowsAffected != 1 {
+		return nil, ErrNotFound
+	}
+	object := q.Object
+	result, err = object.WithContext(ctx).Where(object.ID.Eq(prepared.object.ID), object.State.Eq("staged")).Update(object.State, "verified")
+	if err != nil {
+		return nil, err
+	}
+	if result.RowsAffected != 1 {
+		return nil, ErrNotFound
+	}
+	attached := prepared.object
+	attached.State = "verified"
+	return &attached, nil
+}
+
 // UseAvatarCandidate promotes an authorized unexpired candidate without copying
 // bytes. The object row serializes reference creation against cleanup claims.
 func (a *AccountObjects) UseAvatarCandidate(ctx context.Context, tx *gorm.DB, principalID, referenceID guid.ID, key string, now time.Time) error {

@@ -14,66 +14,66 @@ import (
 )
 
 const coreRouteManifest = `
-iam-my-memberships|GET|/iam/me/memberships
-iam-leave-membership|POST|/iam/me/memberships/{tenant_id}/leave
-iam-field-catalog|GET|/iam/field-catalog
-iam-list-field-policies|GET|/iam/field-policies
-iam-set-field-policy|PUT|/iam/field-policies/{resource}/{field}
-iam-delete-field-policy|DELETE|/iam/field-policies/{resource}/{field}
-iam-effective-fields|GET|/iam/fields/effective
-iam-list-relationships|GET|/iam/relationships
-iam-put-relationship|POST|/iam/relationships
-iam-delete-relationship|DELETE|/iam/relationships
-iam-check-authorization|POST|/iam/authorization/check
-iam-platform-permission-catalog|GET|/iam/platform-permission-catalog
-iam-list-platform-administrators|GET|/iam/platform-administrators
-iam-put-platform-administrator|PUT|/iam/platform-administrators/{principal_id}
-iam-delete-platform-administrator|DELETE|/iam/platform-administrators/{principal_id}
-iam-permission-catalog|GET|/iam/permission-catalog
-iam-scope-model|GET|/iam/scope-model
-iam-menu-catalog|GET|/iam/menu-catalog
-iam-authorization-constraint|POST|/iam/authorization/constraints
-iam-explain-authorization|POST|/iam/authorization/explain
-iam-list-entities|GET|/iam/entities
-iam-create-entity|POST|/iam/entities
-iam-get-entity|GET|/iam/entities/{entity_id}
-iam-update-entity|PATCH|/iam/entities/{entity_id}
-iam-delete-entity|DELETE|/iam/entities/{entity_id}
-iam-list-entity-role-bindings|GET|/iam/entities/{entity_id}/role-bindings
-iam-put-entity-role-binding|PUT|/iam/entities/{entity_id}/role-bindings/{role_id}/{principal_id}
-iam-delete-entity-role-binding|DELETE|/iam/entities/{entity_id}/role-bindings/{role_id}/{principal_id}
-iam-list-roles|GET|/iam/roles
-iam-create-role|POST|/iam/roles
-iam-get-role|GET|/iam/roles/{role_id}
-iam-get-role-data-scope|GET|/iam/roles/{role_id}/data-scope
-iam-set-role-data-scope|PUT|/iam/roles/{role_id}/data-scope
-iam-update-role|PATCH|/iam/roles/{role_id}
-iam-delete-role|DELETE|/iam/roles/{role_id}
-iam-list-role-permissions|GET|/iam/roles/{role_id}/permissions
-iam-list-role-permission-grants|GET|/iam/roles/{role_id}/permission-grants
-iam-grant-role-permission|PUT|/iam/roles/{role_id}/permissions/{permission_code}
-iam-revoke-role-permission|DELETE|/iam/roles/{role_id}/permissions/{permission_code}
-iam-set-role-permission-condition|PUT|/iam/roles/{role_id}/permissions/{permission_code}/condition
-iam-clear-role-permission-condition|DELETE|/iam/roles/{role_id}/permissions/{permission_code}/condition
-iam-list-role-members|GET|/iam/roles/{role_id}/members
-iam-add-role-member|PUT|/iam/roles/{role_id}/members/{subject}
-iam-remove-role-member|DELETE|/iam/roles/{role_id}/members/{subject}
-iam-list-role-directory-bindings|GET|/iam/roles/{role_id}/directory-bindings
-iam-add-role-directory-binding|PUT|/iam/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}
-iam-remove-role-directory-binding|DELETE|/iam/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}
-iam-list-tenant-members|GET|/iam/members
-iam-create-tenant-member|POST|/iam/members
-iam-get-tenant-member|GET|/iam/members/{subject}
-iam-update-tenant-member|PATCH|/iam/members/{subject}
-iam-list-tenant-member-roles|GET|/iam/members/{subject}/roles
-iam-list-member-authorization-sources|GET|/iam/members/{subject}/authorization-sources
-iam-list-menus|GET|/iam/menus
-iam-create-menu|POST|/iam/menus
-iam-get-menu|GET|/iam/menus/{menu_id}
-iam-update-menu|PATCH|/iam/menus/{menu_id}
-iam-delete-menu|DELETE|/iam/menus/{menu_id}
-iam-effective-menus|GET|/iam/me/menus
-iam-effective-permissions|GET|/iam/me/permissions`
+iam-my-memberships|GET|/me/memberships
+iam-leave-membership|POST|/me/memberships/{tenant_id}/leave
+iam-field-catalog|GET|/field-catalog
+iam-list-field-policies|GET|/field-policies
+iam-set-field-policy|PUT|/field-policies/{resource}/{field}
+iam-delete-field-policy|DELETE|/field-policies/{resource}/{field}
+iam-effective-fields|GET|/effective-fields
+iam-list-relationships|GET|/relationships
+iam-put-relationship|POST|/relationships
+iam-delete-relationship|DELETE|/relationships
+iam-check-authorization|POST|/authorization-checks
+iam-platform-permission-catalog|GET|/platform/permission-catalog
+iam-list-platform-administrators|GET|/platform/administrators
+iam-put-platform-administrator|PUT|/platform/administrators/{principal_id}
+iam-delete-platform-administrator|DELETE|/platform/administrators/{principal_id}
+iam-permission-catalog|GET|/permission-catalog
+iam-scope-model|GET|/scope-model
+iam-menu-catalog|GET|/menu-catalog
+iam-authorization-constraint|POST|/authorization-constraint-evaluations
+iam-explain-authorization|POST|/authorization-explanations
+iam-list-entities|GET|/entities
+iam-create-entity|POST|/entities
+iam-get-entity|GET|/entities/{entity_id}
+iam-update-entity|PATCH|/entities/{entity_id}
+iam-delete-entity|DELETE|/entities/{entity_id}
+iam-list-entity-role-bindings|GET|/entities/{entity_id}/role-bindings
+iam-put-entity-role-binding|PUT|/entities/{entity_id}/role-bindings/{role_id}/{principal_id}
+iam-delete-entity-role-binding|DELETE|/entities/{entity_id}/role-bindings/{role_id}/{principal_id}
+iam-list-roles|GET|/roles
+iam-create-role|POST|/roles
+iam-get-role|GET|/roles/{role_id}
+iam-get-role-data-scope|GET|/roles/{role_id}/data-scope
+iam-set-role-data-scope|PUT|/roles/{role_id}/data-scope
+iam-update-role|PATCH|/roles/{role_id}
+iam-delete-role|DELETE|/roles/{role_id}
+iam-list-role-permissions|GET|/roles/{role_id}/permissions
+iam-list-role-permission-grants|GET|/roles/{role_id}/permission-grants
+iam-grant-role-permission|PUT|/roles/{role_id}/permissions/{permission_code}
+iam-revoke-role-permission|DELETE|/roles/{role_id}/permissions/{permission_code}
+iam-set-role-permission-condition|PUT|/roles/{role_id}/permissions/{permission_code}/condition
+iam-clear-role-permission-condition|DELETE|/roles/{role_id}/permissions/{permission_code}/condition
+iam-list-role-members|GET|/roles/{role_id}/members
+iam-add-role-member|PUT|/roles/{role_id}/members/{subject}
+iam-remove-role-member|DELETE|/roles/{role_id}/members/{subject}
+iam-list-role-directory-bindings|GET|/roles/{role_id}/directory-bindings
+iam-add-role-directory-binding|PUT|/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}
+iam-remove-role-directory-binding|DELETE|/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}
+iam-list-tenant-members|GET|/members
+iam-create-tenant-member|POST|/members
+iam-get-tenant-member|GET|/members/{subject}
+iam-update-tenant-member|PATCH|/members/{subject}
+iam-list-tenant-member-roles|GET|/members/{subject}/roles
+iam-list-member-authorization-sources|GET|/members/{subject}/authorization-sources
+iam-list-menus|GET|/menus
+iam-create-menu|POST|/menus
+iam-get-menu|GET|/menus/{menu_id}
+iam-update-menu|PATCH|/menus/{menu_id}
+iam-delete-menu|DELETE|/menus/{menu_id}
+iam-effective-menus|GET|/me/menus
+iam-effective-permissions|GET|/me/permissions`
 
 func declarationAPI(t *testing.T) huma.API {
 	t.Helper()
@@ -169,7 +169,7 @@ func TestCoreOpenAPISelectorsAndParametersAreConsistent(t *testing.T) {
 
 func TestCoreOpenAPIRelationshipTupleAndPatchContracts(t *testing.T) {
 	spec := declarationAPI(t).OpenAPI()
-	deleteRelationship := spec.Paths["/iam/relationships"].Delete
+	deleteRelationship := spec.Paths["/relationships"].Delete
 	require.NotNil(t, deleteRelationship)
 
 	parameters := make(map[string]*huma.Param, len(deleteRelationship.Parameters))
@@ -195,9 +195,9 @@ func TestCoreOpenAPIRelationshipTupleAndPatchContracts(t *testing.T) {
 		resource   string
 		property   string
 	}{
-		{collection: "/iam/menus", resource: "/iam/menus/{menu_id}", property: "parent_id"},
-		{collection: "/iam/entities", resource: "/iam/entities/{entity_id}", property: "parent_id"},
-		{collection: "/iam/members", resource: "/iam/members/{subject}", property: "department_id"},
+		{collection: "/menus", resource: "/menus/{menu_id}", property: "parent_id"},
+		{collection: "/entities", resource: "/entities/{entity_id}", property: "parent_id"},
+		{collection: "/members", resource: "/members/{subject}", property: "department_id"},
 	} {
 		create := requestProperty(t, spec, spec.Paths[test.collection].Post, test.property)
 		update := requestProperty(t, spec, spec.Paths[test.resource].Patch, test.property)

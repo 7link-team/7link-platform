@@ -124,7 +124,7 @@ func migrationStatusOperation(path, operationID string, deprecated bool) *huma.O
 		Path:        path,
 		Summary:     "Inspect database migrations",
 		Description: "Compares embedded and applied migration versions for every registered module.",
-		Tags:        []string{"Diagnostics"},
+		Tags:        []string{"diagnostics"},
 		Deprecated:  deprecated,
 		Responses: map[string]*huma.Response{
 			"200": jsonResponse("Migration status"),

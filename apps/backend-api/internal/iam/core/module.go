@@ -114,6 +114,15 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[AuthorizationEvaluator](services, m.checker); err != nil {
 		return fmt.Errorf("provide IAM authorization evaluator: %w", err)
 	}
+	if err := module.Provide[EntityConstraintOn](services, m.checker.EntityConstraintOn); err != nil {
+		return fmt.Errorf("provide IAM transaction entity authorization: %w", err)
+	}
+	if err := module.Provide[AuthorizationSubjectsOn](services, m.checker.AuthorizationSubjectsOn); err != nil {
+		return fmt.Errorf("provide IAM transaction authorization subjects: %w", err)
+	}
+	if err := module.Provide[AuthorizationReferencesOn](services, m.checker.AuthorizationReferencesOn); err != nil {
+		return fmt.Errorf("provide IAM transaction authorization references: %w", err)
+	}
 	if err := module.Provide[MemberDepartmentReader](services, m.members); err != nil {
 		return fmt.Errorf("provide IAM member department reader: %w", err)
 	}
@@ -150,6 +159,14 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve IAM audit appender: %w", err)
 	}
+	roots, err := module.Resolve[FileRootProvisioner](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return fmt.Errorf("resolve file root provisioner: %w", err)
+	}
+	rootContent, err := module.Resolve[FileRootContentChecker](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return fmt.Errorf("resolve file root content checker: %w", err)
+	}
 	verifier, err := module.Resolve[authz.TokenVerifier](services)
 	if err != nil {
 		return fmt.Errorf("resolve authentication verifier: %w", err)
@@ -164,6 +181,8 @@ func (m *Module) InjectServices(services *module.Services) error {
 		return fmt.Errorf("bind authorization registrar: %w", err)
 	}
 	m.service = NewService(m.registrar.Registry(), repository, m.checker, appender)
+	m.service.roots = roots
+	m.service.rootContent = rootContent
 	m.service.administrators = m.administrators
 	m.service.privacyBrowser, err = module.Resolve[authnext.BrowserSessionSecurity](services)
 	if err != nil && !errors.Is(err, module.ErrServiceMissing) {

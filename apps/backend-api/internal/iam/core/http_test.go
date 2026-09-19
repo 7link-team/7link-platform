@@ -130,6 +130,7 @@ func TestHTTPErrorMapsEveryDomainError(t *testing.T) {
 		{ErrEntityHasChildren, http.StatusConflict, corei18n.EntityHasChildren},
 		{ErrEntityHasBindings, http.StatusConflict, corei18n.EntityHasRoleBindings},
 		{ErrEntityHasRelationships, http.StatusConflict, corei18n.EntityHasRelationships},
+		{ErrEntityHasFiles, http.StatusConflict, corei18n.EntityHasFiles},
 		{ErrEntityHierarchy, http.StatusConflict, corei18n.EntityHierarchyConflict},
 		{ErrInvalidRelationship, http.StatusUnprocessableEntity, corei18n.InvalidRelationship},
 		{ErrRelationshipSubjectMissing, http.StatusNotFound, corei18n.RelationshipSubjectNotFound},

@@ -704,7 +704,7 @@ export default function RolesPage() {
                       </h3>
                       <Button variant="ghost" size="sm" asChild>
                         <Link
-                          to="/iam/users"
+                          to="/users"
                           data-role-directory-link="account"
                         >
                           <ExternalLink />
@@ -762,7 +762,7 @@ export default function RolesPage() {
                   </section>
                   <DirectoryBindingsSection
                     title={t("groups")}
-                    href="/iam/groups"
+                    href="/groups"
                     linkLabel={t("openGroupDirectory")}
                     kind="group"
                     icon={<UsersRound size={15} />}
@@ -781,7 +781,7 @@ export default function RolesPage() {
                   />
                   <DirectoryBindingsSection
                     title={t("positions")}
-                    href="/iam/positions"
+                    href="/positions"
                     linkLabel={t("openPositionDirectory")}
                     kind="position"
                     icon={<BriefcaseBusiness size={15} />}

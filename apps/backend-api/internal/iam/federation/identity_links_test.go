@@ -162,7 +162,7 @@ func TestIdentityLinkHTTPStorageFailuresPreserveCallbackAndContinuation(t *testi
 			return func() { require.NoError(t, env.db.Callback().Update().Remove("identity_store_failure")) }
 		}
 	}
-	for _, route := range []struct{ path, table string }{{"/authn/identity-links", "iam_identity_links"}, {"/authn/identity-link-providers", "iam_identity_providers"}} {
+	for _, route := range []struct{ path, table string }{{"/me/identity-links", "iam_identity_links"}, {"/me/identity-link-providers", "iam_identity_providers"}} {
 		restore := fault("row", route.table)
 		assert.Equal(t, http.StatusInternalServerError, request(http.MethodGet, route.path, "", cookie).Code)
 		restore()
@@ -171,7 +171,7 @@ func TestIdentityLinkHTTPStorageFailuresPreserveCallbackAndContinuation(t *testi
 	body, err := json.Marshal(map[string]any{"provider_id": provider.ID, "proof": proof})
 	require.NoError(t, err)
 	restore := fault("create", "iam_identity_link_transactions")
-	assert.Equal(t, http.StatusInternalServerError, request(http.MethodPost, "/authn/identity-link-transactions", string(body), cookie).Code)
+	assert.Equal(t, http.StatusInternalServerError, request(http.MethodPost, "/me/identity-link-transactions", string(body), cookie).Code)
 	restore()
 	start, err := env.service.StartIdentityOperation(t.Context(), cookie, provider.ID, proof, "", "", "https://iam.example"+callbackURL(provider.ID))
 	require.NoError(t, err, "failed transaction creation must leave its proof reusable")
@@ -338,7 +338,7 @@ func TestIdentityLinkHTTPUsesSessionCSRFAndCompletesPersonalLifecycle(t *testing
 		router.ServeHTTP(out, req)
 		return out
 	}
-	for _, path := range []string{"/authn/identity-links", "/authn/identity-link-providers"} {
+	for _, path := range []string{"/me/identity-links", "/me/identity-link-providers"} {
 		assert.Equal(t, http.StatusOK, request(http.MethodGet, path, "", "", "", cookie).Code)
 		assert.Equal(t, http.StatusUnauthorized, request(http.MethodGet, path, "", "", "Bearer invalid", cookie).Code)
 	}
@@ -349,7 +349,7 @@ func TestIdentityLinkHTTPUsesSessionCSRFAndCompletesPersonalLifecycle(t *testing
 	proof := identityPasswordProof(t, authenticator, cookie, authn.ReauthenticationIdentityLink, provider.ID.String())
 	body, err := json.Marshal(map[string]any{"provider_id": provider.ID, "proof": proof, "return_url": "https://app.example/security"})
 	require.NoError(t, err)
-	path := "/authn/identity-link-transactions"
+	path := "/me/identity-link-transactions"
 	assert.Equal(t, http.StatusForbidden, request(http.MethodPost, path, string(body), "https://evil.example", "", cookie).Code)
 	assert.Equal(t, http.StatusUnauthorized, request(http.MethodPost, path, string(body), "https://app.example", "Bearer invalid", cookie).Code)
 	started := request(http.MethodPost, path, string(body), "https://app.example", "", cookie)
@@ -362,9 +362,9 @@ func TestIdentityLinkHTTPUsesSessionCSRFAndCompletesPersonalLifecycle(t *testing
 	state := verifyIdentityOIDC(t, env, provider, start)
 	continuation := identityContinuationURL(provider.ID, state)
 	assert.Equal(t, http.StatusUnauthorized, request(http.MethodGet, continuation, "", "", "Bearer invalid", cookie).Code)
-	assert.Equal(t, http.StatusUnprocessableEntity, request(http.MethodGet, "/federation/invalid/identity-continuations?state=x", "", "", "", cookie).Code)
-	assert.Equal(t, http.StatusUnprocessableEntity, request(http.MethodGet, "/federation/9223372036854775808/identity-continuations?state=x", "", "", "", cookie).Code)
-	assert.Equal(t, http.StatusUnprocessableEntity, request(http.MethodGet, "/federation/"+provider.ID.String()+"/identity-continuations", "", "", "", cookie).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, request(http.MethodGet, "/identity-providers/invalid/identity-continuation?state=x", "", "", "", cookie).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, request(http.MethodGet, "/identity-providers/9223372036854775808/identity-continuation?state=x", "", "", "", cookie).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, request(http.MethodGet, "/identity-providers/"+provider.ID.String()+"/identity-continuation", "", "", "", cookie).Code)
 	assert.Equal(t, http.StatusBadRequest, request(http.MethodGet, continuation, "", "", "", cookie).Code)
 	completed := request(http.MethodGet, continuation, "", "", "", cookie+"; "+start.StateCookie)
 	require.Equal(t, http.StatusSeeOther, completed.Code)
@@ -374,7 +374,7 @@ func TestIdentityLinkHTTPUsesSessionCSRFAndCompletesPersonalLifecycle(t *testing
 	proof = identityPasswordProof(t, authenticator, cookie, authn.ReauthenticationIdentityUnlink, links[0].ID)
 	body, err = json.Marshal(map[string]string{"proof": proof})
 	require.NoError(t, err)
-	path = "/authn/identity-links/" + links[0].ID
+	path = "/me/identity-links/" + links[0].ID
 	assert.Equal(t, http.StatusForbidden, request(http.MethodDelete, path, string(body), "https://evil.example", "", cookie).Code)
 	assert.Equal(t, http.StatusUnauthorized, request(http.MethodDelete, path, string(body), "https://app.example", "Bearer invalid", cookie).Code)
 	require.Equal(t, http.StatusOK, request(http.MethodDelete, path, string(body), "https://app.example", "", cookie).Code)

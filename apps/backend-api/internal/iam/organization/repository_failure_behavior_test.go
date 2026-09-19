@@ -166,7 +166,7 @@ func TestOrganizationServicesSurfaceClosedDatabase(t *testing.T) {
 	assert.Error(t, err)
 	_, err = h.service.Get(t.Context(), 1, 2)
 	assert.Error(t, err)
-	_, err = h.service.Create(t.Context(), 1, CreateDepartment{Name: "Department"})
+	_, err = h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Department"})
 	assert.Error(t, err)
 	assert.Error(t, h.service.Delete(t.Context(), 1, 2, 1))
 	_, err = groups.List(t.Context(), 1)

@@ -20,7 +20,7 @@ import (
 // global. authz.RegisterPlatform is what enforces it -- no tenant permission
 // reaches these operations, which is the property the audit asked to be made
 // structural rather than conventional.
-const platformPrincipalLifecyclePath = "/platform/iam/principals/{principal_id}/lifecycle"
+const platformPrincipalLifecyclePath = "/platform/principals/{principal_id}/lifecycle"
 
 type platformLifecycleInput struct {
 	PrincipalID string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
@@ -81,7 +81,7 @@ func registerPrincipalLifecycleHTTP(api huma.API, service *Service, registrar *a
 	authz.RegisterPlatform(registrar, api, huma.Operation{
 		OperationID: "identity-platform-set-principal-retention",
 		Method:      http.MethodPut,
-		Path:        platformPrincipalLifecyclePath + "/retention",
+		Path:        platformPrincipalLifecyclePath + "/retention-policy",
 		Summary:     "Record how long a principal's data is kept, and whether a hold prevents erasing it",
 		Description: "The version is the policy this decision was made against, so two administrators " +
 			"deciding from the same screen cannot silently overwrite each other -- the second is told the " +
@@ -103,7 +103,7 @@ func registerPrincipalLifecycleHTTP(api huma.API, service *Service, registrar *a
 
 	authz.RegisterPlatform(registrar, api, huma.Operation{
 		OperationID: "identity-platform-anonymize-principal",
-		Method:      http.MethodPost,
+		Method:      http.MethodPut,
 		Path:        platformPrincipalLifecyclePath + "/anonymization",
 		Summary:     "Irreversibly erase a suspended principal's personal data",
 		Description: "This cannot be undone. Every owning module erases what it holds in one transaction, " +

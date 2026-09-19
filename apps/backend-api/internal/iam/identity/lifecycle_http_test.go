@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const lifecyclePath = "/platform/iam/principals/"
+const lifecyclePath = "/platform/principals/"
 
 // TestPrincipalLifecycleRoutesRefuseWithoutPlatformAuthority is the property the
 // audit asked to be made structural: erasing a principal is a global decision,

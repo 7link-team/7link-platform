@@ -72,7 +72,7 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 
 	require.True(t, t.Run("tenant", func(t *testing.T) {
 		before := f.auditCount(t, 0)
-		response := f.request(t, http.MethodPost, "/iam/tenants", 0, f.tokenA, map[string]any{
+		response := f.request(t, http.MethodPost, "/tenants", 0, f.tokenA, map[string]any{
 			"slug": "lifecycle-tenant", "name": "Lifecycle Tenant",
 			"owner_principal_id": f.adminA.ID.String(),
 		}, nil)
@@ -106,27 +106,33 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 	}))
 
 	require.True(t, t.Run("organization", func(t *testing.T) {
-		response := f.request(t, http.MethodPost, "/iam/departments", tenant.ID, actorToken, map[string]any{
-			"name": "Operations", "status": "active", "sort_order": 10,
+		response := f.request(t, http.MethodPost, "/entities", tenant.ID, actorToken, map[string]any{
+			"type": "company", "name": "Lifecycle Company", "status": "active",
+		}, nil)
+		requireStatus(t, http.StatusCreated, response)
+		entity = decodeEnvelope[core.APIEntity](t, response)
+
+		response = f.request(t, http.MethodPost, "/departments", tenant.ID, actorToken, map[string]any{
+			"entity_id": entity.ID.String(), "name": "Operations", "status": "active", "sort_order": 10,
 		}, nil)
 		requireStatus(t, http.StatusCreated, response)
 		department = decodeEnvelope[organization.Department](t, response)
 
-		response = f.request(t, http.MethodPost, "/iam/groups", tenant.ID, actorToken, map[string]any{
+		response = f.request(t, http.MethodPost, "/groups", tenant.ID, actorToken, map[string]any{
 			"name": "Operators", "type": "static", "description": "Lifecycle group", "status": "active",
 		}, nil)
 		requireStatus(t, http.StatusCreated, response)
 		group = decodeEnvelope[organization.Group](t, response)
 
-		response = f.request(t, http.MethodPost, "/iam/positions", tenant.ID, actorToken, map[string]any{
+		response = f.request(t, http.MethodPost, "/positions", tenant.ID, actorToken, map[string]any{
 			"code": "operator", "name": "Operator", "status": "active",
 		}, nil)
 		requireStatus(t, http.StatusCreated, response)
 		position = decodeEnvelope[organization.Position](t, response)
 
-		response = f.request(t, http.MethodPut, "/iam/groups/"+group.ID.String()+"/members/"+actor.ID.String(), tenant.ID, actorToken, map[string]any{}, nil)
+		response = f.request(t, http.MethodPut, "/groups/"+group.ID.String()+"/members/"+actor.ID.String(), tenant.ID, actorToken, map[string]any{}, nil)
 		requireStatus(t, http.StatusOK, response)
-		response = f.request(t, http.MethodPut, "/iam/positions/"+position.ID.String()+"/members/"+actor.ID.String(), tenant.ID, actorToken, map[string]any{}, nil)
+		response = f.request(t, http.MethodPut, "/positions/"+position.ID.String()+"/members/"+actor.ID.String(), tenant.ID, actorToken, map[string]any{}, nil)
 		requireStatus(t, http.StatusOK, response)
 
 		assert.Equal(t, int64(1), f.count(t, "iam_departments", "tenant_id = ? AND id = ?", tenant.ID, department.ID))
@@ -144,21 +150,15 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 	}))
 
 	require.True(t, t.Run("role-permission-member", func(t *testing.T) {
-		response := f.request(t, http.MethodPost, "/iam/roles", tenant.ID, actorToken, map[string]any{
+		response := f.request(t, http.MethodPost, "/roles", tenant.ID, actorToken, map[string]any{
 			"name": "Entity viewers", "description": "Lifecycle role",
 		}, nil)
 		requireStatus(t, http.StatusCreated, response)
 		role = decodeEnvelope[core.APIRole](t, response)
-		response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID.String()+"/permissions/entity_view", tenant.ID, actorToken, nil, nil)
+		response = f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/permissions/entity_view", tenant.ID, actorToken, nil, nil)
 		requireStatus(t, http.StatusOK, response)
-		response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID.String()+"/members/"+actor.ID.String(), tenant.ID, actorToken, nil, nil)
+		response = f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/members/"+actor.ID.String(), tenant.ID, actorToken, nil, nil)
 		requireStatus(t, http.StatusOK, response)
-		response = f.request(t, http.MethodPost, "/iam/entities", tenant.ID, actorToken, map[string]any{
-			"type": "company", "name": "Lifecycle Company", "status": "active",
-		}, nil)
-		requireStatus(t, http.StatusCreated, response)
-		entity = decodeEnvelope[core.APIEntity](t, response)
-
 		assert.Equal(t, int64(1), f.count(t, "iam_roles", "tenant_id = ? AND id = ?", tenant.ID, role.ID))
 		assert.Equal(t, int64(1), f.count(t, "iam_role_permissions", "tenant_id = ? AND role_id = ? AND permission_code = 'entity_view'", tenant.ID, role.ID))
 		assert.Equal(t, int64(1), f.count(t, "iam_role_members", "tenant_id = ? AND role_id = ? AND principal_id = ?", tenant.ID, role.ID, actor.ID))
@@ -175,11 +175,11 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 		beforeAudit := f.auditCount(t, tenant.ID)
 		beforeRevision := f.policyRevision(t, tenant.ID)
 		request := map[string]any{"entity_id": entity.ID, "permission_code": "entity_view", "subject": actor.ID.String()}
-		response := f.request(t, http.MethodPost, "/iam/authorization/check", tenant.ID, actorToken, request, nil)
+		response := f.request(t, http.MethodPost, "/authorization-checks", tenant.ID, actorToken, request, nil)
 		requireStatus(t, http.StatusOK, response)
 		decision := decodeEnvelope[core.AuthorizationDecision](t, response)
 		assert.True(t, decision.Allowed)
-		response = f.request(t, http.MethodPost, "/iam/authorization/explain", tenant.ID, actorToken, request, nil)
+		response = f.request(t, http.MethodPost, "/authorization-explanations", tenant.ID, actorToken, request, nil)
 		requireStatus(t, http.StatusOK, response)
 		explanation := decodeEnvelope[authz.Explanation](t, response)
 		assert.True(t, explanation.Allowed)
@@ -189,7 +189,7 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 	}))
 
 	require.True(t, t.Run("oauth", func(t *testing.T) {
-		response := f.request(t, http.MethodPost, "/iam/oauth-clients", tenant.ID, actorToken, map[string]any{
+		response := f.request(t, http.MethodPost, "/oauth-clients", tenant.ID, actorToken, map[string]any{
 			"name": "Lifecycle automation", "grant_types": []string{"client_credentials"},
 			"scopes": []string{"entity_view"}, "public_client": false,
 		}, nil)
@@ -258,7 +258,7 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 
 	require.True(t, t.Run("federation", func(t *testing.T) {
 		idp := newLifecycleOIDCProvider(t)
-		response := f.request(t, http.MethodPost, "/iam/identity-providers", tenant.ID, actorToken, map[string]any{
+		response := f.request(t, http.MethodPost, "/identity-providers", tenant.ID, actorToken, map[string]any{
 			"name": "Lifecycle OIDC", "provider_type": "oidc", "issuer": idp.issuer,
 			"client_id": idp.clientID, "client_secret": idp.clientSecret,
 			"auto_provision": true, "status": "active",
@@ -267,7 +267,7 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 		provider := decodeEnvelope[federation.Provider](t, response)
 		assert.Equal(t, int64(1), f.count(t, "iam_identity_providers", "tenant_id = ? AND id = ? AND auto_provision = ?", tenant.ID, provider.ID, true))
 
-		response = f.request(t, http.MethodGet, "/federation/"+provider.ID.String()+"/start?return_url="+url.QueryEscape("https://app.example.test/home"), 0, "", nil, nil)
+		response = f.request(t, http.MethodGet, "/identity-providers/"+provider.ID.String()+"/authorization?return_url="+url.QueryEscape("https://app.example.test/home"), 0, "", nil, nil)
 		requireStatus(t, http.StatusFound, response)
 		stateCookie := requireCookie(t, response.Cookies, "federation_state")
 		authorize, err := idp.server.Client().Get(response.Header.Get("Location"))
@@ -280,7 +280,7 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 		}
 		require.NoError(t, json.NewDecoder(authorize.Body).Decode(&authorization))
 
-		response = f.request(t, http.MethodGet, "/federation/"+provider.ID.String()+"/callback?code="+url.QueryEscape(authorization.Code)+"&state="+url.QueryEscape(authorization.State), 0, "", nil, map[string]string{
+		response = f.request(t, http.MethodGet, "/identity-providers/"+provider.ID.String()+"/callback?code="+url.QueryEscape(authorization.Code)+"&state="+url.QueryEscape(authorization.State), 0, "", nil, map[string]string{
 			"Cookie": stateCookie.Name + "=" + stateCookie.Value,
 		})
 		requireStatus(t, http.StatusFound, response)
@@ -299,18 +299,18 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 	}))
 
 	require.True(t, t.Run("governance", func(t *testing.T) {
-		response := f.request(t, http.MethodPost, "/iam/roles", tenant.ID, actorToken, map[string]any{
+		response := f.request(t, http.MethodPost, "/roles", tenant.ID, actorToken, map[string]any{
 			"name": "Temporary operators", "description": "Governance lifecycle role",
 		}, nil)
 		requireStatus(t, http.StatusCreated, response)
 		governanceRole = decodeEnvelope[core.APIRole](t, response)
-		response = f.request(t, http.MethodPost, "/iam/access-requests", tenant.ID, requesterToken, map[string]any{
+		response = f.request(t, http.MethodPost, "/access-requests", tenant.ID, requesterToken, map[string]any{
 			"role_id": governanceRole.ID, "reason": "Lifecycle approval",
 			"access_expires_at": time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano),
 		}, nil)
 		requireStatus(t, http.StatusCreated, response)
 		request := decodeEnvelope[governance.AccessRequest](t, response)
-		response = f.request(t, http.MethodPost, "/iam/access-requests/"+request.ID.String()+"/approve", tenant.ID, actorToken, map[string]any{"note": "approved"}, nil)
+		response = f.request(t, http.MethodPost, "/access-requests/"+request.ID.String()+"/approve", tenant.ID, actorToken, map[string]any{"note": "approved"}, nil)
 		requireStatus(t, http.StatusOK, response)
 		approved := decodeEnvelope[governance.AccessRequest](t, response)
 		assert.Equal(t, governance.StatusApproved, approved.Status)
@@ -322,7 +322,7 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 
 	require.True(t, t.Run("audit", func(t *testing.T) {
 		before := f.auditCount(t, tenant.ID)
-		response := f.request(t, http.MethodGet, "/iam/audit-integrity", tenant.ID, actorToken, nil, nil)
+		response := f.request(t, http.MethodGet, "/audit/integrity-verifications", tenant.ID, actorToken, nil, nil)
 		requireStatus(t, http.StatusOK, response)
 		integrity := decodeEnvelope[iamaudit.Integrity](t, response)
 		assert.True(t, integrity.Valid)

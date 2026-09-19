@@ -202,14 +202,41 @@ func (r *Repository) getDepartment(ctx context.Context, tenantID, id guid.ID) (*
 	return &row, nil
 }
 
+func (r *Repository) entityExists(ctx context.Context, tenantID, entityID guid.ID) (bool, error) {
+	if r == nil || r.foreign == nil || r.foreign.access.Entities.IsZero() {
+		return false, errRepositoryUnavailable
+	}
+	var count int64
+	err := r.writer().WithContext(ctx).Table(r.foreign.access.Entities.String()).
+		Where("tenant_id = ? AND id = ?", tenantID, entityID).Count(&count).Error
+	if err != nil {
+		return false, fmt.Errorf("check department entity: %w", err)
+	}
+	return count == 1, nil
+}
+
 func (r *Repository) insertDepartment(ctx context.Context, row *departmentRow) error {
 	tables, _, err := r.tables()
 	if err != nil {
 		return err
 	}
+	if row.EntityID == nil {
+		return ErrInvalid
+	}
+	exists, err := r.entityExists(ctx, row.TenantID, *row.EntityID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return ErrNotFound
+	}
 	if row.ParentID != nil {
-		if _, err := r.getDepartment(ctx, row.TenantID, *row.ParentID); err != nil {
+		parent, err := r.getDepartment(ctx, row.TenantID, *row.ParentID)
+		if err != nil {
 			return err
+		}
+		if parent.EntityID == nil || *parent.EntityID != *row.EntityID {
+			return ErrEntityMismatch
 		}
 	}
 	db := r.writer().WithContext(ctx)
@@ -428,7 +455,7 @@ func orderDepartments(rows []departmentRow) ([]Department, error) {
 }
 
 func departmentFromRow(row *departmentRow, depth int) Department {
-	return Department{ID: row.ID, TenantID: row.TenantID, ParentID: optionalID(row.ParentID), Name: row.Name, Status: row.Status, SortOrder: row.SortOrder, Depth: depth, Version: row.Version, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
+	return Department{ID: row.ID, TenantID: row.TenantID, EntityID: optionalID(row.EntityID), ParentID: optionalID(row.ParentID), Name: row.Name, Status: row.Status, SortOrder: row.SortOrder, Depth: depth, Version: row.Version, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
 }
 
 func optionalID(value *guid.ID) guid.ID {

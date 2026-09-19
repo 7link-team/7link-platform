@@ -5,8 +5,12 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -19,6 +23,10 @@ func TestLocalImmutableStreamAndFailures(t *testing.T) {
 	uri, err := driver.Put(t.Context(), "objects/1", bytes.NewBufferString("abc"), 3)
 	require.NoError(t, err)
 	require.Contains(t, uri, "file:///")
+	location, err := url.Parse(uri)
+	require.NoError(t, err)
+	require.Empty(t, location.Host, "a Windows drive letter must not become a URI host")
+	require.True(t, strings.HasSuffix(location.Path, "/objects/1"))
 	reader, err := driver.Open(t.Context(), "objects/1")
 	require.NoError(t, err)
 	content, err := io.ReadAll(reader)
@@ -52,7 +60,7 @@ func TestLocalImmutableStreamAndFailures(t *testing.T) {
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	_, err = driver.Put(ctx, "objects/cancelled", bytes.NewReader(nil), 0)
+	_, err = driver.Put(ctx, "objects/canceled", bytes.NewReader(nil), 0)
 	require.ErrorIs(t, err, context.Canceled)
 	require.NoError(t, driver.Delete(t.Context(), "objects/1"))
 	require.NoError(t, driver.Delete(t.Context(), "objects/1"))
@@ -67,7 +75,15 @@ func TestLocalRejectsTraversalAndEscapingSymlink(t *testing.T) {
 		require.ErrorIs(t, err, ErrInvalidKey)
 		require.ErrorIs(t, driver.Delete(t.Context(), key), ErrInvalidKey)
 	}
-	require.NoError(t, os.Symlink(outside, filepath.Join(root, "escape")))
+	link := filepath.Join(root, "escape")
+	if runtime.GOOS == "windows" {
+		// Junctions exercise the same root-escape boundary without requiring the
+		// Windows symbolic-link privilege or skipping the security assertion.
+		output, err := exec.CommandContext(t.Context(), "cmd", "/c", "mklink", "/J", link, outside).CombinedOutput()
+		require.NoError(t, err, string(output))
+	} else {
+		require.NoError(t, os.Symlink(outside, link))
+	}
 	_, err = driver.Put(t.Context(), "escape/evil", bytes.NewBufferString("abc"), 3)
 	require.Error(t, err)
 	_, err = os.Stat(filepath.Join(outside, "evil"))
@@ -143,3 +159,37 @@ func TestLocalRangeCancellationAndReaderFailure(t *testing.T) {
 type failedReader struct{}
 
 func (failedReader) Read([]byte) (int, error) { return 0, errors.New("read failure") }
+
+func TestLocalFileURIUsesPathNotDriveHost(t *testing.T) {
+	for _, item := range []struct{ filename, uri string }{
+		{"/store/objects/a b", "file:///store/objects/a%20b"},
+		{"C:/store/objects/a b", "file:///C:/store/objects/a%20b"},
+		{"//server/share/a b", "file://server/share/a%20b"},
+	} {
+		location := localFileURI(item.filename)
+		require.Equal(t, item.uri, location.String())
+	}
+}
+
+func TestLocalBrokenRootNeverReadsSourceOrReportsSuccess(t *testing.T) {
+	filename := filepath.Join(t.TempDir(), "not-a-directory")
+	require.NoError(t, os.WriteFile(filename, []byte("root obstacle"), 0600))
+	driver, err := NewLocal(filename)
+	require.NoError(t, err)
+	_, err = driver.Put(t.Context(), "objects/1", failedReader{}, 1)
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "read failure", "bad storage root must fail before consuming content")
+	_, err = driver.Open(t.Context(), "objects/1")
+	require.Error(t, err)
+	_, err = driver.OpenRange(t.Context(), "objects/1", 0, 1)
+	require.Error(t, err)
+	require.Error(t, driver.Delete(t.Context(), "objects/1"))
+	require.Error(t, driver.ReclaimWrite(t.Context(), "objects/1"))
+	_, err = driver.Open(t.Context(), "../escape")
+	require.ErrorIs(t, err, ErrInvalidKey)
+	cancelledContext, cancel := context.WithCancel(t.Context())
+	cancel()
+	require.ErrorIs(t, driver.Delete(cancelledContext, "objects/1"), context.Canceled)
+	require.ErrorIs(t, driver.ReclaimWrite(cancelledContext, "objects/1"), context.Canceled)
+	require.ErrorIs(t, driver.ReclaimWrite(t.Context(), "../escape"), ErrInvalidKey)
+}

@@ -80,8 +80,12 @@ export default function AppLayout() {
   const [navOpen, setNavOpen] = useState(false)
 
   const navigate = useNavigate()
-  const entityMatch = useMatch("/iam/entities/:entityID/:view")
-  const entityID = entityMatch?.params.entityID ?? ""
+  const entityMatch = useMatch("/entities/:entityID/:view")
+  const fileEntityID =
+    location.pathname === "/files"
+      ? (new URLSearchParams(location.search).get("entity_id") ?? "")
+      : ""
+  const entityID = entityMatch?.params.entityID ?? fileEntityID
   const [entityCatalog, setEntityCatalog] = useState<{
     subject: string
     tenant: string
@@ -349,11 +353,17 @@ export default function AppLayout() {
             entities={catalog?.items ?? null}
             error={catalog?.error ?? ""}
             onTenant={commitTenant}
-            onEntity={(id) =>
+            onEntity={(id) => {
+              if (location.pathname === "/files") {
+                navigate(
+                  id ? `/files?entity_id=${encodeURIComponent(id)}` : "/files"
+                )
+                return
+              }
               navigate(
-                id ? `/iam/entities/${encodeURIComponent(id)}/overview` : "/"
+                id ? `/entities/${encodeURIComponent(id)}/overview` : "/"
               )
-            }
+            }}
           />
           <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
             <LanguageSwitcher />
@@ -428,9 +438,9 @@ export default function AppLayout() {
             ) : !directoryReady ? (
               <p role="status">{t("loading")}</p>
             ) : !tenantValue &&
-              location.pathname !== "/iam/tenants" &&
+              location.pathname !== "/tenants" &&
               !(
-                location.pathname === "/iam/audit-governance" &&
+                location.pathname === "/audit-governance" &&
                 new URLSearchParams(location.search).get("scope") === "platform"
               ) ? (
               <p>{t("noAvailableTenants")}</p>
@@ -444,7 +454,13 @@ export default function AppLayout() {
             ) : (
               <Outlet
                 key={`${tenantValue}:${entityID}`}
-                context={{ menus, permissions, permissionsResolved }}
+                context={{
+                  menus,
+                  permissions,
+                  permissionsResolved,
+                  tenantID: tenantValue,
+                  entityID,
+                }}
               />
             )}
           </div>

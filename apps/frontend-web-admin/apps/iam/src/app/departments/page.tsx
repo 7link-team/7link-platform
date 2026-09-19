@@ -42,6 +42,7 @@ import {
   iamApi,
   type Department,
   type DepartmentInput,
+  type Entity,
 } from "../../lib/iam-api"
 import { useAllowed } from "../../lib/permissions"
 
@@ -52,9 +53,11 @@ export default function DepartmentsPage() {
   const allowed = useAllowed()
 
   const [departments, setDepartments] = useState<Department[]>([])
+  const [entities, setEntities] = useState<Entity[]>([])
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Department | null>(null)
+  const [entityID, setEntityID] = useState("")
   const [parentID, setParentID] = useState(rootDepartment)
   const [status, setStatus] = useState<DepartmentInput["status"]>("active")
   const [busy, setBusy] = useState(false)
@@ -68,11 +71,18 @@ export default function DepartmentsPage() {
     setLoading(true)
     setLoadError("")
     try {
-      const next = await iamApi.departments()
-      if (generation === loadGeneration.current) setDepartments(next)
+      const [nextDepartments, nextEntities] = await Promise.all([
+        iamApi.departments(),
+        iamApi.entities(),
+      ])
+      if (generation === loadGeneration.current) {
+        setDepartments(nextDepartments)
+        setEntities(nextEntities)
+      }
     } catch (cause) {
       if (generation === loadGeneration.current) {
         setDepartments([])
+        setEntities([])
         setLoadError((cause as Error).message)
       }
     } finally {
@@ -104,6 +114,11 @@ export default function DepartmentsPage() {
     [departments]
   )
 
+  const entityByID = useMemo(
+    () => new Map(entities.map((entity) => [entity.id, entity])),
+    [entities]
+  )
+
   const visibleDepartments = useMemo(
     () =>
       loading || loadError
@@ -118,6 +133,7 @@ export default function DepartmentsPage() {
       ...departments
         .filter(
           (candidate) =>
+            candidate.entity_id === entityID &&
             candidate.id !== editing?.id &&
             !isDescendantOf(candidate, editing?.id, departmentByID)
         )
@@ -126,11 +142,16 @@ export default function DepartmentsPage() {
           label: `${"　".repeat(department.depth)}${department.name}`,
         })),
     ],
-    [departmentByID, departments, editing?.id, t]
+    [departmentByID, departments, editing?.id, entityID, t]
   )
 
   const openCreate = () => {
     setEditing(null)
+    setEntityID(
+      entities.find((entity) => entity.status === "active")?.id ??
+        entities[0]?.id ??
+        ""
+    )
     setParentID(rootDepartment)
     setStatus("active")
     setOpen(true)
@@ -138,6 +159,7 @@ export default function DepartmentsPage() {
 
   const openEdit = (department: Department) => {
     setEditing(department)
+    setEntityID(department.entity_id)
     setParentID(department.parent_id || rootDepartment)
     setStatus(department.status)
     setOpen(true)
@@ -148,7 +170,7 @@ export default function DepartmentsPage() {
     setBusy(true)
     setError("")
     const data = new FormData(event.currentTarget)
-    const input: DepartmentInput = {
+    const values = {
       parent_id: parentID === rootDepartment ? "" : parentID,
       name: String(data.get("name")),
       status,
@@ -157,10 +179,14 @@ export default function DepartmentsPage() {
     try {
       if (editing)
         await iamApi.updateDepartment(editing.id, {
-          ...input,
+          ...values,
           version: editing.version,
         })
-      else await iamApi.createDepartment(input)
+      else
+        await iamApi.createDepartment({
+          ...values,
+          entity_id: entityID,
+        })
       setOpen(false)
       setEditing(null)
       await refresh()
@@ -205,7 +231,7 @@ export default function DepartmentsPage() {
         description={t("departmentsDescription")}
         action={
           allowed("dept_create") && (
-            <Button onClick={openCreate}>
+            <Button onClick={openCreate} disabled={entities.length === 0}>
               <Plus />
               {t("createDepartment")}
             </Button>
@@ -223,10 +249,11 @@ export default function DepartmentsPage() {
       )}
       {loading && <p role="status">{t("loading")}</p>}
       <div className="overflow-x-auto rounded-md border bg-card">
-        <Table className="min-w-[720px]">
+        <Table className="min-w-[840px]">
           <TableHeader>
             <TableRow>
               <TableHead>{t("department")}</TableHead>
+              <TableHead>{t("entity")}</TableHead>
               <TableHead>{t("parentDepartment")}</TableHead>
               <TableHead>{t("sortOrder")}</TableHead>
               <TableHead>{t("status")}</TableHead>
@@ -276,6 +303,9 @@ export default function DepartmentsPage() {
                         {department.name}
                       </strong>
                     </div>
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {entityByID.get(department.entity_id)?.name ?? "-"}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {parent?.name ?? "-"}
@@ -367,6 +397,22 @@ export default function DepartmentsPage() {
             onSubmit={submit}
           >
             <div className="grid gap-2">
+              <Label htmlFor="department-entity">{t("entity")}</Label>
+              <SimpleSelect
+                id="department-entity"
+                options={entities.map((entity) => ({
+                  value: entity.id,
+                  label: entity.name,
+                }))}
+                value={entityID}
+                onValueChange={(value) => {
+                  setEntityID(value)
+                  setParentID(rootDepartment)
+                }}
+                disabled={editing !== null}
+              />
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="department-name">{t("departmentName")}</Label>
               <Input
                 id="department-name"
@@ -415,7 +461,11 @@ export default function DepartmentsPage() {
             <Button variant="outline" onClick={() => setOpen(false)}>
               {t("cancel")}
             </Button>
-            <Button type="submit" form="department-form" disabled={busy}>
+            <Button
+              type="submit"
+              form="department-form"
+              disabled={busy || entityID === ""}
+            >
               {busy ? t("saving") : editing ? t("save") : t("create")}
             </Button>
           </DialogFooter>

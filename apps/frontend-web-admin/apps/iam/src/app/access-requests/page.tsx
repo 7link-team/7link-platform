@@ -65,7 +65,7 @@ export default function AccessRequestsPage() {
   const { session } = useAuth()
   const { menus } = useOutletContext<{ menus: EffectiveMenu[] | null }>()
   const canApprove = Boolean(
-    menus && effectiveMenuPaths(menus).has("/iam/access-requests")
+    menus && effectiveMenuPaths(menus).has("/access-requests")
   )
   const [mine, setMine] = useState<AccessRequest[]>([])
   const [queue, setQueue] = useState<AccessRequest[]>([])

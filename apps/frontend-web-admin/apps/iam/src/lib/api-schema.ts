@@ -38,7 +38,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/capabilities": {
+    "/authentication-capabilities": {
         parameters: {
             query?: never;
             header?: never;
@@ -55,7 +55,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/captchas": {
+    "/captchas": {
         parameters: {
             query?: never;
             header?: never;
@@ -72,7 +72,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/email-verification-requests": {
+    "/email-verification-requests": {
         parameters: {
             query?: never;
             header?: never;
@@ -89,7 +89,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/email-verifications": {
+    "/email-verifications": {
         parameters: {
             query?: never;
             header?: never;
@@ -106,7 +106,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/identity-link-providers": {
+    "/me/identity-link-providers": {
         parameters: {
             query?: never;
             header?: never;
@@ -123,7 +123,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/identity-link-transactions": {
+    "/me/identity-link-transactions": {
         parameters: {
             query?: never;
             header?: never;
@@ -140,7 +140,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/identity-links": {
+    "/me/identity-links": {
         parameters: {
             query?: never;
             header?: never;
@@ -157,7 +157,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/identity-links/{link_id}": {
+    "/me/identity-links/{link_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -174,7 +174,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/me": {
+    "/me": {
         parameters: {
             query?: never;
             header?: never;
@@ -191,7 +191,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/mfa": {
+    "/me/mfa": {
         parameters: {
             query?: never;
             header?: never;
@@ -208,7 +208,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/mfa/recovery-codes": {
+    "/me/mfa/recovery-codes": {
         parameters: {
             query?: never;
             header?: never;
@@ -225,7 +225,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/mfa/totp": {
+    "/me/mfa/totp": {
         parameters: {
             query?: never;
             header?: never;
@@ -243,7 +243,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/mfa/totp-enrollments": {
+    "/me/mfa/totp-enrollments": {
         parameters: {
             query?: never;
             header?: never;
@@ -260,7 +260,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/passkey-registration-challenges": {
+    "/me/passkey-registration-challenges": {
         parameters: {
             query?: never;
             header?: never;
@@ -277,7 +277,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/passkey-session-challenges": {
+    "/passkey-session-challenges": {
         parameters: {
             query?: never;
             header?: never;
@@ -294,7 +294,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/passkey-session-verifications": {
+    "/passkey-session-verifications": {
         parameters: {
             query?: never;
             header?: never;
@@ -311,7 +311,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/passkeys": {
+    "/me/passkeys": {
         parameters: {
             query?: never;
             header?: never;
@@ -329,7 +329,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/passkeys/{id}": {
+    "/me/passkeys/{passkey_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -347,7 +347,7 @@ export interface paths {
         patch: operations["authn-update-passkey"];
         trace?: never;
     };
-    "/authn/password": {
+    "/me/password": {
         parameters: {
             query?: never;
             header?: never;
@@ -364,7 +364,7 @@ export interface paths {
         patch: operations["authn-update-password"];
         trace?: never;
     };
-    "/authn/password-recoveries": {
+    "/password-recoveries": {
         parameters: {
             query?: never;
             header?: never;
@@ -381,7 +381,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/password-recovery-requests": {
+    "/password-recovery-requests": {
         parameters: {
             query?: never;
             header?: never;
@@ -398,7 +398,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/personal-token-permissions": {
+    "/me/personal-token-permissions": {
         parameters: {
             query?: never;
             header?: never;
@@ -415,7 +415,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/personal-token-preparations": {
+    "/me/personal-token-preparations": {
         parameters: {
             query?: never;
             header?: never;
@@ -432,7 +432,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/personal-tokens": {
+    "/me/personal-tokens": {
         parameters: {
             query?: never;
             header?: never;
@@ -450,7 +450,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/personal-tokens/{id}": {
+    "/me/personal-tokens/{token_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -467,7 +467,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/reauthentication-challenges": {
+    "/reauthentication-challenges": {
         parameters: {
             query?: never;
             header?: never;
@@ -484,7 +484,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/reauthentication-methods": {
+    "/reauthentication-methods": {
         parameters: {
             query?: never;
             header?: never;
@@ -501,7 +501,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/reauthentication-verifications": {
+    "/reauthentication-verifications": {
         parameters: {
             query?: never;
             header?: never;
@@ -518,7 +518,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/registrations": {
+    "/registrations": {
         parameters: {
             query?: never;
             header?: never;
@@ -535,7 +535,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/session-verifications": {
+    "/session-verifications": {
         parameters: {
             query?: never;
             header?: never;
@@ -552,7 +552,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/sessions": {
+    "/sessions": {
         parameters: {
             query?: never;
             header?: never;
@@ -571,7 +571,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/sessions/current": {
+    "/sessions/current": {
         parameters: {
             query?: never;
             header?: never;
@@ -589,7 +589,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/sessions/{id}": {
+    "/sessions/{session_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -606,7 +606,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/step-up-challenges": {
+    "/step-up-challenges": {
         parameters: {
             query?: never;
             header?: never;
@@ -623,7 +623,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/authn/step-up-verifications": {
+    "/step-up-verifications": {
         parameters: {
             query?: never;
             header?: never;
@@ -640,7 +640,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/federation/saml/{tenant_id}/metadata": {
+    "/saml/{tenant_id}/metadata": {
         parameters: {
             query?: never;
             header?: never;
@@ -657,7 +657,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/federation/saml/{tenant_id}/slo": {
+    "/saml/{tenant_id}/slo": {
         parameters: {
             query?: never;
             header?: never;
@@ -675,7 +675,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/federation/saml/{tenant_id}/sso": {
+    "/saml/{tenant_id}/sso": {
         parameters: {
             query?: never;
             header?: never;
@@ -693,7 +693,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/federation/{provider_id}/callback": {
+    "/identity-providers/{provider_id}/callback": {
         parameters: {
             query?: never;
             header?: never;
@@ -711,7 +711,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/federation/{provider_id}/identity-continuations": {
+    "/identity-providers/{provider_id}/identity-continuation": {
         parameters: {
             query?: never;
             header?: never;
@@ -728,7 +728,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/federation/{provider_id}/start": {
+    "/identity-providers/{provider_id}/authorization": {
         parameters: {
             query?: never;
             header?: never;
@@ -737,6 +737,111 @@ export interface paths {
         };
         /** Start an OIDC login for a tenant identity provider */
         get: operations["federation-start-login"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/file-operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Copy or move files synchronously */
+        post: operations["create-file-operation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List authorized file roots */
+        get: operations["list-files"];
+        put?: never;
+        /** Create a directory or upload a file */
+        post: operations["create-file"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/files/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get authorized file metadata */
+        get: operations["get-file"];
+        put?: never;
+        post?: never;
+        /** Move a file or directory to trash */
+        delete: operations["delete-file"];
+        options?: never;
+        head?: never;
+        /** Update a file or directory */
+        patch: operations["update-file"];
+        trace?: never;
+    };
+    "/files/{file_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List an authorized directory page */
+        get: operations["list-file-items"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/files/{file_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download file content */
+        get: operations["download-file"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/files/{root_file_id}/-/{path}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get authorized file metadata by a root-relative path */
+        get: operations["get-file-by-path"];
         put?: never;
         post?: never;
         delete?: never;
@@ -796,7 +901,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/access-requests": {
+    "/access-requests": {
         parameters: {
             query?: never;
             header?: never;
@@ -814,7 +919,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/access-requests/{id}/approve": {
+    "/access-requests/{request_id}/approve": {
         parameters: {
             query?: never;
             header?: never;
@@ -831,7 +936,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/access-requests/{id}/reject": {
+    "/access-requests/{request_id}/reject": {
         parameters: {
             query?: never;
             header?: never;
@@ -848,7 +953,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/access-requests/{id}/revoke": {
+    "/access-requests/{request_id}/revoke": {
         parameters: {
             query?: never;
             header?: never;
@@ -865,7 +970,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/access-requests/{id}/withdraw": {
+    "/access-requests/{request_id}/withdraw": {
         parameters: {
             query?: never;
             header?: never;
@@ -882,7 +987,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/access-reviews": {
+    "/access-reviews": {
         parameters: {
             query?: never;
             header?: never;
@@ -900,7 +1005,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/access-reviews/{id}": {
+    "/access-reviews/{review_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -917,7 +1022,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/access-reviews/{id}/cancel": {
+    "/access-reviews/{review_id}/cancel": {
         parameters: {
             query?: never;
             header?: never;
@@ -934,7 +1039,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/access-reviews/{id}/complete": {
+    "/access-reviews/{review_id}/complete": {
         parameters: {
             query?: never;
             header?: never;
@@ -951,7 +1056,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/access-reviews/{id}/items/{item_id}/decide": {
+    "/access-reviews/{review_id}/items/{item_id}/decide": {
         parameters: {
             query?: never;
             header?: never;
@@ -968,7 +1073,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/audit-anchor": {
+    "/audit/anchors": {
         parameters: {
             query?: never;
             header?: never;
@@ -985,7 +1090,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/audit-events": {
+    "/audit/events": {
         parameters: {
             query?: never;
             header?: never;
@@ -1002,7 +1107,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/audit-events/export": {
+    "/audit/exports": {
         parameters: {
             query?: never;
             header?: never;
@@ -1019,7 +1124,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/audit-events/{id}": {
+    "/audit/events/{event_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1036,7 +1141,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/audit-integrity": {
+    "/audit/integrity-verifications": {
         parameters: {
             query?: never;
             header?: never;
@@ -1053,7 +1158,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/audit/archive-status": {
+    "/audit/archive-status": {
         parameters: {
             query?: never;
             header?: never;
@@ -1070,7 +1175,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/audit/archives": {
+    "/audit/archives": {
         parameters: {
             query?: never;
             header?: never;
@@ -1088,7 +1193,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/audit/archives/{id}/download": {
+    "/audit/archives/{archive_id}/download": {
         parameters: {
             query?: never;
             header?: never;
@@ -1105,7 +1210,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/audit/archives/{id}/retry": {
+    "/audit/archives/{archive_id}/retry": {
         parameters: {
             query?: never;
             header?: never;
@@ -1122,7 +1227,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/audit/archives/{id}/verify": {
+    "/audit/archives/{archive_id}/verify": {
         parameters: {
             query?: never;
             header?: never;
@@ -1139,7 +1244,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/audit/governance": {
+    "/audit/governance-policy": {
         parameters: {
             query?: never;
             header?: never;
@@ -1156,7 +1261,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/audit/retention": {
+    "/audit/retention-policy": {
         parameters: {
             query?: never;
             header?: never;
@@ -1173,7 +1278,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/audit/roots/sign": {
+    "/audit/root-signatures": {
         parameters: {
             query?: never;
             header?: never;
@@ -1190,7 +1295,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/authorization/check": {
+    "/authorization-checks": {
         parameters: {
             query?: never;
             header?: never;
@@ -1207,7 +1312,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/authorization/constraints": {
+    "/authorization-constraint-evaluations": {
         parameters: {
             query?: never;
             header?: never;
@@ -1224,7 +1329,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/authorization/explain": {
+    "/authorization-explanations": {
         parameters: {
             query?: never;
             header?: never;
@@ -1241,7 +1346,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/avatars/{principal_id}/{file}": {
+    "/avatars/{principal_id}/{file}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1258,7 +1363,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/departments": {
+    "/departments": {
         parameters: {
             query?: never;
             header?: never;
@@ -1276,7 +1381,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/departments/{id}": {
+    "/departments/{department_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1295,7 +1400,7 @@ export interface paths {
         patch: operations["organization-update-department"];
         trace?: never;
     };
-    "/iam/entities": {
+    "/entities": {
         parameters: {
             query?: never;
             header?: never;
@@ -1313,7 +1418,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/entities/{entity_id}": {
+    "/entities/{entity_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1332,7 +1437,7 @@ export interface paths {
         patch: operations["iam-update-entity"];
         trace?: never;
     };
-    "/iam/entities/{entity_id}/role-bindings": {
+    "/entities/{entity_id}/role-bindings": {
         parameters: {
             query?: never;
             header?: never;
@@ -1349,7 +1454,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/entities/{entity_id}/role-bindings/{role_id}/{principal_id}": {
+    "/entities/{entity_id}/role-bindings/{role_id}/{principal_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1367,7 +1472,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/field-catalog": {
+    "/field-catalog": {
         parameters: {
             query?: never;
             header?: never;
@@ -1384,7 +1489,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/field-policies": {
+    "/field-policies": {
         parameters: {
             query?: never;
             header?: never;
@@ -1401,7 +1506,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/field-policies/{resource}/{field}": {
+    "/field-policies/{resource}/{field}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1419,7 +1524,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/fields/effective": {
+    "/effective-fields": {
         parameters: {
             query?: never;
             header?: never;
@@ -1436,7 +1541,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/groups": {
+    "/groups": {
         parameters: {
             query?: never;
             header?: never;
@@ -1454,7 +1559,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/groups/{id}": {
+    "/groups/{group_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1473,7 +1578,7 @@ export interface paths {
         patch: operations["organization-update-group"];
         trace?: never;
     };
-    "/iam/groups/{id}/members": {
+    "/groups/{group_id}/members": {
         parameters: {
             query?: never;
             header?: never;
@@ -1490,7 +1595,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/groups/{id}/members/{principal_id}": {
+    "/groups/{group_id}/members/{principal_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1508,7 +1613,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/identity-providers": {
+    "/identity-providers": {
         parameters: {
             query?: never;
             header?: never;
@@ -1526,7 +1631,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/identity-providers/{provider_id}": {
+    "/identity-providers/{provider_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1544,7 +1649,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/invitations": {
+    "/invitations": {
         parameters: {
             query?: never;
             header?: never;
@@ -1562,7 +1667,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/invitations/accept": {
+    "/invitation-acceptances": {
         parameters: {
             query?: never;
             header?: never;
@@ -1579,7 +1684,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/invitations/{id}": {
+    "/invitations/{invitation_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1596,7 +1701,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/invitations/{id}/resend": {
+    "/invitations/{invitation_id}/resend": {
         parameters: {
             query?: never;
             header?: never;
@@ -1613,7 +1718,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/me/avatar": {
+    "/me/avatar": {
         parameters: {
             query?: never;
             header?: never;
@@ -1631,7 +1736,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/me/avatar-candidates": {
+    "/me/avatar-candidates": {
         parameters: {
             query?: never;
             header?: never;
@@ -1648,7 +1753,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/me/closure-request": {
+    "/me/closure-request": {
         parameters: {
             query?: never;
             header?: never;
@@ -1667,7 +1772,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/me/memberships": {
+    "/me/memberships": {
         parameters: {
             query?: never;
             header?: never;
@@ -1684,7 +1789,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/me/memberships/{tenant_id}/leave": {
+    "/me/memberships/{tenant_id}/leave": {
         parameters: {
             query?: never;
             header?: never;
@@ -1701,7 +1806,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/me/menus": {
+    "/me/menus": {
         parameters: {
             query?: never;
             header?: never;
@@ -1718,7 +1823,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/me/oauth-consents": {
+    "/me/oauth-consents": {
         parameters: {
             query?: never;
             header?: never;
@@ -1735,7 +1840,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/me/oauth-consents/{client_id}": {
+    "/me/oauth-consents/{client_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1752,7 +1857,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/me/permissions": {
+    "/me/permissions": {
         parameters: {
             query?: never;
             header?: never;
@@ -1769,7 +1874,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/me/tenants": {
+    "/me/tenants": {
         parameters: {
             query?: never;
             header?: never;
@@ -1786,7 +1891,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/members": {
+    "/members": {
         parameters: {
             query?: never;
             header?: never;
@@ -1804,7 +1909,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/members/{subject}": {
+    "/members/{subject}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1822,7 +1927,7 @@ export interface paths {
         patch: operations["iam-update-tenant-member"];
         trace?: never;
     };
-    "/iam/members/{subject}/authorization-sources": {
+    "/members/{subject}/authorization-sources": {
         parameters: {
             query?: never;
             header?: never;
@@ -1839,7 +1944,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/members/{subject}/roles": {
+    "/members/{subject}/roles": {
         parameters: {
             query?: never;
             header?: never;
@@ -1856,7 +1961,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/menu-catalog": {
+    "/menu-catalog": {
         parameters: {
             query?: never;
             header?: never;
@@ -1873,7 +1978,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/menus": {
+    "/menus": {
         parameters: {
             query?: never;
             header?: never;
@@ -1891,7 +1996,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/menus/{menu_id}": {
+    "/menus/{menu_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1910,7 +2015,7 @@ export interface paths {
         patch: operations["iam-update-menu"];
         trace?: never;
     };
-    "/iam/my/access-requests": {
+    "/me/access-requests": {
         parameters: {
             query?: never;
             header?: never;
@@ -1927,7 +2032,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/oauth-clients": {
+    "/oauth-clients": {
         parameters: {
             query?: never;
             header?: never;
@@ -1945,7 +2050,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/oauth-clients/{id}": {
+    "/oauth-clients/{client_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1963,7 +2068,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/oauth-clients/{id}/rotate-secret": {
+    "/oauth-clients/{client_id}/rotate-secret": {
         parameters: {
             query?: never;
             header?: never;
@@ -1980,7 +2085,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/permission-catalog": {
+    "/permission-catalog": {
         parameters: {
             query?: never;
             header?: never;
@@ -1997,7 +2102,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/platform-administrators": {
+    "/platform/administrators": {
         parameters: {
             query?: never;
             header?: never;
@@ -2014,7 +2119,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/platform-administrators/{principal_id}": {
+    "/platform/administrators/{principal_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2032,7 +2137,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/platform-permission-catalog": {
+    "/platform/permission-catalog": {
         parameters: {
             query?: never;
             header?: never;
@@ -2049,7 +2154,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/positions": {
+    "/positions": {
         parameters: {
             query?: never;
             header?: never;
@@ -2067,7 +2172,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/positions/{id}": {
+    "/positions/{position_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2086,7 +2191,7 @@ export interface paths {
         patch: operations["organization-update-position"];
         trace?: never;
     };
-    "/iam/positions/{id}/members": {
+    "/positions/{position_id}/members": {
         parameters: {
             query?: never;
             header?: never;
@@ -2103,7 +2208,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/positions/{id}/members/{principal_id}": {
+    "/positions/{position_id}/members/{principal_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2121,7 +2226,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/principals": {
+    "/principals": {
         parameters: {
             query?: never;
             header?: never;
@@ -2139,7 +2244,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/principals/{id}": {
+    "/principals/{principal_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2157,7 +2262,7 @@ export interface paths {
         patch: operations["identity-update-principal"];
         trace?: never;
     };
-    "/iam/principals/{id}/suspension": {
+    "/principals/{principal_id}/suspension": {
         parameters: {
             query?: never;
             header?: never;
@@ -2175,7 +2280,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/relationships": {
+    "/relationships": {
         parameters: {
             query?: never;
             header?: never;
@@ -2194,7 +2299,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/requestable-roles": {
+    "/requestable-roles": {
         parameters: {
             query?: never;
             header?: never;
@@ -2211,7 +2316,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/roles": {
+    "/roles": {
         parameters: {
             query?: never;
             header?: never;
@@ -2229,7 +2334,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/roles/{role_id}": {
+    "/roles/{role_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2248,7 +2353,7 @@ export interface paths {
         patch: operations["iam-update-role"];
         trace?: never;
     };
-    "/iam/roles/{role_id}/data-scope": {
+    "/roles/{role_id}/data-scope": {
         parameters: {
             query?: never;
             header?: never;
@@ -2266,7 +2371,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/roles/{role_id}/directory-bindings": {
+    "/roles/{role_id}/directory-bindings": {
         parameters: {
             query?: never;
             header?: never;
@@ -2283,7 +2388,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}": {
+    "/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2301,7 +2406,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/roles/{role_id}/members": {
+    "/roles/{role_id}/members": {
         parameters: {
             query?: never;
             header?: never;
@@ -2318,7 +2423,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/roles/{role_id}/members/{subject}": {
+    "/roles/{role_id}/members/{subject}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2336,7 +2441,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/roles/{role_id}/permission-grants": {
+    "/roles/{role_id}/permission-grants": {
         parameters: {
             query?: never;
             header?: never;
@@ -2353,7 +2458,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/roles/{role_id}/permissions": {
+    "/roles/{role_id}/permissions": {
         parameters: {
             query?: never;
             header?: never;
@@ -2370,7 +2475,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/roles/{role_id}/permissions/{permission_code}": {
+    "/roles/{role_id}/permissions/{permission_code}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2388,7 +2493,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/roles/{role_id}/permissions/{permission_code}/condition": {
+    "/roles/{role_id}/permissions/{permission_code}/condition": {
         parameters: {
             query?: never;
             header?: never;
@@ -2406,7 +2511,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/saml/service-providers": {
+    "/saml-service-providers": {
         parameters: {
             query?: never;
             header?: never;
@@ -2424,7 +2529,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/saml/service-providers/{sp_id}": {
+    "/saml-service-providers/{sp_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2442,7 +2547,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/saml/signing-key/rotate": {
+    "/saml-signing-keys": {
         parameters: {
             query?: never;
             header?: never;
@@ -2459,7 +2564,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/scim/directories": {
+    "/scim-directories": {
         parameters: {
             query?: never;
             header?: never;
@@ -2477,7 +2582,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/scim/directories/{directory_id}": {
+    "/scim-directories/{directory_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2494,7 +2599,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/scim/directories/{directory_id}/credentials": {
+    "/scim-directories/{directory_id}/credentials": {
         parameters: {
             query?: never;
             header?: never;
@@ -2512,7 +2617,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/scim/directories/{directory_id}/credentials/{credential_id}": {
+    "/scim-directories/{directory_id}/credentials/{credential_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2529,7 +2634,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/scim/targets": {
+    "/scim-targets": {
         parameters: {
             query?: never;
             header?: never;
@@ -2547,7 +2652,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/scim/targets/{target_id}": {
+    "/scim-targets/{target_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2565,7 +2670,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/scim/targets/{target_id}/deprovision": {
+    "/scim-targets/{target_id}/deprovision": {
         parameters: {
             query?: never;
             header?: never;
@@ -2582,7 +2687,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/scim/targets/{target_id}/push": {
+    "/scim-targets/{target_id}/push": {
         parameters: {
             query?: never;
             header?: never;
@@ -2599,7 +2704,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/scim/targets/{target_id}/retire": {
+    "/scim-targets/{target_id}/retire": {
         parameters: {
             query?: never;
             header?: never;
@@ -2619,7 +2724,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/scope-model": {
+    "/scope-model": {
         parameters: {
             query?: never;
             header?: never;
@@ -2636,7 +2741,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/service-accounts": {
+    "/service-accounts": {
         parameters: {
             query?: never;
             header?: never;
@@ -2654,7 +2759,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/service-accounts/{id}": {
+    "/service-accounts/{service_account_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2673,7 +2778,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/service-accounts/{id}/credentials": {
+    "/service-accounts/{service_account_id}/credentials": {
         parameters: {
             query?: never;
             header?: never;
@@ -2691,7 +2796,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/service-accounts/{id}/credentials/{credential_id}": {
+    "/service-accounts/{service_account_id}/credentials/{credential_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2708,7 +2813,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/tenants": {
+    "/tenants": {
         parameters: {
             query?: never;
             header?: never;
@@ -2726,7 +2831,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/iam/tenants/{tenant_id}": {
+    "/tenants/{tenant_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2882,7 +2987,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/platform/iam/audit/archive-status": {
+    "/platform/audit/archive-status": {
         parameters: {
             query?: never;
             header?: never;
@@ -2899,7 +3004,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/platform/iam/audit/archives": {
+    "/platform/audit/archives": {
         parameters: {
             query?: never;
             header?: never;
@@ -2917,7 +3022,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/platform/iam/audit/archives/{id}/download": {
+    "/platform/audit/archives/{archive_id}/download": {
         parameters: {
             query?: never;
             header?: never;
@@ -2934,7 +3039,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/platform/iam/audit/archives/{id}/retry": {
+    "/platform/audit/archives/{archive_id}/retry": {
         parameters: {
             query?: never;
             header?: never;
@@ -2951,7 +3056,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/platform/iam/audit/archives/{id}/verify": {
+    "/platform/audit/archives/{archive_id}/verify": {
         parameters: {
             query?: never;
             header?: never;
@@ -2968,7 +3073,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/platform/iam/audit/retention": {
+    "/platform/audit/retention": {
         parameters: {
             query?: never;
             header?: never;
@@ -2985,7 +3090,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/platform/iam/closure-requests": {
+    "/platform/closure-requests": {
         parameters: {
             query?: never;
             header?: never;
@@ -3002,7 +3107,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/platform/iam/principals/{principal_id}/closure-request/processing": {
+    "/platform/principals/{principal_id}/closure-request/processing": {
         parameters: {
             query?: never;
             header?: never;
@@ -3019,7 +3124,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/platform/iam/principals/{principal_id}/closure-request/rejection": {
+    "/platform/principals/{principal_id}/closure-request/rejection": {
         parameters: {
             query?: never;
             header?: never;
@@ -3036,7 +3141,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/platform/iam/principals/{principal_id}/lifecycle": {
+    "/platform/principals/{principal_id}/lifecycle": {
         parameters: {
             query?: never;
             header?: never;
@@ -3056,7 +3161,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/platform/iam/principals/{principal_id}/lifecycle/anonymization": {
+    "/platform/principals/{principal_id}/lifecycle/anonymization": {
         parameters: {
             query?: never;
             header?: never;
@@ -3076,7 +3181,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/platform/iam/principals/{principal_id}/lifecycle/retention": {
+    "/platform/principals/{principal_id}/lifecycle/retention": {
         parameters: {
             query?: never;
             header?: never;
@@ -3096,7 +3201,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/platform/iam/principals/{principal_id}/suspension": {
+    "/platform/principals/{principal_id}/suspension": {
         parameters: {
             query?: never;
             header?: never;
@@ -3978,6 +4083,7 @@ export interface components {
             revoked: boolean;
         };
         CreateDepartmentInputBody: {
+            entity_id: string;
             name: string;
             parent_id?: string;
             /** Format: int64 */
@@ -4224,6 +4330,7 @@ export interface components {
             created_at: string;
             /** Format: int64 */
             depth: number;
+            entity_id?: string | null;
             id: string | null;
             name: string;
             parent_id?: string | null;
@@ -4745,6 +4852,58 @@ export interface components {
             code: number;
             /** @description response payload; null on error */
             data: components["schemas"]["FieldConstraint"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeFileChildrenPage: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["FileChildrenPage"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeFileEntryView: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["FileEntryView"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeFilePage: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["FilePage"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
+        EnvelopeFileTrashResult: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["FileTrashResult"];
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -5601,6 +5760,19 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
+        EnvelopeOperationResult: {
+            /**
+             * Format: int64
+             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
+             */
+            code: number;
+            /** @description response payload; null on error */
+            data: components["schemas"]["OperationResult"];
+            /** @description human-readable status; "ok" on success */
+            message: string;
+            /** @description request metadata */
+            meta: components["schemas"]["Meta"];
+        };
         EnvelopePasskey: {
             /**
              * Format: int64
@@ -6095,6 +6267,70 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        FileChildrenPage: {
+            items: components["schemas"]["FileEntryView"][] | null;
+            next_after?: string;
+            path: components["schemas"]["FilePathView"][] | null;
+        };
+        FileEntryView: {
+            department_id?: string;
+            detected_type?: string;
+            entity_id?: string;
+            extension?: string;
+            id: string | null;
+            kind: string;
+            name: string;
+            principal_id?: string;
+            restore_path?: components["schemas"]["FilePathView"][] | null;
+            /** Format: int64 */
+            revision: number;
+            scope?: string;
+            /** Format: int64 */
+            size?: number;
+            tenant_id?: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: int64 */
+            version?: number;
+        };
+        FileOperationDecisionInput: {
+            conflict_key: string;
+            /** @enum {string} */
+            policy: "overwrite" | "merge" | "replace" | "skip" | "rename";
+        };
+        FileOperationInputBody: {
+            /** @enum {string} */
+            action: "copy" | "move";
+            decisions?: components["schemas"]["FileOperationDecisionInput"][] | null;
+            destination_id: string;
+            /** @enum {string} */
+            directory_policy: "ask" | "merge" | "replace" | "skip" | "rename";
+            /** @enum {string} */
+            file_policy: "ask" | "overwrite" | "skip" | "rename";
+            /** Format: int64 */
+            observed_revision?: number;
+            sources: string[] | null;
+            /** @enum {string} */
+            type_policy: "ask" | "replace" | "skip" | "rename";
+        };
+        FilePage: {
+            items: components["schemas"]["FileEntryView"][] | null;
+            next_after?: string;
+        };
+        FilePathView: {
+            id: string | null;
+            name: string;
+        };
+        FileTrashResult: {
+            batch_id: string | null;
+        };
+        FileUpdateBody: {
+            name?: string;
+            /** Format: int64 */
+            revision: number;
+            /** @enum {string} */
+            state?: "active";
+        };
         FilterCapability: {
             field: string;
             /** Format: int64 */
@@ -6413,6 +6649,19 @@ export interface components {
             items: components["schemas"]["MyMembership"][] | null;
             /** Format: int64 */
             total: number;
+        };
+        OperationResult: {
+            /** Format: int64 */
+            created: number;
+            /** Format: int64 */
+            moved: number;
+            /** Format: int64 */
+            overwritten: number;
+            /** Format: int64 */
+            recycled: number;
+            roots: (string | null)[] | null;
+            /** Format: int64 */
+            skipped: number;
         };
         Page: {
             /**
@@ -11187,6 +11436,851 @@ export interface operations {
                 };
             };
             /** @description Federation storage unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "create-file-operation": {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id"?: string;
+                /** @description Authorized entity resource boundary; required with X-Tenant-Id */
+                "X-Entity-Id"?: string;
+                /** @description stable key for one actor, space, and canonical request */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FileOperationInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeOperationResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "list-files": {
+        parameters: {
+            query?: {
+                /** @description exclusive snowflake cursor returned by the previous page */
+                after?: string;
+                limit?: number;
+                /** @description active roots or authorized recycle-bin entries */
+                state?: "active" | "trashed";
+            };
+            header?: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id"?: string;
+                /** @description Authorized entity resource boundary; required with X-Tenant-Id */
+                "X-Entity-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeFilePage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "create-file": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id"?: string;
+                /** @description Authorized entity resource boundary; required with X-Tenant-Id */
+                "X-Entity-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file?: string;
+                    /** @enum {string} */
+                    kind: "file" | "directory";
+                    name?: string;
+                    parent_id?: string;
+                    /** @enum {string} */
+                    scope?: "account" | "personal";
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeFileEntryView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "get-file": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id"?: string;
+                /** @description Authorized entity resource boundary; required with X-Tenant-Id */
+                "X-Entity-Id"?: string;
+            };
+            path: {
+                /** @description globally unique file identifier */
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeFileEntryView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "delete-file": {
+        parameters: {
+            query?: {
+                revision?: number;
+            };
+            header?: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id"?: string;
+                /** @description Authorized entity resource boundary; required with X-Tenant-Id */
+                "X-Entity-Id"?: string;
+            };
+            path: {
+                /** @description file identifier */
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeFileTrashResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "update-file": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id"?: string;
+                /** @description Authorized entity resource boundary; required with X-Tenant-Id */
+                "X-Entity-Id"?: string;
+            };
+            path: {
+                /** @description file identifier */
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FileUpdateBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeFileEntryView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "list-file-items": {
+        parameters: {
+            query?: {
+                /** @description exclusive snowflake cursor returned by the previous page */
+                after?: string;
+                limit?: number;
+            };
+            header?: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id"?: string;
+                /** @description Authorized entity resource boundary; required with X-Tenant-Id */
+                "X-Entity-Id"?: string;
+            };
+            path: {
+                /** @description globally unique directory file identifier */
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeFileChildrenPage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "download-file": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id"?: string;
+                /** @description Authorized entity resource boundary; required with X-Tenant-Id */
+                "X-Entity-Id"?: string;
+            };
+            path: {
+                /** @description globally unique file identifier */
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    "get-file-by-path": {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Tenant authorization boundary */
+                "X-Tenant-Id"?: string;
+                /** @description Authorized entity resource boundary; required with X-Tenant-Id */
+                "X-Entity-Id"?: string;
+            };
+            path: {
+                /** @description globally unique authorized root file identifier */
+                root_file_id: string;
+                /** @description slash-separated path relative to the selected root */
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvelopeFileEntryView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;

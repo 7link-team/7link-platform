@@ -154,7 +154,7 @@ export function DirectoryRoleBindingsDialog({
                   </label>
                   <Button variant="ghost" size="icon" asChild>
                     <Link
-                      to={`/iam/roles?role=${encodeURIComponent(role.id)}&view=assignments`}
+                      to={`/roles?role=${encodeURIComponent(role.id)}&view=assignments`}
                       aria-label={t("openNamedRole", { name: role.name })}
                       title={t("openNamedRole", { name: role.name })}
                       data-open-role-id={role.id}

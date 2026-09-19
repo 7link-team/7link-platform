@@ -34,16 +34,16 @@ func TestFieldPolicyUpgradeKeepsPublishedMilestoneDependencies(t *testing.T) {
 
 func (f *iamTenantFixture) runTodoDataPermissions(t *testing.T) {
 	createRole := func(tenant, subject guid.ID, token, name, scope string) core.APIRole {
-		response := f.request(t, http.MethodPost, "/iam/roles", tenant, token, map[string]any{"name": name}, nil)
+		response := f.request(t, http.MethodPost, "/roles", tenant, token, map[string]any{"name": name}, nil)
 		requireStatus(t, http.StatusCreated, response)
 		role := decodeEnvelope[core.APIRole](t, response)
 		for _, verb := range []string{"create", "view", "update", "delete", "export", "import"} {
-			response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID.String()+"/permissions/todo_"+verb, tenant, token, map[string]any{}, nil)
+			response = f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/permissions/todo_"+verb, tenant, token, map[string]any{}, nil)
 			requireStatus(t, http.StatusOK, response)
 		}
-		response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID.String()+"/data-scope", tenant, token, map[string]any{"scope": scope}, nil)
+		response = f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/data-scope", tenant, token, map[string]any{"scope": scope}, nil)
 		requireStatus(t, http.StatusOK, response)
-		response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID.String()+"/members/"+subject.String(), tenant, token, map[string]any{}, nil)
+		response = f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/members/"+subject.String(), tenant, token, map[string]any{}, nil)
 		requireStatus(t, http.StatusOK, response)
 		return role
 	}
@@ -55,18 +55,20 @@ func (f *iamTenantFixture) runTodoDataPermissions(t *testing.T) {
 		if parent != "" {
 			body["parent_id"] = parent
 		}
-		response := f.request(t, http.MethodPost, "/iam/entities", tenant, token, body, nil)
+		response := f.request(t, http.MethodPost, "/entities", tenant, token, body, nil)
 		requireStatus(t, http.StatusCreated, response)
 		return decodeEnvelope[core.APIEntity](t, response)
 	}
 	a := createEntity(iamTenantA, f.tokenA, "Task entity A", "")
 	b := createEntity(iamTenantB, f.tokenB, "Task entity B", "")
 	headers := map[string]string{authz.EntityHeader: b.ID.String()}
-	departmentResponse := f.request(t, http.MethodPost, "/iam/departments", iamTenantB, f.tokenB, map[string]any{"name": "Task department", "status": "active"}, nil)
+	departmentResponse := f.request(t, http.MethodPost, "/departments", iamTenantB, f.tokenB, map[string]any{
+		"entity_id": b.ID.String(), "name": "Task department", "status": "active",
+	}, nil)
 	requireStatus(t, http.StatusCreated, departmentResponse)
 	department := decodeEnvelope[organization.Department](t, departmentResponse)
 	for _, principal := range []guid.ID{f.adminB.ID, f.requesterB.ID} {
-		response := f.request(t, http.MethodPatch, "/iam/members/"+principal.String(), iamTenantB, f.tokenB, map[string]any{"department_id": department.ID.String()}, nil)
+		response := f.request(t, http.MethodPatch, "/members/"+principal.String(), iamTenantB, f.tokenB, map[string]any{"department_id": department.ID.String()}, nil)
 		requireStatus(t, http.StatusOK, response)
 	}
 	createTask := func(tenant guid.ID, token, title string, selectors map[string]string) todo.View {
@@ -109,40 +111,42 @@ func (f *iamTenantFixture) runTodoDataPermissions(t *testing.T) {
 	assert.Equal(t, `"4"`, response.Header.Get("ETag"))
 	assert.Equal(t, int64(1), f.count(t, "todos", "id = ? AND version = 4 AND description = ? AND updated_by = ? AND deleted_at IS NULL", mine.ID, "updated by owner", f.requesterB.ID))
 
-	response = f.request(t, http.MethodPut, "/iam/roles/"+self.ID.String()+"/data-scope", iamTenantB, f.tokenB, map[string]any{"scope": "department"}, nil)
+	response = f.request(t, http.MethodPut, "/roles/"+self.ID.String()+"/data-scope", iamTenantB, f.tokenB, map[string]any{"scope": "department"}, nil)
 	requireStatus(t, http.StatusOK, response)
 	response = f.request(t, http.MethodGet, "/todos", iamTenantB, f.requester, nil, headers)
 	requireStatus(t, http.StatusOK, response)
 	assert.Len(t, decodeEnvelope[[]todo.View](t, response), 2)
-	childDepartmentResponse := f.request(t, http.MethodPost, "/iam/departments", iamTenantB, f.tokenB, map[string]any{"name": "Task child department", "parent_id": department.ID.String(), "status": "active"}, nil)
+	childDepartmentResponse := f.request(t, http.MethodPost, "/departments", iamTenantB, f.tokenB, map[string]any{
+		"entity_id": b.ID.String(), "name": "Task child department", "parent_id": department.ID.String(), "status": "active",
+	}, nil)
 	requireStatus(t, http.StatusCreated, childDepartmentResponse)
 	childDepartment := decodeEnvelope[organization.Department](t, childDepartmentResponse)
-	response = f.request(t, http.MethodPatch, "/iam/members/"+f.adminB.ID.String(), iamTenantB, f.tokenB, map[string]any{"department_id": childDepartment.ID.String()}, nil)
+	response = f.request(t, http.MethodPatch, "/members/"+f.adminB.ID.String(), iamTenantB, f.tokenB, map[string]any{"department_id": childDepartment.ID.String()}, nil)
 	requireStatus(t, http.StatusOK, response)
 	createTask(iamTenantB, f.tokenB, "child department task", headers)
 	response = f.request(t, http.MethodGet, "/todos", iamTenantB, f.requester, nil, headers)
 	requireStatus(t, http.StatusOK, response)
 	assert.Len(t, decodeEnvelope[[]todo.View](t, response), 2)
-	response = f.request(t, http.MethodPut, "/iam/roles/"+self.ID.String()+"/data-scope", iamTenantB, f.tokenB, map[string]any{"scope": "department_and_descendants"}, nil)
+	response = f.request(t, http.MethodPut, "/roles/"+self.ID.String()+"/data-scope", iamTenantB, f.tokenB, map[string]any{"scope": "department_and_descendants"}, nil)
 	requireStatus(t, http.StatusOK, response)
 	response = f.request(t, http.MethodGet, "/todos", iamTenantB, f.requester, nil, headers)
 	requireStatus(t, http.StatusOK, response)
 	assert.Len(t, decodeEnvelope[[]todo.View](t, response), 3)
 
-	denyPath := "/iam/entities/" + b.ID.String() + "/role-bindings/" + self.ID.String() + "/" + f.requesterB.ID.String()
+	denyPath := "/entities/" + b.ID.String() + "/role-bindings/" + self.ID.String() + "/" + f.requesterB.ID.String()
 	response = f.request(t, http.MethodPut, denyPath, iamTenantB, f.tokenB, map[string]any{"effect": "deny"}, nil)
 	requireStatus(t, http.StatusOK, response)
 	requireStatus(t, http.StatusForbidden, f.request(t, http.MethodGet, "/todos", iamTenantB, f.requester, nil, headers))
 	requireStatus(t, http.StatusForbidden, f.request(t, http.MethodPost, "/todos", iamTenantB, f.requester, map[string]any{"title": "denied"}, headers))
 	response = f.request(t, http.MethodDelete, denyPath, iamTenantB, f.tokenB, nil, nil)
 	requireStatus(t, http.StatusOK, response)
-	response = f.request(t, http.MethodDelete, "/iam/roles/"+self.ID.String()+"/permissions/todo_view", iamTenantB, f.tokenB, nil, nil)
+	response = f.request(t, http.MethodDelete, "/roles/"+self.ID.String()+"/permissions/todo_view", iamTenantB, f.tokenB, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 	requireStatus(t, http.StatusForbidden, f.request(t, http.MethodGet, "/todos", iamTenantB, f.requester, nil, headers))
 	assert.Equal(t, int64(1), f.count(t, "todos", "id = ? AND version = 1 AND deleted_at IS NULL", foreign.ID))
-	response = f.request(t, http.MethodPut, "/iam/roles/"+self.ID.String()+"/permissions/todo_view", iamTenantB, f.tokenB, map[string]any{}, nil)
+	response = f.request(t, http.MethodPut, "/roles/"+self.ID.String()+"/permissions/todo_view", iamTenantB, f.tokenB, map[string]any{}, nil)
 	requireStatus(t, http.StatusOK, response)
-	response = f.request(t, http.MethodDelete, "/iam/roles/"+self.ID.String()+"/members/"+f.requesterB.ID.String(), iamTenantB, f.tokenB, nil, nil)
+	response = f.request(t, http.MethodDelete, "/roles/"+self.ID.String()+"/members/"+f.requesterB.ID.String(), iamTenantB, f.tokenB, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 	response = f.request(t, http.MethodPut, denyPath, iamTenantB, f.tokenB, map[string]any{"effect": "allow"}, nil)
 	requireStatus(t, http.StatusOK, response)
@@ -152,7 +156,7 @@ func (f *iamTenantFixture) runTodoDataPermissions(t *testing.T) {
 	response = f.request(t, http.MethodGet, "/todos", iamTenantB, f.requester, nil, childHeaders)
 	requireStatus(t, http.StatusOK, response)
 	assert.Len(t, decodeEnvelope[[]todo.View](t, response), 1)
-	childDeny := "/iam/entities/" + childEntity.ID.String() + "/role-bindings/" + self.ID.String() + "/" + f.requesterB.ID.String()
+	childDeny := "/entities/" + childEntity.ID.String() + "/role-bindings/" + self.ID.String() + "/" + f.requesterB.ID.String()
 	response = f.request(t, http.MethodPut, childDeny, iamTenantB, f.tokenB, map[string]any{"effect": "deny"}, nil)
 	requireStatus(t, http.StatusOK, response)
 	requireStatus(t, http.StatusForbidden, f.request(t, http.MethodGet, "/todos", iamTenantB, f.requester, nil, childHeaders))
@@ -171,7 +175,7 @@ func (f *iamTenantFixture) runTodoDataPermissions(t *testing.T) {
 	requireStatus(t, http.StatusOK, response)
 	assert.Equal(t, 2, decodeEnvelope[todo.ImportReport](t, response).Imported)
 	assert.Equal(t, int64(2), f.count(t, "todos", "title LIKE ? AND tenant_id = ? AND entity_id = ? AND created_by = ? AND department_id = ?", "imported task %", iamTenantB, b.ID, f.requesterB.ID, department.ID))
-	response = f.request(t, http.MethodDelete, "/iam/roles/"+self.ID.String()+"/permissions/todo_import", iamTenantB, f.tokenB, nil, nil)
+	response = f.request(t, http.MethodDelete, "/roles/"+self.ID.String()+"/permissions/todo_import", iamTenantB, f.tokenB, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 	requireStatus(t, http.StatusForbidden, upload())
 	assert.Equal(t, int64(2), f.count(t, "todos", "title LIKE ?", "imported task %"))
@@ -182,7 +186,7 @@ func (f *iamTenantFixture) runTodoDataPermissions(t *testing.T) {
 func (f *iamTenantFixture) verifyTodoFieldPolicies(t *testing.T, entity, child, role string, taskID guid.ID) {
 	headers := map[string]string{authz.EntityHeader: entity}
 	childHeaders := map[string]string{authz.EntityHeader: child}
-	policyPath := "/iam/field-policies/todo/description"
+	policyPath := "/field-policies/todo/description"
 	roleID, err := guid.Parse(role)
 	require.NoError(t, err)
 	policy := authz.FieldPolicy{
@@ -205,10 +209,10 @@ func (f *iamTenantFixture) verifyTodoFieldPolicies(t *testing.T, entity, child, 
 	requireStatus(t, http.StatusCreated, response)
 	childTask := decodeEnvelope[todo.View](t, response)
 	assert.Equal(t, "inherited secret", *childTask.Description, "parent entity role is inherited by the field evaluator")
-	response = f.request(t, http.MethodGet, "/iam/fields/effective?resource=todo&entity_id="+child, iamTenantB, f.requester, nil, nil)
+	response = f.request(t, http.MethodGet, "/effective-fields?resource=todo&entity_id="+child, iamTenantB, f.requester, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 	assert.Equal(t, "allow", decodeEnvelope[authz.FieldConstraint](t, response).Fields["description"].Read)
-	response = f.request(t, http.MethodGet, "/iam/field-policies?resource=todo", iamTenantA, f.tokenA, nil, nil)
+	response = f.request(t, http.MethodGet, "/field-policies?resource=todo", iamTenantA, f.tokenA, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 	for _, item := range decodeEnvelope[[]core.ManagedFieldPolicy](t, response) {
 		assert.Zero(t, item.Version, "another tenant has no policy override")

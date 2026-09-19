@@ -45,7 +45,7 @@ func TestModuleReturnsJSONAndRegistersOpenAPI(t *testing.T) {
 		}
 	}
 	assert.Contains(t, api.OpenAPI().Paths, Path)
-	assert.Equal(t, []string{"Diagnostics"}, api.OpenAPI().Paths[Path].Get.Tags)
+	assert.Equal(t, []string{"diagnostics"}, api.OpenAPI().Paths[Path].Get.Tags)
 	assert.Contains(t, api.OpenAPI().Paths, LegacyPath)
 	assert.True(t, api.OpenAPI().Paths[LegacyPath].Get.Deprecated)
 }

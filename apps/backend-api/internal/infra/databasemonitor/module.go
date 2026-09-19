@@ -348,7 +348,7 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 		Path:        Path,
 		Summary:     "Inspect database datasources",
 		Description: "Returns redacted datasource health and connection-pool diagnostics.",
-		Tags:        []string{"Diagnostics"},
+		Tags:        []string{"diagnostics"},
 		Responses: map[string]*huma.Response{
 			"200": {
 				Description: "Datasource diagnostics",
@@ -363,7 +363,7 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 		Path:        SQLPath,
 		Summary:     "Inspect SQL execution statistics",
 		Description: "Returns bounded, parameter-redacted SQL fingerprint and slow-query statistics.",
-		Tags:        []string{"Diagnostics"},
+		Tags:        []string{"diagnostics"},
 		Responses: map[string]*huma.Response{
 			"200": {
 				Description: "SQL diagnostics",

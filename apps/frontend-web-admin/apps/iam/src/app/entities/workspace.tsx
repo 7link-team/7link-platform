@@ -27,7 +27,7 @@ export default function EntityWorkspace() {
   if (!["overview", "roles", "resources", "manage"].includes(view))
     return (
       <Navigate
-        to={`/iam/entities/${encodeURIComponent(entityID)}/overview`}
+        to={`/entities/${encodeURIComponent(entityID)}/overview`}
         replace
       />
     )
@@ -99,7 +99,7 @@ function EntityDetails({ entityID, view }: { entityID: string; view: string }) {
         action={
           <Link
             className="inline-flex min-h-11 items-center rounded-md border px-3 text-sm hover:bg-accent"
-            to={`/iam/entities/${encodeURIComponent(entityID)}/manage`}
+            to={`/entities/${encodeURIComponent(entityID)}/manage`}
           >
             {t("entitySettings")}
           </Link>

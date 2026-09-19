@@ -2,17 +2,50 @@ package files
 
 import (
 	"7link.com/platform/internal/files/query"
+	"7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	"7link.com/platform/pkg/extension/authz"
 	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/module"
 	"context"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 	"path/filepath"
 	"testing"
 	"time"
 )
+
+func TestFileModuleWiresItsAuthorizationCatalog(t *testing.T) {
+	runtime := appenv.NewRuntime(appenv.NewIdentity("files-wiring", "1"))
+	instance := NewModule(runtime, Config{})
+	registry := authz.MustRegistry()
+	services := module.NewServices()
+	require.NoError(t, module.Provide[*authz.Registrar](services, authz.NewUnboundRegistrar(registry)))
+	require.NoError(t, module.Provide[core.EntityConstraintOn](services, func(context.Context, *gorm.DB, guid.ID, guid.ID, string, guid.ID) (authz.DataConstraint, error) {
+		return authz.DataConstraint{}, nil
+	}))
+	require.NoError(t, module.Provide[core.AuthorizationSubjectsOn](services, func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID) (core.AuthorizationSubjects, error) {
+		return core.AuthorizationSubjects{}, nil
+	}))
+	require.NoError(t, module.Provide[core.AuthorizationReferencesOn](services, func(context.Context, *gorm.DB, guid.ID, core.AuthorizationReferences) (bool, error) {
+		return false, nil
+	}))
+	require.NoError(t, module.Provide[guid.Source](services, &operationServiceIDs{}))
+	require.NoError(t, module.Provide[audit.Appender](services, func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil }))
+	require.NoError(t, services.Seal())
+	require.Equal(t, []string{guid.Name, audit.Name, core.Name}, instance.ModuleDependencies())
+	require.NoError(t, instance.InjectServices(services))
+	require.NotNil(t, instance.operations)
+	for _, action := range fileAuthorizationActions() {
+		registered, ok := registry.Find(action.Code)
+		require.True(t, ok, action.Code)
+		require.Equal(t, action, registered)
+	}
+	require.ErrorContains(t, NewModule(runtime, Config{}).InjectServices(services), "already registered")
+}
 
 func TestModuleProvidesConfiguredExtensibleDriver(t *testing.T) {
 	runtime := appenv.NewRuntime(appenv.NewIdentity("files-test", "1"))
@@ -26,6 +59,12 @@ func TestModuleProvidesConfiguredExtensibleDriver(t *testing.T) {
 	driver, err := module.Resolve[Driver](services)
 	require.NoError(t, err)
 	require.NotNil(t, driver)
+	provisioner, err := module.Resolve[core.FileRootProvisioner](services)
+	require.NoError(t, err)
+	require.NotNil(t, provisioner)
+	contentChecker, err := module.Resolve[core.FileRootContentChecker](services)
+	require.NoError(t, err)
+	require.NotNil(t, contentChecker)
 	require.NoError(t, m.Initialize(t.Context()))
 	require.Error(t, m.RegisterDriver("late", func(c DriverConfig) (Driver, error) { return NewLocal(c["root"]) }))
 	require.ErrorIs(t, (&Module{}).Initialize(t.Context()), ErrUnsupported)
@@ -65,7 +104,7 @@ func TestFileModuleRefusesDuplicateCapabilities(t *testing.T) {
 	require.NoError(t, err)
 	_, err = NewAccountObjects(driver, "local", "invalid-prefix;")
 	require.Error(t, err)
-	for _, capability := range []string{"driver", "accounts", "legacy"} {
+	for _, capability := range []string{"driver", "accounts", "root-provisioner", "root-content", "legacy"} {
 		t.Run(capability, func(t *testing.T) {
 			m := NewModule(runtime, Config{})
 			services := module.NewServices()
@@ -74,6 +113,14 @@ func TestFileModuleRefusesDuplicateCapabilities(t *testing.T) {
 				require.NoError(t, module.Provide[Driver](services, driver))
 			case "accounts":
 				require.NoError(t, module.Provide[*AccountObjects](services, accounts))
+			case "root-provisioner":
+				require.NoError(t, module.Provide[core.FileRootProvisioner](services, func(context.Context, *gorm.DB, core.FileRootProvisionInput, time.Time) (guid.ID, error) {
+					return 0, nil
+				}))
+			case "root-content":
+				require.NoError(t, module.Provide[core.FileRootContentChecker](services, func(context.Context, *gorm.DB, core.FileRootProvisionInput) (bool, error) {
+					return false, nil
+				}))
 			case "legacy":
 				require.NoError(t, module.Provide[LegacyImporter](services, LegacyImporter(func(context.Context, string) error { return nil })))
 			}

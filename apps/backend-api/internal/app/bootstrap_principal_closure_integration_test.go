@@ -42,7 +42,7 @@ func TestPrincipalClosureExternalDatabase(t *testing.T) {
 
 func (f *iamTenantFixture) closureCookie(t *testing.T, principal identity.Principal) string {
 	t.Helper()
-	response := f.request(t, http.MethodPost, "/authn/sessions", 0, "", map[string]any{
+	response := f.request(t, http.MethodPost, "/sessions", 0, "", map[string]any{
 		"login_name": principal.LoginName, "password": "correct horse battery staple",
 	}, map[string]string{"Origin": "https://app.example.test"})
 	requireStatus(t, http.StatusOK, response)
@@ -61,13 +61,13 @@ func (f *iamTenantFixture) closureProof(t *testing.T, cookie, purpose, target st
 
 func (f *iamTenantFixture) closurePAT(t *testing.T, principal identity.Principal, cookie string, tenant guid.ID) authn.PersonalTokenCreated {
 	t.Helper()
-	roleResponse := f.request(t, http.MethodPost, "/iam/roles", tenant, f.tokenB, map[string]any{
+	roleResponse := f.request(t, http.MethodPost, "/roles", tenant, f.tokenB, map[string]any{
 		"name": "Closure test access " + principal.ID.String(),
 	}, nil)
 	requireStatus(t, http.StatusCreated, roleResponse)
 	role := decodeEnvelope[core.APIRole](t, roleResponse)
-	requireStatus(t, http.StatusOK, f.request(t, http.MethodPut, "/iam/roles/"+role.ID.String()+"/permissions/entity_view", tenant, f.tokenB, nil, nil))
-	requireStatus(t, http.StatusOK, f.request(t, http.MethodPut, "/iam/roles/"+role.ID.String()+"/members/"+principal.ID.String(), tenant, f.tokenB, nil, nil))
+	requireStatus(t, http.StatusOK, f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/permissions/entity_view", tenant, f.tokenB, nil, nil))
+	requireStatus(t, http.StatusOK, f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/members/"+principal.ID.String(), tenant, f.tokenB, nil, nil))
 	service := requireIAMModule[*authn.Module](t, f, authn.Name).Service
 	prepared, err := service.PreparePersonalToken(t.Context(), cookie, authn.PersonalTokenRequest{
 		Name: "Closure verification", TenantID: tenant, Permissions: []string{"entity_view"}, ExpiresAt: time.Now().UTC().Add(time.Hour),
@@ -76,7 +76,7 @@ func (f *iamTenantFixture) closurePAT(t *testing.T, principal identity.Principal
 	proof := f.closureProof(t, cookie, "personal_token_create", prepared.Target)
 	created, err := service.CreatePersonalToken(t.Context(), cookie, proof, prepared.Request)
 	require.NoError(t, err)
-	requireStatus(t, http.StatusOK, f.request(t, http.MethodGet, "/iam/entities", tenant, created.Token, nil, nil))
+	requireStatus(t, http.StatusOK, f.request(t, http.MethodGet, "/entities", tenant, created.Token, nil, nil))
 	return created
 }
 
@@ -163,13 +163,13 @@ func (f *iamTenantFixture) runPrincipalClosure(t *testing.T) {
 		require.Error(t, err)
 		_, err = authnService.Authenticate(t.Context(), "Bearer "+tokens.AccessToken, "")
 		require.Error(t, err)
-		requireStatus(t, http.StatusUnauthorized, f.request(t, http.MethodGet, "/iam/entities", iamTenantB, pat.Token, nil, nil))
+		requireStatus(t, http.StatusUnauthorized, f.request(t, http.MethodGet, "/entities", iamTenantB, pat.Token, nil, nil))
 		_, err = oauthService.Token(t.Context(), url.Values{"grant_type": {"refresh_token"}, "client_id": {client.ID}, "client_secret": {secret}, "refresh_token": {tokens.RefreshToken}}, "")
 		require.Error(t, err)
 	})
 	t.Run("last-administrator-rolls-back", func(t *testing.T) {
 		principal := f.createPrincipal(t, requireIAMModule[*identity.Module](t, f, identity.Name), iamTenantB, "closure-owner", "closure-owner@example.test")
-		tenantResponse := f.request(t, http.MethodPost, "/iam/tenants", 0, f.tokenA, map[string]any{"slug": "closure-owned", "name": "Closure owned", "owner_principal_id": principal.ID.String()}, nil)
+		tenantResponse := f.request(t, http.MethodPost, "/tenants", 0, f.tokenA, map[string]any{"slug": "closure-owned", "name": "Closure owned", "owner_principal_id": principal.ID.String()}, nil)
 		requireStatus(t, http.StatusCreated, tenantResponse)
 		tenant := decodeEnvelope[organization.Tenant](t, tenantResponse)
 		cookie := f.closureCookie(t, principal)
@@ -189,7 +189,7 @@ func (f *iamTenantFixture) runPrincipalClosure(t *testing.T) {
 		_, err = authnService.Authenticate(t.Context(), "Bearer "+tokens.AccessToken, "")
 		require.NoError(t, err)
 		leaveProof := f.closureProof(t, cookie, "tenant_leave", tenant.ID.String())
-		response := f.request(t, http.MethodPost, "/iam/me/memberships/"+tenant.ID.String()+"/leave", 0, "", map[string]any{"proof": leaveProof}, map[string]string{"Cookie": cookie, "Origin": "https://app.example.test"})
+		response := f.request(t, http.MethodPost, "/me/memberships/"+tenant.ID.String()+"/leave", 0, "", map[string]any{"proof": leaveProof}, map[string]string{"Cookie": cookie, "Origin": "https://app.example.test"})
 		requireStatus(t, http.StatusConflict, response)
 		sum := sha256.Sum256([]byte(leaveProof))
 		require.EqualValues(t, 1, f.count(t, "iam_reauth_challenges", "id_hash = ? AND consumed_at IS NULL", hex.EncodeToString(sum[:])))
@@ -245,7 +245,7 @@ func (f *iamTenantFixture) runClosureAdmissionInterleavings(t *testing.T) {
 				}
 				if operation == "leave" {
 					proof := f.closureProof(t, cookie, "tenant_leave", iamTenantB.String())
-					requireStatus(t, http.StatusOK, f.request(t, http.MethodPost, "/iam/me/memberships/"+iamTenantB.String()+"/leave", 0, "", map[string]any{"proof": proof}, map[string]string{"Cookie": cookie, "Origin": "https://app.example.test"}))
+					requireStatus(t, http.StatusOK, f.request(t, http.MethodPost, "/me/memberships/"+iamTenantB.String()+"/leave", 0, "", map[string]any{"proof": proof}, map[string]string{"Cookie": cookie, "Origin": "https://app.example.test"}))
 				} else {
 					identityService := requireIAMModule[*identity.Module](t, f, identity.Name).Service
 					proof := f.closureProof(t, cookie, "principal_close", principal.ID.String())
@@ -266,7 +266,7 @@ func (f *iamTenantFixture) runClosureAdmissionInterleavings(t *testing.T) {
 					require.NoError(t, f.db.Table(f.table("iam_tenant_members")).Where("principal_id = ? AND tenant_id = ?", principal.ID, iamTenantB).Update("status", "active").Error)
 					_, err = authenticator.Authenticate(t.Context(), "Bearer "+oldTokens.AccessToken, "")
 					require.Error(t, err, "rejoining cannot revive the departed tenant's grant")
-					requireStatus(t, http.StatusUnauthorized, f.request(t, http.MethodGet, "/iam/entities", iamTenantB, pat.Token, nil, nil))
+					requireStatus(t, http.StatusUnauthorized, f.request(t, http.MethodGet, "/entities", iamTenantB, pat.Token, nil, nil))
 				}
 			})
 		}

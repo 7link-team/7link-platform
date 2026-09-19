@@ -45,6 +45,8 @@ type Module struct {
 	ids              guid.Source
 	appender         audit.Appender
 	bootstrap        core.TenantBootstrapper
+	roots            core.FileRootProvisioner
+	rootContent      core.FileRootContentChecker
 	owners           identity.TenantOwnerLookup
 	directorySources core.DirectoryAuthorizationSourceConnector
 	// foreign is the one holder of the table names core published to
@@ -117,6 +119,14 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve organization tenant bootstrapper: %w", err)
 	}
+	roots, err := module.Resolve[core.FileRootProvisioner](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return fmt.Errorf("resolve organization file root provisioner: %w", err)
+	}
+	rootContent, err := module.Resolve[core.FileRootContentChecker](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return fmt.Errorf("resolve organization file root content checker: %w", err)
+	}
 	owners, err := module.Resolve[identity.TenantOwnerLookup](services)
 	if err != nil {
 		return fmt.Errorf("resolve organization tenant owner lookup: %w", err)
@@ -173,7 +183,7 @@ func (m *Module) InjectServices(services *module.Services) error {
 		return fmt.Errorf("bind identity directory table names: %w", err)
 	}
 	m.registrar = registrar
-	m.bootstrap, m.owners = bootstrap, owners
+	m.bootstrap, m.roots, m.rootContent, m.owners = bootstrap, roots, rootContent, owners
 	m.members, m.administrators = members, administrators
 	m.credentials, m.createPrincipal = credentials, createPrincipal
 	m.ids, m.appender = ids, appender
@@ -199,6 +209,8 @@ func (m *Module) Initialize(context.Context) error {
 	}
 	m.service = NewService(m.runtime, m.appender, m.ids)
 	m.tenants = NewTenantService(m.runtime, m.appender, m.ids, m.bootstrap, m.owners)
+	m.service.roots, m.tenants.roots = m.roots, m.roots
+	m.service.rootContent = m.rootContent
 	m.positions = NewPositionService(m.runtime, m.appender, m.members, m.administrators, m.ids)
 	m.groups = NewGroupService(m.runtime, m.appender, m.members, m.administrators, m.ids)
 	m.invitations = NewInvitationService(m.runtime, m.appender, m.ids, m.credentials, m.createPrincipal)

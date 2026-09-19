@@ -2,7 +2,10 @@ package files
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"errors"
 	"github.com/stretchr/testify/require"
+	"hash"
 	"net/http"
 	"strings"
 	"testing"
@@ -67,4 +70,24 @@ func TestRejectCorruptAndStaleChecksumState(t *testing.T) {
 	}
 	_, err = RestoreChecksums(state, 2)
 	require.ErrorIs(t, err, ErrCheckpoint)
+}
+
+type opaqueCheckpointHash struct{ hash.Hash }
+
+type failingCheckpointHash struct {
+	hash.Hash
+	err error
+}
+
+func (h failingCheckpointHash) MarshalBinary() ([]byte, error) { return nil, h.err }
+
+func TestChecksumCheckpointFailsClosedWithoutStateSerialization(t *testing.T) {
+	c := NewChecksums()
+	c.hashes[0] = opaqueCheckpointHash{sha256.New()}
+	_, err := c.Checkpoint()
+	require.ErrorIs(t, err, ErrCheckpoint)
+	failed := errors.New("hash state serialization failed")
+	c.hashes[0] = failingCheckpointHash{Hash: sha256.New(), err: failed}
+	_, err = c.Checkpoint()
+	require.ErrorIs(t, err, failed)
 }

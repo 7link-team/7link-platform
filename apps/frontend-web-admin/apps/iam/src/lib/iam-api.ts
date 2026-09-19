@@ -1,6 +1,11 @@
 import type { components } from "./api-schema"
 
 export type GrantedConsent = components["schemas"]["GrantedConsent"]
+export type FilePage = components["schemas"]["FilePage"]
+export type FileChildrenPage = components["schemas"]["FileChildrenPage"]
+export type FileEntryView = components["schemas"]["FileEntryView"]
+export type FileTrashResult = components["schemas"]["FileTrashResult"]
+export type FileOperationResult = components["schemas"]["OperationResult"]
 
 export interface FieldDefinition {
   resource: string
@@ -633,6 +638,7 @@ export interface AuthorizationExplanation {
 export interface Department {
   id: string
   tenant_id: string
+  entity_id: string
   parent_id?: string
   name: string
   status: "active" | "disabled"
@@ -644,6 +650,7 @@ export interface Department {
 }
 
 export interface DepartmentInput {
+  entity_id: string
   parent_id?: string
   name: string
   status: "active" | "disabled"
@@ -1131,7 +1138,11 @@ async function requestEnvelopeWithBase<T>(
     headers.set("Accept-Language", document.documentElement.lang)
   const scope = tenant ? tenantID() : ""
   if (scope) headers.set("X-Tenant-Id", scope)
-  if (init.body) headers.set("Content-Type", "application/json")
+  if (
+    init.body &&
+    (typeof FormData === "undefined" || !(init.body instanceof FormData))
+  )
+    headers.set("Content-Type", "application/json")
   const response = await fetch(`${apiBase}${path}`, {
     ...init,
     headers,
@@ -1139,7 +1150,7 @@ async function requestEnvelopeWithBase<T>(
   })
   if (
     response.ok &&
-    path.startsWith("/iam/") &&
+    path.startsWith("/") &&
     !["GET", "HEAD"].includes((init.method ?? "GET").toUpperCase()) &&
     typeof window !== "undefined"
   ) {
@@ -1157,6 +1168,47 @@ async function requestEnvelopeWithBase<T>(
 /** The tenant header, omitted entirely while no tenant is resolved. */
 function tenantHeader(scope: string): Record<string, string> {
   return scope ? { "X-Tenant-Id": scope } : {}
+}
+
+function entityHeader(scope?: string): Record<string, string> {
+  return scope ? { "X-Entity-Id": scope } : {}
+}
+
+async function requestFileDownloadWithBase(
+  apiBase: string,
+  tenantID: () => string,
+  entityID: string | undefined,
+  path: string,
+  options: { maxBytes?: number; signal?: AbortSignal } = {}
+): Promise<Blob> {
+  const headers = entityID
+    ? { ...tenantHeader(tenantID()), ...entityHeader(entityID) }
+    : {}
+  const response = await fetch(`${apiBase}${path}`, {
+    headers,
+    credentials: "include",
+    signal: options.signal,
+  })
+  if (!response.ok) {
+    const body = (await response
+      .json()
+      .catch(() => null)) as ErrorResponse | null
+    throw apiError(response.status, body)
+  }
+  const declaredLength = response.headers.get("content-length")
+  if (
+    options.maxBytes !== undefined &&
+    declaredLength !== null &&
+    /^\d+$/u.test(declaredLength) &&
+    Number(declaredLength) > options.maxBytes
+  ) {
+    await response.body?.cancel()
+    throw new ApiError(413, "file_preview_too_large")
+  }
+  const blob = await response.blob()
+  if (options.maxBytes !== undefined && blob.size > options.maxBytes)
+    throw new ApiError(413, "file_preview_too_large")
+  return blob
 }
 
 async function requestAuditDownloadWithBase(
@@ -1279,12 +1331,197 @@ export function createIamApi(
     return items
   }
   const archivePath = (scope: AuditScope) =>
-    scope === "platform" ? "/platform/iam/audit" : "/iam/audit"
+    scope === "platform" ? "/platform/audit" : "/audit"
   return {
+    files: (entityID?: string, after = "") => {
+      const query = new URLSearchParams({ limit: "100" })
+      if (after) query.set("after", after)
+      return request<FilePage>(
+        `/files?${query}`,
+        {
+          headers: entityHeader(entityID),
+        },
+        Boolean(entityID)
+      )
+    },
+    trashedFiles: (entityID?: string, after = "") => {
+      const query = new URLSearchParams({ limit: "100", state: "trashed" })
+      if (after) query.set("after", after)
+      return request<FilePage>(
+        `/files?${query}`,
+        { headers: entityHeader(entityID) },
+        Boolean(entityID)
+      )
+    },
+    createPersonalFileRoot: (entityID: string) => {
+      const body = new FormData()
+      body.set("kind", "directory")
+      body.set("scope", "personal")
+      return request<FileEntryView>("/files", {
+        method: "POST",
+        headers: entityHeader(entityID),
+        body,
+      })
+    },
+    createAccountFileRoot: () => {
+      const body = new FormData()
+      body.set("kind", "directory")
+      body.set("scope", "account")
+      return request<FileEntryView>("/files", { method: "POST", body }, false)
+    },
+    fileItems: (entityID: string | undefined, fileID: string, after = "") => {
+      const query = new URLSearchParams({ limit: "100" })
+      if (after) query.set("after", after)
+      return request<FileChildrenPage>(
+        `/files/${encodeURIComponent(fileID)}/items?${query}`,
+        { headers: entityHeader(entityID) },
+        Boolean(entityID)
+      )
+    },
+    createDirectory: (
+      entityID: string | undefined,
+      parentID: string,
+      name: string
+    ) => {
+      const body = new FormData()
+      body.set("parent_id", parentID)
+      body.set("kind", "directory")
+      body.set("name", name)
+      return request<FileEntryView>(
+        "/files",
+        {
+          method: "POST",
+          headers: entityHeader(entityID),
+          body,
+        },
+        Boolean(entityID)
+      )
+    },
+    uploadFile: (
+      entityID: string | undefined,
+      parentID: string,
+      file: File
+    ) => {
+      const body = new FormData()
+      body.set("parent_id", parentID)
+      body.set("kind", "file")
+      body.set("file", file)
+      return request<FileEntryView>(
+        "/files",
+        {
+          method: "POST",
+          headers: entityHeader(entityID),
+          body,
+        },
+        Boolean(entityID)
+      )
+    },
+    fileByPath: (
+      entityID: string | undefined,
+      rootFileID: string,
+      path: string
+    ) =>
+      request<FileEntryView>(
+        `/files/${encodeURIComponent(rootFileID)}/-/${path
+          .split("/")
+          .map(encodeURIComponent)
+          .join("/")}`,
+        { headers: entityHeader(entityID) },
+        Boolean(entityID)
+      ),
+    downloadFile: (entityID: string | undefined, fileID: string) =>
+      requestFileDownloadWithBase(
+        apiBase,
+        tenantID,
+        entityID,
+        `/files/${encodeURIComponent(fileID)}/content`
+      ),
+    previewFile: (
+      entityID: string | undefined,
+      fileID: string,
+      maxBytes: number,
+      signal?: AbortSignal
+    ) =>
+      requestFileDownloadWithBase(
+        apiBase,
+        tenantID,
+        entityID,
+        `/files/${encodeURIComponent(fileID)}/content`,
+        { maxBytes, signal }
+      ),
+    renameFileEntry: (
+      entityID: string | undefined,
+      fileID: string,
+      revision: number,
+      name: string
+    ) =>
+      request<FileEntryView>(
+        `/files/${encodeURIComponent(fileID)}`,
+        {
+          method: "PATCH",
+          headers: entityHeader(entityID),
+          body: JSON.stringify({ name, revision }),
+        },
+        Boolean(entityID)
+      ),
+    restoreFileEntry: (
+      entityID: string | undefined,
+      fileID: string,
+      revision: number,
+      name?: string
+    ) =>
+      request<FileEntryView>(
+        `/files/${encodeURIComponent(fileID)}`,
+        {
+          method: "PATCH",
+          headers: entityHeader(entityID),
+          body: JSON.stringify({
+            state: "active",
+            revision,
+            ...(name ? { name } : {}),
+          }),
+        },
+        Boolean(entityID)
+      ),
+    trashFileEntry: (
+      entityID: string | undefined,
+      fileID: string,
+      revision: number
+    ) =>
+      request<FileTrashResult>(
+        `/files/${encodeURIComponent(fileID)}?${new URLSearchParams({ revision: String(revision) })}`,
+        { method: "DELETE", headers: entityHeader(entityID) },
+        Boolean(entityID)
+      ),
+    createFileOperation: (
+      entityID: string | undefined,
+      input: {
+        action: "copy" | "move"
+        destination_id: string
+        sources: string[]
+      }
+    ) =>
+      request<FileOperationResult>(
+        "/file-operations",
+        {
+          method: "POST",
+          headers: {
+            ...entityHeader(entityID),
+            "Idempotency-Key": crypto.randomUUID(),
+          },
+          body: JSON.stringify({
+            ...input,
+            file_policy: "rename",
+            directory_policy: "rename",
+            type_policy: "rename",
+          }),
+        },
+        Boolean(entityID)
+      ),
     capabilities: () =>
-      request<AuthnCapabilities>("/authn/capabilities", {}, false),
+      request<AuthnCapabilities>("/authentication-capabilities", {}, false),
     createCaptcha: () =>
-      request<Captcha>("/authn/captchas", { method: "POST" }, false),
+      request<Captcha>("/captchas", { method: "POST" }, false),
     register: (body: {
       email: string
       password: string
@@ -1294,27 +1531,27 @@ export function createIamApi(
       captcha_answer: string
     }) =>
       request<{ accepted: boolean }>(
-        "/authn/registrations",
+        "/registrations",
         { method: "POST", body: JSON.stringify(body) },
         false
       ),
-    session: () => request<Session>("/authn/sessions/current", {}, false),
+    session: () => request<Session>("/sessions/current", {}, false),
     sessionForTenant: (tenant: string) =>
       request<Session>(
-        "/authn/sessions/current",
+        "/sessions/current",
         { headers: tenantHeader(tenant) },
         false
       ),
-    myTenants: () => request<Tenant[]>("/iam/me/tenants", {}, false),
+    myTenants: () => request<Tenant[]>("/me/tenants", {}, false),
     personalTokenPermissions: (tenant: string) =>
       request<Permission[]>(
-        `/authn/personal-token-permissions?${new URLSearchParams({ tenant_id: tenant })}`,
+        `/me/personal-token-permissions?${new URLSearchParams({ tenant_id: tenant })}`,
         {},
         false
       ),
     personalTokens: async (offset = 0, limit = 20) => {
       const result = await requestEnvelope<PersonalToken[]>(
-        `/authn/personal-tokens?${new URLSearchParams({ offset: String(offset), limit: String(limit) })}`,
+        `/me/personal-tokens?${new URLSearchParams({ offset: String(offset), limit: String(limit) })}`,
         false
       )
       return {
@@ -1324,25 +1561,25 @@ export function createIamApi(
     },
     preparePersonalToken: (body: PersonalTokenRequest) =>
       request<{ request: PersonalTokenRequest; target: string }>(
-        "/authn/personal-token-preparations",
+        "/me/personal-token-preparations",
         { method: "POST", body: JSON.stringify(body) },
         false
       ),
     createPersonalToken: (body: PersonalTokenRequest & { proof: string }) =>
       request<PersonalToken & { token: string }>(
-        "/authn/personal-tokens",
+        "/me/personal-tokens",
         { method: "POST", body: JSON.stringify(body) },
         false
       ),
     revokePersonalToken: (id: string) =>
       request<{ revoked: boolean }>(
-        `/authn/personal-tokens/${encodeURIComponent(id)}`,
+        `/me/personal-tokens/${encodeURIComponent(id)}`,
         { method: "DELETE" },
         false
       ),
     reauthenticationMethods: () =>
       request<{ methods: ReauthenticationMethod[]; mfa_required: boolean }>(
-        "/authn/reauthentication-methods",
+        "/reauthentication-methods",
         {},
         false
       ),
@@ -1352,7 +1589,7 @@ export function createIamApi(
       method: ReauthenticationMethod
     }) =>
       request<ReauthenticationChallenge>(
-        "/authn/reauthentication-challenges",
+        "/reauthentication-challenges",
         { method: "POST", body: JSON.stringify(body) },
         false
       ),
@@ -1363,15 +1600,15 @@ export function createIamApi(
       response?: Record<string, unknown>
     }) =>
       request<{ verified: boolean }>(
-        "/authn/reauthentication-verifications",
+        "/reauthentication-verifications",
         { method: "POST", body: JSON.stringify(body) },
         false
       ),
     identityLinks: () =>
-      request<IdentityLink[]>("/authn/identity-links", {}, false),
+      request<IdentityLink[]>("/me/identity-links", {}, false),
     identityLinkProviders: () =>
       request<IdentityLinkProvider[]>(
-        "/authn/identity-link-providers",
+        "/me/identity-link-providers",
         {},
         false
       ),
@@ -1382,34 +1619,34 @@ export function createIamApi(
       return_url: string
     }) =>
       request<{ authorization_url: string }>(
-        "/authn/identity-link-transactions",
+        "/me/identity-link-transactions",
         { method: "POST", body: JSON.stringify(body) },
         false
       ),
     deleteIdentityLink: (id: string, proof: string) =>
       request<{ deleted: boolean }>(
-        `/authn/identity-links/${encodeURIComponent(id)}`,
+        `/me/identity-links/${encodeURIComponent(id)}`,
         { method: "DELETE", body: JSON.stringify({ proof }) },
         false
       ),
     personalMemberships: (offset = 0, limit = 50) =>
       request<{ items: PersonalMembership[]; total: number }>(
-        `/iam/me/memberships?${new URLSearchParams({ offset: String(offset), limit: String(limit) })}`,
+        `/me/memberships?${new URLSearchParams({ offset: String(offset), limit: String(limit) })}`,
         {},
         false
       ),
     leaveMembership: (id: string, proof: string) =>
       request<{ status: string }>(
-        `/iam/me/memberships/${encodeURIComponent(id)}/leave`,
+        `/me/memberships/${encodeURIComponent(id)}/leave`,
         { method: "POST", body: JSON.stringify({ proof }) },
         false
       ),
     closureRequest: () =>
-      request<ClosureRequest>("/iam/me/closure-request", {}, false),
-    myAvatar: () => request<AvatarSettings>("/iam/me/avatar", {}, false),
+      request<ClosureRequest>("/me/closure-request", {}, false),
+    myAvatar: () => request<AvatarSettings>("/me/avatar", {}, false),
     avatarCandidates: (style?: AvatarSettings["style"]) =>
       request<AvatarSettings[]>(
-        "/iam/me/avatar-candidates",
+        "/me/avatar-candidates",
         { method: "POST", body: JSON.stringify({ style }) },
         false
       ),
@@ -1419,45 +1656,45 @@ export function createIamApi(
       candidate_url?: string
     }) =>
       request<AvatarSettings>(
-        "/iam/me/avatar",
+        "/me/avatar",
         { method: "PUT", body: JSON.stringify(avatar) },
         false
       ),
     submitClosureRequest: (proof: string, version: number) =>
       request<ClosureRequest>(
-        "/iam/me/closure-request",
+        "/me/closure-request",
         { method: "POST", body: JSON.stringify({ proof, version }) },
         false
       ),
     cancelClosureRequest: (version: number) =>
       request<ClosureRequest>(
-        "/iam/me/closure-request",
+        "/me/closure-request",
         { method: "DELETE", body: JSON.stringify({ version }) },
         false
       ),
     closureRequests: (offset = 0, limit = 50, status = "pending") =>
       request<{ items: ClosureRequest[]; total: number }>(
-        `/platform/iam/closure-requests?${new URLSearchParams({ status, offset: String(offset), limit: String(limit) })}`,
+        `/platform/closure-requests?${new URLSearchParams({ status, offset: String(offset), limit: String(limit) })}`,
         {},
         false
       ),
     rejectClosureRequest: (id: string, version: number) =>
       request<ClosureRequest>(
-        `/platform/iam/principals/${encodeURIComponent(id)}/closure-request/rejection`,
+        `/platform/principals/${encodeURIComponent(id)}/closure-request/rejection`,
         { method: "POST", body: JSON.stringify({ version }) },
         false
       ),
     processClosureRequest: (id: string, version: number) =>
       request<ClosureRequest>(
-        `/platform/iam/principals/${encodeURIComponent(id)}/closure-request/processing`,
+        `/platform/principals/${encodeURIComponent(id)}/closure-request/processing`,
         { method: "POST", body: JSON.stringify({ version }) },
         false
       ),
     oauthConsents: () =>
-      request<GrantedConsent[]>("/iam/me/oauth-consents", {}, false),
+      request<GrantedConsent[]>("/me/oauth-consents", {}, false),
     revokeOAuthConsent: (clientID: string) =>
       request<{ revoked: boolean }>(
-        `/iam/me/oauth-consents/${encodeURIComponent(clientID)}`,
+        `/me/oauth-consents/${encodeURIComponent(clientID)}`,
         { method: "DELETE" },
         false
       ),
@@ -1467,32 +1704,32 @@ export function createIamApi(
       return_url: string
     }) =>
       request<LoginResult>(
-        "/authn/sessions",
+        "/sessions",
         { method: "POST", body: JSON.stringify(body) },
         false
       ),
     verifyLoginMfa: (body: { challenge_id: string; code: string }) =>
       request<LoginResult>(
-        "/authn/session-verifications",
+        "/session-verifications",
         { method: "POST", body: JSON.stringify(body) },
         false
       ),
     logout: () =>
       request<{ logout_url: string }>(
-        "/authn/sessions/current",
+        "/sessions/current",
         { method: "DELETE" },
         false
       ),
-    sessions: () => request<BrowserSession[]>("/authn/sessions", {}, false),
+    sessions: () => request<BrowserSession[]>("/sessions", {}, false),
     revokeSession: (id: string) =>
       request<{ revoked: boolean }>(
-        `/authn/sessions/${encodeURIComponent(id)}`,
+        `/sessions/${encodeURIComponent(id)}`,
         { method: "DELETE" },
         false
       ),
     logoutAll: () =>
       request<{ logout_url: string }>(
-        "/authn/sessions",
+        "/sessions",
         { method: "DELETE" },
         false
       ),
@@ -1501,38 +1738,38 @@ export function createIamApi(
       new_password: string
     }) =>
       request<{ changed: boolean }>(
-        "/authn/password",
+        "/me/password",
         { method: "PATCH", body: JSON.stringify(body) },
         false
       ),
     startPasswordRecovery: (identifier: string) =>
       request<{ accepted: boolean }>(
-        "/authn/password-recovery-requests",
+        "/password-recovery-requests",
         { method: "POST", body: JSON.stringify({ identifier }) },
         false
       ),
     completePasswordRecovery: (body: { token: string; new_password: string }) =>
       request<{ changed: boolean }>(
-        "/authn/password-recoveries",
+        "/password-recoveries",
         { method: "POST", body: JSON.stringify(body) },
         false
       ),
     startEmailVerification: () =>
       request<{ accepted: boolean }>(
-        "/authn/email-verification-requests",
+        "/email-verification-requests",
         { method: "POST" },
         false
       ),
     completeEmailVerification: (token: string) =>
       request<{ verified: boolean }>(
-        "/authn/email-verifications",
+        "/email-verifications",
         { method: "POST", body: JSON.stringify({ token }) },
         false
       ),
-    mfaStatus: () => request<MfaStatus>("/authn/mfa", {}, false),
+    mfaStatus: () => request<MfaStatus>("/me/mfa", {}, false),
     beginTotpEnrollment: (currentPassword: string) =>
       request<MfaEnrollment>(
-        "/authn/mfa/totp-enrollments",
+        "/me/mfa/totp-enrollments",
         {
           method: "POST",
           body: JSON.stringify({ current_password: currentPassword }),
@@ -1541,7 +1778,7 @@ export function createIamApi(
       ),
     confirmTotpEnrollment: (code: string) =>
       request<MfaConfirmation>(
-        "/authn/mfa/totp",
+        "/me/mfa/totp",
         { method: "POST", body: JSON.stringify({ code }) },
         false
       ),
@@ -1550,20 +1787,20 @@ export function createIamApi(
       code: string
     }) =>
       request<MfaConfirmation>(
-        "/authn/mfa/recovery-codes",
+        "/me/mfa/recovery-codes",
         { method: "PUT", body: JSON.stringify(body) },
         false
       ),
     disableTotp: (body: { current_password: string; code: string }) =>
       request<{ disabled: boolean }>(
-        "/authn/mfa/totp",
+        "/me/mfa/totp",
         { method: "DELETE", body: JSON.stringify(body) },
         false
       ),
-    passkeys: () => request<Passkey[]>("/authn/passkeys", {}, false),
+    passkeys: () => request<Passkey[]>("/me/passkeys", {}, false),
     beginPasskeyRegistration: (currentPassword: string) =>
       request<PasskeyOptions>(
-        "/authn/passkey-registration-challenges",
+        "/me/passkey-registration-challenges",
         {
           method: "POST",
           body: JSON.stringify({ current_password: currentPassword }),
@@ -1576,13 +1813,13 @@ export function createIamApi(
       credential: Record<string, unknown>
     }) =>
       request<Passkey>(
-        "/authn/passkeys",
+        "/me/passkeys",
         { method: "POST", body: JSON.stringify(body) },
         false
       ),
     beginPasskeyLogin: (returnUrl: string) =>
       request<PasskeyOptions>(
-        "/authn/passkey-session-challenges",
+        "/passkey-session-challenges",
         { method: "POST", body: JSON.stringify({ return_url: returnUrl }) },
         false
       ),
@@ -1591,19 +1828,19 @@ export function createIamApi(
       credential: Record<string, unknown>
     }) =>
       request<LoginResult>(
-        "/authn/passkey-session-verifications",
+        "/passkey-session-verifications",
         { method: "POST", body: JSON.stringify(body) },
         false
       ),
     renamePasskey: (id: string, name: string) =>
       request<Passkey>(
-        `/authn/passkeys/${encodeURIComponent(id)}`,
+        `/me/passkeys/${encodeURIComponent(id)}`,
         { method: "PATCH", body: JSON.stringify({ name }) },
         false
       ),
     deletePasskey: (id: string, currentPassword: string) =>
       request<{ deleted: boolean }>(
-        `/authn/passkeys/${encodeURIComponent(id)}`,
+        `/me/passkeys/${encodeURIComponent(id)}`,
         {
           method: "DELETE",
           body: JSON.stringify({ current_password: currentPassword }),
@@ -1612,17 +1849,17 @@ export function createIamApi(
       ),
     principals: (search = "") =>
       request<PrincipalList>(
-        `/iam/principals?limit=200&search=${encodeURIComponent(search)}`
+        `/principals?limit=200&search=${encodeURIComponent(search)}`
       ),
     principal: (id: string) =>
-      request<Principal>(`/iam/principals/${encodeURIComponent(id)}`),
+      request<Principal>(`/principals/${encodeURIComponent(id)}`),
     createPrincipal: (body: {
       login_name: string
       password: string
       display_name?: string
       email?: string
     }) =>
-      request<Principal>("/iam/principals", {
+      request<Principal>("/principals", {
         method: "POST",
         body: JSON.stringify(body),
       }),
@@ -1630,7 +1867,7 @@ export function createIamApi(
       id: string,
       body: { display_name?: string; email?: string }
     ) =>
-      request<Principal>(`/iam/principals/${encodeURIComponent(id)}`, {
+      request<Principal>(`/principals/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
@@ -1638,18 +1875,18 @@ export function createIamApi(
     // 函数名保持不变，调用方无需改动；响应体仍是 Principal。
     disablePrincipal: (id: string) =>
       request<Principal>(
-        `/iam/principals/${encodeURIComponent(id)}/suspension`,
+        `/principals/${encodeURIComponent(id)}/suspension`,
         { method: "PUT" }
       ),
     restorePrincipal: (id: string) =>
       request<Principal>(
-        `/iam/principals/${encodeURIComponent(id)}/suspension`,
+        `/principals/${encodeURIComponent(id)}/suspension`,
         { method: "DELETE" }
       ),
     // 生命周期是平台级操作，租户权限不可达；后端以 platform 守卫强制。
     principalLifecycle: (id: string) =>
       request<PrincipalLifecycleStatus>(
-        `/platform/iam/principals/${encodeURIComponent(id)}/lifecycle`
+        `/platform/principals/${encodeURIComponent(id)}/lifecycle`
       ),
     setPrincipalRetention: (
       id: string,
@@ -1661,7 +1898,7 @@ export function createIamApi(
       }
     ) =>
       request<PrincipalLifecycle>(
-        `/platform/iam/principals/${encodeURIComponent(id)}/lifecycle/retention`,
+        `/platform/principals/${encodeURIComponent(id)}/lifecycle/retention`,
         { method: "PUT", body: JSON.stringify(body) }
       ),
     anonymizePrincipal: (
@@ -1669,64 +1906,64 @@ export function createIamApi(
       body: { version: number; confirmation: string }
     ) =>
       request<PrincipalLifecycle>(
-        `/platform/iam/principals/${encodeURIComponent(id)}/lifecycle/anonymization`,
+        `/platform/principals/${encodeURIComponent(id)}/lifecycle/anonymization`,
         { method: "POST", body: JSON.stringify(body) }
       ),
     serviceAccounts: (search = "") =>
       request<ServiceAccountList>(
-        `/iam/service-accounts?limit=200&search=${encodeURIComponent(search)}`
+        `/service-accounts?limit=200&search=${encodeURIComponent(search)}`
       ),
     createServiceAccount: (body: ServiceAccountInput) =>
-      request<ServiceAccount>("/iam/service-accounts", {
+      request<ServiceAccount>("/service-accounts", {
         method: "POST",
         body: JSON.stringify(body),
       }),
     updateServiceAccount: (id: string, body: ServiceAccountUpdate) =>
       request<ServiceAccount>(
-        `/iam/service-accounts/${encodeURIComponent(id)}`,
+        `/service-accounts/${encodeURIComponent(id)}`,
         { method: "PUT", body: JSON.stringify(body) }
       ),
     deleteServiceAccount: (id: string, version: number) =>
       request<{ deleted: boolean }>(
-        `/iam/service-accounts/${encodeURIComponent(id)}?version=${encodeURIComponent(version)}`,
+        `/service-accounts/${encodeURIComponent(id)}?version=${encodeURIComponent(version)}`,
         { method: "DELETE" }
       ),
     serviceAccountCredentials: (id: string) =>
       request<ServiceAccountCredential[]>(
-        `/iam/service-accounts/${encodeURIComponent(id)}/credentials`
+        `/service-accounts/${encodeURIComponent(id)}/credentials`
       ),
     createServiceAccountCredential: (
       id: string,
       body: { name: string; scopes: string[]; expires_at?: string }
     ) =>
       request<ServiceAccountCredentialSecret>(
-        `/iam/service-accounts/${encodeURIComponent(id)}/credentials`,
+        `/service-accounts/${encodeURIComponent(id)}/credentials`,
         { method: "POST", body: JSON.stringify(body) }
       ),
     revokeServiceAccountCredential: (id: string, credentialID: string) =>
       request<{ revoked: boolean }>(
-        `/iam/service-accounts/${encodeURIComponent(id)}/credentials/${encodeURIComponent(credentialID)}`,
+        `/service-accounts/${encodeURIComponent(id)}/credentials/${encodeURIComponent(credentialID)}`,
         { method: "DELETE" }
       ),
-    invitations: () => requestAllPages<Invitation>("/iam/invitations"),
+    invitations: () => requestAllPages<Invitation>("/invitations"),
     createInvitation: (body: {
       email: string
       department_id?: string
       role_ids?: string[]
       expires_in_hours?: number
     }) =>
-      request<IssuedInvitation>("/iam/invitations", {
+      request<IssuedInvitation>("/invitations", {
         method: "POST",
         body: JSON.stringify(body),
       }),
     revokeInvitation: (id: string) =>
       request<{ revoked: boolean }>(
-        `/iam/invitations/${encodeURIComponent(id)}`,
+        `/invitations/${encodeURIComponent(id)}`,
         { method: "DELETE" }
       ),
     resendInvitation: (id: string, expiresInHours = 72) =>
       request<IssuedInvitation>(
-        `/iam/invitations/${encodeURIComponent(id)}/resend`,
+        `/invitations/${encodeURIComponent(id)}/resend`,
         {
           method: "POST",
           body: JSON.stringify({ expires_in_hours: expiresInHours }),
@@ -1739,36 +1976,36 @@ export function createIamApi(
       display_name?: string
     }) =>
       request<InvitationAcceptance>(
-        "/iam/invitations/accept",
+        "/invitation-acceptances",
         { method: "POST", body: JSON.stringify(body) },
         false
       ),
     tenants: (includeDeleted = false) =>
       requestAllPages<Tenant>(
-        `/iam/tenants?include_deleted=${includeDeleted}`,
+        `/tenants?include_deleted=${includeDeleted}`,
         false
       ),
     createTenant: (body: TenantInput) =>
       request<Tenant>(
-        "/iam/tenants",
+        "/tenants",
         { method: "POST", body: JSON.stringify(body) },
         false
       ),
     updateTenant: (id: string, body: TenantUpdate) =>
       request<Tenant>(
-        `/iam/tenants/${encodeURIComponent(id)}`,
+        `/tenants/${encodeURIComponent(id)}`,
         { method: "PATCH", body: JSON.stringify(body) },
         false
       ),
     deleteTenant: (id: string, version: number) =>
       request<{ deleted: boolean }>(
-        `/iam/tenants/${encodeURIComponent(id)}?version=${encodeURIComponent(version)}`,
+        `/tenants/${encodeURIComponent(id)}?version=${encodeURIComponent(version)}`,
         { method: "DELETE" },
         false
       ),
     members: (search = "") =>
       requestAllPages<Member>(
-        `/iam/members?search=${encodeURIComponent(search)}`
+        `/members?search=${encodeURIComponent(search)}`
       ),
     updateMember: (
       subject: string,
@@ -1776,37 +2013,37 @@ export function createIamApi(
         Pick<Member, "display_name" | "email" | "department_id" | "status">
       >
     ) =>
-      request<Member>(`/iam/members/${encodeURIComponent(subject)}`, {
+      request<Member>(`/members/${encodeURIComponent(subject)}`, {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
     memberRoles: (subject: string) =>
-      request<string[]>(`/iam/members/${encodeURIComponent(subject)}/roles`),
+      request<string[]>(`/members/${encodeURIComponent(subject)}/roles`),
     memberAuthorizationSources: (subject: string) =>
       request<MemberAuthorizationSnapshot>(
-        `/iam/members/${encodeURIComponent(subject)}/authorization-sources`
+        `/members/${encodeURIComponent(subject)}/authorization-sources`
       ),
-    entities: () => request<Entity[]>("/iam/entities"),
+    entities: () => request<Entity[]>("/entities"),
     entity: (id: string) =>
-      request<Entity>(`/iam/entities/${encodeURIComponent(id)}`),
+      request<Entity>(`/entities/${encodeURIComponent(id)}`),
     createEntity: (body: EntityInput) =>
-      request<Entity>("/iam/entities", {
+      request<Entity>("/entities", {
         method: "POST",
         body: JSON.stringify(body),
       }),
     updateEntity: (id: string, body: Partial<EntityInput>) =>
-      request<Entity>(`/iam/entities/${encodeURIComponent(id)}`, {
+      request<Entity>(`/entities/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
     deleteEntity: (id: string) =>
       request<{ changed: boolean; sync_status: string }>(
-        `/iam/entities/${encodeURIComponent(id)}`,
+        `/entities/${encodeURIComponent(id)}`,
         { method: "DELETE" }
       ),
     entityRoleBindings: (id: string) =>
       requestAllPages<EntityRoleBinding>(
-        `/iam/entities/${encodeURIComponent(id)}/role-bindings`
+        `/entities/${encodeURIComponent(id)}/role-bindings`
       ),
     putEntityRoleBinding: (
       id: string,
@@ -1815,7 +2052,7 @@ export function createIamApi(
       body: EntityRoleBindingInput
     ) =>
       request<EntityRoleBinding>(
-        `/iam/entities/${encodeURIComponent(id)}/role-bindings/${encodeURIComponent(roleID)}/${encodeURIComponent(principalID)}`,
+        `/entities/${encodeURIComponent(id)}/role-bindings/${encodeURIComponent(roleID)}/${encodeURIComponent(principalID)}`,
         { method: "PUT", body: JSON.stringify(body) }
       ),
     deleteEntityRoleBinding: (
@@ -1824,19 +2061,19 @@ export function createIamApi(
       principalID: string
     ) =>
       request<{ changed: boolean; sync_status: string }>(
-        `/iam/entities/${encodeURIComponent(id)}/role-bindings/${encodeURIComponent(roleID)}/${encodeURIComponent(principalID)}`,
+        `/entities/${encodeURIComponent(id)}/role-bindings/${encodeURIComponent(roleID)}/${encodeURIComponent(principalID)}`,
         { method: "DELETE" }
       ),
     relationships: (resourceID = "") =>
       requestAllPages<Relationship>(
-        `/iam/relationships${resourceID ? `?resource_id=${encodeURIComponent(resourceID)}` : ""}`
+        `/relationships${resourceID ? `?resource_id=${encodeURIComponent(resourceID)}` : ""}`
       ),
     resourceRelationships: (entityID: string) =>
       request<Relationship[]>(
-        `/iam/relationships?entity_id=${encodeURIComponent(entityID)}`
+        `/relationships?entity_id=${encodeURIComponent(entityID)}`
       ),
     putRelationship: (body: RelationshipInput) =>
-      request<Relationship>("/iam/relationships", {
+      request<Relationship>("/relationships", {
         method: "POST",
         body: JSON.stringify(body),
       }),
@@ -1854,7 +2091,7 @@ export function createIamApi(
       for (const [key, value] of Object.entries(fields))
         if (value) query.set(key, value)
       return request<{ changed: boolean; sync_status: string }>(
-        `/iam/relationships?${query}`,
+        `/relationships?${query}`,
         { method: "DELETE" }
       )
     },
@@ -1865,7 +2102,7 @@ export function createIamApi(
     ) =>
       request<
         Pick<AuthorizationExplanation, "allowed" | "reason" | "revision">
-      >("/iam/authorization/check", {
+      >("/authorization-checks", {
         method: "POST",
         body: JSON.stringify({
           entity_id: entityID,
@@ -1882,7 +2119,7 @@ export function createIamApi(
     ) =>
       request<
         Pick<AuthorizationExplanation, "allowed" | "reason" | "revision">
-      >("/iam/authorization/check", {
+      >("/authorization-checks", {
         method: "POST",
         body: JSON.stringify({
           entity_id: entityID,
@@ -1893,7 +2130,7 @@ export function createIamApi(
         }),
       }),
     authorizationConstraint: (permissionCode: string, subject: string) =>
-      request<DataConstraint>("/iam/authorization/constraints", {
+      request<DataConstraint>("/authorization-constraint-evaluations", {
         method: "POST",
         body: JSON.stringify({
           permission_code: permissionCode,
@@ -1905,7 +2142,7 @@ export function createIamApi(
       permissionCode: string,
       subject: string
     ) =>
-      request<AuthorizationExplanation>("/iam/authorization/explain", {
+      request<AuthorizationExplanation>("/authorization-explanations", {
         method: "POST",
         body: JSON.stringify({
           entity_id: entityID,
@@ -1920,7 +2157,7 @@ export function createIamApi(
       permissionCode: string,
       subject: string
     ) =>
-      request<AuthorizationExplanation>("/iam/authorization/explain", {
+      request<AuthorizationExplanation>("/authorization-explanations", {
         method: "POST",
         body: JSON.stringify({
           entity_id: entityID,
@@ -1930,32 +2167,33 @@ export function createIamApi(
           subject,
         }),
       }),
-    departments: () => requestAllPages<Department>("/iam/departments"),
+    departments: () => requestAllPages<Department>("/departments"),
     department: (id: string) =>
-      request<Department>(`/iam/departments/${encodeURIComponent(id)}`),
+      request<Department>(`/departments/${encodeURIComponent(id)}`),
     createDepartment: (body: DepartmentInput) =>
-      request<Department>("/iam/departments", {
+      request<Department>("/departments", {
         method: "POST",
         body: JSON.stringify(body),
       }),
     updateDepartment: (
       id: string,
-      body: Partial<DepartmentInput> & Pick<Department, "version">
+      body: Partial<Omit<DepartmentInput, "entity_id">> &
+        Pick<Department, "version">
     ) =>
-      request<Department>(`/iam/departments/${encodeURIComponent(id)}`, {
+      request<Department>(`/departments/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
     deleteDepartment: (id: string, version: number) =>
       request<{ deleted: boolean }>(
-        `/iam/departments/${encodeURIComponent(id)}?version=${encodeURIComponent(version)}`,
+        `/departments/${encodeURIComponent(id)}?version=${encodeURIComponent(version)}`,
         { method: "DELETE" }
       ),
-    positions: () => requestAllPages<Position>("/iam/positions"),
+    positions: () => requestAllPages<Position>("/positions"),
     position: (id: string) =>
-      request<Position>(`/iam/positions/${encodeURIComponent(id)}`),
+      request<Position>(`/positions/${encodeURIComponent(id)}`),
     createPosition: (body: PositionInput) =>
-      request<Position>("/iam/positions", {
+      request<Position>("/positions", {
         method: "POST",
         body: JSON.stringify(body),
       }),
@@ -1963,18 +2201,18 @@ export function createIamApi(
       id: string,
       body: Partial<PositionInput> & Pick<Position, "version">
     ) =>
-      request<Position>(`/iam/positions/${encodeURIComponent(id)}`, {
+      request<Position>(`/positions/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
     deletePosition: (id: string, version: number) =>
       request<{ deleted: boolean }>(
-        `/iam/positions/${encodeURIComponent(id)}?version=${encodeURIComponent(version)}`,
+        `/positions/${encodeURIComponent(id)}?version=${encodeURIComponent(version)}`,
         { method: "DELETE" }
       ),
     positionMembers: (id: string) =>
       requestAllPages<PositionMember>(
-        `/iam/positions/${encodeURIComponent(id)}/members`
+        `/positions/${encodeURIComponent(id)}/members`
       ),
     putPositionMember: (
       id: string,
@@ -1982,19 +2220,19 @@ export function createIamApi(
       body: PositionMemberInput
     ) =>
       request<PositionMember>(
-        `/iam/positions/${encodeURIComponent(id)}/members/${encodeURIComponent(principalID)}`,
+        `/positions/${encodeURIComponent(id)}/members/${encodeURIComponent(principalID)}`,
         { method: "PUT", body: JSON.stringify(body) }
       ),
     deletePositionMember: (id: string, principalID: string) =>
       request<{ deleted: boolean }>(
-        `/iam/positions/${encodeURIComponent(id)}/members/${encodeURIComponent(principalID)}`,
+        `/positions/${encodeURIComponent(id)}/members/${encodeURIComponent(principalID)}`,
         { method: "DELETE" }
       ),
-    groups: () => requestAllPages<Group>("/iam/groups"),
+    groups: () => requestAllPages<Group>("/groups"),
     group: (id: string) =>
-      request<Group>(`/iam/groups/${encodeURIComponent(id)}`),
+      request<Group>(`/groups/${encodeURIComponent(id)}`),
     createGroup: (body: GroupInput) =>
-      request<Group>("/iam/groups", {
+      request<Group>("/groups", {
         method: "POST",
         body: JSON.stringify(body),
       }),
@@ -2002,33 +2240,33 @@ export function createIamApi(
       id: string,
       body: Partial<Omit<GroupInput, "type">> & Pick<Group, "version">
     ) =>
-      request<Group>(`/iam/groups/${encodeURIComponent(id)}`, {
+      request<Group>(`/groups/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
     deleteGroup: (id: string, version: number) =>
       request<{ deleted: boolean }>(
-        `/iam/groups/${encodeURIComponent(id)}?version=${encodeURIComponent(version)}`,
+        `/groups/${encodeURIComponent(id)}?version=${encodeURIComponent(version)}`,
         { method: "DELETE" }
       ),
     groupMembers: (id: string) =>
       requestAllPages<GroupMember>(
-        `/iam/groups/${encodeURIComponent(id)}/members`
+        `/groups/${encodeURIComponent(id)}/members`
       ),
     putGroupMember: (id: string, principalID: string, body: GroupMemberInput) =>
       request<GroupMember>(
-        `/iam/groups/${encodeURIComponent(id)}/members/${encodeURIComponent(principalID)}`,
+        `/groups/${encodeURIComponent(id)}/members/${encodeURIComponent(principalID)}`,
         { method: "PUT", body: JSON.stringify(body) }
       ),
     deleteGroupMember: (id: string, principalID: string) =>
       request<{ deleted: boolean }>(
-        `/iam/groups/${encodeURIComponent(id)}/members/${encodeURIComponent(principalID)}`,
+        `/groups/${encodeURIComponent(id)}/members/${encodeURIComponent(principalID)}`,
         { method: "DELETE" }
       ),
-    fieldCatalog: () => request<FieldDefinition[]>("/iam/field-catalog"),
+    fieldCatalog: () => request<FieldDefinition[]>("/field-catalog"),
     fieldPolicies: (resource = "") =>
       requestAllPages<ManagedFieldPolicy>(
-        `/iam/field-policies${resource ? `?${new URLSearchParams({ resource })}` : ""}`
+        `/field-policies${resource ? `?${new URLSearchParams({ resource })}` : ""}`
       ),
     setFieldPolicy: (
       resource: string,
@@ -2037,7 +2275,7 @@ export function createIamApi(
       version: number
     ) =>
       request<ManagedFieldPolicy>(
-        `/iam/field-policies/${encodeURIComponent(resource)}/${encodeURIComponent(field)}`,
+        `/field-policies/${encodeURIComponent(resource)}/${encodeURIComponent(field)}`,
         {
           method: "PUT",
           body: JSON.stringify({ policy, version }),
@@ -2045,7 +2283,7 @@ export function createIamApi(
       ),
     deleteFieldPolicy: (resource: string, field: string, version: number) =>
       request<{ changed: boolean }>(
-        `/iam/field-policies/${encodeURIComponent(resource)}/${encodeURIComponent(field)}?${new URLSearchParams({ version: String(version) })}`,
+        `/field-policies/${encodeURIComponent(resource)}/${encodeURIComponent(field)}?${new URLSearchParams({ version: String(version) })}`,
         {
           method: "DELETE",
         }
@@ -2053,44 +2291,44 @@ export function createIamApi(
     effectiveFields: (resource: string, entityID = "") => {
       const query = new URLSearchParams({ resource })
       if (entityID) query.set("entity_id", entityID)
-      return request<FieldConstraint>(`/iam/fields/effective?${query}`)
+      return request<FieldConstraint>(`/effective-fields?${query}`)
     },
-    roles: () => request<Role[]>("/iam/roles"),
+    roles: () => request<Role[]>("/roles"),
     requestableRoles: () =>
-      requestAllPages<RequestableRole>("/iam/requestable-roles"),
-    myAccessRequests: () => request<AccessRequest[]>("/iam/my/access-requests"),
+      requestAllPages<RequestableRole>("/requestable-roles"),
+    myAccessRequests: () => request<AccessRequest[]>("/me/access-requests"),
     accessRequests: () =>
-      requestAllPages<AccessRequest>("/iam/access-requests"),
+      requestAllPages<AccessRequest>("/access-requests"),
     createAccessRequest: (body: AccessRequestInput) =>
-      request<AccessRequest>("/iam/access-requests", {
+      request<AccessRequest>("/access-requests", {
         method: "POST",
         body: JSON.stringify(body),
       }),
     approveAccessRequest: (id: string, note = "") =>
       request<AccessRequest>(
-        `/iam/access-requests/${encodeURIComponent(id)}/approve`,
+        `/access-requests/${encodeURIComponent(id)}/approve`,
         { method: "POST", body: JSON.stringify({ note }) }
       ),
     rejectAccessRequest: (id: string, note = "") =>
       request<AccessRequest>(
-        `/iam/access-requests/${encodeURIComponent(id)}/reject`,
+        `/access-requests/${encodeURIComponent(id)}/reject`,
         { method: "POST", body: JSON.stringify({ note }) }
       ),
     revokeAccessRequest: (id: string, reason = "") =>
       request<AccessRequest>(
-        `/iam/access-requests/${encodeURIComponent(id)}/revoke`,
+        `/access-requests/${encodeURIComponent(id)}/revoke`,
         { method: "POST", body: JSON.stringify({ reason }) }
       ),
     withdrawAccessRequest: (id: string, reason = "") =>
       request<AccessRequest>(
-        `/iam/access-requests/${encodeURIComponent(id)}/withdraw`,
+        `/access-requests/${encodeURIComponent(id)}/withdraw`,
         { method: "POST", body: JSON.stringify({ reason }) }
       ),
-    accessReviews: () => requestAllPages<AccessReview>("/iam/access-reviews"),
+    accessReviews: () => requestAllPages<AccessReview>("/access-reviews"),
     accessReview: (id: string) =>
-      request<AccessReview>(`/iam/access-reviews/${encodeURIComponent(id)}`),
+      request<AccessReview>(`/access-reviews/${encodeURIComponent(id)}`),
     createAccessReview: (body: AccessReviewInput) =>
-      request<AccessReview>("/iam/access-reviews", {
+      request<AccessReview>("/access-reviews", {
         method: "POST",
         body: JSON.stringify(body),
       }),
@@ -2101,21 +2339,21 @@ export function createIamApi(
       note = ""
     ) =>
       request<AccessReviewItem>(
-        `/iam/access-reviews/${encodeURIComponent(reviewID)}/items/${encodeURIComponent(itemID)}/decide`,
+        `/access-reviews/${encodeURIComponent(reviewID)}/items/${encodeURIComponent(itemID)}/decide`,
         { method: "POST", body: JSON.stringify({ decision, note }) }
       ),
     completeAccessReview: (id: string) =>
       request<AccessReview>(
-        `/iam/access-reviews/${encodeURIComponent(id)}/complete`,
+        `/access-reviews/${encodeURIComponent(id)}/complete`,
         { method: "POST" }
       ),
     cancelAccessReview: (id: string) =>
       request<AccessReview>(
-        `/iam/access-reviews/${encodeURIComponent(id)}/cancel`,
+        `/access-reviews/${encodeURIComponent(id)}/cancel`,
         { method: "POST" }
       ),
     createRole: (body: Pick<Role, "name" | "description">) =>
-      request<Role>("/iam/roles", {
+      request<Role>("/roles", {
         method: "POST",
         body: JSON.stringify(body),
       }),
@@ -2123,26 +2361,26 @@ export function createIamApi(
       id: string,
       body: Partial<Pick<Role, "name" | "description">>
     ) =>
-      request<Role>(`/iam/roles/${encodeURIComponent(id)}`, {
+      request<Role>(`/roles/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
     deleteRole: (id: string) =>
-      request(`/iam/roles/${encodeURIComponent(id)}`, { method: "DELETE" }),
+      request(`/roles/${encodeURIComponent(id)}`, { method: "DELETE" }),
     rolePermissions: (id: string) =>
-      request<string[]>(`/iam/roles/${encodeURIComponent(id)}/permissions`),
+      request<string[]>(`/roles/${encodeURIComponent(id)}/permissions`),
     rolePermissionGrants: (id: string) =>
       request<RolePermissionGrant[]>(
-        `/iam/roles/${encodeURIComponent(id)}/permission-grants`
+        `/roles/${encodeURIComponent(id)}/permission-grants`
       ),
     grantPermission: (id: string, code: string) =>
       request(
-        `/iam/roles/${encodeURIComponent(id)}/permissions/${encodeURIComponent(code)}`,
+        `/roles/${encodeURIComponent(id)}/permissions/${encodeURIComponent(code)}`,
         { method: "PUT" }
       ),
     revokePermission: (id: string, code: string) =>
       request(
-        `/iam/roles/${encodeURIComponent(id)}/permissions/${encodeURIComponent(code)}`,
+        `/roles/${encodeURIComponent(id)}/permissions/${encodeURIComponent(code)}`,
         { method: "DELETE" }
       ),
     setRolePermissionCondition: (
@@ -2151,38 +2389,38 @@ export function createIamApi(
       condition: RelationshipCondition
     ) =>
       request<RolePermissionGrant>(
-        `/iam/roles/${encodeURIComponent(id)}/permissions/${encodeURIComponent(code)}/condition`,
+        `/roles/${encodeURIComponent(id)}/permissions/${encodeURIComponent(code)}/condition`,
         { method: "PUT", body: JSON.stringify({ condition }) }
       ),
     clearRolePermissionCondition: (id: string, code: string) =>
       request(
-        `/iam/roles/${encodeURIComponent(id)}/permissions/${encodeURIComponent(code)}/condition`,
+        `/roles/${encodeURIComponent(id)}/permissions/${encodeURIComponent(code)}/condition`,
         { method: "DELETE" }
       ),
     roleMembers: (id: string) =>
-      requestAllPages<string>(`/iam/roles/${encodeURIComponent(id)}/members`),
+      requestAllPages<string>(`/roles/${encodeURIComponent(id)}/members`),
     addRoleMember: (id: string, subject: string) =>
       request(
-        `/iam/roles/${encodeURIComponent(id)}/members/${encodeURIComponent(subject)}`,
+        `/roles/${encodeURIComponent(id)}/members/${encodeURIComponent(subject)}`,
         { method: "PUT" }
       ),
     removeRoleMember: (id: string, subject: string) =>
       request(
-        `/iam/roles/${encodeURIComponent(id)}/members/${encodeURIComponent(subject)}`,
+        `/roles/${encodeURIComponent(id)}/members/${encodeURIComponent(subject)}`,
         { method: "DELETE" }
       ),
     roleDirectoryBindings: (id: string) =>
       request<RoleDirectoryBinding[]>(
-        `/iam/roles/${encodeURIComponent(id)}/directory-bindings`
+        `/roles/${encodeURIComponent(id)}/directory-bindings`
       ),
     roleDataScope: (id: string) =>
-      request<RoleDataScope>(`/iam/roles/${encodeURIComponent(id)}/data-scope`),
+      request<RoleDataScope>(`/roles/${encodeURIComponent(id)}/data-scope`),
     setRoleDataScope: (
       id: string,
       body: Pick<RoleDataScope, "scope" | "department_ids">
     ) =>
       request<RoleDataScope>(
-        `/iam/roles/${encodeURIComponent(id)}/data-scope`,
+        `/roles/${encodeURIComponent(id)}/data-scope`,
         { method: "PUT", body: JSON.stringify(body) }
       ),
     addRoleDirectoryBinding: (
@@ -2191,7 +2429,7 @@ export function createIamApi(
       assigneeID: string
     ) =>
       request(
-        `/iam/roles/${encodeURIComponent(id)}/directory-bindings/${encodeURIComponent(assigneeType)}/${encodeURIComponent(assigneeID)}`,
+        `/roles/${encodeURIComponent(id)}/directory-bindings/${encodeURIComponent(assigneeType)}/${encodeURIComponent(assigneeID)}`,
         { method: "PUT" }
       ),
     removeRoleDirectoryBinding: (
@@ -2200,29 +2438,29 @@ export function createIamApi(
       assigneeID: string
     ) =>
       request(
-        `/iam/roles/${encodeURIComponent(id)}/directory-bindings/${encodeURIComponent(assigneeType)}/${encodeURIComponent(assigneeID)}`,
+        `/roles/${encodeURIComponent(id)}/directory-bindings/${encodeURIComponent(assigneeType)}/${encodeURIComponent(assigneeID)}`,
         { method: "DELETE" }
       ),
-    permissions: () => request<Permission[]>("/iam/permission-catalog"),
-    menus: () => request<Menu[]>("/iam/menus"),
+    permissions: () => request<Permission[]>("/permission-catalog"),
+    menus: () => request<Menu[]>("/menus"),
     effectiveMenus: async () =>
-      (await request<EffectiveMenu[] | null>("/iam/me/menus")) ?? [],
+      (await request<EffectiveMenu[] | null>("/me/menus")) ?? [],
     myPermissions: async () =>
-      (await request<string[] | null>("/iam/me/permissions")) ?? [],
+      (await request<string[] | null>("/me/permissions")) ?? [],
     createMenu: (body: MenuInput) =>
-      request<Menu>("/iam/menus", {
+      request<Menu>("/menus", {
         method: "POST",
         body: JSON.stringify(body),
       }),
     updateMenu: (id: string, body: Partial<MenuInput>) =>
-      request<Menu>(`/iam/menus/${encodeURIComponent(id)}`, {
+      request<Menu>(`/menus/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
     deleteMenu: (id: string) =>
-      request(`/iam/menus/${encodeURIComponent(id)}`, { method: "DELETE" }),
+      request(`/menus/${encodeURIComponent(id)}`, { method: "DELETE" }),
     oauthClients: () =>
-      requestAllPages<OAuthClientResponse>("/iam/oauth-clients").then(
+      requestAllPages<OAuthClientResponse>("/oauth-clients").then(
         (clients) => clients.map(normalizeOAuthClient)
       ),
     createOAuthClient: (body: OAuthClientInput) =>
@@ -2230,7 +2468,7 @@ export function createIamApi(
         Omit<OAuthClientCreateResult, "client"> & {
           client: OAuthClientResponse
         }
-      >("/iam/oauth-clients", {
+      >("/oauth-clients", {
         method: "POST",
         body: JSON.stringify(body),
       }).then((result) => ({
@@ -2242,7 +2480,7 @@ export function createIamApi(
       body: OAuthClientInput & Pick<OAuthClient, "status">
     ) =>
       request<OAuthClientResponse>(
-        `/iam/oauth-clients/${encodeURIComponent(id)}`,
+        `/oauth-clients/${encodeURIComponent(id)}`,
         {
           method: "PUT",
           body: JSON.stringify(body),
@@ -2250,49 +2488,49 @@ export function createIamApi(
       ).then(normalizeOAuthClient),
     rotateOAuthClientSecret: (id: string) =>
       request<{ client_secret: string }>(
-        `/iam/oauth-clients/${encodeURIComponent(id)}/rotate-secret`,
+        `/oauth-clients/${encodeURIComponent(id)}/rotate-secret`,
         { method: "POST" }
       ),
     deleteOAuthClient: (id: string) =>
       request<{ deleted: boolean }>(
-        `/iam/oauth-clients/${encodeURIComponent(id)}`,
+        `/oauth-clients/${encodeURIComponent(id)}`,
         { method: "DELETE" }
       ),
     scimDirectories: () =>
-      requestAllPages<SCIMDirectory>("/iam/scim/directories"),
-    scimTargets: () => requestAllPages<SCIMTarget>("/iam/scim/targets"),
+      requestAllPages<SCIMDirectory>("/scim-directories"),
+    scimTargets: () => requestAllPages<SCIMTarget>("/scim-targets"),
     createSCIMTarget: (body: SCIMTargetInput) =>
-      request<SCIMTargetSecret>("/iam/scim/targets", {
+      request<SCIMTargetSecret>("/scim-targets", {
         method: "POST",
         body: JSON.stringify(body),
       }),
     updateSCIMTarget: (id: string, body: SCIMTargetUpdate) =>
-      request<SCIMTarget>(`/iam/scim/targets/${encodeURIComponent(id)}`, {
+      request<SCIMTarget>(`/scim-targets/${encodeURIComponent(id)}`, {
         method: "PUT",
         body: JSON.stringify(body),
       }),
     deleteSCIMTarget: (id: string) =>
       request<{ deleted: boolean }>(
-        `/iam/scim/targets/${encodeURIComponent(id)}`,
+        `/scim-targets/${encodeURIComponent(id)}`,
         { method: "DELETE" }
       ),
     pushSCIMResource: (id: string, body: SCIMResourceInput) =>
       request<SCIMPushResult>(
-        `/iam/scim/targets/${encodeURIComponent(id)}/push`,
+        `/scim-targets/${encodeURIComponent(id)}/push`,
         { method: "POST", body: JSON.stringify(body) }
       ),
     deprovisionSCIMResource: (id: string, body: SCIMResourceInput) =>
       request<{ deprovisioned: boolean }>(
-        `/iam/scim/targets/${encodeURIComponent(id)}/deprovision`,
+        `/scim-targets/${encodeURIComponent(id)}/deprovision`,
         { method: "POST", body: JSON.stringify(body) }
       ),
     retireSCIMTarget: (id: string) =>
       request<{ deprovisioned: number }>(
-        `/iam/scim/targets/${encodeURIComponent(id)}/retire`,
+        `/scim-targets/${encodeURIComponent(id)}/retire`,
         { method: "POST" }
       ),
     createSCIMDirectory: (body: SCIMDirectoryInput) =>
-      request<SCIMDirectory>("/iam/scim/directories", {
+      request<SCIMDirectory>("/scim-directories", {
         method: "POST",
         body: JSON.stringify(body),
       }),
@@ -2301,29 +2539,29 @@ export function createIamApi(
       body: SCIMDirectoryInput & Pick<SCIMDirectory, "status" | "version">
     ) =>
       request<SCIMDirectory>(
-        `/iam/scim/directories/${encodeURIComponent(id)}`,
+        `/scim-directories/${encodeURIComponent(id)}`,
         { method: "PUT", body: JSON.stringify(body) }
       ),
     scimCredentials: (directoryID: string) =>
       requestAllPages<SCIMCredential>(
-        `/iam/scim/directories/${encodeURIComponent(directoryID)}/credentials`
+        `/scim-directories/${encodeURIComponent(directoryID)}/credentials`
       ),
     createSCIMCredential: (
       directoryID: string,
       body: { name: string; expires_at?: string }
     ) =>
       request<SCIMCredentialSecret>(
-        `/iam/scim/directories/${encodeURIComponent(directoryID)}/credentials`,
+        `/scim-directories/${encodeURIComponent(directoryID)}/credentials`,
         { method: "POST", body: JSON.stringify(body) }
       ),
     revokeSCIMCredential: (directoryID: string, credentialID: string) =>
       request<{ revoked: boolean }>(
-        `/iam/scim/directories/${encodeURIComponent(directoryID)}/credentials/${encodeURIComponent(credentialID)}`,
+        `/scim-directories/${encodeURIComponent(directoryID)}/credentials/${encodeURIComponent(credentialID)}`,
         { method: "DELETE" }
       ),
     auditEvents: async (query = "") => {
       const envelope = await requestEnvelope<AuditEvent[]>(
-        `/iam/audit-events${query ? `?${query}` : ""}`
+        `/audit/events${query ? `?${query}` : ""}`
       )
       return {
         items: envelope.data,
@@ -2331,13 +2569,13 @@ export function createIamApi(
       }
     },
     auditEvent: (id: string) =>
-      request<AuditEvent>(`/iam/audit-events/${encodeURIComponent(id)}`),
-    auditIntegrity: () => request<AuditIntegrity>("/iam/audit-integrity"),
+      request<AuditEvent>(`/audit/events/${encodeURIComponent(id)}`),
+    auditIntegrity: () => request<AuditIntegrity>("/audit/integrity-verifications"),
     auditExport: (query = "") =>
       requestAuditDownloadWithBase(
         apiBase,
         tenantID,
-        `/iam/audit-events/export${query ? `?${query}` : ""}`
+        `/audit/exports${query ? `?${query}` : ""}`
       ),
     auditArchiveStatus: (scope: AuditScope = "tenant") =>
       request<AuditArchiveStatus>(
@@ -2387,7 +2625,7 @@ export function createIamApi(
         scope === "tenant" ? tenantID : () => "",
         `${archivePath(scope)}/archives/${encodeURIComponent(id)}/download`
       ),
-    auditGovernance: () => request<AuditGovernance>("/iam/audit/governance"),
+    auditGovernance: () => request<AuditGovernance>("/audit/governance-policy"),
     setAuditRetention: (
       body: Pick<AuditRetentionPolicy, "min_days" | "archive_after_days">,
       scope: AuditScope = "tenant"
@@ -2401,7 +2639,7 @@ export function createIamApi(
         scope === "tenant"
       ),
     auditSignRoot: () =>
-      request<AuditAnchor>("/iam/audit/roots/sign", { method: "POST" }),
+      request<AuditAnchor>("/audit/root-signatures", { method: "POST" }),
   }
 }
 

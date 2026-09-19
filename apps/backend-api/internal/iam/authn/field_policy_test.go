@@ -110,7 +110,7 @@ func TestSessionAndTokenProfileEnforcement(t *testing.T) {
 	require.NoError(t, db.Exec("INSERT INTO iam_tenant_members (tenant_id,principal_id,status) VALUES (101,?,'active')", subject).Error)
 	_, api := humatest.New(t)
 	RegisterHTTP(api, service, service)
-	login := api.Post("/authn/sessions", map[string]any{"login_name": "alice", "password": "correct horse battery staple"}, "Origin: https://app.example")
+	login := api.Post("/sessions", map[string]any{"login_name": "alice", "password": "correct horse battery staple"}, "Origin: https://app.example")
 	require.Equal(t, http.StatusOK, login.Code)
 	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
 	read := func(path, header string) map[string]any {
@@ -123,7 +123,7 @@ func TestSessionAndTokenProfileEnforcement(t *testing.T) {
 		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 		return body.Data
 	}
-	for _, path := range []string{"/authn/me", "/authn/sessions/current"} {
+	for _, path := range []string{"/me", "/sessions/current"} {
 		view := read(path, "Cookie: "+cookie)
 		assert.Equal(t, "alice", view["preferred_username"])
 		assert.Equal(t, true, view["email_verified"])
@@ -133,7 +133,7 @@ func TestSessionAndTokenProfileEnforcement(t *testing.T) {
 	assert.Equal(t, "alice@example.com", tokenPayload(t, access)["email"])
 	fields.Fields["login_name"], fields.Fields["email"] = authz.FieldDecision{Read: "omit"}, authz.FieldDecision{Read: "redact"}
 	for _, header := range []string{"Cookie: " + cookie, "Authorization: Bearer " + access} {
-		for _, path := range []string{"/authn/me", "/authn/sessions/current"} {
+		for _, path := range []string{"/me", "/sessions/current"} {
 			view := read(path, header)
 			assert.NotContains(t, view, "preferred_username")
 			assert.Equal(t, "[REDACTED]", view["email"])
@@ -163,17 +163,17 @@ func TestSessionAndTokenProfileEnforcement(t *testing.T) {
 	fields, err = allowProfileFields(t.Context(), 101, 0, authz.ProfileResource, principalID)
 	require.NoError(t, err)
 	require.NoError(t, db.Exec("UPDATE iam_principals SET email = 'new@example.test', email_verified = false WHERE id = ?", principalID).Error)
-	view := read("/authn/me", "Authorization: Bearer "+access)
+	view := read("/me", "Authorization: Bearer "+access)
 	assert.Equal(t, "new@example.test", view["email"], "bearer profile reads current identity")
 	assert.Equal(t, false, view["email_verified"])
 	delete(fields.Fields, "id")
-	assert.Equal(t, http.StatusForbidden, api.Get("/authn/me", "Cookie: "+cookie).Code)
+	assert.Equal(t, http.StatusForbidden, api.Get("/me", "Cookie: "+cookie).Code)
 	_, _, err = service.IssueTenantAccessTokenWithAssurance(t.Context(), principalID, "101", "api", "openid email", authnext.Assurance{})
 	assert.ErrorIs(t, err, authz.ErrFieldDenied)
 	_, err = service.IssueTenantIDTokenWithAssurance(t.Context(), principalID, "101", "client", "", "openid email", authnext.Assurance{})
 	assert.ErrorIs(t, err, authz.ErrFieldDenied)
 	service.fields = nil
-	assert.Equal(t, http.StatusServiceUnavailable, api.Get("/authn/me", "Cookie: "+cookie).Code)
+	assert.Equal(t, http.StatusServiceUnavailable, api.Get("/me", "Cookie: "+cookie).Code)
 	global, _, err := service.IssueAccessToken(t.Context(), principalID, "api", "openid profile email")
 	require.NoError(t, err)
 	assert.NotContains(t, tokenPayload(t, global), "email")

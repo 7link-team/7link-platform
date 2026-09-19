@@ -10,6 +10,7 @@ import (
 
 	humax "7link.com/platform/pkg/extension/huma"
 	slogx "7link.com/platform/pkg/extension/slog"
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -106,6 +107,7 @@ func (app *App) RunOpenAPIExport(
 		return nil, err
 	}
 	specification := api.OpenAPI()
+	normalizeOpenAPIResourceTags(specification)
 	if len(specification.Paths) == 0 {
 		// Every deployment registers operations. None at all means the pass did
 		// not reach them, and writing that over a good document would replace a
@@ -125,6 +127,28 @@ func (app *App) RunOpenAPIExport(
 	// A trailing newline, because this document is written to a file that people
 	// and tools read line by line.
 	return append(document, '\n'), nil
+}
+
+// normalizeOpenAPIResourceTags makes documentation grouping follow the public
+// resource contract instead of the package that happened to register a route.
+func normalizeOpenAPIResourceTags(specification *huma.OpenAPI) {
+	if specification == nil {
+		return
+	}
+	for path, item := range specification.Paths {
+		tag := strings.SplitN(strings.TrimPrefix(path, "/"), "/", 2)[0]
+		if tag == "" || item == nil {
+			continue
+		}
+		for _, operation := range []*huma.Operation{
+			item.Get, item.Post, item.Put, item.Patch, item.Delete,
+			item.Head, item.Options, item.Trace,
+		} {
+			if operation != nil {
+				operation.Tags = []string{tag}
+			}
+		}
+	}
 }
 
 // normalizeOpenAPIFormat resolves the requested format, defaulting to JSON.

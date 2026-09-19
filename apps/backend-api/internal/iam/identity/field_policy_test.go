@@ -22,12 +22,12 @@ func (c identityProfileChecker) FieldConstraint(context.Context, guid.ID, guid.I
 func TestIdentityProfilePolicyHTTPFailuresAndProjection(t *testing.T) {
 	h := newIdentityHTTPHarness(t, true)
 	header, auth := identityTenantHeader(7), "Authorization: Bearer test"
-	created := h.api.Post("/iam/principals", auth, header, map[string]any{
+	created := h.api.Post("/principals", auth, header, map[string]any{
 		"login_name": "profile-user", "password": testPassword, "display_name": "Private", "email": "private@example.test",
 	})
 	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
 	principal := decodeIdentityEnvelope[Principal](t, created).Data
-	path := "/iam/principals/" + principal.ID.String()
+	path := "/principals/" + principal.ID.String()
 	fields, err := (identityRouteAuthorizer{}).FieldConstraint(t.Context(), 7, 0, authz.ProfileResource, 11)
 	require.NoError(t, err)
 	fields.Fields["email"] = authz.FieldDecision{Read: "redact"}
@@ -39,16 +39,16 @@ func TestIdentityProfilePolicyHTTPFailuresAndProjection(t *testing.T) {
 	assert.Equal(t, "[REDACTED]", body["email"])
 	assert.NotContains(t, body, "email_verified")
 	assert.NotContains(t, body, "display_name")
-	assert.Equal(t, http.StatusForbidden, h.api.Get("/iam/principals?search=private", auth, header).Code)
+	assert.Equal(t, http.StatusForbidden, h.api.Get("/principals?search=private", auth, header).Code)
 	for _, value := range []any{nil, "other@example.test"} {
 		assert.Equal(t, http.StatusForbidden, h.api.Patch(path, auth, header, map[string]any{"email": value}).Code)
-		assert.Equal(t, http.StatusForbidden, h.api.Post("/iam/principals", auth, header, map[string]any{
+		assert.Equal(t, http.StatusForbidden, h.api.Post("/principals", auth, header, map[string]any{
 			"login_name": "denied", "password": testPassword, "email": value,
 		}).Code)
 	}
 	assert.Equal(t, "private@example.test", h.principal(t, principal.ID).Email)
 	fields.Fields["login_name"] = authz.FieldDecision{Read: "omit"}
-	assert.Equal(t, http.StatusForbidden, h.api.Get("/iam/principals", auth, header).Code)
+	assert.Equal(t, http.StatusForbidden, h.api.Get("/principals", auth, header).Code)
 	for _, unavailable := range []bool{false, true} {
 		status := http.StatusForbidden
 		h.service.fields = identityProfileChecker{}
@@ -57,11 +57,11 @@ func TestIdentityProfilePolicyHTTPFailuresAndProjection(t *testing.T) {
 			status = http.StatusServiceUnavailable
 		}
 		assert.Equal(t, status, h.api.Get(path, auth, header).Code)
-		assert.Equal(t, status, h.api.Get("/iam/principals", auth, header).Code)
+		assert.Equal(t, status, h.api.Get("/principals", auth, header).Code)
 		assert.Equal(t, status, h.api.Put(path+"/suspension", auth, header).Code)
 		assert.Equal(t, status, h.api.Delete(path+"/suspension", auth, header).Code)
 		assert.Equal(t, status, h.api.Patch(path, auth, header, map[string]any{"display_name": "Changed"}).Code)
-		assert.Equal(t, status, h.api.Post("/iam/principals", auth, header, map[string]any{
+		assert.Equal(t, status, h.api.Post("/principals", auth, header, map[string]any{
 			"login_name": "unavailable", "password": testPassword,
 		}).Code)
 		assert.Equal(t, "active", h.principal(t, principal.ID).Status)

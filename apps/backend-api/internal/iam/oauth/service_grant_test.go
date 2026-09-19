@@ -139,7 +139,7 @@ func TestGrantWithdrawalReachesRealBearerResourcesAndCannotRevive(t *testing.T) 
 
 // Use the real router without humatest's request dump, which includes secrets.
 func grantResourceStatus(router http.Handler, token string) int {
-	request := httptest.NewRequest(http.MethodGet, "/authn/me", nil)
+	request := httptest.NewRequest(http.MethodGet, "/me", nil)
 	request.Header.Set("Authorization", "Bearer "+token)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)

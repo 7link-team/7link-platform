@@ -22,19 +22,19 @@ import (
 )
 
 const provisioningRouteManifest = `
-provisioning-create-scim-credential|POST|/iam/scim/directories/{directory_id}/credentials
-provisioning-create-scim-directory|POST|/iam/scim/directories
-provisioning-create-scim-target|POST|/iam/scim/targets
-provisioning-delete-scim-target|DELETE|/iam/scim/targets/{target_id}
-provisioning-deprovision-scim-resource|POST|/iam/scim/targets/{target_id}/deprovision
-provisioning-list-scim-credentials|GET|/iam/scim/directories/{directory_id}/credentials
-provisioning-list-scim-directories|GET|/iam/scim/directories
-provisioning-list-scim-targets|GET|/iam/scim/targets
-provisioning-push-scim-resource|POST|/iam/scim/targets/{target_id}/push
-provisioning-replace-scim-directory|PUT|/iam/scim/directories/{directory_id}
-provisioning-replace-scim-target|PUT|/iam/scim/targets/{target_id}
-provisioning-retire-scim-target|POST|/iam/scim/targets/{target_id}/retire
-provisioning-revoke-scim-credential|DELETE|/iam/scim/directories/{directory_id}/credentials/{credential_id}
+provisioning-create-scim-credential|POST|/scim-directories/{directory_id}/credentials
+provisioning-create-scim-directory|POST|/scim-directories
+provisioning-create-scim-target|POST|/scim-targets
+provisioning-delete-scim-target|DELETE|/scim-targets/{target_id}
+provisioning-deprovision-scim-resource|POST|/scim-targets/{target_id}/deprovision
+provisioning-list-scim-credentials|GET|/scim-directories/{directory_id}/credentials
+provisioning-list-scim-directories|GET|/scim-directories
+provisioning-list-scim-targets|GET|/scim-targets
+provisioning-push-scim-resource|POST|/scim-targets/{target_id}/push
+provisioning-replace-scim-directory|PUT|/scim-directories/{directory_id}
+provisioning-replace-scim-target|PUT|/scim-targets/{target_id}
+provisioning-retire-scim-target|POST|/scim-targets/{target_id}/retire
+provisioning-revoke-scim-credential|DELETE|/scim-directories/{directory_id}/credentials/{credential_id}
 scim-bulk|POST|/scim/v2/Bulk
 scim-create-group|POST|/scim/v2/Groups
 scim-create-user|POST|/scim/v2/Users
@@ -134,7 +134,7 @@ func TestProvisioningRouteManifestAndOpenAPIContract(t *testing.T) {
 			if operation == nil {
 				continue
 			}
-			if strings.HasPrefix(path, "/iam/scim/") {
+			if strings.HasPrefix(path, "/scim/") {
 				assert.Equal(t, "tenant_administer", operation.Extensions[authz.GuardExtensionKey], operation.OperationID)
 				assert.Equal(t, []map[string][]string{{authz.BearerScheme: {}}, {authz.SessionScheme: {}}}, operation.Security, operation.OperationID)
 				continue
@@ -348,16 +348,16 @@ func TestSCIMDiscoveryAndProtocolErrors(t *testing.T) {
 func TestProvisioningManagementHTTPWorkflow(t *testing.T) {
 	h := newProvisioningHTTPHarness(t)
 	tenant := wireID("tenant-a")
-	response := h.request(t, http.MethodPost, "/iam/scim/directories", []byte(`{"name":"Secondary"}`), tenant, "", nil)
+	response := h.request(t, http.MethodPost, "/scim-directories", []byte(`{"name":"Secondary"}`), tenant, "", nil)
 	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 	var envelope adminEnvelope
 	decodeRecorder(t, response, &envelope)
 	var directory Directory
 	require.NoError(t, json.Unmarshal(envelope.Data, &directory))
-	response = h.request(t, http.MethodGet, "/iam/scim/directories", nil, tenant, "", nil)
+	response = h.request(t, http.MethodGet, "/scim-directories", nil, tenant, "", nil)
 	assert.Equal(t, http.StatusOK, response.Code)
 
-	credentialPath := "/iam/scim/directories/" + directory.ID.String() + "/credentials"
+	credentialPath := "/scim-directories/" + directory.ID.String() + "/credentials"
 	response = h.request(t, http.MethodPost, credentialPath, []byte(`{"name":"automation"}`), tenant, "", nil)
 	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 	decodeRecorder(t, response, &envelope)
@@ -367,23 +367,23 @@ func TestProvisioningManagementHTTPWorkflow(t *testing.T) {
 	assert.Equal(t, http.StatusOK, response.Code)
 	response = h.request(t, http.MethodDelete, credentialPath+"/"+issued.Credential.ID.String(), nil, tenant, "", nil)
 	assert.Equal(t, http.StatusOK, response.Code)
-	response = h.request(t, http.MethodPut, "/iam/scim/directories/"+directory.ID.String(), []byte(`{"name":"Secondary","status":"disabled","version":1}`), tenant, "", nil)
+	response = h.request(t, http.MethodPut, "/scim-directories/"+directory.ID.String(), []byte(`{"name":"Secondary","status":"disabled","version":1}`), tenant, "", nil)
 	assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
 
 	provider, server := newSCIMProviderEndpoint(t, http.StatusOK, `{"id":"remote-management"}`)
 	createTarget := []byte(fmt.Sprintf(`{"name":"Management","base_url":%q,"bearer_token":"secret","service_account_id":%q}`, server.URL, h.env.auth.PrincipalID.String()))
-	response = h.request(t, http.MethodPost, "/iam/scim/targets", createTarget, tenant, "", nil)
+	response = h.request(t, http.MethodPost, "/scim-targets", createTarget, tenant, "", nil)
 	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 	decodeRecorder(t, response, &envelope)
 	var target TargetSecret
 	require.NoError(t, json.Unmarshal(envelope.Data, &target))
-	response = h.request(t, http.MethodGet, "/iam/scim/targets", nil, tenant, "", nil)
+	response = h.request(t, http.MethodGet, "/scim-targets", nil, tenant, "", nil)
 	assert.Equal(t, http.StatusOK, response.Code)
 
 	user, err := h.env.service.CreateUser(t.Context(), h.env.auth, activeUserInput("management", "management", "management@example.test"))
 	require.NoError(t, err)
 	resourceBody := []byte(fmt.Sprintf(`{"resource_type":"User","resource_id":%q}`, user.ID))
-	basePath := "/iam/scim/targets/" + target.Target.ID
+	basePath := "/scim-targets/" + target.Target.ID
 	response = h.request(t, http.MethodPost, basePath+"/push", resourceBody, tenant, "", nil)
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.Equal(t, http.MethodPut, provider.last(t).Method)
@@ -405,21 +405,21 @@ func TestProvisioningManagementHTTPFailures(t *testing.T) {
 		body         []byte
 		status       int
 	}{
-		{http.MethodPost, "/iam/scim/directories", []byte(`{"name":"Primary IdP"}`), http.StatusConflict},
-		{http.MethodPut, "/iam/scim/directories/" + missing, []byte(`{"name":"Missing","status":"active","version":1}`), http.StatusNotFound},
-		{http.MethodGet, "/iam/scim/directories/" + missing + "/credentials", nil, http.StatusNotFound},
-		{http.MethodPost, "/iam/scim/directories/" + missing + "/credentials", []byte(`{"name":"missing"}`), http.StatusNotFound},
-		{http.MethodDelete, "/iam/scim/directories/" + h.env.auth.DirectoryID.String() + "/credentials/" + missing, nil, http.StatusNotFound},
-		{http.MethodPut, "/iam/scim/targets/" + missing, []byte(`{"name":"Missing","base_url":"https://example.test","status":"active","version":1}`), http.StatusNotFound},
-		{http.MethodDelete, "/iam/scim/targets/" + missing, nil, http.StatusNotFound},
-		{http.MethodPost, "/iam/scim/targets/" + missing + "/push", []byte(`{"resource_type":"User","resource_id":"` + missing + `"}`), http.StatusNotFound},
-		{http.MethodPost, "/iam/scim/targets/" + missing + "/deprovision", []byte(`{"resource_type":"User","resource_id":"` + missing + `"}`), http.StatusNotFound},
+		{http.MethodPost, "/scim-directories", []byte(`{"name":"Primary IdP"}`), http.StatusConflict},
+		{http.MethodPut, "/scim-directories/" + missing, []byte(`{"name":"Missing","status":"active","version":1}`), http.StatusNotFound},
+		{http.MethodGet, "/scim-directories/" + missing + "/credentials", nil, http.StatusNotFound},
+		{http.MethodPost, "/scim-directories/" + missing + "/credentials", []byte(`{"name":"missing"}`), http.StatusNotFound},
+		{http.MethodDelete, "/scim-directories/" + h.env.auth.DirectoryID.String() + "/credentials/" + missing, nil, http.StatusNotFound},
+		{http.MethodPut, "/scim-targets/" + missing, []byte(`{"name":"Missing","base_url":"https://example.test","status":"active","version":1}`), http.StatusNotFound},
+		{http.MethodDelete, "/scim-targets/" + missing, nil, http.StatusNotFound},
+		{http.MethodPost, "/scim-targets/" + missing + "/push", []byte(`{"resource_type":"User","resource_id":"` + missing + `"}`), http.StatusNotFound},
+		{http.MethodPost, "/scim-targets/" + missing + "/deprovision", []byte(`{"resource_type":"User","resource_id":"` + missing + `"}`), http.StatusNotFound},
 	}
 	for _, test := range tests {
 		response := h.request(t, test.method, test.path, test.body, tenant, "", nil)
 		assert.Equal(t, test.status, response.Code, test.method+" "+test.path+" "+response.Body.String())
 	}
-	invalid := h.request(t, http.MethodDelete, "/iam/scim/targets/not-an-id", nil, tenant, "", nil)
+	invalid := h.request(t, http.MethodDelete, "/scim-targets/not-an-id", nil, tenant, "", nil)
 	assert.Equal(t, http.StatusUnprocessableEntity, invalid.Code)
 }
 

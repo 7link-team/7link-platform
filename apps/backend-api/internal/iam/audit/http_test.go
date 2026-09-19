@@ -22,27 +22,27 @@ import (
 )
 
 const auditRouteManifest = `
-audit-anchor-current|POST|/iam/audit-anchor
-audit-export-events|GET|/iam/audit-events/export
-audit-get-event|GET|/iam/audit-events/{id}
-audit-get-governance|GET|/iam/audit/governance
-audit-list-events|GET|/iam/audit-events
-audit-set-retention|PUT|/iam/audit/retention
-audit-sign-root|POST|/iam/audit/roots/sign
-audit-verify-integrity|GET|/iam/audit-integrity
-audit-archive-status|GET|/iam/audit/archive-status
-audit-list-archives|GET|/iam/audit/archives
-audit-request-archive|POST|/iam/audit/archives
-audit-retry-archive|POST|/iam/audit/archives/{id}/retry
-audit-verify-archive|POST|/iam/audit/archives/{id}/verify
-audit-download-archive|GET|/iam/audit/archives/{id}/download
-audit-platform-archive-status|GET|/platform/iam/audit/archive-status
-audit-platform-list-archives|GET|/platform/iam/audit/archives
-audit-platform-request-archive|POST|/platform/iam/audit/archives
-audit-platform-retry-archive|POST|/platform/iam/audit/archives/{id}/retry
-audit-platform-verify-archive|POST|/platform/iam/audit/archives/{id}/verify
-audit-platform-download-archive|GET|/platform/iam/audit/archives/{id}/download
-audit-platform-set-retention|PUT|/platform/iam/audit/retention`
+audit-anchor-current|POST|/audit/anchors
+audit-export-events|GET|/audit/exports
+audit-get-event|GET|/audit/events/{event_id}
+audit-get-governance|GET|/audit/governance-policy
+audit-list-events|GET|/audit/events
+audit-set-retention|PUT|/audit/retention-policy
+audit-sign-root|POST|/audit/root-signatures
+audit-verify-integrity|GET|/audit/integrity-verifications
+audit-archive-status|GET|/audit/archive-status
+audit-list-archives|GET|/audit/archives
+audit-request-archive|POST|/audit/archives
+audit-retry-archive|POST|/audit/archives/{archive_id}/retry
+audit-verify-archive|POST|/audit/archives/{archive_id}/verify
+audit-download-archive|GET|/audit/archives/{archive_id}/download
+audit-platform-archive-status|GET|/platform/audit/archive-status
+audit-platform-list-archives|GET|/platform/audit/archives
+audit-platform-request-archive|POST|/platform/audit/archives
+audit-platform-retry-archive|POST|/platform/audit/archives/{archive_id}/retry
+audit-platform-verify-archive|POST|/platform/audit/archives/{archive_id}/verify
+audit-platform-download-archive|GET|/platform/audit/archives/{archive_id}/download
+audit-platform-set-retention|PUT|/platform/audit/retention`
 
 var auditGuards = map[string]string{
 	"audit-anchor-current":            "audit_event_anchor",
@@ -132,12 +132,12 @@ func TestAuditRouteManifestAndOpenAPIContract(t *testing.T) {
 			assert.Equal(t, wantTenantHeaders, tenantHeaders, location)
 		}
 	}
-	export := api.OpenAPI().Paths["/iam/audit-events/export"].Get
+	export := api.OpenAPI().Paths["/audit/exports"].Get
 	assert.Contains(t, export.Responses["200"].Content, "application/x-ndjson")
 	assert.Contains(t, export.Responses, "409")
 	assert.Contains(t, export.Responses, "422")
 	assert.Contains(t, export.Responses, "500")
-	assert.Contains(t, api.OpenAPI().Paths["/iam/audit-events/{id}"].Get.Responses, "404")
+	assert.Contains(t, api.OpenAPI().Paths["/audit/events/{event_id}"].Get.Responses, "404")
 }
 
 func newAuditHTTPHarness(t *testing.T) (*auditHarness, humatest.TestAPI) {
@@ -162,7 +162,7 @@ func TestAuditHTTPTenantIsolationAndLifecycle(t *testing.T) {
 	headerA := authz.TenantHeader + ": " + tenantA.String()
 	headerB := authz.TenantHeader + ": " + tenantB.String()
 
-	response := api.Get("/iam/audit-events?event_type=client_created&limit=25", headerA)
+	response := api.Get("/audit/events?event_type=client_created&limit=25", headerA)
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	var list struct {
 		Data []Event `json:"data"`
@@ -170,12 +170,12 @@ func TestAuditHTTPTenantIsolationAndLifecycle(t *testing.T) {
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &list))
 	require.Len(t, list.Data, 1)
 	assert.Equal(t, event.ID, list.Data[0].ID)
-	assert.Equal(t, http.StatusOK, api.Get("/iam/audit-events/"+event.ID.String(), headerA).Code)
-	assert.Equal(t, http.StatusNotFound, api.Get("/iam/audit-events/"+event.ID.String(), headerB).Code)
-	assert.Equal(t, http.StatusOK, api.Get("/iam/audit-integrity", headerA).Code)
-	assert.Equal(t, http.StatusOK, api.Get("/iam/audit-integrity", headerB).Code)
+	assert.Equal(t, http.StatusOK, api.Get("/audit/events/"+event.ID.String(), headerA).Code)
+	assert.Equal(t, http.StatusNotFound, api.Get("/audit/events/"+event.ID.String(), headerB).Code)
+	assert.Equal(t, http.StatusOK, api.Get("/audit/integrity-verifications", headerA).Code)
+	assert.Equal(t, http.StatusOK, api.Get("/audit/integrity-verifications", headerB).Code)
 
-	exported := api.Get("/iam/audit-events/export?event_type=client_created", headerA)
+	exported := api.Get("/audit/exports?event_type=client_created", headerA)
 	require.Equal(t, http.StatusOK, exported.Code, exported.Body.String())
 	assert.Equal(t, "application/x-ndjson", exported.Header().Get("Content-Type"))
 	assert.Regexp(t, `^attachment; filename="audit-[0-9]{8}T[0-9]{6}Z.ndjson"$`, exported.Header().Get("Content-Disposition"))
@@ -184,45 +184,45 @@ func TestAuditHTTPTenantIsolationAndLifecycle(t *testing.T) {
 	assert.Equal(t, int64(2), h.count(t, "iam_audit_events", tenantA))
 	assert.Zero(t, h.count(t, "iam_audit_events", tenantB))
 
-	retention := api.Put("/iam/audit/retention", headerA, map[string]any{
+	retention := api.Put("/audit/retention-policy", headerA, map[string]any{
 		"min_days": 90, "archive_after_days": 180,
 	})
 	require.Equal(t, http.StatusOK, retention.Code, retention.Body.String())
 	assert.Contains(t, retention.Body.String(), `"min_days":90`)
-	governanceA := api.Get("/iam/audit/governance", headerA)
+	governanceA := api.Get("/audit/governance-policy", headerA)
 	require.Equal(t, http.StatusOK, governanceA.Code, governanceA.Body.String())
 	assert.Contains(t, governanceA.Body.String(), `"min_days":90`)
-	governanceB := api.Get("/iam/audit/governance", headerB)
+	governanceB := api.Get("/audit/governance-policy", headerB)
 	require.Equal(t, http.StatusOK, governanceB.Code, governanceB.Body.String())
 	assert.Contains(t, governanceB.Body.String(), `"min_days":365`)
 	assert.Zero(t, h.count(t, "iam_audit_retention_policies", tenantB))
 
-	assert.Equal(t, http.StatusServiceUnavailable, api.Post("/iam/audit-anchor", headerA).Code)
-	assert.Equal(t, http.StatusServiceUnavailable, api.Post("/iam/audit/roots/sign", headerA).Code)
+	assert.Equal(t, http.StatusServiceUnavailable, api.Post("/audit/anchors", headerA).Code)
+	assert.Equal(t, http.StatusServiceUnavailable, api.Post("/audit/root-signatures", headerA).Code)
 }
 
 func TestAuditHTTPValidationIntegrityAndStorageFailures(t *testing.T) {
 	h, api := newAuditHTTPHarness(t)
 	header := authz.TenantHeader + ": 801"
 	invalidTenant := authz.TenantHeader + ": invalid"
-	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/iam/audit-events", invalidTenant).Code)
-	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/iam/audit-events/1", invalidTenant).Code)
-	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/iam/audit-integrity", invalidTenant).Code)
-	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/iam/audit-anchor", invalidTenant).Code)
-	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/iam/audit/governance", invalidTenant).Code)
-	assert.Equal(t, http.StatusUnprocessableEntity, api.Put("/iam/audit/retention", invalidTenant, map[string]any{
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/audit/events", invalidTenant).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/audit/events/1", invalidTenant).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/audit/integrity-verifications", invalidTenant).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/audit/anchors", invalidTenant).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/audit/governance-policy", invalidTenant).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Put("/audit/retention-policy", invalidTenant, map[string]any{
 		"min_days": 90, "archive_after_days": 180,
 	}).Code)
-	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/iam/audit/roots/sign", invalidTenant).Code)
-	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/iam/audit-events?from=invalid", header).Code)
-	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/iam/audit-events?to=invalid", header).Code)
-	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/iam/audit-events/not-an-id", header).Code)
-	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/iam/audit-events?principal_id=bad", header).Code)
-	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/iam/audit-events?target_id=bad", header).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/audit/root-signatures", invalidTenant).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/audit/events?from=invalid", header).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/audit/events?to=invalid", header).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/audit/events/not-an-id", header).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/audit/events?principal_id=bad", header).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/audit/events?target_id=bad", header).Code)
 	assert.Equal(t, http.StatusUnprocessableEntity, api.Get(
-		"/iam/audit-events/export?from=2026-09-03T20:00:00Z&to=2026-09-02T20:00:00Z", header,
+		"/audit/exports?from=2026-09-03T20:00:00Z&to=2026-09-02T20:00:00Z", header,
 	).Code)
-	assert.Equal(t, http.StatusUnprocessableEntity, api.Put("/iam/audit/retention", header, map[string]any{
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Put("/audit/retention-policy", header, map[string]any{
 		"min_days": 90, "archive_after_days": 89,
 	}).Code)
 
@@ -232,13 +232,13 @@ func TestAuditHTTPValidationIntegrityAndStorageFailures(t *testing.T) {
 	require.NoError(t, h.db.Exec(
 		"UPDATE "+h.table("iam_audit_events")+" SET event_hash = 'tampered' WHERE id = ?", event.ID,
 	).Error)
-	broken := api.Get("/iam/audit-events/export", header)
+	broken := api.Get("/audit/exports", header)
 	assert.Equal(t, http.StatusConflict, broken.Code, broken.Body.String())
 	assert.Contains(t, broken.Body.String(), auditi18n.IntegrityFailed)
 
 	require.NoError(t, h.db.Exec("DROP TABLE "+h.table("iam_audit_events")).Error)
-	assert.Equal(t, http.StatusInternalServerError, api.Get("/iam/audit-events", header).Code)
-	assert.Equal(t, http.StatusInternalServerError, api.Get("/iam/audit-events/1", header).Code)
+	assert.Equal(t, http.StatusInternalServerError, api.Get("/audit/events", header).Code)
+	assert.Equal(t, http.StatusInternalServerError, api.Get("/audit/events/1", header).Code)
 }
 
 func TestAuditAPIErrorMappingsAndFilterHelpers(t *testing.T) {
@@ -305,13 +305,13 @@ func TestAuditHTTPAnchorAndSignedRootSuccess(t *testing.T) {
 	_, api := humatest.New(t)
 	RegisterHTTP(api, service, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()))
 	header := authz.TenantHeader + ": 1201"
-	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/iam/audit-anchor", header).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/audit/anchors", header).Code)
 	_, err := service.Append(t.Context(), EventInput{TenantID: 1201, EventType: "created", Outcome: "success"})
 	require.NoError(t, err)
-	anchored := api.Post("/iam/audit-anchor", header)
+	anchored := api.Post("/audit/anchors", header)
 	require.Equal(t, http.StatusOK, anchored.Code, anchored.Body.String())
 	assert.Contains(t, anchored.Body.String(), `"head_sequence":1`)
-	signed := api.Post("/iam/audit/roots/sign", header)
+	signed := api.Post("/audit/root-signatures", header)
 	require.Equal(t, http.StatusOK, signed.Code, signed.Body.String())
 	assert.Contains(t, signed.Body.String(), `"root_signature"`)
 }

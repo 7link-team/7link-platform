@@ -155,7 +155,7 @@ func TestPrincipalStateStoreRefusesToServeBeforeWiring(t *testing.T) {
 // TestPrincipalStateStoreMatchesTheStatementsItReplaces renders every reader
 // through the real PostgreSQL dialect and asserts its exact text. These strings
 // are written out again here on purpose: they are the same literals
-// internal/iam/authn/repository_identity_test.go froze for the statements authn
+// internal/repository_identity_test.go froze for the statements authn
 // runs today, written independently on both sides, so moving a statement from
 // authn to its owner cannot quietly change a byte of SQL. Two of them feed query
 // plans pinned in internal/app/testdata/iam_performance_baseline.json, whose

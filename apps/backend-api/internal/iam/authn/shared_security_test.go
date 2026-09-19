@@ -217,20 +217,20 @@ func TestSharedSecurityHTTPRateLimitAndOutagePolicy(t *testing.T) {
 			return &struct{ Body string }{Body: "ok"}, nil
 		})
 	}
-	register("/authn/test", http.MethodPost)
-	register("/authn/status", http.MethodGet)
-	require.Equal(t, 200, api.Post("/authn/test").Code)
-	require.Equal(t, 200, api.Post("/authn/test").Code)
-	response := api.Post("/authn/test", "X-Forwarded-For: 1.2.3.4")
+	register("/test", http.MethodPost)
+	register("/status", http.MethodGet)
+	require.Equal(t, 200, api.Post("/test").Code)
+	require.Equal(t, 200, api.Post("/test").Code)
+	response := api.Post("/test", "X-Forwarded-For: 1.2.3.4")
 	require.Equal(t, 429, response.Code)
 	require.NotEmpty(t, response.Header().Get("Retry-After"))
-	require.Equal(t, 200, api.Get("/authn/status").Code)
+	require.Equal(t, 200, api.Get("/status").Code)
 	require.NoError(t, a.client.Close())
-	require.Equal(t, 503, api.Post("/authn/test").Code)
+	require.Equal(t, 503, api.Post("/test").Code)
 	a.cfg.FailurePolicy = "open"
-	require.Equal(t, 200, api.Post("/authn/test").Code)
+	require.Equal(t, 200, api.Post("/test").Code)
 	service.sharedSecurity = nil
-	require.Equal(t, 200, api.Post("/authn/test").Code)
+	require.Equal(t, 200, api.Post("/test").Code)
 	require.False(t, limitedAuthenticationOperation(nil))
 }
 
@@ -262,8 +262,8 @@ func TestSharedOAuthEndpointsAreLimitedAndAnswerInTheProtocolShape(t *testing.T)
 
 	// The authentication budget is a separate counter, so OAuth traffic has not
 	// spent any of it.
-	register("/authn/test")
-	require.Equal(t, 200, api.Post("/authn/test").Code)
+	register("/test")
+	require.Equal(t, 200, api.Post("/test").Code)
 }
 
 func TestAllAuthenticationMutationsDocumentSharedSecurityErrors(t *testing.T) {

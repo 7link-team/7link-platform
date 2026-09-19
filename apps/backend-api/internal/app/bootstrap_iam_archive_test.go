@@ -32,7 +32,7 @@ func TestComposedArchiveBrowserAcceptance(t *testing.T) {
 	require.NoError(t, err)
 	console := filepath.Join(backend, "..", "frontend-web-admin", "apps", "iam")
 	database := filepath.Join(t.TempDir(), "archive-browser.sqlite")
-	seed := exec.CommandContext(t.Context(), "go", "test", "./internal/iam/audit", "-run", "^TestArchiveBrowserSeed$", "-count=1")
+	seed := exec.CommandContext(t.Context(), "go", "test", "./internal/audit", "-run", "^TestArchiveBrowserSeed$", "-count=1")
 	seed.Dir = backend
 	seed.Env = append(os.Environ(), "IAM_ARCHIVE_BROWSER_DATABASE="+database)
 	output, err := seed.CombinedOutput()

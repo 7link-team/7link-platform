@@ -20,7 +20,7 @@ import (
 // same import direction that made the capability necessary in the first place.
 // So this writes the same rows the real closures write, on the handle it is
 // given, and what the real closures actually do is asserted on authn's side in
-// internal/iam/authn/credentialstore_test.go.
+// internal/credentialstore_test.go.
 //
 // It exists so the behavior tests around closure, provisioning and status
 // changes keep asserting the outcomes they always asserted. It is a fixture, not

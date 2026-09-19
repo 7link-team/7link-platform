@@ -704,7 +704,7 @@ func principalFromRow(row *model.Principal) Principal {
 		ID: row.ID, LoginName: row.LoginName, Email: row.Email,
 		EmailVerified: row.EmailVerified, ActivationRequired: row.ActivationRequired,
 		DisplayName: row.DisplayName, Status: row.Status,
-		Avatar:    storedAvatar(row.Avatar),
+		Avatar:    currentAvatar(row.ID, storedAvatar(row.Avatar)),
 		CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC(),
 	}
 }

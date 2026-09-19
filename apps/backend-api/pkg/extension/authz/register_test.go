@@ -513,6 +513,54 @@ func TestEntityAndPlatformAuthorizationMiddleware(t *testing.T) {
 	})
 }
 
+func TestEntityOrAuthenticatedAuthorizationKeepsContextsDistinct(t *testing.T) {
+	verifier := validVerifier()
+	checker := &dataChecker{constraint: authz.DataConstraint{AllowAll: true}}
+	_, api := humatest.New(t)
+	registry := authz.MustRegistry(authz.Action{Resource: "file", Verb: "view", Scope: "tenant", DataScoped: true})
+	registrar := authz.NewRegistrar(registry, verifier, checker, &fakeMembership{active: true})
+	seen := make([]authn.Claims, 0, 2)
+	authz.RegisterEntityOrAuthenticated(registrar, api, huma.Operation{
+		OperationID: "contextual-files", Method: http.MethodGet, Path: "/contextual-files",
+	}, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, _ *struct{}) (*routeOutput, error) {
+		claims, ok := authn.FromContext(ctx)
+		require.True(t, ok)
+		seen = append(seen, *claims)
+		return &routeOutput{Body: "ok"}, nil
+	})
+
+	require.Equal(t, http.StatusOK, api.Get("/contextual-files").Code)
+	require.Equal(t, guid.ID(31), seen[0].PrincipalID)
+	require.Zero(t, seen[0].TenantID)
+	require.Zero(t, seen[0].EntityID)
+	require.Empty(t, checker.dataCalls)
+
+	require.Equal(t, http.StatusOK, api.Get("/contextual-files", authz.TenantHeader+": 11", authz.EntityHeader+": 21").Code)
+	require.Equal(t, guid.ID(11), seen[1].TenantID)
+	require.Equal(t, guid.ID(21), seen[1].EntityID)
+	require.Equal(t, []entityPermissionCall{{tenantID: 11, entityID: 21, permission: "file_view", subject: 31}}, checker.dataCalls)
+
+	for _, headers := range [][]any{{authz.TenantHeader + ": 11"}, {authz.EntityHeader + ": 21"}} {
+		response := api.Get("/contextual-files", headers...)
+		require.Equal(t, http.StatusForbidden, response.Code)
+		require.Contains(t, response.Body.String(), "incomplete_resource_context")
+	}
+	require.Len(t, seen, 2, "partial selectors must not enter the handler")
+
+	operation := api.OpenAPI().Paths["/contextual-files"].Get
+	require.Equal(t, "file_view", operation.Extensions[authz.GuardExtensionKey])
+	for _, name := range []string{authz.TenantHeader, authz.EntityHeader} {
+		var found *huma.Param
+		for _, parameter := range operation.Parameters {
+			if parameter.Name == name && parameter.In == "header" {
+				found = parameter
+			}
+		}
+		require.NotNil(t, found)
+		require.False(t, found.Required)
+	}
+}
+
 func TestEntityAuthorizationFailurePaths(t *testing.T) {
 	tests := []struct {
 		name       string

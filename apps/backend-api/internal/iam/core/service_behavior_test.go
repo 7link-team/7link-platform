@@ -490,7 +490,7 @@ func TestServiceMenuCRUDValidationAndFailClosed(t *testing.T) {
 	})
 	require.NoError(t, err)
 	child, err := harness.service.CreateMenu(t.Context(), Menu{
-		TenantID: tenantID, ParentID: root.ID, Label: "Users", Route: "/iam/users",
+		TenantID: tenantID, ParentID: root.ID, Label: "Users", Route: "/users",
 		PermissionCode: "user_view", Status: MenuActive,
 	})
 	require.NoError(t, err)
@@ -504,7 +504,7 @@ func TestServiceMenuCRUDValidationAndFailClosed(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "People", updated.Label)
 	_, err = harness.service.CreateMenu(t.Context(), Menu{
-		TenantID: tenantID, Label: "Duplicate", Route: "/iam/users", Status: MenuActive,
+		TenantID: tenantID, Label: "Duplicate", Route: "/users", Status: MenuActive,
 	})
 	assert.ErrorIs(t, err, ErrMenuConflict)
 

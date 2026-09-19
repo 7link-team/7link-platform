@@ -33,18 +33,18 @@ oauth-authorize|GET|/oauth/authorize
 oauth-consent-decision|POST|/oauth/consent
 oauth-consent-page|GET|/oauth/consent
 oauth-consent-request|GET|/oauth/consent/request
-oauth-create-client|POST|/iam/oauth-clients
-oauth-delete-client|DELETE|/iam/oauth-clients/{id}
+oauth-create-client|POST|/oauth-clients
+oauth-delete-client|DELETE|/oauth-clients/{client_id}
 oauth-discovery|GET|/.well-known/openid-configuration
 oauth-introspect|POST|/oauth/introspect
 oauth-jwks|GET|/.well-known/jwks.json
-oauth-list-clients|GET|/iam/oauth-clients
-oauth-list-consents|GET|/iam/me/oauth-consents
-oauth-revoke-consent|DELETE|/iam/me/oauth-consents/{client_id}
+oauth-list-clients|GET|/oauth-clients
+oauth-list-consents|GET|/me/oauth-consents
+oauth-revoke-consent|DELETE|/me/oauth-consents/{client_id}
 oauth-revoke|POST|/oauth/revoke
-oauth-rotate-client-secret|POST|/iam/oauth-clients/{id}/rotate-secret
+oauth-rotate-client-secret|POST|/oauth-clients/{client_id}/rotate-secret
 oauth-token|POST|/oauth/token
-oauth-update-client|PUT|/iam/oauth-clients/{id}
+oauth-update-client|PUT|/oauth-clients/{client_id}
 oauth-userinfo|GET|/oauth/userinfo`
 
 var oauthGuards = map[string]string{
@@ -185,7 +185,7 @@ func TestConsentSelfServiceRoutesActOnlyForTheirCaller(t *testing.T) {
 
 	// No tenant header anywhere: a person's grants are not a tenant's business,
 	// and requiring one would hide the grants they most need to see.
-	response := harness.request(http.MethodGet, "/iam/me/oauth-consents", "", nil, caller)
+	response := harness.request(http.MethodGet, "/me/oauth-consents", "", nil, caller)
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	listed := decodeOAuthEnvelope[[]GrantedConsent](t, response).Data
 	require.Len(t, listed, 1)
@@ -193,8 +193,8 @@ func TestConsentSelfServiceRoutesActOnlyForTheirCaller(t *testing.T) {
 	assert.Equal(t, "Browser", listed[0].ClientName)
 
 	for name, target := range map[string]string{
-		"listing":    "/iam/me/oauth-consents",
-		"revocation": "/iam/me/oauth-consents/" + client.ID,
+		"listing":    "/me/oauth-consents",
+		"revocation": "/me/oauth-consents/" + client.ID,
 	} {
 		t.Run("an anonymous caller is refused before "+name, func(t *testing.T) {
 			method := http.MethodGet
@@ -219,16 +219,16 @@ func TestConsentSelfServiceRoutesActOnlyForTheirCaller(t *testing.T) {
 		})
 	}
 
-	revoked := harness.request(http.MethodDelete, "/iam/me/oauth-consents/"+client.ID, "", nil, caller)
+	revoked := harness.request(http.MethodDelete, "/me/oauth-consents/"+client.ID, "", nil, caller)
 	require.Equal(t, http.StatusOK, revoked.Code, revoked.Body.String())
 	assert.True(t, decodeOAuthEnvelope[consentRevokeData](t, revoked).Data.Revoked)
 
 	// The second one is what a double-click produces, and 404 is the honest
 	// answer: there is no grant by that name any more.
-	again := harness.request(http.MethodDelete, "/iam/me/oauth-consents/"+client.ID, "", nil, caller)
+	again := harness.request(http.MethodDelete, "/me/oauth-consents/"+client.ID, "", nil, caller)
 	assert.Equal(t, http.StatusNotFound, again.Code, again.Body.String())
 
-	empty := harness.request(http.MethodGet, "/iam/me/oauth-consents", "", nil, caller)
+	empty := harness.request(http.MethodGet, "/me/oauth-consents", "", nil, caller)
 	require.Equal(t, http.StatusOK, empty.Code, empty.Body.String())
 	assert.Contains(t, empty.Body.String(), `"data":[]`,
 		"a caller with no grants reads an empty array, not null")
@@ -241,7 +241,7 @@ func TestConsentRevocationRefusesAnIdentifierThatIsNotOne(t *testing.T) {
 	caller := map[string]string{"Cookie": "session"}
 	for name, id := range map[string]string{"a zero": "0", "a word": "latest", "a negative": "-1"} {
 		t.Run(name, func(t *testing.T) {
-			response := harness.request(http.MethodDelete, "/iam/me/oauth-consents/"+id, "", nil, caller)
+			response := harness.request(http.MethodDelete, "/me/oauth-consents/"+id, "", nil, caller)
 			assert.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 		})
 	}
@@ -275,8 +275,8 @@ func TestOAuthOpenAPISecurityGuardsParametersAndForms(t *testing.T) {
 	assert.Contains(t, revoke.Responses, "200")
 	assert.NotContains(t, revoke.Responses, "204")
 	for _, operation := range []*huma.Operation{
-		spec.Paths["/iam/oauth-clients/{id}"].Delete,
-		spec.Paths["/iam/oauth-clients/{id}/rotate-secret"].Post,
+		spec.Paths["/oauth-clients/{client_id}"].Delete,
+		spec.Paths["/oauth-clients/{client_id}/rotate-secret"].Post,
 	} {
 		assert.Contains(t, operation.Errors, http.StatusNotFound)
 		assert.Contains(t, operation.Responses, "404")
@@ -333,7 +333,7 @@ func TestOAuthOpenAPISecurityGuardsParametersAndForms(t *testing.T) {
 
 	for _, method := range []string{http.MethodPost, http.MethodPut} {
 		operation := oauthPathOperations(spec.Paths[map[string]string{
-			http.MethodPost: "/iam/oauth-clients", http.MethodPut: "/iam/oauth-clients/{id}",
+			http.MethodPost: "/oauth-clients", http.MethodPut: "/oauth-clients/{client_id}",
 		}[method]])[method]
 		requestSchema := resolveOAuthSchema(spec, operation.RequestBody.Content["application/json"].Schema)
 		require.NotNil(t, requestSchema, method)
@@ -344,7 +344,7 @@ func TestOAuthOpenAPISecurityGuardsParametersAndForms(t *testing.T) {
 		assert.Equal(t, `^\S+$`, requestSchema.Properties["scopes"].Items.Pattern, method)
 	}
 
-	for _, path := range []string{"/iam/oauth-clients/{id}", "/iam/oauth-clients/{id}/rotate-secret"} {
+	for _, path := range []string{"/oauth-clients/{client_id}", "/oauth-clients/{client_id}/rotate-secret"} {
 		for _, operation := range oauthPathOperations(spec.Paths[path]) {
 			if operation == nil {
 				continue
@@ -976,7 +976,7 @@ func TestConsentDecisionRejectsUnknownAnswersAndFailedCSRF(t *testing.T) {
 func TestOAuthClientManagementHTTPLifecycleAndTenantIsolation(t *testing.T) {
 	harness := newOAuthHTTPHarness(t)
 	headersA, headersB := managementHeaders(7), managementHeaders(8)
-	created := harness.json(http.MethodPost, "/iam/oauth-clients", map[string]any{
+	created := harness.json(http.MethodPost, "/oauth-clients", map[string]any{
 		"name": "Worker", "grant_types": []string{"client_credentials"},
 		"scopes": []string{"jobs.read"}, "public_client": false,
 	}, headersA)
@@ -986,10 +986,10 @@ func TestOAuthClientManagementHTTPLifecycleAndTenantIsolation(t *testing.T) {
 	require.NotEmpty(t, createdData.ClientSecret)
 	id := createdData.Client.ID
 
-	listedA := harness.request(http.MethodGet, "/iam/oauth-clients", "", nil, headersA)
+	listedA := harness.request(http.MethodGet, "/oauth-clients", "", nil, headersA)
 	require.Equal(t, http.StatusOK, listedA.Code, listedA.Body.String())
 	assert.Len(t, decodeOAuthEnvelope[[]Client](t, listedA).Data, 1)
-	listedB := harness.request(http.MethodGet, "/iam/oauth-clients", "", nil, headersB)
+	listedB := harness.request(http.MethodGet, "/oauth-clients", "", nil, headersB)
 	require.Equal(t, http.StatusOK, listedB.Code, listedB.Body.String())
 	assert.Empty(t, decodeOAuthEnvelope[[]Client](t, listedB).Data)
 
@@ -997,17 +997,17 @@ func TestOAuthClientManagementHTTPLifecycleAndTenantIsolation(t *testing.T) {
 		"name": "Worker Two", "grant_types": []string{"client_credentials"},
 		"scopes": []string{"jobs.read"}, "public_client": false, "status": "active",
 	}
-	assert.Equal(t, http.StatusUnprocessableEntity, harness.json(http.MethodPut, "/iam/oauth-clients/"+id, replacement, headersB).Code)
-	assert.Equal(t, http.StatusNotFound, harness.request(http.MethodPost, "/iam/oauth-clients/"+id+"/rotate-secret", "", nil, headersB).Code)
-	assert.Equal(t, http.StatusNotFound, harness.request(http.MethodDelete, "/iam/oauth-clients/"+id, "", nil, headersB).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, harness.json(http.MethodPut, "/oauth-clients/"+id, replacement, headersB).Code)
+	assert.Equal(t, http.StatusNotFound, harness.request(http.MethodPost, "/oauth-clients/"+id+"/rotate-secret", "", nil, headersB).Code)
+	assert.Equal(t, http.StatusNotFound, harness.request(http.MethodDelete, "/oauth-clients/"+id, "", nil, headersB).Code)
 
-	updated := harness.json(http.MethodPut, "/iam/oauth-clients/"+id, replacement, headersA)
+	updated := harness.json(http.MethodPut, "/oauth-clients/"+id, replacement, headersA)
 	require.Equal(t, http.StatusOK, updated.Code, updated.Body.String())
 	assert.Equal(t, "Worker Two", decodeOAuthEnvelope[Client](t, updated).Data.Name)
-	rotated := harness.request(http.MethodPost, "/iam/oauth-clients/"+id+"/rotate-secret", "", nil, headersA)
+	rotated := harness.request(http.MethodPost, "/oauth-clients/"+id+"/rotate-secret", "", nil, headersA)
 	require.Equal(t, http.StatusOK, rotated.Code, rotated.Body.String())
 	assert.NotEmpty(t, decodeOAuthEnvelope[clientSecretData](t, rotated).Data.ClientSecret)
-	deleted := harness.request(http.MethodDelete, "/iam/oauth-clients/"+id, "", nil, headersA)
+	deleted := harness.request(http.MethodDelete, "/oauth-clients/"+id, "", nil, headersA)
 	require.Equal(t, http.StatusOK, deleted.Code, deleted.Body.String())
 	assert.True(t, decodeOAuthEnvelope[clientDeleteData](t, deleted).Data.Deleted)
 	assert.Zero(t, harness.count(t, "iam_oauth_clients"))
@@ -1015,11 +1015,11 @@ func TestOAuthClientManagementHTTPLifecycleAndTenantIsolation(t *testing.T) {
 
 func TestOAuthHTTPRejectsMissingAuthAndInvalidSelectors(t *testing.T) {
 	harness := newOAuthHTTPHarness(t)
-	assert.Equal(t, http.StatusUnauthorized, harness.request(http.MethodGet, "/iam/oauth-clients", "", nil, map[string]string{authz.TenantHeader: "7"}).Code)
-	assert.Equal(t, http.StatusForbidden, harness.request(http.MethodGet, "/iam/oauth-clients", "", nil, map[string]string{
+	assert.Equal(t, http.StatusUnauthorized, harness.request(http.MethodGet, "/oauth-clients", "", nil, map[string]string{authz.TenantHeader: "7"}).Code)
+	assert.Equal(t, http.StatusForbidden, harness.request(http.MethodGet, "/oauth-clients", "", nil, map[string]string{
 		"Authorization": "Bearer admin", authz.TenantHeader: "not-an-id",
 	}).Code)
-	assert.Equal(t, http.StatusUnprocessableEntity, harness.request(http.MethodDelete, "/iam/oauth-clients/not-an-id", "", nil, managementHeaders(7)).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, harness.request(http.MethodDelete, "/oauth-clients/not-an-id", "", nil, managementHeaders(7)).Code)
 }
 
 func TestOAuthHTTPUsesLocalizedProtocolAndManagementErrors(t *testing.T) {
@@ -1033,7 +1033,7 @@ func TestOAuthHTTPUsesLocalizedProtocolAndManagementErrors(t *testing.T) {
 
 	managementHeaders := managementHeaders(7)
 	managementHeaders["X-Lang"] = "ms-MY"
-	management := harness.request(http.MethodDelete, "/iam/oauth-clients/999999", "", nil, managementHeaders)
+	management := harness.request(http.MethodDelete, "/oauth-clients/999999", "", nil, managementHeaders)
 	require.Equal(t, http.StatusNotFound, management.Code, management.Body.String())
 	message := decodeOAuthEnvelope[any](t, management).Message
 	assert.NotEqual(t, oauthi18n.ClientNotFound, message)
@@ -1074,7 +1074,7 @@ func TestOAuthHTTPDatabaseFailuresUseCorrectResponseContracts(t *testing.T) {
 	t.Run("management", func(t *testing.T) {
 		harness := newOAuthHTTPHarness(t)
 		require.NoError(t, harness.db.Exec("DROP TABLE "+harness.table("iam_oauth_clients")).Error)
-		response := harness.request(http.MethodGet, "/iam/oauth-clients", "", nil, managementHeaders(7))
+		response := harness.request(http.MethodGet, "/oauth-clients", "", nil, managementHeaders(7))
 		require.Equal(t, http.StatusInternalServerError, response.Code, response.Body.String())
 		body := decodeOAuthEnvelope[any](t, response)
 		assert.Equal(t, http.StatusInternalServerError, body.Code)
@@ -1093,8 +1093,8 @@ func TestOAuthHTTPDatabaseFailuresUseCorrectResponseContracts(t *testing.T) {
 			method string
 			target string
 		}{
-			"listing":    {method: http.MethodGet, target: "/iam/me/oauth-consents"},
-			"revocation": {method: http.MethodDelete, target: "/iam/me/oauth-consents/" + client.ID},
+			"listing":    {method: http.MethodGet, target: "/me/oauth-consents"},
+			"revocation": {method: http.MethodDelete, target: "/me/oauth-consents/" + client.ID},
 		} {
 			t.Run(name, func(t *testing.T) {
 				response := harness.request(request.method, request.target, "", nil, caller)
@@ -1131,14 +1131,14 @@ func TestConsentModeDefaultsToImplicitOverHTTP(t *testing.T) {
 	// Omitting the field must keep the pre-existing behavior. The service
 	// rejects an unset mode, so this also pins that the schema default is
 	// actually applied rather than leaving the Go zero value.
-	created := harness.json(http.MethodPost, "/iam/oauth-clients", map[string]any{
+	created := harness.json(http.MethodPost, "/oauth-clients", map[string]any{
 		"name": "Worker", "grant_types": []string{"client_credentials"},
 		"scopes": []string{"jobs.read"}, "public_client": false,
 	}, headers)
 	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
 	assert.Equal(t, ConsentImplicit, decodeOAuthEnvelope[clientCreateData](t, created).Data.Client.ConsentMode)
 
-	explicit := harness.json(http.MethodPost, "/iam/oauth-clients", map[string]any{
+	explicit := harness.json(http.MethodPost, "/oauth-clients", map[string]any{
 		"name": "Third Party", "grant_types": []string{"client_credentials"},
 		"scopes": []string{"jobs.read"}, "public_client": false, "consent_mode": "explicit",
 	}, headers)
@@ -1148,7 +1148,7 @@ func TestConsentModeDefaultsToImplicitOverHTTP(t *testing.T) {
 
 	// An unknown value is refused by the schema, so a typo cannot silently
 	// land a client in the permissive mode.
-	rejected := harness.json(http.MethodPost, "/iam/oauth-clients", map[string]any{
+	rejected := harness.json(http.MethodPost, "/oauth-clients", map[string]any{
 		"name": "Typo", "grant_types": []string{"client_credentials"},
 		"scopes": []string{"jobs.read"}, "public_client": false, "consent_mode": "trusted",
 	}, headers)
@@ -1159,7 +1159,7 @@ func TestConsentModeDefaultsToImplicitOverHTTP(t *testing.T) {
 	// That is consistent with public_client and status, but it means a caller
 	// that does not round-trip the field relaxes the client; pinned here so
 	// the behavior is a decision rather than an accident.
-	replaced := harness.json(http.MethodPut, "/iam/oauth-clients/"+explicitID, map[string]any{
+	replaced := harness.json(http.MethodPut, "/oauth-clients/"+explicitID, map[string]any{
 		"name": "Third Party", "grant_types": []string{"client_credentials"},
 		"scopes": []string{"jobs.read"}, "public_client": false, "status": "active",
 	}, headers)

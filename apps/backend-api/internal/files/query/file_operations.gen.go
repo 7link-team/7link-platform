@@ -44,6 +44,7 @@ func newOperation(db *gorm.DB, opts ...gen.DOOption) operation {
 	_operation.ItemCount = field.NewInt(tableName, "item_count")
 	_operation.NodeBudget = field.NewInt(tableName, "node_budget")
 	_operation.ClosureBudget = field.NewInt(tableName, "closure_budget")
+	_operation.PlanJSON = field.NewString(tableName, "plan_json")
 	_operation.ResultJSON = field.NewString(tableName, "result_json")
 	_operation.ErrorCode = field.NewString(tableName, "error_code")
 	_operation.CreatedAt = field.NewInt64(tableName, "created_at")
@@ -75,6 +76,7 @@ type operation struct {
 	ItemCount          field.Int
 	NodeBudget         field.Int
 	ClosureBudget      field.Int
+	PlanJSON           field.String
 	ResultJSON         field.String
 	ErrorCode          field.String
 	CreatedAt          field.Int64
@@ -112,6 +114,7 @@ func (o *operation) updateTableName(table string) *operation {
 	o.ItemCount = field.NewInt(table, "item_count")
 	o.NodeBudget = field.NewInt(table, "node_budget")
 	o.ClosureBudget = field.NewInt(table, "closure_budget")
+	o.PlanJSON = field.NewString(table, "plan_json")
 	o.ResultJSON = field.NewString(table, "result_json")
 	o.ErrorCode = field.NewString(table, "error_code")
 	o.CreatedAt = field.NewInt64(table, "created_at")
@@ -143,7 +146,7 @@ func (o *operation) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (o *operation) fillFieldMap() {
-	o.fieldMap = make(map[string]field.Expr, 21)
+	o.fieldMap = make(map[string]field.Expr, 22)
 	o.fieldMap["id"] = o.ID
 	o.fieldMap["space_id"] = o.SpaceID
 	o.fieldMap["actor_id"] = o.ActorID
@@ -160,6 +163,7 @@ func (o *operation) fillFieldMap() {
 	o.fieldMap["item_count"] = o.ItemCount
 	o.fieldMap["node_budget"] = o.NodeBudget
 	o.fieldMap["closure_budget"] = o.ClosureBudget
+	o.fieldMap["plan_json"] = o.PlanJSON
 	o.fieldMap["result_json"] = o.ResultJSON
 	o.fieldMap["error_code"] = o.ErrorCode
 	o.fieldMap["created_at"] = o.CreatedAt

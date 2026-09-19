@@ -150,7 +150,7 @@ export function UserMenu({
             <>
               <DropdownMenuLabel>{t("platformManagement")}</DropdownMenuLabel>
               {platformTenantAccess && (
-                <DropdownMenuItem onClick={() => navigate("/iam/tenants")}>
+                <DropdownMenuItem onClick={() => navigate("/tenants")}>
                   <Landmark className="mr-2 size-4" />
                   {t("tenantManagement")}
                 </DropdownMenuItem>
@@ -158,7 +158,7 @@ export function UserMenu({
               {platformAuditAccess && (
                 <DropdownMenuItem
                   onClick={() =>
-                    navigate("/iam/audit-governance?scope=platform")
+                    navigate("/audit-governance?scope=platform")
                   }
                 >
                   <FileClock className="mr-2 size-4" />

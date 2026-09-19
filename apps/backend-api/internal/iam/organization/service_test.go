@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	goosex "7link.com/platform/pkg/extension/goose"
@@ -21,6 +22,11 @@ import (
 )
 
 var organizationTestNow = time.Date(2026, 9, 3, 12, 0, 0, 123456789, time.UTC)
+
+const (
+	organizationEntityOne guid.ID = 10
+	organizationEntityTwo guid.ID = 20
+)
 
 type organizationTestIDs struct{ next atomic.Int64 }
 
@@ -68,6 +74,60 @@ func newOrganizationHarness(t *testing.T, prefix string) *organizationHarness {
 	return harness
 }
 
+func TestCreateDepartmentProvisionsOrganizationOwnedFileRootInTransaction(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	called := 0
+	h.service.roots = func(ctx context.Context, tx *gorm.DB, input core.FileRootProvisionInput, _ time.Time) (guid.ID, error) {
+		called++
+		require.Equal(t, core.FileRootProvisionInput{
+			Scope: "department", TenantID: 1, EntityID: organizationEntityOne, OwnerID: input.OwnerID,
+		}, input)
+		var count int64
+		require.NoError(t, tx.WithContext(ctx).Table("sl_iam_departments").Where("tenant_id = ? AND id = ? AND entity_id = ?", input.TenantID, input.OwnerID, input.EntityID).Count(&count).Error)
+		require.Equal(t, int64(1), count, "the provisioner must see the uncommitted department")
+		return 9001, nil
+	}
+	created, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Engineering"})
+	require.NoError(t, err)
+	require.Positive(t, created.ID)
+	require.Equal(t, 1, called)
+}
+
+func TestCreateDepartmentRollsBackWhenFileRootProvisioningFails(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	want := errors.New("root unavailable")
+	h.service.roots = func(context.Context, *gorm.DB, core.FileRootProvisionInput, time.Time) (guid.ID, error) {
+		return 0, want
+	}
+	_, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Engineering"})
+	require.ErrorIs(t, err, want)
+	departments, err := h.service.List(t.Context(), 1)
+	require.NoError(t, err)
+	require.Empty(t, departments)
+}
+
+func TestDeleteDepartmentRefusesRetainedFileContent(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	created, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Engineering"})
+	require.NoError(t, err)
+	called := 0
+	h.service.rootContent = func(ctx context.Context, tx *gorm.DB, input core.FileRootProvisionInput) (bool, error) {
+		called++
+		require.Equal(t, core.FileRootProvisionInput{
+			Scope: "department", TenantID: 1, EntityID: organizationEntityOne, OwnerID: created.ID,
+		}, input)
+		var count int64
+		require.NoError(t, tx.WithContext(ctx).Table("sl_iam_departments").Where("tenant_id = ? AND id = ?", 1, created.ID).Count(&count).Error)
+		require.Equal(t, int64(1), count, "the guard must run before department deletion")
+		return true, nil
+	}
+	require.ErrorIs(t, h.service.Delete(t.Context(), 1, created.ID, created.Version), ErrInUse)
+	stored, err := h.service.Get(t.Context(), 1, created.ID)
+	require.NoError(t, err)
+	require.Equal(t, created.ID, stored.ID)
+	require.Equal(t, 1, called)
+}
+
 func initializeOrganizationDatabase(t *testing.T, dsn, prefix string) {
 	t.Helper()
 	db, err := (gormx.Datasource{Type: "sqlite", DSN: dsn, Writable: true}).Open(t.Context())
@@ -78,6 +138,9 @@ func initializeOrganizationDatabase(t *testing.T, dsn, prefix string) {
 	source.Prefix = prefix
 	require.NoError(t, goosex.MigrateUpTo(t.Context(), sqlDB, source, "sqlite", 7))
 	require.NoError(t, db.Exec("CREATE TABLE "+prefix+"iam_policy_revisions (tenant_id BIGINT PRIMARY KEY, revision BIGINT NOT NULL, updated_at DATETIME NOT NULL)").Error)
+	require.NoError(t, db.Exec("CREATE TABLE "+prefix+"iam_entities (tenant_id BIGINT NOT NULL, id BIGINT NOT NULL, status TEXT NOT NULL, PRIMARY KEY (tenant_id, id))").Error)
+	require.NoError(t, db.Exec("ALTER TABLE "+prefix+"iam_departments ADD COLUMN entity_id BIGINT NULL").Error)
+	require.NoError(t, db.Exec("INSERT INTO "+prefix+"iam_entities (tenant_id, id, status) VALUES (1, 10, 'active'), (1, 11, 'active'), (2, 20, 'active')").Error)
 	require.NoError(t, db.Exec("CREATE TABLE "+prefix+"iam_tenant_members (tenant_id BIGINT NOT NULL, principal_id BIGINT NOT NULL, display_name TEXT NOT NULL, email TEXT NOT NULL, status TEXT NOT NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL, PRIMARY KEY (tenant_id, principal_id))").Error)
 	require.NoError(t, db.Exec("CREATE TABLE "+prefix+"iam_relationships (tenant_id BIGINT NOT NULL, subject_type TEXT NOT NULL, subject_id BIGINT NOT NULL)").Error)
 	require.NoError(t, db.Exec("CREATE TABLE "+prefix+"iam_resource_relationships (tenant_id BIGINT NOT NULL, subject_type TEXT NOT NULL, subject_id BIGINT NOT NULL)").Error)
@@ -98,13 +161,13 @@ func (h *organizationHarness) revision(t *testing.T, tenantID guid.ID) int64 {
 
 func TestDepartmentLifecycleAndTenantIsolation(t *testing.T) {
 	h := newOrganizationHarness(t, "sl_")
-	rootA, err := h.service.Create(t.Context(), 1, CreateDepartment{Name: "Engineering", SortOrder: 10})
+	rootA, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Engineering", SortOrder: 10})
 	require.NoError(t, err)
-	rootB, err := h.service.Create(t.Context(), 1, CreateDepartment{Name: "Operations", SortOrder: 5})
+	rootB, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Operations", SortOrder: 5})
 	require.NoError(t, err)
-	child, err := h.service.Create(t.Context(), 1, CreateDepartment{ParentID: rootA.ID, Name: "Platform"})
+	child, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, ParentID: rootA.ID, Name: "Platform"})
 	require.NoError(t, err)
-	other, err := h.service.Create(t.Context(), 2, CreateDepartment{Name: "Engineering"})
+	other, err := h.service.Create(t.Context(), 2, CreateDepartment{EntityID: organizationEntityTwo, Name: "Engineering"})
 	require.NoError(t, err)
 
 	items, err := h.service.List(t.Context(), 1)
@@ -114,9 +177,9 @@ func TestDepartmentLifecycleAndTenantIsolation(t *testing.T) {
 	assert.Equal(t, []int{0, 0, 1}, []int{items[0].Depth, items[1].Depth, items[2].Depth})
 	_, err = h.service.Get(t.Context(), 1, other.ID)
 	assert.ErrorIs(t, err, ErrNotFound)
-	_, err = h.service.Create(t.Context(), 1, CreateDepartment{Name: " engineering "})
+	_, err = h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: " engineering "})
 	assert.ErrorIs(t, err, ErrNameConflict)
-	_, err = h.service.Create(t.Context(), 1, CreateDepartment{ParentID: other.ID, Name: "Cross tenant"})
+	_, err = h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, ParentID: other.ID, Name: "Cross tenant"})
 	assert.ErrorIs(t, err, ErrNotFound)
 
 	newParent := rootB.ID
@@ -139,10 +202,28 @@ func TestDepartmentLifecycleAndTenantIsolation(t *testing.T) {
 	}
 }
 
+func TestDepartmentEntityBoundary(t *testing.T) {
+	h := newOrganizationHarness(t, "")
+	root, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Engineering"})
+	require.NoError(t, err)
+	other, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: 11, Name: "Operations"})
+	require.NoError(t, err)
+
+	_, err = h.service.Create(t.Context(), 1, CreateDepartment{EntityID: 11, ParentID: root.ID, Name: "Cross entity"})
+	assert.ErrorIs(t, err, ErrEntityMismatch)
+	_, err = h.service.Create(t.Context(), 1, CreateDepartment{EntityID: 999, Name: "Missing entity"})
+	assert.ErrorIs(t, err, ErrNotFound)
+
+	parent := other.ID
+	_, err = h.service.Update(t.Context(), 1, root.ID, UpdateDepartment{ParentID: &parent, Version: root.Version})
+	assert.ErrorIs(t, err, ErrEntityMismatch)
+	assert.EqualValues(t, 2, h.revision(t, 1))
+}
+
 func TestDepartmentAuditFailureRollsBackStateAndRevision(t *testing.T) {
 	h := newOrganizationHarness(t, "")
 	h.auditErr = errors.New("audit unavailable")
-	_, err := h.service.Create(t.Context(), 1, CreateDepartment{Name: "Engineering"})
+	_, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Engineering"})
 	assert.ErrorContains(t, err, "audit unavailable")
 	var count int64
 	require.NoError(t, h.db.Table(h.table("iam_departments")).Count(&count).Error)

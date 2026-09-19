@@ -1,4 +1,750 @@
 # Task State
+## Global REST Resource Routing And Swagger Grouping - 2026-09-19
+
+- Current phase: IMPLEMENTATION. The user approved a breaking pre-production
+  migration with no legacy aliases and requested a complete route audit.
+- Contract: public application paths expose resource nouns, never internal
+  module prefixes `/iam` or `/authn`. Tenant, Entity, and Department remain
+  top-level globally identified resources; ownership is request/body data and
+  authorization scope remains in mandatory headers rather than redundant URL
+  nesting.
+- Swagger: every application operation has one lowercase kebab-case tag equal to
+  its first public path segment. Package tags (`iam`, `authn`, `identity`,
+  `organization`, `governance`, `federation`, `provisioning`) are forbidden.
+- Avatar contract: `/me/avatar` for current metadata/configuration,
+  `/principals/{principal_id}/avatar` for current bytes, and
+  `/me/avatar-candidates/{candidate_id}` for private expiring candidate bytes.
+  Storage filenames are not public identifiers and no table is added.
+- Runtime compatibility: avatar storage-name parsing accepts both historical
+  `/api/iam/avatars/{principal_id}/{file}` and intermediate
+  `/api/avatars/{principal_id}/{file}` references while continuing to reject
+  public current-avatar URLs and malformed/wrong-principal references. This
+  keeps startup migration and reads compatible without rewriting database data.
+- Execution: Direct; routes, generated contract, Web calls, menu paths and
+  acceptance are strongly coupled. No subagent was requested.
+- Verification 2026-09-19: frontend full tests PASS (UI 85, IAM 98), full lint
+  PASS, production build PASS, backend build PASS, generated OpenAPI check PASS.
+  Backend `go test ./...` remains FAIL because route migration fixtures and
+  behavior tests still expect the removed action-style routes.
+- Runtime recovery verification: identity legacy-avatar tests PASS; focused
+  authn HTTP tests PASS; source build PASS. API PID 25424 serves 18280;
+  `/sessions/current` returns the expected anonymous 401 directly and through
+  the 18291 proxy. Fresh browser admin login and `/account/files` load PASS with
+  zero post-login failed responses or console errors.
+- Broader migration gates remain red for stale expectations, not the file
+  navigation fix: composed mapping, SCIM profile/service-account, tenant
+  isolation, principal closure, identity closure and OAuth tag tests still use
+  superseded route contracts.
+- Next action: reconcile the remaining backend route fixtures and behavior tests
+  with the generated contract, then rerun `go test ./...` before claiming the
+  global REST migration complete.
+
+## File Preview, Thumbnails, Blank Files, And Editors - 2026-09-19
+
+- Current phase: ACCEPTANCE COMPLETE for the navigation/new-tab slice. Phase 1
+  safe preview plus the user's image thumbnail and blank-file follow-ups are
+  implemented and browser-accepted.
+- Completed follow-up: icon surfaces open entries; directory navigation is URL
+  history-backed; refreshed/direct child-directory loads fall back to the
+  authorized parent path; files opened in a new tab render direct authorized
+  Blob content without the admin shell or preview dialog; folders open their
+  file-manager URL. Same-browser drag-to-directory uses the existing synchronous
+  `POST /file-operations`; sanitized local OOXML DOCX/PPTX preview uses the
+  installed Office plugin. No new API, table, route, background task, or public
+  storage URL was added.
+- Implemented: MIME/extension category icons; dynamic `open-file-viewer` for
+  image/text/PDF/bounded media; 32 MiB authorized Blob limit; 8 MiB
+  near-viewport image thumbnails with abort/revoke/icon fallback; generic ZIP
+  refinement for OOXML/ODF/container formats; current-folder `New` submenu for
+  zero-byte `.txt` and `.md` files through existing `POST /files`.
+- Thumbnail and file-type visuals now share the same fixed square at every file
+  browser density: 36 px compact/details and 64 px large. Images, loading/error
+  fallbacks, directories, and known-type SVG icons cannot resize the row/card.
+- Real acceptance: account login on current API 18280 and restarted Web 18291;
+  actual upload and render of text/image/PDF; PDF canvas nonblank; Office safe
+  fallback; viewer and worker chunks load only on demand; thumbnails remain in
+  details/small/large views; `.txt` and `.md` creation succeeds; account raw
+  requests omit tenant/entity headers; desktop and 390px mobile have no overflow,
+  authenticated console errors, or failed responses. Test artifacts were moved
+  to recycle bin. Screenshots are `.local/screenshots/file-preview/`.
+- Verification: focused 23 browser presentation tests PASS; IAM typecheck PASS;
+  IAM lint PASS. Earlier full frontend 181 tests and production build PASS before
+  the thumbnail/new-file follow-up; rerun full gates after this slice.
+- Size-consistency follow-up verification: file-browser presentation tests 24/24
+  PASS; IAM typecheck PASS; focused ESLint PASS. A browser-mounted real
+  `FileVisual` measured image/SVG pairs at 36x36 compact and 64x64 large.
+- Navigation/new-tab verification: focused file-browser tests 25/25 PASS; full
+  frontend tests PASS (UI 85, IAM 98); typecheck, full lint and production build
+  PASS. Live 18291/18280 browser acceptance PASS for clicked-directory browser
+  Back, direct-directory file-manager Back to its authorized parent, and image
+  `Open in new tab` reaching a `blob:` content page with no admin preview dialog
+  or server 5xx response.
+- Viewer decisions: user wants the best default per file type and a Windows-like
+  `Open with` choice. PPTist, Univer OSS and FortuneSheet are excluded because no
+  open-source option reliably covers PPT/PPTX, DOC/DOCX and XLS/XLSX together.
+  Microsoft Office Viewer is the default external Office handler and Google is
+  the alternate, only through an explicit short-lived read-only public token URL.
+- Next action after the active global route migration: implement the temporary
+  public file gateway and external Office handler registry, then versioned raw
+  saving and lazy Monaco.
+
+## File Icons, Preview, Editing And Version History - 2026-09-19
+
+- Current phase: DESIGN. User requested known-type file icons, broad file opening
+  through `open-file-viewer`, and a path to Monaco text/code editing with history.
+- Existing reuse: browser metadata already contains MIME/extension/size/version/
+  revision; authenticated raw download exists; immutable Objects, Versions,
+  `current_version_id`, object staging and `appendVersion` already support the
+  correct save foundation. No version-history table is needed.
+- Viewer review: `@open-file-viewer/core/react` 0.1.47 are MIT and React-compatible;
+  core is about 6.8 MB unpacked and the audited install resolves 211 production
+  dependencies with zero currently reported npm vulnerabilities. The package is
+  pre-1.0 and exposes one bundled core entry.
+- Security gates: Office is blocked by open issue #140 (unsafe DOCX hyperlinks and
+  unsandboxed srcdoc); archive decompression has no expansion/entry/ratio budget;
+  optional LibreDWG is GPL-3.0. These plugins are not approved for Phase 1.
+- Proposed Phase 1: one MIME-first classifier and Lucide icon component; dynamically
+  loaded local viewer adapter; Blob source from the authorized raw client; image,
+  text/code/Markdown, PDF, bounded native audio/video; 32 MiB initial in-memory
+  limit and explicit unsupported/oversized states.
+- Proposed Phase 2: lazy Monaco full-file editor; `PUT /files/{file_id}/raw` with
+  `If-Match`; immutable Object+Version append, node CAS, transaction audit; bounded
+  version list/read/restore UI. Existing compact form CodeMirror remains unchanged.
+- Design: `apps/frontend-web-admin/docs/file-preview-and-editing-design.md`.
+- Execution: Direct. The preview UI and its API/context behavior are tightly
+  coupled; no subagents requested. No product source or dependency has changed.
+- Verification: repository/source review PASS; npm production dependency audit
+  PASS (0 known vulnerabilities). Implementation tests NOT_RUN because design is
+  awaiting confirmation.
+- Next action: obtain approval or corrections for the phased plugin gates, 32 MiB
+  initial limit, existing download permission for preview, and Monaco Phase 2;
+  then implement Phase 1 before adding any write API.
+
+## Recycle Bin Restore Location And Rename Conflict - 2026-09-19
+
+- Current phase: ACCEPTANCE COMPLETE. User requested visible original restore paths
+  and a rename prompt when restoring into an occupied original name.
+- Contract: recycle-bin `FileEntryView` may include structured `restore_path`
+  segments. The field is omitted unless the original parent and every segment
+  from the owning file root remain active and the caller can traverse all of
+  them. This prevents ancestor-name disclosure through trash read permission.
+- Restore keeps the original name by default. A true destination-name collision
+  returns `file_restore_name_conflict`; Web then prompts for a new name and
+  retries the same `PATCH /files/{file_id}` with `state`, `revision`, and `name`.
+  Version/tree conflicts remain `file_state_changed`.
+- Performance: restore paths use generated `TrashRoot`, `NodeClosure`, and `Node`
+  batch queries only; no handwritten SQL and no per-entry path query. Measured
+  trash-list SELECTs are 11 for one item and 12 for 100 items.
+- Execution: Direct because persistence, HTTP contract and Web interaction are
+  tightly coupled. No subagents, new tables, routes, or dependencies.
+- Verification: full Files package PASS; backend build PASS; OpenAPI regenerated
+  and check PASS; Web 93 tests plus shared UI 85 tests PASS; full lint, typecheck,
+  and production build PASS; `git diff --check` PASS.
+- Real acceptance: authenticated 18280/18291 desktop and 390px mobile lifecycle
+  PASS for create/upload/trash, localized full restore path, name-conflict prompt,
+  renamed retry, and both restored files visible. No console/server errors or
+  horizontal overflow. Screenshots are under `.local/screenshots/file-browser/`.
+- Preview: API PID 10912 (`api-restore-path-v2.exe`) on 18280; existing Web PID 12496
+  on 18291. Temporary browser audit script was removed.
+- Next action: nothing remains for this slice. Broader ACL editor/sharing and
+  production-readiness work remains separately tracked below.
+
+## File Clipboard, Navigation And Recycle Bin - 2026-09-19
+
+- Current phase: ACCEPTANCE. Added synchronous `POST /file-operations` without
+  public `space_id`; the service derives the destination space and enforces
+  same-space live IAM + ACL authorization. Account and tenant contexts are both
+  supported. Copy/move remain synchronous; no conflict/task table was added.
+- Web now exposes copy/cut in item context and details menus, batch copy/cut in
+  selection mode, paste in the current-directory toolbar and blank-area context
+  menu. Cut clears only after confirmed success; copy remains reusable.
+- Directories open on one click with no arrow. Independent directory back/forward
+  history is implemented and does not reuse pagination history.
+- `GET /files?state=trashed` lists authorized deletion roots; `PATCH /files/{id}`
+  with `{state:"active",revision}` restores the original batch atomically. The
+  Web sidebar has a recycle-bin view with single and bulk restore. No permanent
+  deletion behavior was invented.
+- Known root scopes render through Web i18n: account/personal roots are `My files`
+  rather than the backend's compatibility name `Account files`; tenant/entity/
+  department roots also use translated scope names in sidebar and breadcrumb.
+- Verification: full Files package PASS; focused account HTTP test covers copy,
+  move, trash listing and ordered restore; Web typecheck/lint and 19 focused tests
+  PASS; mocked browser audit PASS on desktop/tablet/mobile plus zh-CN/ms-MY; real
+  18280/18291 browser lifecycle PASS for copy/paste, cut/move, navigation, upload,
+  exact download, rename, trash and restore. Services remain on 18280/18291.
+- Paste 404 follow-up: the API log contained no `POST /file-operations` 404 and
+  every received authenticated paste returned 201. Real Web-proxied checks also
+  passed for file copy/move, directory copy with descendants and two-item batch
+  copy. The long-running Vite process predated the final API client update, so it
+  was restarted on 18291 with an explicit 18280 proxy target. The newly served
+  module calls `/api/file-operations`; its anonymous route probe returns the
+  expected 401 rather than 404.
+- Recycle-bin follow-up: a node deleted, restored and deleted again retained two
+  historical `file_trash_roots`; the list query joined both and returned a
+  duplicate file ID, which the Web correctly rejected as an invalid page. Trash
+  listing now joins only the node's current `trash_batch_id`; historical batches
+  remain stored for audit. A regression covers restore/retrash and asserts one
+  visible entry with two retained placement records. Web uses a dedicated empty
+  recycle-bin message, never shows the missing-root hint there, excludes trashed
+  directories from folder navigation, and keeps the recycle entry in a separate
+  visible sidebar-bottom area. Real desktop/mobile Web against the pre-existing
+  duplicate data PASS; API 18280 PID 20316 and Web 18291 remain running.
+- Verification: Files full package PASS; Web 92 tests and shared UI 85 tests PASS;
+  Web typecheck, lint and production build PASS; desktop/mobile live recycle-bin
+  layout and data loading PASS.
+- Next action: user refreshes `http://127.0.0.1:18291/account/files` and inspects
+  the corrected recycle bin. Remaining sharing/ACL editor work stays outside this
+  completed slice.
+
+## Hierarchical File Roots And Large-Scale Authorization - 2026-09-19
+
+- Current phase: IMPLEMENTATION/REVIEW. User approved the reviewed design before
+  execution. The organization-root and batched-browser foundation is implemented,
+  but the complete file-management design is not production-ready.
+- Goal: initialize secure Tenant/Entity/Department file roots in the resource
+  creation transaction, lazily initialize account-private and tenant-personal
+  roots, expose unambiguous root ownership, and remove identified read-path
+  serialization/N+1 behavior without changing the approved public `/files`
+  resource routes.
+- Security model: organizational roots belong to Tenant/Entity/Department, not
+  their creator. IAM role permissions at that organization scope define the
+  whole-tree action ceiling; file ACLs refine child directory/file access and
+  cannot grant an IAM-denied action. The creator is audit metadata only. Only
+  account-private and tenant-personal roots follow a principal. Upper-level
+  `file_read_all` remains read-only and never grants write/delete/share/manage_acl.
+- Data prerequisite: every new Department must belong to exactly one Entity and
+  its parent must belong to that same Entity. Add nullable `entity_id` in a new
+  three-dialect migration for compatibility; legacy NULL rows fail closed until
+  explicitly repaired/backfilled.
+- Lifecycle: Tenant/Entity/Department roots are synchronous and atomic with IAM
+  resource creation. Tenant-personal roots are lazy and idempotent; account-private
+  root persistence is defined but its account-context API is not implemented.
+  Root identity is `(space_id, root_scope, root_owner_id)`; there is
+  no Workspace/Root table or synthetic workspace key. Existing roots are never
+  rebound. Organization-wide management comes from scoped IAM roles, not a
+  creator-specific root ACL.
+- Scale corrections in scope: read paths must not lock Tenant-wide `file_spaces`;
+  list authorization/path/ACL/object metadata must be batched; write fencing
+  moves toward workspace-root revisions with sorted locking for cross-root writes;
+  root authorization uses targeted ancestor/EXISTS checks instead of materializing
+  entire Entity/Department subtrees.
+- Existing evidence: indexed SQLite directory query plans PASS and browser page
+  authorization is fixed-query batched (18 SELECTs for 2 files, 19 for 100).
+  No real PostgreSQL/MySQL `EXPLAIN ANALYZE` has been run.
+- Confirmed exclusions: no conflict/task/cleanup table, no eager personal-root
+  fan-out, no menu initialization per Entity/Department, no global `/iam` or
+  `/authn` route redesign in this phase, and no claim of production readiness
+  until real lifecycle and multi-dialect scale verification pass.
+- Completed this phase: migration `00010` adds Department `entity_id` for all
+  dialects; PostgreSQL/MySQL use composite foreign keys and SQLite uses equivalent
+  constraint triggers. New Departments require an existing same-tenant Entity,
+  parent creation/moves are same-Entity only, and Entity ownership is immutable.
+  OpenAPI, generated TypeScript, and the Department Web page now require/select
+  an Entity and filter parent choices to that Entity.
+- Verification: organization package PASS; SQLite/MySQL/PostgreSQL plain+prefixed
+  organization migration and model tests PASS; OpenAPI check PASS; IAM API client
+  36 tests PASS; full frontend typecheck and lint PASS. The migration suite also
+  exposed and corrected its stale Identity milestone expectation (`avatars`).
+- Completed lifecycle work: `file_nodes` uses `root_scope + root_owner_id` with
+  three-dialect uniqueness. Tenant/Entity/Department roots are provisioned in
+  the organization creation transaction; failures roll back the organization.
+  Organization roots have no creator ACL. Tenant-personal roots remain lazy.
+- Completed ownership contract: `/files` root views return direct Tenant/Entity/
+  Department/Principal IDs and the Web validates and groups these fields instead
+  of inferring ownership. Entity/Department deletion rejects roots with retained
+  descendants in the same transaction and locks IAM revision before file space.
+- Scale correction completed: `loadNodePermissions` now performs a read-only
+  `file_spaces` lookup. It no longer executes SQLite's lock UPDATE or emits
+  `FOR UPDATE` on PostgreSQL/MySQL. `replaceNodeACL` explicitly takes the write
+  lock at its mutation boundary, preserving stale-write detection. A regression
+  test asserts permission reads execute zero GORM update callbacks.
+- Additional verification: full Files package PASS; Files+Organization race PASS
+  (`files` 29.983s, `organization` 8.503s); backend `go build ./...` PASS;
+  `git diff --check` PASS.
+- Completed scale work: one browser page batch-loads paths, ACLs, Versions and
+  Objects; IAM constraints and root reference validation are cached per request.
+  Query-budget regression records 18 SELECTs for 2 files and 19 for 100 files.
+  ACL reads are SQL-bounded at `unique ancestors * 256 + 1` and fail closed.
+- Verification 2026-09-19: Files full package PASS; Files/Core/Organization race
+  PASS; `internal/app` full package PASS; backend `go build ./...` PASS;
+  `make openapi-check` PASS; Web lint, forced tests (169 PASS), typecheck and
+  production build PASS; `git diff --check` PASS before the final doc checkpoint.
+- Remaining work: account-private lazy root/API; audited organization-root
+  archive/recovery and legacy repair; root-level revisions and sorted cross-root
+  locks; real MySQL 8.4/PostgreSQL `EXPLAIN ANALYZE` and concurrency gates; ACL
+  management API/Web; four sharing modes and public gateway; full storage/browser
+  E2E. Sharing and production readiness remain explicitly unaccepted.
+- Next action: design and implement the independent account-context `/files`
+  authorization/provisioning path without tenant claims or tenant-admin exposure,
+  then add root-level write revisions before real dual-database scale testing.
+
+## Unified Files Public Resource Routes - 2026-09-18
+
+- IMPLEMENTATION/TESTING: user rejected public `node`, separate `/directories`,
+  `/file-roots`, and `/personal-file-root`; a directory is one file entry with
+  `kind=directory`.
+- Current public Files contract is `GET/POST /files`, `GET/PATCH/DELETE
+  /files/{file_id}`, `GET /files/{file_id}/items`, `GET /files/{file_id}/raw`,
+  and root-relative `GET /files/{root_file_id}/-/{path}`. The runtime path accepts
+  multiple segments and authorizes the selected root plus every traversed entry.
+- Root entries use `kind=directory` and a separate `scope` field. Unified
+  multipart `POST /files` handles personal-root provisioning, child-directory
+  creation, and file upload. Web mutations no longer dispatch by entry kind.
+- Internal `Node`, workspace, space, tree, IAM+ACL gates and synchronous operation
+  behavior remain unchanged. No table or persistent conflict state was added.
+- FINAL PASS: full Files package tests and final race; backend build and
+  `make openapi-check`; OpenAPI and TypeScript generation; 49 focused Web tests,
+  typecheck, lint and production build; desktop/tablet/mobile/three-language route
+  audit; `git diff --check`.
+- Real isolated lifecycle PASS: existing personal root, directory creation,
+  27-byte upload, ID metadata, multi-segment root-relative lookup, exact raw
+  download, file/directory rename and trash. Test entries 37868046718599169 and
+  37868046768930817 are trashed.
+- Real authenticated Web PASS with requests limited to `/api/files?limit=100`
+  and `/api/files/{file_id}/items?limit=100`, no console errors or overflow.
+  Screenshot: `.local/screenshots/file-browser/unified-resource-routes.png`.
+- Isolated API 18081 runs the verified binary as PID 20332; Web 18092 remains PID
+  11600. Existing 18080/18191 remained untouched.
+- Global `/iam` and `/authn` routing migration remains design-only.
+
+## Global HTTP Resource Routing Audit - 2026-09-18
+
+- User requires a strict, precise, unambiguous REST resource convention across
+  every public URL and explicitly rejects implementation prefixes/segments such
+  as `/iam` and `/files/nodes`. User requested reference to the archived Spring
+  Boot project and previously required design before execution.
+- DESIGN phase. Generated OpenAPI currently contains 202 paths: 111 under
+  `/iam`, 35 under `/authn`, 7 under `/files`, plus protocol/infra/example paths.
+- Read-only archive review confirms the useful convention of plural top-level
+  resources, `/{id}` identity, nested owned resources, and explicit content/info
+  representations. Do not copy its `batch` or `recycler` command paths.
+- Added proposed `docs/http-resource-routing-design.md`. It covers every current
+  top-level family, removes module/internal names from application routes,
+  preserves standards/probes, specifies noun-based state transitions, defines
+  final file/directory routes, and proposes a global OpenAPI convention gate.
+- No route or runtime code changed in this design checkpoint. Existing isolated
+  preview remains on API 18081 and Web 18092; do not restart it until a contract
+  is approved and implemented. Existing 18080/18191 services remain untouched.
+- Approval required before the breaking implementation: remove both `/iam` and
+  `/authn`; expose no deprecated aliases; retain mandatory tenant/entity headers
+  rather than nesting all globally identified resources in URL paths.
+- Next action: obtain approval/corrections for the three routing decisions, then
+  implement the file route slice first with type-specific ID validation and the
+  global OpenAPI path convention test.
+
+## Basic File API Priority Correction - 2026-09-18
+
+- User correctly rejected copy/move-first delivery while create directory,
+  upload, download, rename and delete are missing. Copy/move public exposure is
+  paused; its internal implementation/tests remain intact.
+- IMPLEMENTATION plan: external API uses authorized `roots` and global node IDs;
+  `space` remains internal. First usable slice is an idempotently provisioned
+  personal root for the current principal in the selected tenant/entity, browser,
+  directory creation, single-file streaming upload/download, rename and trash.
+- Personal-root provisioning is explicit/idempotent and owner-only at creation.
+  It must lock the tenant space, validate current transaction-bound IAM references
+  and `file_create` scope, create owner ACLs, and append audit atomically. A GET
+  must not create data. Organization roots and ACL editor follow this usable slice.
+- Reuse existing immutable Driver, object preparation/checksum/metadata, file
+  Version, directory closure, trash, node ACL, IAM policy fence and audit appender.
+  No conflict/task tables, alternate permission system or upload spool.
+- Next action: add caller-transaction node primitives and basic service tests,
+  implement root/directory/upload/download/rename/trash HTTP, regenerate OpenAPI
+  and Web client, then connect the live Web interactions and restart only the
+  isolated 18081/18092 preview.
+
+## Isolated File Preview And Public API Gap - 2026-09-18
+
+- Isolated current API is running on 127.0.0.1:18081 (PID 19948) and Web on
+  127.0.0.1:18092 (exec session 94997). Existing 18080/18191 services remain
+  untouched. Fresh SQLite only; no UAT/MySQL writes.
+- Bootstrap administrator `admin@example.test` was created. Real Web-proxied
+  password login and current-session requests both returned HTTP 200.
+- Runtime readiness, Web proxy, Swagger and OpenAPI all return HTTP 200. Runtime
+  OpenAPI contains only workspace listing, child listing and synchronous copy/move.
+- Browser audit PASS on desktop/tablet/mobile, zh-CN/ms-MY, anonymous redirect and
+  authenticated generated-client paths. Audit now permits the one extra identical
+  GET caused by React Strict Mode while rejecting unexpected paths or missing
+  tenant/entity headers.
+- User correctly identified the public product gap: upload is NOT exposed or
+  usable. Upload tables/models are existing persistence groundwork only; there is
+  no current upload service, authorized HTTP lifecycle or Web upload workflow.
+- `Space` is currently an internal tenant/account namespace and revision fence.
+  `Workspace` is a directory node marked as an organization/personal ACL root.
+  Fresh preview has no public workspace provisioning route, so it has no file
+  roots to browse. Do not call this file product production-ready.
+- Current step: obtain confirmation before materially simplifying the public API:
+  keep space internal, expose authorized roots and globally identified nodes, then
+  implement upload/download/directory mutations with IAM+ACL and real Web flows.
+
+## Live IAM To File ACL Integration Checkpoint - 2026-09-18
+
+- Latest user says continue. Direct; preserve dirty work, no agents, commit/push,
+  original DB changes or existing service restarts. Full product NOT READY.
+- IMPLEMENTATION checkpoint: core AuthorizationReferencesOn now validates active
+  entity/department/principal tenant anchors in the caller transaction under the
+  policy revision fence. Focused core tests PASS, including rollback visibility,
+  inactive/missing refs, invalid/unwired calls and stable module capability.
+- Files registers file_view,13 independent file actions and file_read_all in the
+  shared IAM catalog during module injection. operationService no longer accepts
+  a test-only arbitrary operationAccess: it resolves current IAM subjects, checks
+  each action-specific constraint, validates workspace references and evaluates
+  inherited node ACL. Copy source normalizes to read.
+- file_read_all bypasses ordinary ACL only for list/traverse/read/download and
+  only within its IAM workspace scope. It does not grant create/update/move/
+  delete/share/manage_acl. Owner ACL identity is added only when actor equals the
+  validated personal-workspace owner. Tenant/entity/department/personal scope
+  mapping fails closed; entity-bound workspace must match selected entity.
+- Focused files tests PASS for service audit/rollback/replay, permission catalog,
+  ACL denial, management-read exception, reference failure, entity mismatch,
+  owner spoofing and revision mismatch. Full `go test -race ./internal/files/...
+  ./internal/iam/core -count=1` PASS (files33.8s/core63.6s).
+- Next action: build authorized bounded workspace/children/path read service and
+  synchronous copy/move HTTP/OpenAPI, then regenerate frontend API types and wire
+  `/files` to real data. ACL edit delegation and sharing remain subsequent work.
+
+## Transaction-Bound IAM Subjects Checkpoint - 2026-09-18
+
+- Latest user says continue. Direct execution; preserve dirty work, no agents,
+  commit/push/original DB writes/existing service restarts. Full product NOT READY.
+- IMPLEMENTATION checkpoint: core now publishes caller-transaction functions for
+  entity constraints and current authorization subjects. Both lock the tenant
+  policy revision before IAM reads and reject stale/changed snapshots.
+- AuthorizationSubjectsOn verifies active tenant membership and selected entity,
+  then resolves the current principal, active department, active static/dynamic
+  groups, and effective direct/temporary/group/position/entity roles. It grants
+  no action and is only trusted input for a business-owned ACL.
+- Focused tests PASS for uncommitted revocation visibility+rollback, policy fence,
+  inactive/invalid/unwired/cancelled failures, department/group/role resolution,
+  expired memberships, stable pre-wire capabilities and duplicate registration.
+  Command: `go test ./internal/iam/core -run 'TestAuthorizationSubjectsOn|TestEntityConstraintOn|TestModuleProvidesStable|TestModuleProvidesTransaction|TestFrozenIAMCapabilities|TestIAMCapabilities' -count=1`.
+- Next action: add transaction-bound validation of workspace IAM references, then
+  wire file action constraints + verified subjects + management-read exception
+  into the operation service and replace its test-only operationAccess callback.
+  Do not expose HTTP until this real chain and audit remain atomic and tested.
+
+## Persistent Workspace And Node ACL Checkpoint - 2026-09-18
+
+- Latest user continues approved section21. Direct; preserve dirty work, no agents,
+  commit/push/original DB changes/existing service restarts. Full product NOT READY.
+- IMPLEMENTATION checkpoint: migration9 adds workspace kind/entity/department/
+  principal + inheritance stop to Node, and durable single-action NodeACL rules.
+  Update model/dbgen/prefix resolver; regenerate typed Node/NodeACL/Query files.
+- Private persistence methods initialize only unbound directory affiliations,
+  load nearest validated workspace via existing closure/path, and replace direct
+  ACL sets with node+space revision fences in caller transaction. No parallel org
+  mirror, automatic rebind, default grant, conflicts/tasks or original DB migration.
+- Account workspace is account-root-only; tenant personal is explicitly owned.
+  Workspace root is mandatory ACL boundary; child stop excludes old ancestors.
+  Limit256 expanded rules/node, refuse over-budget reads/edits, no truncation.
+- Tests snapshot ACL+nodes+space too: inherited/direct deny, interruptions,5 valid
+  bindings, account isolation, unbound/hidden/foreign scopes, stale edits, duplicates,
+  limits, late SQL/ID/caller audit rollback, concurrent edits (one success/one conflict).
+- Verification: full files race+coverage PASS (86.3%, BELOW90%); added concurrent
+  edit race PASS. files scoped pinned lint/vet, backend build, architecture and
+  diff check PASS. SQLite, MySQL dialect memory engine, embedded PostgreSQL upgrade/
+  down/up and FK/CHECK/uniqueness tests PASS plain+prefixed (6 combinations, no skips).
+  Does not establish real MySQL8 performance or full live IAM/HTTP/Web acceptance.
+- Private helpers only persist; services must validate live IAM identities,
+  workspace relationships, scope, delegation ceilings and actual audit first.
+- Next action: inspect core authorization snapshot/current role/group resolution
+  and organization-owned affiliation capabilities; add a narrow transaction-bound
+  current subject/affiliation contract, wire read-all vs ordinary ACL access, then
+  register actual files OpenAPI and generated client for Web permissions/sharing.
+
+## ACL Core And Actual Audit Checkpoint - 2026-09-18
+
+- Latest user says continue after design delivery; implement the three recommended
+  choices: management-read exception to ordinary ACL only, separate account-private
+  versus tenant-personal ownership, anonymous read/download-only link sharing.
+- Phase IMPLEMENTATION checkpoint. New node ACL evaluator/tests cover5 subject kinds,13 separate
+  actions, inheritance/scope, interruption, explicit deny priority, source tracking
+  and malformed input fail-closed. Not wired to database/HTTP/Web/current subjects.
+- operationService now rejects empty/explicitly denied transaction IAM constraint
+  before business reads; mandatory per-node access remains. Immediate engine no
+  longer persists cost in PlanJSON. Legacy schema/internal preparation untouched.
+- Actual audit appender SQLite service tests: actor, tenant/account rejection,
+  missing claims/dependencies, denial/cancellation/deadline, transient conflicts,
+  replay read checks, audit-once concurrent replay, late audit/commit rollback.
+  Policy/access are test doubles; not end-to-end IAM or public-route acceptance.
+- Verification: files+core race/coverage PASS; final files race/coverage rerun
+  including commit rollback PASS. files85.9% BELOW90%, core90.1%. Focused service+
+  ACL tests PASS; files scoped lint, vet files/core, full backend build, architecture
+  tests and diff check PASS. No original DB writes/service changes/commit/push.
+- Next: persistent workspace
+  ownership+ACL migrations/query and transaction-bound live IAM subject resolution.
+  Do not expose placeholder file_view routes or allow-all access capabilities.
+
+## Hierarchical Files ACL And Sharing Design - 2026-09-18
+
+- Latest user requests design BEFORE implementation. Phase DESIGN, awaiting
+  confirmation. No business code, database or existing service changes this turn.
+- Added design section21 to existing docs/file-management-design.md, superseding
+  old public-sharing exclusion without altering previous implementation evidence.
+- Confirmed requirement: platform-wide, tenant/subtree, entity/subtree management
+  visibility plus fine-grained account/department/directory/file permissions;
+  temporary/permanent password/token sharing; synchronous copy/move constraints.
+- Proposed reuse: account/tenant physical namespace, workspace roots with explicit
+  entity/department/owner affiliation, existing IAM scope/action ceiling, node ACL
+  inheritance+deny rules, separate bounded management-read capability, durable
+  ACL/share configuration (not durable conflicts), generated HTTP and real Web.
+- Pending product confirmation: management-read bypasses ordinary child ACL;
+  distinguish global account-private versus tenant-personal files (tenant admin
+  only latter); anonymous read/download sharing allowed, no anonymous writes.
+- Inspection confirms no current node ownership/workspace ACL or share model;
+  production Web remains unavailable. Transaction service claims do not support
+  platform/account requests yet; IAM constraints identify entities, not node IDs.
+- Verification this turn: documentation review only; new feature tests NOT_RUN.
+  Prior files85.3% coverage remains below90%; prior core lint reports3 unrelated
+  S1016 in core/http.go. No production readiness or visual screenshot acceptance.
+- Next action: obtain user confirmation of section21.10, then complete isolated
+  real-audit/transaction IAM tests before workspace/ACL schema or HTTP changes.
+- Preserve dirty work; no agents/commit/push/original DB migrations/service restarts.
+
+## Transaction IAM And File Audit Continuation - 2026-09-18
+
+- Latest user says continue implementing, after read-only archived reference.
+  Direct; preserve existing dirty work, no agents/commit/push/original DB writes/
+  existing service restarts. D46/D47 and archive cautions remain authoritative.
+- Phase IMPLEMENTATION. Extend core with a narrow EntityConstraintOn function
+  capability, reusing EntityConstraint with caller transaction and tenant policy
+  lock. Compare current locking policy revision with snapshot revision to refuse
+  stale MySQL repeatable-read snapshots. Do not change ordinary evaluator behavior
+  or create a parallel authorization algorithm/interface. Extend exact capability
+  ownership inventory, retaining frozen interface gate.
+- Next: add transaction/live policy/rollback/concurrent revocation tests, publish
+  capability through existing module services, then files transaction runner with
+  audit-once replay and authorized workspace mapping before HTTP/OpenAPI/Web.
+- New edits UNVERIFIED; do not claim real file API or production readiness.
+
+## Archived File Management Reference Review - 2026-09-18
+
+- Latest user requests read-only review of
+  D:/Projects/Archives/Synron/StoreV3/SynronCloud for useful file-management logic.
+  Inspected actual spring-cloud-file service/controllers/strategy/mapper/schema,
+  storage/recycler code, store MaterialController and Vue material/blockSystem UI.
+  No archived files changed; no Gradle/server/tests executed or old DB touched.
+- Useful reference: synchronous source-ID batch request + destination + per-kind
+  strategy; directory merge mapping to existing target IDs before closure rewrite;
+  new virtual nodes share physical storage_id; per-source/category result counts;
+  copy/cut stores source selection, paste/drag sends a real operation, refresh after
+  acknowledged success. Existing current engine already covers core semantics.
+- Actual old SQL uses fixed t_file_batch/t_file_closure_batch staging tables with
+  isolation tokens; tmp_* strings are NOT dynamically created database tables.
+  dropTable actually DELETEs token rows. This is not a pending decision workflow,
+  nor a requirement for batch support. Do not import staging/conflict tables.
+- Do not port: overrideDuplicate hard-deletes target nodes/closures (no retained
+  versions); renameDuplicate only appends second-resolution timestamps; staging
+  PRIMARY KEY(id) is not isolation-qualified and reFlagDuplicateFolder4Rename lacks
+  isolation predicates; browser Number(el.id) loses precision for large int64 IDs;
+  strategy defaults to RENAME and has no ask/per-item observed-revision confirmation.
+  batch path merely forwards requester creator/owner IDs; no node-level IAM check
+  visible in inspected path, so it is not evidence of current transaction security.
+- Reference assessment STATIC ONLY, not runtime/production acceptance. No product
+  decisions or current business code changed. Prior engine evidence remains valid.
+- Next action remains transaction-bound core IAM/audit capability and approved
+  workspace mapping, then generated HTTP/OpenAPI and real Web. Apply clipboard/
+  drag interaction ideas within React/shared UI, keep GUID strings and mandatory
+  current IAM, atomic rollback, version retention and transient conflict semantics.
+
+## Synchronous Batch Engine Continuation - 2026-09-18
+
+- User requests continuation under D46: real-time copy/move, transient conflicts,
+  no new conflict/decision tables or pending tasks. Direct; preserve prior dirty
+  work, no agents/commit/push/original DB changes/existing service restarts.
+- Phase IMPLEMENTATION. Reuse canonical validation, space write fence, bounded
+  prospective overlay, policy walker, version/trash/closure writes and existing
+  success result journal ONLY for scoped idempotent replay. A caller transaction
+  simulates first and returns transient ask frontier; on explicit confirmation
+  it checks observed space revision and exact per-conflict keys, then executes
+  all changes with mandatory live access checks and cost parity, recording final
+  success atomically. No preparation items/pins, operation row on conflict/failure,
+  queued/ready/awaiting states, leases or conflict cleanup in this new entrypoint.
+- Source protection uses normalized roots in request memory rather than persistent
+  snapshot items; no whole-tree arrays. Nested ask after a chosen merge can return
+  a subsequent transient frontier; no partial publication. Stable conflict keys
+  use real IDs or created-from-source aliases and effective origin content versions,
+  never transient negative IDs or newly minted rolled-back version/node IDs.
+- Files: extend operation.go canonical helper, operation_execute.go source guards/
+  transient policy hooks and overlay parity; add synchronous runner/conflict types
+  and focused tests. Existing async engine retained as prior internal work; no
+  schema/query changes. HTTP/current IAM+audit wiring and real Web API are later.
+- Engine checkpoint IMPLEMENTED / TESTED (not full product acceptance):
+  executeImmediateOperation now runs bounded simulation and actual publication in
+  the caller's transaction, returning transient conflict frontiers with stable
+  real-node/provenance/content identities. Exact per-item strategies, observed
+  space revision, allowed policies, source overlap and final cost/revision parity
+  are checked. Unknown/stale/duplicate decisions fail; self-copy ask only renames.
+  Whole moves reauthorize every descendant including old trash; source protection
+  releases adopted/recycled input roots. Simulation uses cached created nodes so
+  content revision changes match real writes. Legacy replay reuses the same helper.
+- Added operation_immediate_test.go: 11 top-level tests including nested frontiers,
+  prospective files/directories, distinct per-item choices, copy/move origin keys,
+  self-copy, stale/unknown/invalid decisions, descendant/old-trash denial, late SQL
+  journal failure, injected audit failure, new-node IAM denial, budget rollback,
+  parent/child root normalization, old-trash moves, type replacement and concurrent
+  replay over four independent SQLite pooled connections. Database snapshots prove
+  no persistent changes on conflicts/failure; no OperationItem rows on success.
+- Final verification: files race+coverage PASS (85.3%, BELOW required90%);
+  files vet PASS; pinned scoped golangci-lint PASS; go build ./... PASS;
+  architecture tests PASS; gofmt and git diff --check PASS. No diagnostic process
+  remains running. No new schema/query changes or original database writes.
+- Self-review PASS for this engine checkpoint: scope/reuse/architecture/rollback/
+  bounded traversal/durable state. Acceptance: synchronous internal engine tested;
+  full file-management product NOT READY. Audit failure tests inject a transaction
+  error; actual audit appender and IAM integration are not wired or accepted.
+- Next action: inspect core.AuthorizationEvaluator/Authorizer/revision.go and
+  directory-source contracts to add transaction-bound current IAM evaluation,
+  approved department/entity workspace mapping and audit-once result replay; then
+  register files HTTP/OpenAPI and connect the existing real Web loader/mutations.
+  Current evaluator only exposes independently pinned writer methods; do not use
+  those as if they were bound to the file transaction, and do not publish an
+  allow-all API. Frontend files/page.tsx remains intentionally unavailable.
+
+## Real-Time File Operation Contract Correction - 2026-09-18
+
+- User explicitly rejects persistent conflict/decision tables: copy/move are
+  real-time operations. This newest contract supersedes earlier queued/planned/
+  awaiting-decision product design and historical next actions below. Direct;
+  preserve all prior work, no agents/commit/push/original DB/service changes.
+- Phase ACCEPTANCE for draft withdrawal/contract correction only. Removed ONLY
+  this continuation's newly introduced conflict and
+  decision model types, ConflictCount field, generator/resolver additions, three
+  migration9 drafts and two orphan generated query files. Regenerated files queries
+  from retained inputs. Prior migration8 cost, operation engine and all Web work
+  remain unchanged. No migration9 was applied to any original database.
+- Updated design12/13/14/15: detect conflicts within the request and return them;
+  confirmation is a fresh explicit-strategy request with observed versions;
+  reauthorize/revalidate under one atomic transaction and return final success.
+  No conflict/decision persistence, user-waiting transaction, pending task, leases,
+  cleanup workflow or implicit background queue for ordinary copy/move. Upload
+  sessions/transfer tasks are separate. Do not weaken scope/permission/revision/
+  budget/idempotency/audit/rollback checks to make operations synchronous.
+- New durable conflict flow was never implemented; removed schema was drafts only.
+  The synchronous replacement runner/HTTP/Web mutation integration is NOT yet
+  implemented. Existing internal operation/snapshot tables require scoped review
+  for reuse/replacement; do not delete prior migrations or user data automatically.
+- Verification: files generator PASS; new-table/model references absent in files
+  sources, dbgen/resolver/generated registry match their prior contents, retained
+  operation model differs only by the earlier migration8 PlanJSON field.
+  `go test -race ./internal/files/... -count=1` PASS; `go build ./...` PASS;
+  `git diff --check` PASS. No diagnostic session remains running.
+- Self-review PASS for minimal draft-only removal, prior changes preserved, query
+  regeneration, no database mutation, accurate new contract and durable state.
+  Acceptance PASS for requested correction, full file product remains NOT READY.
+- Next action: implement the
+  synchronous request runner reusing bounded traversal and caller transaction,
+  transient ask responses/confirmed-version validation, existing IAM/audit and
+  idempotency capabilities; connect generated HTTP types to real Web operations.
+  Do NOT resume old durable conflict model or async decisions/cancel endpoints.
+
+## File Management Web Continuation - 2026-09-18
+
+- Latest user explicitly requires the Web page too; Direct execution, no agents,
+  commit/push, original DB writes or existing preview restarts. Approved design13
+  governs UI; backend conflict/decision implementation remains pending, unchanged.
+- Phase ACCEPTANCE for Web presentation checkpoint ONLY, NOT full product.
+  Added authenticated /files lazy route and shared-token browser
+  component: bounded100-item pages, current-page search/type/sort,3views, ID-based
+  multi/range selection, breadcrumbs/folder navigation, responsive spaces drawer,
+  metadata sidebar/sheet, distinct empty/loading/forbidden/unavailable/error states.
+- Production page intentionally unavailable until authorized files HTTP/OpenAPI
+  exists; no fake tenant files, provisional HTTP calls, public navigation bypass,
+  mutation, uploads or success simulation. Effective menus still own navigation.
+- Isolated browser fixture outside production router and contract audit added.
+  Frozen lockfile install restored missing react-easy-crop dependency; no version
+  or lockfile changes. Final frontend typecheck/lint/build PASS; forced tests163
+  PASS (78 IAM incl11 new,85 shared), git diff --check PASS. Existing Vite config
+  future native-loader warning remains unchanged; not a build failure.
+- Browser contract audit PASS desktop1440/tablet768/mobile390 plus zh-CN/ms-MY:
+  ID/range/keyboard selection, search/no-results/type filters,3views, sort,
+  properties, pagination/folder/breadcrumb navigation, responsive drawer/layout,
+  metadata revocation, failure isolation, Escape and focus restoration. Route
+  fixtures verify anonymous login redirect and authenticated unavailable page
+  with effective menu. No provisional files API calls, runtime page errors, or
+  fixture name markers in production build. All browser cases use isolated
+  snapshots/auth fixtures, NOT real database/storage/IAM acceptance.
+- Browser test caught native checkbox preventDefault reverting range endpoint;
+  fixed via native-event modifiers in onChange. Keyboard test caught autofocus
+  on tooltip button swallowing Escape; properties title now receives initial
+  focus. Screenshot review removed duplicate mobile close buttons. Closed-dialog
+  animation completion is awaited before keyboard reopen/viewport assertions.
+- Reviewed desktop/mobile details, properties and mobile large-view screenshots.
+  Evidence: .local/screenshots/file-browser (ignored). New owned Vite is running
+  on http://127.0.0.1:18191, listenerPID6756, launcherPID4624; no existing service
+  restarted. /files is authenticated/unavailable; interactive fixture at
+  /scripts/fixtures/file-browser.html?locale=zh-CN is not a production route.
+  Generated diagnostics under app .temp are ignored; no staging/commit/push.
+- Self-review PASS for scoped reuse/ownership/theme/security/complexity/state;
+  presentation-stage acceptance PASS. Original file-management request NOT READY.
+  This is NOT a lazy whole-space tree, space search, path resolution/deep link,
+  live API, upload/download/preview, mutation, clipboard/drag/context menus,
+  versions/trash/task/conflict UI, or real E2E. Earlier backend changes preserved.
+- Next action: implement exact conflict identities and revision-bound ask decisions
+  in files-owned models/migrations/shared walker; wire current IAM/audit runner,
+  publish files HTTP/OpenAPI and generate the client types; then connect the
+  /files authorized loader and complete transfers/mutation/task/conflict UI and
+  real end-to-end acceptance. Existing approved design suffices; no user decision
+  needed for those scoped implementation steps. Full90% and production gates stay.
+
+## File Management Continuation - 2026-09-18
+
+- User requests continuing the approved file-management implementation. Execution
+  Direct; existing design explicitly excludes subagents. No new commit/push,
+  production database changes or preview restart authorized by this request.
+- Phase ACCEPTANCE for this continuation checkpoint, NOT full product acceptance.
+  Local Windows read/write tests restored. Shared operation walker
+  now simulates bounded prospective name slots/tree state, including recursive
+  batch collisions, replacement, skipped-source preservation and old-trash moves.
+  Migration8 persists exact cumulative node/closure/result-count costs; execution
+  rejects missing/legacy/corrupt costs and rolls back mismatched actual results.
+- MySQL no-op UPDATE changed-row portability defect found in operation fences.
+  Replaced non-SQLite fences with typed SELECT FOR UPDATE; SQLite takes a no-op
+  write lock BEFORE reading, without using changed rows as an existence check.
+  Positive/absent-space regression with simulated zero changed rows PASS.
+- Fresh native Windows baseline: `go test ./internal/files/... -count=1 -cover`
+  FAIL (73.3% files coverage). Independent JSON rerun confirms 13 failed tests:
+  directory fsync returns Access denied; symlink fixture lacks Windows privilege.
+- Keep immutable publication, file fsync, exact lengths, root confinement and
+  cancellation. Windows directory fsync is unavailable; explicitly document its
+  metadata power-loss durability limitation instead of hiding arbitrary I/O errors.
+  Replace privileged symlink fixture with an actual Windows junction when needed;
+  confinement assertions remain mandatory, not skipped.
+- Final verification: `go test -race ./internal/files/... ./internal/iam/identity
+  -count=1 -cover` PASS; files85.1%, identity85.0%, BOTH below90% gate. Two-run
+  operation planning/race regression PASS. Architecture -count1 PASS; fresh
+  identity/app regressions PASS; go build ./... PASS; affected vet PASS.
+  New files migrations all8 up/down and cost roundtrip PASS in SQLite, embedded
+  PostgreSQL16 and in-process MySQL dialect, with/without deployment prefix.
+  In-process MySQL is NOT real MySQL8 acceptance. Scoped linter PASS after fixing
+  existing unchecked closes/type assertions and preserving frozen cancellation
+  states. Final files+identity linter PASS. Full backend linter FAIL on three
+  pre-existing gosimple DTO conversion findings in iam/core/http.go:1291,1315,
+  1372, deliberately unchanged as unrelated to file-management work. No full CI
+  or production acceptance claim; public API, cloud/transfer/browser acceptance
+  remain NOT_RUN / NOT READY. Query generator rerun and git diff --check PASS.
+- Remaining approved scope: complete conflict decisions/plan persistence, IAM/audit
+  runner, transfers/S3, account creation tracking, public API/UI and fresh real
+  SQLite/MySQL/Postgres/storage/browser/fault/resource acceptance; 90% gate unchanged.
+- New prospective nodes have no IAM identity; preflight defers their checks, while
+  real execution retains mandatory current checks. Cost plan does NOT implement
+  revision-bound per-conflict decisions or bind exact conflict identities yet.
+- Avatar read now joins storage close errors with read errors; success, read,
+  close, combined failure and oversized-input tests PASS. Read-only resource
+  handle/rollback cleanup in files explicitly discards close results; successful
+  publication still reports file fsync/publication/close errors. No gate weakened.
+- Self-review PASS for scoped ownership/reuse/atomic rollback/generator/index/
+  regression/complexity. Stage acceptance PASS: native Windows functionality,
+  bounded batch reservations/cost refusal/persistence/result validation, zero
+  changed-row fencing, read-only preparation and failure pin release verified.
+- Next action: persist exact per-conflict identities and revision-bound decisions
+  in owned operation models/migrations, extend the shared walker with resolved
+  ask policies, then wire the IAM/audit service runner before exposing file HTTP.
+  Continue approved transfers/S3/account creation/UI and fresh full acceptance;
+  no additional approval needed for that design, but commit/push are not implied.
+- No staging/commit/push, original DB changes, preview/service restart or subagents.
+  Last checkpoint: final verified continuation state, 2026-09-18.
+
 ## Authorized Checkpoint Delivery - 2026-09-18
 
 - User explicitly authorized committing and pushing ALL local deliverable changes
@@ -1855,3 +2601,124 @@ provisioning 3、governance 3、federation 2、oauth 1、audit 1。
 - Next action: execute authorized commit/push and verify equal local/remote heads
   and clean worktree; then user continues inspection at localhost:18091.
   Preview API/notification/Vite and owned UAT database remain running intentionally.
+
+## Account File Entry Checkpoint - 2026-09-19
+
+- Phase: TESTING. Same `/files` contract now supports strict account and
+  tenant/entity contexts; no Workspace/Space/Node/Root public resource was added.
+- Account root is lazy and idempotent. GET does not create it. Account and tenant
+  spaces reject each other's globally valid file IDs; partial organization headers
+  return `incomplete_resource_context` before the handler.
+- Added full account HTTP lifecycle coverage: create root/directory, upload,
+  download raw bytes, rename and delete. PASS; all 7 audit rows have `tenant_id=0`
+  and no organization audit row is created.
+- Backend PASS: `go test ./internal/files -count=1` and
+  `go test -race ./internal/files ./pkg/extension/authz -count=1`.
+- Frontend production build PASS. Mocked real-Chrome file browser audit PASS for
+  component desktop/tablet/mobile, zh-CN/ms-MY mobile, organization route
+  anonymous/desktop/mobile, and account route desktop/mobile. Account requests
+  carry neither organization selector; organization requests carry both.
+- Account desktop/mobile screenshots inspected: no overlap or horizontal overflow.
+  Isolated Vite remains running on `127.0.0.1:18291`, proxying the pre-existing API
+  on `127.0.0.1:18080`; existing listeners on 18080/18191 were not restarted.
+- Still not production ready: organization root archive/restore and old-root repair,
+  root-level revision/ordered cross-root locking, real MySQL 8.4/PostgreSQL plans
+  and concurrency, ACL management API/Web, four sharing modes, and real storage E2E.
+- Next action: run final formatting/static/generated checks and inspect the complete
+  diff for authorization regressions; keep the isolated preview available for user
+  inspection and report its URL without exposing or inventing credentials.
+
+### Account File Real Preview Acceptance
+
+- Built the current source to ignored `.temp/files-preview/api.exe`; migrated a new
+  isolated SQLite database to files 9/9 and organization 10/10. Existing MySQL and
+  listeners on 18080/18191 were not stopped, migrated or modified.
+- Current-source API runs on `127.0.0.1:18280`; Web runs on `127.0.0.1:18291` and
+  proxies only to that API. `/readyz`, `/docs`, and `/openapi.json` return 200.
+  Runtime OpenAPI exposes exactly `/files`, `/files/{file_id}`,
+  `/files/{file_id}/items`, `/files/{file_id}/raw`, and
+  `/files/{root_file_id}/-/{path}` for file management.
+- Real Chrome + real API/storage PASS: login, lazy account-root creation, directory
+  creation, multipart upload, byte-exact download, rename, file trash and directory
+  trash. Test-created visible entries were moved to trash; final root is empty.
+- Final screenshot inspected at ignored
+  `.temp/files-preview/account-files-real.png`: no overlap or horizontal overflow.
+- Login is `admin@example.test`; the password remains in ignored local file
+  `.temp/iam-uat/admin-password` and must not be printed into chat or committed.
+- Next action: finish final repository checks, then leave 18280/18291 running for
+  user inspection. Production-readiness gaps listed above remain unchanged.
+
+### Account File Entry Final Review
+
+- Phase: ACCEPTANCE for the account entry increment; overall file management remains
+  TESTING and is not production ready because the documented remaining features and
+  database/concurrency gates are not complete.
+- Final PASS: backend Files tests, authz tests, Files/authz race, app composition,
+  whole Go build, OpenAPI check, generate check, changed-Go gofmt, Web typecheck,
+  lint, 170 forced tests, production build, Prettier, browser route audit, real
+  account lifecycle, screenshot/layout inspection and `git diff --check`.
+- Self-review PASS for this increment: same `/files` resource model, strict account
+  versus organization context, no implicit GET writes, no public internal Node/
+  Space/Workspace concept, owner-only account ACL, cross-space denial, and no
+  unrelated existing service/database mutation.
+- Final acceptance PASS for requested account-specific files and Web entry. No
+  commit or push was requested. Preview API/Web intentionally remain running at
+  18280/18291; only ignored isolated SQLite/storage/test artifacts were created.
+- Next action: user inspects `http://127.0.0.1:18291/account/files` and Swagger at
+  `http://127.0.0.1:18280/docs`. Password is read locally from
+  `apps/backend-api/.temp/iam-uat/admin-password`. Subsequent implementation should
+  start with organization-root archive/restore and root-level concurrency fences,
+  then real MySQL/PostgreSQL plans before ACL management and sharing.
+
+### File Browser Desktop Interaction Follow-up - 2026-09-19
+
+- Phase: IMPLEMENTATION. User requested a full-width account file workspace,
+  removal of the redundant page title, file/folder drag-and-drop upload, native
+  item context menus, clean icon views without persistent overflow buttons, and
+  an optional selection mode with actual bulk actions.
+- Design: only `/account/files` escapes the account form max width. File commands
+  live in the browser toolbar. Selection mode defaults off and exposes download,
+  trash and clear-selection actions when active. Existing file create/upload/
+  download/trash APIs are reused sequentially and the page refreshes once per
+  successful batch. Directory drops are recursively materialized with bounded
+  depth/item counts; no backend contract or dependency changes.
+- Execution: Direct; interactions are tightly coupled in one file-browser surface.
+- Next action: implement the bounded drop parser and UI/page wiring, add focused
+  unit/browser assertions, then run frontend typecheck, lint, tests, build and
+  real 1440/390 browser acceptance against the isolated 18280/18291 preview.
+
+### File Browser Desktop Interaction Acceptance - 2026-09-19
+
+- Phase: ACCEPTANCE. Account files alone now use the full account work area;
+  other account forms retain `max-w-5xl`. The redundant page heading is removed;
+  the current-folder breadcrumb remains as file-manager location context.
+- File browser now accepts multi-file drops and Chromium/Edge directory entries,
+  repeatedly drains directory reader batches, preserves empty directories, and
+  rejects drops beyond depth 64 or 1,000 entries. Recursive creation is ordered
+  parent-first and a mutation batch refreshes once, including partial-failure
+  refresh. Existing `/files` APIs and account/organization selectors are reused.
+- Native Base UI right-click/long-press menus provide open/properties/download/
+  rename/trash. Icon views have no persistent overflow button; details view keeps
+  it for touch/keyboard fallback. Raw root owner IDs are no longer displayed.
+- Selection mode defaults off. Enabling it exposes checkboxes, select-visible,
+  selected-file download, selected-item trash with one confirmation, and clear.
+  Closing selection mode clears selection.
+- PASS: frontend typecheck, lint, all 175 tests (85 shared UI + 90 IAM), production
+  build, `git diff --check`, and real Chrome browser audit on desktop/tablet/mobile
+  plus zh-CN/ms-MY. Browser audit covers multi-file drag highlight/drop, right-click
+  properties, hidden icon overflow controls, selection actions, paging cleanup,
+  layout and account/organization request-header isolation.
+- PASS against isolated real API/storage on 18280/18291: login, root, folder,
+  two-file drag upload, byte-exact download, rename, selecting two files plus one
+  folder, batch trash, and restoration of the exact pre-run user-file ID baseline.
+  Existing user items `234` and `grayscale-test.png` were preserved.
+- Recursive folder parsing/materialization PASS with nested files, an empty folder,
+  multiple `readEntries()` batches, depth/item limits and exact API call order.
+  Playwright cannot synthesize a native OS directory drag: an attempted synthetic
+  entry was correctly excluded from acceptance and its four exact test-owned
+  artifacts were removed; no user file was deleted.
+- Self-review PASS: requested interaction scope only, existing APIs and UI library
+  reused, no new dependency/backend contract/concept, desktop/mobile regression
+  checked. Overall file management production-readiness gaps remain unchanged.
+- Next action: user inspects `http://127.0.0.1:18291/account/files`; isolated API,
+  Web and Swagger remain running at 18280/18291. No commit or push requested.

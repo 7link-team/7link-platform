@@ -1098,7 +1098,7 @@ func TestSAMLServiceProviderLoginFlow(t *testing.T) {
 
 	// The SP entity ID registered at the upstream IdP; the provider's ClientID
 	// carries it through to audience validation.
-	spEntityID := "https://iam.example/federation/sp"
+	spEntityID := "https://iam.example/identity-providers/sp"
 	tsp := newSAMLSPServer(t)
 
 	// The upstream IdP answers for the *next* SP: register it with an ACS
@@ -1109,7 +1109,7 @@ func TestSAMLServiceProviderLoginFlow(t *testing.T) {
 		ClientID: spEntityID, AutoProvision: true, Status: ProviderActive,
 	})
 	require.NoError(t, err)
-	callback := "https://iam.example/federation/" + provider.ID.String() + "/callback"
+	callback := "https://iam.example/identity-providers/" + provider.ID.String() + "/callback"
 
 	_, err = env.service.CreateSAMLServiceProvider(t.Context(), testID("tenant-a"), SAMLServiceProviderInput{
 		Name: "upstream-sp", EntityID: spEntityID, MetadataXML: spLoginMetadata(t, tsp, spEntityID, callback), Status: samlSPStatusActive,
@@ -1163,7 +1163,7 @@ func TestSAMLServiceProviderLoginDenials(t *testing.T) {
 		AutoProvision: true, Status: ProviderActive,
 	})
 	require.NoError(t, err)
-	_, _, err = env.service.StartSAMLLogin(t.Context(), oidc.ID, "https://app.example/", "https://iam.example/federation/"+oidc.ID.String()+"/callback")
+	_, _, err = env.service.StartSAMLLogin(t.Context(), oidc.ID, "https://app.example/", "https://iam.example/identity-providers/"+oidc.ID.String()+"/callback")
 	assert.ErrorIs(t, err, ErrInvalidProvider)
 
 	// A SAML provider whose metadata is unreachable fails fast at start.
@@ -1172,7 +1172,7 @@ func TestSAMLServiceProviderLoginDenials(t *testing.T) {
 		ClientID: "sp", AutoProvision: true, Status: ProviderActive,
 	})
 	require.NoError(t, err)
-	_, _, err = env.service.StartSAMLLogin(t.Context(), missing.ID, "https://app.example/", "https://iam.example/federation/"+missing.ID.String()+"/callback")
+	_, _, err = env.service.StartSAMLLogin(t.Context(), missing.ID, "https://app.example/", "https://iam.example/identity-providers/"+missing.ID.String()+"/callback")
 	assert.ErrorIs(t, err, ErrSAMLResponse)
 
 	// A SAML provider with a callback that is not this provider's path is
@@ -1186,7 +1186,7 @@ func TestSAMLServiceProviderLoginDenials(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalidProvider)
 
 	// A bogus SAMLResponse with a valid state cookie is rejected.
-	cb := "https://iam.example/federation/" + samlProvider.ID.String() + "/callback"
+	cb := "https://iam.example/identity-providers/" + samlProvider.ID.String() + "/callback"
 	redirectURL, stateCookie, err := env.service.StartSAMLLogin(t.Context(), samlProvider.ID, "https://app.example/", cb)
 	require.NoError(t, err)
 	require.NotEmpty(t, redirectURL)
@@ -1201,7 +1201,7 @@ func TestSAMLServiceProviderLoginDenials(t *testing.T) {
 }
 
 // TestSAMLServiceProviderLoginHTTPFlow drives the full browser flow through the
-// public REST endpoints: the GET /start handler dispatches a SAML provider to
+// public REST endpoints: the GET /authorization handler dispatches a SAML provider to
 // StartSAMLLogin, and the POST /callback completes the assertion flow.
 func TestSAMLServiceProviderLoginHTTPFlow(t *testing.T) {
 	env := newFederationEnvironment(t)
@@ -1221,21 +1221,21 @@ func TestSAMLServiceProviderLoginHTTPFlow(t *testing.T) {
 	t.Cleanup(fedServer.Close)
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 
-	spEntityID := "https://iam.example/federation/sp"
+	spEntityID := "https://iam.example/identity-providers/sp"
 	tsp := newSAMLSPServer(t)
 	provider, err := env.service.CreateProvider(t.Context(), testID("tenant-a"), ProviderInput{
 		Name: "Upstream SAML IdP", ProviderType: ProviderSAML, Issuer: idpServer.URL + samlMetadataPath(testID("tenant-a")),
 		ClientID: spEntityID, AutoProvision: true, Status: ProviderActive,
 	})
 	require.NoError(t, err)
-	callback := fedServer.URL + "/federation/" + provider.ID.String() + "/callback"
+	callback := fedServer.URL + "/identity-providers/" + provider.ID.String() + "/callback"
 	_, err = env.service.CreateSAMLServiceProvider(t.Context(), testID("tenant-a"), SAMLServiceProviderInput{
 		Name: "upstream-sp", EntityID: spEntityID, MetadataXML: spLoginMetadata(t, tsp, spEntityID, callback), Status: samlSPStatusActive,
 	})
 	require.NoError(t, err)
 
-	// GET /start redirects the browser to the upstream IdP with a signed request.
-	startURL := fedServer.URL + "/federation/" + provider.ID.String() + "/start?return_url=" + url.QueryEscape("https://app.example/")
+	// GET /authorization redirects the browser to the upstream IdP with a signed request.
+	startURL := fedServer.URL + "/identity-providers/" + provider.ID.String() + "/authorization?return_url=" + url.QueryEscape("https://app.example/")
 	response, err := client.Get(startURL)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusFound, response.StatusCode)
@@ -1261,7 +1261,7 @@ func TestSAMLServiceProviderLoginHTTPFlow(t *testing.T) {
 
 	// POST /callback completes the flow and sets the browser session.
 	form := url.Values{"SAMLResponse": {samlResponse}}.Encode()
-	callbackRequest, err := http.NewRequestWithContext(t.Context(), http.MethodPost, fedServer.URL+"/federation/"+provider.ID.String()+"/callback", strings.NewReader(form))
+	callbackRequest, err := http.NewRequestWithContext(t.Context(), http.MethodPost, fedServer.URL+"/identity-providers/"+provider.ID.String()+"/callback", strings.NewReader(form))
 	require.NoError(t, err)
 	callbackRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	callbackRequest.Header.Set("Cookie", stateCookieName+"="+stateCookie.Value)
@@ -1335,7 +1335,7 @@ func TestSAMLAssertionReplayIsRejectedIndependentlyOfState(t *testing.T) {
 		ClientID: spEntityID, AutoProvision: true, Status: ProviderActive,
 	})
 	require.NoError(t, err)
-	callback := "https://iam.example/federation/" + provider.ID.String() + "/callback"
+	callback := "https://iam.example/identity-providers/" + provider.ID.String() + "/callback"
 	_, err = env.service.CreateSAMLServiceProvider(t.Context(), testID("tenant-a"), SAMLServiceProviderInput{
 		Name: "upstream-sp", EntityID: spEntityID, MetadataXML: spLoginMetadata(t, tsp, spEntityID, callback), Status: samlSPStatusActive,
 	})

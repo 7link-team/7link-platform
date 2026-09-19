@@ -41,7 +41,7 @@ func TestOpenAPIExportDescribesTheRunningApplicationWithoutRunningIt(t *testing.
 		"a document with paths and no schemas describes requests nobody can build")
 	// A named operation rather than only a count: a document that lost every IAM
 	// route would still have paths, and a count would not notice.
-	assert.Contains(t, specification.Paths, "/iam/tenants")
+	assert.Contains(t, specification.Paths, "/tenants")
 
 	assert.True(t, strings.HasSuffix(string(document), "}\n"),
 		"a file people and tools read line by line ends with a newline")

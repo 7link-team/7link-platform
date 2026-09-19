@@ -1,4 +1,5 @@
 {
+  "entity_has_files": "Entiti tidak boleh dipadam selagi akar failnya mengandungi fail atau folder yang disimpan. Padam atau pindahkan kandungan tersebut dahulu.",
   "menu_users": "Akaun dan ahli",
   "menu_invitations": "Jemputan",
   "menu_service_accounts": "Akaun perkhidmatan",

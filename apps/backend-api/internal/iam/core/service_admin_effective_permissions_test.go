@@ -60,16 +60,16 @@ func TestEffectivePermissionsCarryPlatformAuthorityWithoutMembership(t *testing.
 func TestEffectivePermissionsEndpointAllowsPlatformDiscoveryWithoutTenant(t *testing.T) {
 	harness := newHTTPIAMHarness(t, true)
 
-	selected := harness.api.Get("/iam/me/permissions", "Authorization: Bearer test", "X-Tenant-Id: 1")
+	selected := harness.api.Get("/me/permissions", "Authorization: Bearer test", "X-Tenant-Id: 1")
 	require.Equal(t, http.StatusOK, selected.Code, selected.Body.String())
 	assert.Contains(t, selected.Body.String(), `"user_create"`)
 	assert.Contains(t, selected.Body.String(), `"platform_administer"`,
 		"platform codes travel with the reply so platform pages can be trimmed too")
 
 	// No selector returns platform authority only, never a default tenant's grants.
-	unselected := harness.api.Get("/iam/me/permissions", "Authorization: Bearer test")
+	unselected := harness.api.Get("/me/permissions", "Authorization: Bearer test")
 	assert.Equal(t, http.StatusOK, unselected.Code, unselected.Body.String())
 	assert.Contains(t, unselected.Body.String(), `"platform_administer"`)
 	assert.NotContains(t, unselected.Body.String(), `"user_create"`)
-	assert.Equal(t, http.StatusUnprocessableEntity, harness.api.Get("/iam/me/permissions", "Authorization: Bearer test", "X-Tenant-Id: invalid").Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, harness.api.Get("/me/permissions", "Authorization: Bearer test", "X-Tenant-Id: invalid").Code)
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/policyx"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const policySnapshotAttempts = 3
@@ -254,6 +256,209 @@ func (a *Authorizer) Constraint(
 		return authz.DataConstraint{}, err
 	}
 	return compileDataConstraint(a.registry, snapshot, permission), nil
+}
+
+// EntityConstraintOn reuses entity evaluation on the caller's transaction. The
+// tenant policy fence is acquired before taking the authorization snapshot.
+func (a *Authorizer) EntityConstraintOn(ctx context.Context, tx *gorm.DB, tenantID, entityID guid.ID, permission string, subject guid.ID) (authz.DataConstraint, error) {
+	if tx == nil {
+		return authz.DataConstraint{}, ErrInvalidArgument
+	}
+	if _, ok := tx.Statement.ConnPool.(gorm.TxCommitter); !ok {
+		return authz.DataConstraint{}, ErrInvalidArgument
+	}
+	if err := validateEntityAuthorizationRequest(tenantID, entityID, permission, subject); err != nil {
+		return authz.DataConstraint{}, err
+	}
+	if a == nil || a.registry == nil {
+		return authz.DataConstraint{}, ErrUnavailable
+	}
+	if action, ok := a.registry.Find(permission); !ok || !action.DataScoped || action.Scope == "platform" {
+		return authz.DataConstraint{}, ErrInvalidArgument
+	}
+	pinned, lockedRevision, err := a.pinAuthorizationTransaction(ctx, tx, tenantID)
+	if err != nil {
+		return authz.DataConstraint{}, err
+	}
+	constraint, err := pinned.EntityConstraint(ctx, tenantID, entityID, permission, subject)
+	if err != nil {
+		return authz.DataConstraint{}, err
+	}
+	if constraint.Revision != lockedRevision {
+		return authz.DataConstraint{}, ErrAuthorizationChanged
+	}
+	return constraint, nil
+}
+
+func (a *Authorizer) pinAuthorizationTransaction(ctx context.Context, tx *gorm.DB, tenantID guid.ID) (*Authorizer, int64, error) {
+	if a == nil || a.revisions == nil || a.now == nil || a.foreign == nil {
+		return nil, 0, ErrUnavailable
+	}
+	if _, err := a.authorizationTables(); err != nil {
+		return nil, 0, err
+	}
+	if err := a.revisions.Lock(ctx, tx, tenantID); err != nil {
+		return nil, 0, err
+	}
+	// MySQL repeatable-read may have established a snapshot before this fence.
+	var locked struct{ Revision int64 }
+	read := tx.WithContext(ctx).Table(a.revisions.table).Where("tenant_id = ?", tenantID)
+	if tx.Dialector.Name() != "sqlite" {
+		read = read.Clauses(clause.Locking{Strength: "UPDATE"})
+	}
+	if err := read.Select("revision").Take(&locked).Error; err != nil {
+		return nil, 0, err
+	}
+	pinned := *a
+	pinned.db = tx
+	return &pinned, locked.Revision, nil
+}
+
+// AuthorizationSubjectsOn resolves effective IAM identities without treating
+// any identity as an action grant. Callers still evaluate an entity constraint.
+func (a *Authorizer) AuthorizationSubjectsOn(ctx context.Context, tx *gorm.DB, tenantID, entityID, subject guid.ID) (AuthorizationSubjects, error) {
+	var result AuthorizationSubjects
+	if tx == nil || tenantID <= 0 || entityID <= 0 || subject <= 0 {
+		return result, ErrInvalidArgument
+	}
+	if _, ok := tx.Statement.ConnPool.(gorm.TxCommitter); !ok {
+		return result, ErrInvalidArgument
+	}
+	pinned, revision, err := a.pinAuthorizationTransaction(ctx, tx, tenantID)
+	if err != nil {
+		return result, err
+	}
+	names, err := pinned.authorizationTables()
+	if err != nil {
+		return result, err
+	}
+	tenantActive, memberActive, err := tenantMembershipState(ctx, tx, names, tenantID, subject)
+	if err != nil {
+		return result, err
+	}
+	if !tenantActive || !memberActive {
+		return result, nil
+	}
+	var entityCount int64
+	if err := tx.WithContext(ctx).Table(names.Tables.Entities.String()).Where("tenant_id = ? AND id = ? AND status = ?", tenantID, entityID, EntityActive).Count(&entityCount).Error; err != nil {
+		return result, fmt.Errorf("validate subject entity: %w", err)
+	}
+	if entityCount != 1 {
+		return result, nil
+	}
+	result.PrincipalID, result.Revision = subject, revision
+	var department struct {
+		ID guid.ID `gorm:"column:id"`
+	}
+	err = tx.WithContext(ctx).Table(names.Directory.MemberDepartments.String()+" AS md").
+		Select("d.id").Joins("JOIN "+names.Directory.Departments.String()+" AS d ON d.tenant_id = md.tenant_id AND d.id = md.department_id AND d.status = 'active'").
+		Where("md.tenant_id = ? AND md.principal_id = ?", tenantID, subject).Take(&department).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return AuthorizationSubjects{}, fmt.Errorf("resolve subject department: %w", err)
+	}
+	result.DepartmentID = department.ID
+	now := pinned.now().UTC().Truncate(time.Millisecond)
+	staticGroups := []guid.ID{}
+	err = tx.WithContext(ctx).Table(names.Directory.GroupMembers.String()+" AS gm").Distinct("gm.group_id").
+		Joins("JOIN "+names.Directory.Groups.String()+" AS g ON g.tenant_id = gm.tenant_id AND g.id = gm.group_id AND g.status = 'active' AND g.group_type = 'static'").
+		Where("gm.tenant_id = ? AND gm.principal_id = ? AND (gm.starts_at IS NULL OR gm.starts_at <= ?) AND (gm.ends_at IS NULL OR gm.ends_at > ?)", tenantID, subject, now, now).
+		Pluck("gm.group_id", &staticGroups).Error
+	if err != nil {
+		return AuthorizationSubjects{}, fmt.Errorf("resolve static subject groups: %w", err)
+	}
+	dynamicGroups, err := matchingDynamicGroupIDs(ctx, tx, names, tenantID, subject)
+	if err != nil {
+		return AuthorizationSubjects{}, err
+	}
+	result.GroupIDs = append(staticGroups, dynamicGroups...)
+	slices.Sort(result.GroupIDs)
+	result.GroupIDs = slices.Compact(result.GroupIDs)
+	result.RoleIDs, err = pinned.fieldPolicyRoles(ctx, tenantID, entityID, subject)
+	if err != nil {
+		return AuthorizationSubjects{}, err
+	}
+	current, err := pinned.revisions.Current(ctx, tx, tenantID)
+	if err != nil {
+		return AuthorizationSubjects{}, err
+	}
+	if current != revision {
+		return AuthorizationSubjects{}, ErrAuthorizationChanged
+	}
+	return result, nil
+}
+
+// AuthorizationReferencesOn validates IAM-owned scope anchors persisted by a
+// business module. It does not evaluate a permission or grant resource access.
+func (a *Authorizer) AuthorizationReferencesOn(ctx context.Context, tx *gorm.DB, tenantID guid.ID, references AuthorizationReferences) (bool, error) {
+	if tx == nil || tenantID <= 0 || (references.EntityID <= 0 && references.DepartmentID <= 0 && references.PrincipalID <= 0) {
+		return false, ErrInvalidArgument
+	}
+	if references.EntityID < 0 || references.DepartmentID < 0 || references.PrincipalID < 0 {
+		return false, ErrInvalidArgument
+	}
+	if _, ok := tx.Statement.ConnPool.(gorm.TxCommitter); !ok {
+		return false, ErrInvalidArgument
+	}
+	pinned, revision, err := a.pinAuthorizationTransaction(ctx, tx, tenantID)
+	if err != nil {
+		return false, err
+	}
+	names, err := pinned.authorizationTables()
+	if err != nil {
+		return false, err
+	}
+	if references.EntityID > 0 {
+		var count int64
+		err = tx.WithContext(ctx).Table(names.Tables.Entities.String()).
+			Where("tenant_id = ? AND id = ? AND status = ?", tenantID, references.EntityID, EntityActive).Count(&count).Error
+		if err != nil {
+			return false, fmt.Errorf("validate authorization entity reference: %w", err)
+		}
+		if count != 1 {
+			return false, nil
+		}
+	}
+	if references.DepartmentID > 0 {
+		var count int64
+		department := tx.WithContext(ctx).Table(names.Directory.Departments.String()).
+			Where("tenant_id = ? AND id = ? AND status = 'active'", tenantID, references.DepartmentID)
+		if references.EntityID > 0 {
+			department = department.Where("entity_id = ?", references.EntityID)
+		}
+		err = department.Count(&count).Error
+		if err != nil {
+			return false, fmt.Errorf("validate authorization department reference: %w", err)
+		}
+		if count != 1 {
+			return false, nil
+		}
+	}
+	if references.PrincipalID > 0 {
+		var count int64
+		err = tx.WithContext(ctx).Table(names.Principal.String()).
+			Where("id = ? AND status = 'active'", references.PrincipalID).Count(&count).Error
+		if err != nil {
+			return false, fmt.Errorf("validate authorization principal reference: %w", err)
+		}
+		if count != 1 {
+			return false, nil
+		}
+		tenantActive, memberActive, err := tenantMembershipState(ctx, tx, names, tenantID, references.PrincipalID)
+		if err != nil {
+			return false, err
+		}
+		if !tenantActive || !memberActive {
+			return false, nil
+		}
+	}
+	current, err := pinned.revisions.Current(ctx, tx, tenantID)
+	if err != nil {
+		return false, err
+	}
+	if current != revision {
+		return false, ErrAuthorizationChanged
+	}
+	return true, nil
 }
 
 // EntityConstraint compiles row filters for one active entity without granting

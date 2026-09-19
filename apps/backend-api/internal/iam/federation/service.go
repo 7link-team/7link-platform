@@ -771,5 +771,5 @@ func cookieValue(header, name string) (string, error) {
 // callbackURL is the canonical callback path. The API layer prepends the
 // externally visible scheme and host before sending it to the IdP.
 func callbackURL(providerID guid.ID) string {
-	return "/federation/" + providerID.String() + "/callback"
+	return "/identity-providers/" + providerID.String() + "/callback"
 }

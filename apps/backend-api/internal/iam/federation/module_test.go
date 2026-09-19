@@ -73,7 +73,7 @@ func TestFederationSAMLBrowserOpenAPIContract(t *testing.T) {
 	spec := api.OpenAPI()
 
 	for path, expected := range map[string][]string{
-		"/federation/{provider_id}/callback": {"SAMLResponse", "RelayState"},
+		"/identity-providers/{provider_id}/callback": {"SAMLResponse", "RelayState"},
 		samlSSORoute:                         {"SAMLRequest", "RelayState"},
 		samlSLORoute:                         {"SAMLRequest", "RelayState"},
 	} {
@@ -123,7 +123,7 @@ func TestFederationIdentityContinuationOpenAPIRequiresBoundedStateAndProvider(t 
 	declaration := federationRuntimeModule(t)
 	_, api := humatest.New(t)
 	require.NoError(t, declaration.RegisterHTTP(t.Context(), api))
-	operation := api.OpenAPI().Paths["/federation/{provider_id}/identity-continuations"].Get
+	operation := api.OpenAPI().Paths["/identity-providers/{provider_id}/identity-continuation"].Get
 	parameters := map[string]*huma.Param{}
 	for _, parameter := range operation.Parameters {
 		parameters[parameter.Name] = parameter
@@ -298,20 +298,20 @@ func provideFederationForeignTables(t *testing.T, services *platformmodule.Servi
 
 func approvedFederationOperations() map[string]string {
 	return map[string]string{
-		"federation-list-personal-identity-links":           "GET /authn/identity-links",
-		"federation-list-personal-identity-providers":       "GET /authn/identity-link-providers",
-		"federation-create-personal-identity-transaction":   "POST /authn/identity-link-transactions",
-		"federation-delete-personal-identity-link":          "DELETE /authn/identity-links/{link_id}",
-		"federation-complete-personal-identity-transaction": "GET /federation/{provider_id}/identity-continuations",
-		"federation-callback-login":                         "GET /federation/{provider_id}/callback", "federation-callback-saml-login": "POST /federation/{provider_id}/callback",
-		"federation-create-identity-provider": "POST /iam/identity-providers", "federation-create-saml-service-provider": "POST /iam/saml/service-providers",
-		"federation-delete-identity-provider": "DELETE /iam/identity-providers/{provider_id}", "federation-delete-saml-service-provider": "DELETE /iam/saml/service-providers/{sp_id}",
-		"federation-list-identity-providers": "GET /iam/identity-providers", "federation-list-saml-service-providers": "GET /iam/saml/service-providers",
-		"federation-rotate-saml-signing-key": "POST /iam/saml/signing-key/rotate", "federation-saml-metadata": "GET /federation/saml/{tenant_id}/metadata",
-		"federation-saml-slo": "GET /federation/saml/{tenant_id}/slo", "federation-saml-slo-post": "POST /federation/saml/{tenant_id}/slo",
-		"federation-saml-sso": "GET /federation/saml/{tenant_id}/sso", "federation-saml-sso-post": "POST /federation/saml/{tenant_id}/sso",
-		"federation-start-login": "GET /federation/{provider_id}/start", "federation-update-identity-provider": "PUT /iam/identity-providers/{provider_id}",
-		"federation-update-saml-service-provider": "PUT /iam/saml/service-providers/{sp_id}",
+		"federation-list-personal-identity-links":           "GET /me/identity-links",
+		"federation-list-personal-identity-providers":       "GET /me/identity-link-providers",
+		"federation-create-personal-identity-transaction":   "POST /me/identity-link-transactions",
+		"federation-delete-personal-identity-link":          "DELETE /me/identity-links/{link_id}",
+		"federation-complete-personal-identity-transaction": "GET /identity-providers/{provider_id}/identity-continuation",
+		"federation-callback-login":                         "GET /identity-providers/{provider_id}/callback", "federation-callback-saml-login": "POST /identity-providers/{provider_id}/callback",
+		"federation-create-identity-provider": "POST /identity-providers", "federation-create-saml-service-provider": "POST /saml-service-providers",
+		"federation-delete-identity-provider": "DELETE /identity-providers/{provider_id}", "federation-delete-saml-service-provider": "DELETE /saml-service-providers/{sp_id}",
+		"federation-list-identity-providers": "GET /identity-providers", "federation-list-saml-service-providers": "GET /saml-service-providers",
+		"federation-rotate-saml-signing-key": "POST /saml-signing-keys", "federation-saml-metadata": "GET /saml/{tenant_id}/metadata",
+		"federation-saml-slo": "GET /saml/{tenant_id}/slo", "federation-saml-slo-post": "POST /saml/{tenant_id}/slo",
+		"federation-saml-sso": "GET /saml/{tenant_id}/sso", "federation-saml-sso-post": "POST /saml/{tenant_id}/sso",
+		"federation-start-login": "GET /identity-providers/{provider_id}/authorization", "federation-update-identity-provider": "PUT /identity-providers/{provider_id}",
+		"federation-update-saml-service-provider": "PUT /saml-service-providers/{sp_id}",
 	}
 }
 

@@ -74,7 +74,7 @@ func TestFederationManagementHTTPWorkflow(t *testing.T) {
 	client, server := newManagementAPI(t, env)
 
 	create := []byte("{\"name\":\"GitLab\",\"provider_type\":\"oidc\",\"issuer\":\"https://gitlab.example\",\"client_id\":\"app\",\"client_secret\":\"s3cret\",\"auto_provision\":true,\"default_role_id\":\"" + wireID("role-a") + "\",\"status\":\"active\"}")
-	response := adminRequest(t, client, http.MethodPost, server.URL+"/iam/identity-providers", wireID("tenant-a"), create, nil)
+	response := adminRequest(t, client, http.MethodPost, server.URL+"/identity-providers", wireID("tenant-a"), create, nil)
 	assert.Equal(t, http.StatusCreated, response.StatusCode)
 	var envelope federationEnvelope
 	decodeHTTPBody(t, response, &envelope)
@@ -86,51 +86,51 @@ func TestFederationManagementHTTPWorkflow(t *testing.T) {
 	assert.Equal(t, "https://gitlab.example", provider.Issuer)
 	assert.True(t, provider.ClientSecretSet)
 
-	response = adminRequest(t, client, http.MethodGet, server.URL+"/iam/identity-providers", wireID("tenant-a"), nil, nil)
+	response = adminRequest(t, client, http.MethodGet, server.URL+"/identity-providers", wireID("tenant-a"), nil, nil)
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 	decodeHTTPBody(t, response, &envelope)
 	var providers []Provider
 	require.NoError(t, json.Unmarshal(envelope.Data, &providers))
 	require.Len(t, providers, 1)
 
-	response = adminRequest(t, client, http.MethodPost, server.URL+"/iam/identity-providers", wireID("tenant-a"), create, map[string]string{"Accept-Language": "zh-CN"})
+	response = adminRequest(t, client, http.MethodPost, server.URL+"/identity-providers", wireID("tenant-a"), create, map[string]string{"Accept-Language": "zh-CN"})
 	assert.Equal(t, http.StatusConflict, response.StatusCode)
 	decodeHTTPBody(t, response, &envelope)
 	assert.Equal(t, localized("zh-CN", "federation.provider_issuer_exists"), envelope.Message)
 	assert.NotEqual(t, "federation_provider_issuer_exists", envelope.Message)
 
-	response = adminRequest(t, client, http.MethodPost, server.URL+"/iam/identity-providers", wireID("tenant-a"), []byte("{\"name\":\"Broken\",\"issuer\":\"https://broken.example\",\"client_id\":\"app\",\"auto_provision\":true,\"default_role_id\":\""+wireID("missing")+"\",\"status\":\"active\"}"), nil)
+	response = adminRequest(t, client, http.MethodPost, server.URL+"/identity-providers", wireID("tenant-a"), []byte("{\"name\":\"Broken\",\"issuer\":\"https://broken.example\",\"client_id\":\"app\",\"auto_provision\":true,\"default_role_id\":\""+wireID("missing")+"\",\"status\":\"active\"}"), nil)
 	assert.Equal(t, http.StatusConflict, response.StatusCode)
 	decodeHTTPBody(t, response, &envelope)
 	assert.Equal(t, localized("en-US", "federation.provider_role_missing"), envelope.Message)
 
-	response = adminRequest(t, client, http.MethodPost, server.URL+"/iam/identity-providers", wireID("tenant-a"), []byte(`{"name":"Bad","issuer":"not a url","client_id":"app","auto_provision":true,"status":"active"}`), nil)
+	response = adminRequest(t, client, http.MethodPost, server.URL+"/identity-providers", wireID("tenant-a"), []byte(`{"name":"Bad","issuer":"not a url","client_id":"app","auto_provision":true,"status":"active"}`), nil)
 	assert.Equal(t, http.StatusBadRequest, response.StatusCode)
 	decodeHTTPBody(t, response, &envelope)
 	assert.Equal(t, localized("en-US", "federation.invalid_request"), envelope.Message)
 
-	response = adminRequest(t, client, http.MethodPut, server.URL+"/iam/identity-providers/"+provider.ID.String(), wireID("tenant-a"), []byte("{\"name\":\"GitLab Renamed\",\"provider_type\":\"oidc\",\"issuer\":\"https://gitlab.example\",\"client_id\":\"app\",\"auto_provision\":true,\"default_role_id\":\""+wireID("role-a")+"\",\"status\":\"active\"}"), nil)
+	response = adminRequest(t, client, http.MethodPut, server.URL+"/identity-providers/"+provider.ID.String(), wireID("tenant-a"), []byte("{\"name\":\"GitLab Renamed\",\"provider_type\":\"oidc\",\"issuer\":\"https://gitlab.example\",\"client_id\":\"app\",\"auto_provision\":true,\"default_role_id\":\""+wireID("role-a")+"\",\"status\":\"active\"}"), nil)
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 	decodeHTTPBody(t, response, &envelope)
 	require.NoError(t, json.Unmarshal(envelope.Data, &provider))
 	assert.Equal(t, "GitLab Renamed", provider.Name)
 
-	response = adminRequest(t, client, http.MethodPut, server.URL+"/iam/identity-providers/"+wireID("missing"), wireID("tenant-a"), []byte(`{"name":"X","issuer":"https://other.example","client_id":"app","auto_provision":true,"status":"active"}`), nil)
+	response = adminRequest(t, client, http.MethodPut, server.URL+"/identity-providers/"+wireID("missing"), wireID("tenant-a"), []byte(`{"name":"X","issuer":"https://other.example","client_id":"app","auto_provision":true,"status":"active"}`), nil)
 	assert.Equal(t, http.StatusNotFound, response.StatusCode)
 	require.NoError(t, response.Body.Close())
 
-	response = adminRequest(t, client, http.MethodDelete, server.URL+"/iam/identity-providers/"+provider.ID.String(), wireID("tenant-a"), nil, nil)
+	response = adminRequest(t, client, http.MethodDelete, server.URL+"/identity-providers/"+provider.ID.String(), wireID("tenant-a"), nil, nil)
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 	decodeHTTPBody(t, response, &envelope)
 	assert.Contains(t, string(envelope.Data), `"deleted":true`)
 
-	response = adminRequest(t, client, http.MethodGet, server.URL+"/iam/identity-providers", wireID("tenant-a"), nil, nil)
+	response = adminRequest(t, client, http.MethodGet, server.URL+"/identity-providers", wireID("tenant-a"), nil, nil)
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 	decodeHTTPBody(t, response, &envelope)
 	require.NoError(t, json.Unmarshal(envelope.Data, &providers))
 	assert.Empty(t, providers)
 
-	response = adminRequest(t, client, http.MethodDelete, server.URL+"/iam/identity-providers/"+provider.ID.String(), wireID("tenant-a"), nil, nil)
+	response = adminRequest(t, client, http.MethodDelete, server.URL+"/identity-providers/"+provider.ID.String(), wireID("tenant-a"), nil, nil)
 	assert.Equal(t, http.StatusNotFound, response.StatusCode)
 	require.NoError(t, response.Body.Close())
 }
@@ -150,7 +150,7 @@ func TestFederationBrowserLoginHTTPFlow(t *testing.T) {
 	t.Cleanup(server.Close)
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 
-	startURL := server.URL + "/federation/" + provider.ID.String() + "/start?return_url=" + url.QueryEscape("https://app.example/")
+	startURL := server.URL + "/identity-providers/" + provider.ID.String() + "/authorization?return_url=" + url.QueryEscape("https://app.example/")
 	response, err := client.Get(startURL)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusFound, response.StatusCode)
@@ -158,7 +158,7 @@ func TestFederationBrowserLoginHTTPFlow(t *testing.T) {
 	parsedLocation, err := url.Parse(location)
 	require.NoError(t, err)
 	assert.Equal(t, env.idp.issuer+"/authorize", parsedLocation.Scheme+"://"+parsedLocation.Host+parsedLocation.Path)
-	assert.Equal(t, server.URL+"/federation/"+provider.ID.String()+"/callback", parsedLocation.Query().Get("redirect_uri"))
+	assert.Equal(t, server.URL+"/identity-providers/"+provider.ID.String()+"/callback", parsedLocation.Query().Get("redirect_uri"))
 	var stateCookie *http.Cookie
 	for _, cookie := range response.Cookies() {
 		if cookie.Name == stateCookieName {
@@ -186,7 +186,7 @@ func TestFederationBrowserLoginHTTPFlow(t *testing.T) {
 
 	code, returnedState := env.idp.authorize(t, client, provider.Issuer, state.CodeVerifier, state.Nonce)
 	require.Equal(t, state.Nonce, returnedState)
-	callbackURL := server.URL + "/federation/" + provider.ID.String() + "/callback?code=" + code + "&state=" + state.Nonce
+	callbackURL := server.URL + "/identity-providers/" + provider.ID.String() + "/callback?code=" + code + "&state=" + state.Nonce
 	request, err = http.NewRequestWithContext(t.Context(), http.MethodGet, callbackURL, nil)
 	require.NoError(t, err)
 	request.Header.Set("Cookie", stateCookieName+"="+stateCookie.Value)
@@ -207,7 +207,7 @@ func TestFederationBrowserLoginHTTPFlow(t *testing.T) {
 	assert.Equal(t, "user@example.com", claims.Email)
 
 	// Replayed or forged state is rejected with a localized 400.
-	response, err = client.Get(server.URL + "/federation/" + provider.ID.String() + "/callback?code=garbage&state=wrong")
+	response, err = client.Get(server.URL + "/identity-providers/" + provider.ID.String() + "/callback?code=garbage&state=wrong")
 	require.NoError(t, err)
 	defer response.Body.Close()
 	assert.Equal(t, http.StatusBadRequest, response.StatusCode)
@@ -259,13 +259,13 @@ func TestFederationHTTPRejectsInvalidIdentifiersAndMissingProviders(t *testing.T
 		body     []byte
 		status   int
 	}{
-		{http.MethodGet, "/iam/identity-providers", "invalid", nil, http.StatusUnprocessableEntity},
-		{http.MethodPost, "/iam/identity-providers", "invalid", validBody, http.StatusUnprocessableEntity},
-		{http.MethodPut, "/iam/identity-providers/" + wireID("missing"), "invalid", validBody, http.StatusUnprocessableEntity},
-		{http.MethodPut, "/iam/identity-providers/invalid", wireID("tenant-a"), validBody, http.StatusUnprocessableEntity},
-		{http.MethodPut, "/iam/identity-providers/" + wireID("missing"), wireID("tenant-a"), invalidRoleBody, http.StatusUnprocessableEntity},
-		{http.MethodDelete, "/iam/identity-providers/" + wireID("missing"), "invalid", nil, http.StatusUnprocessableEntity},
-		{http.MethodDelete, "/iam/identity-providers/invalid", wireID("tenant-a"), nil, http.StatusUnprocessableEntity},
+		{http.MethodGet, "/identity-providers", "invalid", nil, http.StatusUnprocessableEntity},
+		{http.MethodPost, "/identity-providers", "invalid", validBody, http.StatusUnprocessableEntity},
+		{http.MethodPut, "/identity-providers/" + wireID("missing"), "invalid", validBody, http.StatusUnprocessableEntity},
+		{http.MethodPut, "/identity-providers/invalid", wireID("tenant-a"), validBody, http.StatusUnprocessableEntity},
+		{http.MethodPut, "/identity-providers/" + wireID("missing"), wireID("tenant-a"), invalidRoleBody, http.StatusUnprocessableEntity},
+		{http.MethodDelete, "/identity-providers/" + wireID("missing"), "invalid", nil, http.StatusUnprocessableEntity},
+		{http.MethodDelete, "/identity-providers/invalid", wireID("tenant-a"), nil, http.StatusUnprocessableEntity},
 	}
 	for _, test := range tests {
 		response := adminRequest(t, client, test.method, server.URL+test.path, test.tenantID, test.body, nil)
@@ -287,11 +287,11 @@ func TestFederationHTTPRejectsInvalidIdentifiersAndMissingProviders(t *testing.T
 		body   string
 		status int
 	}{
-		{http.MethodGet, "/federation/invalid/start", "", http.StatusUnprocessableEntity},
-		{http.MethodGet, "/federation/invalid/callback?code=x&state=y", "", http.StatusUnprocessableEntity},
-		{http.MethodPost, "/federation/invalid/callback", "SAMLResponse=x", http.StatusUnprocessableEntity},
-		{http.MethodGet, "/federation/" + wireID("missing") + "/start", "", http.StatusNotFound},
-		{http.MethodPost, "/federation/" + wireID("missing") + "/callback", "SAMLResponse=x", http.StatusNotFound},
+		{http.MethodGet, "/identity-providers/invalid/authorization", "", http.StatusUnprocessableEntity},
+		{http.MethodGet, "/identity-providers/invalid/callback?code=x&state=y", "", http.StatusUnprocessableEntity},
+		{http.MethodPost, "/identity-providers/invalid/callback", "SAMLResponse=x", http.StatusUnprocessableEntity},
+		{http.MethodGet, "/identity-providers/" + wireID("missing") + "/authorization", "", http.StatusNotFound},
+		{http.MethodPost, "/identity-providers/" + wireID("missing") + "/callback", "SAMLResponse=x", http.StatusNotFound},
 	} {
 		request, err := http.NewRequestWithContext(t.Context(), test.method, browser.URL+test.path, strings.NewReader(test.body))
 		require.NoError(t, err)

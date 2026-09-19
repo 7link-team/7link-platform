@@ -39,6 +39,8 @@ type operationExecution struct {
 	usedNodes     int
 	usedClosures  int
 	result        operationResult
+	simulation    *operationSimulation
+	immediate     *immediateOperationState
 }
 
 // executeOperation performs no storage I/O and never commits independently.
@@ -52,13 +54,9 @@ func (t directoryTree) executeOperation(ctx context.Context, tx *gorm.DB, spaceI
 	if _, ok := tx.Statement.ConnPool.(gorm.TxCommitter); !ok {
 		return result, ErrAccountTransaction
 	}
-	q := query.Bind(tx, t.prefix)
-	locked, err := q.Space.WithContext(ctx).Where(q.Space.ID.Eq(spaceID)).UpdateSimple(q.Space.Version.Add(0))
+	q, _, err := t.lockOperationSpace(ctx, tx, spaceID)
 	if err != nil {
 		return result, err
-	}
-	if locked.RowsAffected != 1 {
-		return result, ErrNotFound
 	}
 	op := q.Operation
 	operation, err := op.WithContext(ctx).Where(op.SpaceID.Eq(spaceID), op.ID.Eq(id), op.ActorID.Eq(actorID)).Take()
@@ -66,20 +64,13 @@ func (t directoryTree) executeOperation(ctx context.Context, tx *gorm.DB, spaceI
 		return result, err
 	}
 	if operation.State == "succeeded" {
-		if err := access(ctx, tx, spaceID, actorID, operation.DestinationID, "read"); err != nil {
-			return result, err
-		}
-		if err := json.Unmarshal([]byte(operation.ResultJSON), &result); err != nil {
-			return operationResult{}, err
-		}
-		for _, rootID := range result.Roots {
-			if err := access(ctx, tx, spaceID, actorID, rootID, "read"); err != nil {
-				return operationResult{}, err
-			}
-		}
-		return result, nil
+		return replayOperationResult(ctx, tx, operation, access)
 	}
 	if operation.State != "ready" || operation.Revision != revision || operation.ExpiresAt <= now.UnixMilli() {
+		return result, errOperationState
+	}
+	var planned operationCost
+	if err := json.Unmarshal([]byte(operation.PlanJSON), &planned); err != nil || planned.Nodes < 1 || planned.Nodes > operation.NodeBudget || planned.ClosureRows < 0 {
 		return result, errOperationState
 	}
 	if _, err := t.fencePlan(ctx, tx, operation, "ready"); err != nil {
@@ -139,6 +130,9 @@ func (t directoryTree) executeOperation(ctx context.Context, tx *gorm.DB, spaceI
 			execution.result.Roots = append(execution.result.Roots, adopted)
 		}
 	}
+	if execution.cost() != planned {
+		return result, errOperationState
+	}
 	data, err := json.Marshal(execution.result)
 	if err != nil {
 		return result, err
@@ -195,10 +189,19 @@ func validateOperationPins(ctx context.Context, q *query.Query, operation *model
 }
 
 func (e *operationExecution) allow(id guid.ID, action string) error {
+	// Prospective nodes have no persisted IAM identity yet. Their real identity
+	// and inherited authorization are independently checked during execution.
+	if e.simulation != nil && id < 0 {
+		return nil
+	}
 	return e.access(e.ctx, e.tx, e.operation.SpaceID, e.operation.ActorID, id, action)
 }
 
 func (e *operationExecution) newID() (guid.ID, error) {
+	if e.simulation != nil {
+		e.simulation.nextID--
+		return e.simulation.nextID, nil
+	}
 	id, err := e.next()
 	if err != nil || id <= 0 {
 		return 0, errors.Join(errOperationInput, err)
@@ -218,10 +221,12 @@ func (e *operationExecution) adopt(sourceID, parentID guid.ID) (guid.ID, error) 
 	if err := e.consumeNodes(1); err != nil {
 		return 0, err
 	}
-	node := e.q.Node
-	source, err := node.WithContext(e.ctx).Where(node.SpaceID.Eq(e.operation.SpaceID), node.ID.Eq(sourceID), node.State.Eq("active")).Take()
+	source, err := e.operationNode(sourceID)
 	if err != nil {
 		return 0, err
+	}
+	if source.State != "active" {
+		return 0, ErrNotFound
 	}
 	if err := e.allow(sourceID, e.request.Action); err != nil {
 		return 0, err
@@ -229,7 +234,7 @@ func (e *operationExecution) adopt(sourceID, parentID guid.ID) (guid.ID, error) 
 	if err := e.allow(parentID, "create"); err != nil {
 		return 0, err
 	}
-	target, err := node.WithContext(e.ctx).Where(node.SpaceID.Eq(e.operation.SpaceID), node.ParentID.Eq(parentID), node.NameKey.Eq(source.NameKey), node.LiveSlot.Eq(1)).Take()
+	target, err := e.operationTarget(parentID, source.NameKey)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return e.place(source, parentID, source.Name)
 	}
@@ -244,7 +249,8 @@ func (e *operationExecution) adopt(sourceID, parentID guid.ID) (guid.ID, error) 
 			policy = e.request.DirectoryPolicy
 		}
 	}
-	if target.ID == source.ID && e.request.Action == "copy" && policy == "rename" {
+	selfCopy := target.ID == source.ID && e.request.Action == "copy"
+	if selfCopy && policy == "rename" {
 		name, err := e.uniqueName(parentID, source)
 		if err != nil {
 			return 0, err
@@ -253,21 +259,28 @@ func (e *operationExecution) adopt(sourceID, parentID guid.ID) (guid.ID, error) 
 	}
 	// Refuse selected-source targets and ancestors of a source: a replacement
 	// must not destroy another input or cause an overlapping directory merge.
-	item := e.q.OperationItem
-	selected, err := item.WithContext(e.ctx).Where(item.OperationID.Eq(e.operation.ID), item.NodeID.Eq(target.ID)).Count()
-	if err != nil {
-		return 0, err
-	}
-	closure := e.q.NodeClosure
-	ancestor, err := closure.WithContext(e.ctx).Where(closure.SpaceID.Eq(e.operation.SpaceID), closure.AncestorID.Eq(target.ID), closure.DescendantID.Eq(source.ID)).Count()
-	if err != nil {
-		return 0, err
-	}
-	if selected != 0 || ancestor != 0 {
-		return 0, errHierarchy
+	if target.ID > 0 && !(selfCopy && policy == "ask" && e.immediate != nil) {
+		selected, err := e.selectedSourceTarget(target.ID)
+		if err != nil {
+			return 0, err
+		}
+		closure := e.q.NodeClosure
+		ancestor, err := closure.WithContext(e.ctx).Where(closure.SpaceID.Eq(e.operation.SpaceID), closure.AncestorID.Eq(target.ID), closure.DescendantID.Eq(source.ID)).Count()
+		if err != nil {
+			return 0, err
+		}
+		if selected || ancestor != 0 {
+			return 0, errHierarchy
+		}
 	}
 	if err := e.allow(target.ID, "read"); err != nil {
 		return 0, err
+	}
+	if e.immediate != nil && policy == "ask" {
+		policy, err = e.resolveImmediateConflict(source, target, parentID)
+		if err != nil {
+			return 0, err
+		}
 	}
 	switch policy {
 	case "skip":
@@ -309,11 +322,11 @@ func (e *operationExecution) adopt(sourceID, parentID guid.ID) (guid.ID, error) 
 			return 0, err
 		}
 		if e.request.Action == "move" {
-			remaining, err := node.WithContext(e.ctx).Where(node.SpaceID.Eq(e.operation.SpaceID), node.ParentID.Eq(source.ID), node.State.Eq("active")).Count()
+			children, err := e.operationChildren(source.ID, 0)
 			if err != nil {
 				return 0, err
 			}
-			if remaining == 0 {
+			if len(children) == 0 {
 				if err := e.recycle(source.ID, false); err != nil {
 					return 0, err
 				}
@@ -326,10 +339,9 @@ func (e *operationExecution) adopt(sourceID, parentID guid.ID) (guid.ID, error) 
 }
 
 func (e *operationExecution) walkChildren(sourceID, targetID guid.ID) error {
-	node := e.q.Node
 	var after guid.ID
 	for {
-		rows, err := node.WithContext(e.ctx).Where(node.SpaceID.Eq(e.operation.SpaceID), node.ParentID.Eq(sourceID), node.State.Eq("active"), node.ID.Gt(after)).Order(node.ID.Asc()).Limit(100).Find()
+		rows, err := e.operationChildren(sourceID, after)
 		if err != nil {
 			return err
 		}
@@ -354,6 +366,9 @@ func (e *operationExecution) place(source *model.Node, parentID guid.ID, name st
 	if err != nil {
 		return 0, err
 	}
+	if e.immediate != nil {
+		e.immediate.createdFrom[created.ID] = source.ID
+	}
 	if source.Kind == "file" {
 		if err := e.appendContent(source, created); err != nil {
 			return 0, err
@@ -365,16 +380,18 @@ func (e *operationExecution) place(source *model.Node, parentID guid.ID, name st
 }
 
 func (e *operationExecution) moveSource(source *model.Node, parentID guid.ID, name string) (guid.ID, error) {
-	sourcePath, err := e.tree.pathNodes(e.ctx, e.tx, e.operation.SpaceID, source.ID)
+	if err := e.authorizeImmediateMove(source.ID); err != nil {
+		return 0, err
+	}
+	sourcePath, err := e.operationPath(source.ID)
 	if err != nil {
 		return 0, err
 	}
-	parentPath, err := e.tree.pathNodes(e.ctx, e.tx, e.operation.SpaceID, parentID)
+	parentPath, err := e.operationPath(parentID)
 	if err != nil {
 		return 0, err
 	}
-	closure := e.q.NodeClosure
-	count, err := closure.WithContext(e.ctx).Where(closure.SpaceID.Eq(e.operation.SpaceID), closure.AncestorID.Eq(source.ID)).Count()
+	count, err := e.operationSubtreeCount(source.ID)
 	if err != nil {
 		return 0, err
 	}
@@ -393,12 +410,21 @@ func (e *operationExecution) moveSource(source *model.Node, parentID guid.ID, na
 		cost = int(count) * ancestors
 	}
 	parent := parentPath[len(parentPath)-1]
-	if err := e.tree.move(e.ctx, e.tx, e.operation.SpaceID, nodeRevision{source.ID, source.Version}, nodeRevision{parent.ID, parent.Version}, e.spaceRevision, name, int(count), max(1, cost), e.now); err != nil {
-		return 0, err
+	if e.simulation != nil {
+		if err := e.simulation.move(e, source, parent.ID, name); err != nil {
+			return 0, err
+		}
+	} else {
+		if err := e.tree.move(e.ctx, e.tx, e.operation.SpaceID, nodeRevision{source.ID, source.Version}, nodeRevision{parent.ID, parent.Version}, e.spaceRevision, name, int(count), max(1, cost), e.now); err != nil {
+			return 0, err
+		}
 	}
 	e.spaceRevision++
 	e.usedClosures += cost
 	e.result.Moved += int(count)
+	if e.immediate != nil {
+		e.immediate.adopted[source.ID] = true
+	}
 	return source.ID, nil
 }
 
@@ -407,7 +433,7 @@ func (e *operationExecution) createNode(kind string, parentID guid.ID, input str
 	if err != nil {
 		return nil, err
 	}
-	path, err := e.tree.pathNodes(e.ctx, e.tx, e.operation.SpaceID, parentID)
+	path, err := e.operationPath(parentID)
 	if err != nil {
 		return nil, err
 	}
@@ -421,8 +447,10 @@ func (e *operationExecution) createNode(kind string, parentID guid.ID, input str
 	if err != nil {
 		return nil, err
 	}
-	if _, err := e.tree.lockMutation(e.ctx, e.tx, e.operation.SpaceID, e.spaceRevision); err != nil {
-		return nil, err
+	if e.simulation == nil {
+		if _, err := e.tree.lockMutation(e.ctx, e.tx, e.operation.SpaceID, e.spaceRevision); err != nil {
+			return nil, err
+		}
 	}
 	e.spaceRevision++
 	slot := 1
@@ -430,33 +458,48 @@ func (e *operationExecution) createNode(kind string, parentID guid.ID, input str
 	if kind == "file" {
 		row.Ext = Extension(name)
 	}
-	if err := e.q.Node.WithContext(e.ctx).Create(row); err != nil {
-		return nil, err
+	if e.simulation != nil {
+		if err := e.simulation.remember(e, row); err != nil {
+			return nil, err
+		}
+		row = e.simulation.nodes[id]
+		e.simulation.slots[operationSlot{parentID, key}] = id
+	} else {
+		if err := e.q.Node.WithContext(e.ctx).Create(row); err != nil {
+			return nil, err
+		}
+		links := make([]*model.NodeClosure, 0, len(path)+1)
+		links = append(links, &model.NodeClosure{SpaceID: e.operation.SpaceID, AncestorID: id, DescendantID: id, Depth: 0})
+		for index, ancestor := range path {
+			links = append(links, &model.NodeClosure{SpaceID: e.operation.SpaceID, AncestorID: ancestor.ID, DescendantID: id, Depth: len(path) - index})
+		}
+		if err := e.q.NodeClosure.WithContext(e.ctx).Create(links...); err != nil {
+			return nil, err
+		}
 	}
-	links := make([]*model.NodeClosure, 0, len(path)+1)
-	links = append(links, &model.NodeClosure{SpaceID: e.operation.SpaceID, AncestorID: id, DescendantID: id, Depth: 0})
-	for index, ancestor := range path {
-		links = append(links, &model.NodeClosure{SpaceID: e.operation.SpaceID, AncestorID: ancestor.ID, DescendantID: id, Depth: len(path) - index})
-	}
-	if err := e.q.NodeClosure.WithContext(e.ctx).Create(links...); err != nil {
-		return nil, err
-	}
-	e.usedClosures += len(links)
+	e.usedClosures += len(path) + 1
 	e.result.Created++
 	return row, nil
 }
 
 func (e *operationExecution) appendContent(source, target *model.Node) error {
-	if source.CurrentVersionID == nil {
-		return errVersionConflict
-	}
 	if err := e.allow(target.ID, "update"); err != nil {
 		return err
 	}
 	version := e.q.Version
-	content, err := version.WithContext(e.ctx).Where(version.SpaceID.Eq(e.operation.SpaceID), version.NodeID.Eq(source.ID), version.ID.Eq(*source.CurrentVersionID)).Take()
+	content, err := e.effectiveContent(source)
 	if err != nil {
 		return err
+	}
+	if e.simulation != nil {
+		// Resolve immutable source content without persisting prospective versions
+		// or references in the read-only overlay.
+		if e.immediate != nil {
+			target.Version++
+			e.immediate.content[target.ID] = content.ID
+			e.spaceRevision++
+		}
+		return nil
 	}
 	number := int64(1)
 	if target.CurrentVersionID != nil {
@@ -475,18 +518,23 @@ func (e *operationExecution) appendContent(source, target *model.Node) error {
 		return err
 	}
 	e.spaceRevision++
+	if e.immediate != nil {
+		e.immediate.content[target.ID] = content.ID
+	}
 	return nil
 }
 
 func (e *operationExecution) recycle(rootID guid.ID, replacement bool) error {
+	if e.simulation != nil {
+		return e.simulation.recycle(e, rootID, replacement)
+	}
 	node, closure := e.q.Node, e.q.NodeClosure
 	if replacement {
-		item := e.q.OperationItem
-		selected, err := item.WithContext(e.ctx).Join(closure, closure.SpaceID.EqCol(item.SpaceID), closure.DescendantID.EqCol(item.NodeID)).Where(item.OperationID.Eq(e.operation.ID), closure.AncestorID.Eq(rootID)).Count()
+		selected, err := e.containsSelectedSource(rootID)
 		if err != nil {
 			return err
 		}
-		if selected != 0 {
+		if selected {
 			return errHierarchy
 		}
 	}
@@ -529,6 +577,9 @@ func (e *operationExecution) recycle(rootID guid.ID, replacement bool) error {
 	}
 	e.spaceRevision++
 	e.result.Recycled += count
+	if e.immediate != nil && !replacement {
+		e.immediate.adopted[rootID] = true
+	}
 	return nil
 }
 
@@ -538,7 +589,6 @@ func (e *operationExecution) uniqueName(parentID guid.ID, source *model.Node) (s
 		ext = path.Ext(source.Name)
 	}
 	stem := strings.TrimSuffix(source.Name, ext)
-	node := e.q.Node
 	for index := 1; index <= e.operation.NodeBudget; index++ {
 		suffix := fmt.Sprintf(" (%d)%s", index, ext)
 		base := stem
@@ -550,12 +600,12 @@ func (e *operationExecution) uniqueName(parentID guid.ID, source *model.Node) (s
 		if err != nil {
 			return "", err
 		}
-		count, err := node.WithContext(e.ctx).Where(node.SpaceID.Eq(e.operation.SpaceID), node.ParentID.Eq(parentID), node.NameKey.Eq(key), node.LiveSlot.Eq(1)).Count()
+		_, err = e.operationTarget(parentID, key)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return name, nil
+		}
 		if err != nil {
 			return "", err
-		}
-		if count == 0 {
-			return name, nil
 		}
 	}
 	return "", errHierarchy

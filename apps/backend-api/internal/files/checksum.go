@@ -97,7 +97,11 @@ type checksumEnvelope struct {
 func (c *Checksums) Checkpoint() ([]byte, error) {
 	state := checksumState{Version: 1, Offset: c.offset}
 	for i, h := range c.hashes {
-		value, err := h.(encoding.BinaryMarshaler).MarshalBinary()
+		marshaler, ok := h.(encoding.BinaryMarshaler)
+		if !ok {
+			return nil, ErrCheckpoint
+		}
+		value, err := marshaler.MarshalBinary()
 		if err != nil {
 			return nil, err
 		}
@@ -130,7 +134,11 @@ func RestoreChecksums(raw []byte, committedOffset int64) (*Checksums, error) {
 	}
 	c := NewChecksums()
 	for i, h := range c.hashes {
-		if err := h.(encoding.BinaryUnmarshaler).UnmarshalBinary(state.States[i]); err != nil {
+		unmarshaler, ok := h.(encoding.BinaryUnmarshaler)
+		if !ok {
+			return nil, ErrCheckpoint
+		}
+		if err := unmarshaler.UnmarshalBinary(state.States[i]); err != nil {
 			return nil, ErrCheckpoint
 		}
 	}

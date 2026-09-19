@@ -154,7 +154,7 @@ const (
 )
 
 func limitedAuthenticationOperation(op *huma.Operation) bool {
-	return op != nil && op.Method == http.MethodPost && strings.HasPrefix(op.Path, "/authn/")
+	return op != nil && op.Method == http.MethodPost && strings.HasPrefix(op.Path, "/")
 }
 
 // limitedOAuthOperation covers the protocol endpoints that authenticate a

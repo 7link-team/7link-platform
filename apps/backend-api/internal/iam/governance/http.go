@@ -40,15 +40,16 @@ type createRequestInput struct {
 
 type decisionInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
-	ID       string `path:"id" maxLength:"64"`
+	ID       string `path:"request_id" maxLength:"64"`
 	Body     struct {
-		Note string `json:"note,omitempty" maxLength:"500"`
+		Decision string `json:"decision" enum:"approved,rejected"`
+		Note     string `json:"note,omitempty" maxLength:"500"`
 	}
 }
 
 type revokeInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
-	ID       string `path:"id" maxLength:"64"`
+	ID       string `path:"request_id" maxLength:"64"`
 	Body     struct {
 		Reason string `json:"reason,omitempty" maxLength:"500"`
 	}
@@ -64,12 +65,20 @@ type createReviewInput struct {
 
 type reviewInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
-	ID       string `path:"id" maxLength:"64"`
+	ID       string `path:"review_id" maxLength:"64"`
+}
+
+type reviewUpdateInput struct {
+	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	ID       string `path:"review_id" maxLength:"64"`
+	Body     struct {
+		Status string `json:"status" enum:"completed,cancelled"`
+	}
 }
 
 type reviewItemInput struct {
 	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
-	ID       string `path:"id" maxLength:"64"`
+	ID       string `path:"review_id" maxLength:"64"`
 	ItemID   string `path:"item_id" maxLength:"64"`
 	Body     struct {
 		Decision string `json:"decision" enum:"keep,revoke"`
@@ -79,7 +88,7 @@ type reviewItemInput struct {
 
 func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	authz.RegisterTenantMember(registrar, api, operation(
-		"governance-list-requestable-roles", http.MethodGet, "/iam/requestable-roles",
+		"governance-list-requestable-roles", http.MethodGet, "/requestable-roles",
 		"List tenant roles available for access requests", http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), func(ctx context.Context, in *listInput) (*respx.Body[[]RequestableRole], error) {
 		tenantID, err := parseGovernanceID(in.TenantID)
@@ -94,7 +103,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	})
 
 	createRequest := operation(
-		"governance-create-access-request", http.MethodPost, "/iam/access-requests",
+		"governance-create-access-request", http.MethodPost, "/access-requests",
 		"Request time-limited membership in a tenant role", http.StatusNotFound, http.StatusConflict,
 		http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	)
@@ -122,7 +131,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterTenantMember(registrar, api, operation(
-		"governance-list-my-access-requests", http.MethodGet, "/iam/my/access-requests",
+		"governance-list-my-access-requests", http.MethodGet, "/me/access-requests",
 		"List the current principal's tenant access requests", http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), func(ctx context.Context, in *tenantInput) (*respx.Body[[]AccessRequest], error) {
 		tenantID, err := parseGovernanceID(in.TenantID)
@@ -141,7 +150,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	})
 
 	authz.Register(registrar, api, operation(
-		"governance-list-access-requests", http.MethodGet, "/iam/access-requests",
+		"governance-list-access-requests", http.MethodGet, "/access-requests",
 		"List tenant access requests for approval", http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), authz.Guard{Resource: "access_request", Verb: "view"}, func(ctx context.Context, in *listInput) (*respx.Body[[]AccessRequest], error) {
 		tenantID, err := parseGovernanceID(in.TenantID)
@@ -160,34 +169,29 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 }
 
 func registerRequestDecisionHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
-	for _, route := range []struct {
-		id, path, summary, decision string
-	}{
-		{"governance-approve-access-request", "/iam/access-requests/{id}/approve", "Approve an access request and activate its temporary role grant", StatusApproved},
-		{"governance-reject-access-request", "/iam/access-requests/{id}/reject", "Reject a pending access request", StatusRejected},
-	} {
-		authz.Register(registrar, api, operation(route.id, http.MethodPost, route.path, route.summary,
-			http.StatusNotFound, http.StatusConflict, http.StatusGone, http.StatusUnprocessableEntity, http.StatusInternalServerError,
-		), authz.Guard{Resource: "access_request", Verb: "approve"}, func(ctx context.Context, in *decisionInput) (*respx.Body[AccessRequest], error) {
-			tenantID, id, actorID, err := requestActor(ctx, in.TenantID, in.ID)
-			if err != nil {
-				return nil, err
-			}
-			var item AccessRequest
-			if route.decision == StatusApproved {
-				item, err = service.Approve(ctx, tenantID, id, actorID, in.Body.Note)
-			} else {
-				item, err = service.Reject(ctx, tenantID, id, actorID, in.Body.Note)
-			}
-			if err != nil {
-				return nil, governanceError(err)
-			}
-			return respx.OK(ctx, item), nil
-		})
-	}
+	authz.Register(registrar, api, operation(
+		"governance-set-access-request-decision", http.MethodPut, "/access-requests/{request_id}/decision",
+		"Set the approval decision for an access request", http.StatusNotFound, http.StatusConflict,
+		http.StatusGone, http.StatusUnprocessableEntity, http.StatusInternalServerError,
+	), authz.Guard{Resource: "access_request", Verb: "approve"}, func(ctx context.Context, in *decisionInput) (*respx.Body[AccessRequest], error) {
+		tenantID, id, actorID, err := requestActor(ctx, in.TenantID, in.ID)
+		if err != nil {
+			return nil, err
+		}
+		var item AccessRequest
+		if in.Body.Decision == StatusApproved {
+			item, err = service.Approve(ctx, tenantID, id, actorID, in.Body.Note)
+		} else {
+			item, err = service.Reject(ctx, tenantID, id, actorID, in.Body.Note)
+		}
+		if err != nil {
+			return nil, governanceError(err)
+		}
+		return respx.OK(ctx, item), nil
+	})
 
 	authz.Register(registrar, api, operation(
-		"governance-revoke-access-grant", http.MethodPost, "/iam/access-requests/{id}/revoke",
+		"governance-revoke-access-grant", http.MethodPut, "/access-requests/{request_id}/grant-revocation",
 		"Revoke an approved temporary role grant", http.StatusNotFound, http.StatusConflict, http.StatusGone,
 		http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), authz.Guard{Resource: "access_request", Verb: "approve"}, func(ctx context.Context, in *revokeInput) (*respx.Body[AccessRequest], error) {
@@ -203,7 +207,7 @@ func registerRequestDecisionHTTP(api huma.API, service *Service, registrar *auth
 	})
 
 	authz.RegisterTenantMember(registrar, api, operation(
-		"governance-withdraw-access-request", http.MethodPost, "/iam/access-requests/{id}/withdraw",
+		"governance-withdraw-access-request", http.MethodPut, "/access-requests/{request_id}/withdrawal",
 		"Withdraw a pending request or relinquish its approved access", http.StatusNotFound, http.StatusConflict,
 		http.StatusGone, http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), func(ctx context.Context, in *revokeInput) (*respx.Body[AccessRequest], error) {
@@ -221,7 +225,7 @@ func registerRequestDecisionHTTP(api huma.API, service *Service, registrar *auth
 
 func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	authz.Register(registrar, api, operation(
-		"governance-list-access-reviews", http.MethodGet, "/iam/access-reviews",
+		"governance-list-access-reviews", http.MethodGet, "/access-reviews",
 		"List tenant access review campaigns", http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), authz.Guard{Resource: "access_review", Verb: "view"}, func(ctx context.Context, in *listInput) (*respx.Body[[]AccessReview], error) {
 		tenantID, err := parseGovernanceID(in.TenantID)
@@ -236,7 +240,7 @@ func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registr
 	})
 
 	createReview := operation(
-		"governance-create-access-review", http.MethodPost, "/iam/access-reviews",
+		"governance-create-access-review", http.MethodPost, "/access-reviews",
 		"Create a review of current tenant access grants", http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	)
 	createReview.DefaultStatus = http.StatusCreated
@@ -257,7 +261,7 @@ func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registr
 	})
 
 	authz.Register(registrar, api, operation(
-		"governance-get-access-review", http.MethodGet, "/iam/access-reviews/{id}",
+		"governance-get-access-review", http.MethodGet, "/access-reviews/{review_id}",
 		"Get an access review and its snapshotted grants", http.StatusNotFound, http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), authz.Guard{Resource: "access_review", Verb: "view"}, func(ctx context.Context, in *reviewInput) (*respx.Body[AccessReview], error) {
 		tenantID, id, err := tenantResourceIDs(in.TenantID, in.ID)
@@ -272,7 +276,7 @@ func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registr
 	})
 
 	authz.Register(registrar, api, operation(
-		"governance-decide-access-review-item", http.MethodPost, "/iam/access-reviews/{id}/items/{item_id}/decide",
+		"governance-decide-access-review-item", http.MethodPut, "/access-reviews/{review_id}/items/{item_id}/decision",
 		"Keep or revoke one snapshotted tenant access grant", http.StatusNotFound, http.StatusConflict, http.StatusGone,
 		http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), authz.Guard{Resource: "access_review", Verb: "decide"}, func(ctx context.Context, in *reviewItemInput) (*respx.Body[AccessReviewItem], error) {
@@ -291,31 +295,26 @@ func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registr
 		return respx.OK(ctx, item), nil
 	})
 
-	for _, route := range []struct {
-		id, path, summary, status string
-	}{
-		{"governance-complete-access-review", "/iam/access-reviews/{id}/complete", "Complete an access review after every item is decided", ReviewStatusCompleted},
-		{"governance-cancel-access-review", "/iam/access-reviews/{id}/cancel", "Cancel an open access review", ReviewStatusCancelled},
-	} {
-		authz.Register(registrar, api, operation(route.id, http.MethodPost, route.path, route.summary,
-			http.StatusNotFound, http.StatusConflict, http.StatusGone, http.StatusUnprocessableEntity, http.StatusInternalServerError,
-		), authz.Guard{Resource: "access_review", Verb: "manage"}, func(ctx context.Context, in *reviewInput) (*respx.Body[AccessReview], error) {
-			tenantID, id, actorID, err := requestActor(ctx, in.TenantID, in.ID)
-			if err != nil {
-				return nil, err
-			}
-			var item AccessReview
-			if route.status == ReviewStatusCompleted {
-				item, err = service.CompleteReview(ctx, tenantID, id, actorID)
-			} else {
-				item, err = service.CancelReview(ctx, tenantID, id, actorID)
-			}
-			if err != nil {
-				return nil, governanceError(err)
-			}
-			return respx.OK(ctx, item), nil
-		})
-	}
+	authz.Register(registrar, api, operation(
+		"governance-update-access-review", http.MethodPatch, "/access-reviews/{review_id}",
+		"Complete or cancel an access review", http.StatusNotFound, http.StatusConflict,
+		http.StatusGone, http.StatusUnprocessableEntity, http.StatusInternalServerError,
+	), authz.Guard{Resource: "access_review", Verb: "manage"}, func(ctx context.Context, in *reviewUpdateInput) (*respx.Body[AccessReview], error) {
+		tenantID, id, actorID, err := requestActor(ctx, in.TenantID, in.ID)
+		if err != nil {
+			return nil, err
+		}
+		var item AccessReview
+		if in.Body.Status == ReviewStatusCompleted {
+			item, err = service.CompleteReview(ctx, tenantID, id, actorID)
+		} else {
+			item, err = service.CancelReview(ctx, tenantID, id, actorID)
+		}
+		if err != nil {
+			return nil, governanceError(err)
+		}
+		return respx.OK(ctx, item), nil
+	})
 }
 
 func operation(id, method, path, summary string, errors ...int) huma.Operation {

@@ -19,7 +19,7 @@ func importLegacy(ctx context.Context, driver Driver, roots map[string]string, k
 	reader, err := driver.Open(ctx, key)
 	exists := err == nil
 	if exists {
-		defer reader.Close()
+		defer func() { _ = reader.Close() }()
 	}
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return err
@@ -38,7 +38,7 @@ func importLegacy(ctx context.Context, driver Driver, roots map[string]string, k
 		}
 		return err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	source, err := root.Open(parts[1])
 	if err != nil {
 		if exists && errors.Is(err, os.ErrNotExist) {
@@ -46,7 +46,7 @@ func importLegacy(ctx context.Context, driver Driver, roots map[string]string, k
 		}
 		return err
 	}
-	defer source.Close()
+	defer func() { _ = source.Close() }()
 	info, err := source.Stat()
 	if err != nil {
 		return err
@@ -77,7 +77,7 @@ func importLegacy(ctx context.Context, driver Driver, roots map[string]string, k
 	if err != nil {
 		return err
 	}
-	defer destination.Close()
+	defer func() { _ = destination.Close() }()
 	actual := NewChecksums()
 	if _, err := io.Copy(actual, contextReader{ctx, destination}); err != nil {
 		return err

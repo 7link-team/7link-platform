@@ -46,7 +46,7 @@ func TestIAMIdentityAuthnMigrationsAcrossEngines(t *testing.T) {
 						milestones[report.Module] = report.Milestone
 					}
 					assert.Equal(t, "personal-tokens", milestones[authn.Name])
-					assert.Equal(t, "principal-erasure", milestones[organization.Name])
+					assert.Equal(t, "department-entities", milestones[organization.Name])
 					assertTableExists(t, db, engine.dialect, prefix+"iam_principals", true)
 					assertTableExists(t, db, engine.dialect, prefix+"iam_credentials", true)
 					assertTableExists(t, db, engine.dialect, prefix+"goose_identity", true)

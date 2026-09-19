@@ -28,35 +28,35 @@ import (
 // plan: 14 operations covering the source module's 14 principal and
 // service-account capabilities.
 const identityRouteManifest = `
-identity-avatar-candidates|POST|/iam/me/avatar-candidates
-identity-my-avatar|GET|/iam/me/avatar
-identity-set-my-avatar|PUT|/iam/me/avatar
-identity-avatar-image|GET|/iam/avatars/{principal_id}/{file}
-identity-my-closure-request|GET|/iam/me/closure-request
-identity-submit-closure-request|POST|/iam/me/closure-request
-identity-cancel-closure-request|DELETE|/iam/me/closure-request
-identity-list-closure-requests|GET|/platform/iam/closure-requests
-identity-reject-closure-request|POST|/platform/iam/principals/{principal_id}/closure-request/rejection
-identity-process-closure-request|POST|/platform/iam/principals/{principal_id}/closure-request/processing
-identity-list-principals|GET|/iam/principals
-identity-create-principal|POST|/iam/principals
-identity-get-principal|GET|/iam/principals/{id}
-identity-update-principal|PATCH|/iam/principals/{id}
-identity-create-principal-suspension|PUT|/iam/principals/{id}/suspension
-identity-delete-principal-suspension|DELETE|/iam/principals/{id}/suspension
-identity-list-service-accounts|GET|/iam/service-accounts
-identity-create-service-account|POST|/iam/service-accounts
-identity-get-service-account|GET|/iam/service-accounts/{id}
-identity-replace-service-account|PUT|/iam/service-accounts/{id}
-identity-delete-service-account|DELETE|/iam/service-accounts/{id}
-identity-list-service-account-credentials|GET|/iam/service-accounts/{id}/credentials
-identity-create-service-account-credential|POST|/iam/service-accounts/{id}/credentials
-identity-delete-service-account-credential|DELETE|/iam/service-accounts/{id}/credentials/{credential_id}
-identity-platform-get-principal-lifecycle|GET|/platform/iam/principals/{principal_id}/lifecycle
-identity-platform-set-principal-retention|PUT|/platform/iam/principals/{principal_id}/lifecycle/retention
-identity-platform-anonymize-principal|POST|/platform/iam/principals/{principal_id}/lifecycle/anonymization
-identity-platform-suspend-principal|PUT|/platform/iam/principals/{principal_id}/suspension
-identity-platform-restore-principal|DELETE|/platform/iam/principals/{principal_id}/suspension`
+identity-avatar-candidates|POST|/me/avatar-candidates
+identity-my-avatar|GET|/me/avatar
+identity-set-my-avatar|PUT|/me/avatar
+identity-avatar-image|GET|/avatars/{principal_id}/{file}
+identity-my-closure-request|GET|/me/closure-request
+identity-submit-closure-request|POST|/me/closure-request
+identity-cancel-closure-request|DELETE|/me/closure-request
+identity-list-closure-requests|GET|/platform/closure-requests
+identity-reject-closure-request|POST|/platform/principals/{principal_id}/closure-request/rejection
+identity-process-closure-request|POST|/platform/principals/{principal_id}/closure-request/processing
+identity-list-principals|GET|/principals
+identity-create-principal|POST|/principals
+identity-get-principal|GET|/principals/{principal_id}
+identity-update-principal|PATCH|/principals/{principal_id}
+identity-create-principal-suspension|PUT|/principals/{principal_id}/suspension
+identity-delete-principal-suspension|DELETE|/principals/{principal_id}/suspension
+identity-list-service-accounts|GET|/service-accounts
+identity-create-service-account|POST|/service-accounts
+identity-get-service-account|GET|/service-accounts/{service_account_id}
+identity-replace-service-account|PUT|/service-accounts/{service_account_id}
+identity-delete-service-account|DELETE|/service-accounts/{service_account_id}
+identity-list-service-account-credentials|GET|/service-accounts/{service_account_id}/credentials
+identity-create-service-account-credential|POST|/service-accounts/{service_account_id}/credentials
+identity-delete-service-account-credential|DELETE|/service-accounts/{service_account_id}/credentials/{credential_id}
+identity-platform-get-principal-lifecycle|GET|/platform/principals/{principal_id}/lifecycle
+identity-platform-set-principal-retention|PUT|/platform/principals/{principal_id}/lifecycle/retention
+identity-platform-anonymize-principal|POST|/platform/principals/{principal_id}/lifecycle/anonymization
+identity-platform-suspend-principal|PUT|/platform/principals/{principal_id}/suspension
+identity-platform-restore-principal|DELETE|/platform/principals/{principal_id}/suspension`
 
 // identityGuards is the permission code each operation must carry. Editing a
 // profile and suspending or restoring an account are changes to a user inside
@@ -305,7 +305,7 @@ func TestIdentityOpenAPIGuardsParametersAndSecurityAreConsistent(t *testing.T) {
 
 func TestIdentityOpenAPIDescribesTypedMutationResponses(t *testing.T) {
 	spec := identityContractAPI(t).OpenAPI()
-	deleteAccount := spec.Paths["/iam/service-accounts/{id}"].Delete
+	deleteAccount := spec.Paths["/service-accounts/{service_account_id}"].Delete
 	require.NotNil(t, deleteAccount)
 	assert.Contains(t, deleteAccount.Parameters[len(deleteAccount.Parameters)-1].Name+"", "")
 
@@ -316,8 +316,8 @@ func TestIdentityOpenAPIDescribesTypedMutationResponses(t *testing.T) {
 	assert.Contains(t, versions, "query:version", "optimistic concurrency stays an explicit parameter")
 
 	for path, method := range map[string]string{
-		"/iam/service-accounts/{id}":                             http.MethodDelete,
-		"/iam/service-accounts/{id}/credentials/{credential_id}": http.MethodDelete,
+		"/service-accounts/{service_account_id}":                             http.MethodDelete,
+		"/service-accounts/{service_account_id}/credentials/{credential_id}": http.MethodDelete,
 	} {
 		operation := identityPathOperations(spec.Paths[path])[method]
 		require.NotNil(t, operation, path)
@@ -333,7 +333,7 @@ func TestIdentityPrincipalHTTPLifecycleAndTenantIsolation(t *testing.T) {
 	headerA, headerB := identityTenantHeader(7), identityTenantHeader(8)
 	auth := "Authorization: Bearer test"
 
-	created := harness.api.Post("/iam/principals", auth, headerA, map[string]any{
+	created := harness.api.Post("/principals", auth, headerA, map[string]any{
 		"login_name": "alice", "password": testPassword,
 		"display_name": "Alice", "email": "alice@example.test",
 	})
@@ -342,32 +342,32 @@ func TestIdentityPrincipalHTTPLifecycleAndTenantIsolation(t *testing.T) {
 	require.NotZero(t, principal.ID)
 	id := principal.ID.String()
 
-	assert.Equal(t, http.StatusOK, harness.api.Get("/iam/principals?limit=50", auth, headerA).Code)
-	assert.Equal(t, http.StatusOK, harness.api.Get("/iam/principals/"+id, auth, headerA).Code)
+	assert.Equal(t, http.StatusOK, harness.api.Get("/principals?limit=50", auth, headerA).Code)
+	assert.Equal(t, http.StatusOK, harness.api.Get("/principals/"+id, auth, headerA).Code)
 
-	updated := harness.api.Patch("/iam/principals/"+id, auth, headerA, map[string]any{
+	updated := harness.api.Patch("/principals/"+id, auth, headerA, map[string]any{
 		"display_name": "Alice Smith",
 	})
 	require.Equal(t, http.StatusOK, updated.Code, updated.Body.String())
 	assert.Equal(t, "Alice Smith", decodeIdentityEnvelope[Principal](t, updated).Data.DisplayName)
 
-	suspended := harness.api.Put("/iam/principals/"+id+"/suspension", auth, headerA)
+	suspended := harness.api.Put("/principals/"+id+"/suspension", auth, headerA)
 	require.Equal(t, http.StatusOK, suspended.Code, suspended.Body.String())
 	assert.Equal(t, "disabled", decodeIdentityEnvelope[Principal](t, suspended).Data.Status)
 
-	restored := harness.api.Delete("/iam/principals/"+id+"/suspension", auth, headerA)
+	restored := harness.api.Delete("/principals/"+id+"/suspension", auth, headerA)
 	require.Equal(t, http.StatusOK, restored.Code, restored.Body.String())
 	assert.Equal(t, "active", decodeIdentityEnvelope[Principal](t, restored).Data.Status)
 
 	// Tenant B cannot observe or change tenant A's principal.
-	assert.Equal(t, http.StatusNotFound, harness.api.Get("/iam/principals/"+id, auth, headerB).Code)
-	assert.Equal(t, http.StatusNotFound, harness.api.Patch("/iam/principals/"+id, auth, headerB, map[string]any{
+	assert.Equal(t, http.StatusNotFound, harness.api.Get("/principals/"+id, auth, headerB).Code)
+	assert.Equal(t, http.StatusNotFound, harness.api.Patch("/principals/"+id, auth, headerB, map[string]any{
 		"display_name": "Hijacked",
 	}).Code)
-	assert.Equal(t, http.StatusNotFound, harness.api.Put("/iam/principals/"+id+"/suspension", auth, headerB).Code)
-	assert.Equal(t, http.StatusNotFound, harness.api.Delete("/iam/principals/"+id+"/suspension", auth, headerB).Code)
+	assert.Equal(t, http.StatusNotFound, harness.api.Put("/principals/"+id+"/suspension", auth, headerB).Code)
+	assert.Equal(t, http.StatusNotFound, harness.api.Delete("/principals/"+id+"/suspension", auth, headerB).Code)
 
-	listedByB := harness.api.Get("/iam/principals?limit=50", auth, headerB)
+	listedByB := harness.api.Get("/principals?limit=50", auth, headerB)
 	require.Equal(t, http.StatusOK, listedByB.Code)
 	assert.Empty(t, decodeIdentityEnvelope[principalListData](t, listedByB).Data.Items)
 	assert.Equal(t, "Alice Smith", harness.principal(t, principal.ID).DisplayName)
@@ -378,23 +378,23 @@ func TestIdentityPrincipalHTTPRejectsConflictsAndInvalidInput(t *testing.T) {
 	harness := newIdentityHTTPHarness(t, true)
 	header, auth := identityTenantHeader(7), "Authorization: Bearer test"
 
-	created := harness.api.Post("/iam/principals", auth, header, map[string]any{
+	created := harness.api.Post("/principals", auth, header, map[string]any{
 		"login_name": "alice", "password": testPassword, "email": "alice@example.test",
 	})
 	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
 
-	duplicate := harness.api.Post("/iam/principals", auth, header, map[string]any{
+	duplicate := harness.api.Post("/principals", auth, header, map[string]any{
 		"login_name": "alice", "password": testPassword, "email": "other@example.test",
 	})
 	assert.Equal(t, http.StatusConflict, duplicate.Code, duplicate.Body.String())
 
-	short := harness.api.Post("/iam/principals", auth, header, map[string]any{
+	short := harness.api.Post("/principals", auth, header, map[string]any{
 		"login_name": "bob", "password": "short",
 	})
 	assert.Equal(t, http.StatusUnprocessableEntity, short.Code)
 
-	assert.Equal(t, http.StatusUnprocessableEntity, harness.api.Get("/iam/principals/not-an-id", auth, header).Code)
-	assert.Equal(t, http.StatusNotFound, harness.api.Get("/iam/principals/999999", auth, header).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, harness.api.Get("/principals/not-an-id", auth, header).Code)
+	assert.Equal(t, http.StatusNotFound, harness.api.Get("/principals/999999", auth, header).Code)
 }
 
 // TestIdentityPrincipalAdministrationRequiresTenantUserUpdatePermission checks
@@ -406,18 +406,18 @@ func TestIdentityPrincipalAdministrationRequiresTenantUserUpdatePermission(t *te
 	harness := newIdentityHTTPHarness(t, false)
 	header, auth := identityTenantHeader(7), "Authorization: Bearer test"
 
-	created := harness.api.Post("/iam/principals", auth, header, map[string]any{
+	created := harness.api.Post("/principals", auth, header, map[string]any{
 		"login_name": "alice", "password": testPassword,
 	})
 	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
 	id := decodeIdentityEnvelope[Principal](t, created).Data.ID
 
 	// Reads stay available; the three writes do not.
-	assert.Equal(t, http.StatusOK, harness.api.Get("/iam/principals/"+id.String(), auth, header).Code)
+	assert.Equal(t, http.StatusOK, harness.api.Get("/principals/"+id.String(), auth, header).Code)
 	for _, response := range []*httptest.ResponseRecorder{
-		harness.api.Patch("/iam/principals/"+id.String(), auth, header, map[string]any{"display_name": "Nope"}),
-		harness.api.Put("/iam/principals/"+id.String()+"/suspension", auth, header),
-		harness.api.Delete("/iam/principals/"+id.String()+"/suspension", auth, header),
+		harness.api.Patch("/principals/"+id.String(), auth, header, map[string]any{"display_name": "Nope"}),
+		harness.api.Put("/principals/"+id.String()+"/suspension", auth, header),
+		harness.api.Delete("/principals/"+id.String()+"/suspension", auth, header),
 	} {
 		assert.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
 	}
@@ -430,71 +430,71 @@ func TestIdentityServiceAccountHTTPLifecycleAndTenantIsolation(t *testing.T) {
 	headerA, headerB := identityTenantHeader(7), identityTenantHeader(8)
 	auth := "Authorization: Bearer test"
 
-	created := harness.api.Post("/iam/service-accounts", auth, headerA, map[string]any{
+	created := harness.api.Post("/service-accounts", auth, headerA, map[string]any{
 		"login_name": "robot", "display_name": "Robot", "description": "ci runner",
 	})
 	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
 	account := decodeIdentityEnvelope[ServiceAccount](t, created).Data
 	id := account.ID.String()
 
-	assert.Equal(t, http.StatusOK, harness.api.Get("/iam/service-accounts?limit=50", auth, headerA).Code)
-	assert.Equal(t, http.StatusOK, harness.api.Get("/iam/service-accounts/"+id, auth, headerA).Code)
+	assert.Equal(t, http.StatusOK, harness.api.Get("/service-accounts?limit=50", auth, headerA).Code)
+	assert.Equal(t, http.StatusOK, harness.api.Get("/service-accounts/"+id, auth, headerA).Code)
 
-	credential := harness.api.Post("/iam/service-accounts/"+id+"/credentials", auth, headerA, map[string]any{
+	credential := harness.api.Post("/service-accounts/"+id+"/credentials", auth, headerA, map[string]any{
 		"name": "ci", "scopes": []string{"read"},
 	})
 	require.Equal(t, http.StatusCreated, credential.Code, credential.Body.String())
 	secret := decodeIdentityEnvelope[ServiceAccountCredentialSecret](t, credential).Data
 	require.NotEmpty(t, secret.Secret)
 
-	listed := harness.api.Get("/iam/service-accounts/"+id+"/credentials", auth, headerA)
+	listed := harness.api.Get("/service-accounts/"+id+"/credentials", auth, headerA)
 	require.Equal(t, http.StatusOK, listed.Code)
 	require.Len(t, decodeIdentityEnvelope[[]ServiceAccountCredential](t, listed).Data, 1)
 
 	// Tenant B must not reach the account, its credentials, or its version.
-	assert.Equal(t, http.StatusNotFound, harness.api.Get("/iam/service-accounts/"+id, auth, headerB).Code)
-	assert.Equal(t, http.StatusNotFound, harness.api.Get("/iam/service-accounts/"+id+"/credentials", auth, headerB).Code)
-	assert.Equal(t, http.StatusNotFound, harness.api.Post("/iam/service-accounts/"+id+"/credentials", auth, headerB, map[string]any{
+	assert.Equal(t, http.StatusNotFound, harness.api.Get("/service-accounts/"+id, auth, headerB).Code)
+	assert.Equal(t, http.StatusNotFound, harness.api.Get("/service-accounts/"+id+"/credentials", auth, headerB).Code)
+	assert.Equal(t, http.StatusNotFound, harness.api.Post("/service-accounts/"+id+"/credentials", auth, headerB, map[string]any{
 		"name": "stolen", "scopes": []string{"read"},
 	}).Code)
 	assert.Equal(t, http.StatusNotFound, harness.api.Delete(
-		"/iam/service-accounts/"+id+"/credentials/"+secret.Credential.ID.String(), auth, headerB,
+		"/service-accounts/"+id+"/credentials/"+secret.Credential.ID.String(), auth, headerB,
 	).Code)
-	assert.Equal(t, http.StatusNotFound, harness.api.Put("/iam/service-accounts/"+id, auth, headerB, map[string]any{
+	assert.Equal(t, http.StatusNotFound, harness.api.Put("/service-accounts/"+id, auth, headerB, map[string]any{
 		"display_name": "Hijacked", "status": "disabled", "version": 1,
 	}).Code)
-	assert.Equal(t, http.StatusNotFound, harness.api.Delete("/iam/service-accounts/"+id+"?version=1", auth, headerB).Code)
+	assert.Equal(t, http.StatusNotFound, harness.api.Delete("/service-accounts/"+id+"?version=1", auth, headerB).Code)
 	assert.Equal(t, "active", harness.serviceAccountRow(t, account.ID).Status)
 	assert.Nil(t, harness.credentialRow(t, secret.Credential.ID).RevokedAt)
 
 	revoked := harness.api.Delete(
-		"/iam/service-accounts/"+id+"/credentials/"+secret.Credential.ID.String(), auth, headerA,
+		"/service-accounts/"+id+"/credentials/"+secret.Credential.ID.String(), auth, headerA,
 	)
 	require.Equal(t, http.StatusOK, revoked.Code, revoked.Body.String())
 	assert.NotNil(t, harness.credentialRow(t, secret.Credential.ID).RevokedAt)
 
-	replaced := harness.api.Put("/iam/service-accounts/"+id, auth, headerA, map[string]any{
+	replaced := harness.api.Put("/service-accounts/"+id, auth, headerA, map[string]any{
 		"display_name": "Robot Two", "description": "ci", "status": "active", "version": 1,
 	})
 	require.Equal(t, http.StatusOK, replaced.Code, replaced.Body.String())
 	assert.Equal(t, int64(2), decodeIdentityEnvelope[ServiceAccount](t, replaced).Data.Version)
 
-	stale := harness.api.Put("/iam/service-accounts/"+id, auth, headerA, map[string]any{
+	stale := harness.api.Put("/service-accounts/"+id, auth, headerA, map[string]any{
 		"display_name": "Robot Three", "status": "active", "version": 1,
 	})
 	assert.Equal(t, http.StatusConflict, stale.Code, stale.Body.String())
 
-	deleted := harness.api.Delete("/iam/service-accounts/"+id+"?version=2", auth, headerA)
+	deleted := harness.api.Delete("/service-accounts/"+id+"?version=2", auth, headerA)
 	require.Equal(t, http.StatusOK, deleted.Code, deleted.Body.String())
 	assert.Equal(t, "deleted", harness.serviceAccountRow(t, account.ID).Status)
-	assert.Equal(t, http.StatusNotFound, harness.api.Get("/iam/service-accounts/"+id, auth, headerA).Code)
+	assert.Equal(t, http.StatusNotFound, harness.api.Get("/service-accounts/"+id, auth, headerA).Code)
 }
 
 func TestIdentityHTTPReportsDomainFailuresAsTranslatedEnvelopes(t *testing.T) {
 	harness := newIdentityHTTPHarness(t, true)
 	header, auth := identityTenantHeader(7), "Authorization: Bearer test"
 
-	response := harness.api.Get("/iam/principals/999999", auth, header)
+	response := harness.api.Get("/principals/999999", auth, header)
 	require.Equal(t, http.StatusNotFound, response.Code)
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body), response.Body.String())

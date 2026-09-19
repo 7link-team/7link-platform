@@ -90,7 +90,7 @@ func documentPlatformScopeWithoutTenantHeader(api huma.API, method, path string)
 
 func registerArchiveHTTP(api huma.API, service *Service, registrar *authz.Registrar, platform bool) {
 	registerArchiveOperation(api, registrar, platform, "view", huma.Operation{
-		OperationID: "audit-archive-status", Method: http.MethodGet, Path: "/iam/audit/archive-status", Summary: "Read audit archive execution status",
+		OperationID: "audit-archive-status", Method: http.MethodGet, Path: "/audit/archive-status", Summary: "Read audit archive execution status",
 	}, func(ctx context.Context, in *tenantInput) (*respx.Body[ArchiveStatus], error) {
 		tenant, err := archiveTenant(platform, in.TenantID)
 		if err != nil {
@@ -103,7 +103,7 @@ func registerArchiveHTTP(api huma.API, service *Service, registrar *authz.Regist
 		return respx.OK(ctx, status), nil
 	})
 	registerArchiveOperation(api, registrar, platform, "view", huma.Operation{
-		OperationID: "audit-list-archives", Method: http.MethodGet, Path: "/iam/audit/archives", Summary: "List durable audit archive jobs",
+		OperationID: "audit-list-archives", Method: http.MethodGet, Path: "/audit/archives", Summary: "List durable audit archive jobs",
 	}, func(ctx context.Context, in *archiveListInput) (*respx.Body[[]ArchiveJob], error) {
 		tenant, err := archiveTenant(platform, in.TenantID)
 		if err != nil {
@@ -124,7 +124,7 @@ func registerArchiveHTTP(api huma.API, service *Service, registrar *authz.Regist
 		return respx.List(ctx, jobs, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(jobs), Total: total}), nil
 	})
 	registerArchiveOperation(api, registrar, platform, "export", huma.Operation{
-		OperationID: "audit-request-archive", Method: http.MethodPost, Path: "/iam/audit/archives", Summary: "Queue the next eligible audit archive segment",
+		OperationID: "audit-request-archive", Method: http.MethodPost, Path: "/audit/archives", Summary: "Queue the next eligible audit archive segment",
 	}, func(ctx context.Context, in *tenantInput) (*respx.Body[ArchiveJob], error) {
 		tenant, err := archiveTenant(platform, in.TenantID)
 		if err != nil {
@@ -137,8 +137,8 @@ func registerArchiveHTTP(api huma.API, service *Service, registrar *authz.Regist
 		return respx.OK(ctx, job), nil
 	})
 	registerArchiveOperation(api, registrar, platform, "export", huma.Operation{
-		OperationID: "audit-retry-archive", Method: http.MethodPost, Path: "/iam/audit/archives/{id}/retry", Summary: "Queue a failed or expired audit archive job for retry",
-	}, func(ctx context.Context, in *eventInput) (*respx.Body[ArchiveJob], error) {
+		OperationID: "audit-retry-archive", Method: http.MethodPost, Path: "/audit/archives/{archive_id}/attempts", Summary: "Create a new attempt for a failed or expired audit archive job",
+	}, func(ctx context.Context, in *archiveInput) (*respx.Body[ArchiveJob], error) {
 		tenant, err := archiveTenant(platform, in.TenantID)
 		if err != nil {
 			return nil, err
@@ -154,8 +154,8 @@ func registerArchiveHTTP(api huma.API, service *Service, registrar *authz.Regist
 		return respx.OK(ctx, job), nil
 	})
 	registerArchiveOperation(api, registrar, platform, "view", huma.Operation{
-		OperationID: "audit-verify-archive", Method: http.MethodPost, Path: "/iam/audit/archives/{id}/verify", Summary: "Verify the archived object version, content and retention",
-	}, func(ctx context.Context, in *eventInput) (*respx.Body[ArchiveObject], error) {
+		OperationID: "audit-verify-archive", Method: http.MethodPost, Path: "/audit/archives/{archive_id}/verifications", Summary: "Create an archived-object verification",
+	}, func(ctx context.Context, in *archiveInput) (*respx.Body[ArchiveObject], error) {
 		tenant, err := archiveTenant(platform, in.TenantID)
 		if err != nil {
 			return nil, err
@@ -171,8 +171,8 @@ func registerArchiveHTTP(api huma.API, service *Service, registrar *authz.Regist
 		return respx.OK(ctx, object), nil
 	})
 	download := exportOperation()
-	download.OperationID, download.Path, download.Summary = "audit-download-archive", "/iam/audit/archives/{id}/download", "Download the verified immutable audit archive version"
-	registerArchiveOperation(api, registrar, platform, "export", download, func(ctx context.Context, in *eventInput) (*huma.StreamResponse, error) {
+	download.OperationID, download.Path, download.Summary = "audit-download-archive", "/audit/archives/{archive_id}/content", "Download the verified immutable audit archive content"
+	registerArchiveOperation(api, registrar, platform, "export", download, func(ctx context.Context, in *archiveInput) (*huma.StreamResponse, error) {
 		tenant, err := archiveTenant(platform, in.TenantID)
 		if err != nil {
 			return nil, err
@@ -197,7 +197,7 @@ func registerArchiveHTTP(api huma.API, service *Service, registrar *authz.Regist
 	})
 	if platform {
 		registerArchiveOperation(api, registrar, true, "manage", huma.Operation{
-			OperationID: "audit-set-retention", Method: http.MethodPut, Path: "/iam/audit/retention", Summary: "Configure platform audit retention policy",
+			OperationID: "audit-set-retention", Method: http.MethodPut, Path: "/audit/retention-policy", Summary: "Configure platform audit retention policy",
 		}, func(ctx context.Context, in *retentionInput) (*respx.Body[RetentionPolicy], error) {
 			tenant, err := archiveTenant(true, in.TenantID)
 			if err != nil {

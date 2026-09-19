@@ -1,6 +1,133 @@
 # Decisions
 
-## D1 — 审计脱敏默认表只覆盖凭据与高危标识，不覆盖联系类 PII
+## D56 - File browser authorization is page-batched and SQL-bounded
+
+**Decision**
+Browser root/child pages load all target ancestor paths in one closure query,
+all involved ACL rows in one bounded query, and file Version/Object metadata in
+set queries. One authorizer caches IAM constraints by action and validates each
+distinct root reference once. The ACL query is capped at
+`unique ancestor nodes * maxNodeACLRules + 1`; reaching the cap fails closed.
+
+**Reason**
+Per-entry path, ACL, version, object and organization-reference reads made list
+latency and database load grow linearly with page size. Batching must preserve
+the same per-target root boundary, inheritance interruption, deny precedence and
+IAM ceiling instead of widening authorization for performance.
+
+**Alternatives Considered**
+Increasing the page limit or caching permissions across requests was rejected:
+neither removes N+1 work, and cross-request caching complicates revocation.
+Joining every relation into one wide result was rejected because path, ACL and
+object cardinalities multiply rows and make authorization budgets harder to
+enforce consistently across dialects.
+
+**Tradeoffs**
+Each page still performs a fixed set of queries and may do one extra child-page
+probe at exactly 100 visible entries. A corrupted over-budget ACL set denies the
+whole request. The implementation retains tenant-space revision fencing for
+writes; root-level revisions are a separate remaining scale change.
+
+**Scope**
+Files root and child browsing, node authorization and metadata projection only.
+Search, trash, history, sharing and account-context browsing must independently
+prove the same bounded authorization behavior before production acceptance.
+
+**Status**
+Implemented and tested: 2 visible files use 18 SELECTs and 100 use 19; Files full
+and race suites pass. Real MySQL/PostgreSQL execution plans remain pending.
+
+---
+
+## D55 - File permission reads never acquire mutation locks
+
+**Decision**
+Loading a node's workspace path and ACL is a read-only operation and must read
+`file_spaces` without a no-op UPDATE or `FOR UPDATE`. Mutation methods acquire
+their own space/root lock explicitly before reading the state they fence.
+
+**Reason**
+The previous shared helper serialized all reads in one tenant through the single
+`file_spaces` row. Keeping mutation locking at write entry points preserves
+optimistic conflict behavior without turning browse/download authorization into
+a global tenant write hotspot.
+
+**Alternatives Considered**
+Keeping one locking loader was rejected because it makes every GET a writer.
+Removing locking from both reads and mutations was rejected because concurrent
+ACL replacement could lose updates or surface dialect-specific lock errors.
+
+**Tradeoffs**
+Read and mutation paths now call different space-loading behavior, so new write
+entry points must explicitly acquire their fence. Regression tests cover both
+zero-write reads and concurrent ACL replacement.
+
+**Scope**
+Files permission persistence and its callers. Browser N+1 batching and moving
+the global revision fence to file roots remain separate implementation work.
+
+**Status**
+Implemented and race-tested.
+
+---
+
+## D54 - Hierarchical file roots belong to organizations, not their creators
+
+**Decision**
+Tenant, Entity, Department, account-private, and tenant-personal roots are
+ordinary directory files with an explicit `(root_scope, root_owner_id)` binding;
+there is no Workspace resource or table. Tenant/Entity/Department roots belong
+to the corresponding organization, never to the human who created it. The
+creator is audit metadata only. Organization-wide file actions come from IAM
+role permissions constrained to the matching Tenant/Entity/Department scope.
+Directory and file ACLs refine that ceiling for principals, roles, groups and
+departments; they cannot grant an action IAM denied. Only account-private and
+tenant-personal roots follow a principal.
+
+Tenant/Entity/Department roots are provisioned synchronously in the owning
+resource creation transaction. Account-private and tenant-personal roots are
+created lazily and idempotently on first real use. Every new Department belongs
+to exactly one Entity; a child Department must use the same Entity as its parent.
+A compatibility migration may leave legacy Department `entity_id` NULL, but
+such rows fail closed until explicitly repaired.
+
+**Reason**
+Organization ownership must survive creator departure, suspension and transfer.
+IAM role scope is the one existing system for whole-resource actions; duplicating
+it as creator ACLs would create a second, drifting authorization model. Explicit
+root ownership prevents accidental cross-scope writes and lets authorization
+validate one root with bounded queries. Lazy personal roots avoid millions of
+empty directory and ACL rows.
+
+**Alternatives Considered**
+Creator-owned Entity/Department roots were rejected because organizational data
+must not follow a person. Tenant Administrator ACL on every descendant root was
+rejected because it grants write/manage capability beyond explicitly scoped IAM
+permissions. Eager personal root creation was rejected for storage and write-
+amplification cost. A separate workspace/root/conflict table and a synthetic
+`workspace_key` were rejected; existing file nodes remain the resource, and a
+database unique constraint on `(space_id, root_scope, root_owner_id)` serializes
+root identity.
+
+**Tradeoffs**
+Legacy unassigned Departments require an explicit repair/backfill before they can
+own a file root. Required organization roots make resource creation dependent on
+file-root provisioning availability. Cross-root writes require deterministic
+root locking, and read paths must batch authorization rather than reuse mutation
+locks.
+
+**Scope**
+IAM Department ownership, Tenant/Entity/Department lifecycle integration, Files
+root metadata and ACL enforcement, read authorization performance, public root
+metadata, and the corresponding Web file browser. Global route redesign and full
+sharing implementation are not included in this phase.
+
+**Status**
+Approved by the user; implementation in progress.
+
+---
+
+## D1 – 审计脱敏默认表只覆盖凭据与高危标识，不覆盖联系类 PII
 
 **Decision**
 `audit.defaultSensitiveKeys` 保持现有范围（口令、令牌、密钥、授权头、卡号、CVV、
@@ -1547,3 +1674,446 @@ HEAD 0e33cd7 实测 40 处 `runtime.TablePrefix()`：约 24 处是合法 resolve
 样板 `aabee75`(`/iam/roles/{role_id}/members`)确证:`respx.OK → respx.List` **不改变响应 schema**
 (两者返回同一个 `Envelope[T]`,`List` 只填 `meta.page`),故契约变更是纯增量的两个 query 参数,
 前端类型无需重新生成。其余模块按同一模式铺开。
+
+## D43 - File operation preparation shares the execution walker
+
+**Date** 2026-09-18
+
+**Decision / Reason**
+Use the existing policy walker with a bounded, read-only prospective tree overlay
+for operation preparation. Persist cumulative node/closure costs and expected
+result counts in the files-owned migration8 plan_json column. Recheck the actual
+cost at commit and roll back mismatches. Transient negative identities remain
+strictly inside the overlay; they are never database keys, IAM inputs or API IDs.
+New-node IAM checks remain mandatory on actual persisted identities at execution.
+
+**Alternatives / Tradeoffs**
+A second conflict algorithm would diverge on recursive batch collisions. Running
+real tree writes and rolling them back during preparation would violate the
+read-only preparation boundary. The lazy overlay instead bounds distinct cached
+nodes by twice the configured operation node budget plus the maximum ancestor
+path. It may reject excessive inspection rather than load an unlimited space.
+This is NOT yet per-conflict identity/decision persistence or a timing guarantee.
+
+**Scope / Status**
+Implemented and fresh SQLite unit/race/fault tested. Migration roundtrip verified
+in SQLite, embedded PostgreSQL16 and in-process MySQL, with/without prefixes.
+Real MySQL8 operation runtime and full product acceptance remain pending.
+
+## D44 - Local storage platform durability is explicit
+
+**Date** 2026-09-18
+
+**Decision / Reason**
+Retain file data sync, root confinement and immutable hard-link publication.
+Unix directory sync errors remain fatal. On Windows close the directory handle
+without attempting unsupported directory FlushFileBuffers; do not advertise
+Unix-equivalent metadata power-loss durability. Windows native functionality is
+verified, but this platform durability criterion is NOT production accepted.
+Use an actual junction to test Windows root escape without symlink privilege.
+
+**Alternatives / Tradeoffs**
+Ignoring arbitrary Access denied errors would hide real file/storage failures.
+Windows has no equivalent supported per-directory fsync here; replacing
+publication with absolute-path operations would weaken root confinement.
+Preserve the current storage boundary and document the precise limitation.
+
+**Scope / Status**
+Local driver compatibility only, implemented and tested. Production durability
+still requires target-platform crash/resource acceptance under the approved plan.
+
+## D45 - File browser presentation does not invent a live API
+
+**Date** 2026-09-18
+
+**Decision / Reason**
+Implement the user-requested Web page in the existing authenticated shell with
+shared UI/theme/i18n. Presentation snapshots contain only authorized fields; they
+are not a hand-written public API contract. The /files page remains explicitly
+unavailable until files-owned IAM/audit HTTP and generated OpenAPI are ready.
+Effective menus own discoverability; no unconditional tenant/platform link or
+guessed permission code. Fixtures live outside the production route/module graph.
+
+**Alternatives Considered / Tradeoffs**
+Fake tenant files/localStorage mutations would obscure missing persistence and
+authorization. Calling provisional endpoints would freeze an unapproved contract.
+The component can be browser-tested now, but real file operations and UI/backend
+acceptance remain pending. Bound pages to100, label search/selection page scope,
+and clear stale selections/metadata when location/page/access state changes.
+
+**Scope / Status**
+Web browsing presentation checkpoint; no claims of working upload/download,
+mutation, lazy whole-space tree, conflict decisions or real file-service E2E.
+
+## D46 - Copy and move are real-time, conflicts are transient
+
+**Date** 2026-09-18
+
+**Decision / Reason**
+User explicitly corrects the product contract: ordinary copy/move are synchronous
+requests, not persisted awaiting-decision workflows. Detect and return conflicts
+without conflict/decision tables or pending user tasks. Confirmation resubmits
+explicit strategies and observed versions; reauthorize and revalidate before one
+atomic publication. No open transaction waits for a user, no new conflict cleanup,
+and no implicit background queue. Transfer/upload lifecycle remains separate.
+
+**Alternatives Considered / Tradeoffs**
+The prior persisted conflict frontier and submission records add inappropriate
+lifecycle/schema/cleanup complexity. Removed the newly authored model/migration9/
+query drafts before implementation or original DB migration. Real-time semantics
+do not remove transaction rollback, source/target revision, IAM, bounded traversal,
+audit or idempotency requirements. Existing operation engine/schema were earlier
+work and need scoped runner review; prior migrations/data are not auto-deleted.
+
+**Scope / Status**
+Confirmed explicit user instruction, superseding asynchronous conflict/task
+sections and historical next actions. Design updated; draft removal regenerated.
+Files race regression suite, full backend build and diff check PASS after removal.
+Synchronous runner/HTTP/real Web mutation and production acceptance remain pending.
+
+## D49 - Workspace affiliations are directory anchors, ACL edits share file fences
+
+**Date** 2026-09-18
+
+**Decision / Reason**
+Implement approved hierarchy within existing account/tenant namespaces through
+directory workspace kind/entity/department/principal markers. Children resolve
+their nearest workspace via verified ancestor path, not copied IDs or a second
+organization mirror. Workspace roots are independent ACL inheritance boundaries;
+private binding initializes unbound directories only, never silently reassigns.
+Durable NodeACL stores one subject/action/effect/applicability row; node and space
+revisions fence the complete direct rule set and synchronous mutations together.
+
+**Alternatives Considered / Tradeoffs**
+No workspace table or per-entity physical driver is needed. Per-child ownership
+copies introduce subtree rewrites and drift on moves. Private persistence loaders
+must not be treated as IAM authorization: actual organization/subject validation,
+delegation and management-read still need owner capabilities and services.
+Bounded256-rule node budgets prevent partial/truncated authorization; exceeding
+the limit fails closed. Old nodes stay unbound, without inferred tenant-wide access.
+
+**Scope / Status**
+Migration9/query/private storage and isolated tests implemented. Six engine/prefix
+upgrade/down/up combinations PASS (MySQL dialect engine, not real MySQL8). Files
+race PASS at86.3% below90% gate; lint/vet/build/architecture PASS. No original DB,
+existing service, conflict/task tables, commit/push or public-route changes.
+Next: transaction-bound live IAM subjects/affiliations and service+actual audit,
+then generated HTTP and real Web ACL/sharing. Full product not accepted.
+
+## D48 - Hierarchical file ACL and sharing require design confirmation
+
+**Date** 2026-09-18
+
+**Decision / Reason**
+User explicitly requires design before implementation. Scope now includes platform,
+tenant, entity and department management visibility; fine-grained directory/file
+access for different accounts; temporary/permanent password/token sharing.
+Existing design section21 records the proposal. After delivery user says continue,
+authorizing execution of the three recommended choices: management-read bypass of
+ordinary child ACL without write/share authority, distinct account-private versus
+tenant-personal ownership, anonymous read/download-only sharing.
+Previous no-public-sharing exclusion is superseded by the sharing requirement;
+the delivered anonymous read/download recommendation is now the implementation target.
+
+**Alternatives Considered / Tradeoffs**
+Do not infer full write/share authority from upper-level visibility or org position.
+Propose separate management-read capability and ordinary IAM+ACL evaluation,
+reusing existing role/group identities and policy fences rather than parallel IAM.
+Propose distinct account-private and tenant-personal workspaces to avoid ambiguous
+multi-tenant ownership. Durable ACL/share configuration is required across requests
+and does not authorize conflict tables, pending copy/move tasks or plan lifecycle.
+
+**Scope / Status**
+Confirmed design-first, requested features and subsequent continue authorization.
+No original DB migrations or existing service changes are authorized by continuation.
+Next: isolated transaction IAM/actual audit tests,
+workspace ownership+ACL, generated HTTP/real Web and sharing, with existing gates.
+
+## D47 - Synchronous engine records only final success
+
+**Date** 2026-09-18
+
+**Decision / Reason**
+Implement D46 through one caller-owned transaction and the shared bounded policy
+walker. Conflicts and decisions live only in request memory; the first unresolved
+frontier is returned without persistent writes. Confirmation checks the observed
+space revision and exact snapshot keys. A merge can reveal a deeper frontier; no
+intermediate tree is committed. Only final success uses the existing Operation
+journal for actor/space/key-scoped replay. No OperationItem pins, leases, pending
+states, new schema or conflict cleanup are created by this entrypoint.
+
+**Alternatives Considered / Tradeoffs**
+Reimplementing a second conflict walker would diverge on prospective batch
+collisions. Simulation and actual execution instead share policies and verify
+cost/revision parity. Copied identities use created-from aliases and immutable
+effective content origins; generated or negative temporary IDs never enter
+conflict responses/keys. Changing an earlier overwrite invalidates later choices
+whose observed content/revision changed. Whole moves reauthorize old trash too.
+
+**Scope / Status**
+Internal engine implemented; 11 focused top-level SQLite tests, files race,
+vet, scoped pinned lint, full build and architecture tests PASS. Files coverage
+85.3% does not meet90% gate. Real transaction-bound IAM/audit, HTTP/OpenAPI,
+live Web operations, other database runtime and production acceptance pending.
+
+## D50 - File ACL subjects come from the caller transaction
+
+**Date** 2026-09-18
+
+**Decision / Reason**
+Resolve a file request's principal, current active department, active static and
+dynamic groups, and effective IAM roles through the same transaction that reads
+and mutates the file tree. Lock the tenant policy revision before those reads and
+reject a changed/stale snapshot. The resulting identities are ACL match inputs,
+not action grants; an action-specific IAM constraint remains mandatory.
+
+**Alternatives Considered / Tradeoffs**
+Request claims do not carry current groups, roles, or department state and would
+remain valid after revocation. Resolving each subject outside the file transaction
+would permit IAM/file time-of-check races. Files must not query IAM-owned tables
+or implement role expansion itself. The narrow core function adds one capability
+but reuses the existing authorizer, foreign-table wiring, revision fence and role
+resolution rather than creating a second policy engine.
+
+**Scope / Status**
+Implemented and focused core tests pass, including rollback-visible revocation,
+expired group membership, inactive inputs and module wiring. Files integration,
+workspace-reference validation, management-read, HTTP and Web remain pending.
+
+## D51 - IAM action ceilings and file ACL are separate gates
+
+**Date** 2026-09-18
+
+**Decision / Reason**
+Every file action first needs its transaction-bound `file_<action>` IAM data
+constraint and then a matching effective node ACL. Copy uses source `read` plus
+destination `create`; move retains its independent action. The separate
+`file_read_all` permission may bypass ordinary ACL only for list, traverse, read
+and download inside its verified management scope. Workspace entity, department
+and personal-owner references are revalidated before either route can succeed.
+
+**Alternatives Considered / Tradeoffs**
+Treating an IAM entity grant as a node grant would expose every file in scope and
+erase per-directory differences. Letting ACL grant an action absent from IAM would
+let a file owner manufacture organization authority. Using one broad file_view
+check for every mutation would make create/delete/share indistinguishable. The
+two gates cost additional bounded reads but preserve explicit revocation and the
+approved distinction between visibility scope and access mode.
+
+**Scope / Status**
+Implemented for the synchronous operation service and tested under race. The
+permissions are registered in the shared catalog; no public file HTTP endpoint
+is exposed yet. Platform/account entry, ACL editing/delegation, sharing and Web
+live data remain pending.
+
+## D52 - Public file routes expose files and directories, never nodes
+
+**Date** 2026-09-18
+
+**Decision / Reason**
+`Node` remains the private persistence abstraction shared by files and directories.
+The public HTTP contract uses `/files/{file_id}` and
+`/directories/{directory_id}` so the resource type and accepted identifier are
+unambiguous. Original bytes are the explicit `raw` representation at
+`GET /files/{file_id}/raw`, following the useful convention in the archived
+Spring Boot file API. Roots are independent resources at `/file-roots` and the
+current principal's idempotent singleton is `/personal-file-root`.
+
+**Alternatives Considered / Tradeoffs**
+Keeping a public node collection leaks the storage model and lets one route claim
+two resource types. Using `GET /files/{file_id}` directly for bytes leaves no
+unambiguous metadata representation, so `/raw` is retained. Separate file and
+directory mutation routes add small handler duplication but allow atomic kind
+validation and precise OpenAPI parameters.
+
+**Scope / Status**
+Implemented in backend HTTP, generated OpenAPI/client, Web calls and contract
+tests. Internal database columns, ACL evaluation and tree algorithms keep node
+terminology. Global removal of `/iam` and `/authn` remains a separate proposed
+routing migration.
+
+## D53 - Files and directories share one public file resource
+
+**Date** 2026-09-18
+
+**Decision / Reason**
+The user rejected D52's separate `/directories`, `/file-roots`, and
+`/personal-file-root` resources because a directory is also a file entry. The
+public contract is now one `/files` collection: `kind` distinguishes file from
+directory and `scope` identifies a root's ownership boundary. Metadata, update,
+delete, child listing and raw content are representations or operations on that
+same file identity. A GitHub-style root-relative lookup is exposed as
+`/files/{root_file_id}/-/{path}`; the explicit root is required because one caller
+can see several organizational and personal roots.
+
+**Alternatives Considered / Tradeoffs**
+Separate directory URLs duplicate one underlying identity and force the Web
+client to dispatch by kind. Bare `/files/-/{path}` cannot identify which visible
+root anchors the path. The router uses a catch-all internally for multi-segment
+matching while OpenAPI documents a normal `path` parameter; neither router syntax
+nor the persistence `Node` name is public.
+
+**Scope / Status**
+D53 supersedes D52's route split. Implemented in backend HTTP and authorization,
+OpenAPI, generated TypeScript, Web calls, route audits and focused tests. Internal
+tree persistence remains unchanged. Global `/iam` and `/authn` migration is still
+design-only.
+
+## D57 - Account and organization files share URIs but never authorization context
+
+**Date** 2026-09-19
+
+**Decision / Reason**
+Use the same `/files` resources for account-private and organization files. A
+request with both `X-Tenant-Id` and `X-Entity-Id` enters the organization path;
+a request with neither enters the authenticated Principal's account space. One
+header without the other is invalid. The server derives ownership from verified
+context, never from a body/query owner selector. GET remains read-only; the account
+root is provisioned idempotently by `POST /files` with `scope=account`.
+
+**Alternatives Considered / Tradeoffs**
+A second account API would duplicate file semantics and drift. Reusing the current
+selected tenant for account files would let organization state influence private
+ownership. Account authorization therefore uses a strict owner ACL path without
+tenant IAM, while global file IDs are still checked against the current space.
+Account audit events use the existing tenant-zero chain and retain Principal ID;
+this avoids inventing a second audit subsystem but leaves account events in one
+platform chain rather than per-tenant chains.
+
+**Scope / Status**
+Implemented in middleware, service, HTTP/OpenAPI, generated Web client and
+`/account/files`. Focused lifecycle, cross-space, incomplete-header, race and
+desktop/mobile browser route tests pass. ACL management, sharing, organization
+root recovery, root-level concurrency fences and real MySQL/PostgreSQL acceptance
+remain out of scope for this decision and prevent production-readiness claims.
+# Recycle Bin Restore Location Disclosure And Rename - 2026-09-19
+
+- Decision: return the original restore location as optional structured path
+  segments only when the caller can traverse the full active path from its file
+  root to the original parent. Omit it on any missing, inactive, malformed, or
+  unauthorized segment.
+- Reason: trash read access must not reveal denied organization directory names;
+  structured segments also preserve names containing separators and let Web
+  localize known root labels.
+- Decision: distinguish destination-name collision from stale revision/tree
+  conflicts. A collision is retryable by supplying a new name on the existing
+  file update resource; no restore-command route or persistent conflict record.
+- Scope: recycle-bin list and restore only. Existing delete semantics, ACL rules,
+  historical trash placement retention, and copy/move behavior are unchanged.
+- Status: implemented and verified.
+
+## D58 - File preview and editing remain separate versioned capabilities
+
+**Date** 2026-09-19
+
+**Decision / Reason**
+Propose one MIME-first file presentation classifier for icons and preview/editor
+eligibility. Isolate pre-1.0 `open-file-viewer` behind a dynamically loaded local
+adapter and pass it only an already-authorized Blob. Preview uses the existing
+download permission because receiving preview bytes is not meaningfully weaker
+than downloading them. Text/code editing is a separate lazy Monaco mode. Each
+save stages a new immutable Object, appends the existing Version model, and CAS
+advances the file head; no history or editor-session table is introduced.
+
+**Alternatives Considered / Tradeoffs**
+Passing the raw URL cannot include required tenant/entity headers and invites PDF
+iframe fallback into an authenticated URL. Loading every viewer plugin exposes
+immature parsers: 0.1.47 has an open DOCX injection report and archive expansion
+has no resource budgets. Phase 1 therefore enables only reviewed common formats.
+CodeMirror remains appropriate for compact form fields; Monaco is proposed only
+for the distinct IDE-like full-file editor and is loaded on demand. Blob preview
+is simple and authorized but requires a size limit until range delivery exists.
+
+**Scope / Status**
+Design proposed in `apps/frontend-web-admin/docs/file-preview-and-editing-design.md`.
+Awaiting user confirmation. No application dependency, runtime route, schema, or
+source behavior has changed.
+
+## D59 - Image rows use bounded authorized thumbnails
+
+**Date** 2026-09-19
+
+**Decision / Reason**
+Browser-renderable images in active file listings load as thumbnails through the
+existing authorization-aware raw client. Loading is near-viewport, cancellable,
+limited to 8 MiB before buffering, and falls back to the category icon on any
+load, limit, or decode failure. Account and organization headers remain derived
+from request context.
+
+**Alternatives Considered / Tradeoffs**
+Direct raw URLs cannot carry mandatory tenant/entity headers. Eagerly buffering
+every image in a 100-item page is wasteful. A generated thumbnail API would give
+stronger decoded-pixel and bandwidth bounds, but adds backend conversion, cache,
+storage, invalidation, and format policy outside this requested slice.
+
+**Scope / Status**
+Approved by the user and in implementation. Server-generated thumbnails remain a
+future scale hardening item.
+
+## D60 - Office editor candidates require format and licensing gates
+
+**Date** 2026-09-19
+
+**Decision / Reason**
+Do not directly embed PPTist: it is an AGPL-3.0 complete Vue application rather
+than a packaged renderer, and advertises roughly 85%+ PPTX import fidelity.
+Univer's OSS core is Apache-2.0 and embeddable, but its current capability matrix
+places Office import/export and mature slide support in commercial Pro. Either
+candidate therefore requires an explicit licensing decision and real document
+round-trip acceptance before it can save versions in this product.
+
+**Alternatives Considered / Tradeoffs**
+PPTist may still be viable with commercial permission or a separately operated
+AGPL-compliant service. Univer Pro is architecturally closer to this React app
+and spans sheets/docs/slides, but introduces commercial licensing and a large
+office runtime. Neither changes the safe fallback in Phase 1.
+
+**Scope / Status**
+Univer remains excluded until Pro licensing is approved. FortuneSheet is approved
+for implementation only after bounded ZIP preflight and termination controls.
+This decision was superseded by D61 after the user required one solution to cover
+all common Office families.
+
+## D61 - External Office viewers replace partial open-source Office editors
+
+**Date** 2026-09-19
+
+**Decision / Reason**
+Do not integrate PPTist, Univer OSS, or FortuneSheet. None reliably covers all of
+PPT/PPTX, DOC/DOCX, and XLS/XLSX. Use Microsoft Office Viewer as the default
+Office handler and Google Viewer as the alternate `Open with` choice.
+
+**Alternatives Considered / Tradeoffs**
+PPTist is presentation-only and AGPL-3.0; Univer's needed Office capabilities are
+commercial; FortuneSheet is spreadsheet-only. External viewers provide broader
+compatibility but disclose file bytes to a third party and require public HTTPS.
+They may receive only an explicit short-lived, read-only, version-bound,
+revocable and audited URL from the shared file gateway. Tenant policy may disable
+the transfer; authenticated raw URLs and localhost URLs are never forwarded.
+
+**Scope / Status**
+Approved. Design updated; public token gateway and handler UI remain to be
+implemented after the active route-contract migration.
+
+## D62 - Public routes and Swagger groups follow resource prefixes
+
+**Date** 2026-09-19
+
+**Decision / Reason**
+Remove `/iam`, `/authn`, and other implementation-domain prefixes from the
+pre-production public API without compatibility aliases. Public paths use
+resource nouns. Every application OpenAPI operation has exactly one lowercase
+kebab-case tag equal to its first path segment, so the same resource prefix is
+always grouped together.
+
+**Alternatives Considered / Tradeoffs**
+An IAM prefix can be a legitimate gateway namespace for an independently hosted
+service, but this application exposes one API and IAM is not a resource. Deeply
+nesting globally identified Tenant/Entity/Department resources would duplicate
+ownership and enlarge authorization paths, so they remain top-level resources;
+mandatory headers keep the request authorization boundary explicit.
+
+**Scope / Status**
+Approved and in implementation. Includes route declarations, action subresources,
+avatar resources, menus, Web clients, test manifests, generated OpenAPI and a
+repository-wide composed-contract gate.

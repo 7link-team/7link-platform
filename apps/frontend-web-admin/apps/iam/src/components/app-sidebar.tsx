@@ -32,21 +32,22 @@ import {
 import { can, type EffectivePermissions } from "../lib/permissions"
 
 const routeIcons: Record<string, ReactElement> = {
-  "/iam/users": <Users />,
-  "/iam/invitations": <MailPlus />,
-  "/iam/service-accounts": <Bot />,
-  "/iam/entities": <Network />,
-  "/iam/departments": <Building2 />,
-  "/iam/positions": <BriefcaseBusiness />,
-  "/iam/groups": <UsersRound />,
-  "/iam/roles": <KeyRound />,
-  "/iam/access-reviews": <ListChecks />,
-  "/iam/menus": <Boxes />,
-  "/iam/oauth-clients": <AppWindow />,
-  "/iam/scim-directories": <FolderSync />,
-  "/iam/audit-events": <FileClock />,
-  "/iam/audit-governance": <FileClock />,
-  "/iam/field-policies": <SlidersHorizontal />,
+  "/files": <Folder />,
+  "/users": <Users />,
+  "/invitations": <MailPlus />,
+  "/service-accounts": <Bot />,
+  "/entities": <Network />,
+  "/departments": <Building2 />,
+  "/positions": <BriefcaseBusiness />,
+  "/groups": <UsersRound />,
+  "/roles": <KeyRound />,
+  "/access-reviews": <ListChecks />,
+  "/menus": <Boxes />,
+  "/oauth-clients": <AppWindow />,
+  "/scim-directories": <FolderSync />,
+  "/audit/events": <FileClock />,
+  "/audit-governance": <FileClock />,
+  "/field-policies": <SlidersHorizontal />,
 }
 
 export function AppSidebar({
@@ -75,7 +76,7 @@ export function AppSidebar({
   menus = tenantNavigation(menus)
   const paths = effectiveMenuPaths(menus)
   if (entityID && !platformView) {
-    const base = `/iam/entities/${encodeURIComponent(entityID)}`
+    const base = `/entities/${encodeURIComponent(entityID)}`
     return (
       <aside
         className={`w-64 shrink-0 overflow-y-auto border-e border-sidebar-border bg-sidebar p-3 ${className}`}
@@ -103,6 +104,13 @@ export function AppSidebar({
               to={`${base}/resources`}
               icon={<Boxes />}
               label={t("entityResources")}
+            />
+          )}
+          {can(permissions, "file_view") && (
+            <SideLink
+              to={`/files?entity_id=${encodeURIComponent(entityID)}`}
+              icon={<Folder />}
+              label={t("files")}
             />
           )}
           {can(permissions, "entity_view") && (
@@ -133,14 +141,14 @@ export function AppSidebar({
             </h2>
             {platformTenantAccess && (
               <SideLink
-                to="/iam/tenants"
+                to="/tenants"
                 icon={<Landmark />}
                 label={t("tenantManagement")}
               />
             )}
             {platformAuditAccess && (
               <SideLink
-                to="/iam/audit-governance?scope=platform"
+                to="/audit-governance?scope=platform"
                 icon={<FileClock />}
                 label={t("platformAudit")}
               />
@@ -157,9 +165,9 @@ export function AppSidebar({
                 <MenuBranch key={menu.id} menu={menu} language={language} />
               ))}
             </ul>
-            {fieldPolicyAccess && !paths.has("/iam/field-policies") && (
+            {fieldPolicyAccess && !paths.has("/field-policies") && (
               <SideLink
-                to="/iam/field-policies"
+                to="/field-policies"
                 icon={<SlidersHorizontal />}
                 label={t("fieldPermissions")}
               />
@@ -168,7 +176,7 @@ export function AppSidebar({
         )}
         {!platformView && (
           <SideLink
-            to="/iam/access-requests"
+            to="/access-requests"
             icon={<ClipboardCheck />}
             label={t("accessRequests")}
           />
@@ -196,7 +204,7 @@ function MenuBranch({
   )
     return null
   if (
-    ["/", "/security", "/iam/access-requests"].includes(menu.path ?? "") &&
+    ["/", "/security", "/access-requests"].includes(menu.path ?? "") &&
     children.length === 0
   )
     return null

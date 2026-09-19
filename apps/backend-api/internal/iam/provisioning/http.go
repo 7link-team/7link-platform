@@ -95,7 +95,7 @@ type credentialIDInput struct {
 
 func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	guard := authz.Guard{Resource: "tenant", Verb: "administer"}
-	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-list-scim-directories", Method: http.MethodGet, Path: "/iam/scim/directories", Summary: "List tenant SCIM directories", Tags: []string{"provisioning"}}, guard, func(ctx context.Context, in *directoryListInput) (*respx.Body[[]Directory], error) {
+	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-list-scim-directories", Method: http.MethodGet, Path: "/scim-directories", Summary: "List tenant SCIM directories", Tags: []string{"provisioning"}}, guard, func(ctx context.Context, in *directoryListInput) (*respx.Body[[]Directory], error) {
 		tenantID, err := parseProvisioningID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -106,7 +106,7 @@ func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registra
 		}
 		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(items), Total: total}), nil
 	})
-	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-create-scim-directory", Method: http.MethodPost, Path: "/iam/scim/directories", Summary: "Create a tenant SCIM directory", Tags: []string{"provisioning"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity}}, guard, func(ctx context.Context, in *directoryCreateInput) (*respx.Body[Directory], error) {
+	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-create-scim-directory", Method: http.MethodPost, Path: "/scim-directories", Summary: "Create a tenant SCIM directory", Tags: []string{"provisioning"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity}}, guard, func(ctx context.Context, in *directoryCreateInput) (*respx.Body[Directory], error) {
 		tenantID, err := parseProvisioningID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -117,7 +117,7 @@ func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registra
 		}
 		return respx.OK(ctx, item), nil
 	})
-	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-replace-scim-directory", Method: http.MethodPut, Path: "/iam/scim/directories/{directory_id}", Summary: "Replace a tenant SCIM directory", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity}}, guard, func(ctx context.Context, in *directoryReplaceInput) (*respx.Body[Directory], error) {
+	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-replace-scim-directory", Method: http.MethodPut, Path: "/scim-directories/{directory_id}", Summary: "Replace a tenant SCIM directory", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity}}, guard, func(ctx context.Context, in *directoryReplaceInput) (*respx.Body[Directory], error) {
 		tenantID, err := parseProvisioningID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -132,7 +132,7 @@ func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registra
 		}
 		return respx.OK(ctx, item), nil
 	})
-	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-list-scim-credentials", Method: http.MethodGet, Path: "/iam/scim/directories/{directory_id}/credentials", Summary: "List SCIM directory credentials", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound}}, guard, func(ctx context.Context, in *directoryIDInput) (*respx.Body[[]Credential], error) {
+	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-list-scim-credentials", Method: http.MethodGet, Path: "/scim-directories/{directory_id}/credentials", Summary: "List SCIM directory credentials", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound}}, guard, func(ctx context.Context, in *directoryIDInput) (*respx.Body[[]Credential], error) {
 		tenantID, err := parseProvisioningID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -147,7 +147,7 @@ func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registra
 		}
 		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(items), Total: total}), nil
 	})
-	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-create-scim-credential", Method: http.MethodPost, Path: "/iam/scim/directories/{directory_id}/credentials", Summary: "Create a one-display SCIM bearer credential", Tags: []string{"provisioning"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity}}, guard, func(ctx context.Context, in *credentialCreateInput) (*respx.Body[CredentialSecret], error) {
+	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-create-scim-credential", Method: http.MethodPost, Path: "/scim-directories/{directory_id}/credentials", Summary: "Create a one-display SCIM bearer credential", Tags: []string{"provisioning"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity}}, guard, func(ctx context.Context, in *credentialCreateInput) (*respx.Body[CredentialSecret], error) {
 		tenantID, err := parseProvisioningID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -162,7 +162,7 @@ func registerAdminHTTP(api huma.API, service *Service, registrar *authz.Registra
 		}
 		return respx.OK(ctx, item), nil
 	})
-	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-revoke-scim-credential", Method: http.MethodDelete, Path: "/iam/scim/directories/{directory_id}/credentials/{credential_id}", Summary: "Revoke a SCIM bearer credential", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity}}, guard, func(ctx context.Context, in *credentialIDInput) (*respx.Body[map[string]bool], error) {
+	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-revoke-scim-credential", Method: http.MethodDelete, Path: "/scim-directories/{directory_id}/credentials/{credential_id}", Summary: "Revoke a SCIM bearer credential", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity}}, guard, func(ctx context.Context, in *credentialIDInput) (*respx.Body[map[string]bool], error) {
 		tenantID, err := parseProvisioningID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -239,7 +239,7 @@ func registerSCIMHTTP(api huma.API, service *Service) {
 	registerDiscovery(api)
 	registerUserSCIM(api, service)
 	registerGroupSCIM(api, service)
-	registerSCIM(api, huma.Operation{OperationID: "scim-bulk", Method: http.MethodPost, Path: "/scim/v2/Bulk", Summary: "Execute SCIM bulk operations", Tags: []string{"SCIM 2.0"}}, reflect.TypeFor[BulkRequest](), reflect.TypeFor[BulkResponse](), true, func(ctx huma.Context) {
+	registerSCIM(api, huma.Operation{OperationID: "scim-bulk", Method: http.MethodPost, Path: "/scim/v2/Bulk", Summary: "Execute SCIM bulk operations", Tags: []string{"scim"}}, reflect.TypeFor[BulkRequest](), reflect.TypeFor[BulkResponse](), true, func(ctx huma.Context) {
 		auth, ok := authenticateSCIM(ctx, service)
 		if !ok {
 			return
@@ -259,7 +259,7 @@ func registerSCIMHTTP(api huma.API, service *Service) {
 }
 
 func registerUserSCIM(api huma.API, service *Service) {
-	registerSCIM(api, huma.Operation{OperationID: "scim-list-users", Method: http.MethodGet, Path: "/scim/v2/Users", Summary: "List SCIM users", Tags: []string{"SCIM 2.0"}, Parameters: listParameters()}, nil, reflect.TypeFor[ListResponse[UserResource]](), true, func(ctx huma.Context) {
+	registerSCIM(api, huma.Operation{OperationID: "scim-list-users", Method: http.MethodGet, Path: "/scim/v2/Users", Summary: "List SCIM users", Tags: []string{"scim"}, Parameters: listParameters()}, nil, reflect.TypeFor[ListResponse[UserResource]](), true, func(ctx huma.Context) {
 		auth, ok := authenticateSCIM(ctx, service)
 		if !ok {
 			return
@@ -276,7 +276,7 @@ func registerUserSCIM(api huma.API, service *Service) {
 		}
 		writeSCIM(ctx, http.StatusOK, result)
 	})
-	registerSCIM(api, huma.Operation{OperationID: "scim-create-user", Method: http.MethodPost, Path: "/scim/v2/Users", Summary: "Create a SCIM user", Tags: []string{"SCIM 2.0"}, DefaultStatus: http.StatusCreated}, reflect.TypeFor[UserInput](), reflect.TypeFor[UserResource](), true, func(ctx huma.Context) {
+	registerSCIM(api, huma.Operation{OperationID: "scim-create-user", Method: http.MethodPost, Path: "/scim/v2/Users", Summary: "Create a SCIM user", Tags: []string{"scim"}, DefaultStatus: http.StatusCreated}, reflect.TypeFor[UserInput](), reflect.TypeFor[UserResource](), true, func(ctx huma.Context) {
 		auth, ok := authenticateSCIM(ctx, service)
 		if !ok {
 			return
@@ -397,7 +397,7 @@ func registerUserItemSCIM(api huma.API, service *Service) {
 }
 
 func registerGroupSCIM(api huma.API, service *Service) {
-	registerSCIM(api, huma.Operation{OperationID: "scim-list-groups", Method: http.MethodGet, Path: "/scim/v2/Groups", Summary: "List SCIM groups", Tags: []string{"SCIM 2.0"}, Parameters: listParameters()}, nil, reflect.TypeFor[ListResponse[GroupResource]](), true, func(ctx huma.Context) {
+	registerSCIM(api, huma.Operation{OperationID: "scim-list-groups", Method: http.MethodGet, Path: "/scim/v2/Groups", Summary: "List SCIM groups", Tags: []string{"scim"}, Parameters: listParameters()}, nil, reflect.TypeFor[ListResponse[GroupResource]](), true, func(ctx huma.Context) {
 		auth, ok := authenticateSCIM(ctx, service)
 		if !ok {
 			return
@@ -414,7 +414,7 @@ func registerGroupSCIM(api huma.API, service *Service) {
 		}
 		writeSCIM(ctx, http.StatusOK, result)
 	})
-	registerSCIM(api, huma.Operation{OperationID: "scim-create-group", Method: http.MethodPost, Path: "/scim/v2/Groups", Summary: "Create a SCIM group", Tags: []string{"SCIM 2.0"}, DefaultStatus: http.StatusCreated}, reflect.TypeFor[GroupInput](), reflect.TypeFor[GroupResource](), true, func(ctx huma.Context) {
+	registerSCIM(api, huma.Operation{OperationID: "scim-create-group", Method: http.MethodPost, Path: "/scim/v2/Groups", Summary: "Create a SCIM group", Tags: []string{"scim"}, DefaultStatus: http.StatusCreated}, reflect.TypeFor[GroupInput](), reflect.TypeFor[GroupResource](), true, func(ctx huma.Context) {
 		auth, ok := authenticateSCIM(ctx, service)
 		if !ok {
 			return
@@ -535,8 +535,8 @@ func registerGroupItemSCIM(api huma.API, service *Service) {
 }
 
 func registerDiscovery(api huma.API) {
-	registerSCIM(api, huma.Operation{OperationID: "scim-service-provider-config", Method: http.MethodGet, Path: "/scim/v2/ServiceProviderConfig", Summary: "Get SCIM service provider configuration", Tags: []string{"SCIM 2.0"}}, nil, reflect.TypeFor[ServiceProviderConfig](), false, func(ctx huma.Context) { writeSCIM(ctx, http.StatusOK, serviceProviderConfig()) })
-	registerSCIM(api, huma.Operation{OperationID: "scim-list-schemas", Method: http.MethodGet, Path: "/scim/v2/Schemas", Summary: "List SCIM schemas", Tags: []string{"SCIM 2.0"}}, nil, reflect.TypeFor[ListResponse[SCIMSchemaResource]](), false, func(ctx huma.Context) {
+	registerSCIM(api, huma.Operation{OperationID: "scim-service-provider-config", Method: http.MethodGet, Path: "/scim/v2/ServiceProviderConfig", Summary: "Get SCIM service provider configuration", Tags: []string{"scim"}}, nil, reflect.TypeFor[ServiceProviderConfig](), false, func(ctx huma.Context) { writeSCIM(ctx, http.StatusOK, serviceProviderConfig()) })
+	registerSCIM(api, huma.Operation{OperationID: "scim-list-schemas", Method: http.MethodGet, Path: "/scim/v2/Schemas", Summary: "List SCIM schemas", Tags: []string{"scim"}}, nil, reflect.TypeFor[ListResponse[SCIMSchemaResource]](), false, func(ctx huma.Context) {
 		items := schemaResources()
 		writeSCIM(ctx, http.StatusOK, ListResponse[SCIMSchemaResource]{Schemas: []string{ListSchema}, TotalResults: len(items), StartIndex: 1, ItemsPerPage: len(items), Resources: items})
 	})
@@ -549,7 +549,7 @@ func registerDiscovery(api huma.API) {
 		}
 		writeSCIMError(ctx, ErrResourceMissing)
 	})
-	registerSCIM(api, huma.Operation{OperationID: "scim-list-resource-types", Method: http.MethodGet, Path: "/scim/v2/ResourceTypes", Summary: "List SCIM resource types", Tags: []string{"SCIM 2.0"}}, nil, reflect.TypeFor[ListResponse[ResourceTypeResource]](), false, func(ctx huma.Context) {
+	registerSCIM(api, huma.Operation{OperationID: "scim-list-resource-types", Method: http.MethodGet, Path: "/scim/v2/ResourceTypes", Summary: "List SCIM resource types", Tags: []string{"scim"}}, nil, reflect.TypeFor[ListResponse[ResourceTypeResource]](), false, func(ctx huma.Context) {
 		items := resourceTypes()
 		writeSCIM(ctx, http.StatusOK, ListResponse[ResourceTypeResource]{Schemas: []string{ListSchema}, TotalResults: len(items), StartIndex: 1, ItemsPerPage: len(items), Resources: items})
 	})
@@ -602,7 +602,7 @@ func scimOpenAPIResponse(description string, schema *huma.Schema) *huma.Response
 }
 
 func itemOperation(id, method, path, summary string) huma.Operation {
-	return huma.Operation{OperationID: id, Method: method, Path: path, Summary: summary, Tags: []string{"SCIM 2.0"}, Parameters: []*huma.Param{{Name: "id", In: "path", Required: true, Schema: &huma.Schema{Type: huma.TypeString, MaxLength: intPointer(512)}}}}
+	return huma.Operation{OperationID: id, Method: method, Path: path, Summary: summary, Tags: []string{"scim"}, Parameters: []*huma.Param{{Name: "id", In: "path", Required: true, Schema: &huma.Schema{Type: huma.TypeString, MaxLength: intPointer(512)}}}}
 }
 
 func listParameters() []*huma.Param {
@@ -737,7 +737,7 @@ type targetPushInput struct {
 // by the tenant administer permission like the rest of provisioning.
 func registerTargetHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	guard := authz.Guard{Resource: "tenant", Verb: "administer"}
-	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-list-scim-targets", Method: http.MethodGet, Path: "/iam/scim/targets", Summary: "List outbound SCIM targets", Tags: []string{"provisioning"}}, guard, func(ctx context.Context, in *targetListInput) (*respx.Body[[]Target], error) {
+	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-list-scim-targets", Method: http.MethodGet, Path: "/scim-targets", Summary: "List outbound SCIM targets", Tags: []string{"provisioning"}}, guard, func(ctx context.Context, in *targetListInput) (*respx.Body[[]Target], error) {
 		tenantID, err := parseProvisioningID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -748,7 +748,7 @@ func registerTargetHTTP(api huma.API, service *Service, registrar *authz.Registr
 		}
 		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(items), Total: total}), nil
 	})
-	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-create-scim-target", Method: http.MethodPost, Path: "/iam/scim/targets", Summary: "Create an outbound SCIM target", Tags: []string{"provisioning"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity}}, guard, func(ctx context.Context, in *targetCreateInput) (*respx.Body[TargetSecret], error) {
+	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-create-scim-target", Method: http.MethodPost, Path: "/scim-targets", Summary: "Create an outbound SCIM target", Tags: []string{"provisioning"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity}}, guard, func(ctx context.Context, in *targetCreateInput) (*respx.Body[TargetSecret], error) {
 		tenantID, err := parseProvisioningID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -759,7 +759,7 @@ func registerTargetHTTP(api huma.API, service *Service, registrar *authz.Registr
 		}
 		return respx.OK(ctx, item), nil
 	})
-	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-replace-scim-target", Method: http.MethodPut, Path: "/iam/scim/targets/{target_id}", Summary: "Replace an outbound SCIM target", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity}}, guard, func(ctx context.Context, in *targetReplaceInput) (*respx.Body[Target], error) {
+	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-replace-scim-target", Method: http.MethodPut, Path: "/scim-targets/{target_id}", Summary: "Replace an outbound SCIM target", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity}}, guard, func(ctx context.Context, in *targetReplaceInput) (*respx.Body[Target], error) {
 		tenantID, err := parseProvisioningID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -774,7 +774,7 @@ func registerTargetHTTP(api huma.API, service *Service, registrar *authz.Registr
 		}
 		return respx.OK(ctx, item), nil
 	})
-	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-delete-scim-target", Method: http.MethodDelete, Path: "/iam/scim/targets/{target_id}", Summary: "Delete an outbound SCIM target", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity}}, guard, func(ctx context.Context, in *targetIDInput) (*respx.Body[map[string]bool], error) {
+	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-delete-scim-target", Method: http.MethodDelete, Path: "/scim-targets/{target_id}", Summary: "Delete an outbound SCIM target", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity}}, guard, func(ctx context.Context, in *targetIDInput) (*respx.Body[map[string]bool], error) {
 		tenantID, err := parseProvisioningID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -788,7 +788,7 @@ func registerTargetHTTP(api huma.API, service *Service, registrar *authz.Registr
 		}
 		return respx.OK(ctx, map[string]bool{"deleted": true}), nil
 	})
-	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-retire-scim-target", Method: http.MethodPost, Path: "/iam/scim/targets/{target_id}/retire", Summary: "Deprovision everything an outbound SCIM target provisions, then delete it", Description: "Retirement blocks new provisioning and configuration changes, removes remote resources in pages, and deletes the target only once none remain. A definitive remote refusal preserves credentials and progress so another call can resume. A timeout, disconnect, asynchronous acceptance, or failed local completion leaves an unfinished operation that requires verified remote recovery; retrying never expires that protection.", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusBadGateway}}, guard, func(ctx context.Context, in *targetIDInput) (*respx.Body[map[string]int], error) {
+	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-retire-scim-target", Method: http.MethodPut, Path: "/scim-targets/{target_id}/retirement", Summary: "Create or resume retirement of an outbound SCIM target", Description: "Retirement blocks new provisioning and configuration changes, removes remote resources in pages, and deletes the target only once none remain. A definitive remote refusal preserves credentials and progress so another call can resume. A timeout, disconnect, asynchronous acceptance, or failed local completion leaves an unfinished operation that requires verified remote recovery; retrying never expires that protection.", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusBadGateway}}, guard, func(ctx context.Context, in *targetIDInput) (*respx.Body[map[string]int], error) {
 		tenantID, err := parseProvisioningID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -803,7 +803,7 @@ func registerTargetHTTP(api huma.API, service *Service, registrar *authz.Registr
 		}
 		return respx.OK(ctx, map[string]int{"deprovisioned": deprovisioned}), nil
 	})
-	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-push-scim-resource", Method: http.MethodPost, Path: "/iam/scim/targets/{target_id}/push", Summary: "Push a user or group to an outbound SCIM target", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusBadGateway}}, guard, func(ctx context.Context, in *targetPushInput) (*respx.Body[PushResult], error) {
+	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-push-scim-resource", Method: http.MethodPost, Path: "/scim-targets/{target_id}/provisioning-jobs", Summary: "Create a user or group provisioning job", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusBadGateway}}, guard, func(ctx context.Context, in *targetPushInput) (*respx.Body[PushResult], error) {
 		tenantID, err := parseProvisioningID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -822,7 +822,7 @@ func registerTargetHTTP(api huma.API, service *Service, registrar *authz.Registr
 		}
 		return respx.OK(ctx, item), nil
 	})
-	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-deprovision-scim-resource", Method: http.MethodPost, Path: "/iam/scim/targets/{target_id}/deprovision", Summary: "Remove a user or group from an outbound SCIM target", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusBadGateway}}, guard, func(ctx context.Context, in *targetPushInput) (*respx.Body[map[string]bool], error) {
+	authz.Register(registrar, api, huma.Operation{OperationID: "provisioning-deprovision-scim-resource", Method: http.MethodPost, Path: "/scim-targets/{target_id}/deprovisioning-jobs", Summary: "Create a user or group deprovisioning job", Tags: []string{"provisioning"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusBadGateway}}, guard, func(ctx context.Context, in *targetPushInput) (*respx.Body[map[string]bool], error) {
 		tenantID, err := parseProvisioningID(in.TenantID)
 		if err != nil {
 			return nil, err

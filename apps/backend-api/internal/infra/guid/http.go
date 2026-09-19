@@ -19,7 +19,7 @@ func registerHTTP(api huma.API, next func() (int64, error)) {
 		Method:      http.MethodGet,
 		Path:        "/guid",
 		Summary:     "Generate a globally unique ID",
-		Tags:        []string{"GUID"},
+		Tags:        []string{"guid"},
 	}, func(ctx context.Context, _ *struct{}) (*respx.Body[ID], error) {
 		id, err := next()
 		if err != nil {
@@ -33,7 +33,7 @@ func registerHTTP(api huma.API, next func() (int64, error)) {
 		Method:      http.MethodGet,
 		Path:        "/guid/{count}",
 		Summary:     "Generate globally unique IDs",
-		Tags:        []string{"GUID"},
+		Tags:        []string{"guid"},
 	}, func(ctx context.Context, input *batchInput) (*respx.Body[[]ID], error) {
 		ids := make([]ID, 0, input.Count)
 		for range input.Count {

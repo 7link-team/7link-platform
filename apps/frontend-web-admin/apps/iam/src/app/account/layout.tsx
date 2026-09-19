@@ -1,11 +1,12 @@
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import {
   ArrowLeft,
   Menu,
   ShieldCheck,
   Smartphone,
   KeyRound,
+  Folder,
   UserRound,
 } from "lucide-react"
 import { Link, Navigate, NavLink, Outlet, useLocation } from "react-router"
@@ -33,6 +34,7 @@ export function AccountNavigation({ onNavigate }: { onNavigate?: () => void }) {
         { path: "security", label: t("security"), Icon: ShieldCheck },
         { path: "mfa", label: t("twoFactor"), Icon: Smartphone },
         { path: "tokens", label: t("personalTokens"), Icon: KeyRound },
+        { path: "files", label: t("files"), Icon: Folder },
         { path: "memberships", label: t("myMemberships"), Icon: UserRound },
         { path: "identities", label: t("linkedIdentities"), Icon: UserRound },
         { path: "closure", label: t("accountClosure"), Icon: ShieldCheck },
@@ -56,6 +58,20 @@ export function AccountNavigation({ onNavigate }: { onNavigate?: () => void }) {
       ))}
     </nav>
   )
+}
+
+export function AccountContent({
+  pathname,
+  children,
+}: {
+  pathname: string
+  children: ReactNode
+}) {
+  const className =
+    pathname.replace(/\/+$/, "") === "/account/files"
+      ? "h-full w-full max-w-none"
+      : "mx-auto max-w-5xl p-4 sm:p-6"
+  return <div className={className}>{children}</div>
 }
 
 export default function AccountLayout() {
@@ -100,9 +116,9 @@ export default function AccountLayout() {
           <AccountNavigation />
         </aside>
         <main className="min-w-0 flex-1 overflow-auto">
-          <div className="mx-auto max-w-5xl p-4 sm:p-6">
+          <AccountContent pathname={location.pathname}>
             <Outlet key={location.pathname} />
-          </div>
+          </AccountContent>
         </main>
       </div>
     </div>

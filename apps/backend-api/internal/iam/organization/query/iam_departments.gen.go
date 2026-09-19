@@ -30,6 +30,7 @@ func newDepartment(db *gorm.DB, opts ...gen.DOOption) department {
 	_department.ALL = field.NewAsterisk(tableName)
 	_department.TenantID = field.NewField(tableName, "tenant_id")
 	_department.ID = field.NewField(tableName, "id")
+	_department.EntityID = field.NewField(tableName, "entity_id")
 	_department.ParentID = field.NewField(tableName, "parent_id")
 	_department.Name = field.NewString(tableName, "name")
 	_department.NameKey = field.NewString(tableName, "name_key")
@@ -50,6 +51,7 @@ type department struct {
 	ALL       field.Asterisk
 	TenantID  field.Field
 	ID        field.Field
+	EntityID  field.Field
 	ParentID  field.Field
 	Name      field.String
 	NameKey   field.String
@@ -76,6 +78,7 @@ func (d *department) updateTableName(table string) *department {
 	d.ALL = field.NewAsterisk(table)
 	d.TenantID = field.NewField(table, "tenant_id")
 	d.ID = field.NewField(table, "id")
+	d.EntityID = field.NewField(table, "entity_id")
 	d.ParentID = field.NewField(table, "parent_id")
 	d.Name = field.NewString(table, "name")
 	d.NameKey = field.NewString(table, "name_key")
@@ -110,9 +113,10 @@ func (d *department) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (d *department) fillFieldMap() {
-	d.fieldMap = make(map[string]field.Expr, 10)
+	d.fieldMap = make(map[string]field.Expr, 11)
 	d.fieldMap["tenant_id"] = d.TenantID
 	d.fieldMap["id"] = d.ID
+	d.fieldMap["entity_id"] = d.EntityID
 	d.fieldMap["parent_id"] = d.ParentID
 	d.fieldMap["name"] = d.Name
 	d.fieldMap["name_key"] = d.NameKey

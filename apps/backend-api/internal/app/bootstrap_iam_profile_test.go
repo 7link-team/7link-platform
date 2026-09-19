@@ -48,13 +48,13 @@ func (f *iamTenantFixture) runSCIMProfileLifecycle(t *testing.T) {
 	userID, err := guid.Parse(user.ID)
 	require.NoError(t, err)
 	userPath := "/scim/v2/Users/" + user.ID
-	response = f.request(t, http.MethodPost, "/iam/roles", iamTenantA, f.tokenA,
+	response = f.request(t, http.MethodPost, "/roles", iamTenantA, f.tokenA,
 		map[string]any{"name": "Restricted SCIM profile", "description": "Bound actor field policy"}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	role := decodeEnvelope[core.APIRole](t, response)
 	roleID, err := guid.Parse(role.ID.String())
 	require.NoError(t, err)
-	memberPath := "/iam/roles/" + role.ID.String() + "/members/" + directory.ServiceAccountID.String()
+	memberPath := "/roles/" + role.ID.String() + "/members/" + directory.ServiceAccountID.String()
 	response = f.request(t, http.MethodPut, memberPath, iamTenantA, f.tokenA, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 	setPolicy := func(field, mask string) {
@@ -63,7 +63,7 @@ func (f *iamTenantFixture) runSCIMProfileLifecycle(t *testing.T) {
 			Read:  authz.FieldAccess{Default: "allow", DenyRoles: []guid.ID{roleID}},
 			Write: authz.FieldAccess{Default: "allow", DenyRoles: []guid.ID{roleID}}, Mask: mask,
 		}
-		response := f.request(t, http.MethodPut, "/iam/field-policies/user_profile/"+field, iamTenantA, f.tokenA,
+		response := f.request(t, http.MethodPut, "/field-policies/user_profile/"+field, iamTenantA, f.tokenA,
 			map[string]any{"version": 0, "policy": policy}, nil)
 		requireStatus(t, http.StatusOK, response)
 	}
@@ -121,7 +121,7 @@ func (f *iamTenantFixture) runSCIMProfileLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "private@example.test", raw.Email)
 	assert.Equal(t, "Private name", raw.DisplayName, "PATCH preserves raw hidden fields")
-	response = f.request(t, http.MethodGet, "/iam/principals/"+user.ID, iamTenantA, f.tokenA, nil, nil)
+	response = f.request(t, http.MethodGet, "/principals/"+user.ID, iamTenantA, f.tokenA, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 	assert.Equal(t, raw.Email, decodeEnvelope[map[string]any](t, response)["email"], "the administrator is not in the restricted role")
 
@@ -139,12 +139,12 @@ func (f *iamTenantFixture) runSCIMProfileLifecycle(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]string{"id": "remote-profile-user"})
 	}))
 	t.Cleanup(remote.Close)
-	response = f.request(t, http.MethodPost, "/iam/scim/targets", iamTenantA, f.tokenA, map[string]any{
+	response = f.request(t, http.MethodPost, "/scim-targets", iamTenantA, f.tokenA, map[string]any{
 		"name": "Profile target", "base_url": remote.URL, "bearer_token": "profile-test", "service_account_id": directory.ServiceAccountID,
 	}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	target := decodeEnvelope[provisioning.TargetSecret](t, response).Target
-	pushPath := "/iam/scim/targets/" + target.ID + "/push"
+	pushPath := "/scim-targets/" + target.ID + "/push"
 	pushBody := map[string]any{"resource_type": "User", "resource_id": user.ID}
 	response = f.request(t, http.MethodPost, pushPath, iamTenantA, f.tokenA, pushBody, nil)
 	requireStatus(t, http.StatusOK, response)
@@ -172,7 +172,7 @@ func (f *iamTenantFixture) runSCIMProfileLifecycle(t *testing.T) {
 	requireStatus(t, http.StatusOK, response)
 	assert.Equal(t, int64(2), calls.Load())
 	assert.Equal(t, "private@example.test", (<-remoteUsers).Emails[0].Value)
-	response = f.request(t, http.MethodPut, "/iam/scim/directories/"+directory.ID.String(), iamTenantA, f.tokenA,
+	response = f.request(t, http.MethodPut, "/scim-directories/"+directory.ID.String(), iamTenantA, f.tokenA,
 		map[string]any{"name": directory.Name, "status": "active", "version": directory.Version, "service_account_id": nil}, nil)
 	requireStatus(t, http.StatusOK, response)
 	response = f.request(t, http.MethodGet, userPath, 0, token, nil, nil)
@@ -197,7 +197,7 @@ func TestComposedIAMProfileFieldPolicies(t *testing.T) {
 			response := f.request(t, http.MethodGet, "/oauth/userinfo", 0, token, nil, nil)
 			requireStatus(t, http.StatusOK, response)
 			assert.Equal(t, f.requesterB.Email, decodeBody[map[string]any](t, response)["email"])
-			response = f.request(t, http.MethodPost, "/authn/sessions", 0, "", map[string]any{
+			response = f.request(t, http.MethodPost, "/sessions", 0, "", map[string]any{
 				"login_name": f.requesterB.LoginName, "password": "correct horse battery staple",
 			}, map[string]string{"Origin": "https://app.example.test"})
 			requireStatus(t, http.StatusOK, response)
@@ -205,13 +205,13 @@ func TestComposedIAMProfileFieldPolicies(t *testing.T) {
 			set := func(field, mask string) core.ManagedFieldPolicy {
 				t.Helper()
 				policy := authz.FieldPolicy{Read: authz.FieldAccess{Default: "deny"}, Write: authz.FieldAccess{Default: "deny"}, Mask: mask}
-				response := f.request(t, http.MethodPut, "/iam/field-policies/user_profile/"+field, iamTenantB, f.tokenB,
+				response := f.request(t, http.MethodPut, "/field-policies/user_profile/"+field, iamTenantB, f.tokenB,
 					map[string]any{"version": 0, "policy": policy}, nil)
 				requireStatus(t, http.StatusOK, response)
 				return decodeEnvelope[core.ManagedFieldPolicy](t, response)
 			}
 			emailPolicy := set("email", "redact")
-			for _, path := range []string{"/authn/me", "/authn/sessions/current"} {
+			for _, path := range []string{"/me", "/sessions/current"} {
 				response = f.request(t, http.MethodGet, path, 0, "", nil, headers)
 				requireStatus(t, http.StatusOK, response)
 				view := decodeEnvelope[map[string]any](t, response)
@@ -223,7 +223,7 @@ func TestComposedIAMProfileFieldPolicies(t *testing.T) {
 			view := decodeBody[map[string]any](t, response)
 			assert.Equal(t, "[REDACTED]", view["email"], "an existing token must obey the current policy")
 			assert.NotContains(t, view, "email_verified")
-			for _, path := range []string{"/iam/principals/" + f.requesterB.ID.String(), "/iam/members/" + f.requesterB.ID.String()} {
+			for _, path := range []string{"/principals/" + f.requesterB.ID.String(), "/members/" + f.requesterB.ID.String()} {
 				response = f.request(t, http.MethodGet, path, iamTenantB, f.tokenB, nil, nil)
 				requireStatus(t, http.StatusOK, response)
 				assert.Equal(t, "[REDACTED]", decodeEnvelope[map[string]any](t, response)["email"], "platform administrators do not bypass field denies")
@@ -234,7 +234,7 @@ func TestComposedIAMProfileFieldPolicies(t *testing.T) {
 					assert.Equal(t, before, f.auditCount(t, iamTenantB))
 				}
 			}
-			for _, path := range []string{"/iam/principals?search=requester", "/iam/members?search=requester"} {
+			for _, path := range []string{"/principals?search=requester", "/members?search=requester"} {
 				response = f.request(t, http.MethodGet, path, iamTenantB, f.tokenB, nil, nil)
 				requireStatus(t, http.StatusForbidden, response)
 			}
@@ -243,7 +243,7 @@ func TestComposedIAMProfileFieldPolicies(t *testing.T) {
 			raw, err := identities.Get(t.Context(), iamTenantB, f.requesterB.ID)
 			require.NoError(t, err)
 			assert.Equal(t, f.requesterB.Email, raw.Email, "internal provisioning keeps raw values")
-			response = f.request(t, http.MethodGet, "/iam/principals/"+f.adminA.ID.String(), iamTenantA, f.tokenA, nil, nil)
+			response = f.request(t, http.MethodGet, "/principals/"+f.adminA.ID.String(), iamTenantA, f.tokenA, nil, nil)
 			requireStatus(t, http.StatusOK, response)
 			assert.Equal(t, f.adminA.Email, decodeEnvelope[map[string]any](t, response)["email"])
 			for _, scope := range []string{"openid", "openid profile", "openid email", "openid profile email"} {
@@ -267,14 +267,14 @@ func TestComposedIAMProfileFieldPolicies(t *testing.T) {
 			}
 			set("login_name", "omit")
 			set("display_name", "omit")
-			for _, path := range []string{"/iam/principals", "/iam/members"} {
+			for _, path := range []string{"/principals", "/members"} {
 				response = f.request(t, http.MethodGet, path, iamTenantB, f.tokenB, nil, nil)
 				requireStatus(t, http.StatusForbidden, response)
 			}
 			response = f.request(t, http.MethodGet, "/oauth/userinfo", 0, token, nil, nil)
 			requireStatus(t, http.StatusOK, response)
 			assert.NotContains(t, decodeBody[map[string]any](t, response), "preferred_username")
-			response = f.request(t, http.MethodDelete, "/iam/field-policies/user_profile/email?version="+strconv.FormatInt(emailPolicy.Version, 10), iamTenantB, f.tokenB, nil, nil)
+			response = f.request(t, http.MethodDelete, "/field-policies/user_profile/email?version="+strconv.FormatInt(emailPolicy.Version, 10), iamTenantB, f.tokenB, nil, nil)
 			requireStatus(t, http.StatusOK, response)
 			response = f.request(t, http.MethodGet, "/oauth/userinfo", 0, token, nil, nil)
 			requireStatus(t, http.StatusOK, response)

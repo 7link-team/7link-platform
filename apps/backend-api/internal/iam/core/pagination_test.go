@@ -457,14 +457,14 @@ func TestListEndpointsBoundTheDefaultPage(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, route := range []string{
-		"/iam/entities",
-		"/iam/roles",
-		"/iam/relationships",
-		"/iam/field-policies",
-		"/iam/platform-administrators",
-		"/iam/members/11/roles",
-		"/iam/entities/" + entity.ID.String() + "/role-bindings",
-		"/iam/roles/" + role.ID.String() + "/directory-bindings",
+		"/entities",
+		"/roles",
+		"/relationships",
+		"/field-policies",
+		"/platform/administrators",
+		"/members/11/roles",
+		"/entities/" + entity.ID.String() + "/role-bindings",
+		"/roles/" + role.ID.String() + "/directory-bindings",
 	} {
 		t.Run(route, func(t *testing.T) {
 			response := harness.api.Get(route, "Authorization: Bearer test", header)

@@ -285,8 +285,8 @@ func (s *Service) EffectiveMenus(
 		if parsed, err := url.Parse(menu.Route); err == nil && menu.Route != "" {
 			route := path.Clean(parsed.Path)
 			code := routePermissions[route]
-			if strings.HasPrefix(route, "/iam/entities/") {
-				code = routePermissions["/iam/entities"]
+			if strings.HasPrefix(route, "/entities/") {
+				code = routePermissions["/entities"]
 			}
 			if code != "" {
 				pagePermissions[menu.ID] = code

@@ -19,6 +19,199 @@ describe("IAM API client", () => {
   let server: ReturnType<typeof Bun.serve> | undefined
   afterEach(() => server?.stop(true))
 
+  it("binds file pages to the selected tenant and entity with bounded cursors", async () => {
+    const requests: RecordedRequest[] = []
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        requests.push({
+          method: request.method,
+          path: url.pathname + url.search,
+          headers: request.headers,
+          body: await request.text(),
+        })
+        return Response.json({
+          code: 0,
+          data:
+            url.pathname === "/files"
+              ? { items: [], next_after: "" }
+              : { path: [], items: [], next_after: "" },
+        })
+      },
+    })
+    const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "90")
+    await client.files("80", "12")
+    await client.fileItems("80", "node/id", "34")
+
+    expect(requests.map((request) => request.path)).toEqual([
+      "/files?limit=100&after=12",
+      "/files/node%2Fid/items?limit=100&after=34",
+    ])
+    for (const request of requests) {
+      expect(request.method).toBe("GET")
+      expect(request.headers.get("x-tenant-id")).toBe("90")
+      expect(request.headers.get("x-entity-id")).toBe("80")
+    }
+  })
+
+  it("sends the basic file lifecycle with entity scope and browser multipart boundaries", async () => {
+    const requests: RecordedRequest[] = []
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        requests.push({
+          method: request.method,
+          path: url.pathname + url.search,
+          headers: request.headers,
+          body: await request.text(),
+        })
+        if (url.pathname.endsWith("/content"))
+          return new Response("payload", {
+            headers: { "content-type": "application/octet-stream" },
+          })
+        return Response.json({ code: 0, data: { id: "7" } })
+      },
+    })
+    const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "90")
+    await client.createPersonalFileRoot("80")
+    await client.createDirectory("80", "1/2", "Reports")
+    await client.uploadFile(
+      "80",
+      "1/2",
+      new File(["payload"], "report.txt", { type: "text/plain" })
+    )
+    expect(await (await client.downloadFile("80", "3/4")).text()).toBe(
+      "payload"
+    )
+    await client.fileByPath("80", "1/2", "Reports/report.txt")
+    await client.renameFileEntry("80", "3/4", 5, "renamed.txt")
+    await client.renameFileEntry("80", "5/6", 7, "renamed")
+    await client.trashFileEntry("80", "3/4", 6)
+    await client.trashFileEntry("80", "5/6", 8)
+    await client.restoreFileEntry("80", "3/4", 7)
+    await client.restoreFileEntry("80", "5/6", 9, "restored.txt")
+
+    expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
+      "POST /files",
+      "POST /files",
+      "POST /files",
+      "GET /files/3%2F4/content",
+      "GET /files/1%2F2/-/Reports/report.txt",
+      "PATCH /files/3%2F4",
+      "PATCH /files/5%2F6",
+      "DELETE /files/3%2F4?revision=6",
+      "DELETE /files/5%2F6?revision=8",
+      "PATCH /files/3%2F4",
+      "PATCH /files/5%2F6",
+    ])
+    expect(
+      requests.every(({ headers }) => headers.get("x-tenant-id") === "90")
+    ).toBe(true)
+    expect(
+      requests.every(({ headers }) => headers.get("x-entity-id") === "80")
+    ).toBe(true)
+    for (const request of requests.slice(0, 3))
+      expect(request.headers.get("content-type")).toStartWith(
+        "multipart/form-data; boundary="
+      )
+    expect(requests[0]?.body).toContain('name="scope"')
+    expect(requests[0]?.body).toContain("personal")
+    expect(requests[1]?.body).toContain('name="name"')
+    expect(requests[1]?.body).toContain("Reports")
+    expect(requests[2]?.body).toContain('filename="report.txt"')
+    expect(requests[5]?.body).toBe('{"name":"renamed.txt","revision":5}')
+    expect(requests[6]?.body).toBe('{"name":"renamed","revision":7}')
+    expect(requests[9]?.body).toBe('{"state":"active","revision":7}')
+    expect(requests[10]?.body).toBe(
+      '{"state":"active","revision":9,"name":"restored.txt"}'
+    )
+  })
+
+  it("uses the same file resources without tenant selectors for account files", async () => {
+    const requests: RecordedRequest[] = []
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        requests.push({
+          method: request.method,
+          path: url.pathname + url.search,
+          headers: request.headers,
+          body: await request.text(),
+        })
+        if (url.pathname.endsWith("/content")) return new Response("account")
+        return Response.json({ code: 0, data: { items: [], id: "7" } })
+      },
+    })
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      () => "selected-tenant-must-not-leak"
+    )
+    await client.files()
+    await client.createAccountFileRoot()
+    await client.fileItems(undefined, "7")
+    await client.createDirectory(undefined, "7", "Private")
+    await client.uploadFile(undefined, "7", new File(["x"], "private.txt"))
+    await client.downloadFile(undefined, "8")
+    await client.renameFileEntry(undefined, "8", 1, "renamed.txt")
+    await client.trashFileEntry(undefined, "8", 2)
+
+    expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
+      "GET /files?limit=100",
+      "POST /files",
+      "GET /files/7/items?limit=100",
+      "POST /files",
+      "POST /files",
+      "GET /files/8/content",
+      "PATCH /files/8",
+      "DELETE /files/8?revision=2",
+    ])
+    expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
+      true
+    )
+    expect(requests.every(({ headers }) => !headers.has("x-entity-id"))).toBe(
+      true
+    )
+    expect(requests[1]?.body).toContain("account")
+  })
+
+  it("bounds preview downloads before buffering the response", async () => {
+    const requests: RecordedRequest[] = []
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        requests.push({
+          method: request.method,
+          path: new URL(request.url).pathname,
+          headers: request.headers,
+          body: await request.text(),
+        })
+        return new Response("0123456789", {
+          headers: {
+            "content-length": "10",
+            "content-type": "text/plain",
+          },
+        })
+      },
+    })
+    const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "90")
+    await expect(client.previewFile("80", "3/4", 9)).rejects.toMatchObject({
+      status: 413,
+      code: "file_preview_too_large",
+    })
+    expect(await (await client.previewFile("80", "3/4", 10)).text()).toBe(
+      "0123456789"
+    )
+    expect(requests).toHaveLength(2)
+    for (const request of requests) {
+      expect(request.path).toBe("/files/3%2F4/content")
+      expect(request.headers.get("x-tenant-id")).toBe("90")
+      expect(request.headers.get("x-entity-id")).toBe("80")
+    }
+  })
+
   it("keeps authentication global and explicitly scopes display sessions", async () => {
     const requests: RecordedRequest[] = []
     server = Bun.serve({
@@ -40,7 +233,7 @@ describe("IAM API client", () => {
     await client.session()
     await client.sessionForTenant("authorized-tenant")
     expect(
-      requests.every(({ path }) => path === "/authn/sessions/current")
+      requests.every(({ path }) => path === "/sessions/current")
     ).toBe(true)
     expect(requests[0]?.headers.has("x-tenant-id")).toBe(false)
     expect(requests[1]?.headers.get("x-tenant-id")).toBe("authorized-tenant")
@@ -61,7 +254,7 @@ describe("IAM API client", () => {
         return Response.json({
           code: 0,
           data:
-            url.pathname === "/authn/personal-tokens" &&
+            url.pathname === "/me/personal-tokens" &&
             request.method === "GET"
               ? []
               : {},
@@ -117,13 +310,13 @@ describe("IAM API client", () => {
           !headers.has("x-tenant-id") && !headers.has("authorization")
       )
     ).toBe(true)
-    expect(requests[0]?.path).toBe("/authn/personal-tokens?offset=20&limit=20")
+    expect(requests[0]?.path).toBe("/me/personal-tokens?offset=20&limit=20")
     expect(requests[1]?.path).toBe(
-      "/authn/personal-token-permissions?tenant_id=71"
+      "/me/personal-token-permissions?tenant_id=71"
     )
     expect(JSON.parse(requests[5]!.body)).toEqual({ ...token, proof: "proof" })
-    expect(requests[6]?.path).toBe("/authn/personal-tokens/token%2Fid")
-    expect(requests[7]?.path).toBe("/iam/me/memberships?offset=50&limit=50")
+    expect(requests[6]?.path).toBe("/me/personal-tokens/token%2Fid")
+    expect(requests[7]?.path).toBe("/me/memberships?offset=50&limit=50")
     expect(JSON.parse(requests[8]!.body)).toEqual({ proof: "leave-proof" })
     expect(JSON.parse(requests[9]!.body)).toEqual({
       proof: "close-proof",
@@ -132,10 +325,10 @@ describe("IAM API client", () => {
     expect(requests[10]?.method).toBe("DELETE")
     expect(JSON.parse(requests[10]!.body)).toEqual({ version: 4 })
     expect(requests[11]?.path).toBe(
-      "/platform/iam/closure-requests?status=processing&offset=50&limit=50"
+      "/platform/closure-requests?status=processing&offset=50&limit=50"
     )
     expect(JSON.parse(requests[12]!.body)).toEqual({ version: 5 })
-    expect(requests[15]?.path).toBe("/authn/identity-links/provider%2Flink")
+    expect(requests[15]?.path).toBe("/me/identity-links/provider%2Flink")
     expect(JSON.parse(requests[15]!.body)).toEqual({ proof: "unlink-proof" })
   })
 
@@ -166,9 +359,9 @@ describe("IAM API client", () => {
       revoked: true,
     })
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /iam/me/tenants",
-      "GET /iam/me/oauth-consents",
-      "DELETE /iam/me/oauth-consents/client%2F1",
+      "GET /me/tenants",
+      "GET /me/oauth-consents",
+      "DELETE /me/oauth-consents/client%2F1",
     ])
     expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
       true
@@ -294,7 +487,7 @@ describe("IAM API client", () => {
     expect(await client.memberAuthorizationSources("member/11")).toEqual(
       snapshot
     )
-    expect(seenPath).toBe("/iam/members/member%2F11/authorization-sources")
+    expect(seenPath).toBe("/members/member%2F11/authorization-sources")
     expect(seenTenant).toBe("tenant/1")
   })
 
@@ -350,17 +543,17 @@ describe("IAM API client", () => {
       )
     }
     const expected = [
-      "GET /iam/audit/archive-status",
-      "GET /iam/audit/archives?offset=20&limit=20",
-      "POST /iam/audit/archives",
-      "POST /iam/audit/archives/123%2F456/retry",
-      "POST /iam/audit/archives/123%2F456/verify",
-      "GET /iam/audit/archives/123/download",
-      "PUT /iam/audit/retention",
+      "GET /audit/archive-status",
+      "GET /audit/archives?offset=20&limit=20",
+      "POST /audit/archives",
+      "POST /audit/archives/123%2F456/retry",
+      "POST /audit/archives/123%2F456/verify",
+      "GET /audit/archives/123/download",
+      "PUT /audit/retention",
     ]
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       ...expected,
-      ...expected.map((entry) => entry.replace(" /iam/", " /platform/iam/")),
+      ...expected.map((entry) => entry.replace(" /", " /platform/")),
     ])
     expect(
       requests
@@ -443,12 +636,12 @@ describe("IAM API client", () => {
       client.setFieldPolicy("todo", "title", policy, 7)
     ).rejects.toMatchObject({ status: 409 })
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /iam/field-catalog",
-      "GET /iam/field-policies?resource=todo%2Fa&offset=0&limit=200",
-      "PUT /iam/field-policies/todo%2Fa/display%2Fname",
-      "DELETE /iam/field-policies/todo%2Fa/display%2Fname?version=8",
-      "GET /iam/fields/effective?resource=todo&entity_id=9007199254740996",
-      "PUT /iam/field-policies/todo/title",
+      "GET /field-catalog",
+      "GET /field-policies?resource=todo%2Fa&offset=0&limit=200",
+      "PUT /field-policies/todo%2Fa/display%2Fname",
+      "DELETE /field-policies/todo%2Fa/display%2Fname?version=8",
+      "GET /effective-fields?resource=todo&entity_id=9007199254740996",
+      "PUT /field-policies/todo/title",
     ])
     expect(JSON.parse(requests[2]!.body)).toEqual({ policy, version: 7 })
     expect(
@@ -482,9 +675,9 @@ describe("IAM API client", () => {
       current_password: "old secure password",
       new_password: "new secure password",
     })
-    expect(requests[0]?.path).toBe("/iam/roles")
+    expect(requests[0]?.path).toBe("/roles")
     expect(requests[0]?.headers.get("x-tenant-id")).toBe("tenant-a")
-    expect(requests[1]?.path).toBe("/authn/password")
+    expect(requests[1]?.path).toBe("/me/password")
     expect(requests[1]?.method).toBe("PATCH")
     expect(requests[1]?.headers.get("x-tenant-id")).toBeNull()
     expect(JSON.parse(requests[1]?.body ?? "{}")).toEqual({
@@ -535,20 +728,20 @@ describe("IAM API client", () => {
     await client.cancelAccessReview("review/b")
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /iam/requestable-roles",
-      "GET /iam/my/access-requests",
-      "GET /iam/access-requests",
-      "POST /iam/access-requests",
-      "POST /iam/access-requests/request%2Fa/approve",
-      "POST /iam/access-requests/request%2Fb/reject",
-      "POST /iam/access-requests/request%2Fc/revoke",
-      "POST /iam/access-requests/request%2Fd/withdraw",
-      "GET /iam/access-reviews",
-      "GET /iam/access-reviews/review%2Fa",
-      "POST /iam/access-reviews",
-      "POST /iam/access-reviews/review%2Fa/items/item%2Fa/decide",
-      "POST /iam/access-reviews/review%2Fa/complete",
-      "POST /iam/access-reviews/review%2Fb/cancel",
+      "GET /requestable-roles",
+      "GET /me/access-requests",
+      "GET /access-requests",
+      "POST /access-requests",
+      "POST /access-requests/request%2Fa/approve",
+      "POST /access-requests/request%2Fb/reject",
+      "POST /access-requests/request%2Fc/revoke",
+      "POST /access-requests/request%2Fd/withdraw",
+      "GET /access-reviews",
+      "GET /access-reviews/review%2Fa",
+      "POST /access-reviews",
+      "POST /access-reviews/review%2Fa/items/item%2Fa/decide",
+      "POST /access-reviews/review%2Fa/complete",
+      "POST /access-reviews/review%2Fb/cancel",
     ])
     expect(
       requests.every(
@@ -669,8 +862,8 @@ describe("IAM API client", () => {
       })
     ).toEqual({ changed: true })
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "POST /authn/password-recovery-requests",
-      "POST /authn/password-recoveries",
+      "POST /password-recovery-requests",
+      "POST /password-recoveries",
     ])
     expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
       true
@@ -712,8 +905,8 @@ describe("IAM API client", () => {
       await client.completeEmailVerification("cpe1_verification-value")
     ).toEqual({ verified: true })
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "POST /authn/email-verification-requests",
-      "POST /authn/email-verifications",
+      "POST /email-verification-requests",
+      "POST /email-verifications",
     ])
     expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
       true
@@ -766,8 +959,8 @@ describe("IAM API client", () => {
       })
     ).toEqual({ accepted: true })
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /authn/capabilities",
-      "POST /authn/registrations",
+      "GET /authentication-capabilities",
+      "POST /registrations",
     ])
     expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
       true
@@ -794,7 +987,7 @@ describe("IAM API client", () => {
           body: await request.text(),
         })
         const path = new URL(request.url).pathname
-        if (path === "/authn/sessions" && request.method === "POST")
+        if (path === "/sessions" && request.method === "POST")
           return Response.json({
             code: 0,
             message: "ok",
@@ -805,7 +998,7 @@ describe("IAM API client", () => {
               methods: ["totp", "recovery_code"],
             },
           })
-        if (path === "/authn/mfa")
+        if (path === "/me/mfa")
           return Response.json({
             code: 0,
             message: "ok",
@@ -815,16 +1008,16 @@ describe("IAM API client", () => {
           code: 0,
           message: "ok",
           data:
-            path === "/authn/mfa/recovery-codes" ||
-            (path === "/authn/mfa/totp" && request.method === "POST")
+            path === "/me/mfa/recovery-codes" ||
+            (path === "/me/mfa/totp" && request.method === "POST")
               ? { recovery_codes: ["AAAA-BBBB-CCCC-DDDD"] }
-              : path === "/authn/mfa/totp-enrollments"
+              : path === "/me/mfa/totp-enrollments"
                 ? {
                     secret: "JBSWY3DPEHPK3PXP",
                     provisioning_uri: "otpauth://totp/IAM:user",
                     expires_at: "2026-08-01T00:10:00Z",
                   }
-                : path === "/authn/session-verifications"
+                : path === "/session-verifications"
                   ? { status: "authenticated", return_url: "/" }
                   : { disabled: true },
         })
@@ -864,13 +1057,13 @@ describe("IAM API client", () => {
     })
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "POST /authn/sessions",
-      "POST /authn/session-verifications",
-      "GET /authn/mfa",
-      "POST /authn/mfa/totp-enrollments",
-      "POST /authn/mfa/totp",
-      "PUT /authn/mfa/recovery-codes",
-      "DELETE /authn/mfa/totp",
+      "POST /sessions",
+      "POST /session-verifications",
+      "GET /me/mfa",
+      "POST /me/mfa/totp-enrollments",
+      "POST /me/mfa/totp",
+      "PUT /me/mfa/recovery-codes",
+      "DELETE /me/mfa/totp",
     ])
     for (const request of requests) {
       expect(request.headers.get("x-tenant-id")).toBeNull()
@@ -937,13 +1130,13 @@ describe("IAM API client", () => {
     await client.deletePasskey("a".repeat(64), "password")
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /authn/passkeys",
-      "POST /authn/passkey-registration-challenges",
-      "POST /authn/passkeys",
-      "POST /authn/passkey-session-challenges",
-      "POST /authn/passkey-session-verifications",
-      `PATCH /authn/passkeys/${"a".repeat(64)}`,
-      `DELETE /authn/passkeys/${"a".repeat(64)}`,
+      "GET /me/passkeys",
+      "POST /me/passkey-registration-challenges",
+      "POST /me/passkeys",
+      "POST /passkey-session-challenges",
+      "POST /passkey-session-verifications",
+      `PATCH /me/passkeys/${"a".repeat(64)}`,
+      `DELETE /me/passkeys/${"a".repeat(64)}`,
     ])
     for (const request of requests)
       expect(request.headers.get("x-tenant-id")).toBeNull()
@@ -1021,11 +1214,11 @@ describe("IAM API client", () => {
     })
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /iam/oauth-clients",
-      "POST /iam/oauth-clients",
-      "PUT /iam/oauth-clients/client%2Fa",
-      "POST /iam/oauth-clients/client%2Fa/rotate-secret",
-      "DELETE /iam/oauth-clients/client%2Fa",
+      "GET /oauth-clients",
+      "POST /oauth-clients",
+      "PUT /oauth-clients/client%2Fa",
+      "POST /oauth-clients/client%2Fa/rotate-secret",
+      "DELETE /oauth-clients/client%2Fa",
     ])
     for (const request of requests) {
       expect(request.headers.get("x-tenant-id")).toBe("tenant-oauth")
@@ -1100,12 +1293,12 @@ describe("IAM API client", () => {
     await client.revokeSCIMCredential(directory.id, credential.id)
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /iam/scim/directories",
-      "POST /iam/scim/directories",
-      "PUT /iam/scim/directories/directory%2Fa",
-      "GET /iam/scim/directories/directory%2Fa/credentials",
-      "POST /iam/scim/directories/directory%2Fa/credentials",
-      "DELETE /iam/scim/directories/directory%2Fa/credentials/scim_credential%2Fa",
+      "GET /scim-directories",
+      "POST /scim-directories",
+      "PUT /scim-directories/directory%2Fa",
+      "GET /scim-directories/directory%2Fa/credentials",
+      "POST /scim-directories/directory%2Fa/credentials",
+      "DELETE /scim-directories/directory%2Fa/credentials/scim_credential%2Fa",
     ])
     for (const request of requests)
       expect(request.headers.get("x-tenant-id")).toBe("tenant-scim")
@@ -1204,13 +1397,13 @@ describe("IAM API client", () => {
     ).toEqual({ deprovisioned: true })
     expect(await client.deleteSCIMTarget(target.id)).toEqual({ deleted: true })
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /iam/scim/targets",
-      "POST /iam/scim/targets",
-      "PUT /iam/scim/targets/target%2Fa",
-      "PUT /iam/scim/targets/target%2Fa",
-      "POST /iam/scim/targets/target%2Fa/push",
-      "POST /iam/scim/targets/target%2Fa/deprovision",
-      "DELETE /iam/scim/targets/target%2Fa",
+      "GET /scim-targets",
+      "POST /scim-targets",
+      "PUT /scim-targets/target%2Fa",
+      "PUT /scim-targets/target%2Fa",
+      "POST /scim-targets/target%2Fa/push",
+      "POST /scim-targets/target%2Fa/deprovision",
+      "DELETE /scim-targets/target%2Fa",
     ])
     for (const request of requests)
       expect(request.headers.get("x-tenant-id")).toBe(target.tenant_id)
@@ -1309,13 +1502,13 @@ describe("IAM API client", () => {
     await client.deleteServiceAccount(account.id, account.version)
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /iam/service-accounts?limit=200&search=report%20worker",
-      "POST /iam/service-accounts",
-      "PUT /iam/service-accounts/service%2Faccount",
-      "GET /iam/service-accounts/service%2Faccount/credentials",
-      "POST /iam/service-accounts/service%2Faccount/credentials",
-      "DELETE /iam/service-accounts/service%2Faccount/credentials/sac_credential%2Fa",
-      "DELETE /iam/service-accounts/service%2Faccount?version=2",
+      "GET /service-accounts?limit=200&search=report%20worker",
+      "POST /service-accounts",
+      "PUT /service-accounts/service%2Faccount",
+      "GET /service-accounts/service%2Faccount/credentials",
+      "POST /service-accounts/service%2Faccount/credentials",
+      "DELETE /service-accounts/service%2Faccount/credentials/sac_credential%2Fa",
+      "DELETE /service-accounts/service%2Faccount?version=2",
     ])
     for (const request of requests)
       expect(request.headers.get("x-tenant-id")).toBe("tenant-service")
@@ -1326,6 +1519,7 @@ describe("IAM API client", () => {
     const department = {
       id: "department/a",
       tenant_id: "tenant-organization",
+      entity_id: "entity/a",
       name: "Engineering",
       status: "active" as const,
       sort_order: 10,
@@ -1347,7 +1541,7 @@ describe("IAM API client", () => {
         const data =
           request.method === "DELETE"
             ? { deleted: true }
-            : request.method === "GET" && url.pathname === "/iam/departments"
+            : request.method === "GET" && url.pathname === "/departments"
               ? [department]
               : request.method === "PATCH"
                 ? { ...department, version: 2, name: "Platform" }
@@ -1360,6 +1554,7 @@ describe("IAM API client", () => {
       () => "tenant-organization"
     )
     const input: DepartmentInput = {
+      entity_id: "entity/a",
       parent_id: "",
       name: "Engineering",
       status: "active",
@@ -1371,8 +1566,10 @@ describe("IAM API client", () => {
     expect(await client.createDepartment(input)).toEqual(department)
     expect(
       await client.updateDepartment("department/a", {
-        ...input,
+        parent_id: input.parent_id,
         name: "Platform",
+        status: input.status,
+        sort_order: input.sort_order,
         version: 1,
       })
     ).toMatchObject({ name: "Platform", version: 2 })
@@ -1381,11 +1578,11 @@ describe("IAM API client", () => {
     })
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /iam/departments?offset=0&limit=200",
-      "GET /iam/departments/department%2Fa",
-      "POST /iam/departments",
-      "PATCH /iam/departments/department%2Fa",
-      "DELETE /iam/departments/department%2Fa?version=2",
+      "GET /departments?offset=0&limit=200",
+      "GET /departments/department%2Fa",
+      "POST /departments",
+      "PATCH /departments/department%2Fa",
+      "DELETE /departments/department%2Fa?version=2",
     ])
     expect(
       requests.every(
@@ -1394,8 +1591,10 @@ describe("IAM API client", () => {
     ).toBe(true)
     expect(JSON.parse(requests[2]?.body ?? "{}")).toEqual(input)
     expect(JSON.parse(requests[3]?.body ?? "{}")).toEqual({
-      ...input,
+      parent_id: input.parent_id,
       name: "Platform",
+      status: input.status,
+      sort_order: input.sort_order,
       version: 1,
     })
   })
@@ -1453,23 +1652,23 @@ describe("IAM API client", () => {
     })
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "PATCH /iam/principals/principal%2Fa",
-      "PATCH /iam/members/principal%2Fa",
-      "PATCH /iam/roles/role%2Fa",
-      "GET /iam/roles/role%2Fa/members",
-      "PUT /iam/roles/role%2Fa/members/principal%2Fa",
-      "DELETE /iam/roles/role%2Fa/members/principal%2Fa",
-      "GET /iam/roles/role%2Fa/directory-bindings",
-      "GET /iam/roles/role%2Fa/data-scope",
-      "PUT /iam/roles/role%2Fa/data-scope",
-      "PUT /iam/roles/role%2Fa/directory-bindings/group/group%2Fa",
-      "DELETE /iam/roles/role%2Fa/directory-bindings/position/position%2Fa",
-      "GET /iam/roles/role%2Fa/permission-grants",
-      "PUT /iam/roles/role%2Fa/permissions/user%3Aview",
-      "PUT /iam/roles/role%2Fa/permissions/user%3Aview/condition",
-      "DELETE /iam/roles/role%2Fa/permissions/user%3Aview/condition",
-      "DELETE /iam/roles/role%2Fa/permissions/user%3Aview",
-      "PATCH /iam/menus/menu%2Fa",
+      "PATCH /principals/principal%2Fa",
+      "PATCH /members/principal%2Fa",
+      "PATCH /roles/role%2Fa",
+      "GET /roles/role%2Fa/members",
+      "PUT /roles/role%2Fa/members/principal%2Fa",
+      "DELETE /roles/role%2Fa/members/principal%2Fa",
+      "GET /roles/role%2Fa/directory-bindings",
+      "GET /roles/role%2Fa/data-scope",
+      "PUT /roles/role%2Fa/data-scope",
+      "PUT /roles/role%2Fa/directory-bindings/group/group%2Fa",
+      "DELETE /roles/role%2Fa/directory-bindings/position/position%2Fa",
+      "GET /roles/role%2Fa/permission-grants",
+      "PUT /roles/role%2Fa/permissions/user%3Aview",
+      "PUT /roles/role%2Fa/permissions/user%3Aview/condition",
+      "DELETE /roles/role%2Fa/permissions/user%3Aview/condition",
+      "DELETE /roles/role%2Fa/permissions/user%3Aview",
+      "PATCH /menus/menu%2Fa",
     ])
     expect(
       requests.every(
@@ -1528,11 +1727,11 @@ describe("IAM API client", () => {
     })
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /iam/invitations",
-      "POST /iam/invitations",
-      "POST /iam/invitations/invitation%2Fa/resend",
-      "DELETE /iam/invitations/invitation%2Fa",
-      "POST /iam/invitations/accept",
+      "GET /invitations",
+      "POST /invitations",
+      "POST /invitations/invitation%2Fa/resend",
+      "DELETE /invitations/invitation%2Fa",
+      "POST /invitation-acceptances",
     ])
     expect(
       requests
@@ -1581,10 +1780,10 @@ describe("IAM API client", () => {
     await client.deleteTenant("tenant/a", 3)
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /iam/tenants?include_deleted=true&offset=0&limit=200",
-      "POST /iam/tenants",
-      "PATCH /iam/tenants/tenant%2Fa",
-      "DELETE /iam/tenants/tenant%2Fa?version=3",
+      "GET /tenants?include_deleted=true&offset=0&limit=200",
+      "POST /tenants",
+      "PATCH /tenants/tenant%2Fa",
+      "DELETE /tenants/tenant%2Fa?version=3",
     ])
     expect(
       requests.every(({ headers }) => headers.get("x-tenant-id") === null)
@@ -1637,7 +1836,7 @@ describe("IAM API client", () => {
         if (request.method === "DELETE") data = { deleted: true }
         else if (url.pathname.endsWith("/members")) data = [member]
         else if (url.pathname.includes("/members/")) data = member
-        else if (request.method === "GET" && url.pathname === "/iam/positions")
+        else if (request.method === "GET" && url.pathname === "/positions")
           data = [position]
         return Response.json({ code: 0, message: "ok", data })
       },
@@ -1674,14 +1873,14 @@ describe("IAM API client", () => {
     ).toEqual({ deleted: true })
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /iam/positions?offset=0&limit=200",
-      "GET /iam/positions/position%2Fa",
-      "POST /iam/positions",
-      "PATCH /iam/positions/position%2Fa",
-      "DELETE /iam/positions/position%2Fa?version=7",
-      "GET /iam/positions/position%2Fa/members?offset=0&limit=200",
-      "PUT /iam/positions/position%2Fa/members/principal%2Fa",
-      "DELETE /iam/positions/position%2Fa/members/principal%2Fa",
+      "GET /positions?offset=0&limit=200",
+      "GET /positions/position%2Fa",
+      "POST /positions",
+      "PATCH /positions/position%2Fa",
+      "DELETE /positions/position%2Fa?version=7",
+      "GET /positions/position%2Fa/members?offset=0&limit=200",
+      "PUT /positions/position%2Fa/members/principal%2Fa",
+      "DELETE /positions/position%2Fa/members/principal%2Fa",
     ])
     expect(
       requests.every(
@@ -1752,7 +1951,7 @@ describe("IAM API client", () => {
         if (request.method === "DELETE") data = { deleted: true }
         else if (url.pathname.endsWith("/members")) data = [member]
         else if (url.pathname.includes("/members/")) data = member
-        else if (request.method === "GET" && url.pathname === "/iam/groups")
+        else if (request.method === "GET" && url.pathname === "/groups")
           data = [group]
         return Response.json({ code: 0, message: "ok", data })
       },
@@ -1792,14 +1991,14 @@ describe("IAM API client", () => {
     ).toEqual({ deleted: true })
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /iam/groups?offset=0&limit=200",
-      "GET /iam/groups/group%2Fa",
-      "POST /iam/groups",
-      "PATCH /iam/groups/group%2Fa",
-      "DELETE /iam/groups/group%2Fa?version=7",
-      "GET /iam/groups/group%2Fa/members?offset=0&limit=200",
-      "PUT /iam/groups/group%2Fa/members/principal%2Fa",
-      "DELETE /iam/groups/group%2Fa/members/principal%2Fa",
+      "GET /groups?offset=0&limit=200",
+      "GET /groups/group%2Fa",
+      "POST /groups",
+      "PATCH /groups/group%2Fa",
+      "DELETE /groups/group%2Fa?version=7",
+      "GET /groups/group%2Fa/members?offset=0&limit=200",
+      "PUT /groups/group%2Fa/members/principal%2Fa",
+      "DELETE /groups/group%2Fa/members/principal%2Fa",
     ])
     expect(
       requests.every(
@@ -1916,10 +2115,10 @@ describe("IAM API client", () => {
           body: await request.text(),
         })
         let data: unknown = entity
-        if (url.pathname === "/iam/authorization/constraints") data = constraint
-        else if (url.pathname === "/iam/authorization/explain")
+        if (url.pathname === "/authorization-constraint-evaluations") data = constraint
+        else if (url.pathname === "/authorization-explanations")
           data = explanation
-        else if (url.pathname === "/iam/authorization/check")
+        else if (url.pathname === "/authorization-checks")
           data = {
             allowed: true,
             reason: "relationship_grant",
@@ -1927,21 +2126,21 @@ describe("IAM API client", () => {
           }
         else if (
           request.method === "GET" &&
-          url.pathname === "/iam/relationships"
+          url.pathname === "/relationships"
         )
           data = url.searchParams.has("entity_id")
             ? [resourceRelationship]
             : [relationship]
         else if (
           request.method === "POST" &&
-          url.pathname === "/iam/relationships"
+          url.pathname === "/relationships"
         )
           data = relationship
         else if (request.method === "DELETE")
           data = { changed: true, sync_status: "applied" }
         else if (url.pathname.endsWith("/role-bindings")) data = [binding]
         else if (url.pathname.includes("/role-bindings/")) data = binding
-        else if (request.method === "GET" && url.pathname === "/iam/entities")
+        else if (request.method === "GET" && url.pathname === "/entities")
           data = [entity]
         return Response.json({ code: 0, message: "ok", data })
       },
@@ -2034,24 +2233,24 @@ describe("IAM API client", () => {
     })
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /iam/entities",
-      "GET /iam/entities/entity%2Fa",
-      "POST /iam/entities",
-      "PATCH /iam/entities/entity%2Fa",
-      "GET /iam/entities/entity%2Fa/role-bindings?offset=0&limit=200",
-      "PUT /iam/entities/entity%2Fa/role-bindings/role%2Fa/principal%2Fa",
-      "DELETE /iam/entities/entity%2Fa/role-bindings/role%2Fa/principal%2Fa",
-      "GET /iam/relationships?resource_id=entity%2Fa&offset=0&limit=200",
-      "POST /iam/relationships",
-      "DELETE /iam/relationships?subject_type=principal&subject_id=principal%2Fa&relation=viewer&resource_type=store&resource_id=entity%2Fa",
-      "GET /iam/relationships?entity_id=entity%2Fa",
-      "DELETE /iam/relationships?entity_id=entity%2Fa&subject_type=principal&subject_id=principal%2Fa&relation=viewer&resource_type=store&resource_id=business%2Fstore%2Fa",
-      "POST /iam/authorization/check",
-      "POST /iam/authorization/check",
-      "POST /iam/authorization/constraints",
-      "POST /iam/authorization/explain",
-      "POST /iam/authorization/explain",
-      "DELETE /iam/entities/entity%2Fa",
+      "GET /entities",
+      "GET /entities/entity%2Fa",
+      "POST /entities",
+      "PATCH /entities/entity%2Fa",
+      "GET /entities/entity%2Fa/role-bindings?offset=0&limit=200",
+      "PUT /entities/entity%2Fa/role-bindings/role%2Fa/principal%2Fa",
+      "DELETE /entities/entity%2Fa/role-bindings/role%2Fa/principal%2Fa",
+      "GET /relationships?resource_id=entity%2Fa&offset=0&limit=200",
+      "POST /relationships",
+      "DELETE /relationships?subject_type=principal&subject_id=principal%2Fa&relation=viewer&resource_type=store&resource_id=entity%2Fa",
+      "GET /relationships?entity_id=entity%2Fa",
+      "DELETE /relationships?entity_id=entity%2Fa&subject_type=principal&subject_id=principal%2Fa&relation=viewer&resource_type=store&resource_id=business%2Fstore%2Fa",
+      "POST /authorization-checks",
+      "POST /authorization-checks",
+      "POST /authorization-constraint-evaluations",
+      "POST /authorization-explanations",
+      "POST /authorization-explanations",
+      "DELETE /entities/entity%2Fa",
     ])
     expect(
       requests.every(
@@ -2124,7 +2323,7 @@ describe("IAM API client", () => {
           headers: request.headers,
           body: await request.text(),
         })
-        if (url.pathname === "/iam/audit-integrity")
+        if (url.pathname === "/audit/integrity-verifications")
           return Response.json({
             code: 0,
             message: "ok",
@@ -2136,7 +2335,7 @@ describe("IAM API client", () => {
               head_hash: "a".repeat(64),
             },
           })
-        if (url.pathname === "/iam/audit-events/export")
+        if (url.pathname === "/audit/exports")
           return new Response(
             [
               JSON.stringify({
@@ -2161,7 +2360,7 @@ describe("IAM API client", () => {
               },
             }
           )
-        if (url.pathname === "/iam/audit-events/event-1")
+        if (url.pathname === "/audit/events/event-1")
           return Response.json({ code: 0, message: "ok", data: event })
         return Response.json({
           code: 0,
@@ -2191,10 +2390,10 @@ describe("IAM API client", () => {
     expect(download.filename).toBe("audit-20260801T150000Z.ndjson")
     expect(await download.blob.text()).toContain('"schema":"audit-export.v1"')
     expect(requests.map(({ path }) => path)).toEqual([
-      "/iam/audit-events?event_type=oauth_client_created",
-      "/iam/audit-events/event-1",
-      "/iam/audit-integrity",
-      "/iam/audit-events/export?event_type=oauth_client_created",
+      "/audit/events?event_type=oauth_client_created",
+      "/audit/events/event-1",
+      "/audit/integrity-verifications",
+      "/audit/exports?event_type=oauth_client_created",
     ])
     for (const request of requests)
       expect(request.headers.get("x-tenant-id")).toBe("tenant-audit")
@@ -2307,9 +2506,9 @@ describe("IAM API client", () => {
     const signed = await client.auditSignRoot()
     expect(signed.signing_key_id).toBe("key-1")
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /iam/audit/governance",
-      "PUT /iam/audit/retention",
-      "POST /iam/audit/roots/sign",
+      "GET /audit/governance-policy",
+      "PUT /audit/retention",
+      "POST /audit/root-signatures",
     ])
     expect(JSON.parse(requests[1]?.body ?? "{}")).toEqual({
       min_days: 180,

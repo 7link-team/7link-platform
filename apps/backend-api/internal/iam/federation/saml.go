@@ -57,9 +57,9 @@ const (
 	samlFlateLimit       = 10 * 1024 * 1024
 	samlMetadataMaxBytes = 1 << 16
 
-	samlMetadataRoute = "/federation/saml/{tenant_id}/metadata"
-	samlSSORoute      = "/federation/saml/{tenant_id}/sso"
-	samlSLORoute      = "/federation/saml/{tenant_id}/slo"
+	samlMetadataRoute = "/saml/{tenant_id}/metadata"
+	samlSSORoute      = "/saml/{tenant_id}/sso"
+	samlSLORoute      = "/saml/{tenant_id}/slo"
 )
 
 var (
@@ -309,10 +309,10 @@ func parseSAMLKeyPair(keyPEM, certPEM string) (*rsa.PrivateKey, *x509.Certificat
 }
 
 func samlMetadataPath(tenantID guid.ID) string {
-	return "/federation/saml/" + tenantID.String() + "/metadata"
+	return "/saml/" + tenantID.String() + "/metadata"
 }
-func samlSSOPath(tenantID guid.ID) string { return "/federation/saml/" + tenantID.String() + "/sso" }
-func samlSLOPath(tenantID guid.ID) string { return "/federation/saml/" + tenantID.String() + "/slo" }
+func samlSSOPath(tenantID guid.ID) string { return "/saml/" + tenantID.String() + "/sso" }
+func samlSLOPath(tenantID guid.ID) string { return "/saml/" + tenantID.String() + "/slo" }
 
 func samlBaseURL(ctx huma.Context) string {
 	scheme := "http"

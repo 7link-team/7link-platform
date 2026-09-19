@@ -105,19 +105,19 @@ func TestIAMHTTPLoadExternalDatabase(t *testing.T) {
 func (f *iamTenantFixture) loadScenarios(t *testing.T) []iamLoadScenario {
 	t.Helper()
 
-	response := f.request(t, http.MethodPost, "/iam/roles", iamTenantA, f.tokenA, map[string]any{
+	response := f.request(t, http.MethodPost, "/roles", iamTenantA, f.tokenA, map[string]any{
 		"name": "Load harness role", "description": "Role used by the HTTP load harness",
 	}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	role := decodeEnvelope[core.APIRole](t, response)
 
-	response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID.String()+"/permissions/entity_view", iamTenantA, f.tokenA, nil, nil)
+	response = f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/permissions/entity_view", iamTenantA, f.tokenA, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 
-	response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID.String()+"/members/"+f.adminA.ID.String(), iamTenantA, f.tokenA, nil, nil)
+	response = f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/members/"+f.adminA.ID.String(), iamTenantA, f.tokenA, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 
-	response = f.request(t, http.MethodPost, "/iam/entities", iamTenantA, f.tokenA, map[string]any{
+	response = f.request(t, http.MethodPost, "/entities", iamTenantA, f.tokenA, map[string]any{
 		"type": "company", "name": "Load harness company", "status": "active",
 	}, nil)
 	requireStatus(t, http.StatusCreated, response)
@@ -128,16 +128,16 @@ func (f *iamTenantFixture) loadScenarios(t *testing.T) []iamLoadScenario {
 	}
 	// The decision must be the allowed one. A load harness that hammers a
 	// denial would measure the cheap path and report it as capacity.
-	response = f.request(t, http.MethodPost, "/iam/authorization/check", iamTenantA, f.tokenA, check, nil)
+	response = f.request(t, http.MethodPost, "/authorization-checks", iamTenantA, f.tokenA, check, nil)
 	requireStatus(t, http.StatusOK, response)
 	require.True(t, decodeEnvelope[core.AuthorizationDecision](t, response).Allowed,
 		"the load harness subject must be allowed, or it measures the denial path")
 
 	return []iamLoadScenario{
-		{name: "authorization_check", method: http.MethodPost, path: "/iam/authorization/check", tenant: iamTenantA, token: f.tokenA, body: check, want: http.StatusOK},
-		{name: "roles_list", method: http.MethodGet, path: "/iam/roles", tenant: iamTenantA, token: f.tokenA, want: http.StatusOK},
-		{name: "entities_list", method: http.MethodGet, path: "/iam/entities", tenant: iamTenantA, token: f.tokenA, want: http.StatusOK},
-		{name: "tenants_list", method: http.MethodGet, path: "/iam/tenants", tenant: iamTenantA, token: f.tokenA, want: http.StatusOK},
+		{name: "authorization_check", method: http.MethodPost, path: "/authorization-checks", tenant: iamTenantA, token: f.tokenA, body: check, want: http.StatusOK},
+		{name: "roles_list", method: http.MethodGet, path: "/roles", tenant: iamTenantA, token: f.tokenA, want: http.StatusOK},
+		{name: "entities_list", method: http.MethodGet, path: "/entities", tenant: iamTenantA, token: f.tokenA, want: http.StatusOK},
+		{name: "tenants_list", method: http.MethodGet, path: "/tenants", tenant: iamTenantA, token: f.tokenA, want: http.StatusOK},
 	}
 }
 

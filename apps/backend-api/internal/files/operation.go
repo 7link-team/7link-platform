@@ -13,6 +13,7 @@ import (
 	"7link.com/platform/internal/files/query"
 	"7link.com/platform/internal/infra/guid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
@@ -33,12 +34,21 @@ type operationRequest struct {
 
 type operationBudget struct{ Nodes, ClosureRows int }
 
+const operationCancelled = "cancelled" //nolint:misspell // Persisted migration state; preserve compatibility.
+
 // operationAccess must use the caller's transaction-bound IAM evaluator, not a
 // preparation-time grant or network call. No public file API exposes this engine.
 type operationAccess func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, string) error
 
 func operationCanonical(input operationRequest, key string, budget operationBudget) (operationRequest, string, string, error) {
-	if (input.Action != "move" && input.Action != "copy") || input.SpaceID <= 0 || input.DestinationID <= 0 || len(key) == 0 || len(key) > 128 || budget.Nodes < 1 || budget.Nodes == int(^uint(0)>>1) || budget.ClosureRows < 1 || len(input.Sources) == 0 || len(input.Sources) > budget.Nodes || !slices.Contains([]string{"overwrite", "skip", "rename"}, input.FilePolicy) || !slices.Contains([]string{"merge", "replace", "skip", "rename"}, input.DirectoryPolicy) || !slices.Contains([]string{"replace", "skip", "rename"}, input.TypePolicy) {
+	return canonicalOperationRequest(input, key, budget, false)
+}
+
+func canonicalOperationRequest(input operationRequest, key string, budget operationBudget, allowAsk bool) (operationRequest, string, string, error) {
+	validPolicy := func(policy, kind string) bool {
+		return (allowAsk && policy == "ask") || operationPolicyAllowed(kind, policy)
+	}
+	if (input.Action != "move" && input.Action != "copy") || input.SpaceID <= 0 || input.DestinationID <= 0 || len(key) == 0 || len(key) > 128 || budget.Nodes < 1 || budget.Nodes > (int(^uint(0)>>1)-maxNodeDepth-1)/2 || budget.ClosureRows < 1 || len(input.Sources) == 0 || len(input.Sources) > budget.Nodes || !validPolicy(input.FilePolicy, "file") || !validPolicy(input.DirectoryPolicy, "directory") || !validPolicy(input.TypePolicy, "type") {
 		return input, "", "", errOperationInput
 	}
 	input.Sources = slices.Clone(input.Sources)
@@ -73,14 +83,10 @@ func (t directoryTree) prepareOperation(ctx context.Context, db *gorm.DB, id, ac
 	var roots []guid.ID
 	existing := false
 	err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		q := query.Bind(tx, t.prefix)
 		spaceID := request.SpaceID
-		result, err := q.Space.WithContext(ctx).Where(q.Space.ID.Eq(spaceID)).UpdateSimple(q.Space.Version.Add(0))
+		q, space, err := t.lockOperationSpace(ctx, tx, spaceID)
 		if err != nil {
 			return err
-		}
-		if result.RowsAffected != 1 {
-			return ErrNotFound
 		}
 		if err := access(ctx, tx, spaceID, actorID, request.DestinationID, "create"); err != nil {
 			return err
@@ -130,10 +136,6 @@ func (t directoryTree) prepareOperation(ctx context.Context, db *gorm.DB, id, ac
 			}
 		}
 		rootJSON, err := json.Marshal(roots)
-		if err != nil {
-			return err
-		}
-		space, err := q.Space.WithContext(ctx).Where(q.Space.ID.Eq(spaceID)).Take()
 		if err != nil {
 			return err
 		}
@@ -230,10 +232,16 @@ func (t directoryTree) prepareOperation(ctx context.Context, db *gorm.DB, id, ac
 		if operation.ItemCount < 1 {
 			return errHierarchy
 		}
-		if err := t.preflightTargets(ctx, tx, operation, request, roots, access); err != nil {
+		cost, err := t.preflightTargets(ctx, tx, operation, request, roots, access)
+		if err != nil {
 			return err
 		}
-		_, err = q.Operation.WithContext(ctx).Where(q.Operation.ID.Eq(id)).UpdateSimple(q.Operation.State.Value("ready"))
+		plan, err := json.Marshal(cost)
+		if err != nil {
+			return err
+		}
+		operation.PlanJSON = string(plan)
+		_, err = q.Operation.WithContext(ctx).Where(q.Operation.ID.Eq(id)).UpdateSimple(q.Operation.State.Value("ready"), q.Operation.PlanJSON.Value(operation.PlanJSON))
 		return err
 	})
 	if err != nil {
@@ -246,21 +254,41 @@ func (t directoryTree) prepareOperation(ctx context.Context, db *gorm.DB, id, ac
 	return operation, nil
 }
 
-func (t directoryTree) fencePlan(ctx context.Context, tx *gorm.DB, operation *model.Operation, state string) (*query.Query, error) {
+func (t directoryTree) lockOperationSpace(ctx context.Context, tx *gorm.DB, spaceID guid.ID) (*query.Query, *model.Space, error) {
 	q := query.Bind(tx, t.prefix)
-	result, err := q.Space.WithContext(ctx).Where(q.Space.ID.Eq(operation.SpaceID), q.Space.Version.Eq(operation.SpaceRevision)).UpdateSimple(q.Space.Version.Add(0))
+	read := q.Space.WithContext(ctx).Where(q.Space.ID.Eq(spaceID))
+	if tx.Dialector.Name() == "sqlite" {
+		// A deferred SQLite transaction must become a writer BEFORE its first
+		// read. A no-op write locks, but changed-row counts do not prove existence.
+		if _, err := read.UpdateSimple(q.Space.Version.Add(0)); err != nil {
+			return nil, nil, err
+		}
+	} else {
+		read = read.Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate})
+	}
+	space, err := read.Take()
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil, ErrNotFound
+	}
+	return q, space, err
+}
+
+func (t directoryTree) fencePlan(ctx context.Context, tx *gorm.DB, operation *model.Operation, state string) (*query.Query, error) {
+	q, space, err := t.lockOperationSpace(ctx, tx, operation.SpaceID)
 	if err != nil {
 		return nil, err
 	}
-	if result.RowsAffected != 1 {
+	if space.Version != operation.SpaceRevision {
 		return nil, errTreeConflict
 	}
-	result, err = q.Operation.WithContext(ctx).Where(q.Operation.ID.Eq(operation.ID), q.Operation.State.Eq(state), q.Operation.Revision.Eq(operation.Revision)).UpdateSimple(q.Operation.Revision.Add(0))
-	if err != nil {
-		return nil, err
+	read := q.Operation.WithContext(ctx).Where(q.Operation.ID.Eq(operation.ID), q.Operation.State.Eq(state), q.Operation.Revision.Eq(operation.Revision))
+	if tx.Dialector.Name() != "sqlite" {
+		read = read.Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate})
 	}
-	if result.RowsAffected != 1 {
+	if _, err := read.Take(); errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, errOperationState
+	} else if err != nil {
+		return nil, err
 	}
 	return q, nil
 }
@@ -268,7 +296,7 @@ func (t directoryTree) fencePlan(ctx context.Context, tx *gorm.DB, operation *mo
 // finishOperation releases preparation pins on failure/cancel/expiry atomically.
 // Success is recorded by executeOperation together with the actual tree mutation.
 func (t directoryTree) finishOperation(ctx context.Context, tx *gorm.DB, id, actorID guid.ID, state, code string, now time.Time) error {
-	if tx == nil || id <= 0 || actorID <= 0 || (state != "failed" && state != "cancelled") || len(code) > 64 {
+	if tx == nil || id <= 0 || actorID <= 0 || (state != "failed" && state != operationCancelled) || len(code) > 64 {
 		return errOperationInput
 	}
 	if _, ok := tx.Statement.ConnPool.(gorm.TxCommitter); !ok {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import { renderToStaticMarkup } from "react-dom/server"
 import { MemoryRouter } from "react-router"
-import { AccountNavigation } from "./layout"
+import { AccountContent, AccountNavigation } from "./layout"
 import { IntlAppProvider } from "@workspace/ui/i18n/intl-provider"
 import zh from "../../messages/zh-CN.json"
 
@@ -20,13 +20,26 @@ describe("AccountNavigation", () => {
       "mfa",
       "applications",
       "tokens",
+      "files",
       "memberships",
       "identities",
       "closure",
     ])
       expect(html).toContain(`href="/account/${path}"`)
     expect(html).toContain('aria-current="page"')
-    expect(html).not.toContain("/iam/")
+    expect(html).not.toContain('href="/tenants"')
+    expect(html).not.toContain('href="/entities"')
     expect(html).not.toContain("tenant")
+  })
+
+  it("gives the file manager the full workspace without widening account forms", () => {
+    const content = (pathname: string) =>
+      renderToStaticMarkup(
+        <AccountContent pathname={pathname}>content</AccountContent>
+      )
+    expect(content("/account/files")).toContain("max-w-none")
+    expect(content("/account/files/")).toContain("max-w-none")
+    expect(content("/account/profile")).toContain("max-w-5xl")
+    expect(content("/account/profile")).not.toContain("max-w-none")
   })
 })

@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -87,9 +88,108 @@ func TestComposedBrowserSessionTenant(t *testing.T) {
 	newIAMTenantFixture(t).runBrowserSessionTenant(t)
 }
 
+func TestComposedIAMProvisionsOrganizationOwnedFileRoots(t *testing.T) {
+	fixture := newIAMTenantFixture(t)
+	response := fixture.request(t, http.MethodPost, "/tenants", 0, fixture.tokenA, map[string]any{
+		"slug": "file-roots", "name": "File Roots", "owner_principal_id": fixture.adminA.ID.String(),
+	}, nil)
+	requireStatus(t, http.StatusCreated, response)
+	tenant := decodeEnvelope[organization.Tenant](t, response)
+
+	response = fixture.request(t, http.MethodPost, "/entities", tenant.ID, fixture.tokenA, map[string]any{
+		"type": "company", "name": "File Root Entity", "status": "active",
+	}, nil)
+	requireStatus(t, http.StatusCreated, response)
+	entity := decodeEnvelope[core.APIEntity](t, response)
+	entityID := requireLifecycleID(t, entity.ID.String())
+
+	response = fixture.request(t, http.MethodPost, "/departments", tenant.ID, fixture.tokenA, map[string]any{
+		"entity_id": entityID.String(), "name": "File Root Department", "status": "active",
+	}, nil)
+	requireStatus(t, http.StatusCreated, response)
+	department := decodeEnvelope[organization.Department](t, response)
+
+	for _, root := range []struct {
+		scope   string
+		ownerID guid.ID
+	}{
+		{scope: "tenant", ownerID: tenant.ID},
+		{scope: "entity", ownerID: entityID},
+		{scope: "department", ownerID: department.ID},
+	} {
+		assert.Equal(t, int64(1), fixture.count(t, "file_nodes", "root_scope = ? AND root_owner_id = ? AND state = 'active'", root.scope, root.ownerID), root.scope)
+		assert.Zero(t, fixture.count(t, "file_node_acl", "node_id IN (SELECT id FROM "+fixture.table("file_nodes")+" WHERE root_scope = ? AND root_owner_id = ?)", root.scope, root.ownerID), root.scope)
+	}
+	assert.Equal(t, int64(3), fixture.count(t, "iam_audit_events", "tenant_id = ? AND event_type = 'file_root_created'", tenant.ID))
+
+	response = fixture.request(t, http.MethodGet, "/files", tenant.ID, fixture.tokenA, nil, map[string]string{
+		authz.EntityHeader: entityID.String(),
+	})
+	requireStatus(t, http.StatusOK, response)
+	roots := decodeEnvelope[struct {
+		Items []struct {
+			ID           guid.ID `json:"id"`
+			Scope        string  `json:"scope"`
+			TenantID     guid.ID `json:"tenant_id"`
+			EntityID     guid.ID `json:"entity_id"`
+			DepartmentID guid.ID `json:"department_id"`
+			PrincipalID  guid.ID `json:"principal_id"`
+		} `json:"items"`
+	}](t, response)
+	require.Len(t, roots.Items, 3)
+	rootIDs := make(map[string]guid.ID, len(roots.Items))
+	for _, root := range roots.Items {
+		rootIDs[root.Scope] = root.ID
+		switch root.Scope {
+		case "tenant":
+			assert.Equal(t, tenant.ID, root.TenantID)
+			assert.Zero(t, root.EntityID)
+			assert.Zero(t, root.DepartmentID)
+			assert.Zero(t, root.PrincipalID)
+		case "entity":
+			assert.Equal(t, tenant.ID, root.TenantID)
+			assert.Equal(t, entityID, root.EntityID)
+			assert.Zero(t, root.DepartmentID)
+			assert.Zero(t, root.PrincipalID)
+		case "department":
+			assert.Equal(t, tenant.ID, root.TenantID)
+			assert.Zero(t, root.EntityID)
+			assert.Equal(t, department.ID, root.DepartmentID)
+			assert.Zero(t, root.PrincipalID)
+		default:
+			require.FailNow(t, "unexpected file root scope", root.Scope)
+		}
+	}
+
+	fixture.createFileDirectory(t, tenant.ID, entityID, fixture.tokenA, rootIDs["entity"], "Retained entity data")
+	response = fixture.request(t, http.MethodDelete, "/entities/"+entityID.String(), tenant.ID, fixture.tokenA, nil, nil)
+	requireStatus(t, http.StatusConflict, response)
+	assert.Equal(t, int64(1), fixture.count(t, "iam_entities", "tenant_id = ? AND id = ?", tenant.ID, entityID))
+
+	fixture.createFileDirectory(t, tenant.ID, entityID, fixture.tokenA, rootIDs["department"], "Retained department data")
+	response = fixture.request(t, http.MethodDelete, "/departments/"+department.ID.String()+"?version="+strconv.FormatInt(department.Version, 10), tenant.ID, fixture.tokenA, nil, nil)
+	requireStatus(t, http.StatusConflict, response)
+	assert.Equal(t, int64(1), fixture.count(t, "iam_departments", "tenant_id = ? AND id = ?", tenant.ID, department.ID))
+}
+
+func (f *iamTenantFixture) createFileDirectory(t *testing.T, tenantID, entityID guid.ID, token string, parentID guid.ID, name string) {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	require.NoError(t, writer.WriteField("parent_id", parentID.String()))
+	require.NoError(t, writer.WriteField("kind", "directory"))
+	require.NoError(t, writer.WriteField("name", name))
+	require.NoError(t, writer.Close())
+	response := f.request(t, http.MethodPost, "/files", tenantID, token, &body, map[string]string{
+		"Content-Type":     writer.FormDataContentType(),
+		authz.EntityHeader: entityID.String(),
+	})
+	requireStatus(t, http.StatusCreated, response)
+}
+
 func (f *iamTenantFixture) runBrowserSessionTenant(t *testing.T) {
 	t.Helper()
-	response := f.request(t, http.MethodPost, "/authn/sessions", 0, "", map[string]any{
+	response := f.request(t, http.MethodPost, "/sessions", 0, "", map[string]any{
 		"login_name": f.requesterB.LoginName, "password": "correct horse battery staple",
 	}, map[string]string{"Origin": "https://app.example.test"})
 	requireStatus(t, http.StatusOK, response)
@@ -97,7 +197,7 @@ func (f *iamTenantFixture) runBrowserSessionTenant(t *testing.T) {
 	headers := map[string]string{"Cookie": response.Cookies[0].String()}
 	check := func(requested guid.ID, code int, expected string) {
 		t.Helper()
-		for _, path := range []string{"/authn/me", "/authn/sessions/current"} {
+		for _, path := range []string{"/me", "/sessions/current"} {
 			response := f.request(t, http.MethodGet, path, requested, "", nil, headers)
 			requireStatus(t, code, response)
 			if code == http.StatusOK {
@@ -114,14 +214,14 @@ func (f *iamTenantFixture) runBrowserSessionTenant(t *testing.T) {
 	assert.Zero(t, f.count(t, "iam_platform_administrators", "principal_id = ?", f.requesterB.ID))
 	check(0, http.StatusOK, iamTenantB.String())
 	check(iamTenantA, http.StatusForbidden, "")
-	response = f.request(t, http.MethodPost, "/iam/members", iamTenantA, f.tokenA, map[string]any{
+	response = f.request(t, http.MethodPost, "/members", iamTenantA, f.tokenA, map[string]any{
 		"subject": f.requesterB.ID.String(), "display_name": "Session member", "email": f.requesterB.Email, "status": "active",
 	}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	check(0, http.StatusOK, "")
 	check(iamTenantA, http.StatusOK, iamTenantA.String())
 	check(iamTenantB, http.StatusOK, iamTenantB.String())
-	response = f.request(t, http.MethodPatch, "/iam/members/"+f.requesterB.ID.String(), iamTenantA, f.tokenA,
+	response = f.request(t, http.MethodPatch, "/members/"+f.requesterB.ID.String(), iamTenantA, f.tokenA,
 		map[string]any{"status": "disabled"}, nil)
 	requireStatus(t, http.StatusOK, response)
 	check(iamTenantA, http.StatusForbidden, "")
@@ -131,15 +231,15 @@ func (f *iamTenantFixture) runBrowserSessionTenant(t *testing.T) {
 	check(0, http.StatusOK, "")
 	require.NoError(t, f.db.Table(f.table("iam_tenants")).Where("id = ?", iamTenantB).Update("status", "active").Error)
 	check(0, http.StatusOK, iamTenantB.String())
-	response = f.request(t, http.MethodGet, "/authn/sessions/current", iamTenantA, f.requester, nil, nil)
+	response = f.request(t, http.MethodGet, "/sessions/current", iamTenantA, f.requester, nil, nil)
 	requireStatus(t, http.StatusForbidden, response)
-	response = f.request(t, http.MethodGet, "/authn/sessions/current", iamTenantB, f.requester, nil, nil)
+	response = f.request(t, http.MethodGet, "/sessions/current", iamTenantB, f.requester, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 }
 
 func (f *iamTenantFixture) runSCIMTenantLifecycle(t *testing.T) {
 	t.Helper()
-	response := f.request(t, http.MethodPost, "/iam/tenants", 0, f.tokenA, map[string]any{
+	response := f.request(t, http.MethodPost, "/tenants", 0, f.tokenA, map[string]any{
 		"slug": "scim-lifecycle", "name": "SCIM lifecycle", "owner_principal_id": f.adminA.ID.String(),
 	}, nil)
 	requireStatus(t, http.StatusCreated, response)
@@ -162,7 +262,7 @@ func (f *iamTenantFixture) runSCIMTenantLifecycle(t *testing.T) {
 	group := decodeBody[provisioning.GroupResource](t, response)
 
 	setStatus := func(status string) {
-		response := f.request(t, http.MethodPatch, "/iam/tenants/"+tenant.ID.String(), 0, f.tokenA,
+		response := f.request(t, http.MethodPatch, "/tenants/"+tenant.ID.String(), 0, f.tokenA,
 			map[string]any{"status": status, "version": tenant.Version}, nil)
 		requireStatus(t, http.StatusOK, response)
 		tenant = decodeEnvelope[organization.Tenant](t, response)
@@ -225,7 +325,7 @@ func (f *iamTenantFixture) runSCIMTenantLifecycle(t *testing.T) {
 	require.True(t, t.Run("suspended", assertRejected))
 	setStatus(organization.TenantActive)
 	assertReadable()
-	response = f.request(t, http.MethodDelete, "/iam/tenants/"+tenant.ID.String()+"?version="+strconv.FormatInt(tenant.Version, 10), 0, f.tokenA, nil, nil)
+	response = f.request(t, http.MethodDelete, "/tenants/"+tenant.ID.String()+"?version="+strconv.FormatInt(tenant.Version, 10), 0, f.tokenA, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 	assert.Equal(t, int64(1), f.count(t, "iam_tenants", "id = ? AND status = ?", tenant.ID, organization.TenantDeleted))
 	require.True(t, t.Run("deleted", assertRejected))
@@ -341,7 +441,7 @@ func (f *iamTenantFixture) issueToken(t *testing.T, module *iamauthn.Module, pri
 func (f *iamTenantFixture) acceptTenantBInvitation(t *testing.T) organization.Invitation {
 	t.Helper()
 	before := f.auditCounts(t)
-	response := f.request(t, http.MethodPost, "/iam/invitations", iamTenantB, f.tokenB, map[string]any{
+	response := f.request(t, http.MethodPost, "/invitations", iamTenantB, f.tokenB, map[string]any{
 		"email": "invited-b@example.test", "expires_in_hours": 24,
 	}, nil)
 	requireStatus(t, http.StatusCreated, response)
@@ -354,7 +454,7 @@ func (f *iamTenantFixture) acceptTenantBInvitation(t *testing.T) organization.In
 	assert.Equal(t, before[1]+1, afterCreate[1])
 
 	beforeAccept := afterCreate
-	response = f.request(t, http.MethodPost, "/iam/invitations/accept", 0, "", map[string]any{
+	response = f.request(t, http.MethodPost, "/invitation-acceptances", 0, "", map[string]any{
 		"token": issued.Token, "login_name": "invited-b", "password": "correct horse battery staple",
 		"display_name": "Invited B",
 	}, nil)
@@ -411,15 +511,15 @@ func (f *iamTenantFixture) provisionTenantBGroup(t *testing.T) (provisioning.Use
 
 func (f *iamTenantFixture) createSCIMCredential(t *testing.T, tenantID guid.ID, adminToken, name string) (provisioning.Directory, string) {
 	t.Helper()
-	response := f.request(t, http.MethodPost, "/iam/service-accounts", tenantID, adminToken,
+	response := f.request(t, http.MethodPost, "/service-accounts", tenantID, adminToken,
 		map[string]any{"login_name": "scim-" + strings.ReplaceAll(strings.ToLower(name), " ", "-"), "display_name": name}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	account := decodeEnvelope[identity.ServiceAccount](t, response)
-	response = f.request(t, http.MethodPost, "/iam/scim/directories", tenantID, adminToken,
+	response = f.request(t, http.MethodPost, "/scim-directories", tenantID, adminToken,
 		map[string]any{"name": name, "service_account_id": account.ID.String()}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	directory := decodeEnvelope[provisioning.Directory](t, response)
-	response = f.request(t, http.MethodPost, "/iam/scim/directories/"+directory.ID.String()+"/credentials", tenantID, adminToken, map[string]any{"name": "integration"}, nil)
+	response = f.request(t, http.MethodPost, "/scim-directories/"+directory.ID.String()+"/credentials", tenantID, adminToken, map[string]any{"name": "integration"}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	secret := decodeEnvelope[provisioning.CredentialSecret](t, response)
 	return directory, secret.Token
@@ -427,28 +527,28 @@ func (f *iamTenantFixture) createSCIMCredential(t *testing.T, tenantID guid.ID, 
 
 func (f *iamTenantFixture) approveTenantBAccessRequest(t *testing.T) (core.APIRole, core.APIEntity, governance.AccessRequest) {
 	t.Helper()
-	response := f.request(t, http.MethodPost, "/iam/roles", iamTenantB, f.tokenB, map[string]any{
+	response := f.request(t, http.MethodPost, "/roles", iamTenantB, f.tokenB, map[string]any{
 		"name": "Tenant B entity viewers", "description": "integration fixture",
 	}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	role := decodeEnvelope[core.APIRole](t, response)
 
-	response = f.request(t, http.MethodPut, "/iam/roles/"+role.ID.String()+"/permissions/entity_view", iamTenantB, f.tokenB, nil, nil)
+	response = f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/permissions/entity_view", iamTenantB, f.tokenB, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 
-	response = f.request(t, http.MethodPost, "/iam/entities", iamTenantB, f.tokenB, map[string]any{
+	response = f.request(t, http.MethodPost, "/entities", iamTenantB, f.tokenB, map[string]any{
 		"type": "company", "name": "Tenant B company", "status": "active",
 	}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	entity := decodeEnvelope[core.APIEntity](t, response)
 
-	response = f.request(t, http.MethodPost, "/iam/access-requests", iamTenantB, f.requester, map[string]any{
+	response = f.request(t, http.MethodPost, "/access-requests", iamTenantB, f.requester, map[string]any{
 		"role_id": role.ID, "reason": "integration tenant isolation", "access_expires_at": time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano),
 	}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	request := decodeEnvelope[governance.AccessRequest](t, response)
 
-	response = f.request(t, http.MethodPost, "/iam/access-requests/"+request.ID.String()+"/approve", iamTenantB, f.tokenB, map[string]any{"note": "approved"}, nil)
+	response = f.request(t, http.MethodPost, "/access-requests/"+request.ID.String()+"/approve", iamTenantB, f.tokenB, map[string]any{"note": "approved"}, nil)
 	requireStatus(t, http.StatusOK, response)
 	approved := decodeEnvelope[governance.AccessRequest](t, response)
 	require.Equal(t, governance.StatusApproved, approved.Status)
@@ -480,7 +580,7 @@ func (f *iamTenantFixture) assertSCIMCannotCrossTenants(t *testing.T, user provi
 func (f *iamTenantFixture) assertGovernanceRevokeCannotCrossTenants(t *testing.T, request governance.AccessRequest) {
 	t.Helper()
 	f.rejectWithoutAudit(t, http.StatusNotFound, func() iamHTTPResponse {
-		return f.request(t, http.MethodPost, "/iam/access-requests/"+request.ID.String()+"/revoke", iamTenantA, f.tokenA, map[string]any{
+		return f.request(t, http.MethodPost, "/access-requests/"+request.ID.String()+"/revoke", iamTenantA, f.tokenA, map[string]any{
 			"reason": "cross-tenant attempt",
 		}, nil)
 	})
@@ -497,7 +597,7 @@ func (f *iamTenantFixture) assertGovernanceRevokeCannotCrossTenants(t *testing.T
 
 func (f *iamTenantFixture) assertIAMAuthorizationCannotCrossTenants(t *testing.T, role core.APIRole, entity core.APIEntity) {
 	t.Helper()
-	response := f.request(t, http.MethodPost, "/iam/authorization/check", iamTenantB, f.tokenB, map[string]any{
+	response := f.request(t, http.MethodPost, "/authorization-checks", iamTenantB, f.tokenB, map[string]any{
 		"entity_id": entity.ID, "permission_code": "entity_view", "subject": f.requesterB.ID.String(),
 	}, nil)
 	requireStatus(t, http.StatusOK, response)
@@ -505,7 +605,7 @@ func (f *iamTenantFixture) assertIAMAuthorizationCannotCrossTenants(t *testing.T
 	assert.True(t, decision.Allowed)
 
 	f.rejectWithoutAudit(t, http.StatusNotFound, func() iamHTTPResponse {
-		return f.request(t, http.MethodPost, "/iam/authorization/check", iamTenantA, f.tokenA, map[string]any{
+		return f.request(t, http.MethodPost, "/authorization-checks", iamTenantA, f.tokenA, map[string]any{
 			"entity_id": entity.ID, "permission_code": "entity_view", "subject": f.requesterB.ID.String(),
 		}, nil)
 	})
@@ -544,7 +644,7 @@ func (f *iamTenantFixture) assertFederationCallbackCannotCrossTenants(t *testing
 
 	providerA := f.createFederationProvider(t, iamTenantA, f.tokenA, "Tenant A", discovery.URL+"/tenant-a")
 	providerB := f.createFederationProvider(t, iamTenantB, f.tokenB, "Tenant B", discovery.URL+"/tenant-b")
-	startPath := "/federation/" + providerB.ID.String() + "/start?return_url=" + url.QueryEscape("https://app.example.test/home")
+	startPath := "/identity-providers/" + providerB.ID.String() + "/authorization?return_url=" + url.QueryEscape("https://app.example.test/home")
 	response := f.request(t, http.MethodGet, startPath, 0, "", nil, nil)
 	require.Equal(t, http.StatusFound, response.StatusCode)
 	location, err := url.Parse(response.Header.Get("Location"))
@@ -557,7 +657,7 @@ func (f *iamTenantFixture) assertFederationCallbackCannotCrossTenants(t *testing
 	beforeLinks := f.count(t, "iam_identity_links", "tenant_id = ?", iamTenantB)
 	beforePrincipals := f.count(t, "iam_principals", "1 = 1")
 	f.rejectWithoutAudit(t, http.StatusBadRequest, func() iamHTTPResponse {
-		return f.request(t, http.MethodGet, "/federation/"+providerA.ID.String()+"/callback?code=unused&state="+url.QueryEscape(state), 0, "", nil, map[string]string{
+		return f.request(t, http.MethodGet, "/identity-providers/"+providerA.ID.String()+"/callback?code=unused&state="+url.QueryEscape(state), 0, "", nil, map[string]string{
 			"Cookie": cookies[0].String(),
 		})
 	})
@@ -568,7 +668,7 @@ func (f *iamTenantFixture) assertFederationCallbackCannotCrossTenants(t *testing
 
 func (f *iamTenantFixture) createFederationProvider(t *testing.T, tenantID guid.ID, token, name, issuer string) federation.Provider {
 	t.Helper()
-	response := f.request(t, http.MethodPost, "/iam/identity-providers", tenantID, token, map[string]any{
+	response := f.request(t, http.MethodPost, "/identity-providers", tenantID, token, map[string]any{
 		"name": name, "provider_type": "oidc", "issuer": issuer, "client_id": "integration-client",
 		"auto_provision": false, "status": "active",
 	}, nil)

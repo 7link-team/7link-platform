@@ -20,6 +20,7 @@ var (
 	AccountPreparation *accountPreparation
 	AccountReference   *accountReference
 	Node               *node
+	NodeACL            *nodeACL
 	NodeClosure        *nodeClosure
 	Object             *object
 	Operation          *operation
@@ -37,6 +38,7 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	AccountPreparation = &Q.AccountPreparation
 	AccountReference = &Q.AccountReference
 	Node = &Q.Node
+	NodeACL = &Q.NodeACL
 	NodeClosure = &Q.NodeClosure
 	Object = &Q.Object
 	Operation = &Q.Operation
@@ -55,6 +57,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		AccountPreparation: newAccountPreparation(db, opts...),
 		AccountReference:   newAccountReference(db, opts...),
 		Node:               newNode(db, opts...),
+		NodeACL:            newNodeACL(db, opts...),
 		NodeClosure:        newNodeClosure(db, opts...),
 		Object:             newObject(db, opts...),
 		Operation:          newOperation(db, opts...),
@@ -74,6 +77,7 @@ type Query struct {
 	AccountPreparation accountPreparation
 	AccountReference   accountReference
 	Node               node
+	NodeACL            nodeACL
 	NodeClosure        nodeClosure
 	Object             object
 	Operation          operation
@@ -96,6 +100,7 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		AccountPreparation: q.AccountPreparation.clone(db),
 		AccountReference:   q.AccountReference.clone(db),
 		Node:               q.Node.clone(db),
+		NodeACL:            q.NodeACL.clone(db),
 		NodeClosure:        q.NodeClosure.clone(db),
 		Object:             q.Object.clone(db),
 		Operation:          q.Operation.clone(db),
@@ -123,6 +128,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		AccountPreparation: q.AccountPreparation.replaceDB(db),
 		AccountReference:   q.AccountReference.replaceDB(db),
 		Node:               q.Node.replaceDB(db),
+		NodeACL:            q.NodeACL.replaceDB(db),
 		NodeClosure:        q.NodeClosure.replaceDB(db),
 		Object:             q.Object.replaceDB(db),
 		Operation:          q.Operation.replaceDB(db),
@@ -140,6 +146,7 @@ type queryCtx struct {
 	AccountPreparation IAccountPreparationDo
 	AccountReference   IAccountReferenceDo
 	Node               INodeDo
+	NodeACL            INodeACLDo
 	NodeClosure        INodeClosureDo
 	Object             IObjectDo
 	Operation          IOperationDo
@@ -157,6 +164,7 @@ func (q *Query) WithContext(ctx context.Context) *queryCtx {
 		AccountPreparation: q.AccountPreparation.WithContext(ctx),
 		AccountReference:   q.AccountReference.WithContext(ctx),
 		Node:               q.Node.WithContext(ctx),
+		NodeACL:            q.NodeACL.WithContext(ctx),
 		NodeClosure:        q.NodeClosure.WithContext(ctx),
 		Object:             q.Object.WithContext(ctx),
 		Operation:          q.Operation.WithContext(ctx),

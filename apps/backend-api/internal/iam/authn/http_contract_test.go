@@ -18,44 +18,44 @@ import (
 )
 
 const authnRouteManifest = `
-authn-create-personal-token-preparation|POST|/authn/personal-token-preparations
-authn-create-personal-token|POST|/authn/personal-tokens
-authn-delete-personal-token|DELETE|/authn/personal-tokens/{id}
-authn-list-personal-tokens|GET|/authn/personal-tokens
-authn-list-personal-token-permissions|GET|/authn/personal-token-permissions
-authn-list-reauthentication-methods|GET|/authn/reauthentication-methods
-authn-create-reauthentication-challenge|POST|/authn/reauthentication-challenges
-authn-create-reauthentication-verification|POST|/authn/reauthentication-verifications
-authn-capabilities|GET|/authn/capabilities
-authn-create-captcha|POST|/authn/captchas
-authn-create-email-verification-request|POST|/authn/email-verification-requests
-authn-create-email-verification|POST|/authn/email-verifications
-authn-create-passkey-registration-challenge|POST|/authn/passkey-registration-challenges
-authn-create-passkey-session-challenge|POST|/authn/passkey-session-challenges
-authn-create-passkey-session-verification|POST|/authn/passkey-session-verifications
-authn-create-passkey|POST|/authn/passkeys
-authn-create-password-recovery-request|POST|/authn/password-recovery-requests
-authn-create-password-recovery|POST|/authn/password-recoveries
-authn-create-registration|POST|/authn/registrations
-authn-create-session-verification|POST|/authn/session-verifications
-authn-create-session|POST|/authn/sessions
-authn-create-step-up-challenge|POST|/authn/step-up-challenges
-authn-create-step-up-verification|POST|/authn/step-up-verifications
-authn-create-totp-enrollment|POST|/authn/mfa/totp-enrollments
-authn-create-totp-factor|POST|/authn/mfa/totp
-authn-delete-current-session|DELETE|/authn/sessions/current
-authn-delete-passkey|DELETE|/authn/passkeys/{id}
-authn-delete-session|DELETE|/authn/sessions/{id}
-authn-delete-sessions|DELETE|/authn/sessions
-authn-delete-totp-factor|DELETE|/authn/mfa/totp
-authn-get-current-session|GET|/authn/sessions/current
-authn-get-mfa|GET|/authn/mfa
-authn-list-passkeys|GET|/authn/passkeys
-authn-list-sessions|GET|/authn/sessions
-authn-me|GET|/authn/me
-authn-replace-recovery-codes|PUT|/authn/mfa/recovery-codes
-authn-update-passkey|PATCH|/authn/passkeys/{id}
-authn-update-password|PATCH|/authn/password`
+authn-create-personal-token-preparation|POST|/me/personal-token-preparations
+authn-create-personal-token|POST|/me/personal-tokens
+authn-delete-personal-token|DELETE|/me/personal-tokens/{token_id}
+authn-list-personal-tokens|GET|/me/personal-tokens
+authn-list-personal-token-permissions|GET|/me/personal-token-permissions
+authn-list-reauthentication-methods|GET|/reauthentication-methods
+authn-create-reauthentication-challenge|POST|/reauthentication-challenges
+authn-create-reauthentication-verification|POST|/reauthentication-verifications
+authn-capabilities|GET|/authentication-capabilities
+authn-create-captcha|POST|/captchas
+authn-create-email-verification-request|POST|/email-verification-requests
+authn-create-email-verification|POST|/email-verifications
+authn-create-passkey-registration-challenge|POST|/me/passkey-registration-challenges
+authn-create-passkey-session-challenge|POST|/passkey-session-challenges
+authn-create-passkey-session-verification|POST|/passkey-session-verifications
+authn-create-passkey|POST|/me/passkeys
+authn-create-password-recovery-request|POST|/password-recovery-requests
+authn-create-password-recovery|POST|/password-recoveries
+authn-create-registration|POST|/registrations
+authn-create-session-verification|POST|/session-verifications
+authn-create-session|POST|/sessions
+authn-create-step-up-challenge|POST|/step-up-challenges
+authn-create-step-up-verification|POST|/step-up-verifications
+authn-create-totp-enrollment|POST|/me/mfa/totp-enrollments
+authn-create-totp-factor|POST|/me/mfa/totp
+authn-delete-current-session|DELETE|/sessions/current
+authn-delete-passkey|DELETE|/me/passkeys/{passkey_id}
+authn-delete-session|DELETE|/sessions/{session_id}
+authn-delete-sessions|DELETE|/sessions
+authn-delete-totp-factor|DELETE|/me/mfa/totp
+authn-get-current-session|GET|/sessions/current
+authn-get-mfa|GET|/me/mfa
+authn-list-passkeys|GET|/me/passkeys
+authn-list-sessions|GET|/sessions
+authn-me|GET|/me
+authn-replace-recovery-codes|PUT|/me/mfa/recovery-codes
+authn-update-passkey|PATCH|/me/passkeys/{passkey_id}
+authn-update-password|PATCH|/me/password`
 
 func authnContractAPI(t *testing.T) humatest.TestAPI {
 	t.Helper()
@@ -146,7 +146,7 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 	}
 	require.Len(t, operationIDs, 38)
 	assert.Equal(t, "session", spec.Components.SecuritySchemes[authz.SessionScheme].Name)
-	for _, path := range []string{"/authn/sessions/{id}", "/authn/passkeys/{id}"} {
+	for _, path := range []string{"/sessions/{session_id}", "/me/passkeys/{passkey_id}"} {
 		parameter := authnPathOperations(spec.Paths[path])[http.MethodDelete].Parameters[0]
 		assert.Equal(t, "^[a-f0-9]{64}$", parameter.Schema.Pattern, path)
 		assert.Equal(t, 64, *parameter.Schema.MinLength, path)
@@ -157,8 +157,8 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 func TestAuthnOpenAPIUsesTypedWebAuthnSchemas(t *testing.T) {
 	spec := authnContractAPI(t).OpenAPI()
 	for name, operation := range map[string]*huma.Operation{
-		"assertion": spec.Paths["/authn/passkey-session-verifications"].Post,
-		"creation":  spec.Paths["/authn/passkeys"].Post,
+		"assertion": spec.Paths["/passkey-session-verifications"].Post,
+		"creation":  spec.Paths["/me/passkeys"].Post,
 	} {
 		request := resolveAuthnSchema(spec, operation.RequestBody.Content["application/json"].Schema)
 		credential := resolveAuthnSchema(spec, request.Properties["credential"])
@@ -170,8 +170,8 @@ func TestAuthnOpenAPIUsesTypedWebAuthnSchemas(t *testing.T) {
 		}
 	}
 	for name, operation := range map[string]*huma.Operation{
-		"assertion options": spec.Paths["/authn/passkey-session-challenges"].Post,
-		"creation options":  spec.Paths["/authn/passkey-registration-challenges"].Post,
+		"assertion options": spec.Paths["/passkey-session-challenges"].Post,
+		"creation options":  spec.Paths["/me/passkey-registration-challenges"].Post,
 	} {
 		response := resolveAuthnSchema(spec, operation.Responses["200"].Content["application/json"].Schema)
 		data := resolveAuthnSchema(spec, response.Properties["data"])
@@ -246,7 +246,7 @@ func resolveAuthnSchema(spec *huma.OpenAPI, schema *huma.Schema) *huma.Schema {
 func TestAuthnOpenAPIEmailVerificationRequiresOneCredentialForm(t *testing.T) {
 	api := authnContractAPI(t)
 	spec := api.OpenAPI()
-	operation := spec.Paths["/authn/email-verifications"].Post
+	operation := spec.Paths["/email-verifications"].Post
 	require.NotNil(t, operation)
 	schema := operation.RequestBody.Content["application/json"].Schema
 	if schema.Ref != "" {
@@ -261,11 +261,11 @@ func TestAuthnOpenAPIEmailVerificationRequiresOneCredentialForm(t *testing.T) {
 	assert.False(t, schema.AdditionalProperties.(bool))
 
 	assert.Equal(t, http.StatusUnprocessableEntity,
-		api.Post("/authn/email-verifications", map[string]any{}).Code)
-	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/authn/email-verifications", map[string]any{
+		api.Post("/email-verifications", map[string]any{}).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/email-verifications", map[string]any{
 		"token": "cev1_token", "email": "person@example.test", "code": "123456",
 	}).Code)
-	assert.Equal(t, http.StatusServiceUnavailable, api.Post("/authn/email-verifications", map[string]any{
+	assert.Equal(t, http.StatusServiceUnavailable, api.Post("/email-verifications", map[string]any{
 		"email": "person@example.test", "code": "123456",
 	}, "Origin: https://app.example.test").Code)
 }

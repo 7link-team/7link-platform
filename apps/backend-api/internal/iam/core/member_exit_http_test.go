@@ -31,23 +31,23 @@ func TestMemberExitHTTPUsesCookieAndExplicitTenant(t *testing.T) {
 	s.revokePersonalTokens = func(context.Context, *gorm.DB, guid.ID, guid.ID) error { return nil }
 	s.revokeOAuth = func(context.Context, *gorm.DB, guid.ID, guid.ID) error { return nil }
 	cookie, origin := "Cookie: session=browser", "Origin: https://account.example.test"
-	page := h.api.Get("/iam/me/memberships?limit=1", cookie)
+	page := h.api.Get("/me/memberships?limit=1", cookie)
 	require.Equal(t, http.StatusOK, page.Code, page.Body.String())
 	require.Contains(t, page.Body.String(), `"tenant_id":"1"`)
-	path := "/iam/me/memberships/1/leave"
-	for _, operation := range []*huma.Operation{h.api.OpenAPI().Paths["/iam/me/memberships"].Get, h.api.OpenAPI().Paths["/iam/me/memberships/{tenant_id}/leave"].Post} {
+	path := "/me/memberships/1/leave"
+	for _, operation := range []*huma.Operation{h.api.OpenAPI().Paths["/me/memberships"].Get, h.api.OpenAPI().Paths["/me/memberships/{tenant_id}/leave"].Post} {
 		for _, parameter := range operation.Parameters {
 			require.NotEqual(t, "Authorization", parameter.Name)
 		}
 	}
-	require.Equal(t, http.StatusUnauthorized, h.api.Get("/iam/me/memberships", cookie, "Authorization: Bearer test").Code)
+	require.Equal(t, http.StatusUnauthorized, h.api.Get("/me/memberships", cookie, "Authorization: Bearer test").Code)
 	require.Equal(t, http.StatusUnauthorized, h.api.Post(path, cookie, origin, "Authorization: Bearer test", map[string]any{"proof": "verified"}).Code)
 	require.Equal(t, http.StatusForbidden, h.api.Post(path, cookie, map[string]any{"proof": "verified"}).Code)
 	require.Equal(t, http.StatusForbidden, h.api.Post(path, cookie, origin, map[string]any{"proof": "wrong"}).Code)
 	left := h.api.Post(path, cookie, origin, map[string]any{"proof": "verified"})
 	require.Equal(t, http.StatusOK, left.Code, left.Body.String())
 	require.Empty(t, left.Header().Get("Set-Cookie"), "tenant exit must preserve the global cookie")
-	page = h.api.Get("/iam/me/memberships", cookie)
+	page = h.api.Get("/me/memberships", cookie)
 	require.Equal(t, http.StatusOK, page.Code, page.Body.String())
 	require.Contains(t, page.Body.String(), `"items":[]`)
 }
@@ -64,13 +64,13 @@ func TestPrincipalPlatformAccessGuardRejectsRetainedPlatformAuthority(t *testing
 func TestMemberExitHTTPMissingCapabilitiesAndFailures(t *testing.T) {
 	h := newHTTPIAMHarness(t, false)
 	s := h.module.service
-	path, cookie := "/iam/me/memberships/1/leave", "Cookie: session=browser"
+	path, cookie := "/me/memberships/1/leave", "Cookie: session=browser"
 	body := map[string]any{"proof": "verified"}
-	require.Equal(t, http.StatusUnauthorized, h.api.Get("/iam/me/memberships").Code)
+	require.Equal(t, http.StatusUnauthorized, h.api.Get("/me/memberships").Code)
 	require.Equal(t, http.StatusUnauthorized, h.api.Post(path, body).Code)
 	require.Equal(t, http.StatusServiceUnavailable, h.api.Post(path, cookie, body).Code)
 	s.privacyBrowser.ValidateCSRF = func(string, string, string) error { return nil }
-	require.Equal(t, http.StatusUnprocessableEntity, h.api.Post("/iam/me/memberships/9999999999999999999/leave", cookie, body).Code)
+	require.Equal(t, http.StatusUnprocessableEntity, h.api.Post("/me/memberships/9999999999999999999/leave", cookie, body).Code)
 	require.Equal(t, http.StatusServiceUnavailable, h.api.Post(path, cookie, body).Code)
 	_, err := s.memberBrowser(t.Context(), "browser", "")
 	require.Error(t, err, "a cookie header alone cannot manufacture principal claims")
@@ -83,5 +83,5 @@ func TestMemberExitHTTPMissingCapabilitiesAndFailures(t *testing.T) {
 	s.revokeOAuth = func(context.Context, *gorm.DB, guid.ID, guid.ID) error { return nil }
 	require.Equal(t, http.StatusInternalServerError, h.api.Post(path, cookie, body).Code)
 	require.NoError(t, h.db.Exec("DROP TABLE sl_iam_tenant_members").Error)
-	require.Equal(t, http.StatusInternalServerError, h.api.Get("/iam/me/memberships", cookie).Code)
+	require.Equal(t, http.StatusInternalServerError, h.api.Get("/me/memberships", cookie).Code)
 }

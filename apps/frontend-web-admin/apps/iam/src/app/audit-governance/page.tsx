@@ -102,7 +102,7 @@ function ScopedAuditGovernance({
 }) {
   const t = useTranslations("iam")
   const allowed = useAllowed()
-  // The platform tab reaches /platform/iam/... routes, which are guarded by
+  // The platform tab reaches /platform/... routes, which are guarded by
   // platform_administer instead of the tenant audit verbs.
   const scopedCode = (tenantCode: string) =>
     scope === "platform" ? "platform_administer" : tenantCode

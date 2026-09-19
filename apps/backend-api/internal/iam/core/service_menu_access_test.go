@@ -15,21 +15,21 @@ func TestEffectiveMenusPreserveUnauthorizedParentsOnlyAsDirectories(t *testing.T
 	require.NoError(t, err)
 	_, err = h.service.AddMember(t.Context(), 1, role.ID, 11)
 	require.NoError(t, err)
-	parent, err := h.service.CreateMenu(t.Context(), Menu{TenantID: 1, Label: "Roles", Route: "/iam/roles", PermissionCode: "role_view", Status: MenuActive})
+	parent, err := h.service.CreateMenu(t.Context(), Menu{TenantID: 1, Label: "Roles", Route: "/roles", PermissionCode: "role_view", Status: MenuActive})
 	require.NoError(t, err)
-	_, err = h.service.CreateMenu(t.Context(), Menu{TenantID: 1, ParentID: parent.ID, Label: "Users", Route: "/iam/users", PermissionCode: "user_view", Status: MenuActive})
+	_, err = h.service.CreateMenu(t.Context(), Menu{TenantID: 1, ParentID: parent.ID, Label: "Users", Route: "/users", PermissionCode: "user_view", Status: MenuActive})
 	require.NoError(t, err)
 	tree, err := h.service.EffectiveMenus(t.Context(), 1, 11)
 	require.NoError(t, err)
 	require.Len(t, tree, 1)
 	require.Empty(t, tree[0].Path)
 	require.Len(t, tree[0].Children, 1)
-	require.Equal(t, "/iam/users", tree[0].Children[0].Path)
+	require.Equal(t, "/users", tree[0].Children[0].Path)
 	_, err = h.service.GrantPermission(t.Context(), 1, role.ID, "role_view")
 	require.NoError(t, err)
 	tree, err = h.service.EffectiveMenus(t.Context(), 1, 11)
 	require.NoError(t, err)
-	require.Equal(t, "/iam/roles", tree[0].Path)
+	require.Equal(t, "/roles", tree[0].Path)
 }
 
 func TestEffectiveMenusCannotWeakenBuiltInPagePermissions(t *testing.T) {
@@ -41,11 +41,11 @@ func TestEffectiveMenusCannotWeakenBuiltInPagePermissions(t *testing.T) {
 	require.NoError(t, err)
 	_, err = h.service.AddMember(t.Context(), 1, role.ID, 11)
 	require.NoError(t, err)
-	for _, route := range []string{"/iam/users", "/iam/users?custom=true", "/iam/%75sers", "/other/../iam/users", "/iam/entities/123/roles"} {
+	for _, route := range []string{"/users", "/users?custom=true", "/%75sers", "/other/../users", "/entities/123/roles"} {
 		_, err = h.service.CreateMenu(t.Context(), Menu{TenantID: 1, Label: route, Route: route, PermissionCode: "menu_view", Status: MenuActive})
 		require.NoError(t, err)
 	}
-	_, err = h.service.CreateMenu(t.Context(), Menu{TenantID: 1, Label: "Unprotected users", Route: "/iam/users?unprotected=true", Status: MenuActive})
+	_, err = h.service.CreateMenu(t.Context(), Menu{TenantID: 1, Label: "Unprotected users", Route: "/users?unprotected=true", Status: MenuActive})
 	require.NoError(t, err)
 	tree, err := h.service.EffectiveMenus(t.Context(), 1, 11)
 	require.NoError(t, err)

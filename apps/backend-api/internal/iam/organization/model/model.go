@@ -10,6 +10,7 @@ import (
 type Department struct {
 	TenantID  guid.ID   `gorm:"column:tenant_id;primaryKey;autoIncrement:false"`
 	ID        guid.ID   `gorm:"column:id;primaryKey;autoIncrement:false"`
+	EntityID  *guid.ID  `gorm:"column:entity_id"`
 	ParentID  *guid.ID  `gorm:"column:parent_id"`
 	Name      string    `gorm:"column:name;size:128;not null"`
 	NameKey   string    `gorm:"column:name_key;size:128;not null"`

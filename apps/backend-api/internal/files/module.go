@@ -1,14 +1,20 @@
 package files
 
 import (
-	"7link.com/platform/internal/infra/guid"
-	"7link.com/platform/pkg/appenv"
-	"7link.com/platform/pkg/module"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
+
+	"7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/iam/core"
+	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/appenv"
+	"7link.com/platform/pkg/extension/authz"
+	"7link.com/platform/pkg/module"
+	"github.com/danielgtaylor/huma/v2"
 )
 
 const Name = "files"
@@ -28,6 +34,13 @@ type Module struct {
 	registry     *Registry
 	runtime      *appenv.Runtime
 	accounts     *AccountObjects
+	registrar    *authz.Registrar
+	policy       core.EntityConstraintOn
+	subjects     core.AuthorizationSubjectsOn
+	references   core.AuthorizationReferencesOn
+	ids          guid.Source
+	appender     audit.Appender
+	operations   *operationService
 	workerMu     sync.Mutex
 	workerCancel context.CancelFunc
 	workerDone   chan struct{}
@@ -50,8 +63,9 @@ func (m *Module) RegisterDriver(name string, factory DriverFactory) error {
 	}
 	return m.registry.Register(name, factory)
 }
-func (*Module) ModuleName() string { return Name }
-func (m *Module) Enabled() bool    { return m != nil && m.config.Enabled }
+func (*Module) ModuleName() string           { return Name }
+func (*Module) ModuleDependencies() []string { return []string{guid.Name, audit.Name, core.Name} }
+func (m *Module) Enabled() bool              { return m != nil && m.config.Enabled }
 
 func (m *Module) ProvideServices(services *module.Services) error {
 	backend := m.config.Backend
@@ -83,6 +97,12 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[*AccountObjects](services, m.accounts); err != nil {
 		return err
 	}
+	if err := module.Provide[core.FileRootProvisioner](services, core.FileRootProvisioner(m.provisionOrganizationRoot)); err != nil {
+		return fmt.Errorf("provide file root provisioner: %w", err)
+	}
+	if err := module.Provide[core.FileRootContentChecker](services, core.FileRootContentChecker(m.organizationRootHasContent)); err != nil {
+		return fmt.Errorf("provide file root content checker: %w", err)
+	}
 	roots := make(map[string]string, len(m.config.LegacyLocalRoots))
 	for key, value := range m.config.LegacyLocalRoots {
 		roots[key] = value
@@ -92,10 +112,64 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	}))
 }
 
+func (m *Module) InjectServices(services *module.Services) error {
+	registrar, err := module.Resolve[*authz.Registrar](services)
+	if err != nil {
+		return fmt.Errorf("resolve files authorization registrar: %w", err)
+	}
+	policy, err := module.Resolve[core.EntityConstraintOn](services)
+	if err != nil {
+		return fmt.Errorf("resolve files transaction policy: %w", err)
+	}
+	subjects, err := module.Resolve[core.AuthorizationSubjectsOn](services)
+	if err != nil {
+		return fmt.Errorf("resolve files authorization subjects: %w", err)
+	}
+	references, err := module.Resolve[core.AuthorizationReferencesOn](services)
+	if err != nil {
+		return fmt.Errorf("resolve files authorization references: %w", err)
+	}
+	ids, err := module.Resolve[guid.Source](services)
+	if err != nil {
+		return fmt.Errorf("resolve files id generator: %w", err)
+	}
+	appender, err := module.Resolve[audit.Appender](services)
+	if err != nil {
+		return fmt.Errorf("resolve files audit appender: %w", err)
+	}
+	actions := fileAuthorizationActions()
+	for _, action := range actions {
+		if _, exists := registrar.Registry().Find(action.Code); exists {
+			return fmt.Errorf("register files permission %s: already registered", action.Code)
+		}
+	}
+	for _, action := range actions {
+		if err := registrar.Registry().Register(action); err != nil {
+			return fmt.Errorf("register files permission %s: %w", action.Code, err)
+		}
+	}
+	m.registrar, m.policy, m.subjects, m.references = registrar, policy, subjects, references
+	m.ids, m.appender = ids, appender
+	m.operations = &operationService{
+		runtime: m.runtime, driver: m.driver, objects: m.accounts, ids: ids, policy: policy, subjects: subjects, references: references,
+		appender: appender, budget: operationBudget{Nodes: 1000, ClosureRows: 100000}, timeout: 30 * time.Second,
+		uploadTimeout: 15 * time.Minute, maxUploadBytes: 100 << 20,
+	}
+	return nil
+}
+
 func (m *Module) Initialize(context.Context) error {
 	if m.driver == nil {
 		return ErrUnsupported
 	}
+	return nil
+}
+
+func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
+	if m == nil || m.operations == nil || m.registrar == nil {
+		return errOperationUnavailable
+	}
+	registerFileHTTP(api, m.operations, m.registrar)
 	return nil
 }
 
@@ -161,3 +235,10 @@ func (m *Module) Stop(ctx context.Context) error {
 		return ctx.Err()
 	}
 }
+
+var (
+	_ module.Depender        = (*Module)(nil)
+	_ module.ServiceProvider = (*Module)(nil)
+	_ module.ServiceInjector = (*Module)(nil)
+	_ module.HTTPRegistrar   = (*Module)(nil)
+)

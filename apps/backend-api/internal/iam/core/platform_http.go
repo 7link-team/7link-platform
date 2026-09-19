@@ -43,14 +43,14 @@ type listPlatformAdministratorsInput struct {
 
 func registerPlatformHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	authz.RegisterPlatform(registrar, a, huma.Operation{
-		OperationID: "iam-platform-permission-catalog", Method: http.MethodGet, Path: "/iam/platform-permission-catalog",
+		OperationID: "iam-platform-permission-catalog", Method: http.MethodGet, Path: "/platform/permission-catalog",
 		Summary: "List declared platform permissions", Tags: []string{"iam"},
 	}, authz.Guard{Resource: "platform", Verb: "administer"}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]authz.Action], error) {
 		return respx.OK(ctx, svc.PlatformPermissionCatalog(ctx)), nil
 	})
 
 	authz.RegisterPlatform(registrar, a, huma.Operation{
-		OperationID: "iam-list-platform-administrators", Method: http.MethodGet, Path: "/iam/platform-administrators",
+		OperationID: "iam-list-platform-administrators", Method: http.MethodGet, Path: "/platform/administrators",
 		Summary: "List platform administrators and their platform permissions", Tags: []string{"iam"},
 	}, authz.Guard{Resource: "platform", Verb: "administer"}, func(ctx context.Context, in *listPlatformAdministratorsInput) (*respx.Body[[]PlatformAdministratorView], error) {
 		administrators, total, err := svc.ListPlatformAdministratorsPage(ctx, in.Offset, in.Limit)
@@ -61,7 +61,7 @@ func registerPlatformHTTP(a huma.API, svc *Service, registrar *authz.Registrar) 
 	})
 
 	authz.RegisterPlatform(registrar, a, huma.Operation{
-		OperationID: "iam-put-platform-administrator", Method: http.MethodPut, Path: "/iam/platform-administrators/{principal_id}",
+		OperationID: "iam-put-platform-administrator", Method: http.MethodPut, Path: "/platform/administrators/{principal_id}",
 		Summary: "Grant or restrict platform authorization for a principal", Tags: []string{"iam"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "platform", Verb: "administer"}, func(ctx context.Context, in *putPlatformAdministratorInput) (*respx.Body[PlatformAdministratorView], error) {
@@ -77,7 +77,7 @@ func registerPlatformHTTP(a huma.API, svc *Service, registrar *authz.Registrar) 
 	})
 
 	authz.RegisterPlatform(registrar, a, huma.Operation{
-		OperationID: "iam-delete-platform-administrator", Method: http.MethodDelete, Path: "/iam/platform-administrators/{principal_id}",
+		OperationID: "iam-delete-platform-administrator", Method: http.MethodDelete, Path: "/platform/administrators/{principal_id}",
 		Summary: "Revoke every platform grant for a principal", Tags: []string{"iam"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "platform", Verb: "administer"}, func(ctx context.Context, in *platformPrincipalInput) (*respx.Body[MutationResult], error) {

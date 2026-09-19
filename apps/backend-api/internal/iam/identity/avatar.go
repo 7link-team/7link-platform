@@ -94,12 +94,8 @@ func (s *Service) migrateAvatarStorage(ctx context.Context, importer files.Legac
 			if avatar == nil {
 				return fmt.Errorf("invalid avatar reference for principal %s", row.ID.String())
 			}
-			prefix := "/api/iam/avatars/" + row.ID.String() + "/"
-			name := strings.TrimPrefix(avatar.URL, prefix)
-			if !strings.HasPrefix(avatar.URL, prefix) || len(name) != 52 || !strings.HasSuffix(name, ".png") {
-				return ErrInvalid
-			}
-			if _, err := hex.DecodeString(strings.TrimSuffix(name, ".png")); err != nil {
+			name, ok := avatarStorageName(row.ID, avatar)
+			if !ok {
 				return ErrInvalid
 			}
 			if err := importer(ctx, "avatars/"+row.ID.String()+"/"+name); err != nil {
@@ -119,6 +115,45 @@ func storedAvatar(raw string) *Avatar {
 		return nil
 	}
 	return &avatar
+}
+
+func avatarStorageName(id guid.ID, avatar *Avatar) (string, bool) {
+	if avatar == nil {
+		return "", false
+	}
+	var name string
+	for _, prefix := range []string{
+		"/api/avatars/" + id.String() + "/",
+		"/api/iam/avatars/" + id.String() + "/",
+	} {
+		if strings.HasPrefix(avatar.URL, prefix) {
+			name = strings.TrimPrefix(avatar.URL, prefix)
+			break
+		}
+	}
+	if len(name) != 52 || filepath.Base(name) != name || !strings.HasSuffix(name, ".png") {
+		return "", false
+	}
+	if _, err := hex.DecodeString(strings.TrimSuffix(name, ".png")); err != nil {
+		return "", false
+	}
+	return name, true
+}
+
+func currentAvatar(id guid.ID, avatar *Avatar) *Avatar {
+	if avatar == nil {
+		return nil
+	}
+	return &Avatar{Style: avatar.Style, URL: "/api/principals/" + id.String() + "/avatar"}
+}
+
+func candidateAvatar(avatar Avatar, id guid.ID) (Avatar, error) {
+	name, ok := avatarStorageName(id, &avatar)
+	if !ok {
+		return Avatar{}, ErrInvalid
+	}
+	avatar.URL = "/api/me/avatar-candidates/" + strings.TrimSuffix(name, ".png")
+	return avatar, nil
 }
 
 func avatarPixels(in avatarInput) ([]byte, string, error) {
@@ -191,7 +226,7 @@ func (r *Repository) saveAvatarFile(ctx context.Context, id guid.ID, pixels []by
 	if _, err := r.storage.Put(ctx, "avatars/"+id.String()+"/"+name, bytes.NewReader(pixels), int64(len(pixels))); err != nil {
 		return Avatar{}, err
 	}
-	return Avatar{Style: style, URL: "/api/iam/avatars/" + id.String() + "/" + name}, nil
+	return Avatar{Style: style, URL: "/api/avatars/" + id.String() + "/" + name}, nil
 }
 
 func (r *Repository) initializeAvatar(ctx context.Context, row *model.Principal) error {
@@ -235,7 +270,7 @@ func (r *Repository) prepareAvatarFile(ctx context.Context, id guid.ID, pixels [
 	if err != nil {
 		return Avatar{}, nil, 0, err
 	}
-	return Avatar{Style: style, URL: "/api/iam/avatars/" + id.String() + "/" + name}, prepared, referenceID, nil
+	return Avatar{Style: style, URL: "/api/avatars/" + id.String() + "/" + name}, prepared, referenceID, nil
 }
 
 // MyAvatar reads the caller's persisted global avatar reference.
@@ -248,7 +283,7 @@ func (s *Service) MyAvatar(ctx context.Context, id guid.ID) (Avatar, error) {
 		return Avatar{}, ErrPrincipalInactive
 	}
 	if avatar := storedAvatar(row.Avatar); avatar != nil {
-		return *avatar, nil
+		return *currentAvatar(id, avatar), nil
 	}
 	return Avatar{}, ErrNotFound
 }
@@ -272,12 +307,12 @@ func (s *Service) setMyAvatar(ctx context.Context, id guid.ID, in avatarInput, o
 	var pixels []byte
 	style := in.Style
 	if in.CandidateURL != "" {
-		prefix := "/api/iam/avatars/" + id.String() + "/"
-		name := strings.TrimPrefix(in.CandidateURL, prefix)
-		if !strings.HasPrefix(in.CandidateURL, prefix) || len(name) != 52 || filepath.Base(name) != name || !strings.HasSuffix(name, ".png") || in.ImageData != "" {
+		prefix := "/api/me/avatar-candidates/"
+		candidateID := strings.TrimPrefix(in.CandidateURL, prefix)
+		if !strings.HasPrefix(in.CandidateURL, prefix) || len(candidateID) != 48 || in.ImageData != "" {
 			return Avatar{}, ErrInvalid
 		}
-		if _, err := hex.DecodeString(strings.TrimSuffix(name, ".png")); err != nil {
+		if _, err := hex.DecodeString(candidateID); err != nil {
 			return Avatar{}, ErrInvalid
 		}
 		valid := false
@@ -293,12 +328,13 @@ func (s *Service) setMyAvatar(ctx context.Context, id guid.ID, in avatarInput, o
 	if err != nil {
 		return Avatar{}, err
 	}
-	avatar := Avatar{Style: style, URL: in.CandidateURL}
+	avatar := Avatar{Style: style}
 	var prepared *files.PreparedAccountObject
 	var referenceID guid.ID
 	if in.CandidateURL == "" {
 		avatar, prepared, referenceID, err = s.repo.prepareAvatarFile(ctx, id, pixels, style)
 	} else {
+		avatar.URL = "/api/avatars/" + id.String() + "/" + strings.TrimPrefix(in.CandidateURL, "/api/me/avatar-candidates/") + ".png"
 		referenceID, err = s.repo.nextID()
 	}
 	if err != nil {
@@ -321,7 +357,7 @@ func (s *Service) setMyAvatar(ctx context.Context, id guid.ID, in avatarInput, o
 		if prepared != nil {
 			err = repo.accountFiles.ReplaceAvatar(ctx, repo.writer(), prepared, referenceID, id)
 		} else {
-			name := strings.TrimPrefix(in.CandidateURL, "/api/iam/avatars/"+id.String()+"/")
+			name, _ := avatarStorageName(id, &avatar)
 			err = repo.accountFiles.UseAvatarCandidate(ctx, repo.writer(), id, referenceID, "avatars/"+id.String()+"/"+name, time.Now())
 		}
 		if errors.Is(err, files.ErrNotFound) {
@@ -339,14 +375,17 @@ func (s *Service) setMyAvatar(ctx context.Context, id guid.ID, in avatarInput, o
 		}
 		return repo.appendAudit(ctx, audit.NewDomainEvent(ctx, 0, "principal_avatar_updated", "principal", id))
 	})
-	return avatar, err
+	if err != nil {
+		return Avatar{}, err
+	}
+	return *currentAvatar(id, &avatar), nil
 }
 
 func (r *Repository) removeAvatarFile(id guid.ID, avatar *Avatar) {
 	if avatar == nil || avatar.URL == "" {
 		return
 	}
-	prefix := "/api/iam/avatars/" + id.String() + "/"
+	prefix := "/api/avatars/" + id.String() + "/"
 	if !strings.HasPrefix(avatar.URL, prefix) {
 		return
 	}
@@ -369,8 +408,8 @@ func (r *Repository) readAvatarFile(ctx context.Context, id guid.ID, name string
 	if err != nil {
 		return nil, err
 	}
-	defer reader.Close()
 	pixels, err := io.ReadAll(io.LimitReader(reader, 2*1024*1024+1))
+	err = errors.Join(err, reader.Close())
 	if err == nil && len(pixels) > 2*1024*1024 {
 		return nil, ErrInvalid
 	}
@@ -399,7 +438,11 @@ func (s *Service) AvatarCandidates(ctx context.Context, id guid.ID, requestedSty
 		if err != nil {
 			return nil, err
 		}
-		candidates = append(candidates, avatar)
+		candidate, err := candidateAvatar(avatar, id)
+		if err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, candidate)
 		preparedFiles = append(preparedFiles, prepared)
 		referenceIDs = append(referenceIDs, referenceID)
 	}
@@ -425,7 +468,7 @@ func (s *Service) AvatarCandidates(ctx context.Context, id guid.ID, requestedSty
 }
 
 func registerAvatarHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
-	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "identity-my-avatar", Method: http.MethodGet, Path: "/iam/me/avatar", Summary: "Read my avatar", Tags: []string{"identity"}}, func(ctx context.Context, in *ClosureBrowserInput) (*respx.Body[Avatar], error) {
+	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "identity-my-avatar", Method: http.MethodGet, Path: "/me/avatar", Summary: "Read my avatar", Tags: []string{"identity"}}, func(ctx context.Context, in *ClosureBrowserInput) (*respx.Body[Avatar], error) {
 		id, err := closurePrincipal(ctx, in.Cookie, in.Authorization)
 		if err != nil {
 			return nil, err
@@ -440,7 +483,7 @@ func registerAvatarHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 		ClosureBrowserInput
 		Body avatarInput
 	}
-	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "identity-set-my-avatar", Method: http.MethodPut, Path: "/iam/me/avatar", Summary: "Replace my avatar", Tags: []string{"identity"}, MaxBodyBytes: 2900000}, func(ctx context.Context, in *input) (*respx.Body[Avatar], error) {
+	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "identity-set-my-avatar", Method: http.MethodPut, Path: "/me/avatar", Summary: "Replace my avatar", Tags: []string{"identity"}, MaxBodyBytes: 2900000}, func(ctx context.Context, in *input) (*respx.Body[Avatar], error) {
 		id, err := s.closureMutationPrincipal(ctx, in.ClosureBrowserInput, http.MethodPut)
 		if err != nil {
 			return nil, err
@@ -453,8 +496,11 @@ func registerAvatarHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 	})
 	type imageInput struct {
 		PrincipalID string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
-		File        string `path:"file" pattern:"^[a-f0-9]{48}\\.png$" maxLength:"52"`
 		TenantID    string `query:"tenant_id" maxLength:"19"`
+	}
+	type candidateImageInput struct {
+		ClosureBrowserInput
+		CandidateID string `path:"candidate_id" pattern:"^[a-f0-9]{48}$" minLength:"48" maxLength:"48"`
 	}
 	type imageOutput struct {
 		ContentType  string `header:"Content-Type"`
@@ -462,7 +508,7 @@ func registerAvatarHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 		NoSniff      string `header:"X-Content-Type-Options"`
 		Body         []byte
 	}
-	authz.RegisterAuthenticated(registrar, api, huma.Operation{OperationID: "identity-avatar-image", Method: http.MethodGet, Path: "/iam/avatars/{principal_id}/{file}", Summary: "Read an authorized account avatar image", Tags: []string{"identity"}}, func(ctx context.Context, in *imageInput) (*imageOutput, error) {
+	authz.RegisterAuthenticated(registrar, api, huma.Operation{OperationID: "identity-avatar-image", Method: http.MethodGet, Path: "/principals/{principal_id}/avatar", Summary: "Read an authorized account avatar image", Tags: []string{"identity"}}, func(ctx context.Context, in *imageInput) (*imageOutput, error) {
 		claims, ok := authnext.FromContext(ctx)
 		if !ok || claims == nil {
 			return nil, huma.Error401Unauthorized("respx.unauthorized")
@@ -499,22 +545,33 @@ func registerAvatarHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 			return nil, identityError(err)
 		}
 		avatar := storedAvatar(row.Avatar)
-		if row.Status != "active" || (id != claims.PrincipalID && (avatar == nil || avatar.URL != "/api/iam/avatars/"+id.String()+"/"+in.File)) {
+		name, valid := avatarStorageName(id, avatar)
+		if row.Status != "active" || !valid {
 			return nil, huma.Error404NotFound("respx.not_found")
 		}
-		if avatar == nil || avatar.URL != "/api/iam/avatars/"+id.String()+"/"+in.File {
-			if s.repo.accountFiles == nil {
-				return nil, huma.Error404NotFound("respx.not_found")
-			}
-			readable, err := s.repo.accountFiles.AccountKeyReadable(ctx, s.repo.writer(), id, "avatars/"+id.String()+"/"+in.File, time.Now())
-			if err != nil {
-				return nil, identityError(err)
-			}
-			if !readable {
-				return nil, huma.Error404NotFound("respx.not_found")
-			}
+		pixels, err := s.repo.readAvatarFile(ctx, id, name)
+		if err != nil {
+			return nil, huma.Error404NotFound("respx.not_found")
 		}
-		pixels, err := s.repo.readAvatarFile(ctx, id, in.File)
+		return &imageOutput{ContentType: "image/png", CacheControl: "private, no-store", NoSniff: "nosniff", Body: pixels}, nil
+	})
+	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "identity-avatar-candidate-image", Method: http.MethodGet, Path: "/me/avatar-candidates/{candidate_id}", Summary: "Read my private expiring avatar candidate", Tags: []string{"identity"}}, func(ctx context.Context, in *candidateImageInput) (*imageOutput, error) {
+		id, err := closurePrincipal(ctx, in.Cookie, in.Authorization)
+		if err != nil {
+			return nil, err
+		}
+		name := in.CandidateID + ".png"
+		if s.repo.accountFiles == nil {
+			return nil, huma.Error404NotFound("respx.not_found")
+		}
+		readable, err := s.repo.accountFiles.AccountKeyReadable(ctx, s.repo.writer(), id, "avatars/"+id.String()+"/"+name, time.Now())
+		if err != nil {
+			return nil, identityError(err)
+		}
+		if !readable {
+			return nil, huma.Error404NotFound("respx.not_found")
+		}
+		pixels, err := s.repo.readAvatarFile(ctx, id, name)
 		if err != nil {
 			return nil, huma.Error404NotFound("respx.not_found")
 		}
@@ -526,7 +583,7 @@ func registerAvatarHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 			Style string `json:"style,omitempty" enum:"robot,pixel,monster,geometric"`
 		}
 	}
-	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "identity-avatar-candidates", Method: http.MethodPost, Path: "/iam/me/avatar-candidates", Summary: "Generate six private server-side avatar candidates", Tags: []string{"identity"}}, func(ctx context.Context, in *candidateInput) (*respx.Body[[]Avatar], error) {
+	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "identity-avatar-candidates", Method: http.MethodPost, Path: "/me/avatar-candidates", Summary: "Generate six private server-side avatar candidates", Tags: []string{"identity"}}, func(ctx context.Context, in *candidateInput) (*respx.Body[[]Avatar], error) {
 		id, err := s.closureMutationPrincipal(ctx, in.ClosureBrowserInput, http.MethodPost)
 		if err != nil {
 			return nil, err

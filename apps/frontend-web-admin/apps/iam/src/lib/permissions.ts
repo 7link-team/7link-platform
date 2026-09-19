@@ -3,7 +3,7 @@
 // Navigation is filtered by the effective menu tree, but a menu entry carries a
 // single page-level code and says nothing about verbs, so a member with only
 // `user_view` was still offered create, edit and delete buttons that the server
-// then refused. These codes come from `/iam/me/permissions` and are the
+// then refused. These codes come from `/me/permissions` and are the
 // caller's own, for the tenant currently selected plus whatever platform
 // authority they hold.
 //

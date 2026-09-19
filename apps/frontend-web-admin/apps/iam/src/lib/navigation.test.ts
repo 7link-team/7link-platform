@@ -12,7 +12,7 @@ const menus: EffectiveMenu[] = [
       {
         id: "users",
         label: "Users",
-        path: "/iam/users",
+        path: "/users",
         permission_code: "user_view",
         sort_order: 10,
       },
@@ -26,7 +26,7 @@ describe("effective navigation", () => {
       "iam",
       "users",
     ])
-    expect([...effectiveMenuPaths(menus)]).toEqual(["/iam/users"])
+    expect([...effectiveMenuPaths(menus)]).toEqual(["/users"])
   })
 
   it("keeps an empty authorization result empty", () => {
