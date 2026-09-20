@@ -3008,3 +3008,14 @@ provisioning 3、governance 3、federation 2、oauth 1、audit 1。
   `.temp/sqlite-lifecycle-4b977R`.
 - Next action: commit the reviewed tracked changes, push `IAM`, verify the remote
   tracking reference, and leave the acceptance services running.
+
+### Personal View Workspace Return Fix - 2026-09-20
+
+- Phase: ACCEPTANCE. Root navigation no longer captures an empty tenant at module
+  startup. Each visit to `/` resolves the authenticated account's active tenants,
+  preserves a valid prior selection, or selects the first active workspace.
+- `/me/*` uses `/` as the return entry so first-login users without local tenant
+  state can leave the personal view.
+- PASS: focused navigation/account tests 5/5, typecheck, lint, production build,
+  and real Chrome login -> `/me/profile` -> workspace navigation.
+- Next action: push the focused fix and keep the existing acceptance URL running.

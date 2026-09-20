@@ -6,6 +6,10 @@ export function isPlatformRoute(route: string): boolean {
   return url.pathname === "/platform" || url.pathname.startsWith("/platform/")
 }
 
+export function workspacePath(tenantID: string): string {
+  return tenantID ? `/tenants/${encodeURIComponent(tenantID)}` : "/me"
+}
+
 export function tenantNavigation(menus: EffectiveMenu[]): EffectiveMenu[] {
   return menus.flatMap((menu) => {
     const children = tenantNavigation(menu.children ?? [])

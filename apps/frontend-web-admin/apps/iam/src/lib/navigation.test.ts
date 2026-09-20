@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test"
 import type { EffectiveMenu } from "./iam-api"
-import { effectiveMenuPaths, flattenEffectiveMenus } from "./navigation"
+import {
+  effectiveMenuPaths,
+  flattenEffectiveMenus,
+  workspacePath,
+} from "./navigation"
 
 const menus: EffectiveMenu[] = [
   {
@@ -21,6 +25,16 @@ const menus: EffectiveMenu[] = [
 ]
 
 describe("effective navigation", () => {
+  it("returns to the current tenant workspace without capturing startup state", () => {
+    expect(workspacePath("38001505780891648")).toBe(
+      "/tenants/38001505780891648"
+    )
+    expect(workspacePath("tenant / 测试")).toBe(
+      "/tenants/tenant%20%2F%20%E6%B5%8B%E8%AF%95"
+    )
+    expect(workspacePath("")).toBe("/me")
+  })
+
   it("flattens nested authorized menu paths", () => {
     expect(flattenEffectiveMenus(menus).map((menu) => menu.id)).toEqual([
       "iam",

@@ -1,12 +1,24 @@
-import { createBrowserRouter, Navigate, Outlet } from "react-router"
+import { createBrowserRouter, Navigate, Outlet, redirect } from "react-router"
 import { AuthProvider } from "./components/auth-provider"
 import { PendingRoute } from "./components/pending-route"
 import { RouteError } from "./components/route-error"
-import { getTenant } from "./lib/iam-api"
+import { getTenant, iamApi, setTenant } from "./lib/iam-api"
+import { workspacePath } from "./lib/navigation"
 
-function workspaceHome(): string {
-  const tenantID = getTenant()
-  return tenantID ? `/tenants/${encodeURIComponent(tenantID)}` : "/me"
+async function workspaceHomeLoader() {
+  try {
+    const tenants = (await iamApi.myTenants()).filter(
+      (tenant) => tenant.status === "active"
+    )
+    const selected = getTenant()
+    const tenantID = tenants.some((tenant) => tenant.id === selected)
+      ? selected
+      : (tenants[0]?.id ?? "")
+    if (tenantID) setTenant(tenantID)
+    return redirect(workspacePath(tenantID))
+  } catch {
+    return redirect("/me")
+  }
 }
 
 export const router = createBrowserRouter([
@@ -46,7 +58,10 @@ export const router = createBrowserRouter([
           </AuthProvider>
         ),
         children: [
-          { index: true, element: <Navigate to={workspaceHome()} replace /> },
+          {
+            index: true,
+            loader: workspaceHomeLoader,
+          },
           {
             path: "/me",
             lazy: async () => ({
