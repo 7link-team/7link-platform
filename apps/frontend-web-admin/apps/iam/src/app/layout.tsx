@@ -104,6 +104,17 @@ export default function AppLayout() {
       ? entityCatalog
       : null
   const selectedEntity = catalog?.items.find((entity) => entity.id === entityID)
+  const [scopedFileAccess, setScopedFileAccess] = useState<{
+    subject: string
+    tenant: string
+    entityID: string
+  } | null>(null)
+  const scopedFileEntityID =
+    !entityID &&
+    scopedFileAccess?.subject === subject &&
+    scopedFileAccess.tenant === tenantValue
+      ? scopedFileAccess.entityID
+      : ""
 
   useEffect(() => {
     if (!routeTenantID) return
@@ -137,6 +148,38 @@ export default function AppLayout() {
       window.removeEventListener("entity-catalog-change", refresh)
     }
   }, [status, tenantValue, subject, directoryReady])
+
+  useEffect(() => {
+    if (
+      status !== "authenticated" ||
+      !tenantValue ||
+      entityID ||
+      !catalog
+    )
+      return
+    let active = true
+    void Promise.all(
+      catalog.items.map(async (entity) => ({
+        entity,
+        permissions: await iamApi
+          .myPermissions(tenantValue, entity.id)
+          .catch((): string[] => []),
+      }))
+    ).then((results) => {
+      if (!active) return
+      const match = results.find(({ permissions }) =>
+        permissions.includes("file_view")
+      )
+      setScopedFileAccess(
+        match
+          ? { subject, tenant: tenantValue, entityID: match.entity.id }
+          : { subject, tenant: tenantValue, entityID: "" }
+      )
+    })
+    return () => {
+      active = false
+    }
+  }, [status, tenantValue, entityID, subject, catalog])
   const loginState = useMemo(
     () => ({ from: location.pathname }),
     [location.pathname]
@@ -329,6 +372,7 @@ export default function AppLayout() {
                   permissions={permissions}
                   tenantID={tenantValue}
                   entityID={entityID}
+                  scopedFileEntityID={scopedFileEntityID}
                   language={menuLanguage}
                   menus={directoryReady ? (menus ?? []) : []}
                   platformTenantAccess={platformTenantAccess}
@@ -415,6 +459,7 @@ export default function AppLayout() {
           permissions={permissions}
           tenantID={tenantValue}
           entityID={entityID}
+          scopedFileEntityID={scopedFileEntityID}
           language={menuLanguage}
           menus={directoryReady ? (menus ?? []) : []}
           platformTenantAccess={platformTenantAccess}

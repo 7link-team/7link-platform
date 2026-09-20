@@ -116,6 +116,7 @@ const definitions = [
 
 const filePermissions = [
   "entity_view",
+  "dept_view",
   "file_view",
   "file_read_all",
   "file_list",
@@ -212,6 +213,29 @@ for (const definition of definitions) {
     await call(`/roles/${discoveryRole.id}/members/${principal.id}`, {
       method: "PUT",
     })
+    const labelRole = await ensureFromList(
+      "/roles?limit=200",
+      (item) => item.name === "UAT Files: 实体账号部门标签",
+      {
+        name: "UAT Files: 实体账号部门标签",
+        description: "Read-only names for departments visible in entity files",
+      }
+    )
+    await call(`/roles/${labelRole.id}/permissions/dept_view`, {
+      method: "PUT",
+    })
+    await call(`/roles/${labelRole.id}/data-scope`, {
+      method: "PUT",
+      body: {
+        scope: "selected_departments",
+        department_ids: Object.values(departments).map(
+          (department) => department.id
+        ),
+      },
+    })
+    await call(`/roles/${labelRole.id}/members/${principal.id}`, {
+      method: "PUT",
+    })
     await call(
       `/entities/${entity.id}/role-bindings/${role.id}/${principal.id}`,
       {
@@ -235,8 +259,11 @@ for (const definition of definitions) {
     role: definition.role,
     loginName: definition.loginName,
     password: credential.password,
+    tenantID,
   })
 }
+
+accounts[0].tenantID = tenantID
 
 process.stdout.write(
   JSON.stringify({ accounts, tenantID, entityID: entity.id, departments }) +

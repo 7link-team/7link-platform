@@ -9,6 +9,7 @@ import { SimpleSelect } from "@workspace/ui/components/select"
 import {
   ApiError,
   iamApi,
+  setTenant,
   type AuthnCapabilities,
   type LoginResult,
 } from "../../lib/iam-api"
@@ -54,6 +55,9 @@ export default function LoginPage() {
         String(data.get("password") ?? ""),
         `${window.location.origin}${requested}`
       )
+      const devTenantID = String(data.get("dev_tenant_id") ?? "")
+      if (result.status !== "mfa_required" && devTenantID)
+        setTenant(devTenantID)
       if (result.status === "mfa_required") setChallenge(result)
     } catch (cause) {
       setError(t(loginError(cause)))
@@ -190,6 +194,7 @@ function PasswordForm({
   )
   const [loginName, setLoginName] = useState(defaultAccount?.loginName ?? "")
   const [password, setPassword] = useState(defaultAccount?.password ?? "")
+  const [tenantID, setTenantID] = useState(defaultAccount?.tenantID ?? "")
 
   const selectAccount = (id: string) => {
     const account = devLoginAccounts.find((candidate) => candidate.id === id)
@@ -197,10 +202,12 @@ function PasswordForm({
     setSelectedAccount(account.id)
     setLoginName(account.loginName)
     setPassword(account.password)
+    setTenantID(account.tenantID ?? "")
   }
 
   const editCredential = (setter: (value: string) => void, value: string) => {
     setSelectedAccount("")
+    setTenantID("")
     setter(value)
   }
 
@@ -210,6 +217,7 @@ function PasswordForm({
       onSubmit={onSubmit}
       aria-labelledby="login-title"
     >
+      <input type="hidden" name="dev_tenant_id" value={tenantID} />
       <BrandHeader />
       {devLoginAccounts.length > 0 && (
         <div className="space-y-2 rounded-md border border-dashed bg-muted/40 p-3">

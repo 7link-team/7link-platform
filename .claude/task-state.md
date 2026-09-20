@@ -3019,3 +3019,20 @@ provisioning 3、governance 3、federation 2、oauth 1、audit 1。
 - PASS: focused navigation/account tests 5/5, typecheck, lint, production build,
   and real Chrome login -> `/me/profile` -> workspace navigation.
 - Next action: push the focused fix and keep the existing acceptance URL running.
+
+### Scoped File Menu And Department Labels - 2026-09-20
+
+- Phase: ACCEPTANCE. Entity and department demo accounts now select the UAT
+  tenant at login and receive a tenant-sidebar File management entry that links
+  to their authorized entity route, never to the tenant-wide file route.
+- Department file roots resolve only their already-visible department IDs to
+  readable names. The entity persona has a separate tenant-level read-only role
+  limited to the two selected UAT departments; its file rights remain entity-bound.
+- PASS: 44 focused tests, typecheck, lint, production build, `git diff --check`,
+  and real Chrome E2E for all five personas. Entity sees entity + UAT Finance +
+  UAT Operations roots; department sees only UAT Finance. Both see the correct
+  entity-scoped File management menu link from the tenant view.
+- Runtime remains available at `http://127.0.0.1:61828/login`, backed by API
+  `http://127.0.0.1:61827` and the isolated SQLite fixture.
+- Next action: commit the reviewed changes, push `IAM`, verify local and remote
+  heads match, and leave the acceptance services running.

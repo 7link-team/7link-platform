@@ -3,6 +3,7 @@ export interface DevLoginAccount {
   role: string
   loginName: string
   password: string
+  tenantID?: string
 }
 
 export function parseDevLoginAccounts(
@@ -28,7 +29,9 @@ export function parseDevLoginAccounts(
         typeof account.loginName === "string" &&
         account.loginName.length > 0 &&
         typeof account.password === "string" &&
-        account.password.length > 0
+        account.password.length > 0 &&
+        (account.tenantID === undefined ||
+          (typeof account.tenantID === "string" && account.tenantID.length > 0))
     )
   } catch {
     return []

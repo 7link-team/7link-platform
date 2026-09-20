@@ -181,6 +181,13 @@ function rootNameMessage(scope: FileBrowserRootScope) {
   }
 }
 
+function rootLabel(
+  root: FileBrowserRoot,
+  translate: (key: string) => string
+): string {
+  return root.ownerName?.trim() || translate(rootNameMessage(root.scope))
+}
+
 function subscribeWide(onChange: () => void) {
   const media = window.matchMedia("(min-width: 1280px)")
   media.addEventListener("change", onChange)
@@ -344,7 +351,7 @@ function FileBrowserBody({
     node.restorePath
       ?.map((segment) => {
         const root = roots.find((candidate) => candidate.id === segment.id)
-        return root ? tf(rootNameMessage(root.scope)) : segment.name
+        return root ? rootLabel(root, tf) : segment.name
       })
       .join(" / ")
   const directories = ready
@@ -563,7 +570,7 @@ function FileBrowserBody({
               >
                 <FolderOpen className="shrink-0" />
                 <span className="min-w-0 truncate text-start">
-                  {tf(rootNameMessage(root.scope))}
+                  {rootLabel(root, tf)}
                 </span>
               </Button>
             ))}

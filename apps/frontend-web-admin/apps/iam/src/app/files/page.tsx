@@ -131,7 +131,28 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
     void iamApi
       .files(fileEntityID)
       .then(async (rootPage) => {
-        const roots = fileBrowserRoots(rootPage)
+        const departmentIDs = account
+          ? []
+          : [
+              ...new Set(
+                (rootPage.items ?? []).flatMap((root) =>
+                  root.department_id ? [root.department_id] : []
+                )
+              ),
+            ]
+        const departments = (
+          await Promise.all(
+            departmentIDs.map((id) =>
+              iamApi.department(id).catch(() => null)
+            )
+          )
+        ).filter((department) => department !== null)
+        const roots = fileBrowserRoots(
+          rootPage,
+          Object.fromEntries(
+            departments.map((department) => [department.id, department.name])
+          )
+        )
         if (recycleBin) {
           const trash = fileBrowserEntries(
             await iamApi.trashedFiles(fileEntityID, pageAfter)

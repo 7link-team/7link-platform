@@ -59,6 +59,7 @@ export function AppSidebar({
   className = "",
   language = "",
   entityID = "",
+  scopedFileEntityID = "",
   tenantID = "",
 }: {
   permissions?: EffectivePermissions
@@ -69,6 +70,7 @@ export function AppSidebar({
   className?: string
   language?: string
   entityID?: string
+  scopedFileEntityID?: string
   tenantID?: string
 }) {
   const t = useTranslations("iam")
@@ -81,6 +83,7 @@ export function AppSidebar({
   menus = tenantNavigation(menus)
   const paths = effectiveMenuPaths(menus)
   const fileAccess = can(permissions, "file_view")
+  const scopedFileAccess = Boolean(scopedFileEntityID)
   if (entityID && !platformView) {
     const base = `${tenantBase}/entities/${encodeURIComponent(entityID)}`
     return (
@@ -162,7 +165,10 @@ export function AppSidebar({
           </section>
         )}
         {!platformView &&
-          (menus.length > 0 || fieldPolicyAccess || fileAccess) && (
+          (menus.length > 0 ||
+            fieldPolicyAccess ||
+            fileAccess ||
+            scopedFileAccess) && (
           <section aria-label={t("tenantMenu")}>
             <h2 className="mb-2 px-3 text-xs font-semibold text-muted-foreground">
               {t("currentTenant")}
@@ -180,6 +186,13 @@ export function AppSidebar({
             {fileAccess && !paths.has("/files") && (
               <SideLink
                 to={`${tenantBase}/files`}
+                icon={<Folder />}
+                label={t("files")}
+              />
+            )}
+            {!fileAccess && scopedFileAccess && (
+              <SideLink
+                to={`${tenantBase}/entities/${encodeURIComponent(scopedFileEntityID)}/files`}
                 icon={<Folder />}
                 label={t("files")}
               />

@@ -289,6 +289,27 @@ describe("file browser presentation", () => {
       nextAfter: "",
     })
   })
+  it("maps department owner IDs to readable names", () => {
+    expect(
+      fileBrowserRoots(
+        {
+          items: [
+            {
+              id: "2",
+              name: "department-50",
+              kind: "directory",
+              scope: "department",
+              tenant_id: "90",
+              department_id: "50",
+              updated_at: "2026-09-18T12:00:00Z",
+              revision: 1,
+            },
+          ],
+        },
+        { "50": "Finance" }
+      )[0]?.ownerName
+    ).toBe("Finance")
+  })
   it("rejects malformed or unbounded API snapshots", () => {
     expect(() =>
       fileBrowserEntries({

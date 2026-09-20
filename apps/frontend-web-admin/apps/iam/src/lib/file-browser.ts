@@ -20,6 +20,7 @@ export type FileBrowserRoot = FileBrowserLocation & {
   scope: FileBrowserRootScope
   ownerID: string
   tenantID?: string
+  ownerName?: string
 }
 export type FileBrowserSort = "name" | "size" | "updated"
 
@@ -488,7 +489,10 @@ export async function materializeDroppedEntries(
   }
 }
 
-export function fileBrowserRoots(page: FilePage): FileBrowserRoot[] {
+export function fileBrowserRoots(
+  page: FilePage,
+  ownerNames: Readonly<Record<string, string>> = {}
+): FileBrowserRoot[] {
   const items = page.items ?? []
   if (items.length > 100) throw new Error("invalid_response")
   const seen = new Set<string>()
@@ -551,6 +555,7 @@ export function fileBrowserRoots(page: FilePage): FileBrowserRoot[] {
       scope: item.scope,
       ownerID,
       tenantID: item.tenant_id,
+      ...(ownerNames[ownerID] ? { ownerName: ownerNames[ownerID] } : {}),
     }
   })
 }

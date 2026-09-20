@@ -73,6 +73,15 @@ describe("FileBrowser", () => {
           scope: "department",
           ownerID: "50",
           tenantID: "90",
+          ownerName: "Finance",
+        },
+        {
+          id: "12",
+          name: "Department files",
+          scope: "department",
+          ownerID: "51",
+          tenantID: "90",
+          ownerName: "Operations",
         },
         {
           id: "11",
@@ -85,6 +94,8 @@ describe("FileBrowser", () => {
     })
     expect(html).toContain(en.rootScopeEntity)
     expect(html).toContain(en.rootScopeDepartment)
+    expect(html).toContain("Finance")
+    expect(html).toContain("Operations")
     expect(html).not.toContain(">80<")
     expect(html).not.toContain(">50<")
     expect(html.indexOf(en.rootScopeEntity)).toBeLessThan(

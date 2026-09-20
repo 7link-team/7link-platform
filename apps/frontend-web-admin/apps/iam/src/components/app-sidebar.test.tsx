@@ -12,7 +12,8 @@ function renderSidebar(
   fieldPolicyAccess = false,
   path = "/",
   entityID = "",
-  permissions: ReadonlySet<string> | null = new Set(["entity_view"])
+  permissions: ReadonlySet<string> | null = new Set(["entity_view"]),
+  scopedFileEntityID = ""
 ): string {
   return renderToStaticMarkup(
     <MemoryRouter initialEntries={[path]}>
@@ -21,6 +22,7 @@ function renderSidebar(
           tenantID="456"
           permissions={permissions}
           entityID={entityID}
+          scopedFileEntityID={scopedFileEntityID}
           menus={menus}
           platformTenantAccess={platformTenantAccess}
           platformAuditAccess={permissions?.has("platform_administer") ?? false}
@@ -100,6 +102,19 @@ describe("AppSidebar", () => {
     expect(renderSidebar([], false, false, "/")).not.toContain(
       'href="/tenants/456/files"'
     )
+  })
+  it("links scoped accounts to entity files without exposing tenant files", () => {
+    const html = renderSidebar(
+      [],
+      false,
+      false,
+      "/tenants/456",
+      "",
+      new Set(["entity_view"]),
+      "123"
+    )
+    expect(html).toContain('href="/tenants/456/entities/123/files"')
+    expect(html).not.toContain('href="/tenants/456/files"')
   })
   it("does not duplicate a tenant file menu supplied by the server", () => {
     const html = renderSidebar(

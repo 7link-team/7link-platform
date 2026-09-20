@@ -110,7 +110,10 @@ try {
       await page.getByText("Loading files…", { exact: true }).waitFor({
         state: "hidden",
       })
-    } else assert.equal(await tenantFilesLink.count(), 0)
+    } else {
+      await tenantFilesLink.waitFor()
+      assert.equal(await tenantFilesLink.getAttribute("href"), `${entityBase}/files`)
+    }
 
     await page.goto(`${entityBase}/files`)
     try {
@@ -135,13 +138,16 @@ try {
       `${entityBase}/files`
     )
     for (const root of roots) {
+      const departmentName = Object.entries(fixture.departments).find(
+        ([, department]) => department.id === root.department_id
+      )?.[0]
       const label =
         root.scope === "tenant"
           ? "Tenant files"
           : root.scope === "entity"
             ? "Entity files"
             : root.scope === "department"
-              ? "Department files"
+              ? (departmentName ?? "Department files")
               : "Personal files"
       await page
         .getByRole("button", { name: label, exact: true })
