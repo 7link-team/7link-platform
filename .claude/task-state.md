@@ -3074,4 +3074,10 @@ provisioning 3、governance 3、federation 2、oauth 1、audit 1。
 - PASS: component tests 12/12, typecheck, lint, desktop/mobile real Chrome,
   exactly two toolbar bands, zero horizontal overflow at 1440px and 390px, and
   department-folder navigation with persistent mode plus zero inherited checks.
-- Next action: run the production build and diff check, then commit and push IAM.
+- Follow-up: all file actions, including the selection-mode toggle, select-all,
+  bulk actions, create/upload/paste and refresh, are grouped on the left. Only
+  view and sort controls remain right-aligned. Tenant file refresh now receives
+  the same read-only refresh callback as account/entity views instead of staying
+  permanently disabled.
+- Next action: verify the final left/right grouping and tenant refresh in real
+  Chrome, run build/diff checks, then commit and push IAM.

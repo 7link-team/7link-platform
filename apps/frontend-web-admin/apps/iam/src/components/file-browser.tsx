@@ -307,10 +307,11 @@ function FileBrowserBody({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [anchor, setAnchor] = useState<string | null>(null)
   const [detailsID, setDetailsID] = useState<string | null>(null)
-  const [previewNode, setPreviewNode] = useState<FileBrowserNode | null>(() =>
-    nodes.find(
-      (node) => node.id === initialPreviewID && node.kind === "file"
-    ) ?? null
+  const [previewNode, setPreviewNode] = useState<FileBrowserNode | null>(
+    () =>
+      nodes.find(
+        (node) => node.id === initialPreviewID && node.kind === "file"
+      ) ?? null
   )
   const propertyTitle = useRef<HTMLHeadingElement>(null)
   const details = nodes.find((node) => node.id === detailsID) ?? null
@@ -405,8 +406,7 @@ function FileBrowserBody({
     event: KeyboardEvent<HTMLButtonElement>,
     node: FileBrowserNode
   ) => {
-    if (event.key !== "Enter" || node.kind !== "directory" || recycleBin)
-      return
+    if (event.key !== "Enter" || node.kind !== "directory" || recycleBin) return
     event.preventDefault()
     open(node)
   }
@@ -432,10 +432,7 @@ function FileBrowserBody({
     event.dataTransfer.dropEffect = "move"
     setMoveTargetID(destination.id)
   }
-  const moveInto = async (
-    event: DragEvent,
-    destination: FileBrowserNode
-  ) => {
+  const moveInto = async (event: DragEvent, destination: FileBrowserNode) => {
     if (moveTargetID !== destination.id || !movingNodes.current.length) return
     event.preventDefault()
     event.stopPropagation()
@@ -844,6 +841,24 @@ function FileBrowserBody({
             </div>
             <div className="flex min-h-14 flex-wrap items-center justify-between gap-2 border-b px-3 py-1">
               <div className="flex min-h-11 min-w-0 flex-wrap items-center gap-1">
+                {ready && visiblePath.length > 0 && (
+                  <Tool
+                    label={tf("selectionMode")}
+                    active={selectionMode}
+                    disabled={busy}
+                    onClick={() => {
+                      setSelectionMode((value) => {
+                        if (value) {
+                          setSelected(new Set())
+                          setAnchor(null)
+                        }
+                        return !value
+                      })
+                    }}
+                  >
+                    <SquareCheckBig />
+                  </Tool>
+                )}
                 {selectionMode && (
                   <>
                     <label className="flex min-h-11 items-center gap-2 text-sm">
@@ -937,66 +952,6 @@ function FileBrowserBody({
                     )}
                   </>
                 )}
-              </div>
-              <div className="ms-auto flex flex-wrap items-center justify-end gap-1">
-              <div
-                role="group"
-                aria-label={tf("view")}
-                className="flex shrink-0"
-              >
-                <Tool
-                  label={tf("detailsView")}
-                  active={view === "details"}
-                  onClick={() => setView("details")}
-                >
-                  <List />
-                </Tool>
-                <Tool
-                  label={tf("smallView")}
-                  active={view === "small"}
-                  onClick={() => setView("small")}
-                >
-                  <Grid2X2 className="size-4" />
-                </Tool>
-                <Tool
-                  label={tf("largeView")}
-                  active={view === "large"}
-                  onClick={() => setView("large")}
-                >
-                  <Grid2X2 />
-                </Tool>
-              </div>
-                <div className="w-32 shrink-0">
-                  <span id="file-sort-label" className="sr-only">
-                    {tf("sort")}
-                  </span>
-                  <SimpleSelect
-                    aria-labelledby="file-sort-label"
-                    triggerClassName="min-h-11"
-                    value={sort}
-                    options={{
-                      name: tf("name"),
-                      size: tf("size"),
-                      updated: tf("updated"),
-                    }}
-                    onValueChange={(value) => {
-                      if (
-                        value === "name" ||
-                        value === "size" ||
-                        value === "updated"
-                      )
-                        setSort(value)
-                    }}
-                    disabled={!ready}
-                  />
-                </div>
-                <Tool
-                  label={tf(descending ? "ascending" : "descending")}
-                  disabled={!ready}
-                  onClick={() => setDescending((value) => !value)}
-                >
-                  {descending ? <ArrowDown /> : <ArrowUp />}
-                </Tool>
                 {ready && !roots.length && onEnsurePersonalRoot && (
                   <Button
                     className="min-h-11"
@@ -1057,22 +1012,6 @@ function FileBrowserBody({
                           )
                       }}
                     />
-                    <Tool
-                      label={tf("selectionMode")}
-                      active={selectionMode}
-                      disabled={busy}
-                      onClick={() => {
-                        setSelectionMode((value) => {
-                          if (value) {
-                            setSelected(new Set())
-                            setAnchor(null)
-                          }
-                          return !value
-                        })
-                      }}
-                    >
-                      <SquareCheckBig />
-                    </Tool>
                   </>
                 )}
                 <Tool
@@ -1081,6 +1020,66 @@ function FileBrowserBody({
                   onClick={() => onRefresh?.()}
                 >
                   <RefreshCw />
+                </Tool>
+              </div>
+              <div className="ms-auto flex flex-wrap items-center justify-end gap-1">
+                <div
+                  role="group"
+                  aria-label={tf("view")}
+                  className="flex shrink-0"
+                >
+                  <Tool
+                    label={tf("detailsView")}
+                    active={view === "details"}
+                    onClick={() => setView("details")}
+                  >
+                    <List />
+                  </Tool>
+                  <Tool
+                    label={tf("smallView")}
+                    active={view === "small"}
+                    onClick={() => setView("small")}
+                  >
+                    <Grid2X2 className="size-4" />
+                  </Tool>
+                  <Tool
+                    label={tf("largeView")}
+                    active={view === "large"}
+                    onClick={() => setView("large")}
+                  >
+                    <Grid2X2 />
+                  </Tool>
+                </div>
+                <div className="w-32 shrink-0">
+                  <span id="file-sort-label" className="sr-only">
+                    {tf("sort")}
+                  </span>
+                  <SimpleSelect
+                    aria-labelledby="file-sort-label"
+                    triggerClassName="min-h-11"
+                    value={sort}
+                    options={{
+                      name: tf("name"),
+                      size: tf("size"),
+                      updated: tf("updated"),
+                    }}
+                    onValueChange={(value) => {
+                      if (
+                        value === "name" ||
+                        value === "size" ||
+                        value === "updated"
+                      )
+                        setSort(value)
+                    }}
+                    disabled={!ready}
+                  />
+                </div>
+                <Tool
+                  label={tf(descending ? "ascending" : "descending")}
+                  disabled={!ready}
+                  onClick={() => setDescending((value) => !value)}
+                >
+                  {descending ? <ArrowDown /> : <ArrowUp />}
                 </Tool>
               </div>
             </div>
@@ -1144,7 +1143,11 @@ function FileBrowserBody({
                           onDragEnd={finishMove}
                           onDragOver={(event) => moveOver(event, node)}
                           onDragLeave={(event) => {
-                            if (!event.currentTarget.contains(event.relatedTarget as Node))
+                            if (
+                              !event.currentTarget.contains(
+                                event.relatedTarget as Node
+                              )
+                            )
                               setMoveTargetID((current) =>
                                 current === node.id ? null : current
                               )
@@ -1596,9 +1599,7 @@ function FileBrowserBody({
             key={`${previewNode.id}:${previewNode.revision}`}
             node={previewNode}
             loadFile={onPreview}
-            onDownload={
-              onDownload ? () => onDownload(previewNode) : undefined
-            }
+            onDownload={onDownload ? () => onDownload(previewNode) : undefined}
             onClose={() => {
               setPreviewNode(null)
               onClosePreview?.()

@@ -406,7 +406,7 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
             }
           : undefined
       }
-      onRefresh={account || entityID ? refresh : undefined}
+      onRefresh={refresh}
       onEnsurePersonalRoot={
         !recycleBin && (account || entityID)
           ? () =>
