@@ -3062,3 +3062,16 @@ provisioning 3、governance 3、federation 2、oauth 1、audit 1。
   double-click navigation and selection-mode persistence.
 - Delivered in `726a2e2`; `origin/IAM` accepted the push. Acceptance services
   remain running and no implementation work remains.
+
+### Two-Row File Toolbar And Persistent Selection Mode - 2026-09-20
+
+- Phase: ACCEPTANCE. The former three toolbar bands are now two: navigation,
+  path, search and type filter on the first; selection/bulk controls plus view,
+  sort and mutation actions on the second, with actions aligned to the right.
+- The stable FileBrowser wrapper now owns selection-mode state. Directory/page
+  body remounts still clear item selections and metadata, while checkbox mode
+  remains enabled after the destination fully loads.
+- PASS: component tests 12/12, typecheck, lint, desktop/mobile real Chrome,
+  exactly two toolbar bands, zero horizontal overflow at 1440px and 390px, and
+  department-folder navigation with persistent mode plus zero inherited checks.
+- Next action: run the production build and diff check, then commit and push IAM.

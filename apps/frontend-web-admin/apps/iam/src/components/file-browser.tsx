@@ -3,9 +3,11 @@ import {
   useState,
   useSyncExternalStore,
   type DragEvent,
+  type Dispatch,
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
+  type SetStateAction,
 } from "react"
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import {
@@ -230,9 +232,10 @@ function Tool({
   )
 }
 
-// A location/page change remounts the body so selections and metadata never
-// carry into a different authorized page. View/filter changes keep ID selection.
+// A location/page change remounts the body so item selections and metadata do
+// not cross authorization boundaries. The explicit selection mode stays active.
 export function FileBrowser(props: FileBrowserProps) {
+  const [selectionMode, setSelectionMode] = useState(false)
   return (
     <FileBrowserBody
       key={JSON.stringify([
@@ -243,6 +246,8 @@ export function FileBrowser(props: FileBrowserProps) {
         props.initialPreviewID,
       ])}
       {...props}
+      selectionMode={selectionMode}
+      setSelectionMode={setSelectionMode}
     />
   )
 }
@@ -281,7 +286,12 @@ function FileBrowserBody({
   onOpenNewTab,
   onMoveTo,
   onRestore,
-}: FileBrowserProps) {
+  selectionMode,
+  setSelectionMode,
+}: FileBrowserProps & {
+  selectionMode: boolean
+  setSelectionMode: Dispatch<SetStateAction<boolean>>
+}) {
   const tf = useTranslations("files")
   const locale = useLocale()
   const wide = useSyncExternalStore(
@@ -295,7 +305,6 @@ function FileBrowserBody({
   const [sort, setSort] = useState<FileBrowserSort>("name")
   const [descending, setDescending] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [selectionMode, setSelectionMode] = useState(false)
   const [anchor, setAnchor] = useState<string | null>(null)
   const [detailsID, setDetailsID] = useState<string | null>(null)
   const [previewNode, setPreviewNode] = useState<FileBrowserNode | null>(() =>
@@ -797,96 +806,7 @@ function FileBrowserBody({
                   </span>
                 )}
               </nav>
-              <div className="ms-auto flex items-center gap-1">
-                {ready && !roots.length && onEnsurePersonalRoot && (
-                  <Button
-                    className="min-h-11"
-                    disabled={busy}
-                    onClick={() => void onEnsurePersonalRoot()}
-                  >
-                    {busy ? (
-                      <LoaderCircle className="animate-spin" />
-                    ) : (
-                      <FolderPlus />
-                    )}
-                    {tf("createPersonalRoot")}
-                  </Button>
-                )}
-                {ready && visiblePath.length > 0 && (
-                  <>
-                    <Tool
-                      label={tf("createDirectory")}
-                      disabled={busy || !onCreateDirectory}
-                      onClick={() => setEditor({ kind: "directory", name: "" })}
-                    >
-                      <FolderPlus />
-                    </Tool>
-                    <Tool
-                      label={tf("upload")}
-                      disabled={busy || !onUploadEntries}
-                      onClick={() => uploadInput.current?.click()}
-                    >
-                      <Upload />
-                    </Tool>
-                    <Tool
-                      label={
-                        clipboard
-                          ? tf("pasteCount", { count: clipboard.count })
-                          : tf("paste")
-                      }
-                      disabled={busy || !onPaste}
-                      onClick={() => void onPaste?.()}
-                    >
-                      <ClipboardPaste />
-                    </Tool>
-                    <input
-                      ref={uploadInput}
-                      className="hidden"
-                      type="file"
-                      multiple
-                      aria-label={tf("upload")}
-                      onChange={(event) => {
-                        const files = Array.from(event.target.files ?? [])
-                        event.target.value = ""
-                        if (files.length)
-                          void onUploadEntries?.(
-                            files.map((file) => ({
-                              kind: "file",
-                              name: file.name,
-                              file,
-                            }))
-                          )
-                      }}
-                    />
-                    <Tool
-                      label={tf("selectionMode")}
-                      active={selectionMode}
-                      disabled={busy}
-                      onClick={() => {
-                        setSelectionMode((value) => {
-                          if (value) {
-                            setSelected(new Set())
-                            setAnchor(null)
-                          }
-                          return !value
-                        })
-                      }}
-                    >
-                      <SquareCheckBig />
-                    </Tool>
-                  </>
-                )}
-                <Tool
-                  label={tf("refresh")}
-                  disabled={!onRefresh || status === "loading" || busy}
-                  onClick={() => onRefresh?.()}
-                >
-                  <RefreshCw />
-                </Tool>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 border-b p-3">
-              <div className="relative min-w-0 flex-1 basis-48">
+              <div className="relative min-w-48 flex-1 lg:max-w-sm">
                 <Search className="pointer-events-none absolute start-3 top-3 size-4 text-muted-foreground" />
                 <Input
                   aria-label={tf("search")}
@@ -897,7 +817,7 @@ function FileBrowserBody({
                   disabled={!ready}
                 />
               </div>
-              <div className="w-36">
+              <div className="w-36 shrink-0">
                 <span id="file-kind-label" className="sr-only">
                   {tf("type")}
                 </span>
@@ -921,35 +841,8 @@ function FileBrowserBody({
                   disabled={!ready}
                 />
               </div>
-              <div
-                role="group"
-                aria-label={tf("view")}
-                className="flex shrink-0"
-              >
-                <Tool
-                  label={tf("detailsView")}
-                  active={view === "details"}
-                  onClick={() => setView("details")}
-                >
-                  <List />
-                </Tool>
-                <Tool
-                  label={tf("smallView")}
-                  active={view === "small"}
-                  onClick={() => setView("small")}
-                >
-                  <Grid2X2 className="size-4" />
-                </Tool>
-                <Tool
-                  label={tf("largeView")}
-                  active={view === "large"}
-                  onClick={() => setView("large")}
-                >
-                  <Grid2X2 />
-                </Tool>
-              </div>
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-1">
+            <div className="flex min-h-14 flex-wrap items-center justify-between gap-2 border-b px-3 py-1">
               <div className="flex min-h-11 min-w-0 flex-wrap items-center gap-1">
                 {selectionMode && (
                   <>
@@ -1045,8 +938,35 @@ function FileBrowserBody({
                   </>
                 )}
               </div>
-              <div className="flex items-center gap-1">
-                <div className="w-32">
+              <div className="ms-auto flex flex-wrap items-center justify-end gap-1">
+              <div
+                role="group"
+                aria-label={tf("view")}
+                className="flex shrink-0"
+              >
+                <Tool
+                  label={tf("detailsView")}
+                  active={view === "details"}
+                  onClick={() => setView("details")}
+                >
+                  <List />
+                </Tool>
+                <Tool
+                  label={tf("smallView")}
+                  active={view === "small"}
+                  onClick={() => setView("small")}
+                >
+                  <Grid2X2 className="size-4" />
+                </Tool>
+                <Tool
+                  label={tf("largeView")}
+                  active={view === "large"}
+                  onClick={() => setView("large")}
+                >
+                  <Grid2X2 />
+                </Tool>
+              </div>
+                <div className="w-32 shrink-0">
                   <span id="file-sort-label" className="sr-only">
                     {tf("sort")}
                   </span>
@@ -1076,6 +996,91 @@ function FileBrowserBody({
                   onClick={() => setDescending((value) => !value)}
                 >
                   {descending ? <ArrowDown /> : <ArrowUp />}
+                </Tool>
+                {ready && !roots.length && onEnsurePersonalRoot && (
+                  <Button
+                    className="min-h-11"
+                    disabled={busy}
+                    onClick={() => void onEnsurePersonalRoot()}
+                  >
+                    {busy ? (
+                      <LoaderCircle className="animate-spin" />
+                    ) : (
+                      <FolderPlus />
+                    )}
+                    {tf("createPersonalRoot")}
+                  </Button>
+                )}
+                {ready && visiblePath.length > 0 && (
+                  <>
+                    <Tool
+                      label={tf("createDirectory")}
+                      disabled={busy || !onCreateDirectory}
+                      onClick={() => setEditor({ kind: "directory", name: "" })}
+                    >
+                      <FolderPlus />
+                    </Tool>
+                    <Tool
+                      label={tf("upload")}
+                      disabled={busy || !onUploadEntries}
+                      onClick={() => uploadInput.current?.click()}
+                    >
+                      <Upload />
+                    </Tool>
+                    <Tool
+                      label={
+                        clipboard
+                          ? tf("pasteCount", { count: clipboard.count })
+                          : tf("paste")
+                      }
+                      disabled={busy || !onPaste}
+                      onClick={() => void onPaste?.()}
+                    >
+                      <ClipboardPaste />
+                    </Tool>
+                    <input
+                      ref={uploadInput}
+                      className="hidden"
+                      type="file"
+                      multiple
+                      aria-label={tf("upload")}
+                      onChange={(event) => {
+                        const files = Array.from(event.target.files ?? [])
+                        event.target.value = ""
+                        if (files.length)
+                          void onUploadEntries?.(
+                            files.map((file) => ({
+                              kind: "file",
+                              name: file.name,
+                              file,
+                            }))
+                          )
+                      }}
+                    />
+                    <Tool
+                      label={tf("selectionMode")}
+                      active={selectionMode}
+                      disabled={busy}
+                      onClick={() => {
+                        setSelectionMode((value) => {
+                          if (value) {
+                            setSelected(new Set())
+                            setAnchor(null)
+                          }
+                          return !value
+                        })
+                      }}
+                    >
+                      <SquareCheckBig />
+                    </Tool>
+                  </>
+                )}
+                <Tool
+                  label={tf("refresh")}
+                  disabled={!onRefresh || status === "loading" || busy}
+                  onClick={() => onRefresh?.()}
+                >
+                  <RefreshCw />
                 </Tool>
               </div>
             </div>
