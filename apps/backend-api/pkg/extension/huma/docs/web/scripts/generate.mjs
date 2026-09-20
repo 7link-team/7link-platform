@@ -6,9 +6,10 @@ import { fileURLToPath } from "node:url";
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packages = [
   "@scalar/api-reference",
-  "@stoplight/elements",
+  // Disabled due to unresolved browser-side vulnerabilities:
+  // "@stoplight/elements",
   "esbuild",
-  "openapi-ui-dist",
+  // "openapi-ui-dist",
   "rapidoc",
   "react",
   "react-dom",
@@ -40,29 +41,31 @@ if (upgrades.length > 0) {
   runNPM(["install", "--ignore-scripts"]);
 }
 
-const stoplight = await readFile(
-  join(webRoot, "node_modules", "@stoplight/elements/web-components.min.js"),
-  "utf8"
-);
-const mermaidVersion = stoplight.match(
-  /https:\/\/unpkg\.com\/mermaid@([^/]+)\/dist\/mermaid\.min\.js/
-)?.[1];
-if (!mermaidVersion) {
-  throw new Error("Cannot determine the Mermaid version used by Stoplight");
-}
-
-if (
-  packageJSON.devDependencies.mermaid !== mermaidVersion ||
-  (await installedVersion("mermaid")) !== mermaidVersion
-) {
-  runNPM([
-    "install",
-    "--save-dev",
-    "--save-exact",
-    "--ignore-scripts",
-    `mermaid@${mermaidVersion}`
-  ]);
-}
+// Disabled with Stoplight. Its bundle used this block to pin and localize the
+// exact Mermaid runtime referenced by @stoplight/elements.
+// const stoplight = await readFile(
+//   join(webRoot, "node_modules", "@stoplight/elements/web-components.min.js"),
+//   "utf8"
+// );
+// const mermaidVersion = stoplight.match(
+//   /https:\/\/unpkg\.com\/mermaid@([^/]+)\/dist\/mermaid\.min\.js/
+// )?.[1];
+// if (!mermaidVersion) {
+//   throw new Error("Cannot determine the Mermaid version used by Stoplight");
+// }
+//
+// if (
+//   packageJSON.devDependencies.mermaid !== mermaidVersion ||
+//   (await installedVersion("mermaid")) !== mermaidVersion
+// ) {
+//   runNPM([
+//     "install",
+//     "--save-dev",
+//     "--save-exact",
+//     "--ignore-scripts",
+//     `mermaid@${mermaidVersion}`
+//   ]);
+// }
 
 runNPM(["run", "build", "--silent"]);
 

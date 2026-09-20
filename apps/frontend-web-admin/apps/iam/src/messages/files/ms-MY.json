@@ -93,7 +93,7 @@
   "conflictItem": "{index}. {source} bercanggah dengan {target} di destinasi",
   "conflictAction": "Tindakan",
   "conflictPolicy_skip": "Langkau",
-  "conflictPolicy_rename": "Simpan kedua-duanya dan namakan semula salinan",
+  "conflictPolicy_rename": "Simpan kedua-duanya dengan nama baharu",
   "conflictPolicy_overwrite": "Gantikan kandungan fail",
   "conflictPolicy_replace": "Gantikan item destinasi",
   "conflictPolicy_merge": "Gabungkan folder",

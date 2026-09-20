@@ -4,6 +4,7 @@ import {
   createIamApi,
   clientErrorMessage,
   fileOperationConflicts,
+  shouldNotifyMenuCatalogChange,
   type AuditEvent,
   type DepartmentInput,
   type FileOperationConflicts,
@@ -229,6 +230,64 @@ describe("IAM API client", () => {
       directory_policy: "ask",
       type_policy: "ask",
     })
+  })
+
+  it("does not invalidate the menu catalog after file mutations", async () => {
+    const previous = Object.getOwnPropertyDescriptor(globalThis, "window")
+    const browser = new EventTarget()
+    let notifications = 0
+    browser.addEventListener("menu-catalog-change", () => notifications++)
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: browser,
+    })
+    server = Bun.serve({
+      port: 0,
+      fetch() {
+        return Response.json({ code: 0, data: { id: "7" } })
+      },
+    })
+    try {
+      const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "90")
+      await client.createDirectory("80", "1", "Reports")
+      await client.createFileOperation(
+        "80",
+        { action: "copy", destination_id: "1", sources: ["2"] },
+        "operation-key"
+      )
+      expect(notifications).toBe(0)
+
+      await client.createTenant({
+        slug: "acme",
+        name: "Acme",
+        owner_principal_id: "principal-1",
+      })
+      expect(notifications).toBe(1)
+    } finally {
+      if (previous) Object.defineProperty(globalThis, "window", previous)
+      else Reflect.deleteProperty(globalThis, "window")
+    }
+  })
+
+  it("classifies file paths as mutation-local invalidations", () => {
+    expect(
+      shouldNotifyMenuCatalogChange(
+        "/tenants/90/entities/80/files/7?revision=2",
+        "DELETE"
+      )
+    ).toBe(false)
+    expect(
+      shouldNotifyMenuCatalogChange(
+        "/tenants/90/entities/80/file-operations",
+        "POST"
+      )
+    ).toBe(false)
+    expect(shouldNotifyMenuCatalogChange("/tenants/90/roles", "PATCH")).toBe(
+      true
+    )
+    expect(shouldNotifyMenuCatalogChange("/tenants/files/roles", "PATCH")).toBe(
+      true
+    )
   })
 
   it("uses the same file resources without tenant selectors for account files", async () => {

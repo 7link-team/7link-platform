@@ -177,6 +177,18 @@ func TestOperationServiceAllowsTenantContext(t *testing.T) {
 	h.assertAudit(t, 1)
 }
 
+func TestOperationServiceHidesForeignDestinationExistence(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	require.NoError(t, h.db.Exec("UPDATE "+h.tree.prefix+"file_spaces SET tenant_id = 91 WHERE id = 1").Error)
+	_, foreignErr := h.service.run(h.ctx, "foreign-destination", h.input)
+	require.ErrorIs(t, foreignErr, ErrNotFound)
+
+	h = newOperationServiceHarness(t)
+	h.input.DestinationID = 999999
+	_, missingErr := h.service.run(h.ctx, "missing-destination", h.input)
+	require.ErrorIs(t, missingErr, ErrNotFound)
+}
+
 func TestOperationServiceConflictsAndAuditFailuresRollBack(t *testing.T) {
 	for _, failure := range []string{"conflict", "audit-insert", "after-audit", "commit"} {
 		t.Run(failure, func(t *testing.T) {
@@ -248,11 +260,11 @@ func TestOperationServiceRejectsUntrustedScopeAndMissingDependencies(t *testing.
 				ctx, want = authn.WithClaims(t.Context(), claims), errOperationForbidden
 			case "foreign-tenant":
 				require.NoError(t, h.db.Exec("UPDATE "+h.tree.prefix+"file_spaces SET tenant_id = 91 WHERE id = 1").Error)
-				want = errOperationForbidden
+				want = ErrNotFound
 			case "account-space":
 				require.NoError(t, h.tree.createSpace(t.Context(), h.db, 100, 101, 70, "account", time.Now()))
 				h.input.SpaceID, h.input.DestinationID, h.input.Sources = 100, 101, []guid.ID{101}
-				want = errOperationForbidden
+				want = ErrNotFound
 			case "nil-service":
 				h.service = nil
 			case "runtime":

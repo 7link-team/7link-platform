@@ -93,7 +93,7 @@
   "conflictItem": "{index}. {source} conflicts with {target} at the destination",
   "conflictAction": "Action",
   "conflictPolicy_skip": "Skip",
-  "conflictPolicy_rename": "Keep both and rename the copy",
+  "conflictPolicy_rename": "Keep both with a new name",
   "conflictPolicy_overwrite": "Replace file contents",
   "conflictPolicy_replace": "Replace the destination item",
   "conflictPolicy_merge": "Merge folders",

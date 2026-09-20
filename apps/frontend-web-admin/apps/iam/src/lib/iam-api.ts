@@ -1150,6 +1150,24 @@ export function setTenant(value: string): void {
   window.dispatchEvent(new Event("tenant-change"))
 }
 
+export function shouldNotifyMenuCatalogChange(
+  path: string,
+  method = "GET"
+): boolean {
+  if (!path.startsWith("/") || ["GET", "HEAD"].includes(method.toUpperCase()))
+    return false
+  const segments = path.split("?", 1)[0]?.split("/").filter(Boolean) ?? []
+  const resourceIndex =
+    segments[0] === "me"
+      ? 1
+      : segments[0] === "tenants" && segments[2] === "entities"
+        ? 4
+        : segments[0] === "tenants"
+          ? 2
+          : -1
+  return !["files", "file-operations"].includes(segments[resourceIndex] ?? "")
+}
+
 async function requestWithBase<T>(
   apiBase: string,
   tenantID: () => string,
@@ -1190,8 +1208,7 @@ async function requestEnvelopeWithBase<T>(
   })
   if (
     response.ok &&
-    path.startsWith("/") &&
-    !["GET", "HEAD"].includes((init.method ?? "GET").toUpperCase()) &&
+    shouldNotifyMenuCatalogChange(path, init.method) &&
     typeof window !== "undefined"
   ) {
     window.dispatchEvent(new Event("menu-catalog-change"))

@@ -27,12 +27,15 @@ import {
 import {
   ApiError,
   clientErrorMessage,
-  fileOperationConflicts,
   iamApi,
-  type FileOperationConflicts,
   type FileOperationInput,
-  type FileOperationPolicy,
 } from "../../lib/iam-api"
+import {
+  confirmedFileOperation,
+  executeFileOperation,
+  fileOperationIdentity,
+  type PendingFileOperation,
+} from "../../lib/file-operation"
 
 type BrowserState = {
   requestKey: string
@@ -48,14 +51,6 @@ type FileClipboard = {
   nodes: FileBrowserNode[]
   sourceParentID: string
   scopeKey: string
-}
-
-type PendingFileOperation = {
-  input: FileOperationInput
-  idempotencyKey: string
-  frontier: FileOperationConflicts
-  resolvedDecisions: NonNullable<FileOperationInput["decisions"]>
-  decisions: Record<string, FileOperationPolicy | "">
 }
 
 const emptyState: BrowserState = {
@@ -117,6 +112,10 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
     message: string
   } | null>(null)
   const generation = useRef(0)
+  const operationAttempt = useRef<{
+    identity: string
+    idempotencyKey: string
+  } | null>(null)
   const scopeKey = account ? "account" : `${tenantID}:${entityID}`
   const queryID = /^[1-9][0-9]{0,18}$/u
   const requestedDirectoryID = searchParams.get("directory")
@@ -355,37 +354,42 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
 
   const performFileOperation = async (
     input: FileOperationInput,
-    idempotencyKey: string = crypto.randomUUID()
+    suppliedIdempotencyKey?: string
   ): Promise<boolean> => {
     if (busy) return false
+    const identity = fileOperationIdentity(input)
+    const idempotencyKey =
+      suppliedIdempotencyKey ??
+      (operationAttempt.current?.identity === identity
+        ? operationAttempt.current.idempotencyKey
+        : crypto.randomUUID())
+    operationAttempt.current = { identity, idempotencyKey }
     setBusy(true)
     setActionError(null)
     try {
-      await iamApi.createFileOperation(fileEntityID, input, idempotencyKey)
+      const result = await executeFileOperation(
+        (request, key) =>
+          iamApi.createFileOperation(fileEntityID, request, key),
+        input,
+        idempotencyKey
+      )
+      if (result.kind === "conflict") {
+        setPendingOperation(result.pending)
+        return false
+      }
+      if (result.kind === "error") {
+        if (result.definitive) operationAttempt.current = null
+        setActionError({
+          scope: scopeKey,
+          message: actionMessage(result.cause),
+        })
+        return false
+      }
+      operationAttempt.current = null
       setPendingOperation(null)
       if (input.action === "move") setClipboard(null)
       refresh()
       return true
-    } catch (cause) {
-      const frontier = fileOperationConflicts(cause)
-      if (frontier) {
-        setPendingOperation({
-          input: {
-            action: input.action,
-            destination_id: input.destination_id,
-            sources: input.sources,
-          },
-          idempotencyKey,
-          frontier,
-          resolvedDecisions: input.decisions ?? [],
-          decisions: Object.fromEntries(
-            frontier.conflicts.map((conflict) => [conflict.key, ""])
-          ),
-        })
-      } else {
-        setActionError({ scope: scopeKey, message: actionMessage(cause) })
-      }
-      return false
     } finally {
       setBusy(false)
     }
@@ -393,25 +397,9 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
 
   const confirmFileOperation = () => {
     if (!pendingOperation) return
-    const decisions = pendingOperation.frontier.conflicts.map((conflict) => ({
-      conflict_key: conflict.key,
-      policy: pendingOperation.decisions[conflict.key],
-    }))
-    if (decisions.some((decision) => !decision.policy)) return
-    void performFileOperation(
-      {
-        ...pendingOperation.input,
-        observed_revision: pendingOperation.frontier.space_revision,
-        decisions: [
-          ...pendingOperation.resolvedDecisions,
-          ...(decisions as {
-            conflict_key: string
-            policy: FileOperationPolicy
-          }[]),
-        ],
-      },
-      pendingOperation.idempotencyKey
-    )
+    const input = confirmedFileOperation(pendingOperation)
+    if (!input) return
+    void performFileOperation(input, pendingOperation.idempotencyKey)
   }
 
   return (
@@ -725,6 +713,7 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
                         <Button
                           key={policy}
                           type="button"
+                          disabled={busy}
                           variant={selected ? "default" : "outline"}
                           className="h-auto min-h-11 whitespace-normal"
                           aria-pressed={selected}

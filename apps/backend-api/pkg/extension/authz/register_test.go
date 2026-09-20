@@ -730,12 +730,3 @@ func assertSelectorSchema(t *testing.T, operation *huma.Operation, name, locatio
 	}
 	t.Fatalf("missing %s selector %s", location, name)
 }
-
-func hasSelector(operation *huma.Operation, name, location string) bool {
-	for _, parameter := range operation.Parameters {
-		if parameter.Name == name && parameter.In == location {
-			return true
-		}
-	}
-	return false
-}

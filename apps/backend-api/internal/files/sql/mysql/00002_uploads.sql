@@ -8,7 +8,7 @@ CREATE TABLE {{.Prefix}}file_uploads (
     storage_handle TEXT NOT NULL,
     name VARCHAR(255) NOT NULL,
     size BIGINT NOT NULL CHECK (size >= 0),
-    committed_offset BIGINT NOT NULL CHECK (committed_offset >= 0 AND committed_offset <= size),
+    committed_offset BIGINT NOT NULL,
     expected_md5 VARCHAR(32) NOT NULL,
     expected_sha1 VARCHAR(40) NOT NULL,
     expected_sha256 VARCHAR(64) NOT NULL,
@@ -23,7 +23,9 @@ CREATE TABLE {{.Prefix}}file_uploads (
     lease_until BIGINT NOT NULL DEFAULT 0,
     fence BIGINT NOT NULL DEFAULT 0,
     version BIGINT NOT NULL DEFAULT 1,
-    created_at BIGINT NOT NULL
+    created_at BIGINT NOT NULL,
+    CONSTRAINT {{.Prefix}}chk_file_uploads_committed_offset
+        CHECK (committed_offset >= 0 AND committed_offset <= size)
 ) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
 CREATE INDEX {{.Prefix}}idx_file_upload_owner ON {{.Prefix}}file_uploads (tenant_id, principal_id, created_at, id);
 CREATE INDEX {{.Prefix}}idx_file_upload_expiry ON {{.Prefix}}file_uploads (state, expires_at, id);

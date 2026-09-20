@@ -649,17 +649,6 @@ func (r *Registrar) checkEntityAccess(ctx context.Context, tenantID, entityID gu
 	return checker.CheckEntity(ctx, tenantID, entityID, guard.Code(), principalID)
 }
 
-func removeOperationParameter(parameters []*huma.Param, name, location string) []*huma.Param {
-	out := parameters[:0]
-	for _, parameter := range parameters {
-		if parameter != nil && parameter.Name == name && parameter.In == location {
-			continue
-		}
-		out = append(out, parameter)
-	}
-	return out
-}
-
 func (r *Registrar) platformMiddleware(api huma.API, guard Guard) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		claims, ok := r.authenticate(api, ctx)

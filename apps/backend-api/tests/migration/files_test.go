@@ -1,6 +1,7 @@
 package migration_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -42,8 +43,22 @@ func TestFileMigrationsOperationCostAndPermissionsAcrossEngines(t *testing.T) {
 					db, err := gorm.Open(dialector, &gorm.Config{})
 					require.NoError(t, err)
 					q := query.Bind(db, prefix)
+					validUpload := model.Upload{
+						ID: 1000, PrincipalID: 90, BackendID: "local", StorageKey: "upload-1000", StorageHandle: "upload-1000",
+						Name: "upload.bin", Size: 10, Offset: 10, ChecksumState: "pending", State: "open", ReleaseState: "pending",
+						LastProgressAt: 1, ExpiresAt: 2, Version: 1, CreatedAt: 1,
+					}
+					require.NoError(t, q.Upload.WithContext(t.Context()).Create(&validUpload))
+					for id, offset := range map[guid.ID]int64{1001: -1, 1002: 11} {
+						invalidUpload := validUpload
+						invalidUpload.ID, invalidUpload.StorageKey, invalidUpload.StorageHandle, invalidUpload.Offset = id, fmt.Sprintf("upload-%d", id), fmt.Sprintf("upload-%d", id), offset
+						require.Error(t, q.Upload.WithContext(t.Context()).Create(&invalidUpload), "committed offset %d must stay within the upload size", offset)
+					}
 					owner, slot := guid.ID(90), 1
 					require.NoError(t, q.Space.WithContext(t.Context()).Omit(q.Space.SystemSlot).Create(&model.Space{ID: 1, ScopeKind: "account", PrincipalID: &owner, Version: 1, CreatedAt: 1}))
+					require.Error(t, q.TrashBatch.WithContext(t.Context()).Create(&model.TrashBatch{
+						ID: 1003, SpaceID: 1, DeletedBy: owner, DeletedAt: 1, State: "active", NodeCount: 1, RootCount: 2,
+					}), "trash roots cannot exceed the batch node count")
 					require.NoError(t, q.Node.WithContext(t.Context()).Omit(q.Node.RootScope, q.Node.RootOwnerID, q.Node.ACLStopInheritance, q.Node.ManagementMode).Create(&model.Node{ID: 2, SpaceID: 1, ParentKind: "directory", RootSlot: &slot, LiveSlot: &slot, Kind: "directory", State: "active", Version: 1, CreatedAt: 1, UpdatedAt: 1}))
 					require.NoError(t, q.NodeClosure.WithContext(t.Context()).Create(&model.NodeClosure{SpaceID: 1, AncestorID: 2, DescendantID: 2, Depth: 0}))
 					require.NoError(t, goosex.Migrate(t.Context(), sqlDB, source, engine.dialect))

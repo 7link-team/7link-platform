@@ -600,7 +600,8 @@ func registerTransferHTTP(api huma.API, svc *service, filterParams []*huma.Param
 		Summary:     "Import tasks",
 		Description: "Every row is validated first. If any row is invalid nothing is written and each " +
 			"problem is reported, so a corrected file can be re-uploaded whole without duplicating rows.",
-		Tags: []string{"todo"},
+		Tags:         []string{"todo"},
+		MaxBodyBytes: ImportRequest{}.Limits().MaxBytes + (1 << 20),
 	}, authz.Guard{Resource: "todo", Verb: "import", FilterData: true}, func(ctx context.Context, in *ImportRequest) (*respx.Body[ImportReport], error) {
 		format, err := parseFormat(in.Format)
 		if err != nil {

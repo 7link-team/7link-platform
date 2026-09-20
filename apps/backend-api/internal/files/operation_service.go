@@ -80,7 +80,9 @@ func (s *operationService) run(ctx context.Context, key string, input immediateO
 		}
 		if (claims.TenantID == 0 && (space.ScopeKind != "account" || space.PrincipalID == nil || *space.PrincipalID != claims.PrincipalID)) ||
 			(claims.TenantID > 0 && (space.ScopeKind != "tenant" || space.TenantID == nil || *space.TenantID != claims.TenantID)) {
-			return errOperationForbidden
+			// A caller must not be able to distinguish an absent destination
+			// from an active node owned by another account or tenant.
+			return ErrNotFound
 		}
 		operation := q.Operation
 		previous, err := operation.WithContext(workContext).Where(operation.SpaceID.Eq(space.ID), operation.ActorID.Eq(claims.PrincipalID), operation.IdempotencyKey.Eq(key)).Count()

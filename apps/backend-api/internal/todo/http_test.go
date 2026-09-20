@@ -375,6 +375,14 @@ func TestImportRejectsUnreadableFile(t *testing.T) {
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.Code)
 }
 
+func TestImportAcceptsBodiesAboveHumaDefaultLimit(t *testing.T) {
+	api := newTestAPI(t)
+	body := "title\n" + strings.Repeat(" ", 2<<20)
+	resp := uploadCSV(t, api, body)
+	assert.Equal(t, http.StatusUnprocessableEntity, resp.Code, resp.Body.String())
+	assert.NotContains(t, resp.Body.String(), "request body too large")
+}
+
 func TestExportReturnsFilteredRows(t *testing.T) {
 	api := newTestAPI(t)
 	createTask(t, api, "keep")

@@ -1,4 +1,51 @@
 # Task State
+## Review, Security Audit, And Regression - 2026-09-20
+
+- Current phase: ACCEPTANCE COMPLETE for the review/audit; release readiness is
+  NOT READY because documented dependency and coverage gates remain open.
+- Objective: review and audit the current repository, fix confirmed defects that
+  do not require a product decision, and run proportionate regression gates.
+- Completed implementation: cross-tenant file destinations now return the same
+  not-found result as absent IDs; Todo imports accept the documented multipart
+  size and contain Excel parser panics; reachable x/image advisories are removed;
+  Excelize is pinned to the upstream negative-index fix; authz unused-symbol and
+  orphan architecture-test failures are fixed. File conflict retries retain one
+  idempotency key across ambiguous response loss, restart stale confirmation as
+  fresh preflight, preserve still-valid choices, disable policy buttons while
+  busy, and use action-neutral rename wording. File mutations no longer trigger
+  global menu-catalog invalidation. MySQL Files migrations now use table-level
+  cross-column checks and compatible FK collations; Organization migration 10
+  applies and rolls back its composite department/entity constraints on MySQL
+  8.4 without losing the pre-existing department foreign keys.
+- Verification: full frontend tests, lint, typecheck, and production build PASS;
+  backend format, pinned lint, build, OpenAPI check, all main-module tests, full
+  integration matrix, and affected-package race tests PASS. Coverage tests PASS
+  but the gate FAILS at 88.3% versus 90.0%; Files is 76.3%. Root Bun audit and
+  tests/tools `govulncheck` report zero vulnerabilities. Main `govulncheck`
+  reports only GO-2026-6452 because its advisory has no fixed version; the pinned
+  Excelize source contains both negative-index guards and the malicious-workbook
+  no-panic regression passes. One authn concurrency test timed out during the
+  first coverage run, then passed 5 focused repetitions and the complete rerun.
+  Remote Docker at 10.0.0.100 was reached over the configured SSH transport:
+  both Redis security matrices PASS across standalone mTLS/ACL, Cluster, and
+  Sentinel; the full MySQL 8.4 gate PASSes fresh migration, rollback/replay,
+  lifecycle/concurrency, performance, federation, provisioning, audit, and
+  schema-lock checks. The gate's disposable container cleanup was verified.
+  Stoplight, openapi-ui and Stoplight's Mermaid runtime are disabled in source
+  and absent from the rebuilt embedded site; their pages/assets return 404 and
+  the Huma extension tests PASS. The docs audit is reduced from 29 findings to 8.
+- Known issues: the retained ReDoc dependency graph has 2 high js-yaml CPU-DoS
+  findings, and Scalar has 6 low AI SDK resource-consumption findings; the user
+  explicitly chose to retain these renderers. Federation callback URL trust is
+  deployment-sensitive and unresolved. Full coverage is 88.3% against a 90%
+  gate. Two older remote MySQL gate containers remain on 10.0.0.100; this review
+  did not delete pre-existing remote resources.
+- Remaining work: approve a trusted federation callback-origin contract and
+  separately raise total and Files coverage to the existing 90% gate.
+- Next action: add behavior-focused Files tests until the coverage gate passes.
+  Define and approve a trusted public federation callback-origin contract before
+  changing callback reconstruction.
+
 ## File Copy Conflict Negotiation - 2026-09-20
 
 - Current phase: ACCEPTANCE COMPLETE.

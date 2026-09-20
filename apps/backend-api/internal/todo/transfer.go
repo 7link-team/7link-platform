@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/csv"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 
@@ -191,7 +192,15 @@ func decodeCSV(reader io.Reader) (grid, error) {
 	return grid(records), nil
 }
 
-func decodeXLSX(reader io.Reader) (grid, error) {
+func decodeXLSX(reader io.Reader) (table grid, err error) {
+	// Spreadsheet bytes are untrusted. Keep parser panics inside this boundary
+	// so malformed workbooks become ordinary unreadable-upload errors.
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			table = nil
+			err = fmt.Errorf("todo: malformed workbook: %v", recovered)
+		}
+	}()
 	file, err := excelize.OpenReader(reader)
 	if err != nil {
 		return nil, err
