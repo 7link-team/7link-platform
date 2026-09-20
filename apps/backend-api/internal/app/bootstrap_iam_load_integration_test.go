@@ -15,7 +15,6 @@ import (
 
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
-	"7link.com/platform/pkg/extension/authz"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -193,15 +192,16 @@ func iamLoadIssue(client *http.Client, baseURL string, scenario iamLoadScenario)
 		}
 		body = bytes.NewReader(encoded)
 	}
-	request, err := http.NewRequest(scenario.method, baseURL+scenario.path, body)
+	path := scenario.path
+	if !scenario.tenant.Zero() && path != "/tenants" {
+		path = "/tenants/" + scenario.tenant.String() + path
+	}
+	request, err := http.NewRequest(scenario.method, baseURL+path, body)
 	if err != nil {
 		return iamLoadSample{err: err}
 	}
 	if scenario.body != nil {
 		request.Header.Set("Content-Type", "application/json")
-	}
-	if !scenario.tenant.Zero() {
-		request.Header.Set(authz.TenantHeader, scenario.tenant.String())
 	}
 	request.Header.Set("Authorization", "Bearer "+scenario.token)
 

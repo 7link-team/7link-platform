@@ -98,14 +98,14 @@ try {
         assert.equal(tenant, undefined, "platform API must omit tenant header")
       const json = (data) =>
         route.fulfill({ json: { code: 0, message: "ok", data } })
-      if (path === "/authn/sessions/current")
+      if (path === "/sessions/current")
         return json({
           subject: "1",
           organization_id: "11",
           display_name: "Archive operator",
           email: "operator@example.test",
         })
-      if (path === "/iam/tenants")
+      if (path === "/tenants")
         return json([
           { id: "11", name: "Archive tenant" },
           { id: "12", name: "Other tenant" },
@@ -198,7 +198,7 @@ try {
       }
       return json([])
     })
-    await page.goto("/iam/audit-governance")
+    await page.goto("/audit-governance")
     await page.getByText("共 23 个任务", { exact: true }).waitFor()
     await page.getByText("平台默认", { exact: true }).waitFor()
     await fits(page)

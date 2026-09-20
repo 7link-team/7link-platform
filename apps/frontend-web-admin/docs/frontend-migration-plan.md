@@ -88,7 +88,7 @@ SCIM 出站目标管理 UI、10.7/10.8 和最终产品验收仍未完成，不�
 及最终产品验收仍未完成（资料字段接入已由上述 00:06 增量更新）。当前证据见根 task-state。
 
 原迁移页面已交付到工作区，但 IAM 整体仍在产品化开发，不是仅剩分支合并。
-新增 `/iam/field-policies`，目前共 25 个页面。字段策略管理支持读写默认值、
+新增租户作用域的 `/tenants/:tenantId/field-policies`，目前共 25 个页面。字段策略管理支持读写默认值、
 角色允许/拒绝、隐藏/固定脱敏、版本冲突及恢复默认；仅展示服务端已经执行的字段目录。
 IAM 用户资料与 SCIM 的字段策略已在最新增量接入，完整浏览器回归仍在收口。
 
@@ -402,9 +402,8 @@ turbo 2.9 五条 task：`build` / `lint` / `format` / `typecheck` / `test`），
   与 `admin@example.test`。
 - **租户**：`getTenant()` 没有编译进来的兜底 slug。取值顺序是
   「操作员选过的」→「`VITE_DEFAULT_TENANT`」→「会话里的 `organization_id`」；
-  都没有就是空，此时**请求不带 `X-Tenant-Id` 头**，而不是带一个猜的值。
-  （「空则不带头」有单测覆盖；「从会话取」这条路径由类型与登录流程保证，
-  browser audit 走的是显式指定租户，没有覆盖到它。）
+  都没有就是空。租户与实体 ID 只用于构造 `/tenants/:tenantId/...` 和
+  `/tenants/:tenantId/entities/:entityId/...` 路径，不再写入请求头。
 
 复核方式：`apps/frontend-web-admin` 全仓 `grep -i chaosplus` 与 `grep -iE '7link|sevenlink'`
 （排除 `node_modules` 与生成物 `api-schema.ts`），0 命中。

@@ -136,7 +136,6 @@ async function apiRaw(path, options = {}) {
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
-        "X-Tenant-Id": ${JSON.stringify(tenantID)},
       },
       ...${JSON.stringify(options)},
     });
@@ -169,7 +168,7 @@ async function login(loginName, password) {
   await setInput("#password", password)
   await evaluate(`document.querySelector("form").requestSubmit()`)
   await waitFor(`location.pathname === "/"`, 20000)
-  const session = await api("/authn/sessions/current")
+  const session = await api("/sessions/current")
   await evaluate(`
     localStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)});
     localStorage.setItem("iam.tenant:subject", ${JSON.stringify(session.subject)});
@@ -181,7 +180,7 @@ async function login(loginName, password) {
 }
 
 async function logout() {
-  const result = await apiRaw("/authn/sessions/current", { method: "DELETE" })
+  const result = await apiRaw("/sessions/current", { method: "DELETE" })
   if (result.status < 200 || result.status >= 300)
     throw new Error(`logout failed: ${result.status}`)
   await command("Network.clearBrowserCookies")
@@ -272,7 +271,7 @@ async function cleanup() {
   if (artifacts.accessRequest?.status === "approved")
     await attempt(async () => {
       await api(
-        `/iam/access-requests/${encodeURIComponent(artifacts.accessRequest.id)}/revoke`,
+        `/access-requests/${encodeURIComponent(artifacts.accessRequest.id)}/revoke`,
         {
           method: "POST",
           body: JSON.stringify({ reason: "Acceptance cleanup" }),
@@ -282,80 +281,80 @@ async function cleanup() {
   if (artifacts.relationship)
     await attempt(async () => {
       const query = new URLSearchParams(artifacts.relationship)
-      await api(`/iam/relationships?${query}`, { method: "DELETE" })
+      await api(`/relationships?${query}`, { method: "DELETE" })
     })
   for (const binding of artifacts.entityBindings)
     await attempt(async () => {
       await api(
-        `/iam/entities/${encodeURIComponent(binding.entityID)}/role-bindings/${encodeURIComponent(binding.roleID)}/${encodeURIComponent(artifacts.memberID)}`,
+        `/entities/${encodeURIComponent(binding.entityID)}/role-bindings/${encodeURIComponent(binding.roleID)}/${encodeURIComponent(artifacts.memberID)}`,
         { method: "DELETE" }
       )
     })
   for (const roleID of artifacts.roleMembers)
     await attempt(async () => {
       await api(
-        `/iam/roles/${encodeURIComponent(roleID)}/members/${encodeURIComponent(artifacts.memberID)}`,
+        `/roles/${encodeURIComponent(roleID)}/members/${encodeURIComponent(artifacts.memberID)}`,
         { method: "DELETE" }
       )
     })
   for (const membership of artifacts.groupMembers)
     await attempt(async () => {
       await api(
-        `/iam/groups/${encodeURIComponent(membership.groupID)}/members/${encodeURIComponent(artifacts.memberID)}`,
+        `/groups/${encodeURIComponent(membership.groupID)}/members/${encodeURIComponent(artifacts.memberID)}`,
         { method: "DELETE" }
       )
     })
   for (const membership of artifacts.positionMembers)
     await attempt(async () => {
       await api(
-        `/iam/positions/${encodeURIComponent(membership.positionID)}/members/${encodeURIComponent(artifacts.memberID)}`,
+        `/positions/${encodeURIComponent(membership.positionID)}/members/${encodeURIComponent(artifacts.memberID)}`,
         { method: "DELETE" }
       )
     })
   for (const binding of artifacts.directoryBindings)
     await attempt(async () => {
       await api(
-        `/iam/roles/${encodeURIComponent(binding.roleID)}/directory-bindings/${binding.type}/${encodeURIComponent(binding.assigneeID)}`,
+        `/roles/${encodeURIComponent(binding.roleID)}/directory-bindings/${binding.type}/${encodeURIComponent(binding.assigneeID)}`,
         { method: "DELETE" }
       )
     })
   for (const entity of [...artifacts.entities].reverse())
     await attempt(async () => {
-      await api(`/iam/entities/${encodeURIComponent(entity.id)}`, {
+      await api(`/entities/${encodeURIComponent(entity.id)}`, {
         method: "DELETE",
       })
     })
   for (const role of artifacts.roles)
     await attempt(async () => {
-      await api(`/iam/roles/${encodeURIComponent(role.id)}`, {
+      await api(`/roles/${encodeURIComponent(role.id)}`, {
         method: "DELETE",
       })
     })
   for (const group of artifacts.groups)
     await attempt(async () => {
-      const current = await api(`/iam/groups/${encodeURIComponent(group.id)}`)
+      const current = await api(`/groups/${encodeURIComponent(group.id)}`)
       await api(
-        `/iam/groups/${encodeURIComponent(group.id)}?version=${current.version}`,
+        `/groups/${encodeURIComponent(group.id)}?version=${current.version}`,
         { method: "DELETE" }
       )
     })
   if (artifacts.position)
     await attempt(async () => {
       const current = await api(
-        `/iam/positions/${encodeURIComponent(artifacts.position.id)}`
+        `/positions/${encodeURIComponent(artifacts.position.id)}`
       )
       await api(
-        `/iam/positions/${encodeURIComponent(artifacts.position.id)}?version=${current.version}`,
+        `/positions/${encodeURIComponent(artifacts.position.id)}?version=${current.version}`,
         { method: "DELETE" }
       )
     })
   if (artifacts.department)
     await attempt(async () => {
       const current = await api(
-        `/iam/departments/${encodeURIComponent(artifacts.department.id)}`
+        `/departments/${encodeURIComponent(artifacts.department.id)}`
       )
       await api(
-        `/iam/departments/${encodeURIComponent(artifacts.department.id)}?version=${current.version}`,
+        `/departments/${encodeURIComponent(artifacts.department.id)}?version=${current.version}`,
         { method: "DELETE" }
       )
     })
@@ -388,7 +387,7 @@ let acceptanceDiagnostics
 try {
   await login(adminLogin, adminPassword)
   const principals = await api(
-    `/iam/principals?limit=200&search=${encodeURIComponent(memberLogin)}`
+    `/principals?limit=200&search=${encodeURIComponent(memberLogin)}`
   )
   const principal = principals.items.find(
     (item) => item.login_name === memberLogin
@@ -397,7 +396,7 @@ try {
   artifacts.memberID = principal.id
 
   const suffix = Date.now().toString(36)
-  artifacts.department = await api("/iam/departments", {
+  artifacts.department = await api("/departments", {
     method: "POST",
     body: JSON.stringify({
       name: `Acceptance Authorization Department ${suffix}`,
@@ -405,7 +404,7 @@ try {
       sort_order: 10,
     }),
   })
-  artifacts.position = await api("/iam/positions", {
+  artifacts.position = await api("/positions", {
     method: "POST",
     body: JSON.stringify({
       code: `acceptance.authorization-${suffix}`,
@@ -414,7 +413,7 @@ try {
       sort_order: 10,
     }),
   })
-  const staticGroup = await api("/iam/groups", {
+  const staticGroup = await api("/groups", {
     method: "POST",
     body: JSON.stringify({
       name: `Acceptance Authorization Static ${suffix}`,
@@ -424,7 +423,7 @@ try {
       sort_order: 10,
     }),
   })
-  const dynamicGroup = await api("/iam/groups", {
+  const dynamicGroup = await api("/groups", {
     method: "POST",
     body: JSON.stringify({
       name: `Acceptance Authorization Dynamic ${suffix}`,
@@ -448,7 +447,7 @@ try {
   artifacts.groups.push(staticGroup, dynamicGroup)
 
   const createRole = async (label, permission) => {
-    const role = await api("/iam/roles", {
+    const role = await api("/roles", {
       method: "POST",
       body: JSON.stringify({
         name: `Acceptance Authorization ${label} ${suffix}`,
@@ -457,7 +456,7 @@ try {
     })
     artifacts.roles.push(role)
     await api(
-      `/iam/roles/${encodeURIComponent(role.id)}/permissions/${encodeURIComponent(permission)}`,
+      `/roles/${encodeURIComponent(role.id)}/permissions/${encodeURIComponent(permission)}`,
       { method: "PUT" }
     )
     return role
@@ -468,7 +467,7 @@ try {
   const positionRole = await createRole("Position", "dept_view")
   const entityRole = await createRole("Entity", "store_view")
 
-  await api(`/iam/roles/${encodeURIComponent(sharedRole.id)}/data-scope`, {
+  await api(`/roles/${encodeURIComponent(sharedRole.id)}/data-scope`, {
     method: "PUT",
     body: JSON.stringify({
       scope: "selected_departments",
@@ -476,18 +475,18 @@ try {
     }),
   })
   await api(
-    `/iam/roles/${encodeURIComponent(sharedRole.id)}/members/${encodeURIComponent(principal.id)}`,
+    `/roles/${encodeURIComponent(sharedRole.id)}/members/${encodeURIComponent(principal.id)}`,
     { method: "PUT" }
   )
   artifacts.roleMembers.push(sharedRole.id)
   const staticEnd = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString()
   await api(
-    `/iam/groups/${encodeURIComponent(staticGroup.id)}/members/${encodeURIComponent(principal.id)}`,
+    `/groups/${encodeURIComponent(staticGroup.id)}/members/${encodeURIComponent(principal.id)}`,
     { method: "PUT", body: JSON.stringify({ ends_at: staticEnd }) }
   )
   artifacts.groupMembers.push({ groupID: staticGroup.id })
   await api(
-    `/iam/roles/${encodeURIComponent(sharedRole.id)}/directory-bindings/group/${encodeURIComponent(staticGroup.id)}`,
+    `/roles/${encodeURIComponent(sharedRole.id)}/directory-bindings/group/${encodeURIComponent(staticGroup.id)}`,
     { method: "PUT" }
   )
   artifacts.directoryBindings.push({
@@ -496,7 +495,7 @@ try {
     assigneeID: staticGroup.id,
   })
   await api(
-    `/iam/roles/${encodeURIComponent(dynamicRole.id)}/directory-bindings/group/${encodeURIComponent(dynamicGroup.id)}`,
+    `/roles/${encodeURIComponent(dynamicRole.id)}/directory-bindings/group/${encodeURIComponent(dynamicGroup.id)}`,
     { method: "PUT" }
   )
   artifacts.directoryBindings.push({
@@ -506,12 +505,12 @@ try {
   })
   const positionEnd = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
   await api(
-    `/iam/positions/${encodeURIComponent(artifacts.position.id)}/members/${encodeURIComponent(principal.id)}`,
+    `/positions/${encodeURIComponent(artifacts.position.id)}/members/${encodeURIComponent(principal.id)}`,
     { method: "PUT", body: JSON.stringify({ ends_at: positionEnd }) }
   )
   artifacts.positionMembers.push({ positionID: artifacts.position.id })
   await api(
-    `/iam/roles/${encodeURIComponent(positionRole.id)}/directory-bindings/position/${encodeURIComponent(artifacts.position.id)}`,
+    `/roles/${encodeURIComponent(positionRole.id)}/directory-bindings/position/${encodeURIComponent(artifacts.position.id)}`,
     { method: "PUT" }
   )
   artifacts.directoryBindings.push({
@@ -520,14 +519,14 @@ try {
     assigneeID: artifacts.position.id,
   })
 
-  const rootEntity = await api("/iam/entities", {
+  const rootEntity = await api("/entities", {
     method: "POST",
     body: JSON.stringify({
       type: "company",
       name: `Acceptance Authorization Root ${suffix}`,
     }),
   })
-  const childEntity = await api("/iam/entities", {
+  const childEntity = await api("/entities", {
     method: "POST",
     body: JSON.stringify({
       parent_id: rootEntity.id,
@@ -538,7 +537,7 @@ try {
   artifacts.entities.push(rootEntity, childEntity)
   const entityEnd = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString()
   await api(
-    `/iam/entities/${encodeURIComponent(rootEntity.id)}/role-bindings/${encodeURIComponent(entityRole.id)}/${encodeURIComponent(principal.id)}`,
+    `/entities/${encodeURIComponent(rootEntity.id)}/role-bindings/${encodeURIComponent(entityRole.id)}/${encodeURIComponent(principal.id)}`,
     {
       method: "PUT",
       body: JSON.stringify({ effect: "allow", expires_at: entityEnd }),
@@ -549,7 +548,7 @@ try {
     roleID: entityRole.id,
   })
   await api(
-    `/iam/entities/${encodeURIComponent(childEntity.id)}/role-bindings/${encodeURIComponent(entityRole.id)}/${encodeURIComponent(principal.id)}`,
+    `/entities/${encodeURIComponent(childEntity.id)}/role-bindings/${encodeURIComponent(entityRole.id)}/${encodeURIComponent(principal.id)}`,
     { method: "PUT", body: JSON.stringify({ effect: "deny" }) }
   )
   artifacts.entityBindings.push({
@@ -565,14 +564,14 @@ try {
     resource_type: "store",
     resource_id: businessResourceID,
   }
-  await api("/iam/relationships", {
+  await api("/relationships", {
     method: "POST",
     body: JSON.stringify(artifacts.relationship),
   })
 
   await logout()
   await login(memberLogin, memberPassword)
-  artifacts.accessRequest = await api("/iam/access-requests", {
+  artifacts.accessRequest = await api("/access-requests", {
     method: "POST",
     body: JSON.stringify({
       role_id: temporaryRole.id,
@@ -585,12 +584,12 @@ try {
   await logout()
   await login(adminLogin, adminPassword)
   artifacts.accessRequest = await api(
-    `/iam/access-requests/${encodeURIComponent(artifacts.accessRequest.id)}/approve`,
+    `/access-requests/${encodeURIComponent(artifacts.accessRequest.id)}/approve`,
     { method: "POST", body: JSON.stringify({ note: "Acceptance approval" }) }
   )
 
   const snapshot = await api(
-    `/iam/members/${encodeURIComponent(principal.id)}/authorization-sources`
+    `/members/${encodeURIComponent(principal.id)}/authorization-sources`
   )
   const permanentSource = requireSource(
     snapshot,
@@ -681,7 +680,7 @@ try {
   failedRequests.length = 0
   consoleErrors.length = 0
   await command("Runtime.discardConsoleEntries")
-  await navigate("/iam/users")
+  await navigate("/users")
   await waitFor(`document.querySelector("h1")`)
   const inspectSelector = `[data-view-authorization-sources=${JSON.stringify(principal.id)}]`
   await waitFor(`document.querySelector(${JSON.stringify(inspectSelector)})`)
@@ -728,7 +727,7 @@ try {
     mobile: false,
   })
   await api(
-    `/iam/roles/${encodeURIComponent(sharedRole.id)}/members/${encodeURIComponent(principal.id)}`,
+    `/roles/${encodeURIComponent(sharedRole.id)}/members/${encodeURIComponent(principal.id)}`,
     { method: "DELETE" }
   )
   artifacts.roleMembers = artifacts.roleMembers.filter(
@@ -742,7 +741,7 @@ try {
   )
   await waitFor(`document.querySelector("[data-authorization-sources-sheet]")`)
   const refreshed = await api(
-    `/iam/members/${encodeURIComponent(principal.id)}/authorization-sources`
+    `/members/${encodeURIComponent(principal.id)}/authorization-sources`
   )
   if (
     findSource(
@@ -806,7 +805,7 @@ try {
     mobile: false,
   })
   if (!(await evaluate(`return location.pathname === "/login"`)))
-    await apiRaw("/authn/sessions/current", { method: "DELETE" })
+    await apiRaw("/sessions/current", { method: "DELETE" })
   await command("Network.clearBrowserCookies")
   await login(adminLogin, adminPassword)
   await cleanup()
@@ -825,11 +824,11 @@ const unexpectedResponses = diagnostics.responses.filter(
     !(
       response.status === 401 &&
       (response.method === "GET" || response.method === "DELETE") &&
-      response.url.endsWith("/api/authn/sessions/current")
+      response.url.endsWith("/api/sessions/current")
     ) &&
     !(
       response.status === 403 &&
-      response.url.includes("/api/iam/tenants?include_deleted=false")
+      response.url.includes("/api/tenants?include_deleted=false")
     )
 )
 const unexpectedFailures = diagnostics.failedRequests.filter(

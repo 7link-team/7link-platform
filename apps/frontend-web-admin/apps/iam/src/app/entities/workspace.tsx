@@ -23,25 +23,30 @@ import { useAllowed } from "../../lib/permissions"
 import EntitiesPage from "./page"
 
 export default function EntityWorkspace() {
-  const { entityID = "", view = "overview" } = useParams()
+  const { tenantID = "", entityID = "", view = "overview" } = useParams()
+  const base = `/tenants/${encodeURIComponent(tenantID)}/entities/${encodeURIComponent(entityID)}`
   if (!["overview", "roles", "resources", "manage"].includes(view))
-    return (
-      <Navigate
-        to={`/entities/${encodeURIComponent(entityID)}/overview`}
-        replace
-      />
-    )
+    return <Navigate to={`${base}/overview`} replace />
   if (view === "manage") return <EntitiesPage scopeEntityID={entityID} />
   return (
     <EntityDetails
       key={`${entityID}:${view}`}
       entityID={entityID}
       view={view}
+      tenantID={tenantID}
     />
   )
 }
 
-function EntityDetails({ entityID, view }: { entityID: string; view: string }) {
+function EntityDetails({
+  tenantID,
+  entityID,
+  view,
+}: {
+  tenantID: string
+  entityID: string
+  view: string
+}) {
   const t = useTranslations("iam")
   const locale = useLocale()
   const allowed = useAllowed()
@@ -99,7 +104,7 @@ function EntityDetails({ entityID, view }: { entityID: string; view: string }) {
         action={
           <Link
             className="inline-flex min-h-11 items-center rounded-md border px-3 text-sm hover:bg-accent"
-            to={`/entities/${encodeURIComponent(entityID)}/manage`}
+            to={`/tenants/${encodeURIComponent(tenantID)}/entities/${encodeURIComponent(entityID)}/manage`}
           >
             {t("entitySettings")}
           </Link>

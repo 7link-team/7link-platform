@@ -1,5 +1,38 @@
 # Decisions
 
+## D65 - Browser and API resource scope is explicit in canonical paths
+
+**Date** 2026-09-20
+
+**Decision / Reason**
+The browser uses `/me/*`, `/tenants/{tenant_id}/*`,
+`/tenants/{tenant_id}/entities/{entity_id}/*`, and `/platform/*`. URL parameters
+are the active workspace authority; local storage is only a remembered default.
+Tenant/entity API authorization derives the same scope from path parameters and
+validates entity ownership instead of trusting independently supplied context
+headers. Public API routes have no `/iam` or `/authn` namespace prefix.
+
+This makes links reproducible, prevents a selected tenant from displaying a
+global account file root, and gives caches, logs, authorization and OpenAPI one
+unambiguous resource identity.
+
+**Alternatives Considered / Tradeoffs**
+Keeping flat browser routes with local-storage/header scope was rejected because
+the same URL could identify different data and incomplete entity context already
+caused real isolation confusion. `/profile/{user_id}` was rejected for the
+signed-in user's private resources because it implies arbitrary-user access;
+`/me` expresses self-service. Compatibility aliases were rejected because the
+user explicitly requested a complete breaking cleanup. The migration touches
+route callers, menus, scripts, tests and generated clients in one release.
+
+**Scope / Status**
+Applies to the IAM admin Web, public HTTP route registration, documentation,
+scripts, generated OpenAPI/client types and file-persona acceptance. Internal Go
+package paths named `internal/iam` are architectural module names and are not
+public URL prefixes. Approved; implementation in progress.
+
+---
+
 ## D56 - File browser authorization is page-batched and SQL-bounded
 
 **Decision**

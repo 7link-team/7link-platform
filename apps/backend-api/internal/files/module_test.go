@@ -27,6 +27,9 @@ func TestFileModuleWiresItsAuthorizationCatalog(t *testing.T) {
 	require.NoError(t, module.Provide[core.EntityConstraintOn](services, func(context.Context, *gorm.DB, guid.ID, guid.ID, string, guid.ID) (authz.DataConstraint, error) {
 		return authz.DataConstraint{}, nil
 	}))
+	require.NoError(t, module.Provide[core.TenantConstraintOn](services, func(context.Context, *gorm.DB, guid.ID, string, guid.ID) (authz.DataConstraint, error) {
+		return authz.DataConstraint{AllowAll: true, Revision: 1}, nil
+	}))
 	require.NoError(t, module.Provide[core.AuthorizationSubjectsOn](services, func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID) (core.AuthorizationSubjects, error) {
 		return core.AuthorizationSubjects{}, nil
 	}))

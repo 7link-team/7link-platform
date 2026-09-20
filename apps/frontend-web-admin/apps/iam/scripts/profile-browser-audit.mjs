@@ -19,10 +19,14 @@ const browser = await chromium.launch({
 })
 const admin = await browser.newContext({ baseURL })
 async function api(context, path, method = "GET", body, tenant = "") {
-  const response = await context.request.fetch("/api" + path, {
+  const requestPath =
+    tenant && !path.startsWith("/sessions") && !path.startsWith("/platform/")
+      ? `/tenants/${tenant}${path}`
+      : path
+  const response = await context.request.fetch("/api" + requestPath, {
     method,
     data: body,
-    headers: { Origin: baseURL, ...(tenant ? { "X-Tenant-Id": tenant } : {}) },
+    headers: { Origin: baseURL },
   })
   const result = await response.json()
   return { status: response.status(), data: result.data }
@@ -64,14 +68,14 @@ async function fits(page) {
 }
 const errors = []
 try {
-  await ok(admin, "/authn/sessions", "POST", {
+  await ok(admin, "/sessions", "POST", {
     login_name: process.env.IAM_BROWSER_LOGIN ?? "admin@example.test",
     password: auditPassword(),
     return_url: baseURL + "/",
   })
-  const me = await ok(admin, "/authn/sessions/current")
+  const me = await ok(admin, "/sessions/current")
   const stamp = Date.now()
-  const tenant = await ok(admin, "/iam/tenants", "POST", {
+  const tenant = await ok(admin, "/tenants", "POST", {
     slug: `profile-audit-${stamp}`,
     name: "Profile acceptance",
     owner_principal_id: me.subject,
@@ -79,7 +83,7 @@ try {
   const password = randomBytes(32).toString("base64url")
   const actor = await ok(
     admin,
-    "/iam/principals",
+    "/principals",
     "POST",
     {
       login_name: `profile-actor-${stamp}`,
@@ -91,7 +95,7 @@ try {
   )
   const target = await ok(
     admin,
-    "/iam/principals",
+    "/principals",
     "POST",
     {
       login_name: `profile-target-${stamp}`,
@@ -101,26 +105,26 @@ try {
     },
     tenant.id
   )
-  const roles = await ok(admin, "/iam/roles", "GET", undefined, tenant.id)
+  const roles = await ok(admin, "/roles", "GET", undefined, tenant.id)
   const adminRole = roles.find((role) => role.name === "Administrator")
   assert(adminRole)
   await ok(
     admin,
-    `/iam/roles/${adminRole.id}/members/${actor.id}`,
+    `/roles/${adminRole.id}/members/${actor.id}`,
     "PUT",
     {},
     tenant.id
   )
   const restricted = await ok(
     admin,
-    "/iam/roles",
+    "/roles",
     "POST",
     { name: "Restricted profile operator", description: "Browser acceptance" },
     tenant.id
   )
   await ok(
     admin,
-    `/iam/roles/${restricted.id}/members/${actor.id}`,
+    `/roles/${restricted.id}/members/${actor.id}`,
     "PUT",
     {},
     tenant.id
@@ -132,7 +136,7 @@ try {
   ]) {
     const policy = await ok(
       admin,
-      "/iam/field-policies/user_profile/email",
+      "/field-policies/user_profile/email",
       "PUT",
       {
         version,
@@ -170,7 +174,7 @@ try {
       .locator('[aria-label="当前工作区"]')
       .getByText(tenant.id, { exact: true })
       .waitFor()
-    await page.goto("/iam/users")
+    await page.goto("/users")
     const row = page
       .getByRole("row")
       .filter({ has: page.getByText(target.login_name, { exact: true }) })
@@ -191,7 +195,7 @@ try {
     })
     const patchResponse = page.waitForResponse(
       (response) =>
-        response.url().endsWith(`/iam/principals/${target.id}`) &&
+        response.url().endsWith(`/principals/${target.id}`) &&
         response.request().method() === "PATCH"
     )
     await dialog
@@ -206,7 +210,7 @@ try {
     await dialog.waitFor({ state: "hidden" })
     const raw = await ok(
       admin,
-      `/iam/principals/${target.id}`,
+      `/principals/${target.id}`,
       "GET",
       undefined,
       tenant.id
@@ -220,7 +224,7 @@ try {
       (
         await api(
           context,
-          `/iam/principals/${target.id}`,
+          `/principals/${target.id}`,
           "PATCH",
           { email: null },
           tenant.id
@@ -245,7 +249,7 @@ try {
       0
     )
     assert(!(await page.locator("main").innerText()).includes(actor.email))
-    await page.goto("/iam/users")
+    await page.goto("/users")
     await row.waitFor()
     await row.getByRole("button", { name: "编辑", exact: false }).click()
     await dialog.waitFor()

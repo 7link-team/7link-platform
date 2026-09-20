@@ -176,7 +176,6 @@ async function apiRaw(path, options = {}) {
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
-        "X-Tenant-Id": localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)},
       },
       ...${JSON.stringify(options)},
     });
@@ -195,55 +194,55 @@ async function api(path, options = {}) {
 }
 
 async function cleanup() {
-  for (const role of (await api("/iam/roles")).filter((item) =>
+  for (const role of (await api("/roles")).filter((item) =>
     item.name.startsWith("Acceptance Directory Role ")
   )) {
     for (const binding of await api(
-      `/iam/roles/${encodeURIComponent(role.id)}/directory-bindings`
+      `/roles/${encodeURIComponent(role.id)}/directory-bindings`
     ))
       await api(
-        `/iam/roles/${encodeURIComponent(role.id)}/directory-bindings/${binding.assignee_type}/${encodeURIComponent(binding.assignee_id)}`,
+        `/roles/${encodeURIComponent(role.id)}/directory-bindings/${binding.assignee_type}/${encodeURIComponent(binding.assignee_id)}`,
         { method: "DELETE" }
       )
     for (const code of await api(
-      `/iam/roles/${encodeURIComponent(role.id)}/permissions`
+      `/roles/${encodeURIComponent(role.id)}/permissions`
     ))
       await api(
-        `/iam/roles/${encodeURIComponent(role.id)}/permissions/${encodeURIComponent(code)}`,
+        `/roles/${encodeURIComponent(role.id)}/permissions/${encodeURIComponent(code)}`,
         { method: "DELETE" }
       )
     for (const subject of await api(
-      `/iam/roles/${encodeURIComponent(role.id)}/members`
+      `/roles/${encodeURIComponent(role.id)}/members`
     ))
       await api(
-        `/iam/roles/${encodeURIComponent(role.id)}/members/${encodeURIComponent(subject)}`,
+        `/roles/${encodeURIComponent(role.id)}/members/${encodeURIComponent(subject)}`,
         { method: "DELETE" }
       )
-    await api(`/iam/roles/${encodeURIComponent(role.id)}`, {
+    await api(`/roles/${encodeURIComponent(role.id)}`, {
       method: "DELETE",
     })
   }
-  for (const group of (await api("/iam/groups")).filter((item) =>
+  for (const group of (await api("/groups")).filter((item) =>
     item.name.startsWith("Acceptance Role Group ")
   ))
     await api(
-      `/iam/groups/${encodeURIComponent(group.id)}?version=${group.version}`,
+      `/groups/${encodeURIComponent(group.id)}?version=${group.version}`,
       {
         method: "DELETE",
       }
     )
-  for (const position of (await api("/iam/positions")).filter((item) =>
+  for (const position of (await api("/positions")).filter((item) =>
     item.code.startsWith("acceptance.role-")
   ))
     await api(
-      `/iam/positions/${encodeURIComponent(position.id)}?version=${position.version}`,
+      `/positions/${encodeURIComponent(position.id)}?version=${position.version}`,
       { method: "DELETE" }
     )
-  for (const department of (await api("/iam/departments")).filter((item) =>
+  for (const department of (await api("/departments")).filter((item) =>
     item.name.startsWith("Acceptance Role Department ")
   ))
     await api(
-      `/iam/departments/${encodeURIComponent(department.id)}?version=${department.version}`,
+      `/departments/${encodeURIComponent(department.id)}?version=${department.version}`,
       { method: "DELETE" }
     )
 }
@@ -320,7 +319,7 @@ async function captureRoleWorkspace(
     (view === "assignments" &&
       (layout.directoryLinks !== 3 ||
         JSON.stringify(layout.directoryHrefs) !==
-          JSON.stringify(["/iam/groups", "/iam/positions", "/iam/users"])))
+          JSON.stringify(["/groups", "/positions", "/users"])))
   )
     throw new Error(`${name} layout failed: ${JSON.stringify(layout)}`)
   const screenshot = await command("Page.captureScreenshot", {
@@ -388,14 +387,14 @@ await command("Emulation.setDeviceMetricsOverride", {
   mobile: false,
 })
 
-await navigate("/iam/roles")
+await navigate("/roles")
 await waitFor(
   `location.pathname === "/login" && document.querySelector("#login-name")`
 )
 await setInput("#login-name", adminLogin)
 await setInput("#password", password)
 await evaluate(`document.querySelector("form").requestSubmit()`)
-await waitFor(`location.pathname === "/iam/roles"`, 20000)
+await waitFor(`location.pathname === "/roles"`, 20000)
 await waitFor(`document.querySelector("h1")`)
 await cleanup()
 
@@ -405,7 +404,7 @@ const groupName = `Acceptance Role Group ${suffix}`
 const positionCode = `acceptance.role-${suffix}`
 const positionName = `Acceptance Role Position ${suffix}`
 const departmentName = `Acceptance Role Department ${suffix}`
-const group = await api("/iam/groups", {
+const group = await api("/groups", {
   method: "POST",
   body: JSON.stringify({
     name: groupName,
@@ -415,7 +414,7 @@ const group = await api("/iam/groups", {
     sort_order: 10,
   }),
 })
-const position = await api("/iam/positions", {
+const position = await api("/positions", {
   method: "POST",
   body: JSON.stringify({
     code: positionCode,
@@ -424,7 +423,7 @@ const position = await api("/iam/positions", {
     sort_order: 10,
   }),
 })
-const department = await api("/iam/departments", {
+const department = await api("/departments", {
   method: "POST",
   body: JSON.stringify({
     name: departmentName,
@@ -432,7 +431,7 @@ const department = await api("/iam/departments", {
     sort_order: 10,
   }),
 })
-const member = (await api("/iam/members")).find(
+const member = (await api("/members")).find(
   (item) => item.status === "active"
 )
 if (!member) throw new Error("active acceptance member was not returned")
@@ -447,7 +446,7 @@ await waitFor(
   `[...document.querySelectorAll("button strong")].some((item) => item.textContent.trim() === ${JSON.stringify(roleName)})`
 )
 
-const persistedRoles = await api("/iam/roles")
+const persistedRoles = await api("/roles")
 const role = persistedRoles.find((item) => item.name === roleName)
 if (!role) throw new Error("created role was not returned")
 const alternateRole = persistedRoles.find((item) => item.id !== role.id)
@@ -485,14 +484,14 @@ const dataScopeResponseIndex = responses.length
 await click("[data-save-data-scope]")
 await waitForResponse(
   "PUT",
-  `/iam/roles/${encodeURIComponent(role.id)}/data-scope`,
+  `/roles/${encodeURIComponent(role.id)}/data-scope`,
   dataScopeResponseIndex
 )
 await waitFor(
   `document.querySelector(${JSON.stringify(departmentSelector)})?.getAttribute("aria-checked") === "true"`
 )
 const dataScope = await api(
-  `/iam/roles/${encodeURIComponent(role.id)}/data-scope`
+  `/roles/${encodeURIComponent(role.id)}/data-scope`
 )
 if (
   dataScope.scope !== "selected_departments" ||
@@ -508,7 +507,7 @@ await clickElement(permissionSelector)
 await waitFor(`${permissionSelector}?.getAttribute("aria-checked") === "true"`)
 if (
   !(
-    await api(`/iam/roles/${encodeURIComponent(role.id)}/permissions`)
+    await api(`/roles/${encodeURIComponent(role.id)}/permissions`)
   ).includes("menu_view")
 )
   throw new Error("permission grant did not persist")
@@ -524,7 +523,7 @@ await setInput("#permission-timezone", "Asia/Shanghai")
 await click("[data-save-permission-condition]")
 await waitFor(`!document.querySelector("#role-permission-condition-form")`)
 const permissionGrant = (
-  await api(`/iam/roles/${encodeURIComponent(role.id)}/permission-grants`)
+  await api(`/roles/${encodeURIComponent(role.id)}/permission-grants`)
 ).find((grant) => grant.permission_code === "menu_view")
 if (
   !permissionGrant?.condition?.all ||
@@ -543,7 +542,7 @@ await waitFor(
   `document.querySelector(${JSON.stringify(memberSelector)})?.getAttribute("aria-checked") === "true"`
 )
 if (
-  !(await api(`/iam/roles/${encodeURIComponent(role.id)}/members`)).includes(
+  !(await api(`/roles/${encodeURIComponent(role.id)}/members`)).includes(
     member.subject
   )
 )
@@ -561,7 +560,7 @@ for (const [kind, item] of [
 }
 
 const bindings = await api(
-  `/iam/roles/${encodeURIComponent(role.id)}/directory-bindings`
+  `/roles/${encodeURIComponent(role.id)}/directory-bindings`
 )
 if (
   bindings.length !== 2 ||
@@ -582,8 +581,8 @@ await waitFor(
 
 const reverseLayouts = []
 for (const [kind, item, path] of [
-  ["group", group, "/iam/groups"],
-  ["position", position, "/iam/positions"],
+  ["group", group, "/groups"],
+  ["position", position, "/positions"],
 ]) {
   await navigate(path)
   await waitFor(`document.querySelector("h1")`)
@@ -599,7 +598,7 @@ for (const [kind, item, path] of [
     `document.querySelector(${JSON.stringify(reverseSelector)})?.getAttribute("aria-checked") === "false"`
   )
   const removedBindings = await api(
-    `/iam/roles/${encodeURIComponent(role.id)}/directory-bindings`
+    `/roles/${encodeURIComponent(role.id)}/directory-bindings`
   )
   if (
     removedBindings.some(
@@ -613,7 +612,7 @@ for (const [kind, item, path] of [
     `document.querySelector(${JSON.stringify(reverseSelector)})?.getAttribute("aria-checked") === "true"`
   )
   const restoredBindings = await api(
-    `/iam/roles/${encodeURIComponent(role.id)}/directory-bindings`
+    `/roles/${encodeURIComponent(role.id)}/directory-bindings`
   )
   if (
     !restoredBindings.some(
@@ -646,25 +645,25 @@ for (const [kind, item, path] of [
   })
   await click(`[data-open-role-id="${role.id}"]`)
   await waitFor(
-    `location.pathname === "/iam/roles" && new URLSearchParams(location.search).get("role") === ${JSON.stringify(role.id)} && new URLSearchParams(location.search).get("view") === "assignments"`
+    `location.pathname === "/roles" && new URLSearchParams(location.search).get("role") === ${JSON.stringify(role.id)} && new URLSearchParams(location.search).get("view") === "assignments"`
   )
   await waitFor(
     `[...document.querySelectorAll("h2")].some((item) => item.textContent.trim() === ${JSON.stringify(roleName)}) && document.querySelector('[data-role-view="assignments"]')?.hasAttribute("data-active")`
   )
 }
 
-await navigate(`/iam/roles?role=${encodeURIComponent(role.id)}`)
+await navigate(`/roles?role=${encodeURIComponent(role.id)}`)
 await waitFor(`document.querySelector("h1")`)
 await waitFor(
   `[...document.querySelectorAll("h2")].some((item) => item.textContent.trim() === ${JSON.stringify(roleName)}) && document.querySelector('[data-role-view="permissions"]')?.hasAttribute("data-active")`
 )
 
 const groupDelete = await apiRaw(
-  `/iam/groups/${encodeURIComponent(group.id)}?version=${group.version}`,
+  `/groups/${encodeURIComponent(group.id)}?version=${group.version}`,
   { method: "DELETE" }
 )
 const positionDelete = await apiRaw(
-  `/iam/positions/${encodeURIComponent(position.id)}?version=${position.version}`,
+  `/positions/${encodeURIComponent(position.id)}?version=${position.version}`,
   { method: "DELETE" }
 )
 if (groupDelete.status !== 409 || positionDelete.status !== 409)
@@ -751,7 +750,7 @@ await waitFor(
   `document.querySelector(${JSON.stringify(memberSelector)})?.getAttribute("aria-checked") === "false"`
 )
 if (
-  (await api(`/iam/roles/${encodeURIComponent(role.id)}/members`)).includes(
+  (await api(`/roles/${encodeURIComponent(role.id)}/members`)).includes(
     member.subject
   )
 )
@@ -763,12 +762,12 @@ await waitFor(`document.querySelector("[data-clear-permission-condition]")`)
 await click("[data-clear-permission-condition]")
 await waitFor(`!document.querySelector("#role-permission-condition-form")`)
 const clearedPermissionGrant = (
-  await api(`/iam/roles/${encodeURIComponent(role.id)}/permission-grants`)
+  await api(`/roles/${encodeURIComponent(role.id)}/permission-grants`)
 ).find((grant) => grant.permission_code === "menu_view")
 if (!clearedPermissionGrant || clearedPermissionGrant.condition)
   throw new Error("permission condition did not clear")
 
-const audit = await api("/iam/audit-events?limit=200")
+const audit = await api("/audit-events?limit=200")
 for (const type of [
   "role_directory_binding_added",
   "role_directory_binding_removed",

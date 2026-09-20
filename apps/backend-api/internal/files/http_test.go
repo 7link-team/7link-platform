@@ -25,15 +25,33 @@ import (
 )
 
 const fileRouteManifest = `
-create-file-operation|POST|/file-operations
-create-file|POST|/files
-delete-file|DELETE|/files/{file_id}
-download-file|GET|/files/{file_id}/content
-get-file-by-path|GET|/files/{root_file_id}/-/{path}
-get-file|GET|/files/{file_id}
-list-file-items|GET|/files/{file_id}/items
-list-files|GET|/files
-update-file|PATCH|/files/{file_id}`
+create-file-operation-self|POST|/me/file-operations
+create-file-operation-tenant|POST|/tenants/{tenant_id}/file-operations
+create-file-operation|POST|/tenants/{tenant_id}/entities/{entity_id}/file-operations
+create-file-self|POST|/me/files
+create-file-tenant|POST|/tenants/{tenant_id}/files
+create-file|POST|/tenants/{tenant_id}/entities/{entity_id}/files
+delete-file-self|DELETE|/me/files/{file_id}
+delete-file-tenant|DELETE|/tenants/{tenant_id}/files/{file_id}
+delete-file|DELETE|/tenants/{tenant_id}/entities/{entity_id}/files/{file_id}
+download-file-self|GET|/me/files/{file_id}/content
+download-file-tenant|GET|/tenants/{tenant_id}/files/{file_id}/content
+download-file|GET|/tenants/{tenant_id}/entities/{entity_id}/files/{file_id}/content
+get-file-by-path-self|GET|/me/files/{root_file_id}/-/{path}
+get-file-by-path-tenant|GET|/tenants/{tenant_id}/files/{root_file_id}/-/{path}
+get-file-by-path|GET|/tenants/{tenant_id}/entities/{entity_id}/files/{root_file_id}/-/{path}
+get-file-self|GET|/me/files/{file_id}
+get-file-tenant|GET|/tenants/{tenant_id}/files/{file_id}
+get-file|GET|/tenants/{tenant_id}/entities/{entity_id}/files/{file_id}
+list-file-items-self|GET|/me/files/{file_id}/items
+list-file-items-tenant|GET|/tenants/{tenant_id}/files/{file_id}/items
+list-file-items|GET|/tenants/{tenant_id}/entities/{entity_id}/files/{file_id}/items
+list-files-self|GET|/me/files
+list-files-tenant|GET|/tenants/{tenant_id}/files
+list-files|GET|/tenants/{tenant_id}/entities/{entity_id}/files
+update-file-self|PATCH|/me/files/{file_id}
+update-file-tenant|PATCH|/tenants/{tenant_id}/files/{file_id}
+update-file|PATCH|/tenants/{tenant_id}/entities/{entity_id}/files/{file_id}`
 
 func fileDeclarationAPI(t *testing.T) (huma.API, *authz.Registry) {
 	t.Helper()
@@ -65,16 +83,26 @@ func TestFileHTTPContract(t *testing.T) {
 			}
 			manifest = append(manifest, operation.OperationID+"|"+method+"|"+path)
 			require.Equal(t, []string{"files"}, operation.Tags)
-			require.Contains(t, operation.Extensions[authz.GuardExtensionKey], filePermissionPrefix)
-			require.Equal(t, true, operation.Extensions[authz.DataFilterExtensionKey])
+			if strings.HasPrefix(path, "/me/") {
+				require.True(t, authz.IsAuthenticatedOperation(operation))
+			} else {
+				require.Contains(t, operation.Extensions[authz.GuardExtensionKey], filePermissionPrefix)
+				require.Equal(t, true, operation.Extensions[authz.DataFilterExtensionKey])
+			}
 			require.NotEmpty(t, operation.Security)
 			selectors := map[string]bool{}
 			for _, parameter := range operation.Parameters {
-				if parameter.In == "header" && (parameter.Name == authz.TenantHeader || parameter.Name == authz.EntityHeader) {
+				if parameter.In == "path" && (parameter.Name == authz.TenantPath || parameter.Name == authz.EntityPath) {
 					selectors[parameter.Name] = parameter.Required
 				}
 			}
-			require.Equal(t, map[string]bool{authz.TenantHeader: false, authz.EntityHeader: false}, selectors)
+			if strings.HasPrefix(path, "/me/") {
+				require.Empty(t, selectors)
+			} else if strings.Contains(path, "/entities/") {
+				require.Equal(t, map[string]bool{authz.TenantPath: true, authz.EntityPath: true}, selectors)
+			} else {
+				require.Equal(t, map[string]bool{authz.TenantPath: true}, selectors)
+			}
 		}
 	}
 	sort.Strings(manifest)
@@ -83,12 +111,12 @@ func TestFileHTTPContract(t *testing.T) {
 	require.Equal(t, want, manifest)
 	require.NoError(t, authz.ValidateOperations(api, registry))
 
-	children := api.OpenAPI().Paths["/files/{file_id}/items"].Get
+	children := api.OpenAPI().Paths["/me/files/{file_id}/items"].Get
 	for _, status := range []string{"404", "409", "422"} {
 		require.Contains(t, children.Responses, status)
 	}
 	require.Nil(t, api.OpenAPI().Paths["/files/operations"])
-	require.NotNil(t, api.OpenAPI().Paths["/file-operations"].Post)
+	require.NotNil(t, api.OpenAPI().Paths["/me/file-operations"].Post)
 }
 
 func TestFileHTTPInputAndErrorMapping(t *testing.T) {
@@ -177,9 +205,10 @@ func newFileHTTPAPI(t *testing.T, service *operationService) humatest.TestAPI {
 func TestFileHTTPAuthorizedBasicRoutes(t *testing.T) {
 	h := newOperationServiceHarness(t)
 	api := newFileHTTPAPI(t, h.service)
-	headers := []any{"Authorization: Bearer test", authz.TenantHeader + ": 90", authz.EntityHeader + ": 80"}
+	headers := []any{"Authorization: Bearer test"}
+	base := "/tenants/90/entities/80/files"
 
-	roots := api.Get("/files?limit=1", headers...)
+	roots := api.Get(base+"?limit=1", headers...)
 	require.Equal(t, http.StatusOK, roots.Code, roots.Body.String())
 	var rootEnvelope respx.Envelope[filePage]
 	require.NoError(t, json.Unmarshal(roots.Body.Bytes(), &rootEnvelope))
@@ -187,15 +216,15 @@ func TestFileHTTPAuthorizedBasicRoutes(t *testing.T) {
 	require.Equal(t, "directory", rootEnvelope.Data.Items[0].Kind)
 	require.Equal(t, "tenant", rootEnvelope.Data.Items[0].Scope)
 
-	children := api.Get("/files/2/items?limit=1", headers...)
+	children := api.Get(base+"/2/items?limit=1", headers...)
 	require.Equal(t, http.StatusOK, children.Code, children.Body.String())
 	var childrenEnvelope respx.Envelope[fileChildrenPage]
 	require.NoError(t, json.Unmarshal(children.Body.Bytes(), &childrenEnvelope))
 	require.Len(t, childrenEnvelope.Data.Items, 1)
 
-	metadata := api.Get("/files/32", headers...)
+	metadata := api.Get(base+"/32", headers...)
 	require.Equal(t, http.StatusOK, metadata.Code, metadata.Body.String())
-	byPath := api.Get("/files/2/-/Source/Shared/root.txt", headers...)
+	byPath := api.Get(base+"/2/-/Source/Shared/root.txt", headers...)
 	require.Equal(t, http.StatusOK, byPath.Code, byPath.Body.String())
 
 	created := postFileForm(t, api, headers, map[string]string{"parent_id": "2", "kind": "directory", "name": "Contracts"}, "", "")
@@ -217,35 +246,51 @@ func TestFileHTTPAuthorizedBasicRoutes(t *testing.T) {
 	var uploadedEnvelope respx.Envelope[fileEntryView]
 	require.NoError(t, json.Unmarshal(uploaded.Body.Bytes(), &uploadedEnvelope))
 
-	renamedFile := api.Patch("/files/"+uploadedEnvelope.Data.ID.String(), append(headers, map[string]any{
+	renamedFile := api.Patch(base+"/"+uploadedEnvelope.Data.ID.String(), append(headers, map[string]any{
 		"name": "final.txt", "revision": uploadedEnvelope.Data.Revision,
 	})...)
 	require.Equal(t, http.StatusOK, renamedFile.Code, renamedFile.Body.String())
 	var renamedFileEnvelope respx.Envelope[fileEntryView]
 	require.NoError(t, json.Unmarshal(renamedFile.Body.Bytes(), &renamedFileEnvelope))
-	renamedDirectory := api.Patch("/files/"+createdEnvelope.Data.ID.String(), append(headers, map[string]any{
+	renamedDirectory := api.Patch(base+"/"+createdEnvelope.Data.ID.String(), append(headers, map[string]any{
 		"name": "Agreements", "revision": createdEnvelope.Data.Revision,
 	})...)
 	require.Equal(t, http.StatusOK, renamedDirectory.Code, renamedDirectory.Body.String())
 	var renamedDirectoryEnvelope respx.Envelope[fileEntryView]
 	require.NoError(t, json.Unmarshal(renamedDirectory.Body.Bytes(), &renamedDirectoryEnvelope))
 
-	deletedFile := api.Delete("/files/"+renamedFileEnvelope.Data.ID.String()+"?revision="+strconv.FormatInt(renamedFileEnvelope.Data.Revision, 10), headers...)
+	deletedFile := api.Delete(base+"/"+renamedFileEnvelope.Data.ID.String()+"?revision="+strconv.FormatInt(renamedFileEnvelope.Data.Revision, 10), headers...)
 	require.Equal(t, http.StatusOK, deletedFile.Code, deletedFile.Body.String())
-	deletedDirectory := api.Delete("/files/"+renamedDirectoryEnvelope.Data.ID.String()+"?revision="+strconv.FormatInt(renamedDirectoryEnvelope.Data.Revision, 10), headers...)
+	deletedDirectory := api.Delete(base+"/"+renamedDirectoryEnvelope.Data.ID.String()+"?revision="+strconv.FormatInt(renamedDirectoryEnvelope.Data.Revision, 10), headers...)
 	require.Equal(t, http.StatusOK, deletedDirectory.Code, deletedDirectory.Body.String())
 
-	invalid := api.Get("/files/not-an-id/items", headers...)
+	invalid := api.Get(base+"/not-an-id/items", headers...)
 	require.Equal(t, http.StatusUnprocessableEntity, invalid.Code, invalid.Body.String())
 	invalidRoot := postFileForm(t, api, headers, map[string]string{"kind": "directory"}, "", "")
 	require.Equal(t, http.StatusUnprocessableEntity, invalidRoot.Code, invalidRoot.Body.String())
+}
+
+func TestFileHTTPTenantContextUsesTenantPathWithoutEntity(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	api := newFileHTTPAPI(t, h.service)
+
+	roots := api.Get("/tenants/90/files?limit=100", "Authorization: Bearer test")
+	require.Equal(t, http.StatusOK, roots.Code, roots.Body.String())
+	var envelope respx.Envelope[filePage]
+	require.NoError(t, json.Unmarshal(roots.Body.Bytes(), &envelope))
+	require.NotEmpty(t, envelope.Data.Items)
+	for _, root := range envelope.Data.Items {
+		require.NotEqual(t, "account", root.Scope)
+		requireOptionalID(t, root.TenantID, 90)
+	}
+	require.Equal(t, http.StatusNotFound, api.Get("/files?limit=100").Code)
 }
 
 func TestFileHTTPAccountContextUsesSameResourcesWithoutTenantHeaders(t *testing.T) {
 	h := newOperationServiceHarness(t)
 	api := newFileHTTPAPI(t, h.service)
 
-	empty := api.Get("/files?limit=100")
+	empty := api.Get("/me/files?limit=100")
 	require.Equal(t, http.StatusOK, empty.Code, empty.Body.String())
 	var emptyEnvelope respx.Envelope[filePage]
 	require.NoError(t, json.Unmarshal(empty.Body.Bytes(), &emptyEnvelope))
@@ -260,7 +305,7 @@ func TestFileHTTPAccountContextUsesSameResourcesWithoutTenantHeaders(t *testing.
 	requireOptionalID(t, createdEnvelope.Data.PrincipalID, 70)
 	require.Nil(t, createdEnvelope.Data.TenantID)
 
-	listed := api.Get("/files?limit=100")
+	listed := api.Get("/me/files?limit=100")
 	require.Equal(t, http.StatusOK, listed.Code, listed.Body.String())
 	var listedEnvelope respx.Envelope[filePage]
 	require.NoError(t, json.Unmarshal(listed.Body.Bytes(), &listedEnvelope))
@@ -281,7 +326,7 @@ func TestFileHTTPAccountContextUsesSameResourcesWithoutTenantHeaders(t *testing.
 	var uploadedEnvelope respx.Envelope[fileEntryView]
 	require.NoError(t, json.Unmarshal(uploaded.Body.Bytes(), &uploadedEnvelope))
 
-	copied := api.Post("/file-operations",
+	copied := api.Post("/me/file-operations",
 		"Idempotency-Key: account-copy",
 		map[string]any{
 			"action": "copy", "destination_id": createdEnvelope.Data.ID.String(),
@@ -294,7 +339,7 @@ func TestFileHTTPAccountContextUsesSameResourcesWithoutTenantHeaders(t *testing.
 	require.Equal(t, 1, copiedEnvelope.Data.Created)
 	require.Len(t, copiedEnvelope.Data.Roots, 1)
 
-	moved := api.Post("/file-operations",
+	moved := api.Post("/me/file-operations",
 		"Idempotency-Key: account-move",
 		map[string]any{
 			"action": "move", "destination_id": directoryEnvelope.Data.ID.String(),
@@ -306,12 +351,16 @@ func TestFileHTTPAccountContextUsesSameResourcesWithoutTenantHeaders(t *testing.
 	require.NoError(t, json.Unmarshal(moved.Body.Bytes(), &movedEnvelope))
 	require.Equal(t, 1, movedEnvelope.Data.Moved)
 
-	downloaded := api.Get("/files/" + uploadedEnvelope.Data.ID.String() + "/content")
+	downloaded := api.Get("/me/files/" + uploadedEnvelope.Data.ID.String() + "/content")
 	require.Equal(t, http.StatusOK, downloaded.Code, downloaded.Body.String())
 	require.Equal(t, "account payload", downloaded.Body.String())
 	require.Contains(t, downloaded.Header().Get("Content-Disposition"), "account.txt")
+	require.Contains(t, downloaded.Header().Get("Content-Disposition"), "attachment")
+	inline := api.Get("/me/files/" + uploadedEnvelope.Data.ID.String() + "/content?disposition=inline")
+	require.Equal(t, http.StatusOK, inline.Code, inline.Body.String())
+	require.Contains(t, inline.Header().Get("Content-Disposition"), "inline")
 
-	renamed := api.Patch("/files/"+uploadedEnvelope.Data.ID.String(), map[string]any{
+	renamed := api.Patch("/me/files/"+uploadedEnvelope.Data.ID.String(), map[string]any{
 		"name": "private.txt", "revision": uploadedEnvelope.Data.Revision,
 	})
 	require.Equal(t, http.StatusOK, renamed.Code, renamed.Body.String())
@@ -319,14 +368,14 @@ func TestFileHTTPAccountContextUsesSameResourcesWithoutTenantHeaders(t *testing.
 	require.NoError(t, json.Unmarshal(renamed.Body.Bytes(), &renamedEnvelope))
 	require.Equal(t, "private.txt", renamedEnvelope.Data.Name)
 
-	deletedFile := api.Delete("/files/" + renamedEnvelope.Data.ID.String() + "?revision=" +
+	deletedFile := api.Delete("/me/files/" + renamedEnvelope.Data.ID.String() + "?revision=" +
 		strconv.FormatInt(renamedEnvelope.Data.Revision, 10))
 	require.Equal(t, http.StatusOK, deletedFile.Code, deletedFile.Body.String())
-	deletedDirectory := api.Delete("/files/" + directoryEnvelope.Data.ID.String() + "?revision=" +
+	deletedDirectory := api.Delete("/me/files/" + directoryEnvelope.Data.ID.String() + "?revision=" +
 		strconv.FormatInt(directoryEnvelope.Data.Revision, 10))
 	require.Equal(t, http.StatusOK, deletedDirectory.Code, deletedDirectory.Body.String())
 
-	trash := api.Get("/files?state=trashed&limit=100")
+	trash := api.Get("/me/files?state=trashed&limit=100")
 	require.Equal(t, http.StatusOK, trash.Code, trash.Body.String())
 	var trashEnvelope respx.Envelope[filePage]
 	require.NoError(t, json.Unmarshal(trash.Body.Bytes(), &trashEnvelope))
@@ -338,12 +387,12 @@ func TestFileHTTPAccountContextUsesSameResourcesWithoutTenantHeaders(t *testing.
 	for _, id := range []guid.ID{directoryEnvelope.Data.ID, uploadedEnvelope.Data.ID} {
 		item, ok := trashedByID[id]
 		require.True(t, ok)
-		restored := api.Patch("/files/"+id.String(), map[string]any{
+		restored := api.Patch("/me/files/"+id.String(), map[string]any{
 			"state": "active", "revision": item.Revision,
 		})
 		require.Equal(t, http.StatusOK, restored.Code, restored.Body.String())
 	}
-	emptyTrash := api.Get("/files?state=trashed&limit=100")
+	emptyTrash := api.Get("/me/files?state=trashed&limit=100")
 	require.Equal(t, http.StatusOK, emptyTrash.Code, emptyTrash.Body.String())
 	require.NoError(t, json.Unmarshal(emptyTrash.Body.Bytes(), &trashEnvelope))
 	require.Empty(t, trashEnvelope.Data.Items)
@@ -351,22 +400,20 @@ func TestFileHTTPAccountContextUsesSameResourcesWithoutTenantHeaders(t *testing.
 	var accountAuditCount int64
 	require.NoError(t, h.db.Table(h.tree.prefix+"iam_audit_events").
 		Where("tenant_id = ?", 0).Count(&accountAuditCount).Error)
-	require.Equal(t, int64(11), accountAuditCount)
+	require.Equal(t, int64(12), accountAuditCount)
 	var foreignAuditCount int64
 	require.NoError(t, h.db.Table(h.tree.prefix+"iam_audit_events").
 		Where("tenant_id <> ?", 0).Count(&foreignAuditCount).Error)
 	require.Zero(t, foreignAuditCount)
 
-	tenantHeaders := []any{authz.TenantHeader + ": 90", authz.EntityHeader + ": 80"}
-	require.Equal(t, http.StatusForbidden, api.Get("/files/"+createdEnvelope.Data.ID.String(), tenantHeaders...).Code)
+	require.Equal(t, http.StatusForbidden, api.Get("/tenants/90/entities/80/files/"+createdEnvelope.Data.ID.String()).Code)
 	require.Equal(t, http.StatusForbidden,
-		postFileForm(t, api, tenantHeaders, map[string]string{"kind": "directory", "scope": "account"}, "", "").Code)
+		postFileForm(t, api, []any{"Authorization: Bearer test"}, map[string]string{"kind": "directory", "scope": "account"}, "", "").Code)
 	require.Equal(t, http.StatusForbidden,
 		postFileForm(t, api, nil, map[string]string{"kind": "directory", "scope": "personal"}, "", "").Code)
-	for _, header := range []any{authz.TenantHeader + ": 90", authz.EntityHeader + ": 80"} {
-		response := api.Get("/files", header)
-		require.Equal(t, http.StatusForbidden, response.Code)
-		require.Contains(t, response.Body.String(), "incomplete_resource_context")
+	for _, path := range []string{"/tenants/90/entities//files", "/tenants//entities/80/files"} {
+		response := api.Get(path)
+		require.Contains(t, []int{http.StatusForbidden, http.StatusNotFound}, response.Code)
 	}
 }
 
@@ -386,5 +433,9 @@ func postFileForm(t *testing.T, api humatest.TestAPI, headers []any, fields map[
 	require.NoError(t, form.Close())
 	args := append([]any{}, headers...)
 	args = append(args, "Content-Type: "+form.FormDataContentType(), bytes.NewReader(body.Bytes()))
-	return api.Post("/files", args...)
+	path := "/me/files"
+	if len(headers) > 0 {
+		path = "/tenants/90/entities/80/files"
+	}
+	return api.Post(path, args...)
 }

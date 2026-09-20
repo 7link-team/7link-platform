@@ -77,27 +77,27 @@ func TestPersonalTokenRealRegistrarPreservesAllRouteBoundaries(t *testing.T) {
 	authz.RegisterEntity(r, api, op("/entity"), guard, handler)
 	authz.RegisterEntityAdapter(r, api, op("/adapter"), guard, func(ctx huma.Context) { ctx.SetStatus(http.StatusOK) })
 	for _, test := range []struct {
-		path, tenant, entity string
-		status               int
+		path   string
+		status int
 	}{
-		{"/guarded", "71", "", 200}, {"/guarded", "72", "", 401}, {"/guarded", "", "", 401},
-		{"/write-scope", "71", "", 401}, {"/authenticated", "71", "", 401}, {"/member", "71", "", 401}, {"/platform", "71", "", 401},
-		{"/entity", "71", "5", 200}, {"/entity", "72", "5", 401}, {"/entity", "71", "", 403},
-		{"/adapter?tenant_id=71&entity_id=5", "72", "", 200}, {"/adapter?tenant_id=72&entity_id=5", "71", "", 401},
+		{"/tenants/71/guarded", 200}, {"/tenants/72/guarded", 401}, {"/guarded", 404},
+		{"/tenants/71/write-scope", 401}, {"/authenticated", 401}, {"/tenants/71/member", 401}, {"/platform", 401},
+		{"/tenants/71/entities/5/entity", 200}, {"/tenants/72/entities/5/entity", 401}, {"/tenants/71/entity", 404},
+		{"/tenants/71/entities/5/adapter", 200}, {"/tenants/72/entities/5/adapter", 401},
 	} {
-		t.Run(test.path+test.tenant+test.entity, func(t *testing.T) {
-			resp := api.Get(test.path, "Authorization: Bearer "+created.Token, "X-Tenant-Id: "+test.tenant, "X-Entity-Id: "+test.entity)
+		t.Run(test.path, func(t *testing.T) {
+			resp := api.Get(test.path, "Authorization: Bearer "+created.Token)
 			assert.Equal(t, test.status, resp.Code, resp.Body.String())
 		})
 	}
 	checker.allowed = false
-	for _, path := range []string{"/guarded", "/entity", "/adapter?tenant_id=71&entity_id=5"} {
-		resp := api.Get(path, "Authorization: Bearer "+created.Token, "X-Tenant-Id: 71", "X-Entity-Id: 5")
+	for _, path := range []string{"/tenants/71/guarded", "/tenants/71/entities/5/entity", "/tenants/71/entities/5/adapter"} {
+		resp := api.Get(path, "Authorization: Bearer "+created.Token)
 		assert.Equal(t, http.StatusForbidden, resp.Code, resp.Body.String())
 	}
 	checker.allowed = true
 	require.NoError(t, h.db.Exec("UPDATE iam_tenant_members SET status = 'disabled' WHERE tenant_id = 71").Error)
-	resp := api.Get("/guarded", "Authorization: Bearer "+created.Token, "X-Tenant-Id: 71")
+	resp := api.Get("/tenants/71/guarded", "Authorization: Bearer "+created.Token)
 	assert.Equal(t, http.StatusForbidden, resp.Code, resp.Body.String())
 }
 

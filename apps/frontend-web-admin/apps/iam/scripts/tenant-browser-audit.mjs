@@ -202,8 +202,8 @@ async function login(loginName, loginPassword) {
   await setInput("#login-name", loginName)
   await setInput("#password", loginPassword)
   await evaluate(`document.querySelector("form").requestSubmit()`)
-  await waitFor(`location.pathname === "/iam/tenants"`, 20000)
-  const session = await api("/authn/sessions/current", {}, "")
+  await waitFor(`location.pathname === "/tenants"`, 20000)
+  const session = await api("/sessions/current", {}, "")
   await evaluate(`
     localStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)});
     localStorage.setItem("iam.tenant:subject", ${JSON.stringify(session.subject)});
@@ -215,10 +215,12 @@ async function login(loginName, loginPassword) {
 }
 
 async function api(path, init = {}, tenant = tenantID) {
+  const requestPath = tenant && !path.startsWith("/tenants") && !path.startsWith("/platform/")
+    ? `/tenants/${tenant}${path}`
+    : path
   return evaluate(`
     const headers = { "Content-Type": "application/json" };
-    if (${JSON.stringify(tenant)} !== "") headers["X-Tenant-Id"] = ${JSON.stringify(tenant)};
-    const response = await fetch(${JSON.stringify(`/api${path}`)}, {
+    const response = await fetch(${JSON.stringify(`/api${requestPath}`)}, {
       ...${JSON.stringify(init)}, headers, credentials: "include"
     });
     const body = await response.json();
@@ -282,30 +284,30 @@ await command("Emulation.setDeviceMetricsOverride", {
   deviceScaleFactor: 1,
   mobile: false,
 })
-await navigate("/iam/tenants")
+await navigate("/tenants")
 await login(adminLogin, password)
 await waitFor(
-  `document.querySelector('a[href="/iam/tenants"]') && document.querySelector("tbody")`
+  `document.querySelector('a[href="/tenants"]') && document.querySelector("tbody")`
 )
 
-const administrator = (await api("/iam/roles")).find(
+const administrator = (await api("/roles")).find(
   (role) => role.name === "Administrator"
 )
 if (!administrator) throw new Error("built-in administrator role was not found")
 const previousOperators = await api(
-  "/iam/principals?limit=200&search=acceptance-tenant-admin"
+  "/principals?limit=200&search=acceptance-tenant-admin"
 )
 for (const principal of previousOperators.items) {
   if (principal.status !== "active") continue
   await api(
-    `/iam/roles/${encodeURIComponent(administrator.id)}/members/${encodeURIComponent(principal.id)}`,
+    `/roles/${encodeURIComponent(administrator.id)}/members/${encodeURIComponent(principal.id)}`,
     { method: "DELETE" }
   )
-  await api(`/iam/members/${encodeURIComponent(principal.id)}`, {
+  await api(`/members/${encodeURIComponent(principal.id)}`, {
     method: "PATCH",
     body: JSON.stringify({ status: "disabled" }),
   })
-  await api(`/iam/principals/${encodeURIComponent(principal.id)}/suspension`, {
+  await api(`/principals/${encodeURIComponent(principal.id)}/suspension`, {
     method: "PUT",
   })
 }
@@ -313,7 +315,7 @@ for (const principal of previousOperators.items) {
 const suffix = Date.now().toString(36)
 const operatorLogin = `acceptance-tenant-admin-${suffix}`
 const operatorPassword = "Audit-Acceptance-2026!"
-const operator = await api("/iam/principals", {
+const operator = await api("/principals", {
   method: "POST",
   body: JSON.stringify({
     login_name: operatorLogin,
@@ -321,7 +323,7 @@ const operator = await api("/iam/principals", {
     display_name: `Tenant Admin ${suffix}`,
   }),
 })
-await api("/iam/members", {
+await api("/members", {
   method: "POST",
   body: JSON.stringify({
     subject: operator.id,
@@ -330,7 +332,7 @@ await api("/iam/members", {
   }),
 })
 await api(
-  `/iam/roles/${encodeURIComponent(administrator.id)}/members/${encodeURIComponent(operator.id)}`,
+  `/roles/${encodeURIComponent(administrator.id)}/members/${encodeURIComponent(operator.id)}`,
   {
     method: "PUT",
   }
@@ -339,7 +341,7 @@ await api(
 // Tenant creation requires an owner principal picked in the dialog, so seed one
 // before the tenants page loads its principal list.
 const ownerLogin = `acceptance-tenant-owner-${suffix}`
-await api("/iam/principals", {
+await api("/principals", {
   method: "POST",
   body: JSON.stringify({
     login_name: ownerLogin,
@@ -348,24 +350,24 @@ await api("/iam/principals", {
   }),
 })
 
-await api("/authn/sessions/current", { method: "DELETE" }, "")
+await api("/sessions/current", { method: "DELETE" }, "")
 await command("Network.clearBrowserCookies")
-await navigate("/iam/tenants")
+await navigate("/tenants")
 await login(operatorLogin, operatorPassword)
 await waitFor(`document.querySelector('[role="alert"]')`)
 if (
   await evaluate(
-    `return Boolean(document.querySelector('a[href="/iam/tenants"]'))`
+    `return Boolean(document.querySelector('a[href="/tenants"]'))`
   )
 )
   throw new Error("tenant administrator can see platform navigation")
 
-await api("/authn/sessions/current", { method: "DELETE" }, "")
+await api("/sessions/current", { method: "DELETE" }, "")
 await command("Network.clearBrowserCookies")
-await navigate("/iam/tenants")
+await navigate("/tenants")
 await login(adminLogin, password)
 await waitFor(
-  `document.querySelector('a[href="/iam/tenants"]') && document.querySelector("tbody")`
+  `document.querySelector('a[href="/tenants"]') && document.querySelector("tbody")`
 )
 
 const slug = `acceptance-${suffix}`
@@ -380,7 +382,7 @@ await submit("tenant-form")
 await waitFor(`!document.querySelector("#tenant-form")`)
 await waitFor(rowExpression(name))
 
-let tenant = (await api("/iam/tenants", {}, "")).find(
+let tenant = (await api("/tenants", {}, "")).find(
   (item) => item.slug === slug
 )
 if (!tenant) throw new Error("created tenant was not returned")
@@ -419,10 +421,10 @@ await evaluate(`
   localStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)});
   window.dispatchEvent(new Event("tenant-change"));
 `)
-await navigate("/iam/tenants")
+await navigate("/tenants")
 await waitFor(rowExpression(updatedName))
 
-tenant = (await api("/iam/tenants", {}, "")).find(
+tenant = (await api("/tenants", {}, "")).find(
   (item) => item.id === tenant.id
 )
 await clickRowAction(updatedName, "删除租户")
@@ -433,21 +435,21 @@ await click("#include-deleted-tenants")
 await waitFor(`${rowExpression(updatedName)}?.textContent.includes("已删除")`)
 
 await api(
-  `/iam/roles/${encodeURIComponent(administrator.id)}/members/${encodeURIComponent(operator.id)}`,
+  `/roles/${encodeURIComponent(administrator.id)}/members/${encodeURIComponent(operator.id)}`,
   {
     method: "DELETE",
   }
 )
-await api(`/iam/members/${encodeURIComponent(operator.id)}`, {
+await api(`/members/${encodeURIComponent(operator.id)}`, {
   method: "PATCH",
   body: JSON.stringify({ status: "disabled" }),
 })
-await api(`/iam/principals/${encodeURIComponent(operator.id)}/suspension`, {
+await api(`/principals/${encodeURIComponent(operator.id)}/suspension`, {
   method: "PUT",
 })
 
 const tenantRequests = requests.filter((request) =>
-  request.url.includes("/api/iam/tenants")
+  request.url.includes("/api/tenants")
 )
 if (tenantRequests.length < 8)
   throw new Error(`tenant lifecycle requests missing: ${tenantRequests.length}`)

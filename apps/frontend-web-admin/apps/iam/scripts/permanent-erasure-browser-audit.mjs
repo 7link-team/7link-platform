@@ -79,9 +79,9 @@ try {
   await page.getByRole("button", { name: "切换工作空间" }).waitFor()
 
   const createResponse = await context.request.post(
-    baseURL + "/api/iam/principals",
+    baseURL + `/api/tenants/${tenant}/principals`,
     {
-      headers: { Origin: baseURL, "X-Tenant-Id": tenant },
+      headers: { Origin: baseURL },
       data: {
         login_name: targetLogin,
         password: targetPassword,
@@ -95,7 +95,7 @@ try {
   targetID = created.id
   assert(targetID, "The synthetic principal must have an id")
 
-  await page.goto("/iam/users")
+  await page.goto("/users")
   await page.getByLabel("搜索账号").fill(targetLogin)
   const row = page.getByRole("row").filter({ hasText: targetLogin })
   await row.waitFor()
@@ -103,7 +103,7 @@ try {
   await Promise.all([
     page.waitForResponse(
       (response) =>
-        response.url().endsWith(`/api/iam/principals/${targetID}/suspension`) &&
+        response.url().endsWith(`/api/principals/${targetID}/suspension`) &&
         response.request().method() === "PUT" &&
         response.status() === 200
     ),
@@ -128,7 +128,7 @@ try {
         response
           .url()
           .endsWith(
-            `/api/platform/iam/principals/${targetID}/lifecycle/retention`
+            `/api/platform/principals/${targetID}/lifecycle/retention`
           ) &&
         response.request().method() === "PUT" &&
         response.status() === 200
@@ -154,7 +154,7 @@ try {
         response
           .url()
           .endsWith(
-            `/api/platform/iam/principals/${targetID}/lifecycle/anonymization`
+            `/api/platform/principals/${targetID}/lifecycle/anonymization`
           ) &&
         response.request().method() === "POST" &&
         response.status() === 200
@@ -177,8 +177,8 @@ try {
   })
 
   const lifecycleResponse = await context.request.get(
-    baseURL + `/api/platform/iam/principals/${targetID}/lifecycle`,
-    { headers: { Origin: baseURL, "X-Tenant-Id": tenant } }
+    baseURL + `/api/platform/principals/${targetID}/lifecycle`,
+    { headers: { Origin: baseURL } }
   )
   assert.equal(lifecycleResponse.status(), 200, await lifecycleResponse.text())
   const lifecycle = (await lifecycleResponse.json()).data

@@ -16,7 +16,7 @@ const bundles = Object.fromEntries(
     JSON.parse(
       readFileSync(
         new URL(
-          `../../../../backend-api/internal/iam/core/i18n/locales/${locale}.json`,
+          `../../../../backend-api/internal/core/i18n/locales/${locale}.json`,
           import.meta.url
         ),
         "utf8"

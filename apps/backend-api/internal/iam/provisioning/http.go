@@ -45,7 +45,7 @@ func parseSCIMID(value string) (guid.ID, error) {
 // directoryListInput bounds the listing by default: a tenant's directory count
 // is open-ended, and an omitted limit used to mean "every row".
 type directoryListInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
@@ -53,14 +53,14 @@ type directoryListInput struct {
 // directoryIDInput addresses one directory's credential listing, which the
 // directory accumulates over its lifetime, so it is bounded by default too.
 type directoryIDInput struct {
-	TenantID    string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID    string `path:"tenant_id" maxLength:"128"`
 	DirectoryID string `path:"directory_id" maxLength:"128"`
 	Offset      int    `query:"offset" minimum:"0" default:"0"`
 	Limit       int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type directoryCreateInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Body     struct {
 		Name             string   `json:"name" minLength:"1" maxLength:"128"`
 		ServiceAccountID *guid.ID `json:"service_account_id,omitempty" nullable:"true"`
@@ -68,7 +68,7 @@ type directoryCreateInput struct {
 }
 
 type directoryReplaceInput struct {
-	TenantID    string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID    string `path:"tenant_id" maxLength:"128"`
 	DirectoryID string `path:"directory_id" maxLength:"128"`
 	Body        struct {
 		Name             string   `json:"name" minLength:"1" maxLength:"128"`
@@ -79,7 +79,7 @@ type directoryReplaceInput struct {
 }
 
 type credentialCreateInput struct {
-	TenantID    string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID    string `path:"tenant_id" maxLength:"128"`
 	DirectoryID string `path:"directory_id" maxLength:"128"`
 	Body        struct {
 		Name      string     `json:"name" minLength:"1" maxLength:"128"`
@@ -88,7 +88,7 @@ type credentialCreateInput struct {
 }
 
 type credentialIDInput struct {
-	TenantID     string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID     string `path:"tenant_id" maxLength:"128"`
 	DirectoryID  string `path:"directory_id" maxLength:"128"`
 	CredentialID string `path:"credential_id" maxLength:"128"`
 }
@@ -691,18 +691,18 @@ func intPointer(value int) *int { return &value }
 
 // targetListInput bounds the listing by default, like directoryListInput.
 type targetListInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type targetIDInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	TargetID string `path:"target_id" maxLength:"128"`
 }
 
 type targetCreateInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Body     struct {
 		Name             string   `json:"name" minLength:"1" maxLength:"128"`
 		BaseURL          string   `json:"base_url" minLength:"1" maxLength:"1024"`
@@ -712,7 +712,7 @@ type targetCreateInput struct {
 }
 
 type targetReplaceInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	TargetID string `path:"target_id" maxLength:"128"`
 	Body     struct {
 		Name             string   `json:"name" minLength:"1" maxLength:"128"`
@@ -725,7 +725,7 @@ type targetReplaceInput struct {
 }
 
 type targetPushInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	TargetID string `path:"target_id" maxLength:"128"`
 	Body     struct {
 		ResourceType string `json:"resource_type" enum:"User,Group"`

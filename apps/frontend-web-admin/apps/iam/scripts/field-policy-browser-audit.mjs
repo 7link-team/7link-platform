@@ -28,16 +28,18 @@ const context = await browser.newContext({
 let page = await context.newPage()
 const exceptions = []
 page.on("pageerror", (error) => exceptions.push(error.message))
-async function api(path, method = "GET", body, headers = {}) {
+async function api(path, method = "GET", body, scope = {}) {
   return page.evaluate(
-    async ({ path, method, body, headers, tenant }) => {
-      const response = await fetch("/api" + path, {
+    async ({ path, method, body, scope, tenant }) => {
+      const tenantID = scope.tenant ?? tenant
+      const requestPath = scope.entity
+        ? `/tenants/${tenantID}/entities/${scope.entity}${path}`
+        : `/tenants/${tenantID}${path}`
+      const response = await fetch("/api" + requestPath, {
         method,
         credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          "X-Tenant-Id": tenant,
-          ...headers,
         },
         body: body === undefined ? undefined : JSON.stringify(body),
       })
@@ -48,7 +50,7 @@ async function api(path, method = "GET", body, headers = {}) {
         error: data?.detail ?? data?.message,
       }
     },
-    { path, method, body, headers, tenant }
+    { path, method, body, scope, tenant }
   )
 }
 async function ok(path, method, body, headers) {
@@ -110,23 +112,23 @@ try {
     ({ tenant }) => localStorage.setItem("iam.tenant", tenant),
     { tenant }
   )
-  await ok("/authn/sessions", "POST", {
+  await ok("/sessions", "POST", {
     login_name: login,
     password,
     return_url: baseURL + "/",
   })
-  const me = await ok("/authn/sessions/current")
-  const existing = (await ok("/iam/field-policies")).find(
+  const me = await ok("/sessions/current")
+  const existing = (await ok("/field-policies")).find(
     (p) => p.resource === "todo" && p.field === "description"
   )
   assert(
     !existing?.version,
     "Use a dedicated acceptance tenant without a custom todo.description policy; existing policies are not removed by setup"
   )
-  const roles = await ok("/iam/roles")
+  const roles = await ok("/roles")
   const adminRole = roles.find((role) => role.name === "Administrator")
   assert(adminRole)
-  const entity = await ok("/iam/entities", "POST", {
+  const entity = await ok("/entities", "POST", {
     name: `Field audit ${Date.now()}`,
     type: "store",
   })
@@ -137,15 +139,15 @@ try {
       title: "Field policy browser audit",
       description: "private browser fixture",
     },
-    { "X-Entity-Id": entity.id }
+    { entity: entity.id }
   )
-  await page.goto(baseURL + "/iam/field-policies")
+  await page.goto(baseURL + "/field-policies")
   await page
     .getByRole("button", { name: "编辑 description", exact: true })
     .waitFor()
   assert.equal(
     await page.locator("tr[data-field]").count(),
-    (await ok("/iam/field-catalog")).length
+    (await ok("/field-catalog")).length
   )
   assert.equal(
     await page.getByRole("link", { name: "字段权限", exact: true }).count(),
@@ -192,19 +194,19 @@ try {
     fullPage: true,
   })
   await save()
-  let stored = (await ok("/iam/field-policies")).find(
+  let stored = (await ok("/field-policies")).find(
     (p) => p.field === "description"
   )
   assert.equal(stored.policy.mask, "redact")
   assert.deepEqual(stored.policy.read.allow_roles, [adminRole.id])
   assert.deepEqual(stored.policy.read.deny_roles, [adminRole.id])
   const effective = await ok(
-    `/iam/fields/effective?resource=todo&entity_id=${entity.id}`
+    `/fields/effective?resource=todo&entity_id=${entity.id}`
   )
   assert.equal(effective.fields.description.read, "redact")
   assert.equal(effective.fields.description.update, false)
   const masked = await ok("/todos/" + task.id, "GET", undefined, {
-    "X-Entity-Id": entity.id,
+    entity: entity.id,
   })
   assert.notEqual(masked.description, "private browser fixture")
   assert.equal(
@@ -213,7 +215,7 @@ try {
         "/todos",
         "POST",
         { title: "Rejected", description: "blocked" },
-        { "X-Entity-Id": entity.id }
+        { entity: entity.id }
       )
     ).status,
     403
@@ -223,7 +225,7 @@ try {
   )
 
   await editor()
-  const concurrent = await ok("/iam/field-policies/todo/description", "PUT", {
+  const concurrent = await ok("/field-policies/todo/description", "PUT", {
     version: stored.version,
     policy: { ...stored.policy, mask: "omit" },
   })
@@ -232,7 +234,7 @@ try {
     .getByText("策略版本冲突，当前修改未保存。", { exact: true })
     .waitFor()
   assert.equal(
-    (await ok("/iam/field-policies")).find((p) => p.field === "description")
+    (await ok("/field-policies")).find((p) => p.field === "description")
       .version,
     concurrent.version
   )
@@ -244,14 +246,14 @@ try {
   await page.getByRole("button", { name: "确认恢复", exact: true }).click()
   await page.getByRole("dialog").waitFor({ state: "hidden" })
   assert.equal(
-    (await ok("/iam/field-policies")).find((p) => p.field === "description")
+    (await ok("/field-policies")).find((p) => p.field === "description")
       .version,
     0
   )
   assert.equal(
     (
       await ok("/todos/" + task.id, "GET", undefined, {
-        "X-Entity-Id": entity.id,
+        entity: entity.id,
       })
     ).description,
     "private browser fixture"
@@ -288,7 +290,7 @@ try {
     "PASS fixed/read-only fields, 1440 desktop and 390 mobile framing"
   )
 
-  const tenantB = await ok("/iam/tenants", "POST", {
+  const tenantB = await ok("/tenants", "POST", {
     slug: `field-switch-${Date.now()}`,
     name: "Field switch tenant",
     owner_principal_id: me.subject,
@@ -307,29 +309,29 @@ try {
     .waitFor()
   assert(
     (
-      await api("/iam/field-policies", "GET", undefined, {
-        "X-Tenant-Id": tenantB.id,
+      await api("/field-policies", "GET", undefined, {
+        tenant: tenantB.id,
       })
     ).data.every((p) => p.version === 0)
   )
   console.log("PASS tenant switch discards the old tenant editor")
 
   const viewerLogin = `field-viewer-${Date.now()}@example.test`
-  const viewer = await ok("/iam/principals", "POST", {
+  const viewer = await ok("/principals", "POST", {
     login_name: viewerLogin,
     password,
     display_name: "Field policy viewer",
     email: viewerLogin,
   })
-  const viewerRole = await ok("/iam/roles", "POST", {
+  const viewerRole = await ok("/roles", "POST", {
     name: `Field viewer ${Date.now()}`,
   })
   await ok(
-    `/iam/roles/${viewerRole.id}/permissions/field_policy_view`,
+    `/roles/${viewerRole.id}/permissions/field_policy_view`,
     "PUT",
     {}
   )
-  await ok(`/iam/roles/${viewerRole.id}/members/${viewer.id}`, "PUT", {})
+  await ok(`/roles/${viewerRole.id}/members/${viewer.id}`, "PUT", {})
   const adminPage = page
   const viewerContext = await browser.newContext({
     viewport: { width: 1280, height: 900 },
@@ -341,31 +343,31 @@ try {
     (tenant) => localStorage.setItem("iam.tenant", tenant),
     tenant
   )
-  await ok("/authn/sessions", "POST", {
+  await ok("/sessions", "POST", {
     login_name: viewerLogin,
     password,
     return_url: baseURL + "/",
   })
-  await page.goto(baseURL + "/iam/field-policies")
+  await page.goto(baseURL + "/field-policies")
   await editor()
   const forbiddenWrite = page.waitForResponse(
     (response) =>
-      response.url().endsWith("/iam/field-policies/todo/description") &&
+      response.url().endsWith("/field-policies/todo/description") &&
       response.request().method() === "PUT"
   )
   await page.getByRole("button", { name: "保存", exact: true }).click()
   assert.equal((await forbiddenWrite).status(), 403)
   assert(await page.getByRole("dialog").isVisible())
   assert.equal(
-    (await ok("/iam/field-policies")).find((p) => p.field === "description")
+    (await ok("/field-policies")).find((p) => p.field === "description")
       .version,
     0
   )
   await page.getByRole("button", { name: "取消", exact: true }).click()
   assert.equal(
     (
-      await api("/iam/field-policies", "GET", undefined, {
-        "X-Tenant-Id": tenantB.id,
+      await api("/field-policies", "GET", undefined, {
+        tenant: tenantB.id,
       })
     ).status,
     403
@@ -377,7 +379,7 @@ try {
   const viewerPage = page
   page = adminPage
   await ok(
-    `/iam/roles/${viewerRole.id}/permissions/field_policy_update`,
+    `/roles/${viewerRole.id}/permissions/field_policy_update`,
     "PUT",
     {}
   )
@@ -390,7 +392,7 @@ try {
     .check()
   await save()
   assert.deepEqual(
-    (await ok("/iam/field-policies")).find((p) => p.field === "description")
+    (await ok("/field-policies")).find((p) => p.field === "description")
       .policy.read.deny_roles,
     [viewerRole.id]
   )
@@ -404,7 +406,7 @@ try {
 
   page = adminPage
   await ok(
-    `/iam/roles/${viewerRole.id}/permissions/field_policy_view`,
+    `/roles/${viewerRole.id}/permissions/field_policy_view`,
     "DELETE"
   )
   page = viewerPage

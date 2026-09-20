@@ -22,9 +22,10 @@ const screenshots = new URL(
 mkdirSync(screenshots, { recursive: true })
 const admin = await browser.newContext({ baseURL })
 async function api(context, path, method = "GET", body, scope = "") {
-  const response = await context.request.fetch("/api" + path, {
+  const requestPath = scope ? `/tenants/${scope}${path}` : path
+  const response = await context.request.fetch("/api" + requestPath, {
     method,
-    headers: { Origin: baseURL, ...(scope ? { "X-Tenant-Id": scope } : {}) },
+    headers: { Origin: baseURL },
     data: body,
   })
   const result = await response.json()
@@ -49,7 +50,7 @@ async function expectTenantWorkspace(page, tenantID) {
 }
 const errors = []
 try {
-  await ok(admin, "/authn/sessions", "POST", {
+  await ok(admin, "/sessions", "POST", {
     login_name: process.env.IAM_BROWSER_LOGIN ?? "admin@example.test",
     password: auditPassword(),
     return_url: baseURL + "/",
@@ -58,7 +59,7 @@ try {
   const memberPassword = randomBytes(32).toString("base64url")
   const actor = await ok(
     admin,
-    "/iam/principals",
+    "/principals",
     "POST",
     {
       login_name: `session-member-${stamp}`,
@@ -68,12 +69,12 @@ try {
     },
     tenant
   )
-  const roles = await ok(admin, "/iam/roles", "GET", undefined, tenant)
+  const roles = await ok(admin, "/roles", "GET", undefined, tenant)
   const role = roles.find((item) => item.name === "Administrator")
   assert(role)
   await ok(
     admin,
-    `/iam/roles/${role.id}/members/${actor.id}`,
+    `/roles/${role.id}/members/${actor.id}`,
     "PUT",
     {},
     tenant
@@ -93,13 +94,12 @@ try {
     let unscopedSession = false
     let derivedMenu = false
     page.on("request", (request) => {
-      if (request.url().endsWith("/api/authn/sessions/current")) {
-        assert.equal(request.headers()["x-tenant-id"], undefined)
+      if (request.url().endsWith("/api/sessions/current")) {
+        assert(!new URL(request.url()).pathname.includes("/tenants/"))
         unscopedSession = true
       }
-      if (request.url().includes("/api/iam/me/menus")) {
-        if (request.headers()["x-tenant-id"] === tenant) derivedMenu = true
-      }
+      if (request.url().includes(`/api/tenants/${tenant}/me/menus`))
+        derivedMenu = true
     })
     assert.deepEqual((await context.storageState()).origins, [])
     await page.goto("/login")
@@ -107,7 +107,7 @@ try {
     await page.locator('input[name="password"]').fill(memberPassword)
     const menusLoaded = page.waitForResponse(
       (response) =>
-        response.url().includes("/api/iam/me/menus") &&
+        response.url().includes("/api/me/menus") &&
         response.status() === 200
     )
     await page.locator('button[type="submit"]').click()
@@ -117,11 +117,11 @@ try {
     assert(derivedMenu)
     await page.locator("main article").nth(3).waitFor()
     assert.equal(
-      (await ok(context, "/authn/sessions/current")).organization_id,
+      (await ok(context, "/sessions/current")).organization_id,
       tenant
     )
     assert.equal(
-      (await api(context, "/iam/tenants")).status,
+      (await api(context, "/tenants")).status,
       403,
       "member must not be a platform administrator"
     )
@@ -135,15 +135,15 @@ try {
       fullPage: true,
     })
   }
-  const owner = await ok(admin, "/authn/sessions/current")
-  const second = await ok(admin, "/iam/tenants", "POST", {
+  const owner = await ok(admin, "/sessions/current")
+  const second = await ok(admin, "/tenants", "POST", {
     slug: `session-second-${stamp}`,
     name: "Session second tenant",
     owner_principal_id: owner.subject,
   })
   await ok(
     admin,
-    "/iam/members",
+    "/members",
     "POST",
     {
       subject: actor.id,
@@ -154,7 +154,7 @@ try {
     second.id
   )
   assert.equal(
-    (await ok(lastContext, "/authn/sessions/current")).organization_id,
+    (await ok(lastContext, "/sessions/current")).organization_id,
     undefined
   )
   const ambiguous = await browser.newContext({
@@ -182,28 +182,28 @@ try {
   await page.reload()
   await expectTenantWorkspace(page, tenant)
   assert.equal(
-    (await ok(ambiguous, "/authn/me", "GET", undefined, second.id))
+    (await ok(ambiguous, "/me", "GET", undefined, second.id))
       .organization_id,
     second.id
   )
   assert.equal(
-    (await ok(ambiguous, "/authn/sessions/current")).organization_id,
+    (await ok(ambiguous, "/sessions/current")).organization_id,
     undefined
   )
   await ok(
     admin,
-    `/iam/members/${actor.id}`,
+    `/members/${actor.id}`,
     "PATCH",
     { status: "disabled" },
     tenant
   )
   assert.equal(
-    (await api(ambiguous, "/authn/sessions/current", "GET", undefined, tenant))
+    (await api(ambiguous, "/sessions/current", "GET", undefined, tenant))
       .status,
     403
   )
   assert.equal(
-    (await ok(ambiguous, "/authn/sessions/current")).organization_id,
+    (await ok(ambiguous, "/sessions/current")).organization_id,
     second.id
   )
   assert.deepEqual(errors, [])

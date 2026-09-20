@@ -169,7 +169,7 @@ export default function TenantsPage() {
 
   const enterTenant = (tenant: Tenant) => {
     setTenant(tenant.id)
-    navigate("/")
+    navigate(`/tenants/${encodeURIComponent(tenant.id)}`)
   }
 
   return (

@@ -60,7 +60,7 @@ func TestEffectivePermissionsCarryPlatformAuthorityWithoutMembership(t *testing.
 func TestEffectivePermissionsEndpointAllowsPlatformDiscoveryWithoutTenant(t *testing.T) {
 	harness := newHTTPIAMHarness(t, true)
 
-	selected := harness.api.Get("/me/permissions", "Authorization: Bearer test", "X-Tenant-Id: 1")
+	selected := harness.api.Get("/tenants/1/me/permissions", "Authorization: Bearer test")
 	require.Equal(t, http.StatusOK, selected.Code, selected.Body.String())
 	assert.Contains(t, selected.Body.String(), `"user_create"`)
 	assert.Contains(t, selected.Body.String(), `"platform_administer"`,
@@ -71,5 +71,5 @@ func TestEffectivePermissionsEndpointAllowsPlatformDiscoveryWithoutTenant(t *tes
 	assert.Equal(t, http.StatusOK, unselected.Code, unselected.Body.String())
 	assert.Contains(t, unselected.Body.String(), `"platform_administer"`)
 	assert.NotContains(t, unselected.Body.String(), `"user_create"`)
-	assert.Equal(t, http.StatusUnprocessableEntity, harness.api.Get("/me/permissions", "Authorization: Bearer test", "X-Tenant-Id: invalid").Code)
+	assert.Equal(t, http.StatusForbidden, harness.api.Get("/tenants/invalid/me/permissions", "Authorization: Bearer test").Code)
 }

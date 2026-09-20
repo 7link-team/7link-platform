@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const iamHTTPMappingCount = 262
+const iamHTTPMappingCount = 264
 
 type iamHTTPMapping struct {
 	sourceOperation string
@@ -52,13 +52,13 @@ func TestIAMAuthorizationClassifierDistinguishesGuardBoundaries(t *testing.T) {
 	authz.RegisterEntityAdapter(registrar, api, huma.Operation{OperationID: "entity-query", Method: http.MethodGet, Path: "/entity-query"}, authz.Guard{Resource: "store", Verb: "view"}, func(huma.Context) {})
 
 	expected := map[string]iamHTTPAuthorization{
-		"/public":        {class: "public"},
-		"/authenticated": {class: "authenticated"},
-		"/tenant-member": {class: "tenant-member"},
-		"/tenant":        {class: "tenant", permission: "store_view"},
-		"/platform":      {class: "platform", permission: "tenant_view"},
-		"/entity-header": {class: "entity-header", permission: "store_view"},
-		"/entity-query":  {class: "entity-query", permission: "store_view"},
+		"/public":                            {class: "public"},
+		"/authenticated":                     {class: "authenticated"},
+		"/tenants/{tenant_id}/tenant-member": {class: "tenant-member"},
+		"/tenants/{tenant_id}/tenant":        {class: "tenant", permission: "store_view"},
+		"/platform":                          {class: "platform", permission: "tenant_view"},
+		"/tenants/{tenant_id}/entities/{entity_id}/entity-header": {class: "entity-path", permission: "store_view"},
+		"/tenants/{tenant_id}/entities/{entity_id}/entity-query":  {class: "entity-path", permission: "store_view"},
 	}
 	for path, want := range expected {
 		got, err := iamAuthorizationOf(api.OpenAPI().Paths[path].Get)
@@ -66,7 +66,7 @@ func TestIAMAuthorizationClassifierDistinguishesGuardBoundaries(t *testing.T) {
 		assert.Equal(t, want, got, path)
 	}
 
-	tenant := api.OpenAPI().Paths["/tenant"].Get
+	tenant := api.OpenAPI().Paths["/tenants/{tenant_id}/tenant"].Get
 	tenant.Extensions[authz.GuardExtensionKey] = "role_view"
 	_, err := iamAuthorizationOf(tenant)
 	assert.ErrorContains(t, err, "does not match")
@@ -76,9 +76,9 @@ func TestIAMAuthorizationClassifierDistinguishesGuardBoundaries(t *testing.T) {
 	_, err = iamAuthorizationOf(authenticated)
 	assert.ErrorContains(t, err, "has no security requirement")
 
-	entity := api.OpenAPI().Paths["/entity-header"].Get
+	entity := api.OpenAPI().Paths["/tenants/{tenant_id}/entities/{entity_id}/entity-header"].Get
 	for _, parameter := range entity.Parameters {
-		if parameter.Name == authz.EntityHeader && parameter.In == "header" {
+		if parameter.Name == authz.EntityPath && parameter.In == "path" {
 			parameter.Required = false
 		}
 	}
@@ -212,12 +212,9 @@ func iamAuthorizationOf(operation *huma.Operation) (iamHTTPAuthorization, error)
 	}
 
 	selectors := map[string]bool{}
-	namedSelectors := 0
 	authorizationSelectors := map[string]string{
-		"header|" + strings.ToLower(authz.TenantHeader): "Tenant authorization boundary",
-		"header|" + strings.ToLower(authz.EntityHeader): "Authorized entity resource boundary",
-		"query|" + authz.TenantQuery:                    "Tenant authorization selector",
-		"query|" + authz.EntityQuery:                    "Entity authorization selector",
+		"path|" + authz.TenantPath: "Tenant resource identifier",
+		"path|" + authz.EntityPath: "Entity resource identifier",
 	}
 	for _, parameter := range operation.Parameters {
 		if parameter == nil {
@@ -228,12 +225,6 @@ func iamAuthorizationOf(operation *huma.Operation) (iamHTTPAuthorization, error)
 		if !authorizationSelector {
 			continue
 		}
-		// Every parameter that occupies a selector slot counts, whether or not
-		// it carries the registrar's declaration. The archive routes bound an
-		// X-Tenant-Id straight from their input struct, which published a
-		// platform selector their handler answers with 422 while the declared
-		// selector count stayed zero.
-		namedSelectors++
 		if parameter.Description != description {
 			continue
 		}
@@ -243,10 +234,8 @@ func iamAuthorizationOf(operation *huma.Operation) (iamHTTPAuthorization, error)
 		selectors[key] = true
 	}
 
-	tenantHeader := selectors["header|"+strings.ToLower(authz.TenantHeader)]
-	entityHeader := selectors["header|"+strings.ToLower(authz.EntityHeader)]
-	tenantQuery := selectors["query|"+authz.TenantQuery]
-	entityQuery := selectors["query|"+authz.EntityQuery]
+	tenantPath := selectors["path|"+authz.TenantPath]
+	entityPath := selectors["path|"+authz.EntityPath]
 	selectorCount := len(selectors)
 
 	switch markedClass {
@@ -255,24 +244,22 @@ func iamAuthorizationOf(operation *huma.Operation) (iamHTTPAuthorization, error)
 			return iamHTTPAuthorization{}, fmt.Errorf("%s operation has a guard or authorization selector", markedClass)
 		}
 	case "tenant-member":
-		if guarded || selectorCount != 1 || !tenantHeader {
-			return iamHTTPAuthorization{}, fmt.Errorf("tenant-member operation does not have exactly one tenant header selector")
+		if guarded || selectorCount != 1 || !tenantPath {
+			return iamHTTPAuthorization{}, fmt.Errorf("tenant-member operation does not have exactly one tenant path selector")
 		}
 	case "platform":
-		if !guarded || selectorCount != 0 || namedSelectors != 0 {
-			return iamHTTPAuthorization{}, fmt.Errorf("platform operation does not have exactly one guard and no tenant/entity selector")
+		if !guarded {
+			return iamHTTPAuthorization{}, fmt.Errorf("platform operation does not have exactly one guard")
 		}
 	case "":
 		if !guarded {
 			return iamHTTPAuthorization{}, fmt.Errorf("operation has no authorization declaration")
 		}
 		switch {
-		case selectorCount == 1 && tenantHeader:
+		case selectorCount == 1 && tenantPath:
 			markedClass = "tenant"
-		case selectorCount == 2 && tenantHeader && entityHeader:
-			markedClass = "entity-header"
-		case selectorCount == 2 && tenantQuery && entityQuery:
-			markedClass = "entity-query"
+		case selectorCount == 2 && tenantPath && entityPath:
+			markedClass = "entity-path"
 		default:
 			return iamHTTPAuthorization{}, fmt.Errorf("guarded operation has an invalid tenant/entity selector set")
 		}
@@ -328,7 +315,7 @@ func loadIAMHTTPAuthorizations(t *testing.T) map[string]iamHTTPAuthorization {
 		parts := strings.SplitN(line, " => ", 2)
 		require.Len(t, parts, 2, "line %d", lineNumber+1)
 		fields := strings.Split(parts[1], "|")
-		require.Contains(t, []string{"public", "authenticated", "session-only", "tenant-member", "tenant", "platform", "entity-header", "entity-query"}, fields[0], "line %d", lineNumber+1)
+		require.Contains(t, []string{"public", "authenticated", "session-only", "tenant-member", "tenant", "platform", "entity-path"}, fields[0], "line %d", lineNumber+1)
 		permissionRequired := fields[0] == "tenant" || fields[0] == "platform" || strings.HasPrefix(fields[0], "entity-")
 		if permissionRequired {
 			require.Len(t, fields, 2, "line %d", lineNumber+1)

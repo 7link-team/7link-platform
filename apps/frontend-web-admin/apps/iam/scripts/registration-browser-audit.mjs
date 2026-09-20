@@ -350,17 +350,17 @@ await waitFor(
   `document.body.innerText.includes("此账户没有可用的活跃工作区。")`
 )
 await evaluate(`
-  const session = await fetch("/api/authn/sessions/current", { credentials: "include" });
+  const session = await fetch("/api/sessions/current", { credentials: "include" });
   if (!session.ok || !(await session.json()).data?.subject)
     throw new Error("Registered principal did not establish an authenticated session");
-  const tenants = await fetch("/api/iam/me/tenants", { credentials: "include" });
+  const tenants = await fetch("/api/me/tenants", { credentials: "include" });
   if (!tenants.ok || (await tenants.json()).data.length !== 0)
     throw new Error("Registration unexpectedly granted tenant membership");
-  if (document.querySelector('a[href="/iam/users"]'))
+  if (document.querySelector('a[href="/users"]'))
     throw new Error("Registered principal unexpectedly sees administrative navigation");
-  const logout = await fetch("/api/authn/sessions/current", { method: "DELETE", credentials: "include" });
+  const logout = await fetch("/api/sessions/current", { method: "DELETE", credentials: "include" });
   if (!logout.ok) throw new Error("Registration session logout failed");
-  if ((await fetch("/api/authn/sessions/current", { credentials: "include" })).status !== 401)
+  if ((await fetch("/api/sessions/current", { credentials: "include" })).status !== 401)
     throw new Error("Registration session remained active after logout");
 `)
 
@@ -371,25 +371,25 @@ const unexpectedResponses = responses.filter((response) => {
   if (response.status < 400) return false
   if (
     response.status === 401 &&
-    response.url.endsWith("/api/authn/sessions/current")
+    response.url.endsWith("/api/sessions/current")
   )
     return false
   if (
     response.status === 403 &&
-    (response.url.includes("/api/iam/me/menus") ||
-      response.url.includes("/api/iam/tenants"))
+    (response.url.includes("/api/me/menus") ||
+      response.url.includes("/api/tenants"))
   )
     return false
   // A newly registered global principal has no tenant field-policy access.
   if (
     response.method === "GET" &&
     response.status === 403 &&
-    response.url.endsWith("/api/iam/field-catalog")
+    response.url.endsWith("/api/field-catalog")
   )
     return false
   if (
     response.status === 422 &&
-    response.url.endsWith("/api/authn/registrations") &&
+    response.url.endsWith("/api/registrations") &&
     allowedRejectedRegistrations > 0
   ) {
     allowedRejectedRegistrations -= 1

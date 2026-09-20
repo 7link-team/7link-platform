@@ -16,14 +16,16 @@ async function call(
   path,
   { method = "GET", body, tenant = true, tenantHeader = tenantID } = {}
 ) {
-  const response = await fetch(apiURL + path, {
+  const resourcePath = tenant
+    ? `/tenants/${encodeURIComponent(tenantHeader)}${path}`
+    : path
+  const response = await fetch(apiURL + resourcePath, {
     method,
     redirect: "manual",
     headers: {
       "Content-Type": "application/json",
       Origin: consoleURL,
       ...(cookie ? { Cookie: cookie } : {}),
-      ...(tenant ? { "X-Tenant-Id": tenantHeader } : {}),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
@@ -33,7 +35,7 @@ async function call(
   const payload = await response.json().catch(() => null)
   if (!response.ok)
     throw new Error(
-      `${method} ${path}: ${response.status} ${payload?.message ?? ""}`
+      `${method} ${resourcePath}: ${response.status} ${payload?.message ?? ""}`
     )
   return payload?.data
 }
@@ -120,6 +122,8 @@ const filePermissions = [
   "file_traverse",
   "file_read",
   "file_download",
+  "file_create",
+  "file_delete",
 ]
 const accounts = [
   {
@@ -203,7 +207,7 @@ for (const definition of definitions) {
       })
     await call(`/roles/${discoveryRole.id}/data-scope`, {
       method: "PUT",
-      body: { scope: "all", department_ids: [] },
+      body: { scope: "self", department_ids: [] },
     })
     await call(`/roles/${discoveryRole.id}/members/${principal.id}`, {
       method: "PUT",

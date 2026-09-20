@@ -78,6 +78,7 @@
   "entityRoles": "Entity role grants",
   "entityResources": "Resource grant relationships",
   "files": "File management",
+  "myFiles": "My files",
   "entitySettings": "Entity settings and grants",
   "entityUnavailable": "The business entity is unavailable, disabled or inaccessible",
   "noEntityRoles": "No direct role grants for this business entity",

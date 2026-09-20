@@ -27,6 +27,7 @@ type operationService struct {
 	objects        *AccountObjects
 	ids            guid.Source
 	policy         core.EntityConstraintOn
+	tenantPolicy   core.TenantConstraintOn
 	subjects       core.AuthorizationSubjectsOn
 	references     core.AuthorizationReferencesOn
 	appender       audit.Appender
@@ -44,7 +45,8 @@ func (s *operationService) run(ctx context.Context, key string, input immediateO
 		return result, errOperationForbidden
 	}
 	if s == nil || s.runtime == nil || s.runtime.Database() == nil || s.ids == nil || s.appender == nil || s.timeout <= 0 ||
-		(claims.TenantID > 0 && (s.policy == nil || s.subjects == nil || s.references == nil)) {
+		(claims.EntityID > 0 && (s.policy == nil || s.subjects == nil || s.references == nil)) ||
+		(claims.TenantID > 0 && claims.EntityID == 0 && (s.tenantPolicy == nil || s.references == nil)) {
 		return result, errOperationUnavailable
 	}
 	db := s.runtime.Database().Write()
@@ -114,7 +116,23 @@ func (s *operationService) authorize(ctx context.Context, tx *gorm.DB, claims *a
 	if claims.TenantID == 0 && claims.EntityID == 0 {
 		return newAccountNodeAuthorizer(tree, claims.PrincipalID)
 	}
-	if claims.TenantID <= 0 || claims.EntityID <= 0 || s.policy == nil || s.subjects == nil || s.references == nil {
+	if claims.TenantID <= 0 || s.references == nil {
+		return nil, errOperationUnavailable
+	}
+	if claims.EntityID == 0 {
+		if s.tenantPolicy == nil {
+			return nil, errOperationUnavailable
+		}
+		constraint, err := s.tenantPolicy(ctx, tx, claims.TenantID, fileViewPermission, claims.PrincipalID)
+		if err != nil {
+			return nil, err
+		}
+		if !constraint.AllowAll {
+			return nil, errOperationForbidden
+		}
+		return newTenantNodeAuthorizer(tree, s.tenantPolicy, s.references, claims.TenantID, claims.PrincipalID, constraint.Revision)
+	}
+	if s.policy == nil || s.subjects == nil {
 		return nil, errOperationUnavailable
 	}
 	// Fence IAM before business reads. This evaluation alone is not a node

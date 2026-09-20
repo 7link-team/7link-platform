@@ -22,7 +22,7 @@ try {
     { name: "NEXT_LOCALE", value: "zh-CN", url: webURL },
   ])
   const page = await context.newPage()
-  await page.goto("/iam/menus")
+  await page.goto("/menus")
   await page.locator('input[name="login_name"]').fill("admin@example.test")
   await page
     .locator('input[name="password"]')
@@ -38,7 +38,7 @@ try {
     },
     readFileSync(new URL("tenant-id", directory), "utf8").trim()
   )
-  await page.goto("/iam/menus")
+  await page.goto("/menus")
   const languageNames = ["English", "简体中文", "Bahasa Melayu"]
   await page.getByLabel("菜单预览语言", { exact: true }).waitFor()
   assert.deepEqual(
@@ -71,7 +71,7 @@ try {
     await page.getByLabel(`菜单译文 ${i}`, { exact: true }).fill(values[locale])
   }
   const responsePromise = page.waitForResponse(
-    (r) => r.url().endsWith("/iam/menus") && r.request().method() === "POST"
+    (r) => r.url().endsWith("/menus") && r.request().method() === "POST"
   )
   await page.getByRole("button", { name: "创建", exact: true }).click()
   const response = await responsePromise
@@ -95,7 +95,7 @@ try {
   }
   const updatePromise = page.waitForResponse(
     (r) =>
-      r.url().endsWith(`/iam/menus/${created.id}`) &&
+      r.url().endsWith(`/menus/${created.id}`) &&
       r.request().method() === "PATCH"
   )
   await page.getByRole("button", { name: "保存", exact: true }).click()

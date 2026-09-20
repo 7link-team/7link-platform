@@ -300,7 +300,7 @@ async function verify() {
     return async (path, { method = "GET", body, expected = 200, origin = settings.webURL } = {}) => {
       const response = await fetch(settings.webURL + "/api" + path, {
         method, redirect: "manual", signal: AbortSignal.timeout(10000),
-        headers: { "Content-Type": "application/json", Origin: origin, "X-Tenant-Id": tenant,
+        headers: { "Content-Type": "application/json", Origin: origin,
           Cookie: [...cookies].map(([key, value]) => `${key}=${value}`).join("; ") },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
@@ -314,11 +314,11 @@ async function verify() {
     };
   };
   const login = async (call, name, file) => {
-    const result = await call("/authn/sessions", { method: "POST", body: {
+    const result = await call("/sessions", { method: "POST", body: {
       login_name: name, password: readFileSync(join(directory, file), "utf8").trim(), return_url: settings.webURL + "/",
     } });
     assert.equal(result.status, "authenticated");
-    await call("/authn/sessions/current");
+    await call("/sessions/current");
   };
   const admin = client();
   const member = client();
@@ -328,7 +328,7 @@ async function verify() {
   await admin("/readyz");
   await login(admin, "admin@example.test", "admin-password");
   try {
-    const listing = await admin("/iam/principals?limit=200&search=member%40example.test");
+    const listing = await admin(`/tenants/${tenant}/principals?limit=200&search=member%40example.test`);
     let principal = listing.items.find((item) => item.login_name === "member@example.test");
     if (personas) {
       assert.equal(tenant, personas.tenantID, "UAT tenant must survive restart");
@@ -337,26 +337,26 @@ async function verify() {
     if (!principal) {
       const passwordPath = join(directory, "member-password");
       if (!existsSync(passwordPath)) writeFileSync(passwordPath, randomBytes(24).toString("base64url") + "aA1!\n", { mode: 0o600 });
-      principal = await admin("/iam/principals", { method: "POST", expected: 201, body: {
+      principal = await admin(`/tenants/${tenant}/principals`, { method: "POST", expected: 201, body: {
         login_name: "member@example.test", password: readFileSync(passwordPath, "utf8").trim(), display_name: "UAT Member",
       } });
     }
-    assert.deepEqual(await admin(`/iam/members/${encodeURIComponent(principal.id)}/roles`), []);
+    assert.deepEqual(await admin(`/tenants/${tenant}/members/${encodeURIComponent(principal.id)}/roles`), []);
     await login(member, "member@example.test", "member-password");
     if (!personas) save(personasPath, { tenantID: tenant, memberID: principal.id });
-    await member("/iam/principals", { expected: 403 });
-    await member(`/platform/iam/principals/${encodeURIComponent(principal.id)}/lifecycle`, { expected: 403 });
-    await admin("/authn/sessions/current", { method: "DELETE", expected: 403, origin: "https://untrusted.invalid" });
-    await admin("/authn/sessions/current");
+    await member(`/tenants/${tenant}/principals`, { expected: 403 });
+    await member(`/platform/principals/${encodeURIComponent(principal.id)}/lifecycle`, { expected: 403 });
+    await admin("/sessions/current", { method: "DELETE", expected: 403, origin: "https://untrusted.invalid" });
+    await admin("/sessions/current");
   } finally {
     cleanup = await Promise.allSettled([
-      member("/authn/sessions/current", { method: "DELETE" }),
-      admin("/authn/sessions/current", { method: "DELETE" }),
+      member("/sessions/current", { method: "DELETE" }),
+      admin("/sessions/current", { method: "DELETE" }),
     ]);
   }
   for (const result of cleanup) if (result.status === "rejected") throw result.reason;
-  await admin("/authn/sessions/current", { expected: 401 });
-  await member("/authn/sessions/current", { expected: 401 });
+  await admin("/sessions/current", { expected: 401 });
+  await member("/sessions/current", { expected: 401 });
   const report = { at: new Date().toISOString(), binarySHA256: settings.binarySHA256, result: "PASS",
     checks: ["proxy-readiness", "admin-login", "member-login", "stable-persona-identity", "member-has-no-roles", "tenant-admin-denied", "platform-lifecycle-denied", "cross-origin-write-denied", "logout-invalidates-session"],
     browserAcceptance: "NOT_RUN", productionAcceptance: "NOT_READY" };

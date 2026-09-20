@@ -79,7 +79,7 @@ page.on("pageerror", (error) => consoleErrors.push(error.message))
 page.on("response", (response) => {
   const url = response.url()
   loadedAssets.push(url)
-  if (response.status() >= 400 && !url.includes("/authn/sessions/current"))
+  if (response.status() >= 400 && !url.includes("/sessions/current"))
     failedResponses.push(`${response.status()} ${url}`)
 })
 page.on("request", (request) => {
@@ -225,10 +225,8 @@ try {
     "PDF worker was not requested"
   )
   assert(rawRequests.length >= 3, "preview raw requests were not observed")
-  for (const request of rawRequests) {
-    assert.equal(request.headers["x-tenant-id"], undefined)
-    assert.equal(request.headers["x-entity-id"], undefined)
-  }
+  for (const request of rawRequests)
+    assert.match(new URL(request.url).pathname, /^\/api\/(?:me|tenants\/[^/]+(?:\/entities\/[^/]+)?)\/files\//)
   await assertFits()
 
   await page.setViewportSize({ width: 390, height: 844 })

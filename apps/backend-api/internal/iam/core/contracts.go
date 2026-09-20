@@ -30,6 +30,10 @@ type AuthorizationEvaluator interface {
 // ends. Call it before reading business rows; every error must roll back.
 type EntityConstraintOn func(context.Context, *gorm.DB, guid.ID, guid.ID, string, guid.ID) (authz.DataConstraint, error)
 
+// TenantConstraintOn evaluates a tenant-wide data permission inside the
+// caller's transaction and fences concurrent policy changes.
+type TenantConstraintOn func(context.Context, *gorm.DB, guid.ID, string, guid.ID) (authz.DataConstraint, error)
+
 // AuthorizationSubjects is the current IAM identity set a business module may
 // match against its own ACL. IDs remain tenant-scoped and policy-revision fenced.
 type AuthorizationSubjects struct {

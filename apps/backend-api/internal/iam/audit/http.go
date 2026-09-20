@@ -19,7 +19,7 @@ import (
 )
 
 type listInput struct {
-	TenantID    string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID    string `path:"tenant_id" maxLength:"128"`
 	PrincipalID string `query:"principal_id" maxLength:"64"`
 	EventType   string `query:"event_type" maxLength:"64"`
 	Outcome     string `query:"outcome" enum:"success,denied,failure"`
@@ -32,21 +32,21 @@ type listInput struct {
 }
 
 type eventInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"event_id" maxLength:"64"`
 }
 
 type archiveInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"archive_id" maxLength:"64"`
 }
 
 type tenantInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 }
 
 type exportInput struct {
-	TenantID    string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID    string `path:"tenant_id" maxLength:"128"`
 	PrincipalID string `query:"principal_id" maxLength:"64"`
 	EventType   string `query:"event_type" maxLength:"64"`
 	Outcome     string `query:"outcome" enum:"success,denied,failure"`
@@ -60,13 +60,13 @@ type exportInput struct {
 // chain gains an entry on every anchoring run and an omitted limit used to
 // return all of it; the rest of the report is a fixed-size summary.
 type governanceInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type retentionInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Body     struct {
 		MinDays          int `json:"min_days" minimum:"1" maximum:"36500" example:"365" doc:"minimum days audit events must be retained"`
 		ArchiveAfterDays int `json:"archive_after_days" minimum:"1" maximum:"36500" example:"730" doc:"days after which events become archive-eligible; must not be earlier than min_days"`

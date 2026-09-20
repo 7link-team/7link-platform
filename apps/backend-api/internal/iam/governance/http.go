@@ -17,20 +17,20 @@ import (
 )
 
 type tenantInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 }
 
 // listInput bounds a tenant listing by default. tenantInput stays as it is
 // because the endpoints that only address a tenant share it; these listings grow
 // with the tenant and an omitted limit used to mean "every row".
 type listInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type createRequestInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Body     struct {
 		RoleID          string    `json:"role_id" minLength:"1" maxLength:"32"`
 		Reason          string    `json:"reason" minLength:"3" maxLength:"500"`
@@ -39,7 +39,7 @@ type createRequestInput struct {
 }
 
 type decisionInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"request_id" maxLength:"64"`
 	Body     struct {
 		Decision string `json:"decision" enum:"approved,rejected"`
@@ -48,7 +48,7 @@ type decisionInput struct {
 }
 
 type revokeInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"request_id" maxLength:"64"`
 	Body     struct {
 		Reason string `json:"reason,omitempty" maxLength:"500"`
@@ -56,7 +56,7 @@ type revokeInput struct {
 }
 
 type createReviewInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Body     struct {
 		Name  string    `json:"name" minLength:"3" maxLength:"128"`
 		DueAt time.Time `json:"due_at" format:"date-time"`
@@ -64,12 +64,12 @@ type createReviewInput struct {
 }
 
 type reviewInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"review_id" maxLength:"64"`
 }
 
 type reviewUpdateInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"review_id" maxLength:"64"`
 	Body     struct {
 		Status string `json:"status" enum:"completed,cancelled"` //nolint:misspell // Frozen source state value.
@@ -77,7 +77,7 @@ type reviewUpdateInput struct {
 }
 
 type reviewItemInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"review_id" maxLength:"64"`
 	ItemID   string `path:"item_id" maxLength:"64"`
 	Body     struct {

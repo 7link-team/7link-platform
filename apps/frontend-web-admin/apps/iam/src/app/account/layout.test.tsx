@@ -8,7 +8,7 @@ import zh from "../../messages/zh-CN.json"
 describe("AccountNavigation", () => {
   it("has personal deep links and no business scope controls", () => {
     const html = renderToStaticMarkup(
-      <MemoryRouter initialEntries={["/account/mfa"]}>
+      <MemoryRouter initialEntries={["/me/mfa"]}>
         <IntlAppProvider initialLocale="zh-CN" initialMessages={{ iam: zh }}>
           <AccountNavigation />
         </IntlAppProvider>
@@ -25,11 +25,13 @@ describe("AccountNavigation", () => {
       "identities",
       "closure",
     ])
-      expect(html).toContain(`href="/account/${path}"`)
+      expect(html).toContain(`href="/me/${path}"`)
     expect(html).toContain('aria-current="page"')
     expect(html).not.toContain('href="/tenants"')
     expect(html).not.toContain('href="/entities"')
     expect(html).not.toContain("tenant")
+    expect(html).toContain("我的文件")
+    expect(html).not.toContain("文件管理")
   })
 
   it("gives the file manager the full workspace without widening account forms", () => {
@@ -37,9 +39,9 @@ describe("AccountNavigation", () => {
       renderToStaticMarkup(
         <AccountContent pathname={pathname}>content</AccountContent>
       )
-    expect(content("/account/files")).toContain("max-w-none")
-    expect(content("/account/files/")).toContain("max-w-none")
-    expect(content("/account/profile")).toContain("max-w-5xl")
-    expect(content("/account/profile")).not.toContain("max-w-none")
+    expect(content("/me/files")).toContain("max-w-none")
+    expect(content("/me/files/")).toContain("max-w-none")
+    expect(content("/me/profile")).toContain("max-w-5xl")
+    expect(content("/me/profile")).not.toContain("max-w-none")
   })
 })

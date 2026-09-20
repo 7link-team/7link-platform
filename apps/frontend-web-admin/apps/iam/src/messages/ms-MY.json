@@ -78,6 +78,7 @@
   "entityRoles": "Pemberian peranan entiti",
   "entityResources": "Hubungan pemberian sumber",
   "files": "Pengurusan fail",
+  "myFiles": "Fail saya",
   "entitySettings": "Tetapan dan pemberian entiti",
   "entityUnavailable": "Entiti perniagaan tiada, dinyahaktifkan atau tidak boleh diakses",
   "noEntityRoles": "Tiada pemberian peranan langsung untuk entiti perniagaan ini",

@@ -34,7 +34,7 @@ let tenantSubject
 if (process.env.IAM_BROWSER_TENANT) {
   const context = await request.newContext({ baseURL })
   try {
-    const login = await context.post("/api/authn/sessions", {
+    const login = await context.post("/api/sessions", {
       headers: { Origin: baseURL },
       data: {
         login_name: process.env.IAM_BROWSER_LOGIN ?? "admin@example.test",
@@ -44,12 +44,12 @@ if (process.env.IAM_BROWSER_TENANT) {
     })
     if (!login.ok() || (await login.json()).data?.status !== "authenticated")
       throw new Error("Browser audit tenant setup requires authenticated login")
-    const session = await context.get("/api/authn/sessions/current")
+    const session = await context.get("/api/sessions/current")
     if (!session.ok()) throw new Error("Browser audit session lookup failed")
     tenantSubject = (await session.json()).data?.subject
     if (!tenantSubject) throw new Error("Browser audit session has no subject")
   } finally {
-    await context.delete("/api/authn/sessions/current", {
+    await context.delete("/api/sessions/current", {
       headers: { Origin: baseURL },
     })
     await context.dispose()

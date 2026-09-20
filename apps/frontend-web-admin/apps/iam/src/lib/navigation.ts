@@ -3,12 +3,7 @@ import { defaultLocale } from "@workspace/ui/i18n/config"
 
 export function isPlatformRoute(route: string): boolean {
   const url = new URL(route, "https://console.invalid")
-  return (
-    url.pathname === "/tenants" ||
-    url.pathname.startsWith("/platform/") ||
-    (url.pathname === "/audit-governance" &&
-      url.searchParams.get("scope") === "platform")
-  )
+  return url.pathname === "/platform" || url.pathname.startsWith("/platform/")
 }
 
 export function tenantNavigation(menus: EffectiveMenu[]): EffectiveMenu[] {

@@ -192,9 +192,9 @@ async function clickRowAction(name, title) {
 
 async function entities() {
   return evaluate(`
-    const response = await fetch("/api/iam/entities", {
+    const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
+    const response = await fetch("/api/tenants/" + encodeURIComponent(tenant) + "/entities", {
       credentials: "include",
-      headers: { "X-Tenant-Id": localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)} },
     });
     if (!response.ok) throw new Error("entity list failed: " + response.status);
     return (await response.json()).data;
@@ -204,8 +204,8 @@ async function entities() {
 async function cleanupArtifacts() {
   await evaluate(`
     const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
-    const headers = { "X-Tenant-Id": tenant };
-    const list = await fetch("/api/iam/entities", { credentials: "include", headers });
+    const base = "/api/tenants/" + encodeURIComponent(tenant);
+    const list = await fetch(base + "/entities", { credentials: "include" });
     if (!list.ok) throw new Error("artifact list failed: " + list.status);
     const all = (await list.json()).data;
     const artifacts = all.filter((item) => /^Acceptance-(Company|Store)-[a-z0-9]+/.test(item.name));
@@ -214,7 +214,7 @@ async function cleanupArtifacts() {
     // returned when the entity is named in the filter, so ask for each one.
     const relationships = [];
     for (const query of ["", ...artifacts.map((item) => "?entity_id=" + encodeURIComponent(item.id))]) {
-      const listed = await fetch("/api/iam/relationships" + query, { credentials: "include", headers });
+      const listed = await fetch(base + "/relationships" + query, { credentials: "include" });
       if (listed.ok) relationships.push(...(await listed.json()).data);
     }
     for (const relationship of relationships) {
@@ -222,7 +222,7 @@ async function cleanupArtifacts() {
       const query = new URLSearchParams();
       for (const key of ["entity_id", "subject_type", "subject_id", "subject_relation", "relation", "resource_type", "resource_id"])
         if (relationship[key]) query.set(key, relationship[key]);
-      const removed = await fetch("/api/iam/relationships?" + query, { method: "DELETE", credentials: "include", headers });
+      const removed = await fetch("/api/relationships?" + query, { method: "DELETE", credentials: "include", headers });
       if (!removed.ok && removed.status !== 404) throw new Error("relationship cleanup failed: " + removed.status);
     }
     const byID = new Map(all.map((item) => [item.id, item]));
@@ -233,29 +233,29 @@ async function cleanupArtifacts() {
     };
     artifacts.sort((left, right) => depth(right) - depth(left));
     for (const item of artifacts) {
-      const listed = await fetch("/api/iam/entities/" + encodeURIComponent(item.id) + "/role-bindings", { credentials: "include", headers });
+      const listed = await fetch("/api/entities/" + encodeURIComponent(item.id) + "/role-bindings", { credentials: "include", headers });
       if (listed.ok) {
         for (const binding of (await listed.json()).data) {
           await fetch(
-            "/api/iam/entities/" + encodeURIComponent(item.id) + "/role-bindings/" + encodeURIComponent(binding.role_id) + "/" + encodeURIComponent(binding.principal_id),
+            "/api/entities/" + encodeURIComponent(item.id) + "/role-bindings/" + encodeURIComponent(binding.role_id) + "/" + encodeURIComponent(binding.principal_id),
             { method: "DELETE", credentials: "include", headers }
           );
         }
       }
-      const removed = await fetch("/api/iam/entities/" + encodeURIComponent(item.id), { method: "DELETE", credentials: "include", headers });
+      const removed = await fetch("/api/entities/" + encodeURIComponent(item.id), { method: "DELETE", credentials: "include", headers });
       if (!removed.ok && removed.status !== 404)
         throw new Error("artifact cleanup failed: " + removed.status);
     }
-    const roles = await fetch("/api/iam/roles", { credentials: "include", headers });
+    const roles = await fetch("/api/roles", { credentials: "include", headers });
     if (roles.ok) {
       for (const role of (await roles.json()).data.filter((item) => item.name.startsWith("Acceptance Store Viewer "))) {
-        for (const code of ((await (await fetch("/api/iam/roles/" + encodeURIComponent(role.id) + "/permissions", { credentials: "include", headers })).json()).data ?? []))
-          await fetch("/api/iam/roles/" + encodeURIComponent(role.id) + "/permissions/" + encodeURIComponent(code), { method: "DELETE", credentials: "include", headers });
-        await fetch("/api/iam/roles/" + encodeURIComponent(role.id), { method: "DELETE", credentials: "include", headers });
+        for (const code of ((await (await fetch("/api/roles/" + encodeURIComponent(role.id) + "/permissions", { credentials: "include", headers })).json()).data ?? []))
+          await fetch("/api/roles/" + encodeURIComponent(role.id) + "/permissions/" + encodeURIComponent(code), { method: "DELETE", credentials: "include", headers });
+        await fetch("/api/roles/" + encodeURIComponent(role.id), { method: "DELETE", credentials: "include", headers });
       }
     }
   `)
-  await navigate(`/iam/entities?audit=${Date.now()}`)
+  await navigate(`/entities?audit=${Date.now()}`)
   await waitFor(
     `document.querySelector("tbody") && [...document.querySelectorAll("button")].some((item) => item.textContent.trim() === "创建业务主体")`
   )
@@ -310,7 +310,7 @@ const updatedName = `${childName}-Updated`
 // Business resource IDs are snowflake-shaped: ^[1-9][0-9]*$, at most 19 digits.
 const businessResourceID = `${Date.now()}${Math.floor(Math.random() * 1000)}`
 
-await command("Page.navigate", { url: new URL("/iam/entities", baseURL).href })
+await command("Page.navigate", { url: new URL("/entities", baseURL).href })
 await waitFor(
   `location.pathname === "/login" && document.querySelector("#login-name")`
 )
@@ -321,13 +321,13 @@ await evaluate(`
   if (!(form instanceof HTMLFormElement)) throw new Error("login form not found");
   form.requestSubmit();
 `)
-await waitFor(`location.pathname === "/iam/entities"`, 20000)
+await waitFor(`location.pathname === "/entities"`, 20000)
 await waitFor(`document.querySelector("h1") && document.querySelector("tbody")`)
 await cleanupArtifacts()
 
 const entityPostsBeforeInvalidMetadata = responses.filter(
   (response) =>
-    response.method === "POST" && response.url.endsWith("/api/iam/entities")
+    response.method === "POST" && response.url.endsWith("/api/entities")
 ).length
 await openCreateDialog()
 await setInput("#entity-name", `Invalid-Metadata-${suffix}`)
@@ -339,7 +339,7 @@ await waitFor(
 )
 const entityPostsAfterInvalidMetadata = responses.filter(
   (response) =>
-    response.method === "POST" && response.url.endsWith("/api/iam/entities")
+    response.method === "POST" && response.url.endsWith("/api/entities")
 ).length
 if (entityPostsAfterInvalidMetadata !== entityPostsBeforeInvalidMetadata)
   throw new Error("invalid metadata reached the API")
@@ -417,11 +417,10 @@ await waitFor(`!document.querySelector("#entity-relationship-form")`)
 // before the binding dialog loads its role list.
 const denyRoleName = `Acceptance Store Viewer ${suffix}`
 await evaluate(`
-  const headers = {
-    "X-Tenant-Id": localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)},
-    "Content-Type": "application/json",
-  };
-  const created = await fetch("/api/iam/roles", {
+  const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
+  const base = "/api/tenants/" + encodeURIComponent(tenant);
+  const headers = { "Content-Type": "application/json" };
+  const created = await fetch(base + "/roles", {
     method: "POST",
     credentials: "include",
     headers,
@@ -429,7 +428,7 @@ await evaluate(`
   });
   if (!created.ok) throw new Error("deny role create failed: " + created.status);
   const role = (await created.json()).data;
-  const granted = await fetch("/api/iam/roles/" + encodeURIComponent(role.id) + "/permissions/store_view", {
+  const granted = await fetch(base + "/roles/" + encodeURIComponent(role.id) + "/permissions/store_view", {
     method: "PUT",
     credentials: "include",
     headers,
@@ -451,14 +450,15 @@ await waitFor(
   `document.querySelector('[role="dialog"]')?.textContent.includes(${JSON.stringify(businessResourceID)})`
 )
 const businessResourceCheck = await evaluate(`
-  const headers = { "X-Tenant-Id": localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)} };
-  const members = await fetch("/api/iam/members", { credentials: "include", headers });
+  const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
+  const base = "/api/tenants/" + encodeURIComponent(tenant);
+  const members = await fetch(base + "/members", { credentials: "include" });
   if (!members.ok) throw new Error("member list failed: " + members.status);
   const principal = (await members.json()).data.find((item) => item.status === "active")?.subject;
-  const response = await fetch("/api/iam/authorization/check", {
+  const response = await fetch(base + "/authorization/check", {
     method: "POST",
     credentials: "include",
-    headers: { ...headers, "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       entity_id: ${JSON.stringify(child.id)},
       resource_type: "store",
@@ -477,16 +477,17 @@ if (
     `business resource check failed: ${JSON.stringify(businessResourceCheck)}`
   )
 const localizedWindowErrors = await evaluate(`
-  const baseHeaders = { "X-Tenant-Id": localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)} };
-  const members = await fetch("/api/iam/members", { credentials: "include", headers: baseHeaders });
+  const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
+  const base = "/api/tenants/" + encodeURIComponent(tenant);
+  const members = await fetch(base + "/members", { credentials: "include" });
   if (!members.ok) throw new Error("member list failed: " + members.status);
   const principal = (await members.json()).data.find((item) => item.status === "active")?.subject;
   const results = [];
   for (const locale of ["en-US", "zh-CN", "ms-MY"]) {
-    const response = await fetch("/api/iam/relationships", {
+    const response = await fetch(base + "/relationships", {
       method: "POST",
       credentials: "include",
-      headers: { ...baseHeaders, "X-Lang": locale, "Content-Type": "application/json" },
+      headers: { "X-Lang": locale, "Content-Type": "application/json" },
       body: JSON.stringify({
         subject_type: "principal",
         subject_id: principal,
@@ -516,23 +517,24 @@ const expectedWindowStatuses = responses.filter(
   (response) =>
     response.status === 422 &&
     response.method === "POST" &&
-    response.url.endsWith("/api/iam/relationships")
+    response.url.endsWith("/api/relationships")
 )
 if (expectedWindowStatuses.length !== 3)
   throw new Error(
     `expected three localized window failures, got ${expectedWindowStatuses.length}`
   )
 const localizedConditionErrors = await evaluate(`
-  const baseHeaders = { "X-Tenant-Id": localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)} };
-  const members = await fetch("/api/iam/members", { credentials: "include", headers: baseHeaders });
+  const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
+  const base = "/api/tenants/" + encodeURIComponent(tenant);
+  const members = await fetch(base + "/members", { credentials: "include" });
   if (!members.ok) throw new Error("member list failed: " + members.status);
   const principal = (await members.json()).data.find((item) => item.status === "active")?.subject;
   const results = [];
   for (const locale of ["en-US", "zh-CN", "ms-MY"]) {
-    const response = await fetch("/api/iam/relationships", {
+    const response = await fetch(base + "/relationships", {
       method: "POST",
       credentials: "include",
-      headers: { ...baseHeaders, "X-Lang": locale, "Content-Type": "application/json" },
+      headers: { "X-Lang": locale, "Content-Type": "application/json" },
       body: JSON.stringify({
         subject_type: "principal",
         subject_id: principal,
@@ -566,7 +568,7 @@ const expectedConditionStatuses = responses.filter(
   (response) =>
     response.status === 422 &&
     response.method === "POST" &&
-    response.url.endsWith("/api/iam/relationships") &&
+    response.url.endsWith("/api/relationships") &&
     !expectedWindowStatuses.includes(response)
 )
 if (expectedConditionStatuses.length !== 3)
@@ -616,12 +618,12 @@ if (
   !responses.some(
     (response) =>
       response.status === 200 &&
-      response.url.endsWith("/api/iam/authorization/constraints")
+      response.url.endsWith("/api/authorization/constraints")
   ) ||
   !responses.some(
     (response) =>
       response.status === 200 &&
-      response.url.endsWith("/api/iam/authorization/explain")
+      response.url.endsWith("/api/authorization/explain")
   )
 )
   throw new Error("authorization inspection APIs were not completed")
@@ -762,9 +764,9 @@ if (state.some((item) => item.id === root.id || item.id === child.id))
   throw new Error("entity cleanup did not complete")
 
 const auditEvents = await evaluate(`
-  const response = await fetch("/api/iam/audit-events?target_id=${encodeURIComponent(child.id)}&limit=100", {
+  const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
+  const response = await fetch("/api/tenants/" + encodeURIComponent(tenant) + "/audit-events?target_id=${encodeURIComponent(child.id)}&limit=100", {
     credentials: "include",
-    headers: { "X-Tenant-Id": localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)} },
   });
   if (!response.ok) throw new Error("audit list failed: " + response.status);
   return (await response.json()).data.map((event) => event.event_type);
@@ -785,7 +787,7 @@ const expectedConflicts = responses.filter(
   (response) =>
     response.status === 409 &&
     response.method === "DELETE" &&
-    response.url.includes("/api/iam/entities/")
+    response.url.includes("/api/entities/")
 )
 if (expectedConflicts.length !== 2)
   throw new Error(
@@ -796,7 +798,7 @@ const unexpectedStatuses = responses.filter(
     response.status >= 400 &&
     !(
       response.status === 401 &&
-      response.url.endsWith("/api/authn/sessions/current")
+      response.url.endsWith("/api/sessions/current")
     ) &&
     !expectedWindowStatuses.includes(response) &&
     !expectedConditionStatuses.includes(response) &&

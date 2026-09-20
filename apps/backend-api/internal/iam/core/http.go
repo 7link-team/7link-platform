@@ -223,7 +223,7 @@ type APIMemberAuthorizationSnapshot struct {
 }
 
 type tenantInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128" doc:"tenant authorization boundary"`
+	TenantID string `path:"tenant_id" maxLength:"128" doc:"tenant authorization boundary"`
 	// ponytail: pagination added to prevent unbounded list responses.
 	// Offset and Limit are optional; 0/0 returns all records.
 	Offset int `query:"offset" minimum:"0" default:"0"`
@@ -235,7 +235,7 @@ type tenantInput struct {
 // omitting limit must not mean the whole table. tenantInput keeps the opt-in
 // shape for the handlers that do not page at all.
 type boundedTenantInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128" doc:"tenant authorization boundary"`
+	TenantID string `path:"tenant_id" maxLength:"128" doc:"tenant authorization boundary"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
@@ -243,11 +243,16 @@ type boundedTenantInput struct {
 // myPermissionsInput carries the tenant selector alone: the reply is a bounded
 // catalog of the caller's own codes, so there is nothing to page through.
 type myPermissionsInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128" doc:"tenant authorization boundary"`
+	TenantID string `path:"tenant_id" maxLength:"128" doc:"tenant authorization boundary"`
+}
+
+type myEntityPermissionsInput struct {
+	TenantID string `path:"tenant_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"tenant authorization boundary"`
+	EntityID string `path:"entity_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"entity authorization boundary"`
 }
 
 type roleInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	RoleID   string `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
@@ -255,7 +260,7 @@ type roleInput struct {
 // with the tenant, so the page size follows listTenantMembersInput rather than
 // the opt-in shape, where omitting limit returns every row.
 type listRoleMembersInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	RoleID   string `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
@@ -264,14 +269,14 @@ type listRoleMembersInput struct {
 // listRoleDirectoryBindingsInput bounds the listing by default: a role can be
 // granted to any number of the tenant's groups and positions.
 type listRoleDirectoryBindingsInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	RoleID   string `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type createRoleInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Body     struct {
 		Name        string `json:"name" minLength:"1" maxLength:"128"`
 		Description string `json:"description,omitempty" maxLength:"4096"`
@@ -279,7 +284,7 @@ type createRoleInput struct {
 }
 
 type updateRoleInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	RoleID   string `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		Name        *string `json:"name,omitempty" minLength:"1" maxLength:"128"`
@@ -288,7 +293,7 @@ type updateRoleInput struct {
 }
 
 type setRoleDataScopeInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	RoleID   string `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		Scope         DataScope `json:"scope" enum:"all,self,department,department_and_descendants,selected_departments"`
@@ -297,13 +302,13 @@ type setRoleDataScopeInput struct {
 }
 
 type permissionInput struct {
-	TenantID       string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID       string `path:"tenant_id" maxLength:"128"`
 	RoleID         string `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	PermissionCode string `path:"permission_code" maxLength:"128"`
 }
 
 type setPermissionConditionInput struct {
-	TenantID       string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID       string `path:"tenant_id" maxLength:"128"`
 	RoleID         string `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	PermissionCode string `path:"permission_code" maxLength:"128"`
 	Body           struct {
@@ -312,20 +317,20 @@ type setPermissionConditionInput struct {
 }
 
 type memberInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	RoleID   string `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Subject  string `path:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"immutable local principal ID"`
 }
 
 type directoryBindingInput struct {
-	TenantID     string                `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID     string                `path:"tenant_id" maxLength:"128"`
 	RoleID       string                `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	AssigneeType DirectoryAssigneeType `path:"assignee_type" enum:"group,position"`
 	AssigneeID   string                `path:"assignee_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type listTenantMembersInput struct {
-	TenantID string       `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string       `path:"tenant_id" maxLength:"128"`
 	Search   string       `query:"search" maxLength:"128"`
 	Status   MemberStatus `query:"status" enum:"active,disabled"`
 	Offset   int          `query:"offset" minimum:"0" default:"0"`
@@ -333,14 +338,14 @@ type listTenantMembersInput struct {
 }
 
 type tenantMemberInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Subject  string `path:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 // listTenantMemberRolesInput bounds the listing by default: a member holds as
 // many roles as the tenant grants them, permanent and temporary together.
 type listTenantMemberRolesInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Subject  string `path:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
@@ -348,7 +353,7 @@ type listTenantMemberRolesInput struct {
 
 type createTenantMemberInput struct {
 	RawBody  []byte
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Body     struct {
 		Subject      string       `json:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 		DisplayName  string       `json:"display_name" minLength:"1" maxLength:"128"`
@@ -360,7 +365,7 @@ type createTenantMemberInput struct {
 
 type updateTenantMemberInput struct {
 	RawBody  []byte
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Subject  string `path:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		DisplayName  *string       `json:"display_name,omitempty" minLength:"1" maxLength:"128"`
@@ -371,12 +376,12 @@ type updateTenantMemberInput struct {
 }
 
 type menuInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	MenuID   string `path:"menu_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type createMenuInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Body     struct {
 		Translations   map[string]string `json:"translations,omitempty" doc:"BCP 47 language tags mapped to menu labels; default label is the fallback"`
 		ParentID       string            `json:"parent_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19" doc:"positive parent menu ID; omitted or empty makes this a root menu"`
@@ -390,7 +395,7 @@ type createMenuInput struct {
 }
 
 type updateMenuInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	MenuID   string `path:"menu_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		Translations   *map[string]string `json:"translations,omitempty" doc:"replace translations; an empty object clears them; omitted preserves existing translations"`
@@ -405,21 +410,21 @@ type updateMenuInput struct {
 }
 
 type entityInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	EntityID string `path:"entity_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 // listEntityRoleBindingsInput bounds the listing by default: an entity carries
 // one binding per principal and role granted at its scope.
 type listEntityRoleBindingsInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	EntityID string `path:"entity_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type createEntityInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Body     struct {
 		ParentID string         `json:"parent_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19" doc:"positive parent entity ID; omitted or empty makes this a root entity"`
 		Type     string         `json:"type" minLength:"1" maxLength:"64"`
@@ -430,7 +435,7 @@ type createEntityInput struct {
 }
 
 type updateEntityInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	EntityID string `path:"entity_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Body     struct {
 		ParentID *string         `json:"parent_id,omitempty" pattern:"^([1-9][0-9]*)?$" maxLength:"19" doc:"positive parent entity ID, or an empty string to move this entity to the root; omitted leaves it where it is"`
@@ -442,14 +447,14 @@ type updateEntityInput struct {
 }
 
 type entityRoleBindingRef struct {
-	TenantID    string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID    string `path:"tenant_id" maxLength:"128"`
 	EntityID    string `path:"entity_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	RoleID      string `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	PrincipalID string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
 type putEntityRoleBindingInput struct {
-	TenantID    string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID    string `path:"tenant_id" maxLength:"128"`
 	EntityID    string `path:"entity_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	RoleID      string `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	PrincipalID string `path:"principal_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
@@ -460,7 +465,7 @@ type putEntityRoleBindingInput struct {
 }
 
 type authorizationConstraintInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Body     struct {
 		PermissionCode string `json:"permission_code" maxLength:"128"`
 		Subject        string `json:"subject" pattern:"^[1-9][0-9]*$" maxLength:"19"`
@@ -468,7 +473,7 @@ type authorizationConstraintInput struct {
 }
 
 type authorizationExplanationInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Body     struct {
 		EntityID       string `json:"entity_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 		ResourceType   string `json:"resource_type,omitempty" maxLength:"64"`
@@ -1265,23 +1270,62 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		return paginateList(ctx, menus, in.Offset, in.Limit), nil
 	})
 	// A platform administrator must discover their own platform permissions
-	// before the first tenant exists. Tenant codes still require active membership.
+	// before the first tenant exists. This self-service route deliberately has no
+	// tenant context; tenant permissions use the tenant-scoped route below.
 	authz.RegisterAuthenticated(registrar, a, huma.Operation{
-		OperationID: "iam-effective-permissions", Method: http.MethodGet,
+		OperationID: "iam-effective-platform-permissions", Method: http.MethodGet,
 		Path:    "/me/permissions",
-		Summary: "Return my effective permission codes", Tags: []string{"iam"},
+		Summary: "Return my effective platform permission codes", Tags: []string{"iam"},
+	}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]string], error) {
+		claims, ok := authnext.FromContext(ctx)
+		if !ok || claims == nil || claims.PrincipalID.Zero() {
+			return nil, huma.Error401Unauthorized("unauthorized")
+		}
+		codes, err := svc.EffectivePermissions(ctx, 0, claims.PrincipalID)
+		if err != nil {
+			return nil, apiError("effective permissions", err)
+		}
+		return respx.OK(ctx, codes), nil
+	})
+	authz.RegisterTenantMember(registrar, a, huma.Operation{
+		OperationID: "iam-effective-tenant-permissions", Method: http.MethodGet,
+		Path:    "/me/permissions",
+		Summary: "Return my effective tenant permission codes", Tags: []string{"iam"},
 	}, func(ctx context.Context, in *myPermissionsInput) (*respx.Body[[]string], error) {
 		claims, ok := authnext.FromContext(ctx)
 		if !ok || claims == nil || claims.PrincipalID.Zero() {
 			return nil, huma.Error401Unauthorized("unauthorized")
 		}
-		tenantID, err := optionalID(in.TenantID)
+		tenantID, err := requireID(in.TenantID)
 		if err != nil {
 			return nil, err
 		}
 		codes, err := svc.EffectivePermissions(ctx, tenantID, claims.PrincipalID)
 		if err != nil {
 			return nil, apiError("effective permissions", err)
+		}
+		return respx.OK(ctx, codes), nil
+	})
+	authz.RegisterAuthenticated(registrar, a, huma.Operation{
+		OperationID: "iam-effective-entity-permissions", Method: http.MethodGet,
+		Path:    "/tenants/{tenant_id}/entities/{entity_id}/me/permissions",
+		Summary: "Return my effective entity permission codes", Tags: []string{"iam"},
+	}, func(ctx context.Context, in *myEntityPermissionsInput) (*respx.Body[[]string], error) {
+		claims, ok := authnext.FromContext(ctx)
+		if !ok || claims == nil || claims.PrincipalID.Zero() {
+			return nil, huma.Error401Unauthorized("unauthorized")
+		}
+		tenantID, err := requireID(in.TenantID)
+		if err != nil {
+			return nil, err
+		}
+		entityID, err := requireID(in.EntityID)
+		if err != nil {
+			return nil, err
+		}
+		codes, err := svc.EffectiveEntityPermissions(ctx, tenantID, entityID, claims.PrincipalID)
+		if err != nil {
+			return nil, apiError("effective entity permissions", err)
 		}
 		return respx.OK(ctx, codes), nil
 	})

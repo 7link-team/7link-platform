@@ -1,4 +1,59 @@
 # Task State
+## Canonical Web And API Context Routes - 2026-09-20
+
+- Current phase: TESTING. The user approved a breaking cleanup with no ambiguous
+  legacy Web aliases and no public `/iam` or `/authn` API prefixes.
+- Canonical Web contract: `/me/*` for the signed-in principal;
+  `/tenants/:tenantId/*` for tenant scope;
+  `/tenants/:tenantId/entities/:entityId/*` for entity scope; optional department
+  resource views nest below that entity; `/platform/*` is platform administration.
+- Context rule: Web URL params are authoritative. Local storage may remember the
+  last workspace but cannot override a URL. API tenant/entity context will be
+  derived from canonical path params with parent-child validation; callers must
+  not choose authorization scope solely through `X-Tenant-Id`/`X-Entity-Id`.
+- Known failure: department persona-created `666` directories landed in account
+  roots because flat `/files` lacked complete entity context. First Business and
+  UAT tenant spaces are distinct in SQLite; the UI made them appear identical by
+  falling back to the same account view.
+- Existing local changes rename account navigation to localized `My files`; keep
+  them. Previous commit `79760da` contains file previews and demo personas.
+- Execution: Direct. Router, authz registrar, generated OpenAPI/client, menus and
+  persona E2E share one route contract and must change atomically.
+- Completed implementation: Web router/sidebar/API calls use canonical scope
+  paths; tenant/entity headers were removed from runtime API calls; OAuth tenant
+  input is a path parameter; session display cannot be overridden by a header;
+  file new-tab opening navigates directly to a cookie-authorized streaming URL
+  with explicit inline disposition instead of buffering an unbounded Blob.
+- Contextual navigation permissions are now explicit too: platform discovery uses
+  `/me/permissions`, tenant navigation uses `/tenants/:tenant_id/me/permissions`,
+  and entity navigation uses
+  `/tenants/:tenant_id/entities/:entity_id/me/permissions`. Tenant results include
+  data-scoped actions only when their constraint is tenant-wide; entity results
+  include department/entity grants only when they can reach that entity.
+- File scope correction: the client distinguishes personal (`null`), tenant
+  (`undefined`) and entity (ID) scope, and the backend publishes all three URI
+  forms. Tenant-level constraints allow only tenant-wide grants; entity and
+  department grants cannot escalate to the tenant root.
+- Verification: frontend API tests 39/39 and typecheck PASS. Live five-persona
+  browser E2E PASS on 61828/61827: platform/system/tenant admins see tenant,
+  entity and both department roots; entity account sees entity and both departments;
+  department account sees Finance only. Tenant file navigation is hidden from the
+  entity/department personas while their entity file navigation remains available.
+  Canonical-route package tests for core, todo, identity, organization,
+  federation, governance, provisioning and audit PASS. Platform archive inputs
+  are now separate from tenant DTOs, fixing the runtime 422 and removing the
+  OpenAPI mutation workaround. App composition and todo-IAM integration PASS.
+  `go test ./...` PASS before deprecated selector constants were removed; the
+  affected cleanup packages also PASS afterward. Full acceptance is NOT_RUN.
+- Remaining work: migrate executable browser scripts; update current docs while
+  retaining explicitly historical migration examples; regenerate OpenAPI/client;
+  run complete tests/build/lint and five-persona isolation E2E; start services;
+  self-review; commit and push.
+- Next action: migrate browser scripts in three groups: personal scripts remove
+  obsolete tenant selection, tenant management scripts prefix `/tenants/:id`,
+  and entity scripts prefix `/tenants/:id/entities/:id`; syntax-check every MJS,
+  then update docs and regenerate OpenAPI/client.
+
 ## Office Preview Readability - 2026-09-20
 
 - Current phase: ACCEPTANCE COMPLETE. DOCX previews use page-width fitting and
@@ -2928,3 +2983,28 @@ provisioning 3、governance 3、federation 2、oauth 1、audit 1。
 - Next action: none for this delivery after the state-only follow-up commit is
   pushed and the remote tracking reference is verified. Real MySQL 8 and deployment
   UAT remain separate release-readiness gates, not hidden completion claims.
+
+### Canonical Scoped Routing And File Acceptance - 2026-09-20
+
+- Phase: ACCEPTANCE. Public API and Web routes use `/me`,
+  `/tenants/{tenant_id}`, `/tenants/{tenant_id}/entities/{entity_id}`, and
+  `/platform`; no business-resource selector is constructed in request headers.
+- Files use canonical personal, tenant, and entity paths. Direct new-tab opening
+  uses cookie-authorized inline streaming URLs instead of unbounded Blob URLs.
+  Tenant/entity permission discovery and menu visibility are scope-specific.
+- Demo bootstrap provides super, system, tenant, entity, and department personas.
+  Entity/department personas now include create/delete file permissions so the
+  requested mutation and inheritance flow can be exercised.
+- PASS: generated OpenAPI check; `go test ./...`; `go build ./...`; frontend API
+  tests 39/39; full frontend tests 199/199; typecheck; lint; production build;
+  all browser-audit script syntax checks; `git diff --check`.
+- PASS real browser: all five personas log in from the development account picker
+  with expected tenant/entity/department roots and no unexpected browser errors.
+  Department persona created `666` in UAT Finance and the entity persona observed
+  it. First Business `37707464115748864` and UAT Files `38001505780891648`
+  returned disjoint root IDs.
+- Runtime acceptance remains available at `http://127.0.0.1:61828/login` with API
+  `http://127.0.0.1:61827` and the isolated SQLite fixture
+  `.temp/sqlite-lifecycle-4b977R`.
+- Next action: commit the reviewed tracked changes, push `IAM`, verify the remote
+  tracking reference, and leave the acceptance services running.

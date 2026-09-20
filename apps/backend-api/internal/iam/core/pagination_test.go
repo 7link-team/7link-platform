@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -448,7 +449,7 @@ func TestListFieldPoliciesPageBoundsTheResult(t *testing.T) {
 // with OK instead of List would report no page here.
 func TestListEndpointsBoundTheDefaultPage(t *testing.T) {
 	harness := newHTTPIAMHarness(t, true)
-	header := tenantHeader(1)
+	tenant := tenantPathPrefix(1)
 	entity, err := harness.repository.CreateEntity(t.Context(), Entity{
 		TenantID: 1, Type: "store", Name: "Store", Status: EntityActive,
 	})
@@ -467,7 +468,11 @@ func TestListEndpointsBoundTheDefaultPage(t *testing.T) {
 		"/roles/" + role.ID.String() + "/directory-bindings",
 	} {
 		t.Run(route, func(t *testing.T) {
-			response := harness.api.Get(route, "Authorization: Bearer test", header)
+			path := route
+			if !strings.HasPrefix(route, "/platform/") {
+				path = tenant + route
+			}
+			response := harness.api.Get(path, "Authorization: Bearer test")
 			require.Equal(t, 200, response.Code, response.Body.String())
 			page := decodeEnvelope[json.RawMessage](t, response).Meta.Page
 			require.NotNil(t, page, "a list response has to carry its page")

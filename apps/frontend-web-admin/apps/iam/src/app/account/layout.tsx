@@ -34,7 +34,7 @@ export function AccountNavigation({ onNavigate }: { onNavigate?: () => void }) {
         { path: "security", label: t("security"), Icon: ShieldCheck },
         { path: "mfa", label: t("twoFactor"), Icon: Smartphone },
         { path: "tokens", label: t("personalTokens"), Icon: KeyRound },
-        { path: "files", label: t("files"), Icon: Folder },
+        { path: "files", label: t("myFiles"), Icon: Folder },
         { path: "memberships", label: t("myMemberships"), Icon: UserRound },
         { path: "identities", label: t("linkedIdentities"), Icon: UserRound },
         { path: "closure", label: t("accountClosure"), Icon: ShieldCheck },
@@ -46,7 +46,7 @@ export function AccountNavigation({ onNavigate }: { onNavigate?: () => void }) {
       ].map(({ path, label, Icon }) => (
         <NavLink
           key={path}
-          to={`/account/${path}`}
+          to={`/me/${path}`}
           onClick={onNavigate}
           className={({ isActive }) =>
             `flex min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring ${isActive ? "bg-sidebar-primary font-medium text-sidebar-primary-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent"}`
@@ -68,7 +68,7 @@ export function AccountContent({
   children: ReactNode
 }) {
   const className =
-    pathname.replace(/\/+$/, "") === "/account/files"
+    pathname.replace(/\/+$/, "") === "/me/files"
       ? "h-full w-full max-w-none"
       : "mx-auto max-w-5xl p-4 sm:p-6"
   return <div className={className}>{children}</div>

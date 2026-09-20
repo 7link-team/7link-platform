@@ -120,7 +120,7 @@ func TestArchiveJobRealStoreCompletesFromDurableRequest(t *testing.T) {
 	assert.Zero(t, row.LeaseToken)
 	assert.Zero(t, row.LeaseUntil)
 	api := archiveManagementHTTP(t, &auditHarness{service: restarted}, &archivePermissionChecker{permission: "audit_event_export"})
-	download := api.Get("/audit/archives/"+completed.ID.String()+"/download", "Authorization: Bearer test", "X-Tenant-Id: 11")
+	download := api.Get("/tenants/11/audit/archives/"+completed.ID.String()+"/content", "Authorization: Bearer test")
 	require.Equal(t, http.StatusOK, download.Code, download.Body.String())
 	sum := sha256.Sum256(download.Body.Bytes())
 	assert.Equal(t, completed.Object.SHA256, hex.EncodeToString(sum[:]))
@@ -129,7 +129,7 @@ func TestArchiveJobRealStoreCompletesFromDurableRequest(t *testing.T) {
 	// A newer mutable alias must not change what the management download serves.
 	_, err = store.client.PutObject(t.Context(), store.bucket, completed.Object.Key, bytes.NewBufferString("replacement"), 11, minio.PutObjectOptions{})
 	require.NoError(t, err)
-	repeated := api.Get("/audit/archives/"+completed.ID.String()+"/download", "Authorization: Bearer test", "X-Tenant-Id: 11")
+	repeated := api.Get("/tenants/11/audit/archives/"+completed.ID.String()+"/content", "Authorization: Bearer test")
 	require.Equal(t, http.StatusOK, repeated.Code, repeated.Body.String())
 	assert.Equal(t, download.Body.Bytes(), repeated.Body.Bytes())
 }

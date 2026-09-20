@@ -31,7 +31,8 @@ type fileItemsInput struct {
 }
 
 type fileResourceInput struct {
-	FileID string `path:"file_id" doc:"globally unique file identifier"`
+	FileID      string `path:"file_id" doc:"globally unique file identifier"`
+	Disposition string `query:"disposition" enum:"attachment,inline" default:"attachment" doc:"browser content disposition"`
 }
 
 type filePathInput struct {
@@ -97,7 +98,7 @@ func (e *fileConflictHTTPError) Error() string  { return e.Message }
 func (e *fileConflictHTTPError) GetStatus() int { return e.status }
 
 func registerFileHTTP(api huma.API, service *operationService, registrar *authz.Registrar) {
-	authz.RegisterEntityOrAuthenticated(registrar, api, huma.Operation{
+	authz.RegisterTenantEntityOrAuthenticated(registrar, api, huma.Operation{
 		OperationID: "list-files", Method: http.MethodGet, Path: "/files",
 		Summary: "List authorized file roots", Tags: []string{"files"},
 		Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
@@ -118,7 +119,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		return respx.OK(ctx, result), nil
 	})
 
-	authz.RegisterEntityOrAuthenticated(registrar, api, huma.Operation{
+	authz.RegisterTenantEntityOrAuthenticated(registrar, api, huma.Operation{
 		OperationID: "list-file-items", Method: http.MethodGet,
 		Path:    "/files/{file_id}/items",
 		Summary: "List an authorized directory page", Tags: []string{"files"},
@@ -139,7 +140,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		return respx.OK(ctx, result), nil
 	})
 
-	authz.RegisterEntityOrAuthenticated(registrar, api, huma.Operation{
+	authz.RegisterTenantEntityOrAuthenticated(registrar, api, huma.Operation{
 		OperationID: "create-file", Method: http.MethodPost, Path: "/files",
 		Summary: "Create a directory or upload a file", Tags: []string{"files"}, DefaultStatus: http.StatusCreated,
 		MaxBodyBytes: service.maxUploadBytes + (1 << 20),
@@ -185,7 +186,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		return respx.OK(ctx, result), nil
 	})
 
-	authz.RegisterEntityOrAuthenticated(registrar, api, huma.Operation{
+	authz.RegisterTenantEntityOrAuthenticated(registrar, api, huma.Operation{
 		OperationID: "get-file", Method: http.MethodGet, Path: "/files/{file_id}",
 		Summary: "Get authorized file metadata", Tags: []string{"files"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
@@ -202,7 +203,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 	})
 
 	const runtimeFilePath = "/files/{root_file_id}/-/*"
-	authz.RegisterEntityOrAuthenticated(registrar, api, huma.Operation{
+	authz.RegisterTenantEntityOrAuthenticated(registrar, api, huma.Operation{
 		OperationID: "get-file-by-path", Method: http.MethodGet, Path: runtimeFilePath,
 		Summary: "Get authorized file metadata by a root-relative path", Tags: []string{"files"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
@@ -217,9 +218,13 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		}
 		return respx.OK(ctx, result), nil
 	})
-	documentFilePath(api, runtimeFilePath, "/files/{root_file_id}/-/{path}")
+	documentFilePath(api, "/me"+runtimeFilePath, "/me/files/{root_file_id}/-/{path}")
+	const tenantPrefix = "/tenants/{tenant_id}"
+	documentFilePath(api, tenantPrefix+runtimeFilePath, tenantPrefix+"/files/{root_file_id}/-/{path}")
+	const entityPrefix = "/tenants/{tenant_id}/entities/{entity_id}"
+	documentFilePath(api, entityPrefix+runtimeFilePath, entityPrefix+"/files/{root_file_id}/-/{path}")
 
-	authz.RegisterEntityOrAuthenticated(registrar, api, huma.Operation{
+	authz.RegisterTenantEntityOrAuthenticated(registrar, api, huma.Operation{
 		OperationID: "download-file", Method: http.MethodGet, Path: "/files/{file_id}/content",
 		Summary: "Download file content", Tags: []string{"files"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
@@ -232,17 +237,21 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		if err != nil {
 			return nil, fileHTTPError(err)
 		}
+		disposition := input.Disposition
+		if disposition == "" {
+			disposition = "attachment"
+		}
 		return &huma.StreamResponse{Body: func(stream huma.Context) {
 			defer func() { _ = result.Reader.Close() }()
 			stream.SetHeader("Content-Type", result.MIME)
 			stream.SetHeader("Content-Length", strconv.FormatInt(result.Size, 10))
-			stream.SetHeader("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": result.Name}))
+			stream.SetHeader("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": result.Name}))
 			stream.SetHeader("X-Content-Type-Options", "nosniff")
 			_, _ = io.Copy(stream.BodyWriter(), result.Reader)
 		}}, nil
 	})
 
-	authz.RegisterEntityOrAuthenticated(registrar, api, huma.Operation{
+	authz.RegisterTenantEntityOrAuthenticated(registrar, api, huma.Operation{
 		OperationID: "update-file", Method: http.MethodPatch, Path: "/files/{file_id}",
 		Summary: "Update a file or directory", Tags: []string{"files"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
@@ -270,7 +279,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		return respx.OK(ctx, result), nil
 	})
 
-	authz.RegisterEntityOrAuthenticated(registrar, api, huma.Operation{
+	authz.RegisterTenantEntityOrAuthenticated(registrar, api, huma.Operation{
 		OperationID: "delete-file", Method: http.MethodDelete, Path: "/files/{file_id}",
 		Summary: "Move a file or directory to trash", Tags: []string{"files"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
@@ -286,7 +295,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		return respx.OK(ctx, result), nil
 	})
 
-	authz.RegisterEntityOrAuthenticated(registrar, api, huma.Operation{
+	authz.RegisterTenantEntityOrAuthenticated(registrar, api, huma.Operation{
 		OperationID: "create-file-operation", Method: http.MethodPost, Path: "/file-operations",
 		Summary: "Copy or move files synchronously", Tags: []string{"files"}, DefaultStatus: http.StatusCreated,
 		Errors: []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusServiceUnavailable},

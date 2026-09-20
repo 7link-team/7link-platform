@@ -90,15 +90,15 @@ async function client(page, method, ...args) {
 }
 
 async function call(context, path, method = "GET", body, options = {}) {
-  const response = await context.request.fetch(`/api${path}`, {
+  const tenantID = options.tenant ?? tenant?.id
+  const requestPath = options.entity
+    ? `/tenants/${tenantID}/entities/${options.entity}${path}`
+    : tenantID && options.tenant !== false && !path.startsWith("/sessions") && !path.startsWith("/tenants") && !path.startsWith("/platform/")
+      ? `/tenants/${tenantID}${path}`
+      : path
+  const response = await context.request.fetch(`/api${requestPath}`, {
     method,
-    headers: {
-      Origin: webURL,
-      ...(tenant && options.tenant !== false
-        ? { "X-Tenant-Id": options.tenant ?? tenant.id }
-        : {}),
-      ...(options.entity ? { "X-Entity-Id": options.entity } : {}),
-    },
+    headers: { Origin: webURL },
     ...(body === undefined ? {} : { data: body }),
   })
   if (options.status) {
@@ -134,7 +134,7 @@ async function submit(page, form) {
 }
 
 async function createDepartment(page, name, parent) {
-  await page.goto("/iam/departments")
+  await page.goto("/departments")
   await page
     .getByRole("button", { name: "Create department", exact: true })
     .click()
@@ -152,7 +152,7 @@ async function createDepartment(page, name, parent) {
 }
 
 async function createEntity(page, name, parent) {
-  await page.goto("/iam/entities")
+  await page.goto("/entities")
   await page.getByRole("button", { name: "Create entity", exact: true }).click()
   await page.locator("#entity-name").fill(name)
   await page.locator("#entity-type").fill("unit")
@@ -170,7 +170,7 @@ async function createEntity(page, name, parent) {
 }
 
 async function createAccount(page, name, department) {
-  await page.goto("/iam/users")
+  await page.goto("/users")
   await page
     .getByRole("button", { name: "Create account", exact: true })
     .click()
@@ -192,7 +192,7 @@ async function createAccount(page, name, department) {
 }
 
 async function createRole(page, name, codes, members = []) {
-  await page.goto("/iam/roles")
+  await page.goto("/roles")
   await page.getByRole("button", { name: "Create role", exact: true }).click()
   await page.locator("#role-name").fill(name)
   await submit(page, "role-form")
@@ -364,28 +364,28 @@ try {
     headless: true,
   })
   const anonymous = await browser.newContext({ baseURL: webURL })
-  await call(anonymous, "/iam/me/permissions", "GET", undefined, {
+  await call(anonymous, "/me/permissions", "GET", undefined, {
     tenant: false,
     status: 401,
   })
   await anonymous.close()
   const admin = await login(adminLogin, adminPassword)
   assert.deepEqual(
-    await call(admin.context, "/iam/tenants", "GET", undefined, {
+    await call(admin.context, "/tenants", "GET", undefined, {
       tenant: false,
     }),
     []
   )
   const platformCodes = await call(
     admin.context,
-    "/iam/me/permissions",
+    "/me/permissions",
     "GET",
     undefined,
     { tenant: false }
   )
   assert(platformCodes.includes("tenant_create"))
   assert(!platformCodes.includes("user_create"))
-  await admin.page.goto("/iam/tenants")
+  await admin.page.goto("/tenants")
   await admin.page
     .getByRole("button", { name: "Create tenant", exact: true })
     .click()
@@ -393,7 +393,7 @@ try {
   await admin.page.locator("#tenant-slug").fill("first-business")
   await submit(admin.page, "tenant-form")
   tenant = (
-    await call(admin.context, "/iam/tenants", "GET", undefined, {
+    await call(admin.context, "/tenants", "GET", undefined, {
       tenant: false,
     })
   )[0]
@@ -404,14 +404,14 @@ try {
       tenant.id,
     "first tenant adoption"
   )
-  const defaultMenus = await call(admin.context, "/iam/menus")
+  const defaultMenus = await call(admin.context, "/menus")
   assert.equal(defaultMenus.length, 15)
-  const administrator = (await call(admin.context, "/iam/roles")).find(
+  const administrator = (await call(admin.context, "/roles")).find(
     (role) => role.name === "Administrator"
   )
   assert(administrator)
   assert.deepEqual(
-    await call(admin.context, `/iam/roles/${administrator.id}/permissions`),
+    await call(admin.context, `/roles/${administrator.id}/permissions`),
     ["tenant_administer"]
   )
   await capture(admin.page, "first-tenant", 1440)
@@ -492,11 +492,11 @@ try {
   const menuPaths = (menus) =>
     menus.flatMap((menu) => [menu.path, ...menuPaths(menu.children ?? [])])
   const aliceMenus = menuPaths(
-    await call(aliceSession.context, "/iam/me/menus")
+    await call(aliceSession.context, "/me/menus")
   )
-  assert(aliceMenus.includes("/iam/users"))
-  assert(!aliceMenus.includes("/iam/roles"))
-  await aliceSession.page.goto("/iam/users")
+  assert(aliceMenus.includes("/users"))
+  assert(!aliceMenus.includes("/roles"))
+  await aliceSession.page.goto("/users")
   await aliceSession.page.getByRole("heading", { level: 1 }).waitFor()
   await eventually(
     async () =>
@@ -511,18 +511,18 @@ try {
       .count(),
     0
   )
-  await bobSession.page.goto("/iam/users")
+  await bobSession.page.goto("/users")
   await bobSession.page
     .getByRole("button", { name: "Create account", exact: true })
     .waitFor()
   await call(
     aliceSession.context,
-    "/iam/principals",
+    "/principals",
     "POST",
     { login_name: "forbidden@example.test", password: accountPassword },
     { status: 403 }
   )
-  await call(scopedSession.context, "/iam/roles", "GET", undefined, {
+  await call(scopedSession.context, "/roles", "GET", undefined, {
     status: 403,
   })
   pass(
@@ -611,7 +611,7 @@ try {
     status: 403,
   })
   assert(
-    !(await call(scopedSession.context, "/iam/me/permissions")).includes(
+    !(await call(scopedSession.context, "/me/permissions")).includes(
       "todo_view"
     ),
     "entity grants must not become tenant-wide"
@@ -648,7 +648,7 @@ try {
     )
   }
   assert(
-    (await call(scopedSession.context, "/iam/me/permissions")).includes(
+    (await call(scopedSession.context, "/me/permissions")).includes(
       "user_view"
     )
   )
@@ -660,7 +660,7 @@ try {
     group.id
   )
   assert(
-    (await call(scopedSession.context, "/iam/me/permissions")).includes(
+    (await call(scopedSession.context, "/me/permissions")).includes(
       "user_view"
     ),
     "remaining position retains authority"
@@ -673,7 +673,7 @@ try {
     position.id
   )
   assert(
-    !(await call(scopedSession.context, "/iam/me/permissions")).includes(
+    !(await call(scopedSession.context, "/me/permissions")).includes(
       "user_view"
     )
   )
@@ -703,7 +703,7 @@ try {
     dynamic.id
   )
   assert(
-    (await call(scopedSession.context, "/iam/me/permissions")).includes(
+    (await call(scopedSession.context, "/me/permissions")).includes(
       "user_view"
     )
   )
@@ -711,7 +711,7 @@ try {
     department_id: finance.id,
   })
   assert(
-    !(await call(scopedSession.context, "/iam/me/permissions")).includes(
+    !(await call(scopedSession.context, "/me/permissions")).includes(
       "user_view"
     ),
     "department move removes dynamic group authority"
@@ -720,7 +720,7 @@ try {
     department_id: operationsChild.id,
   })
   assert(
-    (await call(scopedSession.context, "/iam/me/permissions")).includes(
+    (await call(scopedSession.context, "/me/permissions")).includes(
       "user_view"
     )
   )
@@ -737,7 +737,7 @@ try {
 
   const parent = await client(admin.page, "createMenu", {
     label: "Restricted parent",
-    route: "/iam/roles?view=business",
+    route: "/roles?view=business",
     permission_code: "role_view",
     status: "active",
     sort_order: 100,
@@ -745,7 +745,7 @@ try {
   })
   const custom = await client(admin.page, "createMenu", {
     label: "Business accounts",
-    route: "/iam/users?view=business",
+    route: "/users?view=business",
     permission_code: "user_view",
     parent_id: parent.id,
     status: "active",
@@ -758,20 +758,20 @@ try {
   ]) {
     const unsafe = await client(admin.page, "createMenu", {
       label: `Misconfigured ${suffix}`,
-      route: `/iam/roles?configuration=${suffix}`,
+      route: `/roles?configuration=${suffix}`,
       permission_code: code,
       status: "active",
       sort_order: 102,
       icon: "",
     })
     assert(
-      !(await call(aliceSession.context, "/iam/me/menus")).some(
+      !(await call(aliceSession.context, "/me/menus")).some(
         (menu) => menu.id === unsafe.id
       ),
       "custom configuration cannot weaken built-in page permissions"
     )
   }
-  const tree = await call(aliceSession.context, "/iam/me/menus")
+  const tree = await call(aliceSession.context, "/me/menus")
   const directoryNode = tree.find((menu) => menu.id === parent.id)
   assert(directoryNode)
   assert(!directoryNode.path)
@@ -781,7 +781,7 @@ try {
     .getByRole("button", { name: "Restricted parent", exact: true })
     .waitFor()
   assert.equal(
-    await aliceSession.page.locator('aside a[href="/iam/roles"]').count(),
+    await aliceSession.page.locator('aside a[href="/roles"]').count(),
     0
   )
   await capture(aliceSession.page, "viewer-custom-menu", 1440)
@@ -792,13 +792,13 @@ try {
     status: "disabled",
   })
   assert(
-    !(await call(aliceSession.context, "/iam/me/menus")).some(
+    !(await call(aliceSession.context, "/me/menus")).some(
       (menu) => menu.id === parent.id
     ),
     "disabled last child removes inaccessible parent"
   )
   await client(admin.page, "updateMenu", custom.id, { status: "active" })
-  const customizedTree = await call(aliceSession.context, "/iam/me/menus")
+  const customizedTree = await call(aliceSession.context, "/me/menus")
   assert.equal(
     customizedTree.find((menu) => menu.id === parent.id).children[0].label,
     "Customized business accounts"
@@ -807,7 +807,7 @@ try {
     "custom menus retain authorized children without linking unauthorized parents; desktop/mobile render"
   )
 
-  await admin.page.goto(`/iam/roles?role=${viewer.id}`)
+  await admin.page.goto(`/roles?role=${viewer.id}`)
   await admin.page
     .locator('[data-permission-code="user_create"] [role="checkbox"]')
     .click()
@@ -822,7 +822,7 @@ try {
     .waitFor({ state: "hidden", timeout: 25_000 })
   await call(
     aliceSession.context,
-    "/iam/principals",
+    "/principals",
     "POST",
     { login_name: "still-forbidden@example.test", password: accountPassword },
     { status: 403 }
@@ -842,7 +842,7 @@ try {
     "live grant/revoke updates another signed-in browser without reload; scoped revocation immediately denies business API"
   )
 
-  await aliceSession.page.route("**/api/iam/me/permissions", (route) =>
+  await aliceSession.page.route("**/api/me/permissions", (route) =>
     route.fulfill({
       status: 503,
       contentType: "application/json",
@@ -861,7 +861,7 @@ try {
       .count(),
     0
   )
-  await aliceSession.page.unroute("**/api/iam/me/permissions")
+  await aliceSession.page.unroute("**/api/me/permissions")
   await aliceSession.page
     .getByRole("button", { name: "Retry now", exact: true })
     .click()
@@ -877,13 +877,13 @@ try {
   )
 
   const adminSubject = (
-    await call(admin.context, "/authn/sessions/current", "GET", undefined, {
+    await call(admin.context, "/sessions/current", "GET", undefined, {
       tenant: false,
     })
   ).subject
   const otherTenant = await call(
     admin.context,
-    "/iam/tenants",
+    "/tenants",
     "POST",
     {
       slug: "other-business",
@@ -892,7 +892,7 @@ try {
     },
     { tenant: false }
   )
-  await call(aliceSession.context, "/iam/me/menus", "GET", undefined, {
+  await call(aliceSession.context, "/me/menus", "GET", undefined, {
     tenant: otherTenant.id,
     status: 403,
   })
@@ -903,7 +903,7 @@ try {
   })
   await call(
     aliceSession.context,
-    "/iam/tenants",
+    "/tenants",
     "POST",
     {
       slug: "forbidden-business",
@@ -912,13 +912,13 @@ try {
     },
     { tenant: false, status: 403 }
   )
-  await call(admin.context, `/iam/principals/${bob.id}/suspension`, "PUT")
-  await call(bobSession.context, "/iam/principals", "GET", undefined, {
+  await call(admin.context, `/principals/${bob.id}/suspension`, "PUT")
+  await call(bobSession.context, "/principals", "GET", undefined, {
     status: 401,
   })
-  await call(admin.context, `/iam/principals/${bob.id}/suspension`, "DELETE")
+  await call(admin.context, `/principals/${bob.id}/suspension`, "DELETE")
   const restored = await login(bob.login_name, accountPassword, 390)
-  await restored.page.goto("/iam/users")
+  await restored.page.goto("/users")
   await restored.page
     .getByRole("button", { name: "Create account", exact: true })
     .waitFor()
@@ -927,7 +927,7 @@ try {
     "cross-tenant access and non-platform tenant creation denied; suspension revokes sessions and restoration permits fresh login"
   )
 
-  const audit = await call(admin.context, "/iam/audit-events?limit=200")
+  const audit = await call(admin.context, "/audit-events?limit=200")
   for (const event of [
     "tenant_bootstrapped",
     "role_permission_granted",

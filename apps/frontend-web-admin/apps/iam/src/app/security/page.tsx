@@ -65,9 +65,9 @@ export default function SecurityPage() {
 
   const { pathname } = useLocation()
   const section =
-    pathname === "/account/profile"
+    pathname === "/me/profile"
       ? "profile"
-      : pathname === "/account/mfa"
+      : pathname === "/me/mfa"
         ? "mfa"
         : "security"
   const { session } = useAuth()

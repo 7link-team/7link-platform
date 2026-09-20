@@ -7,6 +7,7 @@ import {
   useLocation,
   useNavigate,
   useMatch,
+  useParams,
 } from "react-router"
 import { Alert } from "../components/alert"
 import { WorkspaceSwitcher } from "../components/workspace-switcher"
@@ -32,6 +33,7 @@ import {
   ApiError,
 } from "../lib/iam-api"
 import { appName } from "../lib/branding"
+import { isPlatformRoute } from "../lib/navigation"
 import type { EffectivePermissions } from "../lib/permissions"
 import { LanguageSwitcher } from "@workspace/ui/components/i18n/language-switcher"
 import { useClientLocale } from "@workspace/ui/i18n/intl-provider"
@@ -47,7 +49,12 @@ export default function AppLayout() {
     permissions: EffectivePermissions
     error: string
   } | null>(null)
-  const [tenantValue, setTenantValue] = useState(getTenant())
+  const routeParams = useParams<{ tenantID?: string; entityID?: string }>()
+  const routeTenantID = routeParams.tenantID ?? ""
+  const [selectedTenantValue, setTenantValue] = useState(
+    routeTenantID || getTenant()
+  )
+  const tenantValue = routeTenantID || selectedTenantValue
   const subject = session?.subject ?? ""
   const [tenantCatalog, setTenantCatalog] = useState<{
     subject: string
@@ -80,12 +87,10 @@ export default function AppLayout() {
   const [navOpen, setNavOpen] = useState(false)
 
   const navigate = useNavigate()
-  const entityMatch = useMatch("/entities/:entityID/:view")
-  const fileEntityID =
-    location.pathname === "/files"
-      ? (new URLSearchParams(location.search).get("entity_id") ?? "")
-      : ""
-  const entityID = entityMatch?.params.entityID ?? fileEntityID
+  const entityMatch = useMatch(
+    "/tenants/:tenantID/entities/:entityID/:view"
+  )
+  const entityID = routeParams.entityID ?? entityMatch?.params.entityID ?? ""
   const [entityCatalog, setEntityCatalog] = useState<{
     subject: string
     tenant: string
@@ -99,6 +104,11 @@ export default function AppLayout() {
       ? entityCatalog
       : null
   const selectedEntity = catalog?.items.find((entity) => entity.id === entityID)
+
+  useEffect(() => {
+    if (!routeTenantID) return
+    setTenant(routeTenantID)
+  }, [routeTenantID])
 
   useEffect(() => {
     if (status !== "authenticated" || !tenantValue || !directoryReady) return
@@ -161,8 +171,8 @@ export default function AppLayout() {
       if (status === "authenticated" && directoryReady) {
         const request = ++generation
         void Promise.allSettled([
-          tenantValue ? iamApi.effectiveMenus() : Promise.resolve([]),
-          iamApi.myPermissions(),
+          tenantValue ? iamApi.effectiveMenus(tenantValue) : Promise.resolve([]),
+          iamApi.myPermissions(tenantValue || undefined, entityID || undefined),
         ]).then(([menuResult, permissionResult]) => {
           if (!active || request !== generation) return
           // Failed permission reads remain unknown and protected actions stay
@@ -197,7 +207,7 @@ export default function AppLayout() {
       window.removeEventListener("menu-catalog-change", refresh)
       window.removeEventListener("focus", refresh)
     }
-  }, [status, tenantValue, subject, directoryReady])
+  }, [status, tenantValue, entityID, subject, directoryReady])
 
   useEffect(() => {
     if (status !== "authenticated" || !subject) return
@@ -221,7 +231,7 @@ export default function AppLayout() {
                 .map((tenant) => [tenant.id, tenant])
             ).values(),
           ]
-          const selected = getTenant()
+          const selected = routeTenantID || getTenant()
           const next = items.some((tenant) => tenant.id === selected)
             ? selected
             : (items.find((tenant) => tenant.id === session?.organization_id)
@@ -254,7 +264,7 @@ export default function AppLayout() {
       active = false
       window.removeEventListener("tenant-catalog-change", refresh)
     }
-  }, [status, subject, session?.organization_id])
+  }, [status, subject, session?.organization_id, routeTenantID])
 
   useEffect(() => {
     const sync = () => {
@@ -278,7 +288,7 @@ export default function AppLayout() {
     setMenuCatalog(null)
     setTenant(next)
     setTenantValue(next)
-    navigate("/")
+    navigate(`/tenants/${encodeURIComponent(next)}`)
   }
 
   return (
@@ -317,6 +327,7 @@ export default function AppLayout() {
               >
                 <AppSidebar
                   permissions={permissions}
+                  tenantID={tenantValue}
                   entityID={entityID}
                   language={menuLanguage}
                   menus={directoryReady ? (menus ?? []) : []}
@@ -354,14 +365,10 @@ export default function AppLayout() {
             error={catalog?.error ?? ""}
             onTenant={commitTenant}
             onEntity={(id) => {
-              if (location.pathname === "/files") {
-                navigate(
-                  id ? `/files?entity_id=${encodeURIComponent(id)}` : "/files"
-                )
-                return
-              }
               navigate(
-                id ? `/entities/${encodeURIComponent(id)}/overview` : "/"
+                id
+                  ? `/tenants/${encodeURIComponent(tenantValue)}/entities/${encodeURIComponent(id)}/overview`
+                  : `/tenants/${encodeURIComponent(tenantValue)}`
               )
             }}
           />
@@ -406,6 +413,7 @@ export default function AppLayout() {
       <div className="flex min-h-0 flex-1">
         <AppSidebar
           permissions={permissions}
+          tenantID={tenantValue}
           entityID={entityID}
           language={menuLanguage}
           menus={directoryReady ? (menus ?? []) : []}
@@ -420,7 +428,7 @@ export default function AppLayout() {
         <main className="min-h-0 min-w-0 flex-1 overflow-auto">
           <div
             className={
-              location.pathname === "/files"
+              location.pathname.endsWith("/files")
                 ? "h-full w-full max-w-none"
                 : "mx-auto w-full max-w-[1440px] p-4 sm:p-6"
             }
@@ -443,12 +451,7 @@ export default function AppLayout() {
               <Alert>{currentTenants.error}</Alert>
             ) : !directoryReady ? (
               <p role="status">{t("loading")}</p>
-            ) : !tenantValue &&
-              location.pathname !== "/tenants" &&
-              !(
-                location.pathname === "/audit-governance" &&
-                new URLSearchParams(location.search).get("scope") === "platform"
-              ) ? (
+            ) : !tenantValue && !isPlatformRoute(location.pathname) ? (
               <p>{t("noAvailableTenants")}</p>
             ) : entityID && catalog?.error ? (
               <Alert>{catalog.error}</Alert>

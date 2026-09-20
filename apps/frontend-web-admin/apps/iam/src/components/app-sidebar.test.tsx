@@ -18,6 +18,7 @@ function renderSidebar(
     <MemoryRouter initialEntries={[path]}>
       <IntlAppProvider initialLocale="zh-CN" initialMessages={{ iam: zh }}>
         <AppSidebar
+          tenantID="456"
           permissions={permissions}
           entityID={entityID}
           menus={menus}
@@ -36,13 +37,13 @@ describe("AppSidebar", () => {
       [],
       false,
       false,
-      "/entities/123/overview",
+      "/tenants/456/entities/123/overview",
       "123",
       new Set(["todo_view"])
     )
-    expect(html).not.toContain('href="/entities/123/')
+    expect(html).not.toContain('href="/tenants/456/entities/123/')
     expect(renderSidebar([], false, false, "/", "123", null)).not.toContain(
-      'href="/entities/123/'
+      'href="/tenants/456/entities/123/'
     )
   })
   it("uses entity routes without exposing tenant-wide administration in entity view", () => {
@@ -58,17 +59,17 @@ describe("AppSidebar", () => {
       ],
       true,
       true,
-      "/entities/123/roles",
+      "/tenants/456/entities/123/roles",
       "123"
     )
-    expect(html).toContain('href="/entities/123/overview"')
-    expect(html).toContain('href="/entities/123/roles"')
-    expect(html).toContain('href="/entities/123/resources"')
-    expect(html).toContain('href="/entities/123/manage"')
-    expect(html).not.toContain('href="/users"')
-    expect(html).not.toContain('href="/tenants"')
-    expect(html).not.toContain('href="/field-policies"')
-    expect(html).not.toContain('href="/access-requests"')
+    expect(html).toContain('href="/tenants/456/entities/123/overview"')
+    expect(html).toContain('href="/tenants/456/entities/123/roles"')
+    expect(html).toContain('href="/tenants/456/entities/123/resources"')
+    expect(html).toContain('href="/tenants/456/entities/123/manage"')
+    expect(html).not.toContain('href="/tenants/456/users"')
+    expect(html).not.toContain('href="/platform/tenants"')
+    expect(html).not.toContain('href="/tenants/456/field-policies"')
+    expect(html).not.toContain('href="/tenants/456/access-requests"')
   })
   it("exposes entity files only with the file view permission", () => {
     expect(
@@ -76,28 +77,28 @@ describe("AppSidebar", () => {
         [],
         false,
         false,
-        "/entities/123/overview",
+        "/tenants/456/entities/123/overview",
         "123",
         new Set(["file_view"])
       )
-    ).toContain('href="/files?entity_id=123"')
+    ).toContain('href="/tenants/456/entities/123/files"')
     expect(
       renderSidebar(
         [],
         false,
         false,
-        "/entities/123/overview",
+        "/tenants/456/entities/123/overview",
         "123",
         new Set(["entity_view"])
       )
-    ).not.toContain('href="/files?entity_id=123"')
+    ).not.toContain('href="/tenants/456/entities/123/files"')
   })
   it("exposes tenant files only with the file view permission", () => {
     expect(
       renderSidebar([], false, false, "/", "", new Set(["file_view"]))
-    ).toContain('href="/files"')
+    ).toContain('href="/tenants/456/files"')
     expect(renderSidebar([], false, false, "/")).not.toContain(
-      'href="/files"'
+      'href="/tenants/456/files"'
     )
   })
   it("does not duplicate a tenant file menu supplied by the server", () => {
@@ -117,7 +118,7 @@ describe("AppSidebar", () => {
       "",
       new Set(["file_view"])
     )
-    expect(html.match(/href="\/files"/g)).toHaveLength(1)
+    expect(html.match(/href="\/tenants\/456\/files"/g)).toHaveLength(1)
   })
   it("excludes personal routes even when supplied by the effective menu tree", () => {
     const html = renderSidebar(
@@ -134,10 +135,10 @@ describe("AppSidebar", () => {
     expect(html).not.toContain('href="/security"')
   })
   it("shows field administration only after its own catalog access is proven", () => {
-    expect(renderSidebar([])).not.toContain('href="/field-policies"')
-    expect(renderSidebar([], true)).not.toContain('href="/field-policies"')
+    expect(renderSidebar([])).not.toContain('href="/tenants/456/field-policies"')
+    expect(renderSidebar([], true)).not.toContain('href="/tenants/456/field-policies"')
     expect(renderSidebar([], false, true)).toContain(
-      'href="/field-policies"'
+      'href="/tenants/456/field-policies"'
     )
   })
   it("keeps self-service navigation without exposing administration", () => {
@@ -148,7 +149,7 @@ describe("AppSidebar", () => {
     expect(html).not.toContain('href="/security"')
     expect(html).not.toContain('href="/account/')
     expect(html).toContain("访问申请")
-    expect(html).toContain('href="/access-requests"')
+    expect(html).toContain('href="/tenants/456/access-requests"')
     expect(html).not.toContain("主体与成员")
     expect(html).not.toContain("角色权限")
   })
@@ -222,22 +223,22 @@ describe("AppSidebar", () => {
     ])
     expect(html).toContain("Users")
     expect(html).not.toContain("角色权限")
-    expect(html).toContain('href="/users"')
-    expect(html).toContain('href="/service-accounts"')
-    expect(html).toContain('href="/entities"')
-    expect(html).toContain('href="/departments"')
-    expect(html).toContain('href="/positions"')
-    expect(html).toContain('href="/groups"')
-    expect(html).toContain('href="/access-reviews"')
-    expect(html).toContain('href="/scim-directories"')
+    expect(html).toContain('href="/tenants/456/users"')
+    expect(html).toContain('href="/tenants/456/service-accounts"')
+    expect(html).toContain('href="/tenants/456/entities"')
+    expect(html).toContain('href="/tenants/456/departments"')
+    expect(html).toContain('href="/tenants/456/positions"')
+    expect(html).toContain('href="/tenants/456/groups"')
+    expect(html).toContain('href="/tenants/456/access-reviews"')
+    expect(html).toContain('href="/tenants/456/scim-directories"')
   })
 
   it("keeps platform administration out of the tenant sidebar even for administrators", () => {
     expect(renderSidebar([])).not.toContain("租户管理")
     expect(renderSidebar([])).not.toContain("平台审计")
     const html = renderSidebar([], true)
-    expect(html).not.toContain('href="/tenants"')
-    expect(html).not.toContain('href="/audit-governance?scope=platform"')
+    expect(html).not.toContain('href="/platform/tenants"')
+    expect(html).not.toContain('href="/platform/audit-governance"')
   })
 
   it("shows only platform navigation on platform pages, with independent permission gates", () => {
@@ -253,21 +254,21 @@ describe("AppSidebar", () => {
       ],
       true,
       true,
-      "/tenants",
+      "/platform/tenants",
       "",
       new Set(["platform_administer"])
     )
     expect(html).toContain("租户管理")
-    expect(html).toContain('href="/tenants"')
-    expect(html).toContain('href="/audit-governance?scope=platform"')
-    expect(html).not.toContain('href="/users"')
-    expect(html).not.toContain('href="/field-policies"')
-    expect(html).not.toContain('href="/access-requests"')
+    expect(html).toContain('href="/platform/tenants"')
+    expect(html).toContain('href="/platform/audit-governance"')
+    expect(html).not.toContain('href="/tenants/456/users"')
+    expect(html).not.toContain('href="/tenants/456/field-policies"')
+    expect(html).not.toContain('href="/tenants/456/access-requests"')
     expect(
-      renderSidebar([], true, false, "/tenants", "", new Set())
-    ).not.toContain('href="/audit-governance?scope=platform"')
+      renderSidebar([], true, false, "/platform/tenants", "", new Set())
+    ).not.toContain('href="/platform/audit-governance"')
     expect(renderSidebar([], false, false, "/tenants")).not.toContain(
-      'href="/tenants"'
+      'href="/platform/tenants"'
     )
   })
 
@@ -277,7 +278,7 @@ describe("AppSidebar", () => {
         {
           id: "p",
           label: "Mixed parent",
-          path: "/audit-governance?scope=platform",
+          path: "/platform/audit-governance",
           sort_order: 0,
           permission_code: "",
           children: [
@@ -293,25 +294,25 @@ describe("AppSidebar", () => {
         {
           id: "t",
           label: "Platform tenants",
-          path: "/tenants?view=x",
+          path: "/platform/tenants?view=x",
           sort_order: 1,
           permission_code: "",
         },
       ],
       true
     )
-    expect(html).toContain('href="/users"')
-    expect(html).not.toContain('href="/audit-governance?scope=platform"')
+    expect(html).toContain('href="/tenants/456/users"')
+    expect(html).not.toContain('href="/platform/audit-governance"')
     expect(html).not.toContain("Platform tenants")
   })
 
   it("selects platform audit navigation only in the platform view", () => {
-    const tenant = renderSidebar([], true, false, "/audit-governance")
+    const tenant = renderSidebar([], true, false, "/tenants/456/audit-governance")
     const platform = renderSidebar(
       [],
       true,
       false,
-      "/audit-governance?scope=platform",
+      "/platform/audit-governance",
       "",
       new Set(["platform_administer"])
     )

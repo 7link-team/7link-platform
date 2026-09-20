@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -23,10 +24,8 @@ const (
 	publicMetadataKey        = "authz.public"
 	GuardExtensionKey        = "x-authz-permission"
 	DataFilterExtensionKey   = "x-authz-data-filter"
-	TenantHeader             = "X-Tenant-Id"
-	EntityHeader             = "X-Entity-Id"
-	TenantQuery              = "tenant_id"
-	EntityQuery              = "entity_id"
+	TenantPath               = "tenant_id"
+	EntityPath               = "entity_id"
 	BearerScheme             = "bearerAuth"
 	SessionScheme            = "sessionCookie"
 	ClientBasicScheme        = "clientBasic"
@@ -151,10 +150,8 @@ func Register[I, O any](r *Registrar, api huma.API, op huma.Operation, guard Gua
 	if r == nil {
 		panic("authz registrar is nil")
 	}
-	if guard.FilterData {
-		panic("data filtering requires a typed entity operation")
-	}
 	r.prepare(api, &op, guard)
+	prepareTenantPath(&op)
 	huma.Register(api, op, handler)
 }
 
@@ -173,10 +170,7 @@ func RegisterEntity[I, O any](r *Registrar, api huma.API, op huma.Operation, gua
 		}
 	}
 	r.prepare(api, &op, guard)
-	op.Parameters = append(op.Parameters, &huma.Param{
-		Name: EntityHeader, In: "header", Description: "Authorized entity resource boundary", Required: true,
-		Schema: &huma.Schema{Type: huma.TypeString, Pattern: guidTextPattern, MaxLength: intPointer(guidTextMaxLength)},
-	})
+	prepareEntityPath(&op)
 	if r.verifier != nil {
 		// Replace the tenant-only guard installed by prepare with the entity guard.
 		op.Middlewares[len(op.Middlewares)-1] = r.entityMiddleware(api, guard)
@@ -200,20 +194,31 @@ func RegisterEntityOrAuthenticated[I, O any](r *Registrar, api huma.API, op huma
 			panic("data-filtered operation requires entity data permission checker")
 		}
 	}
+	self := op
+	self.OperationID += "-self"
+	self.Path = selfPath(self.Path)
+	RegisterAuthenticated(r, api, self, handler)
 	r.prepare(api, &op, guard)
-	for _, parameter := range op.Parameters {
-		if parameter != nil && parameter.Name == TenantHeader && parameter.In == "header" {
-			parameter.Required = false
-		}
-	}
-	op.Parameters = append(op.Parameters, &huma.Param{
-		Name: EntityHeader, In: "header", Description: "Authorized entity resource boundary; required with X-Tenant-Id", Required: false,
-		Schema: &huma.Schema{Type: huma.TypeString, Pattern: guidTextPattern, MaxLength: intPointer(guidTextMaxLength)},
-	})
+	prepareEntityPath(&op)
 	if r.verifier != nil {
-		op.Middlewares[len(op.Middlewares)-1] = r.entityOrAuthenticatedMiddleware(api, guard)
+		op.Middlewares[len(op.Middlewares)-1] = r.entityMiddleware(api, guard)
 	}
 	huma.Register(api, op, handler)
+}
+
+// RegisterTenantEntityOrAuthenticated exposes one resource shape in personal,
+// tenant, and entity contexts. Each URI has exactly one authorization model.
+func RegisterTenantEntityOrAuthenticated[I, O any](r *Registrar, api huma.API, op huma.Operation, guard Guard, handler func(context.Context, *I) (*O, error)) {
+	self := op
+	self.OperationID += "-self"
+	self.Path = selfPath(self.Path)
+	RegisterAuthenticated(r, api, self, handler)
+
+	tenant := op
+	tenant.OperationID += "-tenant"
+	Register(r, api, tenant, guard, handler)
+
+	RegisterEntity(r, api, op, guard, handler)
 }
 
 // RegisterEntityAdapter registers an entity-authorized operation that needs
@@ -233,15 +238,9 @@ func RegisterEntityAdapter(r *Registrar, api huma.API, op huma.Operation, guard 
 		}
 	}
 	r.prepare(api, &op, guard)
-	op.Parameters = removeOperationParameter(op.Parameters, TenantHeader, "header")
-	op.Parameters = append(op.Parameters,
-		&huma.Param{Name: TenantQuery, In: "query", Description: "Tenant authorization selector", Required: true, Schema: &huma.Schema{Type: huma.TypeString, Pattern: guidTextPattern, MaxLength: intPointer(guidTextMaxLength)}},
-		&huma.Param{Name: EntityQuery, In: "query", Description: "Entity authorization selector", Required: true, Schema: &huma.Schema{Type: huma.TypeString, Pattern: guidTextPattern, MaxLength: intPointer(guidTextMaxLength)}},
-	)
+	prepareEntityPath(&op)
 	if r.verifier != nil {
-		op.Middlewares[len(op.Middlewares)-1] = r.entityMiddlewareFor(api, guard, func(ctx huma.Context) (string, string) {
-			return ctx.Query(TenantQuery), ctx.Query(EntityQuery)
-		})
+		op.Middlewares[len(op.Middlewares)-1] = r.entityMiddleware(api, guard)
 	}
 	api.OpenAPI().AddOperation(&op)
 	api.Adapter().Handle(&op, api.Middlewares().Handler(op.Middlewares.Handler(handler)))
@@ -262,6 +261,7 @@ func RegisterTenantMember[I, O any](r *Registrar, api huma.API, op huma.Operatio
 	}
 	op.Metadata[tenantMemberMetadataKey] = true
 	r.prepareAuthenticated(api, &op, true)
+	prepareTenantPath(&op)
 	if r.verifier != nil {
 		op.Middlewares = append(op.Middlewares, r.middleware(api, nil))
 	}
@@ -279,7 +279,7 @@ func RegisterSessionAuthenticated[I, O any](r *Registrar, api huma.API, op huma.
 }
 
 // RegisterAuthenticated declares an authenticated operation that does NOT bind a
-// tenant (no X-Tenant-Id required, no membership check). Claims are injected so
+// tenant (no tenant resource context or membership check). Claims are injected so
 // the handler can resolve the caller. Use for personal/cross-tenant queries like
 // "my tenants".
 func RegisterAuthenticated[I, O any](r *Registrar, api huma.API, op huma.Operation, handler func(context.Context, *I) (*O, error)) {
@@ -413,15 +413,43 @@ func (r *Registrar) prepareAuthenticated(api huma.API, op *huma.Operation, tenan
 		op.Security = []map[string][]string{{SessionScheme: {}}}
 	}
 	EnsureSecuritySchemes(api, r.SessionCookieName())
-	if tenantScoped {
-		op.Parameters = append(op.Parameters, &huma.Param{
-			Name:        TenantHeader,
-			In:          "header",
-			Description: "Tenant authorization boundary",
-			Required:    true,
-			Schema:      &huma.Schema{Type: huma.TypeString, Pattern: guidTextPattern, MaxLength: intPointer(guidTextMaxLength)},
-		})
+	_ = tenantScoped
+}
+
+func tenantPath(path string) string {
+	if path == "" || path == "/" {
+		return "/tenants/{" + TenantPath + "}"
 	}
+	return "/tenants/{" + TenantPath + "}" + path
+}
+
+func entityPath(path string) string {
+	return "/tenants/{" + TenantPath + "}/entities/{" + EntityPath + "}" + path
+}
+
+func selfPath(path string) string {
+	if strings.HasPrefix(path, "/me/") || path == "/me" {
+		return path
+	}
+	return "/me" + path
+}
+
+func pathSelector(name, description string) *huma.Param {
+	return &huma.Param{Name: name, In: "path", Description: description, Required: true,
+		Schema: &huma.Schema{Type: huma.TypeString, Pattern: guidTextPattern, MaxLength: intPointer(guidTextMaxLength)}}
+}
+
+func prepareTenantPath(op *huma.Operation) {
+	op.Path = tenantPath(op.Path)
+	op.Parameters = append(op.Parameters, pathSelector(TenantPath, "Tenant resource identifier"))
+}
+
+func prepareEntityPath(op *huma.Operation) {
+	op.Path = entityPath(op.Path)
+	op.Parameters = append(op.Parameters,
+		pathSelector(TenantPath, "Tenant resource identifier"),
+		pathSelector(EntityPath, "Entity resource identifier"),
+	)
 }
 
 // SessionCookieName reports the browser session cookie this registrar
@@ -503,7 +531,7 @@ func (r *Registrar) authenticate(api huma.API, ctx huma.Context) (*authn.Claims,
 func (r *Registrar) middleware(api huma.API, guard *Guard) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		if guard != nil {
-			tenantID, _ := guid.Parse(ctx.Header(TenantHeader))
+			tenantID, _ := guid.Parse(ctx.Param(TenantPath))
 			ctx = huma.WithContext(ctx, authn.WithPersonalTokenScope(ctx.Context(), tenantID, guard.Code()))
 		}
 		claims, ok := r.authenticate(api, ctx)
@@ -514,7 +542,7 @@ func (r *Registrar) middleware(api huma.API, guard *Guard) func(huma.Context, fu
 			ACR: claims.ACR, AMR: claims.AMR, ClientID: claims.ClientID, NetworkZone: claims.NetworkZone,
 		}
 		requestContext := policyx.WithTrustedContext(ctx.Context(), trusted)
-		tenantText := ctx.Header(TenantHeader)
+		tenantText := ctx.Param(TenantPath)
 		tenantID, tenantErr := guid.Parse(tenantText)
 		if tenantErr != nil || tenantID.Zero() || claims.PrincipalID.Zero() {
 			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "forbidden")
@@ -551,27 +579,8 @@ func (r *Registrar) middleware(api huma.API, guard *Guard) func(huma.Context, fu
 
 func (r *Registrar) entityMiddleware(api huma.API, guard Guard) func(huma.Context, func(huma.Context)) {
 	return r.entityMiddlewareFor(api, guard, func(ctx huma.Context) (string, string) {
-		return ctx.Header(TenantHeader), ctx.Header(EntityHeader)
+		return ctx.Param(TenantPath), ctx.Param(EntityPath)
 	})
-}
-
-func (r *Registrar) entityOrAuthenticatedMiddleware(api huma.API, guard Guard) func(huma.Context, func(huma.Context)) {
-	entity := r.entityMiddleware(api, guard)
-	authenticated := r.authenticatedOnly(api)
-	return func(ctx huma.Context, next func(huma.Context)) {
-		tenantText, entityText := ctx.Header(TenantHeader), ctx.Header(EntityHeader)
-		switch {
-		case tenantText == "" && entityText == "":
-			authenticated(ctx, next)
-		case tenantText == "" || entityText == "":
-			claims, ok := r.authenticate(api, ctx)
-			if ok && claims != nil {
-				_ = huma.WriteErr(api, ctx, http.StatusForbidden, "incomplete_resource_context")
-			}
-		default:
-			entity(ctx, next)
-		}
-	}
 }
 
 func (r *Registrar) entityMiddlewareFor(api huma.API, guard Guard, selectors func(huma.Context) (string, string)) func(huma.Context, func(huma.Context)) {

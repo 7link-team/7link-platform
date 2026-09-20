@@ -54,7 +54,7 @@ func TestModuleInitializeRegistersIAMLocales(t *testing.T) {
 
 func TestRuntimeModuleRegistersAllRoutes(t *testing.T) {
 	harness := newHTTPIAMHarness(t, true)
-	assert.Len(t, operationManifest(harness.api.OpenAPI()), 60)
+	assert.Len(t, operationManifest(harness.api.OpenAPI()), 62)
 	require.NoError(t, authz.ValidateOperations(harness.api, harness.module.registrar.Registry()))
 }
 
@@ -206,13 +206,13 @@ func TestModulePublishesTheSameLiveAuthorizationEvaluator(t *testing.T) {
 	}
 	authz.RegisterEntity(instance.registrar, api, huma.Operation{OperationID: "filtered", Method: http.MethodGet, Path: "/filtered"}, authz.Guard{Resource: "user", Verb: "view", FilterData: true}, handler)
 	authz.RegisterEntity(instance.registrar, api, huma.Operation{OperationID: "whole", Method: http.MethodGet, Path: "/whole"}, authz.Guard{Resource: "user", Verb: "view"}, handler)
-	headers := []any{authz.TenantHeader + ": " + tenantID.String(), authz.EntityHeader + ": " + entity.ID.String()}
-	response := api.Get("/filtered", headers...)
+	base := "/tenants/" + tenantID.String() + "/entities/" + entity.ID.String()
+	response := api.Get(base + "/filtered")
 	assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.Contains(t, response.Body.String(), `"owner_ids":["11"]`)
-	assert.Equal(t, http.StatusForbidden, api.Get("/whole", headers...).Code)
-	assert.Equal(t, http.StatusForbidden, api.Get("/filtered", authz.TenantHeader+": 2", authz.EntityHeader+": "+entity.ID.String()).Code)
-	assert.Equal(t, http.StatusForbidden, api.Get("/filtered", authz.TenantHeader+": 1", authz.EntityHeader+": 999").Code)
+	assert.Equal(t, http.StatusForbidden, api.Get(base+"/whole").Code)
+	assert.Equal(t, http.StatusForbidden, api.Get("/tenants/2/entities/"+entity.ID.String()+"/filtered").Code)
+	assert.Equal(t, http.StatusForbidden, api.Get("/tenants/1/entities/999/filtered").Code)
 	assert.Equal(t, 1, handlerCalls)
 	_, err = harness.service.RevokePermission(t.Context(), tenantID, role.ID, "user_view")
 	require.NoError(t, err)
@@ -220,7 +220,7 @@ func TestModulePublishesTheSameLiveAuthorizationEvaluator(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, constraint.AllowAll)
 	assert.Empty(t, constraint.OwnerIDs, "a consumer must observe revocation without being rewired")
-	assert.Equal(t, http.StatusForbidden, api.Get("/filtered", headers...).Code)
+	assert.Equal(t, http.StatusForbidden, api.Get(base+"/filtered").Code)
 	assert.Equal(t, 1, handlerCalls, "revoked requests never enter the handler")
 }
 

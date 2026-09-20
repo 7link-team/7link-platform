@@ -85,6 +85,15 @@ func newOperationServiceHarness(t *testing.T) operationServiceHarness {
 			}
 			return authz.DataConstraint{AllowAll: true, Revision: 1}, ctx.Err()
 		},
+		tenantPolicy: func(ctx context.Context, tx *gorm.DB, tenant guid.ID, permission string, actor guid.ID) (authz.DataConstraint, error) {
+			if tenant != 90 || actor != 70 {
+				return authz.DataConstraint{}, errOperationForbidden
+			}
+			if _, active := tx.Statement.ConnPool.(gorm.TxCommitter); !active {
+				return authz.DataConstraint{}, ErrAccountTransaction
+			}
+			return authz.DataConstraint{AllowAll: true, Revision: 1}, ctx.Err()
+		},
 		subjects: func(ctx context.Context, tx *gorm.DB, tenant, entity, actor guid.ID) (core.AuthorizationSubjects, error) {
 			if tenant != 90 || entity != 80 || actor != 70 {
 				return core.AuthorizationSubjects{}, errOperationForbidden

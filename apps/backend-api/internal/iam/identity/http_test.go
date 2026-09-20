@@ -38,20 +38,20 @@ identity-submit-closure-request|POST|/me/closure-request
 identity-cancel-closure-request|DELETE|/me/closure-request
 identity-list-closure-requests|GET|/platform/closure-requests
 identity-update-closure-request|PATCH|/platform/principals/{principal_id}/closure-request
-identity-list-principals|GET|/principals
-identity-create-principal|POST|/principals
-identity-get-principal|GET|/principals/{principal_id}
-identity-update-principal|PATCH|/principals/{principal_id}
-identity-create-principal-suspension|PUT|/principals/{principal_id}/suspension
-identity-delete-principal-suspension|DELETE|/principals/{principal_id}/suspension
-identity-list-service-accounts|GET|/service-accounts
-identity-create-service-account|POST|/service-accounts
-identity-get-service-account|GET|/service-accounts/{service_account_id}
-identity-replace-service-account|PUT|/service-accounts/{service_account_id}
-identity-delete-service-account|DELETE|/service-accounts/{service_account_id}
-identity-list-service-account-credentials|GET|/service-accounts/{service_account_id}/credentials
-identity-create-service-account-credential|POST|/service-accounts/{service_account_id}/credentials
-identity-delete-service-account-credential|DELETE|/service-accounts/{service_account_id}/credentials/{credential_id}
+identity-list-principals|GET|/tenants/{tenant_id}/principals
+identity-create-principal|POST|/tenants/{tenant_id}/principals
+identity-get-principal|GET|/tenants/{tenant_id}/principals/{principal_id}
+identity-update-principal|PATCH|/tenants/{tenant_id}/principals/{principal_id}
+identity-create-principal-suspension|PUT|/tenants/{tenant_id}/principals/{principal_id}/suspension
+identity-delete-principal-suspension|DELETE|/tenants/{tenant_id}/principals/{principal_id}/suspension
+identity-list-service-accounts|GET|/tenants/{tenant_id}/service-accounts
+identity-create-service-account|POST|/tenants/{tenant_id}/service-accounts
+identity-get-service-account|GET|/tenants/{tenant_id}/service-accounts/{service_account_id}
+identity-replace-service-account|PUT|/tenants/{tenant_id}/service-accounts/{service_account_id}
+identity-delete-service-account|DELETE|/tenants/{tenant_id}/service-accounts/{service_account_id}
+identity-list-service-account-credentials|GET|/tenants/{tenant_id}/service-accounts/{service_account_id}/credentials
+identity-create-service-account-credential|POST|/tenants/{tenant_id}/service-accounts/{service_account_id}/credentials
+identity-delete-service-account-credential|DELETE|/tenants/{tenant_id}/service-accounts/{service_account_id}/credentials/{credential_id}
 identity-platform-get-principal-lifecycle|GET|/platform/principals/{principal_id}/lifecycle
 identity-platform-set-principal-retention|PUT|/platform/principals/{principal_id}/lifecycle/retention-policy
 identity-platform-anonymize-principal|PUT|/platform/principals/{principal_id}/lifecycle/anonymization
@@ -221,8 +221,8 @@ func decodeIdentityEnvelope[T any](t *testing.T, response *httptest.ResponseReco
 	return envelope
 }
 
-func identityTenantHeader(tenantID guid.ID) string {
-	return authz.TenantHeader + ": " + tenantID.String()
+func identityTenantPath(tenantID guid.ID) string {
+	return "/tenants/" + tenantID.String()
 }
 
 func TestIdentityRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
@@ -304,7 +304,7 @@ func TestIdentityOpenAPIGuardsParametersAndSecurityAreConsistent(t *testing.T) {
 
 func TestIdentityOpenAPIDescribesTypedMutationResponses(t *testing.T) {
 	spec := identityContractAPI(t).OpenAPI()
-	deleteAccount := spec.Paths["/service-accounts/{service_account_id}"].Delete
+	deleteAccount := spec.Paths["/tenants/{tenant_id}/service-accounts/{service_account_id}"].Delete
 	require.NotNil(t, deleteAccount)
 	assert.Contains(t, deleteAccount.Parameters[len(deleteAccount.Parameters)-1].Name+"", "")
 
@@ -315,8 +315,8 @@ func TestIdentityOpenAPIDescribesTypedMutationResponses(t *testing.T) {
 	assert.Contains(t, versions, "query:version", "optimistic concurrency stays an explicit parameter")
 
 	for path, method := range map[string]string{
-		"/service-accounts/{service_account_id}":                             http.MethodDelete,
-		"/service-accounts/{service_account_id}/credentials/{credential_id}": http.MethodDelete,
+		"/tenants/{tenant_id}/service-accounts/{service_account_id}":                             http.MethodDelete,
+		"/tenants/{tenant_id}/service-accounts/{service_account_id}/credentials/{credential_id}": http.MethodDelete,
 	} {
 		operation := identityPathOperations(spec.Paths[path])[method]
 		require.NotNil(t, operation, path)
@@ -329,10 +329,10 @@ func TestIdentityOpenAPIDescribesTypedMutationResponses(t *testing.T) {
 
 func TestIdentityPrincipalHTTPLifecycleAndTenantIsolation(t *testing.T) {
 	harness := newIdentityHTTPHarness(t, true)
-	headerA, headerB := identityTenantHeader(7), identityTenantHeader(8)
+	headerA, headerB := identityTenantPath(7), identityTenantPath(8)
 	auth := "Authorization: Bearer test"
 
-	created := harness.api.Post("/principals", auth, headerA, map[string]any{
+	created := harness.api.Post(headerA+"/principals", auth, map[string]any{
 		"login_name": "alice", "password": testPassword,
 		"display_name": "Alice", "email": "alice@example.test",
 	})
@@ -341,32 +341,32 @@ func TestIdentityPrincipalHTTPLifecycleAndTenantIsolation(t *testing.T) {
 	require.NotZero(t, principal.ID)
 	id := principal.ID.String()
 
-	assert.Equal(t, http.StatusOK, harness.api.Get("/principals?limit=50", auth, headerA).Code)
-	assert.Equal(t, http.StatusOK, harness.api.Get("/principals/"+id, auth, headerA).Code)
+	assert.Equal(t, http.StatusOK, harness.api.Get(headerA+"/principals?limit=50", auth).Code)
+	assert.Equal(t, http.StatusOK, harness.api.Get(headerA+"/principals/"+id, auth).Code)
 
-	updated := harness.api.Patch("/principals/"+id, auth, headerA, map[string]any{
+	updated := harness.api.Patch(headerA+"/principals/"+id, auth, map[string]any{
 		"display_name": "Alice Smith",
 	})
 	require.Equal(t, http.StatusOK, updated.Code, updated.Body.String())
 	assert.Equal(t, "Alice Smith", decodeIdentityEnvelope[Principal](t, updated).Data.DisplayName)
 
-	suspended := harness.api.Put("/principals/"+id+"/suspension", auth, headerA)
+	suspended := harness.api.Put(headerA+"/principals/"+id+"/suspension", auth)
 	require.Equal(t, http.StatusOK, suspended.Code, suspended.Body.String())
 	assert.Equal(t, "disabled", decodeIdentityEnvelope[Principal](t, suspended).Data.Status)
 
-	restored := harness.api.Delete("/principals/"+id+"/suspension", auth, headerA)
+	restored := harness.api.Delete(headerA+"/principals/"+id+"/suspension", auth)
 	require.Equal(t, http.StatusOK, restored.Code, restored.Body.String())
 	assert.Equal(t, "active", decodeIdentityEnvelope[Principal](t, restored).Data.Status)
 
 	// Tenant B cannot observe or change tenant A's principal.
-	assert.Equal(t, http.StatusNotFound, harness.api.Get("/principals/"+id, auth, headerB).Code)
-	assert.Equal(t, http.StatusNotFound, harness.api.Patch("/principals/"+id, auth, headerB, map[string]any{
+	assert.Equal(t, http.StatusNotFound, harness.api.Get(headerB+"/principals/"+id, auth).Code)
+	assert.Equal(t, http.StatusNotFound, harness.api.Patch(headerB+"/principals/"+id, auth, map[string]any{
 		"display_name": "Hijacked",
 	}).Code)
-	assert.Equal(t, http.StatusNotFound, harness.api.Put("/principals/"+id+"/suspension", auth, headerB).Code)
-	assert.Equal(t, http.StatusNotFound, harness.api.Delete("/principals/"+id+"/suspension", auth, headerB).Code)
+	assert.Equal(t, http.StatusNotFound, harness.api.Put(headerB+"/principals/"+id+"/suspension", auth).Code)
+	assert.Equal(t, http.StatusNotFound, harness.api.Delete(headerB+"/principals/"+id+"/suspension", auth).Code)
 
-	listedByB := harness.api.Get("/principals?limit=50", auth, headerB)
+	listedByB := harness.api.Get(headerB+"/principals?limit=50", auth)
 	require.Equal(t, http.StatusOK, listedByB.Code)
 	assert.Empty(t, decodeIdentityEnvelope[principalListData](t, listedByB).Data.Items)
 	assert.Equal(t, "Alice Smith", harness.principal(t, principal.ID).DisplayName)
@@ -375,25 +375,25 @@ func TestIdentityPrincipalHTTPLifecycleAndTenantIsolation(t *testing.T) {
 
 func TestIdentityPrincipalHTTPRejectsConflictsAndInvalidInput(t *testing.T) {
 	harness := newIdentityHTTPHarness(t, true)
-	header, auth := identityTenantHeader(7), "Authorization: Bearer test"
+	header, auth := identityTenantPath(7), "Authorization: Bearer test"
 
-	created := harness.api.Post("/principals", auth, header, map[string]any{
+	created := harness.api.Post(header+"/principals", auth, map[string]any{
 		"login_name": "alice", "password": testPassword, "email": "alice@example.test",
 	})
 	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
 
-	duplicate := harness.api.Post("/principals", auth, header, map[string]any{
+	duplicate := harness.api.Post(header+"/principals", auth, map[string]any{
 		"login_name": "alice", "password": testPassword, "email": "other@example.test",
 	})
 	assert.Equal(t, http.StatusConflict, duplicate.Code, duplicate.Body.String())
 
-	short := harness.api.Post("/principals", auth, header, map[string]any{
+	short := harness.api.Post(header+"/principals", auth, map[string]any{
 		"login_name": "bob", "password": "short",
 	})
 	assert.Equal(t, http.StatusUnprocessableEntity, short.Code)
 
-	assert.Equal(t, http.StatusUnprocessableEntity, harness.api.Get("/principals/not-an-id", auth, header).Code)
-	assert.Equal(t, http.StatusNotFound, harness.api.Get("/principals/999999", auth, header).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, harness.api.Get(header+"/principals/not-an-id", auth).Code)
+	assert.Equal(t, http.StatusNotFound, harness.api.Get(header+"/principals/999999", auth).Code)
 }
 
 // TestIdentityPrincipalAdministrationRequiresTenantUserUpdatePermission checks
@@ -403,20 +403,20 @@ func TestIdentityPrincipalHTTPRejectsConflictsAndInvalidInput(t *testing.T) {
 // refused request and a changed record.
 func TestIdentityPrincipalAdministrationRequiresTenantUserUpdatePermission(t *testing.T) {
 	harness := newIdentityHTTPHarness(t, false)
-	header, auth := identityTenantHeader(7), "Authorization: Bearer test"
+	header, auth := identityTenantPath(7), "Authorization: Bearer test"
 
-	created := harness.api.Post("/principals", auth, header, map[string]any{
+	created := harness.api.Post(header+"/principals", auth, map[string]any{
 		"login_name": "alice", "password": testPassword,
 	})
 	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
 	id := decodeIdentityEnvelope[Principal](t, created).Data.ID
 
 	// Reads stay available; the three writes do not.
-	assert.Equal(t, http.StatusOK, harness.api.Get("/principals/"+id.String(), auth, header).Code)
+	assert.Equal(t, http.StatusOK, harness.api.Get(header+"/principals/"+id.String(), auth).Code)
 	for _, response := range []*httptest.ResponseRecorder{
-		harness.api.Patch("/principals/"+id.String(), auth, header, map[string]any{"display_name": "Nope"}),
-		harness.api.Put("/principals/"+id.String()+"/suspension", auth, header),
-		harness.api.Delete("/principals/"+id.String()+"/suspension", auth, header),
+		harness.api.Patch(header+"/principals/"+id.String(), auth, map[string]any{"display_name": "Nope"}),
+		harness.api.Put(header+"/principals/"+id.String()+"/suspension", auth),
+		harness.api.Delete(header+"/principals/"+id.String()+"/suspension", auth),
 	} {
 		assert.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
 	}
@@ -426,74 +426,74 @@ func TestIdentityPrincipalAdministrationRequiresTenantUserUpdatePermission(t *te
 
 func TestIdentityServiceAccountHTTPLifecycleAndTenantIsolation(t *testing.T) {
 	harness := newIdentityHTTPHarness(t, true)
-	headerA, headerB := identityTenantHeader(7), identityTenantHeader(8)
+	headerA, headerB := identityTenantPath(7), identityTenantPath(8)
 	auth := "Authorization: Bearer test"
 
-	created := harness.api.Post("/service-accounts", auth, headerA, map[string]any{
+	created := harness.api.Post(headerA+"/service-accounts", auth, map[string]any{
 		"login_name": "robot", "display_name": "Robot", "description": "ci runner",
 	})
 	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
 	account := decodeIdentityEnvelope[ServiceAccount](t, created).Data
 	id := account.ID.String()
 
-	assert.Equal(t, http.StatusOK, harness.api.Get("/service-accounts?limit=50", auth, headerA).Code)
-	assert.Equal(t, http.StatusOK, harness.api.Get("/service-accounts/"+id, auth, headerA).Code)
+	assert.Equal(t, http.StatusOK, harness.api.Get(headerA+"/service-accounts?limit=50", auth).Code)
+	assert.Equal(t, http.StatusOK, harness.api.Get(headerA+"/service-accounts/"+id, auth).Code)
 
-	credential := harness.api.Post("/service-accounts/"+id+"/credentials", auth, headerA, map[string]any{
+	credential := harness.api.Post(headerA+"/service-accounts/"+id+"/credentials", auth, map[string]any{
 		"name": "ci", "scopes": []string{"read"},
 	})
 	require.Equal(t, http.StatusCreated, credential.Code, credential.Body.String())
 	secret := decodeIdentityEnvelope[ServiceAccountCredentialSecret](t, credential).Data
 	require.NotEmpty(t, secret.Secret)
 
-	listed := harness.api.Get("/service-accounts/"+id+"/credentials", auth, headerA)
+	listed := harness.api.Get(headerA+"/service-accounts/"+id+"/credentials", auth)
 	require.Equal(t, http.StatusOK, listed.Code)
 	require.Len(t, decodeIdentityEnvelope[[]ServiceAccountCredential](t, listed).Data, 1)
 
 	// Tenant B must not reach the account, its credentials, or its version.
-	assert.Equal(t, http.StatusNotFound, harness.api.Get("/service-accounts/"+id, auth, headerB).Code)
-	assert.Equal(t, http.StatusNotFound, harness.api.Get("/service-accounts/"+id+"/credentials", auth, headerB).Code)
-	assert.Equal(t, http.StatusNotFound, harness.api.Post("/service-accounts/"+id+"/credentials", auth, headerB, map[string]any{
+	assert.Equal(t, http.StatusNotFound, harness.api.Get(headerB+"/service-accounts/"+id, auth).Code)
+	assert.Equal(t, http.StatusNotFound, harness.api.Get(headerB+"/service-accounts/"+id+"/credentials", auth).Code)
+	assert.Equal(t, http.StatusNotFound, harness.api.Post(headerB+"/service-accounts/"+id+"/credentials", auth, map[string]any{
 		"name": "stolen", "scopes": []string{"read"},
 	}).Code)
 	assert.Equal(t, http.StatusNotFound, harness.api.Delete(
-		"/service-accounts/"+id+"/credentials/"+secret.Credential.ID.String(), auth, headerB,
+		headerB+"/service-accounts/"+id+"/credentials/"+secret.Credential.ID.String(), auth,
 	).Code)
-	assert.Equal(t, http.StatusNotFound, harness.api.Put("/service-accounts/"+id, auth, headerB, map[string]any{
+	assert.Equal(t, http.StatusNotFound, harness.api.Put(headerB+"/service-accounts/"+id, auth, map[string]any{
 		"display_name": "Hijacked", "status": "disabled", "version": 1,
 	}).Code)
-	assert.Equal(t, http.StatusNotFound, harness.api.Delete("/service-accounts/"+id+"?version=1", auth, headerB).Code)
+	assert.Equal(t, http.StatusNotFound, harness.api.Delete(headerB+"/service-accounts/"+id+"?version=1", auth).Code)
 	assert.Equal(t, "active", harness.serviceAccountRow(t, account.ID).Status)
 	assert.Nil(t, harness.credentialRow(t, secret.Credential.ID).RevokedAt)
 
 	revoked := harness.api.Delete(
-		"/service-accounts/"+id+"/credentials/"+secret.Credential.ID.String(), auth, headerA,
+		headerA+"/service-accounts/"+id+"/credentials/"+secret.Credential.ID.String(), auth,
 	)
 	require.Equal(t, http.StatusOK, revoked.Code, revoked.Body.String())
 	assert.NotNil(t, harness.credentialRow(t, secret.Credential.ID).RevokedAt)
 
-	replaced := harness.api.Put("/service-accounts/"+id, auth, headerA, map[string]any{
+	replaced := harness.api.Put(headerA+"/service-accounts/"+id, auth, map[string]any{
 		"display_name": "Robot Two", "description": "ci", "status": "active", "version": 1,
 	})
 	require.Equal(t, http.StatusOK, replaced.Code, replaced.Body.String())
 	assert.Equal(t, int64(2), decodeIdentityEnvelope[ServiceAccount](t, replaced).Data.Version)
 
-	stale := harness.api.Put("/service-accounts/"+id, auth, headerA, map[string]any{
+	stale := harness.api.Put(headerA+"/service-accounts/"+id, auth, map[string]any{
 		"display_name": "Robot Three", "status": "active", "version": 1,
 	})
 	assert.Equal(t, http.StatusConflict, stale.Code, stale.Body.String())
 
-	deleted := harness.api.Delete("/service-accounts/"+id+"?version=2", auth, headerA)
+	deleted := harness.api.Delete(headerA+"/service-accounts/"+id+"?version=2", auth)
 	require.Equal(t, http.StatusOK, deleted.Code, deleted.Body.String())
 	assert.Equal(t, "deleted", harness.serviceAccountRow(t, account.ID).Status)
-	assert.Equal(t, http.StatusNotFound, harness.api.Get("/service-accounts/"+id, auth, headerA).Code)
+	assert.Equal(t, http.StatusNotFound, harness.api.Get(headerA+"/service-accounts/"+id, auth).Code)
 }
 
 func TestIdentityHTTPReportsDomainFailuresAsTranslatedEnvelopes(t *testing.T) {
 	harness := newIdentityHTTPHarness(t, true)
-	header, auth := identityTenantHeader(7), "Authorization: Bearer test"
+	header, auth := identityTenantPath(7), "Authorization: Bearer test"
 
-	response := harness.api.Get("/principals/999999", auth, header)
+	response := harness.api.Get(header+"/principals/999999", auth)
 	require.Equal(t, http.StatusNotFound, response.Code)
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body), response.Body.String())

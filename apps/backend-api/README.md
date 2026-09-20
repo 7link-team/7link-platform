@@ -176,9 +176,10 @@ Migration down removes claim history and is for isolated tests, not recovery.
 
 The `todo` module is the reference consumer of IAM row-level permissions. It is
 activated only when `authn.enabled` is true; without IAM its routes and migration
-source are absent from application composition. Every `/todos` operation requires
-authentication, active membership, `X-Tenant-Id` and `X-Entity-Id`. The entity must
-be active and belong to the selected tenant.
+source are absent from application composition. Every
+`/tenants/{tenant_id}/entities/{entity_id}/todos` operation requires authentication
+and active membership. The entity must be active and belong to the tenant named in
+the path.
 
 Grant the relevant `todo_create`, `todo_view`, `todo_update`, `todo_delete`,
 `todo_export` or `todo_import` permission through IAM roles and their data scope.
@@ -219,8 +220,9 @@ email). The management UI and server-side consumers enforce these declarations.
 Field policies were accepted as part of phase 10.5; `docs/iam-release-checkpoints.md`
 records the current release evidence and what remains outside application scope.
 Tenant administrators with `field_policy_view` / `field_policy_update` can inspect
-`GET /iam/field-catalog`, list `GET /iam/field-policies?resource=todo`, and change
-`PUT /iam/field-policies/{resource}/{field}` with `version` and `policy`. Each
+`GET /tenants/{tenant_id}/field-catalog`, list
+`GET /tenants/{tenant_id}/field-policies?resource=todo`, and change
+`PUT /tenants/{tenant_id}/field-policies/{resource}/{field}` with `version` and `policy`. Each
 policy has separate read/write defaults (`allow` or `deny`), `allow_roles` and
 `deny_roles`, and a mask (`omit`, or constant `redact` for declared text fields).
 Explicit role denies win, including for administrators. Policies restrict field
@@ -231,7 +233,8 @@ Use the version returned by the policy API, not a locally incremented number.
 Version zero creates an absent override; stale changes return 409. Deleting with
 `?version=<current>` restores declared defaults. Recreating an override receives
 a newer version, so an earlier editor cannot overwrite the replacement.
-`GET /iam/fields/effective?resource=todo&entity_id=<id>` returns only the caller's
+`GET /tenants/{tenant_id}/entities/{entity_id}/fields/effective?resource=todo`
+returns only the caller's
 field capabilities. Policy changes are audited and advance the tenant revision.
 
 Task responses and exports omit or redact restricted fields. Filters, sorting
@@ -261,17 +264,13 @@ production rollback procedure. Verify restrictions after any backup recovery.
 
 ## Browser session tenancy
 
-Browser session tenancy is resolved separately from the global login session.
-`GET /authn/me` and `GET /authn/sessions/current` accept an optional `X-Tenant-Id`.
-For cookie authentication, an explicit ID must belong to an active membership
-in an active tenant; otherwise the response is 403. With no ID, exactly one
-active membership supplies `organization_id`; zero or multiple memberships
-leave it absent. Clients must prompt for a selection when it is ambiguous,
-never assume a tenant named `platform` or select the first tenant. The choice
-does not mutate the login session or another browser tab. Bearer token tenant
-claims cannot be changed by request headers. Invalid IDs return 422 and
-membership-store failure returns 503. The console session request is unscoped,
-so an old tenant selection cannot prevent global sign-in.
+The global cookie session is read through `GET /sessions/current` and is never
+scoped by a business-resource header. Tenant context is explicit in canonical
+resource paths such as `/tenants/{tenant_id}/me/permissions` and
+`/tenants/{tenant_id}/me/menus`. The tenant must be an active membership in an
+active tenant; otherwise the response is 403. Clients must prompt for a selection
+when membership is ambiguous, never assume a tenant named `platform` or select the
+first tenant. Bearer-token tenant claims cannot be widened by choosing another path.
 
 ## SCIM tenant and credential lifecycle
 
@@ -408,11 +407,10 @@ although source events and S3 objects survive. Prefer a v3-aware binary rollback
 with archiving disabled; retain the job table and bucket backup for recovery.
 
 Management is available in the audit-governance console. The tenant API uses
-`/iam/audit`; the platform API uses `/platform/iam/audit` and always scopes to
-tenant zero. Platform operations require `platform_administer` and reject a
-nonempty `X-Tenant-Id` header. Tenant operations reject tenant zero.
-Platform `tenant_id` fields serialize as JSON `null`, following the shared ID
-encoding; clients must not send the string `"0"` as a tenant header.
+`/tenants/{tenant_id}/audit`; the platform API uses `/platform/audit` and always
+scopes to tenant zero. Platform operations require `platform_administer`; tenant
+operations reject tenant zero. Platform `tenant_id` fields serialize as JSON
+`null`, following the shared ID encoding.
 
 | Method / suffix | Tenant permission | Purpose |
 | --- | --- | --- |
@@ -528,7 +526,7 @@ storage failure always rejects the challenge. The service owner must select the
 production policy. Test both policies using an unavailable Redis before release.
 
 The default fixed-window limits are 60 requests per socket peer and 3000 requests
-globally per minute, shared across replicas for all `POST /authn/` operations.
+globally per minute, shared across replicas for authentication write operations.
 Exceeding either returns 429 and `Retry-After`. Configure the budgets from measured
 traffic. Forwarded IP headers are deliberately not trusted: behind a reverse proxy,
 the socket-peer budget applies to that proxy, and the trusted ingress must enforce

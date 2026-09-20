@@ -153,7 +153,7 @@ async function api(path, options = {}) {
   const result = await evaluate(`
     const response = await fetch(${JSON.stringify(`/api${path}`)}, {
       credentials: "include",
-      headers: { "Content-Type": "application/json", "X-Tenant-Id": ${JSON.stringify(tenantID)} },
+      headers: { "Content-Type": "application/json" },
       ...${JSON.stringify(options)},
     });
     const payload = await response.json();
@@ -178,7 +178,7 @@ async function login(loginName, loginPassword) {
   await setControl("#password", loginPassword)
   await submit("form")
   await waitFor(`location.pathname === "/"`, 20000)
-  const session = await api("/authn/sessions/current")
+  const session = await api("/sessions/current")
   await evaluate(`
     localStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)});
     localStorage.setItem("iam.tenant:subject", ${JSON.stringify(session.subject)});
@@ -191,7 +191,7 @@ async function login(loginName, loginPassword) {
 
 async function logout() {
   const status = await evaluate(`
-	  const response = await fetch("/api/authn/sessions/current", { method: "DELETE", credentials: "include" });
+	  const response = await fetch("/api/sessions/current", { method: "DELETE", credentials: "include" });
 	  return response.status;
 	`)
   if (status < 200 || status >= 300) throw new Error(`logout failed: ${status}`)
@@ -247,17 +247,17 @@ const approverEmail = `${approverLogin}@example.test`
 const approverPassword = "Audit-Access-Approver-2026!"
 
 await login(adminLogin, password)
-for (const stale of (await api("/iam/roles")).filter((item) =>
+for (const stale of (await api("/roles")).filter((item) =>
   item.name.startsWith("Acceptance Access ")
 ))
-  await api(`/iam/roles/${encodeURIComponent(stale.id)}`, {
+  await api(`/roles/${encodeURIComponent(stale.id)}`, {
     method: "DELETE",
   })
-const tenantRoles = await api("/iam/roles")
+const tenantRoles = await api("/roles")
 let administratorRole
 for (const candidate of tenantRoles) {
   const permissions = await api(
-    `/iam/roles/${encodeURIComponent(candidate.id)}/permissions`
+    `/roles/${encodeURIComponent(candidate.id)}/permissions`
   )
   if (permissions.includes("tenant_administer")) {
     administratorRole = candidate
@@ -266,21 +266,21 @@ for (const candidate of tenantRoles) {
 }
 if (!administratorRole)
   throw new Error("tenant administrator role was not found")
-const role = await api("/iam/roles", {
+const role = await api("/roles", {
   method: "POST",
   body: JSON.stringify({
     name: roleName,
     description: "Browser acceptance role",
   }),
 })
-const invitation = await api("/iam/invitations", {
+const invitation = await api("/invitations", {
   method: "POST",
   body: JSON.stringify({
     email: approverEmail,
     role_ids: [administratorRole.id],
   }),
 })
-const acceptance = await api("/iam/invitations/accept", {
+const acceptance = await api("/invitations/accept", {
   method: "POST",
   body: JSON.stringify({
     token: invitation.token,
@@ -290,7 +290,7 @@ const acceptance = await api("/iam/invitations/accept", {
   }),
 })
 
-await navigate("/iam/access-requests")
+await navigate("/access-requests")
 await waitFor(`document.querySelector("h1")?.textContent.includes("访问申请")`)
 await waitFor(
   `[...document.querySelectorAll("button")].some((button) => button.textContent.trim() === "发起申请" && !button.disabled)`
@@ -314,7 +314,7 @@ await waitFor(
 
 await logout()
 await login(approverLogin, approverPassword)
-await navigate("/iam/access-requests")
+await navigate("/access-requests")
 await waitFor(
   `[...document.querySelectorAll("[role=tab]")].some((tab) => tab.textContent.trim() === "审批队列")`
 )
@@ -337,7 +337,7 @@ const layouts = [
 
 await logout()
 await login(adminLogin, password)
-await navigate("/iam/access-requests")
+await navigate("/access-requests")
 await waitFor(
   `[...document.querySelectorAll("tbody tr")].some((row) => row.textContent.includes(${JSON.stringify(roleName)}) && row.textContent.includes("已批准"))`
 )
@@ -350,15 +350,15 @@ await waitFor(
 )
 
 await api(
-  `/iam/roles/${encodeURIComponent(administratorRole.id)}/members/${encodeURIComponent(acceptance.principal_id)}`,
+  `/roles/${encodeURIComponent(administratorRole.id)}/members/${encodeURIComponent(acceptance.principal_id)}`,
   {
     method: "DELETE",
   }
 )
-await api(`/iam/roles/${encodeURIComponent(role.id)}`, { method: "DELETE" })
+await api(`/roles/${encodeURIComponent(role.id)}`, { method: "DELETE" })
 
 const governanceResponses = responses.filter((response) =>
-  response.url.includes("/api/iam/access-requests")
+  response.url.includes("/api/access-requests")
 )
 for (const expected of ["GET", "POST"])
   if (
@@ -373,11 +373,11 @@ const unexpectedResponses = responses.filter(
     response.status >= 400 &&
     !(
       response.status === 401 &&
-      response.url.endsWith("/api/authn/sessions/current")
+      response.url.endsWith("/api/sessions/current")
     ) &&
     !(
       response.status === 403 &&
-      response.url.includes("/api/iam/tenants?include_deleted=false")
+      response.url.includes("/api/tenants?include_deleted=false")
     )
 )
 const unexpectedFailures = failures.filter(

@@ -217,7 +217,7 @@ await command("Browser.grantPermissions", {
   permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"],
 })
 
-await navigate("/iam/scim-directories")
+await navigate("/scim-directories")
 await waitFor(
   `location.pathname === "/login" && document.querySelector("#login-name")`
 )
@@ -227,11 +227,11 @@ await evaluate(
 await setInput("#login-name", adminLogin)
 await setInput("#password", password)
 await submit("form")
-await waitFor(`location.pathname === "/iam/scim-directories"`, 20000)
+await waitFor(`location.pathname === "/scim-directories"`, 20000)
 await waitFor(
   `document.querySelector("h1")?.textContent.includes("SCIM 目录") && document.querySelector("tbody")`
 )
-await waitFor(`document.querySelector('a[href="/iam/scim-directories"]')`)
+await waitFor(`document.querySelector('a[href="/scim-directories"]')`)
 
 await clickLabel("复制 SCIM Base URL")
 await waitFor(`document.body.innerText.includes("SCIM Base URL 已复制")`)
@@ -245,9 +245,9 @@ const renamedName = `${directoryName} Updated`
 const credentialName = `browser-${suffix}`
 
 const serviceAccount = await evaluate(`
-  const response = await fetch("/api/iam/service-accounts", {
+  const response = await fetch("/api/service-accounts", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Tenant-Id": ${JSON.stringify(tenantID)} },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ login_name: ${JSON.stringify(`scim-browser-${suffix}`)}, display_name: "SCIM browser automation" }),
   });
   if (!response.ok) throw new Error("create SCIM service account: " + response.status);
@@ -396,7 +396,7 @@ const unexpectedResponses = responses.filter(
     response !== expectedUnauthorized &&
     !(
       response.status === 401 &&
-      response.url.endsWith("/api/authn/sessions/current")
+      response.url.endsWith("/api/sessions/current")
     )
 )
 const unexpectedFailures = failures.filter(

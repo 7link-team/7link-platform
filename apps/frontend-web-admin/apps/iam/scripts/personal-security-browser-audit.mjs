@@ -256,13 +256,11 @@ const principals = new Set()
 const issued = []
 let tenant, otherTenant, provider
 async function response(context, path, method = "GET", data, tenantID) {
-  return context.request.fetch("/api" + path, {
+  const requestPath = tenantID ? `/tenants/${tenantID}${path}` : path
+  return context.request.fetch("/api" + requestPath, {
     method,
     ...(data === undefined ? {} : { data }),
-    headers: {
-      Origin: baseURL,
-      ...(tenantID ? { "X-Tenant-Id": tenantID } : {}),
-    },
+    headers: { Origin: baseURL },
   })
 }
 async function ok(context, path, method = "GET", data, tenantID) {
@@ -348,7 +346,7 @@ async function createAndRevokeToken(context, page, messages, label, method) {
     .getByRole("button", { name: messages.continue, exact: true })
     .click()
   const originalSession = await sessionCookie(context)
-  const originalSubject = (await ok(context, "/authn/sessions/current")).subject
+  const originalSubject = (await ok(context, "/sessions/current")).subject
   const beforeFresh = idp.fresh
   await confirmIdentity(page, messages, method)
   const secretNode = page.getByTestId("personal-token-secret")
@@ -361,11 +359,11 @@ async function createAndRevokeToken(context, page, messages, label, method) {
     "Reauthentication must not replace the browser session"
   )
   assert.equal(
-    (await ok(context, "/authn/sessions/current")).subject,
+    (await ok(context, "/sessions/current")).subject,
     originalSubject
   )
   if (method === "federation") assert.equal(idp.fresh, beforeFresh + 1)
-  const listing = await ok(context, "/authn/personal-tokens")
+  const listing = await ok(context, "/personal-tokens")
   const token = listing.find((item) => item.name === label)
   assert(token, "Created PAT is listed")
   issued.push({ context, id: token.id })
@@ -374,26 +372,26 @@ async function createAndRevokeToken(context, page, messages, label, method) {
   assert(!JSON.stringify(listing).includes(secret))
   assert(!Object.hasOwn(token, "token") && !Object.hasOwn(token, "token_hash"))
   const bearer = async (path, tenantID = tenant.id) =>
-    context.request.get("/api" + path, {
-      headers: { Authorization: `Bearer ${secret}`, "X-Tenant-Id": tenantID },
+    context.request.get(`/api/tenants/${tenantID}${path}`, {
+      headers: { Authorization: `Bearer ${secret}` },
     })
   assert.equal(
-    (await bearer("/iam/roles")).status(),
+    (await bearer("/roles")).status(),
     200,
     "Allowed tenant permission remains usable"
   )
   assert.equal(
-    (await bearer("/iam/groups")).status(),
+    (await bearer("/groups")).status(),
     401,
     "Missing token permission is denied"
   )
   assert.equal(
-    (await bearer("/iam/roles", otherTenant.id)).status(),
+    (await bearer("/roles", otherTenant.id)).status(),
     401,
     "Cross-tenant token use is denied"
   )
   assert.equal(
-    (await bearer("/authn/sessions/current")).status(),
+    (await bearer("/sessions/current")).status(),
     401,
     "PAT cannot substitute for a browser session"
   )
@@ -452,7 +450,7 @@ async function createAndRevokeToken(context, page, messages, label, method) {
     .getByRole("button", { name: messages.revoked, exact: true })
     .waitFor()
   assert.equal(
-    (await bearer("/iam/roles")).status(),
+    (await bearer("/roles")).status(),
     401,
     "Revocation immediately rejects the real bearer"
   )
@@ -473,23 +471,23 @@ async function passwordLink(context, page, messages) {
     .waitFor()
   await page.locator("#identity-provider").selectOption(provider.id)
   const oldCookie = await sessionCookie(context)
-  const oldSession = await ok(context, "/authn/sessions/current")
+  const oldSession = await ok(context, "/sessions/current")
   const membersBefore = await ok(
     admin,
-    "/iam/principals",
+    "/principals",
     "GET",
     undefined,
     tenant.id
   )
   const roleMemberships = async () => {
-    const roles = await ok(admin, "/iam/roles", "GET", undefined, tenant.id)
+    const roles = await ok(admin, "/roles", "GET", undefined, tenant.id)
     return Promise.all(
       roles.map(async (role) => ({
         id: role.id,
         members: (
           await ok(
             admin,
-            `/iam/roles/${role.id}/members`,
+            `/roles/${role.id}/members`,
             "GET",
             undefined,
             tenant.id
@@ -510,11 +508,11 @@ async function passwordLink(context, page, messages) {
     .waitFor()
   assert.equal(await sessionCookie(context), oldCookie)
   assert.equal(
-    (await ok(context, "/authn/sessions/current")).subject,
+    (await ok(context, "/sessions/current")).subject,
     oldSession.subject
   )
   assert.deepEqual(
-    await ok(admin, "/iam/principals", "GET", undefined, tenant.id),
+    await ok(admin, "/principals", "GET", undefined, tenant.id),
     membersBefore,
     "Personal linking must not JIT-provision a principal or membership"
   )
@@ -523,7 +521,7 @@ async function passwordLink(context, page, messages) {
     rolesBefore,
     "Personal linking must not grant roles"
   )
-  const links = await ok(context, "/authn/identity-links")
+  const links = await ok(context, "/identity-links")
   assert.equal(
     links.filter((link) => link.provider_id === provider.id).length,
     1
@@ -537,30 +535,30 @@ async function passwordLink(context, page, messages) {
     .click()
   await confirmIdentity(page, messages)
   await page.getByText(messages.noLinkedIdentities, { exact: true }).waitFor()
-  assert.equal((await ok(context, "/authn/identity-links")).length, 0)
+  assert.equal((await ok(context, "/identity-links")).length, 0)
 }
 try {
   save()
-  await ok(admin, "/authn/sessions", "POST", {
+  await ok(admin, "/sessions", "POST", {
     login_name: "admin@example.test",
     password: adminPassword,
     return_url: baseURL + "/",
   })
   await sessionCookie(admin)
-  const owner = (await ok(admin, "/authn/sessions/current")).subject
-  tenant = await ok(admin, "/iam/tenants", "POST", {
+  const owner = (await ok(admin, "/sessions/current")).subject
+  tenant = await ok(admin, "/tenants", "POST", {
     name: stamp,
     slug: stamp,
     owner_principal_id: owner,
   })
-  otherTenant = await ok(admin, "/iam/tenants", "POST", {
+  otherTenant = await ok(admin, "/tenants", "POST", {
     name: stamp + "-other",
     slug: stamp + "-other",
     owner_principal_id: owner,
   })
   const actor = await ok(
     admin,
-    "/iam/principals",
+    "/principals",
     "POST",
     {
       login_name: stamp + "-password",
@@ -572,7 +570,7 @@ try {
   principals.add(actor.id)
   const role = await ok(
     admin,
-    "/iam/roles",
+    "/roles",
     "POST",
     {
       name: stamp + "-reader",
@@ -582,21 +580,21 @@ try {
   )
   await ok(
     admin,
-    `/iam/roles/${role.id}/permissions/role_view`,
+    `/roles/${role.id}/permissions/role_view`,
     "PUT",
     {},
     tenant.id
   )
   await ok(
     admin,
-    `/iam/roles/${role.id}/members/${actor.id}`,
+    `/roles/${role.id}/members/${actor.id}`,
     "PUT",
     {},
     tenant.id
   )
   provider = await ok(
     admin,
-    "/iam/identity-providers",
+    "/identity-providers",
     "POST",
     {
       name: stamp + "-OIDC",
@@ -636,7 +634,7 @@ try {
         page.on("response", async (result) => {
           if (
             new URL(result.url()).pathname ===
-              "/api/authn/reauthentication-challenges" &&
+              "/api/reauthentication-challenges" &&
             result.ok()
           ) {
             try {
@@ -664,9 +662,9 @@ try {
             `${apiURL}/federation/${provider.id}/start?${new URLSearchParams({ return_url: baseURL + "/account/tokens" })}`
           )
           await finishUpstream(page)
-          const session = await ok(context, "/authn/sessions/current")
+          const session = await ok(context, "/sessions/current")
           principals.add(session.subject)
-          const methods = await ok(context, "/authn/reauthentication-methods")
+          const methods = await ok(context, "/reauthentication-methods")
           assert.deepEqual(
             methods.methods,
             [],
@@ -686,7 +684,7 @@ try {
           const rejected = page.waitForResponse(
             (result) =>
               new URL(result.url()).pathname.startsWith(
-                "/api/authn/identity-links/"
+                "/api/identity-links/"
               ) && result.request().method() === "DELETE"
           )
           await confirmIdentity(page, messages, "federation")
@@ -697,7 +695,7 @@ try {
           )
           await page.getByRole("dialog").getByRole("alert").waitFor()
           assert.equal(
-            (await ok(context, "/authn/identity-links")).length,
+            (await ok(context, "/identity-links")).length,
             1,
             "Last usable federation identity cannot be unlinked"
           )
@@ -734,7 +732,7 @@ try {
 } finally {
   for (const token of issued) {
     try {
-      await ok(token.context, `/authn/personal-tokens/${token.id}`, "DELETE")
+      await ok(token.context, `/personal-tokens/${token.id}`, "DELETE")
     } catch (error) {
       report.cleanup.push({
         token: token.id,
@@ -747,7 +745,7 @@ try {
     try {
       const discovered = await ok(
         admin,
-        `/iam/principals?search=${encodeURIComponent(stamp)}&limit=200`,
+        `/principals?search=${encodeURIComponent(stamp)}&limit=200`,
         "GET",
         undefined,
         tenant.id
@@ -768,7 +766,7 @@ try {
     try {
       await ok(
         admin,
-        `/iam/principals/${principal}/suspension`,
+        `/principals/${principal}/suspension`,
         "PUT",
         undefined,
         tenant.id
@@ -786,7 +784,7 @@ try {
     try {
       await ok(
         admin,
-        `/iam/identity-providers/${provider.id}`,
+        `/identity-providers/${provider.id}`,
         "DELETE",
         undefined,
         tenant.id
@@ -802,13 +800,13 @@ try {
   }
   for (const owned of [otherTenant, tenant].filter(Boolean)) {
     try {
-      const current = (await ok(admin, "/iam/tenants")).find(
+      const current = (await ok(admin, "/tenants")).find(
         (item) => item.id === owned.id
       )
       assert(current)
       await ok(
         admin,
-        `/iam/tenants/${owned.id}?version=${current.version}`,
+        `/tenants/${owned.id}?version=${current.version}`,
         "DELETE"
       )
       report.cleanup.push({ tenant: owned.id, status: "PASS" })

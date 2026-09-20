@@ -23,7 +23,7 @@ func fieldPolicy(t *testing.T, svc *service) *todoPolicy {
 
 func TestFieldPolicyProtectsSingleListExportAndQueryInference(t *testing.T) {
 	api, svc := newTestAPIService(t)
-	response := api.Post("/todos", map[string]any{"title": "private title", "description": "private description", "priority": 2})
+	response := api.Post("/tenants/1/entities/10/todos", map[string]any{"title": "private title", "description": "private description", "priority": 2})
 	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 	id := decode(t, response.Body.Bytes()).Data.ID.String()
 	policy := fieldPolicy(t, svc)
@@ -32,7 +32,7 @@ func TestFieldPolicyProtectsSingleListExportAndQueryInference(t *testing.T) {
 	policy.fields["priority"] = authz.FieldDecision{Read: "omit", Create: true, Update: true}
 	policy.fields["created_at"] = authz.FieldDecision{Read: "omit"}
 	policy.fields["deleted_at"] = authz.FieldDecision{Read: "omit"}
-	for _, path := range []string{"/todos/" + id, "/todos", "/todos?fields=title,description,priority", "/todos/export?format=csv", "/todos/export?fields=title,description"} {
+	for _, path := range []string{"/tenants/1/entities/10/todos/" + id, "/tenants/1/entities/10/todos", "/tenants/1/entities/10/todos?fields=title,description,priority", "/tenants/1/entities/10/todos/export?format=csv", "/tenants/1/entities/10/todos/export?fields=title,description"} {
 		response = api.Get(path)
 		require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 		assert.NotContains(t, response.Body.String(), "private title", path)
@@ -45,13 +45,13 @@ func TestFieldPolicyProtectsSingleListExportAndQueryInference(t *testing.T) {
 		}
 	}
 	for _, query := range []string{"title=eq:private", "description=like:private", "priority=eq:2", "sort=title", "sort=-created_at"} {
-		for _, path := range []string{"/todos?", "/todos/export?"} {
+		for _, path := range []string{"/tenants/1/entities/10/todos?", "/tenants/1/entities/10/todos/export?"} {
 			response = api.Get(path + query)
 			assert.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 		}
 	}
 	for _, query := range []string{"q=private", "deleted=true"} {
-		response = api.Get("/todos?" + query)
+		response = api.Get("/tenants/1/entities/10/todos?" + query)
 		assert.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
 	}
 	page, err := svc.List(todoContext(t), ListInput{Limit: 20})
@@ -61,7 +61,7 @@ func TestFieldPolicyProtectsSingleListExportAndQueryInference(t *testing.T) {
 	assert.Zero(t, page.Rows[0].Priority)
 	assert.True(t, page.Rows[0].CreatedAt.IsZero())
 	assert.Equal(t, "[REDACTED]", page.Rows[0].Title)
-	response = api.Get("/todos?meta=capabilities")
+	response = api.Get("/tenants/1/entities/10/todos?meta=capabilities")
 	require.Equal(t, http.StatusOK, response.Code)
 	assert.NotContains(t, response.Body.String(), `"name":"description"`)
 }
@@ -78,14 +78,14 @@ func TestFieldPolicyRejectsExplicitWritesIncludingNullAndDefaults(t *testing.T) 
 		{"title": "rejected", "priority": 3},
 		{"title": "rejected", "due_at": nil},
 	} {
-		response := api.Post("/todos", body)
+		response := api.Post("/tenants/1/entities/10/todos", body)
 		assert.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
 	}
 	for _, body := range []map[string]any{{"description": ""}, {"description": nil}, {"priority": 3}, {"due_at": nil}} {
-		response := api.Patch("/todos/"+id, "If-Match: "+version, body)
+		response := api.Patch("/tenants/1/entities/10/todos/"+id, "If-Match: "+version, body)
 		assert.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
 	}
-	response := api.Get("/todos/" + id)
+	response := api.Get("/tenants/1/entities/10/todos/" + id)
 	require.Equal(t, http.StatusOK, response.Code)
 	assert.Equal(t, version, response.Header().Get("ETag"), "rejected writes have no side effects")
 	page, err := svc.List(todoContext(t), ListInput{Limit: 20})
@@ -96,9 +96,9 @@ func TestFieldPolicyRejectsExplicitWritesIncludingNullAndDefaults(t *testing.T) 
 	priority := 3
 	_, err = svc.Update(todoContext(t), page.Rows[0].ID, 1, Patch{Priority: &priority})
 	assert.ErrorIs(t, err, ErrForbidden)
-	response = api.Post("/todos", map[string]any{"title": "allowed with server defaults"})
+	response = api.Post("/tenants/1/entities/10/todos", map[string]any{"title": "allowed with server defaults"})
 	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
-	response = api.Patch("/todos/"+id, "If-Match: "+version, map[string]any{"title": "allowed change"})
+	response = api.Patch("/tenants/1/entities/10/todos/"+id, "If-Match: "+version, map[string]any{"title": "allowed change"})
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 }
 
@@ -140,7 +140,7 @@ func TestFieldPolicyFailsClosedWithoutProviderOrDecision(t *testing.T) {
 	id, _ := createTask(t, api, "secret")
 	for _, provider := range []authz.FieldPermissionChecker{nil, &todoPolicy{err: errors.New("offline")}, &todoPolicy{fields: map[string]authz.FieldDecision{}}} {
 		svc.fields = provider
-		response := api.Get("/todos/" + id)
+		response := api.Get("/tenants/1/entities/10/todos/" + id)
 		assert.Contains(t, []int{http.StatusForbidden, http.StatusServiceUnavailable}, response.Code)
 		assert.NotContains(t, response.Body.String(), "secret")
 		_, err := svc.List(todoContext(t), ListInput{Limit: 20, RawQuery: url.Values{}})

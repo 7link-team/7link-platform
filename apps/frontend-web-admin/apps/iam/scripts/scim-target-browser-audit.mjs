@@ -45,10 +45,11 @@ await new Promise((resolve, reject) => {
 let browser
 const exceptions = []
 async function api(context, path, method = "GET", body, tenant = "") {
-  const response = await context.request.fetch("/api" + path, {
+  const requestPath = tenant ? `/tenants/${tenant}${path}` : path
+  const response = await context.request.fetch("/api" + requestPath, {
     method,
     data: body,
-    headers: { Origin: baseURL, ...(tenant ? { "X-Tenant-Id": tenant } : {}) },
+    headers: { Origin: baseURL },
   })
   const result = await response.json()
   return { status: response.status(), data: result.data }
@@ -67,68 +68,68 @@ try {
     headless: true,
   })
   const admin = await browser.newContext({ baseURL })
-  await ok(admin, "/authn/sessions", "POST", {
+  await ok(admin, "/sessions", "POST", {
     login_name: process.env.IAM_BROWSER_LOGIN ?? "admin@example.test",
     password: auditPassword(),
     return_url: baseURL + "/",
   })
-  const me = await ok(admin, "/authn/sessions/current")
+  const me = await ok(admin, "/sessions/current")
   const stamp = Date.now()
-  const tenant = await ok(admin, "/iam/tenants", "POST", {
+  const tenant = await ok(admin, "/tenants", "POST", {
     slug: `outbound-audit-${stamp}`,
     name: "Outbound acceptance",
     owner_principal_id: me.subject,
   })
-  const other = await ok(admin, "/iam/tenants", "POST", {
+  const other = await ok(admin, "/tenants", "POST", {
     slug: `outbound-other-${stamp}`,
     name: "Outbound isolation",
     owner_principal_id: me.subject,
   })
   const local = (path, method, body) => ok(admin, path, method, body, tenant.id)
   const actorPassword = randomBytes(32).toString("base64url")
-  const actor = await local("/iam/principals", "POST", {
+  const actor = await local("/principals", "POST", {
     login_name: `outbound-operator-${stamp}`,
     password: actorPassword,
     display_name: "Outbound operator",
   })
-  const person = await local("/iam/principals", "POST", {
+  const person = await local("/principals", "POST", {
     login_name: `outbound-person-${stamp}`,
     password: actorPassword,
     display_name: "Outbound person",
     email: `private-${stamp}@example.test`,
   })
-  const roles = await local("/iam/roles")
+  const roles = await local("/roles")
   const adminRole = roles.find((role) => role.name === "Administrator")
   assert(adminRole)
-  await local(`/iam/roles/${adminRole.id}/members/${actor.id}`, "PUT", {})
-  const first = await local("/iam/service-accounts", "POST", {
+  await local(`/roles/${adminRole.id}/members/${actor.id}`, "PUT", {})
+  const first = await local("/service-accounts", "POST", {
     login_name: `outbound-first-${stamp}`,
     display_name: "First automation",
   })
-  const second = await local("/iam/service-accounts", "POST", {
+  const second = await local("/service-accounts", "POST", {
     login_name: `outbound-second-${stamp}`,
     display_name: "Second automation",
   })
-  const restricted = await local("/iam/roles", "POST", {
+  const restricted = await local("/roles", "POST", {
     name: "Restricted automation",
   })
-  await local(`/iam/roles/${restricted.id}/members/${first.id}`, "PUT", {})
-  const group = await local("/iam/groups", "POST", {
+  await local(`/roles/${restricted.id}/members/${first.id}`, "PUT", {})
+  const group = await local("/groups", "POST", {
     name: "Outbound group",
     type: "static",
   })
-  await local(`/iam/groups/${group.id}/members/${person.id}`, "PUT", {})
+  await local(`/groups/${group.id}/members/${person.id}`, "PUT", {})
   const context = await browser.newContext({
     baseURL,
     viewport: { width: 1440, height: 1000 },
     reducedMotion: "reduce",
   })
-  await ok(context, "/authn/sessions", "POST", {
+  await ok(context, "/sessions", "POST", {
     login_name: actor.login_name,
     password: actorPassword,
     return_url: baseURL + "/",
   })
-  const actorSession = await ok(context, "/authn/sessions/current")
+  const actorSession = await ok(context, "/sessions/current")
   await context.addCookies([
     { name: "NEXT_LOCALE", value: "zh-CN", url: baseURL },
   ])
@@ -142,7 +143,7 @@ try {
   )
   const page = await context.newPage()
   page.on("pageerror", (error) => exceptions.push(error.message))
-  await page.goto("/iam/scim-directories?view=targets")
+  await page.goto("/scim-directories?view=targets")
   await page.getByRole("button", { name: "创建目标", exact: true }).click()
   let name = `SCIM outbound ${stamp}`
   const token = randomBytes(24).toString("base64url")
@@ -204,14 +205,14 @@ try {
   }
   await capture("desktop-create")
   await save()
-  let target = (await local("/iam/scim/targets")).find(
+  let target = (await local("/scim/targets")).find(
     (item) => item.name === name
   )
   assert.equal(target.service_account_id, first.id)
   assert(!JSON.stringify(target).includes(token))
   const getTarget = async () =>
-    (await local("/iam/scim/targets")).find((item) => item.id === target.id)
-  const pushPath = `/iam/scim/targets/${target.id}/push`
+    (await local("/scim/targets")).find((item) => item.id === target.id)
+  const pushPath = `/scim/targets/${target.id}/push`
   async function operate(type, id, remove = false, expected = 200) {
     await page
       .getByRole("button", {
@@ -230,7 +231,7 @@ try {
         response
           .url()
           .endsWith(
-            `/iam/scim/targets/${target.id}/${remove ? "deprovision" : "push"}`
+            `/scim/targets/${target.id}/${remove ? "deprovision" : "push"}`
           ) && response.request().method() === "POST"
     )
     await dialog
@@ -284,7 +285,7 @@ try {
     write: { default: "allow", allow_roles: [], deny_roles: [] },
     mask: "omit",
   }
-  await local("/iam/field-policies/user_profile/email", "PUT", {
+  await local("/field-policies/user_profile/email", "PUT", {
     version: 0,
     policy: rule,
   })
@@ -297,7 +298,7 @@ try {
     "bound actor cannot export hidden email"
   )
   const loginPolicy = await local(
-    "/iam/field-policies/user_profile/login_name",
+    "/field-policies/user_profile/login_name",
     "PUT",
     { version: 0, policy: rule }
   )
@@ -309,7 +310,7 @@ try {
     "denied identifier sends no remote request"
   )
   await local(
-    `/iam/field-policies/user_profile/login_name?version=${loginPolicy.version}`,
+    `/field-policies/user_profile/login_name?version=${loginPolicy.version}`,
     "DELETE"
   )
   // A definite rejection releases the claim and permits a deliberate retry.
@@ -332,7 +333,7 @@ try {
   assert.equal(received.length, calls, "removed mapping sends no second DELETE")
   await edit()
   target = await getTarget()
-  target = await local(`/iam/scim/targets/${target.id}`, "PUT", {
+  target = await local(`/scim/targets/${target.id}`, "PUT", {
     name,
     base_url: targetURL,
     service_account_id: second.id,
@@ -450,7 +451,7 @@ try {
   await page.locator("#scim-target-token").fill(rotated)
   await page.locator("#scim-target-account").fill(second.id)
   await save()
-  target = (await local("/iam/scim/targets")).find((item) => item.name === name)
+  target = (await local("/scim/targets")).find((item) => item.name === name)
   rejectRemoteStatus = 503
   await operate("User", person.id, false, 502)
   assert.equal(received.length, calls + 1)
@@ -461,7 +462,7 @@ try {
     (
       await api(
         context,
-        `/iam/scim/targets/${target.id}`,
+        `/scim/targets/${target.id}`,
         "DELETE",
         undefined,
         tenant.id

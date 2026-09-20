@@ -137,11 +137,11 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       }
       return result()
     }
-    if (path === "/iam/me/permissions") return send(state.permissions)
+    if (path === "/me/permissions") return send(state.permissions)
     if (state.roleScopeCase) {
-      if (path === "/iam/roles")
+      if (path === "/roles")
         return send([{ id: "scope-role", name: "Scope role", description: "" }])
-      if (path === "/iam/departments")
+      if (path === "/departments")
         return send([
           {
             id: "scope-department",
@@ -149,7 +149,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
             status: "active",
           },
         ])
-      if (path === "/iam/roles/scope-role/data-scope") {
+      if (path === "/roles/scope-role/data-scope") {
         if (request.method() === "PUT") {
           state.roleScope = { role_id: "scope-role", ...request.postDataJSON() }
           return send(state.roleScope)
@@ -163,16 +163,16 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
         return send(snapshot)
       }
     }
-    if (path === "/authn/personal-token-permissions")
+    if (path === "/personal-token-permissions")
       return send([
         { code: "user_view", resource: "user", verb: "view", scope: "tenant" },
       ])
-    if (path === "/authn/reauthentication-methods")
+    if (path === "/reauthentication-methods")
       return send({
         methods: state.federated ? [] : ["password"],
         mfa_required: !state.federated,
       })
-    if (path === "/authn/identity-links")
+    if (path === "/identity-links")
       return send(
         state.links ??
           (state.federated
@@ -186,7 +186,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
               ]
             : [])
       )
-    if (path === "/authn/identity-link-providers")
+    if (path === "/identity-link-providers")
       return send(
         state.providers ??
           (state.federated
@@ -199,7 +199,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
               ]
             : [])
       )
-    if (path === "/authn/identity-link-transactions") {
+    if (path === "/identity-link-transactions") {
       if (state.identityFlow) {
         assert(state.proofVerified)
         assert.equal(state.reauthPurpose, "identity_link")
@@ -217,14 +217,14 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       state.proofVerified = true
       return send({ authorization_url: baseURL + "/account/tokens" })
     }
-    if (path === "/authn/personal-token-preparations") {
+    if (path === "/personal-token-preparations") {
       state.tokenPreparation = request.postDataJSON()
       return send({
         request: state.tokenPreparation,
         target: "bound-request-target",
       })
     }
-    if (path === "/authn/reauthentication-challenges") {
+    if (path === "/reauthentication-challenges") {
       state.proofVerified = false
       state.reauthPurpose = request.postDataJSON().purpose
       state.reauthTarget = request.postDataJSON().target
@@ -234,7 +234,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
         expires_at: "2027-01-01T00:00:00Z",
       })
     }
-    if (path === "/authn/reauthentication-verifications") {
+    if (path === "/reauthentication-verifications") {
       const body = request.postDataJSON()
       state.proofVerified =
         body.password === "correct-password" && body.code === "123456"
@@ -243,7 +243,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
         state.proofVerified ? 200 : 401
       )
     }
-    if (path === "/authn/personal-tokens" && request.method() === "POST") {
+    if (path === "/personal-tokens" && request.method() === "POST") {
       assert(state.proofVerified, "Token creation requires verified proof")
       assert.equal(state.reauthPurpose, "personal_token_create")
       const token = {
@@ -254,10 +254,10 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       state.personalTokens = [token]
       return send({ ...token, token: "fixture-one-time-secret" })
     }
-    if (path === "/authn/personal-tokens")
+    if (path === "/personal-tokens")
       return send(state.personalTokens ?? [])
     if (
-      path === "/authn/identity-links/link-1" &&
+      path === "/identity-links/link-1" &&
       request.method() === "DELETE"
     ) {
       assert(state.proofVerified)
@@ -267,12 +267,12 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       state.links = []
       return send({ deleted: true })
     }
-    if (path === "/iam/me/memberships")
+    if (path === "/me/memberships")
       return send({
         items: state.memberships ?? [],
         total: state.memberships?.length ?? 0,
       })
-    if (path === "/iam/me/memberships/t1/leave") {
+    if (path === "/me/memberships/t1/leave") {
       assert(state.proofVerified)
       assert.equal(state.reauthPurpose, "tenant_leave")
       assert.equal(state.reauthTarget, "t1")
@@ -283,7 +283,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       state.mine = state.mine.filter((item) => item.id !== "t1")
       return send({ status: "disabled" })
     }
-    if (path === "/iam/me/closure-request") {
+    if (path === "/me/closure-request") {
       state.closure ??= {
         principal_id: state.subject,
         status: "none",
@@ -305,7 +305,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       }
       return send(state.closure)
     }
-    if (path === "/platform/iam/closure-requests") {
+    if (path === "/platform/closure-requests") {
       const status = new URL(request.url()).searchParams.get("status")
       const items = (state.closureQueue ?? []).filter(
         (item) => item.status === status
@@ -313,7 +313,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       return send({ items, total: items.length })
     }
     if (
-      path.startsWith("/platform/iam/principals/") &&
+      path.startsWith("/platform/principals/") &&
       path.includes("/closure-request/")
     ) {
       const id = path.split("/")[4]
@@ -325,13 +325,13 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       return send(item)
     }
     if (
-      path === "/authn/personal-tokens/token-1" &&
+      path === "/personal-tokens/token-1" &&
       request.method() === "DELETE"
     ) {
       state.personalTokens[0].revoked_at = "2026-09-10T00:01:00Z"
       return send({ revoked: true })
     }
-    if (path === "/authn/sessions/current" && request.method() === "GET") {
+    if (path === "/sessions/current" && request.method() === "GET") {
       if (state.accountIdentityCase) {
         const tenantID = request.headers()["x-tenant-id"]
         const profile = {
@@ -364,18 +364,18 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
         state.sessionStatus
       )
     }
-    if (path === "/authn/sessions" && request.method() === "POST") {
+    if (path === "/sessions" && request.method() === "POST") {
       state.sessionStatus = state.afterLoginStatus ?? 200
       return send({ status: "authenticated", return_url: "/after-login" })
     }
     if (
-      (path === "/authn/sessions/current" || path === "/authn/sessions") &&
+      (path === "/sessions/current" || path === "/sessions") &&
       request.method() === "DELETE"
     ) {
       if (state.logout === "network") return route.abort("failed")
       return send({ logout_url: "/signed-out" }, state.logout)
     }
-    if (path === "/authn/sessions")
+    if (path === "/sessions")
       return send([
         {
           id: "session-1",
@@ -388,7 +388,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
           ip_address: "127.0.0.1",
         },
       ])
-    if (path === "/iam/me/tenants") {
+    if (path === "/me/tenants") {
       if (state.delayTenants) {
         const items = state.delayTenants
         state.delayed.push(() => send(items))
@@ -397,11 +397,11 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       }
       return send(state.mine, state.tenantsStatus)
     }
-    if (path === "/iam/tenants")
+    if (path === "/tenants")
       return send(state.platform, state.platform ? 200 : 403)
-    if (path === "/iam/entities")
+    if (path === "/entities")
       return send(state.entities, state.entitiesStatus)
-    if (path === "/iam/me/menus") {
+    if (path === "/me/menus") {
       if (state.delayMenus) {
         const menus = state.delayMenus
         state.delayedMenus.push(() => send(menus))
@@ -410,7 +410,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       }
       return send(state.menus, state.menusStatus)
     }
-    if (path === "/iam/me/oauth-consents") {
+    if (path === "/me/oauth-consents") {
       if (state.invalidConsentResponse)
         return route.fulfill({
           status: 200,
@@ -420,17 +420,17 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       return send(state.consents, state.consentStatus ?? 200)
     }
     if (
-      path.startsWith("/iam/me/oauth-consents/") &&
+      path.startsWith("/me/oauth-consents/") &&
       request.method() === "DELETE"
     ) {
       if (state.revoke === 200) state.consents = []
       return send({ revoked: state.revoke === 200 }, state.revoke)
     }
-    if (path === "/iam/principals") return send({ items: [] })
-    if (path === "/iam/fields/effective") return send({ fields: {} })
-    if (path === "/iam/audit-integrity")
+    if (path === "/principals") return send({ items: [] })
+    if (path === "/fields/effective") return send({ fields: {} })
+    if (path === "/audit-integrity")
       return send({ valid: true, verified_events: 0, head_sequence: 0 })
-    if (path === "/iam/oauth-clients")
+    if (path === "/oauth-clients")
       return send([
         {
           id: "machine",
@@ -490,7 +490,7 @@ try {
       )
       assert((await account.innerText()).includes("Administrator name"))
       const sessions = state.requests.filter(
-        (request) => request.path === "/authn/sessions/current"
+        (request) => request.path === "/sessions/current"
       )
       assert(
         sessions.some((request) => !request.tenant),
@@ -554,7 +554,7 @@ try {
       )
       const updated = page.waitForResponse(
         (response) =>
-          response.url().endsWith("/authn/sessions/current") &&
+          response.url().endsWith("/sessions/current") &&
           response.request().headers()["x-tenant-id"] === "t2"
       )
       await workspace(page)
@@ -583,7 +583,7 @@ try {
         state.accountProfileStatus = status
         const requested = page.waitForRequest(
           (request) =>
-            request.url().endsWith("/authn/sessions/current") &&
+            request.url().endsWith("/sessions/current") &&
             request.headers()["x-tenant-id"] === "t1"
         )
         await page.goto("/")
@@ -616,7 +616,7 @@ try {
       assert((await page.getByRole("menu").innerText()).includes("person-1"))
       assert(
         state.requests
-          .filter((request) => request.path === "/authn/sessions/current")
+          .filter((request) => request.path === "/sessions/current")
           .every((request) => !request.tenant)
       )
     }
@@ -662,7 +662,7 @@ try {
       }
       const received = page.waitForResponse(
         (response) =>
-          response.url().endsWith("/authn/sessions/current") &&
+          response.url().endsWith("/sessions/current") &&
           response.request().headers()["x-tenant-id"] === "t1"
       )
       await page.goto("/")
@@ -758,7 +758,7 @@ try {
     {
       id: label,
       label,
-      path: "/iam/roles",
+      path: "/roles",
       sort_order: 0,
       permission_code: "role_view",
     },
@@ -908,7 +908,7 @@ try {
       )
       assert(
         state.requests
-          .filter((r) => r.path === "/iam/me/tenants")
+          .filter((r) => r.path === "/me/tenants")
           .every((r) => r.tenant === undefined)
       )
       state.subject = "person-2"
@@ -997,7 +997,7 @@ try {
     await scenario(
       `child settings retain parent and exclude descendants (${mobile ? "mobile" : "desktop"})`,
       async (page) => {
-        await page.goto("/iam/entities/child/manage")
+        await page.goto("/entities/child/manage")
         const rows = page.locator("tbody tr")
         await rows.first().waitFor()
         assert.equal(await rows.count(), 1)
@@ -1019,7 +1019,7 @@ try {
     async (page, state) => {
       state.entitiesStatus = 403
       state.menusStatus = 500
-      await page.goto("/iam/entities")
+      await page.goto("/entities")
       await visible(page, "failure 403")
       await visible(page, "failure 500")
       assert.equal(
@@ -1079,7 +1079,7 @@ try {
         assert(
           state.requests.some(
             (r) =>
-              r.path === "/iam/me/oauth-consents/client%2F1" &&
+              r.path === "/me/oauth-consents/client%2F1" &&
               r.method === "DELETE"
           )
         )
@@ -1112,7 +1112,7 @@ try {
           department_ids: [],
         }
         state.permissions = ["role_view", "role_update", "dept_view"]
-        await page.goto("/iam/roles?role=scope-role&view=scope")
+        await page.goto("/roles?role=scope-role&view=scope")
         const scope = page.locator("#role-data-scope")
         await scope.waitFor()
         state.delayRoleScope = true
@@ -1163,7 +1163,7 @@ try {
         department_ids: [],
       }
       state.permissions = ["role_view", "role_update", "dept_view"]
-      await page.goto("/iam/roles?role=scope-role&view=scope")
+      await page.goto("/roles?role=scope-role&view=scope")
       const scope = page.locator("#role-data-scope")
       await scope.waitFor()
       state.roleScope = {
@@ -1185,7 +1185,7 @@ try {
     "nullable OAuth array fields render and open editor",
     async (page, state) => {
       state.permissions = ["oauth_client_update"]
-      await page.goto("/iam/oauth-clients")
+      await page.goto("/oauth-clients")
       await visible(page, "Machine client")
       await page
         .getByRole("button", { name: "Edit Machine client", exact: true })
@@ -1219,9 +1219,9 @@ try {
       ["scim-directories", "No SCIM directories created"],
     ].map(([name, empty]) => ({
       name,
-      path: `/iam/${name}`,
+      path: `/${name}`,
       api:
-        name === "scim-directories" ? "/iam/scim/directories" : `/iam/${name}`,
+        name === "scim-directories" ? "/scim/directories" : `/${name}`,
       empty,
       emptyData: [],
       data: [
@@ -1256,8 +1256,8 @@ try {
     })),
     {
       name: "service-accounts",
-      path: "/iam/service-accounts",
-      api: "/iam/service-accounts",
+      path: "/service-accounts",
+      api: "/service-accounts",
       empty: "No service accounts created",
       emptyData: { items: [], total: 0 },
       data: {
@@ -1276,8 +1276,8 @@ try {
     },
     {
       name: "audit-events",
-      path: "/iam/audit-events",
-      api: "/iam/audit-events",
+      path: "/audit-events",
+      api: "/audit-events",
       empty: "No matching audit events",
       emptyData: [],
       data: [
@@ -1294,8 +1294,8 @@ try {
     },
     {
       name: "principals",
-      path: "/iam/users",
-      api: "/iam/principals",
+      path: "/users",
+      api: "/principals",
       empty: "No local accounts",
       emptyData: { items: [] },
       data: {
@@ -1312,8 +1312,8 @@ try {
     },
     {
       name: "tenants",
-      path: "/iam/tenants",
-      api: "/iam/tenants",
+      path: "/tenants",
+      api: "/tenants",
       empty: "No tenants",
       emptyData: [],
       data: [tenant("visible-tenant")],
@@ -1321,8 +1321,8 @@ try {
     },
     {
       name: "oauth-clients",
-      path: "/iam/oauth-clients",
-      api: "/iam/oauth-clients",
+      path: "/oauth-clients",
+      api: "/oauth-clients",
       empty: "No OAuth clients registered",
       emptyData: [],
       data: [
@@ -1500,12 +1500,12 @@ try {
             .waitFor()
           for (const request of state.requests.filter(
             (item) =>
-              item.path.startsWith("/authn/") ||
-              item.path.startsWith("/iam/me/")
+              item.path.startsWith("/") ||
+              item.path.startsWith("/me/")
           )) {
             // Only the header's read-only profile projection is tenant-scoped.
             if (
-              request.path === "/authn/sessions/current" &&
+              request.path === "/sessions/current" &&
               request.method === "GET" &&
               request.tenant !== undefined
             )
@@ -1645,7 +1645,7 @@ try {
             { principal_id: "requester-one", status: "pending", version: 1 },
             { principal_id: "requester-two", status: "pending", version: 3 },
           ]
-          await page.goto("/iam/closure-requests")
+          await page.goto("/closure-requests")
           await visible(page, "requester-one")
           await button("rejectClosureRequest").first().click()
           state.actionConflict = true
@@ -1693,12 +1693,12 @@ try {
           for (const request of state.requests.filter(
             (item) =>
               item.path.startsWith("/platform/") ||
-              item.path.startsWith("/authn/") ||
-              item.path.startsWith("/iam/me/memberships") ||
-              item.path === "/iam/me/closure-request"
+              item.path.startsWith("/") ||
+              item.path.startsWith("/me/memberships") ||
+              item.path === "/me/closure-request"
           )) {
             if (
-              request.path === "/authn/sessions/current" &&
+              request.path === "/sessions/current" &&
               request.method === "GET" &&
               request.tenant !== undefined
             )
@@ -1721,7 +1721,7 @@ try {
       async (page, state) => {
         state.failureMessage = "forbidden"
         state.entitiesStatus = 403
-        await page.goto("/iam/entities")
+        await page.goto("/entities")
         await page
           .getByRole("alert")
           .filter({ hasText: messages.forbidden })

@@ -141,7 +141,7 @@ export function UserMenu({
             </p>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => navigate("/account/profile")}>
+          <DropdownMenuItem onClick={() => navigate("/me/profile")}>
             <UserRound className="mr-2 size-4" />
             {t("account")}
           </DropdownMenuItem>
@@ -150,7 +150,7 @@ export function UserMenu({
             <>
               <DropdownMenuLabel>{t("platformManagement")}</DropdownMenuLabel>
               {platformTenantAccess && (
-                <DropdownMenuItem onClick={() => navigate("/tenants")}>
+                <DropdownMenuItem onClick={() => navigate("/platform/tenants")}>
                   <Landmark className="mr-2 size-4" />
                   {t("tenantManagement")}
                 </DropdownMenuItem>
@@ -158,7 +158,7 @@ export function UserMenu({
               {platformAuditAccess && (
                 <DropdownMenuItem
                   onClick={() =>
-                    navigate("/audit-governance?scope=platform")
+                    navigate("/platform/audit-governance")
                   }
                 >
                   <FileClock className="mr-2 size-4" />

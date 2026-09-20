@@ -78,6 +78,7 @@
   "entityRoles": "主体角色授权",
   "entityResources": "资源授权关系",
   "files": "文件管理",
+  "myFiles": "我的文件",
   "entitySettings": "主体设置与授权",
   "entityUnavailable": "业务主体不存在、已停用或无权访问",
   "noEntityRoles": "当前业务主体暂无直接角色授权",

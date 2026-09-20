@@ -11,7 +11,6 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
@@ -33,36 +32,20 @@ type meOutput struct {
 type meInput struct {
 	Authorization string `header:"Authorization" hidden:"true"`
 	Cookie        string `header:"Cookie" hidden:"true"`
-	TenantID      string `header:"X-Tenant-Id" maxLength:"128"`
 }
 
 // Session tenancy is a validated request context, not a mutation of the global
 // login session. Token tenancy remains exclusively the signed token's choice.
 func sessionTenant(ctx context.Context, web *Service, in *meInput, claims *authnext.Claims) (*authnext.Claims, error) {
-	requested := strings.TrimSpace(in.TenantID)
 	if strings.TrimSpace(in.Authorization) != "" {
-		if requested != "" && requested != claims.OrganizationID {
-			return nil, huma.Error403Forbidden("forbidden")
-		}
 		return claims, nil
 	}
 	if web == nil || web.memberTenant == nil {
 		return nil, huma.Error503ServiceUnavailable("authentication_unavailable")
 	}
-	var requestedID guid.ID
-	if requested != "" {
-		id, err := guid.Parse(requested)
-		if err != nil || id <= 0 {
-			return nil, huma.Error422UnprocessableEntity("respx.invalid_id")
-		}
-		requestedID = id
-	}
-	tenantID, err := web.memberTenant(ctx, claims.PrincipalID, requestedID)
+	tenantID, err := web.memberTenant(ctx, claims.PrincipalID, 0)
 	if err != nil {
 		return nil, huma.Error503ServiceUnavailable("authentication_unavailable")
-	}
-	if requestedID > 0 && tenantID != requestedID {
-		return nil, huma.Error403Forbidden("forbidden")
 	}
 	resolved := *claims
 	resolved.OrganizationID, resolved.TenantID = "", tenantID

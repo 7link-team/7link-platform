@@ -8,93 +8,93 @@ import { chromium } from "playwright"
 // Real API fixtures and real pages. Network-failure injection belongs to the
 // existing release-regression audit; this matrix never stubs HTTP responses.
 const routes = [
-  ["dashboard", "/", "identityControl", "/authn/sessions", null],
-  ["users", "/iam/users", "principalMembers", "/iam/principals", "principal"],
+  ["dashboard", "/", "identityControl", "/sessions", null],
+  ["users", "/users", "principalMembers", "/principals", "principal"],
   [
     "invitations",
-    "/iam/invitations",
+    "/invitations",
     "memberInvitations",
-    "/iam/invitations",
+    "/invitations",
     "invitation",
   ],
   [
     "service-accounts",
-    "/iam/service-accounts",
+    "/service-accounts",
     "serviceAccounts",
-    "/iam/service-accounts",
+    "/service-accounts",
     "machine",
   ],
-  ["tenants", "/iam/tenants", "tenantManagement", "/iam/tenants", "tenant"],
-  ["entities", "/iam/entities", "entityManagement", "/iam/entities", "entity"],
+  ["tenants", "/tenants", "tenantManagement", "/tenants", "tenant"],
+  ["entities", "/entities", "entityManagement", "/entities", "entity"],
   [
     "departments",
-    "/iam/departments",
+    "/departments",
     "departmentManagement",
-    "/iam/departments",
+    "/departments",
     "department",
   ],
   [
     "positions",
-    "/iam/positions",
+    "/positions",
     "positionManagement",
-    "/iam/positions",
+    "/positions",
     "position",
   ],
-  ["groups", "/iam/groups", "groupManagement", "/iam/groups", "group"],
-  ["roles", "/iam/roles", "rolePermissions", "/iam/roles", "role"],
+  ["groups", "/groups", "groupManagement", "/groups", "group"],
+  ["roles", "/roles", "rolePermissions", "/roles", "role"],
   [
     "field-policies",
-    "/iam/field-policies",
+    "/field-policies",
     "fieldPermissions",
-    "/iam/field-policies",
+    "/field-policies",
     "field",
   ],
   [
     "access-requests",
-    "/iam/access-requests",
+    "/access-requests",
     "accessRequests",
-    "/iam/my/access-requests",
+    "/my/access-requests",
     "request",
   ],
   [
     "access-reviews",
-    "/iam/access-reviews",
+    "/access-reviews",
     "accessReviews",
-    "/iam/access-reviews",
+    "/access-reviews",
     "review",
   ],
-  ["menus", "/iam/menus", "menuManagement", "/iam/menus", "menu"],
+  ["menus", "/menus", "menuManagement", "/menus", "menu"],
   [
     "oauth-clients",
-    "/iam/oauth-clients",
+    "/oauth-clients",
     "oauthClients",
-    "/iam/oauth-clients",
+    "/oauth-clients",
     "client",
   ],
   [
     "scim-directories",
-    "/iam/scim-directories",
+    "/scim-directories",
     "scimDirectories",
-    "/iam/scim/directories",
+    "/scim/directories",
     "directory",
   ],
   [
     "audit-events",
-    "/iam/audit-events",
+    "/audit-events",
     "auditLog",
-    "/iam/audit-events",
+    "/audit-events",
     "event",
   ],
   [
     "audit-governance",
-    "/iam/audit-governance",
+    "/audit-governance",
     "auditGovernance",
-    "/iam/audit/governance",
+    "/audit/governance",
     "governance",
   ],
   ...["overview", "roles", "resources", "manage"].map((view) => [
     `entity-${view}`,
-    `/iam/entities/:entityID/${view}`,
+    `/entities/:entityID/${view}`,
     {
       overview: "entityOverview",
       roles: "entityRoles",
@@ -102,12 +102,12 @@ const routes = [
       manage: "entitySettings",
     }[view],
     view === "manage"
-      ? "/iam/entities"
+      ? "/entities"
       : view === "resources"
-        ? "/iam/relationships"
+        ? "/relationships"
         : view === "roles"
-          ? "/iam/entities/:entityID/role-bindings"
-          : "/iam/entities/:entityID",
+          ? "/entities/:entityID/role-bindings"
+          : "/entities/:entityID",
     view === "roles" ? "role" : view === "resources" ? "resource" : "entity",
   ]),
 ].map(([id, path, title, api, fixture]) => ({ id, path, title, api, fixture }))
@@ -236,10 +236,14 @@ const stamp = `matrix-${Date.now()}`
 const fixtures = []
 const actors = {}
 async function call(context, path, method = "GET", data, tenant) {
-  return context.request.fetch("/api" + path, {
+  const requestPath =
+    tenant && !path.startsWith("/sessions") && !path.startsWith("/platform/")
+      ? `/tenants/${tenant}${path}`
+      : path
+  return context.request.fetch("/api" + requestPath, {
     method,
     ...(data === undefined ? {} : { data }),
-    headers: { Origin: baseURL, ...(tenant ? { "X-Tenant-Id": tenant } : {}) },
+    headers: { Origin: baseURL },
   })
 }
 async function ok(context, path, method = "GET", data, tenant) {
@@ -250,17 +254,17 @@ async function ok(context, path, method = "GET", data, tenant) {
 async function signIn(context, persona) {
   const login =
     persona === "admin" ? "admin@example.test" : actors[persona].login_name
-  await ok(context, "/authn/sessions", "POST", {
+  await ok(context, "/sessions", "POST", {
     login_name: login,
     password: persona === "admin" ? adminPassword : fixturePassword,
     return_url: baseURL + "/",
   })
-  return ok(context, "/authn/sessions/current")
+  return ok(context, "/sessions/current")
 }
 async function setup() {
   const me = await signIn(admin, "admin")
   for (const suffix of ["a", "b"]) {
-    const tenant = await ok(admin, "/iam/tenants", "POST", {
+    const tenant = await ok(admin, "/tenants", "POST", {
       slug: `${stamp}-${suffix}`,
       name: `${stamp}-${suffix}`,
       owner_principal_id: me.subject,
@@ -276,7 +280,7 @@ async function setup() {
     }
     for (const persona of ["reader", "denied"]) {
       if (!actors[persona])
-        actors[persona] = await create(persona, "/iam/principals", {
+        actors[persona] = await create(persona, "/principals", {
           login_name: `${stamp}-${persona}`,
           password: fixturePassword,
           display_name: `${stamp}-${persona}`,
@@ -284,19 +288,19 @@ async function setup() {
       else
         await ok(
           admin,
-          "/iam/members",
+          "/members",
           "POST",
           { subject: actors[persona].id, display_name: `${stamp}-${persona}` },
           tenant.id
         )
     }
-    const readerRole = await create("readerRole", "/iam/roles", {
+    const readerRole = await create("readerRole", "/roles", {
       name: `${f.marker}-reader`,
       description: "Route matrix read-only persona",
     })
     const catalog = await ok(
       admin,
-      "/iam/permission-catalog",
+      "/permission-catalog",
       "GET",
       undefined,
       tenant.id
@@ -312,51 +316,51 @@ async function setup() {
     for (const permission of readPermissions)
       await ok(
         admin,
-        `/iam/roles/${readerRole.id}/permissions/${permission.code}`,
+        `/roles/${readerRole.id}/permissions/${permission.code}`,
         "PUT",
         {},
         tenant.id
       )
     await ok(
       admin,
-      `/iam/roles/${readerRole.id}/members/${actors.reader.id}`,
+      `/roles/${readerRole.id}/members/${actors.reader.id}`,
       "PUT",
       {},
       tenant.id
     )
-    await create("principal", "/iam/principals", {
+    await create("principal", "/principals", {
       login_name: `${f.marker}-person`,
       password: fixturePassword,
       display_name: `${f.marker}-person`,
     })
-    await create("department", "/iam/departments", {
+    await create("department", "/departments", {
       name: `${f.marker}-department`,
       status: "active",
       sort_order: 1,
     })
-    await create("position", "/iam/positions", {
+    await create("position", "/positions", {
       name: `${f.marker}-position`,
       code: `${f.marker}-position`,
       status: "active",
       sort_order: 1,
     })
-    await create("group", "/iam/groups", {
+    await create("group", "/groups", {
       name: `${f.marker}-group`,
       type: "static",
       status: "active",
       sort_order: 1,
     })
-    await create("role", "/iam/roles", {
+    await create("role", "/roles", {
       name: `${f.marker}-role`,
       description: "Explicit entity and resource source",
     })
-    await create("entity", "/iam/entities", {
+    await create("entity", "/entities", {
       name: `${f.marker}-entity`,
       type: "unit",
       status: "active",
       metadata: { audit: f.marker },
     })
-    await create("otherEntity", "/iam/entities", {
+    await create("otherEntity", "/entities", {
       name: `${f.marker}-other-entity`,
       type: "unit",
       parent_id: f.entity.id,
@@ -365,12 +369,12 @@ async function setup() {
     })
     await ok(
       admin,
-      `/iam/entities/${f.entity.id}/role-bindings/${f.role.id}/${f.principal.id}`,
+      `/entities/${f.entity.id}/role-bindings/${f.role.id}/${f.principal.id}`,
       "PUT",
       { effect: "allow" },
       tenant.id
     )
-    await create("resource", "/iam/relationships", {
+    await create("resource", "/relationships", {
       entity_id: f.entity.id,
       subject_type: "principal",
       subject_id: f.principal.id,
@@ -379,7 +383,7 @@ async function setup() {
       resource_id: f.entity.id,
     })
     f.labels.resource = f.entity.id
-    await create("menu", "/iam/menus", {
+    await create("menu", "/menus", {
       label: `${f.marker}-menu`,
       route: `/matrix/${suffix}`,
       sort_order: 1,
@@ -390,32 +394,32 @@ async function setup() {
         "ms-MY": `${f.marker}-menu`,
       },
     })
-    await create("machine", "/iam/service-accounts", {
+    await create("machine", "/service-accounts", {
       login_name: `${f.marker}-machine`,
       display_name: `${f.marker}-machine`,
     })
-    await create("directory", "/iam/scim/directories", {
+    await create("directory", "/scim/directories", {
       name: `${f.marker}-directory`,
     })
-    await create("client", "/iam/oauth-clients", {
+    await create("client", "/oauth-clients", {
       name: `${f.marker}-client`,
       grant_types: ["client_credentials"],
       scopes: ["openid"],
       redirect_uris: [],
       public_client: false,
     })
-    await create("invitation", "/iam/invitations", {
+    await create("invitation", "/invitations", {
       email: `${f.marker}@example.test`,
       role_ids: [],
       expires_in_hours: 24,
     })
-    await create("review", "/iam/access-reviews", {
+    await create("review", "/access-reviews", {
       name: `${f.marker}-review`,
       due_at: new Date(Date.now() + 86400000).toISOString(),
     })
     await ok(
       admin,
-      "/iam/field-policies/user_profile/display_name",
+      "/field-policies/user_profile/display_name",
       "PUT",
       {
         version: 0,
@@ -436,7 +440,7 @@ async function setup() {
         await signIn(context, persona)
         await ok(
           context,
-          "/iam/access-requests",
+          "/access-requests",
           "POST",
           {
             role_id: f.role.id,
@@ -476,7 +480,7 @@ async function cell(
   // the nested view, so its child requests must never be expected on denial.
   const api =
     persona === "denied" && route.id.startsWith("entity-")
-      ? "/iam/entities"
+      ? "/entities"
       : route.api.replace(":entityID", f.entity.id)
   const denied =
     persona !== "admin" &&
@@ -720,17 +724,17 @@ try {
       ].filter(Boolean))
         await ok(
           admin,
-          `/iam/principals/${principal.id}/suspension`,
+          `/principals/${principal.id}/suspension`,
           "PUT",
           undefined,
           f.tenant.id
         )
-      const tenants = await ok(admin, "/iam/tenants")
+      const tenants = await ok(admin, "/tenants")
       const current = tenants.find((tenant) => tenant.id === f.tenant.id)
       assert(current, "Own fixture tenant must exist for cleanup")
       await ok(
         admin,
-        `/iam/tenants/${current.id}?version=${current.version}`,
+        `/tenants/${current.id}?version=${current.version}`,
         "DELETE"
       )
       report.cleanup.push({

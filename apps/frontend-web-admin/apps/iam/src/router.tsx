@@ -2,6 +2,12 @@ import { createBrowserRouter, Navigate, Outlet } from "react-router"
 import { AuthProvider } from "./components/auth-provider"
 import { PendingRoute } from "./components/pending-route"
 import { RouteError } from "./components/route-error"
+import { getTenant } from "./lib/iam-api"
+
+function workspaceHome(): string {
+  const tenantID = getTenant()
+  return tenantID ? `/tenants/${encodeURIComponent(tenantID)}` : "/me"
+}
 
 export const router = createBrowserRouter([
   {
@@ -40,8 +46,9 @@ export const router = createBrowserRouter([
           </AuthProvider>
         ),
         children: [
+          { index: true, element: <Navigate to={workspaceHome()} replace /> },
           {
-            path: "/account",
+            path: "/me",
             lazy: async () => ({
               Component: (await import("./app/account/layout")).default,
             }),
@@ -95,7 +102,7 @@ export const router = createBrowserRouter([
           },
           {
             path: "/security",
-            element: <Navigate to="/account/security" replace />,
+            element: <Navigate to="/me/security" replace />,
           },
           {
             path: "/login",
@@ -109,133 +116,146 @@ export const router = createBrowserRouter([
             }),
             children: [
               {
-                path: "/files",
+                path: "/tenants/:tenantID/files",
                 lazy: async () => ({
                   Component: (await import("./app/files/page")).default,
                 }),
               },
               {
-                index: true,
+                path: "/tenants/:tenantID",
                 lazy: async () => ({
                   Component: (await import("./app/dashboard/page")).default,
                 }),
               },
               {
-                path: "/users",
+                path: "/tenants/:tenantID/users",
                 lazy: async () => ({
                   Component: (await import("./app/principals/page")).default,
                 }),
               },
               {
-                path: "/closure-requests",
+                path: "/platform/closure-requests",
                 lazy: async () => ({
                   Component: (await import("./app/principals/closure-requests"))
                     .default,
                 }),
               },
               {
-                path: "/invitations",
+                path: "/tenants/:tenantID/invitations",
                 lazy: async () => ({
                   Component: (await import("./app/invitations/page")).default,
                 }),
               },
               {
-                path: "/service-accounts",
+                path: "/tenants/:tenantID/service-accounts",
                 lazy: async () => ({
                   Component: (await import("./app/service-accounts/page"))
                     .default,
                 }),
               },
               {
-                path: "/tenants",
+                path: "/platform/tenants",
                 lazy: async () => ({
                   Component: (await import("./app/tenants/page")).default,
                 }),
               },
               {
-                path: "/entities",
+                path: "/tenants/:tenantID/entities",
                 lazy: async () => ({
                   Component: (await import("./app/entities/page")).default,
                 }),
               },
               {
-                path: "/entities/:entityID/:view",
+                path: "/tenants/:tenantID/entities/:entityID/files",
+                lazy: async () => ({
+                  Component: (await import("./app/files/page")).default,
+                }),
+              },
+              {
+                path: "/tenants/:tenantID/entities/:entityID/:view",
                 lazy: async () => ({
                   Component: (await import("./app/entities/workspace")).default,
                 }),
               },
               {
-                path: "/departments",
+                path: "/tenants/:tenantID/departments",
                 lazy: async () => ({
                   Component: (await import("./app/departments/page")).default,
                 }),
               },
               {
-                path: "/positions",
+                path: "/tenants/:tenantID/positions",
                 lazy: async () => ({
                   Component: (await import("./app/positions/page")).default,
                 }),
               },
               {
-                path: "/groups",
+                path: "/tenants/:tenantID/groups",
                 lazy: async () => ({
                   Component: (await import("./app/groups/page")).default,
                 }),
               },
               {
-                path: "/roles",
+                path: "/tenants/:tenantID/roles",
                 lazy: async () => ({
                   Component: (await import("./app/roles/page")).default,
                 }),
               },
               {
-                path: "/field-policies",
+                path: "/tenants/:tenantID/field-policies",
                 lazy: async () => ({
                   Component: (await import("./app/field-policies/page"))
                     .default,
                 }),
               },
               {
-                path: "/access-requests",
+                path: "/tenants/:tenantID/access-requests",
                 lazy: async () => ({
                   Component: (await import("./app/access-requests/page"))
                     .default,
                 }),
               },
               {
-                path: "/access-reviews",
+                path: "/tenants/:tenantID/access-reviews",
                 lazy: async () => ({
                   Component: (await import("./app/access-reviews/page"))
                     .default,
                 }),
               },
               {
-                path: "/menus",
+                path: "/tenants/:tenantID/menus",
                 lazy: async () => ({
                   Component: (await import("./app/menus/page")).default,
                 }),
               },
               {
-                path: "/oauth-clients",
+                path: "/tenants/:tenantID/oauth-clients",
                 lazy: async () => ({
                   Component: (await import("./app/oauth-clients/page")).default,
                 }),
               },
               {
-                path: "/scim-directories",
+                path: "/tenants/:tenantID/scim-directories",
                 lazy: async () => ({
                   Component: (await import("./app/scim-directories/page"))
                     .default,
                 }),
               },
               {
-                path: "/audit/events",
+                path: "/tenants/:tenantID/audit/events",
                 lazy: async () => ({
                   Component: (await import("./app/audit-events/page")).default,
                 }),
               },
               {
-                path: "/audit-governance",
+                path: "/tenants/:tenantID/audit-governance",
+                lazy: async () => ({
+                  Component: (await import("./app/audit-governance/page"))
+                    .default,
+                }),
+              },
+              {
+                path: "/platform/audit-governance",
                 lazy: async () => ({
                   Component: (await import("./app/audit-governance/page"))
                     .default,

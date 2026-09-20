@@ -257,13 +257,16 @@ func filePathSegments(raw string) ([]string, error) {
 func (s *operationService) browserClaims(ctx context.Context) (*authn.Claims, error) {
 	claims, ok := authn.FromContext(ctx)
 	if !ok || claims == nil || claims.PrincipalID <= 0 ||
-		!((claims.TenantID > 0 && claims.EntityID > 0) || (claims.TenantID == 0 && claims.EntityID == 0)) {
+		!((claims.TenantID > 0 && claims.EntityID >= 0) || (claims.TenantID == 0 && claims.EntityID == 0)) {
 		return nil, errOperationForbidden
 	}
 	if s == nil || s.runtime == nil || s.runtime.Database() == nil || s.runtime.Database().Write() == nil || s.timeout <= 0 {
 		return nil, errOperationUnavailable
 	}
-	if claims.TenantID > 0 && (s.policy == nil || s.subjects == nil || s.references == nil) {
+	if claims.TenantID > 0 && claims.EntityID == 0 && (s.tenantPolicy == nil || s.references == nil) {
+		return nil, errOperationUnavailable
+	}
+	if claims.EntityID > 0 && (s.policy == nil || s.subjects == nil || s.references == nil) {
 		return nil, errOperationUnavailable
 	}
 	return claims, nil

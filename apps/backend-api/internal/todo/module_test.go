@@ -143,7 +143,7 @@ func TestRegisterHTTPWithoutADatasourceWarnsAndStillRegisters(t *testing.T) {
 		"the degraded document must be reported, not silently served")
 
 	// The routes exist; only their documentation is thin.
-	operation := api.OpenAPI().Paths[basePath].Get
+	operation := api.OpenAPI().Paths["/tenants/{tenant_id}/entities/{entity_id}"+basePath].Get
 	require.NotNil(t, operation)
 	for _, param := range operation.Parameters {
 		assert.NotEqual(t, "status", param.Name, "no filter should be documented without a contract")

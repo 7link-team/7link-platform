@@ -290,6 +290,36 @@ func (a *Authorizer) EntityConstraintOn(ctx context.Context, tx *gorm.DB, tenant
 	return constraint, nil
 }
 
+func (a *Authorizer) TenantConstraintOn(ctx context.Context, tx *gorm.DB, tenantID guid.ID, permission string, subject guid.ID) (authz.DataConstraint, error) {
+	if tx == nil {
+		return authz.DataConstraint{}, ErrInvalidArgument
+	}
+	if _, ok := tx.Statement.ConnPool.(gorm.TxCommitter); !ok {
+		return authz.DataConstraint{}, ErrInvalidArgument
+	}
+	if err := validateAuthorizationRequest(tenantID, permission, subject); err != nil {
+		return authz.DataConstraint{}, err
+	}
+	if a == nil || a.registry == nil {
+		return authz.DataConstraint{}, ErrUnavailable
+	}
+	if action, ok := a.registry.Find(permission); !ok || !action.DataScoped || action.Scope == "platform" {
+		return authz.DataConstraint{}, ErrInvalidArgument
+	}
+	pinned, lockedRevision, err := a.pinAuthorizationTransaction(ctx, tx, tenantID)
+	if err != nil {
+		return authz.DataConstraint{}, err
+	}
+	constraint, err := pinned.Constraint(ctx, tenantID, permission, subject)
+	if err != nil {
+		return authz.DataConstraint{}, err
+	}
+	if constraint.Revision != lockedRevision {
+		return authz.DataConstraint{}, ErrAuthorizationChanged
+	}
+	return constraint, nil
+}
+
 func (a *Authorizer) pinAuthorizationTransaction(ctx context.Context, tx *gorm.DB, tenantID guid.ID) (*Authorizer, int64, error) {
 	if a == nil || a.revisions == nil || a.now == nil || a.foreign == nil {
 		return nil, 0, ErrUnavailable

@@ -27,13 +27,14 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
-	"7link.com/platform/pkg/extension/authz"
 	humax "7link.com/platform/pkg/extension/huma"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+const entityFixtureSelector = "entity_id"
 
 const (
 	iamTenantA guid.ID = 91001
@@ -123,7 +124,7 @@ func TestComposedIAMProvisionsOrganizationOwnedFileRoots(t *testing.T) {
 	assert.Equal(t, int64(3), fixture.count(t, "iam_audit_events", "tenant_id = ? AND event_type = 'file_root_created'", tenant.ID))
 
 	response = fixture.request(t, http.MethodGet, "/files", tenant.ID, fixture.tokenA, nil, map[string]string{
-		authz.EntityHeader: entityID.String(),
+		entityFixtureSelector: entityID.String(),
 	})
 	requireStatus(t, http.StatusOK, response)
 	roots := decodeEnvelope[struct {
@@ -181,8 +182,8 @@ func (f *iamTenantFixture) createFileDirectory(t *testing.T, tenantID, entityID 
 	require.NoError(t, writer.WriteField("name", name))
 	require.NoError(t, writer.Close())
 	response := f.request(t, http.MethodPost, "/files", tenantID, token, &body, map[string]string{
-		"Content-Type":     writer.FormDataContentType(),
-		authz.EntityHeader: entityID.String(),
+		"Content-Type":        writer.FormDataContentType(),
+		entityFixtureSelector: entityID.String(),
 	})
 	requireStatus(t, http.StatusCreated, response)
 }
@@ -195,10 +196,10 @@ func (f *iamTenantFixture) runBrowserSessionTenant(t *testing.T) {
 	requireStatus(t, http.StatusOK, response)
 	require.NotEmpty(t, response.Cookies)
 	headers := map[string]string{"Cookie": response.Cookies[0].String()}
-	check := func(requested guid.ID, code int, expected string) {
+	check := func(code int, expected string) {
 		t.Helper()
 		for _, path := range []string{"/me", "/sessions/current"} {
-			response := f.request(t, http.MethodGet, path, requested, "", nil, headers)
+			response := f.request(t, http.MethodGet, path, 0, "", nil, headers)
 			requireStatus(t, code, response)
 			if code == http.StatusOK {
 				data := decodeEnvelope[map[string]any](t, response)
@@ -212,27 +213,23 @@ func (f *iamTenantFixture) runBrowserSessionTenant(t *testing.T) {
 		}
 	}
 	assert.Zero(t, f.count(t, "iam_platform_administrators", "principal_id = ?", f.requesterB.ID))
-	check(0, http.StatusOK, iamTenantB.String())
-	check(iamTenantA, http.StatusForbidden, "")
+	check(http.StatusOK, iamTenantB.String())
 	response = f.request(t, http.MethodPost, "/members", iamTenantA, f.tokenA, map[string]any{
 		"subject": f.requesterB.ID.String(), "display_name": "Session member", "email": f.requesterB.Email, "status": "active",
 	}, nil)
 	requireStatus(t, http.StatusCreated, response)
-	check(0, http.StatusOK, "")
-	check(iamTenantA, http.StatusOK, iamTenantA.String())
-	check(iamTenantB, http.StatusOK, iamTenantB.String())
+	check(http.StatusOK, "")
 	response = f.request(t, http.MethodPatch, "/members/"+f.requesterB.ID.String(), iamTenantA, f.tokenA,
 		map[string]any{"status": "disabled"}, nil)
 	requireStatus(t, http.StatusOK, response)
-	check(iamTenantA, http.StatusForbidden, "")
-	check(0, http.StatusOK, iamTenantB.String())
+	check(http.StatusOK, iamTenantB.String())
 	require.NoError(t, f.db.Table(f.table("iam_tenants")).Where("id = ?", iamTenantB).Update("status", "suspended").Error)
-	check(iamTenantB, http.StatusForbidden, "")
-	check(0, http.StatusOK, "")
+	check(http.StatusOK, "")
 	require.NoError(t, f.db.Table(f.table("iam_tenants")).Where("id = ?", iamTenantB).Update("status", "active").Error)
-	check(0, http.StatusOK, iamTenantB.String())
+	check(http.StatusOK, iamTenantB.String())
 	response = f.request(t, http.MethodGet, "/sessions/current", iamTenantA, f.requester, nil, nil)
-	requireStatus(t, http.StatusForbidden, response)
+	requireStatus(t, http.StatusOK, response)
+	assert.Equal(t, iamTenantB.String(), decodeEnvelope[map[string]any](t, response)["organization_id"])
 	response = f.request(t, http.MethodGet, "/sessions/current", iamTenantB, f.requester, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 }
@@ -690,6 +687,13 @@ func (f *iamTenantFixture) assertTenantBAuditTargetsNeverAppearInTenantA(t *test
 
 func (f *iamTenantFixture) request(t *testing.T, method, path string, tenantID guid.ID, token string, body any, headers map[string]string) iamHTTPResponse {
 	t.Helper()
+	if !tenantID.Zero() && tenantFixturePathUsesResourceContext(path) {
+		prefix := "/tenants/" + tenantID.String()
+		if entityID := headers[entityFixtureSelector]; entityID != "" {
+			prefix += "/entities/" + entityID
+		}
+		path = prefix + path
+	}
 	var reader io.Reader
 	form, isForm := body.(url.Values)
 	if isForm {
@@ -712,13 +716,13 @@ func (f *iamTenantFixture) request(t *testing.T, method, path string, tenantID g
 		}
 		request.Header.Set("Content-Type", contentType)
 	}
-	if !tenantID.Zero() {
-		request.Header.Set(authz.TenantHeader, tenantID.String())
-	}
 	if token != "" {
 		request.Header.Set("Authorization", "Bearer "+token)
 	}
 	for name, value := range headers {
+		if name == entityFixtureSelector {
+			continue
+		}
 		request.Header.Set(name, value)
 	}
 	response, err := f.client.Do(request)
@@ -733,6 +737,15 @@ func (f *iamTenantFixture) request(t *testing.T, method, path string, tenantID g
 		Cookies:    response.Cookies(),
 		Body:       responseBody,
 	}
+}
+
+func tenantFixturePathUsesResourceContext(path string) bool {
+	for _, prefix := range []string{"/sessions", "/oauth/", "/me", "/platform/", "/tenants"} {
+		if path == prefix || strings.HasPrefix(path, prefix+"/") {
+			return false
+		}
+	}
+	return true
 }
 
 func (f *iamTenantFixture) rejectWithoutAudit(t *testing.T, status int, call func() iamHTTPResponse) {

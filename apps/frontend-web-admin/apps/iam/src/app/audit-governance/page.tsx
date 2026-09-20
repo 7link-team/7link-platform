@@ -7,7 +7,7 @@ import {
   useState,
   type FormEvent,
 } from "react"
-import { useSearchParams } from "react-router"
+import { useLocation, useNavigate, useParams } from "react-router"
 import {
   CheckCircle2,
   FileClock,
@@ -54,10 +54,13 @@ import { ArchiveJobs } from "./archives"
 export default function AuditGovernancePage() {
   const t = useTranslations("iam")
 
-  const [tenant, setTenantValue] = useState(getTenant)
-  const [params, setParams] = useSearchParams()
-  const scope: AuditScope =
-    params.get("scope") === "platform" ? "platform" : "tenant"
+  const location = useLocation()
+  const navigate = useNavigate()
+  const { tenantID = "" } = useParams<{ tenantID?: string }>()
+  const [tenant, setTenantValue] = useState(() => tenantID || getTenant())
+  const scope: AuditScope = location.pathname.startsWith("/platform/")
+    ? "platform"
+    : "tenant"
   useEffect(() => {
     const sync = () => setTenantValue(getTenant())
     window.addEventListener("tenant-change", sync)
@@ -68,11 +71,11 @@ export default function AuditGovernancePage() {
       <Tabs
         value={scope}
         onValueChange={(value) =>
-          setParams((previous) => {
-            const next = new URLSearchParams(previous)
-            next.set("scope", value)
-            return next
-          })
+          navigate(
+            value === "platform"
+              ? "/platform/audit-governance"
+              : `/tenants/${encodeURIComponent(tenant)}/audit-governance`
+          )
         }
       >
         <TabsList variant="line" className="mb-4" aria-label={t("auditScope")}>

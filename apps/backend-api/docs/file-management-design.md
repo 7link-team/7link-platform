@@ -792,14 +792,14 @@ OpenAPI 一致性，以及 Web lint、强制单测和生产构建。以上证据
 
 ### 22.4 账号独立入口合同
 
-账号独立文件与租户文件继续使用同一组 `/files` 资源 URI，服务器只按已经验证的请求
-上下文判定边界，不接受 body/query 中可伪造的 owner 类型或 owner ID：
+账号、租户和实体文件使用同一文件资源模型，但通过规范路径显式表达作用域；服务器不接受
+body/query/header 中可伪造的 owner 类型或 owner ID：
 
 | 请求上下文 | 解释 | 授权 |
 | --- | --- | --- |
-| 同时有 `X-Tenant-Id`、`X-Entity-Id` | 租户/实体文件上下文 | 现有实体权限网关 + 事务内 IAM ceiling + 文件 ACL |
-| 两个头都没有 | 账号独立文件上下文 | 当前认证 Principal 自有 account space + owner ACL |
-| 只提供其中一个头 | 非法/不完整上下文 | 直接拒绝，不降级为账号访问 |
+| `/me/files` | 账号独立文件上下文 | 当前认证 Principal 自有 account space + owner ACL |
+| `/tenants/{tenant_id}/files` | 租户文件上下文 | 租户级 IAM ceiling + 文件 ACL |
+| `/tenants/{tenant_id}/entities/{entity_id}/files` | 实体文件上下文 | 实体权限网关 + 事务内 IAM ceiling + 文件 ACL |
 
 账号上下文不得列出或按 ID读取 tenant space；租户上下文不得列出或按 ID读取 account
 space。创建根仍使用 `POST /files` multipart：租户上下文只接受 `scope=personal`，账号上下文
@@ -807,8 +807,8 @@ space。创建根仍使用 `POST /files` multipart：租户上下文只接受 `s
 创建；根 ACL 只授予对应 Principal 的 owner 主体。账号文件审计使用现有 tenant_id=0
 审计链并记录 Principal，不借用任何租户 ID。
 
-Web 的 `/account/files` 是账号控制台页面路由，不是另一套后端资源；它调用相同 `/files`
-API且不发送租户/实体头。租户文件页继续同时发送两个头。切换两类页面必须清除旧选择、
+Web 的 `/me/files` 是账号控制台页面路由，不是另一套后端资源；它调用 `/me/files` API。
+租户和实体文件页分别调用与页面作用域一致的规范 API 路径。切换各类页面必须清除旧选择、
 路径和迟到响应，不能把一个上下文的授权快照显示到另一个上下文。
 
 ## 23. 全系统文件治理设计稿（2026-09-19）

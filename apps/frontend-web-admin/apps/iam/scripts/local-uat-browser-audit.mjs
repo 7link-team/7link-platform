@@ -34,17 +34,15 @@ async function verifyReleaseFlows(context, page, capture, device) {
   const resourceContext = await browser.newContext({ baseURL })
   const resourceStatus = async (token) =>
     (
-      await resourceContext.request.get("/api/iam/me/tenants", {
+      await resourceContext.request.get("/api/me/tenants", {
         headers: { Authorization: `Bearer ${token}` },
       })
     ).status()
   const call = async (path, method = "GET", body, scoped = true) => {
-    const response = await context.request.fetch("/api" + path, {
+    const requestPath = scoped ? `/tenants/${tenant}${path}` : path
+    const response = await context.request.fetch("/api" + requestPath, {
       method,
-      headers: {
-        Origin: baseURL,
-        ...(scoped ? { "X-Tenant-Id": tenant } : {}),
-      },
+      headers: { Origin: baseURL },
       ...(body ? { data: body } : {}),
     })
     assert(
@@ -56,7 +54,7 @@ async function verifyReleaseFlows(context, page, capture, device) {
   try {
     const stamp = randomBytes(6).toString("hex")
     const createEntity = async (name, parent_id) => {
-      const entity = await call("/iam/entities", "POST", {
+      const entity = await call("/entities", "POST", {
         name,
         parent_id,
         type: "company",
@@ -69,7 +67,7 @@ async function verifyReleaseFlows(context, page, capture, device) {
     const parent = await createEntity(`UAT parent ${stamp}`)
     const child = await createEntity(`UAT child ${stamp}`, parent.id)
     const descendant = await createEntity(`UAT descendant ${stamp}`, child.id)
-    await page.goto(`/iam/entities/${child.id}/manage`)
+    await page.goto(`/entities/${child.id}/manage`)
     const rows = page.locator("tbody tr")
     await rows.first().waitFor()
     assert.equal(
@@ -91,7 +89,7 @@ async function verifyReleaseFlows(context, page, capture, device) {
 
     const callback = baseURL + "/account/applications"
     const createClient = async (name) => {
-      const application = await call("/iam/oauth-clients", "POST", {
+      const application = await call("/oauth-clients", "POST", {
         name,
         redirect_uris: [callback],
         grant_types: ["authorization_code", "refresh_token"],
@@ -192,10 +190,10 @@ async function verifyReleaseFlows(context, page, capture, device) {
       "The issued bearer token must access a real IAM resource without cookies"
     )
     assert.equal(await resourceStatus(otherTokens.access_token), 200)
-    const grants = await call("/iam/me/oauth-consents", "GET", undefined, false)
+    const grants = await call("/me/oauth-consents", "GET", undefined, false)
     assert(grants.some((grant) => grant.client_id === clientID))
     const denied = await context.request.delete(
-      `/api/iam/me/oauth-consents/${clientID}`,
+      `/api/me/oauth-consents/${clientID}`,
       { headers: { Origin: "https://untrusted.example.test" } }
     )
     assert.equal(
@@ -220,7 +218,7 @@ async function verifyReleaseFlows(context, page, capture, device) {
       .getByRole("heading", { name: client.client.name, exact: true })
       .waitFor({ state: "hidden" })
     assert(
-      !(await call("/iam/me/oauth-consents", "GET", undefined, false)).some(
+      !(await call("/me/oauth-consents", "GET", undefined, false)).some(
         (grant) => grant.client_id === clientID
       )
     )
@@ -295,12 +293,12 @@ async function verifyReleaseFlows(context, page, capture, device) {
     // Delete only IDs created by this invocation, children before parents.
     const cleanup = []
     for (const id of createdClients.reverse())
-      cleanup.push(`/iam/oauth-clients/${id}`)
+      cleanup.push(`/oauth-clients/${id}`)
     for (const id of createdEntities.reverse())
-      cleanup.push(`/iam/entities/${id}`)
+      cleanup.push(`/entities/${id}`)
     for (const path of cleanup) {
-      const response = await context.request.delete("/api" + path, {
-        headers: { Origin: baseURL, "X-Tenant-Id": tenant },
+      const response = await context.request.delete(`/api/tenants/${tenant}${path}`, {
+        headers: { Origin: baseURL },
       })
       assert(response.ok(), "UAT-owned fixture cleanup failed")
     }
@@ -368,7 +366,7 @@ try {
         await page
           .getByRole("button", { name: "切换工作空间", exact: true })
           .waitFor()
-        const memberships = await context.request.get("/api/iam/me/tenants")
+        const memberships = await context.request.get("/api/me/tenants")
         assert(memberships.ok(), "Tenant discovery must succeed")
         const targetTenant = (await memberships.json()).data.find(
           (item) => item.id === tenant
@@ -458,10 +456,10 @@ try {
           if (device === "mobile") await page.keyboard.press("Escape")
           const denied = page.waitForResponse(
             (response) =>
-              response.url().includes("/api/iam/principals?") &&
+              response.url().includes("/api/principals?") &&
               response.status() === 403
           )
-          await page.goto("/iam/users")
+          await page.goto("/users")
           await denied
           await page.getByRole("alert").filter({ hasText: "禁止" }).waitFor()
           assert.equal(
@@ -477,9 +475,9 @@ try {
           )
           await capture("denied")
           for (const [path, empty, screenshot] of [
-            ["/iam/tenants", "暂无租户", "tenants-denied"],
+            ["/tenants", "暂无租户", "tenants-denied"],
             [
-              "/iam/oauth-clients",
+              "/oauth-clients",
               "尚未登记 OAuth 客户端",
               "oauth-clients-denied",
             ],
@@ -511,10 +509,10 @@ try {
         await page.getByRole("menuitem", { name: "退出登录" }).click()
         await page.locator('input[name="login_name"]').waitFor()
         assert.equal(
-          (await context.request.get("/api/authn/sessions/current")).status(),
+          (await context.request.get("/api/sessions/current")).status(),
           401
         )
-        await page.goto("/iam/users")
+        await page.goto("/users")
         await page.locator('input[name="login_name"]').waitFor()
         assert.equal(new URL(page.url()).pathname, "/login")
         assert.deepEqual(errors, [])
@@ -531,7 +529,7 @@ try {
         throw error
       } finally {
         await context.request
-          .delete("/api/authn/sessions/current", {
+          .delete("/api/sessions/current", {
             headers: { Origin: baseURL },
           })
           .catch(() => {})

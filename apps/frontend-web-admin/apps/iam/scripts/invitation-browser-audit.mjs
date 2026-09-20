@@ -184,7 +184,7 @@ async function createInvitation(email) {
       valid: document.querySelector("#invitation-form")?.checkValidity() ?? null,
     }`)
     const recent = responses
-      .filter((response) => response.url.includes("/api/iam/invitations"))
+      .filter((response) => response.url.includes("/api/invitations"))
       .slice(-8)
     throw new Error(
       `${cause.message}; diagnostic=${JSON.stringify(diagnostic)}; responses=${JSON.stringify(recent)}`
@@ -227,7 +227,7 @@ await setInput("#login-name", adminLogin)
 await setInput("#password", password)
 await submit("form")
 await waitFor(`location.pathname === "/"`, 20000)
-await navigate("/iam/invitations")
+await navigate("/invitations")
 try {
   await waitFor(
     `document.querySelector("h1")?.textContent.includes("成员邀请") && document.querySelector("tbody")`
@@ -240,7 +240,7 @@ try {
   }`)
   throw new Error(`${cause.message}; diagnostic=${JSON.stringify(diagnostic)}`)
 }
-await waitFor(`document.querySelector('a[href="/iam/invitations"]')`)
+await waitFor(`document.querySelector('a[href="/invitations"]')`)
 
 const suffix = Date.now().toString(36)
 const acceptedEmail = `invited-${suffix}@example.test`
@@ -298,7 +298,7 @@ await submit("form")
 await waitFor(`document.body.innerText.includes("邀请已接受")`, 20000)
 
 const invitationResponses = responses.filter((response) =>
-  response.url.includes("/api/iam/invitations")
+  response.url.includes("/api/invitations")
 )
 for (const expected of ["GET", "POST", "DELETE"])
   if (
@@ -313,7 +313,7 @@ const unexpectedResponses = responses.filter(
     response.status >= 400 &&
     !(
       response.status === 401 &&
-      response.url.endsWith("/api/authn/sessions/current")
+      response.url.endsWith("/api/sessions/current")
     )
 )
 const unexpectedFailures = failures.filter(

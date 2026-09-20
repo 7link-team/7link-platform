@@ -384,16 +384,24 @@ func (s *Service) EffectivePermissions(
 	sort.Strings(platformCodes)
 	granted := make([]string, 0, len(tenantCodes)+len(platformCodes))
 	if !tenantID.Zero() {
-		for start := 0; start < len(tenantCodes); start += 100 {
-			end := min(start+100, len(tenantCodes))
-			result, err := s.checker.CheckBulk(ctx, tenantID, tenantCodes[start:end], principalID)
-			if err != nil {
-				return nil, fmt.Errorf("check effective tenant permissions: %w", err)
-			}
-			for _, code := range tenantCodes[start:end] {
-				if result[code] {
+		for _, code := range tenantCodes {
+			action, _ := s.registry.Find(code)
+			if action.DataScoped {
+				constraint, err := s.checker.Constraint(ctx, tenantID, code, principalID)
+				if err != nil {
+					return nil, fmt.Errorf("check effective tenant permission %s: %w", code, err)
+				}
+				if constraint.AllowAll {
 					granted = append(granted, code)
 				}
+				continue
+			}
+			allowed, err := s.checker.Check(ctx, tenantID, code, principalID)
+			if err != nil {
+				return nil, fmt.Errorf("check effective tenant permission %s: %w", code, err)
+			}
+			if allowed {
+				granted = append(granted, code)
 			}
 		}
 	}
@@ -404,6 +412,50 @@ func (s *Service) EffectivePermissions(
 		}
 		if allowed {
 			granted = append(granted, code)
+		}
+	}
+	sort.Strings(granted)
+	return granted, nil
+}
+
+// EffectiveEntityPermissions reports what the caller may use in one entity
+// view. Data-scoped grants are included only when their compiled constraint can
+// reach rows in that entity; non-data permissions use the ordinary entity guard.
+func (s *Service) EffectiveEntityPermissions(
+	ctx context.Context,
+	tenantID, entityID, principalID guid.ID,
+) ([]string, error) {
+	if tenantID.Zero() || entityID.Zero() || principalID.Zero() {
+		return nil, fmt.Errorf("%w: invalid entity permission context", ErrInvalidArgument)
+	}
+	granted := make([]string, 0)
+	for _, action := range s.registry.All() {
+		if action.Scope == "platform" {
+			allowed, err := s.checker.CheckPlatform(ctx, action.Code, principalID)
+			if err != nil {
+				return nil, fmt.Errorf("check effective platform permission %s: %w", action.Code, err)
+			}
+			if allowed {
+				granted = append(granted, action.Code)
+			}
+			continue
+		}
+		if action.DataScoped {
+			constraint, err := s.checker.EntityConstraint(ctx, tenantID, entityID, action.Code, principalID)
+			if err != nil {
+				return nil, fmt.Errorf("check effective entity permission %s: %w", action.Code, err)
+			}
+			if constraint.AllowsEntityRows(entityID) {
+				granted = append(granted, action.Code)
+			}
+			continue
+		}
+		explanation, err := s.checker.ExplainEntity(ctx, tenantID, entityID, action.Code, principalID)
+		if err != nil {
+			return nil, fmt.Errorf("check effective entity permission %s: %w", action.Code, err)
+		}
+		if explanation.Allowed {
+			granted = append(granted, action.Code)
 		}
 	}
 	sort.Strings(granted)

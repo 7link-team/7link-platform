@@ -41,6 +41,7 @@ func TestFrozenIAMCapabilitiesHaveCanonicalOwners(t *testing.T) {
 		{"authz.Registrar", reflect.TypeFor[*authz.Registrar](), "7link.com/platform/pkg/extension/authz"},
 		{"core.AuthorizationEvaluator", reflect.TypeFor[core.AuthorizationEvaluator](), "7link.com/platform/internal/iam/core"},
 		{"core.EntityConstraintOn", reflect.TypeFor[core.EntityConstraintOn](), "7link.com/platform/internal/iam/core"},
+		{"core.TenantConstraintOn", reflect.TypeFor[core.TenantConstraintOn](), "7link.com/platform/internal/iam/core"},
 		{"core.AuthorizationSubjectsOn", reflect.TypeFor[core.AuthorizationSubjectsOn](), "7link.com/platform/internal/iam/core"},
 		{"core.AuthorizationReferencesOn", reflect.TypeFor[core.AuthorizationReferencesOn](), "7link.com/platform/internal/iam/core"},
 		{"authz.PermissionChecker", reflect.TypeFor[authz.PermissionChecker](), "7link.com/platform/pkg/extension/authz"},
@@ -70,7 +71,7 @@ func TestFrozenIAMCapabilitiesHaveCanonicalOwners(t *testing.T) {
 		{"provisioning.SecretRewrapper", reflect.TypeFor[provisioning.SecretRewrapper](), "7link.com/platform/internal/iam/provisioning"},
 	}
 
-	require.Len(t, capabilities, 25)
+	require.Len(t, capabilities, 26)
 	seen := make(map[reflect.Type]struct{}, len(capabilities))
 	for _, capability := range capabilities {
 		require.NotNil(t, capability.typ)
@@ -129,6 +130,7 @@ func TestIAMCapabilitiesAreDeclaredByTheirProviderRoots(t *testing.T) {
 		"core.AdministratorGuard":                    "interface",
 		"core.AuthorizationEvaluator":                "interface",
 		"core.EntityConstraintOn":                    "func",
+		"core.TenantConstraintOn":                    "func",
 		"core.AuthorizationSubjectsOn":               "func",
 		"core.AuthorizationReferencesOn":             "func",
 		"core.DirectoryAuthorizationSourceConnector": "struct",

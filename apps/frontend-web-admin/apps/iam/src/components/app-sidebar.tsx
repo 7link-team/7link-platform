@@ -59,6 +59,7 @@ export function AppSidebar({
   className = "",
   language = "",
   entityID = "",
+  tenantID = "",
 }: {
   permissions?: EffectivePermissions
   menus: EffectiveMenu[]
@@ -68,16 +69,20 @@ export function AppSidebar({
   className?: string
   language?: string
   entityID?: string
+  tenantID?: string
 }) {
   const t = useTranslations("iam")
 
   const location = useLocation()
+  const tenantBase = tenantID
+    ? `/tenants/${encodeURIComponent(tenantID)}`
+    : ""
   const platformView = isPlatformRoute(location.pathname + location.search)
   menus = tenantNavigation(menus)
   const paths = effectiveMenuPaths(menus)
   const fileAccess = can(permissions, "file_view")
   if (entityID && !platformView) {
-    const base = `/entities/${encodeURIComponent(entityID)}`
+    const base = `${tenantBase}/entities/${encodeURIComponent(entityID)}`
     return (
       <aside
         className={`w-64 shrink-0 overflow-y-auto border-e border-sidebar-border bg-sidebar p-3 ${className}`}
@@ -109,7 +114,7 @@ export function AppSidebar({
           )}
           {fileAccess && (
             <SideLink
-              to={`/files?entity_id=${encodeURIComponent(entityID)}`}
+              to={`${base}/files`}
               icon={<Folder />}
               label={t("files")}
             />
@@ -131,7 +136,7 @@ export function AppSidebar({
     >
       <nav className="space-y-5" aria-label={t("mainNav")}>
         <SideLink
-          to="/"
+          to={platformView ? tenantBase || "/me" : tenantBase}
           icon={<LayoutDashboard />}
           label={t(platformView ? "backWorkspace" : "overview")}
         />
@@ -142,14 +147,14 @@ export function AppSidebar({
             </h2>
             {platformTenantAccess && (
               <SideLink
-                to="/tenants"
+                to="/platform/tenants"
                 icon={<Landmark />}
                 label={t("tenantManagement")}
               />
             )}
             {platformAuditAccess && (
               <SideLink
-                to="/audit-governance?scope=platform"
+                to="/platform/audit-governance"
                 icon={<FileClock />}
                 label={t("platformAudit")}
               />
@@ -164,15 +169,24 @@ export function AppSidebar({
             </h2>
             <ul className="space-y-1">
               {menus.map((menu) => (
-                <MenuBranch key={menu.id} menu={menu} language={language} />
+                <MenuBranch
+                  key={menu.id}
+                  menu={menu}
+                  language={language}
+                  tenantBase={tenantBase}
+                />
               ))}
             </ul>
             {fileAccess && !paths.has("/files") && (
-              <SideLink to="/files" icon={<Folder />} label={t("files")} />
+              <SideLink
+                to={`${tenantBase}/files`}
+                icon={<Folder />}
+                label={t("files")}
+              />
             )}
             {fieldPolicyAccess && !paths.has("/field-policies") && (
               <SideLink
-                to="/field-policies"
+                to={`${tenantBase}/field-policies`}
                 icon={<SlidersHorizontal />}
                 label={t("fieldPermissions")}
               />
@@ -181,7 +195,7 @@ export function AppSidebar({
         )}
         {!platformView && (
           <SideLink
-            to="/access-requests"
+            to={`${tenantBase}/access-requests`}
             icon={<ClipboardCheck />}
             label={t("accessRequests")}
           />
@@ -194,9 +208,11 @@ export function AppSidebar({
 function MenuBranch({
   menu,
   language,
+  tenantBase,
 }: {
   menu: EffectiveMenu
   language: string
+  tenantBase: string
 }) {
   const t = useTranslations("iam")
 
@@ -220,7 +236,11 @@ function MenuBranch({
       <div className="flex min-w-0 items-center">
         {menu.path ? (
           <div className="min-w-0 flex-1">
-            <SideLink to={menu.path} icon={icon} label={label} />
+            <SideLink
+              to={`${tenantBase}${menu.path}`}
+              icon={icon}
+              label={label}
+            />
           </div>
         ) : (
           <button
@@ -252,7 +272,12 @@ function MenuBranch({
       {children.length > 0 && expanded && (
         <ul className="ms-4 space-y-1 border-s border-sidebar-border ps-2">
           {children.map((child) => (
-            <MenuBranch key={child.id} menu={child} language={language} />
+            <MenuBranch
+              key={child.id}
+              menu={child}
+              language={language}
+              tenantBase={tenantBase}
+            />
           ))}
         </ul>
       )}
@@ -274,7 +299,7 @@ function SideLink({
   return (
     <NavLink
       to={to}
-      end={to === "/"}
+      end={to === "/" || /^\/tenants\/[^/]+$/u.test(to)}
       aria-current={scopeMatches ? undefined : false}
       className={({ isActive }) =>
         `flex min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${isActive && scopeMatches ? "sidebar-active-item bg-sidebar-primary font-medium text-sidebar-primary-foreground" : "text-sidebar-foreground/90 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`

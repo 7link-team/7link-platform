@@ -37,7 +37,7 @@ async function api(path, method = "GET", body) {
       const response = await fetch("/api" + path, {
         method,
         credentials: "include",
-        headers: { "Content-Type": "application/json", "X-Tenant-Id": tenant },
+        headers: { "Content-Type": "application/json" },
         body: body === undefined ? undefined : JSON.stringify(body),
       })
       const result = await response.json()
@@ -90,12 +90,12 @@ async function capture(name) {
 }
 try {
   await page.goto(baseURL + "/login")
-  await api("/authn/sessions", "POST", {
+  await api("/sessions", "POST", {
     login_name: login,
     password,
     return_url: baseURL + "/",
   })
-  const session = await api("/authn/sessions/current")
+  const session = await api("/sessions/current")
   await page.evaluate(
     ({ tenant, subject }) => {
       localStorage.setItem("iam.tenant", tenant)
@@ -104,22 +104,22 @@ try {
     { tenant, subject: session.subject }
   )
   const suffix = Date.now()
-  const first = await api("/iam/service-accounts", "POST", {
+  const first = await api("/service-accounts", "POST", {
     login_name: `scim-ui-first-${suffix}`,
     display_name: "SCIM UI First",
   })
-  const second = await api("/iam/service-accounts", "POST", {
+  const second = await api("/service-accounts", "POST", {
     login_name: `scim-ui-second-${suffix}`,
     display_name: "SCIM UI Second",
   })
   const name = `SCIM UI ${suffix}`
-  await page.goto(baseURL + "/iam/scim-directories")
+  await page.goto(baseURL + "/scim-directories")
   await page.getByRole("button", { name: "创建目录", exact: true }).click()
   await page.locator("#scim-directory-name").fill(name)
   await page.locator("#scim-directory-service-account").fill(first.id)
   await capture("desktop-editor")
   await save()
-  let directory = (await api("/iam/scim/directories")).find(
+  let directory = (await api("/scim/directories")).find(
     (item) => item.name === name
   )
   assert.equal(directory.service_account_id, first.id)
@@ -130,7 +130,7 @@ try {
   )
   await page.locator("#scim-directory-name").fill(name + " renamed")
   await save()
-  directory = (await api("/iam/scim/directories")).find(
+  directory = (await api("/scim/directories")).find(
     (item) => item.id === directory.id
   )
   assert.equal(
@@ -141,13 +141,13 @@ try {
   await edit(directory.name)
   await page.locator("#scim-directory-service-account").fill(second.id)
   await save()
-  directory = (await api("/iam/scim/directories")).find(
+  directory = (await api("/scim/directories")).find(
     (item) => item.id === directory.id
   )
   assert.equal(directory.service_account_id, second.id)
 
   await edit(directory.name)
-  directory = await api("/iam/scim/directories/" + directory.id, "PUT", {
+  directory = await api("/scim/directories/" + directory.id, "PUT", {
     name: directory.name,
     status: "disabled",
     version: directory.version,
@@ -171,7 +171,7 @@ try {
   await capture("mobile-editor")
   await page.locator("#scim-directory-service-account").fill("")
   await save()
-  directory = (await api("/iam/scim/directories")).find(
+  directory = (await api("/scim/directories")).find(
     (item) => item.id === directory.id
   )
   assert.equal(
@@ -181,8 +181,8 @@ try {
   )
 
   await edit(directory.name)
-  const me = await api("/authn/sessions/current")
-  const otherTenant = await api("/iam/tenants", "POST", {
+  const me = await api("/sessions/current")
+  const otherTenant = await api("/tenants", "POST", {
     slug: `scim-ui-other-${suffix}`,
     name: "SCIM UI Other",
     owner_principal_id: me.subject,

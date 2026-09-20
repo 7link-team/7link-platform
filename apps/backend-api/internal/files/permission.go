@@ -150,17 +150,31 @@ func evaluateNodeACL(action string, subjects map[aclSubject]struct{}, layers []n
 }
 
 type nodeAuthorizer struct {
-	tree        directoryTree
-	account     bool
-	policy      core.EntityConstraintOn
-	references  core.AuthorizationReferencesOn
-	tenantID    guid.ID
-	entityID    guid.ID
-	actorID     guid.ID
-	subjects    core.AuthorizationSubjects
-	acl         map[aclSubject]struct{}
-	constraints map[string]authz.DataConstraint
-	validRoots  map[rootBinding]bool
+	tree         directoryTree
+	account      bool
+	policy       core.EntityConstraintOn
+	tenantPolicy core.TenantConstraintOn
+	tenantView   bool
+	references   core.AuthorizationReferencesOn
+	tenantID     guid.ID
+	entityID     guid.ID
+	actorID      guid.ID
+	subjects     core.AuthorizationSubjects
+	acl          map[aclSubject]struct{}
+	constraints  map[string]authz.DataConstraint
+	validRoots   map[rootBinding]bool
+}
+
+func newTenantNodeAuthorizer(tree directoryTree, policy core.TenantConstraintOn, references core.AuthorizationReferencesOn, tenantID, actorID guid.ID, revision int64) (*nodeAuthorizer, error) {
+	if policy == nil || references == nil || tenantID <= 0 || actorID <= 0 || revision <= 0 {
+		return nil, errOperationForbidden
+	}
+	return &nodeAuthorizer{
+		tree: tree, tenantPolicy: policy, tenantView: true, references: references,
+		tenantID: tenantID, actorID: actorID, subjects: core.AuthorizationSubjects{PrincipalID: actorID, Revision: revision},
+		acl:         map[aclSubject]struct{}{{kind: "principal", id: actorID}: {}},
+		constraints: make(map[string]authz.DataConstraint), validRoots: make(map[rootBinding]bool),
+	}, nil
 }
 
 func newAccountNodeAuthorizer(tree directoryTree, actorID guid.ID) (*nodeAuthorizer, error) {
@@ -307,7 +321,7 @@ func (a *nodeAuthorizer) authorizeLoaded(
 	if permissions.space.ScopeKind != "tenant" || permissions.space.TenantID == nil || *permissions.space.TenantID != a.tenantID {
 		return false, errOperationForbidden
 	}
-	if permissions.root.scope == "entity" && permissions.root.ownerID != a.entityID {
+	if !a.tenantView && permissions.root.scope == "entity" && permissions.root.ownerID != a.entityID {
 		return false, errOperationForbidden
 	}
 	if err := a.validateRootOnce(ctx, tx, permissions.root); err != nil {
@@ -349,7 +363,13 @@ func (a *nodeAuthorizer) constraint(ctx context.Context, tx *gorm.DB, permission
 	if constraint, ok := a.constraints[permission]; ok {
 		return constraint, nil
 	}
-	constraint, err := a.policy(ctx, tx, a.tenantID, a.entityID, permission, a.actorID)
+	var constraint authz.DataConstraint
+	var err error
+	if a.tenantView {
+		constraint, err = a.tenantPolicy(ctx, tx, a.tenantID, permission, a.actorID)
+	} else {
+		constraint, err = a.policy(ctx, tx, a.tenantID, a.entityID, permission, a.actorID)
+	}
 	if err != nil {
 		return authz.DataConstraint{}, err
 	}
@@ -368,7 +388,10 @@ func (a *nodeAuthorizer) validateRoot(ctx context.Context, tx *gorm.DB, root roo
 	case "entity":
 		references.EntityID = root.ownerID
 	case "department":
-		references.EntityID, references.DepartmentID = a.entityID, root.ownerID
+		references.DepartmentID = root.ownerID
+		if !a.tenantView {
+			references.EntityID = a.entityID
+		}
 	case "personal", "account":
 		references.PrincipalID = root.ownerID
 	default:

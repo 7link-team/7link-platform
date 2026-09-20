@@ -394,7 +394,7 @@ try {
       const request = route.request()
       const url = new URL(request.url())
       const path = url.pathname.slice(4)
-      if (path === "/authn/sessions/current") {
+      if (path === "/sessions/current") {
         if (!authenticated)
           return route.fulfill({
             status: 401,
@@ -407,12 +407,12 @@ try {
           },
         })
       }
-      if (path === "/iam/tenants" || path === "/iam/field-catalog")
+      if (path === "/tenants" || path === "/field-catalog")
         return route.fulfill({
           status: 403,
           json: { code: 403, message: "Forbidden" },
         })
-      if (path === "/iam/entities")
+      if (path === "/entities")
         return route.fulfill({
           json: {
             code: 0,
@@ -420,7 +420,7 @@ try {
             data: [{ id: "80", name: "Fixture entity", status: "active" }],
           },
         })
-      if (path === "/iam/me/permissions")
+      if (path === "/me/permissions")
         return route.fulfill({
           json: { code: 0, message: "ok", data: ["file_view"] },
         })
@@ -485,14 +485,14 @@ try {
           json: { code: 404, message: "not_found" },
         })
       }
-      if (path === "/iam/me/avatar")
+      if (path === "/me/avatar")
         return route.fulfill({
           json: { code: 0, message: "ok", data: { style: "custom", url: "" } },
         })
       const data =
-        path === "/iam/me/tenants"
+        path === "/me/tenants"
           ? [{ id: "11", name: "Fixture tenant", status: "active" }]
-          : path === "/iam/me/menus"
+          : path === "/me/menus"
             ? [
                 {
                   id: "files-menu",
@@ -566,14 +566,14 @@ try {
       const request = route.request()
       const url = new URL(request.url())
       const path = url.pathname.slice(4)
-      if (path === "/authn/sessions/current")
+      if (path === "/sessions/current")
         return route.fulfill({
           json: {
             code: 0,
             data: { subject: "1", organization_id: "11", acr: 1 },
           },
         })
-      if (path === "/iam/me/avatar")
+      if (path === "/me/avatar")
         return route.fulfill({
           json: { code: 0, message: "ok", data: { style: "custom", url: "" } },
         })

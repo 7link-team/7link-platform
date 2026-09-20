@@ -12,13 +12,13 @@ import (
 
 // samlSPListInput bounds the listing by default, like providerListInput.
 type samlSPListInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type samlSPIDInput struct {
-	TenantID          string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID          string `path:"tenant_id" maxLength:"128"`
 	ServiceProviderID string `path:"sp_id" maxLength:"128"`
 }
 
@@ -30,18 +30,18 @@ type samlSPBody struct {
 }
 
 type samlSPCreateInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Body     samlSPBody
 }
 
 type samlSPReplaceInput struct {
-	TenantID          string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID          string `path:"tenant_id" maxLength:"128"`
 	ServiceProviderID string `path:"sp_id" maxLength:"128"`
 	Body              samlSPBody
 }
 
 type samlKeyRotateInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 }
 
 type samlRequestForm struct {

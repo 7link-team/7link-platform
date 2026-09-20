@@ -37,10 +37,14 @@ report.fixtures = fixtures
 save()
 const password = randomBytes(32).toString("base64url") + "aA1!"
 async function call(context, path, method = "GET", data, tenant) {
-  return context.request.fetch("/api" + path, {
+  const requestPath =
+    tenant && !path.startsWith("/sessions") && !path.startsWith("/platform/")
+      ? `/tenants/${tenant}${path}`
+      : path
+  return context.request.fetch("/api" + requestPath, {
     method,
     ...(data === undefined ? {} : { data }),
-    headers: { Origin: baseURL, ...(tenant ? { "X-Tenant-Id": tenant } : {}) },
+    headers: { Origin: baseURL },
   })
 }
 async function ok(context, path, method = "GET", data, tenant) {
@@ -49,12 +53,12 @@ async function ok(context, path, method = "GET", data, tenant) {
   return (await response.json()).data
 }
 async function login(context, name, secret) {
-  await ok(context, "/authn/sessions", "POST", {
+  await ok(context, "/sessions", "POST", {
     login_name: name,
     password: secret,
     return_url: baseURL + "/",
   })
-  return ok(context, "/authn/sessions/current")
+  return ok(context, "/sessions/current")
 }
 async function verified(page, messages, responsePath) {
   const dialog = page.getByRole("dialog")
@@ -82,7 +86,7 @@ try {
   for (const locale of ["en-US", "zh-CN", "ms-MY"])
     for (const width of [1440, 390]) {
       const name = `closure-${Date.now()}-${width}`
-      const tenant = await ok(admin, "/iam/tenants", "POST", {
+      const tenant = await ok(admin, "/tenants", "POST", {
         name,
         slug: name,
         owner_principal_id: owner.subject,
@@ -92,7 +96,7 @@ try {
       save()
       const principal = await ok(
         admin,
-        "/iam/principals",
+        "/principals",
         "POST",
         { login_name: name, display_name: name, password },
         tenant.id
@@ -133,14 +137,14 @@ try {
         await page
           .getByRole("button", { name: messages.leaveTenant, exact: true })
           .click()
-        await verified(page, messages, `/iam/me/memberships/${tenant.id}/leave`)
+        await verified(page, messages, `/me/memberships/${tenant.id}/leave`)
         await page.getByText(messages.noMemberships, { exact: true }).waitFor()
         assert.equal(
-          (await ok(context, "/authn/sessions/current")).subject,
+          (await ok(context, "/sessions/current")).subject,
           principal.id,
           "leaving preserves the global session"
         )
-        const membership = await ok(context, "/iam/me/memberships")
+        const membership = await ok(context, "/me/memberships")
         assert.equal(membership.items.length, 0)
         await page.goto("/account/closure")
         await page
@@ -149,7 +153,7 @@ try {
             exact: true,
           })
           .click()
-        await verified(page, messages, "/iam/me/closure-request")
+        await verified(page, messages, "/me/closure-request")
         await page
           .getByRole("heading", {
             name: messages.closureStatus_pending,
@@ -157,7 +161,7 @@ try {
           })
           .waitFor()
         assert.equal(
-          (await ok(context, "/iam/me/closure-request")).status,
+          (await ok(context, "/me/closure-request")).status,
           "pending"
         )
         await page
@@ -173,7 +177,7 @@ try {
           })
           .waitFor()
         assert.equal(
-          (await ok(context, "/iam/me/closure-request")).status,
+          (await ok(context, "/me/closure-request")).status,
           "canceled"
         )
         await page
@@ -182,11 +186,11 @@ try {
             exact: true,
           })
           .click()
-        await verified(page, messages, "/iam/me/closure-request")
+        await verified(page, messages, "/me/closure-request")
         const review = await reviewer.newPage()
         review.on("pageerror", (e) => errors.push(e.message))
         review.setDefaultTimeout(15000)
-        await review.goto("/iam/closure-requests")
+        await review.goto("/closure-requests")
         const row = review.getByRole("listitem").filter({
           has: review.getByRole("heading", {
             name: principal.id,
@@ -221,13 +225,13 @@ try {
           "zero-tenant account can be processed"
         )
         assert.equal(
-          (await call(context, "/authn/sessions/current")).status(),
+          (await call(context, "/sessions/current")).status(),
           401,
           "processing revokes old session"
         )
         const requests = await ok(
           reviewer,
-          "/platform/iam/closure-requests?status=processing"
+          "/platform/closure-requests?status=processing"
         )
         assert(
           requests.items.some(
@@ -242,7 +246,7 @@ try {
           review.waitForResponse(
             (r) =>
               new URL(r.url()).pathname ===
-                `/api/platform/iam/principals/${principal.id}/lifecycle` &&
+                `/api/platform/principals/${principal.id}/lifecycle` &&
               r.request().method() === "GET"
           ),
           row
@@ -302,17 +306,17 @@ try {
       if (fixture.principal)
         await ok(
           admin,
-          `/iam/principals/${fixture.principal}/suspension`,
+          `/principals/${fixture.principal}/suspension`,
           "PUT",
           undefined,
           fixture.tenant
         )
-      const tenants = await ok(admin, "/iam/tenants")
+      const tenants = await ok(admin, "/tenants")
       const tenant = tenants.find((item) => item.id === fixture.tenant)
       assert(tenant)
       await ok(
         admin,
-        `/iam/tenants/${tenant.id}?version=${tenant.version}`,
+        `/tenants/${tenant.id}?version=${tenant.version}`,
         "DELETE"
       )
       report.cleanup.push({ tenant: fixture.tenant, status: "PASS" })

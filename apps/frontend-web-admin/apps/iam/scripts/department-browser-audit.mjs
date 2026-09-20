@@ -151,7 +151,7 @@ async function submitDepartmentForm() {
       Buffer.from(image.data, "base64")
     )
     const departmentResponses = responses
-      .filter((response) => response.url.includes("/api/iam/departments"))
+      .filter((response) => response.url.includes("/api/departments"))
       .slice(-10)
     throw new Error(
       `${cause.message}; diagnostic=${JSON.stringify(diagnostic)}; responses=${JSON.stringify(departmentResponses)}`
@@ -235,9 +235,9 @@ async function clickRowAction(name, fromEnd) {
 
 async function departments() {
   return evaluate(`
-    const response = await fetch("/api/iam/departments", {
+    const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
+    const response = await fetch("/api/tenants/" + encodeURIComponent(tenant) + "/departments", {
       credentials: "include",
-      headers: { "X-Tenant-Id": localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)} },
     });
     if (!response.ok) throw new Error("department list failed: " + response.status);
     return (await response.json()).data;
@@ -247,16 +247,16 @@ async function departments() {
 async function cleanupArtifacts() {
   await evaluate(`
     const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
-    const headers = { "X-Tenant-Id": tenant };
-    const response = await fetch("/api/iam/departments", { credentials: "include", headers });
+    const base = "/api/tenants/" + encodeURIComponent(tenant);
+    const response = await fetch(base + "/departments", { credentials: "include" });
     if (!response.ok) throw new Error("artifact list failed: " + response.status);
     const items = (await response.json()).data;
     const pattern = /^(Acceptance-(Engineering|Operations)|Platform-(Team|Engineering))-[a-z0-9]+$/;
     const artifacts = items.filter((item) => pattern.test(item.name)).sort((left, right) => right.depth - left.depth);
     for (const item of artifacts) {
       const removed = await fetch(
-        "/api/iam/departments/" + encodeURIComponent(item.id) + "?version=" + encodeURIComponent(item.version),
-        { method: "DELETE", credentials: "include", headers }
+        base + "/departments/" + encodeURIComponent(item.id) + "?version=" + encodeURIComponent(item.version),
+        { method: "DELETE", credentials: "include" }
       );
       if (!removed.ok && removed.status !== 404)
         throw new Error("artifact cleanup failed: " + removed.status);
@@ -319,7 +319,7 @@ const rootB = `Acceptance-Operations-${suffix}`
 const child = `Platform-Team-${suffix}`
 const renamedChild = `Platform-Engineering-${suffix}`
 
-await navigate("/iam/departments")
+await navigate("/departments")
 await waitFor(
   `location.pathname === "/login" && document.querySelector("#login-name")`
 )
@@ -330,7 +330,7 @@ await evaluate(`
   if (!(form instanceof HTMLFormElement)) throw new Error("login form not found");
   form.requestSubmit();
 `)
-await waitFor(`location.pathname === "/iam/departments"`, 20000)
+await waitFor(`location.pathname === "/departments"`, 20000)
 await waitFor(`document.querySelector("h1") && document.querySelector("tbody")`)
 await cleanupArtifacts()
 
@@ -408,9 +408,9 @@ await waitFor(`!(${rowExpression(rootB)})`)
 
 const audit = await evaluate(`
   const query = new URLSearchParams({ target_id: ${JSON.stringify(childRecord.id)}, limit: "100" });
-  const response = await fetch("/api/iam/audit-events?" + query, {
+  const tenant = localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)};
+  const response = await fetch("/api/tenants/" + encodeURIComponent(tenant) + "/audit-events?" + query, {
     credentials: "include",
-    headers: { "X-Tenant-Id": localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)} },
   });
   if (!response.ok) throw new Error("audit list failed: " + response.status);
   return (await response.json()).data;
@@ -428,7 +428,7 @@ const expectedConflicts = responses.filter(
   (response) =>
     response.status === 409 &&
     response.method === "DELETE" &&
-    response.url.includes(`/api/iam/departments/${rootARecord.id}`)
+    response.url.includes(`/api/departments/${rootARecord.id}`)
 )
 if (expectedConflicts.length !== 1)
   throw new Error("parent deletion did not produce exactly one HTTP 409")
@@ -438,7 +438,7 @@ const unexpectedStatuses = responses.filter(
     response.status >= 400 &&
     !(
       response.status === 401 &&
-      response.url.endsWith("/api/authn/sessions/current")
+      response.url.endsWith("/api/sessions/current")
     ) &&
     !expectedConflicts.includes(response)
 )

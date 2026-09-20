@@ -28,13 +28,13 @@ func parseFederationID(value string) (guid.ID, error) {
 // providerListInput bounds the listing by default: a tenant's provider registry
 // is open-ended, and an omitted limit used to mean "every row".
 type providerListInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type providerIDInput struct {
-	TenantID   string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID   string `path:"tenant_id" maxLength:"128"`
 	ProviderID string `path:"provider_id" maxLength:"128"`
 }
 
@@ -51,12 +51,12 @@ type providerBody struct {
 }
 
 type providerCreateInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Body     providerBody
 }
 
 type providerReplaceInput struct {
-	TenantID   string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID   string `path:"tenant_id" maxLength:"128"`
 	ProviderID string `path:"provider_id" maxLength:"128"`
 	Body       providerBody
 }

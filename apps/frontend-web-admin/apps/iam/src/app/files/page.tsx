@@ -61,7 +61,7 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
   } | null>()
   const tenantID = account ? "" : (outlet?.tenantID ?? "")
   const entityID = account ? "" : (outlet?.entityID ?? "")
-  const fileEntityID = account ? undefined : entityID
+  const fileEntityID = account ? null : entityID || undefined
   const [searchParams, setSearchParams] = useSearchParams()
   const [state, setState] = useState<BrowserState>(emptyState)
   const [recycleBin, setRecycleBin] = useState(false)
@@ -260,20 +260,11 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
     URL.revokeObjectURL(url)
   }
   const openFileInNewTab = (node: FileBrowserNode) => {
-    const tab = window.open("about:blank", "_blank")
-    if (!tab) return
-    tab.opener = null
-    void run(async () => {
-      try {
-        const blob = await iamApi.downloadFile(fileEntityID, node.id)
-        const url = URL.createObjectURL(blob)
-        tab.location.replace(url)
-        window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
-      } catch (cause) {
-        tab.close()
-        throw cause
-      }
-    })
+    window.open(
+      iamApi.fileContentURL(fileEntityID, node.id),
+      "_blank",
+      "noopener,noreferrer"
+    )
   }
   const preview = useCallback(
     (node: FileBrowserNode, maxBytes: number, signal: AbortSignal) =>

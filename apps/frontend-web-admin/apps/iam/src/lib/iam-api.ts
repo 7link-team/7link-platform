@@ -1073,8 +1073,7 @@ export class ApiError extends Error {
  * A build cannot know which tenants a deployment has, so there is no compiled-in
  * fallback slug: the value is either one the operator picked, one the deployment
  * configured, or one adopted from the session (see `adoptSessionTenant`). Empty
- * means "not resolved yet" and the tenant header is then left off the request
- * rather than sent with a guess.
+ * means "not resolved yet" and no tenant resource request can be constructed.
  */
 export function getTenant(): string {
   const stored =
@@ -1137,13 +1136,13 @@ async function requestEnvelopeWithBase<T>(
   )
     headers.set("Accept-Language", document.documentElement.lang)
   const scope = tenant ? tenantID() : ""
-  if (scope) headers.set("X-Tenant-Id", scope)
   if (
     init.body &&
     (typeof FormData === "undefined" || !(init.body instanceof FormData))
   )
     headers.set("Content-Type", "application/json")
-  const response = await fetch(`${apiBase}${path}`, {
+  const resourcePath = scope ? tenantAPIPath(scope, path) : path
+  const response = await fetch(`${apiBase}${resourcePath}`, {
     ...init,
     headers,
     credentials: "include",
@@ -1165,27 +1164,32 @@ async function requestEnvelopeWithBase<T>(
   return body
 }
 
-/** The tenant header, omitted entirely while no tenant is resolved. */
-function tenantHeader(scope: string): Record<string, string> {
-  return scope ? { "X-Tenant-Id": scope } : {}
+function tenantAPIPath(tenantID: string, path: string): string {
+  return `/tenants/${encodeURIComponent(tenantID)}${path}`
 }
 
-function entityHeader(scope?: string): Record<string, string> {
-  return scope ? { "X-Entity-Id": scope } : {}
+function entityAPIPath(
+  tenantID: string,
+  entityID: string,
+  path: string
+): string {
+  return `${tenantAPIPath(tenantID, `/entities/${encodeURIComponent(entityID)}`)}${path}`
 }
 
 async function requestFileDownloadWithBase(
   apiBase: string,
   tenantID: () => string,
-  entityID: string | undefined,
+  entityID: string | null | undefined,
   path: string,
   options: { maxBytes?: number; signal?: AbortSignal } = {}
 ): Promise<Blob> {
-  const headers = entityID
-    ? { ...tenantHeader(tenantID()), ...entityHeader(entityID) }
-    : {}
-  const response = await fetch(`${apiBase}${path}`, {
-    headers,
+  const scope = tenantID()
+  const resourcePath = entityID
+    ? entityAPIPath(scope, entityID, path)
+    : entityID === null
+      ? `/me${path}`
+      : tenantAPIPath(scope, path)
+  const response = await fetch(`${apiBase}${resourcePath}`, {
     credentials: "include",
     signal: options.signal,
   })
@@ -1216,8 +1220,10 @@ async function requestAuditDownloadWithBase(
   tenantID: () => string,
   path: string
 ): Promise<AuditExportDownload> {
-  const response = await fetch(`${apiBase}${path}`, {
-    headers: tenantHeader(tenantID()),
+  const resourcePath = path.startsWith("/platform/")
+    ? path
+    : tenantAPIPath(tenantID(), path)
+  const response = await fetch(`${apiBase}${resourcePath}`, {
     credentials: "include",
   })
   if (!response.ok) {
@@ -1304,6 +1310,32 @@ export function createIamApi(
     requestWithBase<T>(apiBase, tenantID, path, init, tenant)
   const requestEnvelope = <T>(path: string, tenant = true) =>
     requestEnvelopeWithBase<T>(apiBase, tenantID, path, {}, tenant)
+  const fileRequest = <T>(
+    entityID: string | null | undefined,
+    path: string,
+    init: RequestInit = {}
+  ) => {
+    const scope = tenantID()
+    const resourcePath = entityID
+      ? entityAPIPath(scope, entityID, path)
+      : entityID === null
+        ? `/me${path}`
+        : tenantAPIPath(scope, path)
+    return requestWithBase<T>(apiBase, tenantID, resourcePath, init, false)
+  }
+  const fileContentURL = (
+    entityID: string | null | undefined,
+    fileID: string
+  ) => {
+    const path = `/files/${encodeURIComponent(fileID)}/content?disposition=inline`
+    const scope = tenantID()
+    const resourcePath = entityID
+      ? entityAPIPath(scope, entityID, path)
+      : entityID === null
+        ? `/me${path}`
+        : tenantAPIPath(scope, path)
+    return `${apiBase}${resourcePath}`
+  }
   /**
    * Every list endpoint is bounded by default on the server, so a caller that
    * needs the complete set -- a picker's universe, or a membership the UI
@@ -1333,33 +1365,22 @@ export function createIamApi(
   const archivePath = (scope: AuditScope) =>
     scope === "platform" ? "/platform/audit" : "/audit"
   return {
-    files: (entityID?: string, after = "") => {
+    files: (entityID?: string | null, after = "") => {
       const query = new URLSearchParams({ limit: "100" })
       if (after) query.set("after", after)
-      return request<FilePage>(
-        `/files?${query}`,
-        {
-          headers: entityHeader(entityID),
-        },
-        Boolean(entityID)
-      )
+      return fileRequest<FilePage>(entityID, `/files?${query}`)
     },
-    trashedFiles: (entityID?: string, after = "") => {
+    trashedFiles: (entityID?: string | null, after = "") => {
       const query = new URLSearchParams({ limit: "100", state: "trashed" })
       if (after) query.set("after", after)
-      return request<FilePage>(
-        `/files?${query}`,
-        { headers: entityHeader(entityID) },
-        Boolean(entityID)
-      )
+      return fileRequest<FilePage>(entityID, `/files?${query}`)
     },
     createPersonalFileRoot: (entityID: string) => {
       const body = new FormData()
       body.set("kind", "directory")
       body.set("scope", "personal")
-      return request<FileEntryView>("/files", {
+      return fileRequest<FileEntryView>(entityID, "/files", {
         method: "POST",
-        headers: entityHeader(entityID),
         body,
       })
     },
@@ -1367,19 +1388,22 @@ export function createIamApi(
       const body = new FormData()
       body.set("kind", "directory")
       body.set("scope", "account")
-      return request<FileEntryView>("/files", { method: "POST", body }, false)
+      return fileRequest<FileEntryView>(null, "/files", {
+        method: "POST",
+        body,
+      })
     },
-    fileItems: (entityID: string | undefined, fileID: string, after = "") => {
+    fileItems: (entityID: string | null | undefined, fileID: string, after = "") => {
       const query = new URLSearchParams({ limit: "100" })
       if (after) query.set("after", after)
-      return request<FileChildrenPage>(
+      return fileRequest<FileChildrenPage>(
+        entityID,
         `/files/${encodeURIComponent(fileID)}/items?${query}`,
-        { headers: entityHeader(entityID) },
-        Boolean(entityID)
+        {}
       )
     },
     createDirectory: (
-      entityID: string | undefined,
+      entityID: string | null | undefined,
       parentID: string,
       name: string
     ) => {
@@ -1387,18 +1411,17 @@ export function createIamApi(
       body.set("parent_id", parentID)
       body.set("kind", "directory")
       body.set("name", name)
-      return request<FileEntryView>(
+      return fileRequest<FileEntryView>(
+        entityID,
         "/files",
         {
           method: "POST",
-          headers: entityHeader(entityID),
           body,
-        },
-        Boolean(entityID)
+        }
       )
     },
     uploadFile: (
-      entityID: string | undefined,
+      entityID: string | null | undefined,
       parentID: string,
       file: File
     ) => {
@@ -1406,38 +1429,38 @@ export function createIamApi(
       body.set("parent_id", parentID)
       body.set("kind", "file")
       body.set("file", file)
-      return request<FileEntryView>(
+      return fileRequest<FileEntryView>(
+        entityID,
         "/files",
         {
           method: "POST",
-          headers: entityHeader(entityID),
           body,
-        },
-        Boolean(entityID)
+        }
       )
     },
     fileByPath: (
-      entityID: string | undefined,
+      entityID: string | null | undefined,
       rootFileID: string,
       path: string
     ) =>
-      request<FileEntryView>(
+      fileRequest<FileEntryView>(
+        entityID,
         `/files/${encodeURIComponent(rootFileID)}/-/${path
           .split("/")
           .map(encodeURIComponent)
           .join("/")}`,
-        { headers: entityHeader(entityID) },
-        Boolean(entityID)
+        {}
       ),
-    downloadFile: (entityID: string | undefined, fileID: string) =>
+    downloadFile: (entityID: string | null | undefined, fileID: string) =>
       requestFileDownloadWithBase(
         apiBase,
         tenantID,
         entityID,
         `/files/${encodeURIComponent(fileID)}/content`
       ),
+    fileContentURL,
     previewFile: (
-      entityID: string | undefined,
+      entityID: string | null | undefined,
       fileID: string,
       maxBytes: number,
       signal?: AbortSignal
@@ -1450,63 +1473,61 @@ export function createIamApi(
         { maxBytes, signal }
       ),
     renameFileEntry: (
-      entityID: string | undefined,
+      entityID: string | null | undefined,
       fileID: string,
       revision: number,
       name: string
     ) =>
-      request<FileEntryView>(
+      fileRequest<FileEntryView>(
+        entityID,
         `/files/${encodeURIComponent(fileID)}`,
         {
           method: "PATCH",
-          headers: entityHeader(entityID),
           body: JSON.stringify({ name, revision }),
-        },
-        Boolean(entityID)
+        }
       ),
     restoreFileEntry: (
-      entityID: string | undefined,
+      entityID: string | null | undefined,
       fileID: string,
       revision: number,
       name?: string
     ) =>
-      request<FileEntryView>(
+      fileRequest<FileEntryView>(
+        entityID,
         `/files/${encodeURIComponent(fileID)}`,
         {
           method: "PATCH",
-          headers: entityHeader(entityID),
           body: JSON.stringify({
             state: "active",
             revision,
             ...(name ? { name } : {}),
           }),
-        },
-        Boolean(entityID)
+        }
       ),
     trashFileEntry: (
-      entityID: string | undefined,
+      entityID: string | null | undefined,
       fileID: string,
       revision: number
     ) =>
-      request<FileTrashResult>(
+      fileRequest<FileTrashResult>(
+        entityID,
         `/files/${encodeURIComponent(fileID)}?${new URLSearchParams({ revision: String(revision) })}`,
-        { method: "DELETE", headers: entityHeader(entityID) },
-        Boolean(entityID)
+        { method: "DELETE" }
       ),
     createFileOperation: (
-      entityID: string | undefined,
+      entityID: string | null | undefined,
       input: {
         action: "copy" | "move"
         destination_id: string
         sources: string[]
       }
     ) =>
-      request<FileOperationResult>(
+      fileRequest<FileOperationResult>(
+        entityID,
         "/file-operations",
         {
           method: "POST",
           headers: {
-            ...entityHeader(entityID),
             "Idempotency-Key": crypto.randomUUID(),
           },
           body: JSON.stringify({
@@ -1515,8 +1536,7 @@ export function createIamApi(
             directory_policy: "rename",
             type_policy: "rename",
           }),
-        },
-        Boolean(entityID)
+        }
       ),
     capabilities: () =>
       request<AuthnCapabilities>("/authentication-capabilities", {}, false),
@@ -1536,12 +1556,10 @@ export function createIamApi(
         false
       ),
     session: () => request<Session>("/sessions/current", {}, false),
-    sessionForTenant: (tenant: string) =>
-      request<Session>(
-        "/sessions/current",
-        { headers: tenantHeader(tenant) },
-        false
-      ),
+    sessionForTenant: (tenant: string) => {
+      void tenant
+      return request<Session>("/sessions/current", {}, false)
+    },
     myTenants: () => request<Tenant[]>("/me/tenants", {}, false),
     personalTokenPermissions: (tenant: string) =>
       request<Permission[]>(
@@ -2443,10 +2461,22 @@ export function createIamApi(
       ),
     permissions: () => request<Permission[]>("/permission-catalog"),
     menus: () => request<Menu[]>("/menus"),
-    effectiveMenus: async () =>
-      (await request<EffectiveMenu[] | null>("/me/menus")) ?? [],
-    myPermissions: async () =>
-      (await request<string[] | null>("/me/permissions")) ?? [],
+    effectiveMenus: async (tenantID: string) =>
+      (await request<EffectiveMenu[] | null>(
+        tenantAPIPath(tenantID, "/me/menus"),
+        {},
+        false
+      )) ?? [],
+    myPermissions: async (tenantID?: string, entityID?: string) =>
+      (await request<string[] | null>(
+        tenantID && entityID
+          ? entityAPIPath(tenantID, entityID, "/me/permissions")
+          : tenantID
+          ? tenantAPIPath(tenantID, "/me/permissions")
+          : "/me/permissions",
+        {},
+        false
+      )) ?? [],
     createMenu: (body: MenuInput) =>
       request<Menu>("/menus", {
         method: "POST",

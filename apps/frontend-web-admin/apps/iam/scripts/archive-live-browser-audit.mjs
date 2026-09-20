@@ -19,12 +19,9 @@ const browser = await chromium.launch({
   headless: true,
 })
 const failures = []
-const headers = (tenant) => ({
-  Origin: baseURL,
-  ...(tenant ? { "X-Tenant-Id": tenant } : {}),
-})
+const headers = () => ({ Origin: baseURL })
 async function login(context, name) {
-  const response = await context.request.post("/api/authn/sessions", {
+  const response = await context.request.post("/api/sessions", {
     headers: headers(),
     data: { login_name: name, password, return_url: baseURL + "/" },
   })
@@ -128,9 +125,9 @@ try {
     page.on("pageerror", (error) => failures.push(error.message))
     page.on("request", (request) => {
       if (
-        new URL(request.url()).pathname.startsWith("/api/platform/iam/audit")
+        new URL(request.url()).pathname.startsWith("/api/platform/audit")
       ) {
-        assert.equal(request.headers()["x-tenant-id"], undefined)
+        assert(!new URL(request.url()).pathname.includes("/tenants/"))
       }
     })
     page.on("response", (response) => {
@@ -139,8 +136,8 @@ try {
           `${response.status()} ${new URL(response.url()).pathname}`
         )
     })
-    await page.goto("/iam/audit-governance")
-    const prefix = "/iam/audit"
+    await page.goto("/audit-governance")
+    const prefix = "/audit"
     let jobs = await get(context, prefix + "/archives", tenant)
     assert(jobs.length >= 1)
     let job = jobs[0]
@@ -156,7 +153,7 @@ try {
       const queued = page.waitForResponse(
         (response) =>
           response.request().method() === "POST" &&
-          new URL(response.url()).pathname === "/api/iam/audit/archives"
+          new URL(response.url()).pathname === "/api/audit/archives"
       )
       await page
         .getByRole("button", { name: "创建归档任务", exact: true })
@@ -187,7 +184,7 @@ try {
     await page
       .getByRole("heading", { name: "平台审计治理", exact: true })
       .waitFor()
-    jobs = await get(context, "/platform/iam/audit/archives")
+    jobs = await get(context, "/platform/audit/archives")
     const platformJob = jobs[0]
     if (platformJob.state === "failed") {
       await page
@@ -203,14 +200,14 @@ try {
     await inspect(
       page,
       context,
-      "/platform/iam/audit",
+      "/platform/audit",
       undefined,
       platformJob,
       name + "-platform"
     )
     if (name === "mobile") {
       const foreign = await context.request.get(
-        `/api/iam/audit/archives/${tenantArchive}/download`,
+        `/api/audit/archives/${tenantArchive}/download`,
         { headers: headers(tenant) }
       )
       assert.equal(
@@ -227,8 +224,8 @@ try {
   const member = await browser.newContext({ baseURL })
   await login(member, "requester-b")
   for (const [path, tenant] of [
-    ["/iam/audit/archive-status", "91002"],
-    ["/platform/iam/audit/archive-status", undefined],
+    ["/audit/archive-status", "91002"],
+    ["/platform/audit/archive-status", undefined],
   ]) {
     const denied = await member.request.get("/api" + path, {
       headers: headers(tenant),

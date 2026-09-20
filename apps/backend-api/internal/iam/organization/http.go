@@ -17,17 +17,17 @@ import (
 )
 
 type departmentResourceInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"department_id" maxLength:"128"`
 }
 
 type positionResourceInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"position_id" maxLength:"128"`
 }
 
 type groupResourceInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"group_id" maxLength:"128"`
 }
 
@@ -37,7 +37,7 @@ type groupResourceInput struct {
 // one, maximum two hundred, default fifty -- rather than the opt-in shape,
 // where omitting limit returns every row.
 type tenantPageSelector struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
@@ -45,51 +45,51 @@ type tenantPageSelector struct {
 // tenantResourcePageInput is tenantPageSelector for the membership listings,
 // which also name the group or position whose members are being read.
 type positionResourcePageInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"position_id" maxLength:"128"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type groupResourcePageInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"group_id" maxLength:"128"`
 	Offset   int    `query:"offset" minimum:"0" default:"0"`
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
 type positionMemberResourceInput struct {
-	TenantID    string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID    string `path:"tenant_id" maxLength:"128"`
 	ID          string `path:"position_id" maxLength:"128"`
 	PrincipalID string `path:"principal_id" maxLength:"128"`
 }
 
 type groupMemberResourceInput struct {
-	TenantID    string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID    string `path:"tenant_id" maxLength:"128"`
 	ID          string `path:"group_id" maxLength:"128"`
 	PrincipalID string `path:"principal_id" maxLength:"128"`
 }
 
 type deleteDepartmentInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"department_id" maxLength:"128"`
 	Version  int64  `query:"version" minimum:"1"`
 }
 
 type deletePositionInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"position_id" maxLength:"128"`
 	Version  int64  `query:"version" minimum:"1"`
 }
 
 type deleteGroupInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"group_id" maxLength:"128"`
 	Version  int64  `query:"version" minimum:"1"`
 }
 
 type createDepartmentInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Body     struct {
 		EntityID  string `json:"entity_id" minLength:"1" maxLength:"128"`
 		ParentID  string `json:"parent_id,omitempty" maxLength:"128"`
@@ -100,7 +100,7 @@ type createDepartmentInput struct {
 }
 
 type updateDepartmentInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"department_id" maxLength:"128"`
 	Body     struct {
 		ParentID  *string `json:"parent_id,omitempty" maxLength:"128"`
@@ -112,7 +112,7 @@ type updateDepartmentInput struct {
 }
 
 type createPositionInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Body     struct {
 		Code      string `json:"code" minLength:"1" maxLength:"64" pattern:"^[A-Za-z][A-Za-z0-9._-]*$"`
 		Name      string `json:"name" minLength:"1" maxLength:"128"`
@@ -122,7 +122,7 @@ type createPositionInput struct {
 }
 
 type updatePositionInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"position_id" maxLength:"128"`
 	Body     struct {
 		Code      *string `json:"code,omitempty" minLength:"1" maxLength:"64" pattern:"^[A-Za-z][A-Za-z0-9._-]*$"`
@@ -134,7 +134,7 @@ type updatePositionInput struct {
 }
 
 type positionMembershipInput struct {
-	TenantID    string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID    string `path:"tenant_id" maxLength:"128"`
 	ID          string `path:"position_id" maxLength:"128"`
 	PrincipalID string `path:"principal_id" maxLength:"128"`
 	Body        struct {
@@ -144,7 +144,7 @@ type positionMembershipInput struct {
 }
 
 type groupMembershipInput struct {
-	TenantID    string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID    string `path:"tenant_id" maxLength:"128"`
 	ID          string `path:"group_id" maxLength:"128"`
 	PrincipalID string `path:"principal_id" maxLength:"128"`
 	Body        struct {
@@ -154,7 +154,7 @@ type groupMembershipInput struct {
 }
 
 type createGroupInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Body     struct {
 		Name        string         `json:"name" minLength:"1" maxLength:"128"`
 		Type        string         `json:"type,omitempty" enum:"static,dynamic" default:"static"`
@@ -166,7 +166,7 @@ type createGroupInput struct {
 }
 
 type updateGroupInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"group_id" maxLength:"128"`
 	Body     struct {
 		Name        *string         `json:"name,omitempty" minLength:"1" maxLength:"128"`
@@ -216,7 +216,7 @@ type deleteTenantInput struct {
 }
 
 type createInvitationInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Body     struct {
 		Email          string   `json:"email" format:"email" maxLength:"320"`
 		DepartmentID   string   `json:"department_id,omitempty" maxLength:"128"`
@@ -226,7 +226,7 @@ type createInvitationInput struct {
 }
 
 type resendInvitationInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"invitation_id" maxLength:"128"`
 	Body     struct {
 		ExpiresInHours int `json:"expires_in_hours,omitempty" minimum:"1" maximum:"720" default:"72"`
@@ -234,7 +234,7 @@ type resendInvitationInput struct {
 }
 
 type invitationResourceInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"invitation_id" maxLength:"128"`
 }
 

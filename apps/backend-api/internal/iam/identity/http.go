@@ -37,7 +37,7 @@ func principalRef(tenantValue, idValue string) (guid.ID, guid.ID, error) {
 }
 
 type principalListInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Search   string `query:"search" maxLength:"200"`
 	Limit    int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
 	Offset   int    `query:"offset" default:"0" minimum:"0"`
@@ -49,13 +49,13 @@ type principalListData struct {
 }
 
 type principalIDInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"principal_id" maxLength:"64"`
 }
 
 type principalCreateInput struct {
 	RawBody  []byte
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Body     struct {
 		LoginName   string `json:"login_name" minLength:"1" maxLength:"200"`
 		Password    string `json:"password" minLength:"12" maxLength:"1024"`
@@ -66,7 +66,7 @@ type principalCreateInput struct {
 
 type principalUpdateInput struct {
 	RawBody  []byte
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"principal_id" maxLength:"64"`
 	Body     struct {
 		DisplayName *string `json:"display_name,omitempty" minLength:"1" maxLength:"128"`
@@ -75,7 +75,7 @@ type principalUpdateInput struct {
 }
 
 type serviceAccountListInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Search   string `query:"search" maxLength:"200"`
 	Limit    int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
 	Offset   int    `query:"offset" default:"0" minimum:"0"`
@@ -87,12 +87,12 @@ type serviceAccountListData struct {
 }
 
 type serviceAccountIDInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"service_account_id" maxLength:"64"`
 }
 
 type serviceAccountCreateInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Body     struct {
 		LoginName   string     `json:"login_name" minLength:"1" maxLength:"200"`
 		DisplayName string     `json:"display_name,omitempty" maxLength:"128"`
@@ -102,7 +102,7 @@ type serviceAccountCreateInput struct {
 }
 
 type serviceAccountReplaceInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"service_account_id" maxLength:"64"`
 	Body     struct {
 		DisplayName string     `json:"display_name" minLength:"1" maxLength:"128"`
@@ -114,13 +114,13 @@ type serviceAccountReplaceInput struct {
 }
 
 type serviceAccountDeleteInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"service_account_id" maxLength:"64"`
 	Version  int64  `query:"version" minimum:"1"`
 }
 
 type serviceAccountCredentialCreateInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	ID       string `path:"service_account_id" maxLength:"64"`
 	Body     struct {
 		Name      string     `json:"name" minLength:"1" maxLength:"128"`
@@ -130,7 +130,7 @@ type serviceAccountCredentialCreateInput struct {
 }
 
 type serviceAccountCredentialIDInput struct {
-	TenantID     string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID     string `path:"tenant_id" maxLength:"128"`
 	ID           string `path:"service_account_id" maxLength:"64"`
 	CredentialID string `path:"credential_id" maxLength:"64"`
 }

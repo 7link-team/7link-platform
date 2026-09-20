@@ -153,7 +153,7 @@ func TestTenantRoutePublishesVerifiedBoundaryWithoutMutatingToken(t *testing.T) 
 		} else {
 			authz.Register(registrar, api, op, authz.Guard{Resource: "store", Verb: "view"}, handler)
 		}
-		response := api.Get("/tenant-context", "X-Tenant-Id: 11", "X-Entity-Id: 77")
+		response := api.Get("/tenants/11/tenant-context")
 		require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 		assert.Equal(t, guid.ID(99), original.TenantID)
 		assert.Equal(t, guid.ID(88), original.EntityID)
@@ -178,12 +178,15 @@ func TestRegistrarDeclarationsCoverEveryRouteClass(t *testing.T) {
 	})
 
 	require.NoError(t, authz.ValidateOperations(api, registry))
-	assert.Equal(t, "store_view", api.OpenAPI().Paths["/stores"].Get.Extensions[authz.GuardExtensionKey])
-	assert.True(t, authz.IsTenantMemberOperation(api.OpenAPI().Paths["/member"].Get))
+	tenantStores := api.OpenAPI().Paths["/tenants/{tenant_id}/stores"].Get
+	entityWorkflows := api.OpenAPI().Paths["/tenants/{tenant_id}/entities/{entity_id}/workflows"].Get
+	entityStream := api.OpenAPI().Paths["/tenants/{tenant_id}/entities/{entity_id}/workflow-stream"].Get
+	assert.Equal(t, "store_view", tenantStores.Extensions[authz.GuardExtensionKey])
+	assert.True(t, authz.IsTenantMemberOperation(api.OpenAPI().Paths["/tenants/{tenant_id}/member"].Get))
 	assert.True(t, authz.IsAuthenticatedOperation(api.OpenAPI().Paths["/me"].Get))
 	assert.True(t, authz.IsPlatformOperation(api.OpenAPI().Paths["/tenants"].Get))
 	assert.True(t, authz.IsPublicOperation(api.OpenAPI().Paths["/public"].Get))
-	guard, guarded := authz.OperationGuard(api.OpenAPI().Paths["/stores"].Get)
+	guard, guarded := authz.OperationGuard(tenantStores)
 	assert.True(t, guarded)
 	assert.Equal(t, "store_view", guard)
 	assert.False(t, authz.IsTenantMemberOperation(nil))
@@ -195,15 +198,14 @@ func TestRegistrarDeclarationsCoverEveryRouteClass(t *testing.T) {
 	assert.Len(t, authz.UserSecurity(), 2)
 	assert.Len(t, authz.BearerSecurity(), 1)
 	assert.Len(t, authz.ClientSecurity(), 1)
-	assert.Equal(t, http.StatusNoContent, api.Get("/workflow-stream").Code)
+	assert.Equal(t, http.StatusNoContent, api.Get("/tenants/11/entities/21/workflow-stream").Code)
+	assert.Equal(t, http.StatusNotFound, api.Get("/workflow-stream").Code)
 
-	assertSelectorSchema(t, api.OpenAPI().Paths["/stores"].Get, authz.TenantHeader, "header")
-	assertSelectorSchema(t, api.OpenAPI().Paths["/workflows"].Get, authz.TenantHeader, "header")
-	assertSelectorSchema(t, api.OpenAPI().Paths["/workflows"].Get, authz.EntityHeader, "header")
-	assertSelectorSchema(t, api.OpenAPI().Paths["/workflow-stream"].Get, authz.TenantQuery, "query")
-	assertSelectorSchema(t, api.OpenAPI().Paths["/workflow-stream"].Get, authz.EntityQuery, "query")
-	assert.False(t, hasSelector(api.OpenAPI().Paths["/workflow-stream"].Get, authz.TenantHeader, "header"))
-	assert.False(t, hasSelector(api.OpenAPI().Paths["/workflow-stream"].Get, authz.EntityHeader, "header"))
+	assertSelectorSchema(t, tenantStores, authz.TenantPath, "path")
+	assertSelectorSchema(t, entityWorkflows, authz.TenantPath, "path")
+	assertSelectorSchema(t, entityWorkflows, authz.EntityPath, "path")
+	assertSelectorSchema(t, entityStream, authz.TenantPath, "path")
+	assertSelectorSchema(t, entityStream, authz.EntityPath, "path")
 }
 
 func TestRegistrarRejectsInvalidConstructionAndDeclarations(t *testing.T) {
@@ -347,7 +349,7 @@ func TestTenantAuthorizationMiddleware(t *testing.T) {
 				assert.Equal(t, guid.ID(31), claims.PrincipalID)
 				return &routeOutput{Body: "ok"}, nil
 			})
-			response := api.Get("/stores", authz.TenantHeader+": "+test.tenant)
+			response := api.Get("/tenants/" + test.tenant + "/stores")
 			assert.Equal(t, test.want, response.Code)
 		})
 	}
@@ -358,7 +360,7 @@ func TestTenantMemberAndAuthenticatedMiddleware(t *testing.T) {
 	registrar := authz.NewRegistrar(testRegistry(), validVerifier(), &fakeChecker{allowed: true}, &fakeMembership{active: true})
 	authz.RegisterTenantMember(registrar, api, huma.Operation{OperationID: "member", Method: http.MethodGet, Path: "/member"}, okRoute)
 	authz.RegisterAuthenticated(registrar, api, huma.Operation{OperationID: "me", Method: http.MethodGet, Path: "/me"}, okRoute)
-	assert.Equal(t, http.StatusOK, api.Get("/member", authz.TenantHeader+": 11").Code)
+	assert.Equal(t, http.StatusOK, api.Get("/tenants/11/member").Code)
 	assert.Equal(t, http.StatusOK, api.Get("/me").Code)
 
 	_, rejected := humatest.New(t)
@@ -393,8 +395,8 @@ func TestPermissionCheckerReceivesExactScope(t *testing.T) {
 	authz.RegisterEntity(registrar, api, huma.Operation{OperationID: "workflow", Method: http.MethodGet, Path: "/workflow"}, authz.Guard{Resource: "workflow", Verb: "view"}, okRoute)
 	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "tenants", Method: http.MethodGet, Path: "/tenants"}, authz.Guard{Resource: "tenant", Verb: "view"}, okRoute)
 
-	assert.Equal(t, http.StatusOK, api.Get("/store", authz.TenantHeader+": 11").Code)
-	assert.Equal(t, http.StatusOK, api.Get("/workflow", authz.TenantHeader+": 11", authz.EntityHeader+": 21").Code)
+	assert.Equal(t, http.StatusOK, api.Get("/tenants/11/store").Code)
+	assert.Equal(t, http.StatusOK, api.Get("/tenants/11/entities/21/workflow").Code)
 	assert.Equal(t, http.StatusOK, api.Get("/tenants").Code)
 	assert.Equal(t, []tenantPermissionCall{{tenantID: 11, permission: "store_view", subject: 31}}, checker.tenantCalls)
 	assert.Equal(t, []entityPermissionCall{{tenantID: 11, entityID: 21, permission: "workflow_view", subject: 31}}, checker.entityCalls)
@@ -486,8 +488,8 @@ func TestEntityAndPlatformAuthorizationMiddleware(t *testing.T) {
 			assert.Equal(t, guid.ID(21), claims.EntityID)
 			return &routeOutput{Body: "ok"}, nil
 		})
-		assert.Equal(t, http.StatusOK, api.Get("/workflow", authz.TenantHeader+": 11", authz.EntityHeader+": 21").Code)
-		assert.Equal(t, http.StatusForbidden, api.Get("/workflow", authz.TenantHeader+": bad", authz.EntityHeader+": 21").Code)
+		assert.Equal(t, http.StatusOK, api.Get("/tenants/11/entities/21/workflow").Code)
+		assert.Equal(t, http.StatusForbidden, api.Get("/tenants/bad/entities/21/workflow").Code)
 	})
 
 	t.Run("entity subject fallback and adapter", func(t *testing.T) {
@@ -497,7 +499,7 @@ func TestEntityAndPlatformAuthorizationMiddleware(t *testing.T) {
 		authz.RegisterEntityAdapter(registrar, api, huma.Operation{OperationID: "stream", Method: http.MethodGet, Path: "/stream"}, authz.Guard{Resource: "workflow", Verb: "view"}, func(ctx huma.Context) {
 			ctx.SetStatus(http.StatusNoContent)
 		})
-		assert.Equal(t, http.StatusNoContent, api.Get("/stream?tenant_id=11&entity_id=21").Code)
+		assert.Equal(t, http.StatusNoContent, api.Get("/tenants/11/entities/21/stream").Code)
 	})
 
 	t.Run("platform", func(t *testing.T) {
@@ -529,35 +531,31 @@ func TestEntityOrAuthenticatedAuthorizationKeepsContextsDistinct(t *testing.T) {
 		return &routeOutput{Body: "ok"}, nil
 	})
 
-	require.Equal(t, http.StatusOK, api.Get("/contextual-files").Code)
+	require.Equal(t, http.StatusOK, api.Get("/me/contextual-files").Code)
 	require.Equal(t, guid.ID(31), seen[0].PrincipalID)
 	require.Zero(t, seen[0].TenantID)
 	require.Zero(t, seen[0].EntityID)
 	require.Empty(t, checker.dataCalls)
 
-	require.Equal(t, http.StatusOK, api.Get("/contextual-files", authz.TenantHeader+": 11", authz.EntityHeader+": 21").Code)
+	require.Equal(t, http.StatusOK, api.Get("/tenants/11/entities/21/contextual-files").Code)
 	require.Equal(t, guid.ID(11), seen[1].TenantID)
 	require.Equal(t, guid.ID(21), seen[1].EntityID)
 	require.Equal(t, []entityPermissionCall{{tenantID: 11, entityID: 21, permission: "file_view", subject: 31}}, checker.dataCalls)
 
-	for _, headers := range [][]any{{authz.TenantHeader + ": 11"}, {authz.EntityHeader + ": 21"}} {
-		response := api.Get("/contextual-files", headers...)
-		require.Equal(t, http.StatusForbidden, response.Code)
-		require.Contains(t, response.Body.String(), "incomplete_resource_context")
-	}
-	require.Len(t, seen, 2, "partial selectors must not enter the handler")
+	require.Equal(t, http.StatusNotFound, api.Get("/contextual-files").Code)
+	require.Len(t, seen, 2)
 
-	operation := api.OpenAPI().Paths["/contextual-files"].Get
+	operation := api.OpenAPI().Paths["/tenants/{tenant_id}/entities/{entity_id}/contextual-files"].Get
 	require.Equal(t, "file_view", operation.Extensions[authz.GuardExtensionKey])
-	for _, name := range []string{authz.TenantHeader, authz.EntityHeader} {
+	for _, name := range []string{authz.TenantPath, authz.EntityPath} {
 		var found *huma.Param
 		for _, parameter := range operation.Parameters {
-			if parameter.Name == name && parameter.In == "header" {
+			if parameter.Name == name && parameter.In == "path" {
 				found = parameter
 			}
 		}
 		require.NotNil(t, found)
-		require.False(t, found.Required)
+		require.True(t, found.Required)
 	}
 }
 
@@ -586,7 +584,7 @@ func TestEntityAuthorizationFailurePaths(t *testing.T) {
 			_, api := humatest.New(t)
 			registrar := authz.NewRegistrar(testRegistry(), test.verifier, test.checker, test.membership)
 			authz.RegisterEntity(registrar, api, huma.Operation{OperationID: "entity", Method: http.MethodGet, Path: "/entity"}, authz.Guard{Resource: "workflow", Verb: "view"}, okRoute)
-			response := api.Get("/entity", authz.TenantHeader+": "+test.tenant, authz.EntityHeader+": "+test.entity)
+			response := api.Get("/tenants/" + test.tenant + "/entities/" + test.entity + "/entity")
 			assert.Equal(t, test.want, response.Code)
 		})
 	}
@@ -626,12 +624,13 @@ func TestDataFilteredEntityAuthorization(t *testing.T) {
 				assert.Equal(t, guid.ID(31), claims.PrincipalID)
 				return &routeOutput{Body: "ok"}, nil
 			})
-			assert.Equal(t, test.want, api.Get("/tasks", authz.TenantHeader+": 11", authz.EntityHeader+": 21").Code)
+			assert.Equal(t, test.want, api.Get("/tenants/11/entities/21/tasks").Code)
 			assert.Equal(t, []entityPermissionCall{{tenantID: 11, entityID: 21, permission: "task_view", subject: 31}}, checker.dataCalls)
 			assert.Empty(t, checker.entityCalls, "row-scoped authorization must not require a whole-entity grant")
 			assert.Empty(t, checker.tenantCalls)
-			assert.Equal(t, true, api.OpenAPI().Paths["/tasks"].Get.Extensions[authz.DataFilterExtensionKey])
-			assertSelectorSchema(t, api.OpenAPI().Paths["/tasks"].Get, authz.EntityHeader, "header")
+			operation := api.OpenAPI().Paths["/tenants/{tenant_id}/entities/{entity_id}/tasks"].Get
+			assert.Equal(t, true, operation.Extensions[authz.DataFilterExtensionKey])
+			assertSelectorSchema(t, operation, authz.EntityPath, "path")
 			if test.want != http.StatusOK {
 				assert.Zero(t, calls)
 			} else {
@@ -644,7 +643,7 @@ func TestDataFilteredEntityAuthorization(t *testing.T) {
 			if test.err != nil {
 				wantWhole = http.StatusServiceUnavailable
 			}
-			assert.Equal(t, wantWhole, api.Get("/whole", authz.TenantHeader+": 11", authz.EntityHeader+": 21").Code)
+			assert.Equal(t, wantWhole, api.Get("/tenants/11/entities/21/whole").Code)
 			assert.Len(t, checker.entityCalls, 1, "ordinary entity routes retain whole-entity semantics")
 			assert.Len(t, checker.dataCalls, 1)
 		})
@@ -658,15 +657,13 @@ func TestDataFilteredRegistrationRejectsUnsafeDeclarations(t *testing.T) {
 		authz.Action{Resource: "role", Verb: "view", Scope: "tenant"},
 	)
 	guard := authz.Guard{Resource: "task", Verb: "view", FilterData: true}
-	for _, name := range []string{"tenant", "platform", "adapter", "non-data", "no checker capability"} {
+	for _, name := range []string{"platform", "adapter", "non-data", "no checker capability"} {
 		t.Run(name, func(t *testing.T) {
 			_, api := humatest.New(t)
 			registrar := authz.NewDeclarationOnlyRegistrar(registry)
 			op := huma.Operation{OperationID: "tasks", Method: http.MethodGet, Path: "/tasks"}
 			assert.Panics(t, func() {
 				switch name {
-				case "tenant":
-					authz.Register(registrar, api, op, guard, okRoute)
 				case "platform":
 					authz.RegisterPlatform(registrar, api, op, guard, okRoute)
 				case "adapter":
@@ -681,8 +678,10 @@ func TestDataFilteredRegistrationRejectsUnsafeDeclarations(t *testing.T) {
 		})
 	}
 	_, api := humatest.New(t)
+	authz.Register(authz.NewDeclarationOnlyRegistrar(registry), api, huma.Operation{OperationID: "tenant-tasks", Method: http.MethodGet, Path: "/tenant-tasks"}, guard, okRoute)
+	assert.Equal(t, true, api.OpenAPI().Paths["/tenants/{tenant_id}/tenant-tasks"].Get.Extensions[authz.DataFilterExtensionKey])
 	authz.RegisterEntity(authz.NewDeclarationOnlyRegistrar(registry), api, huma.Operation{OperationID: "tasks", Method: http.MethodGet, Path: "/tasks"}, guard, okRoute)
-	assert.Equal(t, true, api.OpenAPI().Paths["/tasks"].Get.Extensions[authz.DataFilterExtensionKey])
+	assert.Equal(t, true, api.OpenAPI().Paths["/tenants/{tenant_id}/entities/{entity_id}/tasks"].Get.Extensions[authz.DataFilterExtensionKey])
 }
 
 func TestPlatformAuthorizationFailurePaths(t *testing.T) {

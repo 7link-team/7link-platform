@@ -72,16 +72,9 @@ try {
     )
     await page.locator('button[type="submit"]').click()
     await page.waitForURL((url) => url.pathname !== "/login")
-    await page.evaluate((tenantID) => {
-      localStorage.setItem("iam.tenant", tenantID)
-    }, fixture.tenantID)
-
-    const response = await context.request.get("/api/files", {
-      headers: {
-        Origin: webURL,
-        "X-Tenant-Id": fixture.tenantID,
-        "X-Entity-Id": fixture.entityID,
-      },
+    const entityBase = `/tenants/${encodeURIComponent(fixture.tenantID)}/entities/${encodeURIComponent(fixture.entityID)}`
+    const response = await context.request.get(`/api${entityBase}/files`, {
+      headers: { Origin: webURL },
     })
     assert.equal(response.status(), 200, `${account.id} file roots request`)
     const roots = (await response.json()).data.items
@@ -99,19 +92,27 @@ try {
 
     consoleErrors.length = 0
     failedResponses.length = 0
-    await page.goto("/")
+    await page.goto(`/tenants/${encodeURIComponent(fixture.tenantID)}`)
     const tenantFilesLink = page
       .getByRole("link", { name: "File management", exact: true })
       .first()
-    await tenantFilesLink.waitFor()
-    assert.equal(await tenantFilesLink.getAttribute("href"), "/files")
-    await page.goto("/files")
-    await page.getByRole("region", { name: "Files" }).waitFor()
-    await page.getByText("Loading files…", { exact: true }).waitFor({
-      state: "hidden",
-    })
+    const tenantWide = ["super-admin", "system-admin", "tenant-admin"].includes(
+      account.id
+    )
+    if (tenantWide) {
+      await tenantFilesLink.waitFor()
+      assert.equal(
+        await tenantFilesLink.getAttribute("href"),
+        `/tenants/${fixture.tenantID}/files`
+      )
+      await page.goto(`/tenants/${fixture.tenantID}/files`)
+      await page.getByRole("region", { name: "Files" }).waitFor()
+      await page.getByText("Loading files…", { exact: true }).waitFor({
+        state: "hidden",
+      })
+    } else assert.equal(await tenantFilesLink.count(), 0)
 
-    await page.goto(`/files?entity_id=${encodeURIComponent(fixture.entityID)}`)
+    await page.goto(`${entityBase}/files`)
     try {
       await page.getByRole("region", { name: "Files" }).waitFor()
     } catch (cause) {
@@ -131,7 +132,7 @@ try {
       .first()
     assert.equal(
       await entityFilesLink.getAttribute("href"),
-      `/files?entity_id=${fixture.entityID}`
+      `${entityBase}/files`
     )
     for (const root of roots) {
       const label =
@@ -150,7 +151,10 @@ try {
     const unexpectedResponses = failedResponses.filter((failure) => {
       if (!failure.startsWith("403 ")) return true
       const pathname = new URL(failure.slice(4)).pathname
-      return pathname !== "/api/field-catalog" && pathname !== "/api/tenants"
+      return (
+        pathname !== `/api/tenants/${fixture.tenantID}/field-catalog` &&
+        pathname !== "/api/tenants"
+      )
     })
     const unexpectedConsoleErrors = consoleErrors.filter(
       (message) => !message.startsWith("Failed to load resource:")

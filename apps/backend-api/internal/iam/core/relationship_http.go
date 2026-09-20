@@ -66,7 +66,7 @@ func (condition *policyCondition) UnmarshalJSON(data []byte) error {
 // with the tenant's entities and business resources, so omitting limit must not
 // mean the whole table.
 type listRelationshipsInput struct {
-	TenantID     string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID     string `path:"tenant_id" maxLength:"128"`
 	EntityID     string `query:"entity_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	ResourceType string `query:"resource_type" maxLength:"64"`
 	ResourceID   string `query:"resource_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
@@ -75,12 +75,12 @@ type listRelationshipsInput struct {
 }
 
 type putRelationshipInput struct {
-	TenantID string             `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string             `path:"tenant_id" maxLength:"128"`
 	Body     relationshipFields `json:"body"`
 }
 
 type deleteRelationshipInput struct {
-	TenantID        string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID        string `path:"tenant_id" maxLength:"128"`
 	EntityID        string `query:"entity_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	SubjectType     string `query:"subject_type" enum:"principal,group,position,entity" required:"true"`
 	SubjectID       string `query:"subject_id" pattern:"^[1-9][0-9]*$" maxLength:"19" required:"true"`
@@ -91,7 +91,7 @@ type deleteRelationshipInput struct {
 }
 
 type authorizationCheckInput struct {
-	TenantID string `header:"X-Tenant-Id" maxLength:"128"`
+	TenantID string `path:"tenant_id" maxLength:"128"`
 	Body     struct {
 		EntityID       string `json:"entity_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 		ResourceType   string `json:"resource_type,omitempty" maxLength:"64"`

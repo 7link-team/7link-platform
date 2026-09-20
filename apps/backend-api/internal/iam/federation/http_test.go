@@ -48,9 +48,14 @@ func newManagementAPI(t *testing.T, env *federationEnvironment) (*http.Client, *
 
 func adminRequest(t *testing.T, client *http.Client, method, target, tenantID string, body []byte, headers map[string]string) *http.Response {
 	t.Helper()
+	if tenantID != "" {
+		parsed, err := url.Parse(target)
+		require.NoError(t, err)
+		parsed.Path = "/tenants/" + tenantID + parsed.Path
+		target = parsed.String()
+	}
 	request, err := http.NewRequestWithContext(t.Context(), method, target, bytes.NewReader(body))
 	require.NoError(t, err)
-	request.Header.Set(authz.TenantHeader, tenantID)
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}

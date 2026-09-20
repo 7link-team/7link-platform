@@ -32,7 +32,7 @@ try {
       uploadThroughput: 1024 * 1024,
       connectionType: "cellular3g",
     })
-    await page.goto("/iam/tenants")
+    await page.goto("/tenants")
     await page.locator("#login-name").waitFor()
     assert.equal(new URL(page.url()).pathname, "/login")
     assert.deepEqual(
@@ -48,7 +48,7 @@ try {
     await page.getByRole("heading", { name: "租户管理", exact: true }).waitFor()
     assert.equal(
       new URL(page.url()).pathname,
-      "/iam/tenants",
+      "/tenants",
       "login returns to the protected deep link"
     )
     assert.deepEqual(errors, [])

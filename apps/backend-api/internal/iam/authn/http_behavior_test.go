@@ -150,14 +150,10 @@ func TestSessionHTTPTenantResolutionAndImmediateRevocation(t *testing.T) {
 	}, "Origin: https://app.example")
 	require.Equal(t, http.StatusOK, login.Code, login.Body.String())
 	cookie := "Cookie: " + strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
-	check := func(tenant string, code int, expected string) {
+	check := func(code int, expected string) {
 		t.Helper()
 		for _, path := range []string{"/me", "/sessions/current"} {
-			headers := []any{cookie}
-			if tenant != "" {
-				headers = append(headers, "X-Tenant-Id: "+tenant)
-			}
-			response := api.Get(path, headers...)
+			response := api.Get(path, cookie)
 			require.Equal(t, code, response.Code, response.Body.String())
 			if code == http.StatusOK {
 				var body struct {
@@ -169,32 +165,22 @@ func TestSessionHTTPTenantResolutionAndImmediateRevocation(t *testing.T) {
 			}
 		}
 	}
-	check("", http.StatusOK, "")
+	check(http.StatusOK, "")
 	require.NoError(t, db.Exec("INSERT INTO iam_tenants (id,status) VALUES (101,'active'),(102,'active'),(103,'disabled')").Error)
 	require.NoError(t, db.Exec("INSERT INTO iam_tenant_members (tenant_id,principal_id,status) VALUES (101,?,'active'),(103,?,'active')", principalID, principalID).Error)
-	check("", http.StatusOK, "101")
-	check("101", http.StatusOK, "101")
-	check("102", http.StatusForbidden, "")
-	check("103", http.StatusForbidden, "")
-	check("999", http.StatusForbidden, "")
-	check("invalid", http.StatusUnprocessableEntity, "")
-	check("0", http.StatusUnprocessableEntity, "")
+	check(http.StatusOK, "101")
 	require.NoError(t, db.Exec("INSERT INTO iam_tenant_members (tenant_id,principal_id,status) VALUES (102,?,'active')", principalID).Error)
-	check("", http.StatusOK, "")
-	check("102", http.StatusOK, "102")
-	check("", http.StatusOK, "") // An explicit request never changes another tab's session.
+	check(http.StatusOK, "")
 	require.NoError(t, db.Exec("UPDATE iam_tenant_members SET status = 'disabled' WHERE tenant_id = 102").Error)
-	check("102", http.StatusForbidden, "")
-	check("", http.StatusOK, "101")
+	check(http.StatusOK, "101")
 	require.NoError(t, db.Exec("UPDATE iam_tenants SET status = 'disabled' WHERE id = 101").Error)
-	check("101", http.StatusForbidden, "")
-	check("", http.StatusOK, "")
+	check(http.StatusOK, "")
 	web.memberTenant = nil
-	check("", http.StatusServiceUnavailable, "")
+	check(http.StatusServiceUnavailable, "")
 	web.memberTenant = func(context.Context, guid.ID, guid.ID) (guid.ID, error) {
 		return 0, errors.New("membership store unavailable")
 	}
-	check("101", http.StatusServiceUnavailable, "")
+	check(http.StatusServiceUnavailable, "")
 }
 
 func TestSessionTenantCannotRewriteSignedTokenOrMutateVerifierClaims(t *testing.T) {
@@ -202,11 +188,9 @@ func TestSessionTenantCannotRewriteSignedTokenOrMutateVerifierClaims(t *testing.
 	web := &Service{memberTenant: func(context.Context, guid.ID, guid.ID) (guid.ID, error) {
 		return 102, nil
 	}}
-	resolved, err := sessionTenant(t.Context(), web, &meInput{Authorization: "Bearer token", TenantID: "101"}, claims)
+	resolved, err := sessionTenant(t.Context(), web, &meInput{Authorization: "Bearer token"}, claims)
 	require.NoError(t, err)
 	assert.Same(t, claims, resolved)
-	_, err = sessionTenant(t.Context(), web, &meInput{Authorization: "Bearer token", TenantID: "102"}, claims)
-	require.Error(t, err)
 	resolved, err = sessionTenant(t.Context(), web, &meInput{}, claims)
 	require.NoError(t, err)
 	assert.Equal(t, "102", resolved.OrganizationID)

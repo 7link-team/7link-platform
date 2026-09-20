@@ -102,39 +102,39 @@ func TestFieldPolicyLifecycleRevisionIsolationAndFailClosed(t *testing.T) {
 
 func TestFieldPolicyHTTPManagementAndErrors(t *testing.T) {
 	h := newHTTPIAMHarness(t, false)
-	header := tenantHeader(1)
+	tenant := tenantPathPrefix(1)
 	path := "/field-policies/todo/description"
 	policy := authz.FieldPolicy{Read: authz.FieldAccess{Default: "deny"}, Write: authz.FieldAccess{Default: "deny"}, Mask: "omit"}
 	for _, route := range []string{"/field-catalog", "/field-policies", "/field-policies?resource=todo", "/effective-fields?resource=todo&entity_id=1"} {
-		response := h.api.Get(route, header)
+		response := h.api.Get(tenant + route)
 		require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	}
-	response := h.api.Put(path, header, map[string]any{"version": 0, "policy": policy})
+	response := h.api.Put(tenant+path, map[string]any{"version": 0, "policy": policy})
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	saved := decodeEnvelope[ManagedFieldPolicy](t, response).Data
 	assert.Positive(t, saved.Version)
-	response = h.api.Get("/field-policies?resource=todo", header)
+	response = h.api.Get(tenant + "/field-policies?resource=todo")
 	require.Equal(t, http.StatusOK, response.Code)
 	assert.Contains(t, response.Body.String(), `"default":"deny"`)
-	response = h.api.Put(path, header, map[string]any{"version": 0, "policy": policy})
+	response = h.api.Put(tenant+path, map[string]any{"version": 0, "policy": policy})
 	assert.Equal(t, http.StatusConflict, response.Code)
-	response = h.api.Delete(path+"?version="+strconv.FormatInt(saved.Version, 10), header)
+	response = h.api.Delete(tenant + path + "?version=" + strconv.FormatInt(saved.Version, 10))
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
-	response = h.api.Delete(path+"?version="+strconv.FormatInt(saved.Version, 10), header)
+	response = h.api.Delete(tenant + path + "?version=" + strconv.FormatInt(saved.Version, 10))
 	assert.Equal(t, http.StatusConflict, response.Code)
 	for _, route := range []string{"/field-policies?resource=unknown", "/effective-fields?resource=todo&entity_id=bad"} {
-		assert.Equal(t, http.StatusUnprocessableEntity, h.api.Get(route, header).Code)
+		assert.Equal(t, http.StatusUnprocessableEntity, h.api.Get(tenant+route).Code)
 	}
 	for _, name := range []string{"unknown", "id"} {
-		response = h.api.Put("/field-policies/todo/"+name, header, map[string]any{"version": 0, "policy": policy})
+		response = h.api.Put(tenant+"/field-policies/todo/"+name, map[string]any{"version": 0, "policy": policy})
 		assert.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
-		assert.Equal(t, http.StatusUnprocessableEntity, h.api.Delete("/field-policies/todo/"+name+"?version=1", header).Code)
+		assert.Equal(t, http.StatusUnprocessableEntity, h.api.Delete(tenant+"/field-policies/todo/"+name+"?version=1").Code)
 	}
 	h.module.service.checker = httpFailingAuthorizationEvaluator{err: ErrUnavailable}
-	assert.Equal(t, http.StatusServiceUnavailable, h.api.Get("/field-policies", header).Code)
-	assert.Equal(t, http.StatusServiceUnavailable, h.api.Get("/effective-fields?resource=todo", header).Code)
-	assert.Equal(t, http.StatusServiceUnavailable, h.api.Put(path, header, map[string]any{"version": 0, "policy": policy}).Code)
-	assert.Equal(t, http.StatusServiceUnavailable, h.api.Delete(path+"?version=1", header).Code)
+	assert.Equal(t, http.StatusServiceUnavailable, h.api.Get(tenant+"/field-policies").Code)
+	assert.Equal(t, http.StatusServiceUnavailable, h.api.Get(tenant+"/effective-fields?resource=todo").Code)
+	assert.Equal(t, http.StatusServiceUnavailable, h.api.Put(tenant+path, map[string]any{"version": 0, "policy": policy}).Code)
+	assert.Equal(t, http.StatusServiceUnavailable, h.api.Delete(tenant+path+"?version=1").Code)
 }
 
 func TestFieldPolicyAuditFailureRollsBackAndConcurrentVersionsHaveOneWinner(t *testing.T) {

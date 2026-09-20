@@ -149,7 +149,7 @@ async function submit(selector) {
 
 async function api(path, method = "GET", body, authorization = "") {
   const result = await evaluate(`
-    const headers = { "Content-Type": "application/json", "X-Tenant-Id": ${JSON.stringify(tenantID)} };
+    const headers = { "Content-Type": "application/json" };
     if (${JSON.stringify(authorization)}) headers.Authorization = ${JSON.stringify(authorization)};
     const response = await fetch(${JSON.stringify(`/api${path}`)}, {
       method: ${JSON.stringify(method)},
@@ -208,7 +208,7 @@ await command("Emulation.setDeviceMetricsOverride", {
   mobile: false,
 })
 
-await navigate("/iam/service-accounts")
+await navigate("/service-accounts")
 await waitFor(
   `location.pathname === "/login" && document.querySelector("#login-name")`
 )
@@ -218,11 +218,11 @@ await evaluate(
 await setInput("#login-name", adminLogin)
 await setInput("#password", password)
 await submit("form")
-await waitFor(`location.pathname === "/iam/service-accounts"`, 20000)
+await waitFor(`location.pathname === "/service-accounts"`, 20000)
 await waitFor(
   `document.querySelector("h1")?.textContent.includes("服务账号") && document.querySelector("tbody")`
 )
-await waitFor(`document.querySelector('a[href="/iam/service-accounts"]')`)
+await waitFor(`document.querySelector('a[href="/service-accounts"]')`)
 
 const suffix = Date.now().toString(36)
 const loginName = `audit-worker-${suffix}`
@@ -239,7 +239,7 @@ const accountID = await evaluate(
   `return ${rowExpression(displayName)}.querySelector("code").textContent.trim()`
 )
 
-const role = await api("/iam/roles", "POST", {
+const role = await api("/roles", "POST", {
   name: `Service Account Audit ${suffix}`,
   description: "Browser acceptance role",
 })
@@ -247,8 +247,8 @@ if (role.status !== 201)
   throw new Error(`role create failed: ${JSON.stringify(role)}`)
 const roleID = role.body.data.id
 for (const path of [
-  `/iam/roles/${encodeURIComponent(roleID)}/permissions/service_account_view`,
-  `/iam/roles/${encodeURIComponent(roleID)}/members/${encodeURIComponent(accountID)}`,
+  `/roles/${encodeURIComponent(roleID)}/permissions/service_account_view`,
+  `/roles/${encodeURIComponent(roleID)}/members/${encodeURIComponent(accountID)}`,
 ]) {
   const assigned = await api(path, "PUT")
   if (assigned.status !== 200)
@@ -288,7 +288,7 @@ const token = await evaluate(`
 if (token.status !== 200 || !token.body.access_token)
   throw new Error(`token exchange failed: ${JSON.stringify(token)}`)
 const authorized = await api(
-  "/iam/service-accounts",
+  "/service-accounts",
   "GET",
   undefined,
   `Bearer ${token.body.access_token}`
@@ -307,7 +307,7 @@ await waitFor(
   `document.querySelector('[role="dialog"]')?.textContent.includes("已撤销")`
 )
 const revoked = await api(
-  "/iam/service-accounts",
+  "/service-accounts",
   "GET",
   undefined,
   `Bearer ${token.body.access_token}`
@@ -340,7 +340,7 @@ await clickLabel(`删除 ${displayName}`)
 await clickText("确认")
 await waitFor(`!${rowExpression(displayName)}`)
 const deletedRole = await api(
-  `/iam/roles/${encodeURIComponent(roleID)}`,
+  `/roles/${encodeURIComponent(roleID)}`,
   "DELETE"
 )
 if (deletedRole.status !== 200)
@@ -350,7 +350,7 @@ const expectedUnauthorized = responses.find(
   (response) =>
     response.status === 401 &&
     response.method === "GET" &&
-    response.url.includes("/api/iam/service-accounts")
+    response.url.includes("/api/service-accounts")
 )
 const unexpectedResponses = responses.filter(
   (response) =>
@@ -358,7 +358,7 @@ const unexpectedResponses = responses.filter(
     response !== expectedUnauthorized &&
     !(
       response.status === 401 &&
-      response.url.endsWith("/api/authn/sessions/current")
+      response.url.endsWith("/api/sessions/current")
     )
 )
 const unexpectedFailures = failures.filter(

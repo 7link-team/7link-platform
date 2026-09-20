@@ -8,7 +8,7 @@ const tenantID = process.env.IAM_BROWSER_TENANT
 const directoryKind = process.env.IAM_DIRECTORY_KIND ?? "position"
 const directory = {
   position: {
-    collectionPath: "/iam/positions",
+    collectionPath: "/positions",
     formID: "position-form",
     memberFormID: "position-member-form",
     memberInputPrefix: "position-member",
@@ -16,7 +16,7 @@ const directory = {
     screenshotName: "positions",
   },
   group: {
-    collectionPath: "/iam/groups",
+    collectionPath: "/groups",
     formID: "group-form",
     memberFormID: "group-member-form",
     memberInputPrefix: "group-member",
@@ -226,7 +226,6 @@ async function api(path, options = {}) {
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
-        "X-Tenant-Id": localStorage.getItem("iam.tenant") || ${JSON.stringify(tenantID)},
       },
       ...${JSON.stringify(options)},
     });
@@ -415,7 +414,7 @@ if (
 )
   throw new Error(`updated ${directoryKind} state is incorrect`)
 
-const tenantMembers = await api("/iam/members")
+const tenantMembers = await api("/members")
 const assignedBefore = await api(
   `${directory.collectionPath}/${encodeURIComponent(created.id)}/members`
 )
@@ -538,7 +537,7 @@ await click(`button[aria-label=${JSON.stringify(`删除${updatedName}`)}]`)
 await waitFor(`!(${itemRow(updatedName)})`)
 
 const audit = await api(
-  `/iam/audit-events?target_id=${encodeURIComponent(created.id)}&limit=100`
+  `/audit-events?target_id=${encodeURIComponent(created.id)}&limit=100`
 )
 const eventTypes = new Set(audit.map((event) => event.event_type))
 for (const eventType of [
@@ -644,7 +643,7 @@ if (directoryKind === "group") {
   await waitFor(`!(${itemRow(dynamicName)})`)
 
   const dynamicAudit = await api(
-    `/iam/audit-events?target_id=${encodeURIComponent(dynamicGroup.id)}&limit=100`
+    `/audit-events?target_id=${encodeURIComponent(dynamicGroup.id)}&limit=100`
   )
   const dynamicEvents = new Set(dynamicAudit.map((event) => event.event_type))
   for (const eventType of ["group_created", "group_updated", "group_deleted"])
@@ -666,7 +665,7 @@ const unexpectedStatuses = responses.filter(
     response.status >= 400 &&
     !(
       response.status === 401 &&
-      response.url.endsWith("/api/authn/sessions/current")
+      response.url.endsWith("/api/sessions/current")
     ) &&
     !expectedConflicts.includes(response)
 )
