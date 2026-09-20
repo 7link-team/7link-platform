@@ -3034,5 +3034,5 @@ provisioning 3、governance 3、federation 2、oauth 1、audit 1。
   entity-scoped File management menu link from the tenant view.
 - Runtime remains available at `http://127.0.0.1:61828/login`, backed by API
   `http://127.0.0.1:61827` and the isolated SQLite fixture.
-- Next action: commit the reviewed changes, push `IAM`, verify local and remote
-  heads match, and leave the acceptance services running.
+- Delivered in `f2f2fe7`; `origin/IAM` accepted the push. Acceptance services
+  remain running for user inspection. No implementation work remains.
