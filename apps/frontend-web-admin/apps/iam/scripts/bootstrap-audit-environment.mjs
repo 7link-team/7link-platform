@@ -144,7 +144,7 @@ async function call(path, init = {}) {
 }
 
 async function ensureTenant(ownerPrincipalID) {
-  await call("/authn/sessions", {
+  await call("/sessions", {
     method: "POST",
     body: JSON.stringify({
       login_name: login,
@@ -152,7 +152,7 @@ async function ensureTenant(ownerPrincipalID) {
       return_url: consoleURL + "/",
     }),
   })
-  const existing = (await call("/iam/tenants?include_deleted=false")) ?? []
+  const existing = (await call("/tenants?include_deleted=false")) ?? []
   const found = existing.find((tenant) => tenant.slug === tenantSlug)
   if (found) {
     note(`tenant present: ${found.slug}`)
@@ -161,7 +161,7 @@ async function ensureTenant(ownerPrincipalID) {
   // Tenant creation installs the owner, the tenant administrator role and the
   // default menus in one transaction, so the account bootstrapped above can
   // administer this tenant as soon as the call returns.
-  const created = await call("/iam/tenants", {
+  const created = await call("/tenants", {
     method: "POST",
     body: JSON.stringify({
       slug: tenantSlug,

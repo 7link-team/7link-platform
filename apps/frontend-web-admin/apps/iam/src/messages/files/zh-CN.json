@@ -34,6 +34,7 @@
   "open": "打开",
   "openInNewTab": "在新标签页中打开",
   "preview": "预览",
+  "presentationPages": "幻灯片页面",
   "previewLoading": "正在加载预览...",
   "previewUnsupported": "暂不支持预览此文件类型。",
   "previewTooLarge": "此文件超过 {limit} 的浏览器预览上限。",

@@ -67,7 +67,7 @@ describe("file browser presentation", () => {
       })
     ).toMatchObject({
       category: "spreadsheet",
-      preview: "unsupported",
+      preview: "office",
       badge: "XLSX",
     })
     expect(classifyFilePresentation({ name: "main.ts" })).toMatchObject({

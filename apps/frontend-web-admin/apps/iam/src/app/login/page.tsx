@@ -5,6 +5,7 @@ import { Link, Navigate, useLocation } from "react-router"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import { SimpleSelect } from "@workspace/ui/components/select"
 import {
   ApiError,
   iamApi,
@@ -12,6 +13,11 @@ import {
   type LoginResult,
 } from "../../lib/iam-api"
 import { appName, copyrightLine } from "../../lib/branding"
+import {
+  devLoginAccounts,
+  prefillDevLoginAccount,
+  type DevLoginAccount,
+} from "../../lib/dev-login-accounts"
 import { useAuth } from "../../components/auth"
 import { SessionVerification } from "../../components/session-verification"
 import { ThemeModeButton } from "../../components/theme-mode-button"
@@ -176,6 +182,27 @@ function PasswordForm({
   capabilities: AuthnCapabilities | null
 }) {
   const t = useTranslations("iam")
+  const defaultAccount = prefillDevLoginAccount
+    ? devLoginAccounts[0]
+    : undefined
+  const [selectedAccount, setSelectedAccount] = useState(
+    defaultAccount?.id ?? ""
+  )
+  const [loginName, setLoginName] = useState(defaultAccount?.loginName ?? "")
+  const [password, setPassword] = useState(defaultAccount?.password ?? "")
+
+  const selectAccount = (id: string) => {
+    const account = devLoginAccounts.find((candidate) => candidate.id === id)
+    if (!account) return
+    setSelectedAccount(account.id)
+    setLoginName(account.loginName)
+    setPassword(account.password)
+  }
+
+  const editCredential = (setter: (value: string) => void, value: string) => {
+    setSelectedAccount("")
+    setter(value)
+  }
 
   return (
     <form
@@ -184,6 +211,24 @@ function PasswordForm({
       aria-labelledby="login-title"
     >
       <BrandHeader />
+      {devLoginAccounts.length > 0 && (
+        <div className="space-y-2 rounded-md border border-dashed bg-muted/40 p-3">
+          <Label id="dev-login-account-label">{t("devLoginAccount")}</Label>
+          <SimpleSelect
+            aria-labelledby="dev-login-account-label"
+            value={selectedAccount}
+            onValueChange={selectAccount}
+            placeholder={t("devLoginCustomAccount")}
+            options={devLoginAccounts.map((account: DevLoginAccount) => ({
+              value: account.id,
+              label: `${account.role} · ${account.loginName}`,
+            }))}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("devLoginAccountHint")}
+          </p>
+        </div>
+      )}
       <div className="space-y-2">
         <Label htmlFor="login-name">{t("loginName")}</Label>
         <Input
@@ -191,6 +236,8 @@ function PasswordForm({
           name="login_name"
           autoComplete="username"
           autoFocus
+          value={loginName}
+          onChange={(event) => editCredential(setLoginName, event.target.value)}
           required
           maxLength={200}
         />
@@ -202,6 +249,10 @@ function PasswordForm({
             id="password"
             name="password"
             type={visible ? "text" : "password"}
+            value={password}
+            onChange={(event) =>
+              editCredential(setPassword, event.target.value)
+            }
             className="pr-10"
             autoComplete="current-password"
             required

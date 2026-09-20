@@ -115,6 +115,7 @@ export function FilePreviewDialog({
                 name={node.name}
                 mimeType={node.detectedType || state.blob.type}
                 locale={locale === "zh-CN" ? "zh-CN" : "en-US"}
+                presentationNavigationLabel={tf("presentationPages")}
               />
             </Suspense>
           ) : !unsupported && !knownOversize && state.status === "loading" ? (

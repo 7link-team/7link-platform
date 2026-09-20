@@ -658,7 +658,7 @@ function FileBrowserBody({
   )
   return (
     <TooltipProvider>
-      <section aria-label={tf("title")} className="min-w-0">
+      <section aria-label={tf("title")} className="h-full min-h-0 min-w-0">
         {(actionError || dropError) && (
           <div
             role="alert"
@@ -668,7 +668,7 @@ function FileBrowserBody({
           </div>
         )}
         <div
-          className={`relative flex min-h-[calc(100svh-5.5rem)] min-w-0 border-y ${dragActive ? "outline-2 -outline-offset-2 outline-primary" : ""}`}
+          className={`relative flex h-full min-h-0 min-w-0 border-y ${dragActive ? "outline-2 -outline-offset-2 outline-primary" : ""}`}
           onDragEnter={startDrag}
           onDragOver={continueDrag}
           onDragLeave={leaveDrag}
@@ -679,7 +679,7 @@ function FileBrowserBody({
               {tf("dropToUpload")}
             </div>
           )}
-          <aside className="sticky top-14 hidden h-[calc(100svh-7rem)] w-48 shrink-0 self-start overflow-hidden border-e lg:block">
+          <aside className="hidden h-full min-h-0 w-48 shrink-0 overflow-hidden border-e lg:block">
             {navigation}
           </aside>
           <div className="flex min-w-0 flex-1 flex-col">

@@ -29,6 +29,11 @@ describe("FileBrowser", () => {
     }
     expect(render()).toContain(en.empty)
   })
+  it("fills its parent without introducing a nested viewport height", () => {
+    const html = render()
+    expect(html).toContain("h-full min-h-0 min-w-0")
+    expect(html).not.toContain("calc(100svh")
+  })
   it("never displays supplied stale files or roots after access fails", () => {
     for (const status of [
       "forbidden",

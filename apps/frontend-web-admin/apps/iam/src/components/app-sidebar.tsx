@@ -75,6 +75,7 @@ export function AppSidebar({
   const platformView = isPlatformRoute(location.pathname + location.search)
   menus = tenantNavigation(menus)
   const paths = effectiveMenuPaths(menus)
+  const fileAccess = can(permissions, "file_view")
   if (entityID && !platformView) {
     const base = `/entities/${encodeURIComponent(entityID)}`
     return (
@@ -106,7 +107,7 @@ export function AppSidebar({
               label={t("entityResources")}
             />
           )}
-          {can(permissions, "file_view") && (
+          {fileAccess && (
             <SideLink
               to={`/files?entity_id=${encodeURIComponent(entityID)}`}
               icon={<Folder />}
@@ -155,7 +156,8 @@ export function AppSidebar({
             )}
           </section>
         )}
-        {!platformView && (menus.length > 0 || fieldPolicyAccess) && (
+        {!platformView &&
+          (menus.length > 0 || fieldPolicyAccess || fileAccess) && (
           <section aria-label={t("tenantMenu")}>
             <h2 className="mb-2 px-3 text-xs font-semibold text-muted-foreground">
               {t("currentTenant")}
@@ -165,6 +167,9 @@ export function AppSidebar({
                 <MenuBranch key={menu.id} menu={menu} language={language} />
               ))}
             </ul>
+            {fileAccess && !paths.has("/files") && (
+              <SideLink to="/files" icon={<Folder />} label={t("files")} />
+            )}
             {fieldPolicyAccess && !paths.has("/field-policies") && (
               <SideLink
                 to="/field-policies"

@@ -417,8 +417,14 @@ export default function AppLayout() {
           }
           className="hidden md:block"
         />
-        <main className="min-w-0 flex-1 overflow-auto">
-          <div className="mx-auto w-full max-w-[1440px] p-4 sm:p-6">
+        <main className="min-h-0 min-w-0 flex-1 overflow-auto">
+          <div
+            className={
+              location.pathname === "/files"
+                ? "h-full w-full max-w-none"
+                : "mx-auto w-full max-w-[1440px] p-4 sm:p-6"
+            }
+          >
             {menuError && directoryReady && (
               <Alert>
                 <p>{t.has(menuError) ? t(menuError) : menuError}</p>

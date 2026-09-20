@@ -347,7 +347,9 @@ export function classifyFilePresentation(
           : (category === "document" &&
                 (extension === "docx" || mime.includes("wordprocessingml"))) ||
               (category === "presentation" &&
-                (extension === "pptx" || mime.includes("presentationml")))
+                (extension === "pptx" || mime.includes("presentationml"))) ||
+              (category === "spreadsheet" &&
+                (extension === "xlsx" || mime.includes("spreadsheetml")))
             ? "office"
           : textExtensions.has(extension) || mime.startsWith("text/") || category === "code"
             ? "text"

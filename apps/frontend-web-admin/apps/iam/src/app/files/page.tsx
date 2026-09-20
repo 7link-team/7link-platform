@@ -114,7 +114,7 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
     reload,
   ].join(":")
   const visibleState: BrowserState =
-    !account && (!tenantID || !entityID)
+    !account && !tenantID
       ? { ...emptyState, status: "selectEntity" }
       : state.requestKey === requestKey
         ? state
@@ -127,7 +127,7 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
   useEffect(() => {
     const request = ++generation.current
     let active = true
-    if (!account && (!tenantID || !entityID)) return
+    if (!account && !tenantID) return
     void iamApi
       .files(fileEntityID)
       .then(async (rootPage) => {

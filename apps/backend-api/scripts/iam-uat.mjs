@@ -223,8 +223,21 @@ async function serve() {
         IAM_BROWSER_TENANT_SLUG: "uat", IAM_BROWSER_TENANT_NAME: "UAT",
         IAM_BACKEND_DIR: root, IAM_BACKEND_COMMAND: "./.temp/iam-uat/api", IAM_BOOTSTRAP_ARGS: "--config .temp/iam-uat/config.yaml" } });
     writeFileSync(join(directory, "tenant-id"), tenant + "\n", { mode: 0o600 });
+    const demoAccounts = process.argv.includes("--demo-accounts");
+    const prefillDemoAccount = process.argv.includes("--prefill-demo-account");
+    if (prefillDemoAccount && !demoAccounts) throw new Error("--prefill-demo-account requires --demo-accounts");
+    const personaFixture = demoAccounts
+      ? JSON.parse(run("bun", ["scripts/bootstrap-file-personas.mjs"], { cwd: frontend,
+        env: { ...process.env, IAM_API_URL: settings.apiURL, IAM_CONSOLE_URL: settings.webURL,
+          IAM_BROWSER_PASSWORD_FILE: join(directory, "admin-password"), IAM_BROWSER_TENANT: tenant,
+          IAM_UAT_DIRECTORY: directory } }))
+      : { accounts: [] };
+    if (demoAccounts) save(join(directory, "file-personas.json"), { ...personaFixture,
+      accounts: personaFixture.accounts.map(({ password: _password, ...account }) => account) });
     launch("bun", ["run", "dev", "--host", "127.0.0.1", "--port", String(settings.webPort), "--strictPort"],
-      { cwd: frontend, env: { ...process.env, VITE_API_PROXY_TARGET: settings.apiURL } });
+      { cwd: frontend, env: { ...process.env, VITE_API_PROXY_TARGET: settings.apiURL,
+        VITE_DEFAULT_TENANT: tenant, VITE_DEV_LOGIN_ACCOUNTS: JSON.stringify(personaFixture.accounts),
+        VITE_DEV_LOGIN_ACCOUNTS_ENABLED: String(demoAccounts), VITE_DEV_LOGIN_PREFILL: String(prefillDemoAccount) } });
     await waitFor(async () => { if (stopping) throw new Error("UAT process exited during startup."); return httpReady(settings.webURL + "/login"); }, "console startup");
     save(readyPath, { pid: process.pid, ...settings });
     console.log(`UAT ready: ${settings.webURL}`);
@@ -232,6 +245,9 @@ async function serve() {
   } finally { await stop(); }
 }
 async function start() {
+  const demoFlags = process.argv.slice(3).filter((arg) => arg === "--demo-accounts" || arg === "--prefill-demo-account");
+  if (demoFlags.includes("--prefill-demo-account") && !demoFlags.includes("--demo-accounts"))
+    throw new Error("--prefill-demo-account requires --demo-accounts");
   localDocker();
   const settings = state();
   if (supervisor()) {
@@ -249,7 +265,7 @@ async function start() {
     if (await availablePort(port) !== port) throw new Error(`Port ${port} is occupied; stop the conflicting process before starting this UAT.`);
   }
   const log = openSync(join(directory, "uat.log"), "a", 0o600);
-  const child = spawn(process.execPath, [script, "serve"], { cwd: root, detached: true, stdio: ["ignore", log, log] });
+  const child = spawn(process.execPath, [script, "serve", ...demoFlags], { cwd: root, detached: true, stdio: ["ignore", log, log] });
   child.unref();
   closeSync(log);
   try {
@@ -363,6 +379,6 @@ try {
         ready: running && existsSync(readyPath) && await httpReady(settings.apiURL + "/readyz") && await httpReady(settings.webURL + "/login") }, null, 2));
       break;
     }
-    default: throw new Error("Usage: node scripts/iam-uat.mjs init|start|stop|status|verify|reset --preserve-old");
+    default: throw new Error("Usage: node scripts/iam-uat.mjs init|start [--demo-accounts] [--prefill-demo-account]|stop|status|verify|reset --preserve-old");
   }
 } catch (error) { console.error(error.message); process.exitCode = 1; }

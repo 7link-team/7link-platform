@@ -92,6 +92,33 @@ describe("AppSidebar", () => {
       )
     ).not.toContain('href="/files?entity_id=123"')
   })
+  it("exposes tenant files only with the file view permission", () => {
+    expect(
+      renderSidebar([], false, false, "/", "", new Set(["file_view"]))
+    ).toContain('href="/files"')
+    expect(renderSidebar([], false, false, "/")).not.toContain(
+      'href="/files"'
+    )
+  })
+  it("does not duplicate a tenant file menu supplied by the server", () => {
+    const html = renderSidebar(
+      [
+        {
+          id: "files",
+          label: "Files",
+          path: "/files",
+          permission_code: "file_view",
+          sort_order: 1,
+        },
+      ],
+      false,
+      false,
+      "/",
+      "",
+      new Set(["file_view"])
+    )
+    expect(html.match(/href="\/files"/g)).toHaveLength(1)
+  })
   it("excludes personal routes even when supplied by the effective menu tree", () => {
     const html = renderSidebar(
       ["/security", "/account", "/account/profile"].map((path, index) => ({

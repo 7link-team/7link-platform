@@ -1,4 +1,80 @@
 # Task State
+## Office Preview Readability - 2026-09-20
+
+- Current phase: ACCEPTANCE COMPLETE. DOCX previews use page-width fitting and
+  retain distinct page frames; Office zoom supports 50%-600% in 25% steps.
+  Modern XLSX files are classified for the installed local Office renderer.
+- PPTX previews provide a localized page list on the left at desktop sizes and
+  a horizontal list on mobile. Selecting a page displays that slide reliably
+  despite the renderer's asynchronous slide-node replacement; print restores
+  every slide.
+- Existing Office URL/DOM/CSS sanitization remains in place. Legacy XLS is not
+  claimed as a high-fidelity preview format, and streaming/new-tab token design
+  remains a separate scope.
+- Verification: focused Office/file tests 17/17 PASS; full frontend tests PASS
+  (UI 85, IAM 113); full typecheck PASS; full lint PASS; production build PASS;
+  `git diff --check` PASS. Real browser acceptance on 61828/61827 PASS with a
+  generated 3-page DOCX (1324 px page width), XLSX workbook, and 3-slide PPTX;
+  zoom reached 600%, PPT page 2 selection worked, desktop had no horizontal
+  overflow, and mobile navigation rendered horizontally. Screenshots are under
+  `.local/screenshots/office-preview/` and are not tracked.
+- Runtime: API remains at `http://127.0.0.1:61827`; Web remains at
+  `http://127.0.0.1:61828`.
+- Next action: user accepts Office previews at the running Web URL; no source
+  implementation remains for this slice.
+
+## Local File Persona Demo Accounts - 2026-09-20
+
+- Current phase: ACCEPTANCE COMPLETE. Local development can explicitly enable
+  five disposable login personas: platform super administrator, restricted
+  system administrator, tenant administrator, entity account, and Finance
+  department account. The login selector and optional first-account prefill are
+  gated by both Vite development mode and explicit environment flags; production
+  builds expose no credentials.
+- Command contract: `node scripts/iam-uat.mjs start --demo-accounts` initializes
+  personas and exposes the selector. Add `--prefill-demo-account` to prefill the
+  first persona; that flag is rejected unless demo accounts are enabled. With no
+  flags, the existing login behavior is unchanged.
+- Demo data bootstrap is idempotent and reuses existing IAM APIs, roles,
+  permissions, entity bindings, departments, and generated local password files.
+  The entity persona uses a tenant-level discovery-only role plus an entity-bound
+  file role so Web navigation works without exposing the tenant file root.
+- Verification: dev parser tests 3/3 PASS; full frontend typecheck PASS; full
+  frontend lint PASS; production build PASS; credential scan of `dist` PASS;
+  script syntax checks and `git diff --check` PASS.
+- Real browser acceptance on Web `http://127.0.0.1:61828` and API
+  `http://127.0.0.1:61827`: all five personas selected from the login dropdown,
+  autofill and login PASS. Super/system/tenant administrators see tenant, entity,
+  Finance, and Operations roots; entity account sees entity plus both departments;
+  department account sees Finance only. Unexpected HTTP/console errors: none.
+- Navigation follow-up: tenant view now has a permission-gated `/files` entry and
+  loads tenant-scope roots without requiring an entity selection; entity view
+  retains its `/files?entity_id=...` entry. Browser acceptance verifies both menu
+  links and both pages for all five personas. Sidebar tests 13/13, typecheck,
+  lint, production build, and diff check PASS.
+- File layout follow-up: file pages now fill the shell's available height instead
+  of nesting `100svh` calculations inside padded content. Empty folders no longer
+  create page scroll, and the recycle-bin action remains fully visible. Browser
+  measurements PASS at 1440x900 and 390x844 with body/main scroll dimensions
+  equal to their client dimensions; the 44px recycle action stays inside both
+  viewports. Navigation labels are now `文件管理`, `File management`, and
+  `Pengurusan fail`. Focused UI tests 25/25, typecheck, lint, build, five-persona
+  E2E, and diff check PASS.
+- Open-in-new-tab finding: current implementation downloads the whole file into
+  an unbounded Blob before opening a `blob:` URL; only dialog preview has the
+  32 MiB cap. Browser sessions are opaque HttpOnly server-side sessions, OAuth
+  access tokens are short-lived JWTs, and personal `pat_` tokens are opaque
+  scoped bearer credentials. General query-token authentication is not supported
+  and should not be added. Recommended next slice is a streaming inline-content
+  gateway with Range support and a one-resource short-lived grant exchanged from
+  URL fragment to HttpOnly cookie; persistent/revocable shares remain separate.
+- Runtime note: acceptance uses a current-source SQLite environment because fresh
+  MySQL initialization is blocked by pre-existing Files migration 2 and
+  Organization migration 10 compatibility failures. The prior MySQL UAT data was
+  preserved under `iam-uat-saved-2026-09-20T03-46-16-195Z`.
+- Next action: user accepts the file-management views at
+  `http://127.0.0.1:61828/login`; no implementation work remains for this slice.
+
 ## Global REST Resource Routing And Swagger Grouping - 2026-09-19
 
 - Current phase: IMPLEMENTATION. The user approved a breaking pre-production

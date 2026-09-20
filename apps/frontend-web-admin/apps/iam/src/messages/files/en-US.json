@@ -34,6 +34,7 @@
   "open": "Open",
   "openInNewTab": "Open in new tab",
   "preview": "Preview",
+  "presentationPages": "Presentation slides",
   "previewLoading": "Loading preview...",
   "previewUnsupported": "Preview is not available for this file type.",
   "previewTooLarge": "This file is larger than the {limit} in-browser preview limit.",
