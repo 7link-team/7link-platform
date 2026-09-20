@@ -4,6 +4,7 @@ import {
   useSyncExternalStore,
   type DragEvent,
   type FormEvent,
+  type KeyboardEvent,
   type ReactNode,
 } from "react"
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
@@ -365,6 +366,8 @@ function FileBrowserBody({
     .filter((group) => group.roots.length > 0)
   const navigate = (id: string) => {
     setTreeOpen(false)
+    setSelected(new Set())
+    setAnchor(null)
     onNavigate?.(id)
   }
   const open = (node: FileBrowserNode) => {
@@ -377,6 +380,26 @@ function FileBrowserBody({
       return
     }
     setDetailsID(node.id)
+  }
+  const activate = (node: FileBrowserNode) => {
+    if (node.kind === "directory" && !recycleBin) {
+      if (selectionMode) select(node.id)
+      else {
+        setSelected(new Set([node.id]))
+        setAnchor(node.id)
+      }
+      return
+    }
+    open(node)
+  }
+  const openDirectoryWithKeyboard = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    node: FileBrowserNode
+  ) => {
+    if (event.key !== "Enter" || node.kind !== "directory" || recycleBin)
+      return
+    event.preventDefault()
+    open(node)
   }
   const startMove = (event: DragEvent, node: FileBrowserNode) => {
     if (busy || recycleBin || !onMoveTo) return
@@ -1150,9 +1173,20 @@ function FileBrowserBody({
                             type="button"
                             data-file-open-icon
                             className="shrink-0 rounded-sm focus-visible:outline-2 focus-visible:outline-ring"
-                            aria-label={tf("openNamed", { name: node.name })}
+                            aria-label={tf(
+                              node.kind === "directory" && !recycleBin
+                                ? "selectNamed"
+                                : "openNamed",
+                              { name: node.name }
+                            )}
                             title={node.name}
-                            onClick={() => open(node)}
+                            onClick={() => activate(node)}
+                            onDoubleClick={() => {
+                              if (node.kind === "directory") open(node)
+                            }}
+                            onKeyDown={(event) =>
+                              openDirectoryWithKeyboard(event, node)
+                            }
                           >
                             <FileVisual
                               node={node}
@@ -1164,7 +1198,13 @@ function FileBrowserBody({
                             type="button"
                             className="min-h-11 min-w-0 flex-1 text-start text-sm focus-visible:outline-2 focus-visible:outline-ring"
                             title={node.name}
-                            onClick={() => open(node)}
+                            onClick={() => activate(node)}
+                            onDoubleClick={() => {
+                              if (node.kind === "directory") open(node)
+                            }}
+                            onKeyDown={(event) =>
+                              openDirectoryWithKeyboard(event, node)
+                            }
                           >
                             <span
                               className={

@@ -3049,3 +3049,16 @@ provisioning 3、governance 3、federation 2、oauth 1、audit 1。
   UAT Finance and UAT Operations.
 - Delivered in `8115aa0`; `origin/IAM` accepted the push. Acceptance services
   remain running and no implementation work remains.
+
+### Directory Selection Interaction - 2026-09-20
+
+- Phase: ACCEPTANCE. Active directories now single-click to select and
+  double-click to enter. Enter opens the focused directory and the context-menu
+  Open command is unchanged. File preview and recycle-bin behavior are unchanged.
+- Navigating clears selections and the range anchor from the prior directory but
+  preserves checkbox selection mode, preventing cross-directory bulk actions.
+- PASS: 27 focused tests, typecheck, lint, production build, diff check and real
+  Chrome against department folder `666` for single click, checkbox selection,
+  double-click navigation and selection-mode persistence.
+- Next action: commit, push `IAM`, verify remote synchronization and keep the
+  acceptance service running.
