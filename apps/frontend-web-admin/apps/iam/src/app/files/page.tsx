@@ -57,10 +57,14 @@ function actionMessage(cause: unknown): string {
 export default function FilesPage({ account = false }: { account?: boolean }) {
   const outlet = useOutletContext<{
     tenantID: string
+    tenantName?: string
     entityID: string
+    entityNames?: Record<string, string>
   } | null>()
   const tenantID = account ? "" : (outlet?.tenantID ?? "")
+  const tenantName = account ? "" : (outlet?.tenantName ?? "")
   const entityID = account ? "" : (outlet?.entityID ?? "")
+  const entityNames = account ? undefined : outlet?.entityNames
   const fileEntityID = account ? null : entityID || undefined
   const [searchParams, setSearchParams] = useSearchParams()
   const [state, setState] = useState<BrowserState>(emptyState)
@@ -149,9 +153,13 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
         ).filter((department) => department !== null)
         const roots = fileBrowserRoots(
           rootPage,
-          Object.fromEntries(
-            departments.map((department) => [department.id, department.name])
-          )
+          {
+            ...(tenantID && tenantName ? { [tenantID]: tenantName } : {}),
+            ...(entityNames ?? {}),
+            ...Object.fromEntries(
+              departments.map((department) => [department.id, department.name])
+            ),
+          }
         )
         if (recycleBin) {
           const trash = fileBrowserEntries(
@@ -203,7 +211,9 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
   }, [
     account,
     tenantID,
+    tenantName,
     entityID,
+    entityNames,
     fileEntityID,
     selectedNodeID,
     recycleBin,

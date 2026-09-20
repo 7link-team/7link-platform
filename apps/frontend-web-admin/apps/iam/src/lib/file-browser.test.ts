@@ -289,11 +289,20 @@ describe("file browser presentation", () => {
       nextAfter: "",
     })
   })
-  it("maps department owner IDs to readable names", () => {
+  it("maps organization owner IDs to readable names", () => {
     expect(
       fileBrowserRoots(
         {
           items: [
+            {
+              id: "1",
+              name: "tenant-90",
+              kind: "directory",
+              scope: "tenant",
+              tenant_id: "90",
+              updated_at: "2026-09-18T12:00:00Z",
+              revision: 1,
+            },
             {
               id: "2",
               name: "department-50",
@@ -306,9 +315,9 @@ describe("file browser presentation", () => {
             },
           ],
         },
-        { "50": "Finance" }
-      )[0]?.ownerName
-    ).toBe("Finance")
+        { "90": "UAT", "50": "Finance" }
+      ).map((root) => root.ownerName)
+    ).toEqual(["UAT", "Finance"])
   })
   it("rejects malformed or unbounded API snapshots", () => {
     expect(() =>

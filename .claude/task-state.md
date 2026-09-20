@@ -3036,3 +3036,16 @@ provisioning 3、governance 3、federation 2、oauth 1、audit 1。
   `http://127.0.0.1:61827` and the isolated SQLite fixture.
 - Delivered in `f2f2fe7`; `origin/IAM` accepted the push. Acceptance services
   remain running for user inspection. No implementation work remains.
+
+### File Root Owner Name Consistency - 2026-09-20
+
+- Phase: ACCEPTANCE. Tenant, entity and department file roots now all display
+  their actual owner names; multiple roots at any organization level are
+  distinguishable. Generic localized scope labels remain fallback-only.
+- Reused the layout's authenticated tenant/entity catalogs and the scoped
+  department lookup; no additional broad directory permission or API contract.
+- PASS: 27 focused tests, typecheck, lint, production build, diff check and
+  five-persona real Chrome E2E. Verified labels: UAT Files, UAT File Company,
+  UAT Finance and UAT Operations.
+- Next action: commit, push `IAM`, verify remote synchronization and leave the
+  acceptance services running.

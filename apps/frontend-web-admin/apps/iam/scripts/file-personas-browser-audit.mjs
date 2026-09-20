@@ -143,9 +143,9 @@ try {
       )?.[0]
       const label =
         root.scope === "tenant"
-          ? "Tenant files"
+          ? "UAT Files"
           : root.scope === "entity"
-            ? "Entity files"
+            ? "UAT File Company"
             : root.scope === "department"
               ? (departmentName ?? "Department files")
               : "Personal files"

@@ -104,6 +104,16 @@ export default function AppLayout() {
       ? entityCatalog
       : null
   const selectedEntity = catalog?.items.find((entity) => entity.id === entityID)
+  const tenantName = availableTenants?.find(
+    (tenant) => tenant.id === tenantValue
+  )?.name
+  const entityNames = useMemo(
+    () =>
+      Object.fromEntries(
+        (catalog?.items ?? []).map((entity) => [entity.id, entity.name])
+      ),
+    [catalog]
+  )
   const [scopedFileAccess, setScopedFileAccess] = useState<{
     subject: string
     tenant: string
@@ -513,7 +523,9 @@ export default function AppLayout() {
                   permissions,
                   permissionsResolved,
                   tenantID: tenantValue,
+                  tenantName,
                   entityID,
+                  entityNames,
                 }}
               />
             )}

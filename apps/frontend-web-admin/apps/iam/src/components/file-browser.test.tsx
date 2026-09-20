@@ -89,10 +89,11 @@ describe("FileBrowser", () => {
           scope: "entity",
           ownerID: "80",
           tenantID: "90",
+          ownerName: "UAT File Company",
         },
       ],
     })
-    expect(html).toContain(en.rootScopeEntity)
+    expect(html).toContain("UAT File Company")
     expect(html).toContain(en.rootScopeDepartment)
     expect(html).toContain("Finance")
     expect(html).toContain("Operations")
