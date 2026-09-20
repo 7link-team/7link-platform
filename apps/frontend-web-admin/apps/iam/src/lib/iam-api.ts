@@ -6,6 +6,43 @@ export type FileChildrenPage = components["schemas"]["FileChildrenPage"]
 export type FileEntryView = components["schemas"]["FileEntryView"]
 export type FileTrashResult = components["schemas"]["FileTrashResult"]
 export type FileOperationResult = components["schemas"]["OperationResult"]
+export type FileOperationPolicy =
+  components["schemas"]["FileOperationDecisionInput"]["policy"]
+export type FileOperationDecision =
+  components["schemas"]["FileOperationDecisionInput"]
+
+export interface FileOperationConflictNode {
+  node_id?: string
+  created_from_id?: string
+  kind: string
+  name: string
+  revision: number
+}
+
+export interface FileOperationConflict {
+  key: string
+  kind: "file" | "directory" | "type"
+  source: FileOperationConflictNode
+  target: FileOperationConflictNode
+  parent: Pick<FileOperationConflictNode, "node_id" | "created_from_id">
+  policies: FileOperationPolicy[]
+}
+
+export interface FileOperationConflicts {
+  space_revision: number
+  conflicts: FileOperationConflict[]
+}
+
+export interface FileOperationInput {
+  action: "copy" | "move"
+  destination_id: string
+  sources: string[]
+  file_policy?: "ask" | "overwrite" | "skip" | "rename"
+  directory_policy?: "ask" | "merge" | "replace" | "skip" | "rename"
+  type_policy?: "ask" | "replace" | "skip" | "rename"
+  observed_revision?: number
+  decisions?: FileOperationDecision[]
+}
 
 export interface FieldDefinition {
   resource: string
@@ -1049,21 +1086,25 @@ interface ErrorResponse {
   code?: number | string
   message?: string
   detail?: string
+  data?: unknown
 }
 
 export class ApiError extends Error {
   readonly status: number
   readonly code: string
+  readonly data: unknown
 
   constructor(
     status: number,
     code: string,
-    message = clientErrorMessage(code)
+    message = clientErrorMessage(code),
+    data?: unknown
   ) {
     super(message)
     this.name = "ApiError"
     this.status = status
     this.code = code
+    this.data = data
   }
 }
 
@@ -1258,7 +1299,37 @@ function apiError(status: number, body: ErrorResponse | null): ApiError {
     body?.detail?.trim() ||
     message ||
     `HTTP ${status}`
-  return new ApiError(status, code, message || undefined)
+  return new ApiError(status, code, message || undefined, body?.data)
+}
+
+export function fileOperationConflicts(
+  cause: unknown
+): FileOperationConflicts | null {
+  if (!(cause instanceof ApiError) || cause.status !== 409) return null
+  const data = cause.data
+  if (!data || typeof data !== "object") return null
+  const candidate = data as Partial<FileOperationConflicts>
+  const kinds = new Set(["file", "directory", "type"])
+  const policies = new Set(["overwrite", "merge", "replace", "skip", "rename"])
+  if (
+    !Number.isSafeInteger(candidate.space_revision) ||
+    (candidate.space_revision ?? 0) <= 0 ||
+    !Array.isArray(candidate.conflicts) ||
+    candidate.conflicts.length === 0 ||
+    !candidate.conflicts.every(
+      (conflict) =>
+        conflict &&
+        /^[0-9a-f]{64}$/u.test(conflict.key) &&
+        kinds.has(conflict.kind) &&
+        typeof conflict.source?.name === "string" &&
+        typeof conflict.target?.name === "string" &&
+        Array.isArray(conflict.policies) &&
+        conflict.policies.length > 0 &&
+        conflict.policies.every((policy) => policies.has(policy))
+    )
+  )
+    return null
+  return candidate as FileOperationConflicts
 }
 
 export function clientErrorMessage(code: string): string {
@@ -1393,7 +1464,11 @@ export function createIamApi(
         body,
       })
     },
-    fileItems: (entityID: string | null | undefined, fileID: string, after = "") => {
+    fileItems: (
+      entityID: string | null | undefined,
+      fileID: string,
+      after = ""
+    ) => {
       const query = new URLSearchParams({ limit: "100" })
       if (after) query.set("after", after)
       return fileRequest<FileChildrenPage>(
@@ -1411,14 +1486,10 @@ export function createIamApi(
       body.set("parent_id", parentID)
       body.set("kind", "directory")
       body.set("name", name)
-      return fileRequest<FileEntryView>(
-        entityID,
-        "/files",
-        {
-          method: "POST",
-          body,
-        }
-      )
+      return fileRequest<FileEntryView>(entityID, "/files", {
+        method: "POST",
+        body,
+      })
     },
     uploadFile: (
       entityID: string | null | undefined,
@@ -1429,14 +1500,10 @@ export function createIamApi(
       body.set("parent_id", parentID)
       body.set("kind", "file")
       body.set("file", file)
-      return fileRequest<FileEntryView>(
-        entityID,
-        "/files",
-        {
-          method: "POST",
-          body,
-        }
-      )
+      return fileRequest<FileEntryView>(entityID, "/files", {
+        method: "POST",
+        body,
+      })
     },
     fileByPath: (
       entityID: string | null | undefined,
@@ -1516,28 +1583,21 @@ export function createIamApi(
       ),
     createFileOperation: (
       entityID: string | null | undefined,
-      input: {
-        action: "copy" | "move"
-        destination_id: string
-        sources: string[]
-      }
+      input: FileOperationInput,
+      idempotencyKey: string = crypto.randomUUID()
     ) =>
-      fileRequest<FileOperationResult>(
-        entityID,
-        "/file-operations",
-        {
-          method: "POST",
-          headers: {
-            "Idempotency-Key": crypto.randomUUID(),
-          },
-          body: JSON.stringify({
-            ...input,
-            file_policy: "rename",
-            directory_policy: "rename",
-            type_policy: "rename",
-          }),
-        }
-      ),
+      fileRequest<FileOperationResult>(entityID, "/file-operations", {
+        method: "POST",
+        headers: {
+          "Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify({
+          ...input,
+          file_policy: input.file_policy ?? "ask",
+          directory_policy: input.directory_policy ?? "ask",
+          type_policy: input.type_policy ?? "ask",
+        }),
+      }),
     capabilities: () =>
       request<AuthnCapabilities>("/authentication-capabilities", {}, false),
     createCaptcha: () =>
@@ -1625,11 +1685,7 @@ export function createIamApi(
     identityLinks: () =>
       request<IdentityLink[]>("/me/identity-links", {}, false),
     identityLinkProviders: () =>
-      request<IdentityLinkProvider[]>(
-        "/me/identity-link-providers",
-        {},
-        false
-      ),
+      request<IdentityLinkProvider[]>("/me/identity-link-providers", {}, false),
     createIdentityLinkTransaction: (body: {
       provider_id: string
       proof: string
@@ -1746,11 +1802,7 @@ export function createIamApi(
         false
       ),
     logoutAll: () =>
-      request<{ logout_url: string }>(
-        "/sessions",
-        { method: "DELETE" },
-        false
-      ),
+      request<{ logout_url: string }>("/sessions", { method: "DELETE" }, false),
     changePassword: (body: {
       current_password: string
       new_password: string
@@ -1892,15 +1944,13 @@ export function createIamApi(
     // 后端把停用/恢复重构成同一个 suspension 子资源的 PUT/DELETE。
     // 函数名保持不变，调用方无需改动；响应体仍是 Principal。
     disablePrincipal: (id: string) =>
-      request<Principal>(
-        `/principals/${encodeURIComponent(id)}/suspension`,
-        { method: "PUT" }
-      ),
+      request<Principal>(`/principals/${encodeURIComponent(id)}/suspension`, {
+        method: "PUT",
+      }),
     restorePrincipal: (id: string) =>
-      request<Principal>(
-        `/principals/${encodeURIComponent(id)}/suspension`,
-        { method: "DELETE" }
-      ),
+      request<Principal>(`/principals/${encodeURIComponent(id)}/suspension`, {
+        method: "DELETE",
+      }),
     // 生命周期是平台级操作，租户权限不可达；后端以 platform 守卫强制。
     principalLifecycle: (id: string) =>
       request<PrincipalLifecycleStatus>(
@@ -1937,10 +1987,10 @@ export function createIamApi(
         body: JSON.stringify(body),
       }),
     updateServiceAccount: (id: string, body: ServiceAccountUpdate) =>
-      request<ServiceAccount>(
-        `/service-accounts/${encodeURIComponent(id)}`,
-        { method: "PUT", body: JSON.stringify(body) }
-      ),
+      request<ServiceAccount>(`/service-accounts/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
     deleteServiceAccount: (id: string, version: number) =>
       request<{ deleted: boolean }>(
         `/service-accounts/${encodeURIComponent(id)}?version=${encodeURIComponent(version)}`,
@@ -1975,10 +2025,9 @@ export function createIamApi(
         body: JSON.stringify(body),
       }),
     revokeInvitation: (id: string) =>
-      request<{ revoked: boolean }>(
-        `/invitations/${encodeURIComponent(id)}`,
-        { method: "DELETE" }
-      ),
+      request<{ revoked: boolean }>(`/invitations/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      }),
     resendInvitation: (id: string, expiresInHours = 72) =>
       request<IssuedInvitation>(
         `/invitations/${encodeURIComponent(id)}/resend`,
@@ -2022,9 +2071,7 @@ export function createIamApi(
         false
       ),
     members: (search = "") =>
-      requestAllPages<Member>(
-        `/members?search=${encodeURIComponent(search)}`
-      ),
+      requestAllPages<Member>(`/members?search=${encodeURIComponent(search)}`),
     updateMember: (
       subject: string,
       body: Partial<
@@ -2247,8 +2294,7 @@ export function createIamApi(
         { method: "DELETE" }
       ),
     groups: () => requestAllPages<Group>("/groups"),
-    group: (id: string) =>
-      request<Group>(`/groups/${encodeURIComponent(id)}`),
+    group: (id: string) => request<Group>(`/groups/${encodeURIComponent(id)}`),
     createGroup: (body: GroupInput) =>
       request<Group>("/groups", {
         method: "POST",
@@ -2268,9 +2314,7 @@ export function createIamApi(
         { method: "DELETE" }
       ),
     groupMembers: (id: string) =>
-      requestAllPages<GroupMember>(
-        `/groups/${encodeURIComponent(id)}/members`
-      ),
+      requestAllPages<GroupMember>(`/groups/${encodeURIComponent(id)}/members`),
     putGroupMember: (id: string, principalID: string, body: GroupMemberInput) =>
       request<GroupMember>(
         `/groups/${encodeURIComponent(id)}/members/${encodeURIComponent(principalID)}`,
@@ -2315,8 +2359,7 @@ export function createIamApi(
     requestableRoles: () =>
       requestAllPages<RequestableRole>("/requestable-roles"),
     myAccessRequests: () => request<AccessRequest[]>("/me/access-requests"),
-    accessRequests: () =>
-      requestAllPages<AccessRequest>("/access-requests"),
+    accessRequests: () => requestAllPages<AccessRequest>("/access-requests"),
     createAccessRequest: (body: AccessRequestInput) =>
       request<AccessRequest>("/access-requests", {
         method: "POST",
@@ -2437,10 +2480,10 @@ export function createIamApi(
       id: string,
       body: Pick<RoleDataScope, "scope" | "department_ids">
     ) =>
-      request<RoleDataScope>(
-        `/roles/${encodeURIComponent(id)}/data-scope`,
-        { method: "PUT", body: JSON.stringify(body) }
-      ),
+      request<RoleDataScope>(`/roles/${encodeURIComponent(id)}/data-scope`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
     addRoleDirectoryBinding: (
       id: string,
       assigneeType: RoleDirectoryBinding["assignee_type"],
@@ -2472,8 +2515,8 @@ export function createIamApi(
         tenantID && entityID
           ? entityAPIPath(tenantID, entityID, "/me/permissions")
           : tenantID
-          ? tenantAPIPath(tenantID, "/me/permissions")
-          : "/me/permissions",
+            ? tenantAPIPath(tenantID, "/me/permissions")
+            : "/me/permissions",
         {},
         false
       )) ?? [],
@@ -2490,8 +2533,8 @@ export function createIamApi(
     deleteMenu: (id: string) =>
       request(`/menus/${encodeURIComponent(id)}`, { method: "DELETE" }),
     oauthClients: () =>
-      requestAllPages<OAuthClientResponse>("/oauth-clients").then(
-        (clients) => clients.map(normalizeOAuthClient)
+      requestAllPages<OAuthClientResponse>("/oauth-clients").then((clients) =>
+        clients.map(normalizeOAuthClient)
       ),
     createOAuthClient: (body: OAuthClientInput) =>
       request<
@@ -2509,13 +2552,10 @@ export function createIamApi(
       id: string,
       body: OAuthClientInput & Pick<OAuthClient, "status">
     ) =>
-      request<OAuthClientResponse>(
-        `/oauth-clients/${encodeURIComponent(id)}`,
-        {
-          method: "PUT",
-          body: JSON.stringify(body),
-        }
-      ).then(normalizeOAuthClient),
+      request<OAuthClientResponse>(`/oauth-clients/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }).then(normalizeOAuthClient),
     rotateOAuthClientSecret: (id: string) =>
       request<{ client_secret: string }>(
         `/oauth-clients/${encodeURIComponent(id)}/rotate-secret`,
@@ -2526,8 +2566,7 @@ export function createIamApi(
         `/oauth-clients/${encodeURIComponent(id)}`,
         { method: "DELETE" }
       ),
-    scimDirectories: () =>
-      requestAllPages<SCIMDirectory>("/scim-directories"),
+    scimDirectories: () => requestAllPages<SCIMDirectory>("/scim-directories"),
     scimTargets: () => requestAllPages<SCIMTarget>("/scim-targets"),
     createSCIMTarget: (body: SCIMTargetInput) =>
       request<SCIMTargetSecret>("/scim-targets", {
@@ -2540,15 +2579,14 @@ export function createIamApi(
         body: JSON.stringify(body),
       }),
     deleteSCIMTarget: (id: string) =>
-      request<{ deleted: boolean }>(
-        `/scim-targets/${encodeURIComponent(id)}`,
-        { method: "DELETE" }
-      ),
+      request<{ deleted: boolean }>(`/scim-targets/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      }),
     pushSCIMResource: (id: string, body: SCIMResourceInput) =>
-      request<SCIMPushResult>(
-        `/scim-targets/${encodeURIComponent(id)}/push`,
-        { method: "POST", body: JSON.stringify(body) }
-      ),
+      request<SCIMPushResult>(`/scim-targets/${encodeURIComponent(id)}/push`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
     deprovisionSCIMResource: (id: string, body: SCIMResourceInput) =>
       request<{ deprovisioned: boolean }>(
         `/scim-targets/${encodeURIComponent(id)}/deprovision`,
@@ -2568,10 +2606,10 @@ export function createIamApi(
       id: string,
       body: SCIMDirectoryInput & Pick<SCIMDirectory, "status" | "version">
     ) =>
-      request<SCIMDirectory>(
-        `/scim-directories/${encodeURIComponent(id)}`,
-        { method: "PUT", body: JSON.stringify(body) }
-      ),
+      request<SCIMDirectory>(`/scim-directories/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
     scimCredentials: (directoryID: string) =>
       requestAllPages<SCIMCredential>(
         `/scim-directories/${encodeURIComponent(directoryID)}/credentials`
@@ -2600,7 +2638,8 @@ export function createIamApi(
     },
     auditEvent: (id: string) =>
       request<AuditEvent>(`/audit/events/${encodeURIComponent(id)}`),
-    auditIntegrity: () => request<AuditIntegrity>("/audit/integrity-verifications"),
+    auditIntegrity: () =>
+      request<AuditIntegrity>("/audit/integrity-verifications"),
     auditExport: (query = "") =>
       requestAuditDownloadWithBase(
         apiBase,

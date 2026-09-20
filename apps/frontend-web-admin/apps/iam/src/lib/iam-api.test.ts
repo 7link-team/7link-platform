@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it } from "bun:test"
 import {
+  ApiError,
   createIamApi,
   clientErrorMessage,
+  fileOperationConflicts,
   type AuditEvent,
   type DepartmentInput,
+  type FileOperationConflicts,
   type MemberAuthorizationSnapshot,
   type OAuthClientInput,
 } from "./iam-api"
@@ -106,12 +109,12 @@ describe("IAM API client", () => {
       "PATCH /tenants/90/entities/80/files/3%2F4",
       "PATCH /tenants/90/entities/80/files/5%2F6",
     ])
-    expect(
-      requests.every(({ headers }) => !headers.has("x-tenant-id"))
-    ).toBe(true)
-    expect(
-      requests.every(({ headers }) => !headers.has("x-entity-id"))
-    ).toBe(true)
+    expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
+      true
+    )
+    expect(requests.every(({ headers }) => !headers.has("x-entity-id"))).toBe(
+      true
+    )
     for (const request of requests.slice(0, 3))
       expect(request.headers.get("content-type")).toStartWith(
         "multipart/form-data; boundary="
@@ -140,15 +143,92 @@ describe("IAM API client", () => {
       },
     })
     try {
-      const client = createIamApi(
-        `http://127.0.0.1:${server.port}`,
-        () => "90"
-      )
+      const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "90")
       await client.files(undefined)
       expect(requests).toEqual(["/tenants/90/files?limit=100"])
     } finally {
       server.stop(true)
     }
+  })
+
+  it("preserves file operation conflicts and sends explicit retry decisions", async () => {
+    const requests: RecordedRequest[] = []
+    const conflict: FileOperationConflicts = {
+      space_revision: 7,
+      conflicts: [
+        {
+          key: "a".repeat(64),
+          kind: "file",
+          source: { kind: "file", name: "report.txt", revision: 2 },
+          target: { kind: "file", name: "report.txt", revision: 3 },
+          parent: { node_id: "10" },
+          policies: ["overwrite", "skip", "rename"],
+        },
+      ],
+    }
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        requests.push({
+          method: request.method,
+          path: new URL(request.url).pathname,
+          headers: request.headers,
+          body: await request.text(),
+        })
+        if (requests.length === 1)
+          return Response.json(
+            { code: 409, message: "file_operation_conflict", data: conflict },
+            { status: 409 }
+          )
+        return Response.json({ code: 0, data: { created: 1 } })
+      },
+    })
+    const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "90")
+    const input = {
+      action: "copy" as const,
+      destination_id: "10",
+      sources: ["11"],
+    }
+    let caught: unknown
+    try {
+      await client.createFileOperation(undefined, input, "operation-key")
+    } catch (cause) {
+      caught = cause
+    }
+    expect(caught).toBeInstanceOf(ApiError)
+    expect(fileOperationConflicts(caught)).toEqual(conflict)
+
+    await client.createFileOperation(
+      undefined,
+      {
+        ...input,
+        observed_revision: 7,
+        decisions: [{ conflict_key: "a".repeat(64), policy: "skip" }],
+      },
+      "operation-key"
+    )
+
+    expect(requests.map((request) => request.path)).toEqual([
+      "/tenants/90/file-operations",
+      "/tenants/90/file-operations",
+    ])
+    expect(
+      requests.map((request) => request.headers.get("idempotency-key"))
+    ).toEqual(["operation-key", "operation-key"])
+    expect(JSON.parse(requests[0]!.body)).toEqual({
+      ...input,
+      file_policy: "ask",
+      directory_policy: "ask",
+      type_policy: "ask",
+    })
+    expect(JSON.parse(requests[1]!.body)).toEqual({
+      ...input,
+      observed_revision: 7,
+      decisions: [{ conflict_key: "a".repeat(64), policy: "skip" }],
+      file_policy: "ask",
+      directory_policy: "ask",
+      type_policy: "ask",
+    })
   })
 
   it("uses the same file resources without tenant selectors for account files", async () => {
@@ -254,9 +334,9 @@ describe("IAM API client", () => {
     )
     await client.session()
     await client.sessionForTenant("authorized-tenant")
-    expect(
-      requests.every(({ path }) => path === "/sessions/current")
-    ).toBe(true)
+    expect(requests.every(({ path }) => path === "/sessions/current")).toBe(
+      true
+    )
     expect(requests[0]?.headers.has("x-tenant-id")).toBe(false)
     expect(requests[1]?.headers.get("x-tenant-id")).toBeNull()
   })
@@ -276,8 +356,7 @@ describe("IAM API client", () => {
         return Response.json({
           code: 0,
           data:
-            url.pathname === "/me/personal-tokens" &&
-            request.method === "GET"
+            url.pathname === "/me/personal-tokens" && request.method === "GET"
               ? []
               : {},
           meta: { page: { total: 47 } },
@@ -576,15 +655,11 @@ describe("IAM API client", () => {
       "PUT /audit/retention",
     ]
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      ...expected.map((entry) =>
-        entry.replace(" /", " /tenants/tenant-a/")
-      ),
+      ...expected.map((entry) => entry.replace(" /", " /tenants/tenant-a/")),
       ...expected.map((entry) => entry.replace(" /", " /platform/")),
     ])
     expect(
-      requests
-        .slice(0, 7)
-        .every(({ headers }) => !headers.has("x-tenant-id"))
+      requests.slice(0, 7).every(({ headers }) => !headers.has("x-tenant-id"))
     ).toBe(true)
     expect(
       requests.slice(7).every(({ headers }) => !headers.has("x-tenant-id"))
@@ -671,9 +746,7 @@ describe("IAM API client", () => {
     ])
     expect(JSON.parse(requests[2]!.body)).toEqual({ policy, version: 7 })
     expect(
-      requests
-        .slice(0, 4)
-        .every(({ headers }) => !headers.has("x-tenant-id"))
+      requests.slice(0, 4).every(({ headers }) => !headers.has("x-tenant-id"))
     ).toBe(true)
     expect(requests[4]!.headers.get("x-tenant-id")).toBeNull()
   })
@@ -769,11 +842,9 @@ describe("IAM API client", () => {
       "POST /tenants/tenant-governance/access-reviews/review%2Fa/complete",
       "POST /tenants/tenant-governance/access-reviews/review%2Fb/cancel",
     ])
-    expect(
-      requests.every(
-        ({ headers }) => !headers.has("x-tenant-id")
-      )
-    ).toBe(true)
+    expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
+      true
+    )
     expect(JSON.parse(requests[3]?.body ?? "{}")).toEqual({
       role_id: "role/a",
       reason: "temporary operations",
@@ -1567,7 +1638,8 @@ describe("IAM API client", () => {
         const data =
           request.method === "DELETE"
             ? { deleted: true }
-            : request.method === "GET" && url.pathname === "/tenants/tenant-organization/departments"
+            : request.method === "GET" &&
+                url.pathname === "/tenants/tenant-organization/departments"
               ? [department]
               : request.method === "PATCH"
                 ? { ...department, version: 2, name: "Platform" }
@@ -1610,11 +1682,9 @@ describe("IAM API client", () => {
       "PATCH /tenants/tenant-organization/departments/department%2Fa",
       "DELETE /tenants/tenant-organization/departments/department%2Fa?version=2",
     ])
-    expect(
-      requests.every(
-        ({ headers }) => !headers.has("x-tenant-id")
-      )
-    ).toBe(true)
+    expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
+      true
+    )
     expect(JSON.parse(requests[2]?.body ?? "{}")).toEqual(input)
     expect(JSON.parse(requests[3]?.body ?? "{}")).toEqual({
       parent_id: input.parent_id,
@@ -1696,11 +1766,9 @@ describe("IAM API client", () => {
       "DELETE /tenants/tenant-admin/roles/role%2Fa/permissions/user%3Aview",
       "PATCH /tenants/tenant-admin/menus/menu%2Fa",
     ])
-    expect(
-      requests.every(
-        ({ headers }) => !headers.has("x-tenant-id")
-      )
-    ).toBe(true)
+    expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
+      true
+    )
     expect(JSON.parse(requests[0]?.body ?? "{}")).toEqual({
       display_name: "Alice",
       email: "alice@example.test",
@@ -1760,11 +1828,7 @@ describe("IAM API client", () => {
       "POST /invitation-acceptances",
     ])
     expect(
-      requests
-        .slice(0, 4)
-        .every(
-          ({ headers }) => !headers.has("x-tenant-id")
-        )
+      requests.slice(0, 4).every(({ headers }) => !headers.has("x-tenant-id"))
     ).toBe(true)
     expect(requests[4]?.headers.get("x-tenant-id")).toBeNull()
     expect(JSON.parse(requests[2]?.body ?? "{}")).toEqual({
@@ -1862,7 +1926,10 @@ describe("IAM API client", () => {
         if (request.method === "DELETE") data = { deleted: true }
         else if (url.pathname.endsWith("/members")) data = [member]
         else if (url.pathname.includes("/members/")) data = member
-        else if (request.method === "GET" && url.pathname === "/tenants/tenant-positions/positions")
+        else if (
+          request.method === "GET" &&
+          url.pathname === "/tenants/tenant-positions/positions"
+        )
           data = [position]
         return Response.json({ code: 0, message: "ok", data })
       },
@@ -1908,11 +1975,9 @@ describe("IAM API client", () => {
       "PUT /tenants/tenant-positions/positions/position%2Fa/members/principal%2Fa",
       "DELETE /tenants/tenant-positions/positions/position%2Fa/members/principal%2Fa",
     ])
-    expect(
-      requests.every(
-        ({ headers }) => !headers.has("x-tenant-id")
-      )
-    ).toBe(true)
+    expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
+      true
+    )
     expect(JSON.parse(requests[2]?.body ?? "{}")).toEqual({
       code: position.code,
       name: position.name,
@@ -1977,7 +2042,10 @@ describe("IAM API client", () => {
         if (request.method === "DELETE") data = { deleted: true }
         else if (url.pathname.endsWith("/members")) data = [member]
         else if (url.pathname.includes("/members/")) data = member
-        else if (request.method === "GET" && url.pathname === "/tenants/tenant-groups/groups")
+        else if (
+          request.method === "GET" &&
+          url.pathname === "/tenants/tenant-groups/groups"
+        )
           data = [group]
         return Response.json({ code: 0, message: "ok", data })
       },
@@ -2026,11 +2094,9 @@ describe("IAM API client", () => {
       "PUT /tenants/tenant-groups/groups/group%2Fa/members/principal%2Fa",
       "DELETE /tenants/tenant-groups/groups/group%2Fa/members/principal%2Fa",
     ])
-    expect(
-      requests.every(
-        ({ headers }) => !headers.has("x-tenant-id")
-      )
-    ).toBe(true)
+    expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
+      true
+    )
     expect(JSON.parse(requests[2]?.body ?? "{}")).toEqual({
       name: group.name,
       type: group.type,
@@ -2141,10 +2207,18 @@ describe("IAM API client", () => {
           body: await request.text(),
         })
         let data: unknown = entity
-        if (url.pathname === "/tenants/tenant-entities/authorization-constraint-evaluations") data = constraint
-        else if (url.pathname === "/tenants/tenant-entities/authorization-explanations")
+        if (
+          url.pathname ===
+          "/tenants/tenant-entities/authorization-constraint-evaluations"
+        )
+          data = constraint
+        else if (
+          url.pathname === "/tenants/tenant-entities/authorization-explanations"
+        )
           data = explanation
-        else if (url.pathname === "/tenants/tenant-entities/authorization-checks")
+        else if (
+          url.pathname === "/tenants/tenant-entities/authorization-checks"
+        )
           data = {
             allowed: true,
             reason: "relationship_grant",
@@ -2166,7 +2240,10 @@ describe("IAM API client", () => {
           data = { changed: true, sync_status: "applied" }
         else if (url.pathname.endsWith("/role-bindings")) data = [binding]
         else if (url.pathname.includes("/role-bindings/")) data = binding
-        else if (request.method === "GET" && url.pathname === "/tenants/tenant-entities/entities")
+        else if (
+          request.method === "GET" &&
+          url.pathname === "/tenants/tenant-entities/entities"
+        )
           data = [entity]
         return Response.json({ code: 0, message: "ok", data })
       },
@@ -2278,11 +2355,9 @@ describe("IAM API client", () => {
       "POST /tenants/tenant-entities/authorization-explanations",
       "DELETE /tenants/tenant-entities/entities/entity%2Fa",
     ])
-    expect(
-      requests.every(
-        ({ headers }) => !headers.has("x-tenant-id")
-      )
-    ).toBe(true)
+    expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
+      true
+    )
     expect(JSON.parse(requests[2]?.body ?? "{}")).toEqual({
       parent_id: entity.parent_id,
       type: entity.type,
@@ -2349,7 +2424,9 @@ describe("IAM API client", () => {
           headers: request.headers,
           body: await request.text(),
         })
-        if (url.pathname === "/tenants/tenant-audit/audit/integrity-verifications")
+        if (
+          url.pathname === "/tenants/tenant-audit/audit/integrity-verifications"
+        )
           return Response.json({
             code: 0,
             message: "ok",

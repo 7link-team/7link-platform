@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useOutletContext, useSearchParams } from "react-router"
+import { useTranslations } from "@workspace/ui/i18n/intl-provider"
+import { Button } from "@workspace/ui/components/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@workspace/ui/components/dialog"
 import {
   FileBrowser,
   type FileBrowserProps,
@@ -14,7 +24,15 @@ import {
   type FileBrowserNode,
   type FileBrowserRoot,
 } from "../../lib/file-browser"
-import { ApiError, clientErrorMessage, iamApi } from "../../lib/iam-api"
+import {
+  ApiError,
+  clientErrorMessage,
+  fileOperationConflicts,
+  iamApi,
+  type FileOperationConflicts,
+  type FileOperationInput,
+  type FileOperationPolicy,
+} from "../../lib/iam-api"
 
 type BrowserState = {
   requestKey: string
@@ -30,6 +48,14 @@ type FileClipboard = {
   nodes: FileBrowserNode[]
   sourceParentID: string
   scopeKey: string
+}
+
+type PendingFileOperation = {
+  input: FileOperationInput
+  idempotencyKey: string
+  frontier: FileOperationConflicts
+  resolvedDecisions: NonNullable<FileOperationInput["decisions"]>
+  decisions: Record<string, FileOperationPolicy | "">
 }
 
 const emptyState: BrowserState = {
@@ -55,6 +81,7 @@ function actionMessage(cause: unknown): string {
 }
 
 export default function FilesPage({ account = false }: { account?: boolean }) {
+  const tf = useTranslations("files")
   const outlet = useOutletContext<{
     tenantID: string
     tenantName?: string
@@ -83,6 +110,8 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
   const [reload, setReload] = useState(0)
   const [busy, setBusy] = useState(false)
   const [clipboard, setClipboard] = useState<FileClipboard | null>(null)
+  const [pendingOperation, setPendingOperation] =
+    useState<PendingFileOperation | null>(null)
   const [actionError, setActionError] = useState<{
     scope: string
     message: string
@@ -146,21 +175,16 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
             ]
         const departments = (
           await Promise.all(
-            departmentIDs.map((id) =>
-              iamApi.department(id).catch(() => null)
-            )
+            departmentIDs.map((id) => iamApi.department(id).catch(() => null))
           )
         ).filter((department) => department !== null)
-        const roots = fileBrowserRoots(
-          rootPage,
-          {
-            ...(tenantID && tenantName ? { [tenantID]: tenantName } : {}),
-            ...(entityNames ?? {}),
-            ...Object.fromEntries(
-              departments.map((department) => [department.id, department.name])
-            ),
-          }
-        )
+        const roots = fileBrowserRoots(rootPage, {
+          ...(tenantID && tenantName ? { [tenantID]: tenantName } : {}),
+          ...(entityNames ?? {}),
+          ...Object.fromEntries(
+            departments.map((department) => [department.id, department.name])
+          ),
+        })
         if (recycleBin) {
           const trash = fileBrowserEntries(
             await iamApi.trashedFiles(fileEntityID, pageAfter)
@@ -224,14 +248,17 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
 
   const refresh = () => setReload((value) => value + 1)
   const setDirectoryLocation = (id: string | null, replace = false) =>
-    setSearchParams((current) => {
-      const next = new URLSearchParams(current)
-      if (id) next.set("directory", id)
-      else next.delete("directory")
-      next.delete("preview")
-      next.delete("after")
-      return next
-    }, { replace })
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        if (id) next.set("directory", id)
+        else next.delete("directory")
+        next.delete("preview")
+        next.delete("after")
+        return next
+      },
+      { replace }
+    )
   const setPageLocation = (value: string) =>
     setSearchParams((current) => {
       const next = new URLSearchParams(current)
@@ -326,281 +353,429 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
     }
   }
 
+  const performFileOperation = async (
+    input: FileOperationInput,
+    idempotencyKey: string = crypto.randomUUID()
+  ): Promise<boolean> => {
+    if (busy) return false
+    setBusy(true)
+    setActionError(null)
+    try {
+      await iamApi.createFileOperation(fileEntityID, input, idempotencyKey)
+      setPendingOperation(null)
+      if (input.action === "move") setClipboard(null)
+      refresh()
+      return true
+    } catch (cause) {
+      const frontier = fileOperationConflicts(cause)
+      if (frontier) {
+        setPendingOperation({
+          input: {
+            action: input.action,
+            destination_id: input.destination_id,
+            sources: input.sources,
+          },
+          idempotencyKey,
+          frontier,
+          resolvedDecisions: input.decisions ?? [],
+          decisions: Object.fromEntries(
+            frontier.conflicts.map((conflict) => [conflict.key, ""])
+          ),
+        })
+      } else {
+        setActionError({ scope: scopeKey, message: actionMessage(cause) })
+      }
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const confirmFileOperation = () => {
+    if (!pendingOperation) return
+    const decisions = pendingOperation.frontier.conflicts.map((conflict) => ({
+      conflict_key: conflict.key,
+      policy: pendingOperation.decisions[conflict.key],
+    }))
+    if (decisions.some((decision) => !decision.policy)) return
+    void performFileOperation(
+      {
+        ...pendingOperation.input,
+        observed_revision: pendingOperation.frontier.space_revision,
+        decisions: [
+          ...pendingOperation.resolvedDecisions,
+          ...(decisions as {
+            conflict_key: string
+            policy: FileOperationPolicy
+          }[]),
+        ],
+      },
+      pendingOperation.idempotencyKey
+    )
+  }
+
   return (
-    <FileBrowser
-      roots={visibleState.roots}
-      path={visibleState.path}
-      nodes={visibleState.nodes}
-      status={visibleState.status}
-      busy={busy}
-      actionError={actionError?.scope === scopeKey ? actionError.message : ""}
-      clipboard={
-        clipboard?.scopeKey === scopeKey
-          ? { action: clipboard.action, count: clipboard.nodes.length }
-          : undefined
-      }
-      initialPreviewID={previewID}
-      onClosePreview={() =>
-        setSearchParams((current) => {
-          const next = new URLSearchParams(current)
-          next.delete("preview")
-          return next
-        }, { replace: true })
-      }
-      onOpenNewTab={(node) => {
-        if (node.kind === "directory") {
-          const target = new URL(window.location.href)
-          target.searchParams.delete("preview")
-          target.searchParams.set("directory", node.id)
-          target.searchParams.delete("after")
-          window.open(target, "_blank", "noopener,noreferrer")
-          return
+    <>
+      <FileBrowser
+        roots={visibleState.roots}
+        path={visibleState.path}
+        nodes={visibleState.nodes}
+        status={visibleState.status}
+        busy={busy}
+        actionError={actionError?.scope === scopeKey ? actionError.message : ""}
+        clipboard={
+          clipboard?.scopeKey === scopeKey
+            ? { action: clipboard.action, count: clipboard.nodes.length }
+            : undefined
         }
-        openFileInNewTab(node)
-      }}
-      recycleBin={recycleBin}
-      onOpenRecycleBin={
-        visibleState.status === "ready"
-          ? () => {
-              const current = currentNodeID.current
-              if (current) setRecycleReturn({ scope: scopeKey, id: current })
-              setRecycleBin(true)
-              setLocationScope(scopeKey)
-              setDirectoryLocation(null)
-              setPageHistory([])
-              setActionError(null)
-            }
-          : undefined
-      }
-      onNavigate={visibleState.status === "ready" ? navigate : undefined}
-      onBack={
-        recycleBin && recycleReturn?.scope === scopeKey
-          ? () => {
-              setRecycleBin(false)
-              setPageHistory([])
-              setDirectoryLocation(recycleReturn.id)
-            }
-          : directoryBackTarget
+        initialPreviewID={previewID}
+        onClosePreview={() =>
+          setSearchParams(
+            (current) => {
+              const next = new URLSearchParams(current)
+              next.delete("preview")
+              return next
+            },
+            { replace: true }
+          )
+        }
+        onOpenNewTab={(node) => {
+          if (node.kind === "directory") {
+            const target = new URL(window.location.href)
+            target.searchParams.delete("preview")
+            target.searchParams.set("directory", node.id)
+            target.searchParams.delete("after")
+            window.open(target, "_blank", "noopener,noreferrer")
+            return
+          }
+          openFileInNewTab(node)
+        }}
+        recycleBin={recycleBin}
+        onOpenRecycleBin={
+          visibleState.status === "ready"
             ? () => {
                 const current = currentNodeID.current
-                if (!current) return
-                setDirectoryBack((values) => values.slice(0, -1))
-                setDirectoryForward((values) => [...values, current])
+                if (current) setRecycleReturn({ scope: scopeKey, id: current })
+                setRecycleBin(true)
+                setLocationScope(scopeKey)
+                setDirectoryLocation(null)
                 setPageHistory([])
                 setActionError(null)
-                setDirectoryLocation(directoryBackTarget)
               }
             : undefined
-      }
-      onForward={
-        visibleDirectoryForward.length
-          ? () => {
-              const target = visibleDirectoryForward.at(-1)
-              const current = currentNodeID.current
-              if (!target || !current) return
-              setDirectoryForward((values) => values.slice(0, -1))
-              setDirectoryBack((values) => [...values, current])
-              setPageHistory([])
-              setActionError(null)
-              setDirectoryLocation(target)
-            }
-          : undefined
-      }
-      onRefresh={refresh}
-      onEnsurePersonalRoot={
-        !recycleBin && (account || entityID)
-          ? () =>
-              run(async () => {
-                const root = account
-                  ? await iamApi.createAccountFileRoot()
-                  : await iamApi.createPersonalFileRoot(entityID)
-                if (!root.id) throw new Error("invalid_response")
-                setLocationScope(scopeKey)
-                setDirectoryLocation(root.id)
-                refresh()
-              })
-          : undefined
-      }
-      onCreateDirectory={
-        !recycleBin
-          ? (name) =>
-              run(async () => {
-                const id = parentID()
-                if (!id) throw new Error("invalid_response")
-                await iamApi.createDirectory(fileEntityID, id, name)
-                refresh()
-              })
-          : undefined
-      }
-      onCreateFile={
-        !recycleBin
-          ? (name, mimeType) =>
-              run(async () => {
-                const id = parentID()
-                if (!id) throw new Error("invalid_response")
-                await iamApi.uploadFile(
-                  fileEntityID,
-                  id,
-                  new File([], name, { type: mimeType })
-                )
-                refresh()
-              })
-          : undefined
-      }
-      onUploadEntries={
-        !recycleBin
-          ? (entries) =>
-              run(async () => {
-                const id = parentID()
-                if (!id) throw new Error("invalid_response")
-                try {
-                  await materializeDroppedEntries(
+        }
+        onNavigate={visibleState.status === "ready" ? navigate : undefined}
+        onBack={
+          recycleBin && recycleReturn?.scope === scopeKey
+            ? () => {
+                setRecycleBin(false)
+                setPageHistory([])
+                setDirectoryLocation(recycleReturn.id)
+              }
+            : directoryBackTarget
+              ? () => {
+                  const current = currentNodeID.current
+                  if (!current) return
+                  setDirectoryBack((values) => values.slice(0, -1))
+                  setDirectoryForward((values) => [...values, current])
+                  setPageHistory([])
+                  setActionError(null)
+                  setDirectoryLocation(directoryBackTarget)
+                }
+              : undefined
+        }
+        onForward={
+          visibleDirectoryForward.length
+            ? () => {
+                const target = visibleDirectoryForward.at(-1)
+                const current = currentNodeID.current
+                if (!target || !current) return
+                setDirectoryForward((values) => values.slice(0, -1))
+                setDirectoryBack((values) => [...values, current])
+                setPageHistory([])
+                setActionError(null)
+                setDirectoryLocation(target)
+              }
+            : undefined
+        }
+        onRefresh={refresh}
+        onEnsurePersonalRoot={
+          !recycleBin && (account || entityID)
+            ? () =>
+                run(async () => {
+                  const root = account
+                    ? await iamApi.createAccountFileRoot()
+                    : await iamApi.createPersonalFileRoot(entityID)
+                  if (!root.id) throw new Error("invalid_response")
+                  setLocationScope(scopeKey)
+                  setDirectoryLocation(root.id)
+                  refresh()
+                })
+            : undefined
+        }
+        onCreateDirectory={
+          !recycleBin
+            ? (name) =>
+                run(async () => {
+                  const id = parentID()
+                  if (!id) throw new Error("invalid_response")
+                  await iamApi.createDirectory(fileEntityID, id, name)
+                  refresh()
+                })
+            : undefined
+        }
+        onCreateFile={
+          !recycleBin
+            ? (name, mimeType) =>
+                run(async () => {
+                  const id = parentID()
+                  if (!id) throw new Error("invalid_response")
+                  await iamApi.uploadFile(
+                    fileEntityID,
                     id,
-                    entries,
-                    async (targetID, name) => {
-                      const directory = await iamApi.createDirectory(
-                        fileEntityID,
-                        targetID,
-                        name
-                      )
-                      if (!directory.id) throw new Error("invalid_response")
-                      return directory.id
-                    },
-                    async (targetID, file) => {
-                      await iamApi.uploadFile(fileEntityID, targetID, file)
-                    }
+                    new File([], name, { type: mimeType })
                   )
-                } finally {
                   refresh()
-                }
-              })
-          : undefined
-      }
-      onDownload={
-        !recycleBin
-          ? (node) =>
-              run(async () => {
-                await download(node)
-              })
-          : undefined
-      }
-      onPreview={
-        !recycleBin ? preview : undefined
-      }
-      onDownloadSelected={
-        !recycleBin
-          ? (nodes) =>
-              run(async () => {
-                for (const node of nodes) await download(node)
-              })
-          : undefined
-      }
-      onRename={
-        !recycleBin
-          ? (node, name) =>
-              run(async () => {
-                await iamApi.renameFileEntry(
-                  fileEntityID,
-                  node.id,
-                  node.revision,
-                  name
-                )
-                refresh()
-              })
-          : undefined
-      }
-      onTrash={
-        !recycleBin
-          ? (node) =>
-              run(async () => {
-                await iamApi.trashFileEntry(
-                  fileEntityID,
-                  node.id,
-                  node.revision
-                )
-                refresh()
-              })
-          : undefined
-      }
-      onTrashSelected={
-        !recycleBin
-          ? (nodes) =>
-              run(async () => {
-                try {
-                  for (const node of nodes)
-                    await iamApi.trashFileEntry(
-                      fileEntityID,
-                      node.id,
-                      node.revision
+                })
+            : undefined
+        }
+        onUploadEntries={
+          !recycleBin
+            ? (entries) =>
+                run(async () => {
+                  const id = parentID()
+                  if (!id) throw new Error("invalid_response")
+                  try {
+                    await materializeDroppedEntries(
+                      id,
+                      entries,
+                      async (targetID, name) => {
+                        const directory = await iamApi.createDirectory(
+                          fileEntityID,
+                          targetID,
+                          name
+                        )
+                        if (!directory.id) throw new Error("invalid_response")
+                        return directory.id
+                      },
+                      async (targetID, file) => {
+                        await iamApi.uploadFile(fileEntityID, targetID, file)
+                      }
                     )
-                } finally {
+                  } finally {
+                    refresh()
+                  }
+                })
+            : undefined
+        }
+        onDownload={
+          !recycleBin
+            ? (node) =>
+                run(async () => {
+                  await download(node)
+                })
+            : undefined
+        }
+        onPreview={!recycleBin ? preview : undefined}
+        onDownloadSelected={
+          !recycleBin
+            ? (nodes) =>
+                run(async () => {
+                  for (const node of nodes) await download(node)
+                })
+            : undefined
+        }
+        onRename={
+          !recycleBin
+            ? (node, name) =>
+                run(async () => {
+                  await iamApi.renameFileEntry(
+                    fileEntityID,
+                    node.id,
+                    node.revision,
+                    name
+                  )
                   refresh()
-                }
-              })
-          : undefined
-      }
-      onRestore={recycleBin ? restore : undefined}
-      onCopy={
-        !recycleBin ? (nodes) => setFileClipboard("copy", nodes) : undefined
-      }
-      onCut={
-        !recycleBin ? (nodes) => setFileClipboard("move", nodes) : undefined
-      }
-      onPaste={
-        !recycleBin &&
-        clipboard?.scopeKey === scopeKey &&
-        !(
-          clipboard.action === "move" &&
-          clipboard.sourceParentID === currentDirectoryID
-        )
-          ? () =>
-              run(async () => {
+                })
+            : undefined
+        }
+        onTrash={
+          !recycleBin
+            ? (node) =>
+                run(async () => {
+                  await iamApi.trashFileEntry(
+                    fileEntityID,
+                    node.id,
+                    node.revision
+                  )
+                  refresh()
+                })
+            : undefined
+        }
+        onTrashSelected={
+          !recycleBin
+            ? (nodes) =>
+                run(async () => {
+                  try {
+                    for (const node of nodes)
+                      await iamApi.trashFileEntry(
+                        fileEntityID,
+                        node.id,
+                        node.revision
+                      )
+                  } finally {
+                    refresh()
+                  }
+                })
+            : undefined
+        }
+        onRestore={recycleBin ? restore : undefined}
+        onCopy={
+          !recycleBin ? (nodes) => setFileClipboard("copy", nodes) : undefined
+        }
+        onCut={
+          !recycleBin ? (nodes) => setFileClipboard("move", nodes) : undefined
+        }
+        onPaste={
+          !recycleBin &&
+          clipboard?.scopeKey === scopeKey &&
+          !(
+            clipboard.action === "move" &&
+            clipboard.sourceParentID === currentDirectoryID
+          )
+            ? () => {
                 const destinationID = parentID()
                 if (!destinationID || !clipboard.nodes.length)
-                  throw new Error("invalid_response")
-                await iamApi.createFileOperation(fileEntityID, {
+                  return Promise.resolve(false)
+                return performFileOperation({
                   action: clipboard.action,
                   destination_id: destinationID,
                   sources: clipboard.nodes.map((node) => node.id),
                 })
-                if (clipboard.action === "move") setClipboard(null)
-                refresh()
-              })
-          : undefined
-      }
-      onMoveTo={
-        !recycleBin
-          ? (nodes, destination) =>
-              run(async () => {
+              }
+            : undefined
+        }
+        onMoveTo={
+          !recycleBin
+            ? (nodes, destination) => {
                 if (!nodes.length || destination.kind !== "directory")
-                  throw new Error("invalid_response")
-                await iamApi.createFileOperation(fileEntityID, {
+                  return Promise.resolve(false)
+                return performFileOperation({
                   action: "move",
                   destination_id: destination.id,
                   sources: nodes.map((node) => node.id),
                 })
-                refresh()
-              })
-          : undefined
-      }
-      onPreviousPage={
-        visiblePageHistory.length
-          ? () => {
-              const previous = visiblePageHistory.at(-1) ?? ""
-              setPageHistory((values) => values.slice(0, -1))
-              setPageLocation(previous)
-            }
-          : undefined
-      }
-      onNextPage={
-        visibleState.nextAfter
-          ? () => {
-              setLocationScope(scopeKey)
-              setPageHistory((values) => [...values, pageAfter])
-              setPageLocation(visibleState.nextAfter)
-            }
-          : undefined
-      }
-    />
+              }
+            : undefined
+        }
+        onPreviousPage={
+          visiblePageHistory.length
+            ? () => {
+                const previous = visiblePageHistory.at(-1) ?? ""
+                setPageHistory((values) => values.slice(0, -1))
+                setPageLocation(previous)
+              }
+            : undefined
+        }
+        onNextPage={
+          visibleState.nextAfter
+            ? () => {
+                setLocationScope(scopeKey)
+                setPageHistory((values) => [...values, pageAfter])
+                setPageLocation(visibleState.nextAfter)
+              }
+            : undefined
+        }
+      />
+      <Dialog
+        open={Boolean(pendingOperation)}
+        onOpenChange={(open) => {
+          if (!open && !busy) setPendingOperation(null)
+        }}
+      >
+        <DialogContent className="max-h-[85svh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{tf("operationConflicts")}</DialogTitle>
+            <DialogDescription>
+              {tf("operationConflictsDescription")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            {pendingOperation?.frontier.conflicts.map((conflict, index) => (
+              <div
+                key={conflict.key}
+                className="grid gap-2 border-b pb-4 last:border-b-0 last:pb-0"
+              >
+                <div className="min-w-0 text-sm font-medium">
+                  {tf("conflictItem", {
+                    index: index + 1,
+                    source: conflict.source.name,
+                    target: conflict.target.name,
+                  })}
+                </div>
+                <fieldset className="grid gap-2">
+                  <legend className="text-sm text-muted-foreground">
+                    {tf("conflictAction")}
+                  </legend>
+                  <div className="flex flex-wrap gap-2">
+                    {conflict.policies.map((policy) => {
+                      const selected =
+                        pendingOperation.decisions[conflict.key] === policy
+                      return (
+                        <Button
+                          key={policy}
+                          type="button"
+                          variant={selected ? "default" : "outline"}
+                          className="h-auto min-h-11 whitespace-normal"
+                          aria-pressed={selected}
+                          onClick={() =>
+                            setPendingOperation((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    decisions: {
+                                      ...current.decisions,
+                                      [conflict.key]: policy,
+                                    },
+                                  }
+                                : current
+                            )
+                          }
+                        >
+                          {tf(`conflictPolicy_${policy}`)}
+                        </Button>
+                      )
+                    })}
+                  </div>
+                </fieldset>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={() => setPendingOperation(null)}
+            >
+              {tf("cancel")}
+            </Button>
+            <Button
+              type="button"
+              disabled={
+                busy ||
+                !pendingOperation ||
+                pendingOperation.frontier.conflicts.some(
+                  (conflict) => !pendingOperation.decisions[conflict.key]
+                )
+              }
+              onClick={confirmFileOperation}
+            >
+              {tf("continueOperation")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

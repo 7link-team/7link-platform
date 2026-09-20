@@ -167,6 +167,16 @@ func TestOperationServiceRealAuditAndAuthorizedReplay(t *testing.T) {
 	h.assertAudit(t, 1)
 }
 
+func TestOperationServiceAllowsTenantContext(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	h.ctx = authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 70, TenantID: 90})
+
+	result, err := h.service.run(h.ctx, "tenant-copy", h.input)
+	require.NoError(t, err)
+	require.Equal(t, 2, result.Created)
+	h.assertAudit(t, 1)
+}
+
 func TestOperationServiceConflictsAndAuditFailuresRollBack(t *testing.T) {
 	for _, failure := range []string{"conflict", "audit-insert", "after-audit", "commit"} {
 		t.Run(failure, func(t *testing.T) {
@@ -219,7 +229,7 @@ func TestOperationServiceConflictsAndAuditFailuresRollBack(t *testing.T) {
 }
 
 func TestOperationServiceRejectsUntrustedScopeAndMissingDependencies(t *testing.T) {
-	for _, failure := range []string{"no-claims", "no-actor", "no-tenant", "no-entity", "foreign-tenant", "account-space", "nil-service", "runtime", "ids", "policy", "subjects", "references", "audit", "timeout", "policy-denied", "entity-denied", "policy-error", "node-denied", "canceled", "deadline"} {
+	for _, failure := range []string{"no-claims", "no-actor", "entity-without-tenant", "foreign-tenant", "account-space", "nil-service", "runtime", "ids", "policy", "subjects", "references", "audit", "timeout", "policy-denied", "entity-denied", "policy-error", "node-denied", "canceled", "deadline"} {
 		t.Run(failure, func(t *testing.T) {
 			h := newOperationServiceHarness(t)
 			ctx := h.ctx
@@ -227,16 +237,13 @@ func TestOperationServiceRejectsUntrustedScopeAndMissingDependencies(t *testing.
 			switch failure {
 			case "no-claims":
 				ctx, want = t.Context(), errOperationForbidden
-			case "no-actor", "no-tenant", "no-entity":
+			case "no-actor", "entity-without-tenant":
 				claims := &authn.Claims{PrincipalID: 70, TenantID: 90, EntityID: 80}
 				if failure == "no-actor" {
 					claims.PrincipalID = 0
 				}
-				if failure == "no-tenant" {
+				if failure == "entity-without-tenant" {
 					claims.TenantID = 0
-				}
-				if failure == "no-entity" {
-					claims.EntityID = 0
 				}
 				ctx, want = authn.WithClaims(t.Context(), claims), errOperationForbidden
 			case "foreign-tenant":

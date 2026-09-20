@@ -1,4 +1,28 @@
 # Task State
+## File Copy Conflict Negotiation - 2026-09-20
+
+- Current phase: ACCEPTANCE COMPLETE.
+- Objective: same-directory and same-name copy/move conflicts return a user choice
+  instead of 403 or silently applying a fixed rename policy.
+- Contract: initial operations send `ask` for file, directory, and type policies;
+  Web renders only each conflict's server-provided policies (skip, rename,
+  overwrite/replace, or merge) as direct, wrapping buttons, then retries with
+  `observed_revision` and accumulated per-key decisions. Nested directory
+  conflicts may require repeated negotiation.
+- Authorization: fix only the invalid tenant-only claims predicate. Do not broaden
+  file permissions, add business IDs to headers, or add query-token auth.
+- Execution: Direct because backend protocol types, API errors, page state, and
+  dialog behavior form one tightly coupled workflow.
+- Verification: backend Files package and `-race` PASS; frontend focused 52 tests,
+  full 203 tests, typecheck, lint, and production build PASS. Real Chrome tenant
+  same-directory copy PASS: the dialog exposed only the server-provided rename
+  policy, retry created `name (1)`, and `/file-operations` returned no 403.
+  Temporary active test items were moved to recycle bin.
+- Runtime: current API source is serving at `http://127.0.0.1:61827`; Vite remains
+  at `http://127.0.0.1:61828`.
+- Next action: self-review the final diff, commit, push `IAM`, and verify local and
+  remote heads.
+
 ## Canonical Web And API Context Routes - 2026-09-20
 
 - Current phase: TESTING. The user approved a breaking cleanup with no ambiguous

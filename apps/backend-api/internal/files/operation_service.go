@@ -41,7 +41,7 @@ func (s *operationService) run(ctx context.Context, key string, input immediateO
 	var result operationResult
 	claims, ok := authn.FromContext(ctx)
 	if !ok || claims == nil || claims.PrincipalID <= 0 ||
-		(claims.TenantID == 0) != (claims.EntityID == 0) {
+		(claims.TenantID == 0 && claims.EntityID != 0) {
 		return result, errOperationForbidden
 	}
 	if s == nil || s.runtime == nil || s.runtime.Database() == nil || s.ids == nil || s.appender == nil || s.timeout <= 0 ||

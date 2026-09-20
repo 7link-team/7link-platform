@@ -167,6 +167,18 @@ func TestImmediateSelfCopyOnlyAllowsRename(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestImmediateDirectoryConflictOffersEverySafePolicy(t *testing.T) {
+	db, tree, request := newOperationTree(t)
+	request.Sources, request.DestinationID, request.DirectoryPolicy = []guid.ID{10}, 6, "ask"
+	input := immediateOperationRequest{operationRequest: request}
+
+	_, err := executeImmediateFixture(t, db, tree, input, operationAllow)
+	frontier := immediateFrontier(t, err)
+	require.Len(t, frontier.Conflicts, 1)
+	require.Equal(t, "directory", frontier.Conflicts[0].Kind)
+	require.Equal(t, []string{"merge", "replace", "skip", "rename"}, frontier.Conflicts[0].Policies)
+}
+
 func TestImmediateProspectiveDirectoriesUsePerItemDecisions(t *testing.T) {
 	for _, action := range []string{"copy", "move"} {
 		t.Run(action, func(t *testing.T) {
