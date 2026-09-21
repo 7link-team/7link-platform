@@ -331,15 +331,6 @@ func parseGovernanceID(value string) (guid.ID, error) {
 	return id, nil
 }
 
-func tenantResourceIDs(tenant, resource string) (guid.ID, guid.ID, error) {
-	tenantID, err := parseGovernanceID(tenant)
-	if err != nil {
-		return 0, 0, err
-	}
-	id, err := parseGovernanceID(resource)
-	return tenantID, id, err
-}
-
 func requestActor(ctx context.Context, resource string) (guid.ID, guid.ID, guid.ID, error) {
 	tenantID := authnext.TenantIDFromContext(ctx)
 	id, err := parseGovernanceID(resource)

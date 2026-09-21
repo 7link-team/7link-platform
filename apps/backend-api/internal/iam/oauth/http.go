@@ -687,18 +687,6 @@ func parseOAuthID(value string) (guid.ID, error) {
 	return id, nil
 }
 
-func parseOAuthClientIDs(tenant, client string) (guid.ID, guid.ID, error) {
-	tenantID, err := parseOAuthID(tenant)
-	if err != nil {
-		return 0, 0, err
-	}
-	clientID, err := parseOAuthID(client)
-	if err != nil {
-		return 0, 0, err
-	}
-	return tenantID, clientID, nil
-}
-
 func oauthClientError(err error, notFound bool) error {
 	if errors.Is(err, ErrInvalidRequest) {
 		if notFound {
