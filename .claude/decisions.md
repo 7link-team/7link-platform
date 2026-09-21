@@ -1,5 +1,104 @@
 # Decisions
 
+## D67 - The coverage gate is not relaxed to accommodate internal/files
+
+**Date** 2026-09-21
+
+**Decision / Reason**
+The total coverage gate now passes at 90.023%. `internal/files` remains at
+82.7% against the 90% per-module minimum, so `make test-coverage` still fails on
+exactly that one module. The gate is left exactly as it is. No per-module
+exception, no lowered threshold, no removal of `internal/files` from
+MODULE_COVERAGE_PACKAGES.
+
+A gate that is edited until it passes stops being evidence. `internal/files` is
+the newest area of the codebase and the only module that touches user file
+content directly, so it is the last place where the signal should be hidden. A
+red gate naming one module is more useful than a green gate that quietly
+excuses it.
+
+**Alternatives Considered / Tradeoffs**
+Granting a dated per-module exception was rejected: it makes CI green while the
+gap stays invisible in day-to-day work, and dated exceptions outlive their
+dates. Lowering the global minimum was rejected for the same reason plus it
+relaxes every other module to buy one. Covering the remaining ~330 statements
+now was rejected as disproportionate: they sit in 766 blocks averaging one
+statement each, almost entirely `if err != nil` guards on individual database
+and storage calls, so closing them means injecting a distinct fault at roughly
+330 call sites for assertions that mostly restate that an error propagates.
+
+The cost is that `make ci` stays red until this is resolved, and anyone running
+it must know why.
+
+**Scope / Status**
+Accepted for now, explicitly unfinished. The efficient way to close it is a
+shared SQL fault-injection helper - the mechanism already exists ad hoc in this
+package as gorm callbacks - plus table-driven sweeps, rather than one test per
+guard. Revisit before treating `make ci` as a release gate.
+
+---
+
+## D68 - Helpers orphaned by the D66 route migration are deleted, not kept
+
+**Date** 2026-09-21
+
+**Decision / Reason**
+`tenantResourceIDs` in `internal/iam/governance/http.go` and
+`parseOAuthClientIDs` in `internal/iam/oauth/http.go` are removed. Both parse a
+tenant plus a resource identifier from the path, which is the shape D66
+abolished when existing resources became globally addressed. Both are
+package-private with no caller anywhere, including tests, and `golangci-lint`'s
+`unused` rejected them. They were the only two lint findings in the repository,
+so `make lint` was already failing at HEAD before any of this session's work.
+
+**Alternatives Considered / Tradeoffs**
+Keeping them behind a lint suppression was rejected: silencing the linter to
+preserve code nothing calls trades a real signal for dead weight, and the next
+reader would reasonably assume they are part of the routing contract. Leaving
+them and the lint failure alone was rejected because it blocks the whole gate
+for no benefit. The risk of deletion is that a future globally addressed route
+wants the same parsing; that is a handful of lines to rewrite from the
+surviving `parseGovernanceID` and `parseOAuthID`, which both remain in use.
+
+**Scope / Status**
+Done. `make lint` and `make fmt-check` are clean; the generated OpenAPI is
+byte-identical, confirming neither function participated in route registration.
+
+---
+
+## D69 - Coverage measurement and the localized not-found regression are deferred
+
+**Date** 2026-09-21
+
+**Decision / Reason**
+Two known problems are recorded rather than fixed in this pass.
+
+The coverage gate runs each package's own tests with no `-coverpkg`, so code
+exercised by a sibling integration package counts as uncovered. `internal/app`
+measures 84.9% from its own suite but 86.5% once `internal/integration/iam` is
+included, and its entire public lifecycle API reads 0% despite being exercised
+there. The fix belongs in the Makefile, and changing measurement semantics
+shifts every number in the gate at once, which is not something to do in the
+same change that brings the gate to the line.
+
+Separately, D66's owner resolution answers an absent globally addressed resource
+with the registrar's raw `not_found` before the handler runs, so module-owned
+localized not-found messages are no longer reachable on any owned route, and
+authz's own error codes are not localized at all. That changes what every API
+consumer sees on a 404 across the whole owned-resource surface, which is a
+product decision.
+
+**Alternatives Considered / Tradeoffs**
+Duplicating the integration lifecycle tests inside `internal/app` would move the
+number without adding safety, which is the coverage-chasing this work otherwise
+avoided. Restoring localized messages by having the resolver defer to the module
+was not attempted because it would change response bodies platform-wide.
+
+**Scope / Status**
+Open. Both are recorded so neither is rediscovered as a surprise.
+
+---
+
 ## D66 - Globally unique resources use short canonical item paths
 
 **Date** 2026-09-21

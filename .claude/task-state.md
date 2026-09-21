@@ -1,4 +1,267 @@
 # Task State
+
+## Coverage Gate To 90% - 2026-09-21
+
+- Current phase: IMPLEMENTATION.
+- Objective: bring the backend coverage gate green. The gate needs BOTH total
+  >= 90.0% AND every package in MODULE_COVERAGE_PACKAGES >= 90.0%.
+- Measured deficits (from the passing coverage run, zero test failures):
+  total 87.65% of 36,564 statements, needing +859 covered. Eight gated modules
+  are short: internal/files +649, internal/iam/identity +138,
+  internal/iam/core +90, internal/iam/organization +53, internal/iam/audit +12,
+  internal/iam/federation +11, pkg/extension/authz +10, internal/iam/oauth +7.
+  Module deficits sum to +970, so clearing all eight also clears the total.
+- Dominant gap: `internal/files/account_resource.go`, 309 statements with 299
+  uncovered and 18 of its 20 functions at 0%. It has no `account_resource_test.go`,
+  which breaks this repo's one-to-one test-file rule. Covering it fully moves
+  internal/files from 75.5% to only 82.2%, so it is necessary but not sufficient.
+- Constraint: coverage is the gate, not the goal. Tests must assert real
+  behavior and fail when that behavior breaks. No execute-only tests written to
+  move the number, and no weakening of existing assertions.
+- Completed: `pkg/extension/huma/docs/docs_test.go` reformatted; `make fmt-check`
+  now reports clean. That was the second, pre-existing `ci` blocker.
+- Completed: `internal/files/account_resource_test.go` now exists, restoring the
+  one-to-one test-file rule. It covers construction guards, the bind/read/
+  release lifecycle, slot-scoped Replace, principal isolation, candidate
+  Promote including absent/expired/foreign-principal refusals, expiry and the
+  Expire sweep, Create/createExisting input guards, the mandatory transaction
+  boundary, AdoptOn reusing an existing key, candidateSlotFromKey validation,
+  legacy avatar migration including the expired-candidate path and repeat runs,
+  and identifier exhaustion leaving no half-built tree.
+- Verification: `go test ./internal/files` PASS. internal/files coverage
+  75.5% -> 80.4%, uncovered 1094 -> 875 (+219 statements covered).
+- Remaining deficit after this: internal/files +430, internal/iam/identity +138,
+  internal/iam/core +90, internal/iam/organization +53, internal/iam/audit +12,
+  internal/iam/federation +11, pkg/extension/authz +10, internal/iam/oauth +7.
+- Largest remaining files gaps: root.go 46.2% (78 uncovered of 145), browser.go
+  81.1% (102), basic.go 74.3% (86), account_resource.go 67.6% (100 left),
+  operation_execute.go 80.8% (71).
+- Execution mode: Hybrid. The five small module deficits are independent
+  packages with no shared files and are delegated; internal/files stays with the
+  main agent. Acceptance is NOT delegated - every subagent result is re-verified
+  here by running the package and re-measuring coverage.
+- Verification: fmt-check PASS; files package PASS. Full gate NOT_RUN.
+- ACCEPTED (main agent re-verified, not taken on report): pkg/extension/authz
+  88.5% -> 95.5%. Only `register_test.go` changed, 195 insertions and zero
+  deletions, 51 assertion lines. It closed two public declarations that had
+  never been tested at all, `RegisterOwnedTenantMember` and
+  `RegisterTenantEntityOrAuthenticated`, plus the personal-owner branch of
+  `ownedResourceMiddleware`. Independently re-measured at 95.5%; `make lint`
+  clean; no production file touched. The IDE's `infertypeargs` hints on that
+  file are not enforced by this repo's golangci-lint config.
+- internal/files progress: 75.5% -> 81.8%. Added `account_resource_test.go`
+  (new file) and extended `root_test.go` and `browser_test.go`. Newly covered:
+  the whole AccountResourceFiles lifecycle, PurgeOrphaned, the module's
+  `resolveFileOwner` authorization boundary, `fileCollection.validate` scope
+  guard, and the browser name fallbacks. Still +366 statements short of 90%.
+- ACCEPTED (main agent re-verified): internal/iam/oauth 89.5% -> 90.72% and
+  internal/iam/federation 89.5% -> 90.91%. Only `*_test.go` files changed in
+  both packages; both re-measured here; the four D66 manifest entries fixed
+  earlier in `federation/module_test.go` are intact. Largest legitimate win was
+  mirroring oauth's unbound-repository fail-closed test into federation, which
+  pins that an unopened datasource returns `errRepositoryUnavailable` instead of
+  panicking on a nil writer inside gorm.
+- THIRD pre-existing `ci` blocker found, and it is NOT caused by this work:
+  `make lint` fails at HEAD. Two functions have no callers anywhere and the
+  `unused` linter rejects them:
+  `internal/iam/governance/http.go:334 tenantResourceIDs` and
+  `internal/iam/oauth/http.go:690 parseOAuthClientIDs`. Verified with
+  `git grep -c` at HEAD: each appears exactly once, its own definition. Both
+  take a tenant plus resource pair, so both are leftovers of the D66 migration
+  to globally addressed item paths. Deleting them is a production change and
+  needs explicit approval; it was NOT done here.
+- Lint finding introduced by delegation and owned by this work: a `neighbouring`
+  misspelling in `internal/iam/audit/erasure_ledger_test.go`. To be corrected
+  once the audit/organization agent finishes, to avoid editing a file it is
+  still writing.
+- Revised picture of what `ci` needs: four broken suites (FIXED), fmt-check
+  (FIXED), lint's two dead functions (needs approval), coverage (in progress).
+- ACCEPTED (main agent re-verified): internal/iam/audit 89.3% -> 90.81% and
+  internal/iam/organization 87.9% -> 90.84%. Test-only, 704 insertions and zero
+  deletions across 10 existing files, 178 assertion lines. Both re-measured
+  here. The strongest addition is the tenant policy-revision invariant: with
+  `iam_policy_revisions` dropped, every directory write must fail at the
+  revision bump, because a write that committed without it would leave
+  authorization caches serving a directory that no longer exists.
+- The `neighbouring` misspelling introduced by that delegation is FIXED.
+  `make lint` now reports exactly the two pre-existing dead functions and
+  nothing else.
+- Gated module status: authz 95.5 PASS, oauth 90.72 PASS, federation 90.91 PASS,
+  audit 90.81 PASS, organization 90.84 PASS, identity and core delegated and
+  running, internal/files 81.9 and still +360 short.
+- Reported subagent finding, independently confirmed, NOT acted on: the
+  `parseOrganizationID` error branches in `internal/iam/organization/http.go`
+  are unreachable through the registered API because `ownedResourceMiddleware`
+  parses the path ID and answers 422 first, and `pathSelector` puts a GUID
+  pattern on the param so huma rejects malformed values at validation time.
+  Same root cause as the two unused functions: D66 left transport-level ID
+  parsing behind. Deleting it is a production change and needs approval.
+- internal/files is now 82.2% (from 75.5%), still +347 short, and the shape of
+  what is left is the decisive finding: 792 uncovered statements spread over
+  766 distinct blocks, a mean of 1.0 statement per block, across 152 partially
+  covered functions. There is no large lever left. These are one-line
+  `if err != nil { return err }` guards on individual database and storage
+  calls. Reaching 90% means injecting a distinct fault at roughly 347 separate
+  call sites.
+- Consequence for the recommendation: writing ~347 individual fault-injection
+  tests is a poor investment, and most would assert only that an error is
+  propagated. The efficient path is a reusable SQL fault-injection helper. The
+  mechanism already exists in this package as ad-hoc gorm callbacks
+  (`browser_test.go:271`, `operation_preflight_test.go:328`); what is missing is
+  a shared helper plus table-driven sweeps. The audit/organization subagent
+  reached the same conclusion independently for its own packages.
+- Options for internal/files, for the user to choose: (a) build the shared fault
+  injection helper and sweep, (b) keep internal/files below the per-module gate
+  under a documented time-boxed exception while the total gate holds, or
+  (c) lower the gate. Not decided here.
+- ACCEPTED (main agent re-verified): internal/iam/identity 84.2% -> 90.92% and
+  internal/iam/core 88.2% -> 91.07%. Test-only, 1551 insertions and zero
+  deletions. Both re-measured here. It added the missing one-to-one
+  `identity/avatar_test.go` (NEW UNTRACKED FILE - must be staged) and covered
+  `migrateAvatarStorage`, which was at 0%.
+- Two findings from that work worth keeping: on resource-owned core routes,
+  closing the database does not reach handler error paths because ownership
+  resolution fails first, so the honest fault injection is dropping
+  `iam_policy_revisions`; and a 19-digit identifier satisfies every declared
+  path pattern but overflows the platform ID type, reaching the handler as 422
+  for non-tenant IDs and being refused as 403 by the middleware for tenant_id.
+- Flake risk to watch, disclosed by that agent and accepted: two statements in
+  `identity/avatar_render.go:81` are selected by crypto/rand, so identity
+  oscillates by about 0.09 points. Worst observed 90.83%, still above the gate.
+- All seven delegated modules now pass, each re-measured by the main agent:
+  authz 95.5, core 91.07, federation 90.91, identity 90.92, organization 90.84,
+  audit 90.81, oauth 90.72. internal/files remains the only failing module.
+- `make lint` is stable at exactly the two pre-existing dead functions.
+- Full gate run: ZERO test failures across every package. Total went 87.65% ->
+  89.826%, which is +64 statements short of the 90.0% total gate. So there are
+  two separate bars and only one of them is far away: the TOTAL gate needs about
+  +64, while the internal/files MODULE gate needs about +330.
+- Pushed internal/files further to 82.6% with three table-driven sweeps that use
+  the gorm-callback and DROP TABLE fault injection this package already uses:
+  every basic/browser entry point must surface a storage outage; every
+  authorized entry point must fail closed when the ACL store is unreadable
+  (a fall-through to allow would turn an outage into an authorization bypass);
+  and each stage of an immediate operation must abort when its table is gone.
+- Honest correction made during that work: the operation sweep initially
+  asserted that losing `file_operation_items` aborts the run. Probing showed the
+  request records an operation row but zero item rows, so that table is not on
+  its path. The row was removed rather than the assertion bent - the test was
+  wrong, not the code.
+- Measurement finding worth acting on separately: the gate runs each package's
+  own tests only, with no `-coverpkg`, so code exercised by a sibling
+  integration package reads as uncovered. `internal/app` measures 84.9% from its
+  own suite but 86.5% when the `internal/integration/iam` suite is included -
+  14 statements the gate cannot see, and its whole public lifecycle API
+  (New/Bootstrap/RegisterHTTP/Shutdown) shows 0% despite being exercised there.
+  Duplicating those tests inside `internal/app` would be coverage-chasing; the
+  real fix is a Makefile `-coverpkg` change, which is a tooling change needing
+  approval.
+- Definitive gate run: ZERO failures, total 89.864%, +50 statements short.
+  Pushing on the total gate since it is the only bar within reach: added the
+  files HTTP storage-fault sweep, the files module HTTP registration guard,
+  `internal/app` migration down-target tests, the app cross-cutting provider
+  guards, and SQL log-sanitization tests in `pkg/extension/gorm`.
+  internal/files 82.73%, internal/app 84.9% -> 86.05%.
+- Three times during this push a first-draft assertion encoded an assumption
+  rather than the contract, and each was corrected to the real behavior after
+  probing rather than left to pass by luck: the operation sweep wrongly assumed
+  `file_operation_items` is on the immediate-operation path; the HTTP sweep
+  wrongly assumed the tenant and personal collections walk the tree when they
+  own no root in that fixture, and invented a trash route that does not exist;
+  and the SQL sanitizer tests wrongly assumed numbers and whitespace survive.
+- Minor behavior pinned, observed not endorsed: `sanitizeSQLTemplate` leaks the
+  final character of a block comment that is never closed ("SELECT /* secret"
+  renders as "SELECT t"). Everything before that character is still removed, so
+  this is a cosmetic leak rather than a data one. Not changed - production code.
+- TOTAL COVERAGE GATE NOW PASSES: 90.023% (32,916 of 36,564 statements), up
+  from 87.65% at the start. Zero test failures. Every gated module passes except
+  `internal/files` at 82.7%, so `make test-coverage` fails on exactly one thing.
+- Final push over the line: `internal/app` shutdown paths and banner formatting
+  (font path-traversal guard, ANSI strip state machine across writes), and a new
+  `internal/files/query/table_test.go` for a package that had no test file at
+  all. That last one is the most valuable: it walks `TableNames` by reflection,
+  so a table added to the struct but never wired into `BindNames`/`Bind` fails
+  the test. An unwired table keeps the zero value, resolves to the empty string,
+  and in a prefixed shared-database deployment would read the unprefixed table
+  of that name.
+- MARGIN IS THIN: only 8.4 statements above the total gate. Two statements in
+  `identity/avatar_render.go` are selected by crypto/rand and move between runs,
+  so the effective margin is about 6. Any production code added without tests
+  can push the total back under. Worth widening before relying on it.
+- `make lint` remains at exactly the two pre-existing dead functions.
+- Still no production code modified anywhere: 52 changed files and 3 new files,
+  all `_test.go`.
+- Open decisions, none taken: (1) internal/files module gate - cover it, grant a
+  time-boxed exception, or lower the gate; (2) delete the two dead functions,
+  which is what `make lint` needs; (3) the `-coverpkg` measurement fix;
+  (4) the localized not-found regression on owned routes; (5) committing.
+- Next action: get those decisions. Nothing further can be closed without them.
+
+## Stale Tenant-Prefixed Item Paths In Module HTTP Tests - 2026-09-21
+
+- Current phase: IMPLEMENTATION.
+- Objective: make `make ci` green again by migrating the four remaining module
+  HTTP test suites to the D66 globally addressed item paths. Test-only change;
+  no production route, handler, or registration is modified.
+- Confirmed cause: `internal/iam/{federation,governance,oauth,provisioning}`
+  test helpers prepend `/tenants/{tenant_id}` to every target. After D66 only
+  collections are tenant-nested (`authz.Register` -> `prepareTenantPath`);
+  items registered with `authz.RegisterOwned` carry no prefix, so the prepend
+  produces `/tenants/X/identity-providers/Y` and the router returns 404.
+- Evidence: `docs/openapi.json` (verified current by `make openapi-check`)
+  publishes the short item paths; the composed app serves them. Only the
+  module-local callers are stale. Same defect class already fixed for the app
+  fixtures in `98bd2b0`.
+- Established pattern to follow: keep the helper's unconditional prepend and
+  pass no tenant at item call sites, exactly as
+  `internal/integration/iam` does (`f.request(t, ..., "/roles/"+id+"/members/"+
+  principal, 0, token, ...)`). Do NOT add a resource-name whitelist to the
+  helper and do NOT restore the old nested paths.
+- Scope boundary: class B (technically necessary to make existing behavior
+  verifiable). The contextual menu projections, the audit path migration, and
+  the federation callback-origin contract are explicitly OUT of this change.
+- Second cause found during the fix: the federation and provisioning admin
+  harnesses used `NewDeclarationOnlyRegistrar`, which installs no middleware.
+  Owned-resource handlers read their tenant from `authnext.TenantIDFromContext`,
+  which only the owner-resolver middleware injects, so those suites could not
+  exercise an owned route at all. Both harnesses now use a real registrar with a
+  cookie-capable verifier so the published operation security still matches the
+  composed application.
+- Contract changes pinned while migrating, each verified against production
+  code rather than assumed: an absent or non-member globally addressed resource
+  is 404 from the resolver ahead of the handler; an unparseable resource ID is
+  422; an unparseable tenant on a tenant-nested collection is 403; and a storage
+  fault inside the resolver is 503 `authorization_unavailable`, matching what
+  authz already does for failed membership and permission lookups.
+- Test strength preserved rather than relaxed: the governance denied-approver
+  test now seeds a real access request and review so the 403 comes from the
+  permission denial instead of a 404 for an absent record; the oauth isolation
+  test binds each fixture principal to one tenant, because client routes no
+  longer carry the tenant in the URL. That binding was mutation-checked - making
+  membership permissive again turns the three cross-tenant assertions from 404
+  to 200.
+- Scope held: only test files changed. No production route, handler,
+  registration, or generated document was modified.
+- Verification: `go test ./internal/iam/{federation,governance,oauth,
+  provisioning}` PASS; full `make test-coverage` run completes with ZERO test
+  failures across every package; `git diff --check` PASS; `gofmt` clean on all
+  changed files.
+- Coverage gate still FAILS on the number, not on failures: total 87.7% against
+  the 90.0% minimum. Modules under the gate: internal/files 75.5,
+  internal/iam/identity 84.1, internal/iam/organization 87.9, internal/iam/core
+  88.2, pkg/extension/authz 88.5, internal/iam/audit 89.3,
+  internal/iam/federation 89.5, internal/iam/oauth 89.5.
+- Separate pre-existing `ci` blocker, NOT introduced here and deliberately not
+  touched: `make fmt-check` fails on `pkg/extension/huma/docs/docs_test.go`,
+  which is unformatted in the committed tree at HEAD. One `gofmt -w` fixes it;
+  it is an unrelated file so it needs its own approval and commit.
+- Known product-visible finding to raise, out of scope here: owner resolution
+  answers an absent globally addressed resource with the registrar's raw
+  `not_found`, so module-localized not-found messages are no longer reachable on
+  any owned route. authz error codes are not localized at all.
+- Next action: commit the test migration, then decide between raising coverage
+  to the 90% gate (internal/files is the largest single gap) and lowering the
+  gate. Format `docs_test.go` separately to clear `fmt-check`.
 ## REST URI, Swagger Grouping, And App/IAM Boundary - 2026-09-21
 
 - Current phase: CHECKPOINT DELIVERY.
