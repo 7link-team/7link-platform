@@ -407,6 +407,23 @@ func (r *Repository) getSAMLServiceProvider(ctx context.Context, tenantID, id gu
 	return row, nil
 }
 
+func (r *Repository) getSAMLServiceProviderByID(ctx context.Context, id guid.ID) (samlSPRow, error) {
+	var row samlSPRow
+	tables, _, err := r.tables()
+	if err != nil {
+		return row, err
+	}
+	err = r.writer().WithContext(ctx).Table(tables.SAMLServiceProviders.TableName()).
+		Where("id = ?", id).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return row, ErrSAMLSPNotFound
+	}
+	if err != nil {
+		return row, fmt.Errorf("resolve SAML service provider owner: %w", err)
+	}
+	return row, nil
+}
+
 func (r *Repository) activeSAMLServiceProvider(ctx context.Context, tenantID guid.ID, entityID string) (samlSPRow, error) {
 	var row samlSPRow
 	tables, _, err := r.tables()

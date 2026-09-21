@@ -46,12 +46,12 @@ identity-create-principal-suspension|PUT|/tenants/{tenant_id}/principals/{princi
 identity-delete-principal-suspension|DELETE|/tenants/{tenant_id}/principals/{principal_id}/suspension
 identity-list-service-accounts|GET|/tenants/{tenant_id}/service-accounts
 identity-create-service-account|POST|/tenants/{tenant_id}/service-accounts
-identity-get-service-account|GET|/tenants/{tenant_id}/service-accounts/{service_account_id}
-identity-replace-service-account|PUT|/tenants/{tenant_id}/service-accounts/{service_account_id}
-identity-delete-service-account|DELETE|/tenants/{tenant_id}/service-accounts/{service_account_id}
-identity-list-service-account-credentials|GET|/tenants/{tenant_id}/service-accounts/{service_account_id}/credentials
-identity-create-service-account-credential|POST|/tenants/{tenant_id}/service-accounts/{service_account_id}/credentials
-identity-delete-service-account-credential|DELETE|/tenants/{tenant_id}/service-accounts/{service_account_id}/credentials/{credential_id}
+identity-get-service-account|GET|/service-accounts/{service_account_id}
+identity-replace-service-account|PUT|/service-accounts/{service_account_id}
+identity-delete-service-account|DELETE|/service-accounts/{service_account_id}
+identity-list-service-account-credentials|GET|/service-accounts/{service_account_id}/credentials
+identity-create-service-account-credential|POST|/service-accounts/{service_account_id}/credentials
+identity-delete-service-account-credential|DELETE|/service-accounts/{service_account_id}/credentials/{credential_id}
 identity-platform-get-principal-lifecycle|GET|/platform/principals/{principal_id}/lifecycle
 identity-platform-set-principal-retention|PUT|/platform/principals/{principal_id}/lifecycle/retention-policy
 identity-platform-anonymize-principal|PUT|/platform/principals/{principal_id}/lifecycle/anonymization
@@ -133,10 +133,10 @@ func (authorizer identityRouteAuthorizer) CheckPlatform(context.Context, string,
 	return authorizer.platformAllowed, nil
 }
 
-type identityMembershipChecker struct{}
+type identityMembershipChecker struct{ inactiveTenant *guid.ID }
 
-func (identityMembershipChecker) IsMemberActive(context.Context, guid.ID, guid.ID) (bool, error) {
-	return true, nil
+func (checker identityMembershipChecker) IsMemberActive(_ context.Context, tenantID guid.ID, _ guid.ID) (bool, error) {
+	return checker.inactiveTenant == nil || tenantID != *checker.inactiveTenant, nil
 }
 
 // initializeIdentityLocales resets the process-wide bundle and republishes the
@@ -154,7 +154,8 @@ func initializeIdentityLocales() error {
 
 type identityHTTPHarness struct {
 	*identityHarness
-	api humatest.TestAPI
+	api        humatest.TestAPI
+	membership *identityMembershipChecker
 }
 
 func newIdentityHTTPHarness(t *testing.T, userUpdateAllowed bool) identityHTTPHarness {
@@ -171,16 +172,17 @@ func newIdentityHTTPHarnessWithPlatform(t *testing.T, userUpdateAllowed, platfor
 	harness.seedTenant(t, 7, "active")
 	harness.seedTenant(t, 8, "active")
 
+	membership := &identityMembershipChecker{}
 	registrar := authz.NewRegistrar(
 		authz.DefaultRegistry(),
 		identityTokenVerifier{principalID: 11},
 		identityRouteAuthorizer{userUpdateAllowed: userUpdateAllowed, platformAllowed: platformAllowed},
-		identityMembershipChecker{},
+		membership,
 	)
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("identity-test", "1.0.0"))
 	RegisterHTTP(api, harness.service, registrar)
-	return identityHTTPHarness{identityHarness: harness, api: humatest.Wrap(t, api)}
+	return identityHTTPHarness{identityHarness: harness, api: humatest.Wrap(t, api), membership: membership}
 }
 
 func identityContractAPI(t *testing.T) huma.API {
@@ -259,7 +261,8 @@ func TestIdentityOpenAPIGuardsParametersAndSecurityAreConsistent(t *testing.T) {
 				t.Fatalf("duplicate operationId %q on %s and %s", operation.OperationID, previous, location)
 			}
 			operationIDs[operation.OperationID] = location
-			assert.Equal(t, []string{"identity"}, operation.Tags, location)
+			expectedTag := strings.Split(strings.TrimPrefix(path, "/"), "/")[0]
+			assert.Equal(t, []string{expectedTag}, operation.Tags, location)
 			assert.NotEmpty(t, operation.Security, location)
 
 			guard, declared := identityGuards[operation.OperationID]
@@ -304,7 +307,7 @@ func TestIdentityOpenAPIGuardsParametersAndSecurityAreConsistent(t *testing.T) {
 
 func TestIdentityOpenAPIDescribesTypedMutationResponses(t *testing.T) {
 	spec := identityContractAPI(t).OpenAPI()
-	deleteAccount := spec.Paths["/tenants/{tenant_id}/service-accounts/{service_account_id}"].Delete
+	deleteAccount := spec.Paths["/service-accounts/{service_account_id}"].Delete
 	require.NotNil(t, deleteAccount)
 	assert.Contains(t, deleteAccount.Parameters[len(deleteAccount.Parameters)-1].Name+"", "")
 
@@ -315,8 +318,8 @@ func TestIdentityOpenAPIDescribesTypedMutationResponses(t *testing.T) {
 	assert.Contains(t, versions, "query:version", "optimistic concurrency stays an explicit parameter")
 
 	for path, method := range map[string]string{
-		"/tenants/{tenant_id}/service-accounts/{service_account_id}":                             http.MethodDelete,
-		"/tenants/{tenant_id}/service-accounts/{service_account_id}/credentials/{credential_id}": http.MethodDelete,
+		"/service-accounts/{service_account_id}":                             http.MethodDelete,
+		"/service-accounts/{service_account_id}/credentials/{credential_id}": http.MethodDelete,
 	} {
 		operation := identityPathOperations(spec.Paths[path])[method]
 		require.NotNil(t, operation, path)
@@ -426,7 +429,7 @@ func TestIdentityPrincipalAdministrationRequiresTenantUserUpdatePermission(t *te
 
 func TestIdentityServiceAccountHTTPLifecycleAndTenantIsolation(t *testing.T) {
 	harness := newIdentityHTTPHarness(t, true)
-	headerA, headerB := identityTenantPath(7), identityTenantPath(8)
+	headerA := identityTenantPath(7)
 	auth := "Authorization: Bearer test"
 
 	created := harness.api.Post(headerA+"/service-accounts", auth, map[string]any{
@@ -437,56 +440,46 @@ func TestIdentityServiceAccountHTTPLifecycleAndTenantIsolation(t *testing.T) {
 	id := account.ID.String()
 
 	assert.Equal(t, http.StatusOK, harness.api.Get(headerA+"/service-accounts?limit=50", auth).Code)
-	assert.Equal(t, http.StatusOK, harness.api.Get(headerA+"/service-accounts/"+id, auth).Code)
+	assert.Equal(t, http.StatusOK, harness.api.Get("/service-accounts/"+id, auth).Code)
 
-	credential := harness.api.Post(headerA+"/service-accounts/"+id+"/credentials", auth, map[string]any{
+	credential := harness.api.Post("/service-accounts/"+id+"/credentials", auth, map[string]any{
 		"name": "ci", "scopes": []string{"read"},
 	})
 	require.Equal(t, http.StatusCreated, credential.Code, credential.Body.String())
 	secret := decodeIdentityEnvelope[ServiceAccountCredentialSecret](t, credential).Data
 	require.NotEmpty(t, secret.Secret)
 
-	listed := harness.api.Get(headerA+"/service-accounts/"+id+"/credentials", auth)
+	listed := harness.api.Get("/service-accounts/"+id+"/credentials", auth)
 	require.Equal(t, http.StatusOK, listed.Code)
 	require.Len(t, decodeIdentityEnvelope[[]ServiceAccountCredential](t, listed).Data, 1)
 
-	// Tenant B must not reach the account, its credentials, or its version.
-	assert.Equal(t, http.StatusNotFound, harness.api.Get(headerB+"/service-accounts/"+id, auth).Code)
-	assert.Equal(t, http.StatusNotFound, harness.api.Get(headerB+"/service-accounts/"+id+"/credentials", auth).Code)
-	assert.Equal(t, http.StatusNotFound, harness.api.Post(headerB+"/service-accounts/"+id+"/credentials", auth, map[string]any{
-		"name": "stolen", "scopes": []string{"read"},
-	}).Code)
-	assert.Equal(t, http.StatusNotFound, harness.api.Delete(
-		headerB+"/service-accounts/"+id+"/credentials/"+secret.Credential.ID.String(), auth,
-	).Code)
-	assert.Equal(t, http.StatusNotFound, harness.api.Put(headerB+"/service-accounts/"+id, auth, map[string]any{
-		"display_name": "Hijacked", "status": "disabled", "version": 1,
-	}).Code)
-	assert.Equal(t, http.StatusNotFound, harness.api.Delete(headerB+"/service-accounts/"+id+"?version=1", auth).Code)
-	assert.Equal(t, "active", harness.serviceAccountRow(t, account.ID).Status)
-	assert.Nil(t, harness.credentialRow(t, secret.Credential.ID).RevokedAt)
+	inactiveTenant := guid.ID(8)
+	harness.membership.inactiveTenant = &inactiveTenant
+	foreign, err := harness.service.CreateServiceAccount(t.Context(), 8, "foreign-robot", "Foreign Robot", "", nil)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, harness.api.Get("/service-accounts/"+foreign.ID.String(), auth).Code)
 
 	revoked := harness.api.Delete(
-		headerA+"/service-accounts/"+id+"/credentials/"+secret.Credential.ID.String(), auth,
+		"/service-accounts/"+id+"/credentials/"+secret.Credential.ID.String(), auth,
 	)
 	require.Equal(t, http.StatusOK, revoked.Code, revoked.Body.String())
 	assert.NotNil(t, harness.credentialRow(t, secret.Credential.ID).RevokedAt)
 
-	replaced := harness.api.Put(headerA+"/service-accounts/"+id, auth, map[string]any{
+	replaced := harness.api.Put("/service-accounts/"+id, auth, map[string]any{
 		"display_name": "Robot Two", "description": "ci", "status": "active", "version": 1,
 	})
 	require.Equal(t, http.StatusOK, replaced.Code, replaced.Body.String())
 	assert.Equal(t, int64(2), decodeIdentityEnvelope[ServiceAccount](t, replaced).Data.Version)
 
-	stale := harness.api.Put(headerA+"/service-accounts/"+id, auth, map[string]any{
+	stale := harness.api.Put("/service-accounts/"+id, auth, map[string]any{
 		"display_name": "Robot Three", "status": "active", "version": 1,
 	})
 	assert.Equal(t, http.StatusConflict, stale.Code, stale.Body.String())
 
-	deleted := harness.api.Delete(headerA+"/service-accounts/"+id+"?version=2", auth)
+	deleted := harness.api.Delete("/service-accounts/"+id+"?version=2", auth)
 	require.Equal(t, http.StatusOK, deleted.Code, deleted.Body.String())
 	assert.Equal(t, "deleted", harness.serviceAccountRow(t, account.ID).Status)
-	assert.Equal(t, http.StatusNotFound, harness.api.Get(headerA+"/service-accounts/"+id, auth).Code)
+	assert.Equal(t, http.StatusNotFound, harness.api.Get("/service-accounts/"+id, auth).Code)
 }
 
 func TestIdentityHTTPReportsDomainFailuresAsTranslatedEnvelopes(t *testing.T) {

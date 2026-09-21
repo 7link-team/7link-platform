@@ -225,7 +225,7 @@ await command("Emulation.setDeviceMetricsOverride", {
 })
 
 await evaluate(`
-  await fetch("/api/sessions/current", { method: "DELETE", credentials: "include" });
+  await fetch("/api/me/session", { method: "DELETE", credentials: "include" });
   location.assign("/login");
 `)
 await waitFor(
@@ -234,7 +234,7 @@ await waitFor(
 await clickText("使用通行密钥")
 await waitFor(`location.pathname === "/"`, 20000)
 const authenticated = await evaluate(`
-  const response = await fetch("/api/sessions/current", { credentials: "include" });
+  const response = await fetch("/api/me/session", { credentials: "include" });
   return response.ok;
 `)
 if (!authenticated)
@@ -260,7 +260,7 @@ await waitFor(
 )
 
 await evaluate(`
-  await fetch("/api/sessions/current", { method: "DELETE", credentials: "include" });
+  await fetch("/api/me/session", { method: "DELETE", credentials: "include" });
   location.assign("/login");
 `)
 await waitFor(

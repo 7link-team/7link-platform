@@ -141,6 +141,40 @@ func (r *Repository) getAccessRequest(ctx context.Context, tenantID, id guid.ID)
 	return row, nil
 }
 
+func (r *Repository) resourceOwner(ctx context.Context, table string, id guid.ID) (guid.ID, bool, error) {
+	db := r.writer()
+	if db == nil {
+		return 0, false, errRepositoryUnavailable
+	}
+	var row struct {
+		TenantID guid.ID `gorm:"column:tenant_id"`
+	}
+	err := db.WithContext(ctx).Table(table).Select("tenant_id").Where("id = ?", id).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("resolve governance resource owner: %w", err)
+	}
+	return row.TenantID, true, nil
+}
+
+func (r *Repository) accessRequestOwner(ctx context.Context, id guid.ID) (guid.ID, bool, error) {
+	db := r.writer()
+	if db == nil {
+		return 0, false, errRepositoryUnavailable
+	}
+	return r.resourceOwner(ctx, r.tables(db).AccessRequests.TableName(), id)
+}
+
+func (r *Repository) accessReviewOwner(ctx context.Context, id guid.ID) (guid.ID, bool, error) {
+	db := r.writer()
+	if db == nil {
+		return 0, false, errRepositoryUnavailable
+	}
+	return r.resourceOwner(ctx, r.tables(db).AccessReviews.TableName(), id)
+}
+
 func (r *Repository) getReview(ctx context.Context, tenantID, id guid.ID) (model.AccessReview, error) {
 	var row model.AccessReview
 	db := r.writer()

@@ -253,13 +253,23 @@ type taskBody struct {
 	Body respx.Envelope[View]
 }
 
+func registerEntityTodo[I, O any](registrar *authz.Registrar, api huma.API, svc *service, op huma.Operation, guard authz.Guard, handler func(context.Context, *I) (*O, error)) {
+	op.Tags = []string{"entities"}
+	authz.RegisterOwned(registrar, api, op, authz.EntityPath, authz.ResourceOwnerResolver(svc.entities), guard, handler)
+}
+
+func registerOwnedTodo[I, O any](registrar *authz.Registrar, api huma.API, svc *service, op huma.Operation, guard authz.Guard, handler func(context.Context, *I) (*O, error)) {
+	op.Tags = []string{"todos"}
+	authz.RegisterOwned(registrar, api, op, "id", svc.resolveOwner, guard, handler)
+}
+
 func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, registrar *authz.Registrar) {
-	authz.RegisterEntity(registrar, api, huma.Operation{
+	registerEntityTodo(registrar, api, svc, huma.Operation{
 		OperationID:   "create-todo",
 		Method:        http.MethodPost,
-		Path:          basePath,
+		Path:          "/entities/{entity_id}" + basePath,
 		Summary:       "Create a task",
-		Tags:          []string{"todo"},
+		Tags:          []string{"tenants"},
 		DefaultStatus: http.StatusCreated,
 	}, authz.Guard{Resource: "todo", Verb: "create", FilterData: true}, func(ctx context.Context, in *createInput) (*taskBody, error) {
 		draft, err := draftOf(in)
@@ -273,14 +283,14 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, regist
 		return svc.taskResponse(ctx, row)
 	})
 
-	authz.RegisterEntity(registrar, api, huma.Operation{
+	registerEntityTodo(registrar, api, svc, huma.Operation{
 		OperationID: "list-todos",
 		Method:      http.MethodGet,
-		Path:        basePath,
+		Path:        "/entities/{entity_id}" + basePath,
 		Summary:     "List tasks",
 		Description: "Filters are AND-combined. Sorting accepts up to three keys; the identifier is " +
 			"always appended so paging stays stable when sort values tie.",
-		Tags:       []string{"todo"},
+		Tags:       []string{"tenants"},
 		Parameters: filterParams,
 	}, authz.Guard{Resource: "todo", Verb: "view", FilterData: true}, func(ctx context.Context, in *ListInput) (*respx.Body[[]View], error) {
 		in.RawQuery = rawQueryFrom(ctx)
@@ -301,12 +311,12 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, regist
 		return body, nil
 	})
 
-	authz.RegisterEntity(registrar, api, huma.Operation{
+	registerOwnedTodo(registrar, api, svc, huma.Operation{
 		OperationID: "get-todo",
 		Method:      http.MethodGet,
 		Path:        basePath + "/{id}",
 		Summary:     "Read a task",
-		Tags:        []string{"todo"},
+		Tags:        []string{"tenants"},
 	}, authz.Guard{Resource: "todo", Verb: "view", FilterData: true}, func(ctx context.Context, in *IDInput) (*taskBody, error) {
 		id, err := taskID(in.ID)
 		if err != nil {
@@ -319,13 +329,13 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, regist
 		return svc.taskResponse(ctx, row)
 	})
 
-	authz.RegisterEntity(registrar, api, huma.Operation{
+	registerOwnedTodo(registrar, api, svc, huma.Operation{
 		OperationID: "update-todo",
 		Method:      http.MethodPatch,
 		Path:        basePath + "/{id}",
 		Summary:     "Update a task",
 		Description: "Requires If-Match carrying the version last read, so a concurrent write cannot be lost.",
-		Tags:        []string{"todo"},
+		Tags:        []string{"tenants"},
 	}, authz.Guard{Resource: "todo", Verb: "update", FilterData: true}, func(ctx context.Context, in *patchInput) (*taskBody, error) {
 		version, err := parseIfMatch(in.IfMatch)
 		if err != nil {
@@ -346,13 +356,13 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, regist
 		return svc.taskResponse(ctx, row)
 	})
 
-	authz.RegisterEntity(registrar, api, huma.Operation{
+	registerOwnedTodo(registrar, api, svc, huma.Operation{
 		OperationID:   "delete-todo",
 		Method:        http.MethodDelete,
 		Path:          basePath + "/{id}",
 		Summary:       "Delete a task",
 		Description:   "Soft delete. Requires If-Match: deleting a stale view loses an update just as writing one does.",
-		Tags:          []string{"todo"},
+		Tags:          []string{"tenants"},
 		DefaultStatus: http.StatusNoContent,
 	}, authz.Guard{Resource: "todo", Verb: "delete", FilterData: true}, func(ctx context.Context, in *VersionedInput) (*struct{}, error) {
 		version, err := parseIfMatch(in.IfMatch)
@@ -369,13 +379,13 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, regist
 		return nil, nil
 	})
 
-	authz.RegisterEntity(registrar, api, huma.Operation{
+	registerOwnedTodo(registrar, api, svc, huma.Operation{
 		OperationID: "restore-todo",
 		Method:      http.MethodPost,
 		Path:        basePath + "/{id}/restore",
 		Summary:     "Restore a deleted task",
 		Description: "Requires If-Match, so a task cannot be restored from its identifier alone.",
-		Tags:        []string{"todo"},
+		Tags:        []string{"tenants"},
 	}, authz.Guard{Resource: "todo", Verb: "update", FilterData: true}, func(ctx context.Context, in *VersionedInput) (*taskBody, error) {
 		version, err := parseIfMatch(in.IfMatch)
 		if err != nil {
@@ -522,14 +532,14 @@ func parseFormat(raw string) (Format, error) {
 }
 
 func registerTransferHTTP(api huma.API, svc *service, filterParams []*huma.Param, registrar *authz.Registrar) {
-	authz.RegisterEntity(registrar, api, huma.Operation{
+	registerEntityTodo(registrar, api, svc, huma.Operation{
 		OperationID: "download-todo-import-template",
 		Method:      http.MethodGet,
-		Path:        basePath + "/import-template",
+		Path:        "/entities/{entity_id}" + basePath + "/import-template",
 		Summary:     "Download the import template",
 		Description: "Headers follow the request locale, and the importer accepts a template filled in " +
 			"under any supported locale.",
-		Tags: []string{"todo"},
+		Tags: []string{"tenants"},
 	}, authz.Guard{Resource: "todo", Verb: "import", FilterData: true}, func(ctx context.Context, in *TemplateRequest) (*huma.StreamResponse, error) {
 		format, err := parseFormat(in.Format)
 		if err != nil {
@@ -546,14 +556,14 @@ func registerTransferHTTP(api huma.API, svc *service, filterParams []*huma.Param
 		return fileResponse("todo-import-template", format, payload), nil
 	})
 
-	authz.RegisterEntity(registrar, api, huma.Operation{
+	registerEntityTodo(registrar, api, svc, huma.Operation{
 		OperationID: "export-todos",
 		Method:      http.MethodGet,
-		Path:        basePath + "/export",
+		Path:        "/entities/{entity_id}" + basePath + "/export",
 		Summary:     "Export tasks",
 		Description: "Accepts every list filter. The result is not paginated but is capped; a filter " +
 			"matching more rows is rejected rather than silently truncated.",
-		Tags:       []string{"todo"},
+		Tags:       []string{"tenants"},
 		Parameters: filterParams,
 	}, authz.Guard{Resource: "todo", Verb: "export", FilterData: true}, func(ctx context.Context, in *ExportRequest) (*huma.StreamResponse, error) {
 		format, err := parseFormat(in.Format)
@@ -593,14 +603,14 @@ func registerTransferHTTP(api huma.API, svc *service, filterParams []*huma.Param
 		return fileResponse("todos", format, payload), nil
 	})
 
-	authz.RegisterEntity(registrar, api, huma.Operation{
+	registerEntityTodo(registrar, api, svc, huma.Operation{
 		OperationID: "import-todos",
 		Method:      http.MethodPost,
-		Path:        basePath + "/import",
+		Path:        "/entities/{entity_id}" + basePath + "/import",
 		Summary:     "Import tasks",
 		Description: "Every row is validated first. If any row is invalid nothing is written and each " +
 			"problem is reported, so a corrected file can be re-uploaded whole without duplicating rows.",
-		Tags:         []string{"todo"},
+		Tags:         []string{"tenants"},
 		MaxBodyBytes: ImportRequest{}.Limits().MaxBytes + (1 << 20),
 	}, authz.Guard{Resource: "todo", Verb: "import", FilterData: true}, func(ctx context.Context, in *ImportRequest) (*respx.Body[ImportReport], error) {
 		format, err := parseFormat(in.Format)

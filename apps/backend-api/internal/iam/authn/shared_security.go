@@ -153,31 +153,25 @@ const (
 	scopeOAuth          = "oauth"
 )
 
-func limitedAuthenticationOperation(op *huma.Operation) bool {
-	return op != nil && op.Method == http.MethodPost && strings.HasPrefix(op.Path, "/")
+func rateLimitScope(op *huma.Operation) string {
+	if op == nil || op.Metadata == nil {
+		return ""
+	}
+	scope, _ := op.Metadata[authnext.RateLimitScopeMetadata].(string)
+	return scope
 }
 
-// limitedOAuthOperation covers the protocol endpoints that authenticate a
-// client or consume a credential. They are public routes, so nothing else
-// counts attempts against them.
-func limitedOAuthOperation(op *huma.Operation) bool {
-	if op == nil || op.Method != http.MethodPost {
-		return false
-	}
-	switch op.Path {
-	case "/oauth/token", "/oauth/revoke", "/oauth/introspect":
-		return true
-	}
-	return false
+func limitedAuthenticationOperation(op *huma.Operation) bool {
+	return rateLimitScope(op) == authnext.RateLimitAuthentication
 }
 
 // requestScope reports which budget an operation is counted against, or the
 // empty string when it is not limited at all.
 func requestScope(op *huma.Operation) string {
-	switch {
-	case limitedOAuthOperation(op):
+	switch rateLimitScope(op) {
+	case authnext.RateLimitOAuth:
 		return scopeOAuth
-	case limitedAuthenticationOperation(op):
+	case authnext.RateLimitAuthentication:
 		return scopeAuthentication
 	}
 	return ""

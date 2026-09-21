@@ -45,6 +45,16 @@ type Service struct {
 	operationReleaseFailures atomic.Int64
 }
 
+func (s *Service) resolveDirectoryOwner(ctx context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
+	tenantID, found, err := s.repo.directoryOwner(ctx, id)
+	return authz.ResourceOwner{TenantID: tenantID}, found, err
+}
+
+func (s *Service) resolveTargetOwner(ctx context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
+	tenantID, found, err := s.repo.targetOwner(ctx, id)
+	return authz.ResourceOwner{TenantID: tenantID}, found, err
+}
+
 type pushLock struct {
 	mu   sync.Mutex
 	refs int

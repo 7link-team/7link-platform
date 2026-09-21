@@ -64,7 +64,7 @@ func registerPrincipalLifecycleHTTP(api huma.API, service *Service, registrar *a
 			"policy, so looking at a principal does not start a retention clock. Blockers cover what this " +
 			"module decides; a module that still holds the principal's data refuses during the attempt and " +
 			"names itself, because that is the reason that says where the data still is.",
-		Tags:   []string{"identity"},
+		Tags:   []string{"platform"},
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, guard, func(ctx context.Context, in *platformLifecycleInput) (*respx.Body[PrincipalLifecycleStatus], error) {
 		id, err := requireID(in.PrincipalID)
@@ -87,7 +87,7 @@ func registerPrincipalLifecycleHTTP(api huma.API, service *Service, registrar *a
 			"deciding from the same screen cannot silently overwrite each other -- the second is told the " +
 			"policy moved. Reference is an administrative case identifier and must not repeat the subject's " +
 			"own data, which erasure would then be unable to remove.",
-		Tags:   []string{"identity"},
+		Tags:   []string{"platform"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, guard, func(ctx context.Context, in *platformRetentionInput) (*respx.Body[PrincipalLifecycle], error) {
 		id, err := requireID(in.PrincipalID)
@@ -111,7 +111,7 @@ func registerPrincipalLifecycleHTTP(api huma.API, service *Service, registrar *a
 			"be suspended, its retention deadline must have passed, no legal hold may stand, and the request " +
 			"must repeat the principal's current login name -- checked while the row is locked, so it cannot " +
 			"be satisfied by a name read before someone else renamed the principal.",
-		Tags:   []string{"identity"},
+		Tags:   []string{"platform"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusServiceUnavailable},
 	}, guard, func(ctx context.Context, in *platformAnonymizeInput) (*respx.Body[PrincipalLifecycle], error) {
 		id, err := requireID(in.PrincipalID)

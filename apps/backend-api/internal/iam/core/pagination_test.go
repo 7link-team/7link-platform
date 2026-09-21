@@ -469,7 +469,8 @@ func TestListEndpointsBoundTheDefaultPage(t *testing.T) {
 	} {
 		t.Run(route, func(t *testing.T) {
 			path := route
-			if !strings.HasPrefix(route, "/platform/") {
+			if !strings.HasPrefix(route, "/platform/") &&
+				!strings.HasPrefix(route, "/entities/") && !strings.HasPrefix(route, "/roles/") {
 				path = tenant + route
 			}
 			response := harness.api.Get(path, "Authorization: Bearer test")

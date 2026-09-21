@@ -483,6 +483,27 @@ func (r *Repository) serviceAccountQuery(ctx context.Context) (*gorm.DB, error) 
 		Joins("JOIN " + tables.Principals.TableName() + " AS principal ON principal.id = service_account.principal_id"), nil
 }
 
+func (r *Repository) serviceAccountOwner(ctx context.Context, id guid.ID) (guid.ID, bool, error) {
+	tables, db, err := r.tables()
+	if err != nil {
+		return 0, false, err
+	}
+	var row struct {
+		TenantID guid.ID `gorm:"column:owner_tenant_id"`
+	}
+	err = db.WithContext(ctx).Table(tables.ServiceAccounts.TableName()).
+		Select("owner_tenant_id").
+		Where("principal_id = ? AND status <> 'deleted'", id).
+		Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("resolve service account owner: %w", err)
+	}
+	return row.TenantID, true, nil
+}
+
 func (r *Repository) getServiceAccount(
 	ctx context.Context,
 	tenantID, id guid.ID,

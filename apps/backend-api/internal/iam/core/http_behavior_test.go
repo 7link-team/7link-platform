@@ -42,10 +42,13 @@ func (authorizer httpRouteAuthorizer) CheckPlatform(context.Context, string, gui
 	return authorizer.platformAllowed, nil
 }
 
-type httpMembershipChecker struct{}
+type httpMembershipChecker struct {
+	tenantID    guid.ID
+	principalID guid.ID
+}
 
-func (httpMembershipChecker) IsMemberActive(context.Context, guid.ID, guid.ID) (bool, error) {
-	return true, nil
+func (checker httpMembershipChecker) IsMemberActive(_ context.Context, tenantID, principalID guid.ID) (bool, error) {
+	return tenantID == checker.tenantID && principalID == checker.principalID, nil
 }
 
 type httpAuthorizationEvaluator struct{}
@@ -162,7 +165,7 @@ func newHTTPIAMHarness(t *testing.T, platformAllowed bool) httpIAMHarness {
 		registry,
 		httpTokenVerifier{principalID: actorID},
 		httpRouteAuthorizer{platformAllowed: platformAllowed},
-		httpMembershipChecker{},
+		httpMembershipChecker{tenantID: 1, principalID: actorID},
 	)
 	appender := func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil }
 	module := NewModule(database.runtime, enabledModuleConfig())
@@ -223,33 +226,33 @@ func TestIAMManagementHTTPFlowAndTenantIsolation(t *testing.T) {
 	require.Equal(t, http.StatusCreated, createdRole.Code, createdRole.Body.String())
 	role := decodeEnvelope[APIRole](t, createdRole).Data
 	require.NotEmpty(t, role.ID)
-	assert.Equal(t, http.StatusOK, harness.api.Get(headerA+"/roles/"+role.ID.String(), "Authorization: Bearer test").Code)
-	assert.Equal(t, http.StatusOK, harness.api.Patch(headerA+"/roles/"+role.ID.String(), "Authorization: Bearer test", map[string]any{
+	assert.Equal(t, http.StatusOK, harness.api.Get("/roles/"+role.ID.String(), "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Patch("/roles/"+role.ID.String(), "Authorization: Bearer test", map[string]any{
 		"name": "Operators", "description": "Updated operators",
 	}).Code)
-	assert.Equal(t, http.StatusOK, harness.api.Put(headerA+"/roles/"+role.ID.String()+"/permissions/user_view", "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Put("/roles/"+role.ID.String()+"/permissions/user_view", "Authorization: Bearer test").Code)
 
-	setScope := harness.api.Put(headerA+"/roles/"+role.ID.String()+"/data-scope", "Authorization: Bearer test", map[string]any{"scope": "self"})
+	setScope := harness.api.Put("/roles/"+role.ID.String()+"/data-scope", "Authorization: Bearer test", map[string]any{"scope": "self"})
 	require.Equal(t, http.StatusOK, setScope.Code, setScope.Body.String())
-	assert.Equal(t, http.StatusOK, harness.api.Get(headerA+"/roles/"+role.ID.String()+"/data-scope", "Authorization: Bearer test").Code)
-	assert.Equal(t, http.StatusOK, harness.api.Get(headerA+"/roles/"+role.ID.String()+"/permissions", "Authorization: Bearer test").Code)
-	assert.Equal(t, http.StatusOK, harness.api.Get(headerA+"/roles/"+role.ID.String()+"/permission-grants", "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Get("/roles/"+role.ID.String()+"/data-scope", "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Get("/roles/"+role.ID.String()+"/permissions", "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Get("/roles/"+role.ID.String()+"/permission-grants", "Authorization: Bearer test").Code)
 	condition := map[string]any{
 		"condition": map[string]any{
 			"version": 1,
 			"gte":     []any{map[string]any{"context": "auth.acr"}, map[string]any{"value": 1}},
 		},
 	}
-	assert.Equal(t, http.StatusOK, harness.api.Put(headerA+"/roles/"+role.ID.String()+"/permissions/user_view/condition", "Authorization: Bearer test", condition).Code)
-	assert.Equal(t, http.StatusOK, harness.api.Delete(headerA+"/roles/"+role.ID.String()+"/permissions/user_view/condition", "Authorization: Bearer test").Code)
-	assert.Equal(t, http.StatusOK, harness.api.Put(headerA+"/roles/"+role.ID.String()+"/members/11", "Authorization: Bearer test").Code)
-	assert.Equal(t, http.StatusOK, harness.api.Get(headerA+"/roles/"+role.ID.String()+"/members", "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Put("/roles/"+role.ID.String()+"/permissions/user_view/condition", "Authorization: Bearer test", condition).Code)
+	assert.Equal(t, http.StatusOK, harness.api.Delete("/roles/"+role.ID.String()+"/permissions/user_view/condition", "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Put("/roles/"+role.ID.String()+"/members/11", "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Get("/roles/"+role.ID.String()+"/members", "Authorization: Bearer test").Code)
 	assert.Equal(t, http.StatusOK, harness.api.Get(headerA+"/members/11/roles", "Authorization: Bearer test").Code)
 
 	seedDirectoryFixtures(t, harness.repositoryHarness, 1)
-	assert.Equal(t, http.StatusOK, harness.api.Put(headerA+"/roles/"+role.ID.String()+"/directory-bindings/group/200", "Authorization: Bearer test").Code)
-	assert.Equal(t, http.StatusOK, harness.api.Get(headerA+"/roles/"+role.ID.String()+"/directory-bindings", "Authorization: Bearer test").Code)
-	assert.Equal(t, http.StatusOK, harness.api.Delete(headerA+"/roles/"+role.ID.String()+"/directory-bindings/group/200", "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Put("/roles/"+role.ID.String()+"/directory-bindings/group/200", "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Get("/roles/"+role.ID.String()+"/directory-bindings", "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Delete("/roles/"+role.ID.String()+"/directory-bindings/group/200", "Authorization: Bearer test").Code)
 
 	seedHTTPPrincipal(t, harness.repositoryHarness, 12)
 	createdMember := harness.api.Post(headerA+"/members", "Authorization: Bearer test", map[string]any{
@@ -267,8 +270,8 @@ func TestIAMManagementHTTPFlowAndTenantIsolation(t *testing.T) {
 	require.Equal(t, http.StatusCreated, createdMenu.Code, createdMenu.Body.String())
 	assert.NotContains(t, createdMenu.Body.String(), `"parent_id":"0"`)
 	menuA := decodeEnvelope[APIMenu](t, createdMenu).Data
-	assert.Equal(t, http.StatusOK, harness.api.Get(headerA+"/menus/"+menuA.ID.String(), "Authorization: Bearer test").Code)
-	assert.Equal(t, http.StatusOK, harness.api.Patch(headerA+"/menus/"+menuA.ID.String(), "Authorization: Bearer test", map[string]any{
+	assert.Equal(t, http.StatusOK, harness.api.Get("/menus/"+menuA.ID.String(), "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Patch("/menus/"+menuA.ID.String(), "Authorization: Bearer test", map[string]any{
 		"parent_id": "", "label": "People", "route": "/people", "icon": "users", "sort_order": 10,
 		"permission_code": "user_view", "status": "active",
 	}).Code)
@@ -282,8 +285,8 @@ func TestIAMManagementHTTPFlowAndTenantIsolation(t *testing.T) {
 	require.Equal(t, http.StatusCreated, createdEntity.Code, createdEntity.Body.String())
 	assert.NotContains(t, createdEntity.Body.String(), `"parent_id":"0"`)
 	entityA := decodeEnvelope[APIEntity](t, createdEntity).Data
-	assert.Equal(t, http.StatusOK, harness.api.Get(headerA+"/entities/"+entityA.ID.String(), "Authorization: Bearer test").Code)
-	assert.Equal(t, http.StatusOK, harness.api.Patch(headerA+"/entities/"+entityA.ID.String(), "Authorization: Bearer test", map[string]any{
+	assert.Equal(t, http.StatusOK, harness.api.Get("/entities/"+entityA.ID.String(), "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Patch("/entities/"+entityA.ID.String(), "Authorization: Bearer test", map[string]any{
 		"type": "company", "name": "Tenant A updated", "status": "active", "metadata": map[string]any{"region": "north"},
 	}).Code)
 	childEntity := harness.api.Post(headerA+"/entities", "Authorization: Bearer test", map[string]any{
@@ -291,15 +294,15 @@ func TestIAMManagementHTTPFlowAndTenantIsolation(t *testing.T) {
 	})
 	require.Equal(t, http.StatusCreated, childEntity.Code, childEntity.Body.String())
 	childEntityID := decodeEnvelope[APIEntity](t, childEntity).Data.ID
-	clearParent := harness.api.Patch(headerA+"/entities/"+childEntityID.String(), "Authorization: Bearer test", map[string]any{"parent_id": ""})
+	clearParent := harness.api.Patch("/entities/"+childEntityID.String(), "Authorization: Bearer test", map[string]any{"parent_id": ""})
 	require.Equal(t, http.StatusOK, clearParent.Code, clearParent.Body.String())
 	assert.NotContains(t, clearParent.Body.String(), `"parent_id"`)
 	expiresAt := time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano)
-	assert.Equal(t, http.StatusOK, harness.api.Put(headerA+"/entities/"+entityA.ID.String()+"/role-bindings/"+role.ID.String()+"/11", "Authorization: Bearer test", map[string]any{
+	assert.Equal(t, http.StatusOK, harness.api.Put("/entities/"+entityA.ID.String()+"/role-bindings/"+role.ID.String()+"/11", "Authorization: Bearer test", map[string]any{
 		"effect": "allow", "expires_at": expiresAt,
 	}).Code)
-	assert.Equal(t, http.StatusOK, harness.api.Get(headerA+"/entities/"+entityA.ID.String()+"/role-bindings", "Authorization: Bearer test").Code)
-	assert.Equal(t, http.StatusOK, harness.api.Delete(headerA+"/entities/"+entityA.ID.String()+"/role-bindings/"+role.ID.String()+"/11", "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Get("/entities/"+entityA.ID.String()+"/role-bindings", "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Delete("/entities/"+entityA.ID.String()+"/role-bindings/"+role.ID.String()+"/11", "Authorization: Bearer test").Code)
 
 	startsAt := time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano)
 	endsAt := time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano)
@@ -368,16 +371,16 @@ func TestIAMManagementHTTPFlowAndTenantIsolation(t *testing.T) {
 		call func() *httptest.ResponseRecorder
 	}{
 		{name: "get role", call: func() *httptest.ResponseRecorder {
-			return harness.api.Get(headerA+"/roles/"+roleB.ID.String(), "Authorization: Bearer test")
+			return harness.api.Get("/roles/"+roleB.ID.String(), "Authorization: Bearer test")
 		}},
 		{name: "update role", call: func() *httptest.ResponseRecorder {
-			return harness.api.Patch(headerA+"/roles/"+roleB.ID.String(), "Authorization: Bearer test", map[string]any{"name": "stolen"})
+			return harness.api.Patch("/roles/"+roleB.ID.String(), "Authorization: Bearer test", map[string]any{"name": "stolen"})
 		}},
 		{name: "delete role", call: func() *httptest.ResponseRecorder {
-			return harness.api.Delete(headerA+"/roles/"+roleB.ID.String(), "Authorization: Bearer test")
+			return harness.api.Delete("/roles/"+roleB.ID.String(), "Authorization: Bearer test")
 		}},
 		{name: "grant role", call: func() *httptest.ResponseRecorder {
-			return harness.api.Put(headerA+"/roles/"+roleB.ID.String()+"/permissions/user_view", "Authorization: Bearer test")
+			return harness.api.Put("/roles/"+roleB.ID.String()+"/permissions/user_view", "Authorization: Bearer test")
 		}},
 		{name: "get member", call: func() *httptest.ResponseRecorder {
 			return harness.api.Get(headerA+"/members/22", "Authorization: Bearer test")
@@ -386,22 +389,22 @@ func TestIAMManagementHTTPFlowAndTenantIsolation(t *testing.T) {
 			return harness.api.Patch(headerA+"/members/22", "Authorization: Bearer test", map[string]any{"display_name": "stolen"})
 		}},
 		{name: "get menu", call: func() *httptest.ResponseRecorder {
-			return harness.api.Get(headerA+"/menus/"+menuB.ID.String(), "Authorization: Bearer test")
+			return harness.api.Get("/menus/"+menuB.ID.String(), "Authorization: Bearer test")
 		}},
 		{name: "update menu", call: func() *httptest.ResponseRecorder {
-			return harness.api.Patch(headerA+"/menus/"+menuB.ID.String(), "Authorization: Bearer test", map[string]any{"label": "stolen"})
+			return harness.api.Patch("/menus/"+menuB.ID.String(), "Authorization: Bearer test", map[string]any{"label": "stolen"})
 		}},
 		{name: "delete menu", call: func() *httptest.ResponseRecorder {
-			return harness.api.Delete(headerA+"/menus/"+menuB.ID.String(), "Authorization: Bearer test")
+			return harness.api.Delete("/menus/"+menuB.ID.String(), "Authorization: Bearer test")
 		}},
 		{name: "get entity", call: func() *httptest.ResponseRecorder {
-			return harness.api.Get(headerA+"/entities/"+entityB.ID.String(), "Authorization: Bearer test")
+			return harness.api.Get("/entities/"+entityB.ID.String(), "Authorization: Bearer test")
 		}},
 		{name: "update entity", call: func() *httptest.ResponseRecorder {
-			return harness.api.Patch(headerA+"/entities/"+entityB.ID.String(), "Authorization: Bearer test", map[string]any{"name": "stolen"})
+			return harness.api.Patch("/entities/"+entityB.ID.String(), "Authorization: Bearer test", map[string]any{"name": "stolen"})
 		}},
 		{name: "delete entity", call: func() *httptest.ResponseRecorder {
-			return harness.api.Delete(headerA+"/entities/"+entityB.ID.String(), "Authorization: Bearer test")
+			return harness.api.Delete("/entities/"+entityB.ID.String(), "Authorization: Bearer test")
 		}},
 	}
 	for _, test := range crossTenantCases {
@@ -452,12 +455,12 @@ func TestIAMManagementHTTPFlowAndTenantIsolation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, unchangedRelationships, 1)
 
-	assert.Equal(t, http.StatusOK, harness.api.Delete(headerA+"/menus/"+menuA.ID.String(), "Authorization: Bearer test").Code)
-	assert.Equal(t, http.StatusOK, harness.api.Delete(headerA+"/entities/"+entityA.ID.String(), "Authorization: Bearer test").Code)
-	assert.Equal(t, http.StatusOK, harness.api.Delete(headerA+"/entities/"+childEntityID.String(), "Authorization: Bearer test").Code)
-	assert.Equal(t, http.StatusOK, harness.api.Delete(headerA+"/roles/"+role.ID.String()+"/members/11", "Authorization: Bearer test").Code)
-	assert.Equal(t, http.StatusOK, harness.api.Delete(headerA+"/roles/"+role.ID.String()+"/permissions/user_view", "Authorization: Bearer test").Code)
-	assert.Equal(t, http.StatusOK, harness.api.Delete(headerA+"/roles/"+role.ID.String(), "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Delete("/menus/"+menuA.ID.String(), "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Delete("/entities/"+entityA.ID.String(), "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Delete("/entities/"+childEntityID.String(), "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Delete("/roles/"+role.ID.String()+"/members/11", "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Delete("/roles/"+role.ID.String()+"/permissions/user_view", "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Delete("/roles/"+role.ID.String(), "Authorization: Bearer test").Code)
 }
 
 func TestMemberAuthorizationSourcesHTTPReturnsSnapshotAndNotFound(t *testing.T) {
@@ -591,22 +594,22 @@ func TestIAMHTTPInternalFailuresUseUniformEnvelope(t *testing.T) {
 			return harness.api.Post(header+"/entities", "Authorization: Bearer test", map[string]any{"type": "store", "name": "Store"})
 		}},
 		{name: "get entity", call: func() *httptest.ResponseRecorder {
-			return harness.api.Get(header+"/entities/1", "Authorization: Bearer test")
+			return harness.api.Get("/entities/1", "Authorization: Bearer test")
 		}},
 		{name: "update entity", call: func() *httptest.ResponseRecorder {
-			return harness.api.Patch(header+"/entities/1", "Authorization: Bearer test", map[string]any{"name": "Store"})
+			return harness.api.Patch("/entities/1", "Authorization: Bearer test", map[string]any{"name": "Store"})
 		}},
 		{name: "delete entity", call: func() *httptest.ResponseRecorder {
-			return harness.api.Delete(header+"/entities/1", "Authorization: Bearer test")
+			return harness.api.Delete("/entities/1", "Authorization: Bearer test")
 		}},
 		{name: "list entity bindings", call: func() *httptest.ResponseRecorder {
-			return harness.api.Get(header+"/entities/1/role-bindings", "Authorization: Bearer test")
+			return harness.api.Get("/entities/1/role-bindings", "Authorization: Bearer test")
 		}},
 		{name: "put entity binding", call: func() *httptest.ResponseRecorder {
-			return harness.api.Put(header+"/entities/1/role-bindings/2/3", "Authorization: Bearer test", map[string]any{"effect": "allow"})
+			return harness.api.Put("/entities/1/role-bindings/2/3", "Authorization: Bearer test", map[string]any{"effect": "allow"})
 		}},
 		{name: "delete entity binding", call: func() *httptest.ResponseRecorder {
-			return harness.api.Delete(header+"/entities/1/role-bindings/2/3", "Authorization: Bearer test")
+			return harness.api.Delete("/entities/1/role-bindings/2/3", "Authorization: Bearer test")
 		}},
 		{name: "list roles", call: func() *httptest.ResponseRecorder {
 			return harness.api.Get(header+"/roles", "Authorization: Bearer test")
@@ -615,55 +618,55 @@ func TestIAMHTTPInternalFailuresUseUniformEnvelope(t *testing.T) {
 			return harness.api.Post(header+"/roles", "Authorization: Bearer test", map[string]any{"name": "Role"})
 		}},
 		{name: "get role", call: func() *httptest.ResponseRecorder {
-			return harness.api.Get(header+"/roles/1", "Authorization: Bearer test")
+			return harness.api.Get("/roles/1", "Authorization: Bearer test")
 		}},
 		{name: "get role data scope", call: func() *httptest.ResponseRecorder {
-			return harness.api.Get(header+"/roles/1/data-scope", "Authorization: Bearer test")
+			return harness.api.Get("/roles/1/data-scope", "Authorization: Bearer test")
 		}},
 		{name: "set role data scope", call: func() *httptest.ResponseRecorder {
-			return harness.api.Put(header+"/roles/1/data-scope", "Authorization: Bearer test", map[string]any{"scope": "self"})
+			return harness.api.Put("/roles/1/data-scope", "Authorization: Bearer test", map[string]any{"scope": "self"})
 		}},
 		{name: "update role", call: func() *httptest.ResponseRecorder {
-			return harness.api.Patch(header+"/roles/1", "Authorization: Bearer test", map[string]any{"name": "Role"})
+			return harness.api.Patch("/roles/1", "Authorization: Bearer test", map[string]any{"name": "Role"})
 		}},
 		{name: "delete role", call: func() *httptest.ResponseRecorder {
-			return harness.api.Delete(header+"/roles/1", "Authorization: Bearer test")
+			return harness.api.Delete("/roles/1", "Authorization: Bearer test")
 		}},
 		{name: "list role permissions", call: func() *httptest.ResponseRecorder {
-			return harness.api.Get(header+"/roles/1/permissions", "Authorization: Bearer test")
+			return harness.api.Get("/roles/1/permissions", "Authorization: Bearer test")
 		}},
 		{name: "list role grants", call: func() *httptest.ResponseRecorder {
-			return harness.api.Get(header+"/roles/1/permission-grants", "Authorization: Bearer test")
+			return harness.api.Get("/roles/1/permission-grants", "Authorization: Bearer test")
 		}},
 		{name: "grant permission", call: func() *httptest.ResponseRecorder {
-			return harness.api.Put(header+"/roles/1/permissions/user_view", "Authorization: Bearer test")
+			return harness.api.Put("/roles/1/permissions/user_view", "Authorization: Bearer test")
 		}},
 		{name: "revoke permission", call: func() *httptest.ResponseRecorder {
-			return harness.api.Delete(header+"/roles/1/permissions/user_view", "Authorization: Bearer test")
+			return harness.api.Delete("/roles/1/permissions/user_view", "Authorization: Bearer test")
 		}},
 		{name: "set permission condition", call: func() *httptest.ResponseRecorder {
-			return harness.api.Put(header+"/roles/1/permissions/user_view/condition", "Authorization: Bearer test", condition)
+			return harness.api.Put("/roles/1/permissions/user_view/condition", "Authorization: Bearer test", condition)
 		}},
 		{name: "clear permission condition", call: func() *httptest.ResponseRecorder {
-			return harness.api.Delete(header+"/roles/1/permissions/user_view/condition", "Authorization: Bearer test")
+			return harness.api.Delete("/roles/1/permissions/user_view/condition", "Authorization: Bearer test")
 		}},
 		{name: "list role members", call: func() *httptest.ResponseRecorder {
-			return harness.api.Get(header+"/roles/1/members", "Authorization: Bearer test")
+			return harness.api.Get("/roles/1/members", "Authorization: Bearer test")
 		}},
 		{name: "add role member", call: func() *httptest.ResponseRecorder {
-			return harness.api.Put(header+"/roles/1/members/2", "Authorization: Bearer test")
+			return harness.api.Put("/roles/1/members/2", "Authorization: Bearer test")
 		}},
 		{name: "remove role member", call: func() *httptest.ResponseRecorder {
-			return harness.api.Delete(header+"/roles/1/members/2", "Authorization: Bearer test")
+			return harness.api.Delete("/roles/1/members/2", "Authorization: Bearer test")
 		}},
 		{name: "list directory bindings", call: func() *httptest.ResponseRecorder {
-			return harness.api.Get(header+"/roles/1/directory-bindings", "Authorization: Bearer test")
+			return harness.api.Get("/roles/1/directory-bindings", "Authorization: Bearer test")
 		}},
 		{name: "add directory binding", call: func() *httptest.ResponseRecorder {
-			return harness.api.Put(header+"/roles/1/directory-bindings/group/2", "Authorization: Bearer test")
+			return harness.api.Put("/roles/1/directory-bindings/group/2", "Authorization: Bearer test")
 		}},
 		{name: "remove directory binding", call: func() *httptest.ResponseRecorder {
-			return harness.api.Delete(header+"/roles/1/directory-bindings/group/2", "Authorization: Bearer test")
+			return harness.api.Delete("/roles/1/directory-bindings/group/2", "Authorization: Bearer test")
 		}},
 		{name: "list members", call: func() *httptest.ResponseRecorder {
 			return harness.api.Get(header+"/members?limit=50", "Authorization: Bearer test")

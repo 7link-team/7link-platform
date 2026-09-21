@@ -350,7 +350,7 @@ await waitFor(
   `document.body.innerText.includes("此账户没有可用的活跃工作区。")`
 )
 await evaluate(`
-  const session = await fetch("/api/sessions/current", { credentials: "include" });
+  const session = await fetch("/api/me/session", { credentials: "include" });
   if (!session.ok || !(await session.json()).data?.subject)
     throw new Error("Registered principal did not establish an authenticated session");
   const tenants = await fetch("/api/me/tenants", { credentials: "include" });
@@ -358,9 +358,9 @@ await evaluate(`
     throw new Error("Registration unexpectedly granted tenant membership");
   if (document.querySelector('a[href="/users"]'))
     throw new Error("Registered principal unexpectedly sees administrative navigation");
-  const logout = await fetch("/api/sessions/current", { method: "DELETE", credentials: "include" });
+  const logout = await fetch("/api/me/session", { method: "DELETE", credentials: "include" });
   if (!logout.ok) throw new Error("Registration session logout failed");
-  if ((await fetch("/api/sessions/current", { credentials: "include" })).status !== 401)
+  if ((await fetch("/api/me/session", { credentials: "include" })).status !== 401)
     throw new Error("Registration session remained active after logout");
 `)
 
@@ -371,7 +371,7 @@ const unexpectedResponses = responses.filter((response) => {
   if (response.status < 400) return false
   if (
     response.status === 401 &&
-    response.url.endsWith("/api/sessions/current")
+    response.url.endsWith("/api/me/session")
   )
     return false
   if (

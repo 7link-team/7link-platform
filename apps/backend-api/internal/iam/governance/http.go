@@ -39,18 +39,16 @@ type createRequestInput struct {
 }
 
 type decisionInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
-	ID       string `path:"request_id" maxLength:"64"`
-	Body     struct {
+	ID   string `path:"request_id" maxLength:"64"`
+	Body struct {
 		Decision string `json:"decision" enum:"approved,rejected"`
 		Note     string `json:"note,omitempty" maxLength:"500"`
 	}
 }
 
 type revokeInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
-	ID       string `path:"request_id" maxLength:"64"`
-	Body     struct {
+	ID   string `path:"request_id" maxLength:"64"`
+	Body struct {
 		Reason string `json:"reason,omitempty" maxLength:"500"`
 	}
 }
@@ -64,23 +62,20 @@ type createReviewInput struct {
 }
 
 type reviewInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
-	ID       string `path:"review_id" maxLength:"64"`
+	ID string `path:"review_id" maxLength:"64"`
 }
 
 type reviewUpdateInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
-	ID       string `path:"review_id" maxLength:"64"`
-	Body     struct {
+	ID   string `path:"review_id" maxLength:"64"`
+	Body struct {
 		Status string `json:"status" enum:"completed,cancelled"` //nolint:misspell // Frozen source state value.
 	}
 }
 
 type reviewItemInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
-	ID       string `path:"review_id" maxLength:"64"`
-	ItemID   string `path:"item_id" maxLength:"64"`
-	Body     struct {
+	ID     string `path:"review_id" maxLength:"64"`
+	ItemID string `path:"item_id" maxLength:"64"`
+	Body   struct {
 		Decision string `json:"decision" enum:"keep,revoke"`
 		Note     string `json:"note,omitempty" maxLength:"500"`
 	}
@@ -169,12 +164,12 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 }
 
 func registerRequestDecisionHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
-	authz.Register(registrar, api, operation(
+	authz.RegisterOwned(registrar, api, resourceOperation("access-requests",
 		"governance-set-access-request-decision", http.MethodPut, "/access-requests/{request_id}/decision",
 		"Set the approval decision for an access request", http.StatusNotFound, http.StatusConflict,
 		http.StatusGone, http.StatusUnprocessableEntity, http.StatusInternalServerError,
-	), authz.Guard{Resource: "access_request", Verb: "approve"}, func(ctx context.Context, in *decisionInput) (*respx.Body[AccessRequest], error) {
-		tenantID, id, actorID, err := requestActor(ctx, in.TenantID, in.ID)
+	), "request_id", service.resolveAccessRequestOwner, authz.Guard{Resource: "access_request", Verb: "approve"}, func(ctx context.Context, in *decisionInput) (*respx.Body[AccessRequest], error) {
+		tenantID, id, actorID, err := requestActor(ctx, in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -190,12 +185,12 @@ func registerRequestDecisionHTTP(api huma.API, service *Service, registrar *auth
 		return respx.OK(ctx, item), nil
 	})
 
-	authz.Register(registrar, api, operation(
+	authz.RegisterOwned(registrar, api, resourceOperation("access-requests",
 		"governance-revoke-access-grant", http.MethodPut, "/access-requests/{request_id}/grant-revocation",
 		"Revoke an approved temporary role grant", http.StatusNotFound, http.StatusConflict, http.StatusGone,
 		http.StatusUnprocessableEntity, http.StatusInternalServerError,
-	), authz.Guard{Resource: "access_request", Verb: "approve"}, func(ctx context.Context, in *revokeInput) (*respx.Body[AccessRequest], error) {
-		tenantID, id, actorID, err := requestActor(ctx, in.TenantID, in.ID)
+	), "request_id", service.resolveAccessRequestOwner, authz.Guard{Resource: "access_request", Verb: "approve"}, func(ctx context.Context, in *revokeInput) (*respx.Body[AccessRequest], error) {
+		tenantID, id, actorID, err := requestActor(ctx, in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -206,12 +201,12 @@ func registerRequestDecisionHTTP(api huma.API, service *Service, registrar *auth
 		return respx.OK(ctx, item), nil
 	})
 
-	authz.RegisterTenantMember(registrar, api, operation(
+	authz.RegisterOwnedTenantMember(registrar, api, resourceOperation("access-requests",
 		"governance-withdraw-access-request", http.MethodPut, "/access-requests/{request_id}/withdrawal",
 		"Withdraw a pending request or relinquish its approved access", http.StatusNotFound, http.StatusConflict,
 		http.StatusGone, http.StatusUnprocessableEntity, http.StatusInternalServerError,
-	), func(ctx context.Context, in *revokeInput) (*respx.Body[AccessRequest], error) {
-		tenantID, id, actorID, err := requestActor(ctx, in.TenantID, in.ID)
+	), "request_id", service.resolveAccessRequestOwner, func(ctx context.Context, in *revokeInput) (*respx.Body[AccessRequest], error) {
+		tenantID, id, actorID, err := requestActor(ctx, in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -260,11 +255,12 @@ func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registr
 		return respx.OK(ctx, item), nil
 	})
 
-	authz.Register(registrar, api, operation(
+	authz.RegisterOwned(registrar, api, resourceOperation("access-reviews",
 		"governance-get-access-review", http.MethodGet, "/access-reviews/{review_id}",
 		"Get an access review and its snapshotted grants", http.StatusNotFound, http.StatusUnprocessableEntity, http.StatusInternalServerError,
-	), authz.Guard{Resource: "access_review", Verb: "view"}, func(ctx context.Context, in *reviewInput) (*respx.Body[AccessReview], error) {
-		tenantID, id, err := tenantResourceIDs(in.TenantID, in.ID)
+	), "review_id", service.resolveAccessReviewOwner, authz.Guard{Resource: "access_review", Verb: "view"}, func(ctx context.Context, in *reviewInput) (*respx.Body[AccessReview], error) {
+		tenantID := authnext.TenantIDFromContext(ctx)
+		id, err := parseGovernanceID(in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -275,12 +271,12 @@ func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registr
 		return respx.OK(ctx, item), nil
 	})
 
-	authz.Register(registrar, api, operation(
+	authz.RegisterOwned(registrar, api, resourceOperation("access-reviews",
 		"governance-decide-access-review-item", http.MethodPut, "/access-reviews/{review_id}/items/{item_id}/decision",
 		"Keep or revoke one snapshotted tenant access grant", http.StatusNotFound, http.StatusConflict, http.StatusGone,
 		http.StatusUnprocessableEntity, http.StatusInternalServerError,
-	), authz.Guard{Resource: "access_review", Verb: "decide"}, func(ctx context.Context, in *reviewItemInput) (*respx.Body[AccessReviewItem], error) {
-		tenantID, id, actorID, err := requestActor(ctx, in.TenantID, in.ID)
+	), "review_id", service.resolveAccessReviewOwner, authz.Guard{Resource: "access_review", Verb: "decide"}, func(ctx context.Context, in *reviewItemInput) (*respx.Body[AccessReviewItem], error) {
+		tenantID, id, actorID, err := requestActor(ctx, in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -295,12 +291,12 @@ func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registr
 		return respx.OK(ctx, item), nil
 	})
 
-	authz.Register(registrar, api, operation(
+	authz.RegisterOwned(registrar, api, resourceOperation("access-reviews",
 		"governance-update-access-review", http.MethodPatch, "/access-reviews/{review_id}",
 		"Complete or cancel an access review", http.StatusNotFound, http.StatusConflict,
 		http.StatusGone, http.StatusUnprocessableEntity, http.StatusInternalServerError,
-	), authz.Guard{Resource: "access_review", Verb: "manage"}, func(ctx context.Context, in *reviewUpdateInput) (*respx.Body[AccessReview], error) {
-		tenantID, id, actorID, err := requestActor(ctx, in.TenantID, in.ID)
+	), "review_id", service.resolveAccessReviewOwner, authz.Guard{Resource: "access_review", Verb: "manage"}, func(ctx context.Context, in *reviewUpdateInput) (*respx.Body[AccessReview], error) {
+		tenantID, id, actorID, err := requestActor(ctx, in.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -318,7 +314,13 @@ func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registr
 }
 
 func operation(id, method, path, summary string, errors ...int) huma.Operation {
-	return huma.Operation{OperationID: id, Method: method, Path: path, Summary: summary, Tags: []string{"governance"}, Errors: errors}
+	return huma.Operation{OperationID: id, Method: method, Path: path, Summary: summary, Tags: []string{"tenants"}, Errors: errors}
+}
+
+func resourceOperation(tag, id, method, path, summary string, errors ...int) huma.Operation {
+	op := operation(id, method, path, summary, errors...)
+	op.Tags = []string{tag}
+	return op
 }
 
 func parseGovernanceID(value string) (guid.ID, error) {
@@ -338,8 +340,9 @@ func tenantResourceIDs(tenant, resource string) (guid.ID, guid.ID, error) {
 	return tenantID, id, err
 }
 
-func requestActor(ctx context.Context, tenant, resource string) (guid.ID, guid.ID, guid.ID, error) {
-	tenantID, id, err := tenantResourceIDs(tenant, resource)
+func requestActor(ctx context.Context, resource string) (guid.ID, guid.ID, guid.ID, error) {
+	tenantID := authnext.TenantIDFromContext(ctx)
+	id, err := parseGovernanceID(resource)
 	if err != nil {
 		return 0, 0, 0, err
 	}

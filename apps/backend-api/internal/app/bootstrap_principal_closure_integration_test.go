@@ -42,7 +42,7 @@ func TestPrincipalClosureExternalDatabase(t *testing.T) {
 
 func (f *iamTenantFixture) closureCookie(t *testing.T, principal identity.Principal) string {
 	t.Helper()
-	response := f.request(t, http.MethodPost, "/sessions", 0, "", map[string]any{
+	response := f.request(t, http.MethodPost, "/login", 0, "", map[string]any{
 		"login_name": principal.LoginName, "password": "correct horse battery staple",
 	}, map[string]string{"Origin": "https://app.example.test"})
 	requireStatus(t, http.StatusOK, response)

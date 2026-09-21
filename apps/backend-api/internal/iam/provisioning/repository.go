@@ -220,6 +220,24 @@ func (r *Repository) getTarget(ctx context.Context, tenantID, id guid.ID) (targe
 	return row, nil
 }
 
+func (r *Repository) targetOwner(ctx context.Context, id guid.ID) (guid.ID, bool, error) {
+	var row struct {
+		TenantID guid.ID `gorm:"column:tenant_id"`
+	}
+	tables, _, err := r.tables()
+	if err != nil {
+		return 0, false, err
+	}
+	err = r.writer().WithContext(ctx).Table(tables.Targets.TableName()).Select("tenant_id").Where("id = ?", id).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("resolve SCIM target owner: %w", err)
+	}
+	return row.TenantID, true, nil
+}
+
 func (r *Repository) insertTarget(ctx context.Context, row *targetRow) error {
 	tables, db, err := r.tables()
 	if err != nil {
@@ -392,6 +410,24 @@ func (r *Repository) getDirectory(ctx context.Context, tenantID, id guid.ID) (di
 		return row, fmt.Errorf("get SCIM directory: %w", err)
 	}
 	return row, nil
+}
+
+func (r *Repository) directoryOwner(ctx context.Context, id guid.ID) (guid.ID, bool, error) {
+	var row struct {
+		TenantID guid.ID `gorm:"column:tenant_id"`
+	}
+	tables, _, err := r.tables()
+	if err != nil {
+		return 0, false, err
+	}
+	err = r.writer().WithContext(ctx).Table(tables.Directories.TableName()).Select("tenant_id").Where("id = ?", id).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("resolve SCIM directory owner: %w", err)
+	}
+	return row.TenantID, true, nil
 }
 
 func (r *Repository) insertDirectory(ctx context.Context, row *directoryRow) error {

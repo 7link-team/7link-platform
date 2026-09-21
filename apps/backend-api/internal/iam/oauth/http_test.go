@@ -34,7 +34,7 @@ oauth-consent-decision|POST|/oauth/consent
 oauth-consent-page|GET|/oauth/consent
 oauth-consent-request|GET|/oauth/consent/request
 oauth-create-client|POST|/tenants/{tenant_id}/oauth-clients
-oauth-delete-client|DELETE|/tenants/{tenant_id}/oauth-clients/{client_id}
+oauth-delete-client|DELETE|/oauth-clients/{client_id}
 oauth-discovery|GET|/.well-known/openid-configuration
 oauth-introspect|POST|/oauth/introspect
 oauth-jwks|GET|/.well-known/jwks.json
@@ -42,9 +42,9 @@ oauth-list-clients|GET|/tenants/{tenant_id}/oauth-clients
 oauth-list-consents|GET|/me/oauth-consents
 oauth-revoke-consent|DELETE|/me/oauth-consents/{client_id}
 oauth-revoke|POST|/oauth/revoke
-oauth-rotate-client-secret|POST|/tenants/{tenant_id}/oauth-clients/{client_id}/credentials
+oauth-rotate-client-secret|POST|/oauth-clients/{client_id}/credentials
 oauth-token|POST|/oauth/token
-oauth-update-client|PUT|/tenants/{tenant_id}/oauth-clients/{client_id}
+oauth-update-client|PUT|/oauth-clients/{client_id}
 oauth-userinfo|GET|/oauth/userinfo`
 
 var oauthGuards = map[string]string{
@@ -256,7 +256,15 @@ func TestOAuthOpenAPISecurityGuardsParametersAndForms(t *testing.T) {
 				continue
 			}
 			location := method + " " + path
-			assert.Equal(t, []string{"oauth"}, operation.Tags, location)
+			expectedTag := "oauth"
+			if strings.HasPrefix(path, "/me/") {
+				expectedTag = "me"
+			} else if strings.HasPrefix(path, "/tenants/") {
+				expectedTag = "tenants"
+			} else if strings.HasPrefix(path, "/oauth-clients/") {
+				expectedTag = "oauth-clients"
+			}
+			assert.Equal(t, []string{expectedTag}, operation.Tags, location)
 			if guard, guarded := oauthGuards[operation.OperationID]; guarded {
 				assert.Equal(t, guard, operation.Metadata["authz.guard"], location)
 				assert.Equal(t, guard, operation.Extensions[authz.GuardExtensionKey], location)
@@ -276,8 +284,8 @@ func TestOAuthOpenAPISecurityGuardsParametersAndForms(t *testing.T) {
 	assert.Contains(t, revoke.Responses, "200")
 	assert.NotContains(t, revoke.Responses, "204")
 	for _, operation := range []*huma.Operation{
-		spec.Paths["/tenants/{tenant_id}/oauth-clients/{client_id}"].Delete,
-		spec.Paths["/tenants/{tenant_id}/oauth-clients/{client_id}/credentials"].Post,
+		spec.Paths["/oauth-clients/{client_id}"].Delete,
+		spec.Paths["/oauth-clients/{client_id}/credentials"].Post,
 	} {
 		assert.Contains(t, operation.Errors, http.StatusNotFound)
 		assert.Contains(t, operation.Responses, "404")
@@ -334,7 +342,7 @@ func TestOAuthOpenAPISecurityGuardsParametersAndForms(t *testing.T) {
 
 	for _, method := range []string{http.MethodPost, http.MethodPut} {
 		operation := oauthPathOperations(spec.Paths[map[string]string{
-			http.MethodPost: "/tenants/{tenant_id}/oauth-clients", http.MethodPut: "/tenants/{tenant_id}/oauth-clients/{client_id}",
+			http.MethodPost: "/tenants/{tenant_id}/oauth-clients", http.MethodPut: "/oauth-clients/{client_id}",
 		}[method]])[method]
 		requestSchema := resolveOAuthSchema(spec, operation.RequestBody.Content["application/json"].Schema)
 		require.NotNil(t, requestSchema, method)
@@ -345,7 +353,7 @@ func TestOAuthOpenAPISecurityGuardsParametersAndForms(t *testing.T) {
 		assert.Equal(t, `^\S+$`, requestSchema.Properties["scopes"].Items.Pattern, method)
 	}
 
-	for _, path := range []string{"/tenants/{tenant_id}/oauth-clients/{client_id}", "/tenants/{tenant_id}/oauth-clients/{client_id}/credentials"} {
+	for _, path := range []string{"/oauth-clients/{client_id}", "/oauth-clients/{client_id}/credentials"} {
 		for _, operation := range oauthPathOperations(spec.Paths[path]) {
 			if operation == nil {
 				continue

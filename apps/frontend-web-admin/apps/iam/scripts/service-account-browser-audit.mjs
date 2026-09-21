@@ -358,7 +358,7 @@ const unexpectedResponses = responses.filter(
     response !== expectedUnauthorized &&
     !(
       response.status === 401 &&
-      response.url.endsWith("/api/sessions/current")
+      response.url.endsWith("/api/me/session")
     )
 )
 const unexpectedFailures = failures.filter(

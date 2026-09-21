@@ -110,6 +110,21 @@ func (s *Service) ScopeModel(context.Context) []ScopeNode {
 	}
 }
 
+func (s *Service) resolveRoleOwner(ctx context.Context, roleID guid.ID) (authz.ResourceOwner, bool, error) {
+	tenantID, found, err := s.repo.ResolveRoleTenant(ctx, roleID)
+	return authz.ResourceOwner{TenantID: tenantID}, found, err
+}
+
+func (s *Service) resolveEntityOwner(ctx context.Context, entityID guid.ID) (authz.ResourceOwner, bool, error) {
+	tenantID, found, err := s.repo.ResolveEntityTenant(ctx, entityID)
+	return authz.ResourceOwner{TenantID: tenantID}, found, err
+}
+
+func (s *Service) resolveMenuOwner(ctx context.Context, menuID guid.ID) (authz.ResourceOwner, bool, error) {
+	tenantID, found, err := s.repo.ResolveMenuTenant(ctx, menuID)
+	return authz.ResourceOwner{TenantID: tenantID}, found, err
+}
+
 // MenuCatalog returns the built-in IAM navigation declaration.
 func (s *Service) MenuCatalog(context.Context) []MenuDeclaration {
 	items := make([]MenuDeclaration, 0, len(DefaultMenus()))

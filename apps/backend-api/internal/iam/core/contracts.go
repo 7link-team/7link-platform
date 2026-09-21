@@ -25,6 +25,10 @@ type AuthorizationEvaluator interface {
 	ExplainResource(ctx context.Context, tenantID, entityID guid.ID, resourceType string, resourceID guid.ID, permission string, principalID guid.ID) (authz.Explanation, error)
 }
 
+// EntityOwnerResolver resolves a globally unique entity ID without exposing
+// IAM storage details to business modules that own entity-scoped resources.
+type EntityOwnerResolver authz.ResourceOwnerResolver
+
 // EntityConstraintOn evaluates the existing entity/data policy through a caller's
 // active transaction and fences tenant policy mutations until that transaction
 // ends. Call it before reading business rows; every error must roll back.

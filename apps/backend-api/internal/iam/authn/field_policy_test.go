@@ -110,7 +110,7 @@ func TestSessionAndTokenProfileEnforcement(t *testing.T) {
 	require.NoError(t, db.Exec("INSERT INTO iam_tenant_members (tenant_id,principal_id,status) VALUES (101,?,'active')", subject).Error)
 	_, api := humatest.New(t)
 	RegisterHTTP(api, service, service)
-	login := api.Post("/sessions", map[string]any{"login_name": "alice", "password": "correct horse battery staple"}, "Origin: https://app.example")
+	login := api.Post("/login", map[string]any{"login_name": "alice", "password": "correct horse battery staple"}, "Origin: https://app.example")
 	require.Equal(t, http.StatusOK, login.Code)
 	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
 	read := func(path, header string) map[string]any {
@@ -123,7 +123,7 @@ func TestSessionAndTokenProfileEnforcement(t *testing.T) {
 		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 		return body.Data
 	}
-	for _, path := range []string{"/me", "/sessions/current"} {
+	for _, path := range []string{"/me", "/me/session"} {
 		view := read(path, "Cookie: "+cookie)
 		assert.Equal(t, "alice", view["preferred_username"])
 		assert.Equal(t, true, view["email_verified"])
@@ -133,7 +133,7 @@ func TestSessionAndTokenProfileEnforcement(t *testing.T) {
 	assert.Equal(t, "alice@example.com", tokenPayload(t, access)["email"])
 	fields.Fields["login_name"], fields.Fields["email"] = authz.FieldDecision{Read: "omit"}, authz.FieldDecision{Read: "redact"}
 	for _, header := range []string{"Cookie: " + cookie, "Authorization: Bearer " + access} {
-		for _, path := range []string{"/me", "/sessions/current"} {
+		for _, path := range []string{"/me", "/me/session"} {
 			view := read(path, header)
 			assert.NotContains(t, view, "preferred_username")
 			assert.Equal(t, "[REDACTED]", view["email"])

@@ -203,9 +203,9 @@ func TestTaskHTTPRequiresSelectorsAndDeclaredDataPermissions(t *testing.T) {
 	registerTransferHTTP(api, svc, nil, todoRegistrar(policy))
 	registerHTTP(api, svc, nil, todoRegistrar(policy))
 	assert.Equal(t, http.StatusNotFound, api.Get("/todos").Code)
-	assert.Equal(t, http.StatusOK, api.Get("/tenants/1/entities/10/todos").Code)
+	assert.Equal(t, http.StatusOK, api.Get("/entities/10/todos").Code)
 	policy.grants = map[string]authz.DataConstraint{}
-	assert.Equal(t, http.StatusForbidden, api.Get("/tenants/1/entities/10/todos").Code)
+	assert.Equal(t, http.StatusForbidden, api.Get("/entities/10/todos").Code)
 	for _, item := range api.OpenAPI().Paths {
 		for _, operation := range []*huma.Operation{item.Get, item.Post, item.Patch, item.Put, item.Delete} {
 			if operation == nil {

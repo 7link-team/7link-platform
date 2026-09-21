@@ -153,6 +153,24 @@ func (r *Repository) listClients(ctx context.Context, tenantID guid.ID) ([]*mode
 	return rows, nil
 }
 
+func (r *Repository) clientOwner(ctx context.Context, id guid.ID) (guid.ID, bool, error) {
+	tables, db, err := r.tables()
+	if err != nil {
+		return 0, false, err
+	}
+	var row struct {
+		TenantID guid.ID `gorm:"column:tenant_id"`
+	}
+	err = db.WithContext(ctx).Table(tables.Clients.TableName()).Select("tenant_id").Where("id = ?", id).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("resolve OAuth client owner: %w", err)
+	}
+	return row.TenantID, true, nil
+}
+
 func (r *Repository) updateClient(
 	ctx context.Context,
 	tenantID, id guid.ID,

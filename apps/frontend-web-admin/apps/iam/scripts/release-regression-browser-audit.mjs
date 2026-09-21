@@ -167,7 +167,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       return send([
         { code: "user_view", resource: "user", verb: "view", scope: "tenant" },
       ])
-    if (path === "/reauthentication-methods")
+    if (path === "/me/reauthentication/methods")
       return send({
         methods: state.federated ? [] : ["password"],
         mfa_required: !state.federated,
@@ -224,7 +224,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
         target: "bound-request-target",
       })
     }
-    if (path === "/reauthentication-challenges") {
+    if (path === "/me/reauthentication/challenges") {
       state.proofVerified = false
       state.reauthPurpose = request.postDataJSON().purpose
       state.reauthTarget = request.postDataJSON().target
@@ -234,7 +234,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
         expires_at: "2027-01-01T00:00:00Z",
       })
     }
-    if (path === "/reauthentication-verifications") {
+    if (path === "/me/reauthentication/verifications") {
       const body = request.postDataJSON()
       state.proofVerified =
         body.password === "correct-password" && body.code === "123456"
@@ -331,7 +331,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       state.personalTokens[0].revoked_at = "2026-09-10T00:01:00Z"
       return send({ revoked: true })
     }
-    if (path === "/sessions/current" && request.method() === "GET") {
+    if (path === "/me/session" && request.method() === "GET") {
       if (state.accountIdentityCase) {
         const tenantID = request.headers()["x-tenant-id"]
         const profile = {
@@ -364,18 +364,18 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
         state.sessionStatus
       )
     }
-    if (path === "/sessions" && request.method() === "POST") {
+    if (path === "/login" && request.method() === "POST") {
       state.sessionStatus = state.afterLoginStatus ?? 200
       return send({ status: "authenticated", return_url: "/after-login" })
     }
     if (
-      (path === "/sessions/current" || path === "/sessions") &&
+      (path === "/me/session" || path === "/me/sessions") &&
       request.method() === "DELETE"
     ) {
       if (state.logout === "network") return route.abort("failed")
       return send({ logout_url: "/signed-out" }, state.logout)
     }
-    if (path === "/sessions")
+    if (path === "/me/sessions")
       return send([
         {
           id: "session-1",
@@ -490,7 +490,7 @@ try {
       )
       assert((await account.innerText()).includes("Administrator name"))
       const sessions = state.requests.filter(
-        (request) => request.path === "/sessions/current"
+        (request) => request.path === "/me/session"
       )
       assert(
         sessions.some((request) => !request.tenant),
@@ -554,7 +554,7 @@ try {
       )
       const updated = page.waitForResponse(
         (response) =>
-          response.url().endsWith("/sessions/current") &&
+          response.url().endsWith("/me/session") &&
           response.request().headers()["x-tenant-id"] === "t2"
       )
       await workspace(page)
@@ -583,7 +583,7 @@ try {
         state.accountProfileStatus = status
         const requested = page.waitForRequest(
           (request) =>
-            request.url().endsWith("/sessions/current") &&
+            request.url().endsWith("/me/session") &&
             request.headers()["x-tenant-id"] === "t1"
         )
         await page.goto("/")
@@ -616,7 +616,7 @@ try {
       assert((await page.getByRole("menu").innerText()).includes("person-1"))
       assert(
         state.requests
-          .filter((request) => request.path === "/sessions/current")
+          .filter((request) => request.path === "/me/session")
           .every((request) => !request.tenant)
       )
     }
@@ -662,7 +662,7 @@ try {
       }
       const received = page.waitForResponse(
         (response) =>
-          response.url().endsWith("/sessions/current") &&
+          response.url().endsWith("/me/session") &&
           response.request().headers()["x-tenant-id"] === "t1"
       )
       await page.goto("/")
@@ -1505,7 +1505,7 @@ try {
           )) {
             // Only the header's read-only profile projection is tenant-scoped.
             if (
-              request.path === "/sessions/current" &&
+              request.path === "/me/session" &&
               request.method === "GET" &&
               request.tenant !== undefined
             )
@@ -1698,7 +1698,7 @@ try {
               item.path === "/me/closure-request"
           )) {
             if (
-              request.path === "/sessions/current" &&
+              request.path === "/me/session" &&
               request.method === "GET" &&
               request.tenant !== undefined
             )

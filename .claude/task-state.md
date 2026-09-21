@@ -1,4 +1,42 @@
 # Task State
+## REST URI, Swagger Grouping, And App/IAM Boundary - 2026-09-21
+
+- Current phase: IMPLEMENTATION.
+- Objective: normalize the complete public API around recognizable resources and
+  standard protocol endpoints; make every Huma registration own its correct
+  Swagger tag; remove generated-document tag inference; audit URI-derived IAM,
+  menu, and permission logic; reduce IAM ownership inside `internal/app`.
+- Confirmed contract: all first-class internal IDs are globally unique snowflake
+  IDs. Create/list collections are nested under their direct owner; existing
+  resources use short global-ID paths (`/entities/{entity_id}` and
+  `/departments/{department_id}`). Current-principal projections exist at the
+  account, tenant, entity and department contexts. Scope never comes from a
+  header/query inference. WebAuthn is an authentication mechanism, not a
+  distinct session type. OAuth/OIDC/SAML/SCIM and probes retain protocol paths.
+- Completed: removed OpenAPI post-processing tag inference; changed Passkey
+  credential management tags to `me`; replaced the rejected `passkey-sessions`
+  design with `/login/passkey/options` and `/login/passkey/verify`; moved current
+  session, session inventory, step-up, and reauthentication paths below `/me`.
+- Active work: migrate organization-owned department, position, group, and
+  invitation item routes after completing the core entity/role slice.
+- Known risk: `internal/app` currently contains IAM-specific operations, route
+  manifests, direct internal-service/table tests, and several thousand lines of
+  IAM integration fixtures. Module composition belongs there; IAM domain and
+  route ownership do not.
+- Verification: authentication, app, affected IAM packages, OpenAPI generation,
+  frontend API tests and typecheck passed before D66 resource-path migration.
+- Remaining work: route inventory and migration matrix; owner-resolving authz
+  middleware; all backend/frontend URI changes; contextual menu persistence and
+  projection; generated contracts; deep audit; runtime verification; commit and
+  push branch IAM.
+- Completed D66 implementation: domain-neutral `RegisterOwned` resolves trusted
+  tenant/entity owners, scopes personal tokens, returns 404 for absent/non-member
+  resources, and injects immutable request claims. Core entity and role items and
+  direct subresources now use short global-ID paths and resource-root tags; their
+  focused OpenAPI, behavior, pagination, and cross-tenant tests pass.
+- Next action: add organization owner resolvers and migrate its item/subresource
+  paths, then run the complete organization and core regression suites.
+
 ## Review, Security Audit, And Regression - 2026-09-20
 
 - Current phase: ACCEPTANCE COMPLETE for the review/audit; release readiness is
@@ -205,11 +243,11 @@
 
 - Current phase: IMPLEMENTATION. The user approved a breaking pre-production
   migration with no legacy aliases and requested a complete route audit.
-- Contract: public application paths expose resource nouns, never internal
-  module prefixes `/iam` or `/authn`. Tenant, Entity, and Department remain
-  top-level globally identified resources; ownership is request/body data and
-  authorization scope remains in mandatory headers rather than redundant URL
-  nesting.
+- Contract (D66): public paths expose resource nouns, never internal module
+  prefixes. Create/list collections nest under their direct owner; globally
+  identified existing resources use short item paths and nest direct
+  subresources there. The owning module resolves trusted tenant/entity scope;
+  scope headers and query parameters are not authorization selectors.
 - Swagger: every application operation has one lowercase kebab-case tag equal to
   its first public path segment. Package tags (`iam`, `authn`, `identity`,
   `organization`, `governance`, `federation`, `provisioning`) are forbidden.
@@ -224,6 +262,31 @@
   keeps startup migration and reads compatible without rewriting database data.
 - Execution: Direct; routes, generated contract, Web calls, menu paths and
   acceptance are strongly coupled. No subagent was requested.
+- D66 implementation checkpoint 2026-09-21: generic `RegisterOwned` and its
+  failure semantics are tested; core entity/role/menu and organization
+  department/position/group/invitation item routes are migrated. Identity
+  service-account item/credential routes now resolve `owner_tenant_id` in the
+  identity repository and consume trusted context. Identity compiles; its full
+  suite currently stops on stale route-manifest assertions that still expect
+  nested service-account items.
+- D66 checkpoint 2026-09-21 (continued): identity service-account focused
+  lifecycle/isolation tests pass; federation identity-provider and SAML-SP,
+  OAuth client, provisioning directory/target, and governance request/review
+  item routes now use module-owned owner resolvers and short paths. Added and
+  tested `RegisterOwnedTenantMember` for owned self-service resources without
+  inventing a permission. OAuth, provisioning, and governance focused route
+  contracts pass. Full module regressions and generated artifacts remain to be
+  run after the remaining resource migrations.
+- D66 checkpoint 2026-09-21 (todo): core now publishes a narrow
+  `EntityOwnerResolver` capability; todo consumes it without reading IAM tables.
+  Todo collections/import/export are under `/entities/{entity_id}/todos...` and
+  existing items are `/todos/{id}` with owner scope read from the todo row. Todo
+  full tests PASS. Backend `go test ./... -run '^$'` PASS after clearing 9.5 GB
+  of reproducible Go build cache that had filled the system temp volume.
+- Remaining critical design/implementation: menu definition/context placement
+  separation and account/tenant/entity/department effective projections; files
+  contextual collection mounts; stale callers/tests/generated contracts; full
+  regression, deep audit, live Swagger/UAT, review, commit, and push.
 - Verification 2026-09-19: frontend full tests PASS (UI 85, IAM 98), full lint
   PASS, production build PASS, backend build PASS, generated OpenAPI check PASS.
   Backend `go test ./...` remains FAIL because route migration fixtures and
@@ -244,9 +307,11 @@
   navigation fix: composed mapping, SCIM profile/service-account, tenant
   isolation, principal closure, identity closure and OAuth tag tests still use
   superseded route contracts.
-- Next action: reconcile the remaining backend route fixtures and behavior tests
-  with the generated contract, then rerun `go test ./...` before claiming the
-  global REST migration complete.
+- Next action: migrate remaining globally addressed federation, OAuth,
+  provisioning, governance, todo, and applicable audit resources to
+  module-owned owner resolvers; implement the four approved contextual menu
+  projections; then update route tests/callers, regenerate contracts, and run
+  the full deep-audit gates and live Swagger/UAT acceptance.
 
 ## File Preview, Thumbnails, Blank Files, And Editors - 2026-09-19
 

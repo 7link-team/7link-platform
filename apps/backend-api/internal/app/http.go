@@ -47,7 +47,6 @@ func (app *App) startHTTPServer() error {
 		if err := app.modules.RegisterHTTP(app.ctx, api); err != nil {
 			return err
 		}
-		normalizeOpenAPIResourceTags(api.OpenAPI())
 		for _, route := range app.modules.RawHTTPRoutes() {
 			mountRawRoute(router, route)
 		}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
 	"github.com/danielgtaylor/huma/v2"
@@ -36,7 +37,7 @@ type reauthenticationVerifyInput struct {
 func registerReauthenticationHTTP(api huma.API, service *Service) {
 	registrar := authz.NewAuthenticationOnlyRegistrar(service)
 	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-list-reauthentication-methods", Method: http.MethodGet,
-		Path: "/reauthentication-methods", Summary: "List current local reauthentication methods", Tags: []string{"authn"}}, func(ctx context.Context, in *meInput) (*respx.Body[ReauthenticationMethods], error) {
+		Path: "/me/reauthentication/methods", Summary: "List current local reauthentication methods", Tags: []string{"me"}}, func(ctx context.Context, in *meInput) (*respx.Body[ReauthenticationMethods], error) {
 		if in.Authorization != "" {
 			return nil, huma.Error401Unauthorized("unauthorized")
 		}
@@ -47,7 +48,8 @@ func registerReauthenticationHTTP(api huma.API, service *Service) {
 		return respx.OK(ctx, methods), nil
 	})
 	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-create-reauthentication-challenge", Method: http.MethodPost,
-		Path: "/reauthentication-challenges", Summary: "Begin fresh verification for one sensitive operation", Tags: []string{"authn"},
+		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
+		Path:     "/me/reauthentication/challenges", Summary: "Begin fresh verification for one sensitive operation", Tags: []string{"me"},
 		Security: authz.UserSecurity(), Errors: []int{401, 403, 500}}, func(ctx context.Context, in *reauthenticationBeginInput) (*respx.Body[ReauthenticationOptions], error) {
 		if in.Authorization != "" {
 			return nil, huma.Error401Unauthorized("unauthorized")
@@ -62,7 +64,8 @@ func registerReauthenticationHTTP(api huma.API, service *Service) {
 		return respx.OK(ctx, options), nil
 	})
 	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-create-reauthentication-verification", Method: http.MethodPost,
-		Path: "/reauthentication-verifications", Summary: "Verify a fresh password and MFA or passkey assertion", Tags: []string{"authn"},
+		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
+		Path:     "/me/reauthentication/verifications", Summary: "Verify a fresh password and MFA or passkey assertion", Tags: []string{"me"},
 		Security: authz.UserSecurity(), Errors: []int{401, 403, 500}}, func(ctx context.Context, in *reauthenticationVerifyInput) (*respx.Body[map[string]bool], error) {
 		if in.Authorization != "" {
 			return nil, huma.Error401Unauthorized("unauthorized")

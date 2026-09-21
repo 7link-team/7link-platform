@@ -1616,9 +1616,9 @@ export function createIamApi(
         }),
       }),
     capabilities: () =>
-      request<AuthnCapabilities>("/authentication-capabilities", {}, false),
+      request<AuthnCapabilities>("/login/options", {}, false),
     createCaptcha: () =>
-      request<Captcha>("/captchas", { method: "POST" }, false),
+      request<Captcha>("/registrations/captchas", { method: "POST" }, false),
     register: (body: {
       email: string
       password: string
@@ -1632,10 +1632,10 @@ export function createIamApi(
         { method: "POST", body: JSON.stringify(body) },
         false
       ),
-    session: () => request<Session>("/sessions/current", {}, false),
+    session: () => request<Session>("/me/session", {}, false),
     sessionForTenant: (tenant: string) => {
       void tenant
-      return request<Session>("/sessions/current", {}, false)
+      return request<Session>("/me/session", {}, false)
     },
     myTenants: () => request<Tenant[]>("/me/tenants", {}, false),
     personalTokenPermissions: (tenant: string) =>
@@ -1674,7 +1674,7 @@ export function createIamApi(
       ),
     reauthenticationMethods: () =>
       request<{ methods: ReauthenticationMethod[]; mfa_required: boolean }>(
-        "/reauthentication-methods",
+        "/me/reauthentication/methods",
         {},
         false
       ),
@@ -1684,7 +1684,7 @@ export function createIamApi(
       method: ReauthenticationMethod
     }) =>
       request<ReauthenticationChallenge>(
-        "/reauthentication-challenges",
+        "/me/reauthentication/challenges",
         { method: "POST", body: JSON.stringify(body) },
         false
       ),
@@ -1695,7 +1695,7 @@ export function createIamApi(
       response?: Record<string, unknown>
     }) =>
       request<{ verified: boolean }>(
-        "/reauthentication-verifications",
+        "/me/reauthentication/verifications",
         { method: "POST", body: JSON.stringify(body) },
         false
       ),
@@ -1795,31 +1795,31 @@ export function createIamApi(
       return_url: string
     }) =>
       request<LoginResult>(
-        "/sessions",
+        "/login",
         { method: "POST", body: JSON.stringify(body) },
         false
       ),
     verifyLoginMfa: (body: { challenge_id: string; code: string }) =>
       request<LoginResult>(
-        "/session-verifications",
+        "/login/mfa",
         { method: "POST", body: JSON.stringify(body) },
         false
       ),
     logout: () =>
       request<{ logout_url: string }>(
-        "/sessions/current",
+        "/me/session",
         { method: "DELETE" },
         false
       ),
-    sessions: () => request<BrowserSession[]>("/sessions", {}, false),
+    sessions: () => request<BrowserSession[]>("/me/sessions", {}, false),
     revokeSession: (id: string) =>
       request<{ revoked: boolean }>(
-        `/sessions/${encodeURIComponent(id)}`,
+        `/me/sessions/${encodeURIComponent(id)}`,
         { method: "DELETE" },
         false
       ),
     logoutAll: () =>
-      request<{ logout_url: string }>("/sessions", { method: "DELETE" }, false),
+      request<{ logout_url: string }>("/me/sessions", { method: "DELETE" }, false),
     changePassword: (body: {
       current_password: string
       new_password: string
@@ -1831,7 +1831,7 @@ export function createIamApi(
       ),
     startPasswordRecovery: (identifier: string) =>
       request<{ accepted: boolean }>(
-        "/password-recovery-requests",
+        "/password-recoveries/requests",
         { method: "POST", body: JSON.stringify({ identifier }) },
         false
       ),
@@ -1906,7 +1906,7 @@ export function createIamApi(
       ),
     beginPasskeyLogin: (returnUrl: string) =>
       request<PasskeyOptions>(
-        "/passkey-session-challenges",
+        "/login/passkey/options",
         { method: "POST", body: JSON.stringify({ return_url: returnUrl }) },
         false
       ),
@@ -1915,7 +1915,7 @@ export function createIamApi(
       credential: Record<string, unknown>
     }) =>
       request<LoginResult>(
-        "/passkey-session-verifications",
+        "/login/passkey/verify",
         { method: "POST", body: JSON.stringify(body) },
         false
       ),

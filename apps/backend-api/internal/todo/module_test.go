@@ -143,7 +143,7 @@ func TestRegisterHTTPWithoutADatasourceWarnsAndStillRegisters(t *testing.T) {
 		"the degraded document must be reported, not silently served")
 
 	// The routes exist; only their documentation is thin.
-	operation := api.OpenAPI().Paths["/tenants/{tenant_id}/entities/{entity_id}"+basePath].Get
+	operation := api.OpenAPI().Paths["/entities/{entity_id}"+basePath].Get
 	require.NotNil(t, operation)
 	for _, param := range operation.Parameters {
 		assert.NotEqual(t, "status", param.Name, "no filter should be documented without a contract")
@@ -167,6 +167,9 @@ func servicesWith(t *testing.T, ids guid.Source) *module.Services {
 	policy := &todoPolicy{}
 	require.NoError(t, module.Provide[core.AuthorizationEvaluator](services, policy))
 	require.NoError(t, module.Provide[core.MemberDepartmentReader](services, policy))
+	require.NoError(t, module.Provide[core.EntityOwnerResolver](services, func(context.Context, guid.ID) (authz.ResourceOwner, bool, error) {
+		return authz.ResourceOwner{TenantID: 1, EntityID: 10}, true, nil
+	}))
 	require.NoError(t, module.Provide[*authz.Registrar](services, todoRegistrar(policy)))
 	require.NoError(t, services.Seal())
 	return services

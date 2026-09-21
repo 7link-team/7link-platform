@@ -30,16 +30,16 @@ import (
 const governanceRouteManifest = `
 governance-create-access-request|POST|/tenants/{tenant_id}/access-requests
 governance-create-access-review|POST|/tenants/{tenant_id}/access-reviews
-governance-decide-access-review-item|PUT|/tenants/{tenant_id}/access-reviews/{review_id}/items/{item_id}/decision
-governance-get-access-review|GET|/tenants/{tenant_id}/access-reviews/{review_id}
+governance-decide-access-review-item|PUT|/access-reviews/{review_id}/items/{item_id}/decision
+governance-get-access-review|GET|/access-reviews/{review_id}
 governance-list-access-requests|GET|/tenants/{tenant_id}/access-requests
 governance-list-access-reviews|GET|/tenants/{tenant_id}/access-reviews
 governance-list-my-access-requests|GET|/tenants/{tenant_id}/me/access-requests
 governance-list-requestable-roles|GET|/tenants/{tenant_id}/requestable-roles
-governance-set-access-request-decision|PUT|/tenants/{tenant_id}/access-requests/{request_id}/decision
-governance-revoke-access-grant|PUT|/tenants/{tenant_id}/access-requests/{request_id}/grant-revocation
-governance-update-access-review|PATCH|/tenants/{tenant_id}/access-reviews/{review_id}
-governance-withdraw-access-request|PUT|/tenants/{tenant_id}/access-requests/{request_id}/withdrawal`
+governance-set-access-request-decision|PUT|/access-requests/{request_id}/decision
+governance-revoke-access-grant|PUT|/access-requests/{request_id}/grant-revocation
+governance-update-access-review|PATCH|/access-reviews/{review_id}
+governance-withdraw-access-request|PUT|/access-requests/{request_id}/withdrawal`
 
 func governancePathOperations(item *huma.PathItem) map[string]*huma.Operation {
 	if item == nil {
@@ -89,7 +89,8 @@ func TestGovernanceRouteManifestAndOpenAPIContract(t *testing.T) {
 			location := method + " " + path
 			assert.False(t, seen[operation.OperationID], location)
 			seen[operation.OperationID] = true
-			assert.Equal(t, []string{"governance"}, operation.Tags, location)
+			expectedTag := strings.Split(strings.TrimPrefix(path, "/"), "/")[0]
+			assert.Equal(t, []string{expectedTag}, operation.Tags, location)
 			assert.NotEmpty(t, operation.Security, location)
 			var tenantPaths int
 			for _, parameter := range operation.Parameters {
@@ -98,7 +99,23 @@ func TestGovernanceRouteManifestAndOpenAPIContract(t *testing.T) {
 					assert.True(t, parameter.Required, location)
 				}
 			}
-			assert.Equal(t, 1, tenantPaths, location)
+			if strings.HasPrefix(path, "/tenants/") {
+				assert.Equal(t, 1, tenantPaths, location)
+			} else {
+				assert.Zero(t, tenantPaths, location)
+				ownerParam := "request_id"
+				if strings.HasPrefix(path, "/access-reviews/") {
+					ownerParam = "review_id"
+				}
+				assert.Condition(t, func() bool {
+					for _, parameter := range operation.Parameters {
+						if parameter.Name == ownerParam && parameter.In == "path" && parameter.Required {
+							return true
+						}
+					}
+					return false
+				}, location)
+			}
 			if memberOperations[operation.OperationID] {
 				assert.True(t, authz.IsTenantMemberOperation(operation), location)
 				assert.NotContains(t, operation.Extensions, authz.GuardExtensionKey, location)

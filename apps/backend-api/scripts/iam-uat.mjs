@@ -314,11 +314,11 @@ async function verify() {
     };
   };
   const login = async (call, name, file) => {
-    const result = await call("/sessions", { method: "POST", body: {
+    const result = await call("/login", { method: "POST", body: {
       login_name: name, password: readFileSync(join(directory, file), "utf8").trim(), return_url: settings.webURL + "/",
     } });
     assert.equal(result.status, "authenticated");
-    await call("/sessions/current");
+    await call("/me/session");
   };
   const admin = client();
   const member = client();
@@ -346,17 +346,17 @@ async function verify() {
     if (!personas) save(personasPath, { tenantID: tenant, memberID: principal.id });
     await member(`/tenants/${tenant}/principals`, { expected: 403 });
     await member(`/platform/principals/${encodeURIComponent(principal.id)}/lifecycle`, { expected: 403 });
-    await admin("/sessions/current", { method: "DELETE", expected: 403, origin: "https://untrusted.invalid" });
-    await admin("/sessions/current");
+    await admin("/me/session", { method: "DELETE", expected: 403, origin: "https://untrusted.invalid" });
+    await admin("/me/session");
   } finally {
     cleanup = await Promise.allSettled([
-      member("/sessions/current", { method: "DELETE" }),
-      admin("/sessions/current", { method: "DELETE" }),
+      member("/me/session", { method: "DELETE" }),
+      admin("/me/session", { method: "DELETE" }),
     ]);
   }
   for (const result of cleanup) if (result.status === "rejected") throw result.reason;
-  await admin("/sessions/current", { expected: 401 });
-  await member("/sessions/current", { expected: 401 });
+  await admin("/me/session", { expected: 401 });
+  await member("/me/session", { expected: 401 });
   const report = { at: new Date().toISOString(), binarySHA256: settings.binarySHA256, result: "PASS",
     checks: ["proxy-readiness", "admin-login", "member-login", "stable-persona-identity", "member-has-no-roles", "tenant-admin-denied", "platform-lifecycle-denied", "cross-origin-write-denied", "logout-invalidates-session"],
     browserAcceptance: "NOT_RUN", productionAcceptance: "NOT_READY" };

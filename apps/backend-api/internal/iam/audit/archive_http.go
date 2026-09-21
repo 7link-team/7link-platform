@@ -56,12 +56,12 @@ func archiveTenant(platform bool, raw string) (guid.ID, error) {
 }
 
 func registerArchiveOperation[I, O any](api huma.API, registrar *authz.Registrar, platform bool, verb string, op huma.Operation, handler func(context.Context, *I) (*O, error)) {
-	op.Tags = []string{"audit"}
 	op.Errors = []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusServiceUnavailable, http.StatusInternalServerError}
 	if platform {
 		op.OperationID = strings.Replace(op.OperationID, "audit-", "audit-platform-", 1)
 		op.Path = "/platform" + op.Path
 		op.Summary = "Platform: " + op.Summary
+		op.Tags = []string{"platform"}
 		authz.RegisterPlatform(registrar, api, op, authz.Guard{Resource: "platform", Verb: "administer"}, handler)
 		return
 	}

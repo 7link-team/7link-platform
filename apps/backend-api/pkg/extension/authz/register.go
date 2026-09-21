@@ -22,6 +22,7 @@ const (
 	sessionOnlyMetadataKey   = "authz.session-only"
 	platformMetadataKey      = "authz.platform"
 	publicMetadataKey        = "authz.public"
+	ownedResourceMetadataKey = "authz.owned-resource"
 	GuardExtensionKey        = "x-authz-permission"
 	DataFilterExtensionKey   = "x-authz-data-filter"
 	TenantPath               = "tenant_id"
@@ -64,6 +65,18 @@ type csrfValidator interface {
 type MembershipChecker interface {
 	IsMemberActive(context.Context, guid.ID, guid.ID) (bool, error)
 }
+
+// ResourceOwner identifies the authorization boundary of a globally addressed
+// resource. EntityID is zero for resources authorized at tenant scope.
+type ResourceOwner struct {
+	TenantID guid.ID
+	EntityID guid.ID
+}
+
+// ResourceOwnerResolver resolves a globally unique resource ID to its trusted
+// authorization boundary. found is false when the resource does not exist.
+// Implementations belong to the module that owns the resource and its storage.
+type ResourceOwnerResolver func(context.Context, guid.ID) (owner ResourceOwner, found bool, err error)
 
 type sessionCookieNamer interface {
 	SessionCookieName() string
@@ -152,6 +165,7 @@ func Register[I, O any](r *Registrar, api huma.API, op huma.Operation, guard Gua
 	}
 	r.prepare(api, &op, guard)
 	prepareTenantPath(&op)
+	op.Tags = []string{"tenants"}
 	huma.Register(api, op, handler)
 }
 
@@ -171,9 +185,62 @@ func RegisterEntity[I, O any](r *Registrar, api huma.API, op huma.Operation, gua
 	}
 	r.prepare(api, &op, guard)
 	prepareEntityPath(&op)
+	op.Tags = []string{"tenants"}
 	if r.verifier != nil {
 		// Replace the tenant-only guard installed by prepare with the entity guard.
 		op.Middlewares[len(op.Middlewares)-1] = r.entityMiddleware(api, guard)
+	}
+	huma.Register(api, op, handler)
+}
+
+// RegisterOwned registers an existing globally addressed resource or one of
+// its direct subresources. The owning module resolves the resource ID; the
+// registrar then authenticates and authorizes against the trusted owner.
+func RegisterOwned[I, O any](r *Registrar, api huma.API, op huma.Operation, resourceParam string, resolve ResourceOwnerResolver, guard Guard, handler func(context.Context, *I) (*O, error)) {
+	if r == nil {
+		panic("authz registrar is nil")
+	}
+	if resourceParam == "" || resolve == nil {
+		panic("owned resource operation requires resource parameter and owner resolver")
+	}
+	if len(op.Tags) != 1 {
+		panic("owned resource operation requires exactly one explicit resource tag")
+	}
+	if r.checker != nil {
+		if _, ok := r.checker.(EntityDataPermissionChecker); !ok && guard.FilterData {
+			panic("data-filtered operation requires entity data permission checker")
+		}
+	}
+	r.prepare(api, &op, guard)
+	op.Metadata[ownedResourceMetadataKey] = true
+	op.Errors = appendUniqueStatus(op.Errors, http.StatusNotFound)
+	op.Parameters = append(op.Parameters, pathSelector(resourceParam, "Resource identifier"))
+	if r.verifier != nil {
+		op.Middlewares[len(op.Middlewares)-1] = r.ownedResourceMiddleware(api, resourceParam, resolve, &guard)
+	}
+	huma.Register(api, op, handler)
+}
+
+// RegisterOwnedTenantMember registers a globally addressed self-service
+// resource whose owner tenant must contain the caller, without inventing an
+// administrative permission for the operation.
+func RegisterOwnedTenantMember[I, O any](r *Registrar, api huma.API, op huma.Operation, resourceParam string, resolve ResourceOwnerResolver, handler func(context.Context, *I) (*O, error)) {
+	if r == nil {
+		panic("authz registrar is nil")
+	}
+	if resourceParam == "" || resolve == nil || len(op.Tags) != 1 {
+		panic("owned tenant member operation requires resource parameter, owner resolver, and one explicit tag")
+	}
+	if op.Metadata == nil {
+		op.Metadata = map[string]any{}
+	}
+	op.Metadata[tenantMemberMetadataKey] = true
+	op.Metadata[ownedResourceMetadataKey] = true
+	r.prepareAuthenticated(api, &op, true)
+	op.Errors = appendUniqueStatus(op.Errors, http.StatusNotFound)
+	op.Parameters = append(op.Parameters, pathSelector(resourceParam, "Resource identifier"))
+	if r.verifier != nil {
+		op.Middlewares = append(op.Middlewares, r.ownedResourceMiddleware(api, resourceParam, resolve, nil))
 	}
 	huma.Register(api, op, handler)
 }
@@ -197,9 +264,11 @@ func RegisterEntityOrAuthenticated[I, O any](r *Registrar, api huma.API, op huma
 	self := op
 	self.OperationID += "-self"
 	self.Path = selfPath(self.Path)
+	self.Tags = []string{"me"}
 	RegisterAuthenticated(r, api, self, handler)
 	r.prepare(api, &op, guard)
 	prepareEntityPath(&op)
+	op.Tags = []string{"tenants"}
 	if r.verifier != nil {
 		op.Middlewares[len(op.Middlewares)-1] = r.entityMiddleware(api, guard)
 	}
@@ -212,6 +281,7 @@ func RegisterTenantEntityOrAuthenticated[I, O any](r *Registrar, api huma.API, o
 	self := op
 	self.OperationID += "-self"
 	self.Path = selfPath(self.Path)
+	self.Tags = []string{"me"}
 	RegisterAuthenticated(r, api, self, handler)
 
 	tenant := op
@@ -239,6 +309,7 @@ func RegisterEntityAdapter(r *Registrar, api huma.API, op huma.Operation, guard 
 	}
 	r.prepare(api, &op, guard)
 	prepareEntityPath(&op)
+	op.Tags = []string{"tenants"}
 	if r.verifier != nil {
 		op.Middlewares[len(op.Middlewares)-1] = r.entityMiddleware(api, guard)
 	}
@@ -262,6 +333,7 @@ func RegisterTenantMember[I, O any](r *Registrar, api huma.API, op huma.Operatio
 	op.Metadata[tenantMemberMetadataKey] = true
 	r.prepareAuthenticated(api, &op, true)
 	prepareTenantPath(&op)
+	op.Tags = []string{"tenants"}
 	if r.verifier != nil {
 		op.Middlewares = append(op.Middlewares, r.middleware(api, nil))
 	}
@@ -583,6 +655,83 @@ func (r *Registrar) entityMiddleware(api huma.API, guard Guard) func(huma.Contex
 	})
 }
 
+func (r *Registrar) ownedResourceMiddleware(api huma.API, resourceParam string, resolve ResourceOwnerResolver, guard *Guard) func(huma.Context, func(huma.Context)) {
+	return func(ctx huma.Context, next func(huma.Context)) {
+		resourceID, parseErr := guid.Parse(ctx.Param(resourceParam))
+		owner := ResourceOwner{}
+		found := false
+		var resolveErr error
+		if parseErr == nil && !resourceID.Zero() {
+			owner, found, resolveErr = resolve(ctx.Context(), resourceID)
+		}
+		permission := ""
+		if guard != nil {
+			permission = guard.Code()
+		}
+		ctx = huma.WithContext(ctx, authn.WithPersonalTokenScope(ctx.Context(), owner.TenantID, permission))
+		claims, ok := r.authenticate(api, ctx)
+		if !ok {
+			return
+		}
+		if resolveErr != nil {
+			slog.Error("resource owner resolution failed", "operation", ctx.Operation().OperationID, "err", resolveErr)
+			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "authorization_unavailable")
+			return
+		}
+		if parseErr != nil || resourceID.Zero() {
+			_ = huma.WriteErr(api, ctx, http.StatusUnprocessableEntity, "invalid_id")
+			return
+		}
+		if !found || owner.TenantID.Zero() {
+			_ = huma.WriteErr(api, ctx, http.StatusNotFound, "not_found")
+			return
+		}
+		principalID := claims.PrincipalID
+		if principalID.Zero() {
+			principalID, parseErr = guid.Parse(claims.Subject)
+		}
+		if parseErr != nil || principalID.Zero() {
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "forbidden")
+			return
+		}
+		requestContext := policyx.WithTrustedContext(ctx.Context(), policyx.TrustedContext{
+			ACR: claims.ACR, AMR: claims.AMR, ClientID: claims.ClientID, NetworkZone: claims.NetworkZone,
+		})
+		active, err := r.members.IsMemberActive(requestContext, owner.TenantID, principalID)
+		if err != nil {
+			slog.Error("resource membership check failed", "operation", ctx.Operation().OperationID, "err", err)
+			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "authorization_unavailable")
+			return
+		}
+		if !active {
+			_ = huma.WriteErr(api, ctx, http.StatusNotFound, "not_found")
+			return
+		}
+		if guard != nil {
+			var allowed bool
+			if owner.EntityID.Zero() {
+				allowed, err = r.checker.Check(requestContext, owner.TenantID, guard.Code(), principalID)
+			} else {
+				allowed, err = r.checkEntityAccess(requestContext, owner.TenantID, owner.EntityID, *guard, principalID)
+			}
+			if err != nil {
+				slog.Error("resource authz check failed", "operation", ctx.Operation().OperationID, "permission", guard.Code(), "err", err)
+				_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "authorization_unavailable")
+				return
+			}
+			if !allowed {
+				_ = huma.WriteErr(api, ctx, http.StatusForbidden, "forbidden")
+				return
+			}
+		}
+		trustedClaims := *claims
+		trustedClaims.TenantID = owner.TenantID
+		trustedClaims.EntityID = owner.EntityID
+		trustedClaims.PrincipalID = principalID
+		next(huma.WithContext(ctx, authn.WithClaims(requestContext, &trustedClaims)))
+	}
+}
+
 func (r *Registrar) entityMiddlewareFor(api huma.API, guard Guard, selectors func(huma.Context) (string, string)) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		tenantText, entityText := selectors(ctx)
@@ -730,6 +879,16 @@ func isTenantMember(op *huma.Operation) bool {
 // active-member declaration. It is exposed for repository-wide OpenAPI gates.
 func IsTenantMemberOperation(op *huma.Operation) bool {
 	return isTenantMember(op)
+}
+
+// IsOwnedResourceOperation reports whether an operation resolves its trusted
+// authorization boundary from a globally addressed resource ID.
+func IsOwnedResourceOperation(op *huma.Operation) bool {
+	if op == nil || op.Metadata == nil {
+		return false
+	}
+	value, _ := op.Metadata[ownedResourceMetadataKey].(bool)
+	return value
 }
 
 // IsAuthenticatedOperation reports whether an operation requires an

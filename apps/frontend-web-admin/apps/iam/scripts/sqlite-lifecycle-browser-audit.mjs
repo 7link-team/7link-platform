@@ -93,7 +93,7 @@ async function call(context, path, method = "GET", body, options = {}) {
   const tenantID = options.tenant ?? tenant?.id
   const requestPath = options.entity
     ? `/tenants/${tenantID}/entities/${options.entity}${path}`
-    : tenantID && options.tenant !== false && !path.startsWith("/sessions") && !path.startsWith("/tenants") && !path.startsWith("/platform/")
+    : tenantID && options.tenant !== false && !path.startsWith("/login") && !path.startsWith("/tenants") && !path.startsWith("/platform/")
       ? `/tenants/${tenantID}${path}`
       : path
   const response = await context.request.fetch(`/api${requestPath}`, {
@@ -877,7 +877,7 @@ try {
   )
 
   const adminSubject = (
-    await call(admin.context, "/sessions/current", "GET", undefined, {
+    await call(admin.context, "/me/session", "GET", undefined, {
       tenant: false,
     })
   ).subject

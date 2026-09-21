@@ -23,35 +23,35 @@ authn-create-personal-token|POST|/me/personal-tokens
 authn-delete-personal-token|DELETE|/me/personal-tokens/{token_id}
 authn-list-personal-tokens|GET|/me/personal-tokens
 authn-list-personal-token-permissions|GET|/me/personal-token-permissions
-authn-list-reauthentication-methods|GET|/reauthentication-methods
-authn-create-reauthentication-challenge|POST|/reauthentication-challenges
-authn-create-reauthentication-verification|POST|/reauthentication-verifications
-authn-capabilities|GET|/authentication-capabilities
-authn-create-captcha|POST|/captchas
+authn-list-reauthentication-methods|GET|/me/reauthentication/methods
+authn-create-reauthentication-challenge|POST|/me/reauthentication/challenges
+authn-create-reauthentication-verification|POST|/me/reauthentication/verifications
+authn-login-options|GET|/login/options
+authn-create-registration-captcha|POST|/registrations/captchas
 authn-create-email-verification-request|POST|/email-verification-requests
 authn-create-email-verification|POST|/email-verifications
 authn-create-passkey-registration-challenge|POST|/me/passkey-registration-challenges
-authn-create-passkey-session-challenge|POST|/passkey-session-challenges
-authn-create-passkey-session-verification|POST|/passkey-session-verifications
+authn-create-passkey-login-options|POST|/login/passkey/options
+authn-verify-passkey-login|POST|/login/passkey/verify
 authn-create-passkey|POST|/me/passkeys
-authn-create-password-recovery-request|POST|/password-recovery-requests
+authn-create-password-recovery-request|POST|/password-recoveries/requests
 authn-create-password-recovery|POST|/password-recoveries
 authn-create-registration|POST|/registrations
-authn-create-session-verification|POST|/session-verifications
-authn-create-session|POST|/sessions
-authn-create-step-up-challenge|POST|/step-up-challenges
-authn-create-step-up-verification|POST|/step-up-verifications
+authn-create-session-verification|POST|/login/mfa
+authn-create-session|POST|/login
+authn-create-step-up-challenge|POST|/me/session/step-up-challenges
+authn-create-step-up-verification|POST|/me/session/step-up-verifications
 authn-create-totp-enrollment|POST|/me/mfa/totp-enrollments
 authn-create-totp-factor|POST|/me/mfa/totp
-authn-delete-current-session|DELETE|/sessions/current
+authn-delete-current-session|DELETE|/me/session
 authn-delete-passkey|DELETE|/me/passkeys/{passkey_id}
-authn-delete-session|DELETE|/sessions/{session_id}
-authn-delete-sessions|DELETE|/sessions
+authn-delete-session|DELETE|/me/sessions/{session_id}
+authn-delete-sessions|DELETE|/me/sessions
 authn-delete-totp-factor|DELETE|/me/mfa/totp
-authn-get-current-session|GET|/sessions/current
+authn-get-current-session|GET|/me/session
 authn-get-mfa|GET|/me/mfa
 authn-list-passkeys|GET|/me/passkeys
-authn-list-sessions|GET|/sessions
+authn-list-sessions|GET|/me/sessions
 authn-me|GET|/me
 authn-replace-recovery-codes|PUT|/me/mfa/recovery-codes
 authn-update-passkey|PATCH|/me/passkeys/{passkey_id}
@@ -103,8 +103,11 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 	for path, item := range spec.Paths {
 		assert.Equal(t, strings.ToLower(path), path, "paths use lowercase resource names")
 		assert.False(t, strings.HasSuffix(path, "/"), "paths have no trailing slash")
-		for _, segment := range strings.Split(strings.Trim(path, "/"), "/") {
-			assert.NotContains(t, []string{"login", "logout", "start", "complete", "options", "verify", "confirm", "regenerate", "enroll", "change"}, segment, path)
+		segments := strings.Split(strings.Trim(path, "/"), "/")
+		if segments[0] != "login" {
+			for _, segment := range segments {
+				assert.NotContains(t, []string{"login", "logout", "start", "complete", "options", "verify", "confirm", "regenerate", "enroll", "change"}, segment, path)
+			}
 		}
 		for method, operation := range authnPathOperations(item) {
 			if operation == nil {
@@ -116,7 +119,7 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 				t.Fatalf("duplicate operationId %q on %s and %s", operation.OperationID, previous, location)
 			}
 			operationIDs[operation.OperationID] = location
-			assert.Equal(t, []string{"authn"}, operation.Tags, location)
+			assert.Equal(t, []string{segments[0]}, operation.Tags, location)
 			if sessionOnly[operation.OperationID] {
 				assert.Equal(t, []map[string][]string{{authz.SessionScheme: {}}}, operation.Security, location)
 			} else if secured[operation.OperationID] {
@@ -146,7 +149,7 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 	}
 	require.Len(t, operationIDs, 38)
 	assert.Equal(t, "session", spec.Components.SecuritySchemes[authz.SessionScheme].Name)
-	for _, path := range []string{"/sessions/{session_id}", "/me/passkeys/{passkey_id}"} {
+	for _, path := range []string{"/me/sessions/{session_id}", "/me/passkeys/{passkey_id}"} {
 		parameter := authnPathOperations(spec.Paths[path])[http.MethodDelete].Parameters[0]
 		assert.Equal(t, "^[a-f0-9]{64}$", parameter.Schema.Pattern, path)
 		assert.Equal(t, 64, *parameter.Schema.MinLength, path)
@@ -157,7 +160,7 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 func TestAuthnOpenAPIUsesTypedWebAuthnSchemas(t *testing.T) {
 	spec := authnContractAPI(t).OpenAPI()
 	for name, operation := range map[string]*huma.Operation{
-		"assertion": spec.Paths["/passkey-session-verifications"].Post,
+		"assertion": spec.Paths["/login/passkey/verify"].Post,
 		"creation":  spec.Paths["/me/passkeys"].Post,
 	} {
 		request := resolveAuthnSchema(spec, operation.RequestBody.Content["application/json"].Schema)
@@ -170,7 +173,7 @@ func TestAuthnOpenAPIUsesTypedWebAuthnSchemas(t *testing.T) {
 		}
 	}
 	for name, operation := range map[string]*huma.Operation{
-		"assertion options": spec.Paths["/passkey-session-challenges"].Post,
+		"assertion options": spec.Paths["/login/passkey/options"].Post,
 		"creation options":  spec.Paths["/me/passkey-registration-challenges"].Post,
 	} {
 		response := resolveAuthnSchema(spec, operation.Responses["200"].Content["application/json"].Schema)
@@ -273,14 +276,14 @@ func TestAuthnOpenAPIEmailVerificationRequiresOneCredentialForm(t *testing.T) {
 func TestAuthnOpenAPIDeclaresRuntimeErrorsWithOneEnvelope(t *testing.T) {
 	spec := authnContractAPI(t).OpenAPI()
 	expected := map[string][]string{
-		"authn-capabilities":                          {},
+		"authn-login-options":                         {},
 		"authn-me":                                    {"401", "403", "503"},
-		"authn-create-captcha":                        {"500"},
+		"authn-create-registration-captcha":           {"500"},
 		"authn-create-registration":                   {"403", "422", "500", "503"},
 		"authn-create-session":                        {"401", "403", "409", "422", "500"},
 		"authn-create-session-verification":           {"401", "403", "500"},
-		"authn-create-passkey-session-challenge":      {"403", "422", "500", "503"},
-		"authn-create-passkey-session-verification":   {"401", "403", "500", "503"},
+		"authn-create-passkey-login-options":          {"403", "422", "500", "503"},
+		"authn-verify-passkey-login":                  {"401", "403", "500", "503"},
 		"authn-get-current-session":                   {"401", "403", "503"},
 		"authn-delete-current-session":                {"403", "503"},
 		"authn-list-sessions":                         {"401", "403", "500", "503"},

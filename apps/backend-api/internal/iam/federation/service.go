@@ -19,6 +19,7 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/httpx"
 	"7link.com/platform/pkg/extension/keyringx"
 	"7link.com/platform/pkg/extension/secretx"
@@ -664,6 +665,17 @@ func (s *Service) getProviderByID(ctx context.Context, id guid.ID) (providerRow,
 		return providerRow{}, ErrProviderNotFound
 	}
 	return s.repo.getProviderByID(ctx, id)
+}
+
+func (s *Service) resolveProviderOwner(ctx context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
+	provider, err := s.getProviderByID(ctx, id)
+	if errors.Is(err, ErrProviderNotFound) {
+		return authz.ResourceOwner{}, false, nil
+	}
+	if err != nil {
+		return authz.ResourceOwner{}, false, err
+	}
+	return authz.ResourceOwner{TenantID: provider.TenantID}, true, nil
 }
 
 // providerSecretAAD binds a sealed client secret to the provider row it belongs

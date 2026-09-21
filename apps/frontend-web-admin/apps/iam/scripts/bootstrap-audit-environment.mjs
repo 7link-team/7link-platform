@@ -144,7 +144,7 @@ async function call(path, init = {}) {
 }
 
 async function ensureTenant(ownerPrincipalID) {
-  await call("/sessions", {
+  await call("/login", {
     method: "POST",
     body: JSON.stringify({
       login_name: login,

@@ -112,12 +112,12 @@ try {
     ({ tenant }) => localStorage.setItem("iam.tenant", tenant),
     { tenant }
   )
-  await ok("/sessions", "POST", {
+  await ok("/login", "POST", {
     login_name: login,
     password,
     return_url: baseURL + "/",
   })
-  const me = await ok("/sessions/current")
+  const me = await ok("/me/session")
   const existing = (await ok("/field-policies")).find(
     (p) => p.resource === "todo" && p.field === "description"
   )
@@ -343,7 +343,7 @@ try {
     (tenant) => localStorage.setItem("iam.tenant", tenant),
     tenant
   )
-  await ok("/sessions", "POST", {
+  await ok("/login", "POST", {
     login_name: viewerLogin,
     password,
     return_url: baseURL + "/",

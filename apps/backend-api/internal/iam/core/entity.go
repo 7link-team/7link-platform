@@ -74,6 +74,22 @@ func (r *Repository) GetEntity(ctx context.Context, tenantID, entityID guid.ID) 
 	return entityFromRow(row)
 }
 
+func (r *Repository) ResolveEntityTenant(ctx context.Context, entityID guid.ID) (guid.ID, bool, error) {
+	tables, _, err := r.tables()
+	if err != nil {
+		return 0, false, err
+	}
+	row, err := tables.Entities.WithContext(ctx).Select(tables.Entities.TenantID).
+		Where(tables.Entities.ID.Eq(entityID)).Take()
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("resolve entity tenant: %w", err)
+	}
+	return row.TenantID, true, nil
+}
+
 // UpdateEntity replaces mutable fields on one tenant-qualified entity.
 func (r *Repository) UpdateEntity(ctx context.Context, entity Entity) (Entity, error) {
 	var updated Entity

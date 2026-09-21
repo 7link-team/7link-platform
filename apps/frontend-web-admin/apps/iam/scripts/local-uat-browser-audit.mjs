@@ -509,7 +509,7 @@ try {
         await page.getByRole("menuitem", { name: "退出登录" }).click()
         await page.locator('input[name="login_name"]').waitFor()
         assert.equal(
-          (await context.request.get("/api/sessions/current")).status(),
+          (await context.request.get("/api/me/session")).status(),
           401
         )
         await page.goto("/users")
@@ -529,7 +529,7 @@ try {
         throw error
       } finally {
         await context.request
-          .delete("/api/sessions/current", {
+          .delete("/api/me/session", {
             headers: { Origin: baseURL },
           })
           .catch(() => {})

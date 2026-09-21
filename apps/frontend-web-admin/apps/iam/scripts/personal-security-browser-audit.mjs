@@ -346,7 +346,7 @@ async function createAndRevokeToken(context, page, messages, label, method) {
     .getByRole("button", { name: messages.continue, exact: true })
     .click()
   const originalSession = await sessionCookie(context)
-  const originalSubject = (await ok(context, "/sessions/current")).subject
+  const originalSubject = (await ok(context, "/me/session")).subject
   const beforeFresh = idp.fresh
   await confirmIdentity(page, messages, method)
   const secretNode = page.getByTestId("personal-token-secret")
@@ -359,7 +359,7 @@ async function createAndRevokeToken(context, page, messages, label, method) {
     "Reauthentication must not replace the browser session"
   )
   assert.equal(
-    (await ok(context, "/sessions/current")).subject,
+    (await ok(context, "/me/session")).subject,
     originalSubject
   )
   if (method === "federation") assert.equal(idp.fresh, beforeFresh + 1)
@@ -391,7 +391,7 @@ async function createAndRevokeToken(context, page, messages, label, method) {
     "Cross-tenant token use is denied"
   )
   assert.equal(
-    (await bearer("/sessions/current")).status(),
+    (await bearer("/me/session")).status(),
     401,
     "PAT cannot substitute for a browser session"
   )
@@ -471,7 +471,7 @@ async function passwordLink(context, page, messages) {
     .waitFor()
   await page.locator("#identity-provider").selectOption(provider.id)
   const oldCookie = await sessionCookie(context)
-  const oldSession = await ok(context, "/sessions/current")
+  const oldSession = await ok(context, "/me/session")
   const membersBefore = await ok(
     admin,
     "/principals",
@@ -508,7 +508,7 @@ async function passwordLink(context, page, messages) {
     .waitFor()
   assert.equal(await sessionCookie(context), oldCookie)
   assert.equal(
-    (await ok(context, "/sessions/current")).subject,
+    (await ok(context, "/me/session")).subject,
     oldSession.subject
   )
   assert.deepEqual(
@@ -539,13 +539,13 @@ async function passwordLink(context, page, messages) {
 }
 try {
   save()
-  await ok(admin, "/sessions", "POST", {
+  await ok(admin, "/login", "POST", {
     login_name: "admin@example.test",
     password: adminPassword,
     return_url: baseURL + "/",
   })
   await sessionCookie(admin)
-  const owner = (await ok(admin, "/sessions/current")).subject
+  const owner = (await ok(admin, "/me/session")).subject
   tenant = await ok(admin, "/tenants", "POST", {
     name: stamp,
     slug: stamp,
@@ -634,7 +634,7 @@ try {
         page.on("response", async (result) => {
           if (
             new URL(result.url()).pathname ===
-              "/api/reauthentication-challenges" &&
+              "/api/me/reauthentication/challenges" &&
             result.ok()
           ) {
             try {
@@ -662,9 +662,9 @@ try {
             `${apiURL}/federation/${provider.id}/start?${new URLSearchParams({ return_url: baseURL + "/account/tokens" })}`
           )
           await finishUpstream(page)
-          const session = await ok(context, "/sessions/current")
+          const session = await ok(context, "/me/session")
           principals.add(session.subject)
-          const methods = await ok(context, "/reauthentication-methods")
+          const methods = await ok(context, "/me/reauthentication/methods")
           assert.deepEqual(
             methods.methods,
             [],

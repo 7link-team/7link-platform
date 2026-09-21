@@ -30,6 +30,27 @@ type service struct {
 	checker     authz.EntityDataPermissionChecker
 	fields      authz.FieldPermissionChecker
 	departments core.MemberDepartmentReader
+	entities    core.EntityOwnerResolver
+}
+
+func (s *service) resolveOwner(ctx context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
+	db := s.writer()
+	if db == nil {
+		return authz.ResourceOwner{}, false, ErrUnavailable
+	}
+	var row model.TodoRow
+	err := db.WithContext(ctx).Table(s.runtime.TablePrefix()+model.TodoRow{}.TableName()).
+		Select("tenant_id, entity_id").Where("id = ?", id).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return authz.ResourceOwner{}, false, nil
+	}
+	if err != nil {
+		return authz.ResourceOwner{}, false, err
+	}
+	if row.TenantID == nil || row.EntityID == nil {
+		return authz.ResourceOwner{}, false, nil
+	}
+	return authz.ResourceOwner{TenantID: *row.TenantID, EntityID: *row.EntityID}, true, nil
 }
 
 func newService(rt *appenv.Runtime, ids guid.Source) *service {

@@ -29,6 +29,7 @@ import (
 	federationi18n "7link.com/platform/internal/iam/federation/i18n"
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/authz"
 	"github.com/beevik/etree"
 	saml "github.com/crewjam/saml"
 	"github.com/danielgtaylor/huma/v2"
@@ -903,6 +904,17 @@ func (s *Service) DeleteSAMLServiceProvider(ctx context.Context, tenantID, id gu
 	}
 	s.invalidateSAMLSP(tenantID, existing.EntityID)
 	return nil
+}
+
+func (s *Service) resolveSAMLServiceProviderOwner(ctx context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
+	provider, err := s.repo.getSAMLServiceProviderByID(ctx, id)
+	if errors.Is(err, ErrSAMLSPNotFound) {
+		return authz.ResourceOwner{}, false, nil
+	}
+	if err != nil {
+		return authz.ResourceOwner{}, false, err
+	}
+	return authz.ResourceOwner{TenantID: provider.TenantID}, true, nil
 }
 
 func (s *Service) normalizeSAMLSP(tenantID guid.ID, input SAMLServiceProviderInput) (samlSPRow, error) {

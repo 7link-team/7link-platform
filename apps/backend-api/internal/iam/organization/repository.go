@@ -86,6 +86,56 @@ func (r *Repository) tables() (*query.Tables, *gorm.DB, error) {
 	return query.BindWithNames(db, r.names), db, nil
 }
 
+func (r *Repository) resolveResourceTenant(ctx context.Context, table string, id guid.ID) (guid.ID, bool, error) {
+	db := r.writer()
+	if db == nil {
+		return 0, false, errRepositoryUnavailable
+	}
+	var row struct {
+		TenantID guid.ID `gorm:"column:tenant_id"`
+	}
+	err := db.WithContext(ctx).Table(table).Select("tenant_id").Where("id = ?", id).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("resolve organization resource tenant: %w", err)
+	}
+	return row.TenantID, true, nil
+}
+
+func (r *Repository) resolveDepartmentTenant(ctx context.Context, id guid.ID) (guid.ID, bool, error) {
+	tables, _, err := r.tables()
+	if err != nil {
+		return 0, false, err
+	}
+	return r.resolveResourceTenant(ctx, tables.Departments.TableName(), id)
+}
+
+func (r *Repository) resolvePositionTenant(ctx context.Context, id guid.ID) (guid.ID, bool, error) {
+	tables, _, err := r.tables()
+	if err != nil {
+		return 0, false, err
+	}
+	return r.resolveResourceTenant(ctx, tables.Positions.TableName(), id)
+}
+
+func (r *Repository) resolveGroupTenant(ctx context.Context, id guid.ID) (guid.ID, bool, error) {
+	tables, _, err := r.tables()
+	if err != nil {
+		return 0, false, err
+	}
+	return r.resolveResourceTenant(ctx, tables.Groups.TableName(), id)
+}
+
+func (r *Repository) resolveInvitationTenant(ctx context.Context, id guid.ID) (guid.ID, bool, error) {
+	tables, _, err := r.tables()
+	if err != nil {
+		return 0, false, err
+	}
+	return r.resolveResourceTenant(ctx, tables.Invitations.TableName(), id)
+}
+
 func (r *Repository) withDB(db *gorm.DB, inTx bool) *Repository {
 	clone := *r
 	clone.db, clone.inTx = db, inTx

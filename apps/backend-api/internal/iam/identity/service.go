@@ -68,6 +68,11 @@ func NewService(
 	}
 }
 
+func (s *Service) resolveServiceAccountOwner(ctx context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
+	tenantID, found, err := s.repo.serviceAccountOwner(ctx, id)
+	return authz.ResourceOwner{TenantID: tenantID}, found, err
+}
+
 func (s *Service) Create(
 	ctx context.Context,
 	tenantID guid.ID,

@@ -40,7 +40,7 @@ async function call(
   return payload?.data
 }
 
-await call("/sessions", {
+await call("/login", {
   method: "POST",
   tenant: false,
   body: {

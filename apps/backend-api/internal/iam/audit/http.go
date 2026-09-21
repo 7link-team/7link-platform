@@ -78,7 +78,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	registerArchiveHTTP(api, service, registrar, true)
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "audit-list-events", Method: http.MethodGet, Path: "/audit/events",
-		Summary: "List tenant audit events", Tags: []string{"audit"},
+		Summary: "List tenant audit events", Tags: []string{"tenants"},
 		Errors: []int{http.StatusUnprocessableEntity, http.StatusInternalServerError},
 	}, authz.Guard{Resource: "audit_event", Verb: "view"}, func(ctx context.Context, in *listInput) (*respx.Body[[]Event], error) {
 		filter, err := listFilter(in)
@@ -114,7 +114,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "audit-get-event", Method: http.MethodGet, Path: "/audit/events/{event_id}",
-		Summary: "Get a tenant audit event", Tags: []string{"audit"},
+		Summary: "Get a tenant audit event", Tags: []string{"tenants"},
 		Errors: []int{http.StatusNotFound, http.StatusInternalServerError},
 	}, authz.Guard{Resource: "audit_event", Verb: "view"}, func(ctx context.Context, in *eventInput) (*respx.Body[Event], error) {
 		tenantID, err := parseAuditID(in.TenantID)
@@ -134,7 +134,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "audit-verify-integrity", Method: http.MethodGet, Path: "/audit/integrity-verifications",
-		Summary: "Verify the tenant audit hash chain", Tags: []string{"audit"},
+		Summary: "Verify the tenant audit hash chain", Tags: []string{"tenants"},
 		Errors: []int{http.StatusInternalServerError},
 	}, authz.Guard{Resource: "audit_event", Verb: "view"}, func(ctx context.Context, in *tenantInput) (*respx.Body[Integrity], error) {
 		tenantID, err := parseAuditID(in.TenantID)
@@ -150,7 +150,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "audit-anchor-current", Method: http.MethodPost, Path: "/audit/anchors",
-		Summary: "Anchor the current verified audit head into the WORM store", Tags: []string{"audit"},
+		Summary: "Anchor the current verified audit head into the WORM store", Tags: []string{"tenants"},
 		Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity, http.StatusServiceUnavailable, http.StatusInternalServerError},
 	}, authz.Guard{Resource: "audit_event", Verb: "anchor"}, func(ctx context.Context, in *tenantInput) (*respx.Body[Anchor], error) {
 		tenantID, err := parseAuditID(in.TenantID)
@@ -166,7 +166,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "audit-get-governance", Method: http.MethodGet, Path: "/audit/governance-policy",
-		Summary: "Get WORM governance status: retention policy, chain integrity and anchor chain", Tags: []string{"audit"},
+		Summary: "Get WORM governance status: retention policy, chain integrity and anchor chain", Tags: []string{"tenants"},
 		Errors: []int{http.StatusUnprocessableEntity, http.StatusServiceUnavailable, http.StatusInternalServerError},
 	}, authz.Guard{Resource: "audit_event", Verb: "view"}, func(ctx context.Context, in *governanceInput) (*respx.Body[Governance], error) {
 		tenantID, err := parseAuditID(in.TenantID)
@@ -184,7 +184,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "audit-set-retention", Method: http.MethodPut, Path: "/audit/retention-policy",
-		Summary: "Configure the tenant audit retention policy", Tags: []string{"audit"},
+		Summary: "Configure the tenant audit retention policy", Tags: []string{"tenants"},
 		Errors: []int{http.StatusUnprocessableEntity, http.StatusInternalServerError},
 	}, authz.Guard{Resource: "audit_event", Verb: "manage"}, func(ctx context.Context, in *retentionInput) (*respx.Body[RetentionPolicy], error) {
 		tenantID, err := parseAuditID(in.TenantID)
@@ -200,7 +200,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "audit-sign-root", Method: http.MethodPost, Path: "/audit/root-signatures",
-		Summary: "Anchor and sign the current verified audit head as a WORM root commitment", Tags: []string{"audit"},
+		Summary: "Anchor and sign the current verified audit head as a WORM root commitment", Tags: []string{"tenants"},
 		Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity, http.StatusServiceUnavailable, http.StatusInternalServerError},
 	}, authz.Guard{Resource: "audit_event", Verb: "manage"}, func(ctx context.Context, in *tenantInput) (*respx.Body[Anchor], error) {
 		tenantID, err := parseAuditID(in.TenantID)
@@ -276,7 +276,7 @@ func optionalTime(value string) (time.Time, error) {
 func exportOperation() huma.Operation {
 	return huma.Operation{
 		OperationID: "audit-export-events", Method: http.MethodGet, Path: "/audit/exports",
-		Summary: "Export a verified tenant audit snapshot", Tags: []string{"audit"},
+		Summary: "Export a verified tenant audit snapshot", Tags: []string{"tenants"},
 		Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError},
 		Responses: map[string]*huma.Response{
 			"200": {

@@ -68,12 +68,12 @@ try {
     headless: true,
   })
   const admin = await browser.newContext({ baseURL })
-  await ok(admin, "/sessions", "POST", {
+  await ok(admin, "/login", "POST", {
     login_name: process.env.IAM_BROWSER_LOGIN ?? "admin@example.test",
     password: auditPassword(),
     return_url: baseURL + "/",
   })
-  const me = await ok(admin, "/sessions/current")
+  const me = await ok(admin, "/me/session")
   const stamp = Date.now()
   const tenant = await ok(admin, "/tenants", "POST", {
     slug: `outbound-audit-${stamp}`,
@@ -124,12 +124,12 @@ try {
     viewport: { width: 1440, height: 1000 },
     reducedMotion: "reduce",
   })
-  await ok(context, "/sessions", "POST", {
+  await ok(context, "/login", "POST", {
     login_name: actor.login_name,
     password: actorPassword,
     return_url: baseURL + "/",
   })
-  const actorSession = await ok(context, "/sessions/current")
+  const actorSession = await ok(context, "/me/session")
   await context.addCookies([
     { name: "NEXT_LOCALE", value: "zh-CN", url: baseURL },
   ])

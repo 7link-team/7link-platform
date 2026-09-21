@@ -38,7 +38,7 @@ save()
 const password = randomBytes(32).toString("base64url") + "aA1!"
 async function call(context, path, method = "GET", data, tenant) {
   const requestPath =
-    tenant && !path.startsWith("/sessions") && !path.startsWith("/platform/")
+    tenant && !path.startsWith("/login") && !path.startsWith("/platform/")
       ? `/tenants/${tenant}${path}`
       : path
   return context.request.fetch("/api" + requestPath, {
@@ -53,12 +53,12 @@ async function ok(context, path, method = "GET", data, tenant) {
   return (await response.json()).data
 }
 async function login(context, name, secret) {
-  await ok(context, "/sessions", "POST", {
+  await ok(context, "/login", "POST", {
     login_name: name,
     password: secret,
     return_url: baseURL + "/",
   })
-  return ok(context, "/sessions/current")
+  return ok(context, "/me/session")
 }
 async function verified(page, messages, responsePath) {
   const dialog = page.getByRole("dialog")
@@ -140,7 +140,7 @@ try {
         await verified(page, messages, `/me/memberships/${tenant.id}/leave`)
         await page.getByText(messages.noMemberships, { exact: true }).waitFor()
         assert.equal(
-          (await ok(context, "/sessions/current")).subject,
+          (await ok(context, "/me/session")).subject,
           principal.id,
           "leaving preserves the global session"
         )
@@ -225,7 +225,7 @@ try {
           "zero-tenant account can be processed"
         )
         assert.equal(
-          (await call(context, "/sessions/current")).status(),
+          (await call(context, "/me/session")).status(),
           401,
           "processing revokes old session"
         )

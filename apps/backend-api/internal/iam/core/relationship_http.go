@@ -110,7 +110,7 @@ type AuthorizationDecision struct {
 func registerRelationshipHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	authz.Register(registrar, a, huma.Operation{
 		OperationID: "iam-list-relationships", Method: http.MethodGet, Path: "/relationships",
-		Summary: "List tenant entity or business-resource relationship grants", Tags: []string{"iam"}, Errors: []int{http.StatusUnprocessableEntity},
+		Summary: "List tenant entity or business-resource relationship grants", Tags: []string{"tenants"}, Errors: []int{http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "entity", Verb: "view"}, func(ctx context.Context, in *listRelationshipsInput) (*respx.Body[[]APIRelationship], error) {
 		tenantID, err := requireID(in.TenantID)
 		if err != nil {
@@ -137,7 +137,7 @@ func registerRelationshipHTTP(a huma.API, svc *Service, registrar *authz.Registr
 
 	authz.Register(registrar, a, huma.Operation{
 		OperationID: "iam-put-relationship", Method: http.MethodPost, Path: "/relationships",
-		Summary: "Create or update a constrained relationship grant", Tags: []string{"iam"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
+		Summary: "Create or update a constrained relationship grant", Tags: []string{"tenants"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "entity", Verb: "manage_binding"}, func(ctx context.Context, in *putRelationshipInput) (*respx.Body[APIRelationship], error) {
 		relationship, err := relationshipToDomain(in.TenantID, in.Body)
 		if err != nil {
@@ -152,7 +152,7 @@ func registerRelationshipHTTP(a huma.API, svc *Service, registrar *authz.Registr
 
 	authz.Register(registrar, a, huma.Operation{
 		OperationID: "iam-delete-relationship", Method: http.MethodDelete, Path: "/relationships",
-		Summary: "Revoke a relationship grant immediately", Tags: []string{"iam"}, Errors: []int{http.StatusUnprocessableEntity},
+		Summary: "Revoke a relationship grant immediately", Tags: []string{"tenants"}, Errors: []int{http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "entity", Verb: "manage_binding"}, func(ctx context.Context, in *deleteRelationshipInput) (*respx.Body[MutationResult], error) {
 		tenantID, err := requireID(in.TenantID)
 		if err != nil {
@@ -182,7 +182,7 @@ func registerRelationshipHTTP(a huma.API, svc *Service, registrar *authz.Registr
 
 	authz.Register(registrar, a, huma.Operation{
 		OperationID: "iam-check-authorization", Method: http.MethodPost, Path: "/authorization-checks",
-		Summary: "Check an entity or business-resource authorization decision", Tags: []string{"iam"}, Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
+		Summary: "Check an entity or business-resource authorization decision", Tags: []string{"tenants"}, Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *authorizationCheckInput) (*respx.Body[AuthorizationDecision], error) {
 		var explanation authz.Explanation
 		tenantID, err := requireID(in.TenantID)

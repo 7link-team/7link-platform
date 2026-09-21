@@ -8,7 +8,7 @@ import { chromium } from "playwright"
 // Real API fixtures and real pages. Network-failure injection belongs to the
 // existing release-regression audit; this matrix never stubs HTTP responses.
 const routes = [
-  ["dashboard", "/", "identityControl", "/sessions", null],
+  ["dashboard", "/", "identityControl", "/me/session", null],
   ["users", "/users", "principalMembers", "/principals", "principal"],
   [
     "invitations",
@@ -237,7 +237,7 @@ const fixtures = []
 const actors = {}
 async function call(context, path, method = "GET", data, tenant) {
   const requestPath =
-    tenant && !path.startsWith("/sessions") && !path.startsWith("/platform/")
+    tenant && !path.startsWith("/login") && !path.startsWith("/platform/")
       ? `/tenants/${tenant}${path}`
       : path
   return context.request.fetch("/api" + requestPath, {
@@ -254,12 +254,12 @@ async function ok(context, path, method = "GET", data, tenant) {
 async function signIn(context, persona) {
   const login =
     persona === "admin" ? "admin@example.test" : actors[persona].login_name
-  await ok(context, "/sessions", "POST", {
+  await ok(context, "/login", "POST", {
     login_name: login,
     password: persona === "admin" ? adminPassword : fixturePassword,
     return_url: baseURL + "/",
   })
-  return ok(context, "/sessions/current")
+  return ok(context, "/me/session")
 }
 async function setup() {
   const me = await signIn(admin, "admin")

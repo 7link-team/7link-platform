@@ -114,6 +114,9 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[AuthorizationEvaluator](services, m.checker); err != nil {
 		return fmt.Errorf("provide IAM authorization evaluator: %w", err)
 	}
+	if err := module.Provide[EntityOwnerResolver](services, EntityOwnerResolver(m.service.resolveEntityOwner)); err != nil {
+		return fmt.Errorf("provide IAM entity owner resolver: %w", err)
+	}
 	if err := module.Provide[EntityConstraintOn](services, m.checker.EntityConstraintOn); err != nil {
 		return fmt.Errorf("provide IAM transaction entity authorization: %w", err)
 	}

@@ -394,7 +394,7 @@ try {
       const request = route.request()
       const url = new URL(request.url())
       const path = url.pathname.slice(4)
-      if (path === "/sessions/current") {
+      if (path === "/me/session") {
         if (!authenticated)
           return route.fulfill({
             status: 401,
@@ -566,7 +566,7 @@ try {
       const request = route.request()
       const url = new URL(request.url())
       const path = url.pathname.slice(4)
-      if (path === "/sessions/current")
+      if (path === "/me/session")
         return route.fulfill({
           json: {
             code: 0,

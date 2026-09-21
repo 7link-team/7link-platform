@@ -13,6 +13,7 @@ import (
 	"7link.com/platform/internal/iam/governance/model"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	"7link.com/platform/pkg/extension/authz"
 	"gorm.io/gorm"
 )
 
@@ -94,6 +95,16 @@ func NewService(runtime *appenv.Runtime, appender audit.Appender, grants core.Ro
 		panic("governance service requires runtime, audit appender, role grant store, and id generator")
 	}
 	return &Service{repo: NewRepository(runtime, ids), audit: appender, grants: grants, now: time.Now}
+}
+
+func (s *Service) resolveAccessRequestOwner(ctx context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
+	tenantID, found, err := s.repo.accessRequestOwner(ctx, id)
+	return authz.ResourceOwner{TenantID: tenantID}, found, err
+}
+
+func (s *Service) resolveAccessReviewOwner(ctx context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
+	tenantID, found, err := s.repo.accessReviewOwner(ctx, id)
+	return authz.ResourceOwner{TenantID: tenantID}, found, err
 }
 
 func (s *Service) RequestableRoles(ctx context.Context, tenantID guid.ID) ([]RequestableRole, error) {

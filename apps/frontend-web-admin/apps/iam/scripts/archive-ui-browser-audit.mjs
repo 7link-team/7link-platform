@@ -98,7 +98,7 @@ try {
         assert.equal(tenant, undefined, "platform API must omit tenant header")
       const json = (data) =>
         route.fulfill({ json: { code: 0, message: "ok", data } })
-      if (path === "/sessions/current")
+      if (path === "/me/session")
         return json({
           subject: "1",
           organization_id: "11",

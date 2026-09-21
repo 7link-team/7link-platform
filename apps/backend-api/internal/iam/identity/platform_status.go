@@ -123,7 +123,7 @@ func registerPlatformStatusHTTP(api huma.API, service *Service, registrar *authz
 			"route cannot address and the closure route only covers after the person asks. It " +
 			"revokes sessions and refresh tokens and refuses to remove the last administrator of " +
 			"a tenant the principal still belongs to.",
-		Tags:   []string{"identity"},
+		Tags:   []string{"platform"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusServiceUnavailable},
 	}, guard, func(ctx context.Context, in *platformLifecycleInput) (*respx.Body[Principal], error) {
 		return platformPrincipalStatus(ctx, service, in, "disabled")
@@ -136,7 +136,7 @@ func registerPlatformStatusHTTP(api huma.API, service *Service, registrar *authz
 		Description: "Restores the account to active without recreating credentials, because " +
 			"suspension keeps them. A permanently anonymized principal is refused: its row is a " +
 			"tombstone and the database rejects the write as well.",
-		Tags:   []string{"identity"},
+		Tags:   []string{"platform"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusServiceUnavailable},
 	}, guard, func(ctx context.Context, in *platformLifecycleInput) (*respx.Body[Principal], error) {
 		return platformPrincipalStatus(ctx, service, in, "active")

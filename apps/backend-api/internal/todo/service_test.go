@@ -11,6 +11,7 @@ import (
 	todoi18n "7link.com/platform/internal/todo/i18n"
 	"7link.com/platform/pkg/appenv"
 	"7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/authz"
 	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	platformi18n "7link.com/platform/pkg/i18n"
@@ -62,6 +63,9 @@ func newTestService(t *testing.T, prefix string) (*service, *gorm.DB) {
 	svc := newService(rt, &stubIDs{})
 	svc.checker, svc.departments = &todoPolicy{}, &todoPolicy{}
 	svc.fields = &todoPolicy{}
+	svc.entities = func(context.Context, guid.ID) (authz.ResourceOwner, bool, error) {
+		return authz.ResourceOwner{TenantID: 1, EntityID: 10}, true, nil
+	}
 	return svc, db
 }
 

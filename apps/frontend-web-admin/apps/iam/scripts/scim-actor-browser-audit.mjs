@@ -90,12 +90,12 @@ async function capture(name) {
 }
 try {
   await page.goto(baseURL + "/login")
-  await api("/sessions", "POST", {
+  await api("/login", "POST", {
     login_name: login,
     password,
     return_url: baseURL + "/",
   })
-  const session = await api("/sessions/current")
+  const session = await api("/me/session")
   await page.evaluate(
     ({ tenant, subject }) => {
       localStorage.setItem("iam.tenant", tenant)
@@ -181,7 +181,7 @@ try {
   )
 
   await edit(directory.name)
-  const me = await api("/sessions/current")
+  const me = await api("/me/session")
   const otherTenant = await api("/tenants", "POST", {
     slug: `scim-ui-other-${suffix}`,
     name: "SCIM UI Other",

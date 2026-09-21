@@ -59,7 +59,8 @@ func personalTokenError(err error) error {
 func registerPersonalTokenHTTP(api huma.API, service *Service) {
 	registrar := authz.NewAuthenticationOnlyRegistrar(service)
 	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-create-personal-token-preparation", Method: http.MethodPost,
-		Path: "/me/personal-token-preparations", Summary: "Prepare exact permissions and expiry for fresh verification", Tags: []string{"authn"}, Errors: []int{401, 403, 422, 500, 503}},
+		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
+		Path:     "/me/personal-token-preparations", Summary: "Prepare exact permissions and expiry for fresh verification", Tags: []string{"me"}, Errors: []int{401, 403, 422, 500, 503}},
 		func(ctx context.Context, in *personalTokenPrepareInput) (*respx.Body[PersonalTokenPreparation], error) {
 			if in.Authorization != "" {
 				return nil, huma.Error401Unauthorized("unauthorized")
@@ -71,7 +72,8 @@ func registerPersonalTokenHTTP(api huma.API, service *Service) {
 			return respx.OK(ctx, result), nil
 		})
 	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-create-personal-token", Method: http.MethodPost,
-		Path: "/me/personal-tokens", Summary: "Create a tenant-scoped personal token; return its secret once", Tags: []string{"authn"}, Errors: []int{401, 403, 422, 500, 503}},
+		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
+		Path:     "/me/personal-tokens", Summary: "Create a tenant-scoped personal token; return its secret once", Tags: []string{"me"}, Errors: []int{401, 403, 422, 500, 503}},
 		func(ctx context.Context, in *personalTokenCreateInput) (*respx.Body[PersonalTokenCreated], error) {
 			if in.Authorization != "" {
 				return nil, huma.Error401Unauthorized("unauthorized")
@@ -83,7 +85,7 @@ func registerPersonalTokenHTTP(api huma.API, service *Service) {
 			return respx.OK(ctx, result), nil
 		})
 	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-list-personal-tokens", Method: http.MethodGet,
-		Path: "/me/personal-tokens", Summary: "List the current browser principal's personal token metadata", Tags: []string{"authn"}, Errors: []int{401, 422, 500, 503}},
+		Path: "/me/personal-tokens", Summary: "List the current browser principal's personal token metadata", Tags: []string{"me"}, Errors: []int{401, 422, 500, 503}},
 		func(ctx context.Context, in *personalTokenListInput) (*respx.Body[[]PersonalTokenView], error) {
 			if in.Authorization != "" {
 				return nil, huma.Error401Unauthorized("unauthorized")
@@ -95,7 +97,7 @@ func registerPersonalTokenHTTP(api huma.API, service *Service) {
 			return respx.List(ctx, rows, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(rows), Total: total}), nil
 		})
 	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-delete-personal-token", Method: http.MethodDelete,
-		Path: "/me/personal-tokens/{token_id}", Summary: "Revoke an owned personal token", Tags: []string{"authn"}, Errors: []int{401, 403, 500, 503}},
+		Path: "/me/personal-tokens/{token_id}", Summary: "Revoke an owned personal token", Tags: []string{"me"}, Errors: []int{401, 403, 500, 503}},
 		func(ctx context.Context, in *personalTokenDeleteInput) (*respx.Body[map[string]bool], error) {
 			if in.Authorization != "" {
 				return nil, huma.Error401Unauthorized("unauthorized")
@@ -110,7 +112,7 @@ func registerPersonalTokenHTTP(api huma.API, service *Service) {
 			return respx.OK(ctx, map[string]bool{"revoked": true}), nil
 		})
 	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-list-personal-token-permissions", Method: http.MethodGet,
-		Path: "/me/personal-token-permissions", Summary: "List currently granted permissions available for a personal token", Tags: []string{"authn"}, Errors: []int{401, 422, 500, 503}},
+		Path: "/me/personal-token-permissions", Summary: "List currently granted permissions available for a personal token", Tags: []string{"me"}, Errors: []int{401, 422, 500, 503}},
 		func(ctx context.Context, in *personalTokenPermissionsInput) (*respx.Body[[]authz.Action], error) {
 			tenantID, err := guid.Parse(in.TenantID)
 			if err != nil {

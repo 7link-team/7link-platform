@@ -1,5 +1,44 @@
 # Decisions
 
+## D66 - Globally unique resources use short canonical item paths
+
+**Date** 2026-09-21
+
+**Decision / Reason**
+Every first-class internal resource uses a globally unique snowflake ID. Create
+and list operations are nested under the direct owner, while read, update,
+delete, direct subresources, and relationships address an existing resource by
+its global ID. Thus entities are created and listed at
+`/tenants/{tenant_id}/entities`, then addressed at `/entities/{entity_id}`;
+departments are created and listed at `/entities/{entity_id}/departments`, then
+addressed at `/departments/{department_id}`. The server resolves and verifies
+tenant ownership. Scope headers and query parameters are not authorization
+selectors.
+
+Menus and files use the same account, tenant, entity, and department contexts.
+Current-principal menu projections are `/me/menus`,
+`/tenants/{tenant_id}/me/menus`, `/entities/{entity_id}/me/menus`, and
+`/departments/{department_id}/me/menus`. Menu visibility reuses the existing
+scoped permission evaluator and never replaces endpoint authorization.
+
+**Alternatives Considered / Tradeoffs**
+Always retaining the full ancestor chain was rejected because globally unique
+IDs make it redundant for existing-resource operations and require callers to
+repeat derivable state. Flat collections with scope headers were rejected
+because the same URI could identify different resources and headers obscured
+the authorization boundary. Optional entity/department query selectors were
+rejected for the same reason. Short item paths require middleware to resolve the
+resource owner before authorization and to fail cross-tenant references as not
+found.
+
+**Scope / Status**
+Supersedes D65 where D65 requires full tenant/entity ancestry for every API item
+path. Browser workspace URLs may remain fully nested for navigational context;
+this decision governs the public HTTP API. Approved; breaking migration in
+progress with no compatibility aliases.
+
+---
+
 ## D65 - Browser and API resource scope is explicit in canonical paths
 
 **Date** 2026-09-20

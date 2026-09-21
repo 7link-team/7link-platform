@@ -23,6 +23,7 @@ type fakeVerifier struct {
 	csrfErr   error
 	cookie    string
 	csrfCalls []csrfValidationCall
+	scopes    []authn.PersonalTokenScope
 }
 
 type csrfValidationCall struct {
@@ -32,7 +33,10 @@ type csrfValidationCall struct {
 	authorization string
 }
 
-func (verifier *fakeVerifier) Authenticate(context.Context, string, string) (*authn.Claims, error) {
+func (verifier *fakeVerifier) Authenticate(ctx context.Context, _, _ string) (*authn.Claims, error) {
+	if scope, ok := authn.PersonalTokenScopeFromContext(ctx); ok {
+		verifier.scopes = append(verifier.scopes, scope)
+	}
 	if verifier.err != nil {
 		return nil, verifier.err
 	}
@@ -169,6 +173,9 @@ func TestRegistrarDeclarationsCoverEveryRouteClass(t *testing.T) {
 	_, api := humatest.New(t)
 	authz.Register(declarations, api, huma.Operation{OperationID: "store-view", Method: http.MethodGet, Path: "/stores"}, authz.Guard{Resource: "store", Verb: "view"}, okRoute)
 	authz.RegisterEntity(declarations, api, huma.Operation{OperationID: "workflow-view", Method: http.MethodGet, Path: "/workflows"}, authz.Guard{Resource: "workflow", Verb: "view"}, okRoute)
+	authz.RegisterOwned(declarations, api, huma.Operation{OperationID: "owned-store-view", Method: http.MethodGet, Path: "/stores/{store_id}", Tags: []string{"stores"}}, "store_id", func(context.Context, guid.ID) (authz.ResourceOwner, bool, error) {
+		return authz.ResourceOwner{}, false, nil
+	}, authz.Guard{Resource: "store", Verb: "view"}, okRoute)
 	authz.RegisterTenantMember(declarations, api, huma.Operation{OperationID: "member-view", Method: http.MethodGet, Path: "/member"}, okRoute)
 	authz.RegisterAuthenticated(declarations, api, huma.Operation{OperationID: "me-view", Method: http.MethodGet, Path: "/me"}, okRoute)
 	authz.RegisterPlatform(declarations, api, huma.Operation{OperationID: "tenant-view", Method: http.MethodGet, Path: "/tenants"}, authz.Guard{Resource: "tenant", Verb: "view"}, okRoute)
@@ -206,6 +213,81 @@ func TestRegistrarDeclarationsCoverEveryRouteClass(t *testing.T) {
 	assertSelectorSchema(t, entityWorkflows, authz.EntityPath, "path")
 	assertSelectorSchema(t, entityStream, authz.TenantPath, "path")
 	assertSelectorSchema(t, entityStream, authz.EntityPath, "path")
+}
+
+func TestOwnedResourcePublishesResolvedBoundary(t *testing.T) {
+	tests := []struct {
+		name       string
+		owner      authz.ResourceOwner
+		wantTenant bool
+	}{
+		{name: "tenant resource", owner: authz.ResourceOwner{TenantID: 11}, wantTenant: true},
+		{name: "entity resource", owner: authz.ResourceOwner{TenantID: 11, EntityID: 21}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, api := humatest.New(t)
+			verifier := validVerifier()
+			checker := &fakeChecker{allowed: true}
+			registrar := authz.NewRegistrar(testRegistry(), verifier, checker, &fakeMembership{active: true})
+			called := false
+			authz.RegisterOwned(registrar, api, huma.Operation{OperationID: "owned", Method: http.MethodGet, Path: "/stores/{store_id}", Tags: []string{"stores"}}, "store_id", func(_ context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
+				assert.Equal(t, guid.ID(41), id)
+				return test.owner, true, nil
+			}, authz.Guard{Resource: map[bool]string{true: "store", false: "workflow"}[test.wantTenant], Verb: "view"}, func(ctx context.Context, _ *struct{}) (*routeOutput, error) {
+				called = true
+				claims, ok := authn.FromContext(ctx)
+				require.True(t, ok)
+				assert.Equal(t, test.owner.TenantID, claims.TenantID)
+				assert.Equal(t, test.owner.EntityID, claims.EntityID)
+				return &routeOutput{Body: "ok"}, nil
+			})
+			response := api.Get("/stores/41")
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			assert.True(t, called)
+			require.Len(t, verifier.scopes, 1)
+			assert.Equal(t, guid.ID(11), verifier.scopes[0].TenantID)
+			if test.wantTenant {
+				require.Len(t, checker.tenantCalls, 1)
+			} else {
+				require.Len(t, checker.entityCalls, 1)
+				assert.Equal(t, guid.ID(21), checker.entityCalls[0].entityID)
+			}
+		})
+	}
+}
+
+func TestOwnedResourceFailurePathsDoNotLeakAcrossTenants(t *testing.T) {
+	tests := []struct {
+		name       string
+		verifier   *fakeVerifier
+		membership *fakeMembership
+		checker    *fakeChecker
+		found      bool
+		resolveErr error
+		want       int
+	}{
+		{name: "unauthenticated missing resource", verifier: &fakeVerifier{err: authn.ErrInvalidToken}, membership: &fakeMembership{active: true}, checker: &fakeChecker{allowed: true}, want: http.StatusUnauthorized},
+		{name: "missing resource", verifier: validVerifier(), membership: &fakeMembership{active: true}, checker: &fakeChecker{allowed: true}, want: http.StatusNotFound},
+		{name: "malformed resource id", verifier: validVerifier(), membership: &fakeMembership{active: true}, checker: &fakeChecker{allowed: true}, want: http.StatusUnprocessableEntity},
+		{name: "different tenant member", verifier: validVerifier(), membership: &fakeMembership{}, checker: &fakeChecker{allowed: true}, found: true, want: http.StatusNotFound},
+		{name: "permission denied", verifier: validVerifier(), membership: &fakeMembership{active: true}, checker: &fakeChecker{}, found: true, want: http.StatusForbidden},
+		{name: "resolver unavailable", verifier: validVerifier(), membership: &fakeMembership{active: true}, checker: &fakeChecker{allowed: true}, resolveErr: assert.AnError, want: http.StatusServiceUnavailable},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, api := humatest.New(t)
+			registrar := authz.NewRegistrar(testRegistry(), test.verifier, test.checker, test.membership)
+			authz.RegisterOwned(registrar, api, huma.Operation{OperationID: "owned", Method: http.MethodGet, Path: "/stores/{store_id}", Tags: []string{"stores"}}, "store_id", func(context.Context, guid.ID) (authz.ResourceOwner, bool, error) {
+				return authz.ResourceOwner{TenantID: 11}, test.found, test.resolveErr
+			}, authz.Guard{Resource: "store", Verb: "view"}, okRoute)
+			path := "/stores/41"
+			if test.name == "malformed resource id" {
+				path = "/stores/bad"
+			}
+			assert.Equal(t, test.want, api.Get(path).Code)
+		})
+	}
 }
 
 func TestRegistrarRejectsInvalidConstructionAndDeclarations(t *testing.T) {

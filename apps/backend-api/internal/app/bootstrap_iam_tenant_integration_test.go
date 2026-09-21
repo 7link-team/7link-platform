@@ -190,7 +190,7 @@ func (f *iamTenantFixture) createFileDirectory(t *testing.T, tenantID, entityID 
 
 func (f *iamTenantFixture) runBrowserSessionTenant(t *testing.T) {
 	t.Helper()
-	response := f.request(t, http.MethodPost, "/sessions", 0, "", map[string]any{
+	response := f.request(t, http.MethodPost, "/login", 0, "", map[string]any{
 		"login_name": f.requesterB.LoginName, "password": "correct horse battery staple",
 	}, map[string]string{"Origin": "https://app.example.test"})
 	requireStatus(t, http.StatusOK, response)
@@ -198,7 +198,7 @@ func (f *iamTenantFixture) runBrowserSessionTenant(t *testing.T) {
 	headers := map[string]string{"Cookie": response.Cookies[0].String()}
 	check := func(code int, expected string) {
 		t.Helper()
-		for _, path := range []string{"/me", "/sessions/current"} {
+		for _, path := range []string{"/me", "/me/session"} {
 			response := f.request(t, http.MethodGet, path, 0, "", nil, headers)
 			requireStatus(t, code, response)
 			if code == http.StatusOK {
@@ -227,10 +227,10 @@ func (f *iamTenantFixture) runBrowserSessionTenant(t *testing.T) {
 	check(http.StatusOK, "")
 	require.NoError(t, f.db.Table(f.table("iam_tenants")).Where("id = ?", iamTenantB).Update("status", "active").Error)
 	check(http.StatusOK, iamTenantB.String())
-	response = f.request(t, http.MethodGet, "/sessions/current", iamTenantA, f.requester, nil, nil)
+	response = f.request(t, http.MethodGet, "/me/session", iamTenantA, f.requester, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 	assert.Equal(t, iamTenantB.String(), decodeEnvelope[map[string]any](t, response)["organization_id"])
-	response = f.request(t, http.MethodGet, "/sessions/current", iamTenantB, f.requester, nil, nil)
+	response = f.request(t, http.MethodGet, "/me/session", iamTenantB, f.requester, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 }
 
@@ -740,7 +740,7 @@ func (f *iamTenantFixture) request(t *testing.T, method, path string, tenantID g
 }
 
 func tenantFixturePathUsesResourceContext(path string) bool {
-	for _, prefix := range []string{"/sessions", "/oauth/", "/me", "/platform/", "/tenants"} {
+	for _, prefix := range []string{"/login", "/oauth/", "/me", "/platform/", "/tenants"} {
 		if path == prefix || strings.HasPrefix(path, prefix+"/") {
 			return false
 		}

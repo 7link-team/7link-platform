@@ -197,7 +197,7 @@ func TestComposedIAMProfileFieldPolicies(t *testing.T) {
 			response := f.request(t, http.MethodGet, "/oauth/userinfo", 0, token, nil, nil)
 			requireStatus(t, http.StatusOK, response)
 			assert.Equal(t, f.requesterB.Email, decodeBody[map[string]any](t, response)["email"])
-			response = f.request(t, http.MethodPost, "/sessions", 0, "", map[string]any{
+			response = f.request(t, http.MethodPost, "/login", 0, "", map[string]any{
 				"login_name": f.requesterB.LoginName, "password": "correct horse battery staple",
 			}, map[string]string{"Origin": "https://app.example.test"})
 			requireStatus(t, http.StatusOK, response)
@@ -211,7 +211,7 @@ func TestComposedIAMProfileFieldPolicies(t *testing.T) {
 				return decodeEnvelope[core.ManagedFieldPolicy](t, response)
 			}
 			emailPolicy := set("email", "redact")
-			for _, path := range []string{"/me", "/sessions/current"} {
+			for _, path := range []string{"/me", "/me/session"} {
 				response = f.request(t, http.MethodGet, path, 0, "", nil, headers)
 				requireStatus(t, http.StatusOK, response)
 				view := decodeEnvelope[map[string]any](t, response)

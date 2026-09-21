@@ -798,7 +798,7 @@ const unexpectedStatuses = responses.filter(
     response.status >= 400 &&
     !(
       response.status === 401 &&
-      response.url.endsWith("/api/sessions/current")
+      response.url.endsWith("/api/me/session")
     ) &&
     !expectedWindowStatuses.includes(response) &&
     !expectedConditionStatuses.includes(response) &&

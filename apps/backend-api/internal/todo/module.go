@@ -25,6 +25,7 @@ type Module struct {
 	registrar   *authz.Registrar
 	checker     core.AuthorizationEvaluator
 	departments core.MemberDepartmentReader
+	entities    core.EntityOwnerResolver
 }
 
 // Config controls task module activation. Production composition ties it to IAM.
@@ -77,6 +78,9 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if m.departments, err = module.Resolve[core.MemberDepartmentReader](services); err != nil {
 		return err
 	}
+	if m.entities, err = module.Resolve[core.EntityOwnerResolver](services); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -91,6 +95,7 @@ func (m *Module) Initialize(context.Context) error {
 	}
 	m.service = newService(m.runtime, m.ids)
 	m.service.checker, m.service.departments = m.checker, m.departments
+	m.service.entities = m.entities
 	m.service.fields = m.checker
 	return nil
 }

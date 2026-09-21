@@ -9,6 +9,7 @@ import (
 
 	corei18n "7link.com/platform/internal/iam/core/i18n"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/authn"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,22 +39,18 @@ func TestHTTPIDParsingRejectsUnusableIdentifiers(t *testing.T) {
 }
 
 func TestHTTPReferenceParsingRejectsEachInvalidComponent(t *testing.T) {
+	ownedContext := authn.WithClaims(t.Context(), &authn.Claims{TenantID: 1})
 	for _, test := range []struct {
 		name string
 		call func() error
 	}{
-		{name: "role tenant", call: func() error { _, _, err := roleRefIDs("bad", "1"); return err }},
-		{name: "role id", call: func() error { _, _, err := roleRefIDs("1", "bad"); return err }},
-		{name: "member tenant", call: func() error {
-			_, _, _, err := memberRef(&memberInput{TenantID: "bad", RoleID: "1", Subject: "2"})
-			return err
-		}},
+		{name: "role id", call: func() error { _, _, err := roleRefIDs(ownedContext, "bad"); return err }},
 		{name: "member role", call: func() error {
-			_, _, _, err := memberRef(&memberInput{TenantID: "1", RoleID: "bad", Subject: "2"})
+			_, _, _, err := memberRef(ownedContext, &memberInput{RoleID: "bad", Subject: "2"})
 			return err
 		}},
 		{name: "member subject", call: func() error {
-			_, _, _, err := memberRef(&memberInput{TenantID: "1", RoleID: "2", Subject: "bad"})
+			_, _, _, err := memberRef(ownedContext, &memberInput{RoleID: "2", Subject: "bad"})
 			return err
 		}},
 		{name: "tenant member tenant", call: func() error {
@@ -64,8 +61,7 @@ func TestHTTPReferenceParsingRejectsEachInvalidComponent(t *testing.T) {
 			_, _, err := tenantMemberRef(&tenantMemberInput{TenantID: "1", Subject: "bad"})
 			return err
 		}},
-		{name: "menu tenant", call: func() error { _, _, err := menuRef(&menuInput{TenantID: "bad", MenuID: "2"}); return err }},
-		{name: "menu id", call: func() error { _, _, err := menuRef(&menuInput{TenantID: "1", MenuID: "bad"}); return err }},
+		{name: "menu id", call: func() error { _, _, err := menuRef(ownedContext, &menuInput{MenuID: "bad"}); return err }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			assertHTTPError(t, test.call(), http.StatusUnprocessableEntity, "respx.invalid_id")

@@ -246,6 +246,22 @@ func (r *Repository) GetMenu(ctx context.Context, tenantID, menuID guid.ID) (Men
 	return menuFromRow(row), nil
 }
 
+func (r *Repository) ResolveMenuTenant(ctx context.Context, menuID guid.ID) (guid.ID, bool, error) {
+	tables, _, err := r.tables()
+	if err != nil {
+		return 0, false, err
+	}
+	row, err := tables.Menus.WithContext(ctx).Select(tables.Menus.TenantID).
+		Where(tables.Menus.ID.Eq(menuID)).Take()
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("resolve menu tenant: %w", err)
+	}
+	return row.TenantID, true, nil
+}
+
 func (r *Repository) ListMenus(ctx context.Context, tenantID guid.ID, activeOnly bool) ([]Menu, error) {
 	tables, _, err := r.tables()
 	if err != nil {

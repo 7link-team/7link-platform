@@ -50,7 +50,7 @@ type closurePage struct {
 }
 
 func registerClosureHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
-	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "identity-my-closure-request", Method: http.MethodGet, Path: "/me/closure-request", Summary: "Read my global account closure request", Tags: []string{"identity"}, Errors: []int{401, 503}}, func(ctx context.Context, in *ClosureBrowserInput) (*respx.Body[ClosureRequest], error) {
+	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "identity-my-closure-request", Method: http.MethodGet, Path: "/me/closure-request", Summary: "Read my global account closure request", Tags: []string{"me"}, Errors: []int{401, 503}}, func(ctx context.Context, in *ClosureBrowserInput) (*respx.Body[ClosureRequest], error) {
 		id, err := closurePrincipal(ctx, in.Cookie, in.Authorization)
 		if err != nil {
 			return nil, err
@@ -61,7 +61,7 @@ func registerClosureHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, result), nil
 	})
-	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "identity-submit-closure-request", Method: http.MethodPost, Path: "/me/closure-request", Summary: "Request global account closure without changing retention or access", Tags: []string{"identity"}, Errors: []int{401, 403, 409, 503}}, func(ctx context.Context, in *closureSubmitInput) (*respx.Body[ClosureRequest], error) {
+	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "identity-submit-closure-request", Method: http.MethodPost, Path: "/me/closure-request", Summary: "Request global account closure without changing retention or access", Tags: []string{"me"}, Errors: []int{401, 403, 409, 503}}, func(ctx context.Context, in *closureSubmitInput) (*respx.Body[ClosureRequest], error) {
 		id, err := s.closureMutationPrincipal(ctx, in.ClosureBrowserInput, http.MethodPost)
 		if err != nil {
 			return nil, err
@@ -72,7 +72,7 @@ func registerClosureHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, result), nil
 	})
-	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "identity-cancel-closure-request", Method: http.MethodDelete, Path: "/me/closure-request", Summary: "Cancel my pending account closure request", Tags: []string{"identity"}, Errors: []int{401, 403, 409, 503}}, func(ctx context.Context, in *closureCancelInput) (*respx.Body[ClosureRequest], error) {
+	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "identity-cancel-closure-request", Method: http.MethodDelete, Path: "/me/closure-request", Summary: "Cancel my pending account closure request", Tags: []string{"me"}, Errors: []int{401, 403, 409, 503}}, func(ctx context.Context, in *closureCancelInput) (*respx.Body[ClosureRequest], error) {
 		id, err := s.closureMutationPrincipal(ctx, in.ClosureBrowserInput, http.MethodDelete)
 		if err != nil {
 			return nil, err
@@ -84,7 +84,7 @@ func registerClosureHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 		return respx.OK(ctx, result), nil
 	})
 	guard := authz.Guard{Resource: "platform", Verb: "administer"}
-	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "identity-update-closure-request", Method: http.MethodPatch, Path: "/platform/principals/{principal_id}/closure-request", Summary: "Move a closure request to processing or rejected", Tags: []string{"identity"}, Errors: []int{404, 409, 503}}, guard, func(ctx context.Context, in *closureUpdateInput) (*respx.Body[ClosureRequest], error) {
+	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "identity-update-closure-request", Method: http.MethodPatch, Path: "/platform/principals/{principal_id}/closure-request", Summary: "Move a closure request to processing or rejected", Tags: []string{"platform"}, Errors: []int{404, 409, 503}}, guard, func(ctx context.Context, in *closureUpdateInput) (*respx.Body[ClosureRequest], error) {
 		id, err := requireID(in.PrincipalID)
 		if err != nil {
 			return nil, err
@@ -100,7 +100,7 @@ func registerClosureHTTP(api huma.API, s *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, result), nil
 	})
-	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "identity-list-closure-requests", Method: http.MethodGet, Path: "/platform/closure-requests", Summary: "Track account closure requests and derived erasure completion", Tags: []string{"identity"}}, guard, func(ctx context.Context, in *closureListInput) (*respx.Body[closurePage], error) {
+	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "identity-list-closure-requests", Method: http.MethodGet, Path: "/platform/closure-requests", Summary: "Track account closure requests and derived erasure completion", Tags: []string{"platform"}}, guard, func(ctx context.Context, in *closureListInput) (*respx.Body[closurePage], error) {
 		items, total, err := s.ListClosureRequests(ctx, in.Status, in.Offset, in.Limit)
 		if err != nil {
 			return nil, closureError(err)

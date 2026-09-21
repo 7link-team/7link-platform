@@ -393,7 +393,7 @@ describe("IAM API client", () => {
     )
     await client.session()
     await client.sessionForTenant("authorized-tenant")
-    expect(requests.every(({ path }) => path === "/sessions/current")).toBe(
+    expect(requests.every(({ path }) => path === "/me/session")).toBe(
       true
     )
     expect(requests[0]?.headers.has("x-tenant-id")).toBe(false)
@@ -1018,7 +1018,7 @@ describe("IAM API client", () => {
       })
     ).toEqual({ changed: true })
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "POST /password-recovery-requests",
+      "POST /password-recoveries/requests",
       "POST /password-recoveries",
     ])
     expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
@@ -1115,7 +1115,7 @@ describe("IAM API client", () => {
       })
     ).toEqual({ accepted: true })
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /authentication-capabilities",
+      "GET /login/options",
       "POST /registrations",
     ])
     expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
@@ -1143,7 +1143,7 @@ describe("IAM API client", () => {
           body: await request.text(),
         })
         const path = new URL(request.url).pathname
-        if (path === "/sessions" && request.method === "POST")
+        if (path === "/login" && request.method === "POST")
           return Response.json({
             code: 0,
             message: "ok",
@@ -1173,7 +1173,7 @@ describe("IAM API client", () => {
                     provisioning_uri: "otpauth://totp/IAM:user",
                     expires_at: "2026-08-01T00:10:00Z",
                   }
-                : path === "/session-verifications"
+                : path === "/login/mfa"
                   ? { status: "authenticated", return_url: "/" }
                   : { disabled: true },
         })
@@ -1213,8 +1213,8 @@ describe("IAM API client", () => {
     })
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "POST /sessions",
-      "POST /session-verifications",
+      "POST /login",
+      "POST /login/mfa",
       "GET /me/mfa",
       "POST /me/mfa/totp-enrollments",
       "POST /me/mfa/totp",
@@ -1289,8 +1289,8 @@ describe("IAM API client", () => {
       "GET /me/passkeys",
       "POST /me/passkey-registration-challenges",
       "POST /me/passkeys",
-      "POST /passkey-session-challenges",
-      "POST /passkey-session-verifications",
+      "POST /login/passkey/options",
+      "POST /login/passkey/verify",
       `PATCH /me/passkeys/${"a".repeat(64)}`,
       `DELETE /me/passkeys/${"a".repeat(64)}`,
     ])

@@ -32,14 +32,14 @@ func TestReauthenticationHTTPRequiresCookieAndCSRFAndVerifiesProof(t *testing.T)
 		router.ServeHTTP(out, req)
 		return out
 	}
-	methods := request(http.MethodGet, "/reauthentication-methods", "", "", "")
+	methods := request(http.MethodGet, "/me/reauthentication/methods", "", "", "")
 	require.Equal(t, http.StatusOK, methods.Code)
 	assert.Contains(t, methods.Body.String(), `"password"`)
-	assert.Equal(t, http.StatusUnauthorized, request(http.MethodGet, "/reauthentication-methods", "", "", "Bearer invalid").Code)
+	assert.Equal(t, http.StatusUnauthorized, request(http.MethodGet, "/me/reauthentication/methods", "", "", "Bearer invalid").Code)
 	body := `{"purpose":"principal_close","target":"self","method":"password"}`
-	assert.Equal(t, http.StatusForbidden, request(http.MethodPost, "/reauthentication-challenges", body, "https://evil.example", "").Code)
-	assert.Equal(t, http.StatusUnauthorized, request(http.MethodPost, "/reauthentication-challenges", body, "https://app.example.test", "Bearer invalid").Code)
-	started := request(http.MethodPost, "/reauthentication-challenges", body, "https://app.example.test", "")
+	assert.Equal(t, http.StatusForbidden, request(http.MethodPost, "/me/reauthentication/challenges", body, "https://evil.example", "").Code)
+	assert.Equal(t, http.StatusUnauthorized, request(http.MethodPost, "/me/reauthentication/challenges", body, "https://app.example.test", "Bearer invalid").Code)
+	started := request(http.MethodPost, "/me/reauthentication/challenges", body, "https://app.example.test", "")
 	require.Equal(t, http.StatusOK, started.Code)
 	var envelope struct {
 		Data ReauthenticationOptions `json:"data"`
@@ -47,13 +47,13 @@ func TestReauthenticationHTTPRequiresCookieAndCSRFAndVerifiesProof(t *testing.T)
 	require.NoError(t, json.Unmarshal(started.Body.Bytes(), &envelope))
 	verify, err := json.Marshal(map[string]string{"proof": envelope.Data.Proof, "password": "correct horse battery staple"})
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusForbidden, request(http.MethodPost, "/reauthentication-verifications", string(verify), "https://evil.example", "").Code)
-	assert.Equal(t, http.StatusUnauthorized, request(http.MethodPost, "/reauthentication-verifications", string(verify), "https://app.example.test", "Bearer invalid").Code)
-	require.Equal(t, http.StatusOK, request(http.MethodPost, "/reauthentication-verifications", string(verify), "https://app.example.test", "").Code)
-	assert.Equal(t, http.StatusUnauthorized, request(http.MethodPost, "/reauthentication-verifications", string(verify), "https://app.example.test", "").Code)
+	assert.Equal(t, http.StatusForbidden, request(http.MethodPost, "/me/reauthentication/verifications", string(verify), "https://evil.example", "").Code)
+	assert.Equal(t, http.StatusUnauthorized, request(http.MethodPost, "/me/reauthentication/verifications", string(verify), "https://app.example.test", "Bearer invalid").Code)
+	require.Equal(t, http.StatusOK, request(http.MethodPost, "/me/reauthentication/verifications", string(verify), "https://app.example.test", "").Code)
+	assert.Equal(t, http.StatusUnauthorized, request(http.MethodPost, "/me/reauthentication/verifications", string(verify), "https://app.example.test", "").Code)
 	require.NoError(t, harness.db.Migrator().DropTable(&model.ReauthenticationChallenge{}))
-	assert.Equal(t, http.StatusInternalServerError, request(http.MethodPost, "/reauthentication-challenges", body, "https://app.example.test", "").Code)
-	assert.Equal(t, http.StatusInternalServerError, request(http.MethodPost, "/reauthentication-verifications", string(verify), "https://app.example.test", "").Code)
+	assert.Equal(t, http.StatusInternalServerError, request(http.MethodPost, "/me/reauthentication/challenges", body, "https://app.example.test", "").Code)
+	assert.Equal(t, http.StatusInternalServerError, request(http.MethodPost, "/me/reauthentication/verifications", string(verify), "https://app.example.test", "").Code)
 }
 
 func TestReauthenticationDatabaseWriteFailuresPreserveReusableProof(t *testing.T) {
@@ -135,7 +135,7 @@ func TestReauthenticationCredentialStorageFailureIsNotAnAuthenticationFailure(t 
 	assert.ErrorIs(t, err, assert.AnError)
 	router, api := humatest.New(t)
 	registerReauthenticationHTTP(api, service)
-	req := httptest.NewRequest(http.MethodGet, "/reauthentication-methods", nil)
+	req := httptest.NewRequest(http.MethodGet, "/me/reauthentication/methods", nil)
 	req.Header.Set("Cookie", cookie)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, req)

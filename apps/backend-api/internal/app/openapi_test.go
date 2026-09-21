@@ -47,6 +47,35 @@ func TestOpenAPIExportDescribesTheRunningApplicationWithoutRunningIt(t *testing.
 		"a file people and tools read line by line ends with a newline")
 }
 
+func TestOpenAPIExportGroupsOperationsByPublicResource(t *testing.T) {
+	document, err := (&App{}).RunOpenAPIExport(t.Context(), newOpenAPIExportConfig(t))
+	require.NoError(t, err)
+
+	var specification struct {
+		Paths map[string]map[string]struct {
+			OperationID string   `json:"operationId"`
+			Tags        []string `json:"tags"`
+		} `json:"paths"`
+	}
+	require.NoError(t, json.Unmarshal(document, &specification))
+	for path, item := range specification.Paths {
+		root := strings.Split(strings.TrimPrefix(path, "/"), "/")[0]
+		expected := root
+		switch root {
+		case ".well-known":
+			expected = "oauth"
+		case "healthz", "livez", "readyz":
+			expected = "health"
+		}
+		for method, operation := range item {
+			if operation.OperationID == "" {
+				continue
+			}
+			assert.Equal(t, []string{expected}, operation.Tags, method+" "+path)
+		}
+	}
+}
+
 // TestOpenAPIExportProducesTheSameBytesEveryTime is what makes the document
 // usable as a checked-in file. If it varied between runs, every rebuild would
 // report a difference, and a real API change would be indistinguishable from

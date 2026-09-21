@@ -203,7 +203,7 @@ async function login(loginName, loginPassword) {
   await setInput("#password", loginPassword)
   await evaluate(`document.querySelector("form").requestSubmit()`)
   await waitFor(`location.pathname === "/tenants"`, 20000)
-  const session = await api("/sessions/current", {}, "")
+  const session = await api("/me/session", {}, "")
   await evaluate(`
     localStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)});
     localStorage.setItem("iam.tenant:subject", ${JSON.stringify(session.subject)});
@@ -350,7 +350,7 @@ await api("/principals", {
   }),
 })
 
-await api("/sessions/current", { method: "DELETE" }, "")
+await api("/me/session", { method: "DELETE" }, "")
 await command("Network.clearBrowserCookies")
 await navigate("/tenants")
 await login(operatorLogin, operatorPassword)
@@ -362,7 +362,7 @@ if (
 )
   throw new Error("tenant administrator can see platform navigation")
 
-await api("/sessions/current", { method: "DELETE" }, "")
+await api("/me/session", { method: "DELETE" }, "")
 await command("Network.clearBrowserCookies")
 await navigate("/tenants")
 await login(adminLogin, password)

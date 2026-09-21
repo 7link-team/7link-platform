@@ -22,19 +22,19 @@ import (
 )
 
 const provisioningRouteManifest = `
-provisioning-create-scim-credential|POST|/tenants/{tenant_id}/scim-directories/{directory_id}/credentials
+provisioning-create-scim-credential|POST|/scim-directories/{directory_id}/credentials
 provisioning-create-scim-directory|POST|/tenants/{tenant_id}/scim-directories
 provisioning-create-scim-target|POST|/tenants/{tenant_id}/scim-targets
-provisioning-delete-scim-target|DELETE|/tenants/{tenant_id}/scim-targets/{target_id}
-provisioning-deprovision-scim-resource|POST|/tenants/{tenant_id}/scim-targets/{target_id}/deprovisioning-jobs
-provisioning-list-scim-credentials|GET|/tenants/{tenant_id}/scim-directories/{directory_id}/credentials
+provisioning-delete-scim-target|DELETE|/scim-targets/{target_id}
+provisioning-deprovision-scim-resource|POST|/scim-targets/{target_id}/deprovisioning-jobs
+provisioning-list-scim-credentials|GET|/scim-directories/{directory_id}/credentials
 provisioning-list-scim-directories|GET|/tenants/{tenant_id}/scim-directories
 provisioning-list-scim-targets|GET|/tenants/{tenant_id}/scim-targets
-provisioning-push-scim-resource|POST|/tenants/{tenant_id}/scim-targets/{target_id}/provisioning-jobs
-provisioning-replace-scim-directory|PUT|/tenants/{tenant_id}/scim-directories/{directory_id}
-provisioning-replace-scim-target|PUT|/tenants/{tenant_id}/scim-targets/{target_id}
-provisioning-retire-scim-target|PUT|/tenants/{tenant_id}/scim-targets/{target_id}/retirement
-provisioning-revoke-scim-credential|DELETE|/tenants/{tenant_id}/scim-directories/{directory_id}/credentials/{credential_id}
+provisioning-push-scim-resource|POST|/scim-targets/{target_id}/provisioning-jobs
+provisioning-replace-scim-directory|PUT|/scim-directories/{directory_id}
+provisioning-replace-scim-target|PUT|/scim-targets/{target_id}
+provisioning-retire-scim-target|PUT|/scim-targets/{target_id}/retirement
+provisioning-revoke-scim-credential|DELETE|/scim-directories/{directory_id}/credentials/{credential_id}
 scim-bulk|POST|/scim/v2/Bulk
 scim-create-group|POST|/scim/v2/Groups
 scim-create-user|POST|/scim/v2/Users
@@ -134,7 +134,9 @@ func TestProvisioningRouteManifestAndOpenAPIContract(t *testing.T) {
 			if operation == nil {
 				continue
 			}
-			if strings.HasPrefix(path, "/tenants/{tenant_id}/scim-directories") || strings.HasPrefix(path, "/tenants/{tenant_id}/scim-targets") {
+			if strings.HasPrefix(path, "/tenants/{tenant_id}/scim-directories") ||
+				strings.HasPrefix(path, "/tenants/{tenant_id}/scim-targets") ||
+				strings.HasPrefix(path, "/scim-directories/") || strings.HasPrefix(path, "/scim-targets/") {
 				assert.Equal(t, "tenant_administer", operation.Extensions[authz.GuardExtensionKey], operation.OperationID)
 				assert.Equal(t, []map[string][]string{{authz.BearerScheme: {}}, {authz.SessionScheme: {}}}, operation.Security, operation.OperationID)
 				continue

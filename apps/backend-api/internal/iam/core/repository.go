@@ -218,6 +218,22 @@ func (r *Repository) GetRole(ctx context.Context, tenantID, roleID guid.ID) (Rol
 	return roleFromRow(row), nil
 }
 
+func (r *Repository) ResolveRoleTenant(ctx context.Context, roleID guid.ID) (guid.ID, bool, error) {
+	tables, _, err := r.tables()
+	if err != nil {
+		return 0, false, err
+	}
+	row, err := tables.Roles.WithContext(ctx).Select(tables.Roles.TenantID).
+		Where(tables.Roles.ID.Eq(roleID)).Take()
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("resolve role tenant: %w", err)
+	}
+	return row.TenantID, true, nil
+}
+
 func (r *Repository) UpdateRole(ctx context.Context, tenantID, roleID guid.ID, name, description string) (Role, error) {
 	var updated Role
 	err := r.runInTx(ctx, func(repo *Repository) error {

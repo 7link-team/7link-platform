@@ -1,6 +1,6 @@
 # HTTP Resource Routing Design
 
-Status: APPROVED - breaking migration in progress
+Status: APPROVED - canonical resource-ID migration in progress
 
 ## Goal
 
@@ -42,10 +42,12 @@ not resource-oriented and are not part of the current product contract.
    replaced by a noun subresource or a state update.
 6. A representation with materially different media semantics is a noun
    subresource, such as `/content`, `/thumbnail`, `/status`, or `/settings`.
-7. Tenant and entity request scope remains in the existing mandatory headers.
-   Globally unique resource IDs are not redundantly nested under tenant/entity
-   IDs. Parent IDs appear in the path only when the endpoint manages that
-   relationship.
+7. Every first-class internal resource uses a globally unique snowflake ID.
+   Collection creation and listing are nested under the direct owner; an
+   existing resource is addressed by its own global ID. For example, entities
+   are created at `/tenants/{tenant_id}/entities` and then addressed at
+   `/entities/{entity_id}`. The server resolves and validates ownership; clients
+   never select authorization scope through headers or query parameters.
 8. Each application operation has exactly one lowercase kebab-case OpenAPI tag,
    equal to the first public path segment. The same public resource prefix is
    therefore always in the same Swagger group; Go package names such as `iam`,
@@ -53,6 +55,50 @@ not resource-oriented and are not part of the current product contract.
 9. Old and new routes are not exposed together in Swagger. This is a breaking
    pre-production replacement; the Web client and generated client change in
    the same checkpoint.
+10. Current-principal projections are explicit at every resource context:
+    `/me/*`, `/tenants/{tenant_id}/me/*`, `/entities/{entity_id}/me/*`, and
+    `/departments/{department_id}/me/*`. A projection reuses the same scoped
+    authorization evaluator as the protected resource; menu visibility is not
+    an authorization mechanism.
+
+## Canonical Ownership And Addressing
+
+The canonical path is selected by operation semantics, not by how many parent
+IDs the database can reconstruct:
+
+| Operation | Canonical shape | Example |
+| --- | --- | --- |
+| Create/list owned collection | nest below direct owner | `POST /tenants/{tenant_id}/entities` |
+| Read/update/delete existing resource | global resource ID | `PATCH /entities/{entity_id}` |
+| Manage direct child collection | nest below direct owner | `GET /entities/{entity_id}/departments` |
+| Manage a relationship | name both related resources | `PUT /entities/{entity_id}/role-bindings/{role_id}/{principal_id}` |
+| Project current user's view | resource context plus `/me` | `GET /entities/{entity_id}/me/menus` |
+
+Snowflake IDs make direct addressing unambiguous. They do not replace isolation:
+repositories and authorization middleware still verify the resolved tenant and
+parent relationship, and cross-tenant references fail as not found.
+
+Opaque credentials, protocol identifiers, external-provider IDs, permission
+codes, and slugs are not internal resource primary keys and are not converted to
+snowflake IDs.
+
+### Resource Contexts
+
+```text
+/me/**
+/tenants/{tenant_id}/**
+/entities/{entity_id}/**
+/departments/{department_id}/**
+/platform/**
+```
+
+Menus and files follow the same context tree. Administrative menu collections
+are `/platform/menus`, `/tenants/{tenant_id}/menus`,
+`/entities/{entity_id}/menus`, and `/departments/{department_id}/menus`.
+Effective navigation is read from the corresponding `/me/menus` projection.
+Menu definitions, their resource-context placement, and effective navigation
+are separate concerns; the projection delegates authorization to the existing
+tenant/entity/department permission evaluator.
 
 ## Route Classes
 

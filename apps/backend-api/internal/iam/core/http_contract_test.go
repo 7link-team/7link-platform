@@ -36,31 +36,31 @@ iam-authorization-constraint|POST|/tenants/{tenant_id}/authorization-constraint-
 iam-explain-authorization|POST|/tenants/{tenant_id}/authorization-explanations
 iam-list-entities|GET|/tenants/{tenant_id}/entities
 iam-create-entity|POST|/tenants/{tenant_id}/entities
-iam-get-entity|GET|/tenants/{tenant_id}/entities/{entity_id}
-iam-update-entity|PATCH|/tenants/{tenant_id}/entities/{entity_id}
-iam-delete-entity|DELETE|/tenants/{tenant_id}/entities/{entity_id}
-iam-list-entity-role-bindings|GET|/tenants/{tenant_id}/entities/{entity_id}/role-bindings
-iam-put-entity-role-binding|PUT|/tenants/{tenant_id}/entities/{entity_id}/role-bindings/{role_id}/{principal_id}
-iam-delete-entity-role-binding|DELETE|/tenants/{tenant_id}/entities/{entity_id}/role-bindings/{role_id}/{principal_id}
+iam-get-entity|GET|/entities/{entity_id}
+iam-update-entity|PATCH|/entities/{entity_id}
+iam-delete-entity|DELETE|/entities/{entity_id}
+iam-list-entity-role-bindings|GET|/entities/{entity_id}/role-bindings
+iam-put-entity-role-binding|PUT|/entities/{entity_id}/role-bindings/{role_id}/{principal_id}
+iam-delete-entity-role-binding|DELETE|/entities/{entity_id}/role-bindings/{role_id}/{principal_id}
 iam-list-roles|GET|/tenants/{tenant_id}/roles
 iam-create-role|POST|/tenants/{tenant_id}/roles
-iam-get-role|GET|/tenants/{tenant_id}/roles/{role_id}
-iam-get-role-data-scope|GET|/tenants/{tenant_id}/roles/{role_id}/data-scope
-iam-set-role-data-scope|PUT|/tenants/{tenant_id}/roles/{role_id}/data-scope
-iam-update-role|PATCH|/tenants/{tenant_id}/roles/{role_id}
-iam-delete-role|DELETE|/tenants/{tenant_id}/roles/{role_id}
-iam-list-role-permissions|GET|/tenants/{tenant_id}/roles/{role_id}/permissions
-iam-list-role-permission-grants|GET|/tenants/{tenant_id}/roles/{role_id}/permission-grants
-iam-grant-role-permission|PUT|/tenants/{tenant_id}/roles/{role_id}/permissions/{permission_code}
-iam-revoke-role-permission|DELETE|/tenants/{tenant_id}/roles/{role_id}/permissions/{permission_code}
-iam-set-role-permission-condition|PUT|/tenants/{tenant_id}/roles/{role_id}/permissions/{permission_code}/condition
-iam-clear-role-permission-condition|DELETE|/tenants/{tenant_id}/roles/{role_id}/permissions/{permission_code}/condition
-iam-list-role-members|GET|/tenants/{tenant_id}/roles/{role_id}/members
-iam-add-role-member|PUT|/tenants/{tenant_id}/roles/{role_id}/members/{subject}
-iam-remove-role-member|DELETE|/tenants/{tenant_id}/roles/{role_id}/members/{subject}
-iam-list-role-directory-bindings|GET|/tenants/{tenant_id}/roles/{role_id}/directory-bindings
-iam-add-role-directory-binding|PUT|/tenants/{tenant_id}/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}
-iam-remove-role-directory-binding|DELETE|/tenants/{tenant_id}/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}
+iam-get-role|GET|/roles/{role_id}
+iam-get-role-data-scope|GET|/roles/{role_id}/data-scope
+iam-set-role-data-scope|PUT|/roles/{role_id}/data-scope
+iam-update-role|PATCH|/roles/{role_id}
+iam-delete-role|DELETE|/roles/{role_id}
+iam-list-role-permissions|GET|/roles/{role_id}/permissions
+iam-list-role-permission-grants|GET|/roles/{role_id}/permission-grants
+iam-grant-role-permission|PUT|/roles/{role_id}/permissions/{permission_code}
+iam-revoke-role-permission|DELETE|/roles/{role_id}/permissions/{permission_code}
+iam-set-role-permission-condition|PUT|/roles/{role_id}/permissions/{permission_code}/condition
+iam-clear-role-permission-condition|DELETE|/roles/{role_id}/permissions/{permission_code}/condition
+iam-list-role-members|GET|/roles/{role_id}/members
+iam-add-role-member|PUT|/roles/{role_id}/members/{subject}
+iam-remove-role-member|DELETE|/roles/{role_id}/members/{subject}
+iam-list-role-directory-bindings|GET|/roles/{role_id}/directory-bindings
+iam-add-role-directory-binding|PUT|/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}
+iam-remove-role-directory-binding|DELETE|/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}
 iam-list-tenant-members|GET|/tenants/{tenant_id}/members
 iam-create-tenant-member|POST|/tenants/{tenant_id}/members
 iam-get-tenant-member|GET|/tenants/{tenant_id}/members/{subject}
@@ -69,9 +69,9 @@ iam-list-tenant-member-roles|GET|/tenants/{tenant_id}/members/{subject}/roles
 iam-list-member-authorization-sources|GET|/tenants/{tenant_id}/members/{subject}/authorization-sources
 iam-list-menus|GET|/tenants/{tenant_id}/menus
 iam-create-menu|POST|/tenants/{tenant_id}/menus
-iam-get-menu|GET|/tenants/{tenant_id}/menus/{menu_id}
-iam-update-menu|PATCH|/tenants/{tenant_id}/menus/{menu_id}
-iam-delete-menu|DELETE|/tenants/{tenant_id}/menus/{menu_id}
+iam-get-menu|GET|/menus/{menu_id}
+iam-update-menu|PATCH|/menus/{menu_id}
+iam-delete-menu|DELETE|/menus/{menu_id}
 iam-effective-menus|GET|/tenants/{tenant_id}/me/menus
 iam-effective-platform-permissions|GET|/me/permissions
 iam-effective-tenant-permissions|GET|/tenants/{tenant_id}/me/permissions
@@ -111,7 +111,8 @@ func TestCoreOpenAPISelectorsAndParametersAreConsistent(t *testing.T) {
 				t.Fatalf("duplicate operationId %q on %s and %s", operation.OperationID, previous, location)
 			}
 			operationIDs[operation.OperationID] = location
-			assert.Equal(t, []string{"iam"}, operation.Tags, location)
+			firstSegment := strings.Split(strings.TrimPrefix(path, "/"), "/")[0]
+			assert.Equal(t, []string{firstSegment}, operation.Tags, location)
 			assert.NotEmpty(t, operation.Security, location)
 
 			parameters := make(map[string]*huma.Param, len(operation.Parameters))
@@ -141,6 +142,8 @@ func TestCoreOpenAPISelectorsAndParametersAreConsistent(t *testing.T) {
 					}
 					assert.Equal(t, []map[string][]string{{scheme: {}}}, operation.Security, location)
 				}
+			} else if authz.IsOwnedResourceOperation(operation) {
+				assert.NotContains(t, parameters, tenantKey, "%s resolves its tenant from the resource owner", location)
 			} else {
 				tenant := parameters[tenantKey]
 				if assert.NotNil(t, tenant, "%s is tenant-scoped", location) {
@@ -199,8 +202,8 @@ func TestCoreOpenAPIRelationshipTupleAndPatchContracts(t *testing.T) {
 		resource   string
 		property   string
 	}{
-		{collection: "/tenants/{tenant_id}/menus", resource: "/tenants/{tenant_id}/menus/{menu_id}", property: "parent_id"},
-		{collection: "/tenants/{tenant_id}/entities", resource: "/tenants/{tenant_id}/entities/{entity_id}", property: "parent_id"},
+		{collection: "/tenants/{tenant_id}/menus", resource: "/menus/{menu_id}", property: "parent_id"},
+		{collection: "/tenants/{tenant_id}/entities", resource: "/entities/{entity_id}", property: "parent_id"},
 		{collection: "/tenants/{tenant_id}/members", resource: "/tenants/{tenant_id}/members/{subject}", property: "department_id"},
 	} {
 		create := requestProperty(t, spec, spec.Paths[test.collection].Post, test.property)

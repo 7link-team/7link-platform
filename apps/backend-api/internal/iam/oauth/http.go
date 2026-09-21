@@ -214,9 +214,8 @@ type clientCreateData struct {
 }
 
 type clientUpdateInput struct {
-	TenantID string `path:"tenant_id" maxLength:"19" pattern:"^[1-9][0-9]*$"`
-	ID       string `path:"client_id" maxLength:"19" pattern:"^[1-9][0-9]*$"`
-	Body     struct {
+	ID   string `path:"client_id" maxLength:"19" pattern:"^[1-9][0-9]*$"`
+	Body struct {
 		Name         string             `json:"name" minLength:"1" maxLength:"128"`
 		RedirectURIs []oauthRedirectURI `json:"redirect_uris,omitempty" maxItems:"32"`
 		GrantTypes   []oauthGrantType   `json:"grant_types" minItems:"1" maxItems:"3"`
@@ -228,8 +227,7 @@ type clientUpdateInput struct {
 }
 
 type clientIDInput struct {
-	TenantID string `path:"tenant_id" maxLength:"19" pattern:"^[1-9][0-9]*$"`
-	ID       string `path:"client_id" maxLength:"19" pattern:"^[1-9][0-9]*$"`
+	ID string `path:"client_id" maxLength:"19" pattern:"^[1-9][0-9]*$"`
 }
 
 type clientSecretData struct {
@@ -415,7 +413,8 @@ func registerProtocolHTTP(api huma.API, service *Service) {
 	documentOAuthErrors(api, api.OpenAPI().Paths["/oauth/authorize"].Get, http.StatusBadRequest, http.StatusInternalServerError)
 	authz.RegisterPublic(api, huma.Operation{
 		OperationID: "oauth-token", Method: http.MethodPost, Path: "/oauth/token",
-		Summary: "Exchange a grant for OAuth tokens", SkipValidateParams: true,
+		Metadata: authnext.RateLimitMetadata(authnext.RateLimitOAuth),
+		Summary:  "Exchange a grant for OAuth tokens", SkipValidateParams: true,
 		Security: []map[string][]string{{authz.ClientBasicScheme: {}}, {}}, Tags: []string{"oauth"},
 	}, func(ctx context.Context, in *formInput) (*tokenOutput, error) {
 		form, err := url.ParseQuery(string(in.RawBody))
@@ -440,7 +439,8 @@ func registerProtocolHTTP(api huma.API, service *Service) {
 	documentOAuthForm[tokenForm](api, "/oauth/token")
 	authz.RegisterPublic(api, huma.Operation{
 		OperationID: "oauth-revoke", Method: http.MethodPost, Path: "/oauth/revoke",
-		Summary: "Revoke an OAuth refresh-token family", SkipValidateParams: true,
+		Metadata: authnext.RateLimitMetadata(authnext.RateLimitOAuth),
+		Summary:  "Revoke an OAuth refresh-token family", SkipValidateParams: true,
 		Security: []map[string][]string{{authz.ClientBasicScheme: {}}, {}}, Tags: []string{"oauth"}, DefaultStatus: http.StatusOK,
 	}, func(ctx context.Context, in *formInput) (*revokeOutput, error) {
 		form, err := url.ParseQuery(string(in.RawBody))
@@ -464,7 +464,8 @@ func registerProtocolHTTP(api huma.API, service *Service) {
 	documentOAuthForm[revokeForm](api, "/oauth/revoke")
 	authz.RegisterPublic(api, huma.Operation{
 		OperationID: "oauth-introspect", Method: http.MethodPost, Path: "/oauth/introspect",
-		Summary: "Inspect an OAuth token", Security: authz.ClientSecurity(), Tags: []string{"oauth"}, SkipValidateParams: true,
+		Metadata: authnext.RateLimitMetadata(authnext.RateLimitOAuth),
+		Summary:  "Inspect an OAuth token", Security: authz.ClientSecurity(), Tags: []string{"oauth"}, SkipValidateParams: true,
 	}, func(ctx context.Context, in *formInput) (*introspectOutput, error) {
 		form, err := url.ParseQuery(string(in.RawBody))
 		if err != nil {
@@ -532,7 +533,7 @@ func registerProtocolHTTP(api huma.API, service *Service) {
 func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "oauth-list-clients", Method: http.MethodGet, Path: "/oauth-clients",
-		Summary: "List tenant OAuth clients", Tags: []string{"oauth"},
+		Summary: "List tenant OAuth clients", Tags: []string{"tenants"},
 	}, authz.Guard{Resource: "oauth_client", Verb: "view"}, func(ctx context.Context, in *clientListInput) (*respx.Body[[]Client], error) {
 		tenantID, err := parseOAuthID(in.TenantID)
 		if err != nil {
@@ -546,7 +547,7 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 	})
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "oauth-create-client", Method: http.MethodPost, Path: "/oauth-clients",
-		Summary: "Create a tenant OAuth client", Tags: []string{"oauth"}, DefaultStatus: http.StatusCreated,
+		Summary: "Create a tenant OAuth client", Tags: []string{"tenants"}, DefaultStatus: http.StatusCreated,
 	}, authz.Guard{Resource: "oauth_client", Verb: "create"}, func(ctx context.Context, in *clientCreateInput) (*respx.Body[clientCreateData], error) {
 		tenantID, err := parseOAuthID(in.TenantID)
 		if err != nil {
@@ -562,14 +563,15 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 		}
 		return respx.OK(ctx, clientCreateData{Client: client, ClientSecret: secret}), nil
 	})
-	authz.Register(registrar, api, huma.Operation{
+	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "oauth-update-client", Method: http.MethodPut, Path: "/oauth-clients/{client_id}",
-		Summary: "Replace a tenant OAuth client", Tags: []string{"oauth"},
-	}, authz.Guard{Resource: "oauth_client", Verb: "update"}, func(ctx context.Context, in *clientUpdateInput) (*respx.Body[Client], error) {
-		tenantID, id, err := parseOAuthClientIDs(in.TenantID, in.ID)
+		Summary: "Replace a tenant OAuth client", Tags: []string{"oauth-clients"},
+	}, "client_id", service.resolveClientOwner, authz.Guard{Resource: "oauth_client", Verb: "update"}, func(ctx context.Context, in *clientUpdateInput) (*respx.Body[Client], error) {
+		id, err := parseOAuthID(in.ID)
 		if err != nil {
 			return nil, err
 		}
+		tenantID := authnext.TenantIDFromContext(ctx)
 		client, err := service.UpdateClient(
 			ctx, tenantID, id, in.Body.Name, oauthInputStrings(in.Body.RedirectURIs),
 			oauthInputStrings(in.Body.GrantTypes), oauthInputStrings(in.Body.Scopes),
@@ -580,29 +582,31 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 		}
 		return respx.OK(ctx, client), nil
 	})
-	authz.Register(registrar, api, huma.Operation{
+	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "oauth-rotate-client-secret", Method: http.MethodPost,
 		Path: "/oauth-clients/{client_id}/credentials", Summary: "Create and activate a confidential OAuth client credential",
-		Tags: []string{"oauth"}, Errors: []int{http.StatusNotFound},
-	}, authz.Guard{Resource: "oauth_client", Verb: "update"}, func(ctx context.Context, in *clientIDInput) (*respx.Body[clientSecretData], error) {
-		tenantID, id, err := parseOAuthClientIDs(in.TenantID, in.ID)
+		Tags: []string{"oauth-clients"}, Errors: []int{http.StatusNotFound},
+	}, "client_id", service.resolveClientOwner, authz.Guard{Resource: "oauth_client", Verb: "update"}, func(ctx context.Context, in *clientIDInput) (*respx.Body[clientSecretData], error) {
+		id, err := parseOAuthID(in.ID)
 		if err != nil {
 			return nil, err
 		}
+		tenantID := authnext.TenantIDFromContext(ctx)
 		secret, err := service.RotateClientSecret(ctx, tenantID, id)
 		if err != nil {
 			return nil, oauthClientError(err, true)
 		}
 		return respx.OK(ctx, clientSecretData{ClientSecret: secret}), nil
 	})
-	authz.Register(registrar, api, huma.Operation{
+	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "oauth-delete-client", Method: http.MethodDelete, Path: "/oauth-clients/{client_id}",
-		Summary: "Delete a tenant OAuth client", Tags: []string{"oauth"}, Errors: []int{http.StatusNotFound},
-	}, authz.Guard{Resource: "oauth_client", Verb: "delete"}, func(ctx context.Context, in *clientIDInput) (*respx.Body[clientDeleteData], error) {
-		tenantID, id, err := parseOAuthClientIDs(in.TenantID, in.ID)
+		Summary: "Delete a tenant OAuth client", Tags: []string{"oauth-clients"}, Errors: []int{http.StatusNotFound},
+	}, "client_id", service.resolveClientOwner, authz.Guard{Resource: "oauth_client", Verb: "delete"}, func(ctx context.Context, in *clientIDInput) (*respx.Body[clientDeleteData], error) {
+		id, err := parseOAuthID(in.ID)
 		if err != nil {
 			return nil, err
 		}
+		tenantID := authnext.TenantIDFromContext(ctx)
 		if err := service.DeleteClient(ctx, tenantID, id); err != nil {
 			return nil, oauthClientError(err, true)
 		}
@@ -617,7 +621,7 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 func registerGrantHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{
 		OperationID: "oauth-list-consents", Method: http.MethodGet, Path: "/me/oauth-consents",
-		Summary: "List the applications the caller has authorized", Tags: []string{"oauth"},
+		Summary: "List the applications the caller has authorized", Tags: []string{"me"},
 		Errors: []int{http.StatusUnauthorized, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *consentListInput) (*respx.Body[[]GrantedConsent], error) {
 		principalID, err := consentPrincipal(ctx, in.Cookie, in.Authorization)
@@ -632,7 +636,7 @@ func registerGrantHTTP(api huma.API, service *Service, registrar *authz.Registra
 	})
 	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{
 		OperationID: "oauth-revoke-consent", Method: http.MethodDelete,
-		Path: "/me/oauth-consents/{client_id}", Tags: []string{"oauth"},
+		Path: "/me/oauth-consents/{client_id}", Tags: []string{"me"},
 		Summary: "Withdraw the caller's authorization of one application",
 		Errors:  []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *consentRevokeInput) (*respx.Body[consentRevokeData], error) {

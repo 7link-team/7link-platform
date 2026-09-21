@@ -212,18 +212,26 @@ func TestSharedSecurityHTTPRateLimitAndOutagePolicy(t *testing.T) {
 	_, api := humatest.New(t)
 	service := &Service{sharedSecurity: a}
 	service.registerSharedSecurity(api)
-	register := func(path, method string) {
-		huma.Register(api, huma.Operation{OperationID: method + path, Method: method, Path: path}, func(context.Context, *struct{}) (*struct{ Body string }, error) {
+	register := func(path, method string, limited bool) {
+		op := huma.Operation{OperationID: method + path, Method: method, Path: path}
+		if limited {
+			op.Metadata = authnext.RateLimitMetadata(authnext.RateLimitAuthentication)
+		}
+		huma.Register(api, op, func(context.Context, *struct{}) (*struct{ Body string }, error) {
 			return &struct{ Body string }{Body: "ok"}, nil
 		})
 	}
-	register("/test", http.MethodPost)
-	register("/status", http.MethodGet)
+	register("/test", http.MethodPost, true)
+	register("/business-write", http.MethodPost, false)
+	register("/status", http.MethodGet, false)
 	require.Equal(t, 200, api.Post("/test").Code)
 	require.Equal(t, 200, api.Post("/test").Code)
 	response := api.Post("/test", "X-Forwarded-For: 1.2.3.4")
 	require.Equal(t, 429, response.Code)
 	require.NotEmpty(t, response.Header().Get("Retry-After"))
+	for range 4 {
+		require.Equal(t, 200, api.Post("/business-write").Code)
+	}
 	require.Equal(t, 200, api.Get("/status").Code)
 	require.NoError(t, a.client.Close())
 	require.Equal(t, 503, api.Post("/test").Code)
@@ -244,7 +252,8 @@ func TestSharedOAuthEndpointsAreLimitedAndAnswerInTheProtocolShape(t *testing.T)
 	service := &Service{sharedSecurity: a}
 	service.registerSharedSecurity(api)
 	register := func(path string) {
-		huma.Register(api, huma.Operation{OperationID: "test" + path, Method: http.MethodPost, Path: path}, func(context.Context, *struct{}) (*struct{ Body string }, error) {
+		huma.Register(api, huma.Operation{OperationID: "test" + path, Method: http.MethodPost, Path: path,
+			Metadata: authnext.RateLimitMetadata(authnext.RateLimitOAuth)}, func(context.Context, *struct{}) (*struct{ Body string }, error) {
 			return &struct{ Body string }{Body: "ok"}, nil
 		})
 	}
@@ -262,7 +271,10 @@ func TestSharedOAuthEndpointsAreLimitedAndAnswerInTheProtocolShape(t *testing.T)
 
 	// The authentication budget is a separate counter, so OAuth traffic has not
 	// spent any of it.
-	register("/test")
+	huma.Register(api, huma.Operation{OperationID: "authentication-test", Method: http.MethodPost, Path: "/test",
+		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication)}, func(context.Context, *struct{}) (*struct{ Body string }, error) {
+		return &struct{ Body string }{Body: "ok"}, nil
+	})
 	require.Equal(t, 200, api.Post("/test").Code)
 }
 

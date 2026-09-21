@@ -22,6 +22,7 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/passwordx"
 )
 
@@ -41,6 +42,11 @@ type Service struct {
 	consent     ConsentConfig
 	consentPage *consentRenderer
 	now         func() time.Time
+}
+
+func (s *Service) resolveClientOwner(ctx context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
+	tenantID, found, err := s.repo.clientOwner(ctx, id)
+	return authz.ResourceOwner{TenantID: tenantID}, found, err
 }
 
 const (

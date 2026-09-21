@@ -178,7 +178,7 @@ async function login(loginName, loginPassword) {
   await setControl("#password", loginPassword)
   await submit("form")
   await waitFor(`location.pathname === "/"`, 20000)
-  const session = await api("/sessions/current")
+  const session = await api("/me/session")
   await evaluate(`
     localStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)});
     localStorage.setItem("iam.tenant:subject", ${JSON.stringify(session.subject)});
@@ -191,7 +191,7 @@ async function login(loginName, loginPassword) {
 
 async function logout() {
   const status = await evaluate(`
-	  const response = await fetch("/api/sessions/current", { method: "DELETE", credentials: "include" });
+	  const response = await fetch("/api/me/session", { method: "DELETE", credentials: "include" });
 	  return response.status;
 	`)
   if (status < 200 || status >= 300) throw new Error(`logout failed: ${status}`)
@@ -373,7 +373,7 @@ const unexpectedResponses = responses.filter(
     response.status >= 400 &&
     !(
       response.status === 401 &&
-      response.url.endsWith("/api/sessions/current")
+      response.url.endsWith("/api/me/session")
     ) &&
     !(
       response.status === 403 &&

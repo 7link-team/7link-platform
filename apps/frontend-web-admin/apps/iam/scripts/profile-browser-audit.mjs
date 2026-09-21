@@ -20,7 +20,7 @@ const browser = await chromium.launch({
 const admin = await browser.newContext({ baseURL })
 async function api(context, path, method = "GET", body, tenant = "") {
   const requestPath =
-    tenant && !path.startsWith("/sessions") && !path.startsWith("/platform/")
+    tenant && !path.startsWith("/login") && !path.startsWith("/platform/")
       ? `/tenants/${tenant}${path}`
       : path
   const response = await context.request.fetch("/api" + requestPath, {
@@ -68,12 +68,12 @@ async function fits(page) {
 }
 const errors = []
 try {
-  await ok(admin, "/sessions", "POST", {
+  await ok(admin, "/login", "POST", {
     login_name: process.env.IAM_BROWSER_LOGIN ?? "admin@example.test",
     password: auditPassword(),
     return_url: baseURL + "/",
   })
-  const me = await ok(admin, "/sessions/current")
+  const me = await ok(admin, "/me/session")
   const stamp = Date.now()
   const tenant = await ok(admin, "/tenants", "POST", {
     slug: `profile-audit-${stamp}`,

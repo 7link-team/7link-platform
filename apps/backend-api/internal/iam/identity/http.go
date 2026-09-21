@@ -12,6 +12,7 @@ import (
 	"7link.com/platform/internal/iam/core"
 	identityi18n "7link.com/platform/internal/iam/identity/i18n"
 	"7link.com/platform/internal/infra/guid"
+	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
 )
@@ -87,8 +88,7 @@ type serviceAccountListData struct {
 }
 
 type serviceAccountIDInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
-	ID       string `path:"service_account_id" maxLength:"64"`
+	ID string `path:"service_account_id" maxLength:"64"`
 }
 
 type serviceAccountCreateInput struct {
@@ -102,9 +102,8 @@ type serviceAccountCreateInput struct {
 }
 
 type serviceAccountReplaceInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
-	ID       string `path:"service_account_id" maxLength:"64"`
-	Body     struct {
+	ID   string `path:"service_account_id" maxLength:"64"`
+	Body struct {
 		DisplayName string     `json:"display_name" minLength:"1" maxLength:"128"`
 		Description string     `json:"description,omitempty" maxLength:"1000"`
 		Status      string     `json:"status" enum:"active,disabled"`
@@ -114,15 +113,13 @@ type serviceAccountReplaceInput struct {
 }
 
 type serviceAccountDeleteInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
-	ID       string `path:"service_account_id" maxLength:"64"`
-	Version  int64  `query:"version" minimum:"1"`
+	ID      string `path:"service_account_id" maxLength:"64"`
+	Version int64  `query:"version" minimum:"1"`
 }
 
 type serviceAccountCredentialCreateInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
-	ID       string `path:"service_account_id" maxLength:"64"`
-	Body     struct {
+	ID   string `path:"service_account_id" maxLength:"64"`
+	Body struct {
 		Name      string     `json:"name" minLength:"1" maxLength:"128"`
 		Scopes    []string   `json:"scopes" minItems:"1" maxItems:"128"`
 		ExpiresAt *time.Time `json:"expires_at,omitempty"`
@@ -130,7 +127,6 @@ type serviceAccountCredentialCreateInput struct {
 }
 
 type serviceAccountCredentialIDInput struct {
-	TenantID     string `path:"tenant_id" maxLength:"128"`
 	ID           string `path:"service_account_id" maxLength:"64"`
 	CredentialID string `path:"credential_id" maxLength:"64"`
 }
@@ -153,7 +149,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Method:      http.MethodGet,
 		Path:        "/principals",
 		Summary:     "List local principals in the tenant",
-		Tags:        []string{"identity"},
+		Tags:        []string{"tenants"},
 	}, authz.Guard{Resource: "user", Verb: "view"},
 		func(ctx context.Context, in *principalListInput) (*respx.Body[principalListData], error) {
 			tenantID, err := requireID(in.TenantID)
@@ -186,7 +182,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Method:        http.MethodPost,
 		Path:          "/principals",
 		Summary:       "Create a local principal and tenant membership",
-		Tags:          []string{"identity"},
+		Tags:          []string{"principals"},
 		DefaultStatus: http.StatusCreated,
 		Errors:        []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "user", Verb: "create"},
@@ -216,7 +212,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Method:      http.MethodGet,
 		Path:        "/principals/{principal_id}",
 		Summary:     "Get a local principal in the tenant",
-		Tags:        []string{"identity"},
+		Tags:        []string{"tenants"},
 		Errors:      []int{http.StatusNotFound},
 	}, authz.Guard{Resource: "user", Verb: "view"},
 		func(ctx context.Context, in *principalIDInput) (*respx.Body[PrincipalView], error) {
@@ -240,7 +236,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Method:      http.MethodPatch,
 		Path:        "/principals/{principal_id}",
 		Summary:     "Update a local principal profile",
-		Tags:        []string{"identity"},
+		Tags:        []string{"tenants"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "user", Verb: "update"},
 		func(ctx context.Context, in *principalUpdateInput) (*respx.Body[PrincipalView], error) {
@@ -267,7 +263,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Method:      http.MethodPut,
 		Path:        "/principals/{principal_id}/suspension",
 		Summary:     "Suspend a principal and revoke its sessions and refresh tokens",
-		Tags:        []string{"identity"},
+		Tags:        []string{"tenants"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict},
 	}, authz.Guard{Resource: "user", Verb: "update"},
 		func(ctx context.Context, in *principalIDInput) (*respx.Body[PrincipalView], error) {
@@ -291,7 +287,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Method:      http.MethodDelete,
 		Path:        "/principals/{principal_id}/suspension",
 		Summary:     "Lift a principal suspension",
-		Tags:        []string{"identity"},
+		Tags:        []string{"tenants"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict},
 	}, authz.Guard{Resource: "user", Verb: "update"},
 		func(ctx context.Context, in *principalIDInput) (*respx.Body[PrincipalView], error) {
@@ -317,7 +313,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 		Method:      http.MethodGet,
 		Path:        "/service-accounts",
 		Summary:     "List tenant service accounts",
-		Tags:        []string{"identity"},
+		Tags:        []string{"tenants"},
 	}, authz.Guard{Resource: "service_account", Verb: "view"},
 		func(ctx context.Context, in *serviceAccountListInput) (*respx.Body[serviceAccountListData], error) {
 			tenantID, err := requireID(in.TenantID)
@@ -354,19 +350,20 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 			return respx.OK(ctx, account), nil
 		})
 
-	authz.Register(registrar, api, huma.Operation{
+	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "identity-get-service-account",
 		Method:      http.MethodGet,
 		Path:        "/service-accounts/{service_account_id}",
 		Summary:     "Get a tenant service account",
-		Tags:        []string{"identity"},
+		Tags:        []string{"service-accounts"},
 		Errors:      []int{http.StatusNotFound},
-	}, authz.Guard{Resource: "service_account", Verb: "view"},
+	}, "service_account_id", service.resolveServiceAccountOwner, authz.Guard{Resource: "service_account", Verb: "view"},
 		func(ctx context.Context, in *serviceAccountIDInput) (*respx.Body[ServiceAccount], error) {
-			tenantID, id, err := principalRef(in.TenantID, in.ID)
+			id, err := requireID(in.ID)
 			if err != nil {
 				return nil, err
 			}
+			tenantID := authnext.TenantIDFromContext(ctx)
 			account, err := service.GetServiceAccount(ctx, tenantID, id)
 			if err != nil {
 				return nil, identityError(err)
@@ -374,19 +371,20 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 			return respx.OK(ctx, account), nil
 		})
 
-	authz.Register(registrar, api, huma.Operation{
+	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "identity-replace-service-account",
 		Method:      http.MethodPut,
 		Path:        "/service-accounts/{service_account_id}",
 		Summary:     "Replace service account profile and status",
-		Tags:        []string{"identity"},
+		Tags:        []string{"service-accounts"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
-	}, authz.Guard{Resource: "service_account", Verb: "update"},
+	}, "service_account_id", service.resolveServiceAccountOwner, authz.Guard{Resource: "service_account", Verb: "update"},
 		func(ctx context.Context, in *serviceAccountReplaceInput) (*respx.Body[ServiceAccount], error) {
-			tenantID, id, err := principalRef(in.TenantID, in.ID)
+			id, err := requireID(in.ID)
 			if err != nil {
 				return nil, err
 			}
+			tenantID := authnext.TenantIDFromContext(ctx)
 			account, err := service.ReplaceServiceAccount(
 				ctx, tenantID, id, in.Body.DisplayName, in.Body.Description,
 				in.Body.Status, in.Body.ExpiresAt, in.Body.Version,
@@ -397,38 +395,40 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 			return respx.OK(ctx, account), nil
 		})
 
-	authz.Register(registrar, api, huma.Operation{
+	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "identity-delete-service-account",
 		Method:      http.MethodDelete,
 		Path:        "/service-accounts/{service_account_id}",
 		Summary:     "Delete a service account and revoke its credentials",
-		Tags:        []string{"identity"},
+		Tags:        []string{"service-accounts"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict},
-	}, authz.Guard{Resource: "service_account", Verb: "delete"},
+	}, "service_account_id", service.resolveServiceAccountOwner, authz.Guard{Resource: "service_account", Verb: "delete"},
 		func(ctx context.Context, in *serviceAccountDeleteInput) (*respx.Body[serviceAccountDeleteData], error) {
-			tenantID, id, err := principalRef(in.TenantID, in.ID)
+			id, err := requireID(in.ID)
 			if err != nil {
 				return nil, err
 			}
+			tenantID := authnext.TenantIDFromContext(ctx)
 			if err := service.DeleteServiceAccount(ctx, tenantID, id, in.Version); err != nil {
 				return nil, identityError(err)
 			}
 			return respx.OK(ctx, serviceAccountDeleteData{Deleted: true}), nil
 		})
 
-	authz.Register(registrar, api, huma.Operation{
+	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "identity-list-service-account-credentials",
 		Method:      http.MethodGet,
 		Path:        "/service-accounts/{service_account_id}/credentials",
 		Summary:     "List service account credentials without secrets",
-		Tags:        []string{"identity"},
+		Tags:        []string{"service-accounts"},
 		Errors:      []int{http.StatusNotFound},
-	}, authz.Guard{Resource: "service_account", Verb: "manage_credential"},
+	}, "service_account_id", service.resolveServiceAccountOwner, authz.Guard{Resource: "service_account", Verb: "manage_credential"},
 		func(ctx context.Context, in *serviceAccountIDInput) (*respx.Body[[]ServiceAccountCredential], error) {
-			tenantID, id, err := principalRef(in.TenantID, in.ID)
+			id, err := requireID(in.ID)
 			if err != nil {
 				return nil, err
 			}
+			tenantID := authnext.TenantIDFromContext(ctx)
 			credentials, err := service.ListServiceAccountCredentials(ctx, tenantID, id)
 			if err != nil {
 				return nil, identityError(err)
@@ -436,20 +436,21 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 			return respx.OK(ctx, credentials), nil
 		})
 
-	authz.Register(registrar, api, huma.Operation{
+	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID:   "identity-create-service-account-credential",
 		Method:        http.MethodPost,
 		Path:          "/service-accounts/{service_account_id}/credentials",
 		Summary:       "Create a service account client credential",
-		Tags:          []string{"identity"},
+		Tags:          []string{"service-accounts"},
 		DefaultStatus: http.StatusCreated,
 		Errors:        []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
-	}, authz.Guard{Resource: "service_account", Verb: "manage_credential"},
+	}, "service_account_id", service.resolveServiceAccountOwner, authz.Guard{Resource: "service_account", Verb: "manage_credential"},
 		func(ctx context.Context, in *serviceAccountCredentialCreateInput) (*respx.Body[ServiceAccountCredentialSecret], error) {
-			tenantID, id, err := principalRef(in.TenantID, in.ID)
+			id, err := requireID(in.ID)
 			if err != nil {
 				return nil, err
 			}
+			tenantID := authnext.TenantIDFromContext(ctx)
 			credential, err := service.CreateServiceAccountCredential(
 				ctx, tenantID, id, in.Body.Name, in.Body.Scopes, in.Body.ExpiresAt,
 			)
@@ -459,19 +460,20 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 			return respx.OK(ctx, credential), nil
 		})
 
-	authz.Register(registrar, api, huma.Operation{
+	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "identity-delete-service-account-credential",
 		Method:      http.MethodDelete,
 		Path:        "/service-accounts/{service_account_id}/credentials/{credential_id}",
 		Summary:     "Revoke a service account credential and its active tokens",
-		Tags:        []string{"identity"},
+		Tags:        []string{"service-accounts"},
 		Errors:      []int{http.StatusNotFound},
-	}, authz.Guard{Resource: "service_account", Verb: "manage_credential"},
+	}, "service_account_id", service.resolveServiceAccountOwner, authz.Guard{Resource: "service_account", Verb: "manage_credential"},
 		func(ctx context.Context, in *serviceAccountCredentialIDInput) (*respx.Body[serviceAccountCredentialRevokeData], error) {
-			tenantID, id, err := principalRef(in.TenantID, in.ID)
+			id, err := requireID(in.ID)
 			if err != nil {
 				return nil, err
 			}
+			tenantID := authnext.TenantIDFromContext(ctx)
 			credentialID, err := requireID(in.CredentialID)
 			if err != nil {
 				return nil, err
