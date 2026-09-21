@@ -350,3 +350,56 @@ DROP TABLE milestone_b_constraints;
 `)},
 	}
 }
+
+// TestMigrationDownTargetStepsBackOneMilestoneAtATime pins how far a rollback
+// is allowed to go. A target computed too low would drop schema the operator
+// never asked to remove, and one computed too high would leave the stream
+// where it already is and report success without doing anything.
+func TestMigrationDownTargetStepsBackOneMilestoneAtATime(t *testing.T) {
+	stream := func(current int64) *migrationStream {
+		return &migrationStream{
+			name: "iam",
+			milestones: []module.MigrationMilestone{
+				{Name: "core", Version: 10},
+				{Name: "directory", Version: 20},
+				{Name: "governance", Version: 30},
+			},
+			status: goosex.Status{Current: current},
+		}
+	}
+
+	// A plain "down" retreats to the milestone boundary below where it stands.
+	for current, want := range map[int64]int64{
+		0:  0,  // nothing applied, nothing to undo
+		5:  0,  // mid-way into the first milestone
+		10: 0,  // exactly on the first boundary, so the step goes below it
+		15: 10, // past the first boundary
+		30: 20, // exactly on the last boundary
+		35: 30, // past the last boundary
+	} {
+		target, err := stream(current).downTarget(MigrationRequest{Action: MigrationDown})
+		require.NoError(t, err, "current %d", current)
+		assert.Equal(t, want, target, "down from current %d", current)
+	}
+
+	// down-to names its own target and must land on a declared milestone.
+	target, err := stream(30).downTarget(MigrationRequest{Action: MigrationDownTo, To: 10})
+	require.NoError(t, err)
+	assert.Equal(t, int64(10), target)
+
+	target, err = stream(30).downTarget(MigrationRequest{Action: MigrationDownTo, To: 0})
+	require.NoError(t, err)
+	assert.Zero(t, target, "zero means undo everything and is always a legal target")
+
+	// Refusing to "migrate down" to a higher version keeps the operator from
+	// believing a rollback happened when the request was really an upgrade.
+	_, err = stream(10).downTarget(MigrationRequest{Action: MigrationDownTo, To: 30})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "higher version")
+
+	// A target between milestones would leave the schema in a state no module
+	// declared, so it is refused rather than approximated.
+	_, err = stream(30).downTarget(MigrationRequest{Action: MigrationDownTo, To: 25})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not a migration milestone")
+}

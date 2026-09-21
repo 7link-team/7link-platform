@@ -55,3 +55,16 @@ func identityLinkCount(t *testing.T, env *federationEnvironment, principal guid.
 		Where("principal_id = ?", principal).Count(&count).Error)
 	return count
 }
+
+// Erasure runs inside the caller's suspension transaction, so a table it cannot
+// reach has to abort that transaction. Reporting success would let the caller
+// commit a suspension that left the upstream identity behind -- the one record
+// that still says which account at the provider this person was.
+func TestFederationErasePrincipalDataPropagatesAStorageFailure(t *testing.T) {
+	env := newFederationEnvironment(t)
+	target := guid.ID(4103)
+	seedIdentityLink(t, env, 91, target, "upstream-subject-d", "target@idp.example.test")
+	require.NoError(t, env.db.Exec("DROP TABLE "+env.prefix+"iam_identity_links").Error)
+
+	assert.Error(t, ErasePrincipalData(t.Context(), env.db, env.prefix, target, federationErasureTime))
+}

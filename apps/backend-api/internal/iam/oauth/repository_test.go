@@ -351,6 +351,19 @@ func TestRepositoryMethodsFailClosedWithoutWriter(t *testing.T) {
 			return err
 		},
 		"delete consent": func() error { return repo.deleteConsent(t.Context(), 2, 3) },
+		"client owner":   func() error { _, _, err := repo.clientOwner(t.Context(), 2); return err },
+		"lock consent":   func() error { _, err := repo.lockConsent(t.Context(), 2, 3); return err },
+		"require grant":  func() error { return repo.requireGrant(t.Context(), 2, 3, "grant") },
+		"insert consent request": func() error {
+			return repo.insertConsentRequest(t.Context(), &model.ConsentRequest{})
+		},
+		"read consent request": func() error {
+			_, err := repo.consentRequest(t.Context(), "challenge")
+			return err
+		},
+		"resolve consent request": func() error {
+			return repo.resolveConsentRequest(t.Context(), "challenge", now)
+		},
 		"revoke granted": func() error { return repo.revokeGrantedTokens(t.Context(), 2, 3, now) },
 		"insert code":    func() error { return repo.insertAuthorizationCode(t.Context(), code) },
 		"read code": func() error {
@@ -514,4 +527,20 @@ func TestRepositoryPropagatesStorageFailures(t *testing.T) {
 		assert.Error(t, err)
 		assert.Error(t, harness.repo.touchServiceAccountCredential(t.Context(), 8, oauthTestNow))
 	})
+}
+
+// TestOAuthRepositoryWritesThatMatchNoRowAreRefused pins the row-count check on
+// the three writes whose predicate is the whole point. Each one is single-use or
+// self-service, so "nothing matched" is a caller mistake and has to reach the
+// caller as one: reporting success would tell somebody their consent had been
+// withdrawn, or let a consent challenge be answered twice.
+func TestOAuthRepositoryWritesThatMatchNoRowAreRefused(t *testing.T) {
+	harness := newOAuthHarness(t, "sl_")
+
+	assert.ErrorIs(t, harness.repo.deleteConsent(t.Context(), 5201, 6201), ErrInvalidRequest,
+		"withdrawing a consent nobody granted is not a withdrawal")
+	assert.ErrorIs(t, harness.repo.resolveConsentRequest(t.Context(), "no-such-challenge", oauthTestNow),
+		ErrInvalidRequest, "an unknown challenge cannot be resolved")
+	assert.ErrorIs(t, harness.repo.touchServiceAccountCredential(t.Context(), 6202, oauthTestNow),
+		ErrInvalidRequest, "a credential that is gone or revoked cannot record a use")
 }

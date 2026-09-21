@@ -106,3 +106,22 @@ func oauthRowCount(t *testing.T, h *oauthHarness, table string, principal guid.I
 	require.NoError(t, h.db.Table(h.table(table)).Where("principal_id = ?", principal).Count(&count).Error)
 	return count
 }
+
+// Erasure runs inside the caller's suspension transaction. A table it cannot
+// reach has to abort that transaction rather than report a clean sweep: a
+// surviving refresh token or consent is a way back into the account, and the
+// caller would commit the suspension believing there is none.
+func TestOAuthErasePrincipalDataPropagatesAStorageFailure(t *testing.T) {
+	h := newOAuthHarness(t, "sl_")
+	const target = guid.ID(5103)
+	seedOAuthClient(t, h, 602)
+	seedOAuthPrincipal(t, h, target)
+	seedOAuthAuthorizations(t, h, target, 602)
+	// Consents are the last table the sweep reaches, so the three before it
+	// succeed and the failure is the loop reporting a later table, not the first.
+	require.NoError(t, h.db.Exec("DROP TABLE "+h.table("iam_oauth_consents")).Error)
+
+	assert.Error(t, ErasePrincipalData(t.Context(), h.db, h.prefix, target, oauthErasureTime))
+	assert.Zero(t, oauthRowCount(t, h, "iam_oauth_codes", target),
+		"the tables the sweep already reached stay erased; the caller's transaction is what rolls them back")
+}

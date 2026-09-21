@@ -96,3 +96,93 @@ func TestPositionRepositoryGuardsVersionAndCode(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, engineer.ID, survivor.ID, "a delete carrying the wrong version must not remove the row")
 }
+
+// TestPositionWritesAbortWhenThePolicyRevisionCannotAdvance pins that every
+// position and position-membership write is committed together with the
+// tenant's authorization policy revision. A membership that committed without
+// advancing the revision would keep being authorized from a cache that never
+// learned it changed.
+func TestPositionWritesAbortWhenThePolicyRevisionCannotAdvance(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	h.seedMember(t, 1, 10, "Alice")
+	service := newBoundPositionService(t,
+		h.runtime, h.appender, &organizationMemberChecker{prefix: h.prefix},
+		&organizationAdministratorGuard{}, newOrganizationTestIDs(700),
+	)
+	service.now = func() time.Time { return organizationTestNow }
+	created, err := service.Create(t.Context(), 1, CreatePosition{Code: "engineer", Name: "Engineer"})
+	require.NoError(t, err)
+	_, err = service.PutMember(t.Context(), 1, created.ID, 10, PositionMemberWindow{})
+	require.NoError(t, err)
+	require.NoError(t, h.db.Exec("DROP TABLE sl_iam_policy_revisions").Error)
+
+	_, err = service.Create(t.Context(), 1, CreatePosition{Code: "manager", Name: "Manager"})
+	assert.Error(t, err)
+	_, err = service.Update(t.Context(), 1, created.ID, UpdatePosition{
+		Name: stringPointer("Senior Engineer"), Version: created.Version,
+	})
+	assert.Error(t, err)
+	endsAt := organizationTestNow.Add(time.Hour)
+	_, err = service.PutMember(t.Context(), 1, created.ID, 10, PositionMemberWindow{EndsAt: &endsAt})
+	assert.Error(t, err)
+	_, err = service.DeleteMember(t.Context(), 1, created.ID, 10)
+	assert.Error(t, err)
+	assert.Error(t, service.Delete(t.Context(), 1, created.ID, created.Version))
+
+	positions, err := service.List(t.Context(), 1)
+	require.NoError(t, err)
+	require.Len(t, positions, 1, "no position may be added or removed without a revision bump")
+	assert.Equal(t, "Engineer", positions[0].Name, "a rejected rename must not survive")
+	members, err := service.ListMembers(t.Context(), 1, created.ID)
+	require.NoError(t, err)
+	require.Len(t, members, 1, "a rejected membership removal must not survive")
+	assert.Nil(t, members[0].EndsAt, "a rejected membership window must not survive")
+}
+
+// TestPositionPutMemberIsANoOpForAnUnchangedWindow pins that re-sending the
+// same membership window neither rewrites the row nor advances the tenant
+// policy revision, while still running the administrator guard.
+func TestPositionPutMemberIsANoOpForAnUnchangedWindow(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	h.seedMember(t, 1, 10, "Alice")
+	guard := &organizationAdministratorGuard{}
+	service := newBoundPositionService(t,
+		h.runtime, h.appender, &organizationMemberChecker{prefix: h.prefix},
+		guard, newOrganizationTestIDs(750),
+	)
+	service.now = func() time.Time { return organizationTestNow }
+	created, err := service.Create(t.Context(), 1, CreatePosition{Code: "engineer", Name: "Engineer"})
+	require.NoError(t, err)
+	startsAt := organizationTestNow.Add(-time.Hour)
+	window := PositionMemberWindow{StartsAt: &startsAt}
+	first, err := service.PutMember(t.Context(), 1, created.ID, 10, window)
+	require.NoError(t, err)
+	revision := h.revision(t, 1)
+
+	repeated, err := service.PutMember(t.Context(), 1, created.ID, 10, window)
+	require.NoError(t, err)
+	assert.Equal(t, first, repeated)
+	assert.Equal(t, revision, h.revision(t, 1), "an unchanged membership must not advance the policy revision")
+	assert.Equal(t, 2, guard.verified, "the administrator guard still runs for an unchanged membership")
+}
+
+// TestPositionServiceRejectsAnUnwiredRepository pins that a position service
+// that never reached a runtime reports unavailability rather than
+// dereferencing a nil writer on its read paths.
+func TestPositionServiceRejectsAnUnwiredRepository(t *testing.T) {
+	unwired := &PositionService{now: func() time.Time { return organizationTestNow }}
+	_, err := unwired.List(t.Context(), 1)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, err = unwired.Get(t.Context(), 1, 2)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, err = unwired.ListMembers(t.Context(), 1, 2)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+
+	unwiredGroups := &GroupService{now: func() time.Time { return organizationTestNow }}
+	_, err = unwiredGroups.List(t.Context(), 1)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, err = unwiredGroups.Get(t.Context(), 1, 2)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, err = unwiredGroups.ListMembers(t.Context(), 1, 2)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+}

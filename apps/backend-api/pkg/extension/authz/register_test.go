@@ -273,6 +273,8 @@ func TestOwnedResourceFailurePathsDoNotLeakAcrossTenants(t *testing.T) {
 		{name: "different tenant member", verifier: validVerifier(), membership: &fakeMembership{}, checker: &fakeChecker{allowed: true}, found: true, want: http.StatusNotFound},
 		{name: "permission denied", verifier: validVerifier(), membership: &fakeMembership{active: true}, checker: &fakeChecker{}, found: true, want: http.StatusForbidden},
 		{name: "resolver unavailable", verifier: validVerifier(), membership: &fakeMembership{active: true}, checker: &fakeChecker{allowed: true}, resolveErr: assert.AnError, want: http.StatusServiceUnavailable},
+		{name: "membership unavailable", verifier: validVerifier(), membership: &fakeMembership{err: assert.AnError}, checker: &fakeChecker{allowed: true}, found: true, want: http.StatusServiceUnavailable},
+		{name: "authorization unavailable", verifier: validVerifier(), membership: &fakeMembership{active: true}, checker: &fakeChecker{err: assert.AnError}, found: true, want: http.StatusServiceUnavailable},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -787,6 +789,199 @@ func TestPlatformAuthorizationFailurePaths(t *testing.T) {
 			assert.Equal(t, test.want, api.Get("/platform").Code)
 		})
 	}
+}
+
+// TestOwnedTenantMemberAuthorizesByMembershipAlone pins the property that
+// distinguishes this declaration from RegisterOwned: the owning tenant's
+// active membership is the whole authorization, so no administrative
+// permission is invented for a self-service resource.
+func TestOwnedTenantMemberAuthorizesByMembershipAlone(t *testing.T) {
+	_, api := humatest.New(t)
+	verifier := validVerifier()
+	checker := &fakeChecker{}
+	registrar := authz.NewRegistrar(testRegistry(), verifier, checker, &fakeMembership{active: true})
+	var seen authn.Claims
+	authz.RegisterOwnedTenantMember(registrar, api, huma.Operation{
+		OperationID: "access-request-view", Method: http.MethodGet, Path: "/access-requests/{request_id}", Tags: []string{"access-requests"},
+	}, "request_id", func(_ context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
+		assert.Equal(t, guid.ID(41), id)
+		return authz.ResourceOwner{TenantID: 11}, true, nil
+	}, func(ctx context.Context, _ *struct{}) (*routeOutput, error) {
+		claims, ok := authn.FromContext(ctx)
+		require.True(t, ok)
+		seen = *claims
+		return &routeOutput{Body: "ok"}, nil
+	})
+
+	response := api.Get("/access-requests/41")
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Equal(t, guid.ID(11), seen.TenantID)
+	assert.Zero(t, seen.EntityID)
+	assert.Equal(t, guid.ID(31), seen.PrincipalID)
+	assert.Empty(t, checker.tenantCalls, "a member-scoped resource route must not consult an administrative permission")
+	assert.Empty(t, checker.entityCalls)
+	assert.Empty(t, verifier.scopes,
+		"the route enforces no permission, so it publishes no personal-token scope for one to satisfy")
+
+	operation := api.OpenAPI().Paths["/access-requests/{request_id}"].Get
+	assert.True(t, authz.IsTenantMemberOperation(operation))
+	assert.True(t, authz.IsOwnedResourceOperation(operation))
+	assert.False(t, authz.IsOwnedResourceOperation(nil))
+	assert.False(t, authz.IsOwnedResourceOperation(&huma.Operation{}))
+	assert.Contains(t, operation.Errors, http.StatusNotFound)
+	assertSelectorSchema(t, operation, "request_id", "path")
+}
+
+func TestOwnedTenantMemberFailurePaths(t *testing.T) {
+	tests := []struct {
+		name       string
+		membership *fakeMembership
+		want       int
+	}{
+		{name: "outside the owner tenant", membership: &fakeMembership{}, want: http.StatusNotFound},
+		{name: "membership unavailable", membership: &fakeMembership{err: assert.AnError}, want: http.StatusServiceUnavailable},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, api := humatest.New(t)
+			registrar := authz.NewRegistrar(testRegistry(), validVerifier(), &fakeChecker{allowed: true}, test.membership)
+			authz.RegisterOwnedTenantMember(registrar, api, huma.Operation{
+				OperationID: "access-request-view", Method: http.MethodGet, Path: "/access-requests/{request_id}", Tags: []string{"access-requests"},
+			}, "request_id", func(context.Context, guid.ID) (authz.ResourceOwner, bool, error) {
+				return authz.ResourceOwner{TenantID: 11}, true, nil
+			}, okRoute)
+			assert.Equal(t, test.want, api.Get("/access-requests/41").Code)
+		})
+	}
+}
+
+func TestOwnedTenantMemberRejectsIncompleteDeclarations(t *testing.T) {
+	registry := testRegistry()
+	resolve := func(context.Context, guid.ID) (authz.ResourceOwner, bool, error) {
+		return authz.ResourceOwner{TenantID: 11}, true, nil
+	}
+	operation := func() huma.Operation {
+		return huma.Operation{OperationID: "owned-member", Method: http.MethodGet, Path: "/access-requests/{request_id}", Tags: []string{"access-requests"}}
+	}
+	untagged := operation()
+	untagged.Tags = nil
+
+	assert.Panics(t, func() {
+		_, api := humatest.New(t)
+		authz.RegisterOwnedTenantMember[struct{}, routeOutput](nil, api, operation(), "request_id", resolve, okRoute)
+	})
+	assert.Panics(t, func() {
+		_, api := humatest.New(t)
+		authz.RegisterOwnedTenantMember(authz.NewDeclarationOnlyRegistrar(registry), api, operation(), "", resolve, okRoute)
+	})
+	assert.Panics(t, func() {
+		_, api := humatest.New(t)
+		authz.RegisterOwnedTenantMember[struct{}, routeOutput](authz.NewDeclarationOnlyRegistrar(registry), api, operation(), "request_id", nil, okRoute)
+	})
+	assert.Panics(t, func() {
+		_, api := humatest.New(t)
+		authz.RegisterOwnedTenantMember(authz.NewDeclarationOnlyRegistrar(registry), api, untagged, "request_id", resolve, okRoute)
+	}, "an untagged owned route lands in the wrong OpenAPI group, so the declaration is refused")
+	assert.NotPanics(t, func() {
+		_, api := humatest.New(t)
+		authz.RegisterOwnedTenantMember(authz.NewDeclarationOnlyRegistrar(registry), api, operation(), "request_id", resolve, okRoute)
+	})
+}
+
+// TestOwnedPersonalResourceBindsTheOwningPrincipal covers the second owner
+// shape ownedResourceMiddleware accepts. A resource owned by a principal
+// directly belongs to that principal alone: no tenant membership and no
+// tenant grant may reach it, and no other principal may read it.
+func TestOwnedPersonalResourceBindsTheOwningPrincipal(t *testing.T) {
+	tests := []struct {
+		name   string
+		claims *authn.Claims
+		owner  authz.ResourceOwner
+		want   int
+	}{
+		{name: "owner", claims: validClaims(), owner: authz.ResourceOwner{PrincipalID: 31}, want: http.StatusOK},
+		{name: "owner identified by subject only", claims: &authn.Claims{Subject: "31"}, owner: authz.ResourceOwner{PrincipalID: 31}, want: http.StatusOK},
+		{name: "another principal", claims: validClaims(), owner: authz.ResourceOwner{PrincipalID: 77}, want: http.StatusNotFound},
+		{name: "unresolvable principal", claims: &authn.Claims{Subject: "bad"}, owner: authz.ResourceOwner{PrincipalID: 31}, want: http.StatusForbidden},
+		{name: "unclassifiable owner", claims: validClaims(), owner: authz.ResourceOwner{}, want: http.StatusNotFound},
+		{name: "principal and tenant owner", claims: validClaims(), owner: authz.ResourceOwner{PrincipalID: 31, TenantID: 11}, want: http.StatusNotFound},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, api := humatest.New(t)
+			// Both collaborators fail closed, so reaching either one turns a
+			// correct 200 into a 503 or a 403 and this test notices.
+			checker := &fakeChecker{}
+			membership := &fakeMembership{err: assert.AnError}
+			registrar := authz.NewRegistrar(testRegistry(), &fakeVerifier{claims: test.claims, cookie: "session"}, checker, membership)
+			var seen authn.Claims
+			authz.RegisterOwned(registrar, api, huma.Operation{
+				OperationID: "owned-personal", Method: http.MethodGet, Path: "/tokens/{token_id}", Tags: []string{"tokens"},
+			}, "token_id", func(context.Context, guid.ID) (authz.ResourceOwner, bool, error) {
+				return test.owner, true, nil
+			}, authz.Guard{Resource: "store", Verb: "view"}, func(ctx context.Context, _ *struct{}) (*routeOutput, error) {
+				claims, ok := authn.FromContext(ctx)
+				require.True(t, ok)
+				seen = *claims
+				return &routeOutput{Body: "ok"}, nil
+			})
+
+			response := api.Get("/tokens/41")
+			require.Equal(t, test.want, response.Code, response.Body.String())
+			if test.want != http.StatusOK {
+				return
+			}
+			assert.Equal(t, guid.ID(31), seen.PrincipalID)
+			assert.Zero(t, seen.TenantID, "a personally owned resource binds no tenant")
+			assert.Zero(t, seen.EntityID)
+			assert.Empty(t, checker.tenantCalls, "a personally owned resource is not authorized by a tenant grant")
+		})
+	}
+}
+
+// TestTenantEntityOrAuthenticatedPublishesThreeDistinctContexts pins the
+// three URIs this declaration emits and the one authorization model each of
+// them carries.
+func TestTenantEntityOrAuthenticatedPublishesThreeDistinctContexts(t *testing.T) {
+	_, api := humatest.New(t)
+	checker := &fakeChecker{allowed: true}
+	registrar := authz.NewRegistrar(testRegistry(), validVerifier(), checker, &fakeMembership{active: true})
+	seen := make([]authn.Claims, 0, 3)
+	authz.RegisterTenantEntityOrAuthenticated(registrar, api, huma.Operation{
+		OperationID: "files", Method: http.MethodGet, Path: "/files",
+	}, authz.Guard{Resource: "store", Verb: "view"}, func(ctx context.Context, _ *struct{}) (*routeOutput, error) {
+		claims, ok := authn.FromContext(ctx)
+		require.True(t, ok)
+		seen = append(seen, *claims)
+		return &routeOutput{Body: "ok"}, nil
+	})
+
+	require.Equal(t, http.StatusOK, api.Get("/me/files").Code)
+	assert.Zero(t, seen[0].TenantID)
+	assert.Zero(t, seen[0].EntityID)
+	assert.Empty(t, checker.tenantCalls, "the personal context authorizes on authentication alone")
+
+	require.Equal(t, http.StatusOK, api.Get("/tenants/11/files").Code)
+	assert.Equal(t, guid.ID(11), seen[1].TenantID)
+	assert.Zero(t, seen[1].EntityID)
+	assert.Equal(t, []tenantPermissionCall{{tenantID: 11, permission: "store_view", subject: 31}}, checker.tenantCalls)
+
+	require.Equal(t, http.StatusOK, api.Get("/tenants/11/entities/21/files").Code)
+	assert.Equal(t, guid.ID(11), seen[2].TenantID)
+	assert.Equal(t, guid.ID(21), seen[2].EntityID)
+	assert.Equal(t, []entityPermissionCall{{tenantID: 11, entityID: 21, permission: "store_view", subject: 31}}, checker.entityCalls)
+	assert.Len(t, checker.tenantCalls, 1, "the entity context authorizes against the entity, not the tenant")
+
+	personal := api.OpenAPI().Paths["/me/files"].Get
+	tenant := api.OpenAPI().Paths["/tenants/{tenant_id}/files"].Get
+	entity := api.OpenAPI().Paths["/tenants/{tenant_id}/entities/{entity_id}/files"].Get
+	assert.Equal(t, "files-self", personal.OperationID)
+	assert.Equal(t, "files-tenant", tenant.OperationID)
+	assert.Equal(t, "files", entity.OperationID)
+	assert.True(t, authz.IsAuthenticatedOperation(personal))
+	assert.False(t, authz.IsAuthenticatedOperation(tenant))
+	assert.Equal(t, "store_view", tenant.Extensions[authz.GuardExtensionKey])
+	assert.Equal(t, "store_view", entity.Extensions[authz.GuardExtensionKey])
 }
 
 func validClaims() *authn.Claims {

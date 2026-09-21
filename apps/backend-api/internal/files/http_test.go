@@ -22,6 +22,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -470,4 +471,42 @@ func postFileForm(t *testing.T, api humatest.TestAPI, headers []any, fields map[
 		path = "/entities/80/files"
 	}
 	return api.Post(path, args...)
+}
+
+// TestFileHTTPRoutesReportStorageFailuresAsServerErrors walks the read routes
+// with the tree tables gone. Each has to answer 5xx. Reporting an outage as an
+// empty listing or a 404 would tell the caller their files do not exist when
+// in fact nothing was ever read.
+func TestFileHTTPRoutesReportStorageFailuresAsServerErrors(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	q := query.Bind(h.db, h.tree.prefix)
+	_, err := q.Node.WithContext(t.Context()).Where(q.Node.ID.Eq(guid.ID(2))).UpdateSimple(
+		q.Node.RootScope.Value("entity"), q.Node.RootOwnerID.Value(guid.ID(80)),
+	)
+	require.NoError(t, err)
+	api := newFileHTTPAPI(t, h.service)
+	headers := []any{"Authorization: Bearer test"}
+
+	// Positive control: these answer 200 before the tables are dropped, so the
+	// 5xx below is attributable to the outage and not to the request shape.
+	require.Equal(t, http.StatusOK, api.Get("/entities/80/files?limit=1", headers...).Code)
+	require.Equal(t, http.StatusOK, api.Get("/files/2/items?limit=1", headers...).Code)
+
+	require.NoError(t, h.db.Exec("DROP TABLE "+h.tree.prefix+"file_node_closure").Error)
+
+	// Only routes that actually walk the tree are listed. The tenant and
+	// personal collections own no root in this fixture, so they answer an empty
+	// page without ever reaching the dropped tables; asserting a failure there
+	// would assert something untrue.
+	for name, target := range map[string]string{
+		"entity roots": "/entities/80/files?limit=1",
+		"children":     "/files/2/items?limit=1",
+		"metadata":     "/files/32",
+		"content":      "/files/32/content",
+		"path lookup":  "/files/2/-/child.txt",
+	} {
+		response := api.Get(target, headers...)
+		assert.GreaterOrEqual(t, response.Code, http.StatusInternalServerError,
+			"%s must report the outage as a server error, got %d: %s", name, response.Code, response.Body.String())
+	}
 }

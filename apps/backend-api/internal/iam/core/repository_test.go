@@ -252,3 +252,43 @@ func TestRepositoryPaginationAppliesLimitAndKeepsTenantTotals(t *testing.T) {
 	require.Len(t, entities, 1)
 	assert.Equal(t, "Bravo", entities[0].Name)
 }
+
+// TestRepositoryBindForeignTablesIsRequiredBeforeJoiningThem covers the entry
+// point a caller that builds a repository outside the module has to use. Until
+// the owners' names arrive, a statement that JOINs them would run against an
+// empty table name, so the reader reports the names as missing instead.
+func TestRepositoryBindForeignTablesIsRequiredBeforeJoiningThem(t *testing.T) {
+	harness := newRepositoryHarness(t, "sl_")
+	unbound := NewRepository(harness.runtime, newRepositoryTestIDs(7000))
+	role, err := harness.repository.CreateRole(t.Context(), guid.ID(1), "Reviewers", "")
+	require.NoError(t, err)
+
+	_, err = unbound.ListDirectoryBindings(t.Context(), 1, role.ID)
+	require.ErrorIs(t, err, ErrUnavailable, "an unbound repository must not join an empty table name")
+	_, err = unbound.GetRoleDataScope(t.Context(), 1, role.ID)
+	require.ErrorIs(t, err, ErrUnavailable)
+
+	// A receiver that does not exist cannot record anything.
+	require.ErrorIs(t, (*Repository)(nil).BindForeignTables(
+		publishedDirectoryTables("sl_"), publishedPrincipalTable("sl_"),
+	), ErrUnavailable)
+
+	// A published set with a gap in it is refused: the JOIN it would build
+	// reads a table this deployment does not have.
+	partial := publishedDirectoryTables("sl_")
+	partial.Departments = gormx.TableName{}
+	require.ErrorContains(t, unbound.BindForeignTables(partial, publishedPrincipalTable("sl_")),
+		"organization left Departments empty")
+	_, err = unbound.ListDirectoryBindings(t.Context(), 1, role.ID)
+	require.ErrorIs(t, err, ErrUnavailable, "a refused directory set must not be recorded")
+	require.ErrorContains(t, unbound.BindForeignTables(publishedDirectoryTables("sl_"), PrincipalTableNames{}),
+		"identity left Principals empty")
+
+	require.NoError(t, unbound.BindForeignTables(publishedDirectoryTables("sl_"), publishedPrincipalTable("sl_")))
+	bindings, err := unbound.ListDirectoryBindings(t.Context(), 1, role.ID)
+	require.NoError(t, err)
+	require.Empty(t, bindings)
+	scope, err := unbound.GetRoleDataScope(t.Context(), 1, role.ID)
+	require.NoError(t, err)
+	require.Equal(t, DataScopeAll, scope.Scope, "a role with no recorded scope defaults to the module default")
+}

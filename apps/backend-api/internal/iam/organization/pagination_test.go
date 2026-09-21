@@ -415,3 +415,98 @@ func TestInvitationListPageBoundsTheListing(t *testing.T) {
 	_, _, err = service.ListPage(t.Context(), 0, 0, 2)
 	assert.ErrorIs(t, err, ErrInvitationInvalid)
 }
+
+// TestPagedListingsSurfaceStorageFailuresInsteadOfAnEmptyPage pins that every
+// bounded listing reports a broken read. A page that swallowed the failure
+// would answer with an empty window and a zero total, which reads exactly like
+// a tenant that genuinely owns nothing, and a caller paging through it would
+// conclude the rows had been deleted.
+func TestPagedListingsSurfaceStorageFailuresInsteadOfAnEmptyPage(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		table string
+		call  func(*testing.T, *organizationHarness) error
+	}{
+		{name: "tenants", table: "iam_tenants", call: func(t *testing.T, h *organizationHarness) error {
+			service, _, _ := newTenantServiceForTest(t, h, newOrganizationTestIDs(2800))
+			_, _, err := service.ListPage(t.Context(), false, 0, 10)
+			return err
+		}},
+		{name: "positions", table: "iam_positions", call: func(t *testing.T, h *organizationHarness) error {
+			_, _, err := newPositionServiceForPaging(t, h).ListPage(t.Context(), 1, 0, 10)
+			return err
+		}},
+		{name: "groups", table: "iam_groups", call: func(t *testing.T, h *organizationHarness) error {
+			_, _, err := newGroupServiceForPaging(t, h).ListPage(t.Context(), 1, 0, 10)
+			return err
+		}},
+		{name: "invitations", table: "iam_invitations", call: func(t *testing.T, h *organizationHarness) error {
+			var principalCalls atomic.Int64
+			service := newInvitationService(t, h, &invitationCredentialFixture{}, &principalCalls)
+			_, _, err := service.ListPage(t.Context(), 1, 0, 10)
+			return err
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := newOrganizationHarness(t, "sl_")
+			require.NoError(t, h.db.Exec("DROP TABLE sl_"+test.table).Error)
+			assert.Error(t, test.call(t, h))
+		})
+	}
+
+	t.Run("position members", func(t *testing.T) {
+		h := newOrganizationHarness(t, "sl_")
+		service := newPositionServiceForPaging(t, h)
+		created, err := service.Create(t.Context(), 1, CreatePosition{Code: "engineer", Name: "Engineer"})
+		require.NoError(t, err)
+		_, _, err = service.ListMembersPage(t.Context(), 1, 987654, 0, 10)
+		assert.ErrorIs(t, err, ErrPositionNotFound, "an unknown position is missing, not a position nobody holds")
+		require.NoError(t, h.db.Exec("DROP TABLE sl_iam_position_members").Error)
+		_, _, err = service.ListMembersPage(t.Context(), 1, created.ID, 0, 10)
+		assert.Error(t, err)
+	})
+
+	t.Run("group members", func(t *testing.T) {
+		h := newOrganizationHarness(t, "sl_")
+		service := newGroupServiceForPaging(t, h)
+		created, err := service.Create(t.Context(), 1, CreateGroup{Name: "Operators"})
+		require.NoError(t, err)
+		_, _, err = service.ListMembersPage(t.Context(), 1, 987654, 0, 10)
+		assert.ErrorIs(t, err, ErrGroupNotFound, "an unknown group is missing, not a group nobody is in")
+		require.NoError(t, h.db.Exec("DROP TABLE sl_iam_group_members").Error)
+		_, _, err = service.ListMembersPage(t.Context(), 1, created.ID, 0, 10)
+		assert.Error(t, err)
+	})
+
+	t.Run("dynamic group members", func(t *testing.T) {
+		h := newOrganizationHarness(t, "sl_")
+		service := newGroupServiceForPaging(t, h)
+		rule := MembershipRule(`{"version":1,"match":"all","conditions":[{"field":"member.status","operator":"in","values":["active"]}]}`)
+		created, err := service.Create(t.Context(), 1, CreateGroup{Name: "Everyone", Type: GroupTypeDynamic, Rule: rule})
+		require.NoError(t, err)
+		require.NoError(t, h.db.Exec("DROP TABLE sl_iam_tenant_members").Error)
+		_, _, err = service.ListMembersPage(t.Context(), 1, created.ID, 0, 10)
+		assert.Error(t, err, "an unevaluatable rule cannot be reported as an empty membership")
+	})
+}
+
+// TestUnwiredRepositoryRefusesPagedListings pins that the paged reads resolve
+// their physical table names before they touch the writer. A page that skipped
+// that guard would dereference a nil writer and take the process down instead
+// of handing the caller an error it can report.
+func TestUnwiredRepositoryRefusesPagedListings(t *testing.T) {
+	t.Parallel()
+	unavailable := &Repository{}
+	_, _, err := unavailable.listTenantsPage(t.Context(), false, 0, 10)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, _, err = unavailable.listPositionsPage(t.Context(), 1, 0, 10)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, _, err = unavailable.listPositionMembersPage(t.Context(), 1, 2, 0, 10)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, _, err = unavailable.listGroupsPage(t.Context(), 1, 0, 10)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, _, err = unavailable.listGroupMembersPage(t.Context(), 1, 2, 0, 10)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, _, err = unavailable.listInvitationsPage(t.Context(), 1, 0, 10)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+}

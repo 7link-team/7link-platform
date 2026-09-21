@@ -329,3 +329,32 @@ func TestAnonymizePrincipalDoesNotRetryARefusal(t *testing.T) {
 	require.ErrorIs(t, err, ErrPrincipalRetained)
 	assert.Zero(t, attempts, "the retention fence is reached before any owner is touched")
 }
+
+// TestPrincipalLifecycleFailsClosedAfterDatabaseShutdown proves retention and
+// anonymization report a storage outage rather than answering with an empty
+// policy, which a console would read as "no retention is in force".
+func TestPrincipalLifecycleFailsClosedAfterDatabaseShutdown(t *testing.T) {
+	h := newIdentityHarness(t, "lcfail_")
+	ctx := t.Context()
+	p, err := h.service.Create(ctx, 7, "retained", testPassword, "Retained", "retained@example.test")
+	require.NoError(t, err)
+	h.service.anonymizer = func(context.Context, *gorm.DB, Principal, time.Time) error { return nil }
+	connection, err := h.db.DB()
+	require.NoError(t, err)
+	require.NoError(t, connection.Close())
+
+	lifecycle, err := h.service.GetPrincipalLifecycle(ctx, p.ID)
+	require.Error(t, err)
+	assert.Zero(t, lifecycle.Version)
+	assert.Nil(t, lifecycle.RetainUntil, "an unreachable database is not an absent retention policy")
+
+	status, err := h.service.PrincipalLifecycleStatus(ctx, p.ID)
+	require.Error(t, err)
+	assert.Empty(t, status.Blockers, "no blocker may be reported from a policy that was never read")
+	assert.False(t, status.Anonymized)
+
+	_, err = h.service.SetPrincipalRetention(ctx, p.ID, 0, identityTestNow.AddDate(1, 0, 0), false, "audit")
+	require.Error(t, err)
+	_, err = h.service.AnonymizePrincipal(ctx, p.ID, 0, "retained")
+	require.Error(t, err)
+}

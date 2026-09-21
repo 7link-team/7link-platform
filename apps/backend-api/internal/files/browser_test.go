@@ -12,6 +12,7 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -365,4 +366,67 @@ func TestFileBrowserRejectsInvalidRequestsAndUnavailableService(t *testing.T) {
 	h.service.references = nil
 	_, err = h.service.listRoots(h.ctx, testFileCollection(h.ctx), browserPageRequest{})
 	require.ErrorIs(t, err, errOperationUnavailable)
+}
+
+func TestFileCollectionValidateBindsScopeToTheCallersClaims(t *testing.T) {
+	personal := &authn.Claims{PrincipalID: 70}
+	tenantAdmin := &authn.Claims{PrincipalID: 70, TenantID: 90}
+	entityMember := &authn.Claims{PrincipalID: 70, TenantID: 90, EntityID: 80}
+
+	for name, valid := range map[string]struct {
+		collection fileCollection
+		claims     *authn.Claims
+	}{
+		"account by its owner":   {fileCollection{scope: "account", ownerID: 70}, personal},
+		"tenant by a member":     {fileCollection{scope: "tenant", tenantID: 90, ownerID: 90}, tenantAdmin},
+		"entity by a member":     {fileCollection{scope: "entity", tenantID: 90, ownerID: 80}, entityMember},
+		"department by a member": {fileCollection{scope: "department", tenantID: 90, ownerID: 81}, entityMember},
+	} {
+		assert.NoError(t, valid.collection.validate(valid.claims), name)
+	}
+
+	// Every rejection below is an attempt to read a collection the caller's own
+	// claims do not place them in. The scope in the URL never grants access on
+	// its own; it has to agree with the authenticated context.
+	for name, rejected := range map[string]struct {
+		collection fileCollection
+		claims     *authn.Claims
+		want       error
+	}{
+		"no claims":               {fileCollection{scope: "account", ownerID: 70}, nil, errOperationInput},
+		"no owner":                {fileCollection{scope: "account"}, personal, errOperationInput},
+		"unknown scope":           {fileCollection{scope: "workspace", ownerID: 70}, personal, errOperationInput},
+		"account of another":      {fileCollection{scope: "account", ownerID: 71}, personal, errOperationForbidden},
+		"account while in tenant": {fileCollection{scope: "account", ownerID: 70}, tenantAdmin, errOperationForbidden},
+		"account carrying tenant": {fileCollection{scope: "account", tenantID: 90, ownerID: 70}, personal, errOperationForbidden},
+		"other tenant":            {fileCollection{scope: "tenant", tenantID: 91, ownerID: 91}, tenantAdmin, errOperationForbidden},
+		"tenant owner mismatch":   {fileCollection{scope: "tenant", tenantID: 90, ownerID: 91}, tenantAdmin, errOperationForbidden},
+		"tenant scope no claims":  {fileCollection{scope: "tenant", tenantID: 90, ownerID: 90}, personal, errOperationForbidden},
+		"entity without entity":   {fileCollection{scope: "entity", tenantID: 90, ownerID: 80}, tenantAdmin, errOperationForbidden},
+		"entity other tenant":     {fileCollection{scope: "entity", tenantID: 91, ownerID: 80}, entityMember, errOperationForbidden},
+		"entity without tenant":   {fileCollection{scope: "entity", ownerID: 80}, entityMember, errOperationForbidden},
+		"department no entity":    {fileCollection{scope: "department", tenantID: 90, ownerID: 81}, tenantAdmin, errOperationForbidden},
+	} {
+		assert.ErrorIs(t, rejected.collection.validate(rejected.claims), rejected.want, name)
+	}
+}
+
+func TestBrowserNodeNameFallsBackToTheRootScope(t *testing.T) {
+	scope := "tenant"
+	named := &model.Node{Name: "reports"}
+	root := &model.Node{RootScope: &scope}
+	unnamed := &model.Node{}
+
+	// Ordinary nodes show their own name; a root has none, so it shows what it
+	// is. An empty string is the only safe answer for a nil row.
+	assert.Equal(t, "reports", browserNodeName(named))
+	assert.Equal(t, "tenant", browserNodeName(root))
+	assert.Empty(t, browserNodeName(unnamed))
+	assert.Empty(t, browserNodeName(nil))
+
+	// The path variant renders a root through its display name rather than the
+	// bare scope token, and otherwise matches browserNodeName.
+	assert.Equal(t, rootDisplayName(root), browserPathName(root))
+	assert.Equal(t, "reports", browserPathName(named))
+	assert.Empty(t, browserPathName(nil))
 }

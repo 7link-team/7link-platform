@@ -705,3 +705,76 @@ func TestServiceAccountValidationSQLIsFrozen(t *testing.T) {
 	_, _ = harness.service.ValidateServiceAccount(t.Context(), db, 10, 2, identityTestNow)
 	assert.Equal(t, []string{frozen}, recorded)
 }
+
+// TestServiceAccountOperationsFailClosedAfterDatabaseShutdown proves that a
+// storage outage is reported by every service-account entry point instead of
+// being flattened into an empty list, a missing account, or a silent success
+// that a caller would read as "there is nothing here".
+func TestServiceAccountOperationsFailClosedAfterDatabaseShutdown(t *testing.T) {
+	harness := newServiceAccountHarness(t, "sl_")
+	account, err := harness.service.CreateServiceAccount(t.Context(), 7, "robot", "Robot", "", nil)
+	require.NoError(t, err)
+	secret, err := harness.service.CreateServiceAccountCredential(
+		t.Context(), 7, account.ID, "ci", []string{"read"}, nil,
+	)
+	require.NoError(t, err)
+	connection, err := harness.db.DB()
+	require.NoError(t, err)
+	require.NoError(t, connection.Close())
+
+	ctx := t.Context()
+	for _, check := range []struct {
+		name string
+		call func() error
+	}{
+		{"validate", func() error {
+			_, err := harness.service.ValidateServiceAccount(ctx, harness.db, 7, account.ID, identityTestNow)
+			return err
+		}},
+		{"create", func() error {
+			_, err := harness.service.CreateServiceAccount(ctx, 7, "second", "Second", "", nil)
+			return err
+		}},
+		{"list", func() error {
+			_, _, err := harness.service.ListServiceAccounts(ctx, 7, "", 10, 0)
+			return err
+		}},
+		{"get", func() error { _, err := harness.service.GetServiceAccount(ctx, 7, account.ID); return err }},
+		{"replace", func() error {
+			_, err := harness.service.ReplaceServiceAccount(ctx, 7, account.ID, "Robot", "Robot", "active", nil, 1)
+			return err
+		}},
+		{"delete", func() error { return harness.service.DeleteServiceAccount(ctx, 7, account.ID, 1) }},
+		{"create credential", func() error {
+			_, err := harness.service.CreateServiceAccountCredential(ctx, 7, account.ID, "second", []string{"read"}, nil)
+			return err
+		}},
+		{"list credentials", func() error {
+			_, err := harness.service.ListServiceAccountCredentials(ctx, 7, account.ID)
+			return err
+		}},
+		{"revoke credential", func() error {
+			return harness.service.RevokeServiceAccountCredential(ctx, 7, account.ID, secret.Credential.ID)
+		}},
+		{"resolve owner", func() error {
+			_, _, err := harness.service.resolveServiceAccountOwner(ctx, account.ID)
+			return err
+		}},
+	} {
+		t.Run(check.name, func(t *testing.T) {
+			require.Error(t, check.call(), "a closed database must not read as an answer")
+		})
+	}
+
+	// The read paths must not report a usable account either.
+	valid, err := harness.service.ValidateServiceAccount(ctx, harness.db, 7, account.ID, identityTestNow)
+	require.Error(t, err)
+	assert.False(t, valid, "an unreachable database never validates a credential")
+	accounts, total, err := harness.service.ListServiceAccounts(ctx, 7, "", 10, 0)
+	require.Error(t, err)
+	assert.Empty(t, accounts)
+	assert.Zero(t, total)
+	_, found, err := harness.service.resolveServiceAccountOwner(ctx, account.ID)
+	require.Error(t, err)
+	assert.False(t, found, "an unreachable database is not an absent owner")
+}

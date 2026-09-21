@@ -209,3 +209,90 @@ func TestProvisionedGroupReplacementAndGuardFailureRollback(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, StatusActive, stored.Status)
 }
+
+// TestProvisionedGroupWritesAbortWhenThePolicyRevisionCannotAdvance pins that
+// the directory-provisioning entry points hold the same contract as the
+// interactive ones: the caller's transaction is only worth committing once the
+// tenant's authorization policy revision has moved with the group.
+func TestProvisionedGroupWritesAbortWhenThePolicyRevisionCannotAdvance(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	h.seedMember(t, 1, 10, "Alice")
+	service := newBoundGroupService(t,
+		h.runtime, h.appender, &organizationMemberChecker{prefix: h.prefix},
+		&organizationAdministratorGuard{}, newOrganizationTestIDs(900),
+	)
+	service.now = func() time.Time { return organizationTestNow }
+	created, err := service.CreateProvisionedTo(t.Context(), h.db, 1, ProvisionedGroupInput{
+		DisplayName: "Directory Operators", Active: true, MemberIDs: []guid.ID{10},
+	})
+	require.NoError(t, err)
+	require.NoError(t, h.db.Exec("DROP TABLE sl_iam_policy_revisions").Error)
+
+	_, err = service.CreateProvisionedTo(t.Context(), h.db, 1, ProvisionedGroupInput{
+		DisplayName: "Directory Viewers", Active: true,
+	})
+	assert.Error(t, err)
+	_, err = service.ReplaceProvisionedTo(t.Context(), h.db, 1, created.ID, ProvisionedGroupInput{
+		DisplayName: "Directory Readers", Active: true, MemberIDs: []guid.ID{10},
+	})
+	assert.Error(t, err)
+	_, err = service.DisableProvisionedTo(t.Context(), h.db, 1, created.ID)
+	assert.Error(t, err)
+}
+
+// TestProvisionedGroupWritesRejectBadInputAndUnusableReferences pins the
+// guards the directory-provisioning entry points apply before they write: a
+// missing selector, an exhausted id source, a name another group already
+// holds, a group that is not there, a principal who is not an active member,
+// and a guard that refuses the change.
+func TestProvisionedGroupWritesRejectBadInputAndUnusableReferences(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	h.seedMember(t, 1, 10, "Alice")
+	guard := &organizationAdministratorGuard{}
+	members := &organizationMemberChecker{prefix: h.prefix}
+	service := newBoundGroupService(t, h.runtime, h.appender, members, guard, newOrganizationTestIDs(1100))
+	service.now = func() time.Time { return organizationTestNow }
+	input := ProvisionedGroupInput{DisplayName: "Directory Operators", Active: true, MemberIDs: []guid.ID{10}}
+	created, err := service.CreateProvisionedTo(t.Context(), h.db, 1, input)
+	require.NoError(t, err)
+
+	_, err = service.CreateProvisionedTo(t.Context(), h.db, 0, input)
+	assert.ErrorIs(t, err, ErrGroupInvalid)
+	_, err = service.CreateProvisionedTo(t.Context(), h.db, 1, input)
+	assert.ErrorIs(t, err, ErrGroupNameConflict, "a provisioned group cannot take a name the tenant already uses")
+
+	failing := newBoundGroupService(t, h.runtime, h.appender, members, guard, failingOrganizationIDs{})
+	_, err = failing.CreateProvisionedTo(t.Context(), h.db, 1, ProvisionedGroupInput{DisplayName: "Directory Viewers"})
+	assert.ErrorContains(t, err, "generate provisioned group id")
+
+	_, err = service.ReplaceProvisionedTo(t.Context(), h.db, 1, 0, input)
+	assert.ErrorIs(t, err, ErrGroupInvalid)
+	_, err = service.ReplaceProvisionedTo(t.Context(), h.db, 1, 987654, input)
+	assert.ErrorIs(t, err, ErrGroupNotFound)
+	_, err = service.ReplaceProvisionedTo(t.Context(), h.db, 1, created.ID, ProvisionedGroupInput{
+		DisplayName: "Directory Operators", Active: true, MemberIDs: []guid.ID{11},
+	})
+	assert.ErrorIs(t, err, ErrGroupMemberInactive, "a provisioned membership cannot name a principal outside the tenant")
+	_, err = service.DisableProvisionedTo(t.Context(), h.db, 1, 987654)
+	assert.ErrorIs(t, err, ErrGroupNotFound)
+
+	// The administrator guard runs inside the caller's transaction, so a
+	// refusal has to reach the caller intact for the caller to roll it back.
+	guard.err = errors.New("administrator guard unavailable")
+	assert.ErrorIs(t, h.db.Transaction(func(tx *gorm.DB) error {
+		_, replaceErr := service.ReplaceProvisionedTo(t.Context(), tx, 1, created.ID, ProvisionedGroupInput{
+			DisplayName: "Directory Operators", Active: false, MemberIDs: []guid.ID{10},
+		})
+		return replaceErr
+	}), guard.err)
+	guard.err, guard.verifyErr = nil, errors.New("last administrator")
+	assert.ErrorIs(t, h.db.Transaction(func(tx *gorm.DB) error {
+		_, disableErr := service.DisableProvisionedTo(t.Context(), tx, 1, created.ID)
+		return disableErr
+	}), guard.verifyErr)
+
+	stored, err := service.Get(t.Context(), 1, created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, StatusActive, stored.Status, "no refused change may survive its rolled back transaction")
+	assert.Equal(t, created.Version, stored.Version)
+}

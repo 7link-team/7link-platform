@@ -245,3 +245,84 @@ func TestDepartmentRepositoryFailureAndValidation(t *testing.T) {
 	_, err := h.service.List(t.Context(), 1)
 	assert.Error(t, err)
 }
+
+// TestDepartmentWritesAbortWhenThePolicyRevisionCannotAdvance pins that a
+// department write is only committed once the tenant's authorization policy
+// revision has moved with it. The revision is what tells every cache that its
+// view of the directory is stale, so a write that committed without it would
+// leave the deployment authorizing against a hierarchy that no longer exists.
+func TestDepartmentWritesAbortWhenThePolicyRevisionCannotAdvance(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	created, err := h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Engineering"})
+	require.NoError(t, err)
+	require.NoError(t, h.db.Exec("DROP TABLE sl_iam_policy_revisions").Error)
+
+	_, err = h.service.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Operations"})
+	assert.Error(t, err)
+	_, err = h.service.Update(t.Context(), 1, created.ID, UpdateDepartment{
+		Name: stringPointer("Platform"), Version: created.Version,
+	})
+	assert.Error(t, err)
+	assert.Error(t, h.service.Delete(t.Context(), 1, created.ID, created.Version))
+
+	items, err := h.service.List(t.Context(), 1)
+	require.NoError(t, err)
+	require.Len(t, items, 1, "no department may be added or removed without a revision bump")
+	assert.Equal(t, "Engineering", items[0].Name, "a rejected rename must not survive")
+	assert.Equal(t, created.Version, items[0].Version)
+}
+
+// TestDepartmentUpdateAppliesStatusAndOrderAndRefusesAMissingParent pins the
+// two fields the department update path carries besides the name, and the
+// guard that keeps the hierarchy from being re-parented onto a department
+// that is not there.
+func TestDepartmentUpdateAppliesStatusAndOrderAndRefusesAMissingParent(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	created, err := h.service.Create(t.Context(), 1, CreateDepartment{
+		EntityID: organizationEntityOne, Name: "Engineering", SortOrder: 3,
+	})
+	require.NoError(t, err)
+
+	updated, err := h.service.Update(t.Context(), 1, created.ID, UpdateDepartment{
+		Status: stringPointer(StatusDisabled), SortOrder: intPointer(9), Version: created.Version,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, StatusDisabled, updated.Status)
+	assert.Equal(t, 9, updated.SortOrder)
+	assert.Equal(t, created.Version+1, updated.Version)
+	stored, err := h.service.Get(t.Context(), 1, created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, StatusDisabled, stored.Status)
+	assert.Equal(t, 9, stored.SortOrder)
+
+	missing := guid.ID(987654)
+	_, err = h.service.Update(t.Context(), 1, created.ID, UpdateDepartment{
+		ParentID: &missing, Version: updated.Version,
+	})
+	assert.ErrorIs(t, err, ErrNotFound)
+}
+
+// TestDepartmentServiceRejectsInvalidInputAndAnUnwiredRepository pins the
+// guards that run before the department service reaches storage. An unwired
+// service must report that it is unavailable rather than dereference a nil
+// writer, and a malformed selector must be refused rather than widened into a
+// cross-tenant read.
+func TestDepartmentServiceRejectsInvalidInputAndAnUnwiredRepository(t *testing.T) {
+	unwired := &Service{now: func() time.Time { return organizationTestNow }}
+	_, err := unwired.List(t.Context(), 1)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, err = unwired.Get(t.Context(), 1, 2)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+
+	h := newOrganizationHarness(t, "sl_")
+	_, err = h.service.Get(t.Context(), 1, 0)
+	assert.ErrorIs(t, err, ErrInvalid)
+	_, err = h.service.Create(t.Context(), 0, CreateDepartment{EntityID: organizationEntityOne, Name: "Engineering"})
+	assert.ErrorIs(t, err, ErrInvalid)
+	_, err = h.service.Update(t.Context(), 1, 0, UpdateDepartment{Version: 1})
+	assert.ErrorIs(t, err, ErrInvalid)
+
+	failing := newBoundService(t, h.runtime, h.appender, failingOrganizationIDs{})
+	_, err = failing.Create(t.Context(), 1, CreateDepartment{EntityID: organizationEntityOne, Name: "Engineering"})
+	assert.ErrorContains(t, err, "generate department id")
+}

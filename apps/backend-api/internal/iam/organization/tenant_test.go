@@ -144,3 +144,59 @@ func TestTenantMutationFailuresRollbackAndDeletedRowsRemainQueryable(t *testing.
 	_, err = getTenantRow(t.Context(), nil, 1)
 	assert.ErrorIs(t, err, ErrInvalidTenant)
 }
+
+// TestTenantWritesAbortWhenThePolicyRevisionCannotAdvance pins that creating,
+// renaming, and deleting a tenant each commit together with that tenant's
+// authorization policy revision. A tenant whose lifecycle moved without the
+// revision would keep being authorized from caches that still describe its
+// previous state.
+func TestTenantWritesAbortWhenThePolicyRevisionCannotAdvance(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	service, _, _ := newTenantServiceForTest(t, h, newOrganizationTestIDs(2600))
+	service.now = func() time.Time { return organizationTestNow }
+	created, err := service.Create(t.Context(), newTenantForTest("acme", "Acme"))
+	require.NoError(t, err)
+	require.NoError(t, h.db.Exec("DROP TABLE sl_iam_policy_revisions").Error)
+
+	_, err = service.Create(t.Context(), newTenantForTest("globex", "Globex"))
+	assert.Error(t, err)
+	_, err = service.Update(t.Context(), created.ID, UpdateTenant{
+		Name: stringPointer("Acme Holdings"), Version: created.Version,
+	})
+	assert.Error(t, err)
+	assert.Error(t, service.Delete(t.Context(), created.ID, created.Version))
+
+	tenants, err := service.List(t.Context(), true)
+	require.NoError(t, err)
+	require.Len(t, tenants, 1, "no tenant may be created or deleted without a revision bump")
+	assert.Equal(t, "Acme", tenants[0].Name, "a rejected rename must not survive")
+	assert.Equal(t, TenantActive, tenants[0].Status)
+}
+
+// TestTenantServiceRejectsInvalidSelectorsAndAnUnwiredRepository pins the
+// guards that run before the tenant service reaches storage: an unwired
+// service reports unavailability instead of dereferencing a nil writer, and a
+// malformed selector is refused rather than widened into a platform-wide read.
+func TestTenantServiceRejectsInvalidSelectorsAndAnUnwiredRepository(t *testing.T) {
+	unwired := &TenantService{now: func() time.Time { return organizationTestNow }}
+	_, err := unwired.List(t.Context(), false)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, err = unwired.ListByMember(t.Context(), 10)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, err = unwired.Get(t.Context(), 1)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+
+	h := newOrganizationHarness(t, "sl_")
+	service, _, _ := newTenantServiceForTest(t, h, newOrganizationTestIDs(2700))
+	service.now = func() time.Time { return organizationTestNow }
+	_, err = service.ListByMember(t.Context(), 0)
+	assert.ErrorIs(t, err, ErrInvalidTenant)
+	_, err = service.Update(t.Context(), 0, UpdateTenant{Version: 1})
+	assert.ErrorIs(t, err, ErrInvalidTenant)
+	assert.ErrorIs(t, service.Delete(t.Context(), 0, 1), ErrInvalidTenant)
+
+	failing := newBoundTenantService(t, h.runtime, h.appender, failingOrganizationIDs{},
+		newTenantBootstrapStub().capability(), newTenantOwnerStub().capability())
+	_, err = failing.Create(t.Context(), newTenantForTest("acme", "Acme"))
+	assert.ErrorContains(t, err, "generate tenant id")
+}

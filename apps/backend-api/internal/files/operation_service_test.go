@@ -18,6 +18,7 @@ import (
 	"7link.com/platform/pkg/extension/authz"
 	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -350,4 +351,42 @@ func TestOperationServiceConcurrentReplayAuditsOnce(t *testing.T) {
 	count, err := q.Operation.WithContext(t.Context()).Count()
 	require.NoError(t, err)
 	require.EqualValues(t, 1, count)
+}
+
+// TestImmediateOperationSurfacesStorageFailuresAtEveryStage drops one table at
+// a time and re-runs the same operation. Each table backs a different stage of
+// the run - the tree walk, the permission rules and the operation record - and
+// losing any of them has to abort the operation.
+// An operation that continued past a missing stage would report success while
+// having skipped authorization or left no durable record of what it did.
+func TestImmediateOperationSurfacesStorageFailuresAtEveryStage(t *testing.T) {
+	// file_operation_items is deliberately absent: this request records an
+	// operation row but no item rows, so that table is not on its path and
+	// asserting a failure against it would assert something untrue.
+	for _, table := range []string{
+		"file_node_closure",
+		"file_node_acl",
+		"file_operations",
+	} {
+		t.Run(table, func(t *testing.T) {
+			h := newOperationServiceHarness(t)
+			// Positive control on a clean harness: the same request succeeds,
+			// so the failure below is attributable to the dropped table.
+			_, err := h.service.run(h.ctx, "control-"+table, h.input)
+			require.NoError(t, err)
+
+			require.NoError(t, h.db.Exec("DROP TABLE "+h.tree.prefix+table).Error)
+			_, err = h.service.run(h.ctx, "broken-"+table, h.input)
+			assert.Error(t, err, "losing %s must abort the operation", table)
+		})
+	}
+}
+
+func TestImmediateOperationRejectsAnUnauthenticatedCaller(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	// The operation service derives its actor from the request context. With no
+	// claims there is nobody to authorize, so it must refuse rather than fall
+	// back to an implicit identity.
+	_, err := h.service.run(t.Context(), "anonymous", h.input)
+	assert.Error(t, err)
 }

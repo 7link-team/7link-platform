@@ -1,8 +1,11 @@
 package app
 
 import (
+	"7link.com/platform/internal/iam/identity"
+	"7link.com/platform/internal/infra/migrationstatus"
 	"context"
 	"testing"
+	"time"
 
 	healthservice "7link.com/platform/internal/infra/health/service"
 	"7link.com/platform/pkg/appenv"
@@ -61,4 +64,29 @@ func registeredRegistry(mods ...module.Module) *module.Registry {
 	_ = registry.Register(mods...)
 	_ = registry.Activate()
 	return registry
+}
+
+func TestCrossCuttingProvidersRefuseToWorkWithoutARuntime(t *testing.T) {
+	app := &App{}
+	services := module.NewServices()
+	require.NoError(t, app.provideCrossCutting(services))
+	// Publishing the same contract twice is a wiring mistake, not something to
+	// silently overwrite, so a second pass over the same services must fail.
+	require.Error(t, app.provideCrossCutting(services))
+	require.NoError(t, services.Seal())
+
+	// The anonymizer, the health checkers and the migration inspector are all
+	// published eagerly at wiring time but resolve lazily. Without a runtime
+	// each must refuse rather than operate on a nil database.
+	anonymize, err := module.Resolve[identity.PrincipalAnonymizer](services)
+	require.NoError(t, err)
+	assert.ErrorIs(t, anonymize(t.Context(), nil, identity.Principal{}, time.Now()), identity.ErrUnavailable)
+
+	inspector, err := module.Resolve[migrationstatus.Inspector](services)
+	require.NoError(t, err)
+	reports, err := inspector(t.Context())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "writable database is not configured")
+	assert.Nil(t, reports)
+
 }

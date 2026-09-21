@@ -522,3 +522,62 @@ func TestIdentityErrorMapsEveryDomainSentinelOnce(t *testing.T) {
 		})
 	}
 }
+
+// TestIdentityHTTPReportsStorageFailuresInsteadOfEmptyAnswers drops the tables
+// each route reads and proves the transport reports the outage. A read that
+// answered 200 with an empty page, or a write that answered 200 without
+// writing, would be indistinguishable from a tenant that really is empty.
+func TestIdentityHTTPReportsStorageFailuresInsteadOfEmptyAnswers(t *testing.T) {
+	harness := newIdentityHTTPHarness(t, true)
+	tenant, auth := identityTenantPath(7), "Authorization: Bearer test"
+	created := harness.api.Post(tenant+"/service-accounts", auth, map[string]any{
+		"login_name": "robot", "display_name": "Robot",
+	})
+	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
+	account := decodeIdentityEnvelope[ServiceAccount](t, created).Data
+	credential := harness.api.Post("/service-accounts/"+account.ID.String()+"/credentials", auth, map[string]any{
+		"name": "ci", "scopes": []string{"read"},
+	})
+	require.Equal(t, http.StatusCreated, credential.Code, credential.Body.String())
+	secret := decodeIdentityEnvelope[ServiceAccountCredentialSecret](t, credential).Data
+	accountPath := "/service-accounts/" + account.ID.String()
+
+	// The credential store alone is gone: the account still resolves, so the
+	// failure has to come from the operation rather than from authorization.
+	require.NoError(t, harness.db.Exec("DROP TABLE "+harness.table("iam_service_account_credentials")).Error)
+	for name, response := range map[string]*httptest.ResponseRecorder{
+		"list credentials": harness.api.Get(accountPath+"/credentials", auth),
+		"create credential": harness.api.Post(accountPath+"/credentials", auth, map[string]any{
+			"name": "second", "scopes": []string{"read"},
+		}),
+		"revoke credential": harness.api.Delete(accountPath+"/credentials/"+secret.Credential.ID.String(), auth),
+	} {
+		assert.Equal(t, http.StatusInternalServerError, response.Code, "%s: %s", name, response.Body.String())
+	}
+
+	// Memberships are gone: creating an account or a principal cannot succeed.
+	require.NoError(t, harness.db.Exec("DROP TABLE "+harness.table("iam_tenant_members")).Error)
+	assert.Equal(t, http.StatusInternalServerError, harness.api.Post(tenant+"/service-accounts", auth, map[string]any{
+		"login_name": "robot2", "display_name": "Robot Two",
+	}).Code)
+	assert.Equal(t, http.StatusInternalServerError, harness.api.Post(tenant+"/principals", auth, map[string]any{
+		"login_name": "alice", "password": testPassword, "display_name": "Alice",
+	}).Code)
+
+	// Identities are gone: every listing and account read reports the outage
+	// rather than answering with nothing found.
+	require.NoError(t, harness.db.Exec("PRAGMA foreign_keys = OFF").Error)
+	require.NoError(t, harness.db.Exec("DROP TABLE "+harness.table("iam_principals")).Error)
+	for name, response := range map[string]*httptest.ResponseRecorder{
+		"list principals":       harness.api.Get(tenant+"/principals?limit=10", auth),
+		"list service accounts": harness.api.Get(tenant+"/service-accounts?limit=10", auth),
+		"get service account":   harness.api.Get(accountPath, auth),
+		"replace service account": harness.api.Put(accountPath, auth, map[string]any{
+			"display_name": "Robot", "description": "Robot", "status": "active", "version": 1,
+		}),
+		"delete service account": harness.api.Delete(accountPath+"?version=1", auth),
+	} {
+		assert.Equal(t, http.StatusInternalServerError, response.Code, "%s: %s", name, response.Body.String())
+		assert.NotContains(t, response.Body.String(), `"items":[]`, "%s must not answer as an empty page", name)
+	}
+}

@@ -11,6 +11,8 @@ import (
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"7link.com/platform/pkg/module"
 	"context"
+	"github.com/danielgtaylor/huma/v2/humatest"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"path/filepath"
@@ -176,4 +178,19 @@ func TestFileCleanupWorkerExpiresDurableOperationAndReleasesPins(t *testing.T) {
 	pins, err := q.OperationItem.WithContext(t.Context()).Where(q.OperationItem.PinnedNodeID.IsNotNull()).Count()
 	require.NoError(t, err)
 	require.Zero(t, pins)
+}
+
+func TestFileModuleHTTPRegistrationRequiresItsCollaborators(t *testing.T) {
+	// RegisterHTTP is the module's transport wiring. Without the operation
+	// service or the registrar there is nothing to route to and no guard to
+	// enforce, so it must refuse rather than publish unguarded routes.
+	for name, module := range map[string]*Module{
+		"nil module":    nil,
+		"no operations": {registrar: authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry())},
+		"no registrar":  {operations: &operationService{}},
+	} {
+		_, api := humatest.New(t)
+		assert.ErrorIs(t, module.RegisterHTTP(t.Context(), api), errOperationUnavailable, name)
+		assert.Empty(t, api.OpenAPI().Paths, name)
+	}
 }

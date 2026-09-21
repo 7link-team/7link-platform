@@ -1,13 +1,17 @@
 package files
 
 import (
+	"context"
 	"io"
 	"strings"
 	"testing"
 
+	"7link.com/platform/internal/files/model"
 	"7link.com/platform/internal/files/query"
 	"7link.com/platform/pkg/extension/authn"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestBasicFileLifecycleUsesPersonalRootAndImmutableContent(t *testing.T) {
@@ -144,4 +148,199 @@ func TestAccountFileRootIsLazyIdempotentAndIsolatedFromTenants(t *testing.T) {
 	require.Empty(t, otherRoots.Items)
 	_, err = h.service.getFileEntry(otherAccount, root.ID)
 	require.ErrorIs(t, err, errOperationForbidden)
+}
+
+func TestRootDisplayNameLabelsEveryRootScope(t *testing.T) {
+	scoped := func(scope string) *model.Node { return &model.Node{RootScope: &scope} }
+
+	// Roots carry no stored name, so the browser labels them by what they are.
+	// Every scope the tree can produce needs its own label, otherwise a root
+	// would render blank or as a raw scope token.
+	for scope, want := range map[string]string{
+		"account":    "Account files",
+		"personal":   "Personal files",
+		"tenant":     "Tenant files",
+		"entity":     "Entity files",
+		"department": "Department files",
+	} {
+		assert.Equal(t, want, rootDisplayName(scoped(scope)), scope)
+	}
+
+	// A scope the labeller does not know must not invent a label; it falls back
+	// to the node's own naming so an unlabelled root still renders something.
+	assert.Equal(t, "workspace", rootDisplayName(scoped("workspace")))
+	assert.Equal(t, "reports", rootDisplayName(&model.Node{Name: "reports"}))
+	assert.Empty(t, rootDisplayName(&model.Node{}))
+	assert.Empty(t, rootDisplayName(nil))
+}
+
+func TestBasicClaimsRequiresACompletelyWiredUploadPath(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	ctx := authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 70})
+
+	ready, err := h.service.basicClaims(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, ready)
+
+	// Every collaborator below is required to complete an upload or download.
+	// Missing any one of them must be refused up front rather than surfacing
+	// as a nil dereference partway through a file write.
+	for name, break_ := range map[string]func(s *operationService){
+		"no ids":       func(s *operationService) { s.ids = nil },
+		"no appender":  func(s *operationService) { s.appender = nil },
+		"no objects":   func(s *operationService) { s.objects = nil },
+		"no driver":    func(s *operationService) { s.driver = nil },
+		"no timeout":   func(s *operationService) { s.uploadTimeout = 0 },
+		"no max bytes": func(s *operationService) { s.maxUploadBytes = 0 },
+	} {
+		broken := *h.service
+		break_(&broken)
+		claims, err := broken.basicClaims(ctx)
+		assert.ErrorIs(t, err, errOperationUnavailable, name)
+		assert.Nil(t, claims, name)
+	}
+
+	// An unauthenticated caller is rejected before any of that is considered.
+	_, err = h.service.basicClaims(t.Context())
+	assert.Error(t, err)
+}
+
+// TestBasicAndBrowserEntryPointsSurfaceStorageFailures drops the tables the
+// file tree is read from and walks every entry point. A storage outage has to
+// come back as an error from all of them: an entry point that swallowed the
+// fault would answer with an empty listing or a missing file, telling the
+// caller their data is gone when in fact it was never read.
+func TestBasicAndBrowserEntryPointsSurfaceStorageFailures(t *testing.T) {
+	h := newOperationServiceHarness(t)
+
+	root, err := h.service.ensureOwnedRoot(h.ctx, "personal")
+	require.NoError(t, err)
+	uploaded, err := h.service.uploadFile(h.ctx, root.ID, "report.txt", "text/plain", strings.NewReader("abc"), 3)
+	require.NoError(t, err)
+	directory, err := h.service.createDirectory(h.ctx, root.ID, "archive")
+	require.NoError(t, err)
+
+	// A positive control first: every path below works before the outage, so a
+	// later error is attributable to the dropped tables and not to bad input.
+	_, err = h.service.listChildren(h.ctx, root.ID, browserPageRequest{Limit: 10})
+	require.NoError(t, err)
+
+	// The closure table backs every tree walk; the trash roots back the recycle
+	// bin listing, which does not walk the tree.
+	for _, table := range []string{"file_node_closure", "file_trash_roots"} {
+		require.NoError(t, h.db.Exec("DROP TABLE "+h.tree.prefix+table).Error, table)
+	}
+
+	collection := testFileCollection(h.ctx)
+	for name, call := range map[string]func() error{
+		"list roots": func() error {
+			_, err := h.service.listRoots(h.ctx, collection, browserPageRequest{Limit: 10})
+			return err
+		},
+		"list trash": func() error {
+			_, err := h.service.listTrash(h.ctx, collection, browserPageRequest{Limit: 10})
+			return err
+		},
+		"list children": func() error {
+			_, err := h.service.listChildren(h.ctx, root.ID, browserPageRequest{Limit: 10})
+			return err
+		},
+		"read entry": func() error {
+			_, err := h.service.readFileEntry(h.ctx, root.ID, "report.txt")
+			return err
+		},
+		"ensure root": func() error {
+			_, err := h.service.ensureOwnedRoot(h.ctx, "personal")
+			return err
+		},
+		"create directory": func() error {
+			_, err := h.service.createDirectory(h.ctx, root.ID, "another")
+			return err
+		},
+		"upload": func() error {
+			_, err := h.service.uploadFile(h.ctx, root.ID, "second.txt", "text/plain", strings.NewReader("xyz"), 3)
+			return err
+		},
+		"download": func() error {
+			_, err := h.service.downloadFile(h.ctx, uploaded.ID)
+			return err
+		},
+		"trash": func() error {
+			_, err := h.service.trashNode(h.ctx, directory.ID, directory.Revision)
+			return err
+		},
+		"restore": func() error {
+			_, err := h.service.restoreNode(h.ctx, directory.ID, directory.Revision)
+			return err
+		},
+		"restore as": func() error {
+			_, err := h.service.restoreNodeAs(h.ctx, directory.ID, directory.Revision, "renamed")
+			return err
+		},
+		"mutate": func() error {
+			return h.service.mutateNode(h.ctx, directory.ID, "rename",
+				func(context.Context, *gorm.DB, *authn.Claims, directoryTree, *model.Node, *nodeAuthorizer) error {
+					return nil
+				})
+		},
+	} {
+		assert.Error(t, call(), "%s must report the storage failure", name)
+	}
+}
+
+// TestFileOperationsFailClosedWhenPermissionsAreUnreadable removes the ACL
+// store and walks the authorized entry points. Every one must refuse. A path
+// that fell through to "allow" because it could not read the rules would turn
+// a storage fault into an authorization bypass, which is strictly worse than
+// an outage.
+func TestFileOperationsFailClosedWhenPermissionsAreUnreadable(t *testing.T) {
+	h := newOperationServiceHarness(t)
+
+	root, err := h.service.ensureOwnedRoot(h.ctx, "personal")
+	require.NoError(t, err)
+	directory, err := h.service.createDirectory(h.ctx, root.ID, "archive")
+	require.NoError(t, err)
+	uploaded, err := h.service.uploadFile(h.ctx, root.ID, "report.txt", "text/plain", strings.NewReader("abc"), 3)
+	require.NoError(t, err)
+
+	// Positive control: these succeed while the rules are readable.
+	_, err = h.service.downloadFile(h.ctx, uploaded.ID)
+	require.NoError(t, err)
+
+	require.NoError(t, h.db.Exec("DROP TABLE "+h.tree.prefix+"file_node_acl").Error)
+
+	for name, call := range map[string]func() error{
+		"list children": func() error {
+			_, err := h.service.listChildren(h.ctx, root.ID, browserPageRequest{Limit: 10})
+			return err
+		},
+		"read entry": func() error {
+			_, err := h.service.readFileEntry(h.ctx, root.ID, "report.txt")
+			return err
+		},
+		"download": func() error {
+			_, err := h.service.downloadFile(h.ctx, uploaded.ID)
+			return err
+		},
+		"create directory": func() error {
+			_, err := h.service.createDirectory(h.ctx, root.ID, "another")
+			return err
+		},
+		"upload": func() error {
+			_, err := h.service.uploadFile(h.ctx, root.ID, "second.txt", "text/plain", strings.NewReader("xyz"), 3)
+			return err
+		},
+		"trash": func() error {
+			_, err := h.service.trashNode(h.ctx, directory.ID, directory.Revision)
+			return err
+		},
+		"mutate": func() error {
+			return h.service.mutateNode(h.ctx, directory.ID, "rename",
+				func(context.Context, *gorm.DB, *authn.Claims, directoryTree, *model.Node, *nodeAuthorizer) error {
+					return nil
+				})
+		},
+	} {
+		assert.Error(t, call(), "%s must fail closed when the ACL store is unreadable", name)
+	}
 }

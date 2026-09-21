@@ -798,3 +798,122 @@ func TestSetStatusSurfacesMembershipQueryFailure(t *testing.T) {
 	assert.Contains(t, err.Error(), "revoke principal sessions")
 	assert.Equal(t, "active", harness.principal(t, principal.ID).Status)
 }
+
+// TestEnsureExternalPrincipalMatchesAVerifiedEmailUnderADifferentLogin covers
+// the account whose login name is not its address: an external identity must
+// be joined to it instead of a second account being created for the same person.
+func TestEnsureExternalPrincipalMatchesAVerifiedEmailUnderADifferentLogin(t *testing.T) {
+	t.Parallel()
+
+	harness := newIdentityHarness(t, "sl_")
+	local, err := harness.service.Create(t.Context(), 7, "alice", testPassword, "Alice", "alice@example.test")
+	require.NoError(t, err)
+
+	id, created, err := harness.service.EnsureExternalPrincipal(
+		t.Context(), harness.db, 8, "Alice@Example.test", "Alice External", identityTestNow,
+	)
+	require.NoError(t, err)
+	assert.False(t, created, "an address already held by an account must not create a second one")
+	assert.Equal(t, local.ID, id)
+	assert.Equal(t, "alice", harness.principal(t, id).LoginName, "the existing login name is not rewritten")
+	assert.Equal(t, "active", harness.member(t, 8, id).Status)
+	assert.Equal(t, int64(1), harness.principalCount(t))
+
+	// An address shared by two accounts is ambiguous, so neither is picked.
+	second, err := harness.service.Create(t.Context(), 7, "alice2", testPassword, "Alice Two", "alice@example.test")
+	require.NoError(t, err)
+	_, _, err = harness.service.EnsureExternalPrincipal(
+		t.Context(), harness.db, 8, "alice@example.test", "Alice External", identityTestNow,
+	)
+	assert.ErrorIs(t, err, ErrLoginConflict)
+	assert.Zero(t, harness.memberCount(t, 8, second.ID))
+}
+
+// TestEnsureExternalPrincipalRefusesAServiceAccountLoginName proves an external
+// login cannot take over a name a service account already owns: the human
+// lookup skips service accounts, so the refusal has to come from the insert.
+func TestEnsureExternalPrincipalRefusesAServiceAccountLoginName(t *testing.T) {
+	t.Parallel()
+
+	harness := newIdentityHarness(t, "sl_")
+	harness.seedTenant(t, 7, "active")
+	account, err := harness.service.CreateServiceAccount(t.Context(), 7, "robot@example.test", "Robot", "", nil)
+	require.NoError(t, err)
+
+	_, _, err = harness.service.EnsureExternalPrincipal(
+		t.Context(), harness.db, 7, "robot@example.test", "Robot Person", identityTestNow,
+	)
+	assert.ErrorIs(t, err, ErrPrincipalInactive)
+	assert.Equal(t, int64(1), harness.principalCount(t))
+	assert.Equal(t, "robot@example.test", harness.principal(t, account.ID).LoginName)
+}
+
+// TestPrincipalOperationsFailClosedAfterDatabaseShutdown proves a storage
+// outage reaches the caller from every principal entry point instead of being
+// reported as an empty page or an absent account.
+func TestPrincipalOperationsFailClosedAfterDatabaseShutdown(t *testing.T) {
+	harness := newIdentityHarness(t, "sl_")
+	harness.seedTenant(t, 7, "active")
+	principal, err := harness.service.Create(t.Context(), 7, "alice", testPassword, "Alice", "alice@example.test")
+	require.NoError(t, err)
+	connection, err := harness.db.DB()
+	require.NoError(t, err)
+	require.NoError(t, connection.Close())
+
+	ctx, display := t.Context(), "Alice Smith"
+	for _, check := range []struct {
+		name string
+		call func() error
+	}{
+		{"create", func() error {
+			_, err := harness.service.Create(ctx, 7, "bob", testPassword, "Bob", "")
+			return err
+		}},
+		{"create invited", func() error {
+			_, err := harness.service.CreateInvitedPrincipal(ctx, harness.db, 7, "carol", testPassword, "Carol", "")
+			return err
+		}},
+		{"create pending", func() error {
+			_, err := harness.service.CreatePendingPrincipal(
+				ctx, harness.db, "dave@example.test", "hash", "Dave", identityTestNow, harness.repository.ids,
+			)
+			return err
+		}},
+		{"ensure external", func() error {
+			_, _, err := harness.service.EnsureExternalPrincipal(
+				ctx, harness.db, 7, "erin@example.test", "Erin", identityTestNow,
+			)
+			return err
+		}},
+		{"get", func() error { _, err := harness.service.Get(ctx, 7, principal.ID); return err }},
+		{"update", func() error {
+			_, err := harness.service.Update(ctx, 7, principal.ID, &display, nil)
+			return err
+		}},
+		{"set status", func() error {
+			_, err := harness.service.SetStatus(ctx, 7, principal.ID, "disabled")
+			return err
+		}},
+		{"set platform status", func() error {
+			_, err := harness.service.SetPlatformStatus(ctx, principal.ID, "disabled")
+			return err
+		}},
+		{"create provisioned", func() error {
+			_, err := harness.service.CreateProvisionedTo(ctx, harness.db, 7, provisionedInput("scim.user"))
+			return err
+		}},
+		{"replace provisioned", func() error {
+			_, err := harness.service.ReplaceProvisionedTo(ctx, harness.db, 7, principal.ID, provisionedInput("scim.user"))
+			return err
+		}},
+	} {
+		t.Run(check.name, func(t *testing.T) {
+			require.Error(t, check.call(), "a closed database must not read as an answer")
+		})
+	}
+
+	rows, total, err := harness.service.List(ctx, 7, "", 10, 0)
+	require.Error(t, err)
+	assert.Empty(t, rows, "an unreachable database is not an empty tenant")
+	assert.Zero(t, total)
+}

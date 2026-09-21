@@ -6,6 +6,7 @@ import (
 
 	authnmodel "7link.com/platform/internal/iam/authn/model"
 	"7link.com/platform/internal/infra/guid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -118,4 +119,25 @@ func TestLateAuthorizationCannotCreateGrantAfterExitOrClosure(t *testing.T) {
 	require.Zero(t, count)
 	require.NoError(t, h.db.Table("iam_oauth_consent_requests").Count(&count).Error)
 	require.Zero(t, count)
+}
+
+// Revocation writes through the caller's transaction, which is what makes it
+// atomic with the membership change that triggered it. Without one there is
+// nothing to write through, and a storage fault while enumerating the clients
+// has to abort rather than stop early: a loop that returned after reading half
+// the registry would report every grant revoked while some still stood.
+func TestGrantRevocationRequiresACallerTransactionAndAbortsOnStorageFaults(t *testing.T) {
+	h, _ := newGrantHarness(t)
+	assert.ErrorIs(t, h.service.revokePrincipalGrantsOn(t.Context(), nil, 101, 0), ErrUnavailable)
+
+	client, secret := grantClient(t, h, "Unreachable registry")
+	grantTokens(t, h, client, secret)
+	require.NoError(t, h.db.Exec("DROP TABLE iam_oauth_clients").Error)
+	assert.Error(t, h.db.Transaction(func(tx *gorm.DB) error {
+		return h.service.revokePrincipalGrantsOn(t.Context(), tx, 101, 0)
+	}))
+	var standing int64
+	require.NoError(t, h.db.Table("iam_refresh_tokens").
+		Where("principal_id = 101 AND revoked_at IS NULL").Count(&standing).Error)
+	assert.EqualValues(t, 1, standing, "an aborted revocation must not be reported as a completed one")
 }

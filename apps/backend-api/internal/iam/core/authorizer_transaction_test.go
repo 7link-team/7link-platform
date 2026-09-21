@@ -413,3 +413,105 @@ func TestAuthorizationReferencesOnFailsClosedAndPublishesStableCapability(t *tes
 	require.NoError(t, module.Provide[AuthorizationReferencesOn](duplicate, resolve))
 	require.ErrorContains(t, instance.ProvideServices(duplicate), "provide IAM transaction authorization references")
 }
+
+// TestTenantConstraintOnSeesUncommittedPolicyAndRollsBack is the tenant-wide
+// counterpart of the entity evaluation above: a business transaction that asks
+// for its data filter must see its own uncommitted policy writes, and nothing
+// it observed may survive a rollback.
+func TestTenantConstraintOnSeesUncommittedPolicyAndRollsBack(t *testing.T) {
+	h, _, role := transactionAuthorizationFixture(t)
+	before, err := h.authorizer.Constraint(t.Context(), 1, "user_view", 11)
+	require.NoError(t, err)
+	require.True(t, before.AllowAll)
+
+	want := errors.New("business transaction failed")
+	err = h.db.Transaction(func(tx *gorm.DB) error {
+		initial, err := h.authorizer.TenantConstraintOn(t.Context(), tx, 1, "user_view", 11)
+		if err != nil {
+			return err
+		}
+		require.Equal(t, before, initial)
+		result := tx.Table(query.BindNames("sl_").RolePermissions.String()).
+			Where("tenant_id = ? AND role_id = ? AND permission_code = ?", 1, role.ID, "user_view").
+			Delete(&model.RolePermission{})
+		require.NoError(t, result.Error)
+		require.EqualValues(t, 1, result.RowsAffected)
+		require.NoError(t, h.authorizer.revisions.Bump(t.Context(), tx, 1, *h.now))
+		denied, err := h.authorizer.TenantConstraintOn(t.Context(), tx, 1, "user_view", 11)
+		if err != nil {
+			return err
+		}
+		require.False(t, denied.AllowAll, "the revocation this transaction wrote must be visible to it")
+		require.Greater(t, denied.Revision, initial.Revision)
+		return want
+	})
+	require.ErrorIs(t, err, want)
+
+	after, err := h.authorizer.Constraint(t.Context(), 1, "user_view", 11)
+	require.NoError(t, err)
+	require.Equal(t, before, after, "policy fence and evaluation do not independently commit")
+	require.Nil(t, h.authorizer.db, "transaction must not mutate shared evaluator")
+}
+
+func TestTenantConstraintOnRejectsInvalidAndMissingDependencies(t *testing.T) {
+	h, _, _ := transactionAuthorizationFixture(t)
+
+	// A handle that is not a transaction cannot hold the policy fence, so it is
+	// refused rather than silently evaluated without one.
+	for _, db := range []*gorm.DB{nil, h.db} {
+		_, err := h.authorizer.TenantConstraintOn(t.Context(), db, 1, "user_view", 11)
+		require.ErrorIs(t, err, ErrInvalidArgument)
+	}
+	for _, input := range []struct {
+		tenant, principal guid.ID
+		permission        string
+	}{
+		{0, 11, "user_view"},
+		{1, 0, "user_view"},
+		{1, 11, ""},
+		{1, 11, "not_a_permission"},
+		{1, 11, "role_view"},           // Declared, but not data scoped.
+		{1, 11, "platform_administer"}, // Platform scoped: no tenant data filter.
+	} {
+		err := h.db.Transaction(func(tx *gorm.DB) error {
+			_, err := h.authorizer.TenantConstraintOn(t.Context(), tx, input.tenant, input.permission, input.principal)
+			return err
+		})
+		require.ErrorIs(t, err, ErrInvalidArgument, "%s", input.permission)
+	}
+	for _, authorizer := range []*Authorizer{nil, {}, NewAuthorizer(h.runtime)} {
+		err := h.db.Transaction(func(tx *gorm.DB) error {
+			_, err := authorizer.TenantConstraintOn(t.Context(), tx, 1, "user_view", 11)
+			return err
+		})
+		require.ErrorIs(t, err, ErrUnavailable, "an unbound evaluator must not answer with an open filter")
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		_, err := h.authorizer.TenantConstraintOn(ctx, tx, 1, "user_view", 11)
+		return err
+	})
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+// TestTenantConstraintOnDeniesOutsideTheCallerTenant proves the pinned filter
+// carries the same tenant boundary the uncommitted-read variant does.
+func TestTenantConstraintOnDeniesOutsideTheCallerTenant(t *testing.T) {
+	h, _, _ := transactionAuthorizationFixture(t)
+	h.seedMember(t, 2, 22, MemberActive)
+
+	require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
+		for _, input := range []struct{ tenant, principal guid.ID }{{2, 11}, {1, 22}, {2, 22}} {
+			constraint, err := h.authorizer.TenantConstraintOn(t.Context(), tx, input.tenant, "user_view", input.principal)
+			if err != nil {
+				return err
+			}
+			require.False(t, constraint.AllowAll,
+				"tenant %s must not inherit tenant 1's grant for principal %s", input.tenant, input.principal)
+			require.Empty(t, constraint.OwnerIDs)
+		}
+		return nil
+	}))
+}

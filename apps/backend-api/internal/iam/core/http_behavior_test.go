@@ -738,3 +738,502 @@ func TestIAMHTTPInternalFailuresUseUniformEnvelope(t *testing.T) {
 		})
 	}
 }
+
+// TestIAMHTTPFailsClosedWhenStorageIsGone drives every route the module
+// registers while the database is unreachable. A route that answered 200 with
+// an empty list, or reported a write as done, would be indistinguishable from a
+// tenant that really holds nothing -- and an administration console would act
+// on that. The static catalogs are the deliberate exception: they are compiled
+// in, so they must keep answering while storage is down.
+func TestIAMHTTPFailsClosedWhenStorageIsGone(t *testing.T) {
+	harness := newHTTPIAMHarness(t, true)
+	auth, tenant := "Authorization: Bearer test", tenantPathPrefix(1)
+	seedHTTPPrincipal(t, harness.repositoryHarness, 12)
+	seedDirectoryFixtures(t, harness.repositoryHarness, 1)
+	_, err := harness.module.service.SetPlatformAdministrator(t.Context(), 11, true, nil)
+	require.NoError(t, err)
+	role, err := harness.module.service.CreateRole(t.Context(), 1, "Managers", "")
+	require.NoError(t, err)
+	entity, err := harness.module.service.CreateEntity(t.Context(), Entity{TenantID: 1, Type: "company", Name: "Company"})
+	require.NoError(t, err)
+	menu, err := harness.module.service.CreateMenu(t.Context(), Menu{TenantID: 1, Label: "People", Route: "/people", Status: MenuActive})
+	require.NoError(t, err)
+	roleID, entityID, menuID := role.ID.String(), entity.ID.String(), menu.ID.String()
+
+	connection, err := harness.db.DB()
+	require.NoError(t, err)
+	require.NoError(t, connection.Close())
+
+	// The compiled-in catalogs and the routes answered by the authorization
+	// evaluator describe the software rather than the rows of a deployment, so
+	// they keep answering while storage is gone.
+	for _, path := range []string{
+		"/scope-model", tenant + "/permission-catalog", tenant + "/menu-catalog",
+		"/platform/permission-catalog", tenant + "/field-catalog",
+	} {
+		response := harness.api.Get(path, auth)
+		require.Equal(t, http.StatusOK, response.Code, "%s: %s", path, response.Body.String())
+	}
+
+	condition := map[string]any{"condition": map[string]any{
+		"version": 1, "gte": []any{map[string]any{"context": "auth.acr"}, map[string]any{"value": 1}},
+	}}
+	for name, call := range map[string]func() *httptest.ResponseRecorder{
+		"my memberships":   func() *httptest.ResponseRecorder { return harness.api.Get("/me/memberships", auth) },
+		"leave membership": func() *httptest.ResponseRecorder { return harness.api.Delete("/me/memberships/1", auth) },
+		"list field policies": func() *httptest.ResponseRecorder {
+			return harness.api.Get(tenant+"/field-policies", auth)
+		},
+		"set field policy": func() *httptest.ResponseRecorder {
+			return harness.api.Put(tenant+"/field-policies/profile/display_name", auth, map[string]any{
+				"read": map[string]any{"mode": "all"}, "write": map[string]any{"mode": "all"}, "mask": "omit",
+			})
+		},
+		"delete field policy": func() *httptest.ResponseRecorder {
+			return harness.api.Delete(tenant+"/field-policies/profile/display_name", auth)
+		},
+		"list relationships": func() *httptest.ResponseRecorder {
+			return harness.api.Get(tenant+"/relationships?resource_id="+entityID, auth)
+		},
+		"put relationship": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/relationships", auth, map[string]any{
+				"subject_type": "principal", "subject_id": "12", "relation": "owner",
+				"resource_type": "company", "resource_id": entityID,
+			})
+		},
+		"delete relationship": func() *httptest.ResponseRecorder {
+			return harness.api.Delete(tenant+
+				"/relationships?subject_type=principal&subject_id=12&relation=owner&resource_type=company&resource_id="+entityID, auth)
+		},
+		"list platform administrators": func() *httptest.ResponseRecorder {
+			return harness.api.Get("/platform/administrators", auth)
+		},
+		"put platform administrator": func() *httptest.ResponseRecorder {
+			return harness.api.Put("/platform/administrators/12", auth, map[string]any{
+				"full_administrator": false, "permissions": []string{"tenant_view"},
+			})
+		},
+		"delete platform administrator": func() *httptest.ResponseRecorder {
+			return harness.api.Delete("/platform/administrators/12", auth)
+		},
+		"list entities": func() *httptest.ResponseRecorder { return harness.api.Get(tenant+"/entities", auth) },
+		"create entity": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/entities", auth, map[string]any{"type": "company", "name": "New"})
+		},
+		"get entity":    func() *httptest.ResponseRecorder { return harness.api.Get("/entities/"+entityID, auth) },
+		"delete entity": func() *httptest.ResponseRecorder { return harness.api.Delete("/entities/"+entityID, auth) },
+		"update entity": func() *httptest.ResponseRecorder {
+			return harness.api.Patch("/entities/"+entityID, auth, map[string]any{"name": "Renamed"})
+		},
+		"list entity role bindings": func() *httptest.ResponseRecorder {
+			return harness.api.Get("/entities/"+entityID+"/role-bindings", auth)
+		},
+		"put entity role binding": func() *httptest.ResponseRecorder {
+			return harness.api.Put("/entities/"+entityID+"/role-bindings/"+roleID+"/11", auth, map[string]any{"effect": "allow"})
+		},
+		"delete entity role binding": func() *httptest.ResponseRecorder {
+			return harness.api.Delete("/entities/"+entityID+"/role-bindings/"+roleID+"/11", auth)
+		},
+		"list roles": func() *httptest.ResponseRecorder { return harness.api.Get(tenant+"/roles", auth) },
+		"create role": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/roles", auth, map[string]any{"name": "New role"})
+		},
+		"get role":    func() *httptest.ResponseRecorder { return harness.api.Get("/roles/"+roleID, auth) },
+		"delete role": func() *httptest.ResponseRecorder { return harness.api.Delete("/roles/"+roleID, auth) },
+		"update role": func() *httptest.ResponseRecorder {
+			return harness.api.Patch("/roles/"+roleID, auth, map[string]any{"name": "Renamed"})
+		},
+		"get data scope": func() *httptest.ResponseRecorder { return harness.api.Get("/roles/"+roleID+"/data-scope", auth) },
+		"set data scope": func() *httptest.ResponseRecorder {
+			return harness.api.Put("/roles/"+roleID+"/data-scope", auth, map[string]any{"scope": "self"})
+		},
+		"list role permissions": func() *httptest.ResponseRecorder {
+			return harness.api.Get("/roles/"+roleID+"/permissions", auth)
+		},
+		"list role permission grants": func() *httptest.ResponseRecorder {
+			return harness.api.Get("/roles/"+roleID+"/permission-grants", auth)
+		},
+		"grant role permission": func() *httptest.ResponseRecorder {
+			return harness.api.Put("/roles/"+roleID+"/permissions/user_view", auth)
+		},
+		"revoke role permission": func() *httptest.ResponseRecorder {
+			return harness.api.Delete("/roles/"+roleID+"/permissions/user_view", auth)
+		},
+		"set permission condition": func() *httptest.ResponseRecorder {
+			return harness.api.Put("/roles/"+roleID+"/permissions/user_view/condition", auth, condition)
+		},
+		"clear permission condition": func() *httptest.ResponseRecorder {
+			return harness.api.Delete("/roles/"+roleID+"/permissions/user_view/condition", auth)
+		},
+		"list role members": func() *httptest.ResponseRecorder {
+			return harness.api.Get("/roles/"+roleID+"/members", auth)
+		},
+		"add role member": func() *httptest.ResponseRecorder {
+			return harness.api.Put("/roles/"+roleID+"/members/11", auth)
+		},
+		"remove role member": func() *httptest.ResponseRecorder {
+			return harness.api.Delete("/roles/"+roleID+"/members/11", auth)
+		},
+		"list directory bindings": func() *httptest.ResponseRecorder {
+			return harness.api.Get("/roles/"+roleID+"/directory-bindings", auth)
+		},
+		"add directory binding": func() *httptest.ResponseRecorder {
+			return harness.api.Put("/roles/"+roleID+"/directory-bindings/group/200", auth)
+		},
+		"remove directory binding": func() *httptest.ResponseRecorder {
+			return harness.api.Delete("/roles/"+roleID+"/directory-bindings/group/200", auth)
+		},
+		"list tenant members": func() *httptest.ResponseRecorder {
+			return harness.api.Get(tenant+"/members?limit=50", auth)
+		},
+		"create tenant member": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/members", auth, map[string]any{
+				"subject": "12", "display_name": "Second member", "status": "active",
+			})
+		},
+		"get tenant member": func() *httptest.ResponseRecorder { return harness.api.Get(tenant+"/members/11", auth) },
+		"update tenant member": func() *httptest.ResponseRecorder {
+			return harness.api.Patch(tenant+"/members/11", auth, map[string]any{"display_name": "Renamed"})
+		},
+		"list tenant member roles": func() *httptest.ResponseRecorder {
+			return harness.api.Get(tenant+"/members/11/roles", auth)
+		},
+		"member authorization sources": func() *httptest.ResponseRecorder {
+			return harness.api.Get(tenant+"/members/11/authorization-sources", auth)
+		},
+		"list menus": func() *httptest.ResponseRecorder { return harness.api.Get(tenant+"/menus", auth) },
+		"create menu": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/menus", auth, map[string]any{
+				"label": "Members", "route": "/members", "permission_code": "user_view", "status": "active",
+			})
+		},
+		"get menu":    func() *httptest.ResponseRecorder { return harness.api.Get("/menus/"+menuID, auth) },
+		"delete menu": func() *httptest.ResponseRecorder { return harness.api.Delete("/menus/"+menuID, auth) },
+		"update menu": func() *httptest.ResponseRecorder {
+			return harness.api.Patch("/menus/"+menuID, auth, map[string]any{"label": "Renamed"})
+		},
+		"effective menus": func() *httptest.ResponseRecorder { return harness.api.Get(tenant+"/me/menus", auth) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			response := call()
+			require.GreaterOrEqual(t, response.Code, http.StatusBadRequest,
+				"%s answered %d while storage was gone: %s", name, response.Code, response.Body.String())
+		})
+	}
+}
+
+// unrepresentableID is nineteen digits: it satisfies every path and body
+// pattern the contract declares and still does not fit the platform identifier
+// type. It is the value that separates "rejected as malformed input" from
+// "silently truncated into some other record".
+const unrepresentableID = "9999999999999999999"
+
+// TestIAMHTTPRejectsUnrepresentableIdentifiers drives every route that accepts
+// an identifier with one that passes schema validation but cannot be parsed.
+// Each must answer 422: a 404 would claim the record is missing, and a 200
+// would mean the request was applied to whatever the value truncated into.
+func TestIAMHTTPRejectsUnrepresentableIdentifiers(t *testing.T) {
+	harness := newHTTPIAMHarness(t, true)
+	auth, tenant, big := "Authorization: Bearer test", tenantPathPrefix(1), unrepresentableID
+	condition := map[string]any{"condition": map[string]any{
+		"version": 1, "gte": []any{map[string]any{"context": "auth.acr"}, map[string]any{"value": 1}},
+	}}
+
+	for name, call := range map[string]func() *httptest.ResponseRecorder{
+		"get entity":    func() *httptest.ResponseRecorder { return harness.api.Get("/entities/" + big) },
+		"delete entity": func() *httptest.ResponseRecorder { return harness.api.Delete("/entities/"+big, auth) },
+		"update entity": func() *httptest.ResponseRecorder {
+			return harness.api.Patch("/entities/"+big, auth, map[string]any{"name": "Renamed"})
+		},
+		"create entity parent": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/entities", auth, map[string]any{
+				"parent_id": big, "type": "store", "name": "Store",
+			})
+		},
+		"update entity parent": func() *httptest.ResponseRecorder {
+			return harness.api.Patch("/entities/"+big, auth, map[string]any{"parent_id": big})
+		},
+		"list entity role bindings": func() *httptest.ResponseRecorder {
+			return harness.api.Get("/entities/"+big+"/role-bindings", auth)
+		},
+		"put entity role binding": func() *httptest.ResponseRecorder {
+			return harness.api.Put("/entities/"+big+"/role-bindings/"+big+"/"+big, auth, map[string]any{"effect": "allow"})
+		},
+		"delete entity role binding": func() *httptest.ResponseRecorder {
+			return harness.api.Delete("/entities/"+big+"/role-bindings/"+big+"/"+big, auth)
+		},
+		"get role":    func() *httptest.ResponseRecorder { return harness.api.Get("/roles/"+big, auth) },
+		"delete role": func() *httptest.ResponseRecorder { return harness.api.Delete("/roles/"+big, auth) },
+		"update role": func() *httptest.ResponseRecorder {
+			return harness.api.Patch("/roles/"+big, auth, map[string]any{"name": "Renamed"})
+		},
+		"get data scope": func() *httptest.ResponseRecorder { return harness.api.Get("/roles/"+big+"/data-scope", auth) },
+		"set data scope": func() *httptest.ResponseRecorder {
+			return harness.api.Put("/roles/"+big+"/data-scope", auth, map[string]any{"scope": "self"})
+		},
+		"list role permissions": func() *httptest.ResponseRecorder {
+			return harness.api.Get("/roles/"+big+"/permissions", auth)
+		},
+		"list role permission grants": func() *httptest.ResponseRecorder {
+			return harness.api.Get("/roles/"+big+"/permission-grants", auth)
+		},
+		"grant role permission": func() *httptest.ResponseRecorder {
+			return harness.api.Put("/roles/"+big+"/permissions/user_view", auth)
+		},
+		"revoke role permission": func() *httptest.ResponseRecorder {
+			return harness.api.Delete("/roles/"+big+"/permissions/user_view", auth)
+		},
+		"set permission condition": func() *httptest.ResponseRecorder {
+			return harness.api.Put("/roles/"+big+"/permissions/user_view/condition", auth, condition)
+		},
+		"clear permission condition": func() *httptest.ResponseRecorder {
+			return harness.api.Delete("/roles/"+big+"/permissions/user_view/condition", auth)
+		},
+		"list role members": func() *httptest.ResponseRecorder {
+			return harness.api.Get("/roles/"+big+"/members", auth)
+		},
+		"add role member": func() *httptest.ResponseRecorder {
+			return harness.api.Put("/roles/"+big+"/members/"+big, auth)
+		},
+		"remove role member": func() *httptest.ResponseRecorder {
+			return harness.api.Delete("/roles/"+big+"/members/"+big, auth)
+		},
+		"list directory bindings": func() *httptest.ResponseRecorder {
+			return harness.api.Get("/roles/"+big+"/directory-bindings", auth)
+		},
+		"add directory binding": func() *httptest.ResponseRecorder {
+			return harness.api.Put("/roles/"+big+"/directory-bindings/group/"+big, auth)
+		},
+		"remove directory binding": func() *httptest.ResponseRecorder {
+			return harness.api.Delete("/roles/"+big+"/directory-bindings/group/"+big, auth)
+		},
+		"get tenant member": func() *httptest.ResponseRecorder { return harness.api.Get(tenant+"/members/"+big, auth) },
+		"update tenant member": func() *httptest.ResponseRecorder {
+			return harness.api.Patch(tenant+"/members/"+big, auth, map[string]any{"display_name": "Renamed"})
+		},
+		"create tenant member": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/members", auth, map[string]any{
+				"subject": big, "display_name": "Member", "status": "active",
+			})
+		},
+		"create tenant member department": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/members", auth, map[string]any{
+				"subject": "11", "display_name": "Member", "department_id": big, "status": "active",
+			})
+		},
+		"list tenant member roles": func() *httptest.ResponseRecorder {
+			return harness.api.Get(tenant+"/members/"+big+"/roles", auth)
+		},
+		"member authorization sources": func() *httptest.ResponseRecorder {
+			return harness.api.Get(tenant+"/members/"+big+"/authorization-sources", auth)
+		},
+		"get menu":    func() *httptest.ResponseRecorder { return harness.api.Get("/menus/"+big, auth) },
+		"delete menu": func() *httptest.ResponseRecorder { return harness.api.Delete("/menus/"+big, auth) },
+		"update menu": func() *httptest.ResponseRecorder {
+			return harness.api.Patch("/menus/"+big, auth, map[string]any{"label": "Renamed"})
+		},
+		"create menu parent": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/menus", auth, map[string]any{
+				"label": "Menu", "route": "/menu", "parent_id": big, "status": "active",
+			})
+		},
+		"put platform administrator": func() *httptest.ResponseRecorder {
+			return harness.api.Put("/platform/administrators/"+big, auth, map[string]any{
+				"full_administrator": false, "permissions": []string{"tenant_view"},
+			})
+		},
+		"delete platform administrator": func() *httptest.ResponseRecorder {
+			return harness.api.Delete("/platform/administrators/"+big, auth)
+		},
+		"effective entity permissions": func() *httptest.ResponseRecorder {
+			return harness.api.Get(tenant+"/entities/"+big+"/me/permissions", auth)
+		},
+		"put relationship subject": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/relationships", auth, map[string]any{
+				"subject_type": "principal", "subject_id": big, "relation": "owner",
+				"resource_type": "company", "resource_id": "1",
+			})
+		},
+		"put relationship resource": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/relationships", auth, map[string]any{
+				"subject_type": "principal", "subject_id": "11", "relation": "owner",
+				"resource_type": "company", "resource_id": big,
+			})
+		},
+		"delete relationship": func() *httptest.ResponseRecorder {
+			return harness.api.Delete(tenant+
+				"/relationships?subject_type=principal&subject_id="+big+
+				"&relation=owner&resource_type=company&resource_id=1", auth)
+		},
+		"list relationships": func() *httptest.ResponseRecorder {
+			return harness.api.Get(tenant+"/relationships?resource_id="+big, auth)
+		},
+		"authorization check": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/authorization-checks", auth, map[string]any{
+				"entity_id": big, "permission_code": "entity_view", "subject": "11",
+			})
+		},
+		"authorization check subject": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/authorization-checks", auth, map[string]any{
+				"entity_id": "1", "permission_code": "entity_view", "subject": big,
+			})
+		},
+		"authorization constraint": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/authorization-constraint-evaluations", auth, map[string]any{
+				"permission_code": "entity_view", "subject": big,
+			})
+		},
+		"authorization explanation": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/authorization-explanations", auth, map[string]any{
+				"entity_id": big, "permission_code": "entity_view", "subject": "11",
+			})
+		},
+		"authorization explanation subject": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/authorization-explanations", auth, map[string]any{
+				"entity_id": "1", "permission_code": "entity_view", "subject": big,
+			})
+		},
+		"authorization explanation resource": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/authorization-explanations", auth, map[string]any{
+				"entity_id": "1", "resource_type": "merchant", "resource_id": big,
+				"permission_code": "merchant_view", "subject": "11",
+			})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			response := call()
+			require.Equal(t, http.StatusUnprocessableEntity, response.Code,
+				"%s: %s", name, response.Body.String())
+		})
+	}
+}
+
+// TestIAMHTTPMutationsFailWhenThePolicyRevisionLedgerIsBroken removes the table
+// every policy mutation fences itself against. Reads are unaffected, so each
+// failure comes from the write path rather than from authorization or routing.
+// A mutation that reported success here would have changed a policy no
+// evaluator could ever observe, because the revision that invalidates cached
+// decisions was never recorded.
+func TestIAMHTTPMutationsFailWhenThePolicyRevisionLedgerIsBroken(t *testing.T) {
+	harness := newHTTPIAMHarness(t, true)
+	auth, tenant := "Authorization: Bearer test", tenantPathPrefix(1)
+	seedHTTPPrincipal(t, harness.repositoryHarness, 12)
+	seedDirectoryFixtures(t, harness.repositoryHarness, 1)
+	role, err := harness.module.service.CreateRole(t.Context(), 1, "Managers", "")
+	require.NoError(t, err)
+	entity, err := harness.module.service.CreateEntity(t.Context(), Entity{TenantID: 1, Type: "company", Name: "Company"})
+	require.NoError(t, err)
+	menu, err := harness.module.service.CreateMenu(t.Context(), Menu{
+		TenantID: 1, Label: "People", Route: "/people", Status: MenuActive,
+	})
+	require.NoError(t, err)
+	_, _, err = harness.module.service.PutRelationship(t.Context(), Relationship{
+		TenantID: 1, SubjectType: "principal", SubjectID: 11, Relation: "owner",
+		ResourceType: "company", ResourceID: entity.ID,
+	})
+	require.NoError(t, err)
+	roleID, entityID, menuID := role.ID.String(), entity.ID.String(), menu.ID.String()
+
+	require.NoError(t, harness.db.Exec("DROP TABLE sl_iam_policy_revisions").Error)
+
+	// Reads still answer, so a failure below is the write path and not the route.
+	for _, path := range []string{
+		tenant + "/roles", tenant + "/entities", tenant + "/menus",
+		"/roles/" + roleID, "/entities/" + entityID, "/menus/" + menuID,
+	} {
+		response := harness.api.Get(path, auth)
+		require.Equal(t, http.StatusOK, response.Code, "%s: %s", path, response.Body.String())
+	}
+
+	for name, call := range map[string]func() *httptest.ResponseRecorder{
+		"create role": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/roles", auth, map[string]any{"name": "Second"})
+		},
+		"update role": func() *httptest.ResponseRecorder {
+			return harness.api.Patch("/roles/"+roleID, auth, map[string]any{"name": "Renamed"})
+		},
+		"delete role": func() *httptest.ResponseRecorder { return harness.api.Delete("/roles/"+roleID, auth) },
+		"grant role permission": func() *httptest.ResponseRecorder {
+			return harness.api.Put("/roles/"+roleID+"/permissions/user_view", auth)
+		},
+		"revoke role permission": func() *httptest.ResponseRecorder {
+			return harness.api.Delete("/roles/"+roleID+"/permissions/user_view", auth)
+		},
+		"set data scope": func() *httptest.ResponseRecorder {
+			return harness.api.Put("/roles/"+roleID+"/data-scope", auth, map[string]any{"scope": "self"})
+		},
+		"add role member": func() *httptest.ResponseRecorder {
+			return harness.api.Put("/roles/"+roleID+"/members/11", auth)
+		},
+		"remove role member": func() *httptest.ResponseRecorder {
+			return harness.api.Delete("/roles/"+roleID+"/members/11", auth)
+		},
+		"add directory binding": func() *httptest.ResponseRecorder {
+			return harness.api.Put("/roles/"+roleID+"/directory-bindings/group/200", auth)
+		},
+		"remove directory binding": func() *httptest.ResponseRecorder {
+			return harness.api.Delete("/roles/"+roleID+"/directory-bindings/group/200", auth)
+		},
+		"create entity": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/entities", auth, map[string]any{"type": "store", "name": "Store"})
+		},
+		"update entity": func() *httptest.ResponseRecorder {
+			return harness.api.Patch("/entities/"+entityID, auth, map[string]any{"name": "Renamed"})
+		},
+		"delete entity": func() *httptest.ResponseRecorder { return harness.api.Delete("/entities/"+entityID, auth) },
+		"put entity role binding": func() *httptest.ResponseRecorder {
+			return harness.api.Put("/entities/"+entityID+"/role-bindings/"+roleID+"/12", auth,
+				map[string]any{"effect": "allow"})
+		},
+		"delete entity role binding": func() *httptest.ResponseRecorder {
+			return harness.api.Delete("/entities/"+entityID+"/role-bindings/"+roleID+"/12", auth)
+		},
+		"create menu": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/menus", auth, map[string]any{
+				"label": "Members", "route": "/members", "permission_code": "user_view", "status": "active",
+			})
+		},
+		"update menu": func() *httptest.ResponseRecorder {
+			return harness.api.Patch("/menus/"+menuID, auth, map[string]any{"label": "Renamed"})
+		},
+		"delete menu": func() *httptest.ResponseRecorder { return harness.api.Delete("/menus/"+menuID, auth) },
+		"create tenant member": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/members", auth, map[string]any{
+				"subject": "12", "display_name": "Second member", "status": "active",
+			})
+		},
+		"update tenant member": func() *httptest.ResponseRecorder {
+			return harness.api.Patch(tenant+"/members/11", auth, map[string]any{"display_name": "Renamed"})
+		},
+		"put relationship": func() *httptest.ResponseRecorder {
+			return harness.api.Post(tenant+"/relationships", auth, map[string]any{
+				"subject_type": "principal", "subject_id": "12", "relation": "owner",
+				"resource_type": "company", "resource_id": entityID,
+			})
+		},
+		"delete relationship": func() *httptest.ResponseRecorder {
+			return harness.api.Delete(tenant+
+				"/relationships?subject_type=principal&subject_id=11&relation=owner&resource_type=company&resource_id="+
+				entityID, auth)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			response := call()
+			require.Equal(t, http.StatusInternalServerError, response.Code, "%s: %s", name, response.Body.String())
+		})
+	}
+
+	// Nothing the refused mutations touched was left changed.
+	stored, err := harness.module.service.GetRole(t.Context(), 1, role.ID)
+	require.NoError(t, err)
+	require.Equal(t, "Managers", stored.Name)
+	permissions, err := harness.module.service.ListPermissions(t.Context(), 1, role.ID)
+	require.NoError(t, err)
+	require.Empty(t, permissions)
+	storedEntity, err := harness.module.service.GetEntity(t.Context(), 1, entity.ID)
+	require.NoError(t, err)
+	require.Equal(t, "Company", storedEntity.Name)
+	storedMenu, err := harness.module.service.GetMenu(t.Context(), 1, menu.ID)
+	require.NoError(t, err)
+	require.Equal(t, "People", storedMenu.Label)
+}

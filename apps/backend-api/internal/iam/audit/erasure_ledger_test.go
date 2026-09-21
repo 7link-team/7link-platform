@@ -2,6 +2,7 @@ package audit
 
 import (
 	"encoding/json"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -160,4 +161,91 @@ func mapKeys(values map[string]any) []string {
 		keys = append(keys, key)
 	}
 	return keys
+}
+
+// TestErasureLedgerVerifyRejectsUnreadableAndTamperedVersions pins the checks a
+// stored object has to pass before the platform treats it as the erasure
+// obligation it owes. Each case fails on its own: the object is only evidence
+// when the exact version the ledger names is readable, small enough to be an
+// obligation, the digest the writer computed, exactly one JSON document, and
+// still under a compliance lock. A verify that stopped enforcing any one of
+// them would accept a replaced or truncated object as the original.
+func TestErasureLedgerVerifyRejectsUnreadableAndTamperedVersions(t *testing.T) {
+	fixture := newFakeS3()
+	store, _ := fakeAnchorStore(t, fixture, "erasure-verify")
+	ledger := NewErasureLedger(store)
+	obligation := NewErasureObligation(t.Context(), 4401, 2, auditTestNow)
+	require.NoError(t, ledger.Put(t.Context(), obligation))
+	key := erasureObligationKey(4401, 2)
+	version := fixture.versions[key]
+	require.NotEmpty(t, version)
+	stored := append([]byte(nil), fixture.objects[key]...)
+
+	_, err := ledger.verify(t.Context(), key, "null", "", time.Time{})
+	assert.ErrorIs(t, err, ErrErasureLedgerIntegrity, "an unversioned object is not a pinned obligation")
+
+	fixture.failMethod, fixture.failContains = http.MethodHead, key
+	_, err = ledger.verify(t.Context(), key, version, "", time.Time{})
+	assert.ErrorIs(t, err, ErrErasureLedgerUnavailable, "a failed stat is unavailability, not a clean obligation")
+
+	fixture.failMethod, fixture.failContains = http.MethodGet, key+"?versionId="
+	_, err = ledger.verify(t.Context(), key, version, "", time.Time{})
+	assert.ErrorIs(t, err, ErrErasureLedgerUnavailable, "an unreadable body is unavailability, not a clean obligation")
+
+	fixture.failMethod, fixture.failContains = http.MethodGet, "retention"
+	_, err = ledger.verify(t.Context(), key, version, "", time.Time{})
+	assert.ErrorIs(t, err, ErrErasureLedgerUnavailable, "an unreadable lock cannot be assumed to be compliance")
+	fixture.failMethod, fixture.failContains = "", ""
+
+	_, err = ledger.verify(t.Context(), key, version, strings.Repeat("0", 64), time.Time{})
+	assert.ErrorIs(t, err, ErrErasureLedgerIntegrity, "the stored bytes must hash to the digest the writer computed")
+
+	for name, payload := range map[string][]byte{
+		"oversized":        make([]byte, maxErasureObligationSize+1),
+		"not json":         []byte(`{"schema":`),
+		"trailing content": append(append([]byte(nil), stored...), []byte("\n{}")...),
+	} {
+		t.Run(name, func(t *testing.T) {
+			fixture.objects[key] = payload
+			_, verifyErr := ledger.verify(t.Context(), key, version, "", time.Time{})
+			assert.ErrorIs(t, verifyErr, ErrErasureLedgerIntegrity)
+		})
+	}
+	fixture.objects[key] = stored
+	verified, err := ledger.verify(t.Context(), key, version, "", time.Time{})
+	require.NoError(t, err, "the untouched object must still verify after every rejected variant")
+	assert.Equal(t, obligation, verified.ErasureObligation)
+}
+
+// TestErasureLedgerPutRefusesToRepublishOverAFaultyPriorObject pins what a
+// retry does when the ledger already holds something for this lifecycle
+// version. A retry must recover the object that is there, never quietly write
+// a second one, and a store that refuses the write has to be reported as
+// unavailable once the retry has confirmed nothing landed.
+func TestErasureLedgerPutRefusesToRepublishOverAFaultyPriorObject(t *testing.T) {
+	fixture := newFakeS3()
+	store, _ := fakeAnchorStore(t, fixture, "erasure-put")
+	ledger := NewErasureLedger(store)
+	obligation := NewErasureObligation(t.Context(), 4501, 3, auditTestNow)
+	key := erasureObligationKey(4501, 3)
+	// A neighboring key shares this obligation's listing prefix; it must not
+	// be mistaken for the obligation itself.
+	fixture.objects[key+".sidecar"] = []byte("unrelated")
+	require.NoError(t, ledger.Put(t.Context(), obligation))
+	published := fixture.versions[key]
+	require.NotEmpty(t, published)
+	require.NoError(t, ledger.Put(t.Context(), obligation))
+	assert.Equal(t, published, fixture.versions[key], "the retry must recover the first version, not write a second")
+
+	fixture.objects[key] = []byte(`{"schema":"iam-erasure-obligation.v1"`)
+	assert.ErrorIs(t, ledger.Put(t.Context(), obligation), ErrErasureLedgerIntegrity,
+		"a retry over an unreadable prior object must stop rather than overwrite it")
+	fixture.objects[key], _ = json.Marshal(obligation)
+
+	refused := erasureObligationKey(4502, 1)
+	fixture.failMethod, fixture.failContains = http.MethodPut, refused
+	err := ledger.Put(t.Context(), NewErasureObligation(t.Context(), 4502, 1, auditTestNow))
+	fixture.failMethod, fixture.failContains = "", ""
+	assert.ErrorIs(t, err, ErrErasureLedgerUnavailable)
+	assert.NotContains(t, fixture.objects, refused, "a refused write must leave no obligation behind")
 }

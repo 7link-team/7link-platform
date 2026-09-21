@@ -9,9 +9,11 @@ import (
 	"time"
 
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/policyx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestAuthorizerConcurrentTenantDecisionsRemainIsolated(t *testing.T) {
@@ -925,4 +927,76 @@ func TestAuthorizerScopedAdministratorDenyAndPlatformExpansion(t *testing.T) {
 	assert.True(t, bulk["store_view"])
 	assert.True(t, bulk["platform_administer"])
 	assert.False(t, bulk["missing"], "administrator expansion applies only to declared permissions")
+}
+
+// TestAuthorizerRefusesEveryDecisionUntilTheJoinedTablesArePublished is the
+// authorization half of the same property: until the owners publish the tables
+// the evaluator JOINs, no decision may be produced. Answering "denied" would be
+// just as wrong as answering "allowed" -- both are decisions taken from no
+// policy at all -- so every entry point has to report unavailability instead.
+func TestAuthorizerRefusesEveryDecisionUntilTheJoinedTablesArePublished(t *testing.T) {
+	t.Parallel()
+
+	harness := newRepositoryHarness(t, "sl_")
+	unbound := NewAuthorizer(harness.runtime)
+	unbound.now = harness.repository.now
+	ctx := t.Context()
+	tenantID, entityID, subject := guid.ID(1), guid.ID(2), guid.ID(11)
+
+	for name, call := range map[string]func() error{
+		"check":          func() error { _, err := unbound.Check(ctx, tenantID, "user_view", subject); return err },
+		"check bulk":     func() error { _, err := unbound.CheckBulk(ctx, tenantID, []string{"user_view"}, subject); return err },
+		"check platform": func() error { _, err := unbound.CheckPlatform(ctx, "platform_administer", subject); return err },
+		"constraint":     func() error { _, err := unbound.Constraint(ctx, tenantID, "user_view", subject); return err },
+		"entity check":   func() error { _, err := unbound.CheckEntity(ctx, tenantID, entityID, "user_view", subject); return err },
+		"entity constraint": func() error {
+			_, err := unbound.EntityConstraint(ctx, tenantID, entityID, "user_view", subject)
+			return err
+		},
+		"resource check": func() error {
+			_, err := unbound.CheckResource(ctx, tenantID, entityID, "merchant", guid.ID(7), "merchant_view", subject)
+			return err
+		},
+		"explain entity": func() error {
+			_, err := unbound.ExplainEntity(ctx, tenantID, entityID, "user_view", subject)
+			return err
+		},
+		"explain resource": func() error {
+			_, err := unbound.ExplainResource(ctx, tenantID, entityID, "merchant", guid.ID(7), "merchant_view", subject)
+			return err
+		},
+		"field constraint": func() error {
+			_, err := unbound.FieldConstraint(ctx, tenantID, entityID, authz.ProfileResource, subject)
+			return err
+		},
+		"member authorization sources": func() error {
+			_, err := unbound.MemberAuthorizationSources(ctx, tenantID, subject)
+			return err
+		},
+		"authorization subjects": func() error {
+			return harness.db.Transaction(func(tx *gorm.DB) error {
+				_, err := unbound.AuthorizationSubjectsOn(ctx, tx, tenantID, entityID, subject)
+				return err
+			})
+		},
+		"authorization references": func() error {
+			return harness.db.Transaction(func(tx *gorm.DB) error {
+				_, err := unbound.AuthorizationReferencesOn(ctx, tx, tenantID, AuthorizationReferences{EntityID: entityID, PrincipalID: subject})
+				return err
+			})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.ErrorIs(t, call(), ErrUnavailable,
+				"%s produced a decision from tables that were never published", name)
+		})
+	}
+
+	// Once the owners publish, the same evaluator answers instead of refusing --
+	// so the refusals above came from the missing names, not from a broken
+	// evaluator that would refuse whatever it was given.
+	require.NoError(t, unbound.BindForeignTables(publishedDirectoryTables("sl_"), publishedPrincipalTable("sl_")))
+	allowed, err := unbound.Check(ctx, tenantID, "user_view", subject)
+	require.NoError(t, err)
+	require.False(t, allowed, "a subject with no grant is denied once the names are known")
 }

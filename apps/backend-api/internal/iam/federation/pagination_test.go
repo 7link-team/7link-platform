@@ -117,6 +117,39 @@ func TestFederationPagedListingsSurfaceStorageFailures(t *testing.T) {
 		_, _, err := env.service.repo.listSAMLServiceProvidersPage(t.Context(), testID("tenant-a"), 0, 2)
 		assert.Error(t, err)
 	})
+
+	// The service has to pass the fault on rather than return the empty page it
+	// already allocated. An empty page reads as "this tenant has no providers",
+	// which is the one answer an administrator must never be given while the
+	// registry is merely unreachable.
+	t.Run("the provider service reports the fault instead of an empty page", func(t *testing.T) {
+		env := newFederationEnvironment(t)
+		require.NoError(t, env.db.Exec("DROP TABLE iam_identity_providers").Error)
+		items, total, err := env.service.ListProvidersPage(t.Context(), testID("tenant-a"), 0, 2)
+		assert.Error(t, err)
+		assert.Nil(t, items)
+		assert.Zero(t, total)
+	})
+
+	t.Run("the saml service reports the fault instead of an empty page", func(t *testing.T) {
+		env := newFederationEnvironment(t)
+		require.NoError(t, env.db.Exec("DROP TABLE iam_saml_service_providers").Error)
+		items, total, err := env.service.ListSAMLServiceProvidersPage(t.Context(), testID("tenant-a"), 0, 2)
+		assert.Error(t, err)
+		assert.Nil(t, items)
+		assert.Zero(t, total)
+	})
+}
+
+// Both paged listings run their count and their page through the bound writer,
+// so a repository with no database has to refuse before either statement is
+// built rather than dereference a nil writer inside the query.
+func TestFederationPagedListingsFailClosedWithoutWriter(t *testing.T) {
+	repo := &Repository{}
+	_, _, err := repo.listProvidersPage(t.Context(), testID("tenant-a"), 0, 2)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, _, err = repo.listSAMLServiceProvidersPage(t.Context(), testID("tenant-a"), 0, 2)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
 }
 
 // seedSAMLServiceProvider writes a registry row directly: the listing under test

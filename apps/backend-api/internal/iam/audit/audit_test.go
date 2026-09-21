@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"bytes"
 	"context"
 	"io/fs"
 	"testing"
@@ -44,4 +45,45 @@ func TestModuleMigrationContract(t *testing.T) {
 	assert.Equal(t, int64(2), milestones[0].Version)
 	assert.Equal(t, "archive_jobs", milestones[1].Name)
 	assert.Equal(t, int64(3), milestones[1].Version)
+}
+
+// TestVerifyAndExportSurfaceRepositoryFailures pins that the integrity and
+// export surface refuses to answer from an unreachable repository. A Verify
+// that returned a zero Integrity, or an export that stopped after the manifest
+// and reported success, would both look like a genuinely empty, valid chain.
+func TestVerifyAndExportSurfaceRepositoryFailures(t *testing.T) {
+	tenantID := guid.ID(901)
+	frozen := ExportSnapshot{
+		Filter:      Filter{TenantID: tenantID},
+		Integrity:   Integrity{TenantID: tenantID, Valid: true, HeadSequence: 2},
+		GeneratedAt: auditTestNow,
+	}
+	var unavailable *Service
+	_, err := unavailable.Verify(t.Context(), tenantID)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	assert.ErrorIs(t, unavailable.WriteExport(t.Context(), frozen, &bytes.Buffer{}), errRepositoryUnavailable)
+
+	h := newAuditHarness(t, "")
+	for range 2 {
+		_, appendErr := h.service.Append(t.Context(), EventInput{
+			TenantID: tenantID, EventType: "created", Outcome: "success",
+		})
+		require.NoError(t, appendErr)
+	}
+	snapshot, err := h.service.PrepareExport(t.Context(), Filter{TenantID: tenantID})
+	require.NoError(t, err)
+	require.Equal(t, int64(2), snapshot.Integrity.HeadSequence)
+	sqlDB, err := h.db.DB()
+	require.NoError(t, err)
+	require.NoError(t, sqlDB.Close())
+
+	_, err = h.service.Verify(t.Context(), tenantID)
+	assert.ErrorContains(t, err, "read audit head")
+	_, err = h.service.PrepareExport(t.Context(), Filter{TenantID: tenantID})
+	assert.ErrorContains(t, err, "read audit head")
+
+	var written bytes.Buffer
+	assert.ErrorContains(t, h.service.WriteExport(t.Context(), snapshot, &written), "read audit export")
+	assert.NotContains(t, written.String(), `"type":"complete"`,
+		"a truncated export must not be signed off as complete")
 }

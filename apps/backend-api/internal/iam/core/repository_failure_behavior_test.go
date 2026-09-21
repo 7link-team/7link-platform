@@ -5,9 +5,14 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/appenv"
+	"7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/authz"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestCorePersistenceAndAuthorizationFailClosedAfterDatabaseShutdown(t *testing.T) {
@@ -326,4 +331,359 @@ func TestRepositoryPropagatesPolicyTableFailures(t *testing.T) {
 		)
 		assert.Error(t, err)
 	})
+}
+
+// newUnwiredRepository builds a repository against a runtime that was never
+// given a datasource -- the shape a deployment has when its database
+// configuration is missing. The published table names are bound, so anything
+// this reports comes from the absent connection rather than from an absent name.
+func newUnwiredRepository(t *testing.T) *Repository {
+	t.Helper()
+	runtime := appenv.NewRuntime(
+		appenv.NewIdentity("iam-test", "1.0.0"),
+		appenv.WithTablePrefix("sl_"),
+	)
+	repository := NewRepository(runtime, newRepositoryTestIDs(1))
+	repository.now = func() time.Time { return repositoryTestTime }
+	require.NoError(t, repository.BindForeignTables(
+		publishedDirectoryTables("sl_"), publishedPrincipalTable("sl_"),
+	))
+	return repository
+}
+
+// TestCoreReportsUnavailabilityWhenNoDatasourceIsConfigured proves that every
+// entry point refuses when there is no connection to read. The failure mode
+// this rules out is the quiet one: a reader that answers with an empty slice,
+// or a writer that reports success, when the deployment has no database at all.
+func TestCoreReportsUnavailabilityWhenNoDatasourceIsConfigured(t *testing.T) {
+	t.Parallel()
+
+	repository := newUnwiredRepository(t)
+	ctx := t.Context()
+	tenantID, roleID, principalID, entityID, menuID := guid.ID(1), guid.ID(2), guid.ID(3), guid.ID(4), guid.ID(5)
+
+	for name, call := range map[string]func() error{
+		"create role":  func() error { _, err := repository.CreateRole(ctx, tenantID, "Role", ""); return err },
+		"list roles":   func() error { _, err := repository.ListRoles(ctx, tenantID); return err },
+		"get role":     func() error { _, err := repository.GetRole(ctx, tenantID, roleID); return err },
+		"update role":  func() error { _, err := repository.UpdateRole(ctx, tenantID, roleID, "Role", ""); return err },
+		"delete role":  func() error { return repository.DeleteRole(ctx, tenantID, roleID) },
+		"resolve role": func() error { _, _, err := repository.ResolveRoleTenant(ctx, roleID); return err },
+		"list roles page": func() error {
+			_, _, err := repository.ListRolesPage(ctx, tenantID, 0, 10)
+			return err
+		},
+		"grant permission": func() error {
+			_, err := repository.GrantPermission(ctx, tenantID, roleID, "role_view")
+			return err
+		},
+		"revoke permission": func() error {
+			_, err := repository.RevokePermission(ctx, tenantID, roleID, "role_view")
+			return err
+		},
+		"list permissions": func() error { _, err := repository.ListPermissions(ctx, tenantID, roleID); return err },
+		"list permission grants": func() error {
+			_, err := repository.ListPermissionGrants(ctx, tenantID, roleID)
+			return err
+		},
+		"set permission condition": func() error {
+			_, _, err := repository.SetPermissionCondition(ctx, tenantID, roleID, "role_view", nil)
+			return err
+		},
+		"add role member":    func() error { _, err := repository.AddMember(ctx, tenantID, roleID, principalID); return err },
+		"remove role member": func() error { _, err := repository.RemoveMember(ctx, tenantID, roleID, principalID); return err },
+		"list role members":  func() error { _, err := repository.ListMembers(ctx, tenantID, roleID); return err },
+		"list role members page": func() error {
+			_, _, err := repository.ListRoleMembersPage(ctx, tenantID, roleID, 0, 10)
+			return err
+		},
+		"put tenant member": func() error {
+			_, err := repository.PutMember(ctx, TenantMember{
+				TenantID: tenantID, PrincipalID: principalID, DisplayName: "Member", Status: MemberActive,
+			})
+			return err
+		},
+		"get tenant member": func() error { _, err := repository.GetMember(ctx, tenantID, principalID); return err },
+		"list tenant members page": func() error {
+			_, _, err := repository.ListMembersPage(ctx, tenantID, MemberFilter{Limit: 10})
+			return err
+		},
+		"set tenant member status": func() error {
+			_, err := repository.SetMemberStatus(ctx, tenantID, principalID, MemberDisabled)
+			return err
+		},
+		"is member active":     func() error { _, err := repository.IsMemberActive(ctx, tenantID, principalID); return err },
+		"list member role ids": func() error { _, err := repository.ListMemberRoleIDs(ctx, tenantID, principalID); return err },
+		"create entity": func() error {
+			_, err := repository.CreateEntity(ctx, Entity{TenantID: tenantID, Type: "store", Name: "Store"})
+			return err
+		},
+		"list entities":  func() error { _, err := repository.ListEntities(ctx, tenantID); return err },
+		"get entity":     func() error { _, err := repository.GetEntity(ctx, tenantID, entityID); return err },
+		"resolve entity": func() error { _, _, err := repository.ResolveEntityTenant(ctx, entityID); return err },
+		"delete entity":  func() error { return repository.DeleteEntity(ctx, tenantID, entityID) },
+		"update entity": func() error {
+			_, err := repository.UpdateEntity(ctx, Entity{
+				TenantID: tenantID, ID: entityID, Type: "store", Name: "Store", Status: EntityActive,
+			})
+			return err
+		},
+		"list entities page": func() error {
+			_, _, err := repository.ListEntitiesPage(ctx, tenantID, 0, 10)
+			return err
+		},
+		"list entity role bindings": func() error {
+			_, err := repository.ListEntityRoleBindings(ctx, tenantID, entityID)
+			return err
+		},
+		"list entity role bindings page": func() error {
+			_, _, err := repository.ListEntityRoleBindingsPage(ctx, tenantID, entityID, 0, 10)
+			return err
+		},
+		"put entity role binding": func() error {
+			_, _, err := repository.PutEntityRoleBinding(
+				ctx, tenantID, entityID, roleID, principalID, BindingAllow, time.Time{},
+			)
+			return err
+		},
+		"delete entity role binding": func() error {
+			_, err := repository.DeleteEntityRoleBinding(ctx, tenantID, entityID, roleID, principalID)
+			return err
+		},
+		"create menu": func() error {
+			_, err := repository.CreateMenu(ctx, Menu{TenantID: tenantID, Label: "Menu", Status: MenuActive})
+			return err
+		},
+		"get menu":     func() error { _, err := repository.GetMenu(ctx, tenantID, menuID); return err },
+		"resolve menu": func() error { _, _, err := repository.ResolveMenuTenant(ctx, menuID); return err },
+		"list menus":   func() error { _, err := repository.ListMenus(ctx, tenantID, false); return err },
+		"delete menu":  func() error { return repository.DeleteMenu(ctx, tenantID, menuID) },
+		"update menu": func() error {
+			_, err := repository.UpdateMenu(ctx, Menu{
+				TenantID: tenantID, ID: menuID, Label: "Menu", Status: MenuActive,
+			})
+			return err
+		},
+		"list relationships": func() error {
+			_, err := repository.ListRelationships(ctx, tenantID, RelationshipFilter{})
+			return err
+		},
+		"list relationships page": func() error {
+			_, _, err := repository.ListRelationshipsPage(ctx, tenantID, RelationshipFilter{}, 0, 10)
+			return err
+		},
+		"put relationship": func() error {
+			_, _, err := repository.PutRelationship(ctx, Relationship{
+				TenantID: tenantID, SubjectType: "principal", SubjectID: principalID,
+				Relation: "owner", ResourceType: "store", ResourceID: entityID,
+			})
+			return err
+		},
+		"delete relationship": func() error {
+			_, err := repository.DeleteRelationship(ctx, Relationship{
+				TenantID: tenantID, SubjectType: "principal", SubjectID: principalID,
+				Relation: "owner", ResourceType: "store", ResourceID: entityID,
+			})
+			return err
+		},
+		"list directory bindings": func() error {
+			_, err := repository.ListDirectoryBindings(ctx, tenantID, roleID)
+			return err
+		},
+		"list directory bindings page": func() error {
+			_, _, err := repository.ListDirectoryBindingsPage(ctx, tenantID, roleID, 0, 10)
+			return err
+		},
+		"change directory binding": func() error {
+			_, err := repository.ChangeDirectoryBinding(ctx, tenantID, roleID, DirectoryAssigneeGroup, 9, true)
+			return err
+		},
+		"get role data scope": func() error { _, err := repository.GetRoleDataScope(ctx, tenantID, roleID); return err },
+		"grant temporary role": func() error {
+			return repository.GrantTemporaryRole(
+				ctx, tenantID, guid.ID(9), roleID, principalID, principalID,
+				repositoryTestTime, repositoryTestTime.Add(time.Hour),
+			)
+		},
+		"revoke temporary role": func() error {
+			_, err := repository.RevokeTemporaryRole(ctx, tenantID, guid.ID(9))
+			return err
+		},
+		"list platform administrators": func() error {
+			_, err := repository.ListPlatformAdministrators(ctx)
+			return err
+		},
+		"get platform administrator": func() error {
+			_, err := repository.GetPlatformAdministrator(ctx, principalID)
+			return err
+		},
+		"set platform administrator": func() error {
+			_, err := repository.SetPlatformAdministrator(ctx, principalID, true, nil)
+			return err
+		},
+		"delete platform administrator": func() error {
+			_, err := repository.DeletePlatformAdministrator(ctx, principalID)
+			return err
+		},
+		"count full platform administrators": func() error {
+			_, err := repository.CountFullPlatformAdministrators(ctx)
+			return err
+		},
+		"grant platform administrator": func() error {
+			_, err := repository.GrantPlatformAdministrator(ctx, principalID)
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.ErrorIs(t, call(), ErrUnavailable, "%s must refuse rather than answer without storage", name)
+		})
+	}
+}
+
+// TestCoreServiceReportsUnavailabilityWhenNoDatasourceIsConfigured is the same
+// property one layer up: the authorization evaluator is permissive here, so an
+// answer could only come from the storage that is not there.
+func TestCoreServiceReportsUnavailabilityWhenNoDatasourceIsConfigured(t *testing.T) {
+	t.Parallel()
+
+	repository := newUnwiredRepository(t)
+	service := NewService(
+		authz.DefaultRegistry(), repository, httpAuthorizationEvaluator{},
+		func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil },
+	)
+	ctx := t.Context()
+	tenantID, roleID, principalID, entityID, menuID := guid.ID(1), guid.ID(2), guid.ID(3), guid.ID(4), guid.ID(5)
+	// The field-policy routes authorize the caller before they read, so they are
+	// driven with the claims a real request carries.
+	policyCtx := authn.WithClaims(ctx, &authn.Claims{
+		TenantID: tenantID, PrincipalID: principalID, SubjectType: authn.SubjectTypePrincipal,
+	})
+
+	for name, call := range map[string]func() error{
+		"create role": func() error { _, err := service.CreateRole(ctx, tenantID, "Role", ""); return err },
+		"list roles":  func() error { _, err := service.ListRoles(ctx, tenantID); return err },
+		"get role":    func() error { _, err := service.GetRole(ctx, tenantID, roleID); return err },
+		"update role": func() error {
+			name, description := "Role", "Updated"
+			_, err := service.UpdateRole(ctx, tenantID, roleID, &name, &description)
+			return err
+		},
+		"delete role": func() error { return service.DeleteRole(ctx, tenantID, roleID) },
+		"grant permission": func() error {
+			_, err := service.GrantPermission(ctx, tenantID, roleID, "role_view")
+			return err
+		},
+		"revoke permission": func() error {
+			_, err := service.RevokePermission(ctx, tenantID, roleID, "role_view")
+			return err
+		},
+		"list permissions": func() error { _, err := service.ListPermissions(ctx, tenantID, roleID); return err },
+		"list permission grants": func() error {
+			_, err := service.ListPermissionGrants(ctx, tenantID, roleID)
+			return err
+		},
+		"add role member":    func() error { _, err := service.AddMember(ctx, tenantID, roleID, principalID); return err },
+		"remove role member": func() error { _, err := service.RemoveMember(ctx, tenantID, roleID, principalID); return err },
+		"list role members":  func() error { _, err := service.ListMembers(ctx, tenantID, roleID); return err },
+		"list tenant members": func() error {
+			_, _, err := service.ListTenantMembers(ctx, tenantID, MemberFilter{Limit: 10})
+			return err
+		},
+		"get tenant member": func() error { _, err := service.GetTenantMember(ctx, tenantID, principalID); return err },
+		"put tenant member": func() error {
+			_, err := service.PutTenantMember(ctx, tenantID, principalID, "Member", "member@example.test", 0, MemberActive)
+			return err
+		},
+		"set tenant member status": func() error {
+			_, err := service.SetTenantMemberStatus(ctx, tenantID, principalID, MemberDisabled)
+			return err
+		},
+		"list tenant member roles": func() error {
+			_, err := service.ListTenantMemberRoles(ctx, tenantID, principalID)
+			return err
+		},
+		"my memberships": func() error { _, _, err := service.MyMemberships(ctx, principalID, 0, 10); return err },
+		"create entity": func() error {
+			_, err := service.CreateEntity(ctx, Entity{TenantID: tenantID, Type: "store", Name: "Store"})
+			return err
+		},
+		"list entities": func() error { _, err := service.ListEntities(ctx, tenantID); return err },
+		"get entity":    func() error { _, err := service.GetEntity(ctx, tenantID, entityID); return err },
+		"delete entity": func() error { return service.DeleteEntity(ctx, tenantID, entityID) },
+		"update entity": func() error {
+			name := "Renamed"
+			_, err := service.UpdateEntity(ctx, tenantID, entityID, EntityPatch{Name: &name})
+			return err
+		},
+		"list entity role bindings": func() error {
+			_, err := service.ListEntityRoleBindings(ctx, tenantID, entityID)
+			return err
+		},
+		"put entity role binding": func() error {
+			_, _, err := service.PutEntityRoleBinding(
+				ctx, tenantID, entityID, roleID, principalID, BindingAllow, time.Time{},
+			)
+			return err
+		},
+		"delete entity role binding": func() error {
+			_, err := service.DeleteEntityRoleBinding(ctx, tenantID, entityID, roleID, principalID)
+			return err
+		},
+		"create menu": func() error {
+			_, err := service.CreateMenu(ctx, Menu{TenantID: tenantID, Label: "Menu", Status: MenuActive})
+			return err
+		},
+		"list menus":  func() error { _, err := service.ListMenus(ctx, tenantID); return err },
+		"get menu":    func() error { _, err := service.GetMenu(ctx, tenantID, menuID); return err },
+		"delete menu": func() error { return service.DeleteMenu(ctx, tenantID, menuID) },
+		"update menu": func() error {
+			_, err := service.UpdateMenu(ctx, Menu{
+				TenantID: tenantID, ID: menuID, Label: "Menu", Status: MenuActive,
+			})
+			return err
+		},
+		"effective menus": func() error { _, err := service.EffectiveMenus(ctx, tenantID, principalID); return err },
+		"list relationships": func() error {
+			_, err := service.ListRelationships(ctx, tenantID, RelationshipFilter{})
+			return err
+		},
+		"list field policies": func() error {
+			_, err := service.ListFieldPolicies(policyCtx, tenantID, authz.ProfileResource)
+			return err
+		},
+		"set field policy": func() error {
+			_, err := service.SetFieldPolicy(
+				policyCtx, tenantID, authz.ProfileResource, "display_name", authz.FieldPolicy{
+					Read:  authz.FieldAccess{Default: "deny"},
+					Write: authz.FieldAccess{Default: "deny"},
+					Mask:  "redact",
+				}, 0,
+			)
+			return err
+		},
+		"delete field policy": func() error {
+			return service.DeleteFieldPolicy(policyCtx, tenantID, authz.ProfileResource, "display_name", 1)
+		},
+		"list directory bindings": func() error {
+			_, err := service.ListDirectoryBindings(ctx, tenantID, roleID)
+			return err
+		},
+		"get role data scope": func() error { _, err := service.GetRoleDataScope(ctx, tenantID, roleID); return err },
+		"list platform administrators": func() error {
+			_, err := service.ListPlatformAdministrators(ctx)
+			return err
+		},
+		"set platform administrator": func() error {
+			_, err := service.SetPlatformAdministrator(ctx, principalID, true, nil)
+			return err
+		},
+		"delete platform administrator": func() error {
+			_, err := service.DeletePlatformAdministrator(ctx, principalID)
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.ErrorIs(t, call(), ErrUnavailable, "%s must refuse rather than answer without storage", name)
+		})
+	}
 }

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/internal/iam/audit/model"
 	"7link.com/platform/internal/infra/guid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -249,4 +250,54 @@ func TestGovernancePageReportsTheUnpagedAnchorTotal(t *testing.T) {
 
 	_, _, err = h.service.GovernancePage(t.Context(), 0, 0, 2)
 	assert.ErrorIs(t, err, ErrRetentionInvalid)
+}
+
+// TestGovernanceAndRetentionSurfaceStorageFailures pins that the retention and
+// governance surface reports a broken store instead of a clean report. A
+// governance report that answered with default retention, zero counts, or a
+// valid integrity status while the database was unreachable would read exactly
+// like a healthy, empty tenant.
+func TestGovernanceAndRetentionSurfaceStorageFailures(t *testing.T) {
+	var unavailable *Service
+	_, err := unavailable.GetRetentionPolicy(t.Context(), 801)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+	_, err = unavailable.Governance(t.Context(), 801)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+
+	h := newAuditHarness(t, "")
+	repo, err := h.service.pinnedRepository()
+	require.NoError(t, err)
+	sqlDB, err := h.db.DB()
+	require.NoError(t, err)
+	require.NoError(t, sqlDB.Close())
+
+	_, err = h.service.Governance(t.Context(), 801)
+	assert.ErrorContains(t, err, "read audit retention policy")
+	assert.ErrorContains(t, repo.setRetentionPolicy(t.Context(), model.RetentionPolicy{
+		TenantID: 801, MinDays: 30, ArchiveAfterDays: 60, UpdatedAt: auditTestNow,
+	}), "save audit retention policy")
+	_, _, err = repo.governanceCounts(t.Context(), 801, auditTestNow)
+	assert.ErrorContains(t, err, "count audit events")
+}
+
+// TestGovernanceReportsAnAnchorStoreOutage pins that an unreachable anchor
+// store fails the report rather than downgrading it to the unanchored answer
+// a tenant that was never anchored would get.
+func TestGovernanceReportsAnAnchorStoreOutage(t *testing.T) {
+	h := newAuditHarness(t, "")
+	fixture := newFakeS3()
+	store, _ := fakeAnchorStore(t, fixture, "governance-anchor")
+	h.service.anchor = store
+	tenantID := guid.ID(802)
+	_, err := h.service.Append(t.Context(), EventInput{
+		TenantID: tenantID, EventType: "created", Outcome: "success",
+	})
+	require.NoError(t, err)
+	report, err := h.service.Governance(t.Context(), tenantID)
+	require.NoError(t, err)
+	assert.Empty(t, report.Anchors)
+
+	fixture.fail = true
+	_, err = h.service.Governance(t.Context(), tenantID)
+	assert.ErrorIs(t, err, ErrAnchorUnavailable)
 }

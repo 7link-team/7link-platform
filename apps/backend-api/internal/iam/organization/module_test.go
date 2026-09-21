@@ -359,3 +359,47 @@ func TestOrganizationModuleProvisionerUnavailableBeforeInitialize(t *testing.T) 
 	require.NoError(t, declaration.ProvideServices(services))
 	assert.Error(t, declaration.ProvideServices(services))
 }
+
+// TestDepartmentOwnerResolverPublishesTheOwningTenantAndEntity pins the
+// capability the authorization layer uses to decide whose department a
+// globally addressed identifier names. Every answer it can give is load
+// bearing: the owning tenant and entity authorize the request, "not found"
+// keeps an identifier from another tenant from being probed, and an error must
+// stay an error rather than collapse into either of the other two.
+func TestDepartmentOwnerResolverPublishesTheOwningTenantAndEntity(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	created, err := h.service.Create(t.Context(), 1, CreateDepartment{
+		EntityID: organizationEntityOne, Name: "Engineering",
+	})
+	require.NoError(t, err)
+
+	instance := NewModule(h.runtime, enabledModuleConfig())
+	services := module.NewServices()
+	require.NoError(t, instance.ProvideServices(services))
+	require.NoError(t, services.Seal())
+	resolve, err := module.Resolve[core.DepartmentOwnerResolver](services)
+	require.NoError(t, err)
+
+	_, found, err := resolve(t.Context(), created.ID)
+	assert.ErrorIs(t, err, ErrUnavailable, "an unwired module cannot vouch for a department's owner")
+	assert.False(t, found)
+
+	instance.service = h.service
+	owner, found, err := resolve(t.Context(), created.ID)
+	require.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, authz.ResourceOwner{TenantID: 1, EntityID: organizationEntityOne}, owner)
+
+	_, found, err = resolve(t.Context(), 987654)
+	require.NoError(t, err)
+	assert.False(t, found, "an unknown department has no owner to authorize against")
+
+	unwired := &Repository{}
+	_, _, err = unwired.resolveDepartmentOwner(t.Context(), created.ID)
+	assert.ErrorIs(t, err, errRepositoryUnavailable)
+
+	require.NoError(t, h.db.Exec("DROP TABLE sl_iam_departments").Error)
+	_, found, err = resolve(t.Context(), created.ID)
+	assert.ErrorContains(t, err, "resolve department owner")
+	assert.False(t, found, "an unreadable directory must not authorize as an unowned resource")
+}

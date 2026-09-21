@@ -381,3 +381,73 @@ func TestDirectoryServicesRejectStaleVersions(t *testing.T) {
 	assert.EqualValues(t, 2, storedPosition.Version)
 	assert.Equal(t, positionRevision, h.revision(t, 1), "a rejected edit must not advance the policy revision")
 }
+
+// TestGroupWritesAbortWhenThePolicyRevisionCannotAdvance pins that every group
+// and group-membership write is committed together with the tenant's
+// authorization policy revision. The revision is what invalidates the caches
+// that answer with these memberships, so a membership change that committed
+// without it would keep granting access the directory no longer records.
+func TestGroupWritesAbortWhenThePolicyRevisionCannotAdvance(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	h.seedMember(t, 1, 10, "Alice")
+	service := newBoundGroupService(t,
+		h.runtime, h.appender, &organizationMemberChecker{prefix: h.prefix},
+		&organizationAdministratorGuard{}, newOrganizationTestIDs(700),
+	)
+	service.now = func() time.Time { return organizationTestNow }
+	created, err := service.Create(t.Context(), 1, CreateGroup{Name: "Operators"})
+	require.NoError(t, err)
+	_, err = service.PutMember(t.Context(), 1, created.ID, 10, GroupMemberWindow{})
+	require.NoError(t, err)
+	require.NoError(t, h.db.Exec("DROP TABLE sl_iam_policy_revisions").Error)
+
+	_, err = service.Create(t.Context(), 1, CreateGroup{Name: "Viewers"})
+	assert.Error(t, err)
+	_, err = service.Update(t.Context(), 1, created.ID, UpdateGroup{
+		Description: stringPointer("Tenant operators"), Version: created.Version,
+	})
+	assert.Error(t, err)
+	endsAt := organizationTestNow.Add(time.Hour)
+	_, err = service.PutMember(t.Context(), 1, created.ID, 10, GroupMemberWindow{EndsAt: &endsAt})
+	assert.Error(t, err)
+	_, err = service.DeleteMember(t.Context(), 1, created.ID, 10)
+	assert.Error(t, err)
+	assert.Error(t, service.Delete(t.Context(), 1, created.ID, created.Version))
+
+	groups, err := service.List(t.Context(), 1)
+	require.NoError(t, err)
+	require.Len(t, groups, 1, "no group may be added or removed without a revision bump")
+	assert.Empty(t, groups[0].Description, "a rejected description change must not survive")
+	members, err := service.ListMembers(t.Context(), 1, created.ID)
+	require.NoError(t, err)
+	require.Len(t, members, 1, "a rejected membership removal must not survive")
+	assert.Nil(t, members[0].EndsAt, "a rejected membership window must not survive")
+}
+
+// TestGroupPutMemberIsANoOpForAnUnchangedWindow pins that re-sending the same
+// membership window neither rewrites the row nor advances the tenant policy
+// revision, while still running the administrator guard that protects the
+// last administrator.
+func TestGroupPutMemberIsANoOpForAnUnchangedWindow(t *testing.T) {
+	h := newOrganizationHarness(t, "sl_")
+	h.seedMember(t, 1, 10, "Alice")
+	guard := &organizationAdministratorGuard{}
+	service := newBoundGroupService(t,
+		h.runtime, h.appender, &organizationMemberChecker{prefix: h.prefix},
+		guard, newOrganizationTestIDs(750),
+	)
+	service.now = func() time.Time { return organizationTestNow }
+	created, err := service.Create(t.Context(), 1, CreateGroup{Name: "Operators"})
+	require.NoError(t, err)
+	endsAt := organizationTestNow.Add(time.Hour)
+	window := GroupMemberWindow{EndsAt: &endsAt}
+	first, err := service.PutMember(t.Context(), 1, created.ID, 10, window)
+	require.NoError(t, err)
+	revision := h.revision(t, 1)
+
+	repeated, err := service.PutMember(t.Context(), 1, created.ID, 10, window)
+	require.NoError(t, err)
+	assert.Equal(t, first, repeated)
+	assert.Equal(t, revision, h.revision(t, 1), "an unchanged membership must not advance the policy revision")
+	assert.Equal(t, 2, guard.verified, "the administrator guard still runs for an unchanged membership")
+}

@@ -2,10 +2,14 @@ package identity
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
 
+	identityi18n "7link.com/platform/internal/iam/identity/i18n"
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -123,4 +127,39 @@ func (h identityHTTPHarness) seedLifecyclePrincipal(t *testing.T) Principal {
 	p, err := h.service.Create(t.Context(), 7, "subject", testPassword, "Subject Name", "subject@example.test")
 	require.NoError(t, err)
 	return p
+}
+
+// TestLifecycleAPIErrorMapsEveryRetentionRefusal pins the transport answer for
+// each refusal the retention and erasure routes can produce. These statuses are
+// what a console distinguishes "try again with the current version" from "this
+// account is under legal hold" by, so a collapsed mapping is a real defect.
+func TestLifecycleAPIErrorMapsEveryRetentionRefusal(t *testing.T) {
+	t.Parallel()
+
+	for _, testCase := range []struct {
+		err    error
+		status int
+		key    string
+	}{
+		{ErrLifecycleConflict, http.StatusConflict, identityi18n.LifecycleVersionConflict},
+		{ErrPrincipalRetained, http.StatusConflict, identityi18n.PrincipalRetained},
+		{ErrPrincipalAnonymized, http.StatusConflict, identityi18n.PrincipalAnonymized},
+		{ErrSuspensionRequired, http.StatusConflict, identityi18n.SuspensionRequired},
+		{ErrConfirmationMismatch, http.StatusUnprocessableEntity, identityi18n.AnonymizationConfirmation},
+		{ErrUnavailable, http.StatusServiceUnavailable, identityi18n.IdentityUnavailable},
+	} {
+		t.Run(testCase.key, func(t *testing.T) {
+			mapped, handled := lifecycleAPIError(fmt.Errorf("wrapped: %w", testCase.err))
+			require.True(t, handled, "a retention refusal must not fall through to the general mapper")
+			var status huma.StatusError
+			require.ErrorAs(t, mapped, &status)
+			require.Equal(t, testCase.status, status.GetStatus())
+			require.Contains(t, status.Error(), testCase.key)
+		})
+	}
+
+	// An unrelated failure is left for the general mapper to classify.
+	mapped, handled := lifecycleAPIError(errors.New("disk on fire"))
+	require.False(t, handled)
+	require.NoError(t, mapped, "an unrelated failure must be left unmapped, not turned into a retention refusal")
 }
