@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"7link.com/platform/internal/app"
+	"7link.com/platform/internal/maintenance"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -77,7 +77,7 @@ func TestResetAdminPasswordCommandReportsAnAdministratorThatWasNeverCreated(t *t
 		"iam", "reset-admin-password",
 		"--config", configPath, "--login", "admin", "--password-file", passwordPath,
 	)
-	require.ErrorIs(t, err, app.ErrPlatformAdminNotBootstrapped)
+	require.ErrorIs(t, err, maintenance.ErrPlatformAdminNotBootstrapped)
 	assert.Equal(t, exitNotBootstrapped, exitCode(err))
 }
 
@@ -90,7 +90,7 @@ func TestResetAdminPasswordCommandReportsAnUnmigratedSchema(t *testing.T) {
 		"iam", "reset-admin-password",
 		"--config", configPath, "--login", "admin", "--password-file", passwordPath,
 	)
-	require.ErrorIs(t, err, app.ErrPlatformAdminSchemaNotReady)
+	require.ErrorIs(t, err, maintenance.ErrPlatformAdminSchemaNotReady)
 	assert.Equal(t, exitSchemaNotReady, exitCode(err))
 }
 

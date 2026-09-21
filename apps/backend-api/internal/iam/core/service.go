@@ -117,7 +117,10 @@ func (s *Service) resolveRoleOwner(ctx context.Context, roleID guid.ID) (authz.R
 
 func (s *Service) resolveEntityOwner(ctx context.Context, entityID guid.ID) (authz.ResourceOwner, bool, error) {
 	tenantID, found, err := s.repo.ResolveEntityTenant(ctx, entityID)
-	return authz.ResourceOwner{TenantID: tenantID}, found, err
+	if !found || err != nil {
+		return authz.ResourceOwner{TenantID: tenantID}, found, err
+	}
+	return authz.ResourceOwner{TenantID: tenantID, EntityID: entityID}, true, nil
 }
 
 func (s *Service) resolveMenuOwner(ctx context.Context, menuID guid.ID) (authz.ResourceOwner, bool, error) {

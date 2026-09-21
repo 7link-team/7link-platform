@@ -69,8 +69,9 @@ type MembershipChecker interface {
 // ResourceOwner identifies the authorization boundary of a globally addressed
 // resource. EntityID is zero for resources authorized at tenant scope.
 type ResourceOwner struct {
-	TenantID guid.ID
-	EntityID guid.ID
+	TenantID    guid.ID
+	EntityID    guid.ID
+	PrincipalID guid.ID
 }
 
 // ResourceOwnerResolver resolves a globally unique resource ID to its trusted
@@ -682,7 +683,9 @@ func (r *Registrar) ownedResourceMiddleware(api huma.API, resourceParam string, 
 			_ = huma.WriteErr(api, ctx, http.StatusUnprocessableEntity, "invalid_id")
 			return
 		}
-		if !found || owner.TenantID.Zero() {
+		personalOwner := !owner.PrincipalID.Zero() && owner.TenantID.Zero() && owner.EntityID.Zero()
+		tenantOwner := owner.PrincipalID.Zero() && !owner.TenantID.Zero()
+		if !found || (!personalOwner && !tenantOwner) {
 			_ = huma.WriteErr(api, ctx, http.StatusNotFound, "not_found")
 			return
 		}
@@ -692,6 +695,18 @@ func (r *Registrar) ownedResourceMiddleware(api huma.API, resourceParam string, 
 		}
 		if parseErr != nil || principalID.Zero() {
 			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "forbidden")
+			return
+		}
+		if personalOwner {
+			if principalID != owner.PrincipalID {
+				_ = huma.WriteErr(api, ctx, http.StatusNotFound, "not_found")
+				return
+			}
+			trustedClaims := *claims
+			trustedClaims.TenantID = 0
+			trustedClaims.EntityID = 0
+			trustedClaims.PrincipalID = principalID
+			next(huma.WithContext(ctx, authn.WithClaims(ctx.Context(), &trustedClaims)))
 			return
 		}
 		requestContext := policyx.WithTrustedContext(ctx.Context(), policyx.TrustedContext{

@@ -10,8 +10,66 @@ import (
 	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/authz"
 	"gorm.io/gorm"
 )
+
+func (m *Module) resolveFileOwner(ctx context.Context, fileID guid.ID) (authz.ResourceOwner, bool, error) {
+	if m == nil || m.runtime == nil || m.runtime.Database() == nil || m.runtime.Database().Write() == nil ||
+		m.entityOwner == nil || m.deptOwner == nil || fileID <= 0 {
+		return authz.ResourceOwner{}, false, errOperationUnavailable
+	}
+	db := m.runtime.Database().Write().WithContext(ctx)
+	tree := directoryTree{prefix: m.runtime.TablePrefix()}
+	q := query.Bind(db, tree.prefix)
+	node, err := q.Node.WithContext(ctx).Where(q.Node.ID.Eq(fileID)).Take()
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return authz.ResourceOwner{}, false, nil
+	}
+	if err != nil {
+		return authz.ResourceOwner{}, false, err
+	}
+	space, err := q.Space.WithContext(ctx).Where(q.Space.ID.Eq(node.SpaceID)).Take()
+	if err != nil {
+		return authz.ResourceOwner{}, false, err
+	}
+	owner, err := tree.resourceOwner(ctx, db, node.SpaceID, node.ID)
+	if err != nil {
+		return authz.ResourceOwner{}, false, err
+	}
+	switch owner.Scope {
+	case "account", "personal":
+		if owner.ID <= 0 || (owner.Scope == "account" && (space.PrincipalID == nil || *space.PrincipalID != owner.ID)) {
+			return authz.ResourceOwner{}, false, errFileACL
+		}
+		return authz.ResourceOwner{PrincipalID: owner.ID}, true, nil
+	case "tenant":
+		if space.TenantID == nil || *space.TenantID != owner.ID {
+			return authz.ResourceOwner{}, false, errFileACL
+		}
+		return authz.ResourceOwner{TenantID: owner.ID}, true, nil
+	case "entity":
+		resolved, found, err := m.entityOwner(ctx, owner.ID)
+		if err != nil || !found {
+			return authz.ResourceOwner{}, found, err
+		}
+		if space.TenantID == nil || resolved.TenantID != *space.TenantID || resolved.EntityID != owner.ID {
+			return authz.ResourceOwner{}, false, errFileACL
+		}
+		return resolved, true, nil
+	case "department":
+		resolved, found, err := m.deptOwner(ctx, owner.ID)
+		if err != nil || !found {
+			return authz.ResourceOwner{}, found, err
+		}
+		if space.TenantID == nil || resolved.TenantID != *space.TenantID || resolved.EntityID <= 0 {
+			return authz.ResourceOwner{}, false, errFileACL
+		}
+		return resolved, true, nil
+	default:
+		return authz.ResourceOwner{}, false, errFileACL
+	}
+}
 
 func (m *Module) provisionOrganizationRoot(
 	ctx context.Context,

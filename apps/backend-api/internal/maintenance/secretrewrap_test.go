@@ -1,7 +1,9 @@
-package app
+package maintenance
 
 import (
 	"testing"
+
+	"7link.com/platform/internal/app"
 	"time"
 
 	authnext "7link.com/platform/pkg/extension/authn"
@@ -27,7 +29,7 @@ func newSecretRewrapConfig(t *testing.T, dsn string) RewrapSecretsConfig {
 		AllowedOrigins:    []string{"https://app.example.test"},
 		SessionTTL:        time.Hour, IdleTTL: 15 * time.Minute,
 	}
-	admin.AppConfig.Authn = IAMAuthn(authn)
+	admin.AppConfig.Authn = app.IAMAuthn(authn)
 	return RewrapSecretsConfig{AppConfig: admin.AppConfig}
 }
 
@@ -71,14 +73,14 @@ func TestSecretRewrapAnswersWhetherARetiredKeyMayComeOut(t *testing.T) {
 	dsn := newPlatformAdminDSN(t)
 	config := newSecretRewrapConfig(t, dsn)
 	migratePlatformAdminDatabase(t, PlatformAdminConfig{AppConfig: config.AppConfig})
-	owner, err := (&App{}).RunPlatformAdminBootstrap(
+	owner, err := RunPlatformAdminBootstrap(
 		t.Context(), newPlatformAdminConfig(t, dsn), bootstrapTestPassword)
 	require.NoError(t, err)
 	seedRecoveryCodesAndVerification(t, config, owner.PrincipalID)
 
 	survey := config
 	survey.DryRun = true
-	report, err := (&App{}).RunSecretRewrap(t.Context(), survey)
+	report, err := RunSecretRewrap(t.Context(), survey)
 	require.NoError(t, err)
 
 	assert.True(t, report.DryRun, "a survey pasted into a ticket must not read as proof a rewrap ran")
@@ -106,7 +108,7 @@ func TestSecretRewrapAnswersWhetherARetiredKeyMayComeOut(t *testing.T) {
 
 	// The real pass has nothing to convert here, and has to say so rather than
 	// letting an empty conversion read as a finished rotation.
-	applied, err := (&App{}).RunSecretRewrap(t.Context(), config)
+	applied, err := RunSecretRewrap(t.Context(), config)
 	require.NoError(t, err)
 	assert.False(t, applied.DryRun)
 	assert.Equal(t, int64(0), applied.Rewrapped)
@@ -188,6 +190,6 @@ func TestSecretRewrapSummaryRefusesToPrintADateThatReadsAsPermission(t *testing.
 // capability from reporting zero. Zero pending is the sentence that ends with a
 // key being deleted, so it may only ever come from a pass that actually ran.
 func TestSecretRewrapReportsAnUncomposedApplicationAsUnavailable(t *testing.T) {
-	_, err := (&App{}).secretRewrappers(platformAdminStores{})
+	_, err := resolveSecretRewrappers(nil, nil, nil)
 	assert.ErrorIs(t, err, ErrSecretRewrapUnavailable)
 }

@@ -1,6 +1,7 @@
-package app
+package iamintegration
 
 import (
+	"7link.com/platform/internal/app"
 	"bytes"
 	"encoding/json"
 	"io"
@@ -75,7 +76,7 @@ func TestIAMHTTPLoadExternalDatabase(t *testing.T) {
 	concurrency := iamLoadEnvInt(t, iamLoadConcurrency, iamLoadDefaultConcurrency)
 	requests := iamLoadEnvInt(t, iamLoadRequests, iamLoadDefaultRequests)
 
-	fixture := newIAMTenantFixtureWithDatabase(t, Database{
+	fixture := newIAMTenantFixtureWithDatabase(t, app.Database{
 		Type: databaseType, Dsn: databaseDSN, Writable: true, Readable: true,
 		MaxOpenConns: concurrency * 2, MaxIdleConns: concurrency,
 	}, "")
@@ -110,10 +111,10 @@ func (f *iamTenantFixture) loadScenarios(t *testing.T) []iamLoadScenario {
 	requireStatus(t, http.StatusCreated, response)
 	role := decodeEnvelope[core.APIRole](t, response)
 
-	response = f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/permissions/entity_view", iamTenantA, f.tokenA, nil, nil)
+	response = f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/permissions/entity_view", 0, f.tokenA, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 
-	response = f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/members/"+f.adminA.ID.String(), iamTenantA, f.tokenA, nil, nil)
+	response = f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/members/"+f.adminA.ID.String(), 0, f.tokenA, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 
 	response = f.request(t, http.MethodPost, "/entities", iamTenantA, f.tokenA, map[string]any{

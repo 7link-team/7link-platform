@@ -120,7 +120,7 @@ func viewOfSelected(row *model.TodoRow, rendered map[string]bool) View {
 
 // IDInput carries the path identifier shared by every single-task operation.
 type IDInput struct {
-	ID string `path:"id" doc:"task identifier"`
+	TodoID string `path:"todo_id" pattern:"^[1-9][0-9]*$" maxLength:"19" doc:"globally unique task identifier"`
 }
 
 // VersionedInput adds the If-Match precondition, so a caller that has not read
@@ -130,13 +130,13 @@ type VersionedInput struct {
 	IfMatch string `header:"If-Match" doc:"version of the task being replaced, as returned in ETag"`
 }
 
-// taskID parses a path identifier. An unparsable or non-positive value can
-// never name a stored task, so it is reported as absent rather than as a
-// malformed request.
+// taskID parses a globally unique task identifier. Malformed identifiers are
+// invalid input; a well-formed identifier that has no row is reported later as
+// not found by the owning repository.
 func taskID(raw string) (guid.ID, error) {
 	id, err := guid.Parse(raw)
 	if err != nil || id.Zero() {
-		return 0, huma.Error404NotFound(todoi18n.NotFound)
+		return 0, huma.Error422UnprocessableEntity("respx.invalid_id")
 	}
 	return id, nil
 }
@@ -260,7 +260,7 @@ func registerEntityTodo[I, O any](registrar *authz.Registrar, api huma.API, svc 
 
 func registerOwnedTodo[I, O any](registrar *authz.Registrar, api huma.API, svc *service, op huma.Operation, guard authz.Guard, handler func(context.Context, *I) (*O, error)) {
 	op.Tags = []string{"todos"}
-	authz.RegisterOwned(registrar, api, op, "id", svc.resolveOwner, guard, handler)
+	authz.RegisterOwned(registrar, api, op, "todo_id", svc.resolveOwner, guard, handler)
 }
 
 func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, registrar *authz.Registrar) {
@@ -314,11 +314,11 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, regist
 	registerOwnedTodo(registrar, api, svc, huma.Operation{
 		OperationID: "get-todo",
 		Method:      http.MethodGet,
-		Path:        basePath + "/{id}",
+		Path:        basePath + "/{todo_id}",
 		Summary:     "Read a task",
 		Tags:        []string{"tenants"},
 	}, authz.Guard{Resource: "todo", Verb: "view", FilterData: true}, func(ctx context.Context, in *IDInput) (*taskBody, error) {
-		id, err := taskID(in.ID)
+		id, err := taskID(in.TodoID)
 		if err != nil {
 			return nil, err
 		}
@@ -332,7 +332,7 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, regist
 	registerOwnedTodo(registrar, api, svc, huma.Operation{
 		OperationID: "update-todo",
 		Method:      http.MethodPatch,
-		Path:        basePath + "/{id}",
+		Path:        basePath + "/{todo_id}",
 		Summary:     "Update a task",
 		Description: "Requires If-Match carrying the version last read, so a concurrent write cannot be lost.",
 		Tags:        []string{"tenants"},
@@ -341,7 +341,7 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, regist
 		if err != nil {
 			return nil, err
 		}
-		id, err := taskID(in.ID)
+		id, err := taskID(in.TodoID)
 		if err != nil {
 			return nil, err
 		}
@@ -359,7 +359,7 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, regist
 	registerOwnedTodo(registrar, api, svc, huma.Operation{
 		OperationID:   "delete-todo",
 		Method:        http.MethodDelete,
-		Path:          basePath + "/{id}",
+		Path:          basePath + "/{todo_id}",
 		Summary:       "Delete a task",
 		Description:   "Soft delete. Requires If-Match: deleting a stale view loses an update just as writing one does.",
 		Tags:          []string{"tenants"},
@@ -369,7 +369,7 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, regist
 		if err != nil {
 			return nil, err
 		}
-		id, err := taskID(in.ID)
+		id, err := taskID(in.TodoID)
 		if err != nil {
 			return nil, err
 		}
@@ -380,18 +380,18 @@ func registerHTTP(api huma.API, svc *service, filterParams []*huma.Param, regist
 	})
 
 	registerOwnedTodo(registrar, api, svc, huma.Operation{
-		OperationID: "restore-todo",
-		Method:      http.MethodPost,
-		Path:        basePath + "/{id}/restore",
-		Summary:     "Restore a deleted task",
-		Description: "Requires If-Match, so a task cannot be restored from its identifier alone.",
+		OperationID: "delete-todo-deletion",
+		Method:      http.MethodDelete,
+		Path:        basePath + "/{todo_id}/deletion",
+		Summary:     "Remove a task deletion marker",
+		Description: "Restores the soft-deleted task. Requires If-Match, so a task cannot be restored from its identifier alone.",
 		Tags:        []string{"tenants"},
 	}, authz.Guard{Resource: "todo", Verb: "update", FilterData: true}, func(ctx context.Context, in *VersionedInput) (*taskBody, error) {
 		version, err := parseIfMatch(in.IfMatch)
 		if err != nil {
 			return nil, err
 		}
-		id, err := taskID(in.ID)
+		id, err := taskID(in.TodoID)
 		if err != nil {
 			return nil, err
 		}

@@ -1,6 +1,7 @@
-package app
+package iamintegration
 
 import (
+	"7link.com/platform/internal/app"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
@@ -43,12 +44,11 @@ func TestIAMLifecycleExternalDatabase(t *testing.T) {
 	if databaseType == "" || dsn == "" {
 		t.Skip("external IAM lifecycle database is not configured")
 	}
-	fixture := newIAMTenantFixtureWithDatabase(t, Database{
+	fixture := newIAMTenantFixtureWithDatabase(t, app.Database{
 		Type: databaseType, Dsn: dsn, Writable: true, Readable: true,
 		MaxOpenConns: 8, MaxIdleConns: 4,
 	}, os.Getenv(iamLifecycleTablePrefix))
 	fixture.runIAMLifecycle(t)
-	fixture.runTodoDataPermissions(t)
 	fixture.runSCIMTenantLifecycle(t)
 	fixture.runSCIMActorLifecycle(t)
 	fixture.runBrowserSessionTenant(t)
@@ -130,9 +130,9 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 		requireStatus(t, http.StatusCreated, response)
 		position = decodeEnvelope[organization.Position](t, response)
 
-		response = f.request(t, http.MethodPut, "/groups/"+group.ID.String()+"/members/"+actor.ID.String(), tenant.ID, actorToken, map[string]any{}, nil)
+		response = f.request(t, http.MethodPut, "/groups/"+group.ID.String()+"/members/"+actor.ID.String(), 0, actorToken, map[string]any{}, nil)
 		requireStatus(t, http.StatusOK, response)
-		response = f.request(t, http.MethodPut, "/positions/"+position.ID.String()+"/members/"+actor.ID.String(), tenant.ID, actorToken, map[string]any{}, nil)
+		response = f.request(t, http.MethodPut, "/positions/"+position.ID.String()+"/members/"+actor.ID.String(), 0, actorToken, map[string]any{}, nil)
 		requireStatus(t, http.StatusOK, response)
 
 		assert.Equal(t, int64(1), f.count(t, "iam_departments", "tenant_id = ? AND id = ?", tenant.ID, department.ID))
@@ -155,9 +155,9 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 		}, nil)
 		requireStatus(t, http.StatusCreated, response)
 		role = decodeEnvelope[core.APIRole](t, response)
-		response = f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/permissions/entity_view", tenant.ID, actorToken, nil, nil)
+		response = f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/permissions/entity_view", 0, actorToken, nil, nil)
 		requireStatus(t, http.StatusOK, response)
-		response = f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/members/"+actor.ID.String(), tenant.ID, actorToken, nil, nil)
+		response = f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/members/"+actor.ID.String(), 0, actorToken, nil, nil)
 		requireStatus(t, http.StatusOK, response)
 		assert.Equal(t, int64(1), f.count(t, "iam_roles", "tenant_id = ? AND id = ?", tenant.ID, role.ID))
 		assert.Equal(t, int64(1), f.count(t, "iam_role_permissions", "tenant_id = ? AND role_id = ? AND permission_code = 'entity_view'", tenant.ID, role.ID))
@@ -310,7 +310,7 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 		}, nil)
 		requireStatus(t, http.StatusCreated, response)
 		request := decodeEnvelope[governance.AccessRequest](t, response)
-		response = f.request(t, http.MethodPut, "/access-requests/"+request.ID.String()+"/decision", tenant.ID, actorToken, map[string]any{"decision": "approved", "note": "approved"}, nil)
+		response = f.request(t, http.MethodPut, "/access-requests/"+request.ID.String()+"/decision", 0, actorToken, map[string]any{"decision": "approved", "note": "approved"}, nil)
 		requireStatus(t, http.StatusOK, response)
 		approved := decodeEnvelope[governance.AccessRequest](t, response)
 		assert.Equal(t, governance.StatusApproved, approved.Status)
@@ -336,7 +336,7 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 
 func requireIAMModule[T any](t *testing.T, fixture *iamTenantFixture, name string) T {
 	t.Helper()
-	value, ok := fixture.app.modules.ByName(name)
+	value, ok := fixture.app.Modules().ByName(name)
 	require.True(t, ok, name)
 	module, ok := value.(T)
 	require.True(t, ok, name)

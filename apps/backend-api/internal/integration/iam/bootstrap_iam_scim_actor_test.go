@@ -1,6 +1,7 @@
-package app
+package iamintegration
 
 import (
+	"7link.com/platform/internal/app"
 	"context"
 	"encoding/json"
 	"errors"
@@ -28,7 +29,7 @@ import (
 func TestComposedSCIMServiceAccountBindings(t *testing.T) {
 	for _, prefix := range []string{"", "actor_"} {
 		t.Run("prefix_"+prefix, func(t *testing.T) {
-			f := newIAMTenantFixtureWithDatabase(t, Database{
+			f := newIAMTenantFixtureWithDatabase(t, app.Database{
 				Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "actors.sqlite"), Writable: true, Readable: true,
 			}, prefix)
 			f.runSCIMActorLifecycle(t)
@@ -38,7 +39,7 @@ func TestComposedSCIMServiceAccountBindings(t *testing.T) {
 
 func (f *iamTenantFixture) actorProvisioningService(t *testing.T, appender audit.Appender) *provisioning.Service {
 	t.Helper()
-	services := f.app.modules.Services()
+	services := f.app.Modules().Services()
 	ids, err := module.Resolve[guid.Source](services)
 	require.NoError(t, err)
 	identities, err := module.Resolve[identity.IdentityProvisioner](services)
@@ -52,7 +53,7 @@ func (f *iamTenantFixture) actorProvisioningService(t *testing.T, appender audit
 		require.NoError(t, err)
 	}
 	config := provisioning.Config{
-		EncryptionKey:          f.app.config.Provisioning.EncryptionKey,
+		EncryptionKey:          f.app.Config().Provisioning.EncryptionKey,
 		OutboundAllowPlaintext: true,
 		OutboundAllowNetworks:  []string{"127.0.0.0/8", "::1/128"},
 	}
@@ -62,10 +63,10 @@ func (f *iamTenantFixture) actorProvisioningService(t *testing.T, appender audit
 	require.NoError(t, err)
 	outbound, err := provisioning.ResolveOutboundPolicy(config)
 	require.NoError(t, err)
-	scim := provisioning.NewService(f.app.runtime, appender, ids, identities, groups, actors, fields, config, keys, outbound)
+	scim := provisioning.NewService(f.app.Runtime(), appender, ids, identities, groups, actors, fields, config, keys, outbound)
 	// A service built outside the module never went through injection, so it
 	// binds the owners' published names itself.
-	prefix := f.app.runtime.TablePrefix()
+	prefix := f.app.Runtime().TablePrefix()
 	require.NoError(t, scim.BindForeignTables(core.PublishedAccessTableNames(prefix),
 		identity.PublishedPrincipalTableNames(prefix), organization.PublishedDirectoryTableNames(prefix)))
 	return scim
@@ -110,7 +111,7 @@ func (f *iamTenantFixture) runSCIMActorLifecycle(t *testing.T) {
 	requireStatus(t, http.StatusCreated, response)
 	directory := decodeEnvelope[provisioning.Directory](t, response)
 	require.Equal(t, &first.ID, directory.ServiceAccountID)
-	response = f.request(t, http.MethodPost, "/scim-directories/"+directory.ID.String()+"/credentials", iamTenantA, f.tokenA,
+	response = f.request(t, http.MethodPost, "/scim-directories/"+directory.ID.String()+"/credentials", 0, f.tokenA,
 		map[string]any{"name": "Bound credential"}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	credential := decodeEnvelope[provisioning.CredentialSecret](t, response)
@@ -139,12 +140,12 @@ func (f *iamTenantFixture) runSCIMActorLifecycle(t *testing.T) {
 	}
 	directoryPath := "/scim-directories/" + directory.ID.String()
 	targetPath := "/scim-targets/" + target.ID
-	response = f.request(t, http.MethodPut, directoryPath, iamTenantA, f.tokenA, directoryBody(&second.ID, "active", directory.Version), nil)
+	response = f.request(t, http.MethodPut, directoryPath, 0, f.tokenA, directoryBody(&second.ID, "active", directory.Version), nil)
 	requireStatus(t, http.StatusOK, response)
 	directory = decodeEnvelope[provisioning.Directory](t, response)
 	assert.Equal(t, int64(2), directory.Version)
 	assert.Equal(t, &second.ID, directory.ServiceAccountID)
-	response = f.request(t, http.MethodPut, directoryPath, iamTenantA, f.tokenA, directoryBody(&first.ID, "active", 1), nil)
+	response = f.request(t, http.MethodPut, directoryPath, 0, f.tokenA, directoryBody(&first.ID, "active", 1), nil)
 	requireStatus(t, http.StatusConflict, response)
 	_, err = service.GetUser(t.Context(), auth, f.adminA.ID)
 	assert.ErrorIs(t, err, provisioning.ErrUnauthorized, "retained auth cannot survive rebind")
@@ -157,15 +158,15 @@ func (f *iamTenantFixture) runSCIMActorLifecycle(t *testing.T) {
 		_, err = service.GetUser(t.Context(), forged, f.adminA.ID)
 		assert.ErrorIs(t, err, provisioning.ErrUnauthorized)
 	}
-	response = f.request(t, http.MethodPut, targetPath, iamTenantA, f.tokenA, targetBody(&second.ID, "active", target.Version), nil)
+	response = f.request(t, http.MethodPut, targetPath, 0, f.tokenA, targetBody(&second.ID, "active", target.Version), nil)
 	requireStatus(t, http.StatusOK, response)
 	target = decodeEnvelope[provisioning.Target](t, response)
 	assert.Equal(t, int64(2), target.Version)
 	assert.Equal(t, &second.ID, target.ServiceAccountID)
-	response = f.request(t, http.MethodPut, targetPath, iamTenantA, f.tokenA, targetBody(&first.ID, "active", 1), nil)
+	response = f.request(t, http.MethodPut, targetPath, 0, f.tokenA, targetBody(&first.ID, "active", 1), nil)
 	requireStatus(t, http.StatusConflict, response)
 	pushBody := map[string]any{"resource_type": "User", "resource_id": f.adminA.ID.String()}
-	response = f.request(t, http.MethodPost, targetPath+"/provisioning-jobs", iamTenantA, f.tokenA, pushBody, nil)
+	response = f.request(t, http.MethodPost, targetPath+"/provisioning-jobs", 0, f.tokenA, pushBody, nil)
 	requireStatus(t, http.StatusOK, response)
 	assert.Equal(t, int64(1), remoteCalls.Load())
 	var pushAudit struct {
@@ -189,7 +190,7 @@ func (f *iamTenantFixture) runSCIMActorLifecycle(t *testing.T) {
 		response := f.request(t, http.MethodGet, "/scim/v2/Users", 0, credential.Token, nil, nil)
 		requireStatus(t, http.StatusUnauthorized, response)
 		for _, operation := range []string{"provisioning-jobs", "deprovisioning-jobs"} {
-			response = f.request(t, http.MethodPost, targetPath+"/"+operation, iamTenantA, f.tokenA, pushBody, nil)
+			response = f.request(t, http.MethodPost, targetPath+"/"+operation, 0, f.tokenA, pushBody, nil)
 			requireStatus(t, http.StatusConflict, response)
 		}
 		_, err = service.SyncTarget(t.Context(), iamTenantA, targetID)
@@ -219,25 +220,25 @@ func (f *iamTenantFixture) runSCIMActorLifecycle(t *testing.T) {
 			assertRejected(t)
 		}))
 	}
-	response = f.request(t, http.MethodDelete, "/service-accounts/"+second.ID.String()+"?version="+strconv.FormatInt(second.Version, 10), iamTenantA, f.tokenA, nil, nil)
+	response = f.request(t, http.MethodDelete, "/service-accounts/"+second.ID.String()+"?version="+strconv.FormatInt(second.Version, 10), 0, f.tokenA, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 	assertRejected(t)
 	// An invalid old actor must not prevent an administrator from disabling or repairing a configuration.
-	response = f.request(t, http.MethodPut, directoryPath, iamTenantA, f.tokenA, directoryBody(&second.ID, "disabled", directory.Version), nil)
+	response = f.request(t, http.MethodPut, directoryPath, 0, f.tokenA, directoryBody(&second.ID, "disabled", directory.Version), nil)
 	requireStatus(t, http.StatusOK, response)
 	directory = decodeEnvelope[provisioning.Directory](t, response)
-	response = f.request(t, http.MethodPut, targetPath, iamTenantA, f.tokenA, targetBody(&second.ID, "disabled", target.Version), nil)
+	response = f.request(t, http.MethodPut, targetPath, 0, f.tokenA, targetBody(&second.ID, "disabled", target.Version), nil)
 	requireStatus(t, http.StatusOK, response)
 	target = decodeEnvelope[provisioning.Target](t, response)
-	response = f.request(t, http.MethodPut, directoryPath, iamTenantA, f.tokenA, directoryBody(&first.ID, "active", directory.Version), nil)
+	response = f.request(t, http.MethodPut, directoryPath, 0, f.tokenA, directoryBody(&first.ID, "active", directory.Version), nil)
 	requireStatus(t, http.StatusOK, response)
 	directory = decodeEnvelope[provisioning.Directory](t, response)
-	response = f.request(t, http.MethodPut, targetPath, iamTenantA, f.tokenA, targetBody(&first.ID, "active", target.Version), nil)
+	response = f.request(t, http.MethodPut, targetPath, 0, f.tokenA, targetBody(&first.ID, "active", target.Version), nil)
 	requireStatus(t, http.StatusOK, response)
 	target = decodeEnvelope[provisioning.Target](t, response)
 	_, err = service.Authenticate(t.Context(), "Bearer "+credential.Token)
 	require.NoError(t, err)
-	response = f.request(t, http.MethodPost, targetPath+"/provisioning-jobs", iamTenantA, f.tokenA, pushBody, nil)
+	response = f.request(t, http.MethodPost, targetPath+"/provisioning-jobs", 0, f.tokenA, pushBody, nil)
 	requireStatus(t, http.StatusOK, response)
 	synced, err := service.SyncTarget(t.Context(), iamTenantA, targetID)
 	require.NoError(t, err)
@@ -248,10 +249,10 @@ func (f *iamTenantFixture) runSCIMActorLifecycle(t *testing.T) {
 	assert.Equal(t, int64(1), f.count(t, "iam_audit_events", "tenant_id = ? AND event_type = ? AND principal_id = ?",
 		iamTenantA, "scim_target_deprovisioned", first.ID))
 
-	response = f.request(t, http.MethodPut, directoryPath, iamTenantA, f.tokenA, directoryBody(nil, "disabled", directory.Version), nil)
+	response = f.request(t, http.MethodPut, directoryPath, 0, f.tokenA, directoryBody(nil, "disabled", directory.Version), nil)
 	requireStatus(t, http.StatusOK, response)
 	assert.Nil(t, decodeEnvelope[provisioning.Directory](t, response).ServiceAccountID)
-	response = f.request(t, http.MethodPut, targetPath, iamTenantA, f.tokenA, targetBody(nil, "disabled", target.Version), nil)
+	response = f.request(t, http.MethodPut, targetPath, 0, f.tokenA, targetBody(nil, "disabled", target.Version), nil)
 	requireStatus(t, http.StatusOK, response)
 	assert.Nil(t, decodeEnvelope[provisioning.Target](t, response).ServiceAccountID)
 	assert.Equal(t, int64(1), f.count(t, "iam_scim_directories", "id = ? AND service_account_id IS NULL", directory.ID))

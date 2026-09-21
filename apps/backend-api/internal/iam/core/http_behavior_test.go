@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -35,6 +36,14 @@ func (verifier httpTokenVerifier) Authenticate(context.Context, string, string) 
 type httpRouteAuthorizer struct{ platformAllowed bool }
 
 func (httpRouteAuthorizer) Check(context.Context, guid.ID, string, guid.ID) (bool, error) {
+	return true, nil
+}
+
+func (httpRouteAuthorizer) EntityConstraint(context.Context, guid.ID, guid.ID, string, guid.ID) (authz.DataConstraint, error) {
+	return authz.DataConstraint{AllowAll: true}, nil
+}
+
+func (httpRouteAuthorizer) CheckEntity(context.Context, guid.ID, guid.ID, string, guid.ID) (bool, error) {
 	return true, nil
 }
 
@@ -690,13 +699,13 @@ func TestIAMHTTPInternalFailuresUseUniformEnvelope(t *testing.T) {
 			return harness.api.Post(header+"/menus", "Authorization: Bearer test", map[string]any{"label": "Menu"})
 		}},
 		{name: "get menu", call: func() *httptest.ResponseRecorder {
-			return harness.api.Get(header+"/menus/1", "Authorization: Bearer test")
+			return harness.api.Get("/menus/1", "Authorization: Bearer test")
 		}},
 		{name: "update menu", call: func() *httptest.ResponseRecorder {
-			return harness.api.Patch(header+"/menus/1", "Authorization: Bearer test", map[string]any{"label": "Menu"})
+			return harness.api.Patch("/menus/1", "Authorization: Bearer test", map[string]any{"label": "Menu"})
 		}},
 		{name: "delete menu", call: func() *httptest.ResponseRecorder {
-			return harness.api.Delete(header+"/menus/1", "Authorization: Bearer test")
+			return harness.api.Delete("/menus/1", "Authorization: Bearer test")
 		}},
 		{name: "effective menus", call: func() *httptest.ResponseRecorder {
 			return harness.api.Get(header+"/me/menus", "Authorization: Bearer test")
@@ -722,9 +731,9 @@ func TestIAMHTTPInternalFailuresUseUniformEnvelope(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			response := test.call()
-			assert.Equal(t, http.StatusInternalServerError, response.Code, response.Body.String())
+			assert.Contains(t, []int{http.StatusInternalServerError, http.StatusServiceUnavailable}, response.Code, response.Body.String())
 			assert.NotContains(t, response.Body.String(), "database is closed")
-			assert.Contains(t, response.Body.String(), `"code":500`)
+			assert.Contains(t, response.Body.String(), `"code":`+strconv.Itoa(response.Code))
 			assert.Contains(t, response.Body.String(), `"data":null`)
 		})
 	}

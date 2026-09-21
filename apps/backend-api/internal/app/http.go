@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -100,6 +101,25 @@ func (app *App) mountHTTPMiddlewares(router chi.Router) error {
 		}
 	}
 	router.Use(respx.Recovery)
+	return nil
+}
+
+// RegisterHTTP mounts the composed application's middleware, typed operations,
+// and raw protocol routes on a caller-owned router without opening a listener.
+func (app *App) RegisterHTTP(ctx context.Context, router chi.Router) error {
+	if app == nil || app.modules == nil {
+		return errors.New("application modules are not composed")
+	}
+	if err := app.mountHTTPMiddlewares(router); err != nil {
+		return err
+	}
+	api := humax.New(router, humax.Config{Name: app.config.Name, Version: app.config.Version})
+	if err := app.modules.RegisterHTTP(ctx, api); err != nil {
+		return err
+	}
+	for _, route := range app.modules.RawHTTPRoutes() {
+		mountRawRoute(router, route)
+	}
 	return nil
 }
 

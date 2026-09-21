@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"7link.com/platform/internal/iam/identity"
+	"7link.com/platform/internal/iam/lifecycle"
 	healthservice "7link.com/platform/internal/infra/health/service"
 	"7link.com/platform/internal/infra/migrationstatus"
 	"7link.com/platform/pkg/module"
+	"gorm.io/gorm"
 )
 
 // provideCrossCutting registers the app-scoped cross-module views consumed by
@@ -16,7 +19,13 @@ import (
 // module ServiceProviders but before the registry is sealed, and propagates every
 // error.
 func (app *App) provideCrossCutting(services *module.Services) error {
-	if err := module.Provide[identity.PrincipalAnonymizer](services, app.anonymizePrincipalData); err != nil {
+	anonymize := identity.PrincipalAnonymizer(func(ctx context.Context, tx *gorm.DB, principal identity.Principal, now time.Time) error {
+		if app.runtime == nil {
+			return identity.ErrUnavailable
+		}
+		return lifecycle.AnonymizePrincipalData(ctx, tx, app.runtime.TablePrefix(), principal, now)
+	})
+	if err := module.Provide[identity.PrincipalAnonymizer](services, anonymize); err != nil {
 		return err
 	}
 	if err := module.Provide[healthservice.CheckerProvider](services, app.healthCheckers); err != nil {

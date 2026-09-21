@@ -24,6 +24,12 @@ type browserPageRequest struct {
 	Limit int
 }
 
+type fileCollection struct {
+	scope    string
+	tenantID guid.ID
+	ownerID  guid.ID
+}
+
 type filePage struct {
 	Items     []fileEntryView `json:"items"`
 	NextAfter *guid.ID        `json:"next_after,omitempty"`
@@ -68,7 +74,7 @@ func normalizeBrowserPage(request browserPageRequest) (browserPageRequest, error
 	return request, nil
 }
 
-func (s *operationService) listRoots(ctx context.Context, request browserPageRequest) (filePage, error) {
+func (s *operationService) listRoots(ctx context.Context, collection fileCollection, request browserPageRequest) (filePage, error) {
 	var result filePage
 	request, err := normalizeBrowserPage(request)
 	if err != nil {
@@ -86,11 +92,10 @@ func (s *operationService) listRoots(ctx context.Context, request browserPageReq
 		if err != nil {
 			return err
 		}
-		scope, ownerID := "tenant", claims.TenantID
-		if claims.TenantID == 0 {
-			scope, ownerID = "account", claims.PrincipalID
+		if err := collection.validate(claims); err != nil {
+			return err
 		}
-		result, err = tree.authorizedRoots(workContext, tx, authorizer, scope, ownerID, request)
+		result, err = tree.authorizedRoots(workContext, tx, authorizer, collection, request)
 		return err
 	})
 	if err != nil {
@@ -99,7 +104,30 @@ func (s *operationService) listRoots(ctx context.Context, request browserPageReq
 	return result, nil
 }
 
-func (s *operationService) listTrash(ctx context.Context, request browserPageRequest) (filePage, error) {
+func (collection fileCollection) validate(claims *authn.Claims) error {
+	if claims == nil || collection.ownerID <= 0 {
+		return errOperationInput
+	}
+	switch collection.scope {
+	case "account":
+		if collection.tenantID != 0 || claims.TenantID != 0 || claims.EntityID != 0 || collection.ownerID != claims.PrincipalID {
+			return errOperationForbidden
+		}
+	case "tenant":
+		if collection.tenantID != collection.ownerID || claims.TenantID != collection.tenantID {
+			return errOperationForbidden
+		}
+	case "entity", "department":
+		if collection.tenantID <= 0 || claims.TenantID != collection.tenantID || claims.EntityID <= 0 {
+			return errOperationForbidden
+		}
+	default:
+		return errOperationInput
+	}
+	return nil
+}
+
+func (s *operationService) listTrash(ctx context.Context, collection fileCollection, request browserPageRequest) (filePage, error) {
 	var result filePage
 	request, err := normalizeBrowserPage(request)
 	if err != nil {
@@ -117,11 +145,10 @@ func (s *operationService) listTrash(ctx context.Context, request browserPageReq
 		if err != nil {
 			return err
 		}
-		scope, ownerID := "tenant", claims.TenantID
-		if claims.TenantID == 0 {
-			scope, ownerID = "account", claims.PrincipalID
+		if err := collection.validate(claims); err != nil {
+			return err
 		}
-		result, err = tree.authorizedTrash(workContext, tx, authorizer, scope, ownerID, request)
+		result, err = tree.authorizedTrash(workContext, tx, authorizer, collection, request)
 		return err
 	})
 	if err != nil {
@@ -272,17 +299,17 @@ func (s *operationService) browserClaims(ctx context.Context) (*authn.Claims, er
 	return claims, nil
 }
 
-func (t directoryTree) authorizedRoots(ctx context.Context, tx *gorm.DB, authorizer *nodeAuthorizer, scope string, ownerID guid.ID, request browserPageRequest) (filePage, error) {
+func (t directoryTree) authorizedRoots(ctx context.Context, tx *gorm.DB, authorizer *nodeAuthorizer, collection fileCollection, request browserPageRequest) (filePage, error) {
 	result := filePage{Items: []fileEntryView{}}
 	q := query.Bind(tx, t.prefix)
-	if ownerID <= 0 || (scope != "tenant" && scope != "account") {
+	if collection.ownerID <= 0 {
 		return filePage{}, errOperationInput
 	}
-	spaceQuery := q.Space.WithContext(ctx).Where(q.Space.ScopeKind.Eq(scope))
-	if scope == "tenant" {
-		spaceQuery = spaceQuery.Where(q.Space.TenantID.Eq(ownerID))
+	spaceQuery := q.Space.WithContext(ctx)
+	if collection.scope == "account" {
+		spaceQuery = spaceQuery.Where(q.Space.ScopeKind.Eq("account"), q.Space.PrincipalID.Eq(collection.ownerID))
 	} else {
-		spaceQuery = spaceQuery.Where(q.Space.PrincipalID.Eq(ownerID))
+		spaceQuery = spaceQuery.Where(q.Space.ScopeKind.Eq("tenant"), q.Space.TenantID.Eq(collection.tenantID))
 	}
 	space, err := spaceQuery.Take()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -295,7 +322,8 @@ func (t directoryTree) authorizedRoots(ctx context.Context, tx *gorm.DB, authori
 	for len(result.Items) <= request.Limit && scanned < maxBrowserScan {
 		batch := min(100, maxBrowserScan-scanned)
 		rows, err := q.Node.WithContext(ctx).Where(
-			q.Node.SpaceID.Eq(space.ID), q.Node.RootScope.IsNotNull(), q.Node.State.Eq("active"), q.Node.ID.Gt(after),
+			q.Node.SpaceID.Eq(space.ID), q.Node.RootScope.Eq(collection.scope),
+			q.Node.RootOwnerID.Eq(collection.ownerID), q.Node.State.Eq("active"), q.Node.ID.Gt(after),
 		).Order(q.Node.ID.Asc()).Limit(batch).Find()
 		if err != nil {
 			return filePage{}, err
@@ -349,17 +377,17 @@ func (t directoryTree) authorizedRoots(ctx context.Context, tx *gorm.DB, authori
 	return result, nil
 }
 
-func (t directoryTree) authorizedTrash(ctx context.Context, tx *gorm.DB, authorizer *nodeAuthorizer, scope string, ownerID guid.ID, request browserPageRequest) (filePage, error) {
+func (t directoryTree) authorizedTrash(ctx context.Context, tx *gorm.DB, authorizer *nodeAuthorizer, collection fileCollection, request browserPageRequest) (filePage, error) {
 	result := filePage{Items: []fileEntryView{}}
 	q := query.Bind(tx, t.prefix)
-	if ownerID <= 0 || (scope != "tenant" && scope != "account") {
+	if collection.ownerID <= 0 {
 		return filePage{}, errOperationInput
 	}
-	spaceQuery := q.Space.WithContext(ctx).Where(q.Space.ScopeKind.Eq(scope))
-	if scope == "tenant" {
-		spaceQuery = spaceQuery.Where(q.Space.TenantID.Eq(ownerID))
+	spaceQuery := q.Space.WithContext(ctx)
+	if collection.scope == "account" {
+		spaceQuery = spaceQuery.Where(q.Space.ScopeKind.Eq("account"), q.Space.PrincipalID.Eq(collection.ownerID))
 	} else {
-		spaceQuery = spaceQuery.Where(q.Space.PrincipalID.Eq(ownerID))
+		spaceQuery = spaceQuery.Where(q.Space.ScopeKind.Eq("tenant"), q.Space.TenantID.Eq(collection.tenantID))
 	}
 	space, err := spaceQuery.Take()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -388,9 +416,28 @@ func (t directoryTree) authorizedTrash(ctx context.Context, tx *gorm.DB, authori
 		}
 		scanned += len(rows)
 		after = rows[len(rows)-1].ID
-		ids := make([]guid.ID, 0, len(rows))
+		rowIDs := make([]guid.ID, 0, len(rows))
 		for _, row := range rows {
-			ids = append(ids, row.ID)
+			rowIDs = append(rowIDs, row.ID)
+		}
+		owners, err := t.resourceOwners(ctx, tx, space, rowIDs)
+		if err != nil {
+			return filePage{}, err
+		}
+		ids := make([]guid.ID, 0, len(rows))
+		owned := make(map[guid.ID]bool, len(rows))
+		for _, row := range rows {
+			owner, ok := owners[row.ID]
+			if !ok {
+				return filePage{}, errRootUnbound
+			}
+			if owner.Scope == collection.scope && owner.ID == collection.ownerID {
+				ids = append(ids, row.ID)
+				owned[row.ID] = true
+			}
+		}
+		if len(ids) == 0 {
+			continue
 		}
 		readable, err := authorizer.accessMany(ctx, tx, space.ID, authorizer.actorID, ids, "read")
 		if err != nil {
@@ -398,7 +445,7 @@ func (t directoryTree) authorizedTrash(ctx context.Context, tx *gorm.DB, authori
 		}
 		visible := make([]*model.Node, 0, len(rows))
 		for _, row := range rows {
-			if readable[row.ID] {
+			if owned[row.ID] && readable[row.ID] {
 				visible = append(visible, row)
 			}
 		}
@@ -421,6 +468,36 @@ func (t directoryTree) authorizedTrash(ctx context.Context, tx *gorm.DB, authori
 	} else if !exhausted && scanned >= maxBrowserScan {
 		next := after
 		result.NextAfter = &next
+	}
+	return result, nil
+}
+
+func (t directoryTree) resourceOwners(ctx context.Context, tx *gorm.DB, space *model.Space, nodeIDs []guid.ID) (map[guid.ID]ResourceOwner, error) {
+	result := make(map[guid.ID]ResourceOwner, len(nodeIDs))
+	if tx == nil || space == nil || len(nodeIDs) == 0 {
+		return result, nil
+	}
+	type ownerRow struct {
+		DescendantID guid.ID `gorm:"column:descendant_id"`
+		model.Node
+		Depth int `gorm:"column:owner_depth"`
+	}
+	names := query.BindNames(t.prefix)
+	rows := make([]ownerRow, 0, len(nodeIDs))
+	err := tx.WithContext(ctx).Table(names.NodeClosure.String()+" AS c").
+		Select("c.descendant_id, c.depth AS owner_depth, r.*").
+		Joins("JOIN "+names.Nodes.String()+" AS r ON r.space_id = c.space_id AND r.id = c.ancestor_id").
+		Where("c.space_id = ? AND c.descendant_id IN ? AND r.root_scope IS NOT NULL", space.ID, nodeIDs).
+		Order("c.descendant_id ASC, c.depth ASC").Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for index := len(rows) - 1; index >= 0; index-- {
+		binding, err := nodeRootBinding(space, &rows[index].Node)
+		if err != nil {
+			return nil, err
+		}
+		result[rows[index].DescendantID] = ResourceOwner{Scope: binding.scope, ID: binding.ownerID}
 	}
 	return result, nil
 }

@@ -10,14 +10,26 @@ import (
 	"7link.com/platform/internal/files/model"
 	"7link.com/platform/internal/files/query"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
+func testFileCollection(ctx context.Context) fileCollection {
+	claims, _ := authn.FromContext(ctx)
+	if claims == nil {
+		return fileCollection{}
+	}
+	if claims.TenantID == 0 {
+		return fileCollection{scope: "account", ownerID: claims.PrincipalID}
+	}
+	return fileCollection{scope: "tenant", tenantID: claims.TenantID, ownerID: claims.TenantID}
+}
+
 func TestFileBrowserListsAuthorizedRootsPathAndMetadata(t *testing.T) {
 	h := newOperationServiceHarness(t)
-	roots, err := h.service.listRoots(h.ctx, browserPageRequest{})
+	roots, err := h.service.listRoots(h.ctx, testFileCollection(h.ctx), browserPageRequest{})
 	require.NoError(t, err)
 	require.Len(t, roots.Items, 1)
 	require.Equal(t, guid.ID(2), roots.Items[0].ID)
@@ -156,7 +168,7 @@ func TestFileBrowserListsOnlyCurrentDeletionAfterRestoreAndRetrash(t *testing.T)
 
 	_, err = h.service.trashNode(h.ctx, node.ID, node.Version)
 	require.NoError(t, err)
-	first, err := h.service.listTrash(h.ctx, browserPageRequest{})
+	first, err := h.service.listTrash(h.ctx, testFileCollection(h.ctx), browserPageRequest{})
 	require.NoError(t, err)
 	require.Len(t, first.Items, 1)
 	require.Equal(t, node.ID, first.Items[0].ID)
@@ -171,7 +183,7 @@ func TestFileBrowserListsOnlyCurrentDeletionAfterRestoreAndRetrash(t *testing.T)
 	_, err = h.service.trashNode(h.ctx, node.ID, restored.Revision)
 	require.NoError(t, err)
 
-	second, err := h.service.listTrash(h.ctx, browserPageRequest{})
+	second, err := h.service.listTrash(h.ctx, testFileCollection(h.ctx), browserPageRequest{})
 	require.NoError(t, err)
 	require.Len(t, second.Items, 1)
 	require.Equal(t, node.ID, second.Items[0].ID)
@@ -193,7 +205,7 @@ func TestFileBrowserOmitsRestorePathWhenAnAncestorIsDeniedOrInactive(t *testing.
 			Effect: "deny", Action: "traverse", Applies: "self", CreatedBy: 70, CreatedAt: time.Now().UnixMilli(),
 		}))
 
-		page, err := h.service.listTrash(h.ctx, browserPageRequest{})
+		page, err := h.service.listTrash(h.ctx, testFileCollection(h.ctx), browserPageRequest{})
 		require.NoError(t, err)
 		require.Len(t, page.Items, 1, "trash read permission remains independent")
 		require.Nil(t, page.Items[0].RestorePath, "denied directory names must not leak")
@@ -211,7 +223,7 @@ func TestFileBrowserOmitsRestorePathWhenAnAncestorIsDeniedOrInactive(t *testing.
 		_, err = h.service.trashNode(h.ctx, parent.ID, parent.Version)
 		require.NoError(t, err)
 
-		page, err := h.service.listTrash(h.ctx, browserPageRequest{})
+		page, err := h.service.listTrash(h.ctx, testFileCollection(h.ctx), browserPageRequest{})
 		require.NoError(t, err)
 		byID := make(map[guid.ID]fileEntryView, len(page.Items))
 		for _, item := range page.Items {
@@ -229,7 +241,7 @@ func TestRestoreNameConflictCanRetryWithAReplacementName(t *testing.T) {
 	require.NoError(t, err)
 	_, err = h.service.trashNode(h.ctx, node.ID, node.Version)
 	require.NoError(t, err)
-	page, err := h.service.listTrash(h.ctx, browserPageRequest{})
+	page, err := h.service.listTrash(h.ctx, testFileCollection(h.ctx), browserPageRequest{})
 	require.NoError(t, err)
 	require.Len(t, page.Items, 1)
 	_, err = h.service.createDirectory(h.ctx, 10, "Nested")
@@ -297,7 +309,7 @@ func TestFileTrashPageRestorePathQueriesDoNotGrowPerEntry(t *testing.T) {
 		}))
 		t.Cleanup(func() { require.NoError(t, database.Callback().Query().Remove(callback)) })
 
-		page, err := h.service.listTrash(h.ctx, browserPageRequest{Limit: maxBrowserPage})
+		page, err := h.service.listTrash(h.ctx, testFileCollection(h.ctx), browserPageRequest{Limit: maxBrowserPage})
 		require.NoError(t, err)
 		require.Len(t, page.Items, fileCount)
 		for _, item := range page.Items {
@@ -320,7 +332,7 @@ func TestFileBrowserManagementReadBypassesOnlyReadACL(t *testing.T) {
 		&model.NodeACL{ID: 9981, SpaceID: 1, NodeID: 2, SubjectKind: "principal", SubjectID: 70, Effect: "deny", Action: "traverse", Applies: "self_and_descendants", CreatedBy: 70, CreatedAt: time.Now().UnixMilli()},
 		&model.NodeACL{ID: 9982, SpaceID: 1, NodeID: 2, SubjectKind: "principal", SubjectID: 70, Effect: "deny", Action: "list", Applies: "self_and_descendants", CreatedBy: 70, CreatedAt: time.Now().UnixMilli()},
 	))
-	ordinary, err := h.service.listRoots(h.ctx, browserPageRequest{})
+	ordinary, err := h.service.listRoots(h.ctx, testFileCollection(h.ctx), browserPageRequest{})
 	require.NoError(t, err)
 	require.Empty(t, ordinary.Items)
 	h.service.policy = func(ctx context.Context, tx *gorm.DB, tenant, entity guid.ID, permission string, actor guid.ID) (authz.DataConstraint, error) {
@@ -332,7 +344,7 @@ func TestFileBrowserManagementReadBypassesOnlyReadACL(t *testing.T) {
 		}
 		return authz.DataConstraint{Revision: 1}, ctx.Err()
 	}
-	managed, err := h.service.listRoots(h.ctx, browserPageRequest{})
+	managed, err := h.service.listRoots(h.ctx, testFileCollection(h.ctx), browserPageRequest{})
 	require.NoError(t, err)
 	require.Len(t, managed.Items, 1)
 	children, err := h.service.listChildren(h.ctx, 2, browserPageRequest{})
@@ -343,14 +355,14 @@ func TestFileBrowserManagementReadBypassesOnlyReadACL(t *testing.T) {
 func TestFileBrowserRejectsInvalidRequestsAndUnavailableService(t *testing.T) {
 	h := newOperationServiceHarness(t)
 	for _, request := range []browserPageRequest{{After: -1}, {Limit: -1}, {Limit: maxBrowserPage + 1}} {
-		_, err := h.service.listRoots(h.ctx, request)
+		_, err := h.service.listRoots(h.ctx, testFileCollection(h.ctx), request)
 		require.ErrorIs(t, err, errOperationInput)
 	}
 	_, err := h.service.listChildren(h.ctx, 0, browserPageRequest{})
 	require.ErrorIs(t, err, errOperationInput)
-	_, err = h.service.listRoots(t.Context(), browserPageRequest{})
+	_, err = h.service.listRoots(t.Context(), testFileCollection(t.Context()), browserPageRequest{})
 	require.ErrorIs(t, err, errOperationForbidden)
 	h.service.references = nil
-	_, err = h.service.listRoots(h.ctx, browserPageRequest{})
+	_, err = h.service.listRoots(h.ctx, testFileCollection(h.ctx), browserPageRequest{})
 	require.ErrorIs(t, err, errOperationUnavailable)
 }

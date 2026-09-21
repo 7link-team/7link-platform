@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"7link.com/platform/internal/app"
+	"7link.com/platform/internal/maintenance"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -79,7 +79,7 @@ func TestRepairTenantOwnerCommandMakesAnUnreachableTenantAdministrable(t *testin
 		"iam", "repair-tenant-owner",
 		"--config", configPath, "--tenant-slug", "acme", "--owner-login", "admin",
 	)
-	require.ErrorIs(t, err, app.ErrTenantRepairConflict)
+	require.ErrorIs(t, err, maintenance.ErrTenantRepairConflict)
 	assert.Equal(t, exitConflict, exitCode(err))
 }
 
@@ -100,7 +100,7 @@ func TestRepairTenantOwnerCommandReportsAMistypedTargetWithItsOwnStatus(t *testi
 		"iam", "repair-tenant-owner",
 		"--config", configPath, "--tenant-slug", "absent", "--owner-login", "admin",
 	)
-	require.ErrorIs(t, err, app.ErrTenantRepairNotFound)
+	require.ErrorIs(t, err, maintenance.ErrTenantRepairNotFound)
 	assert.Equal(t, exitNotBootstrapped, exitCode(err))
 }
 
@@ -113,6 +113,6 @@ func TestRepairTenantOwnerCommandReportsAnUnmigratedSchema(t *testing.T) {
 		"iam", "repair-tenant-owner",
 		"--config", configPath, "--tenant-slug", "acme", "--owner-login", "admin",
 	)
-	require.ErrorIs(t, err, app.ErrPlatformAdminSchemaNotReady)
+	require.ErrorIs(t, err, maintenance.ErrPlatformAdminSchemaNotReady)
 	assert.Equal(t, exitSchemaNotReady, exitCode(err))
 }

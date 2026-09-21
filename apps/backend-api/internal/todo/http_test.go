@@ -159,7 +159,7 @@ func TestDeleteThenRestoreRoundTrip(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, missing.Code, "a deleted task is gone from the live view")
 
 	// The delete advanced the version, so restore uses the next one.
-	restored := api.Post("/todos/"+id+"/restore", "If-Match: 2")
+	restored := api.Delete("/todos/"+id+"/deletion", "If-Match: 2")
 	require.Equal(t, http.StatusOK, restored.Code, restored.Body.String())
 
 	live := api.Get("/todos/" + id)
@@ -170,7 +170,7 @@ func TestRestoreLiveTaskConflicts(t *testing.T) {
 	api := newTestAPI(t)
 	id, etag := createTask(t, api, "task")
 
-	resp := api.Post("/todos/"+id+"/restore", "If-Match: "+etag)
+	resp := api.Delete("/todos/"+id+"/deletion", "If-Match: "+etag)
 	assert.Equal(t, http.StatusConflict, resp.Code)
 }
 

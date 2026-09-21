@@ -1,6 +1,7 @@
-package app
+package iamintegration
 
 import (
+	"7link.com/platform/internal/app"
 	"bufio"
 	"bytes"
 	"encoding/xml"
@@ -16,7 +17,6 @@ import (
 	"testing"
 	"time"
 
-	iamaudit "7link.com/platform/internal/iam/audit"
 	"github.com/stretchr/testify/require"
 )
 
@@ -41,12 +41,12 @@ func newPrincipalErasureLedgerFixture(t *testing.T) *principalErasureLedgerFixtu
 	return fixture
 }
 
-func (fixture *principalErasureLedgerFixture) configure(config *AppConfig) {
-	config.IAMAudit.Anchor = IAMAuditAnchor{
+func (fixture *principalErasureLedgerFixture) configure(config *app.AppConfig) {
+	config.IAMAudit.Anchor = app.IAMAuditAnchor{
 		Endpoint: fixture.server.URL, Bucket: "erasure-test", AccessKey: "test-access",
 		SecretKey: "test-secret", RetentionDays: 30,
 	}
-	config.IAMAudit.ErasureLedger = IAMAuditErasureLedger{Enabled: true, Timeout: 5 * time.Second}
+	config.IAMAudit.ErasureLedger = app.IAMAuditErasureLedger{Enabled: true, Timeout: 5 * time.Second}
 }
 
 func (fixture *principalErasureLedgerFixture) obligationCount() int {
@@ -225,20 +225,4 @@ func principalErasureS3Error(writer http.ResponseWriter, status int, code string
 func requirePrincipalErasureObligationCount(t *testing.T, fixture *principalErasureLedgerFixture, expected int) {
 	t.Helper()
 	require.Equal(t, expected, fixture.obligationCount())
-}
-
-func TestListErasureObligationsDoesNotRequireDatabaseConfiguration(t *testing.T) {
-	fixture := newPrincipalErasureLedgerFixture(t)
-	config := AppConfig{}
-	fixture.configure(&config)
-	auditConfig := iamAuditConfig(config)
-	store, err := iamaudit.NewAnchorStore(auditConfig.Anchor)
-	require.NoError(t, err)
-	obligation := iamaudit.NewErasureObligation(t.Context(), 9201, 3, time.Now().UTC())
-	require.NoError(t, iamaudit.NewErasureLedger(store).Put(t.Context(), obligation))
-
-	listed, err := (&App{}).ListErasureObligations(t.Context(), config)
-	require.NoError(t, err)
-	require.Len(t, listed, 1)
-	require.Equal(t, obligation, listed[0].ErasureObligation)
 }

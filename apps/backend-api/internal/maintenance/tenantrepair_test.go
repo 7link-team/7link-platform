@@ -1,4 +1,4 @@
-package app
+package maintenance
 
 import (
 	"context"
@@ -64,12 +64,12 @@ func TestTenantOwnerRepairMakesAnUnreachableTenantAdministrable(t *testing.T) {
 	dsn := newPlatformAdminDSN(t)
 	config := newTenantRepairConfig(t, dsn)
 	migratePlatformAdminDatabase(t, PlatformAdminConfig{AppConfig: config.AppConfig})
-	owner, err := (&App{}).RunPlatformAdminBootstrap(
+	owner, err := RunPlatformAdminBootstrap(
 		t.Context(), newPlatformAdminConfig(t, dsn), bootstrapTestPassword)
 	require.NoError(t, err)
 	seedOrphanTenant(t, config, "acme", organization.TenantActive)
 
-	report, err := (&App{}).RunTenantOwnerRepair(t.Context(), config)
+	report, err := RunTenantOwnerRepair(t.Context(), config)
 	require.NoError(t, err)
 	assert.Equal(t, TenantOwnerRepaired, report.Outcome)
 	assert.Equal(t, orphanTenantID, report.TenantID)
@@ -83,7 +83,7 @@ func TestTenantOwnerRepairMakesAnUnreachableTenantAdministrable(t *testing.T) {
 
 	// Running it again is what an operator does when they are unsure the first
 	// run took. The tenant now has a member, so the second run must refuse.
-	_, err = (&App{}).RunTenantOwnerRepair(t.Context(), config)
+	_, err = RunTenantOwnerRepair(t.Context(), config)
 	assert.ErrorIs(t, err, ErrTenantRepairConflict)
 }
 
@@ -94,7 +94,7 @@ func TestTenantOwnerRepairReportsEachMistypedArgumentDistinctly(t *testing.T) {
 	dsn := newPlatformAdminDSN(t)
 	base := newTenantRepairConfig(t, dsn)
 	migratePlatformAdminDatabase(t, PlatformAdminConfig{AppConfig: base.AppConfig})
-	_, err := (&App{}).RunPlatformAdminBootstrap(
+	_, err := RunPlatformAdminBootstrap(
 		t.Context(), newPlatformAdminConfig(t, dsn), bootstrapTestPassword)
 	require.NoError(t, err)
 	seedOrphanTenant(t, base, "acme", organization.TenantActive)
@@ -102,14 +102,14 @@ func TestTenantOwnerRepairReportsEachMistypedArgumentDistinctly(t *testing.T) {
 	t.Run("unknown tenant", func(t *testing.T) {
 		config := base
 		config.TenantSlug = "beta"
-		_, err := (&App{}).RunTenantOwnerRepair(t.Context(), config)
+		_, err := RunTenantOwnerRepair(t.Context(), config)
 		assert.ErrorIs(t, err, ErrTenantRepairNotFound)
 	})
 
 	t.Run("unknown login", func(t *testing.T) {
 		config := base
 		config.OwnerLogin = "nobody"
-		_, err := (&App{}).RunTenantOwnerRepair(t.Context(), config)
+		_, err := RunTenantOwnerRepair(t.Context(), config)
 		assert.ErrorIs(t, err, ErrTenantRepairNotFound)
 	})
 }
@@ -126,7 +126,7 @@ func TestTenantOwnerRepairValidatesBeforeTouchingTheDatabase(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			config := base
 			mutate(&config)
-			_, err := (&App{}).RunTenantOwnerRepair(t.Context(), config)
+			_, err := RunTenantOwnerRepair(t.Context(), config)
 			require.Error(t, err)
 			assert.NotErrorIs(t, err, ErrPlatformAdminSchemaNotReady,
 				"the argument is rejected before any schema check")
@@ -137,7 +137,7 @@ func TestTenantOwnerRepairValidatesBeforeTouchingTheDatabase(t *testing.T) {
 // TestTenantOwnerRepairReportsAnUnmigratedSchema keeps the repair from blaming
 // the tenant for a database that was never brought up to date.
 func TestTenantOwnerRepairReportsAnUnmigratedSchema(t *testing.T) {
-	_, err := (&App{}).RunTenantOwnerRepair(
+	_, err := RunTenantOwnerRepair(
 		t.Context(), newTenantRepairConfig(t, newPlatformAdminDSN(t)))
 	assert.ErrorIs(t, err, ErrPlatformAdminSchemaNotReady)
 }
@@ -149,7 +149,7 @@ func TestTenantOwnerRepairReportsUnavailableWithoutIAM(t *testing.T) {
 	migratePlatformAdminDatabase(t, PlatformAdminConfig{AppConfig: config.AppConfig})
 	config.Authn.Enabled = false
 
-	_, err := (&App{}).RunTenantOwnerRepair(t.Context(), config)
+	_, err := RunTenantOwnerRepair(t.Context(), config)
 	assert.ErrorIs(t, err, ErrPlatformAdminUnavailable)
 }
 

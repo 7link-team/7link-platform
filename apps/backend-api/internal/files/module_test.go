@@ -36,6 +36,12 @@ func TestFileModuleWiresItsAuthorizationCatalog(t *testing.T) {
 	require.NoError(t, module.Provide[core.AuthorizationReferencesOn](services, func(context.Context, *gorm.DB, guid.ID, core.AuthorizationReferences) (bool, error) {
 		return false, nil
 	}))
+	require.NoError(t, module.Provide[core.EntityOwnerResolver](services, func(context.Context, guid.ID) (authz.ResourceOwner, bool, error) {
+		return authz.ResourceOwner{}, false, nil
+	}))
+	require.NoError(t, module.Provide[core.DepartmentOwnerResolver](services, func(context.Context, guid.ID) (authz.ResourceOwner, bool, error) {
+		return authz.ResourceOwner{}, false, nil
+	}))
 	require.NoError(t, module.Provide[guid.Source](services, &operationServiceIDs{}))
 	require.NoError(t, module.Provide[audit.Appender](services, func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil }))
 	require.NoError(t, services.Seal())

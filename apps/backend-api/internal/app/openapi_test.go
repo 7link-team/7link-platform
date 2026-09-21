@@ -1,23 +1,42 @@
 package app
 
 import (
+	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	authnext "7link.com/platform/pkg/extension/authn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
 
-// newOpenAPIExportConfig reuses the platform-administrator configuration and
-// turns migration on, because the export composes the same application the
-// server does and that composition expects a schema to be there.
+// newOpenAPIExportConfig owns the minimal application fixture needed to compose
+// and migrate the API without depending on an IAM maintenance command.
 func newOpenAPIExportConfig(t *testing.T) OpenAPIExportConfig {
 	t.Helper()
-	admin := newPlatformAdminConfig(t, newPlatformAdminDSN(t))
-	admin.AppConfig.Migrate = true
-	return OpenAPIExportConfig{AppConfig: admin.AppConfig}
+	seed := make([]byte, ed25519.SeedSize)
+	for index := range seed {
+		seed[index] = byte(index + 1)
+	}
+	key := base64.RawStdEncoding.EncodeToString(seed)
+	config := validTestAppConfig()
+	config.Version = "1"
+	config.Migrate = true
+	config.Database = map[string]Database{
+		"primary": {Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "openapi.sqlite"), Writable: true, Readable: true},
+	}
+	config.Files.LocalRoot = filepath.Join(t.TempDir(), "files")
+	config.Authn = IAMAuthn(authnext.Config{
+		Enabled: true, Issuer: "https://iam.example.test", SigningKey: key,
+		AccessTokenTTL: time.Hour,
+		MFA:            authnext.MFAConfig{EncryptionKey: key},
+	})
+	return OpenAPIExportConfig{AppConfig: config}
 }
 
 // TestOpenAPIExportDescribesTheRunningApplicationWithoutRunningIt is the whole

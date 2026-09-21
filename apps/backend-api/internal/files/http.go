@@ -12,6 +12,7 @@ import (
 
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
 	"github.com/danielgtaylor/huma/v2"
@@ -22,6 +23,21 @@ type filePageInput struct {
 	After string `query:"after" doc:"exclusive snowflake cursor returned by the previous page"`
 	Limit int    `query:"limit" minimum:"1" maximum:"100" default:"50"`
 	State string `query:"state" enum:"active,trashed" default:"active" doc:"active roots or authorized recycle-bin entries"`
+}
+
+type tenantFilePageInput struct {
+	filePageInput
+	TenantID string `path:"tenant_id"`
+}
+
+type entityFilePageInput struct {
+	filePageInput
+	EntityID string `path:"entity_id"`
+}
+
+type departmentFilePageInput struct {
+	filePageInput
+	DepartmentID string `path:"department_id"`
 }
 
 type fileItemsInput struct {
@@ -40,14 +56,31 @@ type filePathInput struct {
 	Path       string `path:"*" doc:"slash-separated path relative to the selected root"`
 }
 
+type fileCreateForm struct {
+	ParentID string        `form:"parent_id" required:"false"`
+	Kind     string        `form:"kind" enum:"file,directory" required:"true"`
+	Name     string        `form:"name" maxLength:"255" required:"false"`
+	Scope    string        `form:"scope" enum:"account,personal" required:"false"`
+	File     huma.FormFile `form:"file" contentType:"application/octet-stream" required:"false"`
+}
+
 type fileCreateInput struct {
-	RawBody huma.MultipartFormFiles[struct {
-		ParentID string        `form:"parent_id" required:"false"`
-		Kind     string        `form:"kind" enum:"file,directory" required:"true"`
-		Name     string        `form:"name" maxLength:"255" required:"false"`
-		Scope    string        `form:"scope" enum:"account,personal" required:"false"`
-		File     huma.FormFile `form:"file" contentType:"application/octet-stream" required:"false"`
-	}]
+	RawBody huma.MultipartFormFiles[fileCreateForm]
+}
+
+type tenantFileCreateInput struct {
+	RawBody  huma.MultipartFormFiles[fileCreateForm]
+	TenantID string `path:"tenant_id"`
+}
+
+type entityFileCreateInput struct {
+	RawBody  huma.MultipartFormFiles[fileCreateForm]
+	EntityID string `path:"entity_id"`
+}
+
+type departmentFileCreateInput struct {
+	RawBody      huma.MultipartFormFiles[fileCreateForm]
+	DepartmentID string `path:"department_id"`
 }
 
 type fileUpdateBody struct {
@@ -97,34 +130,46 @@ type fileConflictHTTPError struct {
 func (e *fileConflictHTTPError) Error() string  { return e.Message }
 func (e *fileConflictHTTPError) GetStatus() int { return e.status }
 
-func registerFileHTTP(api huma.API, service *operationService, registrar *authz.Registrar) {
-	authz.RegisterTenantEntityOrAuthenticated(registrar, api, huma.Operation{
-		OperationID: "list-files", Method: http.MethodGet, Path: "/files",
-		Summary: "List authorized file roots", Tags: []string{"tenants"},
-		Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
-	}, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *filePageInput) (*respx.Body[filePage], error) {
-		page, err := browserPageOf(input.After, input.Limit)
+func registerFileHTTP(api huma.API, service *operationService, registrar *authz.Registrar, fileOwner, entityOwner, departmentOwner authz.ResourceOwnerResolver) {
+	authz.RegisterAuthenticated(registrar, api, huma.Operation{
+		OperationID: "list-my-files", Method: http.MethodGet, Path: "/me/files",
+		Summary: "List my file roots", Tags: []string{"me"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
+	}, func(ctx context.Context, input *filePageInput) (*respx.Body[filePage], error) {
+		claims, _ := authn.FromContext(ctx)
+		return listFileCollection(ctx, service, fileCollection{scope: "account", ownerID: claims.PrincipalID}, *input)
+	})
+	authz.Register(registrar, api, huma.Operation{
+		OperationID: "list-tenant-files", Method: http.MethodGet, Path: "/files",
+		Summary: "List tenant file roots", Tags: []string{"tenants"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
+	}, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *tenantFilePageInput) (*respx.Body[filePage], error) {
+		claims, _ := authn.FromContext(ctx)
+		return listFileCollection(ctx, service, fileCollection{scope: "tenant", tenantID: claims.TenantID, ownerID: claims.TenantID}, input.filePageInput)
+	})
+	authz.RegisterOwned(registrar, api, huma.Operation{
+		OperationID: "list-entity-files", Method: http.MethodGet, Path: "/entities/{entity_id}/files",
+		Summary: "List entity file roots", Tags: []string{"entities"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
+	}, "entity_id", entityOwner, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *entityFilePageInput) (*respx.Body[filePage], error) {
+		claims, _ := authn.FromContext(ctx)
+		return listFileCollection(ctx, service, fileCollection{scope: "entity", tenantID: claims.TenantID, ownerID: claims.EntityID}, input.filePageInput)
+	})
+	authz.RegisterOwned(registrar, api, huma.Operation{
+		OperationID: "list-department-files", Method: http.MethodGet, Path: "/departments/{department_id}/files",
+		Summary: "List department file roots", Tags: []string{"departments"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
+	}, "department_id", departmentOwner, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *departmentFilePageInput) (*respx.Body[filePage], error) {
+		claims, _ := authn.FromContext(ctx)
+		departmentID, err := fileID(input.DepartmentID)
 		if err != nil {
 			return nil, err
 		}
-		var result filePage
-		if input.State == "trashed" {
-			result, err = service.listTrash(ctx, page)
-		} else {
-			result, err = service.listRoots(ctx, page)
-		}
-		if err != nil {
-			return nil, fileHTTPError(err)
-		}
-		return respx.OK(ctx, result), nil
+		return listFileCollection(ctx, service, fileCollection{scope: "department", tenantID: claims.TenantID, ownerID: departmentID}, input.filePageInput)
 	})
 
-	authz.RegisterTenantEntityOrAuthenticated(registrar, api, huma.Operation{
+	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "list-file-items", Method: http.MethodGet,
 		Path:    "/files/{file_id}/items",
-		Summary: "List an authorized directory page", Tags: []string{"tenants"},
+		Summary: "List an authorized directory page", Tags: []string{"files"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
-	}, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *fileItemsInput) (*respx.Body[fileChildrenPage], error) {
+	}, "file_id", fileOwner, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *fileItemsInput) (*respx.Body[fileChildrenPage], error) {
 		parentID, err := fileID(input.FileID)
 		if err != nil {
 			return nil, err
@@ -140,57 +185,41 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		return respx.OK(ctx, result), nil
 	})
 
-	authz.RegisterTenantEntityOrAuthenticated(registrar, api, huma.Operation{
-		OperationID: "create-file", Method: http.MethodPost, Path: "/files",
-		Summary: "Create a directory or upload a file", Tags: []string{"tenants"}, DefaultStatus: http.StatusCreated,
+	authz.RegisterAuthenticated(registrar, api, huma.Operation{
+		OperationID: "create-my-file", Method: http.MethodPost, Path: "/me/files",
+		Summary: "Create a directory or upload a file", Tags: []string{"me"}, DefaultStatus: http.StatusCreated,
 		MaxBodyBytes: service.maxUploadBytes + (1 << 20),
 		Errors:       []int{http.StatusNotFound, http.StatusConflict, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity},
-	}, authz.Guard{Resource: "file", Verb: "create", FilterData: true}, func(ctx context.Context, input *fileCreateInput) (*respx.Body[fileEntryView], error) {
-		form := input.RawBody.Data()
-		var result fileEntryView
-		var err error
-		if strings.TrimSpace(form.ParentID) == "" {
-			if form.Kind != "directory" || (form.Scope != "personal" && form.Scope != "account") || strings.TrimSpace(form.Name) != "" || form.File.IsSet {
-				return nil, huma.Error422UnprocessableEntity("invalid_file_root")
-			}
-			result, err = service.ensureOwnedRoot(ctx, form.Scope)
-			if err != nil {
-				return nil, fileHTTPError(err)
-			}
-			return respx.OK(ctx, result), nil
-		}
-		if form.Scope != "" {
-			return nil, huma.Error422UnprocessableEntity("invalid_file_scope")
-		}
-		parentID, err := fileID(form.ParentID)
-		if err != nil {
-			return nil, err
-		}
-		switch form.Kind {
-		case "directory":
-			if form.File.IsSet {
-				return nil, huma.Error422UnprocessableEntity("directory_content_not_allowed")
-			}
-			result, err = service.createDirectory(ctx, parentID, form.Name)
-		case "file":
-			if !form.File.IsSet || strings.TrimSpace(form.Name) != "" {
-				return nil, huma.Error422UnprocessableEntity("invalid_file_content")
-			}
-			result, err = service.uploadFile(ctx, parentID, form.File.Filename, form.File.ContentType, form.File, form.File.Size)
-		default:
-			return nil, huma.Error422UnprocessableEntity("invalid_file_kind")
-		}
-		if err != nil {
-			return nil, fileHTTPError(err)
-		}
-		return respx.OK(ctx, result), nil
+	}, func(ctx context.Context, input *fileCreateInput) (*respx.Body[fileEntryView], error) {
+		return createFile(ctx, service, input.RawBody.Data(), true)
+	})
+	authz.Register(registrar, api, huma.Operation{
+		OperationID: "create-tenant-file", Method: http.MethodPost, Path: "/files",
+		Summary: "Create a tenant file", Tags: []string{"tenants"}, DefaultStatus: http.StatusCreated,
+		MaxBodyBytes: service.maxUploadBytes + (1 << 20), Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity},
+	}, authz.Guard{Resource: "file", Verb: "create", FilterData: true}, func(ctx context.Context, input *tenantFileCreateInput) (*respx.Body[fileEntryView], error) {
+		return createFile(ctx, service, input.RawBody.Data(), false)
+	})
+	authz.RegisterOwned(registrar, api, huma.Operation{
+		OperationID: "create-entity-file", Method: http.MethodPost, Path: "/entities/{entity_id}/files",
+		Summary: "Create an entity file", Tags: []string{"entities"}, DefaultStatus: http.StatusCreated,
+		MaxBodyBytes: service.maxUploadBytes + (1 << 20), Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity},
+	}, "entity_id", entityOwner, authz.Guard{Resource: "file", Verb: "create", FilterData: true}, func(ctx context.Context, input *entityFileCreateInput) (*respx.Body[fileEntryView], error) {
+		return createFile(ctx, service, input.RawBody.Data(), false)
+	})
+	authz.RegisterOwned(registrar, api, huma.Operation{
+		OperationID: "create-department-file", Method: http.MethodPost, Path: "/departments/{department_id}/files",
+		Summary: "Create a department file", Tags: []string{"departments"}, DefaultStatus: http.StatusCreated,
+		MaxBodyBytes: service.maxUploadBytes + (1 << 20), Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity},
+	}, "department_id", departmentOwner, authz.Guard{Resource: "file", Verb: "create", FilterData: true}, func(ctx context.Context, input *departmentFileCreateInput) (*respx.Body[fileEntryView], error) {
+		return createFile(ctx, service, input.RawBody.Data(), false)
 	})
 
-	authz.RegisterTenantEntityOrAuthenticated(registrar, api, huma.Operation{
+	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "get-file", Method: http.MethodGet, Path: "/files/{file_id}",
-		Summary: "Get authorized file metadata", Tags: []string{"tenants"},
+		Summary: "Get authorized file metadata", Tags: []string{"files"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
-	}, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *fileResourceInput) (*respx.Body[fileEntryView], error) {
+	}, "file_id", fileOwner, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *fileResourceInput) (*respx.Body[fileEntryView], error) {
 		fileID, err := fileID(input.FileID)
 		if err != nil {
 			return nil, err
@@ -203,11 +232,11 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 	})
 
 	const runtimeFilePath = "/files/{root_file_id}/-/*"
-	authz.RegisterTenantEntityOrAuthenticated(registrar, api, huma.Operation{
+	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "get-file-by-path", Method: http.MethodGet, Path: runtimeFilePath,
-		Summary: "Get authorized file metadata by a root-relative path", Tags: []string{"tenants"},
+		Summary: "Get authorized file metadata by a root-relative path", Tags: []string{"files"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
-	}, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *filePathInput) (*respx.Body[fileEntryView], error) {
+	}, "root_file_id", fileOwner, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *filePathInput) (*respx.Body[fileEntryView], error) {
 		rootID, err := fileID(input.RootFileID)
 		if err != nil {
 			return nil, err
@@ -218,17 +247,13 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		}
 		return respx.OK(ctx, result), nil
 	})
-	documentFilePath(api, "/me"+runtimeFilePath, "/me/files/{root_file_id}/-/{path}")
-	const tenantPrefix = "/tenants/{tenant_id}"
-	documentFilePath(api, tenantPrefix+runtimeFilePath, tenantPrefix+"/files/{root_file_id}/-/{path}")
-	const entityPrefix = "/tenants/{tenant_id}/entities/{entity_id}"
-	documentFilePath(api, entityPrefix+runtimeFilePath, entityPrefix+"/files/{root_file_id}/-/{path}")
+	documentFilePath(api, runtimeFilePath, "/files/{root_file_id}/-/{path}")
 
-	authz.RegisterTenantEntityOrAuthenticated(registrar, api, huma.Operation{
+	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "download-file", Method: http.MethodGet, Path: "/files/{file_id}/content",
-		Summary: "Download file content", Tags: []string{"tenants"},
+		Summary: "Download file content", Tags: []string{"files"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
-	}, authz.Guard{Resource: "file", Verb: "download", FilterData: true}, func(ctx context.Context, input *fileResourceInput) (*huma.StreamResponse, error) {
+	}, "file_id", fileOwner, authz.Guard{Resource: "file", Verb: "download", FilterData: true}, func(ctx context.Context, input *fileResourceInput) (*huma.StreamResponse, error) {
 		fileID, err := fileID(input.FileID)
 		if err != nil {
 			return nil, err
@@ -251,11 +276,11 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		}}, nil
 	})
 
-	authz.RegisterTenantEntityOrAuthenticated(registrar, api, huma.Operation{
+	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "update-file", Method: http.MethodPatch, Path: "/files/{file_id}",
-		Summary: "Update a file or directory", Tags: []string{"tenants"},
+		Summary: "Update a file or directory", Tags: []string{"files"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
-	}, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *fileUpdateInput) (*respx.Body[fileEntryView], error) {
+	}, "file_id", fileOwner, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *fileUpdateInput) (*respx.Body[fileEntryView], error) {
 		fileID, err := fileID(input.FileID)
 		if err != nil {
 			return nil, err
@@ -279,11 +304,11 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		return respx.OK(ctx, result), nil
 	})
 
-	authz.RegisterTenantEntityOrAuthenticated(registrar, api, huma.Operation{
+	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "delete-file", Method: http.MethodDelete, Path: "/files/{file_id}",
-		Summary: "Move a file or directory to trash", Tags: []string{"tenants"},
+		Summary: "Move a file or directory to trash", Tags: []string{"files"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
-	}, authz.Guard{Resource: "file", Verb: "delete", FilterData: true}, func(ctx context.Context, input *fileDeleteInput) (*respx.Body[fileTrashResult], error) {
+	}, "file_id", fileOwner, authz.Guard{Resource: "file", Verb: "delete", FilterData: true}, func(ctx context.Context, input *fileDeleteInput) (*respx.Body[fileTrashResult], error) {
 		fileID, err := fileID(input.FileID)
 		if err != nil {
 			return nil, err
@@ -311,6 +336,66 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		return respx.OK(ctx, result), nil
 	})
 
+}
+
+func listFileCollection(ctx context.Context, service *operationService, collection fileCollection, input filePageInput) (*respx.Body[filePage], error) {
+	page, err := browserPageOf(input.After, input.Limit)
+	if err != nil {
+		return nil, err
+	}
+	var result filePage
+	if input.State == "trashed" {
+		result, err = service.listTrash(ctx, collection, page)
+	} else {
+		result, err = service.listRoots(ctx, collection, page)
+	}
+	if err != nil {
+		return nil, fileHTTPError(err)
+	}
+	return respx.OK(ctx, result), nil
+}
+
+func createFile(ctx context.Context, service *operationService, form *fileCreateForm, allowRoot bool) (*respx.Body[fileEntryView], error) {
+	if form == nil {
+		return nil, huma.Error422UnprocessableEntity("invalid_file_content")
+	}
+	var result fileEntryView
+	var err error
+	if strings.TrimSpace(form.ParentID) == "" {
+		if !allowRoot || form.Kind != "directory" || form.Scope != "account" || strings.TrimSpace(form.Name) != "" || form.File.IsSet {
+			return nil, huma.Error422UnprocessableEntity("invalid_file_root")
+		}
+		result, err = service.ensureOwnedRoot(ctx, form.Scope)
+		if err != nil {
+			return nil, fileHTTPError(err)
+		}
+		return respx.OK(ctx, result), nil
+	}
+	if form.Scope != "" {
+		return nil, huma.Error422UnprocessableEntity("invalid_file_scope")
+	}
+	parentID, err := fileID(form.ParentID)
+	if err != nil {
+		return nil, err
+	}
+	switch form.Kind {
+	case "directory":
+		if form.File.IsSet {
+			return nil, huma.Error422UnprocessableEntity("directory_content_not_allowed")
+		}
+		result, err = service.createDirectory(ctx, parentID, form.Name)
+	case "file":
+		if !form.File.IsSet || strings.TrimSpace(form.Name) != "" {
+			return nil, huma.Error422UnprocessableEntity("invalid_file_content")
+		}
+		result, err = service.uploadFile(ctx, parentID, form.File.Filename, form.File.ContentType, form.File, form.File.Size)
+	default:
+		return nil, huma.Error422UnprocessableEntity("invalid_file_kind")
+	}
+	if err != nil {
+		return nil, fileHTTPError(err)
+	}
+	return respx.OK(ctx, result), nil
 }
 
 func documentFilePath(api huma.API, runtimePath, documentedPath string) {

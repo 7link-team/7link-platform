@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"7link.com/platform/internal/app"
 	iamaudit "7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/maintenance"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -186,13 +186,13 @@ func TestBootstrapExitCodeNamesADistinctOperatorResponse(t *testing.T) {
 		err  error
 		want int
 	}{
-		"administrator not bootstrapped": {app.ErrPlatformAdminNotBootstrapped, exitNotBootstrapped},
-		"conflicting administrator":      {app.ErrPlatformAdminConflict, exitConflict},
-		"schema not migrated":            {app.ErrPlatformAdminSchemaNotReady, exitSchemaNotReady},
-		"transient unavailability":       {app.ErrPlatformAdminUnavailable, exitTransient},
+		"administrator not bootstrapped": {maintenance.ErrPlatformAdminNotBootstrapped, exitNotBootstrapped},
+		"conflicting administrator":      {maintenance.ErrPlatformAdminConflict, exitConflict},
+		"schema not migrated":            {maintenance.ErrPlatformAdminSchemaNotReady, exitSchemaNotReady},
+		"transient unavailability":       {maintenance.ErrPlatformAdminUnavailable, exitTransient},
 		"anything else":                  {errors.New("boom"), exitFailure},
 		"wrapped conflict": {
-			fmt.Errorf("bootstrap: %w", app.ErrPlatformAdminConflict), exitConflict,
+			fmt.Errorf("bootstrap: %w", maintenance.ErrPlatformAdminConflict), exitConflict,
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -212,8 +212,8 @@ func TestBootstrapExitCodeNamesADistinctOperatorResponse(t *testing.T) {
 // command writes to a terminal an operator may be sharing or logging.
 func TestWriteBootstrapReportCarriesNoSecretMaterial(t *testing.T) {
 	output := &bytes.Buffer{}
-	writeBootstrapReport(output, app.PlatformAdminReport{
-		Outcome: app.PlatformAdminCreated, PrincipalID: 8100, Login: "admin",
+	writeBootstrapReport(output, maintenance.PlatformAdminReport{
+		Outcome: maintenance.PlatformAdminCreated, PrincipalID: 8100, Login: "admin",
 	})
 
 	rendered := output.String()
@@ -295,7 +295,7 @@ func TestBootstrapPlatformAdminCommandReportsAnUnmigratedSchema(t *testing.T) {
 		"--config", configPath, "--login", "admin", "--password-file", passwordPath,
 	)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, app.ErrPlatformAdminSchemaNotReady)
+	assert.ErrorIs(t, err, maintenance.ErrPlatformAdminSchemaNotReady)
 	assert.Equal(t, exitSchemaNotReady, exitCode(err))
 }
 

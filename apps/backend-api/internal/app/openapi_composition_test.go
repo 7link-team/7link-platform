@@ -237,6 +237,7 @@ func iamAuthorizationOf(operation *huma.Operation) (iamHTTPAuthorization, error)
 	tenantPath := selectors["path|"+authz.TenantPath]
 	entityPath := selectors["path|"+authz.EntityPath]
 	selectorCount := len(selectors)
+	ownedResource := authz.IsOwnedResourceOperation(operation)
 
 	switch markedClass {
 	case "public", "authenticated":
@@ -244,7 +245,9 @@ func iamAuthorizationOf(operation *huma.Operation) (iamHTTPAuthorization, error)
 			return iamHTTPAuthorization{}, fmt.Errorf("%s operation has a guard or authorization selector", markedClass)
 		}
 	case "tenant-member":
-		if guarded || selectorCount != 1 || !tenantPath {
+		if ownedResource && selectorCount == 0 {
+			markedClass = "owned-tenant-member"
+		} else if guarded || selectorCount != 1 || !tenantPath {
 			return iamHTTPAuthorization{}, fmt.Errorf("tenant-member operation does not have exactly one tenant path selector")
 		}
 	case "platform":
@@ -256,6 +259,8 @@ func iamAuthorizationOf(operation *huma.Operation) (iamHTTPAuthorization, error)
 			return iamHTTPAuthorization{}, fmt.Errorf("operation has no authorization declaration")
 		}
 		switch {
+		case selectorCount == 0 && ownedResource:
+			markedClass = "owned-resource"
 		case selectorCount == 1 && tenantPath:
 			markedClass = "tenant"
 		case selectorCount == 2 && tenantPath && entityPath:
@@ -315,8 +320,8 @@ func loadIAMHTTPAuthorizations(t *testing.T) map[string]iamHTTPAuthorization {
 		parts := strings.SplitN(line, " => ", 2)
 		require.Len(t, parts, 2, "line %d", lineNumber+1)
 		fields := strings.Split(parts[1], "|")
-		require.Contains(t, []string{"public", "authenticated", "session-only", "tenant-member", "tenant", "platform", "entity-path"}, fields[0], "line %d", lineNumber+1)
-		permissionRequired := fields[0] == "tenant" || fields[0] == "platform" || strings.HasPrefix(fields[0], "entity-")
+		require.Contains(t, []string{"public", "authenticated", "session-only", "tenant-member", "owned-tenant-member", "tenant", "platform", "entity-path", "owned-resource"}, fields[0], "line %d", lineNumber+1)
+		permissionRequired := fields[0] == "tenant" || fields[0] == "platform" || fields[0] == "owned-resource" || strings.HasPrefix(fields[0], "entity-")
 		if permissionRequired {
 			require.Len(t, fields, 2, "line %d", lineNumber+1)
 			require.NotEmpty(t, fields[1], "line %d", lineNumber+1)

@@ -1,6 +1,7 @@
-package app
+package iamintegration
 
 import (
+	"7link.com/platform/internal/app"
 	"context"
 	"errors"
 	"fmt"
@@ -31,19 +32,19 @@ func TestComposedPrincipalErasure(t *testing.T) {
 }
 
 func TestComposedPrincipalErasureExternalDatabase(t *testing.T) {
-	database := Database{Type: os.Getenv(iamLifecycleDatabaseType), Dsn: os.Getenv(iamLifecycleDatabaseDSN), Writable: true, Readable: true, MaxOpenConns: 8, MaxIdleConns: 4}
+	database := app.Database{Type: os.Getenv(iamLifecycleDatabaseType), Dsn: os.Getenv(iamLifecycleDatabaseDSN), Writable: true, Readable: true, MaxOpenConns: 8, MaxIdleConns: 4}
 	if database.Type == "" || database.Dsn == "" {
 		t.Skip("external IAM lifecycle database is not configured")
 	}
 	runComposedPrincipalErasure(t, &database)
 }
 
-func runComposedPrincipalErasure(t *testing.T, external *Database) {
+func runComposedPrincipalErasure(t *testing.T, external *app.Database) {
 	t.Helper()
 	for index, scenario := range []string{"success", "late-owner-failure", "delivery-in-flight", "platform-access", "unupgraded-owner", "legacy-notification", "disabled-owner", "live-remote-mapping"} {
 		t.Run(scenario, func(t *testing.T) {
 			ledger := newPrincipalErasureLedgerFixture(t)
-			database := Database{
+			database := app.Database{
 				Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "erasure.sqlite"), Writable: true, Readable: true,
 			}
 			if external != nil {
@@ -53,14 +54,14 @@ func runComposedPrincipalErasure(t *testing.T, external *Database) {
 			if external != nil {
 				prefix = fmt.Sprintf("pe%d_", index)
 			}
-			f := newIAMTenantFixtureWithDatabase(t, database, prefix, func(config *AppConfig) {
+			f := newIAMTenantFixtureWithDatabase(t, database, prefix, func(config *app.AppConfig) {
 				ledger.configure(config)
 				if scenario == "disabled-owner" {
 					config.Federation.Enabled = false
 				}
 			})
 			if scenario == "disabled-owner" {
-				_, enabled := f.app.modules.ByName(federation.Name)
+				_, enabled := f.app.Modules().ByName(federation.Name)
 				require.False(t, enabled, "persisted federation data must be erased without an active owner")
 				source := (&federation.Module{}).MigrationSource()
 				source.Prefix = f.prefix
@@ -68,7 +69,7 @@ func runComposedPrincipalErasure(t *testing.T, external *Database) {
 				require.NoError(t, err)
 				require.NoError(t, goosex.MigrateUp(t.Context(), db, source, f.db.Dialector.Name()))
 			}
-			value, ok := f.app.modules.ByName(identity.Name)
+			value, ok := f.app.Modules().ByName(identity.Name)
 			require.True(t, ok)
 			service := value.(*identity.Module).Service
 			neighbor := f.createPrincipal(t, value.(*identity.Module), iamTenantB, "neighbor", "neighbor@example.test")
@@ -319,7 +320,7 @@ func (f *iamTenantFixture) seedLegacyErasureNotification(t *testing.T, row authn
 }
 
 func TestPrincipalErasureConcurrencyExternalDatabase(t *testing.T) {
-	database := Database{Type: os.Getenv(iamLifecycleDatabaseType), Dsn: os.Getenv(iamLifecycleDatabaseDSN), Writable: true, Readable: true, MaxOpenConns: 8, MaxIdleConns: 4}
+	database := app.Database{Type: os.Getenv(iamLifecycleDatabaseType), Dsn: os.Getenv(iamLifecycleDatabaseDSN), Writable: true, Readable: true, MaxOpenConns: 8, MaxIdleConns: 4}
 	if database.Type == "" || database.Dsn == "" {
 		t.Skip("external IAM lifecycle database is not configured")
 	}

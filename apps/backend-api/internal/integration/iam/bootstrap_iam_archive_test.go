@@ -1,6 +1,7 @@
-package app
+package iamintegration
 
 import (
+	"7link.com/platform/internal/app"
 	"context"
 	"fmt"
 	"net"
@@ -68,14 +69,14 @@ func TestComposedArchiveBrowserAcceptance(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	t.Cleanup(control.Close)
-	fixture := newIAMTenantFixtureWithDatabase(t, Database{Type: "sqlite", Dsn: database, Writable: true, Readable: true}, "", func(config *AppConfig) {
+	fixture := newIAMTenantFixtureWithDatabase(t, app.Database{Type: "sqlite", Dsn: database, Writable: true, Readable: true}, "", func(config *app.AppConfig) {
 		config.Authn.Web.CookieSecure = false
 		config.Authn.Web.PostLoginURL = consoleURL + "/"
 		config.Authn.Web.AllowedReturnURLs = []string{consoleURL + "/"}
 		config.Authn.Web.AllowedOrigins = []string{consoleURL}
-		config.IAMAudit = IAMAudit{
-			Anchor:  IAMAuditAnchor{Endpoint: storage.URL, Bucket: "audit-browser-" + time.Now().UTC().Format("20060102-150405.000000000"), AccessKey: access, SecretKey: secret, RetentionDays: 1},
-			Archive: IAMAuditArchive{Enabled: true, Interval: 15 * time.Second, Timeout: time.Minute},
+		config.IAMAudit = app.IAMAudit{
+			Anchor:  app.IAMAuditAnchor{Endpoint: storage.URL, Bucket: "audit-browser-" + time.Now().UTC().Format("20060102-150405.000000000"), AccessKey: access, SecretKey: secret, RetentionDays: 1},
+			Archive: app.IAMAuditArchive{Enabled: true, Interval: 15 * time.Second, Timeout: time.Minute},
 		}
 	})
 	require.Eventually(t, func() bool {

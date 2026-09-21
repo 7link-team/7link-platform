@@ -1,7 +1,7 @@
 # Task State
 ## REST URI, Swagger Grouping, And App/IAM Boundary - 2026-09-21
 
-- Current phase: IMPLEMENTATION.
+- Current phase: CHECKPOINT DELIVERY.
 - Objective: normalize the complete public API around recognizable resources and
   standard protocol endpoints; make every Huma registration own its correct
   Swagger tag; remove generated-document tag inference; audit URI-derived IAM,
@@ -17,8 +17,8 @@
   credential management tags to `me`; replaced the rejected `passkey-sessions`
   design with `/login/passkey/options` and `/login/passkey/verify`; moved current
   session, session inventory, step-up, and reauthentication paths below `/me`.
-- Active work: migrate organization-owned department, position, group, and
-  invitation item routes after completing the core entity/role slice.
+- Active work: commit and push the verified app-boundary and Files REST checkpoint;
+  contextual menu resource work remains a later implementation phase.
 - Known risk: `internal/app` currently contains IAM-specific operations, route
   manifests, direct internal-service/table tests, and several thousand lines of
   IAM integration fixtures. Module composition belongs there; IAM domain and
@@ -34,8 +34,79 @@
   resources, and injects immutable request claims. Core entity and role items and
   direct subresources now use short global-ID paths and resource-root tags; their
   focused OpenAPI, behavior, pagination, and cross-tenant tests pass.
-- Next action: add organization owner resolvers and migrate its item/subresource
-  paths, then run the complete organization and core regression suites.
+- Latest checkpoint: commit `bc27c2f` is pushed to `origin/IAM`. Uncommitted work
+  contains generated OpenAPI, Todo REST cleanup, and the entity-owner resolver
+  correction. Focused Todo and core tests and OpenAPI checks pass; the large app
+  Todo/IAM integration test currently exposes a 403 after entity ownership was
+  corrected and must not be patched in place.
+- Storage finding: the Files default `data/files` is cwd-relative. The shared app
+  integration fixture did not inject a test root, so Go package tests wrote
+  ignored avatar objects under `internal/app/data/files`. Tests must use isolated
+  temporary roots; existing uploaded files must not be deleted without an
+  explicit migration/cleanup decision.
+- Completed app-boundary cleanup: the shared IAM fixture now uses `t.TempDir()`
+  for Files; its bootstrap regression passes and `internal/app/data/files` is
+  empty. The duplicated 241-line `bootstrap_todo_test.go` was removed; Todo
+  behavior remains covered by 2,600+ lines of module-local authorization, field
+  policy, HTTP, service, and transfer tests, while app retains module bootstrap
+  smoke coverage. Focused Todo and app tests pass.
+- Full app regression finding: the prior REST migration was not atomic. Multiple
+  app fixtures still pass tenant IDs for globally addressed role, SCIM, service
+  account, and governance item paths, causing the helper to prepend obsolete
+  `/tenants/{tenant_id}` segments. IAM route/guard manifests also still classify
+  owner-resolved item routes as tenant-selector routes. Do not restore old paths
+  or add a resource-name whitelist to the helper.
+- Authorization test direction: owner-resolved operations are a distinct
+  `owned-resource` class; tests must verify the repository resolver marker rather
+  than infer tenant/entity authorization from URI segments. Initial classifier
+  support and SCIM credential fixture corrections are implemented; remaining
+  manifest/call-site migration is incomplete.
+- Files design constraint: replace `RegisterTenantEntityOrAuthenticated` for
+  Files with explicit collections `/me/files`, `/tenants/{tenant_id}/files`,
+  `/entities/{entity_id}/files`, and `/departments/{department_id}/files`.
+  Existing items stay globally addressed under `/files/{file_id}` and resolve
+  trusted authorization owner from persisted root bindings. `listRoots` must
+  accept the verified collection scope/owner; it currently collapses entity
+  claims to tenant roots.
+- Completed app production boundary: platform-admin bootstrap/reset, tenant-owner
+  repair, secret rewrap, and erasure-ledger listing now live in
+  `internal/maintenance`. `internal/app` exposes only the shared synchronous
+  maintenance lifecycle runner; it owns configuration, composition, migration
+  validation, module start/stop, and runtime resource resolution. The rejected
+  `MaintenanceHost` abstraction is absent. Principal anonymization is owned by
+  `internal/iam/lifecycle`; app only wires its capability. CLI command and test
+  references use maintenance-owned request, report, and error types.
+- Completed app test boundary: IAM profile, SCIM actor, tenant isolation,
+  principal closure/erasure, audit archive, load, performance, and external
+  database suites moved from `internal/app` to `internal/integration/iam`, along
+  with their shared fixture and performance baseline. App retains only
+  lifecycle, composition/OpenAPI, and migration-status tests. The fixture uses
+  direct lifecycle methods (`New`, `Bootstrap`, `RegisterHTTP`, `Shutdown`) and
+  read-only runtime/module accessors; no host abstraction or test-only business
+  proxy was introduced.
+- Completed route fixture cleanup: authorization manifests recognize explicit
+  `owned-resource` registrar metadata, and app integration callers use canonical
+  short item paths for roles, groups, positions, entities, departments,
+  governance items, SCIM directories/targets, and service accounts. No helper
+  whitelist or URI-derived authorization inference was added.
+- Verification: `go test ./internal/todo -count=1` PASS;
+  `go test ./internal/maintenance -count=1` PASS; full
+  `go test ./internal/app -count=1` PASS; full
+  `go test ./internal/integration/iam -count=1` PASS; full
+  `go test ./cmd/7link-api/cmd -count=1` PASS; combined app/integration/
+  maintenance/CLI regression PASS; `git diff --check` PASS.
+- Completed Files REST checkpoint: explicit `/me/files`, tenant, entity, and
+  department owner collections; globally addressed `/files/{file_id}` items;
+  persisted owner resolution for active and trashed nodes; exact root filtering;
+  batched recycle-bin ownership lookup; updated integration contracts; regenerated
+  OpenAPI. No legacy nested item aliases were restored.
+- Verification: `go test ./internal/files ./internal/iam/core
+  ./internal/iam/organization ./pkg/extension/authz ./internal/app
+  ./internal/integration/iam ./internal/maintenance ./cmd/7link-api/cmd
+  ./internal/todo` PASS; `make openapi-check` PASS; `git diff --check` PASS.
+- Next action: commit and push this checkpoint to `origin/IAM`; after that,
+  continue the remaining contextual menu resource work and complete the broader
+  REST deep audit in a separate checkpoint.
 
 ## Review, Security Audit, And Regression - 2026-09-20
 

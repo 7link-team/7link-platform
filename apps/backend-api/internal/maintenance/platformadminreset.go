@@ -1,4 +1,4 @@
-package app
+package maintenance
 
 import (
 	"context"
@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"time"
 
+	"7link.com/platform/internal/app"
 	iamaudit "7link.com/platform/internal/iam/audit"
 	iamauthn "7link.com/platform/internal/iam/authn"
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
+	"7link.com/platform/internal/infra/dlock"
 	"7link.com/platform/internal/infra/guid"
 	configx "7link.com/platform/pkg/config"
+	"7link.com/platform/pkg/module"
 	"gorm.io/gorm"
 )
 
@@ -43,7 +46,7 @@ type PlatformAdminResetRequest struct {
 // PlatformAdminResetConfig combines the application normal configuration with
 // the reset command own settings, the same way PlatformAdminConfig does.
 type PlatformAdminResetConfig struct {
-	AppConfig                 `mapstructure:",squash"`
+	app.AppConfig             `mapstructure:",squash"`
 	PlatformAdminResetRequest `mapstructure:",squash"`
 }
 
@@ -55,7 +58,7 @@ type PlatformAdminResetConfig struct {
 // approve the rescue, and a self-service reset link is only as trustworthy as
 // the mailbox behind it. Proving you can run a command on the server is the
 // authority this path accepts instead.
-func (app *App) RunPlatformAdminPasswordReset(
+func RunPlatformAdminPasswordReset(
 	ctx context.Context,
 	config PlatformAdminResetConfig,
 	password string,
@@ -72,18 +75,18 @@ func (app *App) RunPlatformAdminPasswordReset(
 	if err := iamauthn.ValidateBootstrapPassword(password); err != nil {
 		return PlatformAdminReport{}, err
 	}
-	if err := configureApplication(&config.AppConfig); err != nil {
-		return PlatformAdminReport{}, err
-	}
-	app.config = config.AppConfig
-	defer func() {
-		resultErr = errors.Join(resultErr, app.shutdown())
-	}()
-	stores, err := app.startForPlatformAdministration(ctx)
+	err := app.RunMaintenance(ctx, config.AppConfig, func(services *module.Services, db *gorm.DB, locker *dlock.Module) error {
+		stores, resolveErr := resolvePlatformAdminStores(services, db, locker)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		report, resolveErr = stores.reset(ctx, login, password)
+		return resolveErr
+	})
 	if err != nil {
-		return PlatformAdminReport{}, err
+		return PlatformAdminReport{}, normalizeMaintenanceError(err)
 	}
-	return stores.reset(ctx, login, password)
+	return report, nil
 }
 
 // reset takes the same cross-process lock the bootstrap takes, so a reset and a

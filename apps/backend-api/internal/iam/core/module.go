@@ -114,7 +114,13 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[AuthorizationEvaluator](services, m.checker); err != nil {
 		return fmt.Errorf("provide IAM authorization evaluator: %w", err)
 	}
-	if err := module.Provide[EntityOwnerResolver](services, EntityOwnerResolver(m.service.resolveEntityOwner)); err != nil {
+	entityOwner := EntityOwnerResolver(func(ctx context.Context, entityID guid.ID) (authz.ResourceOwner, bool, error) {
+		if m == nil || m.service == nil || m.service.repo == nil {
+			return authz.ResourceOwner{}, false, ErrUnavailable
+		}
+		return m.service.resolveEntityOwner(ctx, entityID)
+	})
+	if err := module.Provide[EntityOwnerResolver](services, entityOwner); err != nil {
 		return fmt.Errorf("provide IAM entity owner resolver: %w", err)
 	}
 	if err := module.Provide[EntityConstraintOn](services, m.checker.EntityConstraintOn); err != nil {

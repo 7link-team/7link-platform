@@ -1,6 +1,7 @@
-package app
+package iamintegration
 
 import (
+	"7link.com/platform/internal/app"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -26,12 +27,12 @@ import (
 )
 
 func TestComposedPrincipalClosure(t *testing.T) {
-	f := newIAMTenantFixtureWithDatabase(t, Database{Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "closure.sqlite"), Writable: true, Readable: true}, "")
+	f := newIAMTenantFixtureWithDatabase(t, app.Database{Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "closure.sqlite"), Writable: true, Readable: true}, "")
 	f.runPrincipalClosure(t)
 }
 
 func TestPrincipalClosureExternalDatabase(t *testing.T) {
-	database := Database{Type: os.Getenv(iamLifecycleDatabaseType), Dsn: os.Getenv(iamLifecycleDatabaseDSN), Writable: true, Readable: true, MaxOpenConns: 8, MaxIdleConns: 4}
+	database := app.Database{Type: os.Getenv(iamLifecycleDatabaseType), Dsn: os.Getenv(iamLifecycleDatabaseDSN), Writable: true, Readable: true, MaxOpenConns: 8, MaxIdleConns: 4}
 	if database.Type == "" || database.Dsn == "" {
 		t.Skip("external IAM lifecycle database is not configured")
 	}
@@ -66,8 +67,8 @@ func (f *iamTenantFixture) closurePAT(t *testing.T, principal identity.Principal
 	}, nil)
 	requireStatus(t, http.StatusCreated, roleResponse)
 	role := decodeEnvelope[core.APIRole](t, roleResponse)
-	requireStatus(t, http.StatusOK, f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/permissions/entity_view", tenant, f.tokenB, nil, nil))
-	requireStatus(t, http.StatusOK, f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/members/"+principal.ID.String(), tenant, f.tokenB, nil, nil))
+	requireStatus(t, http.StatusOK, f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/permissions/entity_view", 0, f.tokenB, nil, nil))
+	requireStatus(t, http.StatusOK, f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/members/"+principal.ID.String(), 0, f.tokenB, nil, nil))
 	service := requireIAMModule[*authn.Module](t, f, authn.Name).Service
 	prepared, err := service.PreparePersonalToken(t.Context(), cookie, authn.PersonalTokenRequest{
 		Name: "Closure verification", TenantID: tenant, Permissions: []string{"entity_view"}, ExpiresAt: time.Now().UTC().Add(time.Hour),

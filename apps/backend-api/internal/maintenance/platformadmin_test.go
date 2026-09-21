@@ -1,4 +1,4 @@
-package app
+package maintenance
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"7link.com/platform/internal/app"
 	iamaudit "7link.com/platform/internal/iam/audit"
 	iamauthn "7link.com/platform/internal/iam/authn"
 	"7link.com/platform/internal/iam/core"
@@ -37,18 +38,18 @@ func newPlatformAdminConfig(t *testing.T, dsn string) PlatformAdminConfig {
 	}
 	key := base64.RawStdEncoding.EncodeToString(seed)
 	return PlatformAdminConfig{
-		AppConfig: AppConfig{
+		AppConfig: app.AppConfig{
 			Name: "platform-admin-bootstrap-test", Version: "1", Timezone: "UTC",
 			// The command reuses the service configuration wholesale, so the
 			// listen address is still required even though nothing listens.
 			// The real CLI fills these from flag defaults; a struct literal
 			// has to state them.
-			HttpServer: HttpServer{Address: "0.0.0.0", Port: 8080},
-			GrpcServer: GrpcServer{Address: "0.0.0.0"},
-			Database: map[string]Database{
+			HttpServer: app.HttpServer{Address: "0.0.0.0", Port: 8080},
+			GrpcServer: app.GrpcServer{Address: "0.0.0.0"},
+			Database: map[string]app.Database{
 				"primary": {Type: "sqlite", Dsn: dsn, Writable: true, Readable: true},
 			},
-			Authn: IAMAuthn(authnext.Config{
+			Authn: app.IAMAuthn(authnext.Config{
 				Enabled: true, Issuer: "https://iam.example.test", SigningKey: key,
 				AccessTokenTTL: time.Hour,
 				MFA:            authnext.MFAConfig{EncryptionKey: key},
@@ -63,9 +64,9 @@ func newPlatformAdminConfig(t *testing.T, dsn string) PlatformAdminConfig {
 // separate operator step here too.
 func migratePlatformAdminDatabase(t *testing.T, config PlatformAdminConfig) {
 	t.Helper()
-	_, err := (&App{}).RunMigrations(t.Context(), MigrationConfig{
+	_, err := (&app.App{}).RunMigrations(t.Context(), app.MigrationConfig{
 		AppConfig:        config.AppConfig,
-		MigrationRequest: MigrationRequest{Action: MigrationAuto, To: -1},
+		MigrationRequest: app.MigrationRequest{Action: app.MigrationAuto, To: -1},
 	})
 	require.NoError(t, err)
 }
@@ -84,7 +85,7 @@ func TestPlatformAdminBootstrapCreatesTheFirstAdministrator(t *testing.T) {
 	config.Email = "ops@example.test"
 	migratePlatformAdminDatabase(t, config)
 
-	report, err := (&App{}).RunPlatformAdminBootstrap(t.Context(), config, bootstrapTestPassword)
+	report, err := RunPlatformAdminBootstrap(t.Context(), config, bootstrapTestPassword)
 	require.NoError(t, err)
 	assert.Equal(t, PlatformAdminCreated, report.Outcome)
 	assert.Equal(t, "admin", report.Login)
@@ -97,10 +98,10 @@ func TestPlatformAdminBootstrapIsCreateOnlyOnRerun(t *testing.T) {
 	config := newPlatformAdminConfig(t, newPlatformAdminDSN(t))
 	migratePlatformAdminDatabase(t, config)
 
-	first, err := (&App{}).RunPlatformAdminBootstrap(t.Context(), config, bootstrapTestPassword)
+	first, err := RunPlatformAdminBootstrap(t.Context(), config, bootstrapTestPassword)
 	require.NoError(t, err)
 
-	second, err := (&App{}).RunPlatformAdminBootstrap(t.Context(), config, "a-completely-different-password")
+	second, err := RunPlatformAdminBootstrap(t.Context(), config, "a-completely-different-password")
 	require.NoError(t, err)
 	assert.Equal(t, PlatformAdminAlreadyBootstrapped, second.Outcome)
 	assert.Equal(t, first.PrincipalID, second.PrincipalID, "a rerun must report the administrator that exists")
@@ -112,11 +113,11 @@ func TestPlatformAdminBootstrapIsCreateOnlyOnRerun(t *testing.T) {
 func TestPlatformAdminBootstrapRefusesASecondAdministrator(t *testing.T) {
 	config := newPlatformAdminConfig(t, newPlatformAdminDSN(t))
 	migratePlatformAdminDatabase(t, config)
-	_, err := (&App{}).RunPlatformAdminBootstrap(t.Context(), config, bootstrapTestPassword)
+	_, err := RunPlatformAdminBootstrap(t.Context(), config, bootstrapTestPassword)
 	require.NoError(t, err)
 
 	config.Login = "second-admin"
-	_, err = (&App{}).RunPlatformAdminBootstrap(t.Context(), config, bootstrapTestPassword)
+	_, err = RunPlatformAdminBootstrap(t.Context(), config, bootstrapTestPassword)
 	assert.ErrorIs(t, err, ErrPlatformAdminConflict)
 }
 
@@ -125,7 +126,7 @@ func TestPlatformAdminBootstrapRefusesASecondAdministrator(t *testing.T) {
 func TestPlatformAdminBootstrapReportsAnUnmigratedSchemaAsItsOwnOutcome(t *testing.T) {
 	config := newPlatformAdminConfig(t, newPlatformAdminDSN(t))
 
-	_, err := (&App{}).RunPlatformAdminBootstrap(t.Context(), config, bootstrapTestPassword)
+	_, err := RunPlatformAdminBootstrap(t.Context(), config, bootstrapTestPassword)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrPlatformAdminSchemaNotReady)
 	assert.NotErrorIs(t, err, ErrPlatformAdminConflict)
@@ -140,14 +141,14 @@ func TestPlatformAdminBootstrapValidatesBeforeTouchingTheDatabase(t *testing.T) 
 	t.Run("blank login", func(t *testing.T) {
 		config := base
 		config.Login = "   "
-		_, err := (&App{}).RunPlatformAdminBootstrap(t.Context(), config, bootstrapTestPassword)
+		_, err := RunPlatformAdminBootstrap(t.Context(), config, bootstrapTestPassword)
 		require.Error(t, err)
 		assert.NotErrorIs(t, err, ErrPlatformAdminSchemaNotReady, "the login is rejected before any schema check")
 	})
 
 	t.Run("short password", func(t *testing.T) {
 		config := base
-		_, err := (&App{}).RunPlatformAdminBootstrap(t.Context(), config, "short")
+		_, err := RunPlatformAdminBootstrap(t.Context(), config, "short")
 		require.ErrorIs(t, err, iamauthn.ErrBootstrapPassword)
 		assert.NotErrorIs(t, err, ErrPlatformAdminSchemaNotReady)
 	})
@@ -156,7 +157,7 @@ func TestPlatformAdminBootstrapValidatesBeforeTouchingTheDatabase(t *testing.T) 
 // TestPlatformAdminStoresReportUnavailableWithoutModules covers the resolution
 // guard: nothing here may fall back to reaching into a module directly.
 func TestPlatformAdminStoresReportUnavailableWithoutModules(t *testing.T) {
-	_, err := (&App{}).platformAdminStores()
+	_, err := resolvePlatformAdminStores(nil, nil, nil)
 	assert.ErrorIs(t, err, ErrPlatformAdminUnavailable)
 }
 
@@ -167,7 +168,7 @@ func TestPlatformAdminBootstrapReportsUnavailableWithoutIAM(t *testing.T) {
 	migratePlatformAdminDatabase(t, config)
 	config.Authn.Enabled = false
 
-	_, err := (&App{}).RunPlatformAdminBootstrap(t.Context(), config, bootstrapTestPassword)
+	_, err := RunPlatformAdminBootstrap(t.Context(), config, bootstrapTestPassword)
 	assert.ErrorIs(t, err, ErrPlatformAdminUnavailable)
 }
 

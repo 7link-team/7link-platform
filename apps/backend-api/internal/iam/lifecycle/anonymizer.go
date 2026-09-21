@@ -1,4 +1,4 @@
-package app
+package lifecycle
 
 import (
 	"context"
@@ -17,14 +17,12 @@ import (
 	"gorm.io/gorm"
 )
 
-// anonymizePrincipalData includes persisted owners even when their runtime
-// modules are disabled. It neither guesses table absence nor silently skips an
-// unupgraded owner whose historical PII or concurrent writes remain unprotected.
-func (app *App) anonymizePrincipalData(ctx context.Context, tx *gorm.DB, principal identity.Principal, now time.Time) error {
-	if app.runtime == nil || tx == nil {
+// AnonymizePrincipalData erases principal-owned data from every persisted IAM
+// owner, including modules that are disabled at runtime.
+func AnonymizePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, principal identity.Principal, now time.Time) error {
+	if tx == nil {
 		return identity.ErrUnavailable
 	}
-	prefix := app.runtime.TablePrefix()
 	owners := []struct {
 		name, versions string
 		version        int64
@@ -43,7 +41,6 @@ func (app *App) anonymizePrincipalData(ctx context.Context, tx *gorm.DB, princip
 			VersionID int64
 			IsApplied bool
 		}
-		// Later unrelated migrations do not remove the owner's erasure protection.
 		err := tx.WithContext(ctx).Table(prefix+owner.versions).Where("version_id = ?", owner.version).Order("id DESC").Take(&version).Error
 		if err != nil || !version.IsApplied || version.VersionID != owner.version {
 			return fmt.Errorf("%w: %s principal erasure migration is required", identity.ErrUnavailable, owner.name)

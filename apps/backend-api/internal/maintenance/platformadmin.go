@@ -1,4 +1,4 @@
-package app
+package maintenance
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"7link.com/platform/internal/app"
 	iamaudit "7link.com/platform/internal/iam/audit"
 	iamauthn "7link.com/platform/internal/iam/authn"
 	"7link.com/platform/internal/iam/core"
@@ -73,7 +74,7 @@ type PlatformAdminRequest struct {
 // PlatformAdminConfig combines the application's normal configuration with the
 // bootstrap command's own settings, the same way MigrationConfig does.
 type PlatformAdminConfig struct {
-	AppConfig            `mapstructure:",squash"`
+	app.AppConfig        `mapstructure:",squash"`
 	PlatformAdminRequest `mapstructure:",squash"`
 }
 
@@ -101,7 +102,7 @@ type platformAdminStores struct {
 // starting any server. It composes and prepares the same Module Registry as the
 // service path, then drives one transaction across identity, authentication,
 // core, and audit through capabilities those modules publish.
-func (app *App) RunPlatformAdminBootstrap(
+func RunPlatformAdminBootstrap(
 	ctx context.Context,
 	config PlatformAdminConfig,
 	password string,
@@ -118,60 +119,37 @@ func (app *App) RunPlatformAdminBootstrap(
 	if err := iamauthn.ValidateBootstrapPassword(password); err != nil {
 		return PlatformAdminReport{}, err
 	}
-	if err := configureApplication(&config.AppConfig); err != nil {
-		return PlatformAdminReport{}, err
-	}
-	app.config = config.AppConfig
-	defer func() {
-		resultErr = errors.Join(resultErr, app.shutdown())
-	}()
-	stores, err := app.startForPlatformAdministration(ctx)
-	if err != nil {
-		return PlatformAdminReport{}, err
-	}
-	return stores.bootstrap(ctx, identity.BootstrapPrincipalInput{
+	input := identity.BootstrapPrincipalInput{
 		LoginName: login, DisplayName: config.DisplayName, Email: config.Email,
-	}, password)
+	}
+	err := app.RunMaintenance(ctx, config.AppConfig, func(services *module.Services, db *gorm.DB, locker *dlock.Module) error {
+		stores, resolveErr := resolvePlatformAdminStores(services, db, locker)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		report, resolveErr = stores.bootstrap(ctx, input, password)
+		return resolveErr
+	})
+	if err != nil {
+		return PlatformAdminReport{}, normalizeMaintenanceError(err)
+	}
+	return report, nil
 }
 
-// startForPlatformAdministration brings up exactly as much of the application
-// as an out-of-band administrative command needs, and no more. The caller has
-// already applied its configuration and armed its own shutdown, because a
-// failure here still has to release what prepare took.
-func (app *App) startForPlatformAdministration(ctx context.Context) (platformAdminStores, error) {
-	if err := app.prepare(ctx); err != nil {
-		return platformAdminStores{}, fmt.Errorf("prepare administrative application: %w", err)
+func normalizeMaintenanceError(err error) error {
+	if errors.Is(err, app.ErrMaintenanceSchemaNotReady) {
+		return errors.Join(ErrPlatformAdminSchemaNotReady, err)
 	}
-	// A dirty or unmigrated schema would surface as an opaque "no such table";
-	// checking first turns it into its own outcome with its own exit status.
-	if _, err := app.migrateModules(ctx, MigrationRequest{Action: MigrationValidate}); err != nil {
-		return platformAdminStores{}, errors.Join(ErrPlatformAdminSchemaNotReady, err)
-	}
-	// These commands write through the same ID generator, password hashing, and
-	// audit chain the running service uses, and the ID generator only leases a
-	// worker after the module lifecycle starts. Driving the lifecycle is what
-	// makes "the same as production" true rather than approximately true. No
-	// listener opens: the HTTP and gRPC servers are started by Run, not here.
-	if err := app.modules.Initialize(ctx); err != nil {
-		return platformAdminStores{}, fmt.Errorf("initialize administrative modules: %w", err)
-	}
-	if err := app.modules.Start(ctx); err != nil {
-		return platformAdminStores{}, fmt.Errorf("start administrative modules: %w", err)
-	}
-	return app.platformAdminStores()
+	return err
 }
 
 // platformAdminStores resolves the published bootstrap capabilities. Resolving
 // them here rather than reaching into modules keeps the ownership rule intact:
 // this boundary can only do what the owning modules chose to expose.
-func (app *App) platformAdminStores() (platformAdminStores, error) {
-	if app.modules == nil {
+func resolvePlatformAdminStores(services *module.Services, db *gorm.DB, locker *dlock.Module) (platformAdminStores, error) {
+	if services == nil || db == nil || locker == nil {
 		return platformAdminStores{}, fmt.Errorf("%w: modules are not composed", ErrPlatformAdminUnavailable)
 	}
-	if app.runtime == nil || app.runtime.Database() == nil || app.runtime.Database().Write() == nil {
-		return platformAdminStores{}, fmt.Errorf("%w: no writable database", ErrPlatformAdminUnavailable)
-	}
-	services := app.modules.Services()
 	principals, err := module.Resolve[identity.BootstrapPrincipalStore](services)
 	if err != nil {
 		return platformAdminStores{}, errors.Join(ErrPlatformAdminUnavailable, err)
@@ -188,14 +166,9 @@ func (app *App) platformAdminStores() (platformAdminStores, error) {
 	if err != nil {
 		return platformAdminStores{}, errors.Join(ErrPlatformAdminUnavailable, err)
 	}
-	locks, found := app.modules.ByName(dlock.Name)
-	locker, isLocker := locks.(*dlock.Module)
-	if !found || !isLocker {
-		return platformAdminStores{}, fmt.Errorf("%w: distributed lock module is not active", ErrPlatformAdminUnavailable)
-	}
 	return platformAdminStores{
 		principals: principals, credentials: credentials, administs: administrators,
-		appender: appender, locker: locker, db: app.runtime.Database().Write(),
+		appender: appender, locker: locker, db: db,
 	}, nil
 }
 

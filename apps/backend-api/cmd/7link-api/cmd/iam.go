@@ -13,6 +13,7 @@ import (
 
 	"7link.com/platform/internal/app"
 	iamaudit "7link.com/platform/internal/iam/audit"
+	"7link.com/platform/internal/maintenance"
 	"7link.com/platform/pkg/config"
 	"github.com/spf13/cobra"
 )
@@ -37,10 +38,10 @@ const maxPasswordFileSize = 4096
 // takes only the settings it acts on, so a value left over from another
 // subcommand cannot be read as something this one would change.
 type iamConfig struct {
-	app.AppConfig            `mapstructure:",squash"`
-	app.PlatformAdminRequest `mapstructure:",squash"`
-	app.TenantRepairRequest  `mapstructure:",squash"`
-	app.RewrapSecretsRequest `mapstructure:",squash"`
+	app.AppConfig                    `mapstructure:",squash"`
+	maintenance.PlatformAdminRequest `mapstructure:",squash"`
+	maintenance.TenantRepairRequest  `mapstructure:",squash"`
+	maintenance.RewrapSecretsRequest `mapstructure:",squash"`
 }
 
 var (
@@ -172,7 +173,7 @@ func runBootstrapPlatformAdmin(command *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	report, err := (&app.App{}).RunPlatformAdminBootstrap(command.Context(), app.PlatformAdminConfig{
+	report, err := maintenance.RunPlatformAdminBootstrap(command.Context(), maintenance.PlatformAdminConfig{
 		AppConfig:            platformAdminConfig.AppConfig,
 		PlatformAdminRequest: platformAdminConfig.PlatformAdminRequest,
 	}, password)
@@ -180,7 +181,7 @@ func runBootstrapPlatformAdmin(command *cobra.Command, _ []string) error {
 		return withExitCode(platformAdminExitCode(err), err)
 	}
 	writeBootstrapReport(command.OutOrStdout(), report)
-	if report.Outcome == app.PlatformAdminAlreadyBootstrapped {
+	if report.Outcome == maintenance.PlatformAdminAlreadyBootstrapped {
 		// Nothing went wrong, but nothing was created either. A distinct status
 		// lets an idempotent deployment step tell those apart without parsing
 		// the message.
@@ -204,9 +205,9 @@ func runResetAdminPassword(command *cobra.Command, _ []string) error {
 	// The reset takes only the two settings it acts on, so a display name or an
 	// email left over from a bootstrap run cannot be read as something this
 	// command would change.
-	report, err := (&app.App{}).RunPlatformAdminPasswordReset(command.Context(), app.PlatformAdminResetConfig{
+	report, err := maintenance.RunPlatformAdminPasswordReset(command.Context(), maintenance.PlatformAdminResetConfig{
 		AppConfig: platformAdminConfig.AppConfig,
-		PlatformAdminResetRequest: app.PlatformAdminResetRequest{
+		PlatformAdminResetRequest: maintenance.PlatformAdminResetRequest{
 			Login:        platformAdminConfig.Login,
 			PasswordFile: platformAdminConfig.PasswordFile,
 		},
@@ -226,7 +227,7 @@ func runRepairTenantOwner(command *cobra.Command, _ []string) error {
 		return err
 	}
 	applyBuildVersion(&platformAdminConfig.AppConfig)
-	report, err := (&app.App{}).RunTenantOwnerRepair(command.Context(), app.TenantRepairConfig{
+	report, err := maintenance.RunTenantOwnerRepair(command.Context(), maintenance.TenantRepairConfig{
 		AppConfig:           platformAdminConfig.AppConfig,
 		TenantRepairRequest: platformAdminConfig.TenantRepairRequest,
 	})
@@ -245,7 +246,7 @@ func runRewrapSecrets(command *cobra.Command, _ []string) error {
 		return err
 	}
 	applyBuildVersion(&platformAdminConfig.AppConfig)
-	report, err := (&app.App{}).RunSecretRewrap(command.Context(), app.RewrapSecretsConfig{
+	report, err := maintenance.RunSecretRewrap(command.Context(), maintenance.RewrapSecretsConfig{
 		AppConfig:            platformAdminConfig.AppConfig,
 		RewrapSecretsRequest: platformAdminConfig.RewrapSecretsRequest,
 	})
@@ -263,7 +264,7 @@ func runListErasureObligations(command *cobra.Command, _ []string) error {
 	if err := platformAdminConfigurator.Load(&platformAdminConfig); err != nil {
 		return err
 	}
-	obligations, err := (&app.App{}).ListErasureObligations(command.Context(), platformAdminConfig.AppConfig)
+	obligations, err := maintenance.ListErasureObligations(command.Context(), platformAdminConfig.AppConfig)
 	if err != nil {
 		return err
 	}
@@ -288,26 +289,26 @@ var errAlreadyBootstrapped = errors.New("platform administrator already bootstra
 // what to do next: bootstrap first, fix the state, run migrations, or retry.
 func platformAdminExitCode(err error) int {
 	switch {
-	case errors.Is(err, app.ErrPlatformAdminNotBootstrapped):
+	case errors.Is(err, maintenance.ErrPlatformAdminNotBootstrapped):
 		return exitNotBootstrapped
-	case errors.Is(err, app.ErrPlatformAdminConflict):
+	case errors.Is(err, maintenance.ErrPlatformAdminConflict):
 		return exitConflict
-	case errors.Is(err, app.ErrPlatformAdminSchemaNotReady):
+	case errors.Is(err, maintenance.ErrPlatformAdminSchemaNotReady):
 		return exitSchemaNotReady
-	case errors.Is(err, app.ErrPlatformAdminUnavailable):
+	case errors.Is(err, maintenance.ErrPlatformAdminUnavailable):
 		return exitTransient
-	case errors.Is(err, app.ErrTenantRepairNotFound):
+	case errors.Is(err, maintenance.ErrTenantRepairNotFound):
 		return exitNotBootstrapped
-	case errors.Is(err, app.ErrTenantRepairConflict):
+	case errors.Is(err, maintenance.ErrTenantRepairConflict):
 		return exitConflict
-	case errors.Is(err, app.ErrSecretRewrapUnavailable):
+	case errors.Is(err, maintenance.ErrSecretRewrapUnavailable):
 		return exitTransient
 	default:
 		return exitFailure
 	}
 }
 
-func writeBootstrapReport(output io.Writer, report app.PlatformAdminReport) {
+func writeBootstrapReport(output io.Writer, report maintenance.PlatformAdminReport) {
 	// The password and its hash are absent by construction: neither ever leaves
 	// the credential store.
 	_, _ = fmt.Fprintf(output, "outcome: %s\nprincipal_id: %d\nlogin: %s\n",
@@ -316,7 +317,7 @@ func writeBootstrapReport(output io.Writer, report app.PlatformAdminReport) {
 
 // writeTenantRepairReport names what an operator has to check next: the tenant
 // they meant, and the person who can now sign in and administer it.
-func writeTenantRepairReport(output io.Writer, report app.TenantRepairReport) {
+func writeTenantRepairReport(output io.Writer, report maintenance.TenantRepairReport) {
 	_, _ = fmt.Fprintf(output,
 		"outcome: %s\ntenant_id: %d\ntenant_slug: %s\nowner_principal_id: %d\nowner_login: %s\n"+
 			"administrator_role_id: %d\npermission_count: %d\nmenu_count: %d\n",
@@ -327,7 +328,7 @@ func writeTenantRepairReport(output io.Writer, report app.TenantRepairReport) {
 // writeSecretRewrapReport separates the three things an operator conflates at
 // their peril: what this run converted, what still depends on a retired key,
 // and whether waiting will ever clear the remainder.
-func writeSecretRewrapReport(output io.Writer, report app.SecretRewrapReport) {
+func writeSecretRewrapReport(output io.Writer, report maintenance.SecretRewrapReport) {
 	mode := "rewrap"
 	if report.DryRun {
 		// Naming the mode in the report keeps a survey pasted into a ticket from
@@ -359,7 +360,7 @@ func writeSecretRewrapReport(output io.Writer, report app.SecretRewrapReport) {
 // writeSecretRewrapClearAfter prints a date only when one exists. Nothing at
 // all is better than a placeholder: an operator reading "clear_after: unknown"
 // hears a scheduling problem, when the finding is that no schedule applies.
-func writeSecretRewrapClearAfter(output io.Writer, report app.SecretRewrapReport) {
+func writeSecretRewrapClearAfter(output io.Writer, report maintenance.SecretRewrapReport) {
 	switch {
 	case report.Outstanding == 0:
 		return

@@ -126,14 +126,13 @@ func TestTaskIDRejectsUnusableIdentifiers(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "2366488506482438144", id.String())
 
-	// An identifier that cannot name a stored task is reported as absent, not
-	// as a malformed request: the caller cannot tell the difference and 404 is
-	// the honest answer.
+	// A malformed identifier is invalid input. A syntactically valid snowflake
+	// that has no stored task is the separate 404 case exercised through HTTP.
 	for _, raw := range []string{"", "0", "-1", "abc", "12x"} {
 		_, err := taskID(raw)
 		var status huma.StatusError
 		require.ErrorAs(t, err, &status, "%q must be rejected", raw)
-		assert.Equal(t, http.StatusNotFound, status.GetStatus(), "for %q", raw)
+		assert.Equal(t, http.StatusUnprocessableEntity, status.GetStatus(), "for %q", raw)
 	}
 }
 

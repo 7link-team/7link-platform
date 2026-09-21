@@ -277,7 +277,7 @@ func (t directoryTree) resourceOwner(ctx context.Context, tx *gorm.DB, spaceID, 
 	if err != nil {
 		return ResourceOwner{}, err
 	}
-	path, err := t.pathNodes(ctx, tx, spaceID, nodeID)
+	path, err := t.ownerPathNodes(ctx, tx, spaceID, nodeID)
 	if err != nil {
 		return ResourceOwner{}, err
 	}
@@ -295,4 +295,35 @@ func (t directoryTree) resourceOwner(ctx context.Context, tx *gorm.DB, spaceID, 
 		return ResourceOwner{}, errRootUnbound
 	}
 	return owner, nil
+}
+
+func (t directoryTree) ownerPathNodes(ctx context.Context, db *gorm.DB, spaceID, id guid.ID) ([]*model.Node, error) {
+	if db == nil || spaceID <= 0 || id <= 0 {
+		return nil, errHierarchy
+	}
+	q := query.Bind(db, t.prefix)
+	closure := q.NodeClosure
+	node := q.Node
+	rows, err := node.WithContext(ctx).
+		Join(closure, closure.SpaceID.EqCol(node.SpaceID), closure.AncestorID.EqCol(node.ID)).
+		Where(closure.SpaceID.Eq(spaceID), closure.DescendantID.Eq(id)).
+		Order(closure.Depth.Desc()).Limit(maxNodeDepth + 2).Find()
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, ErrNotFound
+	}
+	if len(rows) > maxNodeDepth+1 {
+		return nil, errHierarchy
+	}
+	for index := 1; index < len(rows); index++ {
+		if rows[index].ParentID == nil || *rows[index].ParentID != rows[index-1].ID {
+			return nil, errHierarchy
+		}
+	}
+	if rows[0].ParentID != nil || rows[len(rows)-1].ID != id {
+		return nil, errHierarchy
+	}
+	return rows, nil
 }

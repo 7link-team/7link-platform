@@ -29,6 +29,10 @@ type AuthorizationEvaluator interface {
 // IAM storage details to business modules that own entity-scoped resources.
 type EntityOwnerResolver authz.ResourceOwnerResolver
 
+// DepartmentOwnerResolver resolves a globally unique department ID to its
+// tenant and parent entity without exposing organization storage details.
+type DepartmentOwnerResolver authz.ResourceOwnerResolver
+
 // EntityConstraintOn evaluates the existing entity/data policy through a caller's
 // active transaction and fences tenant policy mutations until that transaction
 // ends. Call it before reading business rows; every error must roll back.

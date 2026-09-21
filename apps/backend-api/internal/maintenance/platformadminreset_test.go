@@ -1,4 +1,4 @@
-package app
+package maintenance
 
 import (
 	"errors"
@@ -37,10 +37,10 @@ func TestPlatformAdminPasswordResetRestoresAccessToTheBootstrappedAdministrator(
 	dsn := newPlatformAdminDSN(t)
 	bootstrap := newPlatformAdminConfig(t, dsn)
 	migratePlatformAdminDatabase(t, bootstrap)
-	created, err := (&App{}).RunPlatformAdminBootstrap(t.Context(), bootstrap, bootstrapTestPassword)
+	created, err := RunPlatformAdminBootstrap(t.Context(), bootstrap, bootstrapTestPassword)
 	require.NoError(t, err)
 
-	report, err := (&App{}).RunPlatformAdminPasswordReset(
+	report, err := RunPlatformAdminPasswordReset(
 		t.Context(), newPlatformAdminResetConfig(t, dsn), resetTestPassword)
 	require.NoError(t, err)
 	assert.Equal(t, PlatformAdminPasswordReset, report.Outcome)
@@ -48,7 +48,7 @@ func TestPlatformAdminPasswordResetRestoresAccessToTheBootstrappedAdministrator(
 	assert.Equal(t, created.PrincipalID, report.PrincipalID,
 		"the reset must act on the administrator that exists, never create a second one")
 
-	rerun, err := (&App{}).RunPlatformAdminBootstrap(t.Context(), bootstrap, bootstrapTestPassword)
+	rerun, err := RunPlatformAdminBootstrap(t.Context(), bootstrap, bootstrapTestPassword)
 	require.NoError(t, err)
 	assert.Equal(t, PlatformAdminAlreadyBootstrapped, rerun.Outcome,
 		"a reset leaves exactly one administrator behind")
@@ -61,7 +61,7 @@ func TestPlatformAdminPasswordResetRefusesAnAdministratorThatWasNeverCreated(t *
 	config := newPlatformAdminResetConfig(t, newPlatformAdminDSN(t))
 	migratePlatformAdminDatabase(t, PlatformAdminConfig{AppConfig: config.AppConfig})
 
-	_, err := (&App{}).RunPlatformAdminPasswordReset(t.Context(), config, resetTestPassword)
+	_, err := RunPlatformAdminPasswordReset(t.Context(), config, resetTestPassword)
 	require.ErrorIs(t, err, ErrPlatformAdminNotBootstrapped)
 	assert.NotErrorIs(t, err, ErrPlatformAdminConflict, "an absent administrator is not a conflict")
 }
@@ -72,7 +72,7 @@ func TestPlatformAdminPasswordResetRefusesAnAdministratorThatWasNeverCreated(t *
 func TestPlatformAdminPasswordResetReportsAnUnmigratedSchemaAsItsOwnOutcome(t *testing.T) {
 	config := newPlatformAdminResetConfig(t, newPlatformAdminDSN(t))
 
-	_, err := (&App{}).RunPlatformAdminPasswordReset(t.Context(), config, resetTestPassword)
+	_, err := RunPlatformAdminPasswordReset(t.Context(), config, resetTestPassword)
 	require.ErrorIs(t, err, ErrPlatformAdminSchemaNotReady)
 	assert.NotErrorIs(t, err, ErrPlatformAdminNotBootstrapped)
 }
@@ -86,14 +86,14 @@ func TestPlatformAdminPasswordResetValidatesBeforeTouchingTheDatabase(t *testing
 	t.Run("blank login", func(t *testing.T) {
 		config := base
 		config.Login = "   "
-		_, err := (&App{}).RunPlatformAdminPasswordReset(t.Context(), config, resetTestPassword)
+		_, err := RunPlatformAdminPasswordReset(t.Context(), config, resetTestPassword)
 		require.Error(t, err)
 		assert.NotErrorIs(t, err, ErrPlatformAdminSchemaNotReady, "the login is rejected before any schema check")
 	})
 
 	t.Run("short password", func(t *testing.T) {
 		config := base
-		_, err := (&App{}).RunPlatformAdminPasswordReset(t.Context(), config, "short")
+		_, err := RunPlatformAdminPasswordReset(t.Context(), config, "short")
 		require.ErrorIs(t, err, iamauthn.ErrBootstrapPassword)
 		assert.NotErrorIs(t, err, ErrPlatformAdminSchemaNotReady)
 	})
@@ -107,7 +107,7 @@ func TestPlatformAdminPasswordResetReportsUnavailableWithoutIAM(t *testing.T) {
 	migratePlatformAdminDatabase(t, PlatformAdminConfig{AppConfig: config.AppConfig})
 	config.Authn.Enabled = false
 
-	_, err := (&App{}).RunPlatformAdminPasswordReset(t.Context(), config, resetTestPassword)
+	_, err := RunPlatformAdminPasswordReset(t.Context(), config, resetTestPassword)
 	assert.ErrorIs(t, err, ErrPlatformAdminUnavailable)
 }
 

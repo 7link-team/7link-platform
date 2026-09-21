@@ -1,4 +1,4 @@
-package app
+package maintenance
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"7link.com/platform/internal/app"
 	iamauthn "7link.com/platform/internal/iam/authn"
 	"7link.com/platform/internal/iam/federation"
 	"7link.com/platform/internal/iam/provisioning"
@@ -39,7 +40,7 @@ type RewrapSecretsRequest struct {
 // RewrapSecretsConfig combines the normal application configuration with the
 // command's own settings, the same way TenantRepairConfig does.
 type RewrapSecretsConfig struct {
-	AppConfig            `mapstructure:",squash"`
+	app.AppConfig        `mapstructure:",squash"`
 	RewrapSecretsRequest `mapstructure:",squash"`
 }
 
@@ -108,38 +109,33 @@ type secretRewrappers struct {
 // never come out, because nothing has told anyone which rows still need it.
 // This command is what ends that state -- and, just as importantly, what says
 // when it cannot be ended yet.
-func (app *App) RunSecretRewrap(
+func RunSecretRewrap(
 	ctx context.Context,
 	config RewrapSecretsConfig,
 ) (report SecretRewrapReport, resultErr error) {
-	if err := configureApplication(&config.AppConfig); err != nil {
-		return SecretRewrapReport{}, err
-	}
-	app.config = config.AppConfig
-	defer func() {
-		resultErr = errors.Join(resultErr, app.shutdown())
-	}()
-	admin, err := app.startForPlatformAdministration(ctx)
+	err := app.RunMaintenance(ctx, config.AppConfig, func(services *module.Services, db *gorm.DB, locker *dlock.Module) error {
+		rewrappers, resolveErr := resolveSecretRewrappers(services, db, locker)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		report, resolveErr = rewrappers.rewrap(ctx, config.DryRun)
+		return resolveErr
+	})
 	if err != nil {
-		return SecretRewrapReport{}, err
+		return SecretRewrapReport{}, normalizeMaintenanceError(err)
 	}
-	rewrappers, err := app.secretRewrappers(admin)
-	if err != nil {
-		return SecretRewrapReport{}, err
-	}
-	return rewrappers.rewrap(ctx, config.DryRun)
+	return report, nil
 }
 
 // secretRewrappers resolves whichever sealing modules this deployment turned
 // on. A module that is switched off publishes nothing, and that is an absence
 // rather than a fault: a deployment with no federation has no federated client
 // secret to reseal.
-func (app *App) secretRewrappers(admin platformAdminStores) (secretRewrappers, error) {
-	if app.modules == nil {
+func resolveSecretRewrappers(services *module.Services, db *gorm.DB, locker *dlock.Module) (secretRewrappers, error) {
+	if services == nil || db == nil || locker == nil {
 		return secretRewrappers{}, fmt.Errorf("%w: modules are not composed", ErrSecretRewrapUnavailable)
 	}
-	services := app.modules.Services()
-	rewrappers := secretRewrappers{locker: admin.locker, db: admin.db}
+	rewrappers := secretRewrappers{locker: locker, db: db}
 	if rewrapper, err := module.Resolve[iamauthn.SecretRewrapper](services); err == nil {
 		rewrappers.add("authn", rewrapper.RewrapSecrets)
 	} else if !errors.Is(err, module.ErrServiceMissing) {

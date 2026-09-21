@@ -40,6 +40,8 @@ type Module struct {
 	policy       core.EntityConstraintOn
 	subjects     core.AuthorizationSubjectsOn
 	references   core.AuthorizationReferencesOn
+	entityOwner  core.EntityOwnerResolver
+	deptOwner    core.DepartmentOwnerResolver
 	ids          guid.Source
 	appender     audit.Appender
 	operations   *operationService
@@ -149,6 +151,14 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve files authorization references: %w", err)
 	}
+	entityOwner, err := module.Resolve[core.EntityOwnerResolver](services)
+	if err != nil {
+		return fmt.Errorf("resolve files entity owner: %w", err)
+	}
+	departmentOwner, err := module.Resolve[core.DepartmentOwnerResolver](services)
+	if err != nil {
+		return fmt.Errorf("resolve files department owner: %w", err)
+	}
 	ids, err := module.Resolve[guid.Source](services)
 	if err != nil {
 		return fmt.Errorf("resolve files id generator: %w", err)
@@ -169,6 +179,7 @@ func (m *Module) InjectServices(services *module.Services) error {
 		}
 	}
 	m.registrar, m.policy, m.subjects, m.references = registrar, policy, subjects, references
+	m.entityOwner, m.deptOwner = entityOwner, departmentOwner
 	m.ids, m.appender = ids, appender
 	if m.resources != nil {
 		if err := m.resources.Configure(ids, appender); err != nil {
@@ -194,7 +205,7 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	if m == nil || m.operations == nil || m.registrar == nil {
 		return errOperationUnavailable
 	}
-	registerFileHTTP(api, m.operations, m.registrar)
+	registerFileHTTP(api, m.operations, m.registrar, m.resolveFileOwner, authz.ResourceOwnerResolver(m.entityOwner), authz.ResourceOwnerResolver(m.deptOwner))
 	return nil
 }
 

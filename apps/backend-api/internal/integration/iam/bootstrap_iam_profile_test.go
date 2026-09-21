@@ -1,6 +1,7 @@
-package app
+package iamintegration
 
 import (
+	"7link.com/platform/internal/app"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -27,7 +28,7 @@ import (
 func TestComposedSCIMProfileFieldPolicies(t *testing.T) {
 	for _, prefix := range []string{"", "profile_"} {
 		t.Run("prefix_"+prefix, func(t *testing.T) {
-			f := newIAMTenantFixtureWithDatabase(t, Database{
+			f := newIAMTenantFixtureWithDatabase(t, app.Database{
 				Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "scim-profile.sqlite"), Writable: true, Readable: true,
 			}, prefix)
 			f.runSCIMProfileLifecycle(t)
@@ -55,7 +56,7 @@ func (f *iamTenantFixture) runSCIMProfileLifecycle(t *testing.T) {
 	roleID, err := guid.Parse(role.ID.String())
 	require.NoError(t, err)
 	memberPath := "/roles/" + role.ID.String() + "/members/" + directory.ServiceAccountID.String()
-	response = f.request(t, http.MethodPut, memberPath, iamTenantA, f.tokenA, nil, nil)
+	response = f.request(t, http.MethodPut, memberPath, 0, f.tokenA, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 	setPolicy := func(field, mask string) {
 		t.Helper()
@@ -115,7 +116,7 @@ func (f *iamTenantFixture) runSCIMProfileLifecycle(t *testing.T) {
 	assert.Equal(t, beforeAudit, f.auditCount(t, iamTenantA))
 	response = f.request(t, http.MethodPatch, userPath, 0, token, patch("active", false), nil)
 	requireStatus(t, http.StatusOK, response)
-	identities, err := module.Resolve[identity.IdentityProvisioner](f.app.modules.Services())
+	identities, err := module.Resolve[identity.IdentityProvisioner](f.app.Modules().Services())
 	require.NoError(t, err)
 	raw, err := identities.Get(t.Context(), iamTenantA, userID)
 	require.NoError(t, err)
@@ -146,7 +147,7 @@ func (f *iamTenantFixture) runSCIMProfileLifecycle(t *testing.T) {
 	target := decodeEnvelope[provisioning.TargetSecret](t, response).Target
 	pushPath := "/scim-targets/" + target.ID + "/provisioning-jobs"
 	pushBody := map[string]any{"resource_type": "User", "resource_id": user.ID}
-	response = f.request(t, http.MethodPost, pushPath, iamTenantA, f.tokenA, pushBody, nil)
+	response = f.request(t, http.MethodPost, pushPath, 0, f.tokenA, pushBody, nil)
 	requireStatus(t, http.StatusOK, response)
 	require.Equal(t, int64(1), calls.Load())
 	projected := <-remoteUsers
@@ -160,19 +161,19 @@ func (f *iamTenantFixture) runSCIMProfileLifecycle(t *testing.T) {
 	response = f.request(t, http.MethodGet, userPath, 0, token, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 	assert.NotContains(t, decodeBody[map[string]any](t, response), "userName")
-	response = f.request(t, http.MethodPost, pushPath, iamTenantA, f.tokenA, pushBody, nil)
+	response = f.request(t, http.MethodPost, pushPath, 0, f.tokenA, pushBody, nil)
 	requireStatus(t, http.StatusForbidden, response)
 	assert.Equal(t, int64(1), calls.Load(), "no remote write with an unreadable required identifier")
-	response = f.request(t, http.MethodDelete, memberPath, iamTenantA, f.tokenA, nil, nil)
+	response = f.request(t, http.MethodDelete, memberPath, 0, f.tokenA, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 	response = f.request(t, http.MethodGet, userPath, 0, token, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 	assert.Equal(t, "Private name", decodeBody[provisioning.UserResource](t, response).DisplayName, "role changes affect an existing credential immediately")
-	response = f.request(t, http.MethodPost, pushPath, iamTenantA, f.tokenA, pushBody, nil)
+	response = f.request(t, http.MethodPost, pushPath, 0, f.tokenA, pushBody, nil)
 	requireStatus(t, http.StatusOK, response)
 	assert.Equal(t, int64(2), calls.Load())
 	assert.Equal(t, "private@example.test", (<-remoteUsers).Emails[0].Value)
-	response = f.request(t, http.MethodPut, "/scim-directories/"+directory.ID.String(), iamTenantA, f.tokenA,
+	response = f.request(t, http.MethodPut, "/scim-directories/"+directory.ID.String(), 0, f.tokenA,
 		map[string]any{"name": directory.Name, "status": "active", "version": directory.Version, "service_account_id": nil}, nil)
 	requireStatus(t, http.StatusOK, response)
 	response = f.request(t, http.MethodGet, userPath, 0, token, nil, nil)
@@ -182,10 +183,10 @@ func (f *iamTenantFixture) runSCIMProfileLifecycle(t *testing.T) {
 func TestComposedIAMProfileFieldPolicies(t *testing.T) {
 	for _, prefix := range []string{"", "profile_"} {
 		t.Run("prefix_"+prefix, func(t *testing.T) {
-			f := newIAMTenantFixtureWithDatabase(t, Database{
+			f := newIAMTenantFixtureWithDatabase(t, app.Database{
 				Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "profile.sqlite"), Writable: true, Readable: true,
 			}, prefix)
-			web, err := module.Resolve[iamauthn.WebService](f.app.modules.Services())
+			web, err := module.Resolve[iamauthn.WebService](f.app.Modules().Services())
 			require.NoError(t, err)
 			issue := func(scope string) string {
 				t.Helper()
@@ -238,7 +239,7 @@ func TestComposedIAMProfileFieldPolicies(t *testing.T) {
 				response = f.request(t, http.MethodGet, path, iamTenantB, f.tokenB, nil, nil)
 				requireStatus(t, http.StatusForbidden, response)
 			}
-			identities, err := module.Resolve[identity.IdentityProvisioner](f.app.modules.Services())
+			identities, err := module.Resolve[identity.IdentityProvisioner](f.app.Modules().Services())
 			require.NoError(t, err)
 			raw, err := identities.Get(t.Context(), iamTenantB, f.requesterB.ID)
 			require.NoError(t, err)

@@ -14,6 +14,7 @@ import (
 	"7link.com/platform/internal/iam/organization/query"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	"7link.com/platform/pkg/extension/authz"
 	"gorm.io/gorm"
 )
 
@@ -110,6 +111,25 @@ func (r *Repository) resolveDepartmentTenant(ctx context.Context, id guid.ID) (g
 		return 0, false, err
 	}
 	return r.resolveResourceTenant(ctx, tables.Departments.TableName(), id)
+}
+
+func (r *Repository) resolveDepartmentOwner(ctx context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
+	tables, db, err := r.tables()
+	if err != nil {
+		return authz.ResourceOwner{}, false, err
+	}
+	var row struct {
+		TenantID guid.ID `gorm:"column:tenant_id"`
+		EntityID guid.ID `gorm:"column:entity_id"`
+	}
+	err = db.WithContext(ctx).Table(tables.Departments.TableName()).Select("tenant_id, entity_id").Where("id = ?", id).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return authz.ResourceOwner{}, false, nil
+	}
+	if err != nil {
+		return authz.ResourceOwner{}, false, fmt.Errorf("resolve department owner: %w", err)
+	}
+	return authz.ResourceOwner{TenantID: row.TenantID, EntityID: row.EntityID}, true, nil
 }
 
 func (r *Repository) resolvePositionTenant(ctx context.Context, id guid.ID) (guid.ID, bool, error) {

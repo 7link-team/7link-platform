@@ -1,6 +1,7 @@
-package app
+package iamintegration
 
 import (
+	"7link.com/platform/internal/app"
 	"bytes"
 	"crypto/ed25519"
 	"encoding/base64"
@@ -27,7 +28,6 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
 	authnext "7link.com/platform/pkg/extension/authn"
-	humax "7link.com/platform/pkg/extension/huma"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -42,7 +42,7 @@ const (
 )
 
 type iamTenantFixture struct {
-	app        *App
+	app        *app.App
 	server     *httptest.Server
 	client     *http.Client
 	db         *gorm.DB
@@ -123,11 +123,7 @@ func TestComposedIAMProvisionsOrganizationOwnedFileRoots(t *testing.T) {
 	}
 	assert.Equal(t, int64(3), fixture.count(t, "iam_audit_events", "tenant_id = ? AND event_type = 'file_root_created'", tenant.ID))
 
-	response = fixture.request(t, http.MethodGet, "/files", tenant.ID, fixture.tokenA, nil, map[string]string{
-		entityFixtureSelector: entityID.String(),
-	})
-	requireStatus(t, http.StatusOK, response)
-	roots := decodeEnvelope[struct {
+	type fileRoots struct {
 		Items []struct {
 			ID           guid.ID `json:"id"`
 			Scope        string  `json:"scope"`
@@ -136,7 +132,22 @@ func TestComposedIAMProvisionsOrganizationOwnedFileRoots(t *testing.T) {
 			DepartmentID guid.ID `json:"department_id"`
 			PrincipalID  guid.ID `json:"principal_id"`
 		} `json:"items"`
-	}](t, response)
+	}
+	roots := fileRoots{}
+	for _, request := range []struct {
+		path     string
+		tenantID guid.ID
+	}{
+		{path: "/files", tenantID: tenant.ID},
+		{path: "/entities/" + entityID.String() + "/files"},
+		{path: "/departments/" + department.ID.String() + "/files"},
+	} {
+		response = fixture.request(t, http.MethodGet, request.path, request.tenantID, fixture.tokenA, nil, nil)
+		requireStatus(t, http.StatusOK, response)
+		page := decodeEnvelope[fileRoots](t, response)
+		require.Len(t, page.Items, 1)
+		roots.Items = append(roots.Items, page.Items...)
+	}
 	require.Len(t, roots.Items, 3)
 	rootIDs := make(map[string]guid.ID, len(roots.Items))
 	for _, root := range roots.Items {
@@ -162,18 +173,18 @@ func TestComposedIAMProvisionsOrganizationOwnedFileRoots(t *testing.T) {
 		}
 	}
 
-	fixture.createFileDirectory(t, tenant.ID, entityID, fixture.tokenA, rootIDs["entity"], "Retained entity data")
-	response = fixture.request(t, http.MethodDelete, "/entities/"+entityID.String(), tenant.ID, fixture.tokenA, nil, nil)
+	fixture.createFileDirectory(t, "/entities/"+entityID.String()+"/files", fixture.tokenA, rootIDs["entity"], "Retained entity data")
+	response = fixture.request(t, http.MethodDelete, "/entities/"+entityID.String(), 0, fixture.tokenA, nil, nil)
 	requireStatus(t, http.StatusConflict, response)
 	assert.Equal(t, int64(1), fixture.count(t, "iam_entities", "tenant_id = ? AND id = ?", tenant.ID, entityID))
 
-	fixture.createFileDirectory(t, tenant.ID, entityID, fixture.tokenA, rootIDs["department"], "Retained department data")
-	response = fixture.request(t, http.MethodDelete, "/departments/"+department.ID.String()+"?version="+strconv.FormatInt(department.Version, 10), tenant.ID, fixture.tokenA, nil, nil)
+	fixture.createFileDirectory(t, "/departments/"+department.ID.String()+"/files", fixture.tokenA, rootIDs["department"], "Retained department data")
+	response = fixture.request(t, http.MethodDelete, "/departments/"+department.ID.String()+"?version="+strconv.FormatInt(department.Version, 10), 0, fixture.tokenA, nil, nil)
 	requireStatus(t, http.StatusConflict, response)
 	assert.Equal(t, int64(1), fixture.count(t, "iam_departments", "tenant_id = ? AND id = ?", tenant.ID, department.ID))
 }
 
-func (f *iamTenantFixture) createFileDirectory(t *testing.T, tenantID, entityID guid.ID, token string, parentID guid.ID, name string) {
+func (f *iamTenantFixture) createFileDirectory(t *testing.T, collectionPath, token string, parentID guid.ID, name string) {
 	t.Helper()
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -181,9 +192,8 @@ func (f *iamTenantFixture) createFileDirectory(t *testing.T, tenantID, entityID 
 	require.NoError(t, writer.WriteField("kind", "directory"))
 	require.NoError(t, writer.WriteField("name", name))
 	require.NoError(t, writer.Close())
-	response := f.request(t, http.MethodPost, "/files", tenantID, token, &body, map[string]string{
-		"Content-Type":        writer.FormDataContentType(),
-		entityFixtureSelector: entityID.String(),
+	response := f.request(t, http.MethodPost, collectionPath, 0, token, &body, map[string]string{
+		"Content-Type": writer.FormDataContentType(),
 	})
 	requireStatus(t, http.StatusCreated, response)
 }
@@ -330,23 +340,24 @@ func (f *iamTenantFixture) runSCIMTenantLifecycle(t *testing.T) {
 
 func newIAMTenantFixture(t *testing.T) *iamTenantFixture {
 	t.Helper()
-	return newIAMTenantFixtureWithDatabase(t, Database{
+	return newIAMTenantFixtureWithDatabase(t, app.Database{
 		Type: "sqlite", Dsn: filepath.Join(t.TempDir(), "iam-tenant.sqlite"), Writable: true, Readable: true,
 	}, "")
 }
 
-func newIAMTenantFixtureWithDatabase(t *testing.T, database Database, prefix string, configure ...func(*AppConfig)) *iamTenantFixture {
+func newIAMTenantFixtureWithDatabase(t *testing.T, database app.Database, prefix string, configure ...func(*app.AppConfig)) *iamTenantFixture {
 	t.Helper()
 	seed := make([]byte, ed25519.SeedSize)
 	for index := range seed {
 		seed[index] = byte(index + 1)
 	}
 	key := base64.RawStdEncoding.EncodeToString(seed)
-	application := &App{config: AppConfig{
+	config := app.AppConfig{
 		Name: "iam-tenant-integration", Version: "1", Timezone: "UTC", Migrate: true,
 		TablePrefix: prefix,
-		Database:    map[string]Database{"primary": database},
-		Authn: IAMAuthn(authnext.Config{
+		Database:    map[string]app.Database{"primary": database},
+		Files:       app.FilesConfig{LocalRoot: filepath.Join(t.TempDir(), "files")},
+		Authn: app.IAMAuthn(authnext.Config{
 			Enabled: true, Issuer: "https://iam.example.test", SigningKey: key, AccessTokenTTL: time.Hour,
 			Web: authnext.WebConfig{
 				Enabled: true, PostLoginURL: "https://app.example.test/home",
@@ -360,43 +371,39 @@ func newIAMTenantFixtureWithDatabase(t *testing.T, database Database, prefix str
 		// are httptest servers on loopback, which the shipped default refuses.
 		// Naming the range here is what a deployment does for an upstream on its
 		// own network; the guard itself is covered in pkg/extension/httpx.
-		Federation: IAMFederation{
+		Federation: app.IAMFederation{
 			Enabled: true, EncryptionKey: key,
 			OutboundAllowPlaintext: true,
 			OutboundAllowNetworks:  []string{"127.0.0.0/8", "::1/128"},
 		},
-		Provisioning: IAMProvisioning{
+		Provisioning: app.IAMProvisioning{
 			EncryptionKey:          key,
 			OutboundAllowPlaintext: true,
 			OutboundAllowNetworks:  []string{"127.0.0.0/8", "::1/128"},
 		},
-	}}
-	for _, apply := range configure {
-		apply(&application.config)
 	}
-	require.NoError(t, application.bootstrap(t.Context()))
-	t.Cleanup(func() { assert.NoError(t, application.shutdown()) })
+	for _, apply := range configure {
+		apply(&config)
+	}
+	application := app.New(config)
+	require.NoError(t, application.Bootstrap(t.Context()))
+	t.Cleanup(func() { assert.NoError(t, application.Shutdown()) })
 
 	router := chi.NewRouter()
-	require.NoError(t, application.mountHTTPMiddlewares(router))
-	api := humax.New(router, humax.Config{Name: application.config.Name, Version: application.config.Version})
-	require.NoError(t, application.modules.RegisterHTTP(t.Context(), api))
-	for _, route := range application.modules.RawHTTPRoutes() {
-		mountRawRoute(router, route)
-	}
+	require.NoError(t, application.RegisterHTTP(t.Context(), router))
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 	client := server.Client()
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
 	fixture := &iamTenantFixture{
-		app: application, server: server, client: client, db: application.runtime.Database().Write(), prefix: prefix,
+		app: application, server: server, client: client, db: application.Runtime().Database().Write(), prefix: prefix,
 	}
 	for _, tenantID := range []guid.ID{iamTenantA, iamTenantB} {
-		require.NoError(t, organization.EnsureTenant(t.Context(), application.runtime, tenantID))
+		require.NoError(t, organization.EnsureTenant(t.Context(), application.Runtime(), tenantID))
 	}
 
-	identityModuleValue, ok := application.modules.ByName(identity.Name)
+	identityModuleValue, ok := application.Modules().ByName(identity.Name)
 	require.True(t, ok)
 	identityModule, ok := identityModuleValue.(*identity.Module)
 	require.True(t, ok)
@@ -411,7 +418,7 @@ func newIAMTenantFixtureWithDatabase(t *testing.T, database Database, prefix str
 		}).Error)
 	}
 
-	authnModuleValue, ok := application.modules.ByName(iamauthn.Name)
+	authnModuleValue, ok := application.Modules().ByName(iamauthn.Name)
 	require.True(t, ok)
 	authnModule, ok := authnModuleValue.(*iamauthn.Module)
 	require.True(t, ok)
@@ -516,7 +523,7 @@ func (f *iamTenantFixture) createSCIMCredential(t *testing.T, tenantID guid.ID, 
 		map[string]any{"name": name, "service_account_id": account.ID.String()}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	directory := decodeEnvelope[provisioning.Directory](t, response)
-	response = f.request(t, http.MethodPost, "/scim-directories/"+directory.ID.String()+"/credentials", tenantID, adminToken, map[string]any{"name": "integration"}, nil)
+	response = f.request(t, http.MethodPost, "/scim-directories/"+directory.ID.String()+"/credentials", 0, adminToken, map[string]any{"name": "integration"}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	secret := decodeEnvelope[provisioning.CredentialSecret](t, response)
 	return directory, secret.Token
@@ -530,7 +537,7 @@ func (f *iamTenantFixture) approveTenantBAccessRequest(t *testing.T) (core.APIRo
 	requireStatus(t, http.StatusCreated, response)
 	role := decodeEnvelope[core.APIRole](t, response)
 
-	response = f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/permissions/entity_view", iamTenantB, f.tokenB, nil, nil)
+	response = f.request(t, http.MethodPut, "/roles/"+role.ID.String()+"/permissions/entity_view", 0, f.tokenB, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 
 	response = f.request(t, http.MethodPost, "/entities", iamTenantB, f.tokenB, map[string]any{
@@ -545,7 +552,7 @@ func (f *iamTenantFixture) approveTenantBAccessRequest(t *testing.T) (core.APIRo
 	requireStatus(t, http.StatusCreated, response)
 	request := decodeEnvelope[governance.AccessRequest](t, response)
 
-	response = f.request(t, http.MethodPut, "/access-requests/"+request.ID.String()+"/decision", iamTenantB, f.tokenB, map[string]any{"decision": "approved", "note": "approved"}, nil)
+	response = f.request(t, http.MethodPut, "/access-requests/"+request.ID.String()+"/decision", 0, f.tokenB, map[string]any{"decision": "approved", "note": "approved"}, nil)
 	requireStatus(t, http.StatusOK, response)
 	approved := decodeEnvelope[governance.AccessRequest](t, response)
 	require.Equal(t, governance.StatusApproved, approved.Status)
@@ -577,7 +584,7 @@ func (f *iamTenantFixture) assertSCIMCannotCrossTenants(t *testing.T, user provi
 func (f *iamTenantFixture) assertGovernanceRevokeCannotCrossTenants(t *testing.T, request governance.AccessRequest) {
 	t.Helper()
 	f.rejectWithoutAudit(t, http.StatusNotFound, func() iamHTTPResponse {
-		return f.request(t, http.MethodPost, "/access-requests/"+request.ID.String()+"/revoke", iamTenantA, f.tokenA, map[string]any{
+		return f.request(t, http.MethodPut, "/access-requests/"+request.ID.String()+"/grant-revocation", 0, f.tokenA, map[string]any{
 			"reason": "cross-tenant attempt",
 		}, nil)
 	})
@@ -609,7 +616,7 @@ func (f *iamTenantFixture) assertIAMAuthorizationCannotCrossTenants(t *testing.T
 
 	entityID, err := guid.Parse(entity.ID.String())
 	require.NoError(t, err)
-	authorizer := newBoundIAMAuthorizer(t, f.app.runtime)
+	authorizer := newBoundIAMAuthorizer(t, f.app.Runtime())
 	allowed, err := authorizer.CheckEntity(t.Context(), iamTenantB, entityID, "entity_view", f.adminA.ID)
 	require.NoError(t, err)
 	assert.False(t, allowed)

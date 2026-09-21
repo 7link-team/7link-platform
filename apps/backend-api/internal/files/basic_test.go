@@ -25,10 +25,10 @@ func TestBasicFileLifecycleUsesPersonalRootAndImmutableContent(t *testing.T) {
 	require.Equal(t, root, again)
 	h.assertAudit(t, 1)
 
-	roots, err := h.service.listRoots(h.ctx, browserPageRequest{})
+	roots, err := h.service.listRoots(h.ctx, testFileCollection(h.ctx), browserPageRequest{})
 	require.NoError(t, err)
-	require.Len(t, roots.Items, 2)
-	require.Equal(t, root, roots.Items[1])
+	require.Len(t, roots.Items, 1)
+	require.Equal(t, "tenant", roots.Items[0].Scope)
 
 	directory, err := h.service.createDirectory(h.ctx, root.ID, "Contracts")
 	require.NoError(t, err)
@@ -112,7 +112,7 @@ func TestAccountFileRootIsLazyIdempotentAndIsolatedFromTenants(t *testing.T) {
 	h := newOperationServiceHarness(t)
 	accountContext := authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 70})
 
-	before, err := h.service.listRoots(accountContext, browserPageRequest{})
+	before, err := h.service.listRoots(accountContext, testFileCollection(accountContext), browserPageRequest{})
 	require.NoError(t, err)
 	require.Empty(t, before.Items, "GET must not create an account root")
 
@@ -126,7 +126,7 @@ func TestAccountFileRootIsLazyIdempotentAndIsolatedFromTenants(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, root, again)
 
-	accountRoots, err := h.service.listRoots(accountContext, browserPageRequest{})
+	accountRoots, err := h.service.listRoots(accountContext, testFileCollection(accountContext), browserPageRequest{})
 	require.NoError(t, err)
 	require.Equal(t, []fileEntryView{root}, accountRoots.Items)
 	_, err = h.service.getFileEntry(h.ctx, root.ID)
@@ -139,7 +139,7 @@ func TestAccountFileRootIsLazyIdempotentAndIsolatedFromTenants(t *testing.T) {
 	require.ErrorIs(t, err, errOperationForbidden)
 
 	otherAccount := authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 71})
-	otherRoots, err := h.service.listRoots(otherAccount, browserPageRequest{})
+	otherRoots, err := h.service.listRoots(otherAccount, testFileCollection(otherAccount), browserPageRequest{})
 	require.NoError(t, err)
 	require.Empty(t, otherRoots.Items)
 	_, err = h.service.getFileEntry(otherAccount, root.ID)

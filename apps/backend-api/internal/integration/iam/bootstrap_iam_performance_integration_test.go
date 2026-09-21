@@ -1,6 +1,7 @@
-package app
+package iamintegration
 
 import (
+	"7link.com/platform/internal/app"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -168,7 +169,7 @@ func TestIAMPerformanceExternalDatabase(t *testing.T) {
 	}
 	require.Contains(t, []string{"postgres", "mysql"}, databaseType)
 
-	fixture := newIAMTenantFixtureWithDatabase(t, Database{
+	fixture := newIAMTenantFixtureWithDatabase(t, app.Database{
 		Type: databaseType, Dsn: dsn, Writable: true, Readable: true,
 		MaxOpenConns: 8, MaxIdleConns: 8,
 	}, "")
@@ -318,7 +319,7 @@ func newIAMPerformancePaths(t *testing.T, fixture *iamTenantFixture, bulkOperati
 		"tenant_id": iamTenantA, "role_id": roleID, "principal_id": fixture.adminA.ID, "created_at": now,
 	}).Error)
 
-	services := fixture.app.modules.Services()
+	services := fixture.app.Modules().Services()
 	ids, err := module.Resolve[guid.Source](services)
 	require.NoError(t, err)
 	appender, err := module.Resolve[iamaudit.Appender](services)
@@ -331,10 +332,10 @@ func newIAMPerformancePaths(t *testing.T, fixture *iamTenantFixture, bulkOperati
 	require.NoError(t, err)
 	fields, err := module.Resolve[core.AuthorizationEvaluator](services)
 	require.NoError(t, err)
-	scim := provisioning.NewService(fixture.app.runtime, appender, ids, identities, groups, actors, fields, provisioning.Config{}, nil, httpx.Policy{})
+	scim := provisioning.NewService(fixture.app.Runtime(), appender, ids, identities, groups, actors, fields, provisioning.Config{}, nil, httpx.Policy{})
 	// A service built outside the module never went through injection, so it
 	// binds the owners' published names itself.
-	scimPrefix := fixture.app.runtime.TablePrefix()
+	scimPrefix := fixture.app.Runtime().TablePrefix()
 	require.NoError(t, scim.BindForeignTables(
 		core.PublishedAccessTableNames(scimPrefix), identity.PublishedPrincipalTableNames(scimPrefix),
 		organization.PublishedDirectoryTableNames(scimPrefix),
@@ -349,8 +350,8 @@ func newIAMPerformancePaths(t *testing.T, fixture *iamTenantFixture, bulkOperati
 	require.NoError(t, err)
 	scimAuth, err := scim.Authenticate(t.Context(), "Bearer "+credential.Token)
 	require.NoError(t, err)
-	auditService := iamaudit.NewService(fixture.app.runtime, ids)
-	authorizer := newBoundIAMAuthorizer(t, fixture.app.runtime)
+	auditService := iamaudit.NewService(fixture.app.Runtime(), ids)
+	authorizer := newBoundIAMAuthorizer(t, fixture.app.Runtime())
 	authnModule := requireIAMModule[*iamauthn.Module](t, fixture, iamauthn.Name)
 	sessionToken, err := authnModule.CreateSession(t.Context(), fixture.adminA.ID, now, authn.Assurance{
 		AuthTime: now, Level: 1, Methods: []string{"pwd"},

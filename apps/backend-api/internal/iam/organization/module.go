@@ -83,6 +83,15 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[DirectoryTableNames](services, PublishedDirectoryTableNames(m.runtime.TablePrefix())); err != nil {
 		return fmt.Errorf("provide organization directory table names: %w", err)
 	}
+	departmentOwner := core.DepartmentOwnerResolver(func(ctx context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
+		if m.service == nil || m.service.repo == nil {
+			return authz.ResourceOwner{}, false, ErrUnavailable
+		}
+		return m.service.repo.resolveDepartmentOwner(ctx, id)
+	})
+	if err := module.Provide[core.DepartmentOwnerResolver](services, departmentOwner); err != nil {
+		return fmt.Errorf("provide department owner resolver: %w", err)
+	}
 	return nil
 }
 

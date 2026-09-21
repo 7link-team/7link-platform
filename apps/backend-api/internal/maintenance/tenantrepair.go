@@ -1,4 +1,4 @@
-package app
+package maintenance
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"7link.com/platform/internal/app"
 	iamaudit "7link.com/platform/internal/iam/audit"
 	"7link.com/platform/internal/iam/core"
 	"7link.com/platform/internal/iam/identity"
@@ -53,7 +54,7 @@ type TenantRepairRequest struct {
 // TenantRepairConfig combines the normal application configuration with the
 // repair command own settings, the same way PlatformAdminConfig does.
 type TenantRepairConfig struct {
-	AppConfig           `mapstructure:",squash"`
+	app.AppConfig       `mapstructure:",squash"`
 	TenantRepairRequest `mapstructure:",squash"`
 }
 
@@ -89,7 +90,7 @@ type tenantRepairStores struct {
 // became one transaction can hold no member and no role at all, and every
 // tenant route requires an active membership: nobody inside the product can
 // reach such a tenant, so nobody inside the product can repair it either.
-func (app *App) RunTenantOwnerRepair(
+func RunTenantOwnerRepair(
 	ctx context.Context,
 	config TenantRepairConfig,
 ) (report TenantRepairReport, resultErr error) {
@@ -105,22 +106,22 @@ func (app *App) RunTenantOwnerRepair(
 	if config.TenantSlug == "" {
 		return TenantRepairReport{}, errors.New("tenant owner repair requires a tenant slug")
 	}
-	if err := configureApplication(&config.AppConfig); err != nil {
-		return TenantRepairReport{}, err
-	}
-	app.config = config.AppConfig
-	defer func() {
-		resultErr = errors.Join(resultErr, app.shutdown())
-	}()
-	admin, err := app.startForPlatformAdministration(ctx)
+	err := app.RunMaintenance(ctx, config.AppConfig, func(services *module.Services, db *gorm.DB, locker *dlock.Module) error {
+		admin, resolveErr := resolvePlatformAdminStores(services, db, locker)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		stores, resolveErr := resolveTenantRepairStores(services, admin)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		report, resolveErr = stores.repair(ctx, config.TenantSlug, login)
+		return resolveErr
+	})
 	if err != nil {
-		return TenantRepairReport{}, err
+		return TenantRepairReport{}, normalizeMaintenanceError(err)
 	}
-	stores, err := app.tenantRepairStores(admin)
-	if err != nil {
-		return TenantRepairReport{}, err
-	}
-	return stores.repair(ctx, config.TenantSlug, login)
+	return report, nil
 }
 
 // tenantRepairStores resolves the two capabilities this repair needs beyond
@@ -128,11 +129,10 @@ func (app *App) RunTenantOwnerRepair(
 // Resolving them here rather than reaching into modules keeps the ownership
 // rule intact: this boundary can only do what the owning modules chose to
 // expose.
-func (app *App) tenantRepairStores(admin platformAdminStores) (tenantRepairStores, error) {
-	if app.modules == nil {
+func resolveTenantRepairStores(services *module.Services, admin platformAdminStores) (tenantRepairStores, error) {
+	if services == nil {
 		return tenantRepairStores{}, fmt.Errorf("%w: modules are not composed", ErrPlatformAdminUnavailable)
 	}
-	services := app.modules.Services()
 	tenants, err := module.Resolve[organization.TenantLookup](services)
 	if err != nil {
 		return tenantRepairStores{}, errors.Join(ErrPlatformAdminUnavailable, err)
