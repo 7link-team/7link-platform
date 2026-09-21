@@ -47,12 +47,12 @@ func newDocsRouter(custom ...Options) http.Handler {
 func TestGeneratedRendererPages(t *testing.T) {
 	handler := newDocsRouter()
 	paths := map[string]string{
-		"/docs":              "swagger",
-		"/docs/":             "swagger",
-		"/docs/scalar":       "scalar",
-		"/docs/swagger":      "swagger",
-		"/docs/redoc":        "redoc",
-		"/docs/rapidoc":      "rapidoc",
+		"/docs":         "swagger",
+		"/docs/":        "swagger",
+		"/docs/swagger": "swagger",
+		"/docs/scalar":  "scalar",
+		"/docs/redoc":   "redoc",
+		"/docs/rapidoc": "rapidoc",
 		// Disabled because their dependency trees contain unresolved browser vulnerabilities.
 		// "/docs/stoplight":  "stoplight",
 		// "/docs/openapi-ui": "openapi-ui",
