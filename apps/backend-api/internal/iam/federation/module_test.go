@@ -15,6 +15,7 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
+	"7link.com/platform/pkg/extension/keyringx"
 	platformi18n "7link.com/platform/pkg/i18n"
 	platformmodule "7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
@@ -305,13 +306,13 @@ func approvedFederationOperations() map[string]string {
 		"federation-complete-personal-identity-transaction": "GET /identity-providers/{provider_id}/identity-continuation",
 		"federation-callback-login":                         "GET /identity-providers/{provider_id}/callback", "federation-callback-saml-login": "POST /identity-providers/{provider_id}/callback",
 		"federation-create-identity-provider": "POST /tenants/{tenant_id}/identity-providers", "federation-create-saml-service-provider": "POST /tenants/{tenant_id}/saml-service-providers",
-		"federation-delete-identity-provider": "DELETE /tenants/{tenant_id}/identity-providers/{provider_id}", "federation-delete-saml-service-provider": "DELETE /tenants/{tenant_id}/saml-service-providers/{sp_id}",
+		"federation-delete-identity-provider": "DELETE /identity-providers/{provider_id}", "federation-delete-saml-service-provider": "DELETE /saml-service-providers/{sp_id}",
 		"federation-list-identity-providers": "GET /tenants/{tenant_id}/identity-providers", "federation-list-saml-service-providers": "GET /tenants/{tenant_id}/saml-service-providers",
 		"federation-rotate-saml-signing-key": "POST /tenants/{tenant_id}/saml-signing-keys", "federation-saml-metadata": "GET /saml/{tenant_id}/metadata",
 		"federation-saml-slo": "GET /saml/{tenant_id}/slo", "federation-saml-slo-post": "POST /saml/{tenant_id}/slo",
 		"federation-saml-sso": "GET /saml/{tenant_id}/sso", "federation-saml-sso-post": "POST /saml/{tenant_id}/sso",
-		"federation-start-login": "GET /identity-providers/{provider_id}/authorization", "federation-update-identity-provider": "PUT /tenants/{tenant_id}/identity-providers/{provider_id}",
-		"federation-update-saml-service-provider": "PUT /tenants/{tenant_id}/saml-service-providers/{sp_id}",
+		"federation-start-login": "GET /identity-providers/{provider_id}/authorization", "federation-update-identity-provider": "PUT /identity-providers/{provider_id}",
+		"federation-update-saml-service-provider": "PUT /saml-service-providers/{sp_id}",
 	}
 }
 
@@ -347,4 +348,28 @@ func federationRuntimeRegistrar(verifier authz.TokenVerifier) *authz.Registrar {
 	return authz.NewRegistrar(
 		authz.DefaultRegistry(), verifier, federationPermissionChecker{}, federationMembershipChecker{},
 	)
+}
+
+// TestFederationModulePublishesTheSecretRewrapper covers the provider phase,
+// which runs before Initialize. The module publishes itself rather than the
+// service, because the service does not exist yet; the capability therefore has
+// to resolve straight away and answer that federation is unavailable until it
+// does, instead of being absent from the registry.
+func TestFederationModulePublishesTheSecretRewrapper(t *testing.T) {
+	env := newFederationEnvironment(t, "")
+	instance := NewModule(env.runtime, Config{})
+
+	services := platformmodule.NewServices()
+	require.NoError(t, instance.ProvideServices(services))
+	// A second publication of the same capability is a wiring mistake. It is
+	// reported as one rather than quietly replacing the first module's entry.
+	assert.ErrorContains(t, instance.ProvideServices(services), "provide federation secret rewrapper")
+
+	require.NoError(t, services.Seal())
+	rewrapper, err := platformmodule.Resolve[SecretRewrapper](services)
+	require.NoError(t, err)
+	assert.Same(t, instance, rewrapper)
+
+	_, err = rewrapper.RewrapSecrets(t.Context(), env.db, keyringx.SurveyOnly)
+	assert.ErrorIs(t, err, ErrUnavailable, "the capability resolves before Initialize and says so")
 }

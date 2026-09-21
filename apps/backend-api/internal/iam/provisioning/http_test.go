@@ -2,6 +2,7 @@ package provisioning
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	provisioningi18n "7link.com/platform/internal/iam/provisioning/i18n"
+	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	humax "7link.com/platform/pkg/extension/huma"
 	"7link.com/platform/pkg/extension/huma/respx"
@@ -66,6 +68,27 @@ type adminEnvelope struct {
 	Data    json.RawMessage `json:"data"`
 }
 
+// provisioningAdminVerifier authenticates the management HTTP tests. Directory
+// and target items are globally addressed, so the registrar must authenticate
+// the caller and resolve each resource's owning tenant before the handler can
+// read it from the request context.
+type provisioningAdminVerifier struct{}
+
+func (provisioningAdminVerifier) Authenticate(_ context.Context, authorization, _ string) (*authnext.Claims, error) {
+	if strings.TrimSpace(strings.TrimPrefix(authorization, "Bearer")) == "" {
+		return nil, authnext.ErrInvalidToken
+	}
+	return &authnext.Claims{Subject: "admin", SubjectType: authnext.SubjectTypePrincipal, PrincipalID: 1, ACR: 1}, nil
+}
+
+// SessionCookieName mirrors the production verifier, which accepts the browser
+// session cookie as well as a bearer token. The registrar documents that as the
+// operation's security, so without it the published contract would differ from
+// the composed application's.
+func (provisioningAdminVerifier) SessionCookieName() string {
+	return authnext.DefaultSessionCookieName
+}
+
 func newProvisioningHTTPHarness(t *testing.T) provisioningHTTPHarness {
 	t.Helper()
 	require.NoError(t, platformi18n.NewModule(nil, platformi18n.Base).Initialize(t.Context()))
@@ -74,7 +97,9 @@ func newProvisioningHTTPHarness(t *testing.T) provisioningHTTPHarness {
 	env := newProvisioningEnvironment(t)
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("provisioning-test", "1"))
-	RegisterHTTP(api, env.service, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()))
+	RegisterHTTP(api, env.service, authz.NewRegistrar(
+		authz.DefaultRegistry(), provisioningAdminVerifier{}, provisioningPermissionChecker{}, provisioningMembershipChecker{},
+	))
 	return provisioningHTTPHarness{env: env, api: api, router: router}
 }
 
@@ -183,6 +208,9 @@ func (h provisioningHTTPHarness) request(t *testing.T, method, path string, body
 	isSCIMProtocol := strings.HasPrefix(path, "/scim/")
 	if tenant != "" {
 		path = "/tenants/" + tenant + path
+	}
+	if !isSCIMProtocol && token == "" {
+		token = "admin"
 	}
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(method, path, bytes.NewReader(body))
@@ -361,16 +389,16 @@ func TestProvisioningManagementHTTPWorkflow(t *testing.T) {
 	assert.Equal(t, http.StatusOK, response.Code)
 
 	credentialPath := "/scim-directories/" + directory.ID.String() + "/credentials"
-	response = h.request(t, http.MethodPost, credentialPath, []byte(`{"name":"automation"}`), tenant, "", nil)
+	response = h.request(t, http.MethodPost, credentialPath, []byte(`{"name":"automation"}`), "", "", nil)
 	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 	decodeRecorder(t, response, &envelope)
 	var issued CredentialSecret
 	require.NoError(t, json.Unmarshal(envelope.Data, &issued))
-	response = h.request(t, http.MethodGet, credentialPath, nil, tenant, "", nil)
+	response = h.request(t, http.MethodGet, credentialPath, nil, "", "", nil)
 	assert.Equal(t, http.StatusOK, response.Code)
-	response = h.request(t, http.MethodDelete, credentialPath+"/"+issued.Credential.ID.String(), nil, tenant, "", nil)
+	response = h.request(t, http.MethodDelete, credentialPath+"/"+issued.Credential.ID.String(), nil, "", "", nil)
 	assert.Equal(t, http.StatusOK, response.Code)
-	response = h.request(t, http.MethodPut, "/scim-directories/"+directory.ID.String(), []byte(`{"name":"Secondary","status":"disabled","version":1}`), tenant, "", nil)
+	response = h.request(t, http.MethodPut, "/scim-directories/"+directory.ID.String(), []byte(`{"name":"Secondary","status":"disabled","version":1}`), "", "", nil)
 	assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
 
 	provider, server := newSCIMProviderEndpoint(t, http.StatusOK, `{"id":"remote-management"}`)
@@ -387,15 +415,15 @@ func TestProvisioningManagementHTTPWorkflow(t *testing.T) {
 	require.NoError(t, err)
 	resourceBody := []byte(fmt.Sprintf(`{"resource_type":"User","resource_id":%q}`, user.ID))
 	basePath := "/scim-targets/" + target.Target.ID
-	response = h.request(t, http.MethodPost, basePath+"/provisioning-jobs", resourceBody, tenant, "", nil)
+	response = h.request(t, http.MethodPost, basePath+"/provisioning-jobs", resourceBody, "", "", nil)
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.Equal(t, http.MethodPut, provider.last(t).Method)
-	response = h.request(t, http.MethodPost, basePath+"/deprovisioning-jobs", resourceBody, tenant, "", nil)
+	response = h.request(t, http.MethodPost, basePath+"/deprovisioning-jobs", resourceBody, "", "", nil)
 	assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	replace := []byte(fmt.Sprintf(`{"name":"Management 2","base_url":%q,"status":"active","version":1}`, server.URL))
-	response = h.request(t, http.MethodPut, basePath, replace, tenant, "", nil)
+	response = h.request(t, http.MethodPut, basePath, replace, "", "", nil)
 	assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
-	response = h.request(t, http.MethodDelete, basePath, nil, tenant, "", nil)
+	response = h.request(t, http.MethodDelete, basePath, nil, "", "", nil)
 	assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
 }
 
@@ -405,24 +433,25 @@ func TestProvisioningManagementHTTPFailures(t *testing.T) {
 	missing := wireID("missing")
 	tests := []struct {
 		method, path string
+		tenant       string
 		body         []byte
 		status       int
 	}{
-		{http.MethodPost, "/scim-directories", []byte(`{"name":"Primary IdP"}`), http.StatusConflict},
-		{http.MethodPut, "/scim-directories/" + missing, []byte(`{"name":"Missing","status":"active","version":1}`), http.StatusNotFound},
-		{http.MethodGet, "/scim-directories/" + missing + "/credentials", nil, http.StatusNotFound},
-		{http.MethodPost, "/scim-directories/" + missing + "/credentials", []byte(`{"name":"missing"}`), http.StatusNotFound},
-		{http.MethodDelete, "/scim-directories/" + h.env.auth.DirectoryID.String() + "/credentials/" + missing, nil, http.StatusNotFound},
-		{http.MethodPut, "/scim-targets/" + missing, []byte(`{"name":"Missing","base_url":"https://example.test","status":"active","version":1}`), http.StatusNotFound},
-		{http.MethodDelete, "/scim-targets/" + missing, nil, http.StatusNotFound},
-		{http.MethodPost, "/scim-targets/" + missing + "/provisioning-jobs", []byte(`{"resource_type":"User","resource_id":"` + missing + `"}`), http.StatusNotFound},
-		{http.MethodPost, "/scim-targets/" + missing + "/deprovisioning-jobs", []byte(`{"resource_type":"User","resource_id":"` + missing + `"}`), http.StatusNotFound},
+		{http.MethodPost, "/scim-directories", tenant, []byte(`{"name":"Primary IdP"}`), http.StatusConflict},
+		{http.MethodPut, "/scim-directories/" + missing, "", []byte(`{"name":"Missing","status":"active","version":1}`), http.StatusNotFound},
+		{http.MethodGet, "/scim-directories/" + missing + "/credentials", "", nil, http.StatusNotFound},
+		{http.MethodPost, "/scim-directories/" + missing + "/credentials", "", []byte(`{"name":"missing"}`), http.StatusNotFound},
+		{http.MethodDelete, "/scim-directories/" + h.env.auth.DirectoryID.String() + "/credentials/" + missing, "", nil, http.StatusNotFound},
+		{http.MethodPut, "/scim-targets/" + missing, "", []byte(`{"name":"Missing","base_url":"https://example.test","status":"active","version":1}`), http.StatusNotFound},
+		{http.MethodDelete, "/scim-targets/" + missing, "", nil, http.StatusNotFound},
+		{http.MethodPost, "/scim-targets/" + missing + "/provisioning-jobs", "", []byte(`{"resource_type":"User","resource_id":"` + missing + `"}`), http.StatusNotFound},
+		{http.MethodPost, "/scim-targets/" + missing + "/deprovisioning-jobs", "", []byte(`{"resource_type":"User","resource_id":"` + missing + `"}`), http.StatusNotFound},
 	}
 	for _, test := range tests {
-		response := h.request(t, test.method, test.path, test.body, tenant, "", nil)
+		response := h.request(t, test.method, test.path, test.body, test.tenant, "", nil)
 		assert.Equal(t, test.status, response.Code, test.method+" "+test.path+" "+response.Body.String())
 	}
-	invalid := h.request(t, http.MethodDelete, "/scim-targets/not-an-id", nil, tenant, "", nil)
+	invalid := h.request(t, http.MethodDelete, "/scim-targets/not-an-id", nil, "", "", nil)
 	assert.Equal(t, http.StatusUnprocessableEntity, invalid.Code)
 }
 

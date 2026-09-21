@@ -76,9 +76,16 @@ func newOAuthHTTPHarness(t *testing.T) oauthHTTPHarness {
 	require.NoError(t, initializeOAuthLocales())
 	harness := newOAuthHarness(t, "sl_")
 	harness.web.mu.Lock()
-	harness.web.tokens["admin"] = &authnext.Claims{
+	// One administrator per fixture tenant. Globally addressed client routes
+	// carry no tenant segment, so the caller's own membership is what separates
+	// the two tenants.
+	harness.web.tokens["admin-7"] = &authnext.Claims{
 		Issuer: "https://iam.example", Subject: "101", SubjectType: authnext.SubjectTypePrincipal,
 		PrincipalID: 101,
+	}
+	harness.web.tokens["admin-8"] = &authnext.Claims{
+		Issuer: "https://iam.example", Subject: "108", SubjectType: authnext.SubjectTypePrincipal,
+		PrincipalID: 108,
 	}
 	harness.web.mu.Unlock()
 	router := chi.NewRouter()
@@ -154,12 +161,19 @@ func decodeProtocolError(t *testing.T, response *httptest.ResponseRecorder) prot
 	return body
 }
 
-func managementHeaders(_ guid.ID) map[string]string {
-	return map[string]string{"Authorization": "Bearer admin"}
+func managementHeaders(tenant guid.ID) map[string]string {
+	return map[string]string{"Authorization": "Bearer admin-" + tenant.String()}
 }
 
-func managementPath(tenant guid.ID, suffix string) string {
-	return "/tenants/" + tenant.String() + "/oauth-clients" + suffix
+// managementPath addresses the tenant-nested client collection; clientPath
+// addresses an existing client, which is globally addressed and resolves its
+// owning tenant from the resource.
+func managementPath(tenant guid.ID) string {
+	return "/tenants/" + tenant.String() + "/oauth-clients"
+}
+
+func clientPath(suffix string) string {
+	return "/oauth-clients" + suffix
 }
 
 func TestOAuthRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
@@ -985,7 +999,7 @@ func TestConsentDecisionRejectsUnknownAnswersAndFailedCSRF(t *testing.T) {
 func TestOAuthClientManagementHTTPLifecycleAndTenantIsolation(t *testing.T) {
 	harness := newOAuthHTTPHarness(t)
 	headersA, headersB := managementHeaders(7), managementHeaders(8)
-	created := harness.json(http.MethodPost, managementPath(7, ""), map[string]any{
+	created := harness.json(http.MethodPost, managementPath(7), map[string]any{
 		"name": "Worker", "grant_types": []string{"client_credentials"},
 		"scopes": []string{"jobs.read"}, "public_client": false,
 	}, headersA)
@@ -995,10 +1009,10 @@ func TestOAuthClientManagementHTTPLifecycleAndTenantIsolation(t *testing.T) {
 	require.NotEmpty(t, createdData.ClientSecret)
 	id := createdData.Client.ID
 
-	listedA := harness.request(http.MethodGet, managementPath(7, ""), "", nil, headersA)
+	listedA := harness.request(http.MethodGet, managementPath(7), "", nil, headersA)
 	require.Equal(t, http.StatusOK, listedA.Code, listedA.Body.String())
 	assert.Len(t, decodeOAuthEnvelope[[]Client](t, listedA).Data, 1)
-	listedB := harness.request(http.MethodGet, managementPath(8, ""), "", nil, headersB)
+	listedB := harness.request(http.MethodGet, managementPath(8), "", nil, headersB)
 	require.Equal(t, http.StatusOK, listedB.Code, listedB.Body.String())
 	assert.Empty(t, decodeOAuthEnvelope[[]Client](t, listedB).Data)
 
@@ -1006,17 +1020,19 @@ func TestOAuthClientManagementHTTPLifecycleAndTenantIsolation(t *testing.T) {
 		"name": "Worker Two", "grant_types": []string{"client_credentials"},
 		"scopes": []string{"jobs.read"}, "public_client": false, "status": "active",
 	}
-	assert.Equal(t, http.StatusUnprocessableEntity, harness.json(http.MethodPut, managementPath(8, "/"+id), replacement, headersB).Code)
-	assert.Equal(t, http.StatusNotFound, harness.request(http.MethodPost, managementPath(8, "/"+id+"/credentials"), "", nil, headersB).Code)
-	assert.Equal(t, http.StatusNotFound, harness.request(http.MethodDelete, managementPath(8, "/"+id), "", nil, headersB).Code)
+	// Tenant B is not a member of the client's owning tenant, so every one of
+	// its attempts is indistinguishable from the client not existing.
+	assert.Equal(t, http.StatusNotFound, harness.json(http.MethodPut, clientPath("/"+id), replacement, headersB).Code)
+	assert.Equal(t, http.StatusNotFound, harness.request(http.MethodPost, clientPath("/"+id+"/credentials"), "", nil, headersB).Code)
+	assert.Equal(t, http.StatusNotFound, harness.request(http.MethodDelete, clientPath("/"+id), "", nil, headersB).Code)
 
-	updated := harness.json(http.MethodPut, managementPath(7, "/"+id), replacement, headersA)
+	updated := harness.json(http.MethodPut, clientPath("/"+id), replacement, headersA)
 	require.Equal(t, http.StatusOK, updated.Code, updated.Body.String())
 	assert.Equal(t, "Worker Two", decodeOAuthEnvelope[Client](t, updated).Data.Name)
-	rotated := harness.request(http.MethodPost, managementPath(7, "/"+id+"/credentials"), "", nil, headersA)
+	rotated := harness.request(http.MethodPost, clientPath("/"+id+"/credentials"), "", nil, headersA)
 	require.Equal(t, http.StatusOK, rotated.Code, rotated.Body.String())
 	assert.NotEmpty(t, decodeOAuthEnvelope[clientSecretData](t, rotated).Data.ClientSecret)
-	deleted := harness.request(http.MethodDelete, managementPath(7, "/"+id), "", nil, headersA)
+	deleted := harness.request(http.MethodDelete, clientPath("/"+id), "", nil, headersA)
 	require.Equal(t, http.StatusOK, deleted.Code, deleted.Body.String())
 	assert.True(t, decodeOAuthEnvelope[clientDeleteData](t, deleted).Data.Deleted)
 	assert.Zero(t, harness.count(t, "iam_oauth_clients"))
@@ -1024,9 +1040,9 @@ func TestOAuthClientManagementHTTPLifecycleAndTenantIsolation(t *testing.T) {
 
 func TestOAuthHTTPRejectsMissingAuthAndInvalidSelectors(t *testing.T) {
 	harness := newOAuthHTTPHarness(t)
-	assert.Equal(t, http.StatusUnauthorized, harness.request(http.MethodGet, managementPath(7, ""), "", nil, nil).Code)
+	assert.Equal(t, http.StatusUnauthorized, harness.request(http.MethodGet, managementPath(7), "", nil, nil).Code)
 	assert.Equal(t, http.StatusForbidden, harness.request(http.MethodGet, "/tenants/not-an-id/oauth-clients", "", nil, managementHeaders(7)).Code)
-	assert.Equal(t, http.StatusUnprocessableEntity, harness.request(http.MethodDelete, managementPath(7, "/not-an-id"), "", nil, managementHeaders(7)).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, harness.request(http.MethodDelete, clientPath("/not-an-id"), "", nil, managementHeaders(7)).Code)
 }
 
 func TestOAuthHTTPUsesLocalizedProtocolAndManagementErrors(t *testing.T) {
@@ -1040,11 +1056,30 @@ func TestOAuthHTTPUsesLocalizedProtocolAndManagementErrors(t *testing.T) {
 
 	managementHeaders := managementHeaders(7)
 	managementHeaders["X-Lang"] = "ms-MY"
-	management := harness.request(http.MethodDelete, managementPath(7, "/999999"), "", nil, managementHeaders)
-	require.Equal(t, http.StatusNotFound, management.Code, management.Body.String())
+	created := harness.json(http.MethodPost, managementPath(7), map[string]any{
+		"name": "Worker", "grant_types": []string{"client_credentials"},
+		"scopes": []string{"jobs.read"}, "public_client": false,
+	}, managementHeaders)
+	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
+	id := decodeOAuthEnvelope[clientCreateData](t, created).Data.Client.ID
+
+	// A management error raised by the handler is localized. The client has to
+	// exist and belong to the caller's tenant, because the owner resolver runs
+	// first on a globally addressed route and would otherwise answer before any
+	// module message is produced.
+	management := harness.json(http.MethodPut, clientPath("/"+id), map[string]any{
+		"name": "Worker", "grant_types": []string{"authorization_code"},
+		"scopes": []string{"jobs.read"}, "public_client": false, "status": "active",
+	}, managementHeaders)
+	require.Equal(t, http.StatusUnprocessableEntity, management.Code, management.Body.String())
 	message := decodeOAuthEnvelope[any](t, management).Message
-	assert.NotEqual(t, oauthi18n.ClientNotFound, message)
-	assert.Contains(t, message, "tidak ditemui")
+	assert.NotEqual(t, oauthi18n.InvalidClientConfiguration, message)
+	assert.Contains(t, message, "tidak sah")
+
+	// An absent client is answered by the owner resolver ahead of the handler,
+	// so the status is the registrar's and carries no module message.
+	missing := harness.request(http.MethodDelete, clientPath("/999999"), "", nil, managementHeaders)
+	require.Equal(t, http.StatusNotFound, missing.Code, missing.Body.String())
 }
 
 func TestOAuthHTTPDatabaseFailuresUseCorrectResponseContracts(t *testing.T) {
@@ -1081,7 +1116,7 @@ func TestOAuthHTTPDatabaseFailuresUseCorrectResponseContracts(t *testing.T) {
 	t.Run("management", func(t *testing.T) {
 		harness := newOAuthHTTPHarness(t)
 		require.NoError(t, harness.db.Exec("DROP TABLE "+harness.table("iam_oauth_clients")).Error)
-		response := harness.request(http.MethodGet, managementPath(7, ""), "", nil, managementHeaders(7))
+		response := harness.request(http.MethodGet, managementPath(7), "", nil, managementHeaders(7))
 		require.Equal(t, http.StatusInternalServerError, response.Code, response.Body.String())
 		body := decodeOAuthEnvelope[any](t, response)
 		assert.Equal(t, http.StatusInternalServerError, body.Code)
@@ -1138,14 +1173,14 @@ func TestConsentModeDefaultsToImplicitOverHTTP(t *testing.T) {
 	// Omitting the field must keep the pre-existing behavior. The service
 	// rejects an unset mode, so this also pins that the schema default is
 	// actually applied rather than leaving the Go zero value.
-	created := harness.json(http.MethodPost, managementPath(7, ""), map[string]any{
+	created := harness.json(http.MethodPost, managementPath(7), map[string]any{
 		"name": "Worker", "grant_types": []string{"client_credentials"},
 		"scopes": []string{"jobs.read"}, "public_client": false,
 	}, headers)
 	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
 	assert.Equal(t, ConsentImplicit, decodeOAuthEnvelope[clientCreateData](t, created).Data.Client.ConsentMode)
 
-	explicit := harness.json(http.MethodPost, managementPath(7, ""), map[string]any{
+	explicit := harness.json(http.MethodPost, managementPath(7), map[string]any{
 		"name": "Third Party", "grant_types": []string{"client_credentials"},
 		"scopes": []string{"jobs.read"}, "public_client": false, "consent_mode": "explicit",
 	}, headers)
@@ -1155,7 +1190,7 @@ func TestConsentModeDefaultsToImplicitOverHTTP(t *testing.T) {
 
 	// An unknown value is refused by the schema, so a typo cannot silently
 	// land a client in the permissive mode.
-	rejected := harness.json(http.MethodPost, managementPath(7, ""), map[string]any{
+	rejected := harness.json(http.MethodPost, managementPath(7), map[string]any{
 		"name": "Typo", "grant_types": []string{"client_credentials"},
 		"scopes": []string{"jobs.read"}, "public_client": false, "consent_mode": "trusted",
 	}, headers)
@@ -1166,7 +1201,7 @@ func TestConsentModeDefaultsToImplicitOverHTTP(t *testing.T) {
 	// That is consistent with public_client and status, but it means a caller
 	// that does not round-trip the field relaxes the client; pinned here so
 	// the behavior is a decision rather than an accident.
-	replaced := harness.json(http.MethodPut, managementPath(7, "/"+explicitID), map[string]any{
+	replaced := harness.json(http.MethodPut, clientPath("/"+explicitID), map[string]any{
 		"name": "Third Party", "grant_types": []string{"client_credentials"},
 		"scopes": []string{"jobs.read"}, "public_client": false, "status": "active",
 	}, headers)
@@ -1196,4 +1231,87 @@ func TestConsentEndpointsReportStorageFaultsAsServerErrors(t *testing.T) {
 		require.Equal(t, http.StatusInternalServerError, response.Code, response.Body.String())
 		assert.Equal(t, "server_error", decodeProtocolError(t, response).Code)
 	}
+}
+
+// TestConsentSelfServiceRefusesARequestThatCarriesBothCredentials covers the
+// one way a caller can reach these handlers holding two identities at once. The
+// subject is taken from the session and from nowhere else, so a request that
+// also presents a bearer token is refused rather than served for whichever
+// credential the handler happened to read first.
+func TestConsentSelfServiceRefusesARequestThatCarriesBothCredentials(t *testing.T) {
+	harness := newOAuthHTTPHarness(t)
+	client := createBrowserClient(t, harness.oauthHarness)
+	_, err := exchangeCode(t, harness.oauthHarness, client, authorizeCode(t, harness.oauthHarness, client))
+	require.NoError(t, err)
+	session := map[string]string{"Cookie": "session"}
+	both := map[string]string{"Cookie": "session", "Authorization": "Bearer admin-7"}
+
+	for name, target := range map[string]struct {
+		method string
+		path   string
+	}{
+		"listing":    {http.MethodGet, "/me/oauth-consents"},
+		"revocation": {http.MethodDelete, "/me/oauth-consents/" + client.ID},
+	} {
+		t.Run(name, func(t *testing.T) {
+			refused := harness.request(target.method, target.path, "", nil, both)
+			assert.Equal(t, http.StatusUnauthorized, refused.Code, refused.Body.String())
+		})
+	}
+
+	// The control: the same session alone is accepted, so the refusal above is
+	// the second credential and not the route being unreachable.
+	accepted := harness.request(http.MethodGet, "/me/oauth-consents", "", nil, session)
+	require.Equal(t, http.StatusOK, accepted.Code, accepted.Body.String())
+	assert.Len(t, decodeOAuthEnvelope[[]GrantedConsent](t, accepted).Data, 1)
+}
+
+// parseOAuthID is the only place a path or query identifier becomes an ID. A
+// value it cannot read has to be refused here rather than arriving downstream as
+// a zero, which every tenant and client predicate would then match on nothing.
+func TestParseOAuthIDRefusesWhatIsNotAnIdentifier(t *testing.T) {
+	id, err := parseOAuthID("  42  ")
+	require.NoError(t, err)
+	assert.Equal(t, guid.ID(42), id, "surrounding whitespace is trimmed, not rejected")
+
+	for _, value := range []string{"0", "-1", "latest", "4.2", "9999999999999999999"} {
+		t.Run(value, func(t *testing.T) {
+			_, err := parseOAuthID(value)
+			var status huma.StatusError
+			require.ErrorAs(t, err, &status)
+			assert.Equal(t, http.StatusUnprocessableEntity, status.GetStatus())
+		})
+	}
+}
+
+// claimHasScope decides whether an access token may read a profile. A token that
+// carries no raw claims cannot have been granted anything, so it is answered no
+// rather than treated as unscoped and therefore unrestricted.
+func TestClaimHasScopeRequiresTheScopeToBeInTheClaims(t *testing.T) {
+	assert.False(t, claimHasScope(nil, "openid"))
+	assert.False(t, claimHasScope(&authnext.Claims{}, "openid"), "no raw claims is not a granted scope")
+	assert.False(t, claimHasScope(&authnext.Claims{Raw: map[string]any{"scope": "profile email"}}, "openid"))
+	assert.False(t, claimHasScope(&authnext.Claims{Raw: map[string]any{"scope": "openidconnect"}}, "openid"),
+		"a scope is a whole word, not a prefix of one")
+	assert.True(t, claimHasScope(&authnext.Claims{Raw: map[string]any{"scope": "profile openid"}}, "openid"))
+}
+
+// decodeOAuthDocument re-encodes what the authentication service produced into
+// the shape a protocol response declares. A value that cannot make that round
+// trip is reported, because the alternative is publishing a zero-valued
+// document -- an empty key set reads as "this issuer signs nothing".
+func TestDecodeOAuthDocumentReportsValuesThatCannotRoundTrip(t *testing.T) {
+	_, err := decodeOAuthDocument[jwksDocument](make(chan int))
+	assert.ErrorContains(t, err, "unsupported type", "a value that cannot be encoded is an error, not an empty document")
+
+	_, err = decodeOAuthDocument[jwksDocument](map[string]any{"keys": "not-a-key-set"})
+	assert.ErrorContains(t, err, "cannot unmarshal", "a document of the wrong shape is an error, not an empty document")
+
+	document, err := decodeOAuthDocument[jwksDocument](map[string]any{
+		"keys": []any{map[string]any{"kty": "OKP", "kid": "signing-1", "crv": "Ed25519"}},
+	})
+	require.NoError(t, err)
+	require.Len(t, document.Keys, 1)
+	assert.Equal(t, "signing-1", document.Keys[0].KeyID)
+	assert.Equal(t, "Ed25519", document.Keys[0].Curve)
 }

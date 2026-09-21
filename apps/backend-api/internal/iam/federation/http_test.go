@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"7link.com/platform/pkg/extension/authz"
+	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/huma/respx"
 	"7link.com/platform/pkg/i18n"
 	"github.com/danielgtaylor/huma/v2"
@@ -40,10 +40,30 @@ func newManagementAPI(t *testing.T, env *federationEnvironment) (*http.Client, *
 	config := huma.DefaultConfig("federation test", "1.0.0")
 	config.Transformers = append(config.Transformers, respx.LocalizeMessage)
 	api := humachi.New(router, config)
-	RegisterAdminREST(api, env.service, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()))
+	RegisterAdminREST(api, env.service, federationRuntimeRegistrar(federationAdminVerifier{}))
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 	return server.Client(), server
+}
+
+// federationAdminVerifier authenticates the administrative HTTP tests. The
+// owned-resource routes carry no tenant segment, so the registrar has to
+// authenticate the caller and resolve the provider's owning tenant before the
+// handler can read it from the request context.
+type federationAdminVerifier struct{}
+
+func (federationAdminVerifier) Authenticate(_ context.Context, authorization, _ string) (*authnext.Claims, error) {
+	if strings.TrimSpace(strings.TrimPrefix(authorization, "Bearer")) == "" {
+		return nil, authnext.ErrInvalidToken
+	}
+	return &authnext.Claims{Subject: "admin", SubjectType: authnext.SubjectTypePrincipal, PrincipalID: 1, ACR: 1}, nil
+}
+
+// SessionCookieName mirrors the production verifier, which accepts the browser
+// session cookie as well as a bearer token, so the harness documents the same
+// operation security the composed application publishes.
+func (federationAdminVerifier) SessionCookieName() string {
+	return authnext.DefaultSessionCookieName
 }
 
 func adminRequest(t *testing.T, client *http.Client, method, target, tenantID string, body []byte, headers map[string]string) *http.Response {
@@ -61,6 +81,9 @@ func adminRequest(t *testing.T, client *http.Client, method, target, tenantID st
 	}
 	for name, value := range headers {
 		request.Header.Set(name, value)
+	}
+	if request.Header.Get("Authorization") == "" {
+		request.Header.Set("Authorization", "Bearer admin")
 	}
 	response, err := client.Do(request)
 	require.NoError(t, err)
@@ -114,17 +137,17 @@ func TestFederationManagementHTTPWorkflow(t *testing.T) {
 	decodeHTTPBody(t, response, &envelope)
 	assert.Equal(t, localized("en-US", "federation.invalid_request"), envelope.Message)
 
-	response = adminRequest(t, client, http.MethodPut, server.URL+"/identity-providers/"+provider.ID.String(), wireID("tenant-a"), []byte("{\"name\":\"GitLab Renamed\",\"provider_type\":\"oidc\",\"issuer\":\"https://gitlab.example\",\"client_id\":\"app\",\"auto_provision\":true,\"default_role_id\":\""+wireID("role-a")+"\",\"status\":\"active\"}"), nil)
+	response = adminRequest(t, client, http.MethodPut, server.URL+"/identity-providers/"+provider.ID.String(), "", []byte("{\"name\":\"GitLab Renamed\",\"provider_type\":\"oidc\",\"issuer\":\"https://gitlab.example\",\"client_id\":\"app\",\"auto_provision\":true,\"default_role_id\":\""+wireID("role-a")+"\",\"status\":\"active\"}"), nil)
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 	decodeHTTPBody(t, response, &envelope)
 	require.NoError(t, json.Unmarshal(envelope.Data, &provider))
 	assert.Equal(t, "GitLab Renamed", provider.Name)
 
-	response = adminRequest(t, client, http.MethodPut, server.URL+"/identity-providers/"+wireID("missing"), wireID("tenant-a"), []byte(`{"name":"X","issuer":"https://other.example","client_id":"app","auto_provision":true,"status":"active"}`), nil)
+	response = adminRequest(t, client, http.MethodPut, server.URL+"/identity-providers/"+wireID("missing"), "", []byte(`{"name":"X","issuer":"https://other.example","client_id":"app","auto_provision":true,"status":"active"}`), nil)
 	assert.Equal(t, http.StatusNotFound, response.StatusCode)
 	require.NoError(t, response.Body.Close())
 
-	response = adminRequest(t, client, http.MethodDelete, server.URL+"/identity-providers/"+provider.ID.String(), wireID("tenant-a"), nil, nil)
+	response = adminRequest(t, client, http.MethodDelete, server.URL+"/identity-providers/"+provider.ID.String(), "", nil, nil)
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 	decodeHTTPBody(t, response, &envelope)
 	assert.Contains(t, string(envelope.Data), `"deleted":true`)
@@ -135,7 +158,7 @@ func TestFederationManagementHTTPWorkflow(t *testing.T) {
 	require.NoError(t, json.Unmarshal(envelope.Data, &providers))
 	assert.Empty(t, providers)
 
-	response = adminRequest(t, client, http.MethodDelete, server.URL+"/identity-providers/"+provider.ID.String(), wireID("tenant-a"), nil, nil)
+	response = adminRequest(t, client, http.MethodDelete, server.URL+"/identity-providers/"+provider.ID.String(), "", nil, nil)
 	assert.Equal(t, http.StatusNotFound, response.StatusCode)
 	require.NoError(t, response.Body.Close())
 }
@@ -264,13 +287,17 @@ func TestFederationHTTPRejectsInvalidIdentifiersAndMissingProviders(t *testing.T
 		body     []byte
 		status   int
 	}{
-		{http.MethodGet, "/identity-providers", "invalid", nil, http.StatusUnprocessableEntity},
-		{http.MethodPost, "/identity-providers", "invalid", validBody, http.StatusUnprocessableEntity},
-		{http.MethodPut, "/identity-providers/" + wireID("missing"), "invalid", validBody, http.StatusUnprocessableEntity},
-		{http.MethodPut, "/identity-providers/invalid", wireID("tenant-a"), validBody, http.StatusUnprocessableEntity},
-		{http.MethodPut, "/identity-providers/" + wireID("missing"), wireID("tenant-a"), invalidRoleBody, http.StatusUnprocessableEntity},
-		{http.MethodDelete, "/identity-providers/" + wireID("missing"), "invalid", nil, http.StatusUnprocessableEntity},
-		{http.MethodDelete, "/identity-providers/invalid", wireID("tenant-a"), nil, http.StatusUnprocessableEntity},
+		// Collections are tenant-nested, so an unparseable tenant never reaches
+		// the handler: the registrar rejects it as forbidden. Providers are
+		// addressed globally and carry no tenant segment, so their rejection is
+		// the unparseable provider ID, which the owner resolver reports as 422.
+		// A provider ID that parses but does not exist is a 404 and is covered
+		// by the workflow test.
+		{http.MethodGet, "/identity-providers", "invalid", nil, http.StatusForbidden},
+		{http.MethodPost, "/identity-providers", "invalid", validBody, http.StatusForbidden},
+		{http.MethodPost, "/identity-providers", wireID("tenant-a"), invalidRoleBody, http.StatusUnprocessableEntity},
+		{http.MethodPut, "/identity-providers/invalid", "", validBody, http.StatusUnprocessableEntity},
+		{http.MethodDelete, "/identity-providers/invalid", "", nil, http.StatusUnprocessableEntity},
 	}
 	for _, test := range tests {
 		response := adminRequest(t, client, test.method, server.URL+test.path, test.tenantID, test.body, nil)

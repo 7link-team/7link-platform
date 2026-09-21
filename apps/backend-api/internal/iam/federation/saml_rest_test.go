@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
 	"7link.com/platform/pkg/i18n"
 	"github.com/danielgtaylor/huma/v2"
@@ -28,7 +27,7 @@ func newSAMLAdminAPI(t *testing.T, env *federationEnvironment) (*http.Client, *h
 	config := huma.DefaultConfig("federation saml admin test", "1.0.0")
 	config.Transformers = append(config.Transformers, respx.LocalizeMessage)
 	api := humachi.New(router, config)
-	RegisterSAMLAdminREST(api, env.service, authz.NewDeclarationOnlyRegistrar(authz.DefaultRegistry()))
+	RegisterSAMLAdminREST(api, env.service, federationRuntimeRegistrar(federationAdminVerifier{}))
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 	return server.Client(), server
@@ -72,7 +71,7 @@ func TestSAMLServiceProviderHTTPWorkflow(t *testing.T) {
 	other := newSAMLSPServer(t)
 	updateBody, err := json.Marshal(samlSPBody{Name: "portal-v2", EntityID: other.entityID, MetadataXML: other.metadataXML(), Status: ProviderDisabled})
 	require.NoError(t, err)
-	response = adminRequest(t, client, http.MethodPut, server.URL+"/saml-service-providers/"+registered.ID.String(), wireID("tenant-a"), updateBody, nil)
+	response = adminRequest(t, client, http.MethodPut, server.URL+"/saml-service-providers/"+registered.ID.String(), "", updateBody, nil)
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 	decodeHTTPBody(t, response, &envelope)
 	var updated SAMLServiceProvider
@@ -80,13 +79,17 @@ func TestSAMLServiceProviderHTTPWorkflow(t *testing.T) {
 	assert.Equal(t, "portal-v2", updated.Name)
 	assert.Equal(t, ProviderDisabled, updated.Status)
 
-	response = adminRequest(t, client, http.MethodDelete, server.URL+"/saml-service-providers/"+registered.ID.String(), wireID("tenant-a"), nil, nil)
+	response = adminRequest(t, client, http.MethodDelete, server.URL+"/saml-service-providers/"+registered.ID.String(), "", nil, nil)
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 	require.NoError(t, response.Body.Close())
-	response = adminRequest(t, client, http.MethodDelete, server.URL+"/saml-service-providers/"+registered.ID.String(), wireID("tenant-a"), nil, nil)
+	// The second delete is answered by the owner resolver, which runs ahead of
+	// the handler and reports an absent globally addressed resource itself. The
+	// status is the part that matters here and is unchanged; the body carries
+	// the registrar's own code rather than the module's localized sentence.
+	response = adminRequest(t, client, http.MethodDelete, server.URL+"/saml-service-providers/"+registered.ID.String(), "", nil, nil)
 	assert.Equal(t, http.StatusNotFound, response.StatusCode)
 	decodeHTTPBody(t, response, &envelope)
-	assert.Equal(t, localized("en-US", "federation.saml_sp_not_found"), envelope.Message)
+	assert.Equal(t, "not_found", envelope.Message)
 }
 
 func TestSAMLSigningKeyRotationHTTP(t *testing.T) {
@@ -142,17 +145,20 @@ func TestSAMLHTTPRejectsInvalidTenantAndServiceProviderIDs(t *testing.T) {
 		method   string
 		path     string
 		tenantID string
+		status   int
 		body     []byte
 	}{
-		{http.MethodGet, "/saml-service-providers", "invalid", nil},
-		{http.MethodPost, "/saml-service-providers", "invalid", body},
-		{http.MethodPut, "/saml-service-providers/" + wireID("missing"), "invalid", body},
-		{http.MethodPut, "/saml-service-providers/invalid", wireID("tenant-a"), body},
-		{http.MethodDelete, "/saml-service-providers/" + wireID("missing"), "invalid", nil},
-		{http.MethodDelete, "/saml-service-providers/invalid", wireID("tenant-a"), nil},
+		// The collection keeps its tenant segment, so the registrar rejects an
+		// unparseable tenant as forbidden before the handler runs. Service
+		// providers are globally addressed, so their rejection is the
+		// unparseable service provider ID reported by the owner resolver.
+		{http.MethodGet, "/saml-service-providers", "invalid", http.StatusForbidden, nil},
+		{http.MethodPost, "/saml-service-providers", "invalid", http.StatusForbidden, body},
+		{http.MethodPut, "/saml-service-providers/invalid", "", http.StatusUnprocessableEntity, body},
+		{http.MethodDelete, "/saml-service-providers/invalid", "", http.StatusUnprocessableEntity, nil},
 	} {
 		response := adminRequest(t, client, test.method, server.URL+test.path, test.tenantID, test.body, nil)
-		assert.Equal(t, http.StatusUnprocessableEntity, response.StatusCode, "%s %s", test.method, test.path)
+		assert.Equal(t, test.status, response.StatusCode, "%s %s", test.method, test.path)
 		_ = response.Body.Close()
 	}
 

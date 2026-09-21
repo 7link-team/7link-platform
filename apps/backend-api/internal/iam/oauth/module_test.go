@@ -56,8 +56,17 @@ func (oauthPermissionChecker) CheckPlatform(context.Context, string, guid.ID) (b
 
 type oauthMembershipChecker struct{}
 
-func (oauthMembershipChecker) IsMemberActive(context.Context, guid.ID, guid.ID) (bool, error) {
-	return true, nil
+// oauthFixtureTenants binds the fixture principals that exercise tenant
+// isolation to the single tenant each one belongs to. Client routes are
+// globally addressed, so the owning tenant comes from the resource rather than
+// the URL and a cross-tenant rejection is only observable when membership
+// actually distinguishes tenants. Principals outside this map are unrelated to
+// isolation and stay members everywhere.
+var oauthFixtureTenants = map[guid.ID]guid.ID{101: 7, 108: 8}
+
+func (oauthMembershipChecker) IsMemberActive(_ context.Context, tenant, principal guid.ID) (bool, error) {
+	owner, bound := oauthFixtureTenants[principal]
+	return !bound || owner == tenant, nil
 }
 
 type oauthDependencyProvider struct {
