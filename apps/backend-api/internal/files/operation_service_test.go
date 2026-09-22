@@ -3,6 +3,8 @@ package files
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -389,4 +391,66 @@ func TestImmediateOperationRejectsAnUnauthenticatedCaller(t *testing.T) {
 	// back to an implicit identity.
 	_, err := h.service.run(t.Context(), "anonymous", h.input)
 	assert.Error(t, err)
+}
+
+// tableFault fails database statements against one table once a chosen number
+// of them have already gone through.
+//
+// Dropping a table fails every access to it at once, so only the first guard
+// against that table is ever reached and everything behind it stays untested.
+// Letting the first few statements succeed moves the failure to the second,
+// third or fourth access, which is where most of the untested error handling in
+// this package lives: the `if err != nil` after each individual query.
+type tableFault struct {
+	seen  atomic.Int64
+	fired atomic.Bool
+	skip  int64
+}
+
+// Fired reports whether the injected failure was actually reached. A caller
+// that never made that many statements against the table must not be asserted
+// against, or the test would claim a guard it never exercised.
+func (fault *tableFault) Fired() bool { return fault.fired.Load() }
+
+func (fault *tableFault) trip(tx *gorm.DB, table string) {
+	subject := tx.Statement.Table
+	if subject == "" {
+		subject = tx.Statement.SQL.String()
+	}
+	if !strings.Contains(subject, table) {
+		return
+	}
+	if fault.seen.Add(1) > fault.skip {
+		fault.fired.Store(true)
+		_ = tx.AddError(errInjectedTableFault)
+	}
+}
+
+var errInjectedTableFault = errors.New("files: injected table fault")
+
+// failTableAfter installs the fault and removes it when the test ends.
+func failTableAfter(t *testing.T, db *gorm.DB, table string, skip int64) *tableFault {
+	t.Helper()
+	fault := &tableFault{skip: skip}
+	name := fmt.Sprintf("files:fault-%s-%d", table, skip)
+	hook := func(tx *gorm.DB) { fault.trip(tx, table) }
+	registrations := []struct {
+		register func(string, func(*gorm.DB)) error
+		remove   func(string) error
+	}{
+		{db.Callback().Query().Before("gorm:query").Register, db.Callback().Query().Remove},
+		{db.Callback().Create().Before("gorm:create").Register, db.Callback().Create().Remove},
+		{db.Callback().Update().Before("gorm:update").Register, db.Callback().Update().Remove},
+		{db.Callback().Delete().Before("gorm:delete").Register, db.Callback().Delete().Remove},
+		{db.Callback().Row().Before("gorm:row").Register, db.Callback().Row().Remove},
+	}
+	for _, registration := range registrations {
+		require.NoError(t, registration.register(name, hook))
+	}
+	t.Cleanup(func() {
+		for _, registration := range registrations {
+			require.NoError(t, registration.remove(name))
+		}
+	})
+	return fault
 }

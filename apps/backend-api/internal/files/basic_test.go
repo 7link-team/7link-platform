@@ -2,6 +2,7 @@ package files
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -342,5 +343,104 @@ func TestFileOperationsFailClosedWhenPermissionsAreUnreadable(t *testing.T) {
 		},
 	} {
 		assert.Error(t, call(), "%s must fail closed when the ACL store is unreadable", name)
+	}
+}
+
+// TestFileEntryPointsPropagateEveryStatementFailure fails the Nth statement
+// against each table and re-runs each entry point. Every reached failure has to
+// surface.
+//
+// This is the guard-by-guard counterpart to the table-drop sweeps above. Those
+// prove the first access to a table is checked; this walks deeper, so a later
+// query whose error was assigned and then ignored - the classic `_ = err` or a
+// shadowed err inside a loop - shows up as an entry point that returned success
+// while a statement underneath it failed.
+//
+// A case whose fault never fired is skipped rather than asserted: that entry
+// point simply never made that many statements against that table, and claiming
+// a guard it never reached would be a false assertion.
+func TestFileEntryPointsPropagateEveryStatementFailure(t *testing.T) {
+	tables := []string{
+		"file_nodes", "file_node_closure", "file_node_acl", "file_spaces",
+		"file_versions", "file_objects", "file_trash_roots", "file_trash_batches",
+		"file_operations", "file_resource_bindings",
+	}
+
+	type entryPoint struct {
+		name string
+		call func(t *testing.T, h operationServiceHarness) error
+	}
+	entryPoints := []entryPoint{
+		{"list roots", func(_ *testing.T, h operationServiceHarness) error {
+			_, err := h.service.listRoots(h.ctx, testFileCollection(h.ctx), browserPageRequest{Limit: 10})
+			return err
+		}},
+		{"list trash", func(_ *testing.T, h operationServiceHarness) error {
+			_, err := h.service.listTrash(h.ctx, testFileCollection(h.ctx), browserPageRequest{Limit: 10})
+			return err
+		}},
+		{"list children", func(_ *testing.T, h operationServiceHarness) error {
+			_, err := h.service.listChildren(h.ctx, 10, browserPageRequest{Limit: 10})
+			return err
+		}},
+		{"read entry", func(_ *testing.T, h operationServiceHarness) error {
+			_, err := h.service.readFileEntry(h.ctx, 2, "child.txt")
+			return err
+		}},
+		{"ensure root", func(_ *testing.T, h operationServiceHarness) error {
+			_, err := h.service.ensureOwnedRoot(h.ctx, "personal")
+			return err
+		}},
+		{"create directory", func(_ *testing.T, h operationServiceHarness) error {
+			_, err := h.service.createDirectory(h.ctx, 10, "made-here")
+			return err
+		}},
+		{"upload", func(_ *testing.T, h operationServiceHarness) error {
+			_, err := h.service.uploadFile(h.ctx, 10, "uploaded.txt", "text/plain", strings.NewReader("abc"), 3)
+			return err
+		}},
+		{"download", func(_ *testing.T, h operationServiceHarness) error {
+			_, err := h.service.downloadFile(h.ctx, 32)
+			return err
+		}},
+		{"trash", func(t *testing.T, h operationServiceHarness) error {
+			_, err := h.service.trashNode(h.ctx, 32, treeNode(t, h.db, h.tree.prefix, 32).Version)
+			return err
+		}},
+		{"restore", func(t *testing.T, h operationServiceHarness) error {
+			node := treeNode(t, h.db, h.tree.prefix, 32)
+			if _, err := h.service.trashNode(h.ctx, 32, node.Version); err != nil {
+				return err
+			}
+			_, err := h.service.restoreNode(h.ctx, 32, treeNode(t, h.db, h.tree.prefix, 32).Version)
+			return err
+		}},
+		{"rename", func(t *testing.T, h operationServiceHarness) error {
+			return h.service.mutateNode(h.ctx, 32, "rename",
+				func(context.Context, *gorm.DB, *authn.Claims, directoryTree, *model.Node, *nodeAuthorizer) error {
+					return nil
+				})
+		}},
+		{"immediate operation", func(_ *testing.T, h operationServiceHarness) error {
+			_, err := h.service.run(h.ctx, "fault-sweep", h.input)
+			return err
+		}},
+	}
+
+	for _, point := range entryPoints {
+		for _, table := range tables {
+			for skip := int64(0); skip < 12; skip++ {
+				name := fmt.Sprintf("%s/%s/skip%d", point.name, table, skip)
+				t.Run(name, func(t *testing.T) {
+					h := newOperationServiceHarness(t)
+					fault := failTableAfter(t, h.service.runtime.Database().Write(), table, skip)
+					err := point.call(t, h)
+					if !fault.Fired() {
+						t.Skipf("%s never made %d statements against %s", point.name, skip+1, table)
+					}
+					assert.Error(t, err, "%s swallowed a failed statement against %s", point.name, table)
+				})
+			}
+		}
 	}
 }
