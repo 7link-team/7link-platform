@@ -569,3 +569,52 @@ func TestFileEntryViewsRejectInconsistentContentMetadata(t *testing.T) {
 		require.Empty(t, view)
 	})
 }
+
+// TestFileBrowserPagesTruncateAndHandBackACursor pins the boundary every
+// listing shares. A page that returned its limit and no cursor would tell the
+// caller the listing is complete, and the rows past the limit would simply
+// never be fetched.
+func TestFileBrowserPagesTruncateAndHandBackACursor(t *testing.T) {
+	h := newOperationServiceHarness(t)
+
+	// The fixture root already holds more than one child, so a limit of one
+	// has to truncate rather than serve everything it found.
+	full, err := h.service.listChildren(h.ctx, 10, browserPageRequest{Limit: maxBrowserPage})
+	require.NoError(t, err)
+	require.Greater(t, len(full.Items), 1, "fixture must hold more than one child")
+	require.Nil(t, full.NextAfter, "a page that reached the end carries no cursor")
+
+	page, err := h.service.listChildren(h.ctx, 10, browserPageRequest{Limit: 1})
+	require.NoError(t, err)
+	assert.Len(t, page.Items, 1)
+	require.NotNil(t, page.NextAfter, "a truncated page must say where to resume")
+	assert.Equal(t, page.Items[0].ID, *page.NextAfter, "the cursor is the last row actually returned")
+
+	// Resuming from the cursor returns the next row rather than repeating one.
+	next, err := h.service.listChildren(h.ctx, 10, browserPageRequest{Limit: 1, After: *page.NextAfter})
+	require.NoError(t, err)
+	require.Len(t, next.Items, 1)
+	assert.NotEqual(t, page.Items[0].ID, next.Items[0].ID)
+	assert.Equal(t, full.Items[1].ID, next.Items[0].ID)
+}
+
+func TestFileBrowserRootPageReportsExhaustion(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	collection := testFileCollection(h.ctx)
+
+	// Roots cannot be paged the way children can: the schema carries a unique
+	// constraint on (space_id, root_scope, root_owner_id), so a scope owns at
+	// most one root per space and the listing never has a second row to
+	// truncate. What it must still get right is the end of the walk.
+	all, err := h.service.listRoots(h.ctx, collection, browserPageRequest{Limit: maxBrowserPage})
+	require.NoError(t, err)
+	require.Len(t, all.Items, 1)
+	require.Nil(t, all.NextAfter, "a complete listing carries no cursor")
+
+	// Resuming past the last root finds nothing, which is exhaustion rather
+	// than a full page: reporting a cursor here would invite an endless walk.
+	empty, err := h.service.listRoots(h.ctx, collection, browserPageRequest{Limit: 10, After: all.Items[0].ID})
+	require.NoError(t, err)
+	assert.Empty(t, empty.Items)
+	assert.Nil(t, empty.NextAfter)
+}

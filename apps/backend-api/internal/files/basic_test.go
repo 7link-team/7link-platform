@@ -428,6 +428,7 @@ func TestFileEntryPointsPropagateEveryStatementFailure(t *testing.T) {
 	}
 
 	for _, point := range entryPoints {
+		reached := 0
 		for _, table := range tables {
 			for skip := int64(0); skip < 12; skip++ {
 				name := fmt.Sprintf("%s/%s/skip%d", point.name, table, skip)
@@ -438,9 +439,16 @@ func TestFileEntryPointsPropagateEveryStatementFailure(t *testing.T) {
 					if !fault.Fired() {
 						t.Skipf("%s never made %d statements against %s", point.name, skip+1, table)
 					}
+					reached++
 					assert.Error(t, err, "%s swallowed a failed statement against %s", point.name, table)
 				})
 			}
 		}
+		// Skipping a combination an entry point never reaches is correct, but
+		// skipping all of them is not: it would mean this entry point stopped
+		// touching the database at these depths and the sweep quietly stopped
+		// asserting anything about it. Without this the whole test could decay
+		// into green skips after a refactor.
+		assert.NotZero(t, reached, "%s reached no injected failure; the sweep no longer covers it", point.name)
 	}
 }
