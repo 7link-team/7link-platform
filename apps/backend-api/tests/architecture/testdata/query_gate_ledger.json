@@ -1,12 +1,8 @@
 {
   "schema_version": 1,
-  "budget": 13,
+  "budget": 12,
   "rebaseline": "initial freeze at the P0 commit",
   "entries": [
-    {
-      "key": "concatenated-table-name:c7121096622dde53",
-      "count": 1
-    },
     {
       "key": "handwritten-sql:19680d4ad388cae5",
       "count": 1

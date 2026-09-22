@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/identity"
-	"7link.com/platform/internal/iam/lifecycle"
 	healthservice "7link.com/platform/internal/infra/health/service"
 	"7link.com/platform/internal/infra/migrationstatus"
+	"7link.com/platform/internal/principallifecycle"
 	"7link.com/platform/pkg/module"
 	"gorm.io/gorm"
 )
@@ -23,7 +23,7 @@ func (app *App) provideCrossCutting(services *module.Services) error {
 		if app.runtime == nil {
 			return identity.ErrUnavailable
 		}
-		return lifecycle.AnonymizePrincipalData(ctx, tx, app.runtime.TablePrefix(), principal, now)
+		return principallifecycle.AnonymizePrincipalData(ctx, tx, app.runtime.TablePrefix(), principal, now)
 	})
 	if err := module.Provide[identity.PrincipalAnonymizer](services, anonymize); err != nil {
 		return err

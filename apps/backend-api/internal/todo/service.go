@@ -39,7 +39,8 @@ func (s *service) resolveOwner(ctx context.Context, id guid.ID) (authz.ResourceO
 		return authz.ResourceOwner{}, false, ErrUnavailable
 	}
 	var row model.TodoRow
-	err := db.WithContext(ctx).Table(s.runtime.TablePrefix()+model.TodoRow{}.TableName()).
+	names := query.BindNames(s.runtime.TablePrefix())
+	err := db.WithContext(ctx).Table(names.Todos.String()).
 		Select("tenant_id, entity_id").Where("id = ?", id).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return authz.ResourceOwner{}, false, nil

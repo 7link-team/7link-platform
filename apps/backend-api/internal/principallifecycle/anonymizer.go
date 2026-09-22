@@ -1,4 +1,4 @@
-package lifecycle
+package principallifecycle
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/iam/provisioning"
 	"7link.com/platform/internal/infra/guid"
+	goosex "7link.com/platform/pkg/extension/goose"
 	"gorm.io/gorm"
 )
 
@@ -23,6 +24,11 @@ func AnonymizePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, pri
 	if tx == nil {
 		return identity.ErrUnavailable
 	}
+	// The version tables are named literally rather than read from each
+	// module's MigrationSource: reaching for the concrete Module type is a
+	// cross-module reference the architecture rules forbid. The prefix is not
+	// applied here either - goose.Source owns that, so the name is bound in one
+	// audited place instead of being rebuilt at this call site.
 	owners := []struct {
 		name, versions string
 		version        int64
@@ -41,7 +47,8 @@ func AnonymizePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, pri
 			VersionID int64
 			IsApplied bool
 		}
-		err := tx.WithContext(ctx).Table(prefix+owner.versions).Where("version_id = ?", owner.version).Order("id DESC").Take(&version).Error
+		stream := goosex.Source{TableName: owner.versions, Prefix: prefix}
+		err := tx.WithContext(ctx).Table(stream.VersionTable()).Where("version_id = ?", owner.version).Order("id DESC").Take(&version).Error
 		if err != nil || !version.IsApplied || version.VersionID != owner.version {
 			return fmt.Errorf("%w: %s principal erasure migration is required", identity.ErrUnavailable, owner.name)
 		}
