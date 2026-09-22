@@ -66,8 +66,16 @@ into the body.
 
 **Scope / Status**
 Done. This changes the `message` field for guard-layer refusals on every
-authorized route: clients that matched on the bare strings must match the
-localized text or the status instead.
+authorized route.
+
+The one consumer in this repository was checked rather than assumed: no
+production code in `apps/frontend-web-admin` compares `.message` at all, and the
+places that look like they might are the frontend's own status enum or its own
+i18n keys. `sessionFailureStatus` branches on `cause.status === 401`, and the
+files page on `cause.status === 403`. Frontend typecheck and its 126 tests pass
+unchanged. An external caller matching the bare strings would still break, but
+that was never a supported contract: `message` is documented as a
+human-readable summary and `Code` is the machine-readable field.
 
 ---
 
