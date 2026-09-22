@@ -12,6 +12,7 @@ import (
 
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/huma/respx"
 	"7link.com/platform/pkg/extension/policyx"
 )
 
@@ -579,12 +580,12 @@ func intPointer(value int) *int { return &value }
 
 func (r *Registrar) authenticate(api huma.API, ctx huma.Context) (*authn.Claims, bool) {
 	if sessionOnly, _ := ctx.Operation().Metadata[sessionOnlyMetadataKey].(bool); sessionOnly && ctx.Header("Authorization") != "" {
-		_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "unauthorized")
+		_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, respx.Unauthorized)
 		return nil, false
 	}
 	if validator, ok := r.verifier.(csrfValidator); ok {
 		if err := validator.ValidateCSRF(ctx.Method(), ctx.Header("Origin"), ctx.Header("Cookie"), ctx.Header("Authorization")); err != nil {
-			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "csrf_rejected")
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.CSRFRejected)
 			return nil, false
 		}
 	}
@@ -594,10 +595,10 @@ func (r *Registrar) authenticate(api huma.API, ctx huma.Context) (*authn.Claims,
 	}
 	slog.Debug("authn token rejected", "operation", ctx.Operation().OperationID, "err", err)
 	if errors.Is(err, authn.ErrUnavailable) {
-		_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "authentication_unavailable")
+		_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthenticationUnavailable)
 		return nil, false
 	}
-	_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "unauthorized")
+	_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, respx.Unauthorized)
 	return nil, false
 }
 
@@ -618,28 +619,28 @@ func (r *Registrar) middleware(api huma.API, guard *Guard) func(huma.Context, fu
 		tenantText := ctx.Param(TenantPath)
 		tenantID, tenantErr := guid.Parse(tenantText)
 		if tenantErr != nil || tenantID.Zero() || claims.PrincipalID.Zero() {
-			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "forbidden")
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
 			return
 		}
 		active, err := r.members.IsMemberActive(requestContext, tenantID, claims.PrincipalID)
 		if err != nil {
 			slog.Error("tenant membership check failed", "operation", ctx.Operation().OperationID, "err", err)
-			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "authorization_unavailable")
+			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthorizationUnavailable)
 			return
 		}
 		if !active {
-			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "inactive_tenant_membership")
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.InactiveTenantMembership)
 			return
 		}
 		if guard != nil {
 			allowed, err := r.checker.Check(requestContext, tenantID, guard.Code(), claims.PrincipalID)
 			if err != nil {
 				slog.Error("authz check failed", "operation", ctx.Operation().OperationID, "permission", guard.Code(), "err", err)
-				_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "authorization_unavailable")
+				_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthorizationUnavailable)
 				return
 			}
 			if !allowed {
-				_ = huma.WriteErr(api, ctx, http.StatusForbidden, "forbidden")
+				_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
 				return
 			}
 		}
@@ -676,17 +677,17 @@ func (r *Registrar) ownedResourceMiddleware(api huma.API, resourceParam string, 
 		}
 		if resolveErr != nil {
 			slog.Error("resource owner resolution failed", "operation", ctx.Operation().OperationID, "err", resolveErr)
-			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "authorization_unavailable")
+			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthorizationUnavailable)
 			return
 		}
 		if parseErr != nil || resourceID.Zero() {
-			_ = huma.WriteErr(api, ctx, http.StatusUnprocessableEntity, "invalid_id")
+			_ = huma.WriteErr(api, ctx, http.StatusUnprocessableEntity, respx.InvalidID)
 			return
 		}
 		personalOwner := !owner.PrincipalID.Zero() && owner.TenantID.Zero() && owner.EntityID.Zero()
 		tenantOwner := owner.PrincipalID.Zero() && !owner.TenantID.Zero()
 		if !found || (!personalOwner && !tenantOwner) {
-			_ = huma.WriteErr(api, ctx, http.StatusNotFound, "not_found")
+			_ = huma.WriteErr(api, ctx, http.StatusNotFound, respx.NotFound)
 			return
 		}
 		principalID := claims.PrincipalID
@@ -694,12 +695,12 @@ func (r *Registrar) ownedResourceMiddleware(api huma.API, resourceParam string, 
 			principalID, parseErr = guid.Parse(claims.Subject)
 		}
 		if parseErr != nil || principalID.Zero() {
-			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "forbidden")
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
 			return
 		}
 		if personalOwner {
 			if principalID != owner.PrincipalID {
-				_ = huma.WriteErr(api, ctx, http.StatusNotFound, "not_found")
+				_ = huma.WriteErr(api, ctx, http.StatusNotFound, respx.NotFound)
 				return
 			}
 			trustedClaims := *claims
@@ -715,11 +716,11 @@ func (r *Registrar) ownedResourceMiddleware(api huma.API, resourceParam string, 
 		active, err := r.members.IsMemberActive(requestContext, owner.TenantID, principalID)
 		if err != nil {
 			slog.Error("resource membership check failed", "operation", ctx.Operation().OperationID, "err", err)
-			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "authorization_unavailable")
+			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthorizationUnavailable)
 			return
 		}
 		if !active {
-			_ = huma.WriteErr(api, ctx, http.StatusNotFound, "not_found")
+			_ = huma.WriteErr(api, ctx, http.StatusNotFound, respx.NotFound)
 			return
 		}
 		if guard != nil {
@@ -731,11 +732,11 @@ func (r *Registrar) ownedResourceMiddleware(api huma.API, resourceParam string, 
 			}
 			if err != nil {
 				slog.Error("resource authz check failed", "operation", ctx.Operation().OperationID, "permission", guard.Code(), "err", err)
-				_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "authorization_unavailable")
+				_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthorizationUnavailable)
 				return
 			}
 			if !allowed {
-				_ = huma.WriteErr(api, ctx, http.StatusForbidden, "forbidden")
+				_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
 				return
 			}
 		}
@@ -763,7 +764,7 @@ func (r *Registrar) entityMiddlewareFor(api huma.API, guard Guard, selectors fun
 			principalID, err = guid.Parse(claims.Subject)
 		}
 		if tenantErr != nil || entityErr != nil || err != nil || tenantID.Zero() || entityID.Zero() || principalID.Zero() {
-			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "forbidden")
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
 			return
 		}
 		requestContext := policyx.WithTrustedContext(ctx.Context(), policyx.TrustedContext{
@@ -772,21 +773,21 @@ func (r *Registrar) entityMiddlewareFor(api huma.API, guard Guard, selectors fun
 		active, err := r.members.IsMemberActive(requestContext, tenantID, principalID)
 		if err != nil {
 			slog.Error("entity membership check failed", "operation", ctx.Operation().OperationID, "tenant", tenantID, "entity", entityID, "err", err)
-			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "authorization_unavailable")
+			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthorizationUnavailable)
 			return
 		}
 		if !active {
-			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "inactive_tenant_membership")
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.InactiveTenantMembership)
 			return
 		}
 		allowed, err := r.checkEntityAccess(requestContext, tenantID, entityID, guard, principalID)
 		if err != nil {
 			slog.Error("entity authz check failed", "operation", ctx.Operation().OperationID, "tenant", tenantID, "entity", entityID, "permission", guard.Code(), "err", err)
-			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "authorization_unavailable")
+			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthorizationUnavailable)
 			return
 		}
 		if !allowed {
-			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "forbidden")
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
 			return
 		}
 		trustedClaims := *claims
@@ -825,11 +826,11 @@ func (r *Registrar) platformMiddleware(api huma.API, guard Guard) func(huma.Cont
 		allowed, err := r.checker.CheckPlatform(requestContext, guard.Code(), claims.PrincipalID)
 		if err != nil {
 			slog.Error("platform authz check failed", "operation", ctx.Operation().OperationID, "permission", guard.Code(), "err", err)
-			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "authorization_unavailable")
+			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthorizationUnavailable)
 			return
 		}
 		if !allowed {
-			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "forbidden")
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden, respx.Forbidden)
 			return
 		}
 		next(huma.WithContext(ctx, authn.WithClaims(requestContext, claims)))

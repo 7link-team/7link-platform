@@ -21,6 +21,12 @@ func newSAMLAdminAPI(t *testing.T, env *federationEnvironment) (*http.Client, *h
 	t.Helper()
 	require.NoError(t, i18n.NewModule(nil, i18n.Base).Initialize(t.Context()))
 	require.NoError(t, RegisterI18n())
+	// respx owns the message the guard layer reports, so its bundle has to be
+	// registered for an owner-resolver refusal to read as a sentence rather
+	// than as a bare key.
+	if err := respx.NewModule(nil).Initialize(t.Context()); err != nil {
+		require.ErrorContains(t, err, "already registered")
+	}
 	respx.Install()
 	router := chi.NewRouter()
 	router.Use(respx.Timing, respx.Locale)
@@ -83,13 +89,14 @@ func TestSAMLServiceProviderHTTPWorkflow(t *testing.T) {
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 	require.NoError(t, response.Body.Close())
 	// The second delete is answered by the owner resolver, which runs ahead of
-	// the handler and reports an absent globally addressed resource itself. The
-	// status is the part that matters here and is unchanged; the body carries
-	// the registrar's own code rather than the module's localized sentence.
+	// the handler and reports an absent globally addressed resource itself.
+	// The message still has to reach the caller as localized prose: the guard
+	// layer reports respx's key, not a bare code that would surface raw.
 	response = adminRequest(t, client, http.MethodDelete, server.URL+"/saml-service-providers/"+registered.ID.String(), "", nil, nil)
 	assert.Equal(t, http.StatusNotFound, response.StatusCode)
 	decodeHTTPBody(t, response, &envelope)
-	assert.Equal(t, "not_found", envelope.Message)
+	assert.Equal(t, localized("en-US", respx.NotFound), envelope.Message)
+	assert.NotEqual(t, respx.NotFound, envelope.Message, "the key must resolve, not pass through")
 }
 
 func TestSAMLSigningKeyRotationHTTP(t *testing.T) {
