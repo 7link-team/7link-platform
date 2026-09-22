@@ -1,5 +1,66 @@
 # Decisions
 
+## D70 - Cross-module principal anonymization lives outside the IAM namespace
+
+**Date** 2026-09-22
+
+**Decision / Reason**
+`internal/iam/lifecycle/anonymizer.go` moves to `internal/principallifecycle`.
+It held one file with no `module.go`, no `Module` type, no i18n and no
+migrations, so it was never a module, yet it sat directly under the IAM
+namespace where `TestIAMModuleArchitecture` requires every directory to be one.
+It imports eight IAM modules because it erases principal data across all of
+them, which is cross-module composition rather than anything a single module
+can own.
+
+Adding "lifecycle" to the `iamModules` allowlist was rejected outright: that
+relaxes an architecture rule to accommodate a misplacement, the same move as
+excusing a coverage gate. The test was right and the file was in the wrong
+place. The name follows the vocabulary the integration suite already uses in
+`principallifecycle_test.go`.
+
+**Alternatives Considered / Tradeoffs**
+Folding it into an owning IAM module (identity or core) was rejected because it
+would make that module depend on seven siblings, which is precisely the coupling
+the `module-dependency` rule polices. `internal/maintenance` looked right - it
+already holds cross-module operational procedures and imports seven IAM modules
+- but it imports `internal/app`, and `app` wires the anonymizer, so that
+placement is an import cycle. That was found by building, not by reasoning.
+
+**Scope / Status**
+Done. `internal/iam/` now contains exactly the nine modules the allowlist names.
+
+---
+
+## D71 - Table names are bound by their owner, not rebuilt at the call site
+
+**Date** 2026-09-22
+
+**Decision / Reason**
+The two `concatenated-table-name` violations are fixed rather than budgeted.
+`internal/todo/service.go` now takes its table from the module's own
+`query.BindNames`. `principallifecycle` no longer prepends the deployment
+prefix itself; `goose.Source.VersionTable()` is exported and does it, which is
+already a sanctioned concatenation point. The stale ledger entry
+`concatenated-table-name:c7121096622dde53` is deleted and the budget lowered
+from 13 to 12, matching the gate's own instruction that the ledger may only
+shrink.
+
+**Alternatives Considered / Tradeoffs**
+Reading each version table from the owning module's `MigrationSource()` would
+have removed the literal names too, and the seven names were verified identical
+first. It was reverted: the architecture gate rejected it as
+`cross-module-concrete-type`, because reaching for a sibling's concrete `Module`
+type is a worse coupling than a literal string. Raising the budget was never
+considered - the gate exists to make that a deliberate, documented act.
+
+**Scope / Status**
+Done. `make ci` passes end to end for the first time on this branch: fmt, lint,
+coverage at 91.0% with every module above 90%, all six integration suites
+including `tests/architecture`, build, and the generated OpenAPI.
+
+---
+
 ## D67 - The coverage gate is not relaxed to accommodate internal/files
 
 **Date** 2026-09-21

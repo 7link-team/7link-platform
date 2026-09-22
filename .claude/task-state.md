@@ -39,9 +39,24 @@
   where cross-module principal anonymization belongs - inside an owning IAM
   module, or out of the IAM namespace entirely - and that is a module-ownership
   decision, not a cleanup.
-- Next action: decide the home for `internal/iam/lifecycle/anonymizer.go`, then
-  fix the two query-gate violations and refresh the ledger. That is the last
-  thing between this branch and a green `make ci`.
+- RESOLVED. `make ci` now exits 0 end to end - fmt, lint, coverage 91.0% with
+  every gated module above 90%, all six integration suites including
+  `tests/architecture`, build, and the generated OpenAPI. First time this branch
+  has been green as a whole.
+- `anonymizer.go` moved to `internal/principallifecycle`; the two query-gate
+  violations were fixed at their source; the stale ledger entry was deleted and
+  the budget lowered 13 -> 12. See D70 and D71.
+- Two placements were reverted on evidence, not opinion: `internal/maintenance`
+  is an import cycle because it imports `internal/app`, and reading version
+  tables from each module's `MigrationSource()` trips
+  `cross-module-concrete-type`. Both were caught by building and by running the
+  gate, not by reasoning about them.
+- Next action: nothing outstanding. The four `ci` blockers this effort started
+  with - four broken suites, fmt-check, lint, and the integration/architecture
+  gate - are all closed, and coverage went 87.65% -> 91.0%. The deferred items
+  in D69 remain open by choice: the gate still has no `-coverpkg`, and D66's
+  owner resolution still makes module-localized not-found messages unreachable
+  on owned routes.
 
 ## Coverage Gate To 90% - 2026-09-21
 
