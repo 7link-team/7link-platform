@@ -120,7 +120,7 @@ func TestFileModuleRefusesDuplicateCapabilities(t *testing.T) {
 	require.NoError(t, err)
 	_, err = NewAccountObjects(driver, "local", "invalid-prefix;")
 	require.Error(t, err)
-	for _, capability := range []string{"driver", "accounts", "bindings", "root-provisioner", "root-content", "legacy"} {
+	for _, capability := range []string{"driver", "accounts", "bindings", "resources", "root-provisioner", "root-content", "legacy"} {
 		t.Run(capability, func(t *testing.T) {
 			m := NewModule(runtime, Config{})
 			services := module.NewServices()
@@ -131,6 +131,10 @@ func TestFileModuleRefusesDuplicateCapabilities(t *testing.T) {
 				require.NoError(t, module.Provide[*AccountObjects](services, accounts))
 			case "bindings":
 				require.NoError(t, module.Provide[*ResourceBindings](services, bindings))
+			case "resources":
+				resources, resourceErr := NewAccountResourceFiles(accounts, bindings, driver, "")
+				require.NoError(t, resourceErr)
+				require.NoError(t, module.Provide[*AccountResourceFiles](services, resources))
 			case "root-provisioner":
 				require.NoError(t, module.Provide[core.FileRootProvisioner](services, func(context.Context, *gorm.DB, core.FileRootProvisionInput, time.Time) (guid.ID, error) {
 					return 0, nil
@@ -193,4 +197,108 @@ func TestFileModuleHTTPRegistrationRequiresItsCollaborators(t *testing.T) {
 		assert.ErrorIs(t, module.RegisterHTTP(t.Context(), api), errOperationUnavailable, name)
 		assert.Empty(t, api.OpenAPI().Paths, name)
 	}
+}
+
+func TestFileModuleRegistersHTTPRoutesWhenWired(t *testing.T) {
+	registry := authz.MustRegistry(fileAuthorizationActions()...)
+	owner := func(context.Context, guid.ID) (authz.ResourceOwner, bool, error) {
+		return authz.ResourceOwner{}, false, nil
+	}
+	instance := &Module{
+		operations:  &operationService{maxUploadBytes: 100 << 20},
+		registrar:   authz.NewDeclarationOnlyRegistrar(registry),
+		entityOwner: core.EntityOwnerResolver(owner),
+		deptOwner:   core.DepartmentOwnerResolver(owner),
+	}
+	_, api := humatest.New(t)
+
+	require.NoError(t, instance.RegisterHTTP(t.Context(), api))
+	require.NotEmpty(t, api.OpenAPI().Paths)
+}
+
+func fileModuleDependencyServices(t *testing.T, omit string) *module.Services {
+	t.Helper()
+	services := module.NewServices()
+	if omit != "registrar" {
+		require.NoError(t, module.Provide[*authz.Registrar](services, authz.NewUnboundRegistrar(authz.MustRegistry())))
+	}
+	if omit != "policy" {
+		require.NoError(t, module.Provide[core.EntityConstraintOn](services, func(context.Context, *gorm.DB, guid.ID, guid.ID, string, guid.ID) (authz.DataConstraint, error) {
+			return authz.DataConstraint{}, nil
+		}))
+	}
+	if omit != "tenant policy" {
+		require.NoError(t, module.Provide[core.TenantConstraintOn](services, func(context.Context, *gorm.DB, guid.ID, string, guid.ID) (authz.DataConstraint, error) {
+			return authz.DataConstraint{}, nil
+		}))
+	}
+	if omit != "subjects" {
+		require.NoError(t, module.Provide[core.AuthorizationSubjectsOn](services, func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID) (core.AuthorizationSubjects, error) {
+			return core.AuthorizationSubjects{}, nil
+		}))
+	}
+	if omit != "references" {
+		require.NoError(t, module.Provide[core.AuthorizationReferencesOn](services, func(context.Context, *gorm.DB, guid.ID, core.AuthorizationReferences) (bool, error) {
+			return true, nil
+		}))
+	}
+	if omit != "entity owner" {
+		require.NoError(t, module.Provide[core.EntityOwnerResolver](services, func(context.Context, guid.ID) (authz.ResourceOwner, bool, error) {
+			return authz.ResourceOwner{}, false, nil
+		}))
+	}
+	if omit != "department owner" {
+		require.NoError(t, module.Provide[core.DepartmentOwnerResolver](services, func(context.Context, guid.ID) (authz.ResourceOwner, bool, error) {
+			return authz.ResourceOwner{}, false, nil
+		}))
+	}
+	if omit != "ids" {
+		require.NoError(t, module.Provide[guid.Source](services, &operationServiceIDs{}))
+	}
+	if omit != "appender" {
+		require.NoError(t, module.Provide[audit.Appender](services, func(context.Context, *gorm.DB, audit.DomainEvent) error { return nil }))
+	}
+	require.NoError(t, services.Seal())
+	return services
+}
+
+func TestFileModuleInjectionReportsEveryMissingDependency(t *testing.T) {
+	for _, testCase := range []struct {
+		omit, message string
+	}{
+		{omit: "registrar", message: "resolve files authorization registrar"},
+		{omit: "policy", message: "resolve files transaction policy"},
+		{omit: "tenant policy", message: "resolve files transaction tenant policy"},
+		{omit: "subjects", message: "resolve files authorization subjects"},
+		{omit: "references", message: "resolve files authorization references"},
+		{omit: "entity owner", message: "resolve files entity owner"},
+		{omit: "department owner", message: "resolve files department owner"},
+		{omit: "ids", message: "resolve files id generator"},
+		{omit: "appender", message: "resolve files audit appender"},
+	} {
+		t.Run(testCase.omit, func(t *testing.T) {
+			runtime := appenv.NewRuntime(appenv.NewIdentity("files-missing-dependency", "1"))
+			instance := NewModule(runtime, Config{})
+			err := instance.InjectServices(fileModuleDependencyServices(t, testCase.omit))
+			require.ErrorContains(t, err, testCase.message)
+			require.Nil(t, instance.operations)
+		})
+	}
+}
+
+func TestFileModuleStopReturnsCanceledContextWhileWorkerIsStillRunning(t *testing.T) {
+	cancelCalled := false
+	done := make(chan struct{})
+	instance := &Module{
+		workerCancel: func() { cancelCalled = true },
+		workerDone:   done,
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	err := instance.Stop(ctx)
+	require.ErrorIs(t, err, context.Canceled)
+	require.True(t, cancelCalled)
+	require.NotNil(t, instance.workerCancel)
+	require.Equal(t, done, instance.workerDone)
 }

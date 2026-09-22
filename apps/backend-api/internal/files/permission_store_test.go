@@ -340,3 +340,129 @@ func TestStoredACLConcurrentEditsRejectLostUpdate(t *testing.T) {
 	require.Len(t, rows, 1)
 	require.Equal(t, rows[0].SubjectID, rows[0].CreatedBy)
 }
+
+func TestNodeRootBindingFailsClosedOnCorruptMetadata(t *testing.T) {
+	one := 1
+	tenantID := guid.ID(90)
+	principalID := guid.ID(70)
+	scope := "entity"
+	ownerID := guid.ID(80)
+	systemSpace := &model.Space{ID: 1, ScopeKind: "system", SystemSlot: &one}
+	systemRoot := &model.Node{ID: 2, SpaceID: 1, Kind: "directory", State: "active"}
+
+	binding, err := nodeRootBinding(systemSpace, systemRoot)
+	require.NoError(t, err)
+	require.Equal(t, rootBinding{scope: "system"}, binding)
+
+	for name, fixture := range map[string]struct {
+		space *model.Space
+		node  *model.Node
+	}{
+		"nil node": {space: systemSpace},
+		"system root with explicit scope": {
+			space: systemSpace,
+			node:  &model.Node{ID: 2, SpaceID: 1, Kind: "directory", State: "active", RootScope: &scope},
+		},
+		"one sided root binding": {
+			space: &model.Space{ID: 1, ScopeKind: "tenant", TenantID: &tenantID},
+			node:  &model.Node{ID: 2, SpaceID: 1, Kind: "directory", State: "active", RootScope: &scope},
+		},
+		"tenant space with principal": {
+			space: &model.Space{ID: 1, ScopeKind: "tenant", TenantID: &tenantID, PrincipalID: &principalID},
+			node: &model.Node{
+				ID: 2, SpaceID: 1, Kind: "directory", State: "active",
+				RootScope: &scope, RootOwnerID: &ownerID,
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			binding, err := nodeRootBinding(fixture.space, fixture.node)
+			require.ErrorIs(t, err, errFileACL)
+			require.Equal(t, rootBinding{}, binding)
+		})
+	}
+}
+
+func TestStoredNodePermissionsBatchValidatesTargetsAndDeduplicates(t *testing.T) {
+	db, tree, _ := newOperationTree(t)
+	bindRootFixture(t, db, tree, 3, rootBinding{scope: "entity", ownerID: 80})
+
+	for name, call := range map[string]func() error{
+		"nil transaction": func() error {
+			_, _, err := tree.loadNodePermissionsBatch(t.Context(), nil, 1, []guid.ID{30})
+			return err
+		},
+		"outside transaction": func() error {
+			_, _, err := tree.loadNodePermissionsBatch(t.Context(), db, 1, []guid.ID{30})
+			return err
+		},
+		"zero target": func() error {
+			return db.Transaction(func(tx *gorm.DB) error {
+				_, _, err := tree.loadNodePermissionsBatch(t.Context(), tx, 1, []guid.ID{0})
+				return err
+			})
+		},
+		"too many targets": func() error {
+			ids := make([]guid.ID, maxBrowserPage+maxNodeDepth+2)
+			for index := range ids {
+				ids[index] = guid.ID(index + 1)
+			}
+			return db.Transaction(func(tx *gorm.DB) error {
+				_, _, err := tree.loadNodePermissionsBatch(t.Context(), tx, 1, ids)
+				return err
+			})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := call()
+			if name == "outside transaction" {
+				require.ErrorIs(t, err, ErrAccountTransaction)
+			} else {
+				require.ErrorIs(t, err, errFileACL)
+			}
+		})
+	}
+
+	require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+		permissions, targetErrors, err := tree.loadNodePermissionsBatch(t.Context(), tx, 1, []guid.ID{30, 30})
+		require.NoError(t, err)
+		require.Empty(t, targetErrors)
+		require.Len(t, permissions, 1)
+		require.Contains(t, permissions, guid.ID(30))
+		return nil
+	}))
+}
+
+func TestStoredNodePermissionsPropagateEveryReachedStatementFailure(t *testing.T) {
+	type faultCase struct {
+		name, table string
+		skip        int64
+		batch       bool
+	}
+	cases := []faultCase{
+		{name: "single space", table: "file_spaces"},
+		{name: "single path", table: "file_nodes"},
+		{name: "single ACL", table: "file_node_acl"},
+		{name: "batch space", table: "file_spaces", batch: true},
+		{name: "batch ACL", table: "file_node_acl", batch: true},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			db, tree, _ := newOperationTree(t)
+			bindRootFixture(t, db, tree, 3, rootBinding{scope: "entity", ownerID: 80})
+			fault := failTableAfter(t, db, testCase.table, testCase.skip)
+			err := db.Transaction(func(tx *gorm.DB) error {
+				if testCase.batch {
+					_, _, err := tree.loadNodePermissionsBatch(t.Context(), tx, 1, []guid.ID{30, 31})
+					return err
+				}
+				_, err := tree.loadNodePermissions(t.Context(), tx, 1, 30)
+				return err
+			})
+			if !fault.Fired() {
+				t.Skip("target statement was not reached")
+			}
+			require.ErrorIs(t, err, errInjectedTableFault)
+		})
+	}
+}

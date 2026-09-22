@@ -2,7 +2,9 @@ package files
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -429,4 +431,141 @@ func TestBrowserNodeNameFallsBackToTheRootScope(t *testing.T) {
 	assert.Equal(t, rootDisplayName(root), browserPathName(root))
 	assert.Equal(t, "reports", browserPathName(named))
 	assert.Empty(t, browserPathName(nil))
+}
+
+func TestFileBrowserEntryPointsPropagateAuthorizationFailure(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	authorizationErr := errors.New("authorization service failed")
+	h.service.policy = func(context.Context, *gorm.DB, guid.ID, guid.ID, string, guid.ID) (authz.DataConstraint, error) {
+		return authz.DataConstraint{}, authorizationErr
+	}
+
+	for name, call := range map[string]func() error{
+		"roots": func() error {
+			_, err := h.service.listRoots(h.ctx, testFileCollection(h.ctx), browserPageRequest{})
+			return err
+		},
+		"trash": func() error {
+			_, err := h.service.listTrash(h.ctx, testFileCollection(h.ctx), browserPageRequest{})
+			return err
+		},
+		"children": func() error {
+			_, err := h.service.listChildren(h.ctx, 2, browserPageRequest{})
+			return err
+		},
+		"metadata": func() error {
+			_, err := h.service.getFileEntry(h.ctx, 32)
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.ErrorIs(t, call(), authorizationErr)
+		})
+	}
+}
+
+func TestFileBrowserRejectsDeepAndNonDirectoryPaths(t *testing.T) {
+	h := newOperationServiceHarness(t)
+
+	_, err := h.service.getFileEntry(h.ctx, 0)
+	require.ErrorIs(t, err, errOperationInput)
+	_, err = filePathSegments(strings.Repeat("segment/", maxNodeDepth) + "segment")
+	require.ErrorIs(t, err, errOperationInput)
+
+	_, err = h.service.getFileEntryByPath(h.ctx, 32, "child")
+	require.ErrorIs(t, err, ErrNotFound, "a file cannot serve as a path root")
+	_, err = h.service.getFileEntryByPath(h.ctx, 2, "Source/Shared/root.txt/child")
+	require.ErrorIs(t, err, ErrNotFound, "path traversal cannot continue through a file")
+	_, err = h.service.listChildren(h.ctx, 32, browserPageRequest{})
+	require.ErrorIs(t, err, ErrNotFound, "a file has no browsable child collection")
+}
+
+func TestBrowserClaimsRequireDependenciesForEachCallerScope(t *testing.T) {
+	accountContext := authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 70})
+	var unavailable *operationService
+	claims, err := unavailable.browserClaims(accountContext)
+	require.ErrorIs(t, err, errOperationUnavailable)
+	require.Nil(t, claims)
+
+	h := newOperationServiceHarness(t)
+	tenantContext := authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 70, TenantID: 90})
+	tenantService := *h.service
+	tenantService.tenantPolicy = nil
+	claims, err = tenantService.browserClaims(tenantContext)
+	require.ErrorIs(t, err, errOperationUnavailable)
+	require.Nil(t, claims)
+
+	entityService := *h.service
+	entityService.policy = nil
+	claims, err = entityService.browserClaims(h.ctx)
+	require.ErrorIs(t, err, errOperationUnavailable)
+	require.Nil(t, claims)
+}
+
+func TestFileEntryViewsRejectInconsistentContentMetadata(t *testing.T) {
+	t.Run("nil row", func(t *testing.T) {
+		h := newOperationServiceHarness(t)
+		views, err := fileEntryViewsOf(t.Context(), query.Bind(h.db, h.tree.prefix), []*model.Node{nil}, nil)
+		require.ErrorIs(t, err, errFileACL)
+		require.Nil(t, views)
+	})
+
+	t.Run("root without space", func(t *testing.T) {
+		h := newOperationServiceHarness(t)
+		q := query.Bind(h.db, h.tree.prefix)
+		root, err := q.Node.WithContext(t.Context()).Where(q.Node.ID.Eq(guid.ID(2))).Take()
+		require.NoError(t, err)
+		views, err := fileEntryViewsOf(t.Context(), q, []*model.Node{root}, nil)
+		require.ErrorIs(t, err, errFileACL)
+		require.Nil(t, views)
+	})
+
+	t.Run("missing root space", func(t *testing.T) {
+		h := newOperationServiceHarness(t)
+		q := query.Bind(h.db, h.tree.prefix)
+		root, err := q.Node.WithContext(t.Context()).Where(q.Node.ID.Eq(guid.ID(2))).Take()
+		require.NoError(t, err)
+		detached := *root
+		detached.SpaceID = 999
+		view, err := fileEntryViewOf(t.Context(), q, &detached)
+		require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+		require.Empty(t, view)
+	})
+
+	t.Run("missing version", func(t *testing.T) {
+		h := newOperationServiceHarness(t)
+		q := query.Bind(h.db, h.tree.prefix)
+		file, err := q.Node.WithContext(t.Context()).Where(q.Node.ID.Eq(guid.ID(32))).Take()
+		require.NoError(t, err)
+		detached := *file
+		missingVersionID := guid.ID(999999)
+		detached.CurrentVersionID = &missingVersionID
+		views, err := fileEntryViewsOf(t.Context(), q, []*model.Node{&detached}, nil)
+		require.ErrorIs(t, err, errFileACL)
+		require.Nil(t, views)
+	})
+
+	t.Run("unverified object", func(t *testing.T) {
+		h := newOperationServiceHarness(t)
+		q := query.Bind(h.db, h.tree.prefix)
+		file, err := q.Node.WithContext(t.Context()).Where(q.Node.ID.Eq(guid.ID(32))).Take()
+		require.NoError(t, err)
+		version, err := q.Version.WithContext(t.Context()).Where(q.Version.ID.Eq(*file.CurrentVersionID)).Take()
+		require.NoError(t, err)
+		_, err = q.Object.WithContext(t.Context()).Where(q.Object.ID.Eq(version.ObjectID)).UpdateSimple(q.Object.State.Value("pending"))
+		require.NoError(t, err)
+		views, err := fileEntryViewsOf(t.Context(), q, []*model.Node{file}, nil)
+		require.ErrorIs(t, err, errFileACL)
+		require.Nil(t, views)
+	})
+
+	t.Run("invalid root binding", func(t *testing.T) {
+		tenantID, ownerID := guid.ID(90), guid.ID(70)
+		scope := "account"
+		space := &model.Space{ID: 1, ScopeKind: "tenant", TenantID: &tenantID}
+		row := &model.Node{ID: 2, SpaceID: 1, Kind: "directory", State: "active", RootScope: &scope, RootOwnerID: &ownerID}
+		view := fileEntryView{}
+		require.ErrorIs(t, setRootOwnership(&view, space, row), errFileACL)
+		require.Empty(t, view)
+	})
 }

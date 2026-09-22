@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"7link.com/platform/internal/files/model"
 	"7link.com/platform/internal/files/query"
 	"7link.com/platform/internal/infra/guid"
 	"github.com/stretchr/testify/require"
@@ -412,4 +414,195 @@ func TestImmediateTypeConflictRequiresExplicitReplacement(t *testing.T) {
 	require.Equal(t, 4, result.Recycled)
 	require.Equal(t, 1, result.Created)
 	require.Equal(t, "trashed", treeNode(t, db, tree.prefix, 20).State)
+}
+
+func TestImmediateCanonicalizationValidatesDecisionTokens(t *testing.T) {
+	base := immediateOperationRequest{operationRequest: operationRequest{
+		SpaceID:         1,
+		Action:          "copy",
+		DestinationID:   6,
+		Sources:         []guid.ID{10},
+		FilePolicy:      "ask",
+		DirectoryPolicy: "ask",
+		TypePolicy:      "ask",
+	}}
+	canonical, encoded, hash, err := canonicalImmediateRequest(base, "canonical", operationBudget{10, 100})
+	require.NoError(t, err)
+	require.Equal(t, base.operationRequest, canonical.operationRequest)
+	require.NotEmpty(t, encoded)
+	require.Len(t, hash, 64)
+
+	validKey := strings.Repeat("a", 64)
+	for _, scenario := range []struct {
+		name   string
+		mutate func(*immediateOperationRequest)
+		budget operationBudget
+	}{
+		{"negative revision", func(input *immediateOperationRequest) { input.ObservedRevision = -1 }, operationBudget{10, 100}},
+		{"decision without revision", func(input *immediateOperationRequest) {
+			input.Decisions = []immediateDecision{{ConflictKey: validKey, Policy: "skip"}}
+		}, operationBudget{10, 100}},
+		{"too many decisions", func(input *immediateOperationRequest) {
+			input.ObservedRevision = 1
+			input.Decisions = []immediateDecision{{ConflictKey: validKey, Policy: "skip"}, {ConflictKey: strings.Repeat("b", 64), Policy: "skip"}}
+		}, operationBudget{1, 100}},
+		{"malformed key", func(input *immediateOperationRequest) {
+			input.ObservedRevision = 1
+			input.Decisions = []immediateDecision{{ConflictKey: "not-hex", Policy: "skip"}}
+		}, operationBudget{10, 100}},
+		{"uppercase key", func(input *immediateOperationRequest) {
+			input.ObservedRevision = 1
+			input.Decisions = []immediateDecision{{ConflictKey: strings.Repeat("A", 64), Policy: "skip"}}
+		}, operationBudget{10, 100}},
+		{"unsupported policy", func(input *immediateOperationRequest) {
+			input.ObservedRevision = 1
+			input.Decisions = []immediateDecision{{ConflictKey: validKey, Policy: "ignore"}}
+		}, operationBudget{10, 100}},
+		{"duplicate key", func(input *immediateOperationRequest) {
+			input.ObservedRevision = 1
+			input.Decisions = []immediateDecision{{ConflictKey: validKey, Policy: "skip"}, {ConflictKey: validKey, Policy: "rename"}}
+		}, operationBudget{10, 100}},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			input := base
+			scenario.mutate(&input)
+			_, encoded, hash, err := canonicalImmediateRequest(input, "canonical", scenario.budget)
+			require.ErrorIs(t, err, errOperationInput)
+			require.Empty(t, encoded)
+			require.Empty(t, hash)
+		})
+	}
+}
+
+func TestImmediateConflictErrorAndUnknownPolicy(t *testing.T) {
+	conflict := &immediateConflicts{}
+	require.Equal(t, errImmediateConflict.Error(), conflict.Error())
+	require.ErrorIs(t, conflict, errImmediateConflict)
+	require.Nil(t, operationPolicies("link"))
+	require.False(t, operationPolicyAllowed("link", "replace"))
+}
+
+func TestImmediateReplayRequiresReadableValidResults(t *testing.T) {
+	db, _, _ := newOperationTree(t)
+	denied := errors.New("replay denied")
+
+	tests := []struct {
+		name       string
+		resultJSON string
+		access     operationAccess
+		want       error
+	}{
+		{"destination denied", `{"roots":[10]}`, func(_ context.Context, _ *gorm.DB, _, _, id guid.ID, _ string) error {
+			if id == 6 {
+				return denied
+			}
+			return nil
+		}, denied},
+		{"malformed result", "{", operationAllow, nil},
+		{"root denied", `{"created":1,"roots":[10]}`, func(_ context.Context, _ *gorm.DB, _, _, id guid.ID, _ string) error {
+			if id == 10 {
+				return denied
+			}
+			return nil
+		}, denied},
+		{"success", `{"created":1,"roots":[10]}`, operationAllow, nil},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			op := &model.Operation{SpaceID: 1, ActorID: 90, DestinationID: 6, ResultJSON: test.resultJSON}
+			var result operationResult
+			var replayErr error
+			require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+				result, replayErr = replayOperationResult(t.Context(), tx, op, test.access)
+				return nil
+			}))
+			switch {
+			case test.name == "malformed result":
+				require.Error(t, replayErr)
+				require.Empty(t, result)
+			case test.want != nil:
+				require.ErrorIs(t, replayErr, test.want)
+				require.Empty(t, result)
+			default:
+				require.NoError(t, replayErr)
+				require.Equal(t, 1, result.Created)
+				require.Equal(t, []guid.ID{10}, result.Roots)
+			}
+		})
+	}
+}
+
+func TestImmediateOperationRejectsInvalidRuntimeAndRoots(t *testing.T) {
+	db, tree, request := newOperationTree(t)
+	input := immediateOperationRequest{operationRequest: request}
+	now := time.Now()
+
+	_, err := tree.executeImmediateOperation(t.Context(), nil, 100, 90, "nil-transaction", input, operationBudget{100, 1000}, now.Add(time.Hour), now, operationNext(t), operationAllow)
+	require.ErrorIs(t, err, errOperationInput)
+	_, err = tree.executeImmediateOperation(t.Context(), db, 100, 90, "outer-database", input, operationBudget{100, 1000}, now.Add(time.Hour), now, operationNext(t), operationAllow)
+	require.ErrorIs(t, err, ErrAccountTransaction)
+
+	require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+		fileDestination := request
+		fileDestination.DestinationID = 30
+		_, _, _, err := tree.immediateRoots(t.Context(), tx, fileDestination, operationBudget{100, 1000})
+		require.ErrorIs(t, err, errHierarchy)
+
+		selectedAncestor := request
+		selectedAncestor.Sources = []guid.ID{2}
+		_, _, _, err = tree.immediateRoots(t.Context(), tx, selectedAncestor, operationBudget{100, 1000})
+		require.ErrorIs(t, err, errHierarchy)
+
+		missingSource := request
+		missingSource.Sources = []guid.ID{999999}
+		_, _, _, err = tree.immediateRoots(t.Context(), tx, missingSource, operationBudget{100, 1000})
+		require.ErrorIs(t, err, ErrNotFound)
+
+		_, _, _, err = tree.immediateRoots(t.Context(), tx, request, operationBudget{1, 1000})
+		require.ErrorIs(t, err, errHierarchy)
+		return nil
+	}))
+}
+
+func TestImmediateOperationPropagatesStatementFailures(t *testing.T) {
+	tables := []struct {
+		name  string
+		skips int64
+	}{
+		{"spaces", 5},
+		{"operations", 3},
+		{"nodes", 20},
+		{"closure", 16},
+		{"versions", 10},
+	}
+	for _, table := range tables {
+		for skip := int64(0); skip <= table.skips; skip++ {
+			t.Run(fmt.Sprintf("%s/after_%d", table.name, skip), func(t *testing.T) {
+				db, tree, request := newOperationTree(t)
+				names := query.BindNames(tree.prefix)
+				var name string
+				switch table.name {
+				case "spaces":
+					name = names.Spaces.String()
+				case "operations":
+					name = names.Operations.String()
+				case "nodes":
+					name = names.Nodes.String()
+				case "closure":
+					name = names.NodeClosure.String()
+				case "versions":
+					name = names.Versions.String()
+				}
+				fault := failTableAfter(t, db, name, skip)
+				result, err := executeImmediateFixture(t, db, tree, immediateOperationRequest{operationRequest: request}, operationAllow)
+				if fault.Fired() {
+					require.ErrorIs(t, err, errInjectedTableFault)
+					require.Empty(t, result)
+					return
+				}
+				require.NoError(t, err)
+				require.NotEmpty(t, result.Roots)
+			})
+		}
+	}
 }

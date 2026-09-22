@@ -173,3 +173,117 @@ func TestDirectoryDepthLimitAndRollback(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, nodes, maxNodeDepth+1)
 }
+
+func TestDirectoryTreeRejectsInvalidEntryPointInputs(t *testing.T) {
+	now := time.Now()
+	var nilDB *gorm.DB
+	tree := directoryTree{}
+
+	for name, call := range map[string]func() error{
+		"create space without database": func() error {
+			return tree.createSpace(t.Context(), nilDB, 1, 2, 3, "tenant", now)
+		},
+		"create space with unsupported scope": func() error {
+			return tree.createSpace(t.Context(), &gorm.DB{}, 1, 2, 3, "personal", now)
+		},
+		"create directory without parent": func() error {
+			_, err := tree.createDirectory(t.Context(), &gorm.DB{}, 1, 2, 0, "reports", now)
+			return err
+		},
+		"list children without page size": func() error {
+			_, err := tree.children(t.Context(), &gorm.DB{}, 1, 2, "", 0, 0)
+			return err
+		},
+		"resolve relative path": func() error {
+			_, err := tree.resolvePath(t.Context(), &gorm.DB{}, 1, "reports")
+			return err
+		},
+		"load path without node": func() error {
+			_, err := tree.pathNodes(t.Context(), &gorm.DB{}, 1, 0)
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.ErrorIs(t, call(), errHierarchy)
+		})
+	}
+}
+
+func TestDirectoryTreePropagatesEveryReachedStatementFailure(t *testing.T) {
+	type faultCase struct {
+		name  string
+		table string
+		skip  int64
+		call  func(*testing.T, *gorm.DB, directoryTree) error
+	}
+	createNode := func(t *testing.T, db *gorm.DB, tree directoryTree) error {
+		return db.Transaction(func(tx *gorm.DB) error {
+			_, err := tree.createNodeOn(t.Context(), tx, 1, 100, 11, "directory", "fault-target", time.Now())
+			return err
+		})
+	}
+	renameNode := func(t *testing.T, db *gorm.DB, tree directoryTree) error {
+		return db.Transaction(func(tx *gorm.DB) error {
+			_, err := tree.renameNodeOn(t.Context(), tx, 1, 30, 2, "renamed.txt", time.Now())
+			return err
+		})
+	}
+	cases := []faultCase{
+		{"create space writes space", "file_spaces", 0, func(t *testing.T, db *gorm.DB, tree directoryTree) error {
+			return tree.createSpace(t.Context(), db, 100, 101, 92, "tenant", time.Now())
+		}},
+		{"create space writes root", "file_nodes", 0, func(t *testing.T, db *gorm.DB, tree directoryTree) error {
+			return tree.createSpace(t.Context(), db, 100, 101, 92, "tenant", time.Now())
+		}},
+		{"create space writes closure", "file_node_closure", 0, func(t *testing.T, db *gorm.DB, tree directoryTree) error {
+			return tree.createSpace(t.Context(), db, 100, 101, 92, "tenant", time.Now())
+		}},
+		{"create system space writes root", "file_nodes", 0, func(t *testing.T, db *gorm.DB, tree directoryTree) error {
+			return db.Transaction(func(tx *gorm.DB) error {
+				return tree.createSystemSpaceOn(t.Context(), tx, 100, 101, time.Now())
+			})
+		}},
+		{"create node locks space", "file_spaces", 0, createNode},
+		{"create node reads parent", "file_nodes", 0, createNode},
+		{"create node checks name", "file_nodes", 1, createNode},
+		{"create node loads ancestors", "file_node_closure", 0, createNode},
+		{"create node writes node", "file_nodes", 2, createNode},
+		{"create node writes closure", "file_node_closure", 1, createNode},
+		{"rename locks space", "file_spaces", 0, renameNode},
+		{"rename loads node", "file_nodes", 0, renameNode},
+		{"rename checks name", "file_nodes", 1, renameNode},
+		{"rename writes node", "file_nodes", 2, renameNode},
+		{"children reads parent", "file_nodes", 0, func(t *testing.T, db *gorm.DB, tree directoryTree) error {
+			_, err := tree.children(t.Context(), db, 1, 10, "", 10, 0)
+			return err
+		}},
+		{"children reads page", "file_nodes", 1, func(t *testing.T, db *gorm.DB, tree directoryTree) error {
+			_, err := tree.children(t.Context(), db, 1, 10, "", 10, 0)
+			return err
+		}},
+		{"resolve path reads root", "file_nodes", 0, func(t *testing.T, db *gorm.DB, tree directoryTree) error {
+			_, err := tree.resolvePath(t.Context(), db, 1, "/Source/Shared/Nested/new.txt")
+			return err
+		}},
+		{"resolve path reads segment", "file_nodes", 1, func(t *testing.T, db *gorm.DB, tree directoryTree) error {
+			_, err := tree.resolvePath(t.Context(), db, 1, "/Source/Shared/Nested/new.txt")
+			return err
+		}},
+		{"load path", "file_nodes", 0, func(t *testing.T, db *gorm.DB, tree directoryTree) error {
+			_, err := tree.pathNodes(t.Context(), db, 1, 30)
+			return err
+		}},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			db, tree, _ := newOperationTree(t)
+			fault := failTableAfter(t, db, testCase.table, testCase.skip)
+			err := testCase.call(t, db, tree)
+			if !fault.Fired() {
+				t.Skip("target statement was not reached")
+			}
+			require.ErrorIs(t, err, errInjectedTableFault)
+		})
+	}
+}

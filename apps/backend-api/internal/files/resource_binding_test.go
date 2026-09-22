@@ -392,3 +392,222 @@ func TestSystemSpaceHasNoSyntheticTenantOrPrincipalOwner(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "system", space.ScopeKind)
 }
+
+func TestResourceBindingRejectsInvalidCallsAndFilesWithoutVersions(t *testing.T) {
+	h := newResourceBindingHarness(t)
+	require.NoError(t, h.bindings.RegisterPurpose(resourceBindingPurpose("account")))
+	file := h.file(t, 3, 30, 300, "avatar.png")
+	base := ResourceBindingInput{
+		ID: 100, SpaceID: 1, FileID: file.ID, ExpectedFileVersion: file.Version,
+		Purpose: "principal.avatar", ResourceKind: "principal", ResourceID: 70,
+		Slot: "current", ActorID: 70,
+	}
+
+	_, err := h.bindings.Bind(t.Context(), h.db, base, h.now)
+	require.ErrorIs(t, err, ErrAccountTransaction)
+	for name, mutate := range map[string]func(ResourceBindingInput) ResourceBindingInput{
+		"missing id":           func(in ResourceBindingInput) ResourceBindingInput { in.ID = 0; return in },
+		"missing space":        func(in ResourceBindingInput) ResourceBindingInput { in.SpaceID = 0; return in },
+		"missing file":         func(in ResourceBindingInput) ResourceBindingInput { in.FileID = 0; return in },
+		"missing file version": func(in ResourceBindingInput) ResourceBindingInput { in.ExpectedFileVersion = 0; return in },
+		"missing resource":     func(in ResourceBindingInput) ResourceBindingInput { in.ResourceID = 0; return in },
+		"missing actor":        func(in ResourceBindingInput) ResourceBindingInput { in.ActorID = 0; return in },
+		"invalid slot":         func(in ResourceBindingInput) ResourceBindingInput { in.Slot = "not a slot"; return in },
+	} {
+		require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
+			_, bindErr := h.bindings.Bind(t.Context(), tx, mutate(base), h.now)
+			require.ErrorIs(t, bindErr, errResourceBinding, name)
+			return nil
+		}))
+	}
+
+	for name, mutate := range map[string]func(ResourceBindingInput) ResourceBindingInput{
+		"unknown purpose": func(in ResourceBindingInput) ResourceBindingInput { in.Purpose = "principal.unknown"; return in },
+		"wrong kind":      func(in ResourceBindingInput) ResourceBindingInput { in.ResourceKind = "entity"; return in },
+		"head is pinned": func(in ResourceBindingInput) ResourceBindingInput {
+			versionID := guid.ID(30)
+			in.VersionID = &versionID
+			return in
+		},
+		"unexpected expiry": func(in ResourceBindingInput) ResourceBindingInput {
+			expires := h.now.Add(time.Hour)
+			in.ExpiresAt = &expires
+			return in
+		},
+	} {
+		require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
+			_, bindErr := h.bindings.Bind(t.Context(), tx, mutate(base), h.now)
+			require.ErrorIs(t, bindErr, errResourcePurpose, name)
+			return nil
+		}))
+	}
+
+	var nilBindings *ResourceBindings
+	_, ok := nilBindings.purpose("principal.avatar")
+	require.False(t, ok)
+	require.False(t, validPurpose(ResourcePurpose{
+		Name: "principal.avatar", ResourceKind: "principal", OwnerScopes: []string{"unknown"}, VersionMode: "head",
+		ValidateResource: resourceBindingPurpose("account").ValidateResource,
+	}))
+
+	var unversioned *model.Node
+	require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
+		var createErr error
+		unversioned, createErr = h.tree.createNodeOn(t.Context(), tx, 1, 4, 2, "file", "empty.png", h.now)
+		return createErr
+	}))
+	base.ID, base.FileID, base.ExpectedFileVersion, base.Slot = 101, unversioned.ID, unversioned.Version, "empty"
+	require.ErrorIs(t, h.db.Transaction(func(tx *gorm.DB) error {
+		_, bindErr := h.bindings.Bind(t.Context(), tx, base, h.now)
+		return bindErr
+	}), errResourceBinding)
+	require.Equal(t, "user", treeNode(t, h.db, h.tree.prefix, unversioned.ID).ManagementMode)
+}
+
+func TestResourceBindingDatabaseFailuresRollBackMutations(t *testing.T) {
+	for _, table := range []string{"nodes", "versions", "resource bindings"} {
+		t.Run(table, func(t *testing.T) {
+			h := newResourceBindingHarness(t)
+			require.NoError(t, h.bindings.RegisterPurpose(resourceBindingPurpose("account")))
+			file := h.file(t, 3, 30, 300, "avatar.png")
+			names := query.BindNames(h.tree.prefix)
+			tableName := map[string]string{
+				"nodes":             names.Nodes.String(),
+				"versions":          names.Versions.String(),
+				"resource bindings": names.ResourceBindings.String(),
+			}[table]
+			fault := failTableAfter(t, h.db, tableName, 0)
+			err := h.db.Transaction(func(tx *gorm.DB) error {
+				_, bindErr := h.bindings.Bind(t.Context(), tx, ResourceBindingInput{
+					ID: 100, SpaceID: 1, FileID: file.ID, ExpectedFileVersion: file.Version,
+					Purpose: "principal.avatar", ResourceKind: "principal", ResourceID: 70,
+					Slot: "current", ActorID: 70,
+				}, h.now)
+				return bindErr
+			})
+			require.True(t, fault.Fired())
+			require.ErrorIs(t, err, errInjectedTableFault)
+			if tableName != names.Nodes.String() {
+				require.Equal(t, "user", treeNode(t, h.db, h.tree.prefix, file.ID).ManagementMode)
+			}
+			if tableName != names.ResourceBindings.String() {
+				count, countErr := h.q.ResourceBinding.WithContext(t.Context()).Count()
+				require.NoError(t, countErr)
+				require.Zero(t, count)
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name  string
+		table func(query.TableNames) string
+		skip  int64
+	}{
+		{name: "node transition", table: func(names query.TableNames) string { return names.Nodes.String() }, skip: 2},
+		{name: "space revision", table: func(names query.TableNames) string { return names.Spaces.String() }, skip: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newResourceBindingHarness(t)
+			require.NoError(t, h.bindings.RegisterPurpose(resourceBindingPurpose("account")))
+			file := h.file(t, 3, 30, 300, "avatar.png")
+			fault := failTableAfter(t, h.db, tc.table(query.BindNames(h.tree.prefix)), tc.skip)
+			err := h.db.Transaction(func(tx *gorm.DB) error {
+				_, bindErr := h.bindings.Bind(t.Context(), tx, ResourceBindingInput{
+					ID: 100, SpaceID: 1, FileID: file.ID, ExpectedFileVersion: file.Version,
+					Purpose: "principal.avatar", ResourceKind: "principal", ResourceID: 70,
+					Slot: "current", ActorID: 70,
+				}, h.now)
+				return bindErr
+			})
+			require.True(t, fault.Fired())
+			require.ErrorIs(t, err, errInjectedTableFault)
+			count, countErr := h.q.ResourceBinding.WithContext(t.Context()).Count()
+			require.NoError(t, countErr)
+			require.Zero(t, count)
+			if tc.table(query.BindNames(h.tree.prefix)) != query.BindNames(h.tree.prefix).Nodes.String() {
+				require.Equal(t, "user", treeNode(t, h.db, h.tree.prefix, file.ID).ManagementMode)
+			}
+		})
+	}
+}
+
+func TestResourceBindingTransitionFailuresPreserveTheActiveBinding(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		table func(query.TableNames) string
+		skip  int64
+	}{
+		{name: "space lock", table: func(names query.TableNames) string { return names.Spaces.String() }},
+		{name: "binding update", table: func(names query.TableNames) string { return names.ResourceBindings.String() }},
+		{name: "space revision", table: func(names query.TableNames) string { return names.Spaces.String() }, skip: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newResourceBindingHarness(t)
+			require.NoError(t, h.bindings.RegisterPurpose(resourceBindingPurpose("account")))
+			file := h.file(t, 3, 30, 300, "avatar.png")
+			var bound *model.ResourceBinding
+			require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
+				var bindErr error
+				bound, bindErr = h.bindings.Bind(t.Context(), tx, ResourceBindingInput{
+					ID: 100, SpaceID: 1, FileID: file.ID, ExpectedFileVersion: file.Version,
+					Purpose: "principal.avatar", ResourceKind: "principal", ResourceID: 70,
+					Slot: "current", ActorID: 70,
+				}, h.now)
+				return bindErr
+			}))
+			names := query.BindNames(h.tree.prefix)
+			fault := failTableAfter(t, h.db, tc.table(names), tc.skip)
+			err := h.db.Transaction(func(tx *gorm.DB) error {
+				return h.bindings.Unbind(t.Context(), tx, 1, bound.ID, bound.Version, h.now.Add(time.Second))
+			})
+			require.True(t, fault.Fired())
+			require.ErrorIs(t, err, errInjectedTableFault)
+			if tc.table(names) != names.ResourceBindings.String() {
+				row, rowErr := h.q.ResourceBinding.WithContext(t.Context()).Where(h.q.ResourceBinding.ID.Eq(bound.ID)).Take()
+				require.NoError(t, rowErr)
+				require.Equal(t, "active", row.State)
+				require.Equal(t, bound.Version, row.Version)
+			}
+		})
+	}
+
+	h := newResourceBindingHarness(t)
+	var nilBindings *ResourceBindings
+	require.ErrorIs(t, nilBindings.Unbind(t.Context(), h.db, 1, 1, 1, h.now), errResourceBinding)
+	require.ErrorIs(t, h.bindings.transition(t.Context(), h.db, 1, 1, 1, "invalid", h.now), errResourceBinding)
+	require.ErrorIs(t, h.bindings.Unbind(t.Context(), h.db, 1, 1, 1, h.now), ErrAccountTransaction)
+}
+
+func TestResourceBindingPagingPropagatesQueryFailures(t *testing.T) {
+	t.Run("expiry", func(t *testing.T) {
+		h := newResourceBindingHarness(t)
+		fault := failTableAfter(t, h.db, query.BindNames(h.tree.prefix).ResourceBindings.String(), 0)
+		next, err := h.bindings.Expire(t.Context(), h.db, h.now, 37, 10)
+		require.True(t, fault.Fired())
+		require.ErrorIs(t, err, errInjectedTableFault)
+		require.Equal(t, guid.ID(37), next)
+	})
+
+	t.Run("orphans", func(t *testing.T) {
+		h := newResourceBindingHarness(t)
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		rows, err := h.bindings.OrphanedFiles(ctx, h.db, 37, 10)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Empty(t, rows)
+	})
+
+	h := newResourceBindingHarness(t)
+	for name, call := range map[string]func() error{
+		"invalid expiry": func() error {
+			_, err := h.bindings.Expire(t.Context(), h.db, h.now, -1, 10)
+			return err
+		},
+		"invalid orphan page": func() error {
+			_, err := h.bindings.OrphanedFiles(t.Context(), h.db, 0, 0)
+			return err
+		},
+	} {
+		require.ErrorIs(t, call(), errResourceBinding, name)
+	}
+}

@@ -510,3 +510,207 @@ func TestFileHTTPRoutesReportStorageFailuresAsServerErrors(t *testing.T) {
 			"%s must report the outage as a server error, got %d: %s", name, response.Code, response.Body.String())
 	}
 }
+
+func TestFileHTTPHelpersRejectMalformedRequests(t *testing.T) {
+	assertHTTPError := func(t *testing.T, err error, status int, detail string) {
+		t.Helper()
+		var response *huma.ErrorModel
+		require.ErrorAs(t, err, &response)
+		require.Equal(t, status, response.GetStatus())
+		require.Equal(t, detail, response.Detail)
+	}
+
+	conflict := &fileConflictHTTPError{status: http.StatusConflict, Message: "file conflict"}
+	require.Equal(t, "file conflict", conflict.Error())
+	require.Equal(t, http.StatusConflict, conflict.GetStatus())
+
+	page, err := browserPageOf(" 32 ", 7)
+	require.NoError(t, err)
+	require.Equal(t, browserPageRequest{After: 32, Limit: 7}, page)
+	page, err = browserPageOf("", 0)
+	require.NoError(t, err)
+	require.Equal(t, browserPageRequest{Limit: defaultBrowserPage}, page)
+	_, err = browserPageOf("bad", 10)
+	assertHTTPError(t, err, http.StatusUnprocessableEntity, "respx.invalid_id")
+	_, err = browserPageOf("", maxBrowserPage+1)
+	assertHTTPError(t, err, http.StatusUnprocessableEntity, "invalid_file_request")
+
+	h := newOperationServiceHarness(t)
+	for name, test := range map[string]struct {
+		form      *fileCreateForm
+		allowRoot bool
+		status    int
+		detail    string
+	}{
+		"missing form":         {nil, true, http.StatusUnprocessableEntity, "invalid_file_content"},
+		"root not allowed":     {&fileCreateForm{Kind: "directory", Scope: "account"}, false, http.StatusUnprocessableEntity, "invalid_file_root"},
+		"named root":           {&fileCreateForm{Kind: "directory", Scope: "account", Name: "named"}, true, http.StatusUnprocessableEntity, "invalid_file_root"},
+		"scoped child":         {&fileCreateForm{ParentID: "2", Kind: "directory", Scope: "account"}, false, http.StatusUnprocessableEntity, "invalid_file_scope"},
+		"invalid parent":       {&fileCreateForm{ParentID: "bad", Kind: "directory"}, false, http.StatusUnprocessableEntity, "respx.invalid_id"},
+		"directory content":    {&fileCreateForm{ParentID: "2", Kind: "directory", File: huma.FormFile{IsSet: true}}, false, http.StatusUnprocessableEntity, "directory_content_not_allowed"},
+		"missing file":         {&fileCreateForm{ParentID: "2", Kind: "file"}, false, http.StatusUnprocessableEntity, "invalid_file_content"},
+		"unsupported kind":     {&fileCreateForm{ParentID: "2", Kind: "link"}, false, http.StatusUnprocessableEntity, "invalid_file_kind"},
+		"invalid directory":    {&fileCreateForm{ParentID: "2", Kind: "directory", Name: "."}, false, http.StatusUnprocessableEntity, "invalid_file_request"},
+		"foreign account root": {&fileCreateForm{Kind: "directory", Scope: "account"}, true, http.StatusForbidden, "forbidden"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			body, err := createFile(h.ctx, h.service, test.form, test.allowRoot)
+			require.Nil(t, body)
+			assertHTTPError(t, err, test.status, test.detail)
+		})
+	}
+
+	_, err = fileOperationRequestOf(nil)
+	assertHTTPError(t, err, http.StatusUnprocessableEntity, "invalid_file_operation")
+	badDestination := &fileOperationInput{IdempotencyKey: "operation"}
+	badDestination.Body.DestinationID = "bad"
+	_, err = fileOperationRequestOf(badDestination)
+	assertHTTPError(t, err, http.StatusUnprocessableEntity, "respx.invalid_id")
+	badSource := &fileOperationInput{IdempotencyKey: "operation"}
+	badSource.Body.DestinationID = "10"
+	badSource.Body.Sources = []string{"bad"}
+	_, err = fileOperationRequestOf(badSource)
+	assertHTTPError(t, err, http.StatusUnprocessableEntity, "respx.invalid_id")
+
+	valid := &fileOperationInput{IdempotencyKey: "operation"}
+	valid.Body.Action = "copy"
+	valid.Body.DestinationID = "10"
+	valid.Body.Sources = []string{"12", "11"}
+	valid.Body.FilePolicy = "ask"
+	valid.Body.DirectoryPolicy = "ask"
+	valid.Body.TypePolicy = "ask"
+	valid.Body.ObservedRevision = 7
+	valid.Body.Decisions = []fileOperationDecisionInput{
+		{ConflictKey: strings.Repeat("b", 64), Policy: "rename"},
+		{ConflictKey: strings.Repeat("a", 64), Policy: "skip"},
+	}
+	request, err := fileOperationRequestOf(valid)
+	require.NoError(t, err)
+	require.Zero(t, request.SpaceID, "the public request cannot select a storage space")
+	require.Equal(t, guid.ID(10), request.DestinationID)
+	require.Equal(t, []guid.ID{11, 12}, request.Sources)
+	require.Equal(t, []immediateDecision{
+		{ConflictKey: strings.Repeat("a", 64), Policy: "skip"},
+		{ConflictKey: strings.Repeat("b", 64), Policy: "rename"},
+	}, request.Decisions)
+
+	valid.IdempotencyKey = ""
+	_, err = fileOperationRequestOf(valid)
+	assertHTTPError(t, err, http.StatusUnprocessableEntity, "invalid_file_request")
+}
+
+func TestFileHTTPGlobalRoutesResolveOwnersBeforeHandlers(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	api := newFileHTTPAPI(t, h.service)
+	headers := []any{"Authorization: Bearer test"}
+
+	missing := api.Get("/files/999999", headers...)
+	require.Equal(t, http.StatusNotFound, missing.Code, missing.Body.String())
+	invalid := api.Get("/files/not-an-id", headers...)
+	require.Equal(t, http.StatusUnprocessableEntity, invalid.Code, invalid.Body.String())
+
+	fault := failTableAfter(t, h.service.runtime.Database().Write(), "file_nodes", 0)
+	unavailable := api.Get("/files/32", headers...)
+	require.True(t, fault.Fired(), "the owner resolver must reach the injected storage failure")
+	require.Equal(t, http.StatusServiceUnavailable, unavailable.Code, unavailable.Body.String())
+}
+
+func TestFileHTTPGlobalRoutesValidateItemAndMutationBehavior(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	api := newFileHTTPAPI(t, h.service)
+	headers := []any{"Authorization: Bearer test"}
+
+	invalidPage := api.Get("/files/2/items?after=bad", headers...)
+	require.Equal(t, http.StatusUnprocessableEntity, invalidPage.Code, invalidPage.Body.String())
+	fileItems := api.Get("/files/32/items", headers...)
+	require.Equal(t, http.StatusNotFound, fileItems.Code, fileItems.Body.String())
+	throughFile := api.Get("/files/2/-/Source/Shared/root.txt/child", headers...)
+	require.Equal(t, http.StatusNotFound, throughFile.Code, throughFile.Body.String())
+	directoryContent := api.Get("/files/2/content", headers...)
+	require.Equal(t, http.StatusNotFound, directoryContent.Code, directoryContent.Body.String())
+
+	invalidUpdate := api.Patch("/files/32", append(headers, map[string]any{"revision": 1})...)
+	require.Equal(t, http.StatusUnprocessableEntity, invalidUpdate.Code, invalidUpdate.Body.String())
+	staleRename := api.Patch("/files/32", append(headers, map[string]any{"name": "stale.txt", "revision": 999})...)
+	require.Equal(t, http.StatusConflict, staleRename.Code, staleRename.Body.String())
+	staleDelete := api.Delete("/files/32?revision=999", headers...)
+	require.Equal(t, http.StatusConflict, staleDelete.Code, staleDelete.Body.String())
+}
+
+func TestFileHTTPRestoreAcceptsAReplacementName(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	node := treeNode(t, h.db, h.tree.prefix, 11)
+	_, err := h.service.trashNode(h.ctx, node.ID, node.Version)
+	require.NoError(t, err)
+	trashedRevision := treeNode(t, h.db, h.tree.prefix, node.ID).Version
+	api := newFileHTTPAPI(t, h.service)
+
+	restored := api.Patch("/files/11", "Authorization: Bearer test", map[string]any{
+		"state": "active", "name": "Recovered", "revision": trashedRevision,
+	})
+	require.Equal(t, http.StatusOK, restored.Code, restored.Body.String())
+	var envelope respx.Envelope[fileEntryView]
+	require.NoError(t, json.Unmarshal(restored.Body.Bytes(), &envelope))
+	require.Equal(t, "Recovered", envelope.Data.Name)
+	require.Equal(t, "active", treeNode(t, h.db, h.tree.prefix, 11).State)
+}
+
+func TestFileHTTPTenantAndDepartmentCollectionRoutes(t *testing.T) {
+	t.Run("tenant create", func(t *testing.T) {
+		h := newOperationServiceHarness(t)
+		api := newFileHTTPAPI(t, h.service)
+		response := postFileFormTo(t, api, "/tenants/90/files", []any{"Authorization: Bearer test"}, map[string]string{
+			"parent_id": "2", "kind": "directory", "name": "Tenant contracts",
+		}, "", "")
+		require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
+		var envelope respx.Envelope[fileEntryView]
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &envelope))
+		require.Equal(t, "Tenant contracts", envelope.Data.Name)
+	})
+
+	t.Run("department list and create", func(t *testing.T) {
+		h := newOperationServiceHarness(t)
+		q := query.Bind(h.db, h.tree.prefix)
+		_, err := q.Node.WithContext(t.Context()).Where(q.Node.ID.Eq(guid.ID(2))).UpdateSimple(
+			q.Node.RootScope.Value("department"), q.Node.RootOwnerID.Value(guid.ID(80)),
+		)
+		require.NoError(t, err)
+		api := newFileHTTPAPI(t, h.service)
+		headers := []any{"Authorization: Bearer test"}
+
+		listed := api.Get("/departments/80/files", headers...)
+		require.Equal(t, http.StatusOK, listed.Code, listed.Body.String())
+		var listedEnvelope respx.Envelope[filePage]
+		require.NoError(t, json.Unmarshal(listed.Body.Bytes(), &listedEnvelope))
+		require.Len(t, listedEnvelope.Data.Items, 1)
+		require.Equal(t, "department", listedEnvelope.Data.Items[0].Scope)
+		requireOptionalID(t, listedEnvelope.Data.Items[0].DepartmentID, 80)
+
+		created := postFileFormTo(t, api, "/departments/80/files", headers, map[string]string{
+			"parent_id": "2", "kind": "directory", "name": "Department contracts",
+		}, "", "")
+		require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
+		var createdEnvelope respx.Envelope[fileEntryView]
+		require.NoError(t, json.Unmarshal(created.Body.Bytes(), &createdEnvelope))
+		require.Equal(t, "Department contracts", createdEnvelope.Data.Name)
+	})
+}
+
+func postFileFormTo(t *testing.T, api humatest.TestAPI, path string, headers []any, fields map[string]string, filename, content string) *httptest.ResponseRecorder {
+	t.Helper()
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	for name, value := range fields {
+		require.NoError(t, form.WriteField(name, value))
+	}
+	if filename != "" {
+		part, err := form.CreateFormFile("file", filename)
+		require.NoError(t, err)
+		_, err = part.Write([]byte(content))
+		require.NoError(t, err)
+	}
+	require.NoError(t, form.Close())
+	args := append([]any{}, headers...)
+	args = append(args, "Content-Type: "+form.FormDataContentType(), bytes.NewReader(body.Bytes()))
+	return api.Post(path, args...)
+}

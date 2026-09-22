@@ -519,3 +519,142 @@ func TestOperationCaseSensitiveKeysAndOlderLeaseExpiry(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "failed", operationRecord(t, db, tree, older.ID).State)
 }
+
+func TestOperationCanonicalizationRejectsInvalidSourcesAndIsStable(t *testing.T) {
+	input := operationRequest{
+		SpaceID:         1,
+		Action:          "copy",
+		DestinationID:   6,
+		Sources:         []guid.ID{10, 3, 10},
+		FilePolicy:      "overwrite",
+		DirectoryPolicy: "merge",
+		TypePolicy:      "replace",
+	}
+	canonical, encoded, hash, err := operationCanonical(input, "stable", operationBudget{10, 100})
+	require.NoError(t, err)
+	require.Equal(t, []guid.ID{3, 10}, canonical.Sources)
+	require.NotEmpty(t, encoded)
+	require.Len(t, hash, 64)
+
+	input.Sources = []guid.ID{3, 10}
+	_, encodedAgain, hashAgain, err := operationCanonical(input, "stable", operationBudget{10, 100})
+	require.NoError(t, err)
+	require.Equal(t, encoded, encodedAgain)
+	require.Equal(t, hash, hashAgain)
+
+	input.Sources = []guid.ID{0, 10}
+	_, _, _, err = operationCanonical(input, "stable", operationBudget{10, 100})
+	require.ErrorIs(t, err, errOperationInput)
+}
+
+func TestOperationPreparationRejectsInvalidTransactionAndHierarchy(t *testing.T) {
+	db, tree, request := newOperationTree(t)
+	now := time.Now()
+
+	_, err := tree.prepareOperation(t.Context(), nil, 100, 90, "nil-db", request, operationBudget{100, 1000}, now.Add(time.Hour), now, operationNext(t), operationAllow)
+	require.ErrorIs(t, err, errOperationInput)
+
+	err = db.Transaction(func(tx *gorm.DB) error {
+		_, nestedErr := tree.prepareOperation(t.Context(), tx, 100, 90, "nested", request, operationBudget{100, 1000}, now.Add(time.Hour), now, operationNext(t), operationAllow)
+		return nestedErr
+	})
+	require.ErrorIs(t, err, ErrAccountTransaction)
+
+	request.DestinationID = 30
+	_, err = tree.prepareOperation(t.Context(), db, 101, 90, "file-destination", request, operationBudget{100, 1000}, now.Add(time.Hour), now, operationNext(t), operationAllow)
+	require.ErrorIs(t, err, errHierarchy)
+
+	request.DestinationID = 6
+	request.Sources = []guid.ID{2}
+	_, err = tree.prepareOperation(t.Context(), db, 102, 90, "destination-ancestor", request, operationBudget{100, 1000}, now.Add(time.Hour), now, operationNext(t), operationAllow)
+	require.ErrorIs(t, err, errHierarchy)
+}
+
+func TestOperationPreparationPropagatesStatementFailures(t *testing.T) {
+	tables := []struct {
+		name  string
+		skips int64
+	}{
+		{"spaces", 6},
+		{"operations", 9},
+		{"operation items", 9},
+		{"nodes", 14},
+		{"closure", 10},
+		{"versions", 6},
+		{"objects", 6},
+	}
+	for _, table := range tables {
+		for skip := int64(0); skip <= table.skips; skip++ {
+			t.Run(fmt.Sprintf("%s/after_%d", table.name, skip), func(t *testing.T) {
+				db, tree, request := newOperationTree(t)
+				names := query.BindNames(tree.prefix)
+				var name string
+				switch table.name {
+				case "spaces":
+					name = names.Spaces.String()
+				case "operations":
+					name = names.Operations.String()
+				case "operation items":
+					name = names.OperationItems.String()
+				case "nodes":
+					name = names.Nodes.String()
+				case "closure":
+					name = names.NodeClosure.String()
+				case "versions":
+					name = names.Versions.String()
+				case "objects":
+					name = names.Objects.String()
+				}
+				fault := failTableAfter(t, db, name, skip)
+				now := time.Now()
+				op, err := tree.prepareOperation(t.Context(), db, 100, 90, fmt.Sprintf("prepare-fault-%s-%d", table.name, skip), request, operationBudget{100, 1000}, now.Add(time.Hour), now, operationNext(t), operationAllow)
+				if fault.Fired() {
+					require.ErrorIs(t, err, errInjectedTableFault)
+					return
+				}
+				require.NoError(t, err)
+				require.Equal(t, "ready", op.State)
+			})
+		}
+	}
+}
+
+func TestOperationFinishAndExpirySurfaceStorageFailures(t *testing.T) {
+	t.Run("invalid finish", func(t *testing.T) {
+		db, tree, _ := newOperationTree(t)
+		require.ErrorIs(t, tree.finishOperation(t.Context(), nil, 1, 90, "failed", "test", time.Now()), errOperationInput)
+		require.ErrorIs(t, tree.finishOperation(t.Context(), db, 1, 90, "failed", "test", time.Now()), ErrAccountTransaction)
+		require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+			err := tree.finishOperation(t.Context(), tx, 999, 90, "failed", "test", time.Now())
+			require.ErrorIs(t, err, errOperationState)
+			return nil
+		}))
+	})
+
+	for _, table := range []string{"operations", "operation items"} {
+		t.Run("finish "+table, func(t *testing.T) {
+			db, tree, request := newOperationTree(t)
+			op := prepareFixtureOperation(t, db, tree, 100, "finish-fault", request, operationBudget{100, 1000})
+			names := query.BindNames(tree.prefix)
+			name := names.Operations.String()
+			if table == "operation items" {
+				name = names.OperationItems.String()
+			}
+			fault := failTableAfter(t, db, name, 0)
+			err := db.Transaction(func(tx *gorm.DB) error {
+				return tree.finishOperation(t.Context(), tx, op.ID, op.ActorID, "failed", "test", time.Now())
+			})
+			require.True(t, fault.Fired())
+			require.ErrorIs(t, err, errInjectedTableFault)
+		})
+	}
+
+	t.Run("expiry query", func(t *testing.T) {
+		db, tree, _ := newOperationTree(t)
+		fault := failTableAfter(t, db, query.BindNames(tree.prefix).Operations.String(), 0)
+		after, err := tree.expireOperations(t.Context(), db, time.Now(), 17, 10)
+		require.True(t, fault.Fired())
+		require.ErrorIs(t, err, errInjectedTableFault)
+		require.Equal(t, guid.ID(17), after)
+	})
+}

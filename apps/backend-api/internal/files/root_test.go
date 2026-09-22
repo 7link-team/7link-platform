@@ -3,6 +3,7 @@ package files
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -361,4 +362,207 @@ func spaceOfNode(t *testing.T, db *gorm.DB, prefix string, nodeID guid.ID) guid.
 	row, err := q.Node.WithContext(t.Context()).Where(q.Node.ID.Eq(nodeID)).Take()
 	require.NoError(t, err)
 	return row.SpaceID
+}
+
+func TestResolveFileOwnerHandlesPersonalAccountAndSystemRoots(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	trusted := staticOwner(authz.ResourceOwner{TenantID: 90, EntityID: 80})
+	m := fileOwnerModule(t, h, trusted, core.DepartmentOwnerResolver(trusted))
+
+	require.NoError(t, h.db.Exec("UPDATE "+h.tree.prefix+"file_nodes SET root_scope = 'personal', root_owner_id = 70 WHERE space_id = 1 AND id = 2").Error)
+	owner, found, err := m.resolveFileOwner(t.Context(), 30)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, authz.ResourceOwner{PrincipalID: 70}, owner)
+
+	require.NoError(t, h.tree.createSpace(t.Context(), h.db, 100, 101, 71, "account", time.Now()))
+	bindRootFixture(t, h.db, h.tree, 101, rootBinding{scope: "account", ownerID: 71})
+	owner, found, err = m.resolveFileOwner(t.Context(), 101)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, authz.ResourceOwner{PrincipalID: 71}, owner)
+
+	require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
+		return h.tree.createSystemSpaceOn(t.Context(), tx, 200, 201, time.Now())
+	}))
+	owner, found, err = m.resolveFileOwner(t.Context(), 201)
+	require.ErrorIs(t, err, errFileACL)
+	require.False(t, found)
+	require.Equal(t, authz.ResourceOwner{}, owner)
+}
+
+func TestResolveFileOwnerPropagatesDepartmentResolverOutcomes(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	trusted := staticOwner(authz.ResourceOwner{TenantID: 90, EntityID: 80})
+	m := fileOwnerModule(t, h, trusted, core.DepartmentOwnerResolver(trusted))
+	rootID := provisionRoot(t, h, m, core.FileRootProvisionInput{
+		Scope: "department", TenantID: 90, EntityID: 80, OwnerID: 81,
+	})
+
+	absent := core.DepartmentOwnerResolver(func(context.Context, guid.ID) (authz.ResourceOwner, bool, error) {
+		return authz.ResourceOwner{}, false, nil
+	})
+	owner, found, err := fileOwnerModule(t, h, trusted, absent).resolveFileOwner(t.Context(), rootID)
+	require.NoError(t, err)
+	require.False(t, found)
+	require.Equal(t, authz.ResourceOwner{}, owner)
+
+	faulty := core.DepartmentOwnerResolver(func(context.Context, guid.ID) (authz.ResourceOwner, bool, error) {
+		return authz.ResourceOwner{}, false, errOperationUnavailable
+	})
+	owner, found, err = fileOwnerModule(t, h, trusted, faulty).resolveFileOwner(t.Context(), rootID)
+	require.ErrorIs(t, err, errOperationUnavailable)
+	require.False(t, found)
+	require.Equal(t, authz.ResourceOwner{}, owner)
+}
+
+func TestResolveFileOwnerPropagatesEveryReachedStatementFailure(t *testing.T) {
+	for _, testCase := range []struct {
+		name, table string
+		skip        int64
+	}{
+		{name: "node lookup", table: "file_nodes"},
+		{name: "space lookup", table: "file_spaces"},
+		{name: "owner space lookup", table: "file_spaces", skip: 1},
+		{name: "owner path lookup", table: "file_nodes", skip: 1},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			h := newOperationServiceHarness(t)
+			trusted := staticOwner(authz.ResourceOwner{TenantID: 90, EntityID: 80})
+			m := fileOwnerModule(t, h, trusted, core.DepartmentOwnerResolver(trusted))
+			rootID := provisionRoot(t, h, m, core.FileRootProvisionInput{Scope: "entity", TenantID: 90, OwnerID: 80})
+			fault := failTableAfter(t, h.service.runtime.Database().Write(), testCase.table, testCase.skip)
+			owner, found, err := m.resolveFileOwner(t.Context(), rootID)
+			if !fault.Fired() {
+				t.Skip("target statement was not reached")
+			}
+			require.ErrorIs(t, err, errInjectedTableFault)
+			require.False(t, found)
+			require.Equal(t, authz.ResourceOwner{}, owner)
+		})
+	}
+}
+
+type rootIDSource struct {
+	id  int64
+	err error
+}
+
+func (source rootIDSource) Next() (int64, error) { return source.id, source.err }
+
+func TestNextFileIDRejectsGeneratorErrorsAndNonpositiveIDs(t *testing.T) {
+	generated, err := (&Module{ids: rootIDSource{id: 42}}).nextFileID()
+	require.NoError(t, err)
+	require.Equal(t, guid.ID(42), generated)
+
+	for name, source := range map[string]rootIDSource{
+		"zero":     {},
+		"negative": {id: -1},
+		"error":    {err: errOperationUnavailable},
+	} {
+		t.Run(name, func(t *testing.T) {
+			generated, err := (&Module{ids: source}).nextFileID()
+			require.ErrorIs(t, err, errOperationInput)
+			require.Zero(t, generated)
+			if source.err != nil {
+				require.ErrorIs(t, err, source.err)
+			}
+		})
+	}
+}
+
+func TestOrganizationRootProvisioningFailsClosedOnReferenceErrors(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	input := core.FileRootProvisionInput{Scope: "department", TenantID: 90, EntityID: 80, OwnerID: 81}
+	before := immediateDatabaseSnapshot(t, h.db, h.tree)
+
+	for name, references := range map[string]core.AuthorizationReferencesOn{
+		"invalid": func(context.Context, *gorm.DB, guid.ID, core.AuthorizationReferences) (bool, error) {
+			return false, nil
+		},
+		"unavailable": func(context.Context, *gorm.DB, guid.ID, core.AuthorizationReferences) (bool, error) {
+			return false, errOperationUnavailable
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := fileOwnerModule(t, h, nil, nil)
+			m.references = references
+			var rootID guid.ID
+			err := h.db.Transaction(func(tx *gorm.DB) error {
+				var err error
+				rootID, err = m.provisionOrganizationRoot(t.Context(), tx, input, time.Now())
+				return err
+			})
+			if name == "invalid" {
+				require.ErrorIs(t, err, errOperationForbidden)
+			} else {
+				require.ErrorIs(t, err, errOperationUnavailable)
+			}
+			require.Zero(t, rootID)
+			require.Equal(t, before, immediateDatabaseSnapshot(t, h.db, h.tree))
+		})
+	}
+}
+
+func TestOrganizationRootOperationsPropagateEveryReachedStatementFailure(t *testing.T) {
+	for _, tableRange := range []struct {
+		table string
+		max   int64
+	}{
+		{table: "file_spaces", max: 8},
+		{table: "file_nodes", max: 7},
+		{table: "file_node_closure", max: 2},
+	} {
+		for skip := int64(0); skip < tableRange.max; skip++ {
+			name := fmt.Sprintf("provision/%s/skip%d", tableRange.table, skip)
+			t.Run(name, func(t *testing.T) {
+				h := newOperationServiceHarness(t)
+				m := fileOwnerModule(t, h, nil, nil)
+				fault := failTableAfter(t, h.db, tableRange.table, skip)
+				var rootID guid.ID
+				err := h.db.Transaction(func(tx *gorm.DB) error {
+					var err error
+					rootID, err = m.provisionOrganizationRoot(t.Context(), tx, core.FileRootProvisionInput{
+						Scope: "entity", TenantID: 90, OwnerID: 82,
+					}, time.Now())
+					return err
+				})
+				if !fault.Fired() {
+					t.Skip("target statement was not reached")
+				}
+				require.ErrorIs(t, err, errInjectedTableFault)
+				require.Zero(t, rootID)
+			})
+		}
+	}
+
+	for _, testCase := range []struct {
+		name, table string
+		skip        int64
+	}{
+		{name: "content space lookup", table: "file_spaces"},
+		{name: "content space lock", table: "file_spaces", skip: 1},
+		{name: "content locked space read", table: "file_spaces", skip: 2},
+		{name: "content root lookup", table: "file_nodes"},
+		{name: "content closure lookup", table: "file_node_closure"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			h := newOperationServiceHarness(t)
+			m := fileOwnerModule(t, h, nil, nil)
+			input := core.FileRootProvisionInput{Scope: "entity", TenantID: 90, OwnerID: 80}
+			provisionRoot(t, h, m, input)
+			fault := failTableAfter(t, h.db, testCase.table, testCase.skip)
+			var hasContent bool
+			err := h.db.Transaction(func(tx *gorm.DB) error {
+				var err error
+				hasContent, err = m.organizationRootHasContent(t.Context(), tx, input)
+				return err
+			})
+			if !fault.Fired() {
+				t.Skip("target statement was not reached")
+			}
+			require.ErrorIs(t, err, errInjectedTableFault)
+			require.False(t, hasContent)
+		})
+	}
 }

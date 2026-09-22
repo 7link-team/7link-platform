@@ -253,3 +253,128 @@ func TestNodeAuthorizerRejectsMalformedSubjectsAndChangedPolicy(t *testing.T) {
 	err = h.db.Transaction(func(tx *gorm.DB) error { return authorizer.access(t.Context(), tx, 1, 70, 30, "read") })
 	require.ErrorIs(t, err, core.ErrAuthorizationChanged)
 }
+
+func TestNodeAuthorizerConstructorsValidateAndRecordEverySubjectKind(t *testing.T) {
+	policy := nodeAuthorizationPolicy(nil)
+	references := nodeAuthorizationReferences(true, nil)
+
+	for name, call := range map[string]func() (*nodeAuthorizer, error){
+		"tenant without policy": func() (*nodeAuthorizer, error) {
+			return newTenantNodeAuthorizer(directoryTree{}, nil, references, 90, 70, 1)
+		},
+		"tenant without references": func() (*nodeAuthorizer, error) {
+			return newTenantNodeAuthorizer(directoryTree{}, func(context.Context, *gorm.DB, guid.ID, string, guid.ID) (authz.DataConstraint, error) {
+				return authz.DataConstraint{}, nil
+			}, nil, 90, 70, 1)
+		},
+		"tenant without revision": func() (*nodeAuthorizer, error) {
+			return newTenantNodeAuthorizer(directoryTree{}, func(context.Context, *gorm.DB, guid.ID, string, guid.ID) (authz.DataConstraint, error) {
+				return authz.DataConstraint{}, nil
+			}, references, 90, 70, 0)
+		},
+		"account without actor": func() (*nodeAuthorizer, error) {
+			return newAccountNodeAuthorizer(directoryTree{}, 0)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			authorizer, err := call()
+			require.ErrorIs(t, err, errOperationForbidden)
+			require.Nil(t, authorizer)
+		})
+	}
+
+	authorizer, err := newNodeAuthorizer(directoryTree{}, policy, references, 90, 80, 70, core.AuthorizationSubjects{
+		PrincipalID:  70,
+		DepartmentID: 71,
+		GroupIDs:     []guid.ID{72, 73},
+		RoleIDs:      []guid.ID{74, 75},
+		Revision:     1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, map[aclSubject]struct{}{
+		{kind: "principal", id: 70}:  {},
+		{kind: "department", id: 71}: {},
+		{kind: "group", id: 72}:      {},
+		{kind: "group", id: 73}:      {},
+		{kind: "role", id: 74}:       {},
+		{kind: "role", id: 75}:       {},
+	}, authorizer.acl)
+}
+
+func TestNodeAuthorizerEntryPointsRejectInvalidRequests(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	authorizer, err := newAccountNodeAuthorizer(h.tree, 70)
+	require.NoError(t, err)
+	var nilAuthorizer *nodeAuthorizer
+
+	for name, call := range map[string]func() (map[guid.ID]bool, error){
+		"nil authorizer": func() (map[guid.ID]bool, error) {
+			return nilAuthorizer.accessMany(t.Context(), h.db, 1, 70, []guid.ID{30}, "read")
+		},
+		"nil database": func() (map[guid.ID]bool, error) {
+			return authorizer.accessMany(t.Context(), nil, 1, 70, []guid.ID{30}, "read")
+		},
+		"wrong actor": func() (map[guid.ID]bool, error) {
+			return authorizer.accessMany(t.Context(), h.db, 1, 71, []guid.ID{30}, "read")
+		},
+		"empty nodes": func() (map[guid.ID]bool, error) {
+			return authorizer.accessMany(t.Context(), h.db, 1, 70, nil, "read")
+		},
+		"invalid node": func() (map[guid.ID]bool, error) {
+			return authorizer.accessMany(t.Context(), h.db, 1, 70, []guid.ID{0}, "read")
+		},
+		"invalid action": func() (map[guid.ID]bool, error) {
+			return authorizer.accessMany(t.Context(), h.db, 1, 70, []guid.ID{30}, "own")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			allowed, err := call()
+			require.ErrorIs(t, err, errOperationForbidden)
+			require.Nil(t, allowed)
+		})
+	}
+}
+
+func TestNodeAuthorizerFailsClosedWhenPolicyOrReferencesFail(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	subjects := core.AuthorizationSubjects{PrincipalID: 70, Revision: 1}
+
+	policyFailure, err := newNodeAuthorizer(h.tree,
+		func(context.Context, *gorm.DB, guid.ID, guid.ID, string, guid.ID) (authz.DataConstraint, error) {
+			return authz.DataConstraint{}, errOperationUnavailable
+		}, nodeAuthorizationReferences(true, nil), 90, 80, 70, subjects)
+	require.NoError(t, err)
+	err = h.db.Transaction(func(tx *gorm.DB) error {
+		return policyFailure.access(t.Context(), tx, 1, 70, 30, "read")
+	})
+	require.ErrorIs(t, err, errOperationUnavailable)
+
+	require.NoError(t, h.db.Exec("UPDATE "+h.tree.prefix+"file_nodes SET root_scope = 'entity', root_owner_id = 80 WHERE space_id = 1 AND id = 2").Error)
+	referenceFailure, err := newNodeAuthorizer(h.tree,
+		nodeAuthorizationPolicy(map[string]authz.DataConstraint{"file_read": {ResourceIDs: []string{"80"}}}),
+		func(context.Context, *gorm.DB, guid.ID, core.AuthorizationReferences) (bool, error) {
+			return false, errOperationUnavailable
+		}, 90, 80, 70, subjects)
+	require.NoError(t, err)
+	err = h.db.Transaction(func(tx *gorm.DB) error {
+		return referenceFailure.access(t.Context(), tx, 1, 70, 30, "read")
+	})
+	require.ErrorIs(t, err, errOperationUnavailable)
+}
+
+func TestConstraintAllowsOnlyItsDeclaredRootScope(t *testing.T) {
+	constraint := authz.DataConstraint{
+		ResourceIDs:   []string{"80"},
+		DepartmentIDs: []string{"50"},
+		OwnerIDs:      []string{"70"},
+	}
+	require.True(t, constraintAllowsRoot(constraint, rootBinding{scope: "entity", ownerID: 80}, 81))
+	require.True(t, constraintAllowsRoot(constraint, rootBinding{scope: "department", ownerID: 50}, 81))
+	require.True(t, constraintAllowsRoot(constraint, rootBinding{scope: "personal", ownerID: 70}, 81))
+	require.False(t, constraintAllowsRoot(constraint, rootBinding{scope: "tenant", ownerID: 90}, 81))
+	require.False(t, constraintAllowsRoot(constraint, rootBinding{scope: "account", ownerID: 70}, 81))
+
+	denied := authz.DataConstraint{AllowAll: true, DeniedIDs: []string{"80"}}
+	require.False(t, constraintAllowsRoot(denied, rootBinding{scope: "entity", ownerID: 80}, 80))
+	require.True(t, constraintAllowsRoot(denied, rootBinding{scope: "personal", ownerID: 70}, 80))
+}

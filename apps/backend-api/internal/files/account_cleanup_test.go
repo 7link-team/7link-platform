@@ -12,6 +12,7 @@ import (
 
 	"7link.com/platform/internal/files/model"
 	"7link.com/platform/internal/files/query"
+	"7link.com/platform/internal/infra/guid"
 	goosex "7link.com/platform/pkg/extension/goose"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
@@ -235,4 +236,186 @@ func TestStageFailureValidationAndCleanupCursor(t *testing.T) {
 	readable, err := accounts.AccountKeyReadable(t.Context(), db, 3, "avatars/3/missing.png", now)
 	require.NoError(t, err)
 	require.False(t, readable)
+}
+
+func TestAccountObjectAdoptionValidatesAndRollsBackDatabaseFailures(t *testing.T) {
+	db, accounts, driver := newAccountCleanupHarness(t)
+	now := time.Now()
+	deadline := now.Add(time.Hour)
+	_, err := driver.Put(t.Context(), "avatars/3/adopt.png", bytes.NewBufferString("abc"), 3)
+	require.NoError(t, err)
+
+	var nilAccounts *AccountObjects
+	_, err = nilAccounts.Adopt(t.Context(), db, 1, 3, "avatars/3/adopt.png", deadline)
+	require.ErrorIs(t, err, ErrInvalidKey)
+	_, err = accounts.Adopt(t.Context(), db, 0, 3, "avatars/3/adopt.png", deadline)
+	require.ErrorIs(t, err, ErrInvalidKey)
+	require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+		_, adoptErr := accounts.Adopt(t.Context(), tx, 1, 3, "avatars/3/adopt.png", deadline)
+		require.ErrorIs(t, adoptErr, ErrAccountTransaction)
+		return nil
+	}))
+	_, err = accounts.Adopt(t.Context(), db, 1, 3, "avatars/3/missing.png", deadline)
+	require.ErrorIs(t, err, ErrNotFound)
+
+	for _, table := range []string{"preparations", "objects"} {
+		t.Run(table, func(t *testing.T) {
+			db, accounts, driver := newAccountCleanupHarness(t)
+			_, putErr := driver.Put(t.Context(), "avatars/3/adopt.png", bytes.NewBufferString("abc"), 3)
+			require.NoError(t, putErr)
+			names := query.BindNames(accounts.prefix)
+			tableName := names.AccountPreparations.String()
+			if table == "objects" {
+				tableName = names.Objects.String()
+			}
+			fault := failTableAfter(t, db, tableName, 0)
+			prepared, adoptErr := accounts.Adopt(t.Context(), db, 1, 3, "avatars/3/adopt.png", time.Now().Add(time.Hour))
+			require.True(t, fault.Fired())
+			require.ErrorIs(t, adoptErr, errInjectedTableFault)
+			require.Nil(t, prepared)
+			if table == "preparations" {
+				count, countErr := query.Bind(db, accounts.prefix).Object.WithContext(t.Context()).Count()
+				require.NoError(t, countErr)
+				require.Zero(t, count)
+			} else {
+				count, countErr := query.Bind(db, accounts.prefix).AccountPreparation.WithContext(t.Context()).Count()
+				require.NoError(t, countErr)
+				require.Zero(t, count)
+			}
+			reader, openErr := driver.Open(t.Context(), "avatars/3/adopt.png")
+			require.NoError(t, openErr)
+			body, readErr := io.ReadAll(reader)
+			require.NoError(t, readErr)
+			require.NoError(t, reader.Close())
+			require.Equal(t, "abc", string(body))
+		})
+	}
+}
+
+func TestAttachFileObjectDatabaseFailuresLeavePreparationReady(t *testing.T) {
+	for _, table := range []string{"preparations", "objects"} {
+		t.Run(table, func(t *testing.T) {
+			db, accounts, _ := newAccountCleanupHarness(t)
+			prepared, err := accounts.Stage(t.Context(), db, 1, 3, "avatars/3/staged.png", bytes.NewBufferString("abc"), 3, time.Now().Add(time.Hour))
+			require.NoError(t, err)
+			names := query.BindNames(accounts.prefix)
+			tableName := names.AccountPreparations.String()
+			if table == "objects" {
+				tableName = names.Objects.String()
+			}
+			fault := failTableAfter(t, db, tableName, 0)
+			err = db.Transaction(func(tx *gorm.DB) error {
+				_, attachErr := accounts.attachFileObject(t.Context(), tx, prepared, 3)
+				return attachErr
+			})
+			require.True(t, fault.Fired())
+			require.ErrorIs(t, err, errInjectedTableFault)
+			q := query.Bind(db, accounts.prefix)
+			if table == "preparations" {
+				object, objectErr := q.Object.WithContext(t.Context()).Where(q.Object.ID.Eq(guid.ID(1))).Take()
+				require.NoError(t, objectErr)
+				require.Equal(t, "staged", object.State)
+			} else {
+				intent, intentErr := q.AccountPreparation.WithContext(t.Context()).Where(q.AccountPreparation.ID.Eq(guid.ID(1))).Take()
+				require.NoError(t, intentErr)
+				require.Equal(t, "ready", intent.State)
+			}
+		})
+	}
+
+	db, accounts, _ := newAccountCleanupHarness(t)
+	var nilAccounts *AccountObjects
+	_, err := nilAccounts.attachFileObject(t.Context(), db, &PreparedAccountObject{}, 3)
+	require.ErrorIs(t, err, ErrInvalidKey)
+	_, err = accounts.attachFileObject(t.Context(), db, &PreparedAccountObject{owner: accounts}, 3)
+	require.ErrorIs(t, err, ErrInvalidKey)
+}
+
+func TestUseAvatarCandidateDatabaseFailuresRollBackEveryStep(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		table func(query.TableNames) string
+		skip  int64
+	}{
+		{name: "object lookup", table: func(names query.TableNames) string { return names.Objects.String() }},
+		{name: "object fence", table: func(names query.TableNames) string { return names.Objects.String() }, skip: 1},
+		{name: "candidate lookup", table: func(names query.TableNames) string { return names.AccountReferences.String() }},
+		{name: "candidate retirement", table: func(names query.TableNames) string { return names.AccountReferences.String() }, skip: 1},
+		{name: "current retirement", table: func(names query.TableNames) string { return names.AccountReferences.String() }, skip: 2},
+		{name: "current creation", table: func(names query.TableNames) string { return names.AccountReferences.String() }, skip: 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, accounts, _ := newAccountCleanupHarness(t)
+			now := time.Now()
+			prepared, err := accounts.Stage(t.Context(), db, 1, 3, "avatars/3/candidate.png", bytes.NewBufferString("abc"), 3, now.Add(time.Hour))
+			require.NoError(t, err)
+			expires := now.Add(30 * time.Minute)
+			require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+				return accounts.Register(t.Context(), tx, prepared, 2, 3, "avatar_candidate", &expires)
+			}))
+			fault := failTableAfter(t, db, tc.table(query.BindNames(accounts.prefix)), tc.skip)
+			err = db.Transaction(func(tx *gorm.DB) error {
+				return accounts.UseAvatarCandidate(t.Context(), tx, 3, 5, "avatars/3/candidate.png", now)
+			})
+			require.True(t, fault.Fired())
+			require.ErrorIs(t, err, errInjectedTableFault)
+			if tc.table(query.BindNames(accounts.prefix)) == query.BindNames(accounts.prefix).Objects.String() {
+				candidate, candidateErr := query.Bind(db, accounts.prefix).AccountReference.WithContext(t.Context()).Where(query.Bind(db, accounts.prefix).AccountReference.ID.Eq(guid.ID(2))).Take()
+				require.NoError(t, candidateErr)
+				require.Equal(t, "active", candidate.State)
+			} else {
+				object, objectErr := query.Bind(db, accounts.prefix).Object.WithContext(t.Context()).Where(query.Bind(db, accounts.prefix).Object.ID.Eq(guid.ID(1))).Take()
+				require.NoError(t, objectErr)
+				require.EqualValues(t, 1, object.Version)
+			}
+		})
+	}
+}
+
+func TestAccountObjectReadAndReleasePropagateDatabaseFailures(t *testing.T) {
+	for _, table := range []string{"objects", "references"} {
+		t.Run("read "+table, func(t *testing.T) {
+			db, accounts, _ := newAccountCleanupHarness(t)
+			now := time.Now()
+			prepared, err := accounts.Stage(t.Context(), db, 1, 3, "avatars/3/avatar.png", bytes.NewBufferString("abc"), 3, now.Add(time.Hour))
+			require.NoError(t, err)
+			require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+				return accounts.Register(t.Context(), tx, prepared, 2, 3, "avatar", nil)
+			}))
+			names := query.BindNames(accounts.prefix)
+			tableName := names.Objects.String()
+			if table == "references" {
+				tableName = names.AccountReferences.String()
+			}
+			fault := failTableAfter(t, db, tableName, 0)
+			readable, err := accounts.AccountKeyReadable(t.Context(), db, 3, "avatars/3/avatar.png", now)
+			require.True(t, fault.Fired())
+			require.ErrorIs(t, err, errInjectedTableFault)
+			require.False(t, readable)
+		})
+	}
+
+	t.Run("release preparations", func(t *testing.T) {
+		db, accounts, _ := newAccountCleanupHarness(t)
+		now := time.Now()
+		prepared, err := accounts.Stage(t.Context(), db, 1, 3, "avatars/3/avatar.png", bytes.NewBufferString("abc"), 3, now.Add(time.Hour))
+		require.NoError(t, err)
+		require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+			return accounts.Register(t.Context(), tx, prepared, 2, 3, "avatar", nil)
+		}))
+		fault := failTableAfter(t, db, query.BindNames(accounts.prefix).AccountPreparations.String(), 0)
+		err = db.Transaction(func(tx *gorm.DB) error {
+			return accounts.ReleaseAccountResources(t.Context(), tx, 3, now)
+		})
+		require.True(t, fault.Fired())
+		require.ErrorIs(t, err, errInjectedTableFault)
+		ref, refErr := query.Bind(db, accounts.prefix).AccountReference.WithContext(t.Context()).Where(query.Bind(db, accounts.prefix).AccountReference.ID.Eq(guid.ID(2))).Take()
+		require.NoError(t, refErr)
+		require.Equal(t, "active", ref.State)
+	})
+
+	db, accounts, _ := newAccountCleanupHarness(t)
+	require.ErrorIs(t, accounts.ReleaseAccountResources(t.Context(), nil, 3, time.Now()), ErrInvalidKey)
+	_, err := accounts.AccountKeyReadable(t.Context(), db, 0, "avatars/3/avatar.png", time.Now())
+	require.ErrorIs(t, err, ErrInvalidKey)
 }

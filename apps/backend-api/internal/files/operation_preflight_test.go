@@ -438,3 +438,89 @@ func TestOperationSimulationUnknownProspectiveIdentityNeverQueriesDatabase(t *te
 	_, err = e.operationTarget(-1, "unused")
 	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
 }
+
+func TestOperationSimulationRememberClonesAndBoundsNodes(t *testing.T) {
+	simulation := &operationSimulation{
+		nodes:    make(map[guid.ID]*model.Node),
+		slots:    make(map[operationSlot]guid.ID),
+		children: make(map[guid.ID]map[guid.ID]bool),
+		loaded:   make(map[operationSlot]bool),
+	}
+	execution := operationExecution{operation: &model.Operation{NodeBudget: 1}}
+	parent := guid.ID(7)
+	row := &model.Node{ID: -1, ParentID: &parent, Name: "original", NameKey: "original", State: "active"}
+	require.NoError(t, simulation.remember(&execution, row))
+	row.Name = "changed"
+	require.Equal(t, "original", simulation.nodes[-1].Name)
+	require.True(t, simulation.children[parent][-1])
+	require.Equal(t, guid.ID(-1), simulation.slots[operationSlot{parent, "original"}])
+
+	require.NoError(t, simulation.remember(&execution, &model.Node{ID: -1, Name: "replacement"}))
+	require.Equal(t, "original", simulation.nodes[-1].Name, "remembering an existing identity must preserve the first snapshot")
+
+	limit := 2*execution.operation.NodeBudget + maxNodeDepth + 1
+	for id := 1; len(simulation.nodes) < limit; id++ {
+		simulation.nodes[guid.ID(id)] = &model.Node{ID: guid.ID(id)}
+	}
+	require.ErrorIs(t, simulation.remember(&execution, &model.Node{ID: 999}), errHierarchy)
+}
+
+func TestOperationSimulationPathAndCacheFailures(t *testing.T) {
+	simulation := &operationSimulation{
+		nodes:    make(map[guid.ID]*model.Node),
+		slots:    make(map[operationSlot]guid.ID),
+		children: make(map[guid.ID]map[guid.ID]bool),
+		loaded:   make(map[operationSlot]bool),
+	}
+	execution := operationExecution{simulation: simulation, operation: &model.Operation{NodeBudget: 100}}
+
+	simulation.slots[operationSlot{-1, "missing"}] = 0
+	_, err := execution.operationTarget(-1, "missing")
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+
+	simulation.nodes[-1] = &model.Node{ID: -1, State: "trashed"}
+	_, err = execution.operationPath(-1)
+	require.ErrorIs(t, err, ErrNotFound)
+
+	self := guid.ID(-2)
+	simulation.nodes[self] = &model.Node{ID: self, ParentID: &self, State: "active"}
+	_, err = execution.operationPath(self)
+	require.ErrorIs(t, err, errHierarchy)
+
+	require.NoError(t, simulation.loadChildren(&execution, -3, true))
+	require.Empty(t, simulation.loaded)
+}
+
+func TestOperationSimulationCancellationOrderingAndMutationGuards(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	simulation := &operationSimulation{
+		nodes:    make(map[guid.ID]*model.Node),
+		slots:    make(map[operationSlot]guid.ID),
+		children: make(map[guid.ID]map[guid.ID]bool),
+		loaded:   make(map[operationSlot]bool),
+	}
+	execution := operationExecution{ctx: ctx, simulation: simulation, operation: &model.Operation{NodeBudget: 10}}
+	_, err := simulation.subtree(&execution, -1, false)
+	require.ErrorIs(t, err, context.Canceled)
+
+	require.True(t, prospectiveAfter(-2, 0))
+	require.True(t, prospectiveAfter(-3, -2))
+	require.False(t, prospectiveAfter(-2, -3))
+	require.True(t, prospectiveAfter(3, 0))
+	require.False(t, prospectiveAfter(3, -1))
+
+	ctx = t.Context()
+	execution.ctx = ctx
+	parent := guid.ID(-1)
+	source := &model.Node{ID: -1, ParentID: &parent, Kind: "directory", Name: "source", NameKey: "source", State: "active"}
+	simulation.nodes[source.ID] = source
+	err = simulation.move(&execution, source, source.ID, "source")
+	require.ErrorIs(t, err, errHierarchy)
+	require.Equal(t, &parent, source.ParentID)
+
+	trashed := &model.Node{ID: -2, Kind: "file", State: "trashed"}
+	simulation.nodes[trashed.ID] = trashed
+	err = simulation.recycle(&execution, trashed.ID, false)
+	require.ErrorIs(t, err, errHierarchy)
+}

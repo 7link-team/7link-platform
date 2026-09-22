@@ -3,6 +3,7 @@ package files
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"sync/atomic"
@@ -524,6 +525,51 @@ func TestAccountResourceSurfacesIdentifierExhaustion(t *testing.T) {
 	assert.False(t, present)
 }
 
+func TestAccountResourceCreateRollsBackEachLateIdentifierFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		remaining int64
+	}{
+		{name: "file id", remaining: 1},
+		{name: "version id", remaining: 2},
+		{name: "binding id", remaining: 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newAccountResourceHarness(t)
+			h.bind(t, 70, PrincipalAvatarPurpose, "existing", "existing.png", "old", nil, false)
+			ids := &failingIDs{}
+			ids.remaining.Store(tc.remaining)
+			ids.next.Store(1000)
+			h.resource.ids = ids
+			prepared, err := h.resource.StageOn(t.Context(), h.db, 70, "resources/new.png", bytes.NewBufferString("new"), 3, h.now.Add(time.Hour))
+			require.NoError(t, err)
+			err = h.db.Transaction(func(tx *gorm.DB) error {
+				_, createErr := h.resource.Create(t.Context(), tx, AccountResourceInput{
+					Prepared: prepared, PrincipalID: 70, Purpose: PrincipalAvatarPurpose,
+					Slot: "new", Name: "new.png", ActorID: 70,
+				}, h.now)
+				return createErr
+			})
+			require.ErrorIs(t, err, ErrUnsupported)
+			present, hasErr := h.resource.Has(t.Context(), h.db, 70, PrincipalAvatarPurpose, "new", h.now)
+			require.NoError(t, hasErr)
+			require.False(t, present)
+			intent, intentErr := h.q.AccountPreparation.WithContext(t.Context()).Where(h.q.AccountPreparation.ID.Eq(prepared.object.ID)).Take()
+			require.NoError(t, intentErr)
+			require.Equal(t, "ready", intent.State)
+		})
+	}
+
+	ids := &failingIDs{}
+	h := newAccountResourceHarnessWithIDs(t, ids)
+	prepared, err := h.resource.StageOn(t.Context(), h.db, 70, "resources/stage.png", bytes.NewBufferString("abc"), 3, h.now.Add(time.Hour))
+	require.ErrorIs(t, err, ErrUnsupported)
+	require.Nil(t, prepared)
+	prepared, err = h.resource.AdoptOn(t.Context(), h.db, 70, "resources/adopt.png", h.now.Add(time.Hour))
+	require.ErrorIs(t, err, ErrUnsupported)
+	require.Nil(t, prepared)
+}
+
 func TestPurgeOrphanedRejectsUnusablePaging(t *testing.T) {
 	h := newAccountResourceHarness(t)
 	for name, args := range map[string][2]int{
@@ -602,4 +648,204 @@ func TestPurgeOrphanedIsIdempotentAndReportsItsCursor(t *testing.T) {
 	cursor, err = h.resource.PurgeOrphaned(t.Context(), h.db, h.now, 0, 100)
 	require.NoError(t, err)
 	assert.Zero(t, cursor)
+}
+
+func TestAccountResourceEntryPointsRejectInvalidReceiversAndInputs(t *testing.T) {
+	h := newAccountResourceHarness(t)
+	var nilResource *AccountResourceFiles
+
+	prepared, err := nilResource.StageOn(t.Context(), h.db, 70, "resources/a.png", bytes.NewBufferString("abc"), 3, h.now.Add(time.Hour))
+	assert.ErrorIs(t, err, ErrUnsupported)
+	assert.Nil(t, prepared)
+	prepared, err = nilResource.AdoptOn(t.Context(), h.db, 70, "resources/a.png", h.now.Add(time.Hour))
+	assert.ErrorIs(t, err, ErrUnsupported)
+	assert.Nil(t, prepared)
+	read, err := nilResource.Open(t.Context(), h.db, 70, PrincipalAvatarPurpose, "current", h.now)
+	assert.ErrorIs(t, err, ErrInvalidKey)
+	assert.Nil(t, read)
+	present, err := nilResource.Has(t.Context(), h.db, 70, PrincipalAvatarPurpose, "current", h.now)
+	assert.ErrorIs(t, err, ErrInvalidKey)
+	assert.False(t, present)
+	assert.ErrorIs(t, nilResource.Release(t.Context(), h.db, 70, h.now), ErrInvalidKey)
+
+	_, err = NewAccountResourceFiles(h.accounts, h.resource.bindings, h.driver, "invalid-prefix;")
+	assert.Error(t, err)
+	_, err = h.resource.Open(t.Context(), h.db, 0, PrincipalAvatarPurpose, "current", h.now)
+	assert.ErrorIs(t, err, ErrInvalidKey)
+	_, err = h.resource.Has(t.Context(), nil, 70, PrincipalAvatarPurpose, "current", h.now)
+	assert.ErrorIs(t, err, ErrInvalidKey)
+	assert.ErrorIs(t, h.resource.Release(t.Context(), nil, 70, h.now), ErrInvalidKey)
+}
+
+func TestAccountResourceOpenPropagatesLookupAndStorageFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		table   func(query.TableNames) string
+		wantErr error
+	}{
+		{name: "binding lookup", table: func(names query.TableNames) string { return names.ResourceBindings.String() }, wantErr: errInjectedTableFault},
+		{name: "space lookup", table: func(names query.TableNames) string { return names.Spaces.String() }, wantErr: ErrNotFound},
+		{name: "node lookup", table: func(names query.TableNames) string { return names.Nodes.String() }, wantErr: ErrNotFound},
+		{name: "version lookup", table: func(names query.TableNames) string { return names.Versions.String() }, wantErr: ErrNotFound},
+		{name: "object lookup", table: func(names query.TableNames) string { return names.Objects.String() }, wantErr: ErrNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newAccountResourceHarness(t)
+			h.bind(t, 70, PrincipalAvatarPurpose, "current", "avatar.png", "abc", nil, false)
+			fault := failTableAfter(t, h.db, tc.table(query.BindNames(h.accounts.prefix)), 0)
+			read, err := h.resource.Open(t.Context(), h.db, 70, PrincipalAvatarPurpose, "current", h.now)
+			require.True(t, fault.Fired())
+			require.ErrorIs(t, err, tc.wantErr)
+			require.Nil(t, read)
+		})
+	}
+
+	t.Run("missing bytes", func(t *testing.T) {
+		h := newAccountResourceHarness(t)
+		h.bind(t, 70, PrincipalAvatarPurpose, "current", "avatar.png", "abc", nil, false)
+		require.NoError(t, h.driver.Delete(t.Context(), "resources/avatar.png"))
+		read, err := h.resource.Open(t.Context(), h.db, 70, PrincipalAvatarPurpose, "current", h.now)
+		require.ErrorIs(t, err, ErrNotFound)
+		require.Nil(t, read)
+	})
+}
+
+func TestAccountResourceHasAndReleasePropagateDatabaseFailures(t *testing.T) {
+	t.Run("has", func(t *testing.T) {
+		h := newAccountResourceHarness(t)
+		fault := failTableAfter(t, h.db, query.BindNames(h.accounts.prefix).ResourceBindings.String(), 0)
+		present, err := h.resource.Has(t.Context(), h.db, 70, PrincipalAvatarPurpose, "current", h.now)
+		require.True(t, fault.Fired())
+		require.ErrorIs(t, err, errInjectedTableFault)
+		require.False(t, present)
+	})
+
+	t.Run("binding lookup", func(t *testing.T) {
+		h := newAccountResourceHarness(t)
+		binding := h.bind(t, 70, PrincipalAvatarPurpose, "current", "avatar.png", "abc", nil, false)
+		fault := failTableAfter(t, h.db, query.BindNames(h.accounts.prefix).ResourceBindings.String(), 0)
+		err := h.db.Transaction(func(tx *gorm.DB) error {
+			return h.resource.Release(t.Context(), tx, 70, h.now)
+		})
+		require.True(t, fault.Fired())
+		require.ErrorIs(t, err, errInjectedTableFault)
+		node, nodeErr := h.q.Node.WithContext(t.Context()).Where(h.q.Node.ID.Eq(binding.FileID)).Take()
+		require.NoError(t, nodeErr)
+		require.Equal(t, "active", node.State)
+	})
+
+	t.Run("account preparation update", func(t *testing.T) {
+		h := newAccountResourceHarness(t)
+		binding := h.bind(t, 70, PrincipalAvatarPurpose, "current", "avatar.png", "abc", nil, false)
+		fault := failTableAfter(t, h.db, query.BindNames(h.accounts.prefix).AccountPreparations.String(), 0)
+		err := h.db.Transaction(func(tx *gorm.DB) error {
+			return h.resource.Release(t.Context(), tx, 70, h.now)
+		})
+		require.True(t, fault.Fired())
+		require.ErrorIs(t, err, errInjectedTableFault)
+		row, rowErr := h.q.ResourceBinding.WithContext(t.Context()).Where(h.q.ResourceBinding.ID.Eq(binding.ID)).Take()
+		require.NoError(t, rowErr)
+		require.Equal(t, "active", row.State)
+	})
+}
+
+func TestAccountResourceCreateRollsBackLateFailures(t *testing.T) {
+	for _, table := range []string{"versions", "resource bindings"} {
+		t.Run(table, func(t *testing.T) {
+			h := newAccountResourceHarness(t)
+			prepared, err := h.resource.StageOn(t.Context(), h.db, 70, "resources/avatar.png", bytes.NewBufferString("abc"), 3, h.now.Add(time.Hour))
+			require.NoError(t, err)
+			names := query.BindNames(h.accounts.prefix)
+			tableName := names.Versions.String()
+			if table == "resource bindings" {
+				tableName = names.ResourceBindings.String()
+			}
+			fault := failTableAfter(t, h.db, tableName, 0)
+			err = h.db.Transaction(func(tx *gorm.DB) error {
+				_, createErr := h.resource.Create(t.Context(), tx, AccountResourceInput{
+					Prepared: prepared, PrincipalID: 70, Purpose: PrincipalAvatarPurpose,
+					Slot: "current", Name: "avatar.png", ActorID: 70,
+				}, h.now)
+				return createErr
+			})
+			require.True(t, fault.Fired())
+			require.ErrorIs(t, err, errInjectedTableFault)
+			intent, intentErr := h.q.AccountPreparation.WithContext(t.Context()).Where(h.q.AccountPreparation.ID.Eq(prepared.object.ID)).Take()
+			require.NoError(t, intentErr)
+			require.Equal(t, "ready", intent.State)
+		})
+	}
+
+	t.Run("audit", func(t *testing.T) {
+		h := newAccountResourceHarness(t)
+		h.bind(t, 70, PrincipalAvatarPurpose, "existing", "existing.png", "old", nil, false)
+		prepared, err := h.resource.StageOn(t.Context(), h.db, 70, "resources/avatar.png", bytes.NewBufferString("abc"), 3, h.now.Add(time.Hour))
+		require.NoError(t, err)
+		auditFailure := errors.New("audit unavailable")
+		require.NoError(t, h.resource.Configure(h.resource.ids, func(context.Context, *gorm.DB, audit.DomainEvent) error {
+			return auditFailure
+		}))
+		err = h.db.Transaction(func(tx *gorm.DB) error {
+			_, createErr := h.resource.Create(t.Context(), tx, AccountResourceInput{
+				Prepared: prepared, PrincipalID: 70, Purpose: PrincipalAvatarPurpose,
+				Slot: "new", Name: "avatar.png", ActorID: 70,
+			}, h.now)
+			return createErr
+		})
+		require.ErrorIs(t, err, auditFailure)
+		count, countErr := h.q.ResourceBinding.WithContext(t.Context()).Count()
+		require.NoError(t, countErr)
+		require.EqualValues(t, 1, count)
+		present, hasErr := h.resource.Has(t.Context(), h.db, 70, PrincipalAvatarPurpose, "new", h.now)
+		require.NoError(t, hasErr)
+		require.False(t, present)
+		intent, intentErr := h.q.AccountPreparation.WithContext(t.Context()).Where(h.q.AccountPreparation.ID.Eq(prepared.object.ID)).Take()
+		require.NoError(t, intentErr)
+		require.Equal(t, "ready", intent.State)
+	})
+}
+
+func TestPurgeOrphanedRollsBackDatabaseFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		table func(query.TableNames) string
+		skip  int64
+	}{
+		{name: "space lock", table: func(names query.TableNames) string { return names.Spaces.String() }},
+		{name: "node lookup", table: func(names query.TableNames) string { return names.Nodes.String() }},
+		{name: "active binding count", table: func(names query.TableNames) string { return names.ResourceBindings.String() }},
+		{name: "operation pins", table: func(names query.TableNames) string { return names.OperationItems.String() }},
+		{name: "binding history", table: func(names query.TableNames) string { return names.ResourceBindings.String() }, skip: 1},
+		{name: "node version detach", table: func(names query.TableNames) string { return names.Nodes.String() }, skip: 1},
+		{name: "binding deletion", table: func(names query.TableNames) string { return names.ResourceBindings.String() }, skip: 2},
+		{name: "acl deletion", table: func(names query.TableNames) string { return names.NodeACL.String() }},
+		{name: "version deletion", table: func(names query.TableNames) string { return names.Versions.String() }},
+		{name: "closure deletion", table: func(names query.TableNames) string { return names.NodeClosure.String() }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newAccountResourceHarness(t)
+			binding := h.bind(t, 70, PrincipalAvatarPurpose, "current", "avatar.png", "abc", nil, false)
+			objectID := preparedObjectID(t, h, binding.FileID)
+			require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
+				return h.resource.deactivateSlot(t.Context(), tx, 70, PrincipalAvatarPurpose, "current", h.now)
+			}))
+			fault := failTableAfter(t, h.db, tc.table(query.BindNames(h.accounts.prefix)), tc.skip)
+			next, err := h.resource.PurgeOrphaned(t.Context(), h.db, h.now, 0, 100)
+			require.True(t, fault.Fired())
+			require.ErrorIs(t, err, errInjectedTableFault)
+			require.Zero(t, next)
+			object, objectErr := h.q.Object.WithContext(t.Context()).Take()
+			require.NoError(t, objectErr)
+			require.Equal(t, "verified", object.State)
+			require.Equal(t, objectID, object.ID)
+			require.NotContains(t, h.eventTypes(), "file_resource_purged")
+		})
+	}
+}
+
+func preparedObjectID(t *testing.T, h *accountResourceHarness, fileID guid.ID) guid.ID {
+	t.Helper()
+	version, err := h.q.Version.WithContext(t.Context()).Where(h.q.Version.NodeID.Eq(fileID)).Take()
+	require.NoError(t, err)
+	return version.ObjectID
 }
