@@ -1,5 +1,76 @@
 # Decisions
 
+## D72 - The coverage gate measures the union across test binaries
+
+**Date** 2026-09-22
+
+**Decision / Reason**
+`make test-coverage` now passes `-coverpkg` over the gated package set, so a
+package exercised by a sibling integration suite is credited instead of reading
+as untested. This closes the measurement gap D69 recorded: `internal/app`
+measured 86.8% from its own tests and 88.3% once `internal/integration/iam` was
+included, and its whole public lifecycle API read 0% despite being exercised
+there.
+
+It cannot flatter the result. The same packages are already in the profile and
+therefore already in the denominator - Go includes packages with no test files -
+so `-coverpkg` only adds covered blocks. Total went 91.0% -> 91.6%, and the run
+got faster, 13 minutes to under 6.
+
+**Alternatives Considered / Tradeoffs**
+Duplicating the integration lifecycle tests inside `internal/app` would have
+moved the number without adding safety, which is the coverage-chasing the rest
+of this work avoided.
+
+The per-module check had to be fixed in the same change. With `-coverpkg` every
+test binary reports every gated package, so each block appears once per binary
+and almost always with a zero count. The total is computed by
+`go tool cover -func`, which merges blocks, but the per-module figure was a
+line-by-line sum that counted one block as dozens of statements and collapsed
+every module to about 2%. It now keys by block and takes the union, which is
+what the total was already doing.
+
+**Scope / Status**
+Done. `make ci` passes: total 91.6%, every gated module above 90%.
+
+---
+
+## D73 - Guard-layer messages are respx keys, not bare codes
+
+**Date** 2026-09-22
+
+**Decision / Reason**
+`authz` reported outcomes as bare strings - `not_found`, `forbidden`,
+`unauthorized`, `invalid_id` and four more. Localization resolves
+`respx.not_found`, never `not_found`, so every one passed through raw. Because
+D66's owner resolution answers an absent globally addressed resource before the
+handler runs, this was what a client saw on a 404 across the entire owned
+resource surface, which is the regression D69 recorded.
+
+respx already owned four of these keys with text in all three locales; they were
+simply unreachable. It now exports them as constants, gains the four it was
+missing, and authz reports those constants at its 25 call sites. No new i18n
+namespace and no new registration point were introduced.
+
+**Alternatives Considered / Tradeoffs**
+Giving authz its own bundle was the first plan and was dropped once respx turned
+out to own the vocabulary already: a second namespace for the same four
+concepts would have split ownership of one client-visible message set. Having
+the resolver defer to the owning module for the message was rejected as a
+redesign of the authorization path for a wording problem.
+
+The SAML test that pinned the raw `not_found` was not retargeted to the new key,
+which would only have re-encoded the bug. Its harness now registers respx's
+bundle and it asserts the localized sentence, plus that the key does not survive
+into the body.
+
+**Scope / Status**
+Done. This changes the `message` field for guard-layer refusals on every
+authorized route: clients that matched on the bare strings must match the
+localized text or the status instead.
+
+---
+
 ## D70 - Cross-module principal anonymization lives outside the IAM namespace
 
 **Date** 2026-09-22
