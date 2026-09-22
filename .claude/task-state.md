@@ -1,5 +1,48 @@
 # Task State
 
+## Coverage Gate Closed, Fourth CI Blocker Found - 2026-09-22
+
+- The coverage gate now PASSES END TO END: `make test-coverage` exits 0, total
+  91.0%, zero test failures, and every gated module clears 90% including
+  `internal/files` at 90.4%. Uncovered statements there went 1094 -> 426.
+  Delivered in `ef2bef6`, pushed; `origin/IAM` and local are both at that commit
+  and the working tree is clean.
+- How it was done: four `codex exec` runs driven by four subagents over four
+  DISJOINT file partitions so nothing collided, each subagent verifying its own
+  partition rather than taking codex's summary. That mattered - one subagent
+  caught codex overstating its attribution, another caught and fixed a `nilerr`
+  violation codex introduced, and three ran mutation tests (five mutations, all
+  caught, all production files restored byte-identical).
+- The gap the partitioning left: `copy := *root` shadowing the builtin in
+  `browser_test.go` was seen by two subagents and fixed by neither, each calling
+  it another partition's file. Cross-partition defects have no owner but the
+  main agent. Renamed to `detached`; `make lint` is clean.
+- FOURTH pre-existing `ci` blocker found, and it is NOT from this work:
+  `make test-integration` fails at HEAD. Proven in a detached worktree at
+  `c382eb4` containing none of this session's changes - identical three
+  failures. It was missed earlier because only coverage, lint, fmt and openapi
+  had ever been run, never test-integration.
+  1. `tests/architecture` TestIAMModuleArchitecture: `internal/iam/lifecycle` is
+     an unexpected directory under the IAM namespace. It holds exactly one file,
+     `anonymizer.go`, with no `module.go`, no `Module` type, no i18n and no
+     migrations, so it is not a module. The architecture test is right and
+     `98bd2b0` placed the file wrongly.
+  2. `tests/architecture` TestQueryGate: two new `concatenated-table-name`
+     violations, at `internal/todo/service.go:42` and
+     `internal/iam/lifecycle/anonymizer.go:44`, both building a table name by
+     string concatenation instead of using the owning module's published name;
+     plus a stale ledger entry `concatenated-table-name:c7121096622dde53` to
+     delete with the budget lowered.
+- Deliberately NOT fixed here. Adding "lifecycle" to the `iamModules` allowlist
+  would relax an architecture rule to accommodate a misplacement, which is the
+  same anti-pattern as excusing a coverage gate. The honest fix is to decide
+  where cross-module principal anonymization belongs - inside an owning IAM
+  module, or out of the IAM namespace entirely - and that is a module-ownership
+  decision, not a cleanup.
+- Next action: decide the home for `internal/iam/lifecycle/anonymizer.go`, then
+  fix the two query-gate violations and refresh the ledger. That is the last
+  thing between this branch and a green `make ci`.
+
 ## Coverage Gate To 90% - 2026-09-21
 
 - Current phase: IMPLEMENTATION.
