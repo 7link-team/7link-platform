@@ -241,9 +241,14 @@ test:
 # hand-test -- was counted as uncovered project code. It is excluded by its full
 # path rather than by name, because pkg/extension/gorm/gen is hand-written build
 # tooling that happens to share it.
+# -coverpkg makes every test binary record coverage for the whole gated set,
+# so a package exercised by a sibling integration suite is credited instead of
+# reading as untested. It cannot inflate the result: these same packages are
+# already in the profile and the denominator either way, and the merge takes
+# the union of covered blocks, so only the numerator can grow.
 test-coverage:
 	@packages="$$(go list ./... | grep -Ev '/proto/gen/go/|/node_modules/|/dbgen$$')"; \
-	go test -count=1 -covermode=atomic -coverprofile="$(COVERAGE_RAW_PROFILE)" $$packages
+	go test -count=1 -covermode=atomic -coverpkg="$$(echo $$packages | tr ' ' ',')" -coverprofile="$(COVERAGE_RAW_PROFILE)" $$packages
 	@awk 'NR == 1 || ($$1 !~ /\/cmd\/7link-api\/main.go:/ && $$1 !~ /\/cmd\/infra-api\/main.go:/ && $$1 !~ /\.gen\.go:/ && $$1 !~ /\/query\/gen\.go:/)' \
 		"$(COVERAGE_RAW_PROFILE)" > "$(COVERAGE_PROFILE)"
 	@coverage="$$(go tool cover -func="$(COVERAGE_PROFILE)" | awk '/^total:/ {gsub(/%/, "", $$3); print $$3}')"; \
@@ -255,8 +260,12 @@ test-coverage:
 	for package in $(MODULE_COVERAGE_PACKAGES); do \
 		coverage="$$(awk -v target="$$package" 'NR > 1 { \
 			file = $$1; sub(/:.*/, "", file); directory = file; sub(/\/[^\/]+$$/, "", directory); \
-			if (directory == target) { total += $$2; if ($$3 > 0) covered += $$2 } \
-		} END { if (total == 0) print "missing"; else printf "%.1f", covered * 100 / total }' "$(COVERAGE_RAW_PROFILE)")"; \
+			if (directory != target) next; \
+			stmts[$$1] = $$2; if ($$3 > 0) hit[$$1] = 1; \
+		} END { \
+			for (block in stmts) { total += stmts[block]; if (block in hit) covered += stmts[block] } \
+			if (total == 0) print "missing"; else printf "%.1f", covered * 100 / total \
+		}' "$(COVERAGE_RAW_PROFILE)")"; \
 		short="$${package#7link.com/platform/}"; \
 		if [ "$$coverage" = "missing" ]; then \
 			printf "module coverage: %-48s MISSING\n" "$$short"; status=1; continue; \
