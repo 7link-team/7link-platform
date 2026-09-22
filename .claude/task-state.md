@@ -195,7 +195,22 @@
   time-boxed exception, or lower the gate; (2) delete the two dead functions,
   which is what `make lint` needs; (3) the `-coverpkg` measurement fix;
   (4) the localized not-found regression on owned routes; (5) committing.
-- Next action: get those decisions. Nothing further can be closed without them.
+- DELIVERED. Five commits pushed; `origin/IAM` and local `IAM` are both at
+  `3b356a8` and the working tree is clean. Codeup emitted its usual non-blocking
+  warning that the commit email differs from the authenticated account; the
+  branch update itself succeeded, same as for `ef03aa4`.
+- Decisions taken under the user's explicit delegation, recorded as D67-D69:
+  the coverage gate was NOT relaxed for internal/files; the two D66-orphaned
+  helpers were deleted, which is what made `make lint` clean; the `-coverpkg`
+  measurement fix and the localized not-found regression were deliberately left
+  alone as too risky to bundle into this change.
+- Final gate state: `go build` OK, `make fmt-check` clean, `make lint` clean,
+  `make openapi-check` byte-identical, `make test-coverage` zero failures with
+  total 90.04% and every gated module above 90% except `internal/files` at
+  82.7%. So `make ci` now fails on exactly one thing, down from four.
+- Next action: nothing outstanding on this branch. The open work is D67
+  (internal/files coverage, best closed with a shared SQL fault-injection helper
+  rather than one test per guard) and D69's two deferred items.
 
 ## Stale Tenant-Prefixed Item Paths In Module HTTP Tests - 2026-09-21
 
