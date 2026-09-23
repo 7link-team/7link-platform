@@ -167,7 +167,7 @@ func Register[I, O any](r *Registrar, api huma.API, op huma.Operation, guard Gua
 	}
 	r.prepare(api, &op, guard)
 	prepareTenantPath(&op)
-	requireResourceTag(&op, "tenant operation")
+	requireResourceTag(&op)
 	huma.Register(api, op, handler)
 }
 
@@ -187,7 +187,7 @@ func RegisterEntity[I, O any](r *Registrar, api huma.API, op huma.Operation, gua
 	}
 	r.prepare(api, &op, guard)
 	prepareEntityPath(&op)
-	requireResourceTag(&op, "entity operation")
+	requireResourceTag(&op)
 	if r.verifier != nil {
 		// Replace the tenant-only guard installed by prepare with the entity guard.
 		op.Middlewares[len(op.Middlewares)-1] = r.entityMiddleware(api, guard)
@@ -205,9 +205,7 @@ func RegisterOwned[I, O any](r *Registrar, api huma.API, op huma.Operation, reso
 	if resourceParam == "" || resolve == nil {
 		panic("owned resource operation requires resource parameter and owner resolver")
 	}
-	if len(op.Tags) != 1 {
-		panic("owned resource operation requires exactly one explicit resource tag")
-	}
+	requireResourceTag(&op)
 	if r.checker != nil {
 		if _, ok := r.checker.(EntityDataPermissionChecker); !ok && guard.FilterData {
 			panic("data-filtered operation requires entity data permission checker")
@@ -230,9 +228,10 @@ func RegisterOwnedTenantMember[I, O any](r *Registrar, api huma.API, op huma.Ope
 	if r == nil {
 		panic("authz registrar is nil")
 	}
-	if resourceParam == "" || resolve == nil || len(op.Tags) != 1 {
-		panic("owned tenant member operation requires resource parameter, owner resolver, and one explicit tag")
+	if resourceParam == "" || resolve == nil {
+		panic("owned tenant member operation requires resource parameter and owner resolver")
 	}
+	requireResourceTag(&op)
 	if op.Metadata == nil {
 		op.Metadata = map[string]any{}
 	}
@@ -270,7 +269,7 @@ func RegisterEntityOrAuthenticated[I, O any](r *Registrar, api huma.API, op huma
 	RegisterAuthenticated(r, api, self, handler)
 	r.prepare(api, &op, guard)
 	prepareEntityPath(&op)
-	requireResourceTag(&op, "entity operation")
+	requireResourceTag(&op)
 	if r.verifier != nil {
 		op.Middlewares[len(op.Middlewares)-1] = r.entityMiddleware(api, guard)
 	}
@@ -311,7 +310,7 @@ func RegisterEntityAdapter(r *Registrar, api huma.API, op huma.Operation, guard 
 	}
 	r.prepare(api, &op, guard)
 	prepareEntityPath(&op)
-	requireResourceTag(&op, "entity adapter operation")
+	requireResourceTag(&op)
 	if r.verifier != nil {
 		op.Middlewares[len(op.Middlewares)-1] = r.entityMiddleware(api, guard)
 	}
@@ -335,7 +334,7 @@ func RegisterTenantMember[I, O any](r *Registrar, api huma.API, op huma.Operatio
 	op.Metadata[tenantMemberMetadataKey] = true
 	r.prepareAuthenticated(api, &op, true)
 	prepareTenantPath(&op)
-	requireResourceTag(&op, "tenant member operation")
+	requireResourceTag(&op)
 	if r.verifier != nil {
 		op.Middlewares = append(op.Middlewares, r.middleware(api, nil))
 	}
@@ -515,12 +514,12 @@ func pathSelector(name, description string) *huma.Param {
 
 // requireResourceTag makes the Swagger group an explicit property of the
 // operation instead of a value the registrar infers from the URI it is about
-// to build. Registering the tag here rather than overwriting it lets one
-// operation move between paths without silently changing which published
-// section documents it.
-func requireResourceTag(op *huma.Operation, kind string) {
+// to build, so that moving an operation between paths cannot silently move it
+// between published sections. Exactly one tag: none leaves the operation out
+// of every section, and a second would publish it twice with no owning one.
+func requireResourceTag(op *huma.Operation) {
 	if len(op.Tags) != 1 {
-		panic(kind + " requires exactly one explicit resource tag")
+		panic("operation requires exactly one explicit resource tag")
 	}
 }
 
