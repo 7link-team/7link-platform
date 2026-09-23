@@ -62,6 +62,21 @@
   relationship, authentication transactions, directory bindings, account
   closure, and Todo media import/export. It is proposal-only; no runtime route
   is authorized.
+- Manifest self-review: rewritten with Chinese explanations; speculative scoped
+  item aliases removed except tenant/entity and tenant/department; principal
+  CRUD and menu management moved to one Swagger domain each; tenant-owned
+  relationship/access-request/access-review collections restored below tenant;
+  field policy keeps its proven tuple identity; `/sessions/current` retained for
+  cookie-only discovery; non-standard OAuth consent routes are modeled as
+  authorization request/decision resources instead of being misclassified as
+  protocol exceptions. Proposed table contains no duplicate method/URI pairs.
+- Semantic naming review: generic Membership, Relationship, Invitation,
+  Verification, and Access Request routes were renamed to Tenant Membership,
+  Authorization Relationship, Membership Invitation, Reauthentication
+  Transaction, and Role Access Request resources. Federated login start/state
+  moved into Authentication Transaction, leaving Identity Provider callback as
+  the protocol boundary. Ambiguous application path parameters now use their
+  full resource names.
 - Next action: obtain confirmation of the six manifest decisions, revise any
   rejected choice, then produce the exact old-operation to canonical-operation
   migration map before changing runtime APIs.
