@@ -1,5 +1,32 @@
 # Task State
 
+## Entity Access-Control Navigation - 2026-09-23
+
+- Current phase: ACCEPTANCE.
+- Objective: replace the three overlapping entity authorization/settings menu
+  labels with a clearer information architecture without changing authorization
+  semantics or breaking existing deep links.
+- Completed: pushed the preceding demo/passkey/typed-query/file-routing fixes as
+  `d35da67`; the remote `IAM` branch contains that commit.
+- Implemented: the entity sidebar now exposes one `Access control` entry instead
+  of separate role/resource entries; the existing role and resource routes are
+  presented as tabs inside that workspace; `Entity settings and grants` is now
+  `Entity settings`. Existing `/roles`, `/resources`, and `/manage` URLs remain.
+- Verification: focused sidebar test PASS; frontend full tests 127/127 PASS;
+  typecheck PASS; lint PASS; production build PASS; OpenAPI regeneration PASS;
+  `audit:persona-menus` PASS for all five personas. Super/tenant admin each
+  traversed 23 pages including both access-control routes, system admin 5,
+  entity account 4, and department account 4; no business 403/404/5xx, visible
+  errors, or browser script errors.
+- Related finding: `RegisterTenantEntityOrAuthenticated` intentionally expands
+  one file-operation handler into personal, tenant, and entity URIs. This is not
+  a stale OpenAPI artifact. Consolidating ID-addressed operations is a separate
+  API compatibility decision; collection routes still need explicit scope.
+- Remaining work: none for the confirmed entity navigation change.
+- Next action: commit and push this accepted navigation change. Separately audit
+  command-style API routes and propose a compatibility-preserving consolidation
+  instead of changing them as part of this UI task.
+
 ## Coverage Gate Closed, Fourth CI Blocker Found - 2026-09-22
 
 - The coverage gate now PASSES END TO END: `make test-coverage` exits 0, total

@@ -105,14 +105,7 @@ export function AppSidebar({
             <SideLink
               to={`${base}/roles`}
               icon={<KeyRound />}
-              label={t("entityRoles")}
-            />
-          )}
-          {can(permissions, "entity_view") && (
-            <SideLink
-              to={`${base}/resources`}
-              icon={<Boxes />}
-              label={t("entityResources")}
+              label={t("entityAccessControl")}
             />
           )}
           {fileAccess && (

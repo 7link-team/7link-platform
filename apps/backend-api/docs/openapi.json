@@ -14861,9 +14861,7 @@
         "summary": "List entity file roots",
         "tags": [
           "entities"
-        ],
-        "x-authz-data-filter": true,
-        "x-authz-permission": "file_view"
+        ]
       },
       "post": {
         "operationId": "create-entity-file",

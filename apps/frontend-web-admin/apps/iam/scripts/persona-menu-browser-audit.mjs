@@ -151,6 +151,11 @@ try {
         if (url.origin !== webURL) continue
         const candidate = `${url.pathname}${url.search}`
         if (!visited.has(candidate)) queue.push(candidate)
+        if (
+          candidate === `${entityBase}/roles` &&
+          !visited.has(`${entityBase}/resources`)
+        )
+          queue.push(`${entityBase}/resources`)
       }
       result.pages.push({ path, links: links.length })
       if (pageFailures.length > 0) {

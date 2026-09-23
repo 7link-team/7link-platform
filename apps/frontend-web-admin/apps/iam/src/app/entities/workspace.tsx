@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Link, Navigate, useParams } from "react-router"
+import { Link, Navigate, useNavigate, useParams } from "react-router"
 import { useLocale, useTranslations } from "@workspace/ui/i18n/intl-provider"
 import {
   Table,
@@ -11,6 +11,7 @@ import {
 } from "@workspace/ui/components/table"
 import { Alert } from "../../components/alert"
 import { PageHeader } from "../../components/page-header"
+import { Tabs, TabsList, TabsTrigger } from "@workspace/ui/components/tabs"
 import {
   iamApi,
   type Entity,
@@ -49,6 +50,8 @@ function EntityDetails({
 }) {
   const t = useTranslations("iam")
   const locale = useLocale()
+  const navigate = useNavigate()
+  const base = `/tenants/${encodeURIComponent(tenantID)}/entities/${encodeURIComponent(entityID)}`
   const allowed = useAllowed()
   const [data, setData] = useState<{
     entity: Entity
@@ -90,12 +93,8 @@ function EntityDetails({
   }, [entityID, view, allowed])
   if (error) return <Alert>{error}</Alert>
   if (!data) return <p role="status">{t("loading")}</p>
-  const title =
-    view === "roles"
-      ? "entityRoles"
-      : view === "resources"
-        ? "entityResources"
-        : "entityOverview"
+  const accessControl = view === "roles" || view === "resources"
+  const title = accessControl ? "entityAccessControl" : "entityOverview"
   return (
     <>
       <PageHeader
@@ -113,7 +112,26 @@ function EntityDetails({
       <p className="mb-4 text-sm text-muted-foreground">
         {t("tenantDefinitionOwnership")}
       </p>
-      {view !== "overview" && (
+      {accessControl && (
+        <Tabs
+          value={view}
+          onValueChange={(next) => navigate(`${base}/${next}`)}
+        >
+          <TabsList
+            variant="line"
+            className="mb-4"
+            aria-label={t("entityAccessControl")}
+          >
+            <TabsTrigger variant="line" value="roles">
+              {t("entityRoles")}
+            </TabsTrigger>
+            <TabsTrigger variant="line" value="resources">
+              {t("entityResources")}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      )}
+      {accessControl && (
         <p className="mb-4 text-sm text-muted-foreground">
           {t("entityBindingScopeExplanation")}
         </p>
