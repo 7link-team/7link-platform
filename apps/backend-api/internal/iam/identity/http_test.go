@@ -261,8 +261,10 @@ func TestIdentityOpenAPIGuardsParametersAndSecurityAreConsistent(t *testing.T) {
 				t.Fatalf("duplicate operationId %q on %s and %s", operation.OperationID, previous, location)
 			}
 			operationIDs[operation.OperationID] = location
-			expectedTag := strings.Split(strings.TrimPrefix(path, "/"), "/")[0]
-			assert.Equal(t, []string{expectedTag}, operation.Tags, location)
+			// Identity owns the principal record, the principal's own view of
+			// it, and the platform-wide lifecycle over it.
+			assert.Contains(t, []string{"directory", "account", "platform"},
+				operation.Tags[0], location)
 			assert.NotEmpty(t, operation.Security, location)
 
 			guard, declared := identityGuards[operation.OperationID]

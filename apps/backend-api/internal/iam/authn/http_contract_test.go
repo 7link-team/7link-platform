@@ -119,7 +119,10 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 				t.Fatalf("duplicate operationId %q on %s and %s", operation.OperationID, previous, location)
 			}
 			operationIDs[operation.OperationID] = location
-			assert.Equal(t, []string{segments[0]}, operation.Tags, location)
+			// This module either establishes a session or manages the account
+			// behind one. Publishing anywhere else would mean a route landed
+			// in the wrong module.
+			assert.Contains(t, []string{"authentication", "account"}, operation.Tags[0], location)
 			if sessionOnly[operation.OperationID] {
 				assert.Equal(t, []map[string][]string{{authz.SessionScheme: {}}}, operation.Security, location)
 			} else if secured[operation.OperationID] {

@@ -164,7 +164,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 }
 
 func registerRequestDecisionHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
-	authz.RegisterOwned(registrar, api, resourceOperation("access-requests",
+	authz.RegisterOwned(registrar, api, operation(
 		"governance-set-access-request-decision", http.MethodPut, "/access-requests/{request_id}/decision",
 		"Set the approval decision for an access request", http.StatusNotFound, http.StatusConflict,
 		http.StatusGone, http.StatusUnprocessableEntity, http.StatusInternalServerError,
@@ -185,7 +185,7 @@ func registerRequestDecisionHTTP(api huma.API, service *Service, registrar *auth
 		return respx.OK(ctx, item), nil
 	})
 
-	authz.RegisterOwned(registrar, api, resourceOperation("access-requests",
+	authz.RegisterOwned(registrar, api, operation(
 		"governance-revoke-access-grant", http.MethodPut, "/access-requests/{request_id}/grant-revocation",
 		"Revoke an approved temporary role grant", http.StatusNotFound, http.StatusConflict, http.StatusGone,
 		http.StatusUnprocessableEntity, http.StatusInternalServerError,
@@ -201,7 +201,7 @@ func registerRequestDecisionHTTP(api huma.API, service *Service, registrar *auth
 		return respx.OK(ctx, item), nil
 	})
 
-	authz.RegisterOwnedTenantMember(registrar, api, resourceOperation("access-requests",
+	authz.RegisterOwnedTenantMember(registrar, api, operation(
 		"governance-withdraw-access-request", http.MethodPut, "/access-requests/{request_id}/withdrawal",
 		"Withdraw a pending request or relinquish its approved access", http.StatusNotFound, http.StatusConflict,
 		http.StatusGone, http.StatusUnprocessableEntity, http.StatusInternalServerError,
@@ -255,7 +255,7 @@ func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registr
 		return respx.OK(ctx, item), nil
 	})
 
-	authz.RegisterOwned(registrar, api, resourceOperation("access-reviews",
+	authz.RegisterOwned(registrar, api, operation(
 		"governance-get-access-review", http.MethodGet, "/access-reviews/{review_id}",
 		"Get an access review and its snapshotted grants", http.StatusNotFound, http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), "review_id", service.resolveAccessReviewOwner, authz.Guard{Resource: "access_review", Verb: "view"}, func(ctx context.Context, in *reviewInput) (*respx.Body[AccessReview], error) {
@@ -271,7 +271,7 @@ func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registr
 		return respx.OK(ctx, item), nil
 	})
 
-	authz.RegisterOwned(registrar, api, resourceOperation("access-reviews",
+	authz.RegisterOwned(registrar, api, operation(
 		"governance-decide-access-review-item", http.MethodPut, "/access-reviews/{review_id}/items/{item_id}/decision",
 		"Keep or revoke one snapshotted tenant access grant", http.StatusNotFound, http.StatusConflict, http.StatusGone,
 		http.StatusUnprocessableEntity, http.StatusInternalServerError,
@@ -291,7 +291,7 @@ func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registr
 		return respx.OK(ctx, item), nil
 	})
 
-	authz.RegisterOwned(registrar, api, resourceOperation("access-reviews",
+	authz.RegisterOwned(registrar, api, operation(
 		"governance-update-access-review", http.MethodPatch, "/access-reviews/{review_id}",
 		"Complete or cancel an access review", http.StatusNotFound, http.StatusConflict,
 		http.StatusGone, http.StatusUnprocessableEntity, http.StatusInternalServerError,
@@ -314,13 +314,7 @@ func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registr
 }
 
 func operation(id, method, path, summary string, errors ...int) huma.Operation {
-	return huma.Operation{OperationID: id, Method: method, Path: path, Summary: summary, Tags: []string{"tenants"}, Errors: errors}
-}
-
-func resourceOperation(tag, id, method, path, summary string, errors ...int) huma.Operation {
-	op := operation(id, method, path, summary, errors...)
-	op.Tags = []string{tag}
-	return op
+	return huma.Operation{OperationID: id, Method: method, Path: path, Summary: summary, Tags: []string{"access-control"}, Errors: errors}
 }
 
 func parseGovernanceID(value string) (guid.ID, error) {

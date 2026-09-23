@@ -533,7 +533,7 @@ func registerProtocolHTTP(api huma.API, service *Service) {
 func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "oauth-list-clients", Method: http.MethodGet, Path: "/oauth-clients",
-		Summary: "List tenant OAuth clients", Tags: []string{"tenants"},
+		Summary: "List tenant OAuth clients", Tags: []string{"applications"},
 	}, authz.Guard{Resource: "oauth_client", Verb: "view"}, func(ctx context.Context, in *clientListInput) (*respx.Body[[]Client], error) {
 		tenantID, err := parseOAuthID(in.TenantID)
 		if err != nil {
@@ -547,7 +547,7 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 	})
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "oauth-create-client", Method: http.MethodPost, Path: "/oauth-clients",
-		Summary: "Create a tenant OAuth client", Tags: []string{"tenants"}, DefaultStatus: http.StatusCreated,
+		Summary: "Create a tenant OAuth client", Tags: []string{"applications"}, DefaultStatus: http.StatusCreated,
 	}, authz.Guard{Resource: "oauth_client", Verb: "create"}, func(ctx context.Context, in *clientCreateInput) (*respx.Body[clientCreateData], error) {
 		tenantID, err := parseOAuthID(in.TenantID)
 		if err != nil {
@@ -565,7 +565,7 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 	})
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "oauth-update-client", Method: http.MethodPut, Path: "/oauth-clients/{client_id}",
-		Summary: "Replace a tenant OAuth client", Tags: []string{"oauth-clients"},
+		Summary: "Replace a tenant OAuth client", Tags: []string{"applications"},
 	}, "client_id", service.resolveClientOwner, authz.Guard{Resource: "oauth_client", Verb: "update"}, func(ctx context.Context, in *clientUpdateInput) (*respx.Body[Client], error) {
 		id, err := parseOAuthID(in.ID)
 		if err != nil {
@@ -585,7 +585,7 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "oauth-rotate-client-secret", Method: http.MethodPost,
 		Path: "/oauth-clients/{client_id}/credentials", Summary: "Create and activate a confidential OAuth client credential",
-		Tags: []string{"oauth-clients"}, Errors: []int{http.StatusNotFound},
+		Tags: []string{"applications"}, Errors: []int{http.StatusNotFound},
 	}, "client_id", service.resolveClientOwner, authz.Guard{Resource: "oauth_client", Verb: "update"}, func(ctx context.Context, in *clientIDInput) (*respx.Body[clientSecretData], error) {
 		id, err := parseOAuthID(in.ID)
 		if err != nil {
@@ -600,7 +600,7 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 	})
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "oauth-delete-client", Method: http.MethodDelete, Path: "/oauth-clients/{client_id}",
-		Summary: "Delete a tenant OAuth client", Tags: []string{"oauth-clients"}, Errors: []int{http.StatusNotFound},
+		Summary: "Delete a tenant OAuth client", Tags: []string{"applications"}, Errors: []int{http.StatusNotFound},
 	}, "client_id", service.resolveClientOwner, authz.Guard{Resource: "oauth_client", Verb: "delete"}, func(ctx context.Context, in *clientIDInput) (*respx.Body[clientDeleteData], error) {
 		id, err := parseOAuthID(in.ID)
 		if err != nil {
@@ -621,7 +621,7 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 func registerGrantHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{
 		OperationID: "oauth-list-consents", Method: http.MethodGet, Path: "/me/oauth-consents",
-		Summary: "List the applications the caller has authorized", Tags: []string{"me"},
+		Summary: "List the applications the caller has authorized", Tags: []string{"account"},
 		Errors: []int{http.StatusUnauthorized, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *consentListInput) (*respx.Body[[]GrantedConsent], error) {
 		principalID, err := consentPrincipal(ctx, in.Cookie, in.Authorization)
@@ -636,7 +636,7 @@ func registerGrantHTTP(api huma.API, service *Service, registrar *authz.Registra
 	})
 	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{
 		OperationID: "oauth-revoke-consent", Method: http.MethodDelete,
-		Path: "/me/oauth-consents/{client_id}", Tags: []string{"me"},
+		Path: "/me/oauth-consents/{client_id}", Tags: []string{"account"},
 		Summary: "Withdraw the caller's authorization of one application",
 		Errors:  []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *consentRevokeInput) (*respx.Body[consentRevokeData], error) {

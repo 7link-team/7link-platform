@@ -660,7 +660,7 @@ func TestAuthenticationMFAHTTPFlow(t *testing.T) {
 		api.OpenAPI().Paths["/me/mfa/recovery-codes"].Put,
 		api.OpenAPI().Paths["/me/mfa/totp"].Delete,
 	} {
-		assert.Equal(t, []string{"me"}, operation.Tags, operation.OperationID)
+		assert.Equal(t, []string{"account"}, operation.Tags, operation.OperationID)
 		assert.Contains(t, operation.Responses, "500")
 	}
 }
@@ -780,10 +780,10 @@ func TestAuthenticationPasskeyHTTPContract(t *testing.T) {
 	} {
 		assert.Contains(t, operation.Responses, "500")
 	}
-	assert.Equal(t, []string{"login"}, api.OpenAPI().Paths["/login/passkey/options"].Post.Tags)
-	assert.Equal(t, []string{"login"}, api.OpenAPI().Paths["/login/passkey/verify"].Post.Tags)
-	assert.Equal(t, []string{"me"}, api.OpenAPI().Paths["/me/passkeys"].Get.Tags)
-	assert.Equal(t, []string{"me"}, api.OpenAPI().Paths["/me/passkeys"].Post.Tags)
+	assert.Equal(t, []string{"authentication"}, api.OpenAPI().Paths["/login/passkey/options"].Post.Tags)
+	assert.Equal(t, []string{"authentication"}, api.OpenAPI().Paths["/login/passkey/verify"].Post.Tags)
+	assert.Equal(t, []string{"account"}, api.OpenAPI().Paths["/me/passkeys"].Get.Tags)
+	assert.Equal(t, []string{"account"}, api.OpenAPI().Paths["/me/passkeys"].Post.Tags)
 }
 
 func TestAuthenticationStepUpHTTPContract(t *testing.T) {

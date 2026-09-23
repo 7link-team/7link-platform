@@ -133,28 +133,28 @@ func (e *fileConflictHTTPError) GetStatus() int { return e.status }
 func registerFileHTTP(api huma.API, service *operationService, registrar *authz.Registrar, fileOwner, entityOwner, departmentOwner authz.ResourceOwnerResolver) {
 	authz.RegisterAuthenticated(registrar, api, huma.Operation{
 		OperationID: "list-my-files", Method: http.MethodGet, Path: "/me/files",
-		Summary: "List my file roots", Tags: []string{"me"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
+		Summary: "List my file roots", Tags: []string{"files"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, func(ctx context.Context, input *filePageInput) (*respx.Body[filePage], error) {
 		claims, _ := authn.FromContext(ctx)
 		return listFileCollection(ctx, service, fileCollection{scope: "account", ownerID: claims.PrincipalID}, *input)
 	})
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "list-tenant-files", Method: http.MethodGet, Path: "/files",
-		Summary: "List tenant file roots", Tags: []string{"tenants"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
+		Summary: "List tenant file roots", Tags: []string{"files"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *tenantFilePageInput) (*respx.Body[filePage], error) {
 		claims, _ := authn.FromContext(ctx)
 		return listFileCollection(ctx, service, fileCollection{scope: "tenant", tenantID: claims.TenantID, ownerID: claims.TenantID}, input.filePageInput)
 	})
 	authz.RegisterOwnedTenantMember(registrar, api, huma.Operation{
 		OperationID: "list-entity-files", Method: http.MethodGet, Path: "/entities/{entity_id}/files",
-		Summary: "List entity file roots", Tags: []string{"entities"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
+		Summary: "List entity file roots", Tags: []string{"files"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "entity_id", entityOwner, func(ctx context.Context, input *entityFilePageInput) (*respx.Body[filePage], error) {
 		claims, _ := authn.FromContext(ctx)
 		return listFileCollection(ctx, service, fileCollection{scope: "context", tenantID: claims.TenantID, ownerID: claims.EntityID}, input.filePageInput)
 	})
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "list-department-files", Method: http.MethodGet, Path: "/departments/{department_id}/files",
-		Summary: "List department file roots", Tags: []string{"departments"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
+		Summary: "List department file roots", Tags: []string{"files"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "department_id", departmentOwner, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *departmentFilePageInput) (*respx.Body[filePage], error) {
 		claims, _ := authn.FromContext(ctx)
 		departmentID, err := fileID(input.DepartmentID)
@@ -187,7 +187,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 
 	authz.RegisterAuthenticated(registrar, api, huma.Operation{
 		OperationID: "create-my-file", Method: http.MethodPost, Path: "/me/files",
-		Summary: "Create a directory or upload a file", Tags: []string{"me"}, DefaultStatus: http.StatusCreated,
+		Summary: "Create a directory or upload a file", Tags: []string{"files"}, DefaultStatus: http.StatusCreated,
 		MaxBodyBytes: service.maxUploadBytes + (1 << 20),
 		Errors:       []int{http.StatusNotFound, http.StatusConflict, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity},
 	}, func(ctx context.Context, input *fileCreateInput) (*respx.Body[fileEntryView], error) {
@@ -195,21 +195,21 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 	})
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "create-tenant-file", Method: http.MethodPost, Path: "/files",
-		Summary: "Create a tenant file", Tags: []string{"tenants"}, DefaultStatus: http.StatusCreated,
+		Summary: "Create a tenant file", Tags: []string{"files"}, DefaultStatus: http.StatusCreated,
 		MaxBodyBytes: service.maxUploadBytes + (1 << 20), Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "file", Verb: "create", FilterData: true}, func(ctx context.Context, input *tenantFileCreateInput) (*respx.Body[fileEntryView], error) {
 		return createFile(ctx, service, input.RawBody.Data(), false)
 	})
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "create-entity-file", Method: http.MethodPost, Path: "/entities/{entity_id}/files",
-		Summary: "Create an entity file", Tags: []string{"entities"}, DefaultStatus: http.StatusCreated,
+		Summary: "Create an entity file", Tags: []string{"files"}, DefaultStatus: http.StatusCreated,
 		MaxBodyBytes: service.maxUploadBytes + (1 << 20), Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity},
 	}, "entity_id", entityOwner, authz.Guard{Resource: "file", Verb: "create", FilterData: true}, func(ctx context.Context, input *entityFileCreateInput) (*respx.Body[fileEntryView], error) {
 		return createFile(ctx, service, input.RawBody.Data(), false)
 	})
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "create-department-file", Method: http.MethodPost, Path: "/departments/{department_id}/files",
-		Summary: "Create a department file", Tags: []string{"departments"}, DefaultStatus: http.StatusCreated,
+		Summary: "Create a department file", Tags: []string{"files"}, DefaultStatus: http.StatusCreated,
 		MaxBodyBytes: service.maxUploadBytes + (1 << 20), Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity},
 	}, "department_id", departmentOwner, authz.Guard{Resource: "file", Verb: "create", FilterData: true}, func(ctx context.Context, input *departmentFileCreateInput) (*respx.Body[fileEntryView], error) {
 		return createFile(ctx, service, input.RawBody.Data(), false)
@@ -322,7 +322,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 
 	authz.RegisterTenantEntityOrAuthenticated(registrar, api, huma.Operation{
 		OperationID: "create-file-operation", Method: http.MethodPost, Path: "/file-operations",
-		Summary: "Copy or move files synchronously", Tags: []string{"tenants"}, DefaultStatus: http.StatusCreated,
+		Summary: "Copy or move files synchronously", Tags: []string{"files"}, DefaultStatus: http.StatusCreated,
 		Errors: []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusServiceUnavailable},
 	}, authz.Guard{Resource: "file", Verb: "create", FilterData: true}, func(ctx context.Context, input *fileOperationInput) (*respx.Body[operationResult], error) {
 		request, err := fileOperationRequestOf(input)

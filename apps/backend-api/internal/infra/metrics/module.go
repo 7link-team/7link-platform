@@ -311,7 +311,7 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 		Path:        Path,
 		Summary:     "Collect Prometheus metrics",
 		Description: "Returns process, Go runtime, and HTTP server metrics in Prometheus exposition format.",
-		Tags:        []string{"metrics"},
+		Tags:        []string{"system"},
 		Responses: map[string]*huma.Response{
 			"200": {
 				Description: "Prometheus metrics",

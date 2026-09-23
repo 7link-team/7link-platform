@@ -262,10 +262,12 @@ func RegisterEntityOrAuthenticated[I, O any](r *Registrar, api huma.API, op huma
 			panic("data-filtered operation requires entity data permission checker")
 		}
 	}
+	// The self twin is the same resource reached without a tenant selector,
+	// so it belongs to the same published section. Forcing it into a "me"
+	// section split one resource across two places in the document.
 	self := op
 	self.OperationID += "-self"
 	self.Path = selfPath(self.Path)
-	self.Tags = []string{"me"}
 	RegisterAuthenticated(r, api, self, handler)
 	r.prepare(api, &op, guard)
 	prepareEntityPath(&op)
@@ -279,10 +281,12 @@ func RegisterEntityOrAuthenticated[I, O any](r *Registrar, api huma.API, op huma
 // RegisterTenantEntityOrAuthenticated exposes one resource shape in personal,
 // tenant, and entity contexts. Each URI has exactly one authorization model.
 func RegisterTenantEntityOrAuthenticated[I, O any](r *Registrar, api huma.API, op huma.Operation, guard Guard, handler func(context.Context, *I) (*O, error)) {
+	// The self twin is the same resource reached without a tenant selector,
+	// so it belongs to the same published section. Forcing it into a "me"
+	// section split one resource across two places in the document.
 	self := op
 	self.OperationID += "-self"
 	self.Path = selfPath(self.Path)
-	self.Tags = []string{"me"}
 	RegisterAuthenticated(r, api, self, handler)
 
 	tenant := op

@@ -44,7 +44,7 @@ type listPlatformAdministratorsInput struct {
 func registerPlatformHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	authz.RegisterPlatform(registrar, a, huma.Operation{
 		OperationID: "iam-platform-permission-catalog", Method: http.MethodGet, Path: "/platform/permission-catalog",
-		Summary: "List declared platform permissions", Tags: []string{"platform"},
+		Summary: "List declared platform permissions", Tags: []string{"access-control"},
 	}, authz.Guard{Resource: "platform", Verb: "administer"}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]authz.Action], error) {
 		return respx.OK(ctx, svc.PlatformPermissionCatalog(ctx)), nil
 	})

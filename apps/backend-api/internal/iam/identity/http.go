@@ -149,7 +149,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Method:      http.MethodGet,
 		Path:        "/principals",
 		Summary:     "List local principals in the tenant",
-		Tags:        []string{"tenants"},
+		Tags:        []string{"directory"},
 	}, authz.Guard{Resource: "user", Verb: "view"},
 		func(ctx context.Context, in *principalListInput) (*respx.Body[principalListData], error) {
 			tenantID, err := requireID(in.TenantID)
@@ -182,7 +182,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Method:        http.MethodPost,
 		Path:          "/principals",
 		Summary:       "Create a local principal and tenant membership",
-		Tags:          []string{"tenants"},
+		Tags:          []string{"directory"},
 		DefaultStatus: http.StatusCreated,
 		Errors:        []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "user", Verb: "create"},
@@ -212,7 +212,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Method:      http.MethodGet,
 		Path:        "/principals/{principal_id}",
 		Summary:     "Get a local principal in the tenant",
-		Tags:        []string{"tenants"},
+		Tags:        []string{"directory"},
 		Errors:      []int{http.StatusNotFound},
 	}, authz.Guard{Resource: "user", Verb: "view"},
 		func(ctx context.Context, in *principalIDInput) (*respx.Body[PrincipalView], error) {
@@ -236,7 +236,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Method:      http.MethodPatch,
 		Path:        "/principals/{principal_id}",
 		Summary:     "Update a local principal profile",
-		Tags:        []string{"tenants"},
+		Tags:        []string{"directory"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "user", Verb: "update"},
 		func(ctx context.Context, in *principalUpdateInput) (*respx.Body[PrincipalView], error) {
@@ -263,7 +263,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Method:      http.MethodPut,
 		Path:        "/principals/{principal_id}/suspension",
 		Summary:     "Suspend a principal and revoke its sessions and refresh tokens",
-		Tags:        []string{"tenants"},
+		Tags:        []string{"directory"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict},
 	}, authz.Guard{Resource: "user", Verb: "update"},
 		func(ctx context.Context, in *principalIDInput) (*respx.Body[PrincipalView], error) {
@@ -287,7 +287,7 @@ func registerPrincipalHTTP(api huma.API, service *Service, registrar *authz.Regi
 		Method:      http.MethodDelete,
 		Path:        "/principals/{principal_id}/suspension",
 		Summary:     "Lift a principal suspension",
-		Tags:        []string{"tenants"},
+		Tags:        []string{"directory"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict},
 	}, authz.Guard{Resource: "user", Verb: "update"},
 		func(ctx context.Context, in *principalIDInput) (*respx.Body[PrincipalView], error) {
@@ -313,7 +313,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 		Method:      http.MethodGet,
 		Path:        "/service-accounts",
 		Summary:     "List tenant service accounts",
-		Tags:        []string{"tenants"},
+		Tags:        []string{"directory"},
 	}, authz.Guard{Resource: "service_account", Verb: "view"},
 		func(ctx context.Context, in *serviceAccountListInput) (*respx.Body[serviceAccountListData], error) {
 			tenantID, err := requireID(in.TenantID)
@@ -332,7 +332,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 		Method:        http.MethodPost,
 		Path:          "/service-accounts",
 		Summary:       "Create a non-interactive tenant service account",
-		Tags:          []string{"tenants"},
+		Tags:          []string{"directory"},
 		DefaultStatus: http.StatusCreated,
 		Errors:        []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "service_account", Verb: "create"},
@@ -355,7 +355,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 		Method:      http.MethodGet,
 		Path:        "/service-accounts/{service_account_id}",
 		Summary:     "Get a tenant service account",
-		Tags:        []string{"service-accounts"},
+		Tags:        []string{"directory"},
 		Errors:      []int{http.StatusNotFound},
 	}, "service_account_id", service.resolveServiceAccountOwner, authz.Guard{Resource: "service_account", Verb: "view"},
 		func(ctx context.Context, in *serviceAccountIDInput) (*respx.Body[ServiceAccount], error) {
@@ -376,7 +376,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 		Method:      http.MethodPut,
 		Path:        "/service-accounts/{service_account_id}",
 		Summary:     "Replace service account profile and status",
-		Tags:        []string{"service-accounts"},
+		Tags:        []string{"directory"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "service_account_id", service.resolveServiceAccountOwner, authz.Guard{Resource: "service_account", Verb: "update"},
 		func(ctx context.Context, in *serviceAccountReplaceInput) (*respx.Body[ServiceAccount], error) {
@@ -400,7 +400,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 		Method:      http.MethodDelete,
 		Path:        "/service-accounts/{service_account_id}",
 		Summary:     "Delete a service account and revoke its credentials",
-		Tags:        []string{"service-accounts"},
+		Tags:        []string{"directory"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict},
 	}, "service_account_id", service.resolveServiceAccountOwner, authz.Guard{Resource: "service_account", Verb: "delete"},
 		func(ctx context.Context, in *serviceAccountDeleteInput) (*respx.Body[serviceAccountDeleteData], error) {
@@ -420,7 +420,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 		Method:      http.MethodGet,
 		Path:        "/service-accounts/{service_account_id}/credentials",
 		Summary:     "List service account credentials without secrets",
-		Tags:        []string{"service-accounts"},
+		Tags:        []string{"directory"},
 		Errors:      []int{http.StatusNotFound},
 	}, "service_account_id", service.resolveServiceAccountOwner, authz.Guard{Resource: "service_account", Verb: "manage_credential"},
 		func(ctx context.Context, in *serviceAccountIDInput) (*respx.Body[[]ServiceAccountCredential], error) {
@@ -441,7 +441,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 		Method:        http.MethodPost,
 		Path:          "/service-accounts/{service_account_id}/credentials",
 		Summary:       "Create a service account client credential",
-		Tags:          []string{"service-accounts"},
+		Tags:          []string{"directory"},
 		DefaultStatus: http.StatusCreated,
 		Errors:        []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "service_account_id", service.resolveServiceAccountOwner, authz.Guard{Resource: "service_account", Verb: "manage_credential"},
@@ -465,7 +465,7 @@ func registerServiceAccountHTTP(api huma.API, service *Service, registrar *authz
 		Method:      http.MethodDelete,
 		Path:        "/service-accounts/{service_account_id}/credentials/{credential_id}",
 		Summary:     "Revoke a service account credential and its active tokens",
-		Tags:        []string{"service-accounts"},
+		Tags:        []string{"directory"},
 		Errors:      []int{http.StatusNotFound},
 	}, "service_account_id", service.resolveServiceAccountOwner, authz.Guard{Resource: "service_account", Verb: "manage_credential"},
 		func(ctx context.Context, in *serviceAccountCredentialIDInput) (*respx.Body[serviceAccountCredentialRevokeData], error) {

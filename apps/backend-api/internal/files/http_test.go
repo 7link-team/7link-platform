@@ -78,8 +78,10 @@ func TestFileHTTPContract(t *testing.T) {
 				continue
 			}
 			manifest = append(manifest, operation.OperationID+"|"+method+"|"+path)
-			expectedTag := strings.Split(strings.TrimPrefix(path, "/"), "/")[0]
-			require.Equal(t, []string{expectedTag}, operation.Tags)
+			// File routes are served under five different owners, so deriving
+			// the section from the path scattered one module across five of
+			// them. The module publishes one section.
+			require.Equal(t, []string{"files"}, operation.Tags)
 			if operation.OperationID == "list-entity-files" {
 				require.True(t, authz.IsTenantMemberOperation(operation))
 				require.True(t, authz.IsOwnedResourceOperation(operation))

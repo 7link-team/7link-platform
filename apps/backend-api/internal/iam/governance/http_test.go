@@ -89,8 +89,10 @@ func TestGovernanceRouteManifestAndOpenAPIContract(t *testing.T) {
 			location := method + " " + path
 			assert.False(t, seen[operation.OperationID], location)
 			seen[operation.OperationID] = true
-			expectedTag := strings.Split(strings.TrimPrefix(path, "/"), "/")[0]
-			assert.Equal(t, []string{expectedTag}, operation.Tags, location)
+			// Requests and reviews are both ways of changing who holds a role,
+			// so the module publishes one section whichever owner the route
+			// hangs off.
+			assert.Equal(t, []string{"access-control"}, operation.Tags, location)
 			assert.NotEmpty(t, operation.Security, location)
 			var tenantPaths int
 			for _, parameter := range operation.Parameters {

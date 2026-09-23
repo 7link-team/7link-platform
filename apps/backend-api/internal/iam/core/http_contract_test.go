@@ -111,8 +111,10 @@ func TestCoreOpenAPISelectorsAndParametersAreConsistent(t *testing.T) {
 				t.Fatalf("duplicate operationId %q on %s and %s", operation.OperationID, previous, location)
 			}
 			operationIDs[operation.OperationID] = location
-			firstSegment := strings.Split(strings.TrimPrefix(path, "/"), "/")[0]
-			assert.Equal(t, []string{firstSegment}, operation.Tags, location)
+			// Core owns the rules and the organizational record they apply to,
+			// plus the platform-wide and self-service projections of both.
+			assert.Contains(t, []string{"access-control", "directory", "platform", "account"},
+				operation.Tags[0], location)
 			assert.NotEmpty(t, operation.Security, location)
 
 			parameters := make(map[string]*huma.Param, len(operation.Parameters))

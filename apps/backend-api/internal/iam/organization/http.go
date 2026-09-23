@@ -337,7 +337,7 @@ func organizationResourceIDs(ctx context.Context, idValue string) (guid.ID, guid
 func registerDepartmentHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "organization-list-departments", Method: http.MethodGet, Path: "/departments",
-		Summary: "List the tenant department hierarchy", Tags: []string{"tenants"},
+		Summary: "List the tenant department hierarchy", Tags: []string{"directory"},
 		Errors: []int{http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "dept", Verb: "view"},
 		func(ctx context.Context, in *tenantPageSelector) (*respx.Body[[]Department], error) {
@@ -354,7 +354,7 @@ func registerDepartmentHTTP(api huma.API, service *Service, registrar *authz.Reg
 
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "organization-create-department", Method: http.MethodPost, Path: "/departments",
-		Summary: "Create a tenant department", Tags: []string{"tenants"}, DefaultStatus: http.StatusCreated,
+		Summary: "Create a tenant department", Tags: []string{"directory"}, DefaultStatus: http.StatusCreated,
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "dept", Verb: "create"},
 		func(ctx context.Context, in *createDepartmentInput) (*respx.Body[Department], error) {
@@ -381,7 +381,7 @@ func registerDepartmentHTTP(api huma.API, service *Service, registrar *authz.Reg
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "organization-get-department", Method: http.MethodGet, Path: "/departments/{department_id}",
-		Summary: "Get a tenant department", Tags: []string{"departments"},
+		Summary: "Get a tenant department", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, "department_id", service.resolveDepartmentOwner, authz.Guard{Resource: "dept", Verb: "view"},
 		func(ctx context.Context, in *departmentResourceInput) (*respx.Body[Department], error) {
@@ -398,7 +398,7 @@ func registerDepartmentHTTP(api huma.API, service *Service, registrar *authz.Reg
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "organization-update-department", Method: http.MethodPatch, Path: "/departments/{department_id}",
-		Summary: "Update or move a tenant department", Tags: []string{"departments"},
+		Summary: "Update or move a tenant department", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "department_id", service.resolveDepartmentOwner, authz.Guard{Resource: "dept", Verb: "update"},
 		func(ctx context.Context, in *updateDepartmentInput) (*respx.Body[Department], error) {
@@ -425,7 +425,7 @@ func registerDepartmentHTTP(api huma.API, service *Service, registrar *authz.Reg
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "organization-delete-department", Method: http.MethodDelete, Path: "/departments/{department_id}",
-		Summary: "Delete an empty tenant department", Tags: []string{"departments"},
+		Summary: "Delete an empty tenant department", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "department_id", service.resolveDepartmentOwner, authz.Guard{Resource: "dept", Verb: "delete"},
 		func(ctx context.Context, in *deleteDepartmentInput) (*respx.Body[deletedResource], error) {
@@ -443,7 +443,7 @@ func registerDepartmentHTTP(api huma.API, service *Service, registrar *authz.Reg
 func registerPositionHTTP(api huma.API, service *PositionService, registrar *authz.Registrar) {
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "organization-list-positions", Method: http.MethodGet, Path: "/positions",
-		Summary: "List tenant positions", Tags: []string{"tenants"}, Errors: []int{http.StatusUnprocessableEntity},
+		Summary: "List tenant positions", Tags: []string{"directory"}, Errors: []int{http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "position", Verb: "view"},
 		func(ctx context.Context, in *tenantPageSelector) (*respx.Body[[]Position], error) {
 			tenantID, err := parseOrganizationID(in.TenantID)
@@ -459,7 +459,7 @@ func registerPositionHTTP(api huma.API, service *PositionService, registrar *aut
 
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "organization-create-position", Method: http.MethodPost, Path: "/positions",
-		Summary: "Create a tenant position", Tags: []string{"tenants"}, DefaultStatus: http.StatusCreated,
+		Summary: "Create a tenant position", Tags: []string{"directory"}, DefaultStatus: http.StatusCreated,
 		Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "position", Verb: "create"},
 		func(ctx context.Context, in *createPositionInput) (*respx.Body[Position], error) {
@@ -478,7 +478,7 @@ func registerPositionHTTP(api huma.API, service *PositionService, registrar *aut
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "organization-get-position", Method: http.MethodGet, Path: "/positions/{position_id}",
-		Summary: "Get a tenant position", Tags: []string{"positions"},
+		Summary: "Get a tenant position", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, "position_id", service.resolvePositionOwner, authz.Guard{Resource: "position", Verb: "view"},
 		func(ctx context.Context, in *positionResourceInput) (*respx.Body[Position], error) {
@@ -495,7 +495,7 @@ func registerPositionHTTP(api huma.API, service *PositionService, registrar *aut
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "organization-update-position", Method: http.MethodPatch, Path: "/positions/{position_id}",
-		Summary: "Update a tenant position", Tags: []string{"positions"},
+		Summary: "Update a tenant position", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "position_id", service.resolvePositionOwner, authz.Guard{Resource: "position", Verb: "update"},
 		func(ctx context.Context, in *updatePositionInput) (*respx.Body[Position], error) {
@@ -515,7 +515,7 @@ func registerPositionHTTP(api huma.API, service *PositionService, registrar *aut
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "organization-delete-position", Method: http.MethodDelete, Path: "/positions/{position_id}",
-		Summary: "Delete an empty tenant position", Tags: []string{"positions"},
+		Summary: "Delete an empty tenant position", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "position_id", service.resolvePositionOwner, authz.Guard{Resource: "position", Verb: "delete"},
 		func(ctx context.Context, in *deletePositionInput) (*respx.Body[deletedResource], error) {
@@ -531,7 +531,7 @@ func registerPositionHTTP(api huma.API, service *PositionService, registrar *aut
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "organization-list-position-members", Method: http.MethodGet, Path: "/positions/{position_id}/members",
-		Summary: "List position members", Tags: []string{"positions"},
+		Summary: "List position members", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, "position_id", service.resolvePositionOwner, authz.Guard{Resource: "position", Verb: "view"},
 		func(ctx context.Context, in *positionResourcePageInput) (*respx.Body[[]PositionMember], error) {
@@ -549,7 +549,7 @@ func registerPositionHTTP(api huma.API, service *PositionService, registrar *aut
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "organization-put-position-member", Method: http.MethodPut,
 		Path: "/positions/{position_id}/members/{principal_id}", Summary: "Assign or update a position member",
-		Tags: []string{"positions"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
+		Tags: []string{"directory"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "position_id", service.resolvePositionOwner, authz.Guard{Resource: "position", Verb: "manage_member"},
 		func(ctx context.Context, in *positionMembershipInput) (*respx.Body[PositionMember], error) {
 			tenantID, id, err := organizationResourceIDs(ctx, in.ID)
@@ -572,7 +572,7 @@ func registerPositionHTTP(api huma.API, service *PositionService, registrar *aut
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "organization-delete-position-member", Method: http.MethodDelete,
 		Path: "/positions/{position_id}/members/{principal_id}", Summary: "Remove a position member",
-		Tags: []string{"positions"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
+		Tags: []string{"directory"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "position_id", service.resolvePositionOwner, authz.Guard{Resource: "position", Verb: "manage_member"},
 		func(ctx context.Context, in *positionMemberResourceInput) (*respx.Body[deletedResource], error) {
 			tenantID, id, err := organizationResourceIDs(ctx, in.ID)
@@ -594,7 +594,7 @@ func registerPositionHTTP(api huma.API, service *PositionService, registrar *aut
 func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Registrar) {
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "organization-list-groups", Method: http.MethodGet, Path: "/groups",
-		Summary: "List tenant groups", Tags: []string{"tenants"}, Errors: []int{http.StatusUnprocessableEntity},
+		Summary: "List tenant groups", Tags: []string{"directory"}, Errors: []int{http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "group", Verb: "view"},
 		func(ctx context.Context, in *tenantPageSelector) (*respx.Body[[]Group], error) {
 			tenantID, err := parseOrganizationID(in.TenantID)
@@ -610,7 +610,7 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "organization-create-group", Method: http.MethodPost, Path: "/groups",
-		Summary: "Create a tenant group", Tags: []string{"tenants"}, DefaultStatus: http.StatusCreated,
+		Summary: "Create a tenant group", Tags: []string{"directory"}, DefaultStatus: http.StatusCreated,
 		Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "group", Verb: "create"},
 		func(ctx context.Context, in *createGroupInput) (*respx.Body[Group], error) {
@@ -630,7 +630,7 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "organization-get-group", Method: http.MethodGet, Path: "/groups/{group_id}",
-		Summary: "Get a tenant group", Tags: []string{"groups"},
+		Summary: "Get a tenant group", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, "group_id", service.resolveGroupOwner, authz.Guard{Resource: "group", Verb: "view"},
 		func(ctx context.Context, in *groupResourceInput) (*respx.Body[Group], error) {
@@ -647,7 +647,7 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "organization-update-group", Method: http.MethodPatch, Path: "/groups/{group_id}",
-		Summary: "Update a tenant group", Tags: []string{"groups"},
+		Summary: "Update a tenant group", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "group_id", service.resolveGroupOwner, authz.Guard{Resource: "group", Verb: "update"},
 		func(ctx context.Context, in *updateGroupInput) (*respx.Body[Group], error) {
@@ -667,7 +667,7 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "organization-delete-group", Method: http.MethodDelete, Path: "/groups/{group_id}",
-		Summary: "Delete an empty tenant group", Tags: []string{"groups"},
+		Summary: "Delete an empty tenant group", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "group_id", service.resolveGroupOwner, authz.Guard{Resource: "group", Verb: "delete"},
 		func(ctx context.Context, in *deleteGroupInput) (*respx.Body[deletedResource], error) {
@@ -683,7 +683,7 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "organization-list-group-members", Method: http.MethodGet, Path: "/groups/{group_id}/members",
-		Summary: "List group members", Tags: []string{"groups"},
+		Summary: "List group members", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, "group_id", service.resolveGroupOwner, authz.Guard{Resource: "group", Verb: "view"},
 		func(ctx context.Context, in *groupResourcePageInput) (*respx.Body[[]GroupMember], error) {
@@ -701,7 +701,7 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "organization-put-group-member", Method: http.MethodPut,
 		Path: "/groups/{group_id}/members/{principal_id}", Summary: "Assign or update a group member",
-		Tags: []string{"groups"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
+		Tags: []string{"directory"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "group_id", service.resolveGroupOwner, authz.Guard{Resource: "group", Verb: "manage_member"},
 		func(ctx context.Context, in *groupMembershipInput) (*respx.Body[GroupMember], error) {
 			tenantID, id, err := organizationResourceIDs(ctx, in.ID)
@@ -724,7 +724,7 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "organization-delete-group-member", Method: http.MethodDelete,
 		Path: "/groups/{group_id}/members/{principal_id}", Summary: "Remove a group member",
-		Tags: []string{"groups"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
+		Tags: []string{"directory"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "group_id", service.resolveGroupOwner, authz.Guard{Resource: "group", Verb: "manage_member"},
 		func(ctx context.Context, in *groupMemberResourceInput) (*respx.Body[deletedResource], error) {
 			tenantID, id, err := organizationResourceIDs(ctx, in.ID)
@@ -746,7 +746,7 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 func registerTenantHTTP(api huma.API, service *TenantService, registrar *authz.Registrar) {
 	authz.RegisterAuthenticated(registrar, api, huma.Operation{
 		OperationID: "organization-my-tenants", Method: http.MethodGet, Path: "/me/tenants",
-		Summary: "List the caller's tenants", Tags: []string{"me"},
+		Summary: "List the caller's tenants", Tags: []string{"account"},
 	}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]Tenant], error) {
 		claims, ok := authnext.FromContext(ctx)
 		if !ok || claims == nil || claims.PrincipalID.Zero() {
@@ -761,7 +761,7 @@ func registerTenantHTTP(api huma.API, service *TenantService, registrar *authz.R
 
 	authz.RegisterPlatform(registrar, api, huma.Operation{
 		OperationID: "organization-list-tenants", Method: http.MethodGet, Path: "/tenants",
-		Summary: "List platform tenants", Tags: []string{"tenants"},
+		Summary: "List platform tenants", Tags: []string{"directory"},
 	}, authz.Guard{Resource: "tenant", Verb: "view"},
 		func(ctx context.Context, in *listTenantsInput) (*respx.Body[[]Tenant], error) {
 			items, total, err := service.ListPage(ctx, in.IncludeDeleted, in.Offset, in.Limit)
@@ -773,7 +773,7 @@ func registerTenantHTTP(api huma.API, service *TenantService, registrar *authz.R
 
 	authz.RegisterPlatform(registrar, api, huma.Operation{
 		OperationID: "organization-create-tenant", Method: http.MethodPost, Path: "/tenants",
-		Summary: "Create a platform tenant", Tags: []string{"tenants"}, DefaultStatus: http.StatusCreated,
+		Summary: "Create a platform tenant", Tags: []string{"directory"}, DefaultStatus: http.StatusCreated,
 		Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "tenant", Verb: "create"},
 		func(ctx context.Context, in *createTenantInput) (*respx.Body[Tenant], error) {
@@ -792,7 +792,7 @@ func registerTenantHTTP(api huma.API, service *TenantService, registrar *authz.R
 
 	authz.RegisterPlatform(registrar, api, huma.Operation{
 		OperationID: "organization-get-tenant", Method: http.MethodGet, Path: "/tenants/{tenant_id}",
-		Summary: "Get a platform tenant", Tags: []string{"tenants"},
+		Summary: "Get a platform tenant", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "tenant", Verb: "view"},
 		func(ctx context.Context, in *tenantIDInput) (*respx.Body[Tenant], error) {
@@ -809,7 +809,7 @@ func registerTenantHTTP(api huma.API, service *TenantService, registrar *authz.R
 
 	authz.RegisterPlatform(registrar, api, huma.Operation{
 		OperationID: "organization-update-tenant", Method: http.MethodPatch, Path: "/tenants/{tenant_id}",
-		Summary: "Update or suspend a platform tenant", Tags: []string{"tenants"},
+		Summary: "Update or suspend a platform tenant", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "tenant", Verb: "update"},
 		func(ctx context.Context, in *updateTenantInput) (*respx.Body[Tenant], error) {
@@ -828,7 +828,7 @@ func registerTenantHTTP(api huma.API, service *TenantService, registrar *authz.R
 
 	authz.RegisterPlatform(registrar, api, huma.Operation{
 		OperationID: "organization-delete-tenant", Method: http.MethodDelete, Path: "/tenants/{tenant_id}",
-		Summary: "Soft-delete a platform tenant", Tags: []string{"tenants"},
+		Summary: "Soft-delete a platform tenant", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "tenant", Verb: "delete"},
 		func(ctx context.Context, in *deleteTenantInput) (*respx.Body[deletedResource], error) {
@@ -846,7 +846,7 @@ func registerTenantHTTP(api huma.API, service *TenantService, registrar *authz.R
 func registerInvitationHTTP(api huma.API, service *InvitationService, registrar *authz.Registrar) {
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "organization-list-invitations", Method: http.MethodGet, Path: "/invitations",
-		Summary: "List tenant invitations", Tags: []string{"tenants"},
+		Summary: "List tenant invitations", Tags: []string{"directory"},
 		Errors: []int{http.StatusUnprocessableEntity, http.StatusInternalServerError},
 	}, authz.Guard{Resource: "invitation", Verb: "view"},
 		func(ctx context.Context, in *tenantPageSelector) (*respx.Body[[]Invitation], error) {
@@ -863,7 +863,7 @@ func registerInvitationHTTP(api huma.API, service *InvitationService, registrar 
 
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "organization-create-invitation", Method: http.MethodPost, Path: "/invitations",
-		Summary: "Create a tenant invitation and return its credential once", Tags: []string{"tenants"},
+		Summary: "Create a tenant invitation and return its credential once", Tags: []string{"directory"},
 		DefaultStatus: http.StatusCreated,
 		Errors:        []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError},
 	}, authz.Guard{Resource: "invitation", Verb: "create"},
@@ -896,7 +896,7 @@ func registerInvitationHTTP(api huma.API, service *InvitationService, registrar 
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "organization-revoke-invitation", Method: http.MethodDelete, Path: "/invitations/{invitation_id}",
-		Summary: "Revoke a pending tenant invitation", Tags: []string{"invitations"},
+		Summary: "Revoke a pending tenant invitation", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusGone, http.StatusUnprocessableEntity, http.StatusInternalServerError},
 	}, "invitation_id", service.resolveInvitationOwner, authz.Guard{Resource: "invitation", Verb: "revoke"},
 		func(ctx context.Context, in *invitationResourceInput) (*respx.Body[revokedInvitation], error) {
@@ -912,7 +912,7 @@ func registerInvitationHTTP(api huma.API, service *InvitationService, registrar 
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "organization-resend-invitation", Method: http.MethodPost, Path: "/invitations/{invitation_id}/deliveries",
-		Summary: "Create a new invitation delivery and return its rotated credential once", Tags: []string{"invitations"},
+		Summary: "Create a new invitation delivery and return its rotated credential once", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError},
 	}, "invitation_id", service.resolveInvitationOwner, authz.Guard{Resource: "invitation", Verb: "resend"},
 		func(ctx context.Context, in *resendInvitationInput) (*respx.Body[issuedInvitation], error) {
@@ -929,7 +929,7 @@ func registerInvitationHTTP(api huma.API, service *InvitationService, registrar 
 
 	authz.RegisterPublic(api, huma.Operation{
 		OperationID: "organization-accept-invitation", Method: http.MethodPost, Path: "/invitation-acceptances",
-		Summary: "Accept a tenant invitation and create the local principal", Tags: []string{"invitation-acceptances"},
+		Summary: "Accept a tenant invitation and create the local principal", Tags: []string{"authentication"},
 		Security: []map[string][]string{},
 		Errors:   []int{http.StatusBadRequest, http.StatusConflict, http.StatusGone, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *acceptInvitationInput) (*respx.Body[InvitationAcceptance], error) {

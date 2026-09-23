@@ -113,11 +113,10 @@ func TestAuditRouteManifestAndOpenAPIContract(t *testing.T) {
 				continue
 			}
 			location := method + " " + path
-			expectedTag := "tenants"
-			if strings.HasPrefix(path, "/platform/") {
-				expectedTag = "platform"
-			}
-			assert.Equal(t, []string{expectedTag}, operation.Tags, location)
+			// The platform copy reads the same record at a wider scope, so it
+			// belongs beside the tenant one rather than in a section named
+			// after who may call it.
+			assert.Equal(t, []string{"audit"}, operation.Tags, location)
 			assert.Equal(t, auditGuards[operation.OperationID], operation.Extensions[authz.GuardExtensionKey], location)
 			assert.NotEmpty(t, operation.Security, location)
 			var tenantPaths int

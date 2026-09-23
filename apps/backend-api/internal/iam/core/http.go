@@ -469,7 +469,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		Method:      http.MethodGet,
 		Path:        "/permission-catalog",
 		Summary:     "List declared permissions",
-		Tags:        []string{"tenants"},
+		Tags:        []string{"access-control"},
 	}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]authz.Action], error) {
 		return respx.OK(ctx, svc.PermissionCatalog(ctx)), nil
 	})
@@ -479,7 +479,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		Method:      http.MethodGet,
 		Path:        "/scope-model",
 		Summary:     "List platform tenant merchant store scope model",
-		Tags:        []string{"scope-model"},
+		Tags:        []string{"access-control"},
 	}, authz.Guard{Resource: "tenant", Verb: "view"}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]ScopeNode], error) {
 		return respx.OK(ctx, svc.ScopeModel(ctx)), nil
 	})
@@ -489,13 +489,13 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		Method:      http.MethodGet,
 		Path:        "/menu-catalog",
 		Summary:     "List menu metadata bound to permission codes",
-		Tags:        []string{"tenants"},
+		Tags:        []string{"access-control"},
 	}, authz.Guard{Resource: "menu", Verb: "view"}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]MenuDeclaration], error) {
 		return respx.OK(ctx, svc.MenuCatalog(ctx)), nil
 	})
 
 	authz.Register(registrar, a, huma.Operation{
-		OperationID: "iam-authorization-constraint", Method: http.MethodPost, Path: "/authorization-constraint-evaluations", Summary: "Compute an entity data constraint for a tenant subject", Tags: []string{"tenants"}, Errors: []int{http.StatusUnprocessableEntity},
+		OperationID: "iam-authorization-constraint", Method: http.MethodPost, Path: "/authorization-constraint-evaluations", Summary: "Compute an entity data constraint for a tenant subject", Tags: []string{"access-control"}, Errors: []int{http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *authorizationConstraintInput) (*respx.Body[authz.DataConstraint], error) {
 		tenantID, err := requireID(in.TenantID)
 		if err != nil {
@@ -513,7 +513,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.Register(registrar, a, huma.Operation{
-		OperationID: "iam-explain-authorization", Method: http.MethodPost, Path: "/authorization-explanations", Summary: "Explain an entity or business-resource authorization decision", Tags: []string{"tenants"}, Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
+		OperationID: "iam-explain-authorization", Method: http.MethodPost, Path: "/authorization-explanations", Summary: "Explain an entity or business-resource authorization decision", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *authorizationExplanationInput) (*respx.Body[authz.Explanation], error) {
 		var explanation authz.Explanation
 		tenantID, err := requireID(in.TenantID)
@@ -547,7 +547,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.Register(registrar, a, huma.Operation{
-		OperationID: "iam-list-entities", Method: http.MethodGet, Path: "/entities", Summary: "List tenant entities", Tags: []string{"tenants"},
+		OperationID: "iam-list-entities", Method: http.MethodGet, Path: "/entities", Summary: "List tenant entities", Tags: []string{"directory"},
 	}, authz.Guard{Resource: "entity", Verb: "view"}, func(ctx context.Context, in *boundedTenantInput) (*respx.Body[[]APIEntity], error) {
 		tenantID, err := requireID(in.TenantID)
 		if err != nil {
@@ -561,7 +561,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.Register(registrar, a, huma.Operation{
-		OperationID: "iam-create-entity", Method: http.MethodPost, Path: "/entities", Summary: "Create a tenant entity", Tags: []string{"tenants"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
+		OperationID: "iam-create-entity", Method: http.MethodPost, Path: "/entities", Summary: "Create a tenant entity", Tags: []string{"directory"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "entity", Verb: "create"}, func(ctx context.Context, in *createEntityInput) (*respx.Body[APIEntity], error) {
 		tenantID, err := requireID(in.TenantID)
 		if err != nil {
@@ -582,7 +582,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-get-entity", Method: http.MethodGet, Path: "/entities/{entity_id}", Summary: "Get a tenant entity", Tags: []string{"entities"}, Errors: []int{http.StatusNotFound},
+		OperationID: "iam-get-entity", Method: http.MethodGet, Path: "/entities/{entity_id}", Summary: "Get a tenant entity", Tags: []string{"directory"}, Errors: []int{http.StatusNotFound},
 	}, "entity_id", svc.resolveEntityOwner, authz.Guard{Resource: "entity", Verb: "view"}, func(ctx context.Context, in *entityInput) (*respx.Body[APIEntity], error) {
 		tenantID := authnext.TenantIDFromContext(ctx)
 		entityID, err := requireID(in.EntityID)
@@ -597,7 +597,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-update-entity", Method: http.MethodPatch, Path: "/entities/{entity_id}", Summary: "Update a tenant entity", Tags: []string{"entities"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
+		OperationID: "iam-update-entity", Method: http.MethodPatch, Path: "/entities/{entity_id}", Summary: "Update a tenant entity", Tags: []string{"directory"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "entity_id", svc.resolveEntityOwner, authz.Guard{Resource: "entity", Verb: "update"}, func(ctx context.Context, in *updateEntityInput) (*respx.Body[APIEntity], error) {
 		tenantID := authnext.TenantIDFromContext(ctx)
 		entityID, err := requireID(in.EntityID)
@@ -620,7 +620,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-delete-entity", Method: http.MethodDelete, Path: "/entities/{entity_id}", Summary: "Delete an empty tenant entity", Tags: []string{"entities"}, Errors: []int{http.StatusNotFound, http.StatusConflict},
+		OperationID: "iam-delete-entity", Method: http.MethodDelete, Path: "/entities/{entity_id}", Summary: "Delete an empty tenant entity", Tags: []string{"directory"}, Errors: []int{http.StatusNotFound, http.StatusConflict},
 	}, "entity_id", svc.resolveEntityOwner, authz.Guard{Resource: "entity", Verb: "delete"}, func(ctx context.Context, in *entityInput) (*respx.Body[MutationResult], error) {
 		tenantID := authnext.TenantIDFromContext(ctx)
 		entityID, err := requireID(in.EntityID)
@@ -634,7 +634,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-list-entity-role-bindings", Method: http.MethodGet, Path: "/entities/{entity_id}/role-bindings", Summary: "List direct principal role bindings for an entity", Tags: []string{"entities"}, Errors: []int{http.StatusNotFound},
+		OperationID: "iam-list-entity-role-bindings", Method: http.MethodGet, Path: "/entities/{entity_id}/role-bindings", Summary: "List direct principal role bindings for an entity", Tags: []string{"directory"}, Errors: []int{http.StatusNotFound},
 	}, "entity_id", svc.resolveEntityOwner, authz.Guard{Resource: "entity", Verb: "view"}, func(ctx context.Context, in *listEntityRoleBindingsInput) (*respx.Body[[]APIEntityRoleBinding], error) {
 		tenantID := authnext.TenantIDFromContext(ctx)
 		entityID, err := requireID(in.EntityID)
@@ -649,7 +649,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-put-entity-role-binding", Method: http.MethodPut, Path: "/entities/{entity_id}/role-bindings/{role_id}/{principal_id}", Summary: "Assign a direct principal role at an entity scope", Tags: []string{"entities"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
+		OperationID: "iam-put-entity-role-binding", Method: http.MethodPut, Path: "/entities/{entity_id}/role-bindings/{role_id}/{principal_id}", Summary: "Assign a direct principal role at an entity scope", Tags: []string{"directory"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "entity_id", svc.resolveEntityOwner, authz.Guard{Resource: "entity", Verb: "manage_binding"}, func(ctx context.Context, in *putEntityRoleBindingInput) (*respx.Body[APIEntityRoleBinding], error) {
 		tenantID := authnext.TenantIDFromContext(ctx)
 		entityID, err := requireID(in.EntityID)
@@ -676,7 +676,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-delete-entity-role-binding", Method: http.MethodDelete, Path: "/entities/{entity_id}/role-bindings/{role_id}/{principal_id}", Summary: "Remove a direct principal role from an entity scope", Tags: []string{"entities"}, Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
+		OperationID: "iam-delete-entity-role-binding", Method: http.MethodDelete, Path: "/entities/{entity_id}/role-bindings/{role_id}/{principal_id}", Summary: "Remove a direct principal role from an entity scope", Tags: []string{"directory"}, Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, "entity_id", svc.resolveEntityOwner, authz.Guard{Resource: "entity", Verb: "manage_binding"}, func(ctx context.Context, in *entityRoleBindingRef) (*respx.Body[MutationResult], error) {
 		tenantID := authnext.TenantIDFromContext(ctx)
 		entityID, err := requireID(in.EntityID)
@@ -699,7 +699,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.Register(registrar, a, huma.Operation{
-		OperationID: "iam-list-roles", Method: http.MethodGet, Path: "/roles", Summary: "List tenant roles", Tags: []string{"tenants"},
+		OperationID: "iam-list-roles", Method: http.MethodGet, Path: "/roles", Summary: "List tenant roles", Tags: []string{"access-control"},
 	}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *boundedTenantInput) (*respx.Body[[]APIRole], error) {
 		tenantID, err := requireID(in.TenantID)
 		if err != nil {
@@ -713,7 +713,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.Register(registrar, a, huma.Operation{
-		OperationID: "iam-create-role", Method: http.MethodPost, Path: "/roles", Summary: "Create a tenant role", Tags: []string{"tenants"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict},
+		OperationID: "iam-create-role", Method: http.MethodPost, Path: "/roles", Summary: "Create a tenant role", Tags: []string{"access-control"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict},
 	}, authz.Guard{Resource: "role", Verb: "create"}, func(ctx context.Context, in *createRoleInput) (*respx.Body[APIRole], error) {
 		tenantID, err := requireID(in.TenantID)
 		if err != nil {
@@ -727,7 +727,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-get-role", Method: http.MethodGet, Path: "/roles/{role_id}", Summary: "Get a tenant role", Tags: []string{"roles"}, Errors: []int{http.StatusNotFound},
+		OperationID: "iam-get-role", Method: http.MethodGet, Path: "/roles/{role_id}", Summary: "Get a tenant role", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *roleInput) (*respx.Body[APIRole], error) {
 		tenantID, roleID, err := roleRef(ctx, in)
 		if err != nil {
@@ -741,7 +741,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-get-role-data-scope", Method: http.MethodGet, Path: "/roles/{role_id}/data-scope", Summary: "Get a role data scope", Tags: []string{"roles"}, Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
+		OperationID: "iam-get-role-data-scope", Method: http.MethodGet, Path: "/roles/{role_id}/data-scope", Summary: "Get a role data scope", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *roleInput) (*respx.Body[APIRoleDataScope], error) {
 		tenantID, roleID, err := roleRef(ctx, in)
 		if err != nil {
@@ -755,7 +755,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-set-role-data-scope", Method: http.MethodPut, Path: "/roles/{role_id}/data-scope", Summary: "Set a role data scope", Tags: []string{"roles"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
+		OperationID: "iam-set-role-data-scope", Method: http.MethodPut, Path: "/roles/{role_id}/data-scope", Summary: "Set a role data scope", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "update"}, func(ctx context.Context, in *setRoleDataScopeInput) (*respx.Body[APIRoleDataScope], error) {
 		tenantID, roleID, err := roleRefIDs(ctx, in.RoleID)
 		if err != nil {
@@ -773,7 +773,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-update-role", Method: http.MethodPatch, Path: "/roles/{role_id}", Summary: "Update a tenant role", Tags: []string{"roles"}, Errors: []int{http.StatusNotFound, http.StatusConflict},
+		OperationID: "iam-update-role", Method: http.MethodPatch, Path: "/roles/{role_id}", Summary: "Update a tenant role", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "update"}, func(ctx context.Context, in *updateRoleInput) (*respx.Body[APIRole], error) {
 		tenantID, roleID, err := roleRefIDs(ctx, in.RoleID)
 		if err != nil {
@@ -787,7 +787,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-delete-role", Method: http.MethodDelete, Path: "/roles/{role_id}", Summary: "Delete a tenant role", Tags: []string{"roles"}, Errors: []int{http.StatusNotFound, http.StatusConflict},
+		OperationID: "iam-delete-role", Method: http.MethodDelete, Path: "/roles/{role_id}", Summary: "Delete a tenant role", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "delete"}, func(ctx context.Context, in *roleInput) (*respx.Body[MutationResult], error) {
 		tenantID, roleID, err := roleRef(ctx, in)
 		if err != nil {
@@ -800,7 +800,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-list-role-permissions", Method: http.MethodGet, Path: "/roles/{role_id}/permissions", Summary: "List role permission grants", Tags: []string{"roles"}, Errors: []int{http.StatusNotFound},
+		OperationID: "iam-list-role-permissions", Method: http.MethodGet, Path: "/roles/{role_id}/permissions", Summary: "List role permission grants", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *roleInput) (*respx.Body[[]string], error) {
 		tenantID, roleID, err := roleRef(ctx, in)
 		if err != nil {
@@ -814,7 +814,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-list-role-permission-grants", Method: http.MethodGet, Path: "/roles/{role_id}/permission-grants", Summary: "List role permission grants with conditions", Tags: []string{"roles"}, Errors: []int{http.StatusNotFound},
+		OperationID: "iam-list-role-permission-grants", Method: http.MethodGet, Path: "/roles/{role_id}/permission-grants", Summary: "List role permission grants with conditions", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *roleInput) (*respx.Body[[]APIRolePermissionGrant], error) {
 		tenantID, roleID, err := roleRef(ctx, in)
 		if err != nil {
@@ -828,7 +828,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-grant-role-permission", Method: http.MethodPut, Path: "/roles/{role_id}/permissions/{permission_code}", Summary: "Grant a permission to a role", Tags: []string{"roles"}, Errors: []int{http.StatusNotFound},
+		OperationID: "iam-grant-role-permission", Method: http.MethodPut, Path: "/roles/{role_id}/permissions/{permission_code}", Summary: "Grant a permission to a role", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "grant_permission"}, func(ctx context.Context, in *permissionInput) (*respx.Body[MutationResult], error) {
 		tenantID, roleID, err := roleRefIDs(ctx, in.RoleID)
 		if err != nil {
@@ -842,7 +842,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-revoke-role-permission", Method: http.MethodDelete, Path: "/roles/{role_id}/permissions/{permission_code}", Summary: "Revoke a permission from a role", Tags: []string{"roles"}, Errors: []int{http.StatusNotFound, http.StatusConflict},
+		OperationID: "iam-revoke-role-permission", Method: http.MethodDelete, Path: "/roles/{role_id}/permissions/{permission_code}", Summary: "Revoke a permission from a role", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "grant_permission"}, func(ctx context.Context, in *permissionInput) (*respx.Body[MutationResult], error) {
 		tenantID, roleID, err := roleRefIDs(ctx, in.RoleID)
 		if err != nil {
@@ -856,7 +856,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-set-role-permission-condition", Method: http.MethodPut, Path: "/roles/{role_id}/permissions/{permission_code}/condition", Summary: "Set a trusted-context condition on a role permission", Tags: []string{"roles"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
+		OperationID: "iam-set-role-permission-condition", Method: http.MethodPut, Path: "/roles/{role_id}/permissions/{permission_code}/condition", Summary: "Set a trusted-context condition on a role permission", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "grant_permission"}, func(ctx context.Context, in *setPermissionConditionInput) (*respx.Body[APIRolePermissionGrant], error) {
 		tenantID, roleID, err := roleRefIDs(ctx, in.RoleID)
 		if err != nil {
@@ -870,7 +870,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-clear-role-permission-condition", Method: http.MethodDelete, Path: "/roles/{role_id}/permissions/{permission_code}/condition", Summary: "Clear a role permission condition", Tags: []string{"roles"}, Errors: []int{http.StatusNotFound},
+		OperationID: "iam-clear-role-permission-condition", Method: http.MethodDelete, Path: "/roles/{role_id}/permissions/{permission_code}/condition", Summary: "Clear a role permission condition", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "grant_permission"}, func(ctx context.Context, in *permissionInput) (*respx.Body[MutationResult], error) {
 		tenantID, roleID, err := roleRefIDs(ctx, in.RoleID)
 		if err != nil {
@@ -884,7 +884,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-list-role-members", Method: http.MethodGet, Path: "/roles/{role_id}/members", Summary: "List local principals in a role", Tags: []string{"roles"}, Errors: []int{http.StatusNotFound},
+		OperationID: "iam-list-role-members", Method: http.MethodGet, Path: "/roles/{role_id}/members", Summary: "List local principals in a role", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *listRoleMembersInput) (*respx.Body[[]string], error) {
 		tenantID, roleID, err := roleRefIDs(ctx, in.RoleID)
 		if err != nil {
@@ -898,7 +898,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-add-role-member", Method: http.MethodPut, Path: "/roles/{role_id}/members/{subject}", Summary: "Add a local principal to a role", Tags: []string{"roles"}, Errors: []int{http.StatusNotFound, http.StatusConflict},
+		OperationID: "iam-add-role-member", Method: http.MethodPut, Path: "/roles/{role_id}/members/{subject}", Summary: "Add a local principal to a role", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "manage_member"}, func(ctx context.Context, in *memberInput) (*respx.Body[MutationResult], error) {
 		tenantID, roleID, subject, err := memberRef(ctx, in)
 		if err != nil {
@@ -912,7 +912,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-remove-role-member", Method: http.MethodDelete, Path: "/roles/{role_id}/members/{subject}", Summary: "Remove a local principal from a role", Tags: []string{"roles"}, Errors: []int{http.StatusNotFound, http.StatusConflict},
+		OperationID: "iam-remove-role-member", Method: http.MethodDelete, Path: "/roles/{role_id}/members/{subject}", Summary: "Remove a local principal from a role", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "manage_member"}, func(ctx context.Context, in *memberInput) (*respx.Body[MutationResult], error) {
 		tenantID, roleID, subject, err := memberRef(ctx, in)
 		if err != nil {
@@ -926,7 +926,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-list-role-directory-bindings", Method: http.MethodGet, Path: "/roles/{role_id}/directory-bindings", Summary: "List group and position role assignments", Tags: []string{"roles"}, Errors: []int{http.StatusNotFound},
+		OperationID: "iam-list-role-directory-bindings", Method: http.MethodGet, Path: "/roles/{role_id}/directory-bindings", Summary: "List group and position role assignments", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *listRoleDirectoryBindingsInput) (*respx.Body[[]APIRoleDirectoryBinding], error) {
 		tenantID, roleID, err := roleRefIDs(ctx, in.RoleID)
 		if err != nil {
@@ -940,7 +940,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-add-role-directory-binding", Method: http.MethodPut, Path: "/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}", Summary: "Assign a group or position to a role", Tags: []string{"roles"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
+		OperationID: "iam-add-role-directory-binding", Method: http.MethodPut, Path: "/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}", Summary: "Assign a group or position to a role", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "manage_assignee"}, func(ctx context.Context, in *directoryBindingInput) (*respx.Body[MutationResult], error) {
 		tenantID, roleID, err := roleRefIDs(ctx, in.RoleID)
 		if err != nil {
@@ -958,7 +958,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-remove-role-directory-binding", Method: http.MethodDelete, Path: "/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}", Summary: "Remove a group or position from a role", Tags: []string{"roles"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
+		OperationID: "iam-remove-role-directory-binding", Method: http.MethodDelete, Path: "/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}", Summary: "Remove a group or position from a role", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "manage_assignee"}, func(ctx context.Context, in *directoryBindingInput) (*respx.Body[MutationResult], error) {
 		tenantID, roleID, err := roleRefIDs(ctx, in.RoleID)
 		if err != nil {
@@ -975,7 +975,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		return respx.OK(ctx, MutationResult{Changed: changed, SyncStatus: "applied"}), nil
 	})
 
-	authz.Register(registrar, a, huma.Operation{OperationID: "iam-list-tenant-members", Method: http.MethodGet, Path: "/members", Summary: "List tenant memberships", Tags: []string{"tenants"}}, authz.Guard{Resource: "user", Verb: "view"}, func(ctx context.Context, in *listTenantMembersInput) (*respx.Body[[]APITenantMember], error) {
+	authz.Register(registrar, a, huma.Operation{OperationID: "iam-list-tenant-members", Method: http.MethodGet, Path: "/members", Summary: "List tenant memberships", Tags: []string{"directory"}}, authz.Guard{Resource: "user", Verb: "view"}, func(ctx context.Context, in *listTenantMembersInput) (*respx.Body[[]APITenantMember], error) {
 		tenantID, err := requireID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -1000,7 +1000,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		}
 		return respx.List(ctx, views, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(members), Total: total}), nil
 	})
-	authz.Register(registrar, a, huma.Operation{OperationID: "iam-create-tenant-member", Method: http.MethodPost, Path: "/members", Summary: "Bind an existing principal to a tenant", Tags: []string{"tenants"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity}}, authz.Guard{Resource: "user", Verb: "create"}, func(ctx context.Context, in *createTenantMemberInput) (*respx.Body[APITenantMember], error) {
+	authz.Register(registrar, a, huma.Operation{OperationID: "iam-create-tenant-member", Method: http.MethodPost, Path: "/members", Summary: "Bind an existing principal to a tenant", Tags: []string{"directory"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity}}, authz.Guard{Resource: "user", Verb: "create"}, func(ctx context.Context, in *createTenantMemberInput) (*respx.Body[APITenantMember], error) {
 		tenantID, err := requireID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -1026,7 +1026,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, memberProfileView(member, fields)), nil
 	})
-	authz.Register(registrar, a, huma.Operation{OperationID: "iam-get-tenant-member", Method: http.MethodGet, Path: "/members/{subject}", Summary: "Get a tenant membership", Tags: []string{"tenants"}, Errors: []int{http.StatusNotFound}}, authz.Guard{Resource: "user", Verb: "view"}, func(ctx context.Context, in *tenantMemberInput) (*respx.Body[APITenantMember], error) {
+	authz.Register(registrar, a, huma.Operation{OperationID: "iam-get-tenant-member", Method: http.MethodGet, Path: "/members/{subject}", Summary: "Get a tenant membership", Tags: []string{"directory"}, Errors: []int{http.StatusNotFound}}, authz.Guard{Resource: "user", Verb: "view"}, func(ctx context.Context, in *tenantMemberInput) (*respx.Body[APITenantMember], error) {
 		tenantID, subject, err := tenantMemberRef(in)
 		if err != nil {
 			return nil, err
@@ -1047,7 +1047,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		out.RoleIDs = append([]guid.ID{}, roles...)
 		return respx.OK(ctx, out), nil
 	})
-	authz.Register(registrar, a, huma.Operation{OperationID: "iam-update-tenant-member", Method: http.MethodPatch, Path: "/members/{subject}", Summary: "Update or disable a tenant membership", Tags: []string{"tenants"}, Errors: []int{http.StatusNotFound, http.StatusConflict}}, authz.Guard{Resource: "user", Verb: "update"}, func(ctx context.Context, in *updateTenantMemberInput) (*respx.Body[APITenantMember], error) {
+	authz.Register(registrar, a, huma.Operation{OperationID: "iam-update-tenant-member", Method: http.MethodPatch, Path: "/members/{subject}", Summary: "Update or disable a tenant membership", Tags: []string{"directory"}, Errors: []int{http.StatusNotFound, http.StatusConflict}}, authz.Guard{Resource: "user", Verb: "update"}, func(ctx context.Context, in *updateTenantMemberInput) (*respx.Body[APITenantMember], error) {
 		tenantID, err := requireID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -1089,7 +1089,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, memberProfileView(member, fields)), nil
 	})
-	authz.Register(registrar, a, huma.Operation{OperationID: "iam-list-tenant-member-roles", Method: http.MethodGet, Path: "/members/{subject}/roles", Summary: "List role assignments for a tenant member", Tags: []string{"tenants"}, Errors: []int{http.StatusNotFound}}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *listTenantMemberRolesInput) (*respx.Body[[]string], error) {
+	authz.Register(registrar, a, huma.Operation{OperationID: "iam-list-tenant-member-roles", Method: http.MethodGet, Path: "/members/{subject}/roles", Summary: "List role assignments for a tenant member", Tags: []string{"directory"}, Errors: []int{http.StatusNotFound}}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *listTenantMemberRolesInput) (*respx.Body[[]string], error) {
 		tenantID, subject, err := tenantMemberRefIDs(in.TenantID, in.Subject)
 		if err != nil {
 			return nil, err
@@ -1103,7 +1103,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	authz.Register(registrar, a, huma.Operation{
 		OperationID: "iam-list-member-authorization-sources", Method: http.MethodGet,
 		Path:    "/members/{subject}/authorization-sources",
-		Summary: "List effective authorization sources for a tenant member", Tags: []string{"tenants"},
+		Summary: "List effective authorization sources for a tenant member", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict},
 	}, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *tenantMemberInput) (*respx.Body[APIMemberAuthorizationSnapshot], error) {
 		tenantID, subject, err := tenantMemberRef(in)
@@ -1117,7 +1117,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		return respx.OK(ctx, memberAuthorizationSnapshotFromDomain(snapshot)), nil
 	})
 
-	authz.Register(registrar, a, huma.Operation{OperationID: "iam-list-menus", Method: http.MethodGet, Path: "/menus", Summary: "List tenant menu metadata", Tags: []string{"tenants"}}, authz.Guard{Resource: "menu", Verb: "view"}, func(ctx context.Context, in *tenantInput) (*respx.Body[[]APIMenu], error) {
+	authz.Register(registrar, a, huma.Operation{OperationID: "iam-list-menus", Method: http.MethodGet, Path: "/menus", Summary: "List tenant menu metadata", Tags: []string{"access-control"}}, authz.Guard{Resource: "menu", Verb: "view"}, func(ctx context.Context, in *tenantInput) (*respx.Body[[]APIMenu], error) {
 		tenantID, err := requireID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -1128,7 +1128,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, menusFromDomain(menus)), nil
 	})
-	authz.Register(registrar, a, huma.Operation{OperationID: "iam-create-menu", Method: http.MethodPost, Path: "/menus", Summary: "Create a tenant menu", Tags: []string{"tenants"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity}}, authz.Guard{Resource: "menu", Verb: "create"}, func(ctx context.Context, in *createMenuInput) (*respx.Body[APIMenu], error) {
+	authz.Register(registrar, a, huma.Operation{OperationID: "iam-create-menu", Method: http.MethodPost, Path: "/menus", Summary: "Create a tenant menu", Tags: []string{"access-control"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity}}, authz.Guard{Resource: "menu", Verb: "create"}, func(ctx context.Context, in *createMenuInput) (*respx.Body[APIMenu], error) {
 		tenantID, err := requireID(in.TenantID)
 		if err != nil {
 			return nil, err
@@ -1143,7 +1143,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, menuFromDomain(menu)), nil
 	})
-	authz.RegisterOwned(registrar, a, huma.Operation{OperationID: "iam-get-menu", Method: http.MethodGet, Path: "/menus/{menu_id}", Summary: "Get a tenant menu", Tags: []string{"menus"}, Errors: []int{http.StatusNotFound}}, "menu_id", svc.resolveMenuOwner, authz.Guard{Resource: "menu", Verb: "view"}, func(ctx context.Context, in *menuInput) (*respx.Body[APIMenu], error) {
+	authz.RegisterOwned(registrar, a, huma.Operation{OperationID: "iam-get-menu", Method: http.MethodGet, Path: "/menus/{menu_id}", Summary: "Get a tenant menu", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound}}, "menu_id", svc.resolveMenuOwner, authz.Guard{Resource: "menu", Verb: "view"}, func(ctx context.Context, in *menuInput) (*respx.Body[APIMenu], error) {
 		tenantID, menuID, err := menuRef(ctx, in)
 		if err != nil {
 			return nil, err
@@ -1154,7 +1154,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, menuFromDomain(menu)), nil
 	})
-	authz.RegisterOwned(registrar, a, huma.Operation{OperationID: "iam-update-menu", Method: http.MethodPatch, Path: "/menus/{menu_id}", Summary: "Update a tenant menu", Tags: []string{"menus"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity}}, "menu_id", svc.resolveMenuOwner, authz.Guard{Resource: "menu", Verb: "update"}, func(ctx context.Context, in *updateMenuInput) (*respx.Body[APIMenu], error) {
+	authz.RegisterOwned(registrar, a, huma.Operation{OperationID: "iam-update-menu", Method: http.MethodPatch, Path: "/menus/{menu_id}", Summary: "Update a tenant menu", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity}}, "menu_id", svc.resolveMenuOwner, authz.Guard{Resource: "menu", Verb: "update"}, func(ctx context.Context, in *updateMenuInput) (*respx.Body[APIMenu], error) {
 		tenantID := authnext.TenantIDFromContext(ctx)
 		menuID, err := requireID(in.MenuID)
 		if err != nil {
@@ -1198,7 +1198,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, menuFromDomain(menu)), nil
 	})
-	authz.RegisterOwned(registrar, a, huma.Operation{OperationID: "iam-delete-menu", Method: http.MethodDelete, Path: "/menus/{menu_id}", Summary: "Delete a tenant menu", Tags: []string{"menus"}, Errors: []int{http.StatusNotFound, http.StatusConflict}}, "menu_id", svc.resolveMenuOwner, authz.Guard{Resource: "menu", Verb: "delete"}, func(ctx context.Context, in *menuInput) (*respx.Body[MutationResult], error) {
+	authz.RegisterOwned(registrar, a, huma.Operation{OperationID: "iam-delete-menu", Method: http.MethodDelete, Path: "/menus/{menu_id}", Summary: "Delete a tenant menu", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict}}, "menu_id", svc.resolveMenuOwner, authz.Guard{Resource: "menu", Verb: "delete"}, func(ctx context.Context, in *menuInput) (*respx.Body[MutationResult], error) {
 		tenantID, menuID, err := menuRef(ctx, in)
 		if err != nil {
 			return nil, err
@@ -1208,7 +1208,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, MutationResult{Changed: true, SyncStatus: "not_applicable"}), nil
 	})
-	authz.RegisterTenantMember(registrar, a, huma.Operation{OperationID: "iam-effective-menus", Method: http.MethodGet, Path: "/me/menus", Summary: "Return the current member's authorized menu tree", Tags: []string{"tenants"}}, func(ctx context.Context, in *tenantInput) (*respx.Body[[]MenuItem], error) {
+	authz.RegisterTenantMember(registrar, a, huma.Operation{OperationID: "iam-effective-menus", Method: http.MethodGet, Path: "/me/menus", Summary: "Return the current member's authorized menu tree", Tags: []string{"access-control"}}, func(ctx context.Context, in *tenantInput) (*respx.Body[[]MenuItem], error) {
 		claims, ok := authnext.FromContext(ctx)
 		if !ok || claims == nil || claims.PrincipalID.Zero() {
 			return nil, huma.Error401Unauthorized("unauthorized")
@@ -1229,7 +1229,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	authz.RegisterAuthenticated(registrar, a, huma.Operation{
 		OperationID: "iam-effective-platform-permissions", Method: http.MethodGet,
 		Path:    "/me/permissions",
-		Summary: "Return my effective platform permission codes", Tags: []string{"me"},
+		Summary: "Return my effective platform permission codes", Tags: []string{"account"},
 	}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]string], error) {
 		claims, ok := authnext.FromContext(ctx)
 		if !ok || claims == nil || claims.PrincipalID.Zero() {
@@ -1244,7 +1244,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	authz.RegisterTenantMember(registrar, a, huma.Operation{
 		OperationID: "iam-effective-tenant-permissions", Method: http.MethodGet,
 		Path:    "/me/permissions",
-		Summary: "Return my effective tenant permission codes", Tags: []string{"tenants"},
+		Summary: "Return my effective tenant permission codes", Tags: []string{"access-control"},
 	}, func(ctx context.Context, in *myPermissionsInput) (*respx.Body[[]string], error) {
 		claims, ok := authnext.FromContext(ctx)
 		if !ok || claims == nil || claims.PrincipalID.Zero() {
@@ -1263,7 +1263,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	authz.RegisterAuthenticated(registrar, a, huma.Operation{
 		OperationID: "iam-effective-entity-permissions", Method: http.MethodGet,
 		Path:    "/tenants/{tenant_id}/entities/{entity_id}/me/permissions",
-		Summary: "Return my effective entity permission codes", Tags: []string{"tenants"},
+		Summary: "Return my effective entity permission codes", Tags: []string{"access-control"},
 	}, func(ctx context.Context, in *myEntityPermissionsInput) (*respx.Body[[]string], error) {
 		claims, ok := authnext.FromContext(ctx)
 		if !ok || claims == nil || claims.PrincipalID.Zero() {

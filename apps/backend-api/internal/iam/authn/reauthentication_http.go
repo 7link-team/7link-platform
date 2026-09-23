@@ -37,7 +37,7 @@ type reauthenticationVerifyInput struct {
 func registerReauthenticationHTTP(api huma.API, service *Service) {
 	registrar := authz.NewAuthenticationOnlyRegistrar(service)
 	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-list-reauthentication-methods", Method: http.MethodGet,
-		Path: "/me/reauthentication/methods", Summary: "List current local reauthentication methods", Tags: []string{"me"}}, func(ctx context.Context, in *meInput) (*respx.Body[ReauthenticationMethods], error) {
+		Path: "/me/reauthentication/methods", Summary: "List current local reauthentication methods", Tags: []string{"account"}}, func(ctx context.Context, in *meInput) (*respx.Body[ReauthenticationMethods], error) {
 		if in.Authorization != "" {
 			return nil, huma.Error401Unauthorized("unauthorized")
 		}
@@ -49,7 +49,7 @@ func registerReauthenticationHTTP(api huma.API, service *Service) {
 	})
 	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-create-reauthentication-challenge", Method: http.MethodPost,
 		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
-		Path:     "/me/reauthentication/challenges", Summary: "Begin fresh verification for one sensitive operation", Tags: []string{"me"},
+		Path:     "/me/reauthentication/challenges", Summary: "Begin fresh verification for one sensitive operation", Tags: []string{"account"},
 		Security: authz.UserSecurity(), Errors: []int{401, 403, 500}}, func(ctx context.Context, in *reauthenticationBeginInput) (*respx.Body[ReauthenticationOptions], error) {
 		if in.Authorization != "" {
 			return nil, huma.Error401Unauthorized("unauthorized")
@@ -65,7 +65,7 @@ func registerReauthenticationHTTP(api huma.API, service *Service) {
 	})
 	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "authn-create-reauthentication-verification", Method: http.MethodPost,
 		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
-		Path:     "/me/reauthentication/verifications", Summary: "Verify a fresh password and MFA or passkey assertion", Tags: []string{"me"},
+		Path:     "/me/reauthentication/verifications", Summary: "Verify a fresh password and MFA or passkey assertion", Tags: []string{"account"},
 		Security: authz.UserSecurity(), Errors: []int{401, 403, 500}}, func(ctx context.Context, in *reauthenticationVerifyInput) (*respx.Body[map[string]bool], error) {
 		if in.Authorization != "" {
 			return nil, huma.Error401Unauthorized("unauthorized")

@@ -54,7 +54,7 @@ type samlResponseForm struct {
 }
 
 func registerSAMLAdminHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
-	list := huma.Operation{OperationID: "federation-list-saml-service-providers", Method: http.MethodGet, Path: "/saml-service-providers", Summary: "List tenant SAML service providers", Tags: []string{"tenants"}}
+	list := huma.Operation{OperationID: "federation-list-saml-service-providers", Method: http.MethodGet, Path: "/saml-service-providers", Summary: "List tenant SAML service providers", Tags: []string{"applications"}}
 	authz.Register(registrar, api, list, authz.Guard{Resource: "identity_provider", Verb: "view"}, func(ctx context.Context, in *samlSPListInput) (*respx.Body[[]SAMLServiceProvider], error) {
 		tenantID, err := parseFederationID(in.TenantID)
 		if err != nil {
@@ -67,7 +67,7 @@ func registerSAMLAdminHTTP(api huma.API, service *Service, registrar *authz.Regi
 		return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Count: len(items), Total: total}), nil
 	})
 
-	create := huma.Operation{OperationID: "federation-create-saml-service-provider", Method: http.MethodPost, Path: "/saml-service-providers", Summary: "Register a SAML service provider from its metadata", Tags: []string{"tenants"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity}}
+	create := huma.Operation{OperationID: "federation-create-saml-service-provider", Method: http.MethodPost, Path: "/saml-service-providers", Summary: "Register a SAML service provider from its metadata", Tags: []string{"applications"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity}}
 	authz.Register(registrar, api, create, authz.Guard{Resource: "identity_provider", Verb: "create"}, func(ctx context.Context, in *samlSPCreateInput) (*respx.Body[SAMLServiceProvider], error) {
 		tenantID, err := parseFederationID(in.TenantID)
 		if err != nil {
@@ -80,7 +80,7 @@ func registerSAMLAdminHTTP(api huma.API, service *Service, registrar *authz.Regi
 		return respx.OK(ctx, item), nil
 	})
 
-	replace := huma.Operation{OperationID: "federation-update-saml-service-provider", Method: http.MethodPut, Path: "/saml-service-providers/{sp_id}", Summary: "Replace a SAML service provider", Tags: []string{"saml-service-providers"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity}}
+	replace := huma.Operation{OperationID: "federation-update-saml-service-provider", Method: http.MethodPut, Path: "/saml-service-providers/{sp_id}", Summary: "Replace a SAML service provider", Tags: []string{"applications"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity}}
 	authz.RegisterOwned(registrar, api, replace, "sp_id", service.resolveSAMLServiceProviderOwner, authz.Guard{Resource: "identity_provider", Verb: "update"}, func(ctx context.Context, in *samlSPReplaceInput) (*respx.Body[SAMLServiceProvider], error) {
 		tenantID := authnext.TenantIDFromContext(ctx)
 		spID, err := parseFederationID(in.ServiceProviderID)
@@ -94,7 +94,7 @@ func registerSAMLAdminHTTP(api huma.API, service *Service, registrar *authz.Regi
 		return respx.OK(ctx, item), nil
 	})
 
-	remove := huma.Operation{OperationID: "federation-delete-saml-service-provider", Method: http.MethodDelete, Path: "/saml-service-providers/{sp_id}", Summary: "Delete a SAML service provider", Tags: []string{"saml-service-providers"}, Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity}}
+	remove := huma.Operation{OperationID: "federation-delete-saml-service-provider", Method: http.MethodDelete, Path: "/saml-service-providers/{sp_id}", Summary: "Delete a SAML service provider", Tags: []string{"applications"}, Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity}}
 	authz.RegisterOwned(registrar, api, remove, "sp_id", service.resolveSAMLServiceProviderOwner, authz.Guard{Resource: "identity_provider", Verb: "delete"}, func(ctx context.Context, in *samlSPIDInput) (*respx.Body[map[string]bool], error) {
 		tenantID := authnext.TenantIDFromContext(ctx)
 		spID, err := parseFederationID(in.ServiceProviderID)
@@ -107,7 +107,7 @@ func registerSAMLAdminHTTP(api huma.API, service *Service, registrar *authz.Regi
 		return respx.OK(ctx, map[string]bool{"deleted": true}), nil
 	})
 
-	rotate := huma.Operation{OperationID: "federation-rotate-saml-signing-key", Method: http.MethodPost, Path: "/saml-signing-keys", Summary: "Rotate the SAML identity provider signing key", Tags: []string{"tenants"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict}}
+	rotate := huma.Operation{OperationID: "federation-rotate-saml-signing-key", Method: http.MethodPost, Path: "/saml-signing-keys", Summary: "Rotate the SAML identity provider signing key", Tags: []string{"applications"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict}}
 	authz.Register(registrar, api, rotate, authz.Guard{Resource: "identity_provider", Verb: "update"}, func(ctx context.Context, _ *samlKeyRotateInput) (*respx.Body[SAMLKeyInfo], error) {
 		item, err := service.RotateSAMLSigningKey(ctx)
 		if err != nil {

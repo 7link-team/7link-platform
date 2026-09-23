@@ -179,8 +179,10 @@ func TestOrganizationOpenAPIGuardsScopesAndSchemas(t *testing.T) {
 				continue
 			}
 			location := method + " " + path
-			expectedTag := strings.Split(strings.TrimPrefix(path, "/"), "/")[0]
-			assert.Equal(t, []string{expectedTag}, operation.Tags, location)
+			// Organization publishes the directory record, plus the invitation
+			// a new member redeems before they have one.
+			assert.Contains(t, []string{"directory", "authentication", "account"},
+				operation.Tags[0], location)
 			if guard, ok := organizationGuards[operation.OperationID]; ok {
 				assert.Equal(t, guard, operation.Extensions[authz.GuardExtensionKey], location)
 				assert.NotEmpty(t, operation.Security, location)

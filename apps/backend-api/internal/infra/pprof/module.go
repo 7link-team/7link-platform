@@ -166,7 +166,7 @@ func pprofOperation(
 		Path:        path,
 		Summary:     summary,
 		Description: description,
-		Tags:        []string{"diagnostics"},
+		Tags:        []string{"system"},
 		Parameters:  parameters,
 		Responses: map[string]*huma.Response{
 			"200": response,

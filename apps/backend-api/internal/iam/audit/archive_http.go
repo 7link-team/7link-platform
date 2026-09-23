@@ -61,11 +61,11 @@ func registerArchiveOperation[I, O any](api huma.API, registrar *authz.Registrar
 		op.OperationID = strings.Replace(op.OperationID, "audit-", "audit-platform-", 1)
 		op.Path = "/platform" + op.Path
 		op.Summary = "Platform: " + op.Summary
-		op.Tags = []string{"platform"}
+		op.Tags = []string{"audit"}
 		authz.RegisterPlatform(registrar, api, op, authz.Guard{Resource: "platform", Verb: "administer"}, handler)
 		return
 	}
-	op.Tags = []string{"tenants"}
+	op.Tags = []string{"audit"}
 	authz.Register(registrar, api, op, authz.Guard{Resource: "audit_event", Verb: verb}, handler)
 }
 
