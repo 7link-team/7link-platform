@@ -91,6 +91,8 @@ export default function AppLayout() {
     "/tenants/:tenantID/entities/:entityID/:view"
   )
   const entityID = routeParams.entityID ?? entityMatch?.params.entityID ?? ""
+  const entityFileRoute =
+    Boolean(entityID) && location.pathname.endsWith("/files")
   const [entityCatalog, setEntityCatalog] = useState<{
     subject: string
     tenant: string
@@ -132,8 +134,23 @@ export default function AppLayout() {
   }, [routeTenantID])
 
   useEffect(() => {
-    if (status !== "authenticated" || !tenantValue || !directoryReady) return
+    if (
+      status !== "authenticated" ||
+      !tenantValue ||
+      !directoryReady ||
+      !permissionsResolved
+    )
+      return
     let active = true
+    if (permissionsResolved && !permissions?.has("entity_view")) {
+      void Promise.resolve().then(() => {
+        if (active)
+          setEntityCatalog({ subject, tenant: tenantValue, items: [], error: "" })
+      })
+      return () => {
+        active = false
+      }
+    }
     const refresh = () => {
       void iamApi.entities().then(
         (items) => {
@@ -157,39 +174,54 @@ export default function AppLayout() {
       active = false
       window.removeEventListener("entity-catalog-change", refresh)
     }
-  }, [status, tenantValue, subject, directoryReady])
+  }, [
+    status,
+    tenantValue,
+    subject,
+    directoryReady,
+    permissions,
+    permissionsResolved,
+  ])
 
   useEffect(() => {
     if (
       status !== "authenticated" ||
       !tenantValue ||
-      entityID ||
-      !catalog
+      entityID
     )
       return
     let active = true
-    void Promise.all(
-      catalog.items.map(async (entity) => ({
-        entity,
-        permissions: await iamApi
-          .myPermissions(tenantValue, entity.id)
-          .catch((): string[] => []),
-      }))
-    ).then((results) => {
-      if (!active) return
-      const match = results.find(({ permissions }) =>
-        permissions.includes("file_view")
-      )
-      setScopedFileAccess(
-        match
-          ? { subject, tenant: tenantValue, entityID: match.entity.id }
-          : { subject, tenant: tenantValue, entityID: "" }
-      )
-    })
+    void iamApi.departments().then(
+      async (departments) => {
+        const entityIDs = [
+          ...new Set(departments.map(({ entity_id }) => entity_id)),
+        ]
+        for (const candidate of entityIDs) {
+          try {
+            await iamApi.files(candidate)
+            if (active)
+              setScopedFileAccess({
+                subject,
+                tenant: tenantValue,
+                entityID: candidate,
+              })
+            return
+          } catch {
+            // Continue through the caller's authorized department entities.
+          }
+        }
+        if (active)
+          setScopedFileAccess({ subject, tenant: tenantValue, entityID: "" })
+      },
+      () => {
+        if (active)
+          setScopedFileAccess({ subject, tenant: tenantValue, entityID: "" })
+      }
+    )
     return () => {
       active = false
     }
-  }, [status, tenantValue, entityID, subject, catalog])
+  }, [status, tenantValue, entityID, subject])
   const loginState = useMemo(
     () => ({ from: location.pathname }),
     [location.pathname]
@@ -416,7 +448,7 @@ export default function AppLayout() {
               window.dispatchEvent(new Event("tenant-catalog-change"))
             }
             entities={catalog?.items ?? null}
-            error={catalog?.error ?? ""}
+            error={entityFileRoute ? "" : (catalog?.error ?? "")}
             onTenant={commitTenant}
             onEntity={(id) => {
               navigate(
@@ -508,11 +540,12 @@ export default function AppLayout() {
               <p role="status">{t("loading")}</p>
             ) : !tenantValue && !isPlatformRoute(location.pathname) ? (
               <p>{t("noAvailableTenants")}</p>
-            ) : entityID && catalog?.error ? (
+            ) : entityID && !entityFileRoute && catalog?.error ? (
               <Alert>{catalog.error}</Alert>
-            ) : entityID && !catalog ? (
+            ) : entityID && !entityFileRoute && !catalog ? (
               <p role="status">{t("loading")}</p>
             ) : entityID &&
+              !entityFileRoute &&
               (!selectedEntity || selectedEntity.status !== "active") ? (
               <Alert>{t("entityUnavailable")}</Alert>
             ) : (

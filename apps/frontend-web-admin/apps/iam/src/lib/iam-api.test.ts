@@ -49,8 +49,8 @@ describe("IAM API client", () => {
     await client.fileItems("80", "node/id", "34")
 
     expect(requests.map((request) => request.path)).toEqual([
-      "/tenants/90/entities/80/files?limit=100&after=12",
-      "/tenants/90/entities/80/files/node%2Fid/items?limit=100&after=34",
+      "/entities/80/files?limit=100&after=12",
+      "/files/node%2Fid/items?limit=100&after=34",
     ])
     for (const request of requests) {
       expect(request.method).toBe("GET")
@@ -98,17 +98,17 @@ describe("IAM API client", () => {
     await client.restoreFileEntry("80", "5/6", 9, "restored.txt")
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "POST /tenants/90/entities/80/files",
-      "POST /tenants/90/entities/80/files",
-      "POST /tenants/90/entities/80/files",
-      "GET /tenants/90/entities/80/files/3%2F4/content",
-      "GET /tenants/90/entities/80/files/1%2F2/-/Reports/report.txt",
-      "PATCH /tenants/90/entities/80/files/3%2F4",
-      "PATCH /tenants/90/entities/80/files/5%2F6",
-      "DELETE /tenants/90/entities/80/files/3%2F4?revision=6",
-      "DELETE /tenants/90/entities/80/files/5%2F6?revision=8",
-      "PATCH /tenants/90/entities/80/files/3%2F4",
-      "PATCH /tenants/90/entities/80/files/5%2F6",
+      "POST /entities/80/files",
+      "POST /entities/80/files",
+      "POST /entities/80/files",
+      "GET /files/3%2F4/content",
+      "GET /files/1%2F2/-/Reports/report.txt",
+      "PATCH /files/3%2F4",
+      "PATCH /files/5%2F6",
+      "DELETE /files/3%2F4?revision=6",
+      "DELETE /files/5%2F6?revision=8",
+      "PATCH /files/3%2F4",
+      "PATCH /files/5%2F6",
     ])
     expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
       true
@@ -270,6 +270,12 @@ describe("IAM API client", () => {
   })
 
   it("classifies file paths as mutation-local invalidations", () => {
+    expect(shouldNotifyMenuCatalogChange("/files/7?revision=2", "DELETE")).toBe(
+      false
+    )
+    expect(shouldNotifyMenuCatalogChange("/entities/80/files", "POST")).toBe(
+      false
+    )
     expect(
       shouldNotifyMenuCatalogChange(
         "/tenants/90/entities/80/files/7?revision=2",
@@ -322,12 +328,12 @@ describe("IAM API client", () => {
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "GET /me/files?limit=100",
       "POST /me/files",
-      "GET /me/files/7/items?limit=100",
+      "GET /files/7/items?limit=100",
       "POST /me/files",
       "POST /me/files",
-      "GET /me/files/8/content",
-      "PATCH /me/files/8",
-      "DELETE /me/files/8?revision=2",
+      "GET /files/8/content",
+      "PATCH /files/8",
+      "DELETE /files/8?revision=2",
     ])
     expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
       true
@@ -367,7 +373,7 @@ describe("IAM API client", () => {
     )
     expect(requests).toHaveLength(2)
     for (const request of requests) {
-      expect(request.path).toBe("/tenants/90/entities/80/files/3%2F4/content")
+      expect(request.path).toBe("/files/3%2F4/content")
       expect(request.headers.get("x-tenant-id")).toBeNull()
       expect(request.headers.get("x-entity-id")).toBeNull()
     }
@@ -393,9 +399,7 @@ describe("IAM API client", () => {
     )
     await client.session()
     await client.sessionForTenant("authorized-tenant")
-    expect(requests.every(({ path }) => path === "/me/session")).toBe(
-      true
-    )
+    expect(requests.every(({ path }) => path === "/me/session")).toBe(true)
     expect(requests[0]?.headers.has("x-tenant-id")).toBe(false)
     expect(requests[1]?.headers.get("x-tenant-id")).toBeNull()
   })
@@ -1736,10 +1740,10 @@ describe("IAM API client", () => {
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "GET /tenants/tenant-organization/departments?offset=0&limit=200",
-      "GET /tenants/tenant-organization/departments/department%2Fa",
+      "GET /departments/department%2Fa",
       "POST /tenants/tenant-organization/departments",
-      "PATCH /tenants/tenant-organization/departments/department%2Fa",
-      "DELETE /tenants/tenant-organization/departments/department%2Fa?version=2",
+      "PATCH /departments/department%2Fa",
+      "DELETE /departments/department%2Fa?version=2",
     ])
     expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
       true
@@ -1809,20 +1813,20 @@ describe("IAM API client", () => {
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "PATCH /tenants/tenant-admin/principals/principal%2Fa",
       "PATCH /tenants/tenant-admin/members/principal%2Fa",
-      "PATCH /tenants/tenant-admin/roles/role%2Fa",
-      "GET /tenants/tenant-admin/roles/role%2Fa/members",
-      "PUT /tenants/tenant-admin/roles/role%2Fa/members/principal%2Fa",
-      "DELETE /tenants/tenant-admin/roles/role%2Fa/members/principal%2Fa",
-      "GET /tenants/tenant-admin/roles/role%2Fa/directory-bindings",
-      "GET /tenants/tenant-admin/roles/role%2Fa/data-scope",
-      "PUT /tenants/tenant-admin/roles/role%2Fa/data-scope",
-      "PUT /tenants/tenant-admin/roles/role%2Fa/directory-bindings/group/group%2Fa",
-      "DELETE /tenants/tenant-admin/roles/role%2Fa/directory-bindings/position/position%2Fa",
-      "GET /tenants/tenant-admin/roles/role%2Fa/permission-grants",
-      "PUT /tenants/tenant-admin/roles/role%2Fa/permissions/user%3Aview",
-      "PUT /tenants/tenant-admin/roles/role%2Fa/permissions/user%3Aview/condition",
-      "DELETE /tenants/tenant-admin/roles/role%2Fa/permissions/user%3Aview/condition",
-      "DELETE /tenants/tenant-admin/roles/role%2Fa/permissions/user%3Aview",
+      "PATCH /roles/role%2Fa",
+      "GET /roles/role%2Fa/members",
+      "PUT /roles/role%2Fa/members/principal%2Fa",
+      "DELETE /roles/role%2Fa/members/principal%2Fa",
+      "GET /roles/role%2Fa/directory-bindings",
+      "GET /roles/role%2Fa/data-scope",
+      "PUT /roles/role%2Fa/data-scope",
+      "PUT /roles/role%2Fa/directory-bindings/group/group%2Fa",
+      "DELETE /roles/role%2Fa/directory-bindings/position/position%2Fa",
+      "GET /roles/role%2Fa/permission-grants",
+      "PUT /roles/role%2Fa/permissions/user%3Aview",
+      "PUT /roles/role%2Fa/permissions/user%3Aview/condition",
+      "DELETE /roles/role%2Fa/permissions/user%3Aview/condition",
+      "DELETE /roles/role%2Fa/permissions/user%3Aview",
       "PATCH /tenants/tenant-admin/menus/menu%2Fa",
     ])
     expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
@@ -2396,12 +2400,12 @@ describe("IAM API client", () => {
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "GET /tenants/tenant-entities/entities",
-      "GET /tenants/tenant-entities/entities/entity%2Fa",
+      "GET /entities/entity%2Fa",
       "POST /tenants/tenant-entities/entities",
-      "PATCH /tenants/tenant-entities/entities/entity%2Fa",
-      "GET /tenants/tenant-entities/entities/entity%2Fa/role-bindings?offset=0&limit=200",
-      "PUT /tenants/tenant-entities/entities/entity%2Fa/role-bindings/role%2Fa/principal%2Fa",
-      "DELETE /tenants/tenant-entities/entities/entity%2Fa/role-bindings/role%2Fa/principal%2Fa",
+      "PATCH /entities/entity%2Fa",
+      "GET /entities/entity%2Fa/role-bindings?offset=0&limit=200",
+      "PUT /entities/entity%2Fa/role-bindings/role%2Fa/principal%2Fa",
+      "DELETE /entities/entity%2Fa/role-bindings/role%2Fa/principal%2Fa",
       "GET /tenants/tenant-entities/relationships?resource_id=entity%2Fa&offset=0&limit=200",
       "POST /tenants/tenant-entities/relationships",
       "DELETE /tenants/tenant-entities/relationships?subject_type=principal&subject_id=principal%2Fa&relation=viewer&resource_type=store&resource_id=entity%2Fa",
@@ -2412,7 +2416,7 @@ describe("IAM API client", () => {
       "POST /tenants/tenant-entities/authorization-constraint-evaluations",
       "POST /tenants/tenant-entities/authorization-explanations",
       "POST /tenants/tenant-entities/authorization-explanations",
-      "DELETE /tenants/tenant-entities/entities/entity%2Fa",
+      "DELETE /entities/entity%2Fa",
     ])
     expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
       true

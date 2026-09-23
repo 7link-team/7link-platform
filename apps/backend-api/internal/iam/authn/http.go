@@ -491,6 +491,8 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		options, err := web.BeginPasskeyLogin(ctx, in.Origin, in.Body.ReturnURL)
 		if err != nil {
 			switch {
+			case errors.Is(err, ErrCSRF):
+				return nil, huma.Error403Forbidden("passkey_request_rejected")
 			case errors.Is(err, authnext.ErrReturnURL):
 				return nil, huma.Error422UnprocessableEntity("return_url_not_allowed")
 			case errors.Is(err, authnext.ErrPasskeyDisabled):

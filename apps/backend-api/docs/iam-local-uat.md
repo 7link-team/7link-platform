@@ -37,16 +37,16 @@ real API. Repeating start/tenant initialization does not recreate the tenant.
 The server never automatically migrates on restart. Run `init` in a fresh UAT
 when testing a new build rather than replacing a running binary.
 
-Default console: `http://127.0.0.1:18091`; API: `http://127.0.0.1:18080`.
+Default console: `http://localhost:18091`; API: `http://127.0.0.1:18080`.
 The initializer chooses alternate free ports if those are occupied. Always use
 the URLs printed by `start` or `status`. All listeners, including MySQL and gRPC,
 bind to loopback. Selected ports are stable across restarts; a later collision
 fails rather than connecting to another service.
 
-The passkey browser audit opens the same console through `http://localhost:18091`
-because WebAuthn permits the `localhost` development domain as an RP ID but does
-not permit an IP address. The generated allowlists contain both loopback origins;
-neither listener is exposed beyond the local machine.
+The console uses `localhost` because WebAuthn permits that development domain as
+an RP ID but does not permit an IP address to act as `localhost`. The Vite listener
+still binds to `127.0.0.1`, and the generated allowlists contain both loopback
+origins for compatibility; neither listener is exposed beyond the local machine.
 
 ## Existing Menu Translation Upgrade
 

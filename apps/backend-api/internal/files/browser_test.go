@@ -383,6 +383,7 @@ func TestFileCollectionValidateBindsScopeToTheCallersClaims(t *testing.T) {
 		"tenant by a member":     {fileCollection{scope: "tenant", tenantID: 90, ownerID: 90}, tenantAdmin},
 		"entity by a member":     {fileCollection{scope: "entity", tenantID: 90, ownerID: 80}, entityMember},
 		"department by a member": {fileCollection{scope: "department", tenantID: 90, ownerID: 81}, entityMember},
+		"context by a member":    {fileCollection{scope: "context", tenantID: 90, ownerID: 80}, entityMember},
 	} {
 		assert.NoError(t, valid.collection.validate(valid.claims), name)
 	}

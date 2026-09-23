@@ -58,6 +58,58 @@
   owner resolution still makes module-localized not-found messages unreachable
   on owned routes.
 
+## Local Demo, Passkey, Typed Query, And File Routing Audit - 2026-09-23
+
+- Current phase: ACCEPTANCE.
+- Objective: resolve and verify the four issues reported during local testing:
+  demo-account availability, passkey host behavior, typed-query discipline, and
+  the File management load failure.
+- Confirmed: demo startup failed because `bootstrap-file-personas.mjs` retained
+  tenant-prefixed item routes after D66. Its role permission, scope, membership,
+  and entity binding calls now use globally addressed resource paths. Demo mode
+  starts and produces five personas; HTTP UAT verification passes.
+- Confirmed: passkeys are configured with RP ID `localhost`. Multiple origins
+  are configured, but `127.0.0.1` cannot satisfy RP ID `localhost`. A localhost
+  options request returns 200; the IP-origin request currently returns the
+  misleading 500 `authentication_unavailable`. UAT still prints the IP URL.
+- Confirmed: the lifecycle query against dynamic `goose_<module>` tables is an
+  external-framework table without a generated query object. It should move
+  behind the Goose extension rather than remain raw in business code. User rule:
+  whenever an existing strong typed query can express a query, handwritten SQL
+  is forbidden; exceptions require an actual inability and a bounded adapter.
+- Confirmed: File management lists `/tenants/{tenant}/files` successfully, then
+  requests stale `/tenants/{tenant}/files/{id}/items` and receives 404. D66 made
+  file-ID item routes globally addressed. The client and tests are being updated
+  so collections remain scoped while existing-resource operations use `/files/{id}`.
+- Completed: a user-visible entity workspace regression was reproduced: the
+  backend exposes `/entities` and `/relationships`, while the client retained
+  tenant-prefixed D66 paths and every entity perspective page returned 404.
+  The actual OpenAPI contract uses tenant-prefixed entity/relationship
+  collections and globally addressed entity/role item routes. The client and
+  exact URL tests now follow that split. A persistent five-persona menu crawler
+  verifies every visible sidebar page and records reports/screenshots on failure.
+- Existing unrelated repository state in this file is historical and is not
+  being rewritten by this task.
+- Completed: entity and department file pages no longer receive the personal-root
+  creation action. Empty organization scopes use neutral copy instead of saying
+  that the current account lacks a personal root. File-only personas no longer
+  see entity management menus that their permissions cannot open.
+- Verification: demo start PASS; UAT verify PASS; backend `go test
+  ./internal/files` PASS; IAM API tests 42/42 PASS; IAM full tests 127/127 PASS;
+  lint PASS; typecheck PASS; production build PASS; `audit:file-personas` PASS
+  for all five personas and their authorized tenant/entity/department scopes;
+  `audit:persona-menus` PASS across super-admin 23 pages, system-admin 5,
+  tenant-admin 23, entity-account 4, and department-account 4. No business
+  404/5xx, visible load errors, exact Forbidden/\u7981\u6b62 alerts, browser script
+  errors, personal-root actions on organization pages, or account-specific
+  empty-root wording on organization pages.
+- Acceptance environment: console `http://localhost:18091`, API
+  `http://127.0.0.1:18080`, tenant `38439707251572736`, entity
+  `38439707671003136`; UAT remains running for manual acceptance.
+- Next action: no implementation or verification work remains for the reported
+  regressions. The proposed entity-menu information-architecture consolidation
+  remains a product decision awaiting user confirmation and has not been made.
+
 ## Coverage Gate To 90% - 2026-09-21
 
 - Current phase: IMPLEMENTATION.

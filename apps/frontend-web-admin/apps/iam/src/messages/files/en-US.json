@@ -13,7 +13,7 @@
   "title": "Files",
   "roots": "File roots",
   "folders": "Folders in this directory",
-  "noRoots": "No file root has been created for this account",
+  "noRoots": "No file root is available in this scope",
   "openFolders": "Open folders",
   "path": "Location",
   "back": "Back",

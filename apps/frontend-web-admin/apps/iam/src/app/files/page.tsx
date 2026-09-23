@@ -488,12 +488,10 @@ export default function FilesPage({ account = false }: { account?: boolean }) {
         }
         onRefresh={refresh}
         onEnsurePersonalRoot={
-          !recycleBin && (account || entityID)
+          !recycleBin && account
             ? () =>
                 run(async () => {
-                  const root = account
-                    ? await iamApi.createAccountFileRoot()
-                    : await iamApi.createPersonalFileRoot(entityID)
+                  const root = await iamApi.createAccountFileRoot()
                   if (!root.id) throw new Error("invalid_response")
                   setLocationScope(scopeKey)
                   setDirectoryLocation(root.id)

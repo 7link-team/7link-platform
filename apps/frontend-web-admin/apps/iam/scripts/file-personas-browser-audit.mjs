@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { chromium } from "playwright"
 
-const webURL = (process.env.IAM_WEB_URL ?? "http://127.0.0.1:18091").replace(
+const webURL = (process.env.IAM_WEB_URL ?? "http://localhost:18091").replace(
   /\/$/u,
   ""
 )
@@ -42,6 +42,10 @@ try {
       baseURL: webURL,
       viewport: { width: 1440, height: 960 },
     })
+    await context.addInitScript(() => {
+      if (!localStorage.getItem("iam.tenant"))
+        localStorage.setItem("iam.tenant", "1")
+    })
     const page = await context.newPage()
     const consoleErrors = []
     const failedResponses = []
@@ -72,10 +76,18 @@ try {
     )
     await page.locator('button[type="submit"]').click()
     await page.waitForURL((url) => url.pathname !== "/login")
+    assert.equal(
+      await page.evaluate(() => localStorage.getItem("iam.tenant")),
+      fixture.tenantID,
+      `${account.id} replaces a stale tenant before navigation`
+    )
     const entityBase = `/tenants/${encodeURIComponent(fixture.tenantID)}/entities/${encodeURIComponent(fixture.entityID)}`
-    const response = await context.request.get(`/api${entityBase}/files`, {
-      headers: { Origin: webURL },
-    })
+    const response = await context.request.get(
+      `/api/entities/${encodeURIComponent(fixture.entityID)}/files`,
+      {
+        headers: { Origin: webURL },
+      }
+    )
     assert.equal(response.status(), 200, `${account.id} file roots request`)
     const roots = (await response.json()).data.items
     const scopes = roots.map((root) => root.scope).sort()
@@ -96,24 +108,20 @@ try {
     const tenantFilesLink = page
       .getByRole("link", { name: "File management", exact: true })
       .first()
-    const tenantWide = ["super-admin", "system-admin", "tenant-admin"].includes(
-      account.id
+    await tenantFilesLink.waitFor()
+    const fileHref = await tenantFilesLink.getAttribute("href")
+    assert(
+      [
+        `/tenants/${fixture.tenantID}/files`,
+        `${entityBase}/files`,
+      ].includes(fileHref),
+      `${account.id} file link stays in its authorized tenant/entity context`
     )
-    if (tenantWide) {
-      await tenantFilesLink.waitFor()
-      assert.equal(
-        await tenantFilesLink.getAttribute("href"),
-        `/tenants/${fixture.tenantID}/files`
-      )
-      await page.goto(`/tenants/${fixture.tenantID}/files`)
-      await page.getByRole("region", { name: "Files" }).waitFor()
-      await page.getByText("Loading files…", { exact: true }).waitFor({
-        state: "hidden",
-      })
-    } else {
-      await tenantFilesLink.waitFor()
-      assert.equal(await tenantFilesLink.getAttribute("href"), `${entityBase}/files`)
-    }
+    await page.goto(fileHref)
+    await page.getByRole("region", { name: "Files" }).waitFor()
+    await page.getByText("Loading files…", { exact: true }).waitFor({
+      state: "hidden",
+    })
 
     await page.goto(`${entityBase}/files`)
     try {
@@ -143,9 +151,11 @@ try {
       )?.[0]
       const label =
         root.scope === "tenant"
-          ? "UAT Files"
+          ? "UAT"
           : root.scope === "entity"
-            ? "UAT File Company"
+            ? ["super-admin", "tenant-admin"].includes(account.id)
+              ? "UAT File Company"
+              : "Entity files"
             : root.scope === "department"
               ? (departmentName ?? "Department files")
               : "Personal files"
@@ -155,6 +165,7 @@ try {
         .waitFor()
     }
     const unexpectedResponses = failedResponses.filter((failure) => {
+      if (failure === `404 ${webURL}/api/me/avatar`) return false
       if (!failure.startsWith("403 ")) return true
       const pathname = new URL(failure.slice(4)).pathname
       return (

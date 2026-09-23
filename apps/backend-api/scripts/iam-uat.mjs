@@ -35,6 +35,9 @@ function run(command, args, options = {}) {
 function save(path, value) {
   writeFileSync(path, JSON.stringify(value, null, 2) + "\n", { mode: 0o600 });
 }
+function consoleURL(settings) {
+  return `http://localhost:${settings.webPort}`;
+}
 function state() {
   if (!existsSync(statePath)) throw new Error("Run init first.");
   return JSON.parse(readFileSync(statePath, "utf8"));
@@ -117,8 +120,8 @@ async function init() {
   const grpcPort = await availablePort(19090);
   const notificationPort = await availablePort(18100);
   const apiURL = `http://127.0.0.1:${apiPort}`;
-  const webURL = `http://127.0.0.1:${webPort}`;
-  const passkeyURL = `http://localhost:${webPort}`;
+  const webURL = `http://localhost:${webPort}`;
+  const webListenURL = `http://127.0.0.1:${webPort}`;
   save(configPath, {
     name: "IAM Local UAT", table_prefix: "uat_",
     http_server: { address: "127.0.0.1", port: apiPort },
@@ -129,10 +132,10 @@ async function init() {
       notification: { url: `http://127.0.0.1:${notificationPort}/notifications`, poll_interval: "100ms", request_timeout: "5s", max_attempts: 3 },
       email_verification: { enabled: true, verify_url: webURL + "/verify-email" },
       registration: { enabled: true, captcha: { test_answer: captchaTestAnswer } },
-      passkey: { enabled: true, rp_id: "localhost", display_name: "IAM Local UAT", origins: [passkeyURL] },
+      passkey: { enabled: true, rp_id: "localhost", display_name: "IAM Local UAT", origins: [webURL] },
       web: { enabled: true, cookie_name: `uat_${identity}`, cookie_secure: false,
         post_login_url: webURL + "/", post_logout_url: webURL + "/login",
-        allowed_return_urls: [webURL + "/", passkeyURL + "/"], allowed_origins: [webURL, passkeyURL] } },
+        allowed_return_urls: [webURL + "/", webListenURL + "/"], allowed_origins: [webURL, webListenURL] } },
     // Local protocol audits run their test IdP on an ephemeral loopback port.
     federation: { enabled: true, encryption_key_file: join(directory, "federation-key"),
       outbound_allow_plaintext: true, outbound_allow_networks: ["127.0.0.1/32"] },
@@ -143,7 +146,7 @@ async function init() {
   run(binary, ["migrate", "auto", "--config", configPath]);
   run(binary, ["iam", "bootstrap-platform-admin", "--config", configPath,
     "--login", "admin@example.test", "--display-name", "UAT Administrator", "--password-file", join(directory, "admin-password")]);
-  save(statePath, { apiURL, webURL, apiPort, webPort, grpcPort, notificationPort, databasePort, container, image,
+  save(statePath, { apiURL, webURL, webListenURL, apiPort, webPort, grpcPort, notificationPort, databasePort, container, image,
     initializedAt: new Date().toISOString(), revision: run("git", ["rev-parse", "HEAD"]),
     binarySHA256: createHash("sha256").update(readFileSync(binary)).digest("hex") });
   console.log(`Initialized. Password file: ${join(directory, "admin-password")} (not printed).`);
@@ -151,6 +154,7 @@ async function init() {
 async function serve() {
   process.title = title;
   const settings = state();
+  const webURL = consoleURL(settings);
   writeFileSync(pidPath, String(process.pid), { flag: "wx", mode: 0o600 });
   const children = [];
   const notificationServer = settings.notificationPort ? createHTTPServer((request, response) => {
@@ -218,7 +222,7 @@ async function serve() {
     launch(binary, ["serve", "--config", configPath], { cwd: root });
     await waitFor(async () => { if (stopping) throw new Error("API exited during startup."); return httpReady(settings.apiURL + "/readyz"); }, "API readiness");
     const tenant = run("bun", ["scripts/bootstrap-audit-environment.mjs"], { cwd: frontend,
-      env: { ...process.env, IAM_API_URL: settings.apiURL, IAM_CONSOLE_URL: settings.webURL,
+      env: { ...process.env, IAM_API_URL: settings.apiURL, IAM_CONSOLE_URL: webURL,
         IAM_BROWSER_PASSWORD_FILE: join(directory, "admin-password"), IAM_BROWSER_LOGIN: "admin@example.test",
         IAM_BROWSER_TENANT_SLUG: "uat", IAM_BROWSER_TENANT_NAME: "UAT",
         IAM_BACKEND_DIR: root, IAM_BACKEND_COMMAND: "./.temp/iam-uat/api", IAM_BOOTSTRAP_ARGS: "--config .temp/iam-uat/config.yaml" } });
@@ -228,7 +232,7 @@ async function serve() {
     if (prefillDemoAccount && !demoAccounts) throw new Error("--prefill-demo-account requires --demo-accounts");
     const personaFixture = demoAccounts
       ? JSON.parse(run("bun", ["scripts/bootstrap-file-personas.mjs"], { cwd: frontend,
-        env: { ...process.env, IAM_API_URL: settings.apiURL, IAM_CONSOLE_URL: settings.webURL,
+        env: { ...process.env, IAM_API_URL: settings.apiURL, IAM_CONSOLE_URL: webURL,
           IAM_BROWSER_PASSWORD_FILE: join(directory, "admin-password"), IAM_BROWSER_TENANT: tenant,
           IAM_UAT_DIRECTORY: directory } }))
       : { accounts: [] };
@@ -238,9 +242,9 @@ async function serve() {
       { cwd: frontend, env: { ...process.env, VITE_API_PROXY_TARGET: settings.apiURL,
         VITE_DEFAULT_TENANT: tenant, VITE_DEV_LOGIN_ACCOUNTS: JSON.stringify(personaFixture.accounts),
         VITE_DEV_LOGIN_ACCOUNTS_ENABLED: String(demoAccounts), VITE_DEV_LOGIN_PREFILL: String(prefillDemoAccount) } });
-    await waitFor(async () => { if (stopping) throw new Error("UAT process exited during startup."); return httpReady(settings.webURL + "/login"); }, "console startup");
+    await waitFor(async () => { if (stopping) throw new Error("UAT process exited during startup."); return httpReady(webURL + "/login"); }, "console startup");
     save(readyPath, { pid: process.pid, ...settings });
-    console.log(`UAT ready: ${settings.webURL}`);
+    console.log(`UAT ready: ${webURL}`);
     await completion;
   } finally { await stop(); }
 }
@@ -252,7 +256,7 @@ async function start() {
   const settings = state();
   if (supervisor()) {
     if (!existsSync(readyPath) || !await httpReady(settings.apiURL + "/readyz")) throw new Error("UAT supervisor exists but is not ready; inspect uat.log.");
-    console.log(`Already running: ${settings.webURL}`); return;
+    console.log(`Already running: ${consoleURL(settings)}`); return;
   }
   if (existsSync(pidPath)) unlinkSync(pidPath);
   if (existsSync(readyPath)) unlinkSync(readyPath);
@@ -271,7 +275,7 @@ async function start() {
   try {
     await waitFor(() => { if (child.exitCode !== null) throw new Error("UAT supervisor exited; see uat.log."); return existsSync(readyPath); }, "UAT startup", 120);
   } catch (error) { await stop(); throw error; }
-  console.log(`Console: ${settings.webURL}\nAPI: ${settings.apiURL}\nLogin: admin@example.test\nPassword file: ${join(directory, "admin-password")}`);
+  console.log(`Console: ${consoleURL(settings)}\nAPI: ${settings.apiURL}\nLogin: admin@example.test\nPassword file: ${join(directory, "admin-password")}`);
 }
 async function stop() {
   localDocker();
@@ -293,12 +297,13 @@ async function reset() {
 }
 async function verify() {
   const settings = state();
+  const webURL = consoleURL(settings);
   if (!supervisor() || !existsSync(readyPath)) throw new Error("Start UAT before verification.");
   const tenant = readFileSync(join(directory, "tenant-id"), "utf8").trim();
   const client = () => {
     const cookies = new Map();
-    return async (path, { method = "GET", body, expected = 200, origin = settings.webURL } = {}) => {
-      const response = await fetch(settings.webURL + "/api" + path, {
+    return async (path, { method = "GET", body, expected = 200, origin = webURL } = {}) => {
+      const response = await fetch(webURL + "/api" + path, {
         method, redirect: "manual", signal: AbortSignal.timeout(10000),
         headers: { "Content-Type": "application/json", Origin: origin,
           Cookie: [...cookies].map(([key, value]) => `${key}=${value}`).join("; ") },
@@ -315,7 +320,7 @@ async function verify() {
   };
   const login = async (call, name, file) => {
     const result = await call("/login", { method: "POST", body: {
-      login_name: name, password: readFileSync(join(directory, file), "utf8").trim(), return_url: settings.webURL + "/",
+      login_name: name, password: readFileSync(join(directory, file), "utf8").trim(), return_url: webURL + "/",
     } });
     assert.equal(result.status, "authenticated");
     await call("/me/session");
@@ -375,8 +380,8 @@ try {
     case "status": {
       const settings = state();
       const running = Boolean(supervisor());
-      console.log(JSON.stringify({ ...settings, running,
-        ready: running && existsSync(readyPath) && await httpReady(settings.apiURL + "/readyz") && await httpReady(settings.webURL + "/login") }, null, 2));
+      console.log(JSON.stringify({ ...settings, webURL: consoleURL(settings), running,
+        ready: running && existsSync(readyPath) && await httpReady(settings.apiURL + "/readyz") && await httpReady(consoleURL(settings) + "/login") }, null, 2));
       break;
     }
     default: throw new Error("Usage: node scripts/iam-uat.mjs init|start [--demo-accounts] [--prefill-demo-account]|stop|status|verify|reset --preserve-old");

@@ -43,13 +43,8 @@ func AnonymizePrincipalData(ctx context.Context, tx *gorm.DB, prefix string, pri
 		{governance.Name, "goose_governance", 4, governance.ErasePrincipalData},
 	}
 	for _, owner := range owners {
-		var version struct {
-			VersionID int64
-			IsApplied bool
-		}
-		stream := goosex.Source{TableName: owner.versions, Prefix: prefix}
-		err := tx.WithContext(ctx).Table(stream.VersionTable()).Where("version_id = ?", owner.version).Order("id DESC").Take(&version).Error
-		if err != nil || !version.IsApplied || version.VersionID != owner.version {
+		applied, err := goosex.VersionApplied(ctx, tx, goosex.Source{Prefix: prefix, TableName: owner.versions}, owner.version)
+		if err != nil || !applied {
 			return fmt.Errorf("%w: %s principal erasure migration is required", identity.ErrUnavailable, owner.name)
 		}
 	}

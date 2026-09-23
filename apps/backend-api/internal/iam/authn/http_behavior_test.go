@@ -737,6 +737,8 @@ func TestAuthenticationPasskeyHTTPContract(t *testing.T) {
 	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/me/passkeys", "Cookie: "+cookie, "Origin: https://app.example", invalidRegistration).Code)
 
 	assert.Equal(t, http.StatusForbidden, api.Post("/login/passkey/options", map[string]any{"return_url": "https://app.example/"}, "Origin: https://evil.example").Code)
+	web.web.AllowedOrigins = append(web.web.AllowedOrigins, "https://login.example")
+	assert.Equal(t, http.StatusForbidden, api.Post("/login/passkey/options", map[string]any{"return_url": "https://app.example/"}, "Origin: https://login.example").Code)
 	assert.Equal(t, http.StatusUnprocessableEntity, api.Post("/login/passkey/options", map[string]any{"return_url": "https://evil.example/"}, "Origin: https://app.example").Code)
 	loginOptions := api.Post("/login/passkey/options", map[string]any{"return_url": "https://app.example/"}, "Origin: https://app.example")
 	require.Equal(t, http.StatusOK, loginOptions.Code, loginOptions.Body.String())

@@ -115,7 +115,6 @@ const definitions = [
 ]
 
 const filePermissions = [
-  "entity_view",
   "dept_view",
   "file_view",
   "file_read_all",
@@ -185,9 +184,18 @@ for (const definition of definitions) {
   for (const permission of definition.tenantAdmin
     ? ["tenant_administer"]
     : filePermissions)
-    await call(`/roles/${role.id}/permissions/${permission}`, { method: "PUT" })
+    await call(`/roles/${role.id}/permissions/${permission}`, {
+      method: "PUT",
+      tenant: false,
+    })
+  if (definition.departmentID)
+    await call(`/roles/${role.id}/permissions/entity_view`, {
+      method: "DELETE",
+      tenant: false,
+    })
   await call(`/roles/${role.id}/data-scope`, {
     method: "PUT",
+    tenant: false,
     body: { scope: definition.scope, department_ids: [] },
   })
   if (definition.entityBinding) {
@@ -202,16 +210,23 @@ for (const definition of definitions) {
         description: "Read-only console discovery for the entity persona",
       }
     )
-    for (const permission of ["entity_view", "file_view"])
+    for (const permission of ["file_view"])
       await call(`/roles/${discoveryRole.id}/permissions/${permission}`, {
         method: "PUT",
+        tenant: false,
       })
+    await call(`/roles/${discoveryRole.id}/permissions/entity_view`, {
+      method: "DELETE",
+      tenant: false,
+    })
     await call(`/roles/${discoveryRole.id}/data-scope`, {
       method: "PUT",
+      tenant: false,
       body: { scope: "self", department_ids: [] },
     })
     await call(`/roles/${discoveryRole.id}/members/${principal.id}`, {
       method: "PUT",
+      tenant: false,
     })
     const labelRole = await ensureFromList(
       "/roles?limit=200",
@@ -223,9 +238,11 @@ for (const definition of definitions) {
     )
     await call(`/roles/${labelRole.id}/permissions/dept_view`, {
       method: "PUT",
+      tenant: false,
     })
     await call(`/roles/${labelRole.id}/data-scope`, {
       method: "PUT",
+      tenant: false,
       body: {
         scope: "selected_departments",
         department_ids: Object.values(departments).map(
@@ -235,16 +252,21 @@ for (const definition of definitions) {
     })
     await call(`/roles/${labelRole.id}/members/${principal.id}`, {
       method: "PUT",
+      tenant: false,
     })
     await call(
       `/entities/${entity.id}/role-bindings/${role.id}/${principal.id}`,
       {
         method: "PUT",
+        tenant: false,
         body: { effect: "allow" },
       }
     )
   } else
-    await call(`/roles/${role.id}/members/${principal.id}`, { method: "PUT" })
+    await call(`/roles/${role.id}/members/${principal.id}`, {
+      method: "PUT",
+      tenant: false,
+    })
   if (definition.platformPermissions)
     await call(`/platform/administrators/${principal.id}`, {
       method: "PUT",

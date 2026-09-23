@@ -375,7 +375,7 @@ strings\.Join\(
 
 | # | 位置 | 语句 | 决策 |
 |---|---|---|---|
-| R1 | internal/app/principallifecycle.go:47 | `Table(prefix+owner.versions).Where("version_id = ?", owner.version).Order("id DESC")`（goose_<模块> 版本表） | B3 归属：表归框架（pressly/goose + goosex）、前缀动态施加、无访问器。中期：goosex 增 `VersionApplied(ctx, tx, version)`（扩展内冻结，调用点变一行）——不建议 gen 化 goose 版本表（错误耦合） |
+| R1 | pkg/extension/goose/version.go | `VersionApplied` 读取 `goose_<模块>` 版本表 | B3 归属：表归框架（pressly/goose + goosex）、前缀动态施加，不生成业务 query；字段访问已通过结构化 GORM API 冻结在扩展内，业务层只调用语义方法。 |
 | R2 | pkg/extension/gorm/clock.go:23 | `Raw("SELECT " + NowMillisExpr(dialect))` | B3：gen 无"无表标量 SELECT"；`NowMillisExpr` 是全仓唯一方言分支（32-42 行注释明言），已是收敛冻结点 |
 | R3 | internal/infra/wuid/wuid.go:233/234/379 | `ExpiresAt.LtCol(field.NewUnsafeFieldRaw(nowExpr))` 等 | B3 受控冻结（wuid.go:230-232 注释明示"the only raw SQL left"）；消零需值绑定 → 引入读/写间时钟推进窗口 + 往返，不推荐 |
 | R4 | internal/infra/dlock/dlock.go:104/110 | 同 R3 形态（LtCol + NewUnsafeFieldRaw 时钟） | B3 受控冻结（dlock.go:99-102 注释承认） |
@@ -383,4 +383,3 @@ strings\.Join\(
 **B-NA（31）**：rest.txt 33 条候选中 31 条非 SQL（错误消息 / 格式串 / strings.Join 业务串 / 回调注册 / 遥测规范化 / argon2 格式串 / 日志），逐条已剔除。
 **B-NA-migration**：todo 6 + infra/audit 6（含触发器模板）+ dlock 3 + wuid 3 = 18 个 .sql + 4 个 migrate.go embed 载体；goose 版本表 DDL 在依赖内（仓库外）。
 **模板对照**：internal/todo 生产代码零手写 SQL（全 gen 类型化）——是达标模板。
-

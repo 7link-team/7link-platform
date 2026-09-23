@@ -33,6 +33,7 @@
     "audit:session-tenant": "node scripts/session-tenant-browser-audit.mjs",
     "audit:profile": "node scripts/profile-browser-audit.mjs",
     "audit:file-personas": "node scripts/file-personas-browser-audit.mjs",
+    "audit:persona-menus": "node scripts/persona-menu-browser-audit.mjs",
     "audit:archive-ui": "node scripts/archive-ui-browser-audit.mjs",
     "audit:permanent-erasure": "bun scripts/permanent-erasure-browser-audit.mjs",
     "audit:registration": "bun scripts/registration-browser-audit.mjs",

@@ -1157,14 +1157,17 @@ export function shouldNotifyMenuCatalogChange(
   if (!path.startsWith("/") || ["GET", "HEAD"].includes(method.toUpperCase()))
     return false
   const segments = path.split("?", 1)[0]?.split("/").filter(Boolean) ?? []
-  const resourceIndex =
-    segments[0] === "me"
+  const resourceIndex = ["files", "file-operations"].includes(segments[0] ?? "")
+    ? 0
+    : segments[0] === "me"
       ? 1
-      : segments[0] === "tenants" && segments[2] === "entities"
-        ? 4
-        : segments[0] === "tenants"
-          ? 2
-          : -1
+      : segments[0] === "entities"
+        ? 2
+        : segments[0] === "tenants" && segments[2] === "entities"
+          ? 4
+          : segments[0] === "tenants"
+            ? 2
+            : -1
   return !["files", "file-operations"].includes(segments[resourceIndex] ?? "")
 }
 
@@ -1236,18 +1239,10 @@ function entityAPIPath(
 
 async function requestFileDownloadWithBase(
   apiBase: string,
-  tenantID: () => string,
-  entityID: string | null | undefined,
   path: string,
   options: { maxBytes?: number; signal?: AbortSignal } = {}
 ): Promise<Blob> {
-  const scope = tenantID()
-  const resourcePath = entityID
-    ? entityAPIPath(scope, entityID, path)
-    : entityID === null
-      ? `/me${path}`
-      : tenantAPIPath(scope, path)
-  const response = await fetch(`${apiBase}${resourcePath}`, {
+  const response = await fetch(`${apiBase}${path}`, {
     credentials: "include",
     signal: options.signal,
   })
@@ -1411,19 +1406,23 @@ export function createIamApi(
         : tenantAPIPath(scope, path)
     return requestWithBase<T>(apiBase, tenantID, resourcePath, init, false)
   }
-  const fileContentURL = (
+  const fileCollectionRequest = <T>(
     entityID: string | null | undefined,
-    fileID: string
+    path: string,
+    init: RequestInit = {}
   ) => {
-    const path = `/files/${encodeURIComponent(fileID)}/content?disposition=inline`
-    const scope = tenantID()
     const resourcePath = entityID
-      ? entityAPIPath(scope, entityID, path)
+      ? `/entities/${encodeURIComponent(entityID)}${path}`
       : entityID === null
         ? `/me${path}`
-        : tenantAPIPath(scope, path)
-    return `${apiBase}${resourcePath}`
+        : tenantAPIPath(tenantID(), path)
+    return requestWithBase<T>(apiBase, tenantID, resourcePath, init, false)
   }
+  const fileContentURL = (
+    _entityID: string | null | undefined,
+    fileID: string
+  ) =>
+    `${apiBase}/files/${encodeURIComponent(fileID)}/content?disposition=inline`
   /**
    * Every list endpoint is bounded by default on the server, so a caller that
    * needs the complete set -- a picker's universe, or a membership the UI
@@ -1456,18 +1455,18 @@ export function createIamApi(
     files: (entityID?: string | null, after = "") => {
       const query = new URLSearchParams({ limit: "100" })
       if (after) query.set("after", after)
-      return fileRequest<FilePage>(entityID, `/files?${query}`)
+      return fileCollectionRequest<FilePage>(entityID, `/files?${query}`)
     },
     trashedFiles: (entityID?: string | null, after = "") => {
       const query = new URLSearchParams({ limit: "100", state: "trashed" })
       if (after) query.set("after", after)
-      return fileRequest<FilePage>(entityID, `/files?${query}`)
+      return fileCollectionRequest<FilePage>(entityID, `/files?${query}`)
     },
     createPersonalFileRoot: (entityID: string) => {
       const body = new FormData()
       body.set("kind", "directory")
       body.set("scope", "personal")
-      return fileRequest<FileEntryView>(entityID, "/files", {
+      return fileCollectionRequest<FileEntryView>(entityID, "/files", {
         method: "POST",
         body,
       })
@@ -1476,22 +1475,22 @@ export function createIamApi(
       const body = new FormData()
       body.set("kind", "directory")
       body.set("scope", "account")
-      return fileRequest<FileEntryView>(null, "/files", {
+      return fileCollectionRequest<FileEntryView>(null, "/files", {
         method: "POST",
         body,
       })
     },
     fileItems: (
-      entityID: string | null | undefined,
+      _entityID: string | null | undefined,
       fileID: string,
       after = ""
     ) => {
       const query = new URLSearchParams({ limit: "100" })
       if (after) query.set("after", after)
-      return fileRequest<FileChildrenPage>(
-        entityID,
+      return request<FileChildrenPage>(
         `/files/${encodeURIComponent(fileID)}/items?${query}`,
-        {}
+        {},
+        false
       )
     },
     createDirectory: (
@@ -1503,7 +1502,7 @@ export function createIamApi(
       body.set("parent_id", parentID)
       body.set("kind", "directory")
       body.set("name", name)
-      return fileRequest<FileEntryView>(entityID, "/files", {
+      return fileCollectionRequest<FileEntryView>(entityID, "/files", {
         method: "POST",
         body,
       })
@@ -1517,67 +1516,62 @@ export function createIamApi(
       body.set("parent_id", parentID)
       body.set("kind", "file")
       body.set("file", file)
-      return fileRequest<FileEntryView>(entityID, "/files", {
+      return fileCollectionRequest<FileEntryView>(entityID, "/files", {
         method: "POST",
         body,
       })
     },
     fileByPath: (
-      entityID: string | null | undefined,
+      _entityID: string | null | undefined,
       rootFileID: string,
       path: string
     ) =>
-      fileRequest<FileEntryView>(
-        entityID,
+      request<FileEntryView>(
         `/files/${encodeURIComponent(rootFileID)}/-/${path
           .split("/")
           .map(encodeURIComponent)
           .join("/")}`,
-        {}
+        {},
+        false
       ),
-    downloadFile: (entityID: string | null | undefined, fileID: string) =>
+    downloadFile: (_entityID: string | null | undefined, fileID: string) =>
       requestFileDownloadWithBase(
         apiBase,
-        tenantID,
-        entityID,
         `/files/${encodeURIComponent(fileID)}/content`
       ),
     fileContentURL,
     previewFile: (
-      entityID: string | null | undefined,
+      _entityID: string | null | undefined,
       fileID: string,
       maxBytes: number,
       signal?: AbortSignal
     ) =>
       requestFileDownloadWithBase(
         apiBase,
-        tenantID,
-        entityID,
         `/files/${encodeURIComponent(fileID)}/content`,
         { maxBytes, signal }
       ),
     renameFileEntry: (
-      entityID: string | null | undefined,
+      _entityID: string | null | undefined,
       fileID: string,
       revision: number,
       name: string
     ) =>
-      fileRequest<FileEntryView>(
-        entityID,
+      request<FileEntryView>(
         `/files/${encodeURIComponent(fileID)}`,
         {
           method: "PATCH",
           body: JSON.stringify({ name, revision }),
-        }
+        },
+        false
       ),
     restoreFileEntry: (
-      entityID: string | null | undefined,
+      _entityID: string | null | undefined,
       fileID: string,
       revision: number,
       name?: string
     ) =>
-      fileRequest<FileEntryView>(
-        entityID,
+      request<FileEntryView>(
         `/files/${encodeURIComponent(fileID)}`,
         {
           method: "PATCH",
@@ -1586,17 +1580,18 @@ export function createIamApi(
             revision,
             ...(name ? { name } : {}),
           }),
-        }
+        },
+        false
       ),
     trashFileEntry: (
-      entityID: string | null | undefined,
+      _entityID: string | null | undefined,
       fileID: string,
       revision: number
     ) =>
-      fileRequest<FileTrashResult>(
-        entityID,
+      request<FileTrashResult>(
         `/files/${encodeURIComponent(fileID)}?${new URLSearchParams({ revision: String(revision) })}`,
-        { method: "DELETE" }
+        { method: "DELETE" },
+        false
       ),
     createFileOperation: (
       entityID: string | null | undefined,
@@ -1615,8 +1610,7 @@ export function createIamApi(
           type_policy: input.type_policy ?? "ask",
         }),
       }),
-    capabilities: () =>
-      request<AuthnCapabilities>("/login/options", {}, false),
+    capabilities: () => request<AuthnCapabilities>("/login/options", {}, false),
     createCaptcha: () =>
       request<Captcha>("/registrations/captchas", { method: "POST" }, false),
     register: (body: {
@@ -1819,7 +1813,11 @@ export function createIamApi(
         false
       ),
     logoutAll: () =>
-      request<{ logout_url: string }>("/me/sessions", { method: "DELETE" }, false),
+      request<{ logout_url: string }>(
+        "/me/sessions",
+        { method: "DELETE" },
+        false
+      ),
     changePassword: (body: {
       current_password: string
       new_password: string
@@ -2107,7 +2105,7 @@ export function createIamApi(
       ),
     entities: () => request<Entity[]>("/entities"),
     entity: (id: string) =>
-      request<Entity>(`/entities/${encodeURIComponent(id)}`),
+      request<Entity>(`/entities/${encodeURIComponent(id)}`, {}, false),
     createEntity: (body: EntityInput) =>
       request<Entity>("/entities", {
         method: "POST",
@@ -2117,15 +2115,17 @@ export function createIamApi(
       request<Entity>(`/entities/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify(body),
-      }),
+      }, false),
     deleteEntity: (id: string) =>
       request<{ changed: boolean; sync_status: string }>(
         `/entities/${encodeURIComponent(id)}`,
-        { method: "DELETE" }
+        { method: "DELETE" },
+        false
       ),
     entityRoleBindings: (id: string) =>
       requestAllPages<EntityRoleBinding>(
-        `/entities/${encodeURIComponent(id)}/role-bindings`
+        `/entities/${encodeURIComponent(id)}/role-bindings`,
+        false
       ),
     putEntityRoleBinding: (
       id: string,
@@ -2135,7 +2135,8 @@ export function createIamApi(
     ) =>
       request<EntityRoleBinding>(
         `/entities/${encodeURIComponent(id)}/role-bindings/${encodeURIComponent(roleID)}/${encodeURIComponent(principalID)}`,
-        { method: "PUT", body: JSON.stringify(body) }
+        { method: "PUT", body: JSON.stringify(body) },
+        false
       ),
     deleteEntityRoleBinding: (
       id: string,
@@ -2144,7 +2145,8 @@ export function createIamApi(
     ) =>
       request<{ changed: boolean; sync_status: string }>(
         `/entities/${encodeURIComponent(id)}/role-bindings/${encodeURIComponent(roleID)}/${encodeURIComponent(principalID)}`,
-        { method: "DELETE" }
+        { method: "DELETE" },
+        false
       ),
     relationships: (resourceID = "") =>
       requestAllPages<Relationship>(
@@ -2152,7 +2154,8 @@ export function createIamApi(
       ),
     resourceRelationships: (entityID: string) =>
       request<Relationship[]>(
-        `/relationships?entity_id=${encodeURIComponent(entityID)}`
+        `/relationships?entity_id=${encodeURIComponent(entityID)}`,
+        {}
       ),
     putRelationship: (body: RelationshipInput) =>
       request<Relationship>("/relationships", {
@@ -2251,7 +2254,7 @@ export function createIamApi(
       }),
     departments: () => requestAllPages<Department>("/departments"),
     department: (id: string) =>
-      request<Department>(`/departments/${encodeURIComponent(id)}`),
+      request<Department>(`/departments/${encodeURIComponent(id)}`, {}, false),
     createDepartment: (body: DepartmentInput) =>
       request<Department>("/departments", {
         method: "POST",
@@ -2265,11 +2268,12 @@ export function createIamApi(
       request<Department>(`/departments/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify(body),
-      }),
+      }, false),
     deleteDepartment: (id: string, version: number) =>
       request<{ deleted: boolean }>(
         `/departments/${encodeURIComponent(id)}?version=${encodeURIComponent(version)}`,
-        { method: "DELETE" }
+        { method: "DELETE" },
+        false
       ),
     positions: () => requestAllPages<Position>("/positions"),
     position: (id: string) =>
@@ -2442,24 +2446,28 @@ export function createIamApi(
       request<Role>(`/roles/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify(body),
-      }),
+      }, false),
     deleteRole: (id: string) =>
-      request(`/roles/${encodeURIComponent(id)}`, { method: "DELETE" }),
+      request(`/roles/${encodeURIComponent(id)}`, { method: "DELETE" }, false),
     rolePermissions: (id: string) =>
-      request<string[]>(`/roles/${encodeURIComponent(id)}/permissions`),
+      request<string[]>(`/roles/${encodeURIComponent(id)}/permissions`, {}, false),
     rolePermissionGrants: (id: string) =>
       request<RolePermissionGrant[]>(
-        `/roles/${encodeURIComponent(id)}/permission-grants`
+        `/roles/${encodeURIComponent(id)}/permission-grants`,
+        {},
+        false
       ),
     grantPermission: (id: string, code: string) =>
       request(
         `/roles/${encodeURIComponent(id)}/permissions/${encodeURIComponent(code)}`,
-        { method: "PUT" }
+        { method: "PUT" },
+        false
       ),
     revokePermission: (id: string, code: string) =>
       request(
         `/roles/${encodeURIComponent(id)}/permissions/${encodeURIComponent(code)}`,
-        { method: "DELETE" }
+        { method: "DELETE" },
+        false
       ),
     setRolePermissionCondition: (
       id: string,
@@ -2468,31 +2476,37 @@ export function createIamApi(
     ) =>
       request<RolePermissionGrant>(
         `/roles/${encodeURIComponent(id)}/permissions/${encodeURIComponent(code)}/condition`,
-        { method: "PUT", body: JSON.stringify({ condition }) }
+        { method: "PUT", body: JSON.stringify({ condition }) },
+        false
       ),
     clearRolePermissionCondition: (id: string, code: string) =>
       request(
         `/roles/${encodeURIComponent(id)}/permissions/${encodeURIComponent(code)}/condition`,
-        { method: "DELETE" }
+        { method: "DELETE" },
+        false
       ),
     roleMembers: (id: string) =>
-      requestAllPages<string>(`/roles/${encodeURIComponent(id)}/members`),
+      requestAllPages<string>(`/roles/${encodeURIComponent(id)}/members`, false),
     addRoleMember: (id: string, subject: string) =>
       request(
         `/roles/${encodeURIComponent(id)}/members/${encodeURIComponent(subject)}`,
-        { method: "PUT" }
+        { method: "PUT" },
+        false
       ),
     removeRoleMember: (id: string, subject: string) =>
       request(
         `/roles/${encodeURIComponent(id)}/members/${encodeURIComponent(subject)}`,
-        { method: "DELETE" }
+        { method: "DELETE" },
+        false
       ),
     roleDirectoryBindings: (id: string) =>
       request<RoleDirectoryBinding[]>(
-        `/roles/${encodeURIComponent(id)}/directory-bindings`
+        `/roles/${encodeURIComponent(id)}/directory-bindings`,
+        {},
+        false
       ),
     roleDataScope: (id: string) =>
-      request<RoleDataScope>(`/roles/${encodeURIComponent(id)}/data-scope`),
+      request<RoleDataScope>(`/roles/${encodeURIComponent(id)}/data-scope`, {}, false),
     setRoleDataScope: (
       id: string,
       body: Pick<RoleDataScope, "scope" | "department_ids">
@@ -2500,7 +2514,7 @@ export function createIamApi(
       request<RoleDataScope>(`/roles/${encodeURIComponent(id)}/data-scope`, {
         method: "PUT",
         body: JSON.stringify(body),
-      }),
+      }, false),
     addRoleDirectoryBinding: (
       id: string,
       assigneeType: RoleDirectoryBinding["assignee_type"],
@@ -2508,7 +2522,8 @@ export function createIamApi(
     ) =>
       request(
         `/roles/${encodeURIComponent(id)}/directory-bindings/${encodeURIComponent(assigneeType)}/${encodeURIComponent(assigneeID)}`,
-        { method: "PUT" }
+        { method: "PUT" },
+        false
       ),
     removeRoleDirectoryBinding: (
       id: string,
@@ -2517,7 +2532,8 @@ export function createIamApi(
     ) =>
       request(
         `/roles/${encodeURIComponent(id)}/directory-bindings/${encodeURIComponent(assigneeType)}/${encodeURIComponent(assigneeID)}`,
-        { method: "DELETE" }
+        { method: "DELETE" },
+        false
       ),
     permissions: () => request<Permission[]>("/permission-catalog"),
     menus: () => request<Menu[]>("/menus"),

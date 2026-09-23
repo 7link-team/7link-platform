@@ -8,6 +8,7 @@ import { Label } from "@workspace/ui/components/label"
 import { SimpleSelect } from "@workspace/ui/components/select"
 import {
   ApiError,
+  getTenant,
   iamApi,
   setTenant,
   type AuthnCapabilities,
@@ -48,18 +49,22 @@ export default function LoginPage() {
     setBusy(true)
     setError("")
     const data = new FormData(event.currentTarget)
+    const devTenantID = String(data.get("dev_tenant_id") ?? "")
+    const previousTenantID = devTenantID ? getTenant() : ""
     const requested = (location.state as { from?: string } | null)?.from ?? "/"
     try {
+      if (devTenantID) setTenant(devTenantID)
       const result = await login(
         String(data.get("login_name") ?? ""),
         String(data.get("password") ?? ""),
         `${window.location.origin}${requested}`
       )
-      const devTenantID = String(data.get("dev_tenant_id") ?? "")
-      if (result.status !== "mfa_required" && devTenantID)
-        setTenant(devTenantID)
-      if (result.status === "mfa_required") setChallenge(result)
+      if (result.status === "mfa_required") {
+        if (devTenantID) setTenant(previousTenantID)
+        setChallenge(result)
+      }
     } catch (cause) {
+      if (devTenantID) setTenant(previousTenantID)
       setError(t(loginError(cause)))
     } finally {
       setBusy(false)

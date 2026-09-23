@@ -80,7 +80,10 @@ func TestFileHTTPContract(t *testing.T) {
 			manifest = append(manifest, operation.OperationID+"|"+method+"|"+path)
 			expectedTag := strings.Split(strings.TrimPrefix(path, "/"), "/")[0]
 			require.Equal(t, []string{expectedTag}, operation.Tags)
-			if strings.HasPrefix(path, "/me/") {
+			if operation.OperationID == "list-entity-files" {
+				require.True(t, authz.IsTenantMemberOperation(operation))
+				require.True(t, authz.IsOwnedResourceOperation(operation))
+			} else if strings.HasPrefix(path, "/me/") {
 				require.True(t, authz.IsAuthenticatedOperation(operation))
 			} else {
 				require.Contains(t, operation.Extensions[authz.GuardExtensionKey], filePermissionPrefix)

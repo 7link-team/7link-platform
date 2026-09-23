@@ -29,6 +29,12 @@ describe("FileBrowser", () => {
     }
     expect(render()).toContain(en.empty)
   })
+  it("offers personal root creation only when the personal page supplies it", () => {
+    expect(render()).not.toContain(en.createPersonalRoot)
+    expect(render({ onEnsurePersonalRoot: async () => true })).toContain(
+      en.createPersonalRoot
+    )
+  })
   it("fills its parent without introducing a nested viewport height", () => {
     const html = render()
     expect(html).toContain("h-full min-h-0 min-w-0")
