@@ -1,5 +1,71 @@
 # Task State
 
+## OpenAPI Public Contract Review - 2026-09-23
+
+- Current phase: REVIEW.
+- Objective: review the complete generated Swagger/OpenAPI contract and propose
+  an optimization plan for user confirmation before changing public routes.
+- Scope reviewed: 206 paths, 295 operations, and all 33 tags in
+  `apps/backend-api/docs/openapi.json`.
+- Completed: rescanned the generated contract and introduced a resource
+  semantic gate requiring meaning, owner, identity, lifecycle, representation,
+  and authorization evidence before canonical URI design.
+- Key decision: scoped file collections remain because path scope is a confirmed
+  ownership boundary; the three file-operation commands should converge on
+  `POST /files/{destination_file_id}/operations` because the destination is an
+  existing globally identified authorization boundary.
+- Swagger IA finding: the first-path-segment tag rule creates 33 uneven groups,
+  including 10 with at most two operations, while `tenants` has 84 and `me` has
+  47. The proposal replaces it with 13 stable workflow tags and keeps paths
+  resource-oriented instead of adding documentation-only URL prefixes.
+- User-confirmed review priority: (1) strict RESTful URI/resource semantics;
+  (2) elegant, uniform, reusable parameters and module CRUD contracts with fewer
+  duplicate endpoints and fewer unnecessary compound-hyphen segments; (3)
+  clear, balanced Swagger grouping with no unjustified one-operation groups.
+- Corrections from applying those principles: `/me` is owned only by the
+  authenticated principal and must never be nested under tenant/entity paths;
+  remove `/me/personal-token-permissions` without inventing another token-specific
+  catalog; model email verification and password recovery issuance as challenge
+  resources; rename `/me/closure-request` to the account-closure singleton.
+- User-confirmed identity routing: retain only `GET /me` as post-login discovery
+  when the client does not yet know its ID. Once discovered, self-service and
+  administrator operations share `/principals/{principal_id}/...`; do not build
+  parallel `/me/*` and principal-ID resource trees.
+- User-confirmed dual addressing: a globally identified item may expose both a
+  short item URI and its direct-owner scoped URI. Both resolve by the same item
+  ID; the scoped route derives the actual owner and fails on path-owner mismatch.
+  They share representation, version, authorization, service behavior, and
+  audit effects and are not compatibility aliases.
+- Dual addresses are opt-in rather than mechanically generated. The proposed
+  manifest currently includes only tenant/entity and tenant/department item
+  pairs; speculative group, position, role, menu, membership, invitation,
+  service-account, and application-configuration pairs were removed.
+- Corrected rejected assumptions: tenant principal routes mix global principal,
+  tenant membership, onboarding, and suspension semantics; tenant membership
+  item identity remains a product/data decision. Departments remain tenant-owned
+  because entity association is optional. Account closure is currently a
+  principal-keyed singleton, so no closure request ID is invented.
+- Parameter scan: 46 distinct inline path-parameter definitions and six
+  pagination variants; Snowflake lengths and `{subject}` naming are inconsistent.
+- Proposal: `apps/backend-api/docs/openapi-contract-review.md` contains the
+  semantic registry, exhaustive 33-tag coverage ledger, current-principal
+  migration ledger, confirmed corrections, unresolved semantic decisions, and
+  phased delivery plan. No runtime route has been changed by this review.
+- Verification: generated OpenAPI parsed successfully; operation inventory and
+  tag-by-tag coverage reconciled to 206/295/33. Tests NOT_RUN because this phase
+  changes documentation only and does not alter behavior.
+- Remaining work: user confirmation of the semantic gate, Phase 1/2 scope, and
+  the requirement to resolve Phase 3 resource cards before runtime migration.
+- Proposed canonical manifest:
+  `apps/backend-api/docs/proposed-api-manifest.md` defines the optimized API by
+  13 Swagger domains and recommends explicit resolutions for membership,
+  relationship, authentication transactions, directory bindings, account
+  closure, and Todo media import/export. It is proposal-only; no runtime route
+  is authorized.
+- Next action: obtain confirmation of the six manifest decisions, revise any
+  rejected choice, then produce the exact old-operation to canonical-operation
+  migration map before changing runtime APIs.
+
 ## Entity Access-Control Navigation - 2026-09-23
 
 - Current phase: ACCEPTANCE.

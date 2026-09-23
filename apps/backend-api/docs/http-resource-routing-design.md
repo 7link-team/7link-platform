@@ -8,7 +8,7 @@ Make every public application URL describe a business resource instead of a Go
 package, internal database model, or command handler. Keep protocol endpoints
 where their external specifications define the contract.
 
-The generated OpenAPI document currently contains 202 paths. This proposal
+The generated OpenAPI document currently contains 206 paths. This proposal
 covers every top-level family in that document.
 
 ## Reference Used
@@ -43,23 +43,87 @@ not resource-oriented and are not part of the current product contract.
 6. A representation with materially different media semantics is a noun
    subresource, such as `/content`, `/thumbnail`, `/status`, or `/settings`.
 7. Every first-class internal resource uses a globally unique snowflake ID.
-   Collection creation and listing are nested under the direct owner; an
-   existing resource is addressed by its own global ID. For example, entities
-   are created at `/tenants/{tenant_id}/entities` and then addressed at
-   `/entities/{entity_id}`. The server resolves and validates ownership; clients
-   never select authorization scope through headers or query parameters.
-8. Each application operation has exactly one lowercase kebab-case OpenAPI tag,
-   equal to the first public path segment. The same public resource prefix is
-   therefore always in the same Swagger group; Go package names such as `iam`,
-   `authn`, `identity`, or `governance` are never public tags.
+   Collection creation and listing are nested under the direct owner. An
+   existing resource always has a short global-ID address and MAY also have a
+   direct-owner scoped address, for example `/entities/{entity_id}` and
+   `/tenants/{tenant_id}/entities/{entity_id}`. Both identify exactly the same
+   resource, representation, version, and mutation; the scoped form validates
+   the parent/resource relationship and returns not found on mismatch. It is a
+   deliberate contextual address, not a compatibility alias or a second API.
+   Clients never select authorization scope through headers or query parameters.
+8. Each application operation has exactly one lowercase kebab-case OpenAPI tag
+   from the approved workflow-domain vocabulary. Paths express resource identity
+   and ownership; tags express where a human finds the operation in Swagger.
+   Neither first path segments nor Go package names determine documentation
+   groups.
 9. Old and new routes are not exposed together in Swagger. This is a breaking
    pre-production replacement; the Web client and generated client change in
-   the same checkpoint.
-10. Current-principal projections are explicit at every resource context:
-    `/me/*`, `/tenants/{tenant_id}/me/*`, `/entities/{entity_id}/me/*`, and
-    `/departments/{department_id}/me/*`. A projection reuses the same scoped
-    authorization evaluator as the protected resource; menu visibility is not
-    an authorization mechanism.
+   the same checkpoint. This rule does not prohibit approved global/scoped dual
+   addresses defined by rule 7.
+10. `GET /me` is the only current-principal discovery projection. It returns the
+    authenticated principal identifier needed after login. All profile and child
+    resources use `/principals/{principal_id}/...` for both self-service and
+    authorized administration; `/me` is not a parallel resource hierarchy. A
+    tenant, entity, or department may be an authorization target but never owns
+    `me`. Menu visibility is not an authorization mechanism.
+11. A collection segment must name the resource actually returned or created.
+    `/tenants/{tenant_id}/principals` cannot stand for tenant memberships:
+    `principal` is global and `membership` is the tenant-owned relationship.
+    Compound workflows may update both atomically, but their public resource
+    contract must not conceal one resource behind the other resource's name.
+12. Route design starts with a resource contract, not with an existing handler,
+    table, foreign key, or screen. Before a URI is approved, record the
+    resource's meaning, direct owner, identity, lifecycle, representation, and
+    authorization boundary. An optional foreign key does not prove ownership.
+13. Path parameters identify the resource named by their collection. A
+    `{principal_id}` may identify a membership item only when the membership is
+    explicitly defined as a relationship whose identity is the principal within
+    that parent. If membership is a first-class resource, it requires its own
+    stable identity. Storage primary keys do not decide the public contract.
+14. A compound workflow may atomically create or update several resources, but
+    its request and response must name every affected resource. Atomicity does
+    not justify calling a membership a principal, a delivery an invitation, or
+    a verification a request.
+15. A scoped item address is allowed only below the resource's direct owner. It
+    MUST reuse the same service operation, schemas, authorization policy,
+    concurrency token, audit event, and canonical global identity as the short
+    address. It MUST NOT introduce owner-specific fields or behavior. Do not
+    generate every possible ancestor chain or transitive alias.
+
+### Global And Scoped Item Resolution
+
+Both addresses resolve identity from the resource ID first:
+
+1. `/resources/{resource_id}` loads the globally identified resource, derives
+   its owner from trusted data, and authorizes that owner/resource pair.
+2. `/owners/{owner_id}/resources/{resource_id}` loads the same resource by
+   `resource_id`, derives its actual owner, and compares it with `owner_id`.
+3. An owner mismatch fails with the standard not-found response before business
+   execution. The path owner never overrides or supplies missing ownership.
+4. Both routes call the same service method and return the same representation,
+   version/ETag, status semantics, side effects, and audit event.
+
+This preserves one resource identity while allowing both context-rich and short
+addresses. Caches and generated clients treat them as two addresses of the same
+contract, never as independent mutable representations.
+
+## Resource Semantic Gate
+
+Every application resource MUST have a reviewed contract card before a route is
+added or renamed:
+
+| Field | Required evidence |
+| --- | --- |
+| Meaning | One business noun with a definition that does not depend on a page or handler. |
+| Direct owner | Required ownership/lifecycle relation, distinguished from optional context and authorization scope. |
+| Identity | Stable ID, documented composite identity, or justified singleton key. |
+| Lifecycle | Creation, readable states, allowed transitions, deletion/cancellation, and history semantics. |
+| Representation | Canonical fields, projections, embedded summaries, media type, and field filtering. |
+| Authorization | Who may act on self or another target, contextual scope, fresh-authentication needs, and audit effects. |
+
+If any field is unknown, the route stays in `SEMANTIC_DECISION_REQUIRED`; it is
+not promoted into the canonical matrix. A proposal must label evidence as one
+of: `MODEL_CONFIRMED`, `CONTRACT_CONFIRMED`, or `PRODUCT_DECISION_REQUIRED`.
 
 ## Canonical Ownership And Addressing
 
@@ -69,10 +133,10 @@ IDs the database can reconstruct:
 | Operation | Canonical shape | Example |
 | --- | --- | --- |
 | Create/list owned collection | nest below direct owner | `POST /tenants/{tenant_id}/entities` |
-| Read/update/delete existing resource | global resource ID | `PATCH /entities/{entity_id}` |
-| Manage direct child collection | nest below direct owner | `GET /entities/{entity_id}/departments` |
+| Read/update/delete existing resource | global ID, optionally plus direct-owner scoped address | `PATCH /entities/{entity_id}` and `PATCH /tenants/{tenant_id}/entities/{entity_id}` |
+| Manage direct child collection | nest below direct owner | `GET /oauth-clients/{client_id}/credentials` |
 | Manage a relationship | name both related resources | `PUT /entities/{entity_id}/role-bindings/{role_id}/{principal_id}` |
-| Project current user's view | resource context plus `/me` | `GET /entities/{entity_id}/me/menus` |
+| Read a contextual projection | complete the semantic gate first | No canonical example until context identity and authorization semantics are defined. |
 
 Snowflake IDs make direct addressing unambiguous. They do not replace isolation:
 repositories and authorization middleware still verify the resolved tenant and
@@ -85,7 +149,7 @@ snowflake IDs.
 ### Resource Contexts
 
 ```text
-/me/**
+/principals/{principal_id}/**
 /tenants/{tenant_id}/**
 /entities/{entity_id}/**
 /departments/{department_id}/**
@@ -95,10 +159,10 @@ snowflake IDs.
 Menus and files follow the same context tree. Administrative menu collections
 are `/platform/menus`, `/tenants/{tenant_id}/menus`,
 `/entities/{entity_id}/menus`, and `/departments/{department_id}/menus`.
-Effective navigation is read from the corresponding `/me/menus` projection.
-Menu definitions, their resource-context placement, and effective navigation
-are separate concerns; the projection delegates authorization to the existing
-tenant/entity/department permission evaluator.
+Effective navigation is read from a principal projection with an explicit
+context selector. Menu definitions, their resource-context placement, and
+effective navigation are separate concerns; the projection delegates
+authorization to the existing tenant/entity/department permission evaluator.
 
 ## Route Classes
 
@@ -191,13 +255,13 @@ exceptions are listed explicitly.
 | `/iam/invitations` | `/invitations` | Delivery and acceptance become resources. |
 | `/iam/avatars/{principal_id}/{file}` | `/principals/{principal_id}/avatar` | Read the current avatar without exposing a storage filename. |
 | `/iam/members` | `/members` | Tenant member resources. |
-| `/iam/me/*`, `/iam/my/*` | `/me/*` | Merge authenticated-principal singleton routes. |
+| `/iam/me`, `/iam/my` | `/me` | Identity discovery only; child resources use the canonical principal tree. |
 
 ### Authentication and Current Principal
 
 `/authn` is also a package/domain prefix, so it is removed. Public transaction
-collections stay top-level; resources owned by the current principal move under
-the `/me` singleton.
+collections stay top-level; resources owned by a principal move under the
+canonical `/principals/{principal_id}` tree.
 
 | Current family | Proposed family |
 | --- | --- |
@@ -206,43 +270,49 @@ the `/me` singleton.
 | `/authn/sessions/current` | `/sessions/current` |
 | `/authn/registrations` | `/registrations` |
 | `/authn/captchas` | `/captchas` |
-| `/authn/email-verification-requests` | `/email-verification-requests` |
+| `/authn/email-verification-requests` | `/email-verification-challenges` |
 | `/authn/email-verifications` | `/email-verifications` |
-| `/authn/password-recovery-requests` | `/password-recovery-requests` |
+| `/authn/password-recovery-requests` | `/password-recovery-challenges` |
 | `/authn/password-recoveries` | `/password-recoveries` |
 | `/authn/session-verifications` | `/session-verifications` |
 | `/authn/reauthentication-*` | `/reauthentication-*` |
 | `/authn/step-up-*` | `/step-up-*` |
 | `/authn/passkey-session-*` | `/passkey-session-*` |
 | `/authn/capabilities` | `/authentication-capabilities` |
-| `/authn/password` | `/me/password` |
-| `/authn/mfa*` | `/me/mfa*` |
-| `/authn/passkeys*` | `/me/passkeys*` |
-| `/authn/personal-tokens*` | `/me/personal-tokens*` |
-| `/authn/identity-links*` | `/me/identity-links*` |
+| `/authn/password` | `/principals/{principal_id}/password` |
+| `/authn/mfa*` | `/principals/{principal_id}/mfa*` |
+| `/authn/passkeys*` | `/principals/{principal_id}/passkeys*` |
+| `/authn/personal-tokens*` | `/principals/{principal_id}/personal-tokens*` |
+| `/authn/identity-links*` | `/principals/{principal_id}/identity-links*` |
 
 Challenge, verification, recovery, and enrollment records are nouns and may be
 short-lived; they are still resources and therefore valid collection names.
 
-### Current-Principal Resources
+### Principal Resources And Identity Discovery
 
-The existing `/iam/me` and `/iam/my` paths merge without changing ownership:
+`GET /me` is a bootstrap projection, not a second account API. It exists because
+a newly authenticated client may not yet know the authenticated principal ID.
+After discovery, both self-service and authorized administration use the same
+principal resources:
 
-- `/me/avatar` and `/me/avatar-candidates`;
-- `/me/closure-request`;
-- `/me/memberships`;
-- `/me/menus`;
-- `/me/oauth-consents`;
-- `/me/tenants` where it is a distinct projection from memberships.
+- `/principals/{principal_id}/avatar` and `/avatar-candidates`;
+- `/principals/{principal_id}/account-closure`;
+- `/principals/{principal_id}/memberships`;
+- `/principals/{principal_id}/menus` and `/permissions` with an explicit context;
+- `/principals/{principal_id}/oauth-consents`;
+- `/principals/{principal_id}/files`, credentials, sessions, and identity links.
 
-Leaving a tenant becomes `DELETE /me/memberships/{tenant_id}`. It is deletion of
-the caller-owned membership, not `POST .../leave`.
+Leaving a tenant becomes
+`DELETE /principals/{principal_id}/memberships/{tenant_id}`. It is deletion of
+the selected principal's membership, subject to authorization, not a special
+self-only command.
 
 The current avatar is a binary subresource at
 `GET /principals/{principal_id}/avatar`. Private generated candidates are
-separate expiring resources at `GET /me/avatar-candidates/{candidate_id}`. The
+separate expiring resources at
+`GET /principals/{principal_id}/avatar-candidates/{candidate_id}`. The
 candidate identifier is opaque and never a storage filename. `GET/PUT
-/me/avatar` retains the current principal's avatar metadata/configuration
+`/principals/{principal_id}/avatar` retains the avatar metadata/configuration
 contract. Avatar bytes are not mixed into a principal JSON update because they
 have different media, size, caching, and authorization semantics.
 
@@ -355,7 +425,8 @@ Implementation adds an OpenAPI contract test over every operation. It rejects:
 - generic path parameters where a precise resource parameter is required;
 - unapproved literal action segments;
 - tags containing uppercase characters;
-- tags that differ from the first public path segment;
+- tags outside the approved workflow-domain vocabulary or mapped to the wrong
+  workflow domain;
 - implementation tags `iam`, `authn`, `identity`, `organization`,
   `governance`, `federation`, or `provisioning`;
 - duplicate operation IDs or route/method pairs.
@@ -381,5 +452,8 @@ The user approved these decisions for this pre-production API:
 
 1. Remove `/iam` and `/authn` entirely from application resource URLs.
 2. Perform a clean pre-production replacement with no deprecated route aliases.
-3. Keep tenant/entity selection in mandatory headers instead of redundantly
-   nesting every globally identified resource under tenant/entity path segments.
+3. Create/list genuinely owned collections below their proven direct owner;
+   address existing globally identified resources by their short item URI and,
+   where approved, the equivalent direct-owner scoped item URI. Authorization
+   resolves and verifies ownership instead of trusting a caller-selected owner
+   header.

@@ -2495,3 +2495,72 @@ Implemented and verified across the Files and Identity transaction tests, race
 tests, three-dialect migration matrix and full backend regression. Commerce media,
 general attachments and a platform-wide inventory remain future consumers of the
 same registered-purpose contract, not part of this change.
+
+## D74 - Current identity is discovery, not a parallel resource tree
+
+**Date** 2026-09-23
+
+**Decision / Reason**
+`GET /me` is the only current-principal alias. It lets a newly authenticated
+client discover its principal ID when login has not supplied one. Once known,
+self-service and authorized administrators use the same
+`/principals/{principal_id}` profile and child-resource contracts. Tenant,
+entity, and department contexts never own `me`; target identity is selected by
+the principal ID and access is decided by authorization, field filtering,
+fresh-authentication requirements, and audit.
+
+Credential-bound authentication transactions that do not yet have a principal
+ID remain top-level transaction resources. This exception does not authorize a
+second `/me/*` account tree or `/user/current/*` aliases.
+
+**Alternatives Considered / Tradeoffs**
+A parallel `/me/*` tree is convenient for self-service clients but duplicates
+handlers, schemas, tests, and security behavior and prevents one uniform admin
+contract. Putting `me` below tenant/entity paths falsely models ownership and
+uses URL shape as a security mechanism. Requiring a principal ID adds one
+post-login discovery read for clients that do not already receive the ID, but
+keeps every later resource canonical.
+
+**Scope / Status**
+Confirmed design rule. This supersedes D65's `/me/*` hierarchy and D66's nested
+`/.../me/...` projections. The complete OpenAPI migration remains proposed and
+no runtime route is changed by this decision record.
+
+## D75 - Public routes require a resource semantic contract first
+
+**Date** 2026-09-23
+
+**Decision / Reason**
+No application URI is approved from an existing handler, table name, foreign
+key, screen, or current path alone. The resource must first define its meaning,
+direct owner, identity, lifecycle, canonical representation, and authorization
+boundary. Route conclusions are labeled `MODEL_CONFIRMED`,
+`CONTRACT_CONFIRMED`, or `PRODUCT_DECISION_REQUIRED`; an unresolved field blocks
+the canonical route recommendation.
+
+Path parameters identify the resource named by their collection. Database
+composite keys may support a relationship identity but do not automatically
+define the public API. Atomic workflows may affect several resources but must
+name and return those resources honestly. Optional context does not establish
+ownership.
+
+A globally identified resource may deliberately expose both its short item URI
+and a direct-owner scoped item URI. Both addresses are one resource contract:
+identical schema, version, authorization, mutation, audit effect, and service
+implementation. The scoped form additionally verifies the parent relationship.
+This is not permission for compatibility aliases, transitive ancestor chains,
+or owner-specific behavior behind the same noun.
+
+**Alternatives Considered / Tradeoffs**
+Designing from existing URLs is faster but preserves semantic collisions such
+as tenant principal routes that list through membership and mutate global
+identity. Designing directly from tables leaks storage choices. The semantic
+gate adds review work, but makes incorrect assumptions visible before they
+become public compatibility obligations.
+
+**Scope / Status**
+Confirmed review rule. This supersedes D66's unverified department-owner
+example because the current model requires `tenant_id` and makes `entity_id`
+optional, and supersedes D62's first-segment Swagger grouping rule. Documented in
+`apps/backend-api/docs/http-resource-routing-design.md`. Runtime route changes
+remain pending explicit approval of the revised OpenAPI proposal.
