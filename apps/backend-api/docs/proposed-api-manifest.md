@@ -151,7 +151,7 @@ Group、Position、Role、Menu、Membership、Invitation、Service Account 和�
 | DELETE | `/principals/{principal_id}/identity-links/{identity_link_id}` | 删除一个绑定，同时保证仍有可用登录方式。 |
 | GET | `/principals/{principal_id}/oauth-consents` | 查询应用授权同意。 |
 | DELETE | `/principals/{principal_id}/oauth-consents/{client_id}` | 撤回对一个应用的授权。 |
-| GET, PUT, DELETE | `/principals/{principal_id}/account-closure` | 读取、申请或取消一主体一份的账号关闭状态。 |
+| GET, PUT, PATCH, DELETE | `/principals/{principal_id}/account-closure` | 读取、申请、处理或取消一主体一份的账号关闭状态；PATCH 的处理状态变更需要额外授权，但不另开 Swagger 分组。 |
 
 删除 `/me/personal-token-permissions`，不增加换名字后的 Token 专用权限目录。
 
@@ -211,7 +211,7 @@ Group、Position、Role、Menu、Membership、Invitation、Service Account 和�
 | GET, PATCH, DELETE | `/authorization-relationships/{authorization_relationship_id}` | 读取、更新或删除 Authorization Relationship。 |
 | GET | `/platform/permission-definitions` | 查询平台 Permission 定义。 |
 | GET | `/tenants/{tenant_id}/permission-definitions` | 查询租户 Permission 定义。 |
-| GET | `/tenants/{tenant_id}/field-definitions` | 查询租户上下文中声明的字段能力。 |
+| GET | `/tenants/{tenant_id}/field-definitions` | 查询租户上下文中声明的字段能力。**未决**：见待确认决策 8，本行当前同时是 `field-catalog` 和 `effective-fields` 的唯一继任者，而两者授权模型不同。 |
 | GET | `/tenants/{tenant_id}/field-policies` | 查询 Field Policy。 |
 | GET, PUT, DELETE | `/tenants/{tenant_id}/field-policies/{resource}/{field}` | 按明确 tuple 读取、替换或恢复默认 Policy，不虚构 `policy_id`。 |
 | GET | `/authorization-model` | 读取 Scope 与 Relationship 模型元数据。 |
@@ -245,7 +245,7 @@ Group、Position、Role、Menu、Membership、Invitation、Service Account 和�
 | GET, PATCH, DELETE | `/files/{file_id}` | 读取 metadata、更新或移入回收站。 |
 | GET | `/files/{file_id}/content` | 下载文件内容。 |
 | GET | `/files/{file_id}/items` | 使用 cursor 查询目录分页。 |
-| GET | `/files/{root_file_id}/-/{path}` | 从已授权根目录解析相对路径 metadata。 |
+| GET | `/files/{root_file_id}/-/{path}` | 从已授权根目录解析相对路径 metadata。**存量例外**：`/-/` 是分隔 root 与相对路径的哨兵段，不表达资源，与本文件第一条契约规则冲突；保留是因为相对路径必须与 `{file_id}` 段区分开，替代写法（查询参数）尚未评审。 |
 | POST | `/files/{destination_file_id}/operations` | 对已授权 source IDs 同步执行 copy/move。Body 不重复 destination ID。 |
 
 该 operation 返回已完成的同步 mutation，不伪装成可查询的后台 Job。
@@ -300,8 +300,7 @@ Platform 当前只开放已实现的子集：archive status、archives、attempt
 | --- | --- | --- |
 | GET | `/platform/administrators` | 查询 Platform Administrator 关系。 |
 | PUT, DELETE | `/platform/administrators/{principal_id}` | 授予/替换或撤销 Platform 授权。 |
-| GET | `/account-closures` | 供运营人员跨主体查询 Account Closure singleton。 |
-| PATCH | `/principals/{principal_id}/account-closure` | 在同一个 singleton 上执行授权后的处理状态变更。 |
+| GET | `/account-closures` | 供运营人员跨主体查询 Account Closure singleton。单个 closure 的读写在 `account` 分组的 `/principals/{principal_id}/account-closure` 上，不在此重复。 |
 | GET | `/principals/{principal_id}/lifecycle` | 读取 Retention 和 Erasure blocker。 |
 | PUT | `/principals/{principal_id}/lifecycle/retention-policy` | 替换 Retention/Legal Hold 状态。 |
 | PUT | `/principals/{principal_id}/lifecycle/anonymization` | 满足前置条件后执行不可逆匿名化。 |
@@ -380,5 +379,15 @@ Platform 当前只开放已实现的子集：archive status、archives、attempt
 5. `/principals/{principal_id}/account-closure` 是本人/管理员共用 singleton；`/account-closures` 只做跨主体管理列表。
 6. Todo 导入导出复用 canonical collection 的 media type。
 7. 只为 Entity 和 Department 保留 tenant-scoped/global 双地址；其他资源有具体需求后再单独评审。
+
+8. **Field 能力查询不能合并。** 现状是两个操作而非一个：`GET /tenants/{tenant_id}/field-catalog`
+   经 `authz.Register` 注册，受 `Guard{Resource: "field_policy", Verb: "view"}` 保护，是管理员视角的
+   声明目录；`GET /tenants/{tenant_id}/effective-fields` 经 `authz.RegisterTenantMember` 注册，任何
+   租户成员都可以读自己的有效字段能力（`internal/iam/core/field_policy_http.go:50` 与 `:90`）。把两者
+   并成一个 `field-definitions` 会把管理员目录和自助投影压进同一个授权模型。需要决定：保留两个资源
+   并分别命名，还是定义一个带 `subject` 语义的资源并明确其授权。本清单在决定前不得按单行实施。
+9. **D74 的措辞需要修正。** D74 写的是 `GET /me` 是唯一的当前主体别名，而本清单保留
+   `GET, DELETE /sessions/current` 作为第二个凭据绑定别名并给出了理由。两者必须一致：要么修订 D74
+   承认 Session 发现这一例外，要么去掉 `/sessions/current`。当前以未解决状态记录，不默认按任一方实施。
 
 以上决策和本清单未明确确认前，不得修改运行时路由。
