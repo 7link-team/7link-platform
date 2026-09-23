@@ -166,6 +166,44 @@
   `TestOpenAPIExportGroupsOperationsByPublicResource`'s first-path-segment rule
   with the 13-domain vocabulary and retags all 278 operations.
 
+### Phase 1 Step 2 - Domain Grouping - 2026-09-23
+
+- Phase: ACCEPTANCE for the grouping; delivered in `7f0e4fa`.
+- All 295 operations now carry one of 13 domains. Largest section 59 (was 84),
+  smallest 5, exactly 13 sections, zero operations off the map.
+- Tags stay inline on `huma.Operation` - that is the idiomatic huma spelling and
+  the user rejected both alternatives tried first: an `authz.TagXxx` exported
+  constant set, and moving assignment out of business code into a central
+  `operationID -> section` table stamped at composition. Only the VALUES changed.
+- Rule: subresource follows its parent unless it is another domain's main
+  resource. Without it the generated map split `/me/permissions` away from the
+  rest of `/me` and a member's roles away from the member. Four operations moved.
+- Found and fixed a third instance of the overwrite class behind `c383cd0`:
+  `RegisterEntityOrAuthenticated` and `RegisterTenantEntityOrAuthenticated` set
+  `self.Tags = {"me"}` on the synthesized twin, which pulled
+  `POST /me/file-operations` out of `files`. The twin now keeps the declared
+  section.
+- The retired first-path-segment rule was implemented NINE times: the export
+  gate plus eight module tests each rebuilding it with its own if/else
+  (oauth reconstructed me/tenants/oauth-clients; five infra modules hardcoded
+  `diagnostics`/`metrics`). Each module test now asserts which sections that
+  module publishes - an invariant about the module, not a copy of a global rule.
+- Known limitation, accepted by the user after review: the new gate checks
+  vocabulary membership and that no approved section is empty. It CANNOT catch
+  an operation filed under the wrong domain. The retired rule could not be wrong
+  but produced unusable groups; this trades that for navigable ones.
+- `saml` is exempt from the non-empty check because the export test runs a
+  minimal config that does not register SAML. Named explicitly, not assumed.
+- Verification: lint, test-coverage, test-integration, build and openapi-check
+  all PASS. `make ci` fails ONLY on the pre-existing
+  `TestComposedIAMProvisionsOrganizationOwnedFileRoots`.
+- Next action: still blocked on the same two user decisions - whether
+  `GET /entities/{entity_id}/files` should return only that entity's roots
+  (its published summary says so; the code returns every root the caller can
+  see, via the `context` scope added in `d35da67`), and whether to land the
+  13,808-line `api-schema.ts` regeneration plus a no-drift gate before any
+  domain slice. Both were reported with evidence and neither is mine to settle.
+
 ## Entity Access-Control Navigation - 2026-09-23
 
 - Current phase: ACCEPTANCE.
