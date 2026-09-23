@@ -45,11 +45,11 @@ func TestIAMAuthorizationClassifierDistinguishesGuardBoundaries(t *testing.T) {
 	}
 	authz.RegisterPublic(api, huma.Operation{OperationID: "public", Method: http.MethodGet, Path: "/public"}, handler)
 	authz.RegisterAuthenticated(registrar, api, huma.Operation{OperationID: "authenticated", Method: http.MethodGet, Path: "/authenticated"}, handler)
-	authz.RegisterTenantMember(registrar, api, huma.Operation{OperationID: "tenant-member", Method: http.MethodGet, Path: "/tenant-member"}, handler)
-	authz.Register(registrar, api, huma.Operation{OperationID: "tenant", Method: http.MethodGet, Path: "/tenant"}, authz.Guard{Resource: "store", Verb: "view"}, handler)
+	authz.RegisterTenantMember(registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "tenant-member", Method: http.MethodGet, Path: "/tenant-member"}, handler)
+	authz.Register(registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "tenant", Method: http.MethodGet, Path: "/tenant"}, authz.Guard{Resource: "store", Verb: "view"}, handler)
 	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "platform", Method: http.MethodGet, Path: "/platform"}, authz.Guard{Resource: "tenant", Verb: "view"}, handler)
-	authz.RegisterEntity(registrar, api, huma.Operation{OperationID: "entity-header", Method: http.MethodGet, Path: "/entity-header"}, authz.Guard{Resource: "store", Verb: "view"}, handler)
-	authz.RegisterEntityAdapter(registrar, api, huma.Operation{OperationID: "entity-query", Method: http.MethodGet, Path: "/entity-query"}, authz.Guard{Resource: "store", Verb: "view"}, func(huma.Context) {})
+	authz.RegisterEntity(registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "entity-header", Method: http.MethodGet, Path: "/entity-header"}, authz.Guard{Resource: "store", Verb: "view"}, handler)
+	authz.RegisterEntityAdapter(registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "entity-query", Method: http.MethodGet, Path: "/entity-query"}, authz.Guard{Resource: "store", Verb: "view"}, func(huma.Context) {})
 
 	expected := map[string]iamHTTPAuthorization{
 		"/public":                            {class: "public"},

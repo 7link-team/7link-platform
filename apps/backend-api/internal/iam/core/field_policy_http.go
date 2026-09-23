@@ -47,11 +47,11 @@ type fieldPolicyDeleteInput struct {
 }
 
 func registerFieldPolicyHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
-	authz.Register(registrar, api, huma.Operation{OperationID: "iam-field-catalog", Method: http.MethodGet, Path: "/field-catalog", Summary: "List declared field capabilities"}, authz.Guard{Resource: "field_policy", Verb: "view"},
+	authz.Register(registrar, api, huma.Operation{OperationID: "iam-field-catalog", Method: http.MethodGet, Path: "/field-catalog", Summary: "List declared field capabilities", Tags: []string{"tenants"}}, authz.Guard{Resource: "field_policy", Verb: "view"},
 		func(ctx context.Context, _ *fieldPolicyListInput) (*respx.Body[[]authz.Field], error) {
 			return respx.OK(ctx, service.registry.Fields("")), nil
 		})
-	authz.Register(registrar, api, huma.Operation{OperationID: "iam-list-field-policies", Method: http.MethodGet, Path: "/field-policies", Summary: "List tenant field policies"}, authz.Guard{Resource: "field_policy", Verb: "view"},
+	authz.Register(registrar, api, huma.Operation{OperationID: "iam-list-field-policies", Method: http.MethodGet, Path: "/field-policies", Summary: "List tenant field policies", Tags: []string{"tenants"}}, authz.Guard{Resource: "field_policy", Verb: "view"},
 		func(ctx context.Context, in *listFieldPoliciesInput) (*respx.Body[[]ManagedFieldPolicy], error) {
 			tenantID, err := requireID(in.TenantID)
 			if err != nil {
@@ -63,7 +63,7 @@ func registerFieldPolicyHTTP(api huma.API, service *Service, registrar *authz.Re
 			}
 			return respx.List(ctx, policies, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
 		})
-	authz.Register(registrar, api, huma.Operation{OperationID: "iam-set-field-policy", Method: http.MethodPut, Path: "/field-policies/{resource}/{field}", Summary: "Set a tenant field policy", Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity}}, authz.Guard{Resource: "field_policy", Verb: "update"},
+	authz.Register(registrar, api, huma.Operation{OperationID: "iam-set-field-policy", Method: http.MethodPut, Path: "/field-policies/{resource}/{field}", Summary: "Set a tenant field policy", Tags: []string{"tenants"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity}}, authz.Guard{Resource: "field_policy", Verb: "update"},
 		func(ctx context.Context, in *fieldPolicyInput) (*respx.Body[ManagedFieldPolicy], error) {
 			tenantID, err := requireID(in.TenantID)
 			if err != nil {
@@ -75,7 +75,7 @@ func registerFieldPolicyHTTP(api huma.API, service *Service, registrar *authz.Re
 			}
 			return respx.OK(ctx, policy), nil
 		})
-	authz.Register(registrar, api, huma.Operation{OperationID: "iam-delete-field-policy", Method: http.MethodDelete, Path: "/field-policies/{resource}/{field}", Summary: "Restore a field's declared default policy", Errors: []int{http.StatusConflict}}, authz.Guard{Resource: "field_policy", Verb: "update"},
+	authz.Register(registrar, api, huma.Operation{OperationID: "iam-delete-field-policy", Method: http.MethodDelete, Path: "/field-policies/{resource}/{field}", Summary: "Restore a field's declared default policy", Tags: []string{"tenants"}, Errors: []int{http.StatusConflict}}, authz.Guard{Resource: "field_policy", Verb: "update"},
 		func(ctx context.Context, in *fieldPolicyDeleteInput) (*respx.Body[MutationResult], error) {
 			tenantID, err := requireID(in.TenantID)
 			if err != nil {
@@ -87,7 +87,7 @@ func registerFieldPolicyHTTP(api huma.API, service *Service, registrar *authz.Re
 			return respx.OK(ctx, MutationResult{Changed: true}), nil
 		})
 	// Effective fields reveal capabilities only, never values or other users' roles.
-	authz.RegisterTenantMember(registrar, api, huma.Operation{OperationID: "iam-effective-fields", Method: http.MethodGet, Path: "/effective-fields", Summary: "Get own effective field capabilities"},
+	authz.RegisterTenantMember(registrar, api, huma.Operation{OperationID: "iam-effective-fields", Method: http.MethodGet, Path: "/effective-fields", Summary: "Get own effective field capabilities", Tags: []string{"tenants"}},
 		func(ctx context.Context, in *fieldPolicyListInput) (*respx.Body[authz.FieldConstraint], error) {
 			claims, _ := authn.FromContext(ctx)
 			if claims == nil {

@@ -151,7 +151,7 @@ func TestTenantRoutePublishesVerifiedBoundaryWithoutMutatingToken(t *testing.T) 
 			assert.NotSame(t, original, claims)
 			return &routeOutput{Body: "ok"}, nil
 		}
-		op := huma.Operation{OperationID: "tenant-context", Method: http.MethodGet, Path: "/tenant-context"}
+		op := huma.Operation{OperationID: "tenant-context", Method: http.MethodGet, Path: "/tenant-context", Tags: []string{"tenants"}}
 		if memberOnly {
 			authz.RegisterTenantMember(registrar, api, op, handler)
 		} else {
@@ -171,16 +171,16 @@ func TestRegistrarDeclarationsCoverEveryRouteClass(t *testing.T) {
 	assert.True(t, declarations.IsDeclarationOnly())
 
 	_, api := humatest.New(t)
-	authz.Register(declarations, api, huma.Operation{OperationID: "store-view", Method: http.MethodGet, Path: "/stores"}, authz.Guard{Resource: "store", Verb: "view"}, okRoute)
-	authz.RegisterEntity(declarations, api, huma.Operation{OperationID: "workflow-view", Method: http.MethodGet, Path: "/workflows"}, authz.Guard{Resource: "workflow", Verb: "view"}, okRoute)
+	authz.Register(declarations, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "store-view", Method: http.MethodGet, Path: "/stores"}, authz.Guard{Resource: "store", Verb: "view"}, okRoute)
+	authz.RegisterEntity(declarations, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "workflow-view", Method: http.MethodGet, Path: "/workflows"}, authz.Guard{Resource: "workflow", Verb: "view"}, okRoute)
 	authz.RegisterOwned(declarations, api, huma.Operation{OperationID: "owned-store-view", Method: http.MethodGet, Path: "/stores/{store_id}", Tags: []string{"stores"}}, "store_id", func(context.Context, guid.ID) (authz.ResourceOwner, bool, error) {
 		return authz.ResourceOwner{}, false, nil
 	}, authz.Guard{Resource: "store", Verb: "view"}, okRoute)
-	authz.RegisterTenantMember(declarations, api, huma.Operation{OperationID: "member-view", Method: http.MethodGet, Path: "/member"}, okRoute)
-	authz.RegisterAuthenticated(declarations, api, huma.Operation{OperationID: "me-view", Method: http.MethodGet, Path: "/me"}, okRoute)
+	authz.RegisterTenantMember(declarations, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "member-view", Method: http.MethodGet, Path: "/member"}, okRoute)
+	authz.RegisterAuthenticated(declarations, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "me-view", Method: http.MethodGet, Path: "/me"}, okRoute)
 	authz.RegisterPlatform(declarations, api, huma.Operation{OperationID: "tenant-view", Method: http.MethodGet, Path: "/tenants"}, authz.Guard{Resource: "tenant", Verb: "view"}, okRoute)
 	authz.RegisterPublic(api, huma.Operation{OperationID: "public", Method: http.MethodGet, Path: "/public"}, okRoute)
-	authz.RegisterEntityAdapter(declarations, api, huma.Operation{OperationID: "workflow-stream", Method: http.MethodGet, Path: "/workflow-stream"}, authz.Guard{Resource: "workflow", Verb: "view"}, func(ctx huma.Context) {
+	authz.RegisterEntityAdapter(declarations, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "workflow-stream", Method: http.MethodGet, Path: "/workflow-stream"}, authz.Guard{Resource: "workflow", Verb: "view"}, func(ctx huma.Context) {
 		ctx.SetStatus(http.StatusNoContent)
 	})
 
@@ -304,20 +304,20 @@ func TestRegistrarRejectsInvalidConstructionAndDeclarations(t *testing.T) {
 	assert.Panics(t, func() { authz.NewDeclarationOnlyRegistrar(nil) })
 	assert.Panics(t, func() {
 		_, api := humatest.New(t)
-		authz.Register[struct{}, routeOutput](nil, api, huma.Operation{}, authz.Guard{}, okRoute)
+		authz.Register[struct{}, routeOutput](nil, api, huma.Operation{Tags: []string{"tenants"}}, authz.Guard{}, okRoute)
 	})
 	assert.Panics(t, func() {
 		_, api := humatest.New(t)
-		authz.Register(authz.NewDeclarationOnlyRegistrar(registry), api, huma.Operation{Method: http.MethodGet, Path: "/missing-id"}, authz.Guard{Resource: "store", Verb: "view"}, okRoute)
+		authz.Register(authz.NewDeclarationOnlyRegistrar(registry), api, huma.Operation{Tags: []string{"tenants"}, Method: http.MethodGet, Path: "/missing-id"}, authz.Guard{Resource: "store", Verb: "view"}, okRoute)
 	})
 	assert.Panics(t, func() {
 		_, api := humatest.New(t)
-		authz.Register(authz.NewDeclarationOnlyRegistrar(registry), api, huma.Operation{OperationID: "unknown", Method: http.MethodGet, Path: "/unknown"}, authz.Guard{Resource: "missing", Verb: "view"}, okRoute)
+		authz.Register(authz.NewDeclarationOnlyRegistrar(registry), api, huma.Operation{Tags: []string{"tenants"}, OperationID: "unknown", Method: http.MethodGet, Path: "/unknown"}, authz.Guard{Resource: "missing", Verb: "view"}, okRoute)
 	})
 	assert.Panics(t, func() {
 		_, api := humatest.New(t)
 		registrar := authz.NewRegistrar(registry, verifier, tenantOnlyChecker{allowed: true}, membership)
-		authz.RegisterEntity(registrar, api, huma.Operation{OperationID: "entity", Method: http.MethodGet, Path: "/entity"}, authz.Guard{Resource: "workflow", Verb: "view"}, okRoute)
+		authz.RegisterEntity(registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "entity", Method: http.MethodGet, Path: "/entity"}, authz.Guard{Resource: "workflow", Verb: "view"}, okRoute)
 	})
 	assert.Panics(t, func() {
 		_, api := humatest.New(t)
@@ -325,7 +325,7 @@ func TestRegistrarRejectsInvalidConstructionAndDeclarations(t *testing.T) {
 	})
 	assert.Panics(t, func() {
 		_, api := humatest.New(t)
-		authz.RegisterTenantMember(authz.NewDeclarationOnlyRegistrar(registry), api, huma.Operation{Method: http.MethodGet, Path: "/member"}, okRoute)
+		authz.RegisterTenantMember(authz.NewDeclarationOnlyRegistrar(registry), api, huma.Operation{Tags: []string{"tenants"}, Method: http.MethodGet, Path: "/member"}, okRoute)
 	})
 	assert.Panics(t, func() {
 		_, api := humatest.New(t)
@@ -337,8 +337,55 @@ func TestRegistrarRejectsInvalidConstructionAndDeclarations(t *testing.T) {
 	})
 	assert.Panics(t, func() {
 		_, api := humatest.New(t)
-		authz.RegisterEntityAdapter(nil, api, huma.Operation{}, authz.Guard{}, func(huma.Context) {})
+		authz.RegisterEntityAdapter(nil, api, huma.Operation{Tags: []string{"tenants"}}, authz.Guard{}, func(huma.Context) {})
 	})
+}
+
+// TestRegistrationRefusesAnOperationWithoutOneResourceTag pins the contract
+// that replaced the registrar writing the tag itself. While the registrar
+// overwrote it, two routes shipped carrying a tag their author never got --
+// the declaration read one way and the published document said another, and
+// nothing failed. Requiring the caller to state exactly one tag turns that
+// silent substitution into a startup panic, and keeps the Swagger group a
+// property of the operation rather than of the URI the registrar builds.
+func TestRegistrationRefusesAnOperationWithoutOneResourceTag(t *testing.T) {
+	registry := testRegistry()
+	verifier := validVerifier()
+	guard := authz.Guard{Resource: "store", Verb: "view"}
+	entityGuard := authz.Guard{Resource: "workflow", Verb: "view"}
+
+	for name, register := range map[string]func(*authz.Registrar, huma.API, huma.Operation){
+		"tenant": func(r *authz.Registrar, api huma.API, op huma.Operation) {
+			authz.Register(r, api, op, guard, okRoute)
+		},
+		"entity": func(r *authz.Registrar, api huma.API, op huma.Operation) {
+			authz.RegisterEntity(r, api, op, entityGuard, okRoute)
+		},
+		"tenant member": func(r *authz.Registrar, api huma.API, op huma.Operation) {
+			authz.RegisterTenantMember(r, api, op, okRoute)
+		},
+		"entity adapter": func(r *authz.Registrar, api huma.API, op huma.Operation) {
+			authz.RegisterEntityAdapter(r, api, op, entityGuard, func(huma.Context) {})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			// Two tags are refused as well as none: a second group would publish
+			// the same operation twice and leave no single owning section.
+			for _, tags := range [][]string{nil, {}, {"tenants", "stores"}} {
+				assert.Panics(t, func() {
+					_, api := humatest.New(t)
+					registrar := authz.NewRegistrar(registry, verifier, &fakeChecker{allowed: true}, &fakeMembership{active: true})
+					register(registrar, api, huma.Operation{OperationID: "untagged", Method: http.MethodGet, Path: "/untagged", Tags: tags})
+				}, "%v must not register", tags)
+			}
+
+			assert.NotPanics(t, func() {
+				_, api := humatest.New(t)
+				registrar := authz.NewRegistrar(registry, verifier, &fakeChecker{allowed: true}, &fakeMembership{active: true})
+				register(registrar, api, huma.Operation{OperationID: "tagged", Method: http.MethodGet, Path: "/tagged", Tags: []string{"tenants"}})
+			})
+		})
+	}
 }
 
 // TestTenantRegistrationRefusesAPlatformPermission is the mirror of the check
@@ -356,7 +403,7 @@ func TestTenantRegistrationRefusesAPlatformPermission(t *testing.T) {
 	tenant := authz.Guard{Resource: "store", Verb: "view"}
 
 	operation := func(id string) huma.Operation {
-		return huma.Operation{OperationID: id, Method: http.MethodGet, Path: "/" + id}
+		return huma.Operation{OperationID: id, Method: http.MethodGet, Path: "/" + id, Tags: []string{"tenants"}}
 	}
 
 	assert.PanicsWithValue(t, "tenant operation uses platform permission: tenant_view", func() {
@@ -427,7 +474,7 @@ func TestTenantAuthorizationMiddleware(t *testing.T) {
 			_, api := humatest.New(t)
 			registrar := authz.NewRegistrar(testRegistry(), test.verifier, test.checker, test.membership)
 			assert.False(t, registrar.IsDeclarationOnly())
-			authz.Register(registrar, api, huma.Operation{OperationID: "store-view", Method: http.MethodGet, Path: "/stores"}, authz.Guard{Resource: "store", Verb: "view"}, func(ctx context.Context, _ *struct{}) (*routeOutput, error) {
+			authz.Register(registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "store-view", Method: http.MethodGet, Path: "/stores"}, authz.Guard{Resource: "store", Verb: "view"}, func(ctx context.Context, _ *struct{}) (*routeOutput, error) {
 				claims, ok := authn.FromContext(ctx)
 				require.True(t, ok)
 				assert.Equal(t, guid.ID(31), claims.PrincipalID)
@@ -442,8 +489,8 @@ func TestTenantAuthorizationMiddleware(t *testing.T) {
 func TestTenantMemberAndAuthenticatedMiddleware(t *testing.T) {
 	_, api := humatest.New(t)
 	registrar := authz.NewRegistrar(testRegistry(), validVerifier(), &fakeChecker{allowed: true}, &fakeMembership{active: true})
-	authz.RegisterTenantMember(registrar, api, huma.Operation{OperationID: "member", Method: http.MethodGet, Path: "/member"}, okRoute)
-	authz.RegisterAuthenticated(registrar, api, huma.Operation{OperationID: "me", Method: http.MethodGet, Path: "/me"}, okRoute)
+	authz.RegisterTenantMember(registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "member", Method: http.MethodGet, Path: "/member"}, okRoute)
+	authz.RegisterAuthenticated(registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "me", Method: http.MethodGet, Path: "/me"}, okRoute)
 	assert.Equal(t, http.StatusOK, api.Get("/tenants/11/member").Code)
 	assert.Equal(t, http.StatusOK, api.Get("/me").Code)
 
@@ -475,9 +522,9 @@ func TestPermissionCheckerReceivesExactScope(t *testing.T) {
 	checker := &fakeChecker{allowed: true}
 	_, api := humatest.New(t)
 	registrar := authz.NewRegistrar(testRegistry(), validVerifier(), checker, &fakeMembership{active: true})
-	authz.Register(registrar, api, huma.Operation{OperationID: "store", Method: http.MethodGet, Path: "/store"}, authz.Guard{Resource: "store", Verb: "view"}, okRoute)
-	authz.RegisterEntity(registrar, api, huma.Operation{OperationID: "workflow", Method: http.MethodGet, Path: "/workflow"}, authz.Guard{Resource: "workflow", Verb: "view"}, okRoute)
-	authz.RegisterPlatform(registrar, api, huma.Operation{OperationID: "tenants", Method: http.MethodGet, Path: "/tenants"}, authz.Guard{Resource: "tenant", Verb: "view"}, okRoute)
+	authz.Register(registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "store", Method: http.MethodGet, Path: "/store"}, authz.Guard{Resource: "store", Verb: "view"}, okRoute)
+	authz.RegisterEntity(registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "workflow", Method: http.MethodGet, Path: "/workflow"}, authz.Guard{Resource: "workflow", Verb: "view"}, okRoute)
+	authz.RegisterPlatform(registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "tenants", Method: http.MethodGet, Path: "/tenants"}, authz.Guard{Resource: "tenant", Verb: "view"}, okRoute)
 
 	assert.Equal(t, http.StatusOK, api.Get("/tenants/11/store").Code)
 	assert.Equal(t, http.StatusOK, api.Get("/tenants/11/entities/21/workflow").Code)
@@ -565,7 +612,7 @@ func TestEntityAndPlatformAuthorizationMiddleware(t *testing.T) {
 	t.Run("entity", func(t *testing.T) {
 		_, api := humatest.New(t)
 		registrar := authz.NewRegistrar(testRegistry(), validVerifier(), &fakeChecker{allowed: true}, &fakeMembership{active: true})
-		authz.RegisterEntity(registrar, api, huma.Operation{OperationID: "workflow", Method: http.MethodGet, Path: "/workflow"}, authz.Guard{Resource: "workflow", Verb: "view"}, func(ctx context.Context, _ *struct{}) (*routeOutput, error) {
+		authz.RegisterEntity(registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "workflow", Method: http.MethodGet, Path: "/workflow"}, authz.Guard{Resource: "workflow", Verb: "view"}, func(ctx context.Context, _ *struct{}) (*routeOutput, error) {
 			claims, ok := authn.FromContext(ctx)
 			require.True(t, ok)
 			assert.Equal(t, guid.ID(11), claims.TenantID)
@@ -580,7 +627,7 @@ func TestEntityAndPlatformAuthorizationMiddleware(t *testing.T) {
 		verifier := &fakeVerifier{claims: &authn.Claims{Subject: "31"}}
 		_, api := humatest.New(t)
 		registrar := authz.NewRegistrar(testRegistry(), verifier, &fakeChecker{allowed: true}, &fakeMembership{active: true})
-		authz.RegisterEntityAdapter(registrar, api, huma.Operation{OperationID: "stream", Method: http.MethodGet, Path: "/stream"}, authz.Guard{Resource: "workflow", Verb: "view"}, func(ctx huma.Context) {
+		authz.RegisterEntityAdapter(registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "stream", Method: http.MethodGet, Path: "/stream"}, authz.Guard{Resource: "workflow", Verb: "view"}, func(ctx huma.Context) {
 			ctx.SetStatus(http.StatusNoContent)
 		})
 		assert.Equal(t, http.StatusNoContent, api.Get("/tenants/11/entities/21/stream").Code)
@@ -607,6 +654,7 @@ func TestEntityOrAuthenticatedAuthorizationKeepsContextsDistinct(t *testing.T) {
 	registrar := authz.NewRegistrar(registry, verifier, checker, &fakeMembership{active: true})
 	seen := make([]authn.Claims, 0, 2)
 	authz.RegisterEntityOrAuthenticated(registrar, api, huma.Operation{
+		Tags:        []string{"tenants"},
 		OperationID: "contextual-files", Method: http.MethodGet, Path: "/contextual-files",
 	}, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, _ *struct{}) (*routeOutput, error) {
 		claims, ok := authn.FromContext(ctx)
@@ -667,7 +715,7 @@ func TestEntityAuthorizationFailurePaths(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			_, api := humatest.New(t)
 			registrar := authz.NewRegistrar(testRegistry(), test.verifier, test.checker, test.membership)
-			authz.RegisterEntity(registrar, api, huma.Operation{OperationID: "entity", Method: http.MethodGet, Path: "/entity"}, authz.Guard{Resource: "workflow", Verb: "view"}, okRoute)
+			authz.RegisterEntity(registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "entity", Method: http.MethodGet, Path: "/entity"}, authz.Guard{Resource: "workflow", Verb: "view"}, okRoute)
 			response := api.Get("/tenants/" + test.tenant + "/entities/" + test.entity + "/entity")
 			assert.Equal(t, test.want, response.Code)
 		})
@@ -699,7 +747,7 @@ func TestDataFilteredEntityAuthorization(t *testing.T) {
 			verifier.claims.TenantID, verifier.claims.EntityID = 999, 888
 			registrar := authz.NewRegistrar(registry, verifier, checker, &fakeMembership{active: true})
 			calls := 0
-			authz.RegisterEntity(registrar, api, huma.Operation{OperationID: "tasks", Method: http.MethodGet, Path: "/tasks"}, authz.Guard{Resource: "task", Verb: "view", FilterData: true}, func(ctx context.Context, _ *struct{}) (*routeOutput, error) {
+			authz.RegisterEntity(registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "tasks", Method: http.MethodGet, Path: "/tasks"}, authz.Guard{Resource: "task", Verb: "view", FilterData: true}, func(ctx context.Context, _ *struct{}) (*routeOutput, error) {
 				calls++
 				claims, ok := authn.FromContext(ctx)
 				require.True(t, ok)
@@ -722,7 +770,7 @@ func TestDataFilteredEntityAuthorization(t *testing.T) {
 			}
 			assert.Equal(t, guid.ID(999), verifier.claims.TenantID, "request selectors must not mutate cached session claims")
 
-			authz.RegisterEntity(registrar, api, huma.Operation{OperationID: "whole", Method: http.MethodGet, Path: "/whole"}, authz.Guard{Resource: "task", Verb: "view"}, okRoute)
+			authz.RegisterEntity(registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "whole", Method: http.MethodGet, Path: "/whole"}, authz.Guard{Resource: "task", Verb: "view"}, okRoute)
 			wantWhole := http.StatusForbidden
 			if test.err != nil {
 				wantWhole = http.StatusServiceUnavailable
@@ -745,7 +793,7 @@ func TestDataFilteredRegistrationRejectsUnsafeDeclarations(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			_, api := humatest.New(t)
 			registrar := authz.NewDeclarationOnlyRegistrar(registry)
-			op := huma.Operation{OperationID: "tasks", Method: http.MethodGet, Path: "/tasks"}
+			op := huma.Operation{OperationID: "tasks", Method: http.MethodGet, Path: "/tasks", Tags: []string{"tenants"}}
 			assert.Panics(t, func() {
 				switch name {
 				case "platform":
@@ -762,9 +810,9 @@ func TestDataFilteredRegistrationRejectsUnsafeDeclarations(t *testing.T) {
 		})
 	}
 	_, api := humatest.New(t)
-	authz.Register(authz.NewDeclarationOnlyRegistrar(registry), api, huma.Operation{OperationID: "tenant-tasks", Method: http.MethodGet, Path: "/tenant-tasks"}, guard, okRoute)
+	authz.Register(authz.NewDeclarationOnlyRegistrar(registry), api, huma.Operation{Tags: []string{"tenants"}, OperationID: "tenant-tasks", Method: http.MethodGet, Path: "/tenant-tasks"}, guard, okRoute)
 	assert.Equal(t, true, api.OpenAPI().Paths["/tenants/{tenant_id}/tenant-tasks"].Get.Extensions[authz.DataFilterExtensionKey])
-	authz.RegisterEntity(authz.NewDeclarationOnlyRegistrar(registry), api, huma.Operation{OperationID: "tasks", Method: http.MethodGet, Path: "/tasks"}, guard, okRoute)
+	authz.RegisterEntity(authz.NewDeclarationOnlyRegistrar(registry), api, huma.Operation{Tags: []string{"tenants"}, OperationID: "tasks", Method: http.MethodGet, Path: "/tasks"}, guard, okRoute)
 	assert.Equal(t, true, api.OpenAPI().Paths["/tenants/{tenant_id}/entities/{entity_id}/tasks"].Get.Extensions[authz.DataFilterExtensionKey])
 }
 
@@ -948,6 +996,7 @@ func TestTenantEntityOrAuthenticatedPublishesThreeDistinctContexts(t *testing.T)
 	registrar := authz.NewRegistrar(testRegistry(), validVerifier(), checker, &fakeMembership{active: true})
 	seen := make([]authn.Claims, 0, 3)
 	authz.RegisterTenantEntityOrAuthenticated(registrar, api, huma.Operation{
+		Tags:        []string{"tenants"},
 		OperationID: "files", Method: http.MethodGet, Path: "/files",
 	}, authz.Guard{Resource: "store", Verb: "view"}, func(ctx context.Context, _ *struct{}) (*routeOutput, error) {
 		claims, ok := authn.FromContext(ctx)

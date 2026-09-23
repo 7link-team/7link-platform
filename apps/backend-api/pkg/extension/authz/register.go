@@ -167,7 +167,7 @@ func Register[I, O any](r *Registrar, api huma.API, op huma.Operation, guard Gua
 	}
 	r.prepare(api, &op, guard)
 	prepareTenantPath(&op)
-	op.Tags = []string{"tenants"}
+	requireResourceTag(&op, "tenant operation")
 	huma.Register(api, op, handler)
 }
 
@@ -187,7 +187,7 @@ func RegisterEntity[I, O any](r *Registrar, api huma.API, op huma.Operation, gua
 	}
 	r.prepare(api, &op, guard)
 	prepareEntityPath(&op)
-	op.Tags = []string{"tenants"}
+	requireResourceTag(&op, "entity operation")
 	if r.verifier != nil {
 		// Replace the tenant-only guard installed by prepare with the entity guard.
 		op.Middlewares[len(op.Middlewares)-1] = r.entityMiddleware(api, guard)
@@ -270,7 +270,7 @@ func RegisterEntityOrAuthenticated[I, O any](r *Registrar, api huma.API, op huma
 	RegisterAuthenticated(r, api, self, handler)
 	r.prepare(api, &op, guard)
 	prepareEntityPath(&op)
-	op.Tags = []string{"tenants"}
+	requireResourceTag(&op, "entity operation")
 	if r.verifier != nil {
 		op.Middlewares[len(op.Middlewares)-1] = r.entityMiddleware(api, guard)
 	}
@@ -311,7 +311,7 @@ func RegisterEntityAdapter(r *Registrar, api huma.API, op huma.Operation, guard 
 	}
 	r.prepare(api, &op, guard)
 	prepareEntityPath(&op)
-	op.Tags = []string{"tenants"}
+	requireResourceTag(&op, "entity adapter operation")
 	if r.verifier != nil {
 		op.Middlewares[len(op.Middlewares)-1] = r.entityMiddleware(api, guard)
 	}
@@ -335,7 +335,7 @@ func RegisterTenantMember[I, O any](r *Registrar, api huma.API, op huma.Operatio
 	op.Metadata[tenantMemberMetadataKey] = true
 	r.prepareAuthenticated(api, &op, true)
 	prepareTenantPath(&op)
-	op.Tags = []string{"tenants"}
+	requireResourceTag(&op, "tenant member operation")
 	if r.verifier != nil {
 		op.Middlewares = append(op.Middlewares, r.middleware(api, nil))
 	}
@@ -511,6 +511,17 @@ func selfPath(path string) string {
 func pathSelector(name, description string) *huma.Param {
 	return &huma.Param{Name: name, In: "path", Description: description, Required: true,
 		Schema: &huma.Schema{Type: huma.TypeString, Pattern: guidTextPattern, MaxLength: intPointer(guidTextMaxLength)}}
+}
+
+// requireResourceTag makes the Swagger group an explicit property of the
+// operation instead of a value the registrar infers from the URI it is about
+// to build. Registering the tag here rather than overwriting it lets one
+// operation move between paths without silently changing which published
+// section documents it.
+func requireResourceTag(op *huma.Operation, kind string) {
+	if len(op.Tags) != 1 {
+		panic(kind + " requires exactly one explicit resource tag")
+	}
 }
 
 func prepareTenantPath(op *huma.Operation) {

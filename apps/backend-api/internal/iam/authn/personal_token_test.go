@@ -61,7 +61,7 @@ func TestPersonalTokenRealRegistrarPreservesAllRouteBoundaries(t *testing.T) {
 	type output struct{ Body string }
 	handler := func(context.Context, *struct{}) (*output, error) { return &output{Body: "ok"}, nil }
 	op := func(path string) huma.Operation {
-		return huma.Operation{OperationID: strings.TrimPrefix(path, "/"), Method: http.MethodGet, Path: path}
+		return huma.Operation{OperationID: strings.TrimPrefix(path, "/"), Method: http.MethodGet, Path: path, Tags: []string{"tenants"}}
 	}
 	guard := authz.Guard{Resource: "store", Verb: "view"}
 	authz.Register(r, api, op("/guarded"), guard, handler)

@@ -212,8 +212,8 @@ func TestModulePublishesTheSameLiveAuthorizationEvaluator(t *testing.T) {
 		filtered, evaluateErr := evaluator.EntityConstraint(ctx, claims.TenantID, claims.EntityID, "user_view", claims.PrincipalID)
 		return &output{Body: filtered}, evaluateErr
 	}
-	authz.RegisterEntity(instance.registrar, api, huma.Operation{OperationID: "filtered", Method: http.MethodGet, Path: "/filtered"}, authz.Guard{Resource: "user", Verb: "view", FilterData: true}, handler)
-	authz.RegisterEntity(instance.registrar, api, huma.Operation{OperationID: "whole", Method: http.MethodGet, Path: "/whole"}, authz.Guard{Resource: "user", Verb: "view"}, handler)
+	authz.RegisterEntity(instance.registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "filtered", Method: http.MethodGet, Path: "/filtered"}, authz.Guard{Resource: "user", Verb: "view", FilterData: true}, handler)
+	authz.RegisterEntity(instance.registrar, api, huma.Operation{Tags: []string{"tenants"}, OperationID: "whole", Method: http.MethodGet, Path: "/whole"}, authz.Guard{Resource: "user", Verb: "view"}, handler)
 	base := "/tenants/" + tenantID.String() + "/entities/" + entity.ID.String()
 	response := api.Get(base + "/filtered")
 	assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
