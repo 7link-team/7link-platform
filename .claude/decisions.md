@@ -2607,3 +2607,46 @@ Confirmed design rule for files, and for menus when their contract is revised.
 `/entities/{entity_id}/files` listing only that entity's roots (`346a809`)
 follows from it. The remaining work is on the client: each view reads its own
 mount point, which needs a department view the router does not have yet.
+
+## D77 - One canonical URI, and a natural key unless it is ambiguous
+
+**Date** 2026-09-24
+
+**Decision / Reason**
+A resource has one address. Aliases cost a second operation id, a second set
+of tests and a second authorization assertion, and they make every reader ask
+which one to use. The only aliases are discovery entries for a client that
+cannot know an id yet: `GET /me` and `GET /sessions/current`. That is the
+rule, rather than a list of exceptions -- a browser holding only a session
+cookie genuinely cannot name its session.
+
+An item is addressed by its natural key under its collection. The test is
+whether a client can build the address from what it already holds and whether
+the result names exactly one resource. Segment count is not the test:
+`(resource, field)` is two segments and is still a natural key. An id is
+minted only when no natural key passes that test.
+
+Tenant membership keeps `(tenant_id, principal_id)`, so its item is
+`/tenants/{tenant_id}/memberships/{principal_id}`. Authorization relationship
+gets an id, because `subject_relation` and `entity_id` may be empty and an
+empty value is a legitimate part of the identity, so no address a client
+constructs is unambiguous -- which is why today's eight-selector DELETE
+silently reports no change when one is omitted.
+
+**Alternatives Considered / Tradeoffs**
+Minting an id everywhere is uniform and removes the judgement, at the cost of
+a primary-key rebuild on a populated table and an indirection over an
+identity that already exists; the manifest already rejected that for field
+policy. Keeping tuples everywhere avoids migrations but leaves relationships
+addressed by query selectors, which is a filtered delete wearing an item's
+clothes. Dual addressing was offered as navigation convenience; it is
+declined because the generated document has only the short form today, so
+this is a decision not to build rather than a removal.
+
+**Scope / Status**
+Confirmed design rule. It supersedes D75's paragraph permitting a resource to
+expose both a short and an owner-scoped item URI, and it replaces D74's
+wording that `GET /me` is the only current-principal alias. Recorded in
+`apps/backend-api/docs/proposed-api-manifest.md`. The relationship id needs a
+migration plan for two tables before it is implemented; no runtime route
+changes with this record.

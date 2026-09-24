@@ -15,6 +15,11 @@
 - `GET /me` 只用于登录后发现当前 `principal_id`，不建立第二套 `/me/*` 资源树。
 - 本人和管理员使用同一套带目标 ID 的资源接口，差异由授权、字段过滤、二次认证和审计控制。
 - 集合的创建和查询放在经过模型确认的直接 owner 下；不能根据可选外键猜测 owner。
+- 一个资源只有一个规范 URI，不提供别名。唯一的例外是客户端拿不到 ID 时的发现
+  入口：`GET /me` 和 `GET /sessions/current`。
+- item 的地址用资源在其集合下的天然键，客户端必须能用手里已有的东西拼出来，
+  且拼出来只对应一个资源。段数不是标准：`(resource, field)` 两段也是天然键。
+  只有当天然键拼不出或有歧义（例如可空字段参与身份）时，才铸一个 ID。
 - 文件、菜单这类可以挂在多个组织层级上的资源，每个挂载点是一个独立集合，各自只返回自己那一层；上级看得到下级体现在他能打开下级的集合，不体现在某个集合把底下的都合并返回（D76）。
 - 每个资源只有一套 representation、版本、授权和写入语义。
 - Snowflake、opaque ID、分页、并发控制和错误响应使用共享 OpenAPI components。
@@ -43,28 +48,18 @@
 | Account Closure | 每个 Principal 唯一一份的账号关闭状态。 | 当前不是具有历史记录和独立 ID 的 Request。 |
 | File Operation | 以目标目录和 source IDs 执行的一次同步 copy/move mutation。 | 当前不是可轮询的后台 Job。 |
 
-## 双地址规则
+## 不提供双地址
 
-双地址是按实际使用场景选择的能力，不为所有 tenant-owned 资源机械生成。
+同一个资源两个 URI，就是两个 Operation ID、两套测试、两处授权断言，
+以及读文档的人每次都要问"该用哪个"。Entity 和 Department 的 Snowflake 本来就
+全局唯一，规范地址就是短的那个：`/entities/{entity_id}`、`/departments/{department_id}`。
+租户作用域的那条只多做一次"这个实体属于这个租户吗"的冗余校验，不足以换一个别名。
 
-以 `/instances/{instance_id}` 和
-`/tenants/{tenant_id}/instances/{instance_id}` 为例：
+生成文档里今天也只有短地址，所以这是**不去新建**，不是拆除。
 
-1. 两条路径都先按同一个 `instance_id` 查询资源。
-2. 短路径从资源反向解析真实 `tenant_id` 后授权。
-3. scoped 路径额外比较真实 owner 与路径中的 `tenant_id`。
-4. owner 不一致时，在业务执行前返回标准 `404 resource_not_found`。
-5. 两条路径必须共用 schema、ETag/version、授权、Service、事务和审计事件。
-6. 路径中的 tenant 只能用于校验，不能覆盖或补充资源的真实 owner。
-
-当前只保留两个具有明确租户目录导航价值的双地址：
-
-| 租户上下文地址 | 短地址 | 中文说明 |
-| --- | --- | --- |
-| `/tenants/{tenant_id}/entities/{entity_id}` | `/entities/{entity_id}` | 同一个实体；前者额外校验实体属于该租户。 |
-| `/tenants/{tenant_id}/departments/{department_id}` | `/departments/{department_id}` | 同一个部门；前者额外校验部门属于该租户。 |
-
-Group、Position、Role、Menu、Membership、Invitation、Service Account 和应用配置资源没有已证明的双地址需求，因此不生成 scoped item 路径。
+这取代 D75 中"globally identified resource 可以同时暴露短地址和 owner scoped 地址"
+那一段。集合仍然挂在 owner 下（`/tenants/{tenant_id}/entities` 创建和查询），
+变的只是 item 不再有第二个地址。
 
 ## 共享参数与响应
 
@@ -90,7 +85,7 @@ Group、Position、Role、Menu、Membership、Invitation、Service Account 和�
 | DELETE 成功 | `204 No Content`；需要返回状态表示时才使用 `200 OK`。 |
 | owner scoped item 的 owner 不匹配 | `404 resource_not_found`，避免泄露跨租户资源。 |
 
-所有 Operation ID 全局唯一；双地址使用不同 Operation ID，但必须调用同一 Service 方法并引用同一 request/response schemas。
+所有 Operation ID 全局唯一。
 
 ## `system`
 
@@ -171,13 +166,11 @@ Group、Position、Role、Menu、Membership、Invitation、Service Account 和�
 | GET, PATCH | `/principals/{principal_id}` | 读取或更新全局 Principal profile，并执行字段过滤。 |
 | GET, POST | `/tenants/{tenant_id}/memberships` | 查询租户 Membership，或为已有 Principal 创建 Tenant Membership。 |
 | GET | `/principals/{principal_id}/memberships` | 查询一个 Principal 的全部 Tenant Membership。 |
-| GET, PATCH, DELETE | `/tenant-memberships/{membership_id}` | 读取、更新、停用/退出或删除一个明确的 Tenant Membership。 |
+| GET, PATCH, DELETE | `/tenants/{tenant_id}/memberships/{principal_id}` | 读取、更新、停用/退出或删除一条 Tenant Membership。 |
 | GET, POST | `/tenants/{tenant_id}/entities` | 查询或创建租户直属 Entity。 |
-| GET, PATCH, DELETE | `/entities/{entity_id}` | 短地址：读取、更新或删除 Entity。 |
-| GET, PATCH, DELETE | `/tenants/{tenant_id}/entities/{entity_id}` | scoped 地址：执行同一操作并校验真实 owner tenant。 |
+| GET, PATCH, DELETE | `/entities/{entity_id}` | 读取、更新或删除 Entity；这是它唯一的地址。 |
 | GET, POST | `/tenants/{tenant_id}/departments` | 查询或创建 Tenant Department；`entity_id` 仅为可选关联/过滤。 |
-| GET, PATCH, DELETE | `/departments/{department_id}` | 短地址：读取、移动、更新或删除 Department。 |
-| GET, PATCH, DELETE | `/tenants/{tenant_id}/departments/{department_id}` | scoped 地址：执行同一操作并校验真实 owner tenant。 |
+| GET, PATCH, DELETE | `/departments/{department_id}` | 读取、移动、更新或删除 Department；这是它唯一的地址。 |
 | GET, POST | `/tenants/{tenant_id}/groups` | 查询或创建 Group。 |
 | GET, PATCH, DELETE | `/groups/{group_id}` | 读取、更新或删除 Group；不生成 tenant scoped item 重复路径。 |
 | GET | `/groups/{group_id}/members` | 查询 Group 与 Principal 的成员关系。 |
@@ -194,7 +187,7 @@ Group、Position、Role、Menu、Membership、Invitation、Service Account 和�
 | GET, POST | `/service-accounts/{service_account_id}/credentials` | 查询或创建 Credential。 |
 | DELETE | `/service-accounts/{service_account_id}/credentials/{credential_id}` | 撤销 Credential。 |
 
-建议为 Membership 增加全局 `membership_id`：它具有独立状态、租户局部字段、时间戳、授权投影和生命周期，不应再拿 `principal_id` 冒充 Membership ID。迁移后删除整个 `/tenants/{tenant_id}/principals*` 家族。
+Membership 沿用它已经证明的天然键 `(tenant_id, principal_id)`，不新增 `membership_id`：一人一租户至多一条，`principal_id` 在租户成员集合下就是唯一的。它确实有状态、租户局部字段和生命周期，但那说明它是个资源，不说明它需要第二个身份 —— Field Policy 同样有状态，同样保留元组身份。迁移后删除整个 `/tenants/{tenant_id}/principals*` 家族。
 
 ## `access-control`
 
@@ -217,7 +210,8 @@ Group、Position、Role、Menu、Membership、Invitation、Service Account 和�
 | GET, PATCH, DELETE | `/authorization-relationships/{authorization_relationship_id}` | 读取、更新或删除 Authorization Relationship。 |
 | GET | `/platform/permission-definitions` | 查询平台 Permission 定义。 |
 | GET | `/tenants/{tenant_id}/permission-definitions` | 查询租户 Permission 定义。 |
-| GET | `/tenants/{tenant_id}/field-definitions` | 查询租户上下文中声明的字段能力。**未决**：见待确认决策 8，本行当前同时是 `field-catalog` 和 `effective-fields` 的唯一继任者，而两者授权模型不同。 |
+| GET | `/tenants/{tenant_id}/field-definitions` | 管理员视角：这个租户声明了哪些字段能力。 |
+| GET | `/principals/{principal_id}/field-capabilities` | 本人视角：我在给定 `EvaluationContext` 下实际拥有哪些字段能力。与 `/permissions`、`/menus` 同形。 |
 | GET | `/tenants/{tenant_id}/field-policies` | 查询 Field Policy。 |
 | GET, PUT, DELETE | `/tenants/{tenant_id}/field-policies/{resource}/{field}` | 按明确 tuple 读取、替换或恢复默认 Policy，不虚构 `policy_id`。 |
 | GET | `/authorization-model` | 读取 Scope 与 Relationship 模型元数据。 |
@@ -227,8 +221,8 @@ Group、Position、Role、Menu、Membership、Invitation、Service Account 和�
 | GET, POST | `/tenants/{tenant_id}/menus` | 查询或创建 Menu 管理资源。 |
 | GET, PATCH, DELETE | `/tenants/{tenant_id}/menus/{menu_id}` | 读取、更新或删除 Tenant Menu，并校验 owner。 |
 | GET | `/tenants/{tenant_id}/menu-definitions` | 查询当前租户可配置的 Menu metadata。 |
-| GET | `/tenant-memberships/{membership_id}/roles` | 查询 Tenant Membership 的有效 Role。 |
-| GET | `/tenant-memberships/{membership_id}/authorization-sources` | 解释 Tenant Membership 的直接和目录派生授权来源。 |
+| GET | `/tenants/{tenant_id}/memberships/{principal_id}/roles` | 查询该成员的有效 Role。 |
+| GET | `/tenants/{tenant_id}/memberships/{principal_id}/authorization-sources` | 解释该成员的直接和目录派生授权来源。 |
 | GET | `/tenants/{tenant_id}/requestable-roles` | 查询可申请的 Role。 |
 | GET, POST | `/tenants/{tenant_id}/role-access-requests` | 查询或创建 Tenant Role Access Request。 |
 | PUT | `/role-access-requests/{role_access_request_id}/decision` | 写入审批决定。 |
@@ -238,7 +232,7 @@ Group、Position、Role、Menu、Membership、Invitation、Service Account 和�
 | GET, PATCH | `/access-reviews/{access_review_id}` | 读取、完成或取消 Review。 |
 | PUT | `/access-reviews/{access_review_id}/items/{review_item_id}/decision` | 决定一个快照授权项。 |
 
-建议为 Authorization Relationship 增加全局 `authorization_relationship_id`。当前七段复合键不适合作为稳定 item URI，并迫使 DELETE 接收八个 selector 参数。
+Authorization Relationship 新增 `authorization_relationship_id`。它的身份是六到七列元组，其中 `subject_relation` 与 `entity_id` 可以为空，而**空值也是合法的身份分量** —— 客户端因此拼不出一个无歧义的地址，现在那个收八个 selector 的 DELETE 漏填一个就静默返回 `Changed: false`。`iam_relationships` 与 `iam_resource_relationships` 两张表都加一个唯一列，七列主键保持不动。
 
 ## `files`
 
@@ -366,53 +360,52 @@ Platform 当前只开放已实现的子集：archive status、archives、attempt
 
 ## 自审结论
 
-- 已删除无依据的 Group、Position、Role 等 scoped item 双地址，只保留 Entity 和 Department 两组。
+- 不提供任何 scoped item 双地址，Entity 和 Department 也不例外。
 - Principal CRUD 只在 `directory` 定义一次；`account` 只管理安全和个人资源。
 - Menu 管理已从 `account` 移到 `access-control`。
 - Tenant-owned 的 Relationship、Access Request、Access Review 继续在 Tenant collection 下创建和查询。
 - Field Policy 保留已经明确的 `(tenant_id, resource, field)` identity，不虚构 `policy_id`。
-- Tenant Membership 同时连接 Tenant 与 Principal：两侧 collection 分别表达“租户成员列表”和“主体加入的租户”，item 始终使用同一个 `membership_id` 和 `/tenant-memberships/{membership_id}`，不建立两套 item 资源。
+- Tenant Membership 同时连接 Tenant 与 Principal：两侧 collection 分别表达“租户成员列表”和“主体加入的租户”，item 只有一个地址 `/tenants/{tenant_id}/memberships/{principal_id}`，沿用它已经证明的天然键，不虚构 `membership_id`。
 - Invitation 已明确命名为 Membership Invitation，管理接口始终保留 Tenant owner 路径，不提供语义过泛的 `/invitations` 或顶层 item。
-- Scoped item 必须先按 item ID 找资源，再反查和比对 owner；禁止用路径 owner 改写查询结果。
+- 集合仍然挂在 owner 下，但 item 永远按自己的地址解析；禁止用路径上的 owner 改写查询结果。
 - Session step-up 与 reauthentication 已合并为一套 Reauthentication Transaction，避免重复 ceremony，并修正“管理员可对目标 Principal 发起再认证”的错误资源语义。
 
-## 待确认决策
+## 寻址规则的九项结论
 
-1. 为 Tenant Membership 增加 `membership_id`；Tenant/Principal 两侧提供 collection，item 统一使用 `/tenant-memberships/{membership_id}`。
-2. 为 Authorization Relationship 增加 `authorization_relationship_id`，item 使用 `/authorization-relationships/{authorization_relationship_id}`。
-3. 一次性用 `/authentication-transactions` 替换完整 Login 家族，不做零散改名。
-4. 按真实模型把 Role Directory Binding 拆成 Group Binding 和 Position Binding。
-5. `/principals/{principal_id}/account-closure` 是本人/管理员共用 singleton；`/account-closures` 只做跨主体管理列表。
-6. Todo 导入导出复用 canonical collection 的 media type。
-7. 只为 Entity 和 Department 保留 tenant-scoped/global 双地址；其他资源有具体需求后再单独评审。
+前一版把九件事挂成“待确认”。其中七件其实有据可依 —— 要么数据模型已经回答了，
+要么由已确认的规则推得出来 —— 把它们挂着只是把判断推给读者。下面逐条给出结论
+和依据，剩下真正需要决定的两件单列在后面。
 
-8. **Field 能力查询不能合并。** 现状是两个操作而非一个：`GET /tenants/{tenant_id}/field-catalog`
-   经 `authz.Register` 注册，受 `Guard{Resource: "field_policy", Verb: "view"}` 保护，是管理员视角的
-   声明目录；`GET /tenants/{tenant_id}/effective-fields` 经 `authz.RegisterTenantMember` 注册，任何
-   租户成员都可以读自己的有效字段能力（`internal/iam/core/field_policy_http.go:50` 与 `:90`）。把两者
-   并成一个 `field-definitions` 会把管理员目录和自助投影压进同一个授权模型。需要决定：保留两个资源
-   并分别命名，还是定义一个带 `subject` 语义的资源并明确其授权。本清单在决定前不得按单行实施。
-9. **D74 的措辞需要修正。** D74 写的是 `GET /me` 是唯一的当前主体别名，而本清单保留
-   `GET, DELETE /sessions/current` 作为第二个凭据绑定别名并给出了理由。两者必须一致：要么修订 D74
-   承认 Session 发现这一例外，要么去掉 `/sessions/current`。当前以未解决状态记录，不默认按任一方实施。
-
-### 哪条决策挡住哪些操作
-
-逐条映射里有 11 个操作标为**未决**。它们不是还没想，是目标取决于上面某条决策；
-那条决策定下来之前，这 11 条不能实施，其余 284 条可以。
-
-| 决策 | 挡住的操作数 | 具体是哪些 |
+| # | 结论 | 依据 |
 | --- | --- | --- |
-| 1（Membership 身份） | 5 | `DELETE /me/memberships/{tenant_id}`、`GET`/`PATCH /tenants/{tenant_id}/members/{subject}`、该成员的 `/roles` 与 `/authorization-sources` |
-| 2（Relationship 身份） | 1 | `DELETE /tenants/{tenant_id}/relationships`（当前靠查询参数选中要删的关系） |
-| 4（Role Directory Binding 拆分） | 3 | `GET`/`PUT`/`DELETE /roles/{role_id}/directory-bindings*` |
-| 8（Field 能力查询） | 2 | `GET /tenants/{tenant_id}/field-catalog` 与 `/effective-fields` |
+| 1 | Tenant Membership **不加 `membership_id`**，item 是 `/tenants/{tenant_id}/memberships/{principal_id}` | 主键 `(tenant_id, principal_id)` 保证一人一租户至多一条，`principal_id` 就是天然键；与清单自己“不虚构 `policy_id`”同一把尺子 |
+| 2 | Authorization Relationship **加 `id`**，item 是 `/authorization-relationships/{id}` | 身份是六到七列元组，其中 `subject_relation`、`entity_id` 可为空，**空值参与身份**，客户端拼不出无歧义的地址 |
+| 3 | Login 家族**一次性**由 `/authentication-transactions` 取代 | 迁移策略，不是契约选择；分批改名会让同一个登录流程同时存在两种形状 |
+| 4 | Role Directory Binding **拆成 Group Binding 与 Position Binding** | `GroupRoleBinding` 与 `PositionRoleBinding` 本就是两张独立表（`internal/iam/organization/model/model.go:90`），现有端点用一个判别段把它们糊在一起，接口比模型还不规范 |
+| 5 | Account Closure 是**每主体一份的 singleton** | `ClosureRequest` 主键只有 `principal_id` |
+| 6 | Todo 导入导出用 **content negotiation** | `Accept`/`Content-Type` 是 HTTP 本来的机制，不需要 `/export`、`/import` 动作路径 |
+| 7 | **不提供双地址** | 见前面“不提供双地址”一节；生成文档里今天也只有短地址 |
+| 8 | Field 能力是**两个资源**：`/tenants/{tenant_id}/field-definitions` 与 `/principals/{principal_id}/field-capabilities` | 两者授权模型不同（`field_policy:view` 守卫 vs 租户成员自助，见 `internal/iam/core/field_policy_http.go:50` 与 `:90`）；本人投影照搬清单已有的 `/permissions`、`/menus` 形状 |
+| 9 | 保留 `/sessions/current`，并把规则从“只许一个别名”改成**“客户端拿不到 ID 时允许一个发现入口”** | 浏览器只持有 Cookie，确实不知道 `session_id`；`GET /me` 与它是同一条规则的两个实例，而不是两个例外 |
 
-其余五条（3 一次性替换 Login 家族、5 Account Closure singleton、6 Todo media type、
-7 双地址范围、9 D74 措辞）是契约取舍，不挡任何操作的实施路径 —— 逐条映射里它们
-已经有确定去向。
+结论 2 和 7 与既有决策记录冲突，已分别作为取代记录在案：2 不与任何决策冲突，
+7 取代 D75 关于双地址的那一段，9 取代 D74 “唯一别名”的措辞。
 
-以上决策和本清单未明确确认前，不得修改运行时路由。
+## 仍然需要决定的两件
+
+这两件都要动数据，排期与存量风险不是契约问题：
+
+1. **Authorization Relationship 加 `id` 的迁移。** 加一个唯一列并回填，**七列主键不动**，
+   所以不涉及重建主键；但 `iam_relationships` 与 `iam_resource_relationships` 两张表都要加，
+   回填要为每行生成 Snowflake。实施前需要一份包含存量规模评估的迁移方案。
+2. **是否删除 `personal` file scope。** 现在一个人有两个个人空间：`account`（不属于任何租户）
+   和 `personal`（建在某个租户的文件空间里）。后者**建得出来、任何列表都返回不了**
+   （`/me/files` 读的是 account 空间，其余集合各自按 scope 过滤），已经是死角。
+   按“个人的东西与租户无关”，一个人应当只有一个个人空间；但删除涉及存量行处置。
+
+在这两件落定之前，逐条映射里依赖它们的行保持“未决”；其余行的去向都已确定。
+
+以上清单未明确确认前，不得修改运行时路由。
 
 ## 旧接口到新接口的逐条映射
 
@@ -420,7 +413,7 @@ Platform 当前只开放已实现的子集：archive status、archives、attempt
 并写明它在新契约里的去向。没有这张表，前面的分组表只说明了目标长什么样，
 说明不了有没有东西在迁移中被漏掉。
 
-当前操作总数 295，保持 173，删除 3，合并 24，拆分 2，改名 82，未决 11。
+当前操作总数 295，保持 173、改名 89、合并 24、拆分 5、删除 3、未决 1。
 
 处置的含义：**保持**指路径与方法不变（参数命名与共享 component 仍会统一）；
 **改名**指同一个资源换到规范 URI；**合并**指多个操作收敛成一个；
@@ -444,9 +437,9 @@ Platform 当前只开放已实现的子集：archive status、archives、attempt
 | `access-control` | PATCH | `/roles/{role_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
 | `access-control` | GET | `/roles/{role_id}/data-scope` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
 | `access-control` | PUT | `/roles/{role_id}/data-scope` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
-| `access-control` | GET | `/roles/{role_id}/directory-bindings` | 未决 | 拆成 GET /roles/{role_id}/group-bindings 与 /position-bindings，等决策 4 |
-| `access-control` | DELETE | `/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}` | 未决 | 拆成 DELETE /roles/{role_id}/group-bindings/{group_id} 与 /position-bindings/{position_id}，等决策 4 |
-| `access-control` | PUT | `/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}` | 未决 | 拆成 PUT /roles/{role_id}/group-bindings/{group_id} 与 /position-bindings/{position_id}，等决策 4 |
+| `access-control` | GET | `/roles/{role_id}/directory-bindings` | 拆分 | GET /roles/{role_id}/group-bindings 与 /position-bindings |
+| `access-control` | DELETE | `/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}` | 拆分 | DELETE /roles/{role_id}/group-bindings/{group_id} 或 /position-bindings/{position_id} |
+| `access-control` | PUT | `/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}` | 拆分 | PUT /roles/{role_id}/group-bindings/{group_id} 或 /position-bindings/{position_id} |
 | `access-control` | GET | `/roles/{role_id}/members` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
 | `access-control` | DELETE | `/roles/{role_id}/members/{subject}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
 | `access-control` | PUT | `/roles/{role_id}/members/{subject}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
@@ -464,9 +457,9 @@ Platform 当前只开放已实现的子集：archive status、archives、attempt
 | `access-control` | POST | `/tenants/{tenant_id}/authorization-checks` | 合并 | POST /tenants/{tenant_id}/authorization-evaluations |
 | `access-control` | POST | `/tenants/{tenant_id}/authorization-constraint-evaluations` | 合并 | POST /tenants/{tenant_id}/authorization-evaluations |
 | `access-control` | POST | `/tenants/{tenant_id}/authorization-explanations` | 合并 | POST /tenants/{tenant_id}/authorization-evaluations |
-| `access-control` | GET | `/tenants/{tenant_id}/effective-fields` | 未决 | 决策 8：本人自助投影，与 field-catalog 授权模型不同，不能并成一条 |
+| `access-control` | GET | `/tenants/{tenant_id}/effective-fields` | 改名 | GET /principals/{principal_id}/field-capabilities |
 | `access-control` | GET | `/tenants/{tenant_id}/entities/{entity_id}/me/permissions` | 改名 | GET /principals/{principal_id}/permissions，entity 求值上下文 |
-| `access-control` | GET | `/tenants/{tenant_id}/field-catalog` | 未决 | 决策 8：管理员目录，与 effective-fields 授权模型不同，不能并成一条 |
+| `access-control` | GET | `/tenants/{tenant_id}/field-catalog` | 改名 | GET /tenants/{tenant_id}/field-definitions |
 | `access-control` | GET | `/tenants/{tenant_id}/field-policies` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
 | `access-control` | DELETE | `/tenants/{tenant_id}/field-policies/{resource}/{field}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
 | `access-control` | PUT | `/tenants/{tenant_id}/field-policies/{resource}/{field}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
@@ -477,7 +470,7 @@ Platform 当前只开放已实现的子集：archive status、archives、attempt
 | `access-control` | GET | `/tenants/{tenant_id}/menus` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
 | `access-control` | POST | `/tenants/{tenant_id}/menus` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
 | `access-control` | GET | `/tenants/{tenant_id}/permission-catalog` | 改名 | GET /tenants/{tenant_id}/permission-definitions |
-| `access-control` | DELETE | `/tenants/{tenant_id}/relationships` | 未决 | DELETE /authorization-relationships/{authorization_relationship_id}，等决策 2 |
+| `access-control` | DELETE | `/tenants/{tenant_id}/relationships` | 未决 | DELETE /authorization-relationships/{id}，等加列迁移方案落定 |
 | `access-control` | GET | `/tenants/{tenant_id}/relationships` | 改名 | GET /tenants/{tenant_id}/authorization-relationships |
 | `access-control` | POST | `/tenants/{tenant_id}/relationships` | 改名 | POST /tenants/{tenant_id}/authorization-relationships |
 | `access-control` | GET | `/tenants/{tenant_id}/requestable-roles` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
@@ -496,7 +489,7 @@ Platform 当前只开放已实现的子集：archive status、archives、attempt
 | `account` | GET | `/me/identity-links` | 改名 | GET /principals/{principal_id}/identity-links |
 | `account` | DELETE | `/me/identity-links/{link_id}` | 改名 | DELETE /principals/{principal_id}/identity-links/{identity_link_id} |
 | `account` | GET | `/me/memberships` | 改名 | GET /principals/{principal_id}/memberships |
-| `account` | DELETE | `/me/memberships/{tenant_id}` | 未决 | DELETE /tenant-memberships/{membership_id}，等决策 1 定下 membership 身份 |
+| `account` | DELETE | `/me/memberships/{tenant_id}` | 改名 | DELETE /tenants/{tenant_id}/memberships/{principal_id} |
 | `account` | GET | `/me/mfa` | 改名 | GET /principals/{principal_id}/mfa |
 | `account` | PUT | `/me/mfa/recovery-codes` | 改名 | PUT /principals/{principal_id}/mfa/recovery-codes |
 | `account` | DELETE | `/me/mfa/totp` | 改名 | DELETE /principals/{principal_id}/mfa/totp |
@@ -636,10 +629,10 @@ Platform 当前只开放已实现的子集：archive status、archives、attempt
 | `directory` | POST | `/tenants/{tenant_id}/invitations` | 改名 | POST /tenants/{tenant_id}/membership-invitations |
 | `directory` | GET | `/tenants/{tenant_id}/members` | 改名 | GET /tenants/{tenant_id}/memberships |
 | `directory` | POST | `/tenants/{tenant_id}/members` | 改名 | POST /tenants/{tenant_id}/memberships |
-| `directory` | GET | `/tenants/{tenant_id}/members/{subject}` | 未决 | GET /tenant-memberships/{membership_id}，等决策 1 |
-| `directory` | PATCH | `/tenants/{tenant_id}/members/{subject}` | 未决 | PATCH /tenant-memberships/{membership_id}，等决策 1 |
-| `directory` | GET | `/tenants/{tenant_id}/members/{subject}/authorization-sources` | 未决 | GET /tenant-memberships/{membership_id}/authorization-sources，等决策 1 |
-| `directory` | GET | `/tenants/{tenant_id}/members/{subject}/roles` | 未决 | GET /tenant-memberships/{membership_id}/roles，等决策 1 |
+| `directory` | GET | `/tenants/{tenant_id}/members/{subject}` | 改名 | GET /tenants/{tenant_id}/memberships/{principal_id} |
+| `directory` | PATCH | `/tenants/{tenant_id}/members/{subject}` | 改名 | PATCH /tenants/{tenant_id}/memberships/{principal_id} |
+| `directory` | GET | `/tenants/{tenant_id}/members/{subject}/authorization-sources` | 改名 | GET /tenants/{tenant_id}/memberships/{principal_id}/authorization-sources |
+| `directory` | GET | `/tenants/{tenant_id}/members/{subject}/roles` | 改名 | GET /tenants/{tenant_id}/memberships/{principal_id}/roles |
 | `directory` | GET | `/tenants/{tenant_id}/positions` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
 | `directory` | POST | `/tenants/{tenant_id}/positions` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
 | `directory` | GET | `/tenants/{tenant_id}/principals` | 拆分 | GET /principals 查全局目录；GET /tenants/{tenant_id}/memberships 查租户成员 |
