@@ -2564,3 +2564,46 @@ example because the current model requires `tenant_id` and makes `entity_id`
 optional, and supersedes D62's first-segment Swagger grouping rule. Documented in
 `apps/backend-api/docs/http-resource-routing-design.md`. Runtime route changes
 remain pending explicit approval of the revised OpenAPI proposal.
+
+## D76 - Files and menus are resources with mount points, not a hierarchy to merge
+
+**Date** 2026-09-24
+
+**Decision / Reason**
+The organization has levels -- tenant, entity, department -- and a person
+beside them. Files and menus are not properties of those levels; they are
+resources that can be mounted at any of them. A mount point is addressed by its
+own collection, and a view reads exactly one: the tenant view lists the
+tenant's files, the entity view the entity's, the department view the
+department's, and a person's own view lists files that belong to no tenant at
+all.
+
+Seniority does not mean one collection answers with the levels beneath it. It
+means an administrator may open the entity and department views as well, which
+authorization already decides. Merging the levels into one answer puts a
+navigation decision inside a resource and makes the collection mean something
+its URI does not say.
+
+A person is not a level of the organization. The tenant-independent personal
+drive (`account` scope) therefore belongs to no tenant view.
+
+**Alternatives Considered / Tradeoffs**
+Containment -- a tenant collection answering with its entities' and
+departments' roots -- was built and reverted. It is convenient for one screen
+that wants every reachable root in a single request, and it reads plausibly
+because a department's files really are stored inside the tenant's space. What
+it costs is that every collection then means "everything under here that you
+may see", which is a query result rather than a resource, and the caller can no
+longer ask for one mount point without a filter. The earlier `context` scope
+from `d35da67` was that same merge, and it also swept members' per-tenant
+personal directories into an answer any tenant member could request.
+
+The cost of mount points is that a screen showing several levels issues one
+request per level. That is a client concern and is visible, rather than a
+server-side merge whose membership rule nobody can see from the URI.
+
+**Scope / Status**
+Confirmed design rule for files, and for menus when their contract is revised.
+`/entities/{entity_id}/files` listing only that entity's roots (`346a809`)
+follows from it. The remaining work is on the client: each view reads its own
+mount point, which needs a department view the router does not have yet.

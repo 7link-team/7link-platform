@@ -166,6 +166,42 @@
   `TestOpenAPIExportGroupsOperationsByPublicResource`'s first-path-segment rule
   with the 13-domain vocabulary and retags all 278 operations.
 
+### File Mount Points - 2026-09-24
+
+- Phase: BLOCKED on client work and two open decisions. Backend for the entity
+  route delivered in `346a809`; tests green.
+- Model confirmed by the user and recorded as D76: files and menus are
+  resources mounted at points in the organization, and a view reads exactly one
+  mount point. Seniority is which views you may open, not a collection merging
+  the levels below it.
+- A containment build (tenant collection answering with entity and department
+  roots) was completed, green and committed, then REVERTED once the model was
+  stated. It survives on branch `backup/containment` (`a729ba5`) with its
+  personal-root boundary test if any of it is wanted again.
+- Finding kept from that work: `d35da67`'s `context` scope merged every root
+  scope including `personal`, so members' per-tenant personal directories were
+  reachable through a request any tenant member could make. Removing `context`
+  in `346a809` closed that.
+- Open modelling question: `account` scope (no tenant) is the tenant-independent
+  drive, while `personal` scope creates a `personal-{principalID}` directory
+  inside a tenant's space (`internal/files/basic.go:36`). No listing returns a
+  `personal` root - `/me/files` reads the account space, and every other
+  collection filters to its own scope. It can be created and never listed.
+  Decide whether `personal` should exist at all.
+- Open authorization question: the four root listings use three models -
+  `/me/files` authenticated, `/entities/{e}/files` tenant member,
+  `/tenants/{t}/files` and `/departments/{d}/files` tenant `file_view`. Under
+  mount points a caller should be able to open the view for a mount point they
+  hold roots at, which the per-root ACL already decides.
+- Client work required by D76: the router has `/tenants/:tenantID/files` and
+  `/tenants/:tenantID/entities/:entityID/files` but NO department view, which is
+  why `d35da67` pointed department personas at the entity route. Each view must
+  read its own mount point, and `scripts/file-personas-browser-audit.mjs:28`
+  expects the merged contract that no longer exists.
+- Next action: user decides the `personal` scope question and the listing
+  authorization question; both block the client change, which otherwise has no
+  door for a department persona to open.
+
 ### Phase 1 Step 2 - Domain Grouping - 2026-09-23
 
 - Phase: ACCEPTANCE for the grouping; delivered in `7f0e4fa`.
