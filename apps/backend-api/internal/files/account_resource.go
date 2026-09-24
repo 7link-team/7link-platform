@@ -199,7 +199,7 @@ func (r *AccountResourceFiles) create(ctx context.Context, tx *gorm.DB, input Ac
 func (r *AccountResourceFiles) ensureRoot(ctx context.Context, tx *gorm.DB, principalID, actorID guid.ID, now time.Time) (*model.Space, *model.Node, error) {
 	tree := directoryTree{prefix: r.prefix}
 	q := query.Bind(tx, r.prefix)
-	space, err := q.Space.WithContext(ctx).Where(q.Space.ScopeKind.Eq("account"), q.Space.PrincipalID.Eq(principalID)).Take()
+	space, err := q.Space.WithContext(ctx).Where(q.Space.ScopeKind.Eq(spaceAccount), q.Space.PrincipalID.Eq(principalID)).Take()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		spaceID, idErr := r.nextID()
 		if idErr != nil {
@@ -209,7 +209,7 @@ func (r *AccountResourceFiles) ensureRoot(ctx context.Context, tx *gorm.DB, prin
 		if idErr != nil {
 			return nil, nil, idErr
 		}
-		if err := tree.createSpaceOn(ctx, tx, spaceID, rootID, principalID, "account", now); err != nil {
+		if err := tree.createSpaceOn(ctx, tx, spaceID, rootID, principalID, spaceAccount, now); err != nil {
 			return nil, nil, err
 		}
 		space, err = q.Space.WithContext(ctx).Where(q.Space.ID.Eq(spaceID)).Take()
@@ -217,7 +217,7 @@ func (r *AccountResourceFiles) ensureRoot(ctx context.Context, tx *gorm.DB, prin
 	if err != nil {
 		return nil, nil, err
 	}
-	if space.ScopeKind != "account" || space.PrincipalID == nil || *space.PrincipalID != principalID {
+	if space.ScopeKind != spaceAccount || space.PrincipalID == nil || *space.PrincipalID != principalID {
 		return nil, nil, errRootUnbound
 	}
 	root, err := q.Node.WithContext(ctx).Where(q.Node.SpaceID.Eq(space.ID), q.Node.ParentID.IsNull(), q.Node.RootSlot.Eq(1), q.Node.State.Eq("active")).Take()
@@ -225,7 +225,7 @@ func (r *AccountResourceFiles) ensureRoot(ctx context.Context, tx *gorm.DB, prin
 		return nil, nil, err
 	}
 	if root.RootScope == nil {
-		if err := tree.bindRoot(ctx, tx, space.ID, nodeRevision{ID: root.ID, Version: root.Version}, space.Version, rootBinding{scope: "account", ownerID: principalID}, now); err != nil {
+		if err := tree.bindRoot(ctx, tx, space.ID, nodeRevision{ID: root.ID, Version: root.Version}, space.Version, rootBinding{scope: ownerAccount, ownerID: principalID}, now); err != nil {
 			return nil, nil, err
 		}
 		root, err = q.Node.WithContext(ctx).Where(q.Node.SpaceID.Eq(space.ID), q.Node.ID.Eq(root.ID)).Take()
@@ -248,11 +248,11 @@ func (r *AccountResourceFiles) ensureRoot(ctx context.Context, tx *gorm.DB, prin
 		if err != nil {
 			return nil, nil, err
 		}
-		if err := r.appendAudit(ctx, tx, actorID, "file_root_created", root.ID, map[string]any{"scope": "account"}); err != nil {
+		if err := r.appendAudit(ctx, tx, actorID, "file_root_created", root.ID, map[string]any{"scope": ownerAccount}); err != nil {
 			return nil, nil, err
 		}
 	}
-	if root.RootScope == nil || *root.RootScope != "account" || root.RootOwnerID == nil || *root.RootOwnerID != principalID {
+	if root.RootScope == nil || *root.RootScope != ownerAccount || root.RootOwnerID == nil || *root.RootOwnerID != principalID {
 		return nil, nil, errRootUnbound
 	}
 	return space, root, nil
@@ -298,7 +298,7 @@ func (r *AccountResourceFiles) Promote(ctx context.Context, tx *gorm.DB, princip
 	if err != nil {
 		return err
 	}
-	space, err := q.Space.WithContext(ctx).Where(q.Space.ID.Eq(candidate.SpaceID), q.Space.ScopeKind.Eq("account"), q.Space.PrincipalID.Eq(principalID)).Take()
+	space, err := q.Space.WithContext(ctx).Where(q.Space.ID.Eq(candidate.SpaceID), q.Space.ScopeKind.Eq(spaceAccount), q.Space.PrincipalID.Eq(principalID)).Take()
 	if err != nil || space == nil {
 		return ErrNotFound
 	}
@@ -339,7 +339,7 @@ func (r *AccountResourceFiles) Open(ctx context.Context, db *gorm.DB, principalI
 	if err != nil {
 		return nil, err
 	}
-	if _, err := q.Space.WithContext(ctx).Where(q.Space.ID.Eq(row.SpaceID), q.Space.ScopeKind.Eq("account"), q.Space.PrincipalID.Eq(principalID)).Take(); err != nil {
+	if _, err := q.Space.WithContext(ctx).Where(q.Space.ID.Eq(row.SpaceID), q.Space.ScopeKind.Eq(spaceAccount), q.Space.PrincipalID.Eq(principalID)).Take(); err != nil {
 		return nil, ErrNotFound
 	}
 	file, err := q.Node.WithContext(ctx).Where(q.Node.SpaceID.Eq(row.SpaceID), q.Node.ID.Eq(row.FileID), q.Node.State.Eq("active"), q.Node.ManagementMode.Eq("resource")).Take()

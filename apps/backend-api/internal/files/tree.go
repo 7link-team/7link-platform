@@ -21,7 +21,7 @@ var errHierarchy = errors.New("files: invalid or over-depth directory hierarchy"
 type directoryTree struct{ prefix string }
 
 func (t directoryTree) createSpace(ctx context.Context, db *gorm.DB, id, rootID, ownerID guid.ID, scope string, now time.Time) error {
-	if db == nil || id <= 0 || rootID <= 0 || ownerID <= 0 || (scope != "tenant" && scope != "account") {
+	if db == nil || id <= 0 || rootID <= 0 || ownerID <= 0 || (scope != spaceTenant && scope != spaceAccount) {
 		return errHierarchy
 	}
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -30,14 +30,14 @@ func (t directoryTree) createSpace(ctx context.Context, db *gorm.DB, id, rootID,
 }
 
 func (t directoryTree) createSpaceOn(ctx context.Context, tx *gorm.DB, id, rootID, ownerID guid.ID, scope string, now time.Time) error {
-	if tx == nil || id <= 0 || rootID <= 0 || ownerID <= 0 || (scope != "tenant" && scope != "account") {
+	if tx == nil || id <= 0 || rootID <= 0 || ownerID <= 0 || (scope != spaceTenant && scope != spaceAccount) {
 		return errHierarchy
 	}
 	if _, active := tx.Statement.ConnPool.(gorm.TxCommitter); !active {
 		return ErrAccountTransaction
 	}
 	space := model.Space{ID: id, ScopeKind: scope, Version: 1, CreatedAt: now.UnixMilli()}
-	if scope == "tenant" {
+	if scope == spaceTenant {
 		space.TenantID = &ownerID
 	} else {
 		space.PrincipalID = &ownerID

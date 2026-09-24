@@ -48,16 +48,16 @@ func validRootBinding(space *model.Space, node *model.Node, binding rootBinding)
 	if binding.ownerID <= 0 {
 		return false
 	}
-	if space.ScopeKind == "account" {
-		return space.PrincipalID != nil && *space.PrincipalID == binding.ownerID && space.TenantID == nil && space.SystemSlot == nil && binding.scope == "account" && node.ParentID == nil
+	if space.ScopeKind == spaceAccount {
+		return space.PrincipalID != nil && *space.PrincipalID == binding.ownerID && space.TenantID == nil && space.SystemSlot == nil && binding.scope == ownerAccount && node.ParentID == nil
 	}
-	if space.ScopeKind != "tenant" || space.TenantID == nil || *space.TenantID <= 0 || space.PrincipalID != nil || space.SystemSlot != nil {
+	if space.ScopeKind != spaceTenant || space.TenantID == nil || *space.TenantID <= 0 || space.PrincipalID != nil || space.SystemSlot != nil {
 		return false
 	}
 	switch binding.scope {
-	case "tenant":
+	case ownerTenant:
 		return binding.ownerID == *space.TenantID
-	case "entity", "department", "personal":
+	case ownerEntity, ownerDepartment, ownerPersonal:
 		return true
 	default:
 		return false

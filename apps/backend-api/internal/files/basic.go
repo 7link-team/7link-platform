@@ -35,7 +35,7 @@ func (s *operationService) ensureOwnedRoot(ctx context.Context, scope string) (f
 		return result, err
 	}
 	account := claims.TenantID == 0
-	if (account && scope != "account") || (!account && scope != "personal") {
+	if (account && scope != ownerAccount) || (!account && scope != ownerPersonal) {
 		return result, errOperationForbidden
 	}
 	workContext, cancel := context.WithTimeout(ctx, s.timeout)
@@ -61,9 +61,9 @@ func (s *operationService) ensureOwnedRoot(ctx context.Context, scope string) (f
 		}
 
 		q := query.Bind(tx, tree.prefix)
-		spaceQuery := q.Space.WithContext(workContext).Where(q.Space.ScopeKind.Eq("tenant"), q.Space.TenantID.Eq(claims.TenantID))
+		spaceQuery := q.Space.WithContext(workContext).Where(q.Space.ScopeKind.Eq(spaceTenant), q.Space.TenantID.Eq(claims.TenantID))
 		if account {
-			spaceQuery = q.Space.WithContext(workContext).Where(q.Space.ScopeKind.Eq("account"), q.Space.PrincipalID.Eq(claims.PrincipalID))
+			spaceQuery = q.Space.WithContext(workContext).Where(q.Space.ScopeKind.Eq(spaceAccount), q.Space.PrincipalID.Eq(claims.PrincipalID))
 		}
 		space, err := spaceQuery.Take()
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -75,9 +75,9 @@ func (s *operationService) ensureOwnedRoot(ctx context.Context, scope string) (f
 			if idErr != nil {
 				return idErr
 			}
-			ownerID, spaceScope := claims.TenantID, "tenant"
+			ownerID, spaceScope := claims.TenantID, spaceTenant
 			if account {
-				ownerID, spaceScope = claims.PrincipalID, "account"
+				ownerID, spaceScope = claims.PrincipalID, spaceAccount
 			}
 			if err := tree.createSpaceOn(workContext, tx, spaceID, rootID, ownerID, spaceScope, time.Now()); err != nil {
 				return err
@@ -87,8 +87,8 @@ func (s *operationService) ensureOwnedRoot(ctx context.Context, scope string) (f
 		if err != nil {
 			return err
 		}
-		if (!account && (space.ScopeKind != "tenant" || space.TenantID == nil || *space.TenantID != claims.TenantID)) ||
-			(account && (space.ScopeKind != "account" || space.PrincipalID == nil || *space.PrincipalID != claims.PrincipalID)) {
+		if (!account && (space.ScopeKind != spaceTenant || space.TenantID == nil || *space.TenantID != claims.TenantID)) ||
+			(account && (space.ScopeKind != spaceAccount || space.PrincipalID == nil || *space.PrincipalID != claims.PrincipalID)) {
 			return errOperationForbidden
 		}
 		q, space, err = tree.lockOperationSpace(workContext, tx, space.ID)
@@ -520,15 +520,15 @@ func rootDisplayName(row *model.Node) string {
 		return browserNodeName(row)
 	}
 	switch *row.RootScope {
-	case "account":
+	case ownerAccount:
 		return "Account files"
-	case "personal":
+	case ownerPersonal:
 		return "Personal files"
-	case "tenant":
+	case ownerTenant:
 		return "Tenant files"
-	case "entity":
+	case ownerEntity:
 		return "Entity files"
-	case "department":
+	case ownerDepartment:
 		return "Department files"
 	default:
 		return browserNodeName(row)

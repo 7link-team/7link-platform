@@ -136,21 +136,21 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		Summary: "List my file roots", Tags: []string{"files"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, func(ctx context.Context, input *filePageInput) (*respx.Body[filePage], error) {
 		claims, _ := authn.FromContext(ctx)
-		return listFileCollection(ctx, service, fileCollection{scope: "account", ownerID: claims.PrincipalID}, *input)
+		return listFileCollection(ctx, service, fileCollection{scope: ownerAccount, ownerID: claims.PrincipalID}, *input)
 	})
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "list-tenant-files", Method: http.MethodGet, Path: "/files",
 		Summary: "List tenant file roots", Tags: []string{"files"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *tenantFilePageInput) (*respx.Body[filePage], error) {
 		claims, _ := authn.FromContext(ctx)
-		return listFileCollection(ctx, service, fileCollection{scope: "tenant", tenantID: claims.TenantID, ownerID: claims.TenantID}, input.filePageInput)
+		return listFileCollection(ctx, service, fileCollection{scope: ownerTenant, tenantID: claims.TenantID, ownerID: claims.TenantID}, input.filePageInput)
 	})
 	authz.RegisterOwnedTenantMember(registrar, api, huma.Operation{
 		OperationID: "list-entity-files", Method: http.MethodGet, Path: "/entities/{entity_id}/files",
 		Summary: "List entity file roots", Tags: []string{"files"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "entity_id", entityOwner, func(ctx context.Context, input *entityFilePageInput) (*respx.Body[filePage], error) {
 		claims, _ := authn.FromContext(ctx)
-		return listFileCollection(ctx, service, fileCollection{scope: "entity", tenantID: claims.TenantID, ownerID: claims.EntityID}, input.filePageInput)
+		return listFileCollection(ctx, service, fileCollection{scope: ownerEntity, tenantID: claims.TenantID, ownerID: claims.EntityID}, input.filePageInput)
 	})
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "list-department-files", Method: http.MethodGet, Path: "/departments/{department_id}/files",
@@ -161,7 +161,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		if err != nil {
 			return nil, err
 		}
-		return listFileCollection(ctx, service, fileCollection{scope: "department", tenantID: claims.TenantID, ownerID: departmentID}, input.filePageInput)
+		return listFileCollection(ctx, service, fileCollection{scope: ownerDepartment, tenantID: claims.TenantID, ownerID: departmentID}, input.filePageInput)
 	})
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
@@ -362,7 +362,7 @@ func createFile(ctx context.Context, service *operationService, form *fileCreate
 	var result fileEntryView
 	var err error
 	if strings.TrimSpace(form.ParentID) == "" {
-		if !allowRoot || form.Kind != "directory" || form.Scope != "account" || strings.TrimSpace(form.Name) != "" || form.File.IsSet {
+		if !allowRoot || form.Kind != "directory" || form.Scope != ownerAccount || strings.TrimSpace(form.Name) != "" || form.File.IsSet {
 			return nil, huma.Error422UnprocessableEntity("invalid_file_root")
 		}
 		result, err = service.ensureOwnedRoot(ctx, form.Scope)

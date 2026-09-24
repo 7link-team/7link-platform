@@ -38,17 +38,17 @@ func (m *Module) resolveFileOwner(ctx context.Context, fileID guid.ID) (authz.Re
 		return authz.ResourceOwner{}, false, err
 	}
 	switch owner.Scope {
-	case "account", "personal":
-		if owner.ID <= 0 || (owner.Scope == "account" && (space.PrincipalID == nil || *space.PrincipalID != owner.ID)) {
+	case ownerAccount, ownerPersonal:
+		if owner.ID <= 0 || (owner.Scope == ownerAccount && (space.PrincipalID == nil || *space.PrincipalID != owner.ID)) {
 			return authz.ResourceOwner{}, false, errFileACL
 		}
 		return authz.ResourceOwner{PrincipalID: owner.ID}, true, nil
-	case "tenant":
+	case ownerTenant:
 		if space.TenantID == nil || *space.TenantID != owner.ID {
 			return authz.ResourceOwner{}, false, errFileACL
 		}
 		return authz.ResourceOwner{TenantID: owner.ID}, true, nil
-	case "entity":
+	case ownerEntity:
 		resolved, found, err := m.entityOwner(ctx, owner.ID)
 		if err != nil || !found {
 			return authz.ResourceOwner{}, found, err
@@ -57,7 +57,7 @@ func (m *Module) resolveFileOwner(ctx context.Context, fileID guid.ID) (authz.Re
 			return authz.ResourceOwner{}, false, errFileACL
 		}
 		return resolved, true, nil
-	case "department":
+	case ownerDepartment:
 		resolved, found, err := m.deptOwner(ctx, owner.ID)
 		if err != nil || !found {
 			return authz.ResourceOwner{}, found, err
@@ -89,16 +89,16 @@ func (m *Module) provisionOrganizationRoot(
 
 	var references core.AuthorizationReferences
 	switch input.Scope {
-	case "tenant":
+	case ownerTenant:
 		if input.OwnerID != input.TenantID || input.EntityID != 0 {
 			return 0, errOperationInput
 		}
-	case "entity":
+	case ownerEntity:
 		if input.EntityID != 0 {
 			return 0, errOperationInput
 		}
 		references.EntityID = input.OwnerID
-	case "department":
+	case ownerDepartment:
 		if input.EntityID <= 0 {
 			return 0, errOperationInput
 		}
@@ -118,7 +118,7 @@ func (m *Module) provisionOrganizationRoot(
 
 	tree := directoryTree{prefix: m.runtime.TablePrefix()}
 	q := query.Bind(tx, tree.prefix)
-	space, err := q.Space.WithContext(ctx).Where(q.Space.ScopeKind.Eq("tenant"), q.Space.TenantID.Eq(input.TenantID)).Take()
+	space, err := q.Space.WithContext(ctx).Where(q.Space.ScopeKind.Eq(spaceTenant), q.Space.TenantID.Eq(input.TenantID)).Take()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		spaceID, idErr := m.nextFileID()
 		if idErr != nil {
@@ -128,7 +128,7 @@ func (m *Module) provisionOrganizationRoot(
 		if idErr != nil {
 			return 0, idErr
 		}
-		if err := tree.createSpaceOn(ctx, tx, spaceID, physicalRootID, input.TenantID, "tenant", now); err != nil {
+		if err := tree.createSpaceOn(ctx, tx, spaceID, physicalRootID, input.TenantID, spaceTenant, now); err != nil {
 			return 0, err
 		}
 		space, err = q.Space.WithContext(ctx).Where(q.Space.ID.Eq(spaceID)).Take()
@@ -136,7 +136,7 @@ func (m *Module) provisionOrganizationRoot(
 	if err != nil {
 		return 0, err
 	}
-	if space.ScopeKind != "tenant" || space.TenantID == nil || *space.TenantID != input.TenantID || space.PrincipalID != nil {
+	if space.ScopeKind != spaceTenant || space.TenantID == nil || *space.TenantID != input.TenantID || space.PrincipalID != nil {
 		return 0, errOperationForbidden
 	}
 
@@ -211,11 +211,11 @@ func (m *Module) organizationRootHasContent(
 		return false, ErrAccountTransaction
 	}
 	switch input.Scope {
-	case "entity":
+	case ownerEntity:
 		if input.EntityID != 0 {
 			return false, errOperationInput
 		}
-	case "department":
+	case ownerDepartment:
 		if input.EntityID <= 0 {
 			return false, errOperationInput
 		}
@@ -226,7 +226,7 @@ func (m *Module) organizationRootHasContent(
 	tree := directoryTree{prefix: m.runtime.TablePrefix()}
 	q := query.Bind(tx, tree.prefix)
 	space, err := q.Space.WithContext(ctx).Where(
-		q.Space.ScopeKind.Eq("tenant"), q.Space.TenantID.Eq(input.TenantID),
+		q.Space.ScopeKind.Eq(spaceTenant), q.Space.TenantID.Eq(input.TenantID),
 	).Take()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return false, nil

@@ -109,15 +109,15 @@ func (collection fileCollection) validate(claims *authn.Claims) error {
 		return errOperationInput
 	}
 	switch collection.scope {
-	case "account":
+	case ownerAccount:
 		if collection.tenantID != 0 || claims.TenantID != 0 || claims.EntityID != 0 || collection.ownerID != claims.PrincipalID {
 			return errOperationForbidden
 		}
-	case "tenant":
+	case ownerTenant:
 		if collection.tenantID != collection.ownerID || claims.TenantID != collection.tenantID {
 			return errOperationForbidden
 		}
-	case "entity", "department":
+	case ownerEntity, ownerDepartment:
 		if collection.tenantID <= 0 || claims.TenantID != collection.tenantID || claims.EntityID <= 0 {
 			return errOperationForbidden
 		}
@@ -306,10 +306,10 @@ func (t directoryTree) authorizedRoots(ctx context.Context, tx *gorm.DB, authori
 		return filePage{}, errOperationInput
 	}
 	spaceQuery := q.Space.WithContext(ctx)
-	if collection.scope == "account" {
-		spaceQuery = spaceQuery.Where(q.Space.ScopeKind.Eq("account"), q.Space.PrincipalID.Eq(collection.ownerID))
+	if collection.scope == ownerAccount {
+		spaceQuery = spaceQuery.Where(q.Space.ScopeKind.Eq(spaceAccount), q.Space.PrincipalID.Eq(collection.ownerID))
 	} else {
-		spaceQuery = spaceQuery.Where(q.Space.ScopeKind.Eq("tenant"), q.Space.TenantID.Eq(collection.tenantID))
+		spaceQuery = spaceQuery.Where(q.Space.ScopeKind.Eq(spaceTenant), q.Space.TenantID.Eq(collection.tenantID))
 	}
 	space, err := spaceQuery.Take()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -384,10 +384,10 @@ func (t directoryTree) authorizedTrash(ctx context.Context, tx *gorm.DB, authori
 		return filePage{}, errOperationInput
 	}
 	spaceQuery := q.Space.WithContext(ctx)
-	if collection.scope == "account" {
-		spaceQuery = spaceQuery.Where(q.Space.ScopeKind.Eq("account"), q.Space.PrincipalID.Eq(collection.ownerID))
+	if collection.scope == ownerAccount {
+		spaceQuery = spaceQuery.Where(q.Space.ScopeKind.Eq(spaceAccount), q.Space.PrincipalID.Eq(collection.ownerID))
 	} else {
-		spaceQuery = spaceQuery.Where(q.Space.ScopeKind.Eq("tenant"), q.Space.TenantID.Eq(collection.tenantID))
+		spaceQuery = spaceQuery.Where(q.Space.ScopeKind.Eq(spaceTenant), q.Space.TenantID.Eq(collection.tenantID))
 	}
 	space, err := spaceQuery.Take()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -862,17 +862,17 @@ func setRootOwnership(view *fileEntryView, space *model.Space, row *model.Node) 
 	}
 	ownerID := binding.ownerID
 	switch binding.scope {
-	case "account":
+	case ownerAccount:
 		view.PrincipalID = &ownerID
-	case "tenant":
+	case ownerTenant:
 		view.TenantID = &ownerID
-	case "entity":
+	case ownerEntity:
 		tenantID := *space.TenantID
 		view.TenantID, view.EntityID = &tenantID, &ownerID
-	case "department":
+	case ownerDepartment:
 		tenantID := *space.TenantID
 		view.TenantID, view.DepartmentID = &tenantID, &ownerID
-	case "personal":
+	case ownerPersonal:
 		tenantID := *space.TenantID
 		view.TenantID, view.PrincipalID = &tenantID, &ownerID
 	default:

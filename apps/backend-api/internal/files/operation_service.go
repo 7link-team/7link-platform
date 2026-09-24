@@ -78,8 +78,8 @@ func (s *operationService) run(ctx context.Context, key string, input immediateO
 		if err != nil {
 			return err
 		}
-		if (claims.TenantID == 0 && (space.ScopeKind != "account" || space.PrincipalID == nil || *space.PrincipalID != claims.PrincipalID)) ||
-			(claims.TenantID > 0 && (space.ScopeKind != "tenant" || space.TenantID == nil || *space.TenantID != claims.TenantID)) {
+		if (claims.TenantID == 0 && (space.ScopeKind != spaceAccount || space.PrincipalID == nil || *space.PrincipalID != claims.PrincipalID)) ||
+			(claims.TenantID > 0 && (space.ScopeKind != spaceTenant || space.TenantID == nil || *space.TenantID != claims.TenantID)) {
 			// A caller must not be able to distinguish an absent destination
 			// from an active node owned by another account or tenant.
 			return ErrNotFound

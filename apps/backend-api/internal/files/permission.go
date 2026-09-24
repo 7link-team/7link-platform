@@ -299,9 +299,9 @@ func (a *nodeAuthorizer) authorizeLoaded(
 		return false, errOperationForbidden
 	}
 	if a.account {
-		if permissions.space.ScopeKind != "account" || permissions.space.PrincipalID == nil ||
+		if permissions.space.ScopeKind != spaceAccount || permissions.space.PrincipalID == nil ||
 			*permissions.space.PrincipalID != a.actorID || permissions.space.TenantID != nil ||
-			permissions.root.scope != "account" || permissions.root.ownerID != a.actorID {
+			permissions.root.scope != ownerAccount || permissions.root.ownerID != a.actorID {
 			return false, errOperationForbidden
 		}
 		subjects := make(map[aclSubject]struct{}, len(a.acl)+1)
@@ -318,10 +318,10 @@ func (a *nodeAuthorizer) authorizeLoaded(
 		}
 		return true, nil
 	}
-	if permissions.space.ScopeKind != "tenant" || permissions.space.TenantID == nil || *permissions.space.TenantID != a.tenantID {
+	if permissions.space.ScopeKind != spaceTenant || permissions.space.TenantID == nil || *permissions.space.TenantID != a.tenantID {
 		return false, errOperationForbidden
 	}
-	if !a.tenantView && permissions.root.scope == "entity" && permissions.root.ownerID != a.entityID {
+	if !a.tenantView && permissions.root.scope == ownerEntity && permissions.root.ownerID != a.entityID {
 		return false, errOperationForbidden
 	}
 	if err := a.validateRootOnce(ctx, tx, permissions.root); err != nil {
@@ -334,7 +334,7 @@ func (a *nodeAuthorizer) authorizeLoaded(
 		return false, errOperationForbidden
 	}
 	subjects := a.acl
-	if (permissions.root.scope == "personal" || permissions.root.scope == "account") && permissions.root.ownerID == a.actorID {
+	if (permissions.root.scope == ownerPersonal || permissions.root.scope == ownerAccount) && permissions.root.ownerID == a.actorID {
 		subjects = make(map[aclSubject]struct{}, len(a.acl)+1)
 		for subject := range a.acl {
 			subjects[subject] = struct{}{}
@@ -383,16 +383,16 @@ func (a *nodeAuthorizer) constraint(ctx context.Context, tx *gorm.DB, permission
 func (a *nodeAuthorizer) validateRoot(ctx context.Context, tx *gorm.DB, root rootBinding) error {
 	var references core.AuthorizationReferences
 	switch root.scope {
-	case "tenant":
+	case ownerTenant:
 		return nil
-	case "entity":
+	case ownerEntity:
 		references.EntityID = root.ownerID
-	case "department":
+	case ownerDepartment:
 		references.DepartmentID = root.ownerID
 		if !a.tenantView {
 			references.EntityID = a.entityID
 		}
-	case "personal", "account":
+	case ownerPersonal, ownerAccount:
 		references.PrincipalID = root.ownerID
 	default:
 		return errOperationForbidden
@@ -427,9 +427,9 @@ func managementReadAction(action string) bool {
 
 func constraintAllowsRoot(constraint authz.DataConstraint, root rootBinding, currentEntityID guid.ID) bool {
 	entityID := guid.ID(0)
-	if root.scope == "entity" {
+	if root.scope == ownerEntity {
 		entityID = root.ownerID
-	} else if root.scope == "department" {
+	} else if root.scope == ownerDepartment {
 		entityID = currentEntityID
 	}
 	if entityID > 0 && slices.Contains(constraint.DeniedIDs, entityID.String()) {
@@ -440,13 +440,13 @@ func constraintAllowsRoot(constraint authz.DataConstraint, root rootBinding, cur
 	}
 	entityAllowed := entityID > 0 && slices.Contains(constraint.ResourceIDs, entityID.String())
 	switch root.scope {
-	case "tenant":
+	case ownerTenant:
 		return false
-	case "entity":
+	case ownerEntity:
 		return entityAllowed
-	case "department":
+	case ownerDepartment:
 		return entityAllowed || slices.Contains(constraint.DepartmentIDs, root.ownerID.String())
-	case "personal":
+	case ownerPersonal:
 		return slices.Contains(constraint.OwnerIDs, root.ownerID.String())
 	default:
 		return false
@@ -454,5 +454,5 @@ func constraintAllowsRoot(constraint authz.DataConstraint, root rootBinding, cur
 }
 
 func organizationRoot(scope string) bool {
-	return scope == "tenant" || scope == "entity" || scope == "department"
+	return scope == ownerTenant || scope == ownerEntity || scope == ownerDepartment
 }
