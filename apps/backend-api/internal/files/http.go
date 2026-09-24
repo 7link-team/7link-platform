@@ -150,7 +150,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		Summary: "List entity file roots", Tags: []string{"files"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "entity_id", entityOwner, func(ctx context.Context, input *entityFilePageInput) (*respx.Body[filePage], error) {
 		claims, _ := authn.FromContext(ctx)
-		return listFileCollection(ctx, service, fileCollection{scope: "context", tenantID: claims.TenantID, ownerID: claims.EntityID}, input.filePageInput)
+		return listFileCollection(ctx, service, fileCollection{scope: "entity", tenantID: claims.TenantID, ownerID: claims.EntityID}, input.filePageInput)
 	})
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "list-department-files", Method: http.MethodGet, Path: "/departments/{department_id}/files",

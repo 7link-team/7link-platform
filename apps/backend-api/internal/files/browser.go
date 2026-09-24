@@ -117,9 +117,8 @@ func (collection fileCollection) validate(claims *authn.Claims) error {
 		if collection.tenantID != collection.ownerID || claims.TenantID != collection.tenantID {
 			return errOperationForbidden
 		}
-	case "entity", "department", "context":
-		if collection.tenantID <= 0 || claims.TenantID != collection.tenantID ||
-			(collection.scope != "context" && claims.EntityID <= 0) {
+	case "entity", "department":
+		if collection.tenantID <= 0 || claims.TenantID != collection.tenantID || claims.EntityID <= 0 {
 			return errOperationForbidden
 		}
 	default:
@@ -322,18 +321,10 @@ func (t directoryTree) authorizedRoots(ctx context.Context, tx *gorm.DB, authori
 	after, scanned, exhausted := request.After, 0, false
 	for len(result.Items) <= request.Limit && scanned < maxBrowserScan {
 		batch := min(100, maxBrowserScan-scanned)
-		nodes := q.Node.WithContext(ctx).Where(
-			q.Node.SpaceID.Eq(space.ID), q.Node.State.Eq("active"), q.Node.ID.Gt(after),
-		)
-		if collection.scope == "context" {
-			nodes = nodes.Where(q.Node.RootScope.IsNotNull())
-		} else {
-			nodes = nodes.Where(
-				q.Node.RootScope.Eq(collection.scope),
-				q.Node.RootOwnerID.Eq(collection.ownerID),
-			)
-		}
-		rows, err := nodes.Order(q.Node.ID.Asc()).Limit(batch).Find()
+		rows, err := q.Node.WithContext(ctx).Where(
+			q.Node.SpaceID.Eq(space.ID), q.Node.RootScope.Eq(collection.scope),
+			q.Node.RootOwnerID.Eq(collection.ownerID), q.Node.State.Eq("active"), q.Node.ID.Gt(after),
+		).Order(q.Node.ID.Asc()).Limit(batch).Find()
 		if err != nil {
 			return filePage{}, err
 		}
@@ -440,8 +431,7 @@ func (t directoryTree) authorizedTrash(ctx context.Context, tx *gorm.DB, authori
 			if !ok {
 				return filePage{}, errRootUnbound
 			}
-			if collection.scope == "context" ||
-				(owner.Scope == collection.scope && owner.ID == collection.ownerID) {
+			if owner.Scope == collection.scope && owner.ID == collection.ownerID {
 				ids = append(ids, row.ID)
 				owned[row.ID] = true
 			}
