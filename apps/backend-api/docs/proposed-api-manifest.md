@@ -2,7 +2,12 @@
 
 状态：提案，确认前不得修改运行时接口
 
-日期：2026-09-23
+日期：2026-09-23（2026-09-24 补齐逐条映射）
+
+清单分两部分：前半是目标契约，按 13 个 Swagger 域给出优化后的资源和 URI；
+末尾的「旧接口到新接口的逐条映射」把当前生成文档里的 295 个操作逐个写明去向，
+零条未映射。两部分合起来才构成一份可实施的清单 —— 只有目标而没有映射，
+说明不了迁移中有没有东西被漏掉。
 
 ## 契约规则
 
@@ -390,4 +395,331 @@ Platform 当前只开放已实现的子集：archive status、archives、attempt
    `GET, DELETE /sessions/current` 作为第二个凭据绑定别名并给出了理由。两者必须一致：要么修订 D74
    承认 Session 发现这一例外，要么去掉 `/sessions/current`。当前以未解决状态记录，不默认按任一方实施。
 
+### 哪条决策挡住哪些操作
+
+逐条映射里有 11 个操作标为**未决**。它们不是还没想，是目标取决于上面某条决策；
+那条决策定下来之前，这 11 条不能实施，其余 284 条可以。
+
+| 决策 | 挡住的操作数 | 具体是哪些 |
+| --- | --- | --- |
+| 1（Membership 身份） | 5 | `DELETE /me/memberships/{tenant_id}`、`GET`/`PATCH /tenants/{tenant_id}/members/{subject}`、该成员的 `/roles` 与 `/authorization-sources` |
+| 2（Relationship 身份） | 1 | `DELETE /tenants/{tenant_id}/relationships`（当前靠查询参数选中要删的关系） |
+| 4（Role Directory Binding 拆分） | 3 | `GET`/`PUT`/`DELETE /roles/{role_id}/directory-bindings*` |
+| 8（Field 能力查询） | 2 | `GET /tenants/{tenant_id}/field-catalog` 与 `/effective-fields` |
+
+其余五条（3 一次性替换 Login 家族、5 Account Closure singleton、6 Todo media type、
+7 双地址范围、9 D74 措辞）是契约取舍，不挡任何操作的实施路径 —— 逐条映射里它们
+已经有确定去向。
+
 以上决策和本清单未明确确认前，不得修改运行时路由。
+
+## 旧接口到新接口的逐条映射
+
+这张表是本清单的完整性证明：当前生成文档里的每一个操作都在这里出现一次，
+并写明它在新契约里的去向。没有这张表，前面的分组表只说明了目标长什么样，
+说明不了有没有东西在迁移中被漏掉。
+
+当前操作总数 295，保持 173，删除 3，合并 24，拆分 2，改名 82，未决 11。
+
+处置的含义：**保持**指路径与方法不变（参数命名与共享 component 仍会统一）；
+**改名**指同一个资源换到规范 URI；**合并**指多个操作收敛成一个；
+**拆分**指一个操作按真实资源分成多个；**删除**指不再公开；
+**未决**指目标依赖尚未确认的决策，实施前必须先把那条决策定下来。
+
+| 当前分组 | 方法 | 当前 URI | 处置 | 去向 |
+| --- | --- | --- | --- | --- |
+| `access-control` | PUT | `/access-requests/{request_id}/decision` | 改名 | PUT /role-access-requests/{role_access_request_id}/decision |
+| `access-control` | PUT | `/access-requests/{request_id}/grant-revocation` | 改名 | PUT /role-access-requests/{role_access_request_id}/grant-revocation |
+| `access-control` | PUT | `/access-requests/{request_id}/withdrawal` | 改名 | PUT /role-access-requests/{role_access_request_id}/withdrawal |
+| `access-control` | GET | `/access-reviews/{review_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `access-control` | PATCH | `/access-reviews/{review_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `access-control` | PUT | `/access-reviews/{review_id}/items/{item_id}/decision` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `access-control` | DELETE | `/menus/{menu_id}` | 改名 | DELETE /tenants/{tenant_id}/menus/{menu_id} |
+| `access-control` | GET | `/menus/{menu_id}` | 改名 | GET /tenants/{tenant_id}/menus/{menu_id} |
+| `access-control` | PATCH | `/menus/{menu_id}` | 改名 | PATCH /tenants/{tenant_id}/menus/{menu_id} |
+| `access-control` | GET | `/platform/permission-catalog` | 改名 | GET /platform/permission-definitions |
+| `access-control` | DELETE | `/roles/{role_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `access-control` | GET | `/roles/{role_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `access-control` | PATCH | `/roles/{role_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `access-control` | GET | `/roles/{role_id}/data-scope` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `access-control` | PUT | `/roles/{role_id}/data-scope` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `access-control` | GET | `/roles/{role_id}/directory-bindings` | 未决 | 拆成 GET /roles/{role_id}/group-bindings 与 /position-bindings，等决策 4 |
+| `access-control` | DELETE | `/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}` | 未决 | 拆成 DELETE /roles/{role_id}/group-bindings/{group_id} 与 /position-bindings/{position_id}，等决策 4 |
+| `access-control` | PUT | `/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}` | 未决 | 拆成 PUT /roles/{role_id}/group-bindings/{group_id} 与 /position-bindings/{position_id}，等决策 4 |
+| `access-control` | GET | `/roles/{role_id}/members` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `access-control` | DELETE | `/roles/{role_id}/members/{subject}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `access-control` | PUT | `/roles/{role_id}/members/{subject}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `access-control` | GET | `/roles/{role_id}/permission-grants` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `access-control` | GET | `/roles/{role_id}/permissions` | 改名 | GET /roles/{role_id}/permission-grants |
+| `access-control` | DELETE | `/roles/{role_id}/permissions/{permission_code}` | 改名 | DELETE /roles/{role_id}/permission-grants/{permission_code} |
+| `access-control` | PUT | `/roles/{role_id}/permissions/{permission_code}` | 改名 | PUT /roles/{role_id}/permission-grants/{permission_code} |
+| `access-control` | DELETE | `/roles/{role_id}/permissions/{permission_code}/condition` | 合并 | PATCH /roles/{role_id}/permission-grants/{permission_code}，condition 置空 |
+| `access-control` | PUT | `/roles/{role_id}/permissions/{permission_code}/condition` | 合并 | PATCH /roles/{role_id}/permission-grants/{permission_code}，condition 是 grant 的字段 |
+| `access-control` | GET | `/scope-model` | 改名 | GET /authorization-model |
+| `access-control` | GET | `/tenants/{tenant_id}/access-requests` | 改名 | GET /tenants/{tenant_id}/role-access-requests |
+| `access-control` | POST | `/tenants/{tenant_id}/access-requests` | 改名 | POST /tenants/{tenant_id}/role-access-requests |
+| `access-control` | GET | `/tenants/{tenant_id}/access-reviews` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `access-control` | POST | `/tenants/{tenant_id}/access-reviews` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `access-control` | POST | `/tenants/{tenant_id}/authorization-checks` | 合并 | POST /tenants/{tenant_id}/authorization-evaluations |
+| `access-control` | POST | `/tenants/{tenant_id}/authorization-constraint-evaluations` | 合并 | POST /tenants/{tenant_id}/authorization-evaluations |
+| `access-control` | POST | `/tenants/{tenant_id}/authorization-explanations` | 合并 | POST /tenants/{tenant_id}/authorization-evaluations |
+| `access-control` | GET | `/tenants/{tenant_id}/effective-fields` | 未决 | 决策 8：本人自助投影，与 field-catalog 授权模型不同，不能并成一条 |
+| `access-control` | GET | `/tenants/{tenant_id}/entities/{entity_id}/me/permissions` | 改名 | GET /principals/{principal_id}/permissions，entity 求值上下文 |
+| `access-control` | GET | `/tenants/{tenant_id}/field-catalog` | 未决 | 决策 8：管理员目录，与 effective-fields 授权模型不同，不能并成一条 |
+| `access-control` | GET | `/tenants/{tenant_id}/field-policies` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `access-control` | DELETE | `/tenants/{tenant_id}/field-policies/{resource}/{field}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `access-control` | PUT | `/tenants/{tenant_id}/field-policies/{resource}/{field}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `access-control` | GET | `/tenants/{tenant_id}/me/access-requests` | 合并 | GET /tenants/{tenant_id}/role-access-requests，按申请人过滤 |
+| `access-control` | GET | `/tenants/{tenant_id}/me/menus` | 改名 | GET /principals/{principal_id}/menus |
+| `access-control` | GET | `/tenants/{tenant_id}/me/permissions` | 改名 | GET /principals/{principal_id}/permissions，tenant 求值上下文 |
+| `access-control` | GET | `/tenants/{tenant_id}/menu-catalog` | 改名 | GET /tenants/{tenant_id}/menu-definitions |
+| `access-control` | GET | `/tenants/{tenant_id}/menus` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `access-control` | POST | `/tenants/{tenant_id}/menus` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `access-control` | GET | `/tenants/{tenant_id}/permission-catalog` | 改名 | GET /tenants/{tenant_id}/permission-definitions |
+| `access-control` | DELETE | `/tenants/{tenant_id}/relationships` | 未决 | DELETE /authorization-relationships/{authorization_relationship_id}，等决策 2 |
+| `access-control` | GET | `/tenants/{tenant_id}/relationships` | 改名 | GET /tenants/{tenant_id}/authorization-relationships |
+| `access-control` | POST | `/tenants/{tenant_id}/relationships` | 改名 | POST /tenants/{tenant_id}/authorization-relationships |
+| `access-control` | GET | `/tenants/{tenant_id}/requestable-roles` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `access-control` | GET | `/tenants/{tenant_id}/roles` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `access-control` | POST | `/tenants/{tenant_id}/roles` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `account` | GET | `/me` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `account` | GET | `/me/avatar` | 改名 | GET /principals/{principal_id}/avatar |
+| `account` | PUT | `/me/avatar` | 改名 | PUT /principals/{principal_id}/avatar |
+| `account` | POST | `/me/avatar-candidates` | 改名 | POST /principals/{principal_id}/avatar-candidates |
+| `account` | GET | `/me/avatar-candidates/{candidate_id}` | 改名 | GET /principals/{principal_id}/avatar-candidates/{avatar_candidate_id} |
+| `account` | DELETE | `/me/closure-request` | 改名 | DELETE /principals/{principal_id}/account-closure |
+| `account` | GET | `/me/closure-request` | 改名 | GET /principals/{principal_id}/account-closure |
+| `account` | POST | `/me/closure-request` | 改名 | PUT /principals/{principal_id}/account-closure |
+| `account` | GET | `/me/identity-link-providers` | 改名 | GET /principals/{principal_id}/identity-link-providers |
+| `account` | POST | `/me/identity-link-transactions` | 改名 | POST /principals/{principal_id}/identity-link-transactions |
+| `account` | GET | `/me/identity-links` | 改名 | GET /principals/{principal_id}/identity-links |
+| `account` | DELETE | `/me/identity-links/{link_id}` | 改名 | DELETE /principals/{principal_id}/identity-links/{identity_link_id} |
+| `account` | GET | `/me/memberships` | 改名 | GET /principals/{principal_id}/memberships |
+| `account` | DELETE | `/me/memberships/{tenant_id}` | 未决 | DELETE /tenant-memberships/{membership_id}，等决策 1 定下 membership 身份 |
+| `account` | GET | `/me/mfa` | 改名 | GET /principals/{principal_id}/mfa |
+| `account` | PUT | `/me/mfa/recovery-codes` | 改名 | PUT /principals/{principal_id}/mfa/recovery-codes |
+| `account` | DELETE | `/me/mfa/totp` | 改名 | DELETE /principals/{principal_id}/mfa/totp |
+| `account` | POST | `/me/mfa/totp` | 改名 | PUT /principals/{principal_id}/mfa/totp |
+| `account` | POST | `/me/mfa/totp-enrollments` | 改名 | POST /principals/{principal_id}/mfa/totp-enrollments |
+| `account` | GET | `/me/oauth-consents` | 改名 | GET /principals/{principal_id}/oauth-consents |
+| `account` | DELETE | `/me/oauth-consents/{client_id}` | 改名 | DELETE /principals/{principal_id}/oauth-consents/{client_id} |
+| `account` | POST | `/me/passkey-registration-challenges` | 改名 | POST /principals/{principal_id}/passkey-challenges |
+| `account` | GET | `/me/passkeys` | 改名 | GET /principals/{principal_id}/passkeys |
+| `account` | POST | `/me/passkeys` | 改名 | POST /principals/{principal_id}/passkeys |
+| `account` | DELETE | `/me/passkeys/{passkey_id}` | 改名 | DELETE /principals/{principal_id}/passkeys/{passkey_id} |
+| `account` | PATCH | `/me/passkeys/{passkey_id}` | 改名 | PATCH /principals/{principal_id}/passkeys/{passkey_id} |
+| `account` | PATCH | `/me/password` | 改名 | PATCH /principals/{principal_id}/password |
+| `account` | GET | `/me/permissions` | 改名 | GET /principals/{principal_id}/permissions |
+| `account` | GET | `/me/personal-token-permissions` | 删除 | Token 创建时直接校验可委托权限，不另设目录 |
+| `account` | POST | `/me/personal-token-preparations` | 改名 | POST /principals/{principal_id}/token-preparations |
+| `account` | GET | `/me/personal-tokens` | 改名 | GET /principals/{principal_id}/personal-tokens |
+| `account` | POST | `/me/personal-tokens` | 改名 | POST /principals/{principal_id}/personal-tokens |
+| `account` | DELETE | `/me/personal-tokens/{token_id}` | 改名 | DELETE /principals/{principal_id}/personal-tokens/{token_id} |
+| `account` | POST | `/me/reauthentication/challenges` | 合并 | POST /reauthentication-transactions |
+| `account` | GET | `/me/reauthentication/methods` | 合并 | GET /reauthentication-transactions/{reauthentication_transaction_id} |
+| `account` | POST | `/me/reauthentication/verifications` | 合并 | PATCH /reauthentication-transactions/{reauthentication_transaction_id} |
+| `account` | DELETE | `/me/session` | 改名 | DELETE /sessions/current |
+| `account` | GET | `/me/session` | 改名 | GET /sessions/current |
+| `account` | POST | `/me/session/step-up-challenges` | 合并 | POST /reauthentication-transactions |
+| `account` | POST | `/me/session/step-up-verifications` | 合并 | PATCH /reauthentication-transactions/{reauthentication_transaction_id} |
+| `account` | DELETE | `/me/sessions` | 改名 | DELETE /principals/{principal_id}/sessions |
+| `account` | GET | `/me/sessions` | 改名 | GET /principals/{principal_id}/sessions |
+| `account` | DELETE | `/me/sessions/{session_id}` | 改名 | DELETE /sessions/{session_id} |
+| `account` | GET | `/me/tenants` | 合并 | GET /principals/{principal_id}/memberships，成员表示里带租户摘要 |
+| `applications` | DELETE | `/identity-providers/{provider_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | PUT | `/identity-providers/{provider_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | GET | `/identity-providers/{provider_id}/authorization` | 合并 | POST /authentication-transactions |
+| `applications` | GET | `/identity-providers/{provider_id}/callback` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | POST | `/identity-providers/{provider_id}/callback` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | GET | `/identity-providers/{provider_id}/identity-continuation` | 合并 | GET /authentication-transactions/{authentication_transaction_id} |
+| `applications` | DELETE | `/oauth-clients/{client_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | PUT | `/oauth-clients/{client_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | POST | `/oauth-clients/{client_id}/credentials` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | DELETE | `/saml-service-providers/{sp_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | PUT | `/saml-service-providers/{sp_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | PUT | `/scim-directories/{directory_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | GET | `/scim-directories/{directory_id}/credentials` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | POST | `/scim-directories/{directory_id}/credentials` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | DELETE | `/scim-directories/{directory_id}/credentials/{credential_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | DELETE | `/scim-targets/{target_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | PUT | `/scim-targets/{target_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | POST | `/scim-targets/{target_id}/deprovisioning-jobs` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | POST | `/scim-targets/{target_id}/provisioning-jobs` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | PUT | `/scim-targets/{target_id}/retirement` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | GET | `/tenants/{tenant_id}/identity-providers` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | POST | `/tenants/{tenant_id}/identity-providers` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | GET | `/tenants/{tenant_id}/oauth-clients` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | POST | `/tenants/{tenant_id}/oauth-clients` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | GET | `/tenants/{tenant_id}/saml-service-providers` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | POST | `/tenants/{tenant_id}/saml-service-providers` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | POST | `/tenants/{tenant_id}/saml-signing-keys` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | GET | `/tenants/{tenant_id}/scim-directories` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | POST | `/tenants/{tenant_id}/scim-directories` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | GET | `/tenants/{tenant_id}/scim-targets` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `applications` | POST | `/tenants/{tenant_id}/scim-targets` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `audit` | GET | `/platform/audit/archive-status` | 保持 | audit 共享后缀契约，tenant 与 platform 同形 |
+| `audit` | GET | `/platform/audit/archives` | 保持 | audit 共享后缀契约，tenant 与 platform 同形 |
+| `audit` | POST | `/platform/audit/archives` | 保持 | audit 共享后缀契约，tenant 与 platform 同形 |
+| `audit` | POST | `/platform/audit/archives/{archive_id}/attempts` | 保持 | audit 共享后缀契约，tenant 与 platform 同形 |
+| `audit` | GET | `/platform/audit/archives/{archive_id}/content` | 保持 | audit 共享后缀契约，tenant 与 platform 同形 |
+| `audit` | POST | `/platform/audit/archives/{archive_id}/verifications` | 保持 | audit 共享后缀契约，tenant 与 platform 同形 |
+| `audit` | PUT | `/platform/audit/retention-policy` | 保持 | audit 共享后缀契约，tenant 与 platform 同形 |
+| `audit` | POST | `/tenants/{tenant_id}/audit/anchors` | 保持 | audit 共享后缀契约，tenant 与 platform 同形 |
+| `audit` | GET | `/tenants/{tenant_id}/audit/archive-status` | 保持 | audit 共享后缀契约，tenant 与 platform 同形 |
+| `audit` | GET | `/tenants/{tenant_id}/audit/archives` | 保持 | audit 共享后缀契约，tenant 与 platform 同形 |
+| `audit` | POST | `/tenants/{tenant_id}/audit/archives` | 保持 | audit 共享后缀契约，tenant 与 platform 同形 |
+| `audit` | POST | `/tenants/{tenant_id}/audit/archives/{archive_id}/attempts` | 保持 | audit 共享后缀契约，tenant 与 platform 同形 |
+| `audit` | GET | `/tenants/{tenant_id}/audit/archives/{archive_id}/content` | 保持 | audit 共享后缀契约，tenant 与 platform 同形 |
+| `audit` | POST | `/tenants/{tenant_id}/audit/archives/{archive_id}/verifications` | 保持 | audit 共享后缀契约，tenant 与 platform 同形 |
+| `audit` | GET | `/tenants/{tenant_id}/audit/events` | 保持 | audit 共享后缀契约，tenant 与 platform 同形 |
+| `audit` | GET | `/tenants/{tenant_id}/audit/events/{event_id}` | 保持 | audit 共享后缀契约，tenant 与 platform 同形 |
+| `audit` | GET | `/tenants/{tenant_id}/audit/exports` | 保持 | audit 共享后缀契约，tenant 与 platform 同形 |
+| `audit` | GET | `/tenants/{tenant_id}/audit/governance-policy` | 保持 | audit 共享后缀契约，tenant 与 platform 同形 |
+| `audit` | GET | `/tenants/{tenant_id}/audit/integrity-verifications` | 保持 | audit 共享后缀契约，tenant 与 platform 同形 |
+| `audit` | PUT | `/tenants/{tenant_id}/audit/retention-policy` | 保持 | audit 共享后缀契约，tenant 与 platform 同形 |
+| `audit` | POST | `/tenants/{tenant_id}/audit/root-signatures` | 保持 | audit 共享后缀契约，tenant 与 platform 同形 |
+| `authentication` | POST | `/email-verification-requests` | 改名 | POST /email-verification-challenges |
+| `authentication` | POST | `/email-verifications` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `authentication` | POST | `/invitation-acceptances` | 改名 | POST /membership-invitation-acceptances |
+| `authentication` | POST | `/login` | 合并 | POST /authentication-transactions |
+| `authentication` | POST | `/login/mfa` | 合并 | PATCH /authentication-transactions/{authentication_transaction_id} |
+| `authentication` | GET | `/login/options` | 改名 | GET /authentication-methods |
+| `authentication` | POST | `/login/passkey/options` | 合并 | POST /authentication-transactions |
+| `authentication` | POST | `/login/passkey/verify` | 合并 | PATCH /authentication-transactions/{authentication_transaction_id} |
+| `authentication` | POST | `/password-recoveries` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `authentication` | POST | `/password-recoveries/requests` | 改名 | POST /password-recovery-challenges |
+| `authentication` | POST | `/registrations` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `authentication` | POST | `/registrations/captchas` | 改名 | POST /registration-challenges |
+| `directory` | DELETE | `/departments/{department_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | GET | `/departments/{department_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | PATCH | `/departments/{department_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | DELETE | `/entities/{entity_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | GET | `/entities/{entity_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | PATCH | `/entities/{entity_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | GET | `/entities/{entity_id}/role-bindings` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | DELETE | `/entities/{entity_id}/role-bindings/{role_id}/{principal_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | PUT | `/entities/{entity_id}/role-bindings/{role_id}/{principal_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | DELETE | `/groups/{group_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | GET | `/groups/{group_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | PATCH | `/groups/{group_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | GET | `/groups/{group_id}/members` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | DELETE | `/groups/{group_id}/members/{principal_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | PUT | `/groups/{group_id}/members/{principal_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | DELETE | `/invitations/{invitation_id}` | 改名 | DELETE /tenants/{tenant_id}/membership-invitations/{membership_invitation_id} |
+| `directory` | POST | `/invitations/{invitation_id}/deliveries` | 改名 | POST /tenants/{tenant_id}/membership-invitations/{membership_invitation_id}/deliveries |
+| `directory` | DELETE | `/positions/{position_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | GET | `/positions/{position_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | PATCH | `/positions/{position_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | GET | `/positions/{position_id}/members` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | DELETE | `/positions/{position_id}/members/{principal_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | PUT | `/positions/{position_id}/members/{principal_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | GET | `/principals/{principal_id}/avatar` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | DELETE | `/service-accounts/{service_account_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | GET | `/service-accounts/{service_account_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | PUT | `/service-accounts/{service_account_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | GET | `/service-accounts/{service_account_id}/credentials` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | POST | `/service-accounts/{service_account_id}/credentials` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | DELETE | `/service-accounts/{service_account_id}/credentials/{credential_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | GET | `/tenants` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | POST | `/tenants` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | DELETE | `/tenants/{tenant_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | GET | `/tenants/{tenant_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | PATCH | `/tenants/{tenant_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | GET | `/tenants/{tenant_id}/departments` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | POST | `/tenants/{tenant_id}/departments` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | GET | `/tenants/{tenant_id}/entities` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | POST | `/tenants/{tenant_id}/entities` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | GET | `/tenants/{tenant_id}/groups` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | POST | `/tenants/{tenant_id}/groups` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | GET | `/tenants/{tenant_id}/invitations` | 改名 | GET /tenants/{tenant_id}/membership-invitations |
+| `directory` | POST | `/tenants/{tenant_id}/invitations` | 改名 | POST /tenants/{tenant_id}/membership-invitations |
+| `directory` | GET | `/tenants/{tenant_id}/members` | 改名 | GET /tenants/{tenant_id}/memberships |
+| `directory` | POST | `/tenants/{tenant_id}/members` | 改名 | POST /tenants/{tenant_id}/memberships |
+| `directory` | GET | `/tenants/{tenant_id}/members/{subject}` | 未决 | GET /tenant-memberships/{membership_id}，等决策 1 |
+| `directory` | PATCH | `/tenants/{tenant_id}/members/{subject}` | 未决 | PATCH /tenant-memberships/{membership_id}，等决策 1 |
+| `directory` | GET | `/tenants/{tenant_id}/members/{subject}/authorization-sources` | 未决 | GET /tenant-memberships/{membership_id}/authorization-sources，等决策 1 |
+| `directory` | GET | `/tenants/{tenant_id}/members/{subject}/roles` | 未决 | GET /tenant-memberships/{membership_id}/roles，等决策 1 |
+| `directory` | GET | `/tenants/{tenant_id}/positions` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | POST | `/tenants/{tenant_id}/positions` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | GET | `/tenants/{tenant_id}/principals` | 拆分 | GET /principals 查全局目录；GET /tenants/{tenant_id}/memberships 查租户成员 |
+| `directory` | POST | `/tenants/{tenant_id}/principals` | 拆分 | POST /principals 创建主体；POST /tenants/{tenant_id}/memberships 建立成员关系 |
+| `directory` | GET | `/tenants/{tenant_id}/principals/{principal_id}` | 改名 | GET /principals/{principal_id} |
+| `directory` | PATCH | `/tenants/{tenant_id}/principals/{principal_id}` | 改名 | PATCH /principals/{principal_id} |
+| `directory` | DELETE | `/tenants/{tenant_id}/principals/{principal_id}/suspension` | 改名 | DELETE /principals/{principal_id}/suspension |
+| `directory` | PUT | `/tenants/{tenant_id}/principals/{principal_id}/suspension` | 改名 | PUT /principals/{principal_id}/suspension |
+| `directory` | GET | `/tenants/{tenant_id}/service-accounts` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `directory` | POST | `/tenants/{tenant_id}/service-accounts` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `files` | GET | `/departments/{department_id}/files` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `files` | POST | `/departments/{department_id}/files` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `files` | GET | `/entities/{entity_id}/files` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `files` | POST | `/entities/{entity_id}/files` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `files` | DELETE | `/files/{file_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `files` | GET | `/files/{file_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `files` | PATCH | `/files/{file_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `files` | GET | `/files/{file_id}/content` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `files` | GET | `/files/{file_id}/items` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `files` | GET | `/files/{root_file_id}/-/{path}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `files` | POST | `/me/file-operations` | 合并 | POST /files/{destination_file_id}/operations |
+| `files` | GET | `/me/files` | 改名 | GET /principals/{principal_id}/files |
+| `files` | POST | `/me/files` | 改名 | POST /principals/{principal_id}/files |
+| `files` | POST | `/tenants/{tenant_id}/entities/{entity_id}/file-operations` | 合并 | POST /files/{destination_file_id}/operations |
+| `files` | POST | `/tenants/{tenant_id}/file-operations` | 合并 | POST /files/{destination_file_id}/operations |
+| `files` | GET | `/tenants/{tenant_id}/files` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `files` | POST | `/tenants/{tenant_id}/files` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `oauth` | GET | `/.well-known/jwks.json` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `oauth` | GET | `/.well-known/openid-configuration` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `oauth` | GET | `/oauth/authorize` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `oauth` | GET | `/oauth/consent` | 改名 | GET /oauth/authorization-requests/{authorization_request_id} |
+| `oauth` | POST | `/oauth/consent` | 改名 | PUT /oauth/authorization-requests/{authorization_request_id}/decision |
+| `oauth` | GET | `/oauth/consent/request` | 合并 | GET /oauth/authorization-requests/{authorization_request_id} |
+| `oauth` | POST | `/oauth/introspect` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `oauth` | POST | `/oauth/revoke` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `oauth` | POST | `/oauth/token` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `oauth` | GET | `/oauth/userinfo` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `platform` | GET | `/platform/administrators` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `platform` | DELETE | `/platform/administrators/{principal_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `platform` | PUT | `/platform/administrators/{principal_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `platform` | GET | `/platform/closure-requests` | 改名 | GET /account-closures |
+| `platform` | PATCH | `/platform/principals/{principal_id}/closure-request` | 改名 | PATCH /principals/{principal_id}/account-closure |
+| `platform` | GET | `/platform/principals/{principal_id}/lifecycle` | 改名 | GET /principals/{principal_id}/lifecycle |
+| `platform` | PUT | `/platform/principals/{principal_id}/lifecycle/anonymization` | 改名 | PUT /principals/{principal_id}/lifecycle/anonymization |
+| `platform` | PUT | `/platform/principals/{principal_id}/lifecycle/retention-policy` | 改名 | PUT /principals/{principal_id}/lifecycle/retention-policy |
+| `platform` | DELETE | `/platform/principals/{principal_id}/suspension` | 改名 | DELETE /principals/{principal_id}/suspension |
+| `platform` | PUT | `/platform/principals/{principal_id}/suspension` | 改名 | PUT /principals/{principal_id}/suspension |
+| `saml` | GET | `/saml/{tenant_id}/metadata` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `saml` | GET | `/saml/{tenant_id}/slo` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `saml` | POST | `/saml/{tenant_id}/slo` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `saml` | GET | `/saml/{tenant_id}/sso` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `saml` | POST | `/saml/{tenant_id}/sso` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `scim` | POST | `/scim/v2/Bulk` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `scim` | GET | `/scim/v2/Groups` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `scim` | POST | `/scim/v2/Groups` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `scim` | DELETE | `/scim/v2/Groups/{id}` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `scim` | GET | `/scim/v2/Groups/{id}` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `scim` | PATCH | `/scim/v2/Groups/{id}` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `scim` | PUT | `/scim/v2/Groups/{id}` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `scim` | GET | `/scim/v2/ResourceTypes` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `scim` | GET | `/scim/v2/ResourceTypes/{id}` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `scim` | GET | `/scim/v2/Schemas` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `scim` | GET | `/scim/v2/Schemas/{id}` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `scim` | GET | `/scim/v2/ServiceProviderConfig` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `scim` | GET | `/scim/v2/Users` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `scim` | POST | `/scim/v2/Users` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `scim` | DELETE | `/scim/v2/Users/{id}` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `scim` | GET | `/scim/v2/Users/{id}` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `scim` | PATCH | `/scim/v2/Users/{id}` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `scim` | PUT | `/scim/v2/Users/{id}` | 保持 | 规范固定的协议路径，不受应用 URI 规则影响 |
+| `system` | GET | `/guid` | 删除 | ID 分配不再作为公开接口 |
+| `system` | GET | `/guid/{count}` | 删除 | ID 分配不再作为公开接口 |
+| `system` | GET | `/healthz` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `system` | GET | `/livez` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `system` | GET | `/readyz` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `todos` | GET | `/entities/{entity_id}/todos` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `todos` | POST | `/entities/{entity_id}/todos` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `todos` | GET | `/entities/{entity_id}/todos/export` | 合并 | GET /entities/{entity_id}/todos，Accept: text/csv |
+| `todos` | POST | `/entities/{entity_id}/todos/import` | 合并 | POST /entities/{entity_id}/todos，导入 media type |
+| `todos` | GET | `/entities/{entity_id}/todos/import-template` | 改名 | GET /todo-import-template/content |
+| `todos` | DELETE | `/todos/{todo_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `todos` | GET | `/todos/{todo_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `todos` | PATCH | `/todos/{todo_id}` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
+| `todos` | DELETE | `/todos/{todo_id}/deletion` | 保持 | 同名同形，仅参数命名与共享 component 统一 |
