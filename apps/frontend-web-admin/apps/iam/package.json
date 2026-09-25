@@ -11,6 +11,7 @@
     "typecheck": "tsc -b --pretty false",
     "test": "bun test src",
     "generate:api-types": "bun scripts/generate-api-types.mjs",
+    "check:api-types": "bun scripts/generate-api-types.mjs --check",
     "audit:legacy": "node scripts/run-browser-audits.mjs",
     "audit:route-matrix": "node scripts/route-matrix-browser-audit.mjs",
     "audit:personal-security": "node scripts/personal-security-browser-audit.mjs",

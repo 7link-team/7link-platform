@@ -16,6 +16,9 @@
     "typecheck": {
       "dependsOn": ["^typecheck"]
     },
+    "check:api-types": {
+      "dependsOn": ["^check:api-types"]
+    },
     "test": {
       "dependsOn": ["^test"]
     },

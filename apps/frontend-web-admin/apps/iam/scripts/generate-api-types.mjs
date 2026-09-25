@@ -7,9 +7,20 @@
 //
 // Generating from a running instance is fine for a person at a keyboard and no
 // good for CI, which is why the default is a path on disk.
+//
+// With --check nothing is written: the types the document would produce are
+// compared against the committed ones. A client whose types have drifted from
+// the document compiles against a contract the server stopped serving, and the
+// compiler cannot say so, because the types it checks are the stale ones.
 
 import { spawnSync } from "node:child_process"
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -18,6 +29,7 @@ const repoRoot = fileURLToPath(new URL("../../../../../", import.meta.url))
 const defaultSpec = join(repoRoot, "apps/backend-api/docs/openapi.json")
 const output = fileURLToPath(new URL("../src/lib/api-schema.ts", import.meta.url))
 
+const checking = process.argv.includes("--check")
 const flag = process.argv.indexOf("--spec")
 const spec = flag === -1 ? defaultSpec : process.argv[flag + 1]
 if (!spec) throw new Error("--spec needs a path or a URL")
@@ -39,13 +51,32 @@ if (/^https?:\/\//.test(spec)) {
   )
 }
 
+let compare
 try {
+  const target = checking
+    ? join(
+        (compare = mkdtempSync(join(tmpdir(), "iam-types-"))),
+        "api-schema.ts"
+      )
+    : output
   const result = spawnSync(
     "bun",
-    ["x", "openapi-typescript", input, "-o", output],
+    ["x", "openapi-typescript", input, "-o", target],
     { stdio: "inherit", shell: process.platform === "win32" }
   )
   if (result.status !== 0) process.exit(result.status ?? 1)
+  if (
+    checking &&
+    (!existsSync(output) ||
+      readFileSync(output, "utf8") !== readFileSync(target, "utf8"))
+  ) {
+    console.error(
+      "src/lib/api-schema.ts no longer matches apps/backend-api/docs/openapi.json."
+    )
+    console.error("Run `bun run generate:api-types` and commit the result.")
+    process.exit(1)
+  }
 } finally {
   if (scratch) rmSync(scratch, { recursive: true, force: true })
+  if (compare) rmSync(compare, { recursive: true, force: true })
 }

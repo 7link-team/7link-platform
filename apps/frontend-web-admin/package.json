@@ -11,6 +11,7 @@
     "lint": "turbo lint",
     "format": "turbo format",
     "typecheck": "turbo typecheck",
+    "check:api-types": "turbo check:api-types",
     "test": "turbo test"
   },
   "devDependencies": {
