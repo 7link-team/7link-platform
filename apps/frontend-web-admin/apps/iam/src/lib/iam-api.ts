@@ -1757,8 +1757,8 @@ export function createIamApi(
       ),
     leaveMembership: (id: string, proof: string) =>
       request<{ status: string }>(
-        `/me/memberships/${encodeURIComponent(id)}/leave`,
-        { method: "POST", body: JSON.stringify({ proof }) },
+        `/me/memberships/${encodeURIComponent(id)}`,
+        { method: "DELETE", body: JSON.stringify({ proof }) },
         false
       ),
     closureRequest: () =>
@@ -1800,14 +1800,20 @@ export function createIamApi(
       ),
     rejectClosureRequest: (id: string, version: number) =>
       request<ClosureRequest>(
-        `/platform/principals/${encodeURIComponent(id)}/closure-request/rejection`,
-        { method: "POST", body: JSON.stringify({ version }) },
+        `/platform/principals/${encodeURIComponent(id)}/closure-request`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ status: "rejected", version }),
+        },
         false
       ),
     processClosureRequest: (id: string, version: number) =>
       request<ClosureRequest>(
-        `/platform/principals/${encodeURIComponent(id)}/closure-request/processing`,
-        { method: "POST", body: JSON.stringify({ version }) },
+        `/platform/principals/${encodeURIComponent(id)}/closure-request`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ status: "processing", version }),
+        },
         false
       ),
     oauthConsents: () =>
@@ -2016,7 +2022,7 @@ export function createIamApi(
       }
     ) =>
       request<PrincipalLifecycle>(
-        `/platform/principals/${encodeURIComponent(id)}/lifecycle/retention`,
+        `/platform/principals/${encodeURIComponent(id)}/lifecycle/retention-policy`,
         { method: "PUT", body: JSON.stringify(body) }
       ),
     anonymizePrincipal: (
@@ -2080,7 +2086,7 @@ export function createIamApi(
       }),
     resendInvitation: (id: string, expiresInHours = 72) =>
       request<IssuedInvitation>(
-        `/invitations/${encodeURIComponent(id)}/resend`,
+        `/invitations/${encodeURIComponent(id)}/deliveries`,
         {
           method: "POST",
           body: JSON.stringify({ expires_in_hours: expiresInHours }),
@@ -2423,23 +2429,23 @@ export function createIamApi(
       }),
     approveAccessRequest: (id: string, note = "") =>
       request<AccessRequest>(
-        `/access-requests/${encodeURIComponent(id)}/approve`,
-        { method: "POST", body: JSON.stringify({ note }) }
+        `/access-requests/${encodeURIComponent(id)}/decision`,
+        { method: "PUT", body: JSON.stringify({ decision: "approved", note }) }
       ),
     rejectAccessRequest: (id: string, note = "") =>
       request<AccessRequest>(
-        `/access-requests/${encodeURIComponent(id)}/reject`,
-        { method: "POST", body: JSON.stringify({ note }) }
+        `/access-requests/${encodeURIComponent(id)}/decision`,
+        { method: "PUT", body: JSON.stringify({ decision: "rejected", note }) }
       ),
     revokeAccessRequest: (id: string, reason = "") =>
       request<AccessRequest>(
-        `/access-requests/${encodeURIComponent(id)}/revoke`,
-        { method: "POST", body: JSON.stringify({ reason }) }
+        `/access-requests/${encodeURIComponent(id)}/grant-revocation`,
+        { method: "PUT", body: JSON.stringify({ reason }) }
       ),
     withdrawAccessRequest: (id: string, reason = "") =>
       request<AccessRequest>(
-        `/access-requests/${encodeURIComponent(id)}/withdraw`,
-        { method: "POST", body: JSON.stringify({ reason }) }
+        `/access-requests/${encodeURIComponent(id)}/withdrawal`,
+        { method: "PUT", body: JSON.stringify({ reason }) }
       ),
     accessReviews: () => requestAllPages<AccessReview>("/access-reviews"),
     accessReview: (id: string) =>
@@ -2456,19 +2462,22 @@ export function createIamApi(
       note = ""
     ) =>
       request<AccessReviewItem>(
-        `/access-reviews/${encodeURIComponent(reviewID)}/items/${encodeURIComponent(itemID)}/decide`,
-        { method: "POST", body: JSON.stringify({ decision, note }) }
+        `/access-reviews/${encodeURIComponent(reviewID)}/items/${encodeURIComponent(itemID)}/decision`,
+        { method: "PUT", body: JSON.stringify({ decision, note }) }
       ),
+    // Completing and cancelling are the review's own status, so they are
+    // written on the review rather than posted to a verb beside it. The
+    // spelling of "cancelled" is the stored state's, not this file's.
     completeAccessReview: (id: string) =>
-      request<AccessReview>(
-        `/access-reviews/${encodeURIComponent(id)}/complete`,
-        { method: "POST" }
-      ),
+      request<AccessReview>(`/access-reviews/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "completed" }),
+      }),
     cancelAccessReview: (id: string) =>
-      request<AccessReview>(
-        `/access-reviews/${encodeURIComponent(id)}/cancel`,
-        { method: "POST" }
-      ),
+      request<AccessReview>(`/access-reviews/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "cancelled" }),
+      }),
     createRole: (body: Pick<Role, "name" | "description">) =>
       request<Role>("/roles", {
         method: "POST",
@@ -2626,7 +2635,7 @@ export function createIamApi(
       }).then(normalizeOAuthClient),
     rotateOAuthClientSecret: (id: string) =>
       request<{ client_secret: string }>(
-        `/oauth-clients/${encodeURIComponent(id)}/rotate-secret`,
+        `/oauth-clients/${encodeURIComponent(id)}/credentials`,
         { method: "POST" }
       ),
     deleteOAuthClient: (id: string) =>
@@ -2651,19 +2660,22 @@ export function createIamApi(
         method: "DELETE",
       }),
     pushSCIMResource: (id: string, body: SCIMResourceInput) =>
-      request<SCIMPushResult>(`/scim-targets/${encodeURIComponent(id)}/push`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+      request<SCIMPushResult>(
+        `/scim-targets/${encodeURIComponent(id)}/provisioning-jobs`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        }
+      ),
     deprovisionSCIMResource: (id: string, body: SCIMResourceInput) =>
       request<{ deprovisioned: boolean }>(
-        `/scim-targets/${encodeURIComponent(id)}/deprovision`,
+        `/scim-targets/${encodeURIComponent(id)}/deprovisioning-jobs`,
         { method: "POST", body: JSON.stringify(body) }
       ),
     retireSCIMTarget: (id: string) =>
       request<{ deprovisioned: number }>(
-        `/scim-targets/${encodeURIComponent(id)}/retire`,
-        { method: "POST" }
+        `/scim-targets/${encodeURIComponent(id)}/retirement`,
+        { method: "PUT" }
       ),
     createSCIMDirectory: (body: SCIMDirectoryInput) =>
       request<SCIMDirectory>("/scim-directories", {
@@ -2768,7 +2780,7 @@ export function createIamApi(
       scope: AuditScope = "tenant"
     ) =>
       request<AuditRetentionPolicy>(
-        `${archivePath(scope)}/retention`,
+        `${archivePath(scope)}/retention-policy`,
         {
           method: "PUT",
           body: JSON.stringify(body),

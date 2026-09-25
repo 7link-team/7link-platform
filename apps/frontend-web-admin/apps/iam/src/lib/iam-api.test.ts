@@ -11,6 +11,7 @@ import {
   type MemberAuthorizationSnapshot,
   type OAuthClientInput,
 } from "./iam-api"
+import { publishedRoutes } from "./api-routes"
 
 interface RecordedRequest {
   method: string
@@ -491,7 +492,10 @@ describe("IAM API client", () => {
     expect(requests[11]?.path).toBe(
       "/platform/closure-requests?status=processing&offset=50&limit=50"
     )
-    expect(JSON.parse(requests[12]!.body)).toEqual({ version: 5 })
+    expect(JSON.parse(requests[12]!.body)).toEqual({
+      status: "processing",
+      version: 5,
+    })
     expect(requests[15]?.path).toBe("/me/identity-links/provider%2Flink")
     expect(JSON.parse(requests[15]!.body)).toEqual({ proof: "unlink-proof" })
   })
@@ -715,7 +719,7 @@ describe("IAM API client", () => {
       "POST /audit/archives/123%2F456/retry",
       "POST /audit/archives/123%2F456/verify",
       "GET /audit/archives/123/download",
-      "PUT /audit/retention",
+      "PUT /audit/retention-policy",
     ]
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       ...expected.map((entry) => entry.replace(" /", " /tenants/tenant-a/")),
@@ -894,16 +898,16 @@ describe("IAM API client", () => {
       "GET /tenants/tenant-governance/me/access-requests",
       "GET /tenants/tenant-governance/access-requests",
       "POST /tenants/tenant-governance/access-requests",
-      "POST /tenants/tenant-governance/access-requests/request%2Fa/approve",
-      "POST /tenants/tenant-governance/access-requests/request%2Fb/reject",
-      "POST /tenants/tenant-governance/access-requests/request%2Fc/revoke",
-      "POST /tenants/tenant-governance/access-requests/request%2Fd/withdraw",
+      "PUT /access-requests/request%2Fa/decision",
+      "PUT /access-requests/request%2Fb/decision",
+      "PUT /access-requests/request%2Fc/grant-revocation",
+      "PUT /access-requests/request%2Fd/withdrawal",
       "GET /tenants/tenant-governance/access-reviews",
       "GET /access-reviews/review%2Fa",
       "POST /tenants/tenant-governance/access-reviews",
-      "POST /tenants/tenant-governance/access-reviews/review%2Fa/items/item%2Fa/decide",
-      "POST /tenants/tenant-governance/access-reviews/review%2Fa/complete",
-      "POST /tenants/tenant-governance/access-reviews/review%2Fb/cancel",
+      "PUT /access-reviews/review%2Fa/items/item%2Fa/decision",
+      "PATCH /access-reviews/review%2Fa",
+      "PATCH /access-reviews/review%2Fb",
     ])
     expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
       true
@@ -913,7 +917,10 @@ describe("IAM API client", () => {
       reason: "temporary operations",
       access_expires_at: "2026-08-04T12:00:00Z",
     })
-    expect(JSON.parse(requests[4]?.body ?? "{}")).toEqual({ note: "approved" })
+    expect(JSON.parse(requests[4]?.body ?? "{}")).toEqual({
+      decision: "approved",
+      note: "approved",
+    })
     expect(JSON.parse(requests[6]?.body ?? "{}")).toEqual({
       reason: "revoked",
     })
@@ -1333,7 +1340,7 @@ describe("IAM API client", () => {
         const data =
           request.method === "GET"
             ? [client]
-            : path.endsWith("/rotate-secret")
+            : path.endsWith("/credentials")
               ? { client_secret: "rotated-secret" }
               : request.method === "DELETE"
                 ? { deleted: true }
@@ -1377,7 +1384,7 @@ describe("IAM API client", () => {
       "GET /tenants/tenant-oauth/oauth-clients",
       "POST /tenants/tenant-oauth/oauth-clients",
       "PUT /oauth-clients/client%2Fa",
-      "POST /tenants/tenant-oauth/oauth-clients/client%2Fa/rotate-secret",
+      "POST /oauth-clients/client%2Fa/credentials",
       "DELETE /oauth-clients/client%2Fa",
     ])
     for (const request of requests) {
@@ -1499,7 +1506,7 @@ describe("IAM API client", () => {
         })
         let data: unknown = target
         if (request.method === "GET") data = [target]
-        else if (path.endsWith("/push"))
+        else if (path.endsWith("/provisioning-jobs"))
           data = {
             target_id: target.id,
             resource_type: "User",
@@ -1507,7 +1514,8 @@ describe("IAM API client", () => {
             external_id: "456",
             remote_id: "remote-456",
           }
-        else if (path.endsWith("/deprovision")) data = { deprovisioned: true }
+        else if (path.endsWith("/deprovisioning-jobs"))
+          data = { deprovisioned: true }
         else if (request.method === "DELETE") data = { deleted: true }
         else if (request.method === "POST")
           data = { target, bearer_token: "test-secret" }
@@ -1561,8 +1569,8 @@ describe("IAM API client", () => {
       "POST /tenants/tenant-outbound/scim-targets",
       "PUT /scim-targets/target%2Fa",
       "PUT /scim-targets/target%2Fa",
-      "POST /tenants/tenant-outbound/scim-targets/target%2Fa/push",
-      "POST /tenants/tenant-outbound/scim-targets/target%2Fa/deprovision",
+      "POST /scim-targets/target%2Fa/provisioning-jobs",
+      "POST /scim-targets/target%2Fa/deprovisioning-jobs",
       "DELETE /scim-targets/target%2Fa",
     ])
     for (const request of requests)
@@ -1886,7 +1894,7 @@ describe("IAM API client", () => {
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "GET /tenants/tenant-invitation/invitations",
       "POST /tenants/tenant-invitation/invitations",
-      "POST /tenants/tenant-invitation/invitations/invitation%2Fa/resend",
+      "POST /invitations/invitation%2Fa/deliveries",
       "DELETE /invitations/invitation%2Fa",
       "POST /invitation-acceptances",
     ])
@@ -2673,7 +2681,7 @@ describe("IAM API client", () => {
     expect(signed.signing_key_id).toBe("key-1")
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "GET /tenants/tenant-audit/audit/governance-policy",
-      "PUT /tenants/tenant-audit/audit/retention",
+      "PUT /tenants/tenant-audit/audit/retention-policy",
       "POST /tenants/tenant-audit/audit/root-signatures",
     ])
     expect(JSON.parse(requests[1]?.body ?? "{}")).toEqual({
@@ -2703,5 +2711,65 @@ describe("IAM API client", () => {
     // Sending an empty header would scope the request to a tenant named "",
     // which reads as a real choice to the service; leaving it off does not.
     expect(requests[0]?.headers.has("x-tenant-id")).toBe(false)
+  })
+
+  // Every other test in this file asserts against a mock, so a method can keep
+  // passing long after the address it calls has been renamed out of the API.
+  // This one holds the client's own path literals against the published
+  // contract instead. Driving the methods at runtime would read better, but
+  // arguments here carry meaning -- an audit scope, a tenant flag, an entity
+  // or the personal space -- so placeholder values build addresses the app
+  // never builds, and suppressing that noise would need a per-method argument
+  // table that drifts exactly like the addresses it was meant to guard.
+  it("addresses only paths the published contract carries", async () => {
+    const templates = publishedRoutes.map((route) => route.split("/").slice(1))
+    // A literal may be the whole path or the front of one a helper finishes,
+    // so it counts as carried when the contract has a route that begins with
+    // it. A renamed segment still fails: "/audit/retention" is the front of no
+    // published route now that the policy is at "/audit/retention-policy".
+    const carries = (parts: string[]) =>
+      templates.some(
+        (template) =>
+          template.length >= parts.length &&
+          parts.every(
+            (part, index) =>
+              template[index]!.startsWith("{") || template[index] === part
+          )
+      )
+
+    // Literals the scan picks up that are not request paths.
+    const notAPath = new Set(["/api", "/platform/", "/i)", "/me{}"])
+
+    const source = await Bun.file(`${import.meta.dir}/iam-api.ts`).text()
+    const scanned = new Set<string>()
+    const unpublished = new Set<string>()
+    for (const match of source.matchAll(/`\/[^`]+`|"\/[a-z][^"]*"/g)) {
+      const literal = match[0]
+        .slice(1, -1)
+        .replaceAll(/\$\{[^}]*\}/g, "{}")
+        // A template holding another template ends the literal early, and no
+        // regex closes those reliably. Prefix matching means the scan can
+        // simply stop where it stopped resolving.
+        .split("${")[0]!
+        .split("?")[0]!
+      if (notAPath.has(literal)) continue
+      const parts = literal.split("/").slice(1)
+      // A path may be written bare and mounted at request time, so each of the
+      // mount points the client can reach counts as the contract carrying it.
+      const carried =
+        carries(parts) ||
+        carries(["tenants", "{}", ...parts]) ||
+        carries(["tenants", "{}", "entities", "{}", ...parts]) ||
+        carries(["platform", "audit", ...parts.slice(1)]) ||
+        carries(["tenants", "{}", "audit", ...parts.slice(1)])
+      scanned.add(literal)
+      if (!carried) unpublished.add(literal)
+    }
+
+    expect([...unpublished].sort()).toEqual([])
+    // A scan that stopped finding literals would pass while checking nothing,
+    // so the reach is asserted too. The floor is well under the current count
+    // and only has to notice the scan going quiet, not track every route.
+    expect(scanned.size).toBeGreaterThan(100)
   })
 })

@@ -850,7 +850,7 @@ try {
     "custom menus retain authorized children without linking unauthorized parents; desktop/mobile render"
   )
 
-  await admin.page.goto(`/roles?role=${viewer.id}`)
+  await admin.page.goto(tenantPage(`/roles?role=${viewer.id}`))
   await admin.page
     .locator('[data-permission-code="user_create"] [role="checkbox"]')
     .click()
@@ -885,7 +885,7 @@ try {
     "live grant/revoke updates another signed-in browser without reload; scoped revocation immediately denies business API"
   )
 
-  await aliceSession.page.route("**/api/me/permissions", (route) =>
+  await aliceSession.page.route("**/me/permissions", (route) =>
     route.fulfill({
       status: 503,
       contentType: "application/json",
@@ -904,7 +904,7 @@ try {
       .count(),
     0
   )
-  await aliceSession.page.unroute("**/api/me/permissions")
+  await aliceSession.page.unroute("**/me/permissions")
   await aliceSession.page
     .getByRole("button", { name: "Retry now", exact: true })
     .click()
@@ -939,10 +939,29 @@ try {
     tenant: otherTenant.id,
     status: 403,
   })
+  // Business rows hang off an entity, and the entity now carries its own
+  // tenant, so naming another tenant beside one of this tenant's entities no
+  // longer describes a cross-tenant read -- it just reads East Branch, which
+  // Alice may do. The denial this step is here to prove needs an entity that
+  // actually belongs to the other tenant.
+  const otherEntity = await call(
+    admin.context,
+    "/entities",
+    "POST",
+    { name: "Other Branch", type: "unit" },
+    { tenant: otherTenant.id }
+  )
+  // An entity outside the caller's reach is modeled as not found rather than
+  // forbidden, so the other tenant's existence does not leak; the backend
+  // tests fix that (ErrEntityNotFound -> 404). Reading the same URI as a
+  // member of that tenant is what makes Alice's 404 isolation instead of a
+  // mistyped identifier.
+  await call(admin.context, "/todos", "GET", undefined, {
+    entity: otherEntity.id,
+  })
   await call(aliceSession.context, "/todos", "GET", undefined, {
-    tenant: otherTenant.id,
-    entity: east.id,
-    status: 403,
+    entity: otherEntity.id,
+    status: 404,
   })
   await call(
     aliceSession.context,
@@ -970,7 +989,7 @@ try {
     "cross-tenant access and non-platform tenant creation denied; suspension revokes sessions and restoration permits fresh login"
   )
 
-  const audit = await call(admin.context, "/audit-events?limit=200")
+  const audit = await call(admin.context, "/audit/events?limit=200")
   for (const event of [
     "tenant_bootstrapped",
     "role_permission_granted",

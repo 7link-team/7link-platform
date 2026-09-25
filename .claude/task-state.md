@@ -4134,3 +4134,120 @@ provisioning 3、governance 3、federation 2、oauth 1、audit 1。
   permanently disabled.
 - Next action: verify the final left/right grouping and tenant refresh in real
   Chrome, run build/diff checks, then commit and push IAM.
+
+### Client Addressing Sweep And Contract Guard - 2026-09-25
+
+- Phase: TESTING. The web client's verb-shaped calls now address the resources
+  that replaced them, and a guard holds the client's paths against the
+  published document so the next rename fails a test instead of a page.
+- Repointed in `iam-api.ts`: access-request approve/reject to one
+  `PUT .../decision` carrying the decision, revoke/withdraw to
+  `grant-revocation`/`withdrawal`, review item decide to `.../decision`,
+  review complete/cancel to `PATCH /access-reviews/{id}` with the status,
+  `leaveMembership` to `DELETE /me/memberships/{id}`, closure reject/process to
+  `PATCH .../closure-request` with the status, lifecycle and audit retention to
+  `retention-policy`, invitation resend to `deliveries`, OAuth secret rotation
+  to `credentials`, SCIM push/deprovision to `provisioning-jobs`/
+  `deprovisioning-jobs`, and SCIM retire to `PUT .../retirement`.
+- The review status stays spelled "cancelled": the contract's enum is
+  `["completed", "cancelled"]`, so that is the value the server accepts. A Go
+  `//nolint` directive had been copied into the TypeScript and was removed; it
+  does nothing there.
+- Guard: `iam-api.test.ts` now scans the client's own path literals and holds
+  each against `publishedRoutes`, counting the mount points the client can
+  reach. The matcher is deliberately a second implementation rather than the
+  client's own, so a bug in the client's matcher cannot hide itself. Runtime
+  driving was rejected: arguments carry meaning (audit scope, tenant flag,
+  entity or personal space), so placeholder values build addresses the app
+  never builds, and silencing that needs a per-method table that drifts too.
+- The guard was proven to fail, not just to pass: reintroducing
+  `/access-requests/{}/approve` made it report that path, and a floor on the
+  literal count keeps a scan that stops finding anything from passing quietly.
+- Limit worth knowing: the guard catches addresses the contract does not carry.
+  It does not catch an address mounted at the wrong point -- that is
+  `prefixWithTenant`, covered by the mock tests.
+- `make frontend-check` had never run `check:api-types`, so the generated
+  request types could drift unnoticed, which is how 13,808 lines of drift
+  accumulated. The target now runs it first.
+- Verification PASS: 128 frontend tests (97 in `src/lib`), typecheck, lint,
+  build, `check:api-types`, `make frontend-check`, and `make openapi-check`
+  ("openapi: matches docs/openapi.json"), which is what makes the published
+  document equal to the server's real routing table.
+- Acceptance audit, first run: seven scenarios PASS, then a timeout on
+  `[data-permission-code="user_create"]`. Cause found and it is not this
+  change: the step navigates to `/roles`, but the app mounts that page at
+  `/tenants/:tenantID/roles`, so nothing rendered. `f3671f3` rewrote the step
+  from `/iam/roles` to `/roles` and it has not reached completion since. Fixed
+  with the script's own `tenantPage()` helper.
+- Checked the rest of the unproven tail statically rather than rediscovering it
+  one 25-minute run at a time: `/audit-events` is not published either (the
+  contract carries `/tenants/{tenant_id}/audit/events`) and is now
+  `/audit/events`. `/me/menus`, `/me/session`, `/principals`, `/tenants` and
+  the `/todos` calls resolve through mount points the contract carries, and
+  the remaining `/users` literals are app routes reached through `tenantPage`.
+- Same defect class found in fourteen other audit scripts, none of them
+  runnable here because they need external services: `/account/*` should be
+  `/me/*`, `/closure-requests` should be `/platform/closure-requests`,
+  `/tenants` should be `/platform/tenants`, and `/users`, `/entities`,
+  `/menus`, `/roles`, `/oauth-clients`, `/scim-directories`,
+  `/audit-governance` all need their tenant prefix. Reported, not changed:
+  a rewrite that cannot be run is a claim that cannot be earned.
+- `api-routes.ts` was verified against `openapi.json` directly, 206 paths on
+  both sides with no difference, so the client guard checks a current oracle.
+- Known defect, not this change: every sqlite-lifecycle run leaves its
+  `api.exe` alive. Thirteen orphans had accumulated from earlier runs. One
+  consequence bit this session -- an orphan held the run's stdout pipe open,
+  so a piped audit produced no output until the process was killed.
+- Second run: the roles step passed, and the next one failed the same way for
+  the same reason. `page.route("**/api/me/permissions")` intercepted a bare
+  path, but the client reads permissions at `/tenants/{id}/me/permissions`
+  (or the entity form), so the injected 503 never landed, no failure state
+  appeared and the retry button never rendered. Both the route and unroute
+  patterns are now `**/me/permissions`, which matches every mount.
+- Swept the script by class instead of by failure, so the next run does not
+  rediscover a third one: navigations (one stale, fixed), `call()` paths (the
+  helper checks the contract at run time, and the unexecuted tail was checked
+  statically -- `/audit/events` and the suspension routes carry the methods
+  used), network intercepts (two, both fixed) and the eighteen client method
+  names the script invokes (all present).
+- Known defect, not this change: the script's cleanup uses
+  `process.kill(-pid)` to end a process group, which Windows does not support,
+  so every run leaves its `api.exe` behind. That is the source of the orphans,
+  and of the trapped stdout when the run is piped.
+- Third run: nine scenarios PASS, then a different kind of failure --
+  `GET /todos` returned 200 where the step expected 403. Not a stale address
+  and not a product regression: the step expressed "another tenant" by passing
+  `tenant: otherTenant.id` beside one of this tenant's entities, and business
+  rows now have one canonical URI, `/entities/{entity_id}/todos`, with no
+  tenant segment. The tenant option no longer reaches the request, so the step
+  read East Branch, which Alice may read. The assertion had stopped asserting.
+- Restored its meaning rather than its status code: the admin now creates an
+  entity inside the other tenant and Alice is denied that entity's rows.
+- The expected status is 404, not 403. The registrar's Forbidden cases all sit
+  after the entity has resolved inside the caller's tenant; across tenants it
+  never resolves, and the platform models that as not found so the other
+  tenant's existence does not leak. Committed backend tests fix that behavior
+  (`internal/files/http_test.go:459` answers a foreign tenant/entity path with
+  404, and `internal/iam/core/http_test.go:124` maps `ErrEntityNotFound` to
+  404), so this is the established semantic rather than a status flipped to
+  make a test pass.
+- A 404 alone would also be what a mistyped identifier returns, so the step
+  now reads the same URI as a member of that tenant and expects success. The
+  pair is what proves isolation.
+- Swept the same class before rerunning: no other step depends on a `tenant:`
+  option that the published addressing drops. The one remaining
+  (`/me/menus`) still resolves to `/tenants/{id}/me/menus`.
+- Phase: ACCEPTANCE. The acceptance audit now runs end to end: eleven
+  scenarios, `report.json` records eleven entries and every one PASS. That is
+  the first complete run of it in this work, and it took four failures to get
+  there, each a different artifact still spelling out an address the API had
+  moved: a navigation, a request path, a network intercept and an assertion
+  whose meaning depended on the old dual addressing.
+- `make frontend-check` PASS with the drift guard included: `check:api-types`,
+  lint, typecheck, 128 tests, build. `make openapi-check` reports
+  "openapi: matches docs/openapi.json".
+- Cleaned up thirteen orphaned `api.exe` processes the audit runs had left.
+  The long-lived `e2e-current` acceptance service was left running.
+- Next action: commit the five changed files and push IAM. Then decide whether
+  to take the fourteen other audit scripts carrying the same stale addresses;
+  they need external services, so they cannot be verified from here.

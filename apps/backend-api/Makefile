@@ -182,6 +182,10 @@ generate-check:
 	cmp "$$before" "$$after" || { echo "generate changed tracked content; review and regenerate the candidate"; exit 1; }
 
 frontend-check:
+# The generated request types spell out every published route, so they go
+# stale the moment a route moves. The generator can prove they match the
+# committed document; left out of this target it never got the chance.
+	cd ../frontend-web-admin && bun run check:api-types --force
 	cd ../frontend-web-admin && bun run lint --force
 	cd ../frontend-web-admin && bun run typecheck --force
 	cd ../frontend-web-admin && bun run test --force
