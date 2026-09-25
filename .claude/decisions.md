@@ -2650,3 +2650,42 @@ wording that `GET /me` is the only current-principal alias. Recorded in
 `apps/backend-api/docs/proposed-api-manifest.md`. The relationship id needs a
 migration plan for two tables before it is implemented; no runtime route
 changes with this record.
+
+## D78 - The web client must take its URLs from the contract before routes move
+
+**Date** 2026-09-24
+
+**Decision / Reason**
+`apps/frontend-web-admin` builds request paths as strings and checks them
+against nothing. The generated types are imported for `components` only; the
+`paths` type, which is where a moved route shows up, is imported by no file.
+Regenerating the types after a route migration that had already shipped moved
+14,826 lines and broke no build, which is the evidence: typecheck catches a
+renamed field and says nothing about a renamed route.
+
+The proposed contract moves roughly 114 operations. Slicing that work by
+domain and calling each slice verified because `bun run typecheck` passes
+would be claiming a check that does not exist. The client must therefore take
+its URLs from `paths` — request helpers that accept a path template and its
+parameters, the shape `openapi-fetch` uses — before any route moves.
+
+**Alternatives Considered / Tradeoffs**
+A static inventory of the client's path strings was measured and rejected:
+paths are composed at runtime (`/tenants/${id}` plus a suffix the caller
+passes), so no regex recovers a whole path, and a checker that silently
+skipped what it could not parse would be worse than none.
+
+A runtime assertion in the shared request layer would catch only the calls a
+test happens to exercise. Partial coverage presented as a gate is the failure
+this record exists to avoid.
+
+Converting is the real cost: 442 path strings across a 2,749-line client, and
+every call site changes shape because a template plus parameters replaces an
+interpolated string. It is mechanical and large, and it is cheaper before the
+routes move than after, because afterwards every site is wrong in two ways at
+once.
+
+**Scope / Status**
+Confirmed prerequisite for the route migration, not yet implemented.
+`bun run check:api-types` (`755f533`) keeps the generated types honest about
+the document meanwhile; it does not make the client safe.
