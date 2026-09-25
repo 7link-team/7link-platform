@@ -1,4 +1,5 @@
 import type { components } from "./api-schema"
+import { publishedRoutes } from "./api-routes"
 
 export type GrantedConsent = components["schemas"]["GrantedConsent"]
 export type FilePage = components["schemas"]["FilePage"]
@@ -1183,6 +1184,40 @@ async function requestWithBase<T>(
   ).data
 }
 
+// Whether a resource is addressed under its tenant or globally is the
+// contract's answer, not a caller's guess. Guessing sent a tenant prefix to
+// routes that had moved to a global address, and each of those answered 404
+// the moment a tenant happened to be selected -- which is why group and
+// position membership failed inside a tenant while the same client worked in
+// the account area, where no tenant is selected and no prefix was added.
+const routeTemplates = publishedRoutes.map((route) => route.split("/").slice(1))
+
+function matches(templates: string[][], parts: string[]): boolean {
+  return templates.some(
+    (template) =>
+      template.length === parts.length &&
+      template.every(
+        (segment, index) => segment.startsWith("{") || segment === parts[index]
+      )
+  )
+}
+
+// Whether a resource is addressed under its tenant or globally is the
+// contract's answer, not a caller's guess. Guessing sent a tenant prefix to
+// item routes that had moved to a global address, and each answered 404 the
+// moment a tenant was selected -- group and position membership failed inside
+// a tenant while the same client worked in the account area, where nothing was
+// selected and nothing was prefixed.
+//
+// A path the contract does not publish either way keeps the prefix. Dropping
+// it there would turn one wrong address into a different wrong address, and
+// the caller would have to work out which of the two it was looking at.
+function prefixWithTenant(path: string): boolean {
+  const parts = path.split("?")[0].split("/").slice(1)
+  if (matches(routeTemplates, ["tenants", "{}", ...parts])) return true
+  return !matches(routeTemplates, parts)
+}
+
 async function requestEnvelopeWithBase<T>(
   apiBase: string,
   tenantID: () => string,
@@ -1197,7 +1232,7 @@ async function requestEnvelopeWithBase<T>(
     !headers.has("Accept-Language")
   )
     headers.set("Accept-Language", document.documentElement.lang)
-  const scope = tenant ? tenantID() : ""
+  const scope = tenant && prefixWithTenant(path) ? tenantID() : ""
   if (
     init.body &&
     (typeof FormData === "undefined" || !(init.body instanceof FormData))

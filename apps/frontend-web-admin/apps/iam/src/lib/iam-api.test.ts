@@ -899,7 +899,7 @@ describe("IAM API client", () => {
       "POST /tenants/tenant-governance/access-requests/request%2Fc/revoke",
       "POST /tenants/tenant-governance/access-requests/request%2Fd/withdraw",
       "GET /tenants/tenant-governance/access-reviews",
-      "GET /tenants/tenant-governance/access-reviews/review%2Fa",
+      "GET /access-reviews/review%2Fa",
       "POST /tenants/tenant-governance/access-reviews",
       "POST /tenants/tenant-governance/access-reviews/review%2Fa/items/item%2Fa/decide",
       "POST /tenants/tenant-governance/access-reviews/review%2Fa/complete",
@@ -1376,9 +1376,9 @@ describe("IAM API client", () => {
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "GET /tenants/tenant-oauth/oauth-clients",
       "POST /tenants/tenant-oauth/oauth-clients",
-      "PUT /tenants/tenant-oauth/oauth-clients/client%2Fa",
+      "PUT /oauth-clients/client%2Fa",
       "POST /tenants/tenant-oauth/oauth-clients/client%2Fa/rotate-secret",
-      "DELETE /tenants/tenant-oauth/oauth-clients/client%2Fa",
+      "DELETE /oauth-clients/client%2Fa",
     ])
     for (const request of requests) {
       expect(request.headers.get("x-tenant-id")).toBeNull()
@@ -1455,10 +1455,10 @@ describe("IAM API client", () => {
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "GET /tenants/tenant-scim/scim-directories",
       "POST /tenants/tenant-scim/scim-directories",
-      "PUT /tenants/tenant-scim/scim-directories/directory%2Fa",
-      "GET /tenants/tenant-scim/scim-directories/directory%2Fa/credentials",
-      "POST /tenants/tenant-scim/scim-directories/directory%2Fa/credentials",
-      "DELETE /tenants/tenant-scim/scim-directories/directory%2Fa/credentials/scim_credential%2Fa",
+      "PUT /scim-directories/directory%2Fa",
+      "GET /scim-directories/directory%2Fa/credentials",
+      "POST /scim-directories/directory%2Fa/credentials",
+      "DELETE /scim-directories/directory%2Fa/credentials/scim_credential%2Fa",
     ])
     for (const request of requests)
       expect(request.headers.get("x-tenant-id")).toBeNull()
@@ -1559,11 +1559,11 @@ describe("IAM API client", () => {
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "GET /tenants/tenant-outbound/scim-targets",
       "POST /tenants/tenant-outbound/scim-targets",
-      "PUT /tenants/tenant-outbound/scim-targets/target%2Fa",
-      "PUT /tenants/tenant-outbound/scim-targets/target%2Fa",
+      "PUT /scim-targets/target%2Fa",
+      "PUT /scim-targets/target%2Fa",
       "POST /tenants/tenant-outbound/scim-targets/target%2Fa/push",
       "POST /tenants/tenant-outbound/scim-targets/target%2Fa/deprovision",
-      "DELETE /tenants/tenant-outbound/scim-targets/target%2Fa",
+      "DELETE /scim-targets/target%2Fa",
     ])
     for (const request of requests)
       expect(request.headers.get("x-tenant-id")).toBeNull()
@@ -1664,11 +1664,11 @@ describe("IAM API client", () => {
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "GET /tenants/tenant-service/service-accounts?limit=200&search=report%20worker",
       "POST /tenants/tenant-service/service-accounts",
-      "PUT /tenants/tenant-service/service-accounts/service%2Faccount",
-      "GET /tenants/tenant-service/service-accounts/service%2Faccount/credentials",
-      "POST /tenants/tenant-service/service-accounts/service%2Faccount/credentials",
-      "DELETE /tenants/tenant-service/service-accounts/service%2Faccount/credentials/sac_credential%2Fa",
-      "DELETE /tenants/tenant-service/service-accounts/service%2Faccount?version=2",
+      "PUT /service-accounts/service%2Faccount",
+      "GET /service-accounts/service%2Faccount/credentials",
+      "POST /service-accounts/service%2Faccount/credentials",
+      "DELETE /service-accounts/service%2Faccount/credentials/sac_credential%2Fa",
+      "DELETE /service-accounts/service%2Faccount?version=2",
     ])
     for (const request of requests)
       expect(request.headers.get("x-tenant-id")).toBeNull()
@@ -1827,7 +1827,7 @@ describe("IAM API client", () => {
       "PUT /roles/role%2Fa/permissions/user%3Aview/condition",
       "DELETE /roles/role%2Fa/permissions/user%3Aview/condition",
       "DELETE /roles/role%2Fa/permissions/user%3Aview",
-      "PATCH /tenants/tenant-admin/menus/menu%2Fa",
+      "PATCH /menus/menu%2Fa",
     ])
     expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
       true
@@ -1887,7 +1887,7 @@ describe("IAM API client", () => {
       "GET /tenants/tenant-invitation/invitations",
       "POST /tenants/tenant-invitation/invitations",
       "POST /tenants/tenant-invitation/invitations/invitation%2Fa/resend",
-      "DELETE /tenants/tenant-invitation/invitations/invitation%2Fa",
+      "DELETE /invitations/invitation%2Fa",
       "POST /invitation-acceptances",
     ])
     expect(
@@ -2030,13 +2030,13 @@ describe("IAM API client", () => {
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "GET /tenants/tenant-positions/positions?offset=0&limit=200",
-      "GET /tenants/tenant-positions/positions/position%2Fa",
+      "GET /positions/position%2Fa",
       "POST /tenants/tenant-positions/positions",
-      "PATCH /tenants/tenant-positions/positions/position%2Fa",
-      "DELETE /tenants/tenant-positions/positions/position%2Fa?version=7",
-      "GET /tenants/tenant-positions/positions/position%2Fa/members?offset=0&limit=200",
-      "PUT /tenants/tenant-positions/positions/position%2Fa/members/principal%2Fa",
-      "DELETE /tenants/tenant-positions/positions/position%2Fa/members/principal%2Fa",
+      "PATCH /positions/position%2Fa",
+      "DELETE /positions/position%2Fa?version=7",
+      "GET /positions/position%2Fa/members?offset=0&limit=200",
+      "PUT /positions/position%2Fa/members/principal%2Fa",
+      "DELETE /positions/position%2Fa/members/principal%2Fa",
     ])
     expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
       true
@@ -2149,13 +2149,13 @@ describe("IAM API client", () => {
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "GET /tenants/tenant-groups/groups?offset=0&limit=200",
-      "GET /tenants/tenant-groups/groups/group%2Fa",
+      "GET /groups/group%2Fa",
       "POST /tenants/tenant-groups/groups",
-      "PATCH /tenants/tenant-groups/groups/group%2Fa",
-      "DELETE /tenants/tenant-groups/groups/group%2Fa?version=7",
-      "GET /tenants/tenant-groups/groups/group%2Fa/members?offset=0&limit=200",
-      "PUT /tenants/tenant-groups/groups/group%2Fa/members/principal%2Fa",
-      "DELETE /tenants/tenant-groups/groups/group%2Fa/members/principal%2Fa",
+      "PATCH /groups/group%2Fa",
+      "DELETE /groups/group%2Fa?version=7",
+      "GET /groups/group%2Fa/members?offset=0&limit=200",
+      "PUT /groups/group%2Fa/members/principal%2Fa",
+      "DELETE /groups/group%2Fa/members/principal%2Fa",
     ])
     expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
       true

@@ -122,7 +122,9 @@ async function call(context, path, method = "GET", body, options = {}) {
   const tenantID = options.tenant ?? tenant?.id
   let requestPath = path
   if (options.entity) {
-    requestPath = `/tenants/${tenantID}/entities/${options.entity}${path}`
+    const scoped = `/tenants/${tenantID}/entities/${options.entity}${path}`
+    const global = `/entities/${options.entity}${path}`
+    requestPath = published(scoped) ? scoped : global
   } else if (tenantID && options.tenant !== false) {
     const scoped = `/tenants/${tenantID}${path}`
     requestPath = published(scoped) ? scoped : path
@@ -168,11 +170,15 @@ async function submit(page, form) {
   await page.locator(`#${form}`).waitFor({ state: "hidden" })
 }
 
-async function createDepartment(page, name, parent) {
+async function createDepartment(page, name, entity, parent) {
   await page.goto(tenantPage("/departments"))
   await page
     .getByRole("button", { name: "Create department", exact: true })
     .click()
+  // The console keeps this form's submit disabled until an entity is chosen,
+  // and choosing one resets the parent, so it goes first.
+  await page.locator("#department-entity").click()
+  await page.getByRole("option", { name: entity.name, exact: true }).click()
   await page.locator("#department-name").fill(name)
   if (parent) {
     await page.locator("#department-parent").click()
@@ -454,16 +460,18 @@ try {
     "browser creates the first real tenant without a pre-existing membership; owner, role and menus initialized"
   )
 
-  const operations = await createDepartment(admin.page, "Operations")
-  const operationsChild = await createDepartment(
-    admin.page,
-    "Branch operations",
-    operations
-  )
-  const finance = await createDepartment(admin.page, "Finance")
+  // Entities first: a department is created against one.
   const company = await createEntity(admin.page, "Company")
   const east = await createEntity(admin.page, "East Branch", company)
   const west = await createEntity(admin.page, "West Branch", company)
+  const operations = await createDepartment(admin.page, "Operations", company)
+  const operationsChild = await createDepartment(
+    admin.page,
+    "Branch operations",
+    company,
+    operations
+  )
+  const finance = await createDepartment(admin.page, "Finance", company)
   const alice = await createAccount(admin.page, "Alice", operations)
   const bob = await createAccount(admin.page, "Bob", finance)
   const charlie = await createAccount(admin.page, "Charlie", operationsChild)
