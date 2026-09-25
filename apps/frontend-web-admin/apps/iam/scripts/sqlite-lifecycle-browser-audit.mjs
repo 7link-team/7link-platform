@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { spawn } from "node:child_process"
 import { randomBytes } from "node:crypto"
-import { createWriteStream } from "node:fs"
+import { createWriteStream, readFileSync } from "node:fs"
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises"
 import { createServer } from "node:net"
 import { join } from "node:path"
@@ -81,6 +81,12 @@ const adminLogin = "admin@example.test"
 const pageErrors = []
 let tenant
 
+// Console pages live under the tenant they belong to. Spelling that out at
+// every navigation is how these drifted: the routes moved and the bare paths
+// kept matching nothing, so the pages never rendered and the failures read as
+// missing buttons.
+const tenantPage = (suffix) => `/tenants/${tenant.id}${suffix}`
+
 async function client(page, method, ...args) {
   return page.evaluate(
     async ({ method, args }) => {
@@ -91,13 +97,40 @@ async function client(page, method, ...args) {
   )
 }
 
+// The published contract decides whether a resource is addressed under its
+// tenant or globally. Guessing from the first path segment is what let these
+// calls rot: resources moved to global addresses and the guess kept building
+// a tenant-scoped URL that answered 404 somewhere deep in a flow.
+const contractPaths = Object.keys(
+  JSON.parse(readFileSync(join(backend, "docs", "openapi.json"), "utf8")).paths
+)
+
+function published(candidate) {
+  const parts = candidate.split("?")[0].split("/")
+  return contractPaths.some((template) => {
+    const shape = template.split("/")
+    return (
+      shape.length === parts.length &&
+      shape.every(
+        (segment, index) => segment.startsWith("{") || segment === parts[index]
+      )
+    )
+  })
+}
+
 async function call(context, path, method = "GET", body, options = {}) {
   const tenantID = options.tenant ?? tenant?.id
-  const requestPath = options.entity
-    ? `/tenants/${tenantID}/entities/${options.entity}${path}`
-    : tenantID && options.tenant !== false && !path.startsWith("/login") && !path.startsWith("/tenants") && !path.startsWith("/platform/")
-      ? `/tenants/${tenantID}${path}`
-      : path
+  let requestPath = path
+  if (options.entity) {
+    requestPath = `/tenants/${tenantID}/entities/${options.entity}${path}`
+  } else if (tenantID && options.tenant !== false) {
+    const scoped = `/tenants/${tenantID}${path}`
+    requestPath = published(scoped) ? scoped : path
+  }
+  assert(
+    published(requestPath),
+    `${method} ${requestPath} is not in the published contract`
+  )
   const response = await context.request.fetch(`/api${requestPath}`, {
     method,
     headers: { Origin: webURL },
@@ -136,7 +169,7 @@ async function submit(page, form) {
 }
 
 async function createDepartment(page, name, parent) {
-  await page.goto("/departments")
+  await page.goto(tenantPage("/departments"))
   await page
     .getByRole("button", { name: "Create department", exact: true })
     .click()
@@ -154,7 +187,7 @@ async function createDepartment(page, name, parent) {
 }
 
 async function createEntity(page, name, parent) {
-  await page.goto("/entities")
+  await page.goto(tenantPage("/entities"))
   await page.getByRole("button", { name: "Create entity", exact: true }).click()
   await page.locator("#entity-name").fill(name)
   await page.locator("#entity-type").fill("unit")
@@ -172,7 +205,7 @@ async function createEntity(page, name, parent) {
 }
 
 async function createAccount(page, name, department) {
-  await page.goto("/users")
+  await page.goto(tenantPage("/users"))
   await page
     .getByRole("button", { name: "Create account", exact: true })
     .click()
@@ -194,7 +227,7 @@ async function createAccount(page, name, department) {
 }
 
 async function createRole(page, name, codes, members = []) {
-  await page.goto("/roles")
+  await page.goto(tenantPage("/roles"))
   await page.getByRole("button", { name: "Create role", exact: true }).click()
   await page.locator("#role-name").fill(name)
   await submit(page, "role-form")
@@ -387,7 +420,7 @@ try {
   )
   assert(platformCodes.includes("tenant_create"))
   assert(!platformCodes.includes("user_create"))
-  await admin.page.goto("/tenants")
+  await admin.page.goto("/platform/tenants")
   await admin.page
     .getByRole("button", { name: "Create tenant", exact: true })
     .click()
@@ -498,7 +531,7 @@ try {
   )
   assert(aliceMenus.includes("/users"))
   assert(!aliceMenus.includes("/roles"))
-  await aliceSession.page.goto("/users")
+  await aliceSession.page.goto(tenantPage("/users"))
   await aliceSession.page.getByRole("heading", { level: 1 }).waitFor()
   await eventually(
     async () =>
@@ -513,7 +546,7 @@ try {
       .count(),
     0
   )
-  await bobSession.page.goto("/users")
+  await bobSession.page.goto(tenantPage("/users"))
   await bobSession.page
     .getByRole("button", { name: "Create account", exact: true })
     .waitFor()
@@ -920,7 +953,7 @@ try {
   })
   await call(admin.context, `/principals/${bob.id}/suspension`, "DELETE")
   const restored = await login(bob.login_name, accountPassword, 390)
-  await restored.page.goto("/users")
+  await restored.page.goto(tenantPage("/users"))
   await restored.page
     .getByRole("button", { name: "Create account", exact: true })
     .waitFor()
