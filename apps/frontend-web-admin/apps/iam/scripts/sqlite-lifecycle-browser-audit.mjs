@@ -71,7 +71,9 @@ function pass(flow) {
 const apiURL = `http://127.0.0.1:${await port()}`
 const webPort = await port()
 const webURL = `http://127.0.0.1:${webPort}`
-const binary = join(directory, "api")
+// go build writes api.exe on Windows, and spawning "api" there fails with
+// ENOENT before a single assertion runs.
+const binary = join(directory, process.platform === "win32" ? "api.exe" : "api")
 const configPath = join(directory, "config.json")
 const adminPassword = randomBytes(24).toString("base64url") + "aA1!"
 const accountPassword = randomBytes(24).toString("base64url") + "bB2!"
