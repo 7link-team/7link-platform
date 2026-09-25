@@ -3,7 +3,9 @@ package authz_test
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
+	"sync"
 	"testing"
 
 	"7link.com/platform/internal/infra/guid"
@@ -1055,4 +1057,85 @@ func assertSelectorSchema(t *testing.T, operation *huma.Operation, name, locatio
 		}
 	}
 	t.Fatalf("missing %s selector %s", location, name)
+}
+
+// logCapture records what the registrar decided was worth an operator's
+// attention.
+type logCapture struct {
+	mu      sync.Mutex
+	records []slog.Record
+}
+
+func (capture *logCapture) Enabled(context.Context, slog.Level) bool { return true }
+func (capture *logCapture) WithAttrs([]slog.Attr) slog.Handler       { return capture }
+func (capture *logCapture) WithGroup(string) slog.Handler            { return capture }
+
+func (capture *logCapture) Handle(_ context.Context, record slog.Record) error {
+	capture.mu.Lock()
+	defer capture.mu.Unlock()
+	capture.records = append(capture.records, record)
+	return nil
+}
+
+func (capture *logCapture) levels(level slog.Level) int {
+	capture.mu.Lock()
+	defer capture.mu.Unlock()
+	count := 0
+	for _, record := range capture.records {
+		if record.Level == level {
+			count++
+		}
+	}
+	return count
+}
+
+// TestAuthorizationFailureSeparatesABrokenDependencyFromADepartedCaller keeps
+// the error log usable.
+//
+// A browser that navigates away cancels whatever it had in flight, and the
+// authorization checks running for those requests fail on the dead context.
+// Reporting each one as an error buries the failures that mean something: the
+// acceptance run that prompted this logged errors for an ordinary page
+// navigation, and the real fault had to be found among them.
+func TestAuthorizationFailureSeparatesABrokenDependencyFromADepartedCaller(t *testing.T) {
+	for name, testCase := range map[string]struct {
+		canceled   bool
+		wantErrors int
+		wantDebug  int
+	}{
+		"a dependency that broke": {wantErrors: 1},
+		"a caller that went away": {canceled: true, wantDebug: 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			capture := &logCapture{}
+			previous := slog.Default()
+			slog.SetDefault(slog.New(capture))
+			t.Cleanup(func() { slog.SetDefault(previous) })
+
+			_, api := humatest.New(t)
+			registrar := authz.NewRegistrar(
+				testRegistry(), validVerifier(),
+				&fakeChecker{err: errors.New("checker is down")},
+				&fakeMembership{active: true},
+			)
+			authz.Register(registrar, api, huma.Operation{
+				OperationID: "store-view", Method: http.MethodGet, Path: "/stores",
+				Tags: []string{"tenants"},
+			}, authz.Guard{Resource: "store", Verb: "view"}, okRoute)
+
+			ctx := t.Context()
+			if testCase.canceled {
+				cancellable, cancel := context.WithCancel(ctx)
+				cancel()
+				ctx = cancellable
+			}
+			response := api.DoCtx(ctx, http.MethodGet, "/tenants/11/stores",
+				"Authorization: Bearer test")
+			assert.Equal(t, http.StatusServiceUnavailable, response.Code, response.Body.String())
+			assert.Equal(t, testCase.wantErrors, capture.levels(slog.LevelError),
+				"error records")
+			assert.Equal(t, testCase.wantDebug, capture.levels(slog.LevelDebug),
+				"debug records")
+		})
+	}
 }

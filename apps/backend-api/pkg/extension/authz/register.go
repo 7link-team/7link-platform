@@ -616,6 +616,25 @@ func (r *Registrar) authenticate(api huma.API, ctx huma.Context) (*authn.Claims,
 	return nil, false
 }
 
+// authorizationFailed reports an authorization decision that could not be
+// reached, and separates a caller who went away from a dependency that broke.
+//
+// A canceled request context means the browser navigated or closed the
+// connection before the decision came back. Nobody reads the response, so the
+// status is academic, but logging it as an error is not: the acceptance run
+// that found this produced ERROR lines for ordinary page navigation, and real
+// failures have to be picked out from among them.
+func authorizationFailed(api huma.API, ctx huma.Context, message string, attrs ...any) {
+	if requestContext := ctx.Context(); requestContext != nil && requestContext.Err() != nil {
+		slog.Debug("authorization abandoned by the caller",
+			append([]any{"operation", ctx.Operation().OperationID, "err", requestContext.Err()}, attrs...)...)
+		_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthorizationUnavailable)
+		return
+	}
+	slog.Error(message, append([]any{"operation", ctx.Operation().OperationID}, attrs...)...)
+	_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthorizationUnavailable)
+}
+
 func (r *Registrar) middleware(api huma.API, guard *Guard) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		if guard != nil {
@@ -638,8 +657,7 @@ func (r *Registrar) middleware(api huma.API, guard *Guard) func(huma.Context, fu
 		}
 		active, err := r.members.IsMemberActive(requestContext, tenantID, claims.PrincipalID)
 		if err != nil {
-			slog.Error("tenant membership check failed", "operation", ctx.Operation().OperationID, "err", err)
-			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthorizationUnavailable)
+			authorizationFailed(api, ctx, "tenant membership check failed", "err", err)
 			return
 		}
 		if !active {
@@ -649,8 +667,7 @@ func (r *Registrar) middleware(api huma.API, guard *Guard) func(huma.Context, fu
 		if guard != nil {
 			allowed, err := r.checker.Check(requestContext, tenantID, guard.Code(), claims.PrincipalID)
 			if err != nil {
-				slog.Error("authz check failed", "operation", ctx.Operation().OperationID, "permission", guard.Code(), "err", err)
-				_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthorizationUnavailable)
+				authorizationFailed(api, ctx, "authz check failed", "permission", guard.Code(), "err", err)
 				return
 			}
 			if !allowed {
@@ -690,8 +707,7 @@ func (r *Registrar) ownedResourceMiddleware(api huma.API, resourceParam string, 
 			return
 		}
 		if resolveErr != nil {
-			slog.Error("resource owner resolution failed", "operation", ctx.Operation().OperationID, "err", resolveErr)
-			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthorizationUnavailable)
+			authorizationFailed(api, ctx, "resource owner resolution failed", "err", resolveErr)
 			return
 		}
 		if parseErr != nil || resourceID.Zero() {
@@ -729,8 +745,7 @@ func (r *Registrar) ownedResourceMiddleware(api huma.API, resourceParam string, 
 		})
 		active, err := r.members.IsMemberActive(requestContext, owner.TenantID, principalID)
 		if err != nil {
-			slog.Error("resource membership check failed", "operation", ctx.Operation().OperationID, "err", err)
-			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthorizationUnavailable)
+			authorizationFailed(api, ctx, "resource membership check failed", "err", err)
 			return
 		}
 		if !active {
@@ -745,8 +760,7 @@ func (r *Registrar) ownedResourceMiddleware(api huma.API, resourceParam string, 
 				allowed, err = r.checkEntityAccess(requestContext, owner.TenantID, owner.EntityID, *guard, principalID)
 			}
 			if err != nil {
-				slog.Error("resource authz check failed", "operation", ctx.Operation().OperationID, "permission", guard.Code(), "err", err)
-				_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthorizationUnavailable)
+				authorizationFailed(api, ctx, "resource authz check failed", "permission", guard.Code(), "err", err)
 				return
 			}
 			if !allowed {
@@ -786,8 +800,7 @@ func (r *Registrar) entityMiddlewareFor(api huma.API, guard Guard, selectors fun
 		})
 		active, err := r.members.IsMemberActive(requestContext, tenantID, principalID)
 		if err != nil {
-			slog.Error("entity membership check failed", "operation", ctx.Operation().OperationID, "tenant", tenantID, "entity", entityID, "err", err)
-			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthorizationUnavailable)
+			authorizationFailed(api, ctx, "entity membership check failed", "tenant", tenantID, "entity", entityID, "err", err)
 			return
 		}
 		if !active {
@@ -796,8 +809,7 @@ func (r *Registrar) entityMiddlewareFor(api huma.API, guard Guard, selectors fun
 		}
 		allowed, err := r.checkEntityAccess(requestContext, tenantID, entityID, guard, principalID)
 		if err != nil {
-			slog.Error("entity authz check failed", "operation", ctx.Operation().OperationID, "tenant", tenantID, "entity", entityID, "permission", guard.Code(), "err", err)
-			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthorizationUnavailable)
+			authorizationFailed(api, ctx, "entity authz check failed", "tenant", tenantID, "entity", entityID, "permission", guard.Code(), "err", err)
 			return
 		}
 		if !allowed {
@@ -839,8 +851,7 @@ func (r *Registrar) platformMiddleware(api huma.API, guard Guard) func(huma.Cont
 		})
 		allowed, err := r.checker.CheckPlatform(requestContext, guard.Code(), claims.PrincipalID)
 		if err != nil {
-			slog.Error("platform authz check failed", "operation", ctx.Operation().OperationID, "permission", guard.Code(), "err", err)
-			_ = huma.WriteErr(api, ctx, http.StatusServiceUnavailable, respx.AuthorizationUnavailable)
+			authorizationFailed(api, ctx, "platform authz check failed", "permission", guard.Code(), "err", err)
 			return
 		}
 		if !allowed {
