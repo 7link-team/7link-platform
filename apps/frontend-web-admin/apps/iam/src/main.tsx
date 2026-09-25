@@ -19,6 +19,12 @@ const savedLocale = document.cookie
   ?.split("=")[1]
 const initialLocale =
   locales.find((locale) => locale === savedLocale) ?? defaultLocale
+// Every API request reads this attribute for its Accept-Language, and the
+// first ones leave before the provider's effect has run. index.html can only
+// declare one language, so until this line a caller whose locale differed got
+// that one -- two requests from the same page load came back in two languages,
+// and API messages are shown to the reader.
+document.documentElement.lang = initialLocale
 const root = createRoot(document.getElementById("root")!)
 void loadMessages(initialLocale)
   .then((messages) =>
