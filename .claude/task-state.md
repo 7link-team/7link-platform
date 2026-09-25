@@ -166,6 +166,44 @@
   `TestOpenAPIExportGroupsOperationsByPublicResource`'s first-path-segment rule
   with the 13-domain vocabulary and retags all 278 operations.
 
+### One Person One File Space - 2026-09-24
+
+- Phase: delivered in `f3e7b90`; `make ci` EXIT=0.
+- `ownerPersonal` is gone, and with it the state it stood for: a person-owned
+  root inside a tenant's space. Three paths served that state and were REMOVED,
+  not narrowed, because an account root only lives in an account space - the
+  authorizer's owner-subject addition in the tenant branch, resolveFileOwner
+  accepting it, and constraintAllowsRoot's case for it.
+- `ensureOwnedRoot` lost its scope parameter; the client's own scope field is
+  still validated in createFile.
+- The SQL CHECK in `00009_node_permissions.sql` still permits 'personal'.
+  Deliberate: editing an applied migration breaks goose verification, and
+  tightening a CHECK on SQLite means rebuilding file_nodes. No code can write
+  the value, so a permissive constraint costs nothing. A future migration can
+  tighten it.
+- internal/files sits at EXACTLY 90.0% against a 90.0% gate. The next deletion
+  of covered code in this package dips under again.
+- Coverage lessons, all three of them mine:
+  1. Deleting well-covered code lowers the percentage by shrinking the
+     denominator. The fix is covering something that was already untested, not
+     restoring the deleted tests - I wasted a cycle rebuilding a brittle ACL
+     fixture before seeing that.
+  2. The gate reads `coverage.raw.out` and matches the package directory
+     exactly. Reading `coverage.out`, and pooling two functions' blocks, gave
+     the false conclusion "spread thin, no single gap".
+  3. `loadNodePermissions` and `loadNodePermissionsBatch` are two copies of the
+     same ancestry walk. The first test moved coverage by zero because it hit
+     only the single-node copy. The batch copy is what the browser uses and had
+     none of its seven guards tested.
+- Pacing: `make ci` is ~12-13 min wall clock (test-coverage 5m23s,
+  test-integration 5m45s). Measured: `-coverpkg` breadth costs ~0.8s and
+  `-covermode` nothing; the long pole is `tests/migration` at 318s, which runs
+  without coverage. Iterate on the package plus `make lint`,
+  `make openapi-check`, `go -C tests test ./architecture`.
+- Next action: nothing outstanding on files. Open items elsewhere are the
+  frontend `api-schema.ts` drift (13,808 lines, wants a no-drift gate) and the
+  relationship `id` migration plan from the manifest.
+
 ### A Person's Own Files - 2026-09-24
 
 - Phase: delivered in `3aab8fe`; `make ci` green end to end.
