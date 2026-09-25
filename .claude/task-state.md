@@ -166,6 +166,53 @@
   `TestOpenAPIExportGroupsOperationsByPublicResource`'s first-path-segment rule
   with the 13-domain vocabulary and retags all 278 operations.
 
+### Client Addressing Swept Against The Contract - 2026-09-25
+
+- Delivered `32de886` and `8fba9ec`. The acceptance run reaches SEVEN passing
+  flows, up from one.
+- One defect, four artifacts. Everything that spells out a route had drifted
+  and nothing reconciled any of it: the generated types (13,808 lines), the
+  persona expectations, the acceptance run's navigation and API addressing,
+  and the web client itself. Fixing them one failure at a time is what made
+  this take so long; the sweep below is what should have happened first.
+- The client prefixed every path with the selected tenant. Collections do sit
+  under a tenant; items moved to global addresses. Sweeping all 158 call sites
+  against the document found the mismatches, and 29 of them were asserted in
+  the client's own tests, which compare against a mock and so held the broken
+  URLs in place. Invisible in the account area (no tenant, no prefix), 404
+  inside a tenant.
+- The generator now emits `src/lib/api-routes.ts` beside the types, because a
+  type answers nothing at runtime. `check:api-types` covers both files.
+- A path the document publishes in NEITHER form keeps the prefix. An earlier
+  attempt dropped it, which turned `/tenants/{t}/audit/retention` into
+  `/audit/retention` - one wrong address exchanged for another. Six tests
+  caught that; the rule now only acts where the contract positively speaks.
+- STILL BROKEN, not fixed here: seventeen client methods call endpoints that
+  exist in no form, left behind when the backend moved from verb paths to
+  resource paths. Each has a known replacement:
+    /access-requests/{id}/approve|reject          -> PUT .../decision
+    /access-requests/{id}/revoke                  -> PUT .../grant-revocation
+    /access-requests/{id}/withdraw                -> PUT .../withdrawal
+    /access-reviews/{id}/items/{item}/decide      -> PUT .../decision
+    /access-reviews/{id}/complete|cancel          -> PATCH /access-reviews/{id}
+    /oauth-clients/{id}/rotate-secret             -> POST .../credentials
+    /scim-targets/{id}/push                       -> POST .../provisioning-jobs
+    /scim-targets/{id}/deprovision                -> POST .../deprovisioning-jobs
+    /invitations/{id}/resend                      -> POST .../deliveries
+    /me/memberships/{id}/leave                    -> DELETE /me/memberships/{id}
+    /platform/principals/{id}/closure-request/rejection|processing
+                                                  -> PATCH .../closure-request
+    /platform/principals/{id}/lifecycle/retention -> .../retention-policy
+    /audit/retention                              -> /audit/retention-policy
+  Approving access requests, completing reviews, rotating OAuth secrets,
+  pushing SCIM, resending invitations, leaving a tenant, processing account
+  closures and setting retention are all broken in the app today.
+- Contract-versus-UI mismatch worth a decision: the department form requires
+  an entity (`departments/page.tsx:467`) while the manifest and the model
+  treat `entity_id` as optional.
+- Next action: fix those seventeen against the contract, in one pass, with the
+  client tests asserting the document rather than a mock.
+
 ### Acceptance Run And Contract Review - 2026-09-25
 
 - `make ci` green; MySQL 8.4 pass green through remote Docker over SSH
