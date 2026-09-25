@@ -184,7 +184,7 @@ func TestDirectoryTreeRejectsInvalidEntryPointInputs(t *testing.T) {
 			return tree.createSpace(t.Context(), nilDB, 1, 2, 3, "tenant", now)
 		},
 		"create space with unsupported scope": func() error {
-			return tree.createSpace(t.Context(), &gorm.DB{}, 1, 2, 3, "personal", now)
+			return tree.createSpace(t.Context(), &gorm.DB{}, 1, 2, 3, "workspace", now)
 		},
 		"create directory without parent": func() error {
 			_, err := tree.createDirectory(t.Context(), &gorm.DB{}, 1, 2, 0, "reports", now)

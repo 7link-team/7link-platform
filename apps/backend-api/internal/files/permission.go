@@ -333,14 +333,11 @@ func (a *nodeAuthorizer) authorizeLoaded(
 	if !constraintAllowsRoot(constraint, permissions.root, a.entityID) {
 		return false, errOperationForbidden
 	}
+	// A root in a tenant's space belongs to the tenant, an entity or a
+	// department, never to a person, so no owner subject applies here. The case
+	// that did was a personal root carved out of a tenant's space, which no
+	// longer exists.
 	subjects := a.acl
-	if (permissions.root.scope == ownerPersonal || permissions.root.scope == ownerAccount) && permissions.root.ownerID == a.actorID {
-		subjects = make(map[aclSubject]struct{}, len(a.acl)+1)
-		for subject := range a.acl {
-			subjects[subject] = struct{}{}
-		}
-		subjects[aclSubject{kind: "owner", id: a.actorID}] = struct{}{}
-	}
 	layers := permissions.layers
 	if organizationRoot(permissions.root.scope) && len(layers) > 0 && layers[0].nodeID == permissions.rootID {
 		layers = append([]nodeACLLayer(nil), layers...)
@@ -392,7 +389,7 @@ func (a *nodeAuthorizer) validateRoot(ctx context.Context, tx *gorm.DB, root roo
 		if !a.tenantView {
 			references.EntityID = a.entityID
 		}
-	case ownerPersonal, ownerAccount:
+	case ownerAccount:
 		references.PrincipalID = root.ownerID
 	default:
 		return errOperationForbidden
@@ -446,8 +443,6 @@ func constraintAllowsRoot(constraint authz.DataConstraint, root rootBinding, cur
 		return entityAllowed
 	case ownerDepartment:
 		return entityAllowed || slices.Contains(constraint.DepartmentIDs, root.ownerID.String())
-	case ownerPersonal:
-		return slices.Contains(constraint.OwnerIDs, root.ownerID.String())
 	default:
 		return false
 	}

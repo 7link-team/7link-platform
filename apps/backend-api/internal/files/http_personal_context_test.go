@@ -35,6 +35,12 @@ func TestPersonalRoutesDoNotDependOnTheSelectedTenant(t *testing.T) {
 	// Claims that already carry no tenant are handed through untouched.
 	accountOnly := authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 70})
 	require.Equal(t, accountOnly, personalContext(accountOnly))
+
+	// A context with no claims at all is not this function's problem: the
+	// authenticator has already refused such a request, so it is handed on
+	// rather than given an empty set of claims to carry.
+	bare := t.Context()
+	require.Equal(t, bare, personalContext(bare))
 }
 
 // TestAccountCollectionAnswersWhileATenantIsSelected is the behavior the unit
@@ -43,7 +49,7 @@ func TestAccountCollectionAnswersWhileATenantIsSelected(t *testing.T) {
 	h := newOperationServiceHarness(t)
 	accountContext := authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 70})
 
-	root, err := h.service.ensureOwnedRoot(accountContext, "account")
+	root, err := h.service.ensureOwnedRoot(accountContext)
 	require.NoError(t, err)
 
 	collection := fileCollection{scope: ownerAccount, ownerID: 70}
@@ -65,7 +71,7 @@ func TestAccountCollectionAnswersWhileATenantIsSelected(t *testing.T) {
 func TestMyFilesRouteAnswersWhileATenantIsSelected(t *testing.T) {
 	h := newOperationServiceHarness(t)
 	accountContext := authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 70})
-	root, err := h.service.ensureOwnedRoot(accountContext, "account")
+	root, err := h.service.ensureOwnedRoot(accountContext)
 	require.NoError(t, err)
 
 	api := newFileHTTPAPI(t, h.service, 90)
@@ -77,4 +83,34 @@ func TestMyFilesRouteAnswersWhileATenantIsSelected(t *testing.T) {
 	require.Len(t, envelope.Data.Items, 1)
 	require.Equal(t, root.ID, envelope.Data.Items[0].ID)
 	require.Equal(t, "account", envelope.Data.Items[0].Scope)
+}
+
+// TestMyFilesRouteCreatesTheCallersOwnRoot covers the other half of the route:
+// the space is made on first use, and it is made for the person rather than
+// for whichever tenant they happened to have selected.
+func TestMyFilesRouteCreatesTheCallersOwnRoot(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	api := newFileHTTPAPI(t, h.service, 90)
+	headers := []any{"Authorization: Bearer test"}
+
+	empty := api.Get("/me/files?limit=10", headers...)
+	require.Equal(t, http.StatusOK, empty.Code, empty.Body.String())
+	var before respx.Envelope[filePage]
+	require.NoError(t, json.Unmarshal(empty.Body.Bytes(), &before))
+	require.Empty(t, before.Data.Items, "reading does not create the space")
+
+	created := postFileFormTo(t, api, "/me/files", headers, map[string]string{"kind": "directory", "scope": "account"}, "", "")
+	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
+	var root respx.Envelope[fileEntryView]
+	require.NoError(t, json.Unmarshal(created.Body.Bytes(), &root))
+	require.Equal(t, "account", root.Data.Scope)
+	require.Equal(t, "Account files", root.Data.Name)
+	require.Nil(t, root.Data.TenantID, "the space belongs to the person, not to the selected tenant")
+
+	again := api.Get("/me/files?limit=10", headers...)
+	require.Equal(t, http.StatusOK, again.Code, again.Body.String())
+	var after respx.Envelope[filePage]
+	require.NoError(t, json.Unmarshal(again.Body.Bytes(), &after))
+	require.Len(t, after.Data.Items, 1)
+	require.Equal(t, root.Data.ID, after.Data.Items[0].ID)
 }

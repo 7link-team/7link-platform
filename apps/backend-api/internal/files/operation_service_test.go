@@ -37,6 +37,10 @@ type operationServiceHarness struct {
 	tree    directoryTree
 	input   immediateOperationRequest
 	ctx     context.Context
+	// ownCtx is the same person with no tenant selected. A person's own file
+	// space belongs to no tenant, so anything about it is asked without one --
+	// which is what personalContext produces at the route.
+	ownCtx context.Context
 }
 
 func newOperationServiceHarness(t *testing.T) operationServiceHarness {
@@ -117,12 +121,24 @@ func newOperationServiceHarness(t *testing.T) operationServiceHarness {
 		},
 	}
 	ctx := authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 70, TenantID: 90, EntityID: 80})
-	return operationServiceHarness{service, auditor, db, tree, immediateOperationRequest{operationRequest: request}, ctx}
+	own := authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 70})
+	return operationServiceHarness{
+		service, auditor, db, tree,
+		immediateOperationRequest{operationRequest: request}, ctx, own,
+	}
 }
 
 func (h operationServiceHarness) assertAudit(t *testing.T, count int64) []audit.Event {
 	t.Helper()
-	events, total, err := h.audit.List(t.Context(), audit.Filter{TenantID: 90, Limit: 100})
+	return h.assertAuditFor(t, 90, count)
+}
+
+// assertAuditFor names the tenant whose record is being read. Work in the
+// caller's own space is recorded against no tenant, so asserting it against
+// tenant 90 would find nothing and read as "no event was written".
+func (h operationServiceHarness) assertAuditFor(t *testing.T, tenantID guid.ID, count int64) []audit.Event {
+	t.Helper()
+	events, total, err := h.audit.List(t.Context(), audit.Filter{TenantID: tenantID, Limit: 100})
 	require.NoError(t, err)
 	require.Equal(t, count, total)
 	require.Len(t, events, int(count))

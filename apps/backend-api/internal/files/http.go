@@ -386,7 +386,7 @@ func createFile(ctx context.Context, service *operationService, form *fileCreate
 		if !allowRoot || form.Kind != "directory" || form.Scope != ownerAccount || strings.TrimSpace(form.Name) != "" || form.File.IsSet {
 			return nil, huma.Error422UnprocessableEntity("invalid_file_root")
 		}
-		result, err = service.ensureOwnedRoot(ctx, form.Scope)
+		result, err = service.ensureOwnedRoot(ctx)
 		if err != nil {
 			return nil, fileHTTPError(err)
 		}

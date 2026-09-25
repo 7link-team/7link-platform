@@ -90,12 +90,12 @@ func TestResourcePurposeRegistryRejectsAmbiguousContracts(t *testing.T) {
 	duplicateScopes := resourceBindingPurpose("account", "account")
 	require.Error(t, bindings.RegisterPurpose(duplicateScopes))
 
-	purpose := resourceBindingPurpose("personal", "account")
+	purpose := resourceBindingPurpose("tenant", "account")
 	require.NoError(t, bindings.RegisterPurpose(purpose))
 	purpose.OwnerScopes[0] = "system"
 	registered, ok := bindings.purpose("principal.avatar")
 	require.True(t, ok)
-	require.Equal(t, []string{"account", "personal"}, registered.OwnerScopes, "the registry must own an immutable scope copy")
+	require.Equal(t, []string{"account", "tenant"}, registered.OwnerScopes, "the registry must own an immutable scope copy")
 	require.Error(t, bindings.RegisterPurpose(resourceBindingPurpose("account")), "purpose names are unique")
 	_, err = NewResourceBindings("invalid-prefix;")
 	require.Error(t, err)

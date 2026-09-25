@@ -87,7 +87,7 @@ func validPurpose(purpose ResourcePurpose) bool {
 	seen := make(map[string]struct{}, len(purpose.OwnerScopes))
 	for _, scope := range purpose.OwnerScopes {
 		switch scope {
-		case "system", ownerTenant, ownerEntity, ownerDepartment, ownerPersonal, ownerAccount:
+		case "system", ownerTenant, ownerEntity, ownerDepartment, ownerAccount:
 		default:
 			return false
 		}

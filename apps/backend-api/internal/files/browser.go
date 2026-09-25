@@ -872,9 +872,6 @@ func setRootOwnership(view *fileEntryView, space *model.Space, row *model.Node) 
 	case ownerDepartment:
 		tenantID := *space.TenantID
 		view.TenantID, view.DepartmentID = &tenantID, &ownerID
-	case ownerPersonal:
-		tenantID := *space.TenantID
-		view.TenantID, view.PrincipalID = &tenantID, &ownerID
 	default:
 		return errFileACL
 	}

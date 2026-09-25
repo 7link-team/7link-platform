@@ -231,7 +231,7 @@ func newFileHTTPAPI(t *testing.T, service *operationService, selected ...guid.ID
 			return authz.ResourceOwner{}, false, err
 		}
 		switch resolved.Scope {
-		case "account", "personal":
+		case "account":
 			return authz.ResourceOwner{PrincipalID: resolved.ID}, true, nil
 		case "tenant":
 			return authz.ResourceOwner{TenantID: resolved.ID}, true, nil
@@ -285,8 +285,11 @@ func TestFileHTTPAuthorizedBasicRoutes(t *testing.T) {
 	require.Equal(t, "Contracts", createdEnvelope.Data.Name)
 	require.Equal(t, "directory", createdEnvelope.Data.Kind)
 
-	personal := postFileForm(t, api, headers, map[string]string{"kind": "directory", "scope": "personal"}, "", "")
-	require.Equal(t, http.StatusUnprocessableEntity, personal.Code, personal.Body.String())
+	// "personal" was a second personal space inside each tenant. It is gone,
+	// and the contract refuses it rather than quietly accepting a scope no
+	// root can have.
+	removed := postFileForm(t, api, headers, map[string]string{"kind": "directory", "scope": "personal"}, "", "")
+	require.Equal(t, http.StatusUnprocessableEntity, removed.Code, removed.Body.String())
 
 	uploaded := postFileForm(t, api, headers, map[string]string{"parent_id": createdEnvelope.Data.ID.String(), "kind": "file"}, "report.txt", "payload")
 	require.Equal(t, http.StatusCreated, uploaded.Code, uploaded.Body.String())

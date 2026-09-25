@@ -2,6 +2,7 @@ package files
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -9,39 +10,48 @@ import (
 
 	"7link.com/platform/internal/files/model"
 	"7link.com/platform/internal/files/query"
+	"7link.com/platform/internal/iam/audit"
 	"7link.com/platform/pkg/extension/authn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
-func TestBasicFileLifecycleUsesPersonalRootAndImmutableContent(t *testing.T) {
+func TestBasicFileLifecycleUsesTheOwnRootAndImmutableContent(t *testing.T) {
 	h := newOperationServiceHarness(t)
 
-	root, err := h.service.ensureOwnedRoot(h.ctx, "personal")
+	root, err := h.service.ensureOwnedRoot(h.ownCtx)
 	require.NoError(t, err)
 	require.Equal(t, "directory", root.Kind)
-	require.Equal(t, "personal", root.Scope)
-	require.Equal(t, "Personal files", root.Name)
+	require.Equal(t, "account", root.Scope)
+	require.Equal(t, "Account files", root.Name)
 	require.Positive(t, root.ID)
 
-	again, err := h.service.ensureOwnedRoot(h.ctx, "personal")
+	again, err := h.service.ensureOwnedRoot(h.ownCtx)
 	require.NoError(t, err)
 	require.Equal(t, root, again)
-	h.assertAudit(t, 1)
+	// The caller's own space belongs to no tenant, so the record is kept
+	// against none. Read it from the table rather than through the tenant
+	// filter, which is built to answer "what happened in tenant X".
+	var ownEvents int64
+	require.NoError(t, h.db.Table(h.tree.prefix+"iam_audit_events").
+		Where("event_type = ?", "file_root_created").Count(&ownEvents).Error)
+	require.Equal(t, int64(1), ownEvents)
 
+	// The tenant's own collection is a different question and a different
+	// space: creating the caller's root adds nothing to it.
 	roots, err := h.service.listRoots(h.ctx, testFileCollection(h.ctx), browserPageRequest{})
 	require.NoError(t, err)
 	require.Len(t, roots.Items, 1)
 	require.Equal(t, "tenant", roots.Items[0].Scope)
 
-	directory, err := h.service.createDirectory(h.ctx, root.ID, "Contracts")
+	directory, err := h.service.createDirectory(h.ownCtx, root.ID, "Contracts")
 	require.NoError(t, err)
 	require.Equal(t, "directory", directory.Kind)
 	require.Equal(t, int64(1), directory.Revision)
 
 	payload := "signed agreement\n"
-	uploaded, err := h.service.uploadFile(h.ctx, directory.ID, "Agreement.TXT", "text/plain", strings.NewReader(payload), int64(len(payload)))
+	uploaded, err := h.service.uploadFile(h.ownCtx, directory.ID, "Agreement.TXT", "text/plain", strings.NewReader(payload), int64(len(payload)))
 	require.NoError(t, err)
 	require.Equal(t, "file", uploaded.Kind)
 	require.Equal(t, "Agreement.TXT", uploaded.Name)
@@ -50,7 +60,7 @@ func TestBasicFileLifecycleUsesPersonalRootAndImmutableContent(t *testing.T) {
 	require.Equal(t, int64(2), uploaded.Revision)
 	require.NotNil(t, uploaded.Size)
 	require.EqualValues(t, len(payload), *uploaded.Size)
-	download, err := h.service.downloadFile(h.ctx, uploaded.ID)
+	download, err := h.service.downloadFile(h.ownCtx, uploaded.ID)
 	require.NoError(t, err)
 	require.Equal(t, "Agreement.TXT", download.Name)
 	require.EqualValues(t, len(payload), download.Size)
@@ -59,27 +69,27 @@ func TestBasicFileLifecycleUsesPersonalRootAndImmutableContent(t *testing.T) {
 	require.NoError(t, download.Reader.Close())
 	require.Equal(t, payload, string(content))
 
-	renamed, err := h.service.renameNode(h.ctx, uploaded.ID, uploaded.Revision, "Final.txt")
+	renamed, err := h.service.renameNode(h.ownCtx, uploaded.ID, uploaded.Revision, "Final.txt")
 	require.NoError(t, err)
 	require.Equal(t, "Final.txt", renamed.Name)
 	require.Equal(t, uploaded.Revision+1, renamed.Revision)
 	require.Equal(t, uploaded.Version, renamed.Version)
-	_, err = h.service.renameNode(h.ctx, uploaded.ID, uploaded.Revision, "stale.txt")
+	_, err = h.service.renameNode(h.ownCtx, uploaded.ID, uploaded.Revision, "stale.txt")
 	require.ErrorIs(t, err, errTreeConflict)
 
-	trashed, err := h.service.trashNode(h.ctx, uploaded.ID, renamed.Revision)
+	trashed, err := h.service.trashNode(h.ownCtx, uploaded.ID, renamed.Revision)
 	require.NoError(t, err)
 	require.Positive(t, trashed.BatchID)
-	children, err := h.service.listChildren(h.ctx, directory.ID, browserPageRequest{})
+	children, err := h.service.listChildren(h.ownCtx, directory.ID, browserPageRequest{})
 	require.NoError(t, err)
 	require.Empty(t, children.Items)
-	require.Equal(t, "Personal files", children.Path[0].Name)
-	_, err = h.service.downloadFile(h.ctx, uploaded.ID)
+	require.Equal(t, "Account files", children.Path[0].Name)
+	_, err = h.service.downloadFile(h.ownCtx, uploaded.ID)
 	require.ErrorIs(t, err, ErrNotFound)
-	renamedDirectory, err := h.service.renameNode(h.ctx, directory.ID, directory.Revision, "Agreements")
+	renamedDirectory, err := h.service.renameNode(h.ownCtx, directory.ID, directory.Revision, "Agreements")
 	require.NoError(t, err)
 	require.Equal(t, "directory", renamedDirectory.Kind)
-	_, err = h.service.trashNode(h.ctx, directory.ID, renamedDirectory.Revision)
+	_, err = h.service.trashNode(h.ownCtx, directory.ID, renamedDirectory.Revision)
 	require.NoError(t, err)
 
 	q := query.Bind(h.db, h.tree.prefix)
@@ -91,21 +101,23 @@ func TestBasicFileLifecycleUsesPersonalRootAndImmutableContent(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "verified", object.State)
 	require.EqualValues(t, len(payload), object.Size)
-	h.assertAudit(t, 8)
+	require.NoError(t, h.db.Table(h.tree.prefix+"iam_audit_events").
+		Where("tenant_id = ?", 0).Count(&ownEvents).Error)
+	require.Equal(t, int64(8), ownEvents, "every step in the caller's own space is recorded against no tenant")
 }
 
 func TestBasicFileLifecycleRejectsConflictsAndOversizedUpload(t *testing.T) {
 	h := newOperationServiceHarness(t)
-	root, err := h.service.ensureOwnedRoot(h.ctx, "personal")
+	root, err := h.service.ensureOwnedRoot(h.ownCtx)
 	require.NoError(t, err)
 
-	first, err := h.service.createDirectory(h.ctx, root.ID, "Reports")
+	first, err := h.service.createDirectory(h.ownCtx, root.ID, "Reports")
 	require.NoError(t, err)
-	_, err = h.service.createDirectory(h.ctx, root.ID, "reports")
+	_, err = h.service.createDirectory(h.ownCtx, root.ID, "reports")
 	require.ErrorIs(t, err, errTreeConflict)
 
 	h.service.maxUploadBytes = 2
-	_, err = h.service.uploadFile(h.ctx, first.ID, "large.txt", "text/plain", strings.NewReader("123"), 3)
+	_, err = h.service.uploadFile(h.ownCtx, first.ID, "large.txt", "text/plain", strings.NewReader("123"), 3)
 	require.ErrorIs(t, err, errOperationInput)
 	q := query.Bind(h.db, h.tree.prefix)
 	preparations, err := q.AccountPreparation.WithContext(t.Context()).Find()
@@ -121,13 +133,13 @@ func TestAccountFileRootIsLazyIdempotentAndIsolatedFromTenants(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, before.Items, "GET must not create an account root")
 
-	root, err := h.service.ensureOwnedRoot(accountContext, "account")
+	root, err := h.service.ensureOwnedRoot(accountContext)
 	require.NoError(t, err)
 	require.Equal(t, "account", root.Scope)
 	require.Equal(t, "Account files", root.Name)
 	requireOptionalID(t, root.PrincipalID, 70)
 	require.Nil(t, root.TenantID)
-	again, err := h.service.ensureOwnedRoot(accountContext, "account")
+	again, err := h.service.ensureOwnedRoot(accountContext)
 	require.NoError(t, err)
 	require.Equal(t, root, again)
 
@@ -138,9 +150,10 @@ func TestAccountFileRootIsLazyIdempotentAndIsolatedFromTenants(t *testing.T) {
 	require.ErrorIs(t, err, errOperationForbidden, "tenant context cannot read account files by global ID")
 	_, err = h.service.getFileEntry(accountContext, 2)
 	require.ErrorIs(t, err, errOperationForbidden, "account context cannot read tenant files by global ID")
-	_, err = h.service.ensureOwnedRoot(accountContext, "personal")
-	require.ErrorIs(t, err, errOperationForbidden)
-	_, err = h.service.ensureOwnedRoot(h.ctx, "account")
+	// The service refuses a context that still carries a tenant: a question
+	// about the caller's own space that names one is malformed. The route drops
+	// the selection before calling, which personalContext's tests cover.
+	_, err = h.service.ensureOwnedRoot(h.ctx)
 	require.ErrorIs(t, err, errOperationForbidden)
 
 	otherAccount := authn.WithClaims(t.Context(), &authn.Claims{PrincipalID: 71})
@@ -159,7 +172,6 @@ func TestRootDisplayNameLabelsEveryRootScope(t *testing.T) {
 	// would render blank or as a raw scope token.
 	for scope, want := range map[string]string{
 		"account":    "Account files",
-		"personal":   "Personal files",
 		"tenant":     "Tenant files",
 		"entity":     "Entity files",
 		"department": "Department files",
@@ -214,16 +226,16 @@ func TestBasicClaimsRequiresACompletelyWiredUploadPath(t *testing.T) {
 func TestBasicAndBrowserEntryPointsSurfaceStorageFailures(t *testing.T) {
 	h := newOperationServiceHarness(t)
 
-	root, err := h.service.ensureOwnedRoot(h.ctx, "personal")
+	root, err := h.service.ensureOwnedRoot(h.ownCtx)
 	require.NoError(t, err)
-	uploaded, err := h.service.uploadFile(h.ctx, root.ID, "report.txt", "text/plain", strings.NewReader("abc"), 3)
+	uploaded, err := h.service.uploadFile(h.ownCtx, root.ID, "report.txt", "text/plain", strings.NewReader("abc"), 3)
 	require.NoError(t, err)
-	directory, err := h.service.createDirectory(h.ctx, root.ID, "archive")
+	directory, err := h.service.createDirectory(h.ownCtx, root.ID, "archive")
 	require.NoError(t, err)
 
 	// A positive control first: every path below works before the outage, so a
 	// later error is attributable to the dropped tables and not to bad input.
-	_, err = h.service.listChildren(h.ctx, root.ID, browserPageRequest{Limit: 10})
+	_, err = h.service.listChildren(h.ownCtx, root.ID, browserPageRequest{Limit: 10})
 	require.NoError(t, err)
 
 	// The closure table backs every tree walk; the trash roots back the recycle
@@ -232,54 +244,54 @@ func TestBasicAndBrowserEntryPointsSurfaceStorageFailures(t *testing.T) {
 		require.NoError(t, h.db.Exec("DROP TABLE "+h.tree.prefix+table).Error, table)
 	}
 
-	collection := testFileCollection(h.ctx)
+	collection := testFileCollection(h.ownCtx)
 	for name, call := range map[string]func() error{
 		"list roots": func() error {
-			_, err := h.service.listRoots(h.ctx, collection, browserPageRequest{Limit: 10})
+			_, err := h.service.listRoots(h.ownCtx, collection, browserPageRequest{Limit: 10})
 			return err
 		},
 		"list trash": func() error {
-			_, err := h.service.listTrash(h.ctx, collection, browserPageRequest{Limit: 10})
+			_, err := h.service.listTrash(h.ownCtx, collection, browserPageRequest{Limit: 10})
 			return err
 		},
 		"list children": func() error {
-			_, err := h.service.listChildren(h.ctx, root.ID, browserPageRequest{Limit: 10})
+			_, err := h.service.listChildren(h.ownCtx, root.ID, browserPageRequest{Limit: 10})
 			return err
 		},
 		"read entry": func() error {
-			_, err := h.service.readFileEntry(h.ctx, root.ID, "report.txt")
+			_, err := h.service.readFileEntry(h.ownCtx, root.ID, "report.txt")
 			return err
 		},
 		"ensure root": func() error {
-			_, err := h.service.ensureOwnedRoot(h.ctx, "personal")
+			_, err := h.service.ensureOwnedRoot(h.ownCtx)
 			return err
 		},
 		"create directory": func() error {
-			_, err := h.service.createDirectory(h.ctx, root.ID, "another")
+			_, err := h.service.createDirectory(h.ownCtx, root.ID, "another")
 			return err
 		},
 		"upload": func() error {
-			_, err := h.service.uploadFile(h.ctx, root.ID, "second.txt", "text/plain", strings.NewReader("xyz"), 3)
+			_, err := h.service.uploadFile(h.ownCtx, root.ID, "second.txt", "text/plain", strings.NewReader("xyz"), 3)
 			return err
 		},
 		"download": func() error {
-			_, err := h.service.downloadFile(h.ctx, uploaded.ID)
+			_, err := h.service.downloadFile(h.ownCtx, uploaded.ID)
 			return err
 		},
 		"trash": func() error {
-			_, err := h.service.trashNode(h.ctx, directory.ID, directory.Revision)
+			_, err := h.service.trashNode(h.ownCtx, directory.ID, directory.Revision)
 			return err
 		},
 		"restore": func() error {
-			_, err := h.service.restoreNode(h.ctx, directory.ID, directory.Revision)
+			_, err := h.service.restoreNode(h.ownCtx, directory.ID, directory.Revision)
 			return err
 		},
 		"restore as": func() error {
-			_, err := h.service.restoreNodeAs(h.ctx, directory.ID, directory.Revision, "renamed")
+			_, err := h.service.restoreNodeAs(h.ownCtx, directory.ID, directory.Revision, "renamed")
 			return err
 		},
 		"mutate": func() error {
-			return h.service.mutateNode(h.ctx, directory.ID, "rename",
+			return h.service.mutateNode(h.ownCtx, directory.ID, "rename",
 				func(context.Context, *gorm.DB, *authn.Claims, directoryTree, *model.Node, *nodeAuthorizer) error {
 					return nil
 				})
@@ -297,46 +309,46 @@ func TestBasicAndBrowserEntryPointsSurfaceStorageFailures(t *testing.T) {
 func TestFileOperationsFailClosedWhenPermissionsAreUnreadable(t *testing.T) {
 	h := newOperationServiceHarness(t)
 
-	root, err := h.service.ensureOwnedRoot(h.ctx, "personal")
+	root, err := h.service.ensureOwnedRoot(h.ownCtx)
 	require.NoError(t, err)
-	directory, err := h.service.createDirectory(h.ctx, root.ID, "archive")
+	directory, err := h.service.createDirectory(h.ownCtx, root.ID, "archive")
 	require.NoError(t, err)
-	uploaded, err := h.service.uploadFile(h.ctx, root.ID, "report.txt", "text/plain", strings.NewReader("abc"), 3)
+	uploaded, err := h.service.uploadFile(h.ownCtx, root.ID, "report.txt", "text/plain", strings.NewReader("abc"), 3)
 	require.NoError(t, err)
 
 	// Positive control: these succeed while the rules are readable.
-	_, err = h.service.downloadFile(h.ctx, uploaded.ID)
+	_, err = h.service.downloadFile(h.ownCtx, uploaded.ID)
 	require.NoError(t, err)
 
 	require.NoError(t, h.db.Exec("DROP TABLE "+h.tree.prefix+"file_node_acl").Error)
 
 	for name, call := range map[string]func() error{
 		"list children": func() error {
-			_, err := h.service.listChildren(h.ctx, root.ID, browserPageRequest{Limit: 10})
+			_, err := h.service.listChildren(h.ownCtx, root.ID, browserPageRequest{Limit: 10})
 			return err
 		},
 		"read entry": func() error {
-			_, err := h.service.readFileEntry(h.ctx, root.ID, "report.txt")
+			_, err := h.service.readFileEntry(h.ownCtx, root.ID, "report.txt")
 			return err
 		},
 		"download": func() error {
-			_, err := h.service.downloadFile(h.ctx, uploaded.ID)
+			_, err := h.service.downloadFile(h.ownCtx, uploaded.ID)
 			return err
 		},
 		"create directory": func() error {
-			_, err := h.service.createDirectory(h.ctx, root.ID, "another")
+			_, err := h.service.createDirectory(h.ownCtx, root.ID, "another")
 			return err
 		},
 		"upload": func() error {
-			_, err := h.service.uploadFile(h.ctx, root.ID, "second.txt", "text/plain", strings.NewReader("xyz"), 3)
+			_, err := h.service.uploadFile(h.ownCtx, root.ID, "second.txt", "text/plain", strings.NewReader("xyz"), 3)
 			return err
 		},
 		"trash": func() error {
-			_, err := h.service.trashNode(h.ctx, directory.ID, directory.Revision)
+			_, err := h.service.trashNode(h.ownCtx, directory.ID, directory.Revision)
 			return err
 		},
 		"mutate": func() error {
-			return h.service.mutateNode(h.ctx, directory.ID, "rename",
+			return h.service.mutateNode(h.ownCtx, directory.ID, "rename",
 				func(context.Context, *gorm.DB, *authn.Claims, directoryTree, *model.Node, *nodeAuthorizer) error {
 					return nil
 				})
@@ -372,57 +384,57 @@ func TestFileEntryPointsPropagateEveryStatementFailure(t *testing.T) {
 	}
 	entryPoints := []entryPoint{
 		{"list roots", func(_ *testing.T, h operationServiceHarness) error {
-			_, err := h.service.listRoots(h.ctx, testFileCollection(h.ctx), browserPageRequest{Limit: 10})
+			_, err := h.service.listRoots(h.ownCtx, testFileCollection(h.ownCtx), browserPageRequest{Limit: 10})
 			return err
 		}},
 		{"list trash", func(_ *testing.T, h operationServiceHarness) error {
-			_, err := h.service.listTrash(h.ctx, testFileCollection(h.ctx), browserPageRequest{Limit: 10})
+			_, err := h.service.listTrash(h.ownCtx, testFileCollection(h.ownCtx), browserPageRequest{Limit: 10})
 			return err
 		}},
 		{"list children", func(_ *testing.T, h operationServiceHarness) error {
-			_, err := h.service.listChildren(h.ctx, 10, browserPageRequest{Limit: 10})
+			_, err := h.service.listChildren(h.ownCtx, 10, browserPageRequest{Limit: 10})
 			return err
 		}},
 		{"read entry", func(_ *testing.T, h operationServiceHarness) error {
-			_, err := h.service.readFileEntry(h.ctx, 2, "child.txt")
+			_, err := h.service.readFileEntry(h.ownCtx, 2, "child.txt")
 			return err
 		}},
 		{"ensure root", func(_ *testing.T, h operationServiceHarness) error {
-			_, err := h.service.ensureOwnedRoot(h.ctx, "personal")
+			_, err := h.service.ensureOwnedRoot(h.ownCtx)
 			return err
 		}},
 		{"create directory", func(_ *testing.T, h operationServiceHarness) error {
-			_, err := h.service.createDirectory(h.ctx, 10, "made-here")
+			_, err := h.service.createDirectory(h.ownCtx, 10, "made-here")
 			return err
 		}},
 		{"upload", func(_ *testing.T, h operationServiceHarness) error {
-			_, err := h.service.uploadFile(h.ctx, 10, "uploaded.txt", "text/plain", strings.NewReader("abc"), 3)
+			_, err := h.service.uploadFile(h.ownCtx, 10, "uploaded.txt", "text/plain", strings.NewReader("abc"), 3)
 			return err
 		}},
 		{"download", func(_ *testing.T, h operationServiceHarness) error {
-			_, err := h.service.downloadFile(h.ctx, 32)
+			_, err := h.service.downloadFile(h.ownCtx, 32)
 			return err
 		}},
 		{"trash", func(t *testing.T, h operationServiceHarness) error {
-			_, err := h.service.trashNode(h.ctx, 32, treeNode(t, h.db, h.tree.prefix, 32).Version)
+			_, err := h.service.trashNode(h.ownCtx, 32, treeNode(t, h.db, h.tree.prefix, 32).Version)
 			return err
 		}},
 		{"restore", func(t *testing.T, h operationServiceHarness) error {
 			node := treeNode(t, h.db, h.tree.prefix, 32)
-			if _, err := h.service.trashNode(h.ctx, 32, node.Version); err != nil {
+			if _, err := h.service.trashNode(h.ownCtx, 32, node.Version); err != nil {
 				return err
 			}
-			_, err := h.service.restoreNode(h.ctx, 32, treeNode(t, h.db, h.tree.prefix, 32).Version)
+			_, err := h.service.restoreNode(h.ownCtx, 32, treeNode(t, h.db, h.tree.prefix, 32).Version)
 			return err
 		}},
 		{"rename", func(t *testing.T, h operationServiceHarness) error {
-			return h.service.mutateNode(h.ctx, 32, "rename",
+			return h.service.mutateNode(h.ownCtx, 32, "rename",
 				func(context.Context, *gorm.DB, *authn.Claims, directoryTree, *model.Node, *nodeAuthorizer) error {
 					return nil
 				})
 		}},
 		{"immediate operation", func(_ *testing.T, h operationServiceHarness) error {
-			_, err := h.service.run(h.ctx, "fault-sweep", h.input)
+			_, err := h.service.run(h.ownCtx, "fault-sweep", h.input)
 			return err
 		}},
 	}
@@ -451,4 +463,39 @@ func TestFileEntryPointsPropagateEveryStatementFailure(t *testing.T) {
 		// into green skips after a refactor.
 		assert.NotZero(t, reached, "%s reached no injected failure; the sweep no longer covers it", point.name)
 	}
+}
+
+// TestDownloadRefusesToServeBytesItCannotRecord pins the rule that a download
+// and its record land together.
+//
+// The reader is opened before the event is written, so there is a moment where
+// the bytes are available and the record is not. If the write fails the bytes
+// must not be handed back: the caller would have the file and the audit would
+// not know, which is the one outcome an immutable record exists to prevent.
+// Closing the reader on that path also keeps a failed download from leaking the
+// handle.
+func TestDownloadRefusesToServeBytesItCannotRecord(t *testing.T) {
+	h := newOperationServiceHarness(t)
+	root, err := h.service.ensureOwnedRoot(h.ownCtx)
+	require.NoError(t, err)
+	payload := "ledger\n"
+	uploaded, err := h.service.uploadFile(h.ownCtx, root.ID, "ledger.txt", "text/plain", strings.NewReader(payload), int64(len(payload)))
+	require.NoError(t, err)
+
+	readable, err := h.service.downloadFile(h.ownCtx, uploaded.ID)
+	require.NoError(t, err, "the download works before the record is made to fail")
+	require.NoError(t, readable.Reader.Close())
+
+	recordFailure := errors.New("audit unavailable")
+	appendEvent := h.service.appender
+	h.service.appender = func(ctx context.Context, tx *gorm.DB, event audit.DomainEvent) error {
+		if event.EventType == "file_downloaded" {
+			return recordFailure
+		}
+		return appendEvent(ctx, tx, event)
+	}
+	refused, err := h.service.downloadFile(h.ownCtx, uploaded.ID)
+	require.ErrorIs(t, err, recordFailure)
+	require.Nil(t, refused.Reader, "a download that cannot be recorded hands back nothing")
+	require.Zero(t, refused.Size)
 }

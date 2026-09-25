@@ -78,7 +78,7 @@ func TestStoredNodePermissionsRootBoundariesAndInheritance(t *testing.T) {
 	result, err = evaluateNodeACL("download", subjects, permissions.layers)
 	require.NoError(t, err)
 	require.False(t, result.allowed, "interrupted inheritance must not retain old download grants")
-	bindRootFixture(t, db, tree, 11, rootBinding{scope: "personal", ownerID: 70})
+	bindRootFixture(t, db, tree, 11, rootBinding{scope: "department", ownerID: 70})
 	permissions = loadACLFixture(t, db, tree, 31)
 	require.Equal(t, guid.ID(11), permissions.rootID)
 	require.Equal(t, guid.ID(70), permissions.root.ownerID)
@@ -91,7 +91,7 @@ func TestStoredNodePermissionsRootBoundariesAndInheritance(t *testing.T) {
 func TestRootBindingShapesAndAccountIsolation(t *testing.T) {
 	for _, binding := range []rootBinding{
 		{scope: "tenant", ownerID: 90}, {scope: "entity", ownerID: 80},
-		{scope: "department", ownerID: 50}, {scope: "personal", ownerID: 70},
+		{scope: "department", ownerID: 50},
 	} {
 		t.Run(binding.scope, func(t *testing.T) {
 			db, tree, _ := newOperationTree(t)
@@ -463,6 +463,69 @@ func TestStoredNodePermissionsPropagateEveryReachedStatementFailure(t *testing.T
 				t.Skip("target statement was not reached")
 			}
 			require.ErrorIs(t, err, errInjectedTableFault)
+		})
+	}
+}
+
+// TestLoadNodePermissionsRefusesAMalformedAncestry exercises the guards that
+// stand between a damaged directory table and an authorization answer.
+//
+// Permissions are read by walking a node's ancestry, and every step of that
+// walk is trusted: the root's binding decides which scope owns the node, and
+// the chain decides which ACL layers apply. If the closure table disagrees
+// with the nodes it describes, the walk must refuse rather than answer from
+// whatever it managed to assemble -- a shortened chain would drop the layers
+// that deny, and an unbound root would leave the scope for a caller's own
+// claims to supply.
+func TestLoadNodePermissionsRefusesAMalformedAncestry(t *testing.T) {
+	for name, testCase := range map[string]struct {
+		damage func(t *testing.T, db *gorm.DB, prefix string)
+		want   error
+	}{
+		"no ancestry at all": {
+			damage: func(t *testing.T, db *gorm.DB, prefix string) {
+				require.NoError(t, db.Exec("DELETE FROM "+prefix+"file_node_closure WHERE descendant_id = 11").Error)
+			},
+			want: ErrNotFound,
+		},
+		// The schema forbids a physical root with a parent and forbids two
+		// siblings sharing a name, so the ancestry is damaged from the closure
+		// table's side instead -- which is the side that can drift.
+		"the ancestry does not end at the node": {
+			damage: func(t *testing.T, db *gorm.DB, prefix string) {
+				require.NoError(t, db.Exec("DELETE FROM "+prefix+"file_node_closure WHERE descendant_id = 11 AND ancestor_id = 11").Error)
+			},
+			want: errHierarchy,
+		},
+		"the chain skips a step": {
+			damage: func(t *testing.T, db *gorm.DB, prefix string) {
+				require.NoError(t, db.Exec("DELETE FROM "+prefix+"file_node_closure WHERE descendant_id = 11 AND ancestor_id = 10").Error)
+			},
+			want: errHierarchy,
+		},
+		"nothing in the ancestry is a root": {
+			damage: func(t *testing.T, db *gorm.DB, prefix string) {
+				require.NoError(t, db.Exec("UPDATE "+prefix+"file_nodes SET root_scope = NULL, root_owner_id = NULL WHERE space_id = 1").Error)
+			},
+			want: errRootUnbound,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			db, tree, _ := newOperationTree(t)
+			testCase.damage(t, db, tree.prefix)
+			require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+				_, err := tree.loadNodePermissions(t.Context(), tx, 1, 11)
+				require.ErrorIs(t, err, testCase.want)
+
+				// The page loader walks the same ancestry for many nodes at
+				// once and carries its own copy of these guards. It is the one
+				// the browser uses, so a page that includes a damaged node must
+				// refuse that node rather than answer for it.
+				_, nodeErrors, batchErr := tree.loadNodePermissionsBatch(t.Context(), tx, 1, []guid.ID{11})
+				require.NoError(t, batchErr, "one damaged node does not fail the whole page")
+				require.ErrorIs(t, nodeErrors[11], testCase.want)
+				return nil
+			}))
 		})
 	}
 }

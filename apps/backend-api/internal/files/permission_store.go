@@ -57,7 +57,7 @@ func validRootBinding(space *model.Space, node *model.Node, binding rootBinding)
 	switch binding.scope {
 	case ownerTenant:
 		return binding.ownerID == *space.TenantID
-	case ownerEntity, ownerDepartment, ownerPersonal:
+	case ownerEntity, ownerDepartment:
 		return true
 	default:
 		return false

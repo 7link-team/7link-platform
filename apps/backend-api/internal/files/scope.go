@@ -19,13 +19,12 @@ const (
 // ownerScope names what a file root belongs to. A browsable collection uses
 // the same vocabulary, because a collection lists the roots of one owner.
 //
-// ownerPersonal is a second personal area held inside a tenant's space, and
-// nothing reaches it: the HTTP entry point that creates roots only ever asks
-// for ownerAccount, and no collection lists it. It survives here so the value
-// still has a name while the removal is decided.
+// A person owns one file space and it is ownerAccount. There was a second one,
+// a "personal" root carved out of each tenant's space, and it existed because
+// a caller with a tenant selected could not reach their own space at all. Now
+// that they can, one person has one space again.
 const (
 	ownerAccount    = "account"
-	ownerPersonal   = "personal"
 	ownerTenant     = "tenant"
 	ownerEntity     = "entity"
 	ownerDepartment = "department"

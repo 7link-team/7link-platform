@@ -214,27 +214,31 @@ func TestNodeAuthorizerValidatesRootScopeAndReferences(t *testing.T) {
 	}))
 }
 
-func TestNodeAuthorizerAddsOwnerOnlyForVerifiedPersonalRootOwner(t *testing.T) {
+// TestTenantSpaceGrantsNoOwnerSubject pins the removal of the one case where a
+// tenant-space request carried an owner subject.
+//
+// That case was a personal root inside a tenant's space. While it existed, an
+// ACL row granting "owner" applied to whoever the root said owned it, even in
+// the middle of a tenant's directory. A person's space is separate now, so an
+// owner row in a tenant space grants nothing and the organization's own
+// subjects decide.
+func TestTenantSpaceGrantsNoOwnerSubject(t *testing.T) {
 	h := newOperationServiceHarness(t)
 	q := query.Bind(h.db, h.tree.prefix)
-	require.NoError(t, h.db.Exec("UPDATE "+h.tree.prefix+"file_nodes SET root_scope = 'personal', root_owner_id = 70 WHERE space_id = 1 AND id = 2").Error)
 	_, err := q.NodeACL.WithContext(t.Context()).Where(q.NodeACL.SpaceID.Eq(guid.ID(1)), q.NodeACL.NodeID.Eq(guid.ID(2))).Delete()
 	require.NoError(t, err)
 	require.NoError(t, q.NodeACL.WithContext(t.Context()).Create(&model.NodeACL{
 		ID: 9992, SpaceID: 1, NodeID: 2, SubjectKind: "owner", SubjectID: 70, Effect: "allow", Action: "read", Applies: "self_and_descendants", CreatedBy: 70, CreatedAt: time.Now().UnixMilli(),
 	}))
 	policy := nodeAuthorizationPolicy(map[string]authz.DataConstraint{"file_read": {OwnerIDs: []string{"70"}}})
-	owner, err := newNodeAuthorizer(h.tree, policy, nodeAuthorizationReferences(true, nil), 90, 80, 70, core.AuthorizationSubjects{PrincipalID: 70, Revision: 1})
+	claimant, err := newNodeAuthorizer(h.tree, policy, nodeAuthorizationReferences(true, nil), 90, 80, 70, core.AuthorizationSubjects{PrincipalID: 70, Revision: 1})
 	require.NoError(t, err)
 	require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
-		return owner.access(t.Context(), tx, 1, 70, 30, "read")
-	}))
-	notOwner, err := newNodeAuthorizer(h.tree, policy, nodeAuthorizationReferences(true, nil), 90, 80, 71, core.AuthorizationSubjects{PrincipalID: 71, Revision: 1})
-	require.NoError(t, err)
-	require.NoError(t, h.db.Transaction(func(tx *gorm.DB) error {
-		require.ErrorIs(t, notOwner.access(t.Context(), tx, 1, 71, 30, "read"), errOperationForbidden)
+		require.ErrorIs(t, claimant.access(t.Context(), tx, 1, 70, 30, "read"), errOperationForbidden,
+			"an owner row in a tenant space applies to nobody")
 		return nil
 	}))
+
 }
 
 func TestNodeAuthorizerRejectsMalformedSubjectsAndChangedPolicy(t *testing.T) {
@@ -370,11 +374,9 @@ func TestConstraintAllowsOnlyItsDeclaredRootScope(t *testing.T) {
 	}
 	require.True(t, constraintAllowsRoot(constraint, rootBinding{scope: "entity", ownerID: 80}, 81))
 	require.True(t, constraintAllowsRoot(constraint, rootBinding{scope: "department", ownerID: 50}, 81))
-	require.True(t, constraintAllowsRoot(constraint, rootBinding{scope: "personal", ownerID: 70}, 81))
 	require.False(t, constraintAllowsRoot(constraint, rootBinding{scope: "tenant", ownerID: 90}, 81))
 	require.False(t, constraintAllowsRoot(constraint, rootBinding{scope: "account", ownerID: 70}, 81))
 
 	denied := authz.DataConstraint{AllowAll: true, DeniedIDs: []string{"80"}}
 	require.False(t, constraintAllowsRoot(denied, rootBinding{scope: "entity", ownerID: 80}, 80))
-	require.True(t, constraintAllowsRoot(denied, rootBinding{scope: "personal", ownerID: 70}, 80))
 }

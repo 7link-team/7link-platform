@@ -364,20 +364,18 @@ func spaceOfNode(t *testing.T, db *gorm.DB, prefix string, nodeID guid.ID) guid.
 	return row.SpaceID
 }
 
-func TestResolveFileOwnerHandlesPersonalAccountAndSystemRoots(t *testing.T) {
+func TestResolveFileOwnerHandlesAccountAndSystemRoots(t *testing.T) {
 	h := newOperationServiceHarness(t)
 	trusted := staticOwner(authz.ResourceOwner{TenantID: 90, EntityID: 80})
 	m := fileOwnerModule(t, h, trusted, core.DepartmentOwnerResolver(trusted))
 
-	require.NoError(t, h.db.Exec("UPDATE "+h.tree.prefix+"file_nodes SET root_scope = 'personal', root_owner_id = 70 WHERE space_id = 1 AND id = 2").Error)
-	owner, found, err := m.resolveFileOwner(t.Context(), 30)
-	require.NoError(t, err)
-	require.True(t, found)
-	require.Equal(t, authz.ResourceOwner{PrincipalID: 70}, owner)
-
+	// A person-owned root lives in that person's own space. It used to be able
+	// to sit in a tenant's space as a "personal" root, and resolving it there
+	// returned the person as the owner; there is no such root now, so the only
+	// account case is the one below.
 	require.NoError(t, h.tree.createSpace(t.Context(), h.db, 100, 101, 71, "account", time.Now()))
 	bindRootFixture(t, h.db, h.tree, 101, rootBinding{scope: "account", ownerID: 71})
-	owner, found, err = m.resolveFileOwner(t.Context(), 101)
+	owner, found, err := m.resolveFileOwner(t.Context(), 101)
 	require.NoError(t, err)
 	require.True(t, found)
 	require.Equal(t, authz.ResourceOwner{PrincipalID: 71}, owner)

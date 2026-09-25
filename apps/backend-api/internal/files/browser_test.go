@@ -85,7 +85,6 @@ func TestFileRootViewsExposeOrganizationOwnershipWithoutCreatorOwnership(t *test
 		{scope: "tenant", ownerID: 90, tenant: 90},
 		{scope: "entity", ownerID: 80, tenant: 90, entity: 80},
 		{scope: "department", ownerID: 50, tenant: 90, department: 50},
-		{scope: "personal", ownerID: 70, tenant: 90, principal: 70},
 	} {
 		t.Run(test.scope, func(t *testing.T) {
 			view := fileEntryView{}

@@ -3,7 +3,6 @@ package files
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"time"
 
@@ -28,14 +27,18 @@ type fileDownload struct {
 	Reader io.ReadCloser
 }
 
-func (s *operationService) ensureOwnedRoot(ctx context.Context, scope string) (fileEntryView, error) {
+func (s *operationService) ensureOwnedRoot(ctx context.Context) (fileEntryView, error) {
 	var result fileEntryView
 	claims, err := s.basicClaims(ctx)
 	if err != nil {
 		return result, err
 	}
-	account := claims.TenantID == 0
-	if (account && scope != ownerAccount) || (!account && scope != ownerPersonal) {
+	// The caller's own space belongs to no tenant, so a request about it
+	// arrives without one: personalContext drops the selection at the route.
+	// There is one such space per person, so there is nothing to select and no
+	// scope to pass -- the client's own "scope" field is validated where the
+	// request is parsed, not here.
+	if claims.TenantID != 0 || claims.EntityID != 0 {
 		return result, errOperationForbidden
 	}
 	workContext, cancel := context.WithTimeout(ctx, s.timeout)
@@ -46,26 +49,11 @@ func (s *operationService) ensureOwnedRoot(ctx context.Context, scope string) (f
 		if err != nil {
 			return err
 		}
-		binding := rootBinding{scope: scope, ownerID: claims.PrincipalID}
-		if !account {
-			constraint, err := authorizer.constraint(workContext, tx, filePermissionPrefix+"create")
-			if err != nil {
-				return err
-			}
-			if !constraintAllowsRoot(constraint, binding, claims.EntityID) {
-				return errOperationForbidden
-			}
-			if err := authorizer.validateRoot(workContext, tx, binding); err != nil {
-				return err
-			}
-		}
+		binding := rootBinding{scope: ownerAccount, ownerID: claims.PrincipalID}
 
 		q := query.Bind(tx, tree.prefix)
-		spaceQuery := q.Space.WithContext(workContext).Where(q.Space.ScopeKind.Eq(spaceTenant), q.Space.TenantID.Eq(claims.TenantID))
-		if account {
-			spaceQuery = q.Space.WithContext(workContext).Where(q.Space.ScopeKind.Eq(spaceAccount), q.Space.PrincipalID.Eq(claims.PrincipalID))
-		}
-		space, err := spaceQuery.Take()
+		space, err := q.Space.WithContext(workContext).
+			Where(q.Space.ScopeKind.Eq(spaceAccount), q.Space.PrincipalID.Eq(claims.PrincipalID)).Take()
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			spaceID, idErr := s.nextID()
 			if idErr != nil {
@@ -75,11 +63,7 @@ func (s *operationService) ensureOwnedRoot(ctx context.Context, scope string) (f
 			if idErr != nil {
 				return idErr
 			}
-			ownerID, spaceScope := claims.TenantID, spaceTenant
-			if account {
-				ownerID, spaceScope = claims.PrincipalID, spaceAccount
-			}
-			if err := tree.createSpaceOn(workContext, tx, spaceID, rootID, ownerID, spaceScope, time.Now()); err != nil {
+			if err := tree.createSpaceOn(workContext, tx, spaceID, rootID, claims.PrincipalID, spaceAccount, time.Now()); err != nil {
 				return err
 			}
 			space, err = q.Space.WithContext(workContext).Where(q.Space.ID.Eq(spaceID)).Take()
@@ -87,8 +71,7 @@ func (s *operationService) ensureOwnedRoot(ctx context.Context, scope string) (f
 		if err != nil {
 			return err
 		}
-		if (!account && (space.ScopeKind != spaceTenant || space.TenantID == nil || *space.TenantID != claims.TenantID)) ||
-			(account && (space.ScopeKind != spaceAccount || space.PrincipalID == nil || *space.PrincipalID != claims.PrincipalID)) {
+		if space.ScopeKind != spaceAccount || space.PrincipalID == nil || *space.PrincipalID != claims.PrincipalID {
 			return errOperationForbidden
 		}
 		q, space, err = tree.lockOperationSpace(workContext, tx, space.ID)
@@ -97,7 +80,7 @@ func (s *operationService) ensureOwnedRoot(ctx context.Context, scope string) (f
 		}
 		node := q.Node
 		existing, err := node.WithContext(workContext).Where(
-			node.SpaceID.Eq(space.ID), node.RootScope.Eq(scope),
+			node.SpaceID.Eq(space.ID), node.RootScope.Eq(ownerAccount),
 			node.RootOwnerID.Eq(claims.PrincipalID), node.State.Eq("active"),
 		).Take()
 		if err == nil {
@@ -118,17 +101,6 @@ func (s *operationService) ensureOwnedRoot(ctx context.Context, scope string) (f
 			return err
 		}
 		root := physicalRoot
-		if !account {
-			rootID, err := s.nextID()
-			if err != nil {
-				return err
-			}
-			internalName := fmt.Sprintf("personal-%s", claims.PrincipalID)
-			root, err = tree.createNodeOn(workContext, tx, space.ID, rootID, physicalRoot.ID, "directory", internalName, time.Now())
-			if err != nil {
-				return err
-			}
-		}
 		space, err = q.Space.WithContext(workContext).Where(q.Space.ID.Eq(space.ID)).Take()
 		if err != nil {
 			return err
@@ -160,7 +132,7 @@ func (s *operationService) ensureOwnedRoot(ctx context.Context, scope string) (f
 		if claims.EntityID > 0 {
 			event.Detail["entity_id"] = claims.EntityID
 		}
-		event.Detail["scope"] = scope
+		event.Detail["scope"] = ownerAccount
 		if err := s.appender(workContext, tx, event); err != nil {
 			return err
 		}
@@ -522,8 +494,6 @@ func rootDisplayName(row *model.Node) string {
 	switch *row.RootScope {
 	case ownerAccount:
 		return "Account files"
-	case ownerPersonal:
-		return "Personal files"
 	case ownerTenant:
 		return "Tenant files"
 	case ownerEntity:
