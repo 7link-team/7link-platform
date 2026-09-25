@@ -169,10 +169,15 @@ func requireFileID(t *testing.T, raw string) guid.ID {
 	return id
 }
 
-type fileHTTPVerifier struct{}
+// fileHTTPVerifier answers with the caller a test wants. A selected tenant is
+// part of what it answers with, because whether a route drops that tenant is
+// behavior the route is responsible for.
+type fileHTTPVerifier struct{ tenantID guid.ID }
 
-func (fileHTTPVerifier) Authenticate(context.Context, string, string) (*authn.Claims, error) {
-	return &authn.Claims{Subject: "70", PrincipalID: 70, SubjectType: authn.SubjectTypePrincipal}, nil
+func (v fileHTTPVerifier) Authenticate(context.Context, string, string) (*authn.Claims, error) {
+	return &authn.Claims{
+		Subject: "70", PrincipalID: 70, SubjectType: authn.SubjectTypePrincipal, TenantID: v.tenantID,
+	}, nil
 }
 
 type fileHTTPAuthorizer struct{}
@@ -198,13 +203,17 @@ func (fileHTTPMembership) IsMemberActive(context.Context, guid.ID, guid.ID) (boo
 	return true, nil
 }
 
-func newFileHTTPAPI(t *testing.T, service *operationService) humatest.TestAPI {
+func newFileHTTPAPI(t *testing.T, service *operationService, selected ...guid.ID) humatest.TestAPI {
 	t.Helper()
 	registry := authz.MustRegistry()
 	for _, action := range fileAuthorizationActions() {
 		require.NoError(t, registry.Register(action))
 	}
-	registrar := authz.NewRegistrar(registry, fileHTTPVerifier{}, fileHTTPAuthorizer{}, fileHTTPMembership{})
+	verifier := fileHTTPVerifier{}
+	if len(selected) == 1 {
+		verifier.tenantID = selected[0]
+	}
+	registrar := authz.NewRegistrar(registry, verifier, fileHTTPAuthorizer{}, fileHTTPMembership{})
 	api := humachi.New(chi.NewRouter(), huma.DefaultConfig("Files test", "1"))
 	owner := func(ctx context.Context, fileID guid.ID) (authz.ResourceOwner, bool, error) {
 		db := service.runtime.Database().Write()

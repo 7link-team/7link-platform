@@ -135,6 +135,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		OperationID: "list-my-files", Method: http.MethodGet, Path: "/me/files",
 		Summary: "List my file roots", Tags: []string{"files"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, func(ctx context.Context, input *filePageInput) (*respx.Body[filePage], error) {
+		ctx = personalContext(ctx)
 		claims, _ := authn.FromContext(ctx)
 		return listFileCollection(ctx, service, fileCollection{scope: ownerAccount, ownerID: claims.PrincipalID}, *input)
 	})
@@ -191,7 +192,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		MaxBodyBytes: service.maxUploadBytes + (1 << 20),
 		Errors:       []int{http.StatusNotFound, http.StatusConflict, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity},
 	}, func(ctx context.Context, input *fileCreateInput) (*respx.Body[fileEntryView], error) {
-		return createFile(ctx, service, input.RawBody.Data(), true)
+		return createFile(personalContext(ctx), service, input.RawBody.Data(), true)
 	})
 	authz.Register(registrar, api, huma.Operation{
 		OperationID: "create-tenant-file", Method: http.MethodPost, Path: "/files",
@@ -353,6 +354,26 @@ func listFileCollection(ctx context.Context, service *operationService, collecti
 		return nil, fileHTTPError(err)
 	}
 	return respx.OK(ctx, result), nil
+}
+
+// personalContext drops the selected tenant from a request about the caller's
+// own files.
+//
+// A person's file space belongs to no tenant, so which tenant the session
+// currently has selected is not part of the question. The registrar already
+// answers it this way: when it resolves a personally owned resource it clears
+// the tenant and entity before the handler runs
+// (ownedResourceMiddleware). Routes like /me/files have no resource in the
+// path to resolve, so they say the same thing here instead of inheriting a
+// tenant that made listing the caller's own roots fail.
+func personalContext(ctx context.Context) context.Context {
+	claims, ok := authn.FromContext(ctx)
+	if !ok || claims == nil || claims.TenantID == 0 && claims.EntityID == 0 {
+		return ctx
+	}
+	personal := *claims
+	personal.TenantID, personal.EntityID = 0, 0
+	return authn.WithClaims(ctx, &personal)
 }
 
 func createFile(ctx context.Context, service *operationService, form *fileCreateForm, allowRoot bool) (*respx.Body[fileEntryView], error) {
