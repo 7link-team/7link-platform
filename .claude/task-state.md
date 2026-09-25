@@ -166,6 +166,42 @@
   `TestOpenAPIExportGroupsOperationsByPublicResource`'s first-path-segment rule
   with the 13-domain vocabulary and retags all 278 operations.
 
+### A Person's Own Files - 2026-09-24
+
+- Phase: delivered in `3aab8fe`; `make ci` green end to end.
+- Root cause found and fixed: listing your own file roots failed whenever a
+  tenant was selected. `fileCollection.validate` refuses an account collection
+  whose claims carry a tenant (`browser.go:113`) and that refusal is correct -
+  the space belongs to no tenant. The fault was `/me/files` handing it one.
+- The registrar already solves this for resource-addressed routes: on a
+  personally owned resource `ownedResourceMiddleware` clears tenant and entity
+  before the handler. `/me/files` has no resource in the path, so it inherited
+  the session's selection. `personalContext` in `internal/files/http.go` now
+  says the same thing at the route. No rule changed.
+- Proved with a probe before fixing: account collection returned
+  `items=0 / operation forbidden` with a tenant selected, `items=1` without.
+- Test lesson worth keeping: the first test called `personalContext` directly
+  and stayed green when the handler's call was deleted. The route-level
+  `TestMyFilesRouteAnswersWhileATenantIsSelected` fails under that mutation.
+  The HTTP test verifier now accepts a selected tenant (variadic, existing
+  callers unchanged).
+- Preceded by `7b51c7c`: the two scope vocabularies in `internal/files` are now
+  named constants (spaceKind, ownerScope). Tests keep literals on purpose so a
+  rename is caught rather than followed - mutation-verified.
+- REMAINING: delete the `ownerPersonal` scope. The source edits were completed
+  and reverted because 21 test sites across 7 files reach for it and some
+  deliberately mix account and tenant contexts, so batching them blind would
+  have left the suite red. With the constants in place the compiler now names
+  every production reference (7 of them) instead of needing a grep.
+- Note for pacing: `make ci` spends 68% of its time on `-coverpkg`
+  instrumentation, not tests - `internal/infra/guid` is 1.0s alone and 30.5s
+  under coverage. Iterate with the target package plus `make lint`,
+  `make openapi-check` and `go -C tests test ./architecture` (tests/ is its own
+  module); run `make ci` once before committing.
+- Next action: delete `ownerPersonal` and work through the 21 test sites one
+  file at a time, checking each mixed-context test's intent rather than
+  rewriting mechanically.
+
 ### File Mount Points - 2026-09-24
 
 - Phase: BLOCKED on client work and two open decisions. Backend for the entity
