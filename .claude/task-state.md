@@ -166,6 +166,33 @@
   `TestOpenAPIExportGroupsOperationsByPublicResource`'s first-path-segment rule
   with the 13-domain vocabulary and retags all 278 operations.
 
+### Generated Client Drift Gate - 2026-09-24
+
+- Delivered in `755f533`. `bun run check:api-types` regenerates into a temp file
+  and compares, wired as a workspace script beside typecheck and lint. Verified
+  both ways: it fails on the previous file and passes on the regenerated one.
+- The committed types were a whole route migration behind the document (they
+  still named `/tenants/{t}/entities/{e}/files`). Regenerating moved 14,826
+  lines; typecheck, lint, 127 tests and the production build all pass.
+- MATERIAL FINDING that revises the Phase 4 plan: the client imports only
+  `components` from these types. The `paths` type - where route drift lives - is
+  imported by nothing, and the 442 URL strings the client builds by hand are
+  checked by nothing. So typecheck catches a renamed FIELD and nothing about a
+  moved ROUTE. My earlier claim that typecheck is the integration seam for the
+  route migration was wrong.
+- To make the route migration compile-safe the request helpers must take their
+  URLs from the `paths` type (openapi-fetch or an equivalent typed wrapper).
+  That is a separate, larger change and is not done.
+- CLAUDE.md section 12 is STALE: it says `apps/frontend-web-admin` has no
+  `.gitattributes` and is CRLF. That file exists and says
+  `* text=auto eol=lf`; `git ls-files --eol` reports all 327 tracked frontend
+  files as `i/lf w/lf`. Following the contract literally would introduce CRLF
+  into an LF tree - I nearly did, having planned CRLF output for the generator.
+  Left for the user to amend; it is their contract.
+- Next action: user decides whether to type the request helpers off `paths`, and
+  whether to amend CLAUDE.md section 12. Remaining manifest item is the
+  relationship `id` migration plan.
+
 ### One Person One File Space - 2026-09-24
 
 - Phase: delivered in `f3e7b90`; `make ci` EXIT=0.
