@@ -166,6 +166,49 @@
   `TestOpenAPIExportGroupsOperationsByPublicResource`'s first-path-segment rule
   with the 13-domain vocabulary and retags all 278 operations.
 
+### Acceptance Run And Contract Review - 2026-09-25
+
+- `make ci` green; MySQL 8.4 pass green through remote Docker over SSH
+  (`tests/migration` 66s, schema lock 219 files) - the dialect CI never covers.
+- `cb92fde` makes the only self-contained acceptance harness runnable on
+  Windows: it spawned `<dir>/api` while `go build` writes `api.exe`, so it died
+  before any assertion and the limitation showed up as a failing run, never as
+  a known gap.
+- `84cd718` stops eight authorization failures from logging an error when the
+  caller has gone. It asks whether the request context is alive rather than
+  whether the error looks like a cancellation, because a dependency can carry
+  context.Canceled while the caller still waits. Tested through humatest's
+  DoCtx with an already-canceled context.
+- `686dcd8` settles the request language before the first request. Every call
+  reads `document.documentElement.lang`, the provider sets it in an effect, and
+  index.html declares one language - so two requests in one page load came back
+  as 成功 and Success. API messages reach the screen (a failed request's message
+  goes into an alert), so this was mixed-language text, not log noise. Verified
+  before and after with a live probe.
+- ACCEPTANCE STILL FAILS, located to one expression. On a fresh platform the
+  console never requests `/me/permissions`, so every protected action is
+  hidden including "Create tenant", the only way out of an empty platform.
+  Evidence: `/me/tenants` answers `{"code":0,"data":[]}` twice, the session is
+  authenticated, no console errors, and the page makes no permissions request.
+  So `status === "authenticated" && directoryReady` is false with an error-free
+  catalog, which leaves only `tenantCatalog.subject !== subject` in
+  `apps/iam/src/app/layout.tsx:65`. Confirming that needs temporary
+  instrumentation of `layout.tsx`.
+- openapi.json review: hygiene clean (295 operations, no duplicate or missing
+  operationId, summary or tag). Four findings, worst first: `principal_id` is
+  declared three ways (maxLength 19/64/128, only one with the Snowflake
+  pattern) and `tenant_id`, `provider_id`, `credential_id` two ways each;
+  `components.parameters` and `components.responses` are both EMPTY, which is
+  the cause of the first; 21 input-taking operations declare no 422; 26 request
+  bodies inline their schema. The contract review's claim of six pagination
+  variants is wrong - there are two.
+- Near miss worth remembering: a repository-wide `cancelled`→`canceled` replace
+  hit frozen state values carrying `//nolint:misspell`, which are persisted enum
+  values and API contract values. Reverted. Fix comments by editing comments.
+- Next action: instrument `subject` in layout.tsx to close the acceptance
+  finding, then unify `principal_id` by introducing the shared components the
+  manifest already calls for.
+
 ### Generated Client Drift Gate - 2026-09-24
 
 - Delivered in `755f533`. `bun run check:api-types` regenerates into a temp file
