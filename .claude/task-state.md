@@ -34,8 +34,9 @@
   changes, historical schema intact, authorization and data safety verified.
 - Final acceptance PASS: runtime/API/Web removal, preserved business grants,
   tested upgrades, browser flows and selectable live demo all verified.
-- Delivery branch: IAM. Final bookkeeping: commit/push this accepted change set
-  and verify remote HEAD/worktree. No implementation or migration follow-up.
+- Implementation delivered: 8194eb6, pushed to origin/IAM; remote HEAD matched
+  and worktree was clean after delivery verification. No implementation or
+  migration follow-up.
 - Next: user can accept the running Web8091 and Swagger8080; no product decision
   or additional refactor is pending.
 
