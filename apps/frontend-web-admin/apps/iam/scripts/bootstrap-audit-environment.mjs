@@ -166,14 +166,18 @@ async function ensureTenant(ownerPrincipalID) {
     body: JSON.stringify({
       slug: tenantSlug,
       name: tenantName,
-      owner_principal_id: ownerPrincipalID,
+      owner_principal_id: ownerPrincipalID ?? (await call("/me")).subject,
     }),
   })
   note(`tenant created: ${created.slug}`)
   return created.id
 }
 
-const tenantID = await ensureTenant(await bootstrapAdministrator())
+const tenantID = await ensureTenant(
+  process.env.IAM_BOOTSTRAP_SKIP === "true"
+    ? undefined
+    : await bootstrapAdministrator()
+)
 // The id alone goes to standard output, so a caller can read it directly:
 //   IAM_BROWSER_TENANT=$(bun scripts/bootstrap-audit-environment.mjs)
 process.stdout.write(tenantID + "\n")

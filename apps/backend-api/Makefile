@@ -7,6 +7,10 @@ DEV_SECRET_DIR ?= $(abspath .temp/dev-secrets)
 DEV_AUTHN_SIGNING_KEY_FILE ?= $(DEV_SECRET_DIR)/authn-signing-key
 DEV_AUTHN_MFA_KEY_FILE ?= $(DEV_SECRET_DIR)/authn-mfa-key
 DEV_FEDERATION_KEY_FILE ?= $(DEV_SECRET_DIR)/federation-key
+DEV_API_PORT ?= 8080
+DEV_WEB_PORT ?= 8091
+DEV_DEMO_ACCOUNTS ?= true
+DEV_PREFILL_ACCOUNT ?= false
 DEV_ARGS ?= serve --debug --migrate --pprof.enabled --shutdown.graceful=false \
 	--api.metrics.enabled --api.metrics.advertise \
 	--table_prefix sl_ \
@@ -115,7 +119,7 @@ MODULE_COVERAGE_PACKAGES := \
 	7link.com/platform/pkg/i18n \
 	7link.com/platform/pkg/query
 
-.PHONY: build ci dev fmt-check generate generate-docs golangci iam-preflight lint openapi openapi-check test test-coverage test-integration test-performance test-load test-all test-mysql8 test-mysql8-run
+.PHONY: build ci dev dev-api dev-status dev-stop fmt-check generate generate-docs golangci iam-preflight lint openapi openapi-check test test-coverage test-integration test-performance test-load test-all test-mysql8 test-mysql8-run
 .PHONY: release-check test-race generate-check frontend-check test-alerts test-redis-security
 # These gates share coverage files and embedded database resources. Even when
 # invoked with -j, execute each prerequisite to completion before starting the next.
@@ -203,7 +207,16 @@ fmt-check:
 $(DEV_AUTHN_SIGNING_KEY_FILE) $(DEV_AUTHN_MFA_KEY_FILE) $(DEV_FEDERATION_KEY_FILE):
 	@umask 077; mkdir -p "$(DEV_SECRET_DIR)"; openssl rand -base64 32 > "$@"
 
-dev: $(DEV_AUTHN_SIGNING_KEY_FILE) $(DEV_AUTHN_MFA_KEY_FILE) $(DEV_FEDERATION_KEY_FILE)
+dev:
+	node "$(abspath scripts/dev.mjs)" --api-port $(DEV_API_PORT) --web-port $(DEV_WEB_PORT) --demo-accounts $(DEV_DEMO_ACCOUNTS) --prefill-account $(DEV_PREFILL_ACCOUNT)
+
+dev-status:
+	node "$(abspath scripts/dev.mjs)" --status
+
+dev-stop:
+	node "$(abspath scripts/dev.mjs)" --stop
+
+dev-api: $(DEV_AUTHN_SIGNING_KEY_FILE) $(DEV_AUTHN_MFA_KEY_FILE) $(DEV_FEDERATION_KEY_FILE)
 	go -C cmd/7link-api run . $(DEV_ARGS)
 
 # Regenerate the published API document. Commit the result: the frontend

@@ -8,7 +8,9 @@ Modules own their lifecycle, models, generated queries, localization, and migrat
 
 ## Build, Test, and Development Commands
 
-- `make dev`: run the API with migrations, debug mode, and diagnostic endpoints.
+- `make dev`: run API and Web with migrations, selectable demo accounts and local SQLite.
+- `make dev-api`: run only the configurable API with debug mode and diagnostics.
+- `make dev-status` / `make dev-stop`: inspect or stop the local development environment.
 - `make build`: produce the version-stamped `bin/7link-api` binary.
 - `make generate`: regenerate protobuf and module-owned GORM query code.
 - `make test`: run main-module unit tests.

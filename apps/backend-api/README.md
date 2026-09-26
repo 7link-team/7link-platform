@@ -21,12 +21,26 @@ governance, provisioning, and federation.
 ## Quick start
 
 ```sh
-make dev     # run with debug, migrations, and every diagnostic endpoint on
+make dev     # API + Web + selectable demo accounts, persistent local SQLite
+make dev-api # backend only, using DEV_ARGS/configuration
+make dev-status # print current URLs and readiness
+make dev-stop # stop API and Web; retain local data
 make build   # version-stamped binary at bin/7link-api
 ```
 
-`make dev` starts on the configured HTTP address and serves the landing page,
-`/docs`, and `/openapi` by default.
+`make dev` also works from the repository root. It requires Go, Node, Bun, make,
+and installed frontend dependencies (`bun install` in `apps/frontend-web-admin`).
+It prefers API port 8080 and Web port 8091, selects a free port when occupied,
+and prints the actual Web, API and Swagger (`/docs`) URLs after startup.
+Data, keys, credentials and logs persist under `apps/backend-api/.temp/dev`.
+Ctrl+C stops both services without deleting development data.
+
+Use `DEV_API_PORT=... DEV_WEB_PORT=...` to choose ports,
+`DEV_DEMO_ACCOUNTS=false` to hide the selectable demo accounts, or
+`DEV_PREFILL_ACCOUNT=true` to prefill an account. Demo accounts are development
+fixtures only. External identity providers, mail, Passkey and SAML integrations
+still require their own configuration. `make dev-api` retains the configurable
+backend invocation, migrations, debug mode and diagnostic endpoints.
 
 ## Layout
 
@@ -79,7 +93,7 @@ and `default` tags there drive both flag registration and generated config.
 Fields tagged `secret:"true"` — datasource DSNs, OTLP headers — are redacted
 wherever configuration is rendered, including the config-inspector endpoint.
 
-Run `make dev DEV_ARGS="serve --help"` for the full flag list. Passing `--help` to
+Run `make dev-api DEV_ARGS="serve --help"` for the full flag list. Passing `--help` to
 `make` itself prints make's usage, not the server's.
 
 ## Rotating keys

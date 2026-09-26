@@ -66,24 +66,8 @@ func TestOpenAPIExportDescribesTheRunningApplicationWithoutRunningIt(t *testing.
 		"a file people and tools read line by line ends with a newline")
 }
 
-// documentSections is the approved grouping of the published API: what a
-// reader is trying to do, not which segment a URI happens to start with.
-//
-// The rule it replaced derived the tag from the first path segment. That tied
-// the table of contents to the URI, so a section moved whenever a route did,
-// and it produced thirty-three sections in which tenants held eighty-four
-// operations while ten held two or fewer.
-var documentSections = []string{
-	"system", "authentication", "account", "directory", "access-control",
-	"files", "applications", "audit", "platform", "oauth", "saml", "scim",
-	"todos",
-}
-
-// TestOpenAPIExportGroupsOperationsByApprovedSection keeps the published
-// grouping inside the agreed vocabulary in both directions: no operation
-// invents a section, and no section in the list has gone empty. A one-way
-// check would let the list keep naming sections the API stopped publishing.
-func TestOpenAPIExportGroupsOperationsByApprovedSection(t *testing.T) {
+// Every group is owned by the final URI prefix, including expanded mounts.
+func TestOpenAPIExportGroupsOperationsByPathPrefix(t *testing.T) {
 	document, err := (&App{}).RunOpenAPIExport(t.Context(), newOpenAPIExportConfig(t))
 	require.NoError(t, err)
 
@@ -95,10 +79,6 @@ func TestOpenAPIExportGroupsOperationsByApprovedSection(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(document, &specification))
 
-	approved := make(map[string]int, len(documentSections))
-	for _, section := range documentSections {
-		approved[section] = 0
-	}
 	for path, item := range specification.Paths {
 		for method, operation := range item {
 			if operation.OperationID == "" {
@@ -108,26 +88,8 @@ func TestOpenAPIExportGroupsOperationsByApprovedSection(t *testing.T) {
 			if !assert.Len(t, operation.Tags, 1, location) {
 				continue
 			}
-			section := operation.Tags[0]
-			if _, ok := approved[section]; !ok {
-				assert.Failf(t, "unapproved section",
-					"%s is published under %q, which is not one of %s",
-					location, section, strings.Join(documentSections, ", "))
-				continue
-			}
-			approved[section]++
+			assert.Equal(t, strings.Split(strings.TrimPrefix(path, "/"), "/")[0], operation.Tags[0], location)
 		}
-	}
-	// A deployment registers SAML only when it federates, and this export runs
-	// on a minimal configuration. Its absence is a fact about the config, not a
-	// vocabulary entry nothing uses, so it is named rather than assumed.
-	featureGated := map[string]bool{"saml": true}
-	for _, section := range documentSections {
-		if featureGated[section] {
-			continue
-		}
-		assert.NotZerof(t, approved[section],
-			"section %q is approved but no operation is published under it", section)
 	}
 }
 

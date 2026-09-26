@@ -1,5 +1,37 @@
 # Task State
 
+## Active Development Startup And API Correction - 2026-09-26
+
+- Phase: ACCEPTANCE for Make/prefix grouping; subject migration scope awaiting user.
+  Direct execution; tightly coupled contracts, no agents.
+- Current user request: improve make startup; inspect implicit self paths and
+  enforce Swagger grouping by final path prefix. Latest rule supersedes D75.
+- Baseline d087516 pushed; previous optimization completed but deliberately
+  retained self paths. New inspection: 296 operations; 245 prefix/tag mismatches;
+  41 /me/* operations plus 4 tenant-contained /me/* operations.
+- Implemented, not yet delivered: make dev API/Web/demo SQLite orchestration,
+  root forwarding Makefile, status/stop commands, README, reusable fixture setup;
+  Huma final-path prefix hook and regression test (package test PASS).
+- Asked user to confirm complete explicit principal migration versus file-only
+  migration; that public-contract scope answer is pending. Do not infer consent
+  from elapsed time. Independent startup/grouping work continues.
+- Verification PASS: make dev and status, dev-stop and persistent restart;
+  demo browser 5/5 login/session/identity-link checks; selector hidden when disabled;
+  full SQLite browser E2E 14/14 (.temp/sqlite-lifecycle-5VG40y/report.json);
+  Huma/full OpenAPI/composition contract tests, lint, OpenAPI/type drift checks.
+  Live development Swagger has 309 operations including diagnostics; all have
+  first-prefix tags. Published baseline 296 methods/paths and responses unchanged.
+- Corrected previous delivery's stale session mappings/guards fixture; composed
+  IAM inventory now 265 and current-session cookie/item-session auth remain checked.
+- Self-review and scoped acceptance PASS for Make/grouping/inspection. ID routes
+  are NOT migrated, scope answer still pending. Report docs/api-routing-inspection-
+  2026-09-26.md enumerates the 45 operations and authorization constraints.
+- Next: commit/push verified deliverables; then await the already-submitted exact
+  45-operation migration scope choice. Do not report a completed route migration.
+- Verified replacement running at Web 8091/API 8080 via detached dev launcher
+  PID 24412; make dev-status/dev-stop control it. Legacy user acceptance services
+  62694/62693 remain running; no unrelated MySQL service was stopped.
+
 ## Active API Optimization - 2026-09-25
 
 - Phase: ACCEPTED; implementation, verification and final review complete.

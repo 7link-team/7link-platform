@@ -1,14 +1,27 @@
 package humax
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"7link.com/platform/pkg/i18n"
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestOperationsGroupedByFinalPathPrefix(t *testing.T) {
+	api := New(chi.NewRouter(), DefaultConfig("test", "dev"))
+	for _, path := range []string{"/tenants/{tenant_id}/files", "/principals/{principal_id}/files", "/files/{file_id}", "/oauth/token", "/.well-known/openid-configuration"} {
+		huma.Register(api, huma.Operation{Method: http.MethodGet, Path: path, OperationID: path, Tags: []string{"wrong-suffix-group"}}, func(context.Context, *struct{}) (*struct{}, error) {
+			return &struct{}{}, nil
+		})
+		assert.Equal(t, []string{strings.Split(path, "/")[1]}, api.OpenAPI().Paths[path].Get.Tags)
+	}
+}
 
 func TestNewConfiguresAPIAndSharedMiddleware(t *testing.T) {
 	router := chi.NewRouter()

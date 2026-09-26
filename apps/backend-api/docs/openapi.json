@@ -12753,7 +12753,7 @@
         },
         "summary": "JSON Web Key Set",
         "tags": [
-          "oauth"
+          ".well-known"
         ]
       }
     },
@@ -12784,7 +12784,7 @@
         },
         "summary": "OpenID Connect discovery metadata",
         "tags": [
-          "oauth"
+          ".well-known"
         ]
       }
     },
@@ -12916,7 +12916,7 @@
         ],
         "summary": "Set the approval decision for an access request",
         "tags": [
-          "access-control"
+          "access-requests"
         ],
         "x-authz-permission": "access_request_approve"
       }
@@ -13049,7 +13049,7 @@
         ],
         "summary": "Revoke an approved temporary role grant",
         "tags": [
-          "access-control"
+          "access-requests"
         ],
         "x-authz-permission": "access_request_approve"
       }
@@ -13182,7 +13182,7 @@
         ],
         "summary": "Withdraw a pending request or relinquish its approved access",
         "tags": [
-          "access-control"
+          "access-requests"
         ]
       }
     },
@@ -13284,7 +13284,7 @@
         ],
         "summary": "Get an access review and its snapshotted grants",
         "tags": [
-          "access-control"
+          "access-reviews"
         ],
         "x-authz-permission": "access_review_view"
       },
@@ -13415,7 +13415,7 @@
         ],
         "summary": "Complete or cancel an access review",
         "tags": [
-          "access-control"
+          "access-reviews"
         ],
         "x-authz-permission": "access_review_manage"
       }
@@ -13557,7 +13557,7 @@
         ],
         "summary": "Keep or revoke one snapshotted tenant access grant",
         "tags": [
-          "access-control"
+          "access-reviews"
         ],
         "x-authz-permission": "access_review_decide"
       }
@@ -13680,7 +13680,7 @@
         ],
         "summary": "Delete an empty tenant department",
         "tags": [
-          "directory"
+          "departments"
         ],
         "x-authz-permission": "dept_delete"
       },
@@ -13781,7 +13781,7 @@
         ],
         "summary": "Get a tenant department",
         "tags": [
-          "directory"
+          "departments"
         ],
         "x-authz-permission": "dept_view"
       },
@@ -13902,7 +13902,7 @@
         ],
         "summary": "Update or move a tenant department",
         "tags": [
-          "directory"
+          "departments"
         ],
         "x-authz-permission": "dept_update"
       }
@@ -14052,7 +14052,7 @@
         ],
         "summary": "List department file roots",
         "tags": [
-          "files"
+          "departments"
         ],
         "x-authz-data-filter": true,
         "x-authz-permission": "file_view"
@@ -14231,7 +14231,7 @@
         ],
         "summary": "Create a department file",
         "tags": [
-          "files"
+          "departments"
         ],
         "x-authz-data-filter": true,
         "x-authz-permission": "file_create"
@@ -14340,7 +14340,7 @@
         ],
         "summary": "Queue verification for the authenticated principal email",
         "tags": [
-          "authentication"
+          "email-verification-requests"
         ]
       }
     },
@@ -14478,7 +14478,7 @@
         },
         "summary": "Consume a primary email verification credential",
         "tags": [
-          "authentication"
+          "email-verifications"
         ]
       }
     },
@@ -14590,7 +14590,7 @@
         ],
         "summary": "Delete an empty tenant entity",
         "tags": [
-          "directory"
+          "entities"
         ],
         "x-authz-permission": "entity_delete"
       },
@@ -14691,7 +14691,7 @@
         ],
         "summary": "Get a tenant entity",
         "tags": [
-          "directory"
+          "entities"
         ],
         "x-authz-permission": "entity_view"
       },
@@ -14812,7 +14812,7 @@
         ],
         "summary": "Update a tenant entity",
         "tags": [
-          "directory"
+          "entities"
         ],
         "x-authz-permission": "entity_update"
       }
@@ -14962,7 +14962,7 @@
         ],
         "summary": "List entity file roots",
         "tags": [
-          "files"
+          "entities"
         ]
       },
       "post": {
@@ -15139,7 +15139,7 @@
         ],
         "summary": "Create an entity file",
         "tags": [
-          "files"
+          "entities"
         ],
         "x-authz-data-filter": true,
         "x-authz-permission": "file_create"
@@ -15266,7 +15266,7 @@
         ],
         "summary": "List direct principal role bindings for an entity",
         "tags": [
-          "directory"
+          "entities"
         ],
         "x-authz-permission": "entity_view"
       }
@@ -15389,7 +15389,7 @@
         ],
         "summary": "Remove a direct principal role from an entity scope",
         "tags": [
-          "directory"
+          "entities"
         ],
         "x-authz-permission": "entity_manage_binding"
       },
@@ -15530,7 +15530,7 @@
         ],
         "summary": "Assign a direct principal role at an entity scope",
         "tags": [
-          "directory"
+          "entities"
         ],
         "x-authz-permission": "entity_manage_binding"
       }
@@ -15809,7 +15809,7 @@
         ],
         "summary": "List tasks",
         "tags": [
-          "todos"
+          "entities"
         ],
         "x-authz-data-filter": true,
         "x-authz-permission": "todo_view"
@@ -15935,7 +15935,7 @@
         ],
         "summary": "Create a task",
         "tags": [
-          "todos"
+          "entities"
         ],
         "x-authz-data-filter": true,
         "x-authz-permission": "todo_create"
@@ -16221,7 +16221,7 @@
         ],
         "summary": "Export tasks",
         "tags": [
-          "todos"
+          "entities"
         ],
         "x-authz-data-filter": true,
         "x-authz-permission": "todo_export"
@@ -16364,7 +16364,7 @@
         ],
         "summary": "Import tasks",
         "tags": [
-          "todos"
+          "entities"
         ],
         "x-authz-data-filter": true,
         "x-authz-permission": "todo_import"
@@ -16485,7 +16485,7 @@
         ],
         "summary": "Download the import template",
         "tags": [
-          "todos"
+          "entities"
         ],
         "x-authz-data-filter": true,
         "x-authz-permission": "todo_import"
@@ -17364,7 +17364,7 @@
         ],
         "summary": "Delete an empty tenant group",
         "tags": [
-          "directory"
+          "groups"
         ],
         "x-authz-permission": "group_delete"
       },
@@ -17465,7 +17465,7 @@
         ],
         "summary": "Get a tenant group",
         "tags": [
-          "directory"
+          "groups"
         ],
         "x-authz-permission": "group_view"
       },
@@ -17586,7 +17586,7 @@
         ],
         "summary": "Update a tenant group",
         "tags": [
-          "directory"
+          "groups"
         ],
         "x-authz-permission": "group_update"
       }
@@ -17712,7 +17712,7 @@
         ],
         "summary": "List group members",
         "tags": [
-          "directory"
+          "groups"
         ],
         "x-authz-permission": "group_view"
       }
@@ -17834,7 +17834,7 @@
         ],
         "summary": "Remove a group member",
         "tags": [
-          "directory"
+          "groups"
         ],
         "x-authz-permission": "group_manage_member"
       },
@@ -17964,7 +17964,7 @@
         ],
         "summary": "Assign or update a group member",
         "tags": [
-          "directory"
+          "groups"
         ],
         "x-authz-permission": "group_manage_member"
       }
@@ -17996,7 +17996,7 @@
         },
         "summary": "Generate a globally unique ID",
         "tags": [
-          "system"
+          "guid"
         ]
       }
     },
@@ -18042,7 +18042,7 @@
         },
         "summary": "Generate globally unique IDs",
         "tags": [
-          "system"
+          "guid"
         ]
       }
     },
@@ -18073,7 +18073,7 @@
         },
         "summary": "Check service liveness and module health",
         "tags": [
-          "system"
+          "healthz"
         ]
       }
     },
@@ -18175,7 +18175,7 @@
         ],
         "summary": "Delete an OIDC identity provider and its identity links",
         "tags": [
-          "applications"
+          "identity-providers"
         ],
         "x-authz-permission": "identity_provider_delete"
       },
@@ -18296,7 +18296,7 @@
         ],
         "summary": "Replace an OIDC identity provider",
         "tags": [
-          "applications"
+          "identity-providers"
         ],
         "x-authz-permission": "identity_provider_update"
       }
@@ -18438,7 +18438,7 @@
         },
         "summary": "Start an OIDC login for a tenant identity provider",
         "tags": [
-          "applications"
+          "identity-providers"
         ]
       }
     },
@@ -18588,7 +18588,7 @@
         },
         "summary": "Complete the OIDC authorization code flow and set the browser session",
         "tags": [
-          "applications"
+          "identity-providers"
         ]
       },
       "post": {
@@ -18742,7 +18742,7 @@
         },
         "summary": "Complete the SAML SP-initiated assertion flow and set the browser session",
         "tags": [
-          "applications"
+          "identity-providers"
         ]
       }
     },
@@ -18870,7 +18870,7 @@
         ],
         "summary": "Complete a verified callback in its original browser session",
         "tags": [
-          "applications"
+          "identity-providers"
         ]
       }
     },
@@ -18952,7 +18952,7 @@
         "security": [],
         "summary": "Accept a tenant invitation and create the local principal",
         "tags": [
-          "authentication"
+          "invitation-acceptances"
         ]
       }
     },
@@ -19074,7 +19074,7 @@
         ],
         "summary": "Revoke a pending tenant invitation",
         "tags": [
-          "directory"
+          "invitations"
         ],
         "x-authz-permission": "invitation_revoke"
       }
@@ -19197,7 +19197,7 @@
         ],
         "summary": "Create a new invitation delivery and return its rotated credential once",
         "tags": [
-          "directory"
+          "invitations"
         ],
         "x-authz-permission": "invitation_resend"
       }
@@ -19229,7 +19229,7 @@
         },
         "summary": "Check service liveness",
         "tags": [
-          "system"
+          "livez"
         ]
       }
     },
@@ -19345,7 +19345,7 @@
         },
         "summary": "Log in with a local username and password",
         "tags": [
-          "authentication"
+          "login"
         ]
       }
     },
@@ -19451,7 +19451,7 @@
         },
         "summary": "Complete an MFA login challenge",
         "tags": [
-          "authentication"
+          "login"
         ]
       }
     },
@@ -19482,7 +19482,7 @@
         },
         "summary": "Return enabled public authentication methods",
         "tags": [
-          "authentication"
+          "login"
         ]
       }
     },
@@ -19571,7 +19571,7 @@
         },
         "summary": "Create WebAuthn authentication options for passkey login",
         "tags": [
-          "authentication"
+          "login"
         ]
       }
     },
@@ -19677,7 +19677,7 @@
         },
         "summary": "Verify a WebAuthn assertion and log in",
         "tags": [
-          "authentication"
+          "login"
         ]
       }
     },
@@ -19756,7 +19756,7 @@
         ],
         "summary": "Return the authenticated local principal",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -19848,7 +19848,7 @@
         ],
         "summary": "Read my avatar",
         "tags": [
-          "account"
+          "me"
         ]
       },
       "put": {
@@ -19948,7 +19948,7 @@
         ],
         "summary": "Replace my avatar",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -20050,7 +20050,7 @@
         ],
         "summary": "Generate six private server-side avatar candidates",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -20171,7 +20171,7 @@
         ],
         "summary": "Read my private expiring avatar candidate",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -20283,7 +20283,7 @@
         ],
         "summary": "Cancel my pending account closure request",
         "tags": [
-          "account"
+          "me"
         ]
       },
       "get": {
@@ -20373,7 +20373,7 @@
         ],
         "summary": "Read my global account closure request",
         "tags": [
-          "account"
+          "me"
         ]
       },
       "post": {
@@ -20483,7 +20483,7 @@
         ],
         "summary": "Request global account closure without changing retention or access",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -20606,7 +20606,7 @@
         ],
         "summary": "Copy or move files synchronously",
         "tags": [
-          "files"
+          "me"
         ]
       }
     },
@@ -20734,7 +20734,7 @@
         ],
         "summary": "List my file roots",
         "tags": [
-          "files"
+          "me"
         ]
       },
       "post": {
@@ -20898,7 +20898,7 @@
         ],
         "summary": "Create a directory or upload a file",
         "tags": [
-          "files"
+          "me"
         ]
       }
     },
@@ -20990,7 +20990,7 @@
         ],
         "summary": "List active providers available through current memberships",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -21109,7 +21109,7 @@
         ],
         "summary": "Start linking or reauthenticate an existing linked identity",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -21201,7 +21201,7 @@
         ],
         "summary": "List the current principal's linked identities",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -21322,7 +21322,7 @@
         ],
         "summary": "Unlink one identity while retaining a usable login method",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -21430,7 +21430,7 @@
         ],
         "summary": "List my active tenant memberships",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -21562,7 +21562,7 @@
         ],
         "summary": "Delete my membership in one tenant while preserving my global account",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -21641,7 +21641,7 @@
         ],
         "summary": "Return the current principal MFA status",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -21740,7 +21740,7 @@
         ],
         "summary": "Replace all MFA recovery codes",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -21839,7 +21839,7 @@
         ],
         "summary": "Disable TOTP after password and factor verification",
         "tags": [
-          "account"
+          "me"
         ]
       },
       "post": {
@@ -21961,7 +21961,7 @@
         ],
         "summary": "Confirm TOTP enrollment and issue recovery codes",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -22078,7 +22078,7 @@
         ],
         "summary": "Begin TOTP enrollment after password verification",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -22163,7 +22163,7 @@
         ],
         "summary": "List the applications the caller has authorized",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -22268,7 +22268,7 @@
         ],
         "summary": "Withdraw the caller's authorization of one application",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -22385,7 +22385,7 @@
         ],
         "summary": "Begin passkey registration after password verification",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -22464,7 +22464,7 @@
         ],
         "summary": "List the current principal passkeys",
         "tags": [
-          "account"
+          "me"
         ]
       },
       "post": {
@@ -22579,7 +22579,7 @@
         ],
         "summary": "Verify and store a new passkey",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -22691,7 +22691,7 @@
         ],
         "summary": "Delete a passkey after password verification",
         "tags": [
-          "account"
+          "me"
         ]
       },
       "patch": {
@@ -22801,7 +22801,7 @@
         ],
         "summary": "Rename a passkey",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -22890,7 +22890,7 @@
         ],
         "summary": "Change the current principal password",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -22959,7 +22959,7 @@
         ],
         "summary": "Return my effective platform permission codes",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -23055,7 +23055,7 @@
         ],
         "summary": "List currently granted permissions available for a personal token",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -23168,7 +23168,7 @@
         ],
         "summary": "Prepare exact permissions and expiry for fresh verification",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -23276,7 +23276,7 @@
         ],
         "summary": "List the current browser principal's personal token metadata",
         "tags": [
-          "account"
+          "me"
         ]
       },
       "post": {
@@ -23387,7 +23387,7 @@
         ],
         "summary": "Create a tenant-scoped personal token; return its secret once",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -23482,7 +23482,7 @@
         ],
         "summary": "Revoke an owned personal token",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -23602,7 +23602,7 @@
         ],
         "summary": "Begin fresh verification for one sensitive operation",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -23678,7 +23678,7 @@
         ],
         "summary": "List current local reauthentication methods",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -23798,7 +23798,7 @@
         ],
         "summary": "Verify a fresh password and MFA or passkey assertion",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -23884,7 +23884,7 @@
         ],
         "summary": "Revoke every session and refresh token",
         "tags": [
-          "account"
+          "me"
         ]
       },
       "get": {
@@ -23961,7 +23961,7 @@
         ],
         "summary": "List active browser sessions",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -24030,7 +24030,7 @@
         ],
         "summary": "List the caller's tenants",
         "tags": [
-          "account"
+          "me"
         ]
       }
     },
@@ -24142,7 +24142,7 @@
         ],
         "summary": "Delete a tenant menu",
         "tags": [
-          "access-control"
+          "menus"
         ],
         "x-authz-permission": "menu_delete"
       },
@@ -24243,7 +24243,7 @@
         ],
         "summary": "Get a tenant menu",
         "tags": [
-          "access-control"
+          "menus"
         ],
         "x-authz-permission": "menu_view"
       },
@@ -24364,7 +24364,7 @@
         ],
         "summary": "Update a tenant menu",
         "tags": [
-          "access-control"
+          "menus"
         ],
         "x-authz-permission": "menu_update"
       }
@@ -24467,7 +24467,7 @@
         ],
         "summary": "Delete a tenant OAuth client",
         "tags": [
-          "applications"
+          "oauth-clients"
         ],
         "x-authz-permission": "oauth_client_delete"
       },
@@ -24578,7 +24578,7 @@
         ],
         "summary": "Replace a tenant OAuth client",
         "tags": [
-          "applications"
+          "oauth-clients"
         ],
         "x-authz-permission": "oauth_client_update"
       }
@@ -24681,7 +24681,7 @@
         ],
         "summary": "Create and activate a confidential OAuth client credential",
         "tags": [
-          "applications"
+          "oauth-clients"
         ],
         "x-authz-permission": "oauth_client_update"
       }
@@ -26003,7 +26003,7 @@
         },
         "summary": "Consume a password recovery credential",
         "tags": [
-          "authentication"
+          "password-recoveries"
         ]
       }
     },
@@ -26092,7 +26092,7 @@
         },
         "summary": "Queue a password recovery notification",
         "tags": [
-          "authentication"
+          "password-recoveries"
         ]
       }
     },
@@ -26528,7 +26528,7 @@
         ],
         "summary": "Platform: Read audit archive execution status",
         "tags": [
-          "audit"
+          "platform"
         ],
         "x-authz-permission": "platform_administer"
       }
@@ -26653,7 +26653,7 @@
         ],
         "summary": "Platform: List durable audit archive jobs",
         "tags": [
-          "audit"
+          "platform"
         ],
         "x-authz-permission": "platform_administer"
       },
@@ -26751,7 +26751,7 @@
         ],
         "summary": "Platform: Queue the next eligible audit archive segment",
         "tags": [
-          "audit"
+          "platform"
         ],
         "x-authz-permission": "platform_administer"
       }
@@ -26862,7 +26862,7 @@
         ],
         "summary": "Platform: Create a new archive attempt",
         "tags": [
-          "audit"
+          "platform"
         ],
         "x-authz-permission": "platform_administer"
       }
@@ -26975,7 +26975,7 @@
         ],
         "summary": "Platform: Download the verified immutable audit archive content",
         "tags": [
-          "audit"
+          "platform"
         ],
         "x-authz-permission": "platform_administer"
       }
@@ -27086,7 +27086,7 @@
         ],
         "summary": "Platform: Create an archived-object verification",
         "tags": [
-          "audit"
+          "platform"
         ],
         "x-authz-permission": "platform_administer"
       }
@@ -27196,7 +27196,7 @@
         ],
         "summary": "Platform: Configure platform audit retention policy",
         "tags": [
-          "audit"
+          "platform"
         ],
         "x-authz-permission": "platform_administer"
       }
@@ -27386,7 +27386,7 @@
         ],
         "summary": "List declared platform permissions",
         "tags": [
-          "access-control"
+          "platform"
         ],
         "x-authz-permission": "platform_administer"
       }
@@ -28204,7 +28204,7 @@
         ],
         "summary": "Delete an empty tenant position",
         "tags": [
-          "directory"
+          "positions"
         ],
         "x-authz-permission": "position_delete"
       },
@@ -28305,7 +28305,7 @@
         ],
         "summary": "Get a tenant position",
         "tags": [
-          "directory"
+          "positions"
         ],
         "x-authz-permission": "position_view"
       },
@@ -28426,7 +28426,7 @@
         ],
         "summary": "Update a tenant position",
         "tags": [
-          "directory"
+          "positions"
         ],
         "x-authz-permission": "position_update"
       }
@@ -28552,7 +28552,7 @@
         ],
         "summary": "List position members",
         "tags": [
-          "directory"
+          "positions"
         ],
         "x-authz-permission": "position_view"
       }
@@ -28674,7 +28674,7 @@
         ],
         "summary": "Remove a position member",
         "tags": [
-          "directory"
+          "positions"
         ],
         "x-authz-permission": "position_manage_member"
       },
@@ -28804,7 +28804,7 @@
         ],
         "summary": "Assign or update a position member",
         "tags": [
-          "directory"
+          "positions"
         ],
         "x-authz-permission": "position_manage_member"
       }
@@ -28923,7 +28923,7 @@
         ],
         "summary": "Read an authorized account avatar image",
         "tags": [
-          "directory"
+          "principals"
         ]
       }
     },
@@ -28964,7 +28964,7 @@
         },
         "summary": "Check service readiness",
         "tags": [
-          "system"
+          "readyz"
         ]
       }
     },
@@ -29053,7 +29053,7 @@
         },
         "summary": "Register a global principal pending email verification",
         "tags": [
-          "authentication"
+          "registrations"
         ]
       }
     },
@@ -29112,7 +29112,7 @@
         },
         "summary": "Issue a graphic captcha for registration",
         "tags": [
-          "authentication"
+          "registrations"
         ]
       }
     },
@@ -29224,7 +29224,7 @@
         ],
         "summary": "Delete a tenant role",
         "tags": [
-          "access-control"
+          "roles"
         ],
         "x-authz-permission": "role_delete"
       },
@@ -29325,7 +29325,7 @@
         ],
         "summary": "Get a tenant role",
         "tags": [
-          "access-control"
+          "roles"
         ],
         "x-authz-permission": "role_view"
       },
@@ -29446,7 +29446,7 @@
         ],
         "summary": "Update a tenant role",
         "tags": [
-          "access-control"
+          "roles"
         ],
         "x-authz-permission": "role_update"
       }
@@ -29549,7 +29549,7 @@
         ],
         "summary": "Get a role data scope",
         "tags": [
-          "access-control"
+          "roles"
         ],
         "x-authz-permission": "role_view"
       },
@@ -29670,7 +29670,7 @@
         ],
         "summary": "Set a role data scope",
         "tags": [
-          "access-control"
+          "roles"
         ],
         "x-authz-permission": "role_update"
       }
@@ -29796,7 +29796,7 @@
         ],
         "summary": "List group and position role assignments",
         "tags": [
-          "access-control"
+          "roles"
         ],
         "x-authz-permission": "role_view"
       }
@@ -29931,7 +29931,7 @@
         ],
         "summary": "Remove a group or position from a role",
         "tags": [
-          "access-control"
+          "roles"
         ],
         "x-authz-permission": "role_manage_assignee"
       },
@@ -30064,7 +30064,7 @@
         ],
         "summary": "Assign a group or position to a role",
         "tags": [
-          "access-control"
+          "roles"
         ],
         "x-authz-permission": "role_manage_assignee"
       }
@@ -30190,7 +30190,7 @@
         ],
         "summary": "List local principals in a role",
         "tags": [
-          "access-control"
+          "roles"
         ],
         "x-authz-permission": "role_view"
       }
@@ -30315,7 +30315,7 @@
         ],
         "summary": "Remove a local principal from a role",
         "tags": [
-          "access-control"
+          "roles"
         ],
         "x-authz-permission": "role_manage_member"
       },
@@ -30438,7 +30438,7 @@
         ],
         "summary": "Add a local principal to a role",
         "tags": [
-          "access-control"
+          "roles"
         ],
         "x-authz-permission": "role_manage_member"
       }
@@ -30541,7 +30541,7 @@
         ],
         "summary": "List role permission grants with conditions",
         "tags": [
-          "access-control"
+          "roles"
         ],
         "x-authz-permission": "role_view"
       }
@@ -30644,7 +30644,7 @@
         ],
         "summary": "List role permission grants",
         "tags": [
-          "access-control"
+          "roles"
         ],
         "x-authz-permission": "role_view"
       }
@@ -30766,7 +30766,7 @@
         ],
         "summary": "Revoke a permission from a role",
         "tags": [
-          "access-control"
+          "roles"
         ],
         "x-authz-permission": "role_grant_permission"
       },
@@ -30876,7 +30876,7 @@
         ],
         "summary": "Grant a permission to a role",
         "tags": [
-          "access-control"
+          "roles"
         ],
         "x-authz-permission": "role_grant_permission"
       }
@@ -30988,7 +30988,7 @@
         ],
         "summary": "Clear a role permission condition",
         "tags": [
-          "access-control"
+          "roles"
         ],
         "x-authz-permission": "role_grant_permission"
       },
@@ -31118,7 +31118,7 @@
         ],
         "summary": "Set a trusted-context condition on a role permission",
         "tags": [
-          "access-control"
+          "roles"
         ],
         "x-authz-permission": "role_grant_permission"
       }
@@ -31221,7 +31221,7 @@
         ],
         "summary": "Delete a SAML service provider",
         "tags": [
-          "applications"
+          "saml-service-providers"
         ],
         "x-authz-permission": "identity_provider_delete"
       },
@@ -31342,7 +31342,7 @@
         ],
         "summary": "Replace a SAML service provider",
         "tags": [
-          "applications"
+          "saml-service-providers"
         ],
         "x-authz-permission": "identity_provider_update"
       }
@@ -31939,7 +31939,7 @@
         ],
         "summary": "Replace a tenant SCIM directory",
         "tags": [
-          "applications"
+          "scim-directories"
         ],
         "x-authz-permission": "tenant_administer"
       }
@@ -32065,7 +32065,7 @@
         ],
         "summary": "List SCIM directory credentials",
         "tags": [
-          "applications"
+          "scim-directories"
         ],
         "x-authz-permission": "tenant_administer"
       },
@@ -32186,7 +32186,7 @@
         ],
         "summary": "Create a one-display SCIM bearer credential",
         "tags": [
-          "applications"
+          "scim-directories"
         ],
         "x-authz-permission": "tenant_administer"
       }
@@ -32298,7 +32298,7 @@
         ],
         "summary": "Revoke a SCIM bearer credential",
         "tags": [
-          "applications"
+          "scim-directories"
         ],
         "x-authz-permission": "tenant_administer"
       }
@@ -32411,7 +32411,7 @@
         ],
         "summary": "Delete an outbound SCIM target",
         "tags": [
-          "applications"
+          "scim-targets"
         ],
         "x-authz-permission": "tenant_administer"
       },
@@ -32532,7 +32532,7 @@
         ],
         "summary": "Replace an outbound SCIM target",
         "tags": [
-          "applications"
+          "scim-targets"
         ],
         "x-authz-permission": "tenant_administer"
       }
@@ -32665,7 +32665,7 @@
         ],
         "summary": "Create a user or group deprovisioning job",
         "tags": [
-          "applications"
+          "scim-targets"
         ],
         "x-authz-permission": "tenant_administer"
       }
@@ -32798,7 +32798,7 @@
         ],
         "summary": "Create a user or group provisioning job",
         "tags": [
-          "applications"
+          "scim-targets"
         ],
         "x-authz-permission": "tenant_administer"
       }
@@ -32922,7 +32922,7 @@
         ],
         "summary": "Create or resume retirement of an outbound SCIM target",
         "tags": [
-          "applications"
+          "scim-targets"
         ],
         "x-authz-permission": "tenant_administer"
       }
@@ -40347,7 +40347,7 @@
         ],
         "summary": "List platform tenant merchant store scope model",
         "tags": [
-          "access-control"
+          "scope-model"
         ],
         "x-authz-permission": "tenant_view"
       }
@@ -40470,7 +40470,7 @@
         ],
         "summary": "Delete a service account and revoke its credentials",
         "tags": [
-          "directory"
+          "service-accounts"
         ],
         "x-authz-permission": "service_account_delete"
       },
@@ -40571,7 +40571,7 @@
         ],
         "summary": "Get a tenant service account",
         "tags": [
-          "directory"
+          "service-accounts"
         ],
         "x-authz-permission": "service_account_view"
       },
@@ -40692,7 +40692,7 @@
         ],
         "summary": "Replace service account profile and status",
         "tags": [
-          "directory"
+          "service-accounts"
         ],
         "x-authz-permission": "service_account_update"
       }
@@ -40795,7 +40795,7 @@
         ],
         "summary": "List service account credentials without secrets",
         "tags": [
-          "directory"
+          "service-accounts"
         ],
         "x-authz-permission": "service_account_manage_credential"
       },
@@ -40916,7 +40916,7 @@
         ],
         "summary": "Create a service account client credential",
         "tags": [
-          "directory"
+          "service-accounts"
         ],
         "x-authz-permission": "service_account_manage_credential"
       }
@@ -41028,7 +41028,7 @@
         ],
         "summary": "Revoke a service account credential and its active tokens",
         "tags": [
-          "directory"
+          "service-accounts"
         ],
         "x-authz-permission": "service_account_manage_credential"
       }
@@ -41097,7 +41097,7 @@
         },
         "summary": "Destroy the current browser session",
         "tags": [
-          "account"
+          "sessions"
         ]
       },
       "get": {
@@ -41181,7 +41181,7 @@
         ],
         "summary": "Return the current browser session",
         "tags": [
-          "account"
+          "sessions"
         ]
       }
     },
@@ -41288,7 +41288,7 @@
         ],
         "summary": "Begin a step-up MFA challenge for the current browser session",
         "tags": [
-          "account"
+          "sessions"
         ]
       }
     },
@@ -41412,7 +41412,7 @@
         ],
         "summary": "Verify a step-up factor and elevate the browser session",
         "tags": [
-          "account"
+          "sessions"
         ]
       }
     },
@@ -41514,7 +41514,7 @@
         ],
         "summary": "Revoke a browser session",
         "tags": [
-          "account"
+          "sessions"
         ]
       },
       "get": {
@@ -41614,7 +41614,7 @@
         ],
         "summary": "Read an active browser session owned by the caller",
         "tags": [
-          "account"
+          "sessions"
         ]
       }
     },
@@ -41726,7 +41726,7 @@
         ],
         "summary": "List platform tenants",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "tenant_view"
       },
@@ -41824,7 +41824,7 @@
         ],
         "summary": "Create a platform tenant",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "tenant_create"
       }
@@ -41945,7 +41945,7 @@
         ],
         "summary": "Soft-delete a platform tenant",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "tenant_delete"
       },
@@ -42044,7 +42044,7 @@
         ],
         "summary": "Get a platform tenant",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "tenant_view"
       },
@@ -42163,7 +42163,7 @@
         ],
         "summary": "Update or suspend a platform tenant",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "tenant_update"
       }
@@ -42279,7 +42279,7 @@
         ],
         "summary": "List tenant access requests for approval",
         "tags": [
-          "access-control"
+          "tenants"
         ],
         "x-authz-permission": "access_request_view"
       },
@@ -42400,7 +42400,7 @@
         ],
         "summary": "Request time-limited membership in a tenant role",
         "tags": [
-          "access-control"
+          "tenants"
         ]
       }
     },
@@ -42515,7 +42515,7 @@
         ],
         "summary": "List tenant access review campaigns",
         "tags": [
-          "access-control"
+          "tenants"
         ],
         "x-authz-permission": "access_review_view"
       },
@@ -42626,7 +42626,7 @@
         ],
         "summary": "Create a review of current tenant access grants",
         "tags": [
-          "access-control"
+          "tenants"
         ],
         "x-authz-permission": "access_review_create"
       }
@@ -42729,7 +42729,7 @@
         ],
         "summary": "Anchor the current verified audit head into the WORM store",
         "tags": [
-          "audit"
+          "tenants"
         ],
         "x-authz-permission": "audit_event_anchor"
       }
@@ -42842,7 +42842,7 @@
         ],
         "summary": "Read audit archive execution status",
         "tags": [
-          "audit"
+          "tenants"
         ],
         "x-authz-permission": "audit_event_view"
       }
@@ -42978,7 +42978,7 @@
         ],
         "summary": "List durable audit archive jobs",
         "tags": [
-          "audit"
+          "tenants"
         ],
         "x-authz-permission": "audit_event_view"
       },
@@ -43089,7 +43089,7 @@
         ],
         "summary": "Queue the next eligible audit archive segment",
         "tags": [
-          "audit"
+          "tenants"
         ],
         "x-authz-permission": "audit_event_export"
       }
@@ -43211,7 +43211,7 @@
         ],
         "summary": "Create a new attempt for a failed or expired audit archive job",
         "tags": [
-          "audit"
+          "tenants"
         ],
         "x-authz-permission": "audit_event_export"
       }
@@ -43335,7 +43335,7 @@
         ],
         "summary": "Download the verified immutable audit archive content",
         "tags": [
-          "audit"
+          "tenants"
         ],
         "x-authz-permission": "audit_event_export"
       }
@@ -43457,7 +43457,7 @@
         ],
         "summary": "Create an archived-object verification",
         "tags": [
-          "audit"
+          "tenants"
         ],
         "x-authz-permission": "audit_event_view"
       }
@@ -43644,7 +43644,7 @@
         ],
         "summary": "List tenant audit events",
         "tags": [
-          "audit"
+          "tenants"
         ],
         "x-authz-permission": "audit_event_view"
       }
@@ -43756,7 +43756,7 @@
         ],
         "summary": "Get a tenant audit event",
         "tags": [
-          "audit"
+          "tenants"
         ],
         "x-authz-permission": "audit_event_view"
       }
@@ -43932,7 +43932,7 @@
         ],
         "summary": "Export a verified tenant audit snapshot",
         "tags": [
-          "audit"
+          "tenants"
         ],
         "x-authz-permission": "audit_event_export"
       }
@@ -44048,7 +44048,7 @@
         ],
         "summary": "Get WORM governance status: retention policy, chain integrity and anchor chain",
         "tags": [
-          "audit"
+          "tenants"
         ],
         "x-authz-permission": "audit_event_view"
       }
@@ -44141,7 +44141,7 @@
         ],
         "summary": "Verify the tenant audit hash chain",
         "tags": [
-          "audit"
+          "tenants"
         ],
         "x-authz-permission": "audit_event_view"
       }
@@ -44244,7 +44244,7 @@
         ],
         "summary": "Configure the tenant audit retention policy",
         "tags": [
-          "audit"
+          "tenants"
         ],
         "x-authz-permission": "audit_event_manage"
       }
@@ -44347,7 +44347,7 @@
         ],
         "summary": "Anchor and sign the current verified audit head as a WORM root commitment",
         "tags": [
-          "audit"
+          "tenants"
         ],
         "x-authz-permission": "audit_event_manage"
       }
@@ -44460,7 +44460,7 @@
         ],
         "summary": "Check an entity or business-resource authorization decision",
         "tags": [
-          "access-control"
+          "tenants"
         ],
         "x-authz-permission": "role_view"
       }
@@ -44563,7 +44563,7 @@
         ],
         "summary": "Compute an entity data constraint for a tenant subject",
         "tags": [
-          "access-control"
+          "tenants"
         ],
         "x-authz-permission": "role_view"
       }
@@ -44676,7 +44676,7 @@
         ],
         "summary": "Explain an entity or business-resource authorization decision",
         "tags": [
-          "access-control"
+          "tenants"
         ],
         "x-authz-permission": "role_view"
       }
@@ -44792,7 +44792,7 @@
         ],
         "summary": "List the tenant department hierarchy",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "dept_view"
       },
@@ -44913,7 +44913,7 @@
         ],
         "summary": "Create a tenant department",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "dept_create"
       }
@@ -45024,7 +45024,7 @@
         ],
         "summary": "Get own effective field capabilities",
         "tags": [
-          "access-control"
+          "tenants"
         ]
       }
     },
@@ -45139,7 +45139,7 @@
         ],
         "summary": "List tenant entities",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "entity_view"
       },
@@ -45260,7 +45260,7 @@
         ],
         "summary": "Create a tenant entity",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "entity_create"
       }
@@ -45406,7 +45406,7 @@
         ],
         "summary": "Copy or move files synchronously",
         "tags": [
-          "files"
+          "tenants"
         ],
         "x-authz-data-filter": true,
         "x-authz-permission": "file_create"
@@ -45513,7 +45513,7 @@
         ],
         "summary": "Return my effective entity permission codes",
         "tags": [
-          "access-control"
+          "tenants"
         ]
       }
     },
@@ -45623,7 +45623,7 @@
         ],
         "summary": "List declared field capabilities",
         "tags": [
-          "access-control"
+          "tenants"
         ],
         "x-authz-permission": "field_policy_view"
       }
@@ -45757,7 +45757,7 @@
         ],
         "summary": "List tenant field policies",
         "tags": [
-          "access-control"
+          "tenants"
         ],
         "x-authz-permission": "field_policy_view"
       }
@@ -45889,7 +45889,7 @@
         ],
         "summary": "Restore a field's declared default policy",
         "tags": [
-          "access-control"
+          "tenants"
         ],
         "x-authz-permission": "field_policy_update"
       },
@@ -46018,7 +46018,7 @@
         ],
         "summary": "Set a tenant field policy",
         "tags": [
-          "access-control"
+          "tenants"
         ],
         "x-authz-permission": "field_policy_update"
       }
@@ -46153,7 +46153,7 @@
         ],
         "summary": "Copy or move files synchronously",
         "tags": [
-          "files"
+          "tenants"
         ],
         "x-authz-data-filter": true,
         "x-authz-permission": "file_create"
@@ -46294,7 +46294,7 @@
         ],
         "summary": "List tenant file roots",
         "tags": [
-          "files"
+          "tenants"
         ],
         "x-authz-data-filter": true,
         "x-authz-permission": "file_view"
@@ -46473,7 +46473,7 @@
         ],
         "summary": "Create a tenant file",
         "tags": [
-          "files"
+          "tenants"
         ],
         "x-authz-data-filter": true,
         "x-authz-permission": "file_create"
@@ -46590,7 +46590,7 @@
         ],
         "summary": "List tenant groups",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "group_view"
       },
@@ -46701,7 +46701,7 @@
         ],
         "summary": "Create a tenant group",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "group_create"
       }
@@ -46817,7 +46817,7 @@
         ],
         "summary": "List tenant identity providers",
         "tags": [
-          "applications"
+          "tenants"
         ],
         "x-authz-permission": "identity_provider_view"
       },
@@ -46928,7 +46928,7 @@
         ],
         "summary": "Create an OIDC identity provider",
         "tags": [
-          "applications"
+          "tenants"
         ],
         "x-authz-permission": "identity_provider_create"
       }
@@ -47044,7 +47044,7 @@
         ],
         "summary": "List tenant invitations",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "invitation_view"
       },
@@ -47165,7 +47165,7 @@
         ],
         "summary": "Create a tenant invitation and return its credential once",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "invitation_create"
       }
@@ -47258,7 +47258,7 @@
         ],
         "summary": "List the current principal's tenant access requests",
         "tags": [
-          "access-control"
+          "tenants"
         ]
       }
     },
@@ -47373,7 +47373,7 @@
         ],
         "summary": "Return the current member's authorized menu tree",
         "tags": [
-          "access-control"
+          "tenants"
         ]
       }
     },
@@ -47465,7 +47465,7 @@
         ],
         "summary": "Return my effective tenant permission codes",
         "tags": [
-          "access-control"
+          "tenants"
         ]
       }
     },
@@ -47601,7 +47601,7 @@
         ],
         "summary": "List tenant memberships",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "user_view"
       },
@@ -47729,7 +47729,7 @@
         ],
         "summary": "Bind an existing principal to a tenant",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "user_create"
       }
@@ -47842,7 +47842,7 @@
         ],
         "summary": "Get a tenant membership",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "user_view"
       },
@@ -47980,7 +47980,7 @@
         ],
         "summary": "Update or disable a tenant membership",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "user_update"
       }
@@ -48103,7 +48103,7 @@
         ],
         "summary": "List effective authorization sources for a tenant member",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "role_view"
       }
@@ -48239,7 +48239,7 @@
         ],
         "summary": "List role assignments for a tenant member",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "role_view"
       }
@@ -48322,7 +48322,7 @@
         ],
         "summary": "List menu metadata bound to permission codes",
         "tags": [
-          "access-control"
+          "tenants"
         ],
         "x-authz-permission": "menu_view"
       }
@@ -48438,7 +48438,7 @@
         ],
         "summary": "List tenant menu metadata",
         "tags": [
-          "access-control"
+          "tenants"
         ],
         "x-authz-permission": "menu_view"
       },
@@ -48549,7 +48549,7 @@
         ],
         "summary": "Create a tenant menu",
         "tags": [
-          "access-control"
+          "tenants"
         ],
         "x-authz-permission": "menu_create"
       }
@@ -48665,7 +48665,7 @@
         ],
         "summary": "List tenant OAuth clients",
         "tags": [
-          "applications"
+          "tenants"
         ],
         "x-authz-permission": "oauth_client_view"
       },
@@ -48766,7 +48766,7 @@
         ],
         "summary": "Create a tenant OAuth client",
         "tags": [
-          "applications"
+          "tenants"
         ],
         "x-authz-permission": "oauth_client_create"
       }
@@ -48849,7 +48849,7 @@
         ],
         "summary": "List declared permissions",
         "tags": [
-          "access-control"
+          "tenants"
         ],
         "x-authz-permission": "role_view"
       }
@@ -48965,7 +48965,7 @@
         ],
         "summary": "List tenant positions",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "position_view"
       },
@@ -49076,7 +49076,7 @@
         ],
         "summary": "Create a tenant position",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "position_create"
       }
@@ -49201,7 +49201,7 @@
         ],
         "summary": "List local principals in the tenant",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "user_view"
       },
@@ -49319,7 +49319,7 @@
         ],
         "summary": "Create a local principal and tenant membership",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "user_create"
       }
@@ -49431,7 +49431,7 @@
         ],
         "summary": "Get a local principal in the tenant",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "user_view"
       },
@@ -49568,7 +49568,7 @@
         ],
         "summary": "Update a local principal profile",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "user_update"
       }
@@ -49690,7 +49690,7 @@
         ],
         "summary": "Lift a principal suspension",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "user_update"
       },
@@ -49810,7 +49810,7 @@
         ],
         "summary": "Suspend a principal and revoke its sessions and refresh tokens",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "user_update"
       }
@@ -49983,7 +49983,7 @@
         ],
         "summary": "Revoke a relationship grant immediately",
         "tags": [
-          "access-control"
+          "tenants"
         ],
         "x-authz-permission": "entity_manage_binding"
       },
@@ -50126,7 +50126,7 @@
         ],
         "summary": "List tenant entity or business-resource relationship grants",
         "tags": [
-          "access-control"
+          "tenants"
         ],
         "x-authz-permission": "entity_view"
       },
@@ -50247,7 +50247,7 @@
         ],
         "summary": "Create or update a constrained relationship grant",
         "tags": [
-          "access-control"
+          "tenants"
         ],
         "x-authz-permission": "entity_manage_binding"
       }
@@ -50363,7 +50363,7 @@
         ],
         "summary": "List tenant roles available for access requests",
         "tags": [
-          "access-control"
+          "tenants"
         ]
       }
     },
@@ -50478,7 +50478,7 @@
         ],
         "summary": "List tenant roles",
         "tags": [
-          "access-control"
+          "tenants"
         ],
         "x-authz-permission": "role_view"
       },
@@ -50589,7 +50589,7 @@
         ],
         "summary": "Create a tenant role",
         "tags": [
-          "access-control"
+          "tenants"
         ],
         "x-authz-permission": "role_create"
       }
@@ -50705,7 +50705,7 @@
         ],
         "summary": "List tenant SAML service providers",
         "tags": [
-          "applications"
+          "tenants"
         ],
         "x-authz-permission": "identity_provider_view"
       },
@@ -50816,7 +50816,7 @@
         ],
         "summary": "Register a SAML service provider from its metadata",
         "tags": [
-          "applications"
+          "tenants"
         ],
         "x-authz-permission": "identity_provider_create"
       }
@@ -50919,7 +50919,7 @@
         ],
         "summary": "Rotate the SAML identity provider signing key",
         "tags": [
-          "applications"
+          "tenants"
         ],
         "x-authz-permission": "identity_provider_update"
       }
@@ -51035,7 +51035,7 @@
         ],
         "summary": "List tenant SCIM directories",
         "tags": [
-          "applications"
+          "tenants"
         ],
         "x-authz-permission": "tenant_administer"
       },
@@ -51146,7 +51146,7 @@
         ],
         "summary": "Create a tenant SCIM directory",
         "tags": [
-          "applications"
+          "tenants"
         ],
         "x-authz-permission": "tenant_administer"
       }
@@ -51262,7 +51262,7 @@
         ],
         "summary": "List outbound SCIM targets",
         "tags": [
-          "applications"
+          "tenants"
         ],
         "x-authz-permission": "tenant_administer"
       },
@@ -51373,7 +51373,7 @@
         ],
         "summary": "Create an outbound SCIM target",
         "tags": [
-          "applications"
+          "tenants"
         ],
         "x-authz-permission": "tenant_administer"
       }
@@ -51498,7 +51498,7 @@
         ],
         "summary": "List tenant service accounts",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "service_account_view"
       },
@@ -51609,7 +51609,7 @@
         ],
         "summary": "Create a non-interactive tenant service account",
         "tags": [
-          "directory"
+          "tenants"
         ],
         "x-authz-permission": "service_account_create"
       }

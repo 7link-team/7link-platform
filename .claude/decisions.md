@@ -2744,3 +2744,26 @@ regression 74/74, archive desktop/mobile PASS, backend authn/files suites PASS,
 frontend gates and generated drift checks PASS. 206 paths / 296 operations;
 the added operation is session item GET. No database migration. Evidence and
 limits are in the execution plan. Historical documents explicitly defer to it.
+
+## D80 - Swagger groups belong to the final path prefix
+
+**Date** 2026-09-26
+
+**Decision / Reason**
+The user explicitly requires first-path-segment groups, regardless of the
+suffix or workflow. Implement through Huma OnAddOperation in the shared builder
+after mount expansion. Tenant files belong to tenants, principal files to
+principals, and globally addressed file items to files. Exactly one tag.
+
+**Alternatives Considered / Tradeoffs**
+Workflow grouping and suffix grouping violate the latest instruction. A central
+framework hook covers typed routes, expanded mounts and adapter registrations.
+Small prefix groups and a large tenants group are accepted consequences of the
+specified ownership rule; no artificial grouping prefixes are introduced.
+
+**Scope / Status**
+Supersedes D75's exception to D62's prefix-grouping rule. Prefix grouping is
+implemented; full export and live browser assertions pass. Subject-address
+migration is a distinct runtime contract change; 41 global /me/* and four nested
+operations have been inventoried and their concrete batch scope submitted for
+confirmation under CLAUDE.md. Do not claim those routes already migrated.

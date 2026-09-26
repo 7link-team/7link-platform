@@ -4,6 +4,12 @@ Status: HISTORICAL DESIGN - superseded rules identified below
 
 ## Current Authority (2026-09-25)
 
+Update 2026-09-26: the user requires Swagger grouping by the first segment of
+the final published path. This supersedes this document's workflow-group rule
+and D75's grouping exception. See
+[api-routing-inspection-2026-09-26.md](api-routing-inspection-2026-09-26.md)
+for the measured implicit-subject route inventory and proposed correction scope.
+
 D74/D76/D77 confirm design principles, not whole-manifest execution. D77
 supersedes rules 7/9/15 permitting dual item addresses: one canonical URI,
 natural item keys, and GET /me plus GET /sessions/current discovery entries.
