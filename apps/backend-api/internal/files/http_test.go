@@ -125,6 +125,20 @@ func TestFileHTTPContract(t *testing.T) {
 	}
 	require.Nil(t, api.OpenAPI().Paths["/files/operations"])
 	require.NotNil(t, api.OpenAPI().Paths["/me/file-operations"].Post)
+	for _, path := range []string{"/me/files", "/tenants/{tenant_id}/files", "/entities/{entity_id}/files", "/departments/{department_id}/files"} {
+		queries := make(map[string]*huma.Param)
+		for _, parameter := range api.OpenAPI().Paths[path].Get.Parameters {
+			if parameter.In == "query" {
+				queries[parameter.Name] = parameter
+			}
+		}
+		require.Len(t, queries, 3, path)
+		require.Contains(t, queries, "after", path)
+		require.Contains(t, queries, "limit", path)
+		require.Contains(t, queries, "state", path)
+		require.Equal(t, "integer", queries["limit"].Schema.Type)
+		require.Equal(t, []any{"active", "trashed"}, queries["state"].Schema.Enum)
+	}
 }
 
 func TestFileHTTPInputAndErrorMapping(t *testing.T) {

@@ -4306,3 +4306,38 @@ provisioning 3、governance 3、federation 2、oauth 1、audit 1。
   constraint. Start with the shared request helper, then convert its call sites
   and prove an invalid path/method/parameter fails typecheck. Do not expand this
   into unrelated historical suggestions or start the migration unasked.
+
+### D78 Typed Request Addresses - 2026-09-25
+
+- Phase: ACCEPTANCE. User authorized D78. Worktree initially clean.
+- Design: generated paths constrain templates, methods, path/query parameters;
+  existing fetch, envelopes and error handling are reused. Direct execution,
+  because conversion and shared helper signatures are tightly coupled.
+- Scope: IAM client, typed address helper, affected callers and tests. No backend
+  migration or dependency changes. Correct existing archive aliases to published
+  attempts/verifications/content routes as required by the contract.
+- Acceptance: negative compile fixtures, serialization and existing client tests,
+  generated drift check, workspace typecheck/lint/test/build, browser regression.
+- Completed: all IAM request transports accept branded typed addresses; client
+  uses explicit published mounts, typed queries and typed pagination. Audit's
+  raw query callers converted; archive aliases and anonymization method corrected.
+- Necessary contract repair: export the embedded FilePageInput so Huma publishes
+  after/limit/state for tenant/entity/department file collections. Regenerated
+  OpenAPI and frontend schema, added backend parameter contract assertions.
+- PASS: workspace typecheck, lint, unit tests (IAM 132/132), production build,
+  check:api-types, make openapi-check, archive UI desktop/mobile.
+- Replaced the permissive regex path scan with twelve compiler-negative cases
+  and four URL/pagination serialization tests; full existing runtime coverage kept.
+  URLSearchParams serializes query spaces as + (same decoded value); updated the
+  one byte-level search expectation accordingly.
+- PASS: go test ./internal/files; full browser regression 74/74; real SQLite
+  lifecycle 11/11 (.temp/sqlite-lifecycle-Ph7fUe/report.json), with no owned api.exe
+  processes remaining. Archive UI desktop/mobile PASS.
+- Self-review and acceptance PASS: all requests use generated templates, typed
+  methods/parameters and explicit mounts. Existing public method inventory and
+  transport behavior are retained except the four confirmed contract repairs.
+  Runtime coverage includes corrected archive paths and PUT anonymization.
+  Source diff whitespace and tracked LF checks PASS. No dependency changes.
+- Next action: commit scoped deliverables and push IAM under the user's standing
+  instruction to submit/push all work, then verify remote HEAD and clean worktree.
+  No further implementation is required for D78; route migration remains separate.

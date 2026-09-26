@@ -11,7 +11,6 @@ import {
   type MemberAuthorizationSnapshot,
   type OAuthClientInput,
 } from "./iam-api"
-import { publishedRoutes } from "./api-routes"
 
 interface RecordedRequest {
   method: string
@@ -678,7 +677,7 @@ describe("IAM API client", () => {
           headers: request.headers,
           body: await request.text(),
         })
-        if (url.pathname.endsWith("/download"))
+        if (url.pathname.endsWith("/content"))
           return new Response(completion + "\n", {
             headers: {
               "Content-Type": "application/x-ndjson",
@@ -716,9 +715,9 @@ describe("IAM API client", () => {
       "GET /audit/archive-status",
       "GET /audit/archives?offset=20&limit=20",
       "POST /audit/archives",
-      "POST /audit/archives/123%2F456/retry",
-      "POST /audit/archives/123%2F456/verify",
-      "GET /audit/archives/123/download",
+      "POST /audit/archives/123%2F456/attempts",
+      "POST /audit/archives/123%2F456/verifications",
+      "GET /audit/archives/123/content",
       "PUT /audit/retention-policy",
     ]
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
@@ -741,7 +740,7 @@ describe("IAM API client", () => {
     server = Bun.serve({
       port: 0,
       fetch(request) {
-        if (new URL(request.url).pathname.endsWith("/retry"))
+        if (new URL(request.url).pathname.endsWith("/attempts"))
           return Response.json(
             { detail: "audit.archive_busy" },
             { status: 409 }
@@ -1670,7 +1669,7 @@ describe("IAM API client", () => {
     await client.deleteServiceAccount(account.id, account.version)
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /tenants/tenant-service/service-accounts?limit=200&search=report%20worker",
+      "GET /tenants/tenant-service/service-accounts?limit=200&search=report+worker",
       "POST /tenants/tenant-service/service-accounts",
       "PUT /service-accounts/service%2Faccount",
       "GET /service-accounts/service%2Faccount/credentials",
@@ -1959,6 +1958,39 @@ describe("IAM API client", () => {
       status: "suspended",
       version: 2,
     })
+  })
+
+  it("uses the published PUT for platform principal anonymization", async () => {
+    const requests: RecordedRequest[] = []
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        requests.push({
+          method: request.method,
+          path: new URL(request.url).pathname,
+          headers: request.headers,
+          body: await request.text(),
+        })
+        return Response.json({ code: 0, message: "ok", data: {} })
+      },
+    })
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      () => "tenant-a"
+    )
+    await client.anonymizePrincipal("principal/a", {
+      version: 3,
+      confirmation: "confirmed",
+    })
+    expect(requests[0]?.method).toBe("PUT")
+    expect(requests[0]?.path).toBe(
+      "/platform/principals/principal%2Fa/lifecycle/anonymization"
+    )
+    expect(JSON.parse(requests[0]?.body ?? "{}")).toEqual({
+      version: 3,
+      confirmation: "confirmed",
+    })
+    expect(requests[0]?.headers.has("x-tenant-id")).toBe(false)
   })
 
   it("uses the complete position and position-member contract over real HTTP", async () => {
@@ -2549,18 +2581,20 @@ describe("IAM API client", () => {
       () => "tenant-audit"
     )
 
-    expect(await client.auditEvents("event_type=oauth_client_created")).toEqual(
-      {
-        items: [event],
-        total: 7,
-      }
-    )
+    expect(
+      await client.auditEvents({ event_type: "oauth_client_created" })
+    ).toEqual({
+      items: [event],
+      total: 7,
+    })
     expect(await client.auditEvent("event-1")).toEqual(event)
     expect(await client.auditIntegrity()).toMatchObject({
       valid: true,
       head_sequence: 1,
     })
-    const download = await client.auditExport("event_type=oauth_client_created")
+    const download = await client.auditExport({
+      event_type: "oauth_client_created",
+    })
     expect(download.filename).toBe("audit-20260801T150000Z.ndjson")
     expect(await download.blob.text()).toContain('"schema":"audit-export.v1"')
     expect(requests.map(({ path }) => path)).toEqual([
@@ -2711,65 +2745,5 @@ describe("IAM API client", () => {
     // Sending an empty header would scope the request to a tenant named "",
     // which reads as a real choice to the service; leaving it off does not.
     expect(requests[0]?.headers.has("x-tenant-id")).toBe(false)
-  })
-
-  // Every other test in this file asserts against a mock, so a method can keep
-  // passing long after the address it calls has been renamed out of the API.
-  // This one holds the client's own path literals against the published
-  // contract instead. Driving the methods at runtime would read better, but
-  // arguments here carry meaning -- an audit scope, a tenant flag, an entity
-  // or the personal space -- so placeholder values build addresses the app
-  // never builds, and suppressing that noise would need a per-method argument
-  // table that drifts exactly like the addresses it was meant to guard.
-  it("addresses only paths the published contract carries", async () => {
-    const templates = publishedRoutes.map((route) => route.split("/").slice(1))
-    // A literal may be the whole path or the front of one a helper finishes,
-    // so it counts as carried when the contract has a route that begins with
-    // it. A renamed segment still fails: "/audit/retention" is the front of no
-    // published route now that the policy is at "/audit/retention-policy".
-    const carries = (parts: string[]) =>
-      templates.some(
-        (template) =>
-          template.length >= parts.length &&
-          parts.every(
-            (part, index) =>
-              template[index]!.startsWith("{") || template[index] === part
-          )
-      )
-
-    // Literals the scan picks up that are not request paths.
-    const notAPath = new Set(["/api", "/platform/", "/i)", "/me{}"])
-
-    const source = await Bun.file(`${import.meta.dir}/iam-api.ts`).text()
-    const scanned = new Set<string>()
-    const unpublished = new Set<string>()
-    for (const match of source.matchAll(/`\/[^`]+`|"\/[a-z][^"]*"/g)) {
-      const literal = match[0]
-        .slice(1, -1)
-        .replaceAll(/\$\{[^}]*\}/g, "{}")
-        // A template holding another template ends the literal early, and no
-        // regex closes those reliably. Prefix matching means the scan can
-        // simply stop where it stopped resolving.
-        .split("${")[0]!
-        .split("?")[0]!
-      if (notAPath.has(literal)) continue
-      const parts = literal.split("/").slice(1)
-      // A path may be written bare and mounted at request time, so each of the
-      // mount points the client can reach counts as the contract carrying it.
-      const carried =
-        carries(parts) ||
-        carries(["tenants", "{}", ...parts]) ||
-        carries(["tenants", "{}", "entities", "{}", ...parts]) ||
-        carries(["platform", "audit", ...parts.slice(1)]) ||
-        carries(["tenants", "{}", "audit", ...parts.slice(1)])
-      scanned.add(literal)
-      if (!carried) unpublished.add(literal)
-    }
-
-    expect([...unpublished].sort()).toEqual([])
-    // A scan that stopped finding literals would pass while checking nothing,
-    // so the reach is asserted too. The floor is well under the current count
-    // and only has to notice the scan going quiet, not track every route.
-    expect(scanned.size).toBeGreaterThan(100)
   })
 })

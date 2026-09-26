@@ -8534,7 +8534,13 @@ export interface operations {
     };
     "list-department-files": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description exclusive snowflake cursor returned by the previous page */
+                after?: string;
+                limit?: number;
+                /** @description active roots or authorized recycle-bin entries */
+                state?: "active" | "trashed";
+            };
             header?: never;
             path: {
                 /** @description Resource identifier */
@@ -9151,7 +9157,13 @@ export interface operations {
     };
     "list-entity-files": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description exclusive snowflake cursor returned by the previous page */
+                after?: string;
+                limit?: number;
+                /** @description active roots or authorized recycle-bin entries */
+                state?: "active" | "trashed";
+            };
             header?: never;
             path: {
                 /** @description Resource identifier */
@@ -28594,7 +28606,13 @@ export interface operations {
     };
     "list-tenant-files": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description exclusive snowflake cursor returned by the previous page */
+                after?: string;
+                limit?: number;
+                /** @description active roots or authorized recycle-bin entries */
+                state?: "active" | "trashed";
+            };
             header?: never;
             path: {
                 /** @description Tenant resource identifier */

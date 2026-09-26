@@ -1,5 +1,11 @@
 import type { components } from "./api-schema"
-import { publishedRoutes } from "./api-routes"
+import {
+  apiRoute,
+  pagedRoute,
+  type ApiRoute,
+  type PagedRoute,
+  type RouteQuery,
+} from "./api-route"
 
 export type GrantedConsent = components["schemas"]["GrantedConsent"]
 export type FilePage = components["schemas"]["FilePage"]
@@ -1174,56 +1180,16 @@ export function shouldNotifyMenuCatalogChange(
 
 async function requestWithBase<T>(
   apiBase: string,
-  tenantID: () => string,
-  path: string,
-  init: RequestInit = {},
-  tenant = true
+  route: ApiRoute,
+  init: Omit<RequestInit, "method"> = {}
 ): Promise<T> {
-  return (
-    await requestEnvelopeWithBase<T>(apiBase, tenantID, path, init, tenant)
-  ).data
-}
-
-// Whether a resource is addressed under its tenant or globally is the
-// contract's answer, not a caller's guess. Guessing sent a tenant prefix to
-// routes that had moved to a global address, and each of those answered 404
-// the moment a tenant happened to be selected -- which is why group and
-// position membership failed inside a tenant while the same client worked in
-// the account area, where no tenant is selected and no prefix was added.
-const routeTemplates = publishedRoutes.map((route) => route.split("/").slice(1))
-
-function matches(templates: string[][], parts: string[]): boolean {
-  return templates.some(
-    (template) =>
-      template.length === parts.length &&
-      template.every(
-        (segment, index) => segment.startsWith("{") || segment === parts[index]
-      )
-  )
-}
-
-// Whether a resource is addressed under its tenant or globally is the
-// contract's answer, not a caller's guess. Guessing sent a tenant prefix to
-// item routes that had moved to a global address, and each answered 404 the
-// moment a tenant was selected -- group and position membership failed inside
-// a tenant while the same client worked in the account area, where nothing was
-// selected and nothing was prefixed.
-//
-// A path the contract does not publish either way keeps the prefix. Dropping
-// it there would turn one wrong address into a different wrong address, and
-// the caller would have to work out which of the two it was looking at.
-function prefixWithTenant(path: string): boolean {
-  const parts = path.split("?")[0].split("/").slice(1)
-  if (matches(routeTemplates, ["tenants", "{}", ...parts])) return true
-  return !matches(routeTemplates, parts)
+  return (await requestEnvelopeWithBase<T>(apiBase, route, init)).data
 }
 
 async function requestEnvelopeWithBase<T>(
   apiBase: string,
-  tenantID: () => string,
-  path: string,
-  init: RequestInit = {},
-  tenant = true
+  route: ApiRoute,
+  init: Omit<RequestInit, "method"> = {}
 ): Promise<Envelope<T>> {
   const headers = new Headers(init.headers)
   if (
@@ -1232,21 +1198,20 @@ async function requestEnvelopeWithBase<T>(
     !headers.has("Accept-Language")
   )
     headers.set("Accept-Language", document.documentElement.lang)
-  const scope = tenant && prefixWithTenant(path) ? tenantID() : ""
   if (
     init.body &&
     (typeof FormData === "undefined" || !(init.body instanceof FormData))
   )
     headers.set("Content-Type", "application/json")
-  const resourcePath = scope ? tenantAPIPath(scope, path) : path
-  const response = await fetch(`${apiBase}${resourcePath}`, {
+  const response = await fetch(`${apiBase}${route.url}`, {
     ...init,
+    method: route.method,
     headers,
     credentials: "include",
   })
   if (
     response.ok &&
-    shouldNotifyMenuCatalogChange(path, init.method) &&
+    shouldNotifyMenuCatalogChange(route.url, route.method) &&
     typeof window !== "undefined"
   ) {
     window.dispatchEvent(new Event("menu-catalog-change"))
@@ -1260,24 +1225,13 @@ async function requestEnvelopeWithBase<T>(
   return body
 }
 
-function tenantAPIPath(tenantID: string, path: string): string {
-  return `/tenants/${encodeURIComponent(tenantID)}${path}`
-}
-
-function entityAPIPath(
-  tenantID: string,
-  entityID: string,
-  path: string
-): string {
-  return `${tenantAPIPath(tenantID, `/entities/${encodeURIComponent(entityID)}`)}${path}`
-}
-
 async function requestFileDownloadWithBase(
   apiBase: string,
-  path: string,
+  route: ApiRoute,
   options: { maxBytes?: number; signal?: AbortSignal } = {}
 ): Promise<Blob> {
-  const response = await fetch(`${apiBase}${path}`, {
+  const response = await fetch(`${apiBase}${route.url}`, {
+    method: route.method,
     credentials: "include",
     signal: options.signal,
   })
@@ -1305,13 +1259,10 @@ async function requestFileDownloadWithBase(
 
 async function requestAuditDownloadWithBase(
   apiBase: string,
-  tenantID: () => string,
-  path: string
+  route: ApiRoute
 ): Promise<AuditExportDownload> {
-  const resourcePath = path.startsWith("/platform/")
-    ? path
-    : tenantAPIPath(tenantID(), path)
-  const response = await fetch(`${apiBase}${resourcePath}`, {
+  const response = await fetch(`${apiBase}${route.url}`, {
+    method: route.method,
     credentials: "include",
   })
   if (!response.ok) {
@@ -1424,40 +1375,56 @@ export function createIamApi(
   apiBase = baseUrl,
   tenantID: () => string = getTenant
 ) {
-  const request = <T>(path: string, init: RequestInit = {}, tenant = true) =>
-    requestWithBase<T>(apiBase, tenantID, path, init, tenant)
-  const requestEnvelope = <T>(path: string, tenant = true) =>
-    requestEnvelopeWithBase<T>(apiBase, tenantID, path, {}, tenant)
-  const fileRequest = <T>(
-    entityID: string | null | undefined,
-    path: string,
-    init: RequestInit = {}
-  ) => {
-    const scope = tenantID()
-    const resourcePath = entityID
-      ? entityAPIPath(scope, entityID, path)
+  const request = <T>(
+    route: ApiRoute,
+    init: Omit<RequestInit, "method"> = {}
+  ) => requestWithBase<T>(apiBase, route, init)
+  const requestEnvelope = <T>(route: ApiRoute) =>
+    requestEnvelopeWithBase<T>(apiBase, route)
+  const fileOperationRoute = (entityID: string | null | undefined) =>
+    entityID
+      ? apiRoute(
+          "post",
+          "/tenants/{tenant_id}/entities/{entity_id}/file-operations",
+          { path: { tenant_id: tenantID(), entity_id: entityID } }
+        )
       : entityID === null
-        ? `/me${path}`
-        : tenantAPIPath(scope, path)
-    return requestWithBase<T>(apiBase, tenantID, resourcePath, init, false)
-  }
-  const fileCollectionRequest = <T>(
+        ? apiRoute("post", "/me/file-operations")
+        : apiRoute("post", "/tenants/{tenant_id}/file-operations", {
+            path: { tenant_id: tenantID() },
+          })
+  const fileCollectionRoute = (
     entityID: string | null | undefined,
-    path: string,
-    init: RequestInit = {}
+    method: "get" | "post",
+    query?: RouteQuery<"/me/files">
   ) => {
-    const resourcePath = entityID
-      ? `/entities/${encodeURIComponent(entityID)}${path}`
+    if (method === "post")
+      return entityID
+        ? apiRoute("post", "/entities/{entity_id}/files", {
+            path: { entity_id: entityID },
+          })
+        : entityID === null
+          ? apiRoute("post", "/me/files")
+          : apiRoute("post", "/tenants/{tenant_id}/files", {
+              path: { tenant_id: tenantID() },
+            })
+    return entityID
+      ? apiRoute("get", "/entities/{entity_id}/files", {
+          path: { entity_id: entityID },
+          query,
+        })
       : entityID === null
-        ? `/me${path}`
-        : tenantAPIPath(tenantID(), path)
-    return requestWithBase<T>(apiBase, tenantID, resourcePath, init, false)
+        ? apiRoute("get", "/me/files", { query })
+        : apiRoute("get", "/tenants/{tenant_id}/files", {
+            path: { tenant_id: tenantID() },
+            query,
+          })
   }
   const fileContentURL = (
     _entityID: string | null | undefined,
     fileID: string
   ) =>
-    `${apiBase}/files/${encodeURIComponent(fileID)}/content?disposition=inline`
+    `${apiBase}${apiRoute("get", "/files/{file_id}/content", { path: { file_id: fileID }, query: { disposition: "inline" } }).url}`
   /**
    * Every list endpoint is bounded by default on the server, so a caller that
    * needs the complete set -- a picker's universe, or a membership the UI
@@ -1465,18 +1432,11 @@ export function createIamApi(
    * wrong screen, not a short one: an assigned member would render unassigned.
    * Callers that genuinely want a single page pass offset and limit themselves.
    */
-  const requestAllPages = async <T>(
-    path: string,
-    tenant = true
-  ): Promise<T[]> => {
+  const requestAllPages = async <T>(route: PagedRoute): Promise<T[]> => {
     const pageSize = 200
     const items: T[] = []
     for (let offset = 0; ; offset += pageSize) {
-      const separator = path.includes("?") ? "&" : "?"
-      const result = await requestEnvelope<T[]>(
-        `${path}${separator}offset=${offset}&limit=${pageSize}`,
-        tenant
-      )
+      const result = await requestEnvelope<T[]>(route.page(offset, pageSize))
       const page = result.data ?? []
       items.push(...page)
       const total = result.meta?.page?.total ?? items.length
@@ -1484,25 +1444,27 @@ export function createIamApi(
     }
     return items
   }
-  const archivePath = (scope: AuditScope) =>
-    scope === "platform" ? "/platform/audit" : "/audit"
   return {
-    files: (entityID?: string | null, after = "") => {
-      const query = new URLSearchParams({ limit: "100" })
-      if (after) query.set("after", after)
-      return fileCollectionRequest<FilePage>(entityID, `/files?${query}`)
-    },
-    trashedFiles: (entityID?: string | null, after = "") => {
-      const query = new URLSearchParams({ limit: "100", state: "trashed" })
-      if (after) query.set("after", after)
-      return fileCollectionRequest<FilePage>(entityID, `/files?${query}`)
-    },
+    files: (entityID?: string | null, after = "") =>
+      request<FilePage>(
+        fileCollectionRoute(entityID, "get", {
+          limit: 100,
+          after: after || undefined,
+        })
+      ),
+    trashedFiles: (entityID?: string | null, after = "") =>
+      request<FilePage>(
+        fileCollectionRoute(entityID, "get", {
+          limit: 100,
+          state: "trashed",
+          after: after || undefined,
+        })
+      ),
     createPersonalFileRoot: (entityID: string) => {
       const body = new FormData()
       body.set("kind", "directory")
       body.set("scope", "personal")
-      return fileCollectionRequest<FileEntryView>(entityID, "/files", {
-        method: "POST",
+      return request<FileEntryView>(fileCollectionRoute(entityID, "post"), {
         body,
       })
     },
@@ -1510,24 +1472,19 @@ export function createIamApi(
       const body = new FormData()
       body.set("kind", "directory")
       body.set("scope", "account")
-      return fileCollectionRequest<FileEntryView>(null, "/files", {
-        method: "POST",
-        body,
-      })
+      return request<FileEntryView>(fileCollectionRoute(null, "post"), { body })
     },
     fileItems: (
       _entityID: string | null | undefined,
       fileID: string,
       after = ""
-    ) => {
-      const query = new URLSearchParams({ limit: "100" })
-      if (after) query.set("after", after)
-      return request<FileChildrenPage>(
-        `/files/${encodeURIComponent(fileID)}/items?${query}`,
-        {},
-        false
-      )
-    },
+    ) =>
+      request<FileChildrenPage>(
+        apiRoute("get", "/files/{file_id}/items", {
+          path: { file_id: fileID },
+          query: { limit: 100, after: after || undefined },
+        })
+      ),
     createDirectory: (
       entityID: string | null | undefined,
       parentID: string,
@@ -1537,8 +1494,7 @@ export function createIamApi(
       body.set("parent_id", parentID)
       body.set("kind", "directory")
       body.set("name", name)
-      return fileCollectionRequest<FileEntryView>(entityID, "/files", {
-        method: "POST",
+      return request<FileEntryView>(fileCollectionRoute(entityID, "post"), {
         body,
       })
     },
@@ -1551,8 +1507,7 @@ export function createIamApi(
       body.set("parent_id", parentID)
       body.set("kind", "file")
       body.set("file", file)
-      return fileCollectionRequest<FileEntryView>(entityID, "/files", {
-        method: "POST",
+      return request<FileEntryView>(fileCollectionRoute(entityID, "post"), {
         body,
       })
     },
@@ -1562,17 +1517,16 @@ export function createIamApi(
       path: string
     ) =>
       request<FileEntryView>(
-        `/files/${encodeURIComponent(rootFileID)}/-/${path
-          .split("/")
-          .map(encodeURIComponent)
-          .join("/")}`,
-        {},
-        false
+        apiRoute("get", "/files/{root_file_id}/-/{path}", {
+          path: { root_file_id: rootFileID, path },
+        })
       ),
     downloadFile: (_entityID: string | null | undefined, fileID: string) =>
       requestFileDownloadWithBase(
         apiBase,
-        `/files/${encodeURIComponent(fileID)}/content`
+        apiRoute("get", "/files/{file_id}/content", {
+          path: { file_id: fileID },
+        })
       ),
     fileContentURL,
     previewFile: (
@@ -1583,7 +1537,9 @@ export function createIamApi(
     ) =>
       requestFileDownloadWithBase(
         apiBase,
-        `/files/${encodeURIComponent(fileID)}/content`,
+        apiRoute("get", "/files/{file_id}/content", {
+          path: { file_id: fileID },
+        }),
         { maxBytes, signal }
       ),
     renameFileEntry: (
@@ -1593,12 +1549,8 @@ export function createIamApi(
       name: string
     ) =>
       request<FileEntryView>(
-        `/files/${encodeURIComponent(fileID)}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({ name, revision }),
-        },
-        false
+        apiRoute("patch", "/files/{file_id}", { path: { file_id: fileID } }),
+        { body: JSON.stringify({ name, revision }) }
       ),
     restoreFileEntry: (
       _entityID: string | null | undefined,
@@ -1607,16 +1559,14 @@ export function createIamApi(
       name?: string
     ) =>
       request<FileEntryView>(
-        `/files/${encodeURIComponent(fileID)}`,
+        apiRoute("patch", "/files/{file_id}", { path: { file_id: fileID } }),
         {
-          method: "PATCH",
           body: JSON.stringify({
             state: "active",
             revision,
             ...(name ? { name } : {}),
           }),
-        },
-        false
+        }
       ),
     trashFileEntry: (
       _entityID: string | null | undefined,
@@ -1624,17 +1574,17 @@ export function createIamApi(
       revision: number
     ) =>
       request<FileTrashResult>(
-        `/files/${encodeURIComponent(fileID)}?${new URLSearchParams({ revision: String(revision) })}`,
-        { method: "DELETE" },
-        false
+        apiRoute("delete", "/files/{file_id}", {
+          path: { file_id: fileID },
+          query: { revision: revision },
+        })
       ),
     createFileOperation: (
       entityID: string | null | undefined,
       input: FileOperationInput,
       idempotencyKey: string = crypto.randomUUID()
     ) =>
-      fileRequest<FileOperationResult>(entityID, "/file-operations", {
-        method: "POST",
+      request<FileOperationResult>(fileOperationRoute(entityID), {
         headers: {
           "Idempotency-Key": idempotencyKey,
         },
@@ -1645,9 +1595,10 @@ export function createIamApi(
           type_policy: input.type_policy ?? "ask",
         }),
       }),
-    capabilities: () => request<AuthnCapabilities>("/login/options", {}, false),
+    capabilities: () =>
+      request<AuthnCapabilities>(apiRoute("get", "/login/options")),
     createCaptcha: () =>
-      request<Captcha>("/registrations/captchas", { method: "POST" }, false),
+      request<Captcha>(apiRoute("post", "/registrations/captchas")),
     register: (body: {
       email: string
       password: string
@@ -1656,27 +1607,26 @@ export function createIamApi(
       captcha_id: string
       captcha_answer: string
     }) =>
-      request<{ accepted: boolean }>(
-        "/registrations",
-        { method: "POST", body: JSON.stringify(body) },
-        false
-      ),
-    session: () => request<Session>("/me/session", {}, false),
+      request<{ accepted: boolean }>(apiRoute("post", "/registrations"), {
+        body: JSON.stringify(body),
+      }),
+    session: () => request<Session>(apiRoute("get", "/me/session")),
     sessionForTenant: (tenant: string) => {
       void tenant
-      return request<Session>("/me/session", {}, false)
+      return request<Session>(apiRoute("get", "/me/session"))
     },
-    myTenants: () => request<Tenant[]>("/me/tenants", {}, false),
+    myTenants: () => request<Tenant[]>(apiRoute("get", "/me/tenants")),
     personalTokenPermissions: (tenant: string) =>
       request<Permission[]>(
-        `/me/personal-token-permissions?${new URLSearchParams({ tenant_id: tenant })}`,
-        {},
-        false
+        apiRoute("get", "/me/personal-token-permissions", {
+          query: { tenant_id: tenant },
+        })
       ),
     personalTokens: async (offset = 0, limit = 20) => {
       const result = await requestEnvelope<PersonalToken[]>(
-        `/me/personal-tokens?${new URLSearchParams({ offset: String(offset), limit: String(limit) })}`,
-        false
+        apiRoute("get", "/me/personal-tokens", {
+          query: { offset: offset, limit: limit },
+        })
       )
       return {
         items: result.data,
@@ -1685,27 +1635,23 @@ export function createIamApi(
     },
     preparePersonalToken: (body: PersonalTokenRequest) =>
       request<{ request: PersonalTokenRequest; target: string }>(
-        "/me/personal-token-preparations",
-        { method: "POST", body: JSON.stringify(body) },
-        false
+        apiRoute("post", "/me/personal-token-preparations"),
+        { body: JSON.stringify(body) }
       ),
     createPersonalToken: (body: PersonalTokenRequest & { proof: string }) =>
       request<PersonalToken & { token: string }>(
-        "/me/personal-tokens",
-        { method: "POST", body: JSON.stringify(body) },
-        false
+        apiRoute("post", "/me/personal-tokens"),
+        { body: JSON.stringify(body) }
       ),
     revokePersonalToken: (id: string) =>
       request<{ revoked: boolean }>(
-        `/me/personal-tokens/${encodeURIComponent(id)}`,
-        { method: "DELETE" },
-        false
+        apiRoute("delete", "/me/personal-tokens/{token_id}", {
+          path: { token_id: id },
+        })
       ),
     reauthenticationMethods: () =>
       request<{ methods: ReauthenticationMethod[]; mfa_required: boolean }>(
-        "/me/reauthentication/methods",
-        {},
-        false
+        apiRoute("get", "/me/reauthentication/methods")
       ),
     createReauthenticationChallenge: (body: {
       purpose: string
@@ -1713,9 +1659,8 @@ export function createIamApi(
       method: ReauthenticationMethod
     }) =>
       request<ReauthenticationChallenge>(
-        "/me/reauthentication/challenges",
-        { method: "POST", body: JSON.stringify(body) },
-        false
+        apiRoute("post", "/me/reauthentication/challenges"),
+        { body: JSON.stringify(body) }
       ),
     verifyReauthentication: (body: {
       proof: string
@@ -1724,14 +1669,15 @@ export function createIamApi(
       response?: Record<string, unknown>
     }) =>
       request<{ verified: boolean }>(
-        "/me/reauthentication/verifications",
-        { method: "POST", body: JSON.stringify(body) },
-        false
+        apiRoute("post", "/me/reauthentication/verifications"),
+        { body: JSON.stringify(body) }
       ),
     identityLinks: () =>
-      request<IdentityLink[]>("/me/identity-links", {}, false),
+      request<IdentityLink[]>(apiRoute("get", "/me/identity-links")),
     identityLinkProviders: () =>
-      request<IdentityLinkProvider[]>("/me/identity-link-providers", {}, false),
+      request<IdentityLinkProvider[]>(
+        apiRoute("get", "/me/identity-link-providers")
+      ),
     createIdentityLinkTransaction: (body: {
       provider_id: string
       proof: string
@@ -1739,278 +1685,255 @@ export function createIamApi(
       return_url: string
     }) =>
       request<{ authorization_url: string }>(
-        "/me/identity-link-transactions",
-        { method: "POST", body: JSON.stringify(body) },
-        false
+        apiRoute("post", "/me/identity-link-transactions"),
+        { body: JSON.stringify(body) }
       ),
     deleteIdentityLink: (id: string, proof: string) =>
       request<{ deleted: boolean }>(
-        `/me/identity-links/${encodeURIComponent(id)}`,
-        { method: "DELETE", body: JSON.stringify({ proof }) },
-        false
+        apiRoute("delete", "/me/identity-links/{link_id}", {
+          path: { link_id: id },
+        }),
+        { body: JSON.stringify({ proof }) }
       ),
     personalMemberships: (offset = 0, limit = 50) =>
       request<{ items: PersonalMembership[]; total: number }>(
-        `/me/memberships?${new URLSearchParams({ offset: String(offset), limit: String(limit) })}`,
-        {},
-        false
+        apiRoute("get", "/me/memberships", {
+          query: { offset: offset, limit: limit },
+        })
       ),
     leaveMembership: (id: string, proof: string) =>
       request<{ status: string }>(
-        `/me/memberships/${encodeURIComponent(id)}`,
-        { method: "DELETE", body: JSON.stringify({ proof }) },
-        false
+        apiRoute("delete", "/me/memberships/{tenant_id}", {
+          path: { tenant_id: id },
+        }),
+        { body: JSON.stringify({ proof }) }
       ),
     closureRequest: () =>
-      request<ClosureRequest>("/me/closure-request", {}, false),
-    myAvatar: () => request<AvatarSettings>("/me/avatar", {}, false),
+      request<ClosureRequest>(apiRoute("get", "/me/closure-request")),
+    myAvatar: () => request<AvatarSettings>(apiRoute("get", "/me/avatar")),
     avatarCandidates: (style?: AvatarSettings["style"]) =>
-      request<AvatarSettings[]>(
-        "/me/avatar-candidates",
-        { method: "POST", body: JSON.stringify({ style }) },
-        false
-      ),
+      request<AvatarSettings[]>(apiRoute("post", "/me/avatar-candidates"), {
+        body: JSON.stringify({ style }),
+      }),
     setMyAvatar: (avatar: {
       style?: AvatarSettings["style"]
       image_data?: string
       candidate_url?: string
     }) =>
-      request<AvatarSettings>(
-        "/me/avatar",
-        { method: "PUT", body: JSON.stringify(avatar) },
-        false
-      ),
+      request<AvatarSettings>(apiRoute("put", "/me/avatar"), {
+        body: JSON.stringify(avatar),
+      }),
     submitClosureRequest: (proof: string, version: number) =>
-      request<ClosureRequest>(
-        "/me/closure-request",
-        { method: "POST", body: JSON.stringify({ proof, version }) },
-        false
-      ),
+      request<ClosureRequest>(apiRoute("post", "/me/closure-request"), {
+        body: JSON.stringify({ proof, version }),
+      }),
     cancelClosureRequest: (version: number) =>
-      request<ClosureRequest>(
-        "/me/closure-request",
-        { method: "DELETE", body: JSON.stringify({ version }) },
-        false
-      ),
-    closureRequests: (offset = 0, limit = 50, status = "pending") =>
+      request<ClosureRequest>(apiRoute("delete", "/me/closure-request"), {
+        body: JSON.stringify({ version }),
+      }),
+    closureRequests: (
+      offset = 0,
+      limit = 50,
+      status: NonNullable<
+        RouteQuery<"/platform/closure-requests">["status"]
+      > = "pending"
+    ) =>
       request<{ items: ClosureRequest[]; total: number }>(
-        `/platform/closure-requests?${new URLSearchParams({ status, offset: String(offset), limit: String(limit) })}`,
-        {},
-        false
+        apiRoute("get", "/platform/closure-requests", {
+          query: { status, offset: offset, limit: limit },
+        })
       ),
     rejectClosureRequest: (id: string, version: number) =>
       request<ClosureRequest>(
-        `/platform/principals/${encodeURIComponent(id)}/closure-request`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({ status: "rejected", version }),
-        },
-        false
+        apiRoute(
+          "patch",
+          "/platform/principals/{principal_id}/closure-request",
+          { path: { principal_id: id } }
+        ),
+        { body: JSON.stringify({ status: "rejected", version }) }
       ),
     processClosureRequest: (id: string, version: number) =>
       request<ClosureRequest>(
-        `/platform/principals/${encodeURIComponent(id)}/closure-request`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({ status: "processing", version }),
-        },
-        false
+        apiRoute(
+          "patch",
+          "/platform/principals/{principal_id}/closure-request",
+          { path: { principal_id: id } }
+        ),
+        { body: JSON.stringify({ status: "processing", version }) }
       ),
     oauthConsents: () =>
-      request<GrantedConsent[]>("/me/oauth-consents", {}, false),
+      request<GrantedConsent[]>(apiRoute("get", "/me/oauth-consents")),
     revokeOAuthConsent: (clientID: string) =>
       request<{ revoked: boolean }>(
-        `/me/oauth-consents/${encodeURIComponent(clientID)}`,
-        { method: "DELETE" },
-        false
+        apiRoute("delete", "/me/oauth-consents/{client_id}", {
+          path: { client_id: clientID },
+        })
       ),
     login: (body: {
       login_name: string
       password: string
       return_url: string
     }) =>
-      request<LoginResult>(
-        "/login",
-        { method: "POST", body: JSON.stringify(body) },
-        false
-      ),
+      request<LoginResult>(apiRoute("post", "/login"), {
+        body: JSON.stringify(body),
+      }),
     verifyLoginMfa: (body: { challenge_id: string; code: string }) =>
-      request<LoginResult>(
-        "/login/mfa",
-        { method: "POST", body: JSON.stringify(body) },
-        false
-      ),
+      request<LoginResult>(apiRoute("post", "/login/mfa"), {
+        body: JSON.stringify(body),
+      }),
     logout: () =>
-      request<{ logout_url: string }>(
-        "/me/session",
-        { method: "DELETE" },
-        false
-      ),
-    sessions: () => request<BrowserSession[]>("/me/sessions", {}, false),
+      request<{ logout_url: string }>(apiRoute("delete", "/me/session")),
+    sessions: () => request<BrowserSession[]>(apiRoute("get", "/me/sessions")),
     revokeSession: (id: string) =>
       request<{ revoked: boolean }>(
-        `/me/sessions/${encodeURIComponent(id)}`,
-        { method: "DELETE" },
-        false
+        apiRoute("delete", "/me/sessions/{session_id}", {
+          path: { session_id: id },
+        })
       ),
     logoutAll: () =>
-      request<{ logout_url: string }>(
-        "/me/sessions",
-        { method: "DELETE" },
-        false
-      ),
+      request<{ logout_url: string }>(apiRoute("delete", "/me/sessions")),
     changePassword: (body: {
       current_password: string
       new_password: string
     }) =>
-      request<{ changed: boolean }>(
-        "/me/password",
-        { method: "PATCH", body: JSON.stringify(body) },
-        false
-      ),
+      request<{ changed: boolean }>(apiRoute("patch", "/me/password"), {
+        body: JSON.stringify(body),
+      }),
     startPasswordRecovery: (identifier: string) =>
       request<{ accepted: boolean }>(
-        "/password-recoveries/requests",
-        { method: "POST", body: JSON.stringify({ identifier }) },
-        false
+        apiRoute("post", "/password-recoveries/requests"),
+        { body: JSON.stringify({ identifier }) }
       ),
     completePasswordRecovery: (body: { token: string; new_password: string }) =>
-      request<{ changed: boolean }>(
-        "/password-recoveries",
-        { method: "POST", body: JSON.stringify(body) },
-        false
-      ),
+      request<{ changed: boolean }>(apiRoute("post", "/password-recoveries"), {
+        body: JSON.stringify(body),
+      }),
     startEmailVerification: () =>
       request<{ accepted: boolean }>(
-        "/email-verification-requests",
-        { method: "POST" },
-        false
+        apiRoute("post", "/email-verification-requests")
       ),
     completeEmailVerification: (token: string) =>
-      request<{ verified: boolean }>(
-        "/email-verifications",
-        { method: "POST", body: JSON.stringify({ token }) },
-        false
-      ),
-    mfaStatus: () => request<MfaStatus>("/me/mfa", {}, false),
+      request<{ verified: boolean }>(apiRoute("post", "/email-verifications"), {
+        body: JSON.stringify({ token }),
+      }),
+    mfaStatus: () => request<MfaStatus>(apiRoute("get", "/me/mfa")),
     beginTotpEnrollment: (currentPassword: string) =>
-      request<MfaEnrollment>(
-        "/me/mfa/totp-enrollments",
-        {
-          method: "POST",
-          body: JSON.stringify({ current_password: currentPassword }),
-        },
-        false
-      ),
+      request<MfaEnrollment>(apiRoute("post", "/me/mfa/totp-enrollments"), {
+        body: JSON.stringify({ current_password: currentPassword }),
+      }),
     confirmTotpEnrollment: (code: string) =>
-      request<MfaConfirmation>(
-        "/me/mfa/totp",
-        { method: "POST", body: JSON.stringify({ code }) },
-        false
-      ),
+      request<MfaConfirmation>(apiRoute("post", "/me/mfa/totp"), {
+        body: JSON.stringify({ code }),
+      }),
     regenerateRecoveryCodes: (body: {
       current_password: string
       code: string
     }) =>
-      request<MfaConfirmation>(
-        "/me/mfa/recovery-codes",
-        { method: "PUT", body: JSON.stringify(body) },
-        false
-      ),
+      request<MfaConfirmation>(apiRoute("put", "/me/mfa/recovery-codes"), {
+        body: JSON.stringify(body),
+      }),
     disableTotp: (body: { current_password: string; code: string }) =>
-      request<{ disabled: boolean }>(
-        "/me/mfa/totp",
-        { method: "DELETE", body: JSON.stringify(body) },
-        false
-      ),
-    passkeys: () => request<Passkey[]>("/me/passkeys", {}, false),
+      request<{ disabled: boolean }>(apiRoute("delete", "/me/mfa/totp"), {
+        body: JSON.stringify(body),
+      }),
+    passkeys: () => request<Passkey[]>(apiRoute("get", "/me/passkeys")),
     beginPasskeyRegistration: (currentPassword: string) =>
       request<PasskeyOptions>(
-        "/me/passkey-registration-challenges",
-        {
-          method: "POST",
-          body: JSON.stringify({ current_password: currentPassword }),
-        },
-        false
+        apiRoute("post", "/me/passkey-registration-challenges"),
+        { body: JSON.stringify({ current_password: currentPassword }) }
       ),
     finishPasskeyRegistration: (body: {
       challenge_id: string
       name: string
       credential: Record<string, unknown>
     }) =>
-      request<Passkey>(
-        "/me/passkeys",
-        { method: "POST", body: JSON.stringify(body) },
-        false
-      ),
+      request<Passkey>(apiRoute("post", "/me/passkeys"), {
+        body: JSON.stringify(body),
+      }),
     beginPasskeyLogin: (returnUrl: string) =>
-      request<PasskeyOptions>(
-        "/login/passkey/options",
-        { method: "POST", body: JSON.stringify({ return_url: returnUrl }) },
-        false
-      ),
+      request<PasskeyOptions>(apiRoute("post", "/login/passkey/options"), {
+        body: JSON.stringify({ return_url: returnUrl }),
+      }),
     finishPasskeyLogin: (body: {
       challenge_id: string
       credential: Record<string, unknown>
     }) =>
-      request<LoginResult>(
-        "/login/passkey/verify",
-        { method: "POST", body: JSON.stringify(body) },
-        false
-      ),
+      request<LoginResult>(apiRoute("post", "/login/passkey/verify"), {
+        body: JSON.stringify(body),
+      }),
     renamePasskey: (id: string, name: string) =>
       request<Passkey>(
-        `/me/passkeys/${encodeURIComponent(id)}`,
-        { method: "PATCH", body: JSON.stringify({ name }) },
-        false
+        apiRoute("patch", "/me/passkeys/{passkey_id}", {
+          path: { passkey_id: id },
+        }),
+        { body: JSON.stringify({ name }) }
       ),
     deletePasskey: (id: string, currentPassword: string) =>
       request<{ deleted: boolean }>(
-        `/me/passkeys/${encodeURIComponent(id)}`,
-        {
-          method: "DELETE",
-          body: JSON.stringify({ current_password: currentPassword }),
-        },
-        false
+        apiRoute("delete", "/me/passkeys/{passkey_id}", {
+          path: { passkey_id: id },
+        }),
+        { body: JSON.stringify({ current_password: currentPassword }) }
       ),
     principals: (search = "") =>
       request<PrincipalList>(
-        `/principals?limit=200&search=${encodeURIComponent(search)}`
+        apiRoute("get", "/tenants/{tenant_id}/principals", {
+          path: { tenant_id: tenantID() },
+          query: { limit: 200, search: search },
+        })
       ),
     principal: (id: string) =>
-      request<Principal>(`/principals/${encodeURIComponent(id)}`),
+      request<Principal>(
+        apiRoute("get", "/tenants/{tenant_id}/principals/{principal_id}", {
+          path: { tenant_id: tenantID(), principal_id: id },
+        })
+      ),
     createPrincipal: (body: {
       login_name: string
       password: string
       display_name?: string
       email?: string
     }) =>
-      request<Principal>("/principals", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+      request<Principal>(
+        apiRoute("post", "/tenants/{tenant_id}/principals", {
+          path: { tenant_id: tenantID() },
+        }),
+        { body: JSON.stringify(body) }
+      ),
     updatePrincipal: (
       id: string,
       body: { display_name?: string; email?: string }
     ) =>
-      request<Principal>(`/principals/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      }),
+      request<Principal>(
+        apiRoute("patch", "/tenants/{tenant_id}/principals/{principal_id}", {
+          path: { tenant_id: tenantID(), principal_id: id },
+        }),
+        { body: JSON.stringify(body) }
+      ),
     // 后端把停用/恢复重构成同一个 suspension 子资源的 PUT/DELETE。
     // 函数名保持不变，调用方无需改动；响应体仍是 Principal。
     disablePrincipal: (id: string) =>
-      request<Principal>(`/principals/${encodeURIComponent(id)}/suspension`, {
-        method: "PUT",
-      }),
+      request<Principal>(
+        apiRoute(
+          "put",
+          "/tenants/{tenant_id}/principals/{principal_id}/suspension",
+          { path: { tenant_id: tenantID(), principal_id: id } }
+        )
+      ),
     restorePrincipal: (id: string) =>
-      request<Principal>(`/principals/${encodeURIComponent(id)}/suspension`, {
-        method: "DELETE",
-      }),
+      request<Principal>(
+        apiRoute(
+          "delete",
+          "/tenants/{tenant_id}/principals/{principal_id}/suspension",
+          { path: { tenant_id: tenantID(), principal_id: id } }
+        )
+      ),
     // 生命周期是平台级操作，租户权限不可达；后端以 platform 守卫强制。
     principalLifecycle: (id: string) =>
       request<PrincipalLifecycleStatus>(
-        `/platform/principals/${encodeURIComponent(id)}/lifecycle`
+        apiRoute("get", "/platform/principals/{principal_id}/lifecycle", {
+          path: { principal_id: id },
+        })
       ),
     setPrincipalRetention: (
       id: string,
@@ -2022,75 +1945,107 @@ export function createIamApi(
       }
     ) =>
       request<PrincipalLifecycle>(
-        `/platform/principals/${encodeURIComponent(id)}/lifecycle/retention-policy`,
-        { method: "PUT", body: JSON.stringify(body) }
+        apiRoute(
+          "put",
+          "/platform/principals/{principal_id}/lifecycle/retention-policy",
+          { path: { principal_id: id } }
+        ),
+        { body: JSON.stringify(body) }
       ),
     anonymizePrincipal: (
       id: string,
       body: { version: number; confirmation: string }
     ) =>
       request<PrincipalLifecycle>(
-        `/platform/principals/${encodeURIComponent(id)}/lifecycle/anonymization`,
-        { method: "POST", body: JSON.stringify(body) }
+        apiRoute(
+          "put",
+          "/platform/principals/{principal_id}/lifecycle/anonymization",
+          { path: { principal_id: id } }
+        ),
+        { body: JSON.stringify(body) }
       ),
     serviceAccounts: (search = "") =>
       request<ServiceAccountList>(
-        `/service-accounts?limit=200&search=${encodeURIComponent(search)}`
+        apiRoute("get", "/tenants/{tenant_id}/service-accounts", {
+          path: { tenant_id: tenantID() },
+          query: { limit: 200, search: search },
+        })
       ),
     createServiceAccount: (body: ServiceAccountInput) =>
-      request<ServiceAccount>("/service-accounts", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+      request<ServiceAccount>(
+        apiRoute("post", "/tenants/{tenant_id}/service-accounts", {
+          path: { tenant_id: tenantID() },
+        }),
+        { body: JSON.stringify(body) }
+      ),
     updateServiceAccount: (id: string, body: ServiceAccountUpdate) =>
-      request<ServiceAccount>(`/service-accounts/${encodeURIComponent(id)}`, {
-        method: "PUT",
-        body: JSON.stringify(body),
-      }),
+      request<ServiceAccount>(
+        apiRoute("put", "/service-accounts/{service_account_id}", {
+          path: { service_account_id: id },
+        }),
+        { body: JSON.stringify(body) }
+      ),
     deleteServiceAccount: (id: string, version: number) =>
       request<{ deleted: boolean }>(
-        `/service-accounts/${encodeURIComponent(id)}?version=${encodeURIComponent(version)}`,
-        { method: "DELETE" }
+        apiRoute("delete", "/service-accounts/{service_account_id}", {
+          path: { service_account_id: id },
+          query: { version: version },
+        })
       ),
     serviceAccountCredentials: (id: string) =>
       request<ServiceAccountCredential[]>(
-        `/service-accounts/${encodeURIComponent(id)}/credentials`
+        apiRoute("get", "/service-accounts/{service_account_id}/credentials", {
+          path: { service_account_id: id },
+        })
       ),
     createServiceAccountCredential: (
       id: string,
       body: { name: string; scopes: string[]; expires_at?: string }
     ) =>
       request<ServiceAccountCredentialSecret>(
-        `/service-accounts/${encodeURIComponent(id)}/credentials`,
-        { method: "POST", body: JSON.stringify(body) }
+        apiRoute("post", "/service-accounts/{service_account_id}/credentials", {
+          path: { service_account_id: id },
+        }),
+        { body: JSON.stringify(body) }
       ),
     revokeServiceAccountCredential: (id: string, credentialID: string) =>
       request<{ revoked: boolean }>(
-        `/service-accounts/${encodeURIComponent(id)}/credentials/${encodeURIComponent(credentialID)}`,
-        { method: "DELETE" }
+        apiRoute(
+          "delete",
+          "/service-accounts/{service_account_id}/credentials/{credential_id}",
+          { path: { service_account_id: id, credential_id: credentialID } }
+        )
       ),
-    invitations: () => requestAllPages<Invitation>("/invitations"),
+    invitations: () =>
+      requestAllPages<Invitation>(
+        pagedRoute("/tenants/{tenant_id}/invitations", {
+          path: { tenant_id: tenantID() },
+        })
+      ),
     createInvitation: (body: {
       email: string
       department_id?: string
       role_ids?: string[]
       expires_in_hours?: number
     }) =>
-      request<IssuedInvitation>("/invitations", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+      request<IssuedInvitation>(
+        apiRoute("post", "/tenants/{tenant_id}/invitations", {
+          path: { tenant_id: tenantID() },
+        }),
+        { body: JSON.stringify(body) }
+      ),
     revokeInvitation: (id: string) =>
-      request<{ revoked: boolean }>(`/invitations/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-      }),
+      request<{ revoked: boolean }>(
+        apiRoute("delete", "/invitations/{invitation_id}", {
+          path: { invitation_id: id },
+        })
+      ),
     resendInvitation: (id: string, expiresInHours = 72) =>
       request<IssuedInvitation>(
-        `/invitations/${encodeURIComponent(id)}/deliveries`,
-        {
-          method: "POST",
-          body: JSON.stringify({ expires_in_hours: expiresInHours }),
-        }
+        apiRoute("post", "/invitations/{invitation_id}/deliveries", {
+          path: { invitation_id: id },
+        }),
+        { body: JSON.stringify({ expires_in_hours: expiresInHours }) }
       ),
     acceptInvitation: (body: {
       token: string
@@ -2099,74 +2054,93 @@ export function createIamApi(
       display_name?: string
     }) =>
       request<InvitationAcceptance>(
-        "/invitation-acceptances",
-        { method: "POST", body: JSON.stringify(body) },
-        false
+        apiRoute("post", "/invitation-acceptances"),
+        { body: JSON.stringify(body) }
       ),
     tenants: (includeDeleted = false) =>
       requestAllPages<Tenant>(
-        `/tenants?include_deleted=${includeDeleted}`,
-        false
+        pagedRoute("/tenants", { query: { include_deleted: includeDeleted } })
       ),
     createTenant: (body: TenantInput) =>
-      request<Tenant>(
-        "/tenants",
-        { method: "POST", body: JSON.stringify(body) },
-        false
-      ),
+      request<Tenant>(apiRoute("post", "/tenants"), {
+        body: JSON.stringify(body),
+      }),
     updateTenant: (id: string, body: TenantUpdate) =>
       request<Tenant>(
-        `/tenants/${encodeURIComponent(id)}`,
-        { method: "PATCH", body: JSON.stringify(body) },
-        false
+        apiRoute("patch", "/tenants/{tenant_id}", { path: { tenant_id: id } }),
+        { body: JSON.stringify(body) }
       ),
     deleteTenant: (id: string, version: number) =>
       request<{ deleted: boolean }>(
-        `/tenants/${encodeURIComponent(id)}?version=${encodeURIComponent(version)}`,
-        { method: "DELETE" },
-        false
+        apiRoute("delete", "/tenants/{tenant_id}", {
+          path: { tenant_id: id },
+          query: { version: version },
+        })
       ),
     members: (search = "") =>
-      requestAllPages<Member>(`/members?search=${encodeURIComponent(search)}`),
+      requestAllPages<Member>(
+        pagedRoute("/tenants/{tenant_id}/members", {
+          path: { tenant_id: tenantID() },
+          query: { search: search },
+        })
+      ),
     updateMember: (
       subject: string,
       body: Partial<
         Pick<Member, "display_name" | "email" | "department_id" | "status">
       >
     ) =>
-      request<Member>(`/members/${encodeURIComponent(subject)}`, {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      }),
+      request<Member>(
+        apiRoute("patch", "/tenants/{tenant_id}/members/{subject}", {
+          path: { tenant_id: tenantID(), subject: subject },
+        }),
+        { body: JSON.stringify(body) }
+      ),
     memberRoles: (subject: string) =>
-      request<string[]>(`/members/${encodeURIComponent(subject)}/roles`),
+      request<string[]>(
+        apiRoute("get", "/tenants/{tenant_id}/members/{subject}/roles", {
+          path: { tenant_id: tenantID(), subject: subject },
+        })
+      ),
     memberAuthorizationSources: (subject: string) =>
       request<MemberAuthorizationSnapshot>(
-        `/members/${encodeURIComponent(subject)}/authorization-sources`
+        apiRoute(
+          "get",
+          "/tenants/{tenant_id}/members/{subject}/authorization-sources",
+          { path: { tenant_id: tenantID(), subject: subject } }
+        )
       ),
-    entities: () => request<Entity[]>("/entities"),
+    entities: () =>
+      request<Entity[]>(
+        apiRoute("get", "/tenants/{tenant_id}/entities", {
+          path: { tenant_id: tenantID() },
+        })
+      ),
     entity: (id: string) =>
-      request<Entity>(`/entities/${encodeURIComponent(id)}`, {}, false),
+      request<Entity>(
+        apiRoute("get", "/entities/{entity_id}", { path: { entity_id: id } })
+      ),
     createEntity: (body: EntityInput) =>
-      request<Entity>("/entities", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+      request<Entity>(
+        apiRoute("post", "/tenants/{tenant_id}/entities", {
+          path: { tenant_id: tenantID() },
+        }),
+        { body: JSON.stringify(body) }
+      ),
     updateEntity: (id: string, body: Partial<EntityInput>) =>
-      request<Entity>(`/entities/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      }, false),
+      request<Entity>(
+        apiRoute("patch", "/entities/{entity_id}", { path: { entity_id: id } }),
+        { body: JSON.stringify(body) }
+      ),
     deleteEntity: (id: string) =>
       request<{ changed: boolean; sync_status: string }>(
-        `/entities/${encodeURIComponent(id)}`,
-        { method: "DELETE" },
-        false
+        apiRoute("delete", "/entities/{entity_id}", { path: { entity_id: id } })
       ),
     entityRoleBindings: (id: string) =>
       requestAllPages<EntityRoleBinding>(
-        `/entities/${encodeURIComponent(id)}/role-bindings`,
-        false
+        pagedRoute("/entities/{entity_id}/role-bindings", {
+          path: { entity_id: id },
+        })
       ),
     putEntityRoleBinding: (
       id: string,
@@ -2175,9 +2149,14 @@ export function createIamApi(
       body: EntityRoleBindingInput
     ) =>
       request<EntityRoleBinding>(
-        `/entities/${encodeURIComponent(id)}/role-bindings/${encodeURIComponent(roleID)}/${encodeURIComponent(principalID)}`,
-        { method: "PUT", body: JSON.stringify(body) },
-        false
+        apiRoute(
+          "put",
+          "/entities/{entity_id}/role-bindings/{role_id}/{principal_id}",
+          {
+            path: { entity_id: id, role_id: roleID, principal_id: principalID },
+          }
+        ),
+        { body: JSON.stringify(body) }
       ),
     deleteEntityRoleBinding: (
       id: string,
@@ -2185,42 +2164,50 @@ export function createIamApi(
       principalID: string
     ) =>
       request<{ changed: boolean; sync_status: string }>(
-        `/entities/${encodeURIComponent(id)}/role-bindings/${encodeURIComponent(roleID)}/${encodeURIComponent(principalID)}`,
-        { method: "DELETE" },
-        false
+        apiRoute(
+          "delete",
+          "/entities/{entity_id}/role-bindings/{role_id}/{principal_id}",
+          {
+            path: { entity_id: id, role_id: roleID, principal_id: principalID },
+          }
+        )
       ),
     relationships: (resourceID = "") =>
       requestAllPages<Relationship>(
-        `/relationships${resourceID ? `?resource_id=${encodeURIComponent(resourceID)}` : ""}`
+        pagedRoute("/tenants/{tenant_id}/relationships", {
+          path: { tenant_id: tenantID() },
+          query: { resource_id: resourceID || undefined },
+        })
       ),
     resourceRelationships: (entityID: string) =>
       request<Relationship[]>(
-        `/relationships?entity_id=${encodeURIComponent(entityID)}`,
-        {}
+        apiRoute("get", "/tenants/{tenant_id}/relationships", {
+          path: { tenant_id: tenantID() },
+          query: { entity_id: entityID },
+        })
       ),
     putRelationship: (body: RelationshipInput) =>
-      request<Relationship>("/relationships", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
-    deleteRelationship: (relationship: RelationshipInput) => {
-      const query = new URLSearchParams()
-      const fields = {
-        entity_id: relationship.entity_id,
-        subject_type: relationship.subject_type,
-        subject_id: relationship.subject_id,
-        subject_relation: relationship.subject_relation,
-        relation: relationship.relation,
-        resource_type: relationship.resource_type,
-        resource_id: relationship.resource_id,
-      }
-      for (const [key, value] of Object.entries(fields))
-        if (value) query.set(key, value)
-      return request<{ changed: boolean; sync_status: string }>(
-        `/relationships?${query}`,
-        { method: "DELETE" }
-      )
-    },
+      request<Relationship>(
+        apiRoute("post", "/tenants/{tenant_id}/relationships", {
+          path: { tenant_id: tenantID() },
+        }),
+        { body: JSON.stringify(body) }
+      ),
+    deleteRelationship: (relationship: RelationshipInput) =>
+      request<{ changed: boolean; sync_status: string }>(
+        apiRoute("delete", "/tenants/{tenant_id}/relationships", {
+          path: { tenant_id: tenantID() },
+          query: {
+            entity_id: relationship.entity_id || undefined,
+            subject_type: relationship.subject_type,
+            subject_id: relationship.subject_id,
+            subject_relation: relationship.subject_relation || undefined,
+            relation: relationship.relation,
+            resource_type: relationship.resource_type,
+            resource_id: relationship.resource_id,
+          },
+        })
+      ),
     checkEntityAuthorization: (
       entityID: string,
       permissionCode: string,
@@ -2228,14 +2215,18 @@ export function createIamApi(
     ) =>
       request<
         Pick<AuthorizationExplanation, "allowed" | "reason" | "revision">
-      >("/authorization-checks", {
-        method: "POST",
-        body: JSON.stringify({
-          entity_id: entityID,
-          permission_code: permissionCode,
-          subject,
+      >(
+        apiRoute("post", "/tenants/{tenant_id}/authorization-checks", {
+          path: { tenant_id: tenantID() },
         }),
-      }),
+        {
+          body: JSON.stringify({
+            entity_id: entityID,
+            permission_code: permissionCode,
+            subject,
+          }),
+        }
+      ),
     checkResourceAuthorization: (
       entityID: string,
       resourceType: string,
@@ -2245,37 +2236,51 @@ export function createIamApi(
     ) =>
       request<
         Pick<AuthorizationExplanation, "allowed" | "reason" | "revision">
-      >("/authorization-checks", {
-        method: "POST",
-        body: JSON.stringify({
-          entity_id: entityID,
-          resource_type: resourceType,
-          resource_id: resourceID,
-          permission_code: permissionCode,
-          subject,
+      >(
+        apiRoute("post", "/tenants/{tenant_id}/authorization-checks", {
+          path: { tenant_id: tenantID() },
         }),
-      }),
+        {
+          body: JSON.stringify({
+            entity_id: entityID,
+            resource_type: resourceType,
+            resource_id: resourceID,
+            permission_code: permissionCode,
+            subject,
+          }),
+        }
+      ),
     authorizationConstraint: (permissionCode: string, subject: string) =>
-      request<DataConstraint>("/authorization-constraint-evaluations", {
-        method: "POST",
-        body: JSON.stringify({
-          permission_code: permissionCode,
-          subject,
-        }),
-      }),
+      request<DataConstraint>(
+        apiRoute(
+          "post",
+          "/tenants/{tenant_id}/authorization-constraint-evaluations",
+          { path: { tenant_id: tenantID() } }
+        ),
+        {
+          body: JSON.stringify({
+            permission_code: permissionCode,
+            subject,
+          }),
+        }
+      ),
     explainEntityAuthorization: (
       entityID: string,
       permissionCode: string,
       subject: string
     ) =>
-      request<AuthorizationExplanation>("/authorization-explanations", {
-        method: "POST",
-        body: JSON.stringify({
-          entity_id: entityID,
-          permission_code: permissionCode,
-          subject,
+      request<AuthorizationExplanation>(
+        apiRoute("post", "/tenants/{tenant_id}/authorization-explanations", {
+          path: { tenant_id: tenantID() },
         }),
-      }),
+        {
+          body: JSON.stringify({
+            entity_id: entityID,
+            permission_code: permissionCode,
+            subject,
+          }),
+        }
+      ),
     explainResourceAuthorization: (
       entityID: string,
       resourceType: string,
@@ -2283,63 +2288,98 @@ export function createIamApi(
       permissionCode: string,
       subject: string
     ) =>
-      request<AuthorizationExplanation>("/authorization-explanations", {
-        method: "POST",
-        body: JSON.stringify({
-          entity_id: entityID,
-          resource_type: resourceType,
-          resource_id: resourceID,
-          permission_code: permissionCode,
-          subject,
+      request<AuthorizationExplanation>(
+        apiRoute("post", "/tenants/{tenant_id}/authorization-explanations", {
+          path: { tenant_id: tenantID() },
         }),
-      }),
-    departments: () => requestAllPages<Department>("/departments"),
+        {
+          body: JSON.stringify({
+            entity_id: entityID,
+            resource_type: resourceType,
+            resource_id: resourceID,
+            permission_code: permissionCode,
+            subject,
+          }),
+        }
+      ),
+    departments: () =>
+      requestAllPages<Department>(
+        pagedRoute("/tenants/{tenant_id}/departments", {
+          path: { tenant_id: tenantID() },
+        })
+      ),
     department: (id: string) =>
-      request<Department>(`/departments/${encodeURIComponent(id)}`, {}, false),
+      request<Department>(
+        apiRoute("get", "/departments/{department_id}", {
+          path: { department_id: id },
+        })
+      ),
     createDepartment: (body: DepartmentInput) =>
-      request<Department>("/departments", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+      request<Department>(
+        apiRoute("post", "/tenants/{tenant_id}/departments", {
+          path: { tenant_id: tenantID() },
+        }),
+        { body: JSON.stringify(body) }
+      ),
     updateDepartment: (
       id: string,
       body: Partial<Omit<DepartmentInput, "entity_id">> &
         Pick<Department, "version">
     ) =>
-      request<Department>(`/departments/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      }, false),
+      request<Department>(
+        apiRoute("patch", "/departments/{department_id}", {
+          path: { department_id: id },
+        }),
+        { body: JSON.stringify(body) }
+      ),
     deleteDepartment: (id: string, version: number) =>
       request<{ deleted: boolean }>(
-        `/departments/${encodeURIComponent(id)}?version=${encodeURIComponent(version)}`,
-        { method: "DELETE" },
-        false
+        apiRoute("delete", "/departments/{department_id}", {
+          path: { department_id: id },
+          query: { version: version },
+        })
       ),
-    positions: () => requestAllPages<Position>("/positions"),
+    positions: () =>
+      requestAllPages<Position>(
+        pagedRoute("/tenants/{tenant_id}/positions", {
+          path: { tenant_id: tenantID() },
+        })
+      ),
     position: (id: string) =>
-      request<Position>(`/positions/${encodeURIComponent(id)}`),
+      request<Position>(
+        apiRoute("get", "/positions/{position_id}", {
+          path: { position_id: id },
+        })
+      ),
     createPosition: (body: PositionInput) =>
-      request<Position>("/positions", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+      request<Position>(
+        apiRoute("post", "/tenants/{tenant_id}/positions", {
+          path: { tenant_id: tenantID() },
+        }),
+        { body: JSON.stringify(body) }
+      ),
     updatePosition: (
       id: string,
       body: Partial<PositionInput> & Pick<Position, "version">
     ) =>
-      request<Position>(`/positions/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      }),
+      request<Position>(
+        apiRoute("patch", "/positions/{position_id}", {
+          path: { position_id: id },
+        }),
+        { body: JSON.stringify(body) }
+      ),
     deletePosition: (id: string, version: number) =>
       request<{ deleted: boolean }>(
-        `/positions/${encodeURIComponent(id)}?version=${encodeURIComponent(version)}`,
-        { method: "DELETE" }
+        apiRoute("delete", "/positions/{position_id}", {
+          path: { position_id: id },
+          query: { version: version },
+        })
       ),
     positionMembers: (id: string) =>
       requestAllPages<PositionMember>(
-        `/positions/${encodeURIComponent(id)}/members`
+        pagedRoute("/positions/{position_id}/members", {
+          path: { position_id: id },
+        })
       ),
     putPositionMember: (
       id: string,
@@ -2347,50 +2387,78 @@ export function createIamApi(
       body: PositionMemberInput
     ) =>
       request<PositionMember>(
-        `/positions/${encodeURIComponent(id)}/members/${encodeURIComponent(principalID)}`,
-        { method: "PUT", body: JSON.stringify(body) }
+        apiRoute("put", "/positions/{position_id}/members/{principal_id}", {
+          path: { position_id: id, principal_id: principalID },
+        }),
+        { body: JSON.stringify(body) }
       ),
     deletePositionMember: (id: string, principalID: string) =>
       request<{ deleted: boolean }>(
-        `/positions/${encodeURIComponent(id)}/members/${encodeURIComponent(principalID)}`,
-        { method: "DELETE" }
+        apiRoute("delete", "/positions/{position_id}/members/{principal_id}", {
+          path: { position_id: id, principal_id: principalID },
+        })
       ),
-    groups: () => requestAllPages<Group>("/groups"),
-    group: (id: string) => request<Group>(`/groups/${encodeURIComponent(id)}`),
+    groups: () =>
+      requestAllPages<Group>(
+        pagedRoute("/tenants/{tenant_id}/groups", {
+          path: { tenant_id: tenantID() },
+        })
+      ),
+    group: (id: string) =>
+      request<Group>(
+        apiRoute("get", "/groups/{group_id}", { path: { group_id: id } })
+      ),
     createGroup: (body: GroupInput) =>
-      request<Group>("/groups", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+      request<Group>(
+        apiRoute("post", "/tenants/{tenant_id}/groups", {
+          path: { tenant_id: tenantID() },
+        }),
+        { body: JSON.stringify(body) }
+      ),
     updateGroup: (
       id: string,
       body: Partial<Omit<GroupInput, "type">> & Pick<Group, "version">
     ) =>
-      request<Group>(`/groups/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      }),
+      request<Group>(
+        apiRoute("patch", "/groups/{group_id}", { path: { group_id: id } }),
+        { body: JSON.stringify(body) }
+      ),
     deleteGroup: (id: string, version: number) =>
       request<{ deleted: boolean }>(
-        `/groups/${encodeURIComponent(id)}?version=${encodeURIComponent(version)}`,
-        { method: "DELETE" }
+        apiRoute("delete", "/groups/{group_id}", {
+          path: { group_id: id },
+          query: { version: version },
+        })
       ),
     groupMembers: (id: string) =>
-      requestAllPages<GroupMember>(`/groups/${encodeURIComponent(id)}/members`),
+      requestAllPages<GroupMember>(
+        pagedRoute("/groups/{group_id}/members", { path: { group_id: id } })
+      ),
     putGroupMember: (id: string, principalID: string, body: GroupMemberInput) =>
       request<GroupMember>(
-        `/groups/${encodeURIComponent(id)}/members/${encodeURIComponent(principalID)}`,
-        { method: "PUT", body: JSON.stringify(body) }
+        apiRoute("put", "/groups/{group_id}/members/{principal_id}", {
+          path: { group_id: id, principal_id: principalID },
+        }),
+        { body: JSON.stringify(body) }
       ),
     deleteGroupMember: (id: string, principalID: string) =>
       request<{ deleted: boolean }>(
-        `/groups/${encodeURIComponent(id)}/members/${encodeURIComponent(principalID)}`,
-        { method: "DELETE" }
+        apiRoute("delete", "/groups/{group_id}/members/{principal_id}", {
+          path: { group_id: id, principal_id: principalID },
+        })
       ),
-    fieldCatalog: () => request<FieldDefinition[]>("/field-catalog"),
+    fieldCatalog: () =>
+      request<FieldDefinition[]>(
+        apiRoute("get", "/tenants/{tenant_id}/field-catalog", {
+          path: { tenant_id: tenantID() },
+        })
+      ),
     fieldPolicies: (resource = "") =>
       requestAllPages<ManagedFieldPolicy>(
-        `/field-policies${resource ? `?${new URLSearchParams({ resource })}` : ""}`
+        pagedRoute("/tenants/{tenant_id}/field-policies", {
+          path: { tenant_id: tenantID() },
+          query: { resource: resource || undefined },
+        })
       ),
     setFieldPolicy: (
       resource: string,
@@ -2399,62 +2467,109 @@ export function createIamApi(
       version: number
     ) =>
       request<ManagedFieldPolicy>(
-        `/field-policies/${encodeURIComponent(resource)}/${encodeURIComponent(field)}`,
-        {
-          method: "PUT",
-          body: JSON.stringify({ policy, version }),
-        }
+        apiRoute(
+          "put",
+          "/tenants/{tenant_id}/field-policies/{resource}/{field}",
+          { path: { tenant_id: tenantID(), resource: resource, field: field } }
+        ),
+        { body: JSON.stringify({ policy, version }) }
       ),
     deleteFieldPolicy: (resource: string, field: string, version: number) =>
       request<{ changed: boolean }>(
-        `/field-policies/${encodeURIComponent(resource)}/${encodeURIComponent(field)}?${new URLSearchParams({ version: String(version) })}`,
-        {
-          method: "DELETE",
-        }
+        apiRoute(
+          "delete",
+          "/tenants/{tenant_id}/field-policies/{resource}/{field}",
+          {
+            path: { tenant_id: tenantID(), resource: resource, field: field },
+            query: { version: version },
+          }
+        )
       ),
-    effectiveFields: (resource: string, entityID = "") => {
-      const query = new URLSearchParams({ resource })
-      if (entityID) query.set("entity_id", entityID)
-      return request<FieldConstraint>(`/effective-fields?${query}`)
-    },
-    roles: () => request<Role[]>("/roles"),
+    effectiveFields: (resource: string, entityID = "") =>
+      request<FieldConstraint>(
+        apiRoute("get", "/tenants/{tenant_id}/effective-fields", {
+          path: { tenant_id: tenantID() },
+          query: { resource, entity_id: entityID || undefined },
+        })
+      ),
+    roles: () =>
+      request<Role[]>(
+        apiRoute("get", "/tenants/{tenant_id}/roles", {
+          path: { tenant_id: tenantID() },
+        })
+      ),
     requestableRoles: () =>
-      requestAllPages<RequestableRole>("/requestable-roles"),
-    myAccessRequests: () => request<AccessRequest[]>("/me/access-requests"),
-    accessRequests: () => requestAllPages<AccessRequest>("/access-requests"),
+      requestAllPages<RequestableRole>(
+        pagedRoute("/tenants/{tenant_id}/requestable-roles", {
+          path: { tenant_id: tenantID() },
+        })
+      ),
+    myAccessRequests: () =>
+      request<AccessRequest[]>(
+        apiRoute("get", "/tenants/{tenant_id}/me/access-requests", {
+          path: { tenant_id: tenantID() },
+        })
+      ),
+    accessRequests: () =>
+      requestAllPages<AccessRequest>(
+        pagedRoute("/tenants/{tenant_id}/access-requests", {
+          path: { tenant_id: tenantID() },
+        })
+      ),
     createAccessRequest: (body: AccessRequestInput) =>
-      request<AccessRequest>("/access-requests", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+      request<AccessRequest>(
+        apiRoute("post", "/tenants/{tenant_id}/access-requests", {
+          path: { tenant_id: tenantID() },
+        }),
+        { body: JSON.stringify(body) }
+      ),
     approveAccessRequest: (id: string, note = "") =>
       request<AccessRequest>(
-        `/access-requests/${encodeURIComponent(id)}/decision`,
-        { method: "PUT", body: JSON.stringify({ decision: "approved", note }) }
+        apiRoute("put", "/access-requests/{request_id}/decision", {
+          path: { request_id: id },
+        }),
+        { body: JSON.stringify({ decision: "approved", note }) }
       ),
     rejectAccessRequest: (id: string, note = "") =>
       request<AccessRequest>(
-        `/access-requests/${encodeURIComponent(id)}/decision`,
-        { method: "PUT", body: JSON.stringify({ decision: "rejected", note }) }
+        apiRoute("put", "/access-requests/{request_id}/decision", {
+          path: { request_id: id },
+        }),
+        { body: JSON.stringify({ decision: "rejected", note }) }
       ),
     revokeAccessRequest: (id: string, reason = "") =>
       request<AccessRequest>(
-        `/access-requests/${encodeURIComponent(id)}/grant-revocation`,
-        { method: "PUT", body: JSON.stringify({ reason }) }
+        apiRoute("put", "/access-requests/{request_id}/grant-revocation", {
+          path: { request_id: id },
+        }),
+        { body: JSON.stringify({ reason }) }
       ),
     withdrawAccessRequest: (id: string, reason = "") =>
       request<AccessRequest>(
-        `/access-requests/${encodeURIComponent(id)}/withdrawal`,
-        { method: "PUT", body: JSON.stringify({ reason }) }
+        apiRoute("put", "/access-requests/{request_id}/withdrawal", {
+          path: { request_id: id },
+        }),
+        { body: JSON.stringify({ reason }) }
       ),
-    accessReviews: () => requestAllPages<AccessReview>("/access-reviews"),
+    accessReviews: () =>
+      requestAllPages<AccessReview>(
+        pagedRoute("/tenants/{tenant_id}/access-reviews", {
+          path: { tenant_id: tenantID() },
+        })
+      ),
     accessReview: (id: string) =>
-      request<AccessReview>(`/access-reviews/${encodeURIComponent(id)}`),
+      request<AccessReview>(
+        apiRoute("get", "/access-reviews/{review_id}", {
+          path: { review_id: id },
+        })
+      ),
     createAccessReview: (body: AccessReviewInput) =>
-      request<AccessReview>("/access-reviews", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+      request<AccessReview>(
+        apiRoute("post", "/tenants/{tenant_id}/access-reviews", {
+          path: { tenant_id: tenantID() },
+        }),
+        { body: JSON.stringify(body) }
+      ),
     decideAccessReviewItem: (
       reviewID: string,
       itemID: string,
@@ -2462,56 +2577,72 @@ export function createIamApi(
       note = ""
     ) =>
       request<AccessReviewItem>(
-        `/access-reviews/${encodeURIComponent(reviewID)}/items/${encodeURIComponent(itemID)}/decision`,
-        { method: "PUT", body: JSON.stringify({ decision, note }) }
+        apiRoute(
+          "put",
+          "/access-reviews/{review_id}/items/{item_id}/decision",
+          { path: { review_id: reviewID, item_id: itemID } }
+        ),
+        { body: JSON.stringify({ decision, note }) }
       ),
     // Completing and cancelling are the review's own status, so they are
     // written on the review rather than posted to a verb beside it. The
     // spelling of "cancelled" is the stored state's, not this file's.
     completeAccessReview: (id: string) =>
-      request<AccessReview>(`/access-reviews/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: "completed" }),
-      }),
+      request<AccessReview>(
+        apiRoute("patch", "/access-reviews/{review_id}", {
+          path: { review_id: id },
+        }),
+        { body: JSON.stringify({ status: "completed" }) }
+      ),
     cancelAccessReview: (id: string) =>
-      request<AccessReview>(`/access-reviews/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: "cancelled" }),
-      }),
+      request<AccessReview>(
+        apiRoute("patch", "/access-reviews/{review_id}", {
+          path: { review_id: id },
+        }),
+        { body: JSON.stringify({ status: "cancelled" }) }
+      ),
     createRole: (body: Pick<Role, "name" | "description">) =>
-      request<Role>("/roles", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+      request<Role>(
+        apiRoute("post", "/tenants/{tenant_id}/roles", {
+          path: { tenant_id: tenantID() },
+        }),
+        { body: JSON.stringify(body) }
+      ),
     updateRole: (
       id: string,
       body: Partial<Pick<Role, "name" | "description">>
     ) =>
-      request<Role>(`/roles/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      }, false),
+      request<Role>(
+        apiRoute("patch", "/roles/{role_id}", { path: { role_id: id } }),
+        { body: JSON.stringify(body) }
+      ),
     deleteRole: (id: string) =>
-      request(`/roles/${encodeURIComponent(id)}`, { method: "DELETE" }, false),
+      request(
+        apiRoute("delete", "/roles/{role_id}", { path: { role_id: id } })
+      ),
     rolePermissions: (id: string) =>
-      request<string[]>(`/roles/${encodeURIComponent(id)}/permissions`, {}, false),
+      request<string[]>(
+        apiRoute("get", "/roles/{role_id}/permissions", {
+          path: { role_id: id },
+        })
+      ),
     rolePermissionGrants: (id: string) =>
       request<RolePermissionGrant[]>(
-        `/roles/${encodeURIComponent(id)}/permission-grants`,
-        {},
-        false
+        apiRoute("get", "/roles/{role_id}/permission-grants", {
+          path: { role_id: id },
+        })
       ),
     grantPermission: (id: string, code: string) =>
       request(
-        `/roles/${encodeURIComponent(id)}/permissions/${encodeURIComponent(code)}`,
-        { method: "PUT" },
-        false
+        apiRoute("put", "/roles/{role_id}/permissions/{permission_code}", {
+          path: { role_id: id, permission_code: code },
+        })
       ),
     revokePermission: (id: string, code: string) =>
       request(
-        `/roles/${encodeURIComponent(id)}/permissions/${encodeURIComponent(code)}`,
-        { method: "DELETE" },
-        false
+        apiRoute("delete", "/roles/{role_id}/permissions/{permission_code}", {
+          path: { role_id: id, permission_code: code },
+        })
       ),
     setRolePermissionCondition: (
       id: string,
@@ -2519,55 +2650,76 @@ export function createIamApi(
       condition: RelationshipCondition
     ) =>
       request<RolePermissionGrant>(
-        `/roles/${encodeURIComponent(id)}/permissions/${encodeURIComponent(code)}/condition`,
-        { method: "PUT", body: JSON.stringify({ condition }) },
-        false
+        apiRoute(
+          "put",
+          "/roles/{role_id}/permissions/{permission_code}/condition",
+          { path: { role_id: id, permission_code: code } }
+        ),
+        { body: JSON.stringify({ condition }) }
       ),
     clearRolePermissionCondition: (id: string, code: string) =>
       request(
-        `/roles/${encodeURIComponent(id)}/permissions/${encodeURIComponent(code)}/condition`,
-        { method: "DELETE" },
-        false
+        apiRoute(
+          "delete",
+          "/roles/{role_id}/permissions/{permission_code}/condition",
+          { path: { role_id: id, permission_code: code } }
+        )
       ),
     roleMembers: (id: string) =>
-      requestAllPages<string>(`/roles/${encodeURIComponent(id)}/members`, false),
+      requestAllPages<string>(
+        pagedRoute("/roles/{role_id}/members", { path: { role_id: id } })
+      ),
     addRoleMember: (id: string, subject: string) =>
       request(
-        `/roles/${encodeURIComponent(id)}/members/${encodeURIComponent(subject)}`,
-        { method: "PUT" },
-        false
+        apiRoute("put", "/roles/{role_id}/members/{subject}", {
+          path: { role_id: id, subject: subject },
+        })
       ),
     removeRoleMember: (id: string, subject: string) =>
       request(
-        `/roles/${encodeURIComponent(id)}/members/${encodeURIComponent(subject)}`,
-        { method: "DELETE" },
-        false
+        apiRoute("delete", "/roles/{role_id}/members/{subject}", {
+          path: { role_id: id, subject: subject },
+        })
       ),
     roleDirectoryBindings: (id: string) =>
       request<RoleDirectoryBinding[]>(
-        `/roles/${encodeURIComponent(id)}/directory-bindings`,
-        {},
-        false
+        apiRoute("get", "/roles/{role_id}/directory-bindings", {
+          path: { role_id: id },
+        })
       ),
     roleDataScope: (id: string) =>
-      request<RoleDataScope>(`/roles/${encodeURIComponent(id)}/data-scope`, {}, false),
+      request<RoleDataScope>(
+        apiRoute("get", "/roles/{role_id}/data-scope", {
+          path: { role_id: id },
+        })
+      ),
     setRoleDataScope: (
       id: string,
       body: Pick<RoleDataScope, "scope" | "department_ids">
     ) =>
-      request<RoleDataScope>(`/roles/${encodeURIComponent(id)}/data-scope`, {
-        method: "PUT",
-        body: JSON.stringify(body),
-      }, false),
+      request<RoleDataScope>(
+        apiRoute("put", "/roles/{role_id}/data-scope", {
+          path: { role_id: id },
+        }),
+        { body: JSON.stringify(body) }
+      ),
     addRoleDirectoryBinding: (
       id: string,
       assigneeType: RoleDirectoryBinding["assignee_type"],
       assigneeID: string
     ) =>
       request(
-        `/roles/${encodeURIComponent(id)}/directory-bindings/${encodeURIComponent(assigneeType)}/${encodeURIComponent(assigneeID)}`,
-        { method: "PUT" },
-        false
+        apiRoute(
+          "put",
+          "/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}",
+          {
+            path: {
+              role_id: id,
+              assignee_type: assigneeType,
+              assignee_id: assigneeID,
+            },
+          }
+        )
       ),
     removeRoleDirectoryBinding: (
       id: string,
@@ -2575,53 +2727,83 @@ export function createIamApi(
       assigneeID: string
     ) =>
       request(
-        `/roles/${encodeURIComponent(id)}/directory-bindings/${encodeURIComponent(assigneeType)}/${encodeURIComponent(assigneeID)}`,
-        { method: "DELETE" },
-        false
+        apiRoute(
+          "delete",
+          "/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}",
+          {
+            path: {
+              role_id: id,
+              assignee_type: assigneeType,
+              assignee_id: assigneeID,
+            },
+          }
+        )
       ),
-    permissions: () => request<Permission[]>("/permission-catalog"),
-    menus: () => request<Menu[]>("/menus"),
+    permissions: () =>
+      request<Permission[]>(
+        apiRoute("get", "/tenants/{tenant_id}/permission-catalog", {
+          path: { tenant_id: tenantID() },
+        })
+      ),
+    menus: () =>
+      request<Menu[]>(
+        apiRoute("get", "/tenants/{tenant_id}/menus", {
+          path: { tenant_id: tenantID() },
+        })
+      ),
     effectiveMenus: async (tenantID: string) =>
       (await request<EffectiveMenu[] | null>(
-        tenantAPIPath(tenantID, "/me/menus"),
-        {},
-        false
+        apiRoute("get", "/tenants/{tenant_id}/me/menus", {
+          path: { tenant_id: tenantID },
+        })
       )) ?? [],
     myPermissions: async (tenantID?: string, entityID?: string) =>
       (await request<string[] | null>(
         tenantID && entityID
-          ? entityAPIPath(tenantID, entityID, "/me/permissions")
+          ? apiRoute(
+              "get",
+              "/tenants/{tenant_id}/entities/{entity_id}/me/permissions",
+              { path: { tenant_id: tenantID, entity_id: entityID } }
+            )
           : tenantID
-            ? tenantAPIPath(tenantID, "/me/permissions")
-            : "/me/permissions",
-        {},
-        false
+            ? apiRoute("get", "/tenants/{tenant_id}/me/permissions", {
+                path: { tenant_id: tenantID },
+              })
+            : apiRoute("get", "/me/permissions")
       )) ?? [],
     createMenu: (body: MenuInput) =>
-      request<Menu>("/menus", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
-    updateMenu: (id: string, body: Partial<MenuInput>) =>
-      request<Menu>(`/menus/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      }),
-    deleteMenu: (id: string) =>
-      request(`/menus/${encodeURIComponent(id)}`, { method: "DELETE" }),
-    oauthClients: () =>
-      requestAllPages<OAuthClientResponse>("/oauth-clients").then((clients) =>
-        clients.map(normalizeOAuthClient)
+      request<Menu>(
+        apiRoute("post", "/tenants/{tenant_id}/menus", {
+          path: { tenant_id: tenantID() },
+        }),
+        { body: JSON.stringify(body) }
       ),
+    updateMenu: (id: string, body: Partial<MenuInput>) =>
+      request<Menu>(
+        apiRoute("patch", "/menus/{menu_id}", { path: { menu_id: id } }),
+        { body: JSON.stringify(body) }
+      ),
+    deleteMenu: (id: string) =>
+      request(
+        apiRoute("delete", "/menus/{menu_id}", { path: { menu_id: id } })
+      ),
+    oauthClients: () =>
+      requestAllPages<OAuthClientResponse>(
+        pagedRoute("/tenants/{tenant_id}/oauth-clients", {
+          path: { tenant_id: tenantID() },
+        })
+      ).then((clients) => clients.map(normalizeOAuthClient)),
     createOAuthClient: (body: OAuthClientInput) =>
       request<
         Omit<OAuthClientCreateResult, "client"> & {
           client: OAuthClientResponse
         }
-      >("/oauth-clients", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }).then((result) => ({
+      >(
+        apiRoute("post", "/tenants/{tenant_id}/oauth-clients", {
+          path: { tenant_id: tenantID() },
+        }),
+        { body: JSON.stringify(body) }
+      ).then((result) => ({
         ...result,
         client: normalizeOAuthClient(result.client),
       })),
@@ -2629,87 +2811,125 @@ export function createIamApi(
       id: string,
       body: OAuthClientInput & Pick<OAuthClient, "status">
     ) =>
-      request<OAuthClientResponse>(`/oauth-clients/${encodeURIComponent(id)}`, {
-        method: "PUT",
-        body: JSON.stringify(body),
-      }).then(normalizeOAuthClient),
+      request<OAuthClientResponse>(
+        apiRoute("put", "/oauth-clients/{client_id}", {
+          path: { client_id: id },
+        }),
+        { body: JSON.stringify(body) }
+      ).then(normalizeOAuthClient),
     rotateOAuthClientSecret: (id: string) =>
       request<{ client_secret: string }>(
-        `/oauth-clients/${encodeURIComponent(id)}/credentials`,
-        { method: "POST" }
+        apiRoute("post", "/oauth-clients/{client_id}/credentials", {
+          path: { client_id: id },
+        })
       ),
     deleteOAuthClient: (id: string) =>
       request<{ deleted: boolean }>(
-        `/oauth-clients/${encodeURIComponent(id)}`,
-        { method: "DELETE" }
+        apiRoute("delete", "/oauth-clients/{client_id}", {
+          path: { client_id: id },
+        })
       ),
-    scimDirectories: () => requestAllPages<SCIMDirectory>("/scim-directories"),
-    scimTargets: () => requestAllPages<SCIMTarget>("/scim-targets"),
+    scimDirectories: () =>
+      requestAllPages<SCIMDirectory>(
+        pagedRoute("/tenants/{tenant_id}/scim-directories", {
+          path: { tenant_id: tenantID() },
+        })
+      ),
+    scimTargets: () =>
+      requestAllPages<SCIMTarget>(
+        pagedRoute("/tenants/{tenant_id}/scim-targets", {
+          path: { tenant_id: tenantID() },
+        })
+      ),
     createSCIMTarget: (body: SCIMTargetInput) =>
-      request<SCIMTargetSecret>("/scim-targets", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+      request<SCIMTargetSecret>(
+        apiRoute("post", "/tenants/{tenant_id}/scim-targets", {
+          path: { tenant_id: tenantID() },
+        }),
+        { body: JSON.stringify(body) }
+      ),
     updateSCIMTarget: (id: string, body: SCIMTargetUpdate) =>
-      request<SCIMTarget>(`/scim-targets/${encodeURIComponent(id)}`, {
-        method: "PUT",
-        body: JSON.stringify(body),
-      }),
+      request<SCIMTarget>(
+        apiRoute("put", "/scim-targets/{target_id}", {
+          path: { target_id: id },
+        }),
+        { body: JSON.stringify(body) }
+      ),
     deleteSCIMTarget: (id: string) =>
-      request<{ deleted: boolean }>(`/scim-targets/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-      }),
+      request<{ deleted: boolean }>(
+        apiRoute("delete", "/scim-targets/{target_id}", {
+          path: { target_id: id },
+        })
+      ),
     pushSCIMResource: (id: string, body: SCIMResourceInput) =>
       request<SCIMPushResult>(
-        `/scim-targets/${encodeURIComponent(id)}/provisioning-jobs`,
-        {
-          method: "POST",
-          body: JSON.stringify(body),
-        }
+        apiRoute("post", "/scim-targets/{target_id}/provisioning-jobs", {
+          path: { target_id: id },
+        }),
+        { body: JSON.stringify(body) }
       ),
     deprovisionSCIMResource: (id: string, body: SCIMResourceInput) =>
       request<{ deprovisioned: boolean }>(
-        `/scim-targets/${encodeURIComponent(id)}/deprovisioning-jobs`,
-        { method: "POST", body: JSON.stringify(body) }
+        apiRoute("post", "/scim-targets/{target_id}/deprovisioning-jobs", {
+          path: { target_id: id },
+        }),
+        { body: JSON.stringify(body) }
       ),
     retireSCIMTarget: (id: string) =>
       request<{ deprovisioned: number }>(
-        `/scim-targets/${encodeURIComponent(id)}/retirement`,
-        { method: "PUT" }
+        apiRoute("put", "/scim-targets/{target_id}/retirement", {
+          path: { target_id: id },
+        })
       ),
     createSCIMDirectory: (body: SCIMDirectoryInput) =>
-      request<SCIMDirectory>("/scim-directories", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+      request<SCIMDirectory>(
+        apiRoute("post", "/tenants/{tenant_id}/scim-directories", {
+          path: { tenant_id: tenantID() },
+        }),
+        { body: JSON.stringify(body) }
+      ),
     updateSCIMDirectory: (
       id: string,
       body: SCIMDirectoryInput & Pick<SCIMDirectory, "status" | "version">
     ) =>
-      request<SCIMDirectory>(`/scim-directories/${encodeURIComponent(id)}`, {
-        method: "PUT",
-        body: JSON.stringify(body),
-      }),
+      request<SCIMDirectory>(
+        apiRoute("put", "/scim-directories/{directory_id}", {
+          path: { directory_id: id },
+        }),
+        { body: JSON.stringify(body) }
+      ),
     scimCredentials: (directoryID: string) =>
       requestAllPages<SCIMCredential>(
-        `/scim-directories/${encodeURIComponent(directoryID)}/credentials`
+        pagedRoute("/scim-directories/{directory_id}/credentials", {
+          path: { directory_id: directoryID },
+        })
       ),
     createSCIMCredential: (
       directoryID: string,
       body: { name: string; expires_at?: string }
     ) =>
       request<SCIMCredentialSecret>(
-        `/scim-directories/${encodeURIComponent(directoryID)}/credentials`,
-        { method: "POST", body: JSON.stringify(body) }
+        apiRoute("post", "/scim-directories/{directory_id}/credentials", {
+          path: { directory_id: directoryID },
+        }),
+        { body: JSON.stringify(body) }
       ),
     revokeSCIMCredential: (directoryID: string, credentialID: string) =>
       request<{ revoked: boolean }>(
-        `/scim-directories/${encodeURIComponent(directoryID)}/credentials/${encodeURIComponent(credentialID)}`,
-        { method: "DELETE" }
+        apiRoute(
+          "delete",
+          "/scim-directories/{directory_id}/credentials/{credential_id}",
+          { path: { directory_id: directoryID, credential_id: credentialID } }
+        )
       ),
-    auditEvents: async (query = "") => {
+    auditEvents: async (
+      query: RouteQuery<"/tenants/{tenant_id}/audit/events"> = {}
+    ) => {
       const envelope = await requestEnvelope<AuditEvent[]>(
-        `/audit/events${query ? `?${query}` : ""}`
+        apiRoute("get", "/tenants/{tenant_id}/audit/events", {
+          path: { tenant_id: tenantID() },
+          query,
+        })
       )
       return {
         items: envelope.data,
@@ -2717,33 +2937,48 @@ export function createIamApi(
       }
     },
     auditEvent: (id: string) =>
-      request<AuditEvent>(`/audit/events/${encodeURIComponent(id)}`),
+      request<AuditEvent>(
+        apiRoute("get", "/tenants/{tenant_id}/audit/events/{event_id}", {
+          path: { tenant_id: tenantID(), event_id: id },
+        })
+      ),
     auditIntegrity: () =>
-      request<AuditIntegrity>("/audit/integrity-verifications"),
-    auditExport: (query = "") =>
+      request<AuditIntegrity>(
+        apiRoute("get", "/tenants/{tenant_id}/audit/integrity-verifications", {
+          path: { tenant_id: tenantID() },
+        })
+      ),
+    auditExport: (
+      query: RouteQuery<"/tenants/{tenant_id}/audit/exports"> = {}
+    ) =>
       requestAuditDownloadWithBase(
         apiBase,
-        tenantID,
-        `/audit/exports${query ? `?${query}` : ""}`
+        apiRoute("get", "/tenants/{tenant_id}/audit/exports", {
+          path: { tenant_id: tenantID() },
+          query,
+        })
       ),
     auditArchiveStatus: (scope: AuditScope = "tenant") =>
       request<AuditArchiveStatus>(
-        `${archivePath(scope)}/archive-status`,
-        {},
-        scope === "tenant"
+        scope === "platform"
+          ? apiRoute("get", "/platform/audit/archive-status")
+          : apiRoute("get", "/tenants/{tenant_id}/audit/archive-status", {
+              path: { tenant_id: tenantID() },
+            })
       ),
     auditArchives: async (
       offset = 0,
       limit = 20,
       scope: AuditScope = "tenant"
     ) => {
-      const query = new URLSearchParams({
-        offset: String(offset),
-        limit: String(limit),
-      })
+      const query = { offset, limit }
       const envelope = await requestEnvelope<AuditArchiveJob[]>(
-        `${archivePath(scope)}/archives?${query}`,
-        scope === "tenant"
+        scope === "platform"
+          ? apiRoute("get", "/platform/audit/archives", { query })
+          : apiRoute("get", "/tenants/{tenant_id}/audit/archives", {
+              path: { tenant_id: tenantID() },
+              query,
+            })
       )
       return {
         items: envelope.data,
@@ -2752,43 +2987,75 @@ export function createIamApi(
     },
     requestAuditArchive: (scope: AuditScope = "tenant") =>
       request<AuditArchiveJob>(
-        `${archivePath(scope)}/archives`,
-        { method: "POST" },
-        scope === "tenant"
+        scope === "platform"
+          ? apiRoute("post", "/platform/audit/archives")
+          : apiRoute("post", "/tenants/{tenant_id}/audit/archives", {
+              path: { tenant_id: tenantID() },
+            })
       ),
     retryAuditArchive: (id: string, scope: AuditScope = "tenant") =>
       request<AuditArchiveJob>(
-        `${archivePath(scope)}/archives/${encodeURIComponent(id)}/retry`,
-        { method: "POST" },
-        scope === "tenant"
+        scope === "platform"
+          ? apiRoute("post", "/platform/audit/archives/{archive_id}/attempts", {
+              path: { archive_id: id },
+            })
+          : apiRoute(
+              "post",
+              "/tenants/{tenant_id}/audit/archives/{archive_id}/attempts",
+              { path: { tenant_id: tenantID(), archive_id: id } }
+            )
       ),
     verifyAuditArchive: (id: string, scope: AuditScope = "tenant") =>
       request<AuditArchiveObject>(
-        `${archivePath(scope)}/archives/${encodeURIComponent(id)}/verify`,
-        { method: "POST" },
-        scope === "tenant"
+        scope === "platform"
+          ? apiRoute(
+              "post",
+              "/platform/audit/archives/{archive_id}/verifications",
+              { path: { archive_id: id } }
+            )
+          : apiRoute(
+              "post",
+              "/tenants/{tenant_id}/audit/archives/{archive_id}/verifications",
+              { path: { tenant_id: tenantID(), archive_id: id } }
+            )
       ),
     downloadAuditArchive: (id: string, scope: AuditScope = "tenant") =>
       requestAuditDownloadWithBase(
         apiBase,
-        scope === "tenant" ? tenantID : () => "",
-        `${archivePath(scope)}/archives/${encodeURIComponent(id)}/download`
+        scope === "platform"
+          ? apiRoute("get", "/platform/audit/archives/{archive_id}/content", {
+              path: { archive_id: id },
+            })
+          : apiRoute(
+              "get",
+              "/tenants/{tenant_id}/audit/archives/{archive_id}/content",
+              { path: { tenant_id: tenantID(), archive_id: id } }
+            )
       ),
-    auditGovernance: () => request<AuditGovernance>("/audit/governance-policy"),
+    auditGovernance: () =>
+      request<AuditGovernance>(
+        apiRoute("get", "/tenants/{tenant_id}/audit/governance-policy", {
+          path: { tenant_id: tenantID() },
+        })
+      ),
     setAuditRetention: (
       body: Pick<AuditRetentionPolicy, "min_days" | "archive_after_days">,
       scope: AuditScope = "tenant"
     ) =>
       request<AuditRetentionPolicy>(
-        `${archivePath(scope)}/retention-policy`,
-        {
-          method: "PUT",
-          body: JSON.stringify(body),
-        },
-        scope === "tenant"
+        scope === "platform"
+          ? apiRoute("put", "/platform/audit/retention-policy")
+          : apiRoute("put", "/tenants/{tenant_id}/audit/retention-policy", {
+              path: { tenant_id: tenantID() },
+            }),
+        { body: JSON.stringify(body) }
       ),
     auditSignRoot: () =>
-      request<AuditAnchor>("/audit/root-signatures", { method: "POST" }),
+      request<AuditAnchor>(
+        apiRoute("post", "/tenants/{tenant_id}/audit/root-signatures", {
+          path: { tenant_id: tenantID() },
+        })
+      ),
   }
 }
 

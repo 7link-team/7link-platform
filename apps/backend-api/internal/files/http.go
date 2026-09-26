@@ -19,24 +19,25 @@ import (
 	"gorm.io/gorm"
 )
 
-type filePageInput struct {
+// FilePageInput is exported so Huma discovers its embedded query parameters.
+type FilePageInput struct {
 	After string `query:"after" doc:"exclusive snowflake cursor returned by the previous page"`
 	Limit int    `query:"limit" minimum:"1" maximum:"100" default:"50"`
 	State string `query:"state" enum:"active,trashed" default:"active" doc:"active roots or authorized recycle-bin entries"`
 }
 
 type tenantFilePageInput struct {
-	filePageInput
+	FilePageInput
 	TenantID string `path:"tenant_id"`
 }
 
 type entityFilePageInput struct {
-	filePageInput
+	FilePageInput
 	EntityID string `path:"entity_id"`
 }
 
 type departmentFilePageInput struct {
-	filePageInput
+	FilePageInput
 	DepartmentID string `path:"department_id"`
 }
 
@@ -134,7 +135,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 	authz.RegisterAuthenticated(registrar, api, huma.Operation{
 		OperationID: "list-my-files", Method: http.MethodGet, Path: "/me/files",
 		Summary: "List my file roots", Tags: []string{"files"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
-	}, func(ctx context.Context, input *filePageInput) (*respx.Body[filePage], error) {
+	}, func(ctx context.Context, input *FilePageInput) (*respx.Body[filePage], error) {
 		ctx = personalContext(ctx)
 		claims, _ := authn.FromContext(ctx)
 		return listFileCollection(ctx, service, fileCollection{scope: ownerAccount, ownerID: claims.PrincipalID}, *input)
@@ -144,14 +145,14 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		Summary: "List tenant file roots", Tags: []string{"files"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "file", Verb: "view", FilterData: true}, func(ctx context.Context, input *tenantFilePageInput) (*respx.Body[filePage], error) {
 		claims, _ := authn.FromContext(ctx)
-		return listFileCollection(ctx, service, fileCollection{scope: ownerTenant, tenantID: claims.TenantID, ownerID: claims.TenantID}, input.filePageInput)
+		return listFileCollection(ctx, service, fileCollection{scope: ownerTenant, tenantID: claims.TenantID, ownerID: claims.TenantID}, input.FilePageInput)
 	})
 	authz.RegisterOwnedTenantMember(registrar, api, huma.Operation{
 		OperationID: "list-entity-files", Method: http.MethodGet, Path: "/entities/{entity_id}/files",
 		Summary: "List entity file roots", Tags: []string{"files"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "entity_id", entityOwner, func(ctx context.Context, input *entityFilePageInput) (*respx.Body[filePage], error) {
 		claims, _ := authn.FromContext(ctx)
-		return listFileCollection(ctx, service, fileCollection{scope: ownerEntity, tenantID: claims.TenantID, ownerID: claims.EntityID}, input.filePageInput)
+		return listFileCollection(ctx, service, fileCollection{scope: ownerEntity, tenantID: claims.TenantID, ownerID: claims.EntityID}, input.FilePageInput)
 	})
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "list-department-files", Method: http.MethodGet, Path: "/departments/{department_id}/files",
@@ -162,7 +163,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		if err != nil {
 			return nil, err
 		}
-		return listFileCollection(ctx, service, fileCollection{scope: ownerDepartment, tenantID: claims.TenantID, ownerID: departmentID}, input.filePageInput)
+		return listFileCollection(ctx, service, fileCollection{scope: ownerDepartment, tenantID: claims.TenantID, ownerID: departmentID}, input.FilePageInput)
 	})
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
@@ -339,7 +340,7 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 
 }
 
-func listFileCollection(ctx context.Context, service *operationService, collection fileCollection, input filePageInput) (*respx.Body[filePage], error) {
+func listFileCollection(ctx context.Context, service *operationService, collection fileCollection, input FilePageInput) (*respx.Body[filePage], error) {
 	page, err := browserPageOf(input.After, input.Limit)
 	if err != nil {
 		return nil, err

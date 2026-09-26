@@ -13892,6 +13892,43 @@
               "pattern": "^[1-9][0-9]*$",
               "type": "string"
             }
+          },
+          {
+            "description": "exclusive snowflake cursor returned by the previous page",
+            "explode": false,
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "description": "exclusive snowflake cursor returned by the previous page",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "active roots or authorized recycle-bin entries",
+            "explode": false,
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "default": "active",
+              "description": "active roots or authorized recycle-bin entries",
+              "enum": [
+                "active",
+                "trashed"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -14764,6 +14801,43 @@
             "schema": {
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "exclusive snowflake cursor returned by the previous page",
+            "explode": false,
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "description": "exclusive snowflake cursor returned by the previous page",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "active roots or authorized recycle-bin entries",
+            "explode": false,
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "default": "active",
+              "description": "active roots or authorized recycle-bin entries",
+              "enum": [
+                "active",
+                "trashed"
+              ],
               "type": "string"
             }
           }
@@ -45964,6 +46038,43 @@
             "schema": {
               "maxLength": 19,
               "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "exclusive snowflake cursor returned by the previous page",
+            "explode": false,
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "description": "exclusive snowflake cursor returned by the previous page",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "active roots or authorized recycle-bin entries",
+            "explode": false,
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "default": "active",
+              "description": "active roots or authorized recycle-bin entries",
+              "enum": [
+                "active",
+                "trashed"
+              ],
               "type": "string"
             }
           }

@@ -173,19 +173,19 @@ try {
         records = [makeJob(8000, "queued")]
         return json(records[0])
       }
-      if (path.endsWith("/retry")) {
+      if (path.endsWith("/attempts")) {
         const job = records.find((j) => path.includes(`/${j.id}/`))
         job.state = "complete"
         job.object = object
         job.error_code = ""
         return json(job)
       }
-      if (path.endsWith("/verify")) {
+      if (path.endsWith("/verifications")) {
         verifyStarted?.()
         if (blockVerify) await blockVerify
         return json(object)
       }
-      if (path.endsWith("/download")) {
+      if (path.endsWith("/content")) {
         if (corrupt)
           return route.fulfill({
             status: 409,
@@ -297,7 +297,7 @@ try {
     await page.getByText("暂无归档任务", { exact: true }).waitFor()
     releaseVerify()
     await page.waitForResponse((response) =>
-      response.url().endsWith("/1001/verify")
+      response.url().endsWith("/1001/verifications")
     )
     await page.getByRole("heading", { name: "审计治理", exact: true }).waitFor()
     assert.equal(
@@ -326,7 +326,7 @@ try {
       .getByRole("region", { name: "归档任务", exact: true })
       .getByText("未启用", { exact: true })
       .waitFor()
-    assert(calls.some((call) => call.path.endsWith("/1002/retry")))
+    assert(calls.some((call) => call.path.endsWith("/1002/attempts")))
     await fits(page)
     await context.close()
     console.log(`${name}: archive UI fixtures PASS`)

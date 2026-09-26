@@ -82,7 +82,9 @@ export default function AuditEventsPage() {
   const [events, setEvents] = useState<AuditEvent[]>([])
   const [total, setTotal] = useState(0)
   const [offset, setOffset] = useState(0)
-  const [query, setQuery] = useState("")
+  const [query, setQuery] = useState<Parameters<typeof iamApi.auditExport>[0]>(
+    {}
+  )
   const [filters, setFilters] = useState<AuditFilters>(emptyFilters)
   const [integrity, setIntegrity] = useState<AuditIntegrity | null>(null)
   const [selected, setSelected] = useState<AuditEvent | null>(null)
@@ -95,11 +97,8 @@ export default function AuditEventsPage() {
 
   useEffect(() => {
     let active = true
-    const params = new URLSearchParams(query)
-    params.set("offset", String(offset))
-    params.set("limit", String(pageSize))
     void Promise.all([
-      iamApi.auditEvents(params.toString()),
+      iamApi.auditEvents({ ...query, offset, limit: pageSize }),
       iamApi.auditIntegrity(),
     ]).then(
       ([page, chain]) => {
@@ -125,24 +124,29 @@ export default function AuditEventsPage() {
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const params = new URLSearchParams()
-    append(params, "event_type", filters.eventType)
-    append(params, "outcome", filters.outcome === "all" ? "" : filters.outcome)
-    append(params, "principal_id", filters.principalID)
-    append(params, "target_type", filters.targetType)
-    append(params, "target_id", filters.targetID)
-    append(params, "from", asRFC3339(filters.from))
-    append(params, "to", asRFC3339(filters.to))
     setLoading(true)
     setOffset(0)
-    setQuery(params.toString())
+    setQuery({
+      event_type: filters.eventType.trim() || undefined,
+      outcome:
+        filters.outcome === "success" ||
+        filters.outcome === "denied" ||
+        filters.outcome === "failure"
+          ? filters.outcome
+          : undefined,
+      principal_id: filters.principalID.trim() || undefined,
+      target_type: filters.targetType.trim() || undefined,
+      target_id: filters.targetID.trim() || undefined,
+      from: asRFC3339(filters.from) || undefined,
+      to: asRFC3339(filters.to) || undefined,
+    })
   }
 
   const reset = () => {
     setLoading(true)
     setFilters(emptyFilters)
     setOffset(0)
-    setQuery("")
+    setQuery({})
   }
 
   const openDetail = async (event: AuditEvent) => {
@@ -687,11 +691,6 @@ function EmptyEvents() {
       <p className="text-sm font-medium">{t("noAuditEvents")}</p>
     </div>
   )
-}
-
-function append(params: URLSearchParams, key: string, value: string) {
-  const trimmed = value.trim()
-  if (trimmed) params.set(key, trimmed)
 }
 
 function asRFC3339(value: string): string {

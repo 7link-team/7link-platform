@@ -26,7 +26,7 @@ export default function ClosureRequestsPage() {
   const [rejecting, setRejecting] = useState<ClosureRequest | null>(null)
   const [principal, setPrincipal] = useState<{ id: string } | null>(null)
   const [busy, setBusy] = useState(false)
-  const [status, setStatus] = useState("pending")
+  const [status, setStatus] = useState<"pending" | "processing">("pending")
   const [action, setAction] = useState<"reject" | "process">("reject")
   useEffect(() => {
     let active = true
@@ -86,7 +86,11 @@ export default function ClosureRequestsPage() {
           onChange={(event) => {
             setItems(null)
             setOffset(0)
-            setStatus(event.target.value)
+            if (
+              event.target.value === "pending" ||
+              event.target.value === "processing"
+            )
+              setStatus(event.target.value)
           }}
         >
           <option value="pending">{t("closureStatus_pending")}</option>

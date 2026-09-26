@@ -2689,3 +2689,24 @@ once.
 Confirmed prerequisite for the route migration, not yet implemented.
 `bun run check:api-types` (`755f533`) keeps the generated types honest about
 the document meanwhile; it does not make the client safe.
+
+**Implementation - 2026-09-25**
+Implemented with `apiRoute`/`pagedRoute` importing generated `paths`. Every IAM
+transport accepts only a branded address carrying its supported method;
+template, required path/query parameters, parameter types and query enums are
+checked at construction. Mounts are explicit, including files and audit scopes;
+offset pagination admits only GET operations declaring offset/limit. Existing
+fetch, error/envelope handling, uploads and download verification are reused.
+Audit filters now use generated query objects. URLSearchParams standardizes
+query serialization (spaces become +); identifiers still use encodeURIComponent,
+and root-relative file paths preserve their slash separators.
+
+Compiler diagnostics exposed existing archive aliases and POST anonymization;
+the client now uses published attempts/verifications/content and PUT. The file
+collection contract omitted inherited query fields because its embedded Go input
+was unexported. Exporting FilePageInput repairs Huma discovery; regenerated
+documents include after/limit/state for all collections. This is a necessary
+contract repair, not a new route migration. Twelve negative compile assertions
+replace the old permissive literal scan. All runtime tests remain covered.
+
+Status: D78 implemented and verified. Public API migration has not started.
