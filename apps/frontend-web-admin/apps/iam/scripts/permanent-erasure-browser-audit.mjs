@@ -95,7 +95,7 @@ try {
   targetID = created.id
   assert(targetID, "The synthetic principal must have an id")
 
-  await page.goto("/users")
+  await page.goto(`/tenants/${tenant}/users`)
   await page.getByLabel("搜索账号").fill(targetLogin)
   const row = page.getByRole("row").filter({ hasText: targetLogin })
   await row.waitFor()

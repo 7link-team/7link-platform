@@ -152,7 +152,9 @@ try {
         await page.keyboard.press("Escape")
         await selectEntity(fixtures.entities[0])
         assert.equal(
-          await page.locator('aside a[href="/users"]').count(),
+          await page
+            .locator(`aside a[href="/tenants/${fixtures.tenant.id}/users"]`)
+            .count(),
           0
         )
         await navigateView("entityRoles")
@@ -221,7 +223,7 @@ try {
         assert.equal(
           await page
             .locator(
-              'aside a[href="/entities/' +
+              `aside a[href="/tenants/${fixtures.tenant.id}/entities/` +
                 fixtures.entities[1].id +
                 '/roles"]'
             )
@@ -242,7 +244,9 @@ try {
               exact: true,
             })
             .click()
-          await page.goto(`/entities/${fixtures.entities[0].id}/roles`)
+          await page.goto(
+            `/tenants/${fixtures.tenant.id}/entities/${fixtures.entities[0].id}/roles`
+          )
           await page
             .getByText(messages.entityUnavailable, { exact: true })
             .waitFor()

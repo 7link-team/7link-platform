@@ -27,7 +27,7 @@ try {
       ])
       const errors = []
       page.on("pageerror", (error) => errors.push(error.message))
-      await page.goto("/account/profile")
+      await page.goto("/me/profile")
       await page.locator('input[name="login_name"]').waitFor()
       assert.equal(new URL(page.url()).pathname, "/login")
       await page
@@ -116,7 +116,7 @@ try {
         .waitFor()
       assert.equal(
         await page
-          .locator('aside a[href="/security"], aside a[href^="/account"]')
+          .locator('aside a[href="/me/security"], aside a[href^="/me/"]')
           .count(),
         0
       )
@@ -131,7 +131,7 @@ try {
       await page
         .getByRole("heading", { name: "安全管理", exact: true })
         .waitFor()
-      assert.equal(new URL(page.url()).pathname, "/account/security")
+      assert.equal(new URL(page.url()).pathname, "/me/security")
       await page.getByRole("button", { name: "账户菜单", exact: true }).click()
       await page
         .getByRole("menuitem", { name: "退出登录", exact: true })

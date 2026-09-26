@@ -133,7 +133,7 @@ try {
           `visible authorization error: ${alerts.join(" | ")}`,
           ...responseFailures.filter((failure) => failure.startsWith("403 "))
         )
-      if (path.includes("/files") && !path.startsWith("/account/")) {
+      if (path.includes("/files") && !path.startsWith("/me/")) {
         if (/Create personal files|创建个人文件区|Cipta fail peribadi/iu.test(body))
           pageFailures.push("organization file page exposes personal root creation")
         if (

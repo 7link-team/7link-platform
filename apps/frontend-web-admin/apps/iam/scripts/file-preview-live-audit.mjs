@@ -118,7 +118,7 @@ try {
   }
   consoleErrors.length = 0
   failedResponses.length = 0
-  await page.goto(`${webURL}/account/files`)
+  await page.goto(`${webURL}/me/files`)
 
   const createRoot = page.getByRole("button", { name: "Create personal files", exact: true })
   if (await createRoot.isVisible().catch(() => false)) await createRoot.click()

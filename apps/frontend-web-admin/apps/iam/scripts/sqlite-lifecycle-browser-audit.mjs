@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { spawn } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import { randomBytes } from "node:crypto"
 import { createWriteStream, readFileSync } from "node:fs"
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises"
@@ -52,6 +52,25 @@ function launch(command, args, cwd, name, env = {}) {
   child.once("close", () => log.end())
   children.push(child)
   return child
+}
+
+// The services here spawn children of their own, so the whole tree has to go.
+// On POSIX that is what the negative pid asks for. Windows has no process
+// group for it to address and answers ESRCH, which is why every run used to
+// leave its api.exe behind -- and why a piped run produced no output at all,
+// since the survivor kept the pipe open.
+function terminate(child, force) {
+  if (process.platform === "win32") {
+    const args = ["/pid", String(child.pid), "/T"]
+    if (force) args.push("/F")
+    spawnSync("taskkill", args, { stdio: "ignore" })
+    return
+  }
+  try {
+    process.kill(-child.pid, force ? "SIGKILL" : "SIGTERM")
+  } catch (error) {
+    if (error.code !== "ESRCH") throw error
+  }
 }
 
 async function run(command, args, cwd, name, expectedStatus = 0) {
@@ -824,7 +843,9 @@ try {
     .getByRole("button", { name: "Restricted parent", exact: true })
     .waitFor()
   assert.equal(
-    await aliceSession.page.locator('aside a[href="/roles"]').count(),
+    await aliceSession.page
+      .locator(`aside a[href="${tenantPage("/roles")}"]`)
+      .count(),
     0
   )
   await capture(aliceSession.page, "viewer-custom-menu", 1440)
@@ -1010,22 +1031,12 @@ try {
   await browser?.close()
   for (const child of children.reverse()) {
     if (child.exitCode !== null || child.signalCode !== null) continue
-    try {
-      process.kill(-child.pid, "SIGTERM")
-    } catch (error) {
-      if (error.code !== "ESRCH") throw error
-    }
+    terminate(child, false)
     await eventually(
       async () => child.exitCode !== null || child.signalCode !== null,
       "owned service shutdown",
       10_000
-    ).catch(() => {
-      try {
-        process.kill(-child.pid, "SIGKILL")
-      } catch (error) {
-        if (error.code !== "ESRCH") throw error
-      }
-    })
+    ).catch(() => terminate(child, true))
   }
   await writeFile(
     join(directory, "report.json"),

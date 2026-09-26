@@ -289,7 +289,7 @@ async function finishUpstream(page) {
     await page.waitForURL(
       (url) =>
         url.origin === new URL(baseURL).origin &&
-        url.pathname.startsWith("/account/")
+        url.pathname.startsWith("/me/")
     )
   } catch (error) {
     throw new Error(
@@ -324,7 +324,7 @@ async function confirmIdentity(page, messages, method = "password") {
   if (method === "federation") await finishUpstream(page)
 }
 async function createAndRevokeToken(context, page, messages, label, method) {
-  await page.goto("/account/tokens")
+  await page.goto("/me/tokens")
   await page
     .getByRole("heading", { name: messages.personalTokens, exact: true })
     .waitFor()
@@ -465,7 +465,7 @@ async function createAndRevokeToken(context, page, messages, label, method) {
   })
 }
 async function passwordLink(context, page, messages) {
-  await page.goto("/account/identities")
+  await page.goto("/me/identities")
   await page
     .getByRole("heading", { name: messages.linkedIdentities, exact: true })
     .waitFor()
@@ -647,7 +647,7 @@ try {
         const label = `${stamp}-${locale}-${width}-${method}`
         idp.subject = label
         if (method === "password") {
-          await page.goto("/account/tokens")
+          await page.goto("/me/tokens")
           await page.locator('input[name="login_name"]').fill(actor.login_name)
           await page.locator('input[name="password"]').fill(password)
           await page.locator('button[type="submit"]').click()
@@ -659,7 +659,7 @@ try {
             .waitFor()
         } else {
           await page.goto(
-            `${apiURL}/federation/${provider.id}/start?${new URLSearchParams({ return_url: baseURL + "/account/tokens" })}`
+            `${apiURL}/federation/${provider.id}/start?${new URLSearchParams({ return_url: baseURL + "/me/tokens" })}`
           )
           await finishUpstream(page)
           const session = await ok(context, "/me/session")
@@ -674,7 +674,7 @@ try {
         await createAndRevokeToken(context, page, messages, label, method)
         if (method === "password") await passwordLink(context, page, messages)
         else {
-          await page.goto("/account/identities")
+          await page.goto("/me/identities")
           await page
             .getByRole("heading", { name: provider.name, exact: true })
             .waitFor()

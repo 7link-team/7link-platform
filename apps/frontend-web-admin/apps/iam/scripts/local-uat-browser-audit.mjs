@@ -67,7 +67,7 @@ async function verifyReleaseFlows(context, page, capture, device) {
     const parent = await createEntity(`UAT parent ${stamp}`)
     const child = await createEntity(`UAT child ${stamp}`, parent.id)
     const descendant = await createEntity(`UAT descendant ${stamp}`, child.id)
-    await page.goto(`/entities/${child.id}/manage`)
+    await page.goto(`/tenants/${tenant}/entities/${child.id}/manage`)
     const rows = page.locator("tbody tr")
     await rows.first().waitFor()
     assert.equal(
@@ -87,7 +87,7 @@ async function verifyReleaseFlows(context, page, capture, device) {
       status: "PASS",
     })
 
-    const callback = baseURL + "/account/applications"
+    const callback = baseURL + "/me/applications"
     const createClient = async (name) => {
       const application = await call("/oauth-clients", "POST", {
         name,
@@ -201,7 +201,7 @@ async function verifyReleaseFlows(context, page, capture, device) {
       403,
       "Cookie-authenticated cross-origin revocation must be refused"
     )
-    await page.goto("/account/applications")
+    await page.goto("/me/applications")
     await page
       .getByRole("heading", { name: client.client.name, exact: true })
       .waitFor()
@@ -459,7 +459,7 @@ try {
               response.url().includes("/api/principals?") &&
               response.status() === 403
           )
-          await page.goto("/users")
+          await page.goto(`/tenants/${tenant}/users`)
           await denied
           await page.getByRole("alert").filter({ hasText: "禁止" }).waitFor()
           assert.equal(
@@ -475,9 +475,9 @@ try {
           )
           await capture("denied")
           for (const [path, empty, screenshot] of [
-            ["/tenants", "暂无租户", "tenants-denied"],
+            ["/platform/tenants", "暂无租户", "tenants-denied"],
             [
-              "/oauth-clients",
+              `/tenants/${tenant}/oauth-clients`,
               "尚未登记 OAuth 客户端",
               "oauth-clients-denied",
             ],
@@ -512,7 +512,7 @@ try {
           (await context.request.get("/api/me/session")).status(),
           401
         )
-        await page.goto("/users")
+        await page.goto(`/tenants/${tenant}/users`)
         await page.locator('input[name="login_name"]').waitFor()
         assert.equal(new URL(page.url()).pathname, "/login")
         assert.deepEqual(errors, [])

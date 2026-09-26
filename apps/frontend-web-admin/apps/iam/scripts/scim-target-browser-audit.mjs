@@ -143,7 +143,7 @@ try {
   )
   const page = await context.newPage()
   page.on("pageerror", (error) => exceptions.push(error.message))
-  await page.goto("/scim-directories?view=targets")
+  await page.goto(`/tenants/${tenant.id}/scim-directories?view=targets`)
   await page.getByRole("button", { name: "创建目标", exact: true }).click()
   let name = `SCIM outbound ${stamp}`
   const token = randomBytes(24).toString("base64url")

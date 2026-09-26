@@ -49,7 +49,7 @@ try {
       if (/MISSING_MESSAGE|FORMATTING_ERROR|INVALID_MESSAGE/.test(m.text()))
         errors.push(m.text())
     })
-    await page.goto("/account/profile")
+    await page.goto("/me/profile")
     await page.locator('input[name="login_name"]').fill("member@example.test")
     await page
       .locator('input[name="password"]')
@@ -81,7 +81,7 @@ try {
         ["security", "security"],
         ["mfa", "twoFactor"],
       ]) {
-        await page.goto(`/account/${route}`)
+        await page.goto(`/me/${route}`)
         await page
           .getByRole("heading", { name: messages[key], exact: true })
           .waitFor()

@@ -133,10 +133,10 @@ const writeControls = {
 }
 
 const personalAndPublic = [
-  "/account/profile",
-  "/account/security",
-  "/account/mfa",
-  "/account/applications",
+  "/me/profile",
+  "/me/security",
+  "/me/mfa",
+  "/me/applications",
   "/login",
   "/register",
   "/recover",

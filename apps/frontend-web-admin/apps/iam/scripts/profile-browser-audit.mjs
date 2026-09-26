@@ -174,7 +174,7 @@ try {
       .locator('[aria-label="当前工作区"]')
       .getByText(tenant.id, { exact: true })
       .waitFor()
-    await page.goto("/users")
+    await page.goto(`/tenants/${tenant.id}/users`)
     const row = page
       .getByRole("row")
       .filter({ has: page.getByText(target.login_name, { exact: true }) })
@@ -240,7 +240,7 @@ try {
       path: fileURLToPath(new URL(`${name}-list.png`, screenshots)),
       fullPage: true,
     })
-    await page.goto("/account/profile")
+    await page.goto("/me/profile")
     await page.getByRole("heading", { name: "主邮箱", exact: true }).waitFor()
     assert.equal(
       await page
@@ -249,7 +249,7 @@ try {
       0
     )
     assert(!(await page.locator("main").innerText()).includes(actor.email))
-    await page.goto("/users")
+    await page.goto(`/tenants/${tenant.id}/users`)
     await row.waitFor()
     await row.getByRole("button", { name: "编辑", exact: false }).click()
     await dialog.waitFor()

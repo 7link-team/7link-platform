@@ -9,6 +9,7 @@ const { webURL, apiURL } = JSON.parse(
   readFileSync(new URL("state.json", directory), "utf8")
 )
 assert.equal(new URL(webURL).hostname, "127.0.0.1")
+const tenantID = readFileSync(new URL("tenant-id", directory), "utf8").trim()
 const spec = await (await fetch(`${apiURL}/openapi.json`)).json()
 for (const name of ["CreateMenuInputBody", "UpdateMenuInputBody", "APIMenu"])
   assert(
@@ -22,7 +23,7 @@ try {
     { name: "NEXT_LOCALE", value: "zh-CN", url: webURL },
   ])
   const page = await context.newPage()
-  await page.goto("/menus")
+  await page.goto(`/tenants/${tenantID}/menus`)
   await page.locator('input[name="login_name"]').fill("admin@example.test")
   await page
     .locator('input[name="password"]')
@@ -36,9 +37,9 @@ try {
       const { setTenant } = await import("/src/lib/iam-api.ts")
       setTenant(tenantID)
     },
-    readFileSync(new URL("tenant-id", directory), "utf8").trim()
+    tenantID
   )
-  await page.goto("/menus")
+  await page.goto(`/tenants/${tenantID}/menus`)
   const languageNames = ["English", "简体中文", "Bahasa Melayu"]
   await page.getByLabel("菜单预览语言", { exact: true }).waitFor()
   assert.deepEqual(

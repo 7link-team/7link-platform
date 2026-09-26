@@ -136,7 +136,7 @@ try {
           `${response.status()} ${new URL(response.url()).pathname}`
         )
     })
-    await page.goto("/audit-governance")
+    await page.goto(`/tenants/${tenant}/audit-governance`)
     const prefix = "/audit"
     let jobs = await get(context, prefix + "/archives", tenant)
     assert(jobs.length >= 1)

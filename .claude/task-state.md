@@ -4251,3 +4251,58 @@ provisioning 3、governance 3、federation 2、oauth 1、audit 1。
 - Next action: commit the five changed files and push IAM. Then decide whether
   to take the fourteen other audit scripts carrying the same stale addresses;
   they need external services, so they cannot be verified from here.
+
+### Browser Audit Route Repair And Process Cleanup - 2026-09-25
+
+- Phase: ACCEPTANCE. User explicitly requested the remaining audit scripts and the
+  process leak. The working tree has 19 edited browser audit scripts: old
+  `/account/*` page URLs now use `/me/*`, tenant pages carry their tenant IDs,
+  and platform pages use `/platform/*`. `release-regression` list fixtures now
+  use the actual mounted page and API paths; the request wait has a 10-second
+  failure rather than an unbounded promise. `archive-ui` fixtures now provide
+  current governance/retention paths, Chinese locale, tenant membership,
+  permissions and the current API error envelope.
+- Windows cleanup in `sqlite-lifecycle-browser-audit.mjs` uses `taskkill /T`
+  and escalates to `/F`; POSIX keeps process-group signals. A full real SQLite
+  audit ran all 11 flows PASS (`.temp/sqlite-lifecycle-JIXQAl/report.json`),
+  and a post-exit Win32 process query found no services under that run's path.
+- PASS: `bun run lint`, `node --check` on all 19 changed scripts, and
+  `git diff --check`. `release-regression` filtered list tests passed all 24
+  desktop/mobile cases after updating the effective-fields mock path.
+- `archive-ui` desktop and mobile PASS after supplying active tenant records
+  and reading the tenant from `/tenants/{id}` rather than a retired header.
+  The temporary wrong URL `/tenants/audit-governance` came from the fixture's
+  missing `status: active`, not a product routing defect.
+- Account-profile fixtures now model global session snapshots, consistent with
+  D74 and the current client. All ten cases PASS; late responses, omitted
+  fields, display refresh failures and mismatched subjects remain asserted.
+  Global addressing is explicitly checked. Empty workspaces correctly redirect
+  to `/me/profile`; workspace switching uses real navigation rather than the
+  retired automatic URL-less tenant selection.
+- The mock derives tenant context from URI mount points. Personal token,
+  identity link, membership withdrawal and closure processing fixtures use the
+  current request paths/methods while retaining proof/purpose/version/conflict
+  assertions. All seven personal-token cases PASS. Entity settings fixtures
+  supply their actual permissions and pass desktop/mobile.
+- Final verification PASS: full release regression 74/74, including explicit
+  absence of retired tenant headers on every intercepted API request. Archive
+  UI desktop/mobile PASS again with the same header check. Lint, syntax checks
+  for all 19 scripts and diff whitespace checks PASS. The earlier real SQLite
+  run remains 11/11 PASS with no leaked service processes.
+- Self-review and scoped acceptance PASS: all changes repair audit addressing,
+  fixtures, request assertions or owned-process cleanup; no application source,
+  dependency or product behavior changed. No scenario was removed. D74's
+  addressing is asserted while profile refresh safety checks are preserved.
+- Remaining limitation: other scripts dependent on external services/fixtures
+  were statically checked, not each executed. Do not claim all 19 runtime PASS.
+- Next action: no further implementation is pending for the scoped repair.
+  User authorized committing all changes and pushing IAM. The delivery includes
+  these 19 scripts and this task-state record, with no generated test artifacts.
+- Confirmed next work: implement D78's typed path-template requests before
+  continuing the proposed public API migration. Source inspection confirms
+  `iam-api.ts` imports only `components`; no application source imports `paths`
+  or uses a typed path-template request helper. Existing route-literal tests and
+  generated-type drift checks are useful but do not provide that compile-time
+  constraint. Start with the shared request helper, then convert its call sites
+  and prove an invalid path/method/parameter fails typecheck. Do not expand this
+  into unrelated historical suggestions or start the migration unasked.

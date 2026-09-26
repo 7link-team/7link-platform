@@ -70,6 +70,9 @@ try {
     ["mobile", { width: 390, height: 844 }],
   ]) {
     const context = await browser.newContext({ baseURL, viewport })
+    await context.addCookies([
+      { name: "NEXT_LOCALE", value: "zh-CN", url: baseURL },
+    ])
     const page = await context.newPage()
     page.on("pageerror", (error) => errors.push(error.message))
     const calls = []
@@ -89,13 +92,14 @@ try {
     }
     await context.route("**/api/**", async (route) => {
       const request = route.request()
+      assert.equal(request.headers()["x-tenant-id"], undefined)
       const url = new URL(request.url())
       const path = url.pathname.slice(4)
       const platform = path.startsWith("/platform/")
-      const tenant = request.headers()["x-tenant-id"]
+      const tenant = /^\/tenants\/([^/]+)/.exec(path)?.[1]
       calls.push({ path, method: request.method(), tenant })
       if (platform)
-        assert.equal(tenant, undefined, "platform API must omit tenant header")
+        assert.equal(tenant, undefined, "platform API must omit tenant path")
       const json = (data) =>
         route.fulfill({ json: { code: 0, message: "ok", data } })
       if (path === "/me/session")
@@ -105,13 +109,22 @@ try {
           display_name: "Archive operator",
           email: "operator@example.test",
         })
-      if (path === "/tenants")
+      if (path.endsWith("/me/permissions"))
         return json([
-          { id: "11", name: "Archive tenant" },
-          { id: "12", name: "Other tenant" },
+          "audit_event_export",
+          "audit_event_manage",
+          "platform_administer",
+        ])
+      if (path === "/me/tenants" || path === "/tenants")
+        return json([
+          { id: "11", name: "Archive tenant", status: "active" },
+          { id: "12", name: "Other tenant", status: "active" },
         ])
       if (platform && rejectPlatform)
-        return route.fulfill({ status: 403, json: { detail: "forbidden" } })
+        return route.fulfill({
+          status: 403,
+          json: { code: 403, message: "forbidden", data: null },
+        })
       const jobs = platform
         ? [{ ...makeJob(7000), tenant_id: null }]
         : tenant === "12"
@@ -131,7 +144,7 @@ try {
           failed_jobs: jobs.filter((j) => j.state === "failed").length,
           completed_jobs: jobs.filter((j) => j.state === "complete").length,
         })
-      if (path.endsWith("/governance"))
+      if (path.endsWith("/governance-policy"))
         return json({
           policy,
           integrity: {
@@ -192,14 +205,14 @@ try {
             }) + "\n",
         })
       }
-      if (path.endsWith("/retention")) {
+      if (path.endsWith("/retention-policy")) {
         Object.assign(policy, request.postDataJSON())
         return json(policy)
       }
       return json([])
     })
-    await page.goto("/audit-governance")
-    await page.getByText("共 23 个任务", { exact: true }).waitFor()
+    await page.goto("/tenants/11/audit-governance")
+    await page.getByText("共23 个任务", { exact: true }).waitFor()
     await page.getByText("平台默认", { exact: true }).waitFor()
     await fits(page)
     await page.screenshot({
@@ -259,7 +272,7 @@ try {
     assert.equal(await page.getByText("1001", { exact: true }).count(), 0)
     rejectPlatform = true
     await page.getByRole("button", { name: "刷新", exact: true }).click()
-    await page.getByText("forbidden", { exact: true }).waitFor()
+    await page.getByText("禁止", { exact: true }).waitFor()
     assert.equal(await page.getByText("7000", { exact: true }).count(), 0)
     rejectPlatform = false
     await page.getByRole("tab", { name: "当前租户", exact: true }).click()

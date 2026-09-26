@@ -111,11 +111,20 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
   }
   await page.route("**/api/**", async (route) => {
     const request = route.request()
-    const path = new URL(request.url()).pathname.slice(4)
+    assert.equal(
+      request.headers()["x-tenant-id"],
+      undefined,
+      "Tenant context belongs in the public URI"
+    )
+    const resourcePath = new URL(request.url()).pathname.slice(4)
+    const tenantID = /^\/tenants\/([^/]+)\//.exec(resourcePath)?.[1]
+    const path = tenantID
+      ? resourcePath.replace(/^\/tenants\/[^/]+/, "")
+      : resourcePath
     state.requests.push({
-      path,
+      path: resourcePath,
       method: request.method(),
-      tenant: request.headers()["x-tenant-id"],
+      tenant: tenantID,
     })
     const send = (data, status = 200) =>
       route.fulfill({
@@ -128,7 +137,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
           data,
         }),
       })
-    if (path === state.listPath) {
+    if (resourcePath === state.listPath) {
       const result = () => send(state.listData, state.listStatus)
       if (state.delayList) {
         state.heldList.push(result)
@@ -137,7 +146,11 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       }
       return result()
     }
-    if (path === "/me/permissions") return send(state.permissions)
+    if (
+      path === "/me/permissions" ||
+      /^\/entities\/[^/]+\/me\/permissions$/.test(path)
+    )
+      return send(state.permissions)
     if (state.roleScopeCase) {
       if (path === "/roles")
         return send([{ id: "scope-role", name: "Scope role", description: "" }])
@@ -163,7 +176,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
         return send(snapshot)
       }
     }
-    if (path === "/personal-token-permissions")
+    if (path === "/me/personal-token-permissions")
       return send([
         { code: "user_view", resource: "user", verb: "view", scope: "tenant" },
       ])
@@ -172,7 +185,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
         methods: state.federated ? [] : ["password"],
         mfa_required: !state.federated,
       })
-    if (path === "/identity-links")
+    if (path === "/me/identity-links")
       return send(
         state.links ??
           (state.federated
@@ -186,7 +199,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
               ]
             : [])
       )
-    if (path === "/identity-link-providers")
+    if (path === "/me/identity-link-providers")
       return send(
         state.providers ??
           (state.federated
@@ -199,7 +212,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
               ]
             : [])
       )
-    if (path === "/identity-link-transactions") {
+    if (path === "/me/identity-link-transactions") {
       if (state.identityFlow) {
         assert(state.proofVerified)
         assert.equal(state.reauthPurpose, "identity_link")
@@ -212,12 +225,12 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
             external_subject: "External person",
           },
         ]
-        return send({ authorization_url: baseURL + "/account/identities" })
+        return send({ authorization_url: baseURL + "/me/identities" })
       }
       state.proofVerified = true
-      return send({ authorization_url: baseURL + "/account/tokens" })
+      return send({ authorization_url: baseURL + "/me/tokens" })
     }
-    if (path === "/personal-token-preparations") {
+    if (path === "/me/personal-token-preparations") {
       state.tokenPreparation = request.postDataJSON()
       return send({
         request: state.tokenPreparation,
@@ -243,7 +256,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
         state.proofVerified ? 200 : 401
       )
     }
-    if (path === "/personal-tokens" && request.method() === "POST") {
+    if (path === "/me/personal-tokens" && request.method() === "POST") {
       assert(state.proofVerified, "Token creation requires verified proof")
       assert.equal(state.reauthPurpose, "personal_token_create")
       const token = {
@@ -254,12 +267,8 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       state.personalTokens = [token]
       return send({ ...token, token: "fixture-one-time-secret" })
     }
-    if (path === "/personal-tokens")
-      return send(state.personalTokens ?? [])
-    if (
-      path === "/identity-links/link-1" &&
-      request.method() === "DELETE"
-    ) {
+    if (path === "/me/personal-tokens") return send(state.personalTokens ?? [])
+    if (path === "/me/identity-links/link-1" && request.method() === "DELETE") {
       assert(state.proofVerified)
       assert.equal(state.reauthPurpose, "identity_unlink")
       assert.equal(state.reauthTarget, "link-1")
@@ -272,7 +281,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
         items: state.memberships ?? [],
         total: state.memberships?.length ?? 0,
       })
-    if (path === "/me/memberships/t1/leave") {
+    if (path === "/me/memberships/t1" && request.method() === "DELETE") {
       assert(state.proofVerified)
       assert.equal(state.reauthPurpose, "tenant_leave")
       assert.equal(state.reauthTarget, "t1")
@@ -314,18 +323,21 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
     }
     if (
       path.startsWith("/platform/principals/") &&
-      path.includes("/closure-request/")
+      path.endsWith("/closure-request") &&
+      request.method() === "PATCH"
     ) {
-      const id = path.split("/")[4]
+      const id = path.split("/")[3]
       const item = state.closureQueue.find((entry) => entry.principal_id === id)
       assert.equal(request.postDataJSON().version, item.version)
       if (state.actionConflict) return send(null, 409)
-      item.status = path.endsWith("/processing") ? "processing" : "rejected"
+      const status = request.postDataJSON().status
+      assert(["processing", "rejected"].includes(status))
+      item.status = status
       item.version++
       return send(item)
     }
     if (
-      path === "/personal-tokens/token-1" &&
+      path === "/me/personal-tokens/token-1" &&
       request.method() === "DELETE"
     ) {
       state.personalTokens[0].revoked_at = "2026-09-10T00:01:00Z"
@@ -333,24 +345,21 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
     }
     if (path === "/me/session" && request.method() === "GET") {
       if (state.accountIdentityCase) {
-        const tenantID = request.headers()["x-tenant-id"]
         const profile = {
           subject: state.subject,
           issuer: "test",
           acr: 1,
-          ...(tenantID ? state.accountProfiles?.[tenantID] : {}),
+          organization_id: "t1",
+          ...state.accountProfile,
         }
-        if (tenantID && state.delayAccountTenant === tenantID) {
+        if (state.delayAccountProfile) {
           state.releaseAccountProfile = () => send(profile)
           state.onAccountProfileDelayed()
           return
         }
-        if (tenantID && state.accountProfileStatus === "network")
+        if (state.accountProfileStatus === "network")
           return route.abort("failed")
-        return send(
-          profile,
-          tenantID ? (state.accountProfileStatus ?? 200) : 200
-        )
+        return send(profile, state.accountProfileStatus ?? 200)
       }
       if (state.sessionStatus === "network") return route.abort("failed")
       return send(
@@ -399,8 +408,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
     }
     if (path === "/tenants")
       return send(state.platform, state.platform ? 200 : 403)
-    if (path === "/entities")
-      return send(state.entities, state.entitiesStatus)
+    if (path === "/entities") return send(state.entities, state.entitiesStatus)
     if (path === "/me/menus") {
       if (state.delayMenus) {
         const menus = state.delayMenus
@@ -427,7 +435,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       return send({ revoked: state.revoke === 200 }, state.revoke)
     }
     if (path === "/principals") return send({ items: [] })
-    if (path === "/fields/effective") return send({ fields: {} })
+    if (path === "/effective-fields") return send({ fields: {} })
     if (path === "/audit-integrity")
       return send({ valid: true, verified_events: 0, head_sequence: 0 })
     if (path === "/oauth-clients")
@@ -453,6 +461,12 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
     console.log(`PASS ${name}`)
   } catch (error) {
     console.error(`FAIL ${name}: ${await page.locator("body").innerText()}`)
+    console.error(
+      "Browser errors:",
+      errors,
+      "Recent requests:",
+      state.requests.slice(-10)
+    )
     throw error
   } finally {
     await context.close()
@@ -472,13 +486,19 @@ async function workspace(page) {
 }
 try {
   await scenario(
-    "account identity uses tenant profile without changing global authentication",
+    "account identity uses the global session without tenant addressing",
     async (page, state) => {
       state.accountIdentityCase = true
-      state.accountProfiles = {
-        t1: { preferred_username: "Administrator name", email: "" },
+      state.accountProfile = {
+        preferred_username: "Administrator name",
+        email: "",
       }
-      await page.goto("/")
+      const dashboard = page.waitForResponse((response) =>
+        response.url().endsWith("/me/sessions")
+      )
+      await page.goto("/tenants/t1")
+      await page.waitForURL("**/tenants/t1")
+      await dashboard
       const account = page.getByRole("button", {
         name: "Account menu",
         exact: true,
@@ -497,36 +517,47 @@ try {
         "Authentication remains global"
       )
       assert(
-        sessions.some((request) => request.tenant === "t1"),
-        "Display uses authorized tenant context"
+        sessions.every((request) => !request.tenant),
+        "Authentication and display both use the global session"
       )
       await account.click()
       await page
         .getByRole("menuitem", { name: "My account", exact: true })
         .waitFor()
-      assert.equal(new URL(page.url()).pathname, "/")
+      assert.equal(new URL(page.url()).pathname, "/tenants/t1")
     }
   )
   await scenario(
-    "account identity ignores late profiles from another tenant",
+    "account identity ignores late global profile refreshes after workspace changes",
     async (page, state) => {
       state.accountIdentityCase = true
-      state.accountProfiles = {
-        t1: { preferred_username: "Old tenant name" },
-        t2: { preferred_username: "Current tenant name" },
-      }
-      state.delayAccountTenant = "t1"
-      const delayed = new Promise((resolve) => {
-        state.onAccountProfileDelayed = resolve
-      })
-      await page.goto("/")
-      await delayed
-      await workspace(page)
-      await page.getByRole("button", { name: /Workspace t2/ }).click()
+      state.accountProfile = { preferred_username: "Old profile name" }
+      await page.goto("/tenants/t1")
+      await page.waitForURL("**/tenants/t1")
       await page.waitForFunction(() =>
         document
           .querySelector('button[aria-label="Account menu"]')
-          ?.textContent.includes("Current tenant name")
+          ?.textContent.includes("Old profile name")
+      )
+      state.delayAccountProfile = true
+      const delayed = new Promise((resolve) => {
+        state.onAccountProfileDelayed = resolve
+      })
+      await workspace(page)
+      await page.getByRole("button", { name: /Workspace t2/ }).click()
+      await delayed
+      await page.waitForURL("**/tenants/t2")
+      await page.keyboard.press("Escape")
+      await page.getByRole("dialog").waitFor({ state: "hidden" })
+      state.delayAccountProfile = false
+      state.accountProfile = { preferred_username: "Current profile name" }
+      await workspace(page)
+      await page.getByRole("button", { name: /Workspace t1/ }).click()
+      await page.keyboard.press("Escape")
+      await page.waitForFunction(() =>
+        document
+          .querySelector('button[aria-label="Account menu"]')
+          ?.textContent.includes("Current profile name")
       )
       await state.releaseAccountProfile()
       await page.waitForTimeout(200)
@@ -534,29 +565,25 @@ try {
         name: "Account menu",
         exact: true,
       })
-      assert((await account.innerText()).includes("Current tenant name"))
-      assert(!(await account.innerText()).includes("Old tenant name"))
+      assert((await account.innerText()).includes("Current profile name"))
+      assert(!(await account.innerText()).includes("Old profile name"))
     }
   )
   await scenario(
-    "account identity clears the previous tenant name when fields are omitted",
+    "account identity clears the previous global profile name when fields are omitted",
     async (page, state) => {
       state.accountIdentityCase = true
-      state.accountProfiles = {
-        t1: { preferred_username: "Private tenant name" },
-        t2: {},
-      }
-      await page.goto("/")
+      state.accountProfile = { preferred_username: "Previous profile name" }
+      await page.goto("/tenants/t1")
       await page.waitForFunction(() =>
         document
           .querySelector('button[aria-label="Account menu"]')
-          ?.textContent.includes("Private tenant name")
+          ?.textContent.includes("Previous profile name")
       )
-      const updated = page.waitForResponse(
-        (response) =>
-          response.url().endsWith("/me/session") &&
-          response.request().headers()["x-tenant-id"] === "t2"
+      const updated = page.waitForResponse((response) =>
+        response.url().endsWith("/me/session")
       )
+      state.accountProfile = {}
       await workspace(page)
       await page.getByRole("button", { name: /Workspace t2/ }).click()
       await updated
@@ -570,7 +597,7 @@ try {
         .click()
       assert(
         !(await page.getByRole("menu").innerText()).includes(
-          "Private tenant name"
+          "Previous profile name"
         )
       )
     }
@@ -580,13 +607,16 @@ try {
       `account identity failure ${status} preserves global login`,
       async (page, state) => {
         state.accountIdentityCase = true
+        await page.goto("/tenants/t1")
+        await page
+          .getByRole("button", { name: "Account menu", exact: true })
+          .waitFor()
         state.accountProfileStatus = status
-        const requested = page.waitForRequest(
-          (request) =>
-            request.url().endsWith("/me/session") &&
-            request.headers()["x-tenant-id"] === "t1"
+        const requested = page.waitForRequest((request) =>
+          request.url().endsWith("/me/session")
         )
-        await page.goto("/")
+        await workspace(page)
+        await page.getByRole("button", { name: /Workspace t2/ }).click()
         await requested
         const account = page.getByRole("button", {
           name: "Account menu",
@@ -597,7 +627,7 @@ try {
           .getByRole("menuitem", { name: "My account", exact: true })
           .waitFor()
         assert((await page.getByRole("menu").innerText()).includes("person-1"))
-        assert.equal(new URL(page.url()).pathname, "/")
+        assert.equal(new URL(page.url()).pathname, "/tenants/t2")
       }
     )
   await scenario(
@@ -606,10 +636,10 @@ try {
       state.accountIdentityCase = true
       state.mine = []
       await page.goto("/")
-      await visible(
-        page,
-        "No active workspaces are available for this account."
-      )
+      await page.waitForURL("**/me/profile")
+      await page
+        .getByRole("heading", { name: "Basic information", exact: true })
+        .waitFor()
       await page
         .getByRole("button", { name: "Account menu", exact: true })
         .click()
@@ -625,10 +655,11 @@ try {
     "account identity mobile uses permitted email for blank username",
     async (page, state) => {
       state.accountIdentityCase = true
-      state.accountProfiles = {
-        t1: { preferred_username: "  ", email: "person@example.test" },
+      state.accountProfile = {
+        preferred_username: "  ",
+        email: "person@example.test",
       }
-      await page.goto("/")
+      await page.goto("/tenants/t1")
       await page.waitForFunction(() =>
         document
           .querySelector('button[aria-label="Account menu"]')
@@ -654,18 +685,19 @@ try {
     "account identity rejects a profile for a different subject",
     async (page, state) => {
       state.accountIdentityCase = true
-      state.accountProfiles = {
-        t1: {
-          subject: "other-person",
-          preferred_username: "Other person's name",
-        },
+      await page.goto("/tenants/t1")
+      await page
+        .getByRole("button", { name: "Account menu", exact: true })
+        .waitFor()
+      state.accountProfile = {
+        subject: "other-person",
+        preferred_username: "Other person's name",
       }
-      const received = page.waitForResponse(
-        (response) =>
-          response.url().endsWith("/me/session") &&
-          response.request().headers()["x-tenant-id"] === "t1"
+      const received = page.waitForResponse((response) =>
+        response.url().endsWith("/me/session")
       )
-      await page.goto("/")
+      await workspace(page)
+      await page.getByRole("button", { name: /Workspace t2/ }).click()
       await received
       await page
         .getByRole("button", { name: "Account menu", exact: true })
@@ -679,8 +711,8 @@ try {
     "account identity remains readable in the personal account header",
     async (page, state) => {
       state.accountIdentityCase = true
-      state.accountProfiles = { t1: { preferred_username: "Account owner" } }
-      await page.goto("/")
+      state.accountProfile = { preferred_username: "Account owner" }
+      await page.goto("/tenants/t1")
       await page.waitForFunction(() =>
         document
           .querySelector('button[aria-label="Account menu"]')
@@ -692,7 +724,7 @@ try {
       await page
         .getByRole("menuitem", { name: "My account", exact: true })
         .click()
-      await page.waitForURL("**/account/profile")
+      await page.waitForURL("**/me/profile")
       await page.waitForFunction(() =>
         document
           .querySelector('button[aria-label="Account menu"]')
@@ -700,7 +732,7 @@ try {
       )
     }
   )
-  for (const route of ["/", "/account/applications", "/login"]) {
+  for (const route of ["/tenants/t1", "/me/applications", "/login"]) {
     await scenario(
       `session verification 503/network retry preserves route ${route}`,
       async (page, state) => {
@@ -737,7 +769,7 @@ try {
     "session 401 reaches login and failed post-login verification never follows success URL",
     async (page, state) => {
       state.sessionStatus = 401
-      await page.goto("/account/applications")
+      await page.goto("/me/applications")
       await page.waitForURL("**/login")
       await page.locator('input[name="login_name"]').fill("person-1")
       await page.locator('input[name="password"]').fill("local-test-password")
@@ -758,7 +790,7 @@ try {
     {
       id: label,
       label,
-      path: "/roles",
+      path: "/tenants/t1/roles",
       sort_order: 0,
       permission_code: "role_view",
     },
@@ -798,7 +830,7 @@ try {
     }
   )
   await scenario(
-    "automatic tenant selection hides cached menus while new menus load",
+    "workspace navigation hides cached menus while new menus load",
     async (page, state) => {
       state.menus = menu("Tenant one menu")
       await page.goto("/")
@@ -807,11 +839,11 @@ try {
       const arrived = new Promise((resolve) => {
         state.onMenuDelayed = resolve
       })
-      state.mine = [tenant("t2")]
-      await page.evaluate(() =>
-        window.dispatchEvent(new Event("tenant-catalog-change"))
-      )
+      await workspace(page)
+      await page.getByRole("button", { name: /Workspace t2/ }).click()
+      await page.keyboard.press("Escape")
       await arrived
+      await page.waitForURL("**/tenants/t2")
       await page.waitForFunction(
         () => localStorage.getItem("iam.tenant") === "t2"
       )
@@ -839,10 +871,9 @@ try {
       await arrived
       state.delayMenus = null
       state.menus = menu("Tenant two menu")
-      state.mine = [tenant("t2")]
-      await page.evaluate(() =>
-        window.dispatchEvent(new Event("tenant-catalog-change"))
-      )
+      await workspace(page)
+      await page.getByRole("button", { name: /Workspace t2/ }).click()
+      await page.keyboard.press("Escape")
       await visible(page, "Tenant two menu")
       for (const release of state.delayedMenus) await release()
       await page.evaluate(
@@ -861,14 +892,14 @@ try {
   await scenario(
     "logout 500/network preserves session and retries to server URL",
     async (page, state) => {
-      await page.goto("/account/applications")
+      await page.goto("/me/applications")
       await visible(page, "Calendar client")
       await menuLogout(page)
       await visible(
         page,
         "Sign out could not be confirmed. Your session may still be active. Retry before leaving this device."
       )
-      assert.equal(new URL(page.url()).pathname, "/account/applications")
+      assert.equal(new URL(page.url()).pathname, "/me/applications")
       await page.reload()
       await visible(page, "Calendar client")
       state.logout = "network"
@@ -884,10 +915,10 @@ try {
     }
   )
   await scenario("logout all failure and success URL", async (page, state) => {
-    await page.goto("/account/security")
+    await page.goto("/me/security")
     await page.getByRole("button", { name: "Sign out all devices" }).click()
     await visible(page, "failure 500")
-    assert.equal(new URL(page.url()).pathname, "/account/security")
+    assert.equal(new URL(page.url()).pathname, "/me/security")
     state.logout = 200
     await page.getByRole("button", { name: "Sign out all devices" }).click()
     await page.waitForURL("**/signed-out")
@@ -935,12 +966,13 @@ try {
     async (page, state) => {
       state.mine = []
       state.platform = [tenant("platform-only")]
-      await page.goto("/")
+      await page.goto("/platform/tenants")
       await page.waitForFunction(
         () => localStorage.getItem("iam.tenant") === "platform-only"
       )
       await workspace(page)
       await page
+        .getByRole("dialog")
         .getByRole("button", { name: /Workspace platform-only/ })
         .waitFor()
     }
@@ -949,7 +981,7 @@ try {
     "tenant failure, retry, empty directory and late response",
     async (page, state) => {
       state.tenantsStatus = 500
-      await page.goto("/")
+      await page.goto("/tenants/t1")
       await visible(page, "failure 500")
       await workspace(page)
       state.tenantsStatus = 200
@@ -996,8 +1028,9 @@ try {
   for (const mobile of [false, true]) {
     await scenario(
       `child settings retain parent and exclude descendants (${mobile ? "mobile" : "desktop"})`,
-      async (page) => {
-        await page.goto("/entities/child/manage")
+      async (page, state) => {
+        state.permissions = ["entity_view", "entity_update"]
+        await page.goto("/tenants/t1/entities/child/manage")
         const rows = page.locator("tbody tr")
         await rows.first().waitFor()
         assert.equal(await rows.count(), 1)
@@ -1019,7 +1052,7 @@ try {
     async (page, state) => {
       state.entitiesStatus = 403
       state.menusStatus = 500
-      await page.goto("/entities")
+      await page.goto("/tenants/t1/entities")
       await visible(page, "failure 403")
       await visible(page, "failure 500")
       assert.equal(
@@ -1062,7 +1095,7 @@ try {
     await scenario(
       `consent load/revoke failure/retry/readback ${locale}`,
       async (page, state) => {
-        await page.goto("/account/applications")
+        await page.goto("/me/applications")
         await page.getByRole("heading", { name: title, exact: true }).waitFor()
         await visible(page, "Calendar client")
         await page.getByRole("button", { name: revoke, exact: true }).click()
@@ -1089,7 +1122,7 @@ try {
   }
   await scenario("consent 403 is not an empty state", async (page, state) => {
     state.consentStatus = 403
-    await page.goto("/account/applications")
+    await page.goto("/me/applications")
     await visible(page, "failure 403")
     assert.equal(
       await page
@@ -1112,7 +1145,7 @@ try {
           department_ids: [],
         }
         state.permissions = ["role_view", "role_update", "dept_view"]
-        await page.goto("/roles?role=scope-role&view=scope")
+        await page.goto("/tenants/t1/roles?role=scope-role&view=scope")
         const scope = page.locator("#role-data-scope")
         await scope.waitFor()
         state.delayRoleScope = true
@@ -1163,7 +1196,7 @@ try {
         department_ids: [],
       }
       state.permissions = ["role_view", "role_update", "dept_view"]
-      await page.goto("/roles?role=scope-role&view=scope")
+      await page.goto("/tenants/t1/roles?role=scope-role&view=scope")
       const scope = page.locator("#role-data-scope")
       await scope.waitFor()
       state.roleScope = {
@@ -1185,7 +1218,7 @@ try {
     "nullable OAuth array fields render and open editor",
     async (page, state) => {
       state.permissions = ["oauth_client_update"]
-      await page.goto("/oauth-clients")
+      await page.goto("/tenants/t1/oauth-clients")
       await visible(page, "Machine client")
       await page
         .getByRole("button", { name: "Edit Machine client", exact: true })
@@ -1197,7 +1230,7 @@ try {
     "language switch changes subsequent client error feedback",
     async (page, state) => {
       state.invalidConsentResponse = true
-      await page.goto("/account/applications")
+      await page.goto("/me/applications")
       await visible(page, "The service returned an invalid response.")
       await page.getByRole("button", { name: "Language", exact: true }).click()
       await page.getByRole("button", { name: /ZH 简体中文/ }).click()
@@ -1219,9 +1252,8 @@ try {
       ["scim-directories", "No SCIM directories created"],
     ].map(([name, empty]) => ({
       name,
-      path: `/${name}`,
-      api:
-        name === "scim-directories" ? "/scim/directories" : `/${name}`,
+      path: `/tenants/t1/${name}`,
+      api: `/tenants/t1/${name}`,
       empty,
       emptyData: [],
       data: [
@@ -1256,8 +1288,8 @@ try {
     })),
     {
       name: "service-accounts",
-      path: "/service-accounts",
-      api: "/service-accounts",
+      path: "/tenants/t1/service-accounts",
+      api: "/tenants/t1/service-accounts",
       empty: "No service accounts created",
       emptyData: { items: [], total: 0 },
       data: {
@@ -1276,8 +1308,8 @@ try {
     },
     {
       name: "audit-events",
-      path: "/audit-events",
-      api: "/audit-events",
+      path: "/tenants/t1/audit/events",
+      api: "/tenants/t1/audit/events",
       empty: "No matching audit events",
       emptyData: [],
       data: [
@@ -1294,8 +1326,8 @@ try {
     },
     {
       name: "principals",
-      path: "/users",
-      api: "/principals",
+      path: "/tenants/t1/users",
+      api: "/tenants/t1/principals",
       empty: "No local accounts",
       emptyData: { items: [] },
       data: {
@@ -1312,7 +1344,7 @@ try {
     },
     {
       name: "tenants",
-      path: "/tenants",
+      path: "/platform/tenants",
       api: "/tenants",
       empty: "No tenants",
       emptyData: [],
@@ -1321,8 +1353,8 @@ try {
     },
     {
       name: "oauth-clients",
-      path: "/oauth-clients",
-      api: "/oauth-clients",
+      path: "/tenants/t1/oauth-clients",
+      api: "/tenants/t1/oauth-clients",
       empty: "No OAuth clients registered",
       emptyData: [],
       data: [
@@ -1343,7 +1375,7 @@ try {
       await scenario(
         `list states ${fixture.name} ${mobile ? "mobile" : "desktop"}`,
         async (page, state) => {
-          await page.goto("/account/applications")
+          await page.goto("/me/applications")
           await page
             .getByRole("heading", {
               name: "Authorized applications",
@@ -1359,7 +1391,12 @@ try {
             state.onListDelayed = resolve
           })
           await page.goto(fixture.path)
-          await requested
+          await Promise.race([
+            requested,
+            page.waitForTimeout(10_000).then(() => {
+              throw new Error(`List request not observed: ${fixture.api}`)
+            }),
+          ])
           if (fixture.name === "access-reviews")
             await page
               .getByLabel("Loading access reviews", { exact: true })
@@ -1424,7 +1461,7 @@ try {
       await scenario(
         `personal token verification create revoke ${locale} ${mobile ? "mobile" : "desktop"}`,
         async (page, state) => {
-          await page.goto("/account/tokens")
+          await page.goto("/me/tokens")
           await page
             .getByRole("heading", {
               name: messages.personalTokens,
@@ -1498,19 +1535,10 @@ try {
           await page
             .getByRole("button", { name: messages.revoked, exact: true })
             .waitFor()
-          for (const request of state.requests.filter(
-            (item) =>
-              item.path.startsWith("/") ||
-              item.path.startsWith("/me/")
+          for (const request of state.requests.filter((item) =>
+            item.path.startsWith("/me/")
           )) {
-            // Only the header's read-only profile projection is tenant-scoped.
-            if (
-              request.path === "/me/session" &&
-              request.method === "GET" &&
-              request.tenant !== undefined
-            )
-              assert.equal(request.tenant, "t1")
-            else assert.equal(request.tenant, undefined)
+            assert.equal(request.tenant, undefined)
           }
           assert(
             await page.evaluate(
@@ -1525,7 +1553,7 @@ try {
     "personal token federated continuation keeps proof out of URL",
     async (page, state) => {
       state.federated = true
-      await page.goto("/account/tokens")
+      await page.goto("/me/tokens")
       await page
         .getByRole("button", { name: "Create personal token", exact: true })
         .click()
@@ -1577,7 +1605,7 @@ try {
             { tenant_id: "t1", tenant_name: "Workspace t1" },
             { tenant_id: "t2", tenant_name: "Workspace t2" },
           ]
-          await page.goto("/account/memberships")
+          await page.goto("/me/memberships")
           await visible(page, "Workspace t1")
           state.actionConflict = true
           await button("leaveTenant").first().click()
@@ -1598,7 +1626,7 @@ try {
           await visible(page, "Workspace t2")
           assert.equal(state.sessionStatus, 200)
 
-          await page.goto("/account/closure")
+          await page.goto("/me/closure")
           await button("submitClosureRequest").click()
           await verify()
           await button("cancelClosureRequest").waitFor()
@@ -1623,7 +1651,7 @@ try {
               provider_type: "oidc",
             },
           ]
-          await page.goto("/account/identities")
+          await page.goto("/me/identities")
           await page.locator("#identity-provider").selectOption("provider-1")
           await button("linkIdentity").click()
           await verify()
@@ -1645,7 +1673,7 @@ try {
             { principal_id: "requester-one", status: "pending", version: 1 },
             { principal_id: "requester-two", status: "pending", version: 3 },
           ]
-          await page.goto("/closure-requests")
+          await page.goto("/platform/closure-requests")
           await visible(page, "requester-one")
           await button("rejectClosureRequest").first().click()
           state.actionConflict = true
@@ -1692,18 +1720,9 @@ try {
           )
           for (const request of state.requests.filter(
             (item) =>
-              item.path.startsWith("/platform/") ||
-              item.path.startsWith("/") ||
-              item.path.startsWith("/me/memberships") ||
-              item.path === "/me/closure-request"
+              item.path.startsWith("/platform/") || item.path.startsWith("/me/")
           )) {
-            if (
-              request.path === "/me/session" &&
-              request.method === "GET" &&
-              request.tenant !== undefined
-            )
-              assert(["t1", "t2"].includes(request.tenant))
-            else assert.equal(request.tenant, undefined)
+            assert.equal(request.tenant, undefined)
           }
         },
         { locale, mobile }
@@ -1721,7 +1740,7 @@ try {
       async (page, state) => {
         state.failureMessage = "forbidden"
         state.entitiesStatus = 403
-        await page.goto("/entities")
+        await page.goto("/tenants/t1/entities")
         await page
           .getByRole("alert")
           .filter({ hasText: messages.forbidden })
@@ -1735,7 +1754,7 @@ try {
           0
         )
         state.consentStatus = 403
-        await page.goto("/account/applications")
+        await page.goto("/me/applications")
         await page
           .getByRole("alert")
           .filter({ hasText: messages.forbidden })

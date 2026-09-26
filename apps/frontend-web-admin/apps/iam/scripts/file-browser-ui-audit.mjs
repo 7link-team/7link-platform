@@ -627,7 +627,7 @@ try {
       }
       return route.fulfill({ json: { code: 0, message: "ok", data: [] } })
     })
-    await page.goto(`${baseURL}/account/files`)
+    await page.goto(`${baseURL}/me/files`)
     await waitCount(page, 1)
     await page.getByText("Private note.txt", { exact: true }).waitFor()
     assert.deepEqual(
@@ -645,7 +645,7 @@ try {
     })
     await page.close()
     console.log(
-      `PASS /account/files route ${name}: account ownership and absent organization selectors`
+      `PASS /me/files route ${name}: account ownership and absent organization selectors`
     )
   }
   assert.deepEqual(errors, [], "browser runtime errors")

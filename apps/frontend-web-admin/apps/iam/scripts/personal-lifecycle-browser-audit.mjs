@@ -132,7 +132,7 @@ try {
         page.setDefaultTimeout(15000)
         const errors = []
         page.on("pageerror", (e) => errors.push(e.message))
-        await page.goto("/account/memberships")
+        await page.goto("/me/memberships")
         await page.getByRole("heading", { name, exact: true }).waitFor()
         await page
           .getByRole("button", { name: messages.leaveTenant, exact: true })
@@ -146,7 +146,7 @@ try {
         )
         const membership = await ok(context, "/me/memberships")
         assert.equal(membership.items.length, 0)
-        await page.goto("/account/closure")
+        await page.goto("/me/closure")
         await page
           .getByRole("button", {
             name: messages.submitClosureRequest,
@@ -190,7 +190,7 @@ try {
         const review = await reviewer.newPage()
         review.on("pageerror", (e) => errors.push(e.message))
         review.setDefaultTimeout(15000)
-        await review.goto("/closure-requests")
+        await review.goto("/platform/closure-requests")
         const row = review.getByRole("listitem").filter({
           has: review.getByRole("heading", {
             name: principal.id,
