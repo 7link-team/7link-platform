@@ -249,8 +249,8 @@ async function cleanupArtifacts() {
     const roles = await fetch("/api/roles", { credentials: "include", headers });
     if (roles.ok) {
       for (const role of (await roles.json()).data.filter((item) => item.name.startsWith("Acceptance Store Viewer "))) {
-        for (const code of ((await (await fetch("/api/roles/" + encodeURIComponent(role.id) + "/permissions", { credentials: "include", headers })).json()).data ?? []))
-          await fetch("/api/roles/" + encodeURIComponent(role.id) + "/permissions/" + encodeURIComponent(code), { method: "DELETE", credentials: "include", headers });
+        for (const grant of ((await (await fetch("/api/roles/" + encodeURIComponent(role.id) + "/permission-grants", { credentials: "include", headers })).json()).data ?? []))
+          await fetch("/api/roles/" + encodeURIComponent(role.id) + "/permissions/" + encodeURIComponent(grant.permission_code), { method: "DELETE", credentials: "include", headers });
         await fetch("/api/roles/" + encodeURIComponent(role.id), { method: "DELETE", credentials: "include", headers });
       }
     }

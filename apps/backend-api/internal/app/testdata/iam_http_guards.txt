@@ -145,7 +145,6 @@ iam-list-relationships => tenant|entity_view
 iam-list-role-directory-bindings => owned-resource|role_view
 iam-list-role-members => owned-resource|role_view
 iam-list-role-permission-grants => owned-resource|role_view
-iam-list-role-permissions => owned-resource|role_view
 iam-list-roles => tenant|role_view
 iam-list-tenant-member-roles => tenant|role_view
 iam-list-tenant-members => tenant|user_view

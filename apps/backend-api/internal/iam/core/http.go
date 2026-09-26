@@ -800,20 +800,6 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-list-role-permissions", Method: http.MethodGet, Path: "/roles/{role_id}/permissions", Summary: "List role permission grants", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound},
-	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *roleInput) (*respx.Body[[]string], error) {
-		tenantID, roleID, err := roleRef(ctx, in)
-		if err != nil {
-			return nil, err
-		}
-		codes, err := svc.ListPermissions(ctx, tenantID, roleID)
-		if err != nil {
-			return nil, apiError("list role permissions", err)
-		}
-		return respx.OK(ctx, codes), nil
-	})
-
-	authz.RegisterOwned(registrar, a, huma.Operation{
 		OperationID: "iam-list-role-permission-grants", Method: http.MethodGet, Path: "/roles/{role_id}/permission-grants", Summary: "List role permission grants with conditions", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *roleInput) (*respx.Body[[]APIRolePermissionGrant], error) {
 		tenantID, roleID, err := roleRef(ctx, in)

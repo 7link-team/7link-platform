@@ -2747,12 +2747,6 @@ export function createIamApi(
       request(
         apiRoute("delete", "/roles/{role_id}", { path: { role_id: id } })
       ),
-    rolePermissions: (id: string) =>
-      request<string[]>(
-        apiRoute("get", "/roles/{role_id}/permissions", {
-          path: { role_id: id },
-        })
-      ),
     rolePermissionGrants: (id: string) =>
       request<RolePermissionGrant[]>(
         apiRoute("get", "/roles/{role_id}/permission-grants", {

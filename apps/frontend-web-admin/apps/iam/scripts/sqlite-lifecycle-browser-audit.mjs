@@ -292,7 +292,9 @@ async function createRole(page, name, codes, members = []) {
       .click()
     await eventually(
       async () =>
-        (await client(page, "rolePermissions", role.id)).includes(code),
+        (await client(page, "rolePermissionGrants", role.id)).some(
+          (grant) => grant.permission_code === code
+        ),
       `grant ${code}`
     )
   }
@@ -520,7 +522,9 @@ try {
     { status: 422 }
   )
   assert.deepEqual(
-    await call(admin.context, `/roles/${administrator.id}/permissions`),
+    (await call(admin.context, `/roles/${administrator.id}/permission-grants`)).map(
+      (grant) => grant.permission_code
+    ),
     ["tenant_administer"]
   )
   await capture(admin.page, "first-tenant", 1440)

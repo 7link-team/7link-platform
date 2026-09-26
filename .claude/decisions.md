@@ -2869,3 +2869,22 @@ Full backend unit/integration suites, lint, formatting, coverage and OpenAPI
 drift gates passed. Migration-status acceptance includes upgrade/down/up across
 all three engines and both prefixes. Direct execution; no delegation.
 Self-review and final requirement acceptance: PASS. No optional follow-on change.
+
+## D84 - Consolidate Role Permission Reads; Retain GUID HTTP APIs (2026-09-26)
+
+Decision: User explicitly retained GET /guid and GET /guid/{count} and approved
+the other confirmed review optimization: remove GET /roles/{role_id}/permissions.
+Keep GET /roles/{role_id}/permission-grants, permission writes/conditions, and
+internal ListPermissions used by authorization. No database migration.
+Reason: the removed read merely projected permission_code from full grants;
+the Web role page already consumes grants including conditions.
+Alternative: maintain two read contracts. Rejected as redundant for current clients.
+Tradeoff: external callers of the removed read must consume permission-grants
+and extract permission_code. No compatibility alias that preserves duplication.
+Scope: one public operation, its unused Web wrapper/generated contracts, exact
+route manifests and browser-script consumers. GUID remains an intentional API.
+Evidence: published operations 288 -> 287; retained operation definitions identical;
+backend full unit tests, frontend typecheck/lint/build and 46 client tests PASS;
+OpenAPI/client drift PASS; real SQLite/Chrome lifecycle E2E 18/18 PASS in
+.temp/sqlite-lifecycle-QXgwdq/report.json. Live retired GET 404, GUID reads 200.
+Status: accepted; self-review and requirement acceptance PASS. No further deletion.

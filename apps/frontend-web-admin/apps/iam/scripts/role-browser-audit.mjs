@@ -204,11 +204,11 @@ async function cleanup() {
         `/roles/${encodeURIComponent(role.id)}/directory-bindings/${binding.assignee_type}/${encodeURIComponent(binding.assignee_id)}`,
         { method: "DELETE" }
       )
-    for (const code of await api(
-      `/roles/${encodeURIComponent(role.id)}/permissions`
+    for (const grant of await api(
+      `/roles/${encodeURIComponent(role.id)}/permission-grants`
     ))
       await api(
-        `/roles/${encodeURIComponent(role.id)}/permissions/${encodeURIComponent(code)}`,
+        `/roles/${encodeURIComponent(role.id)}/permissions/${encodeURIComponent(grant.permission_code)}`,
         { method: "DELETE" }
       )
     for (const subject of await api(
@@ -495,8 +495,8 @@ await waitFor(permissionSelector)
 await clickElement(permissionSelector)
 await waitFor(`${permissionSelector}?.getAttribute("aria-checked") === "true"`)
 if (
-  !(await api(`/roles/${encodeURIComponent(role.id)}/permissions`)).includes(
-    "menu_view"
+  !(await api(`/roles/${encodeURIComponent(role.id)}/permission-grants`)).some(
+    (grant) => grant.permission_code === "menu_view"
   )
 )
   throw new Error("permission grant did not persist")

@@ -80,7 +80,6 @@ iam-list-relationships => iam-list-relationships|GET|/tenants/{tenant_id}/author
 iam-list-role-directory-bindings => iam-list-role-directory-bindings|GET|/roles/{role_id}/directory-bindings
 iam-list-role-members => iam-list-role-members|GET|/roles/{role_id}/members
 iam-list-role-permission-grants => iam-list-role-permission-grants|GET|/roles/{role_id}/permission-grants
-iam-list-role-permissions => iam-list-role-permissions|GET|/roles/{role_id}/permissions
 iam-list-roles => iam-list-roles|GET|/tenants/{tenant_id}/roles
 iam-list-tenant-member-roles => iam-list-tenant-member-roles|GET|/tenants/{tenant_id}/members/{subject}/roles
 iam-list-tenant-members => iam-list-tenant-members|GET|/tenants/{tenant_id}/members

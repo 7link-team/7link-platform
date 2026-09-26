@@ -244,7 +244,7 @@ func TestIAMManagementHTTPFlowAndTenantIsolation(t *testing.T) {
 	setScope := harness.api.Put("/roles/"+role.ID.String()+"/data-scope", "Authorization: Bearer test", map[string]any{"scope": "self"})
 	require.Equal(t, http.StatusOK, setScope.Code, setScope.Body.String())
 	assert.Equal(t, http.StatusOK, harness.api.Get("/roles/"+role.ID.String()+"/data-scope", "Authorization: Bearer test").Code)
-	assert.Equal(t, http.StatusOK, harness.api.Get("/roles/"+role.ID.String()+"/permissions", "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusNotFound, harness.api.Get("/roles/"+role.ID.String()+"/permissions", "Authorization: Bearer test").Code)
 	assert.Equal(t, http.StatusOK, harness.api.Get("/roles/"+role.ID.String()+"/permission-grants", "Authorization: Bearer test").Code)
 	condition := map[string]any{
 		"condition": map[string]any{
@@ -641,9 +641,6 @@ func TestIAMHTTPInternalFailuresUseUniformEnvelope(t *testing.T) {
 		{name: "delete role", call: func() *httptest.ResponseRecorder {
 			return harness.api.Delete("/roles/1", "Authorization: Bearer test")
 		}},
-		{name: "list role permissions", call: func() *httptest.ResponseRecorder {
-			return harness.api.Get("/roles/1/permissions", "Authorization: Bearer test")
-		}},
 		{name: "list role grants", call: func() *httptest.ResponseRecorder {
 			return harness.api.Get("/roles/1/permission-grants", "Authorization: Bearer test")
 		}},
@@ -849,9 +846,6 @@ func TestIAMHTTPFailsClosedWhenStorageIsGone(t *testing.T) {
 		"set data scope": func() *httptest.ResponseRecorder {
 			return harness.api.Put("/roles/"+roleID+"/data-scope", auth, map[string]any{"scope": "self"})
 		},
-		"list role permissions": func() *httptest.ResponseRecorder {
-			return harness.api.Get("/roles/"+roleID+"/permissions", auth)
-		},
 		"list role permission grants": func() *httptest.ResponseRecorder {
 			return harness.api.Get("/roles/"+roleID+"/permission-grants", auth)
 		},
@@ -972,9 +966,6 @@ func TestIAMHTTPRejectsUnrepresentableIdentifiers(t *testing.T) {
 		"get data scope": func() *httptest.ResponseRecorder { return harness.api.Get("/roles/"+big+"/data-scope", auth) },
 		"set data scope": func() *httptest.ResponseRecorder {
 			return harness.api.Put("/roles/"+big+"/data-scope", auth, map[string]any{"scope": "self"})
-		},
-		"list role permissions": func() *httptest.ResponseRecorder {
-			return harness.api.Get("/roles/"+big+"/permissions", auth)
 		},
 		"list role permission grants": func() *httptest.ResponseRecorder {
 			return harness.api.Get("/roles/"+big+"/permission-grants", auth)

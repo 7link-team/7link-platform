@@ -257,9 +257,9 @@ const tenantRoles = await api("/roles")
 let administratorRole
 for (const candidate of tenantRoles) {
   const permissions = await api(
-    `/roles/${encodeURIComponent(candidate.id)}/permissions`
+    `/roles/${encodeURIComponent(candidate.id)}/permission-grants`
   )
-  if (permissions.includes("tenant_administer")) {
+  if (permissions.some((grant) => grant.permission_code === "tenant_administer")) {
     administratorRole = candidate
     break
   }

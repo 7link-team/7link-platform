@@ -1,5 +1,26 @@
 # Task State
 
+## Role Permission Read Consolidation - 2026-09-26
+
+- Phase: ACCEPTED. User approved review optimization and explicitly retained GUID HTTP APIs.
+- Remove only GET /roles/{role_id}/permissions and unused Web rolePermissions wrapper.
+- Retain permission-grants reads, permission writes/conditions, internal ListPermissions,
+  and both GUID routes. No schema or data migration.
+- Generated OpenAPI/client contracts updated; expected core route count 62 -> 61.
+- Updated exact core/composition operation manifests and browser-script consumers.
+- Initial E2E exposed a dynamic call to the removed wrapper; migrated that assertion
+  to rolePermissionGrants and reran the complete suite successfully.
+- Frontend typecheck/lint/client tests (46) and generated contract check PASS.
+- PASS: backend full go test ./... and lint, frontend build, OpenAPI drift and diff checks.
+- PASS: real SQLite + Chrome lifecycle E2E 18/18;
+  apps/backend-api/.temp/sqlite-lifecycle-QXgwdq/report.json.
+- Contract diff: 288 -> 287 operations, only the redundant GET removed;
+  no added or changed retained operations. Live retired GET 404; GUID routes 200.
+- Self-review and requirement acceptance PASS. Demo Web8091/API8080 restarted.
+- Delivery: verified consolidation committed with this record on IAM.
+- Next: no implementation or migration remains; retain the running demo for acceptance.
+
+
 ## Active Removal Of Independent Positions - 2026-09-26
 
 - Phase: ACCEPTED. User explicitly approved removing independent positions.

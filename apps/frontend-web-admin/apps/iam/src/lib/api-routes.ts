@@ -116,7 +116,6 @@ export const publishedRoutes: readonly string[] = [
   "/roles/{role_id}/members",
   "/roles/{role_id}/members/{subject}",
   "/roles/{role_id}/permission-grants",
-  "/roles/{role_id}/permissions",
   "/roles/{role_id}/permissions/{permission_code}",
   "/roles/{role_id}/permissions/{permission_code}/condition",
   "/saml-service-providers/{sp_id}",

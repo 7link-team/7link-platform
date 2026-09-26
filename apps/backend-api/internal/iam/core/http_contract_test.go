@@ -49,7 +49,6 @@ iam-get-role-data-scope|GET|/roles/{role_id}/data-scope
 iam-set-role-data-scope|PUT|/roles/{role_id}/data-scope
 iam-update-role|PATCH|/roles/{role_id}
 iam-delete-role|DELETE|/roles/{role_id}
-iam-list-role-permissions|GET|/roles/{role_id}/permissions
 iam-list-role-permission-grants|GET|/roles/{role_id}/permission-grants
 iam-grant-role-permission|PUT|/roles/{role_id}/permissions/{permission_code}
 iam-revoke-role-permission|DELETE|/roles/{role_id}/permissions/{permission_code}
@@ -89,7 +88,7 @@ func TestCoreRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 62)
+	require.Len(t, got, 61)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
