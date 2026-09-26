@@ -231,13 +231,6 @@ async function cleanup() {
         method: "DELETE",
       }
     )
-  for (const position of (await api("/job-positions")).filter((item) =>
-    item.code.startsWith("acceptance.role-")
-  ))
-    await api(
-      `/job-positions/${encodeURIComponent(position.id)}?version=${position.version}`,
-      { method: "DELETE" }
-    )
   for (const department of (await api("/departments")).filter((item) =>
     item.name.startsWith("Acceptance Role Department ")
   ))
@@ -317,9 +310,9 @@ async function captureRoleWorkspace(
     layout.assignmentCount !== "3" ||
     (view === "permissions" && !layout.permissionConditionSummary) ||
     (view === "assignments" &&
-      (layout.directoryLinks !== 3 ||
+      (layout.directoryLinks !== 2 ||
         JSON.stringify(layout.directoryHrefs) !==
-          JSON.stringify(["/groups", "/positions", "/users"])))
+          JSON.stringify(["/groups", "/users"])))
   )
     throw new Error(`${name} layout failed: ${JSON.stringify(layout)}`)
   const screenshot = await command("Page.captureScreenshot", {
@@ -401,8 +394,8 @@ await cleanup()
 const suffix = Date.now().toString(36)
 const roleName = `Acceptance Directory Role ${suffix}`
 const groupName = `Acceptance Role Group ${suffix}`
-const positionCode = `acceptance.role-${suffix}`
-const positionName = `Acceptance Role Position ${suffix}`
+const secondGroupType = "static"
+const secondGroupName = `Acceptance Role Group B ${suffix}`
 const departmentName = `Acceptance Role Department ${suffix}`
 const group = await api("/principal-groups", {
   method: "POST",
@@ -414,11 +407,11 @@ const group = await api("/principal-groups", {
     sort_order: 10,
   }),
 })
-const position = await api("/job-positions", {
+const secondGroup = await api("/principal-groups", {
   method: "POST",
   body: JSON.stringify({
-    code: positionCode,
-    name: positionName,
+    type: secondGroupType,
+    name: secondGroupName,
     status: "active",
     sort_order: 10,
   }),
@@ -431,9 +424,7 @@ const department = await api("/departments", {
     sort_order: 10,
   }),
 })
-const member = (await api("/members")).find(
-  (item) => item.status === "active"
-)
+const member = (await api("/members")).find((item) => item.status === "active")
 if (!member) throw new Error("active acceptance member was not returned")
 
 await click("header:has(h1) button")
@@ -490,9 +481,7 @@ await waitForResponse(
 await waitFor(
   `document.querySelector(${JSON.stringify(departmentSelector)})?.getAttribute("aria-checked") === "true"`
 )
-const dataScope = await api(
-  `/roles/${encodeURIComponent(role.id)}/data-scope`
-)
+const dataScope = await api(`/roles/${encodeURIComponent(role.id)}/data-scope`)
 if (
   dataScope.scope !== "selected_departments" ||
   dataScope.department_ids.length !== 1 ||
@@ -506,9 +495,9 @@ await waitFor(permissionSelector)
 await clickElement(permissionSelector)
 await waitFor(`${permissionSelector}?.getAttribute("aria-checked") === "true"`)
 if (
-  !(
-    await api(`/roles/${encodeURIComponent(role.id)}/permissions`)
-  ).includes("menu_view")
+  !(await api(`/roles/${encodeURIComponent(role.id)}/permissions`)).includes(
+    "menu_view"
+  )
 )
   throw new Error("permission grant did not persist")
 
@@ -549,7 +538,7 @@ if (
   throw new Error("direct role member assignment did not persist")
 for (const [kind, item] of [
   ["group", group],
-  ["position", position],
+  ["group", secondGroup],
 ]) {
   const selector = `[data-assignee-type=${JSON.stringify(kind)}][data-assignee-id=${JSON.stringify(item.id)}]`
   await waitFor(`document.querySelector(${JSON.stringify(selector)})`)
@@ -570,8 +559,8 @@ if (
   ) ||
   !bindings.some(
     (binding) =>
-      binding.assignee_type === "position" &&
-      binding.assignee_id === position.id
+      binding.assignee_type === "group" &&
+      binding.assignee_id === secondGroup.id
   )
 )
   throw new Error("directory bindings did not persist")
@@ -582,7 +571,7 @@ await waitFor(
 const reverseLayouts = []
 for (const [kind, item, path] of [
   ["group", group, "/principal-groups"],
-  ["position", position, "/job-positions"],
+  ["group", secondGroup, "/principal-groups"],
 ]) {
   await navigate(path)
   await waitFor(`document.querySelector("h1")`)
@@ -662,11 +651,11 @@ const groupDelete = await apiRaw(
   `/groups/${encodeURIComponent(group.id)}?version=${group.version}`,
   { method: "DELETE" }
 )
-const positionDelete = await apiRaw(
-  `/positions/${encodeURIComponent(position.id)}?version=${position.version}`,
+const secondGroupDelete = await apiRaw(
+  `/principal-groups/${encodeURIComponent(secondGroup.id)}?version=${secondGroup.version}`,
   { method: "DELETE" }
 )
-if (groupDelete.status !== 409 || positionDelete.status !== 409)
+if (groupDelete.status !== 409 || secondGroupDelete.status !== 409)
   throw new Error("role-bound directory deletion was not protected")
 
 const layouts = []
@@ -737,7 +726,7 @@ await command("Emulation.setDeviceMetricsOverride", {
 await selectRoleView("assignments")
 for (const [kind, item] of [
   ["group", group],
-  ["position", position],
+  ["group", secondGroup],
 ]) {
   const selector = `[data-assignee-type=${JSON.stringify(kind)}][data-assignee-id=${JSON.stringify(item.id)}]`
   await click(selector)
@@ -824,7 +813,7 @@ console.log(
     {
       roleID: role.id,
       groupID: group.id,
-      positionID: position.id,
+      secondGroupID: secondGroup.id,
       departmentID: department.id,
       layouts,
       reverseLayouts,

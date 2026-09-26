@@ -33,13 +33,7 @@ const routes = [
     "/departments",
     "department",
   ],
-  [
-    "positions",
-    "/positions",
-    "positionManagement",
-    "/job-positions",
-    "position",
-  ],
+
   ["groups", "/groups", "groupManagement", "/principal-groups", "group"],
   ["roles", "/roles", "rolePermissions", "/roles", "role"],
   [
@@ -113,7 +107,6 @@ const routes = [
 const writeControls = {
   users: ["createPrincipal"],
   departments: ["createDepartment"],
-  positions: ["createPosition"],
   groups: ["createGroup"],
   menus: ["createMenu"],
   roles: ["createRole"],
@@ -332,12 +325,6 @@ async function setup() {
       status: "active",
       sort_order: 1,
     })
-    await create("position", "/job-positions", {
-      name: `${f.marker}-position`,
-      code: `${f.marker}-position`,
-      status: "active",
-      sort_order: 1,
-    })
     await create("group", "/principal-groups", {
       name: `${f.marker}-group`,
       type: "static",
@@ -531,7 +518,6 @@ async function cell(
       )
       for (const key of [
         "noDepartments",
-        "noPositions",
         "noGroups",
         "noMenus",
         "noInvitations",

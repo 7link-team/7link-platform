@@ -20,10 +20,6 @@ type departmentResourceInput struct {
 	ID string `path:"department_id" maxLength:"128"`
 }
 
-type positionResourceInput struct {
-	ID string `path:"position_id" maxLength:"128"`
-}
-
 type groupResourceInput struct {
 	ID string `path:"group_id" maxLength:"128"`
 }
@@ -39,23 +35,10 @@ type tenantPageSelector struct {
 	Limit    int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
 }
 
-// tenantResourcePageInput is tenantPageSelector for the membership listings,
-// which also name the group or position whose members are being read.
-type positionResourcePageInput struct {
-	ID     string `path:"position_id" maxLength:"128"`
-	Offset int    `query:"offset" minimum:"0" default:"0"`
-	Limit  int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
-}
-
 type groupResourcePageInput struct {
 	ID     string `path:"group_id" maxLength:"128"`
 	Offset int    `query:"offset" minimum:"0" default:"0"`
 	Limit  int    `query:"limit" minimum:"1" maximum:"200" default:"50"`
-}
-
-type positionMemberResourceInput struct {
-	ID          string `path:"position_id" maxLength:"128"`
-	PrincipalID string `path:"principal_id" maxLength:"128"`
 }
 
 type groupMemberResourceInput struct {
@@ -65,11 +48,6 @@ type groupMemberResourceInput struct {
 
 type deleteDepartmentInput struct {
 	ID      string `path:"department_id" maxLength:"128"`
-	Version int64  `query:"version" minimum:"1"`
-}
-
-type deletePositionInput struct {
-	ID      string `path:"position_id" maxLength:"128"`
 	Version int64  `query:"version" minimum:"1"`
 }
 
@@ -97,36 +75,6 @@ type updateDepartmentInput struct {
 		Status    *string `json:"status,omitempty" enum:"active,disabled"`
 		SortOrder *int    `json:"sort_order,omitempty" minimum:"0" maximum:"1000000"`
 		Version   int64   `json:"version" minimum:"1"`
-	}
-}
-
-type createPositionInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
-	Body     struct {
-		Code      string `json:"code" minLength:"1" maxLength:"64" pattern:"^[A-Za-z][A-Za-z0-9._-]*$"`
-		Name      string `json:"name" minLength:"1" maxLength:"128"`
-		Status    string `json:"status,omitempty" enum:"active,disabled" default:"active"`
-		SortOrder int    `json:"sort_order,omitempty" minimum:"0" maximum:"1000000"`
-	}
-}
-
-type updatePositionInput struct {
-	ID   string `path:"position_id" maxLength:"128"`
-	Body struct {
-		Code      *string `json:"code,omitempty" minLength:"1" maxLength:"64" pattern:"^[A-Za-z][A-Za-z0-9._-]*$"`
-		Name      *string `json:"name,omitempty" minLength:"1" maxLength:"128"`
-		Status    *string `json:"status,omitempty" enum:"active,disabled"`
-		SortOrder *int    `json:"sort_order,omitempty" minimum:"0" maximum:"1000000"`
-		Version   int64   `json:"version" minimum:"1"`
-	}
-}
-
-type positionMembershipInput struct {
-	ID          string `path:"position_id" maxLength:"128"`
-	PrincipalID string `path:"principal_id" maxLength:"128"`
-	Body        struct {
-		StartsAt *time.Time `json:"starts_at,omitempty"`
-		EndsAt   *time.Time `json:"ends_at,omitempty"`
 	}
 }
 
@@ -229,10 +177,6 @@ func (s *Service) resolveDepartmentOwner(ctx context.Context, id guid.ID) (authz
 	return tenantOwner(s.repo.resolveDepartmentTenant(ctx, id))
 }
 
-func (s *PositionService) resolvePositionOwner(ctx context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
-	return tenantOwner(s.repo.resolvePositionTenant(ctx, id))
-}
-
 func (s *GroupService) resolveGroupOwner(ctx context.Context, id guid.ID) (authz.ResourceOwner, bool, error) {
 	return tenantOwner(s.repo.resolveGroupTenant(ctx, id))
 }
@@ -298,13 +242,11 @@ func RegisterHTTP(
 	api huma.API,
 	departments *Service,
 	tenants *TenantService,
-	positions *PositionService,
 	groups *GroupService,
 	invitations *InvitationService,
 	registrar *authz.Registrar,
 ) {
 	registerDepartmentHTTP(api, departments, registrar)
-	registerPositionHTTP(api, positions, registrar)
 	registerGroupHTTP(api, groups, registrar)
 	registerTenantHTTP(api, tenants, registrar)
 	registerInvitationHTTP(api, invitations, registrar)
@@ -437,157 +379,6 @@ func registerDepartmentHTTP(api huma.API, service *Service, registrar *authz.Reg
 				return nil, departmentError(err)
 			}
 			return respx.OK(ctx, deletedResource{Deleted: true}), nil
-		})
-}
-
-func registerPositionHTTP(api huma.API, service *PositionService, registrar *authz.Registrar) {
-	authz.Register(registrar, api, huma.Operation{
-		OperationID: "organization-list-positions", Method: http.MethodGet, Path: "/job-positions",
-		Summary: "List tenant positions", Tags: []string{"directory"}, Errors: []int{http.StatusUnprocessableEntity},
-	}, authz.Guard{Resource: "position", Verb: "view"},
-		func(ctx context.Context, in *tenantPageSelector) (*respx.Body[[]Position], error) {
-			tenantID, err := parseOrganizationID(in.TenantID)
-			if err != nil {
-				return nil, err
-			}
-			items, total, err := service.ListPage(ctx, tenantID, in.Offset, in.Limit)
-			if err != nil {
-				return nil, positionError(err)
-			}
-			return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
-		})
-
-	authz.Register(registrar, api, huma.Operation{
-		OperationID: "organization-create-position", Method: http.MethodPost, Path: "/job-positions",
-		Summary: "Create a tenant position", Tags: []string{"directory"}, DefaultStatus: http.StatusCreated,
-		Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
-	}, authz.Guard{Resource: "position", Verb: "create"},
-		func(ctx context.Context, in *createPositionInput) (*respx.Body[Position], error) {
-			tenantID, err := parseOrganizationID(in.TenantID)
-			if err != nil {
-				return nil, err
-			}
-			item, err := service.Create(ctx, tenantID, CreatePosition{
-				Code: in.Body.Code, Name: in.Body.Name, Status: in.Body.Status, SortOrder: in.Body.SortOrder,
-			})
-			if err != nil {
-				return nil, positionError(err)
-			}
-			return respx.OK(ctx, item), nil
-		})
-
-	authz.RegisterOwned(registrar, api, huma.Operation{
-		OperationID: "organization-get-position", Method: http.MethodGet, Path: "/job-positions/{position_id}",
-		Summary: "Get a tenant position", Tags: []string{"directory"},
-		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
-	}, "position_id", service.resolvePositionOwner, authz.Guard{Resource: "position", Verb: "view"},
-		func(ctx context.Context, in *positionResourceInput) (*respx.Body[Position], error) {
-			tenantID, id, err := organizationResourceIDs(ctx, in.ID)
-			if err != nil {
-				return nil, err
-			}
-			item, err := service.Get(ctx, tenantID, id)
-			if err != nil {
-				return nil, positionError(err)
-			}
-			return respx.OK(ctx, item), nil
-		})
-
-	authz.RegisterOwned(registrar, api, huma.Operation{
-		OperationID: "organization-update-position", Method: http.MethodPatch, Path: "/job-positions/{position_id}",
-		Summary: "Update a tenant position", Tags: []string{"directory"},
-		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
-	}, "position_id", service.resolvePositionOwner, authz.Guard{Resource: "position", Verb: "update"},
-		func(ctx context.Context, in *updatePositionInput) (*respx.Body[Position], error) {
-			tenantID, id, err := organizationResourceIDs(ctx, in.ID)
-			if err != nil {
-				return nil, err
-			}
-			item, err := service.Update(ctx, tenantID, id, UpdatePosition{
-				Code: in.Body.Code, Name: in.Body.Name, Status: in.Body.Status,
-				SortOrder: in.Body.SortOrder, Version: in.Body.Version,
-			})
-			if err != nil {
-				return nil, positionError(err)
-			}
-			return respx.OK(ctx, item), nil
-		})
-
-	authz.RegisterOwned(registrar, api, huma.Operation{
-		OperationID: "organization-delete-position", Method: http.MethodDelete, Path: "/job-positions/{position_id}",
-		Summary: "Delete an empty tenant position", Tags: []string{"directory"},
-		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
-	}, "position_id", service.resolvePositionOwner, authz.Guard{Resource: "position", Verb: "delete"},
-		func(ctx context.Context, in *deletePositionInput) (*respx.Body[deletedResource], error) {
-			tenantID, id, err := organizationResourceIDs(ctx, in.ID)
-			if err != nil {
-				return nil, err
-			}
-			if err := service.Delete(ctx, tenantID, id, in.Version); err != nil {
-				return nil, positionError(err)
-			}
-			return respx.OK(ctx, deletedResource{Deleted: true}), nil
-		})
-
-	authz.RegisterOwned(registrar, api, huma.Operation{
-		OperationID: "organization-list-position-members", Method: http.MethodGet, Path: "/job-positions/{position_id}/members",
-		Summary: "List position members", Tags: []string{"directory"},
-		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
-	}, "position_id", service.resolvePositionOwner, authz.Guard{Resource: "position", Verb: "view"},
-		func(ctx context.Context, in *positionResourcePageInput) (*respx.Body[[]PositionMember], error) {
-			tenantID, id, err := organizationResourceIDs(ctx, in.ID)
-			if err != nil {
-				return nil, err
-			}
-			items, total, err := service.ListMembersPage(ctx, tenantID, id, in.Offset, in.Limit)
-			if err != nil {
-				return nil, positionError(err)
-			}
-			return respx.List(ctx, items, respx.Page{Offset: in.Offset, Limit: in.Limit, Total: total}), nil
-		})
-
-	authz.RegisterOwned(registrar, api, huma.Operation{
-		OperationID: "organization-put-position-member", Method: http.MethodPut,
-		Path: "/job-positions/{position_id}/members/{principal_id}", Summary: "Assign or update a position member",
-		Tags: []string{"directory"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
-	}, "position_id", service.resolvePositionOwner, authz.Guard{Resource: "position", Verb: "manage_member"},
-		func(ctx context.Context, in *positionMembershipInput) (*respx.Body[PositionMember], error) {
-			tenantID, id, err := organizationResourceIDs(ctx, in.ID)
-			if err != nil {
-				return nil, err
-			}
-			principalID, err := parseOrganizationID(in.PrincipalID)
-			if err != nil {
-				return nil, err
-			}
-			item, err := service.PutMember(ctx, tenantID, id, principalID, PositionMemberWindow{
-				StartsAt: in.Body.StartsAt, EndsAt: in.Body.EndsAt,
-			})
-			if err != nil {
-				return nil, positionError(err)
-			}
-			return respx.OK(ctx, item), nil
-		})
-
-	authz.RegisterOwned(registrar, api, huma.Operation{
-		OperationID: "organization-delete-position-member", Method: http.MethodDelete,
-		Path: "/job-positions/{position_id}/members/{principal_id}", Summary: "Remove a position member",
-		Tags: []string{"directory"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
-	}, "position_id", service.resolvePositionOwner, authz.Guard{Resource: "position", Verb: "manage_member"},
-		func(ctx context.Context, in *positionMemberResourceInput) (*respx.Body[deletedResource], error) {
-			tenantID, id, err := organizationResourceIDs(ctx, in.ID)
-			if err != nil {
-				return nil, err
-			}
-			principalID, err := parseOrganizationID(in.PrincipalID)
-			if err != nil {
-				return nil, err
-			}
-			deleted, err := service.DeleteMember(ctx, tenantID, id, principalID)
-			if err != nil {
-				return nil, positionError(err)
-			}
-			return respx.OK(ctx, deletedResource{Deleted: deleted}), nil
 		})
 }
 
@@ -962,31 +753,6 @@ func departmentError(err error) error {
 		return huma.Error409Conflict(organizationi18n.DepartmentVersionConflict)
 	case errors.Is(err, ErrInvalid):
 		return huma.Error422UnprocessableEntity(organizationi18n.InvalidDepartment)
-	default:
-		return huma.Error500InternalServerError(organizationi18n.Unavailable)
-	}
-}
-
-func positionError(err error) error {
-	switch {
-	case errors.Is(err, ErrPositionNotFound):
-		return huma.Error404NotFound(organizationi18n.PositionNotFound)
-	case errors.Is(err, ErrPositionCodeConflict):
-		return huma.Error409Conflict(organizationi18n.PositionCodeExists)
-	case errors.Is(err, ErrPositionVersionConflict):
-		return huma.Error409Conflict(organizationi18n.PositionVersionConflict)
-	case errors.Is(err, ErrPositionHasMembers):
-		return huma.Error409Conflict(organizationi18n.PositionHasMembers)
-	case errors.Is(err, ErrPositionRoleBound):
-		return huma.Error409Conflict(organizationi18n.PositionRoleBound)
-	case errors.Is(err, ErrPositionRelationshipBound):
-		return huma.Error409Conflict(organizationi18n.PositionRelationshipBound)
-	case errors.Is(err, ErrPositionMemberInactive):
-		return huma.Error409Conflict(organizationi18n.PositionMemberInactive)
-	case errors.Is(err, core.ErrLastTenantAdministrator):
-		return huma.Error409Conflict(organizationi18n.LastTenantAdministrator)
-	case errors.Is(err, ErrPositionInvalid):
-		return huma.Error422UnprocessableEntity(organizationi18n.InvalidPosition)
 	default:
 		return huma.Error500InternalServerError(organizationi18n.Unavailable)
 	}

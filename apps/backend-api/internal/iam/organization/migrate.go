@@ -32,6 +32,7 @@ func (*Module) MigrationMilestones() []module.MigrationMilestone {
 			Dependencies: []module.MigrationMilestoneRef{{Module: "identity", Name: "lifecycle"}}},
 		{Name: "department-entities", Version: 10,
 			Dependencies: []module.MigrationMilestoneRef{{Module: "iam", Name: "base"}}},
+		{Name: "retire-positions", Version: 11},
 	}
 }
 

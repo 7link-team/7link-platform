@@ -26,7 +26,6 @@ const (
 	ReviewGrantPermanent    = "permanent"
 	ReviewGrantTemporary    = "temporary"
 	ReviewGrantGroup        = "group"
-	ReviewGrantPosition     = "position"
 	ReviewGrantEntity       = "entity"
 	ReviewGrantDynamicGroup = "dynamic_group"
 	ReviewGrantRelationship = "relationship"
@@ -314,11 +313,6 @@ func (s *Service) revokeReviewedGrant(ctx context.Context, repo *Repository, ite
 			return false, ErrInvalidReview
 		}
 		return s.grants.RemoveGroupMembership(ctx, repo.writer(), item.TenantID, *item.GrantID, item.PrincipalID)
-	case ReviewGrantPosition:
-		if item.GrantID == nil {
-			return false, ErrInvalidReview
-		}
-		return s.grants.RemovePositionMembership(ctx, repo.writer(), item.TenantID, *item.GrantID, item.PrincipalID)
 	case ReviewGrantEntity:
 		if item.GrantID == nil {
 			return false, ErrInvalidReview

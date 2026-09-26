@@ -199,12 +199,6 @@ export const router = createBrowserRouter([
                 }),
               },
               {
-                path: "/tenants/:tenantID/positions",
-                lazy: async () => ({
-                  Component: (await import("./app/positions/page")).default,
-                }),
-              },
-              {
                 path: "/tenants/:tenantID/groups",
                 lazy: async () => ({
                   Component: (await import("./app/groups/page")).default,

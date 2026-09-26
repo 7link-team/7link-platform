@@ -306,12 +306,7 @@ func (m *Module) roleGrantStore() RoleGrantStore {
 			}
 			return m.grants.RemoveGroupMembership(ctx, db, tenantID, groupID, principalID)
 		},
-		RemovePositionMembership: func(ctx context.Context, db *gorm.DB, tenantID, positionID, principalID guid.ID) (bool, error) {
-			if m == nil || m.grants.RemovePositionMembership == nil {
-				return false, ErrUnavailable
-			}
-			return m.grants.RemovePositionMembership(ctx, db, tenantID, positionID, principalID)
-		},
+
 		RemoveEntityRoleBinding: func(ctx context.Context, db *gorm.DB, tenantID, entityID, roleID, principalID guid.ID) (bool, error) {
 			if m == nil || m.grants.RemoveEntityRoleBinding == nil {
 				return false, ErrUnavailable

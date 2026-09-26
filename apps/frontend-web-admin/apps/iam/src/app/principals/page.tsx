@@ -604,7 +604,6 @@ function AuthorizationSourcesSheet({
           "temporary_role",
           "static_group",
           "dynamic_group",
-          "position",
         ].includes(source.type)
       ),
     },
@@ -632,7 +631,7 @@ function AuthorizationSourcesSheet({
         temporary_role: "temporaryRoleSource",
         static_group: "staticGroupSource",
         dynamic_group: "dynamicGroupSource",
-        position: "positionRoleSource",
+
         entity_binding: "entityRoleSource",
         relationship: "resourceRelationshipSource",
       }[source.type]

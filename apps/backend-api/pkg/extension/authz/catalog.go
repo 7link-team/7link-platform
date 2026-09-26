@@ -195,12 +195,6 @@ func DefaultActions() []Action {
 		{Resource: "dept", Verb: "update", Scope: "tenant", Summary: "update departments", DataScoped: true},
 		{Resource: "dept", Verb: "delete", Scope: "tenant", Summary: "delete departments", DataScoped: true},
 
-		{Resource: "position", Verb: "create", Scope: "tenant", Summary: "create positions", DataScoped: true},
-		{Resource: "position", Verb: "view", Scope: "tenant", Summary: "view positions", DataScoped: true, Menu: true},
-		{Resource: "position", Verb: "update", Scope: "tenant", Summary: "update positions", DataScoped: true},
-		{Resource: "position", Verb: "delete", Scope: "tenant", Summary: "delete positions", DataScoped: true},
-		{Resource: "position", Verb: "manage_member", Scope: "tenant", Summary: "assign and remove position members", DataScoped: true},
-
 		{Resource: "group", Verb: "create", Scope: "tenant", Summary: "create groups", DataScoped: true},
 		{Resource: "group", Verb: "view", Scope: "tenant", Summary: "view groups", DataScoped: true, Menu: true},
 		{Resource: "group", Verb: "update", Scope: "tenant", Summary: "update groups", DataScoped: true},
@@ -229,7 +223,7 @@ func DefaultActions() []Action {
 		{Resource: "role", Verb: "delete", Scope: "tenant", Summary: "delete roles"},
 		{Resource: "role", Verb: "grant_permission", Scope: "tenant", Summary: "grant and revoke role permissions"},
 		{Resource: "role", Verb: "manage_member", Scope: "tenant", Summary: "add and remove role members"},
-		{Resource: "role", Verb: "manage_assignee", Scope: "tenant", Summary: "assign groups and positions to roles"},
+		{Resource: "role", Verb: "manage_assignee", Scope: "tenant", Summary: "assign groups to roles"},
 
 		{Resource: "menu", Verb: "create", Scope: "tenant", Summary: "create menus"},
 		{Resource: "menu", Verb: "view", Scope: "tenant", Summary: "view menus", Menu: true},

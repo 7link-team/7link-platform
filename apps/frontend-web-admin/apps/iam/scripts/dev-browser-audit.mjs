@@ -66,6 +66,7 @@ try {
       await page.goto("/me/identities")
       await page.waitForLoadState("networkidle")
       assert.equal(await page.getByText("HTTP 404", { exact: true }).count(), 0)
+      assert.equal(await page.locator('a[href*="/positions"]').count(), 0)
       console.log(
         `PASS ${account.role}: selector, login, session and identity links`
       )
@@ -75,6 +76,14 @@ try {
   const response = await fetch(runtime.apiURL + "/openapi.json")
   assert.equal(response.status, 200)
   const spec = await response.json()
+  assert(
+    !Object.keys(spec.paths).some((path) =>
+      /\/(job-positions|positions)(\/|$)/.test(path)
+    )
+  )
+  assert(
+    !Object.keys(spec.components.schemas).some((name) => /position/i.test(name))
+  )
   const published = JSON.parse(
     readFileSync(
       new URL("../../../../backend-api/docs/openapi.json", import.meta.url),

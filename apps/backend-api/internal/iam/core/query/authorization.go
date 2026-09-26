@@ -39,7 +39,7 @@ type EffectiveRolesParams struct {
 
 // TenantGrantParams parameterizes the statement that reads the permissions a
 // subject holds in a tenant, through assigned roles, temporary grants, static
-// groups and positions.
+// groups.
 type TenantGrantParams struct {
 	EffectiveRolesParams
 	Requested []string
@@ -200,7 +200,7 @@ func RelationshipWalkUpstream(ctx context.Context, db *gorm.DB, params Relations
 }
 
 // CountDurableAdministrators counts the active principals who administer a
-// tenant through a role, a static group or a position.
+// tenant through a role, a static group.
 //
 // It is one statement on purpose. The administrator guard measures before and
 // after an operation inside the caller's transaction, and two measurements taken
@@ -248,21 +248,8 @@ WITH effective_roles(role_id, source_type, source_id) AS (
     WHERE b.tenant_id = ? AND gm.principal_id = ?
       AND (gm.starts_at IS NULL OR gm.starts_at <= ?)
       AND (gm.ends_at IS NULL OR gm.ends_at > ?)
-    UNION
-    SELECT b.role_id, 'position', b.position_id
-    FROM ` + directory.PositionRoleBindings.String() + ` b
-    JOIN ` + directory.Positions.String() + ` pos
-      ON pos.tenant_id = b.tenant_id AND pos.id = b.position_id AND pos.status = 'active'
-    JOIN ` + directory.PositionMembers.String() + ` pm
-      ON pm.tenant_id = b.tenant_id AND pm.position_id = b.position_id
-    JOIN ` + tables.TenantMembers.String() + ` tm
-      ON tm.tenant_id = pm.tenant_id AND tm.principal_id = pm.principal_id AND tm.status = ?
-    WHERE b.tenant_id = ? AND pm.principal_id = ?
-      AND (pm.starts_at IS NULL OR pm.starts_at <= ?)
-      AND (pm.ends_at IS NULL OR pm.ends_at > ?)
 )`, []any{
 			params.MemberStatus, params.TenantID, params.Subject,
-			params.MemberStatus, params.TenantID, params.Subject, params.Now, params.Now,
 			params.MemberStatus, params.TenantID, params.Subject, params.Now, params.Now,
 			params.MemberStatus, params.TenantID, params.Subject, params.Now, params.Now,
 		}
@@ -438,19 +425,6 @@ FROM (
     WHERE bindings.tenant_id = ? AND permissions.permission_code IN (?, ?) AND permissions.condition_json = ''
       AND (group_members.starts_at IS NULL OR group_members.starts_at <= ?)
       AND group_members.ends_at IS NULL
-    UNION
-    SELECT position_members.principal_id
-    FROM ` + directory.PositionRoleBindings.String() + ` AS bindings
-    JOIN ` + tables.RolePermissions.String() + ` AS permissions
-      ON permissions.tenant_id = bindings.tenant_id AND permissions.role_id = bindings.role_id
-    JOIN ` + directory.Positions.String() + ` AS positions
-      ON positions.tenant_id = bindings.tenant_id AND positions.id = bindings.position_id
-     AND positions.status = 'active'
-    JOIN ` + directory.PositionMembers.String() + ` AS position_members
-      ON position_members.tenant_id = bindings.tenant_id AND position_members.position_id = bindings.position_id
-    WHERE bindings.tenant_id = ? AND permissions.permission_code IN (?, ?) AND permissions.condition_json = ''
-      AND (position_members.starts_at IS NULL OR position_members.starts_at <= ?)
-      AND position_members.ends_at IS NULL
 ) AS administrators
 JOIN ` + params.Principal.String() + ` AS principals
   ON principals.id = administrators.principal_id AND principals.status = 'active'
@@ -459,7 +433,6 @@ JOIN ` + tables.TenantMembers.String() + ` AS tenant_members
  AND tenant_members.principal_id = administrators.principal_id
  AND tenant_members.status = 'active'`, []any{
 			params.TenantID, params.AdministratorPermission, params.PlatformPermission,
-			params.TenantID, params.AdministratorPermission, params.PlatformPermission, params.Now,
 			params.TenantID, params.AdministratorPermission, params.PlatformPermission, params.Now,
 			params.TenantID,
 		}

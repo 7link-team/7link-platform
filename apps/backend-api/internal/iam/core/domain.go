@@ -98,8 +98,7 @@ type RoleDataScope struct {
 type DirectoryAssigneeType string
 
 const (
-	DirectoryAssigneeGroup    DirectoryAssigneeType = "group"
-	DirectoryAssigneePosition DirectoryAssigneeType = "position"
+	DirectoryAssigneeGroup DirectoryAssigneeType = "group"
 )
 
 type RoleDirectoryBinding struct {

@@ -12,8 +12,9 @@ import (
 // The fields are named, not looked up by string, so a consumer cannot ask for a
 // table organization does not have and cannot misspell the one it wants.
 type DirectoryTableNames struct {
-	Departments          gormx.TableName
-	DepartmentClosures   gormx.TableName
+	Departments        gormx.TableName
+	DepartmentClosures gormx.TableName
+	// Legacy names support historical schema checks and upgrade migrations only.
 	Positions            gormx.TableName
 	PositionMembers      gormx.TableName
 	Groups               gormx.TableName
@@ -68,9 +69,6 @@ func CoreDirectoryTableNames(prefix string) core.DirectoryTableNames {
 		Groups:               published.Groups,
 		GroupMembers:         published.GroupMembers,
 		GroupRoleBindings:    published.GroupRoleBindings,
-		Positions:            published.Positions,
-		PositionMembers:      published.PositionMembers,
-		PositionRoleBindings: published.PositionRoleBindings,
 		Departments:          published.Departments,
 		DepartmentClosure:    published.DepartmentClosures,
 		MemberDepartments:    published.MemberDepartments,

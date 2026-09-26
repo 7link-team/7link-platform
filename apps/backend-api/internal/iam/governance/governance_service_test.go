@@ -193,11 +193,7 @@ func (h *governanceHarness) grantStore() core.RoleGrantStore {
 			result := db.WithContext(ctx).Table(h.table("iam_group_members")).Where("tenant_id = ? AND group_id = ? AND principal_id = ?", tenantID, groupID, principalID).Delete(&organizationmodel.GroupMember{})
 			return result.RowsAffected > 0, result.Error
 		},
-		RemovePositionMembership: func(ctx context.Context, db *gorm.DB, tenantID, positionID, principalID guid.ID) (bool, error) {
-			track(db)
-			result := db.WithContext(ctx).Table(h.table("iam_position_members")).Where("tenant_id = ? AND position_id = ? AND principal_id = ?", tenantID, positionID, principalID).Delete(&organizationmodel.PositionMember{})
-			return result.RowsAffected > 0, result.Error
-		},
+
 		RemoveEntityRoleBinding: func(ctx context.Context, db *gorm.DB, tenantID, entityID, roleID, principalID guid.ID) (bool, error) {
 			track(db)
 			result := db.WithContext(ctx).Table(h.table("iam_role_bindings")).Where("tenant_id = ? AND scope_id = ? AND role_id = ? AND principal_id = ?", tenantID, entityID, roleID, principalID).Delete(&coremodel.RoleBinding{})
@@ -424,7 +420,7 @@ func TestGovernanceRepositoriesAndServicesFailClosed(t *testing.T) {
 
 	assert.Equal(t, Name, (&Module{}).ModuleName())
 	assert.NotNil(t, (&Module{}).MigrationSource().FS)
-	assert.Len(t, (&Module{}).MigrationMilestones(), 3)
+	assert.Len(t, (&Module{}).MigrationMilestones(), 4)
 }
 
 func TestAccessRequestReadFailuresAreReported(t *testing.T) {

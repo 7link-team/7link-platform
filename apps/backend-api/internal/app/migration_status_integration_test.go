@@ -54,6 +54,14 @@ func TestIAMMigrationStatusExternalDatabase(t *testing.T) {
 	assertIAMMigrationActionState(t, config, MigrationUp, goosex.StateClean)
 	assertIAMMigrationActionState(t, config, MigrationStatus, goosex.StateClean)
 	assertIAMMigrationStatusEndpoint(t, config)
+	// The retirement milestone depends on organization; remove it before its base.
+	reports, err := (&App{}).RunMigrations(t.Context(), MigrationConfig{
+		AppConfig:        config,
+		MigrationRequest: MigrationRequest{Action: MigrationDownTo, Module: core.Name, To: 16},
+	})
+	require.NoError(t, err)
+	require.Len(t, reports, 1)
+	assert.Equal(t, int64(16), reports[0].Status.Current)
 
 	for _, name := range iamMigrationReverseOrder() {
 		reports, err := (&App{}).RunMigrations(t.Context(), MigrationConfig{

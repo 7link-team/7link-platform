@@ -91,7 +91,7 @@ type Service struct {
 func NewService(runtime *appenv.Runtime, appender audit.Appender, grants core.RoleGrantStore, ids guid.Source) *Service {
 	if runtime == nil || appender == nil || ids == nil || grants.Grant == nil || grants.Revoke == nil ||
 		grants.RoleGranted == nil || grants.RemovePermanent == nil || grants.RemoveGroupMembership == nil ||
-		grants.RemovePositionMembership == nil || grants.RemoveEntityRoleBinding == nil {
+		grants.RemoveEntityRoleBinding == nil {
 		panic("governance service requires runtime, audit appender, role grant store, and id generator")
 	}
 	return &Service{repo: NewRepository(runtime, ids), audit: appender, grants: grants, now: time.Now}

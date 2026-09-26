@@ -397,7 +397,6 @@ export type MemberAuthorizationSourceType =
   | "temporary_role"
   | "static_group"
   | "dynamic_group"
-  | "position"
   | "entity_binding"
   | "relationship"
 
@@ -532,7 +531,7 @@ export interface AccessReviewInput {
 
 export interface RoleDirectoryBinding {
   role_id: string
-  assignee_type: "group" | "position"
+  assignee_type: "group"
   assignee_id: string
   created_at: string
 }
@@ -585,8 +584,7 @@ export interface EntityRoleBindingInput {
   expires_at?: string
 }
 
-export type RelationshipSubjectType =
-  "principal" | "group" | "position" | "entity"
+export type RelationshipSubjectType = "principal" | "group" | "entity"
 export type RelationshipRelation = "owner" | "editor" | "viewer"
 
 export type RelationshipConditionExpression =
@@ -702,42 +700,10 @@ export interface DepartmentInput {
   sort_order: number
 }
 
-export interface Position {
-  id: string
-  tenant_id: string
-  code: string
-  name: string
-  status: "active" | "disabled"
-  sort_order: number
-  version: number
-  created_at: string
-  updated_at: string
-}
-
-export interface PositionInput {
-  code: string
-  name: string
-  status: "active" | "disabled"
-  sort_order: number
-}
-
-export interface PositionMember {
-  position_id: string
-  principal_id: string
-  display_name: string
-  email?: string
-  starts_at?: string
-  ends_at?: string
-  created_at: string
-  updated_at: string
-}
-
 export interface MembershipWindowInput {
   starts_at?: string
   ends_at?: string
 }
-
-export type PositionMemberInput = MembershipWindowInput
 
 export interface Group {
   id: string
@@ -2544,65 +2510,7 @@ export function createIamApi(
           query: { version: version },
         })
       ),
-    positions: () =>
-      requestAllPages<Position>(
-        pagedRoute("/tenants/{tenant_id}/job-positions", {
-          path: { tenant_id: tenantID() },
-        })
-      ),
-    position: (id: string) =>
-      request<Position>(
-        apiRoute("get", "/job-positions/{position_id}", {
-          path: { position_id: id },
-        })
-      ),
-    createPosition: (body: PositionInput) =>
-      request<Position>(
-        apiRoute("post", "/tenants/{tenant_id}/job-positions", {
-          path: { tenant_id: tenantID() },
-        }),
-        { body: JSON.stringify(body) }
-      ),
-    updatePosition: (
-      id: string,
-      body: Partial<PositionInput> & Pick<Position, "version">
-    ) =>
-      request<Position>(
-        apiRoute("patch", "/job-positions/{position_id}", {
-          path: { position_id: id },
-        }),
-        { body: JSON.stringify(body) }
-      ),
-    deletePosition: (id: string, version: number) =>
-      request<{ deleted: boolean }>(
-        apiRoute("delete", "/job-positions/{position_id}", {
-          path: { position_id: id },
-          query: { version: version },
-        })
-      ),
-    positionMembers: (id: string) =>
-      requestAllPages<PositionMember>(
-        pagedRoute("/job-positions/{position_id}/members", {
-          path: { position_id: id },
-        })
-      ),
-    putPositionMember: (
-      id: string,
-      principalID: string,
-      body: PositionMemberInput
-    ) =>
-      request<PositionMember>(
-        apiRoute("put", "/job-positions/{position_id}/members/{principal_id}", {
-          path: { position_id: id, principal_id: principalID },
-        }),
-        { body: JSON.stringify(body) }
-      ),
-    deletePositionMember: (id: string, principalID: string) =>
-      request<{ deleted: boolean }>(
-        apiRoute("delete", "/job-positions/{position_id}/members/{principal_id}", {
-          path: { position_id: id, principal_id: principalID },
-        })
-      ),
+
     groups: () =>
       requestAllPages<Group>(
         pagedRoute("/tenants/{tenant_id}/principal-groups", {
@@ -2611,7 +2519,9 @@ export function createIamApi(
       ),
     group: (id: string) =>
       request<Group>(
-        apiRoute("get", "/principal-groups/{group_id}", { path: { group_id: id } })
+        apiRoute("get", "/principal-groups/{group_id}", {
+          path: { group_id: id },
+        })
       ),
     createGroup: (body: GroupInput) =>
       request<Group>(
@@ -2625,7 +2535,9 @@ export function createIamApi(
       body: Partial<Omit<GroupInput, "type">> & Pick<Group, "version">
     ) =>
       request<Group>(
-        apiRoute("patch", "/principal-groups/{group_id}", { path: { group_id: id } }),
+        apiRoute("patch", "/principal-groups/{group_id}", {
+          path: { group_id: id },
+        }),
         { body: JSON.stringify(body) }
       ),
     deleteGroup: (id: string, version: number) =>
@@ -2637,7 +2549,9 @@ export function createIamApi(
       ),
     groupMembers: (id: string) =>
       requestAllPages<GroupMember>(
-        pagedRoute("/principal-groups/{group_id}/members", { path: { group_id: id } })
+        pagedRoute("/principal-groups/{group_id}/members", {
+          path: { group_id: id },
+        })
       ),
     putGroupMember: (id: string, principalID: string, body: GroupMemberInput) =>
       request<GroupMember>(
@@ -2648,9 +2562,13 @@ export function createIamApi(
       ),
     deleteGroupMember: (id: string, principalID: string) =>
       request<{ deleted: boolean }>(
-        apiRoute("delete", "/principal-groups/{group_id}/members/{principal_id}", {
-          path: { group_id: id, principal_id: principalID },
-        })
+        apiRoute(
+          "delete",
+          "/principal-groups/{group_id}/members/{principal_id}",
+          {
+            path: { group_id: id, principal_id: principalID },
+          }
+        )
       ),
     fieldCatalog: () =>
       request<FieldDefinition[]>(

@@ -2820,3 +2820,52 @@ all component schemas and every operation field except tags compare equal.
 Real SQLite/Chrome E2E18/18, fixture UI74/74, live selectable demo5/5 and actual
 Swagger309 prefix sections PASS. Final independent integration suite and generated
 contract drift gates PASS; self-review and requirement acceptance PASS.
+
+## D83 - Remove Independent Positions And Preserve Existing Grants
+
+**Decision / Reason**
+User approved removing job positions after reviewing the overlap with departments
+and roles. Remove the independent feature from runtime APIs, Web routes/forms,
+role assignment selectors, relationship subjects, authorization sources, access
+reviews and the permission catalog. Existing principal groups remain available.
+This supersedes D82's retention of the job-positions resource.
+
+**Implementation Plan / Review**
+Trace every consumer first; retire the runtime feature; add module-owned data
+migrations; regenerate public contracts; verify upgrades and authorization with
+real databases and browsers; restart the demo environment; review and deliver.
+The plan uses existing groups and module migration milestones. No new domain
+concept, database reset, dependency or automatic group-management privilege.
+
+Organization v11 converts existing positions into static groups, retaining IDs,
+tenant, status, order, version, timestamps, membership windows and role bindings.
+Names use "Group <id>: <old name>" to avoid ordinary group-name collisions.
+An ID conflict stops the upgrade without overwriting either record. Core v17
+changes relationship subjects, detaches custom children before deleting retired
+menus, and removes the five obsolete position permissions. Governance v5 changes
+existing review items to group grants. Core/governance depend on organization v11.
+Rollback retains the group representation; it never resurrects duplicate grants.
+Historical SQL/models and empty legacy tables support upgrade/schema checks only.
+
+**Verification Evidence**
+TestIAMPositionRetirementUpgrade checks both deployment prefixes, ID conflicts,
+active/disabled state, membership windows, role bindings, both relationship tables,
+pending review items, custom child menus, privilege retirement and repeat upgrades.
+SQLite, embedded PostgreSQL, MySQL dialect engine and real MySQL 8 passed. The
+MySQL nullable-parent predicate uses COALESCE and a materialized derived table;
+this avoids the dialect engine's faulty self-join update and MySQL error 1093.
+Reverse-DAG rollback tests first remove core v17's organization dependency.
+
+Chrome/SQLite E2E: 18/18, including independent group authority, last-administrator
+protection, relationship/review workflows, retired position routes returning 404,
+position assignees/subjects returning 422, and no position schemas/catalog/menus.
+Artifact: apps/backend-api/.temp/sqlite-lifecycle-VZjgyl/report.json.
+Fixture Web regression: 72/72 (the two retired position-page cases were removed).
+Selectable demo accounts: 5/5; live/rendered Swagger: 301 prefix-grouped operations.
+Published OpenAPI: 288 operations, eight position operations removed.
+Backend coverage: 91.4% overall; core 91.2%, organization 90.4%, governance 92.0%.
+Frontend workspace typecheck/lint/tests/build and generated contract drift passed.
+Full backend unit/integration suites, lint, formatting, coverage and OpenAPI
+drift gates passed. Migration-status acceptance includes upgrade/down/up across
+all three engines and both prefixes. Direct execution; no delegation.
+Self-review and final requirement acceptance: PASS. No optional follow-on change.

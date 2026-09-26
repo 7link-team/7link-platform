@@ -149,7 +149,7 @@ type APIRolePermissionGrant struct {
 
 type APIRoleDirectoryBinding struct {
 	RoleID       guid.ID               `json:"role_id"`
-	AssigneeType DirectoryAssigneeType `json:"assignee_type" enum:"group,position"`
+	AssigneeType DirectoryAssigneeType `json:"assignee_type" enum:"group"`
 	AssigneeID   guid.ID               `json:"assignee_id"`
 	CreatedAt    time.Time             `json:"created_at"`
 }
@@ -188,7 +188,7 @@ type APIEntityRoleBinding struct {
 }
 
 type APIMemberAuthorizationSource struct {
-	Type             MemberAuthorizationSourceType `json:"type" enum:"permanent_role,temporary_role,static_group,dynamic_group,position,entity_binding,relationship"`
+	Type             MemberAuthorizationSourceType `json:"type" enum:"permanent_role,temporary_role,static_group,dynamic_group,entity_binding,relationship"`
 	SourceID         guid.ID                       `json:"source_id"`
 	SourceName       string                        `json:"source_name,omitempty"`
 	RoleID           guid.ID                       `json:"role_id,omitempty"`
@@ -256,7 +256,7 @@ type listRoleMembersInput struct {
 }
 
 // listRoleDirectoryBindingsInput bounds the listing by default: a role can be
-// granted to any number of the tenant's groups and positions.
+// granted to any number of the tenant's groups.
 type listRoleDirectoryBindingsInput struct {
 	RoleID string `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	Offset int    `query:"offset" minimum:"0" default:"0"`
@@ -307,7 +307,7 @@ type memberInput struct {
 
 type directoryBindingInput struct {
 	RoleID       string                `path:"role_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
-	AssigneeType DirectoryAssigneeType `path:"assignee_type" enum:"group,position"`
+	AssigneeType DirectoryAssigneeType `path:"assignee_type" enum:"group"`
 	AssigneeID   string                `path:"assignee_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 }
 
@@ -926,7 +926,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-list-role-directory-bindings", Method: http.MethodGet, Path: "/roles/{role_id}/directory-bindings", Summary: "List group and position role assignments", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound},
+		OperationID: "iam-list-role-directory-bindings", Method: http.MethodGet, Path: "/roles/{role_id}/directory-bindings", Summary: "List group role assignments", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "view"}, func(ctx context.Context, in *listRoleDirectoryBindingsInput) (*respx.Body[[]APIRoleDirectoryBinding], error) {
 		tenantID, roleID, err := roleRefIDs(ctx, in.RoleID)
 		if err != nil {
@@ -940,7 +940,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-add-role-directory-binding", Method: http.MethodPut, Path: "/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}", Summary: "Assign a group or position to a role", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
+		OperationID: "iam-add-role-directory-binding", Method: http.MethodPut, Path: "/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}", Summary: "Assign a group to a role", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "manage_assignee"}, func(ctx context.Context, in *directoryBindingInput) (*respx.Body[MutationResult], error) {
 		tenantID, roleID, err := roleRefIDs(ctx, in.RoleID)
 		if err != nil {
@@ -958,7 +958,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterOwned(registrar, a, huma.Operation{
-		OperationID: "iam-remove-role-directory-binding", Method: http.MethodDelete, Path: "/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}", Summary: "Remove a group or position from a role", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
+		OperationID: "iam-remove-role-directory-binding", Method: http.MethodDelete, Path: "/roles/{role_id}/directory-bindings/{assignee_type}/{assignee_id}", Summary: "Remove a group from a role", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "role_id", svc.resolveRoleOwner, authz.Guard{Resource: "role", Verb: "manage_assignee"}, func(ctx context.Context, in *directoryBindingInput) (*respx.Body[MutationResult], error) {
 		tenantID, roleID, err := roleRefIDs(ctx, in.RoleID)
 		if err != nil {

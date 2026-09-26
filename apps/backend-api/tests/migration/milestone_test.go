@@ -46,7 +46,7 @@ func TestIAMIdentityAuthnMigrationsAcrossEngines(t *testing.T) {
 						milestones[report.Module] = report.Milestone
 					}
 					assert.Equal(t, "personal-tokens", milestones[authn.Name])
-					assert.Equal(t, "department-entities", milestones[organization.Name])
+					assert.Equal(t, "retire-positions", milestones[organization.Name])
 					assertTableExists(t, db, engine.dialect, prefix+"iam_principals", true)
 					assertTableExists(t, db, engine.dialect, prefix+"iam_credentials", true)
 					assertTableExists(t, db, engine.dialect, prefix+"goose_identity", true)
@@ -78,6 +78,8 @@ func TestIAMIdentityAuthnMigrationsAcrossEngines(t *testing.T) {
 						Module: authn.Name,
 						To:     0,
 					}, prefix)
+					require.NoError(t, err)
+					_, err = app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{Action: app.MigrationDownTo, Module: iamcore.Name, To: 16}, prefix)
 					require.NoError(t, err)
 					for _, name := range []string{organization.Name, iamcore.Name} {
 						_, err = app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{Action: app.MigrationDownTo, Module: name, To: 0}, prefix)

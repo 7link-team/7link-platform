@@ -33,7 +33,6 @@ type Module struct {
 	config           Config
 	service          *Service
 	tenants          *TenantService
-	positions        *PositionService
 	groups           *GroupService
 	invitations      *InvitationService
 	runtime          *appenv.Runtime
@@ -220,11 +219,10 @@ func (m *Module) Initialize(context.Context) error {
 	m.tenants = NewTenantService(m.runtime, m.appender, m.ids, m.bootstrap, m.owners)
 	m.service.roots, m.tenants.roots = m.roots, m.roots
 	m.service.rootContent = m.rootContent
-	m.positions = NewPositionService(m.runtime, m.appender, m.members, m.administrators, m.ids)
 	m.groups = NewGroupService(m.runtime, m.appender, m.members, m.administrators, m.ids)
 	m.invitations = NewInvitationService(m.runtime, m.appender, m.ids, m.credentials, m.createPrincipal)
 	for _, repo := range []*Repository{
-		m.service.repo, m.tenants.repo, m.positions.repo, m.groups.repo, m.invitations.repo,
+		m.service.repo, m.tenants.repo, m.groups.repo, m.invitations.repo,
 	} {
 		repo.foreign = &m.foreign
 	}
@@ -233,7 +231,7 @@ func (m *Module) Initialize(context.Context) error {
 
 func (m *Module) CheckHealth(context.Context) error {
 	if m == nil || m.service == nil || m.service.repo == nil || m.service.repo.writer() == nil ||
-		m.tenants == nil || m.positions == nil || m.groups == nil || m.invitations == nil {
+		m.tenants == nil || m.groups == nil || m.invitations == nil {
 		return ErrUnavailable
 	}
 	return nil
@@ -243,10 +241,10 @@ func (m *Module) RegisterHTTP(_ context.Context, api huma.API) error {
 	if m == nil || m.registrar == nil {
 		return errors.New("register organization: module is unavailable")
 	}
-	if m.service == nil || m.tenants == nil || m.positions == nil || m.groups == nil || m.invitations == nil {
+	if m.service == nil || m.tenants == nil || m.groups == nil || m.invitations == nil {
 		return errors.New("register organization: services are unavailable")
 	}
-	RegisterHTTP(api, m.service, m.tenants, m.positions, m.groups, m.invitations, m.registrar)
+	RegisterHTTP(api, m.service, m.tenants, m.groups, m.invitations, m.registrar)
 	return nil
 }
 

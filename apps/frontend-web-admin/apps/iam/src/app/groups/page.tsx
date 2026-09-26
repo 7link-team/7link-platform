@@ -203,7 +203,7 @@ export default function GroupsPage() {
     setBusy(true)
     setError("")
     try {
-      // Same split as positions: the directory needs user_view, the membership
+      // The directory needs user_view, the membership
       // list does not.
       const [assigned, members] = await Promise.all([
         iamApi.groupMembers(group.id),

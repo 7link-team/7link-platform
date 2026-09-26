@@ -132,14 +132,6 @@ func (r *Repository) resolveDepartmentOwner(ctx context.Context, id guid.ID) (au
 	return authz.ResourceOwner{TenantID: row.TenantID, EntityID: row.EntityID}, true, nil
 }
 
-func (r *Repository) resolvePositionTenant(ctx context.Context, id guid.ID) (guid.ID, bool, error) {
-	tables, _, err := r.tables()
-	if err != nil {
-		return 0, false, err
-	}
-	return r.resolveResourceTenant(ctx, tables.Positions.TableName(), id)
-}
-
 func (r *Repository) resolveGroupTenant(ctx context.Context, id guid.ID) (guid.ID, bool, error) {
 	tables, _, err := r.tables()
 	if err != nil {

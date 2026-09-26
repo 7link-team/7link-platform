@@ -20,7 +20,6 @@ const (
 	AuthorizationSourceTemporaryRole MemberAuthorizationSourceType = "temporary_role"
 	AuthorizationSourceStaticGroup   MemberAuthorizationSourceType = "static_group"
 	AuthorizationSourceDynamicGroup  MemberAuthorizationSourceType = "dynamic_group"
-	AuthorizationSourcePosition      MemberAuthorizationSourceType = "position"
 	AuthorizationSourceEntityBinding MemberAuthorizationSourceType = "entity_binding"
 	AuthorizationSourceRelationship  MemberAuthorizationSourceType = "relationship"
 )
@@ -60,18 +59,16 @@ type MemberAuthorizationSnapshot struct {
 // organization module retains ownership of its generated persistence queries.
 type DirectoryAuthorizationSourceStore struct {
 	ListMembershipExpiries func(context.Context, guid.ID, guid.ID, time.Time) (DirectoryAuthorizationSourceExpiries, error)
-	ListLabels             func(context.Context, guid.ID, []guid.ID, []guid.ID, []guid.ID) (DirectoryAuthorizationSourceLabels, error)
+	ListLabels             func(context.Context, guid.ID, []guid.ID, []guid.ID) (DirectoryAuthorizationSourceLabels, error)
 }
 
 type DirectoryAuthorizationSourceExpiries struct {
-	Groups    map[guid.ID]time.Time
-	Positions map[guid.ID]time.Time
+	Groups map[guid.ID]time.Time
 }
 
 type DirectoryAuthorizationSourceLabels struct {
 	Groups          map[guid.ID]string
 	GroupTypes      map[guid.ID]string
-	Positions       map[guid.ID]string
 	RoleDepartments map[guid.ID][]guid.ID
 }
 
@@ -201,7 +198,6 @@ type entityBindingSourceKey struct {
 type authorizationSourceExpiries struct {
 	temporaryRoles map[guid.ID]time.Time
 	groups         map[guid.ID]time.Time
-	positions      map[guid.ID]time.Time
 	entityBindings map[entityBindingSourceKey]time.Time
 }
 
@@ -212,7 +208,7 @@ func (a *Authorizer) loadAuthorizationSourceExpiries(
 ) (authorizationSourceExpiries, error) {
 	expiries := authorizationSourceExpiries{
 		temporaryRoles: map[guid.ID]time.Time{}, groups: map[guid.ID]time.Time{},
-		positions: map[guid.ID]time.Time{}, entityBindings: map[entityBindingSourceKey]time.Time{},
+		entityBindings: map[entityBindingSourceKey]time.Time{},
 	}
 	coreTables := corequery.BindWithNames(a.db, a.names)
 	temporaryRoles, err := coreTables.TemporaryRoleGrants.WithContext(ctx).Where(
@@ -252,9 +248,6 @@ func (a *Authorizer) loadAuthorizationSourceExpiries(
 		for id, expiry := range directoryExpiries.Groups {
 			expiries.groups[id] = expiry.UTC()
 		}
-		for id, expiry := range directoryExpiries.Positions {
-			expiries.positions[id] = expiry.UTC()
-		}
 	}
 	return expiries, nil
 }
@@ -271,7 +264,6 @@ type authorizationSourceLabels struct {
 	roles           map[guid.ID]string
 	groups          map[guid.ID]string
 	groupTypes      map[guid.ID]string
-	positions       map[guid.ID]string
 	entities        map[guid.ID]string
 	principals      map[guid.ID]string
 	roleDepartments map[guid.ID][]guid.ID
@@ -286,18 +278,16 @@ func (a *Authorizer) loadAuthorizationSourceLabels(
 ) (authorizationSourceLabels, error) {
 	labels := authorizationSourceLabels{
 		roles: map[guid.ID]string{}, groups: map[guid.ID]string{}, groupTypes: map[guid.ID]string{},
-		positions: map[guid.ID]string{}, entities: map[guid.ID]string{}, principals: map[guid.ID]string{},
+		entities: map[guid.ID]string{}, principals: map[guid.ID]string{},
 		roleDepartments: map[guid.ID][]guid.ID{},
 	}
-	roleIDs, groupIDs, positionIDs := map[guid.ID]bool{}, map[guid.ID]bool{}, map[guid.ID]bool{}
+	roleIDs, groupIDs := map[guid.ID]bool{}, map[guid.ID]bool{}
 	entityIDs, principalIDs := map[guid.ID]bool{}, map[guid.ID]bool{subject: true}
 	for _, grant := range tenantGrants {
 		roleIDs[grant.RoleID] = true
 		switch grant.SourceType {
 		case "group":
 			groupIDs[grant.SourceID] = true
-		case "position":
-			positionIDs[grant.SourceID] = true
 		case "role_member":
 			principalIDs[grant.SourceID] = true
 		}
@@ -324,8 +314,6 @@ func (a *Authorizer) loadAuthorizationSourceLabels(
 			principalIDs[id] = true
 		case "group":
 			groupIDs[id] = true
-		case "position":
-			positionIDs[id] = true
 		case "entity":
 			entityIDs[id] = true
 		}
@@ -369,7 +357,7 @@ func (a *Authorizer) loadAuthorizationSourceLabels(
 	}
 	if a.directorySources.ListLabels != nil {
 		directoryLabels, err := a.directorySources.ListLabels(
-			ctx, tenantID, idSet(roleIDs), idSet(groupIDs), idSet(positionIDs),
+			ctx, tenantID, idSet(roleIDs), idSet(groupIDs),
 		)
 		if err != nil {
 			return authorizationSourceLabels{}, fmt.Errorf("list authorization directory labels: %w", err)
@@ -379,9 +367,6 @@ func (a *Authorizer) loadAuthorizationSourceLabels(
 		}
 		for id, groupType := range directoryLabels.GroupTypes {
 			labels.groupTypes[id] = groupType
-		}
-		for id, name := range directoryLabels.Positions {
-			labels.positions[id] = name
 		}
 		for roleID, departmentIDs := range directoryLabels.RoleDepartments {
 			labels.roleDepartments[roleID] = append([]guid.ID(nil), departmentIDs...)
@@ -427,10 +412,6 @@ func aggregateAuthorizationSources(
 				expiry, ok := expiries.groups[grant.SourceID]
 				expiresAt = authorizationSourceExpiry(expiry, ok)
 			}
-		case "position":
-			typeName, sourceName = AuthorizationSourcePosition, labels.positions[grant.SourceID]
-			expiry, ok := expiries.positions[grant.SourceID]
-			expiresAt = authorizationSourceExpiry(expiry, ok)
 		}
 		key := fmt.Sprintf("tenant:%s:%d:%d:%s", typeName, grant.RoleID, grant.SourceID, grant.DataScope)
 		appendGrant(key, MemberAuthorizationSource{
@@ -510,8 +491,6 @@ func authorizationSourceName(sourceType string, id guid.ID, labels authorization
 		return labels.principals[id]
 	case "group":
 		return labels.groups[id]
-	case "position":
-		return labels.positions[id]
 	case "entity":
 		return labels.entities[id]
 	default:

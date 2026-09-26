@@ -60,7 +60,7 @@ func TestRoleGrantStoreRollsBackLastDirectoryAdministratorRemoval(t *testing.T) 
 		idColumn     string
 	}{
 		{name: "group", assigneeType: DirectoryAssigneeGroup, directoryID: 200, memberTable: "iam_group_members", idColumn: "group_id"},
-		{name: "position", assigneeType: DirectoryAssigneePosition, directoryID: 300, memberTable: "iam_position_members", idColumn: "position_id"},
+		{name: "group", assigneeType: DirectoryAssigneeGroup, directoryID: 300, memberTable: "iam_group_members", idColumn: "group_id"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -90,7 +90,7 @@ func TestRoleGrantStoreRollsBackLastDirectoryAdministratorRemoval(t *testing.T) 
 					_, err := store.RemoveGroupMembership(t.Context(), repo.writer(), 1, test.directoryID, 11)
 					return err
 				}
-				_, err := store.RemovePositionMembership(t.Context(), repo.writer(), 1, test.directoryID, 11)
+				_, err := store.RemoveGroupMembership(t.Context(), repo.writer(), 1, test.directoryID, 11)
 				return err
 			})
 			assert.ErrorIs(t, err, ErrLastTenantAdministrator)

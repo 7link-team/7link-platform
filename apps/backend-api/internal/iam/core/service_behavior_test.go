@@ -710,7 +710,7 @@ func TestServiceCatalogsAndConstructors(t *testing.T) {
 	assert.Panics(t, func() { NewAuthorizerWithRegistry(nil, harness.service.registry) })
 	assert.Panics(t, func() { NewAuthorizerWithRegistry(harness.runtime, nil) })
 	assert.Equal(t, Name, (&Module{}).ModuleName())
-	require.Len(t, (&Module{}).MigrationMilestones(), 6)
+	require.Len(t, (&Module{}).MigrationMilestones(), 7)
 }
 
 func TestServiceRoleConditionValidationAndReadModels(t *testing.T) {
@@ -842,10 +842,10 @@ func TestServiceDirectoryBindingValidationAndIdempotency(t *testing.T) {
 		VALUES (?,201,'Active','active','static','','','active',0,1,?,?),
 		       (?,202,'Disabled','disabled','static','','','disabled',0,1,?,?)`,
 		tenantID, now, now, tenantID, now, now).Error)
-	require.NoError(t, harness.db.Exec(`INSERT INTO sl_iam_positions
-		(tenant_id,id,code,name,status,sort_order,version,created_at,updated_at)
-		VALUES (?,301,'active','Active','active',0,1,?,?),
-		       (?,302,'disabled','Disabled','disabled',0,1,?,?)`,
+	require.NoError(t, harness.db.Exec(`INSERT INTO sl_iam_groups
+		(tenant_id,id,name_key,name,group_type,status,sort_order,version,created_at,updated_at)
+		VALUES (?,301,'second-active','Second active','static','active',0,1,?,?),
+		       (?,302,'second-disabled','Second disabled','static','disabled',0,1,?,?)`,
 		tenantID, now, now, tenantID, now, now).Error)
 
 	for _, item := range []struct {
@@ -854,32 +854,33 @@ func TestServiceDirectoryBindingValidationAndIdempotency(t *testing.T) {
 		want     error
 	}{
 		{"bad", 201, ErrInvalidArgument},
+		{"position", 301, ErrInvalidArgument},
 		{DirectoryAssigneeGroup, 0, ErrInvalidArgument},
 		{DirectoryAssigneeGroup, 999, ErrDirectoryAssigneeNotFound},
-		{DirectoryAssigneePosition, 999, ErrDirectoryAssigneeNotFound},
+		{DirectoryAssigneeGroup, 999, ErrDirectoryAssigneeNotFound},
 		{DirectoryAssigneeGroup, 202, ErrDirectoryAssigneeInactive},
-		{DirectoryAssigneePosition, 302, ErrDirectoryAssigneeInactive},
+		{DirectoryAssigneeGroup, 302, ErrDirectoryAssigneeInactive},
 	} {
 		_, err = harness.service.AddDirectoryBinding(t.Context(), tenantID, role.ID, item.typeName, item.id)
 		assert.ErrorIs(t, err, item.want)
 	}
 	changed, err := harness.service.AddDirectoryBinding(
-		t.Context(), tenantID, role.ID, DirectoryAssigneePosition, 301,
+		t.Context(), tenantID, role.ID, DirectoryAssigneeGroup, 301,
 	)
 	require.NoError(t, err)
 	assert.True(t, changed)
 	changed, err = harness.service.AddDirectoryBinding(
-		t.Context(), tenantID, role.ID, DirectoryAssigneePosition, 301,
+		t.Context(), tenantID, role.ID, DirectoryAssigneeGroup, 301,
 	)
 	require.NoError(t, err)
 	assert.False(t, changed)
 	changed, err = harness.service.RemoveDirectoryBinding(
-		t.Context(), tenantID, role.ID, DirectoryAssigneePosition, 301,
+		t.Context(), tenantID, role.ID, DirectoryAssigneeGroup, 301,
 	)
 	require.NoError(t, err)
 	assert.True(t, changed)
 	changed, err = harness.service.RemoveDirectoryBinding(
-		t.Context(), tenantID, role.ID, DirectoryAssigneePosition, 301,
+		t.Context(), tenantID, role.ID, DirectoryAssigneeGroup, 301,
 	)
 	require.NoError(t, err)
 	assert.False(t, changed)
@@ -941,7 +942,7 @@ func TestServiceListsIndependentEffectiveAuthorizationSources(t *testing.T) {
 	directRole := createRole("Direct", "role_view")
 	temporaryRole := createRole("Temporary", "menu_view")
 	staticRole := createRole("Static group", "group_view")
-	dynamicRole := createRole("Dynamic group", "position_view")
+	dynamicRole := createRole("Dynamic group", "group_view")
 	positionRole := createRole("Position", "dept_view")
 	scopedRole := createRole("Scoped", "store_view")
 
@@ -978,10 +979,10 @@ func TestServiceListsIndependentEffectiveAuthorizationSources(t *testing.T) {
 
 	positionEnd := repositoryTestTime.Add(4 * time.Hour)
 	require.NoError(t, harness.db.Exec(
-		"INSERT INTO sl_iam_position_members (tenant_id, position_id, principal_id, starts_at, ends_at, created_at, updated_at) VALUES (?, 300, ?, NULL, ?, ?, ?)",
+		"INSERT INTO sl_iam_group_members (tenant_id, group_id, principal_id, starts_at, ends_at, created_at, updated_at) VALUES (?, 300, ?, NULL, ?, ?, ?)",
 		tenantID, principalID, positionEnd, repositoryTestTime, repositoryTestTime,
 	).Error)
-	_, err = harness.service.AddDirectoryBinding(t.Context(), tenantID, positionRole.ID, DirectoryAssigneePosition, 300)
+	_, err = harness.service.AddDirectoryBinding(t.Context(), tenantID, positionRole.ID, DirectoryAssigneeGroup, 300)
 	require.NoError(t, err)
 
 	root, err := harness.service.CreateEntity(t.Context(), Entity{TenantID: tenantID, Type: "company", Name: "North region"})
@@ -1001,14 +1002,14 @@ func TestServiceListsIndependentEffectiveAuthorizationSources(t *testing.T) {
 	require.NoError(t, harness.authorizer.BindDirectoryAuthorizationSources(DirectoryAuthorizationSourceStore{
 		ListMembershipExpiries: func(context.Context, guid.ID, guid.ID, time.Time) (DirectoryAuthorizationSourceExpiries, error) {
 			return DirectoryAuthorizationSourceExpiries{
-				Groups: map[guid.ID]time.Time{200: staticEnd}, Positions: map[guid.ID]time.Time{300: positionEnd},
+				Groups: map[guid.ID]time.Time{200: staticEnd, 300: positionEnd},
 			}, nil
 		},
-		ListLabels: func(context.Context, guid.ID, []guid.ID, []guid.ID, []guid.ID) (DirectoryAuthorizationSourceLabels, error) {
+		ListLabels: func(context.Context, guid.ID, []guid.ID, []guid.ID) (DirectoryAuthorizationSourceLabels, error) {
 			return DirectoryAuthorizationSourceLabels{
-				Groups:          map[guid.ID]string{200: "Operators", 201: "Current staff"},
-				GroupTypes:      map[guid.ID]string{200: "static", 201: "dynamic"},
-				Positions:       map[guid.ID]string{300: "Manager"},
+				Groups:     map[guid.ID]string{200: "Operators", 201: "Current staff", 300: "Manager"},
+				GroupTypes: map[guid.ID]string{200: "static", 201: "dynamic", 300: "static"},
+
 				RoleDepartments: map[guid.ID][]guid.ID{directRole.ID: {100}},
 			}, nil
 		},
@@ -1029,14 +1030,21 @@ func TestServiceListsIndependentEffectiveAuthorizationSources(t *testing.T) {
 	assert.Equal(t, []guid.ID{100}, byType[AuthorizationSourcePermanentRole][0].DepartmentIDs)
 	require.Len(t, byType[AuthorizationSourceTemporaryRole], 1, "expired temporary grants must not be listed")
 	assert.Equal(t, temporaryEnd, *byType[AuthorizationSourceTemporaryRole][0].ExpiresAt)
-	require.Len(t, byType[AuthorizationSourceStaticGroup], 1)
-	assert.Equal(t, "Operators", byType[AuthorizationSourceStaticGroup][0].SourceName)
-	assert.Equal(t, staticEnd, *byType[AuthorizationSourceStaticGroup][0].ExpiresAt)
+	require.Len(t, byType[AuthorizationSourceStaticGroup], 2)
+	for _, source := range byType[AuthorizationSourceStaticGroup] {
+		switch source.SourceID {
+		case 200:
+			assert.Equal(t, "Operators", source.SourceName)
+			assert.Equal(t, staticEnd, *source.ExpiresAt)
+		case 300:
+			assert.Equal(t, "Manager", source.SourceName)
+			assert.Equal(t, positionEnd, *source.ExpiresAt)
+		default:
+			t.Fatalf("unexpected static group %v", source.SourceID)
+		}
+	}
 	require.Len(t, byType[AuthorizationSourceDynamicGroup], 1)
 	assert.Equal(t, "Current staff", byType[AuthorizationSourceDynamicGroup][0].SourceName)
-	require.Len(t, byType[AuthorizationSourcePosition], 1)
-	assert.Equal(t, "Manager", byType[AuthorizationSourcePosition][0].SourceName)
-	assert.Equal(t, positionEnd, *byType[AuthorizationSourcePosition][0].ExpiresAt)
 
 	entitySources := byType[AuthorizationSourceEntityBinding]
 	require.Len(t, entitySources, 3)
@@ -1076,14 +1084,14 @@ func hasAuthorizationSource(
 
 func TestAuthorizationSourceAggregationBranches(t *testing.T) {
 	labels := authorizationSourceLabels{
-		roles:  map[guid.ID]string{1: "Role 1", 2: "Role 2"},
-		groups: map[guid.ID]string{3: "Group"}, positions: map[guid.ID]string{4: "Position"},
+		roles:    map[guid.ID]string{1: "Role 1", 2: "Role 2"},
+		groups:   map[guid.ID]string{3: "Group"},
 		entities: map[guid.ID]string{5: "Entity"}, principals: map[guid.ID]string{6: "Principal"},
 		roleDepartments: map[guid.ID][]guid.ID{}, groupTypes: map[guid.ID]string{},
 	}
 	expiries := authorizationSourceExpiries{
 		temporaryRoles: map[guid.ID]time.Time{}, groups: map[guid.ID]time.Time{},
-		positions: map[guid.ID]time.Time{}, entityBindings: map[entityBindingSourceKey]time.Time{},
+		entityBindings: map[entityBindingSourceKey]time.Time{},
 	}
 	tenantGrants := []tenantGrant{
 		{PermissionCode: "role_update", RoleID: 1, SourceType: "role_member", SourceID: 6, DataScope: string(DataScopeAll)},
@@ -1114,7 +1122,7 @@ func TestAuthorizationSourceAggregationBranches(t *testing.T) {
 	assert.Equal(t, []string{"role_update", "role_view"}, appendUnique(permanentSource.PermissionCodes, "role_view"))
 	assert.Equal(t, "Principal", authorizationSourceName("principal", 6, labels))
 	assert.Equal(t, "Group", authorizationSourceName("group", 3, labels))
-	assert.Equal(t, "Position", authorizationSourceName("position", 4, labels))
+	assert.Empty(t, authorizationSourceName("position", 4, labels))
 	assert.Equal(t, "Entity", authorizationSourceName("entity", 5, labels))
 	assert.Empty(t, authorizationSourceName("unknown", 1, labels))
 }
@@ -1171,7 +1179,7 @@ func TestAuthorizationSourceGeneratedQueriesPropagateFailures(t *testing.T) {
 			ListMembershipExpiries: func(context.Context, guid.ID, guid.ID, time.Time) (DirectoryAuthorizationSourceExpiries, error) {
 				return DirectoryAuthorizationSourceExpiries{}, want
 			},
-			ListLabels: func(context.Context, guid.ID, []guid.ID, []guid.ID, []guid.ID) (DirectoryAuthorizationSourceLabels, error) {
+			ListLabels: func(context.Context, guid.ID, []guid.ID, []guid.ID) (DirectoryAuthorizationSourceLabels, error) {
 				return DirectoryAuthorizationSourceLabels{}, want
 			},
 		}))

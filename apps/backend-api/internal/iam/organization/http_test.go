@@ -35,66 +35,51 @@ organization-accept-invitation|POST|/membership-invitations/acceptances
 organization-create-department|POST|/tenants/{tenant_id}/departments
 organization-create-group|POST|/tenants/{tenant_id}/principal-groups
 organization-create-invitation|POST|/tenants/{tenant_id}/membership-invitations
-organization-create-position|POST|/tenants/{tenant_id}/job-positions
 organization-create-tenant|POST|/tenants
 organization-delete-department|DELETE|/departments/{department_id}
 organization-delete-group|DELETE|/principal-groups/{group_id}
 organization-delete-group-member|DELETE|/principal-groups/{group_id}/members/{principal_id}
-organization-delete-position|DELETE|/job-positions/{position_id}
-organization-delete-position-member|DELETE|/job-positions/{position_id}/members/{principal_id}
 organization-delete-tenant|DELETE|/tenants/{tenant_id}
 organization-get-department|GET|/departments/{department_id}
 organization-get-group|GET|/principal-groups/{group_id}
-organization-get-position|GET|/job-positions/{position_id}
 organization-get-tenant|GET|/tenants/{tenant_id}
 organization-list-departments|GET|/tenants/{tenant_id}/departments
 organization-list-group-members|GET|/principal-groups/{group_id}/members
 organization-list-groups|GET|/tenants/{tenant_id}/principal-groups
 organization-list-invitations|GET|/tenants/{tenant_id}/membership-invitations
-organization-list-position-members|GET|/job-positions/{position_id}/members
-organization-list-positions|GET|/tenants/{tenant_id}/job-positions
 organization-list-tenants|GET|/tenants
 organization-my-tenants|GET|/principals/{principal_id}/tenants
 organization-put-group-member|PUT|/principal-groups/{group_id}/members/{principal_id}
-organization-put-position-member|PUT|/job-positions/{position_id}/members/{principal_id}
 organization-resend-invitation|POST|/membership-invitations/{invitation_id}/deliveries
 organization-revoke-invitation|DELETE|/membership-invitations/{invitation_id}
 organization-update-department|PATCH|/departments/{department_id}
 organization-update-group|PATCH|/principal-groups/{group_id}
-organization-update-position|PATCH|/job-positions/{position_id}
 organization-update-tenant|PATCH|/tenants/{tenant_id}`
 
 var organizationGuards = map[string]string{
-	"organization-list-departments":       "dept_view",
-	"organization-create-department":      "dept_create",
-	"organization-get-department":         "dept_view",
-	"organization-update-department":      "dept_update",
-	"organization-delete-department":      "dept_delete",
-	"organization-list-positions":         "position_view",
-	"organization-create-position":        "position_create",
-	"organization-get-position":           "position_view",
-	"organization-update-position":        "position_update",
-	"organization-delete-position":        "position_delete",
-	"organization-list-position-members":  "position_view",
-	"organization-put-position-member":    "position_manage_member",
-	"organization-delete-position-member": "position_manage_member",
-	"organization-list-groups":            "group_view",
-	"organization-create-group":           "group_create",
-	"organization-get-group":              "group_view",
-	"organization-update-group":           "group_update",
-	"organization-delete-group":           "group_delete",
-	"organization-list-group-members":     "group_view",
-	"organization-put-group-member":       "group_manage_member",
-	"organization-delete-group-member":    "group_manage_member",
-	"organization-list-tenants":           "tenant_view",
-	"organization-create-tenant":          "tenant_create",
-	"organization-get-tenant":             "tenant_view",
-	"organization-update-tenant":          "tenant_update",
-	"organization-delete-tenant":          "tenant_delete",
-	"organization-list-invitations":       "invitation_view",
-	"organization-create-invitation":      "invitation_create",
-	"organization-revoke-invitation":      "invitation_revoke",
-	"organization-resend-invitation":      "invitation_resend",
+	"organization-list-departments":  "dept_view",
+	"organization-create-department": "dept_create",
+	"organization-get-department":    "dept_view",
+	"organization-update-department": "dept_update",
+	"organization-delete-department": "dept_delete",
+
+	"organization-list-groups":         "group_view",
+	"organization-create-group":        "group_create",
+	"organization-get-group":           "group_view",
+	"organization-update-group":        "group_update",
+	"organization-delete-group":        "group_delete",
+	"organization-list-group-members":  "group_view",
+	"organization-put-group-member":    "group_manage_member",
+	"organization-delete-group-member": "group_manage_member",
+	"organization-list-tenants":        "tenant_view",
+	"organization-create-tenant":       "tenant_create",
+	"organization-get-tenant":          "tenant_view",
+	"organization-update-tenant":       "tenant_update",
+	"organization-delete-tenant":       "tenant_delete",
+	"organization-list-invitations":    "invitation_view",
+	"organization-create-invitation":   "invitation_create",
+	"organization-revoke-invitation":   "invitation_revoke",
+	"organization-resend-invitation":   "invitation_resend",
 }
 
 func organizationDeclarationAPI(t *testing.T) huma.API {
@@ -167,7 +152,7 @@ func TestOrganizationRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 32)
+	require.Len(t, got, 24)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
@@ -228,15 +213,7 @@ func TestOrganizationErrorMappings(t *testing.T) {
 		{"department used", departmentError, ErrInUse, 409, organizationi18n.DepartmentInUse},
 		{"department version", departmentError, ErrVersionConflict, 409, organizationi18n.DepartmentVersionConflict},
 		{"department invalid", departmentError, ErrInvalid, 422, organizationi18n.InvalidDepartment},
-		{"position missing", positionError, ErrPositionNotFound, 404, organizationi18n.PositionNotFound},
-		{"position duplicate", positionError, ErrPositionCodeConflict, 409, organizationi18n.PositionCodeExists},
-		{"position version", positionError, ErrPositionVersionConflict, 409, organizationi18n.PositionVersionConflict},
-		{"position members", positionError, ErrPositionHasMembers, 409, organizationi18n.PositionHasMembers},
-		{"position role", positionError, ErrPositionRoleBound, 409, organizationi18n.PositionRoleBound},
-		{"position relationship", positionError, ErrPositionRelationshipBound, 409, organizationi18n.PositionRelationshipBound},
-		{"position inactive", positionError, ErrPositionMemberInactive, 409, organizationi18n.PositionMemberInactive},
-		{"position last admin", positionError, core.ErrLastTenantAdministrator, 409, organizationi18n.LastTenantAdministrator},
-		{"position invalid", positionError, ErrPositionInvalid, 422, organizationi18n.InvalidPosition},
+
 		{"group missing", groupError, ErrGroupNotFound, 404, organizationi18n.GroupNotFound},
 		{"group duplicate", groupError, ErrGroupNameConflict, 409, organizationi18n.GroupNameExists},
 		{"group version", groupError, ErrGroupVersionConflict, 409, organizationi18n.GroupVersionConflict},
@@ -270,7 +247,7 @@ func TestOrganizationErrorMappings(t *testing.T) {
 			assert.Contains(t, status.Error(), test.key)
 		})
 	}
-	for _, mapper := range []func(error) error{departmentError, positionError, groupError, tenantError, invitationError} {
+	for _, mapper := range []func(error) error{departmentError, groupError, tenantError, invitationError} {
 		var status huma.StatusError
 		require.ErrorAs(t, mapper(errors.New("storage unavailable")), &status)
 		assert.Equal(t, http.StatusInternalServerError, status.GetStatus())
@@ -318,7 +295,7 @@ func newOrganizationHTTPHarness(t *testing.T) organizationHTTPHarness {
 	guard := &organizationAdministratorGuard{}
 	departments := h.service
 	tenants, _, _ := newTenantServiceForTest(t, h, newOrganizationTestIDs(1000))
-	positions := newBoundPositionService(t, h.runtime, h.appender, members, guard, newOrganizationTestIDs(300))
+
 	groups := newBoundGroupService(t, h.runtime, h.appender, members, guard, newOrganizationTestIDs(400))
 	credentials := &invitationCredentialFixture{}
 	creator := identity.InvitationPrincipalCreator(func(
@@ -342,7 +319,7 @@ func newOrganizationHTTPHarness(t *testing.T) organizationHTTPHarness {
 	)
 	router := chi.NewRouter()
 	api := humax.New(router, humax.DefaultConfig("organization-test", "1.0.0"))
-	RegisterHTTP(api, departments, tenants, positions, groups, invitations, registrar)
+	RegisterHTTP(api, departments, tenants, groups, invitations, registrar)
 	return organizationHTTPHarness{organizationHarness: h, api: humatest.Wrap(t, api)}
 }
 
@@ -365,6 +342,10 @@ func TestOrganizationHTTPLifecycleExercisesEveryOperation(t *testing.T) {
 	h := newOrganizationHTTPHarness(t)
 	auth := "Authorization: Bearer test"
 	tenant := "/tenants/1"
+	for _, path := range []string{"/positions/1", "/job-positions/1", tenant + "/job-positions"} {
+		assert.Equal(t, http.StatusNotFound, h.api.Get(path, auth).Code, path)
+		assert.Equal(t, http.StatusNotFound, h.api.Post(path, auth, map[string]any{}).Code, path)
+	}
 
 	department := h.api.Post(tenant+"/departments", auth, map[string]any{"entity_id": "10", "name": "Engineering"})
 	assert.Equal(t, http.StatusCreated, department.Code, department.Body.String())
@@ -374,18 +355,6 @@ func TestOrganizationHTTPLifecycleExercisesEveryOperation(t *testing.T) {
 		"name": "Platform", "version": 1,
 	}).Code)
 	assert.Equal(t, http.StatusOK, h.api.Delete("/departments/101?version=2", auth).Code)
-
-	position := h.api.Post(tenant+"/job-positions", auth, map[string]any{"code": "engineer", "name": "Engineer"})
-	assert.Equal(t, http.StatusCreated, position.Code, position.Body.String())
-	assert.Equal(t, http.StatusOK, h.api.Get(tenant+"/job-positions", auth).Code)
-	assert.Equal(t, http.StatusOK, h.api.Get("/job-positions/301", auth).Code)
-	assert.Equal(t, http.StatusOK, h.api.Patch("/job-positions/301", auth, map[string]any{
-		"name": "Senior Engineer", "version": 1,
-	}).Code)
-	assert.Equal(t, http.StatusOK, h.api.Put("/job-positions/301/members/10", auth, map[string]any{}).Code)
-	assert.Equal(t, http.StatusOK, h.api.Get("/job-positions/301/members", auth).Code)
-	assert.Equal(t, http.StatusOK, h.api.Delete("/job-positions/301/members/10", auth).Code)
-	assert.Equal(t, http.StatusOK, h.api.Delete("/job-positions/301?version=2", auth).Code)
 
 	group := h.api.Post(tenant+"/principal-groups", auth, map[string]any{"name": "Operators"})
 	assert.Equal(t, http.StatusCreated, group.Code, group.Body.String())
@@ -477,10 +446,6 @@ func TestOrganizationHTTPRejectsInvalidReferencesAndStorageFailures(t *testing.T
 		h.api.Get("/departments/bad", auth),
 		h.api.Patch("/departments/bad", auth, map[string]any{"name": "Name", "version": 1}),
 		h.api.Delete("/departments/bad?version=1", auth),
-		h.api.Get("/job-positions/bad", auth),
-		h.api.Patch("/job-positions/bad", auth, map[string]any{"name": "Name", "version": 1}),
-		h.api.Delete("/job-positions/bad?version=1", auth),
-		h.api.Get("/job-positions/bad/members", auth),
 		h.api.Get("/principal-groups/bad", auth),
 		h.api.Patch("/principal-groups/bad", auth, map[string]any{"name": "Name", "version": 1}),
 		h.api.Delete("/principal-groups/bad?version=1", auth),
@@ -495,8 +460,6 @@ func TestOrganizationHTTPRejectsInvalidReferencesAndStorageFailures(t *testing.T
 		assert.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 	}
 	for _, response := range []*httptest.ResponseRecorder{
-		h.api.Put("/job-positions/1/members/bad", auth, map[string]any{}),
-		h.api.Delete("/job-positions/1/members/bad", auth),
 		h.api.Put("/principal-groups/1/members/bad", auth, map[string]any{}),
 		h.api.Delete("/principal-groups/1/members/bad", auth),
 	} {
@@ -512,14 +475,6 @@ func TestOrganizationHTTPRejectsInvalidReferencesAndStorageFailures(t *testing.T
 		h.api.Get("/departments/1", auth),
 		h.api.Patch("/departments/1", auth, map[string]any{"name": "Department", "version": 1}),
 		h.api.Delete("/departments/1?version=1", auth),
-		h.api.Get(tenant+"/job-positions", auth),
-		h.api.Post(tenant+"/job-positions", auth, map[string]any{"code": "position", "name": "Position"}),
-		h.api.Get("/job-positions/1", auth),
-		h.api.Patch("/job-positions/1", auth, map[string]any{"name": "Position", "version": 1}),
-		h.api.Delete("/job-positions/1?version=1", auth),
-		h.api.Get("/job-positions/1/members", auth),
-		h.api.Put("/job-positions/1/members/10", auth, map[string]any{}),
-		h.api.Delete("/job-positions/1/members/10", auth),
 		h.api.Get(tenant+"/principal-groups", auth),
 		h.api.Post(tenant+"/principal-groups", auth, map[string]any{"name": "Group"}),
 		h.api.Get("/principal-groups/1", auth),

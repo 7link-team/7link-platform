@@ -88,65 +88,6 @@ func (r *Repository) listTenantsPage(
 	return rows, total, nil
 }
 
-// listPositionsPage returns one page of a tenant's positions and the tenant's
-// total position count before pagination.
-func (r *Repository) listPositionsPage(
-	ctx context.Context,
-	tenantID guid.ID,
-	offset, limit int,
-) ([]positionRow, int64, error) {
-	tables, _, err := r.tables()
-	if err != nil {
-		return nil, 0, err
-	}
-	name := tables.Positions.TableName()
-	matching := func() *gorm.DB {
-		return r.writer().WithContext(ctx).Table(name).Where("tenant_id = ?", tenantID)
-	}
-	var total int64
-	if err := matching().Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("count positions: %w", err)
-	}
-	offset, limit = normalizePage(offset, limit)
-	var rows []positionRow
-	listing := matching().Order("sort_order ASC, code ASC, id ASC")
-	if err := applyPage(listing, offset, limit).Find(&rows).Error; err != nil {
-		return nil, 0, fmt.Errorf("list positions: %w", err)
-	}
-	return rows, total, nil
-}
-
-// listPositionMembersPage returns one page of a position's holders and the
-// number of holders before pagination. The count runs over the same join as the
-// listing, so a membership whose tenant member row is gone is absent from both.
-func (r *Repository) listPositionMembersPage(
-	ctx context.Context,
-	tenantID, positionID guid.ID,
-	offset, limit int,
-) ([]positionMemberRow, int64, error) {
-	tables, _, err := r.tables()
-	if err != nil {
-		return nil, 0, err
-	}
-	members, positions := r.foreign.access.TenantMembers.String(), tables.PositionMembers.TableName()
-	matching := func() *gorm.DB {
-		return r.writer().WithContext(ctx).Table(positions+" AS pm").
-			Joins("JOIN "+members+" AS tm ON tm.tenant_id = pm.tenant_id AND tm.principal_id = pm.principal_id").
-			Where("pm.tenant_id = ? AND pm.position_id = ?", tenantID, positionID)
-	}
-	var total int64
-	if err := matching().Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("count position members: %w", err)
-	}
-	offset, limit = normalizePage(offset, limit)
-	var rows []positionMemberRow
-	listing := matching().Select("pm.*, tm.display_name, tm.email").Order("tm.display_name ASC, pm.principal_id ASC")
-	if err := applyPage(listing, offset, limit).Scan(&rows).Error; err != nil {
-		return nil, 0, fmt.Errorf("list position members: %w", err)
-	}
-	return rows, total, nil
-}
-
 // listGroupsPage returns one page of a tenant's groups and the tenant's total
 // group count before pagination.
 func (r *Repository) listGroupsPage(
@@ -273,59 +214,6 @@ func (s *TenantService) ListPage(
 	items := make([]Tenant, len(rows))
 	for index := range rows {
 		items[index] = tenantFromRow(&rows[index])
-	}
-	return items, total, nil
-}
-
-// ListPage returns one page of the tenant's positions with the unfiltered total.
-func (s *PositionService) ListPage(
-	ctx context.Context,
-	tenantID guid.ID,
-	offset, limit int,
-) ([]Position, int64, error) {
-	if tenantID.Zero() {
-		return nil, 0, ErrPositionInvalid
-	}
-	repo, err := s.repo.pinWriter()
-	if err != nil {
-		return nil, 0, err
-	}
-	rows, total, err := repo.listPositionsPage(ctx, tenantID, offset, limit)
-	if err != nil {
-		return nil, 0, err
-	}
-	items := make([]Position, len(rows))
-	for index := range rows {
-		items[index] = positionFromRow(&rows[index])
-	}
-	return items, total, nil
-}
-
-// ListMembersPage returns one page of a position's holders with the unfiltered
-// total. The position is read first so an unknown position is reported as
-// missing rather than as a position nobody holds.
-func (s *PositionService) ListMembersPage(
-	ctx context.Context,
-	tenantID, positionID guid.ID,
-	offset, limit int,
-) ([]PositionMember, int64, error) {
-	if tenantID.Zero() || !validID(positionID) {
-		return nil, 0, ErrPositionInvalid
-	}
-	repo, err := s.repo.pinWriter()
-	if err != nil {
-		return nil, 0, err
-	}
-	if _, err := repo.getPosition(ctx, tenantID, positionID); err != nil {
-		return nil, 0, err
-	}
-	rows, total, err := repo.listPositionMembersPage(ctx, tenantID, positionID, offset, limit)
-	if err != nil {
-		return nil, 0, err
-	}
-	items := make([]PositionMember, len(rows))
-	for index := range rows {
-		items[index] = positionMemberFromRow(&rows[index])
 	}
 	return items, total, nil
 }

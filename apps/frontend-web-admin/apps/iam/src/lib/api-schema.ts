@@ -470,60 +470,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/job-positions/{position_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get a tenant position */
-        get: operations["organization-get-position"];
-        put?: never;
-        post?: never;
-        /** Delete an empty tenant position */
-        delete: operations["organization-delete-position"];
-        options?: never;
-        head?: never;
-        /** Update a tenant position */
-        patch: operations["organization-update-position"];
-        trace?: never;
-    };
-    "/job-positions/{position_id}/members": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List position members */
-        get: operations["organization-list-position-members"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/job-positions/{position_id}/members/{principal_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** Assign or update a position member */
-        put: operations["organization-put-position-member"];
-        post?: never;
-        /** Remove a position member */
-        delete: operations["organization-delete-position-member"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/livez": {
         parameters: {
             query?: never;
@@ -1980,7 +1926,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List group and position role assignments */
+        /** List group role assignments */
         get: operations["iam-list-role-directory-bindings"];
         put?: never;
         post?: never;
@@ -1998,10 +1944,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Assign a group or position to a role */
+        /** Assign a group to a role */
         put: operations["iam-add-role-directory-binding"];
         post?: never;
-        /** Remove a group or position from a role */
+        /** Remove a group from a role */
         delete: operations["iam-remove-role-directory-binding"];
         options?: never;
         head?: never;
@@ -3131,24 +3077,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/tenants/{tenant_id}/job-positions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List tenant positions */
-        get: operations["organization-list-positions"];
-        put?: never;
-        /** Create a tenant position */
-        post: operations["organization-create-position"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/tenants/{tenant_id}/members": {
         parameters: {
             query?: never;
@@ -3694,7 +3622,7 @@ export interface components {
             source_id: string | null;
             source_name?: string;
             /** @enum {string} */
-            type: "permanent_role" | "temporary_role" | "static_group" | "dynamic_group" | "position" | "entity_binding" | "relationship";
+            type: "permanent_role" | "temporary_role" | "static_group" | "dynamic_group" | "entity_binding" | "relationship";
         };
         APIMenu: {
             /** Format: date-time */
@@ -3734,7 +3662,7 @@ export interface components {
             subject_id: string;
             subject_relation?: string;
             /** @enum {string} */
-            subject_type: "principal" | "group" | "position" | "entity";
+            subject_type: "principal" | "group" | "entity";
         };
         APIRole: {
             /** Format: date-time */
@@ -3757,7 +3685,7 @@ export interface components {
         APIRoleDirectoryBinding: {
             assignee_id: string | null;
             /** @enum {string} */
-            assignee_type: "group" | "position";
+            assignee_type: "group";
             /** Format: date-time */
             created_at: string;
             role_id: string | null;
@@ -4283,17 +4211,6 @@ export interface components {
             translations?: {
                 [key: string]: string;
             };
-        };
-        CreatePositionInputBody: {
-            code: string;
-            name: string;
-            /** Format: int64 */
-            sort_order?: number;
-            /**
-             * @default active
-             * @enum {string}
-             */
-            status: "active" | "disabled";
         };
         CreateRequestInputBody: {
             /** Format: date-time */
@@ -5561,32 +5478,6 @@ export interface components {
             /** @description request metadata */
             meta: components["schemas"]["Meta"];
         };
-        EnvelopeListPosition: {
-            /**
-             * Format: int64
-             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
-             */
-            code: number;
-            /** @description response payload; null on error */
-            data: components["schemas"]["Position"][] | null;
-            /** @description human-readable status; "ok" on success */
-            message: string;
-            /** @description request metadata */
-            meta: components["schemas"]["Meta"];
-        };
-        EnvelopeListPositionMember: {
-            /**
-             * Format: int64
-             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
-             */
-            code: number;
-            /** @description response payload; null on error */
-            data: components["schemas"]["PositionMember"][] | null;
-            /** @description human-readable status; "ok" on success */
-            message: string;
-            /** @description request metadata */
-            meta: components["schemas"]["Meta"];
-        };
         EnvelopeListProvider: {
             /**
              * Format: int64
@@ -5952,32 +5843,6 @@ export interface components {
             code: number;
             /** @description response payload; null on error */
             data: components["schemas"]["PlatformAdministratorView"];
-            /** @description human-readable status; "ok" on success */
-            message: string;
-            /** @description request metadata */
-            meta: components["schemas"]["Meta"];
-        };
-        EnvelopePosition: {
-            /**
-             * Format: int64
-             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
-             */
-            code: number;
-            /** @description response payload; null on error */
-            data: components["schemas"]["Position"];
-            /** @description human-readable status; "ok" on success */
-            message: string;
-            /** @description request metadata */
-            meta: components["schemas"]["Meta"];
-        };
-        EnvelopePositionMember: {
-            /**
-             * Format: int64
-             * @description 0 = success; 1..999 = HTTP status; 100000+ = business code
-             */
-            code: number;
-            /** @description response payload; null on error */
-            data: components["schemas"]["PositionMember"];
             /** @description human-readable status; "ok" on success */
             message: string;
             /** @description request metadata */
@@ -6967,41 +6832,6 @@ export interface components {
              */
             version: number;
         };
-        Position: {
-            code: string;
-            /** Format: date-time */
-            created_at: string;
-            id: string | null;
-            name: string;
-            /** Format: int64 */
-            sort_order: number;
-            status: string;
-            tenant_id: string | null;
-            /** Format: date-time */
-            updated_at: string;
-            /** Format: int64 */
-            version: number;
-        };
-        PositionMember: {
-            /** Format: date-time */
-            created_at: string;
-            display_name: string;
-            email?: string;
-            /** Format: date-time */
-            ends_at?: string;
-            position_id: string | null;
-            principal_id: string | null;
-            /** Format: date-time */
-            starts_at?: string;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        PositionMembershipInputBody: {
-            /** Format: date-time */
-            ends_at?: string;
-            /** Format: date-time */
-            starts_at?: string;
-        };
         Principal: {
             activation_required: boolean;
             avatar?: components["schemas"]["Avatar"];
@@ -7201,7 +7031,7 @@ export interface components {
             subject_id: string;
             subject_relation?: string;
             /** @enum {string} */
-            subject_type: "principal" | "group" | "position" | "entity";
+            subject_type: "principal" | "group" | "entity";
         };
         RelationshipStep: {
             condition?: unknown;
@@ -7570,16 +7400,6 @@ export interface components {
             translations?: {
                 [key: string]: string;
             };
-        };
-        UpdatePositionInputBody: {
-            code?: string;
-            name?: string;
-            /** Format: int64 */
-            sort_order?: number;
-            /** @enum {string} */
-            status?: "active" | "disabled";
-            /** Format: int64 */
-            version: number;
         };
         UpdateRoleInputBody: {
             description?: string;
@@ -10687,519 +10507,6 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    "organization-get-position": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Resource identifier */
-                position_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EnvelopePosition"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    "organization-delete-position": {
-        parameters: {
-            query?: {
-                version?: number;
-            };
-            header?: never;
-            path: {
-                /** @description Resource identifier */
-                position_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EnvelopeDeletedResource"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    "organization-update-position": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Resource identifier */
-                position_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdatePositionInputBody"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EnvelopePosition"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    "organization-list-position-members": {
-        parameters: {
-            query?: {
-                offset?: number;
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                /** @description Resource identifier */
-                position_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EnvelopeListPositionMember"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    "organization-put-position-member": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Resource identifier */
-                position_id: string;
-                principal_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PositionMembershipInputBody"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EnvelopePositionMember"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    "organization-delete-position-member": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Resource identifier */
-                position_id: string;
-                principal_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EnvelopeDeletedResource"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Not Found */
-            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -20096,7 +19403,7 @@ export interface operations {
             path: {
                 /** @description Resource identifier */
                 role_id: string;
-                assignee_type: "group" | "position";
+                assignee_type: "group";
                 assignee_id: string;
             };
             cookie?: never;
@@ -20184,7 +19491,7 @@ export interface operations {
             path: {
                 /** @description Resource identifier */
                 role_id: string;
-                assignee_type: "group" | "position";
+                assignee_type: "group";
                 assignee_id: string;
             };
             cookie?: never;
@@ -28048,7 +27355,7 @@ export interface operations {
         parameters: {
             query: {
                 entity_id?: string;
-                subject_type: "principal" | "group" | "position" | "entity";
+                subject_type: "principal" | "group" | "entity";
                 subject_id: string;
                 subject_relation?: string;
                 relation: "owner" | "editor" | "viewer";
@@ -29375,158 +28682,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnvelopeProvider"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    "organization-list-positions": {
-        parameters: {
-            query?: {
-                offset?: number;
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                /** @description Tenant resource identifier */
-                tenant_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EnvelopeListPosition"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    "organization-create-position": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Tenant resource identifier */
-                tenant_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreatePositionInputBody"];
-            };
-        };
-        responses: {
-            /** @description Created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EnvelopePosition"];
                 };
             };
             /** @description Unauthorized */

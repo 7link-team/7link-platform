@@ -45,10 +45,8 @@ func TestForeignTablesCarryWhatTheOwnersPublished(t *testing.T) {
 		"sl_iam_group_role_bindings":    tables.directory.GroupRoleBindings.String(),
 		"sl_iam_groups":                 tables.directory.Groups.String(),
 		"sl_iam_member_departments":     tables.directory.MemberDepartments.String(),
-		"sl_iam_position_members":       tables.directory.PositionMembers.String(),
-		"sl_iam_position_role_bindings": tables.directory.PositionRoleBindings.String(),
-		"sl_iam_positions":              tables.directory.Positions.String(),
-		"sl_iam_tenants":                tables.directory.Tenants.String(),
+
+		"sl_iam_tenants": tables.directory.Tenants.String(),
 	} {
 		assert.Equal(t, want, got)
 	}

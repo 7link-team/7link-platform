@@ -40,15 +40,15 @@ func seedReviewableGrants(t *testing.T, h *governanceHarness) {
 	require.NoError(t, h.db.Table(h.table("iam_group_role_bindings")).Create(&organizationmodel.GroupRoleBinding{
 		TenantID: 1, GroupID: 30, RoleID: 20, CreatedAt: governanceTestNow.Add(-5 * time.Hour),
 	}).Error)
-	require.NoError(t, h.db.Table(h.table("iam_positions")).Create(&organizationmodel.Position{
-		TenantID: 1, ID: 40, Code: "operator", Name: "Operator", Status: "active", Version: 1,
+	require.NoError(t, h.db.Table(h.table("iam_groups")).Create(&organizationmodel.Group{
+		TenantID: 1, ID: 40, NameKey: "operator", GroupType: "static", Name: "Operator", Status: "active", Version: 1,
 		CreatedAt: governanceTestNow.Add(-4 * time.Hour), UpdatedAt: governanceTestNow,
 	}).Error)
-	require.NoError(t, h.db.Table(h.table("iam_position_members")).Create(&organizationmodel.PositionMember{
-		TenantID: 1, PositionID: 40, PrincipalID: 11, CreatedAt: governanceTestNow.Add(-4 * time.Hour), UpdatedAt: governanceTestNow,
+	require.NoError(t, h.db.Table(h.table("iam_group_members")).Create(&organizationmodel.GroupMember{
+		TenantID: 1, GroupID: 40, PrincipalID: 11, CreatedAt: governanceTestNow.Add(-4 * time.Hour), UpdatedAt: governanceTestNow,
 	}).Error)
-	require.NoError(t, h.db.Table(h.table("iam_position_role_bindings")).Create(&organizationmodel.PositionRoleBinding{
-		TenantID: 1, PositionID: 40, RoleID: 20, CreatedAt: governanceTestNow.Add(-4 * time.Hour),
+	require.NoError(t, h.db.Table(h.table("iam_group_role_bindings")).Create(&organizationmodel.GroupRoleBinding{
+		TenantID: 1, GroupID: 40, RoleID: 20, CreatedAt: governanceTestNow.Add(-4 * time.Hour),
 	}).Error)
 	require.NoError(t, h.db.Table(h.table("iam_entities")).Create(&coremodel.Entity{
 		TenantID: 1, ID: 50, Type: "folder", Name: "Root", NameKey: "root", Status: "active", Metadata: "{}",
@@ -95,8 +95,8 @@ func TestAccessReviewSnapshotsAllGrantTypesAndCompletes(t *testing.T) {
 		assert.False(t, item.GrantCreatedAt.IsZero())
 	}
 	assert.Equal(t, map[string]int{
-		ReviewGrantPermanent: 1, ReviewGrantTemporary: 1, ReviewGrantGroup: 1,
-		ReviewGrantPosition: 1, ReviewGrantEntity: 1, ReviewGrantDynamicGroup: 1,
+		ReviewGrantPermanent: 1, ReviewGrantTemporary: 1, ReviewGrantGroup: 2,
+		ReviewGrantEntity: 1, ReviewGrantDynamicGroup: 1,
 		ReviewGrantRelationship: 2,
 	}, types)
 	_, err = h.service.GetReview(t.Context(), 2, review.ID)
@@ -245,7 +245,7 @@ func TestAccessReviewRevokesEveryMutableGrantClass(t *testing.T) {
 	}
 	assert.Zero(t, h.count(t, "iam_role_members", "tenant_id = ?", 1))
 	assert.Zero(t, h.count(t, "iam_group_members", "tenant_id = ?", 1))
-	assert.Zero(t, h.count(t, "iam_position_members", "tenant_id = ?", 1))
+	assert.Zero(t, h.count(t, "iam_group_members", "tenant_id = ?", 1))
 	assert.Zero(t, h.count(t, "iam_role_bindings", "tenant_id = ?", 1))
 	assert.Zero(t, h.count(t, "iam_relationships", "tenant_id = ?", 1))
 	assert.Zero(t, h.count(t, "iam_resource_relationships", "tenant_id = ?", 1))
@@ -377,7 +377,7 @@ func TestAccessReviewDecisionValidationAndSnapshotFailures(t *testing.T) {
 	for _, item := range []governancemodel.AccessReviewItem{
 		{GrantType: ReviewGrantTemporary},
 		{GrantType: ReviewGrantGroup},
-		{GrantType: ReviewGrantPosition},
+		{GrantType: "position"},
 		{GrantType: ReviewGrantEntity},
 		{GrantType: ReviewGrantRelationship},
 		{GrantType: "unknown"},

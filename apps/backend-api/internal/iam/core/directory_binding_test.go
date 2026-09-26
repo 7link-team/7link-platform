@@ -20,7 +20,7 @@ func seedDirectoryFixtures(t *testing.T, harness repositoryHarness, tenantID gui
 		tenantID, now, now,
 	).Error)
 	require.NoError(t, harness.db.Exec(
-		"INSERT INTO sl_iam_positions (tenant_id, id, code, name, status, sort_order, version, created_at, updated_at) VALUES (?, 300, 'manager', 'Manager', 'active', 0, 1, ?, ?)",
+		"INSERT INTO sl_iam_groups (tenant_id, id, name_key, name, group_type, status, sort_order, version, created_at, updated_at) VALUES (?, 300, 'manager', 'Manager', 'static', 'active', 0, 1, ?, ?)",
 		tenantID, now, now,
 	).Error)
 }
@@ -68,14 +68,14 @@ func TestDirectoryBindingsAndDataScopesUseTenantQualifiedKeys(t *testing.T) {
 	changed, err = repository.ChangeDirectoryBinding(t.Context(), 1, roleA.ID, DirectoryAssigneeGroup, 200, true)
 	require.NoError(t, err)
 	assert.False(t, changed)
-	changed, err = repository.ChangeDirectoryBinding(t.Context(), 1, roleA.ID, DirectoryAssigneePosition, 300, true)
+	changed, err = repository.ChangeDirectoryBinding(t.Context(), 1, roleA.ID, DirectoryAssigneeGroup, 300, true)
 	require.NoError(t, err)
 	assert.True(t, changed)
 	bindings, err := repository.ListDirectoryBindings(t.Context(), 1, roleA.ID)
 	require.NoError(t, err)
 	require.Len(t, bindings, 2)
 	assert.Equal(t, DirectoryAssigneeGroup, bindings[0].AssigneeType)
-	assert.Equal(t, DirectoryAssigneePosition, bindings[1].AssigneeType)
+	assert.Equal(t, DirectoryAssigneeGroup, bindings[1].AssigneeType)
 
 	changed, err = repository.ChangeDirectoryBinding(t.Context(), 1, roleA.ID, DirectoryAssigneeGroup, 999, true)
 	assert.ErrorIs(t, err, ErrDirectoryAssigneeNotFound)

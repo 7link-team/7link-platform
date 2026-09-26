@@ -18,15 +18,14 @@ func NewRoleGrantStore(repository *Repository, guard AdministratorGuard) RoleGra
 		panic("IAM role grant store requires repository and administrator guard")
 	}
 	removeGroup := repository.removeDirectoryMembershipOn("group")
-	removePosition := repository.removeDirectoryMembershipOn("position")
 	return RoleGrantStore{
-		Grant:                    repository.grantTemporaryRoleOn,
-		Revoke:                   repository.revokeTemporaryRoleOn,
-		RoleGranted:              repository.roleGrantedOn,
-		RemovePermanent:          repository.removePermanentRoleOn(guard),
-		RemoveGroupMembership:    protectDirectoryRemoval(guard, removeGroup),
-		RemovePositionMembership: protectDirectoryRemoval(guard, removePosition),
-		RemoveEntityRoleBinding:  protectEntityRoleRemoval(guard, repository.deleteEntityRoleBindingOn),
+		Grant:                 repository.grantTemporaryRoleOn,
+		Revoke:                repository.revokeTemporaryRoleOn,
+		RoleGranted:           repository.roleGrantedOn,
+		RemovePermanent:       repository.removePermanentRoleOn(guard),
+		RemoveGroupMembership: protectDirectoryRemoval(guard, removeGroup),
+
+		RemoveEntityRoleBinding: protectEntityRoleRemoval(guard, repository.deleteEntityRoleBindingOn),
 	}
 }
 
@@ -180,8 +179,6 @@ func (r *Repository) removeDirectoryMembershipOn(kind string) func(
 		switch kind {
 		case "group":
 			table, idColumn = directory.GroupMembers, "group_id"
-		case "position":
-			table, idColumn = directory.PositionMembers, "position_id"
 		default:
 			return false, fmt.Errorf("remove directory membership: %w", ErrInvalidArgument)
 		}

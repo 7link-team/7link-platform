@@ -23,12 +23,10 @@ import (
 // so the test fills in the struct core declared, the way the owner does.
 func publishedDirectoryTables(prefix string) DirectoryTableNames {
 	return DirectoryTableNames{
-		Groups:               gormx.NewTableName(prefix, "iam_groups"),
-		GroupMembers:         gormx.NewTableName(prefix, "iam_group_members"),
-		GroupRoleBindings:    gormx.NewTableName(prefix, "iam_group_role_bindings"),
-		Positions:            gormx.NewTableName(prefix, "iam_positions"),
-		PositionMembers:      gormx.NewTableName(prefix, "iam_position_members"),
-		PositionRoleBindings: gormx.NewTableName(prefix, "iam_position_role_bindings"),
+		Groups:            gormx.NewTableName(prefix, "iam_groups"),
+		GroupMembers:      gormx.NewTableName(prefix, "iam_group_members"),
+		GroupRoleBindings: gormx.NewTableName(prefix, "iam_group_role_bindings"),
+
 		Departments:          gormx.NewTableName(prefix, "iam_departments"),
 		DepartmentClosure:    gormx.NewTableName(prefix, "iam_department_closure"),
 		MemberDepartments:    gormx.NewTableName(prefix, "iam_member_departments"),
@@ -112,12 +110,10 @@ func TestJoinedTablesBindBothOwners(t *testing.T) {
 	// bind copies them across one by one, so a field it drops would stay zero
 	// and reach a statement as an empty table name.
 	actual := map[string][2]string{
-		"iam_groups":                 {plain.Groups.String(), directory.Groups.String()},
-		"iam_group_members":          {plain.GroupMembers.String(), directory.GroupMembers.String()},
-		"iam_group_role_bindings":    {plain.GroupRoleBindings.String(), directory.GroupRoleBindings.String()},
-		"iam_positions":              {plain.Positions.String(), directory.Positions.String()},
-		"iam_position_members":       {plain.PositionMembers.String(), directory.PositionMembers.String()},
-		"iam_position_role_bindings": {plain.PositionRoleBindings.String(), directory.PositionRoleBindings.String()},
+		"iam_groups":              {plain.Groups.String(), directory.Groups.String()},
+		"iam_group_members":       {plain.GroupMembers.String(), directory.GroupMembers.String()},
+		"iam_group_role_bindings": {plain.GroupRoleBindings.String(), directory.GroupRoleBindings.String()},
+
 		"iam_departments":            {plain.Departments.String(), directory.Departments.String()},
 		"iam_department_closure":     {plain.DepartmentClosure.String(), directory.DepartmentClosure.String()},
 		"iam_member_departments":     {plain.MemberDepartments.String(), directory.MemberDepartments.String()},

@@ -62,8 +62,6 @@ import type {
   Passkey,
   PasskeyOptions,
   Permission,
-  Position,
-  PositionMember,
   Principal,
   PrincipalList,
   Relationship,
@@ -203,10 +201,7 @@ export type _PasskeyAssertionOptions = Agreed<
 >
 
 export type _Permission = Agreed<Compare<Permission, S["Action"]>>
-export type _Position = Agreed<Compare<Position, S["Position"]>>
-export type _PositionMember = Agreed<
-  Compare<PositionMember, S["PositionMember"]>
->
+
 export type _Principal = Agreed<Compare<Principal, S["PrincipalView"]>>
 export type _PrincipalOptional = Agreed<
   Optionality<Principal, S["PrincipalView"]>

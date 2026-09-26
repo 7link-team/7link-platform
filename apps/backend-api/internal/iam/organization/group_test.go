@@ -72,8 +72,6 @@ func TestDirectoryMembershipWindowNormalization(t *testing.T) {
 	zero := time.Time{}
 	_, _, _, _, err = normalizeGroupMember(1, 2, 3, GroupMemberWindow{StartsAt: &zero})
 	assert.ErrorIs(t, err, ErrGroupInvalid)
-	_, _, _, _, err = normalizePositionMember(1, 2, 0, PositionMemberWindow{})
-	assert.ErrorIs(t, err, ErrPositionInvalid)
 }
 
 // TestGroupRepositoryGuardsVersionAndNameKey pins the writes the repository

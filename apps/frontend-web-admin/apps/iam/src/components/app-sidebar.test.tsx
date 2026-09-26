@@ -207,13 +207,6 @@ describe("AppSidebar", () => {
             sort_order: 12,
           },
           {
-            id: "positions",
-            label: "Positions",
-            path: "/positions",
-            permission_code: "position_view",
-            sort_order: 18,
-          },
-          {
             id: "groups",
             label: "Groups",
             path: "/groups",
@@ -243,7 +236,7 @@ describe("AppSidebar", () => {
     expect(html).toContain('href="/tenants/456/service-accounts"')
     expect(html).toContain('href="/tenants/456/entities"')
     expect(html).toContain('href="/tenants/456/departments"')
-    expect(html).toContain('href="/tenants/456/positions"')
+    expect(html).not.toContain('href="/tenants/456/positions"')
     expect(html).toContain('href="/tenants/456/groups"')
     expect(html).toContain('href="/tenants/456/access-reviews"')
     expect(html).toContain('href="/tenants/456/scim-directories"')

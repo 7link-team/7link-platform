@@ -44,22 +44,6 @@ func tenantIDs(items []Tenant) []guid.ID {
 	return ids
 }
 
-func positionIDs(items []Position) []guid.ID {
-	ids := make([]guid.ID, len(items))
-	for index, item := range items {
-		ids[index] = item.ID
-	}
-	return ids
-}
-
-func positionMemberIDs(items []PositionMember) []guid.ID {
-	ids := make([]guid.ID, len(items))
-	for index, item := range items {
-		ids[index] = item.PrincipalID
-	}
-	return ids
-}
-
 func groupIDs(items []Group) []guid.ID {
 	ids := make([]guid.ID, len(items))
 	for index, item := range items {
@@ -185,81 +169,6 @@ func TestTenantListPageBoundsThePlatformListing(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, deleted, 6, "include_deleted widens the page")
 	assert.Equal(t, int64(6), total, "and the total follows the same filter the page does")
-}
-
-func newPositionServiceForPaging(t *testing.T, h *organizationHarness) *PositionService {
-	t.Helper()
-	service := newBoundPositionService(
-		t, h.runtime, h.appender,
-		&organizationMemberChecker{prefix: h.prefix}, &organizationAdministratorGuard{},
-		newOrganizationTestIDs(300),
-	)
-	service.now = func() time.Time { return organizationTestNow }
-	return service
-}
-
-// Positions are bounded by the tenant, but a position's holders grow with the
-// tenant's headcount, which is the listing that gets long first.
-func TestPositionListPageAndMembersPageBoundTheirListings(t *testing.T) {
-	h := newOrganizationHarness(t, "sl_")
-	principals := []guid.ID{10, 11, 12, 13, 14}
-	for index, principal := range principals {
-		h.seedMember(t, 1, principal, fmt.Sprintf("Member %d", index))
-	}
-	service := newPositionServiceForPaging(t, h)
-	positions := make([]Position, 0, 5)
-	for index := 1; index <= 5; index++ {
-		position, err := service.Create(t.Context(), 1, CreatePosition{
-			Code: fmt.Sprintf("code%d", index), Name: fmt.Sprintf("Position %d", index), SortOrder: index,
-		})
-		require.NoError(t, err)
-		positions = append(positions, position)
-	}
-	for _, principal := range principals {
-		_, err := service.PutMember(t.Context(), 1, positions[0].ID, principal, PositionMemberWindow{})
-		require.NoError(t, err)
-	}
-
-	first, total, err := service.ListPage(t.Context(), 1, 0, 2)
-	require.NoError(t, err)
-	assert.Len(t, first, 2, "the limit must bound the position page")
-	assert.Equal(t, int64(len(positions)), total, "the total counts every tenant position")
-	second, total, err := service.ListPage(t.Context(), 1, 2, 2)
-	require.NoError(t, err)
-	assert.Len(t, second, 2)
-	assert.Equal(t, int64(len(positions)), total)
-	assert.Empty(t, overlappingIDs(positionIDs(first), positionIDs(second)), "the offset must move the window")
-	unpaged, err := service.List(t.Context(), 1)
-	require.NoError(t, err)
-	assert.Equal(t, positionIDs(unpaged)[:2], positionIDs(first), "a page keeps the unpaged order")
-
-	firstMembers, total, err := service.ListMembersPage(t.Context(), 1, positions[0].ID, 0, 2)
-	require.NoError(t, err)
-	assert.Len(t, firstMembers, 2, "the limit must bound the membership page")
-	assert.Equal(t, int64(len(principals)), total, "the total counts every holder, not the page")
-	secondMembers, total, err := service.ListMembersPage(t.Context(), 1, positions[0].ID, 2, 2)
-	require.NoError(t, err)
-	assert.Len(t, secondMembers, 2)
-	assert.Equal(t, int64(len(principals)), total)
-	assert.Empty(t, overlappingIDs(positionMemberIDs(firstMembers), positionMemberIDs(secondMembers)),
-		"the offset must move the membership window")
-	lastMembers, _, err := service.ListMembersPage(t.Context(), 1, positions[0].ID, 4, 2)
-	require.NoError(t, err)
-	assert.Len(t, lastMembers, 1, "a final short page returns what is left, not an error")
-
-	empty, total, err := service.ListMembersPage(t.Context(), 1, positions[1].ID, 0, 2)
-	require.NoError(t, err)
-	assert.Empty(t, empty)
-	assert.Zero(t, total, "a position nobody holds reports a total of zero rather than the tenant's")
-
-	// An unknown position is not an empty membership: reporting it as one would
-	// let a caller conclude the position exists and nobody holds it.
-	_, _, err = service.ListMembersPage(t.Context(), 1, positions[0].ID+9999, 0, 2)
-	assert.ErrorIs(t, err, ErrPositionNotFound)
-	_, _, err = service.ListMembersPage(t.Context(), 1, 0, 0, 2)
-	assert.ErrorIs(t, err, ErrPositionInvalid)
-	_, _, err = service.ListPage(t.Context(), 0, 0, 2)
-	assert.ErrorIs(t, err, ErrPositionInvalid)
 }
 
 func newGroupServiceForPaging(t *testing.T, h *organizationHarness) *GroupService {
@@ -432,10 +341,6 @@ func TestPagedListingsSurfaceStorageFailuresInsteadOfAnEmptyPage(t *testing.T) {
 			_, _, err := service.ListPage(t.Context(), false, 0, 10)
 			return err
 		}},
-		{name: "positions", table: "iam_positions", call: func(t *testing.T, h *organizationHarness) error {
-			_, _, err := newPositionServiceForPaging(t, h).ListPage(t.Context(), 1, 0, 10)
-			return err
-		}},
 		{name: "groups", table: "iam_groups", call: func(t *testing.T, h *organizationHarness) error {
 			_, _, err := newGroupServiceForPaging(t, h).ListPage(t.Context(), 1, 0, 10)
 			return err
@@ -453,18 +358,6 @@ func TestPagedListingsSurfaceStorageFailuresInsteadOfAnEmptyPage(t *testing.T) {
 			assert.Error(t, test.call(t, h))
 		})
 	}
-
-	t.Run("position members", func(t *testing.T) {
-		h := newOrganizationHarness(t, "sl_")
-		service := newPositionServiceForPaging(t, h)
-		created, err := service.Create(t.Context(), 1, CreatePosition{Code: "engineer", Name: "Engineer"})
-		require.NoError(t, err)
-		_, _, err = service.ListMembersPage(t.Context(), 1, 987654, 0, 10)
-		assert.ErrorIs(t, err, ErrPositionNotFound, "an unknown position is missing, not a position nobody holds")
-		require.NoError(t, h.db.Exec("DROP TABLE sl_iam_position_members").Error)
-		_, _, err = service.ListMembersPage(t.Context(), 1, created.ID, 0, 10)
-		assert.Error(t, err)
-	})
 
 	t.Run("group members", func(t *testing.T) {
 		h := newOrganizationHarness(t, "sl_")
@@ -499,9 +392,7 @@ func TestUnwiredRepositoryRefusesPagedListings(t *testing.T) {
 	unavailable := &Repository{}
 	_, _, err := unavailable.listTenantsPage(t.Context(), false, 0, 10)
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
-	_, _, err = unavailable.listPositionsPage(t.Context(), 1, 0, 10)
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
-	_, _, err = unavailable.listPositionMembersPage(t.Context(), 1, 2, 0, 10)
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
 	_, _, err = unavailable.listGroupsPage(t.Context(), 1, 0, 10)
 	assert.ErrorIs(t, err, errRepositoryUnavailable)

@@ -8,7 +8,6 @@ import { auditPassword } from "./audit-password.mjs"
 
 const audits = [
   "department",
-  "position",
   "group",
   "entity",
   "tenant",

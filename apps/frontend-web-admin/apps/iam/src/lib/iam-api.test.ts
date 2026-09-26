@@ -780,8 +780,8 @@ describe("IAM API client", () => {
       evaluated_at: "2026-09-09T12:00:00Z",
       sources: [
         {
-          type: "position",
-          source_id: "position/3",
+          type: "static_group",
+          source_id: "group/3",
           source_name: "Finance manager",
           role_id: "role/7",
           role_name: "Reviewer",
@@ -1999,7 +1999,7 @@ describe("IAM API client", () => {
       department_ids: ["department/a"],
     })
     await client.addRoleDirectoryBinding("role/a", "group", "group/a")
-    await client.removeRoleDirectoryBinding("role/a", "position", "position/a")
+    await client.removeRoleDirectoryBinding("role/a", "group", "group/b")
     await client.rolePermissionGrants("role/a")
     await client.grantPermission("role/a", "user:view")
     await client.setRolePermissionCondition("role/a", "user:view", {
@@ -2024,7 +2024,7 @@ describe("IAM API client", () => {
       "GET /roles/role%2Fa/data-scope",
       "PUT /roles/role%2Fa/data-scope",
       "PUT /roles/role%2Fa/directory-bindings/group/group%2Fa",
-      "DELETE /roles/role%2Fa/directory-bindings/position/position%2Fa",
+      "DELETE /roles/role%2Fa/directory-bindings/group/group%2Fb",
       "GET /roles/role%2Fa/permission-grants",
       "PUT /roles/role%2Fa/permissions/user%3Aview",
       "PUT /roles/role%2Fa/permissions/user%3Aview/condition",
@@ -2190,111 +2190,6 @@ describe("IAM API client", () => {
       confirmation: "confirmed",
     })
     expect(requests[0]?.headers.has("x-tenant-id")).toBe(false)
-  })
-
-  it("uses the complete position and position-member contract over real HTTP", async () => {
-    const requests: RecordedRequest[] = []
-    const position = {
-      id: "position/a",
-      tenant_id: "tenant-positions",
-      code: "platform.engineer",
-      name: "Platform Engineer",
-      status: "active" as const,
-      sort_order: 10,
-      version: 7,
-      created_at: "2026-08-02T12:00:00Z",
-      updated_at: "2026-08-02T12:00:00Z",
-    }
-    const member = {
-      position_id: position.id,
-      principal_id: "principal/a",
-      display_name: "Alice",
-      starts_at: "2026-08-03T00:00:00Z",
-      ends_at: "2026-09-03T00:00:00Z",
-      created_at: "2026-08-02T12:00:00Z",
-      updated_at: "2026-08-02T12:00:00Z",
-    }
-    server = Bun.serve({
-      port: 0,
-      async fetch(request) {
-        const url = new URL(request.url)
-        requests.push({
-          method: request.method,
-          path: `${url.pathname}${url.search}`,
-          headers: request.headers,
-          body: await request.text(),
-        })
-        let data: unknown = position
-        if (request.method === "DELETE") data = { deleted: true }
-        else if (url.pathname.endsWith("/members")) data = [member]
-        else if (url.pathname.includes("/members/")) data = member
-        else if (
-          request.method === "GET" &&
-          url.pathname === "/tenants/tenant-positions/job-positions"
-        )
-          data = [position]
-        return Response.json({ code: 0, message: "ok", data })
-      },
-    })
-    const client = createIamApi(
-      `http://127.0.0.1:${server.port}`,
-      () => "tenant-positions",
-      () => "101"
-    )
-
-    expect(await client.positions()).toEqual([position])
-    expect(await client.position(position.id)).toEqual(position)
-    await client.createPosition({
-      code: position.code,
-      name: position.name,
-      status: position.status,
-      sort_order: position.sort_order,
-    })
-    await client.updatePosition(position.id, {
-      name: "Principal Platform Engineer",
-      version: position.version,
-    })
-    expect(await client.deletePosition(position.id, position.version)).toEqual({
-      deleted: true,
-    })
-    expect(await client.positionMembers(position.id)).toEqual([member])
-    expect(
-      await client.putPositionMember(position.id, member.principal_id, {
-        starts_at: member.starts_at,
-        ends_at: member.ends_at,
-      })
-    ).toEqual(member)
-    expect(
-      await client.deletePositionMember(position.id, member.principal_id)
-    ).toEqual({ deleted: true })
-
-    expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /tenants/tenant-positions/job-positions?offset=0&limit=200",
-      "GET /job-positions/position%2Fa",
-      "POST /tenants/tenant-positions/job-positions",
-      "PATCH /job-positions/position%2Fa",
-      "DELETE /job-positions/position%2Fa?version=7",
-      "GET /job-positions/position%2Fa/members?offset=0&limit=200",
-      "PUT /job-positions/position%2Fa/members/principal%2Fa",
-      "DELETE /job-positions/position%2Fa/members/principal%2Fa",
-    ])
-    expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
-      true
-    )
-    expect(JSON.parse(requests[2]?.body ?? "{}")).toEqual({
-      code: position.code,
-      name: position.name,
-      status: position.status,
-      sort_order: position.sort_order,
-    })
-    expect(JSON.parse(requests[3]?.body ?? "{}")).toEqual({
-      name: "Principal Platform Engineer",
-      version: position.version,
-    })
-    expect(JSON.parse(requests[6]?.body ?? "{}")).toEqual({
-      starts_at: member.starts_at,
-      ends_at: member.ends_at,
-    })
   })
 
   it("uses the complete group and group-member contract over real HTTP", async () => {
@@ -2530,14 +2425,16 @@ describe("IAM API client", () => {
           }
         else if (
           request.method === "GET" &&
-          url.pathname === "/tenants/tenant-entities/authorization-relationships"
+          url.pathname ===
+            "/tenants/tenant-entities/authorization-relationships"
         )
           data = url.searchParams.has("entity_id")
             ? [resourceRelationship]
             : [relationship]
         else if (
           request.method === "POST" &&
-          url.pathname === "/tenants/tenant-entities/authorization-relationships"
+          url.pathname ===
+            "/tenants/tenant-entities/authorization-relationships"
         )
           data = relationship
         else if (request.method === "DELETE")

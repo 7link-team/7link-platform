@@ -50,7 +50,6 @@ import {
   type Group,
   type Member,
   type Permission,
-  type Position,
   type Relationship,
   type RelationshipRelation,
   type RelationshipSubjectType,
@@ -95,7 +94,7 @@ export default function EntitiesPage({
   const [roles, setRoles] = useState<Role[]>([])
   const [members, setMembers] = useState<Member[]>([])
   const [groups, setGroups] = useState<Group[]>([])
-  const [positions, setPositions] = useState<Position[]>([])
+
   const [permissions, setPermissions] = useState<Permission[]>([])
   const [roleID, setRoleID] = useState("")
   const [principalID, setPrincipalID] = useState("")
@@ -195,10 +194,7 @@ export default function EntitiesPage({
     () => new Map(groups.map((group) => [group.id, group])),
     [groups]
   )
-  const positionByID = useMemo(
-    () => new Map(positions.map((position) => [position.id, position])),
-    [positions]
-  )
+
   const resourceTypeOptions = useMemo(
     () =>
       [...new Set(permissions.map((permission) => permission.resource))].map(
@@ -210,11 +206,7 @@ export default function EntitiesPage({
     switch (relationshipSubjectType) {
       case "group":
         return groups.map((group) => ({ value: group.id, label: group.name }))
-      case "position":
-        return positions.map((position) => ({
-          value: position.id,
-          label: position.name,
-        }))
+
       case "entity":
         return entities
           .filter(
@@ -228,14 +220,7 @@ export default function EntitiesPage({
           label: member.display_name || member.subject,
         }))
     }
-  }, [
-    bindingEntity?.id,
-    entities,
-    groups,
-    members,
-    positions,
-    relationshipSubjectType,
-  ])
+  }, [bindingEntity?.id, entities, groups, members, relationshipSubjectType])
 
   const openCreate = () => {
     setError("")
@@ -306,19 +291,13 @@ export default function EntitiesPage({
         nextRoles,
         nextMembers,
         nextGroups,
-        nextPositions,
         nextPermissions,
       ] = await Promise.all([
         iamApi.entityRoleBindings(entity.id),
         loadRelationships(entity.id),
-        // Roles, the member directory, groups, positions and the permission
-        // catalog each answer to their own view permission. Without one of them
-        // the dialog still opens on the bindings that already exist; the
-        // selector it feeds is simply empty.
         allowed("role_view") ? iamApi.roles() : Promise.resolve([]),
         allowed("user_view") ? iamApi.members() : Promise.resolve([]),
         allowed("group_view") ? iamApi.groups() : Promise.resolve([]),
-        allowed("position_view") ? iamApi.positions() : Promise.resolve([]),
         allowed("role_view") ? iamApi.permissions() : Promise.resolve([]),
       ])
       const activeMembers = nextMembers.filter(
@@ -333,9 +312,7 @@ export default function EntitiesPage({
       setRoles(nextRoles)
       setMembers(activeMembers)
       setGroups(nextGroups.filter((group) => group.status === "active"))
-      setPositions(
-        nextPositions.filter((position) => position.status === "active")
-      )
+
       setPermissions(dataPermissions)
       setRoleID(nextRoles[0]?.id ?? "")
       setPrincipalID(activeMembers[0]?.subject ?? "")
@@ -439,11 +416,7 @@ export default function EntitiesPage({
           groupByID.get(relationship.subject_id)?.name ??
           relationship.subject_id
         )
-      case "position":
-        return (
-          positionByID.get(relationship.subject_id)?.name ??
-          relationship.subject_id
-        )
+
       case "entity":
         return (
           entityByID.get(relationship.subject_id)?.name ??
@@ -951,7 +924,7 @@ export default function EntitiesPage({
                   options={{
                     principal: t("member"),
                     group: t("groups"),
-                    position: t("positions"),
+
                     entity: t("entity"),
                   }}
                   value={relationshipSubjectType}

@@ -47,20 +47,6 @@ func newBoundGroupService(
 	return service
 }
 
-func newBoundPositionService(
-	t *testing.T,
-	runtime *appenv.Runtime,
-	appender audit.Appender,
-	members core.ActiveMemberChecker,
-	administrators core.AdministratorGuard,
-	ids guid.Source,
-) *PositionService {
-	t.Helper()
-	service := NewPositionService(runtime, appender, members, administrators, ids)
-	bindForeignTables(t, service.repo, runtime.TablePrefix())
-	return service
-}
-
 func newBoundInvitationService(
 	t *testing.T,
 	runtime *appenv.Runtime,

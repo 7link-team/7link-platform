@@ -114,6 +114,11 @@ func assertRealMySQLUp(t *testing.T, db *gorm.DB, modules []module.Module, prefi
 
 func assertRealMySQLDown(t *testing.T, sqlDB *sql.DB, db *gorm.DB, modules []module.Module, prefix string) {
 	t.Helper()
+	// Retire the core dependency on organization before removing its base.
+	_, err := app.ExecuteModuleMigrations(t.Context(), db, modules, app.MigrationRequest{
+		Action: app.MigrationDownTo, Module: iamcore.Name, To: 16,
+	}, prefix)
+	require.NoError(t, err)
 	for _, name := range []string{
 		federation.Name, authn.Name, oauth.Name, governance.Name, provisioning.Name,
 		organization.Name, iamcore.Name, identity.Name, iamaudit.Name,

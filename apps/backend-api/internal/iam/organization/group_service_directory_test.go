@@ -116,35 +116,6 @@ func TestDynamicGroupEvaluationAndMutationGuard(t *testing.T) {
 	assert.ErrorIs(t, err, ErrDynamicGroupMembers)
 }
 
-func TestPositionLifecycleMembersAndTenantIsolation(t *testing.T) {
-	h := newOrganizationHarness(t, "sl_")
-	h.seedMember(t, 1, 10, "Alice")
-	h.seedMember(t, 2, 20, "Bob")
-	guard := &organizationAdministratorGuard{}
-	service := newBoundPositionService(t, h.runtime, h.appender, &organizationMemberChecker{prefix: h.prefix}, guard, newOrganizationTestIDs(400))
-	service.now = func() time.Time { return organizationTestNow }
-	position, err := service.Create(t.Context(), 1, CreatePosition{Code: "engineer", Name: "Engineer"})
-	require.NoError(t, err)
-	other, err := service.Create(t.Context(), 2, CreatePosition{Code: "engineer", Name: "Engineer"})
-	require.NoError(t, err)
-	_, err = service.Get(t.Context(), 1, other.ID)
-	assert.ErrorIs(t, err, ErrPositionNotFound)
-	_, err = service.PutMember(t.Context(), 1, position.ID, 20, PositionMemberWindow{})
-	assert.ErrorIs(t, err, ErrPositionMemberInactive)
-	member, err := service.PutMember(t.Context(), 1, position.ID, 10, PositionMemberWindow{})
-	require.NoError(t, err)
-	assert.Equal(t, "Alice", member.DisplayName)
-	assert.ErrorIs(t, service.Delete(t.Context(), 1, position.ID, position.Version), ErrPositionHasMembers)
-	changed, err := service.DeleteMember(t.Context(), 1, position.ID, 10)
-	require.NoError(t, err)
-	assert.True(t, changed)
-	name := "Platform Engineer"
-	position, err = service.Update(t.Context(), 1, position.ID, UpdatePosition{Name: &name, Version: position.Version})
-	require.NoError(t, err)
-	assert.EqualValues(t, 2, position.Version)
-	require.NoError(t, service.Delete(t.Context(), 1, position.ID, position.Version))
-}
-
 func TestGroupUpdateFieldsGuardsAndReferenceChecks(t *testing.T) {
 	h := newOrganizationHarness(t, "")
 	guard := &organizationAdministratorGuard{}
@@ -207,61 +178,6 @@ func TestGroupUpdateFieldsGuardsAndReferenceChecks(t *testing.T) {
 	assert.ErrorIs(t, service.Delete(t.Context(), 1, relationshipBound.ID, relationshipBound.Version), ErrGroupRelationshipBound)
 }
 
-func TestPositionUpdateFieldsGuardsAndReferenceChecks(t *testing.T) {
-	h := newOrganizationHarness(t, "sl_")
-	guard := &organizationAdministratorGuard{}
-	service := newBoundPositionService(t, h.runtime, h.appender, &organizationMemberChecker{prefix: h.prefix}, guard, newOrganizationTestIDs(1100))
-	service.now = func() time.Time { return organizationTestNow }
-	position, err := service.Create(t.Context(), 1, CreatePosition{Code: "engineer", Name: "Engineer"})
-	require.NoError(t, err)
-
-	code, name := "principal-engineer", "Principal Engineer"
-	status, sortOrder := StatusDisabled, 8
-	position, err = service.Update(t.Context(), 1, position.ID, UpdatePosition{
-		Code: &code, Name: &name, Status: &status, SortOrder: &sortOrder, Version: position.Version,
-	})
-	require.NoError(t, err)
-	assert.Equal(t, code, position.Code)
-	assert.Equal(t, name, position.Name)
-	assert.Equal(t, status, position.Status)
-	assert.Equal(t, sortOrder, position.SortOrder)
-	assert.EqualValues(t, 2, position.Version)
-	assert.Equal(t, 1, guard.verified)
-	revision := h.revision(t, 1)
-
-	unchanged, err := service.Update(t.Context(), 1, position.ID, UpdatePosition{
-		Code: &code, Name: &name, Status: &status, SortOrder: &sortOrder, Version: position.Version,
-	})
-	require.NoError(t, err)
-	assert.Equal(t, position.Version, unchanged.Version)
-	assert.Equal(t, revision, h.revision(t, 1))
-
-	guard.verifyErr = assert.AnError
-	active, err := service.Create(t.Context(), 1, CreatePosition{Code: "active", Name: "Active"})
-	require.NoError(t, err)
-	_, err = service.Update(t.Context(), 1, active.ID, UpdatePosition{Status: &status, Version: active.Version})
-	assert.ErrorIs(t, err, assert.AnError)
-	stored, err := service.Get(t.Context(), 1, active.ID)
-	require.NoError(t, err)
-	assert.Equal(t, StatusActive, stored.Status)
-	assert.Equal(t, active.Version, stored.Version)
-	guard.verifyErr = nil
-
-	roleBound, err := service.Create(t.Context(), 1, CreatePosition{Code: "role-bound", Name: "Role Bound"})
-	require.NoError(t, err)
-	require.NoError(t, h.db.Table(h.table("iam_position_role_bindings")).Create(map[string]any{
-		"tenant_id": 1, "role_id": 10, "position_id": roleBound.ID, "created_at": organizationTestNow,
-	}).Error)
-	assert.ErrorIs(t, service.Delete(t.Context(), 1, roleBound.ID, roleBound.Version), ErrPositionRoleBound)
-
-	relationshipBound, err := service.Create(t.Context(), 1, CreatePosition{Code: "relationship-bound", Name: "Relationship Bound"})
-	require.NoError(t, err)
-	require.NoError(t, h.db.Table(h.table("iam_resource_relationships")).Create(map[string]any{
-		"tenant_id": 1, "subject_type": "position", "subject_id": relationshipBound.ID,
-	}).Error)
-	assert.ErrorIs(t, service.Delete(t.Context(), 1, relationshipBound.ID, relationshipBound.Version), ErrPositionRelationshipBound)
-}
-
 func TestGroupAndPositionMembershipFailuresRollback(t *testing.T) {
 	h := newOrganizationHarness(t, "")
 	h.seedMember(t, 1, 10, "Alice")
@@ -269,12 +185,8 @@ func TestGroupAndPositionMembershipFailuresRollback(t *testing.T) {
 	checker := &organizationMemberChecker{}
 	guard := &organizationAdministratorGuard{}
 	groups := newBoundGroupService(t, h.runtime, h.appender, checker, guard, newOrganizationTestIDs(1200))
-	positions := newBoundPositionService(t, h.runtime, h.appender, checker, guard, newOrganizationTestIDs(1300))
 	groups.now = func() time.Time { return organizationTestNow }
-	positions.now = func() time.Time { return organizationTestNow }
 	group, err := groups.Create(t.Context(), 1, CreateGroup{Name: "Operators"})
-	require.NoError(t, err)
-	position, err := positions.Create(t.Context(), 1, CreatePosition{Code: "operator", Name: "Operator"})
 	require.NoError(t, err)
 
 	start := organizationTestNow.Add(time.Hour)
@@ -284,49 +196,34 @@ func TestGroupAndPositionMembershipFailuresRollback(t *testing.T) {
 	updatedGroupMember, err := groups.PutMember(t.Context(), 1, group.ID, 10, GroupMemberWindow{StartsAt: &start, EndsAt: &end})
 	require.NoError(t, err)
 	assert.Equal(t, organizationTime(start), *updatedGroupMember.StartsAt)
-	_, err = positions.PutMember(t.Context(), 1, position.ID, 10, PositionMemberWindow{})
-	require.NoError(t, err)
-	updatedPositionMember, err := positions.PutMember(t.Context(), 1, position.ID, 10, PositionMemberWindow{StartsAt: &start, EndsAt: &end})
-	require.NoError(t, err)
-	assert.Equal(t, organizationTime(end), *updatedPositionMember.EndsAt)
 
 	checker.err = assert.AnError
 	_, err = groups.PutMember(t.Context(), 1, group.ID, 11, GroupMemberWindow{})
 	assert.ErrorIs(t, err, assert.AnError)
-	_, err = positions.PutMember(t.Context(), 1, position.ID, 11, PositionMemberWindow{})
 	assert.ErrorIs(t, err, assert.AnError)
 	checker.err = nil
 
 	guard.err = assert.AnError
 	_, err = groups.DeleteMember(t.Context(), 1, group.ID, 10)
 	assert.ErrorIs(t, err, assert.AnError)
-	_, err = positions.DeleteMember(t.Context(), 1, position.ID, 10)
 	assert.ErrorIs(t, err, assert.AnError)
 	guard.err = nil
 	guard.verifyErr = assert.AnError
 	_, err = groups.DeleteMember(t.Context(), 1, group.ID, 10)
 	assert.ErrorIs(t, err, assert.AnError)
-	_, err = positions.DeleteMember(t.Context(), 1, position.ID, 10)
 	assert.ErrorIs(t, err, assert.AnError)
 	groupMembers, err := groups.ListMembers(t.Context(), 1, group.ID)
 	require.NoError(t, err)
 	assert.Len(t, groupMembers, 1)
-	positionMembers, err := positions.ListMembers(t.Context(), 1, position.ID)
-	require.NoError(t, err)
-	assert.Len(t, positionMembers, 1)
 
 	guard.verifyErr = nil
 	h.auditErr = assert.AnError
 	_, err = groups.PutMember(t.Context(), 1, group.ID, 11, GroupMemberWindow{})
 	assert.ErrorIs(t, err, assert.AnError)
-	_, err = positions.PutMember(t.Context(), 1, position.ID, 11, PositionMemberWindow{})
 	assert.ErrorIs(t, err, assert.AnError)
 	groupMembers, err = groups.ListMembers(t.Context(), 1, group.ID)
 	require.NoError(t, err)
 	assert.Len(t, groupMembers, 1)
-	positionMembers, err = positions.ListMembers(t.Context(), 1, position.ID)
-	require.NoError(t, err)
-	assert.Len(t, positionMembers, 1)
 }
 
 // TestDirectoryServicesRejectStaleVersions pins the concurrent-edit contract at
@@ -339,9 +236,7 @@ func TestDirectoryServicesRejectStaleVersions(t *testing.T) {
 	h := newOrganizationHarness(t, "")
 	guard := &organizationAdministratorGuard{}
 	groups := newBoundGroupService(t, h.runtime, h.appender, &organizationMemberChecker{}, guard, newOrganizationTestIDs(2200))
-	positions := newBoundPositionService(t, h.runtime, h.appender, &organizationMemberChecker{}, guard, newOrganizationTestIDs(2300))
 	groups.now = func() time.Time { return organizationTestNow }
-	positions.now = func() time.Time { return organizationTestNow }
 
 	group, err := groups.Create(t.Context(), 1, CreateGroup{Name: "Operators"})
 	require.NoError(t, err)
@@ -362,24 +257,6 @@ func TestDirectoryServicesRejectStaleVersions(t *testing.T) {
 	assert.EqualValues(t, 2, storedGroup.Version)
 	assert.Equal(t, groupRevision, h.revision(t, 1), "a rejected edit must not advance the policy revision")
 
-	position, err := positions.Create(t.Context(), 1, CreatePosition{Code: "engineer", Name: "Engineer"})
-	require.NoError(t, err)
-	require.EqualValues(t, 1, position.Version)
-	winnerCode := "principal-engineer"
-	position, err = positions.Update(t.Context(), 1, position.ID, UpdatePosition{Code: &winnerCode, Version: 1})
-	require.NoError(t, err)
-	require.EqualValues(t, 2, position.Version)
-	positionRevision := h.revision(t, 1)
-
-	loserCode := "clobbered"
-	_, err = positions.Update(t.Context(), 1, position.ID, UpdatePosition{Code: &loserCode, Version: 1})
-	assert.ErrorIs(t, err, ErrPositionVersionConflict)
-	assert.ErrorIs(t, positions.Delete(t.Context(), 1, position.ID, 1), ErrPositionVersionConflict)
-	storedPosition, err := positions.Get(t.Context(), 1, position.ID)
-	require.NoError(t, err)
-	assert.Equal(t, winnerCode, storedPosition.Code, "the edit that won must survive the stale one")
-	assert.EqualValues(t, 2, storedPosition.Version)
-	assert.Equal(t, positionRevision, h.revision(t, 1), "a rejected edit must not advance the policy revision")
 }
 
 // TestGroupWritesAbortWhenThePolicyRevisionCannotAdvance pins that every group

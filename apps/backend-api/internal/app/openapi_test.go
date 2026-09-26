@@ -72,7 +72,7 @@ func TestOpenAPIExportGroupsOperationsByPathPrefix(t *testing.T) {
 	config.Authn.Web = authnext.WebConfig{
 		Enabled: true, PostLoginURL: "https://iam.example.test/",
 		AllowedReturnURLs: []string{"https://iam.example.test/"},
-		AllowedOrigins: []string{"https://iam.example.test"},
+		AllowedOrigins:    []string{"https://iam.example.test"},
 	}
 	document, err := (&App{}).RunOpenAPIExport(t.Context(), config)
 	require.NoError(t, err)
@@ -86,7 +86,7 @@ func TestOpenAPIExportGroupsOperationsByPathPrefix(t *testing.T) {
 	require.NoError(t, json.Unmarshal(document, &specification))
 
 	for _, path := range []string{
-		"/principal-groups/{group_id}", "/job-positions/{position_id}",
+		"/principal-groups/{group_id}",
 		"/membership-invitations/acceptances", "/membership-invitations/{invitation_id}/deliveries",
 		"/email-verifications/requests", "/email-verifications",
 		"/role-access-requests/{request_id}/decision", "/role-access-reviews/{review_id}",
@@ -95,7 +95,7 @@ func TestOpenAPIExportGroupsOperationsByPathPrefix(t *testing.T) {
 		assert.Contains(t, specification.Paths, path)
 	}
 	retired := map[string]bool{
-		"groups": true, "positions": true, "invitations": true, "invitation-acceptances": true,
+		"groups": true, "positions": true, "job-positions": true, "invitations": true, "invitation-acceptances": true,
 		"email-verification-requests": true, "access-requests": true, "access-reviews": true,
 		"relationships": true, "scope-model": true,
 	}

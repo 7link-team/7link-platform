@@ -80,7 +80,7 @@ func TestCorePersistenceAndAuthorizationFailClosedAfterDatabaseShutdown(t *testi
 			return err
 		}},
 		{"remove directory binding", func() error {
-			_, err := repo.ChangeDirectoryBinding(ctx, tenantID, roleID, DirectoryAssigneePosition, 5, false)
+			_, err := repo.ChangeDirectoryBinding(ctx, tenantID, roleID, DirectoryAssigneeGroup, 5, false)
 			return err
 		}},
 		{"get directory status", func() error {
@@ -170,7 +170,7 @@ func TestCorePersistenceAndAuthorizationFailClosedAfterDatabaseShutdown(t *testi
 	store := NewRoleGrantStore(repo, NewAdministratorGuard(harness.runtime))
 	_, err = store.RemoveGroupMembership(ctx, harness.db, tenantID, 5, principalID)
 	assert.Error(t, err)
-	_, err = store.RemovePositionMembership(ctx, harness.db, tenantID, 5, principalID)
+	_, err = store.RemoveGroupMembership(ctx, harness.db, tenantID, 5, principalID)
 	assert.Error(t, err)
 	_, err = store.RemoveEntityRoleBinding(ctx, harness.db, tenantID, entityID, roleID, principalID)
 	assert.Error(t, err)
@@ -318,7 +318,7 @@ func TestRepositoryPropagatesPolicyTableFailures(t *testing.T) {
 		harness := newRepositoryHarness(t, "sl_")
 		role, err := harness.repository.CreateRole(t.Context(), 1, "Role", "")
 		require.NoError(t, err)
-		require.NoError(t, harness.db.Exec("DROP TABLE sl_iam_position_role_bindings").Error)
+		require.NoError(t, harness.db.Exec("DROP TABLE sl_iam_group_role_bindings").Error)
 		_, err = harness.repository.ListDirectoryBindings(t.Context(), 1, role.ID)
 		assert.Error(t, err)
 	})

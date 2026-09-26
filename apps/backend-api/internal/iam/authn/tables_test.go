@@ -22,12 +22,10 @@ import (
 // so its name comes from the owner's own constructor.
 func publishedForeignTables(prefix string) (core.DirectoryTableNames, core.PrincipalTableNames) {
 	return core.DirectoryTableNames{
-			Groups:               gormx.NewTableName(prefix, "iam_groups"),
-			GroupMembers:         gormx.NewTableName(prefix, "iam_group_members"),
-			GroupRoleBindings:    gormx.NewTableName(prefix, "iam_group_role_bindings"),
-			Positions:            gormx.NewTableName(prefix, "iam_positions"),
-			PositionMembers:      gormx.NewTableName(prefix, "iam_position_members"),
-			PositionRoleBindings: gormx.NewTableName(prefix, "iam_position_role_bindings"),
+			Groups:            gormx.NewTableName(prefix, "iam_groups"),
+			GroupMembers:      gormx.NewTableName(prefix, "iam_group_members"),
+			GroupRoleBindings: gormx.NewTableName(prefix, "iam_group_role_bindings"),
+
 			Departments:          gormx.NewTableName(prefix, "iam_departments"),
 			DepartmentClosure:    gormx.NewTableName(prefix, "iam_department_closure"),
 			MemberDepartments:    gormx.NewTableName(prefix, "iam_member_departments"),

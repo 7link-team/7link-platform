@@ -176,8 +176,8 @@ func assertProvisioningUp(t *testing.T, db *gorm.DB, modules []module.Module, pr
 		milestones[report.Module] = report.Milestone
 		assert.Equal(t, goosex.StateClean, report.Status.State)
 	}
-	assert.Equal(t, "resource-menu-routes", milestones[iamcore.Name])
-	assert.Equal(t, "department-entities", milestones[organization.Name])
+	assert.Equal(t, "retire-positions", milestones[iamcore.Name])
+	assert.Equal(t, "retire-positions", milestones[organization.Name])
 	assert.Equal(t, "avatars", milestones[identity.Name])
 	assert.Equal(t, "outbound-coordination", milestones[provisioning.Name])
 }
@@ -307,6 +307,11 @@ func verifyProvisioningRollbackGraph(
 	}, prefix)
 	assert.ErrorContains(t, err, `"provisioning.service_accounts"`)
 
+	// Retire the core dependency on organization before removing its base.
+	_, err = app.ExecuteModuleMigrations(t.Context(), db, modules, app.MigrationRequest{
+		Action: app.MigrationDownTo, Module: iamcore.Name, To: 16,
+	}, prefix)
+	require.NoError(t, err)
 	for _, name := range []string{provisioning.Name, organization.Name, iamcore.Name, identity.Name} {
 		_, err = app.ExecuteModuleMigrations(t.Context(), db, modules, app.MigrationRequest{
 			Action: app.MigrationDownTo, Module: name, To: 0,

@@ -14,7 +14,7 @@ import (
 
 type APIRelationship struct {
 	EntityID        string          `json:"entity_id,omitempty" pattern:"^[1-9][0-9]*$" maxLength:"19"`
-	SubjectType     string          `json:"subject_type" enum:"principal,group,position,entity"`
+	SubjectType     string          `json:"subject_type" enum:"principal,group,entity"`
 	SubjectID       string          `json:"subject_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	SubjectRelation string          `json:"subject_relation,omitempty"`
 	Relation        string          `json:"relation" enum:"owner,editor,viewer"`
@@ -28,7 +28,7 @@ type APIRelationship struct {
 
 type relationshipFields struct {
 	EntityID        string          `json:"entity_id,omitempty" pattern:"^[1-9][0-9]*$" maxLength:"19"`
-	SubjectType     string          `json:"subject_type" enum:"principal,group,position,entity"`
+	SubjectType     string          `json:"subject_type" enum:"principal,group,entity"`
 	SubjectID       string          `json:"subject_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
 	SubjectRelation string          `json:"subject_relation,omitempty" maxLength:"16"`
 	Relation        string          `json:"relation" enum:"owner,editor,viewer"`
@@ -82,7 +82,7 @@ type putRelationshipInput struct {
 type deleteRelationshipInput struct {
 	TenantID        string `path:"tenant_id" maxLength:"128"`
 	EntityID        string `query:"entity_id" pattern:"^[1-9][0-9]*$" maxLength:"19"`
-	SubjectType     string `query:"subject_type" enum:"principal,group,position,entity" required:"true"`
+	SubjectType     string `query:"subject_type" enum:"principal,group,entity" required:"true"`
 	SubjectID       string `query:"subject_id" pattern:"^[1-9][0-9]*$" maxLength:"19" required:"true"`
 	SubjectRelation string `query:"subject_relation" maxLength:"16"`
 	Relation        string `query:"relation" enum:"owner,editor,viewer" required:"true"`

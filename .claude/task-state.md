@@ -1,5 +1,45 @@
 # Task State
 
+## Active Removal Of Independent Positions - 2026-09-26
+
+- Phase: ACCEPTED. User explicitly approved removing independent positions.
+- Baseline: 0f61fc8, pushed and clean. Direct execution for coupled authorization,
+  module contracts and UI; no subagents requested.
+- Remove position CRUD/services, membership and role-binding choices, relationship
+  subjects, authorization sources, permissions, menus, UI routes and client types.
+- Preserve existing grants during upgrades by migrating existing positions to
+  static principal groups with their IDs, members/windows/status/role bindings;
+  rewrite position relationship/review references to those groups. Historical
+  migration files and legacy table definitions remain for safe upgrades/history.
+- Reuse groups/departments/roles; no new concept, DB reset or permission expansion.
+- Tests: full backend and frontend gates, migration coverage with existing data,
+  E2E no position routes/UI/options; direct role and group authorization, last-admin
+  protection, relationship/review flow regression; rebuilt selectable demo/Swagger.
+- Runtime/UI/client/catalog removal and generated contracts implemented.
+- PASS: full Go unit tests and lint; frontend workspace typecheck/lint/tests/build;
+  real SQLite + Chrome lifecycle E2E 18/18 (.temp/sqlite-lifecycle-NC1RZ5).
+- Upgrade tests cover existing status/windows/bindings/relationships/reviews,
+  collision refusal, obsolete permission removal and child menu preservation.
+  SQLite/PostgreSQL/MySQL dialect/real MySQL 8 passed, both deployment prefixes.
+- PASS: final negative E2E 18/18 (.temp/sqlite-lifecycle-VZjgyl), fixture UI 72/72,
+  demo 5/5, live/rendered Swagger 301 operations; published OpenAPI 288 operations.
+  Coverage 91.4% overall; core91.2%, organization90.4%, governance92.0%.
+- Rebuilt demo running at Web8091/API8080, selectable accounts enabled.
+- Decision/plan/evidence: decisions.md D83. Historical models/tables retained only
+  for upgrade/schema checks; all runtime position branches are removed.
+- PASS: full integration suite (go test ./... in backend-api/tests, exit0),
+  corrected reverse-DAG rollback and migration-status upgrade/down/up flows;
+  backend unit tests, lint, format and OpenAPI drift gates exit0.
+- Self-review PASS: scoped removal, reused groups/module milestones, no unrelated
+  changes, historical schema intact, authorization and data safety verified.
+- Final acceptance PASS: runtime/API/Web removal, preserved business grants,
+  tested upgrades, browser flows and selectable live demo all verified.
+- Delivery branch: IAM. Final bookkeeping: commit/push this accepted change set
+  and verify remote HEAD/worktree. No implementation or migration follow-up.
+- Next: user can accept the running Web8091 and Swagger8080; no product decision
+  or additional refactor is pending.
+
+
 ## Active Resource Naming Audit - 2026-09-26
 
 - Phase: ACCEPTED; direct execution for shared route/client contracts.

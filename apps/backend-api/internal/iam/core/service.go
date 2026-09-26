@@ -148,7 +148,6 @@ func DefaultMenus() []Menu {
 		{Label: "Service accounts", Route: "/service-accounts", Icon: "bot", SortOrder: 12, PermissionCode: "service_account_view", Status: MenuActive},
 		{Label: "Entities", Route: "/entities", Icon: "network", SortOrder: 13, PermissionCode: "entity_view", Status: MenuActive},
 		{Label: "Departments", Route: "/departments", Icon: "building-2", SortOrder: 15, PermissionCode: "dept_view", Status: MenuActive},
-		{Label: "Positions", Route: "/positions", Icon: "briefcase-business", SortOrder: 18, PermissionCode: "position_view", Status: MenuActive},
 		{Label: "Groups", Route: "/groups", Icon: "users-round", SortOrder: 19, PermissionCode: "group_view", Status: MenuActive},
 		{Label: "Roles and permissions", Route: "/roles", Icon: "key-round", SortOrder: 20, PermissionCode: "role_view", Status: MenuActive},
 		{Label: "Access requests", Route: "/access-requests", Icon: "clipboard-check", SortOrder: 21, PermissionCode: "access_request_view", Status: MenuActive},

@@ -10,7 +10,6 @@ import {
   type ReactNode,
 } from "react"
 import {
-  BriefcaseBusiness,
   Database,
   ExternalLink,
   KeyRound,
@@ -49,7 +48,6 @@ import {
   type Department,
   type Member,
   type Permission,
-  type Position,
   type Role,
   type RoleDirectoryBinding,
   type RoleDataScope,
@@ -80,7 +78,7 @@ export default function RolesPage() {
     members: Member[]
     bindings: RoleDirectoryBinding[]
     groups: Group[]
-    positions: Position[]
+
     dataScope: RoleDataScope
     departments: Department[]
   }>({
@@ -90,7 +88,7 @@ export default function RolesPage() {
     members: [],
     bindings: [],
     groups: [],
-    positions: [],
+
     dataScope: { role_id: "", scope: "all", department_ids: [] },
     departments: [],
   })
@@ -131,9 +129,9 @@ export default function RolesPage() {
     if (!selected) return
     let current = true
     const scopeVersion = scopeDraftVersion.current
-    // Four of these answer to permissions a role administrator need not hold:
-    // the member directory to user_view, groups and positions to their own view
-    // codes, departments to dept_view. Asking for all eight at once used to make
+    // Three of these answer to permissions a role administrator need not hold:
+    // the member directory to user_view, groups to their own view
+    // codes, departments to dept_view. Asking for all lists at once used to make
     // any one refusal empty the whole role workspace, so the assignable lists
     // degrade on their own and the role's own data still arrives.
     void Promise.allSettled([
@@ -142,7 +140,7 @@ export default function RolesPage() {
       allowed("user_view") ? iamApi.members() : Promise.resolve([]),
       iamApi.roleDirectoryBindings(selected.id),
       allowed("group_view") ? iamApi.groups() : Promise.resolve([]),
-      allowed("position_view") ? iamApi.positions() : Promise.resolve([]),
+
       iamApi.roleDataScope(selected.id),
       allowed("dept_view") ? iamApi.departments() : Promise.resolve([]),
     ]).then(
@@ -152,7 +150,7 @@ export default function RolesPage() {
         nextMembers,
         nextBindings,
         nextGroups,
-        nextPositions,
+
         nextDataScope,
         nextDepartments,
       ]) => {
@@ -181,8 +179,7 @@ export default function RolesPage() {
           members: nextMembers.status === "fulfilled" ? nextMembers.value : [],
           bindings: nextBindings.value,
           groups: nextGroups.status === "fulfilled" ? nextGroups.value : [],
-          positions:
-            nextPositions.status === "fulfilled" ? nextPositions.value : [],
+
           dataScope: nextDataScope.value,
           departments:
             nextDepartments.status === "fulfilled" ? nextDepartments.value : [],
@@ -205,7 +202,7 @@ export default function RolesPage() {
   const members = loadingDetails ? [] : details.members
   const directoryBindings = loadingDetails ? [] : details.bindings
   const directoryGroups = loadingDetails ? [] : details.groups
-  const directoryPositions = loadingDetails ? [] : details.positions
+
   const departments = loadingDetails ? [] : details.departments
   const conditionGrant = grants.find(
     (grant) => grant.permission_code === conditionPermission?.code
@@ -703,10 +700,7 @@ export default function RolesPage() {
                         {t("roleMembers")}
                       </h3>
                       <Button variant="ghost" size="sm" asChild>
-                        <Link
-                          to="../users"
-                          data-role-directory-link="account"
-                        >
+                        <Link to="../users" data-role-directory-link="account">
                           <ExternalLink />
                           {t("openAccountDirectory")}
                         </Link>
@@ -776,25 +770,6 @@ export default function RolesPage() {
                     }))}
                     boundIDs={directoryBindings
                       .filter((binding) => binding.assignee_type === "group")
-                      .map((binding) => binding.assignee_id)}
-                    onToggle={toggleDirectoryBinding}
-                  />
-                  <DirectoryBindingsSection
-                    title={t("positions")}
-                    href="../positions"
-                    linkLabel={t("openPositionDirectory")}
-                    kind="position"
-                    icon={<BriefcaseBusiness size={15} />}
-                    loading={loadingDetails}
-                    busy={busy || !allowed("role_manage_assignee")}
-                    items={directoryPositions.map((position) => ({
-                      id: position.id,
-                      name: position.name,
-                      detail: position.code,
-                      status: position.status,
-                    }))}
-                    boundIDs={directoryBindings
-                      .filter((binding) => binding.assignee_type === "position")
                       .map((binding) => binding.assignee_id)}
                     onToggle={toggleDirectoryBinding}
                   />

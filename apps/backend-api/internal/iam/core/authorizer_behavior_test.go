@@ -507,11 +507,11 @@ func TestAuthorizerDirectoryAssignmentSourcesAndDataScopeDescendants(t *testing.
 	require.NoError(t, harness.db.Exec(`INSERT INTO sl_iam_group_members
 		(tenant_id,group_id,principal_id,starts_at,ends_at,created_at,updated_at)
 		VALUES (?,201,?,NULL,NULL,?,?)`, tenantID, principalID, now, now).Error)
-	require.NoError(t, harness.db.Exec(`INSERT INTO sl_iam_positions
-		(tenant_id,id,code,name,status,sort_order,version,created_at,updated_at)
-		VALUES (?,301,'operator','Operator','active',0,1,?,?)`, tenantID, now, now).Error)
-	require.NoError(t, harness.db.Exec(`INSERT INTO sl_iam_position_members
-		(tenant_id,position_id,principal_id,starts_at,ends_at,created_at,updated_at)
+	require.NoError(t, harness.db.Exec(`INSERT INTO sl_iam_groups
+		(tenant_id,id,name_key,name,group_type,status,sort_order,version,created_at,updated_at)
+		VALUES (?,301,'operator','Operator','static','active',0,1,?,?)`, tenantID, now, now).Error)
+	require.NoError(t, harness.db.Exec(`INSERT INTO sl_iam_group_members
+		(tenant_id,group_id,principal_id,starts_at,ends_at,created_at,updated_at)
 		VALUES (?,301,?,NULL,NULL,?,?)`, tenantID, principalID, now, now).Error)
 
 	type source struct {
@@ -523,7 +523,7 @@ func TestAuthorizerDirectoryAssignmentSourcesAndDataScopeDescendants(t *testing.
 	sources := []source{
 		{"Static", "role_view", DirectoryAssigneeGroup, 201},
 		{"Dynamic", "menu_view", DirectoryAssigneeGroup, 202},
-		{"Position", "entity_view", DirectoryAssigneePosition, 301},
+		{"Position", "entity_view", DirectoryAssigneeGroup, 301},
 	}
 	for _, item := range sources {
 		role, createErr := harness.service.CreateRole(t.Context(), tenantID, item.name, "")
@@ -573,7 +573,7 @@ func TestRelationshipValidationFactsWindowsConditionsAndGraph(t *testing.T) {
 		{},
 		{TenantID: tenantID, SubjectType: "principal", SubjectID: principalID, SubjectRelation: "member", Relation: "viewer", ResourceType: "store", ResourceID: a.ID},
 		{TenantID: tenantID, SubjectType: "group", SubjectID: 1, Relation: "viewer", ResourceType: "store", ResourceID: a.ID},
-		{TenantID: tenantID, SubjectType: "position", SubjectID: 1, SubjectRelation: "bad", Relation: "viewer", ResourceType: "store", ResourceID: a.ID},
+		{TenantID: tenantID, SubjectType: "group", SubjectID: 1, SubjectRelation: "bad", Relation: "viewer", ResourceType: "store", ResourceID: a.ID},
 		{TenantID: tenantID, SubjectType: "entity", SubjectID: a.ID, SubjectRelation: "bad", Relation: "viewer", ResourceType: "store", ResourceID: b.ID},
 		{TenantID: tenantID, SubjectType: "unknown", SubjectID: 1, Relation: "viewer", ResourceType: "store", ResourceID: a.ID},
 	}
@@ -654,7 +654,7 @@ func TestRelationshipValidationFactsWindowsConditionsAndGraph(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalidArgument)
 }
 
-func TestRelationshipGroupAndPositionSubjectValidation(t *testing.T) {
+func TestRelationshipGroupSubjectValidationAndRetiredPositionRejection(t *testing.T) {
 	harness := newCoreServiceHarness(t)
 	tenantID, principalID := guid.ID(1), guid.ID(11)
 	harness.seedMember(t, tenantID, principalID, MemberActive)
@@ -666,16 +666,16 @@ func TestRelationshipGroupAndPositionSubjectValidation(t *testing.T) {
 		VALUES (?,201,'Active','active','static','','','active',0,1,?,?),
 		       (?,202,'Disabled','disabled','static','','','disabled',0,1,?,?)`,
 		tenantID, now, now, tenantID, now, now).Error)
-	require.NoError(t, harness.db.Exec(`INSERT INTO sl_iam_positions
-		(tenant_id,id,code,name,status,sort_order,version,created_at,updated_at)
-		VALUES (?,301,'active','Active','active',0,1,?,?),
-		       (?,302,'disabled','Disabled','disabled',0,1,?,?)`,
+	require.NoError(t, harness.db.Exec(`INSERT INTO sl_iam_groups
+		(tenant_id,id,name_key,name,group_type,status,sort_order,version,created_at,updated_at)
+		VALUES (?,301,'second-active','Second active','static','active',0,1,?,?),
+		       (?,302,'second-disabled','Second disabled','static','disabled',0,1,?,?)`,
 		tenantID, now, now, tenantID, now, now).Error)
 	require.NoError(t, harness.db.Exec(`INSERT INTO sl_iam_group_members
 		(tenant_id,group_id,principal_id,starts_at,ends_at,created_at,updated_at)
 		VALUES (?,201,?,NULL,NULL,?,?)`, tenantID, principalID, now, now).Error)
-	require.NoError(t, harness.db.Exec(`INSERT INTO sl_iam_position_members
-		(tenant_id,position_id,principal_id,starts_at,ends_at,created_at,updated_at)
+	require.NoError(t, harness.db.Exec(`INSERT INTO sl_iam_group_members
+		(tenant_id,group_id,principal_id,starts_at,ends_at,created_at,updated_at)
 		VALUES (?,301,?,NULL,NULL,?,?)`, tenantID, principalID, now, now).Error)
 
 	for _, item := range []struct {
@@ -684,11 +684,11 @@ func TestRelationshipGroupAndPositionSubjectValidation(t *testing.T) {
 		want     error
 	}{
 		{"group", 999, ErrRelationshipSubjectMissing},
-		{"position", 999, ErrRelationshipSubjectMissing},
+		{"position", 301, ErrInvalidRelationship},
 		{"group", 202, ErrRelationshipSubjectInactive},
-		{"position", 302, ErrRelationshipSubjectInactive},
+		{"group", 302, ErrRelationshipSubjectInactive},
 		{"group", 201, nil},
-		{"position", 301, nil},
+		{"group", 301, nil},
 	} {
 		relationship := Relationship{
 			TenantID: tenantID, SubjectType: item.typeName, SubjectID: item.id, SubjectRelation: "member",
@@ -708,7 +708,7 @@ func TestRelationshipGroupAndPositionSubjectValidation(t *testing.T) {
 		t.Context(), tenantID, entity.ID, "store_view", principalID,
 	)
 	require.NoError(t, err)
-	assert.True(t, allowed, "group and position relationship subjects expand from active membership")
+	assert.True(t, allowed, "independent group relationship subjects expand from active membership")
 }
 
 func TestRelationshipDepthLimit(t *testing.T) {

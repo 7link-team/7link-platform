@@ -78,7 +78,6 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
     "tenants-empty": ["tenants", "tenants"],
     "oauth-clients-empty": ["oauth-clients", "clients"],
     "departments-empty": ["departments", "departments"],
-    "positions-empty": ["positions", "positions"],
     "groups-empty": ["groups", "groups"],
     "menus-empty": ["menus", "menus"],
     "invitations-empty": ["invitations", "items", "loaded"],
@@ -1260,7 +1259,6 @@ try {
   for (const fixture of [
     ...[
       ["departments", "No departments in this tenant"],
-      ["positions", "No positions in this tenant"],
       ["groups", "No user groups in this tenant"],
       ["menus", "No menu nodes"],
       ["invitations", "No member invitations"],
@@ -1271,7 +1269,6 @@ try {
       path: `/tenants/t1/${name}`,
       api: `/tenants/t1/${
         {
-          positions: "job-positions",
           groups: "principal-groups",
           invitations: "membership-invitations",
           "access-reviews": "role-access-reviews",

@@ -294,11 +294,7 @@ func (r *Repository) ListRelationshipsPage(
 	return result, total, nil
 }
 
-// ListDirectoryBindingsPage returns a stable page of one role's group and
-// position assignments and the number of assignments before pagination. The two
-// kinds live in separate tables and the listing orders every group ahead of
-// every position, so the window walks the group rows first and reaches the
-// position rows only once the groups are exhausted.
+// ListDirectoryBindingsPage returns a stable page of a role's group assignments.
 func (r *Repository) ListDirectoryBindingsPage(
 	ctx context.Context,
 	tenantID, roleID guid.ID,
@@ -317,16 +313,11 @@ func (r *Repository) ListDirectoryBindingsPage(
 	}
 	db := repo.writer().WithContext(ctx)
 	offset, limit = normalizePage(offset, limit)
-	var groupTotal, positionTotal int64
+	var groupTotal int64
 	if err := db.Table(directory.GroupRoleBindings.String()).
 		Where("tenant_id = ? AND role_id = ?", tenantID, roleID).
 		Count(&groupTotal).Error; err != nil {
 		return nil, 0, fmt.Errorf("count group role bindings: %w", err)
-	}
-	if err := db.Table(directory.PositionRoleBindings.String()).
-		Where("tenant_id = ? AND role_id = ?", tenantID, roleID).
-		Count(&positionTotal).Error; err != nil {
-		return nil, 0, fmt.Errorf("count position role bindings: %w", err)
 	}
 	bounded := limit > 0
 	remaining := limit
@@ -350,33 +341,8 @@ func (r *Repository) ListDirectoryBindingsPage(
 				AssigneeID: row.GroupID, CreatedAt: row.CreatedAt.UTC(),
 			})
 		}
-		remaining -= len(groups)
 	}
-	positionOffset := 0
-	if int64(offset) > groupTotal {
-		positionOffset = offset - int(groupTotal)
-	}
-	if !bounded || remaining > 0 {
-		listing := db.Table(directory.PositionRoleBindings.String()).
-			Where("tenant_id = ? AND role_id = ?", tenantID, roleID).Order("position_id ASC")
-		if bounded {
-			listing = listing.Limit(remaining)
-		}
-		if positionOffset > 0 {
-			listing = listing.Offset(positionOffset)
-		}
-		var positions []positionRoleBindingRecord
-		if err := listing.Find(&positions).Error; err != nil {
-			return nil, 0, fmt.Errorf("list position role bindings: %w", err)
-		}
-		for _, row := range positions {
-			bindings = append(bindings, RoleDirectoryBinding{
-				RoleID: row.RoleID, AssigneeType: DirectoryAssigneePosition,
-				AssigneeID: row.PositionID, CreatedAt: row.CreatedAt.UTC(),
-			})
-		}
-	}
-	return bindings, groupTotal + positionTotal, nil
+	return bindings, groupTotal, nil
 }
 
 // ListEntitiesPage validates tenant scope and returns one entity page with its
@@ -448,7 +414,7 @@ func (s *Service) ListRelationshipsPage(
 }
 
 // ListDirectoryBindingsPage validates the role reference and returns one page of
-// its group and position assignments with the unfiltered total.
+// its group assignments with the unfiltered total.
 func (s *Service) ListDirectoryBindingsPage(
 	ctx context.Context,
 	tenantID, roleID guid.ID,

@@ -136,9 +136,16 @@ async function client(page, method, ...args) {
 // tenant or globally. Guessing from the first path segment is what let these
 // calls rot: resources moved to global addresses and the guess kept building
 // a tenant-scoped URL that answered 404 somewhere deep in a flow.
-const contractPaths = Object.keys(
-  JSON.parse(readFileSync(join(backend, "docs", "openapi.json"), "utf8")).paths
+const contract = JSON.parse(
+  readFileSync(join(backend, "docs", "openapi.json"), "utf8")
 )
+const contractPaths = Object.keys(contract.paths)
+assert(
+  !Object.keys(contract.components.schemas).some((name) =>
+    /position/i.test(name)
+  )
+)
+assert(!JSON.stringify(contract.components.schemas).includes('"position"'))
 
 function published(candidate) {
   const parts = candidate.split("?")[0].split("/")
@@ -497,11 +504,21 @@ try {
     "first tenant adoption"
   )
   const defaultMenus = await call(admin.context, "/menus")
-  assert.equal(defaultMenus.length, 15)
+  assert.equal(defaultMenus.length, 14)
+  assert(!JSON.stringify(defaultMenus).includes("position"))
+  const catalog = await client(admin.page, "permissions")
+  assert(!catalog.some((permission) => permission.code.startsWith("position_")))
   const administrator = (await call(admin.context, "/roles")).find(
     (role) => role.name === "Administrator"
   )
   assert(administrator)
+  await call(
+    admin.context,
+    `/roles/${administrator.id}/directory-bindings/position/1`,
+    "PUT",
+    {},
+    { status: 422 }
+  )
   assert.deepEqual(
     await call(admin.context, `/roles/${administrator.id}/permissions`),
     ["tenant_administer"]
@@ -513,6 +530,20 @@ try {
 
   // Entities first: a department is created against one.
   const company = await createEntity(admin.page, "Company")
+  await call(
+    admin.context,
+    "/authorization-relationships",
+    "POST",
+    {
+      subject_type: "position",
+      subject_id: "1",
+      subject_relation: "member",
+      relation: "viewer",
+      resource_type: "company",
+      resource_id: company.id,
+    },
+    { status: 422 }
+  )
   const east = await createEntity(admin.page, "East Branch", company)
   const west = await createEntity(admin.page, "West Branch", company)
   const operations = await createDepartment(admin.page, "Operations", company)
@@ -766,17 +797,17 @@ try {
     status: "active",
     sort_order: 1,
   })
-  const position = await client(admin.page, "createPosition", {
+  const secondGroup = await client(admin.page, "createGroup", {
     name: "Branch operator",
-    code: "branch-operator",
+    type: "static",
     status: "active",
     sort_order: 1,
   })
   await client(admin.page, "putGroupMember", group.id, charlie.id, {})
-  await client(admin.page, "putPositionMember", position.id, charlie.id, {})
+  await client(admin.page, "putGroupMember", secondGroup.id, charlie.id, {})
   for (const [type, item] of [
     ["group", group],
-    ["position", position],
+    ["group", secondGroup],
   ]) {
     await client(
       admin.page,
@@ -808,14 +839,14 @@ try {
         "/principals/{principal_id}/permissions"
       )
     ).includes("user_view"),
-    "remaining position retains authority"
+    "remaining group retains authority"
   )
   await client(
     admin.page,
     "removeRoleDirectoryBinding",
     viewer.id,
-    "position",
-    position.id
+    "group",
+    secondGroup.id
   )
   assert(
     !(
@@ -889,7 +920,7 @@ try {
     dynamic.id
   )
   pass(
-    "group/position assignments combine without accidental revocation; department moves update dynamic group authority"
+    "independent group assignments combine without accidental revocation; department moves update dynamic group authority"
   )
 
   const parent = await client(admin.page, "createMenu", {
@@ -1419,6 +1450,8 @@ try {
   for (const [method, path] of [
     ["GET", "/groups/1"],
     ["GET", "/positions/1"],
+    ["GET", "/job-positions/1"],
+    ["GET", `/tenants/${tenant.id}/job-positions`],
     ["DELETE", "/invitations/1"],
     ["POST", "/invitation-acceptances"],
     ["POST", "/email-verification-requests"],

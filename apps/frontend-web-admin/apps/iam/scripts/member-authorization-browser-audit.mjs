@@ -246,13 +246,13 @@ function requireSource(snapshot, type, predicate, description) {
 const artifacts = {
   accessRequest: null,
   department: null,
-  position: null,
+  secondGroup: null,
   groups: [],
   roles: [],
   entities: [],
   roleMembers: [],
   groupMembers: [],
-  positionMembers: [],
+  secondGroupMembers: [],
   directoryBindings: [],
   entityBindings: [],
   relationship: null,
@@ -304,10 +304,10 @@ async function cleanup() {
         { method: "DELETE" }
       )
     })
-  for (const membership of artifacts.positionMembers)
+  for (const membership of artifacts.secondGroupMembers)
     await attempt(async () => {
       await api(
-        `/job-positions/${encodeURIComponent(membership.positionID)}/members/${encodeURIComponent(artifacts.memberID)}`,
+        `/principal-groups/${encodeURIComponent(membership.secondGroupID)}/members/${encodeURIComponent(artifacts.memberID)}`,
         { method: "DELETE" }
       )
     })
@@ -332,19 +332,21 @@ async function cleanup() {
     })
   for (const group of artifacts.groups)
     await attempt(async () => {
-      const current = await api(`/principal-groups/${encodeURIComponent(group.id)}`)
+      const current = await api(
+        `/principal-groups/${encodeURIComponent(group.id)}`
+      )
       await api(
         `/principal-groups/${encodeURIComponent(group.id)}?version=${current.version}`,
         { method: "DELETE" }
       )
     })
-  if (artifacts.position)
+  if (artifacts.secondGroup)
     await attempt(async () => {
       const current = await api(
-        `/job-positions/${encodeURIComponent(artifacts.position.id)}`
+        `/principal-groups/${encodeURIComponent(artifacts.secondGroup.id)}`
       )
       await api(
-        `/job-positions/${encodeURIComponent(artifacts.position.id)}?version=${current.version}`,
+        `/principal-groups/${encodeURIComponent(artifacts.secondGroup.id)}?version=${current.version}`,
         { method: "DELETE" }
       )
     })
@@ -404,11 +406,11 @@ try {
       sort_order: 10,
     }),
   })
-  artifacts.position = await api("/job-positions", {
+  artifacts.secondGroup = await api("/principal-groups", {
     method: "POST",
     body: JSON.stringify({
-      code: `acceptance.authorization-${suffix}`,
-      name: `Acceptance Authorization Position ${suffix}`,
+      type: "static",
+      name: `Acceptance Authorization Group B ${suffix}`,
       status: "active",
       sort_order: 10,
     }),
@@ -463,8 +465,8 @@ try {
   }
   const sharedRole = await createRole("Shared", "menu_view")
   const temporaryRole = await createRole("Temporary", "audit_event_view")
-  const dynamicRole = await createRole("Dynamic", "position_view")
-  const positionRole = await createRole("Position", "dept_view")
+  const dynamicRole = await createRole("Dynamic", "group_view")
+  const secondGroupRole = await createRole("Second group", "dept_view")
   const entityRole = await createRole("Entity", "store_view")
 
   await api(`/roles/${encodeURIComponent(sharedRole.id)}/data-scope`, {
@@ -503,20 +505,20 @@ try {
     type: "group",
     assigneeID: dynamicGroup.id,
   })
-  const positionEnd = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
+  const secondGroupEnd = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
   await api(
-    `/job-positions/${encodeURIComponent(artifacts.position.id)}/members/${encodeURIComponent(principal.id)}`,
-    { method: "PUT", body: JSON.stringify({ ends_at: positionEnd }) }
+    `/principal-groups/${encodeURIComponent(artifacts.secondGroup.id)}/members/${encodeURIComponent(principal.id)}`,
+    { method: "PUT", body: JSON.stringify({ ends_at: secondGroupEnd }) }
   )
-  artifacts.positionMembers.push({ positionID: artifacts.position.id })
+  artifacts.secondGroupMembers.push({ secondGroupID: artifacts.secondGroup.id })
   await api(
-    `/roles/${encodeURIComponent(positionRole.id)}/directory-bindings/position/${encodeURIComponent(artifacts.position.id)}`,
+    `/roles/${encodeURIComponent(secondGroupRole.id)}/directory-bindings/group/${encodeURIComponent(artifacts.secondGroup.id)}`,
     { method: "PUT" }
   )
   artifacts.directoryBindings.push({
-    roleID: positionRole.id,
-    type: "position",
-    assigneeID: artifacts.position.id,
+    roleID: secondGroupRole.id,
+    type: "group",
+    assigneeID: artifacts.secondGroup.id,
   })
 
   const rootEntity = await api("/entities", {
@@ -620,12 +622,12 @@ try {
   )
   requireSource(
     snapshot,
-    "position",
+    "static_group",
     (source) =>
-      source.role_id === positionRole.id &&
-      source.source_id === artifacts.position.id &&
+      source.role_id === secondGroupRole.id &&
+      source.source_id === artifacts.secondGroup.id &&
       Boolean(source.expires_at),
-    "position role with expiry"
+    "second static group role with expiry"
   )
   requireSource(
     snapshot,
@@ -702,7 +704,7 @@ try {
     sharedRole.name,
     staticGroup.name,
     dynamicGroup.name,
-    artifacts.position.name,
+    artifacts.secondGroup.name,
     rootEntity.name,
     childEntity.name,
     businessResourceID,
@@ -824,7 +826,8 @@ const unexpectedResponses = diagnostics.responses.filter(
     !(
       response.status === 401 &&
       ((response.method === "GET" && response.url.endsWith("/api/me")) ||
-        (response.method === "DELETE" && response.url.endsWith("/api/sessions/current")))
+        (response.method === "DELETE" &&
+          response.url.endsWith("/api/sessions/current")))
     ) &&
     !(
       response.status === 403 &&

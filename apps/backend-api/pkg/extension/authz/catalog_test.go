@@ -19,7 +19,6 @@ func TestDefaultRegistryContainsBasicIAM(t *testing.T) {
 		"role_view",
 		"role_manage_assignee",
 		"dept_view",
-		"position_manage_member",
 		"group_manage_member",
 		"menu_view",
 		"menu_bind_permission",

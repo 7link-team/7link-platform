@@ -130,7 +130,7 @@ func TestRoleGrantStoreRemovesExactScopedAssignments(t *testing.T) {
 		repositoryTestTime, repositoryTestTime,
 	).Error)
 	require.NoError(t, harness.db.Exec(
-		"INSERT INTO sl_iam_position_members (tenant_id, position_id, principal_id, created_at, updated_at) VALUES (1, 300, 11, ?, ?)",
+		"INSERT INTO sl_iam_group_members (tenant_id, group_id, principal_id, created_at, updated_at) VALUES (1, 300, 11, ?, ?)",
 		repositoryTestTime, repositoryTestTime,
 	).Error)
 	_, _, err = repository.PutEntityRoleBinding(t.Context(), 1, entity.ID, role.ID, 11, BindingAllow, time.Time{})
@@ -148,7 +148,7 @@ func TestRoleGrantStoreRemovesExactScopedAssignments(t *testing.T) {
 		return err
 	}))
 	require.NoError(t, repository.runInTx(t.Context(), func(repo *Repository) error {
-		changed, err := store.RemovePositionMembership(t.Context(), repo.writer(), 1, 300, 11)
+		changed, err := store.RemoveGroupMembership(t.Context(), repo.writer(), 1, 300, 11)
 		assert.True(t, changed)
 		return err
 	}))
@@ -163,6 +163,6 @@ func TestRoleGrantStoreRemovesExactScopedAssignments(t *testing.T) {
 		return err
 	}))
 	assert.Equal(t, int64(0), testTableCount(t, harness.db, "sl_iam_group_members"))
-	assert.Equal(t, int64(0), testTableCount(t, harness.db, "sl_iam_position_members"))
+	assert.Equal(t, int64(0), testTableCount(t, harness.db, "sl_iam_group_members"))
 	assert.Equal(t, int64(0), testTableCount(t, harness.db, "sl_iam_role_bindings"))
 }

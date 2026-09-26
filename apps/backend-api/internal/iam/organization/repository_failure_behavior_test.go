@@ -66,21 +66,6 @@ func TestOrganizationRepositoriesSurfaceDatabaseFailures(t *testing.T) {
 	_, err = repo.deleteGroupMember(t.Context(), 1, 2, 3)
 	assert.Error(t, err)
 
-	position := positionRow{TenantID: 1, ID: 2, Code: "position", Name: "Position", Status: StatusActive, Version: 1}
-	_, err = repo.listPositions(t.Context(), 1)
-	assert.Error(t, err)
-	_, err = repo.getPosition(t.Context(), 1, 2)
-	assert.Error(t, err)
-	assert.Error(t, repo.insertPosition(t.Context(), &position))
-	assert.Error(t, repo.updatePosition(t.Context(), &position, 1))
-	assert.Error(t, repo.deletePosition(t.Context(), 1, 2, 1))
-	_, err = repo.listPositionMembers(t.Context(), 1, 2)
-	assert.Error(t, err)
-	_, err = repo.getPositionMember(t.Context(), 1, 2, 3)
-	assert.Error(t, err)
-	assert.Error(t, repo.putPositionMember(t.Context(), &model.PositionMember{}))
-	_, err = repo.deletePositionMember(t.Context(), 1, 2, 3)
-	assert.Error(t, err)
 }
 
 func TestOrganizationRepositoryStateAndConstructorFailures(t *testing.T) {
@@ -90,9 +75,6 @@ func TestOrganizationRepositoryStateAndConstructorFailures(t *testing.T) {
 	assert.Panics(t, func() { NewRepository(h.runtime, newOrganizationTestIDs(1), nil) })
 	assert.Panics(t, func() {
 		newBoundGroupService(t, nil, h.appender, &organizationMemberChecker{}, &organizationAdministratorGuard{}, newOrganizationTestIDs(1))
-	})
-	assert.Panics(t, func() {
-		newBoundPositionService(t, h.runtime, h.appender, nil, &organizationAdministratorGuard{}, newOrganizationTestIDs(1))
 	})
 	assert.Panics(t, func() {
 		newBoundTenantService(t, h.runtime, nil, newOrganizationTestIDs(1),
@@ -137,8 +119,6 @@ func TestOrganizationRepositoryStateAndConstructorFailures(t *testing.T) {
 	assert.False(t, isGroupNameViolation(nil))
 	assert.False(t, isGroupNameViolation(errors.New("connection closed")))
 	assert.True(t, isGroupNameViolation(errors.New("groups_name conflict")))
-	assert.False(t, isPositionCodeViolation(errors.New("connection closed")))
-	assert.True(t, isPositionCodeViolation(errors.New("positions_code conflict")))
 }
 
 type organizationZeroIDs struct{}
@@ -150,7 +130,6 @@ func TestOrganizationServicesSurfaceClosedDatabase(t *testing.T) {
 	memberChecker := &organizationMemberChecker{}
 	guard := &organizationAdministratorGuard{}
 	groups := newBoundGroupService(t, h.runtime, h.appender, memberChecker, guard, newOrganizationTestIDs(10))
-	positions := newBoundPositionService(t, h.runtime, h.appender, memberChecker, guard, newOrganizationTestIDs(20))
 	tenants, _, _ := newTenantServiceForTest(t, h, newOrganizationTestIDs(30))
 	invitations := newBoundInvitationService(t,
 		h.runtime, h.appender, newOrganizationTestIDs(40), &invitationCredentialFixture{},
@@ -172,10 +151,6 @@ func TestOrganizationServicesSurfaceClosedDatabase(t *testing.T) {
 	_, err = groups.List(t.Context(), 1)
 	assert.Error(t, err)
 	_, err = groups.Create(t.Context(), 1, CreateGroup{Name: "Group"})
-	assert.Error(t, err)
-	_, err = positions.List(t.Context(), 1)
-	assert.Error(t, err)
-	_, err = positions.Create(t.Context(), 1, CreatePosition{Code: "position", Name: "Position"})
 	assert.Error(t, err)
 	_, err = tenants.List(t.Context(), false)
 	assert.Error(t, err)
@@ -203,12 +178,11 @@ func TestOrderDepartmentsRejectsCorruptRows(t *testing.T) {
 	assert.ErrorIs(t, err, ErrHierarchyCorrupt)
 }
 
-func TestGroupAndPositionServicesRejectInvalidReferences(t *testing.T) {
+func TestGroupServicesRejectInvalidReferences(t *testing.T) {
 	h := newOrganizationHarness(t, "")
 	members := &organizationMemberChecker{}
 	guard := &organizationAdministratorGuard{}
 	groups := newBoundGroupService(t, h.runtime, h.appender, members, guard, newOrganizationTestIDs(10))
-	positions := newBoundPositionService(t, h.runtime, h.appender, members, guard, newOrganizationTestIDs(20))
 
 	_, err := groups.List(t.Context(), 0)
 	assert.ErrorIs(t, err, ErrGroupInvalid)
@@ -224,26 +198,9 @@ func TestGroupAndPositionServicesRejectInvalidReferences(t *testing.T) {
 	_, err = groups.DeleteMember(t.Context(), 1, 2, 0)
 	assert.ErrorIs(t, err, ErrGroupInvalid)
 
-	_, err = positions.List(t.Context(), 0)
-	assert.ErrorIs(t, err, ErrPositionInvalid)
-	_, err = positions.Get(t.Context(), 1, 0)
-	assert.ErrorIs(t, err, ErrPositionInvalid)
-	_, err = positions.Update(t.Context(), 1, 2, UpdatePosition{})
-	assert.ErrorIs(t, err, ErrPositionInvalid)
-	assert.ErrorIs(t, positions.Delete(t.Context(), 1, 2, 0), ErrPositionInvalid)
-	_, err = positions.ListMembers(t.Context(), 1, 0)
-	assert.ErrorIs(t, err, ErrPositionInvalid)
-	_, err = positions.PutMember(t.Context(), 1, 2, 0, PositionMemberWindow{})
-	assert.ErrorIs(t, err, ErrPositionInvalid)
-	_, err = positions.DeleteMember(t.Context(), 1, 2, 0)
-	assert.ErrorIs(t, err, ErrPositionInvalid)
-
 	failingGroups := newBoundGroupService(t, h.runtime, h.appender, members, guard, failingOrganizationIDs{})
 	_, err = failingGroups.Create(t.Context(), 1, CreateGroup{Name: "Group"})
 	assert.ErrorContains(t, err, "generate group id")
-	failingPositions := newBoundPositionService(t, h.runtime, h.appender, members, guard, failingOrganizationIDs{})
-	_, err = failingPositions.Create(t.Context(), 1, CreatePosition{Code: "position", Name: "Position"})
-	assert.ErrorContains(t, err, "generate position id")
 }
 
 // TestUnwiredRepositoryRefusesDirectoryOperations pins what a repository that
@@ -256,7 +213,6 @@ func TestUnwiredRepositoryRefusesDirectoryOperations(t *testing.T) {
 	t.Parallel()
 	unavailable := &Repository{}
 	group := groupRow{TenantID: 1, ID: 2, Name: "Group", NameKey: "group", GroupType: GroupTypeStatic, Status: StatusActive, Version: 1}
-	position := positionRow{TenantID: 1, ID: 2, Code: "position", Name: "Position", Status: StatusActive, Version: 1}
 
 	_, err := unavailable.listGroups(t.Context(), 1)
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
@@ -273,20 +229,5 @@ func TestUnwiredRepositoryRefusesDirectoryOperations(t *testing.T) {
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
 	assert.ErrorIs(t, unavailable.putGroupMember(t.Context(), &model.GroupMember{}), errRepositoryUnavailable)
 	_, err = unavailable.deleteGroupMember(t.Context(), 1, 2, 3)
-	assert.ErrorIs(t, err, errRepositoryUnavailable)
-
-	_, err = unavailable.listPositions(t.Context(), 1)
-	assert.ErrorIs(t, err, errRepositoryUnavailable)
-	_, err = unavailable.getPosition(t.Context(), 1, 2)
-	assert.ErrorIs(t, err, errRepositoryUnavailable)
-	assert.ErrorIs(t, unavailable.insertPosition(t.Context(), &position), errRepositoryUnavailable)
-	assert.ErrorIs(t, unavailable.updatePosition(t.Context(), &position, 1), errRepositoryUnavailable)
-	assert.ErrorIs(t, unavailable.deletePosition(t.Context(), 1, 2, 1), errRepositoryUnavailable)
-	_, err = unavailable.listPositionMembers(t.Context(), 1, 2)
-	assert.ErrorIs(t, err, errRepositoryUnavailable)
-	_, err = unavailable.getPositionMember(t.Context(), 1, 2, 3)
-	assert.ErrorIs(t, err, errRepositoryUnavailable)
-	assert.ErrorIs(t, unavailable.putPositionMember(t.Context(), &model.PositionMember{}), errRepositoryUnavailable)
-	_, err = unavailable.deletePositionMember(t.Context(), 1, 2, 3)
 	assert.ErrorIs(t, err, errRepositoryUnavailable)
 }

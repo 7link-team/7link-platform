@@ -4,10 +4,19 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/extension/policyx"
 )
+
+func normalizeOptionalTime(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	normalized := value.UTC().Truncate(time.Millisecond)
+	return &normalized
+}
 
 const (
 	GroupTypeStatic           = "static"

@@ -20,14 +20,7 @@ type groupRoleBindingRecord struct {
 	CreatedAt time.Time `gorm:"column:created_at"`
 }
 
-type positionRoleBindingRecord struct {
-	TenantID   guid.ID   `gorm:"column:tenant_id"`
-	RoleID     guid.ID   `gorm:"column:role_id"`
-	PositionID guid.ID   `gorm:"column:position_id"`
-	CreatedAt  time.Time `gorm:"column:created_at"`
-}
-
-// ListDirectoryBindings returns group and position role assignments for one
+// ListDirectoryBindings returns group role assignments for one
 // tenant role.
 func (r *Repository) ListDirectoryBindings(
 	ctx context.Context,
@@ -57,17 +50,6 @@ func (r *Repository) ListDirectoryBindings(
 			AssigneeID: row.GroupID, CreatedAt: row.CreatedAt.UTC(),
 		})
 	}
-	var positions []positionRoleBindingRecord
-	if err := db.Table(directory.PositionRoleBindings.String()).
-		Where("tenant_id = ? AND role_id = ?", tenantID, roleID).Find(&positions).Error; err != nil {
-		return nil, fmt.Errorf("list position role bindings: %w", err)
-	}
-	for _, row := range positions {
-		bindings = append(bindings, RoleDirectoryBinding{
-			RoleID: row.RoleID, AssigneeType: DirectoryAssigneePosition,
-			AssigneeID: row.PositionID, CreatedAt: row.CreatedAt.UTC(),
-		})
-	}
 	sort.Slice(bindings, func(left, right int) bool {
 		if bindings[left].AssigneeType == bindings[right].AssigneeType {
 			return bindings[left].AssigneeID < bindings[right].AssigneeID
@@ -78,7 +60,7 @@ func (r *Repository) ListDirectoryBindings(
 }
 
 // ChangeDirectoryBinding idempotently adds or removes one tenant-qualified
-// group or position role assignment.
+// group role assignment.
 func (r *Repository) ChangeDirectoryBinding(
 	ctx context.Context,
 	tenantID, roleID guid.ID,
@@ -123,24 +105,6 @@ func (r *Repository) ChangeDirectoryBinding(
 				return fmt.Errorf("delete group role binding: %w", result.Error)
 			}
 			changed = result.RowsAffected > 0
-		case DirectoryAssigneePosition:
-			if add {
-				row := positionRoleBindingRecord{TenantID: tenantID, RoleID: roleID, PositionID: assigneeID, CreatedAt: now}
-				result := db.Table(directory.PositionRoleBindings.String()).
-					Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
-				if result.Error != nil {
-					return fmt.Errorf("insert position role binding: %w", result.Error)
-				}
-				changed = result.RowsAffected > 0
-				return nil
-			}
-			result := db.Table(directory.PositionRoleBindings.String()).
-				Where("tenant_id = ? AND role_id = ? AND position_id = ?", tenantID, roleID, assigneeID).
-				Delete(&positionRoleBindingRecord{})
-			if result.Error != nil {
-				return fmt.Errorf("delete position role binding: %w", result.Error)
-			}
-			changed = result.RowsAffected > 0
 		default:
 			return fmt.Errorf("%w: invalid directory assignee type", ErrInvalidArgument)
 		}
@@ -167,8 +131,6 @@ func (r *Repository) directoryAssigneeStatus(
 	switch assigneeType {
 	case DirectoryAssigneeGroup:
 		table = directory.Groups
-	case DirectoryAssigneePosition:
-		table = directory.Positions
 	default:
 		return "", fmt.Errorf("%w: invalid directory assignee type", ErrInvalidArgument)
 	}
@@ -197,7 +159,7 @@ func (s *Service) ListDirectoryBindings(
 	return s.repo.ListDirectoryBindings(ctx, tenantID, roleID)
 }
 
-// AddDirectoryBinding grants a role to an active group or position after the
+// AddDirectoryBinding grants a role to an active group after the
 // authenticated actor's anti-escalation check.
 func (s *Service) AddDirectoryBinding(
 	ctx context.Context,
@@ -208,7 +170,7 @@ func (s *Service) AddDirectoryBinding(
 	return s.changeDirectoryBinding(ctx, tenantID, roleID, assigneeType, assigneeID, true)
 }
 
-// RemoveDirectoryBinding revokes a group or position role assignment while
+// RemoveDirectoryBinding revokes a group role assignment while
 // preserving the last durable tenant administrator.
 func (s *Service) RemoveDirectoryBinding(
 	ctx context.Context,
@@ -272,7 +234,7 @@ func validateDirectoryBindingRef(
 	if err := validateRoleRef(tenantID, roleID); err != nil {
 		return err
 	}
-	if assigneeType != DirectoryAssigneeGroup && assigneeType != DirectoryAssigneePosition {
+	if assigneeType != DirectoryAssigneeGroup {
 		return fmt.Errorf("%w: invalid directory assignee type", ErrInvalidArgument)
 	}
 	if assigneeID.Zero() {

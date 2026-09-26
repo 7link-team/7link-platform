@@ -20,9 +20,6 @@ func (r *Repository) listReviewableGrants(ctx context.Context, tenantID guid.ID,
 	groupRoleBindings := r.foreign.directory.GroupRoleBindings.String()
 	groups := r.foreign.directory.Groups.String()
 	groupMembers := r.foreign.directory.GroupMembers.String()
-	positionRoleBindings := r.foreign.directory.PositionRoleBindings.String()
-	positions := r.foreign.directory.Positions.String()
-	positionMembers := r.foreign.directory.PositionMembers.String()
 	rows := make([]reviewableGrantRow, 0)
 	queries := []struct {
 		sql  string
@@ -56,16 +53,6 @@ JOIN ` + groupMembers + ` AS gm ON gm.tenant_id = b.tenant_id AND gm.group_id = 
 JOIN ` + roles + ` AS roles ON roles.tenant_id = b.tenant_id AND roles.id = b.role_id
 JOIN ` + tenantMembers + ` AS tm ON tm.tenant_id = gm.tenant_id AND tm.principal_id = gm.principal_id AND tm.status = 'active'
 WHERE b.tenant_id = ? AND (gm.starts_at IS NULL OR gm.starts_at <= ?) AND (gm.ends_at IS NULL OR gm.ends_at > ?)`, args: []any{tenantID, now, now}},
-		{sql: `
-SELECT pm.principal_id, tm.display_name AS principal_name,
-       roles.id AS role_id, roles.name AS role_name, 'position' AS grant_type, b.position_id AS grant_id,
-       pm.created_at AS grant_created_at, pm.ends_at AS grant_expires_at
-FROM ` + positionRoleBindings + ` AS b
-JOIN ` + positions + ` AS positions ON positions.tenant_id = b.tenant_id AND positions.id = b.position_id AND positions.status = 'active'
-JOIN ` + positionMembers + ` AS pm ON pm.tenant_id = b.tenant_id AND pm.position_id = b.position_id
-JOIN ` + roles + ` AS roles ON roles.tenant_id = b.tenant_id AND roles.id = b.role_id
-JOIN ` + tenantMembers + ` AS tm ON tm.tenant_id = pm.tenant_id AND tm.principal_id = pm.principal_id AND tm.status = 'active'
-WHERE b.tenant_id = ? AND (pm.starts_at IS NULL OR pm.starts_at <= ?) AND (pm.ends_at IS NULL OR pm.ends_at > ?)`, args: []any{tenantID, now, now}},
 		{sql: `
 SELECT bindings.principal_id, tm.display_name AS principal_name,
        roles.id AS role_id, roles.name AS role_name, 'entity' AS grant_type, bindings.scope_id AS grant_id,

@@ -168,7 +168,7 @@ func TestOrganizationModuleResolvesServicesAndProvidesGroupProvisioner(t *testin
 	assert.Equal(t, StatusDisabled, disabled.Status)
 	_, api = humatest.New(t)
 	require.NoError(t, instance.RegisterHTTP(t.Context(), api))
-	assert.Len(t, organizationOperationManifest(api.OpenAPI()), 32)
+	assert.Len(t, organizationOperationManifest(api.OpenAPI()), 24)
 }
 
 func TestOrganizationModuleReportsMissingWiring(t *testing.T) {
@@ -265,8 +265,8 @@ func TestOrganizationModuleReportsMissingWiring(t *testing.T) {
 	for index, connector := range connectors {
 		t.Run(connector.message, func(t *testing.T) {
 			services := module.NewServices()
-			for position, provide := range providers {
-				if position == len(providers)-len(connectors)+index {
+			for providerIndex, provide := range providers {
+				if providerIndex == len(providers)-len(connectors)+index {
 					require.NoError(t, provideUnboundConnector(connector.message, services))
 					continue
 				}

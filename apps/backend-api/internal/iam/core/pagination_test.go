@@ -242,7 +242,7 @@ func TestListDirectoryBindingsPageWindowsAcrossBothTables(t *testing.T) {
 		require.NoError(t, err)
 	}
 	for _, position := range positions {
-		_, err = repository.ChangeDirectoryBinding(t.Context(), 1, role.ID, DirectoryAssigneePosition, position, true)
+		_, err = repository.ChangeDirectoryBinding(t.Context(), 1, role.ID, DirectoryAssigneeGroup, position, true)
 		require.NoError(t, err)
 	}
 	total := int64(len(groups) + len(positions))
@@ -258,7 +258,7 @@ func TestListDirectoryBindingsPageWindowsAcrossBothTables(t *testing.T) {
 		"a page that runs out of groups continues into the positions")
 	assert.Equal(t, total, reported)
 	assert.Equal(t, DirectoryAssigneeGroup, straddling[0].AssigneeType)
-	assert.Equal(t, DirectoryAssigneePosition, straddling[1].AssigneeType)
+	assert.Equal(t, DirectoryAssigneeGroup, straddling[1].AssigneeType)
 
 	tail, _, err := repository.ListDirectoryBindingsPage(t.Context(), 1, role.ID, 4, 2)
 	require.NoError(t, err)
@@ -312,7 +312,7 @@ func seedDirectoryAssignees(
 	}
 	for _, position := range positions {
 		require.NoError(t, harness.db.Exec(
-			"INSERT INTO sl_iam_positions (tenant_id, id, code, name, status, sort_order, version, created_at, updated_at) VALUES (?, ?, ?, ?, 'active', 0, 1, ?, ?)",
+			"INSERT INTO sl_iam_groups (tenant_id, id, name_key, name, group_type, status, sort_order, version, created_at, updated_at) VALUES (?, ?, ?, ?, 'static', 'active', 0, 1, ?, ?)",
 			tenantID, position, "position-"+position.String(), "Position "+position.String(), now, now,
 		).Error)
 	}

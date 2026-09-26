@@ -85,7 +85,7 @@ func BindNames(prefix string) TableNames {
 }
 
 // DirectoryTables names the tables the organization module owns and the
-// authorization statements join: the group, position and department tables and
+// authorization statements join: the group and department tables and
 // the role data scopes attached to them.
 //
 // Importing that module's query package is not an option: pkg/module's Activate
@@ -101,9 +101,6 @@ type DirectoryTables struct {
 	Groups               gormx.TableName
 	GroupMembers         gormx.TableName
 	GroupRoleBindings    gormx.TableName
-	Positions            gormx.TableName
-	PositionMembers      gormx.TableName
-	PositionRoleBindings gormx.TableName
 	Departments          gormx.TableName
 	DepartmentClosure    gormx.TableName
 	MemberDepartments    gormx.TableName

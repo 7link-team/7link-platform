@@ -215,7 +215,7 @@ func verifyMemberAuthorizationSourceExpiries(
 	}
 	temporaryRole := createRole("Temporary source", "menu_view")
 	groupRole := createRole("Group source", "group_view")
-	positionRole := createRole("Position source", "position_view")
+	secondGroupRole := createRole("Second group source", "dept_view")
 	entityRole := createRole("Entity source", "entity_view")
 
 	temporaryEnd := windowNow.Add(2 * time.Hour)
@@ -235,16 +235,16 @@ func verifyMemberAuthorizationSourceExpiries(
 	_, err := service.AddDirectoryBinding(t.Context(), tenantID, groupRole.ID, iamcore.DirectoryAssigneeGroup, 92_001)
 	require.NoError(t, err)
 
-	positionEnd := windowNow.Add(4 * time.Hour)
+	secondGroupEnd := windowNow.Add(4 * time.Hour)
 	require.NoError(t, db.Exec(
-		"INSERT INTO "+prefix+"iam_positions (tenant_id, id, code, name, status, sort_order, version, created_at, updated_at) VALUES (?, 93001, 'reviewer', 'Reviewer', 'active', 0, 1, ?, ?)",
+		"INSERT INTO "+prefix+"iam_groups (tenant_id, id, name_key, name, group_type, status, sort_order, version, created_at, updated_at) VALUES (?, 93001, 'reviewer', 'Reviewer', 'static', 'active', 0, 1, ?, ?)",
 		tenantID, now, now,
 	).Error)
 	require.NoError(t, db.Exec(
-		"INSERT INTO "+prefix+"iam_position_members (tenant_id, position_id, principal_id, starts_at, ends_at, created_at, updated_at) VALUES (?, 93001, ?, ?, ?, ?, ?)",
-		tenantID, principalID, windowNow.Add(-time.Hour), positionEnd, now, now,
+		"INSERT INTO "+prefix+"iam_group_members (tenant_id, group_id, principal_id, starts_at, ends_at, created_at, updated_at) VALUES (?, 93001, ?, ?, ?, ?, ?)",
+		tenantID, principalID, windowNow.Add(-time.Hour), secondGroupEnd, now, now,
 	).Error)
-	_, err = service.AddDirectoryBinding(t.Context(), tenantID, positionRole.ID, iamcore.DirectoryAssigneePosition, 93_001)
+	_, err = service.AddDirectoryBinding(t.Context(), tenantID, secondGroupRole.ID, iamcore.DirectoryAssigneeGroup, 93_001)
 	require.NoError(t, err)
 
 	entity, err := service.CreateEntity(t.Context(), iamcore.Entity{
@@ -259,16 +259,16 @@ func verifyMemberAuthorizationSourceExpiries(
 
 	snapshot, err := service.ListMemberAuthorizationSources(t.Context(), tenantID, principalID)
 	require.NoError(t, err)
-	expiries := map[iamcore.MemberAuthorizationSourceType]time.Time{}
+	expiries := map[guid.ID]time.Time{}
 	for _, source := range snapshot.Sources {
 		if source.ExpiresAt != nil {
-			expiries[source.Type] = *source.ExpiresAt
+			expiries[source.RoleID] = *source.ExpiresAt
 		}
 	}
-	assert.Equal(t, temporaryEnd, expiries[iamcore.AuthorizationSourceTemporaryRole])
-	assert.Equal(t, groupEnd, expiries[iamcore.AuthorizationSourceStaticGroup])
-	assert.Equal(t, positionEnd, expiries[iamcore.AuthorizationSourcePosition])
-	assert.Equal(t, entityEnd, expiries[iamcore.AuthorizationSourceEntityBinding])
+	assert.Equal(t, temporaryEnd, expiries[temporaryRole.ID])
+	assert.Equal(t, groupEnd, expiries[groupRole.ID])
+	assert.Equal(t, secondGroupEnd, expiries[secondGroupRole.ID])
+	assert.Equal(t, entityEnd, expiries[entityRole.ID])
 }
 
 func verifyCoreRelationshipTraversalIndex(t *testing.T, db *sql.DB, prefix, dialect string) {

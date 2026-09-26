@@ -1,4 +1,4 @@
-// Package organization owns IAM tenants, departments, positions, groups, and
+// Package organization owns IAM tenants, departments, groups, and
 // their cross-module contracts.
 package organization
 

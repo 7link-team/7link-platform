@@ -405,9 +405,9 @@ func validateRelationshipShape(relationship Relationship) error {
 		if relationship.SubjectRelation != "" {
 			return fmt.Errorf("%w: principal subjects cannot specify a subject relation", ErrInvalidRelationship)
 		}
-	case "group", "position":
+	case "group":
 		if relationship.SubjectRelation != "member" {
-			return fmt.Errorf("%w: group and position subjects require the member relation", ErrInvalidRelationship)
+			return fmt.Errorf("%w: group subjects require the member relation", ErrInvalidRelationship)
 		}
 	case "entity":
 		if !validRelation(relationship.SubjectRelation) {
@@ -643,19 +643,6 @@ func (a *Authorizer) relationshipRoots(
 	}
 	for _, id := range dynamicGroups {
 		roots = append(roots, relationshipNode{Type: "group", ID: id, Relation: "member"})
-	}
-	positions := make([]guid.ID, 0)
-	err = a.db.WithContext(ctx).Table(names.Directory.PositionMembers.String()+" AS pm").
-		Select("pm.position_id").
-		Joins("JOIN "+names.Directory.Positions.String()+" AS p ON p.tenant_id = pm.tenant_id AND p.id = pm.position_id AND p.status = 'active'").
-		Where("pm.tenant_id = ? AND pm.principal_id = ?", tenantID, subject).
-		Where("(pm.starts_at IS NULL OR pm.starts_at <= ?) AND (pm.ends_at IS NULL OR pm.ends_at > ?)", now, now).
-		Order("pm.position_id ASC").Pluck("pm.position_id", &positions).Error
-	if err != nil {
-		return nil, fmt.Errorf("list relationship positions: %w", err)
-	}
-	for _, id := range positions {
-		roots = append(roots, relationshipNode{Type: "position", ID: id, Relation: "member"})
 	}
 	return roots, nil
 }

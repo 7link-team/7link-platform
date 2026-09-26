@@ -64,7 +64,7 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 		requesterToken string
 		department     organization.Department
 		group          organization.Group
-		position       organization.Position
+		secondGroup    organization.Group
 		role           core.APIRole
 		entity         core.APIEntity
 		governanceRole core.APIRole
@@ -124,26 +124,27 @@ func (f *iamTenantFixture) runIAMLifecycle(t *testing.T) {
 		requireStatus(t, http.StatusCreated, response)
 		group = decodeEnvelope[organization.Group](t, response)
 
-		response = f.request(t, http.MethodPost, "/job-positions", tenant.ID, actorToken, map[string]any{
-			"code": "operator", "name": "Operator", "status": "active",
+		response = f.request(t, http.MethodPost, "/principal-groups", tenant.ID, actorToken, map[string]any{
+			"type": "static", "name": "Operator", "status": "active",
 		}, nil)
 		requireStatus(t, http.StatusCreated, response)
-		position = decodeEnvelope[organization.Position](t, response)
+		secondGroup = decodeEnvelope[organization.Group](t, response)
 
 		response = f.request(t, http.MethodPut, "/principal-groups/"+group.ID.String()+"/members/"+actor.ID.String(), 0, actorToken, map[string]any{}, nil)
 		requireStatus(t, http.StatusOK, response)
-		response = f.request(t, http.MethodPut, "/job-positions/"+position.ID.String()+"/members/"+actor.ID.String(), 0, actorToken, map[string]any{}, nil)
+		response = f.request(t, http.MethodPut, "/principal-groups/"+secondGroup.ID.String()+"/members/"+actor.ID.String(), 0, actorToken, map[string]any{}, nil)
 		requireStatus(t, http.StatusOK, response)
 
 		assert.Equal(t, int64(1), f.count(t, "iam_departments", "tenant_id = ? AND id = ?", tenant.ID, department.ID))
 		assert.Equal(t, int64(1), f.count(t, "iam_department_closure", "tenant_id = ? AND ancestor_id = ? AND descendant_id = ? AND depth = 0", tenant.ID, department.ID, department.ID))
 		assert.Equal(t, int64(1), f.count(t, "iam_groups", "tenant_id = ? AND id = ?", tenant.ID, group.ID))
 		assert.Equal(t, int64(1), f.count(t, "iam_group_members", "tenant_id = ? AND group_id = ? AND principal_id = ?", tenant.ID, group.ID, actor.ID))
-		assert.Equal(t, int64(1), f.count(t, "iam_positions", "tenant_id = ? AND id = ?", tenant.ID, position.ID))
-		assert.Equal(t, int64(1), f.count(t, "iam_position_members", "tenant_id = ? AND position_id = ? AND principal_id = ?", tenant.ID, position.ID, actor.ID))
+		assert.Equal(t, int64(1), f.count(t, "iam_groups", "tenant_id = ? AND id = ?", tenant.ID, secondGroup.ID))
+		assert.Equal(t, int64(1), f.count(t, "iam_group_members", "tenant_id = ? AND group_id = ? AND principal_id = ?", tenant.ID, secondGroup.ID, actor.ID))
+		f.assertAuditEvent(t, tenant.ID, "group_created", secondGroup.ID)
+		f.assertAuditEvent(t, tenant.ID, "group_member_assigned", secondGroup.ID)
 		for eventType, targetID := range map[string]guid.ID{
 			"department_created": department.ID, "group_created": group.ID, "group_member_assigned": group.ID,
-			"position_created": position.ID, "position_member_assigned": position.ID,
 		} {
 			f.assertAuditEvent(t, tenant.ID, eventType, targetID)
 		}

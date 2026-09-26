@@ -101,11 +101,10 @@ type RoleGrantStore struct {
 	// permanent member or through an unexpired temporary grant. It reads through
 	// the caller's transaction because an access request has to see the grants
 	// the write that follows it will be compared against.
-	RoleGranted              func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, time.Time) (bool, error)
-	RemovePermanent          func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, time.Time) (bool, error)
-	RemoveGroupMembership    func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID) (bool, error)
-	RemovePositionMembership func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID) (bool, error)
-	RemoveEntityRoleBinding  func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, guid.ID) (bool, error)
+	RoleGranted             func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, time.Time) (bool, error)
+	RemovePermanent         func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, time.Time) (bool, error)
+	RemoveGroupMembership   func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID) (bool, error)
+	RemoveEntityRoleBinding func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, guid.ID) (bool, error)
 }
 
 // PlatformAdministratorStore is the narrow platform-administrator capability
@@ -185,9 +184,6 @@ type DirectoryTableNames struct {
 	Groups               gormx.TableName
 	GroupMembers         gormx.TableName
 	GroupRoleBindings    gormx.TableName
-	Positions            gormx.TableName
-	PositionMembers      gormx.TableName
-	PositionRoleBindings gormx.TableName
 	Departments          gormx.TableName
 	DepartmentClosure    gormx.TableName
 	MemberDepartments    gormx.TableName
@@ -221,9 +217,6 @@ func (t DirectoryTableNames) each() []struct {
 		{t.Groups, "Groups"},
 		{t.GroupMembers, "GroupMembers"},
 		{t.GroupRoleBindings, "GroupRoleBindings"},
-		{t.Positions, "Positions"},
-		{t.PositionMembers, "PositionMembers"},
-		{t.PositionRoleBindings, "PositionRoleBindings"},
 		{t.Departments, "Departments"},
 		{t.DepartmentClosure, "DepartmentClosure"},
 		{t.MemberDepartments, "MemberDepartments"},

@@ -95,7 +95,6 @@ func TestRoleGrantStoreProviderLateBindsInjectedCallbacks(t *testing.T) {
 		func() (bool, error) { return store.RoleGranted(ctx, nil, 1, 2, 3, now) },
 		func() (bool, error) { return store.RemovePermanent(ctx, nil, 1, 2, 3, now) },
 		func() (bool, error) { return store.RemoveGroupMembership(ctx, nil, 1, 2, 3) },
-		func() (bool, error) { return store.RemovePositionMembership(ctx, nil, 1, 2, 3) },
 		func() (bool, error) { return store.RemoveEntityRoleBinding(ctx, nil, 1, 2, 3, 4) },
 	} {
 		changed, err := remove()
@@ -126,10 +125,7 @@ func TestRoleGrantStoreProviderLateBindsInjectedCallbacks(t *testing.T) {
 			removeCalls++
 			return true, nil
 		},
-		RemovePositionMembership: func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID) (bool, error) {
-			removeCalls++
-			return true, nil
-		},
+
 		RemoveEntityRoleBinding: func(context.Context, *gorm.DB, guid.ID, guid.ID, guid.ID, guid.ID) (bool, error) {
 			removeCalls++
 			return true, nil
@@ -142,7 +138,6 @@ func TestRoleGrantStoreProviderLateBindsInjectedCallbacks(t *testing.T) {
 		func() (bool, error) { return store.RoleGranted(ctx, nil, 1, 2, 3, now) },
 		func() (bool, error) { return store.RemovePermanent(ctx, nil, 1, 2, 3, now) },
 		func() (bool, error) { return store.RemoveGroupMembership(ctx, nil, 1, 2, 3) },
-		func() (bool, error) { return store.RemovePositionMembership(ctx, nil, 1, 2, 3) },
 		func() (bool, error) { return store.RemoveEntityRoleBinding(ctx, nil, 1, 2, 3, 4) },
 	} {
 		changed, err := remove()
@@ -150,7 +145,7 @@ func TestRoleGrantStoreProviderLateBindsInjectedCallbacks(t *testing.T) {
 		assert.True(t, changed)
 	}
 	assert.Equal(t, 1, grantCalls)
-	assert.Equal(t, 6, removeCalls)
+	assert.Equal(t, 5, removeCalls)
 }
 
 func TestModulePublishesTheSameLiveAuthorizationEvaluator(t *testing.T) {
@@ -283,5 +278,6 @@ func TestModuleMigrationSourceRemainsSelfDescribing(t *testing.T) {
 		{Name: "menu-translations", Version: 14},
 		{Name: "default-menu-translations", Version: 15},
 		{Name: "resource-menu-routes", Version: 16},
+		{Name: "retire-positions", Version: 17, Dependencies: []module.MigrationMilestoneRef{{Module: "organization", Name: "retire-positions"}}},
 	}, (&Module{}).MigrationMilestones())
 }

@@ -60,7 +60,6 @@ func TestAuthorizationStatementsPinSQLTextAndParameterOrder(t *testing.T) {
 		"active", guid.ID(101), guid.ID(202),
 		"active", guid.ID(101), guid.ID(202), now, now,
 		"active", guid.ID(101), guid.ID(202), now, now,
-		"active", guid.ID(101), guid.ID(202), now, now,
 	}
 
 	tests := []struct {
@@ -120,7 +119,6 @@ func TestAuthorizationStatementsPinSQLTextAndParameterOrder(t *testing.T) {
 			golden: goldenDurableAdministrators,
 			args: []any{
 				guid.ID(101), "tenant_administer", "platform_administer",
-				guid.ID(101), "tenant_administer", "platform_administer", now,
 				guid.ID(101), "tenant_administer", "platform_administer", now,
 				guid.ID(101),
 			},
@@ -206,18 +204,6 @@ WITH effective_roles(role_id, source_type, source_id) AS (
     WHERE b.tenant_id = ? AND gm.principal_id = ?
       AND (gm.starts_at IS NULL OR gm.starts_at <= ?)
       AND (gm.ends_at IS NULL OR gm.ends_at > ?)
-    UNION
-    SELECT b.role_id, 'position', b.position_id
-    FROM sl_iam_position_role_bindings b
-    JOIN sl_iam_positions pos
-      ON pos.tenant_id = b.tenant_id AND pos.id = b.position_id AND pos.status = 'active'
-    JOIN sl_iam_position_members pm
-      ON pm.tenant_id = b.tenant_id AND pm.position_id = b.position_id
-    JOIN sl_iam_tenant_members tm
-      ON tm.tenant_id = pm.tenant_id AND tm.principal_id = pm.principal_id AND tm.status = ?
-    WHERE b.tenant_id = ? AND pm.principal_id = ?
-      AND (pm.starts_at IS NULL OR pm.starts_at <= ?)
-      AND (pm.ends_at IS NULL OR pm.ends_at > ?)
 )
 SELECT DISTINCT rp.permission_code, er.role_id, er.source_type, er.source_id,
        COALESCE(ds.scope_type, 'all') AS data_scope, rp.condition_json
@@ -275,18 +261,6 @@ WITH effective_roles(role_id, source_type, source_id) AS (
     WHERE b.tenant_id = ? AND gm.principal_id = ?
       AND (gm.starts_at IS NULL OR gm.starts_at <= ?)
       AND (gm.ends_at IS NULL OR gm.ends_at > ?)
-    UNION
-    SELECT b.role_id, 'position', b.position_id
-    FROM sl_iam_position_role_bindings b
-    JOIN sl_iam_positions pos
-      ON pos.tenant_id = b.tenant_id AND pos.id = b.position_id AND pos.status = 'active'
-    JOIN sl_iam_position_members pm
-      ON pm.tenant_id = b.tenant_id AND pm.position_id = b.position_id
-    JOIN sl_iam_tenant_members tm
-      ON tm.tenant_id = pm.tenant_id AND tm.principal_id = pm.principal_id AND tm.status = ?
-    WHERE b.tenant_id = ? AND pm.principal_id = ?
-      AND (pm.starts_at IS NULL OR pm.starts_at <= ?)
-      AND (pm.ends_at IS NULL OR pm.ends_at > ?)
 ) SELECT DISTINCT role_id FROM effective_roles`
 
 const goldenDirectoryAncestors = `WITH RECURSIVE ancestors(id, parent_id, depth) AS (
@@ -321,19 +295,6 @@ FROM (
     WHERE bindings.tenant_id = ? AND permissions.permission_code IN (?, ?) AND permissions.condition_json = ''
       AND (group_members.starts_at IS NULL OR group_members.starts_at <= ?)
       AND group_members.ends_at IS NULL
-    UNION
-    SELECT position_members.principal_id
-    FROM sl_iam_position_role_bindings AS bindings
-    JOIN sl_iam_role_permissions AS permissions
-      ON permissions.tenant_id = bindings.tenant_id AND permissions.role_id = bindings.role_id
-    JOIN sl_iam_positions AS positions
-      ON positions.tenant_id = bindings.tenant_id AND positions.id = bindings.position_id
-     AND positions.status = 'active'
-    JOIN sl_iam_position_members AS position_members
-      ON position_members.tenant_id = bindings.tenant_id AND position_members.position_id = bindings.position_id
-    WHERE bindings.tenant_id = ? AND permissions.permission_code IN (?, ?) AND permissions.condition_json = ''
-      AND (position_members.starts_at IS NULL OR position_members.starts_at <= ?)
-      AND position_members.ends_at IS NULL
 ) AS administrators
 JOIN sl_iam_principals AS principals
   ON principals.id = administrators.principal_id AND principals.status = 'active'
