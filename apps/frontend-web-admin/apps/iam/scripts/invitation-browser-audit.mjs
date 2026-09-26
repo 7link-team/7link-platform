@@ -184,7 +184,7 @@ async function createInvitation(email) {
       valid: document.querySelector("#invitation-form")?.checkValidity() ?? null,
     }`)
     const recent = responses
-      .filter((response) => response.url.includes("/api/invitations"))
+      .filter((response) => response.url.includes("/api/membership-invitations"))
       .slice(-8)
     throw new Error(
       `${cause.message}; diagnostic=${JSON.stringify(diagnostic)}; responses=${JSON.stringify(recent)}`
@@ -298,7 +298,7 @@ await submit("form")
 await waitFor(`document.body.innerText.includes("邀请已接受")`, 20000)
 
 const invitationResponses = responses.filter((response) =>
-  response.url.includes("/api/invitations")
+  response.url.includes("/api/membership-invitations")
 )
 for (const expected of ["GET", "POST", "DELETE"])
   if (

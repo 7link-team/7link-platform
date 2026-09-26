@@ -460,7 +460,7 @@ func TestListEndpointsBoundTheDefaultPage(t *testing.T) {
 	for _, route := range []string{
 		"/entities",
 		"/roles",
-		"/relationships",
+		"/authorization-relationships",
 		"/field-policies",
 		"/platform/administrators",
 		"/members/11/roles",

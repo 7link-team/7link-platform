@@ -68,7 +68,13 @@ func TestOpenAPIExportDescribesTheRunningApplicationWithoutRunningIt(t *testing.
 
 // Every group is owned by the final URI prefix, including expanded mounts.
 func TestOpenAPIExportGroupsOperationsByPathPrefix(t *testing.T) {
-	document, err := (&App{}).RunOpenAPIExport(t.Context(), newOpenAPIExportConfig(t))
+	config := newOpenAPIExportConfig(t)
+	config.Authn.Web = authnext.WebConfig{
+		Enabled: true, PostLoginURL: "https://iam.example.test/",
+		AllowedReturnURLs: []string{"https://iam.example.test/"},
+		AllowedOrigins: []string{"https://iam.example.test"},
+	}
+	document, err := (&App{}).RunOpenAPIExport(t.Context(), config)
 	require.NoError(t, err)
 
 	var specification struct {
@@ -79,7 +85,24 @@ func TestOpenAPIExportGroupsOperationsByPathPrefix(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(document, &specification))
 
+	for _, path := range []string{
+		"/principal-groups/{group_id}", "/job-positions/{position_id}",
+		"/membership-invitations/acceptances", "/membership-invitations/{invitation_id}/deliveries",
+		"/email-verifications/requests", "/email-verifications",
+		"/role-access-requests/{request_id}/decision", "/role-access-reviews/{review_id}",
+		"/tenants/{tenant_id}/authorization-relationships", "/authorization-scope-model",
+	} {
+		assert.Contains(t, specification.Paths, path)
+	}
+	retired := map[string]bool{
+		"groups": true, "positions": true, "invitations": true, "invitation-acceptances": true,
+		"email-verification-requests": true, "access-requests": true, "access-reviews": true,
+		"relationships": true, "scope-model": true,
+	}
 	for path, item := range specification.Paths {
+		for _, segment := range strings.Split(path, "/") {
+			assert.False(t, retired[segment], "retired resource name: %s", path)
+		}
 		for method, operation := range item {
 			if operation.OperationID == "" {
 				continue

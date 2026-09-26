@@ -30,7 +30,7 @@ authn-create-reauthentication-challenge|POST|/principals/{principal_id}/reauthen
 authn-create-reauthentication-verification|POST|/principals/{principal_id}/reauthentication/verifications
 authn-login-options|GET|/login/options
 authn-create-registration-captcha|POST|/registrations/captchas
-authn-create-email-verification-request|POST|/email-verification-requests
+authn-create-email-verification-request|POST|/email-verifications/requests
 authn-create-email-verification|POST|/email-verifications
 authn-create-passkey-registration-challenge|POST|/principals/{principal_id}/passkey-registration-challenges
 authn-create-passkey-login-options|POST|/login/passkey/options

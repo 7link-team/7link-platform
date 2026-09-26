@@ -442,7 +442,7 @@ func registerDepartmentHTTP(api huma.API, service *Service, registrar *authz.Reg
 
 func registerPositionHTTP(api huma.API, service *PositionService, registrar *authz.Registrar) {
 	authz.Register(registrar, api, huma.Operation{
-		OperationID: "organization-list-positions", Method: http.MethodGet, Path: "/positions",
+		OperationID: "organization-list-positions", Method: http.MethodGet, Path: "/job-positions",
 		Summary: "List tenant positions", Tags: []string{"directory"}, Errors: []int{http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "position", Verb: "view"},
 		func(ctx context.Context, in *tenantPageSelector) (*respx.Body[[]Position], error) {
@@ -458,7 +458,7 @@ func registerPositionHTTP(api huma.API, service *PositionService, registrar *aut
 		})
 
 	authz.Register(registrar, api, huma.Operation{
-		OperationID: "organization-create-position", Method: http.MethodPost, Path: "/positions",
+		OperationID: "organization-create-position", Method: http.MethodPost, Path: "/job-positions",
 		Summary: "Create a tenant position", Tags: []string{"directory"}, DefaultStatus: http.StatusCreated,
 		Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "position", Verb: "create"},
@@ -477,7 +477,7 @@ func registerPositionHTTP(api huma.API, service *PositionService, registrar *aut
 		})
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
-		OperationID: "organization-get-position", Method: http.MethodGet, Path: "/positions/{position_id}",
+		OperationID: "organization-get-position", Method: http.MethodGet, Path: "/job-positions/{position_id}",
 		Summary: "Get a tenant position", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, "position_id", service.resolvePositionOwner, authz.Guard{Resource: "position", Verb: "view"},
@@ -494,7 +494,7 @@ func registerPositionHTTP(api huma.API, service *PositionService, registrar *aut
 		})
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
-		OperationID: "organization-update-position", Method: http.MethodPatch, Path: "/positions/{position_id}",
+		OperationID: "organization-update-position", Method: http.MethodPatch, Path: "/job-positions/{position_id}",
 		Summary: "Update a tenant position", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "position_id", service.resolvePositionOwner, authz.Guard{Resource: "position", Verb: "update"},
@@ -514,7 +514,7 @@ func registerPositionHTTP(api huma.API, service *PositionService, registrar *aut
 		})
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
-		OperationID: "organization-delete-position", Method: http.MethodDelete, Path: "/positions/{position_id}",
+		OperationID: "organization-delete-position", Method: http.MethodDelete, Path: "/job-positions/{position_id}",
 		Summary: "Delete an empty tenant position", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "position_id", service.resolvePositionOwner, authz.Guard{Resource: "position", Verb: "delete"},
@@ -530,7 +530,7 @@ func registerPositionHTTP(api huma.API, service *PositionService, registrar *aut
 		})
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
-		OperationID: "organization-list-position-members", Method: http.MethodGet, Path: "/positions/{position_id}/members",
+		OperationID: "organization-list-position-members", Method: http.MethodGet, Path: "/job-positions/{position_id}/members",
 		Summary: "List position members", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, "position_id", service.resolvePositionOwner, authz.Guard{Resource: "position", Verb: "view"},
@@ -548,7 +548,7 @@ func registerPositionHTTP(api huma.API, service *PositionService, registrar *aut
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "organization-put-position-member", Method: http.MethodPut,
-		Path: "/positions/{position_id}/members/{principal_id}", Summary: "Assign or update a position member",
+		Path: "/job-positions/{position_id}/members/{principal_id}", Summary: "Assign or update a position member",
 		Tags: []string{"directory"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "position_id", service.resolvePositionOwner, authz.Guard{Resource: "position", Verb: "manage_member"},
 		func(ctx context.Context, in *positionMembershipInput) (*respx.Body[PositionMember], error) {
@@ -571,7 +571,7 @@ func registerPositionHTTP(api huma.API, service *PositionService, registrar *aut
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "organization-delete-position-member", Method: http.MethodDelete,
-		Path: "/positions/{position_id}/members/{principal_id}", Summary: "Remove a position member",
+		Path: "/job-positions/{position_id}/members/{principal_id}", Summary: "Remove a position member",
 		Tags: []string{"directory"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "position_id", service.resolvePositionOwner, authz.Guard{Resource: "position", Verb: "manage_member"},
 		func(ctx context.Context, in *positionMemberResourceInput) (*respx.Body[deletedResource], error) {
@@ -593,7 +593,7 @@ func registerPositionHTTP(api huma.API, service *PositionService, registrar *aut
 
 func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Registrar) {
 	authz.Register(registrar, api, huma.Operation{
-		OperationID: "organization-list-groups", Method: http.MethodGet, Path: "/groups",
+		OperationID: "organization-list-groups", Method: http.MethodGet, Path: "/principal-groups",
 		Summary: "List tenant groups", Tags: []string{"directory"}, Errors: []int{http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "group", Verb: "view"},
 		func(ctx context.Context, in *tenantPageSelector) (*respx.Body[[]Group], error) {
@@ -609,7 +609,7 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 		})
 
 	authz.Register(registrar, api, huma.Operation{
-		OperationID: "organization-create-group", Method: http.MethodPost, Path: "/groups",
+		OperationID: "organization-create-group", Method: http.MethodPost, Path: "/principal-groups",
 		Summary: "Create a tenant group", Tags: []string{"directory"}, DefaultStatus: http.StatusCreated,
 		Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "group", Verb: "create"},
@@ -629,7 +629,7 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 		})
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
-		OperationID: "organization-get-group", Method: http.MethodGet, Path: "/groups/{group_id}",
+		OperationID: "organization-get-group", Method: http.MethodGet, Path: "/principal-groups/{group_id}",
 		Summary: "Get a tenant group", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, "group_id", service.resolveGroupOwner, authz.Guard{Resource: "group", Verb: "view"},
@@ -646,7 +646,7 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 		})
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
-		OperationID: "organization-update-group", Method: http.MethodPatch, Path: "/groups/{group_id}",
+		OperationID: "organization-update-group", Method: http.MethodPatch, Path: "/principal-groups/{group_id}",
 		Summary: "Update a tenant group", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "group_id", service.resolveGroupOwner, authz.Guard{Resource: "group", Verb: "update"},
@@ -666,7 +666,7 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 		})
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
-		OperationID: "organization-delete-group", Method: http.MethodDelete, Path: "/groups/{group_id}",
+		OperationID: "organization-delete-group", Method: http.MethodDelete, Path: "/principal-groups/{group_id}",
 		Summary: "Delete an empty tenant group", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "group_id", service.resolveGroupOwner, authz.Guard{Resource: "group", Verb: "delete"},
@@ -682,7 +682,7 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 		})
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
-		OperationID: "organization-list-group-members", Method: http.MethodGet, Path: "/groups/{group_id}/members",
+		OperationID: "organization-list-group-members", Method: http.MethodGet, Path: "/principal-groups/{group_id}/members",
 		Summary: "List group members", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, "group_id", service.resolveGroupOwner, authz.Guard{Resource: "group", Verb: "view"},
@@ -700,7 +700,7 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "organization-put-group-member", Method: http.MethodPut,
-		Path: "/groups/{group_id}/members/{principal_id}", Summary: "Assign or update a group member",
+		Path: "/principal-groups/{group_id}/members/{principal_id}", Summary: "Assign or update a group member",
 		Tags: []string{"directory"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "group_id", service.resolveGroupOwner, authz.Guard{Resource: "group", Verb: "manage_member"},
 		func(ctx context.Context, in *groupMembershipInput) (*respx.Body[GroupMember], error) {
@@ -723,7 +723,7 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
 		OperationID: "organization-delete-group-member", Method: http.MethodDelete,
-		Path: "/groups/{group_id}/members/{principal_id}", Summary: "Remove a group member",
+		Path: "/principal-groups/{group_id}/members/{principal_id}", Summary: "Remove a group member",
 		Tags: []string{"directory"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, "group_id", service.resolveGroupOwner, authz.Guard{Resource: "group", Verb: "manage_member"},
 		func(ctx context.Context, in *groupMemberResourceInput) (*respx.Body[deletedResource], error) {
@@ -845,7 +845,7 @@ func registerTenantHTTP(api huma.API, service *TenantService, registrar *authz.R
 
 func registerInvitationHTTP(api huma.API, service *InvitationService, registrar *authz.Registrar) {
 	authz.Register(registrar, api, huma.Operation{
-		OperationID: "organization-list-invitations", Method: http.MethodGet, Path: "/invitations",
+		OperationID: "organization-list-invitations", Method: http.MethodGet, Path: "/membership-invitations",
 		Summary: "List tenant invitations", Tags: []string{"directory"},
 		Errors: []int{http.StatusUnprocessableEntity, http.StatusInternalServerError},
 	}, authz.Guard{Resource: "invitation", Verb: "view"},
@@ -862,7 +862,7 @@ func registerInvitationHTTP(api huma.API, service *InvitationService, registrar 
 		})
 
 	authz.Register(registrar, api, huma.Operation{
-		OperationID: "organization-create-invitation", Method: http.MethodPost, Path: "/invitations",
+		OperationID: "organization-create-invitation", Method: http.MethodPost, Path: "/membership-invitations",
 		Summary: "Create a tenant invitation and return its credential once", Tags: []string{"directory"},
 		DefaultStatus: http.StatusCreated,
 		Errors:        []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError},
@@ -895,7 +895,7 @@ func registerInvitationHTTP(api huma.API, service *InvitationService, registrar 
 		})
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
-		OperationID: "organization-revoke-invitation", Method: http.MethodDelete, Path: "/invitations/{invitation_id}",
+		OperationID: "organization-revoke-invitation", Method: http.MethodDelete, Path: "/membership-invitations/{invitation_id}",
 		Summary: "Revoke a pending tenant invitation", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusGone, http.StatusUnprocessableEntity, http.StatusInternalServerError},
 	}, "invitation_id", service.resolveInvitationOwner, authz.Guard{Resource: "invitation", Verb: "revoke"},
@@ -911,7 +911,7 @@ func registerInvitationHTTP(api huma.API, service *InvitationService, registrar 
 		})
 
 	authz.RegisterOwned(registrar, api, huma.Operation{
-		OperationID: "organization-resend-invitation", Method: http.MethodPost, Path: "/invitations/{invitation_id}/deliveries",
+		OperationID: "organization-resend-invitation", Method: http.MethodPost, Path: "/membership-invitations/{invitation_id}/deliveries",
 		Summary: "Create a new invitation delivery and return its rotated credential once", Tags: []string{"directory"},
 		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError},
 	}, "invitation_id", service.resolveInvitationOwner, authz.Guard{Resource: "invitation", Verb: "resend"},
@@ -928,7 +928,7 @@ func registerInvitationHTTP(api huma.API, service *InvitationService, registrar 
 		})
 
 	authz.RegisterPublic(api, huma.Operation{
-		OperationID: "organization-accept-invitation", Method: http.MethodPost, Path: "/invitation-acceptances",
+		OperationID: "organization-accept-invitation", Method: http.MethodPost, Path: "/membership-invitations/acceptances",
 		Summary: "Accept a tenant invitation and create the local principal", Tags: []string{"authentication"},
 		Security: []map[string][]string{},
 		Errors:   []int{http.StatusBadRequest, http.StatusConflict, http.StatusGone, http.StatusInternalServerError},

@@ -2794,3 +2794,29 @@ Evidence: docs/api-routing-inspection-2026-09-26.md; real SQLite E2E15/15,
 browser regression74/74, live demo5/5 and generated inventory/drift checks PASS.
 This supersedes D79's choice to retain `/me/*`; no optional API redesign follows
 automatically from this decision.
+
+## D82 - Qualified Public Resource Names And Unified Workflow Roots
+
+**Decision / Reason**
+User required a complete inspection after identifying ambiguous groups/positions
+and split email/invitation Swagger groups. Names follow actual domain meaning:
+principal-groups, job-positions, membership-invitations, role-access-requests,
+role-access-reviews, authorization-relationships and authorization-scope-model.
+Invitation acceptance is /membership-invitations/acceptances; email issuance is
+/email-verifications/requests and consumption remains /email-verifications.
+Tenant collections and principal projections use the same canonical names.
+
+**Scope / Tradeoffs**
+The change intentionally replaces public paths; retired URLs answer404. It does
+not change database/domain names, SCIM protocol Groups, permission discriminators,
+operation IDs, payloads, security or UI navigation. Polymorphic company/merchant/
+store entities keep their established domain name. Final URI first-prefix tags
+remain mandatory, so tenant-contained collections belong to tenants.
+
+**Evidence / Status**
+Implemented; docs/api-resource-naming-audit-2026-09-26.md records the exhaustive
+resource dispositions. 296 operations preserved, exactly37 addresses changed;
+all component schemas and every operation field except tags compare equal.
+Real SQLite/Chrome E2E18/18, fixture UI74/74, live selectable demo5/5 and actual
+Swagger309 prefix sections PASS. Final independent integration suite and generated
+contract drift gates PASS; self-review and requirement acceptance PASS.

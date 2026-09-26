@@ -222,12 +222,12 @@ func TestIAMManagementHTTPFlowAndTenantIsolation(t *testing.T) {
 
 	for _, path := range []string{
 		"/permission-catalog", "/menu-catalog", "/entities", "/roles",
-		"/members?limit=50", "/menus", "/relationships",
+		"/members?limit=50", "/menus", "/authorization-relationships",
 	} {
 		response := harness.api.Get(headerA+path, "Authorization: Bearer test")
 		assert.Equal(t, http.StatusOK, response.Code, path+": "+response.Body.String())
 	}
-	assert.Equal(t, http.StatusOK, harness.api.Get("/scope-model", "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Get("/authorization-scope-model", "Authorization: Bearer test").Code)
 
 	createdRole := harness.api.Post(headerA+"/roles", "Authorization: Bearer test", map[string]any{
 		"name": "Managers", "description": "Tenant managers",
@@ -315,15 +315,15 @@ func TestIAMManagementHTTPFlowAndTenantIsolation(t *testing.T) {
 
 	startsAt := time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano)
 	endsAt := time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano)
-	createdRelationship := harness.api.Post(headerA+"/relationships", "Authorization: Bearer test", map[string]any{
+	createdRelationship := harness.api.Post(headerA+"/authorization-relationships", "Authorization: Bearer test", map[string]any{
 		"subject_type": "principal", "subject_id": "12", "relation": "owner",
 		"resource_type": "company", "resource_id": entityA.ID, "starts_at": startsAt, "ends_at": endsAt,
 		"condition": map[string]any{"version": 1, "gte": []any{map[string]any{"context": "auth.acr"}, map[string]any{"value": 1}}},
 	})
 	require.Equal(t, http.StatusOK, createdRelationship.Code, createdRelationship.Body.String())
 	assert.NotContains(t, createdRelationship.Body.String(), `"entity_id":"0"`)
-	assert.Equal(t, http.StatusOK, harness.api.Get(headerA+"/relationships?resource_id="+entityA.ID.String(), "Authorization: Bearer test").Code)
-	assert.Equal(t, http.StatusOK, harness.api.Get(headerA+"/relationships?entity_id="+entityA.ID.String()+"&resource_type=company", "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Get(headerA+"/authorization-relationships?resource_id="+entityA.ID.String(), "Authorization: Bearer test").Code)
+	assert.Equal(t, http.StatusOK, harness.api.Get(headerA+"/authorization-relationships?entity_id="+entityA.ID.String()+"&resource_type=company", "Authorization: Bearer test").Code)
 	assert.Equal(t, http.StatusOK, harness.api.Post(headerA+"/authorization-checks", "Authorization: Bearer test", map[string]any{
 		"entity_id": entityA.ID, "permission_code": "entity_view", "subject": "12",
 	}).Code)
@@ -343,7 +343,7 @@ func TestIAMManagementHTTPFlowAndTenantIsolation(t *testing.T) {
 		"entity_id": entityA.ID, "resource_type": "merchant", "resource_id": "700", "permission_code": "merchant_view", "subject": "12",
 	}).Code)
 	deleteRelationship := harness.api.Delete(
-		headerA+"/relationships?subject_type=principal&subject_id=12&relation=owner&resource_type=company&resource_id="+entityA.ID.String(),
+		headerA+"/authorization-relationships?subject_type=principal&subject_id=12&relation=owner&resource_type=company&resource_id="+entityA.ID.String(),
 		"Authorization: Bearer test",
 	)
 	require.Equal(t, http.StatusOK, deleteRelationship.Code, deleteRelationship.Body.String())
@@ -437,12 +437,12 @@ func TestIAMManagementHTTPFlowAndTenantIsolation(t *testing.T) {
 	entitiesA := harness.api.Get(headerA+"/entities", "Authorization: Bearer test")
 	require.Equal(t, http.StatusOK, entitiesA.Code, entitiesA.Body.String())
 	assert.NotContains(t, entitiesA.Body.String(), entityB.ID.String())
-	relationshipsA := harness.api.Get(headerA+"/relationships?resource_id="+entityB.ID.String(), "Authorization: Bearer test")
+	relationshipsA := harness.api.Get(headerA+"/authorization-relationships?resource_id="+entityB.ID.String(), "Authorization: Bearer test")
 	require.Equal(t, http.StatusOK, relationshipsA.Code, relationshipsA.Body.String())
 	assert.NotContains(t, relationshipsA.Body.String(), relationshipB.ResourceID.String())
 
 	deleteCrossRelationship := harness.api.Delete(
-		headerA+"/relationships?subject_type=principal&subject_id=22&relation=owner&resource_type=company&resource_id="+entityB.ID.String(),
+		headerA+"/authorization-relationships?subject_type=principal&subject_id=22&relation=owner&resource_type=company&resource_id="+entityB.ID.String(),
 		"Authorization: Bearer test",
 	)
 	require.Equal(t, http.StatusOK, deleteCrossRelationship.Code, deleteCrossRelationship.Body.String())
@@ -711,13 +711,13 @@ func TestIAMHTTPInternalFailuresUseUniformEnvelope(t *testing.T) {
 			return harness.api.Get(header+"/principals/"+"11"+"/menus", "Authorization: Bearer test")
 		}},
 		{name: "list relationships", call: func() *httptest.ResponseRecorder {
-			return harness.api.Get(header+"/relationships", "Authorization: Bearer test")
+			return harness.api.Get(header+"/authorization-relationships", "Authorization: Bearer test")
 		}},
 		{name: "put relationship", call: func() *httptest.ResponseRecorder {
-			return harness.api.Post(header+"/relationships", "Authorization: Bearer test", map[string]any{"subject_type": "principal", "subject_id": "2", "relation": "viewer", "resource_type": "store", "resource_id": "1"})
+			return harness.api.Post(header+"/authorization-relationships", "Authorization: Bearer test", map[string]any{"subject_type": "principal", "subject_id": "2", "relation": "viewer", "resource_type": "store", "resource_id": "1"})
 		}},
 		{name: "delete relationship", call: func() *httptest.ResponseRecorder {
-			return harness.api.Delete(header+"/relationships?subject_type=principal&subject_id=2&relation=viewer&resource_type=store&resource_id=1", "Authorization: Bearer test")
+			return harness.api.Delete(header+"/authorization-relationships?subject_type=principal&subject_id=2&relation=viewer&resource_type=store&resource_id=1", "Authorization: Bearer test")
 		}},
 		{name: "list platform administrators", call: func() *httptest.ResponseRecorder {
 			return harness.api.Get("/platform/administrators", "Authorization: Bearer test")
@@ -768,7 +768,7 @@ func TestIAMHTTPFailsClosedWhenStorageIsGone(t *testing.T) {
 	// evaluator describe the software rather than the rows of a deployment, so
 	// they keep answering while storage is gone.
 	for _, path := range []string{
-		"/scope-model", tenant + "/permission-catalog", tenant + "/menu-catalog",
+		"/authorization-scope-model", tenant + "/permission-catalog", tenant + "/menu-catalog",
 		"/platform/permission-catalog", tenant + "/field-catalog",
 	} {
 		response := harness.api.Get(path, auth)
@@ -795,17 +795,17 @@ func TestIAMHTTPFailsClosedWhenStorageIsGone(t *testing.T) {
 			return harness.api.Delete(tenant+"/field-policies/profile/display_name", auth)
 		},
 		"list relationships": func() *httptest.ResponseRecorder {
-			return harness.api.Get(tenant+"/relationships?resource_id="+entityID, auth)
+			return harness.api.Get(tenant+"/authorization-relationships?resource_id="+entityID, auth)
 		},
 		"put relationship": func() *httptest.ResponseRecorder {
-			return harness.api.Post(tenant+"/relationships", auth, map[string]any{
+			return harness.api.Post(tenant+"/authorization-relationships", auth, map[string]any{
 				"subject_type": "principal", "subject_id": "12", "relation": "owner",
 				"resource_type": "company", "resource_id": entityID,
 			})
 		},
 		"delete relationship": func() *httptest.ResponseRecorder {
 			return harness.api.Delete(tenant+
-				"/relationships?subject_type=principal&subject_id=12&relation=owner&resource_type=company&resource_id="+entityID, auth)
+				"/authorization-relationships?subject_type=principal&subject_id=12&relation=owner&resource_type=company&resource_id="+entityID, auth)
 		},
 		"list platform administrators": func() *httptest.ResponseRecorder {
 			return harness.api.Get("/platform/administrators", auth)
@@ -1051,24 +1051,24 @@ func TestIAMHTTPRejectsUnrepresentableIdentifiers(t *testing.T) {
 			return harness.api.Get(tenant+"/entities/"+big+"/principals/"+"11"+"/permissions", auth)
 		},
 		"put relationship subject": func() *httptest.ResponseRecorder {
-			return harness.api.Post(tenant+"/relationships", auth, map[string]any{
+			return harness.api.Post(tenant+"/authorization-relationships", auth, map[string]any{
 				"subject_type": "principal", "subject_id": big, "relation": "owner",
 				"resource_type": "company", "resource_id": "1",
 			})
 		},
 		"put relationship resource": func() *httptest.ResponseRecorder {
-			return harness.api.Post(tenant+"/relationships", auth, map[string]any{
+			return harness.api.Post(tenant+"/authorization-relationships", auth, map[string]any{
 				"subject_type": "principal", "subject_id": "11", "relation": "owner",
 				"resource_type": "company", "resource_id": big,
 			})
 		},
 		"delete relationship": func() *httptest.ResponseRecorder {
 			return harness.api.Delete(tenant+
-				"/relationships?subject_type=principal&subject_id="+big+
+				"/authorization-relationships?subject_type=principal&subject_id="+big+
 				"&relation=owner&resource_type=company&resource_id=1", auth)
 		},
 		"list relationships": func() *httptest.ResponseRecorder {
-			return harness.api.Get(tenant+"/relationships?resource_id="+big, auth)
+			return harness.api.Get(tenant+"/authorization-relationships?resource_id="+big, auth)
 		},
 		"authorization check": func() *httptest.ResponseRecorder {
 			return harness.api.Post(tenant+"/authorization-checks", auth, map[string]any{
@@ -1208,14 +1208,14 @@ func TestIAMHTTPMutationsFailWhenThePolicyRevisionLedgerIsBroken(t *testing.T) {
 			return harness.api.Patch(tenant+"/members/11", auth, map[string]any{"display_name": "Renamed"})
 		},
 		"put relationship": func() *httptest.ResponseRecorder {
-			return harness.api.Post(tenant+"/relationships", auth, map[string]any{
+			return harness.api.Post(tenant+"/authorization-relationships", auth, map[string]any{
 				"subject_type": "principal", "subject_id": "12", "relation": "owner",
 				"resource_type": "company", "resource_id": entityID,
 			})
 		},
 		"delete relationship": func() *httptest.ResponseRecorder {
 			return harness.api.Delete(tenant+
-				"/relationships?subject_type=principal&subject_id=11&relation=owner&resource_type=company&resource_id="+
+				"/authorization-relationships?subject_type=principal&subject_id=11&relation=owner&resource_type=company&resource_id="+
 				entityID, auth)
 		},
 	} {

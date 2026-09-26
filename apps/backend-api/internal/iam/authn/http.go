@@ -666,7 +666,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return respx.OK(ctx, map[string]bool{"changed": true}), nil
 	})
 	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
-		OperationID: "authn-create-email-verification-request", Method: http.MethodPost, Path: "/email-verification-requests",
+		OperationID: "authn-create-email-verification-request", Method: http.MethodPost, Path: "/email-verifications/requests",
 		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
 		Summary:  "Queue verification for the authenticated principal email", Tags: []string{"authentication"},
 		DefaultStatus: http.StatusAccepted,

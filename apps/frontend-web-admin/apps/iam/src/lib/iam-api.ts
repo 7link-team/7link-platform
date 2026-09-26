@@ -1974,7 +1974,7 @@ export function createIamApi(
       }),
     startEmailVerification: () =>
       request<{ accepted: boolean }>(
-        apiRoute("post", "/email-verification-requests")
+        apiRoute("post", "/email-verifications/requests")
       ),
     completeEmailVerification: (token: string) =>
       request<{ verified: boolean }>(apiRoute("post", "/email-verifications"), {
@@ -2223,7 +2223,7 @@ export function createIamApi(
       ),
     invitations: () =>
       requestAllPages<Invitation>(
-        pagedRoute("/tenants/{tenant_id}/invitations", {
+        pagedRoute("/tenants/{tenant_id}/membership-invitations", {
           path: { tenant_id: tenantID() },
         })
       ),
@@ -2234,20 +2234,20 @@ export function createIamApi(
       expires_in_hours?: number
     }) =>
       request<IssuedInvitation>(
-        apiRoute("post", "/tenants/{tenant_id}/invitations", {
+        apiRoute("post", "/tenants/{tenant_id}/membership-invitations", {
           path: { tenant_id: tenantID() },
         }),
         { body: JSON.stringify(body) }
       ),
     revokeInvitation: (id: string) =>
       request<{ revoked: boolean }>(
-        apiRoute("delete", "/invitations/{invitation_id}", {
+        apiRoute("delete", "/membership-invitations/{invitation_id}", {
           path: { invitation_id: id },
         })
       ),
     resendInvitation: (id: string, expiresInHours = 72) =>
       request<IssuedInvitation>(
-        apiRoute("post", "/invitations/{invitation_id}/deliveries", {
+        apiRoute("post", "/membership-invitations/{invitation_id}/deliveries", {
           path: { invitation_id: id },
         }),
         { body: JSON.stringify({ expires_in_hours: expiresInHours }) }
@@ -2259,7 +2259,7 @@ export function createIamApi(
       display_name?: string
     }) =>
       request<InvitationAcceptance>(
-        apiRoute("post", "/invitation-acceptances"),
+        apiRoute("post", "/membership-invitations/acceptances"),
         { body: JSON.stringify(body) }
       ),
     tenants: (includeDeleted = false) =>
@@ -2379,28 +2379,28 @@ export function createIamApi(
       ),
     relationships: (resourceID = "") =>
       requestAllPages<Relationship>(
-        pagedRoute("/tenants/{tenant_id}/relationships", {
+        pagedRoute("/tenants/{tenant_id}/authorization-relationships", {
           path: { tenant_id: tenantID() },
           query: { resource_id: resourceID || undefined },
         })
       ),
     resourceRelationships: (entityID: string) =>
       request<Relationship[]>(
-        apiRoute("get", "/tenants/{tenant_id}/relationships", {
+        apiRoute("get", "/tenants/{tenant_id}/authorization-relationships", {
           path: { tenant_id: tenantID() },
           query: { entity_id: entityID },
         })
       ),
     putRelationship: (body: RelationshipInput) =>
       request<Relationship>(
-        apiRoute("post", "/tenants/{tenant_id}/relationships", {
+        apiRoute("post", "/tenants/{tenant_id}/authorization-relationships", {
           path: { tenant_id: tenantID() },
         }),
         { body: JSON.stringify(body) }
       ),
     deleteRelationship: (relationship: RelationshipInput) =>
       request<{ changed: boolean; sync_status: string }>(
-        apiRoute("delete", "/tenants/{tenant_id}/relationships", {
+        apiRoute("delete", "/tenants/{tenant_id}/authorization-relationships", {
           path: { tenant_id: tenantID() },
           query: {
             entity_id: relationship.entity_id || undefined,
@@ -2546,19 +2546,19 @@ export function createIamApi(
       ),
     positions: () =>
       requestAllPages<Position>(
-        pagedRoute("/tenants/{tenant_id}/positions", {
+        pagedRoute("/tenants/{tenant_id}/job-positions", {
           path: { tenant_id: tenantID() },
         })
       ),
     position: (id: string) =>
       request<Position>(
-        apiRoute("get", "/positions/{position_id}", {
+        apiRoute("get", "/job-positions/{position_id}", {
           path: { position_id: id },
         })
       ),
     createPosition: (body: PositionInput) =>
       request<Position>(
-        apiRoute("post", "/tenants/{tenant_id}/positions", {
+        apiRoute("post", "/tenants/{tenant_id}/job-positions", {
           path: { tenant_id: tenantID() },
         }),
         { body: JSON.stringify(body) }
@@ -2568,21 +2568,21 @@ export function createIamApi(
       body: Partial<PositionInput> & Pick<Position, "version">
     ) =>
       request<Position>(
-        apiRoute("patch", "/positions/{position_id}", {
+        apiRoute("patch", "/job-positions/{position_id}", {
           path: { position_id: id },
         }),
         { body: JSON.stringify(body) }
       ),
     deletePosition: (id: string, version: number) =>
       request<{ deleted: boolean }>(
-        apiRoute("delete", "/positions/{position_id}", {
+        apiRoute("delete", "/job-positions/{position_id}", {
           path: { position_id: id },
           query: { version: version },
         })
       ),
     positionMembers: (id: string) =>
       requestAllPages<PositionMember>(
-        pagedRoute("/positions/{position_id}/members", {
+        pagedRoute("/job-positions/{position_id}/members", {
           path: { position_id: id },
         })
       ),
@@ -2592,30 +2592,30 @@ export function createIamApi(
       body: PositionMemberInput
     ) =>
       request<PositionMember>(
-        apiRoute("put", "/positions/{position_id}/members/{principal_id}", {
+        apiRoute("put", "/job-positions/{position_id}/members/{principal_id}", {
           path: { position_id: id, principal_id: principalID },
         }),
         { body: JSON.stringify(body) }
       ),
     deletePositionMember: (id: string, principalID: string) =>
       request<{ deleted: boolean }>(
-        apiRoute("delete", "/positions/{position_id}/members/{principal_id}", {
+        apiRoute("delete", "/job-positions/{position_id}/members/{principal_id}", {
           path: { position_id: id, principal_id: principalID },
         })
       ),
     groups: () =>
       requestAllPages<Group>(
-        pagedRoute("/tenants/{tenant_id}/groups", {
+        pagedRoute("/tenants/{tenant_id}/principal-groups", {
           path: { tenant_id: tenantID() },
         })
       ),
     group: (id: string) =>
       request<Group>(
-        apiRoute("get", "/groups/{group_id}", { path: { group_id: id } })
+        apiRoute("get", "/principal-groups/{group_id}", { path: { group_id: id } })
       ),
     createGroup: (body: GroupInput) =>
       request<Group>(
-        apiRoute("post", "/tenants/{tenant_id}/groups", {
+        apiRoute("post", "/tenants/{tenant_id}/principal-groups", {
           path: { tenant_id: tenantID() },
         }),
         { body: JSON.stringify(body) }
@@ -2625,30 +2625,30 @@ export function createIamApi(
       body: Partial<Omit<GroupInput, "type">> & Pick<Group, "version">
     ) =>
       request<Group>(
-        apiRoute("patch", "/groups/{group_id}", { path: { group_id: id } }),
+        apiRoute("patch", "/principal-groups/{group_id}", { path: { group_id: id } }),
         { body: JSON.stringify(body) }
       ),
     deleteGroup: (id: string, version: number) =>
       request<{ deleted: boolean }>(
-        apiRoute("delete", "/groups/{group_id}", {
+        apiRoute("delete", "/principal-groups/{group_id}", {
           path: { group_id: id },
           query: { version: version },
         })
       ),
     groupMembers: (id: string) =>
       requestAllPages<GroupMember>(
-        pagedRoute("/groups/{group_id}/members", { path: { group_id: id } })
+        pagedRoute("/principal-groups/{group_id}/members", { path: { group_id: id } })
       ),
     putGroupMember: (id: string, principalID: string, body: GroupMemberInput) =>
       request<GroupMember>(
-        apiRoute("put", "/groups/{group_id}/members/{principal_id}", {
+        apiRoute("put", "/principal-groups/{group_id}/members/{principal_id}", {
           path: { group_id: id, principal_id: principalID },
         }),
         { body: JSON.stringify(body) }
       ),
     deleteGroupMember: (id: string, principalID: string) =>
       request<{ deleted: boolean }>(
-        apiRoute("delete", "/groups/{group_id}/members/{principal_id}", {
+        apiRoute("delete", "/principal-groups/{group_id}/members/{principal_id}", {
           path: { group_id: id, principal_id: principalID },
         })
       ),
@@ -2713,7 +2713,7 @@ export function createIamApi(
       request<AccessRequest[]>(
         apiRoute(
           "get",
-          "/tenants/{tenant_id}/principals/{principal_id}/access-requests",
+          "/tenants/{tenant_id}/principals/{principal_id}/role-access-requests",
           {
             path: { principal_id: await principalID(), tenant_id: tenantID() },
           }
@@ -2721,60 +2721,60 @@ export function createIamApi(
       ),
     accessRequests: () =>
       requestAllPages<AccessRequest>(
-        pagedRoute("/tenants/{tenant_id}/access-requests", {
+        pagedRoute("/tenants/{tenant_id}/role-access-requests", {
           path: { tenant_id: tenantID() },
         })
       ),
     createAccessRequest: (body: AccessRequestInput) =>
       request<AccessRequest>(
-        apiRoute("post", "/tenants/{tenant_id}/access-requests", {
+        apiRoute("post", "/tenants/{tenant_id}/role-access-requests", {
           path: { tenant_id: tenantID() },
         }),
         { body: JSON.stringify(body) }
       ),
     approveAccessRequest: (id: string, note = "") =>
       request<AccessRequest>(
-        apiRoute("put", "/access-requests/{request_id}/decision", {
+        apiRoute("put", "/role-access-requests/{request_id}/decision", {
           path: { request_id: id },
         }),
         { body: JSON.stringify({ decision: "approved", note }) }
       ),
     rejectAccessRequest: (id: string, note = "") =>
       request<AccessRequest>(
-        apiRoute("put", "/access-requests/{request_id}/decision", {
+        apiRoute("put", "/role-access-requests/{request_id}/decision", {
           path: { request_id: id },
         }),
         { body: JSON.stringify({ decision: "rejected", note }) }
       ),
     revokeAccessRequest: (id: string, reason = "") =>
       request<AccessRequest>(
-        apiRoute("put", "/access-requests/{request_id}/grant-revocation", {
+        apiRoute("put", "/role-access-requests/{request_id}/grant-revocation", {
           path: { request_id: id },
         }),
         { body: JSON.stringify({ reason }) }
       ),
     withdrawAccessRequest: (id: string, reason = "") =>
       request<AccessRequest>(
-        apiRoute("put", "/access-requests/{request_id}/withdrawal", {
+        apiRoute("put", "/role-access-requests/{request_id}/withdrawal", {
           path: { request_id: id },
         }),
         { body: JSON.stringify({ reason }) }
       ),
     accessReviews: () =>
       requestAllPages<AccessReview>(
-        pagedRoute("/tenants/{tenant_id}/access-reviews", {
+        pagedRoute("/tenants/{tenant_id}/role-access-reviews", {
           path: { tenant_id: tenantID() },
         })
       ),
     accessReview: (id: string) =>
       request<AccessReview>(
-        apiRoute("get", "/access-reviews/{review_id}", {
+        apiRoute("get", "/role-access-reviews/{review_id}", {
           path: { review_id: id },
         })
       ),
     createAccessReview: (body: AccessReviewInput) =>
       request<AccessReview>(
-        apiRoute("post", "/tenants/{tenant_id}/access-reviews", {
+        apiRoute("post", "/tenants/{tenant_id}/role-access-reviews", {
           path: { tenant_id: tenantID() },
         }),
         { body: JSON.stringify(body) }
@@ -2788,7 +2788,7 @@ export function createIamApi(
       request<AccessReviewItem>(
         apiRoute(
           "put",
-          "/access-reviews/{review_id}/items/{item_id}/decision",
+          "/role-access-reviews/{review_id}/items/{item_id}/decision",
           { path: { review_id: reviewID, item_id: itemID } }
         ),
         { body: JSON.stringify({ decision, note }) }
@@ -2798,14 +2798,14 @@ export function createIamApi(
     // spelling of "cancelled" is the stored state's, not this file's.
     completeAccessReview: (id: string) =>
       request<AccessReview>(
-        apiRoute("patch", "/access-reviews/{review_id}", {
+        apiRoute("patch", "/role-access-reviews/{review_id}", {
           path: { review_id: id },
         }),
         { body: JSON.stringify({ status: "completed" }) }
       ),
     cancelAccessReview: (id: string) =>
       request<AccessReview>(
-        apiRoute("patch", "/access-reviews/{review_id}", {
+        apiRoute("patch", "/role-access-reviews/{review_id}", {
           path: { review_id: id },
         }),
         { body: JSON.stringify({ status: "cancelled" }) }

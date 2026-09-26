@@ -271,7 +271,7 @@ async function cleanup() {
   if (artifacts.accessRequest?.status === "approved")
     await attempt(async () => {
       await api(
-        `/access-requests/${encodeURIComponent(artifacts.accessRequest.id)}/revoke`,
+        `/role-access-requests/${encodeURIComponent(artifacts.accessRequest.id)}/revoke`,
         {
           method: "POST",
           body: JSON.stringify({ reason: "Acceptance cleanup" }),
@@ -281,7 +281,7 @@ async function cleanup() {
   if (artifacts.relationship)
     await attempt(async () => {
       const query = new URLSearchParams(artifacts.relationship)
-      await api(`/relationships?${query}`, { method: "DELETE" })
+      await api(`/authorization-relationships?${query}`, { method: "DELETE" })
     })
   for (const binding of artifacts.entityBindings)
     await attempt(async () => {
@@ -300,14 +300,14 @@ async function cleanup() {
   for (const membership of artifacts.groupMembers)
     await attempt(async () => {
       await api(
-        `/groups/${encodeURIComponent(membership.groupID)}/members/${encodeURIComponent(artifacts.memberID)}`,
+        `/principal-groups/${encodeURIComponent(membership.groupID)}/members/${encodeURIComponent(artifacts.memberID)}`,
         { method: "DELETE" }
       )
     })
   for (const membership of artifacts.positionMembers)
     await attempt(async () => {
       await api(
-        `/positions/${encodeURIComponent(membership.positionID)}/members/${encodeURIComponent(artifacts.memberID)}`,
+        `/job-positions/${encodeURIComponent(membership.positionID)}/members/${encodeURIComponent(artifacts.memberID)}`,
         { method: "DELETE" }
       )
     })
@@ -332,19 +332,19 @@ async function cleanup() {
     })
   for (const group of artifacts.groups)
     await attempt(async () => {
-      const current = await api(`/groups/${encodeURIComponent(group.id)}`)
+      const current = await api(`/principal-groups/${encodeURIComponent(group.id)}`)
       await api(
-        `/groups/${encodeURIComponent(group.id)}?version=${current.version}`,
+        `/principal-groups/${encodeURIComponent(group.id)}?version=${current.version}`,
         { method: "DELETE" }
       )
     })
   if (artifacts.position)
     await attempt(async () => {
       const current = await api(
-        `/positions/${encodeURIComponent(artifacts.position.id)}`
+        `/job-positions/${encodeURIComponent(artifacts.position.id)}`
       )
       await api(
-        `/positions/${encodeURIComponent(artifacts.position.id)}?version=${current.version}`,
+        `/job-positions/${encodeURIComponent(artifacts.position.id)}?version=${current.version}`,
         { method: "DELETE" }
       )
     })
@@ -404,7 +404,7 @@ try {
       sort_order: 10,
     }),
   })
-  artifacts.position = await api("/positions", {
+  artifacts.position = await api("/job-positions", {
     method: "POST",
     body: JSON.stringify({
       code: `acceptance.authorization-${suffix}`,
@@ -413,7 +413,7 @@ try {
       sort_order: 10,
     }),
   })
-  const staticGroup = await api("/groups", {
+  const staticGroup = await api("/principal-groups", {
     method: "POST",
     body: JSON.stringify({
       name: `Acceptance Authorization Static ${suffix}`,
@@ -423,7 +423,7 @@ try {
       sort_order: 10,
     }),
   })
-  const dynamicGroup = await api("/groups", {
+  const dynamicGroup = await api("/principal-groups", {
     method: "POST",
     body: JSON.stringify({
       name: `Acceptance Authorization Dynamic ${suffix}`,
@@ -481,7 +481,7 @@ try {
   artifacts.roleMembers.push(sharedRole.id)
   const staticEnd = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString()
   await api(
-    `/groups/${encodeURIComponent(staticGroup.id)}/members/${encodeURIComponent(principal.id)}`,
+    `/principal-groups/${encodeURIComponent(staticGroup.id)}/members/${encodeURIComponent(principal.id)}`,
     { method: "PUT", body: JSON.stringify({ ends_at: staticEnd }) }
   )
   artifacts.groupMembers.push({ groupID: staticGroup.id })
@@ -505,7 +505,7 @@ try {
   })
   const positionEnd = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
   await api(
-    `/positions/${encodeURIComponent(artifacts.position.id)}/members/${encodeURIComponent(principal.id)}`,
+    `/job-positions/${encodeURIComponent(artifacts.position.id)}/members/${encodeURIComponent(principal.id)}`,
     { method: "PUT", body: JSON.stringify({ ends_at: positionEnd }) }
   )
   artifacts.positionMembers.push({ positionID: artifacts.position.id })
@@ -564,14 +564,14 @@ try {
     resource_type: "store",
     resource_id: businessResourceID,
   }
-  await api("/relationships", {
+  await api("/authorization-relationships", {
     method: "POST",
     body: JSON.stringify(artifacts.relationship),
   })
 
   await logout()
   await login(memberLogin, memberPassword)
-  artifacts.accessRequest = await api("/access-requests", {
+  artifacts.accessRequest = await api("/role-access-requests", {
     method: "POST",
     body: JSON.stringify({
       role_id: temporaryRole.id,
@@ -584,7 +584,7 @@ try {
   await logout()
   await login(adminLogin, adminPassword)
   artifacts.accessRequest = await api(
-    `/access-requests/${encodeURIComponent(artifacts.accessRequest.id)}/approve`,
+    `/role-access-requests/${encodeURIComponent(artifacts.accessRequest.id)}/approve`,
     { method: "POST", body: JSON.stringify({ note: "Acceptance approval" }) }
   )
 

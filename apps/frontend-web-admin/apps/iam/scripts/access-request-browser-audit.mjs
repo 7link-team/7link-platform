@@ -273,14 +273,14 @@ const role = await api("/roles", {
     description: "Browser acceptance role",
   }),
 })
-const invitation = await api("/invitations", {
+const invitation = await api("/membership-invitations", {
   method: "POST",
   body: JSON.stringify({
     email: approverEmail,
     role_ids: [administratorRole.id],
   }),
 })
-const acceptance = await api("/invitations/accept", {
+const acceptance = await api("/membership-invitations/acceptances", {
   method: "POST",
   body: JSON.stringify({
     token: invitation.token,
@@ -358,7 +358,7 @@ await api(
 await api(`/roles/${encodeURIComponent(role.id)}`, { method: "DELETE" })
 
 const governanceResponses = responses.filter((response) =>
-  response.url.includes("/api/access-requests")
+  response.url.includes("/api/role-access-requests")
 )
 for (const expected of ["GET", "POST"])
   if (

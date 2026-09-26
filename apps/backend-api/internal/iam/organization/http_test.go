@@ -31,37 +31,37 @@ import (
 )
 
 const organizationRouteManifest = `
-organization-accept-invitation|POST|/invitation-acceptances
+organization-accept-invitation|POST|/membership-invitations/acceptances
 organization-create-department|POST|/tenants/{tenant_id}/departments
-organization-create-group|POST|/tenants/{tenant_id}/groups
-organization-create-invitation|POST|/tenants/{tenant_id}/invitations
-organization-create-position|POST|/tenants/{tenant_id}/positions
+organization-create-group|POST|/tenants/{tenant_id}/principal-groups
+organization-create-invitation|POST|/tenants/{tenant_id}/membership-invitations
+organization-create-position|POST|/tenants/{tenant_id}/job-positions
 organization-create-tenant|POST|/tenants
 organization-delete-department|DELETE|/departments/{department_id}
-organization-delete-group|DELETE|/groups/{group_id}
-organization-delete-group-member|DELETE|/groups/{group_id}/members/{principal_id}
-organization-delete-position|DELETE|/positions/{position_id}
-organization-delete-position-member|DELETE|/positions/{position_id}/members/{principal_id}
+organization-delete-group|DELETE|/principal-groups/{group_id}
+organization-delete-group-member|DELETE|/principal-groups/{group_id}/members/{principal_id}
+organization-delete-position|DELETE|/job-positions/{position_id}
+organization-delete-position-member|DELETE|/job-positions/{position_id}/members/{principal_id}
 organization-delete-tenant|DELETE|/tenants/{tenant_id}
 organization-get-department|GET|/departments/{department_id}
-organization-get-group|GET|/groups/{group_id}
-organization-get-position|GET|/positions/{position_id}
+organization-get-group|GET|/principal-groups/{group_id}
+organization-get-position|GET|/job-positions/{position_id}
 organization-get-tenant|GET|/tenants/{tenant_id}
 organization-list-departments|GET|/tenants/{tenant_id}/departments
-organization-list-group-members|GET|/groups/{group_id}/members
-organization-list-groups|GET|/tenants/{tenant_id}/groups
-organization-list-invitations|GET|/tenants/{tenant_id}/invitations
-organization-list-position-members|GET|/positions/{position_id}/members
-organization-list-positions|GET|/tenants/{tenant_id}/positions
+organization-list-group-members|GET|/principal-groups/{group_id}/members
+organization-list-groups|GET|/tenants/{tenant_id}/principal-groups
+organization-list-invitations|GET|/tenants/{tenant_id}/membership-invitations
+organization-list-position-members|GET|/job-positions/{position_id}/members
+organization-list-positions|GET|/tenants/{tenant_id}/job-positions
 organization-list-tenants|GET|/tenants
 organization-my-tenants|GET|/principals/{principal_id}/tenants
-organization-put-group-member|PUT|/groups/{group_id}/members/{principal_id}
-organization-put-position-member|PUT|/positions/{position_id}/members/{principal_id}
-organization-resend-invitation|POST|/invitations/{invitation_id}/deliveries
-organization-revoke-invitation|DELETE|/invitations/{invitation_id}
+organization-put-group-member|PUT|/principal-groups/{group_id}/members/{principal_id}
+organization-put-position-member|PUT|/job-positions/{position_id}/members/{principal_id}
+organization-resend-invitation|POST|/membership-invitations/{invitation_id}/deliveries
+organization-revoke-invitation|DELETE|/membership-invitations/{invitation_id}
 organization-update-department|PATCH|/departments/{department_id}
-organization-update-group|PATCH|/groups/{group_id}
-organization-update-position|PATCH|/positions/{position_id}
+organization-update-group|PATCH|/principal-groups/{group_id}
+organization-update-position|PATCH|/job-positions/{position_id}
 organization-update-tenant|PATCH|/tenants/{tenant_id}`
 
 var organizationGuards = map[string]string{
@@ -191,13 +191,13 @@ func TestOrganizationOpenAPIGuardsScopesAndSchemas(t *testing.T) {
 			assert.Equal(t, platform, authz.IsPlatformOperation(operation), location)
 		}
 	}
-	accept := spec.Paths["/invitation-acceptances"].Post
+	accept := spec.Paths["/membership-invitations/acceptances"].Post
 	require.NotNil(t, accept)
 	assert.Empty(t, accept.Security)
 	assert.NotContains(t, accept.Extensions, authz.GuardExtensionKey)
 	assert.NotEmpty(t, spec.Paths["/principals/{principal_id}/tenants"].Get.Security)
 
-	createGroup := spec.Paths["/tenants/{tenant_id}/groups"].Post
+	createGroup := spec.Paths["/tenants/{tenant_id}/principal-groups"].Post
 	schema := createGroup.RequestBody.Content["application/json"].Schema
 	if schema.Ref != "" {
 		schema = spec.Components.Schemas.SchemaFromRef(schema.Ref)
@@ -375,29 +375,29 @@ func TestOrganizationHTTPLifecycleExercisesEveryOperation(t *testing.T) {
 	}).Code)
 	assert.Equal(t, http.StatusOK, h.api.Delete("/departments/101?version=2", auth).Code)
 
-	position := h.api.Post(tenant+"/positions", auth, map[string]any{"code": "engineer", "name": "Engineer"})
+	position := h.api.Post(tenant+"/job-positions", auth, map[string]any{"code": "engineer", "name": "Engineer"})
 	assert.Equal(t, http.StatusCreated, position.Code, position.Body.String())
-	assert.Equal(t, http.StatusOK, h.api.Get(tenant+"/positions", auth).Code)
-	assert.Equal(t, http.StatusOK, h.api.Get("/positions/301", auth).Code)
-	assert.Equal(t, http.StatusOK, h.api.Patch("/positions/301", auth, map[string]any{
+	assert.Equal(t, http.StatusOK, h.api.Get(tenant+"/job-positions", auth).Code)
+	assert.Equal(t, http.StatusOK, h.api.Get("/job-positions/301", auth).Code)
+	assert.Equal(t, http.StatusOK, h.api.Patch("/job-positions/301", auth, map[string]any{
 		"name": "Senior Engineer", "version": 1,
 	}).Code)
-	assert.Equal(t, http.StatusOK, h.api.Put("/positions/301/members/10", auth, map[string]any{}).Code)
-	assert.Equal(t, http.StatusOK, h.api.Get("/positions/301/members", auth).Code)
-	assert.Equal(t, http.StatusOK, h.api.Delete("/positions/301/members/10", auth).Code)
-	assert.Equal(t, http.StatusOK, h.api.Delete("/positions/301?version=2", auth).Code)
+	assert.Equal(t, http.StatusOK, h.api.Put("/job-positions/301/members/10", auth, map[string]any{}).Code)
+	assert.Equal(t, http.StatusOK, h.api.Get("/job-positions/301/members", auth).Code)
+	assert.Equal(t, http.StatusOK, h.api.Delete("/job-positions/301/members/10", auth).Code)
+	assert.Equal(t, http.StatusOK, h.api.Delete("/job-positions/301?version=2", auth).Code)
 
-	group := h.api.Post(tenant+"/groups", auth, map[string]any{"name": "Operators"})
+	group := h.api.Post(tenant+"/principal-groups", auth, map[string]any{"name": "Operators"})
 	assert.Equal(t, http.StatusCreated, group.Code, group.Body.String())
-	assert.Equal(t, http.StatusOK, h.api.Get(tenant+"/groups", auth).Code)
-	assert.Equal(t, http.StatusOK, h.api.Get("/groups/401", auth).Code)
-	assert.Equal(t, http.StatusOK, h.api.Patch("/groups/401", auth, map[string]any{
+	assert.Equal(t, http.StatusOK, h.api.Get(tenant+"/principal-groups", auth).Code)
+	assert.Equal(t, http.StatusOK, h.api.Get("/principal-groups/401", auth).Code)
+	assert.Equal(t, http.StatusOK, h.api.Patch("/principal-groups/401", auth, map[string]any{
 		"description": "Tenant operators", "version": 1,
 	}).Code)
-	assert.Equal(t, http.StatusOK, h.api.Put("/groups/401/members/10", auth, map[string]any{}).Code)
-	assert.Equal(t, http.StatusOK, h.api.Get("/groups/401/members", auth).Code)
-	assert.Equal(t, http.StatusOK, h.api.Delete("/groups/401/members/10", auth).Code)
-	assert.Equal(t, http.StatusOK, h.api.Delete("/groups/401?version=2", auth).Code)
+	assert.Equal(t, http.StatusOK, h.api.Put("/principal-groups/401/members/10", auth, map[string]any{}).Code)
+	assert.Equal(t, http.StatusOK, h.api.Get("/principal-groups/401/members", auth).Code)
+	assert.Equal(t, http.StatusOK, h.api.Delete("/principal-groups/401/members/10", auth).Code)
+	assert.Equal(t, http.StatusOK, h.api.Delete("/principal-groups/401?version=2", auth).Code)
 
 	assert.Equal(t, http.StatusOK, h.api.Get("/principals/"+"1"+"/tenants", auth).Code)
 	createdTenant := h.api.Post("/tenants", auth, map[string]any{
@@ -412,24 +412,24 @@ func TestOrganizationHTTPLifecycleExercisesEveryOperation(t *testing.T) {
 	}).Code)
 	assert.Equal(t, http.StatusOK, h.api.Delete("/tenants/1001?version=2", auth).Code)
 
-	issued := h.api.Post(tenant+"/invitations", auth, map[string]any{
+	issued := h.api.Post(tenant+"/membership-invitations", auth, map[string]any{
 		"email": "invitee@example.com", "expires_in_hours": 72,
 	})
 	assert.Equal(t, http.StatusCreated, issued.Code, issued.Body.String())
-	assert.Equal(t, http.StatusOK, h.api.Get(tenant+"/invitations", auth).Code)
-	resent := h.api.Post("/invitations/601/deliveries", auth, map[string]any{"expires_in_hours": 48})
+	assert.Equal(t, http.StatusOK, h.api.Get(tenant+"/membership-invitations", auth).Code)
+	resent := h.api.Post("/membership-invitations/601/deliveries", auth, map[string]any{"expires_in_hours": 48})
 	assert.Equal(t, http.StatusOK, resent.Code, resent.Body.String())
 	resentToken := fmt.Sprintf("inv1_%d.%s-%d", 601, strings.Repeat("s", 40), 2)
-	accepted := h.api.Post("/invitation-acceptances", map[string]any{
+	accepted := h.api.Post("/membership-invitations/acceptances", map[string]any{
 		"token": resentToken, "login_name": "invitee", "password": "correct horse battery staple",
 		"display_name": "Invitee",
 	})
 	assert.Equal(t, http.StatusOK, accepted.Code, accepted.Body.String())
-	second := h.api.Post(tenant+"/invitations", auth, map[string]any{
+	second := h.api.Post(tenant+"/membership-invitations", auth, map[string]any{
 		"email": "second@example.com", "expires_in_hours": 72,
 	})
 	assert.Equal(t, http.StatusCreated, second.Code, second.Body.String())
-	assert.Equal(t, http.StatusOK, h.api.Delete("/invitations/602", auth).Code)
+	assert.Equal(t, http.StatusOK, h.api.Delete("/membership-invitations/602", auth).Code)
 }
 
 func TestTenantAdministrationRequiresPlatformPermission(t *testing.T) {
@@ -477,28 +477,28 @@ func TestOrganizationHTTPRejectsInvalidReferencesAndStorageFailures(t *testing.T
 		h.api.Get("/departments/bad", auth),
 		h.api.Patch("/departments/bad", auth, map[string]any{"name": "Name", "version": 1}),
 		h.api.Delete("/departments/bad?version=1", auth),
-		h.api.Get("/positions/bad", auth),
-		h.api.Patch("/positions/bad", auth, map[string]any{"name": "Name", "version": 1}),
-		h.api.Delete("/positions/bad?version=1", auth),
-		h.api.Get("/positions/bad/members", auth),
-		h.api.Get("/groups/bad", auth),
-		h.api.Patch("/groups/bad", auth, map[string]any{"name": "Name", "version": 1}),
-		h.api.Delete("/groups/bad?version=1", auth),
-		h.api.Get("/groups/bad/members", auth),
+		h.api.Get("/job-positions/bad", auth),
+		h.api.Patch("/job-positions/bad", auth, map[string]any{"name": "Name", "version": 1}),
+		h.api.Delete("/job-positions/bad?version=1", auth),
+		h.api.Get("/job-positions/bad/members", auth),
+		h.api.Get("/principal-groups/bad", auth),
+		h.api.Patch("/principal-groups/bad", auth, map[string]any{"name": "Name", "version": 1}),
+		h.api.Delete("/principal-groups/bad?version=1", auth),
+		h.api.Get("/principal-groups/bad/members", auth),
 		h.api.Get("/tenants/bad", auth),
 		h.api.Patch("/tenants/bad", auth, map[string]any{"name": "Name", "version": 1}),
 		h.api.Delete("/tenants/bad?version=1", auth),
-		h.api.Post("/invitations/bad/deliveries", auth, map[string]any{"expires_in_hours": 72}),
-		h.api.Delete("/invitations/bad", auth),
+		h.api.Post("/membership-invitations/bad/deliveries", auth, map[string]any{"expires_in_hours": 72}),
+		h.api.Delete("/membership-invitations/bad", auth),
 	}
 	for _, response := range invalidReferenceRequests {
 		assert.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 	}
 	for _, response := range []*httptest.ResponseRecorder{
-		h.api.Put("/positions/1/members/bad", auth, map[string]any{}),
-		h.api.Delete("/positions/1/members/bad", auth),
-		h.api.Put("/groups/1/members/bad", auth, map[string]any{}),
-		h.api.Delete("/groups/1/members/bad", auth),
+		h.api.Put("/job-positions/1/members/bad", auth, map[string]any{}),
+		h.api.Delete("/job-positions/1/members/bad", auth),
+		h.api.Put("/principal-groups/1/members/bad", auth, map[string]any{}),
+		h.api.Delete("/principal-groups/1/members/bad", auth),
 	} {
 		assert.Equal(t, http.StatusNotFound, response.Code, response.Body.String(), "a missing parent resource takes precedence over its child selector")
 	}
@@ -512,35 +512,35 @@ func TestOrganizationHTTPRejectsInvalidReferencesAndStorageFailures(t *testing.T
 		h.api.Get("/departments/1", auth),
 		h.api.Patch("/departments/1", auth, map[string]any{"name": "Department", "version": 1}),
 		h.api.Delete("/departments/1?version=1", auth),
-		h.api.Get(tenant+"/positions", auth),
-		h.api.Post(tenant+"/positions", auth, map[string]any{"code": "position", "name": "Position"}),
-		h.api.Get("/positions/1", auth),
-		h.api.Patch("/positions/1", auth, map[string]any{"name": "Position", "version": 1}),
-		h.api.Delete("/positions/1?version=1", auth),
-		h.api.Get("/positions/1/members", auth),
-		h.api.Put("/positions/1/members/10", auth, map[string]any{}),
-		h.api.Delete("/positions/1/members/10", auth),
-		h.api.Get(tenant+"/groups", auth),
-		h.api.Post(tenant+"/groups", auth, map[string]any{"name": "Group"}),
-		h.api.Get("/groups/1", auth),
-		h.api.Patch("/groups/1", auth, map[string]any{"name": "Group", "version": 1}),
-		h.api.Delete("/groups/1?version=1", auth),
-		h.api.Get("/groups/1/members", auth),
-		h.api.Put("/groups/1/members/10", auth, map[string]any{}),
-		h.api.Delete("/groups/1/members/10", auth),
+		h.api.Get(tenant+"/job-positions", auth),
+		h.api.Post(tenant+"/job-positions", auth, map[string]any{"code": "position", "name": "Position"}),
+		h.api.Get("/job-positions/1", auth),
+		h.api.Patch("/job-positions/1", auth, map[string]any{"name": "Position", "version": 1}),
+		h.api.Delete("/job-positions/1?version=1", auth),
+		h.api.Get("/job-positions/1/members", auth),
+		h.api.Put("/job-positions/1/members/10", auth, map[string]any{}),
+		h.api.Delete("/job-positions/1/members/10", auth),
+		h.api.Get(tenant+"/principal-groups", auth),
+		h.api.Post(tenant+"/principal-groups", auth, map[string]any{"name": "Group"}),
+		h.api.Get("/principal-groups/1", auth),
+		h.api.Patch("/principal-groups/1", auth, map[string]any{"name": "Group", "version": 1}),
+		h.api.Delete("/principal-groups/1?version=1", auth),
+		h.api.Get("/principal-groups/1/members", auth),
+		h.api.Put("/principal-groups/1/members/10", auth, map[string]any{}),
+		h.api.Delete("/principal-groups/1/members/10", auth),
 		h.api.Get("/tenants", auth),
 		h.api.Post("/tenants", auth, map[string]any{"slug": "tenant-new", "name": "Tenant"}),
 		h.api.Get("/tenants/1", auth),
 		h.api.Patch("/tenants/1", auth, map[string]any{"name": "Tenant", "version": 1}),
 		h.api.Delete("/tenants/1?version=1", auth),
 		h.api.Get("/principals/"+"1"+"/tenants", auth),
-		h.api.Get(tenant+"/invitations", auth),
-		h.api.Post(tenant+"/invitations", auth, map[string]any{
+		h.api.Get(tenant+"/membership-invitations", auth),
+		h.api.Post(tenant+"/membership-invitations", auth, map[string]any{
 			"email": "user@example.com", "expires_in_hours": 72,
 		}),
-		h.api.Post("/invitations/1/deliveries", auth, map[string]any{"expires_in_hours": 72}),
-		h.api.Delete("/invitations/1", auth),
-		h.api.Post("/invitation-acceptances", map[string]any{
+		h.api.Post("/membership-invitations/1/deliveries", auth, map[string]any{"expires_in_hours": 72}),
+		h.api.Delete("/membership-invitations/1", auth),
+		h.api.Post("/membership-invitations/acceptances", map[string]any{
 			"token":      "inv1_1." + strings.Repeat("s", 40),
 			"login_name": "user", "password": "correct horse battery staple",
 		}),

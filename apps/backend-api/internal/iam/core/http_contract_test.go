@@ -21,16 +21,16 @@ iam-list-field-policies|GET|/tenants/{tenant_id}/field-policies
 iam-set-field-policy|PUT|/tenants/{tenant_id}/field-policies/{resource}/{field}
 iam-delete-field-policy|DELETE|/tenants/{tenant_id}/field-policies/{resource}/{field}
 iam-effective-fields|GET|/tenants/{tenant_id}/effective-fields
-iam-list-relationships|GET|/tenants/{tenant_id}/relationships
-iam-put-relationship|POST|/tenants/{tenant_id}/relationships
-iam-delete-relationship|DELETE|/tenants/{tenant_id}/relationships
+iam-list-relationships|GET|/tenants/{tenant_id}/authorization-relationships
+iam-put-relationship|POST|/tenants/{tenant_id}/authorization-relationships
+iam-delete-relationship|DELETE|/tenants/{tenant_id}/authorization-relationships
 iam-check-authorization|POST|/tenants/{tenant_id}/authorization-checks
 iam-platform-permission-catalog|GET|/platform/permission-catalog
 iam-list-platform-administrators|GET|/platform/administrators
 iam-put-platform-administrator|PUT|/platform/administrators/{principal_id}
 iam-delete-platform-administrator|DELETE|/platform/administrators/{principal_id}
 iam-permission-catalog|GET|/tenants/{tenant_id}/permission-catalog
-iam-scope-model|GET|/scope-model
+iam-scope-model|GET|/authorization-scope-model
 iam-menu-catalog|GET|/tenants/{tenant_id}/menu-catalog
 iam-authorization-constraint|POST|/tenants/{tenant_id}/authorization-constraint-evaluations
 iam-explain-authorization|POST|/tenants/{tenant_id}/authorization-explanations
@@ -177,7 +177,7 @@ func TestCoreOpenAPISelectorsAndParametersAreConsistent(t *testing.T) {
 
 func TestCoreOpenAPIRelationshipTupleAndPatchContracts(t *testing.T) {
 	spec := declarationAPI(t).OpenAPI()
-	deleteRelationship := spec.Paths["/tenants/{tenant_id}/relationships"].Delete
+	deleteRelationship := spec.Paths["/tenants/{tenant_id}/authorization-relationships"].Delete
 	require.NotNil(t, deleteRelationship)
 
 	parameters := make(map[string]*huma.Param, len(deleteRelationship.Parameters))

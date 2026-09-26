@@ -14,7 +14,7 @@ const routes = [
     "invitations",
     "/invitations",
     "memberInvitations",
-    "/invitations",
+    "/membership-invitations",
     "invitation",
   ],
   [
@@ -37,10 +37,10 @@ const routes = [
     "positions",
     "/positions",
     "positionManagement",
-    "/positions",
+    "/job-positions",
     "position",
   ],
-  ["groups", "/groups", "groupManagement", "/groups", "group"],
+  ["groups", "/groups", "groupManagement", "/principal-groups", "group"],
   ["roles", "/roles", "rolePermissions", "/roles", "role"],
   [
     "field-policies",
@@ -53,14 +53,14 @@ const routes = [
     "access-requests",
     "/access-requests",
     "accessRequests",
-    "/my/access-requests",
+    "/principals/:principalID/role-access-requests",
     "request",
   ],
   [
     "access-reviews",
     "/access-reviews",
     "accessReviews",
-    "/access-reviews",
+    "/role-access-reviews",
     "review",
   ],
   ["menus", "/menus", "menuManagement", "/menus", "menu"],
@@ -78,13 +78,7 @@ const routes = [
     "/scim/directories",
     "directory",
   ],
-  [
-    "audit-events",
-    "/audit-events",
-    "auditLog",
-    "/audit-events",
-    "event",
-  ],
+  ["audit-events", "/audit-events", "auditLog", "/audit-events", "event"],
   [
     "audit-governance",
     "/audit-governance",
@@ -104,7 +98,7 @@ const routes = [
     view === "manage"
       ? "/entities"
       : view === "resources"
-        ? "/relationships"
+        ? "/authorization-relationships"
         : view === "roles"
           ? "/entities/:entityID/role-bindings"
           : "/entities/:entityID",
@@ -338,13 +332,13 @@ async function setup() {
       status: "active",
       sort_order: 1,
     })
-    await create("position", "/positions", {
+    await create("position", "/job-positions", {
       name: `${f.marker}-position`,
       code: `${f.marker}-position`,
       status: "active",
       sort_order: 1,
     })
-    await create("group", "/groups", {
+    await create("group", "/principal-groups", {
       name: `${f.marker}-group`,
       type: "static",
       status: "active",
@@ -374,7 +368,7 @@ async function setup() {
       { effect: "allow" },
       tenant.id
     )
-    await create("resource", "/relationships", {
+    await create("resource", "/authorization-relationships", {
       entity_id: f.entity.id,
       subject_type: "principal",
       subject_id: f.principal.id,
@@ -408,12 +402,12 @@ async function setup() {
       redirect_uris: [],
       public_client: false,
     })
-    await create("invitation", "/invitations", {
+    await create("invitation", "/membership-invitations", {
       email: `${f.marker}@example.test`,
       role_ids: [],
       expires_in_hours: 24,
     })
-    await create("review", "/access-reviews", {
+    await create("review", "/role-access-reviews", {
       name: `${f.marker}-review`,
       due_at: new Date(Date.now() + 86400000).toISOString(),
     })
@@ -440,7 +434,7 @@ async function setup() {
         await signIn(context, persona)
         await ok(
           context,
-          "/access-requests",
+          "/role-access-requests",
           "POST",
           {
             role_id: f.role.id,
@@ -476,12 +470,17 @@ async function cell(
   messages
 ) {
   const path = route.path.replace(":entityID", f.entity.id)
+  const principalID = route.api.includes(":principalID")
+    ? (await ok(context, "/me")).subject
+    : ""
   // The workspace shell rejects inaccessible entity catalogs before mounting
   // the nested view, so its child requests must never be expected on denial.
   const api =
     persona === "denied" && route.id.startsWith("entity-")
       ? "/entities"
-      : route.api.replace(":entityID", f.entity.id)
+      : route.api
+          .replace(":entityID", f.entity.id)
+          .replace(":principalID", principalID)
   const denied =
     persona !== "admin" &&
     (["tenants", "scim-directories"].includes(route.id) ||

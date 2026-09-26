@@ -109,7 +109,7 @@ type AuthorizationDecision struct {
 
 func registerRelationshipHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	authz.Register(registrar, a, huma.Operation{
-		OperationID: "iam-list-relationships", Method: http.MethodGet, Path: "/relationships",
+		OperationID: "iam-list-relationships", Method: http.MethodGet, Path: "/authorization-relationships",
 		Summary: "List tenant entity or business-resource relationship grants", Tags: []string{"access-control"}, Errors: []int{http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "entity", Verb: "view"}, func(ctx context.Context, in *listRelationshipsInput) (*respx.Body[[]APIRelationship], error) {
 		tenantID, err := requireID(in.TenantID)
@@ -136,7 +136,7 @@ func registerRelationshipHTTP(a huma.API, svc *Service, registrar *authz.Registr
 	})
 
 	authz.Register(registrar, a, huma.Operation{
-		OperationID: "iam-put-relationship", Method: http.MethodPost, Path: "/relationships",
+		OperationID: "iam-put-relationship", Method: http.MethodPost, Path: "/authorization-relationships",
 		Summary: "Create or update a constrained relationship grant", Tags: []string{"access-control"}, Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "entity", Verb: "manage_binding"}, func(ctx context.Context, in *putRelationshipInput) (*respx.Body[APIRelationship], error) {
 		relationship, err := relationshipToDomain(in.TenantID, in.Body)
@@ -151,7 +151,7 @@ func registerRelationshipHTTP(a huma.API, svc *Service, registrar *authz.Registr
 	})
 
 	authz.Register(registrar, a, huma.Operation{
-		OperationID: "iam-delete-relationship", Method: http.MethodDelete, Path: "/relationships",
+		OperationID: "iam-delete-relationship", Method: http.MethodDelete, Path: "/authorization-relationships",
 		Summary: "Revoke a relationship grant immediately", Tags: []string{"access-control"}, Errors: []int{http.StatusUnprocessableEntity},
 	}, authz.Guard{Resource: "entity", Verb: "manage_binding"}, func(ctx context.Context, in *deleteRelationshipInput) (*respx.Body[MutationResult], error) {
 		tenantID, err := requireID(in.TenantID)

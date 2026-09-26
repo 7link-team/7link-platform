@@ -239,7 +239,7 @@ async function capture(name, width, height) {
 
 async function decide(review, actorID) {
   const detail = await api(
-    `/access-reviews/${encodeURIComponent(review.id)}`
+    `/role-access-reviews/${encodeURIComponent(review.id)}`
   )
   for (const item of detail.items.filter(
     (candidate) =>
@@ -290,7 +290,7 @@ for (const candidate of tenantRoles) {
 }
 if (!administratorRole)
   throw new Error("tenant administrator role was not found")
-const invitation = await api("/invitations", {
+const invitation = await api("/membership-invitations", {
   method: "POST",
   body: JSON.stringify({
     email: reviewerEmail,
@@ -298,7 +298,7 @@ const invitation = await api("/invitations", {
   }),
 })
 await logout()
-const acceptance = await api("/invitations/accept", {
+const acceptance = await api("/membership-invitations/acceptances", {
   method: "POST",
   body: JSON.stringify({
     token: invitation.token,
@@ -323,7 +323,7 @@ await waitFor(
   `document.querySelector("#review-detail-heading")?.textContent.includes(${JSON.stringify(campaignName)})`,
   20000
 )
-const review = (await api("/access-reviews")).find(
+const review = (await api("/role-access-reviews")).find(
   (candidate) => candidate.name === campaignName
 )
 if (!review) throw new Error("created access review was not found")
@@ -363,7 +363,7 @@ await api(
 )
 
 const governanceResponses = responses.filter((response) =>
-  response.url.includes("/api/access-reviews")
+  response.url.includes("/api/role-access-reviews")
 )
 for (const expected of ["GET", "POST"])
   if (

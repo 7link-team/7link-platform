@@ -1,5 +1,40 @@
 # Task State
 
+## Active Resource Naming Audit - 2026-09-26
+
+- Phase: ACCEPTED; direct execution for shared route/client contracts.
+- Objective: inspect all published roots and nested resources, qualify ambiguous
+  names and consolidate split workflows; tags remain final-path first segments.
+- Required corrections: groups -> principal-groups; positions -> job-positions;
+  invitations -> membership-invitations, acceptance below /acceptances;
+  email issuer below /email-verifications/requests; role-access-requests and
+  role-access-reviews; authorization-relationships and authorization-scope-model.
+- Preserve operation IDs, bodies, response schemas, authorization, protocol paths,
+  UI navigation addresses and database/domain identifiers. No compatibility aliases.
+- Menus complaint traced to stale acceptance servers; stopped owned old servers.
+  Current demo Web8091/API8080 runs previous committed binary until rebuild.
+- Implemented all named route families, composed manifests, typed callers,
+  generated schemas and API fixtures. UI/router/stored menu URLs preserved.
+- Full root/nested disposition ledger: docs/api-resource-naming-audit-2026-09-26.md.
+- Verification PASS: go test ./..., backend lint, frontend workspace typecheck/
+  lint/test/build (IAM136/UI85), OpenAPI/types drift, real SQLite/Chrome E2E18/18
+  (.temp/sqlite-lifecycle-vaXTfK/report.json), fixture regression74/74 after rerun,
+  rebuilt runtime demo5/5 and actual rendered Swagger309/309 prefix grouping.
+- Runtime now updated; live operation IDs/methods/paths match the published spec.
+- Baseline comparison PASS: 296 operations, exactly37 changed addresses; every
+  operation field except tags and all component schemas compare equal.
+- Independent make test-integration PASS: architecture/goose/testdb/lifecycle/
+  migration/performance; all owned acceptance processes stopped, final demo runs.
+- Self-review: public names match source meaning, auth/business behavior preserved,
+  no database/protocol or UI migration; incidental transformation edits restored;
+  real runtime and consumer contracts reconciled; diff check/LF PASS.
+- Final acceptance PASS: full resource coverage, explicit semantic names, unified
+  workflow roots, prefix groups, no behavior/authorization changes, real E2E.
+- Next: no implementation remains and no optional next migration. Delivery is the
+  scoped commit/push containing this checkpoint; final response reports verified
+  remote HEAD and worktree. Final demo Web8091/API8080.
+
+
 ## Active Explicit Principal Migration - 2026-09-26
 
 - Phase: ACCEPTED; implementation, self-review and final acceptance complete.

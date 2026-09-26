@@ -1067,19 +1067,19 @@ describe("IAM API client", () => {
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "GET /tenants/tenant-governance/requestable-roles",
-      "GET /tenants/tenant-governance/principals/101/access-requests",
-      "GET /tenants/tenant-governance/access-requests",
-      "POST /tenants/tenant-governance/access-requests",
-      "PUT /access-requests/request%2Fa/decision",
-      "PUT /access-requests/request%2Fb/decision",
-      "PUT /access-requests/request%2Fc/grant-revocation",
-      "PUT /access-requests/request%2Fd/withdrawal",
-      "GET /tenants/tenant-governance/access-reviews",
-      "GET /access-reviews/review%2Fa",
-      "POST /tenants/tenant-governance/access-reviews",
-      "PUT /access-reviews/review%2Fa/items/item%2Fa/decision",
-      "PATCH /access-reviews/review%2Fa",
-      "PATCH /access-reviews/review%2Fb",
+      "GET /tenants/tenant-governance/principals/101/role-access-requests",
+      "GET /tenants/tenant-governance/role-access-requests",
+      "POST /tenants/tenant-governance/role-access-requests",
+      "PUT /role-access-requests/request%2Fa/decision",
+      "PUT /role-access-requests/request%2Fb/decision",
+      "PUT /role-access-requests/request%2Fc/grant-revocation",
+      "PUT /role-access-requests/request%2Fd/withdrawal",
+      "GET /tenants/tenant-governance/role-access-reviews",
+      "GET /role-access-reviews/review%2Fa",
+      "POST /tenants/tenant-governance/role-access-reviews",
+      "PUT /role-access-reviews/review%2Fa/items/item%2Fa/decision",
+      "PATCH /role-access-reviews/review%2Fa",
+      "PATCH /role-access-reviews/review%2Fb",
     ])
     expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
       true
@@ -1258,7 +1258,7 @@ describe("IAM API client", () => {
       await client.completeEmailVerification("cpe1_verification-value")
     ).toEqual({ verified: true })
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "POST /email-verification-requests",
+      "POST /email-verifications/requests",
       "POST /email-verifications",
     ])
     expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
@@ -2088,11 +2088,11 @@ describe("IAM API client", () => {
     })
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /tenants/tenant-invitation/invitations",
-      "POST /tenants/tenant-invitation/invitations",
-      "POST /invitations/invitation%2Fa/deliveries",
-      "DELETE /invitations/invitation%2Fa",
-      "POST /invitation-acceptances",
+      "GET /tenants/tenant-invitation/membership-invitations",
+      "POST /tenants/tenant-invitation/membership-invitations",
+      "POST /membership-invitations/invitation%2Fa/deliveries",
+      "DELETE /membership-invitations/invitation%2Fa",
+      "POST /membership-invitations/acceptances",
     ])
     expect(
       requests.slice(0, 4).every(({ headers }) => !headers.has("x-tenant-id"))
@@ -2230,7 +2230,7 @@ describe("IAM API client", () => {
         else if (url.pathname.includes("/members/")) data = member
         else if (
           request.method === "GET" &&
-          url.pathname === "/tenants/tenant-positions/positions"
+          url.pathname === "/tenants/tenant-positions/job-positions"
         )
           data = [position]
         return Response.json({ code: 0, message: "ok", data })
@@ -2269,14 +2269,14 @@ describe("IAM API client", () => {
     ).toEqual({ deleted: true })
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /tenants/tenant-positions/positions?offset=0&limit=200",
-      "GET /positions/position%2Fa",
-      "POST /tenants/tenant-positions/positions",
-      "PATCH /positions/position%2Fa",
-      "DELETE /positions/position%2Fa?version=7",
-      "GET /positions/position%2Fa/members?offset=0&limit=200",
-      "PUT /positions/position%2Fa/members/principal%2Fa",
-      "DELETE /positions/position%2Fa/members/principal%2Fa",
+      "GET /tenants/tenant-positions/job-positions?offset=0&limit=200",
+      "GET /job-positions/position%2Fa",
+      "POST /tenants/tenant-positions/job-positions",
+      "PATCH /job-positions/position%2Fa",
+      "DELETE /job-positions/position%2Fa?version=7",
+      "GET /job-positions/position%2Fa/members?offset=0&limit=200",
+      "PUT /job-positions/position%2Fa/members/principal%2Fa",
+      "DELETE /job-positions/position%2Fa/members/principal%2Fa",
     ])
     expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
       true
@@ -2347,7 +2347,7 @@ describe("IAM API client", () => {
         else if (url.pathname.includes("/members/")) data = member
         else if (
           request.method === "GET" &&
-          url.pathname === "/tenants/tenant-groups/groups"
+          url.pathname === "/tenants/tenant-groups/principal-groups"
         )
           data = [group]
         return Response.json({ code: 0, message: "ok", data })
@@ -2389,14 +2389,14 @@ describe("IAM API client", () => {
     ).toEqual({ deleted: true })
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /tenants/tenant-groups/groups?offset=0&limit=200",
-      "GET /groups/group%2Fa",
-      "POST /tenants/tenant-groups/groups",
-      "PATCH /groups/group%2Fa",
-      "DELETE /groups/group%2Fa?version=7",
-      "GET /groups/group%2Fa/members?offset=0&limit=200",
-      "PUT /groups/group%2Fa/members/principal%2Fa",
-      "DELETE /groups/group%2Fa/members/principal%2Fa",
+      "GET /tenants/tenant-groups/principal-groups?offset=0&limit=200",
+      "GET /principal-groups/group%2Fa",
+      "POST /tenants/tenant-groups/principal-groups",
+      "PATCH /principal-groups/group%2Fa",
+      "DELETE /principal-groups/group%2Fa?version=7",
+      "GET /principal-groups/group%2Fa/members?offset=0&limit=200",
+      "PUT /principal-groups/group%2Fa/members/principal%2Fa",
+      "DELETE /principal-groups/group%2Fa/members/principal%2Fa",
     ])
     expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
       true
@@ -2530,14 +2530,14 @@ describe("IAM API client", () => {
           }
         else if (
           request.method === "GET" &&
-          url.pathname === "/tenants/tenant-entities/relationships"
+          url.pathname === "/tenants/tenant-entities/authorization-relationships"
         )
           data = url.searchParams.has("entity_id")
             ? [resourceRelationship]
             : [relationship]
         else if (
           request.method === "POST" &&
-          url.pathname === "/tenants/tenant-entities/relationships"
+          url.pathname === "/tenants/tenant-entities/authorization-relationships"
         )
           data = relationship
         else if (request.method === "DELETE")
@@ -2648,11 +2648,11 @@ describe("IAM API client", () => {
       "GET /entities/entity%2Fa/role-bindings?offset=0&limit=200",
       "PUT /entities/entity%2Fa/role-bindings/role%2Fa/principal%2Fa",
       "DELETE /entities/entity%2Fa/role-bindings/role%2Fa/principal%2Fa",
-      "GET /tenants/tenant-entities/relationships?resource_id=entity%2Fa&offset=0&limit=200",
-      "POST /tenants/tenant-entities/relationships",
-      "DELETE /tenants/tenant-entities/relationships?subject_type=principal&subject_id=principal%2Fa&relation=viewer&resource_type=store&resource_id=entity%2Fa",
-      "GET /tenants/tenant-entities/relationships?entity_id=entity%2Fa",
-      "DELETE /tenants/tenant-entities/relationships?entity_id=entity%2Fa&subject_type=principal&subject_id=principal%2Fa&relation=viewer&resource_type=store&resource_id=business%2Fstore%2Fa",
+      "GET /tenants/tenant-entities/authorization-relationships?resource_id=entity%2Fa&offset=0&limit=200",
+      "POST /tenants/tenant-entities/authorization-relationships",
+      "DELETE /tenants/tenant-entities/authorization-relationships?subject_type=principal&subject_id=principal%2Fa&relation=viewer&resource_type=store&resource_id=entity%2Fa",
+      "GET /tenants/tenant-entities/authorization-relationships?entity_id=entity%2Fa",
+      "DELETE /tenants/tenant-entities/authorization-relationships?entity_id=entity%2Fa&subject_type=principal&subject_id=principal%2Fa&relation=viewer&resource_type=store&resource_id=business%2Fstore%2Fa",
       "POST /tenants/tenant-entities/authorization-checks",
       "POST /tenants/tenant-entities/authorization-checks",
       "POST /tenants/tenant-entities/authorization-constraint-evaluations",

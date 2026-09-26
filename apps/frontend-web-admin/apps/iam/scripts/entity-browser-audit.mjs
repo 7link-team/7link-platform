@@ -214,7 +214,7 @@ async function cleanupArtifacts() {
     // returned when the entity is named in the filter, so ask for each one.
     const relationships = [];
     for (const query of ["", ...artifacts.map((item) => "?entity_id=" + encodeURIComponent(item.id))]) {
-      const listed = await fetch(base + "/relationships" + query, { credentials: "include" });
+      const listed = await fetch(base + "/authorization-relationships" + query, { credentials: "include" });
       if (listed.ok) relationships.push(...(await listed.json()).data);
     }
     for (const relationship of relationships) {
@@ -222,7 +222,7 @@ async function cleanupArtifacts() {
       const query = new URLSearchParams();
       for (const key of ["entity_id", "subject_type", "subject_id", "subject_relation", "relation", "resource_type", "resource_id"])
         if (relationship[key]) query.set(key, relationship[key]);
-      const removed = await fetch("/api/relationships?" + query, { method: "DELETE", credentials: "include", headers });
+      const removed = await fetch("/api/authorization-relationships?" + query, { method: "DELETE", credentials: "include", headers });
       if (!removed.ok && removed.status !== 404) throw new Error("relationship cleanup failed: " + removed.status);
     }
     const byID = new Map(all.map((item) => [item.id, item]));
@@ -484,7 +484,7 @@ const localizedWindowErrors = await evaluate(`
   const principal = (await members.json()).data.find((item) => item.status === "active")?.subject;
   const results = [];
   for (const locale of ["en-US", "zh-CN", "ms-MY"]) {
-    const response = await fetch(base + "/relationships", {
+    const response = await fetch(base + "/authorization-relationships", {
       method: "POST",
       credentials: "include",
       headers: { "X-Lang": locale, "Content-Type": "application/json" },
@@ -517,7 +517,7 @@ const expectedWindowStatuses = responses.filter(
   (response) =>
     response.status === 422 &&
     response.method === "POST" &&
-    response.url.endsWith("/api/relationships")
+    response.url.endsWith("/api/authorization-relationships")
 )
 if (expectedWindowStatuses.length !== 3)
   throw new Error(
@@ -531,7 +531,7 @@ const localizedConditionErrors = await evaluate(`
   const principal = (await members.json()).data.find((item) => item.status === "active")?.subject;
   const results = [];
   for (const locale of ["en-US", "zh-CN", "ms-MY"]) {
-    const response = await fetch(base + "/relationships", {
+    const response = await fetch(base + "/authorization-relationships", {
       method: "POST",
       credentials: "include",
       headers: { "X-Lang": locale, "Content-Type": "application/json" },
@@ -568,7 +568,7 @@ const expectedConditionStatuses = responses.filter(
   (response) =>
     response.status === 422 &&
     response.method === "POST" &&
-    response.url.endsWith("/api/relationships") &&
+    response.url.endsWith("/api/authorization-relationships") &&
     !expectedWindowStatuses.includes(response)
 )
 if (expectedConditionStatuses.length !== 3)

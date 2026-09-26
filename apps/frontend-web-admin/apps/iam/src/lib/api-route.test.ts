@@ -20,7 +20,7 @@ function contractErrors() {
   // @ts-expect-error query enum
   apiRoute("get", "/me/files", { query: { state: "deleted" } })
   // @ts-expect-error required query parameters
-  apiRoute("delete", "/tenants/{tenant_id}/relationships", {
+  apiRoute("delete", "/tenants/{tenant_id}/authorization-relationships", {
     path: { tenant_id: "1" },
   })
   // @ts-expect-error cursor routes cannot use offset pagination

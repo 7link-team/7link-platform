@@ -477,7 +477,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	authz.RegisterPlatform(registrar, a, huma.Operation{
 		OperationID: "iam-scope-model",
 		Method:      http.MethodGet,
-		Path:        "/scope-model",
+		Path:        "/authorization-scope-model",
 		Summary:     "List platform tenant merchant store scope model",
 		Tags:        []string{"access-control"},
 	}, authz.Guard{Resource: "tenant", Verb: "view"}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]ScopeNode], error) {

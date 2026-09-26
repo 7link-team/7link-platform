@@ -383,7 +383,7 @@ async function createAndRevokeToken(context, page, messages, label, method) {
     "Allowed tenant permission remains usable"
   )
   assert.equal(
-    (await bearer("/groups")).status(),
+    (await bearer("/principal-groups")).status(),
     401,
     "Missing token permission is denied"
   )

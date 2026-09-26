@@ -98,7 +98,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	})
 
 	createRequest := operation(
-		"governance-create-access-request", http.MethodPost, "/access-requests",
+		"governance-create-access-request", http.MethodPost, "/role-access-requests",
 		"Request time-limited membership in a tenant role", http.StatusNotFound, http.StatusConflict,
 		http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	)
@@ -126,7 +126,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	})
 
 	authz.RegisterPrincipalTenantMember(registrar, api, operation(
-		"governance-list-my-access-requests", http.MethodGet, "/principals/{principal_id}/access-requests",
+		"governance-list-my-access-requests", http.MethodGet, "/principals/{principal_id}/role-access-requests",
 		"List the current principal's tenant access requests", http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), func(ctx context.Context, in *tenantInput) (*respx.Body[[]AccessRequest], error) {
 		tenantID, err := parseGovernanceID(in.TenantID)
@@ -145,7 +145,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	})
 
 	authz.Register(registrar, api, operation(
-		"governance-list-access-requests", http.MethodGet, "/access-requests",
+		"governance-list-access-requests", http.MethodGet, "/role-access-requests",
 		"List tenant access requests for approval", http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), authz.Guard{Resource: "access_request", Verb: "view"}, func(ctx context.Context, in *listInput) (*respx.Body[[]AccessRequest], error) {
 		tenantID, err := parseGovernanceID(in.TenantID)
@@ -165,7 +165,7 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 
 func registerRequestDecisionHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	authz.RegisterOwned(registrar, api, operation(
-		"governance-set-access-request-decision", http.MethodPut, "/access-requests/{request_id}/decision",
+		"governance-set-access-request-decision", http.MethodPut, "/role-access-requests/{request_id}/decision",
 		"Set the approval decision for an access request", http.StatusNotFound, http.StatusConflict,
 		http.StatusGone, http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), "request_id", service.resolveAccessRequestOwner, authz.Guard{Resource: "access_request", Verb: "approve"}, func(ctx context.Context, in *decisionInput) (*respx.Body[AccessRequest], error) {
@@ -186,7 +186,7 @@ func registerRequestDecisionHTTP(api huma.API, service *Service, registrar *auth
 	})
 
 	authz.RegisterOwned(registrar, api, operation(
-		"governance-revoke-access-grant", http.MethodPut, "/access-requests/{request_id}/grant-revocation",
+		"governance-revoke-access-grant", http.MethodPut, "/role-access-requests/{request_id}/grant-revocation",
 		"Revoke an approved temporary role grant", http.StatusNotFound, http.StatusConflict, http.StatusGone,
 		http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), "request_id", service.resolveAccessRequestOwner, authz.Guard{Resource: "access_request", Verb: "approve"}, func(ctx context.Context, in *revokeInput) (*respx.Body[AccessRequest], error) {
@@ -202,7 +202,7 @@ func registerRequestDecisionHTTP(api huma.API, service *Service, registrar *auth
 	})
 
 	authz.RegisterOwnedTenantMember(registrar, api, operation(
-		"governance-withdraw-access-request", http.MethodPut, "/access-requests/{request_id}/withdrawal",
+		"governance-withdraw-access-request", http.MethodPut, "/role-access-requests/{request_id}/withdrawal",
 		"Withdraw a pending request or relinquish its approved access", http.StatusNotFound, http.StatusConflict,
 		http.StatusGone, http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), "request_id", service.resolveAccessRequestOwner, func(ctx context.Context, in *revokeInput) (*respx.Body[AccessRequest], error) {
@@ -220,7 +220,7 @@ func registerRequestDecisionHTTP(api huma.API, service *Service, registrar *auth
 
 func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 	authz.Register(registrar, api, operation(
-		"governance-list-access-reviews", http.MethodGet, "/access-reviews",
+		"governance-list-access-reviews", http.MethodGet, "/role-access-reviews",
 		"List tenant access review campaigns", http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), authz.Guard{Resource: "access_review", Verb: "view"}, func(ctx context.Context, in *listInput) (*respx.Body[[]AccessReview], error) {
 		tenantID, err := parseGovernanceID(in.TenantID)
@@ -235,7 +235,7 @@ func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registr
 	})
 
 	createReview := operation(
-		"governance-create-access-review", http.MethodPost, "/access-reviews",
+		"governance-create-access-review", http.MethodPost, "/role-access-reviews",
 		"Create a review of current tenant access grants", http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	)
 	createReview.DefaultStatus = http.StatusCreated
@@ -256,7 +256,7 @@ func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registr
 	})
 
 	authz.RegisterOwned(registrar, api, operation(
-		"governance-get-access-review", http.MethodGet, "/access-reviews/{review_id}",
+		"governance-get-access-review", http.MethodGet, "/role-access-reviews/{review_id}",
 		"Get an access review and its snapshotted grants", http.StatusNotFound, http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), "review_id", service.resolveAccessReviewOwner, authz.Guard{Resource: "access_review", Verb: "view"}, func(ctx context.Context, in *reviewInput) (*respx.Body[AccessReview], error) {
 		tenantID := authnext.TenantIDFromContext(ctx)
@@ -272,7 +272,7 @@ func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registr
 	})
 
 	authz.RegisterOwned(registrar, api, operation(
-		"governance-decide-access-review-item", http.MethodPut, "/access-reviews/{review_id}/items/{item_id}/decision",
+		"governance-decide-access-review-item", http.MethodPut, "/role-access-reviews/{review_id}/items/{item_id}/decision",
 		"Keep or revoke one snapshotted tenant access grant", http.StatusNotFound, http.StatusConflict, http.StatusGone,
 		http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), "review_id", service.resolveAccessReviewOwner, authz.Guard{Resource: "access_review", Verb: "decide"}, func(ctx context.Context, in *reviewItemInput) (*respx.Body[AccessReviewItem], error) {
@@ -292,7 +292,7 @@ func registerReviewHTTP(api huma.API, service *Service, registrar *authz.Registr
 	})
 
 	authz.RegisterOwned(registrar, api, operation(
-		"governance-update-access-review", http.MethodPatch, "/access-reviews/{review_id}",
+		"governance-update-access-review", http.MethodPatch, "/role-access-reviews/{review_id}",
 		"Complete or cancel an access review", http.StatusNotFound, http.StatusConflict,
 		http.StatusGone, http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), "review_id", service.resolveAccessReviewOwner, authz.Guard{Resource: "access_review", Verb: "manage"}, func(ctx context.Context, in *reviewUpdateInput) (*respx.Body[AccessReview], error) {

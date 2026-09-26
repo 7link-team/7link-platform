@@ -222,20 +222,20 @@ async function cleanup() {
       method: "DELETE",
     })
   }
-  for (const group of (await api("/groups")).filter((item) =>
+  for (const group of (await api("/principal-groups")).filter((item) =>
     item.name.startsWith("Acceptance Role Group ")
   ))
     await api(
-      `/groups/${encodeURIComponent(group.id)}?version=${group.version}`,
+      `/principal-groups/${encodeURIComponent(group.id)}?version=${group.version}`,
       {
         method: "DELETE",
       }
     )
-  for (const position of (await api("/positions")).filter((item) =>
+  for (const position of (await api("/job-positions")).filter((item) =>
     item.code.startsWith("acceptance.role-")
   ))
     await api(
-      `/positions/${encodeURIComponent(position.id)}?version=${position.version}`,
+      `/job-positions/${encodeURIComponent(position.id)}?version=${position.version}`,
       { method: "DELETE" }
     )
   for (const department of (await api("/departments")).filter((item) =>
@@ -404,7 +404,7 @@ const groupName = `Acceptance Role Group ${suffix}`
 const positionCode = `acceptance.role-${suffix}`
 const positionName = `Acceptance Role Position ${suffix}`
 const departmentName = `Acceptance Role Department ${suffix}`
-const group = await api("/groups", {
+const group = await api("/principal-groups", {
   method: "POST",
   body: JSON.stringify({
     name: groupName,
@@ -414,7 +414,7 @@ const group = await api("/groups", {
     sort_order: 10,
   }),
 })
-const position = await api("/positions", {
+const position = await api("/job-positions", {
   method: "POST",
   body: JSON.stringify({
     code: positionCode,
@@ -581,8 +581,8 @@ await waitFor(
 
 const reverseLayouts = []
 for (const [kind, item, path] of [
-  ["group", group, "/groups"],
-  ["position", position, "/positions"],
+  ["group", group, "/principal-groups"],
+  ["position", position, "/job-positions"],
 ]) {
   await navigate(path)
   await waitFor(`document.querySelector("h1")`)

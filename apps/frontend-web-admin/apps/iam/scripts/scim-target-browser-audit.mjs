@@ -114,11 +114,11 @@ try {
     name: "Restricted automation",
   })
   await local(`/roles/${restricted.id}/members/${first.id}`, "PUT", {})
-  const group = await local("/groups", "POST", {
+  const group = await local("/principal-groups", "POST", {
     name: "Outbound group",
     type: "static",
   })
-  await local(`/groups/${group.id}/members/${person.id}`, "PUT", {})
+  await local(`/principal-groups/${group.id}/members/${person.id}`, "PUT", {})
   const context = await browser.newContext({
     baseURL,
     viewport: { width: 1440, height: 1000 },

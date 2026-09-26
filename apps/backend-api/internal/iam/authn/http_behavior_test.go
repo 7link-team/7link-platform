@@ -492,9 +492,9 @@ func TestEmailVerificationHTTPFlow(t *testing.T) {
 	require.Equal(t, http.StatusOK, login.Code, login.Body.String())
 	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
 	assert.Contains(t, api.Get("/me", "Cookie: "+cookie).Body.String(), `"email_verified":false`)
-	assert.Equal(t, http.StatusUnauthorized, api.Post("/email-verification-requests", "Origin: https://app.example").Code)
-	assert.Equal(t, http.StatusForbidden, api.Post("/email-verification-requests", "Cookie: "+cookie, "Origin: https://evil.example").Code)
-	started := api.Post("/email-verification-requests", "Cookie: "+cookie, "Origin: https://app.example")
+	assert.Equal(t, http.StatusUnauthorized, api.Post("/email-verifications/requests", "Origin: https://app.example").Code)
+	assert.Equal(t, http.StatusForbidden, api.Post("/email-verifications/requests", "Cookie: "+cookie, "Origin: https://evil.example").Code)
+	started := api.Post("/email-verifications/requests", "Cookie: "+cookie, "Origin: https://app.example")
 	require.Equal(t, http.StatusAccepted, started.Code, started.Body.String())
 
 	var token string
@@ -511,9 +511,9 @@ func TestEmailVerificationHTTPFlow(t *testing.T) {
 
 	err = db.WithContext(t.Context()).Table("iam_principals").Where("id = ?", principalID).Updates(map[string]any{"email": "", "email_verified": false}).Error
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusConflict, api.Post("/email-verification-requests", "Cookie: "+cookie, "Origin: https://app.example").Code)
+	assert.Equal(t, http.StatusConflict, api.Post("/email-verifications/requests", "Cookie: "+cookie, "Origin: https://app.example").Code)
 
-	startOperation := api.OpenAPI().Paths["/email-verification-requests"].Post
+	startOperation := api.OpenAPI().Paths["/email-verifications/requests"].Post
 	completeOperation := api.OpenAPI().Paths["/email-verifications"].Post
 	require.NotNil(t, startOperation)
 	require.NotNil(t, completeOperation)
@@ -956,7 +956,7 @@ func TestAuthenticationHTTPUnavailableAndDisabledWeb(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, api.Patch("/principals/"+principalID+"/password", authorization, map[string]any{
 		"current_password": "correct horse battery staple", "new_password": "another correct horse battery staple",
 	}).Code)
-	assert.Equal(t, http.StatusServiceUnavailable, api.Post("/email-verification-requests", authorization).Code)
+	assert.Equal(t, http.StatusServiceUnavailable, api.Post("/email-verifications/requests", authorization).Code)
 	assert.Equal(t, http.StatusInternalServerError, api.Post("/principals/"+principalID+"/mfa/totp-enrollments", authorization,
 		map[string]any{"current_password": "correct horse battery staple"}).Code)
 	assert.Equal(t, http.StatusInternalServerError, api.Post("/sessions/current/step-up-challenges", authorization).Code)
@@ -987,7 +987,7 @@ func TestAuthenticationHTTPHandlersEnforceCSRFDefenseInDepth(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, api.Patch("/principals/"+principalID+"/password", cookie, evilOrigin, map[string]any{
 		"current_password": "correct horse battery staple", "new_password": "another correct horse battery staple",
 	}).Code)
-	assert.Equal(t, http.StatusForbidden, api.Post("/email-verification-requests", cookie, evilOrigin).Code)
+	assert.Equal(t, http.StatusForbidden, api.Post("/email-verifications/requests", cookie, evilOrigin).Code)
 	assert.Equal(t, http.StatusForbidden, api.Post("/principals/"+principalID+"/mfa/totp-enrollments", cookie, evilOrigin,
 		map[string]any{"current_password": "correct horse battery staple"}).Code)
 	assert.Equal(t, http.StatusForbidden, api.Post("/principals/"+principalID+"/mfa/totp", cookie, evilOrigin,

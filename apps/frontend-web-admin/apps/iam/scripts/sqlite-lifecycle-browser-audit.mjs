@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto"
 import { createWriteStream, readFileSync } from "node:fs"
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises"
 import { createServer } from "node:net"
+import { createServer as createHTTPServer } from "node:http"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { chromium } from "playwright"
@@ -18,6 +19,21 @@ const directory = await mkdtemp(join(artifactRoot, "sqlite-lifecycle-"))
 const results = []
 const children = []
 let browser
+const notifications = []
+const notificationServer = createHTTPServer(async (request, response) => {
+  try {
+    let body = ""
+    for await (const chunk of request) body += chunk
+    notifications.push(JSON.parse(body))
+    response.writeHead(204).end()
+  } catch {
+    response.writeHead(400).end()
+  }
+})
+await new Promise((resolve) =>
+  notificationServer.listen(0, "127.0.0.1", resolve)
+)
+const notificationURL = `http://127.0.0.1:${notificationServer.address().port}`
 
 async function port() {
   const server = createServer()
@@ -341,6 +357,11 @@ try {
           issuer: apiURL,
           signing_key_file: join(directory, "signing-key"),
           mfa: { encryption_key_file: join(directory, "mfa-key") },
+          notification: { url: notificationURL, poll_interval: "100ms" },
+          email_verification: {
+            enabled: true,
+            verify_url: webURL + "/verify-email",
+          },
           web: {
             enabled: true,
             cookie_name: "lifecycle_session",
@@ -505,6 +526,48 @@ try {
   const alice = await createAccount(admin.page, "Alice", operations)
   const bob = await createAccount(admin.page, "Bob", finance)
   const charlie = await createAccount(admin.page, "Charlie", operationsChild)
+  const emailAccount = await login(alice.login_name, accountPassword)
+  assert.equal((await call(emailAccount.context, "/me")).email_verified, false)
+  assert.equal(
+    (await client(emailAccount.page, "startEmailVerification")).accepted,
+    true
+  )
+  await eventually(
+    () =>
+      notifications.some(
+        (n) => n.type === "email_verification" && n.recipient === alice.email
+      ),
+    "real email verification notification"
+  )
+  const verification = notifications.find(
+    (n) => n.type === "email_verification" && n.recipient === alice.email
+  )
+  const verificationToken = new URL(
+    verification.verification_url
+  ).searchParams.get("token")
+  assert(verificationToken)
+  assert.equal(
+    (
+      await client(
+        emailAccount.page,
+        "completeEmailVerification",
+        verificationToken
+      )
+    ).verified,
+    true
+  )
+  assert.equal((await call(emailAccount.context, "/me")).email_verified, true)
+  await call(
+    emailAccount.context,
+    "/email-verifications",
+    "POST",
+    { token: verificationToken },
+    { tenant: false, status: 400 }
+  )
+  await emailAccount.context.close()
+  pass(
+    "email verification request, real outbox webhook delivery, consumption and replay rejection"
+  )
   const viewer = await createRole(
     admin.page,
     "Account viewers",
@@ -1248,6 +1311,139 @@ try {
     "desktop security UI logout-all revokes mobile Cookie, clears browser Cookie; current logout is idempotent"
   )
 
+  const issued = await client(admin.page, "createInvitation", {
+    email: "invitee@example.test",
+  })
+  const rotated = await client(
+    admin.page,
+    "resendInvitation",
+    issued.invitation.id
+  )
+  assert.notEqual(rotated.token, issued.token)
+  const invitee = await browser.newContext({ baseURL: webURL })
+  const inviteePage = await invitee.newPage()
+  await inviteePage.goto("/login")
+  const acceptBody = {
+    token: issued.token,
+    login_name: "invitee@example.test",
+    password: accountPassword,
+    display_name: "Invitee",
+  }
+  await call(
+    invitee,
+    "/membership-invitations/acceptances",
+    "POST",
+    acceptBody,
+    { tenant: false, status: 400 }
+  )
+  const accepted = await client(inviteePage, "acceptInvitation", {
+    ...acceptBody,
+    token: rotated.token,
+  })
+  assert.equal(accepted.tenant_id, tenant.id)
+  assert.equal(accepted.invitation_id, issued.invitation.id)
+  assert(
+    (await client(admin.page, "members")).some(
+      (m) => m.subject === accepted.principal_id
+    )
+  )
+  const accessRole = await createRole(admin.page, "Requested access", [
+    "user_view",
+  ])
+  const requester = await login(acceptBody.login_name, accountPassword)
+  const requested = await call(
+    requester.context,
+    "/role-access-requests",
+    "POST",
+    {
+      role_id: accessRole.id,
+      reason: "Verify renamed role access workflow",
+      access_expires_at: new Date(Date.now() + 3600000).toISOString(),
+    }
+  )
+  assert.equal(
+    (await client(admin.page, "approveAccessRequest", requested.id)).status,
+    "approved"
+  )
+  assert(
+    (
+      await call(requester.context, "/principals/{principal_id}/permissions")
+    ).includes("user_view")
+  )
+  const review = await client(admin.page, "createAccessReview", {
+    name: "Renamed role access review",
+    due_at: new Date(Date.now() + 86400000).toISOString(),
+  })
+  const reviewDetails = await client(admin.page, "accessReview", review.id)
+  const reviewItem = reviewDetails.items.find(
+    (item) =>
+      item.principal_id === accepted.principal_id &&
+      item.role_id === accessRole.id
+  )
+  assert(reviewItem)
+  await client(
+    admin.page,
+    "decideAccessReviewItem",
+    review.id,
+    reviewItem.id,
+    "keep",
+    "Verified"
+  )
+  await client(admin.page, "cancelAccessReview", review.id)
+  await client(
+    admin.page,
+    "revokeAccessRequest",
+    requested.id,
+    "Acceptance complete"
+  )
+  assert(
+    !(
+      await call(requester.context, "/principals/{principal_id}/permissions")
+    ).includes("user_view")
+  )
+  await requester.context.close()
+  pass(
+    "role access request, approval, review snapshot/decision and grant revocation"
+  )
+  const revoke = await client(admin.page, "createInvitation", {
+    email: "revoked@example.test",
+  })
+  await client(admin.page, "revokeInvitation", revoke.invitation.id)
+  await call(
+    invitee,
+    "/membership-invitations/acceptances",
+    "POST",
+    { ...acceptBody, token: revoke.token, login_name: "revoked@example.test" },
+    { tenant: false, status: 400 }
+  )
+  for (const [method, path] of [
+    ["GET", "/groups/1"],
+    ["GET", "/positions/1"],
+    ["DELETE", "/invitations/1"],
+    ["POST", "/invitation-acceptances"],
+    ["POST", "/email-verification-requests"],
+    ["GET", "/access-reviews/1"],
+    ["PUT", "/access-requests/1/decision"],
+    ["GET", "/scope-model"],
+    ["GET", `/tenants/${tenant.id}/relationships`],
+  ]) {
+    assert(!published(path), path)
+    assert.equal(
+      (
+        await admin.context.request.fetch(`/api${path}`, {
+          method,
+          headers: { Origin: webURL },
+        })
+      ).status(),
+      404,
+      path
+    )
+  }
+  await invitee.close()
+  pass(
+    "membership invitation rotation, anonymous acceptance, revoked credentials and retired resource addresses"
+  )
+
   const audit = await call(admin.context, "/audit/events?limit=200")
   for (const event of [
     "tenant_bootstrapped",
@@ -1267,6 +1463,7 @@ try {
   throw error
 } finally {
   await browser?.close()
+  await new Promise((resolve) => notificationServer.close(resolve))
   for (const child of children.reverse()) {
     if (child.exitCode !== null || child.signalCode !== null) continue
     terminate(child, false)

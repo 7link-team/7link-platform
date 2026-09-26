@@ -75,6 +75,29 @@ try {
   const response = await fetch(runtime.apiURL + "/openapi.json")
   assert.equal(response.status, 200)
   const spec = await response.json()
+  const published = JSON.parse(
+    readFileSync(
+      new URL("../../../../backend-api/docs/openapi.json", import.meta.url),
+      "utf8"
+    )
+  )
+  const liveOperations = new Map(
+    Object.entries(spec.paths).flatMap(([path, item]) =>
+      Object.entries(item)
+        .filter(([, operation]) => operation.operationId)
+        .map(([method, operation]) => [operation.operationId, { method, path }])
+    )
+  )
+  for (const [path, item] of Object.entries(published.paths)) {
+    for (const [method, operation] of Object.entries(item)) {
+      if (!operation.operationId) continue
+      assert.deepEqual(
+        liveOperations.get(operation.operationId),
+        { method, path },
+        `running API must match the published contract: ${operation.operationId}`
+      )
+    }
+  }
   let count = 0
   for (const [path, item] of Object.entries(spec.paths)) {
     assert(!path.includes("/me/"), `retired implicit principal path: ${path}`)
@@ -94,8 +117,44 @@ try {
     }
   }
   assert.equal((await fetch(runtime.apiURL + "/docs")).status, 200)
+  const docsPage = await browser.newPage()
+  await docsPage.goto(runtime.apiURL + "/docs/swagger/")
+  await docsPage.locator(".opblock-tag").first().waitFor()
+  const renderedGroups = await docsPage
+    .locator(".opblock-tag-section")
+    .evaluateAll((sections) =>
+      sections.map((section) => ({
+        tag: section.querySelector(".opblock-tag")?.getAttribute("data-tag"),
+        paths: Array.from(
+          section.querySelectorAll(
+            ".opblock-summary-path, .opblock-summary-path__deprecated"
+          ),
+          (node) => node.textContent.trim()
+        ),
+      }))
+    )
+  const expectedGroups = [
+    ...new Set(Object.keys(spec.paths).map((path) => path.split("/")[1])),
+  ].sort()
+  assert.deepEqual(
+    renderedGroups.map((group) => group.tag).sort(),
+    expectedGroups
+  )
+  let renderedCount = 0
+  for (const group of renderedGroups) {
+    for (const path of group.paths) {
+      assert.equal(
+        path.split("/")[1],
+        group.tag,
+        `Swagger UI ${group.tag}: ${path}`
+      )
+      renderedCount++
+    }
+  }
+  assert.equal(renderedCount, count)
+  await docsPage.close()
   console.log(
-    `PASS Swagger: ${count} operations grouped by path prefix; demo selector ${runtime.demoAccounts ? "enabled" : "disabled"}`
+    `PASS Swagger schema and rendered UI: ${count} operations grouped by path prefix; demo selector ${runtime.demoAccounts ? "enabled" : "disabled"}`
   )
 } finally {
   await browser.close()

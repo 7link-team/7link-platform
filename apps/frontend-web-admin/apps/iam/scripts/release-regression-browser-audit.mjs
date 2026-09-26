@@ -1269,7 +1269,14 @@ try {
     ].map(([name, empty]) => ({
       name,
       path: `/tenants/t1/${name}`,
-      api: `/tenants/t1/${name}`,
+      api: `/tenants/t1/${
+        {
+          positions: "job-positions",
+          groups: "principal-groups",
+          invitations: "membership-invitations",
+          "access-reviews": "role-access-reviews",
+        }[name] ?? name
+      }`,
       empty,
       emptyData: [],
       data: [

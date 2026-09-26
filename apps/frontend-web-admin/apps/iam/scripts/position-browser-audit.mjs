@@ -8,7 +8,8 @@ const tenantID = process.env.IAM_BROWSER_TENANT
 const directoryKind = process.env.IAM_DIRECTORY_KIND ?? "position"
 const directory = {
   position: {
-    collectionPath: "/positions",
+    pagePath: "/positions",
+    collectionPath: "/job-positions",
     formID: "position-form",
     memberFormID: "position-member-form",
     memberInputPrefix: "position-member",
@@ -16,7 +17,8 @@ const directory = {
     screenshotName: "positions",
   },
   group: {
-    collectionPath: "/groups",
+    pagePath: "/groups",
+    collectionPath: "/principal-groups",
     formID: "group-form",
     memberFormID: "group-member-form",
     memberInputPrefix: "group-member",
@@ -330,7 +332,7 @@ const updatedName =
     ? `Acceptance Principal Platform ${suffix}`
     : `Acceptance Security Group ${suffix}`
 
-await navigate(directory.collectionPath)
+await navigate(directory.pagePath)
 await waitFor(
   `location.pathname === "/login" && document.querySelector("#login-name")`
 )
@@ -342,7 +344,7 @@ await evaluate(`
   form.requestSubmit();
 `)
 await waitFor(
-  `location.pathname === ${JSON.stringify(directory.collectionPath)}`,
+  `location.pathname === ${JSON.stringify(directory.pagePath)}`,
   20000
 )
 await waitFor(`document.querySelector("h1") && document.querySelector("tbody")`)

@@ -445,7 +445,7 @@ func (f *iamTenantFixture) issueToken(t *testing.T, module *iamauthn.Module, pri
 func (f *iamTenantFixture) acceptTenantBInvitation(t *testing.T) organization.Invitation {
 	t.Helper()
 	before := f.auditCounts(t)
-	response := f.request(t, http.MethodPost, "/invitations", iamTenantB, f.tokenB, map[string]any{
+	response := f.request(t, http.MethodPost, "/membership-invitations", iamTenantB, f.tokenB, map[string]any{
 		"email": "invited-b@example.test", "expires_in_hours": 24,
 	}, nil)
 	requireStatus(t, http.StatusCreated, response)
@@ -458,7 +458,7 @@ func (f *iamTenantFixture) acceptTenantBInvitation(t *testing.T) organization.In
 	assert.Equal(t, before[1]+1, afterCreate[1])
 
 	beforeAccept := afterCreate
-	response = f.request(t, http.MethodPost, "/invitation-acceptances", 0, "", map[string]any{
+	response = f.request(t, http.MethodPost, "/membership-invitations/acceptances", 0, "", map[string]any{
 		"token": issued.Token, "login_name": "invited-b", "password": "correct horse battery staple",
 		"display_name": "Invited B",
 	}, nil)
@@ -546,13 +546,13 @@ func (f *iamTenantFixture) approveTenantBAccessRequest(t *testing.T) (core.APIRo
 	requireStatus(t, http.StatusCreated, response)
 	entity := decodeEnvelope[core.APIEntity](t, response)
 
-	response = f.request(t, http.MethodPost, "/access-requests", iamTenantB, f.requester, map[string]any{
+	response = f.request(t, http.MethodPost, "/role-access-requests", iamTenantB, f.requester, map[string]any{
 		"role_id": role.ID, "reason": "integration tenant isolation", "access_expires_at": time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano),
 	}, nil)
 	requireStatus(t, http.StatusCreated, response)
 	request := decodeEnvelope[governance.AccessRequest](t, response)
 
-	response = f.request(t, http.MethodPut, "/access-requests/"+request.ID.String()+"/decision", 0, f.tokenB, map[string]any{"decision": "approved", "note": "approved"}, nil)
+	response = f.request(t, http.MethodPut, "/role-access-requests/"+request.ID.String()+"/decision", 0, f.tokenB, map[string]any{"decision": "approved", "note": "approved"}, nil)
 	requireStatus(t, http.StatusOK, response)
 	approved := decodeEnvelope[governance.AccessRequest](t, response)
 	require.Equal(t, governance.StatusApproved, approved.Status)
@@ -584,7 +584,7 @@ func (f *iamTenantFixture) assertSCIMCannotCrossTenants(t *testing.T, user provi
 func (f *iamTenantFixture) assertGovernanceRevokeCannotCrossTenants(t *testing.T, request governance.AccessRequest) {
 	t.Helper()
 	f.rejectWithoutAudit(t, http.StatusNotFound, func() iamHTTPResponse {
-		return f.request(t, http.MethodPut, "/access-requests/"+request.ID.String()+"/grant-revocation", 0, f.tokenA, map[string]any{
+		return f.request(t, http.MethodPut, "/role-access-requests/"+request.ID.String()+"/grant-revocation", 0, f.tokenA, map[string]any{
 			"reason": "cross-tenant attempt",
 		}, nil)
 	})
