@@ -4341,3 +4341,29 @@ provisioning 3、governance 3、federation 2、oauth 1、audit 1。
 - Next action: commit scoped deliverables and push IAM under the user's standing
   instruction to submit/push all work, then verify remote HEAD and clean worktree.
   No further implementation is required for D78; route migration remains separate.
+
+### API Migration Proposal Review - 2026-09-25
+
+- Phase: ACCEPTANCE. User explicitly requested one proposal review; runtime migration
+  is not authorized by this review. Existing D74/D76/D77 remain design decisions.
+- Baseline: 529e2cb. D78 was pushed and remote HEAD verified; worktree was clean.
+- Reviewed target manifest, prior design/review, live generated OpenAPI, IAM/file
+  HTTP/service/model/SQL, frontend callers and targeted existing tests.
+- Inventory PASS: 206 paths, 295 operations, 295 mapping rows; no missing,
+  obsolete or duplicate operations. Status counts match the manifest.
+- Findings: missing authorization/field-context matrix, lost atomic onboarding,
+  missing Token permission discovery replacement, missing Session representation,
+  underspecified authentication transactions, uncounted envelope/concurrency
+  changes, file-operation context invariants, overstated tuple ambiguity and
+  incomplete ID migration, stale personal-scope pending item, conflicting norms.
+- Report: apps/backend-api/docs/api-migration-review-2026-09-25.md.
+- Recommendation: do not approve wholesale execution. Preserve confirmed semantic
+  directions; do not independently migrate pure spelling or bundle auth/response
+  rewrites. Findings are review results, not automatic future implementation tasks.
+- PASS: focused files Contract/AuthorizedBasicRoutes, authn
+  SessionAndTokenProfileEnforcement and core relationship LifecycleIsolation/
+  UsesOwningEntityAndExactTenantKey. Mapping inventory and diff whitespace PASS.
+- Scoped review complete: report contains ten source-grounded findings, explicit
+  benefits/costs and implementation gates. No runtime, schema or data changed.
+- Next action: deliver the report and findings. Proposed revisions and migration
+  are not automatic next tasks; existing confirmed design rules remain in force.
