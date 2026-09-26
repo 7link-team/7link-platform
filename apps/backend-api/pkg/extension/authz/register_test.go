@@ -610,6 +610,55 @@ func TestAuthenticationOnlyRegistrarUsesVerifierContract(t *testing.T) {
 	assert.Equal(t, "session", api.OpenAPI().Components.SecuritySchemes[authz.SessionScheme].Name)
 }
 
+func TestExplicitPrincipalMountChecksAuthenticatedOwnerBeforeReadOrWrite(t *testing.T) {
+	_, api := humatest.New(t)
+	verifier := validVerifier()
+	registrar := authz.NewAuthenticationOnlyRegistrar(verifier)
+	called := 0
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		authz.RegisterPrincipalAuthenticated(registrar, api, huma.Operation{
+			OperationID: "self-" + method, Method: method, Path: "/principals/{principal_id}/profile",
+		}, func(ctx context.Context, _ *struct{}) (*routeOutput, error) {
+			claims, ok := authn.FromContext(ctx)
+			require.True(t, ok)
+			require.Equal(t, guid.ID(31), claims.PrincipalID)
+			called++
+			return &routeOutput{Body: "ok"}, nil
+		})
+		for _, item := range []struct {
+			id     string
+			status int
+		}{
+			{"31", 200}, {"32", 404}, {"0", 422}, {"031", 422}, {"bad", 422}, {"9999999999999999999", 422},
+		} {
+			response := api.Do(method, "/principals/"+item.id+"/profile", "Cookie: session=value")
+			require.Equal(t, item.status, response.Code, response.Body.String())
+		}
+		verifier.err = authn.ErrInvalidToken
+		require.Equal(t, 401, api.Do(method, "/principals/31/profile").Code)
+		verifier.err = nil
+	}
+	require.Equal(t, 2, called, "foreign and malformed selectors never reach the handler")
+	assertSelectorSchema(t, api.OpenAPI().Paths["/principals/{principal_id}/profile"].Get, "principal_id", "path")
+}
+
+func TestPrincipalReaderWithoutSelfDeclarationRetainsItsAuthorizationBoundary(t *testing.T) {
+	_, api := humatest.New(t)
+	registrar := authz.NewAuthenticationOnlyRegistrar(validVerifier())
+	type input struct {
+		ID string `path:"principal_id"`
+	}
+	authz.RegisterAuthenticated(registrar, api, huma.Operation{
+		OperationID: "authorized-reader", Method: http.MethodGet, Path: "/principals/{principal_id}/avatar/content",
+	}, func(ctx context.Context, in *input) (*routeOutput, error) {
+		claims, _ := authn.FromContext(ctx)
+		require.Equal(t, guid.ID(31), claims.PrincipalID)
+		require.Equal(t, "32", in.ID)
+		return &routeOutput{Body: "ok"}, nil
+	})
+	require.Equal(t, 200, api.Get("/principals/32/avatar/content", "Cookie: session=value").Code)
+}
+
 func TestEntityAndPlatformAuthorizationMiddleware(t *testing.T) {
 	t.Run("entity", func(t *testing.T) {
 		_, api := humatest.New(t)
@@ -665,7 +714,7 @@ func TestEntityOrAuthenticatedAuthorizationKeepsContextsDistinct(t *testing.T) {
 		return &routeOutput{Body: "ok"}, nil
 	})
 
-	require.Equal(t, http.StatusOK, api.Get("/me/contextual-files").Code)
+	require.Equal(t, http.StatusOK, api.Get("/principals/"+"31"+"/contextual-files").Code)
 	require.Equal(t, guid.ID(31), seen[0].PrincipalID)
 	require.Zero(t, seen[0].TenantID)
 	require.Zero(t, seen[0].EntityID)
@@ -1007,7 +1056,7 @@ func TestTenantEntityOrAuthenticatedPublishesThreeDistinctContexts(t *testing.T)
 		return &routeOutput{Body: "ok"}, nil
 	})
 
-	require.Equal(t, http.StatusOK, api.Get("/me/files").Code)
+	require.Equal(t, http.StatusOK, api.Get("/principals/"+"31"+"/files").Code)
 	assert.Zero(t, seen[0].TenantID)
 	assert.Zero(t, seen[0].EntityID)
 	assert.Empty(t, checker.tenantCalls, "the personal context authorizes on authentication alone")
@@ -1023,7 +1072,7 @@ func TestTenantEntityOrAuthenticatedPublishesThreeDistinctContexts(t *testing.T)
 	assert.Equal(t, []entityPermissionCall{{tenantID: 11, entityID: 21, permission: "store_view", subject: 31}}, checker.entityCalls)
 	assert.Len(t, checker.tenantCalls, 1, "the entity context authorizes against the entity, not the tenant")
 
-	personal := api.OpenAPI().Paths["/me/files"].Get
+	personal := api.OpenAPI().Paths["/principals/{principal_id}/files"].Get
 	tenant := api.OpenAPI().Paths["/tenants/{tenant_id}/files"].Get
 	entity := api.OpenAPI().Paths["/tenants/{tenant_id}/entities/{entity_id}/files"].Get
 	assert.Equal(t, "files-self", personal.OperationID)

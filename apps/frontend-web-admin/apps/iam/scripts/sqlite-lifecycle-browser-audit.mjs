@@ -138,6 +138,11 @@ function published(candidate) {
 }
 
 async function call(context, path, method = "GET", body, options = {}) {
+  if (path.includes("{principal_id}")) {
+    const identity = await context.request.get("/api/me")
+    const subject = identity.ok() ? (await identity.json()).data.subject : "1"
+    path = path.replace("{principal_id}", subject)
+  }
   const tenantID = options.tenant ?? tenant?.id
   let requestPath = path
   if (options.entity) {
@@ -424,10 +429,16 @@ try {
     headless: true,
   })
   const anonymous = await browser.newContext({ baseURL: webURL })
-  await call(anonymous, "/me/permissions", "GET", undefined, {
-    tenant: false,
-    status: 401,
-  })
+  await call(
+    anonymous,
+    "/principals/{principal_id}/permissions",
+    "GET",
+    undefined,
+    {
+      tenant: false,
+      status: 401,
+    }
+  )
   await anonymous.close()
   const admin = await login(adminLogin, adminPassword)
   assert.deepEqual(
@@ -438,7 +449,7 @@ try {
   )
   const platformCodes = await call(
     admin.context,
-    "/me/permissions",
+    "/principals/{principal_id}/permissions",
     "GET",
     undefined,
     { tenant: false }
@@ -553,7 +564,9 @@ try {
   const scopedSession = await login(charlie.login_name, accountPassword)
   const menuPaths = (menus) =>
     menus.flatMap((menu) => [menu.path, ...menuPaths(menu.children ?? [])])
-  const aliceMenus = menuPaths(await call(aliceSession.context, "/me/menus"))
+  const aliceMenus = menuPaths(
+    await call(aliceSession.context, "/principals/{principal_id}/menus")
+  )
   assert(aliceMenus.includes("/users"))
   assert(!aliceMenus.includes("/roles"))
   await aliceSession.page.goto(tenantPage("/users"))
@@ -671,9 +684,12 @@ try {
     status: 403,
   })
   assert(
-    !(await call(scopedSession.context, "/me/permissions")).includes(
-      "todo_view"
-    ),
+    !(
+      await call(
+        scopedSession.context,
+        "/principals/{principal_id}/permissions"
+      )
+    ).includes("todo_view"),
     "entity grants must not become tenant-wide"
   )
   pass(
@@ -708,7 +724,12 @@ try {
     )
   }
   assert(
-    (await call(scopedSession.context, "/me/permissions")).includes("user_view")
+    (
+      await call(
+        scopedSession.context,
+        "/principals/{principal_id}/permissions"
+      )
+    ).includes("user_view")
   )
   await client(
     admin.page,
@@ -718,9 +739,12 @@ try {
     group.id
   )
   assert(
-    (await call(scopedSession.context, "/me/permissions")).includes(
-      "user_view"
-    ),
+    (
+      await call(
+        scopedSession.context,
+        "/principals/{principal_id}/permissions"
+      )
+    ).includes("user_view"),
     "remaining position retains authority"
   )
   await client(
@@ -731,9 +755,12 @@ try {
     position.id
   )
   assert(
-    !(await call(scopedSession.context, "/me/permissions")).includes(
-      "user_view"
-    )
+    !(
+      await call(
+        scopedSession.context,
+        "/principals/{principal_id}/permissions"
+      )
+    ).includes("user_view")
   )
   const dynamic = await client(admin.page, "createGroup", {
     name: "Operations viewers",
@@ -761,22 +788,35 @@ try {
     dynamic.id
   )
   assert(
-    (await call(scopedSession.context, "/me/permissions")).includes("user_view")
+    (
+      await call(
+        scopedSession.context,
+        "/principals/{principal_id}/permissions"
+      )
+    ).includes("user_view")
   )
   await client(admin.page, "updateMember", charlie.id, {
     department_id: finance.id,
   })
   assert(
-    !(await call(scopedSession.context, "/me/permissions")).includes(
-      "user_view"
-    ),
+    !(
+      await call(
+        scopedSession.context,
+        "/principals/{principal_id}/permissions"
+      )
+    ).includes("user_view"),
     "department move removes dynamic group authority"
   )
   await client(admin.page, "updateMember", charlie.id, {
     department_id: operationsChild.id,
   })
   assert(
-    (await call(scopedSession.context, "/me/permissions")).includes("user_view")
+    (
+      await call(
+        scopedSession.context,
+        "/principals/{principal_id}/permissions"
+      )
+    ).includes("user_view")
   )
   await client(
     admin.page,
@@ -819,13 +859,16 @@ try {
       icon: "",
     })
     assert(
-      !(await call(aliceSession.context, "/me/menus")).some(
-        (menu) => menu.id === unsafe.id
-      ),
+      !(
+        await call(aliceSession.context, "/principals/{principal_id}/menus")
+      ).some((menu) => menu.id === unsafe.id),
       "custom configuration cannot weaken built-in page permissions"
     )
   }
-  const tree = await call(aliceSession.context, "/me/menus")
+  const tree = await call(
+    aliceSession.context,
+    "/principals/{principal_id}/menus"
+  )
   const directoryNode = tree.find((menu) => menu.id === parent.id)
   assert(directoryNode)
   assert(!directoryNode.path)
@@ -848,13 +891,16 @@ try {
     status: "disabled",
   })
   assert(
-    !(await call(aliceSession.context, "/me/menus")).some(
-      (menu) => menu.id === parent.id
-    ),
+    !(
+      await call(aliceSession.context, "/principals/{principal_id}/menus")
+    ).some((menu) => menu.id === parent.id),
     "disabled last child removes inaccessible parent"
   )
   await client(admin.page, "updateMenu", custom.id, { status: "active" })
-  const customizedTree = await call(aliceSession.context, "/me/menus")
+  const customizedTree = await call(
+    aliceSession.context,
+    "/principals/{principal_id}/menus"
+  )
   assert.equal(
     customizedTree.find((menu) => menu.id === parent.id).children[0].label,
     "Customized business accounts"
@@ -898,7 +944,7 @@ try {
     "live grant/revoke updates another signed-in browser without reload; scoped revocation immediately denies business API"
   )
 
-  await aliceSession.page.route("**/me/permissions", (route) =>
+  await aliceSession.page.route("**/principals/*/permissions", (route) =>
     route.fulfill({
       status: 503,
       contentType: "application/json",
@@ -917,7 +963,7 @@ try {
       .count(),
     0
   )
-  await aliceSession.page.unroute("**/me/permissions")
+  await aliceSession.page.unroute("**/principals/*/permissions")
   await aliceSession.page
     .getByRole("button", { name: "Retry now", exact: true })
     .click()
@@ -948,10 +994,16 @@ try {
     },
     { tenant: false }
   )
-  await call(aliceSession.context, "/me/menus", "GET", undefined, {
-    tenant: otherTenant.id,
-    status: 403,
-  })
+  await call(
+    aliceSession.context,
+    "/principals/{principal_id}/menus",
+    "GET",
+    undefined,
+    {
+      tenant: otherTenant.id,
+      status: 403,
+    }
+  )
   // Business rows hang off an entity, and the entity now carries its own
   // tenant, so naming another tenant beside one of this tenant's entities no
   // longer describes a cross-tenant read -- it just reads East Branch, which
@@ -1080,6 +1132,74 @@ try {
   )
 
   const accountRoot = await client(devices.page, "createAccountFileRoot")
+  const ownSubject = (await call(devices.context, "/me")).subject
+  const foreignSubject = (await call(admin.context, "/me")).subject
+  for (const suffix of [
+    "files",
+    "sessions",
+    "identity-links",
+    "avatar",
+    "closure-request",
+    "personal-tokens",
+  ]) {
+    await call(
+      devices.context,
+      `/principals/${foreignSubject}/${suffix}`,
+      "GET",
+      undefined,
+      { tenant: false, status: 404 }
+    )
+  }
+  for (const [suffix, method, body] of [
+    ["avatar", "PUT", { style: "robot" }],
+    ["sessions", "DELETE", undefined],
+    ["mfa/totp-enrollments", "POST", { current_password: accountPassword }],
+  ]) {
+    await call(
+      devices.context,
+      `/principals/${foreignSubject}/${suffix}`,
+      method,
+      body,
+      { tenant: false, status: 404 }
+    )
+  }
+  for (const id of ["0", "01", "bad", "9999999999999999999"]) {
+    await call(devices.context, `/principals/${id}/files`, "GET", undefined, {
+      tenant: false,
+      status: 422,
+    })
+  }
+  for (const path of [
+    "/me/files",
+    "/me/file-operations",
+    "/me/avatar",
+    "/me/identity-links",
+    `/tenants/${tenant.id}/me/menus`,
+  ]) {
+    assert(!published(path))
+    assert.equal(
+      (await devices.context.request.get(`/api${path}`)).status(),
+      404,
+      path
+    )
+  }
+  const avatar = await client(devices.page, "setMyAvatar", { style: "robot" })
+  assert.equal(avatar.url, `/api/principals/${ownSubject}/avatar/content`)
+  const settings = await call(
+    devices.context,
+    `/principals/${ownSubject}/avatar`,
+    "GET",
+    undefined,
+    { tenant: false }
+  )
+  assert.equal(settings.url, avatar.url)
+  const image = await devices.context.request.get(avatar.url)
+  assert.equal(image.status(), 200)
+  assert.match(image.headers()["content-type"], /image\/png/)
+  assert((await image.body()).length > 0)
+  pass(
+    "explicit principal read/write isolation, malformed selectors, retired addresses and separate avatar content"
+  )
   assert.equal(accountRoot.scope, "account")
   assert(
     (await client(devices.page, "files", null)).items.some(
@@ -1087,7 +1207,7 @@ try {
     )
   )
   const invalidRoot = await devices.context.request.post(
-    "/api/me/files",
+    `/api/principals/${(await call(devices.context, "/me")).subject}/files`,
     {
       headers: { Origin: webURL },
       multipart: { kind: "directory", scope: "personal" },

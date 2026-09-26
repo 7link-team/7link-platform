@@ -420,7 +420,7 @@ try {
             data: [{ id: "80", name: "Fixture entity", status: "active" }],
           },
         })
-      if (path === "/me/permissions")
+      if (path === "/principals/1/permissions")
         return route.fulfill({
           json: { code: 0, message: "ok", data: ["file_view"] },
         })
@@ -485,14 +485,14 @@ try {
           json: { code: 404, message: "not_found" },
         })
       }
-      if (path === "/me/avatar")
+      if (path === "/principals/1/avatar")
         return route.fulfill({
           json: { code: 0, message: "ok", data: { style: "custom", url: "" } },
         })
       const data =
-        path === "/me/tenants"
+        path === "/principals/1/tenants"
           ? [{ id: "11", name: "Fixture tenant", status: "active" }]
-          : path === "/me/menus"
+          : path === "/principals/1/menus"
             ? [
                 {
                   id: "files-menu",
@@ -573,17 +573,17 @@ try {
             data: { subject: "1", organization_id: "11", acr: 1 },
           },
         })
-      if (path === "/me/avatar")
+      if (path === "/principals/1/avatar")
         return route.fulfill({
           json: { code: 0, message: "ok", data: { style: "custom", url: "" } },
         })
-      if (path === "/files" || path.startsWith("/files/")) {
+      if (path === "/principals/1/files" || path.startsWith("/files/")) {
         fileCalls.push({
           path: path + url.search,
           tenant: request.headers()["x-tenant-id"],
           entity: request.headers()["x-entity-id"],
         })
-        if (path === "/files")
+        if (path === "/principals/1/files")
           return route.fulfill({
             json: {
               code: 0,
@@ -632,7 +632,7 @@ try {
     await page.getByText("Private note.txt", { exact: true }).waitFor()
     assert.deepEqual(
       [...new Set(fileCalls.map(({ path }) => path))],
-      ["/files?limit=100", "/files/20/items?limit=100"]
+      ["/principals/1/files?limit=100", "/files/20/items?limit=100"]
     )
     assert(
       fileCalls.every(({ tenant, entity }) => !tenant && !entity),

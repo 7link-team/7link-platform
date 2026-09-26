@@ -152,9 +152,9 @@ func TestDatasourceDiagnosticsAreRedactedAndOptional(t *testing.T) {
 	assert.NotContains(t, response.Body.String(), "password")
 	assert.NotContains(t, response.Body.String(), "private")
 	require.Contains(t, api.OpenAPI().Paths, Path)
-	assert.Equal(t, []string{"system"}, api.OpenAPI().Paths[Path].Get.Tags)
+	assert.Equal(t, []string{"debug"}, api.OpenAPI().Paths[Path].Get.Tags)
 	require.Contains(t, api.OpenAPI().Paths, SQLPath)
-	assert.Equal(t, []string{"system"}, api.OpenAPI().Paths[SQLPath].Get.Tags)
+	assert.Equal(t, []string{"debug"}, api.OpenAPI().Paths[SQLPath].Get.Tags)
 	assert.NotContains(t, api.OpenAPI().Paths, ConsolePath)
 
 	sqlDiagnostics := httptest.NewRecorder()

@@ -10,30 +10,32 @@ import (
 
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
+	humax "7link.com/platform/pkg/extension/huma"
 	"7link.com/platform/pkg/extension/huma/respx"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 const authnRouteManifest = `
-authn-create-personal-token-preparation|POST|/me/personal-token-preparations
-authn-create-personal-token|POST|/me/personal-tokens
-authn-delete-personal-token|DELETE|/me/personal-tokens/{token_id}
-authn-list-personal-tokens|GET|/me/personal-tokens
-authn-list-personal-token-permissions|GET|/me/personal-token-permissions
-authn-list-reauthentication-methods|GET|/me/reauthentication/methods
-authn-create-reauthentication-challenge|POST|/me/reauthentication/challenges
-authn-create-reauthentication-verification|POST|/me/reauthentication/verifications
+authn-create-personal-token-preparation|POST|/principals/{principal_id}/personal-token-preparations
+authn-create-personal-token|POST|/principals/{principal_id}/personal-tokens
+authn-delete-personal-token|DELETE|/principals/{principal_id}/personal-tokens/{token_id}
+authn-list-personal-tokens|GET|/principals/{principal_id}/personal-tokens
+authn-list-personal-token-permissions|GET|/principals/{principal_id}/personal-token-permissions
+authn-list-reauthentication-methods|GET|/principals/{principal_id}/reauthentication/methods
+authn-create-reauthentication-challenge|POST|/principals/{principal_id}/reauthentication/challenges
+authn-create-reauthentication-verification|POST|/principals/{principal_id}/reauthentication/verifications
 authn-login-options|GET|/login/options
 authn-create-registration-captcha|POST|/registrations/captchas
 authn-create-email-verification-request|POST|/email-verification-requests
 authn-create-email-verification|POST|/email-verifications
-authn-create-passkey-registration-challenge|POST|/me/passkey-registration-challenges
+authn-create-passkey-registration-challenge|POST|/principals/{principal_id}/passkey-registration-challenges
 authn-create-passkey-login-options|POST|/login/passkey/options
 authn-verify-passkey-login|POST|/login/passkey/verify
-authn-create-passkey|POST|/me/passkeys
+authn-create-passkey|POST|/principals/{principal_id}/passkeys
 authn-create-password-recovery-request|POST|/password-recoveries/requests
 authn-create-password-recovery|POST|/password-recoveries
 authn-create-registration|POST|/registrations
@@ -41,28 +43,28 @@ authn-create-session-verification|POST|/login/mfa
 authn-create-session|POST|/login
 authn-create-step-up-challenge|POST|/sessions/current/step-up-challenges
 authn-create-step-up-verification|POST|/sessions/current/step-up-verifications
-authn-create-totp-enrollment|POST|/me/mfa/totp-enrollments
-authn-create-totp-factor|POST|/me/mfa/totp
+authn-create-totp-enrollment|POST|/principals/{principal_id}/mfa/totp-enrollments
+authn-create-totp-factor|POST|/principals/{principal_id}/mfa/totp
 authn-delete-current-session|DELETE|/sessions/current
-authn-delete-passkey|DELETE|/me/passkeys/{passkey_id}
+authn-delete-passkey|DELETE|/principals/{principal_id}/passkeys/{passkey_id}
 authn-delete-session|DELETE|/sessions/{session_id}
-authn-delete-sessions|DELETE|/me/sessions
-authn-delete-totp-factor|DELETE|/me/mfa/totp
+authn-delete-sessions|DELETE|/principals/{principal_id}/sessions
+authn-delete-totp-factor|DELETE|/principals/{principal_id}/mfa/totp
 authn-get-current-session|GET|/sessions/current
 authn-get-session|GET|/sessions/{session_id}
-authn-get-mfa|GET|/me/mfa
-authn-list-passkeys|GET|/me/passkeys
-authn-list-sessions|GET|/me/sessions
+authn-get-mfa|GET|/principals/{principal_id}/mfa
+authn-list-passkeys|GET|/principals/{principal_id}/passkeys
+authn-list-sessions|GET|/principals/{principal_id}/sessions
 authn-me|GET|/me
-authn-replace-recovery-codes|PUT|/me/mfa/recovery-codes
-authn-update-passkey|PATCH|/me/passkeys/{passkey_id}
-authn-update-password|PATCH|/me/password`
+authn-replace-recovery-codes|PUT|/principals/{principal_id}/mfa/recovery-codes
+authn-update-passkey|PATCH|/principals/{principal_id}/passkeys/{passkey_id}
+authn-update-password|PATCH|/principals/{principal_id}/password`
 
 func authnContractAPI(t *testing.T) humatest.TestAPI {
 	t.Helper()
 	respx.Install()
 	service, _ := newLocalService(t)
-	_, api := humatest.New(t)
+	api := humatest.Wrap(t, humax.New(chi.NewRouter(), humax.DefaultConfig("authn-contract", "1")))
 	RegisterHTTP(api, service, service)
 	return api
 }
@@ -124,7 +126,7 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 			// This module either establishes a session or manages the account
 			// behind one. Publishing anywhere else would mean a route landed
 			// in the wrong module.
-			assert.Contains(t, []string{"authentication", "account"}, operation.Tags[0], location)
+			assert.Equal(t, []string{segments[0]}, operation.Tags, location)
 			if sessionOnly[operation.OperationID] {
 				assert.Equal(t, []map[string][]string{{authz.SessionScheme: {}}}, operation.Security, location)
 			} else if secured[operation.OperationID] {
@@ -154,11 +156,22 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 	}
 	require.Len(t, operationIDs, 39)
 	assert.Equal(t, "session", spec.Components.SecuritySchemes[authz.SessionScheme].Name)
-	for _, path := range []string{"/sessions/{session_id}", "/me/passkeys/{passkey_id}"} {
-		parameter := authnPathOperations(spec.Paths[path])[http.MethodDelete].Parameters[0]
-		assert.Equal(t, "^[a-f0-9]{64}$", parameter.Schema.Pattern, path)
-		assert.Equal(t, 64, *parameter.Schema.MinLength, path)
-		assert.Equal(t, 64, *parameter.Schema.MaxLength, path)
+	for _, path := range []string{"/sessions/{session_id}", "/principals/{principal_id}/passkeys/{passkey_id}"} {
+		name := "session_id"
+		if strings.Contains(path, "passkeys") {
+			name = "passkey_id"
+		}
+		found := false
+		for _, parameter := range authnPathOperations(spec.Paths[path])[http.MethodDelete].Parameters {
+			if parameter.Name != name {
+				continue
+			}
+			found = true
+			assert.Equal(t, "^[a-f0-9]{64}$", parameter.Schema.Pattern, path)
+			assert.Equal(t, 64, *parameter.Schema.MinLength, path)
+			assert.Equal(t, 64, *parameter.Schema.MaxLength, path)
+		}
+		require.True(t, found, path)
 	}
 }
 
@@ -166,7 +179,7 @@ func TestAuthnOpenAPIUsesTypedWebAuthnSchemas(t *testing.T) {
 	spec := authnContractAPI(t).OpenAPI()
 	for name, operation := range map[string]*huma.Operation{
 		"assertion": spec.Paths["/login/passkey/verify"].Post,
-		"creation":  spec.Paths["/me/passkeys"].Post,
+		"creation":  spec.Paths["/principals/{principal_id}/passkeys"].Post,
 	} {
 		request := resolveAuthnSchema(spec, operation.RequestBody.Content["application/json"].Schema)
 		credential := resolveAuthnSchema(spec, request.Properties["credential"])
@@ -179,7 +192,7 @@ func TestAuthnOpenAPIUsesTypedWebAuthnSchemas(t *testing.T) {
 	}
 	for name, operation := range map[string]*huma.Operation{
 		"assertion options": spec.Paths["/login/passkey/options"].Post,
-		"creation options":  spec.Paths["/me/passkey-registration-challenges"].Post,
+		"creation options":  spec.Paths["/principals/{principal_id}/passkey-registration-challenges"].Post,
 	} {
 		response := resolveAuthnSchema(spec, operation.Responses["200"].Content["application/json"].Schema)
 		data := resolveAuthnSchema(spec, response.Properties["data"])

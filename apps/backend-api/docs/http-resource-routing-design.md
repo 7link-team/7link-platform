@@ -8,7 +8,7 @@ Update 2026-09-26: the user requires Swagger grouping by the first segment of
 the final published path. This supersedes this document's workflow-group rule
 and D75's grouping exception. See
 [api-routing-inspection-2026-09-26.md](api-routing-inspection-2026-09-26.md)
-for the measured implicit-subject route inventory and proposed correction scope.
+for the implemented explicit-principal migration, inventory and test evidence.
 
 D74/D76/D77 confirm design principles, not whole-manifest execution. D77
 supersedes rules 7/9/15 permitting dual item addresses: one canonical URI,
@@ -329,7 +329,7 @@ the selected principal's membership, subject to authorization, not a special
 self-only command.
 
 The current avatar is a binary subresource at
-`GET /principals/{principal_id}/avatar`. Private generated candidates are
+`GET /principals/{principal_id}/avatar/content`. Private generated candidates are
 separate expiring resources at
 `GET /principals/{principal_id}/avatar-candidates/{candidate_id}`. The
 candidate identifier is opaque and never a storage filename. `GET/PUT

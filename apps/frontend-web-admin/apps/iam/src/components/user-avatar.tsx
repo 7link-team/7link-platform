@@ -10,7 +10,7 @@ export function UserAvatar({
   avatar?: AvatarSettings | null
   className?: string
 }) {
-  if (avatar?.url !== `/api/principals/${id}/avatar`)
+  if (avatar?.url !== `/api/principals/${id}/avatar/content`)
     return (
       <span
         className={`grid shrink-0 place-items-center rounded-full bg-muted ${className}`}

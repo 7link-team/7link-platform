@@ -125,8 +125,8 @@ func RegisterHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
 		return respx.OK(ctx, item), nil
 	})
 
-	authz.RegisterTenantMember(registrar, api, operation(
-		"governance-list-my-access-requests", http.MethodGet, "/me/access-requests",
+	authz.RegisterPrincipalTenantMember(registrar, api, operation(
+		"governance-list-my-access-requests", http.MethodGet, "/principals/{principal_id}/access-requests",
 		"List the current principal's tenant access requests", http.StatusUnprocessableEntity, http.StatusInternalServerError,
 	), func(ctx context.Context, in *tenantInput) (*respx.Body[[]AccessRequest], error) {
 		tenantID, err := parseGovernanceID(in.TenantID)

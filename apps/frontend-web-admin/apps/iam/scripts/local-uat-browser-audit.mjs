@@ -29,15 +29,23 @@ const reportPath = new URL(
 )
 
 async function verifyReleaseFlows(context, page, capture, device) {
+  const identity = await context.request.get("/api/me")
+  assert(identity.ok())
+  const { subject } = (await identity.json()).data
   const createdEntities = []
   const createdClients = []
   const resourceContext = await browser.newContext({ baseURL })
-  const resourceStatus = async (token) =>
-    (
-      await resourceContext.request.get("/api/me/tenants", {
-        headers: { Authorization: `Bearer ${token}` },
+  const resourceStatus = async (token) => {
+    const headers = { Authorization: `Bearer ${token}` }
+    const identity = await resourceContext.request.get("/api/me", { headers })
+    if (!identity.ok()) return identity.status()
+    const { subject } = (await identity.json()).data
+    return (
+      await resourceContext.request.get(`/api/principals/${subject}/tenants`, {
+        headers,
       })
     ).status()
+  }
   const call = async (path, method = "GET", body, scoped = true) => {
     const requestPath = scoped ? `/tenants/${tenant}${path}` : path
     const response = await context.request.fetch("/api" + requestPath, {
@@ -190,10 +198,15 @@ async function verifyReleaseFlows(context, page, capture, device) {
       "The issued bearer token must access a real IAM resource without cookies"
     )
     assert.equal(await resourceStatus(otherTokens.access_token), 200)
-    const grants = await call("/me/oauth-consents", "GET", undefined, false)
+    const grants = await call(
+      `/principals/${subject}/oauth-consents`,
+      "GET",
+      undefined,
+      false
+    )
     assert(grants.some((grant) => grant.client_id === clientID))
     const denied = await context.request.delete(
-      `/api/me/oauth-consents/${clientID}`,
+      `/api/principals/${subject}/oauth-consents/${clientID}`,
       { headers: { Origin: "https://untrusted.example.test" } }
     )
     assert.equal(
@@ -218,9 +231,14 @@ async function verifyReleaseFlows(context, page, capture, device) {
       .getByRole("heading", { name: client.client.name, exact: true })
       .waitFor({ state: "hidden" })
     assert(
-      !(await call("/me/oauth-consents", "GET", undefined, false)).some(
-        (grant) => grant.client_id === clientID
-      )
+      !(
+        await call(
+          `/principals/${subject}/oauth-consents`,
+          "GET",
+          undefined,
+          false
+        )
+      ).some((grant) => grant.client_id === clientID)
     )
     const accessActive = (await introspect()).active
     const revokedResourceStatus = await resourceStatus(tokens.access_token)
@@ -294,12 +312,14 @@ async function verifyReleaseFlows(context, page, capture, device) {
     const cleanup = []
     for (const id of createdClients.reverse())
       cleanup.push(`/oauth-clients/${id}`)
-    for (const id of createdEntities.reverse())
-      cleanup.push(`/entities/${id}`)
+    for (const id of createdEntities.reverse()) cleanup.push(`/entities/${id}`)
     for (const path of cleanup) {
-      const response = await context.request.delete(`/api/tenants/${tenant}${path}`, {
-        headers: { Origin: baseURL },
-      })
+      const response = await context.request.delete(
+        `/api/tenants/${tenant}${path}`,
+        {
+          headers: { Origin: baseURL },
+        }
+      )
       assert(response.ok(), "UAT-owned fixture cleanup failed")
     }
     await resourceContext.close()
@@ -366,7 +386,12 @@ try {
         await page
           .getByRole("button", { name: "切换工作空间", exact: true })
           .waitFor()
-        const memberships = await context.request.get("/api/me/tenants")
+        const identity = await context.request.get("/api/me")
+        assert(identity.ok())
+        const { subject } = (await identity.json()).data
+        const memberships = await context.request.get(
+          `/api/principals/${subject}/tenants`
+        )
         assert(memberships.ok(), "Tenant discovery must succeed")
         const targetTenant = (await memberships.json()).data.find(
           (item) => item.id === tenant
@@ -508,10 +533,7 @@ try {
         await page.locator('header button[aria-haspopup="menu"]').last().click()
         await page.getByRole("menuitem", { name: "退出登录" }).click()
         await page.locator('input[name="login_name"]').waitFor()
-        assert.equal(
-          (await context.request.get("/api/me")).status(),
-          401
-        )
+        assert.equal((await context.request.get("/api/me")).status(), 401)
         await page.goto(`/tenants/${tenant}/users`)
         await page.locator('input[name="login_name"]').waitFor()
         assert.equal(new URL(page.url()).pathname, "/login")

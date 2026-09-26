@@ -1,5 +1,45 @@
 # Task State
 
+## Active Explicit Principal Migration - 2026-09-26
+
+- Phase: ACCEPTED; implementation, self-review and final acceptance complete.
+- Baseline 4830b04 pushed and clean. Supersedes pending scope in checkpoint below.
+- Required: migrate all 41 /me/* and four tenant-contained /me/* operations to
+  explicit /principals/{principal_id} mounts. Preserve GET /me and session-current
+  discovery. No aliases or wider admin privileges. Prefix groups already fixed.
+- Design: explicit route declarations; common registrar validates authenticated
+  subject against path ID after existing auth/membership checks. Invalid IDs 422,
+  foreign IDs 404. Platform/admin and public avatar-byte routes retain their guards.
+- MFA enrollment: reuse restricted-session verifier; successful password login
+  exposes subject for enrollment so clients need no ordinary session to address it.
+- Client: per-instance discovered subject, reset on login/logout; typed path
+  parameters and existing transports. Regenerate OpenAPI/types, update fixtures.
+- Direct execution chosen for coupled shared contracts; no delegation requested.
+- Acceptance: full generated inventory contains no /me/ segments; 46 changed
+  operations, no retired aliases, foreign-ID read/write denial; authn/files/IAM
+  backend tests, frontend gates, real SQLite browser E2E plus demo runtime audit.
+- Implemented: 45 implicit principal mounts + avatar content collision correction;
+  explicit self registrars preserve specialized avatar authorization and restricted
+  MFA enrollment. Client caches verified discovery, rejects stale requests and
+  resets on login/logout. All generated artifacts and caller fixtures updated.
+- Verification PASS: full go test ./...; backend lint; frontend typecheck/lint/test/
+  build (IAM 136/UI 85); OpenAPI/types drift; structured baseline comparison retains
+  296 operations, methods/request bodies/security with exactly 46 changed paths;
+  SQLite real browser E2E 15/15 (.temp/sqlite-lifecycle-vExue5/report.json), fixture
+  regression 74/74, archive desktop/mobile, live demo selector 5/5 and Swagger309.
+- Integration module suite PASS (architecture/goose/testdb/lifecycle/migration/
+  performance). Extra environment-specific audit callers syntax-checked only;
+  no claim of external UAT execution. No outstanding production implementation.
+- Owned demo environment rebuilt/restarted, Web8091/API8080; dev-status confirms
+  running and selectable accounts enabled. Existing unrelated services untouched.
+- Self-review PASS: exact scope, existing registrar/services reused, no privilege
+  expansion or database migration, caller/schema inventory reconciled, LF and
+  git diff --check clean. Final acceptance PASS against explicit addresses,
+  final-prefix grouping, actual E2E and selectable demo runtime requirements.
+- Delivery: reviewed changes committed together; final Git push/remote HEAD and
+  clean-worktree verification recorded in the delivery response.
+- Next: none. No implementation remains and no optional resource redesign is queued.
+
 ## Active Development Startup And API Correction - 2026-09-26
 
 - Phase: ACCEPTANCE for Make/prefix grouping; subject migration scope awaiting user.

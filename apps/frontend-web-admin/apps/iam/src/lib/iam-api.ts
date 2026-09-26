@@ -174,7 +174,8 @@ export interface BrowserSession {
 }
 
 export interface LoginResult {
-  status: "authenticated" | "mfa_required"
+  status: "authenticated" | "mfa_required" | "mfa_enrollment_required"
+  subject?: string
   return_url: string
   challenge_id?: string
   expires_at?: string
@@ -1373,15 +1374,48 @@ function auditExportFilename(disposition: string | null): string {
 
 export function createIamApi(
   apiBase = baseUrl,
-  tenantID: () => string = getTenant
+  tenantID: () => string = getTenant,
+  explicitPrincipalID?: () => string
 ) {
-  const request = <T>(
-    route: ApiRoute,
+  const request = async <T>(
+    route: ApiRoute | Promise<ApiRoute>,
     init: Omit<RequestInit, "method"> = {}
-  ) => requestWithBase<T>(apiBase, route, init)
+  ) => requestWithBase<T>(apiBase, await route, init)
+  let subject: string | undefined
+  let discovery: Promise<Session> | undefined
+  let identityEpoch = 0
+  const resetPrincipal = () => {
+    identityEpoch++
+    subject = undefined
+    discovery = undefined
+  }
+  const discoverSession = async () => {
+    const epoch = identityEpoch
+    const session = await request<Session>(apiRoute("get", "/me"))
+    if (epoch !== identityEpoch) throw new ApiError(401, "unauthorized")
+    subject = session.subject
+    return session
+  }
+  const principalID = async () => {
+    const epoch = identityEpoch
+    const explicit = explicitPrincipalID?.()
+    if (explicit) return explicit
+    if (!subject) {
+      if (!discovery) {
+        const pending = discoverSession().finally(() => {
+          if (discovery === pending) discovery = undefined
+        })
+        discovery = pending
+      }
+      await discovery
+    }
+    if (!subject || epoch !== identityEpoch)
+      throw new ApiError(401, "unauthorized")
+    return subject
+  }
   const requestEnvelope = <T>(route: ApiRoute) =>
     requestEnvelopeWithBase<T>(apiBase, route)
-  const fileOperationRoute = (entityID: string | null | undefined) =>
+  const fileOperationRoute = async (entityID: string | null | undefined) =>
     entityID
       ? apiRoute(
           "post",
@@ -1389,14 +1423,16 @@ export function createIamApi(
           { path: { tenant_id: tenantID(), entity_id: entityID } }
         )
       : entityID === null
-        ? apiRoute("post", "/me/file-operations")
+        ? apiRoute("post", "/principals/{principal_id}/file-operations", {
+            path: { principal_id: await principalID() },
+          })
         : apiRoute("post", "/tenants/{tenant_id}/file-operations", {
             path: { tenant_id: tenantID() },
           })
-  const fileCollectionRoute = (
+  const fileCollectionRoute = async (
     entityID: string | null | undefined,
     method: "get" | "post",
-    query?: RouteQuery<"/me/files">
+    query?: RouteQuery<"/principals/{principal_id}/files">
   ) => {
     if (method === "post")
       return entityID
@@ -1404,7 +1440,9 @@ export function createIamApi(
             path: { entity_id: entityID },
           })
         : entityID === null
-          ? apiRoute("post", "/me/files")
+          ? apiRoute("post", "/principals/{principal_id}/files", {
+              path: { principal_id: await principalID() },
+            })
           : apiRoute("post", "/tenants/{tenant_id}/files", {
               path: { tenant_id: tenantID() },
             })
@@ -1414,7 +1452,10 @@ export function createIamApi(
           query,
         })
       : entityID === null
-        ? apiRoute("get", "/me/files", { query })
+        ? apiRoute("get", "/principals/{principal_id}/files", {
+            path: { principal_id: await principalID() },
+            query,
+          })
         : apiRoute("get", "/tenants/{tenant_id}/files", {
             path: { tenant_id: tenantID() },
             query,
@@ -1602,21 +1643,32 @@ export function createIamApi(
       request<{ accepted: boolean }>(apiRoute("post", "/registrations"), {
         body: JSON.stringify(body),
       }),
-    session: () => request<Session>(apiRoute("get", "/me")),
+    session: discoverSession,
     sessionForTenant: (tenant: string) => {
       void tenant
-      return request<Session>(apiRoute("get", "/me"))
+      return discoverSession()
     },
-    myTenants: () => request<Tenant[]>(apiRoute("get", "/me/tenants")),
-    personalTokenPermissions: (tenant: string) =>
-      request<Permission[]>(
-        apiRoute("get", "/me/personal-token-permissions", {
-          query: { tenant_id: tenant },
+    myTenants: async () =>
+      request<Tenant[]>(
+        apiRoute("get", "/principals/{principal_id}/tenants", {
+          path: { principal_id: await principalID() },
         })
+      ),
+    personalTokenPermissions: async (tenant: string) =>
+      request<Permission[]>(
+        apiRoute(
+          "get",
+          "/principals/{principal_id}/personal-token-permissions",
+          {
+            path: { principal_id: await principalID() },
+            query: { tenant_id: tenant },
+          }
+        )
       ),
     personalTokens: async (offset = 0, limit = 20) => {
       const result = await requestEnvelope<PersonalToken[]>(
-        apiRoute("get", "/me/personal-tokens", {
+        apiRoute("get", "/principals/{principal_id}/personal-tokens", {
+          path: { principal_id: await principalID() },
           query: { offset: offset, limit: limit },
         })
       )
@@ -1625,104 +1677,174 @@ export function createIamApi(
         total: result.meta?.page?.total ?? result.data.length,
       }
     },
-    preparePersonalToken: (body: PersonalTokenRequest) =>
+    preparePersonalToken: async (body: PersonalTokenRequest) =>
       request<{ request: PersonalTokenRequest; target: string }>(
-        apiRoute("post", "/me/personal-token-preparations"),
+        apiRoute(
+          "post",
+          "/principals/{principal_id}/personal-token-preparations",
+          { path: { principal_id: await principalID() } }
+        ),
         { body: JSON.stringify(body) }
       ),
-    createPersonalToken: (body: PersonalTokenRequest & { proof: string }) =>
+    createPersonalToken: async (
+      body: PersonalTokenRequest & { proof: string }
+    ) =>
       request<PersonalToken & { token: string }>(
-        apiRoute("post", "/me/personal-tokens"),
+        apiRoute("post", "/principals/{principal_id}/personal-tokens", {
+          path: { principal_id: await principalID() },
+        }),
         { body: JSON.stringify(body) }
       ),
-    revokePersonalToken: (id: string) =>
+    revokePersonalToken: async (id: string) =>
       request<{ revoked: boolean }>(
-        apiRoute("delete", "/me/personal-tokens/{token_id}", {
-          path: { token_id: id },
+        apiRoute(
+          "delete",
+          "/principals/{principal_id}/personal-tokens/{token_id}",
+          {
+            path: { principal_id: await principalID(), token_id: id },
+          }
+        )
+      ),
+    reauthenticationMethods: async () =>
+      request<{ methods: ReauthenticationMethod[]; mfa_required: boolean }>(
+        apiRoute("get", "/principals/{principal_id}/reauthentication/methods", {
+          path: { principal_id: await principalID() },
         })
       ),
-    reauthenticationMethods: () =>
-      request<{ methods: ReauthenticationMethod[]; mfa_required: boolean }>(
-        apiRoute("get", "/me/reauthentication/methods")
-      ),
-    createReauthenticationChallenge: (body: {
+    createReauthenticationChallenge: async (body: {
       purpose: string
       target: string
       method: ReauthenticationMethod
     }) =>
       request<ReauthenticationChallenge>(
-        apiRoute("post", "/me/reauthentication/challenges"),
+        apiRoute(
+          "post",
+          "/principals/{principal_id}/reauthentication/challenges",
+          { path: { principal_id: await principalID() } }
+        ),
         { body: JSON.stringify(body) }
       ),
-    verifyReauthentication: (body: {
+    verifyReauthentication: async (body: {
       proof: string
       password?: string
       code?: string
       response?: Record<string, unknown>
     }) =>
       request<{ verified: boolean }>(
-        apiRoute("post", "/me/reauthentication/verifications"),
+        apiRoute(
+          "post",
+          "/principals/{principal_id}/reauthentication/verifications",
+          { path: { principal_id: await principalID() } }
+        ),
         { body: JSON.stringify(body) }
       ),
-    identityLinks: () =>
-      request<IdentityLink[]>(apiRoute("get", "/me/identity-links")),
-    identityLinkProviders: () =>
-      request<IdentityLinkProvider[]>(
-        apiRoute("get", "/me/identity-link-providers")
+    identityLinks: async () =>
+      request<IdentityLink[]>(
+        apiRoute("get", "/principals/{principal_id}/identity-links", {
+          path: { principal_id: await principalID() },
+        })
       ),
-    createIdentityLinkTransaction: (body: {
+    identityLinkProviders: async () =>
+      request<IdentityLinkProvider[]>(
+        apiRoute("get", "/principals/{principal_id}/identity-link-providers", {
+          path: { principal_id: await principalID() },
+        })
+      ),
+    createIdentityLinkTransaction: async (body: {
       provider_id: string
       proof: string
       existing_link_id?: string
       return_url: string
     }) =>
       request<{ authorization_url: string }>(
-        apiRoute("post", "/me/identity-link-transactions"),
+        apiRoute(
+          "post",
+          "/principals/{principal_id}/identity-link-transactions",
+          { path: { principal_id: await principalID() } }
+        ),
         { body: JSON.stringify(body) }
       ),
-    deleteIdentityLink: (id: string, proof: string) =>
+    deleteIdentityLink: async (id: string, proof: string) =>
       request<{ deleted: boolean }>(
-        apiRoute("delete", "/me/identity-links/{link_id}", {
-          path: { link_id: id },
-        }),
+        apiRoute(
+          "delete",
+          "/principals/{principal_id}/identity-links/{link_id}",
+          {
+            path: { principal_id: await principalID(), link_id: id },
+          }
+        ),
         { body: JSON.stringify({ proof }) }
       ),
-    personalMemberships: (offset = 0, limit = 50) =>
+    personalMemberships: async (offset = 0, limit = 50) =>
       request<{ items: PersonalMembership[]; total: number }>(
-        apiRoute("get", "/me/memberships", {
+        apiRoute("get", "/principals/{principal_id}/memberships", {
+          path: { principal_id: await principalID() },
           query: { offset: offset, limit: limit },
         })
       ),
-    leaveMembership: (id: string, proof: string) =>
+    leaveMembership: async (id: string, proof: string) =>
       request<{ status: string }>(
-        apiRoute("delete", "/me/memberships/{tenant_id}", {
-          path: { tenant_id: id },
-        }),
+        apiRoute(
+          "delete",
+          "/principals/{principal_id}/memberships/{tenant_id}",
+          {
+            path: { principal_id: await principalID(), tenant_id: id },
+          }
+        ),
         { body: JSON.stringify({ proof }) }
       ),
-    closureRequest: () =>
-      request<ClosureRequest>(apiRoute("get", "/me/closure-request")),
-    myAvatar: () => request<AvatarSettings>(apiRoute("get", "/me/avatar")),
-    avatarCandidates: (style?: AvatarSettings["style"]) =>
-      request<AvatarSettings[]>(apiRoute("post", "/me/avatar-candidates"), {
-        body: JSON.stringify({ style }),
-      }),
-    setMyAvatar: (avatar: {
+    closureRequest: async () =>
+      request<ClosureRequest>(
+        apiRoute("get", "/principals/{principal_id}/closure-request", {
+          path: { principal_id: await principalID() },
+        })
+      ),
+    myAvatar: async () =>
+      request<AvatarSettings>(
+        apiRoute("get", "/principals/{principal_id}/avatar", {
+          path: { principal_id: await principalID() },
+        })
+      ),
+    avatarCandidates: async (style?: AvatarSettings["style"]) =>
+      request<AvatarSettings[]>(
+        apiRoute("post", "/principals/{principal_id}/avatar-candidates", {
+          path: { principal_id: await principalID() },
+        }),
+        {
+          body: JSON.stringify({ style }),
+        }
+      ),
+    setMyAvatar: async (avatar: {
       style?: AvatarSettings["style"]
       image_data?: string
       candidate_url?: string
     }) =>
-      request<AvatarSettings>(apiRoute("put", "/me/avatar"), {
-        body: JSON.stringify(avatar),
-      }),
-    submitClosureRequest: (proof: string, version: number) =>
-      request<ClosureRequest>(apiRoute("post", "/me/closure-request"), {
-        body: JSON.stringify({ proof, version }),
-      }),
-    cancelClosureRequest: (version: number) =>
-      request<ClosureRequest>(apiRoute("delete", "/me/closure-request"), {
-        body: JSON.stringify({ version }),
-      }),
+      request<AvatarSettings>(
+        apiRoute("put", "/principals/{principal_id}/avatar", {
+          path: { principal_id: await principalID() },
+        }),
+        {
+          body: JSON.stringify(avatar),
+        }
+      ),
+    submitClosureRequest: async (proof: string, version: number) =>
+      request<ClosureRequest>(
+        apiRoute("post", "/principals/{principal_id}/closure-request", {
+          path: { principal_id: await principalID() },
+        }),
+        {
+          body: JSON.stringify({ proof, version }),
+        }
+      ),
+    cancelClosureRequest: async (version: number) =>
+      request<ClosureRequest>(
+        apiRoute("delete", "/principals/{principal_id}/closure-request", {
+          path: { principal_id: await principalID() },
+        }),
+        {
+          body: JSON.stringify({ version }),
+        }
+      ),
     closureRequests: (
       offset = 0,
       limit = 50,
@@ -1753,28 +1875,53 @@ export function createIamApi(
         ),
         { body: JSON.stringify({ status: "processing", version }) }
       ),
-    oauthConsents: () =>
-      request<GrantedConsent[]>(apiRoute("get", "/me/oauth-consents")),
-    revokeOAuthConsent: (clientID: string) =>
-      request<{ revoked: boolean }>(
-        apiRoute("delete", "/me/oauth-consents/{client_id}", {
-          path: { client_id: clientID },
+    oauthConsents: async () =>
+      request<GrantedConsent[]>(
+        apiRoute("get", "/principals/{principal_id}/oauth-consents", {
+          path: { principal_id: await principalID() },
         })
       ),
-    login: (body: {
+    revokeOAuthConsent: async (clientID: string) =>
+      request<{ revoked: boolean }>(
+        apiRoute(
+          "delete",
+          "/principals/{principal_id}/oauth-consents/{client_id}",
+          {
+            path: { principal_id: await principalID(), client_id: clientID },
+          }
+        )
+      ),
+    login: async (body: {
       login_name: string
       password: string
       return_url: string
-    }) =>
-      request<LoginResult>(apiRoute("post", "/login"), {
+    }) => {
+      resetPrincipal()
+      const epoch = identityEpoch
+      const result = await request<LoginResult>(apiRoute("post", "/login"), {
         body: JSON.stringify(body),
-      }),
-    verifyLoginMfa: (body: { challenge_id: string; code: string }) =>
-      request<LoginResult>(apiRoute("post", "/login/mfa"), {
-        body: JSON.stringify(body),
-      }),
-    logout: () =>
-      request<{ logout_url: string }>(apiRoute("delete", "/sessions/current")),
+      })
+      if (epoch === identityEpoch) subject = result.subject
+      return result
+    },
+    verifyLoginMfa: async (body: { challenge_id: string; code: string }) => {
+      const result = await request<LoginResult>(
+        apiRoute("post", "/login/mfa"),
+        {
+          body: JSON.stringify(body),
+        }
+      )
+      resetPrincipal()
+      subject = result.subject
+      return result
+    },
+    logout: async () => {
+      const result = await request<{ logout_url: string }>(
+        apiRoute("delete", "/sessions/current")
+      )
+      resetPrincipal()
+      return result
+    },
     currentBrowserSession: () =>
       request<BrowserSession>(apiRoute("get", "/sessions/current")),
     browserSession: (id: string) =>
@@ -1783,22 +1930,39 @@ export function createIamApi(
           path: { session_id: id },
         })
       ),
-    sessions: () => request<BrowserSession[]>(apiRoute("get", "/me/sessions")),
+    sessions: async () =>
+      request<BrowserSession[]>(
+        apiRoute("get", "/principals/{principal_id}/sessions", {
+          path: { principal_id: await principalID() },
+        })
+      ),
     revokeSession: (id: string) =>
       request<{ revoked: boolean }>(
         apiRoute("delete", "/sessions/{session_id}", {
           path: { session_id: id },
         })
       ),
-    logoutAll: () =>
-      request<{ logout_url: string }>(apiRoute("delete", "/me/sessions")),
-    changePassword: (body: {
+    logoutAll: async () => {
+      const result = await request<{ logout_url: string }>(
+        apiRoute("delete", "/principals/{principal_id}/sessions", {
+          path: { principal_id: await principalID() },
+        })
+      )
+      resetPrincipal()
+      return result
+    },
+    changePassword: async (body: {
       current_password: string
       new_password: string
     }) =>
-      request<{ changed: boolean }>(apiRoute("patch", "/me/password"), {
-        body: JSON.stringify(body),
-      }),
+      request<{ changed: boolean }>(
+        apiRoute("patch", "/principals/{principal_id}/password", {
+          path: { principal_id: await principalID() },
+        }),
+        {
+          body: JSON.stringify(body),
+        }
+      ),
     startPasswordRecovery: (identifier: string) =>
       request<{ accepted: boolean }>(
         apiRoute("post", "/password-recoveries/requests"),
@@ -1816,62 +1980,103 @@ export function createIamApi(
       request<{ verified: boolean }>(apiRoute("post", "/email-verifications"), {
         body: JSON.stringify({ token }),
       }),
-    mfaStatus: () => request<MfaStatus>(apiRoute("get", "/me/mfa")),
-    beginTotpEnrollment: (currentPassword: string) =>
-      request<MfaEnrollment>(apiRoute("post", "/me/mfa/totp-enrollments"), {
-        body: JSON.stringify({ current_password: currentPassword }),
-      }),
-    confirmTotpEnrollment: (code: string) =>
-      request<MfaConfirmation>(apiRoute("post", "/me/mfa/totp"), {
-        body: JSON.stringify({ code }),
-      }),
-    regenerateRecoveryCodes: (body: {
+    mfaStatus: async () =>
+      request<MfaStatus>(
+        apiRoute("get", "/principals/{principal_id}/mfa", {
+          path: { principal_id: await principalID() },
+        })
+      ),
+    beginTotpEnrollment: async (currentPassword: string) =>
+      request<MfaEnrollment>(
+        apiRoute("post", "/principals/{principal_id}/mfa/totp-enrollments", {
+          path: { principal_id: await principalID() },
+        }),
+        {
+          body: JSON.stringify({ current_password: currentPassword }),
+        }
+      ),
+    confirmTotpEnrollment: async (code: string) =>
+      request<MfaConfirmation>(
+        apiRoute("post", "/principals/{principal_id}/mfa/totp", {
+          path: { principal_id: await principalID() },
+        }),
+        {
+          body: JSON.stringify({ code }),
+        }
+      ),
+    regenerateRecoveryCodes: async (body: {
       current_password: string
       code: string
     }) =>
-      request<MfaConfirmation>(apiRoute("put", "/me/mfa/recovery-codes"), {
-        body: JSON.stringify(body),
-      }),
-    disableTotp: (body: { current_password: string; code: string }) =>
-      request<{ disabled: boolean }>(apiRoute("delete", "/me/mfa/totp"), {
-        body: JSON.stringify(body),
-      }),
-    passkeys: () => request<Passkey[]>(apiRoute("get", "/me/passkeys")),
-    beginPasskeyRegistration: (currentPassword: string) =>
+      request<MfaConfirmation>(
+        apiRoute("put", "/principals/{principal_id}/mfa/recovery-codes", {
+          path: { principal_id: await principalID() },
+        }),
+        {
+          body: JSON.stringify(body),
+        }
+      ),
+    disableTotp: async (body: { current_password: string; code: string }) =>
+      request<{ disabled: boolean }>(
+        apiRoute("delete", "/principals/{principal_id}/mfa/totp", {
+          path: { principal_id: await principalID() },
+        }),
+        {
+          body: JSON.stringify(body),
+        }
+      ),
+    passkeys: async () =>
+      request<Passkey[]>(
+        apiRoute("get", "/principals/{principal_id}/passkeys", {
+          path: { principal_id: await principalID() },
+        })
+      ),
+    beginPasskeyRegistration: async (currentPassword: string) =>
       request<PasskeyOptions>(
-        apiRoute("post", "/me/passkey-registration-challenges"),
+        apiRoute(
+          "post",
+          "/principals/{principal_id}/passkey-registration-challenges",
+          { path: { principal_id: await principalID() } }
+        ),
         { body: JSON.stringify({ current_password: currentPassword }) }
       ),
-    finishPasskeyRegistration: (body: {
+    finishPasskeyRegistration: async (body: {
       challenge_id: string
       name: string
       credential: Record<string, unknown>
     }) =>
-      request<Passkey>(apiRoute("post", "/me/passkeys"), {
-        body: JSON.stringify(body),
-      }),
+      request<Passkey>(
+        apiRoute("post", "/principals/{principal_id}/passkeys", {
+          path: { principal_id: await principalID() },
+        }),
+        {
+          body: JSON.stringify(body),
+        }
+      ),
     beginPasskeyLogin: (returnUrl: string) =>
       request<PasskeyOptions>(apiRoute("post", "/login/passkey/options"), {
         body: JSON.stringify({ return_url: returnUrl }),
       }),
-    finishPasskeyLogin: (body: {
+    finishPasskeyLogin: async (body: {
       challenge_id: string
       credential: Record<string, unknown>
-    }) =>
-      request<LoginResult>(apiRoute("post", "/login/passkey/verify"), {
+    }) => {
+      resetPrincipal()
+      return request<LoginResult>(apiRoute("post", "/login/passkey/verify"), {
         body: JSON.stringify(body),
-      }),
-    renamePasskey: (id: string, name: string) =>
+      })
+    },
+    renamePasskey: async (id: string, name: string) =>
       request<Passkey>(
-        apiRoute("patch", "/me/passkeys/{passkey_id}", {
-          path: { passkey_id: id },
+        apiRoute("patch", "/principals/{principal_id}/passkeys/{passkey_id}", {
+          path: { principal_id: await principalID(), passkey_id: id },
         }),
         { body: JSON.stringify({ name }) }
       ),
-    deletePasskey: (id: string, currentPassword: string) =>
+    deletePasskey: async (id: string, currentPassword: string) =>
       request<{ deleted: boolean }>(
-        apiRoute("delete", "/me/passkeys/{passkey_id}", {
-          path: { passkey_id: id },
+        apiRoute("delete", "/principals/{principal_id}/passkeys/{passkey_id}", {
+          path: { principal_id: await principalID(), passkey_id: id },
         }),
         { body: JSON.stringify({ current_password: currentPassword }) }
       ),
@@ -2504,11 +2709,15 @@ export function createIamApi(
           path: { tenant_id: tenantID() },
         })
       ),
-    myAccessRequests: () =>
+    myAccessRequests: async () =>
       request<AccessRequest[]>(
-        apiRoute("get", "/tenants/{tenant_id}/me/access-requests", {
-          path: { tenant_id: tenantID() },
-        })
+        apiRoute(
+          "get",
+          "/tenants/{tenant_id}/principals/{principal_id}/access-requests",
+          {
+            path: { principal_id: await principalID(), tenant_id: tenantID() },
+          }
+        )
       ),
     accessRequests: () =>
       requestAllPages<AccessRequest>(
@@ -2753,23 +2962,42 @@ export function createIamApi(
       ),
     effectiveMenus: async (tenantID: string) =>
       (await request<EffectiveMenu[] | null>(
-        apiRoute("get", "/tenants/{tenant_id}/me/menus", {
-          path: { tenant_id: tenantID },
-        })
+        apiRoute(
+          "get",
+          "/tenants/{tenant_id}/principals/{principal_id}/menus",
+          {
+            path: { principal_id: await principalID(), tenant_id: tenantID },
+          }
+        )
       )) ?? [],
     myPermissions: async (tenantID?: string, entityID?: string) =>
       (await request<string[] | null>(
         tenantID && entityID
           ? apiRoute(
               "get",
-              "/tenants/{tenant_id}/entities/{entity_id}/me/permissions",
-              { path: { tenant_id: tenantID, entity_id: entityID } }
+              "/tenants/{tenant_id}/entities/{entity_id}/principals/{principal_id}/permissions",
+              {
+                path: {
+                  principal_id: await principalID(),
+                  tenant_id: tenantID,
+                  entity_id: entityID,
+                },
+              }
             )
           : tenantID
-            ? apiRoute("get", "/tenants/{tenant_id}/me/permissions", {
-                path: { tenant_id: tenantID },
+            ? apiRoute(
+                "get",
+                "/tenants/{tenant_id}/principals/{principal_id}/permissions",
+                {
+                  path: {
+                    principal_id: await principalID(),
+                    tenant_id: tenantID,
+                  },
+                }
+              )
+            : apiRoute("get", "/principals/{principal_id}/permissions", {
+                path: { principal_id: await principalID() },
               })
-            : apiRoute("get", "/me/permissions")
       )) ?? [],
     createMenu: (body: MenuInput) =>
       request<Menu>(

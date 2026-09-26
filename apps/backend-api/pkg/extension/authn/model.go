@@ -35,6 +35,7 @@ var (
 // account receives a challenge but no session cookie until VerifyLoginMFA. A
 // principal who must first enroll MFA receives a restricted enrollment cookie.
 type LoginResult struct {
+	Subject     string     `json:"subject,omitempty" doc:"Principal identifier after successful password verification, including restricted MFA enrollment"`
 	Status      string     `json:"status" enum:"authenticated,mfa_required,mfa_enrollment_required"`
 	ReturnURL   string     `json:"return_url"`
 	ChallengeID string     `json:"challenge_id,omitempty"`

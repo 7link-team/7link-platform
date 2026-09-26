@@ -251,9 +251,10 @@ func TestPersonalTokenValidationAndCanonicalPreparation(t *testing.T) {
 
 func TestPersonalTokenHTTPBrowserOnlyCSRFAndSecretProjection(t *testing.T) {
 	s, _, cookie, in := personalTokenService(t)
+	httpSubject := httpPrincipalID(t, s, cookie)
 	_, api := humatest.New(t)
 	registerPersonalTokenHTTP(api, s)
-	list := api.Get("/me/personal-tokens", "Cookie: "+cookie)
+	list := api.Get("/principals/"+httpSubject+"/personal-tokens", "Cookie: "+cookie)
 	require.Equal(t, http.StatusOK, list.Code, list.Body.String())
 	proof := verifiedPersonalTokenProof(t, s, cookie, in)
 	created, err := s.CreatePersonalToken(t.Context(), cookie, proof, in)
@@ -271,7 +272,7 @@ func TestPersonalTokenHTTPBrowserOnlyCSRFAndSecretProjection(t *testing.T) {
 			})
 		}
 	}
-	response := api.Delete("/me/personal-tokens/"+created.ID.String(), "Cookie: "+cookie, "Origin: https://attacker.example")
+	response := api.Delete("/principals/"+httpSubject+"/personal-tokens/"+created.ID.String(), "Cookie: "+cookie, "Origin: https://attacker.example")
 	assert.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
 	rows, total, err := s.ListPersonalTokens(t.Context(), cookie, 0, 20)
 	require.NoError(t, err)
@@ -334,45 +335,46 @@ func TestPersonalTokenTenantRevocationRollsBackAndDoesNotAffectOtherTenant(t *te
 
 func TestPersonalTokenHTTPCompleteFlowAndFailures(t *testing.T) {
 	s, h, cookie, in := personalTokenService(t)
+	httpSubject := httpPrincipalID(t, s, cookie)
 	_, api := humatest.New(t)
 	registerPersonalTokenHTTP(api, s)
-	prepared := api.Post("/me/personal-token-preparations", "Cookie: "+cookie, "Origin: https://app.example.test", in)
+	prepared := api.Post("/principals/"+httpSubject+"/personal-token-preparations", "Cookie: "+cookie, "Origin: https://app.example.test", in)
 	require.Equal(t, http.StatusOK, prepared.Code, prepared.Body.String())
 	proof := verifiedPersonalTokenProof(t, s, cookie, in)
 	body := struct {
 		PersonalTokenRequest
 		Proof string `json:"proof"`
 	}{PersonalTokenRequest: in, Proof: proof}
-	response := api.Post("/me/personal-tokens", "Cookie: "+cookie, "Origin: https://app.example.test", body)
+	response := api.Post("/principals/"+httpSubject+"/personal-tokens", "Cookie: "+cookie, "Origin: https://app.example.test", body)
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	var created respx.Envelope[PersonalTokenCreated]
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &created))
 	require.NotEmpty(t, created.Data.Token)
-	response = api.Get("/me/personal-tokens?offset=1&limit=1", "Cookie: "+cookie)
+	response = api.Get("/principals/"+httpSubject+"/personal-tokens?offset=1&limit=1", "Cookie: "+cookie)
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	var listed respx.Envelope[[]PersonalTokenView]
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &listed))
 	assert.Empty(t, listed.Data)
 	require.NotNil(t, listed.Meta.Page)
 	assert.EqualValues(t, 1, listed.Meta.Page.Total)
-	response = api.Get("/me/personal-token-permissions?tenant_id=71", "Cookie: "+cookie)
+	response = api.Get("/principals/"+httpSubject+"/personal-token-permissions?tenant_id=71", "Cookie: "+cookie)
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	s.personalPermissions = func(context.Context, guid.ID, []string, guid.ID) (map[string]bool, error) { return nil, assert.AnError }
-	response = api.Get("/me/personal-token-permissions?tenant_id=71", "Cookie: "+cookie)
+	response = api.Get("/principals/"+httpSubject+"/personal-token-permissions?tenant_id=71", "Cookie: "+cookie)
 	require.Equal(t, http.StatusServiceUnavailable, response.Code, response.Body.String())
-	response = api.Post("/me/personal-token-preparations", "Cookie: "+cookie, "Origin: https://app.example.test", in)
+	response = api.Post("/principals/"+httpSubject+"/personal-token-preparations", "Cookie: "+cookie, "Origin: https://app.example.test", in)
 	require.Equal(t, http.StatusServiceUnavailable, response.Code, response.Body.String())
 	in.Name = "   "
-	response = api.Post("/me/personal-token-preparations", "Cookie: "+cookie, "Origin: https://app.example.test", in)
+	response = api.Post("/principals/"+httpSubject+"/personal-token-preparations", "Cookie: "+cookie, "Origin: https://app.example.test", in)
 	require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 	body.Proof = "unverified"
-	response = api.Post("/me/personal-tokens", "Cookie: "+cookie, "Origin: https://app.example.test", body)
+	response = api.Post("/principals/"+httpSubject+"/personal-tokens", "Cookie: "+cookie, "Origin: https://app.example.test", body)
 	require.Equal(t, http.StatusServiceUnavailable, response.Code, response.Body.String())
 	h.auditErr = assert.AnError
-	response = api.Delete("/me/personal-tokens/"+created.Data.ID.String(), "Cookie: "+cookie, "Origin: https://app.example.test")
+	response = api.Delete("/principals/"+httpSubject+"/personal-tokens/"+created.Data.ID.String(), "Cookie: "+cookie, "Origin: https://app.example.test")
 	require.Equal(t, http.StatusInternalServerError, response.Code, response.Body.String())
 	h.auditErr = nil
-	response = api.Delete("/me/personal-tokens/"+created.Data.ID.String(), "Cookie: "+cookie, "Origin: https://app.example.test")
+	response = api.Delete("/principals/"+httpSubject+"/personal-tokens/"+created.Data.ID.String(), "Cookie: "+cookie, "Origin: https://app.example.test")
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	require.NoError(t, s.RevokePersonalToken(t.Context(), cookie, 999))
 	for _, bounds := range [][2]int{{-1, 1}, {0, 0}, {0, 101}} {
@@ -382,7 +384,7 @@ func TestPersonalTokenHTTPCompleteFlowAndFailures(t *testing.T) {
 	// Only the credential store's test-owned table is removed to exercise
 	// request-time persistence failure without invalidating the browser session.
 	require.NoError(t, h.db.Migrator().DropTable(&model.PersonalToken{}))
-	response = api.Get("/me/personal-tokens", "Cookie: "+cookie)
+	response = api.Get("/principals/"+httpSubject+"/personal-tokens", "Cookie: "+cookie)
 	require.Equal(t, http.StatusInternalServerError, response.Code, response.Body.String())
 	_, err := s.Authenticate(authnext.WithPersonalTokenScope(t.Context(), 71, "store_view"), "Bearer "+created.Data.Token, "")
 	require.ErrorIs(t, err, authnext.ErrUnavailable)
@@ -471,6 +473,7 @@ func TestPersonalTokenCreationStorageAndIDFailuresRollBackProof(t *testing.T) {
 
 func TestPersonalTokenRevocationStoreFailurePreservesTokenAndOwner(t *testing.T) {
 	s, h, cookie, in := personalTokenService(t)
+	httpSubject := httpPrincipalID(t, s, cookie)
 	created, err := s.CreatePersonalToken(t.Context(), cookie, verifiedPersonalTokenProof(t, s, cookie, in), in)
 	require.NoError(t, err)
 	ctx := authnext.WithPersonalTokenScope(t.Context(), in.TenantID, "store_view")
@@ -508,8 +511,8 @@ func TestPersonalTokenRevocationStoreFailurePreservesTokenAndOwner(t *testing.T)
 	assert.ErrorIs(t, err, authnext.ErrInvalidToken)
 	_, api := humatest.New(t)
 	registerPersonalTokenHTTP(api, s)
-	assert.Equal(t, http.StatusUnprocessableEntity, api.Delete("/me/personal-tokens/not-an-id", "Cookie: "+cookie, "Origin: https://app.example.test").Code)
-	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/me/personal-token-permissions?tenant_id=not-an-id", "Cookie: "+cookie).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Delete("/principals/"+httpSubject+"/personal-tokens/not-an-id", "Cookie: "+cookie, "Origin: https://app.example.test").Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/principals/"+httpSubject+"/personal-token-permissions?tenant_id=not-an-id", "Cookie: "+cookie).Code)
 }
 
 func TestPersonalTokenCorruptScopeAndDisabledPrincipalCannotAuthenticate(t *testing.T) {

@@ -37,6 +37,11 @@ report.fixtures = fixtures
 save()
 const password = randomBytes(32).toString("base64url") + "aA1!"
 async function call(context, path, method = "GET", data, tenant) {
+  if (path.includes("{principal_id}")) {
+    const identity = await context.request.get("/api/me")
+    assert(identity.ok())
+    path = path.replace("{principal_id}", (await identity.json()).data.subject)
+  }
   const requestPath =
     tenant && !path.startsWith("/login") && !path.startsWith("/platform/")
       ? `/tenants/${tenant}${path}`
@@ -60,13 +65,21 @@ async function login(context, name, secret) {
   })
   return ok(context, "/me")
 }
-async function verified(page, messages, responsePath) {
+async function verified(page, messages, responsePath, method = "POST") {
+  if (responsePath.includes("{principal_id}")) {
+    const identity = await page.context().request.get("/api/me")
+    assert(identity.ok())
+    responsePath = responsePath.replace(
+      "{principal_id}",
+      (await identity.json()).data.subject
+    )
+  }
   const dialog = page.getByRole("dialog")
   await dialog.locator("#reauth-password").fill(password)
   const response = page.waitForResponse(
     (r) =>
       new URL(r.url()).pathname === "/api" + responsePath &&
-      r.request().method() === "POST"
+      r.request().method() === method
   )
   const [verifiedResponse] = await Promise.all([
     response,
@@ -137,14 +150,22 @@ try {
         await page
           .getByRole("button", { name: messages.leaveTenant, exact: true })
           .click()
-        await verified(page, messages, `/me/memberships/${tenant.id}/leave`)
+        await verified(
+          page,
+          messages,
+          `/principals/{principal_id}/memberships/${tenant.id}`,
+          "DELETE"
+        )
         await page.getByText(messages.noMemberships, { exact: true }).waitFor()
         assert.equal(
           (await ok(context, "/me")).subject,
           principal.id,
           "leaving preserves the global session"
         )
-        const membership = await ok(context, "/me/memberships")
+        const membership = await ok(
+          context,
+          "/principals/{principal_id}/memberships"
+        )
         assert.equal(membership.items.length, 0)
         await page.goto("/me/closure")
         await page
@@ -153,7 +174,11 @@ try {
             exact: true,
           })
           .click()
-        await verified(page, messages, "/me/closure-request")
+        await verified(
+          page,
+          messages,
+          "/principals/{principal_id}/closure-request"
+        )
         await page
           .getByRole("heading", {
             name: messages.closureStatus_pending,
@@ -161,7 +186,8 @@ try {
           })
           .waitFor()
         assert.equal(
-          (await ok(context, "/me/closure-request")).status,
+          (await ok(context, "/principals/{principal_id}/closure-request"))
+            .status,
           "pending"
         )
         await page
@@ -177,7 +203,8 @@ try {
           })
           .waitFor()
         assert.equal(
-          (await ok(context, "/me/closure-request")).status,
+          (await ok(context, "/principals/{principal_id}/closure-request"))
+            .status,
           "canceled"
         )
         await page
@@ -186,7 +213,11 @@ try {
             exact: true,
           })
           .click()
-        await verified(page, messages, "/me/closure-request")
+        await verified(
+          page,
+          messages,
+          "/principals/{principal_id}/closure-request"
+        )
         const review = await reviewer.newPage()
         review.on("pageerror", (e) => errors.push(e.message))
         review.setDefaultTimeout(15000)

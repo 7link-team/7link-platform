@@ -72,13 +72,7 @@ try {
   const roles = await ok(admin, "/roles", "GET", undefined, tenant)
   const role = roles.find((item) => item.name === "Administrator")
   assert(role)
-  await ok(
-    admin,
-    `/roles/${role.id}/members/${actor.id}`,
-    "PUT",
-    {},
-    tenant
-  )
+  await ok(admin, `/roles/${role.id}/members/${actor.id}`, "PUT", {}, tenant)
   let lastContext
   for (const [name, viewport] of [
     ["desktop", { width: 1440, height: 1000 }],
@@ -98,7 +92,11 @@ try {
         assert(!new URL(request.url()).pathname.includes("/tenants/"))
         unscopedSession = true
       }
-      if (request.url().includes(`/api/tenants/${tenant}/me/menus`))
+      if (
+        request
+          .url()
+          .includes(`/api/tenants/${tenant}/principals/${actor.id}/menus`)
+      )
         derivedMenu = true
     })
     assert.deepEqual((await context.storageState()).origins, [])
@@ -107,7 +105,9 @@ try {
     await page.locator('input[name="password"]').fill(memberPassword)
     const menusLoaded = page.waitForResponse(
       (response) =>
-        response.url().includes("/api/me/menus") &&
+        response
+          .url()
+          .includes(`/api/tenants/${tenant}/principals/${actor.id}/menus`) &&
         response.status() === 200
     )
     await page.locator('button[type="submit"]').click()
@@ -116,10 +116,7 @@ try {
     await menusLoaded
     assert(derivedMenu)
     await page.locator("main article").nth(3).waitFor()
-    assert.equal(
-      (await ok(context, "/me")).organization_id,
-      tenant
-    )
+    assert.equal((await ok(context, "/me")).organization_id, tenant)
     assert.equal(
       (await api(context, "/tenants")).status,
       403,
@@ -153,10 +150,7 @@ try {
     },
     second.id
   )
-  assert.equal(
-    (await ok(lastContext, "/me")).organization_id,
-    undefined
-  )
+  assert.equal((await ok(lastContext, "/me")).organization_id, undefined)
   const ambiguous = await browser.newContext({
     baseURL,
     viewport: { width: 1440, height: 1000 },
@@ -182,14 +176,10 @@ try {
   await page.reload()
   await expectTenantWorkspace(page, tenant)
   assert.equal(
-    (await ok(ambiguous, "/me", "GET", undefined, second.id))
-      .organization_id,
+    (await ok(ambiguous, "/me", "GET", undefined, second.id)).organization_id,
     second.id
   )
-  assert.equal(
-    (await ok(ambiguous, "/me")).organization_id,
-    undefined
-  )
+  assert.equal((await ok(ambiguous, "/me")).organization_id, undefined)
   await ok(
     admin,
     `/members/${actor.id}`,
@@ -198,14 +188,10 @@ try {
     tenant
   )
   assert.equal(
-    (await api(ambiguous, "/me", "GET", undefined, tenant))
-      .status,
+    (await api(ambiguous, "/me", "GET", undefined, tenant)).status,
     403
   )
-  assert.equal(
-    (await ok(ambiguous, "/me")).organization_id,
-    second.id
-  )
+  assert.equal((await ok(ambiguous, "/me")).organization_id, second.id)
   assert.deepEqual(errors, [])
   console.log(
     "PASS: unconfigured tenant member login, session adoption, desktop/mobile, ambiguous membership, explicit selection, revocation"

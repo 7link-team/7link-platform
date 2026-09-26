@@ -54,7 +54,7 @@ organization-list-invitations|GET|/tenants/{tenant_id}/invitations
 organization-list-position-members|GET|/positions/{position_id}/members
 organization-list-positions|GET|/tenants/{tenant_id}/positions
 organization-list-tenants|GET|/tenants
-organization-my-tenants|GET|/me/tenants
+organization-my-tenants|GET|/principals/{principal_id}/tenants
 organization-put-group-member|PUT|/groups/{group_id}/members/{principal_id}
 organization-put-position-member|PUT|/positions/{position_id}/members/{principal_id}
 organization-resend-invitation|POST|/invitations/{invitation_id}/deliveries
@@ -195,7 +195,7 @@ func TestOrganizationOpenAPIGuardsScopesAndSchemas(t *testing.T) {
 	require.NotNil(t, accept)
 	assert.Empty(t, accept.Security)
 	assert.NotContains(t, accept.Extensions, authz.GuardExtensionKey)
-	assert.NotEmpty(t, spec.Paths["/me/tenants"].Get.Security)
+	assert.NotEmpty(t, spec.Paths["/principals/{principal_id}/tenants"].Get.Security)
 
 	createGroup := spec.Paths["/tenants/{tenant_id}/groups"].Post
 	schema := createGroup.RequestBody.Content["application/json"].Schema
@@ -399,7 +399,7 @@ func TestOrganizationHTTPLifecycleExercisesEveryOperation(t *testing.T) {
 	assert.Equal(t, http.StatusOK, h.api.Delete("/groups/401/members/10", auth).Code)
 	assert.Equal(t, http.StatusOK, h.api.Delete("/groups/401?version=2", auth).Code)
 
-	assert.Equal(t, http.StatusOK, h.api.Get("/me/tenants", auth).Code)
+	assert.Equal(t, http.StatusOK, h.api.Get("/principals/"+"1"+"/tenants", auth).Code)
 	createdTenant := h.api.Post("/tenants", auth, map[string]any{
 		"slug": "new-tenant", "name": "New Tenant",
 		"owner_principal_id": organizationTestOwnerID.String(),
@@ -450,7 +450,7 @@ func TestTenantAdministrationRequiresPlatformPermission(t *testing.T) {
 	client := humatest.Wrap(t, api)
 	auth := "Authorization: Bearer test"
 
-	assert.Equal(t, http.StatusOK, client.Get("/me/tenants", auth).Code)
+	assert.Equal(t, http.StatusOK, client.Get("/principals/"+"1"+"/tenants", auth).Code)
 	for _, response := range []*httptest.ResponseRecorder{
 		client.Get("/tenants", auth),
 		client.Post("/tenants", auth, map[string]any{"slug": "denied", "name": "Denied"}),
@@ -533,7 +533,7 @@ func TestOrganizationHTTPRejectsInvalidReferencesAndStorageFailures(t *testing.T
 		h.api.Get("/tenants/1", auth),
 		h.api.Patch("/tenants/1", auth, map[string]any{"name": "Tenant", "version": 1}),
 		h.api.Delete("/tenants/1?version=1", auth),
-		h.api.Get("/me/tenants", auth),
+		h.api.Get("/principals/"+"1"+"/tenants", auth),
 		h.api.Get(tenant+"/invitations", auth),
 		h.api.Post(tenant+"/invitations", auth, map[string]any{
 			"email": "user@example.com", "expires_in_hours": 72,

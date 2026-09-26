@@ -68,7 +68,9 @@ try {
     page.on("response", (response) => {
       const optionalMissingAvatar =
         response.status() === 404 &&
-        new URL(response.url()).pathname === "/api/me/avatar"
+        /^\/api\/principals\/[^/]+\/avatar$/.test(
+          new URL(response.url()).pathname
+        )
       if (
         !optionalMissingAvatar &&
         (response.status() === 403 ||
@@ -94,7 +96,10 @@ try {
         exact: true,
       })
       .click()
-    assert.equal(await page.locator("#password").inputValue(), passwords.get(account.id))
+    assert.equal(
+      await page.locator("#password").inputValue(),
+      passwords.get(account.id)
+    )
     await page.locator('button[type="submit"]').click()
     await page.waitForURL((url) => url.pathname !== "/login")
     assert.equal(
@@ -112,8 +117,13 @@ try {
       responseFailures = []
       browserErrors = []
       const navigation = await page.goto(path)
-      await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => {})
-      const body = (await page.locator("body").innerText()).replace(/\s+/gu, " ")
+      await page
+        .waitForLoadState("networkidle", { timeout: 5_000 })
+        .catch(() => {})
+      const body = (await page.locator("body").innerText()).replace(
+        /\s+/gu,
+        " "
+      )
       const pageFailures = [
         ...(navigation && navigation.status() >= 400
           ? [`${navigation.status()} ${page.url()}`]
@@ -133,19 +143,30 @@ try {
           `visible authorization error: ${alerts.join(" | ")}`,
           ...responseFailures.filter((failure) => failure.startsWith("403 "))
         )
-      if (path.includes("/files") && !path.startsWith("/me/")) {
-        if (/Create personal files|创建个人文件区|Cipta fail peribadi/iu.test(body))
-          pageFailures.push("organization file page exposes personal root creation")
+      if (
+        path.includes("/files") &&
+        !/^\/principals\/[^/]+\/files$/.test(path)
+      ) {
+        if (
+          /Create personal files|创建个人文件区|Cipta fail peribadi/iu.test(
+            body
+          )
+        )
+          pageFailures.push(
+            "organization file page exposes personal root creation"
+          )
         if (
           /No file root has been created for this account|当前账号尚未创建文件根目录|Belum ada akar fail untuk akaun ini/iu.test(
             body
           )
         )
-          pageFailures.push("organization file page uses a personal empty state")
+          pageFailures.push(
+            "organization file page uses a personal empty state"
+          )
       }
-      const links = await page.locator("aside nav a[href]").evaluateAll((nodes) =>
-        nodes.map((node) => node.href)
-      )
+      const links = await page
+        .locator("aside nav a[href]")
+        .evaluateAll((nodes) => nodes.map((node) => node.href))
       for (const href of links) {
         const url = new URL(href)
         if (url.origin !== webURL) continue
@@ -176,7 +197,9 @@ try {
   await browser.close()
 }
 
-report.status = report.accounts.every((account) => account.failures.length === 0)
+report.status = report.accounts.every(
+  (account) => account.failures.length === 0
+)
   ? "PASS"
   : "FAIL"
 saveReport()

@@ -111,10 +111,9 @@ try {
     await tenantFilesLink.waitFor()
     const fileHref = await tenantFilesLink.getAttribute("href")
     assert(
-      [
-        `/tenants/${fixture.tenantID}/files`,
-        `${entityBase}/files`,
-      ].includes(fileHref),
+      [`/tenants/${fixture.tenantID}/files`, `${entityBase}/files`].includes(
+        fileHref
+      ),
       `${account.id} file link stays in its authorized tenant/entity context`
     )
     await page.goto(fileHref)
@@ -165,7 +164,7 @@ try {
         .waitFor()
     }
     const unexpectedResponses = failedResponses.filter((failure) => {
-      if (failure === `404 ${webURL}/api/me/avatar`) return false
+      if (/^404 .*\/api\/principals\/[^/]+\/avatar$/.test(failure)) return false
       if (!failure.startsWith("403 ")) return true
       const pathname = new URL(failure.slice(4)).pathname
       return (

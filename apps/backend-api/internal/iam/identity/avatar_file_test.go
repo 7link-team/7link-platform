@@ -112,7 +112,7 @@ func TestAvatarObjectsCandidatesSelectionAndExpirySQLite(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, bindings, 1)
 	require.Equal(t, managed[0].ID, bindings[0].FileID)
-	require.Equal(t, "/api/principals/"+principal.ID.String()+"/avatar", first.URL)
+	require.Equal(t, "/api/principals/"+principal.ID.String()+"/avatar/content", first.URL)
 	read, err := h.resources.Open(t.Context(), h.db, principal.ID, files.PrincipalAvatarPurpose, "current", time.Now())
 	require.NoError(t, err)
 	pixels, err := readAvatarFile(read)
@@ -128,7 +128,7 @@ func TestAvatarObjectsCandidatesSelectionAndExpirySQLite(t *testing.T) {
 	selected, err := h.service.SetMyAvatar(t.Context(), principal.ID, avatarInput{CandidateURL: chosen.URL, Style: chosen.Style})
 	require.NoError(t, err)
 	require.Equal(t, chosen.Style, selected.Style, "selection must reuse the candidate object")
-	require.Equal(t, "/api/principals/"+principal.ID.String()+"/avatar", selected.URL)
+	require.Equal(t, "/api/principals/"+principal.ID.String()+"/avatar/content", selected.URL)
 	count, err := q.Object.WithContext(t.Context()).Count()
 	require.NoError(t, err)
 	require.EqualValues(t, 7, count, "candidate selection must not copy bytes")
@@ -144,7 +144,7 @@ func TestAvatarObjectsCandidatesSelectionAndExpirySQLite(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, selected, current)
 	for _, candidate := range candidates {
-		candidateID := strings.TrimPrefix(candidate.URL, "/api/me/avatar-candidates/")
+		candidateID := strings.TrimPrefix(candidate.URL, "/api/principals/"+principal.ID.String()+"/avatar-candidates/")
 		require.Len(t, candidateID, 48)
 		readable, err := h.resources.Has(t.Context(), h.db, principal.ID, files.PrincipalAvatarCandidatePurpose, "candidate-"+candidateID, time.Now().Add(25*time.Hour))
 		require.NoError(t, err)
@@ -272,5 +272,5 @@ func TestLegacyDirectAvatarIsAdoptedWithoutCopyingBytes(t *testing.T) {
 	actual, err := readAvatarFile(read)
 	require.NoError(t, err)
 	require.Equal(t, pixels, actual)
-	require.Equal(t, "/api/principals/"+principal.ID.String()+"/avatar", storedAvatar(h.principal(t, principal.ID).Avatar).URL)
+	require.Equal(t, "/api/principals/"+principal.ID.String()+"/avatar/content", storedAvatar(h.principal(t, principal.ID).Avatar).URL)
 }

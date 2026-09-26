@@ -351,9 +351,10 @@ await waitFor(
 )
 await evaluate(`
   const session = await fetch("/api/me", { credentials: "include" });
-  if (!session.ok || !(await session.json()).data?.subject)
+  const subject = (await session.json()).data?.subject;
+  if (!session.ok || !subject)
     throw new Error("Registered principal did not establish an authenticated session");
-  const tenants = await fetch("/api/me/tenants", { credentials: "include" });
+  const tenants = await fetch("/api/principals/" + subject + "/tenants", { credentials: "include" });
   if (!tenants.ok || (await tenants.json()).data.length !== 0)
     throw new Error("Registration unexpectedly granted tenant membership");
   if (document.querySelector('a[href="/users"]'))
@@ -369,14 +370,10 @@ await evaluate(`
 let allowedRejectedRegistrations = 1
 const unexpectedResponses = responses.filter((response) => {
   if (response.status < 400) return false
-  if (
-    response.status === 401 &&
-    response.url.endsWith("/api/me")
-  )
-    return false
+  if (response.status === 401 && response.url.endsWith("/api/me")) return false
   if (
     response.status === 403 &&
-    (response.url.includes("/api/me/menus") ||
+    (/\/api\/tenants\/[^/]+\/principals\/[^/]+\/menus/.test(response.url) ||
       response.url.includes("/api/tenants"))
   )
     return false

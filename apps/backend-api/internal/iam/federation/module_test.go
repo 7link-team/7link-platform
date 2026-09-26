@@ -299,10 +299,10 @@ func provideFederationForeignTables(t *testing.T, services *platformmodule.Servi
 
 func approvedFederationOperations() map[string]string {
 	return map[string]string{
-		"federation-list-personal-identity-links":           "GET /me/identity-links",
-		"federation-list-personal-identity-providers":       "GET /me/identity-link-providers",
-		"federation-create-personal-identity-transaction":   "POST /me/identity-link-transactions",
-		"federation-delete-personal-identity-link":          "DELETE /me/identity-links/{link_id}",
+		"federation-list-personal-identity-links":           "GET /principals/{principal_id}/identity-links",
+		"federation-list-personal-identity-providers":       "GET /principals/{principal_id}/identity-link-providers",
+		"federation-create-personal-identity-transaction":   "POST /principals/{principal_id}/identity-link-transactions",
+		"federation-delete-personal-identity-link":          "DELETE /principals/{principal_id}/identity-links/{link_id}",
 		"federation-complete-personal-identity-transaction": "GET /identity-providers/{provider_id}/identity-continuation",
 		"federation-callback-login":                         "GET /identity-providers/{provider_id}/callback", "federation-callback-saml-login": "POST /identity-providers/{provider_id}/callback",
 		"federation-create-identity-provider": "POST /tenants/{tenant_id}/identity-providers", "federation-create-saml-service-provider": "POST /tenants/{tenant_id}/saml-service-providers",

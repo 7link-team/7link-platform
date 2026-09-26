@@ -75,7 +75,7 @@ func TestMyFilesRouteAnswersWhileATenantIsSelected(t *testing.T) {
 	require.NoError(t, err)
 
 	api := newFileHTTPAPI(t, h.service, 90)
-	response := api.Get("/me/files?limit=10", "Authorization: Bearer test")
+	response := api.Get("/principals/"+"70"+"/files?limit=10", "Authorization: Bearer test")
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 
 	var envelope respx.Envelope[filePage]
@@ -93,13 +93,13 @@ func TestMyFilesRouteCreatesTheCallersOwnRoot(t *testing.T) {
 	api := newFileHTTPAPI(t, h.service, 90)
 	headers := []any{"Authorization: Bearer test"}
 
-	empty := api.Get("/me/files?limit=10", headers...)
+	empty := api.Get("/principals/"+"70"+"/files?limit=10", headers...)
 	require.Equal(t, http.StatusOK, empty.Code, empty.Body.String())
 	var before respx.Envelope[filePage]
 	require.NoError(t, json.Unmarshal(empty.Body.Bytes(), &before))
 	require.Empty(t, before.Data.Items, "reading does not create the space")
 
-	created := postFileFormTo(t, api, "/me/files", headers, map[string]string{"kind": "directory", "scope": "account"}, "", "")
+	created := postFileFormTo(t, api, "/principals/"+"70"+"/files", headers, map[string]string{"kind": "directory", "scope": "account"}, "", "")
 	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
 	var root respx.Envelope[fileEntryView]
 	require.NoError(t, json.Unmarshal(created.Body.Bytes(), &root))
@@ -107,7 +107,7 @@ func TestMyFilesRouteCreatesTheCallersOwnRoot(t *testing.T) {
 	require.Equal(t, "Account files", root.Data.Name)
 	require.Nil(t, root.Data.TenantID, "the space belongs to the person, not to the selected tenant")
 
-	again := api.Get("/me/files?limit=10", headers...)
+	again := api.Get("/principals/"+"70"+"/files?limit=10", headers...)
 	require.Equal(t, http.StatusOK, again.Code, again.Body.String())
 	var after respx.Envelope[filePage]
 	require.NoError(t, json.Unmarshal(again.Body.Bytes(), &after))

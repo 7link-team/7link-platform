@@ -30,7 +30,11 @@ describe("IAM API client", () => {
         return Response.json({ code: 0, data: {} })
       },
     })
-    const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "90")
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      () => "90",
+      () => "101"
+    )
     const id = "a".repeat(64)
     await client.session()
     await client.currentBrowserSession()
@@ -47,6 +51,102 @@ describe("IAM API client", () => {
   })
   let server: ReturnType<typeof Bun.serve> | undefined
   afterEach(() => server?.stop(true))
+
+  it("discovers and caches the principal, then clears it after signing out all devices", async () => {
+    const requests: string[] = []
+    let subject = "101"
+    server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        const path = new URL(request.url).pathname
+        requests.push(path)
+        return Response.json({
+          code: 0,
+          data: path === "/me" ? { subject } : [],
+        })
+      },
+    })
+    const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "90")
+    await Promise.all([client.sessions(), client.passkeys()])
+    expect(requests.filter((path) => path === "/me")).toHaveLength(1)
+    expect(requests).toContain("/principals/101/sessions")
+    expect(requests).toContain("/principals/101/passkeys")
+    await client.logoutAll()
+    subject = "202"
+    await client.sessions()
+    expect(requests.filter((path) => path === "/me")).toHaveLength(2)
+    expect(requests.at(-1)).toBe("/principals/202/sessions")
+  })
+
+  it("uses the verified login subject for restricted MFA enrollment", async () => {
+    const requests: string[] = []
+    server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        const path = new URL(request.url).pathname
+        requests.push(path)
+        if (path === "/me") return Response.json({ code: 401 }, { status: 401 })
+        return Response.json({
+          code: 0,
+          data:
+            path === "/login"
+              ? { status: "mfa_enrollment_required", subject: "202" }
+              : {},
+        })
+      },
+    })
+    const client = createIamApi(`http://127.0.0.1:${server.port}`)
+    await client.login({
+      login_name: "new-user",
+      password: "password",
+      return_url: "/",
+    })
+    await client.beginTotpEnrollment("password")
+    await client.confirmTotpEnrollment("123456")
+    expect(requests).toEqual([
+      "/login",
+      "/principals/202/mfa/totp-enrollments",
+      "/principals/202/mfa/totp",
+    ])
+  })
+
+  it("rejects an old identity discovery after a new login and retries failed discovery", async () => {
+    let resolveIdentity!: (response: Response) => void
+    let discoveries = 0
+    const requests: string[] = []
+    server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        const path = new URL(request.url).pathname
+        requests.push(path)
+        if (path === "/me") {
+          discoveries++
+          if (discoveries === 1)
+            return new Promise<Response>((resolve) => {
+              resolveIdentity = resolve
+            })
+          if (discoveries === 2)
+            return Response.json({ code: 503 }, { status: 503 })
+          return Response.json({ code: 0, data: { subject: "202" } })
+        }
+        return Response.json({ code: 0, data: {} })
+      },
+    })
+    const client = createIamApi(`http://127.0.0.1:${server.port}`)
+    const old = client.sessions().catch((error) => error)
+    while (!resolveIdentity) await Bun.sleep(1)
+    await client.login({
+      login_name: "other",
+      password: "password",
+      return_url: "/",
+    })
+    resolveIdentity(Response.json({ code: 0, data: { subject: "101" } }))
+    expect(await old).toBeInstanceOf(ApiError)
+    await expect(client.sessions()).rejects.toBeInstanceOf(ApiError)
+    await client.sessions()
+    expect(requests).not.toContain("/principals/101/sessions")
+    expect(requests.at(-1)).toBe("/principals/202/sessions")
+  })
 
   it("binds file pages to the selected tenant and entity with bounded cursors", async () => {
     const requests: RecordedRequest[] = []
@@ -69,7 +169,11 @@ describe("IAM API client", () => {
         })
       },
     })
-    const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "90")
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      () => "90",
+      () => "101"
+    )
     await client.files("80", "12")
     await client.fileItems("80", "node/id", "34")
 
@@ -103,7 +207,11 @@ describe("IAM API client", () => {
         return Response.json({ code: 0, data: { id: "7" } })
       },
     })
-    const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "90")
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      () => "90",
+      () => "101"
+    )
     await client.createAccountFileRoot()
     await client.createDirectory("80", "1/2", "Reports")
     await client.uploadFile(
@@ -123,7 +231,7 @@ describe("IAM API client", () => {
     await client.restoreFileEntry("80", "5/6", 9, "restored.txt")
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "POST /me/files",
+      "POST /principals/101/files",
       "POST /entities/80/files",
       "POST /entities/80/files",
       "GET /files/3%2F4/content",
@@ -169,7 +277,11 @@ describe("IAM API client", () => {
       },
     })
     try {
-      const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "90")
+      const client = createIamApi(
+        `http://127.0.0.1:${server.port}`,
+        () => "90",
+        () => "101"
+      )
       await client.files(undefined)
       expect(requests).toEqual(["/tenants/90/files?limit=100"])
     } finally {
@@ -209,7 +321,11 @@ describe("IAM API client", () => {
         return Response.json({ code: 0, data: { created: 1 } })
       },
     })
-    const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "90")
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      () => "90",
+      () => "101"
+    )
     const input = {
       action: "copy" as const,
       destination_id: "10",
@@ -273,7 +389,11 @@ describe("IAM API client", () => {
       },
     })
     try {
-      const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "90")
+      const client = createIamApi(
+        `http://127.0.0.1:${server.port}`,
+        () => "90",
+        () => "101"
+      )
       await client.createDirectory("80", "1", "Reports")
       await client.createFileOperation(
         "80",
@@ -339,7 +459,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "selected-tenant-must-not-leak"
+      () => "selected-tenant-must-not-leak",
+      () => "101"
     )
     await client.files(null)
     await client.createAccountFileRoot()
@@ -351,11 +472,11 @@ describe("IAM API client", () => {
     await client.trashFileEntry(null, "8", 2)
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /me/files?limit=100",
-      "POST /me/files",
+      "GET /principals/101/files?limit=100",
+      "POST /principals/101/files",
       "GET /files/7/items?limit=100",
-      "POST /me/files",
-      "POST /me/files",
+      "POST /principals/101/files",
+      "POST /principals/101/files",
       "GET /files/8/content",
       "PATCH /files/8",
       "DELETE /files/8?revision=2",
@@ -388,7 +509,11 @@ describe("IAM API client", () => {
         })
       },
     })
-    const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "90")
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      () => "90",
+      () => "101"
+    )
     await expect(client.previewFile("80", "3/4", 9)).rejects.toMatchObject({
       status: 413,
       code: "file_preview_too_large",
@@ -420,7 +545,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "unrelated-tenant"
+      () => "unrelated-tenant",
+      () => "101"
     )
     await client.session()
     await client.sessionForTenant("authorized-tenant")
@@ -444,7 +570,8 @@ describe("IAM API client", () => {
         return Response.json({
           code: 0,
           data:
-            url.pathname === "/me/personal-tokens" && request.method === "GET"
+            url.pathname === "/principals/101/personal-tokens" &&
+            request.method === "GET"
               ? []
               : {},
           meta: { page: { total: 47 } },
@@ -453,7 +580,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "unrelated-selected-tenant"
+      () => "unrelated-selected-tenant",
+      () => "101"
     )
     expect(await client.personalTokens(20, 20)).toEqual({
       items: [],
@@ -499,13 +627,17 @@ describe("IAM API client", () => {
           !headers.has("x-tenant-id") && !headers.has("authorization")
       )
     ).toBe(true)
-    expect(requests[0]?.path).toBe("/me/personal-tokens?offset=20&limit=20")
+    expect(requests[0]?.path).toBe(
+      "/principals/101/personal-tokens?offset=20&limit=20"
+    )
     expect(requests[1]?.path).toBe(
-      "/me/personal-token-permissions?tenant_id=71"
+      "/principals/101/personal-token-permissions?tenant_id=71"
     )
     expect(JSON.parse(requests[5]!.body)).toEqual({ ...token, proof: "proof" })
-    expect(requests[6]?.path).toBe("/me/personal-tokens/token%2Fid")
-    expect(requests[7]?.path).toBe("/me/memberships?offset=50&limit=50")
+    expect(requests[6]?.path).toBe("/principals/101/personal-tokens/token%2Fid")
+    expect(requests[7]?.path).toBe(
+      "/principals/101/memberships?offset=50&limit=50"
+    )
     expect(JSON.parse(requests[8]!.body)).toEqual({ proof: "leave-proof" })
     expect(JSON.parse(requests[9]!.body)).toEqual({
       proof: "close-proof",
@@ -520,7 +652,9 @@ describe("IAM API client", () => {
       status: "processing",
       version: 5,
     })
-    expect(requests[15]?.path).toBe("/me/identity-links/provider%2Flink")
+    expect(requests[15]?.path).toBe(
+      "/principals/101/identity-links/provider%2Flink"
+    )
     expect(JSON.parse(requests[15]!.body)).toEqual({ proof: "unlink-proof" })
   })
 
@@ -543,7 +677,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "stale-tenant"
+      () => "stale-tenant",
+      () => "101"
     )
     expect(await client.myTenants()).toEqual([])
     expect(await client.oauthConsents()).toEqual([])
@@ -551,9 +686,9 @@ describe("IAM API client", () => {
       revoked: true,
     })
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /me/tenants",
-      "GET /me/oauth-consents",
-      "DELETE /me/oauth-consents/client%2F1",
+      "GET /principals/101/tenants",
+      "GET /principals/101/oauth-consents",
+      "DELETE /principals/101/oauth-consents/client%2F1",
     ])
     expect(requests.every(({ headers }) => !headers.has("x-tenant-id"))).toBe(
       true
@@ -588,7 +723,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-1"
+      () => "tenant-1",
+      () => "101"
     )
     const input: OAuthClientInput = {
       name: "Machine client",
@@ -673,7 +809,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant/1"
+      () => "tenant/1",
+      () => "101"
     )
 
     expect(await client.memberAuthorizationSources("member/11")).toEqual(
@@ -720,7 +857,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-a"
+      () => "tenant-a",
+      () => "101"
     )
     for (const scope of ["tenant", "platform"] as const) {
       await client.auditArchiveStatus(scope)
@@ -775,7 +913,11 @@ describe("IAM API client", () => {
         })
       },
     })
-    const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "11")
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      () => "11",
+      () => "101"
+    )
     await expect(client.downloadAuditArchive("123")).rejects.toMatchObject({
       status: 502,
       code: "incomplete_audit_export",
@@ -804,7 +946,11 @@ describe("IAM API client", () => {
       },
     })
     let tenant = "tenant-a"
-    const client = createIamApi(`http://127.0.0.1:${server.port}`, () => tenant)
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      () => tenant,
+      () => "101"
+    )
     const policy = {
       read: {
         default: "deny" as const,
@@ -858,7 +1004,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-a"
+      () => "tenant-a",
+      () => "101"
     )
     await client.roles()
     await client.changePassword({
@@ -867,7 +1014,7 @@ describe("IAM API client", () => {
     })
     expect(requests[0]?.path).toBe("/tenants/tenant-a/roles")
     expect(requests[0]?.headers.get("x-tenant-id")).toBeNull()
-    expect(requests[1]?.path).toBe("/me/password")
+    expect(requests[1]?.path).toBe("/principals/101/password")
     expect(requests[1]?.method).toBe("PATCH")
     expect(requests[1]?.headers.get("x-tenant-id")).toBeNull()
     expect(JSON.parse(requests[1]?.body ?? "{}")).toEqual({
@@ -892,7 +1039,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-governance"
+      () => "tenant-governance",
+      () => "101"
     )
 
     await client.requestableRoles()
@@ -919,7 +1067,7 @@ describe("IAM API client", () => {
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "GET /tenants/tenant-governance/requestable-roles",
-      "GET /tenants/tenant-governance/me/access-requests",
+      "GET /tenants/tenant-governance/principals/101/access-requests",
       "GET /tenants/tenant-governance/access-requests",
       "POST /tenants/tenant-governance/access-requests",
       "PUT /access-requests/request%2Fa/decision",
@@ -972,7 +1120,11 @@ describe("IAM API client", () => {
         return new Response(null, { status: 204 })
       },
     })
-    const client = createIamApi(`http://127.0.0.1:${server.port}`)
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      undefined,
+      () => "101"
+    )
     await expect(client.roles()).rejects.toMatchObject({
       status: 403,
       message: "forbidden",
@@ -998,7 +1150,11 @@ describe("IAM API client", () => {
         )
       },
     })
-    const client = createIamApi(`http://127.0.0.1:${server.port}`)
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      undefined,
+      () => "101"
+    )
     await expect(
       client.removeRoleMember("administrator", "principal")
     ).rejects.toMatchObject({
@@ -1016,7 +1172,11 @@ describe("IAM API client", () => {
         return Response.json({ code: 0, message: "ok", data: null })
       },
     })
-    const client = createIamApi(`http://127.0.0.1:${server.port}`)
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      undefined,
+      () => "101"
+    )
     expect(await client.effectiveMenus("42")).toEqual([])
   })
 
@@ -1040,7 +1200,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-must-not-leak"
+      () => "tenant-must-not-leak",
+      () => "101"
     )
 
     expect(await client.startPasswordRecovery("operator@example.com")).toEqual({
@@ -1088,7 +1249,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-must-not-leak"
+      () => "tenant-must-not-leak",
+      () => "101"
     )
 
     expect(await client.startEmailVerification()).toEqual({ accepted: true })
@@ -1131,7 +1293,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-must-not-leak"
+      () => "tenant-must-not-leak",
+      () => "101"
     )
 
     expect(await client.capabilities()).toEqual({
@@ -1189,7 +1352,7 @@ describe("IAM API client", () => {
               methods: ["totp", "recovery_code"],
             },
           })
-        if (path === "/me/mfa")
+        if (path === "/principals/101/mfa")
           return Response.json({
             code: 0,
             message: "ok",
@@ -1199,10 +1362,10 @@ describe("IAM API client", () => {
           code: 0,
           message: "ok",
           data:
-            path === "/me/mfa/recovery-codes" ||
-            (path === "/me/mfa/totp" && request.method === "POST")
+            path === "/principals/101/mfa/recovery-codes" ||
+            (path === "/principals/101/mfa/totp" && request.method === "POST")
               ? { recovery_codes: ["AAAA-BBBB-CCCC-DDDD"] }
-              : path === "/me/mfa/totp-enrollments"
+              : path === "/principals/101/mfa/totp-enrollments"
                 ? {
                     secret: "JBSWY3DPEHPK3PXP",
                     provisioning_uri: "otpauth://totp/IAM:user",
@@ -1216,7 +1379,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-must-not-leak"
+      () => "tenant-must-not-leak",
+      () => "101"
     )
 
     expect(
@@ -1250,11 +1414,11 @@ describe("IAM API client", () => {
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "POST /login",
       "POST /login/mfa",
-      "GET /me/mfa",
-      "POST /me/mfa/totp-enrollments",
-      "POST /me/mfa/totp",
-      "PUT /me/mfa/recovery-codes",
-      "DELETE /me/mfa/totp",
+      "GET /principals/101/mfa",
+      "POST /principals/101/mfa/totp-enrollments",
+      "POST /principals/101/mfa/totp",
+      "PUT /principals/101/mfa/recovery-codes",
+      "DELETE /principals/101/mfa/totp",
     ])
     for (const request of requests) {
       expect(request.headers.get("x-tenant-id")).toBeNull()
@@ -1301,7 +1465,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-must-not-leak"
+      () => "tenant-must-not-leak",
+      () => "101"
     )
     const credential = { id: "credential", type: "public-key" }
 
@@ -1321,13 +1486,13 @@ describe("IAM API client", () => {
     await client.deletePasskey("a".repeat(64), "password")
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /me/passkeys",
-      "POST /me/passkey-registration-challenges",
-      "POST /me/passkeys",
+      "GET /principals/101/passkeys",
+      "POST /principals/101/passkey-registration-challenges",
+      "POST /principals/101/passkeys",
       "POST /login/passkey/options",
       "POST /login/passkey/verify",
-      `PATCH /me/passkeys/${"a".repeat(64)}`,
-      `DELETE /me/passkeys/${"a".repeat(64)}`,
+      `PATCH /principals/101/passkeys/${"a".repeat(64)}`,
+      `DELETE /principals/101/passkeys/${"a".repeat(64)}`,
     ])
     for (const request of requests)
       expect(request.headers.get("x-tenant-id")).toBeNull()
@@ -1376,7 +1541,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-oauth"
+      () => "tenant-oauth",
+      () => "101"
     )
     const input: OAuthClientInput = {
       name: "Operations console",
@@ -1460,7 +1626,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-scim"
+      () => "tenant-scim",
+      () => "101"
     )
 
     expect(await client.scimDirectories()).toEqual([directory])
@@ -1548,7 +1715,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => target.tenant_id
+      () => target.tenant_id,
+      () => "101"
     )
     expect(await client.scimTargets()).toEqual([target])
     const create = {
@@ -1666,7 +1834,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-service"
+      () => "tenant-service",
+      () => "101"
     )
 
     expect((await client.serviceAccounts("report worker")).total).toBe(1)
@@ -1744,7 +1913,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-organization"
+      () => "tenant-organization",
+      () => "101"
     )
     const input: DepartmentInput = {
       entity_id: "entity/a",
@@ -1806,7 +1976,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-admin"
+      () => "tenant-admin",
+      () => "101"
     )
 
     await client.updatePrincipal("principal/a", {
@@ -1896,7 +2067,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-invitation"
+      () => "tenant-invitation",
+      () => "101"
     )
 
     await client.invitations()
@@ -1948,7 +2120,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-must-not-leak"
+      () => "tenant-must-not-leak",
+      () => "101"
     )
 
     await client.tenants(true)
@@ -2001,7 +2174,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-a"
+      () => "tenant-a",
+      () => "101"
     )
     await client.anonymizePrincipal("principal/a", {
       version: 3,
@@ -2064,7 +2238,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-positions"
+      () => "tenant-positions",
+      () => "101"
     )
 
     expect(await client.positions()).toEqual([position])
@@ -2180,7 +2355,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-groups"
+      () => "tenant-groups",
+      () => "101"
     )
 
     expect(await client.groups()).toEqual([group])
@@ -2378,7 +2554,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-entities"
+      () => "tenant-entities",
+      () => "101"
     )
 
     expect(await client.entities()).toEqual([entity])
@@ -2603,7 +2780,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-audit"
+      () => "tenant-audit",
+      () => "101"
     )
 
     expect(
@@ -2648,7 +2826,11 @@ describe("IAM API client", () => {
         )
       },
     })
-    const client = createIamApi(`http://127.0.0.1:${server.port}`)
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      undefined,
+      () => "101"
+    )
     await expect(client.auditExport()).rejects.toMatchObject({
       status: 502,
       message: "The audit export returned an unexpected file type.",
@@ -2725,7 +2907,8 @@ describe("IAM API client", () => {
     })
     const client = createIamApi(
       `http://127.0.0.1:${server.port}`,
-      () => "tenant-audit"
+      () => "tenant-audit",
+      () => "101"
     )
     const report = await client.auditGovernance()
     expect(report.policy.min_days).toBe(365)
@@ -2765,7 +2948,11 @@ describe("IAM API client", () => {
         return Response.json({ code: 0, message: "ok", data: [] })
       },
     })
-    const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "")
+    const client = createIamApi(
+      `http://127.0.0.1:${server.port}`,
+      () => "",
+      () => "101"
+    )
     await client.roles()
     // Sending an empty header would scope the request to a tenant named "",
     // which reads as a real choice to the service; leaving it off does not.

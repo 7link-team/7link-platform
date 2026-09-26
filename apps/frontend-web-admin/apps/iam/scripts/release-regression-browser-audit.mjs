@@ -147,8 +147,10 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       return result()
     }
     if (
-      path === "/me/permissions" ||
-      /^\/entities\/[^/]+\/me\/permissions$/.test(path)
+      path === `/principals/${state.subject}/permissions` ||
+      new RegExp(
+        `^/entities/[^/]+/principals/${state.subject}/permissions$`
+      ).test(path)
     )
       return send(state.permissions)
     if (state.roleScopeCase) {
@@ -176,16 +178,16 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
         return send(snapshot)
       }
     }
-    if (path === "/me/personal-token-permissions")
+    if (path === `/principals/${state.subject}/personal-token-permissions`)
       return send([
         { code: "user_view", resource: "user", verb: "view", scope: "tenant" },
       ])
-    if (path === "/me/reauthentication/methods")
+    if (path === `/principals/${state.subject}/reauthentication/methods`)
       return send({
         methods: state.federated ? [] : ["password"],
         mfa_required: !state.federated,
       })
-    if (path === "/me/identity-links")
+    if (path === `/principals/${state.subject}/identity-links`)
       return send(
         state.links ??
           (state.federated
@@ -199,7 +201,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
               ]
             : [])
       )
-    if (path === "/me/identity-link-providers")
+    if (path === `/principals/${state.subject}/identity-link-providers`)
       return send(
         state.providers ??
           (state.federated
@@ -212,7 +214,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
               ]
             : [])
       )
-    if (path === "/me/identity-link-transactions") {
+    if (path === `/principals/${state.subject}/identity-link-transactions`) {
       if (state.identityFlow) {
         assert(state.proofVerified)
         assert.equal(state.reauthPurpose, "identity_link")
@@ -230,14 +232,14 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       state.proofVerified = true
       return send({ authorization_url: baseURL + "/me/tokens" })
     }
-    if (path === "/me/personal-token-preparations") {
+    if (path === `/principals/${state.subject}/personal-token-preparations`) {
       state.tokenPreparation = request.postDataJSON()
       return send({
         request: state.tokenPreparation,
         target: "bound-request-target",
       })
     }
-    if (path === "/me/reauthentication/challenges") {
+    if (path === `/principals/${state.subject}/reauthentication/challenges`) {
       state.proofVerified = false
       state.reauthPurpose = request.postDataJSON().purpose
       state.reauthTarget = request.postDataJSON().target
@@ -247,7 +249,9 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
         expires_at: "2027-01-01T00:00:00Z",
       })
     }
-    if (path === "/me/reauthentication/verifications") {
+    if (
+      path === `/principals/${state.subject}/reauthentication/verifications`
+    ) {
       const body = request.postDataJSON()
       state.proofVerified =
         body.password === "correct-password" && body.code === "123456"
@@ -256,7 +260,10 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
         state.proofVerified ? 200 : 401
       )
     }
-    if (path === "/me/personal-tokens" && request.method() === "POST") {
+    if (
+      path === `/principals/${state.subject}/personal-tokens` &&
+      request.method() === "POST"
+    ) {
       assert(state.proofVerified, "Token creation requires verified proof")
       assert.equal(state.reauthPurpose, "personal_token_create")
       const token = {
@@ -267,8 +274,12 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       state.personalTokens = [token]
       return send({ ...token, token: "fixture-one-time-secret" })
     }
-    if (path === "/me/personal-tokens") return send(state.personalTokens ?? [])
-    if (path === "/me/identity-links/link-1" && request.method() === "DELETE") {
+    if (path === `/principals/${state.subject}/personal-tokens`)
+      return send(state.personalTokens ?? [])
+    if (
+      path === `/principals/${state.subject}/identity-links/link-1` &&
+      request.method() === "DELETE"
+    ) {
       assert(state.proofVerified)
       assert.equal(state.reauthPurpose, "identity_unlink")
       assert.equal(state.reauthTarget, "link-1")
@@ -276,12 +287,15 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       state.links = []
       return send({ deleted: true })
     }
-    if (path === "/me/memberships")
+    if (path === `/principals/${state.subject}/memberships`)
       return send({
         items: state.memberships ?? [],
         total: state.memberships?.length ?? 0,
       })
-    if (path === "/me/memberships/t1" && request.method() === "DELETE") {
+    if (
+      path === `/principals/${state.subject}/memberships/t1` &&
+      request.method() === "DELETE"
+    ) {
       assert(state.proofVerified)
       assert.equal(state.reauthPurpose, "tenant_leave")
       assert.equal(state.reauthTarget, "t1")
@@ -292,7 +306,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       state.mine = state.mine.filter((item) => item.id !== "t1")
       return send({ status: "disabled" })
     }
-    if (path === "/me/closure-request") {
+    if (path === `/principals/${state.subject}/closure-request`) {
       state.closure ??= {
         principal_id: state.subject,
         status: "none",
@@ -337,7 +351,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       return send(item)
     }
     if (
-      path === "/me/personal-tokens/token-1" &&
+      path === `/principals/${state.subject}/personal-tokens/token-1` &&
       request.method() === "DELETE"
     ) {
       state.personalTokens[0].revoked_at = "2026-09-10T00:01:00Z"
@@ -378,13 +392,14 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       return send({ status: "authenticated", return_url: "/after-login" })
     }
     if (
-      (path === "/sessions/current" || path === "/me/sessions") &&
+      (path === "/sessions/current" ||
+        path === `/principals/${state.subject}/sessions`) &&
       request.method() === "DELETE"
     ) {
       if (state.logout === "network") return route.abort("failed")
       return send({ logout_url: "/signed-out" }, state.logout)
     }
-    if (path === "/me/sessions")
+    if (path === `/principals/${state.subject}/sessions`)
       return send([
         {
           id: "session-1",
@@ -397,7 +412,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
           ip_address: "127.0.0.1",
         },
       ])
-    if (path === "/me/tenants") {
+    if (path === `/principals/${state.subject}/tenants`) {
       if (state.delayTenants) {
         const items = state.delayTenants
         state.delayed.push(() => send(items))
@@ -409,7 +424,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
     if (path === "/tenants")
       return send(state.platform, state.platform ? 200 : 403)
     if (path === "/entities") return send(state.entities, state.entitiesStatus)
-    if (path === "/me/menus") {
+    if (path === `/principals/${state.subject}/menus`) {
       if (state.delayMenus) {
         const menus = state.delayMenus
         state.delayedMenus.push(() => send(menus))
@@ -418,7 +433,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       }
       return send(state.menus, state.menusStatus)
     }
-    if (path === "/me/oauth-consents") {
+    if (path === `/principals/${state.subject}/oauth-consents`) {
       if (state.invalidConsentResponse)
         return route.fulfill({
           status: 200,
@@ -428,7 +443,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       return send(state.consents, state.consentStatus ?? 200)
     }
     if (
-      path.startsWith("/me/oauth-consents/") &&
+      path.startsWith(`/principals/${state.subject}/oauth-consents/`) &&
       request.method() === "DELETE"
     ) {
       if (state.revoke === 200) state.consents = []
@@ -494,7 +509,7 @@ try {
         email: "",
       }
       const dashboard = page.waitForResponse((response) =>
-        response.url().endsWith("/me/sessions")
+        response.url().endsWith(`/principals/${state.subject}/sessions`)
       )
       await page.goto("/tenants/t1")
       await page.waitForURL("**/tenants/t1")
@@ -939,7 +954,7 @@ try {
       )
       assert(
         state.requests
-          .filter((r) => r.path === "/me/tenants")
+          .filter((r) => r.path === `/principals/${state.subject}/tenants`)
           .every((r) => r.tenant === undefined)
       )
       state.subject = "person-2"
@@ -1112,7 +1127,8 @@ try {
         assert(
           state.requests.some(
             (r) =>
-              r.path === "/me/oauth-consents/client%2F1" &&
+              r.path ===
+                `/principals/${state.subject}/oauth-consents/client%2F1` &&
               r.method === "DELETE"
           )
         )
@@ -1536,7 +1552,7 @@ try {
             .getByRole("button", { name: messages.revoked, exact: true })
             .waitFor()
           for (const request of state.requests.filter((item) =>
-            item.path.startsWith("/me/")
+            item.path.startsWith(`/principals/${state.subject}/`)
           )) {
             assert.equal(request.tenant, undefined)
           }
@@ -1720,7 +1736,8 @@ try {
           )
           for (const request of state.requests.filter(
             (item) =>
-              item.path.startsWith("/platform/") || item.path.startsWith("/me/")
+              item.path.startsWith("/platform/") ||
+              item.path.startsWith(`/principals/${state.subject}/`)
           )) {
             assert.equal(request.tenant, undefined)
           }

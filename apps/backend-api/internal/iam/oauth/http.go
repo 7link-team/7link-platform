@@ -619,8 +619,8 @@ func registerClientHTTP(api huma.API, service *Service, registrar *authz.Registr
 // a grant belongs to the principal who gave it rather than to any one tenant,
 // and no tenant permission stands between somebody and their own consent.
 func registerGrantHTTP(api huma.API, service *Service, registrar *authz.Registrar) {
-	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{
-		OperationID: "oauth-list-consents", Method: http.MethodGet, Path: "/me/oauth-consents",
+	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{
+		OperationID: "oauth-list-consents", Method: http.MethodGet, Path: "/principals/{principal_id}/oauth-consents",
 		Summary: "List the applications the caller has authorized", Tags: []string{"account"},
 		Errors: []int{http.StatusUnauthorized, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *consentListInput) (*respx.Body[[]GrantedConsent], error) {
@@ -634,9 +634,9 @@ func registerGrantHTTP(api huma.API, service *Service, registrar *authz.Registra
 		}
 		return respx.OK(ctx, consents), nil
 	})
-	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{
+	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{
 		OperationID: "oauth-revoke-consent", Method: http.MethodDelete,
-		Path: "/me/oauth-consents/{client_id}", Tags: []string{"account"},
+		Path: "/principals/{principal_id}/oauth-consents/{client_id}", Tags: []string{"account"},
 		Summary: "Withdraw the caller's authorization of one application",
 		Errors:  []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *consentRevokeInput) (*respx.Body[consentRevokeData], error) {

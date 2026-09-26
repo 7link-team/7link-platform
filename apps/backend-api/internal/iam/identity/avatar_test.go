@@ -345,49 +345,49 @@ func TestAvatarHTTPPersonalRoutesRequireABrowserSessionAndATrustedOrigin(t *test
 	cookie, origin := "Cookie: session=browser", "Origin: https://account.example.test"
 
 	// A bearer token is not a browser session: the personal routes are cookie-only.
-	require.Equal(t, http.StatusUnauthorized, h.api.Get("/me/avatar").Code)
-	require.Equal(t, http.StatusUnauthorized, h.api.Get("/me/avatar", "Authorization: Bearer test", cookie).Code)
-	require.Equal(t, http.StatusUnauthorized, h.api.Put("/me/avatar", map[string]any{"style": "robot"}).Code)
-	require.Equal(t, http.StatusUnauthorized, h.api.Post("/me/avatar-candidates", map[string]any{}).Code)
+	require.Equal(t, http.StatusUnauthorized, h.api.Get("/principals/"+h.principal.ID.String()+"/avatar").Code)
+	require.Equal(t, http.StatusUnauthorized, h.api.Get("/principals/"+h.principal.ID.String()+"/avatar", "Authorization: Bearer test", cookie).Code)
+	require.Equal(t, http.StatusUnauthorized, h.api.Put("/principals/"+h.principal.ID.String()+"/avatar", map[string]any{"style": "robot"}).Code)
+	require.Equal(t, http.StatusUnauthorized, h.api.Post("/principals/"+h.principal.ID.String()+"/avatar-candidates", map[string]any{}).Code)
 
 	// Reading before anything was stored reports absence, not an empty avatar.
-	require.Equal(t, http.StatusNotFound, h.api.Get("/me/avatar", cookie).Code)
+	require.Equal(t, http.StatusNotFound, h.api.Get("/principals/"+h.principal.ID.String()+"/avatar", cookie).Code)
 
 	// A write without a trusted origin is refused before the avatar is touched.
-	require.Equal(t, http.StatusForbidden, h.api.Put("/me/avatar", cookie, map[string]any{"style": "robot"}).Code)
-	require.Equal(t, http.StatusForbidden, h.api.Post("/me/avatar-candidates", cookie, map[string]any{}).Code)
-	require.Equal(t, http.StatusNotFound, h.api.Get("/me/avatar", cookie).Code)
+	require.Equal(t, http.StatusForbidden, h.api.Put("/principals/"+h.principal.ID.String()+"/avatar", cookie, map[string]any{"style": "robot"}).Code)
+	require.Equal(t, http.StatusForbidden, h.api.Post("/principals/"+h.principal.ID.String()+"/avatar-candidates", cookie, map[string]any{}).Code)
+	require.Equal(t, http.StatusNotFound, h.api.Get("/principals/"+h.principal.ID.String()+"/avatar", cookie).Code)
 
-	stored := h.api.Put("/me/avatar", cookie, origin, map[string]any{"style": "monster"})
+	stored := h.api.Put("/principals/"+h.principal.ID.String()+"/avatar", cookie, origin, map[string]any{"style": "monster"})
 	require.Equal(t, http.StatusOK, stored.Code, stored.Body.String())
 	written := decodeIdentityEnvelope[Avatar](t, stored).Data
 	require.Equal(t, "monster", written.Style)
-	require.Equal(t, "/api/principals/"+h.principal.ID.String()+"/avatar", written.URL)
+	require.Equal(t, "/api/principals/"+h.principal.ID.String()+"/avatar/content", written.URL)
 
-	read := h.api.Get("/me/avatar", cookie)
+	read := h.api.Get("/principals/"+h.principal.ID.String()+"/avatar", cookie)
 	require.Equal(t, http.StatusOK, read.Code, read.Body.String())
 	require.Equal(t, written, decodeIdentityEnvelope[Avatar](t, read).Data)
 
 	// A rejected upload leaves the previously stored avatar in place.
-	invalid := h.api.Put("/me/avatar", cookie, origin, map[string]any{"style": "custom", "image_data": "not-a-data-url"})
+	invalid := h.api.Put("/principals/"+h.principal.ID.String()+"/avatar", cookie, origin, map[string]any{"style": "custom", "image_data": "not-a-data-url"})
 	require.Equal(t, http.StatusUnprocessableEntity, invalid.Code, invalid.Body.String())
-	require.Equal(t, written, decodeIdentityEnvelope[Avatar](t, h.api.Get("/me/avatar", cookie)).Data)
+	require.Equal(t, written, decodeIdentityEnvelope[Avatar](t, h.api.Get("/principals/"+h.principal.ID.String()+"/avatar", cookie)).Data)
 }
 
 func TestAvatarHTTPCandidatesStayPrivateToTheirOwner(t *testing.T) {
 	h := newAvatarHTTPHarness(t)
 	cookie, origin := "Cookie: session=browser", "Origin: https://account.example.test"
 
-	generated := h.api.Post("/me/avatar-candidates", cookie, origin, map[string]any{"style": "geometric"})
+	generated := h.api.Post("/principals/"+h.principal.ID.String()+"/avatar-candidates", cookie, origin, map[string]any{"style": "geometric"})
 	require.Equal(t, http.StatusOK, generated.Code, generated.Body.String())
 	candidates := decodeIdentityEnvelope[[]Avatar](t, generated).Data
 	require.Len(t, candidates, 6)
 	chosen := candidates[3]
 	require.Equal(t, "geometric", chosen.Style)
-	candidateID := strings.TrimPrefix(chosen.URL, "/api/me/avatar-candidates/")
+	candidateID := strings.TrimPrefix(chosen.URL, "/api/principals/"+h.principal.ID.String()+"/avatar-candidates/")
 	require.Len(t, candidateID, 48)
 
-	served := h.api.Get("/me/avatar-candidates/"+candidateID, cookie)
+	served := h.api.Get("/principals/"+h.principal.ID.String()+"/avatar-candidates/"+candidateID, cookie)
 	require.Equal(t, http.StatusOK, served.Code, served.Body.String())
 	require.Equal(t, "image/png", served.Header().Get("Content-Type"))
 	require.Equal(t, "private, no-store", served.Header().Get("Cache-Control"))
@@ -399,26 +399,26 @@ func TestAvatarHTTPCandidatesStayPrivateToTheirOwner(t *testing.T) {
 
 	// Candidates are private: no session means no image, and an unissued slot is
 	// a miss rather than somebody else's candidate.
-	require.Equal(t, http.StatusUnauthorized, h.api.Get("/me/avatar-candidates/"+candidateID).Code)
-	require.Equal(t, http.StatusNotFound, h.api.Get("/me/avatar-candidates/"+strings.Repeat("f", 48), cookie).Code)
+	require.Equal(t, http.StatusUnauthorized, h.api.Get("/principals/"+h.principal.ID.String()+"/avatar-candidates/"+candidateID).Code)
+	require.Equal(t, http.StatusNotFound, h.api.Get("/principals/"+h.principal.ID.String()+"/avatar-candidates/"+strings.Repeat("f", 48), cookie).Code)
 
-	selected := h.api.Put("/me/avatar", cookie, origin, map[string]any{"candidate_url": chosen.URL, "style": chosen.Style})
+	selected := h.api.Put("/principals/"+h.principal.ID.String()+"/avatar", cookie, origin, map[string]any{"candidate_url": chosen.URL, "style": chosen.Style})
 	require.Equal(t, http.StatusOK, selected.Code, selected.Body.String())
 	require.Equal(t, "geometric", decodeIdentityEnvelope[Avatar](t, selected).Data.Style)
 	// Promoting a candidate consumes its private slot.
-	require.Equal(t, http.StatusNotFound, h.api.Get("/me/avatar-candidates/"+candidateID, cookie).Code)
+	require.Equal(t, http.StatusNotFound, h.api.Get("/principals/"+h.principal.ID.String()+"/avatar-candidates/"+candidateID, cookie).Code)
 }
 
 func TestAvatarHTTPImageIsServedOnlyToItsOwnerOrAnAuthorizedReader(t *testing.T) {
 	h := newAvatarHTTPHarness(t)
 	cookie, origin, auth := "Cookie: session=browser", "Origin: https://account.example.test", "Authorization: Bearer test"
-	own := "/principals/" + h.principal.ID.String() + "/avatar"
-	foreign := "/principals/" + h.other.ID.String() + "/avatar"
+	own := "/principals/" + h.principal.ID.String() + "/avatar/content"
+	foreign := "/principals/" + h.other.ID.String() + "/avatar/content"
 
 	require.Equal(t, http.StatusUnauthorized, h.api.Get(own).Code)
 	require.Equal(t, http.StatusNotFound, h.api.Get(own, auth).Code, "no avatar has been stored yet")
 
-	require.Equal(t, http.StatusOK, h.api.Put("/me/avatar", cookie, origin, map[string]any{"style": "robot"}).Code)
+	require.Equal(t, http.StatusOK, h.api.Put("/principals/"+h.principal.ID.String()+"/avatar", cookie, origin, map[string]any{"style": "robot"}).Code)
 	served := h.api.Get(own, auth)
 	require.Equal(t, http.StatusOK, served.Code, served.Body.String())
 	require.Equal(t, "image/png", served.Header().Get("Content-Type"))
@@ -447,7 +447,7 @@ func TestAvatarHTTPImageIsServedOnlyToItsOwnerOrAnAuthorizedReader(t *testing.T)
 	h.service.fields = avatarFieldChecker{}
 
 	// A principal outside the selected tenant is a miss, not an authorized read.
-	require.Equal(t, http.StatusNotFound, h.api.Get("/principals/999999/avatar?tenant_id=7", auth).Code)
+	require.Equal(t, http.StatusNotFound, h.api.Get("/principals/999999/avatar/content?tenant_id=7", auth).Code)
 	require.Equal(t, http.StatusNotFound, h.api.Get(foreign+"?tenant_id=7", auth).Code,
 		"the other account stored no avatar")
 
@@ -466,16 +466,16 @@ func TestAvatarHTTPImageIsServedOnlyToItsOwnerOrAnAuthorizedReader(t *testing.T)
 func TestAvatarHTTPReportsMissingFileStorageAsAbsentImages(t *testing.T) {
 	h := newAvatarHTTPHarness(t)
 	cookie, origin, auth := "Cookie: session=browser", "Origin: https://account.example.test", "Authorization: Bearer test"
-	own := "/principals/" + h.principal.ID.String() + "/avatar"
-	require.Equal(t, http.StatusOK, h.api.Put("/me/avatar", cookie, origin, map[string]any{"style": "pixel"}).Code)
+	own := "/principals/" + h.principal.ID.String() + "/avatar/content"
+	require.Equal(t, http.StatusOK, h.api.Put("/principals/"+h.principal.ID.String()+"/avatar", cookie, origin, map[string]any{"style": "pixel"}).Code)
 
 	// A deployment without the files module reports the image as absent instead
 	// of serving an empty body, and refuses writes rather than losing them.
 	h.service.repo.resourceFiles = nil
 	require.Equal(t, http.StatusNotFound, h.api.Get(own, auth).Code)
-	require.Equal(t, http.StatusNotFound, h.api.Get("/me/avatar-candidates/"+strings.Repeat("a", 48), cookie).Code)
+	require.Equal(t, http.StatusNotFound, h.api.Get("/principals/"+h.principal.ID.String()+"/avatar-candidates/"+strings.Repeat("a", 48), cookie).Code)
 	require.Equal(t, http.StatusServiceUnavailable,
-		h.api.Put("/me/avatar", cookie, origin, map[string]any{"style": "robot"}).Code)
+		h.api.Put("/principals/"+h.principal.ID.String()+"/avatar", cookie, origin, map[string]any{"style": "robot"}).Code)
 
 	// The reference survives without its bytes: the route still reports a miss.
 	h.service.repo.resourceFiles = h.resources
@@ -514,15 +514,15 @@ func TestSetMyAvatarValidatesCandidateSelection(t *testing.T) {
 	h.seedTenant(t, 7, "active")
 	principal, err := h.service.Create(t.Context(), 7, "avatar-user", testPassword, "Avatar user", "")
 	require.NoError(t, err)
-	valid := "/api/me/avatar-candidates/" + strings.Repeat("ab", 24)
+	valid := "/api/principals/" + principal.ID.String() + "/avatar-candidates/" + strings.Repeat("ab", 24)
 
 	for _, scenario := range []struct {
 		name  string
 		input avatarInput
 	}{
 		{"unknown route", avatarInput{CandidateURL: "/api/avatars/" + strings.Repeat("ab", 24), Style: "robot"}},
-		{"wrong token length", avatarInput{CandidateURL: "/api/me/avatar-candidates/" + strings.Repeat("ab", 20), Style: "robot"}},
-		{"token must be hexadecimal", avatarInput{CandidateURL: "/api/me/avatar-candidates/" + strings.Repeat("zz", 24), Style: "robot"}},
+		{"wrong token length", avatarInput{CandidateURL: "/api/principals/" + principal.ID.String() + "/avatar-candidates/" + strings.Repeat("ab", 20), Style: "robot"}},
+		{"token must be hexadecimal", avatarInput{CandidateURL: "/api/principals/" + principal.ID.String() + "/avatar-candidates/" + strings.Repeat("zz", 24), Style: "robot"}},
 		{"a selection carries no upload", avatarInput{CandidateURL: valid, Style: "robot", ImageData: "data:image/png;base64,AAAA"}},
 		{"style must be a catalog style", avatarInput{CandidateURL: valid, Style: "custom"}},
 		{"style is required", avatarInput{CandidateURL: valid}},
@@ -603,11 +603,11 @@ func TestAvatarHTTPRefusesBearerCallersOnThePersonalRoutes(t *testing.T) {
 	h := newIdentityHTTPHarness(t, true)
 
 	for name, response := range map[string]*httptest.ResponseRecorder{
-		"read":             h.api.Get("/me/avatar"),
-		"replace":          h.api.Put("/me/avatar", map[string]any{"style": "robot"}),
-		"candidates":       h.api.Post("/me/avatar-candidates", map[string]any{}),
-		"candidate image":  h.api.Get("/me/avatar-candidates/" + strings.Repeat("a", 48)),
-		"bearer candidate": h.api.Get("/me/avatar-candidates/"+strings.Repeat("a", 48), "Authorization: Bearer test"),
+		"read":             h.api.Get("/principals/" + "11" + "/avatar"),
+		"replace":          h.api.Put("/principals/"+"11"+"/avatar", map[string]any{"style": "robot"}),
+		"candidates":       h.api.Post("/principals/"+"11"+"/avatar-candidates", map[string]any{}),
+		"candidate image":  h.api.Get("/principals/" + "11" + "/avatar-candidates/" + strings.Repeat("a", 48)),
+		"bearer candidate": h.api.Get("/principals/"+"11"+"/avatar-candidates/"+strings.Repeat("a", 48), "Authorization: Bearer test"),
 	} {
 		require.Equal(t, http.StatusUnauthorized, response.Code, "%s: %s", name, response.Body.String())
 	}
@@ -616,11 +616,11 @@ func TestAvatarHTTPRefusesBearerCallersOnThePersonalRoutes(t *testing.T) {
 func TestAvatarHTTPRejectsUnusableIdentifiersAndUnreachableStorage(t *testing.T) {
 	h := newAvatarHTTPHarness(t)
 	cookie, origin, auth := "Cookie: session=browser", "Origin: https://account.example.test", "Authorization: Bearer test"
-	require.Equal(t, http.StatusOK, h.api.Put("/me/avatar", cookie, origin, map[string]any{"style": "robot"}).Code)
+	require.Equal(t, http.StatusOK, h.api.Put("/principals/"+h.principal.ID.String()+"/avatar", cookie, origin, map[string]any{"style": "robot"}).Code)
 
 	// A numeric identifier outside the platform's range is refused rather than
 	// silently truncated into somebody else's account.
-	overflow := h.api.Get("/principals/9999999999999999999/avatar", auth)
+	overflow := h.api.Get("/principals/9999999999999999999/avatar/content", auth)
 	require.Equal(t, http.StatusUnprocessableEntity, overflow.Code, overflow.Body.String())
 
 	_, err := h.service.AvatarCandidates(t.Context(), h.other.ID, "unicorn")
@@ -630,13 +630,13 @@ func TestAvatarHTTPRejectsUnusableIdentifiersAndUnreachableStorage(t *testing.T)
 	// that a closed account must stop producing.
 	_, err = h.service.SetStatus(t.Context(), 7, h.principal.ID, "disabled")
 	require.NoError(t, err)
-	refused := h.api.Post("/me/avatar-candidates", cookie, origin, map[string]any{"style": "robot"})
+	refused := h.api.Post("/principals/"+h.principal.ID.String()+"/avatar-candidates", cookie, origin, map[string]any{"style": "robot"})
 	require.Equal(t, http.StatusConflict, refused.Code, refused.Body.String())
 
 	// The identities table is unreachable: the image route reports the outage
 	// instead of answering that the account has no avatar.
 	require.NoError(t, h.db.Exec("PRAGMA foreign_keys = OFF").Error)
 	require.NoError(t, h.db.Exec("DROP TABLE "+h.table("iam_principals")).Error)
-	broken := h.api.Get("/principals/"+h.principal.ID.String()+"/avatar", auth)
+	broken := h.api.Get("/principals/"+h.principal.ID.String()+"/avatar/content", auth)
 	require.Equal(t, http.StatusInternalServerError, broken.Code, broken.Body.String())
 }

@@ -65,7 +65,7 @@ func identityContinuationURL(providerID guid.ID, state string) string {
 
 func registerPersonalIdentityHTTP(api huma.API, service *Service) {
 	registrar := authz.NewAuthenticationOnlyRegistrar(service.authn)
-	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "federation-list-personal-identity-links", Method: http.MethodGet, Path: "/me/identity-links", Tags: []string{"account"}, Summary: "List the current principal's linked identities"}, func(ctx context.Context, in *IdentityBrowserInput) (*respx.Body[[]PersonalIdentityLink], error) {
+	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "federation-list-personal-identity-links", Method: http.MethodGet, Path: "/principals/{principal_id}/identity-links", Tags: []string{"account"}, Summary: "List the current principal's linked identities"}, func(ctx context.Context, in *IdentityBrowserInput) (*respx.Body[[]PersonalIdentityLink], error) {
 		if in.Authorization != "" {
 			return nil, huma.Error401Unauthorized("unauthorized")
 		}
@@ -75,7 +75,7 @@ func registerPersonalIdentityHTTP(api huma.API, service *Service) {
 		}
 		return respx.OK(ctx, rows), nil
 	})
-	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "federation-list-personal-identity-providers", Method: http.MethodGet, Path: "/me/identity-link-providers", Tags: []string{"account"}, Summary: "List active providers available through current memberships"}, func(ctx context.Context, in *IdentityBrowserInput) (*respx.Body[[]LinkableProvider], error) {
+	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "federation-list-personal-identity-providers", Method: http.MethodGet, Path: "/principals/{principal_id}/identity-link-providers", Tags: []string{"account"}, Summary: "List active providers available through current memberships"}, func(ctx context.Context, in *IdentityBrowserInput) (*respx.Body[[]LinkableProvider], error) {
 		if in.Authorization != "" {
 			return nil, huma.Error401Unauthorized("unauthorized")
 		}
@@ -85,7 +85,7 @@ func registerPersonalIdentityHTTP(api huma.API, service *Service) {
 		}
 		return respx.OK(ctx, rows), nil
 	})
-	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "federation-create-personal-identity-transaction", Method: http.MethodPost, Path: "/me/identity-link-transactions", Tags: []string{"account"}, Summary: "Start linking or reauthenticate an existing linked identity", Errors: []int{401, 403, 409, 500}}, func(ctx context.Context, in *identityOperationInput) (*identityOperationOutput, error) {
+	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "federation-create-personal-identity-transaction", Method: http.MethodPost, Path: "/principals/{principal_id}/identity-link-transactions", Tags: []string{"account"}, Summary: "Start linking or reauthenticate an existing linked identity", Errors: []int{401, 403, 409, 500}}, func(ctx context.Context, in *identityOperationInput) (*identityOperationOutput, error) {
 		if in.Authorization != "" {
 			return nil, huma.Error401Unauthorized("unauthorized")
 		}
@@ -111,7 +111,7 @@ func registerPersonalIdentityHTTP(api huma.API, service *Service) {
 		}
 		return &identityOperationOutput{SetCookie: start.StateCookie, Body: respx.OK(ctx, identityOperationLocation{AuthorizationURL: start.AuthorizationURL}).Body}, nil
 	})
-	authz.RegisterSessionAuthenticated(registrar, api, huma.Operation{OperationID: "federation-delete-personal-identity-link", Method: http.MethodDelete, Path: "/me/identity-links/{link_id}", Tags: []string{"account"}, Summary: "Unlink one identity while retaining a usable login method", Errors: []int{401, 403, 409, 500}}, func(ctx context.Context, in *identityUnlinkInput) (*respx.Body[map[string]bool], error) {
+	authz.RegisterPrincipalSessionAuthenticated(registrar, api, huma.Operation{OperationID: "federation-delete-personal-identity-link", Method: http.MethodDelete, Path: "/principals/{principal_id}/identity-links/{link_id}", Tags: []string{"account"}, Summary: "Unlink one identity while retaining a usable login method", Errors: []int{401, 403, 409, 500}}, func(ctx context.Context, in *identityUnlinkInput) (*respx.Body[map[string]bool], error) {
 		if in.Authorization != "" {
 			return nil, huma.Error401Unauthorized("unauthorized")
 		}

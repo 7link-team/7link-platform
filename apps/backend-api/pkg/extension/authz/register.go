@@ -21,6 +21,7 @@ const (
 	tenantMemberMetadataKey  = "authz.tenant-member"
 	authenticatedMetadataKey = "authz.authenticated"
 	sessionOnlyMetadataKey   = "authz.session-only"
+	principalSelfMetadataKey = "authz.principal-self"
 	platformMetadataKey      = "authz.platform"
 	publicMetadataKey        = "authz.public"
 	ownedResourceMetadataKey = "authz.owned-resource"
@@ -28,6 +29,7 @@ const (
 	DataFilterExtensionKey   = "x-authz-data-filter"
 	TenantPath               = "tenant_id"
 	EntityPath               = "entity_id"
+	PrincipalPath            = "principal_id"
 	BearerScheme             = "bearerAuth"
 	SessionScheme            = "sessionCookie"
 	ClientBasicScheme        = "clientBasic"
@@ -268,7 +270,7 @@ func RegisterEntityOrAuthenticated[I, O any](r *Registrar, api huma.API, op huma
 	self := op
 	self.OperationID += "-self"
 	self.Path = selfPath(self.Path)
-	RegisterAuthenticated(r, api, self, handler)
+	RegisterPrincipalAuthenticated(r, api, self, handler)
 	r.prepare(api, &op, guard)
 	prepareEntityPath(&op)
 	requireResourceTag(&op)
@@ -287,7 +289,7 @@ func RegisterTenantEntityOrAuthenticated[I, O any](r *Registrar, api huma.API, o
 	self := op
 	self.OperationID += "-self"
 	self.Path = selfPath(self.Path)
-	RegisterAuthenticated(r, api, self, handler)
+	RegisterPrincipalAuthenticated(r, api, self, handler)
 
 	tenant := op
 	tenant.OperationID += "-tenant"
@@ -342,6 +344,7 @@ func RegisterTenantMember[I, O any](r *Registrar, api huma.API, op huma.Operatio
 	if r.verifier != nil {
 		op.Middlewares = append(op.Middlewares, r.middleware(api, nil))
 	}
+	preparePrincipalScope(api, &op)
 	huma.Register(api, op, handler)
 }
 
@@ -374,7 +377,70 @@ func RegisterAuthenticated[I, O any](r *Registrar, api huma.API, op huma.Operati
 	if r.verifier != nil {
 		op.Middlewares = append(op.Middlewares, r.authenticatedOnly(api))
 	}
+	preparePrincipalScope(api, &op)
 	huma.Register(api, op, handler)
+}
+
+// Authenticated principal mounts address the caller explicitly, without granting
+// administrative access to another principal. Run after the existing auth guard.
+func preparePrincipalScope(api huma.API, op *huma.Operation) {
+	if scoped, _ := op.Metadata[principalSelfMetadataKey].(bool); !scoped {
+		return
+	}
+	op.Parameters = append(op.Parameters, pathSelector(PrincipalPath, "Authenticated principal identifier"))
+	op.Errors = appendUniqueStatus(op.Errors, http.StatusNotFound, http.StatusUnprocessableEntity)
+	op.Middlewares = append(op.Middlewares, func(ctx huma.Context, next func(huma.Context)) {
+		claims, _ := authn.FromContext(ctx.Context())
+		if err := PrincipalScopeError(claims, ctx.Param(PrincipalPath)); err != nil {
+			_ = huma.WriteErr(api, ctx, err.GetStatus(), err.Error())
+			return
+		}
+		next(ctx)
+	})
+}
+
+// RegisterPrincipalAuthenticated explicitly restricts a principal mount to the caller.
+func RegisterPrincipalAuthenticated[I, O any](r *Registrar, api huma.API, op huma.Operation, handler func(context.Context, *I) (*O, error)) {
+	markPrincipalScope(&op)
+	RegisterAuthenticated(r, api, op, handler)
+}
+
+// RegisterPrincipalSessionAuthenticated restricts a principal mount to its browser session owner.
+func RegisterPrincipalSessionAuthenticated[I, O any](r *Registrar, api huma.API, op huma.Operation, handler func(context.Context, *I) (*O, error)) {
+	markPrincipalScope(&op)
+	RegisterSessionAuthenticated(r, api, op, handler)
+}
+
+// RegisterPrincipalTenantMember restricts a tenant member mount to the caller.
+func RegisterPrincipalTenantMember[I, O any](r *Registrar, api huma.API, op huma.Operation, handler func(context.Context, *I) (*O, error)) {
+	markPrincipalScope(&op)
+	RegisterTenantMember(r, api, op, handler)
+}
+
+func markPrincipalScope(op *huma.Operation) {
+	if !strings.Contains(op.Path, "/principals/{principal_id}/") {
+		panic("principal self operation requires an explicit principal path")
+	}
+	if op.Metadata == nil {
+		op.Metadata = map[string]any{}
+	}
+	op.Metadata[principalSelfMetadataKey] = true
+}
+
+// PrincipalScopeError validates an explicit self-service principal address.
+// Specialized authentication flows can reuse it with their verified claims.
+func PrincipalScopeError(claims *authn.Claims, text string) huma.StatusError {
+	if claims == nil || claims.PrincipalID.Zero() {
+		return huma.Error401Unauthorized(respx.Unauthorized)
+	}
+	id, err := guid.Parse(text)
+	if err != nil || id.Zero() || id.String() != text {
+		return huma.Error422UnprocessableEntity("invalid_principal_id")
+	}
+	if id != claims.PrincipalID {
+		return huma.Error404NotFound(respx.NotFound)
+	}
+	return nil
 }
 
 // authenticatedOnly verifies the session and injects claims without requiring a
@@ -505,10 +571,10 @@ func entityPath(path string) string {
 }
 
 func selfPath(path string) string {
-	if strings.HasPrefix(path, "/me/") || path == "/me" {
+	if strings.HasPrefix(path, "/principals/{principal_id}/") {
 		return path
 	}
-	return "/me" + path
+	return "/principals/{principal_id}" + path
 }
 
 func pathSelector(name, description string) *huma.Param {

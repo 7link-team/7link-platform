@@ -48,12 +48,15 @@ try {
       )
       await page.locator('form button[type="submit"]').click()
       await page.waitForURL((url) => url.pathname !== "/login")
+      const identity = await context.request.get("/api/me")
+      assert.equal(identity.status(), 200)
+      const { subject } = (await identity.json()).data
       for (const path of [
         "/me",
         "/sessions/current",
-        "/me/identity-links",
-        "/me/identity-link-providers",
-        "/me/reauthentication/methods",
+        `/principals/${subject}/identity-links`,
+        `/principals/${subject}/identity-link-providers`,
+        `/principals/${subject}/reauthentication/methods`,
       ])
         assert.equal(
           (await context.request.get("/api" + path)).status(),
@@ -74,6 +77,7 @@ try {
   const spec = await response.json()
   let count = 0
   for (const [path, item] of Object.entries(spec.paths)) {
+    assert(!path.includes("/me/"), `retired implicit principal path: ${path}`)
     for (const [method, operation] of Object.entries(item)) {
       if (
         !["get", "post", "patch", "put", "delete", "head", "options"].includes(

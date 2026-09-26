@@ -132,8 +132,8 @@ func (e *fileConflictHTTPError) Error() string  { return e.Message }
 func (e *fileConflictHTTPError) GetStatus() int { return e.status }
 
 func registerFileHTTP(api huma.API, service *operationService, registrar *authz.Registrar, fileOwner, entityOwner, departmentOwner authz.ResourceOwnerResolver) {
-	authz.RegisterAuthenticated(registrar, api, huma.Operation{
-		OperationID: "list-my-files", Method: http.MethodGet, Path: "/me/files",
+	authz.RegisterPrincipalAuthenticated(registrar, api, huma.Operation{
+		OperationID: "list-my-files", Method: http.MethodGet, Path: "/principals/{principal_id}/files",
 		Summary: "List my file roots", Tags: []string{"files"}, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, func(ctx context.Context, input *FilePageInput) (*respx.Body[filePage], error) {
 		ctx = personalContext(ctx)
@@ -187,8 +187,8 @@ func registerFileHTTP(api huma.API, service *operationService, registrar *authz.
 		return respx.OK(ctx, result), nil
 	})
 
-	authz.RegisterAuthenticated(registrar, api, huma.Operation{
-		OperationID: "create-my-file", Method: http.MethodPost, Path: "/me/files",
+	authz.RegisterPrincipalAuthenticated(registrar, api, huma.Operation{
+		OperationID: "create-my-file", Method: http.MethodPost, Path: "/principals/{principal_id}/files",
 		Summary: "Create a directory or upload a file", Tags: []string{"files"}, DefaultStatus: http.StatusCreated,
 		MaxBodyBytes: service.maxUploadBytes + (1 << 20),
 		Errors:       []int{http.StatusNotFound, http.StatusConflict, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity},
@@ -364,7 +364,7 @@ func listFileCollection(ctx context.Context, service *operationService, collecti
 // currently has selected is not part of the question. The registrar already
 // answers it this way: when it resolves a personally owned resource it clears
 // the tenant and entity before the handler runs
-// (ownedResourceMiddleware). Routes like /me/files have no resource in the
+// (ownedResourceMiddleware). Principal file collections have no file resource in the
 // path to resolve, so they say the same thing here instead of inheriting a
 // tenant that made listing the caller's own roots fail.
 func personalContext(ctx context.Context) context.Context {

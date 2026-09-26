@@ -744,8 +744,8 @@ func registerGroupHTTP(api huma.API, service *GroupService, registrar *authz.Reg
 }
 
 func registerTenantHTTP(api huma.API, service *TenantService, registrar *authz.Registrar) {
-	authz.RegisterAuthenticated(registrar, api, huma.Operation{
-		OperationID: "organization-my-tenants", Method: http.MethodGet, Path: "/me/tenants",
+	authz.RegisterPrincipalAuthenticated(registrar, api, huma.Operation{
+		OperationID: "organization-my-tenants", Method: http.MethodGet, Path: "/principals/{principal_id}/tenants",
 		Summary: "List the caller's tenants", Tags: []string{"account"},
 	}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]Tenant], error) {
 		claims, ok := authnext.FromContext(ctx)

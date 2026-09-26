@@ -212,7 +212,7 @@ func TestComposedIAMProfileFieldPolicies(t *testing.T) {
 				return decodeEnvelope[core.ManagedFieldPolicy](t, response)
 			}
 			emailPolicy := set("email", "redact")
-			for _, path := range []string{"/me", "/me/session"} {
+			for _, path := range []string{"/me"} {
 				response = f.request(t, http.MethodGet, path, 0, "", nil, headers)
 				requireStatus(t, http.StatusOK, response)
 				view := decodeEnvelope[map[string]any](t, response)

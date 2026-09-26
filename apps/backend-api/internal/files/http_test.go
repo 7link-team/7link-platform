@@ -28,10 +28,10 @@ import (
 )
 
 const fileRouteManifest = `
-create-file-operation-self|POST|/me/file-operations
+create-file-operation-self|POST|/principals/{principal_id}/file-operations
 create-file-operation-tenant|POST|/tenants/{tenant_id}/file-operations
 create-file-operation|POST|/tenants/{tenant_id}/entities/{entity_id}/file-operations
-create-my-file|POST|/me/files
+create-my-file|POST|/principals/{principal_id}/files
 create-tenant-file|POST|/tenants/{tenant_id}/files
 create-entity-file|POST|/entities/{entity_id}/files
 create-department-file|POST|/departments/{department_id}/files
@@ -40,7 +40,7 @@ download-file|GET|/files/{file_id}/content
 get-file-by-path|GET|/files/{root_file_id}/-/{path}
 get-file|GET|/files/{file_id}
 list-file-items|GET|/files/{file_id}/items
-list-my-files|GET|/me/files
+list-my-files|GET|/principals/{principal_id}/files
 list-tenant-files|GET|/tenants/{tenant_id}/files
 list-entity-files|GET|/entities/{entity_id}/files
 list-department-files|GET|/departments/{department_id}/files
@@ -85,7 +85,7 @@ func TestFileHTTPContract(t *testing.T) {
 			if operation.OperationID == "list-entity-files" {
 				require.True(t, authz.IsTenantMemberOperation(operation))
 				require.True(t, authz.IsOwnedResourceOperation(operation))
-			} else if strings.HasPrefix(path, "/me/") {
+			} else if strings.HasPrefix(path, "/principals/{principal_id}/") {
 				require.True(t, authz.IsAuthenticatedOperation(operation))
 			} else {
 				require.Contains(t, operation.Extensions[authz.GuardExtensionKey], filePermissionPrefix)
@@ -98,7 +98,7 @@ func TestFileHTTPContract(t *testing.T) {
 					selectors[parameter.Name] = parameter.Required
 				}
 			}
-			if strings.HasPrefix(path, "/me/") {
+			if strings.HasPrefix(path, "/principals/{principal_id}/") {
 				require.Empty(t, selectors)
 			} else if strings.Contains(path, "/entities/") {
 				if authz.IsOwnedResourceOperation(operation) {
@@ -124,8 +124,8 @@ func TestFileHTTPContract(t *testing.T) {
 		require.Contains(t, children.Responses, status)
 	}
 	require.Nil(t, api.OpenAPI().Paths["/files/operations"])
-	require.NotNil(t, api.OpenAPI().Paths["/me/file-operations"].Post)
-	for _, path := range []string{"/me/files", "/tenants/{tenant_id}/files", "/entities/{entity_id}/files", "/departments/{department_id}/files"} {
+	require.NotNil(t, api.OpenAPI().Paths["/principals/{principal_id}/file-operations"].Post)
+	for _, path := range []string{"/principals/{principal_id}/files", "/tenants/{tenant_id}/files", "/entities/{entity_id}/files", "/departments/{department_id}/files"} {
 		queries := make(map[string]*huma.Param)
 		for _, parameter := range api.OpenAPI().Paths[path].Get.Parameters {
 			if parameter.In == "query" {
@@ -354,7 +354,7 @@ func TestFileHTTPAccountContextUsesSameResourcesWithoutTenantHeaders(t *testing.
 	h := newOperationServiceHarness(t)
 	api := newFileHTTPAPI(t, h.service)
 
-	empty := api.Get("/me/files?limit=100")
+	empty := api.Get("/principals/" + "70" + "/files?limit=100")
 	require.Equal(t, http.StatusOK, empty.Code, empty.Body.String())
 	var emptyEnvelope respx.Envelope[filePage]
 	require.NoError(t, json.Unmarshal(empty.Body.Bytes(), &emptyEnvelope))
@@ -369,7 +369,7 @@ func TestFileHTTPAccountContextUsesSameResourcesWithoutTenantHeaders(t *testing.
 	requireOptionalID(t, createdEnvelope.Data.PrincipalID, 70)
 	require.Nil(t, createdEnvelope.Data.TenantID)
 
-	listed := api.Get("/me/files?limit=100")
+	listed := api.Get("/principals/" + "70" + "/files?limit=100")
 	require.Equal(t, http.StatusOK, listed.Code, listed.Body.String())
 	var listedEnvelope respx.Envelope[filePage]
 	require.NoError(t, json.Unmarshal(listed.Body.Bytes(), &listedEnvelope))
@@ -390,7 +390,7 @@ func TestFileHTTPAccountContextUsesSameResourcesWithoutTenantHeaders(t *testing.
 	var uploadedEnvelope respx.Envelope[fileEntryView]
 	require.NoError(t, json.Unmarshal(uploaded.Body.Bytes(), &uploadedEnvelope))
 
-	copied := api.Post("/me/file-operations",
+	copied := api.Post("/principals/"+"70"+"/file-operations",
 		"Idempotency-Key: account-copy",
 		map[string]any{
 			"action": "copy", "destination_id": createdEnvelope.Data.ID.String(),
@@ -403,7 +403,7 @@ func TestFileHTTPAccountContextUsesSameResourcesWithoutTenantHeaders(t *testing.
 	require.Equal(t, 1, copiedEnvelope.Data.Created)
 	require.Len(t, copiedEnvelope.Data.Roots, 1)
 
-	moved := api.Post("/me/file-operations",
+	moved := api.Post("/principals/"+"70"+"/file-operations",
 		"Idempotency-Key: account-move",
 		map[string]any{
 			"action": "move", "destination_id": directoryEnvelope.Data.ID.String(),
@@ -439,7 +439,7 @@ func TestFileHTTPAccountContextUsesSameResourcesWithoutTenantHeaders(t *testing.
 		strconv.FormatInt(directoryEnvelope.Data.Revision, 10))
 	require.Equal(t, http.StatusOK, deletedDirectory.Code, deletedDirectory.Body.String())
 
-	trash := api.Get("/me/files?state=trashed&limit=100")
+	trash := api.Get("/principals/" + "70" + "/files?state=trashed&limit=100")
 	require.Equal(t, http.StatusOK, trash.Code, trash.Body.String())
 	var trashEnvelope respx.Envelope[filePage]
 	require.NoError(t, json.Unmarshal(trash.Body.Bytes(), &trashEnvelope))
@@ -456,7 +456,7 @@ func TestFileHTTPAccountContextUsesSameResourcesWithoutTenantHeaders(t *testing.
 		})
 		require.Equal(t, http.StatusOK, restored.Code, restored.Body.String())
 	}
-	emptyTrash := api.Get("/me/files?state=trashed&limit=100")
+	emptyTrash := api.Get("/principals/" + "70" + "/files?state=trashed&limit=100")
 	require.Equal(t, http.StatusOK, emptyTrash.Code, emptyTrash.Body.String())
 	require.NoError(t, json.Unmarshal(emptyTrash.Body.Bytes(), &trashEnvelope))
 	require.Empty(t, trashEnvelope.Data.Items)
@@ -497,7 +497,7 @@ func postFileForm(t *testing.T, api humatest.TestAPI, headers []any, fields map[
 	require.NoError(t, form.Close())
 	args := append([]any{}, headers...)
 	args = append(args, "Content-Type: "+form.FormDataContentType(), bytes.NewReader(body.Bytes()))
-	path := "/me/files"
+	path := "/principals/" + "70" + "/files"
 	if len(headers) > 0 {
 		path = "/entities/80/files"
 	}

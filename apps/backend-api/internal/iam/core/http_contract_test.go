@@ -14,8 +14,8 @@ import (
 )
 
 const coreRouteManifest = `
-iam-my-memberships|GET|/me/memberships
-iam-leave-membership|DELETE|/me/memberships/{tenant_id}
+iam-my-memberships|GET|/principals/{principal_id}/memberships
+iam-leave-membership|DELETE|/principals/{principal_id}/memberships/{tenant_id}
 iam-field-catalog|GET|/tenants/{tenant_id}/field-catalog
 iam-list-field-policies|GET|/tenants/{tenant_id}/field-policies
 iam-set-field-policy|PUT|/tenants/{tenant_id}/field-policies/{resource}/{field}
@@ -72,10 +72,10 @@ iam-create-menu|POST|/tenants/{tenant_id}/menus
 iam-get-menu|GET|/menus/{menu_id}
 iam-update-menu|PATCH|/menus/{menu_id}
 iam-delete-menu|DELETE|/menus/{menu_id}
-iam-effective-menus|GET|/tenants/{tenant_id}/me/menus
-iam-effective-platform-permissions|GET|/me/permissions
-iam-effective-tenant-permissions|GET|/tenants/{tenant_id}/me/permissions
-iam-effective-entity-permissions|GET|/tenants/{tenant_id}/entities/{entity_id}/me/permissions`
+iam-effective-menus|GET|/tenants/{tenant_id}/principals/{principal_id}/menus
+iam-effective-platform-permissions|GET|/principals/{principal_id}/permissions
+iam-effective-tenant-permissions|GET|/tenants/{tenant_id}/principals/{principal_id}/permissions
+iam-effective-entity-permissions|GET|/tenants/{tenant_id}/entities/{entity_id}/principals/{principal_id}/permissions`
 
 func declarationAPI(t *testing.T) huma.API {
 	t.Helper()
@@ -113,8 +113,7 @@ func TestCoreOpenAPISelectorsAndParametersAreConsistent(t *testing.T) {
 			operationIDs[operation.OperationID] = location
 			// Core owns the rules and the organizational record they apply to,
 			// plus the platform-wide and self-service projections of both.
-			assert.Contains(t, []string{"access-control", "directory", "platform", "account"},
-				operation.Tags[0], location)
+			assert.Equal(t, []string{strings.Split(strings.Trim(path, "/"), "/")[0]}, operation.Tags, location)
 			assert.NotEmpty(t, operation.Security, location)
 
 			parameters := make(map[string]*huma.Param, len(operation.Parameters))

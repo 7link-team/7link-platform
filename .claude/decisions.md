@@ -2763,7 +2763,34 @@ specified ownership rule; no artificial grouping prefixes are introduced.
 
 **Scope / Status**
 Supersedes D75's exception to D62's prefix-grouping rule. Prefix grouping is
-implemented; full export and live browser assertions pass. Subject-address
-migration is a distinct runtime contract change; 41 global /me/* and four nested
-operations have been inventoried and their concrete batch scope submitted for
-confirmation under CLAUDE.md. Do not claim those routes already migrated.
+implemented; full export and live browser assertions pass. Complete explicit
+principal migration was subsequently authorized and implemented under D81.
+
+## D81 - Complete explicit principal addressing
+
+**Date** 2026-09-26
+
+**Decision / Reason**
+User authorized "继续，搞到位": migrate all 41 global `/me/*` operations and four
+nested tenant/entity projections to `/principals/{principal_id}/...`. Keep only
+`GET /me` identity discovery and the existing `/sessions/current` resource.
+Explicit self registration validates the verified actor before any handler:
+invalid canonical ID 422, foreign ID 404. No cross-account privilege is added.
+
+**Alternatives Considered / Tradeoffs**
+Keeping aliases or migrating files alone leaves the requested unified resource
+tree incomplete. Applying a self-only guard to every principal URL would break
+the existing authorized cross-account avatar reader. Therefore scope is declared
+explicitly, and avatar bytes move to `/avatar/content` to avoid colliding with
+settings GET. Historical stored references are normalized when returned.
+Restricted MFA enrollment keeps its original verifier and error behavior; the
+verified password login result provides `subject` for its explicit address.
+
+**Scope / Status**
+Implemented. 296 operations retained; exactly 46 paths change (45 principal
+migrations plus avatar bytes). Methods, request bodies and credential schemes
+preserved. No database/file migration. Web page `/me/*` navigation is unchanged.
+Evidence: docs/api-routing-inspection-2026-09-26.md; real SQLite E2E15/15,
+browser regression74/74, live demo5/5 and generated inventory/drift checks PASS.
+This supersedes D79's choice to retain `/me/*`; no optional API redesign follows
+automatically from this decision.

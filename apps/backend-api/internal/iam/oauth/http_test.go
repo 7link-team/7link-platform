@@ -39,8 +39,8 @@ oauth-discovery|GET|/.well-known/openid-configuration
 oauth-introspect|POST|/oauth/introspect
 oauth-jwks|GET|/.well-known/jwks.json
 oauth-list-clients|GET|/tenants/{tenant_id}/oauth-clients
-oauth-list-consents|GET|/me/oauth-consents
-oauth-revoke-consent|DELETE|/me/oauth-consents/{client_id}
+oauth-list-consents|GET|/principals/{principal_id}/oauth-consents
+oauth-revoke-consent|DELETE|/principals/{principal_id}/oauth-consents/{client_id}
 oauth-revoke|POST|/oauth/revoke
 oauth-rotate-client-secret|POST|/oauth-clients/{client_id}/credentials
 oauth-token|POST|/oauth/token
@@ -200,7 +200,7 @@ func TestConsentSelfServiceRoutesActOnlyForTheirCaller(t *testing.T) {
 
 	// No tenant header anywhere: a person's grants are not a tenant's business,
 	// and requiring one would hide the grants they most need to see.
-	response := harness.request(http.MethodGet, "/me/oauth-consents", "", nil, caller)
+	response := harness.request(http.MethodGet, "/principals/"+"101"+"/oauth-consents", "", nil, caller)
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	listed := decodeOAuthEnvelope[[]GrantedConsent](t, response).Data
 	require.Len(t, listed, 1)
@@ -208,8 +208,8 @@ func TestConsentSelfServiceRoutesActOnlyForTheirCaller(t *testing.T) {
 	assert.Equal(t, "Browser", listed[0].ClientName)
 
 	for name, target := range map[string]string{
-		"listing":    "/me/oauth-consents",
-		"revocation": "/me/oauth-consents/" + client.ID,
+		"listing":    "/principals/" + "101" + "/oauth-consents",
+		"revocation": "/principals/" + "101" + "/oauth-consents/" + client.ID,
 	} {
 		t.Run("an anonymous caller is refused before "+name, func(t *testing.T) {
 			method := http.MethodGet
@@ -234,16 +234,16 @@ func TestConsentSelfServiceRoutesActOnlyForTheirCaller(t *testing.T) {
 		})
 	}
 
-	revoked := harness.request(http.MethodDelete, "/me/oauth-consents/"+client.ID, "", nil, caller)
+	revoked := harness.request(http.MethodDelete, "/principals/"+"101"+"/oauth-consents/"+client.ID, "", nil, caller)
 	require.Equal(t, http.StatusOK, revoked.Code, revoked.Body.String())
 	assert.True(t, decodeOAuthEnvelope[consentRevokeData](t, revoked).Data.Revoked)
 
 	// The second one is what a double-click produces, and 404 is the honest
 	// answer: there is no grant by that name any more.
-	again := harness.request(http.MethodDelete, "/me/oauth-consents/"+client.ID, "", nil, caller)
+	again := harness.request(http.MethodDelete, "/principals/"+"101"+"/oauth-consents/"+client.ID, "", nil, caller)
 	assert.Equal(t, http.StatusNotFound, again.Code, again.Body.String())
 
-	empty := harness.request(http.MethodGet, "/me/oauth-consents", "", nil, caller)
+	empty := harness.request(http.MethodGet, "/principals/"+"101"+"/oauth-consents", "", nil, caller)
 	require.Equal(t, http.StatusOK, empty.Code, empty.Body.String())
 	assert.Contains(t, empty.Body.String(), `"data":[]`,
 		"a caller with no grants reads an empty array, not null")
@@ -256,7 +256,7 @@ func TestConsentRevocationRefusesAnIdentifierThatIsNotOne(t *testing.T) {
 	caller := map[string]string{"Cookie": "session"}
 	for name, id := range map[string]string{"a zero": "0", "a word": "latest", "a negative": "-1"} {
 		t.Run(name, func(t *testing.T) {
-			response := harness.request(http.MethodDelete, "/me/oauth-consents/"+id, "", nil, caller)
+			response := harness.request(http.MethodDelete, "/principals/"+"101"+"/oauth-consents/"+id, "", nil, caller)
 			assert.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 		})
 	}
@@ -273,8 +273,7 @@ func TestOAuthOpenAPISecurityGuardsParametersAndForms(t *testing.T) {
 			// The protocol endpoints the specification fixes, the client
 			// registrations a tenant administers, and a principal's own grants
 			// are three different readers, so they are three sections.
-			assert.Contains(t, []string{"oauth", "applications", "account"},
-				operation.Tags[0], location)
+			assert.Equal(t, []string{strings.Split(strings.Trim(path, "/"), "/")[0]}, operation.Tags, location)
 			if guard, guarded := oauthGuards[operation.OperationID]; guarded {
 				assert.Equal(t, guard, operation.Metadata["authz.guard"], location)
 				assert.Equal(t, guard, operation.Extensions[authz.GuardExtensionKey], location)
@@ -1131,8 +1130,8 @@ func TestOAuthHTTPDatabaseFailuresUseCorrectResponseContracts(t *testing.T) {
 			method string
 			target string
 		}{
-			"listing":    {method: http.MethodGet, target: "/me/oauth-consents"},
-			"revocation": {method: http.MethodDelete, target: "/me/oauth-consents/" + client.ID},
+			"listing":    {method: http.MethodGet, target: "/principals/" + "101" + "/oauth-consents"},
+			"revocation": {method: http.MethodDelete, target: "/principals/" + "101" + "/oauth-consents/" + client.ID},
 		} {
 			t.Run(name, func(t *testing.T) {
 				response := harness.request(request.method, request.target, "", nil, caller)
@@ -1246,8 +1245,8 @@ func TestConsentSelfServiceRefusesARequestThatCarriesBothCredentials(t *testing.
 		method string
 		path   string
 	}{
-		"listing":    {http.MethodGet, "/me/oauth-consents"},
-		"revocation": {http.MethodDelete, "/me/oauth-consents/" + client.ID},
+		"listing":    {http.MethodGet, "/principals/" + "101" + "/oauth-consents"},
+		"revocation": {http.MethodDelete, "/principals/" + "101" + "/oauth-consents/" + client.ID},
 	} {
 		t.Run(name, func(t *testing.T) {
 			refused := harness.request(target.method, target.path, "", nil, both)
@@ -1257,7 +1256,7 @@ func TestConsentSelfServiceRefusesARequestThatCarriesBothCredentials(t *testing.
 
 	// The control: the same session alone is accepted, so the refusal above is
 	// the second credential and not the route being unreachable.
-	accepted := harness.request(http.MethodGet, "/me/oauth-consents", "", nil, session)
+	accepted := harness.request(http.MethodGet, "/principals/"+"101"+"/oauth-consents", "", nil, session)
 	require.Equal(t, http.StatusOK, accepted.Code, accepted.Body.String())
 	assert.Len(t, decodeOAuthEnvelope[[]GrantedConsent](t, accepted).Data, 1)
 }

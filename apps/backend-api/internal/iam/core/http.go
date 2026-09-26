@@ -1208,7 +1208,7 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, MutationResult{Changed: true, SyncStatus: "not_applicable"}), nil
 	})
-	authz.RegisterTenantMember(registrar, a, huma.Operation{OperationID: "iam-effective-menus", Method: http.MethodGet, Path: "/me/menus", Summary: "Return the current member's authorized menu tree", Tags: []string{"access-control"}}, func(ctx context.Context, in *tenantInput) (*respx.Body[[]MenuItem], error) {
+	authz.RegisterPrincipalTenantMember(registrar, a, huma.Operation{OperationID: "iam-effective-menus", Method: http.MethodGet, Path: "/principals/{principal_id}/menus", Summary: "Return the current member's authorized menu tree", Tags: []string{"access-control"}}, func(ctx context.Context, in *tenantInput) (*respx.Body[[]MenuItem], error) {
 		claims, ok := authnext.FromContext(ctx)
 		if !ok || claims == nil || claims.PrincipalID.Zero() {
 			return nil, huma.Error401Unauthorized("unauthorized")
@@ -1226,9 +1226,9 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 	// A platform administrator must discover their own platform permissions
 	// before the first tenant exists. This self-service route deliberately has no
 	// tenant context; tenant permissions use the tenant-scoped route below.
-	authz.RegisterAuthenticated(registrar, a, huma.Operation{
+	authz.RegisterPrincipalAuthenticated(registrar, a, huma.Operation{
 		OperationID: "iam-effective-platform-permissions", Method: http.MethodGet,
-		Path:    "/me/permissions",
+		Path:    "/principals/{principal_id}/permissions",
 		Summary: "Return my effective platform permission codes", Tags: []string{"account"},
 	}, func(ctx context.Context, _ *struct{}) (*respx.Body[[]string], error) {
 		claims, ok := authnext.FromContext(ctx)
@@ -1241,9 +1241,9 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, codes), nil
 	})
-	authz.RegisterTenantMember(registrar, a, huma.Operation{
+	authz.RegisterPrincipalTenantMember(registrar, a, huma.Operation{
 		OperationID: "iam-effective-tenant-permissions", Method: http.MethodGet,
-		Path:    "/me/permissions",
+		Path:    "/principals/{principal_id}/permissions",
 		Summary: "Return my effective tenant permission codes", Tags: []string{"access-control"},
 	}, func(ctx context.Context, in *myPermissionsInput) (*respx.Body[[]string], error) {
 		claims, ok := authnext.FromContext(ctx)
@@ -1260,9 +1260,9 @@ func RegisterHTTP(a huma.API, svc *Service, registrar *authz.Registrar) {
 		}
 		return respx.OK(ctx, codes), nil
 	})
-	authz.RegisterAuthenticated(registrar, a, huma.Operation{
+	authz.RegisterPrincipalAuthenticated(registrar, a, huma.Operation{
 		OperationID: "iam-effective-entity-permissions", Method: http.MethodGet,
-		Path:    "/tenants/{tenant_id}/entities/{entity_id}/me/permissions",
+		Path:    "/tenants/{tenant_id}/entities/{entity_id}/principals/{principal_id}/permissions",
 		Summary: "Return my effective entity permission codes", Tags: []string{"access-control"},
 	}, func(ctx context.Context, in *myEntityPermissionsInput) (*respx.Body[[]string], error) {
 		claims, ok := authnext.FromContext(ctx)

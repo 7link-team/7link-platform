@@ -256,6 +256,11 @@ const principals = new Set()
 const issued = []
 let tenant, otherTenant, provider
 async function response(context, path, method = "GET", data, tenantID) {
+  if (path.includes("{principal_id}")) {
+    const identity = await context.request.get("/api/me")
+    assert(identity.ok())
+    path = path.replace("{principal_id}", (await identity.json()).data.subject)
+  }
   const requestPath = tenantID ? `/tenants/${tenantID}${path}` : path
   return context.request.fetch("/api" + requestPath, {
     method,
@@ -358,10 +363,7 @@ async function createAndRevokeToken(context, page, messages, label, method) {
     originalSession,
     "Reauthentication must not replace the browser session"
   )
-  assert.equal(
-    (await ok(context, "/me")).subject,
-    originalSubject
-  )
+  assert.equal((await ok(context, "/me")).subject, originalSubject)
   if (method === "federation") assert.equal(idp.fresh, beforeFresh + 1)
   const listing = await ok(context, "/personal-tokens")
   const token = listing.find((item) => item.name === label)
@@ -507,10 +509,7 @@ async function passwordLink(context, page, messages) {
     .getByRole("heading", { name: provider.name, exact: true })
     .waitFor()
   assert.equal(await sessionCookie(context), oldCookie)
-  assert.equal(
-    (await ok(context, "/me")).subject,
-    oldSession.subject
-  )
+  assert.equal((await ok(context, "/me")).subject, oldSession.subject)
   assert.deepEqual(
     await ok(admin, "/principals", "GET", undefined, tenant.id),
     membersBefore,
@@ -585,13 +584,7 @@ try {
     {},
     tenant.id
   )
-  await ok(
-    admin,
-    `/roles/${role.id}/members/${actor.id}`,
-    "PUT",
-    {},
-    tenant.id
-  )
+  await ok(admin, `/roles/${role.id}/members/${actor.id}`, "PUT", {}, tenant.id)
   provider = await ok(
     admin,
     "/identity-providers",
@@ -633,8 +626,9 @@ try {
         page.on("pageerror", (error) => errors.push(redact(error)))
         page.on("response", async (result) => {
           if (
-            new URL(result.url()).pathname ===
-              "/api/me/reauthentication/challenges" &&
+            /^\/api\/principals\/[^/]+\/reauthentication\/challenges$/.test(
+              new URL(result.url()).pathname
+            ) &&
             result.ok()
           ) {
             try {
@@ -664,7 +658,10 @@ try {
           await finishUpstream(page)
           const session = await ok(context, "/me")
           principals.add(session.subject)
-          const methods = await ok(context, "/me/reauthentication/methods")
+          const methods = await ok(
+            context,
+            "/principals/{principal_id}/reauthentication/methods"
+          )
           assert.deepEqual(
             methods.methods,
             [],

@@ -138,6 +138,7 @@ func TestComposedIAMOpenAPIHasExactMappedOperationSet(t *testing.T) {
 	actualAuthorizations := make(map[string]iamHTTPAuthorization, iamHTTPMappingCount)
 	operationIDs := make(map[string]string)
 	for path, item := range api.OpenAPI().Paths {
+		require.NotContains(t, path, "/me/", "personal resources require an explicit principal identifier")
 		for method, operation := range openAPIPathOperations(item) {
 			if operation == nil {
 				continue

@@ -284,7 +284,7 @@ func TestIAMManagementHTTPFlowAndTenantIsolation(t *testing.T) {
 		"parent_id": "", "label": "People", "route": "/people", "icon": "users", "sort_order": 10,
 		"permission_code": "user_view", "status": "active",
 	}).Code)
-	effectiveMenus := harness.api.Get(headerA+"/me/menus", "Authorization: Bearer test")
+	effectiveMenus := harness.api.Get(headerA+"/principals/"+"11"+"/menus", "Authorization: Bearer test")
 	require.Equal(t, http.StatusOK, effectiveMenus.Code, effectiveMenus.Body.String())
 	assert.Contains(t, effectiveMenus.Body.String(), "People")
 
@@ -708,7 +708,7 @@ func TestIAMHTTPInternalFailuresUseUniformEnvelope(t *testing.T) {
 			return harness.api.Delete("/menus/1", "Authorization: Bearer test")
 		}},
 		{name: "effective menus", call: func() *httptest.ResponseRecorder {
-			return harness.api.Get(header+"/me/menus", "Authorization: Bearer test")
+			return harness.api.Get(header+"/principals/"+"11"+"/menus", "Authorization: Bearer test")
 		}},
 		{name: "list relationships", call: func() *httptest.ResponseRecorder {
 			return harness.api.Get(header+"/relationships", "Authorization: Bearer test")
@@ -779,8 +779,10 @@ func TestIAMHTTPFailsClosedWhenStorageIsGone(t *testing.T) {
 		"version": 1, "gte": []any{map[string]any{"context": "auth.acr"}, map[string]any{"value": 1}},
 	}}
 	for name, call := range map[string]func() *httptest.ResponseRecorder{
-		"my memberships":   func() *httptest.ResponseRecorder { return harness.api.Get("/me/memberships", auth) },
-		"leave membership": func() *httptest.ResponseRecorder { return harness.api.Delete("/me/memberships/1", auth) },
+		"my memberships": func() *httptest.ResponseRecorder { return harness.api.Get("/principals/"+"11"+"/memberships", auth) },
+		"leave membership": func() *httptest.ResponseRecorder {
+			return harness.api.Delete("/principals/"+"11"+"/memberships/1", auth)
+		},
 		"list field policies": func() *httptest.ResponseRecorder {
 			return harness.api.Get(tenant+"/field-policies", auth)
 		},
@@ -912,7 +914,7 @@ func TestIAMHTTPFailsClosedWhenStorageIsGone(t *testing.T) {
 		"update menu": func() *httptest.ResponseRecorder {
 			return harness.api.Patch("/menus/"+menuID, auth, map[string]any{"label": "Renamed"})
 		},
-		"effective menus": func() *httptest.ResponseRecorder { return harness.api.Get(tenant+"/me/menus", auth) },
+		"effective menus": func() *httptest.ResponseRecorder { return harness.api.Get(tenant+"/principals/"+"11"+"/menus", auth) },
 	} {
 		t.Run(name, func(t *testing.T) {
 			response := call()
@@ -1046,7 +1048,7 @@ func TestIAMHTTPRejectsUnrepresentableIdentifiers(t *testing.T) {
 			return harness.api.Delete("/platform/administrators/"+big, auth)
 		},
 		"effective entity permissions": func() *httptest.ResponseRecorder {
-			return harness.api.Get(tenant+"/entities/"+big+"/me/permissions", auth)
+			return harness.api.Get(tenant+"/entities/"+big+"/principals/"+"11"+"/permissions", auth)
 		},
 		"put relationship subject": func() *httptest.ResponseRecorder {
 			return harness.api.Post(tenant+"/relationships", auth, map[string]any{

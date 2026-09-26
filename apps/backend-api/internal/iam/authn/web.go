@@ -452,7 +452,7 @@ func (s *Service) BeginLogin(
 		expiresAt := now.Add(min(s.web.IdleTTL, s.web.SessionTTL)).UTC()
 		s.audit(ctx, principal.ID, "login_password", "success")
 		return authnext.LoginResult{
-			Status: "mfa_enrollment_required", ReturnURL: resolvedReturnURL, SessionID: token,
+			Status: "mfa_enrollment_required", Subject: principal.ID.String(), ReturnURL: resolvedReturnURL, SessionID: token,
 			ExpiresAt: &expiresAt, Methods: []string{"totp"},
 		}, nil
 	}

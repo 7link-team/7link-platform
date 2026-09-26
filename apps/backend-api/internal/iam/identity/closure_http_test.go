@@ -29,7 +29,7 @@ func TestClosureHTTPPersonalAndPlatformBoundaries(t *testing.T) {
 	registrar := authz.NewRegistrar(authz.DefaultRegistry(), identityTokenVerifier{principalID: p.ID}, identityRouteAuthorizer{platformAllowed: true}, identityMembershipChecker{})
 	RegisterHTTP(api, h.service, registrar)
 	httpAPI := humatest.Wrap(t, api)
-	path := "/me/closure-request"
+	path := "/principals/" + p.ID.String() + "/closure-request"
 	cookie, origin := "Cookie: browser", "Origin: https://account.example.test"
 	require.Equal(t, http.StatusOK, httpAPI.Get(path, cookie).Code)
 	require.Equal(t, http.StatusUnauthorized, httpAPI.Get(path).Code)
@@ -52,7 +52,8 @@ func TestClosureHTTPPersonalAndPlatformBoundaries(t *testing.T) {
 	processed := httpAPI.Patch(base, cookie, origin, map[string]any{"version": 5, "status": "processing"})
 	require.Equal(t, http.StatusOK, processed.Code, processed.Body.String())
 	require.Contains(t, processed.Body.String(), `"status":"processing"`)
-	for _, operation := range []*huma.Operation{api.OpenAPI().Paths[path].Get, api.OpenAPI().Paths[path].Post, api.OpenAPI().Paths[path].Delete} {
+	item := api.OpenAPI().Paths["/principals/{principal_id}/closure-request"]
+	for _, operation := range []*huma.Operation{item.Get, item.Post, item.Delete} {
 		require.Len(t, operation.Security, 1)
 		require.Contains(t, operation.Security[0], authz.SessionScheme)
 		for _, parameter := range operation.Parameters {
@@ -81,7 +82,7 @@ func TestClosureHTTPPlatformPermissionAndUnavailableProof(t *testing.T) {
 
 func TestClosureHTTPUnavailableAndStorageFailures(t *testing.T) {
 	h := newIdentityHTTPHarnessWithPlatform(t, true, true)
-	path, cookie := "/me/closure-request", "Cookie: session=browser"
+	path, cookie := "/principals/"+"11"+"/closure-request", "Cookie: session=browser"
 	proof := map[string]any{"proof": "verified", "version": 0}
 	require.Equal(t, http.StatusUnauthorized, h.api.Post(path, proof).Code)
 	require.Equal(t, http.StatusServiceUnavailable, h.api.Post(path, cookie, proof).Code)

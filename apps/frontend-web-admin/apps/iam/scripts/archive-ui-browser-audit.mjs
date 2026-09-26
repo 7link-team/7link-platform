@@ -109,13 +109,13 @@ try {
           display_name: "Archive operator",
           email: "operator@example.test",
         })
-      if (path.endsWith("/me/permissions"))
+      if (path.endsWith("/principals/1/permissions"))
         return json([
           "audit_event_export",
           "audit_event_manage",
           "platform_administer",
         ])
-      if (path === "/me/tenants" || path === "/tenants")
+      if (path === "/principals/1/tenants" || path === "/tenants")
         return json([
           { id: "11", name: "Archive tenant", status: "active" },
           { id: "12", name: "Other tenant", status: "active" },

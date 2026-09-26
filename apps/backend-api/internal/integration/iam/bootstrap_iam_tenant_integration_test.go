@@ -208,7 +208,7 @@ func (f *iamTenantFixture) runBrowserSessionTenant(t *testing.T) {
 	headers := map[string]string{"Cookie": response.Cookies[0].String()}
 	check := func(code int, expected string) {
 		t.Helper()
-		for _, path := range []string{"/me", "/me/session"} {
+		for _, path := range []string{"/me"} {
 			response := f.request(t, http.MethodGet, path, 0, "", nil, headers)
 			requireStatus(t, code, response)
 			if code == http.StatusOK {
@@ -237,10 +237,10 @@ func (f *iamTenantFixture) runBrowserSessionTenant(t *testing.T) {
 	check(http.StatusOK, "")
 	require.NoError(t, f.db.Table(f.table("iam_tenants")).Where("id = ?", iamTenantB).Update("status", "active").Error)
 	check(http.StatusOK, iamTenantB.String())
-	response = f.request(t, http.MethodGet, "/me/session", iamTenantA, f.requester, nil, nil)
+	response = f.request(t, http.MethodGet, "/me", iamTenantA, f.requester, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 	assert.Equal(t, iamTenantB.String(), decodeEnvelope[map[string]any](t, response)["organization_id"])
-	response = f.request(t, http.MethodGet, "/me/session", iamTenantB, f.requester, nil, nil)
+	response = f.request(t, http.MethodGet, "/me", iamTenantB, f.requester, nil, nil)
 	requireStatus(t, http.StatusOK, response)
 }
 

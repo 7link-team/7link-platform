@@ -34,7 +34,7 @@ governance-decide-access-review-item|PUT|/access-reviews/{review_id}/items/{item
 governance-get-access-review|GET|/access-reviews/{review_id}
 governance-list-access-requests|GET|/tenants/{tenant_id}/access-requests
 governance-list-access-reviews|GET|/tenants/{tenant_id}/access-reviews
-governance-list-my-access-requests|GET|/tenants/{tenant_id}/me/access-requests
+governance-list-my-access-requests|GET|/tenants/{tenant_id}/principals/{principal_id}/access-requests
 governance-list-requestable-roles|GET|/tenants/{tenant_id}/requestable-roles
 governance-set-access-request-decision|PUT|/access-requests/{request_id}/decision
 governance-revoke-access-grant|PUT|/access-requests/{request_id}/grant-revocation
@@ -207,7 +207,7 @@ func TestGovernanceHTTPExercisesEveryOperation(t *testing.T) {
 	})
 	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
 	request := responseData[AccessRequest](t, created.Body.Bytes())
-	assert.Equal(t, http.StatusOK, api.Get(tenant+"/me/access-requests", requester).Code)
+	assert.Equal(t, http.StatusOK, api.Get(tenant+"/principals/"+"10"+"/access-requests", requester).Code)
 	assert.Equal(t, http.StatusOK, api.Get(tenant+"/access-requests", reviewer).Code)
 	approved := api.Put("/access-requests/"+request.ID.String()+"/decision", reviewer, map[string]any{"decision": "approved", "note": "approved"})
 	require.Equal(t, http.StatusOK, approved.Code, approved.Body.String())
@@ -380,7 +380,7 @@ func TestGovernanceHTTPReportsStorageFaultsOnEveryOperation(t *testing.T) {
 		{"create request", http.StatusInternalServerError, api.Post(tenant+"/access-requests", requester, map[string]any{
 			"role_id": "20", "reason": "temporary operations access", "access_expires_at": future,
 		})},
-		{"my requests", http.StatusInternalServerError, api.Get(tenant+"/me/access-requests", requester)},
+		{"my requests", http.StatusInternalServerError, api.Get(tenant+"/principals/"+"10"+"/access-requests", requester)},
 		{"list requests", http.StatusInternalServerError, api.Get(tenant+"/access-requests", reviewer)},
 		{"approve", http.StatusServiceUnavailable, api.Put("/access-requests/1001/decision", reviewer, map[string]any{"decision": "approved", "note": "ok"})},
 		{"reject", http.StatusServiceUnavailable, api.Put("/access-requests/1001/decision", reviewer, map[string]any{"decision": "rejected", "note": "no"})},

@@ -28,14 +28,14 @@ import (
 // plan: 14 operations covering the source module's 14 principal and
 // service-account capabilities.
 const identityRouteManifest = `
-identity-avatar-candidates|POST|/me/avatar-candidates
-identity-avatar-candidate-image|GET|/me/avatar-candidates/{candidate_id}
-identity-my-avatar|GET|/me/avatar
-identity-set-my-avatar|PUT|/me/avatar
-identity-avatar-image|GET|/principals/{principal_id}/avatar
-identity-my-closure-request|GET|/me/closure-request
-identity-submit-closure-request|POST|/me/closure-request
-identity-cancel-closure-request|DELETE|/me/closure-request
+identity-avatar-candidates|POST|/principals/{principal_id}/avatar-candidates
+identity-avatar-candidate-image|GET|/principals/{principal_id}/avatar-candidates/{candidate_id}
+identity-my-avatar|GET|/principals/{principal_id}/avatar
+identity-set-my-avatar|PUT|/principals/{principal_id}/avatar
+identity-avatar-image|GET|/principals/{principal_id}/avatar/content
+identity-my-closure-request|GET|/principals/{principal_id}/closure-request
+identity-submit-closure-request|POST|/principals/{principal_id}/closure-request
+identity-cancel-closure-request|DELETE|/principals/{principal_id}/closure-request
 identity-list-closure-requests|GET|/platform/closure-requests
 identity-update-closure-request|PATCH|/platform/principals/{principal_id}/closure-request
 identity-list-principals|GET|/tenants/{tenant_id}/principals
