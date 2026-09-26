@@ -90,4 +90,4 @@ IAM_LOAD_DATABASE_TYPE=mysql \
 IAM_LOAD_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
 IAM_LOAD_CONCURRENCY="${IAM_LOAD_CONCURRENCY:-16}" \
 IAM_LOAD_REQUESTS="${IAM_LOAD_REQUESTS:-300}" \
-  go test ./internal/app -run '^TestIAMHTTPLoadExternalDatabase$' -count=1 -v
+  go test ./internal/integration/iam -run '^TestIAMHTTPLoadExternalDatabase$' -count=1 -v

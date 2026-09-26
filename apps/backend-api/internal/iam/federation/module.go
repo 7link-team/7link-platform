@@ -17,6 +17,7 @@ import (
 	platformi18n "7link.com/platform/pkg/i18n"
 	"7link.com/platform/pkg/module"
 	"github.com/danielgtaylor/huma/v2"
+	"gorm.io/gorm"
 )
 
 var ErrUnavailable = errors.New("federation service unavailable")
@@ -33,6 +34,8 @@ type Module struct {
 	authn                   authn.WebService
 	accountProofs           authn.ReauthenticationConsumer
 	accountReauthentication authn.FederatedReauthentication
+	revokeCredentials       identity.PrincipalCredentialsRevoker
+	revokeOAuth             identity.PrincipalOAuthRevoker
 	// foreign is the one holder of the table names the modules that own them
 	// published to federation. The repository reads through it, so a name that
 	// was never published fails the statement instead of reaching the database.
@@ -63,6 +66,9 @@ func (*Module) ModuleDependencies() []string {
 func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[SecretRewrapper](services, m); err != nil {
 		return fmt.Errorf("provide federation secret rewrapper: %w", err)
+	}
+	if err := module.Provide[LegacyIdentityMaintenance](services, m); err != nil {
+		return fmt.Errorf("provide legacy identity maintenance: %w", err)
 	}
 	return nil
 }
@@ -109,6 +115,44 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil {
 		return fmt.Errorf("resolve federation directory tables: %w", err)
 	}
+	m.revokeCredentials, err = module.Resolve[identity.PrincipalCredentialsRevoker](services)
+	if err != nil {
+		return fmt.Errorf("resolve federation credential invalidation: %w", err)
+	}
+	m.revokeOAuth, err = module.Resolve[identity.PrincipalOAuthRevoker](services)
+	if err != nil {
+		return fmt.Errorf("resolve federation OAuth invalidation: %w", err)
+	}
+	recovery, err := module.Resolve[authn.RecoveryEligibilityConnector](services)
+	if err != nil {
+		return err
+	}
+	if recovery.Bind == nil {
+		return ErrUnavailable
+	}
+	proofTrust, err := module.Resolve[authn.FederatedProofTrustConnector](services)
+	if err != nil {
+		return err
+	}
+	if proofTrust.Bind == nil {
+		return ErrUnavailable
+	}
+	if err := proofTrust.Bind(func(ctx context.Context, tx *gorm.DB, id guid.ID, linkID, fingerprint string) error {
+		if m.service == nil {
+			return ErrUnavailable
+		}
+		return m.service.proofSourceTrusted(ctx, tx, id, linkID, fingerprint)
+	}); err != nil {
+		return err
+	}
+	if err := recovery.Bind(func(ctx context.Context, tx *gorm.DB, id guid.ID) error {
+		if m.service == nil {
+			return ErrUnavailable
+		}
+		return m.service.recoveryEligible(ctx, tx, id)
+	}); err != nil {
+		return err
+	}
 	if err := m.foreign.bind(accessTables, directoryTables); err != nil {
 		return fmt.Errorf("bind federation foreign tables: %w", err)
 	}
@@ -144,6 +188,7 @@ func (m *Module) Initialize(context.Context) error {
 	m.service = NewService(m.runtime, m.appender, m.identities, m.principals, m.authn, m.config, keys, m.ids, outbound)
 	m.service.repo.foreign = &m.foreign
 	m.service.accountProofs, m.service.accountReauthentication = m.accountProofs, m.accountReauthentication
+	m.service.revokeCredentials, m.service.revokeOAuth = m.revokeCredentials, m.revokeOAuth
 	return nil
 }
 
@@ -153,6 +198,9 @@ func (m *Module) Start(ctx context.Context) error {
 	}
 	if m.service == nil {
 		return ErrUnavailable
+	}
+	if err := m.service.QuarantineLegacyIdentityLinks(ctx); err != nil {
+		return err
 	}
 	return m.service.StartSAML(ctx, m.config.SAML)
 }

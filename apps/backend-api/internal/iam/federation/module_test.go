@@ -57,7 +57,7 @@ func TestFederationRuntimeModuleExactOperationManifest(t *testing.T) {
 	require.NoError(t, authz.ValidateOperations(api, declaration.registrar.Registry()))
 	assert.Equal(t, approvedFederationOperations(), federationOperationManifest(api.OpenAPI()))
 	assert.Equal(t, "goose_federation", declaration.MigrationSource().TableName)
-	assert.Len(t, declaration.MigrationMilestones(), 5)
+	assert.Len(t, declaration.MigrationMilestones(), 6)
 }
 
 func TestFederationModuleActivationComesFromItsProtocolConfig(t *testing.T) {
@@ -164,6 +164,7 @@ func TestFederationModuleDependencyResolutionAndLifecycle(t *testing.T) {
 	require.NoError(t, platformmodule.Provide[identity.PrincipalStateStore](services, federationPrincipalState(t, env.runtime)))
 	require.NoError(t, platformmodule.Provide[authn.WebService](services, env.web))
 	provideFederationForeignTables(t, services, env.prefix)
+	provideFederationSecurityCapabilities(t, services)
 	require.NoError(t, services.Seal())
 	require.NoError(t, instance.InjectServices(services))
 	require.NoError(t, instance.Initialize(t.Context()))
@@ -203,6 +204,21 @@ func TestFederationModuleRejectsMissingDependenciesAndInvalidState(t *testing.T)
 			require.NoError(t, platformmodule.Provide[core.AccessTableNames](services,
 				core.PublishedAccessTableNames(env.prefix)))
 		}
+		if include > 6 {
+			require.NoError(t, platformmodule.Provide[organization.DirectoryTableNames](services, organization.PublishedDirectoryTableNames(env.prefix)))
+		}
+		if include > 7 {
+			require.NoError(t, platformmodule.Provide[identity.PrincipalCredentialsRevoker](services, func(context.Context, *gorm.DB, guid.ID) error { return nil }))
+		}
+		if include > 8 {
+			require.NoError(t, platformmodule.Provide[identity.PrincipalOAuthRevoker](services, func(context.Context, *gorm.DB, guid.ID) error { return nil }))
+		}
+		if include > 9 {
+			require.NoError(t, platformmodule.Provide[authn.RecoveryEligibilityConnector](services, authn.RecoveryEligibilityConnector{Bind: func(func(context.Context, *gorm.DB, guid.ID) error) error { return nil }}))
+		}
+		if include > 10 {
+			require.NoError(t, platformmodule.Provide[authn.FederatedProofTrustConnector](services, authn.FederatedProofTrustConnector{}))
+		}
 		require.NoError(t, services.Seal())
 		return services
 	}
@@ -212,6 +228,11 @@ func TestFederationModuleRejectsMissingDependenciesAndInvalidState(t *testing.T)
 	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(4)), "authentication service")
 	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(5)), "access tables")
 	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(6)), "directory tables")
+	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(7)), "credential invalidation")
+	assert.ErrorContains(t, newInstance().InjectServices(servicesWith(8)), "OAuth invalidation")
+	assert.ErrorIs(t, newInstance().InjectServices(servicesWith(9)), platformmodule.ErrServiceMissing)
+	assert.ErrorIs(t, newInstance().InjectServices(servicesWith(10)), platformmodule.ErrServiceMissing)
+	assert.ErrorIs(t, newInstance().InjectServices(servicesWith(11)), ErrUnavailable)
 
 	var nilModule *Module
 	assert.ErrorContains(t, nilModule.Initialize(t.Context()), "module is required")
@@ -259,6 +280,7 @@ func TestFederationModuleRefusesToStartWithoutThePublishedTableNames(t *testing.
 			require.NoError(t, platformmodule.Provide[authn.WebService](services, env.web))
 			require.NoError(t, platformmodule.Provide[core.AccessTableNames](services, missing.access))
 			require.NoError(t, platformmodule.Provide[organization.DirectoryTableNames](services, missing.directory))
+			provideFederationSecurityCapabilities(t, services)
 			require.NoError(t, services.Seal())
 
 			require.NoError(t, instance.InjectServices(services))
@@ -281,6 +303,7 @@ func federationRuntimeModule(t *testing.T) *Module {
 	require.NoError(t, platformmodule.Provide[identity.PrincipalStateStore](services, federationPrincipalState(t, env.runtime)))
 	require.NoError(t, platformmodule.Provide[authn.WebService](services, env.web))
 	provideFederationForeignTables(t, services, env.prefix)
+	provideFederationSecurityCapabilities(t, services)
 	require.NoError(t, services.Seal())
 	require.NoError(t, instance.InjectServices(services))
 	require.NoError(t, instance.Initialize(t.Context()))
@@ -297,6 +320,14 @@ func provideFederationForeignTables(t *testing.T, services *platformmodule.Servi
 		organization.PublishedDirectoryTableNames(prefix)))
 }
 
+func provideFederationSecurityCapabilities(t *testing.T, services *platformmodule.Services) {
+	t.Helper()
+	require.NoError(t, platformmodule.Provide[identity.PrincipalCredentialsRevoker](services, func(context.Context, *gorm.DB, guid.ID) error { return nil }))
+	require.NoError(t, platformmodule.Provide[identity.PrincipalOAuthRevoker](services, func(context.Context, *gorm.DB, guid.ID) error { return nil }))
+	require.NoError(t, platformmodule.Provide[authn.RecoveryEligibilityConnector](services, authn.RecoveryEligibilityConnector{Bind: func(func(context.Context, *gorm.DB, guid.ID) error) error { return nil }}))
+	require.NoError(t, platformmodule.Provide[authn.FederatedProofTrustConnector](services, authn.FederatedProofTrustConnector{Bind: func(func(context.Context, *gorm.DB, guid.ID, string, string) error) error { return nil }}))
+}
+
 func approvedFederationOperations() map[string]string {
 	return map[string]string{
 		"federation-list-personal-identity-links":           "GET /principals/{principal_id}/identity-links",
@@ -308,7 +339,7 @@ func approvedFederationOperations() map[string]string {
 		"federation-create-identity-provider": "POST /tenants/{tenant_id}/identity-providers", "federation-create-saml-service-provider": "POST /tenants/{tenant_id}/saml-service-providers",
 		"federation-delete-identity-provider": "DELETE /identity-providers/{provider_id}", "federation-delete-saml-service-provider": "DELETE /saml-service-providers/{sp_id}",
 		"federation-list-identity-providers": "GET /tenants/{tenant_id}/identity-providers", "federation-list-saml-service-providers": "GET /tenants/{tenant_id}/saml-service-providers",
-		"federation-rotate-saml-signing-key": "POST /tenants/{tenant_id}/saml-signing-keys", "federation-saml-metadata": "GET /saml/{tenant_id}/metadata",
+		"federation-rotate-saml-signing-key": "POST /platform/saml-signing-keys", "federation-saml-metadata": "GET /saml/{tenant_id}/metadata",
 		"federation-saml-slo": "GET /saml/{tenant_id}/slo", "federation-saml-slo-post": "POST /saml/{tenant_id}/slo",
 		"federation-saml-sso": "GET /saml/{tenant_id}/sso", "federation-saml-sso-post": "POST /saml/{tenant_id}/sso",
 		"federation-start-login": "GET /identity-providers/{provider_id}/authorization", "federation-update-identity-provider": "PUT /identity-providers/{provider_id}",

@@ -15,6 +15,22 @@ type TenantPersonalTokenRevoker func(context.Context, *gorm.DB, guid.ID, guid.ID
 // The caller holds the principal lock and owns the transaction.
 type TenantOAuthRevoker func(context.Context, *gorm.DB, guid.ID, guid.ID) error
 
+// PrincipalLockConnector lets identity supply its row lock to core without
+// reversing the module dependency direction.
+type PrincipalLockConnector struct {
+	Bind func(func(context.Context, *gorm.DB, guid.ID) error) error
+}
+
+func (s *Service) revokeTenantMemberCredentials(ctx context.Context, repo *Repository, tenantID, principalID guid.ID) error {
+	if s.revokePersonalTokens == nil || s.revokeOAuth == nil {
+		return ErrUnavailable
+	}
+	if err := s.revokePersonalTokens(ctx, repo.writer(), tenantID, principalID); err != nil {
+		return err
+	}
+	return s.revokeOAuth(ctx, repo.writer(), tenantID, principalID)
+}
+
 type MyMembership struct {
 	TenantID   guid.ID `json:"tenant_id"`
 	TenantName string  `json:"tenant_name"`
@@ -61,9 +77,6 @@ func (s *Service) LeaveTenant(ctx context.Context, principalID, tenantID guid.ID
 		if member.Status != MemberActive {
 			return ErrInvalidArgument
 		}
-		if err := s.revokePersonalTokens(ctx, repo.writer(), tenantID, principalID); err != nil {
-			return err
-		}
-		return s.revokeOAuth(ctx, repo.writer(), tenantID, principalID)
+		return nil
 	})
 }

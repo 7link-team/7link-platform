@@ -15,7 +15,7 @@ func TestIAMHotPathPerformanceOnPostgres(t *testing.T) {
 	backendRoot, err := filepath.Abs(filepath.Join("..", ".."))
 	require.NoError(t, err)
 	command := exec.CommandContext(
-		t.Context(), "go", "test", "7link.com/platform/internal/app",
+		t.Context(), "go", "test", "7link.com/platform/internal/integration/iam",
 		"-run", "^TestIAMPerformanceExternalDatabase$", "-count=1", "-v",
 	)
 	command.Dir = backendRoot
@@ -25,5 +25,6 @@ func TestIAMHotPathPerformanceOnPostgres(t *testing.T) {
 	)
 	output, runErr := command.CombinedOutput()
 	require.NoError(t, runErr, string(output))
+	require.Contains(t, string(output), "--- PASS: TestIAMPerformanceExternalDatabase")
 	t.Log(string(output))
 }

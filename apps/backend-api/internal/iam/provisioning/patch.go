@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/infra/guid"
 	scimfilter "github.com/scim2/filter-parser/v2"
 )
@@ -51,7 +52,7 @@ func (s *Service) PatchUser(ctx context.Context, auth AuthContext, id guid.ID, p
 		}
 		// Never build a write from GetUser: its public view can omit or mask
 		// attributes the automation is allowed to preserve but not inspect.
-		active := record.PrincipalStatus == "active" && record.MembershipStatus == "active"
+		active := record.MembershipStatus == "active"
 		input := UserInput{
 			Schemas: []string{UserSchema}, ExternalID: record.ExternalID, UserName: record.LoginName,
 			Name: UserName{Formatted: record.DisplayName}, DisplayName: record.DisplayName, Active: &active,
@@ -62,6 +63,9 @@ func (s *Service) PatchUser(ctx context.Context, auth AuthContext, id guid.ID, p
 		for _, operation := range patch.Operations {
 			if err := applyUserPatch(&input, operation); err != nil {
 				return err
+			}
+			if strings.ToLower(strings.TrimSpace(input.UserName)) != record.LoginName {
+				return identity.ErrImmutableProvisionedLogin
 			}
 		}
 		input, active, err = normalizeUserInput(input)
@@ -120,7 +124,7 @@ func applyUserPatch(input *UserInput, operation PatchOperation) error {
 	switch patchName(path) {
 	case "username":
 		if op == "remove" {
-			return ErrInvalidPath
+			return identity.ErrImmutableProvisionedLogin
 		}
 		return decodePatchValue(operation.Value, &input.UserName)
 	case "displayname":

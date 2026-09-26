@@ -80,6 +80,8 @@ type Service struct {
 	authn                   authnextWebService
 	accountProofs           reauthenticationConsumer
 	accountReauthentication federatedReauthentication
+	revokeCredentials       identity.PrincipalCredentialsRevoker
+	revokeOAuth             identity.PrincipalOAuthRevoker
 	nextID                  func() (guid.ID, error)
 	keys                    *keyringx.Keyring
 	oidc                    *oidcClient
@@ -108,6 +110,7 @@ type authnextWebService interface {
 	ClearCookie() string
 	CookieSecure() bool
 	CreateSession(context.Context, guid.ID, time.Time, authnext.Assurance) (string, error)
+	CreateSessionOn(context.Context, *gorm.DB, guid.ID, time.Time, authnext.Assurance) (string, error)
 	Logout(context.Context, string) (string, error)
 	ResolveReturnURL(string) (string, error)
 	SessionCookie(string) string
@@ -269,8 +272,78 @@ func (s *Service) UpdateProvider(ctx context.Context, tenantID, id guid.ID, inpu
 			return Provider{}, err
 		}
 	}
-	if err := s.repo.updateProvider(ctx, &row); err != nil {
-		return Provider{}, err
+	for {
+		var principals []guid.ID
+		if err := s.repo.writer().WithContext(ctx).Table(s.repo.names.IdentityLinks.String()).Distinct("principal_id").
+			Where("provider_id = ? AND tenant_id = ?", id, tenantID).Order("principal_id").Pluck("principal_id", &principals).Error; err != nil {
+			return Provider{}, err
+		}
+		bindingSetChanged := false
+		err := s.repo.runInTx(ctx, func(repo *Repository) error {
+			// Account operations lock the principal before the provider. Lock the
+			// complete current owner set in that same order before source replacement.
+			locked := make(map[guid.ID]bool, len(principals))
+			for _, principalID := range principals {
+				if repo.principals.Lock == nil {
+					return ErrUnavailable
+				}
+				if err := repo.principals.Lock(ctx, repo.writer(), principalID); err != nil {
+					return err
+				}
+				locked[principalID] = true
+			}
+			previous, err := repo.lockProvider(ctx, id)
+			if err != nil {
+				return err
+			}
+			var links []identityLinkRow
+			if err := repo.currentReader().WithContext(ctx).Table(repo.names.IdentityLinks.String()).
+				Where("provider_id = ? AND tenant_id = ?", id, tenantID).Order("principal_id").Find(&links).Error; err != nil {
+				return err
+			}
+			for _, link := range links {
+				if !locked[link.PrincipalID] {
+					bindingSetChanged = true
+					return ErrIdentityLinkConflict
+				}
+			}
+			if err := repo.updateProvider(ctx, &row); err != nil {
+				return err
+			}
+			if securityProviderFingerprint(previous) == securityProviderFingerprint(row) {
+				return nil
+			}
+			var currentPrincipals []guid.ID
+			for _, link := range links {
+				if len(currentPrincipals) == 0 || currentPrincipals[len(currentPrincipals)-1] != link.PrincipalID {
+					currentPrincipals = append(currentPrincipals, link.PrincipalID)
+				}
+			}
+			for _, principalID := range currentPrincipals {
+				if err := s.invalidatePrincipalOn(ctx, repo, principalID, row.UpdatedAt); err != nil {
+					return err
+				}
+			}
+			if err := repo.writer().WithContext(ctx).Table(repo.names.IdentityLinks.String()).
+				Where("provider_id = ? AND tenant_id = ?", id, tenantID).Update("quarantined_at", row.UpdatedAt).Error; err != nil {
+				return err
+			}
+			if err := repo.writer().WithContext(ctx).Table(repo.names.IdentityLinkTransactions.String()).
+				Where("provider_id = ? AND consumed_at IS NULL", id).Update("consumed_at", row.UpdatedAt).Error; err != nil {
+				return err
+			}
+			return s.audit(ctx, repo.writer(), audit.NewDomainEvent(ctx, tenantID, "identity_provider_source_replaced", "identity_provider", id))
+		})
+		if bindingSetChanged && !s.repo.inTx {
+			continue
+		}
+		if err != nil {
+			return Provider{}, err
+		}
+		break
+	}
+	if securityProviderFingerprint(current) != securityProviderFingerprint(row) {
+		s.samlIDPCache.Delete(id)
 	}
 	return providerFromRow(row), nil
 }
@@ -309,6 +382,10 @@ func (s *Service) StartLogin(ctx context.Context, providerID guid.ID, returnURL,
 		return LoginStart{}, err
 	}
 	state, err := newLoginState(provider.ID.String(), provider.TenantID.String(), resolvedReturnURL, s.stateTTL, s.now().UTC())
+	if err != nil {
+		return LoginStart{}, err
+	}
+	state.SecurityFingerprint, err = s.bindingFingerprint(ctx, provider)
 	if err != nil {
 		return LoginStart{}, err
 	}
@@ -359,7 +436,7 @@ func (s *Service) CompleteLogin(ctx context.Context, providerID guid.ID, code, s
 	}
 	now := s.now().UTC()
 	if sealedState.ProviderID != provider.ID.String() || sealedState.TenantID != provider.TenantID.String() ||
-		sealedState.Nonce != state || sealedState.ExpiresAt <= now.Unix() {
+		sealedState.Nonce != state || sealedState.ExpiresAt <= now.Unix() || sealedState.SecurityFingerprint != securityProviderFingerprint(provider) {
 		return LoginComplete{}, ErrOIDCState
 	}
 	claimed, err := s.replays.claim(ctx, "state:"+sealedState.Nonce, time.Unix(sealedState.ExpiresAt, 0), now)
@@ -434,6 +511,10 @@ func (s *Service) StartSAMLLogin(ctx context.Context, providerID guid.ID, return
 		ProviderID: provider.ID.String(), TenantID: provider.TenantID.String(), Nonce: "id-" + nonce, CodeVerifier: verifier,
 		ReturnURL: resolvedReturnURL, ExpiresAt: now.Add(s.stateTTL).Unix(),
 	}
+	state.SecurityFingerprint, err = s.bindingFingerprint(ctx, provider)
+	if err != nil {
+		return "", "", err
+	}
 	sealed, err := sealState(s.keys, state)
 	if err != nil {
 		return "", "", err
@@ -488,6 +569,13 @@ func (s *Service) CompleteSAMLLogin(ctx context.Context, providerID guid.ID, sam
 		sealedState.ExpiresAt <= now.Unix() {
 		return "", "", ErrOIDCState
 	}
+	fingerprint, err := s.bindingFingerprint(ctx, provider)
+	if err != nil {
+		return "", "", err
+	}
+	if sealedState.SecurityFingerprint != fingerprint {
+		return "", "", ErrOIDCState
+	}
 	claimed, err := s.replays.claim(ctx, "state:"+sealedState.Nonce, time.Unix(sealedState.ExpiresAt, 0), now)
 	if err != nil {
 		return "", "", err
@@ -538,13 +626,48 @@ func (s *Service) CompleteSAMLLogin(ctx context.Context, providerID guid.ID, sam
 
 func (s *Service) authenticate(ctx context.Context, provider providerRow, token idTokenClaims, method string) (string, error) {
 	var principalID guid.ID
+	var sessionToken string
+	fingerprint, err := s.bindingFingerprint(ctx, provider)
+	if err != nil {
+		return "", err
+	}
+	existing, lookupErr := s.repo.identityLink(ctx, provider.ID, provider.TenantID, token.Subject)
+	if lookupErr != nil && !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+		return "", lookupErr
+	}
 	now := s.now().UTC()
 	provisioned := false
 	defaultRoleMissing := false
-	err := s.repo.runInTx(ctx, func(tx *Repository) error {
+	err = s.repo.runInTx(ctx, func(tx *Repository) error {
+		if lookupErr == nil {
+			if tx.principals.Lock == nil {
+				return ErrUnavailable
+			}
+			if err := tx.principals.Lock(ctx, tx.writer(), existing.PrincipalID); err != nil {
+				return err
+			}
+		}
+		current, lockErr := tx.lockProvider(ctx, provider.ID)
+		if lockErr != nil {
+			return lockErr
+		}
+		if current.Status != ProviderActive || securityProviderFingerprint(current) != securityProviderFingerprint(provider) {
+			return ErrProviderDisabled
+		}
+		provider = current
+		// Re-read under the provider lock; only subject-owned state is reusable.
 		link, err := tx.identityLink(ctx, provider.ID, provider.TenantID, token.Subject)
 		switch {
 		case err == nil:
+			if tx.principals.Lock == nil {
+				return ErrUnavailable
+			}
+			if err := tx.principals.Lock(ctx, tx.writer(), link.PrincipalID); err != nil {
+				return err
+			}
+			if !trustedIdentityLink(link, fingerprint) {
+				return ErrIdentityOwnershipRequired
+			}
 			principalID = link.PrincipalID
 		case errors.Is(err, gorm.ErrRecordNotFound):
 			if !provider.AutoProvision {
@@ -559,7 +682,13 @@ func (s *Service) authenticate(ctx context.Context, provider providerRow, token 
 			}
 			id, created, err := s.identities.EnsureExternalPrincipal(ctx, tx.writer(), provider.TenantID, token.Email, displayName, now)
 			if err != nil {
+				if errors.Is(err, identity.ErrLoginConflict) {
+					return ErrIdentityOwnershipRequired
+				}
 				return err
+			}
+			if !created {
+				return ErrIdentityOwnershipRequired
 			}
 			principalID = id
 			provisioned = created
@@ -572,6 +701,7 @@ func (s *Service) authenticate(ctx context.Context, provider providerRow, token 
 				defaultRoleMissing = !granted
 			}
 			link = identityLinkRow{
+				BindingProvenance: BindingNewPrincipal, SecurityFingerprint: fingerprint,
 				ProviderID: provider.ID, TenantID: provider.TenantID, ExternalSubject: token.Subject,
 				PrincipalID: principalID, Email: token.Email, DisplayName: displayName,
 				LastLoginAt: now, CreatedAt: now, UpdatedAt: now,
@@ -597,16 +727,20 @@ func (s *Service) authenticate(ctx context.Context, provider providerRow, token 
 		if defaultRoleMissing {
 			event.Detail["default_role_missing"] = true
 		}
-		return s.audit(ctx, tx.writer(), event)
+		if err := s.audit(ctx, tx.writer(), event); err != nil {
+			return err
+		}
+		assurance := authnext.Assurance{AuthTime: now, Level: 1, Methods: []string{method}}
+		if token.AuthTime > 0 {
+			assurance.AuthTime = time.Unix(token.AuthTime, 0).UTC()
+		}
+		sessionToken, err = s.authn.CreateSessionOn(ctx, tx.writer(), principalID, now, assurance)
+		return err
 	})
 	if err != nil {
 		return "", err
 	}
-	assurance := authnext.Assurance{AuthTime: now, Level: 1, Methods: []string{method}}
-	if token.AuthTime > 0 {
-		assurance.AuthTime = time.Unix(token.AuthTime, 0).UTC()
-	}
-	return s.authn.CreateSession(ctx, principalID, now, assurance)
+	return sessionToken, nil
 }
 
 func (s *Service) normalizeProvider(tenantID guid.ID, input ProviderInput) (providerRow, string, error) {

@@ -190,7 +190,7 @@ func registerBrowserHTTP(api huma.API, service *Service) {
 		result, err := service.CompleteLogin(ctx.Context(), providerID, ctx.Query("code"), ctx.Query("state"), ctx.Header("Cookie"), requestCallbackURL(ctx, providerID))
 		if err != nil {
 			ctx.AppendHeader("Set-Cookie", service.StateClearCookie())
-			writeFederationError(api, ctx, err)
+			writeLoginCallbackError(api, ctx, service, err)
 			return
 		}
 		ctx.AppendHeader("Set-Cookie", service.StateClearCookie())
@@ -238,7 +238,7 @@ func registerBrowserHTTP(api huma.API, service *Service) {
 		sessionToken, returnURL, err := service.CompleteSAMLLogin(ctx.Context(), providerID, values.Get("SAMLResponse"), ctx.Header("Cookie"), requestCallbackURL(ctx, providerID))
 		if err != nil {
 			ctx.AppendHeader("Set-Cookie", service.StateClearCookie())
-			writeFederationError(api, ctx, err)
+			writeLoginCallbackError(api, ctx, service, err)
 			return
 		}
 		ctx.AppendHeader("Set-Cookie", service.StateClearCookie())
@@ -285,6 +285,25 @@ func errorResponseSchema(registry huma.Registry) *huma.Schema {
 		hint = "Error"
 	}
 	return registry.Schema(errorType, true, hint)
+}
+
+func writeLoginCallbackError(api huma.API, ctx huma.Context, service *Service, err error) {
+	if errors.Is(err, ErrIdentityOwnershipRequired) && strings.Contains(strings.ToLower(ctx.Header("Accept")), "text/html") {
+		base, resolveErr := service.authn.ResolveReturnURL("")
+		if resolveErr == nil {
+			target, parseErr := url.Parse(base)
+			if parseErr == nil && target.IsAbs() && target.Host != "" {
+				target.Path = strings.TrimRight(target.Path, "/") + "/login"
+				target.RawPath = ""
+				target.RawQuery = url.Values{"federation_error": {"identity_unavailable"}}.Encode()
+				target.Fragment = ""
+				ctx.SetHeader("Location", target.String())
+				ctx.SetStatus(http.StatusSeeOther)
+				return
+			}
+		}
+	}
+	writeFederationError(api, ctx, err)
 }
 
 func writeFederationError(api huma.API, ctx huma.Context, err error) {
@@ -336,6 +355,8 @@ func requestCallbackURL(ctx huma.Context, providerID guid.ID) string {
 
 func federationError(err error) error {
 	switch {
+	case errors.Is(err, ErrIdentityOwnershipRequired):
+		return huma.Error409Conflict(federationi18n.IdentityUnavailable)
 	case errors.Is(err, authnext.ErrInvalidCredentials), errors.Is(err, authnext.ErrInvalidSession):
 		return huma.Error401Unauthorized(federationi18n.IdentityUnavailable)
 	case errors.Is(err, authnext.ErrUnavailable):

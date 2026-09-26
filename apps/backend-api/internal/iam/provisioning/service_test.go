@@ -211,7 +211,7 @@ func (p *provisioningIdentity) CreateProvisionedTo(ctx context.Context, db *gorm
 		return identity.Principal{}, err
 	}
 	now := provisioningTestNow
-	row := testPrincipal{ID: guid.ID(id), LoginName: input.LoginName, Email: input.Email, DisplayName: input.DisplayName, Status: activeStatus(input.Active), CreatedAt: now, UpdatedAt: now}
+	row := testPrincipal{ID: guid.ID(id), LoginName: input.LoginName, Email: input.Email, DisplayName: input.DisplayName, Status: "active", CreatedAt: now, UpdatedAt: now}
 	if err := db.WithContext(ctx).Table(p.prefix + "iam_principals").Create(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			return identity.Principal{}, identity.ErrLoginConflict
@@ -234,14 +234,19 @@ func (p *provisioningIdentity) ReplaceProvisionedTo(ctx context.Context, db *gor
 		return identity.Principal{}, identity.ErrNotFound
 	}
 	now := provisioningTestNow
-	result := db.WithContext(ctx).Table(p.prefix+"iam_principals").Where("id = ?", id).Updates(map[string]any{
-		"login_name": input.LoginName, "email": input.Email, "display_name": input.DisplayName, "status": activeStatus(input.Active), "updated_at": now,
-	})
-	if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
-		return identity.Principal{}, identity.ErrLoginConflict
+	current, err := p.get(ctx, db, tenantID, id)
+	if err != nil {
+		return identity.Principal{}, err
 	}
-	if result.Error != nil {
-		return identity.Principal{}, result.Error
+	if current.LoginName != input.LoginName {
+		return identity.Principal{}, identity.ErrImmutableProvisionedLogin
+	}
+	var member testMember
+	if err := db.WithContext(ctx).Table(p.prefix+"iam_tenant_members").Where("tenant_id = ? AND principal_id = ?", tenantID, id).Take(&member).Error; err != nil {
+		return identity.Principal{}, err
+	}
+	if input.Active && current.Status != "active" && member.Status != "active" {
+		return identity.Principal{}, identity.ErrInvalid
 	}
 	if err := db.WithContext(ctx).Table(p.prefix+"iam_tenant_members").Where("tenant_id = ? AND principal_id = ?", tenantID, id).
 		Updates(map[string]any{"display_name": input.DisplayName, "email": input.Email, "status": activeStatus(input.Active), "updated_at": now}).Error; err != nil {
@@ -252,6 +257,20 @@ func (p *provisioningIdentity) ReplaceProvisionedTo(ctx context.Context, db *gor
 
 func (p *provisioningIdentity) Get(ctx context.Context, tenantID, id guid.ID) (identity.Principal, error) {
 	return p.get(ctx, p.db, tenantID, id)
+}
+
+func (p *provisioningIdentity) GetProvisioned(ctx context.Context, tenantID, id guid.ID) (identity.ProvisioningPrincipal, error) {
+	principal, err := p.Get(ctx, tenantID, id)
+	if err != nil {
+		return identity.ProvisioningPrincipal{}, err
+	}
+	var member testMember
+	err = p.db.WithContext(ctx).Table(p.prefix+"iam_tenant_members").Where("tenant_id = ? AND principal_id = ?", tenantID, id).Take(&member).Error
+	if err != nil {
+		return identity.ProvisioningPrincipal{}, err
+	}
+	principal.Email, principal.DisplayName = member.Email, member.DisplayName
+	return identity.ProvisioningPrincipal{Principal: principal, MembershipStatus: member.Status}, nil
 }
 
 func (p *provisioningIdentity) EnsureExternalPrincipal(context.Context, *gorm.DB, guid.ID, string, string, time.Time) (guid.ID, bool, error) {

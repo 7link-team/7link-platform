@@ -28,6 +28,12 @@ const (
 	recoveryTokenPrefix          = "cpr1_"
 )
 
+// RecoveryEligibilityConnector lets federation exclude unproven legacy recovery
+// addresses without making authn read federation-owned tables.
+type RecoveryEligibilityConnector struct {
+	Bind func(func(context.Context, *gorm.DB, guid.ID) error) error
+}
+
 type notificationPayload struct {
 	ID              guid.ID   `json:"id"`
 	Type            string    `json:"type"`
@@ -149,6 +155,18 @@ func (s *Service) BeginPasswordRecovery(ctx context.Context, identifier string) 
 		RecoveryURL: resetURL, OccurredAt: now, ExpiresAt: expiresAt,
 	}
 	err = s.repo.runInTx(ctx, func(repository *Repository) error {
+		current, err := repository.lockPrincipal(ctx, principal.ID)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		// Email changes invalidate tokens under the same principal lock. A stale
+		// lookup must not enqueue a new token to the old mailbox afterward.
+		if !current.EmailVerified || current.Email != principal.Email {
+			return nil
+		}
 		if err := repository.createPasswordRecovery(ctx, &recovery, now); err != nil {
 			return err
 		}
@@ -198,7 +216,8 @@ func (s *Service) CompletePasswordRecovery(ctx context.Context, token, newPasswo
 		return fmt.Errorf("load recovery principal: %w", err)
 	}
 	credential, err := s.repo.getCredential(ctx, recovery.PrincipalID)
-	if err != nil {
+	missingCredential := errors.Is(err, gorm.ErrRecordNotFound)
+	if err != nil && !missingCredential {
 		return fmt.Errorf("load recovery credential: %w", err)
 	}
 	history, err := s.repo.listPasswordHistory(ctx, recovery.PrincipalID, 5)
@@ -206,7 +225,9 @@ func (s *Service) CompletePasswordRecovery(ctx context.Context, token, newPasswo
 		return fmt.Errorf("load recovery password history: %w", err)
 	}
 	hashes := make([]string, 0, len(history)+1)
-	hashes = append(hashes, credential.PasswordHash)
+	if !missingCredential && credential.PasswordHash != "" {
+		hashes = append(hashes, credential.PasswordHash)
+	}
 	for _, row := range history {
 		hashes = append(hashes, row.PasswordHash)
 	}
@@ -227,6 +248,18 @@ func (s *Service) CompletePasswordRecovery(ctx context.Context, token, newPasswo
 		Type: passwordChangedNotification, Recipient: principal.Email, OccurredAt: now,
 	}
 	err = s.repo.runInTx(ctx, func(repository *Repository) error {
+		if _, err := repository.lockPrincipal(ctx, recovery.PrincipalID); err != nil {
+			return err
+		}
+		current, err := repository.getActivePrincipal(ctx, recovery.PrincipalID)
+		if err != nil || !current.EmailVerified || current.Email != principal.Email {
+			return authnext.ErrInvalidRecovery
+		}
+		if s.recoveryEligibility != nil {
+			if err := s.recoveryEligibility(ctx, repository.writer(), recovery.PrincipalID); err != nil {
+				return err
+			}
+		}
 		consumed, err := repository.consumePasswordRecovery(ctx, recovery.TokenHMAC, now)
 		if err != nil {
 			return err
@@ -234,16 +267,23 @@ func (s *Service) CompletePasswordRecovery(ctx context.Context, token, newPasswo
 		if !consumed {
 			return authnext.ErrInvalidRecovery
 		}
-		if err := repository.appendPasswordHistory(ctx, recovery.PrincipalID, credential.PasswordHash, now); err != nil {
-			return err
+		if !missingCredential && credential.PasswordHash != "" {
+			if err := repository.appendPasswordHistory(ctx, recovery.PrincipalID, credential.PasswordHash, now); err != nil {
+				return err
+			}
 		}
 		if err := repository.trimPasswordHistory(ctx, recovery.PrincipalID, passwordHistoryDepth); err != nil {
 			return err
 		}
 		cooldownUntil := now.Add(s.cfg.Recovery.Cooldown)
-		changed, err := repository.updatePassword(
-			ctx, recovery.PrincipalID, credential.PasswordHash, newHash, now, true, &cooldownUntil,
-		)
+		changed := false
+		if missingCredential {
+			err = repository.createCredential(ctx, &model.Credential{PrincipalID: recovery.PrincipalID,
+				PasswordHash: newHash, CredentialVersion: 1, PasswordChangedAt: now, UpdatedAt: now, RecoveryCooldownUntil: &cooldownUntil})
+			changed = err == nil
+		} else {
+			changed, err = repository.updatePassword(ctx, recovery.PrincipalID, credential.PasswordHash, newHash, now, true, &cooldownUntil)
+		}
 		if err != nil {
 			return err
 		}

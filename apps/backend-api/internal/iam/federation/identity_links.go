@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
@@ -53,11 +52,6 @@ type LinkableProvider struct {
 func identityOperationHash(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:])
-}
-
-func providerFingerprint(provider providerRow) string {
-	encoded, _ := json.Marshal(provider)
-	return identityOperationHash(string(encoded))
 }
 
 func identityLinkID(providerID guid.ID, subject string) string {
@@ -130,7 +124,7 @@ func (s *Service) ListLinkableProviders(ctx context.Context, cookieHeader string
 // StartIdentityOperation starts only linking or proof verification. It never
 // calls authenticate, whose ordinary login path may JIT-provision an identity.
 func (s *Service) StartIdentityOperation(ctx context.Context, cookieHeader string, providerID guid.ID, proof, existingLinkID, returnURL, callback string) (LoginStart, error) {
-	if s.accountProofs == nil || s.accountReauthentication.Inspect == nil || s.accountReauthentication.ValidateSessionOn == nil {
+	if s.accountReauthentication.ConsumeIndependentOn == nil || s.accountReauthentication.Inspect == nil || s.accountReauthentication.ValidateSessionOn == nil {
 		return LoginStart{}, ErrUnavailable
 	}
 	claims, err := s.authn.Authenticate(ctx, "", cookieHeader)
@@ -165,9 +159,13 @@ func (s *Service) StartIdentityOperation(ctx context.Context, cookieHeader strin
 		return LoginStart{}, err
 	}
 	now := s.now().UTC()
+	fingerprint, err := s.bindingFingerprint(ctx, provider)
+	if err != nil {
+		return LoginStart{}, err
+	}
 	row := model.IdentityLinkTransaction{IDHash: identityOperationHash(state), PrincipalID: claims.PrincipalID,
 		ProviderID: providerID, TenantID: provider.TenantID, SessionHash: sessionHash, Purpose: "link",
-		ProviderFingerprint: providerFingerprint(provider), CallbackURL: callback, ReturnURL: resolved,
+		ProviderFingerprint: fingerprint, CallbackURL: callback, ReturnURL: resolved,
 		CreatedAt: now, ExpiresAt: now.Add(5 * time.Minute)}
 	row.CodeVerifierCiphertext, err = s.keys.Seal("account-code-verifier", []byte(row.IDHash), []byte(verifier))
 	if err != nil {
@@ -208,12 +206,18 @@ func (s *Service) StartIdentityOperation(ctx context.Context, cookieHeader strin
 			return err
 		}
 		if row.Purpose == "link" {
-			if err := s.accountProofs(ctx, repo.writer(), claims.PrincipalID, cookieHeader, proof, authn.ReauthenticationIdentityLink, providerID.String()); err != nil {
+			if err := s.recoveryEligible(ctx, repo.writer(), claims.PrincipalID); err != nil {
+				if errors.Is(err, authnext.ErrInvalidRecovery) {
+					return ErrIdentityOwnershipRequired
+				}
+				return err
+			}
+			if err := s.accountReauthentication.ConsumeIndependentOn(ctx, repo.writer(), claims.PrincipalID, cookieHeader, proof, authn.ReauthenticationIdentityLink, providerID.String()); err != nil {
 				return err
 			}
 		} else {
 			link, err := repo.identityLink(ctx, providerID, provider.TenantID, row.ExpectedSubject)
-			if err != nil || link.PrincipalID != claims.PrincipalID {
+			if err != nil || link.PrincipalID != claims.PrincipalID || !trustedIdentityLink(link, fingerprint) {
 				return ErrPrincipalInactive
 			}
 		}
@@ -292,7 +296,11 @@ func (s *Service) identityOperation(ctx context.Context, repo *Repository, provi
 	if err != nil {
 		return nil, providerRow{}, err
 	}
-	if provider.Status != ProviderActive || provider.TenantID != row.TenantID || providerFingerprint(provider) != row.ProviderFingerprint {
+	fingerprint, err := s.bindingFingerprint(ctx, provider)
+	if err != nil {
+		return nil, providerRow{}, err
+	}
+	if provider.Status != ProviderActive || provider.TenantID != row.TenantID || fingerprint != row.ProviderFingerprint {
 		return nil, providerRow{}, ErrProviderDisabled
 	}
 	tenants := repo.foreign.directory.Tenants.String()
@@ -422,22 +430,35 @@ func (s *Service) CompleteIdentityOperation(ctx context.Context, providerID guid
 		}
 		if row.Purpose == "reauthentication" {
 			link, err := repo.identityLink(ctx, providerID, provider.TenantID, row.ExternalSubject)
-			if err != nil || link.PrincipalID != claims.PrincipalID {
+			if err != nil || link.PrincipalID != claims.PrincipalID || !trustedIdentityLink(link, row.ProviderFingerprint) {
 				return ErrPrincipalInactive
 			}
-			if err := s.accountReauthentication.VerifyOn(ctx, repo.writer(), claims.PrincipalID, cookieHeader, row.ChallengeHash); err != nil {
+			if err := s.accountReauthentication.VerifyOn(ctx, repo.writer(), claims.PrincipalID, cookieHeader, row.ChallengeHash, identityLinkID(providerID, row.ExternalSubject), row.ProviderFingerprint); err != nil {
 				return err
 			}
 		} else if row.Purpose == "link" {
-			_, err := repo.identityLink(ctx, providerID, provider.TenantID, row.ExternalSubject)
-			if err == nil {
+			if err := s.recoveryEligible(ctx, repo.writer(), claims.PrincipalID); err != nil {
+				if errors.Is(err, authnext.ErrInvalidRecovery) {
+					return ErrIdentityOwnershipRequired
+				}
+				return err
+			}
+			link, err := repo.identityLink(ctx, providerID, provider.TenantID, row.ExternalSubject)
+			if err == nil && (link.PrincipalID != claims.PrincipalID || trustedIdentityLink(link, row.ProviderFingerprint)) {
 				return ErrIdentityLinkConflict
 			}
-			if !errors.Is(err, gorm.ErrRecordNotFound) {
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 				return err
 			}
 			now := s.now().UTC()
-			if err := repo.insertIdentityLink(ctx, &identityLinkRow{ProviderID: providerID, TenantID: provider.TenantID, ExternalSubject: row.ExternalSubject,
+			if err == nil {
+				if err := repo.writer().WithContext(ctx).Table(repo.names.IdentityLinks.String()).
+					Where("provider_id = ? AND tenant_id = ? AND external_subject = ? AND principal_id = ?", providerID, provider.TenantID, row.ExternalSubject, claims.PrincipalID).
+					Updates(map[string]any{"binding_provenance": BindingPrincipalVerified, "security_fingerprint": row.ProviderFingerprint, "quarantined_at": nil, "updated_at": now}).Error; err != nil {
+					return err
+				}
+			} else if err := repo.insertIdentityLink(ctx, &identityLinkRow{ProviderID: providerID, TenantID: provider.TenantID, ExternalSubject: row.ExternalSubject,
+				BindingProvenance: BindingPrincipalVerified, SecurityFingerprint: row.ProviderFingerprint,
 				PrincipalID: claims.PrincipalID, Email: row.Email, DisplayName: row.DisplayName, CreatedAt: now, UpdatedAt: now, LastLoginAt: now}); err != nil {
 				if errors.Is(err, gorm.ErrDuplicatedKey) {
 					return ErrIdentityLinkConflict
@@ -489,16 +510,31 @@ func (s *Service) UnlinkPersonalIdentity(ctx context.Context, cookieHeader, id, 
 			return err
 		}
 		var alternatives int64
+		var candidates []identityLinkRow
 		names := repo.names
 		members := repo.foreign.access.TenantMembers.String()
 		tenants := repo.foreign.directory.Tenants.String()
 		err = repo.writer().WithContext(ctx).Table(names.IdentityLinks.String()+" AS link").
+			Select("link.*").
 			Joins("JOIN "+names.Providers.String()+" AS provider ON provider.id = link.provider_id AND provider.tenant_id = link.tenant_id AND provider.status = ?", ProviderActive).
 			Joins("JOIN "+members+" AS member ON member.tenant_id = link.tenant_id AND member.principal_id = link.principal_id AND member.status = ?", "active").
 			Joins("JOIN "+tenants+" AS tenant ON tenant.id = link.tenant_id AND tenant.status = ?", "active").
-			Where("link.principal_id = ? AND NOT (link.provider_id = ? AND link.external_subject = ?)", claims.PrincipalID, providerID, subject).Count(&alternatives).Error
+			Where("link.principal_id = ? AND NOT (link.provider_id = ? AND link.external_subject = ?)", claims.PrincipalID, providerID, subject).Find(&candidates).Error
 		if err != nil {
 			return err
+		}
+		for _, candidate := range candidates {
+			provider, err := repo.getProviderByID(ctx, candidate.ProviderID)
+			if err != nil {
+				return err
+			}
+			fingerprint, err := s.bindingFingerprint(ctx, provider)
+			if err != nil {
+				return err
+			}
+			if trustedIdentityLink(candidate, fingerprint) {
+				alternatives++
+			}
 		}
 		if local == 0 && alternatives == 0 {
 			return ErrLastLoginMethod

@@ -2,13 +2,17 @@ package migration_test
 
 import (
 	"database/sql"
+	"io/fs"
 	"os"
+	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"7link.com/platform/internal/app"
 	"7link.com/platform/internal/iam/authn"
 	authnmodel "7link.com/platform/internal/iam/authn/model"
+	"7link.com/platform/internal/iam/federation"
 	identitymodel "7link.com/platform/internal/iam/identity/model"
 	goosex "7link.com/platform/pkg/extension/goose"
 	"7link.com/platform/pkg/module"
@@ -18,6 +22,47 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+// The erasure rollback contract predates the irreversible binding-trust upgrade.
+type beforeBindingTrust struct{ module.Module }
+
+func (m beforeBindingTrust) MigrationSource() goosex.Source {
+	source := m.Module.(module.MigrationSourceProvider).MigrationSource()
+	files := fstest.MapFS{}
+	err := fs.WalkDir(source.FS, "sql", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() && !strings.HasSuffix(path, "_binding_trust.sql") {
+			data, err := fs.ReadFile(source.FS, path)
+			if err != nil {
+				return err
+			}
+			files[path] = &fstest.MapFile{Data: data}
+		}
+		return nil
+	})
+	if err != nil {
+		panic(err)
+	}
+	source.FS = files
+	return source
+}
+
+func (m beforeBindingTrust) MigrationMilestones() []module.MigrationMilestone {
+	all := m.Module.(module.MigrationMilestoneProvider).MigrationMilestones()
+	return all[:len(all)-1]
+}
+
+func beforeBindingTrustModules() []module.Module {
+	modules := realMySQLMigrationModules()
+	for i, owner := range modules {
+		if owner.ModuleName() == federation.Name {
+			modules[i] = beforeBindingTrust{owner}
+		}
+	}
+	return modules
+}
 
 func TestIAMPrincipalErasureOwnerMigrations(t *testing.T) {
 	engines := []databaseEngine{
@@ -39,7 +84,7 @@ func TestIAMPrincipalErasureOwnerMigrations(t *testing.T) {
 			db := engine.open(t)
 			gdb := openMilestoneGORM(t, db, engine.dialect)
 			const prefix = "erase_"
-			modules := realMySQLMigrationModules()
+			modules := beforeBindingTrustModules()
 			_, err := app.ExecuteModuleMigrations(t.Context(), gdb, modules, app.MigrationRequest{Action: app.MigrationUp}, prefix)
 			require.NoError(t, err)
 			now := time.Now().UTC().Truncate(time.Millisecond)

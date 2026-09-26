@@ -169,6 +169,7 @@ func newIdentityHTTPHarnessWithPlatform(t *testing.T, userUpdateAllowed, platfor
 	require.NoError(t, initializeIdentityLocales())
 	harness := newIdentityHarness(t, "sl_")
 	harness.service.fields = identityRouteAuthorizer{userUpdateAllowed: userUpdateAllowed}
+	harness.service.avatarPermissions = identityRouteAuthorizer{userUpdateAllowed: userUpdateAllowed, platformAllowed: platformAllowed}
 	harness.seedTenant(t, 7, "active")
 	harness.seedTenant(t, 8, "active")
 
@@ -333,7 +334,7 @@ func TestIdentityOpenAPIDescribesTypedMutationResponses(t *testing.T) {
 }
 
 func TestIdentityPrincipalHTTPLifecycleAndTenantIsolation(t *testing.T) {
-	harness := newIdentityHTTPHarness(t, true)
+	harness := newIdentityHTTPHarnessWithPlatform(t, true, true)
 	headerA, headerB := identityTenantPath(7), identityTenantPath(8)
 	auth := "Authorization: Bearer test"
 

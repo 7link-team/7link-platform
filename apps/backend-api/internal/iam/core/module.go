@@ -43,6 +43,7 @@ type Module struct {
 	grants         RoleGrantStore
 	ids            guid.Source
 	appender       audit.Appender
+	lockPrincipal  func(context.Context, *gorm.DB, guid.ID) error
 
 	// foreign is the one holder of the table names other modules publish to the
 	// tables core JOINS but does not own. Every reader core hands out shares it,
@@ -87,6 +88,17 @@ func (*Module) ModuleDependencies() []string {
 func (m *Module) ProvideServices(services *module.Services) error {
 	if err := module.Provide[ActiveMemberChecker](services, ActiveMemberChecker(m.members)); err != nil {
 		return fmt.Errorf("provide IAM active member checker: %w", err)
+	}
+	if err := module.Provide[PrincipalLockConnector](services, PrincipalLockConnector{
+		Bind: func(lock func(context.Context, *gorm.DB, guid.ID) error) error {
+			if lock == nil {
+				return ErrUnavailable
+			}
+			m.lockPrincipal = lock
+			return nil
+		},
+	}); err != nil {
+		return fmt.Errorf("provide IAM principal lock connector: %w", err)
 	}
 	if err := module.Provide[PrincipalPlatformAccessGuard](services, func(ctx context.Context, tx *gorm.DB, id guid.ID) error {
 		if tx == nil || id <= 0 {
@@ -213,6 +225,12 @@ func (m *Module) InjectServices(services *module.Services) error {
 		return err
 	}
 	m.repository = repository
+	m.service.lockPrincipal = func(ctx context.Context, tx *gorm.DB, id guid.ID) error {
+		if m.lockPrincipal == nil {
+			return ErrUnavailable
+		}
+		return m.lockPrincipal(ctx, tx, id)
+	}
 	m.grants = NewRoleGrantStore(repository, m.administrators)
 	return nil
 }

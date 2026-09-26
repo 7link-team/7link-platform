@@ -35,10 +35,36 @@ type ReauthenticationConsumer = authnext.ReauthenticationConsumer
 // Inspect binds an unverified challenge to a browser; VerifyOn is called only
 // after federation has verified an existing linked identity in a fresh flow.
 type FederatedReauthentication struct {
-	Inspect           func(context.Context, string, string) (ReauthenticationBinding, error)
-	VerifyOn          func(context.Context, *gorm.DB, guid.ID, string, string) error
-	ValidateSessionOn func(context.Context, *gorm.DB, guid.ID, string) (int64, error)
-	LocalMethodsOn    func(context.Context, *gorm.DB, guid.ID) (int, error)
+	ConsumeIndependentOn ReauthenticationConsumer
+	Inspect              func(context.Context, string, string) (ReauthenticationBinding, error)
+	VerifyOn             func(context.Context, *gorm.DB, guid.ID, string, string, string, string) error
+	ValidateSessionOn    func(context.Context, *gorm.DB, guid.ID, string) (int64, error)
+	LocalMethodsOn       func(context.Context, *gorm.DB, guid.ID) (int, error)
+}
+
+type FederatedProofTrustConnector struct {
+	Bind func(func(context.Context, *gorm.DB, guid.ID, string, string) error) error
+}
+
+type federatedProofSource struct {
+	LinkID      string `json:"link_id"`
+	Fingerprint string `json:"fingerprint"`
+}
+
+// ConsumeIndependentReauthenticationOn refuses proofs established by an upstream.
+// Trust rehabilitation must not bootstrap itself from the binding being repaired.
+func (s *Service) ConsumeIndependentReauthenticationOn(ctx context.Context, tx *gorm.DB, principalID guid.ID, cookieHeader, proof, purpose, target string) error {
+	if s == nil || s.repo == nil || tx == nil {
+		return authnext.ErrUnavailable
+	}
+	row, err := s.reauthenticationOn(ctx, s.repo.withDB(tx, true), principalID, cookieHeader, tokenHash(proof))
+	if err != nil {
+		return err
+	}
+	if row.Method != "password" && row.Method != "passkey" {
+		return authnext.ErrInvalidCredentials
+	}
+	return s.ConsumeReauthenticationOn(ctx, tx, principalID, cookieHeader, proof, purpose, target)
 }
 
 type ReauthenticationBinding struct {
@@ -352,6 +378,22 @@ func (s *Service) ConsumeReauthenticationOn(ctx context.Context, tx *gorm.DB, pr
 	if row.VerifiedAt == nil || row.Purpose != purpose || row.Target != target {
 		return authnext.ErrInvalidCredentials
 	}
+	if row.Method == "federation" {
+		if s.federatedProofTrust == nil {
+			return authnext.ErrUnavailable
+		}
+		plain, err := s.decryptAuthnData("federated-proof-source", row.IDHash, row.SessionData)
+		if err != nil {
+			return authnext.ErrInvalidCredentials
+		}
+		var source federatedProofSource
+		if err := json.Unmarshal(plain, &source); err != nil || source.LinkID == "" || source.Fingerprint == "" {
+			return authnext.ErrInvalidCredentials
+		}
+		if err := s.federatedProofTrust(ctx, tx, principalID, source.LinkID, source.Fingerprint); err != nil {
+			return err
+		}
+	}
 	tables, _, err := repo.tables()
 	if err != nil {
 		return err
@@ -387,7 +429,7 @@ func (s *Service) inspectFederatedReauthentication(ctx context.Context, cookieHe
 	return binding, err
 }
 
-func (s *Service) verifyFederatedReauthenticationOn(ctx context.Context, tx *gorm.DB, principalID guid.ID, cookieHeader, challengeHash string) error {
+func (s *Service) verifyFederatedReauthenticationOn(ctx context.Context, tx *gorm.DB, principalID guid.ID, cookieHeader, challengeHash, linkID, fingerprint string) error {
 	if s == nil || s.repo == nil || tx == nil {
 		return authnext.ErrUnavailable
 	}
@@ -398,6 +440,20 @@ func (s *Service) verifyFederatedReauthenticationOn(ctx context.Context, tx *gor
 	}
 	if row.Method != "federation" || row.VerifiedAt != nil {
 		return authnext.ErrInvalidCredentials
+	}
+	if linkID == "" || len(linkID) > 512 || len(fingerprint) != 64 {
+		return authnext.ErrInvalidCredentials
+	}
+	plain, err := json.Marshal(federatedProofSource{LinkID: linkID, Fingerprint: fingerprint})
+	if err != nil {
+		return err
+	}
+	encoded, err := s.encryptAuthnData("federated-proof-source", row.IDHash, plain)
+	if err != nil {
+		return err
+	}
+	if err := repo.writer().WithContext(ctx).Table(repo.names.ReauthenticationChallenges.String()).Where("id_hash = ?", row.IDHash).Update("session_data", encoded).Error; err != nil {
+		return err
 	}
 	return s.markReauthenticationVerified(ctx, repo, row)
 }

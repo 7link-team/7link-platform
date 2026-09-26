@@ -62,9 +62,19 @@ func TestIAMMigrationsOnRealMySQL8(t *testing.T) {
 				verifyFederationContracts(t, db, prefix)
 				verifyRealMySQLAppendOnly(t, db, prefix)
 			}
-			assertRealMySQLDown(t, db, gormDB, modules, prefix)
+			_, err := app.ExecuteModuleMigrations(t.Context(), gormDB, modules, app.MigrationRequest{
+				Action: app.MigrationDownTo, Module: federation.Name, To: 6,
+			}, prefix)
+			assert.ErrorContains(t, err, "binding trust downgrade is forbidden")
+			assertRealMySQLSchemaSet(t, db, prefix)
 			assertRealMySQLUp(t, gormDB, modules, prefix)
 			assertRealMySQLSchemaSet(t, db, prefix)
+			// Keep reverse-DAG rollback coverage for the reversible historical schema.
+			rollbackPrefix := "rollback_" + prefix
+			reversible := beforeBindingTrustModules()
+			assertRealMySQLUp(t, gormDB, reversible, rollbackPrefix)
+			assertRealMySQLDown(t, db, gormDB, reversible, rollbackPrefix)
+			assertRealMySQLUp(t, gormDB, reversible, rollbackPrefix)
 		})
 	}
 }

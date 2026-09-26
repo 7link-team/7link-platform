@@ -54,6 +54,7 @@ func TestFrozenIAMCapabilitiesHaveCanonicalOwners(t *testing.T) {
 		// names under a colliding key would silently replace core's.
 		{"core.DirectoryTableNamesConnector", reflect.TypeFor[core.DirectoryTableNamesConnector](), "7link.com/platform/internal/iam/core"},
 		{"core.PrincipalTableNamesConnector", reflect.TypeFor[core.PrincipalTableNamesConnector](), "7link.com/platform/internal/iam/core"},
+		{"core.PrincipalLockConnector", reflect.TypeFor[core.PrincipalLockConnector](), "7link.com/platform/internal/iam/core"},
 		{"core.AdministratorGuard", reflect.TypeFor[core.AdministratorGuard](), "7link.com/platform/internal/iam/core"},
 		{"authn.InvitationCredentials", reflect.TypeFor[authn.InvitationCredentials](), "7link.com/platform/internal/iam/authn"},
 		{"identity.InvitationPrincipalCreator", reflect.TypeFor[identity.InvitationPrincipalCreator](), "7link.com/platform/internal/iam/identity"},
@@ -68,10 +69,11 @@ func TestFrozenIAMCapabilitiesHaveCanonicalOwners(t *testing.T) {
 		// would come back missing a module without saying anything was missing.
 		{"authn.SecretRewrapper", reflect.TypeFor[authn.SecretRewrapper](), "7link.com/platform/internal/iam/authn"},
 		{"federation.SecretRewrapper", reflect.TypeFor[federation.SecretRewrapper](), "7link.com/platform/internal/iam/federation"},
+		{"federation.LegacyIdentityMaintenance", reflect.TypeFor[federation.LegacyIdentityMaintenance](), "7link.com/platform/internal/iam/federation"},
 		{"provisioning.SecretRewrapper", reflect.TypeFor[provisioning.SecretRewrapper](), "7link.com/platform/internal/iam/provisioning"},
 	}
 
-	require.Len(t, capabilities, 26)
+	require.Len(t, capabilities, 28)
 	seen := make(map[reflect.Type]struct{}, len(capabilities))
 	for _, capability := range capabilities {
 		require.NotNil(t, capability.typ)
@@ -106,6 +108,7 @@ func TestIAMRootExportedInterfacesMatchFrozenSet(t *testing.T) {
 		"core.AdministratorGuard",
 		"core.AuthorizationEvaluator",
 		"core.MemberDepartmentReader",
+		"federation.LegacyIdentityMaintenance",
 		"federation.SecretRewrapper",
 		"identity.IdentityProvisioner",
 		"organization.GroupProvisioner",
@@ -122,6 +125,7 @@ func TestIAMCapabilitiesAreDeclaredByTheirProviderRoots(t *testing.T) {
 		"authn.InvitationCredentials":                "interface",
 		"authn.SecretRewrapper":                      "interface",
 		"federation.SecretRewrapper":                 "interface",
+		"federation.LegacyIdentityMaintenance":       "interface",
 		"provisioning.SecretRewrapper":               "interface",
 		"authn.WebService":                           "interface",
 		"core.ActiveMemberChecker":                   "interface",
@@ -134,6 +138,7 @@ func TestIAMCapabilitiesAreDeclaredByTheirProviderRoots(t *testing.T) {
 		"core.AuthorizationSubjectsOn":               "func",
 		"core.AuthorizationReferencesOn":             "func",
 		"core.DirectoryAuthorizationSourceConnector": "struct",
+		"core.PrincipalLockConnector":                "struct",
 		"core.RoleGrantStore":                        "struct",
 		"identity.IdentityProvisioner":               "interface",
 		"identity.InvitationPrincipalCreator":        "func",

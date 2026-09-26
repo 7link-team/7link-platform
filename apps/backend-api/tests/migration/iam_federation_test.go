@@ -104,7 +104,47 @@ func assertFederationUp(t *testing.T, db *gorm.DB, modules []module.Module, pref
 		assert.Equal(t, goosex.StateClean, report.Status.State)
 	}
 	assert.Equal(t, "avatars", milestones[identity.Name])
-	assert.Equal(t, "identity-link-transactions", milestones[federation.Name])
+	assert.Equal(t, "binding-trust", milestones[federation.Name])
+}
+
+func TestLegacyFederationBindingUpgradePreservesUnknownOwnership(t *testing.T) {
+	for _, engine := range []databaseEngine{
+		{name: "sqlite", dialect: "sqlite", open: testdb.OpenSQLite},
+		{name: "mysql", dialect: "mysql", open: testdb.OpenMySQL},
+		{name: "postgres", dialect: "postgres", open: testdb.OpenPostgres},
+	} {
+		t.Run(engine.name, func(t *testing.T) {
+			for _, prefix := range []string{"", deploymentPrefix} {
+				t.Run(prefixTestName(prefix), func(t *testing.T) {
+					db := engine.open(t)
+					identitySource := (&identity.Module{}).MigrationSource()
+					identitySource.Prefix = prefix
+					source := (&federation.Module{}).MigrationSource()
+					source.Prefix = prefix
+					require.NoError(t, goosex.Migrate(t.Context(), db, identitySource, engine.dialect))
+					require.NoError(t, goosex.MigrateUpTo(t.Context(), db, source, engine.dialect, 6))
+					seedFederationPrincipal(t, db, prefix, 991, "legacy-binding")
+					require.NoError(t, insertFederationProvider(t, db, prefix, 991, 1, "Legacy", "https://legacy.example", "client", "oidc", "active"))
+					require.NoError(t, insertFederationLink(t, db, prefix, 991, 1, 991, "legacy-subject"))
+					require.NoError(t, goosex.Migrate(t.Context(), db, source, engine.dialect))
+					var provenance, fingerprint, evidence, subject string
+					var principalID int64
+					var quarantined sql.NullTime
+					require.NoError(t, db.QueryRowContext(t.Context(), fmt.Sprintf("SELECT binding_provenance, security_fingerprint, recovery_evidence, external_subject, principal_id, quarantined_at FROM %siam_identity_links WHERE provider_id = 991", prefix)).Scan(&provenance, &fingerprint, &evidence, &subject, &principalID, &quarantined))
+					assert.Equal(t, federation.BindingUnknown, provenance)
+					assert.Empty(t, fingerprint)
+					assert.Empty(t, evidence)
+					assert.Equal(t, "legacy-subject", subject)
+					assert.Equal(t, int64(991), principalID)
+					assert.False(t, quarantined.Valid)
+					require.NoError(t, execFederationSQL(t, db, "UPDATE %siam_identity_links SET recovery_evidence = 'independent case 42' WHERE provider_id = 991", prefix))
+					assert.ErrorContains(t, goosex.MigrateDownTo(t.Context(), db, source, engine.dialect, 6), "binding trust downgrade is forbidden")
+					require.NoError(t, db.QueryRowContext(t.Context(), fmt.Sprintf("SELECT recovery_evidence FROM %siam_identity_links WHERE provider_id = 991", prefix)).Scan(&evidence))
+					assert.Equal(t, "independent case 42", evidence, "rollback retains ownership evidence")
+				})
+			}
+		})
+	}
 }
 
 func verifyFederationContracts(t *testing.T, db *sql.DB, prefix string) {
@@ -202,15 +242,12 @@ func verifyFederationRollbackGraph(
 	}, prefix)
 	assert.ErrorContains(t, err, `"federation.constraints"`)
 
-	for _, name := range []string{federation.Name, identity.Name} {
-		_, err = app.ExecuteModuleMigrations(t.Context(), db, modules, app.MigrationRequest{
-			Action: app.MigrationDownTo, Module: name, To: 0,
-		}, prefix)
-		require.NoError(t, err, "roll back %s on %s", name, dialect)
-	}
-	assertTableExists(t, sqlDB, dialect, prefix+"iam_identity_providers", false)
-	assertTableExists(t, sqlDB, dialect, prefix+"iam_federation_replay_claims", false)
-	assertFederationUp(t, db, modules, prefix)
+	_, err = app.ExecuteModuleMigrations(t.Context(), db, modules, app.MigrationRequest{
+		Action: app.MigrationDownTo, Module: federation.Name, To: 0,
+	}, prefix)
+	assert.ErrorContains(t, err, "binding trust downgrade is forbidden")
+	assertTableExists(t, sqlDB, dialect, prefix+"iam_identity_providers", true)
+	assertTableExists(t, sqlDB, dialect, prefix+"iam_federation_replay_claims", true)
 }
 
 func seedFederationPrincipal(t *testing.T, db *sql.DB, prefix string, id int, login string) {

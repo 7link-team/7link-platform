@@ -150,7 +150,7 @@ export default function IdentitiesPage() {
               required
               value={provider}
               onChange={(event) => setProvider(event.target.value)}
-              className="min-h-11 rounded-md border bg-background px-3"
+              className="min-h-11 w-full min-w-0 rounded-md border bg-background px-3"
             >
               <option value="">{t("selectIdentityProvider")}</option>
               {providers.map((item) => (

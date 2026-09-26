@@ -187,6 +187,9 @@ func newSCIMError(ctx context.Context, status int, scimType, key string) *SCIMEr
 }
 
 func mapSCIMError(ctx context.Context, err error) *SCIMError {
+	if errors.Is(err, identity.ErrImmutableProvisionedLogin) {
+		return newSCIMError(ctx, http.StatusBadRequest, "mutability", "scim_operation_failed")
+	}
 	if errors.Is(err, authz.ErrFieldDenied) {
 		return newSCIMError(ctx, http.StatusForbidden, "", "scim_operation_failed")
 	}

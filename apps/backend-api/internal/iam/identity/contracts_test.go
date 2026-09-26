@@ -31,6 +31,10 @@ func (*identityProvisionerFixture) Get(context.Context, guid.ID, guid.ID) (Princ
 	return Principal{}, nil
 }
 
+func (*identityProvisionerFixture) GetProvisioned(context.Context, guid.ID, guid.ID) (ProvisioningPrincipal, error) {
+	return ProvisioningPrincipal{}, nil
+}
+
 func (*identityProvisionerFixture) EnsureExternalPrincipal(context.Context, *gorm.DB, guid.ID, string, string, time.Time) (guid.ID, bool, error) {
 	return 0, false, nil
 }
@@ -47,6 +51,7 @@ func TestContractConsumersUseEveryMethod(t *testing.T) {
 	_, _ = service.CreateProvisionedTo(context.Background(), nil, 0, ProvisionedPrincipalInput{})
 	_, _ = service.ReplaceProvisionedTo(context.Background(), nil, 0, 0, ProvisionedPrincipalInput{})
 	_, _ = service.Get(context.Background(), 0, 0)
+	_, _ = service.GetProvisioned(context.Background(), 0, 0)
 	_, _, _ = service.EnsureExternalPrincipal(context.Background(), nil, 0, "", "", time.Time{})
 }
 

@@ -63,8 +63,13 @@ func (s *Service) revokePrincipalCredentialsOn(ctx context.Context, tx *gorm.DB,
 		return err
 	}
 	u := tables.StepUpChallenges
-	_, err = u.WithContext(ctx).Where(u.PrincipalID.Eq(principalID), u.ConsumedAt.IsNull()).Update(u.ConsumedAt, now)
-	return err
+	if _, err := u.WithContext(ctx).Where(u.PrincipalID.Eq(principalID), u.ConsumedAt.IsNull()).Update(u.ConsumedAt, now); err != nil {
+		return err
+	}
+	if err := repo.consumePasswordRecoveries(ctx, principalID, now); err != nil {
+		return err
+	}
+	return repo.consumeEmailVerifications(ctx, principalID, now)
 }
 
 // ErasePrincipalData removes authentication secrets and operational PII using

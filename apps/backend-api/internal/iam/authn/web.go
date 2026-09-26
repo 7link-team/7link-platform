@@ -72,6 +72,8 @@ type Service struct {
 	memberTenant        core.MemberTenantResolver
 	fields              authz.FieldPermissionChecker
 	verifiedHook        func(context.Context, *gorm.DB, guid.ID, string, time.Time) error
+	recoveryEligibility func(context.Context, *gorm.DB, guid.ID) error
+	federatedProofTrust func(context.Context, *gorm.DB, guid.ID, string, string) error
 
 	notificationAuthorization string
 	notificationClient        *http.Client
@@ -691,6 +693,14 @@ func (s *Service) CreateSession(
 		return "", authnext.ErrDisabled
 	}
 	return s.insertSession(ctx, s.repo, principalID, now, assurance)
+}
+
+// CreateSessionOn shares federation's principal/binding lock and transaction.
+func (s *Service) CreateSessionOn(ctx context.Context, tx *gorm.DB, principalID guid.ID, now time.Time, assurance authnext.Assurance) (string, error) {
+	if !s.Enabled() || s.repo == nil || tx == nil {
+		return "", authnext.ErrUnavailable
+	}
+	return s.insertSession(ctx, s.repo.withDB(tx, true), principalID, now, assurance)
 }
 
 func (s *Service) insertSession(

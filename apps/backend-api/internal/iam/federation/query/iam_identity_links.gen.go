@@ -28,6 +28,10 @@ func newIdentityLink(db *gorm.DB, opts ...gen.DOOption) identityLink {
 
 	tableName := _identityLink.identityLinkDo.TableName()
 	_identityLink.ALL = field.NewAsterisk(tableName)
+	_identityLink.BindingProvenance = field.NewString(tableName, "binding_provenance")
+	_identityLink.SecurityFingerprint = field.NewString(tableName, "security_fingerprint")
+	_identityLink.QuarantinedAt = field.NewTime(tableName, "quarantined_at")
+	_identityLink.RecoveryEvidence = field.NewString(tableName, "recovery_evidence")
 	_identityLink.ProviderID = field.NewField(tableName, "provider_id")
 	_identityLink.TenantID = field.NewField(tableName, "tenant_id")
 	_identityLink.ExternalSubject = field.NewString(tableName, "external_subject")
@@ -46,16 +50,20 @@ func newIdentityLink(db *gorm.DB, opts ...gen.DOOption) identityLink {
 type identityLink struct {
 	identityLinkDo identityLinkDo
 
-	ALL             field.Asterisk
-	ProviderID      field.Field
-	TenantID        field.Field
-	ExternalSubject field.String
-	PrincipalID     field.Field
-	Email           field.String
-	DisplayName     field.String
-	LastLoginAt     field.Time
-	CreatedAt       field.Time
-	UpdatedAt       field.Time
+	ALL                 field.Asterisk
+	BindingProvenance   field.String
+	SecurityFingerprint field.String
+	QuarantinedAt       field.Time
+	RecoveryEvidence    field.String
+	ProviderID          field.Field
+	TenantID            field.Field
+	ExternalSubject     field.String
+	PrincipalID         field.Field
+	Email               field.String
+	DisplayName         field.String
+	LastLoginAt         field.Time
+	CreatedAt           field.Time
+	UpdatedAt           field.Time
 
 	fieldMap map[string]field.Expr
 }
@@ -72,6 +80,10 @@ func (i identityLink) As(alias string) *identityLink {
 
 func (i *identityLink) updateTableName(table string) *identityLink {
 	i.ALL = field.NewAsterisk(table)
+	i.BindingProvenance = field.NewString(table, "binding_provenance")
+	i.SecurityFingerprint = field.NewString(table, "security_fingerprint")
+	i.QuarantinedAt = field.NewTime(table, "quarantined_at")
+	i.RecoveryEvidence = field.NewString(table, "recovery_evidence")
 	i.ProviderID = field.NewField(table, "provider_id")
 	i.TenantID = field.NewField(table, "tenant_id")
 	i.ExternalSubject = field.NewString(table, "external_subject")
@@ -109,7 +121,11 @@ func (i *identityLink) GetFieldByName(fieldName string) (field.OrderExpr, bool) 
 }
 
 func (i *identityLink) fillFieldMap() {
-	i.fieldMap = make(map[string]field.Expr, 9)
+	i.fieldMap = make(map[string]field.Expr, 13)
+	i.fieldMap["binding_provenance"] = i.BindingProvenance
+	i.fieldMap["security_fingerprint"] = i.SecurityFingerprint
+	i.fieldMap["quarantined_at"] = i.QuarantinedAt
+	i.fieldMap["recovery_evidence"] = i.RecoveryEvidence
 	i.fieldMap["provider_id"] = i.ProviderID
 	i.fieldMap["tenant_id"] = i.TenantID
 	i.fieldMap["external_subject"] = i.ExternalSubject

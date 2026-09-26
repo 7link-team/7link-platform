@@ -20,6 +20,7 @@ import (
 	"7link.com/platform/internal/iam/provisioning"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	authnext "7link.com/platform/pkg/extension/authn"
 	goosex "7link.com/platform/pkg/extension/goose"
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
@@ -302,7 +303,8 @@ func (f *iamTenantFixture) assertPrincipalOwnersErased(t *testing.T, principal i
 	assert.Equal(t, "erased:"+principal.ID.String(), after["iam_principals"][0]["login_name"])
 	assert.Empty(t, after["iam_principals"][0]["email"])
 	name, email := "Restored", "restored@example.test"
-	_, err := requireIAMModule[*identity.Module](t, f, identity.Name).Service.Update(t.Context(), iamTenantB, principal.ID, &name, &email)
+	ctx := authnext.WithClaims(t.Context(), &authnext.Claims{PrincipalID: principal.ID})
+	_, err := requireIAMModule[*identity.Module](t, f, identity.Name).Service.Update(ctx, iamTenantB, principal.ID, &name, &email)
 	assert.ErrorContains(t, err, "anonymized", "the identity API must not restore a tombstone")
 }
 

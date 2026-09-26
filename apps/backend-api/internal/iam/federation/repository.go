@@ -125,6 +125,16 @@ func (r *Repository) writer() *gorm.DB {
 	return r.runtime.Database().Write()
 }
 
+// Current reads must bypass an earlier MySQL REPEATABLE READ snapshot when
+// a callback waited for a source replacement or principal invalidation.
+func (r *Repository) currentReader() *gorm.DB {
+	db := r.writer()
+	if r.inTx && db.Dialector.Name() != "sqlite" {
+		return db.Clauses(clause.Locking{Strength: "UPDATE"})
+	}
+	return db
+}
+
 // tables returns every table federation owns bound to the deployment prefix,
 // alongside the database the statements run on. It is the same shape the
 // sibling IAM repositories use: the repository reads physical names only
@@ -211,7 +221,7 @@ func (r *Repository) getProviderByID(ctx context.Context, id guid.ID) (providerR
 	if err != nil {
 		return row, err
 	}
-	err = r.writer().WithContext(ctx).Table(tables.Providers.TableName()).Where("id = ?", id).Take(&row).Error
+	err = r.currentReader().WithContext(ctx).Table(tables.Providers.TableName()).Where("id = ?", id).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return row, ErrProviderNotFound
 	}
@@ -278,7 +288,7 @@ func (r *Repository) identityLink(ctx context.Context, providerID, tenantID guid
 	if err != nil {
 		return row, err
 	}
-	err = r.writer().WithContext(ctx).Table(tables.IdentityLinks.TableName()).
+	err = r.currentReader().WithContext(ctx).Table(tables.IdentityLinks.TableName()).
 		Where("provider_id = ? AND tenant_id = ? AND external_subject = ?", providerID, tenantID, subject).Take(&row).Error
 	return row, err
 }
@@ -356,7 +366,14 @@ func (r *Repository) grantDefaultRole(ctx context.Context, tenantID, roleID, pri
 }
 
 func (r *Repository) verifyPrincipalAndMember(ctx context.Context, tenantID, principalID guid.ID) error {
-	status, found, err := r.principals.Status(ctx, r.writer(), principalID)
+	var tenantStatus string
+	if err := r.currentReader().WithContext(ctx).Table(r.foreign.directory.Tenants.String()).Select("status").Where("id = ?", tenantID).Scan(&tenantStatus).Error; err != nil {
+		return err
+	}
+	if tenantStatus != "active" {
+		return ErrPrincipalInactive
+	}
+	status, found, err := r.principals.Status(ctx, r.currentReader(), principalID)
 	if err != nil {
 		return err
 	}
@@ -365,7 +382,7 @@ func (r *Repository) verifyPrincipalAndMember(ctx context.Context, tenantID, pri
 	}
 	members := r.foreign.access.TenantMembers.String()
 	status = ""
-	err = r.writer().WithContext(ctx).Table(members).Select("status").
+	err = r.currentReader().WithContext(ctx).Table(members).Select("status").
 		Where("tenant_id = ? AND principal_id = ?", tenantID, principalID).Scan(&status).Error
 	if err != nil {
 		return err

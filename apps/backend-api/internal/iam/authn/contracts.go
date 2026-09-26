@@ -8,6 +8,7 @@ import (
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
 	gormx "7link.com/platform/pkg/extension/gorm"
+	"gorm.io/gorm"
 )
 
 // InvitationCredentials issues tenant invitation tokens and recognizes them
@@ -37,6 +38,7 @@ type WebService interface {
 	ClearCookie() string
 	CookieSecure() bool
 	CreateSession(context.Context, guid.ID, time.Time, authnext.Assurance) (string, error)
+	CreateSessionOn(context.Context, *gorm.DB, guid.ID, time.Time, authnext.Assurance) (string, error)
 	Issuer() string
 	IssueTenantAccessTokenWithAssurance(context.Context, guid.ID, string, string, string, authnext.Assurance) (string, int64, error)
 	IssueTenantIDTokenWithAssurance(context.Context, guid.ID, string, string, string, string, authnext.Assurance) (string, error)

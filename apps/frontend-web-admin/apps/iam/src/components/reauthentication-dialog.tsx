@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react"
+import { Link } from "react-router"
 import { useTranslations } from "@workspace/ui/i18n/intl-provider"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
@@ -42,8 +43,17 @@ export function ReauthenticationDialog({
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
   const [reload, setReload] = useState(0)
+  const [canRecover, setCanRecover] = useState(false)
   useEffect(() => {
     let active = true
+    void iamApi.capabilities().then(
+      (capabilities) => {
+        if (active) setCanRecover(capabilities.password_recovery)
+      },
+      () => {
+        if (active) setCanRecover(false)
+      }
+    )
     void Promise.all([
       iamApi.reauthenticationMethods(),
       iamApi.identityLinks(),
@@ -165,6 +175,13 @@ export function ReauthenticationDialog({
           </DialogDescription>
         </DialogHeader>
         {error && <Alert>{t.has(error) ? t(error) : error}</Alert>}
+        {canRecover && (error || (available && !method)) && (
+          <Button asChild variant="outline">
+            <Link to="/recover" onClick={onClose}>
+              {t("forgotPassword")}
+            </Link>
+          </Button>
+        )}
         {!available ? (
           error ? (
             <Button onClick={() => setReload((value) => value + 1)}>

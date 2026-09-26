@@ -203,18 +203,18 @@ func TestReauthenticationFederationCapabilityAndLocalMethodAvailability(t *testi
 	require.NoError(t, err)
 	harness.auditErr = assert.AnError
 	assert.Error(t, harness.db.Transaction(func(tx *gorm.DB) error {
-		return service.verifyFederatedReauthenticationOn(t.Context(), tx, claims.PrincipalID, cookie, binding.ChallengeHash)
+		return service.verifyFederatedReauthenticationOn(t.Context(), tx, claims.PrincipalID, cookie, binding.ChallengeHash, "trusted-link", strings.Repeat("a", 64))
 	}))
 	harness.auditErr = nil
 	require.NoError(t, harness.db.Transaction(func(tx *gorm.DB) error {
-		return service.verifyFederatedReauthenticationOn(t.Context(), tx, claims.PrincipalID, cookie, binding.ChallengeHash)
+		return service.verifyFederatedReauthenticationOn(t.Context(), tx, claims.PrincipalID, cookie, binding.ChallengeHash, "trusted-link", strings.Repeat("a", 64))
 	}))
 	assert.Error(t, harness.db.Transaction(func(tx *gorm.DB) error {
-		return service.verifyFederatedReauthenticationOn(t.Context(), tx, claims.PrincipalID, cookie, binding.ChallengeHash)
+		return service.verifyFederatedReauthenticationOn(t.Context(), tx, claims.PrincipalID, cookie, binding.ChallengeHash, "trusted-link", strings.Repeat("a", 64))
 	}))
 	_, err = service.inspectFederatedReauthentication(t.Context(), cookie, options.Proof)
 	assert.Error(t, err)
-	assert.ErrorIs(t, service.verifyFederatedReauthenticationOn(t.Context(), nil, claims.PrincipalID, cookie, binding.ChallengeHash), authnext.ErrUnavailable)
+	assert.ErrorIs(t, service.verifyFederatedReauthenticationOn(t.Context(), nil, claims.PrincipalID, cookie, binding.ChallengeHash, "trusted-link", strings.Repeat("a", 64)), authnext.ErrUnavailable)
 	_, err = service.localLoginMethodsOn(t.Context(), nil, claims.PrincipalID)
 	assert.ErrorIs(t, err, authnext.ErrUnavailable)
 	require.NoError(t, harness.db.Delete(&model.Credential{}, "principal_id = ?", claims.PrincipalID).Error)
@@ -258,7 +258,7 @@ func TestReauthenticationRejectsInvalidInputsAndStorageFailure(t *testing.T) {
 	_, err = service.inspectFederatedReauthentication(t.Context(), cookie, password.Proof)
 	assert.ErrorIs(t, err, authnext.ErrInvalidCredentials)
 	assert.Error(t, harness.db.Transaction(func(tx *gorm.DB) error {
-		return service.verifyFederatedReauthenticationOn(t.Context(), tx, claims.PrincipalID, cookie, tokenHash(password.Proof))
+		return service.verifyFederatedReauthenticationOn(t.Context(), tx, claims.PrincipalID, cookie, tokenHash(password.Proof), "trusted-link", strings.Repeat("a", 64))
 	}))
 	harness.auditErr = assert.AnError
 	_, err = service.BeginReauthentication(t.Context(), cookie, ReauthenticationPrincipalClose, "self", "password", "")

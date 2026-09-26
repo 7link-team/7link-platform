@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"7link.com/platform/internal/infra/guid"
@@ -62,6 +63,97 @@ func TestLeaveTenantPreservesOtherMembershipAndAudits(t *testing.T) {
 	require.NoError(t, h.db.Raw("SELECT SUM(count) FROM exit_effects").Scan(&count).Error)
 	require.Equal(t, 3, count)
 	require.Equal(t, "tenant_member_status_changed", (*h.events)[len(*h.events)-1].EventType)
+}
+
+func TestAdministratorMemberDisableRevokesTenantCredentialsAtomically(t *testing.T) {
+	for _, upsert := range []bool{false, true} {
+		for _, revokeFails := range []bool{false, true} {
+			t.Run(fmt.Sprintf("upsert=%t/revokeFails=%t", upsert, revokeFails), func(t *testing.T) {
+				h := newCoreServiceHarness(t)
+				h.seedMember(t, 1, 11, MemberActive)
+				h.seedMember(t, 2, 22, MemberActive)
+				_, err := h.service.PutTenantMember(t.Context(), 2, 11, "Other contact", "other@example.test", 0, MemberActive)
+				require.NoError(t, err)
+				prepareMemberExit(t, h)
+				if revokeFails {
+					h.service.revokeOAuth = func(context.Context, *gorm.DB, guid.ID, guid.ID) error { return errors.New("withdrawal failed") }
+				}
+				if upsert {
+					_, err = h.service.PutTenantMember(t.Context(), 1, 11, "Disabled contact", "changed@example.test", 0, MemberDisabled)
+				} else {
+					_, err = h.service.SetTenantMemberStatus(t.Context(), 1, 11, MemberDisabled)
+				}
+				var effects int
+				require.NoError(t, h.db.Raw("SELECT SUM(count) FROM exit_effects").Scan(&effects).Error)
+				member, getErr := h.service.GetTenantMember(t.Context(), 1, 11)
+				require.NoError(t, getErr)
+				if revokeFails {
+					require.ErrorContains(t, err, "withdrawal failed")
+					require.Zero(t, effects)
+					require.Equal(t, MemberActive, member.Status)
+					require.Equal(t, "Member 11", member.DisplayName)
+				} else {
+					require.NoError(t, err)
+					require.Equal(t, 2, effects, "only tenant PAT and OAuth withdrawal runs")
+					require.Equal(t, MemberDisabled, member.Status)
+				}
+				other, getErr := h.service.GetTenantMember(t.Context(), 2, 11)
+				require.NoError(t, getErr)
+				require.Equal(t, MemberActive, other.Status)
+				require.Equal(t, "Other contact", other.DisplayName)
+			})
+		}
+	}
+}
+
+func TestAdministratorMemberDisableRequiresOwnerCapabilities(t *testing.T) {
+	for _, capability := range []string{"lock", "pat", "oauth"} {
+		t.Run(capability, func(t *testing.T) {
+			h := newCoreServiceHarness(t)
+			h.seedMember(t, 1, 11, MemberActive)
+			switch capability {
+			case "lock":
+				h.service.lockPrincipal = nil
+			case "pat":
+				h.service.revokePersonalTokens = nil
+			case "oauth":
+				h.service.revokeOAuth = nil
+			}
+			_, err := h.service.SetTenantMemberStatus(t.Context(), 1, 11, MemberDisabled)
+			require.ErrorIs(t, err, ErrUnavailable)
+			member, err := h.service.GetTenantMember(t.Context(), 1, 11)
+			require.NoError(t, err)
+			require.Equal(t, MemberActive, member.Status)
+		})
+	}
+}
+
+func TestAdministratorMemberDisableLastAdminRollsBackWithdrawal(t *testing.T) {
+	for _, upsert := range []bool{false, true} {
+		t.Run(fmt.Sprintf("upsert=%t", upsert), func(t *testing.T) {
+			h := newCoreServiceHarness(t)
+			h.seedMember(t, 1, 11, MemberActive)
+			role, err := h.service.CreateRole(t.Context(), 1, "Admin", "")
+			require.NoError(t, err)
+			_, err = h.service.GrantPermission(t.Context(), 1, role.ID, "tenant_administer")
+			require.NoError(t, err)
+			_, err = h.service.AddMember(t.Context(), 1, role.ID, 11)
+			require.NoError(t, err)
+			prepareMemberExit(t, h)
+			if upsert {
+				_, err = h.service.PutTenantMember(t.Context(), 1, 11, "Changed", "", 0, MemberDisabled)
+			} else {
+				_, err = h.service.SetTenantMemberStatus(t.Context(), 1, 11, MemberDisabled)
+			}
+			require.ErrorIs(t, err, ErrLastTenantAdministrator)
+			var effects int
+			require.NoError(t, h.db.Raw("SELECT SUM(count) FROM exit_effects").Scan(&effects).Error)
+			require.Zero(t, effects)
+			member, err := h.service.GetTenantMember(t.Context(), 1, 11)
+			require.NoError(t, err)
+			require.Equal(t, MemberActive, member.Status)
+		})
+	}
 }
 
 func TestLeaveTenantLastAdministratorRollsBackProofAndCredentials(t *testing.T) {

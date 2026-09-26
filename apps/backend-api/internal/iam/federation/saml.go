@@ -201,7 +201,15 @@ func (s *Service) RotateSAMLSigningKey(ctx context.Context) (SAMLKeyInfo, error)
 		return SAMLKeyInfo{}, err
 	}
 	now := s.now().UTC().Truncate(time.Millisecond)
-	if err := s.repo.rotateSAMLKeys(ctx, &samlKeyRow{KeyID: keyID, CertPEM: string(certPEM), KeyCiphertext: ciphertext, CreatedAt: now}, now); err != nil {
+	if err := s.repo.runInTx(ctx, func(tx *Repository) error {
+		if err := tx.rotateSAMLKeys(ctx, &samlKeyRow{KeyID: keyID, CertPEM: string(certPEM), KeyCiphertext: ciphertext, CreatedAt: now}, now); err != nil {
+			return err
+		}
+		event := audit.NewDomainEvent(ctx, 0, "federation_saml_signing_key_rotated", "saml_signing_key", 0)
+		event.Detail["scope"] = "platform"
+		event.Detail["key_id"] = keyID
+		return s.audit(ctx, tx.writer(), event)
+	}); err != nil {
 		return SAMLKeyInfo{}, err
 	}
 	s.samlKey, s.samlCert = key, cert
@@ -983,8 +991,9 @@ func parseSAMLMetadata(raw, entityID string) (*saml.EntityDescriptor, error) {
 // fetched, so a rotated IdP signing certificate is picked up within one TTL
 // instead of requiring a service restart.
 type samlIDPEntry struct {
-	ed        *saml.EntityDescriptor
-	fetchedAt time.Time
+	ed             *saml.EntityDescriptor
+	fetchedAt      time.Time
+	securitySource string
 }
 
 const samlSPMetadataTTL = 5 * time.Minute
@@ -1030,9 +1039,10 @@ func (s *Service) samlServiceProvider(ctx context.Context, provider providerRow,
 // cache miss or after the TTL expires.
 func (s *Service) samlIDPMetadata(ctx context.Context, provider providerRow) (*saml.EntityDescriptor, error) {
 	now := s.now().UTC()
+	securitySource := securityProviderFingerprint(provider)
 	if cached, ok := s.samlIDPCache.Load(provider.ID); ok {
 		entry, valid := cached.(samlIDPEntry)
-		if valid && now.Sub(entry.fetchedAt) < samlSPMetadataTTL {
+		if valid && entry.securitySource == securitySource && now.Sub(entry.fetchedAt) < samlSPMetadataTTL {
 			return entry.ed, nil
 		}
 		if !valid {
@@ -1068,7 +1078,7 @@ func (s *Service) samlIDPMetadata(ctx context.Context, provider providerRow) (*s
 	if len(ed.IDPSSODescriptors) == 0 {
 		return nil, fmt.Errorf("%w: metadata has no IdP SSO descriptor", ErrSAMLResponse)
 	}
-	s.samlIDPCache.Store(provider.ID, samlIDPEntry{ed: &ed, fetchedAt: now})
+	s.samlIDPCache.Store(provider.ID, samlIDPEntry{ed: &ed, fetchedAt: now, securitySource: securitySource})
 	return &ed, nil
 }
 

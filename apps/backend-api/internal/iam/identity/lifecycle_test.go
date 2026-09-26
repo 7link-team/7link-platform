@@ -91,7 +91,7 @@ func TestPrincipalLifecycleRetentionAndTombstone(t *testing.T) {
 	_, err = h.service.SetStatus(ctx, 7, p.ID, "active")
 	require.Error(t, err)
 	name := "Restore PII"
-	_, err = h.service.Update(ctx, 7, p.ID, &name, nil)
+	_, err = h.service.Update(selfContext(ctx, p.ID), 7, p.ID, &name, nil)
 	require.Error(t, err)
 	require.Error(t, h.db.Table(h.table("iam_principals")).Where("id = ?", p.ID).Update("email", "repopulated@example.test").Error)
 	require.Error(t, h.db.Table(h.table("iam_principals")).Where("id = ?", p.ID).Delete(map[string]any{}).Error)

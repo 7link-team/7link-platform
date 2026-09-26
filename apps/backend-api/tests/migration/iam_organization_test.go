@@ -104,6 +104,8 @@ func verifyOAuthQueryIndexLifecycle(t *testing.T, db *sql.DB, dialect, prefix st
 		require.NoError(t, goosex.MigrateUpTo(t.Context(), db, source, dialect, 6))
 	}
 	assert.Equal(t, want, coreIndexColumns(t, db, prefix+"iam_refresh_tokens", index, dialect))
+	// Return the caller's schema to the current target after testing the v6 index.
+	require.NoError(t, goosex.Migrate(t.Context(), db, source, dialect))
 }
 
 func seedOrganizationParents(t *testing.T, db *sql.DB, prefix string) {

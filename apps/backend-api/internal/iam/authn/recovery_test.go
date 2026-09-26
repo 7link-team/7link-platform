@@ -15,9 +15,13 @@ import (
 	"time"
 
 	"7link.com/platform/internal/iam/authn/model"
+	"7link.com/platform/internal/iam/identity"
+	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
+	"7link.com/platform/pkg/extension/passwordx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 type notificationRecorder struct {
@@ -114,6 +118,60 @@ func TestPasswordRecoveryLifecycle(t *testing.T) {
 	assert.Equal(t, repositoryTestNow.Add(24*time.Hour), *credential.RecoveryCooldownUntil)
 	require.NoError(t, service.deliverPendingNotifications(t.Context()))
 	assert.Equal(t, passwordChangedNotification, recorder.last(t).Type)
+}
+
+func TestPasswordlessRecoveryOwnershipGateAndAuditRollback(t *testing.T) {
+	service, harness, recorder := newRecoveryService(t)
+	principalID := bootstrapLocalPrincipal(t, harness, "passwordless", "correct horse battery staple")
+	require.NoError(t, harness.db.Where("principal_id = ?", principalID).Delete(&model.Credential{}).Error)
+	require.NoError(t, service.BeginPasswordRecovery(t.Context(), "passwordless"))
+	require.NoError(t, service.deliverPendingNotifications(t.Context()))
+	token := recoveryTokenFromPayload(t, recorder.last(t))
+	service.recoveryEligibility = func(context.Context, *gorm.DB, guid.ID) error { return authnext.ErrInvalidRecovery }
+	assert.ErrorIs(t, service.CompletePasswordRecovery(t.Context(), token, "different horse battery staple"), authnext.ErrInvalidRecovery)
+	_, err := service.repo.getCredential(t.Context(), principalID)
+	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	_, err = service.repo.activePasswordRecovery(t.Context(), service.passwordRecoveryHMACs(token), service.now())
+	require.NoError(t, err)
+	service.recoveryEligibility = nil
+	harness.auditErr = assert.AnError
+	assert.ErrorIs(t, service.CompletePasswordRecovery(t.Context(), token, "different horse battery staple"), assert.AnError)
+	_, err = service.repo.getCredential(t.Context(), principalID)
+	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	_, err = service.repo.activePasswordRecovery(t.Context(), service.passwordRecoveryHMACs(token), service.now())
+	require.NoError(t, err)
+	harness.auditErr = nil
+	require.NoError(t, service.CompletePasswordRecovery(t.Context(), token, "different horse battery staple"))
+	_, err = service.BeginLogin(t.Context(), "passwordless", "different horse battery staple", "")
+	require.NoError(t, err)
+}
+
+func TestPasswordRecoveryDoesNotIssueToEmailChangedAfterLookup(t *testing.T) {
+	service, harness, recorder := newRecoveryService(t)
+	principalID := bootstrapLocalPrincipal(t, harness, "email-race", "correct horse battery staple")
+	lookup := service.repo.principals.ActiveHumanByIdentifier
+	service.repo.principals.ActiveHumanByIdentifier = func(ctx context.Context, db *gorm.DB, identifier string) ([]identity.Principal, error) {
+		principals, err := lookup(ctx, db, identifier)
+		if err != nil {
+			return nil, err
+		}
+		require.Len(t, principals, 1)
+		require.NoError(t, harness.db.Table("iam_principals").Where("id = ?", principalID).
+			Updates(map[string]any{"email": "replacement@example.test", "email_verified": true}).Error)
+		return principals, nil
+	}
+	require.NoError(t, service.BeginPasswordRecovery(t.Context(), "email-race"))
+	for _, row := range []any{&model.PasswordRecoveryToken{}, &model.NotificationOutbox{}} {
+		var count int64
+		require.NoError(t, harness.db.Model(row).Where("principal_id = ?", principalID).Count(&count).Error)
+		require.Zero(t, count, "a stale mailbox lookup must issue neither a recovery token nor a notification")
+	}
+	service.repo.principals.ActiveHumanByIdentifier = lookup
+	require.NoError(t, service.BeginPasswordRecovery(t.Context(), "email-race"))
+	require.NoError(t, service.deliverPendingNotifications(t.Context()))
+	require.Equal(t, "replacement@example.test", recorder.last(t).Recipient)
+	token := recoveryTokenFromPayload(t, recorder.last(t))
+	require.NoError(t, service.CompletePasswordRecovery(t.Context(), token, "different horse battery staple"))
 }
 
 func TestPasswordRecoveryDoesNotEnumeratePrincipals(t *testing.T) {
@@ -262,16 +320,23 @@ func TestPasswordRecoveryInvalidAndStorageStatesFailClosed(t *testing.T) {
 		), authnext.ErrInvalidRecovery)
 	})
 
-	t.Run("missing credential", func(t *testing.T) {
+	t.Run("first credential after mailbox proof", func(t *testing.T) {
 		service, harness, recorder := newRecoveryService(t)
 		principalID := bootstrapLocalPrincipal(t, harness, "alice", "correct horse battery staple")
 		require.NoError(t, service.BeginPasswordRecovery(t.Context(), "alice"))
 		require.NoError(t, service.deliverPendingNotifications(t.Context()))
 		token := recoveryTokenFromPayload(t, recorder.last(t))
 		require.NoError(t, harness.db.Table("iam_credentials").Where("principal_id = ?", principalID).Delete(nil).Error)
-		assert.ErrorContains(t, service.CompletePasswordRecovery(
+		require.NoError(t, service.CompletePasswordRecovery(
 			t.Context(), token, "different horse battery staple",
-		), "load recovery credential")
+		))
+		credential, err := service.repo.getCredential(t.Context(), principalID)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), credential.CredentialVersion)
+		valid, err := passwordx.Verify(credential.PasswordHash, "different horse battery staple")
+		require.NoError(t, err)
+		assert.True(t, valid)
+		assert.ErrorIs(t, service.CompletePasswordRecovery(t.Context(), token, "another different horse battery staple"), authnext.ErrInvalidRecovery)
 	})
 
 	t.Run("corrupt password hash", func(t *testing.T) {

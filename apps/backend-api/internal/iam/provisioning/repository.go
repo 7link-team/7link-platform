@@ -700,7 +700,7 @@ func (r *Repository) userQuery(directoryID guid.ID, includeDeleted bool) (*gorm.
 	principals := r.foreign.principal.Principals.String()
 	members := r.foreign.access.TenantMembers.String()
 	query := db.Table(resourceTable+" AS resource").
-		Select("resource.*, principal.login_name, principal.email, principal.display_name, principal.status AS principal_status, member.status AS membership_status").
+		Select("resource.*, principal.login_name, member.email, member.display_name, principal.status AS principal_status, member.status AS membership_status").
 		Joins("JOIN "+directoryTable+" AS directory ON directory.id = resource.directory_id").
 		Joins("JOIN "+principals+" AS principal ON principal.id = resource.resource_id").
 		Joins("JOIN "+members+" AS member ON member.tenant_id = directory.tenant_id AND member.principal_id = resource.resource_id").

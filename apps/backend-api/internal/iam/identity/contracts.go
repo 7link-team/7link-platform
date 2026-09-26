@@ -33,6 +33,13 @@ type ProvisionedPrincipalInput struct {
 	Active       bool
 }
 
+// ProvisioningPrincipal projects tenant contact and admission without changing
+// the global Principal returned by Get.
+type ProvisioningPrincipal struct {
+	Principal
+	MembershipStatus string
+}
+
 // InvitationPrincipalCreator creates a principal while accepting an invitation
 // through the organization's caller-owned transaction.
 type InvitationPrincipalCreator func(context.Context, *gorm.DB, guid.ID, string, string, string, string) (guid.ID, error)
@@ -46,6 +53,7 @@ type IdentityProvisioner interface {
 	CreateProvisionedTo(context.Context, *gorm.DB, guid.ID, ProvisionedPrincipalInput) (Principal, error)
 	ReplaceProvisionedTo(context.Context, *gorm.DB, guid.ID, guid.ID, ProvisionedPrincipalInput) (Principal, error)
 	Get(context.Context, guid.ID, guid.ID) (Principal, error)
+	GetProvisioned(context.Context, guid.ID, guid.ID) (ProvisioningPrincipal, error)
 	EnsureExternalPrincipal(context.Context, *gorm.DB, guid.ID, string, string, time.Time) (guid.ID, bool, error)
 }
 

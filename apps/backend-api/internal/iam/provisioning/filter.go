@@ -134,9 +134,9 @@ func filterAttributes(resourceType string) map[string]filterTarget {
 	}
 	if resourceType == ResourceUser {
 		common["username"] = filterTarget{expression: "principal.login_name"}
-		common["displayname"] = filterTarget{expression: "principal.display_name"}
-		common["name.formatted"] = filterTarget{expression: "principal.display_name"}
-		common["emails.value"] = filterTarget{expression: "principal.email"}
+		common["displayname"] = filterTarget{expression: "member.display_name"}
+		common["name.formatted"] = filterTarget{expression: "member.display_name"}
+		common["emails.value"] = filterTarget{expression: "member.email"}
 		common["active"] = filterTarget{expression: "(principal.status = 'active' AND member.status = 'active')", boolean: true}
 	} else if resourceType == ResourceGroup {
 		common["displayname"] = filterTarget{expression: "scim_group.name"}

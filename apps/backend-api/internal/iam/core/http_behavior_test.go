@@ -185,6 +185,11 @@ func newHTTPIAMHarness(t *testing.T, platformAllowed bool) httpIAMHarness {
 	require.NoError(t, modulepkg.Provide[authz.TokenVerifier](services, httpTokenVerifier{principalID: actorID}))
 	require.NoError(t, services.Seal())
 	require.NoError(t, module.InjectServices(services))
+	module.lockPrincipal = func(ctx context.Context, tx *gorm.DB, id guid.ID) error {
+		return tx.WithContext(ctx).Table("sl_iam_principals").Where("id = ?", id).Update("updated_at", gorm.Expr("updated_at")).Error
+	}
+	module.service.revokePersonalTokens = func(context.Context, *gorm.DB, guid.ID, guid.ID) error { return nil }
+	module.service.revokeOAuth = func(context.Context, *gorm.DB, guid.ID, guid.ID) error { return nil }
 	module.registrar = registrar
 	module.service.checker = httpAuthorizationEvaluator{}
 	_, err := module.service.PutTenantMember(t.Context(), 1, actorID, "Operator", "operator@example.test", 0, MemberActive)

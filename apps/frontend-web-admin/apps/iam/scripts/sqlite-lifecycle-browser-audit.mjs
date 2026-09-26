@@ -8,6 +8,7 @@ import { createServer as createHTTPServer } from "node:http"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { chromium } from "playwright"
+import { externalIdentityAcceptance } from "./external-identity-acceptance.mjs"
 
 const backend = fileURLToPath(
   new URL("../../../../backend-api/", import.meta.url)
@@ -334,7 +335,12 @@ async function capture(page, name, width) {
 }
 
 try {
-  for (const name of ["signing-key", "mfa-key", "provisioning-key"]) {
+  for (const name of [
+    "signing-key",
+    "mfa-key",
+    "provisioning-key",
+    "federation-key",
+  ]) {
     await writeFile(join(directory, name), randomBytes(32).toString("base64"), {
       mode: 0o600,
     })
@@ -371,6 +377,7 @@ try {
             enabled: true,
             verify_url: webURL + "/verify-email",
           },
+          recovery: { enabled: true, reset_url: webURL + "/recover" },
           web: {
             enabled: true,
             cookie_name: "lifecycle_session",
@@ -383,6 +390,15 @@ try {
         },
         provisioning: {
           encryption_key_file: join(directory, "provisioning-key"),
+          outbound_allow_plaintext: true,
+          outbound_allow_networks: ["127.0.0.1/32"],
+        },
+        federation: {
+          enabled: true,
+          encryption_key_file: join(directory, "federation-key"),
+          outbound_allow_plaintext: true,
+          outbound_allow_networks: ["127.0.0.1/32"],
+          saml: { enabled: true },
         },
       },
       null,
@@ -412,6 +428,17 @@ try {
   ]
   await run(binary, bootstrap, backend, "bootstrap")
   await run(binary, bootstrap, backend, "bootstrap-rerun", 3)
+  const inventory = spawnSync(
+    binary,
+    ["iam", "external-identity-inventory", "--config", configPath],
+    { cwd: backend, encoding: "utf8" }
+  )
+  assert.equal(inventory.status, 0, "empty legacy inventory release gate")
+  assert.deepEqual(
+    JSON.parse(inventory.stdout),
+    [],
+    "inventory stdout must contain only JSON"
+  )
   pass("SQLite migrations and create-only platform bootstrap")
   const apiProcess = launch(
     binary,
@@ -522,15 +549,31 @@ try {
     { status: 422 }
   )
   assert.deepEqual(
-    (await call(admin.context, `/roles/${administrator.id}/permission-grants`)).map(
-      (grant) => grant.permission_code
-    ),
+    (
+      await call(admin.context, `/roles/${administrator.id}/permission-grants`)
+    ).map((grant) => grant.permission_code),
     ["tenant_administer"]
   )
   await capture(admin.page, "first-tenant", 1440)
   pass(
     "browser creates the first real tenant without a pre-existing membership; owner, role and menus initialized"
   )
+  await externalIdentityAcceptance({
+    browser,
+    admin,
+    apiURL,
+    webURL,
+    tenant,
+    call,
+    backend,
+    directory,
+    run,
+    launch,
+    port,
+    eventually,
+    pass,
+    notifications,
+  })
 
   // Entities first: a department is created against one.
   const company = await createEntity(admin.page, "Company")

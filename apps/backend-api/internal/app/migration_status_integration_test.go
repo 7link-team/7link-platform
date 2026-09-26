@@ -4,12 +4,14 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"sort"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"7link.com/platform/internal/files"
@@ -30,6 +32,7 @@ import (
 	authnext "7link.com/platform/pkg/extension/authn"
 	goosex "7link.com/platform/pkg/extension/goose"
 	"7link.com/platform/pkg/extension/huma/respx"
+	"7link.com/platform/pkg/module"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -51,31 +54,101 @@ func TestIAMMigrationStatusExternalDatabase(t *testing.T) {
 		MaxOpenConns: 8, MaxIdleConns: 4,
 	}, os.Getenv(iamMigrationTablePrefix))
 
-	assertIAMMigrationActionState(t, config, MigrationUp, goosex.StateClean)
-	assertIAMMigrationActionState(t, config, MigrationStatus, goosex.StateClean)
-	assertIAMMigrationStatusEndpoint(t, config)
-	// The retirement milestone depends on organization; remove it before its base.
-	reports, err := (&App{}).RunMigrations(t.Context(), MigrationConfig{
-		AppConfig:        config,
-		MigrationRequest: MigrationRequest{Action: MigrationDownTo, Module: core.Name, To: 16},
+	// Preserve the actual historical rollback contract before installing the
+	// irreversible binding-trust milestone on this same database.
+	historical := &App{config: config}
+	require.NoError(t, configureApplication(&historical.config))
+	require.NoError(t, historical.prepare(t.Context()))
+	historicalClosed := false
+	t.Cleanup(func() {
+		if !historicalClosed {
+			assert.NoError(t, historical.shutdown())
+		}
 	})
+	owners := historical.modules.Modules()
+	for index, owner := range owners {
+		if owner.ModuleName() == federation.Name {
+			owners[index] = historicalFederationStatusModule{Module: owner, source: historicalFederationStatusSource(t, owner)}
+		}
+	}
+	runHistorical := func(request MigrationRequest) ([]MigrationReport, error) {
+		return ExecuteModuleMigrations(t.Context(), historical.runtime.Database().Write(), owners, request, config.TablePrefix)
+	}
+	reports, err := runHistorical(MigrationRequest{Action: MigrationUp, To: -1})
+	require.NoError(t, err)
+	assertIAMMigrationReports(t, reports, goosex.StateClean)
+	reports, err = runHistorical(MigrationRequest{Action: MigrationStatus, To: -1})
+	require.NoError(t, err)
+	assertIAMMigrationReports(t, reports, goosex.StateClean)
+	// The retirement milestone depends on organization; remove it before its base.
+	reports, err = runHistorical(MigrationRequest{Action: MigrationDownTo, Module: core.Name, To: 16})
 	require.NoError(t, err)
 	require.Len(t, reports, 1)
 	assert.Equal(t, int64(16), reports[0].Status.Current)
 
 	for _, name := range iamMigrationReverseOrder() {
-		reports, err := (&App{}).RunMigrations(t.Context(), MigrationConfig{
-			AppConfig: config,
-			MigrationRequest: MigrationRequest{
-				Action: MigrationDownTo, Module: name, To: 0,
-			},
-		})
+		reports, err := runHistorical(MigrationRequest{Action: MigrationDownTo, Module: name, To: 0})
 		require.NoError(t, err, "roll back %s", name)
 		require.Len(t, reports, 1)
 		assertMigrationReportState(t, reports[0], goosex.StatePending)
 	}
-	assertIAMMigrationActionState(t, config, MigrationStatus, goosex.StatePending)
+	reports, err = runHistorical(MigrationRequest{Action: MigrationStatus, To: -1})
+	require.NoError(t, err)
+	assertIAMMigrationReports(t, reports, goosex.StatePending)
+	reports, err = runHistorical(MigrationRequest{Action: MigrationUp, To: -1})
+	require.NoError(t, err)
+	assertIAMMigrationReports(t, reports, goosex.StateClean)
+	require.NoError(t, historical.shutdown())
+	historicalClosed = true
+
 	assertIAMMigrationActionState(t, config, MigrationUp, goosex.StateClean)
+	assertIAMMigrationActionState(t, config, MigrationStatus, goosex.StateClean)
+	assertIAMMigrationStatusEndpoint(t, config)
+	_, err = (&App{}).RunMigrations(t.Context(), MigrationConfig{
+		AppConfig: config, MigrationRequest: MigrationRequest{Action: MigrationDownTo, Module: federation.Name, To: 6},
+	})
+	require.ErrorContains(t, err, "binding trust downgrade is forbidden")
+	assertIAMMigrationActionState(t, config, MigrationStatus, goosex.StateClean)
+	assertIAMMigrationActionState(t, config, MigrationUp, goosex.StateClean)
+}
+
+type historicalFederationStatusModule struct {
+	module.Module
+	source goosex.Source
+}
+
+func (m historicalFederationStatusModule) MigrationSource() goosex.Source { return m.source }
+
+func (m historicalFederationStatusModule) MigrationMilestones() []module.MigrationMilestone {
+	var milestones []module.MigrationMilestone
+	for _, milestone := range m.Module.(module.MigrationMilestoneProvider).MigrationMilestones() {
+		if milestone.Version <= 6 {
+			milestones = append(milestones, milestone)
+		}
+	}
+	return milestones
+}
+
+func historicalFederationStatusSource(t *testing.T, owner module.Module) goosex.Source {
+	t.Helper()
+	source := owner.(module.MigrationSourceProvider).MigrationSource()
+	files := fstest.MapFS{}
+	err := fs.WalkDir(source.FS, "sql", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() && entry.Name() != "00007_binding_trust.sql" {
+			contents, err := fs.ReadFile(source.FS, path)
+			if err != nil {
+				return err
+			}
+			files[path] = &fstest.MapFile{Data: contents}
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	source.FS = files
+	return source
 }
 
 func iamMigrationStatusAppConfig(database Database, prefix string) AppConfig {

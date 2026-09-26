@@ -11,7 +11,21 @@ mysql_image=$2
 shift 2
 docker_command=("$@")
 
+run_named_tests() {
+  local output
+  if ! output=$("$@" 2>&1); then
+    printf '%s\n' "${output}"
+    return 1
+  fi
+  printf '%s\n' "${output}"
+  if [[ "${output}" != *"--- PASS:"* || "${output}" == *"[no tests to run]"* ]]; then
+    echo "selected MySQL gate tests did not execute successfully" >&2
+    return 1
+  fi
+}
+
 mysql_database=sevenlink_iam_test
+mysql_performance_database=${mysql_database}_performance
 mysql_user=sevenlink_test
 mysql_root_password="$(od -An -N24 -tx1 /dev/urandom | tr -d '[:space:]')"
 mysql_password="$(od -An -N24 -tx1 /dev/urandom | tr -d '[:space:]')"
@@ -79,15 +93,17 @@ echo "mysql8 gate: ${docker_test_host}:${mysql_port} (${mysql_image})"
 # the daemon, and that shell re-splits an argument containing spaces and quotes.
 # Nothing re-splits stdin.
 printf '%s\n' "GRANT SELECT ON performance_schema.* TO '${mysql_user}'@'%';" \
+  "CREATE DATABASE ${mysql_performance_database};" \
+  "GRANT ALL ON ${mysql_performance_database}.* TO '${mysql_user}'@'%';" \
   | "${docker_command[@]}" exec --interactive "${container_id}" mysql --user=root "--password=${mysql_root_password}"
 
 IAM_LIFECYCLE_DATABASE_TYPE=mysql \
 IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
-  go test ./internal/app -run '^(TestComposedPrincipalErasureExternalDatabase|TestPrincipalErasureConcurrencyExternalDatabase|TestPrincipalClosureExternalDatabase)$' -count=1 -v
+  run_named_tests go test ./internal/integration/iam -run '^(TestComposedPrincipalErasureExternalDatabase|TestPrincipalErasureConcurrencyExternalDatabase|TestPrincipalClosureExternalDatabase)$' -count=1 -v
 
 MYSQL8_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
 MYSQL8_EXPECTED_SQL_MODE="${mysql_sql_mode}" \
-  go -C tests test ./migration -run '^(TestIAMMigrationsOnRealMySQL8|TestIAMPrincipalErasureOwnerMigrations|TestIAMDefaultMenuTranslationUpgrade|TestIAMPersonalTokenMigrations|TestIAMPositionRetirementUpgrade)$' -count=1
+  run_named_tests go -C tests test ./migration -run '^(TestIAMMigrationsOnRealMySQL8|TestIAMPrincipalErasureOwnerMigrations|TestIAMDefaultMenuTranslationUpgrade|TestIAMPersonalTokenMigrations|TestIAMPositionRetirementUpgrade)$' -count=1 -v
 
 # Assert the frozen latency thresholds, not only the query plans. Measuring
 # without asserting is how scim_bulk_25 drifted from 50ms to 78ms while every
@@ -96,23 +112,23 @@ MYSQL8_EXPECTED_SQL_MODE="${mysql_sql_mode}" \
 # against a provisioned host, where a threshold measures the code rather than
 # whatever else the machine was doing.
 IAM_PERFORMANCE_DATABASE_TYPE=mysql \
-IAM_PERFORMANCE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
+IAM_PERFORMANCE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_performance_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
 IAM_PERFORMANCE_ENFORCE_THRESHOLDS=1 \
-  go test ./internal/app -run '^TestIAMPerformanceExternalDatabase$' -count=1 -v
+  run_named_tests go test ./internal/integration/iam -run '^TestIAMPerformanceExternalDatabase$' -count=1 -v
 
 IAM_LIFECYCLE_DATABASE_TYPE=mysql \
 IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
-  go test ./internal/iam/federation -run '^TestReplayRegistryExternalDatabase$' -count=1 -v
+  run_named_tests go test ./internal/iam/federation -run '^TestReplayRegistryExternalDatabase$' -count=1 -v
 
 IAM_LIFECYCLE_DATABASE_TYPE=mysql \
 IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
-  go test ./internal/iam/provisioning -run '^TestTargetCoordinationExternalDatabase$' -count=1 -v
+  run_named_tests go test ./internal/iam/provisioning -run '^TestTargetCoordinationExternalDatabase$' -count=1 -v
 
 IAM_LIFECYCLE_DATABASE_TYPE=mysql \
 IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
-  go test ./internal/iam/audit -run '^TestArchiveExternalDatabase$' -count=1 -v
+  run_named_tests go test ./internal/iam/audit -run '^TestArchiveExternalDatabase$' -count=1 -v
 
 IAM_LIFECYCLE_DATABASE_TYPE=mysql \
 IAM_LIFECYCLE_DATABASE_DSN="${mysql_user}:${mysql_password}@tcp(${docker_test_host}:${mysql_port})/${mysql_database}?parseTime=true&multiStatements=true&charset=utf8mb4" \
 IAM_LIFECYCLE_TABLE_PREFIX=tasks_ \
-  go test ./internal/app -run '^TestIAMLifecycleExternalDatabase$' -count=1
+  run_named_tests go test ./internal/integration/iam -run '^TestIAMLifecycleExternalDatabase$' -count=1 -v

@@ -31,7 +31,12 @@ export default function LoginPage() {
   const location = useLocation()
   const [visible, setVisible] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState("")
+  const [error, setError] = useState(() =>
+    new URLSearchParams(location.search).get("federation_error") ===
+    "identity_unavailable"
+      ? "externalIdentityProofRequired"
+      : ""
+  )
   const [challenge, setChallenge] = useState<LoginResult | null>(null)
   const [capabilities, setCapabilities] = useState<AuthnCapabilities | null>(
     null

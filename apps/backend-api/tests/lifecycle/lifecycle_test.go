@@ -25,12 +25,14 @@ func TestPrincipalErasureOnPostgres(t *testing.T) {
 	_, dsn := testdb.OpenPostgresWithDSN(t)
 	backendRoot, err := filepath.Abs(filepath.Join("..", ".."))
 	require.NoError(t, err)
-	command := exec.CommandContext(t.Context(), "go", "test", "7link.com/platform/internal/app",
+	command := exec.CommandContext(t.Context(), "go", "test", "7link.com/platform/internal/integration/iam",
 		"-run", "^(TestComposedPrincipalErasureExternalDatabase|TestPrincipalErasureConcurrencyExternalDatabase)$", "-count=1", "-v")
 	command.Dir = backendRoot
 	command.Env = append(os.Environ(), lifecycleDatabaseType+"=postgres", lifecycleDatabaseDSN+"="+dsn)
 	output, err := command.CombinedOutput()
 	require.NoError(t, err, string(output))
+	require.Contains(t, string(output), "--- PASS: TestComposedPrincipalErasureExternalDatabase")
+	require.Contains(t, string(output), "--- PASS: TestPrincipalErasureConcurrencyExternalDatabase")
 	t.Log(string(output))
 }
 
@@ -60,8 +62,8 @@ func TestIAMLifecycleAcrossEnginesAndPrefixes(t *testing.T) {
 			t.Run(engine.name+"/"+name, func(t *testing.T) {
 				dsn := engine.open(t)
 				command := exec.CommandContext(
-					t.Context(), "go", "test", "7link.com/platform/internal/app",
-					"-run", "^TestIAMLifecycleExternalDatabase$", "-count=1",
+					t.Context(), "go", "test", "7link.com/platform/internal/integration/iam",
+					"-run", "^TestIAMLifecycleExternalDatabase$", "-count=1", "-v",
 				)
 				command.Dir = backendRoot
 				command.Env = append(os.Environ(),
@@ -71,6 +73,7 @@ func TestIAMLifecycleAcrossEnginesAndPrefixes(t *testing.T) {
 				)
 				output, runErr := command.CombinedOutput()
 				require.NoError(t, runErr, string(output))
+				require.Contains(t, string(output), "--- PASS: TestIAMLifecycleExternalDatabase")
 				if engine.name == "mysql" {
 					// go-mysql-server/memory explicitly does not support concurrent
 					// transactions. test-mysql8.sh runs the identical replay test
@@ -79,15 +82,17 @@ func TestIAMLifecycleAcrossEnginesAndPrefixes(t *testing.T) {
 					return
 				}
 				replay := exec.CommandContext(t.Context(), "go", "test", "7link.com/platform/internal/iam/federation",
-					"-run", "^TestReplayRegistryExternalDatabase$", "-count=1")
+					"-run", "^TestReplayRegistryExternalDatabase$", "-count=1", "-v")
 				replay.Dir, replay.Env = command.Dir, command.Env
 				output, runErr = replay.CombinedOutput()
 				require.NoError(t, runErr, string(output))
+				require.Contains(t, string(output), "--- PASS: TestReplayRegistryExternalDatabase")
 				archives := exec.CommandContext(t.Context(), "go", "test", "7link.com/platform/internal/iam/audit",
-					"-run", "^TestArchiveExternalDatabase$", "-count=1")
+					"-run", "^TestArchiveExternalDatabase$", "-count=1", "-v")
 				archives.Dir, archives.Env = command.Dir, command.Env
 				output, runErr = archives.CombinedOutput()
 				require.NoError(t, runErr, string(output))
+				require.Contains(t, string(output), "--- PASS: TestArchiveExternalDatabase")
 			})
 		}
 	}

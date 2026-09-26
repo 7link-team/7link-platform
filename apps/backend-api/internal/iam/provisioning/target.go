@@ -286,7 +286,13 @@ func (s *Service) RetireTarget(ctx context.Context, tenantID, id guid.ID) (int, 
 // PushResource PUTs the current local user or group to the target. The mapping
 // is upserted with the remote id so later pushes and deprovisioning reuse it.
 func (s *Service) PushResource(ctx context.Context, tenantID, targetID guid.ID, resourceType string, resourceID guid.ID) (PushResult, error) {
-	return s.pushResource(ctx, tenantID, targetID, resourceType, resourceID, false)
+	result, err := s.pushResource(ctx, tenantID, targetID, resourceType, resourceID, false)
+	if errors.Is(err, ErrResourceMissing) {
+		if deprovisionErr := s.deprovisionResource(ctx, tenantID, targetID, resourceType, resourceID, true); deprovisionErr != nil && !errors.Is(deprovisionErr, ErrDeprovisionMissing) {
+			return PushResult{}, deprovisionErr
+		}
+	}
+	return result, err
 }
 
 func (s *Service) pushResource(ctx context.Context, tenantID, targetID guid.ID, resourceType string, resourceID guid.ID, liveOnly bool) (PushResult, error) {
@@ -422,6 +428,10 @@ func (s *Service) pushResource(ctx context.Context, tenantID, targetID guid.ID, 
 // DeprovisionResource DELETEs the mapped remote resource and soft-deletes the
 // mapping so a later push re-creates the resource on the target.
 func (s *Service) DeprovisionResource(ctx context.Context, tenantID, targetID guid.ID, resourceType string, resourceID guid.ID) error {
+	return s.deprovisionResource(ctx, tenantID, targetID, resourceType, resourceID, false)
+}
+
+func (s *Service) deprovisionResource(ctx context.Context, tenantID, targetID guid.ID, resourceType string, resourceID guid.ID, onlyMissing bool) error {
 	resourceType = strings.TrimSpace(resourceType)
 	if tenantID.Zero() || targetID.Zero() || resourceID.Zero() || (resourceType != ResourceUser && resourceType != ResourceGroup) {
 		return ErrInvalidTarget
@@ -448,6 +458,17 @@ func (s *Service) DeprovisionResource(ctx context.Context, tenantID, targetID gu
 	}
 	if s.keys == nil {
 		return ErrTargetKeyMissing
+	}
+	if onlyMissing {
+		// The earlier missing projection was read under a different lock
+		// acquisition. A restored resource must not lose its new mapping.
+		_, err := s.buildRemoteResource(ctx, tenantID, targetID, resourceType, resourceID, actorID(target.ServiceAccountID))
+		if err == nil {
+			return ErrDeprovisionMissing
+		}
+		if !errors.Is(err, ErrResourceMissing) {
+			return err
+		}
 	}
 	mapping, err := s.repo.getTargetResource(ctx, targetID, resourceType, resourceID)
 	if err != nil {
@@ -533,7 +554,7 @@ func (s *Service) buildRemoteResource(ctx context.Context, tenantID, targetID gu
 		if err := fields.RequireRead("login_name"); err != nil {
 			return remoteResource{}, err
 		}
-		principal, err := s.identity.Get(ctx, tenantID, resourceID)
+		principal, err := s.identity.GetProvisioned(ctx, tenantID, resourceID)
 		if err != nil {
 			if errors.Is(err, identity.ErrNotFound) {
 				return remoteResource{}, ErrResourceMissing
@@ -546,7 +567,7 @@ func (s *Service) buildRemoteResource(ctx context.Context, tenantID, targetID gu
 			ExternalID:  resourceID.String(),
 			UserName:    principal.LoginName,
 			DisplayName: principal.DisplayName,
-			Active:      principal.Status == "active",
+			Active:      principal.Status == "active" && principal.MembershipStatus == "active",
 			Meta:        ResourceMeta{ResourceType: "User"},
 		}
 		if principal.Email != "" {
@@ -701,7 +722,7 @@ func (s *Service) SyncTarget(ctx context.Context, tenantID, targetID guid.ID) (i
 			// The local resource no longer exists (deleted in the platform);
 			// drift-detection auto-deprovisions it from the target.
 			if errors.Is(err, ErrResourceMissing) {
-				if derr := s.DeprovisionResource(ctx, tenantID, targetID, m.ResourceType, m.ResourceID); derr != nil {
+				if derr := s.deprovisionResource(ctx, tenantID, targetID, m.ResourceType, m.ResourceID, true); derr != nil {
 					if !errors.Is(derr, ErrDeprovisionMissing) {
 						failures = append(failures, derr)
 					}

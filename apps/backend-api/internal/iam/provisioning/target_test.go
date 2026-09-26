@@ -343,6 +343,54 @@ func TestSyncTargetDeprovisionsMissingLocalResource(t *testing.T) {
 	assert.Equal(t, http.MethodDelete, provider.last(t).Method)
 }
 
+type restoredTargetIdentity struct {
+	identity.IdentityProvisioner
+	missing bool
+}
+
+func (p *restoredTargetIdentity) GetProvisioned(ctx context.Context, tenantID, id guid.ID) (identity.ProvisioningPrincipal, error) {
+	if p.missing {
+		p.missing = false
+		return identity.ProvisioningPrincipal{}, identity.ErrNotFound
+	}
+	return p.IdentityProvisioner.GetProvisioned(ctx, tenantID, id)
+}
+
+func TestMissingProjectionRechecksRestoredResourceBeforeDeprovision(t *testing.T) {
+	for _, background := range []bool{false, true} {
+		t.Run(fmt.Sprintf("background=%t", background), func(t *testing.T) {
+			env := newProvisioningEnvironment(t)
+			provider, server := newSCIMProviderEndpoint(t, http.StatusOK, `{"id":"remote-restored"}`)
+			target, err := env.service.CreateTarget(t.Context(), testID("tenant-a"), "Restored", server.URL, "secret", &env.auth.PrincipalID)
+			require.NoError(t, err)
+			user, err := env.service.CreateUser(t.Context(), env.auth, activeUserInput("restored", "Restored", "restored@example.test"))
+			require.NoError(t, err)
+			targetID, userID := parseGUID(target.Target.ID), parseGUID(user.ID)
+			_, err = env.service.PushResource(t.Context(), testID("tenant-a"), targetID, ResourceUser, userID)
+			require.NoError(t, err)
+			requests := provider.count()
+			// Deterministically model a missing snapshot followed by restoration
+			// before auto-deprovision acquires its resource lock.
+			env.service.identity = &restoredTargetIdentity{IdentityProvisioner: env.service.identity, missing: true}
+			if background {
+				_, err = env.service.SyncTarget(t.Context(), testID("tenant-a"), targetID)
+				require.NoError(t, err)
+			} else {
+				_, err = env.service.PushResource(t.Context(), testID("tenant-a"), targetID, ResourceUser, userID)
+				require.ErrorIs(t, err, ErrResourceMissing)
+			}
+			assert.Equal(t, requests, provider.count(), "a restored resource must not receive DELETE")
+			mapping, err := env.service.repo.getTargetResource(t.Context(), targetID, ResourceUser, userID)
+			require.NoError(t, err)
+			assert.Nil(t, mapping.DeletedAt)
+			assert.Equal(t, "remote-restored", mapping.ExternalID)
+			_, err = env.service.PushResource(t.Context(), testID("tenant-a"), targetID, ResourceUser, userID)
+			require.NoError(t, err)
+			assert.Equal(t, http.MethodPut, provider.last(t).Method)
+		})
+	}
+}
+
 func TestPushRejectsMalformedStoredCiphertextAndMissingResources(t *testing.T) {
 	env := newProvisioningEnvironment(t)
 	provider, server := newSCIMProviderEndpoint(t, http.StatusOK, `{}`)
@@ -370,8 +418,8 @@ type failingTargetIdentity struct {
 	err error
 }
 
-func (p failingTargetIdentity) Get(context.Context, guid.ID, guid.ID) (identity.Principal, error) {
-	return identity.Principal{}, p.err
+func (p failingTargetIdentity) GetProvisioned(context.Context, guid.ID, guid.ID) (identity.ProvisioningPrincipal, error) {
+	return identity.ProvisioningPrincipal{}, p.err
 }
 
 type failingTargetGroups struct {

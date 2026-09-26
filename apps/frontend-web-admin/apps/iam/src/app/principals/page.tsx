@@ -84,6 +84,10 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
   const [fields, setFields] = useState<FieldConstraint["fields"]>({})
   const [items, setItems] = useState<Principal[]>([])
   const [members, setMembers] = useState<Member[]>([])
+  const membershipByPrincipal = useMemo(
+    () => new Map(members.map((member) => [member.subject, member])),
+    [members]
+  )
   const [departments, setDepartments] = useState<Department[]>([])
   const [search, setSearch] = useState("")
   const [open, setOpen] = useState(false)
@@ -144,19 +148,20 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
     const data = new FormData(event.currentTarget)
     try {
       if (editing) {
+        const membership = members.find(
+          (member) => member.subject === editing.id
+        )
+        if (!membership) throw new Error(t("pageError"))
         const changes: { display_name?: string; email?: string } = {}
         for (const field of ["display_name", "email"] as const) {
           if (!data.has(field) || !fields[field]?.update) continue
           const value = String(data.get(field))
           const original =
-            fields[field]?.read === "allow" ? (editing[field] ?? "") : ""
+            fields[field]?.read === "allow" ? (membership[field] ?? "") : ""
           if (value !== original) changes[field] = value
         }
         if (Object.keys(changes).length)
-          await iamApi.updatePrincipal(editing.id, changes)
-        const membership = members.find(
-          (member) => member.subject === editing.id
-        )
+          await iamApi.updateMember(editing.id, changes)
         if (membership && (membership.department_id ?? "") !== departmentID)
           await iamApi.updateMember(editing.id, { department_id: departmentID })
       } else {
@@ -297,12 +302,16 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
                     <UserAvatar id={principal.id} avatar={principal.avatar} />
                     <div>
                       <strong className="block text-sm">
-                        {principal.display_name ||
+                        {membershipByPrincipal.get(principal.id)
+                          ?.display_name ||
+                          principal.display_name ||
                           principal.login_name ||
                           principal.id}
                       </strong>
                       <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                        {principal.email || principal.id}
+                        {principal.email
+                          ? `${t("primaryEmail")}: ${principal.email}`
+                          : principal.id}
                         {principal.email &&
                           principal.email_verified !== undefined && (
                             <Badge
@@ -319,6 +328,13 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
                             </Badge>
                           )}
                       </span>
+                      {membershipByPrincipal.get(principal.id)?.email &&
+                        fields.email?.read === "allow" && (
+                          <span className="block text-xs text-muted-foreground">
+                            {t("tenantContactEmail")}:{" "}
+                            {membershipByPrincipal.get(principal.id)?.email}
+                          </span>
+                        )}
                     </div>
                   </div>
                 </TableCell>
@@ -461,7 +477,7 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
             </DialogTitle>
             <DialogDescription>
               {editing
-                ? t("editPrincipalDescription")
+                ? t("editTenantContactDescription")
                 : t("createPrincipalDescription")}
             </DialogDescription>
           </DialogHeader>
@@ -479,7 +495,7 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
               name="display_name"
               defaultValue={
                 fields.display_name?.read === "allow"
-                  ? editing?.display_name
+                  ? editingMembership?.display_name
                   : undefined
               }
               disabled={
@@ -520,11 +536,13 @@ function TenantPrincipals({ tenant }: { tenant: string }) {
               </div>
             )}
             <Field
-              label={t("email")}
+              label={editing ? t("tenantContactEmail") : t("email")}
               name="email"
               type="email"
               defaultValue={
-                fields.email?.read === "allow" ? editing?.email : undefined
+                fields.email?.read === "allow"
+                  ? editingMembership?.email
+                  : undefined
               }
               disabled={
                 !(editing ? fields.email?.update : fields.email?.create)

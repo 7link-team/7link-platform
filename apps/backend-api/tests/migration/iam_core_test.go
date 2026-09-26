@@ -10,6 +10,7 @@ import (
 
 	iamaudit "7link.com/platform/internal/iam/audit"
 	iamcore "7link.com/platform/internal/iam/core"
+	coremodel "7link.com/platform/internal/iam/core/model"
 	"7link.com/platform/internal/iam/identity"
 	"7link.com/platform/internal/iam/organization"
 	"7link.com/platform/internal/infra/guid"
@@ -144,10 +145,12 @@ func verifyCoreServiceBehavior(t *testing.T, datasourceType, dsn, prefix string)
 		"INSERT INTO "+prefix+"iam_principals (id, login_name, display_name, status, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?)",
 		principalID, "relationship-traversal-principal", "Relationship Traversal Principal", now, now,
 	).Error)
-	_, err = service.PutTenantMember(
-		t.Context(), tenantID, principalID, "Relationship Member", "relationship@example.test", 0, iamcore.MemberActive,
-	)
-	require.NoError(t, err)
+	// Seed the prerequisite directly; this fixture exercises relationship reads,
+	// while membership writes require the complete identity capability wiring.
+	require.NoError(t, db.Table(prefix+"iam_tenant_members").Create(&coremodel.TenantMember{
+		TenantID: tenantID, PrincipalID: principalID, DisplayName: "Relationship Member",
+		Email: "relationship@example.test", Status: string(iamcore.MemberActive), CreatedAt: now, UpdatedAt: now,
+	}).Error)
 	verifyMemberAuthorizationSourceExpiries(t, db, service, repository, prefix, tenantID, principalID, now)
 	first, err := service.CreateEntity(t.Context(), iamcore.Entity{
 		TenantID: tenantID, Type: "store", Name: "First", Status: iamcore.EntityActive,

@@ -25,6 +25,7 @@ var (
 	ErrNotFound          = errors.New("principal not found")
 	ErrLoginConflict     = errors.New("login name already exists")
 	ErrPrincipalInactive = errors.New("principal or tenant membership is not active")
+	ErrProfileDenied     = errors.New("global profile update requires principal or platform authority")
 )
 
 type tenantMemberRecord struct {
@@ -51,6 +52,8 @@ type Service struct {
 	closeCredentials    PrincipalCredentialsRevoker
 	closeOAuth          PrincipalOAuthRevoker
 	platformAccessGuard core.PrincipalPlatformAccessGuard
+	revokeTenantTokens  core.TenantPersonalTokenRevoker
+	revokeTenantOAuth   core.TenantOAuthRevoker
 	now                 func() time.Time
 }
 
@@ -222,8 +225,8 @@ func (s *Service) CreatePendingPrincipal(
 	return id, nil
 }
 
-// EnsureExternalPrincipal resolves or creates a verified external identity
-// and its tenant membership through a caller-owned transaction.
+// EnsureExternalPrincipal creates a new external principal and membership.
+// An asserted email never proves ownership of an existing global account.
 func (s *Service) EnsureExternalPrincipal(
 	ctx context.Context,
 	db *gorm.DB,
@@ -251,13 +254,7 @@ func (s *Service) EnsureExternalPrincipal(
 		return 0, false, err
 	}
 	if row != nil {
-		if row.Status != "active" {
-			return 0, false, ErrPrincipalInactive
-		}
-		if _, err := repo.ensureTenantMember(ctx, tenantID, row, now); err != nil {
-			return 0, false, err
-		}
-		return row.ID, false, nil
+		return 0, false, ErrLoginConflict
 	}
 	id, err := repo.nextID()
 	if err != nil {
@@ -272,17 +269,7 @@ func (s *Service) EnsureExternalPrincipal(
 		return 0, false, err
 	}
 	if !inserted {
-		row, err = repo.principalByLoginOrEmail(ctx, email)
-		if err != nil {
-			return 0, false, err
-		}
-		if row == nil || row.Status != "active" {
-			return 0, false, ErrPrincipalInactive
-		}
-		if _, err := repo.ensureTenantMember(ctx, tenantID, row, now); err != nil {
-			return 0, false, err
-		}
-		return row.ID, false, nil
+		return 0, false, ErrLoginConflict
 	}
 	if _, err := repo.ensureTenantMember(ctx, tenantID, &principal, now); err != nil {
 		return 0, false, err
@@ -352,6 +339,22 @@ func (s *Service) Update(
 		}
 		requestedEmail = &value
 	}
+	actor := authnext.PrincipalIDFromContext(ctx)
+	if actor.Zero() {
+		return Principal{}, ErrProfileDenied
+	}
+	if actor != id {
+		if s.avatarPermissions == nil {
+			return Principal{}, ErrUnavailable
+		}
+		allowed, err := s.avatarPermissions.CheckPlatform(ctx, "platform_administer", actor)
+		if err != nil {
+			return Principal{}, err
+		}
+		if !allowed {
+			return Principal{}, ErrProfileDenied
+		}
+	}
 	now := identityTime(s.now())
 	event := audit.NewDomainEvent(ctx, tenantID, "principal_updated", "principal", id)
 	var updated Principal
@@ -383,11 +386,6 @@ func (s *Service) Update(
 			if err := repo.revokeAllSecurityState(ctx, id, now); err != nil {
 				return err
 			}
-		}
-		if err := repo.updateTenantMember(ctx, tenantID, id, map[string]any{
-			"display_name": wantedDisplay, "email": wantedEmail, "updated_at": now,
-		}); err != nil {
-			return err
 		}
 		event.Detail["display_name_changed"] = displayChanged
 		event.Detail["email_changed"] = emailChanged

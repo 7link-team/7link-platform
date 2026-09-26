@@ -1,5 +1,78 @@
 # Task State
 
+## External Identity Remediation Plan - 2026-09-26
+
+- Latest authorization: user requested another plan review and implementation
+  if clean. Final security/architecture/product reviews all APPROVE; V2 policies
+  adopted and implemented; final acceptance PASS.
+- Work assigned: security W1 federation/recovery; architecture W2 platform key;
+  acceptance W3 SCIM/member profile. Root owns new-only external principal,
+  integration, generated contracts, actual browser evidence and final acceptance.
+- Phase: ACCEPTED. W1/W2/W3 and operator CLI implemented; security,
+  architecture and product cross-reviews passed after concrete repairs.
+- Baseline: 563cea4. Reviewed business changes, generated contracts and records
+  are delivered together on IAM following user authorization to commit and push.
+- Plan: apps/backend-api/docs/external-identity-remediation-plan-2026-09-26.md.
+- V1 security, architecture and product/acceptance reviews requested revision.
+  V2 received all three final design APPROVE verdicts; root reconciled corrections.
+- Implemented work: stop email-based global-account reuse; quarantine historical
+  untrusted links with independent repair/recovery; guard source fingerprints and
+  issuance races; move shared SAML rotation to platform; fix tenant SCIM activation
+  and profile projection; apply shared-profile authority to human tenant editing.
+- Keep tenant integrations, global principals, existing member fields and menu
+  scopes. No new identity type, per-entity IdP, signing-key architecture or UI pages.
+- User adopted material policy changes: global/local profile authority, SCIM
+  immutable username, old SAML path removal and historical-link revalidation.
+- Signed OIDC/SAML actual Chrome/recovery/SCIM E2E PASS24 flows, no mocked
+  business responses/page errors. Final report:
+  apps/backend-api/.temp/sqlite-lifecycle-By3Pa0/report.json. Mobile inspected.
+- Composed Cookie/PAT/OAuth/refresh tenant isolation PASS, both prefixes.
+- Frontend typecheck/lint/test/build/API drift, relevant six-package race and frozen
+  generate-check PASS. Federation coverage90.1; required >=90 unchanged.
+- Final make ci PASS/native exit0: .temp/external-ci-final-pass.log. Overall91.2%,
+  federation90.1%; all nested suites/build/OpenAPI drift PASS. Historical6 rollback
+  and current7 refusal verified all engines/both prefixes. Final generate-check PASS.
+- Actual MySQL gate PASS/native exit0: .temp/external-mysql-normal.log. Stale
+  selectors fixed with no-tests guards, performance DB isolated, original latency
+  thresholds and benchmark objects preserved. SCIM median113ms/max117ms<154ms.
+- Corrected six engine/prefix lifecycle118s and normal PostgreSQL performance40s
+  PASS. Prior SQL fingerprint fixtures updated only Plans for retired positions
+  and tenant-local SCIM projection. No outstanding agent/code repair.
+- Cross-review repairs: provider/principal lock order (security), stale SCIM
+  auto-delete (acceptance, verified), disabled federation recovery bypass and
+  recovery mailbox race (architecture, verified).
+- Deployment gate: independent platform operator and trustworthy legacy ownership;
+  unresolved legacy cases block rollout. No mixed vulnerable/enforcing traffic or
+  rollback to vulnerable binaries. Empty inventory has no legacy case blocker.
+- Demo refreshed with retained data and SQLite backup; five personas selectable,
+  actual login/linked identities and all five-persona menu browser audits PASS,
+  inventory empty. Web8091/API8080 remains running for user acceptance.
+- Self-review and final requirement acceptance PASS. No outstanding implementation
+  or verification work, no active test sessions. Next: user can inspect the demo;
+  real deployments use documented independent legacy ownership cutover gate.
+- Delivery: user authorized committing and pushing all reviewed deliverables to
+  origin/IAM. This commit includes implementation, tests, contracts and records;
+  final Git/remote checks establish delivery status.
+
+## External Identity Scope Review - 2026-09-26
+
+- Phase: REVIEW complete. User requested ownership/menu/security assessment only.
+- Baseline 563cea4; no production implementation changes authorized or made.
+- Two delegated read-only reviews: federation/OAuth and SCIM; root verified sources,
+  reran actual identity/key tests, independently reproduced SCIM disabled-member bug,
+  inspected published OpenAPI and rendered all five live demo account menus.
+- Three confirmed findings: tenant IdP email auto-link selects global principal;
+  tenant SAML rotation permission mutates global key; outbound SCIM ignores disabled
+  membership. Shared global profile authority is an unresolved ownership risk.
+- Menu result: super-admin/tenant-admin each 14 tenant paths, tenant-admin has zero
+  platform codes; scoped accounts lack tenant management menus. No menu privilege
+  expansion found. Existing backend tests PASS, sidebar/navigation 17 PASS;
+  negative SCIM probe failed as expected. All temporary Go probes removed.
+- Report: apps/backend-api/docs/external-identity-scope-review-2026-09-26.md.
+- Findings incorporated into the user-adopted V2 remediation implementation above.
+  Original assessment evidence is historical; final acceptance supersedes it.
+
+
 ## Role Permission Read Consolidation - 2026-09-26
 
 - Phase: ACCEPTED. User approved review optimization and explicitly retained GUID HTTP APIs.

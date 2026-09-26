@@ -32,12 +32,13 @@ var (
 // cookie. The random nonce doubles as the OIDC `state` parameter, which makes
 // the callback replay-proof and origin-bound without a database table.
 type loginState struct {
-	ProviderID   string `json:"provider_id"`
-	TenantID     string `json:"tenant_id"`
-	Nonce        string `json:"nonce"`
-	CodeVerifier string `json:"code_verifier"`
-	ReturnURL    string `json:"return_url"`
-	ExpiresAt    int64  `json:"expires_at"`
+	SecurityFingerprint string `json:"security_fingerprint"`
+	ProviderID          string `json:"provider_id"`
+	TenantID            string `json:"tenant_id"`
+	Nonce               string `json:"nonce"`
+	CodeVerifier        string `json:"code_verifier"`
+	ReturnURL           string `json:"return_url"`
+	ExpiresAt           int64  `json:"expires_at"`
 }
 
 func newLoginState(providerID, tenantID, returnURL string, ttl time.Duration, now time.Time) (loginState, error) {

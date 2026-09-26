@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -123,7 +124,7 @@ func TestCreateProvisionedToRollsBackWithCallerTransaction(t *testing.T) {
 	assert.Zero(t, harness.revision(t, 7))
 }
 
-func TestReplaceProvisionedToUpdatesProfileAndRevokesSecurityState(t *testing.T) {
+func TestReplaceProvisionedToUpdatesLocalProfileAndPreservesGlobalSecurityState(t *testing.T) {
 	t.Parallel()
 
 	harness := newIdentityHarness(t, "sl_")
@@ -136,19 +137,25 @@ func TestReplaceProvisionedToUpdatesProfileAndRevokesSecurityState(t *testing.T)
 	harness.seedRecoveryToken(t, 21, principal.ID)
 	harness.seedVerificationToken(t, 31, principal.ID)
 
-	input := provisionedInput("scim.renamed")
+	input := provisionedInput("scim.user")
+	input.Email, input.DisplayName = "local@example.test", "Local Name"
 	updated, err := harness.service.ReplaceProvisionedTo(t.Context(), harness.db, 7, principal.ID, input)
 	require.NoError(t, err)
 
-	assert.Equal(t, "scim.renamed", updated.LoginName)
-	assert.Equal(t, "scim.renamed@example.test", updated.Email)
+	assert.Equal(t, "scim.user", updated.LoginName)
+	assert.Equal(t, "local@example.test", updated.Email)
 	assert.False(t, updated.EmailVerified)
-	assert.Equal(t, int64(2), harness.credentialVersion(t, principal.ID))
-	assert.Zero(t, harness.nullTimeCount(t, "iam_sessions", "revoked_at", principal.ID))
-	assert.Zero(t, harness.nullTimeCount(t, "iam_refresh_tokens", "revoked_at", principal.ID))
-	assert.Zero(t, harness.nullTimeCount(t, "iam_password_recovery_tokens", "consumed_at", principal.ID))
-	assert.Zero(t, harness.nullTimeCount(t, "iam_email_verification_tokens", "consumed_at", principal.ID))
-	assert.Equal(t, "scim.renamed@example.test", harness.member(t, 7, principal.ID).Email)
+	assert.Equal(t, int64(1), harness.credentialVersion(t, principal.ID))
+	assert.EqualValues(t, 1, harness.nullTimeCount(t, "iam_sessions", "revoked_at", principal.ID))
+	assert.EqualValues(t, 1, harness.nullTimeCount(t, "iam_refresh_tokens", "revoked_at", principal.ID))
+	assert.EqualValues(t, 1, harness.nullTimeCount(t, "iam_password_recovery_tokens", "consumed_at", principal.ID))
+	assert.EqualValues(t, 1, harness.nullTimeCount(t, "iam_email_verification_tokens", "consumed_at", principal.ID))
+	assert.Equal(t, "local@example.test", harness.member(t, 7, principal.ID).Email)
+	global, err := harness.service.Get(t.Context(), 7, principal.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "scim.user@example.test", global.Email)
+	assert.Equal(t, "SCIM.USER", global.DisplayName)
+	assert.True(t, global.EmailVerified)
 	assert.Equal(t, int64(2), harness.revision(t, 7))
 	assert.Empty(t, harness.guard.protectedTenants(), "an active membership needs no administrator guard")
 }
@@ -172,6 +179,36 @@ func TestReplaceProvisionedToKeepsCredentialWhenOnlyDisplayNameChanges(t *testin
 	assert.Equal(t, int64(1), harness.revision(t, 7), "an unchanged email and membership must not bump the revision")
 }
 
+func TestProvisionedImmutableLoginAndTenantProjection(t *testing.T) {
+	h := newIdentityHarness(t, "projection_")
+	input := provisionedInput("scim.user")
+	p, err := h.service.CreateProvisionedTo(t.Context(), h.db, 7, input)
+	require.NoError(t, err)
+	input.LoginName, input.DisplayName = "renamed", "Must not persist"
+	_, err = h.service.ReplaceProvisionedTo(t.Context(), h.db, 7, p.ID, input)
+	assert.ErrorIs(t, err, ErrImmutableProvisionedLogin)
+	assert.Equal(t, "SCIM.USER", h.member(t, 7, p.ID).DisplayName)
+	input.LoginName, input.DisplayName, input.Active = "scim.user", "Local", false
+	var revoked []guid.ID
+	h.service.revokeTenantTokens = func(_ context.Context, tx *gorm.DB, tenant, id guid.ID) error {
+		require.NotNil(t, tx)
+		assert.Equal(t, p.ID, id)
+		revoked = append(revoked, tenant)
+		return nil
+	}
+	h.service.revokeTenantOAuth = func(ctx context.Context, tx *gorm.DB, tenant, id guid.ID) error {
+		return h.service.revokeTenantTokens(ctx, tx, tenant, id)
+	}
+	_, err = h.service.ReplaceProvisionedTo(t.Context(), h.db, 7, p.ID, input)
+	require.NoError(t, err)
+	assert.Equal(t, []guid.ID{7, 7}, revoked)
+	projection, err := h.service.GetProvisioned(t.Context(), 7, p.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "active", projection.Status)
+	assert.Equal(t, "disabled", projection.MembershipStatus)
+	assert.Equal(t, "Local", projection.DisplayName)
+}
+
 func TestReplaceProvisionedToDeactivationTakesAdministratorGuard(t *testing.T) {
 	t.Parallel()
 
@@ -190,7 +227,7 @@ func TestReplaceProvisionedToDeactivationTakesAdministratorGuard(t *testing.T) {
 	assert.NotNil(t, member.DisabledAt)
 	assert.Equal(t, []guid.ID{7}, harness.guard.protectedTenants())
 	assert.Equal(t, 1, harness.guard.verifiedCount())
-	assert.Zero(t, harness.nullTimeCount(t, "iam_sessions", "revoked_at", principal.ID))
+	assert.EqualValues(t, 1, harness.nullTimeCount(t, "iam_sessions", "revoked_at", principal.ID))
 	assert.Equal(t, int64(2), harness.revision(t, 7))
 	assert.Equal(t, "active", harness.principal(t, principal.ID).Status)
 }
@@ -223,6 +260,10 @@ func TestReplaceProvisionedToRefusesToReactivateDisabledIdentity(t *testing.T) {
 
 	harness := newIdentityHarness(t, "sl_")
 	principal, err := harness.service.CreateProvisionedTo(t.Context(), harness.db, 7, provisionedInput("scim.user"))
+	require.NoError(t, err)
+	input := provisionedInput("scim.user")
+	input.Active = false
+	_, err = harness.service.ReplaceProvisionedTo(t.Context(), harness.db, 7, principal.ID, input)
 	require.NoError(t, err)
 	require.NoError(t, harness.db.Table(harness.table("iam_principals")).
 		Where("id = ?", principal.ID).Update("status", "disabled").Error)

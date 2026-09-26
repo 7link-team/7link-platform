@@ -43,6 +43,12 @@ func (s *Service) PutTenantMember(
 	record.Detail["has_department"] = !departmentID.Zero()
 	record.PolicyChanged = true
 	err := s.writes.Run(ctx, record, func(repo *Repository) error {
+		if s.lockPrincipal == nil {
+			return ErrUnavailable
+		}
+		if err := s.lockPrincipal(ctx, repo.writer(), principalID); err != nil {
+			return err
+		}
 		if !departmentID.Zero() {
 			departmentStatus, err := repo.departmentStatus(ctx, tenantID, departmentID)
 			if err != nil {
@@ -74,6 +80,9 @@ func (s *Service) PutTenantMember(
 			return err
 		}
 		if verify != nil {
+			if err = s.revokeTenantMemberCredentials(ctx, repo, tenantID, principalID); err != nil {
+				return err
+			}
 			if err = verify(); err != nil {
 				return err
 			}
@@ -134,6 +143,12 @@ func (s *Service) setTenantMemberStatus(ctx context.Context, tenantID, principal
 	record.Detail["status"] = status
 	record.PolicyChanged = true
 	err := s.writes.Run(ctx, record, func(repo *Repository) error {
+		if s.lockPrincipal == nil {
+			return ErrUnavailable
+		}
+		if err := s.lockPrincipal(ctx, repo.writer(), principalID); err != nil {
+			return err
+		}
 		if prepare != nil {
 			if err := prepare(repo); err != nil {
 				return err
@@ -149,6 +164,9 @@ func (s *Service) setTenantMemberStatus(ctx context.Context, tenantID, principal
 		}
 		member, err = repo.SetMemberStatus(ctx, tenantID, principalID, status)
 		if err != nil || verify == nil {
+			return err
+		}
+		if err := s.revokeTenantMemberCredentials(ctx, repo, tenantID, principalID); err != nil {
 			return err
 		}
 		return verify()

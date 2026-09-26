@@ -43,9 +43,8 @@ func newIdentityLinkEnvironment(t *testing.T) (*federationEnvironment, *authn.Se
 	t.Helper()
 	env := newFederationEnvironment(t)
 	require.NoError(t, env.db.AutoMigrate(&identitymodel.Principal{}, &authnmodel.Credential{}, &authnmodel.Session{}, &authnmodel.PasswordHistory{}, &authnmodel.ReauthenticationChallenge{}, &model.IdentityLinkTransaction{}))
-	require.NoError(t, env.db.Exec("CREATE TABLE iam_tenants (id BIGINT PRIMARY KEY, status TEXT NOT NULL)").Error)
 	tenant := testID("tenant-a")
-	require.NoError(t, env.db.Exec("INSERT INTO iam_tenants (id,status) VALUES (?,?)", tenant, "active").Error)
+	require.NoError(t, env.db.Exec("UPDATE iam_tenants SET status = ? WHERE id = ?", "active", tenant).Error)
 	principalID := guid.ID(101)
 	require.NoError(t, env.db.Create(&identitymodel.Principal{ID: principalID, LoginName: "owner", Email: "owner@example.test", DisplayName: "Owner", Status: "active", CreatedAt: time.Now(), UpdatedAt: time.Now()}).Error)
 	require.NoError(t, env.db.Table("iam_tenant_members").Create(&federationMember{TenantID: tenant, PrincipalID: principalID, Status: "active", CreatedAt: time.Now(), UpdatedAt: time.Now()}).Error)
@@ -82,6 +81,9 @@ func newIdentityLinkEnvironment(t *testing.T) (*federationEnvironment, *authn.Se
 	env.service.accountReauthentication, err = module.Resolve[authn.FederatedReauthentication](services)
 	require.NoError(t, err)
 	env.service.authn = authenticator
+	proofTrust, err := module.Resolve[authn.FederatedProofTrustConnector](services)
+	require.NoError(t, err)
+	require.NoError(t, proofTrust.Bind(env.service.proofSourceTrusted))
 	env.service.identities = &rejectIdentityJIT{}
 	session, err := authenticator.CreateSession(t.Context(), principalID, time.Now().UTC(), authnext.Assurance{AuthTime: time.Now().UTC(), Level: 1, Methods: []string{"pwd"}})
 	require.NoError(t, err)
@@ -213,7 +215,7 @@ func TestIdentityLinkContinuationRejectsExpiredUnderlyingReauthentication(t *tes
 	env, authenticator, principalID, cookie := newIdentityLinkEnvironment(t)
 	provider := env.createProvider(t, testID("tenant-a"), env.providerInput("OIDC", env.idp.issuer))
 	env.idp.setClaim("sub", "existing-subject")
-	require.NoError(t, env.db.Create(&model.IdentityLink{ProviderID: provider.ID, TenantID: provider.TenantID, PrincipalID: principalID, ExternalSubject: "existing-subject", CreatedAt: time.Now(), UpdatedAt: time.Now(), LastLoginAt: time.Now()}).Error)
+	require.NoError(t, env.db.Create(&model.IdentityLink{BindingProvenance: BindingPrincipalVerified, SecurityFingerprint: securityProviderFingerprint(providerRow{ProviderType: provider.ProviderType, Issuer: provider.Issuer, ClientID: provider.ClientID}), ProviderID: provider.ID, TenantID: provider.TenantID, PrincipalID: principalID, ExternalSubject: "existing-subject", CreatedAt: time.Now(), UpdatedAt: time.Now(), LastLoginAt: time.Now()}).Error)
 	options, err := authenticator.BeginReauthentication(t.Context(), cookie, authn.ReauthenticationPrincipalClose, "self", "federation", "")
 	require.NoError(t, err)
 	start, err := env.service.StartIdentityOperation(t.Context(), cookie, provider.ID, options.Proof, identityLinkID(provider.ID, "existing-subject"), "", "https://iam.example"+callbackURL(provider.ID))
@@ -235,7 +237,7 @@ func TestIdentityLinkContinuationRejectsExpiredUnderlyingReauthentication(t *tes
 func TestIdentityLinkOIDCRejectsUnboundAndStaleClaims(t *testing.T) {
 	env, authenticator, principalID, cookie := newIdentityLinkEnvironment(t)
 	provider := env.createProvider(t, testID("tenant-a"), env.providerInput("OIDC", env.idp.issuer))
-	require.NoError(t, env.db.Create(&model.IdentityLink{ProviderID: provider.ID, TenantID: provider.TenantID, PrincipalID: principalID, ExternalSubject: "expected", CreatedAt: time.Now(), UpdatedAt: time.Now(), LastLoginAt: time.Now()}).Error)
+	require.NoError(t, env.db.Create(&model.IdentityLink{BindingProvenance: BindingPrincipalVerified, SecurityFingerprint: securityProviderFingerprint(providerRow{ProviderType: provider.ProviderType, Issuer: provider.Issuer, ClientID: provider.ClientID}), ProviderID: provider.ID, TenantID: provider.TenantID, PrincipalID: principalID, ExternalSubject: "expected", CreatedAt: time.Now(), UpdatedAt: time.Now(), LastLoginAt: time.Now()}).Error)
 	for _, scenario := range []string{"nonce", "old", "future", "subject", "oversize"} {
 		t.Run(scenario, func(t *testing.T) {
 			options, err := authenticator.BeginReauthentication(t.Context(), cookie, authn.ReauthenticationPrincipalClose, "self", "federation", "")
@@ -294,7 +296,7 @@ func TestIdentityLinkContinuationRechecksSessionProviderMembershipAndRollback(t 
 	_, err = env.service.CompleteIdentityOperation(t.Context(), provider.ID, state, authenticator.SessionCookie(other)+"; "+start.StateCookie)
 	assert.ErrorIs(t, err, ErrOIDCState)
 	for _, change := range []struct{ table, column, bad, good string }{
-		{"iam_identity_providers", "name", "changed", provider.Name},
+		{"iam_identity_providers", "client_id", "changed", provider.ClientID},
 		{"iam_identity_providers", "status", "disabled", "active"},
 		{"iam_tenants", "status", "disabled", "active"},
 		{"iam_tenant_members", "status", "ended", "active"},
@@ -435,6 +437,7 @@ func TestIdentityLinkRejectsInvalidOperationsAndUnavailableDependencies(t *testi
 	assert.Error(t, env.service.VerifyIdentityOperation(t.Context(), provider.ID, state, "", "", callback))
 	env.service.repo = savedRepo
 	env.service.accountProofs = nil
+	env.service.accountReauthentication.ConsumeIndependentOn = nil
 	_, err = env.service.StartIdentityOperation(t.Context(), cookie, provider.ID, proof, "", "", callback)
 	assert.ErrorIs(t, err, ErrUnavailable)
 	assert.ErrorIs(t, env.service.UnlinkPersonalIdentity(t.Context(), cookie, identityLinkID(provider.ID, "subject"), proof), ErrUnavailable)
@@ -472,7 +475,7 @@ func TestIdentityLinkReauthenticationRejectsLinkRemovedDuringRedirect(t *testing
 	env, authenticator, principalID, cookie := newIdentityLinkEnvironment(t)
 	provider := env.createProvider(t, testID("tenant-a"), env.providerInput("OIDC", env.idp.issuer))
 	env.idp.setClaim("sub", "owner-subject")
-	require.NoError(t, env.db.Create(&model.IdentityLink{ProviderID: provider.ID, TenantID: provider.TenantID, PrincipalID: principalID, ExternalSubject: "owner-subject", CreatedAt: time.Now(), UpdatedAt: time.Now(), LastLoginAt: time.Now()}).Error)
+	require.NoError(t, env.db.Create(&model.IdentityLink{BindingProvenance: BindingPrincipalVerified, SecurityFingerprint: securityProviderFingerprint(providerRow{ProviderType: provider.ProviderType, Issuer: provider.Issuer, ClientID: provider.ClientID}), ProviderID: provider.ID, TenantID: provider.TenantID, PrincipalID: principalID, ExternalSubject: "owner-subject", CreatedAt: time.Now(), UpdatedAt: time.Now(), LastLoginAt: time.Now()}).Error)
 	id := identityLinkID(provider.ID, "owner-subject")
 	options, err := authenticator.BeginReauthentication(t.Context(), cookie, authn.ReauthenticationPrincipalClose, "self", "federation", "")
 	require.NoError(t, err)
@@ -554,7 +557,7 @@ func TestConcurrentIdentityUnlinkRetainsLastUsableLogin(t *testing.T) {
 	proofs := []string{}
 	for _, provider := range []Provider{first, second} {
 		id := identityLinkID(provider.ID, "subject")
-		require.NoError(t, env.db.Create(&model.IdentityLink{ProviderID: provider.ID, TenantID: provider.TenantID, PrincipalID: principalID, ExternalSubject: "subject", CreatedAt: time.Now(), UpdatedAt: time.Now(), LastLoginAt: time.Now()}).Error)
+		require.NoError(t, env.db.Create(&model.IdentityLink{BindingProvenance: BindingPrincipalVerified, SecurityFingerprint: securityProviderFingerprint(providerRow{ProviderType: provider.ProviderType, Issuer: provider.Issuer, ClientID: provider.ClientID}), ProviderID: provider.ID, TenantID: provider.TenantID, PrincipalID: principalID, ExternalSubject: "subject", CreatedAt: time.Now(), UpdatedAt: time.Now(), LastLoginAt: time.Now()}).Error)
 		ids = append(ids, id)
 		proofs = append(proofs, identityPasswordProof(t, authenticator, cookie, authn.ReauthenticationIdentityUnlink, id))
 	}
@@ -566,8 +569,12 @@ func TestConcurrentIdentityUnlinkRetainsLastUsableLogin(t *testing.T) {
 		require.NoError(t, err)
 		binding, err := env.service.accountReauthentication.Inspect(t.Context(), cookie, options.Proof)
 		require.NoError(t, err)
+		providerID, _, err := parseIdentityLinkID(id)
+		require.NoError(t, err)
+		provider, err := env.service.repo.getProviderByID(t.Context(), providerID)
+		require.NoError(t, err)
 		require.NoError(t, env.db.Transaction(func(tx *gorm.DB) error {
-			return env.service.accountReauthentication.VerifyOn(t.Context(), tx, principalID, cookie, binding.ChallengeHash)
+			return env.service.accountReauthentication.VerifyOn(t.Context(), tx, principalID, cookie, binding.ChallengeHash, id, securityProviderFingerprint(provider))
 		}))
 		proofs[i] = options.Proof
 	}

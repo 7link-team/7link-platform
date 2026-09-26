@@ -153,6 +153,14 @@ func (app *App) lifecycle(ctx context.Context) error {
 			return fmt.Errorf("migrate modules: %w", err)
 		}
 	}
+	if app.config.Authn.Enabled && !app.config.Federation.Enabled && !app.config.Federation.SAML.Enabled {
+		if app.runtime == nil || app.runtime.Database() == nil {
+			return fmt.Errorf("check retained external identity quarantine: %w", federation.ErrUnavailable)
+		}
+		if err := federation.RequireLegacyQuarantine(ctx, app.runtime.Database().Write(), app.runtime.TablePrefix()); err != nil {
+			return fmt.Errorf("check retained external identity quarantine: %w", err)
+		}
+	}
 	if err := app.modules.Initialize(ctx); err != nil {
 		return fmt.Errorf("initialize modules: %w", err)
 	}

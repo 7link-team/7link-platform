@@ -16,6 +16,7 @@ import (
 	"7link.com/platform/internal/iam/identity/model"
 	"7link.com/platform/internal/infra/guid"
 	"7link.com/platform/pkg/appenv"
+	authnext "7link.com/platform/pkg/extension/authn"
 	goosex "7link.com/platform/pkg/extension/goose"
 	gormx "7link.com/platform/pkg/extension/gorm"
 	"github.com/stretchr/testify/assert"
@@ -24,6 +25,10 @@ import (
 )
 
 var identityTestNow = time.Date(2026, 9, 3, 12, 0, 0, 123_000_000, time.UTC)
+
+func selfContext(ctx context.Context, id guid.ID) context.Context {
+	return authnext.WithClaims(ctx, &authnext.Claims{PrincipalID: id})
+}
 
 type identityTestIDs struct{ next atomic.Int64 }
 
@@ -160,6 +165,8 @@ func newIdentityHarness(t *testing.T, prefix string) *identityHarness {
 	require.NoError(t, registerAvatarResourcePurposes(harness.resources, harness.service.repo.names))
 	harness.service.repo.resourceFiles = harness.resources
 	harness.service.now = func() time.Time { return identityTestNow }
+	harness.service.revokeTenantTokens = func(context.Context, *gorm.DB, guid.ID, guid.ID) error { return nil }
+	harness.service.revokeTenantOAuth = func(context.Context, *gorm.DB, guid.ID, guid.ID) error { return nil }
 	harness.service.erasureRecorder = func(context.Context, audit.ErasureObligation) error { return nil }
 	harness.repository = harness.service.repo
 	// The owners' connectors publish their table names in a running deployment;
@@ -665,7 +672,7 @@ func TestEveryServiceEntryPointFailsWithoutDatabase(t *testing.T) {
 			return err
 		},
 		"Update": func() error {
-			_, err := service.Update(ctx, 7, 1, &display, nil)
+			_, err := service.Update(selfContext(ctx, 1), 7, 1, &display, nil)
 			return err
 		},
 		"SetStatus": func() error {

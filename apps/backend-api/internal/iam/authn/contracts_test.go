@@ -7,6 +7,7 @@ import (
 
 	"7link.com/platform/internal/infra/guid"
 	authnext "7link.com/platform/pkg/extension/authn"
+	"gorm.io/gorm"
 )
 
 var (
@@ -45,6 +46,10 @@ func (*webServiceFixture) ValidateCSRF(string, string, string, string) error {
 }
 
 func (*webServiceFixture) CreateSession(context.Context, guid.ID, time.Time, authnext.Assurance) (string, error) {
+	return "", nil
+}
+
+func (*webServiceFixture) CreateSessionOn(context.Context, *gorm.DB, guid.ID, time.Time, authnext.Assurance) (string, error) {
 	return "", nil
 }
 

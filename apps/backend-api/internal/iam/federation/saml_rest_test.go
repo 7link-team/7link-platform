@@ -1,13 +1,17 @@
 package federation
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 
+	"7link.com/platform/internal/infra/guid"
+	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/huma/respx"
 	"7link.com/platform/pkg/i18n"
 	"github.com/danielgtaylor/huma/v2"
@@ -17,7 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newSAMLAdminAPI(t *testing.T, env *federationEnvironment) (*http.Client, *httptest.Server) {
+func newSAMLAdminAPI(t *testing.T, env *federationEnvironment, registrars ...*authz.Registrar) (*http.Client, *httptest.Server) {
 	t.Helper()
 	require.NoError(t, i18n.NewModule(nil, i18n.Base).Initialize(t.Context()))
 	require.NoError(t, RegisterI18n())
@@ -33,7 +37,11 @@ func newSAMLAdminAPI(t *testing.T, env *federationEnvironment) (*http.Client, *h
 	config := huma.DefaultConfig("federation saml admin test", "1.0.0")
 	config.Transformers = append(config.Transformers, respx.LocalizeMessage)
 	api := humachi.New(router, config)
-	RegisterSAMLAdminREST(api, env.service, federationRuntimeRegistrar(federationAdminVerifier{}))
+	registrar := federationRuntimeRegistrar(federationAdminVerifier{})
+	if len(registrars) > 0 {
+		registrar = registrars[0]
+	}
+	RegisterSAMLAdminREST(api, env.service, registrar)
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 	return server.Client(), server
@@ -105,7 +113,7 @@ func TestSAMLSigningKeyRotationHTTP(t *testing.T) {
 	client, server := newSAMLAdminAPI(t, env)
 	firstCert := env.service.samlCert.Raw
 
-	response := adminRequest(t, client, http.MethodPost, server.URL+"/saml-signing-keys", wireID("tenant-a"), nil, nil)
+	response := adminRequest(t, client, http.MethodPost, server.URL+"/platform/saml-signing-keys", "", nil, nil)
 	assert.Equal(t, http.StatusCreated, response.StatusCode)
 	var envelope federationEnvelope
 	decodeHTTPBody(t, response, &envelope)
@@ -113,6 +121,59 @@ func TestSAMLSigningKeyRotationHTTP(t *testing.T) {
 	require.NoError(t, json.Unmarshal(envelope.Data, &info))
 	assert.NotEmpty(t, info.KeyID)
 	assert.NotEqual(t, firstCert, env.service.samlCert.Raw)
+	event := env.events[len(env.events)-1]
+	assert.Zero(t, event.TenantID)
+	assert.Equal(t, guid.ID(1), event.PrincipalID)
+	assert.Equal(t, "federation_saml_signing_key_rotated", event.EventType)
+	assert.Equal(t, "platform", event.Detail["scope"])
+	assert.Equal(t, info.KeyID, event.Detail["key_id"])
+}
+
+type tenantOnlySAMLPermissionChecker struct{ federationPermissionChecker }
+
+func (tenantOnlySAMLPermissionChecker) CheckPlatform(context.Context, string, guid.ID) (bool, error) {
+	return false, nil
+}
+
+func TestSAMLSigningKeyRotationRejectsTenantAuthority(t *testing.T) {
+	env := newFederationEnvironment(t)
+	startSAML(t, env, SAMLConfig{Enabled: true})
+	firstCert := env.service.samlCert.Raw
+	registrar := authz.NewRegistrar(authz.DefaultRegistry(), federationAdminVerifier{}, tenantOnlySAMLPermissionChecker{}, federationMembershipChecker{})
+	client, server := newSAMLAdminAPI(t, env, registrar)
+	for _, path := range []string{"/platform/saml-signing-keys", "/tenants/" + wireID("tenant-a") + "/saml-signing-keys"} {
+		response := adminRequest(t, client, http.MethodPost, server.URL+path, "", nil, nil)
+		if strings.HasPrefix(path, "/platform/") {
+			assert.Equal(t, http.StatusForbidden, response.StatusCode)
+		} else {
+			assert.Equal(t, http.StatusNotFound, response.StatusCode)
+		}
+		require.NoError(t, response.Body.Close())
+	}
+	assert.Equal(t, firstCert, env.service.samlCert.Raw)
+	assert.Empty(t, env.events)
+	var count int64
+	require.NoError(t, env.db.Table("iam_saml_idp_keys").Count(&count).Error)
+	assert.Equal(t, int64(1), count)
+	require.NoError(t, env.service.StartSAML(t.Context(), SAMLConfig{Enabled: true}))
+	assert.Equal(t, firstCert, env.service.samlCert.Raw)
+}
+
+func TestSAMLSigningKeyRotationAuditFailureRollsBack(t *testing.T) {
+	env := newFederationEnvironment(t)
+	startSAML(t, env, SAMLConfig{Enabled: true})
+	firstCert := env.service.samlCert.Raw
+	env.auditErr = errors.New("audit unavailable")
+	_, err := env.service.RotateSAMLSigningKey(t.Context())
+	require.ErrorContains(t, err, "audit unavailable")
+	assert.Equal(t, firstCert, env.service.samlCert.Raw)
+	var count int64
+	require.NoError(t, env.db.Table("iam_saml_idp_keys").Count(&count).Error)
+	assert.Equal(t, int64(1), count)
+	require.NoError(t, env.db.Table("iam_saml_idp_keys").Where("rotated_at IS NOT NULL").Count(&count).Error)
+	assert.Zero(t, count)
+	require.NoError(t, env.service.StartSAML(t.Context(), SAMLConfig{Enabled: true}))
+	assert.Equal(t, firstCert, env.service.samlCert.Raw)
 }
 
 func TestSAMLSigningKeyRotationFileBackedConflict(t *testing.T) {
@@ -125,7 +186,7 @@ func TestSAMLSigningKeyRotationFileBackedConflict(t *testing.T) {
 	require.NoError(t, env.service.StartSAML(t.Context(), SAMLConfig{Enabled: true, SigningKeyFile: keyFile, CertificateFile: certFile}))
 	client, server := newSAMLAdminAPI(t, env)
 
-	response := adminRequest(t, client, http.MethodPost, server.URL+"/saml-signing-keys", wireID("tenant-a"), nil, nil)
+	response := adminRequest(t, client, http.MethodPost, server.URL+"/platform/saml-signing-keys", "", nil, nil)
 	assert.Equal(t, http.StatusConflict, response.StatusCode)
 	var envelope federationEnvelope
 	decodeHTTPBody(t, response, &envelope)
@@ -135,7 +196,7 @@ func TestSAMLSigningKeyRotationFileBackedConflict(t *testing.T) {
 func TestSAMLRotationUnavailableWhenDisabled(t *testing.T) {
 	env := newFederationEnvironment(t)
 	client, server := newSAMLAdminAPI(t, env)
-	response := adminRequest(t, client, http.MethodPost, server.URL+"/saml-signing-keys", wireID("tenant-a"), nil, nil)
+	response := adminRequest(t, client, http.MethodPost, server.URL+"/platform/saml-signing-keys", "", nil, nil)
 	assert.Equal(t, http.StatusConflict, response.StatusCode)
 	var envelope federationEnvelope
 	decodeHTTPBody(t, response, &envelope)

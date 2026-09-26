@@ -82,6 +82,7 @@ func schemaResources() []SCIMSchemaResource {
 		stringAttr("displayName", true, "server"), stringAttr("externalId", false, "server"),
 		{Name: "members", Type: "complex", MultiValued: true, Mutability: "readWrite", Returned: "default", Uniqueness: "none", SubAttributes: []SCIMAttribute{stringAttr("value", true, "none"), {Name: "$ref", Type: "reference", Mutability: "readOnly", Returned: "default", Uniqueness: "none"}}},
 	}}
+	user.Attributes[0].Mutability = "immutable"
 	return []SCIMSchemaResource{user, group}
 }
 

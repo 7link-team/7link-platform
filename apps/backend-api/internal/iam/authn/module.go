@@ -34,6 +34,8 @@ type Module struct {
 	oauthGrants         OAuthGrantValidator
 	personalPermissions func(context.Context, guid.ID, []string, guid.ID) (map[string]bool, error)
 	personalRegistry    *authz.Registry
+	recoveryEligibility func(context.Context, *gorm.DB, guid.ID) error
+	federatedProofTrust func(context.Context, *gorm.DB, guid.ID, string, string) error
 
 	// foreign is the one holder of the table names the modules that own them
 	// publish to authn. The connectors below bind it, and every repository the
@@ -86,6 +88,24 @@ func (m *Module) ProvideServices(services *module.Services) error {
 	}); err != nil {
 		return err
 	}
+	if err := module.Provide[RecoveryEligibilityConnector](services, RecoveryEligibilityConnector{Bind: func(check func(context.Context, *gorm.DB, guid.ID) error) error {
+		m.recoveryEligibility = check
+		if m.Service != nil {
+			m.Service.recoveryEligibility = check
+		}
+		return nil
+	}}); err != nil {
+		return err
+	}
+	if err := module.Provide[FederatedProofTrustConnector](services, FederatedProofTrustConnector{Bind: func(check func(context.Context, *gorm.DB, guid.ID, string, string) error) error {
+		m.federatedProofTrust = check
+		if m.Service != nil {
+			m.Service.federatedProofTrust = check
+		}
+		return nil
+	}}); err != nil {
+		return err
+	}
 	if err := module.Provide[authnext.BrowserSessionSecurity](services, authnext.BrowserSessionSecurity{
 		Authenticate: func(ctx context.Context, cookie string) (*authnext.Claims, error) {
 			return m.Authenticate(ctx, "", cookie)
@@ -100,14 +120,17 @@ func (m *Module) ProvideServices(services *module.Services) error {
 		return err
 	}
 	if err := module.Provide[FederatedReauthentication](services, FederatedReauthentication{
+		ConsumeIndependentOn: func(ctx context.Context, tx *gorm.DB, principalID guid.ID, cookieHeader, proof, purpose, target string) error {
+			return m.Service.ConsumeIndependentReauthenticationOn(ctx, tx, principalID, cookieHeader, proof, purpose, target)
+		},
 		Inspect: func(ctx context.Context, cookieHeader, proof string) (ReauthenticationBinding, error) {
 			if m.Service == nil {
 				return ReauthenticationBinding{}, authnext.ErrUnavailable
 			}
 			return m.Service.inspectFederatedReauthentication(ctx, cookieHeader, proof)
 		},
-		VerifyOn: func(ctx context.Context, tx *gorm.DB, principalID guid.ID, cookieHeader, hash string) error {
-			return m.Service.verifyFederatedReauthenticationOn(ctx, tx, principalID, cookieHeader, hash)
+		VerifyOn: func(ctx context.Context, tx *gorm.DB, principalID guid.ID, cookieHeader, hash, linkID, fingerprint string) error {
+			return m.Service.verifyFederatedReauthenticationOn(ctx, tx, principalID, cookieHeader, hash, linkID, fingerprint)
 		},
 		ValidateSessionOn: func(ctx context.Context, tx *gorm.DB, principalID guid.ID, cookieHeader string) (int64, error) {
 			if m.Service == nil || tx == nil {
@@ -309,6 +332,8 @@ func (m *Module) Initialize(context.Context) error {
 		return fmt.Errorf("initialize authn service: %w", err)
 	}
 	m.Service = service
+	m.Service.recoveryEligibility = m.recoveryEligibility
+	m.Service.federatedProofTrust = m.federatedProofTrust
 	m.Service.oauthGrants = m.oauthGrants
 	m.Service.personalPermissions = m.personalPermissions
 	m.Service.personalRegistry = m.personalRegistry

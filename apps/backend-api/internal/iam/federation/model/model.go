@@ -25,15 +25,19 @@ type Provider struct {
 func (Provider) TableName() string { return "iam_identity_providers" }
 
 type IdentityLink struct {
-	ProviderID      guid.ID   `gorm:"column:provider_id;primaryKey;autoIncrement:false"`
-	TenantID        guid.ID   `gorm:"column:tenant_id;primaryKey;autoIncrement:false"`
-	ExternalSubject string    `gorm:"column:external_subject;primaryKey;size:128;autoIncrement:false"`
-	PrincipalID     guid.ID   `gorm:"column:principal_id;not null"`
-	Email           string    `gorm:"column:email;size:255;not null"`
-	DisplayName     string    `gorm:"column:display_name;size:128;not null"`
-	LastLoginAt     time.Time `gorm:"column:last_login_at;not null"`
-	CreatedAt       time.Time `gorm:"column:created_at;not null"`
-	UpdatedAt       time.Time `gorm:"column:updated_at;not null"`
+	BindingProvenance   string     `gorm:"column:binding_provenance;size:32;not null;default:unknown"`
+	SecurityFingerprint string     `gorm:"column:security_fingerprint;size:64;not null;default:''"`
+	QuarantinedAt       *time.Time `gorm:"column:quarantined_at"`
+	RecoveryEvidence    string     `gorm:"column:recovery_evidence;type:text;not null;default:''"`
+	ProviderID          guid.ID    `gorm:"column:provider_id;primaryKey;autoIncrement:false"`
+	TenantID            guid.ID    `gorm:"column:tenant_id;primaryKey;autoIncrement:false"`
+	ExternalSubject     string     `gorm:"column:external_subject;primaryKey;size:128;autoIncrement:false"`
+	PrincipalID         guid.ID    `gorm:"column:principal_id;not null"`
+	Email               string     `gorm:"column:email;size:255;not null"`
+	DisplayName         string     `gorm:"column:display_name;size:128;not null"`
+	LastLoginAt         time.Time  `gorm:"column:last_login_at;not null"`
+	CreatedAt           time.Time  `gorm:"column:created_at;not null"`
+	UpdatedAt           time.Time  `gorm:"column:updated_at;not null"`
 }
 
 func (IdentityLink) TableName() string { return "iam_identity_links" }

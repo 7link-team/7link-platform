@@ -268,6 +268,53 @@ func TestFederationErrorMapping(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, statusError.GetStatus())
 }
 
+type callbackReturnURLWeb struct {
+	authnextWebService
+	base string
+	err  error
+}
+
+func (w callbackReturnURLWeb) ResolveReturnURL(string) (string, error) {
+	return w.base, w.err
+}
+
+func TestFederationCallbackOwnershipRecoveryRedirect(t *testing.T) {
+	env := newFederationEnvironment(t)
+	for _, test := range []struct {
+		name   string
+		accept string
+		base   string
+		err    error
+		status int
+		target string
+	}{
+		{"browser", "text/html,application/xhtml+xml", "https://app.example/", nil, http.StatusSeeOther, "https://app.example/login?federation_error=identity_unavailable"},
+		{"deployment-prefix", "text/html", "https://app.example/admin/?return_url=https://evil.example#fragment", nil, http.StatusSeeOther, "https://app.example/admin/login?federation_error=identity_unavailable"},
+		{"api", "application/json", "https://app.example/", nil, http.StatusConflict, ""},
+		{"invalid-default", "text/html", "", assert.AnError, http.StatusConflict, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			env.service.authn = callbackReturnURLWeb{authnextWebService: env.web, base: test.base, err: test.err}
+			router := chi.NewRouter()
+			api := humachi.New(router, huma.DefaultConfig("ownership denial", "1.0.0"))
+			operation := huma.Operation{OperationID: "denial", Method: http.MethodGet, Path: "/denial"}
+			api.Adapter().Handle(&operation, func(ctx huma.Context) {
+				ctx.AppendHeader("Set-Cookie", env.service.StateClearCookie())
+				writeLoginCallbackError(api, ctx, env.service, ErrIdentityOwnershipRequired)
+			})
+			request := httptest.NewRequest(http.MethodGet, "/denial?return_url=https://evil.example", nil)
+			request.Header.Set("Accept", test.accept)
+			request.Header.Set("Referer", "https://evil.example")
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			assert.Equal(t, test.status, response.Code)
+			assert.Equal(t, test.target, response.Header().Get("Location"))
+			assert.Contains(t, response.Header().Get("Set-Cookie"), "Max-Age=0")
+			assert.NotContains(t, response.Header().Get("Set-Cookie"), env.web.SessionCookieName()+"=")
+		})
+	}
+}
+
 func TestProviderInputFromBody(t *testing.T) {
 	body := providerBody{Name: "X", ProviderType: ProviderOIDC, Issuer: "https://x.example", ClientID: "c", ClientSecret: "s", Scopes: "openid", AutoProvision: true, DefaultRoleID: wireID("r"), Status: ProviderActive}
 	input, err := providerInputFromBody(body)

@@ -12,6 +12,7 @@ import (
 	authnext "7link.com/platform/pkg/extension/authn"
 	"7link.com/platform/pkg/extension/authz"
 	"7link.com/platform/pkg/extension/policyx"
+	"gorm.io/gorm"
 )
 
 // ScopeNode describes one level in the authorization scope model exposed to
@@ -59,6 +60,7 @@ type Service struct {
 	reauthenticate       authnext.ReauthenticationConsumer
 	revokePersonalTokens TenantPersonalTokenRevoker
 	revokeOAuth          TenantOAuthRevoker
+	lockPrincipal        func(context.Context, *gorm.DB, guid.ID) error
 	roots                FileRootProvisioner
 	rootContent          FileRootContentChecker
 }

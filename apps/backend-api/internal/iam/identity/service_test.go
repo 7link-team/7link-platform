@@ -224,7 +224,7 @@ func TestCreatePendingPrincipalGrantsNoMembership(t *testing.T) {
 	assert.Zero(t, harness.memberCount(t, 7, id))
 }
 
-func TestEnsureExternalPrincipalCreatesThenReusesIdentity(t *testing.T) {
+func TestEnsureExternalPrincipalCreatesButNeverReusesIdentity(t *testing.T) {
 	t.Parallel()
 
 	harness := newIdentityHarness(t, "sl_")
@@ -243,19 +243,20 @@ func TestEnsureExternalPrincipalCreatesThenReusesIdentity(t *testing.T) {
 	again, created, err := harness.service.EnsureExternalPrincipal(
 		t.Context(), harness.db, 7, "ext@example.test", "External User", identityTestNow,
 	)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrLoginConflict)
 	assert.False(t, created)
-	assert.Equal(t, id, again)
+	assert.Zero(t, again)
 	assert.Equal(t, int64(1), harness.revision(t, 7), "existing membership must not bump the revision")
 
 	other, created, err := harness.service.EnsureExternalPrincipal(
 		t.Context(), harness.db, 8, "ext@example.test", "External User", identityTestNow,
 	)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrLoginConflict)
 	assert.False(t, created)
-	assert.Equal(t, id, other)
-	assert.Equal(t, "active", harness.member(t, 8, id).Status)
-	assert.Equal(t, int64(1), harness.revision(t, 8))
+	assert.Zero(t, other)
+	assert.Zero(t, harness.memberCount(t, 8, id))
+	assert.Zero(t, harness.revision(t, 8))
+	assert.Equal(t, int64(1), harness.principalCount(t))
 }
 
 func TestEnsureExternalPrincipalRejectsInvalidAndInactive(t *testing.T) {
@@ -294,7 +295,7 @@ func TestEnsureExternalPrincipalRejectsInvalidAndInactive(t *testing.T) {
 	_, _, err = harness.service.EnsureExternalPrincipal(
 		t.Context(), harness.db, 9, "ext@example.test", "External", identityTestNow,
 	)
-	assert.ErrorIs(t, err, ErrPrincipalInactive)
+	assert.ErrorIs(t, err, ErrLoginConflict)
 	assert.Zero(t, harness.memberCount(t, 9, id))
 }
 
@@ -312,7 +313,8 @@ func TestEnsureExternalPrincipalRejectsDisabledMembership(t *testing.T) {
 	_, _, err = harness.service.EnsureExternalPrincipal(
 		t.Context(), harness.db, 7, "ext@example.test", "External", identityTestNow,
 	)
-	assert.ErrorIs(t, err, ErrPrincipalInactive)
+	assert.ErrorIs(t, err, ErrLoginConflict)
+	assert.Equal(t, "disabled", harness.member(t, 7, id).Status)
 }
 
 func TestPrincipalByLoginOrEmailRejectsAmbiguousEmail(t *testing.T) {
@@ -458,7 +460,7 @@ func TestUpdateEmailResetsVerificationAndRevokesSecurityState(t *testing.T) {
 	harness.seedVerificationToken(t, 31, principal.ID)
 
 	newEmail := "Alice.New@Example.test"
-	updated, err := harness.service.Update(t.Context(), 7, principal.ID, nil, &newEmail)
+	updated, err := harness.service.Update(selfContext(t.Context(), principal.ID), 7, principal.ID, nil, &newEmail)
 	require.NoError(t, err)
 
 	assert.Equal(t, "alice.new@example.test", updated.Email)
@@ -468,7 +470,7 @@ func TestUpdateEmailResetsVerificationAndRevokesSecurityState(t *testing.T) {
 	assert.Zero(t, harness.nullTimeCount(t, "iam_refresh_tokens", "revoked_at", principal.ID))
 	assert.Zero(t, harness.nullTimeCount(t, "iam_password_recovery_tokens", "consumed_at", principal.ID))
 	assert.Zero(t, harness.nullTimeCount(t, "iam_email_verification_tokens", "consumed_at", principal.ID))
-	assert.Equal(t, "alice.new@example.test", harness.member(t, 7, principal.ID).Email)
+	assert.Equal(t, "alice@example.test", harness.member(t, 7, principal.ID).Email)
 
 	events := harness.events()
 	require.Len(t, events, 2)
@@ -486,13 +488,13 @@ func TestUpdateDisplayNameKeepsCredentialAndSessions(t *testing.T) {
 	harness.seedSession(t, 11, principal.ID)
 
 	display := "  Alice Smith  "
-	updated, err := harness.service.Update(t.Context(), 7, principal.ID, &display, nil)
+	updated, err := harness.service.Update(selfContext(t.Context(), principal.ID), 7, principal.ID, &display, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, "Alice Smith", updated.DisplayName)
 	assert.Equal(t, int64(1), harness.credentialVersion(t, principal.ID))
 	assert.Equal(t, int64(1), harness.nullTimeCount(t, "iam_sessions", "revoked_at", principal.ID))
-	assert.Equal(t, "Alice Smith", harness.member(t, 7, principal.ID).DisplayName)
+	assert.Equal(t, "Alice", harness.member(t, 7, principal.ID).DisplayName)
 
 	events := harness.events()
 	require.Len(t, events, 2)
@@ -508,7 +510,7 @@ func TestUpdateCannotReachAnotherTenantsPrincipal(t *testing.T) {
 	require.NoError(t, err)
 
 	display := "Renamed By Other Tenant"
-	_, err = harness.service.Update(t.Context(), 8, principal.ID, &display, nil)
+	_, err = harness.service.Update(selfContext(t.Context(), principal.ID), 8, principal.ID, &display, nil)
 	assert.ErrorIs(t, err, ErrNotFound)
 	assert.Equal(t, "Alice", harness.principal(t, principal.ID).DisplayName)
 }
@@ -728,15 +730,14 @@ func TestEnsureExternalPrincipalRejectsServiceAccountLoginCollision(t *testing.T
 	harness := newIdentityHarness(t, "sl_")
 	harness.seedTenant(t, 7, "active")
 	// A service account owns the login this external identity would claim. The
-	// lookup ignores service accounts, so the insert conflicts and the retry
-	// must refuse rather than adopt the service account's identity.
+	// lookup ignores service accounts, so the insert must refuse the collision.
 	_, err := harness.service.CreateServiceAccount(t.Context(), 7, "ext@example.test", "Robot", "", nil)
 	require.NoError(t, err)
 
 	_, _, err = harness.service.EnsureExternalPrincipal(
 		t.Context(), harness.db, 7, "ext@example.test", "External", identityTestNow,
 	)
-	assert.ErrorIs(t, err, ErrPrincipalInactive)
+	assert.ErrorIs(t, err, ErrLoginConflict)
 }
 
 func TestEnsureExternalPrincipalSurfacesIDAndWriteFailures(t *testing.T) {
@@ -780,7 +781,7 @@ func TestUpdateSurfacesMissingCredentialRow(t *testing.T) {
 		Where("principal_id = ?", principal.ID).Delete(nil).Error)
 
 	email := "changed@example.test"
-	_, err = harness.service.Update(t.Context(), 7, principal.ID, nil, &email)
+	_, err = harness.service.Update(selfContext(t.Context(), principal.ID), 7, principal.ID, nil, &email)
 	assert.ErrorIs(t, err, errPrincipalCredentialNotFound)
 	assert.Equal(t, "alice@example.test", harness.principal(t, principal.ID).Email)
 }
@@ -799,10 +800,8 @@ func TestSetStatusSurfacesMembershipQueryFailure(t *testing.T) {
 	assert.Equal(t, "active", harness.principal(t, principal.ID).Status)
 }
 
-// TestEnsureExternalPrincipalMatchesAVerifiedEmailUnderADifferentLogin covers
-// the account whose login name is not its address: an external identity must
-// be joined to it instead of a second account being created for the same person.
-func TestEnsureExternalPrincipalMatchesAVerifiedEmailUnderADifferentLogin(t *testing.T) {
+// A provider's verified email is not proof of ownership of a local account.
+func TestEnsureExternalPrincipalRejectsEmailUnderADifferentLogin(t *testing.T) {
 	t.Parallel()
 
 	harness := newIdentityHarness(t, "sl_")
@@ -812,11 +811,11 @@ func TestEnsureExternalPrincipalMatchesAVerifiedEmailUnderADifferentLogin(t *tes
 	id, created, err := harness.service.EnsureExternalPrincipal(
 		t.Context(), harness.db, 8, "Alice@Example.test", "Alice External", identityTestNow,
 	)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrLoginConflict)
 	assert.False(t, created, "an address already held by an account must not create a second one")
-	assert.Equal(t, local.ID, id)
-	assert.Equal(t, "alice", harness.principal(t, id).LoginName, "the existing login name is not rewritten")
-	assert.Equal(t, "active", harness.member(t, 8, id).Status)
+	assert.Zero(t, id)
+	assert.Equal(t, "alice", harness.principal(t, local.ID).LoginName)
+	assert.Zero(t, harness.memberCount(t, 8, local.ID))
 	assert.Equal(t, int64(1), harness.principalCount(t))
 
 	// An address shared by two accounts is ambiguous, so neither is picked.
@@ -843,7 +842,7 @@ func TestEnsureExternalPrincipalRefusesAServiceAccountLoginName(t *testing.T) {
 	_, _, err = harness.service.EnsureExternalPrincipal(
 		t.Context(), harness.db, 7, "robot@example.test", "Robot Person", identityTestNow,
 	)
-	assert.ErrorIs(t, err, ErrPrincipalInactive)
+	assert.ErrorIs(t, err, ErrLoginConflict)
 	assert.Equal(t, int64(1), harness.principalCount(t))
 	assert.Equal(t, "robot@example.test", harness.principal(t, account.ID).LoginName)
 }
@@ -887,7 +886,7 @@ func TestPrincipalOperationsFailClosedAfterDatabaseShutdown(t *testing.T) {
 		}},
 		{"get", func() error { _, err := harness.service.Get(ctx, 7, principal.ID); return err }},
 		{"update", func() error {
-			_, err := harness.service.Update(ctx, 7, principal.ID, &display, nil)
+			_, err := harness.service.Update(selfContext(ctx, principal.ID), 7, principal.ID, &display, nil)
 			return err
 		}},
 		{"set status", func() error {

@@ -2888,3 +2888,29 @@ backend full unit tests, frontend typecheck/lint/build and 46 client tests PASS;
 OpenAPI/client drift PASS; real SQLite/Chrome lifecycle E2E 18/18 PASS in
 .temp/sqlite-lifecycle-QXgwdq/report.json. Live retired GET 404, GUID reads 200.
 Status: accepted; self-review and requirement acceptance PASS. No further deletion.
+
+## D85 - External Identity Ownership Remediation (2026-09-26)
+
+Decision: ADOPTED and implemented following user authorization. Preserve global principals and
+tenant integration ownership; prohibit email-based reuse of an existing principal;
+require independently verified binding and security-source continuity; reserve
+the shared SAML signing-key rotation for platform authority. SCIM activation follows
+both global and membership status. Tenant contact/display fields remain local;
+global profile edits require self-service or platform authority, including human
+tenant administration. Global edits do not mirror into local fields.
+Reason: confirmed F1-F3 evidence and the human/SCIM shared-profile authority gap.
+Alternatives considered: new tenant account model, per-entity providers, per-tenant
+signing keys and SCIM-only profile restriction. They either add unrelated concepts
+or leave the same authority gap reachable through another existing API.
+Tradeoffs: replace the old SAML route; make SCIM username immutable after creation;
+change tenant-admin profile-edit authority; quarantine legacy untrusted bindings
+and invalidate affected credentials. Independent recovery evidence is required;
+unresolved legacy ownership blocks deployment instead of receiving unsafe trust.
+Scope: remediation plan W1-W4 and acceptance criteria; implementation authorized
+by the user after the final three-role plan review.
+Status: ADOPTED, IMPLEMENTED and ACCEPTED. Independent cross-review findings
+repaired; final CI, real MySQL gate, 24-flow signed-browser E2E, tenant token
+isolation, relevant race checks and five demo-persona menu audits PASS. SQL plan
+fixtures reflect approved queries; existing performance budgets remain unchanged.
+Evidence: apps/backend-api/docs/external-identity-scope-review-2026-09-26.md and
+apps/backend-api/docs/external-identity-remediation-plan-2026-09-26.md.

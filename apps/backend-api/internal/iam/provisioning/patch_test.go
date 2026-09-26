@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"7link.com/platform/internal/iam/identity"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -95,7 +96,6 @@ func TestUserPatchValidationAndApplication(t *testing.T) {
 	assert.Empty(t, input.Emails)
 
 	for _, operation := range []PatchOperation{
-		{Op: "remove", Path: "userName"},
 		{Op: "replace", Path: "active", Value: json.RawMessage(`"false"`)},
 		{Op: "replace", Path: GroupSchema + ":displayName", Value: json.RawMessage(`"wrong schema"`)},
 		{Op: "replace", Path: `emails[value eq "old@example.test"]`, Value: json.RawMessage(`[]`)},
@@ -107,6 +107,7 @@ func TestUserPatchValidationAndApplication(t *testing.T) {
 	} {
 		assert.ErrorIs(t, applyUserPatch(&input, operation), ErrInvalidPath)
 	}
+	assert.ErrorIs(t, applyUserPatch(&input, PatchOperation{Op: "remove", Path: "userName"}), identity.ErrImmutableProvisionedLogin)
 }
 
 func TestGroupPatchMemberOperations(t *testing.T) {

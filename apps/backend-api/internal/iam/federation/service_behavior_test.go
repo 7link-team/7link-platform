@@ -110,18 +110,7 @@ func (f *federationIdentity) EnsureExternalPrincipal(ctx context.Context, db *go
 	var existing federationPrincipal
 	err := db.WithContext(ctx).Table(f.prefix+"iam_principals").Where("email = ?", email).Take(&existing).Error
 	if err == nil {
-		var count int64
-		if err := db.WithContext(ctx).Table(f.prefix+"iam_tenant_members").Where("tenant_id = ? AND principal_id = ?", tenantID, existing.ID).Count(&count).Error; err != nil {
-			return 0, false, err
-		}
-		if count == 0 {
-			member := federationMember{TenantID: tenantID, PrincipalID: existing.ID, DisplayName: displayName, Email: email, Status: "active", CreatedAt: now, UpdatedAt: now}
-			if err := db.WithContext(ctx).Table(f.prefix + "iam_tenant_members").Create(&member).Error; err != nil {
-				return 0, false, err
-			}
-		}
-		f.web.setProfile(existing.ID, existing.LoginName, existing.Email)
-		return existing.ID, false, nil
+		return 0, false, identity.ErrLoginConflict
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return 0, false, err
@@ -153,6 +142,10 @@ func (*federationIdentity) ReplaceProvisionedTo(context.Context, *gorm.DB, guid.
 
 func (*federationIdentity) Get(context.Context, guid.ID, guid.ID) (identity.Principal, error) {
 	return identity.Principal{}, errors.New("not used")
+}
+
+func (*federationIdentity) GetProvisioned(context.Context, guid.ID, guid.ID) (identity.ProvisioningPrincipal, error) {
+	return identity.ProvisioningPrincipal{}, errors.New("not used by federation")
 }
 
 type federationWeb struct {
@@ -201,6 +194,10 @@ func (w *federationWeb) CreateSession(_ context.Context, principalID guid.ID, no
 	}
 	w.sessions[token] = &authnext.Claims{Subject: profile.subject, PrincipalID: principalID, PreferredUsername: profile.username, Email: profile.email, EmailVerified: true, AuthTime: assurance.AuthTime, ACR: assurance.Level, AMR: assurance.Methods, IssuedAt: now}
 	return token, nil
+}
+
+func (w *federationWeb) CreateSessionOn(ctx context.Context, _ *gorm.DB, principalID guid.ID, now time.Time, assurance authnext.Assurance) (string, error) {
+	return w.CreateSession(ctx, principalID, now, assurance)
 }
 
 func (w *federationWeb) Authenticate(_ context.Context, authorization, cookieHeader string) (*authnext.Claims, error) {
@@ -332,6 +329,10 @@ func insertRole(t *testing.T, db *gorm.DB, tenant, role string) {
 
 func (e *federationEnvironment) migrate(t *testing.T) {
 	t.Helper()
+	require.NoError(t, e.db.Exec("CREATE TABLE "+e.prefix+"iam_tenants (id BIGINT PRIMARY KEY, status TEXT NOT NULL)").Error)
+	for _, tenant := range []guid.ID{testID("tenant-a"), testID("tenant-b")} {
+		require.NoError(t, e.db.Exec("INSERT INTO "+e.prefix+"iam_tenants (id,status) VALUES (?,?)", tenant, "active").Error)
+	}
 	for _, item := range []struct {
 		name string
 		row  any
@@ -356,6 +357,7 @@ func (e *federationEnvironment) providerInput(name, issuer string) ProviderInput
 
 func (e *federationEnvironment) createProvider(t *testing.T, tenant guid.ID, input ProviderInput) Provider {
 	t.Helper()
+	require.NoError(t, e.db.Exec("INSERT INTO "+e.prefix+"iam_tenants (id, status) VALUES (?, ?) ON CONFLICT(id) DO NOTHING", tenant, "active").Error)
 	provider, err := e.service.CreateProvider(t.Context(), tenant, input)
 	require.NoError(t, err)
 	return provider

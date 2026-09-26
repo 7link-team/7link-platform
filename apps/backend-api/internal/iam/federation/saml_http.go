@@ -39,9 +39,7 @@ type samlSPReplaceInput struct {
 	Body              samlSPBody
 }
 
-type samlKeyRotateInput struct {
-	TenantID string `path:"tenant_id" maxLength:"128"`
-}
+type samlKeyRotateInput struct{}
 
 type samlRequestForm struct {
 	SAMLRequest string `json:"SAMLRequest" maxLength:"65536"`
@@ -107,8 +105,8 @@ func registerSAMLAdminHTTP(api huma.API, service *Service, registrar *authz.Regi
 		return respx.OK(ctx, map[string]bool{"deleted": true}), nil
 	})
 
-	rotate := huma.Operation{OperationID: "federation-rotate-saml-signing-key", Method: http.MethodPost, Path: "/saml-signing-keys", Summary: "Rotate the SAML identity provider signing key", Tags: []string{"applications"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict}}
-	authz.Register(registrar, api, rotate, authz.Guard{Resource: "identity_provider", Verb: "update"}, func(ctx context.Context, _ *samlKeyRotateInput) (*respx.Body[SAMLKeyInfo], error) {
+	rotate := huma.Operation{OperationID: "federation-rotate-saml-signing-key", Method: http.MethodPost, Path: "/platform/saml-signing-keys", Summary: "Rotate the platform-wide SAML identity provider signing key", Tags: []string{"applications"}, DefaultStatus: http.StatusCreated, Errors: []int{http.StatusConflict}}
+	authz.RegisterPlatform(registrar, api, rotate, authz.Guard{Resource: "platform", Verb: "administer"}, func(ctx context.Context, _ *samlKeyRotateInput) (*respx.Body[SAMLKeyInfo], error) {
 		item, err := service.RotateSAMLSigningKey(ctx)
 		if err != nil {
 			return nil, samlError(err)

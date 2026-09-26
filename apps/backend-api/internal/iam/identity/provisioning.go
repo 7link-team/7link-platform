@@ -13,6 +13,32 @@ import (
 	"gorm.io/gorm"
 )
 
+var ErrImmutableProvisionedLogin = errors.New("provisioned login is immutable")
+
+func (s *Service) revokeTenantSecurityState(ctx context.Context, db *gorm.DB, tenantID, id guid.ID) error {
+	if s.revokeTenantTokens == nil || s.revokeTenantOAuth == nil {
+		return ErrUnavailable
+	}
+	if err := s.revokeTenantTokens(ctx, db, tenantID, id); err != nil {
+		return err
+	}
+	return s.revokeTenantOAuth(ctx, db, tenantID, id)
+}
+
+func (s *Service) GetProvisioned(ctx context.Context, tenantID, id guid.ID) (ProvisioningPrincipal, error) {
+	principal, err := s.Get(ctx, tenantID, id)
+	if err != nil {
+		return ProvisioningPrincipal{}, err
+	}
+	member, err := s.repo.getTenantMember(ctx, tenantID, id)
+	if err != nil {
+		return ProvisioningPrincipal{}, err
+	}
+	principal.DisplayName, principal.Email = member.DisplayName, member.Email
+	principal.EmailVerified = false
+	return ProvisioningPrincipal{Principal: principal, MembershipStatus: member.Status}, nil
+}
+
 // CreateProvisionedTo writes directory-owned identity state through the
 // caller's transaction. The provisioning module owns its mapping and audit.
 func (s *Service) CreateProvisionedTo(
@@ -77,6 +103,9 @@ func (s *Service) ReplaceProvisionedTo(
 	if err != nil {
 		return Principal{}, err
 	}
+	if _, err := repo.lifecyclePrincipal(ctx, id, true); err != nil {
+		return Principal{}, err
+	}
 	current, err := repo.getPrincipal(ctx, tenantID, id)
 	if err != nil {
 		return Principal{}, err
@@ -85,8 +114,11 @@ func (s *Service) ReplaceProvisionedTo(
 	if err != nil {
 		return Principal{}, err
 	}
-	if input.Active && current.Status != "active" {
+	if input.Active && current.Status != "active" && member.Status != "active" {
 		return Principal{}, ErrInvalid
+	}
+	if current.LoginName != input.LoginName {
+		return Principal{}, ErrImmutableProvisionedLogin
 	}
 	now := identityTime(s.now())
 	wantedMemberStatus := "disabled"
@@ -101,33 +133,17 @@ func (s *Service) ReplaceProvisionedTo(
 			return Principal{}, err
 		}
 	}
-	loginChanged := current.LoginName != input.LoginName
-	emailChanged := current.Email != input.Email
-	profileChanged := loginChanged || emailChanged || current.DisplayName != input.DisplayName
+	emailChanged := member.Email != input.Email
+	profileChanged := emailChanged || member.DisplayName != input.DisplayName
 	membershipChanged := member.Status != wantedMemberStatus
-	updates := map[string]any{
-		"login_name": input.LoginName, "display_name": input.DisplayName,
-		"email": input.Email, "updated_at": now,
-	}
-	if emailChanged {
-		updates["email_verified"] = false
-	}
-	if err := repo.updatePrincipalRow(ctx, id, updates); err != nil {
-		return Principal{}, err
-	}
 	if err := repo.updateTenantMember(ctx, tenantID, id, map[string]any{
 		"display_name": input.DisplayName, "email": input.Email,
 		"status": wantedMemberStatus, "disabled_at": disabledAt, "updated_at": now,
 	}); err != nil {
 		return Principal{}, err
 	}
-	if loginChanged || emailChanged {
-		if err := repo.incrementCredentialVersion(ctx, id, now); err != nil {
-			return Principal{}, err
-		}
-	}
-	if loginChanged || emailChanged || membershipChanged {
-		if err := repo.revokeAllSecurityState(ctx, id, now); err != nil {
+	if membershipChanged && !input.Active {
+		if err := s.revokeTenantSecurityState(ctx, repo.writer(), tenantID, id); err != nil {
 			return Principal{}, err
 		}
 	}
@@ -141,13 +157,11 @@ func (s *Service) ReplaceProvisionedTo(
 			return Principal{}, err
 		}
 	}
-	current.LoginName, current.DisplayName, current.Email = input.LoginName, input.DisplayName, input.Email
+	current.DisplayName, current.Email = input.DisplayName, input.Email
 	if profileChanged || membershipChanged {
 		current.UpdatedAt = now
 	}
-	if emailChanged {
-		current.EmailVerified = false
-	}
+	current.EmailVerified = false
 	return principalFromRow(current), nil
 }
 

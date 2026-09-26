@@ -194,6 +194,9 @@ func (web *oauthWebFixture) ValidateCSRF(string, string, string, string) error {
 func (*oauthWebFixture) CreateSession(context.Context, guid.ID, time.Time, authnext.Assurance) (string, error) {
 	return "session", nil
 }
+func (*oauthWebFixture) CreateSessionOn(context.Context, *gorm.DB, guid.ID, time.Time, authnext.Assurance) (string, error) {
+	return "session", nil
+}
 
 type oauthHarness struct {
 	service  *Service

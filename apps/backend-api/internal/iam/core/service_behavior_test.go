@@ -58,9 +58,15 @@ func newCoreServiceHarness(t *testing.T) coreServiceHarness {
 		events = append(events, event)
 		return nil
 	}
+	service := NewService(authz.DefaultRegistry(), harness.repository, authorizer, appender)
+	service.lockPrincipal = func(ctx context.Context, tx *gorm.DB, id guid.ID) error {
+		return tx.WithContext(ctx).Table("sl_iam_principals").Where("id = ?", id).Update("updated_at", gorm.Expr("updated_at")).Error
+	}
+	service.revokePersonalTokens = func(context.Context, *gorm.DB, guid.ID, guid.ID) error { return nil }
+	service.revokeOAuth = func(context.Context, *gorm.DB, guid.ID, guid.ID) error { return nil }
 	return coreServiceHarness{
 		repositoryHarness: harness,
-		service:           NewService(authz.DefaultRegistry(), harness.repository, authorizer, appender),
+		service:           service,
 		authorizer:        authorizer,
 		events:            &events,
 	}

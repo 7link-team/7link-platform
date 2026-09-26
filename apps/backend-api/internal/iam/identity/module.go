@@ -51,6 +51,8 @@ type Module struct {
 	closeCredentials    PrincipalCredentialsRevoker
 	closeOAuth          PrincipalOAuthRevoker
 	platformAccessGuard core.PrincipalPlatformAccessGuard
+	revokeTenantTokens  core.TenantPersonalTokenRevoker
+	revokeTenantOAuth   core.TenantOAuthRevoker
 
 	// foreign is the one holder of the table names the modules that own them
 	// publish to identity. The connectors below bind it, and the repository the
@@ -297,6 +299,26 @@ func (m *Module) InjectServices(services *module.Services) error {
 	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
 		return err
 	}
+	m.revokeTenantTokens, err = module.Resolve[core.TenantPersonalTokenRevoker](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
+	m.revokeTenantOAuth, err = module.Resolve[core.TenantOAuthRevoker](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
+	principalLock, err := module.Resolve[core.PrincipalLockConnector](services)
+	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
+		return err
+	}
+	if err == nil {
+		if principalLock.Bind == nil {
+			return errors.New("identity principal lock connector requires bind")
+		}
+		if err := principalLock.Bind(m.principalStateStore().Lock); err != nil {
+			return err
+		}
+	}
 	m.platformAccessGuard, err = module.Resolve[core.PrincipalPlatformAccessGuard](services)
 	if err != nil && !errors.Is(err, module.ErrServiceMissing) {
 		return err
@@ -335,6 +357,7 @@ func (m *Module) Initialize(ctx context.Context) error {
 	m.Service.erasureRecorder = m.erasureRecorder
 	m.Service.privacyBrowser, m.Service.reauthenticate = m.privacyBrowser, m.reauthenticate
 	m.Service.closeCredentials, m.Service.closeOAuth, m.Service.platformAccessGuard = m.closeCredentials, m.closeOAuth, m.platformAccessGuard
+	m.Service.revokeTenantTokens, m.Service.revokeTenantOAuth = m.revokeTenantTokens, m.revokeTenantOAuth
 	if m.legacyImporter != nil {
 		if err := m.Service.migrateAvatarStorage(ctx, m.legacyImporter); err != nil {
 			return err

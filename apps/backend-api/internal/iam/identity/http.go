@@ -499,6 +499,9 @@ type serviceAccountCredentialRevokeData struct {
 // Principal and service-account failures share a mapper because both surfaces
 // report the same tenant, conflict, and validation semantics.
 func identityError(err error) error {
+	if errors.Is(err, ErrProfileDenied) {
+		return huma.Error403Forbidden("respx.forbidden")
+	}
 	// The lifecycle refusals are checked first: several of them wrap conditions
 	// the general cases below would flatten into a less useful status.
 	if mapped, handled := lifecycleAPIError(err); handled {
