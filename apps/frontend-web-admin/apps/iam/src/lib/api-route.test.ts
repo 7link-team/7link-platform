@@ -26,9 +26,9 @@ function contractErrors() {
   // @ts-expect-error cursor routes cannot use offset pagination
   pagedRoute("/me/files")
   // @ts-expect-error operations without queries cannot use offset pagination
-  pagedRoute("/me/session")
+  pagedRoute("/me")
   // @ts-expect-error strings cannot enter the transport
-  const address: ApiRoute = "/me/session"
+  const address: ApiRoute = "/me"
   return address
 }
 void contractErrors

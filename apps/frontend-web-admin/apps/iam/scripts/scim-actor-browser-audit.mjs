@@ -95,7 +95,7 @@ try {
     password,
     return_url: baseURL + "/",
   })
-  const session = await api("/me/session")
+  const session = await api("/me")
   await page.evaluate(
     ({ tenant, subject }) => {
       localStorage.setItem("iam.tenant", tenant)
@@ -181,7 +181,7 @@ try {
   )
 
   await edit(directory.name)
-  const me = await api("/me/session")
+  const me = await api("/me")
   const otherTenant = await api("/tenants", "POST", {
     slug: `scim-ui-other-${suffix}`,
     name: "SCIM UI Other",

@@ -546,6 +546,20 @@ func (s *Service) ListSessions(
 	return result, nil
 }
 
+// GetSession reads an active item through the same owner-scoped projection as listing.
+func (s *Service) GetSession(ctx context.Context, authorization, cookieHeader, id string) (authnext.BrowserSession, error) {
+	sessions, err := s.ListSessions(ctx, authorization, cookieHeader)
+	if err != nil {
+		return authnext.BrowserSession{}, err
+	}
+	for _, session := range sessions {
+		if session.ID == id {
+			return session, nil
+		}
+	}
+	return authnext.BrowserSession{}, ErrSessionNotFound
+}
+
 func (s *Service) RevokeSession(
 	ctx context.Context,
 	authorization, cookieHeader, id string,

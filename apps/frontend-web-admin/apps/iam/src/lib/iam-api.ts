@@ -1460,14 +1460,6 @@ export function createIamApi(
           after: after || undefined,
         })
       ),
-    createPersonalFileRoot: (entityID: string) => {
-      const body = new FormData()
-      body.set("kind", "directory")
-      body.set("scope", "personal")
-      return request<FileEntryView>(fileCollectionRoute(entityID, "post"), {
-        body,
-      })
-    },
     createAccountFileRoot: () => {
       const body = new FormData()
       body.set("kind", "directory")
@@ -1610,10 +1602,10 @@ export function createIamApi(
       request<{ accepted: boolean }>(apiRoute("post", "/registrations"), {
         body: JSON.stringify(body),
       }),
-    session: () => request<Session>(apiRoute("get", "/me/session")),
+    session: () => request<Session>(apiRoute("get", "/me")),
     sessionForTenant: (tenant: string) => {
       void tenant
-      return request<Session>(apiRoute("get", "/me/session"))
+      return request<Session>(apiRoute("get", "/me"))
     },
     myTenants: () => request<Tenant[]>(apiRoute("get", "/me/tenants")),
     personalTokenPermissions: (tenant: string) =>
@@ -1782,11 +1774,19 @@ export function createIamApi(
         body: JSON.stringify(body),
       }),
     logout: () =>
-      request<{ logout_url: string }>(apiRoute("delete", "/me/session")),
+      request<{ logout_url: string }>(apiRoute("delete", "/sessions/current")),
+    currentBrowserSession: () =>
+      request<BrowserSession>(apiRoute("get", "/sessions/current")),
+    browserSession: (id: string) =>
+      request<BrowserSession>(
+        apiRoute("get", "/sessions/{session_id}", {
+          path: { session_id: id },
+        })
+      ),
     sessions: () => request<BrowserSession[]>(apiRoute("get", "/me/sessions")),
     revokeSession: (id: string) =>
       request<{ revoked: boolean }>(
-        apiRoute("delete", "/me/sessions/{session_id}", {
+        apiRoute("delete", "/sessions/{session_id}", {
           path: { session_id: id },
         })
       ),

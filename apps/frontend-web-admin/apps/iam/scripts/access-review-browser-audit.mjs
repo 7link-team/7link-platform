@@ -187,7 +187,7 @@ async function login(loginName, loginPassword) {
   await setControl("#password", loginPassword)
   await submit("form")
   await waitFor(`location.pathname === "/"`, 20000)
-  const session = await api("/me/session")
+  const session = await api("/me")
   await evaluate(`
     localStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)});
     localStorage.setItem("iam.tenant:subject", ${JSON.stringify(session.subject)});
@@ -202,7 +202,7 @@ async function login(loginName, loginPassword) {
 async function logout() {
   signedOut = true
   const status = await evaluate(`
-    const response = await fetch("/api/me/session", { method: "DELETE", credentials: "include" });
+    const response = await fetch("/api/sessions/current", { method: "DELETE", credentials: "include" });
     return response.status;
   `)
   if (status < 200 || status >= 300) throw new Error(`logout failed: ${status}`)
@@ -276,7 +276,7 @@ const reviewerEmail = `${reviewerLogin}@example.test`
 const reviewerPassword = "Audit-Access-Reviewer-2026!"
 
 await login(adminLogin, password)
-const session = await api("/me/session")
+const session = await api("/me")
 const tenantRoles = await api("/roles")
 let administratorRole
 for (const candidate of tenantRoles) {

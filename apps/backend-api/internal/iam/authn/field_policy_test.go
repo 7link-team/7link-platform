@@ -123,7 +123,7 @@ func TestSessionAndTokenProfileEnforcement(t *testing.T) {
 		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 		return body.Data
 	}
-	for _, path := range []string{"/me", "/me/session"} {
+	for _, path := range []string{"/me"} {
 		view := read(path, "Cookie: "+cookie)
 		assert.Equal(t, "alice", view["preferred_username"])
 		assert.Equal(t, true, view["email_verified"])
@@ -133,7 +133,7 @@ func TestSessionAndTokenProfileEnforcement(t *testing.T) {
 	assert.Equal(t, "alice@example.com", tokenPayload(t, access)["email"])
 	fields.Fields["login_name"], fields.Fields["email"] = authz.FieldDecision{Read: "omit"}, authz.FieldDecision{Read: "redact"}
 	for _, header := range []string{"Cookie: " + cookie, "Authorization: Bearer " + access} {
-		for _, path := range []string{"/me", "/me/session"} {
+		for _, path := range []string{"/me"} {
 			view := read(path, header)
 			assert.NotContains(t, view, "preferred_username")
 			assert.Equal(t, "[REDACTED]", view["email"])

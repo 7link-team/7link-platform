@@ -530,27 +530,33 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		}
 		return loginResponse(ctx, web, result), nil
 	})
-	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
-		OperationID: "authn-get-current-session", Method: http.MethodGet, Path: "/me/session",
+	authz.RegisterSessionAuthenticated(authenticated, a, huma.Operation{
+		OperationID: "authn-get-current-session", Method: http.MethodGet, Path: "/sessions/current",
 		Summary: "Return the current browser session", Tags: []string{"account"},
-		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusUnprocessableEntity, http.StatusServiceUnavailable},
-	}, func(ctx context.Context, in *meInput) (*respx.Body[meOutput], error) {
-		claims, err := web.Authenticate(ctx, in.Authorization, in.Cookie)
-		if err != nil {
+		Errors: []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusInternalServerError},
+	}, func(ctx context.Context, in *meInput) (*respx.Body[authnext.BrowserSession], error) {
+		if strings.TrimSpace(in.Authorization) != "" || currentSessionHash(in.Cookie, web.web.CookieName) == "" {
 			return nil, huma.Error401Unauthorized("unauthorized")
 		}
-		claims, err = sessionTenant(ctx, web, in, claims)
+		output, err := web.GetSession(ctx, "", in.Cookie, currentSessionHash(in.Cookie, web.web.CookieName))
 		if err != nil {
-			return nil, err
+			return nil, authenticationError(err)
 		}
-		output, err := sessionView(ctx, web, in, claims)
+		return respx.OK(ctx, output), nil
+	})
+	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
+		OperationID: "authn-get-session", Method: http.MethodGet, Path: "/sessions/{session_id}",
+		Summary: "Read an active browser session owned by the caller", Tags: []string{"account"},
+		Errors: []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusUnprocessableEntity, http.StatusInternalServerError},
+	}, func(ctx context.Context, in *sessionMutationInput) (*respx.Body[authnext.BrowserSession], error) {
+		output, err := web.GetSession(ctx, in.Authorization, in.Cookie, in.ID)
 		if err != nil {
-			return nil, err
+			return nil, authenticationError(err)
 		}
 		return respx.OK(ctx, output), nil
 	})
 	authz.RegisterPublic(a, huma.Operation{
-		OperationID: "authn-delete-current-session", Method: http.MethodDelete, Path: "/me/session",
+		OperationID: "authn-delete-current-session", Method: http.MethodDelete, Path: "/sessions/current",
 		Summary: "Destroy the current browser session", Tags: []string{"account"},
 		Errors: []int{http.StatusForbidden, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, in *logoutInput) (*logoutOutput, error) {
@@ -575,7 +581,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return respx.OK(ctx, sessions), nil
 	})
 	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
-		OperationID: "authn-delete-session", Method: http.MethodDelete, Path: "/me/sessions/{session_id}",
+		OperationID: "authn-delete-session", Method: http.MethodDelete, Path: "/sessions/{session_id}",
 		Summary: "Revoke a browser session", Tags: []string{"account"},
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusInternalServerError},
 	}, func(ctx context.Context, in *sessionMutationInput) (*respx.Body[map[string]bool], error) {
@@ -753,7 +759,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return respx.OK(ctx, map[string]bool{"disabled": true}), nil
 	})
 	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
-		OperationID: "authn-create-step-up-challenge", Method: http.MethodPost, Path: "/me/session/step-up-challenges",
+		OperationID: "authn-create-step-up-challenge", Method: http.MethodPost, Path: "/sessions/current/step-up-challenges",
 		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
 		Summary:  "Begin a step-up MFA challenge for the current browser session", Tags: []string{"account"},
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusInternalServerError, http.StatusServiceUnavailable},
@@ -768,7 +774,7 @@ func RegisterHTTP(a huma.API, authenticator authz.TokenVerifier, web *Service) {
 		return respx.OK(ctx, options), nil
 	})
 	authz.RegisterAuthenticated(authenticated, a, huma.Operation{
-		OperationID: "authn-create-step-up-verification", Method: http.MethodPost, Path: "/me/session/step-up-verifications",
+		OperationID: "authn-create-step-up-verification", Method: http.MethodPost, Path: "/sessions/current/step-up-verifications",
 		Metadata: authnext.RateLimitMetadata(authnext.RateLimitAuthentication),
 		Summary:  "Verify a step-up factor and elevate the browser session", Tags: []string{"account"},
 		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError, http.StatusServiceUnavailable},

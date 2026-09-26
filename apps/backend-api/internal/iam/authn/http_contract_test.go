@@ -39,16 +39,17 @@ authn-create-password-recovery|POST|/password-recoveries
 authn-create-registration|POST|/registrations
 authn-create-session-verification|POST|/login/mfa
 authn-create-session|POST|/login
-authn-create-step-up-challenge|POST|/me/session/step-up-challenges
-authn-create-step-up-verification|POST|/me/session/step-up-verifications
+authn-create-step-up-challenge|POST|/sessions/current/step-up-challenges
+authn-create-step-up-verification|POST|/sessions/current/step-up-verifications
 authn-create-totp-enrollment|POST|/me/mfa/totp-enrollments
 authn-create-totp-factor|POST|/me/mfa/totp
-authn-delete-current-session|DELETE|/me/session
+authn-delete-current-session|DELETE|/sessions/current
 authn-delete-passkey|DELETE|/me/passkeys/{passkey_id}
-authn-delete-session|DELETE|/me/sessions/{session_id}
+authn-delete-session|DELETE|/sessions/{session_id}
 authn-delete-sessions|DELETE|/me/sessions
 authn-delete-totp-factor|DELETE|/me/mfa/totp
-authn-get-current-session|GET|/me/session
+authn-get-current-session|GET|/sessions/current
+authn-get-session|GET|/sessions/{session_id}
 authn-get-mfa|GET|/me/mfa
 authn-list-passkeys|GET|/me/passkeys
 authn-list-sessions|GET|/me/sessions
@@ -73,7 +74,7 @@ func TestAuthnRouteManifestMatchesGeneratedOpenAPI(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	require.Equal(t, want, got)
-	require.Len(t, got, 38)
+	require.Len(t, got, 39)
 	require.NoError(t, authz.ValidateOperations(api, authz.DefaultRegistry()))
 }
 
@@ -82,7 +83,7 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 	operationIDs := make(map[string]string, 30)
 	pathParameter := regexp.MustCompile(`\{([^}]+)\}`)
 	secured := map[string]bool{
-		"authn-me": true, "authn-get-current-session": true,
+		"authn-me": true, "authn-get-session": true,
 		"authn-list-sessions": true, "authn-delete-session": true, "authn-delete-sessions": true,
 		"authn-update-password": true, "authn-create-email-verification-request": true,
 		"authn-get-mfa": true, "authn-create-totp-enrollment": true,
@@ -94,6 +95,7 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 		"authn-delete-passkey": true,
 	}
 	sessionOnly := map[string]bool{
+		"authn-get-current-session":               true,
 		"authn-create-reauthentication-challenge": true, "authn-create-reauthentication-verification": true,
 		"authn-list-reauthentication-methods": true, "authn-create-personal-token-preparation": true,
 		"authn-create-personal-token": true, "authn-delete-personal-token": true,
@@ -150,9 +152,9 @@ func TestAuthnOpenAPIPathsParametersAndSecurityAreConsistent(t *testing.T) {
 			}
 		}
 	}
-	require.Len(t, operationIDs, 38)
+	require.Len(t, operationIDs, 39)
 	assert.Equal(t, "session", spec.Components.SecuritySchemes[authz.SessionScheme].Name)
-	for _, path := range []string{"/me/sessions/{session_id}", "/me/passkeys/{passkey_id}"} {
+	for _, path := range []string{"/sessions/{session_id}", "/me/passkeys/{passkey_id}"} {
 		parameter := authnPathOperations(spec.Paths[path])[http.MethodDelete].Parameters[0]
 		assert.Equal(t, "^[a-f0-9]{64}$", parameter.Schema.Pattern, path)
 		assert.Equal(t, 64, *parameter.Schema.MinLength, path)

@@ -313,7 +313,7 @@ const unexpectedResponses = responses.filter(
     response.status >= 400 &&
     !(
       response.status === 401 &&
-      response.url.endsWith("/api/me/session")
+      response.url.endsWith("/api/me")
     )
 )
 const unexpectedFailures = failures.filter(

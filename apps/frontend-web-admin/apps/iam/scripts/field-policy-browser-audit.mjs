@@ -117,7 +117,7 @@ try {
     password,
     return_url: baseURL + "/",
   })
-  const me = await ok("/me/session")
+  const me = await ok("/me")
   const existing = (await ok("/field-policies")).find(
     (p) => p.resource === "todo" && p.field === "description"
   )

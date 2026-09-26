@@ -79,7 +79,7 @@ page.on("pageerror", (error) => consoleErrors.push(error.message))
 page.on("response", (response) => {
   const url = response.url()
   loadedAssets.push(url)
-  if (response.status() >= 400 && !url.includes("/me/session"))
+  if (response.status() >= 400 && !url.includes("/me"))
     failedResponses.push(`${response.status()} ${url}`)
 })
 page.on("request", (request) => {

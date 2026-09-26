@@ -2710,3 +2710,37 @@ contract repair, not a new route migration. Twelve negative compile assertions
 replace the old permissive literal scan. All runtime tests remain covered.
 
 Status: D78 implemented and verified. Public API migration has not started.
+
+## D79 - Execute evidence-backed API optimization, not the whole URI inventory
+
+**Date** 2026-09-25
+
+**Decision / Reason**
+User authorized an optimized implementation plan, second review, implementation
+and real E2E. The full manifest failed its implementation review. Execute the
+bounded specification in `apps/backend-api/docs/api-optimization-implementation-2026-09-25.md`:
+identity reads use unchanged GET /me; real BrowserSession discovery uses
+Cookie-only GET /sessions/current; global /sessions/{session_id} reads/revokes
+only the authenticated owner's active item. Current logout and existing step-up
+move under /sessions/current without aliases. Reuse ListSessions/RevokeSession,
+logout transactions, profile projection, CSRF and existing security services.
+Correct the already-invalid personal multipart scope and remove its unused
+client entry. Preserve account drive and historical data.
+
+**Alternatives Considered / Tradeoffs**
+Whole principal unification, two-request onboarding, permission catalog removal,
+generic authentication transactions, response/If-Match rewriting, destination
+file-operation migration and relationship ID backfill are rejected for this
+optimization: no required capability or demonstrated defect justifies their
+behavior/data costs. Existing self-only /me/sessions collection is retained;
+adding a principal selector provides no needed capability. These are decisions
+against implementation here, not an automatic next-task list. D74/D76/D77 design
+principles remain recorded; D77's relationship-ambiguity rationale is corrected
+by the review, while its ID design direction is preserved.
+
+**Scope / Status**
+Implemented and accepted. Real SQLite/Chromium E2E 14/14, browser fixture
+regression 74/74, archive desktop/mobile PASS, backend authn/files suites PASS,
+frontend gates and generated drift checks PASS. 206 paths / 296 operations;
+the added operation is session item GET. No database migration. Evidence and
+limits are in the execution plan. Historical documents explicitly defer to it.

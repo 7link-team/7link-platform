@@ -73,7 +73,7 @@ try {
     password: auditPassword(),
     return_url: baseURL + "/",
   })
-  const me = await ok(admin, "/me/session")
+  const me = await ok(admin, "/me")
   const stamp = Date.now()
   const tenant = await ok(admin, "/tenants", "POST", {
     slug: `outbound-audit-${stamp}`,
@@ -129,7 +129,7 @@ try {
     password: actorPassword,
     return_url: baseURL + "/",
   })
-  const actorSession = await ok(context, "/me/session")
+  const actorSession = await ok(context, "/me")
   await context.addCookies([
     { name: "NEXT_LOCALE", value: "zh-CN", url: baseURL },
   ])

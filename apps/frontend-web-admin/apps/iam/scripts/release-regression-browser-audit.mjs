@@ -343,7 +343,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       state.personalTokens[0].revoked_at = "2026-09-10T00:01:00Z"
       return send({ revoked: true })
     }
-    if (path === "/me/session" && request.method() === "GET") {
+    if (path === "/me" && request.method() === "GET") {
       if (state.accountIdentityCase) {
         const profile = {
           subject: state.subject,
@@ -378,7 +378,7 @@ async function scenario(name, test, { locale = "en-US", mobile = false } = {}) {
       return send({ status: "authenticated", return_url: "/after-login" })
     }
     if (
-      (path === "/me/session" || path === "/me/sessions") &&
+      (path === "/sessions/current" || path === "/me/sessions") &&
       request.method() === "DELETE"
     ) {
       if (state.logout === "network") return route.abort("failed")
@@ -510,7 +510,7 @@ try {
       )
       assert((await account.innerText()).includes("Administrator name"))
       const sessions = state.requests.filter(
-        (request) => request.path === "/me/session"
+        (request) => request.path === "/me"
       )
       assert(
         sessions.some((request) => !request.tenant),
@@ -581,7 +581,7 @@ try {
           ?.textContent.includes("Previous profile name")
       )
       const updated = page.waitForResponse((response) =>
-        response.url().endsWith("/me/session")
+        response.url().endsWith("/me")
       )
       state.accountProfile = {}
       await workspace(page)
@@ -613,7 +613,7 @@ try {
           .waitFor()
         state.accountProfileStatus = status
         const requested = page.waitForRequest((request) =>
-          request.url().endsWith("/me/session")
+          request.url().endsWith("/me")
         )
         await workspace(page)
         await page.getByRole("button", { name: /Workspace t2/ }).click()
@@ -646,7 +646,7 @@ try {
       assert((await page.getByRole("menu").innerText()).includes("person-1"))
       assert(
         state.requests
-          .filter((request) => request.path === "/me/session")
+          .filter((request) => request.path === "/me")
           .every((request) => !request.tenant)
       )
     }
@@ -694,7 +694,7 @@ try {
         preferred_username: "Other person's name",
       }
       const received = page.waitForResponse((response) =>
-        response.url().endsWith("/me/session")
+        response.url().endsWith("/me")
       )
       await workspace(page)
       await page.getByRole("button", { name: /Workspace t2/ }).click()

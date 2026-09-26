@@ -1,5 +1,28 @@
 # Task State
 
+## Active API Optimization - 2026-09-25
+
+- Phase: ACCEPTED; implementation, verification and final review complete.
+- Baseline: 8868a9f; user authorized plan, second review, implementation and real E2E.
+- Execution authority: apps/backend-api/docs/api-optimization-implementation-2026-09-25.md.
+- Second design review PASS for bounded R4/R9/R10 implementation; all R1-R10 dispositions recorded.
+- Implemented: true current/item BrowserSession discovery, current/item/step-up canonical routes,
+  identity client reads /me, account-only multipart scope, removed invalid personal-root helper.
+- Existing /me/sessions self-only collection deliberately retained. Other proposal migrations
+  rejected for this optimization, not queued as future requirements. No schema/data migration.
+- Verification PASS: authn/files full suites; final targeted current/item/tenancy/step-up;
+  frontend typecheck/lint/test/build (IAM 133, UI 85); OpenAPI and generated type drift;
+  real SQLite/Chromium 14/14 (.temp/sqlite-lifecycle-0q9rOr/report.json, no page errors);
+  fixture browser regression 74/74 and archive desktop/mobile. Owned services stopped.
+- Final review PASS: 206 paths/296 operations; only four file creation operations change
+  at unchanged addresses. /me behavior unchanged; Cookie-only current schema publishes correctly.
+- D79 records choices and costs; implementation plan records exact evidence and test limitations.
+- Delivery checkpoint: commit/push these reviewed deliverables, verify remote/clean tree,
+  then report the commit and evidence. No agents used; direct execution evaluated for
+  shared contracts. No outstanding implementation work or automatic followup migration.
+
+The sections below are historical checkpoints, not the current action list.
+
 ## OpenAPI Public Contract Review - 2026-09-23
 
 - Current phase: REVIEW.

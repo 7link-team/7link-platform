@@ -1,6 +1,21 @@
 # HTTP Resource Routing Design
 
-Status: APPROVED - canonical resource-ID migration in progress
+Status: HISTORICAL DESIGN - superseded rules identified below
+
+## Current Authority (2026-09-25)
+
+D74/D76/D77 confirm design principles, not whole-manifest execution. D77
+supersedes rules 7/9/15 permitting dual item addresses: one canonical URI,
+natural item keys, and GET /me plus GET /sessions/current discovery entries.
+Membership identity is (tenant_id, principal_id), not an unresolved new ID.
+Historical file sections describing creatable personal roots are obsolete:
+the runtime already rejects that scope; account is the tenant-independent drive.
+
+The sole execution specification for the approved optimization is
+[api-optimization-implementation-2026-09-25.md](api-optimization-implementation-2026-09-25.md).
+The sections below preserve design history and are not instructions to migrate
+every runtime route. Existing collections retained by that plan are deliberate
+scope decisions, not an implicit migration backlog.
 
 ## Goal
 

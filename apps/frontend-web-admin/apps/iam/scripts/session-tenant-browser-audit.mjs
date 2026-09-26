@@ -94,7 +94,7 @@ try {
     let unscopedSession = false
     let derivedMenu = false
     page.on("request", (request) => {
-      if (request.url().endsWith("/api/me/session")) {
+      if (request.url().endsWith("/api/me")) {
         assert(!new URL(request.url()).pathname.includes("/tenants/"))
         unscopedSession = true
       }
@@ -117,7 +117,7 @@ try {
     assert(derivedMenu)
     await page.locator("main article").nth(3).waitFor()
     assert.equal(
-      (await ok(context, "/me/session")).organization_id,
+      (await ok(context, "/me")).organization_id,
       tenant
     )
     assert.equal(
@@ -135,7 +135,7 @@ try {
       fullPage: true,
     })
   }
-  const owner = await ok(admin, "/me/session")
+  const owner = await ok(admin, "/me")
   const second = await ok(admin, "/tenants", "POST", {
     slug: `session-second-${stamp}`,
     name: "Session second tenant",
@@ -154,7 +154,7 @@ try {
     second.id
   )
   assert.equal(
-    (await ok(lastContext, "/me/session")).organization_id,
+    (await ok(lastContext, "/me")).organization_id,
     undefined
   )
   const ambiguous = await browser.newContext({
@@ -187,7 +187,7 @@ try {
     second.id
   )
   assert.equal(
-    (await ok(ambiguous, "/me/session")).organization_id,
+    (await ok(ambiguous, "/me")).organization_id,
     undefined
   )
   await ok(
@@ -198,12 +198,12 @@ try {
     tenant
   )
   assert.equal(
-    (await api(ambiguous, "/me/session", "GET", undefined, tenant))
+    (await api(ambiguous, "/me", "GET", undefined, tenant))
       .status,
     403
   )
   assert.equal(
-    (await ok(ambiguous, "/me/session")).organization_id,
+    (await ok(ambiguous, "/me")).organization_id,
     second.id
   )
   assert.deepEqual(errors, [])

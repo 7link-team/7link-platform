@@ -168,7 +168,7 @@ async function login(loginName, password) {
   await setInput("#password", password)
   await evaluate(`document.querySelector("form").requestSubmit()`)
   await waitFor(`location.pathname === "/"`, 20000)
-  const session = await api("/me/session")
+  const session = await api("/me")
   await evaluate(`
     localStorage.setItem("iam.tenant", ${JSON.stringify(tenantID)});
     localStorage.setItem("iam.tenant:subject", ${JSON.stringify(session.subject)});
@@ -180,7 +180,7 @@ async function login(loginName, password) {
 }
 
 async function logout() {
-  const result = await apiRaw("/me/session", { method: "DELETE" })
+  const result = await apiRaw("/sessions/current", { method: "DELETE" })
   if (result.status < 200 || result.status >= 300)
     throw new Error(`logout failed: ${result.status}`)
   await command("Network.clearBrowserCookies")
@@ -805,7 +805,7 @@ try {
     mobile: false,
   })
   if (!(await evaluate(`return location.pathname === "/login"`)))
-    await apiRaw("/me/session", { method: "DELETE" })
+    await apiRaw("/sessions/current", { method: "DELETE" })
   await command("Network.clearBrowserCookies")
   await login(adminLogin, adminPassword)
   await cleanup()
@@ -823,8 +823,8 @@ const unexpectedResponses = diagnostics.responses.filter(
     response.status >= 400 &&
     !(
       response.status === 401 &&
-      (response.method === "GET" || response.method === "DELETE") &&
-      response.url.endsWith("/api/me/session")
+      ((response.method === "GET" && response.url.endsWith("/api/me")) ||
+        (response.method === "DELETE" && response.url.endsWith("/api/sessions/current")))
     ) &&
     !(
       response.status === 403 &&

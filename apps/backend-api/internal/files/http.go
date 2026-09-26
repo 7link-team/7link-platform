@@ -61,7 +61,7 @@ type fileCreateForm struct {
 	ParentID string        `form:"parent_id" required:"false"`
 	Kind     string        `form:"kind" enum:"file,directory" required:"true"`
 	Name     string        `form:"name" maxLength:"255" required:"false"`
-	Scope    string        `form:"scope" enum:"account,personal" required:"false"`
+	Scope    string        `form:"scope" enum:"account" required:"false"`
 	File     huma.FormFile `form:"file" contentType:"application/octet-stream" required:"false"`
 }
 

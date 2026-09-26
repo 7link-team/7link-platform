@@ -346,7 +346,7 @@ async function createAndRevokeToken(context, page, messages, label, method) {
     .getByRole("button", { name: messages.continue, exact: true })
     .click()
   const originalSession = await sessionCookie(context)
-  const originalSubject = (await ok(context, "/me/session")).subject
+  const originalSubject = (await ok(context, "/me")).subject
   const beforeFresh = idp.fresh
   await confirmIdentity(page, messages, method)
   const secretNode = page.getByTestId("personal-token-secret")
@@ -359,7 +359,7 @@ async function createAndRevokeToken(context, page, messages, label, method) {
     "Reauthentication must not replace the browser session"
   )
   assert.equal(
-    (await ok(context, "/me/session")).subject,
+    (await ok(context, "/me")).subject,
     originalSubject
   )
   if (method === "federation") assert.equal(idp.fresh, beforeFresh + 1)
@@ -391,7 +391,7 @@ async function createAndRevokeToken(context, page, messages, label, method) {
     "Cross-tenant token use is denied"
   )
   assert.equal(
-    (await bearer("/me/session")).status(),
+    (await bearer("/me")).status(),
     401,
     "PAT cannot substitute for a browser session"
   )
@@ -471,7 +471,7 @@ async function passwordLink(context, page, messages) {
     .waitFor()
   await page.locator("#identity-provider").selectOption(provider.id)
   const oldCookie = await sessionCookie(context)
-  const oldSession = await ok(context, "/me/session")
+  const oldSession = await ok(context, "/me")
   const membersBefore = await ok(
     admin,
     "/principals",
@@ -508,7 +508,7 @@ async function passwordLink(context, page, messages) {
     .waitFor()
   assert.equal(await sessionCookie(context), oldCookie)
   assert.equal(
-    (await ok(context, "/me/session")).subject,
+    (await ok(context, "/me")).subject,
     oldSession.subject
   )
   assert.deepEqual(
@@ -545,7 +545,7 @@ try {
     return_url: baseURL + "/",
   })
   await sessionCookie(admin)
-  const owner = (await ok(admin, "/me/session")).subject
+  const owner = (await ok(admin, "/me")).subject
   tenant = await ok(admin, "/tenants", "POST", {
     name: stamp,
     slug: stamp,
@@ -662,7 +662,7 @@ try {
             `${apiURL}/federation/${provider.id}/start?${new URLSearchParams({ return_url: baseURL + "/me/tokens" })}`
           )
           await finishUpstream(page)
-          const session = await ok(context, "/me/session")
+          const session = await ok(context, "/me")
           principals.add(session.subject)
           const methods = await ok(context, "/me/reauthentication/methods")
           assert.deepEqual(

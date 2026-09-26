@@ -73,7 +73,7 @@ try {
     password: auditPassword(),
     return_url: baseURL + "/",
   })
-  const me = await ok(admin, "/me/session")
+  const me = await ok(admin, "/me")
   const stamp = Date.now()
   const tenant = await ok(admin, "/tenants", "POST", {
     slug: `profile-audit-${stamp}`,

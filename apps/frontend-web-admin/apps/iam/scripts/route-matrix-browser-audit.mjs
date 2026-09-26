@@ -8,7 +8,7 @@ import { chromium } from "playwright"
 // Real API fixtures and real pages. Network-failure injection belongs to the
 // existing release-regression audit; this matrix never stubs HTTP responses.
 const routes = [
-  ["dashboard", "/", "identityControl", "/me/session", null],
+  ["dashboard", "/", "identityControl", "/me", null],
   ["users", "/users", "principalMembers", "/principals", "principal"],
   [
     "invitations",
@@ -259,7 +259,7 @@ async function signIn(context, persona) {
     password: persona === "admin" ? adminPassword : fixturePassword,
     return_url: baseURL + "/",
   })
-  return ok(context, "/me/session")
+  return ok(context, "/me")
 }
 async function setup() {
   const me = await signIn(admin, "admin")

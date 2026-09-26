@@ -54,7 +54,7 @@ func TestLogoutStorageFailurePreservesSessionUntilRetry(t *testing.T) {
 	location, err := web.Logout(t.Context(), cookie)
 	require.ErrorIs(t, err, writeFailure)
 	assert.Empty(t, location)
-	failed := api.Delete("/me/session", "Cookie: "+cookie, "Origin: https://app.example")
+	failed := api.Delete("/sessions/current", "Cookie: "+cookie, "Origin: https://app.example")
 	require.Equal(t, http.StatusServiceUnavailable, failed.Code, failed.Body.String())
 	assert.Empty(t, failed.Header().Values("Set-Cookie"))
 	assert.NotContains(t, failed.Body.String(), "logout_url")
@@ -67,7 +67,7 @@ func TestLogoutStorageFailurePreservesSessionUntilRetry(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 	_, err = web.Authenticate(t.Context(), "", cookie)
 	require.NoError(t, err)
-	retry := api.Delete("/me/session", "Cookie: "+cookie, "Origin: https://app.example")
+	retry := api.Delete("/sessions/current", "Cookie: "+cookie, "Origin: https://app.example")
 	require.Equal(t, http.StatusOK, retry.Code, retry.Body.String())
 	assert.Contains(t, retry.Header().Get("Set-Cookie"), "Max-Age=0")
 	_, err = web.Authenticate(t.Context(), "", cookie)
@@ -93,7 +93,7 @@ func TestAuthenticationHTTPFlow(t *testing.T) {
 	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
 	require.NotEmpty(t, cookie)
 
-	session := api.Get("/me/session", "Cookie: "+cookie)
+	session := api.Get("/me", "Cookie: "+cookie)
 	assert.Equal(t, http.StatusOK, session.Code, session.Body.String())
 	assert.Contains(t, session.Body.String(), principalID)
 	assert.NotContains(t, session.Body.String(), `"email_verified"`, "an unscoped session cannot expose tenant-controlled profile fields")
@@ -103,10 +103,10 @@ func TestAuthenticationHTTPFlow(t *testing.T) {
 	me := api.Get("/me", "Authorization: Bearer "+accessToken)
 	assert.Equal(t, http.StatusOK, me.Code, me.Body.String())
 
-	logout := api.Delete("/me/session", "Cookie: "+cookie, "Origin: https://app.example")
+	logout := api.Delete("/sessions/current", "Cookie: "+cookie, "Origin: https://app.example")
 	assert.Equal(t, http.StatusOK, logout.Code, logout.Body.String())
 	assert.Contains(t, logout.Header().Get("Set-Cookie"), "Max-Age=0")
-	assert.Equal(t, http.StatusUnauthorized, api.Get("/me/session", "Cookie: "+cookie).Code)
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/me", "Cookie: "+cookie).Code)
 
 	assert.Equal(t, http.StatusUnauthorized, api.Post("/login", map[string]any{
 		"login_name": "alice", "password": "wrong password",
@@ -127,7 +127,7 @@ func TestAuthenticationHTTPFlow(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, api.Post("/login", map[string]any{
 		"login_name": "alice", "password": "correct horse battery staple",
 	}, "Origin: https://evil.example").Code)
-	assert.Equal(t, http.StatusForbidden, api.Delete("/me/session", "Cookie: "+cookie, "Origin: https://evil.example").Code)
+	assert.Equal(t, http.StatusForbidden, api.Delete("/sessions/current", "Cookie: "+cookie, "Origin: https://evil.example").Code)
 
 	err = db.WithContext(context.Background()).Table("iam_credentials").Where("principal_id = ?", principalID).Update("mfa_required", true).Error
 	require.NoError(t, err)
@@ -152,7 +152,7 @@ func TestSessionHTTPTenantResolutionAndImmediateRevocation(t *testing.T) {
 	cookie := "Cookie: " + strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
 	check := func(code int, expected string) {
 		t.Helper()
-		for _, path := range []string{"/me", "/me/session"} {
+		for _, path := range []string{"/me"} {
 			response := api.Get(path, cookie)
 			require.Equal(t, code, response.Code, response.Body.String())
 			if code == http.StatusOK {
@@ -215,7 +215,7 @@ func TestRequiredMFAEnrollmentHTTPFlowDoesNotLockOutPrincipal(t *testing.T) {
 	assert.Contains(t, login.Body.String(), `"status":"mfa_enrollment_required"`)
 	restrictedCookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
 	require.NotEmpty(t, restrictedCookie)
-	assert.Equal(t, http.StatusUnauthorized, api.Get("/me/session", "Cookie: "+restrictedCookie).Code)
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/me", "Cookie: "+restrictedCookie).Code)
 	assert.Equal(t, http.StatusUnauthorized, api.Get("/me/passkeys", "Cookie: "+restrictedCookie).Code)
 
 	enrollment := api.Post("/me/mfa/totp-enrollments", "Cookie: "+restrictedCookie,
@@ -229,7 +229,7 @@ func TestRequiredMFAEnrollmentHTTPFlowDoesNotLockOutPrincipal(t *testing.T) {
 		"Origin: https://app.example", map[string]any{"code": mustTOTPValue(t, enrollmentEnvelope.Data.Secret)})
 	require.Equal(t, http.StatusOK, confirmation.Code, confirmation.Body.String())
 	assert.Contains(t, confirmation.Header().Get("Set-Cookie"), "Max-Age=0")
-	assert.Equal(t, http.StatusUnauthorized, api.Get("/me/session", "Cookie: "+restrictedCookie).Code)
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/me", "Cookie: "+restrictedCookie).Code)
 
 	var confirmationEnvelope struct {
 		Data authnext.MFAConfirmation `json:"data"`
@@ -252,7 +252,7 @@ func TestRequiredMFAEnrollmentHTTPFlowDoesNotLockOutPrincipal(t *testing.T) {
 		"code":         confirmationEnvelope.Data.RecoveryCodes[0],
 	}, "Origin: https://app.example")
 	require.Equal(t, http.StatusOK, verified.Code, verified.Body.String())
-	assert.Equal(t, http.StatusOK, api.Get("/me/session",
+	assert.Equal(t, http.StatusOK, api.Get("/me",
 		"Cookie: "+strings.Split(verified.Header().Get("Set-Cookie"), ";")[0]).Code)
 }
 
@@ -282,7 +282,7 @@ func TestAuthenticationSecurityCenterHTTPFlow(t *testing.T) {
 	for _, session := range envelope.Data {
 		assert.NotEqual(t, tokenHash(bobLogin.SessionID), session.ID)
 	}
-	assert.Equal(t, http.StatusNotFound, api.Delete("/me/sessions/"+tokenHash(bobLogin.SessionID),
+	assert.Equal(t, http.StatusNotFound, api.Delete("/sessions/"+tokenHash(bobLogin.SessionID),
 		"Cookie: "+first, "Origin: https://app.example").Code)
 	_, err = web.Authenticate(t.Context(), "", web.SessionCookie(bobLogin.SessionID))
 	require.NoError(t, err, "another principal's session must remain active")
@@ -293,10 +293,10 @@ func TestAuthenticationSecurityCenterHTTPFlow(t *testing.T) {
 		}
 	}
 	require.NotEmpty(t, other)
-	assert.Equal(t, http.StatusForbidden, api.Delete("/me/sessions/"+other, "Cookie: "+first, "Origin: https://evil.example").Code)
-	assert.Equal(t, http.StatusOK, api.Delete("/me/sessions/"+other, "Cookie: "+first, "Origin: https://app.example").Code)
-	assert.Equal(t, http.StatusUnauthorized, api.Get("/me/session", "Cookie: "+second).Code)
-	assert.Equal(t, http.StatusNotFound, api.Delete("/me/sessions/"+strings.Repeat("a", 64), "Cookie: "+first, "Origin: https://app.example").Code)
+	assert.Equal(t, http.StatusForbidden, api.Delete("/sessions/"+other, "Cookie: "+first, "Origin: https://evil.example").Code)
+	assert.Equal(t, http.StatusOK, api.Delete("/sessions/"+other, "Cookie: "+first, "Origin: https://app.example").Code)
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/me", "Cookie: "+second).Code)
+	assert.Equal(t, http.StatusNotFound, api.Delete("/sessions/"+strings.Repeat("a", 64), "Cookie: "+first, "Origin: https://app.example").Code)
 
 	changed := api.Patch("/me/password", "Cookie: "+first, "Origin: https://app.example", map[string]any{
 		"current_password": "correct horse battery staple", "new_password": "new correct horse battery staple",
@@ -315,8 +315,65 @@ func TestAuthenticationSecurityCenterHTTPFlow(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, api.Delete("/me/sessions", "Cookie: "+third, "Origin: https://evil.example").Code)
 	logoutAll := api.Delete("/me/sessions", "Cookie: "+third, "Origin: https://app.example")
 	assert.Equal(t, http.StatusOK, logoutAll.Code, logoutAll.Body.String())
-	assert.Equal(t, http.StatusUnauthorized, api.Get("/me/session", "Cookie: "+first).Code)
-	assert.Equal(t, http.StatusUnauthorized, api.Get("/me/session", "Cookie: "+third).Code)
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/me", "Cookie: "+first).Code)
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/me", "Cookie: "+third).Code)
+}
+
+func TestBrowserSessionDiscoveryAndItemContract(t *testing.T) {
+	db, web, principalID := newAuthenticationService(t)
+	_, api := humatest.New(t)
+	RegisterHTTP(api, web, web)
+	login, err := web.BeginLogin(t.Context(), "alice", "correct horse battery staple", "")
+	require.NoError(t, err)
+	cookie := "Cookie: " + strings.Split(web.SessionCookie(login.SessionID), ";")[0]
+	current := api.Get("/sessions/current", cookie)
+	require.Equal(t, http.StatusOK, current.Code, current.Body.String())
+	var envelope struct {
+		Data authnext.BrowserSession `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(current.Body.Bytes(), &envelope))
+	assert.Equal(t, tokenHash(login.SessionID), envelope.Data.ID)
+	assert.True(t, envelope.Data.Current)
+	assert.False(t, envelope.Data.ExpiresAt.IsZero())
+	assert.NotContains(t, current.Body.String(), login.SessionID)
+	assert.NotContains(t, current.Body.String(), `"subject"`)
+	assert.NotContains(t, current.Body.String(), `"email"`)
+	item := api.Get("/sessions/"+envelope.Data.ID, cookie)
+	require.Equal(t, http.StatusOK, item.Code, item.Body.String())
+	var itemEnvelope struct {
+		Data authnext.BrowserSession `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(item.Body.Bytes(), &itemEnvelope))
+	assert.Equal(t, envelope.Data.ID, itemEnvelope.Data.ID)
+	assert.Equal(t, envelope.Data.CreatedAt, itemEnvelope.Data.CreatedAt)
+	assert.Equal(t, envelope.Data.AbsoluteExpiresAt, itemEnvelope.Data.AbsoluteExpiresAt)
+	assert.True(t, itemEnvelope.Data.Current)
+	assert.False(t, itemEnvelope.Data.LastSeenAt.Before(envelope.Data.LastSeenAt))
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/sessions/current").Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, api.Get("/sessions/invalid", cookie).Code)
+	assert.Equal(t, http.StatusNotFound, api.Get("/sessions/"+strings.Repeat("a", 64), cookie).Code)
+	seedLocalPrincipal(t, web.repo, "other", "other@example.com", "correct horse battery staple")
+	other, err := web.BeginLogin(t.Context(), "other", "correct horse battery staple", "")
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, api.Get("/sessions/"+tokenHash(other.SessionID), cookie).Code)
+	access, _, err := web.IssueAccessToken(t.Context(), parseGUID(principalID), "api", "openid")
+	require.NoError(t, err)
+	bearer := "Authorization: Bearer " + access
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/sessions/current", bearer).Code)
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/sessions/current", bearer, cookie).Code)
+	assert.Equal(t, http.StatusOK, api.Get("/sessions/"+envelope.Data.ID, bearer).Code)
+	for _, old := range []string{"/me/session", "/me/sessions/{session_id}", "/me/session/step-up-challenges", "/me/session/step-up-verifications"} {
+		assert.NotContains(t, api.OpenAPI().Paths, old)
+	}
+	expired, err := web.BeginLogin(t.Context(), "alice", "correct horse battery staple", "")
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, api.Get("/sessions/"+tokenHash(expired.SessionID), cookie).Code)
+	require.NoError(t, db.Exec("UPDATE iam_sessions SET expires_at = ? WHERE id_hash = ?", web.now().Add(-time.Hour), tokenHash(expired.SessionID)).Error)
+	assert.Equal(t, http.StatusNotFound, api.Get("/sessions/"+tokenHash(expired.SessionID), cookie).Code)
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/sessions/current", "Cookie: "+strings.Split(web.SessionCookie(expired.SessionID), ";")[0]).Code)
+	assert.Equal(t, http.StatusForbidden, api.Delete("/sessions/"+envelope.Data.ID, cookie, "Origin: https://evil.example").Code)
+	assert.Equal(t, http.StatusOK, api.Delete("/sessions/"+envelope.Data.ID, cookie, "Origin: https://app.example").Code)
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/sessions/current", cookie).Code)
 }
 
 func TestPasswordRecoveryHTTPFlow(t *testing.T) {
@@ -425,7 +482,7 @@ func TestEmailVerificationHTTPFlow(t *testing.T) {
 	}, "Origin: https://app.example")
 	require.Equal(t, http.StatusOK, login.Code, login.Body.String())
 	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
-	assert.Contains(t, api.Get("/me/session", "Cookie: "+cookie).Body.String(), `"email_verified":false`)
+	assert.Contains(t, api.Get("/me", "Cookie: "+cookie).Body.String(), `"email_verified":false`)
 	assert.Equal(t, http.StatusUnauthorized, api.Post("/email-verification-requests", "Origin: https://app.example").Code)
 	assert.Equal(t, http.StatusForbidden, api.Post("/email-verification-requests", "Cookie: "+cookie, "Origin: https://evil.example").Code)
 	started := api.Post("/email-verification-requests", "Cookie: "+cookie, "Origin: https://app.example")
@@ -441,7 +498,7 @@ func TestEmailVerificationHTTPFlow(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, api.Post("/email-verifications", map[string]any{"token": strings.Repeat("x", 40)}, "Origin: https://app.example").Code)
 	completed := api.Post("/email-verifications", map[string]any{"token": token}, "Origin: https://app.example")
 	assert.Equal(t, http.StatusOK, completed.Code, completed.Body.String())
-	assert.Contains(t, api.Get("/me/session", "Cookie: "+cookie).Body.String(), `"email_verified":true`)
+	assert.Contains(t, api.Get("/me", "Cookie: "+cookie).Body.String(), `"email_verified":true`)
 
 	err = db.WithContext(t.Context()).Table("iam_principals").Where("id = ?", principalID).Updates(map[string]any{"email": "", "email_verified": false}).Error
 	require.NoError(t, err)
@@ -797,7 +854,7 @@ func TestAuthenticationStepUpHTTPContract(t *testing.T) {
 	require.Equal(t, http.StatusOK, login.Code, login.Body.String())
 	cookie := strings.Split(login.Header().Get("Set-Cookie"), ";")[0]
 
-	session := api.Get("/me/session", "Cookie: "+cookie)
+	session := api.Get("/me", "Cookie: "+cookie)
 	require.Equal(t, http.StatusOK, session.Code, session.Body.String())
 	assert.Contains(t, session.Body.String(), `"acr":1`)
 	assert.Contains(t, session.Body.String(), `"amr":["pwd"]`)
@@ -815,8 +872,8 @@ func TestAuthenticationStepUpHTTPContract(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(confirm.Body.Bytes(), &confirmation))
 
-	assert.Equal(t, http.StatusForbidden, api.Post("/me/session/step-up-challenges", "Cookie: "+cookie, "Origin: https://evil.example").Code)
-	options := api.Post("/me/session/step-up-challenges", "Cookie: "+cookie, "Origin: https://app.example")
+	assert.Equal(t, http.StatusForbidden, api.Post("/sessions/current/step-up-challenges", "Cookie: "+cookie, "Origin: https://evil.example").Code)
+	options := api.Post("/sessions/current/step-up-challenges", "Cookie: "+cookie, "Origin: https://app.example")
 	require.Equal(t, http.StatusOK, options.Code, options.Body.String())
 	var stepUp struct {
 		Data authnext.StepUpOptions `json:"data"`
@@ -825,29 +882,29 @@ func TestAuthenticationStepUpHTTPContract(t *testing.T) {
 	assert.NotEmpty(t, stepUp.Data.ChallengeID)
 	assert.Contains(t, stepUp.Data.Methods, "totp")
 
-	wrong := api.Post("/me/session/step-up-verifications", "Cookie: "+cookie, "Origin: https://app.example", map[string]any{
+	wrong := api.Post("/sessions/current/step-up-verifications", "Cookie: "+cookie, "Origin: https://app.example", map[string]any{
 		"challenge_id": stepUp.Data.ChallengeID, "code": "000000",
 	})
 	assert.Equal(t, http.StatusUnprocessableEntity, wrong.Code, wrong.Body.String())
 
-	verify := api.Post("/me/session/step-up-verifications", "Cookie: "+cookie, "Origin: https://app.example", map[string]any{
+	verify := api.Post("/sessions/current/step-up-verifications", "Cookie: "+cookie, "Origin: https://app.example", map[string]any{
 		"challenge_id": stepUp.Data.ChallengeID, "code": confirmation.Data.RecoveryCodes[0],
 	})
 	require.Equal(t, http.StatusOK, verify.Code, verify.Body.String())
 	upgradedCookie := strings.Split(verify.Header().Get("Set-Cookie"), ";")[0]
 	require.NotEmpty(t, upgradedCookie)
 
-	session = api.Get("/me/session", "Cookie: "+upgradedCookie)
+	session = api.Get("/me", "Cookie: "+upgradedCookie)
 	require.Equal(t, http.StatusOK, session.Code, session.Body.String())
 	assert.Contains(t, session.Body.String(), `"acr":2`)
 	assert.Contains(t, session.Body.String(), `"mfa"`)
-	assert.Equal(t, http.StatusUnauthorized, api.Get("/me/session", "Cookie: "+cookie).Code)
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/me", "Cookie: "+cookie).Code)
 
-	assert.Contains(t, api.OpenAPI().Paths, "/me/session/step-up-challenges")
-	assert.Contains(t, api.OpenAPI().Paths, "/me/session/step-up-verifications")
-	assert.Equal(t, "authn-create-step-up-challenge", api.OpenAPI().Paths["/me/session/step-up-challenges"].Post.OperationID)
-	assert.Equal(t, "authn-create-step-up-verification", api.OpenAPI().Paths["/me/session/step-up-verifications"].Post.OperationID)
-	assert.Contains(t, api.OpenAPI().Paths["/me/session/step-up-verifications"].Post.Responses, "500")
+	assert.Contains(t, api.OpenAPI().Paths, "/sessions/current/step-up-challenges")
+	assert.Contains(t, api.OpenAPI().Paths, "/sessions/current/step-up-verifications")
+	assert.Equal(t, "authn-create-step-up-challenge", api.OpenAPI().Paths["/sessions/current/step-up-challenges"].Post.OperationID)
+	assert.Equal(t, "authn-create-step-up-verification", api.OpenAPI().Paths["/sessions/current/step-up-verifications"].Post.OperationID)
+	assert.Contains(t, api.OpenAPI().Paths["/sessions/current/step-up-verifications"].Post.Responses, "500")
 }
 
 func mustTOTPValue(t *testing.T, secret string) string {
@@ -882,7 +939,8 @@ func TestAuthenticationHTTPUnavailableAndDisabledWeb(t *testing.T) {
 		"return_url": "https://app.example/",
 	}, "Origin: https://app.example").Code)
 	authorization := "Authorization: Bearer " + accessToken
-	assert.Equal(t, http.StatusUnauthorized, api.Get("/me/session", authorization).Code)
+	assert.Equal(t, http.StatusUnauthorized, api.Get("/sessions/current", authorization).Code)
+	assert.Equal(t, http.StatusInternalServerError, api.Get("/sessions/"+strings.Repeat("a", 64), authorization).Code)
 	assert.Equal(t, http.StatusInternalServerError, api.Get("/me/sessions", authorization).Code)
 	assert.Equal(t, http.StatusInternalServerError, api.Get("/me/mfa", authorization).Code)
 	assert.Equal(t, http.StatusInternalServerError, api.Get("/me/passkeys", authorization).Code)
@@ -892,7 +950,7 @@ func TestAuthenticationHTTPUnavailableAndDisabledWeb(t *testing.T) {
 	assert.Equal(t, http.StatusServiceUnavailable, api.Post("/email-verification-requests", authorization).Code)
 	assert.Equal(t, http.StatusInternalServerError, api.Post("/me/mfa/totp-enrollments", authorization,
 		map[string]any{"current_password": "correct horse battery staple"}).Code)
-	assert.Equal(t, http.StatusInternalServerError, api.Post("/me/session/step-up-challenges", authorization).Code)
+	assert.Equal(t, http.StatusInternalServerError, api.Post("/sessions/current/step-up-challenges", authorization).Code)
 	assert.Equal(t, http.StatusInternalServerError, api.Post("/me/passkey-registration-challenges", authorization,
 		map[string]any{"current_password": "correct horse battery staple"}).Code)
 
@@ -914,8 +972,8 @@ func TestAuthenticationHTTPHandlersEnforceCSRFDefenseInDepth(t *testing.T) {
 	evilOrigin := "Origin: https://evil.example"
 	id := strings.Repeat("a", 64)
 
-	assert.Equal(t, http.StatusForbidden, api.Delete("/me/session", cookie, evilOrigin).Code)
-	assert.Equal(t, http.StatusForbidden, api.Delete("/me/sessions/"+id, cookie, evilOrigin).Code)
+	assert.Equal(t, http.StatusForbidden, api.Delete("/sessions/current", cookie, evilOrigin).Code)
+	assert.Equal(t, http.StatusForbidden, api.Delete("/sessions/"+id, cookie, evilOrigin).Code)
 	assert.Equal(t, http.StatusForbidden, api.Delete("/me/sessions", cookie, evilOrigin).Code)
 	assert.Equal(t, http.StatusForbidden, api.Patch("/me/password", cookie, evilOrigin, map[string]any{
 		"current_password": "correct horse battery staple", "new_password": "another correct horse battery staple",
@@ -928,8 +986,8 @@ func TestAuthenticationHTTPHandlersEnforceCSRFDefenseInDepth(t *testing.T) {
 	verification := map[string]any{"current_password": "correct horse battery staple", "code": "123456"}
 	assert.Equal(t, http.StatusForbidden, api.Put("/me/mfa/recovery-codes", cookie, evilOrigin, verification).Code)
 	assert.Equal(t, http.StatusForbidden, api.Delete("/me/mfa/totp", cookie, evilOrigin, verification).Code)
-	assert.Equal(t, http.StatusForbidden, api.Post("/me/session/step-up-challenges", cookie, evilOrigin).Code)
-	assert.Equal(t, http.StatusForbidden, api.Post("/me/session/step-up-verifications", cookie, evilOrigin,
+	assert.Equal(t, http.StatusForbidden, api.Post("/sessions/current/step-up-challenges", cookie, evilOrigin).Code)
+	assert.Equal(t, http.StatusForbidden, api.Post("/sessions/current/step-up-verifications", cookie, evilOrigin,
 		map[string]any{"challenge_id": strings.Repeat("c", 32), "code": "123456"}).Code)
 	assert.Equal(t, http.StatusForbidden, api.Post("/me/passkey-registration-challenges", cookie, evilOrigin,
 		map[string]any{"current_password": "correct horse battery staple"}).Code)

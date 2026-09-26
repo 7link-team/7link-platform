@@ -553,9 +553,7 @@ try {
   const scopedSession = await login(charlie.login_name, accountPassword)
   const menuPaths = (menus) =>
     menus.flatMap((menu) => [menu.path, ...menuPaths(menu.children ?? [])])
-  const aliceMenus = menuPaths(
-    await call(aliceSession.context, "/me/menus")
-  )
+  const aliceMenus = menuPaths(await call(aliceSession.context, "/me/menus"))
   assert(aliceMenus.includes("/users"))
   assert(!aliceMenus.includes("/roles"))
   await aliceSession.page.goto(tenantPage("/users"))
@@ -710,9 +708,7 @@ try {
     )
   }
   assert(
-    (await call(scopedSession.context, "/me/permissions")).includes(
-      "user_view"
-    )
+    (await call(scopedSession.context, "/me/permissions")).includes("user_view")
   )
   await client(
     admin.page,
@@ -765,9 +761,7 @@ try {
     dynamic.id
   )
   assert(
-    (await call(scopedSession.context, "/me/permissions")).includes(
-      "user_view"
-    )
+    (await call(scopedSession.context, "/me/permissions")).includes("user_view")
   )
   await client(admin.page, "updateMember", charlie.id, {
     department_id: finance.id,
@@ -782,9 +776,7 @@ try {
     department_id: operationsChild.id,
   })
   assert(
-    (await call(scopedSession.context, "/me/permissions")).includes(
-      "user_view"
-    )
+    (await call(scopedSession.context, "/me/permissions")).includes("user_view")
   )
   await client(
     admin.page,
@@ -941,7 +933,7 @@ try {
   )
 
   const adminSubject = (
-    await call(admin.context, "/me/session", "GET", undefined, {
+    await call(admin.context, "/me", "GET", undefined, {
       tenant: false,
     })
   ).subject
@@ -1008,6 +1000,132 @@ try {
   await capture(restored.page, "restored-editor", 390)
   pass(
     "cross-tenant access and non-platform tenant creation denied; suspension revokes sessions and restoration permits fresh login"
+  )
+
+  const devices = await login(alice.login_name, accountPassword)
+  const secondDevice = await login(alice.login_name, accountPassword, 390)
+  const identity = await client(devices.page, "session")
+  assert.equal(identity.subject, alice.id)
+  const current = await client(devices.page, "currentBrowserSession")
+  assert.match(current.id, /^[a-f0-9]{64}$/)
+  assert.equal(current.current, true)
+  for (const field of [
+    "created_at",
+    "last_seen_at",
+    "expires_at",
+    "absolute_expires_at",
+  ]) {
+    assert(Number.isFinite(Date.parse(current[field])), field)
+  }
+  assert.equal(current.subject, undefined)
+  assert.equal(current.email, undefined)
+  const cookies = await devices.context.cookies()
+  const cookieSecret = cookies.find(
+    (cookie) => cookie.name === "lifecycle_session"
+  )?.value
+  assert(cookieSecret, "browser session credential exists")
+  assert(
+    !JSON.stringify(current).includes(cookieSecret),
+    "public session must not expose Cookie credential"
+  )
+  const item = await client(devices.page, "browserSession", current.id)
+  assert.equal(item.id, current.id)
+  assert.equal(item.created_at, current.created_at)
+  assert.equal(item.absolute_expires_at, current.absolute_expires_at)
+  const active = await client(devices.page, "sessions")
+  assert(active.some((row) => row.id === current.id && row.current))
+  const foreign = await client(admin.page, "currentBrowserSession")
+  await call(devices.context, `/sessions/${foreign.id}`, "GET", undefined, {
+    status: 404,
+  })
+  await call(devices.context, `/sessions/${"a".repeat(64)}`, "GET", undefined, {
+    status: 404,
+  })
+  const mixed = await devices.context.request.get("/api/sessions/current", {
+    headers: { Authorization: "Bearer invalid" },
+  })
+  assert.equal(
+    mixed.status(),
+    401,
+    "Bearer cannot select current Cookie session"
+  )
+  const secondCurrent = await client(secondDevice.page, "currentBrowserSession")
+  const csrf = await devices.context.request.delete(
+    `/api/sessions/${secondCurrent.id}`,
+    {
+      headers: { Origin: "https://evil.invalid" },
+    }
+  )
+  assert.equal(csrf.status(), 403)
+  await call(secondDevice.context, "/sessions/current")
+  await client(devices.page, "revokeSession", secondCurrent.id)
+  await call(secondDevice.context, "/me", "GET", undefined, { status: 401 })
+  await call(
+    devices.context,
+    `/sessions/${secondCurrent.id}`,
+    "GET",
+    undefined,
+    { status: 404 }
+  )
+  await call(admin.context, "/sessions/current")
+  for (const old of ["/me/session", `/me/sessions/${current.id}`]) {
+    assert(!published(old), `${old} must be absent from OpenAPI`)
+    assert.equal(
+      (await devices.context.request.get(`/api${old}`)).status(),
+      404
+    )
+  }
+  pass(
+    "real Session discovery/item metadata, secret exclusion, owner isolation, CSRF and device revocation"
+  )
+
+  const accountRoot = await client(devices.page, "createAccountFileRoot")
+  assert.equal(accountRoot.scope, "account")
+  assert(
+    (await client(devices.page, "files", null)).items.some(
+      (row) => row.id === accountRoot.id
+    )
+  )
+  const invalidRoot = await devices.context.request.post(
+    "/api/me/files",
+    {
+      headers: { Origin: webURL },
+      multipart: { kind: "directory", scope: "personal" },
+    }
+  )
+  assert.equal(invalidRoot.status(), 422)
+  pass(
+    "real account-root creation/listing and rejected personal multipart scope"
+  )
+
+  const thirdDevice = await login(alice.login_name, accountPassword, 390)
+  await devices.page.goto("/me/security")
+  await devices.page
+    .getByRole("button", { name: "Sign out all devices", exact: true })
+    .waitFor()
+  await devices.page
+    .getByRole("button", { name: "Sign out all devices", exact: true })
+    .click()
+  await devices.page.waitForURL((url) => url.pathname === "/login")
+  await call(thirdDevice.context, "/me", "GET", undefined, { status: 401 })
+  assert(
+    !(await devices.context.cookies()).some(
+      (cookie) => cookie.name === "lifecycle_session"
+    )
+  )
+  await call(admin.context, "/sessions/current")
+  const logoutDevice = await login(alice.login_name, accountPassword)
+  await client(logoutDevice.page, "logout")
+  await call(logoutDevice.context, "/me", "GET", undefined, { status: 401 })
+  const repeatLogout = await logoutDevice.context.request.delete(
+    "/api/sessions/current",
+    {
+      headers: { Origin: webURL },
+    }
+  )
+  assert.equal(repeatLogout.status(), 200)
+  pass(
+    "desktop security UI logout-all revokes mobile Cookie, clears browser Cookie; current logout is idempotent"
   )
 
   const audit = await call(admin.context, "/audit/events?limit=200")

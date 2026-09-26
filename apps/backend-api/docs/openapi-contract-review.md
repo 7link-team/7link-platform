@@ -1,6 +1,13 @@
 # OpenAPI Public Contract Review
 
-Status: REVISED PROPOSAL - semantic review complete, awaiting confirmation
+Status: HISTORICAL REVIEW - execution authority superseded
+
+Current authority (2026-09-25): D77 supersedes the dual-address rule below;
+Membership uses (tenant_id, principal_id), and Session discovery is
+GET /sessions/current. The full proposal failed implementation review in
+[api-migration-review-2026-09-25.md](api-migration-review-2026-09-25.md).
+Execute only [api-optimization-implementation-2026-09-25.md](api-optimization-implementation-2026-09-25.md).
+Historical unresolved questions below are not a work queue or required followups.
 
 Date: 2026-09-23
 

@@ -20,6 +20,31 @@ interface RecordedRequest {
 }
 
 describe("IAM API client", () => {
+  it("separates identity, current browser session and session item addresses", async () => {
+    const requests: string[] = []
+    server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        const url = new URL(request.url)
+        requests.push(`${request.method} ${url.pathname}`)
+        return Response.json({ code: 0, data: {} })
+      },
+    })
+    const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "90")
+    const id = "a".repeat(64)
+    await client.session()
+    await client.currentBrowserSession()
+    await client.browserSession(id)
+    await client.revokeSession(id)
+    await client.logout()
+    expect(requests).toEqual([
+      "GET /me",
+      "GET /sessions/current",
+      `GET /sessions/${id}`,
+      `DELETE /sessions/${id}`,
+      "DELETE /sessions/current",
+    ])
+  })
   let server: ReturnType<typeof Bun.serve> | undefined
   afterEach(() => server?.stop(true))
 
@@ -79,7 +104,7 @@ describe("IAM API client", () => {
       },
     })
     const client = createIamApi(`http://127.0.0.1:${server.port}`, () => "90")
-    await client.createPersonalFileRoot("80")
+    await client.createAccountFileRoot()
     await client.createDirectory("80", "1/2", "Reports")
     await client.uploadFile(
       "80",
@@ -98,7 +123,7 @@ describe("IAM API client", () => {
     await client.restoreFileEntry("80", "5/6", 9, "restored.txt")
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "POST /entities/80/files",
+      "POST /me/files",
       "POST /entities/80/files",
       "POST /entities/80/files",
       "GET /files/3%2F4/content",
@@ -121,7 +146,7 @@ describe("IAM API client", () => {
         "multipart/form-data; boundary="
       )
     expect(requests[0]?.body).toContain('name="scope"')
-    expect(requests[0]?.body).toContain("personal")
+    expect(requests[0]?.body).toContain("account")
     expect(requests[1]?.body).toContain('name="name"')
     expect(requests[1]?.body).toContain("Reports")
     expect(requests[2]?.body).toContain('filename="report.txt"')
@@ -399,7 +424,7 @@ describe("IAM API client", () => {
     )
     await client.session()
     await client.sessionForTenant("authorized-tenant")
-    expect(requests.every(({ path }) => path === "/me/session")).toBe(true)
+    expect(requests.every(({ path }) => path === "/me")).toBe(true)
     expect(requests[0]?.headers.has("x-tenant-id")).toBe(false)
     expect(requests[1]?.headers.get("x-tenant-id")).toBeNull()
   })

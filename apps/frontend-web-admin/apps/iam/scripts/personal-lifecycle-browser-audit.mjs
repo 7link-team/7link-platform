@@ -58,7 +58,7 @@ async function login(context, name, secret) {
     password: secret,
     return_url: baseURL + "/",
   })
-  return ok(context, "/me/session")
+  return ok(context, "/me")
 }
 async function verified(page, messages, responsePath) {
   const dialog = page.getByRole("dialog")
@@ -140,7 +140,7 @@ try {
         await verified(page, messages, `/me/memberships/${tenant.id}/leave`)
         await page.getByText(messages.noMemberships, { exact: true }).waitFor()
         assert.equal(
-          (await ok(context, "/me/session")).subject,
+          (await ok(context, "/me")).subject,
           principal.id,
           "leaving preserves the global session"
         )
@@ -225,7 +225,7 @@ try {
           "zero-tenant account can be processed"
         )
         assert.equal(
-          (await call(context, "/me/session")).status(),
+          (await call(context, "/me")).status(),
           401,
           "processing revokes old session"
         )
